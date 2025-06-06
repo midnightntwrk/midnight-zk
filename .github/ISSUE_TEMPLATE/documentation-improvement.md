@@ -2,7 +2,7 @@
 name: Documentation improvement
 about: Report a problem with the documentation
 title: ""
-labels: midnight-template-repo, public, documentation
+labels: midnight-zk, public, documentation
 assignees: ""
 ---
 
