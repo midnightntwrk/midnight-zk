@@ -1,6 +1,6 @@
 use ff::Field;
-use halo2_proofs::utils::rational::Rational;
-use halo2_proofs::{
+use midnight_proofs::utils::rational::Rational;
+use midnight_proofs::{
     circuit::{Cell, Layouter, Region, SimpleFloorPlanner, Value},
     plonk::{Advice, Circuit, Column, ConstraintSystem, Error, Fixed, TableColumn},
     poly::Rotation,
@@ -289,7 +289,7 @@ fn main() {
         .titled("Example Circuit Layout", ("sans-serif", 60))
         .unwrap();
 
-    halo2_proofs::dev::CircuitLayout::default()
+    midnight_proofs::dev::CircuitLayout::default()
         // You can optionally render only a section of the circuit.
         .view_width(0..2)
         .view_height(0..16)

@@ -39,6 +39,7 @@ use group::{Curve, Group};
 use halo2curves::msm::msm_best;
 use halo2curves::pairing::MultiMillerLoop;
 use rand_core::OsRng;
+use crate::utils::arithmetic::CurveAffine;
 
 #[derive(Clone, Debug)]
 /// KZG verifier

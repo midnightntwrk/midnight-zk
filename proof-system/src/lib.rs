@@ -1,4 +1,4 @@
-//! # halo2_proofs
+//! # midnight_proofs
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
 // The actual lints we want to disable.

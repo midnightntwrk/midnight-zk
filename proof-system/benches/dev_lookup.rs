@@ -2,10 +2,10 @@
 extern crate criterion;
 
 use ff::{Field, PrimeField};
-use halo2_proofs::circuit::{Layouter, SimpleFloorPlanner, Value};
-use halo2_proofs::dev::MockProver;
-use halo2_proofs::plonk::*;
-use halo2_proofs::poly::Rotation;
+use midnight_proofs::circuit::{Layouter, SimpleFloorPlanner, Value};
+use midnight_proofs::dev::MockProver;
+use midnight_proofs::plonk::*;
+use midnight_proofs::poly::Rotation;
 use halo2curves::pasta::pallas;
 
 use std::marker::PhantomData;

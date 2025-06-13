@@ -5,11 +5,11 @@ use blake2b_simd::State;
 use std::marker::PhantomData;
 
 use ff::{FromUniformBytes, WithSmallOrderMulGroup};
-use halo2_proofs::poly::commitment::Guard;
-use halo2_proofs::poly::kzg::{params::ParamsKZG, KZGCommitmentScheme};
-use halo2_proofs::transcript::{CircuitTranscript, Hashable, Sampleable, Transcript};
-use halo2_proofs::utils::helpers::ProcessedSerdeObject;
-use halo2_proofs::{
+use midnight_proofs::poly::commitment::Guard;
+use midnight_proofs::poly::kzg::{params::ParamsKZG, KZGCommitmentScheme};
+use midnight_proofs::transcript::{CircuitTranscript, Hashable, Sampleable, Transcript};
+use midnight_proofs::utils::helpers::ProcessedSerdeObject;
+use midnight_proofs::{
     circuit::{AssignedCell, Chip, Layouter, Region, SimpleFloorPlanner, Value},
     plonk::*,
     poly::Rotation,

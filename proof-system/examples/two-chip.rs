@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::{AssignedCell, Chip, Layouter, Region, SimpleFloorPlanner, Value},
     plonk::{Advice, Circuit, Column, ConstraintSystem, Error, Instance, Selector},
     poly::Rotation,
@@ -498,7 +498,7 @@ impl<F: Field> Circuit<F> for MyCircuit<F> {
 
 #[allow(clippy::many_single_char_names)]
 fn main() {
-    use halo2_proofs::dev::MockProver;
+    use midnight_proofs::dev::MockProver;
     use halo2curves::pasta::Fp;
     use rand_core::OsRng;
 

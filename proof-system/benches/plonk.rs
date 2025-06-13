@@ -2,20 +2,20 @@
 extern crate criterion;
 
 use group::ff::Field;
-use halo2_proofs::circuit::{Cell, Layouter, SimpleFloorPlanner, Value};
-use halo2_proofs::plonk::*;
-use halo2_proofs::poly::Rotation;
+use midnight_proofs::circuit::{Cell, Layouter, SimpleFloorPlanner, Value};
+use midnight_proofs::plonk::*;
+use midnight_proofs::poly::Rotation;
 use halo2curves::bn256;
 use rand_core::OsRng;
 
 use std::marker::PhantomData;
 
 use criterion::{BenchmarkId, Criterion};
-use halo2_proofs::poly::commitment::Guard;
-use halo2_proofs::poly::kzg::params::ParamsVerifierKZG;
-use halo2_proofs::poly::kzg::{params::ParamsKZG, KZGCommitmentScheme};
-use halo2_proofs::transcript::{CircuitTranscript, Transcript};
-use halo2_proofs::utils::rational::Rational;
+use midnight_proofs::poly::commitment::Guard;
+use midnight_proofs::poly::kzg::params::ParamsVerifierKZG;
+use midnight_proofs::poly::kzg::{params::ParamsKZG, KZGCommitmentScheme};
+use midnight_proofs::transcript::{CircuitTranscript, Transcript};
+use midnight_proofs::utils::rational::Rational;
 use halo2curves::bn256::Bn256;
 
 fn criterion_benchmark(c: &mut Criterion) {

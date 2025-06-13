@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::{AssignedCell, Chip, Layouter, Region, SimpleFloorPlanner, Value},
     plonk::{Advice, Circuit, Column, ConstraintSystem, Error, Instance, Selector},
     poly::Rotation,
@@ -276,7 +276,7 @@ impl<F: Field> Circuit<F> for MyCircuit<F> {
 // ANCHOR_END: circuit
 
 fn main() {
-    use halo2_proofs::dev::MockProver;
+    use midnight_proofs::dev::MockProver;
     use halo2curves::pasta::Fp;
 
     const N: usize = 20000;

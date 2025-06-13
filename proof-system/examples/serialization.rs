@@ -5,9 +5,9 @@ use std::{
 };
 
 use ff::Field;
-use halo2_proofs::poly::commitment::Guard;
-use halo2_proofs::transcript::{CircuitTranscript, Transcript};
-use halo2_proofs::{
+use midnight_proofs::poly::commitment::Guard;
+use midnight_proofs::transcript::{CircuitTranscript, Transcript};
+use midnight_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
     plonk::{
         create_proof, keygen_pk, keygen_vk_with_k, prepare, Advice, Circuit, Column,

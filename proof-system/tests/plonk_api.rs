@@ -4,20 +4,20 @@
 use assert_matches::assert_matches;
 use blake2b_simd::State;
 use ff::{FromUniformBytes, WithSmallOrderMulGroup};
-use halo2_proofs::circuit::{Cell, Layouter, SimpleFloorPlanner, Value};
-use halo2_proofs::dev::MockProver;
-use halo2_proofs::plonk::{
+use midnight_proofs::circuit::{Cell, Layouter, SimpleFloorPlanner, Value};
+use midnight_proofs::dev::MockProver;
+use midnight_proofs::plonk::{
     create_proof as create_plonk_proof, keygen_pk, keygen_vk, keygen_vk_with_k,
     prepare as prepare_plonk_proof, Advice, Circuit, Column, ConstraintSystem, Error, Fixed,
     ProvingKey, TableColumn, VerifyingKey,
 };
-use halo2_proofs::poly::commitment::{Guard, PolynomialCommitmentScheme};
-use halo2_proofs::poly::kzg::params::ParamsKZG;
-use halo2_proofs::poly::kzg::KZGCommitmentScheme;
-use halo2_proofs::poly::Rotation;
-use halo2_proofs::transcript::{CircuitTranscript, Hashable, Sampleable, Transcript};
-use halo2_proofs::utils::arithmetic::Field;
-use halo2_proofs::utils::rational::Rational;
+use midnight_proofs::poly::commitment::{Guard, PolynomialCommitmentScheme};
+use midnight_proofs::poly::kzg::params::ParamsKZG;
+use midnight_proofs::poly::kzg::KZGCommitmentScheme;
+use midnight_proofs::poly::Rotation;
+use midnight_proofs::transcript::{CircuitTranscript, Hashable, Sampleable, Transcript};
+use midnight_proofs::utils::arithmetic::Field;
+use midnight_proofs::utils::rational::Rational;
 use halo2curves::serde::SerdeObject;
 use rand_core::{CryptoRng, OsRng, RngCore};
 use std::marker::PhantomData;

@@ -29,7 +29,7 @@ struct Gate {
 ///
 /// ```
 /// use ff::Field;
-/// use halo2_proofs::{
+/// use midnight_proofs::{
 ///     circuit::{Layouter, SimpleFloorPlanner},
 ///     dev::CircuitGates,
 ///     plonk::{Circuit, ConstraintSystem, Error},

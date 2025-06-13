@@ -21,7 +21,7 @@ use crate::{
 /// # Examples
 ///
 /// ```ignore
-/// use halo2_proofs::dev::CircuitLayout;
+/// use midnight_proofs::dev::CircuitLayout;
 /// use plotters::prelude::*;
 ///
 /// let drawing_area = BitMapBackend::new("example-circuit-layout.png", (1024, 768))

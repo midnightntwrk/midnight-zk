@@ -31,7 +31,7 @@ use crate::{
 ///
 /// ```
 /// use ff::Field;
-/// use halo2_proofs::{
+/// use midnight_proofs::{
 ///     circuit::{floor_planner, Layouter, Value},
 ///     dev::TracingFloorPlanner,
 ///     plonk::{Circuit, ConstraintSystem, Error},
