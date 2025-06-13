@@ -25,13 +25,13 @@ jobs:
           command: doc
           args: --no-deps --all-features --workspace
         env:
-          RUSTDOCFLAGS: -Z unstable-options --enable-index-page --cfg docsrs --html-in-header ${{ github.workspace }}/halo2_proofs/katex-header.html
+          RUSTDOCFLAGS: -Z unstable-options --enable-index-page --cfg docsrs --html-in-header ${{ github.workspace }}/midnight_proofs/katex-header.html
 
       - name: Create the required index page and move the latest rustdocs into docs
         run: |
           rm -rf ./docs
           cp -R ./target/doc ./docs
-          echo "<meta http-equiv=\"refresh\" content=\"0; url=halo2_proofs\">" > ./docs/index.html
+          echo "<meta http-equiv=\"refresh\" content=\"0; url=midnight_proofs\">" > ./docs/index.html
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3

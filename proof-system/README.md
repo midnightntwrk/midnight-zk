@@ -1,6 +1,4 @@
-# halo2_proofs [![Crates.io](https://img.shields.io/crates/v/halo2_proofs.svg)](https://crates.io/crates/halo2_proofs) #
-
-## [Documentation](https://docs.rs/halo2_proofs)
+# midnight_proofs
 
 ## Minimum Supported Rust Version
 
@@ -11,7 +9,7 @@ minor version bump.
 
 ## Controlling parallelism
 
-`halo2_proofs` currently uses [rayon](https://github.com/rayon-rs/rayon) for parallel
+`midnight_proofs` currently uses [rayon](https://github.com/rayon-rs/rayon) for parallel
 computation. The `RAYON_NUM_THREADS` environment variable can be used to set the number of
 threads.
 
