@@ -5,6 +5,7 @@ use std::{
 };
 
 use ff::Field;
+use halo2curves::bn256::{Bn256, Fr};
 use midnight_proofs::poly::commitment::Guard;
 use midnight_proofs::transcript::{CircuitTranscript, Transcript};
 use midnight_proofs::{
@@ -19,7 +20,6 @@ use midnight_proofs::{
     },
     utils::SerdeFormat,
 };
-use halo2curves::bn256::{Bn256, Fr};
 use rand_core::OsRng;
 
 #[derive(Clone, Copy)]

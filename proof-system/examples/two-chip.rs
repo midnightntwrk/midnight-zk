@@ -498,8 +498,8 @@ impl<F: Field> Circuit<F> for MyCircuit<F> {
 
 #[allow(clippy::many_single_char_names)]
 fn main() {
-    use midnight_proofs::dev::MockProver;
     use halo2curves::pasta::Fp;
+    use midnight_proofs::dev::MockProver;
     use rand_core::OsRng;
 
     // ANCHOR: test-circuit

@@ -5,6 +5,9 @@ use blake2b_simd::State;
 use std::marker::PhantomData;
 
 use ff::{FromUniformBytes, WithSmallOrderMulGroup};
+use halo2curves::pairing::{Engine, MultiMillerLoop};
+use halo2curves::serde::SerdeObject;
+use halo2curves::{CurveAffine, CurveExt};
 use midnight_proofs::poly::commitment::Guard;
 use midnight_proofs::poly::kzg::{params::ParamsKZG, KZGCommitmentScheme};
 use midnight_proofs::transcript::{CircuitTranscript, Hashable, Sampleable, Transcript};
@@ -15,9 +18,6 @@ use midnight_proofs::{
     poly::Rotation,
     utils::arithmetic::Field,
 };
-use halo2curves::pairing::{Engine, MultiMillerLoop};
-use halo2curves::serde::SerdeObject;
-use halo2curves::{CurveAffine, CurveExt};
 use rand_core::OsRng;
 
 // ANCHOR: instructions

@@ -1,11 +1,11 @@
 use ff::Field;
+use halo2curves::pasta::Fp;
 use midnight_proofs::utils::rational::Rational;
 use midnight_proofs::{
     circuit::{Cell, Layouter, Region, SimpleFloorPlanner, Value},
     plonk::{Advice, Circuit, Column, ConstraintSystem, Error, Fixed, TableColumn},
     poly::Rotation,
 };
-use halo2curves::pasta::Fp;
 use rand_core::OsRng;
 use std::marker::PhantomData;
 

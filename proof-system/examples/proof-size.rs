@@ -1,9 +1,9 @@
 use ff::Field;
+use halo2curves::pasta::Fp;
 use midnight_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
     plonk::{Advice, Circuit, Column, ConstraintSystem, Error},
 };
-use halo2curves::pasta::Fp;
 
 use midnight_proofs::dev::cost_model::from_circuit_to_circuit_model;
 use midnight_proofs::plonk::{Expression, Selector, TableColumn};

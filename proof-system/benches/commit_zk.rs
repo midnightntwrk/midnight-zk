@@ -2,8 +2,8 @@ extern crate criterion;
 
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use group::ff::Field;
-use midnight_proofs::utils::arithmetic::parallelize;
 use halo2curves::pasta::pallas::Scalar;
+use midnight_proofs::utils::arithmetic::parallelize;
 use rand_chacha::rand_core::RngCore;
 use rand_chacha::ChaCha20Rng;
 use rand_core::SeedableRng;

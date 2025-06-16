@@ -32,6 +32,7 @@ use crate::utils::arithmetic::{truncate, truncated_powers};
 use crate::poly::commitment::{Params, PolynomialCommitmentScheme};
 use crate::poly::kzg::utils::construct_intermediate_sets;
 use crate::transcript::{Hashable, Sampleable, Transcript};
+use crate::utils::arithmetic::CurveAffine;
 use crate::utils::helpers::ProcessedSerdeObject;
 use ff::Field;
 use group::prime::PrimeCurveAffine;
@@ -39,7 +40,6 @@ use group::{Curve, Group};
 use halo2curves::msm::msm_best;
 use halo2curves::pairing::MultiMillerLoop;
 use rand_core::OsRng;
-use crate::utils::arithmetic::CurveAffine;
 
 #[derive(Clone, Debug)]
 /// KZG verifier

@@ -305,8 +305,8 @@ impl<F: Field> Circuit<F> for MyCircuit<F> {
 // ANCHOR_END: circuit
 
 fn main() {
-    use midnight_proofs::dev::MockProver;
     use halo2curves::pasta::Fp;
+    use midnight_proofs::dev::MockProver;
 
     // ANCHOR: test-circuit
     // The number of rows in our circuit cannot exceed 2^k. Since our example

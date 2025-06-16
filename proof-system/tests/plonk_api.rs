@@ -4,6 +4,7 @@
 use assert_matches::assert_matches;
 use blake2b_simd::State;
 use ff::{FromUniformBytes, WithSmallOrderMulGroup};
+use halo2curves::serde::SerdeObject;
 use midnight_proofs::circuit::{Cell, Layouter, SimpleFloorPlanner, Value};
 use midnight_proofs::dev::MockProver;
 use midnight_proofs::plonk::{
@@ -18,7 +19,6 @@ use midnight_proofs::poly::Rotation;
 use midnight_proofs::transcript::{CircuitTranscript, Hashable, Sampleable, Transcript};
 use midnight_proofs::utils::arithmetic::Field;
 use midnight_proofs::utils::rational::Rational;
-use halo2curves::serde::SerdeObject;
 use rand_core::{CryptoRng, OsRng, RngCore};
 use std::marker::PhantomData;
 
