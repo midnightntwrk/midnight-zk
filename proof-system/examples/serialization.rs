@@ -157,6 +157,8 @@ fn main() {
         &params,
         &pk,
         &[circuit],
+        #[cfg(feature = "committed-instances")]
+        0,
         &[instances],
         OsRng,
         &mut transcript,
@@ -169,6 +171,8 @@ fn main() {
 
     assert!(prepare::<Fr, KZGCommitmentScheme<Bn256>, _>(
         pk.get_vk(),
+        #[cfg(feature = "committed-instances")]
+        &[&[]],
         &[instances],
         &mut transcript,
     )

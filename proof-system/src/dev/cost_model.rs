@@ -886,6 +886,8 @@ mod tests {
             &params,
             &pk,
             &[circuit.clone()],
+            #[cfg(feature = "committed-instances")]
+            0,
             &[instances],
             OsRng,
             &mut transcript,

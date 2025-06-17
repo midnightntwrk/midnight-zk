@@ -13,6 +13,12 @@ use crate::utils::arithmetic::compute_inner_product;
 /// The verifier will error if there are trailing bytes in the transcript.
 pub fn prepare<F, CS: PolynomialCommitmentScheme<F>, T: Transcript>(
     vk: &VerifyingKey<F, CS>,
+    // Unlike the prover, the verifier gets their instances in two arguments:
+    // committed and normal (non-committed). Note that the total number of
+    // instance columns is expected to be the sum of committed instances and
+    // normal instances for every proof. (Committed instances go first, that is,
+    // the first instance columns are devoted to committed instances.)
+    #[cfg(feature = "committed-instances")] committed_instances: &[&[CS::Commitment]],
     instances: &[&[&[F]]],
     transcript: &mut T,
 ) -> Result<CS::VerificationGuard, Error>
@@ -24,9 +30,19 @@ where
         + Ord,
     CS::Commitment: Hashable<T::Hash>,
 {
+    #[cfg(not(feature = "committed-instances"))]
+    let committed_instances: Vec<Vec<CS::Commitment>> = vec![vec![]; instances.len()];
+
+    let nb_committed_instances = committed_instances[0].len();
+    for committed_instances in committed_instances.iter() {
+        if committed_instances.len() != nb_committed_instances {
+            return Err(Error::InvalidInstances);
+        }
+    }
+
     // Check that instances matches the expected number of instance columns
-    for instances in instances.iter() {
-        if instances.len() != vk.cs.num_instance_columns {
+    for (committed_instances, instances) in committed_instances.iter().zip(instances.iter()) {
+        if committed_instances.len() + instances.len() != vk.cs.num_instance_columns {
             return Err(Error::InvalidInstances);
         }
     }
@@ -35,6 +51,12 @@ where
 
     // Hash verification key into transcript
     vk.hash_into(transcript)?;
+
+    for committed_instances in committed_instances.iter() {
+        for commitment in committed_instances.iter() {
+            transcript.common(commitment)?
+        }
+    }
 
     for instance in instances.iter() {
         for instance in instance.iter() {
@@ -155,13 +177,20 @@ where
                     .instance_queries
                     .iter()
                     .map(|(column, rotation)| {
-                        let instances = instances[column.index()];
-                        let offset = (max_rotation - rotation.0) as usize;
-                        compute_inner_product(instances, &l_i_s[offset..offset + instances.len()])
+                        if column.index() < nb_committed_instances {
+                            transcript.read()
+                        } else {
+                            let instances = instances[column.index() - nb_committed_instances];
+                            let offset = (max_rotation - rotation.0) as usize;
+                            Ok(compute_inner_product(
+                                instances,
+                                &l_i_s[offset..offset + instances.len()],
+                            ))
+                        }
                     })
-                    .collect::<Vec<_>>()
+                    .collect::<Result<Vec<_>, _>>()
             })
-            .collect::<Vec<_>>()
+            .collect::<Result<Vec<_>, _>>()?
     };
 
     let advice_evals = (0..num_proofs)
@@ -268,14 +297,35 @@ where
         vanishing.verify(expressions, y, xn)
     };
 
-    let queries = advice_commitments
+    let queries = committed_instances
         .iter()
+        .zip(instance_evals.iter())
+        .zip(advice_commitments.iter())
         .zip(advice_evals.iter())
         .zip(permutations_evaluated.iter())
         .zip(lookups_evaluated.iter())
         .flat_map(
-            |(((advice_commitments, advice_evals), permutation), lookups)| {
+            |(
+                (
+                    (((committed_instances, instance_evals), advice_commitments), advice_evals),
+                    permutation,
+                ),
+                lookups,
+            )| {
                 iter::empty()
+                    .chain(vk.cs.instance_queries.iter().enumerate().filter_map(
+                        move |(query_index, &(column, at))| {
+                            if column.index() < nb_committed_instances {
+                                Some(VerifierQuery::new(
+                                    vk.domain.rotate_omega(x, at),
+                                    &committed_instances[column.index()],
+                                    instance_evals[query_index],
+                                ))
+                            } else {
+                                None
+                            }
+                        },
+                    ))
                     .chain(vk.cs.advice_queries.iter().enumerate().map(
                         move |(query_index, &(column, at))| {
                             VerifierQuery::new(

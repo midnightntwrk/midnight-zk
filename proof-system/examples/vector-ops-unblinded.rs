@@ -489,6 +489,8 @@ where
             &params,
             &pk,
             &[circuit],
+            #[cfg(feature = "committed-instances")]
+            0,
             &[&[&instances]],
             OsRng,
             &mut transcript,
@@ -501,9 +503,15 @@ where
     let accepted = {
         let mut transcript = CircuitTranscript::<State>::init_from_bytes(&proof[..]);
 
-        prepare::<E::Fr, KZGCommitmentScheme<E>, _>(pk.get_vk(), &[&[&instances]], &mut transcript)
-            .unwrap()
-            .verify(&params.verifier_params())
+        prepare::<E::Fr, KZGCommitmentScheme<E>, _>(
+            pk.get_vk(),
+            #[cfg(feature = "committed-instances")]
+            &[&[]],
+            &[&[&instances]],
+            &mut transcript,
+        )
+        .unwrap()
+        .verify(&params.verifier_params())
     };
 
     assert_eq!(accepted.is_ok(), expected);

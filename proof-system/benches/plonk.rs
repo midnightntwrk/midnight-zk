@@ -284,6 +284,8 @@ fn criterion_benchmark(c: &mut Criterion) {
             params,
             pk,
             &[circuit],
+            #[cfg(feature = "committed-instances")]
+            0,
             &[&[]],
             rng,
             &mut transcript,
@@ -300,6 +302,8 @@ fn criterion_benchmark(c: &mut Criterion) {
         let mut transcript = CircuitTranscript::init_from_bytes(proof);
         assert!(prepare::<bn256::Fr, KZGCommitmentScheme<bn256::Bn256>, _>(
             vk,
+            #[cfg(feature = "committed-instances")]
+            &[&[]],
             &[&[]],
             &mut transcript
         )
