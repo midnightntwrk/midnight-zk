@@ -483,6 +483,8 @@ fn plonk_api() {
             params,
             pk,
             &[circuit.clone(), circuit.clone()],
+            #[cfg(feature = "committed-instances")]
+            0,
             &[&[&[instance]], &[&[instance]]],
             rng,
             &mut transcript,
@@ -517,9 +519,14 @@ fn plonk_api() {
 
         let mut transcript = T::init_from_bytes(proof);
 
-        let verifier =
-            prepare_plonk_proof(vk, &[&[&pubinputs[..]], &[&pubinputs[..]]], &mut transcript)
-                .unwrap();
+        let verifier = prepare_plonk_proof(
+            vk,
+            #[cfg(feature = "committed-instances")]
+            &[&[]],
+            &[&[&pubinputs[..]], &[&pubinputs[..]]],
+            &mut transcript,
+        )
+        .unwrap();
 
         assert!(verifier.verify(params_verifier).is_ok());
     }

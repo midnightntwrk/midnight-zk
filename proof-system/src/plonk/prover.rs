@@ -23,8 +23,29 @@ use crate::{
 use crate::circuit::Value;
 use crate::poly::batch_invert_rational;
 use crate::poly::commitment::PolynomialCommitmentScheme;
+#[cfg(feature = "committed-instances")]
+use crate::poly::EvaluationDomain;
 use crate::transcript::{Hashable, Sampleable, Transcript};
 use crate::utils::rational::Rational;
+
+#[cfg(feature = "committed-instances")]
+/// Commit to a vector of raw instances. This function can be used to prepare
+/// the committed instances that the verifier will be provided with when this
+/// feature is enabled.
+pub fn commit_to_instances<F, CS: PolynomialCommitmentScheme<F>>(
+    params: &CS::Parameters,
+    domain: &EvaluationDomain<F>,
+    instances: &[F],
+) -> CS::Commitment
+where
+    F: WithSmallOrderMulGroup<3> + Ord + FromUniformBytes<64>,
+{
+    let mut poly = domain.empty_lagrange();
+    for (poly_eval, value) in poly.iter_mut().zip(instances.iter()) {
+        *poly_eval = *value;
+    }
+    CS::commit_lagrange(params, &poly)
+}
 
 /// This creates a proof for the provided `circuit` when given the public
 /// parameters `params` and the proving key [`ProvingKey`] that was
@@ -39,6 +60,10 @@ pub fn create_proof<
     params: &CS::Parameters,
     pk: &ProvingKey<F, CS>,
     circuits: &[ConcreteCircuit],
+    // The prover needs to get all instances in non-committed form. However,
+    // the first `nb_committed_instances` instance columns are dedicated for
+    // instances that the verifier receives in committed form.
+    #[cfg(feature = "committed-instances")] nb_committed_instances: usize,
     instances: &[&[&[F]]],
     mut rng: impl RngCore + CryptoRng,
     transcript: &mut T,
@@ -51,12 +76,17 @@ where
         + Ord
         + FromUniformBytes<64>,
 {
+    #[cfg(not(feature = "committed-instances"))]
+    let nb_committed_instances: usize = 0;
+
     if circuits.len() != instances.len() {
         return Err(Error::InvalidInstances);
     }
 
-    for instance in instances.iter() {
-        if instance.len() != pk.vk.cs.num_instance_columns {
+    for instances in instances.iter() {
+        if instances.len() != pk.vk.cs.num_instance_columns
+            || instances.len() < nb_committed_instances
+        {
             return Err(Error::InvalidInstances);
         }
     }
@@ -85,17 +115,30 @@ where
         .map(|instance| -> Result<InstanceSingle<F>, Error> {
             let instance_values = instance
                 .iter()
-                .map(|values| {
+                .enumerate()
+                .map(|(i, values)| {
+                    // Committed instances go first.
+                    let is_committed_instance = i < nb_committed_instances;
                     let mut poly = domain.empty_lagrange();
                     assert_eq!(poly.len(), domain.n as usize);
                     if values.len() > (poly.len() - (meta.blinding_factors() + 1)) {
                         return Err(Error::InstanceTooLarge);
                     }
-                    for (poly, value) in poly.iter_mut().zip(values.iter()) {
-                        transcript.common(value)?;
-                        *poly = *value;
+                    if !is_committed_instance {
+                        transcript.common(&F::from_u128(values.len() as u128))?;
                     }
-                    transcript.common(&F::from_u128(values.len() as u128))?;
+
+                    for (poly_eval, value) in poly.iter_mut().zip(values.iter()) {
+                        if !is_committed_instance {
+                            transcript.common(value)?;
+                        }
+                        *poly_eval = *value;
+                    }
+
+                    if is_committed_instance {
+                        transcript.common(&CS::commit_lagrange(params, &poly))?;
+                    }
+
                     Ok(poly)
                 })
                 .collect::<Result<Vec<_>, _>>()?;
@@ -481,6 +524,20 @@ where
 
     let x: F = transcript.squeeze_challenge();
 
+    // Compute and hash evals for the polynomials of the committed instances of each circuit
+    for instance in instance.iter() {
+        // Evaluate polynomials at omega^i x
+        for &(column, at) in meta.instance_queries.iter() {
+            if column.index() < nb_committed_instances {
+                let eval = eval_polynomial(
+                    &instance.instance_polys[column.index()],
+                    domain.rotate_omega(x, at),
+                );
+                transcript.write(&eval)?;
+            }
+        }
+    }
+
     // Compute and hash advice evals for each circuit instance
     for advice in advice.iter() {
         // Evaluate polynomials at omega^i x
@@ -537,12 +594,24 @@ where
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    let instances = advice
+    let queries = instance
         .iter()
+        .zip(advice.iter())
         .zip(permutations.iter())
         .zip(lookups.iter())
-        .flat_map(|((advice, permutation), lookups)| {
+        .flat_map(|(((instance, advice), permutation), lookups)| {
             iter::empty()
+                .chain(
+                    pk.vk
+                        .cs
+                        .instance_queries
+                        .iter()
+                        .take(nb_committed_instances)
+                        .map(move |&(column, at)| ProverQuery {
+                            point: domain.rotate_omega(x, at),
+                            poly: &instance.instance_polys[column.index()],
+                        }),
+                )
                 .chain(
                     pk.vk
                         .cs
@@ -570,7 +639,7 @@ where
         // We query the h(X) polynomial at x
         .chain(vanishing.open(x));
 
-    CS::multi_open(params, instances, transcript).map_err(|_| Error::ConstraintSystemFailure)
+    CS::multi_open(params, queries, transcript).map_err(|_| Error::ConstraintSystemFailure)
 }
 
 #[test]
@@ -619,6 +688,8 @@ fn test_create_proof() {
         &params,
         &pk,
         &[MyCircuit, MyCircuit],
+        #[cfg(feature = "committed-instances")]
+        0,
         &[],
         OsRng,
         &mut transcript,
@@ -630,6 +701,8 @@ fn test_create_proof() {
         &params,
         &pk,
         &[MyCircuit, MyCircuit],
+        #[cfg(feature = "committed-instances")]
+        0,
         &[&[], &[]],
         OsRng,
         &mut transcript,
