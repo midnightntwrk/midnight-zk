@@ -537,7 +537,7 @@ where
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    let instances = advice
+    let queries = advice
         .iter()
         .zip(permutations.iter())
         .zip(lookups.iter())
@@ -570,7 +570,7 @@ where
         // We query the h(X) polynomial at x
         .chain(vanishing.open(x));
 
-    CS::multi_open(params, instances, transcript).map_err(|_| Error::ConstraintSystemFailure)
+    CS::multi_open(params, queries, transcript).map_err(|_| Error::ConstraintSystemFailure)
 }
 
 #[test]
