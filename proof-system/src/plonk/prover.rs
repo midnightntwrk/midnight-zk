@@ -91,11 +91,11 @@ where
                     if values.len() > (poly.len() - (meta.blinding_factors() + 1)) {
                         return Err(Error::InstanceTooLarge);
                     }
+                    transcript.common(&F::from_u128(values.len() as u128))?;
                     for (poly, value) in poly.iter_mut().zip(values.iter()) {
                         transcript.common(value)?;
                         *poly = *value;
                     }
-                    transcript.common(&F::from_u128(values.len() as u128))?;
                     Ok(poly)
                 })
                 .collect::<Result<Vec<_>, _>>()?;
