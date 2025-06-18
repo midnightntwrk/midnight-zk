@@ -112,7 +112,7 @@ impl Hashable<Blake2bState> for blstrs::G1Projective {
     }
 }
 
-impl Hashable<Blake2bState> for blstrs::Scalar {
+impl Hashable<Blake2bState> for blstrs::Fq {
     fn to_input(&self) -> Vec<u8> {
         self.to_repr().to_vec()
     }
@@ -135,13 +135,13 @@ impl Hashable<Blake2bState> for blstrs::Scalar {
     }
 }
 
-impl Sampleable<Blake2bState> for blstrs::Scalar {
+impl Sampleable<Blake2bState> for blstrs::Fq {
     fn sample(hash_output: Vec<u8>) -> Self {
         assert!(hash_output.len() <= 64);
-        assert!(hash_output.len() >= (blstrs::Scalar::NUM_BITS as usize / 8) + 12);
+        assert!(hash_output.len() >= (blstrs::Fq::NUM_BITS as usize / 8) + 12);
         let mut bytes = [0u8; 64];
         bytes[..hash_output.len()].copy_from_slice(&hash_output);
-        blstrs::Scalar::from_uniform_bytes(&bytes)
+        blstrs::Fq::from_uniform_bytes(&bytes)
     }
 }
 
