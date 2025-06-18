@@ -8,7 +8,7 @@ use blstrs::{G1Affine, G1Projective, G2Affine, G2Prepared, G2Projective};
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 use group::Group;
 use pairing_lib::{Engine, MillerLoopResult, MultiMillerLoop};
-use rand::SeedableRng;
+use rand_core::SeedableRng;
 use rand_xorshift::XorShiftRng;
 
 const SEED: [u8; 16] = [

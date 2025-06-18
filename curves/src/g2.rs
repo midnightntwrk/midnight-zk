@@ -17,7 +17,7 @@ use group::{
     Curve, Group, GroupEncoding, UncompressedEncoding, WnafGroup,
 };
 use halo2curves::serde::SerdeObject;
-use pasta_curves::arithmetic::{Coordinates, CurveAffine, CurveExt};
+use halo2curves::{Coordinates, CurveAffine, CurveExt};
 use rand_core::RngCore;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 

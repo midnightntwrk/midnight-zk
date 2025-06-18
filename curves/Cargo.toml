@@ -1,12 +1,11 @@
 [package]
 name = "blstrs"
-description = "High performance implementation of BLS12 381"
-version = "0.7.1"
-authors = ["dignifiedquire <me@dignifiedquire.com>"]
+description = "Implementation of BLS12 381 and Jubjub curves."
+version = "0.1.0"
+authors = ["dignifiedquire <me@dignifiedquire.com>", "Midnight team"]
 edition = "2018"
 license = "MIT/Apache-2.0"
-repository = "https://github.com/filecoin-project/blstrs"
-documentation = "https://docs.rs/blstrs"
+repository = "https://github.com/midnightntwrk/midnight-zk/"
 categories = ["cryptography", "algorithms"]
 readme = "README.md"
 rust-version = "1.63"
@@ -16,20 +15,19 @@ rustdoc-args = [ "--html-in-header", "katex-header.html" ]
 
 [dependencies]
 blst = { version = "0.3.15", default-features = true }
-rand_core = { workspace = true }
-ff = { workspace = true }
-group = { workspace = true }
 pairing_lib = { version = "0.23", package = "pairing" }
 subtle = "2.5"
-rand = "0.8"
 bitvec = "1.0.1"
-pasta_curves = "0.5.0"
-halo2curves = { workspace = true }
-
-
 serde = { version = "1.0", features = ["derive"], optional = true }
 byte-slice-cast = "1.0.0"
 num-bigint = "0.4.6"
+
+rand_core = { workspace = true }
+ff = { workspace = true }
+group = { workspace = true, features = ["tests"]  }
+halo2curves = { workspace = true }
+
+
 
 [dev-dependencies]
 rayon = "1.8"

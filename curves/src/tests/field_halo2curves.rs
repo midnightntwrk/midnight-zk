@@ -192,7 +192,7 @@ macro_rules! field_testing_suite {
         }
 
         use ff::Field;
-        use rand::SeedableRng;
+        use rand_core::SeedableRng;
         use rand_xorshift::XorShiftRng;
 
         #[test]

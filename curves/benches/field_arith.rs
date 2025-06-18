@@ -8,8 +8,7 @@
 //!     cargo bench --bench field_arith
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
-use rand::RngCore;
-use rand_core::SeedableRng;
+use rand_core::{RngCore, SeedableRng};
 use rand_xorshift::XorShiftRng;
 
 use blstrs::*;
