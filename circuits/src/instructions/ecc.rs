@@ -3,7 +3,7 @@
 use std::fmt::Debug;
 
 use ff::PrimeField;
-use halo2_proofs::{circuit::Layouter, plonk::Error};
+use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 use super::AssertionInstructions;
 use crate::{
@@ -132,7 +132,7 @@ pub mod tests {
 
     use ff::{Field, FromUniformBytes};
     use group::Group;
-    use halo2_proofs::{
+    use midnight_proofs::{
         circuit::{Chip, Layouter, SimpleFloorPlanner, Value},
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem},

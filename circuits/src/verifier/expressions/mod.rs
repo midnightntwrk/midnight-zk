@@ -1,4 +1,4 @@
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::Layouter,
     plonk::{Error, Expression},
 };

@@ -1,12 +1,12 @@
 use std::marker::PhantomData;
 
 use ff::PrimeField;
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::{Chip, Layouter, Region, Value},
     plonk::{Advice, Column, ConstraintSystem, Error},
 };
 #[cfg(any(test, feature = "testing"))]
-use {crate::testing_utils::FromScratch, halo2_proofs::plonk::Instance};
+use {crate::testing_utils::FromScratch, midnight_proofs::plonk::Instance};
 
 use crate::hash::sha256::{BITS_PER_SHA_BLOCK, BITS_PER_WORD, BLOCK_BYTE_SIZE};
 

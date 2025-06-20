@@ -1,5 +1,5 @@
 use ff::PrimeField;
-use halo2_proofs::{plonk::Expression, utils::arithmetic::Field};
+use midnight_proofs::{plonk::Expression, utils::arithmetic::Field};
 
 pub struct Gate<F: Field>(pub Expression<F>);
 

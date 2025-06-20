@@ -8,7 +8,7 @@
 #[global_allocator]
 static ALLOC: dhat::Alloc = dhat::Alloc;
 
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
@@ -22,7 +22,7 @@ use rand::{rngs::OsRng, Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use sha2::Digest;
 
-type F = blstrs::Scalar;
+type F = blstrs::Fq;
 
 #[derive(Clone, Default)]
 pub struct ShaPreImageCircuit;

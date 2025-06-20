@@ -16,7 +16,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use ff::PrimeField;
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::{Chip, Layouter, Region, Value},
     plonk::{Advice, Column, ConstraintSystem, Error, Selector, TableColumn},
     poly::Rotation,

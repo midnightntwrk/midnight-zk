@@ -1,6 +1,6 @@
 //! Unit tests on serialization of Midnight keys.
 
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
     utils::SerdeFormat,
@@ -15,7 +15,7 @@ use midnight_circuits::{
     testing_utils::plonk_api::filecoin_srs,
 };
 
-type F = blstrs::Scalar;
+type F = blstrs::Fq;
 
 #[derive(Clone)]
 struct DummyCircuit {

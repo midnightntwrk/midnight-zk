@@ -3,7 +3,7 @@
 //! src/plonk/lookup/verifier.rs from halo2.
 
 use ff::Field;
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::Layouter,
     plonk::{Error, Expression},
 };

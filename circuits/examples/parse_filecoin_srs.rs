@@ -10,7 +10,7 @@ use bellman::{
     multicore::Worker,
 };
 use blstrs::{Bls12, G1Affine, G2Affine};
-use halo2_proofs::{poly::kzg::params::ParamsKZG, utils::SerdeFormat};
+use midnight_proofs::{poly::kzg::params::ParamsKZG, utils::SerdeFormat};
 use halo2curves::{serde::SerdeObject, CurveAffine};
 use rand::rngs::OsRng;
 

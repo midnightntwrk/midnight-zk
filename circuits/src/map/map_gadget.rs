@@ -1,14 +1,14 @@
 //! In-circuit implementation of Succinct Key-Value Map Representation Using
 //! Merkle Trees
 use ff::PrimeField;
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
 #[cfg(any(test, feature = "testing"))]
 use {
     crate::testing_utils::FromScratch,
-    halo2_proofs::plonk::{Column, ConstraintSystem, Instance},
+    midnight_proofs::plonk::{Column, ConstraintSystem, Instance},
 };
 
 use crate::{
@@ -264,7 +264,7 @@ mod test {
     use std::marker::PhantomData;
 
     use ff::FromUniformBytes;
-    use halo2_proofs::{
+    use midnight_proofs::{
         circuit::{SimpleFloorPlanner, Value},
         dev::MockProver,
         plonk::Circuit,
@@ -448,6 +448,6 @@ mod test {
 
     #[test]
     fn test_map_poseidon() {
-        run_poseidon_test::<blstrs::Scalar>(true);
+        run_poseidon_test::<blstrs::Fq>(true);
     }
 }

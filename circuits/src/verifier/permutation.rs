@@ -3,7 +3,7 @@
 //!
 //! The "expressions" part is dealt with in our `expressions/` directory.
 
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::Layouter,
     plonk::{ConstraintSystem, Error},
 };

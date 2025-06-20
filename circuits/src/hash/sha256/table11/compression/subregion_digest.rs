@@ -1,5 +1,5 @@
 use ff::PrimeField;
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::Region,
     plonk::{Advice, Column, Error},
 };

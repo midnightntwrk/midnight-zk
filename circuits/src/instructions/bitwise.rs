@@ -9,7 +9,7 @@
 //! the bitwise operations take place.
 
 use ff::{Field, PrimeField};
-use halo2_proofs::{circuit::Layouter, plonk::Error};
+use midnight_proofs::{circuit::Layouter, plonk::Error};
 use num_bigint::BigUint;
 use num_traits::One;
 
@@ -177,7 +177,7 @@ pub mod tests {
     use std::{cmp::min, marker::PhantomData};
 
     use ff::FromUniformBytes;
-    use halo2_proofs::{
+    use midnight_proofs::{
         circuit::{Layouter, SimpleFloorPlanner, Value},
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem},

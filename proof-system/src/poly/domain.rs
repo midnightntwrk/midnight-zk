@@ -528,7 +528,7 @@ fn test_l_i() {
     use rand_core::OsRng;
 
     use crate::utils::arithmetic::{eval_polynomial, lagrange_interpolate};
-    use blstrs::Scalar;
+    use blstrs::Fq;
     let domain = EvaluationDomain::<Scalar>::new(1, 3);
 
     let mut l = vec![];

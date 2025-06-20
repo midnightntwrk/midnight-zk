@@ -1,5 +1,5 @@
 use ff::PrimeField;
-use halo2_proofs::{circuit::Layouter, plonk::Error};
+use midnight_proofs::{circuit::Layouter, plonk::Error};
 use num_bigint::BigUint;
 
 use super::ParserGadget;
@@ -157,7 +157,7 @@ mod tests {
     use std::marker::PhantomData;
 
     use ff::FromUniformBytes;
-    use halo2_proofs::{
+    use midnight_proofs::{
         circuit::{SimpleFloorPlanner, Value},
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem},
@@ -260,7 +260,7 @@ mod tests {
 
     #[test]
     fn test_parse_int() {
-        type F = blstrs::Scalar;
+        type F = blstrs::Fq;
         let test_vecs: Vec<(&[u8], u64, bool)> = vec![
             (b"987654321", 987654321, true),
             (b"123456", 123456, true),
@@ -279,7 +279,7 @@ mod tests {
 
     #[test]
     fn test_parse_date() {
-        type F = blstrs::Scalar;
+        type F = blstrs::Fq;
         let format1 = (DateFormat::DDMMYYYY, Separator::NoSep);
         let format2 = (DateFormat::DDMMYYYY, Separator::Sep('-'));
         let format3 = (DateFormat::YYYYMMDD, Separator::Sep('-'));

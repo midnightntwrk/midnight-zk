@@ -11,7 +11,7 @@ use std::{
 };
 
 use blstrs::Bls12;
-use halo2_proofs::{
+use midnight_proofs::{
     plonk::{
         create_proof, keygen_pk, keygen_vk, prepare, Circuit, Error, ProvingKey, VerifyingKey,
     },
@@ -154,7 +154,7 @@ plonk_api!(
     halo2curves::bls12381::G1Affine
 );
 
-plonk_api!(BlstPLONK, blstrs::Bls12, blstrs::Scalar, blstrs::G1Affine);
+plonk_api!(BlstPLONK, blstrs::Bls12, blstrs::Fq, blstrs::G1Affine);
 
 /// Check that the VK is the same as the stored VK for Logic. This function
 /// panics if:
@@ -167,7 +167,7 @@ plonk_api!(BlstPLONK, blstrs::Bls12, blstrs::Scalar, blstrs::G1Affine);
 ///    breaking change to midnight_lib, and should change the ChangeLog
 ///    accordingly. To update the VK, re-run the example with
 ///    CHANGE_VK=BREAKING.
-pub fn check_vk<Relation: Circuit<blstrs::Scalar>>(vk: &MidnightVK) {
+pub fn check_vk<Relation: Circuit<blstrs::Fq>>(vk: &MidnightVK) {
     // Read fixed VK hash
     let vk_name = format!(
         "./tests/static_vks/{}Vk",

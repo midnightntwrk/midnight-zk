@@ -1,6 +1,6 @@
 //! Map to curve parameter traits and implementations.
 
-use blstrs::{JubjubExtended as Jubjub, Scalar as JubjubBase};
+use blstrs::{JubjubExtended as Jubjub, Fq as JubjubBase};
 use ff::PrimeField;
 
 /// Constants for the Shallue-van de Woestijne (SVDW) map to Weierstrass curve.

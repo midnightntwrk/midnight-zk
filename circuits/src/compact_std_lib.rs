@@ -18,7 +18,7 @@ use blake2b_simd::State as Blake2bState;
 use blstrs::G1Projective;
 use ff::Field;
 use group::{prime::PrimeCurveAffine, Group};
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::{Chip, Layouter, SimpleFloorPlanner, Value},
     dev::cost_model::{from_circuit_to_circuit_model, CircuitModel},
     plonk::{k_from_circuit, prepare, Circuit, ConstraintSystem, Error, ProvingKey, VerifyingKey},
@@ -81,7 +81,7 @@ const SHA256_SIZE_IN_WORDS: usize = 8;
 const SHA256_SIZE_IN_BYTES: usize = 4 * SHA256_SIZE_IN_WORDS;
 
 type C = blstrs::JubjubExtended;
-type F = blstrs::Scalar;
+type F = blstrs::Fq;
 
 // Type aliases, for readability.
 type NG = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
@@ -210,7 +210,7 @@ pub struct ZkStdLibConfig {
     jubjub_config: Option<EccConfig>,
     table11_config: Option<Table11Config>,
     table16_config: Option<Table16Config>,
-    poseidon_config: Option<PoseidonConfig<blstrs::Scalar>>,
+    poseidon_config: Option<PoseidonConfig<blstrs::Fq>>,
     secp256k1_scalar_config: Option<FieldChipConfig>,
     secp256k1_config: Option<ForeignEccConfig<Secp256k1>>,
     bls12_381_config: Option<ForeignEccConfig<blstrs::G1Projective>>,
@@ -1064,7 +1064,7 @@ impl<'a, R: Relation> MidnightCircuit<'a, R> {
 pub struct MidnightVK {
     architecture: ZkStdLibArch,
     nb_public_inputs: usize,
-    vk: VerifyingKey<blstrs::Scalar, KZGCommitmentScheme<blstrs::Bls12>>,
+    vk: VerifyingKey<blstrs::Fq, KZGCommitmentScheme<blstrs::Bls12>>,
 }
 
 impl MidnightVK {
@@ -1122,7 +1122,7 @@ impl MidnightVK {
 pub struct MidnightPK<R: Relation> {
     k: u8,
     relation: R,
-    pk: ProvingKey<blstrs::Scalar, KZGCommitmentScheme<blstrs::Bls12>>,
+    pk: ProvingKey<blstrs::Fq, KZGCommitmentScheme<blstrs::Bls12>>,
 }
 
 impl<Rel: Relation> MidnightPK<Rel> {
@@ -1192,7 +1192,7 @@ impl<Rel: Relation> MidnightPK<Rel> {
 ///
 /// ```
 /// # use blstrs::G1Affine;
-/// # use halo2_proofs::{
+/// # use midnight_proofs::{
 /// #     circuit::{Layouter, Value},
 /// #     plonk::Error,
 /// # };
@@ -1206,7 +1206,7 @@ impl<Rel: Relation> MidnightPK<Rel> {
 /// # use rand_chacha::ChaCha8Rng;
 /// # use sha2::Digest;
 /// #
-/// type F = blstrs::Scalar;
+/// type F = blstrs::Fq;
 ///
 /// #[derive(Clone)]
 /// struct ShaPreImageCircuit;
@@ -1496,7 +1496,7 @@ pub fn batch_verify(
 
             let mut transcript = CircuitTranscript::init_from_bytes(proof);
             prepare::<
-                blstrs::Scalar,
+                blstrs::Fq,
                 KZGCommitmentScheme<blstrs::Bls12>,
                 CircuitTranscript<Blake2bState>,
             >(

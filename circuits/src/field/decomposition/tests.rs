@@ -1,5 +1,5 @@
 use ff::{Field, PrimeField};
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
     dev::MockProver,
     plonk::{Circuit, ConstraintSystem, Error},

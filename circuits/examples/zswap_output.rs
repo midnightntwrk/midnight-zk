@@ -6,7 +6,7 @@
 use blstrs::{Fr as JubjubScalar, JubjubExtended as Jubjub, JubjubSubgroup};
 use ff::Field;
 use group::Group;
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
@@ -25,7 +25,7 @@ use rand::{rngs::OsRng, Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use sha2::Digest;
 
-type F = blstrs::Scalar;
+type F = blstrs::Fq;
 
 type CoinCom = [u8; 32];
 type ValueCom = JubjubSubgroup;

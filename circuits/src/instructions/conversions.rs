@@ -7,7 +7,7 @@
 //! and `AssignedTarget` respectively.
 
 use ff::PrimeField;
-use halo2_proofs::{circuit::Layouter, plonk::Error};
+use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 use crate::types::InnerValue;
 
@@ -70,7 +70,7 @@ pub mod tests {
     use std::marker::PhantomData;
 
     use ff::FromUniformBytes;
-    use halo2_proofs::{
+    use midnight_proofs::{
         circuit::{Layouter, SimpleFloorPlanner, Value},
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem},

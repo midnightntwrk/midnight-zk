@@ -1,7 +1,7 @@
 use std::iter::repeat;
 
 use ff::Field;
-use halo2_proofs::plonk::Expression;
+use midnight_proofs::plonk::Expression;
 
 use super::{sbox, PoseidonField, NB_SKIPS_CPU};
 use crate::hash::poseidon::{

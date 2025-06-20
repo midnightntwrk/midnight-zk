@@ -7,7 +7,7 @@ use std::{
 };
 
 use ff::PrimeField;
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
@@ -17,7 +17,7 @@ use num_traits::One;
 #[cfg(any(test, feature = "testing"))]
 use {
     crate::testing_utils::FromScratch,
-    halo2_proofs::plonk::{Column, ConstraintSystem, Instance},
+    midnight_proofs::plonk::{Column, ConstraintSystem, Instance},
 };
 
 use super::{bound_of_addition, AssignedBigUint};
@@ -789,9 +789,9 @@ where
 #[cfg(test)]
 mod tests {
 
-    use blstrs::Scalar as BlsScalar;
+    use blstrs::Fq as BlsScalar;
     use ff::FromUniformBytes;
-    use halo2_proofs::{
+    use midnight_proofs::{
         circuit::SimpleFloorPlanner,
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem},
@@ -944,7 +944,7 @@ mod tests {
 
     #[test]
     fn test_add_biguint() {
-        type F = blstrs::Scalar;
+        type F = blstrs::Fq;
         let zero = BigUint::ZERO;
         for _ in 0..10 {
             let x: BigUint = random_biguint(1024);
@@ -957,7 +957,7 @@ mod tests {
 
     #[test]
     fn test_sub_biguint() {
-        type F = blstrs::Scalar;
+        type F = blstrs::Fq;
         let zero = BigUint::ZERO;
         let one = BigUint::one();
         for _ in 0..10 {
@@ -976,7 +976,7 @@ mod tests {
 
     #[test]
     fn test_mul_biguint() {
-        type F = blstrs::Scalar;
+        type F = blstrs::Fq;
         let zero = BigUint::ZERO;
         let one = BigUint::one();
         for _ in 0..10 {
@@ -993,7 +993,7 @@ mod tests {
 
     #[test]
     fn test_div_rem_biguint() {
-        type F = blstrs::Scalar;
+        type F = blstrs::Fq;
         let zero = BigUint::ZERO;
         let one = BigUint::one();
         for _ in 0..10 {
@@ -1017,7 +1017,7 @@ mod tests {
 
     #[test]
     fn test_mod_exp_biguint() {
-        type F = blstrs::Scalar;
+        type F = blstrs::Fq;
         let zero = BigUint::ZERO;
         let one = BigUint::one();
         for _ in 0..10 {
@@ -1033,7 +1033,7 @@ mod tests {
 
     #[test]
     fn test_biguint_to_and_from_bits() {
-        type F = blstrs::Scalar;
+        type F = blstrs::Fq;
         let zero = BigUint::ZERO;
         let one = BigUint::one();
         for _ in 0..10 {
@@ -1047,7 +1047,7 @@ mod tests {
 
     #[test]
     fn test_lower_than_biguint() {
-        type F = blstrs::Scalar;
+        type F = blstrs::Fq;
         let zero = BigUint::ZERO;
         let one = BigUint::one();
         for _ in 0..10 {

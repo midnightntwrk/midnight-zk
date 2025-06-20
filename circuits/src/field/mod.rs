@@ -3,7 +3,7 @@ pub mod decomposition;
 pub mod foreign;
 pub mod native;
 
-use halo2_proofs::circuit::AssignedCell;
+use midnight_proofs::circuit::AssignedCell;
 pub use native::{AssignedBounded, NativeChip, NativeConfig, NativeGadget};
 
 /// AssignedNative

@@ -22,7 +22,7 @@ pub mod map;
 pub mod verifier;
 
 // Re-exporting modules for convenience and usability.
-pub use halo2_proofs;
+pub use midnight_proofs;
 pub use halo2curves;
 
 /// Tools useful for testing

@@ -1,7 +1,7 @@
 use std::cmp::max;
 
 use ff::PrimeField;
-use halo2_proofs::circuit::Value;
+use midnight_proofs::circuit::Value;
 use num_bigint::BigUint;
 use num_traits::{One, Zero};
 

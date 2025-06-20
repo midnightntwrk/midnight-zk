@@ -1,7 +1,7 @@
 //! Examples on how to perform poseidon operations
 
 use ff::Field;
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
@@ -14,7 +14,7 @@ use midnight_circuits::{
 use rand::{rngs::OsRng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 
-type F = blstrs::Scalar;
+type F = blstrs::Fq;
 
 #[derive(Clone, Default)]
 pub struct PoseidonExample;

@@ -1,7 +1,7 @@
 use std::{convert::TryInto, ops::Range};
 
 use ff::PrimeField;
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::{Advice, Column, ConstraintSystem, Error, Selector},
     poly::Rotation,
@@ -1042,7 +1042,7 @@ impl CompressionConfig {
 #[cfg(test)]
 mod tests {
     use ff::PrimeField;
-    use halo2_proofs::{
+    use midnight_proofs::{
         circuit::{Layouter, SimpleFloorPlanner},
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem, Error},

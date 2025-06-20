@@ -10,7 +10,7 @@
 //! decode correctly.
 
 use ff::PrimeField;
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::{Chip, Layouter, Value},
     plonk::{Advice, Column, Error, Expression, Selector, TableColumn},
     poly::Rotation,
@@ -383,7 +383,7 @@ impl<F: PrimeField> ComposableChip<F> for Base64Chip<F> {
     }
 
     fn configure(
-        meta: &mut halo2_proofs::plonk::ConstraintSystem<F>,
+        meta: &mut midnight_proofs::plonk::ConstraintSystem<F>,
         shared_resources: &Self::SharedResources,
     ) -> Self::Config {
         let advice_cols = *shared_resources;
@@ -452,7 +452,7 @@ impl<F: PrimeField> ComposableChip<F> for Base64Chip<F> {
 mod tests {
     use std::marker::PhantomData;
 
-    use halo2_proofs::{
+    use midnight_proofs::{
         circuit::SimpleFloorPlanner,
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem},
@@ -465,7 +465,7 @@ mod tests {
         testing_utils::FromScratch,
     };
 
-    type Fp = blstrs::Scalar;
+    type Fp = blstrs::Fq;
 
     struct TestCircuit<F: PrimeField> {
         input: Vec<u8>,  // base64 encoded string

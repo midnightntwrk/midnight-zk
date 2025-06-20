@@ -8,7 +8,7 @@
 //! `Assigned::Element` as input and return an `Assigned` value.
 
 use ff::PrimeField;
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };

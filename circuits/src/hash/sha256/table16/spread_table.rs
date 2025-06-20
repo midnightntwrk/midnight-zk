@@ -1,7 +1,7 @@
 use std::{convert::TryInto, marker::PhantomData};
 
 use ff::PrimeField;
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::{Chip, Layouter, Region, Value},
     plonk::{Advice, Column, ConstraintSystem, Error, TableColumn},
     poly::Rotation,
@@ -323,7 +323,7 @@ impl SpreadTableConfig {
 #[cfg(test)]
 mod tests {
     use ff::PrimeField;
-    use halo2_proofs::{
+    use midnight_proofs::{
         circuit::{Layouter, SimpleFloorPlanner, Value},
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem, Error},

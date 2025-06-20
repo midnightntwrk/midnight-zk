@@ -33,7 +33,7 @@ The motivations for a fixed configuration are:
 
 ```rust
 use blstrs::G1Affine;
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
@@ -47,7 +47,7 @@ use rand::{rngs::OsRng, Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use sha2::Digest;
 
-type F = blstrs::Scalar;
+type F = blstrs::Fq;
 
 // In this example we show how to build a circuit for proving the knowledge of a
 // SHA256 preimage. Concretely, given public input x, we will argue that we know

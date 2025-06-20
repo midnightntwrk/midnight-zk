@@ -4,7 +4,7 @@
 use blstrs;
 use ff::{PrimeField, WithSmallOrderMulGroup};
 use group::{prime::PrimeCurveAffine, Curve, Group};
-use halo2_proofs::transcript::Hashable;
+use midnight_proofs::transcript::Hashable;
 use halo2curves::{
     pairing::{Engine, MultiMillerLoop},
     serde::SerdeObject,
@@ -109,7 +109,7 @@ pub type SpongeState<C> = <SpongeChip<C> as SpongeInstructions<
 // Implementations
 
 impl SelfEmulationCurve for blstrs::G1Projective {
-    type ScalarField = blstrs::Scalar;
+    type ScalarField = blstrs::Fq;
     type G1Affine = blstrs::G1Affine;
     type G2Affine = blstrs::G2Affine;
     type Engine = blstrs::Bls12;

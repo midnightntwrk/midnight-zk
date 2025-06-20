@@ -76,7 +76,7 @@
 /// [PoseidonField], which is a subtrait of [ff::PrimeField] implementing
 /// constants for the MDS matrix and round constants. The module also contains
 /// (non-public) implementations of [PoseidonField] for
-/// [blstrs::Scalar], [pasta_curves::pallas::Base] and
+/// [blstrs::Fq], [pasta_curves::pallas::Base] and
 /// [halo2curves::pasta::vesta::Base].
 pub mod constants;
 

@@ -1,7 +1,7 @@
 //! Map to curve in-circuit implementations.
 
 use ff::{Field, PrimeField};
-use halo2_proofs::{circuit::Layouter, plonk::Error};
+use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 use super::{
     mtc_cpu::MapToCurveCPU,

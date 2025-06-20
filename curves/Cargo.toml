@@ -44,19 +44,6 @@ portable = ["blst/portable"]
 h2c_compare = []
 __private_bench = []
 
-
-## Benchmarks
-
-[profile.bench]
-opt-level = 3
-debug = false
-debug-assertions = false
-overflow-checks = false
-lto = true
-incremental = false
-codegen-units = 1
-
-
 [[bench]]
 name = "field_arith"
 harness = false

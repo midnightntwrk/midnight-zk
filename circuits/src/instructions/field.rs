@@ -1,7 +1,7 @@
 //! Field instructions interface.
 
 use ff::{Field, PrimeField};
-use halo2_proofs::{circuit::Layouter, plonk::Error};
+use midnight_proofs::{circuit::Layouter, plonk::Error};
 use num_bigint::BigUint;
 
 use super::PublicInputInstructions;

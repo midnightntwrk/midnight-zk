@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 
 use ff::PrimeField;
-use halo2_proofs::plonk::{Constraint, Constraints, Expression};
+use midnight_proofs::plonk::{Constraint, Constraints, Expression};
 
 use super::super::Gate;
 use crate::hash::sha256::util::MASK_EVEN_32;
