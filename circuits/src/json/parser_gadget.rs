@@ -3,19 +3,13 @@ use std::{cmp::min, marker::PhantomData};
 use ff::PrimeField;
 use halo2_proofs::{circuit::Layouter, plonk::Error};
 use num_bigint::BigUint;
-use num_integer::Integer;
 #[cfg(any(test, feature = "testing"))]
 use {
     crate::testing_utils::FromScratch,
     halo2_proofs::plonk::{Column, ConstraintSystem, Instance},
 };
 
-use crate::{
-    field::AssignedNative,
-    instructions::NativeInstructions,
-    types::AssignedByte,
-    utils::util::{big_to_fe, fe_to_big},
-};
+use crate::{field::AssignedNative, instructions::NativeInstructions, types::AssignedByte};
 
 #[derive(Clone, Debug)]
 /// A gadget for parsing json data. It is parametrized by:
@@ -119,38 +113,8 @@ where
         //   * chunk_idx       := idx / nb_bytes_per_chunk
         //   * fine_search_idx := idx % nb_bytes_per_chunk
         //
-        //  This can be enforced with the following constraints:
-        //   * idx = chunk_idx * nb_bytes_per_chunk + fine_search_idx
-        //   * chunk_idx in [0, (n - len) / nb_bytes_per_chunk]
-        //   * fine_search_idx in [0, nb_bytes_per_chunk)
-        let (chunk_idx_val, fine_search_idx_val) = idx
-            .value()
-            .map(|i| {
-                let (q, r) = fe_to_big(*i).div_rem(&BigUint::from(nb_bytes_per_chunk as u64));
-                (big_to_fe::<F>(q), big_to_fe::<F>(r))
-            })
-            .unzip();
-
-        let chunk_idx: AssignedNative<F> = native.assign(layouter, chunk_idx_val)?;
-        let fine_search_idx: AssignedNative<F> = native.assign(layouter, fine_search_idx_val)?;
-
-        let composed_idx = native.linear_combination(
-            layouter,
-            &[
-                (F::from(nb_bytes_per_chunk as u64), chunk_idx.clone()),
-                (F::ONE, fine_search_idx.clone()),
-            ],
-            F::ZERO,
-        )?;
-        native.assert_equal(layouter, &composed_idx, idx)?;
-
-        // The range-check on chunk_idx will be performed in the next call to
-        // [get_subsequence], here we only range-check the value of fine_search_idx.
-        native.assert_lower_than_fixed(
-            layouter,
-            &fine_search_idx,
-            &BigUint::from(nb_bytes_per_chunk as u64),
-        )?;
+        let (chunk_idx, fine_search_idx) =
+            native.div_rem(layouter, idx, 1 << 18, nb_bytes_per_chunk as u32)?;
 
         // Add 1 because the index of interest could be between 2 chunks, even if
         // the length we are looking for fits in 1 chunk.
@@ -209,9 +173,9 @@ where
 
     fn configure_from_scratch(
         meta: &mut ConstraintSystem<F>,
-        instance_column: &Column<Instance>,
+        instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
-        <N as FromScratch<F>>::configure_from_scratch(meta, instance_column)
+        <N as FromScratch<F>>::configure_from_scratch(meta, instance_columns)
     }
 
     fn load_from_scratch(layouter: &mut impl Layouter<F>, config: &Self::Config) {
@@ -260,8 +224,12 @@ mod tests {
         }
 
         fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+            let committed_instance_column = meta.instance_column();
             let instance_column = meta.instance_column();
-            <N as FromScratch<F>>::configure_from_scratch(meta, &instance_column)
+            <N as FromScratch<F>>::configure_from_scratch(
+                meta,
+                &[committed_instance_column, instance_column],
+            )
         }
 
         fn synthesize(
@@ -316,7 +284,7 @@ mod tests {
             _marker: PhantomData,
         };
         let log2_nb_rows = if sequence.len() > 1000 { 13 } else { 12 };
-        let public_inputs = vec![vec![]];
+        let public_inputs = vec![vec![], vec![]];
         match MockProver::run(log2_nb_rows, &circuit, public_inputs) {
             Ok(prover) => match prover.verify() {
                 Ok(()) => assert!(must_pass),

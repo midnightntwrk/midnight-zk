@@ -34,7 +34,7 @@ use std::{
     collections::HashMap,
     hash::{Hash, Hasher},
     marker::PhantomData,
-    ops::{Deref, Neg, Not},
+    ops::Neg,
     rc::Rc,
 };
 
@@ -68,6 +68,9 @@ use crate::{
 /// This limit is imposed by functions like [NativeChip::select].
 pub const NB_ARITH_COLS: usize = 5;
 
+/// Number of fixed columns used by the identity of the native chip.
+pub const NB_ARITH_FIXED_COLS: usize = NB_ARITH_COLS + 4;
+
 /// Number of additions (by constant) that can be performed in
 /// parallel in 1 row. This number should not exceed [NB_ARITH_COLS].
 ///
@@ -87,6 +90,7 @@ pub struct NativeConfig {
     pub(crate) mul_ab_col: Column<Fixed>,
     pub(crate) mul_cd_col: Column<Fixed>,
     pub(crate) constant_col: Column<Fixed>,
+    pub(crate) committed_instance_col: Column<Instance>,
     pub(crate) instance_col: Column<Instance>,
 }
 
@@ -95,6 +99,7 @@ pub struct NativeConfig {
 pub struct NativeChip<F: PrimeField> {
     config: NativeConfig,
     cached_fixed: Rc<RefCell<HashMap<BigUint, AssignedNative<F>>>>,
+    committed_instance_offset: Rc<RefCell<usize>>,
     instance_offset: Rc<RefCell<usize>>,
     _marker: PhantomData<F>,
 }
@@ -115,8 +120,8 @@ impl<F: PrimeField> Chip<F> for NativeChip<F> {
 impl<F: PrimeField> ComposableChip<F> for NativeChip<F> {
     type SharedResources = (
         [Column<Advice>; NB_ARITH_COLS],
-        [Column<Fixed>; NB_ARITH_COLS + 4],
-        Column<Instance>,
+        [Column<Fixed>; NB_ARITH_FIXED_COLS],
+        [Column<Instance>; 2], // [committed, normal]
     );
 
     type InstructionDeps = ();
@@ -126,6 +131,7 @@ impl<F: PrimeField> ComposableChip<F> for NativeChip<F> {
             config: config.clone(),
             cached_fixed: Default::default(),
             instance_offset: Rc::new(RefCell::new(0)),
+            committed_instance_offset: Rc::new(RefCell::new(0)),
             _marker: PhantomData,
         }
     }
@@ -138,7 +144,11 @@ impl<F: PrimeField> ComposableChip<F> for NativeChip<F> {
     ) -> NativeConfig {
         let value_columns = &shared_res.0;
         let fixed_columns = &shared_res.1;
-        let instance_col = shared_res.2;
+
+        // It is important that the committed instance column was created before the
+        // other instance column, since committed columns go first.
+        let committed_instance_col = shared_res.2[0];
+        let instance_col = shared_res.2[1];
 
         let q_arith = meta.selector();
         let q_par_add = meta.selector();
@@ -151,6 +161,7 @@ impl<F: PrimeField> ComposableChip<F> for NativeChip<F> {
         for col in value_columns.iter() {
             meta.enable_equality(*col);
         }
+        meta.enable_equality(committed_instance_col);
         meta.enable_equality(instance_col);
 
         meta.create_gate("arith_gate", |meta| {
@@ -211,6 +222,7 @@ impl<F: PrimeField> ComposableChip<F> for NativeChip<F> {
             mul_ab_col,
             mul_cd_col,
             constant_col,
+            committed_instance_col,
             instance_col,
         }
     }
@@ -497,6 +509,12 @@ impl<F: PrimeField> NativeChip<F> {
     pub(crate) fn nb_public_inputs(&self) -> usize {
         *self.instance_offset.borrow()
     }
+
+    /// The total number of public inputs (as raw scalars) that have been
+    /// constrained (in committed form) so far by this chip.
+    pub(crate) fn nb_committed_public_inputs(&self) -> usize {
+        *self.committed_instance_offset.borrow()
+    }
 }
 
 impl<F: PrimeField> NativeChip<F> {
@@ -599,20 +617,19 @@ where
         layouter: &mut impl Layouter<F>,
         values: &[Value<F>],
     ) -> Result<Vec<AssignedNative<F>>, Error> {
-        let mut assigned = vec![];
         layouter.assign_region(
             || "assign_many (native)",
             |mut region| {
+                let mut assigned = vec![];
                 for (i, chunk_values) in values.chunks(NB_ARITH_COLS).enumerate() {
                     for (value, col) in chunk_values.iter().zip(self.config.value_cols.iter()) {
                         let cell = region.assign_advice(|| "assign", *col, i, || *value)?;
                         assigned.push(cell);
                     }
                 }
-                Ok(())
+                Ok(assigned)
             },
-        )?;
-        Ok(assigned)
+        )
     }
 }
 
@@ -651,6 +668,25 @@ where
     }
 }
 
+impl<F: PrimeField> NativeChip<F> {
+    /// Constrains the given assigned value as a public input that will be
+    /// plugged-in in committed form.
+    pub fn constrain_as_committed_public_input(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        assigned: &AssignedNative<F>,
+    ) -> Result<(), Error> {
+        let mut offset = self.committed_instance_offset.borrow_mut();
+        layouter.constrain_instance(
+            assigned.cell(),
+            self.config.committed_instance_col,
+            *offset,
+        )?;
+        *offset += 1;
+        Ok(())
+    }
+}
+
 impl<F> AssignmentInstructions<F, AssignedBit<F>> for NativeChip<F>
 where
     F: PrimeField,
@@ -658,13 +694,13 @@ where
     fn assign(
         &self,
         layouter: &mut impl Layouter<F>,
-        value: Value<Bit>,
+        value: Value<bool>,
     ) -> Result<AssignedBit<F>, Error> {
         layouter.assign_region(
             || "Assign big",
             |mut region| {
                 // Enforce x * x - x = 0
-                let b_value = value.map(|b| if *b { F::ONE } else { F::ZERO });
+                let b_value = value.map(|b| if b { F::ONE } else { F::ZERO });
                 let b = region.assign_advice(|| "b", self.config.value_cols[0], 0, || b_value)?;
                 self.copy_in_row(&mut region, &b, &self.config.value_cols[1], 0)?;
                 let mut coeffs = [F::ZERO; NB_ARITH_COLS];
@@ -678,9 +714,9 @@ where
     fn assign_fixed(
         &self,
         layouter: &mut impl Layouter<F>,
-        bit: Bit,
+        bit: bool,
     ) -> Result<AssignedBit<F>, Error> {
-        let constant = if *bit { F::ONE } else { F::ZERO };
+        let constant = if bit { F::ONE } else { F::ZERO };
         let x = self.assign_fixed(layouter, constant)?;
         Ok(AssignedBit(x))
     }
@@ -710,12 +746,12 @@ where
     fn assign_as_public_input(
         &self,
         layouter: &mut impl Layouter<F>,
-        value: Value<Bit>,
+        value: Value<bool>,
     ) -> Result<AssignedBit<F>, Error> {
         // We can skip the in-circuit boolean assertion as this condition will be
         // enforced through the public inputs bind anyway.
-        let assigned_native =
-            self.assign_as_public_input(layouter, value.map(|bit| F::from(bit.0 as u64)))?;
+        let bit_val = value.map(|b| if b { F::ONE } else { F::ZERO });
+        let assigned_native = self.assign_as_public_input(layouter, bit_val)?;
         self.convert_unsafe(layouter, &assigned_native)
     }
 }
@@ -810,9 +846,9 @@ where
         &self,
         layouter: &mut impl Layouter<F>,
         x: &AssignedBit<F>,
-        b: Bit,
+        b: bool,
     ) -> Result<(), Error> {
-        let constant = if *b { F::ONE } else { F::ZERO };
+        let constant = if b { F::ONE } else { F::ZERO };
         self.assert_equal_to_fixed(layouter, &x.0, constant)
     }
 
@@ -820,7 +856,7 @@ where
         &self,
         layouter: &mut impl Layouter<F>,
         x: &AssignedBit<F>,
-        constant: Bit,
+        constant: bool,
     ) -> Result<(), Error> {
         self.assert_equal_to_fixed(layouter, x, !constant)
     }
@@ -910,7 +946,14 @@ where
             return Ok(x.clone());
         }
 
-        self.add_and_mul(layouter, (F::ZERO, x), (F::ZERO, y), F::ZERO, m)
+        self.add_and_mul(
+            layouter,
+            (F::ZERO, x),
+            (F::ZERO, y),
+            (F::ZERO, x),
+            F::ZERO,
+            m,
+        )
     }
 
     fn div(
@@ -951,17 +994,11 @@ where
         layouter: &mut impl Layouter<F>,
         a_and_x: (F, &AssignedNative<F>),
         b_and_y: (F, &AssignedNative<F>),
+        c_and_z: (F, &AssignedNative<F>),
         k: F,
         m: F,
     ) -> Result<AssignedNative<F>, Error> {
-        self.add_and_double_mul(
-            layouter,
-            a_and_x,
-            b_and_y,
-            (F::ZERO, a_and_x.1),
-            k,
-            (m, F::ZERO),
-        )
+        self.add_and_double_mul(layouter, a_and_x, b_and_y, c_and_z, k, (m, F::ZERO))
     }
 
     fn add_constants(
@@ -1016,37 +1053,9 @@ where
     }
 }
 
-/// The inner type of AssignedBit.
-// A wrapper around `bool` to have a type that we own and for which we can implement some necessary
-// traits like `From<u64>`.
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
-pub struct Bit(pub bool);
-
-impl Deref for Bit {
-    type Target = bool;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl From<u64> for Bit {
-    fn from(value: u64) -> Self {
-        Bit(value != 0)
-    }
-}
-
-impl Not for Bit {
-    type Output = Bit;
-
-    fn not(self) -> Bit {
-        Bit(!*self)
-    }
-}
-
 impl<F: PrimeField> Instantiable<F> for AssignedBit<F> {
-    fn as_public_input(element: &Bit) -> Vec<F> {
-        vec![if **element { F::ONE } else { F::ZERO }]
+    fn as_public_input(element: &bool) -> Vec<F> {
+        vec![if *element { F::ONE } else { F::ZERO }]
     }
 }
 
@@ -1065,10 +1074,10 @@ impl<F: PrimeField> Hash for AssignedBit<F> {
 }
 
 impl<F: PrimeField> InnerValue for AssignedBit<F> {
-    type Element = Bit;
+    type Element = bool;
 
-    fn value(&self) -> Value<Bit> {
-        self.0.value().map(|b| Bit(!F::is_zero_vartime(b)))
+    fn value(&self) -> Value<bool> {
+        self.0.value().map(|b| !F::is_zero_vartime(b))
     }
 }
 
@@ -1082,9 +1091,9 @@ impl<F> ConversionInstructions<F, AssignedNative<F>, AssignedBit<F>> for NativeC
 where
     F: PrimeField,
 {
-    fn convert_value(&self, x: &F) -> Option<Bit> {
+    fn convert_value(&self, x: &F) -> Option<bool> {
         let is_zero: bool = F::is_zero(x).into();
-        Some(Bit(!is_zero))
+        Some(!is_zero)
     }
 
     fn convert(
@@ -1092,7 +1101,7 @@ where
         layouter: &mut impl Layouter<F>,
         x: &AssignedNative<F>,
     ) -> Result<AssignedBit<F>, Error> {
-        let b_value = x.value().map(|v| Bit(!F::is_zero_vartime(v)));
+        let b_value = x.value().map(|v| !F::is_zero_vartime(v));
         let b: AssignedBit<F> = self.assign(layouter, b_value)?;
         self.assert_equal(layouter, x, &b.0)?;
         Ok(b)
@@ -1103,8 +1112,8 @@ impl<F> ConversionInstructions<F, AssignedBit<F>, AssignedNative<F>> for NativeC
 where
     F: PrimeField,
 {
-    fn convert_value(&self, x: &Bit) -> Option<F> {
-        Some(if **x { F::from(1) } else { F::from(0) })
+    fn convert_value(&self, x: &bool) -> Option<F> {
+        Some(if *x { F::from(1) } else { F::from(0) })
     }
 
     fn convert(
@@ -1183,7 +1192,14 @@ where
         let mut acc = bits.first().unwrap().0.clone();
         for b in bits.iter().skip(1) {
             // compute acc := acc + b - acc * b
-            acc = self.add_and_mul(layouter, (F::ONE, &acc), (F::ONE, &b.0), F::ZERO, -F::ONE)?;
+            acc = self.add_and_mul(
+                layouter,
+                (F::ONE, &acc),
+                (F::ONE, &b.0),
+                (F::ZERO, &acc),
+                F::ZERO,
+                -F::ONE,
+            )?;
         }
         Ok(AssignedBit(acc))
     }
@@ -1200,6 +1216,7 @@ where
                 layouter,
                 (F::ONE, &acc),
                 (F::ONE, &b.0),
+                (F::ZERO, &acc),
                 F::ZERO,
                 -F::from(2),
             )?;
@@ -1265,7 +1282,14 @@ where
             .map(|x| (*x - constant).invert().unwrap_or(F::ONE));
         let aux = self.assign_non_zero(layouter, aux_value)?;
         // res := 0*x + constant*aux + 1 - x*aux.
-        let res = self.add_and_mul(layouter, (F::ZERO, x), (constant, &aux), F::ONE, -F::ONE)?;
+        let res = self.add_and_mul(
+            layouter,
+            (F::ZERO, x),
+            (constant, &aux),
+            (F::ZERO, x),
+            F::ONE,
+            -F::ONE,
+        )?;
         self.convert(layouter, &res)
     }
 }
@@ -1289,7 +1313,7 @@ where
         &self,
         layouter: &mut impl Layouter<F>,
         b: &AssignedBit<F>,
-        constant: Bit,
+        constant: bool,
     ) -> Result<AssignedBit<F>, Error> {
         let assigned_constant = self.assign_fixed(layouter, constant)?;
         self.is_equal(layouter, b, &assigned_constant)
@@ -1368,12 +1392,12 @@ where
     ) -> Result<AssignedBit<F>, Error> {
         // Any value is greater than or equal to zero.
         if bound.is_zero() {
-            return self.assign_fixed(layouter, Bit(true));
+            return self.assign_fixed(layouter, true);
         }
 
         // Return false if |bits| is lower than |bound|.
         if bits.len() < bound.bits() as usize {
-            return self.assign_fixed(layouter, Bit(false));
+            return self.assign_fixed(layouter, false);
         }
 
         // base case: bits.len() = 1. We have three cases:
@@ -1410,11 +1434,11 @@ impl<F: PrimeField> FromScratch<F> for NativeChip<F> {
 
     fn configure_from_scratch(
         meta: &mut ConstraintSystem<F>,
-        instance_column: &Column<Instance>,
+        instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
         let advice_columns: [_; NB_ARITH_COLS] = core::array::from_fn(|_| meta.advice_column());
-        let fixed_columns: [_; NB_ARITH_COLS + 4] = core::array::from_fn(|_| meta.fixed_column());
-        NativeChip::configure(meta, &(advice_columns, fixed_columns, *instance_column))
+        let fixed_columns: [_; NB_ARITH_FIXED_COLS] = core::array::from_fn(|_| meta.fixed_column());
+        NativeChip::configure(meta, &(advice_columns, fixed_columns, *instance_columns))
     }
 
     fn load_from_scratch(
@@ -1527,13 +1551,7 @@ mod tests {
         .for_each(
             |(x, expected, operation, must_pass, cost_model, chip_name, op_name)| {
                 conversions::tests::run::<F, AssignedNative<F>, AssignedBit<F>, NativeChip<F>>(
-                    x,
-                    expected.map(Bit),
-                    operation,
-                    must_pass,
-                    cost_model,
-                    chip_name,
-                    op_name,
+                    x, expected, operation, must_pass, cost_model, chip_name, op_name,
                 )
             },
         );
@@ -1578,13 +1596,7 @@ mod tests {
         .for_each(
             |(x, expected, operation, must_pass, cost_model, chip_name, op_name)| {
                 conversions::tests::run::<F, AssignedBit<F>, AssignedNative<F>, NativeChip<F>>(
-                    Bit(x),
-                    expected,
-                    operation,
-                    must_pass,
-                    cost_model,
-                    chip_name,
-                    op_name,
+                    x, expected, operation, must_pass, cost_model, chip_name, op_name,
                 )
             },
         );

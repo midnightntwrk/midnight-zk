@@ -123,11 +123,11 @@ where
 
     fn configure_from_scratch(
         meta: &mut ConstraintSystem<F>,
-        instance_column: &Column<Instance>,
+        instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
         (
-            H::configure_from_scratch(meta, instance_column),
-            E::configure_from_scratch(meta, instance_column),
+            H::configure_from_scratch(meta, instance_columns),
+            E::configure_from_scratch(meta, instance_columns),
         )
     }
 

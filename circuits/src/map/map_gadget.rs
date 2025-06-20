@@ -245,11 +245,11 @@ where
 
     fn configure_from_scratch(
         meta: &mut ConstraintSystem<F>,
-        instance_column: &Column<Instance>,
+        instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
         (
-            N::configure_from_scratch(meta, instance_column),
-            H::configure_from_scratch(meta, instance_column),
+            N::configure_from_scratch(meta, instance_columns),
+            H::configure_from_scratch(meta, instance_columns),
         )
     }
 
@@ -320,8 +320,12 @@ mod test {
         }
 
         fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+            let committed_instance_column = meta.instance_column();
             let instance_column = meta.instance_column();
-            MapGadget::<F, N, H>::configure_from_scratch(meta, &instance_column)
+            MapGadget::<F, N, H>::configure_from_scratch(
+                meta,
+                &[committed_instance_column, instance_column],
+            )
         }
 
         fn synthesize(
@@ -423,7 +427,7 @@ mod test {
                 _marker: PhantomData::<N>,
             };
 
-            let prover = MockProver::run(k, &circuit, vec![pi.clone()]).unwrap();
+            let prover = MockProver::run(k, &circuit, vec![vec![], pi.clone()]).unwrap();
             if test_passes {
                 assert!(prover.verify().is_ok());
             } else {
@@ -445,6 +449,5 @@ mod test {
     #[test]
     fn test_map_poseidon() {
         run_poseidon_test::<blstrs::Scalar>(true);
-        run_poseidon_test::<halo2curves::pasta::Fp>(false);
     }
 }

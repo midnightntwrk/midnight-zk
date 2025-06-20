@@ -98,8 +98,9 @@ pub mod tests {
         }
 
         fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+            let committed_instance_column = meta.instance_column();
             let instance_column = meta.instance_column();
-            Chip::configure_from_scratch(meta, &instance_column)
+            Chip::configure_from_scratch(meta, &[committed_instance_column, instance_column])
         }
 
         fn synthesize(
@@ -135,7 +136,7 @@ pub mod tests {
             _marker: PhantomData,
         };
         let log2_nb_rows = 10;
-        let public_inputs = vec![vec![]];
+        let public_inputs = vec![vec![], vec![]];
         match MockProver::run(log2_nb_rows, &circuit, public_inputs) {
             Ok(prover) => match prover.verify() {
                 Ok(()) => assert!(must_pass),

@@ -77,6 +77,7 @@ macro_rules! plonk_api {
                 params: &ParamsKZG<$engine>,
                 pk: &ProvingKey<$native, KZGCommitmentScheme<$engine>>,
                 circuit: &Relation,
+                nb_instance_commitments: usize,
                 pi: &[&[$native]],
                 rng: impl RngCore + CryptoRng,
             ) -> Result<Vec<u8>, Error> {
@@ -89,7 +90,15 @@ macro_rules! plonk_api {
                         KZGCommitmentScheme<$engine>,
                         CircuitTranscript<blake2b_simd::State>,
                         Relation,
-                    >(params, pk, &[circuit.clone()], &[pi], rng, &mut transcript)?;
+                    >(
+                        params,
+                        pk,
+                        &[circuit.clone()],
+                        nb_instance_commitments,
+                        &[pi],
+                        rng,
+                        &mut transcript,
+                    )?;
                     transcript.finalize()
                 };
 
@@ -106,6 +115,7 @@ macro_rules! plonk_api {
             pub fn verify(
                 params_verifier: &ParamsVerifierKZG<$engine>,
                 vk: &VerifyingKey<$native, KZGCommitmentScheme<$engine>>,
+                instance_commitments: &[$curve],
                 pi: &[&[$native]],
                 proof: &[u8],
             ) -> Result<(), Error> {
@@ -117,7 +127,15 @@ macro_rules! plonk_api {
                     $native,
                     KZGCommitmentScheme<$engine>,
                     CircuitTranscript<blake2b_simd::State>,
-                >(vk, &[pi], &mut transcript)?;
+                >(
+                    vk,
+                    &[&instance_commitments
+                        .iter()
+                        .map(|c| c.into())
+                        .collect::<Vec<_>>()],
+                    &[pi],
+                    &mut transcript,
+                )?;
                 let res = res.verify(params_verifier);
                 #[cfg(test)]
                 println!("Proof verified in {:?} us", start.elapsed().as_micros());

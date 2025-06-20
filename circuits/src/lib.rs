@@ -19,6 +19,7 @@ pub mod field;
 pub mod hash;
 pub mod json;
 pub mod map;
+pub mod verifier;
 
 // Re-exporting modules for convenience and usability.
 pub use halo2_proofs;
@@ -41,11 +42,12 @@ pub mod types {
         ecc::{foreign::AssignedForeignPoint, native::AssignedNativePoint},
         field::{
             foreign::AssignedField,
-            native::{AssignedBit, AssignedByte, Bit, Byte},
+            native::{AssignedBit, AssignedByte},
             AssignedNative,
         },
         utils::{
             types::{InnerConstants, InnerValue, Instantiable},
+            vector::{AssignedVector, VectorInstructions, Vectorizable},
             ComposableChip,
         },
     };

@@ -16,7 +16,7 @@ use midnight_circuits::{
     compact_std_lib::{self, Relation, ShaTableSize, ZkStdLib, ZkStdLibArch},
     instructions::{AssignmentInstructions, PublicInputInstructions},
     testing_utils::plonk_api::filecoin_srs,
-    types::{AssignedByte, Byte, Instantiable},
+    types::{AssignedByte, Instantiable},
 };
 use rand::{rngs::OsRng, Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
@@ -35,7 +35,7 @@ impl Relation for ShaPreImageCircuit {
     fn format_instance(instance: &Self::Instance) -> Vec<F> {
         instance
             .iter()
-            .flat_map(|b| AssignedByte::<F>::as_public_input(&Byte(*b)))
+            .flat_map(AssignedByte::<F>::as_public_input)
             .collect()
     }
 
@@ -46,7 +46,7 @@ impl Relation for ShaPreImageCircuit {
         _instance: Value<Self::Instance>,
         witness: Value<Self::Witness>,
     ) -> Result<(), Error> {
-        let witness_bytes = witness.transpose_array().map(|v| v.map(Byte));
+        let witness_bytes = witness.transpose_array();
         let assigned_input = std_lib.assign_many(layouter, &witness_bytes)?;
         let output = std_lib.sha256(layouter, &assigned_input)?;
         output

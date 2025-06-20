@@ -1,4 +1,13 @@
-//! Chip that implements base64 decoding instructions.
+//! This module contains the `Base64Chip`, which implements Base64 decoding
+//! instructions.
+//!
+//! In particular, this chip will be used to decode credentials. As such, it is
+//! assumed that the input data is signed by a trusted party and therefore it is
+//! well formed. This means that the decoding instructions do not enforce the
+//! validity of the base64 input (i.e. the padding format).
+//!
+//! The instructions ensure that inputs that agree with the base64 specification
+//! decode correctly.
 
 use ff::PrimeField;
 use halo2_proofs::{
@@ -10,17 +19,21 @@ use halo2_proofs::{
 use crate::{
     field::{decomposition::chip::P2RDecompositionChip, AssignedNative, NativeChip, NativeGadget},
     instructions::{
-        ArithInstructions, AssignmentInstructions, ControlFlowInstructions,
-        DecompositionInstructions, EqualityInstructions,
+        base64::{Base64VarInstructions, Base64Vec},
+        ArithInstructions, AssignmentInstructions, Base64Instructions, ControlFlowInstructions,
+        DecompositionInstructions, EqualityInstructions, RangeCheckInstructions, ZeroInstructions,
     },
-    types::{AssignedByte, Byte, InnerValue},
+    types::{AssignedByte, AssignedVector, InnerValue, VectorInstructions},
     utils::ComposableChip,
 };
+
+/// Number of advice columns in [Base64Chip].
+pub const NB_BASE64_ADVICE_COLS: usize = 4;
 
 #[derive(Clone, Debug)]
 /// Config for Base64Chip.
 pub struct Base64Config {
-    advice_cols: [Column<Advice>; 4],
+    advice_cols: [Column<Advice>; NB_BASE64_ADVICE_COLS],
 
     lookup_sel: Selector,
     // Base64 table.
@@ -31,12 +44,16 @@ pub struct Base64Config {
 // Native gadget type abbreviation.
 type NG<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
 
+// Contains 4 Base64 characters as bytes.
 type B64Chunk<F> = [AssignedByte<F>; 4];
+
+// Contains 4 ASCII characters as bytes.
 type AsciiChunk<F> = [AssignedByte<F>; 3];
 
 // Table padding for the lookup. This is different from the base64 padding '='.
 // It needs to agree with the value of ASCII_ZERO.
-const ALT_PAD: char = super::table::BASE64_TABLE[0].0;
+pub(crate) const ALT_PAD: char = super::table::BASE64_TABLE[0].0;
+
 #[cfg(test)]
 const ASCII_ZERO: char = super::table::BASE64_TABLE[0].1 as char;
 
@@ -52,62 +69,25 @@ where
     native_gadget: NG<F>,
 }
 
-impl<F: PrimeField> Base64Chip<F> {
-    /// Converts a Base64URL encoded strig into a Base64 sstring.
-    /// It does so by substituting '-' for '+' and '_' for '/',
-    /// leaving the rest of characters unchanged.
-    fn url_to_standard(
+impl<F: PrimeField> Base64Instructions<F> for Base64Chip<F> {
+    fn decode_base64url(
         &self,
         layouter: &mut impl Layouter<F>,
         b64url_input: &[AssignedByte<F>],
-    ) -> Result<Vec<AssignedByte<F>>, Error> {
-        let ng = &self.native_gadget;
-        let plus: AssignedByte<F> = ng.assign_fixed(layouter, Byte(b'+'))?;
-        let slash = ng.assign_fixed(layouter, Byte(b'/'))?;
-
-        b64url_input
-            .iter()
-            .map(|char| {
-                let is_hyphen = ng.is_equal_to_fixed(layouter, char, Byte(b'-'))?;
-                let char = self
-                    .native_gadget
-                    .select(layouter, &is_hyphen, &plus, char)?;
-
-                let is_underscore = ng.is_equal_to_fixed(layouter, &char, Byte(b'_'))?;
-
-                self.native_gadget
-                    .select(layouter, &is_underscore, &slash, &char)
-            })
-            .collect::<Result<Vec<_>, _>>()
-    }
-
-    /// Receives a base64 url-safe encoded string as [AssignedByte]s and returns
-    /// the decoded ascii string as a vector of [AssignedByte].
-    /// The length of the output is 3/4 of the input's length.
-    /// If pad is selected, the input length must be a multiple of 4.
-    /// Output will be completed with one or two ASCII_ZERO chars if necessary.
-    pub fn from_base64url(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        b64url_input: &[AssignedByte<F>],
-        pad: bool,
+        padded: bool,
     ) -> Result<Vec<AssignedByte<F>>, Error> {
         let standard_b64 = self.url_to_standard(layouter, b64url_input)?;
-        self.from_base64(layouter, &standard_b64, pad)
+        self.decode_base64(layouter, &standard_b64, padded)
     }
-    /// Receives a base64 encoded string as [AssignedByte]s and returns
-    /// the decoded ascii string as a vector of [AssignedByte].
-    /// The length of the output is 3/4 of the input's length.
-    /// If pad is selected, the input length must be a multiple of 4.
-    /// Output will be completed with one or two ASCII_ZERO chars if necessary.
-    pub fn from_base64(
+
+    fn decode_base64(
         &self,
         layouter: &mut impl Layouter<F>,
         b64_input: &[AssignedByte<F>],
-        pad: bool,
+        padded: bool,
     ) -> Result<Vec<AssignedByte<F>>, Error> {
         debug_assert!(
-            b64_input.len() % 4 == 0 || !pad,
+            b64_input.len() % 4 == 0 || !padded,
             "If pad is selected, the Base64 encoded input length must be a multiple of 4."
         );
         let mut last_chunk: B64Chunk<F>;
@@ -115,7 +95,7 @@ impl<F: PrimeField> Base64Chip<F> {
         let mut chunk_iter = b64_input.chunks(4).peekable();
         while let Some(b64_chunk) = chunk_iter.next() {
             let chunk_array: &B64Chunk<F> = if chunk_iter.peek().is_none() {
-                last_chunk = if pad {
+                last_chunk = if padded {
                     self.process_padded_chunk(
                         layouter,
                         b64_chunk.try_into().expect("Chunk of length 4."),
@@ -134,6 +114,120 @@ impl<F: PrimeField> Base64Chip<F> {
 
         Ok(result)
     }
+}
+
+impl<F: PrimeField, const M: usize, const A: usize> Base64VarInstructions<F, M, A>
+    for Base64Chip<F>
+{
+    fn assign_var_base64(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        value: Value<Vec<u8>>,
+    ) -> Result<Base64Vec<F, M, A>, Error> {
+        let ng = &self.native_gadget;
+
+        let vec = ng.assign_with_filler(layouter, value.clone(), Some(ALT_PAD as u8))?;
+
+        //  A base64 string length must be multiple of 4.
+        let q = {
+            let q = value.map(|v| {
+                assert_eq!(v.len() % 4, 0);
+                F::from(v.len() as u64 / 4)
+            });
+            ng.assign_lower_than_fixed(layouter, q, &((M / 4 + 1) as u128).into())?
+        };
+
+        let check = ng.linear_combination(
+            layouter,
+            &[(F::from(4u64), q), (-F::ONE, vec.len.clone())],
+            F::ZERO,
+        )?;
+        ng.assert_zero(layouter, &check)?;
+
+        Ok(Base64Vec(vec))
+    }
+
+    fn var_decode_base64url<const M_OUT: usize>(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        b64url_input: &Base64Vec<F, M, A>,
+    ) -> Result<AssignedVector<F, AssignedByte<F>, M_OUT, 3>, Error> {
+        let vec = self.url_to_standard(layouter, &b64url_input.0.buffer)?;
+
+        let b64_input = Base64Vec::<F, M, A>(AssignedVector {
+            buffer: vec.try_into().unwrap(),
+            len: b64url_input.0.len.clone(),
+        });
+
+        self.var_decode_base64(layouter, &b64_input)
+    }
+
+    fn var_decode_base64<const M_OUT: usize>(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        b64_input: &Base64Vec<F, M, A>,
+    ) -> Result<AssignedVector<F, AssignedByte<F>, M_OUT, 3>, Error> {
+        // Assert correct capacity.
+        // This is critical! We are decoding the whole buffer, so we must
+        // be certain that the actual data is correctly aligned.
+        assert_eq!(A % 4, 0);
+        assert_eq!(M * 3, M_OUT * 4);
+
+        // Compute and constrain new length.
+        let three = F::from(3u64);
+        let four = F::from(4u64);
+        let len = &b64_input.0.len;
+
+        let new_len: AssignedNative<F> = {
+            let len_value = len.value().map(|&l| l * four.invert().unwrap() * three);
+            self.native_gadget.assign(layouter, len_value)?
+        };
+
+        let check = self.native_gadget.linear_combination(
+            layouter,
+            &[(four, new_len.clone()), (-three, len.clone())],
+            F::ZERO,
+        )?;
+        self.native_gadget.assert_zero(layouter, &check)?;
+
+        // Compute decoded buffer.
+        let out_buffer = self.decode_base64(layouter, &b64_input.0.buffer, true)?;
+
+        Ok(AssignedVector::<_, _, M_OUT, 3> {
+            buffer: out_buffer.try_into().unwrap(),
+            len: new_len,
+        })
+    }
+}
+
+impl<F: PrimeField> Base64Chip<F> {
+    /// Converts a Base64URL encoded strig into a Base64 sstring.
+    /// It does so by substituting '-' for '+' and '_' for '/',
+    /// leaving the rest of characters unchanged.
+    fn url_to_standard(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        b64url_input: &[AssignedByte<F>],
+    ) -> Result<Vec<AssignedByte<F>>, Error> {
+        let ng = &self.native_gadget;
+        let plus: AssignedByte<F> = ng.assign_fixed(layouter, b'+')?;
+        let slash = ng.assign_fixed(layouter, b'/')?;
+
+        b64url_input
+            .iter()
+            .map(|char| {
+                let is_hyphen = ng.is_equal_to_fixed(layouter, char, b'-')?;
+                let char = self
+                    .native_gadget
+                    .select(layouter, &is_hyphen, &plus, char)?;
+
+                let is_underscore = ng.is_equal_to_fixed(layouter, &char, b'_')?;
+
+                self.native_gadget
+                    .select(layouter, &is_underscore, &slash, &char)
+            })
+            .collect::<Result<Vec<_>, _>>()
+    }
 
     /// Process the last chunk, which may have 0, 1 or 2 characters of padding.
     /// The padding characters, if present, are removed and substituted by
@@ -146,9 +240,13 @@ impl<F: PrimeField> Base64Chip<F> {
     ) -> Result<B64Chunk<F>, Error> {
         let ng = &self.native_gadget;
 
-        let pad = ng.assign_fixed(layouter, Byte(ALT_PAD as u8))?;
-        let pad_in_3rd = ng.is_equal_to_fixed(layouter, &b64_input[2], Byte(B64_PAD as u8))?;
-        let pad_in_4th = ng.is_equal_to_fixed(layouter, &b64_input[3], Byte(B64_PAD as u8))?;
+        let pad = ng.assign_fixed(layouter, ALT_PAD as u8)?;
+        let pad_in_3rd = ng.is_equal_to_fixed(layouter, &b64_input[2], B64_PAD as u8)?;
+        let pad_in_4th = ng.is_equal_to_fixed(layouter, &b64_input[3], B64_PAD as u8)?;
+
+        // When the first character of padding is detected, the next must be padding as
+        // well. This disallows padddings such as '=A' or '=?'.
+        ng.cond_assert_equal(layouter, &pad_in_3rd, &pad_in_3rd, &pad_in_4th)?;
 
         Ok([
             b64_input[0].clone(),
@@ -166,26 +264,24 @@ impl<F: PrimeField> Base64Chip<F> {
         b64_input: &[AssignedByte<F>],
     ) -> Result<B64Chunk<F>, Error> {
         let ng = &self.native_gadget;
-        let pad: AssignedByte<F> = ng.assign_fixed(layouter, Byte(ALT_PAD as u8))?;
+        let pad: AssignedByte<F> = ng.assign_fixed(layouter, ALT_PAD as u8)?;
         let mut res = b64_input.to_vec();
         res.resize(4, pad);
         Ok(res.try_into().unwrap())
     }
 
-    /// Receives 4 6-bit values, corresponding to a string of 4 base64
+    /// Receives 2 12-bit values, where each value represents a pair base64
     /// characters. Returns a vector of 3 [AssignedByte] with each symbol
     /// values. These values are guaranteed to be in the range [0, 2^8).
     fn val_to_ascii_chunk(
         &self,
         layouter: &mut impl Layouter<F>,
-        b64_input: &[AssignedNative<F>; 4],
+        b64_input: &[AssignedNative<F>; 2],
     ) -> Result<AsciiChunk<F>, Error> {
         // Sum ( b64_input[i] * 6^i ) = Sum ( byte[i] * 8^i)
         let terms = vec![
-            (F::from(1u64 << (3 * 6)), b64_input[0].clone()),
-            (F::from(1u64 << (2 * 6)), b64_input[1].clone()),
-            (F::from(1u64 << 6), b64_input[2].clone()),
-            (F::ONE, b64_input[3].clone()),
+            (F::from(1u64 << 12), b64_input[0].clone()),
+            (F::ONE, b64_input[1].clone()),
         ];
         let total = self
             .native_gadget
@@ -199,31 +295,29 @@ impl<F: PrimeField> Base64Chip<F> {
     }
 
     /// Receives 4 ascii characters as [AssignedByte] representing a base64
-    /// string. Returns a vector of 4 [AssignedNative] with each symbol
-    /// values. These values are guaranteed to be in the range [0, 2^6).
+    /// string. Returns a 2 [AssignedNative] with the value of each pair.
+    /// These values are guaranteed to be in the range [0, 2^12).
     fn base64_to_val_chunk(
         &self,
         layouter: &mut impl Layouter<F>,
         b64_input: &B64Chunk<F>,
-    ) -> Result<[AssignedNative<F>; 4], Error> {
+    ) -> Result<[AssignedNative<F>; 2], Error> {
         let advice_cols = self.config.advice_cols;
-        // |-----|-----|-----|-----|
-        // | A   | B   |0x00 |0x01 |
-        // |-----|-----|-----|-----|
-        // | C   | D   |0x02 |0x03 |
-        // |-----|-----|-----|-----|
+        // |-----|-----|--------|
+        // | A   | B   | 0x0001 |
+        // |-----|-----|--------|
+        // | C   | D   | 0x0203 |
+        // |-----|-----|--------|
         let decoded = layouter.assign_region(
             || "Base64 chunk",
             |mut region| {
-                let decoded_outs: Vec<_> = b64_input
-                    .iter()
-                    .map(|a| {
-                        a.value().map(|v| {
-                            // Hope there is a cleaner way to do this.
-                            // Byte implements Deref to get &u8.
-                            let value: &u8 = &v;
-                            let decoded = super::table::decode_char(*value as char);
-                            F::from(decoded as u64)
+                let decoded_outs: Vec<Value<F>> = b64_input
+                    .chunks_exact(2)
+                    .map(|vs| {
+                        vs[0].value().zip(vs[1].value()).map(|(c0, c1)| {
+                            let v0 = super::table::decode_char(c0 as char) as u64;
+                            let v1 = super::table::decode_char(c1 as char) as u64;
+                            F::from(v0 * (1 << 6) + v1)
                         })
                     })
                     .collect();
@@ -233,28 +327,32 @@ impl<F: PrimeField> Base64Chip<F> {
                 self.config.lookup_sel.enable(&mut region, 1)?;
 
                 // Positions of the inputs as: (column, row)
-                let positions = [(0, 0), (1, 0), (0, 1), (1, 1)];
-                for (input, pos) in b64_input.iter().zip(positions.iter()) {
-                    // Need to transform into native first due to the restrictions on
-                    // the `copied()` method that is needed to transform `Value<&V> -> Value<V>`.
+                let positions = [
+                    [(0, 0), (1, 0)], //
+                    [(0, 1), (1, 1)],
+                ];
+                for (input, pos) in b64_input.iter().zip(positions.as_flattened()) {
                     let input: AssignedNative<F> = input.clone().into();
                     input.copy_advice(|| "Base64 char", &mut region, advice_cols[pos.0], pos.1)?;
                 }
 
-                let mut result = vec![];
-                for (output, pos) in decoded_outs.into_iter().zip(positions.iter()) {
-                    let assigned = region.assign_advice(
-                        || "Base64 decoded values",
-                        advice_cols[pos.0 + 2], // same position as inputs, just 2 columns right
-                        pos.1,
-                        || output,
-                    )?;
-                    result.push(assigned);
-                }
-
-                Ok(result)
+                let result: Result<Vec<_>, _> = decoded_outs
+                    .into_iter()
+                    .zip(positions)
+                    .map(|(output, pos)| {
+                        region.assign_advice(
+                            || "Base64 decoded values",
+                            advice_cols[pos[0].0 + 2], /* same position as inputs, just 2
+                                                        * columns right */
+                            pos[0].1,
+                            || output,
+                        )
+                    })
+                    .collect();
+                result
             },
         )?;
+
         Ok(decoded.try_into().unwrap())
     }
 }
@@ -274,7 +372,7 @@ impl<F: PrimeField> Chip<F> for Base64Chip<F> {
 }
 
 impl<F: PrimeField> ComposableChip<F> for Base64Chip<F> {
-    type SharedResources = [Column<Advice>; 4];
+    type SharedResources = [Column<Advice>; NB_BASE64_ADVICE_COLS];
     type InstructionDeps = NG<F>;
 
     fn new(config: &Self::Config, sub_chips: &Self::InstructionDeps) -> Self {
@@ -298,26 +396,22 @@ impl<F: PrimeField> ComposableChip<F> for Base64Chip<F> {
         meta.lookup("Base64 lookup", |meta| {
             let s = meta.query_selector(lookup_sel);
 
-            // Each row decodes 2 characters.
-            // 1st column decoding is placed in the 3rd column,
-            // 2nd column decoding is placed in the 4th column.
+            // Each row decodes 2 characters. The first 2 columns contain
+            // the characters. The third column contains their combined value as:
+            //  char_1 * (2^6) + char_2
+            //
+            // |characters | value |
+            // |-----|-----|-------|
+            // | A   | B   | 0x01  |
+            // |-----|-----|-------|
 
-            // |characters | values    |
-            // |-----|-----|-----|-----|
-            // | A   | B   |0x00 |0x01 |
-            // |-----|-----|-----|-----|
-
-            // characters = first_col * 8 + second_col
             let col_1 = meta.query_advice(advice_cols[0], Rotation::cur());
             let col_2 = meta.query_advice(advice_cols[1], Rotation::cur());
             let characters = col_1 * Expression::Constant(F::from(1 << 8)) + col_2;
 
-            // values = third_col * 6 + fourth_col
-            let col_3 = meta.query_advice(advice_cols[2], Rotation::cur());
-            let col_4 = meta.query_advice(advice_cols[3], Rotation::cur());
-            let values = col_3 * Expression::Constant(F::from(1 << 6)) + col_4;
+            let value = meta.query_advice(advice_cols[2], Rotation::cur());
 
-            // default value for the deactivated lookup
+            // Default value for the deactivated lookup.
             let default_char = Expression::Constant(F::from(super::table::two_entry_default()));
 
             vec![
@@ -326,7 +420,7 @@ impl<F: PrimeField> ComposableChip<F> for Base64Chip<F> {
                         + (Expression::Constant(F::ONE) - s.clone()) * default_char,
                     t_char,
                 ),
-                (s.clone() * values, t_val),
+                (s.clone() * value, t_val),
             ]
         });
         Base64Config {
@@ -369,7 +463,6 @@ mod tests {
         field::decomposition::chip::P2RDecompositionConfig,
         instructions::{AssertionInstructions, AssignmentInstructions},
         testing_utils::FromScratch,
-        types::Byte,
     };
 
     type Fp = blstrs::Scalar;
@@ -377,13 +470,20 @@ mod tests {
     struct TestCircuit<F: PrimeField> {
         input: Vec<u8>,  // base64 encoded string
         output: Vec<u8>, // decoded string
-        input_pad: bool,
-        url_safe: bool,
+        options: TestOptions,
         _marker: PhantomData<F>,
     }
+
+    #[derive(Clone, Copy, Debug)]
+    struct TestOptions {
+        input_pad: bool,
+        url_safe: bool,
+        variable: bool,
+    }
+
     impl<F: PrimeField> TestCircuit<F> {
-        fn new(input: &[u8], output: &[u8], input_pad: bool, url_safe: bool) -> Self {
-            debug_assert_eq!(input.len() % 4 == 0, input_pad);
+        fn new(input: &[u8], output: &[u8], options: TestOptions) -> Self {
+            debug_assert_eq!(input.len() % 4 == 0, options.input_pad);
             // Pad output to a multiple of 3.
             let mut padded_out = output.to_vec();
 
@@ -397,8 +497,7 @@ mod tests {
             Self {
                 input: input.to_vec(),
                 output: padded_out,
-                input_pad,
-                url_safe,
+                options,
                 _marker: PhantomData,
             }
         }
@@ -413,16 +512,25 @@ mod tests {
             Self {
                 input: vec![],
                 output: vec![],
-                input_pad: true,
-                url_safe: false,
+                options: TestOptions {
+                    input_pad: true,
+                    url_safe: false,
+                    variable: false,
+                },
                 _marker: PhantomData,
             }
         }
 
         fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+            let committed_instance_column = meta.instance_column();
             let instance_column = meta.instance_column();
-            let ng_config = NativeGadget::configure_from_scratch(meta, &instance_column);
-            let sr = &ng_config.native_config.value_cols[..4].try_into().unwrap();
+            let ng_config = NativeGadget::configure_from_scratch(
+                meta,
+                &[committed_instance_column, instance_column],
+            );
+            let sr = &ng_config.native_config.value_cols[..NB_BASE64_ADVICE_COLS]
+                .try_into()
+                .unwrap();
             let b64_config = Base64Chip::configure(meta, sr);
 
             (ng_config, b64_config)
@@ -433,6 +541,8 @@ mod tests {
             config: Self::Config,
             mut layouter: impl Layouter<F>,
         ) -> Result<(), Error> {
+            let options = &self.options;
+
             // Create chips.
             let ng: NG<F> = NativeGadget::new_from_scratch(&config.0);
             let b64_chip = Base64Chip::new(&config.1, &ng);
@@ -441,34 +551,37 @@ mod tests {
             NativeGadget::load_from_scratch(&mut layouter, &config.0);
             b64_chip.load(&mut layouter)?;
 
-            let input_vals: Vec<Value<Byte>> = self
-                .input
-                .clone()
-                .into_iter()
-                .map(Byte)
-                .map(Value::known)
-                .collect();
-
-            let output_vals: Vec<Value<Byte>> = self
-                .output
-                .clone()
-                .into_iter()
-                .map(Byte)
-                .map(Value::known)
-                .collect();
-
-            let assigned_in: Vec<AssignedByte<F>> = ng.assign_many(&mut layouter, &input_vals)?;
-            let assigned_out: Vec<AssignedByte<F>> = ng.assign_many(&mut layouter, &output_vals)?;
-
-            let ret = if self.url_safe {
-                b64_chip.from_base64url(&mut layouter, &assigned_in, self.input_pad)?
+            if options.variable {
+                // Variable length.
+                let assigned_in_var: Base64Vec<F, 1024, 4> =
+                    b64_chip.assign_var_base64(&mut layouter, Value::known(self.input.clone()))?;
+                let ret_var: AssignedVector<F, AssignedByte<F>, 768, 3> = if options.url_safe {
+                    b64_chip.var_decode_base64url(&mut layouter, &assigned_in_var)
+                } else {
+                    b64_chip.var_decode_base64(&mut layouter, &assigned_in_var)
+                }?;
+                ng.assert_equal_to_fixed(&mut layouter, &ret_var, self.output.clone())?;
             } else {
-                b64_chip.from_base64(&mut layouter, &assigned_in, self.input_pad)?
-            };
+                // Fixed length.
+                let input_vals: Vec<Value<u8>> =
+                    self.input.clone().into_iter().map(Value::known).collect();
 
-            assert_eq!(assigned_out.len(), ret.len());
-            for (a, b) in assigned_out.iter().zip(ret.iter()) {
-                ng.assert_equal(&mut layouter, a, b)?;
+                let output_vals: Vec<Value<u8>> =
+                    self.output.clone().into_iter().map(Value::known).collect();
+
+                let assigned_in: Vec<AssignedByte<F>> =
+                    ng.assign_many(&mut layouter, &input_vals)?;
+                let assigned_out: Vec<AssignedByte<F>> =
+                    ng.assign_many(&mut layouter, &output_vals)?;
+                let ret = if options.url_safe {
+                    b64_chip.decode_base64url(&mut layouter, &assigned_in, options.input_pad)?
+                } else {
+                    b64_chip.decode_base64(&mut layouter, &assigned_in, options.input_pad)?
+                };
+                assert_eq!(assigned_out.len(), ret.len());
+                for (a, b) in assigned_out.iter().zip(ret.iter()) {
+                    ng.assert_equal(&mut layouter, a, b)?;
+                }
             }
 
             Ok(())
@@ -488,9 +601,15 @@ The old that is strong does not wither,
 Deep roots are not reached by the frost.
  - J.R.R. Tolkien, 1954";
 
-        let circuit = TestCircuit::<Fp>::new(b64_input, output, true, false);
+        let options = TestOptions {
+            input_pad: true,
+            url_safe: false,
+            variable: false,
+        };
 
-        let public_inputs = vec![vec![]];
+        let circuit = TestCircuit::<Fp>::new(b64_input, output, options);
+
+        let public_inputs = vec![vec![], vec![]];
         let prover = match MockProver::run(k, &circuit, public_inputs) {
             Ok(prover) => prover,
             Err(e) => panic!("{e:#?}"),
@@ -506,9 +625,15 @@ Deep roots are not reached by the frost.
         let b64_input: &[u8] = b"VVJMU2FmZSB0ZXN0OiA_Pz8gPz8-Lg==";
         let output: &[u8] = b"URLSafe test: ??? ??>.";
 
-        let circuit = TestCircuit::<Fp>::new(b64_input, output, true, true);
+        let options = TestOptions {
+            input_pad: true,
+            url_safe: true,
+            variable: false,
+        };
 
-        let public_inputs = vec![vec![]];
+        let circuit = TestCircuit::<Fp>::new(b64_input, output, options);
+
+        let public_inputs = vec![vec![], vec![]];
         let prover = match MockProver::run(k, &circuit, public_inputs) {
             Ok(prover) => prover,
             Err(e) => panic!("{e:#?}"),
@@ -522,17 +647,32 @@ Deep roots are not reached by the frost.
         let k = 13;
 
         let b64_input: &[u8] = b"QWxsIHRoYXQgaXMgZ29sZCBkb2VzIG5vdCBnbGl0dGVyLA==";
+        let b64_input_bad: &[u8] = b"QWxsIHRoYXQgaXMgZ29sZCBkb2VzIG5vdCBnbGl0dGVyLA=A";
         let output: &[u8] = b"All that is gold does not glitter,";
 
-        let circuit = TestCircuit::<Fp>::new(b64_input, output, true, false);
+        let options = TestOptions {
+            input_pad: true,
+            url_safe: false,
+            variable: false,
+        };
 
-        let public_inputs = vec![vec![]];
+        let circuit = TestCircuit::<Fp>::new(b64_input, output, options);
+        let circuit_bad = TestCircuit::<Fp>::new(b64_input_bad, output, options);
+
+        let public_inputs = vec![vec![], vec![]];
         let prover = match MockProver::run(k, &circuit, public_inputs) {
             Ok(prover) => prover,
             Err(e) => panic!("{e:#?}"),
         };
 
         assert_eq!(prover.verify(), Ok(()));
+
+        let public_inputs = vec![vec![], vec![]];
+        let prover = match MockProver::run(k, &circuit_bad, public_inputs) {
+            Ok(prover) => prover,
+            Err(e) => panic!("{e:#?}"),
+        };
+        assert!(prover.verify().is_err());
     }
 
     #[test]
@@ -542,9 +682,68 @@ Deep roots are not reached by the frost.
         let b64_input: &[u8] = b"QWxsIHRoYXQgaXMgZ29sZCBkb2VzIG5vdCBnbGl0dGVyLA";
         let output: &[u8] = b"All that is gold does not glitter,";
 
-        let circuit = TestCircuit::<Fp>::new(b64_input, output, false, false);
+        let options = TestOptions {
+            input_pad: false,
+            url_safe: false,
+            variable: false,
+        };
+        let circuit = TestCircuit::<Fp>::new(b64_input, output, options);
 
-        let public_inputs = vec![vec![]];
+        let public_inputs = vec![vec![], vec![]];
+        let prover = match MockProver::run(k, &circuit, public_inputs) {
+            Ok(prover) => prover,
+            Err(e) => panic!("{e:#?}"),
+        };
+
+        assert_eq!(prover.verify(), Ok(()));
+    }
+
+    #[test]
+    fn test_b64chip_variable() {
+        let k = 13;
+
+        let b64_input: &[u8] = b"QWxsIHRoYXQgaXMgZ29sZCBkb2VzIG5vdCBnbGl0dGVyLApOb3QgYWxsIHRob3NlIHdobyB3YW5kZXIgYXJlIGxvc3Q7ClRoZSBvbGQgdGhhdCBpcyBzdHJvbmcgZG9lcyBub3Qgd2l0aGVyLApEZWVwIHJvb3RzIGFyZSBub3QgcmVhY2hlZCBieSB0aGUgZnJvc3QuCiAtIEouUi5SLiBUb2xraWVuLCAxOTU0";
+        #[rustfmt::skip]
+        let output: &[u8] =
+          b"All that is gold does not glitter,
+Not all those who wander are lost;
+The old that is strong does not wither,
+Deep roots are not reached by the frost.
+ - J.R.R. Tolkien, 1954";
+
+        let options = TestOptions {
+            input_pad: true,
+            url_safe: false,
+            variable: true,
+        };
+
+        let circuit = TestCircuit::<Fp>::new(b64_input, output, options);
+
+        let public_inputs = vec![vec![], vec![]];
+        let prover = match MockProver::run(k, &circuit, public_inputs) {
+            Ok(prover) => prover,
+            Err(e) => panic!("{e:#?}"),
+        };
+
+        assert_eq!(prover.verify(), Ok(()));
+    }
+
+    #[test]
+    fn test_urlsafe_b64chip_variable() {
+        let k = 14;
+
+        let b64_input: &[u8] = b"VVJMU2FmZSB0ZXN0OiA_Pz8gPz8-Lg==";
+        let output: &[u8] = b"URLSafe test: ??? ??>.";
+
+        let options = TestOptions {
+            input_pad: true,
+            url_safe: true,
+            variable: true,
+        };
+
+        let circuit = TestCircuit::<Fp>::new(b64_input, output, options);
+
+        let public_inputs = vec![vec![], vec![]];
         let prover = match MockProver::run(k, &circuit, public_inputs) {
             Ok(prover) => prover,
             Err(e) => panic!("{e:#?}"),

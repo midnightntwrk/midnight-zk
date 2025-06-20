@@ -30,7 +30,7 @@ where
     ///
     /// ```
     /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
-    /// let bit: AssignedBit<F> = chip.assign(&mut layouter, Value::known(Bit(true)))?;
+    /// let bit: AssignedBit<F> = chip.assign(&mut layouter, Value::known(true))?;
     /// let val: AssignedNative<F> = chip.convert(&mut layouter, &bit)?;
     /// # });
     /// ```
@@ -108,7 +108,7 @@ pub mod tests {
         AssignedSource: InnerValue,
         AssignedTarget: InnerValue,
         AssignedSource::Element: Clone + Default,
-        AssignedTarget::Element: Clone + Default + From<u64>,
+        AssignedTarget::Element: Clone + Default,
         ConversionChip: ConversionInstructions<F, AssignedSource, AssignedTarget>
             + UnsafeConversionInstructions<F, AssignedSource, AssignedTarget>
             + AssignmentInstructions<F, AssignedSource>
@@ -124,8 +124,12 @@ pub mod tests {
         }
 
         fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+            let committed_instance_column = meta.instance_column();
             let instance_column = meta.instance_column();
-            ConversionChip::configure_from_scratch(meta, &instance_column)
+            ConversionChip::configure_from_scratch(
+                meta,
+                &[committed_instance_column, instance_column],
+            )
         }
 
         fn synthesize(
@@ -163,7 +167,7 @@ pub mod tests {
         AssignedSource: InnerValue,
         AssignedSource::Element: Clone + Default,
         AssignedTarget: InnerValue,
-        AssignedTarget::Element: Clone + Default + From<u64>,
+        AssignedTarget::Element: Clone + Default,
         ConversionChip: ConversionInstructions<F, AssignedSource, AssignedTarget>
             + UnsafeConversionInstructions<F, AssignedSource, AssignedTarget>
             + AssignmentInstructions<F, AssignedSource>
@@ -177,7 +181,7 @@ pub mod tests {
             _marker: PhantomData,
         };
         let log2_nb_rows = 5;
-        let public_inputs = vec![vec![]];
+        let public_inputs = vec![vec![], vec![]];
         match MockProver::run(log2_nb_rows, &circuit, public_inputs) {
             Ok(prover) => match prover.verify() {
                 Ok(()) => assert!(must_pass),

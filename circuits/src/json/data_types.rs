@@ -4,9 +4,7 @@ use num_bigint::BigUint;
 
 use super::ParserGadget;
 use crate::{
-    field::AssignedNative,
-    instructions::NativeInstructions,
-    types::{AssignedByte, Byte},
+    field::AssignedNative, instructions::NativeInstructions, types::AssignedByte,
     utils::util::concat,
 };
 
@@ -121,8 +119,8 @@ where
                     "Date format must be 10 characters long: DD{sep}MM{sep}YYYY"
                 );
 
-                native.assert_equal_to_fixed(layouter, &input[2], Byte::from(sep as u64))?;
-                native.assert_equal_to_fixed(layouter, &input[5], Byte::from(sep as u64))?;
+                native.assert_equal_to_fixed(layouter, &input[2], sep as u8)?;
+                native.assert_equal_to_fixed(layouter, &input[5], sep as u8)?;
                 ((0..2), (3..5), (6..10))
             }
 
@@ -137,8 +135,8 @@ where
                     "Date format must be 10 characters long: YYYY{sep}MM{sep}DD"
                 );
 
-                native.assert_equal_to_fixed(layouter, &input[4], Byte::from(sep as u64))?;
-                native.assert_equal_to_fixed(layouter, &input[7], Byte::from(sep as u64))?;
+                native.assert_equal_to_fixed(layouter, &input[4], sep as u8)?;
+                native.assert_equal_to_fixed(layouter, &input[7], sep as u8)?;
 
                 ((8..10), (5..7), (0..4))
             }
@@ -199,8 +197,12 @@ mod tests {
         }
 
         fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+            let committed_instance_column = meta.instance_column();
             let instance_column = meta.instance_column();
-            <N as FromScratch<F>>::configure_from_scratch(meta, &instance_column)
+            <N as FromScratch<F>>::configure_from_scratch(
+                meta,
+                &[committed_instance_column, instance_column],
+            )
         }
 
         fn synthesize(
@@ -246,7 +248,7 @@ mod tests {
             operation,
             _marker: PhantomData,
         };
-        let public_inputs = vec![vec![]];
+        let public_inputs = vec![vec![], vec![]];
         match MockProver::run(K, &circuit, public_inputs) {
             Ok(prover) => match prover.verify() {
                 Ok(()) => assert!(must_pass),

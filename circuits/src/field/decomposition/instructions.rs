@@ -31,8 +31,8 @@ pub trait CoreDecompositionInstructions<F: PrimeField>: Clone + Debug {
         limb_size: usize,
     ) -> Result<Vec<AssignedNative<F>>, Error>;
 
-    /// Assigns the given value asserting it is in the range
-    /// [0, 2^{bit_length}).
+    /// Assigns a value and guarantees that it is strictly lower than
+    /// 2^{bit_length}
     fn assign_less_than_pow2(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -53,4 +53,17 @@ pub trait CoreDecompositionInstructions<F: PrimeField>: Clone + Debug {
             |mut region| region.constrain_equal(x.cell(), y.cell()),
         )
     }
+
+    /// Assigns several values and asserts that they are all strictly lower than
+    /// 2^{bit_length}.
+    ///
+    /// # Panics
+    ///
+    /// If bit_length > 8.
+    fn assign_many_small(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        values: &[Value<F>],
+        bit_length: usize,
+    ) -> Result<Vec<AssignedNative<F>>, Error>;
 }

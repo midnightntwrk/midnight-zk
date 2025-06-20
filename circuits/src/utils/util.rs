@@ -180,7 +180,7 @@ pub fn glv_scalar_decomposition<F: PrimeField>(x: &F, zeta: &F) -> ((bool, F), (
         panic!(
             "Oops, an error occurred in GLV decomposition. \
              Please, open an issue to report this problem: \
-             https://github.com/input-output-hk/midnight-circuits/issues"
+             https://github.com/midnightntwrk/midnight-circuits/issues"
         )
     };
 
@@ -197,7 +197,7 @@ pub trait FromScratch<F: PrimeField> {
 
     fn configure_from_scratch(
         meta: &mut ConstraintSystem<F>,
-        instance_column: &Column<Instance>,
+        instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config;
 
     fn load_from_scratch(layouter: &mut impl Layouter<F>, config: &Self::Config);

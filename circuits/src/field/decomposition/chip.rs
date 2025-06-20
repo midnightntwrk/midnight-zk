@@ -408,7 +408,6 @@ impl<F: PrimeField> CoreDecompositionInstructions<F> for P2RDecompositionChip<F>
         }
     }
 
-    /// Function that guarantees that x < 2^{bit_length}
     fn assign_less_than_pow2(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -432,5 +431,42 @@ impl<F: PrimeField> CoreDecompositionInstructions<F> for P2RDecompositionChip<F>
         let (y, _) = self.decompose_core(layouter, value, limb_sizes.as_slice())?;
 
         Ok(y)
+    }
+
+    fn assign_many_small(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        values: &[Value<F>],
+        bit_length: usize,
+    ) -> Result<Vec<AssignedNative<F>>, Error> {
+        assert!(8 < F::NUM_BITS);
+        assert!(
+            bit_length <= 8,
+            "assign_many_small expects a bit_length <= 8"
+        );
+
+        let mut assigned_values = Vec::with_capacity(values.len());
+        for chunk in values.chunks(NB_POW2RANGE_COLS) {
+            let assigned_chunk: Vec<_> = layouter.assign_region(
+                || "assign_many_small",
+                |mut region| {
+                    let mut padded_chunk = chunk.to_vec();
+                    padded_chunk.resize(NB_POW2RANGE_COLS, Value::known(F::ZERO));
+
+                    self.pow2range_chip()
+                        .assert_row_lower_than_2_pow_n(&mut region, bit_length)?;
+
+                    padded_chunk
+                        .iter()
+                        .zip(self.config.pow2range_config.val_cols.iter())
+                        .map(|(value, col)| {
+                            region.assign_advice(|| "assign small", *col, 0, || *value)
+                        })
+                        .collect()
+                },
+            )?;
+            assigned_values.extend_from_slice(&assigned_chunk[..chunk.len()]);
+        }
+        Ok(assigned_values)
     }
 }

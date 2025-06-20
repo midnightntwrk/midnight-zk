@@ -11,10 +11,11 @@ rand = "0.8"
 pasta_curves = "0.5"
 halo2curves = { version = "0.7.0", features = ["derive_serde"] }
 blstrs = { git = "https://github.com/davidnevadoc/blstrs", rev = "3dfe5bf" }
-halo2_proofs = { git = "https://github.com/input-output-hk/halo2", rev = "04db20e", default-features = false, features = [
+halo2_proofs = { git = "https://github.com/midnightntwrk/halo2", rev = "92d9356", default-features = false, features = [
     "bits",
     "cost-estimator",
     "circuit-params",
+    "committed-instances",
 ] }
 group = "0.13"
 num-bigint = { version = "0.4" }

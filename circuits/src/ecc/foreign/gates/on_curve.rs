@@ -21,7 +21,7 @@ use crate::{
         },
     },
     instructions::{ArithInstructions, NativeInstructions},
-    types::{AssignedBit, AssignedField, Bit, InnerValue},
+    types::{AssignedBit, AssignedField, InnerValue},
     utils::util::{bigint_to_fe, fe_to_bigint, modulus},
 };
 
@@ -257,8 +257,7 @@ where
                 - xzs.clone().map(|v| sum_bigints(&bs2, &v))
                 - zs.clone().map(|v| sum_bigints(&bs, &v))
                 - xs.clone().map(|v| sum_bigints(&bs, &v));
-            let assertions = cond.value().map(|b| b == Bit(true));
-            let u = expr.map(|e| compute_u(m, &e, (&k_min, &u_max), assertions));
+            let u = expr.map(|e| compute_u(m, &e, (&k_min, &u_max), cond.value()));
 
             let vs_values =
                 moduli
@@ -280,7 +279,7 @@ where
                             - zs.clone().map(|v| sum_bigints(&bs_mj, &v))
                             - xs.clone().map(|v| sum_bigints(&bs_mj, &v));
                         expr_mj.zip(u.clone()).map(|(e, u)| {
-                            compute_vj(m, mj, &e, &u, &k_min, (&lj_min, &vj_max), assertions)
+                            compute_vj(m, mj, &e, &u, &k_min, (&lj_min, &vj_max), cond.value())
                         })
                     });
 

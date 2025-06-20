@@ -87,6 +87,7 @@ mod poseidon_chip;
 /// they will be used for circuits (NB_SKIPS_CIRCUIT) or CPU (NB_SKIPS_CPU).
 pub mod poseidon_cpu;
 
+mod poseidon_varlen;
 /// Basic structures and methods for performing partial-round skips in Poseidon.
 pub mod round_skips;
 

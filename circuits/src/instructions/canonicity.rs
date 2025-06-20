@@ -14,7 +14,7 @@ use num_bigint::BigUint;
 
 use crate::{
     instructions::{AssignmentInstructions, FieldInstructions},
-    types::{AssignedBit, Bit, InnerConstants, Instantiable},
+    types::{AssignedBit, InnerConstants, Instantiable},
 };
 
 /// The set of circuit instructions for canonicity assertions.
@@ -35,18 +35,18 @@ where
     /// let x: Vec<AssignedBit<F>> = chip.assign_many(
     ///     &mut layouter,
     ///     &[
-    ///         Value::known(Bit(true)),
-    ///         Value::known(Bit(false)),
-    ///         Value::known(Bit(false)),
-    ///         Value::known(Bit(true)),
-    ///         Value::known(Bit(false)),
+    ///         Value::known(true),
+    ///         Value::known(false),
+    ///         Value::known(false),
+    ///         Value::known(true),
+    ///         Value::known(false),
     ///     ],
     /// )?;
     ///
     /// let check: AssignedBit<F> = chip.is_canonical(&mut layouter, &x)?;
     /// // This is not sufficient to check that the value is canonical,
     /// // we need to check that the output is true.
-    /// chip.assert_equal_to_fixed(&mut layouter, &check, Bit(true))?;
+    /// chip.assert_equal_to_fixed(&mut layouter, &check, true)?;
     /// # });
     /// ```
     fn is_canonical(
@@ -56,7 +56,7 @@ where
     ) -> Result<AssignedBit<F>, Error> {
         let order = self.order();
         if bits.len() > order.bits() as usize {
-            self.assign_fixed(layouter, Bit(false))
+            self.assign_fixed(layouter, false)
         } else {
             self.le_bits_lower_than(layouter, bits, order)
         }
@@ -71,21 +71,21 @@ where
     /// let x: Vec<AssignedBit<F>> = chip.assign_many(
     ///     &mut layouter,
     ///     &[
-    ///         Value::known(Bit(true)),
-    ///         Value::known(Bit(false)),
-    ///         Value::known(Bit(false)),
-    ///         Value::known(Bit(true)),
-    ///         Value::known(Bit(true)),
+    ///         Value::known(true),
+    ///         Value::known(false),
+    ///         Value::known(false),
+    ///         Value::known(true),
+    ///         Value::known(true),
     ///     ],
     /// )?;
     ///
     /// // assert the value is less than 32
     /// let check1: AssignedBit<F> = chip.le_bits_lower_than(&mut layouter, &x, BigUint::from(32u8))?;
-    /// chip.assert_equal_to_fixed(&mut layouter, &check1, Bit(true))?;
+    /// chip.assert_equal_to_fixed(&mut layouter, &check1, true)?;
     ///
     /// // we can also compare the number with non-powers of two
     /// let check2: AssignedBit<F> = chip.le_bits_lower_than(&mut layouter, &x, BigUint::from(17u8))?;
-    /// chip.assert_equal_to_fixed(&mut layouter, &check2, Bit(false))?;
+    /// chip.assert_equal_to_fixed(&mut layouter, &check2, false)?;
     /// # });
     /// ```
     fn le_bits_lower_than(
@@ -123,7 +123,7 @@ pub mod tests {
     use super::*;
     use crate::{
         instructions::{AssertionInstructions, AssignmentInstructions},
-        types::{Bit, InnerValue},
+        types::InnerValue,
         utils::{
             circuit_modeling::circuit_to_json,
             util::{modulus, FromScratch},
@@ -169,8 +169,12 @@ pub mod tests {
         }
 
         fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+            let committed_instance_column = meta.instance_column();
             let instance_column = meta.instance_column();
-            CanonicityChip::configure_from_scratch(meta, &instance_column)
+            CanonicityChip::configure_from_scratch(
+                meta,
+                &[committed_instance_column, instance_column],
+            )
         }
 
         fn synthesize(
@@ -184,7 +188,7 @@ pub mod tests {
             let bits = self
                 .bits
                 .iter()
-                .map(|b| chip.assign_fixed(&mut layouter, Bit(*b)))
+                .map(|b| chip.assign_fixed(&mut layouter, *b))
                 .collect::<Result<Vec<_>, Error>>()?;
             let bound = self.bound.clone();
 
@@ -194,7 +198,7 @@ pub mod tests {
                 Operation::Geq => chip.le_bits_geq_than(&mut layouter, &bits, bound),
             }?;
 
-            chip.assert_equal_to_fixed(&mut layouter, &res, Bit(self.expected))
+            chip.assert_equal_to_fixed(&mut layouter, &res, self.expected)
         }
     }
 
@@ -226,7 +230,7 @@ pub mod tests {
             _marker: PhantomData,
         };
         let log2_nb_rows = 10;
-        let public_inputs = vec![vec![]];
+        let public_inputs = vec![vec![], vec![]];
         match MockProver::run(log2_nb_rows, &circuit, public_inputs) {
             Ok(prover) => match prover.verify() {
                 Ok(()) => assert!(must_pass),

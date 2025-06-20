@@ -100,7 +100,7 @@ use midnight_circuits::{
         ConversionInstructions, DecompositionInstructions, PublicInputInstructions,
     },
     testing_utils::plonk_api::filecoin_srs,
-    types::{AssignedBit, AssignedNative, Byte},
+    types::{AssignedBit, AssignedNative},
 };
 use rand::{rngs::OsRng, Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
@@ -242,7 +242,7 @@ impl Relation for HybridMtExample {
         // First we witness the preimage.
         let input_bytes = witness
             .clone()
-            .map(|mp| mp.leaf_bytes.into_iter().map(Byte).collect::<Vec<_>>())
+            .map(|mp| mp.leaf_bytes)
             .transpose_vec(INPUT_BYTES);
 
         // Assign input u32 words.

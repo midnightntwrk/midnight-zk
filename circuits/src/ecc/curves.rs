@@ -14,8 +14,10 @@ use halo2curves::{
 pub trait CircuitCurve: Curve + Default {
     /// Base field over which the EC is defined.
     type Base: PrimeField;
+
     /// Cryptographic group.
     type CryptographicGroup: Group<Scalar = Self::Scalar> + Into<Self>;
+
     /// Cofactor of the curve.
     const COFACTOR: u128 = 1;
 

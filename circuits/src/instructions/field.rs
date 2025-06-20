@@ -10,7 +10,7 @@ use crate::{
         ArithInstructions, AssertionInstructions, AssignmentInstructions, ControlFlowInstructions,
         EqualityInstructions, ZeroInstructions,
     },
-    types::{AssignedBit, Bit, InnerConstants, Instantiable},
+    types::{AssignedBit, InnerConstants, Instantiable},
     utils::util::qnr,
 };
 
@@ -50,7 +50,7 @@ where
         layouter: &mut impl Layouter<F>,
         x: &Assigned,
     ) -> Result<AssignedBit<F>, Error> {
-        let is_square_value = x.value().map(|x| Bit(bool::from(x.sqrt().is_some())));
+        let is_square_value = x.value().map(|x| bool::from(x.sqrt().is_some()));
         let is_square = self.assign(layouter, is_square_value)?;
 
         // x is a quadratic residue iff x * qnr is not.

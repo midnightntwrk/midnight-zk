@@ -3,7 +3,7 @@ use std::iter::repeat;
 use ff::Field;
 use halo2_proofs::plonk::Expression;
 
-use super::{PoseidonField, NB_SKIPS_CPU};
+use super::{sbox, PoseidonField, NB_SKIPS_CPU};
 use crate::hash::poseidon::{
     constants::{NB_FULL_ROUNDS, NB_PARTIAL_ROUNDS, WIDTH},
     NB_SKIPS_CIRCUIT,
@@ -128,7 +128,10 @@ impl<F: Field> RoundVarId<F> {
     // argument `vars` has length `WIDTH + self.nb_skips`.
     // Note: does *not* include the `self.constant` component in the conversion.
     fn to_expression(self, vars: &[Expression<F>]) -> Expression<F> {
-        let expr = self.var_coeffs[..WIDTH - 1].iter().zip(vars).fold(
+        let (lin_coeffs, pow_coeffs) = self.var_coeffs.split_at(WIDTH - 1);
+        let (lin_vars, pow_vars) = vars.split_at(WIDTH - 1);
+
+        let expr = lin_coeffs.iter().zip(lin_vars).fold(
             Expression::Constant(F::ZERO),
             |accu, (coeff, x)| {
                 if coeff.is_zero_vartime() {
@@ -138,14 +141,14 @@ impl<F: Field> RoundVarId<F> {
                 }
             },
         );
-        self.var_coeffs[WIDTH - 1..]
+        pow_coeffs
             .iter()
-            .zip(&vars[WIDTH - 1..])
+            .zip(pow_vars)
             .fold(expr, |accu, (coeff, x)| {
                 if coeff.is_zero_vartime() {
                     accu
                 } else {
-                    accu + Expression::Constant(*coeff) * x.clone().square().square() * x.clone()
+                    accu + Expression::Constant(*coeff) * sbox(x.clone())
                 }
             })
     }
@@ -160,11 +163,9 @@ impl<F: PoseidonField> RoundId<F> {
         RoundId {
             nb_skips,
             ids: core::array::from_fn(|i| {
-                if i < WIDTH + 1 + nb_skips {
+                if i < WIDTH {
                     let mut id = RoundVarId::init();
-                    if i < WIDTH {
-                        id.var_coeffs[i] = F::ONE
-                    };
+                    id.var_coeffs[i] = F::ONE;
                     id
                 } else {
                     RoundVarId::init()
@@ -280,16 +281,21 @@ impl<F: PoseidonField> RoundId<F> {
     fn round_constants_circuit(&self) -> RoundContantsCircuit<F> {
         // Practical restriction: skipping partial rounds should always be done in a way
         // that avoids having to add trailing rounds, at least in circuit.
-        #[allow(clippy::modulo_one)]
-        if NB_PARTIAL_ROUNDS % (1 + NB_SKIPS_CIRCUIT) != 0 {
-            panic!(
-                "The Poseidon chip assumes that the number of partial round
-        (NB_PARTIAL_ROUNDS = {}) is dividable by the number of round skips (1 +
-        NB_SKIPS = {}).",
-                NB_PARTIAL_ROUNDS,
-                1 + NB_SKIPS_CIRCUIT
-            )
-        };
+        assert_eq!(
+            NB_PARTIAL_ROUNDS % (1 + NB_SKIPS_CIRCUIT),
+            0,
+            "The Poseidon chip assumes that the number of partial round (NB_PARTIAL_ROUNDS = {}) is dividable by the number of round skips (1 + NB_SKIPS = {}).",
+            NB_PARTIAL_ROUNDS,
+            1 + NB_SKIPS_CIRCUIT
+        );
+        // Also assumes that the number of full rounds is even.
+        assert_eq!(
+            NB_FULL_ROUNDS % 2,
+            0,
+            "The Poseidon chip assumes the number of full round (NB_FULL_ROUNDS = {}) is even.",
+            NB_FULL_ROUNDS
+        );
+
         let mut v =
             [[F::ZERO; WIDTH + NB_SKIPS_CIRCUIT]; NB_PARTIAL_ROUNDS / (1 + NB_SKIPS_CIRCUIT)];
         for (round, main_round) in (NB_FULL_ROUNDS / 2..)
