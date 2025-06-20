@@ -893,7 +893,7 @@ impl<C: EdwardsCurve> ConversionInstructions<C::Base, AssignedNative<C::Base>, S
 
 #[cfg(test)]
 mod tests {
-    use blstrs::{JubjubExtended, Scalar as JubjubBase};
+    use blstrs::{JubjubExtended, Fq as JubjubBase};
 
     use super::*;
     use crate::{

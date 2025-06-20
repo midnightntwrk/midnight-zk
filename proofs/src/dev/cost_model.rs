@@ -723,7 +723,7 @@ impl<F: Field> Assignment<F> for DevAssembly<F> {
 #[cfg(test)]
 mod tests {
     use blake2b_simd::State;
-    use blstrs::{Bls12, Scalar};
+    use blstrs::{Bls12, Fq};
     use rand_core::{OsRng, RngCore};
 
     use super::*;
@@ -754,7 +754,7 @@ mod tests {
     }
 
     impl StandardPlonkConfig {
-        fn configure(meta: &mut ConstraintSystem<Scalar>) -> Self {
+        fn configure(meta: &mut ConstraintSystem<Fq>) -> Self {
             let [a, b, c] = std::array::from_fn(|_| meta.advice_column());
             let [q_a, q_b, q_c, q_ab, constant] = std::array::from_fn(|_| meta.fixed_column());
             let instance = meta.instance_column();
@@ -766,7 +766,7 @@ mod tests {
 
             meta.lookup("lookup", |meta| {
                 let selector = meta.query_selector(table_selector);
-                let not_selector = Expression::Constant(Scalar::ONE) - selector.clone();
+                let not_selector = Expression::Constant(Fq::ONE) - selector.clone();
                 let advice = meta.query_advice(a, Rotation::cur());
                 vec![(selector * advice + not_selector, sl)]
             });
@@ -807,9 +807,9 @@ mod tests {
     }
 
     #[derive(Clone, Default)]
-    struct StandardPlonk(Scalar);
+    struct StandardPlonk(Fq);
 
-    impl Circuit<Scalar> for StandardPlonk {
+    impl Circuit<Fq> for StandardPlonk {
         type Config = StandardPlonkConfig;
         type FloorPlanner = SimpleFloorPlanner;
         #[cfg(feature = "circuit-params")]
@@ -819,14 +819,14 @@ mod tests {
             Self::default()
         }
 
-        fn configure(meta: &mut ConstraintSystem<Scalar>) -> Self::Config {
+        fn configure(meta: &mut ConstraintSystem<Fq>) -> Self::Config {
             StandardPlonkConfig::configure(meta)
         }
 
         fn synthesize(
             &self,
             config: Self::Config,
-            mut layouter: impl Layouter<Scalar>,
+            mut layouter: impl Layouter<Fq>,
         ) -> Result<(), Error> {
             layouter.assign_table(
                 || "8-bit table",
@@ -836,7 +836,7 @@ mod tests {
                             || format!("row {row}"),
                             config.table,
                             row as usize,
-                            || Value::known(Scalar::from(row + 1)),
+                            || Value::known(Fq::from(row + 1)),
                         )?;
                     }
 
@@ -849,13 +849,13 @@ mod tests {
                 |mut region| {
                     config.table_selector.enable(&mut region, 0)?;
                     region.assign_advice(|| "", config.a, 0, || Value::known(self.0))?;
-                    region.assign_fixed(|| "", config.q_a, 0, || Value::known(-Scalar::ONE))?;
+                    region.assign_fixed(|| "", config.q_a, 0, || Value::known(-Fq::ONE))?;
 
                     region.assign_advice(
                         || "",
                         config.a,
                         1,
-                        || Value::known(-Scalar::from(5u64)),
+                        || Value::known(-Fq::from(5u64)),
                     )?;
                     for (idx, column) in (1..).zip([
                         config.q_a,
@@ -868,12 +868,12 @@ mod tests {
                             || "",
                             column,
                             1,
-                            || Value::known(Scalar::from(idx as u64)),
+                            || Value::known(Fq::from(idx as u64)),
                         )?;
                     }
 
                     let a =
-                        region.assign_advice(|| "", config.a, 2, || Value::known(Scalar::ONE))?;
+                        region.assign_advice(|| "", config.a, 2, || Value::known(Fq::ONE))?;
                     a.copy_advice(|| "", &mut region, config.b, 3)?;
                     a.copy_advice(|| "", &mut region, config.c, 4)?;
                     Ok(())
@@ -887,17 +887,17 @@ mod tests {
         let k = 9;
         let mut random_byte = [0u8; 1];
         OsRng::fill_bytes(&mut OsRng, &mut random_byte);
-        let circuit = StandardPlonk(Scalar::from(random_byte[0] as u64));
+        let circuit = StandardPlonk(Fq::from(random_byte[0] as u64));
 
         let params = ParamsKZG::<Bls12>::unsafe_setup(k, OsRng);
         let vk = keygen_vk_with_k::<_, KZGCommitmentScheme<Bls12>, _>(&params, &circuit, k)
             .expect("vk should not fail");
         let pk = keygen_pk(vk, &circuit).expect("pk should not fail");
 
-        let instances: &[&[Scalar]] = &[&[circuit.0]];
+        let instances: &[&[Fq]] = &[&[circuit.0]];
         let mut transcript = CircuitTranscript::<State>::init();
 
-        create_proof::<Scalar, KZGCommitmentScheme<Bls12>, _, _>(
+        create_proof::<Fq, KZGCommitmentScheme<Bls12>, _, _>(
             &params,
             &pk,
             &[circuit.clone()],

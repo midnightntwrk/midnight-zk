@@ -27,7 +27,7 @@ use {
     crate::field::decomposition::chip::P2RDecompositionConfig,
     crate::field::decomposition::pow2range::Pow2RangeChip,
     crate::field::decomposition::pow2range::NB_POW2RANGE_COLS, crate::field::native::NB_ARITH_COLS,
-    crate::testing_utils::FromScratch, halo2_proofs::plonk::Instance,
+    crate::testing_utils::FromScratch, midnight_proofs::plonk::Instance,
 };
 
 use super::{automaton::Automaton, REGEX_ALPHABET_MAX_SIZE};
@@ -510,7 +510,7 @@ where
 mod test {
 
     use ff::PrimeField;
-    use halo2_proofs::{
+    use midnight_proofs::{
         circuit::{Layouter, SimpleFloorPlanner, Value},
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem, Error},
@@ -594,7 +594,7 @@ mod test {
             !cost_model || must_pass,
             "if cost_model is set to true, must_pass should be set to true"
         );
-        let prover = MockProver::<blstrs::Scalar>::run(k, circuit, vec![vec![], vec![]]);
+        let prover = MockProver::<blstrs::Fq>::run(k, circuit, vec![vec![], vec![]]);
         if must_pass {
             println!(
                 ">> Parsing input {} with automaton {}, which should pass",
@@ -621,7 +621,7 @@ mod test {
         }
 
         if cost_model {
-            circuit_to_json::<blstrs::Scalar>(
+            circuit_to_json::<blstrs::Fq>(
                 k,
                 "Automaton",
                 &format!("parsing perf (input length = {})", circuit.input.len()),

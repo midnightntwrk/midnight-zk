@@ -2068,7 +2068,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use blstrs::{G1Projective as BlsG1, Scalar as BlsScalar};
+    use blstrs::{G1Projective as BlsG1, Fq as BlsScalar};
     use group::Group;
     use halo2curves::{
         pasta::{vesta::Point as VestaCurve, Fp as VestaScalar, Fq as PallasScalar},
