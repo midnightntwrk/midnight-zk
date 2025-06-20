@@ -36,7 +36,7 @@ pub fn circuit_to_json<F>(
 {
     // Store model only when tests are run in BLS12-381 (i.e. when the
     // native scalar is BLS's scalar
-    if F::MODULUS == Scalar::MODULUS {
+    if F::MODULUS == Fq::MODULUS {
         let model =
             from_circuit_to_circuit_model::<F, _, 48, 32>(Some(k), &circuit, nb_public_inputs);
         update_json(chip_name, op_name, model).expect("csv generation failed");

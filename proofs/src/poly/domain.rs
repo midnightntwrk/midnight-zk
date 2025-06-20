@@ -530,7 +530,7 @@ fn test_l_i() {
     use rand_core::OsRng;
 
     use crate::utils::arithmetic::{eval_polynomial, lagrange_interpolate};
-    let domain = EvaluationDomain::<Scalar>::new(1, 3);
+    let domain = EvaluationDomain::<Fq>::new(1, 3);
 
     let mut l = vec![];
     let mut points = vec![];
@@ -538,13 +538,13 @@ fn test_l_i() {
         points.push(domain.omega.pow([i]));
     }
     for i in 0..8 {
-        let mut l_i = vec![Scalar::ZERO; 8];
-        l_i[i] = Scalar::ONE;
+        let mut l_i = vec![Fq::ZERO; 8];
+        l_i[i] = Fq::ONE;
         let l_i = lagrange_interpolate(&points[..], &l_i[..]);
         l.push(l_i);
     }
 
-    let x = Scalar::random(OsRng);
+    let x = Fq::random(OsRng);
     let xn = x.pow([8]);
 
     let evaluations = domain.l_i_range(x, xn, -7..=7);

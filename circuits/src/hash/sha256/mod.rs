@@ -538,7 +538,7 @@ impl<F: PrimeField, H: Sha256Instructions<F>, D: CoreDecompositionInstructions<F
 
 #[cfg(test)]
 mod tests {
-    use blstrs::Fq;
+    use blstrs::Fq as Scalar;
 
     use crate::{
         field::{decomposition::chip::P2RDecompositionChip, NativeGadget},

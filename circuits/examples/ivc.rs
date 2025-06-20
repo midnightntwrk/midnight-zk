@@ -5,7 +5,7 @@
 
 use std::{collections::BTreeMap, time::Instant};
 
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
     plonk::{create_proof, keygen_pk, keygen_vk_with_k, prepare, Circuit, ConstraintSystem, Error},
     poly::{kzg::KZGCommitmentScheme, EvaluationDomain},
