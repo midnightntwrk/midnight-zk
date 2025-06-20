@@ -20,7 +20,7 @@ use crate::{
             cpu_utils::{decompose_in_variable_limbsizes, variable_limbsize_coefficients},
             pow2range::{Pow2RangeChip, NB_POW2RANGE_COLS},
         },
-        native::NB_ARITH_COLS,
+        native::{NB_ARITH_COLS, NB_ARITH_FIXED_COLS},
         NativeChip,
     },
     instructions::{ArithInstructions, AssertionInstructions, AssignmentInstructions},
@@ -87,11 +87,18 @@ where
 
     fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
         let advice_columns: [_; NB_ARITH_COLS] = core::array::from_fn(|_| meta.advice_column());
-        let fixed_columns: [_; NB_ARITH_COLS + 4] = core::array::from_fn(|_| meta.fixed_column());
-        let instance_col = meta.instance_column();
+        let fixed_columns: [_; NB_ARITH_FIXED_COLS] = core::array::from_fn(|_| meta.fixed_column());
+        let committed_instance_column = meta.instance_column();
+        let instance_column = meta.instance_column();
 
-        let native_config =
-            NativeChip::configure(meta, &(advice_columns, fixed_columns, instance_col));
+        let native_config = NativeChip::configure(
+            meta,
+            &(
+                advice_columns,
+                fixed_columns,
+                [committed_instance_column, instance_column],
+            ),
+        );
         let pow2range_config =
             Pow2RangeChip::configure(meta, &advice_columns[1..=NB_POW2RANGE_COLS]);
 
@@ -228,8 +235,8 @@ fn test_decomposition_chip_variable() {
         limb_sizes: LimbType::Variable(limb_sizes),
         expected,
     };
-    let prover =
-        MockProver::run(K, &circuit_variable, vec![vec![]]).expect("Failed to run mock prover");
+    let prover = MockProver::run(K, &circuit_variable, vec![vec![], vec![]])
+        .expect("Failed to run mock prover");
     prover.assert_satisfied();
 }
 
@@ -262,8 +269,8 @@ fn test_decomposition_chip_fixed() {
             expected,
         };
 
-        let prover =
-            MockProver::run(K, &circuit_fixed, vec![vec![]]).expect("Failed to run mock prover");
+        let prover = MockProver::run(K, &circuit_fixed, vec![vec![], vec![]])
+            .expect("Failed to run mock prover");
         prover.assert_satisfied();
     }
 }
@@ -288,11 +295,18 @@ where
 
     fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
         let advice_columns: [_; NB_ARITH_COLS] = core::array::from_fn(|_| meta.advice_column());
-        let fixed_columns: [_; NB_ARITH_COLS + 4] = core::array::from_fn(|_| meta.fixed_column());
-        let instance_col = meta.instance_column();
+        let fixed_columns: [_; NB_ARITH_FIXED_COLS] = core::array::from_fn(|_| meta.fixed_column());
+        let committed_instance_column = meta.instance_column();
+        let instance_column = meta.instance_column();
 
-        let native_config =
-            NativeChip::configure(meta, &(advice_columns, fixed_columns, instance_col));
+        let native_config = NativeChip::configure(
+            meta,
+            &(
+                advice_columns,
+                fixed_columns,
+                [committed_instance_column, instance_column],
+            ),
+        );
         let pow2range_config =
             Pow2RangeChip::configure(meta, &advice_columns[1..=NB_POW2RANGE_COLS]);
 
@@ -336,6 +350,7 @@ fn decomposition_test_less_than_pow2() {
 
     let circuit = TestLessThanPow2Circuit { input: x, bound };
 
-    let prover = MockProver::run(K, &circuit, vec![vec![]]).expect("Failed to run mock prover");
+    let prover =
+        MockProver::run(K, &circuit, vec![vec![], vec![]]).expect("Failed to run mock prover");
     prover.assert_satisfied();
 }

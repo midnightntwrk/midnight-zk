@@ -8,7 +8,7 @@ use std::fmt::Debug;
 use ff::PrimeField;
 use halo2_proofs::{circuit::Layouter, plonk::Error};
 
-use crate::types::InnerValue;
+use crate::types::{AssignedVector, InnerValue, Vectorizable};
 
 /// The set of off-circuit instructions for hashing operations.
 pub trait HashCPU<Input, Output>: Clone + Debug {
@@ -25,6 +25,22 @@ where
 {
     /// Hash the given input into the designated output type.
     fn hash(&self, layouter: &mut impl Layouter<F>, inputs: &[Input]) -> Result<Output, Error>;
+}
+
+/// The set of circuit instructions for variable length hashing operations.
+pub trait VarHashInstructions<F, const MAX_LEN: usize, Input, Output, const A: usize>:
+    HashCPU<<Input as InnerValue>::Element, Output::Element>
+where
+    F: PrimeField,
+    Input: Vectorizable,
+    Output: InnerValue,
+{
+    /// Hash the given input into the designated output type.
+    fn varhash(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        inputs: &AssignedVector<F, Input, MAX_LEN, A>,
+    ) -> Result<Output, Error>;
 }
 
 #[cfg(test)]
@@ -78,10 +94,12 @@ pub mod tests {
         }
 
         fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+            let committed_instance_column = meta.instance_column();
             let instance_column = meta.instance_column();
+            let instance_columns = [committed_instance_column, instance_column];
             (
-                HashChip::configure_from_scratch(meta, &instance_column),
-                AssignChip::configure_from_scratch(meta, &instance_column),
+                HashChip::configure_from_scratch(meta, &instance_columns),
+                AssignChip::configure_from_scratch(meta, &instance_columns),
             )
         }
 
@@ -140,7 +158,7 @@ pub mod tests {
             _marker: PhantomData,
         };
 
-        MockProver::run(k, &circuit, vec![vec![]])
+        MockProver::run(k, &circuit, vec![vec![], vec![]])
             .unwrap()
             .assert_satisfied();
 

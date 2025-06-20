@@ -1,7 +1,7 @@
 //! Helper module for cpu ECDSA signatures over SECP256k1
 use base64::DecodeError;
 use ff::Field;
-use group::{Curve, GroupEncoding};
+use group::{Curve, GroupEncoding, UncompressedEncoding};
 use halo2curves::secp256k1::{
     Fp as secp256k1Base, Fq as secp256k1Scalar, Secp256k1, Secp256k1Affine,
 };
@@ -118,18 +118,47 @@ impl FromBase64 for ECDSASig {
 }
 
 impl FromBase64 for PublicKey {
+    /// Input must be base64 encoding of the compressed point in BE.
     fn from_base64(base64_bytes: &[u8]) -> Result<Self, DecodeError> {
-        let mut bytes = base64::decode_config(base64_bytes, base64::STANDARD_NO_PAD)?;
-        assert_eq!(bytes.len(), 33);
-        // Note:
-        // Hack to adapt Secp256k1 spec format to halo2curves format.
-        // We need to clear the identity flag, the second LSB of the first byte.
-        // We do so by clearing all bits except the sign bit, the LSB.
-        bytes[0] &= 0x01;
-        bytes[1..].reverse();
-        let repr = bytes.as_slice().into();
+        let input_len = base64_bytes.len();
 
-        let ret = Secp256k1Affine::from_bytes(&repr).expect("Valid compressed Secp256k1 point.");
-        Ok(ret.into())
+        match input_len {
+            // Compressed format.
+            44 => {
+                let mut bytes = base64::decode_config(base64_bytes, base64::STANDARD_NO_PAD)?;
+                assert_eq!(bytes.len(), 33);
+                // Note:
+                // Hack to adapt Secp256k1 spec format to halo2curves format.
+                // We need to clear the identity flag, the second LSB of the first byte.
+                // We do so by clearing all bits except the sign bit, the LSB.
+                bytes[0] &= 0x01;
+                bytes[1..].reverse();
+                let repr = bytes.as_slice().into();
+
+                let ret =
+                    Secp256k1Affine::from_bytes(&repr).expect("Valid compressed Secp256k1 point.");
+                Ok(ret.into())
+            }
+
+            // Uncompressed format.
+            86 => from_jwk(&base64_bytes[..43], &base64_bytes[43..]),
+            _ => Err(DecodeError::InvalidLength),
+        }
     }
+}
+
+/// Receives a public key in JWK format: (x, y) coordinates base64 encoded.
+/// Returns the public key as a curve point.
+fn from_jwk(x: &[u8], y: &[u8]) -> Result<PublicKey, DecodeError> {
+    let mut x_bytes = base64::decode_config(x, base64::URL_SAFE)?;
+    let mut y_bytes = base64::decode_config(y, base64::URL_SAFE)?;
+    assert_eq!(x_bytes.len(), 32);
+    assert_eq!(y_bytes.len(), 32);
+
+    x_bytes.reverse();
+    y_bytes.reverse();
+
+    let bytes: [u8; 64] = [x_bytes, y_bytes].concat().try_into().expect("64 bytes");
+    let ret = Secp256k1Affine::from_uncompressed(&bytes.into()).expect("Invalid point");
+    Ok(ret.into())
 }

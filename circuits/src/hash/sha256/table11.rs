@@ -28,6 +28,12 @@ use crate::hash::sha256::{
     instructions::Sha256Instructions, AssignedBits, AssignedBlockWord, BlockWord, BITS_PER_BYTE,
 };
 
+/// Number of advice columns needed for table11 chip
+pub const NB_TABLE11_ADVICE_COLS: usize = 9;
+
+/// Number of fixed columns needed for table11 chip
+pub const NB_TABLE11_FIXED_COLS: usize = 4;
+
 /// Configuration for a [`Table11Chip`].
 #[derive(Clone, Debug)]
 pub struct Table11Config {
@@ -70,7 +76,7 @@ impl<F: PrimeField> FromScratch<F> for Table11Chip<F> {
 
     fn configure_from_scratch(
         meta: &mut ConstraintSystem<F>,
-        _instance_column: &Column<Instance>,
+        _instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
         // Columns required by this chip:
         let message_schedule = meta.advice_column();
@@ -180,8 +186,8 @@ impl<F: PrimeField> Table11Chip<F> {
     /// Chip configuration from cap gate
     pub fn configure(
         meta: &mut ConstraintSystem<F>,
-        advice_columns: &[Column<Advice>; 9],
-        fixed_columns: &[Column<Fixed>; 4],
+        advice_columns: &[Column<Advice>; NB_TABLE11_ADVICE_COLS],
+        fixed_columns: &[Column<Fixed>; NB_TABLE11_FIXED_COLS],
     ) -> <Self as Chip<F>>::Config {
         let advice_columns = advice_columns.iter().collect::<Vec<_>>();
 

@@ -1,6 +1,6 @@
 use std::iter::once;
 
-use ff::PrimeField;
+use ff::{Field, PrimeField};
 use halo2_proofs::{
     circuit::{Chip, Layouter, Region, Value},
     plonk::{Advice, Column, ConstraintSystem, Constraints, Error, Expression, Fixed, Selector},
@@ -21,7 +21,7 @@ use crate::field::{
         chip::P2RDecompositionConfig,
         pow2range::{Pow2RangeChip, NB_POW2RANGE_COLS},
     },
-    native::NB_ARITH_COLS,
+    native::{NB_ARITH_COLS, NB_ARITH_FIXED_COLS},
 };
 use crate::{
     field::{decomposition::chip::P2RDecompositionChip, NativeChip, NativeGadget},
@@ -42,7 +42,7 @@ pub(crate) const NB_SKIPS_CIRCUIT: usize = 5;
 // A recurring type representing a set of assigned registers, representing the
 // internal state of Poseidon's computation. Does not account for the additional
 // registers needed in skipped rounds.
-type AssignedRegister<F> = [AssignedNative<F>; WIDTH];
+pub(super) type AssignedRegister<F> = [AssignedNative<F>; WIDTH];
 
 // Native gadget functions.
 type NG<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
@@ -50,9 +50,9 @@ type NG<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
 /// In-circuit Poseidon state.
 #[derive(Clone, Debug)]
 pub struct AssignedPoseidonState<F: PrimeField> {
-    register: AssignedRegister<F>,
-    queue: Vec<AssignedNative<F>>,
-    squeeze_position: usize,
+    pub(super) register: AssignedRegister<F>,
+    pub(super) queue: Vec<AssignedNative<F>>,
+    pub(super) squeeze_position: usize,
     input_len: Option<usize>,
 }
 
@@ -62,12 +62,16 @@ pub struct PoseidonConfig<F: PoseidonField> {
     /// Selector for full rounds.
     q_full_round: Selector,
 
-    /// Selector for optimised partial rounds skipping `1+NB_SKIPS_CIRCUIT`
+    /// Selector for optimized partial rounds skipping `1+NB_SKIPS_CIRCUIT`
     /// rounds.
     q_partial_round: Selector,
 
     /// Advice columns, including those potentially needed for optimised
-    /// skipping rounds.
+    /// skipping rounds. The Poseidon circuit (`PoseidonChip::permutation`)
+    /// assumes that the first `WIDTH` columns of `register_cols` are the (first
+    /// `WIDTH`) columns where `native_gadget::add_constants_in_region` assigns
+    /// its result. An assertion is checking this assumption in
+    /// `PoseidonChip::permutation` in debug mode.
     register_cols: [Column<Advice>; NB_POSEIDON_ADVICE_COLS],
 
     /// Fixed columns, one for each register column (their content will be
@@ -85,7 +89,7 @@ pub struct PoseidonChip<F: PoseidonField> {
     /// Configuration of Poseidon chips.
     config: PoseidonConfig<F>,
     /// Calls to native gadgets functions.
-    native_gadget: NG<F>,
+    pub(super) native_gadget: NG<F>,
 }
 
 impl<F: PoseidonField> Chip<F> for PoseidonChip<F> {
@@ -125,21 +129,27 @@ impl<F: PoseidonField> PoseidonChip<F> {
 
 // Computes the identity of the linear layer of Poseidon's rounds
 // (multiplication by the MDS matrix and addition of round constants). To save
-// up the cost of addition, the identity is computed by mutating the round
-// constant argument.
+// up the cost of addition, the identity is computed by mutating a variable
+// initialised as the round-constant argument.
 fn linear_layer<F: PoseidonField>(
-    inputs: &[Expression<F>],        // Length `WIDTH`.
-    outputs: &[Expression<F>],       // Length `WIDTH`.
-    constants: &mut [Expression<F>], // Length `WIDTH`.
-) {
-    #[allow(clippy::needless_range_loop)]
+    inputs: [Expression<F>; WIDTH],
+    outputs: [Expression<F>; WIDTH],
+    constants: [Expression<F>; WIDTH],
+) -> [Expression<F>; WIDTH] {
+    let mut ids = constants;
     for i in 0..WIDTH {
-        constants[i] = constants[i].clone() - outputs[i].clone();
+        ids[i] = ids[i].clone() - outputs[i].clone();
+        #[allow(clippy::needless_range_loop)]
         for j in 0..WIDTH {
-            constants[i] =
-                constants[i].clone() + Expression::Constant(F::MDS[i][j]) * inputs[j].clone();
+            ids[i] = ids[i].clone() + Expression::Constant(F::MDS[i][j]) * inputs[j].clone();
         }
     }
+    ids
+}
+
+// Performs an S-box computation.
+pub(crate) fn sbox<F: Field>(x: Expression<F>) -> Expression<F> {
+    x.clone() * x.square().square()
 }
 
 impl<F: PoseidonField> ComposableChip<F> for PoseidonChip<F> {
@@ -182,27 +192,19 @@ impl<F: PoseidonField> ComposableChip<F> for PoseidonChip<F> {
         // applying a permutation, and the last full round will use `[F::ZERO;
         // WIDTH]` as round constants.
         meta.create_gate("full_round_gate", |meta| {
-            let q = meta.query_selector(q_full_round);
+            let inputs =
+                core::array::from_fn(|i| meta.query_advice(register_cols[i], Rotation::cur()));
 
-            let mut inputs = register_cols[0..WIDTH]
-                .iter()
-                .map(|&col| meta.query_advice(col, Rotation::cur()))
-                .collect::<Vec<_>>();
-            let outputs = register_cols[0..WIDTH]
-                .iter()
-                .map(|&col| meta.query_advice(col, Rotation::next()))
-                .collect::<Vec<_>>();
-            let mut identities = constant_cols[0..WIDTH]
-                .iter()
-                .map(|&col| meta.query_fixed(col, Rotation::cur()))
-                .collect::<Vec<_>>();
+            let outputs =
+                core::array::from_fn(|i| meta.query_advice(register_cols[i], Rotation::next()));
 
-            for x in inputs.iter_mut() {
-                *x = x.clone().square().square() * x.clone();
-            }
-            linear_layer(&inputs, &outputs, &mut identities);
+            let constants =
+                core::array::from_fn(|i| meta.query_fixed(constant_cols[i], Rotation::cur()));
 
-            Constraints::with_selector(q, identities)
+            Constraints::with_selector(
+                meta.query_selector(q_full_round),
+                linear_layer(inputs.map(sbox), outputs, constants),
+            )
         });
 
         // Generation of the optimised round identities, representing a batch of
@@ -229,21 +231,22 @@ impl<F: PoseidonField> ComposableChip<F> for PoseidonChip<F> {
                 .map(|col| meta.query_advice(*col, Rotation::next()))
                 .collect::<Vec<_>>();
 
-            let ids = ids.to_expression(&inputs);
+            let constraints = ids.to_expression(&inputs);
 
-            let output_lin_ids = (0..WIDTH - 1)
-                .map(|i| round_constants[i].clone() - outputs[i].clone() + ids[i].clone());
-            let input_pow_ids = (WIDTH - 1..WIDTH + NB_SKIPS_CIRCUIT - 1)
-                .map(|i| round_constants[i].clone() - inputs[i + 1].clone() + ids[i].clone());
-            let output_pow_id: Expression<F> =
+            let output_lin_constraints = (0..WIDTH - 1)
+                .map(|i| round_constants[i].clone() - outputs[i].clone() + constraints[i].clone());
+            let input_pow_constraints = (WIDTH - 1..WIDTH + NB_SKIPS_CIRCUIT - 1).map(|i| {
+                round_constants[i].clone() - inputs[i + 1].clone() + constraints[i].clone()
+            });
+            let output_pow_constraint: Expression<F> =
                 round_constants[WIDTH + NB_SKIPS_CIRCUIT - 1].clone() - outputs[WIDTH - 1].clone()
-                    + ids[WIDTH + NB_SKIPS_CIRCUIT - 1].clone();
+                    + constraints[WIDTH + NB_SKIPS_CIRCUIT - 1].clone();
 
-            let ids = output_lin_ids
-                .chain(input_pow_ids)
-                .chain(once(output_pow_id))
+            let constraints = output_lin_constraints
+                .chain(input_pow_constraints)
+                .chain(once(output_pow_constraint))
                 .collect::<Vec<_>>();
-            Constraints::with_selector(q, ids)
+            Constraints::with_selector(q, constraints)
         });
 
         PoseidonConfig {
@@ -265,13 +268,13 @@ impl<F: PoseidonField> PoseidonChip<F> {
     fn assign_constants_full(
         &self,
         region: &mut Region<'_, F>,
-        round: usize,
+        round_index: usize,
         offset: usize,
     ) -> Result<(), Error> {
-        let round_constants = if round == NB_FULL_ROUNDS + NB_PARTIAL_ROUNDS - 1 {
+        let round_constants = if round_index == NB_FULL_ROUNDS + NB_PARTIAL_ROUNDS - 1 {
             [F::ZERO; WIDTH]
         } else {
-            F::ROUND_CONSTANTS[round + 1]
+            F::ROUND_CONSTANTS[round_index + 1]
         };
         for (col, constant) in self.config.constant_cols[0..WIDTH]
             .iter()
@@ -291,14 +294,14 @@ impl<F: PoseidonField> PoseidonChip<F> {
     fn assign_constants_partial(
         &self,
         region: &mut Region<'_, F>,
-        round: usize,
+        round_batch_index: usize,
         offset: usize,
     ) -> Result<(), Error> {
         for (col, constant) in self
             .config
             .constant_cols
             .iter()
-            .zip(&self.config.pre_computed.round_constants[round])
+            .zip(&self.config.pre_computed.round_constants[round_batch_index])
         {
             region.assign_fixed(
                 || format!("load constant for partial a round with {NB_SKIPS_CIRCUIT} skips"),
@@ -319,16 +322,16 @@ impl<F: PoseidonField> PoseidonChip<F> {
         &self,
         region: &mut Region<'_, F>,
         inputs: &mut [AssignedNative<F>], // Length `WIDTH`.
-        round: usize,
+        round_index: usize,
         offset: &mut usize,
     ) -> Result<(), Error> {
         self.config.q_full_round.enable(region, *offset)?;
-        self.assign_constants_full(region, round, *offset)?;
+        self.assign_constants_full(region, round_index, *offset)?;
 
         let outputs = Value::from_iter(inputs.iter().map(|x| x.value().copied()))
             .map(|inputs: Vec<F>| {
                 let mut inputs = inputs;
-                full_round_cpu(round, &mut inputs);
+                full_round_cpu(round_index, &mut inputs);
                 inputs
             })
             .transpose_vec(WIDTH);
@@ -353,17 +356,20 @@ impl<F: PoseidonField> PoseidonChip<F> {
         &self,
         region: &mut Region<'_, F>,
         inputs: &mut [AssignedNative<F>], // Length `WIDTH`.
-        round: usize,
+        round_batch_index: usize,
         offset: &mut usize,
     ) -> Result<(), Error> {
         self.config.q_partial_round.enable(region, *offset)?;
-        self.assign_constants_partial(region, round, *offset)?;
+        self.assign_constants_partial(region, round_batch_index, *offset)?;
 
         let outputs = Value::from_iter(inputs.iter().map(|x| x.value().copied()))
             .map(|inputs: Vec<F>| {
                 let mut state = inputs;
-                let skip_advice_vals =
-                    partial_round_cpu_for_circuits(&self.config.pre_computed, round, &mut state);
+                let skip_advice_vals = partial_round_cpu_for_circuits(
+                    &self.config.pre_computed,
+                    round_batch_index,
+                    &mut state,
+                );
                 for (col, skip_advice) in self.config.register_cols[WIDTH..WIDTH + NB_SKIPS_CIRCUIT]
                     .iter()
                     .zip(skip_advice_vals)
@@ -393,8 +399,8 @@ impl<F: PoseidonField> PoseidonChip<F> {
 
     // A combination of the different circuit gates to produce the full Poseidon
     // permutation (`NB_FULL_ROUNDS` full rounds, separated in the middle by
-    // `NB_PARTIAL_ROUNDS` partial rounds, possibly with optimised skips).
-    fn permutation(
+    // `NB_PARTIAL_ROUNDS` partial rounds, possibly with optimized skips).
+    pub(super) fn permutation(
         &self,
         layouter: &mut impl Layouter<F>,
         inputs: &AssignedRegister<F>,
@@ -402,29 +408,41 @@ impl<F: PoseidonField> PoseidonChip<F> {
         layouter.assign_region(
             || "permutation layout",
             |mut region| {
-                let mut state = inputs.clone();
                 let mut offset: usize = 0;
 
-                state = self
+                let mut state: AssignedRegister<F> = self
                     .native_gadget
                     .native_chip
                     .add_constants_in_region(
                         &mut region,
-                        &state,
+                        inputs,
                         &F::ROUND_CONSTANTS[0],
                         &mut offset,
                     )?
                     .try_into()
                     .unwrap();
 
-                for round in 0..NB_FULL_ROUNDS / 2 {
-                    self.full_round(&mut region, &mut state, round, &mut offset)?;
+                // The first full round assumes that `add_constants_in_region` above assigns
+                // `state` in the same columns as Poseidon in the region. This is checked by the
+                // below assertion.
+                assert!(state
+                    .iter()
+                    .zip(self.config.register_cols)
+                    .all(|(acell, col)| {
+                        let col1: Column<Advice> = acell.cell().column.try_into().unwrap();
+                        col1 == col
+                    }));
+
+                for round_index in 0..NB_FULL_ROUNDS / 2 {
+                    self.full_round(&mut region, &mut state, round_index, &mut offset)?;
                 }
-                for round in 0..NB_PARTIAL_ROUNDS / (1 + NB_SKIPS_CIRCUIT) {
-                    self.partial_round(&mut region, &mut state, round, &mut offset)?;
+                for round_batch_index in 0..NB_PARTIAL_ROUNDS / (1 + NB_SKIPS_CIRCUIT) {
+                    self.partial_round(&mut region, &mut state, round_batch_index, &mut offset)?;
                 }
-                for round in (NB_FULL_ROUNDS / 2 + NB_PARTIAL_ROUNDS..).take(NB_FULL_ROUNDS / 2) {
-                    self.full_round(&mut region, &mut state, round, &mut offset)?;
+                for round_index in
+                    (NB_FULL_ROUNDS / 2 + NB_PARTIAL_ROUNDS..).take(NB_FULL_ROUNDS / 2)
+                {
+                    self.full_round(&mut region, &mut state, round_index, &mut offset)?;
                 }
                 Ok(state)
             },
@@ -540,10 +558,10 @@ impl<F: PoseidonField> FromScratch<F> for PoseidonChip<F> {
 
     fn configure_from_scratch(
         meta: &mut ConstraintSystem<F>,
-        instance_col: &Column<Instance>,
+        instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
         let nb_advice_cols = std::cmp::max(NB_POSEIDON_ADVICE_COLS, NB_ARITH_COLS);
-        let nb_fixed_cols = std::cmp::max(NB_POSEIDON_FIXED_COLS, NB_ARITH_COLS + 4);
+        let nb_fixed_cols = std::cmp::max(NB_POSEIDON_FIXED_COLS, NB_ARITH_FIXED_COLS);
 
         let advice_cols = (0..nb_advice_cols)
             .map(|_| meta.advice_column())
@@ -557,8 +575,8 @@ impl<F: PoseidonField> FromScratch<F> for PoseidonChip<F> {
             meta,
             &(
                 advice_cols[..NB_ARITH_COLS].try_into().unwrap(),
-                fixed_cols[..NB_ARITH_COLS + 4].try_into().unwrap(),
-                *instance_col,
+                fixed_cols[..NB_ARITH_FIXED_COLS].try_into().unwrap(),
+                *instance_columns,
             ),
         );
         let poseidon_config = PoseidonChip::configure(
@@ -584,7 +602,6 @@ impl<F: PoseidonField> FromScratch<F> for PoseidonChip<F> {
 
 #[cfg(test)]
 mod tests {
-
     use halo2_proofs::{circuit::SimpleFloorPlanner, dev::MockProver, plonk::Circuit};
 
     use super::*;
@@ -604,7 +621,7 @@ mod tests {
     // Implements one instance of a Poseidon circuit (i.e., where the prover
     // justifies they know the preimage of a given value). In combination with the
     // golden files, it can be used to estimate precisely the resources consumed by
-    // Poseidon's hash: substract the resources for two hashes (uncomment the line
+    // Poseidon's hash: subtract the resources for two hashes (uncomment the line
     // at the end of this `impl` block to trigger a second dummy hash) by the
     // resources for one hash.
     impl<F: PoseidonField> Circuit<F> for PermCircuit<F> {
@@ -619,8 +636,12 @@ mod tests {
         }
 
         fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+            let committed_instance_column = meta.instance_column();
             let instance_column = meta.instance_column();
-            PoseidonChip::configure_from_scratch(meta, &instance_column)
+            PoseidonChip::configure_from_scratch(
+                meta,
+                &[committed_instance_column, instance_column],
+            )
         }
 
         fn synthesize(
@@ -628,18 +649,20 @@ mod tests {
             config: Self::Config,
             mut layouter: impl Layouter<F>,
         ) -> Result<(), Error> {
-            let native_gadget = NG::<F>::new_from_scratch(&config.0);
             let poseidon_chip = PoseidonChip::new_from_scratch(&config);
             PoseidonChip::load_from_scratch(&mut layouter, &config);
 
-            let inputs: AssignedRegister<F> = native_gadget
+            let inputs: AssignedRegister<F> = poseidon_chip
+                .native_gadget
                 .assign_many(&mut layouter, &self.inputs)?
                 .try_into()
                 .unwrap();
             let outputs = poseidon_chip.permutation(&mut layouter, &inputs)?;
 
             for (out, expected) in outputs.iter().zip(self.expected.iter()) {
-                native_gadget.assert_equal_to_fixed(&mut layouter, out, *expected)?;
+                poseidon_chip
+                    .native_gadget
+                    .assert_equal_to_fixed(&mut layouter, out, *expected)?;
             }
 
             // Comment or uncomment the below to get +N rows in the circuit, where N is the
@@ -666,7 +689,7 @@ mod tests {
 
         let k = 10;
 
-        MockProver::run(k, &circuit, vec![vec![]])
+        MockProver::run(k, &circuit, vec![vec![], vec![]])
             .unwrap()
             .assert_satisfied();
 
@@ -700,13 +723,12 @@ mod tests {
         // Set the second argument to true to experiment on the permutation cost.
         run_permutation_test(inputs, true);
     }
+
     #[test]
     fn sponge_test() {
         // Consistency tests between the cpu and circuit implementations of the
         // permutation.
         run_sponge_test::<blstrs::Scalar>("blstrs", true);
-        run_sponge_test::<halo2curves::pasta::Fp>("pallas", false);
-        run_sponge_test::<halo2curves::pasta::Fq>("vesta", false);
     }
 
     #[test]

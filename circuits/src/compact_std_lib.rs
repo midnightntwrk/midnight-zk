@@ -17,8 +17,10 @@ use std::{cell::RefCell, cmp::max, convert::TryInto, fmt::Debug, io, rc::Rc};
 use blake2b_simd::State as Blake2bState;
 use blstrs::G1Projective;
 use ff::Field;
+use group::{prime::PrimeCurveAffine, Group};
 use halo2_proofs::{
     circuit::{Chip, Layouter, SimpleFloorPlanner, Value},
+    dev::cost_model::{from_circuit_to_circuit_model, CircuitModel},
     plonk::{k_from_circuit, prepare, Circuit, ConstraintSystem, Error, ProvingKey, VerifyingKey},
     poly::{
         commitment::{Guard, Params},
@@ -50,12 +52,15 @@ use crate::{
         foreign::{
             nb_field_chip_columns, params::MultiEmulationParams as MEP, FieldChip, FieldChipConfig,
         },
-        native::NB_ARITH_COLS,
+        native::{NB_ARITH_COLS, NB_ARITH_FIXED_COLS},
         NativeChip, NativeConfig, NativeGadget,
     },
     hash::{
         poseidon::{PoseidonChip, PoseidonConfig, NB_POSEIDON_ADVICE_COLS, NB_POSEIDON_FIXED_COLS},
-        sha256::{Sha256, Table11Chip, Table11Config, Table16Chip, Table16Config},
+        sha256::{
+            Sha256, Table11Chip, Table11Config, Table16Chip, Table16Config, NB_TABLE11_ADVICE_COLS,
+            NB_TABLE11_FIXED_COLS,
+        },
     },
     instructions::{
         hash_to_curve::HashToCurveInstructions, ArithInstructions, AssertionInstructions,
@@ -64,11 +69,10 @@ use crate::{
         DecompositionInstructions, EccInstructions, EqualityInstructions, FieldInstructions,
         HashInstructions, PublicInputInstructions, RangeCheckInstructions, ZeroInstructions,
     },
-    json::{Base64Chip, Base64Config, ParserGadget},
+    json::{Base64Chip, Base64Config, ParserGadget, NB_BASE64_ADVICE_COLS},
     map::map_gadget::MapGadget,
     types::{
-        AssignedBit, AssignedByte, AssignedNative, AssignedNativePoint, Bit, InnerValue,
-        Instantiable,
+        AssignedBit, AssignedByte, AssignedNative, AssignedNativePoint, InnerValue, Instantiable,
     },
     utils::{BlstPLONK, ComposableChip},
 };
@@ -96,6 +100,8 @@ pub enum ShaTableSize {
     /// Table of size 2^16.
     Table16,
 }
+
+const ZKSTD_VERSION: u32 = 1;
 
 /// Architecture of the standard library. Specifies what chips need to be
 /// configured.
@@ -133,47 +139,65 @@ impl Default for ZkStdLibArch {
     }
 }
 
-impl ZkStdLibArch {
-    fn to_byte(self) -> u8 {
-        let bit0 = if self.jubjub { 1 } else { 0 };
-        let bit1 = if self.poseidon { 1 } else { 0 };
-        let bits23 = match self.sha256 {
+impl From<ZkStdLibArch> for u8 {
+    fn from(arch: ZkStdLibArch) -> Self {
+        let bit0 = if arch.jubjub { 1 } else { 0 };
+        let bit1 = if arch.poseidon { 1 } else { 0 };
+        let bits23 = match arch.sha256 {
             None => 0,
             Some(ShaTableSize::Table11) => 1,
             Some(ShaTableSize::Table16) => 2,
         };
-        let bit4 = if self.secp256k1 { 1 } else { 0 };
-        let bit5 = if self.bls12_381 { 1 } else { 0 };
-        let bit6 = if self.base64 { 1 } else { 0 };
+        let bit4 = if arch.secp256k1 { 1 } else { 0 };
+        let bit5 = if arch.bls12_381 { 1 } else { 0 };
+        let bit6 = if arch.base64 { 1 } else { 0 };
         bit0 ^ (bit1 << 1) ^ (bits23 << 2) ^ (bit4 << 4) ^ (bit5 << 5) ^ (bit6 << 6)
     }
+}
 
-    fn from_byte(byte: u8) -> Self {
-        ZkStdLibArch {
-            jubjub: byte & 1 != 0,
-            poseidon: byte & 2 != 0,
-            sha256: match (byte >> 2) & 0b11 {
+impl TryInto<ZkStdLibArch> for u8 {
+    type Error = io::Error;
+
+    fn try_into(self) -> Result<ZkStdLibArch, Self::Error> {
+        Ok(ZkStdLibArch {
+            jubjub: self & 1 != 0,
+            poseidon: self & 2 != 0,
+            sha256: match (self >> 2) & 0b11 {
                 0 => None,
                 1 => Some(ShaTableSize::Table11),
                 2 => Some(ShaTableSize::Table16),
-                _ => unreachable!(),
+                _ => return Err(io::Error::from(io::ErrorKind::InvalidInput)),
             },
-            secp256k1: byte & 16 != 0,
-            bls12_381: byte & 32 != 0,
-            base64: byte & 64 != 0,
-        }
+            secp256k1: self & 16 != 0,
+            bls12_381: self & 32 != 0,
+            base64: self & 64 != 0,
+        })
     }
+}
 
+impl ZkStdLibArch {
     /// Writes the ZKStd architecture to a buffer.
     pub fn write<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
-        writer.write_all(&[self.to_byte()])
+        writer.write_all(&ZKSTD_VERSION.to_le_bytes())?;
+        writer.write_all(&[(*self).into()])
     }
 
     /// Reads the ZkStd architecture from a buffer.
     pub fn read<R: io::Read>(reader: &mut R) -> io::Result<Self> {
-        let mut byte = [0u8; 1];
-        reader.read_exact(&mut byte)?;
-        Ok(Self::from_byte(byte[0]))
+        let mut version = [0u8; 4];
+        reader.read_exact(&mut version)?;
+        let version = u32::from_le_bytes(version);
+        match version {
+            1 => {
+                let mut byte = [0u8; 1];
+                reader.read_exact(&mut byte)?;
+                byte[0].try_into()
+            }
+            _ => Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("Unsupported ZKStd version: {}", version),
+            )),
+        }
     }
 }
 
@@ -284,7 +308,11 @@ impl ZkStdLib {
             } else {
                 0
             },
-            if arch.sha256.is_some() { 9 } else { 0 },
+            match arch.sha256 {
+                Some(ShaTableSize::Table11) => NB_TABLE11_ADVICE_COLS,
+                Some(ShaTableSize::Table16) => 0, // Table16 advice cols are not shareable
+                None => 0,
+            },
             if arch.secp256k1 {
                 max(
                     nb_field_chip_columns::<F, secp256k1::Fq, MEP>(),
@@ -301,21 +329,32 @@ impl ZkStdLib {
             } else {
                 0
             },
-            if arch.base64 { 4 } else { 0 },
+            if arch.base64 {
+                NB_BASE64_ADVICE_COLS
+            } else {
+                0
+            },
         ]
-        .iter()
-        .fold(0, |acc, n| max(acc, *n));
+        .into_iter()
+        .max()
+        .unwrap_or(0);
 
         let nb_fixed_cols = [
-            NB_ARITH_COLS + 4,
+            NB_ARITH_FIXED_COLS,
             if arch.poseidon {
                 NB_POSEIDON_FIXED_COLS
             } else {
                 0
             },
+            match arch.sha256 {
+                Some(ShaTableSize::Table11) => NB_TABLE11_FIXED_COLS,
+                Some(ShaTableSize::Table16) => 0, // Table16 fixed cols are not shareable
+                None => 0,
+            },
         ]
-        .iter()
-        .fold(0, |acc, n| max(acc, *n));
+        .into_iter()
+        .max()
+        .unwrap_or(0);
 
         let advice_columns = (0..nb_advice_cols)
             .map(|_| meta.advice_column())
@@ -323,14 +362,15 @@ impl ZkStdLib {
         let fixed_columns = (0..nb_fixed_cols)
             .map(|_| meta.fixed_column())
             .collect::<Vec<_>>();
+        let committed_instance_column = meta.instance_column();
         let instance_column = meta.instance_column();
 
         let native_config = NativeChip::configure(
             meta,
             &(
                 advice_columns[..NB_ARITH_COLS].try_into().unwrap(),
-                fixed_columns[..(NB_ARITH_COLS + 4)].try_into().unwrap(),
-                instance_column,
+                fixed_columns[..NB_ARITH_FIXED_COLS].try_into().unwrap(),
+                [committed_instance_column, instance_column],
             ),
         );
 
@@ -351,8 +391,8 @@ impl ZkStdLib {
         let table11_config = match arch.sha256 {
             Some(ShaTableSize::Table11) => Some(Table11Chip::configure(
                 meta,
-                &advice_columns[..9].try_into().unwrap(),
-                fixed_columns[0..4].try_into().unwrap(),
+                &advice_columns[..NB_TABLE11_ADVICE_COLS].try_into().unwrap(),
+                fixed_columns[..NB_TABLE11_FIXED_COLS].try_into().unwrap(),
             )),
             _ => None,
         };
@@ -403,7 +443,7 @@ impl ZkStdLib {
         let base64_config = match arch.base64 {
             true => Some(Base64Chip::configure(
                 meta,
-                advice_columns[..4].try_into().unwrap(),
+                advice_columns[..NB_BASE64_ADVICE_COLS].try_into().unwrap(),
             )),
             false => None,
         };
@@ -433,7 +473,7 @@ impl ZkStdLib {
     pub fn jubjub(&self) -> &EccChip<C> {
         self.jubjub_chip
             .as_ref()
-            .unwrap_or_else(|| panic!("ZkStdArch must enable jubjub"))
+            .expect("ZkStdArch must enable jubjub")
     }
 
     /// Gadget for performing in-circuit big-unsigned integer operations.
@@ -489,7 +529,7 @@ impl ZkStdLib {
     ///
     /// ```
     /// # midnight_circuits::run_test_std_lib!(chip, layouter, 12, {
-    /// let input: AssignedBit<F> = chip.assign_fixed(layouter, Bit(true))?;
+    /// let input: AssignedBit<F> = chip.assign_fixed(layouter, true)?;
     /// chip.assert_true(layouter, &input)?;
     /// # });
     /// ```
@@ -499,7 +539,7 @@ impl ZkStdLib {
         input: &AssignedBit<F>,
     ) -> Result<(), Error> {
         self.native_gadget
-            .assert_equal_to_fixed(layouter, input, Bit(true))
+            .assert_equal_to_fixed(layouter, input, true)
     }
 
     /// Assert that a given assigned bit is false
@@ -509,7 +549,7 @@ impl ZkStdLib {
         input: &AssignedBit<F>,
     ) -> Result<(), Error> {
         self.native_gadget
-            .assert_equal_to_fixed(layouter, input, Bit(false))
+            .assert_equal_to_fixed(layouter, input, false)
     }
 
     /// Returns `1` iff `x < y`.
@@ -599,10 +639,10 @@ impl ZkStdLib {
     /// let input = chip.assign_many(
     ///     layouter,
     ///     &[
-    ///         Value::known(Byte(13)),
-    ///         Value::known(Byte(226)),
-    ///         Value::known(Byte(119)),
-    ///         Value::known(Byte(5)),
+    ///         Value::known(13),
+    ///         Value::known(226),
+    ///         Value::known(119),
+    ///         Value::known(5),
     ///     ],
     /// )?;
     ///
@@ -655,7 +695,7 @@ impl Bls12381Chip {
 
 impl<T> AssignmentInstructions<F, T> for ZkStdLib
 where
-    T: Instantiable<F>,
+    T: InnerValue,
     T::Element: Clone,
     NG: AssignmentInstructions<F, T>,
 {
@@ -1160,7 +1200,7 @@ impl<Rel: Relation> MidnightPK<Rel> {
 /// #     compact_std_lib::{self, MidnightCircuit, Relation, ShaTableSize, ZkStdLib, ZkStdLibArch},
 /// #     instructions::{AssignmentInstructions, PublicInputInstructions},
 /// #     testing_utils::plonk_api::filecoin_srs,
-/// #     types::{AssignedByte, Byte, Instantiable},
+/// #     types::{AssignedByte, Instantiable},
 /// # };
 /// # use rand::{rngs::OsRng, Rng, SeedableRng};
 /// # use rand_chacha::ChaCha8Rng;
@@ -1183,7 +1223,7 @@ impl<Rel: Relation> MidnightPK<Rel> {
 ///     fn format_instance(instance: &Self::Instance) -> Vec<F> {
 ///         instance
 ///             .iter()
-///             .flat_map(|b| AssignedByte::<F>::as_public_input(&Byte(*b)))
+///             .flat_map(AssignedByte::<F>::as_public_input)
 ///             .collect()
 ///     }
 ///
@@ -1195,8 +1235,7 @@ impl<Rel: Relation> MidnightPK<Rel> {
 ///         _instance: Value<Self::Instance>,
 ///         witness: Value<Self::Witness>,
 ///     ) -> Result<(), Error> {
-///         let witness_bytes = witness.transpose_array().map(|v| v.map(Byte));
-///         let assigned_input = std_lib.assign_many(layouter, &witness_bytes)?;
+///         let assigned_input = std_lib.assign_many(layouter, &witness.transpose_array())?;
 ///         let output = std_lib.sha256(layouter, &assigned_input)?;
 ///         output
 ///             .iter()
@@ -1325,6 +1364,11 @@ impl<'a, R: Relation> Circuit<F> for MidnightCircuit<'a, R> {
         *self.nb_public_inputs.borrow_mut() =
             Some(zk_std_lib.native_gadget.native_chip.nb_public_inputs());
 
+        assert_eq!(
+            (zk_std_lib.native_gadget.native_chip).nb_committed_public_inputs(),
+            0
+        );
+
         // We load the tables at the end, once we have figured out what chips/gadgets
         // were actually used.
         zk_std_lib.core_decomposition_chip.load(&mut layouter)?;
@@ -1398,7 +1442,7 @@ pub fn prove<R: Relation>(
         nb_public_inputs: Rc::new(RefCell::new(None)),
     };
     let pi = R::format_instance(instance);
-    BlstPLONK::<MidnightCircuit<R>>::prove(params, &pk.pk, &circuit, &[&pi], rng)
+    BlstPLONK::<MidnightCircuit<R>>::prove(params, &pk.pk, &circuit, 1, &[&[], &pi], rng)
 }
 
 /// Verifies the given proof of relation `R` with respect to the given instance.
@@ -1413,7 +1457,13 @@ pub fn verify<R: Relation>(
     if pi.len() != vk.nb_public_inputs {
         return Err(Error::InvalidInstances);
     }
-    BlstPLONK::<MidnightCircuit<R>>::verify(params_verifier, &vk.vk, &[&pi], proof)
+    BlstPLONK::<MidnightCircuit<R>>::verify(
+        params_verifier,
+        &vk.vk,
+        &[blstrs::G1Affine::identity()],
+        &[&pi],
+        proof,
+    )
 }
 
 /// Verifies a batch of proofs with respect to their corresponding vk.
@@ -1430,9 +1480,10 @@ pub fn batch_verify(
     proofs: &[Vec<u8>],
 ) -> Result<(), Error> {
     let n = params_verifier.len();
-    debug_assert_eq!(vks.len(), n);
-    debug_assert_eq!(pis.len(), n);
-    debug_assert_eq!(proofs.len(), n);
+    if vks.len() != n || pis.len() != n || proofs.len() != n {
+        // TODO: have richer types in halo2
+        return Err(Error::InvalidInstances);
+    }
 
     let guards = vks
         .iter()
@@ -1450,6 +1501,7 @@ pub fn batch_verify(
                 CircuitTranscript<Blake2bState>,
             >(
                 &vk.vk,
+                &[&[blstrs::G1Projective::identity()]],
                 // TODO: We could batch here proofs with the same vk.
                 &[&[pi]],
                 &mut transcript,
@@ -1461,6 +1513,12 @@ pub fn batch_verify(
         Ok(())
     } else {
         // TODO: Have richer error types
-        Err(Error::Synthesis)
+        Err(Error::Opening)
     }
+}
+
+/// Cost model of the given relation.
+pub fn cost_model<R: Relation>(relation: &R) -> CircuitModel {
+    let circuit = MidnightCircuit::from_relation(relation);
+    from_circuit_to_circuit_model::<_, _, 48, 32>(None, &circuit, 0)
 }

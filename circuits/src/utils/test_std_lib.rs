@@ -18,7 +18,7 @@ macro_rules! run_test_std_lib {
                 AssignedBounded, NativeChip, NativeGadget,
             },
             instructions::*,
-            types::{AssignedBit, AssignedByte, AssignedNative, Bit, Byte},
+            types::{AssignedBit, AssignedByte, AssignedNative},
             compact_std_lib::{MidnightCircuit, Relation, ZkStdLib},
         };
 
@@ -61,7 +61,7 @@ macro_rules! run_test_std_lib {
 
         let circuit = MidnightCircuit::from_relation(&TestCircuit);
 
-        MockProver::run($k, &circuit, vec![vec![]])
+        MockProver::run($k, &circuit, vec![vec![], vec![]])
             .expect("Failed to generate proof")
             .assert_satisfied();
     };

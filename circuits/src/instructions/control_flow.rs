@@ -22,7 +22,7 @@ where
     /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
     /// let x: AssignedNative<F> = chip.assign(&mut layouter, Value::known(F::ZERO))?;
     /// let y: AssignedNative<F> = chip.assign(&mut layouter, Value::known(F::ONE))?;
-    /// let cond: AssignedBit<F> = chip.assign(&mut layouter, Value::known(Bit(true)))?;
+    /// let cond: AssignedBit<F> = chip.assign(&mut layouter, Value::known(true))?;
     ///
     /// let choice = chip.select(&mut layouter, &cond, &x, &y)?;
     /// chip.assert_equal(&mut layouter, &choice, &x)?;
@@ -122,11 +122,15 @@ pub mod tests {
         }
 
         fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+            let committed_instance_column = meta.instance_column();
             let instance_column = meta.instance_column();
             let fixed_column = meta.fixed_column();
             meta.enable_equality(fixed_column);
             (
-                ControlFlowChip::configure_from_scratch(meta, &instance_column),
+                ControlFlowChip::configure_from_scratch(
+                    meta,
+                    &[committed_instance_column, instance_column],
+                ),
                 fixed_column,
             )
         }
@@ -195,7 +199,7 @@ pub mod tests {
         };
 
         let log2_nb_rows = 10;
-        let public_inputs = vec![vec![]];
+        let public_inputs = vec![vec![], vec![]];
         match MockProver::run(log2_nb_rows, &circuit, public_inputs) {
             Ok(prover) => match prover.verify() {
                 Ok(()) => assert!(must_pass),

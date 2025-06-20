@@ -2,7 +2,7 @@
 
 use ff::PrimeField;
 
-use super::RangeCheckInstructions;
+use super::{DivisionInstructions, RangeCheckInstructions};
 use crate::{
     instructions::{
         AssertionInstructions, BinaryInstructions, ComparisonInstructions, ControlFlowInstructions,
@@ -24,6 +24,7 @@ pub trait NativeInstructions<F>:
     + ComparisonInstructions<F, AssignedNative<F>>
     + RangeCheckInstructions<F, AssignedNative<F>>
     + UnsafeConversionInstructions<F, AssignedNative<F>, AssignedByte<F>>
+    + DivisionInstructions<F>
 where
     F: PrimeField,
 {

@@ -66,7 +66,7 @@ impl<F: PrimeField> FromScratch<F> for Table16Chip<F> {
 
     fn configure_from_scratch(
         meta: &mut ConstraintSystem<F>,
-        _instance_column: &Column<Instance>,
+        _instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
         Table16Chip::configure(meta)
     }

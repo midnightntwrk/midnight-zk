@@ -1,4 +1,4 @@
-use std::fmt::Debug;
+use core::fmt::Debug;
 
 use ff::PrimeField;
 use halo2_proofs::circuit::Value;
@@ -25,6 +25,17 @@ pub trait InnerValue: Clone + Debug {
 
     /// Returns the value of the assigned element.
     fn value(&self) -> Value<Self::Element>;
+}
+
+impl<T: InnerValue, const L: usize> InnerValue for [T; L] {
+    type Element = [T::Element; L];
+
+    fn value(&self) -> Value<Self::Element> {
+        let val = Value::from_iter(self.iter().map(|val| val.value()));
+        // We know sizes will match due to the type system. The problem is
+        // that the type Value is not right enough.
+        val.map(|v: Vec<T::Element>| v.try_into().unwrap())
+    }
 }
 
 /// Trait for accessing constant values of the inner value type of an assigned

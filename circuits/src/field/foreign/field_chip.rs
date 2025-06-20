@@ -1,5 +1,5 @@
 //! `field_chip` is a chip for performing arithmetic over emulated fields.
-//!  See [here](https://github.com/input-output-hk/midnight-circuits/wiki/Foreign-Field-Arithmetic)
+//!  See [here](https://github.com/midnightntwrk/midnight-circuits/wiki/Foreign-Field-Arithmetic)
 //!  for a description of the techniques that we use in this implementation.
 
 use std::{
@@ -39,10 +39,7 @@ use crate::{
         EqualityInstructions, FieldInstructions, NativeInstructions, PublicInputInstructions,
         ScalarFieldInstructions, ZeroInstructions,
     },
-    types::{
-        AssignedBit, AssignedByte, AssignedNative, Bit, Byte, InnerConstants, InnerValue,
-        Instantiable,
-    },
+    types::{AssignedBit, AssignedByte, AssignedNative, InnerConstants, InnerValue, Instantiable},
     utils::util::{bigint_to_fe, fe_to_bigint, modulus},
 };
 
@@ -627,7 +624,7 @@ where
     ) -> Result<(), Error> {
         let b = self.is_zero(layouter, x)?;
         self.native_gadget
-            .assert_equal_to_fixed(layouter, &b, Bit(false))
+            .assert_equal_to_fixed(layouter, &b, false)
     }
 
     fn is_zero(
@@ -709,7 +706,7 @@ where
             let prod = self.mul_by_constant(layouter, x, *c)?;
             self.add(layouter, &acc, &prod)
         })?;
-        self.normalize(layouter, &res)
+        self.normalize_if_approaching_limit(layouter, &res)
     }
 
     fn add(
@@ -718,6 +715,16 @@ where
         x: &AssignedField<F, K, P>,
         y: &AssignedField<F, K, P>,
     ) -> Result<AssignedField<F, K, P>, Error> {
+        let zero: AssignedField<F, K, P> = self.assign_fixed(layouter, K::ZERO)?;
+
+        if x == &zero {
+            return Ok(y.clone());
+        }
+
+        if y == &zero {
+            return Ok(x.clone());
+        }
+
         // Note that x := 1 + sum_i base^i xi and y := 1 + sum_i base^i yi.
         // Thus z = (x + y) is equal to 2 + sum_i base^i (xi + yi).
         // Observe there is a 2 instead of the implicit 1, thus we cannot simply add the
@@ -757,7 +764,7 @@ where
                 .collect(),
             _marker: PhantomData,
         };
-        Ok(z)
+        self.normalize_if_approaching_limit(layouter, &z)
     }
 
     fn sub(
@@ -766,6 +773,12 @@ where
         x: &AssignedField<F, K, P>,
         y: &AssignedField<F, K, P>,
     ) -> Result<AssignedField<F, K, P>, Error> {
+        let zero: AssignedField<F, K, P> = self.assign_fixed(layouter, K::ZERO)?;
+
+        if y == &zero {
+            return Ok(x.clone());
+        }
+
         // Note that x := 1 + sum_i base^i xi and y := 1 + sum_i base^i yi.
         // Thus z = (x - y) is equal to 0 + sum_i base^i (xi + yi).
         // Observe there is a 0 instead of the implicit 1, thus we cannot simply
@@ -805,7 +818,7 @@ where
                 .collect(),
             _marker: PhantomData,
         };
-        Ok(z)
+        self.normalize_if_approaching_limit(layouter, &z)
     }
 
     fn mul(
@@ -815,6 +828,21 @@ where
         y: &AssignedField<F, K, P>,
         multiplying_constant: Option<K>,
     ) -> Result<AssignedField<F, K, P>, Error> {
+        let zero: AssignedField<F, K, P> = self.assign_fixed(layouter, K::ZERO)?;
+        let one: AssignedField<F, K, P> = self.assign_fixed(layouter, K::ONE)?;
+
+        if x == &zero || y == &zero {
+            return Ok(zero);
+        }
+
+        if x == &one {
+            return Ok(y.clone());
+        }
+
+        if y == &one {
+            return Ok(x.clone());
+        }
+
         let y = match multiplying_constant {
             None => y.clone(),
             Some(k) => self.mul_by_constant(layouter, y, k)?,
@@ -828,6 +856,11 @@ where
         x: &AssignedField<F, K, P>,
         y: &AssignedField<F, K, P>,
     ) -> Result<AssignedField<F, K, P>, Error> {
+        let one: AssignedField<F, K, P> = self.assign_fixed(layouter, K::ONE)?;
+        if y == &one {
+            return Ok(x.clone());
+        }
+
         let y = self.normalize(layouter, y)?;
         self.assert_non_zero(layouter, &y)?;
         self.assign_mul(layouter, x, &y, true)
@@ -838,6 +871,12 @@ where
         layouter: &mut impl Layouter<F>,
         x: &AssignedField<F, K, P>,
     ) -> Result<AssignedField<F, K, P>, Error> {
+        let zero: AssignedField<F, K, P> = self.assign_fixed(layouter, K::ZERO)?;
+
+        if x == &zero {
+            return Ok(zero);
+        }
+
         // Note that x := 1 + sum_i base^i xi.
         // Thus z = -x is equal to -1 + sum_i base^i (xi + yi).
         // Observe there is a -1 instead of the implicit 1, thus we cannot simply negate
@@ -867,7 +906,7 @@ where
                 .collect(),
             _marker: PhantomData,
         };
-        Ok(z)
+        self.normalize_if_approaching_limit(layouter, &z)
     }
 
     fn inv(
@@ -875,6 +914,12 @@ where
         layouter: &mut impl Layouter<F>,
         x: &AssignedField<F, K, P>,
     ) -> Result<AssignedField<F, K, P>, Error> {
+        let one: AssignedField<F, K, P> = self.assign_fixed(layouter, K::ZERO)?;
+
+        if x == &one {
+            return Ok(one);
+        }
+
         // We do not need to assert that x != 0 because the equation enforced by
         // [assign_mul] will be 1 = z * x, which is unsatisfiable if x = 0.
         let one = self.assign_fixed(layouter, K::ONE)?;
@@ -932,7 +977,7 @@ where
                 .collect(),
             _marker: PhantomData,
         };
-        Ok(z)
+        self.normalize_if_approaching_limit(layouter, &z)
     }
 
     fn mul_by_constant(
@@ -1006,7 +1051,7 @@ where
             limb_bounds,
             _marker: PhantomData,
         };
-        Ok(z)
+        self.normalize_if_approaching_limit(layouter, &z)
     }
 }
 
@@ -1072,12 +1117,12 @@ where
         let nb_bits = nb_bits.unwrap_or(K::NUM_BITS as usize);
         bits[nb_bits..].iter().try_for_each(|byte| {
             self.native_gadget
-                .assert_equal_to_fixed(layouter, byte, Bit(false))
+                .assert_equal_to_fixed(layouter, byte, false)
         })?;
         let bits = bits[0..nb_bits].to_vec();
         if enforce_canonical && nb_bits >= K::NUM_BITS as usize {
             let canonical = self.is_canonical(layouter, &bits)?;
-            self.assert_equal_to_fixed(layouter, &canonical, Bit(true))?;
+            self.assert_equal_to_fixed(layouter, &canonical, true)?;
         }
         Ok(bits)
     }
@@ -1110,7 +1155,7 @@ where
         // they encode 0.
         bytes[nb_bytes..].iter().try_for_each(|byte| {
             self.native_gadget
-                .assert_equal_to_fixed(layouter, byte, Byte(0))
+                .assert_equal_to_fixed(layouter, byte, 0u8)
         })?;
         Ok(bytes[0..nb_bytes].to_vec())
     }
@@ -1139,7 +1184,8 @@ where
             terms.push((coeff, term));
             coeff = bigint_to_fe::<K>(&BI::from(2).pow(P::LOG2_BASE)) * coeff;
         }
-        self.linear_combination(layouter, &terms, K::ZERO)
+        let x = self.linear_combination(layouter, &terms, K::ZERO)?;
+        self.normalize(layouter, &x)
     }
 
     fn assigned_from_le_bytes(
@@ -1167,7 +1213,8 @@ where
             terms.push((coeff, term));
             coeff = bigint_to_fe::<K>(&BI::from(2).pow(8 * nb_bytes_per_chunk)) * coeff;
         }
-        self.linear_combination(layouter, &terms, K::ZERO)
+        let x = self.linear_combination(layouter, &terms, K::ZERO)?;
+        self.normalize(layouter, &x)
     }
 
     fn assigned_to_le_chunks(
@@ -1364,6 +1411,24 @@ where
         }
     }
 
+    /// Normalizes the given assigned field element, but only if its bounds
+    /// are approaching the limits of the well-formed bounds.
+    pub(crate) fn normalize_if_approaching_limit(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &AssignedField<F, K, P>,
+    ) -> Result<AssignedField<F, K, P>, Error> {
+        // This threshold was chosen empirically.
+        let threshold: BI = P::max_limb_bound() / 10;
+        let dangerous_lower_bounds = x.limb_bounds.iter().any(|b| b.0 < -threshold.clone());
+        let dangerous_upper_bounds = x.limb_bounds.iter().any(|b| b.1 > threshold);
+        if dangerous_lower_bounds || dangerous_upper_bounds {
+            self.make_canonical(layouter, x)
+        } else {
+            Ok(x.clone())
+        }
+    }
+
     /// Converts the given assigned field element into an equivalent one
     /// represented in canonical form, through the normalization procedure.
     fn make_canonical(
@@ -1431,7 +1496,7 @@ where
     fn assign(
         &self,
         layouter: &mut impl Layouter<F>,
-        value: Value<Bit>,
+        value: Value<bool>,
     ) -> Result<AssignedBit<F>, Error> {
         self.native_gadget.assign(layouter, value)
     }
@@ -1439,7 +1504,7 @@ where
     fn assign_fixed(
         &self,
         layouter: &mut impl Layouter<F>,
-        constant: Bit,
+        constant: bool,
     ) -> Result<AssignedBit<F>, Error> {
         self.native_gadget.assign_fixed(layouter, constant)
     }
@@ -1475,7 +1540,7 @@ where
         &self,
         layouter: &mut impl Layouter<F>,
         x: &AssignedBit<F>,
-        constant: Bit,
+        constant: bool,
     ) -> Result<(), Error> {
         self.native_gadget
             .assert_equal_to_fixed(layouter, x, constant)
@@ -1485,7 +1550,7 @@ where
         &self,
         layouter: &mut impl Layouter<F>,
         x: &AssignedBit<F>,
-        constant: Bit,
+        constant: bool,
     ) -> Result<(), Error> {
         self.native_gadget
             .assert_not_equal_to_fixed(layouter, x, constant)
@@ -1500,11 +1565,8 @@ where
     P: FieldEmulationParams<F, K>,
     N: NativeInstructions<F>,
 {
-    fn convert_value(&self, x: &Bit) -> Option<K> {
-        match x {
-            Bit(true) => Some(K::ONE),
-            Bit(false) => Some(K::ZERO),
-        }
+    fn convert_value(&self, x: &bool) -> Option<K> {
+        Some(if *x { K::ONE } else { K::ZERO })
     }
 
     fn convert(
@@ -1525,8 +1587,8 @@ where
     P: FieldEmulationParams<F, K>,
     N: NativeInstructions<F>,
 {
-    fn convert_value(&self, x: &Byte) -> Option<K> {
-        Some(K::from(**x as u64))
+    fn convert_value(&self, x: &u8) -> Option<K> {
+        Some(K::from(*x as u64))
     }
 
     fn convert(
@@ -1600,10 +1662,10 @@ where
 
     fn configure_from_scratch(
         meta: &mut ConstraintSystem<F>,
-        instance_column: &Column<Instance>,
+        instance_columns: &[Column<Instance>; 2],
     ) -> FieldChipConfigForTests<F, N> {
         let native_gadget_config =
-            <N as FromScratch<F>>::configure_from_scratch(meta, instance_column);
+            <N as FromScratch<F>>::configure_from_scratch(meta, instance_columns);
         let field_chip_config = {
             let advice_cols = (0..nb_field_chip_columns::<F, K, P>())
                 .map(|_| meta.advice_column())

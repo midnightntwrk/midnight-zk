@@ -16,14 +16,14 @@ use midnight_circuits::{
         PublicInputInstructions, ZeroInstructions,
     },
     testing_utils::plonk_api::filecoin_srs,
-    types::{AssignedByte, AssignedForeignPoint, Byte, Instantiable},
+    types::{AssignedByte, AssignedForeignPoint, Instantiable},
 };
 use rand::rngs::OsRng;
 use sha2::Digest;
 
 type F = blstrs::Scalar;
 
-type Message = [Byte; 32];
+type Message = [u8; 32];
 type PK = Secp256k1;
 
 type Signature = (secp256k1Base, secp256k1Scalar);
@@ -88,7 +88,7 @@ impl Relation for BitcoinSigExample {
         // Assign the (fixed) SHA tag.
         // TODO: this could be improved by giving a precomputed state to SHA.
         let tag_value: [u8; 32] = sha2::Sha256::digest(TAG_PREIMAGE).into();
-        let tag = std_lib.assign_many_fixed(layouter, &tag_value.map(Byte))?;
+        let tag = std_lib.assign_many_fixed(layouter, &tag_value)?;
 
         let rx_bytes = secp256k1_base.assigned_to_be_bytes(layouter, &rx, None)?;
         let pk_x = secp256k1_curve.x_coordinate(&pk);
@@ -181,7 +181,7 @@ fn main() {
     let vk = compact_std_lib::setup_vk(&srs, &relation);
     let pk = compact_std_lib::setup_pk(&relation, &vk);
 
-    let instance = (parse_bitcoin_point(&pk_bytes), msg_bytes.map(Byte));
+    let instance = (parse_bitcoin_point(&pk_bytes), msg_bytes);
     let witness = (
         secp256k1Base::from_bytes(&reverse_bytes(&sig_bytes[..32])).expect("Secp base"),
         secp256k1Scalar::from_bytes(&reverse_bytes(&sig_bytes[32..])).expect("Secp scalar"),

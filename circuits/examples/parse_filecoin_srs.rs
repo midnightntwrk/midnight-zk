@@ -99,15 +99,15 @@ fn main() -> std::io::Result<()> {
     let g1 = eval_domain_1
         .into_coeffs()
         .into_iter()
-        .map(|p| p.0)
+        .map(|p| p.0.into())
         .collect::<Vec<_>>();
     let g2 = eval_domain_2
         .into_coeffs()
         .into_iter()
-        .map(|p| p.0)
+        .map(|p| p.0.into())
         .collect::<Vec<_>>();
 
-    let g1s = g1s.into_iter().map(|p| p.0).collect::<Vec<_>>();
+    let g1s = g1s.into_iter().map(|p| p.0.into()).collect::<Vec<_>>();
 
     let params = ParamsKZG::<Bls12>::unsafe_setup(K as u32, OsRng);
     let params = params.from_parts(K as u32, g1, Some(g1s), g2[0], g2[1]);

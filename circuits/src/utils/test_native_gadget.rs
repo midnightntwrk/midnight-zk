@@ -11,14 +11,14 @@ macro_rules! run_test_native_gadget {
         use halo2_proofs::plonk::Error;
         use halo2curves::pasta::Fp;
         use midnight_circuits::{
-            types::{AssignedBit, AssignedByte, AssignedNative, Bit, Byte, ComposableChip},
+            types::{AssignedBit, AssignedByte, AssignedNative, ComposableChip},
             instructions::*,
             field::{
                 decomposition::{
                     chip::{P2RDecompositionChip, P2RDecompositionConfig},
                     pow2range::{Pow2RangeChip, NB_POW2RANGE_COLS},
                 },
-                AssignedBounded, NativeChip, NativeGadget, native::NB_ARITH_COLS,
+                AssignedBounded, NativeChip, NativeGadget, native::{NB_ARITH_COLS, NB_ARITH_FIXED_COLS},
             },
         };
 
@@ -39,12 +39,20 @@ macro_rules! run_test_native_gadget {
                 // We create the needed columns
                 let advice_columns: [_; NB_ARITH_COLS] =
                     core::array::from_fn(|_| meta.advice_column());
-                let fixed_columns: [_; NB_ARITH_COLS + 4] =
+                let fixed_columns: [_; NB_ARITH_FIXED_COLS] =
                     core::array::from_fn(|_| meta.fixed_column());
+                let committed_instance_column = meta.instance_column();
                 let instance_column = meta.instance_column();
 
-                let native_config =
-                    NativeChip::configure(meta, &(advice_columns, fixed_columns, instance_column));
+                let native_config = NativeChip::configure(
+                    meta,
+                    &(
+                        advice_columns,
+                        fixed_columns,
+                        [committed_instance_column, instance_column],
+                    ),
+                );
+
                 let pow2range_config =
                     Pow2RangeChip::configure(meta, &advice_columns[1..=NB_POW2RANGE_COLS]);
                 P2RDecompositionConfig::new(&native_config, &pow2range_config)
@@ -71,7 +79,7 @@ macro_rules! run_test_native_gadget {
         }
 
         assert_eq!(
-            MockProver::<Fp>::run(10, &(TestCircuit {}), vec![vec![]])
+            MockProver::<Fp>::run(10, &(TestCircuit {}), vec![vec![], vec![]])
                 .unwrap()
                 .verify(),
             Ok(())

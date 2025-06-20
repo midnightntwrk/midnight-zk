@@ -38,10 +38,10 @@ where
     ///
     /// If `enforce_canonical = true`, the output will be enforced to be in
     /// **canonical form**, i.e. the underlying system of constraints can
-    /// only be satisfied by a single [Bit](crate::types::Bit) vector.
+    /// only be satisfied by a single bit (bool) vector.
     /// If `enforce_canonical = false`, the output `{b_i}_i` is only restricted
     /// to satisfy: `x = sum_i 2^i b_i`, which may be satisfiable by more than
-    /// one Bit vector.
+    /// one bit vector.
     ///
     /// ```
     /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
@@ -50,10 +50,10 @@ where
     ///
     /// // 5 is decomposed as 1010 in little-endian.
     /// assert_eq!(bits.len(), 4);
-    /// chip.assert_equal_to_fixed(&mut layouter, &bits[0], Bit(true))?;
-    /// chip.assert_equal_to_fixed(&mut layouter, &bits[1], Bit(false))?;
-    /// chip.assert_equal_to_fixed(&mut layouter, &bits[2], Bit(true))?;
-    /// chip.assert_equal_to_fixed(&mut layouter, &bits[3], Bit(false))?;
+    /// chip.assert_equal_to_fixed(&mut layouter, &bits[0], true)?;
+    /// chip.assert_equal_to_fixed(&mut layouter, &bits[1], false)?;
+    /// chip.assert_equal_to_fixed(&mut layouter, &bits[2], true)?;
+    /// chip.assert_equal_to_fixed(&mut layouter, &bits[3], false)?;
     /// # });
     /// ```
     ///
@@ -94,7 +94,7 @@ where
     /// in little-endian.
     ///
     /// The output is enforced to be in **canonical form**, that is, there
-    /// exists a single Byte vector that satisfies the underlying system of
+    /// exists a single u8 vector that satisfies the underlying system of
     /// constraints.
     ///
     /// The number of bytes (the length of the resulting vector) can be
@@ -108,11 +108,11 @@ where
     /// let bytes = chip.assigned_to_le_bytes(&mut layouter, &x, Some(5))?;
     ///
     /// assert_eq!(bytes.len(), 5);
-    /// chip.assert_equal_to_fixed(&mut layouter, &bytes[0], Byte(0x78))?;
-    /// chip.assert_equal_to_fixed(&mut layouter, &bytes[1], Byte(0x56))?;
-    /// chip.assert_equal_to_fixed(&mut layouter, &bytes[2], Byte(0x34))?;
-    /// chip.assert_equal_to_fixed(&mut layouter, &bytes[3], Byte(0x12))?;
-    /// chip.assert_equal_to_fixed(&mut layouter, &bytes[4], Byte(0x00))?;
+    /// chip.assert_equal_to_fixed(&mut layouter, &bytes[0], 0x78)?;
+    /// chip.assert_equal_to_fixed(&mut layouter, &bytes[1], 0x56)?;
+    /// chip.assert_equal_to_fixed(&mut layouter, &bytes[2], 0x34)?;
+    /// chip.assert_equal_to_fixed(&mut layouter, &bytes[3], 0x12)?;
+    /// chip.assert_equal_to_fixed(&mut layouter, &bytes[4], 0x00)?;
     /// # });
     /// ```
     ///
@@ -154,9 +154,9 @@ where
     ///
     /// ```
     /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
-    /// let b0 = chip.assign(&mut layouter, Value::known(Bit(false)))?;
-    /// let b1 = chip.assign(&mut layouter, Value::known(Bit(true)))?;
-    /// let b2 = chip.assign(&mut layouter, Value::known(Bit(true)))?;
+    /// let b0 = chip.assign(&mut layouter, Value::known(false))?;
+    /// let b1 = chip.assign(&mut layouter, Value::known(true))?;
+    /// let b2 = chip.assign(&mut layouter, Value::known(true))?;
     ///
     /// let x = chip.assigned_from_le_bits(&mut layouter, &[b0, b1, b2])?;
     /// chip.assert_equal_to_fixed(&mut layouter, &x, F::from(6))?;
@@ -203,10 +203,10 @@ where
     ///
     /// ```
     /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
-    /// let b0 = chip.assign(&mut layouter, Value::known(Byte(0x12)))?;
-    /// let b1 = chip.assign(&mut layouter, Value::known(Byte(0x34)))?;
-    /// let b2 = chip.assign(&mut layouter, Value::known(Byte(0x56)))?;
-    /// let b3 = chip.assign(&mut layouter, Value::known(Byte(0x78)))?;
+    /// let b0 = chip.assign(&mut layouter, Value::known(0x12))?;
+    /// let b1 = chip.assign(&mut layouter, Value::known(0x34))?;
+    /// let b2 = chip.assign(&mut layouter, Value::known(0x56))?;
+    /// let b3 = chip.assign(&mut layouter, Value::known(0x78))?;
     ///
     /// let x = chip.assigned_from_le_bytes(&mut layouter, &[b0, b1, b2, b3])?;
     /// chip.assert_equal_to_fixed(&mut layouter, &x, F::from(0x78563412))?;
@@ -306,7 +306,7 @@ pub mod tests {
     use crate::{
         instructions::{AssertionInstructions, AssignmentInstructions},
         testing_utils::FromScratch,
-        types::{Bit, Byte, InnerValue},
+        types::InnerValue,
         utils::{circuit_modeling::circuit_to_json, util::modulus},
     };
 
@@ -361,10 +361,12 @@ pub mod tests {
         }
 
         fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+            let committed_instance_column = meta.instance_column();
             let instance_column = meta.instance_column();
+            let instance_columns = [committed_instance_column, instance_column];
             (
-                DecompChip::configure_from_scratch(meta, &instance_column),
-                AuxChip::configure_from_scratch(meta, &instance_column),
+                DecompChip::configure_from_scratch(meta, &instance_columns),
+                AuxChip::configure_from_scratch(meta, &instance_columns),
             )
         }
 
@@ -392,7 +394,7 @@ pub mod tests {
                     bits.iter()
                         .zip(self.decomposed.iter())
                         .try_for_each(|(bit, expected)| {
-                            aux_chip.assert_equal_to_fixed(&mut layouter, bit, Bit(*expected == 1))
+                            aux_chip.assert_equal_to_fixed(&mut layouter, bit, *expected == 1)
                         })
                 }
                 Operation::ToBytes => {
@@ -406,14 +408,14 @@ pub mod tests {
                         .iter()
                         .zip(self.decomposed.iter())
                         .try_for_each(|(bit, expected)| {
-                            aux_chip.assert_equal_to_fixed(&mut layouter, bit, Byte(*expected))
+                            aux_chip.assert_equal_to_fixed(&mut layouter, bit, *expected)
                         })
                 }
                 Operation::FromBits => {
                     let bits = self
                         .decomposed
                         .iter()
-                        .map(|b| chip.assign_fixed(&mut layouter, Bit(*b == 1)))
+                        .map(|b| chip.assign_fixed(&mut layouter, *b == 1))
                         .collect::<Result<Vec<_>, Error>>()?;
                     let x = match self.endianess {
                         LE => chip.assigned_from_le_bits(&mut layouter, &bits),
@@ -425,7 +427,7 @@ pub mod tests {
                     let bytes = self
                         .decomposed
                         .iter()
-                        .map(|byte| aux_chip.assign_fixed(&mut layouter, Byte(*byte)))
+                        .map(|byte| aux_chip.assign_fixed(&mut layouter, *byte))
                         .collect::<Result<Vec<_>, Error>>()?;
                     let x = match self.endianess {
                         LE => chip.assigned_from_le_bytes(&mut layouter, &bytes),
@@ -468,7 +470,7 @@ pub mod tests {
             _marker: PhantomData,
         };
         let log2_nb_rows = 10;
-        let public_inputs = vec![vec![]];
+        let public_inputs = vec![vec![], vec![]];
         match MockProver::run(log2_nb_rows, &circuit, public_inputs) {
             Ok(prover) => match prover.verify() {
                 Ok(()) => assert!(must_pass),

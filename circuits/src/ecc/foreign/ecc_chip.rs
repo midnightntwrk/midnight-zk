@@ -51,9 +51,7 @@ use crate::{
         DecompositionInstructions, EccInstructions, EqualityInstructions, NativeInstructions,
         PublicInputInstructions, ScalarFieldInstructions, ZeroInstructions,
     },
-    types::{
-        AssignedBit, AssignedField, AssignedNative, Bit, InnerConstants, InnerValue, Instantiable,
-    },
+    types::{AssignedBit, AssignedField, AssignedNative, InnerConstants, InnerValue, Instantiable},
     utils::util::{
         big_to_fe, bigint_to_fe, concat, fe_to_big, fe_to_le_bits, glv_scalar_decomposition,
     },
@@ -174,7 +172,7 @@ where
     B: FieldEmulationParams<F, C::Base>,
 {
     fn as_public_input(p: &C::CryptographicGroup) -> Vec<F> {
-        let b = Bit(p.is_identity().into());
+        let b = p.is_identity().into();
         let (x, y) = (*p)
             .into()
             .coordinates()
@@ -280,13 +278,13 @@ where
         constant: C::CryptographicGroup,
     ) -> Result<AssignedForeignPoint<F, C, B>, Error> {
         let (xv, yv, is_id_value) = if C::CryptographicGroup::is_identity(&constant).into() {
-            (C::Base::ZERO, C::Base::ZERO, Bit(true))
+            (C::Base::ZERO, C::Base::ZERO, true)
         } else {
             let coordinates = constant
                 .into()
                 .coordinates()
                 .expect("assign_point_unchecked: invalid point given");
-            (coordinates.0, coordinates.1, Bit(false))
+            (coordinates.0, coordinates.1, false)
         };
         let is_id = self.native_gadget.assign_fixed(layouter, is_id_value)?;
         let x = self.base_field_chip().assign_fixed(layouter, xv)?;
@@ -338,7 +336,7 @@ where
         layouter: &mut impl Layouter<F>,
         value: Value<C::CryptographicGroup>,
     ) -> Result<AssignedForeignPoint<F, C, B>, Error> {
-        let b_val = value.map(|p| Bit(C::CryptographicGroup::is_identity(&p).into()));
+        let b_val = value.map(|p| C::CryptographicGroup::is_identity(&p).into());
         let x_val = value.map(|p| {
             p.into()
                 .coordinates()
@@ -458,7 +456,7 @@ where
     ) -> Result<(), Error> {
         let equal = self.is_equal(layouter, p, q)?;
         self.native_gadget
-            .assert_equal_to_fixed(layouter, &equal, Bit(false))
+            .assert_equal_to_fixed(layouter, &equal, false)
     }
 
     fn assert_equal_to_fixed(
@@ -469,7 +467,7 @@ where
     ) -> Result<(), Error> {
         if constant.is_identity().into() {
             self.native_gadget
-                .assert_equal_to_fixed(layouter, &p.is_id, Bit(true))
+                .assert_equal_to_fixed(layouter, &p.is_id, true)
         } else {
             let coordinates = constant.into().coordinates().expect("Valid point");
             self.base_field_chip()
@@ -477,7 +475,7 @@ where
             self.base_field_chip()
                 .assert_equal_to_fixed(layouter, &p.y, coordinates.1)?;
             self.native_gadget
-                .assert_equal_to_fixed(layouter, &p.is_id, Bit(false))
+                .assert_equal_to_fixed(layouter, &p.is_id, false)
         }
     }
 
@@ -489,11 +487,11 @@ where
     ) -> Result<(), Error> {
         if constant.is_identity().into() {
             self.native_gadget
-                .assert_equal_to_fixed(layouter, &p.is_id, Bit(false))
+                .assert_equal_to_fixed(layouter, &p.is_id, false)
         } else {
             let equal = self.is_equal_to_fixed(layouter, p, constant)?;
             self.native_gadget
-                .assert_equal_to_fixed(layouter, &equal, Bit(false))
+                .assert_equal_to_fixed(layouter, &equal, false)
         }
     }
 }
@@ -604,7 +602,7 @@ where
         // value of the points will be unknown as well.
 
         // point = p if cond is unknown or 1, q if cond is known and 0
-        let a = cond.value().error_if_known_and(|&v| !(*v));
+        let a = cond.value().error_if_known_and(|&v| !v);
         let point = if a.is_ok() { p.point } else { q.point };
 
         Ok(AssignedForeignPoint::<F, C, B> { point, is_id, x, y })
@@ -883,7 +881,7 @@ where
         }
         let scalar_bits = fe_to_le_bits(&scalar, None)
             .iter()
-            .map(|b| self.native_gadget.assign_fixed(layouter, Bit(*b)))
+            .map(|b| self.native_gadget.assign_fixed(layouter, *b))
             .collect::<Result<Vec<_>, Error>>()?;
         self.msm_by_le_bits(layouter, &[scalar_bits], &[base.clone()])
     }
@@ -894,8 +892,8 @@ where
         x: &AssignedField<F, C::Base, B>,
         y: &AssignedField<F, C::Base, B>,
     ) -> Result<Self::Point, Error> {
-        let is_id = self.native_gadget.assign_fixed(layouter, Bit(false))?;
-        let cond = self.native_gadget.assign_fixed(layouter, Bit(true))?;
+        let is_id = self.native_gadget.assign_fixed(layouter, false)?;
+        let cond = self.native_gadget.assign_fixed(layouter, true)?;
         on_curve::assert_is_on_curve::<F, C, B, N>(
             layouter,
             &cond,
@@ -1071,13 +1069,13 @@ where
     ) -> Result<AssignedForeignPoint<F, C, B>, Error> {
         let values = p.map(|p| {
             if C::CryptographicGroup::is_identity(&p).into() {
-                (C::Base::ZERO, C::Base::ZERO, Bit(true))
+                (C::Base::ZERO, C::Base::ZERO, true)
             } else {
                 let coordinates = p
                     .into()
                     .coordinates()
                     .expect("assign_point_unchecked: invalid point given");
-                (coordinates.0, coordinates.1, Bit(false))
+                (coordinates.0, coordinates.1, false)
             }
         });
         let x = self
@@ -1135,7 +1133,7 @@ where
         // Note that the following call to [assert_add] will make the circuit
         // unsatisfiable if `p = -q`, but that is the intended behavior of
         // [incomplete_add].
-        let one = self.native_gadget.assign_fixed(layouter, Bit(true))?;
+        let one = self.native_gadget.assign_fixed(layouter, true)?;
         self.assert_add(layouter, p, q, &r, &one)?;
 
         Ok(r)
@@ -1475,7 +1473,7 @@ where
             self.fill_dynamic_lookup_row(layouter, &selected, selector, table_tag, true)?;
         let x = AssignedField::<F, C::Base, B>::from_limbs_unsafe(xs);
         let y = AssignedField::<F, C::Base, B>::from_limbs_unsafe(ys);
-        let is_id = self.native_gadget.assign_fixed(layouter, Bit(false))?;
+        let is_id = self.native_gadget.assign_fixed(layouter, false)?;
 
         let result = AssignedForeignPoint::<F, C, B> {
             point: selected.point,
@@ -1596,7 +1594,7 @@ where
                 )?;
                 let x = AssignedField::<F, C::Base, B>::from_limbs_unsafe(xs);
                 let y = AssignedField::<F, C::Base, B>::from_limbs_unsafe(ys);
-                let is_id = self.native_gadget.assign_fixed(layouter, Bit(false))?;
+                let is_id = self.native_gadget.assign_fixed(layouter, false)?;
                 Ok(AssignedForeignPoint::<F, C, B> {
                     point: table[*i].value(),
                     is_id,
@@ -1763,7 +1761,7 @@ where
         // Assert that none of the bases is the identity point
         for p in bases.iter() {
             self.native_gadget
-                .assert_equal_to_fixed(layouter, &p.is_id, Bit(false))?
+                .assert_equal_to_fixed(layouter, &p.is_id, false)?
         }
 
         // Pad all the sequences of chunks to have the same length.
@@ -1812,7 +1810,7 @@ where
         // Assert the chosen r is not the identity point
         self.base_field_chip
             .native_gadget
-            .assert_equal_to_fixed(layouter, &r.is_id, Bit(false))?;
+            .assert_equal_to_fixed(layouter, &r.is_id, false)?;
 
         let l_times_r = self.mul_by_u128(layouter, bases.len() as u128, &r)?;
         let alpha = self.mul_by_u128(layouter, (1u128 << WS) - 1, &r)?;
@@ -1948,9 +1946,9 @@ where
         let decomposed = scalar
             .value()
             .map(|x| glv_scalar_decomposition(&x, &zeta_scalar));
-        let s1_value = decomposed.map(|((s1, _), _)| Bit(s1));
+        let s1_value = decomposed.map(|((s1, _), _)| s1);
         let x1_value = decomposed.map(|((_, x1), _)| x1);
-        let s2_value = decomposed.map(|(_, (s2, _))| Bit(s2));
+        let s2_value = decomposed.map(|(_, (s2, _))| s2);
         let x2_value = decomposed.map(|(_, (_, x2))| x2);
 
         let x1 = self.scalar_field_chip.assign(layouter, x1_value)?;
@@ -2047,12 +2045,12 @@ where
 
     fn configure_from_scratch(
         meta: &mut ConstraintSystem<F>,
-        instance_column: &Column<Instance>,
+        instance_columns: &[Column<Instance>; 2],
     ) -> ForeignEccTestConfig<F, C, S, N> {
         let native_gadget_config =
-            <N as FromScratch<F>>::configure_from_scratch(meta, instance_column);
+            <N as FromScratch<F>>::configure_from_scratch(meta, instance_columns);
         let scalar_field_config =
-            <S as FromScratch<F>>::configure_from_scratch(meta, instance_column);
+            <S as FromScratch<F>>::configure_from_scratch(meta, instance_columns);
         let nb_advice_cols = nb_foreign_ecc_chip_columns::<F, C, B, S>();
         let advice_columns = (0..nb_advice_cols)
             .map(|_| meta.advice_column())

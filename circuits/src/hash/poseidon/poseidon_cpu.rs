@@ -45,12 +45,12 @@ fn linear_layer<F: PoseidonField>(state: &mut [F], constants: &mut [F]) {
 
 /// A cpu version of the full round of Poseidon's permutation. Operates by
 /// mutating the `state` argument (length `WIDTH`).
-pub(crate) fn full_round_cpu<F: PoseidonField>(round: usize, state: &mut [F]) {
+pub(crate) fn full_round_cpu<F: PoseidonField>(round_index: usize, state: &mut [F]) {
     state.iter_mut().for_each(|x| *x = x.square().square() * *x);
-    let mut new_state = if round == NB_FULL_ROUNDS + NB_PARTIAL_ROUNDS - 1 {
+    let mut new_state = if round_index == NB_FULL_ROUNDS + NB_PARTIAL_ROUNDS - 1 {
         [F::ZERO; WIDTH]
     } else {
-        F::ROUND_CONSTANTS[round + 1]
+        F::ROUND_CONSTANTS[round_index + 1]
     };
     linear_layer(state, &mut new_state);
 }
@@ -58,12 +58,12 @@ pub(crate) fn full_round_cpu<F: PoseidonField>(round: usize, state: &mut [F]) {
 // A cpu version of Poseidon with `1 + NB_SKIPS_CIRCUIT` partial rounds.
 fn partial_round_cpu<F: PoseidonField>(
     pre_computed: &PreComputedRoundCPU<F>,
-    round: usize,
+    round_batch_index: usize,
     state: &mut [F], // Length `WIDTH`.
 ) {
     pre_computed
         .partial_round_id
-        .eval::<NB_SKIPS_CPU>(&pre_computed.round_constants[round], state);
+        .eval::<NB_SKIPS_CPU>(&pre_computed.round_constants[round_batch_index], state);
 }
 
 /// A cpu version of Poseidon with `1 + NB_SKIPS_CIRCUIT` partial rounds. Also
@@ -71,12 +71,12 @@ fn partial_round_cpu<F: PoseidonField>(
 /// (`NB_SKIPS_CIRCUIT` elements) as needed to fill the circuit's rows.
 pub(crate) fn partial_round_cpu_for_circuits<F: PoseidonField>(
     pre_computed: &PreComputedRoundCircuit<F>,
-    round: usize,
+    round_batch_index: usize,
     state: &mut [F], // Length `WIDTH`.
 ) -> [F; NB_SKIPS_CIRCUIT] {
     pre_computed
         .partial_round_id
-        .eval::<NB_SKIPS_CIRCUIT>(&pre_computed.round_constants[round], state)
+        .eval::<NB_SKIPS_CIRCUIT>(&pre_computed.round_constants[round_batch_index], state)
 }
 
 // Alternative partial round version, without any skips.
@@ -95,15 +95,16 @@ pub fn permutation_cpu<F: PoseidonField>(pre_computed: &PreComputedRoundCPU<F>, 
     for (x, k0) in state.iter_mut().zip(F::ROUND_CONSTANTS[0]) {
         *x += k0;
     }
-    (0..NB_FULL_ROUNDS / 2).for_each(|round| full_round_cpu(round, state));
-    (0..nb_main_partial_rounds).for_each(|round| partial_round_cpu(pre_computed, round, state));
+    (0..NB_FULL_ROUNDS / 2).for_each(|round_index| full_round_cpu(round_index, state));
+    (0..nb_main_partial_rounds)
+        .for_each(|round_batch_index| partial_round_cpu(pre_computed, round_batch_index, state));
     (NB_FULL_ROUNDS / 2 + NB_PARTIAL_ROUNDS - remainder_partial_rounds..)
         .take(remainder_partial_rounds)
-        .for_each(|round| partial_round_cpu_raw(round, state));
+        .for_each(|round_index| partial_round_cpu_raw(round_index, state));
     (NB_FULL_ROUNDS / 2 + NB_PARTIAL_ROUNDS..)
         .take(NB_FULL_ROUNDS / 2)
-        .for_each(|round| {
-            full_round_cpu(round, state);
+        .for_each(|round_index| {
+            full_round_cpu(round_index, state);
         })
 }
 
@@ -219,6 +220,20 @@ impl Hashable<PoseidonState<blstrs::Scalar>> for blstrs::G1Affine {
     }
 }
 
+impl Hashable<PoseidonState<blstrs::Scalar>> for blstrs::G1Projective {
+    fn to_input(&self) -> Vec<blstrs::Scalar> {
+        <blstrs::G1Affine as Hashable<PoseidonState<blstrs::Scalar>>>::to_input(&self.into())
+    }
+
+    fn to_bytes(&self) -> Vec<u8> {
+        <blstrs::G1Affine as Hashable<PoseidonState<blstrs::Scalar>>>::to_bytes(&self.into())
+    }
+
+    fn read(buffer: &mut impl Read) -> io::Result<Self> {
+        Ok(<blstrs::G1Affine as Hashable<PoseidonState<blstrs::Scalar>>>::read(buffer)?.into())
+    }
+}
+
 impl Hashable<PoseidonState<blstrs::Scalar>> for blstrs::Scalar {
     fn to_input(&self) -> Vec<blstrs::Scalar> {
         vec![*self]
@@ -270,14 +285,14 @@ mod tests {
         for (x, k0) in state.iter_mut().zip(F::ROUND_CONSTANTS[0]) {
             *x += k0;
         }
-        for round in 0..NB_FULL_ROUNDS / 2 {
-            full_round_cpu(round, state);
+        for round_index in 0..NB_FULL_ROUNDS / 2 {
+            full_round_cpu(round_index, state);
         }
-        for round in (NB_FULL_ROUNDS / 2..).take(NB_PARTIAL_ROUNDS) {
-            partial_round_cpu_raw(round, state);
+        for round_index in (NB_FULL_ROUNDS / 2..).take(NB_PARTIAL_ROUNDS) {
+            partial_round_cpu_raw(round_index, state);
         }
-        for round in (NB_FULL_ROUNDS / 2 + NB_PARTIAL_ROUNDS..).take(NB_FULL_ROUNDS / 2) {
-            full_round_cpu(round, state);
+        for round_index in (NB_FULL_ROUNDS / 2 + NB_PARTIAL_ROUNDS..).take(NB_FULL_ROUNDS / 2) {
+            full_round_cpu(round_index, state);
         }
     }
     // Tests the performances of the cpu version of Poseidon. In debug mode, also
