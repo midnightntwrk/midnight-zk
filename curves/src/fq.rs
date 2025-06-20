@@ -1,5 +1,6 @@
 //! An implementation of the BLS12-381 scalar field Fq,
-//! where `q = 0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001`
+//! where `q =
+//! 0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001`
 
 use core::{
     borrow::Borrow,
@@ -20,12 +21,14 @@ use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 /// Represents an element of the scalar field Fq of the BLS12-381 elliptic
 /// curve construction.
 ///
-/// The inner representation `blst_fr` is stored in Montgomery form as little-endian `u64` limbs.
+/// The inner representation `blst_fr` is stored in Montgomery form as
+/// little-endian `u64` limbs.
 #[derive(Default, Clone, Copy)]
 #[repr(transparent)]
 pub struct Fq(pub(crate) blst_fr);
 
-// GENERATOR = 7 (multiplicative generator of r-1 order, that is also quadratic nonresidue)
+// GENERATOR = 7 (multiplicative generator of r-1 order, that is also quadratic
+// nonresidue)
 const GENERATOR: Fq = Fq(blst_fr {
     l: [
         0x0000_000e_ffff_fff1,
@@ -77,10 +80,11 @@ const ZERO: Fq = Fq(blst_fr { l: [0, 0, 0, 0] });
 /// INV = -(q^{-1} mod 2^64) mod 2^64
 const INV: u64 = 0xfffffffeffffffff;
 
-/// `R = 2^256 mod q` in little-endian Montgomery form which is equivalent to 1 in little-endian
-/// non-Montgomery form.
+/// `R = 2^256 mod q` in little-endian Montgomery form which is equivalent to 1
+/// in little-endian non-Montgomery form.
 ///
-/// sage> mod(2^256, 0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001)
+/// sage> mod(2^256,
+/// 0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001)
 /// sage> 0x1824b159acc5056f998c4fefecbc4ff55884b7fa0003480200000001fffffffe
 const R: Fq = Fq(blst_fr {
     l: [
@@ -93,7 +97,8 @@ const R: Fq = Fq(blst_fr {
 
 /// `R^2 = 2^512 mod q` in little-endian Montgomery form.
 ///
-/// sage> mod(2^512, 0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001)
+/// sage> mod(2^512,
+/// 0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001)
 /// sage> 0x748d9d99f59ff1105d314967254398f2b6cedcb87925c23c999e990f3f29c6d
 const R2_LIMBS: [u64; 4] = [
     0xc999_e990_f3f2_9c6d,
@@ -105,8 +110,8 @@ const R2_LIMBS: [u64; 4] = [
 const R2: Fq = Fq(blst_fr { l: R2_LIMBS });
 
 /// `R^3 = 2^768 mod q` in little-endian Montgomery form.
-///
-// sage> hex(mod(2^768, 0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001))
+// sage> hex(mod(2^768,
+// 0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001))
 // sage> 0x6e2a5bb9c8db33e973d13c71c7b5f4181b3e0d188cf06990c62c1807439b73af
 const R3: Fq = Fq(blst_fr {
     l: [
@@ -408,7 +413,8 @@ impl Field for Fq {
     }
 
     fn sqrt(&self) -> CtOption<Self> {
-        // (t - 1) // 2 = 6104339283789297388802252303364915521546564123189034618274734669823
+        // (t - 1) // 2 =
+        // 6104339283789297388802252303364915521546564123189034618274734669823
         ff::helpers::sqrt_tonelli_shanks(
             self,
             [
@@ -425,8 +431,9 @@ impl Field for Fq {
     }
 }
 
-/// Checks if the passed in bytes are less than the MODULUS. (both in non-Montgomery form and little endian).
-/// Assumes that `a` is exactly 4 elements long.
+/// Checks if the passed in bytes are less than the MODULUS. (both in
+/// non-Montgomery form and little endian). Assumes that `a` is exactly 4
+/// elements long.
 #[allow(clippy::comparison_chain)]
 fn is_valid(a: &[u64]) -> bool {
     debug_assert_eq!(a.len(), 4);
@@ -494,7 +501,8 @@ impl PrimeField for Fq {
     const MODULUS: &'static str =
         "0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001";
 
-    /// Converts a little-endian non-Montgomery form `repr` into a Montgomery form `Fq`.
+    /// Converts a little-endian non-Montgomery form `repr` into a Montgomery
+    /// form `Fq`.
     fn from_repr(repr: Self::Repr) -> CtOption<Self> {
         Self::from_bytes_le(&repr)
     }
@@ -535,7 +543,8 @@ pub const fn sub(lhs: &[u64; 4], rhs: &[u64; 4]) -> [u64; 4] {
     let (d3, borrow) = sbb(lhs[3], rhs[3], borrow);
 
     // If underflow occurred on the final limb, borrow = 0xfff...fff, otherwise
-    // borrow = 0x000...000. Thus, we use it as a mask to conditionally add the modulus.
+    // borrow = 0x000...000. Thus, we use it as a mask to conditionally add the
+    // modulus.
     let (d0, carry) = adc(d0, MODULUS[0] & borrow, 0);
     let (d1, carry) = adc(d1, MODULUS[1] & borrow, carry);
     let (d2, carry) = adc(d2, MODULUS[2] & borrow, carry);
@@ -710,7 +719,8 @@ impl ff::FromUniformBytes<64> for Fq {
             .unwrap();
         let a1 = Fq(blst_fr { l: a1 });
 
-        // enforce non assembly impl since asm is likely to be optimized for sparse fields
+        // enforce non assembly impl since asm is likely to be optimized for sparse
+        // fields
         a0.mul(R2) + a1.mul(R3)
     }
 }
@@ -857,7 +867,8 @@ impl SerdeObject for Fq {
         Some(Self::from_raw_bytes_unchecked(bytes))
         // let out = Self::from_raw_bytes_unchecked(&bytes);
         // Self::is_less_than_modulus(&out.0.l).then(|| out)
-        // Note: The [0, p-1] check is not performed, as it would require a Montgomery reduction.
+        // Note: The [0, p-1] check is not performed, as it would require a
+        // Montgomery reduction.
     }
 
     fn to_raw_bytes(&self) -> Vec<u8> {
@@ -898,9 +909,9 @@ impl SerdeObject for Fq {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     use halo2curves::ff_ext::Legendre;
+
+    use super::*;
 
     const LARGEST: Fq = Fq(blst::blst_fr {
         l: [
@@ -2007,11 +2018,12 @@ mod tests {
         for _ in 64..Fq::NUM_BITS {
             assert!(!bits.next().unwrap());
         }
-        // Check that the final bit in the backing representation, i.e. the 256-th bit, is false.
-        // This bit should always be `false` because it exceeds the field size modulus.
+        // Check that the final bit in the backing representation, i.e. the 256-th bit,
+        // is false. This bit should always be `false` because it exceeds the
+        // field size modulus.
         assert!(!bits.next().unwrap());
-        // Check that the bitvec's size does not exceed the size of the backing representation
-        // `[u8; 32]`, i.e. 256-bits.
+        // Check that the bitvec's size does not exceed the size of the backing
+        // representation `[u8; 32]`, i.e. 256-bits.
         assert!(bits.next().is_none());
 
         let mut neg1_bits = (-Fq::ONE).to_le_bits().into_iter();

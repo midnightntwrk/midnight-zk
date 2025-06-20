@@ -11,7 +11,7 @@ ff = { workspace = true }
 halo2curves = { workspace = true }
 blake2b_simd = { workspace = true }
 blstrs = {path = "../curves" }
-midnight_proofs = { path = "../proof-system", default-features = false, features = [
+midnight_proofs = { path = "../proofs", default-features = false, features = [
     "bits",
     "cost-estimator",
     "circuit-params",

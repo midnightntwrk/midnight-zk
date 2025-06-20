@@ -15,17 +15,19 @@ use group::{
     prime::{PrimeCurve, PrimeCurveAffine, PrimeGroup},
     Curve, Group, GroupEncoding, UncompressedEncoding, WnafGroup,
 };
-use halo2curves::serde::SerdeObject;
-use halo2curves::{Coordinates, CurveAffine, CurveExt};
+use halo2curves::{serde::SerdeObject, Coordinates, CurveAffine, CurveExt};
 use rand_core::RngCore;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 
-use crate::fp::ZETA_BASE;
-use crate::{fp::Fp, Bls12, Engine, Fq, G2Affine, Gt, PairingCurveAffine};
+use crate::{
+    fp::{Fp, ZETA_BASE},
+    Bls12, Engine, Fq, G2Affine, Gt, PairingCurveAffine,
+};
 
-/// This is an element of $\mathbb{G}_1$ represented in the affine coordinate space.
-/// It is ideal to keep elements in this representation to reduce memory usage and
-/// improve performance through the use of mixed curve model arithmetic.
+/// This is an element of $\mathbb{G}_1$ represented in the affine coordinate
+/// space. It is ideal to keep elements in this representation to reduce memory
+/// usage and improve performance through the use of mixed curve model
+/// arithmetic.
 #[derive(Copy, Clone)]
 #[repr(transparent)]
 pub struct G1Affine(pub(crate) blst_p1_affine);
@@ -347,10 +349,12 @@ impl G1Affine {
     }
 
     /// Attempts to deserialize an uncompressed element, not checking if the
-    /// element is on the curve and not checking if it is in the correct subgroup.
+    /// element is on the curve and not checking if it is in the correct
+    /// subgroup.
     ///
-    /// **This is dangerous to call unless you trust the bytes you are reading; otherwise,
-    /// API invariants may be broken.** Please consider using `from_uncompressed()` instead.
+    /// **This is dangerous to call unless you trust the bytes you are reading;
+    /// otherwise, API invariants may be broken.** Please consider using
+    /// `from_uncompressed()` instead.
     fn from_uncompressed_unchecked(bytes: &[u8; UNCOMPRESSED_SIZE]) -> CtOption<Self> {
         let mut raw = blst_p1_affine::default();
         let success =
@@ -367,8 +371,9 @@ impl G1Affine {
     /// Attempts to deserialize an uncompressed element, not checking if the
     /// element is in the correct subgroup.
     ///
-    /// **This is dangerous to call unless you trust the bytes you are reading; otherwise,
-    /// API invariants may be broken.** Please consider using `from_compressed()` instead.
+    /// **This is dangerous to call unless you trust the bytes you are reading;
+    /// otherwise, API invariants may be broken.** Please consider using
+    /// `from_compressed()` instead.
     fn from_compressed_unchecked(bytes: &[u8; COMPRESSED_SIZE]) -> CtOption<Self> {
         let mut raw = blst_p1_affine::default();
         let success =
@@ -386,9 +391,9 @@ impl G1Affine {
 }
 
 impl G1Affine {
-    /// Returns true if this point is free of an $h$-torsion component, and so it
-    /// exists within the $q$-order subgroup $\mathbb{G}_1$. This should always return true
-    /// unless an "unchecked" API was used.
+    /// Returns true if this point is free of an $h$-torsion component, and so
+    /// it exists within the $q$-order subgroup $\mathbb{G}_1$. This should
+    /// always return true unless an "unchecked" API was used.
     pub fn is_torsion_free(&self) -> Choice {
         unsafe { Choice::from(blst_p1_affine_in_g1(&self.0) as u8) }
     }
@@ -456,7 +461,8 @@ impl SerdeObject for G1Affine {
     }
 }
 
-/// This is an element of $\mathbb{G}_1$ represented in the projective coordinate space.
+/// This is an element of $\mathbb{G}_1$ represented in the projective
+/// coordinate space.
 #[derive(Copy, Clone)]
 #[repr(transparent)]
 pub struct G1Projective(pub(crate) blst_p1);
@@ -536,8 +542,9 @@ impl G1Projective {
     /// Attempts to deserialize an uncompressed element, not checking if the
     /// element is in the correct subgroup.
     ///
-    /// **This is dangerous to call unless you trust the bytes you are reading; otherwise,
-    /// API invariants may be broken.** Please consider using `from_compressed()` instead.
+    /// **This is dangerous to call unless you trust the bytes you are reading;
+    /// otherwise, API invariants may be broken.** Please consider using
+    /// `from_compressed()` instead.
     fn from_compressed_unchecked(bytes: &[u8; COMPRESSED_SIZE]) -> CtOption<Self> {
         G1Affine::from_compressed_unchecked(bytes).map(Into::into)
     }
@@ -613,7 +620,8 @@ impl G1Projective {
         res
     }
 
-    /// Perform a multi-exponentiation, aka "multi-scalar-multiplication" (MSM) using `blst`'s implementation of Pippenger's algorithm.
+    /// Perform a multi-exponentiation, aka "multi-scalar-multiplication" (MSM)
+    /// using `blst`'s implementation of Pippenger's algorithm.
     /// Note: `scalars` is cloned in this method.
     pub fn multi_exp(points: &[Self], scalars: &[Fq]) -> Self {
         let n = if points.len() < scalars.len() {
@@ -969,11 +977,11 @@ impl CurveAffine for G1Affine {
 mod tests {
     #![allow(clippy::eq_op)]
 
-    use super::*;
-
     use ff::Field;
     use rand_core::SeedableRng;
     use rand_xorshift::XorShiftRng;
+
+    use super::*;
 
     #[test]
     fn curve_tests() {

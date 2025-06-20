@@ -1,20 +1,24 @@
-//! This module provides an implementation of the Jubjub scalar field $\mathbb{F}_r$
-//! where `r = 0x0e7db4ea6533afa906673b0101343b00a6682093ccc81082d0970e5ed6f72cb7`
+//! This module provides an implementation of the Jubjub scalar field
+//! $\mathbb{F}_r$ where `r =
+//! 0x0e7db4ea6533afa906673b0101343b00a6682093ccc81082d0970e5ed6f72cb7`
 
-use core::convert::TryInto;
-use core::fmt;
-use core::ops::{Add, Mul, MulAssign, Neg, Sub};
+use core::{
+    convert::TryInto,
+    fmt,
+    ops::{Add, Mul, MulAssign, Neg, Sub},
+};
 
 use ff::{Field, PrimeField, PrimeFieldBits};
 use rand_core::RngCore;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 
-use crate::{impl_binops_additive, impl_binops_multiplicative};
+use crate::{
+    arithmetic::{adc, mac, sbb},
+    impl_binops_additive, impl_binops_multiplicative,
+};
 
-use crate::arithmetic::{adc, mac, sbb};
-
-/// Represents an element of the scalar field $\mathbb{F}_r$ of the Jubjub elliptic
-/// curve construction.
+/// Represents an element of the scalar field $\mathbb{F}_r$ of the Jubjub
+/// elliptic curve construction.
 // The internal representation of this type is four 64-bit unsigned
 // integers in little-endian order. Elements of Fr are always in
 // Montgomery form; i.e., Fr(a) = aR mod r, with R = 2^256.
@@ -107,7 +111,8 @@ const TWO_INV: Fr = Fr([
     0x0c12_58ac_d662_82b7,
 ]);
 
-// GENERATOR = 6 (multiplicative generator of r-1 order, that is also quadratic nonresidue)
+// GENERATOR = 6 (multiplicative generator of r-1 order, that is also quadratic
+// nonresidue)
 const GENERATOR: Fr = Fr([
     0x720b_1b19_d49e_a8f1,
     0xbf4a_a361_01f1_3a58,
@@ -303,18 +308,20 @@ impl Fr {
     }
 
     fn from_u512(limbs: [u64; 8]) -> Fr {
-        // We reduce an arbitrary 512-bit number by decomposing it into two 256-bit digits
-        // with the higher bits multiplied by 2^256. Thus, we perform two reductions
+        // We reduce an arbitrary 512-bit number by decomposing it into two 256-bit
+        // digits with the higher bits multiplied by 2^256. Thus, we perform two
+        // reductions
         //
         // 1. the lower bits are multiplied by R^2, as normal
         // 2. the upper bits are multiplied by R^2 * 2^256 = R^3
         //
-        // and computing their sum in the field. It remains to see that arbitrary 256-bit
-        // numbers can be placed into Montgomery form safely using the reduction. The
-        // reduction works so long as the product is less than R=2^256 multiplied by
-        // the modulus. This holds because for any `c` smaller than the modulus, we have
-        // that (2^256 - 1)*c is an acceptable product for the reduction. Therefore, the
-        // reduction always works so long as `c` is in the field; in this case it is either the
+        // and computing their sum in the field. It remains to see that arbitrary
+        // 256-bit numbers can be placed into Montgomery form safely using the
+        // reduction. The reduction works so long as the product is less than
+        // R=2^256 multiplied by the modulus. This holds because for any `c`
+        // smaller than the modulus, we have that (2^256 - 1)*c is an acceptable
+        // product for the reduction. Therefore, the reduction always works so
+        // long as `c` is in the field; in this case it is either the
         // constant `R2` or `R3`.
         let d0 = Fr([limbs[0], limbs[1], limbs[2], limbs[3]]);
         let d1 = Fr([limbs[4], limbs[5], limbs[6], limbs[7]]);
@@ -609,7 +616,8 @@ impl Fr {
         let (d3, borrow) = sbb(self.0[3], rhs.0[3], borrow);
 
         // If underflow occurred on the final limb, borrow = 0xfff...fff, otherwise
-        // borrow = 0x000...000. Thus, we use it as a mask to conditionally add the modulus.
+        // borrow = 0x000...000. Thus, we use it as a mask to conditionally add the
+        // modulus.
         let (d0, carry) = adc(d0, MODULUS.0[0] & borrow, 0);
         let (d1, carry) = adc(d1, MODULUS.0[1] & borrow, carry);
         let (d2, carry) = adc(d2, MODULUS.0[2] & borrow, carry);
@@ -791,12 +799,12 @@ impl PrimeFieldBits for Fr {
 #[cfg(test)]
 pub(crate) mod tests {
 
-    use super::*;
+    use core::ops::MulAssign;
     use std::ops::AddAssign;
 
-    use core::ops::MulAssign;
-
     use ff::{Field, PrimeField};
+
+    use super::*;
     #[test]
     fn test_constants() {
         assert_eq!(

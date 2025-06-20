@@ -88,10 +88,6 @@
 //! position is Right     Node_{TREE_HEIGHT-1} = Root
 
 use ff::{Field, PrimeField};
-use midnight_proofs::{
-    circuit::{Layouter, Value},
-    plonk::Error,
-};
 use midnight_circuits::{
     compact_std_lib::{self, Relation, ShaTableSize, ZkStdLib, ZkStdLibArch},
     hash::poseidon::{constants::PoseidonField, PoseidonChip},
@@ -101,6 +97,10 @@ use midnight_circuits::{
     },
     testing_utils::plonk_api::filecoin_srs,
     types::{AssignedBit, AssignedNative},
+};
+use midnight_proofs::{
+    circuit::{Layouter, Value},
+    plonk::Error,
 };
 use rand::{rngs::OsRng, Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;

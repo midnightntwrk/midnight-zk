@@ -1,6 +1,7 @@
 //! # `blstrs`
 //!
-//! An implementation of the BLS12-381 pairing-friendly elliptic curve construction.
+//! An implementation of the BLS12-381 pairing-friendly elliptic curve
+//! construction.
 
 #![deny(clippy::perf, clippy::correctness)]
 #![allow(clippy::many_single_char_names)]
@@ -39,12 +40,12 @@ mod serde_impl;
 pub mod tests;
 
 // export for benchmarking only
-#[cfg(feature = "__private_bench")]
-pub use crate::{fp12::Fp12, fp2::Fp2};
-
 use ff::Field;
 use group::prime::PrimeCurveAffine;
 use pairing_lib::{Engine, MultiMillerLoop, PairingCurveAffine};
+
+#[cfg(feature = "__private_bench")]
+pub use crate::{fp12::Fp12, fp2::Fp2};
 
 /// Bls12-381 engine
 #[derive(Debug, Copy, Clone)]

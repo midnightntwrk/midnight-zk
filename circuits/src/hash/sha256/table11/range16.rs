@@ -165,12 +165,12 @@ impl Range16Config {
 #[cfg(test)]
 mod tests {
     use ff::PrimeField;
+    use halo2curves::pasta::Fp;
     use midnight_proofs::{
         circuit::{Layouter, SimpleFloorPlanner},
         dev::MockProver,
         plonk::{Advice, Circuit, Column, ConstraintSystem, Error},
     };
-    use halo2curves::pasta::Fp;
     use rand::{Rng, SeedableRng};
     use rand_chacha::ChaCha8Rng;
 

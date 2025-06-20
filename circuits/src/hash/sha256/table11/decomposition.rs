@@ -715,12 +715,12 @@ impl SpreadTableConfig {
 #[cfg(test)]
 mod tests {
     use ff::PrimeField;
+    use halo2curves::pasta::Fp;
     use midnight_proofs::{
         circuit::{Layouter, SimpleFloorPlanner, Value},
         dev::MockProver,
         plonk::{Advice, Circuit, Column, ConstraintSystem, Error},
     };
-    use halo2curves::pasta::Fp;
     use rand::Rng;
 
     use super::SpreadTableConfig;

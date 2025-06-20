@@ -6,10 +6,6 @@
 use blstrs::{Fr as JubjubScalar, JubjubExtended as Jubjub, JubjubSubgroup};
 use ff::Field;
 use group::Group;
-use midnight_proofs::{
-    circuit::{Layouter, Value},
-    plonk::Error,
-};
 use midnight_circuits::{
     compact_std_lib::{self, Relation, ZkStdLib},
     ecc::{hash_to_curve::HashToCurveGadget, native::EccChip},
@@ -20,6 +16,10 @@ use midnight_circuits::{
     },
     testing_utils::plonk_api::filecoin_srs,
     types::{AssignedBit, AssignedByte, AssignedNative, AssignedNativePoint, Instantiable},
+};
+use midnight_proofs::{
+    circuit::{Layouter, Value},
+    plonk::Error,
 };
 use rand::{rngs::OsRng, Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;

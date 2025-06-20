@@ -1,10 +1,6 @@
 //! Examples on how to perform native operations using the ZkStdLib.
 
 use ff::Field;
-use midnight_proofs::{
-    circuit::{Layouter, Value},
-    plonk::Error,
-};
 use midnight_circuits::{
     compact_std_lib::{self, Relation, ZkStdLib, ZkStdLibArch},
     instructions::{
@@ -13,6 +9,10 @@ use midnight_circuits::{
         PublicInputInstructions,
     },
     testing_utils::plonk_api::filecoin_srs,
+};
+use midnight_proofs::{
+    circuit::{Layouter, Value},
+    plonk::Error,
 };
 use rand::rngs::OsRng;
 

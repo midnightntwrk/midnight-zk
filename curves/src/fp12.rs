@@ -1,19 +1,19 @@
 //! This module implements arithmetic over the quadratic extension field Fp12.
 
-use blst::*;
-
 use core::{
     fmt,
     ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign},
 };
 
+use blst::*;
 use ff::Field;
 use rand_core::RngCore;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 
 use crate::{fp::Fp, fp2::Fp2, fp6::Fp6};
 
-/// This represents an element $c_0 + c_1 w$ of $\mathbb{F}_{p^12} = \mathbb{F}_{p^6} / w^2 - v$.
+/// This represents an element $c_0 + c_1 w$ of $\mathbb{F}_{p^12} =
+/// \mathbb{F}_{p^6} / w^2 - v$.
 #[derive(Copy, Clone, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct Fp12(pub(crate) blst_fp12);
@@ -582,10 +582,10 @@ const FROBENIUS_COEFF_FP12_C1: [blst_fp2; 12] = [
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     use rand_core::SeedableRng;
     use rand_xorshift::XorShiftRng;
+
+    use super::*;
 
     #[test]
     fn test_fp12_eq() {

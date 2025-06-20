@@ -399,12 +399,12 @@ impl MessageScheduleConfig {
 #[cfg(test)]
 mod tests {
     use ff::PrimeField;
+    use halo2curves::pasta::pallas;
     use midnight_proofs::{
         circuit::{Layouter, SimpleFloorPlanner},
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem, Error},
     };
-    use halo2curves::pasta::pallas;
 
     use super::{
         super::{super::BLOCK_SIZE, Table11Chip, Table11Config},

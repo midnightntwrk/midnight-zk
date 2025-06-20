@@ -12,15 +12,18 @@
 #[macro_use]
 extern crate criterion;
 
+use std::time::SystemTime;
+
 use criterion::{BenchmarkId, Criterion};
 use ff::PrimeField;
 use group::Group;
 use halo2curves::CurveAffine;
 use rand_core::{RngCore, SeedableRng};
 use rand_xorshift::XorShiftRng;
-use rayon::current_thread_index;
-use rayon::prelude::{IntoParallelIterator, ParallelIterator};
-use std::time::SystemTime;
+use rayon::{
+    current_thread_index,
+    prelude::{IntoParallelIterator, ParallelIterator},
+};
 
 const SAMPLE_SIZE: usize = 10;
 const SEED: [u8; 16] = [

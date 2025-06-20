@@ -791,12 +791,12 @@ mod tests {
 
     use blstrs::Fq as BlsScalar;
     use ff::FromUniformBytes;
+    use halo2curves::pasta::{Fp as VestaScalar, Fq as PallasScalar};
     use midnight_proofs::{
         circuit::SimpleFloorPlanner,
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem},
     };
-    use halo2curves::pasta::{Fp as VestaScalar, Fq as PallasScalar};
     use num_bigint::RandBigInt;
     use num_traits::Zero;
 

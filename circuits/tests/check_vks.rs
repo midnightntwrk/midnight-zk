@@ -1,11 +1,11 @@
 //! Integration tests for identifying breaking changes in circuits
 
-use midnight_proofs::plonk::k_from_circuit;
 use midnight_circuits::{
     compact_std_lib,
     compact_std_lib::MidnightCircuit,
     testing_utils::plonk_api::{check_vk, filecoin_srs},
 };
+use midnight_proofs::plonk::k_from_circuit;
 
 #[path = "../examples/exposing_types.rs"]
 mod exposing_types;

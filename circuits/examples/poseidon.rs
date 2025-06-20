@@ -1,15 +1,15 @@
 //! Examples on how to perform poseidon operations
 
 use ff::Field;
-use midnight_proofs::{
-    circuit::{Layouter, Value},
-    plonk::Error,
-};
 use midnight_circuits::{
     compact_std_lib::{self, Relation, ZkStdLib, ZkStdLibArch},
     hash::poseidon::PoseidonChip,
     instructions::{hash::HashCPU, AssignmentInstructions, PublicInputInstructions},
     testing_utils::plonk_api::filecoin_srs,
+};
+use midnight_proofs::{
+    circuit::{Layouter, Value},
+    plonk::Error,
 };
 use rand::{rngs::OsRng, SeedableRng};
 use rand_chacha::ChaCha8Rng;

@@ -4,12 +4,12 @@
 use blstrs;
 use ff::{PrimeField, WithSmallOrderMulGroup};
 use group::{prime::PrimeCurveAffine, Curve, Group};
-use midnight_proofs::transcript::Hashable;
 use halo2curves::{
     pairing::{Engine, MultiMillerLoop},
     serde::SerdeObject,
     CurveExt,
 };
+use midnight_proofs::transcript::Hashable;
 use pasta_curves::arithmetic::CurveAffine;
 
 use crate::{
