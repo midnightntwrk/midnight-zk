@@ -9,7 +9,7 @@
 use std::{fmt::Debug, iter};
 
 use ff::Field;
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::{Chip, Layouter, Value},
     plonk::{ConstraintSystem, Error},
     poly::{EvaluationDomain, Rotation},
@@ -514,7 +514,7 @@ pub(crate) mod tests {
     use std::collections::BTreeMap;
 
     use group::Group;
-    use halo2_proofs::{
+    use midnight_proofs::{
         circuit::SimpleFloorPlanner,
         dev::MockProver,
         plonk::{create_proof, keygen_pk, keygen_vk_with_k, prepare, Circuit, Error},

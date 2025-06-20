@@ -5,7 +5,7 @@
 use ecc::EccInstructions;
 use ff::{Field, PrimeField};
 use group::Group;
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::{Chip, Layouter, Region, Value},
     plonk::{Advice, Column, ConstraintSystem, Constraints, Error, Expression, Selector},
     poly::Rotation,
@@ -14,7 +14,7 @@ use halo2_proofs::{
 use {
     crate::field::decomposition::chip::P2RDecompositionConfig,
     crate::testing_utils::{FromScratch, Sampleable},
-    halo2_proofs::plonk::Instance,
+    midnight_proofs::plonk::Instance,
     rand::RngCore,
 };
 

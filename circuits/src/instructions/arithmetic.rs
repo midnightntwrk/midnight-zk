@@ -13,7 +13,7 @@ use std::{
 };
 
 use ff::PrimeField;
-use halo2_proofs::{circuit::Layouter, plonk::Error};
+use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 use crate::{
     instructions::{AssertionInstructions, AssignmentInstructions},
@@ -374,7 +374,7 @@ pub mod tests {
     use std::{cmp::min, marker::PhantomData};
 
     use ff::FromUniformBytes;
-    use halo2_proofs::{
+    use midnight_proofs::{
         circuit::{Layouter, SimpleFloorPlanner, Value},
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem},

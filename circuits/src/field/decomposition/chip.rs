@@ -3,7 +3,7 @@
 use std::{collections::HashMap, marker::PhantomData};
 
 use ff::PrimeField;
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::{Chip, Layouter, Value},
     plonk::{ConstraintSystem, Error},
 };

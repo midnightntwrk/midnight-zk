@@ -1,7 +1,7 @@
 use std::{cmp::min, ops::Range};
 
 use ff::{Field, PrimeField};
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };

@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::Value,
     plonk,
     plonk::ConstraintSystem,

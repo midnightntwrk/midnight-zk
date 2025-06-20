@@ -1,12 +1,12 @@
 use std::{cmp::min, marker::PhantomData};
 
 use ff::PrimeField;
-use halo2_proofs::{circuit::Layouter, plonk::Error};
+use midnight_proofs::{circuit::Layouter, plonk::Error};
 use num_bigint::BigUint;
 #[cfg(any(test, feature = "testing"))]
 use {
     crate::testing_utils::FromScratch,
-    halo2_proofs::plonk::{Column, ConstraintSystem, Instance},
+    midnight_proofs::plonk::{Column, ConstraintSystem, Instance},
 };
 
 use crate::{field::AssignedNative, instructions::NativeInstructions, types::AssignedByte};
@@ -186,7 +186,7 @@ where
 #[cfg(test)]
 mod tests {
     use ff::FromUniformBytes;
-    use halo2_proofs::{
+    use midnight_proofs::{
         circuit::{SimpleFloorPlanner, Value},
         dev::MockProver,
         plonk::Circuit,
@@ -296,7 +296,7 @@ mod tests {
 
     #[test]
     fn test_get_subsequence() {
-        type F = blstrs::Scalar;
+        type F = blstrs::Fq;
         [
             (vec![1, 2, 3, 4, 5, 6], 0, vec![1, 2, 3], true),
             (vec![1, 2, 3, 4, 5, 6], 1, vec![2, 3, 4, 5], true),
@@ -318,7 +318,7 @@ mod tests {
 
     #[test]
     fn test_fetch_bytes() {
-        type F = blstrs::Scalar;
+        type F = blstrs::Fq;
         let short = "L'essentiel est invisible pour les yeux".as_bytes();
         let long: Vec<u8> = (0..=2000).map(|i| i as u8).collect();
         [

@@ -39,7 +39,7 @@ use std::{
 };
 
 use ff::PrimeField;
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::{Chip, Layouter, Region, Value},
     plonk::{Advice, Column, ConstraintSystem, Constraints, Error, Fixed, Instance, Selector},
     poly::Rotation,
@@ -1442,7 +1442,7 @@ impl<F: PrimeField> FromScratch<F> for NativeChip<F> {
     }
 
     fn load_from_scratch(
-        _layouter: &mut impl halo2_proofs::circuit::Layouter<F>,
+        _layouter: &mut impl midnight_proofs::circuit::Layouter<F>,
         _config: &Self::Config,
     ) {
     }
@@ -1450,7 +1450,7 @@ impl<F: PrimeField> FromScratch<F> for NativeChip<F> {
 
 #[cfg(test)]
 mod tests {
-    use blstrs::Scalar as BlsScalar;
+    use blstrs::Fq as BlsScalar;
     use ff::FromUniformBytes;
     use halo2curves::pasta::{Fp as VestaScalar, Fq as PallasScalar};
 

@@ -3,7 +3,7 @@
 use std::fmt::Debug;
 
 use ff::PrimeField;
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::{Chip, Layouter},
     plonk::{ConstraintSystem, Error},
 };

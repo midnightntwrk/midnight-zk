@@ -2,7 +2,7 @@
 //! analog of file src/plonk/vanishing/verifier.rs from halo2.
 
 use ff::Field;
-use halo2_proofs::{circuit::Layouter, plonk::Error};
+use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 use crate::{
     instructions::ArithInstructions,

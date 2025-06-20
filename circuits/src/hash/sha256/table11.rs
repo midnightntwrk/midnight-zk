@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 
 use ff::PrimeField;
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::{Chip, Layouter, Region, Value},
     plonk::{Advice, Column, ConstraintSystem, Error, Fixed},
 };
@@ -21,7 +21,7 @@ use message_schedule::*;
 use range16::*;
 use spread_table::*;
 #[cfg(any(test, feature = "testing"))]
-use {crate::testing_utils::FromScratch, halo2_proofs::plonk::Instance};
+use {crate::testing_utils::FromScratch, midnight_proofs::plonk::Instance};
 
 use self::decomposition::SpreadTableConfig;
 use crate::hash::sha256::{

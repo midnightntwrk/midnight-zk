@@ -3,7 +3,7 @@
 //! The trait is parametrised by the curve, `C`, where the hash is mapped.
 
 use ff::PrimeField;
-use halo2_proofs::{circuit::Layouter, plonk::Error};
+use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 use super::EccInstructions;
 use crate::{ecc::curves::CircuitCurve, types::InnerValue};
@@ -44,7 +44,7 @@ pub mod tests {
 
     use ff::{FromUniformBytes, PrimeField};
     use group::Group;
-    use halo2_proofs::{
+    use midnight_proofs::{
         circuit::{Layouter, SimpleFloorPlanner, Value},
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem, Error},

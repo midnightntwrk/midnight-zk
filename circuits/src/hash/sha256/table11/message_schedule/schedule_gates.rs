@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 
 use ff::PrimeField;
-use halo2_proofs::plonk::Expression;
+use midnight_proofs::plonk::Expression;
 
 use super::super::Gate;
 

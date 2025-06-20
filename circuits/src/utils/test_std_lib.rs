@@ -3,7 +3,7 @@
 macro_rules! run_test_std_lib {
     ($chip:ident, $layouter:ident, $k:expr, $circuit_body:block) => {
         use ff::{FromUniformBytes, PrimeField};
-        use halo2_proofs::{
+        use midnight_proofs::{
             circuit::{AssignedCell, Layouter, SimpleFloorPlanner, Value},
             dev::MockProver,
             plonk::Error,
@@ -22,7 +22,7 @@ macro_rules! run_test_std_lib {
             compact_std_lib::{MidnightCircuit, Relation, ZkStdLib},
         };
 
-        type F = blstrs::Scalar;
+        type F = blstrs::Fq;
 
         #[derive(Clone)]
         struct TestCircuit;

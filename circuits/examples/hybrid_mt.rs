@@ -88,7 +88,7 @@
 //! position is Right     Node_{TREE_HEIGHT-1} = Root
 
 use ff::{Field, PrimeField};
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
@@ -106,7 +106,7 @@ use rand::{rngs::OsRng, Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use sha2::Digest;
 
-type F = blstrs::Scalar;
+type F = blstrs::Fq;
 
 // The height of the tree.
 const TREE_HEIGHT: usize = 64;

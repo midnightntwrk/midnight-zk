@@ -1,6 +1,6 @@
 //! Integration tests for identifying breaking changes in circuits
 
-use halo2_proofs::plonk::k_from_circuit;
+use midnight_proofs::plonk::k_from_circuit;
 use midnight_circuits::{
     compact_std_lib,
     compact_std_lib::MidnightCircuit,

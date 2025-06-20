@@ -6,7 +6,7 @@
 //! compact_std_lib to satisfy it.
 
 use ff::Field;
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
@@ -21,7 +21,7 @@ use midnight_circuits::{
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 
-type F = blstrs::Scalar;
+type F = blstrs::Fq;
 
 #[derive(Clone)]
 struct PIsCircuit {

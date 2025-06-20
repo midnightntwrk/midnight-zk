@@ -1,13 +1,13 @@
 use std::iter::once;
 
 use ff::{Field, PrimeField};
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::{Chip, Layouter, Region, Value},
     plonk::{Advice, Column, ConstraintSystem, Constraints, Error, Expression, Fixed, Selector},
     poly::Rotation,
 };
 #[cfg(any(test, feature = "testing"))]
-use {crate::testing_utils::FromScratch, halo2_proofs::plonk::Instance};
+use {crate::testing_utils::FromScratch, midnight_proofs::plonk::Instance};
 
 use super::{
     constants::{PoseidonField, NB_FULL_ROUNDS, NB_PARTIAL_ROUNDS, RATE, WIDTH},
@@ -602,7 +602,7 @@ impl<F: PoseidonField> FromScratch<F> for PoseidonChip<F> {
 
 #[cfg(test)]
 mod tests {
-    use halo2_proofs::{circuit::SimpleFloorPlanner, dev::MockProver, plonk::Circuit};
+    use midnight_proofs::{circuit::SimpleFloorPlanner, dev::MockProver, plonk::Circuit};
 
     use super::*;
     use crate::{
@@ -719,7 +719,7 @@ mod tests {
     #[test]
     // Testing Poseidon's permutation.
     fn permutation_test() {
-        let inputs = [blstrs::Scalar::from(0); WIDTH];
+        let inputs = [blstrs::Fq::from(0); WIDTH];
         // Set the second argument to true to experiment on the permutation cost.
         run_permutation_test(inputs, true);
     }
@@ -728,17 +728,17 @@ mod tests {
     fn sponge_test() {
         // Consistency tests between the cpu and circuit implementations of the
         // permutation.
-        run_sponge_test::<blstrs::Scalar>("blstrs", true);
+        run_sponge_test::<blstrs::Fq>("blstrs", true);
     }
 
     #[test]
     fn test_poseidon_hash() {
         test_hash::<
-            blstrs::Scalar,
-            AssignedNative<blstrs::Scalar>,
-            AssignedNative<blstrs::Scalar>,
-            PoseidonChip<blstrs::Scalar>,
-            NG<blstrs::Scalar>,
+            blstrs::Fq,
+            AssignedNative<blstrs::Fq>,
+            AssignedNative<blstrs::Fq>,
+            PoseidonChip<blstrs::Fq>,
+            NG<blstrs::Fq>,
         >(true, "Poseidon", 10);
     }
 }

@@ -7,7 +7,7 @@
 //! values that implement `InnerConstants`, which gives access to zero.
 
 use ff::PrimeField;
-use halo2_proofs::{circuit::Layouter, plonk::Error};
+use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 use crate::{
     instructions::{AssertionInstructions, EqualityInstructions},
@@ -64,7 +64,7 @@ pub mod tests {
     use std::marker::PhantomData;
 
     use ff::FromUniformBytes;
-    use halo2_proofs::{
+    use midnight_proofs::{
         circuit::{Layouter, SimpleFloorPlanner},
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem},

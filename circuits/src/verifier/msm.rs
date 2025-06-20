@@ -6,7 +6,7 @@
 use std::collections::{btree_map::Entry, BTreeMap};
 
 use ff::Field;
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };

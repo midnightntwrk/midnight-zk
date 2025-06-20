@@ -5,10 +5,10 @@ use std::{
     sync::{Arc, Mutex, OnceLock},
 };
 
-use blstrs::Scalar;
+use blstrs::Fq;
 use ff::{FromUniformBytes, PrimeField};
 use goldenfile::Mint;
-use halo2_proofs::{
+use midnight_proofs::{
     dev::cost_model::{from_circuit_to_circuit_model, CircuitModel},
     plonk::Circuit,
 };

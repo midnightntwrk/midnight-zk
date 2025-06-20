@@ -2,7 +2,7 @@
 //! Shall we adopt the [SAFE API](https://hackmd.io/bHgsH6mMStCVibM_wYvb2w)?
 
 use ff::Field;
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
     transcript::{CircuitTranscript, Transcript},
@@ -177,7 +177,7 @@ impl<C: SelfEmulationCurve> TranscriptGadget<C> {
 }
 
 #[cfg(any(test, feature = "testing"))]
-use halo2_proofs::plonk::{Column, ConstraintSystem, Instance};
+use midnight_proofs::plonk::{Column, ConstraintSystem, Instance};
 
 #[cfg(any(test, feature = "testing"))]
 use crate::{
@@ -268,7 +268,7 @@ impl<C: SelfEmulationCurve> FromScratch<C::Scalar> for TranscriptGadget<C> {
 mod tests {
     use ff::Field;
     use group::Group;
-    use halo2_proofs::{
+    use midnight_proofs::{
         circuit::{Layouter, SimpleFloorPlanner, Value},
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem, Error},
@@ -287,7 +287,7 @@ mod tests {
     const SIZE: usize = 12;
 
     type C = blstrs::G1Projective;
-    type F = blstrs::Scalar;
+    type F = blstrs::Fq;
 
     #[derive(Clone, Debug, Default)]
     struct TestCircuit {

@@ -7,8 +7,8 @@ use num_integer::Integer;
 use num_traits::{Num, One, Signed, Zero};
 #[cfg(any(test, feature = "testing"))]
 use {
-    halo2_proofs::circuit::Layouter,
-    halo2_proofs::plonk::{Column, ConstraintSystem, Instance},
+    midnight_proofs::circuit::Layouter,
+    midnight_proofs::plonk::{Column, ConstraintSystem, Instance},
 };
 
 pub fn modulus<F: PrimeField>() -> BigUint {

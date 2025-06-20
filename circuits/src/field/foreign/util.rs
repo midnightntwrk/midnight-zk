@@ -3,7 +3,7 @@
 use std::ops::{Mul, Rem};
 
 use ff::PrimeField;
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::Value,
     plonk::{Advice, Column, Expression, VirtualCells},
     poly::Rotation,

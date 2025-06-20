@@ -2,7 +2,7 @@ use std::io::{self, Read};
 
 use ff::PrimeField;
 use group::GroupEncoding;
-use halo2_proofs::transcript::{Hashable, Sampleable, TranscriptHash};
+use midnight_proofs::transcript::{Hashable, Sampleable, TranscriptHash};
 
 use super::{
     constants::{PoseidonField, NB_FULL_ROUNDS, NB_PARTIAL_ROUNDS, RATE, WIDTH},
@@ -189,15 +189,15 @@ impl<F: PoseidonField> TranscriptHash for PoseidonState<F> {
 /// Implementation of Hashable for BLS12-381 with Poseidon //
 /////////////////////////////////////////////////////////////
 
-impl Hashable<PoseidonState<blstrs::Scalar>> for blstrs::G1Affine {
-    fn to_input(&self) -> Vec<blstrs::Scalar> {
+impl Hashable<PoseidonState<blstrs::Fq>> for blstrs::G1Affine {
+    fn to_input(&self) -> Vec<blstrs::Fq> {
         // This implementation hard-codes MultiEmulationParams. This could
         // be a limitation for using the transcript gadget with other parameters
         // of emulation.
         [self.x(), self.y()]
             .iter()
             .flat_map(
-                AssignedField::<blstrs::Scalar, blstrs::Fp, MultiEmulationParams>::as_public_input,
+                AssignedField::<blstrs::Fq, blstrs::Fp, MultiEmulationParams>::as_public_input,
             )
             .collect()
     }
@@ -220,22 +220,22 @@ impl Hashable<PoseidonState<blstrs::Scalar>> for blstrs::G1Affine {
     }
 }
 
-impl Hashable<PoseidonState<blstrs::Scalar>> for blstrs::G1Projective {
-    fn to_input(&self) -> Vec<blstrs::Scalar> {
-        <blstrs::G1Affine as Hashable<PoseidonState<blstrs::Scalar>>>::to_input(&self.into())
+impl Hashable<PoseidonState<blstrs::Fq>> for blstrs::G1Projective {
+    fn to_input(&self) -> Vec<blstrs::Fq> {
+        <blstrs::G1Affine as Hashable<PoseidonState<blstrs::Fq>>>::to_input(&self.into())
     }
 
     fn to_bytes(&self) -> Vec<u8> {
-        <blstrs::G1Affine as Hashable<PoseidonState<blstrs::Scalar>>>::to_bytes(&self.into())
+        <blstrs::G1Affine as Hashable<PoseidonState<blstrs::Fq>>>::to_bytes(&self.into())
     }
 
     fn read(buffer: &mut impl Read) -> io::Result<Self> {
-        Ok(<blstrs::G1Affine as Hashable<PoseidonState<blstrs::Scalar>>>::read(buffer)?.into())
+        Ok(<blstrs::G1Affine as Hashable<PoseidonState<blstrs::Fq>>>::read(buffer)?.into())
     }
 }
 
-impl Hashable<PoseidonState<blstrs::Scalar>> for blstrs::Scalar {
-    fn to_input(&self) -> Vec<blstrs::Scalar> {
+impl Hashable<PoseidonState<blstrs::Fq>> for blstrs::Fq {
+    fn to_input(&self) -> Vec<blstrs::Fq> {
         vec![*self]
     }
 
@@ -257,8 +257,8 @@ impl Hashable<PoseidonState<blstrs::Scalar>> for blstrs::Scalar {
     }
 }
 
-impl Sampleable<PoseidonState<blstrs::Scalar>> for blstrs::Scalar {
-    fn sample(out: blstrs::Scalar) -> Self {
+impl Sampleable<PoseidonState<blstrs::Fq>> for blstrs::Fq {
+    fn sample(out: blstrs::Fq) -> Self {
         out
     }
 }
@@ -323,6 +323,6 @@ mod tests {
     fn cpu_test() {
         // Testing cpu performances. In debug mode, also tests the consistency between
         // the optimised and non-optimised cpu implementations of the permutation.
-        consistency_cpu::<blstrs::Scalar>(1);
+        consistency_cpu::<blstrs::Fq>(1);
     }
 }

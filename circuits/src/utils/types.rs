@@ -1,7 +1,7 @@
 use core::fmt::Debug;
 
 use ff::PrimeField;
-use halo2_proofs::circuit::Value;
+use midnight_proofs::circuit::Value;
 #[cfg(any(test, feature = "testing"))]
 use rand::RngCore;
 

@@ -10,7 +10,7 @@ use std::{
 };
 
 use ff::PrimeField;
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::{Chip, Layouter, Value},
     plonk::{Advice, Column, ConstraintSystem, Error},
 };
@@ -20,7 +20,7 @@ use num_traits::{One, Signed, Zero};
 #[cfg(any(test, feature = "testing"))]
 use {
     crate::testing_utils::{FromScratch, Sampleable},
-    halo2_proofs::plonk::Instance,
+    midnight_proofs::plonk::Instance,
     rand::RngCore,
 };
 
@@ -1681,7 +1681,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use blstrs::Scalar as BlsScalar;
+    use blstrs::Fq as BlsScalar;
     use halo2curves::{
         pasta::{Fp as VestaScalar, Fq as PallasScalar},
         secp256k1::{Fp as secp256k1Base, Fq as secp256k1Scalar},

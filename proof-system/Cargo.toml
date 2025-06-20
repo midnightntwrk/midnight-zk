@@ -36,7 +36,7 @@ backtrace = { version = "0.3", optional = true }
 ff = { workspace = true }
 group = { workspace = true }
 halo2curves = { workspace = true }
-blstrs = { path = "../curves/" }
+blstrs = { path = "../curves" }
 rand_core = { workspace = true }
 tracing = { workspace = true }
 blake2b_simd = { workspace = true }

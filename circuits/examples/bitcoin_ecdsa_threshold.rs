@@ -1,9 +1,9 @@
 //! Example of proving knowledge of k out of n Bitcoin ECDSA signatures on a
 //! public message.
 
-use blstrs::Scalar;
+use blstrs::Fq;
 use ff::Field;
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };

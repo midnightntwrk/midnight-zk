@@ -1,5 +1,5 @@
 use ff::PrimeField;
-use halo2_proofs::{circuit::Region, plonk::Error};
+use midnight_proofs::{circuit::Region, plonk::Error};
 
 use super::{
     super::{RoundWord, RoundWordA, RoundWordE, StateWord},

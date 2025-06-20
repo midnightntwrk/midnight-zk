@@ -1,4 +1,4 @@
-use halo2_proofs::{circuit::Layouter, plonk::Error};
+use midnight_proofs::{circuit::Layouter, plonk::Error};
 use num_bigint::BigUint;
 
 use super::{
@@ -160,7 +160,7 @@ impl<F: PoseidonField, const MAX_LEN: usize>
 #[cfg(test)]
 mod tests {
     use ff::Field;
-    use halo2_proofs::{
+    use midnight_proofs::{
         circuit::{SimpleFloorPlanner, Value},
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem},
@@ -255,7 +255,7 @@ mod tests {
 
     #[test]
     fn test_poseidon_varhash() {
-        type F = blstrs::Scalar;
+        type F = blstrs::Fq;
 
         // Create a random number generator
         let mut rng = ChaCha12Rng::seed_from_u64(0xdeadcafe);

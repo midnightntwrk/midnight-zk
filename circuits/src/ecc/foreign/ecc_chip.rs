@@ -17,7 +17,7 @@ use std::{
 
 use ff::{Field, PrimeField};
 use group::Group;
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::{Chip, Layouter, Value},
     plonk::{Advice, Column, ConstraintSystem, Error, Expression, Fixed, Selector},
     poly::Rotation,
@@ -28,7 +28,7 @@ use rand::rngs::OsRng;
 #[cfg(any(test, feature = "testing"))]
 use {
     crate::testing_utils::Sampleable, crate::utils::util::FromScratch,
-    halo2_proofs::plonk::Instance, rand::RngCore,
+    midnight_proofs::plonk::Instance, rand::RngCore,
 };
 
 use super::gates::{

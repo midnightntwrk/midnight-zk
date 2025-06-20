@@ -3,7 +3,7 @@
 //! src/plonk/permutation/verifier.rs from halo2.
 
 use ff::{Field, PrimeField};
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::Layouter,
     plonk::{Any, Column, ColumnType, ConstraintSystem, Error},
     poly::Rotation,

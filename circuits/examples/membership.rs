@@ -8,7 +8,7 @@
 //! and `l` without revealing its membership in other sets.
 
 use ff::{Field, PrimeField};
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
@@ -26,7 +26,7 @@ use midnight_circuits::{
 };
 use rand::rngs::OsRng;
 
-type F = blstrs::Scalar;
+type F = blstrs::Fq;
 type SuccinctRepr = F;
 type Set = F;
 type Map = MapMt<F, PoseidonChip<F>>;

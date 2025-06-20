@@ -4,7 +4,7 @@
 use std::marker::PhantomData;
 
 use ff::PrimeField;
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
@@ -18,7 +18,7 @@ use {
     crate::testing_utils::FromScratch,
     crate::testing_utils::Sampleable,
     crate::utils::ComposableChip,
-    halo2_proofs::plonk::{Column, ConstraintSystem, Instance},
+    midnight_proofs::plonk::{Column, ConstraintSystem, Instance},
     rand::Rng,
     rand::RngCore,
 };
@@ -1665,7 +1665,7 @@ impl<F: PrimeField> FromScratch<F> for NativeGadget<F, P2RDecompositionChip<F>, 
 
 #[cfg(test)]
 mod tests {
-    use blstrs::Scalar as BlsScalar;
+    use blstrs::Fq as BlsScalar;
 
     use super::*;
     use crate::instructions::{bitwise, comparison, decomposition, range_check};

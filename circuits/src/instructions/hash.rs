@@ -6,7 +6,7 @@
 use std::fmt::Debug;
 
 use ff::PrimeField;
-use halo2_proofs::{circuit::Layouter, plonk::Error};
+use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 use crate::types::{AssignedVector, InnerValue, Vectorizable};
 
@@ -47,7 +47,7 @@ where
 pub mod tests {
     use std::{fmt::Debug, marker::PhantomData};
 
-    use halo2_proofs::{
+    use midnight_proofs::{
         circuit::{SimpleFloorPlanner, Value},
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem},

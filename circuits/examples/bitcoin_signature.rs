@@ -3,7 +3,7 @@
 //! using Bitcoin's C library https://github.com/bitcoin-core/secp256k1.
 
 use group::GroupEncoding;
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
@@ -21,7 +21,7 @@ use midnight_circuits::{
 use rand::rngs::OsRng;
 use sha2::Digest;
 
-type F = blstrs::Scalar;
+type F = blstrs::Fq;
 
 type Message = [u8; 32];
 type PK = Secp256k1;

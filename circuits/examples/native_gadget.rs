@@ -1,7 +1,7 @@
 //! Examples on how to perform native operations using the ZkStdLib.
 
 use ff::Field;
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
@@ -16,7 +16,7 @@ use midnight_circuits::{
 };
 use rand::rngs::OsRng;
 
-type F = blstrs::Scalar;
+type F = blstrs::Fq;
 
 #[derive(Clone, Default)]
 pub struct NativeGadgetExample;

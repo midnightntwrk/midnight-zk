@@ -17,7 +17,7 @@
 use std::collections::BTreeMap;
 
 use group::prime::PrimeCurveAffine;
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
     poly::kzg::msm::DualMSM,

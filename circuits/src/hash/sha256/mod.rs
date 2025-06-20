@@ -5,7 +5,7 @@
 use std::{convert::TryInto, fmt::Debug, ops::Deref};
 
 use ff::PrimeField;
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::{AssignedCell, Layouter, Region, Value},
     plonk::{Any, Column, Error},
     utils::rational::Rational,
@@ -14,7 +14,7 @@ use sha2::Digest;
 #[cfg(any(test, feature = "testing"))]
 use {
     crate::testing_utils::FromScratch,
-    halo2_proofs::plonk::{ConstraintSystem, Instance},
+    midnight_proofs::plonk::{ConstraintSystem, Instance},
 };
 
 mod instructions;
@@ -538,7 +538,7 @@ impl<F: PrimeField, H: Sha256Instructions<F>, D: CoreDecompositionInstructions<F
 
 #[cfg(test)]
 mod tests {
-    use blstrs::Scalar;
+    use blstrs::Fq;
 
     use crate::{
         field::{decomposition::chip::P2RDecompositionChip, NativeGadget},

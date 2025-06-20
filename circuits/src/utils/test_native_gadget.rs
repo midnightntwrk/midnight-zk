@@ -3,12 +3,12 @@
 macro_rules! run_test_native_gadget {
     ($chip:ident, $layouter:ident, $synthesize_body:block) => {
         use ff::PrimeField;
-        use halo2_proofs::{
+        use midnight_proofs::{
             circuit::{Layouter, SimpleFloorPlanner, Value},
             dev::MockProver,
             plonk::{Circuit, ConstraintSystem},
         };
-        use halo2_proofs::plonk::Error;
+        use midnight_proofs::plonk::Error;
         use halo2curves::pasta::Fp;
         use midnight_circuits::{
             types::{AssignedBit, AssignedByte, AssignedNative, ComposableChip},
