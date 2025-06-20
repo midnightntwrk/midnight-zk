@@ -11,6 +11,7 @@ use std::{
 };
 
 use blstrs::Bls12;
+use halo2curves::bn256;
 use midnight_proofs::{
     plonk::{
         create_proof, keygen_pk, keygen_vk, prepare, Circuit, Error, ProvingKey, VerifyingKey,
@@ -25,7 +26,6 @@ use midnight_proofs::{
     transcript::{CircuitTranscript, Transcript},
     utils::SerdeFormat,
 };
-use halo2curves::bn256;
 use rand::{CryptoRng, RngCore};
 use sha2::Digest;
 

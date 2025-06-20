@@ -13,11 +13,12 @@ use subtle::{Choice, ConstantTimeEq};
 
 use crate::{fp::Fp, fp12::Fp12, fp2::Fp2, fp6::Fp6, Fq};
 
-/// This is an element of $\mathbb{G}_T$, the target group of the pairing function. As with
-/// $\mathbb{G}_1$ and $\mathbb{G}_2$ this group has order $q$.
+/// This is an element of $\mathbb{G}_T$, the target group of the pairing
+/// function. As with $\mathbb{G}_1$ and $\mathbb{G}_2$ this group has order
+/// $q$.
 ///
-/// Typically, $\mathbb{G}_T$ is written multiplicatively but we will write it additively to
-/// keep code and abstractions consistent.
+/// Typically, $\mathbb{G}_T$ is written multiplicatively but we will write it
+/// additively to keep code and abstractions consistent.
 #[derive(Copy, Clone, Debug, Default)]
 #[repr(transparent)]
 pub struct Gt(pub(crate) Fp12);
@@ -321,13 +322,12 @@ impl Gt {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     use group::{prime::PrimeCurveAffine, Curve};
     use pairing_lib::{Engine, MillerLoopResult, MultiMillerLoop};
     use rand_core::SeedableRng;
     use rand_xorshift::XorShiftRng;
 
+    use super::*;
     use crate::{pairing, Bls12, G1Affine, G1Projective, G2Affine, G2Prepared, G2Projective};
 
     #[test]

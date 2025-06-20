@@ -17,12 +17,12 @@
 use std::collections::BTreeMap;
 
 use group::prime::PrimeCurveAffine;
+use halo2curves::pairing::Engine;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
     poly::kzg::msm::DualMSM,
 };
-use halo2curves::pairing::Engine;
 use num_bigint::BigUint;
 use num_traits::One;
 

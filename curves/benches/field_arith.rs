@@ -1,18 +1,17 @@
 //! Benchmark field arithmetic operations.
-//! It measures the base field `Fp` and scalar field `Scalar` from the Bls12-381 curve.
-//! Note: The bencharks are generic and can be easily extended for Jubjub scalar field
-//! and G2 base field Fp2.
+//! It measures the base field `Fp` and scalar field `Scalar` from the Bls12-381
+//! curve. Note: The bencharks are generic and can be easily extended for Jubjub
+//! scalar field and G2 base field Fp2.
 //!
 //! To run this benchmark:
 //!
 //!     cargo bench --bench field_arith
 
+use blstrs::*;
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
+use ff::Field;
 use rand_core::{RngCore, SeedableRng};
 use rand_xorshift::XorShiftRng;
-
-use blstrs::*;
-use ff::Field;
 
 const SEED: [u8; 16] = [
     0x59, 0x62, 0xbe, 0x5d, 0x76, 0x3d, 0x31, 0x8d, 0x17, 0xdb, 0x37, 0x32, 0x54, 0x06, 0xbc, 0xe5,
@@ -26,8 +25,8 @@ const SEED: [u8; 16] = [
 //     const SAMPLES: usize = 1000;
 
 //     let mut rng = XorShiftRng::from_seed([
-//         0x59, 0x62, 0xbe, 0x5d, 0x76, 0x3d, 0x31, 0x8d, 0x17, 0xdb, 0x37, 0x32, 0x54, 0x06, 0xbc,
-//         0xe5,
+//         0x59, 0x62, 0xbe, 0x5d, 0x76, 0x3d, 0x31, 0x8d, 0x17, 0xdb, 0x37,
+// 0x32, 0x54, 0x06, 0xbc,         0xe5,
 //     ]);
 
 //     let v: Vec<Fp> = (0..SAMPLES).map(|_| Fp::random(&mut rng)).collect();
@@ -44,8 +43,8 @@ const SEED: [u8; 16] = [
 //     const SAMPLES: usize = 1000;
 
 //     let mut rng = XorShiftRng::from_seed([
-//         0x59, 0x62, 0xbe, 0x5d, 0x76, 0x3d, 0x31, 0x8d, 0x17, 0xdb, 0x37, 0x32, 0x54, 0x06, 0xbc,
-//         0xe5,
+//         0x59, 0x62, 0xbe, 0x5d, 0x76, 0x3d, 0x31, 0x8d, 0x17, 0xdb, 0x37,
+// 0x32, 0x54, 0x06, 0xbc,         0xe5,
 //     ]);
 
 //     let v: Vec<[u8; 48]> = (0..SAMPLES)

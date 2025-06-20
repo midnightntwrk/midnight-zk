@@ -2,7 +2,7 @@
 resolver = "2"
 
 members = [
-    "proof-system",
+    "proofs",
     "curves",
     "circuits"
 ]

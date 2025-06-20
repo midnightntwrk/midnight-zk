@@ -1,9 +1,10 @@
-use crate::{fp12::Fp12, G1Affine, G2Affine, Gt};
 use core::ops::{Add, AddAssign};
+
+use blst::*;
 use ff::Field;
 use subtle::{Choice, ConditionallySelectable};
 
-use blst::*;
+use crate::{fp12::Fp12, G1Affine, G2Affine, Gt};
 
 /// Execute a complete pairing operation `(p, q)`.
 pub fn pairing(p: &G1Affine, q: &G2Affine) -> Gt {
@@ -121,7 +122,8 @@ impl_pairing!(
     blst_aggregated_in_g1
 );
 
-/// Returns true if all provided messages are distinctly unique, false otherwise.
+/// Returns true if all provided messages are distinctly unique, false
+/// otherwise.
 pub fn unique_messages(msgs: &[&[u8]]) -> bool {
     let n_elems = msgs.len();
 

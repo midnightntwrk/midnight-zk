@@ -18,6 +18,7 @@ use blake2b_simd::State as Blake2bState;
 use blstrs::G1Projective;
 use ff::Field;
 use group::{prime::PrimeCurveAffine, Group};
+use halo2curves::secp256k1::{self, Secp256k1};
 use midnight_proofs::{
     circuit::{Chip, Layouter, SimpleFloorPlanner, Value},
     dev::cost_model::{from_circuit_to_circuit_model, CircuitModel},
@@ -33,7 +34,6 @@ use midnight_proofs::{
     transcript::{CircuitTranscript, Transcript},
     utils::SerdeFormat,
 };
-use halo2curves::secp256k1::{self, Secp256k1};
 use num_bigint::BigUint;
 use rand::{CryptoRng, RngCore};
 
@@ -1485,29 +1485,29 @@ pub fn batch_verify(
         return Err(Error::InvalidInstances);
     }
 
-    let guards = vks
-        .iter()
-        .zip(pis.iter())
-        .zip(proofs.iter())
-        .map(|((vk, pi), proof)| {
-            if pi.len() != vk.nb_public_inputs {
-                return Err(Error::InvalidInstances);
-            }
+    let guards =
+        vks.iter()
+            .zip(pis.iter())
+            .zip(proofs.iter())
+            .map(|((vk, pi), proof)| {
+                if pi.len() != vk.nb_public_inputs {
+                    return Err(Error::InvalidInstances);
+                }
 
-            let mut transcript = CircuitTranscript::init_from_bytes(proof);
-            prepare::<
-                blstrs::Fq,
-                KZGCommitmentScheme<blstrs::Bls12>,
-                CircuitTranscript<Blake2bState>,
-            >(
-                &vk.vk,
-                &[&[blstrs::G1Projective::identity()]],
-                // TODO: We could batch here proofs with the same vk.
-                &[&[pi]],
-                &mut transcript,
-            )
-        })
-        .collect::<Result<Vec<_>, Error>>()?;
+                let mut transcript = CircuitTranscript::init_from_bytes(proof);
+                prepare::<
+                    blstrs::Fq,
+                    KZGCommitmentScheme<blstrs::Bls12>,
+                    CircuitTranscript<Blake2bState>,
+                >(
+                    &vk.vk,
+                    &[&[blstrs::G1Projective::identity()]],
+                    // TODO: We could batch here proofs with the same vk.
+                    &[&[pi]],
+                    &mut transcript,
+                )
+            })
+            .collect::<Result<Vec<_>, Error>>()?;
 
     if DualMSM::batch_verify(guards.into_iter(), params_verifier.iter()).is_ok() {
         Ok(())

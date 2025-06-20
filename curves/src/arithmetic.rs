@@ -26,8 +26,8 @@ pub(crate) const fn mac(a: u64, b: u64, c: u64, carry: u64) -> (u64, u64) {
 //  - Fields and extesnsions: Fq, Fp, Fp2, Fp6 and Fp12.
 //  - Groups: G1, G2, Gt.
 
-// Requires the caller to manually implement `Add<&rhs, Output = output> for &lhs` and
-// `Sub<&rhs, Output = output> for &lhs`.
+// Requires the caller to manually implement `Add<&rhs, Output = output> for
+// &lhs` and `Sub<&rhs, Output = output> for &lhs`.
 macro_rules! impl_add_sub {
     ($t:ident) => {
         impl_add_sub!($t, $t, $t);
@@ -115,7 +115,8 @@ macro_rules! impl_add_sub_assign {
     };
 }
 
-// Requires the caller to manually implement `Mul<&rhs, Output = output> for &lhs`.
+// Requires the caller to manually implement `Mul<&rhs, Output = output> for
+// &lhs`.
 macro_rules! impl_mul {
     ($t:ident) => {
         impl_mul!($t, $t, $t);
@@ -244,7 +245,8 @@ macro_rules! impl_add {
     };
 }
 
-// Requires the caller to manually implement `AddAssign<rhs> for lhs`, same for reference-based.
+// Requires the caller to manually implement `AddAssign<rhs> for lhs`, same for
+// reference-based.
 macro_rules! impl_sum {
     ($t:ident) => {
         impl_sum!($t, $t);
@@ -268,7 +270,8 @@ macro_rules! impl_sum {
     };
 }
 
-// Requires the caller to manually implement `MulAssign<rhs> for lhs`, same for reference-based.
+// Requires the caller to manually implement `MulAssign<rhs> for lhs`, same for
+// reference-based.
 macro_rules! impl_product {
     ($t:ident) => {
         impl_product!($t, $t);

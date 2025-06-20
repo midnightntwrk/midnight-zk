@@ -1,6 +1,6 @@
 //! Elliptic curves used in-circuit.
 
-use blstrs::{JubjubAffine, JubjubExtended, JubjubSubgroup, Fq as BlsScalar};
+use blstrs::{Fq as BlsScalar, JubjubAffine, JubjubExtended, JubjubSubgroup};
 use ff::PrimeField;
 use group::{Curve, Group};
 use halo2curves::{

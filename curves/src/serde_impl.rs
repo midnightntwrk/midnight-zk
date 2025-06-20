@@ -1,6 +1,4 @@
-use core::convert::TryFrom;
-use core::fmt;
-use core::marker::PhantomData;
+use core::{convert::TryFrom, fmt, marker::PhantomData};
 
 use group::{prime::PrimeCurveAffine, Curve};
 use serde::{
@@ -256,14 +254,14 @@ impl<'de> Deserialize<'de> for Fp12 {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     use core::fmt::Debug;
 
     use ff::Field;
     use group::{Curve, Group};
     use rand_core::SeedableRng;
     use rand_xorshift::XorShiftRng;
+
+    use super::*;
 
     fn test_roundtrip<T: Serialize + for<'a> Deserialize<'a> + Debug + PartialEq>(t: &T) {
         // dbg!(t);
@@ -360,9 +358,9 @@ mod tests {
 
         let f = Fq::ZERO;
         test_roundtrip(&f);
-        // The hex string "5b302c302c302c305d" encodes the unicode string "[0,0,0,0]" where each
-        // byte in the hex string encodes a unicode character: 0x58 = "[", 0x30 = "0", 0x2c = ",",
-        // and 0x5d = "]".
+        // The hex string "5b302c302c302c305d" encodes the unicode string "[0,0,0,0]"
+        // where each byte in the hex string encodes a unicode character: 0x58 =
+        // "[", 0x30 = "0", 0x2c = ",", and 0x5d = "]".
         assert_eq!(
             serde_json::from_slice::<Fq>(&hex::decode("5b302c302c302c305d").unwrap()).unwrap(),
             f

@@ -22,8 +22,8 @@ pub mod map;
 pub mod verifier;
 
 // Re-exporting modules for convenience and usability.
-pub use midnight_proofs;
 pub use halo2curves;
+pub use midnight_proofs;
 
 /// Tools useful for testing
 pub mod testing_utils {

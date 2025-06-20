@@ -1,9 +1,5 @@
 //! Example of verifying the validity of an ECDSA signed Atala identity JSON.
 
-use midnight_proofs::{
-    circuit::{Layouter, Value},
-    plonk::Error,
-};
 use halo2curves::secp256k1::{Fq as secp256k1Scalar, Secp256k1};
 use midnight_circuits::{
     compact_std_lib::{self, Relation, ShaTableSize, ZkStdLib, ZkStdLibArch},
@@ -19,6 +15,10 @@ use midnight_circuits::{
         plonk_api::filecoin_srs,
     },
     types::{AssignedByte, AssignedForeignPoint, InnerValue, Instantiable},
+};
+use midnight_proofs::{
+    circuit::{Layouter, Value},
+    plonk::Error,
 };
 use num_bigint::BigUint;
 use rand::rngs::OsRng;

@@ -7,8 +7,11 @@ use core::{
     iter::Sum,
     ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign},
 };
-use std::ops::{Deref, DerefMut};
-use std::{convert::TryInto, io::Read};
+use std::{
+    convert::TryInto,
+    io::Read,
+    ops::{Deref, DerefMut},
+};
 
 use blst::*;
 use ff::{Field, PrimeField, WithSmallOrderMulGroup};
@@ -16,16 +19,16 @@ use group::{
     prime::{PrimeCurve, PrimeCurveAffine, PrimeGroup},
     Curve, Group, GroupEncoding, UncompressedEncoding, WnafGroup,
 };
-use halo2curves::serde::SerdeObject;
-use halo2curves::{Coordinates, CurveAffine, CurveExt};
+use halo2curves::{serde::SerdeObject, Coordinates, CurveAffine, CurveExt};
 use rand_core::RngCore;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 
 use crate::{fp::Fp, fp2::Fp2, Bls12, Engine, Fq, G1Affine, Gt, PairingCurveAffine};
 
-/// This is an element of $\mathbb{G}_2$ represented in the affine coordinate space.
-/// It is ideal to keep elements in this representation to reduce memory usage and
-/// improve performance through the use of mixed curve model arithmetic.
+/// This is an element of $\mathbb{G}_2$ represented in the affine coordinate
+/// space. It is ideal to keep elements in this representation to reduce memory
+/// usage and improve performance through the use of mixed curve model
+/// arithmetic.
 #[derive(Copy, Clone)]
 #[repr(transparent)]
 pub struct G2Affine(pub(crate) blst_p2_affine);
@@ -357,10 +360,12 @@ impl G2Affine {
     }
 
     /// Attempts to deserialize an uncompressed element, not checking if the
-    /// element is on the curve and not checking if it is in the correct subgroup.
+    /// element is on the curve and not checking if it is in the correct
+    /// subgroup.
     ///
-    /// **This is dangerous to call unless you trust the bytes you are reading; otherwise,
-    /// API invariants may be broken.** Please consider using `from_uncompressed()` instead.
+    /// **This is dangerous to call unless you trust the bytes you are reading;
+    /// otherwise, API invariants may be broken.** Please consider using
+    /// `from_uncompressed()` instead.
     fn from_uncompressed_unchecked(bytes: &[u8; UNCOMPRESSED_SIZE]) -> CtOption<Self> {
         let mut raw = blst_p2_affine::default();
         let success =
@@ -377,8 +382,9 @@ impl G2Affine {
     /// Attempts to deserialize an uncompressed element, not checking if the
     /// element is in the correct subgroup.
     ///
-    /// **This is dangerous to call unless you trust the bytes you are reading; otherwise,
-    /// API invariants may be broken.** Please consider using `from_compressed()` instead.
+    /// **This is dangerous to call unless you trust the bytes you are reading;
+    /// otherwise, API invariants may be broken.** Please consider using
+    /// `from_compressed()` instead.
     fn from_compressed_unchecked(bytes: &[u8; COMPRESSED_SIZE]) -> CtOption<Self> {
         let mut raw = blst_p2_affine::default();
         let success =
@@ -396,9 +402,9 @@ impl G2Affine {
 }
 
 impl G2Affine {
-    /// Returns true if this point is free of an $h$-torsion component, and so it
-    /// exists within the $q$-order subgroup $\mathbb{G}_2$. This should always return true
-    /// unless an "unchecked" API was used.
+    /// Returns true if this point is free of an $h$-torsion component, and so
+    /// it exists within the $q$-order subgroup $\mathbb{G}_2$. This should
+    /// always return true unless an "unchecked" API was used.
     pub fn is_torsion_free(&self) -> Choice {
         unsafe { Choice::from(blst_p2_affine_in_g2(&self.0) as u8) }
     }
@@ -465,7 +471,8 @@ impl SerdeObject for G2Affine {
     }
 }
 
-/// This is an element of $\mathbb{G}_2$ represented in the projective coordinate space.
+/// This is an element of $\mathbb{G}_2$ represented in the projective
+/// coordinate space.
 #[derive(Copy, Clone)]
 #[repr(transparent)]
 pub struct G2Projective(pub(crate) blst_p2);
@@ -545,8 +552,9 @@ impl G2Projective {
     /// Attempts to deserialize an uncompressed element, not checking if the
     /// element is in the correct subgroup.
     ///
-    /// **This is dangerous to call unless you trust the bytes you are reading; otherwise,
-    /// API invariants may be broken.** Please consider using `from_compressed()` instead.
+    /// **This is dangerous to call unless you trust the bytes you are reading;
+    /// otherwise, API invariants may be broken.** Please consider using
+    /// `from_compressed()` instead.
     fn from_compressed_unchecked(bytes: &[u8; COMPRESSED_SIZE]) -> CtOption<Self> {
         G2Affine::from_compressed_unchecked(bytes).map(Into::into)
     }
@@ -614,7 +622,8 @@ impl G2Projective {
         res
     }
 
-    /// Perform a multi-exponentiation, aka "multi-scalar-multiplication" (MSM) using `blst`'s implementation of Pippenger's algorithm.
+    /// Perform a multi-exponentiation, aka "multi-scalar-multiplication" (MSM)
+    /// using `blst`'s implementation of Pippenger's algorithm.
     /// Note: `scalars` is cloned in this method.
     pub fn multi_exp(points: &[Self], scalars: &[Fq]) -> Self {
         let n = if points.len() < scalars.len() {
@@ -1079,12 +1088,12 @@ impl CurveAffine for G2Affine {
 mod tests {
     #![allow(clippy::eq_op)]
 
-    use super::*;
-
-    use crate::fp::Fp;
     use ff::Field;
     use rand_core::SeedableRng;
     use rand_xorshift::XorShiftRng;
+
+    use super::*;
+    use crate::fp::Fp;
 
     #[test]
     fn curve_tests() {

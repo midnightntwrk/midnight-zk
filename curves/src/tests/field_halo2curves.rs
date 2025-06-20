@@ -584,8 +584,7 @@ pub(crate) fn run_test_from_uniform_bytes<F: PrimeField, const L: usize>()
 where
     F: FromUniformBytes<L>,
 {
-    use rand_core::OsRng;
-    use rand_core::RngCore;
+    use rand_core::{OsRng, RngCore};
 
     let uniform_bytes = [0u8; L];
     assert_eq!(F::from_uniform_bytes(&uniform_bytes), F::ZERO);

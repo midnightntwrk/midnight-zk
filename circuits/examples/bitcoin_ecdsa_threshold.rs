@@ -3,10 +3,6 @@
 
 use blstrs::Fq;
 use ff::Field;
-use midnight_proofs::{
-    circuit::{Layouter, Value},
-    plonk::Error,
-};
 use halo2curves::{
     group::Curve,
     secp256k1::{Fq as secp256k1Scalar, Secp256k1},
@@ -23,6 +19,10 @@ use midnight_circuits::{
         plonk_api::filecoin_srs,
     },
     types::{AssignedForeignPoint, InnerValue, Instantiable},
+};
+use midnight_proofs::{
+    circuit::{Layouter, Value},
+    plonk::Error,
 };
 use rand::{prelude::SliceRandom, rngs::OsRng, SeedableRng};
 use rand_chacha::ChaCha8Rng;

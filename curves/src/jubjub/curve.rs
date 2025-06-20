@@ -1,15 +1,20 @@
-//! This crate provides an implementation of the **Jubjub** elliptic curve and its associated
+//! This crate provides an implementation of the **Jubjub** elliptic curve and
+//! its associated
 //!
-//! * `AffinePoint` / `ExtendedPoint` which are implementations of Jubjub group arithmetic
-//! * `AffineNielsPoint` / `ExtendedNielsPoint` which are pre-processed Jubjub points
+//! * `AffinePoint` / `ExtendedPoint` which are implementations of Jubjub group
+//!   arithmetic
+//! * `AffineNielsPoint` / `ExtendedNielsPoint` which are pre-processed Jubjub
+//!   points
 //! * `Fq`, which is the base field of Jubjub
 //! * `Fr`, which is the scalar field of Jubjub
-//! * `batch_normalize` for converting many `ExtendedPoint`s into `AffinePoint`s efficiently.
+//! * `batch_normalize` for converting many `ExtendedPoint`s into `AffinePoint`s
+//!   efficiently.
 //!
 //! # Constant Time
 //!
-//! All operations are constant time unless explicitly noted; these functions will contain
-//! "vartime" in their name and they will be documented as variable time.
+//! All operations are constant time unless explicitly noted; these functions
+//! will contain "vartime" in their name and they will be documented as variable
+//! time.
 //!
 //! This crate uses the `subtle` crate to perform constant-time operations.
 
@@ -24,33 +29,35 @@
 // operators, and so this lint is triggered unnecessarily.
 #![allow(clippy::suspicious_arithmetic_impl)]
 
+use core::{
+    borrow::Borrow,
+    fmt,
+    iter::Sum,
+    ops::{Add, Mul, Neg, Sub},
+};
+
 use bitvec::{order::Lsb0, view::AsBits};
-use core::borrow::Borrow;
-use core::fmt;
-use core::iter::Sum;
-use core::ops::{Add, Mul, Neg, Sub};
 use ff::{BatchInverter, Field};
-use group::cofactor::{CofactorCurve, CofactorCurveAffine, CofactorGroup};
-
-use group::{prime::PrimeGroup, Curve, Group, GroupEncoding};
-
+use group::{
+    cofactor::{CofactorCurve, CofactorCurveAffine, CofactorGroup},
+    prime::PrimeGroup,
+    Curve, Group, GroupEncoding,
+};
 use rand_core::RngCore;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
-
-pub use crate::Fq as BlsScalar;
-pub use crate::Fr;
 
 use crate::{
     impl_binops_additive, impl_binops_additive_specify_output, impl_binops_multiplicative,
     impl_binops_multiplicative_mixed,
 };
+pub use crate::{Fq as BlsScalar, Fr};
 
-/// Represents an element of the base field $\mathbb{F}_q$ of the Jubjub elliptic curve
-/// construction.
+/// Represents an element of the base field $\mathbb{F}_q$ of the Jubjub
+/// elliptic curve construction.
 pub type Base = BlsScalar;
 
-/// Represents an element of the scalar field $\mathbb{F}_r$ of the Jubjub elliptic curve
-/// construction.
+/// Represents an element of the scalar field $\mathbb{F}_r$ of the Jubjub
+/// elliptic curve construction.
 
 const FR_MODULUS_BYTES: [u8; 32] = [
     183, 44, 247, 214, 94, 14, 151, 208, 130, 16, 200, 204, 147, 32, 104, 166, 0, 59, 52, 1, 1, 59,
@@ -453,18 +460,19 @@ impl JubjubAffine {
         Self::from_bytes_inner(b, 1.into())
     }
 
-    /// Attempts to interpret a byte representation of an affine point, failing if the
-    /// element is not on the curve.
+    /// Attempts to interpret a byte representation of an affine point, failing
+    /// if the element is not on the curve.
     ///
-    /// Most non-canonical encodings will also cause a failure. However, this API
-    /// preserves (for use in consensus-critical protocols) a bug in the parsing code that
-    /// caused two non-canonical encodings to be **silently** accepted:
+    /// Most non-canonical encodings will also cause a failure. However, this
+    /// API preserves (for use in consensus-critical protocols) a bug in the
+    /// parsing code that caused two non-canonical encodings to be
+    /// **silently** accepted:
     ///
     /// - (0, 1), which is the identity;
     /// - (0, -1), which is a point of order two.
     ///
-    /// Each of these has a single non-canonical encoding in which the value of the sign
-    /// bit is 1.
+    /// Each of these has a single non-canonical encoding in which the value of
+    /// the sign bit is 1.
     ///
     /// See [ZIP 216](https://zips.z.cash/zip-0216) for a more detailed description of the
     /// bug, as well as its fix.
@@ -518,8 +526,8 @@ impl JubjubAffine {
 
     /// Attempts to interpret a batch of byte representations of affine points.
     ///
-    /// Returns None for each element if it is not on the curve, or is non-canonical
-    /// according to ZIP 216.
+    /// Returns None for each element if it is not on the curve, or is
+    /// non-canonical according to ZIP 216.
     pub fn batch_from_bytes(items: impl Iterator<Item = [u8; 32]>) -> Vec<CtOption<Self>> {
         use ff::BatchInvert;
 
@@ -1158,11 +1166,12 @@ impl ConditionallySelectable for JubjubSubgroup {
 }
 
 impl JubjubSubgroup {
-    /// Constructs an AffinePoint given `u` and `v` without checking that the point is on
-    /// the curve or in the prime-order subgroup.
+    /// Constructs an AffinePoint given `u` and `v` without checking that the
+    /// point is on the curve or in the prime-order subgroup.
     ///
-    /// This should only be used for hard-coding constants (e.g. fixed generators); in all
-    /// other cases, use [`JubjubSubgroup::from_bytes`] instead.
+    /// This should only be used for hard-coding constants (e.g. fixed
+    /// generators); in all other cases, use [`JubjubSubgroup::from_bytes`]
+    /// instead.
     ///
     /// [`JubjubSubgroup::from_bytes`]: JubjubSubgroup#impl-GroupEncoding
     pub fn from_raw_unchecked(u: Base, v: Base) -> Self {

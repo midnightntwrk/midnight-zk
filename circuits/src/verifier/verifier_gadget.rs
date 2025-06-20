@@ -514,6 +514,7 @@ pub(crate) mod tests {
     use std::collections::BTreeMap;
 
     use group::Group;
+    use halo2curves::CurveAffine;
     use midnight_proofs::{
         circuit::SimpleFloorPlanner,
         dev::MockProver,
@@ -521,7 +522,6 @@ pub(crate) mod tests {
         poly::kzg::{params::ParamsKZG, KZGCommitmentScheme},
         transcript::{CircuitTranscript, Transcript},
     };
-    use halo2curves::CurveAffine;
     use rand::SeedableRng;
     use rand_chacha::ChaCha8Rng;
 

@@ -1,6 +1,7 @@
 //! Benchmark EC operations.
 //! It measures Bls12-381 G1 operations.
-//! Note: The bencharks are generic and can be easily extended for G2 and Jubjub.
+//! Note: The bencharks are generic and can be easily extended for G2 and
+//! Jubjub.
 //!
 //! To run this benchmark:
 //!

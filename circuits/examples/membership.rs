@@ -8,10 +8,6 @@
 //! and `l` without revealing its membership in other sets.
 
 use ff::{Field, PrimeField};
-use midnight_proofs::{
-    circuit::{Layouter, Value},
-    plonk::Error,
-};
 use midnight_circuits::{
     compact_std_lib::{self, Relation, ZkStdLib, ZkStdLibArch},
     field::AssignedNative,
@@ -23,6 +19,10 @@ use midnight_circuits::{
     },
     map::cpu::MapMt,
     testing_utils::plonk_api::filecoin_srs,
+};
+use midnight_proofs::{
+    circuit::{Layouter, Value},
+    plonk::Error,
 };
 use rand::rngs::OsRng;
 
