@@ -11,7 +11,7 @@ use crate::poly::{query::Query, Error};
 pub(super) struct CommitmentData<F, T: PartialEq> {
     pub(super) commitment: T,
     pub(super) set_index: usize,
-    point_indices: Vec<usize>,
+    pub(super) point_indices: Vec<usize>,
     pub(super) evals: Vec<F>,
 }
 
@@ -87,7 +87,7 @@ where
         }
 
         // Push point_index_set to CommitmentData for the relevant commitment
-        commitment_set_map.push((commitment_data.commitment, point_index_set.clone()));
+        commitment_set_map.push((commitment_data.commitment.clone(), point_index_set.clone()));
 
         let num_sets = point_idx_sets.len();
         point_idx_sets.entry(point_index_set).or_insert(num_sets);

@@ -357,7 +357,7 @@ where
                 }),
         )
         .chain(permutations_common.queries(&vk.permutation, x))
-        .chain(vanishing.queries(x));
+        .chain(vanishing.queries(x, vk.n()));
 
     // We are now convinced the circuit is satisfied so long as the
     // polynomial commitments open to the correct values.

@@ -25,7 +25,7 @@ pub struct PartiallyEvaluated<F: PrimeField, CS: PolynomialCommitmentScheme<F>> 
 }
 
 pub struct Evaluated<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
-    h_commitment: CS::Commitment,
+    h_commitments: Vec<CS::Commitment>,
     random_poly_commitment: CS::Commitment,
     expected_h_eval: F,
     random_eval: F,
@@ -93,15 +93,8 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> PartiallyEvaluated<F, CS>
         let expected_h_eval = expressions.fold(F::ZERO, |h_eval, v| h_eval * &y + &v);
         let expected_h_eval = expected_h_eval * ((xn - F::ONE).invert().unwrap());
 
-        let h_commitment = self
-            .h_commitments
-            .into_iter()
-            .rev()
-            .reduce(|acc, commitment| commitment + (acc * xn))
-            .expect("H commitments should not be empty");
-
         Evaluated {
-            h_commitment,
+            h_commitments: self.h_commitments,
             random_poly_commitment: self.random_poly_commitment,
             expected_h_eval,
             random_eval: self.random_eval,
@@ -113,12 +106,14 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> Evaluated<F, CS> {
     pub(in crate::plonk) fn queries(
         &self,
         x: F,
+        n: u64,
     ) -> impl Iterator<Item = VerifierQuery<F, CS>> + Clone + '_ {
         iter::empty()
-            .chain(Some(VerifierQuery::new(
+            .chain(Some(VerifierQuery::from_parts(
                 x,
-                &self.h_commitment,
+                &self.h_commitments.iter().collect::<Vec<_>>(),
                 self.expected_h_eval,
+                n,
             )))
             .chain(Some(VerifierQuery::new(
                 x,
