@@ -1,0 +1,75 @@
+name: Real Examples
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  test-examples:
+    if: github.event.pull_request.draft == false
+    name: Run Example Tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        example:
+          - bitcoin_signature
+          - bitcoin_ecdsa_threshold
+          - ecc_ops
+          - hybrid_mt
+          - poseidon
+          - sha_preimage
+          - native_gadget
+          - json_verification
+
+    steps:
+      - name: Add github.com credentials to netrc
+        uses: extractions/netrc@f6f1722d05ce2890aa86fd9654565b1214ac53a4
+        with:
+          machine: github.com
+          username: ${{ secrets.GH_USERNAME }}
+          password: ${{ secrets.GH_PASSWORD }}
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions-rs/toolchain@b2417cde72dcf67f306c0ae8e0828a81bf0b189f
+        with:
+          override: false
+      - name: Restore Cargo Cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Create directory
+        run: mkdir -p ./examples/assets
+      - name: Download SRS
+        run: curl -L -o ./examples/assets/bls_filecoin_2p19 https://midnight-s3-fileshare-dev-eu-west-1.s3.eu-west-1.amazonaws.com/bls_filecoin_2p19
+
+      # Step for running with the feature during pull requests
+      - name: Check VK in example ${{ matrix.example }}
+        if: github.event_name == 'pull_request'
+        uses: actions-rs/cargo@ae10961054e4aa8b4aa7dffede299aaf087aa33b
+        with:
+         command: run
+         args: --release --example ${{ matrix.example }}
+
+      # Step for running without the feature on main branch
+      - name: Run example ${{ matrix.example }}
+        if: github.ref == 'refs/heads/main'
+        uses: actions-rs/cargo@ae10961054e4aa8b4aa7dffede299aaf087aa33b
+        with:
+         command: run
+         args: --release --example ${{ matrix.example }}
+
+      # Save the Cargo Cache
+      - name: Save Cargo Cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
