@@ -1,0 +1,612 @@
+use ff::{FromUniformBytes, PrimeField};
+use num_bigint::BigUint;
+
+#[macro_export]
+macro_rules! field_testing_suite {
+    ($field: ident, "field_arithmetic") => {
+        fn random_multiplication_tests<F: Field, R: rand_core::RngCore>(mut rng: R, n: usize) {
+            for _ in 0..n {
+                let a = F::random(&mut rng);
+                let b = F::random(&mut rng);
+                let c = F::random(&mut rng);
+
+                let mut t0 = a; // (a * b) * c
+                t0.mul_assign(&b);
+                t0.mul_assign(&c);
+
+                let mut t1 = a; // (a * c) * b
+                t1.mul_assign(&c);
+                t1.mul_assign(&b);
+
+                let mut t2 = b; // (b * c) * a
+                t2.mul_assign(&c);
+                t2.mul_assign(&a);
+
+                assert_eq!(t0, t1);
+                assert_eq!(t1, t2);
+            }
+        }
+
+        fn random_addition_tests<F: Field, R: rand_core::RngCore>(mut rng: R, n: usize) {
+            for _ in 0..n {
+                let a = F::random(&mut rng);
+                let b = F::random(&mut rng);
+                let c = F::random(&mut rng);
+
+                let mut t0 = a; // (a + b) + c
+                t0.add_assign(&b);
+                t0.add_assign(&c);
+
+                let mut t1 = a; // (a + c) + b
+                t1.add_assign(&c);
+                t1.add_assign(&b);
+
+                let mut t2 = b; // (b + c) + a
+                t2.add_assign(&c);
+                t2.add_assign(&a);
+
+                assert_eq!(t0, t1);
+                assert_eq!(t1, t2);
+            }
+        }
+
+        fn random_subtraction_tests<F: Field, R: rand_core::RngCore>(mut rng: R, n: usize) {
+            for _ in 0..n {
+                let a = F::random(&mut rng);
+                let b = F::random(&mut rng);
+
+                let mut t0 = a; // (a - b)
+                t0.sub_assign(&b);
+
+                let mut t1 = b; // (b - a)
+                t1.sub_assign(&a);
+
+                let mut t2 = t0; // (a - b) + (b - a) = 0
+                t2.add_assign(&t1);
+
+                assert_eq!(t2.is_zero().unwrap_u8(), 1);
+            }
+        }
+
+        fn random_negation_tests<F: Field, R: rand_core::RngCore>(mut rng: R, n: usize) {
+            for _ in 0..n {
+                let a = F::random(&mut rng);
+                let mut b = a;
+                b = b.neg();
+                b.add_assign(&a);
+
+                assert_eq!(b.is_zero().unwrap_u8(), 1);
+            }
+        }
+
+        fn random_doubling_tests<F: Field, R: rand_core::RngCore>(mut rng: R, n: usize) {
+            for _ in 0..n {
+                let mut a = F::random(&mut rng);
+                let mut b = a;
+                a.add_assign(&b);
+                b = b.double();
+
+                assert_eq!(a, b);
+            }
+        }
+
+        fn random_squaring_tests<F: Field, R: rand_core::RngCore>(mut rng: R, n: usize) {
+            for _ in 0..n {
+                let mut a = F::random(&mut rng);
+                let mut b = a;
+                a.mul_assign(&b);
+                b = b.square();
+
+                assert_eq!(a, b);
+            }
+        }
+
+        fn random_inversion_tests<F: Field, R: rand_core::RngCore>(mut rng: R, n: usize) {
+            assert!(bool::from(F::ZERO.invert().is_none()));
+
+            for _ in 0..n {
+                let mut a = F::random(&mut rng);
+                let b = a.invert().unwrap(); // probabilistically nonzero
+                a.mul_assign(&b);
+
+                assert_eq!(a, F::ONE);
+            }
+        }
+
+        fn random_expansion_tests<F: Field, R: rand_core::RngCore>(mut rng: R, n: usize) {
+            for _ in 0..n {
+                // Compare (a + b)(c + d) and (a*c + b*c + a*d + b*d)
+
+                let a = F::random(&mut rng);
+                let b = F::random(&mut rng);
+                let c = F::random(&mut rng);
+                let d = F::random(&mut rng);
+
+                let mut t0 = a;
+                t0.add_assign(&b);
+                let mut t1 = c;
+                t1.add_assign(&d);
+                t0.mul_assign(&t1);
+
+                let mut t2 = a;
+                t2.mul_assign(&c);
+                let mut t3 = b;
+                t3.mul_assign(&c);
+                let mut t4 = a;
+                t4.mul_assign(&d);
+                let mut t5 = b;
+                t5.mul_assign(&d);
+
+                t2.add_assign(&t3);
+                t2.add_assign(&t4);
+                t2.add_assign(&t5);
+
+                assert_eq!(t0, t2);
+            }
+        }
+
+        fn zero_tests<F: Field, R: rand_core::RngCore>(mut rng: R) {
+            assert_eq!(F::ZERO.is_zero().unwrap_u8(), 1);
+            {
+                let mut z = F::ZERO;
+                z = z.neg();
+                assert_eq!(z.is_zero().unwrap_u8(), 1);
+            }
+
+            assert!(bool::from(F::ZERO.invert().is_none()));
+
+            // Multiplication by zero
+            {
+                let mut a = F::random(&mut rng);
+                a.mul_assign(&F::ZERO);
+                assert_eq!(a.is_zero().unwrap_u8(), 1);
+            }
+
+            // Addition by zero
+            {
+                let mut a = F::random(&mut rng);
+                let copy = a;
+                a.add_assign(&F::ZERO);
+                assert_eq!(a, copy);
+            }
+        }
+
+        fn one_tests<F: Field, R: rand_core::RngCore>(mut rng: R)  {
+            assert!(bool::from(F::ONE.invert().is_some()));
+
+            // Multiplication by one
+            {
+                let mut a = F::random(&mut rng);
+                let copy = a;
+                a.mul_assign(&F::ONE);
+                assert_eq!(a, copy);
+            }
+
+            // Addition by one
+            {
+                let mut a = F::random(&mut rng);
+                let copy = a;
+                a.add_assign(&F::ONE);
+                assert_eq!(a, copy + F::ONE);
+            }
+        }
+
+        use ff::Field;
+        use rand_core::SeedableRng;
+        use rand_xorshift::XorShiftRng;
+
+        #[test]
+        fn test_field() {
+            let mut rng = XorShiftRng::from_seed([
+                0x59, 0x62, 0xbe, 0x5d, 0x76, 0x3d, 0x31, 0x8d, 0x17, 0xdb, 0x37, 0x32, 0x54, 0x06,
+                0xbc, 0xe5,
+            ]);
+
+            let n = 100000;
+
+            // normal cases
+            random_multiplication_tests::<$field, _>(&mut rng, n);
+            random_addition_tests::<$field, _>(&mut rng, n);
+            random_subtraction_tests::<$field, _>(&mut rng, n);
+            random_negation_tests::<$field, _>(&mut rng, n);
+            random_doubling_tests::<$field, _>(&mut rng, n);
+            random_squaring_tests::<$field, _>(&mut rng, n);
+            random_inversion_tests::<$field, _>(&mut rng, n);
+            random_expansion_tests::<$field, _>(&mut rng, n);
+
+            // edge cases
+            zero_tests::<$field, _>(&mut rng);
+            one_tests::<$field, _>(&mut rng);
+        }
+    };
+
+    ($field: ident, "conversion") => {
+        #[test]
+        fn test_conversion() {
+            use ff::PrimeField;
+            let mut rng = XorShiftRng::from_seed([
+                0x59, 0x62, 0xbe, 0x5d, 0x76, 0x3d, 0x31, 0x8d, 0x17, 0xdb, 0x37, 0x32, 0x54,
+                0x06, 0xbc, 0xe5,
+            ]);
+            for _ in 0..1000000 {
+                let a = $field::random(&mut rng);
+                let bytes = a.to_repr();
+                let b = $field::from_repr(bytes).unwrap();
+                assert_eq!(a, b);
+            }
+        }
+    };
+
+
+    ($field: ident, "quadratic_residue") => {
+        #[test]
+        fn test_quadratic_residue() {
+            use halo2curves::ff_ext::Legendre;
+            use ff::Field;
+            use rand_core::SeedableRng;
+            use rand_xorshift::XorShiftRng;
+
+            // random quadratic residue test
+            let mut rng = XorShiftRng::from_seed([
+                0x59, 0x62, 0xbe, 0x5d, 0x76, 0x3d, 0x31, 0x8d, 0x17, 0xdb, 0x37, 0x32, 0x54,
+                0x06, 0xbc, 0xe5,
+            ]);
+            for _ in 0..100000 {
+                let elem = $field::random(&mut rng);
+                let is_quad_res_or_zero: bool = elem.sqrt().is_some().into();
+                let is_quad_non_res: bool = elem.ct_quadratic_non_residue().into();
+                assert_eq!(!is_quad_non_res, is_quad_res_or_zero)
+            }
+        }
+    };
+
+    ($field: ident, "bits") => {
+        #[test]
+        fn test_bits() {
+            use ff::{PrimeFieldBits,PrimeField};
+            // random bit test
+            let mut rng = XorShiftRng::from_seed([
+                0x59, 0x62, 0xbe, 0x5d, 0x76, 0x3d, 0x31, 0x8d, 0x17, 0xdb, 0x37, 0x32, 0x54,
+                0x06, 0xbc, 0xe5,
+            ]);
+            for _ in 0..1000000 {
+                let a = $field::random(&mut rng);
+                let bytes = a.to_repr();
+                let bits = a.to_le_bits();
+                for idx in 0..bits.len() {
+                    assert_eq!(bits[idx], ((bytes.as_ref()[idx / 8] >> (idx % 8)) & 1) == 1);
+                }
+            }
+        }
+    };
+
+    ($field: ident, "serdeobject") => {
+        #[test]
+        fn test_serdeobject() {
+            use halo2curves::serde::SerdeObject;
+            let mut rng = XorShiftRng::from_seed([
+                0x59, 0x62, 0xbe, 0x5d, 0x76, 0x3d, 0x31, 0x8d, 0x17, 0xdb, 0x37, 0x32, 0x54, 0x06,
+                0xbc, 0xe5,
+            ]);
+
+            for _ in 0..1_000_000 {
+                let elem = $field::random(&mut rng);
+
+                let bytes = elem.to_raw_bytes();
+                let elem_rec = <$field as SerdeObject>::from_raw_bytes_unchecked(&bytes);
+
+                assert_eq!(elem, elem_rec);
+                let elem_rec = <$field as SerdeObject>::from_raw_bytes(&bytes).unwrap();
+                assert_eq!(elem, elem_rec);
+
+
+                let mut buf = Vec::new();
+                elem.write_raw(&mut buf).unwrap();
+                let elem_rec = <$field as SerdeObject>::read_raw_unchecked(&mut buf.as_slice());
+                assert_eq!(elem, elem_rec);
+
+                let elem_rec = <$field as SerdeObject>::read_raw(&mut buf.as_slice()).unwrap();
+                assert_eq!(elem, elem_rec);
+            }
+        }
+    };
+
+    ($field: ident, "constants") => {
+        #[test]
+        fn test_primefield_constants() {
+            use ff::PrimeField;
+            assert_eq!(
+                $field::ROOT_OF_UNITY_INV,
+                $field::ROOT_OF_UNITY.invert().unwrap()
+            );
+            assert_eq!($field::from(2) * $field::TWO_INV, $field::ONE);
+            if $field::S != 0 {
+                assert_eq!(
+                    $field::ROOT_OF_UNITY.pow_vartime([1 << $field::S]),
+                    $field::ONE
+                );
+                assert_eq!(
+                    $field::DELTA,
+                    $field::MULTIPLICATIVE_GENERATOR.pow([1u64 << $field::S])
+                );
+            }
+        }
+    };
+
+    ($field: ident, "sqrt") => {
+        #[test]
+        fn test_h2c_sqrt() {
+            use halo2curves::ff_ext::Legendre;
+            use ff::PrimeField;
+            use rand_core::OsRng;
+
+            let v = ($field::TWO_INV).square().sqrt().unwrap();
+            assert!(v == $field::TWO_INV || (-v) == $field::TWO_INV);
+
+            for _ in 0..10000 {
+                let a = $field::random(OsRng);
+                if a.legendre() == -1 {
+                    assert!(bool::from(a.sqrt().is_none()));
+                }
+            }
+
+            for _ in 0..10000 {
+                let a = $field::random(OsRng);
+                let mut b = a;
+                b = b.square();
+                assert_eq!(b.legendre(), 1);
+
+                let b = b.sqrt().unwrap();
+                let mut negb = b;
+                negb = negb.neg();
+
+                assert!(a == b || a == negb);
+            }
+
+            let mut c = $field::ONE;
+            for _ in 0..10000 {
+                let mut b = c;
+                b = b.square();
+                assert_eq!(b.legendre(), 1);
+
+                b = b.sqrt().unwrap();
+
+                if b != c {
+                    b = b.neg();
+                }
+
+                assert_eq!(b, c);
+
+                c += &$field::ONE;
+            }
+        }
+    };
+
+    ($field: ident, "zeta" $(, $base_field: ident)*) => {
+        #[test]
+        fn test_zeta() {
+            use ff::WithSmallOrderMulGroup;
+            assert_eq!($field::ZETA * $field::ZETA * $field::ZETA, $field::ONE);
+            assert_ne!($field::ZETA * $field::ZETA, $field::ONE);
+            $(
+                let zeta = $field::new($base_field::ZETA.square(), $base_field::zero());
+                assert_eq!(zeta, $field::ZETA);
+            )*
+        }
+    };
+
+    ($field: ident, "from_uniform_bytes", $($L:expr),* $(,)?) => {
+
+        #[test]
+        fn test_from_uniform_bytes() {
+            $(
+                $crate::tests::field_halo2curves::run_test_from_uniform_bytes::<$field, $L>();
+            )*
+        }
+    };
+
+    ($ext_field: ident, "f2_tests", $base_field: ident) => {
+        #[test]
+        fn test_ser() {
+            let mut rng = XorShiftRng::from_seed([
+                0x59, 0x62, 0xbe, 0x5d, 0x76, 0x3d, 0x31, 0x8d, 0x17, 0xdb, 0x37, 0x32, 0x54, 0x06, 0xbc,
+                0xe5,
+            ]);
+
+            let a0 = $ext_field::random(&mut rng);
+            let a_bytes = a0.to_bytes();
+            let a1 = $ext_field::from_bytes(&a_bytes).unwrap();
+            assert_eq!(a0, a1);
+        }
+
+        #[test]
+        fn test_f2_ordering() {
+            let mut a = $ext_field {
+                c0: $base_field::zero(),
+                c1: $base_field::zero(),
+            };
+
+            let mut b = a;
+
+            assert!(a.cmp(&b) == Ordering::Equal);
+            b.c0 += &$base_field::one();
+            assert!(a.cmp(&b) == Ordering::Less);
+            a.c0 += &$base_field::one();
+            assert!(a.cmp(&b) == Ordering::Equal);
+            b.c1 += &$base_field::one();
+            assert!(a.cmp(&b) == Ordering::Less);
+            a.c0 += &$base_field::one();
+            assert!(a.cmp(&b) == Ordering::Less);
+            a.c1 += &$base_field::one();
+            assert!(a.cmp(&b) == Ordering::Greater);
+            b.c0 += &$base_field::one();
+            assert!(a.cmp(&b) == Ordering::Equal);
+        }
+
+        #[test]
+        fn test_f2_basics() {
+            assert_eq!(
+                $ext_field {
+                    c0: $base_field::zero(),
+                    c1: $base_field::zero(),
+                },
+                $ext_field::ZERO
+            );
+            assert_eq!(
+                $ext_field {
+                    c0: $base_field::one(),
+                    c1: $base_field::zero(),
+                },
+                $ext_field::ONE
+            );
+            assert_eq!($ext_field::ZERO.is_zero().unwrap_u8(), 1);
+            assert_eq!($ext_field::ONE.is_zero().unwrap_u8(), 0);
+            assert_eq!(
+                $ext_field {
+                    c0: $base_field::zero(),
+                    c1: $base_field::one(),
+                }
+                .is_zero()
+                .unwrap_u8(),
+                0
+            );
+        }
+    };
+
+    ($ext_field: ident, "cubic_sparse_mul", $base_field: ident) => {
+        #[test]
+        fn test_cubic_sparse_mul() {
+            let mut rng = XorShiftRng::from_seed([
+                0x59, 0x62, 0xbe, 0x5d, 0x76, 0x3d, 0x31, 0x8d, 0x17, 0xdb, 0x37, 0x32, 0x54, 0x06, 0xbc,
+                0xe5,
+            ]);
+
+            for _ in 0..1000 {
+                let c0 = $base_field::random(&mut rng);
+                let c1 = $base_field::random(&mut rng);
+                let e = $ext_field::random(&mut rng);
+
+                let a0 = $ext_field::mul_by_1(&e, &c1);
+                let a1 = e * $ext_field {
+                    c0: $base_field::zero(),
+                    c1,
+                    c2: $base_field::zero(),
+                };
+
+                assert_eq!(a0, a1);
+
+
+                let a0 = $ext_field::mul_by_01(&e, &c0, &c1);
+                let a1 = e * $ext_field {
+                    c0,
+                    c1,
+                    c2: $base_field::zero(),
+                };
+
+                assert_eq!(a0, a1);
+            }
+        }
+    };
+
+    ($ext_field: ident, "quadratic_sparse_mul", $base_field_1: ident, $base_field_2: ident) => {
+        #[test]
+        fn test_quadratic_sparse_mul() {
+            let mut rng = XorShiftRng::from_seed([
+                0x59, 0x62, 0xbe, 0x5d, 0x76, 0x3d, 0x31, 0x8d, 0x17, 0xdb, 0x37, 0x32, 0x54, 0x06, 0xbc,
+                0xe5,
+            ]);
+
+            for _ in 0..1000 {
+                let c0 = $base_field_2::random(&mut rng);
+                let c1 = $base_field_2::random(&mut rng);
+                let c2 = $base_field_2::random(&mut rng);
+
+
+                let mut a0 = $ext_field::random(&mut rng);
+                let a1 = a0 * $ext_field {
+                    c0: $base_field_1 {
+                        c0,
+                        c1,
+                        c2: $base_field_2::zero(),
+                    },
+                    c1: $base_field_1 {
+                        c0: $base_field_2::zero(),
+                        c1: c2,
+                        c2: $base_field_2::zero(),
+                    },
+                };
+                 $ext_field::mul_by_014(&mut a0, &c0, &c1, &c2);
+                assert_eq!(a0, a1);
+
+                let mut a0 = $ext_field::random(&mut rng);
+                let a1 = a0 * $ext_field {
+                    c0: $base_field_1 {
+                        c0,
+                        c1: $base_field_2::zero(),
+                        c2: $base_field_2::zero(),
+                    },
+                    c1: $base_field_1 {
+                        c0: c1,
+                        c1: c2,
+                        c2: $base_field_2::zero(),
+                    },
+                };
+                $ext_field::mul_by_034(&mut a0, &c0, &c1, &c2);
+                assert_eq!(a0, a1);
+            }
+        }
+    };
+
+    ($ext_field: ident, "frobenius", $frobenius_param: expr) => {
+        #[test]
+        fn test_frobenius() {
+            let mut rng = XorShiftRng::from_seed([
+                0x59, 0x62, 0xbe, 0x5d, 0x76, 0x3d, 0x31, 0x8d, 0x17, 0xdb, 0x37, 0x32, 0x54, 0x06, 0xbc,
+                0xe5,
+            ]);
+
+            for _ in 0..50 {
+                for i in 0..8 {
+                    let mut a = $ext_field::random(&mut rng);
+                    let mut b = a;
+                    for _ in 0..i {
+                        a = a.pow($frobenius_param);
+                    }
+                    b.frobenius_map(i);
+                    assert_eq!(a, b);
+                }
+            }
+        }
+    };
+}
+
+pub(crate) fn run_test_from_uniform_bytes<F: PrimeField, const L: usize>()
+where
+    F: FromUniformBytes<L>,
+{
+    use rand_core::{OsRng, RngCore};
+
+    let uniform_bytes = [0u8; L];
+    assert_eq!(F::from_uniform_bytes(&uniform_bytes), F::ZERO);
+
+    let mut uniform_bytes = [u8::MAX; L];
+
+    for _ in 0..10000 {
+        let e0 = BigUint::from_bytes_le(&uniform_bytes);
+        let e0: F = big_to_fe(&e0);
+
+        let e1 = F::from_uniform_bytes(&uniform_bytes);
+        assert_eq!(e0, e1);
+
+        OsRng.fill_bytes(&mut uniform_bytes[..]);
+    }
+}
+
+pub fn big_to_fe<F: PrimeField>(e: &BigUint) -> F {
+    let modulus = BigUint::from_bytes_le((-F::ONE).to_repr().as_ref()) + 1usize;
+    let e = e % modulus;
+    let bytes = e.to_bytes_le();
+    let mut repr = F::Repr::default();
+    repr.as_mut()[..bytes.len()].copy_from_slice(&bytes[..]);
+    F::from_repr(repr).unwrap()
+}

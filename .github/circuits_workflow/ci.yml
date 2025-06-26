@@ -1,0 +1,143 @@
+name: CI checks
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  # Enforces the update of a changelog file on every pull request
+  changelog:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: dangoslen/changelog-enforcer@204e7d3ef26579f4cd0fd759c57032656fdf23c7
+
+  test:
+    if: github.event.pull_request.draft == false
+    name: Test on ${{ matrix.os }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Add github.com credentials to netrc
+        uses: extractions/netrc@f6f1722d05ce2890aa86fd9654565b1214ac53a4
+        with:
+          machine: github.com
+          username: ${{ secrets.GH_USERNAME }}
+          password: ${{ secrets.GH_PASSWORD }}
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions-rs/toolchain@b2417cde72dcf67f306c0ae8e0828a81bf0b189f
+        with:
+          override: false
+
+      - name: Restore Cargo Cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Create directory
+        run: mkdir -p ./examples/assets
+
+      - name: Download SRS
+        run: curl -L -o ./examples/assets/bls_filecoin_2p19 https://midnight-s3-fileshare-dev-eu-west-1.s3.eu-west-1.amazonaws.com/bls_filecoin_2p19
+
+      - name: Run tests
+        uses: actions-rs/cargo@ae10961054e4aa8b4aa7dffede299aaf087aa33b
+        with:
+          command: test
+          args: --release --all --all-features
+            
+      # Save the Cargo Cache
+      - name: Save Cargo Cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+
+  fmt:
+    if: github.event.pull_request.draft == false
+    name: Rustfmt
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    steps:
+      - name: Add github.com credentials to netrc
+        uses: extractions/netrc@f6f1722d05ce2890aa86fd9654565b1214ac53a4
+        with:
+          machine: github.com
+          username: ${{ secrets.GH_USERNAME }}
+          password: ${{ secrets.GH_PASSWORD }}
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions-rs/toolchain@b2417cde72dcf67f306c0ae8e0828a81bf0b189f
+        with:
+          toolchain: nightly
+          override: false
+      - run: rustup component add rustfmt --toolchain nightly
+      - uses: actions-rs/cargo@ae10961054e4aa8b4aa7dffede299aaf087aa33b
+        with:
+          toolchain: nightly
+          command: fmt
+          args: --all -- --check
+
+  clippy:
+    if: github.event.pull_request.draft == false
+    name: Clippy
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    steps:
+      - name: Add github.com credentials to netrc
+        uses: extractions/netrc@f6f1722d05ce2890aa86fd9654565b1214ac53a4
+        with:
+          machine: github.com
+          username: ${{ secrets.GH_USERNAME }}
+          password: ${{ secrets.GH_PASSWORD }}
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions-rs/toolchain@b2417cde72dcf67f306c0ae8e0828a81bf0b189f
+        with:
+          components: clippy
+          override: false
+      - name: Run Clippy
+        uses: actions-rs/clippy-check@b5b5f21f4797c02da247df37026fcd0a5024aa4d
+        continue-on-error: true
+        with:
+          name: Clippy
+          token: ${{ secrets.GITHUB_TOKEN }}
+          args: --all-targets --all-features -- -Dwarnings
+
+  doc-links:
+    if: github.event.pull_request.draft == false
+    name: Intra-doc links
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Add github.com credentials to netrc
+        uses: extractions/netrc@f6f1722d05ce2890aa86fd9654565b1214ac53a4
+        with:
+          machine: github.com
+          username: ${{ secrets.GH_USERNAME }}
+          password: ${{ secrets.GH_PASSWORD }}
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions-rs/toolchain@b2417cde72dcf67f306c0ae8e0828a81bf0b189f
+        with:
+          override: false
+      - name: cargo fetch
+        uses: actions-rs/cargo@ae10961054e4aa8b4aa7dffede299aaf087aa33b
+        with:
+          command: fetch
+
+      # Ensure intra-documentation links all resolve correctly
+      # Requires #![deny(intra_doc_link_resolution_failure)] in crates.
+      - name: Check intra-doc links
+        uses: actions-rs/cargo@ae10961054e4aa8b4aa7dffede299aaf087aa33b
+        with:
+          command: doc
+          args: --workspace --document-private-items --no-deps

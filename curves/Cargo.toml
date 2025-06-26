@@ -1,0 +1,61 @@
+[package]
+name = "blstrs"
+description = "Implementation of BLS12 381 and Jubjub curves."
+version = "0.1.0"
+authors = ["dignifiedquire <me@dignifiedquire.com>", "Midnight team"]
+edition = "2018"
+license = "MIT/Apache-2.0"
+repository = "https://github.com/midnightntwrk/midnight-zk/"
+categories = ["cryptography", "algorithms"]
+readme = "README.md"
+rust-version = "1.63"
+
+[package.metadata.docs.rs]
+rustdoc-args = [ "--html-in-header", "katex-header.html" ]
+
+[dependencies]
+blst = { version = "0.3.15", default-features = true }
+pairing_lib = { version = "0.23", package = "pairing" }
+subtle = "2.5"
+bitvec = "1.0.1"
+serde = { version = "1.0", features = ["derive"], optional = true }
+byte-slice-cast = "1.0.0"
+num-bigint = "0.4.6"
+
+rand_core = { workspace = true }
+ff = { workspace = true }
+group = { workspace = true, features = ["tests"]  }
+halo2curves = { workspace = true }
+
+
+
+[dev-dependencies]
+rayon = "1.8"
+rand_xorshift = "0.3.0"
+serde_json = "1.0.57"
+hex = "0.4.2"
+criterion = { version = "0.3", features = ["html_reports"] }
+[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
+getrandom = { version = "0.2", features = ["js"] }
+
+[features]
+default = ["serde"]
+portable = ["blst/portable"]
+h2c_compare = []
+__private_bench = []
+
+[[bench]]
+name = "field_arith"
+harness = false
+
+[[bench]]
+name = "ec"
+harness = false
+
+[[bench]]
+name = "msm"
+harness = false
+
+[[bench]]
+name = "pairing"
+harness = false
