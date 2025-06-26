@@ -4,7 +4,7 @@
 //! bounded integers that fit in the native field.
 
 use ff::PrimeField;
-use halo2_proofs::{circuit::Layouter, plonk::Error};
+use midnight_proofs::{circuit::Layouter, plonk::Error};
 use num_bigint::BigUint;
 
 use super::{
@@ -143,7 +143,7 @@ where
 #[cfg(test)]
 mod test {
     use ff::FromUniformBytes;
-    use halo2_proofs::{
+    use midnight_proofs::{
         circuit::{SimpleFloorPlanner, Value},
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem},
@@ -238,7 +238,7 @@ mod test {
 
     #[test]
     fn div_rem() {
-        type F = blstrs::Scalar;
+        type F = blstrs::Fq;
         run_div_rem_test::<F>(17, 5, false);
         run_div_rem_test::<F>(0, 1, false);
         run_div_rem_test::<F>(1, 1, false);

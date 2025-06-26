@@ -359,7 +359,7 @@ where
 #[cfg(test)]
 mod tests {
     use ff::{Field, FromUniformBytes, PrimeField};
-    use halo2_proofs::{
+    use midnight_proofs::{
         circuit::{Layouter, SimpleFloorPlanner, Value},
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem},
@@ -587,7 +587,7 @@ mod tests {
 
     #[test]
     fn vector_eq() {
-        type F = blstrs::Scalar;
+        type F = blstrs::Fq;
 
         // Create a random number generator
         let mut rng = ChaCha12Rng::seed_from_u64(0xdeadcafe);
@@ -615,7 +615,7 @@ mod tests {
 
     #[test]
     fn vector_lims() {
-        type F = blstrs::Scalar;
+        type F = blstrs::Fq;
 
         // Create a random number generator
         let mut rng = ChaCha12Rng::seed_from_u64(0xdeadcafe);
@@ -635,7 +635,7 @@ mod tests {
 
     #[test]
     fn vector_padding_flags() {
-        type F = blstrs::Scalar;
+        type F = blstrs::Fq;
 
         // Create a random number generator
         let mut rng = ChaCha12Rng::seed_from_u64(0xdeadcafe);
