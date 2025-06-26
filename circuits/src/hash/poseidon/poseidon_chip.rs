@@ -96,13 +96,11 @@ pub struct PoseidonConfig<F: PoseidonField> {
     pre_computed: PreComputedRoundCircuit<F>,
 }
 
-/// Chip for Native operations.
+/// Chip for Poseidon operations.
 #[derive(Clone, Debug)]
 pub struct PoseidonChip<F: PoseidonField> {
-    /// Configuration of Poseidon chips.
     config: PoseidonConfig<F>,
-    /// Calls to native gadgets functions.
-    pub(super) native_gadget: NG<F>,
+    native_gadget: NG<F>,
 }
 
 impl<F: PoseidonField> Chip<F> for PoseidonChip<F> {

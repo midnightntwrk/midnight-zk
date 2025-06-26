@@ -19,17 +19,62 @@ use super::{
     AssignedRegister, PoseidonChip,
 };
 use crate::{
-    hash::poseidon::constants::WIDTH,
+    field::{decomposition::chip::P2RDecompositionChip, NativeChip, NativeGadget},
+    hash::poseidon::{constants::WIDTH, PoseidonState},
     instructions::{
-        hash::VarHashInstructions, ArithInstructions, AssignmentInstructions, BinaryInstructions,
-        ControlFlowInstructions, DivisionInstructions, EqualityInstructions,
-        RangeCheckInstructions, ZeroInstructions,
+        hash::{HashCPU, VarHashInstructions},
+        ArithInstructions, AssignmentInstructions, BinaryInstructions, ControlFlowInstructions,
+        DivisionInstructions, EqualityInstructions, RangeCheckInstructions, SpongeCPU,
+        ZeroInstructions,
     },
     types::{AssignedBit, AssignedNative, AssignedVector},
 };
 
+type NG<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
+
+/// Gadget for variable-length Poseidon operations.
+#[derive(Clone, Debug)]
+pub struct VarLenPoseidonGadget<F: PoseidonField> {
+    poseidon_chip: PoseidonChip<F>,
+    native_gadget: NG<F>,
+}
+
+impl<F: PoseidonField> VarLenPoseidonGadget<F> {
+    /// Create a new variable-length Poseidon gadget from its dependencies.
+    pub fn new(poseidon_chip: &PoseidonChip<F>, native_gadget: &NG<F>) -> Self {
+        Self {
+            poseidon_chip: poseidon_chip.clone(),
+            native_gadget: native_gadget.clone(),
+        }
+    }
+}
+
+// Inherit SpongeCPU trait from PoseidonChip.
+impl<F: PoseidonField> SpongeCPU<F, F> for VarLenPoseidonGadget<F> {
+    type StateCPU = PoseidonState<F>;
+
+    fn init(input_len: Option<usize>) -> Self::StateCPU {
+        <PoseidonChip<F> as SpongeCPU<F, F>>::init(input_len)
+    }
+
+    fn absorb(state: &mut Self::StateCPU, inputs: &[F]) {
+        <PoseidonChip<F> as SpongeCPU<F, F>>::absorb(state, inputs)
+    }
+
+    fn squeeze(state: &mut Self::StateCPU) -> F {
+        <PoseidonChip<F> as SpongeCPU<F, F>>::squeeze(state)
+    }
+}
+
+// Inherit HashCPU trait from PoseidonChip.
+impl<F: PoseidonField> HashCPU<F, F> for VarLenPoseidonGadget<F> {
+    fn hash(inputs: &[F]) -> F {
+        <PoseidonChip<F> as HashCPU<F, F>>::hash(inputs)
+    }
+}
+
 // Implement auxiliary functions for variable length hashing.
-impl<F: PoseidonField> PoseidonChip<F> {
+impl<F: PoseidonField> VarLenPoseidonGadget<F> {
     /// Updates the internal state `register` with the `chunk` if `update` is
     /// true. Otherwise, `register` is left unchanged.
     /// `chunk` is expected to have length `RATE`.
@@ -47,7 +92,7 @@ impl<F: PoseidonField> PoseidonChip<F> {
         for (entry, value) in result.iter_mut().zip(chunk.iter()) {
             *entry = self.native_gadget.add(layouter, entry, value)?;
         }
-        result = self.permutation(layouter, &result)?;
+        result = self.poseidon_chip.permutation(layouter, &result)?;
 
         // Select the updated version or the original input according to `update`.
         for (register, result) in register.iter().zip(result.iter_mut()) {
@@ -99,7 +144,7 @@ impl<F: PoseidonField> PoseidonChip<F> {
 
 impl<F: PoseidonField, const MAX_LEN: usize>
     VarHashInstructions<F, MAX_LEN, AssignedNative<F>, AssignedNative<F>, RATE>
-    for PoseidonChip<F>
+    for VarLenPoseidonGadget<F>
 {
     /// Hashes the variable-length vector inputs.
     ///
@@ -222,15 +267,17 @@ mod tests {
             config: Self::Config,
             mut layouter: impl Layouter<F>,
         ) -> Result<(), Error> {
-            let ng = NG::<F>::new_from_scratch(&config.0);
+            let native_gadget = NG::<F>::new_from_scratch(&config.0);
             let poseidon_chip = PoseidonChip::new_from_scratch(&config);
+            let varlen_poseidon_gadget = VarLenPoseidonGadget::new(&poseidon_chip, &native_gadget);
+
             PoseidonChip::load_from_scratch(&mut layouter, &config);
 
             let assigned_input: AssignedVector<F, AssignedNative<F>, MAX_LEN, RATE> =
-                ng.assign(&mut layouter, self.inputs.clone())?;
+                native_gadget.assign(&mut layouter, self.inputs.clone())?;
 
-            let output = poseidon_chip.varhash(&mut layouter, &assigned_input)?;
-            ng.assert_equal_to_fixed(&mut layouter, &output, self.expected)?;
+            let output = varlen_poseidon_gadget.varhash(&mut layouter, &assigned_input)?;
+            native_gadget.assert_equal_to_fixed(&mut layouter, &output, self.expected)?;
 
             Ok(())
         }
