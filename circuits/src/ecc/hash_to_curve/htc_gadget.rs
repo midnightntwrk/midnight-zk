@@ -140,7 +140,7 @@ where
 #[cfg(test)]
 mod tests {
 
-    use blstrs::{JubjubExtended as Jubjub, Fq as JubjubBase};
+    use blstrs::{Fq as JubjubBase, JubjubExtended as Jubjub};
     use rand::{Rng, SeedableRng};
 
     use super::*;

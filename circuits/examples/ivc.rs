@@ -5,12 +5,6 @@
 
 use std::{collections::BTreeMap, time::Instant};
 
-use midnight_proofs::{
-    circuit::{Layouter, SimpleFloorPlanner, Value},
-    plonk::{create_proof, keygen_pk, keygen_vk_with_k, prepare, Circuit, ConstraintSystem, Error},
-    poly::{kzg::KZGCommitmentScheme, EvaluationDomain},
-    transcript::{CircuitTranscript, Transcript},
-};
 use halo2curves::{ff::Field, group::Group, CurveAffine};
 use midnight_circuits::{
     ecc::{
@@ -34,6 +28,12 @@ use midnight_circuits::{
     testing_utils::plonk_api::filecoin_srs,
     types::{AssignedNative, ComposableChip, Instantiable},
     verifier::{self, Accumulator, AssignedAccumulator, AssignedVk, Msm, VerifierGadget},
+};
+use midnight_proofs::{
+    circuit::{Layouter, SimpleFloorPlanner, Value},
+    plonk::{create_proof, keygen_pk, keygen_vk_with_k, prepare, Circuit, ConstraintSystem, Error},
+    poly::{kzg::KZGCommitmentScheme, EvaluationDomain},
+    transcript::{CircuitTranscript, Transcript},
 };
 use rand::rngs::OsRng;
 

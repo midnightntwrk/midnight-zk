@@ -851,12 +851,7 @@ mod tests {
                     region.assign_advice(|| "", config.a, 0, || Value::known(self.0))?;
                     region.assign_fixed(|| "", config.q_a, 0, || Value::known(-Fq::ONE))?;
 
-                    region.assign_advice(
-                        || "",
-                        config.a,
-                        1,
-                        || Value::known(-Fq::from(5u64)),
-                    )?;
+                    region.assign_advice(|| "", config.a, 1, || Value::known(-Fq::from(5u64)))?;
                     for (idx, column) in (1..).zip([
                         config.q_a,
                         config.q_b,
@@ -872,8 +867,7 @@ mod tests {
                         )?;
                     }
 
-                    let a =
-                        region.assign_advice(|| "", config.a, 2, || Value::known(Fq::ONE))?;
+                    let a = region.assign_advice(|| "", config.a, 2, || Value::known(Fq::ONE))?;
                     a.copy_advice(|| "", &mut region, config.b, 3)?;
                     a.copy_advice(|| "", &mut region, config.c, 4)?;
                     Ok(())
