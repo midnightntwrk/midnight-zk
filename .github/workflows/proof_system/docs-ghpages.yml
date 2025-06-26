@@ -11,6 +11,7 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    working-directory: proof_system
     steps:
       
       - uses: actions/checkout@v3

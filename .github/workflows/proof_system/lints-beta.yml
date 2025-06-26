@@ -10,6 +10,7 @@ jobs:
     timeout-minutes: 30
     runs-on: ubuntu-latest
     continue-on-error: true
+    working-directory: proof_system
 
     steps:
       - run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev

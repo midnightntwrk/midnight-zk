@@ -12,11 +12,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: dangoslen/changelog-enforcer@204e7d3ef26579f4cd0fd759c57032656fdf23c7
+    working-directory: circuits
 
   test:
     if: github.event.pull_request.draft == false
     name: Test on ${{ matrix.os }}
     runs-on: ubuntu-latest
+    working-directory: circuits
 
     steps:
       - name: Add github.com credentials to netrc
@@ -66,6 +68,7 @@ jobs:
     if: github.event.pull_request.draft == false
     name: Intra-doc links
     runs-on: ubuntu-latest
+    working-directory: circuits
 
     steps:
       - name: Add github.com credentials to netrc

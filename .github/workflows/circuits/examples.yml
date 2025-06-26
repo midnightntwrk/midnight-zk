@@ -11,6 +11,7 @@ jobs:
     if: github.event.pull_request.draft == false
     name: Run Example Tests
     runs-on: ubuntu-latest
+    working-directory: circuits
     strategy:
       matrix:
         example:

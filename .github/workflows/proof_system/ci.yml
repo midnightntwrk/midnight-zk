@@ -11,6 +11,7 @@ jobs:
   test:
     name: Test on ${{ matrix.os }} with ${{ matrix.feature_set }} features
     runs-on: ${{ matrix.os }}
+    working-directory: proof_system
     strategy:
       matrix:
         feature_set: [basic, all]
@@ -38,6 +39,7 @@ jobs:
   build:
     name: Build target ${{ matrix.target }}
     runs-on: ubuntu-latest
+    working-directory: proof_system
     strategy:
       matrix:
         target:
@@ -61,6 +63,7 @@ jobs:
   bitrot:
     name: Bitrot check
     runs-on: ubuntu-latest
+    working-directory: proof_system
 
     steps:
       - run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev
@@ -78,6 +81,7 @@ jobs:
   doc-links:
     name: Intra-doc links
     runs-on: ubuntu-latest
+    working-directory: proof_system
 
     steps:
       - run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev
