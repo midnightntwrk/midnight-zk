@@ -1,10 +1,14 @@
 name: Real Examples
 
 on:
-  pull_request:
   push:
     branches:
       - main
+    paths:
+      - 'circuits/**'
+  pull_request:
+    paths:
+      - 'circuits/**'
 
 jobs:
   test-examples:

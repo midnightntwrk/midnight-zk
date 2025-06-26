@@ -1,11 +1,14 @@
 name: CI checks
 
 on:
-  merge_group:
-  pull_request:
   push:
     branches:
       - main
+    paths:
+      - 'proof_system/**'
+  pull_request:
+    paths:
+      - 'proof_system/**'
 
 jobs:
   test:

@@ -1,10 +1,14 @@
 name: CI checks
 
 on:
-  pull_request:
   push:
     branches:
       - main
+    paths:
+      - 'circuits/**'
+  pull_request:
+    paths:
+      - 'circuits/**'
 
 jobs:
   # Enforces the update of a changelog file on every pull request
