@@ -37,6 +37,7 @@ verification keys break backwards compatibility.
 * verifier: verifier gadget handles h commitments as in the good old days (with the homomorphic property) [#565](https://github.com/midnightntwrk/midnight-circuits/pull/565)
 * Optimize `assign_many` for `AssignedBit` and `AssignedByte` in `NativeGadget` [#561](https://github.com/midnightntwrk/midnight-circuits/pull/561)
 * Improve readability and efficiency of Poseidon after audit's remarks [#557](https://github.com/midnightntwrk/midnight-circuits/pull/557)
+* Change PoseidonChip dependency (from NativeGadget to NativeChip) [#12](https://github.com/midnightntwrk/midnight-zk/pull/12)
 
 ### Removed
 * Bit and Byte off-circuit types [#548](https://github.com/midnightntwrk/midnight-circuits/pull/548)

@@ -228,7 +228,10 @@ mod tests {
 
     use super::*;
     use crate::{
-        field::{decomposition::chip::P2RDecompositionChip, NativeChip, NativeGadget},
+        field::{
+            decomposition::chip::{P2RDecompositionChip, P2RDecompositionConfig},
+            NativeChip, NativeGadget,
+        },
         hash::poseidon::PoseidonChip,
         instructions::{hash::VarHashInstructions, AssertionInstructions, SpongeCPU},
         utils::{circuit_modeling::circuit_to_json, util::FromScratch},
@@ -245,7 +248,10 @@ mod tests {
     }
 
     impl<F: PoseidonField, const MAX_LEN: usize> Circuit<F> for VarCircuit<F, MAX_LEN> {
-        type Config = <PoseidonChip<F> as FromScratch<F>>::Config;
+        type Config = (
+            P2RDecompositionConfig,
+            <PoseidonChip<F> as FromScratch<F>>::Config,
+        );
         type FloorPlanner = SimpleFloorPlanner;
         type Params = ();
 
@@ -256,10 +262,15 @@ mod tests {
         fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
             let committed_instance_column = meta.instance_column();
             let instance_column = meta.instance_column();
-            PoseidonChip::configure_from_scratch(
+            let native_config = NG::<F>::configure_from_scratch(
                 meta,
                 &[committed_instance_column, instance_column],
-            )
+            );
+            let poseidon_config = PoseidonChip::configure_from_scratch(
+                meta,
+                &[committed_instance_column, instance_column],
+            );
+            (native_config, poseidon_config)
         }
 
         fn synthesize(
@@ -268,10 +279,11 @@ mod tests {
             mut layouter: impl Layouter<F>,
         ) -> Result<(), Error> {
             let native_gadget = NG::<F>::new_from_scratch(&config.0);
-            let poseidon_chip = PoseidonChip::new_from_scratch(&config);
+            let poseidon_chip = PoseidonChip::new_from_scratch(&config.1);
             let varlen_poseidon_gadget = VarLenPoseidonGadget::new(&poseidon_chip, &native_gadget);
 
-            PoseidonChip::load_from_scratch(&mut layouter, &config);
+            NG::load_from_scratch(&mut layouter, &config.0);
+            PoseidonChip::load_from_scratch(&mut layouter, &config.1);
 
             let assigned_input: AssignedVector<F, AssignedNative<F>, MAX_LEN, RATE> =
                 native_gadget.assign(&mut layouter, self.inputs.clone())?;
