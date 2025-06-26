@@ -580,7 +580,7 @@ macro_rules! field_testing_suite {
     };
 }
 
-pub(crate) fn run_test_from_uniform_bytes<F: PrimeField, const L: usize>()
+pub(crate) fn run_test_from_uniform_bytes<F, const L: usize>()
 where
     F: FromUniformBytes<L>,
 {
