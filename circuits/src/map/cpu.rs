@@ -242,7 +242,6 @@ mod tests {
 
     #[test]
     fn test_map_poseidon() {
-        run_poseidon_test::<blstrs::Scalar>();
-        run_poseidon_test::<halo2curves::pasta::Fp>();
+        run_poseidon_test::<blstrs::Fq>();
     }
 }

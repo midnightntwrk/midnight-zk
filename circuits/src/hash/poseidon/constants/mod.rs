@@ -23,5 +23,3 @@ pub trait PoseidonField: PrimeField {
 }
 
 mod blstrs;
-mod pallas;
-mod vesta;

@@ -5,7 +5,7 @@
 use ecc::EccInstructions;
 use ff::{Field, PrimeField};
 use group::Group;
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::{Chip, Layouter, Region, Value},
     plonk::{Advice, Column, ConstraintSystem, Constraints, Error, Expression, Selector},
     poly::Rotation,
@@ -14,7 +14,7 @@ use halo2_proofs::{
 use {
     crate::field::decomposition::chip::P2RDecompositionConfig,
     crate::testing_utils::{FromScratch, Sampleable},
-    halo2_proofs::plonk::Instance,
+    midnight_proofs::plonk::Instance,
     rand::RngCore,
 };
 
@@ -22,7 +22,7 @@ use crate::{
     ecc::curves::{CircuitCurve, EdwardsCurve},
     field::{decomposition::chip::P2RDecompositionChip, NativeChip, NativeGadget},
     instructions::*,
-    types::{AssignedBit, AssignedNative, Bit, InnerConstants, InnerValue, Instantiable},
+    types::{AssignedBit, AssignedNative, InnerConstants, InnerValue, Instantiable},
     utils::{
         util::{fe_to_le_bits, le_bits_to_field_elem},
         ComposableChip,
@@ -100,7 +100,7 @@ impl<C: CircuitCurve> InnerValue for ScalarVar<C> {
     type Element = C::Scalar;
 
     fn value(&self) -> Value<Self::Element> {
-        let bools = self.0.iter().map(|b| b.value().map(|v| v.0));
+        let bools = self.0.iter().map(|b| b.value());
         let value_bools: Value<Vec<bool>> = Value::from_iter(bools);
         value_bools.map(|le_bits| le_bits_to_field_elem::<C::Scalar>(&le_bits))
     }
@@ -358,7 +358,7 @@ impl<C: EdwardsCurve> EccChip<C> {
         offset: usize,
         q: Value<C>,
         s: Value<C>,
-        b: Value<Bit>,
+        b: Value<bool>,
     ) -> Result<AssignedNativePoint<C>, Error> {
         let config = self.config();
         config.q_cond_add.enable(region, offset)?;
@@ -384,7 +384,7 @@ impl<C: EdwardsCurve> EccChip<C> {
         offset: usize,
         p_val: Value<C>,
         q_val: Value<C>,
-        b_val: Value<Bit>,
+        b_val: Value<bool>,
     ) -> Result<AssignedNativePoint<C>, Error> {
         let config = self.config();
 
@@ -467,10 +467,10 @@ impl<C: EdwardsCurve> EccChip<C> {
     }
 
     /// Given values of P, Q and b, computes the value of P + b * Q.
-    fn p_plus_b_q(p: Value<C>, q: Value<C>, b: Value<Bit>) -> (Value<C::Base>, Value<C::Base>) {
+    fn p_plus_b_q(p: Value<C>, q: Value<C>, b: Value<bool>) -> (Value<C::Base>, Value<C::Base>) {
         p.zip(q)
             .zip(b)
-            .map(|((p, q), b)| if *b { p + q } else { p })
+            .map(|((p, q), b)| if b { p + q } else { p })
             .map(|r| r.coordinates().expect("Valid affine point."))
             .unzip()
     }
@@ -493,7 +493,7 @@ impl<C: EdwardsCurve> EccInstructions<C::Base, C> for EccChip<C> {
         q: &Self::Point,
     ) -> Result<Self::Point, Error> {
         let config = self.config();
-        let b: AssignedBit<C::Base> = self.native_gadget.assign_fixed(layouter, Bit(true))?;
+        let b: AssignedBit<C::Base> = self.native_gadget.assign_fixed(layouter, true)?;
 
         layouter.assign_region(
             || "assign add",
@@ -650,12 +650,7 @@ impl<C: EdwardsCurve> AssignmentInstructions<C::Base, ScalarVar<C>> for EccChip<
         value: Value<C::Scalar>,
     ) -> Result<ScalarVar<C>, Error> {
         let bits = value
-            .map(|s| {
-                fe_to_le_bits(&s, Some(C::Scalar::NUM_BITS as usize))
-                    .into_iter()
-                    .map(Bit)
-                    .collect::<Vec<_>>()
-            })
+            .map(|s| fe_to_le_bits(&s, Some(C::Scalar::NUM_BITS as usize)))
             .transpose_vec(<C::Scalar as PrimeField>::NUM_BITS as usize);
         self.native_gadget
             .assign_many(layouter, &bits)
@@ -667,10 +662,8 @@ impl<C: EdwardsCurve> AssignmentInstructions<C::Base, ScalarVar<C>> for EccChip<
         layouter: &mut impl Layouter<C::Base>,
         constant: C::Scalar,
     ) -> Result<ScalarVar<C>, Error> {
-        fe_to_le_bits(&constant, None)
-            .iter()
-            .map(|b| self.native_gadget.assign_fixed(layouter, Bit(*b)))
-            .collect::<Result<Vec<AssignedBit<C::Base>>, Error>>()
+        self.native_gadget
+            .assign_many_fixed(layouter, &fe_to_le_bits(&constant, None))
             .map(ScalarVar)
     }
 }
@@ -694,7 +687,7 @@ impl<C: EdwardsCurve> AssertionInstructions<C::Base, AssignedNativePoint<C>> for
     ) -> Result<(), Error> {
         let is_eq = self.is_equal(layouter, p, q)?;
         self.native_gadget
-            .assert_equal_to_fixed(layouter, &is_eq, Bit(false))
+            .assert_equal_to_fixed(layouter, &is_eq, false)
     }
 
     fn assert_equal_to_fixed(
@@ -717,7 +710,7 @@ impl<C: EdwardsCurve> AssertionInstructions<C::Base, AssignedNativePoint<C>> for
     ) -> Result<(), Error> {
         let is_eq = self.is_equal_to_fixed(layouter, p, constant)?;
         self.native_gadget
-            .assert_equal_to_fixed(layouter, &is_eq, Bit(false))
+            .assert_equal_to_fixed(layouter, &is_eq, false)
     }
 }
 
@@ -850,10 +843,10 @@ impl<C: EdwardsCurve> FromScratch<C::Base> for EccChip<C> {
 
     fn configure_from_scratch(
         meta: &mut ConstraintSystem<C::Base>,
-        instance_column: &Column<Instance>,
+        instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
         let native_gadget_config =
-            <NG<C::Base> as FromScratch<C::Base>>::configure_from_scratch(meta, instance_column);
+            <NG<C::Base> as FromScratch<C::Base>>::configure_from_scratch(meta, instance_columns);
         let advice_cols: [Column<Advice>; NB_EDWARDS_COLS] =
             core::array::from_fn(|_| meta.advice_column());
         let ecc_config = EccChip::<C>::configure(meta, &advice_cols);
@@ -875,7 +868,7 @@ impl<C: EdwardsCurve> Sampleable for AssignedNativePoint<C> {
 
 /// This conversion should not exist for Base -> Scalar. It is a tech debt. We
 /// should fix this as soon as compact supports types (other than assigned
-/// native) <https://github.com/input-output-hk/midnight-circuits/issues/433>
+/// native) <https://github.com/midnightntwrk/midnight-circuits/issues/433>
 impl<C: EdwardsCurve> ConversionInstructions<C::Base, AssignedNative<C::Base>, ScalarVar<C>>
     for EccChip<C>
 {
@@ -900,7 +893,7 @@ impl<C: EdwardsCurve> ConversionInstructions<C::Base, AssignedNative<C::Base>, S
 
 #[cfg(test)]
 mod tests {
-    use blstrs::{JubjubExtended, Scalar as JubjubBase};
+    use blstrs::{JubjubExtended, Fq as JubjubBase};
 
     use super::*;
     use crate::{

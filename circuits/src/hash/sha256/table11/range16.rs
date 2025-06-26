@@ -14,7 +14,7 @@
 // 2) a_i \in {0, 1, 2, 3} for i = 2, 3, .. 9
 
 use ff::PrimeField;
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::Region,
     plonk::{Advice, Column, ConstraintSystem, Error, Expression, Selector},
     poly::Rotation,
@@ -165,12 +165,12 @@ impl Range16Config {
 #[cfg(test)]
 mod tests {
     use ff::PrimeField;
-    use halo2_proofs::{
+    use halo2curves::pasta::Fp;
+    use midnight_proofs::{
         circuit::{Layouter, SimpleFloorPlanner},
         dev::MockProver,
         plonk::{Advice, Circuit, Column, ConstraintSystem, Error},
     };
-    use halo2curves::pasta::Fp;
     use rand::{Rng, SeedableRng};
     use rand_chacha::ChaCha8Rng;
 

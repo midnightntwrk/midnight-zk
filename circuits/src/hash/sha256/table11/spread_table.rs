@@ -1,7 +1,7 @@
 use std::{convert::TryInto, fmt::Debug};
 
 use ff::PrimeField;
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::{Cell, Region, Value},
     plonk::{Advice, Column, Error},
 };

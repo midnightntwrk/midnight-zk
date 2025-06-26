@@ -1,10 +1,5 @@
 //! Unit tests on serialization of Midnight keys.
 
-use halo2_proofs::{
-    circuit::{Layouter, Value},
-    plonk::Error,
-    utils::SerdeFormat,
-};
 use midnight_circuits::{
     compact_std_lib::{
         self, MidnightPK, MidnightVK, Relation, ShaTableSize, ZkStdLib, ZkStdLibArch,
@@ -14,8 +9,13 @@ use midnight_circuits::{
     },
     testing_utils::plonk_api::filecoin_srs,
 };
+use midnight_proofs::{
+    circuit::{Layouter, Value},
+    plonk::Error,
+    utils::SerdeFormat,
+};
 
-type F = blstrs::Scalar;
+type F = blstrs::Fq;
 
 #[derive(Clone)]
 struct DummyCircuit {

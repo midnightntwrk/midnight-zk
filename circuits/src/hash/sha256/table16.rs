@@ -1,12 +1,12 @@
 use std::marker::PhantomData;
 
 use ff::PrimeField;
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::{Chip, Layouter, Region, Value},
     plonk::{Advice, Column, ConstraintSystem, Error},
 };
 #[cfg(any(test, feature = "testing"))]
-use {crate::testing_utils::FromScratch, halo2_proofs::plonk::Instance};
+use {crate::testing_utils::FromScratch, midnight_proofs::plonk::Instance};
 
 use crate::hash::sha256::{BITS_PER_SHA_BLOCK, BITS_PER_WORD, BLOCK_BYTE_SIZE};
 
@@ -66,7 +66,7 @@ impl<F: PrimeField> FromScratch<F> for Table16Chip<F> {
 
     fn configure_from_scratch(
         meta: &mut ConstraintSystem<F>,
-        _instance_column: &Column<Instance>,
+        _instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
         Table16Chip::configure(meta)
     }

@@ -88,10 +88,6 @@
 //! position is Right     Node_{TREE_HEIGHT-1} = Root
 
 use ff::{Field, PrimeField};
-use halo2_proofs::{
-    circuit::{Layouter, Value},
-    plonk::Error,
-};
 use midnight_circuits::{
     compact_std_lib::{self, Relation, ShaTableSize, ZkStdLib, ZkStdLibArch},
     hash::poseidon::{constants::PoseidonField, PoseidonChip},
@@ -100,13 +96,17 @@ use midnight_circuits::{
         ConversionInstructions, DecompositionInstructions, PublicInputInstructions,
     },
     testing_utils::plonk_api::filecoin_srs,
-    types::{AssignedBit, AssignedNative, Byte},
+    types::{AssignedBit, AssignedNative},
+};
+use midnight_proofs::{
+    circuit::{Layouter, Value},
+    plonk::Error,
 };
 use rand::{rngs::OsRng, Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use sha2::Digest;
 
-type F = blstrs::Scalar;
+type F = blstrs::Fq;
 
 // The height of the tree.
 const TREE_HEIGHT: usize = 64;
@@ -242,7 +242,7 @@ impl Relation for HybridMtExample {
         // First we witness the preimage.
         let input_bytes = witness
             .clone()
-            .map(|mp| mp.leaf_bytes.into_iter().map(Byte).collect::<Vec<_>>())
+            .map(|mp| mp.leaf_bytes)
             .transpose_vec(INPUT_BYTES);
 
         // Assign input u32 words.

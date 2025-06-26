@@ -1,12 +1,10 @@
 use ff::PrimeField;
-use halo2_proofs::{circuit::Layouter, plonk::Error};
+use midnight_proofs::{circuit::Layouter, plonk::Error};
 use num_bigint::BigUint;
 
 use super::ParserGadget;
 use crate::{
-    field::AssignedNative,
-    instructions::NativeInstructions,
-    types::{AssignedByte, Byte},
+    field::AssignedNative, instructions::NativeInstructions, types::AssignedByte,
     utils::util::concat,
 };
 
@@ -121,8 +119,8 @@ where
                     "Date format must be 10 characters long: DD{sep}MM{sep}YYYY"
                 );
 
-                native.assert_equal_to_fixed(layouter, &input[2], Byte::from(sep as u64))?;
-                native.assert_equal_to_fixed(layouter, &input[5], Byte::from(sep as u64))?;
+                native.assert_equal_to_fixed(layouter, &input[2], sep as u8)?;
+                native.assert_equal_to_fixed(layouter, &input[5], sep as u8)?;
                 ((0..2), (3..5), (6..10))
             }
 
@@ -137,8 +135,8 @@ where
                     "Date format must be 10 characters long: YYYY{sep}MM{sep}DD"
                 );
 
-                native.assert_equal_to_fixed(layouter, &input[4], Byte::from(sep as u64))?;
-                native.assert_equal_to_fixed(layouter, &input[7], Byte::from(sep as u64))?;
+                native.assert_equal_to_fixed(layouter, &input[4], sep as u8)?;
+                native.assert_equal_to_fixed(layouter, &input[7], sep as u8)?;
 
                 ((8..10), (5..7), (0..4))
             }
@@ -159,7 +157,7 @@ mod tests {
     use std::marker::PhantomData;
 
     use ff::FromUniformBytes;
-    use halo2_proofs::{
+    use midnight_proofs::{
         circuit::{SimpleFloorPlanner, Value},
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem},
@@ -199,8 +197,12 @@ mod tests {
         }
 
         fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+            let committed_instance_column = meta.instance_column();
             let instance_column = meta.instance_column();
-            <N as FromScratch<F>>::configure_from_scratch(meta, &instance_column)
+            <N as FromScratch<F>>::configure_from_scratch(
+                meta,
+                &[committed_instance_column, instance_column],
+            )
         }
 
         fn synthesize(
@@ -246,7 +248,7 @@ mod tests {
             operation,
             _marker: PhantomData,
         };
-        let public_inputs = vec![vec![]];
+        let public_inputs = vec![vec![], vec![]];
         match MockProver::run(K, &circuit, public_inputs) {
             Ok(prover) => match prover.verify() {
                 Ok(()) => assert!(must_pass),
@@ -258,7 +260,7 @@ mod tests {
 
     #[test]
     fn test_parse_int() {
-        type F = blstrs::Scalar;
+        type F = blstrs::Fq;
         let test_vecs: Vec<(&[u8], u64, bool)> = vec![
             (b"987654321", 987654321, true),
             (b"123456", 123456, true),
@@ -277,7 +279,7 @@ mod tests {
 
     #[test]
     fn test_parse_date() {
-        type F = blstrs::Scalar;
+        type F = blstrs::Fq;
         let format1 = (DateFormat::DDMMYYYY, Separator::NoSep);
         let format2 = (DateFormat::DDMMYYYY, Separator::Sep('-'));
         let format3 = (DateFormat::YYYYMMDD, Separator::Sep('-'));

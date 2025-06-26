@@ -3,7 +3,7 @@
 use std::fmt::Debug;
 
 use ff::PrimeField;
-use halo2_proofs::{circuit::Layouter, plonk::Error};
+use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 use super::AssertionInstructions;
 use crate::{
@@ -132,7 +132,7 @@ pub mod tests {
 
     use ff::{Field, FromUniformBytes};
     use group::Group;
-    use halo2_proofs::{
+    use midnight_proofs::{
         circuit::{Chip, Layouter, SimpleFloorPlanner, Value},
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem},
@@ -192,8 +192,9 @@ pub mod tests {
         }
 
         fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+            let committed_instance_column = meta.instance_column();
             let instance_column = meta.instance_column();
-            EccChip::configure_from_scratch(meta, &instance_column)
+            EccChip::configure_from_scratch(meta, &[committed_instance_column, instance_column])
         }
 
         fn synthesize(
@@ -296,7 +297,7 @@ pub mod tests {
             Operation::MulByConstant => 16,
             _ => 10,
         };
-        let public_inputs = vec![vec![]];
+        let public_inputs = vec![vec![], vec![]];
         match MockProver::run(log2_nb_rows, &circuit, public_inputs) {
             Ok(prover) => match prover.verify() {
                 Ok(()) => assert!(must_pass),

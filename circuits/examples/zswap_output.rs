@@ -1,15 +1,11 @@
 //! Zswap output circuit from the zswap protocol.
 //!
 //! For more details, visit:
-//! https://github.com/input-output-hk/midnight-ledger-prototype/blob/main/zswap/zswap.compact
+//! https://github.com/midnightntwrk/midnight-ledger-prototype/blob/main/zswap/zswap.compact
 
 use blstrs::{Fr as JubjubScalar, JubjubExtended as Jubjub, JubjubSubgroup};
 use ff::Field;
 use group::Group;
-use halo2_proofs::{
-    circuit::{Layouter, Value},
-    plonk::Error,
-};
 use midnight_circuits::{
     compact_std_lib::{self, Relation, ZkStdLib},
     ecc::{hash_to_curve::HashToCurveGadget, native::EccChip},
@@ -19,23 +15,25 @@ use midnight_circuits::{
         HashToCurveCPU, PublicInputInstructions,
     },
     testing_utils::plonk_api::filecoin_srs,
-    types::{
-        AssignedBit, AssignedByte, AssignedNative, AssignedNativePoint, Bit, Byte, Instantiable,
-    },
+    types::{AssignedBit, AssignedByte, AssignedNative, AssignedNativePoint, Instantiable},
+};
+use midnight_proofs::{
+    circuit::{Layouter, Value},
+    plonk::Error,
 };
 use rand::{rngs::OsRng, Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use sha2::Digest;
 
-type F = blstrs::Scalar;
+type F = blstrs::Fq;
 
-type CoinCom = [Byte; 32];
+type CoinCom = [u8; 32];
 type ValueCom = JubjubSubgroup;
 
 #[derive(Clone, Copy, Debug)]
 pub enum PK {
-    ZSwapCoinPublicKey([Byte; 32]),
-    ContractAddress([Byte; 32]),
+    ZSwapCoinPublicKey([u8; 32]),
+    ContractAddress([u8; 32]),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -141,8 +139,8 @@ fn assign_pk(
 ) -> Result<AssignedPK, Error> {
     let (bytes_val, is_contract_val) = pk
         .map(|pk| match pk {
-            PK::ZSwapCoinPublicKey(bytes) => (bytes, Bit(false)),
-            PK::ContractAddress(bytes) => (bytes, Bit(true)),
+            PK::ZSwapCoinPublicKey(bytes) => (bytes, false),
+            PK::ContractAddress(bytes) => (bytes, true),
         })
         .unzip();
 
@@ -181,15 +179,7 @@ fn assign_fixed_domain_sep(
     layouter: &mut impl Layouter<F>,
     domain_sep: &str,
 ) -> Result<Vec<AssignedByte<F>>, Error> {
-    std_lib.assign_many_fixed(
-        layouter,
-        &domain_sep
-            .as_bytes()
-            .iter()
-            .copied()
-            .map(Byte)
-            .collect::<Vec<_>>(),
-    )
+    std_lib.assign_many_fixed(layouter, domain_sep.as_bytes())
 }
 
 fn concat(bytes_vector: &[Vec<AssignedByte<F>>]) -> Vec<AssignedByte<F>> {
@@ -207,7 +197,7 @@ fn main() {
     // Sample a instance-witness pair.
     let mut rng = ChaCha8Rng::from_entropy();
 
-    let zswap_pk_bytes = core::array::from_fn(|_| Byte(rng.gen()));
+    let zswap_pk_bytes = core::array::from_fn(|_| rng.gen());
     let zswap_pk_is_contract: bool = rng.gen();
     let zswap_pk = match zswap_pk_is_contract {
         false => PK::ZSwapCoinPublicKey(zswap_pk_bytes),
@@ -225,7 +215,7 @@ fn main() {
         preimage.extend(coin.nonce.to_bytes_le().to_vec());
         preimage.extend(coin.value.to_le_bytes().to_vec());
         preimage.push(zswap_pk_is_contract as u8);
-        preimage.extend(zswap_pk_bytes.map(|b| b.0).to_vec());
+        preimage.extend(zswap_pk_bytes.map(|b| b).to_vec());
         preimage.extend("mdn:cc".as_bytes());
         sha2::Sha256::digest(preimage).into()
     };
@@ -243,7 +233,7 @@ fn main() {
     };
 
     let witness = (zswap_pk, coin, rc);
-    let instance = (coin_com.map(Byte), value_com);
+    let instance = (coin_com, value_com);
 
     let proof = compact_std_lib::prove(&srs, &pk, &relation, &instance, witness, OsRng)
         .expect("Proof generation should not fail");

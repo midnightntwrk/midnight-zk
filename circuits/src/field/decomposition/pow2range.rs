@@ -4,7 +4,7 @@
 use std::{fmt::Debug, marker::PhantomData};
 
 use ff::PrimeField;
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::{Chip, Layouter, Region, Value},
     plonk::{Advice, Column, ConstraintSystem, Error, Fixed, Selector, TableColumn},
     poly::Rotation,
@@ -70,7 +70,7 @@ impl<F: PrimeField> Chip<F> for Pow2RangeChip<F> {
 }
 
 impl<F: PrimeField> Pow2RangeChip<F> {
-    fn assert_row_lower_than_2_pow_n(
+    pub(crate) fn assert_row_lower_than_2_pow_n(
         &self,
         region: &mut Region<'_, F>,
         n: usize,
@@ -208,7 +208,7 @@ impl<F: PrimeField> Pow2RangeChip<F> {
 mod tests {
     use std::marker::PhantomData;
 
-    use halo2_proofs::{
+    use midnight_proofs::{
         circuit::{Layouter, SimpleFloorPlanner, Value},
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem, Error},

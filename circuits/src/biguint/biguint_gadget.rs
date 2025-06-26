@@ -7,7 +7,7 @@ use std::{
 };
 
 use ff::PrimeField;
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
@@ -17,7 +17,7 @@ use num_traits::One;
 #[cfg(any(test, feature = "testing"))]
 use {
     crate::testing_utils::FromScratch,
-    halo2_proofs::plonk::{Column, ConstraintSystem, Instance},
+    midnight_proofs::plonk::{Column, ConstraintSystem, Instance},
 };
 
 use super::{bound_of_addition, AssignedBigUint};
@@ -32,7 +32,7 @@ use crate::{
         AssertionInstructions, ControlFlowInstructions, EqualityInstructions, NativeInstructions,
         ZeroInstructions,
     },
-    types::{AssignedBit, AssignedNative, Bit},
+    types::{AssignedBit, AssignedNative},
     utils::{
         types::InnerValue,
         util::{big_to_fe, fe_to_big},
@@ -101,7 +101,7 @@ where
     ) -> Result<(), Error> {
         let x_eq_y = self.is_equal(layouter, x, y)?;
         self.native_gadget
-            .assert_equal_to_fixed(layouter, &x_eq_y, Bit(false))
+            .assert_equal_to_fixed(layouter, &x_eq_y, false)
     }
 
     fn assert_equal_to_fixed(
@@ -140,7 +140,7 @@ where
     ) -> Result<(), Error> {
         let x_eq_constant = self.is_equal_to_fixed(layouter, x, constant)?;
         self.native_gadget
-            .assert_equal_to_fixed(layouter, &x_eq_constant, Bit(false))
+            .assert_equal_to_fixed(layouter, &x_eq_constant, false)
     }
 }
 
@@ -184,7 +184,7 @@ where
         if x.limbs.len() < constant_limbs.len() {
             // We could also provide a WARNING in this case, since the output
             // can be deduced from the limb length of x and the constant.
-            return self.native_gadget.assign_fixed(layouter, Bit(false));
+            return self.native_gadget.assign_fixed(layouter, false);
         }
 
         constant_limbs.resize(x.limbs.len(), F::ZERO);
@@ -663,7 +663,7 @@ where
         self.resize(layouter, n, &mut x)?;
         self.resize(layouter, n, &mut y)?;
 
-        let init = self.native_gadget.assign_fixed(layouter, Bit(true))?;
+        let init = self.native_gadget.assign_fixed(layouter, true)?;
         x.limbs
             .iter()
             .zip(y.limbs.iter())
@@ -688,7 +688,7 @@ where
     ) -> Result<(), Error> {
         let b = self.geq(layouter, x, y)?;
         self.native_gadget
-            .assert_equal_to_fixed(layouter, &b, Bit(false))
+            .assert_equal_to_fixed(layouter, &b, false)
     }
 
     /// Division with remainder of the given native value by constant
@@ -776,9 +776,9 @@ where
 
     fn configure_from_scratch(
         meta: &mut ConstraintSystem<F>,
-        instance_column: &Column<Instance>,
+        instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
-        <N as FromScratch<F>>::configure_from_scratch(meta, instance_column)
+        <N as FromScratch<F>>::configure_from_scratch(meta, instance_columns)
     }
 
     fn load_from_scratch(layouter: &mut impl Layouter<F>, config: &Self::Config) {
@@ -789,14 +789,14 @@ where
 #[cfg(test)]
 mod tests {
 
-    use blstrs::Scalar as BlsScalar;
+    use blstrs::Fq as BlsScalar;
     use ff::FromUniformBytes;
-    use halo2_proofs::{
+    use halo2curves::pasta::{Fp as VestaScalar, Fq as PallasScalar};
+    use midnight_proofs::{
         circuit::SimpleFloorPlanner,
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem},
     };
-    use halo2curves::pasta::{Fp as VestaScalar, Fq as PallasScalar};
     use num_bigint::RandBigInt;
     use num_traits::Zero;
 
@@ -873,8 +873,12 @@ mod tests {
         }
 
         fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+            let committed_instance_column = meta.instance_column();
             let instance_column = meta.instance_column();
-            <N as FromScratch<F>>::configure_from_scratch(meta, &instance_column)
+            <N as FromScratch<F>>::configure_from_scratch(
+                meta,
+                &[committed_instance_column, instance_column],
+            )
         }
 
         fn synthesize(
@@ -924,7 +928,7 @@ mod tests {
             _marker: PhantomData,
         };
         let log2_nb_rows = 12;
-        let public_inputs = vec![vec![]];
+        let public_inputs = vec![vec![], vec![]];
         match MockProver::run(log2_nb_rows, &circuit, public_inputs) {
             Ok(prover) => match prover.verify() {
                 Ok(()) => assert!(must_pass),
@@ -940,7 +944,7 @@ mod tests {
 
     #[test]
     fn test_add_biguint() {
-        type F = blstrs::Scalar;
+        type F = blstrs::Fq;
         let zero = BigUint::ZERO;
         for _ in 0..10 {
             let x: BigUint = random_biguint(1024);
@@ -953,7 +957,7 @@ mod tests {
 
     #[test]
     fn test_sub_biguint() {
-        type F = blstrs::Scalar;
+        type F = blstrs::Fq;
         let zero = BigUint::ZERO;
         let one = BigUint::one();
         for _ in 0..10 {
@@ -972,7 +976,7 @@ mod tests {
 
     #[test]
     fn test_mul_biguint() {
-        type F = blstrs::Scalar;
+        type F = blstrs::Fq;
         let zero = BigUint::ZERO;
         let one = BigUint::one();
         for _ in 0..10 {
@@ -989,7 +993,7 @@ mod tests {
 
     #[test]
     fn test_div_rem_biguint() {
-        type F = blstrs::Scalar;
+        type F = blstrs::Fq;
         let zero = BigUint::ZERO;
         let one = BigUint::one();
         for _ in 0..10 {
@@ -1013,7 +1017,7 @@ mod tests {
 
     #[test]
     fn test_mod_exp_biguint() {
-        type F = blstrs::Scalar;
+        type F = blstrs::Fq;
         let zero = BigUint::ZERO;
         let one = BigUint::one();
         for _ in 0..10 {
@@ -1029,7 +1033,7 @@ mod tests {
 
     #[test]
     fn test_biguint_to_and_from_bits() {
-        type F = blstrs::Scalar;
+        type F = blstrs::Fq;
         let zero = BigUint::ZERO;
         let one = BigUint::one();
         for _ in 0..10 {
@@ -1043,7 +1047,7 @@ mod tests {
 
     #[test]
     fn test_lower_than_biguint() {
-        type F = blstrs::Scalar;
+        type F = blstrs::Fq;
         let zero = BigUint::ZERO;
         let one = BigUint::one();
         for _ in 0..10 {

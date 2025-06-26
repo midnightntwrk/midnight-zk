@@ -2,15 +2,14 @@ use std::{
     collections::BTreeMap,
     fs, io,
     io::Write,
-    iter,
     sync::{Arc, Mutex, OnceLock},
 };
 
-use blstrs::Scalar;
+use blstrs::Fq;
 use ff::{FromUniformBytes, PrimeField};
 use goldenfile::Mint;
-use halo2_proofs::{
-    dev::cost_model::{from_circuit_to_cost_model_options, CostOptions},
+use midnight_proofs::{
+    dev::cost_model::{from_circuit_to_circuit_model, CircuitModel},
     plonk::Circuit,
 };
 use serde_json::{json, Map, Value};
@@ -37,9 +36,10 @@ pub fn circuit_to_json<F>(
 {
     // Store model only when tests are run in BLS12-381 (i.e. when the
     // native scalar is BLS's scalar
-    if F::MODULUS == Scalar::MODULUS {
-        let options = from_circuit_to_cost_model_options(Some(k), &circuit, nb_public_inputs);
-        update_json(chip_name, op_name, options).expect("csv generation failed");
+    if F::MODULUS == Fq::MODULUS {
+        let model =
+            from_circuit_to_circuit_model::<F, _, 48, 32>(Some(k), &circuit, nb_public_inputs);
+        update_json(chip_name, op_name, model).expect("csv generation failed");
     }
 }
 
@@ -59,7 +59,7 @@ fn get_file_mutex() -> &'static Arc<Mutex<()>> {
     FILE_MUTEX.get_or_init(|| Arc::new(Mutex::new(())))
 }
 
-fn update_json(chip_name: &str, op_name: &str, model: CostOptions) -> io::Result<()> {
+fn update_json(chip_name: &str, op_name: &str, model: CircuitModel) -> io::Result<()> {
     // Acquire the lock on the mutex
     let _lock = get_file_mutex()
         .lock()
@@ -113,9 +113,7 @@ fn sort_json(value: Value) -> Value {
     }
 }
 
-fn report_model_json(model: &CostOptions, json_value: &mut Value) -> io::Result<()> {
-    let (column_queries, point_sets): (usize, usize) = compute_queries(model);
-
+fn report_model_json(model: &CircuitModel, json_value: &mut Value) -> io::Result<()> {
     let headers = [
         "max_deg",
         "rows",
@@ -128,15 +126,15 @@ fn report_model_json(model: &CostOptions, json_value: &mut Value) -> io::Result<
         "point_sets",
     ];
     let row = vec![
-        model.max_degree.to_string(),
-        model.rows_count.to_string(),
-        model.table_rows_count.to_string(),
-        model.advice.len().to_string(),
-        model.fixed.len().to_string(),
-        model.lookup.len().to_string(),
-        model.permutation.nr_columns().to_string(),
-        column_queries.to_string(),
-        point_sets.to_string(),
+        model.max_deg.to_string(),
+        model.rows.to_string(),
+        model.table_rows.to_string(),
+        model.advice_columns.to_string(),
+        model.fixed_columns.to_string(),
+        model.lookups.to_string(),
+        model.permutations.to_string(),
+        model.column_queries.to_string(),
+        model.point_sets.to_string(),
     ];
 
     let mut map = BTreeMap::new();
@@ -148,23 +146,4 @@ fn report_model_json(model: &CostOptions, json_value: &mut Value) -> io::Result<
     *json_value = serde_json::to_value(&map)?;
 
     Ok(())
-}
-
-fn compute_queries(model: &CostOptions) -> (usize, usize) {
-    let mut queries: Vec<_> = iter::empty()
-        .chain(model.advice.iter())
-        .chain(model.instance.iter())
-        .chain(model.fixed.iter())
-        .cloned()
-        .chain(model.lookup.iter().flat_map(|l| l.queries()))
-        .chain(model.permutation.queries())
-        .chain(iter::repeat("0".parse().unwrap()).take(model.max_degree - 1))
-        .collect();
-
-    let column_queries = queries.len();
-    queries.sort_unstable();
-    queries.dedup();
-    let point_sets = queries.len();
-
-    (column_queries, point_sets)
 }

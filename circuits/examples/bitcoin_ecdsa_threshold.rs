@@ -1,12 +1,8 @@
 //! Example of proving knowledge of k out of n Bitcoin ECDSA signatures on a
 //! public message.
 
-use blstrs::Scalar;
+use blstrs::Fq as Scalar;
 use ff::Field;
-use halo2_proofs::{
-    circuit::{Layouter, Value},
-    plonk::Error,
-};
 use halo2curves::{
     group::Curve,
     secp256k1::{Fq as secp256k1Scalar, Secp256k1},
@@ -22,7 +18,11 @@ use midnight_circuits::{
         ecdsa::{ECDSASig, Ecdsa},
         plonk_api::filecoin_srs,
     },
-    types::{AssignedForeignPoint, Byte, InnerValue, Instantiable},
+    types::{AssignedForeignPoint, InnerValue, Instantiable},
+};
+use midnight_proofs::{
+    circuit::{Layouter, Value},
+    plonk::Error,
 };
 use rand::{prelude::SliceRandom, rngs::OsRng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
@@ -118,12 +118,7 @@ impl Relation for BitcoinThresholdECDSA {
 
         let r_i_as_le_bytes = selected_sigs_values
             .iter()
-            .map(|sig_i| {
-                std_lib.assign_many(
-                    layouter,
-                    &sig_i.map(|v| v.get_r().map(Byte)).transpose_array(),
-                )
-            })
+            .map(|sig_i| std_lib.assign_many(layouter, &sig_i.map(|v| v.get_r()).transpose_array()))
             .collect::<Result<Vec<_>, Error>>()?;
 
         let r_i_as_scalar = r_i_as_le_bytes

@@ -8,7 +8,7 @@
 //! `Assigned::Element` as input and return an `Assigned` value.
 
 use ff::PrimeField;
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
@@ -39,9 +39,9 @@ where
     ///
     /// ```
     /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
-    /// let bit: AssignedBit<F> = chip.assign(&mut layouter, Value::known(Bit(true)))?;
+    /// let bit: AssignedBit<F> = chip.assign(&mut layouter, Value::known(true))?;
     ///
-    /// let byte: AssignedByte<F> = chip.assign(&mut layouter, Value::known(Byte(42u8)))?;
+    /// let byte: AssignedByte<F> = chip.assign(&mut layouter, Value::known(42u8))?;
     /// # });
     /// ```
     fn assign(
@@ -58,8 +58,8 @@ where
     /// let x: AssignedNative<F> = chip.assign_fixed(&mut layouter, F::ONE)?;
     ///
     /// // we can also assign fixed bits or bytes if the chip supports these types
-    /// let bit: AssignedBit<F> = chip.assign_fixed(&mut layouter, Bit(false))?;
-    /// let byte: AssignedByte<F> = chip.assign_fixed(&mut layouter, Byte(255u8))?;
+    /// let bit: AssignedBit<F> = chip.assign_fixed(&mut layouter, false)?;
+    /// let byte: AssignedByte<F> = chip.assign_fixed(&mut layouter, 255u8)?;
     /// # });
     /// ```
     fn assign_fixed(

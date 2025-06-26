@@ -1,9 +1,9 @@
 # Midnight Circuits
 
-[![CI checks](https://github.com/input-output-hk/midnight-circuits/actions/workflows/ci.yml/badge.svg)](https://github.com/input-output-hk/midnight-circuits/actions/workflows/ci.yml)
-[![Examples](https://github.com/input-output-hk/midnight-circuits/actions/workflows/examples.yml/badge.svg)](https://github.com/input-output-hk/midnight-circuits/actions/workflows/examples.yml)
+[![CI checks](https://github.com/midnightntwrk/midnight-circuits/actions/workflows/ci.yml/badge.svg)](https://github.com/midnightntwrk/midnight-circuits/actions/workflows/ci.yml)
+[![Examples](https://github.com/midnightntwrk/midnight-circuits/actions/workflows/examples.yml/badge.svg)](https://github.com/midnightntwrk/midnight-circuits/actions/workflows/examples.yml)
 
-Midnight Circuits is a library designed for implementing circuits with [Halo2](https://github.com/zcash/halo2). It is built on the [PSE v0.4.0 release](https://github.com/privacy-scaling-explorations/halo2/releases/tag/v0.4.0) of Halo2, incorporating a few [minor additions](https://github.com/input-output-hk/halo2/commits/dev/) required to support Midnight Circuits.
+Midnight Circuits is a library designed for implementing circuits with [Halo2](https://github.com/zcash/halo2). It is built on the [PSE v0.4.0 release](https://github.com/privacy-scaling-explorations/halo2/releases/tag/v0.4.0) of Halo2, incorporating a few [minor additions](https://github.com/midnightntwrk/halo2/commits/dev/) required to support Midnight Circuits.
 
 > **Disclaimer**: This library has not been audited. Use it at your own risk.
 
@@ -33,7 +33,7 @@ The motivations for a fixed configuration are:
 
 ```rust
 use blstrs::G1Affine;
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
@@ -41,13 +41,13 @@ use midnight_circuits::{
     compact_std_lib::{self, MidnightCircuit, Relation, ShaTableSize, ZkStdLib, ZkStdLibArch},
     instructions::{AssignmentInstructions, PublicInputInstructions},
     testing_utils::plonk_api::filecoin_srs,
-    types::{AssignedByte, Byte, Instantiable},
+    types::{AssignedByte, Instantiable},
 };
 use rand::{rngs::OsRng, Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use sha2::Digest;
 
-type F = blstrs::Scalar;
+type F = blstrs::Fq;
 
 // In this example we show how to build a circuit for proving the knowledge of a
 // SHA256 preimage. Concretely, given public input x, we will argue that we know
@@ -68,7 +68,7 @@ impl Relation for ShaPreImageCircuit {
     fn format_instance(instance: &Self::Instance) -> Vec<F> {
         instance
             .iter()
-            .flat_map(|b| AssignedByte::<F>::as_public_input(&Byte(*b)))
+            .flat_map(AssignedByte::<F>::as_public_input)
             .collect()
     }
 
@@ -80,8 +80,7 @@ impl Relation for ShaPreImageCircuit {
         _instance: Value<Self::Instance>,
         witness: Value<Self::Witness>,
     ) -> Result<(), Error> {
-        let witness_bytes = witness.transpose_array().map(|v| v.map(Byte));
-        let assigned_input = std_lib.assign_many(layouter, &witness_bytes)?;
+        let assigned_input = std_lib.assign_many(layouter, &witness.transpose_array())?;
         let output = std_lib.sha256(layouter, &assigned_input)?;
         output
             .iter()

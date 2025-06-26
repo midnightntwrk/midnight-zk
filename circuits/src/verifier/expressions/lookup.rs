@@ -1,0 +1,173 @@
+//! A module for in-circuit lookup arguments identities (expressions).
+//! This is the in-circuit analog of the expressions from file
+//! src/plonk/lookup/verifier.rs from halo2.
+
+use ff::Field;
+use midnight_proofs::{
+    circuit::Layouter,
+    plonk::{Error, Expression},
+};
+
+use crate::{
+    instructions::ArithInstructions,
+    verifier::{
+        expressions::eval_expression,
+        lookup::Evaluated,
+        types::{AssignedScalar, ScalarChip, SelfEmulationCurve},
+        utils::{mul_add, try_reduce},
+    },
+};
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn lookup_expressions<C: SelfEmulationCurve>(
+    layouter: &mut impl Layouter<C::ScalarExt>,
+    scalar_chip: &ScalarChip<C>,
+    lookup_evals: &Evaluated<C>,
+    input_expressions: &[Expression<C::ScalarExt>],
+    table_expressions: &[Expression<C::ScalarExt>],
+    advice_evals: &[AssignedScalar<C>],
+    fixed_evals: &[AssignedScalar<C>],
+    instance_evals: &[AssignedScalar<C>],
+    l_0: &AssignedScalar<C>,
+    l_last: &AssignedScalar<C>,
+    l_blind: &AssignedScalar<C>,
+    theta: &AssignedScalar<C>,
+    beta: &AssignedScalar<C>,
+    gamma: &AssignedScalar<C>,
+) -> Result<Vec<AssignedScalar<C>>, Error> {
+    let active_rows = {
+        scalar_chip.linear_combination(
+            layouter,
+            &[
+                (-C::ScalarExt::ONE, l_last.clone()),
+                (-C::ScalarExt::ONE, l_blind.clone()),
+            ],
+            C::ScalarExt::ONE,
+        )?
+    };
+
+    // l_0(X) * (1 - z(X)) = 0
+    let id_1 = {
+        let z = &lookup_evals.product_eval;
+
+        // l_0 * (1 - z) computed as l_0 - l_0 * z
+        scalar_chip.add_and_mul(
+            layouter,
+            (C::ScalarExt::ONE, l_0),
+            (C::ScalarExt::ZERO, z),
+            (C::ScalarExt::ZERO, l_0),
+            C::ScalarExt::ZERO,
+            -C::ScalarExt::ONE,
+        )?
+    };
+
+    // l_last(X) * (z(X)^2 - z(X)) = 0
+    let id_2 = {
+        let z = &lookup_evals.product_eval;
+
+        // z(X)^2 - z(X)
+        let aux = scalar_chip.add_and_mul(
+            layouter,
+            (-C::ScalarExt::ONE, z),
+            (C::ScalarExt::ZERO, z),
+            (C::ScalarExt::ZERO, z),
+            C::ScalarExt::ZERO,
+            C::ScalarExt::ONE,
+        )?;
+        scalar_chip.mul(layouter, l_last, &aux, None)?
+    };
+
+    // {z(\omega X) (a'(X) + \beta) (s'(X) + \gamma)
+    // - z(X) (\theta^{m-1} a_0(X) + ... + a_{m-1}(X) + \beta) (\theta^{m-1} s_0(X)
+    //   + ... + s_{m-1}(X) + \gamma)}
+    // * (1 - l_last(X) - l_blind(X))
+    let id_3 = {
+        let left = {
+            let aux1 = scalar_chip.add(layouter, &lookup_evals.permuted_input_eval, beta)?;
+            let aux2 = scalar_chip.add(layouter, &lookup_evals.permuted_table_eval, gamma)?;
+            let aux = scalar_chip.mul(layouter, &aux1, &aux2, None)?;
+            scalar_chip.mul(layouter, &lookup_evals.product_next_eval, &aux, None)?
+        };
+
+        let right = {
+            let compressed1 = compress_expressions::<C>(
+                layouter,
+                scalar_chip,
+                advice_evals,
+                fixed_evals,
+                instance_evals,
+                theta,
+                input_expressions,
+            )?;
+            let compressed2 = compress_expressions::<C>(
+                layouter,
+                scalar_chip,
+                advice_evals,
+                fixed_evals,
+                instance_evals,
+                theta,
+                table_expressions,
+            )?;
+            let aux1 = scalar_chip.add(layouter, &compressed1, beta)?;
+            let aux2 = scalar_chip.add(layouter, &compressed2, gamma)?;
+            let aux = scalar_chip.mul(layouter, &aux1, &aux2, None)?;
+            scalar_chip.mul(layouter, &lookup_evals.product_eval, &aux, None)?
+        };
+
+        let left_minus_right = scalar_chip.sub(layouter, &left, &right)?;
+        scalar_chip.mul(layouter, &left_minus_right, &active_rows, None)?
+    };
+
+    // a'(X) - s'(X) which is a common term in id_4 and id_5
+    let input_minus_table = scalar_chip.sub(
+        layouter,
+        &lookup_evals.permuted_input_eval,
+        &lookup_evals.permuted_table_eval,
+    )?;
+
+    // l_0(X) * (a'(X) - s'(X)) = 0
+    let id_4 = scalar_chip.mul(layouter, l_0, &input_minus_table, None)?;
+
+    // (1 - (l_last(X) + l_blind(X))) * (a'(X)-s'(X))⋅(a'(X)-a'(\omega^{-1} X)) = 0
+    let id_5 = {
+        let input_minus_prev = scalar_chip.sub(
+            layouter,
+            &lookup_evals.permuted_input_eval,
+            &lookup_evals.permuted_input_inv_eval,
+        )?;
+        let aux = scalar_chip.mul(layouter, &input_minus_table, &input_minus_prev, None)?;
+        scalar_chip.mul(layouter, &aux, &active_rows, None)?
+    };
+
+    Ok(vec![id_1, id_2, id_3, id_4, id_5])
+}
+
+#[allow(clippy::too_many_arguments)]
+fn compress_expressions<C: SelfEmulationCurve>(
+    layouter: &mut impl Layouter<C::ScalarExt>,
+    scalar_chip: &ScalarChip<C>,
+    advice_evals: &[AssignedScalar<C>],
+    fixed_evals: &[AssignedScalar<C>],
+    instance_evals: &[AssignedScalar<C>],
+    theta: &AssignedScalar<C>,
+    expressions: &[Expression<C::ScalarExt>],
+) -> Result<AssignedScalar<C>, Error> {
+    let evaluated_expressions = expressions
+        .iter()
+        .map(|expression| {
+            eval_expression::<C>(
+                layouter,
+                scalar_chip,
+                advice_evals,
+                fixed_evals,
+                instance_evals,
+                expression,
+            )
+        })
+        .collect::<Result<Vec<_>, Error>>()?;
+
+    try_reduce(evaluated_expressions, |acc, eval| {
+        // acc := acc * theta + eval
+        mul_add(layouter, scalar_chip, &acc, theta, &eval)
+    })
+}

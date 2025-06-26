@@ -5,7 +5,7 @@
 use std::{convert::TryInto, fmt::Debug, ops::Deref};
 
 use ff::PrimeField;
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::{AssignedCell, Layouter, Region, Value},
     plonk::{Any, Column, Error},
     utils::rational::Rational,
@@ -14,7 +14,7 @@ use sha2::Digest;
 #[cfg(any(test, feature = "testing"))]
 use {
     crate::testing_utils::FromScratch,
-    halo2_proofs::plonk::{ConstraintSystem, Instance},
+    midnight_proofs::plonk::{ConstraintSystem, Instance},
 };
 
 mod instructions;
@@ -23,7 +23,7 @@ mod table16;
 mod util;
 
 pub use instructions::Sha256Instructions;
-pub use table11::{Table11Chip, Table11Config};
+pub use table11::{Table11Chip, Table11Config, NB_TABLE11_ADVICE_COLS, NB_TABLE11_FIXED_COLS};
 pub use table16::{Table16Chip, Table16Config};
 
 use crate::{
@@ -32,7 +32,7 @@ use crate::{
     instructions::{
         hash::HashCPU, AssignmentInstructions, DecompositionInstructions, HashInstructions,
     },
-    types::{AssignedByte, AssignedNative, Byte, InnerValue},
+    types::{AssignedByte, AssignedNative},
 };
 
 /// The size of a SHA-256 block, in 32-bit words.
@@ -401,17 +401,6 @@ where
     }
 }
 
-impl<T: InnerValue> InnerValue for [T; 32] {
-    type Element = [T::Element; 32];
-
-    fn value(&self) -> Value<Self::Element> {
-        let val = Value::from_iter(self.iter().map(|val| val.value()));
-        // We know sizes will match due to the type system. The problem is
-        // that the type Value is not right enough.
-        val.map(|v: Vec<T::Element>| v.try_into().unwrap())
-    }
-}
-
 #[cfg(any(test, feature = "testing"))]
 impl<F: PrimeField, H: Sha256Instructions<F>, D: CoreDecompositionInstructions<F>> FromScratch<F>
     for Sha256<F, H, D>
@@ -434,11 +423,11 @@ where
 
     fn configure_from_scratch(
         meta: &mut ConstraintSystem<F>,
-        instance_column: &Column<Instance>,
+        instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
         (
-            <H as FromScratch<F>>::configure_from_scratch(meta, instance_column),
-            NativeGadget::configure_from_scratch(meta, instance_column),
+            <H as FromScratch<F>>::configure_from_scratch(meta, instance_columns),
+            NativeGadget::configure_from_scratch(meta, instance_columns),
         )
     }
 
@@ -449,17 +438,11 @@ where
 }
 
 impl<F: PrimeField, H: Sha256Instructions<F>, D: CoreDecompositionInstructions<F>>
-    HashCPU<Byte, [Byte; 32]> for Sha256<F, H, D>
+    HashCPU<u8, [u8; 32]> for Sha256<F, H, D>
 {
-    fn hash(inputs: &[Byte]) -> [Byte; 32] {
-        let bytes = inputs.iter().map(|b| b.0).collect::<Vec<_>>();
-        let output = sha2::Sha256::digest(bytes);
-        output
-            .into_iter()
-            .map(Byte)
-            .collect::<Vec<_>>()
-            .try_into()
-            .unwrap()
+    fn hash(inputs: &[u8]) -> [u8; 32] {
+        let output = sha2::Sha256::digest(inputs);
+        output.into_iter().collect::<Vec<_>>().try_into().unwrap()
     }
 }
 
@@ -495,7 +478,7 @@ impl<F: PrimeField, H: Sha256Instructions<F>, D: CoreDecompositionInstructions<F
         let padding_data = self.chip.compute_padding(input_length as u64);
         let assigned_padding = padding_data
             .iter()
-            .map(|byte| self.native_gadget.assign_fixed(layouter, Byte(*byte)))
+            .map(|byte| self.native_gadget.assign_fixed(layouter, *byte))
             .collect::<Result<Vec<_>, Error>>()?;
 
         final_chunk.extend(assigned_padding);
@@ -555,7 +538,7 @@ impl<F: PrimeField, H: Sha256Instructions<F>, D: CoreDecompositionInstructions<F
 
 #[cfg(test)]
 mod tests {
-    use blstrs::Scalar;
+    use blstrs::Fq as Scalar;
 
     use crate::{
         field::{decomposition::chip::P2RDecompositionChip, NativeGadget},

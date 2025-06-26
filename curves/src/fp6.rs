@@ -1,22 +1,22 @@
 //! This module implements arithmetic over the quadratic extension field Fp6.
 
-use blst::*;
-
 use core::{
     fmt,
     ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign},
 };
+
+use blst::*;
+use ff::Field;
+use rand_core::RngCore;
+use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 
 use crate::{
     fp::{Fp, FROBENIUS_COEFF_FP6_C1, FROBENIUS_COEFF_FP6_C2},
     fp2::Fp2,
 };
 
-use ff::Field;
-use rand_core::RngCore;
-use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
-
-/// This represents an element $c_0 + c_1 v + c_2 v^2$ of $\mathbb{F}_{p^6} = \mathbb{F}_{p^2} / v^3 - u - 1$.
+/// This represents an element $c_0 + c_1 v + c_2 v^2$ of $\mathbb{F}_{p^6} =
+/// \mathbb{F}_{p^2} / v^3 - u - 1$.
 #[derive(Copy, Clone)]
 #[repr(transparent)]
 pub struct Fp6(pub(crate) blst_fp6);
@@ -416,10 +416,10 @@ impl Fp6 {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     use rand_core::SeedableRng;
     use rand_xorshift::XorShiftRng;
+
+    use super::*;
 
     #[test]
     fn test_fp6_mul_nonresidue() {

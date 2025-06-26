@@ -1,17 +1,17 @@
 //! This module provides an implementation of the BLS12-381 base field `GF(p)`
-//! where `p = 0x1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaab`
-
-use blst::*;
-use halo2curves::serde::SerdeObject;
+//! where `p =
+//! 0x1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaab`
 
 use core::{
     cmp, fmt,
     ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign},
 };
+use std::{convert::TryInto, ops::Deref};
+
+use blst::*;
 use ff::{Field, PrimeField, PrimeFieldBits, WithSmallOrderMulGroup};
+use halo2curves::serde::SerdeObject;
 use rand_core::RngCore;
-use std::convert::TryInto;
-use std::ops::Deref;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 
 use crate::fp2::Fp2;
@@ -91,8 +91,8 @@ const R: Fp = Fp(blst_fp {
 //     ],
 // });
 
-/// `Fp` values are always in Montgomery form; i.e., Fp(a) = aR mod p, with R = 2^384. `blst_fp.l`
-/// is in little-endian `u64` limbs format.
+/// `Fp` values are always in Montgomery form; i.e., Fp(a) = aR mod p, with R =
+/// 2^384. `blst_fp.l` is in little-endian `u64` limbs format.
 #[derive(Copy, Clone)]
 #[repr(transparent)]
 pub struct Fp(pub(crate) blst_fp);
@@ -509,7 +509,8 @@ impl_mul_assign!(Fp);
 impl_sum!(Fp);
 impl_product!(Fp);
 
-// Returns `true` if  `le_bytes` is less than the modulus (both are in non-Montgomery form).
+// Returns `true` if  `le_bytes` is less than the modulus (both are in
+// non-Montgomery form).
 #[allow(clippy::comparison_chain)]
 fn is_valid(le_bytes: &[u8; 48]) -> bool {
     for (a, b) in le_bytes.iter().zip(MODULUS_REPR.iter()).rev() {
@@ -523,7 +524,8 @@ fn is_valid(le_bytes: &[u8; 48]) -> bool {
     false
 }
 
-// Returns `true` if  `le_bytes` is less than the modulus (both are in non-Montgomery form).
+// Returns `true` if  `le_bytes` is less than the modulus (both are in
+// non-Montgomery form).
 #[allow(clippy::comparison_chain)]
 fn is_valid_u64(le_bytes: &[u64; 6]) -> bool {
     for (a, b) in le_bytes.iter().zip(MODULUS.iter()).rev() {
@@ -653,8 +655,9 @@ impl Fp {
         bytes
     }
 
-    /// Constructs an element of `Fp` from a little-endian array of limbs without checking that it
-    /// is canonical and without converting it to Montgomery form (i.e. without multiplying by `R`).
+    /// Constructs an element of `Fp` from a little-endian array of limbs
+    /// without checking that it is canonical and without converting it to
+    /// Montgomery form (i.e. without multiplying by `R`).
     pub(super) fn from_mont_unchecked(l: [u64; 6]) -> Fp {
         Fp(blst_fp { l })
     }
@@ -881,7 +884,8 @@ impl PrimeFieldBits for Fp {
 }
 
 impl SerdeObject for Fp {
-    // Don't call this method with untrusted input. No checks performed before unsafe block.
+    // Don't call this method with untrusted input. No checks performed before
+    // unsafe block.
     fn from_raw_bytes_unchecked(bytes: &[u8]) -> Self {
         debug_assert_eq!(bytes.len(), SIZE);
         let bytes: [u8; SIZE] = bytes.try_into().unwrap();
@@ -904,7 +908,8 @@ impl SerdeObject for Fp {
         res
     }
 
-    // Don't call this method with untrusted input. No checks performed before unsafe block.
+    // Don't call this method with untrusted input. No checks performed before
+    // unsafe block.
     fn read_raw_unchecked<R: std::io::Read>(reader: &mut R) -> Self {
         let mut bytes = [0u8; SIZE];
         reader

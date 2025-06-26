@@ -4,7 +4,7 @@
 //! to another output one.
 
 use ff::PrimeField;
-use halo2_proofs::{circuit::Layouter, plonk::Error};
+use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 use crate::types::InnerValue;
 
@@ -68,7 +68,7 @@ where
 pub mod tests {
     use std::{fmt::Debug, marker::PhantomData};
 
-    use halo2_proofs::{
+    use midnight_proofs::{
         circuit::{SimpleFloorPlanner, Value},
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem},
@@ -116,10 +116,12 @@ pub mod tests {
         }
 
         fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+            let committed_instance_column = meta.instance_column();
             let instance_column = meta.instance_column();
+            let instance_columns = [committed_instance_column, instance_column];
             (
-                SpongeChip::configure_from_scratch(meta, &instance_column),
-                AssignChip::configure_from_scratch(meta, &instance_column),
+                SpongeChip::configure_from_scratch(meta, &instance_columns),
+                AssignChip::configure_from_scratch(meta, &instance_columns),
             )
         }
 
@@ -203,7 +205,7 @@ pub mod tests {
             _marker: PhantomData,
         };
 
-        MockProver::run(k, &circuit, vec![vec![]])
+        MockProver::run(k, &circuit, vec![vec![], vec![]])
             .unwrap()
             .assert_satisfied();
 

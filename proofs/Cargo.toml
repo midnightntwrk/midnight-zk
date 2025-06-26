@@ -1,0 +1,105 @@
+[package]
+name = "midnight_proofs"
+version = "0.3.1"
+edition = "2021"
+rust-version = "1.76.0"
+description = """
+Fast PLONK-based zero-knowledge proving system
+"""
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+categories = ["cryptography"]
+keywords = ["halo", "proofs", "zkp", "zkSNARKs"]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs", "--html-in-header", "katex-header.html"]
+
+[[bench]]
+name = "commit_zk"
+harness = false
+
+[[bench]]
+name = "hashtocurve"
+harness = false
+
+[[bench]]
+name = "plonk"
+harness = false
+
+[[bench]]
+name = "dev_lookup"
+harness = false
+
+[dependencies]
+backtrace = { version = "0.3", optional = true }
+ff = { workspace = true }
+group = { workspace = true }
+halo2curves = { workspace = true }
+blstrs = { path = "../curves" }
+rand_core = { workspace = true }
+tracing = { workspace = true }
+blake2b_simd = { workspace = true }
+sha3 = { workspace = true }
+rand_chacha = { workspace = true }
+serde = { version = "1", optional = true, features = ["derive"] }
+serde_derive = { version = "1", optional = true }
+rayon = { workspace = true }
+
+# Developer tooling dependencies
+plotters = { version = "0.3.0", default-features = false, optional = true }
+tabbycat = { version = "0.1", features = ["attributes"], optional = true }
+
+# Legacy circuit compatibility
+halo2_legacy_pdqsort = { version = "0.1.0", optional = true }
+num-bigint = "0.4.6"
+
+[dev-dependencies]
+assert_matches = "1.5"
+criterion = "0.3"
+gumdrop = "0.8"
+proptest = "1"
+serde_json = "1"
+
+[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
+getrandom = { version = "0.2", features = ["js"] }
+
+[features]
+default = ["bits"]
+dev-graph = ["plotters", "tabbycat"]
+test-dev-graph = [
+    "dev-graph",
+    "plotters/bitmap_backend",
+    "plotters/bitmap_encoder",
+    "plotters/ttf",
+]
+bits = ["halo2curves/bits"]
+gadget-traces = ["backtrace"]
+thread-safe-region = []
+sanity-checks = []
+circuit-params = []
+cost-estimator = ["serde", "serde_derive"]
+derive_serde = ["halo2curves/derive_serde"]
+
+# This feature truncates challenges to half the size of the scalar field.
+truncated-challenges = []
+
+# This feature adds a new argument to prover and verifier functions, which
+# represents instances in committed form (e.g. in the form of a polynomial
+# commitment instead of a vector of scalars).
+# The verifier may not know what the content of the commitment is, but can
+# be sure that the content is constrained according to the circuit rules.
+#
+# This feature is very powerful for proving statements on committed data.
+committed-instances = []
+
+[lib]
+bench = false
+
+[[example]]
+name = "circuit-layout"
+required-features = ["test-dev-graph"]
+
+[[example]]
+name = "proof-size"
+required-features = ["cost-estimator"]

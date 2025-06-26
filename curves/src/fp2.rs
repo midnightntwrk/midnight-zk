@@ -1,14 +1,14 @@
 //! This module implements arithmetic over the quadratic extension field Fp2.
 
-use blst::*;
-use halo2curves::serde::SerdeObject;
-
 use core::{
     cmp::{Ord, Ordering, PartialOrd},
     fmt,
     ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign},
 };
+
+use blst::*;
 use ff::Field;
+use halo2curves::serde::SerdeObject;
 use rand_core::RngCore;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 
@@ -304,8 +304,9 @@ impl Field for Fp2 {
     }
 }
 
-// Instead of implmenting [`SerdeObject`] for Fp2, we implement just `write_raw`.
-// This is all we need to implement [`SerdeObject`] for [`G2Affine`].
+// Instead of implmenting [`SerdeObject`] for Fp2, we implement just
+// `write_raw`. This is all we need to implement [`SerdeObject`] for
+// [`G2Affine`].
 impl Fp2 {
     pub fn write_raw<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
         self.c0().write_raw(writer)?;
@@ -325,10 +326,10 @@ impl halo2curves::ff_ext::Legendre for Fp2 {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     use rand_core::SeedableRng;
     use rand_xorshift::XorShiftRng;
+
+    use super::*;
 
     #[test]
     fn test_fp2_ordering() {

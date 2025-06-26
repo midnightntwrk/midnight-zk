@@ -6,10 +6,6 @@
 //! compact_std_lib to satisfy it.
 
 use ff::Field;
-use halo2_proofs::{
-    circuit::{Layouter, Value},
-    plonk::Error,
-};
 use midnight_circuits::{
     compact_std_lib::{self, Relation, ZkStdLib},
     hash::poseidon::PoseidonChip,
@@ -18,10 +14,14 @@ use midnight_circuits::{
     },
     testing_utils::plonk_api::filecoin_srs,
 };
+use midnight_proofs::{
+    circuit::{Layouter, Value},
+    plonk::Error,
+};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 
-type F = blstrs::Scalar;
+type F = blstrs::Fq;
 
 #[derive(Clone)]
 struct PIsCircuit {

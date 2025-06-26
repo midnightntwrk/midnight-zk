@@ -13,7 +13,7 @@ use std::{
 };
 
 use ff::PrimeField;
-use halo2_proofs::{circuit::Layouter, plonk::Error};
+use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 use crate::{
     instructions::{AssertionInstructions, AssignmentInstructions},
@@ -350,17 +350,22 @@ where
         Ok(res.unwrap())
     }
 
-    /// Computes `a*x + b*y + k + m*x*y`.
+    /// Computes `a*x + b*y + c*z + k + m*x*y`.
     fn add_and_mul(
         &self,
         layouter: &mut impl Layouter<F>,
         (a, x): (Assigned::Element, &Assigned),
         (b, y): (Assigned::Element, &Assigned),
+        (c, z): (Assigned::Element, &Assigned),
         k: Assigned::Element,
         m: Assigned::Element,
     ) -> Result<Assigned, Error> {
-        let z = self.mul(layouter, x, y, None)?;
-        self.linear_combination(layouter, &[(a, x.clone()), (b, y.clone()), (m, z)], k)
+        let p = self.mul(layouter, x, y, None)?;
+        self.linear_combination(
+            layouter,
+            &[(a, x.clone()), (b, y.clone()), (c, z.clone()), (m, p)],
+            k,
+        )
     }
 }
 
@@ -369,7 +374,7 @@ pub mod tests {
     use std::{cmp::min, marker::PhantomData};
 
     use ff::FromUniformBytes;
-    use halo2_proofs::{
+    use midnight_proofs::{
         circuit::{Layouter, SimpleFloorPlanner, Value},
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem},
@@ -429,8 +434,9 @@ pub mod tests {
         }
 
         fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+            let committed_instance_column = meta.instance_column();
             let instance_column = meta.instance_column();
-            ArithChip::configure_from_scratch(meta, &instance_column)
+            ArithChip::configure_from_scratch(meta, &[committed_instance_column, instance_column])
         }
 
         fn synthesize(
@@ -472,6 +478,7 @@ pub mod tests {
                     &mut layouter,
                     (Assigned::Element::from(1), &x),
                     (Assigned::Element::from(1), &y),
+                    (Assigned::Element::from(0), &y),
                     Assigned::Element::from(0),
                     Assigned::Element::from(1),
                 ),
@@ -507,7 +514,7 @@ pub mod tests {
             _marker: PhantomData,
         };
         let log2_nb_rows = 10;
-        let public_inputs = vec![vec![]];
+        let public_inputs = vec![vec![], vec![]];
         match MockProver::run(log2_nb_rows, &circuit, public_inputs) {
             Ok(prover) => match prover.verify() {
                 Ok(()) => assert!(must_pass),

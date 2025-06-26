@@ -1,11 +1,11 @@
 use std::marker::PhantomData;
 
 use ff::PrimeField;
-use halo2_proofs::{circuit::Layouter, plonk::Error};
+use midnight_proofs::{circuit::Layouter, plonk::Error};
 #[cfg(any(test, feature = "testing"))]
 use {
     crate::testing_utils::FromScratch,
-    halo2_proofs::plonk::{Column, ConstraintSystem, Instance},
+    midnight_proofs::plonk::{Column, ConstraintSystem, Instance},
 };
 
 use super::{mtc::MapToCurveInstructions, mtc_cpu::MapToCurveCPU};
@@ -123,11 +123,11 @@ where
 
     fn configure_from_scratch(
         meta: &mut ConstraintSystem<F>,
-        instance_column: &Column<Instance>,
+        instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
         (
-            H::configure_from_scratch(meta, instance_column),
-            E::configure_from_scratch(meta, instance_column),
+            H::configure_from_scratch(meta, instance_columns),
+            E::configure_from_scratch(meta, instance_columns),
         )
     }
 
@@ -140,7 +140,7 @@ where
 #[cfg(test)]
 mod tests {
 
-    use blstrs::{JubjubExtended as Jubjub, Scalar as JubjubBase};
+    use blstrs::{JubjubExtended as Jubjub, Fq as JubjubBase};
     use rand::{Rng, SeedableRng};
 
     use super::*;

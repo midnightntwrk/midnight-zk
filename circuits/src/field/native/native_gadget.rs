@@ -1,10 +1,10 @@
 //! A gadget that implement all basic basic operations in the native field, i.e.
 //! basic field operations, decompositions and comparisons
 
-use std::{marker::PhantomData, ops::Deref};
+use std::marker::PhantomData;
 
 use ff::PrimeField;
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
@@ -14,11 +14,11 @@ use num_traits::{One, Zero};
 use {
     crate::field::decomposition::chip::P2RDecompositionConfig,
     crate::field::decomposition::pow2range::{Pow2RangeChip, NB_POW2RANGE_COLS},
-    crate::field::native::NB_ARITH_COLS,
+    crate::field::native::{NB_ARITH_COLS, NB_ARITH_FIXED_COLS},
     crate::testing_utils::FromScratch,
     crate::testing_utils::Sampleable,
     crate::utils::ComposableChip,
-    halo2_proofs::plonk::{Column, ConstraintSystem, Instance},
+    midnight_proofs::plonk::{Column, ConstraintSystem, Instance},
     rand::Rng,
     rand::RngCore,
 };
@@ -36,7 +36,10 @@ use crate::{
         RangeCheckInstructions, ScalarFieldInstructions, UnsafeConversionInstructions,
         ZeroInstructions,
     },
-    types::{AssignedBit, AssignedNative, Bit, InnerValue, Instantiable},
+    types::{
+        AssignedBit, AssignedNative, AssignedVector, InnerValue, Instantiable, VectorInstructions,
+        Vectorizable,
+    },
     utils::util::{big_to_fe, fe_to_big, modulus},
 };
 
@@ -78,29 +81,9 @@ where
     }
 }
 
-/// The inner type of AssignedByte.
-// A wrapper around `u8` to have a type that we own and for which we can implement some necessary
-// traits like `From<u64>`.
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub struct Byte(pub u8);
-
-impl Deref for Byte {
-    type Target = u8;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl From<u64> for Byte {
-    fn from(value: u64) -> Self {
-        Byte(value as u8)
-    }
-}
-
 impl<F: PrimeField> Instantiable<F> for AssignedByte<F> {
-    fn as_public_input(element: &Byte) -> Vec<F> {
-        vec![F::from(**element as u64)]
+    fn as_public_input(element: &u8) -> Vec<F> {
+        vec![F::from(*element as u64)]
     }
 }
 
@@ -113,14 +96,14 @@ impl<F: PrimeField> Instantiable<F> for AssignedByte<F> {
 pub struct AssignedByte<F: PrimeField>(AssignedNative<F>);
 
 impl<F: PrimeField> InnerValue for AssignedByte<F> {
-    type Element = Byte;
+    type Element = u8;
 
-    fn value(&self) -> Value<Byte> {
+    fn value(&self) -> Value<u8> {
         self.0.value().map(|v| {
             let bi_v = fe_to_big(*v);
             #[cfg(not(test))]
             assert!(bi_v <= BigUint::from(255u8));
-            Byte(bi_v.to_bytes_le().first().copied().unwrap_or(0u8))
+            bi_v.to_bytes_le().first().copied().unwrap_or(0u8)
         })
     }
 }
@@ -146,8 +129,7 @@ impl<F: PrimeField> From<AssignedBit<F>> for AssignedByte<F> {
 #[cfg(any(test, feature = "testing"))]
 impl<F: PrimeField> Sampleable for AssignedByte<F> {
     fn sample_inner(mut rng: impl RngCore) -> Self::Element {
-        let byte: u8 = rng.gen();
-        Byte(byte)
+        rng.gen()
     }
 }
 
@@ -238,6 +220,7 @@ where
     NativeArith: ArithInstructions<F, AssignedNative<F>>
         + AssignmentInstructions<F, AssignedBit<F>>
         + ConversionInstructions<F, AssignedBit<F>, AssignedNative<F>>
+        + UnsafeConversionInstructions<F, AssignedNative<F>, AssignedBit<F>>
         + BinaryInstructions<F>
         + EqualityInstructions<F, AssignedNative<F>>
         + ControlFlowInstructions<F, AssignedNative<F>>,
@@ -282,7 +265,7 @@ where
         }
 
         // b := x in [0, 2^k)
-        let b_value = x.value().map(|x| Bit(fe_to_big(*x) < two_pow_k));
+        let b_value = x.value().map(|x| fe_to_big(*x) < two_pow_k);
         let b: AssignedBit<F> = self.assign(layouter, b_value)?;
 
         let diff: F = big_to_fe(bound - two_pow_k);
@@ -303,6 +286,7 @@ where
     NativeArith: ArithInstructions<F, AssignedNative<F>>
         + AssignmentInstructions<F, AssignedBit<F>>
         + ConversionInstructions<F, AssignedBit<F>, AssignedNative<F>>
+        + UnsafeConversionInstructions<F, AssignedNative<F>, AssignedBit<F>>
         + BinaryInstructions<F>
         + EqualityInstructions<F, AssignedNative<F>>
         + ControlFlowInstructions<F, AssignedNative<F>>,
@@ -366,7 +350,7 @@ where
         // x is already bounded by the type system so x < bound for some fixed bound.
         // If we want to show that x < bound <= y this relation automatically holds
         if y_as_bint >= (BigUint::from(1u8) << x.bound()) {
-            return self.assign_fixed(layouter, Bit(true));
+            return self.assign_fixed(layouter, true);
         }
 
         // we will now assert the equation
@@ -379,7 +363,7 @@ where
         //   - if b = 1 ==> z = 2y-1 + x -2x - y =  y - 1 - x
 
         // assign b
-        let result_bit = x_as_bint.map(|x_as_bint| Bit(x_as_bint < y_as_bint));
+        let result_bit = x_as_bint.map(|x_as_bint| x_as_bint < y_as_bint);
         let assigned_result = self.assign(layouter, result_bit)?;
 
         // assign z: z is of the form "f1 a1 + f2 a2 + f a_1 a_2 + c"
@@ -421,7 +405,7 @@ where
         // assign b
         let result_bit = x_as_bint
             .zip(y_as_bint)
-            .map(|(x_as_bint, y_as_bint)| Bit(x_as_bint < y_as_bint));
+            .map(|(x_as_bint, y_as_bint)| x_as_bint < y_as_bint);
         let assigned_result = self.assign(layouter, result_bit)?;
 
         // assign z: z is of the form "f1 a1 + f2 a2 + f a_1 a_2 + c"
@@ -503,13 +487,13 @@ where
     fn assign_as_public_input(
         &self,
         layouter: &mut impl Layouter<F>,
-        value: Value<Byte>,
+        value: Value<u8>,
     ) -> Result<AssignedByte<F>, Error> {
         // We can skip the in-circuit [0, 7]-range-check as this condition will
         // be enforced through the public inputs bind anyway.
         let assigned_native = self
             .native_chip
-            .assign_as_public_input(layouter, value.map(|byte| F::from(byte.0 as u64)))?;
+            .assign_as_public_input(layouter, value.map(|byte| F::from(byte as u64)))?;
         self.convert_unsafe(layouter, &assigned_native)
     }
 }
@@ -525,23 +509,39 @@ where
     fn assign(
         &self,
         layouter: &mut impl Layouter<F>,
-        byte: Value<Byte>,
+        byte: Value<u8>,
     ) -> Result<AssignedByte<F>, Error> {
-        let byte_as_f = byte.map(|b| F::from(*b as u64));
-        let assigned = self.assign(layouter, byte_as_f)?;
-        self.core_decomposition_chip
-            .assert_less_than_pow2(layouter, &assigned, 8)?;
-
+        let byte_as_f = byte.map(|b| F::from(b as u64));
+        let assigned = self
+            .core_decomposition_chip
+            .assign_less_than_pow2(layouter, byte_as_f, 8)?;
         Ok(AssignedByte(assigned))
     }
 
     fn assign_fixed(
         &self,
         layouter: &mut impl Layouter<F>,
-        constant: Byte,
+        constant: u8,
     ) -> Result<AssignedByte<F>, Error> {
-        let assigned = self.assign_fixed(layouter, F::from(*constant as u64))?;
+        let assigned = self.assign_fixed(layouter, F::from(constant as u64))?;
         Ok(AssignedByte(assigned))
+    }
+
+    fn assign_many(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        values: &[Value<u8>],
+    ) -> Result<Vec<AssignedByte<F>>, Error> {
+        let values_as_f: Vec<_> = values
+            .iter()
+            .map(|v| v.map(|b| F::from(b as u64)))
+            .collect();
+
+        self.core_decomposition_chip
+            .assign_many_small(layouter, &values_as_f, 8)?
+            .iter()
+            .map(|assigned_native| self.convert_unsafe(layouter, assigned_native))
+            .collect()
     }
 }
 
@@ -579,20 +579,20 @@ where
         &self,
         layouter: &mut impl Layouter<F>,
         byte: &AssignedByte<F>,
-        constant: Byte,
+        constant: u8,
     ) -> Result<(), Error> {
         let x: AssignedNative<F> = self.convert(layouter, byte)?;
-        self.assert_equal_to_fixed(layouter, &x, F::from(*constant as u64))
+        self.assert_equal_to_fixed(layouter, &x, F::from(constant as u64))
     }
 
     fn assert_not_equal_to_fixed(
         &self,
         layouter: &mut impl Layouter<F>,
         byte: &AssignedByte<F>,
-        constant: Byte,
+        constant: u8,
     ) -> Result<(), Error> {
         let x: AssignedNative<F> = self.convert(layouter, byte)?;
-        self.assert_not_equal_to_fixed(layouter, &x, F::from(*constant as u64))
+        self.assert_not_equal_to_fixed(layouter, &x, F::from(constant as u64))
     }
 }
 
@@ -620,11 +620,11 @@ where
         &self,
         layouter: &mut impl Layouter<F>,
         byte: &AssignedByte<F>,
-        constant: Byte,
+        constant: u8,
     ) -> Result<AssignedBit<F>, Error> {
         let x: AssignedNative<F> = self.convert(layouter, byte)?;
         self.native_chip
-            .is_equal_to_fixed(layouter, &x, F::from(*constant as u64))
+            .is_equal_to_fixed(layouter, &x, F::from(constant as u64))
     }
 }
 
@@ -655,14 +655,14 @@ impl<F: PrimeField> AssertionInstructions<F, [AssignedByte<F>; 32]>
             .map(|(x, y)| self.is_equal(layouter, x, y))
             .collect::<Result<Vec<_>, Error>>()?;
         let all_equal = self.and(layouter, &xi_eq_yi)?;
-        self.assert_equal_to_fixed(layouter, &all_equal, Bit(false))
+        self.assert_equal_to_fixed(layouter, &all_equal, false)
     }
 
     fn assert_equal_to_fixed(
         &self,
         layouter: &mut impl Layouter<F>,
         x: &[AssignedByte<F>; 32],
-        constant: [Byte; 32],
+        constant: [u8; 32],
     ) -> Result<(), Error> {
         x.iter()
             .zip(constant.iter())
@@ -673,7 +673,7 @@ impl<F: PrimeField> AssertionInstructions<F, [AssignedByte<F>; 32]>
         &self,
         layouter: &mut impl Layouter<F>,
         x: &[AssignedByte<F>; 32],
-        constant: [Byte; 32],
+        constant: [u8; 32],
     ) -> Result<(), Error> {
         // TODO: This can be optimized by first aggregating as many bytes as possible in
         // a single AssignedNative and only then comparing chunk-wise.
@@ -682,7 +682,7 @@ impl<F: PrimeField> AssertionInstructions<F, [AssignedByte<F>; 32]>
             .map(|(x, c)| self.is_equal_to_fixed(layouter, x, *c))
             .collect::<Result<Vec<_>, Error>>()?;
         let all_equal = self.and(layouter, &xi_eq_ci)?;
-        self.assert_equal_to_fixed(layouter, &all_equal, Bit(false))
+        self.assert_equal_to_fixed(layouter, &all_equal, false)
     }
 }
 
@@ -695,7 +695,7 @@ where
     CoreDecomposition: CoreDecompositionInstructions<F>,
     NativeArith: ArithInstructions<F, AssignedNative<F>>,
 {
-    fn convert_value(&self, x: &F) -> Option<Byte> {
+    fn convert_value(&self, x: &F) -> Option<u8> {
         let b_as_bn = fe_to_big(*x);
         #[cfg(not(test))]
         assert!(
@@ -703,7 +703,7 @@ where
             "Trying to convert {:?} to AssignedByte in-circuit",
             x
         );
-        b_as_bn.to_bytes_le().first().cloned().map(Byte)
+        b_as_bn.to_bytes_le().first().cloned()
     }
 
     fn convert(
@@ -713,7 +713,7 @@ where
     ) -> Result<AssignedByte<F>, Error> {
         let b_value = x.value().map(|x| {
             <Self as ConversionInstructions<_, _, AssignedByte<F>>>::convert_value(self, x)
-                .unwrap_or(Byte(0u8))
+                .unwrap_or(0u8)
         });
         let b: AssignedByte<F> = self.assign(layouter, b_value)?;
         self.assert_equal(layouter, x, &b.0)?;
@@ -730,8 +730,8 @@ where
     CoreDecomposition: CoreDecompositionInstructions<F>,
     NativeArith: ArithInstructions<F, AssignedNative<F>>,
 {
-    fn convert_value(&self, x: &Byte) -> Option<F> {
-        Some(F::from(**x as u64))
+    fn convert_value(&self, x: &u8) -> Option<F> {
+        Some(F::from(*x as u64))
     }
 
     fn convert(
@@ -820,7 +820,7 @@ where
             .collect::<Result<Vec<_>, Error>>()?;
         if enforce_canonical && nb_bits >= F::NUM_BITS as usize {
             let canonical = self.is_canonical(layouter, &bits)?;
-            self.assert_equal_to_fixed(layouter, &canonical, Bit(true))?;
+            self.assert_equal_to_fixed(layouter, &canonical, true)?;
         }
         Ok(bits)
     }
@@ -897,8 +897,8 @@ where
         let msb_factor = big_to_fe::<F>(BigUint::one() << (n - 1));
 
         let x_val = x.value().copied().map(fe_to_big);
-        let lsb_val = x_val.clone().map(|x| Bit(x.bit(0)));
-        let msb_val = x_val.clone().map(|x| Bit(x.bit(n - 1)));
+        let lsb_val = x_val.clone().map(|x| x.bit(0));
+        let msb_val = x_val.clone().map(|x| x.bit(n - 1));
         let mid_val = x_val.map(|x| {
             let mut x = x;
             x.set_bit(n - 1, false);
@@ -944,7 +944,7 @@ where
         // Check condition (2)
         let same_mid = self.is_equal_to_fixed(layouter, &x_mid, big_to_fe(p_mid))?;
         let same_mid_and_lsb_set = self.and(layouter, &[same_mid, x_lsb.clone()])?;
-        self.assert_equal_to_fixed(layouter, &same_mid_and_lsb_set, Bit(false))?;
+        self.assert_equal_to_fixed(layouter, &same_mid_and_lsb_set, false)?;
 
         Ok(x_lsb)
     }
@@ -985,6 +985,24 @@ where
     }
 }
 
+// Inherit F Public Input Instructions.
+impl<F, CoreDecomposition> NativeGadget<F, CoreDecomposition, NativeChip<F>>
+where
+    F: PrimeField,
+    CoreDecomposition: CoreDecompositionInstructions<F>,
+{
+    /// Constrains the given assigned value as a public input that will be
+    /// plugged-in in committed form.
+    pub fn constrain_as_committed_public_input(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        assigned: &AssignedNative<F>,
+    ) -> Result<(), Error> {
+        self.native_chip
+            .constrain_as_committed_public_input(layouter, assigned)
+    }
+}
+
 // Inherit F Assignment Instructions.
 impl<F, CoreDecomposition, NativeArith> AssignmentInstructions<F, AssignedNative<F>>
     for NativeGadget<F, CoreDecomposition, NativeArith>
@@ -993,6 +1011,14 @@ where
     CoreDecomposition: CoreDecompositionInstructions<F>,
     NativeArith: ArithInstructions<F, AssignedNative<F>>,
 {
+    fn assign(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        value: Value<F>,
+    ) -> Result<AssignedNative<F>, Error> {
+        self.native_chip.assign(layouter, value)
+    }
+
     fn assign_fixed(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -1001,12 +1027,40 @@ where
         self.native_chip.assign_fixed(layouter, constant)
     }
 
+    fn assign_many(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        value: &[Value<F>],
+    ) -> Result<Vec<AssignedNative<F>>, Error> {
+        self.native_chip.assign_many(layouter, value)
+    }
+}
+
+impl<F, CoreDecomposition, NativeArith, const M: usize, T, const A: usize>
+    AssignmentInstructions<F, AssignedVector<F, T, M, A>>
+    for NativeGadget<F, CoreDecomposition, NativeArith>
+where
+    F: PrimeField,
+    T: Vectorizable,
+    T::Element: Copy,
+    CoreDecomposition: CoreDecompositionInstructions<F>,
+    NativeArith: ArithInstructions<F, AssignedNative<F>>,
+    Self: VectorInstructions<F, T, M, A>,
+{
+    fn assign_fixed(
+        &self,
+        _layouter: &mut impl Layouter<F>,
+        _constant: <AssignedVector<F, T, M, A> as InnerValue>::Element,
+    ) -> Result<AssignedVector<F, T, M, A>, Error> {
+        unimplemented!("You should not be assigining a fixed `AssignedVector`")
+    }
+
     fn assign(
         &self,
         layouter: &mut impl Layouter<F>,
-        value: Value<F>,
-    ) -> Result<AssignedNative<F>, Error> {
-        self.native_chip.assign(layouter, value)
+        value: Value<<AssignedVector<F, T, M, A> as InnerValue>::Element>,
+    ) -> Result<AssignedVector<F, T, M, A>, Error> {
+        self.assign_with_filler(layouter, value, None)
     }
 }
 
@@ -1039,7 +1093,7 @@ where
     fn assign_as_public_input(
         &self,
         layouter: &mut impl Layouter<F>,
-        value: Value<Bit>,
+        value: Value<bool>,
     ) -> Result<AssignedBit<F>, Error> {
         self.native_chip.assign_as_public_input(layouter, value)
     }
@@ -1051,13 +1105,14 @@ impl<F, CoreDecomposition, NativeArith> AssignmentInstructions<F, AssignedBit<F>
 where
     F: PrimeField,
     CoreDecomposition: CoreDecompositionInstructions<F>,
-    NativeArith:
-        ArithInstructions<F, AssignedNative<F>> + AssignmentInstructions<F, AssignedBit<F>>,
+    NativeArith: ArithInstructions<F, AssignedNative<F>>
+        + AssignmentInstructions<F, AssignedBit<F>>
+        + UnsafeConversionInstructions<F, AssignedNative<F>, AssignedBit<F>>,
 {
     fn assign(
         &self,
         layouter: &mut impl Layouter<F>,
-        value: Value<Bit>,
+        value: Value<bool>,
     ) -> Result<AssignedBit<F>, Error> {
         self.native_chip.assign(layouter, value)
     }
@@ -1065,9 +1120,26 @@ where
     fn assign_fixed(
         &self,
         layouter: &mut impl Layouter<F>,
-        constant: Bit,
+        constant: bool,
     ) -> Result<AssignedBit<F>, Error> {
         self.native_chip.assign_fixed(layouter, constant)
+    }
+
+    fn assign_many(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        values: &[Value<bool>],
+    ) -> Result<Vec<AssignedBit<F>>, Error> {
+        let values_as_f: Vec<_> = values
+            .iter()
+            .map(|v| v.map(|b| F::from(b as u64)))
+            .collect();
+
+        self.core_decomposition_chip
+            .assign_many_small(layouter, &values_as_f, 1)?
+            .iter()
+            .map(|assigned_native| self.native_chip.convert_unsafe(layouter, assigned_native))
+            .collect()
     }
 }
 
@@ -1148,7 +1220,7 @@ where
         &self,
         layouter: &mut impl Layouter<F>,
         x: &AssignedBit<F>,
-        constant: Bit,
+        constant: bool,
     ) -> Result<(), Error> {
         self.native_chip
             .assert_equal_to_fixed(layouter, x, constant)
@@ -1158,7 +1230,7 @@ where
         &self,
         layouter: &mut impl Layouter<F>,
         x: &AssignedBit<F>,
-        constant: Bit,
+        constant: bool,
     ) -> Result<(), Error> {
         self.native_chip
             .assert_not_equal_to_fixed(layouter, x, constant)
@@ -1223,11 +1295,12 @@ where
         layouter: &mut impl Layouter<F>,
         a_and_x: (F, &AssignedNative<F>),
         b_and_y: (F, &AssignedNative<F>),
+        c_and_z: (F, &AssignedNative<F>),
         k: F,
         m: F,
     ) -> Result<AssignedNative<F>, Error> {
         self.native_chip
-            .add_and_mul(layouter, a_and_x, b_and_y, k, m)
+            .add_and_mul(layouter, a_and_x, b_and_y, c_and_z, k, m)
     }
 
     fn add_constants(
@@ -1249,7 +1322,7 @@ where
     NativeArith: ArithInstructions<F, AssignedNative<F>>
         + ConversionInstructions<F, AssignedNative<F>, AssignedBit<F>>,
 {
-    fn convert_value(&self, x: &F) -> Option<Bit> {
+    fn convert_value(&self, x: &F) -> Option<bool> {
         self.native_chip.convert_value(x)
     }
 
@@ -1271,7 +1344,7 @@ where
     NativeArith: ArithInstructions<F, AssignedNative<F>>
         + ConversionInstructions<F, AssignedBit<F>, AssignedNative<F>>,
 {
-    fn convert_value(&self, x: &Bit) -> Option<F> {
+    fn convert_value(&self, x: &bool) -> Option<F> {
         self.native_chip.convert_value(x)
     }
 
@@ -1374,7 +1447,7 @@ where
         &self,
         layouter: &mut impl Layouter<F>,
         x: &AssignedBit<F>,
-        constant: Bit,
+        constant: bool,
     ) -> Result<AssignedBit<F>, Error> {
         self.native_chip.is_equal_to_fixed(layouter, x, constant)
     }
@@ -1461,6 +1534,7 @@ where
     CoreDecomposition: CoreDecompositionInstructions<F>,
     NativeArith: FieldInstructions<F, AssignedNative<F>>
         + AssertionInstructions<F, AssignedBit<F>>
+        + UnsafeConversionInstructions<F, AssignedNative<F>, AssignedBit<F>>
         + EqualityInstructions<F, AssignedBit<F>>,
 {
     fn order(&self) -> BigUint {
@@ -1493,6 +1567,7 @@ where
     CoreDecomposition: CoreDecompositionInstructions<F>,
     NativeArith: CanonicityInstructions<F, AssignedNative<F>>
         + AssertionInstructions<F, AssignedBit<F>>
+        + UnsafeConversionInstructions<F, AssignedNative<F>, AssignedBit<F>>
         + EqualityInstructions<F, AssignedBit<F>>,
 {
     fn le_bits_lower_than(
@@ -1571,13 +1646,13 @@ impl<F: PrimeField> FromScratch<F> for NativeGadget<F, P2RDecompositionChip<F>, 
 
     fn configure_from_scratch(
         meta: &mut ConstraintSystem<F>,
-        instance_column: &Column<Instance>,
+        instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
         let advice_columns: [_; NB_ARITH_COLS] = core::array::from_fn(|_| meta.advice_column());
-        let fixed_columns: [_; NB_ARITH_COLS + 4] = core::array::from_fn(|_| meta.fixed_column());
+        let fixed_columns: [_; NB_ARITH_FIXED_COLS] = core::array::from_fn(|_| meta.fixed_column());
 
         let native_config =
-            NativeChip::configure(meta, &(advice_columns, fixed_columns, *instance_column));
+            NativeChip::configure(meta, &(advice_columns, fixed_columns, *instance_columns));
         let pow2range_config =
             Pow2RangeChip::configure(meta, &advice_columns[1..=NB_POW2RANGE_COLS]);
 
@@ -1590,7 +1665,7 @@ impl<F: PrimeField> FromScratch<F> for NativeGadget<F, P2RDecompositionChip<F>, 
 
 #[cfg(test)]
 mod tests {
-    use blstrs::Scalar as BlsScalar;
+    use blstrs::Fq as BlsScalar;
 
     use super::*;
     use crate::instructions::{bitwise, comparison, decomposition, range_check};

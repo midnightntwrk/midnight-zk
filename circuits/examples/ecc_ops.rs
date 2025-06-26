@@ -4,10 +4,6 @@
 use blstrs::{Fr as JubjubScalar, JubjubExtended as Jubjub, JubjubSubgroup};
 use ff::Field;
 use group::Group;
-use halo2_proofs::{
-    circuit::{Layouter, Value},
-    plonk::Error,
-};
 use midnight_circuits::{
     compact_std_lib::{self, Relation, ZkStdLib, ZkStdLibArch},
     ecc::{curves::CircuitCurve, native::ScalarVar},
@@ -17,9 +13,13 @@ use midnight_circuits::{
     testing_utils::plonk_api::filecoin_srs,
     types::{AssignedNativePoint, Instantiable},
 };
+use midnight_proofs::{
+    circuit::{Layouter, Value},
+    plonk::Error,
+};
 use rand::rngs::OsRng;
 
-type F = blstrs::Scalar;
+type F = blstrs::Fq;
 
 #[derive(Clone, Default)]
 pub struct EccExample;

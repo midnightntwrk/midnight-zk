@@ -1,5 +1,5 @@
 use ff::PrimeField;
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::Layouter,
     plonk::{Advice, Column, ConstraintSystem, Error, Selector},
     poly::Rotation,
@@ -399,12 +399,12 @@ impl MessageScheduleConfig {
 #[cfg(test)]
 mod tests {
     use ff::PrimeField;
-    use halo2_proofs::{
+    use halo2curves::pasta::pallas;
+    use midnight_proofs::{
         circuit::{Layouter, SimpleFloorPlanner},
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem, Error},
     };
-    use halo2curves::pasta::pallas;
 
     use super::{
         super::{super::BLOCK_SIZE, Table11Chip, Table11Config},
@@ -429,8 +429,12 @@ mod tests {
             }
 
             fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+                let committed_instance_column = meta.instance_column();
                 let instance_column = meta.instance_column();
-                Table11Chip::configure_from_scratch(meta, &instance_column)
+                Table11Chip::configure_from_scratch(
+                    meta,
+                    &[committed_instance_column, instance_column],
+                )
             }
 
             fn synthesize(
@@ -460,7 +464,7 @@ mod tests {
 
         let circuit: MyCircuit = MyCircuit {};
 
-        let prover = match MockProver::<pallas::Base>::run(13, &circuit, vec![vec![]]) {
+        let prover = match MockProver::<pallas::Base>::run(13, &circuit, vec![vec![], vec![]]) {
             Ok(prover) => prover,
             Err(e) => panic!("{:?}", e),
         };

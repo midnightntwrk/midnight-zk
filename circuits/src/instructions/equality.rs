@@ -7,7 +7,7 @@
 //! [InnerValue]) which defines the type over which we check equality.
 
 use ff::PrimeField;
-use halo2_proofs::{circuit::Layouter, plonk::Error};
+use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 use crate::types::{AssignedBit, InnerValue};
 
@@ -25,10 +25,10 @@ where
     /// let y: AssignedNative<F> = chip.assign(&mut layouter, Value::known(F::from(2)))?;
     ///
     /// let x_equals_y = chip.is_equal(&mut layouter, &x, &y)?;
-    /// chip.assert_equal_to_fixed(&mut layouter, &x_equals_y, Bit(false))?;
+    /// chip.assert_equal_to_fixed(&mut layouter, &x_equals_y, false)?;
     ///
     /// let x_equals_x = chip.is_equal(&mut layouter, &x, &x)?;
-    /// chip.assert_equal_to_fixed(&mut layouter, &x_equals_x, Bit(true))?;
+    /// chip.assert_equal_to_fixed(&mut layouter, &x_equals_x, true)?;
     /// # });
     /// ```
     fn is_equal(
@@ -45,10 +45,10 @@ where
     /// let x: AssignedNative<F> = chip.assign(&mut layouter, Value::known(F::ONE))?;
     ///
     /// let x_equals_2 = chip.is_equal_to_fixed(&mut layouter, &x, F::from(2))?;
-    /// chip.assert_equal_to_fixed(&mut layouter, &x_equals_2, Bit(false))?;
+    /// chip.assert_equal_to_fixed(&mut layouter, &x_equals_2, false)?;
     ///
     /// let x_equals_1 = chip.is_equal_to_fixed(&mut layouter, &x, F::ONE)?;
-    /// chip.assert_equal_to_fixed(&mut layouter, &x_equals_1, Bit(true))?;
+    /// chip.assert_equal_to_fixed(&mut layouter, &x_equals_1, true)?;
     /// # });
     /// ```
     fn is_equal_to_fixed(
@@ -64,7 +64,7 @@ pub mod tests {
     use std::marker::PhantomData;
 
     use ff::FromUniformBytes;
-    use halo2_proofs::{
+    use midnight_proofs::{
         circuit::{Layouter, SimpleFloorPlanner},
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem},
@@ -115,10 +115,14 @@ pub mod tests {
         }
 
         fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+            let committed_instance_column = meta.instance_column();
             let instance_column = meta.instance_column();
             let constants_column = meta.fixed_column();
             meta.enable_constant(constants_column);
-            EqualityChip::configure_from_scratch(meta, &instance_column)
+            EqualityChip::configure_from_scratch(
+                meta,
+                &[committed_instance_column, instance_column],
+            )
         }
 
         fn synthesize(
@@ -176,7 +180,7 @@ pub mod tests {
         };
 
         let log2_nb_rows = 10;
-        let public_inputs = vec![vec![]];
+        let public_inputs = vec![vec![], vec![]];
         match MockProver::run(log2_nb_rows, &circuit, public_inputs) {
             Ok(prover) => match prover.verify() {
                 Ok(()) => assert!(must_pass),

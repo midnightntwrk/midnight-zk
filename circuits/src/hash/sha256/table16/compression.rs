@@ -1,7 +1,7 @@
 use std::{convert::TryInto, ops::Range};
 
 use ff::PrimeField;
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::{Advice, Column, ConstraintSystem, Error, Selector},
     poly::Rotation,
@@ -1042,12 +1042,12 @@ impl CompressionConfig {
 #[cfg(test)]
 mod tests {
     use ff::PrimeField;
-    use halo2_proofs::{
+    use halo2curves::pasta::pallas;
+    use midnight_proofs::{
         circuit::{Layouter, SimpleFloorPlanner},
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem, Error},
     };
-    use halo2curves::pasta::pallas;
     use sha2::Digest;
 
     use super::super::{super::BLOCK_SIZE, msg_schedule_test_input, Table16Chip, Table16Config};

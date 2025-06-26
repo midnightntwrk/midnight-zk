@@ -100,7 +100,7 @@
 // with constants c = c' = 0
 
 use ff::PrimeField;
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::{Layouter, Region, Value},
     plonk::{Advice, Column, ConstraintSystem, Constraints, Error, Fixed, Selector, TableColumn},
     poly::Rotation,
@@ -715,12 +715,12 @@ impl SpreadTableConfig {
 #[cfg(test)]
 mod tests {
     use ff::PrimeField;
-    use halo2_proofs::{
+    use halo2curves::pasta::Fp;
+    use midnight_proofs::{
         circuit::{Layouter, SimpleFloorPlanner, Value},
         dev::MockProver,
         plonk::{Advice, Circuit, Column, ConstraintSystem, Error},
     };
-    use halo2curves::pasta::Fp;
     use rand::Rng;
 
     use super::SpreadTableConfig;

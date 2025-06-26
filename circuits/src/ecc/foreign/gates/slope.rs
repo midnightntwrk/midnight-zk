@@ -1,7 +1,7 @@
 use std::{marker::PhantomData, ops::Rem};
 
 use ff::PrimeField;
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::{Chip, Layouter},
     plonk::{Advice, Column, ConstraintSystem, Error, Expression, Selector},
     poly::Rotation,
@@ -21,7 +21,7 @@ use crate::{
         FieldChip,
     },
     instructions::NativeInstructions,
-    types::{AssignedBit, AssignedField, Bit, InnerValue},
+    types::{AssignedBit, AssignedField, InnerValue},
     utils::util::{bigint_to_fe, fe_to_bigint, modulus},
 };
 
@@ -302,8 +302,7 @@ where
                 + pxs.clone().map(|v| sum_bigints(&bs, &v))
                 - lqxs.clone().map(|v| sum_bigints(&bs2, &v))
                 + lpxs.clone().map(|v| sum_bigints(&bs2, &v));
-            let assertions = cond.value().map(|b| b == Bit(true));
-            let u = expr.map(|e| compute_u(m, &e, (&k_min, &u_max), assertions));
+            let u = expr.map(|e| compute_u(m, &e, (&k_min, &u_max), cond.value()));
 
             let vs_values =
                 moduli
@@ -328,7 +327,7 @@ where
                             - lqxs.clone().map(|v| sum_bigints(&bs2_mj, &v))
                             + lpxs.clone().map(|v| sum_bigints(&bs2_mj, &v));
                         expr_mj.zip(u.clone()).map(|(e, u)| {
-                            compute_vj(m, mj, &e, &u, &k_min, (&lj_min, &vj_max), assertions)
+                            compute_vj(m, mj, &e, &u, &k_min, (&lj_min, &vj_max), cond.value())
                         })
                     });
 

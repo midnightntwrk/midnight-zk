@@ -5,21 +5,21 @@
 
 use std::ops::Rem;
 
-use halo2_proofs::{
-    circuit::{Layouter, Value},
-    plonk::Error,
-};
 use midnight_circuits::{
     biguint::AssignedBigUint,
     compact_std_lib::{self, Relation, ZkStdLib, ZkStdLibArch},
     instructions::AssertionInstructions,
     testing_utils::plonk_api::filecoin_srs,
 };
+use midnight_proofs::{
+    circuit::{Layouter, Value},
+    plonk::Error,
+};
 use num_bigint::{BigUint, RandBigInt};
 use num_traits::{Num, One};
 use rand::rngs::OsRng;
 
-type F = blstrs::Scalar;
+type F = blstrs::Fq;
 
 type Modulus = BigUint;
 type Message = BigUint;

@@ -3,7 +3,7 @@
 //! It provides functions for performing Boolean operations over [AssignedBit]s.
 
 use ff::PrimeField;
-use halo2_proofs::{circuit::Layouter, plonk::Error};
+use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 use crate::types::AssignedBit;
 
@@ -17,11 +17,11 @@ pub trait BinaryInstructions<F: PrimeField> {
     ///
     /// ```
     /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
-    /// let b0 = chip.assign(&mut layouter, Value::known(Bit(false)))?;
-    /// let b1 = chip.assign(&mut layouter, Value::known(Bit(true)))?;
+    /// let b0 = chip.assign(&mut layouter, Value::known(false))?;
+    /// let b1 = chip.assign(&mut layouter, Value::known(true))?;
     ///
     /// let res = chip.and(&mut layouter, &[b0, b1])?;
-    /// chip.assert_equal_to_fixed(&mut layouter, &res, Bit(false))?;
+    /// chip.assert_equal_to_fixed(&mut layouter, &res, false)?;
     /// # });
     /// ```
     ///
@@ -44,11 +44,11 @@ pub trait BinaryInstructions<F: PrimeField> {
     ///
     /// ```
     /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
-    /// let b0 = chip.assign(&mut layouter, Value::known(Bit(false)))?;
-    /// let b1 = chip.assign(&mut layouter, Value::known(Bit(true)))?;
+    /// let b0 = chip.assign(&mut layouter, Value::known(false))?;
+    /// let b1 = chip.assign(&mut layouter, Value::known(true))?;
     ///
     /// let res = chip.or(&mut layouter, &[b0, b1])?;
-    /// chip.assert_equal_to_fixed(&mut layouter, &res, Bit(true))?;
+    /// chip.assert_equal_to_fixed(&mut layouter, &res, true)?;
     /// # });
     /// ```
     fn or(
@@ -65,12 +65,12 @@ pub trait BinaryInstructions<F: PrimeField> {
     ///
     /// ```
     /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
-    /// let b0 = chip.assign(&mut layouter, Value::known(Bit(false)))?;
-    /// let b1 = chip.assign(&mut layouter, Value::known(Bit(true)))?;
-    /// let b2 = chip.assign(&mut layouter, Value::known(Bit(true)))?;
+    /// let b0 = chip.assign(&mut layouter, Value::known(false))?;
+    /// let b1 = chip.assign(&mut layouter, Value::known(true))?;
+    /// let b2 = chip.assign(&mut layouter, Value::known(true))?;
     ///
     /// let res = chip.xor(&mut layouter, &[b0, b1, b2])?;
-    /// chip.assert_equal_to_fixed(&mut layouter, &res, Bit(false))?;
+    /// chip.assert_equal_to_fixed(&mut layouter, &res, false)?;
     /// # });
     /// ```
     fn xor(
@@ -83,10 +83,10 @@ pub trait BinaryInstructions<F: PrimeField> {
     ///
     /// ```
     /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
-    /// let b = chip.assign(&mut layouter, Value::known(Bit(false)))?;
+    /// let b = chip.assign(&mut layouter, Value::known(false))?;
     ///
     /// let res = chip.not(&mut layouter, &b)?;
-    /// chip.assert_equal_to_fixed(&mut layouter, &res, Bit(true))?;
+    /// chip.assert_equal_to_fixed(&mut layouter, &res, true)?;
     /// # });
     /// ```
     fn not(
@@ -101,7 +101,7 @@ pub mod tests {
     use std::{cmp::min, marker::PhantomData};
 
     use ff::FromUniformBytes;
-    use halo2_proofs::{
+    use midnight_proofs::{
         circuit::{Layouter, SimpleFloorPlanner, Value},
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem},
@@ -111,7 +111,6 @@ pub mod tests {
     use crate::{
         instructions::{AssertionInstructions, AssignmentInstructions},
         testing_utils::FromScratch,
-        types::Bit,
         utils::circuit_modeling::circuit_to_json,
     };
 
@@ -148,8 +147,9 @@ pub mod tests {
         }
 
         fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+            let committed_instance_column = meta.instance_column();
             let instance_column = meta.instance_column();
-            BinaryChip::configure_from_scratch(meta, &instance_column)
+            BinaryChip::configure_from_scratch(meta, &[committed_instance_column, instance_column])
         }
 
         fn synthesize(
@@ -162,8 +162,8 @@ pub mod tests {
 
             // b2 does not apply in tests of arity-1 functions.
             let b2_idx = min(self.inputs.len() - 1, 1);
-            let b1 = chip.assign(&mut layouter, Value::known(Bit(self.inputs[0])))?;
-            let b2 = chip.assign(&mut layouter, Value::known(Bit(self.inputs[b2_idx])))?;
+            let b1 = chip.assign(&mut layouter, Value::known(self.inputs[0]))?;
+            let b2 = chip.assign(&mut layouter, Value::known(self.inputs[b2_idx]))?;
 
             let res = match self.operation {
                 Operation::And => chip.and(&mut layouter, &[b1, b2]),
@@ -172,7 +172,7 @@ pub mod tests {
                 Operation::Not => chip.not(&mut layouter, &b1),
             }?;
 
-            chip.assert_equal_to_fixed(&mut layouter, &res, Bit(self.expected))
+            chip.assert_equal_to_fixed(&mut layouter, &res, self.expected)
         }
     }
 
@@ -198,7 +198,7 @@ pub mod tests {
             _marker: PhantomData,
         };
         let log2_nb_rows = 5;
-        let public_inputs = vec![vec![]];
+        let public_inputs = vec![vec![], vec![]];
         match MockProver::run(log2_nb_rows, &circuit, public_inputs) {
             Ok(prover) => match prover.verify() {
                 Ok(()) => assert!(must_pass),

@@ -1,5 +1,5 @@
 use ff::PrimeField;
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::Layouter,
     plonk::{Advice, Column, ConstraintSystem, Error, Selector},
     poly::Rotation,
@@ -410,12 +410,12 @@ impl MessageScheduleConfig {
 #[cfg(test)]
 mod tests {
     use ff::PrimeField;
-    use halo2_proofs::{
+    use halo2curves::pasta::pallas;
+    use midnight_proofs::{
         circuit::{Layouter, SimpleFloorPlanner},
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem, Error},
     };
-    use halo2curves::pasta::pallas;
 
     use super::{
         super::{super::BLOCK_SIZE, SpreadTableChip, Table16Chip, Table16Config},

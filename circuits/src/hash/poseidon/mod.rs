@@ -76,7 +76,7 @@
 /// [PoseidonField], which is a subtrait of [ff::PrimeField] implementing
 /// constants for the MDS matrix and round constants. The module also contains
 /// (non-public) implementations of [PoseidonField] for
-/// [blstrs::Scalar], [pasta_curves::pallas::Base] and
+/// [blstrs::Fq], [pasta_curves::pallas::Base] and
 /// [halo2curves::pasta::vesta::Base].
 pub mod constants;
 
@@ -87,6 +87,7 @@ mod poseidon_chip;
 /// they will be used for circuits (NB_SKIPS_CIRCUIT) or CPU (NB_SKIPS_CPU).
 pub mod poseidon_cpu;
 
+mod poseidon_varlen;
 /// Basic structures and methods for performing partial-round skips in Poseidon.
 pub mod round_skips;
 

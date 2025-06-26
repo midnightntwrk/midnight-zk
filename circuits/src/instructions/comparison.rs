@@ -12,7 +12,7 @@
 use std::{fmt::Debug, ops::Add};
 
 use ff::PrimeField;
-use halo2_proofs::{circuit::Layouter, plonk::Error};
+use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 use crate::{
     field::AssignedBounded,
@@ -106,7 +106,7 @@ where
     /// let y: AssignedBounded<F> = chip.bounded_of_element(&mut layouter, 16, &y)?;
     ///
     /// let check = chip.lower_than(&mut layouter, &x, &y)?;
-    /// chip.assert_equal_to_fixed(&mut layouter, &check, Bit(true))?;
+    /// chip.assert_equal_to_fixed(&mut layouter, &check, true)?;
     /// # });
     /// ```
     fn lower_than(
@@ -149,7 +149,7 @@ pub mod tests {
     use std::marker::PhantomData;
 
     use ff::FromUniformBytes;
-    use halo2_proofs::{
+    use midnight_proofs::{
         circuit::{Layouter, SimpleFloorPlanner, Value},
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem},
@@ -161,7 +161,7 @@ pub mod tests {
     use crate::{
         instructions::{AssertionInstructions, AssignmentInstructions, DecompositionInstructions},
         testing_utils::FromScratch,
-        types::{Bit, InnerConstants, Instantiable},
+        types::{InnerConstants, Instantiable},
         utils::circuit_modeling::circuit_to_json,
     };
 
@@ -212,8 +212,9 @@ pub mod tests {
         }
 
         fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+            let committed_instance_column = meta.instance_column();
             let instance_column = meta.instance_column();
-            Chip::configure_from_scratch(meta, &instance_column)
+            Chip::configure_from_scratch(meta, &[committed_instance_column, instance_column])
         }
 
         fn synthesize(
@@ -254,7 +255,7 @@ pub mod tests {
                         _ => unreachable!(),
                     }?;
 
-                    let expected = chip.assign_fixed(&mut layouter, Bit(self.expected))?;
+                    let expected = chip.assign_fixed(&mut layouter, self.expected)?;
                     chip.assert_equal(&mut layouter, &b, &expected)
                 }
             }
@@ -292,7 +293,7 @@ pub mod tests {
             _marker: PhantomData,
         };
         let log2_nb_rows = 10;
-        let public_inputs = vec![vec![]];
+        let public_inputs = vec![vec![], vec![]];
         match MockProver::run(log2_nb_rows, &circuit, public_inputs) {
             Ok(prover) => match prover.verify() {
                 Ok(()) => assert!(must_pass),
