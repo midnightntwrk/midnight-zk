@@ -4,18 +4,13 @@ on:
   push:
     branches:
       - main
-    paths:
-      - 'circuits/**'
   pull_request:
-    paths:
-      - 'circuits/**'
 
 jobs:
   test-examples:
     if: github.event.pull_request.draft == false
     name: Run Example Tests
     runs-on: ubuntu-latest
-    working-directory: circuits
     strategy:
       matrix:
         example:
