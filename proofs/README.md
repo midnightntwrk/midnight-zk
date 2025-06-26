@@ -1,5 +1,10 @@
 # midnight_proofs
 
+Implementation of Plonk proof system with KZG commitments. This repo initially started 
+as a fork of [`halo2`](https://github.com/privacy-scaling-explorations/halo2) v0.3.0 – 
+by the Privacy Scaling Explorations (PSE) team, itself originally derived from the 
+[Zcash Sapling proving system](https://github.com/zcash/halo2). 
+
 ## Minimum Supported Rust Version
 
 Requires Rust **1.65.0** or higher.
@@ -19,13 +24,7 @@ See: [Rayon: Usage with WebAssembly](https://github.com/rayon-rs/rayon#usage-wit
 
 ## License
 
-Licensed under either of
-
- * Apache License, Version 2.0, ([LICENSE-APACHE](LICENSE-APACHE) or
-   http://www.apache.org/licenses/LICENSE-2.0)
- * MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
-
-at your option.
+See root directory for Licensing. We have copied the license files of the original [Zcash Sapling proving system](https://github.com/zcash/halo2).
 
 ### Contribution
 
