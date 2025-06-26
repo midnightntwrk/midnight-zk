@@ -362,14 +362,18 @@ fn main() {
     let witness: MerklePath<F> = create_random_merkle_path();
     let instance = witness.compute_root();
 
-    let proof = compact_std_lib::prove(&srs, &pk, &relation, &instance, witness, OsRng)
-        .expect("Proof generation should not fail");
-
-    assert!(compact_std_lib::verify::<HybridMtExample>(
-        &srs.verifier_params(),
-        &vk,
-        &instance,
-        &proof
+    let proof = compact_std_lib::prove::<HybridMtExample, blake2b_simd::State>(
+        &srs, &pk, &relation, &instance, witness, OsRng,
     )
-    .is_ok())
+    .expect("Proof generation should not fail");
+
+    assert!(
+        compact_std_lib::verify::<HybridMtExample, blake2b_simd::State>(
+            &srs.verifier_params(),
+            &vk,
+            &instance,
+            &proof
+        )
+        .is_ok()
+    )
 }

@@ -187,16 +187,20 @@ fn main() {
         secp256k1Scalar::from_bytes(&reverse_bytes(&sig_bytes[32..])).expect("Secp scalar"),
     );
 
-    let proof = compact_std_lib::prove(&srs, &pk, &relation, &instance, witness, OsRng)
-        .expect("Proof generation should not fail");
-
-    assert!(compact_std_lib::verify::<BitcoinSigExample>(
-        &srs.verifier_params(),
-        &vk,
-        &instance,
-        &proof
+    let proof = compact_std_lib::prove::<BitcoinSigExample, blake2b_simd::State>(
+        &srs, &pk, &relation, &instance, witness, OsRng,
     )
-    .is_ok())
+    .expect("Proof generation should not fail");
+
+    assert!(
+        compact_std_lib::verify::<BitcoinSigExample, blake2b_simd::State>(
+            &srs.verifier_params(),
+            &vk,
+            &instance,
+            &proof
+        )
+        .is_ok()
+    )
 }
 
 // Bitcoin uses points that only have even y coordinates. Moreover, the bitcoin

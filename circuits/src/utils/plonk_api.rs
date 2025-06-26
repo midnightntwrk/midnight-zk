@@ -36,16 +36,16 @@ use midnight_proofs::{
             KZGCommitmentScheme,
         },
     },
-    transcript::{CircuitTranscript, Transcript},
+    transcript::{CircuitTranscript, Hashable, Sampleable, Transcript},
     utils::SerdeFormat,
 };
 use rand::{CryptoRng, RngCore};
 use sha2::Digest;
 
-use crate::compact_std_lib::MidnightVK;
+use crate::{compact_std_lib::MidnightVK, midnight_proofs::transcript::TranscriptHash};
 
 macro_rules! plonk_api {
-    ($name:ident, $engine:ty, $native:ty, $curve:ty) => {
+    ($name:ident, $engine:ty, $native:ty, $curve:ty, $projective:ty) => {
         /// A struct providing all the basic functions of the PLONK proving system.
         #[derive(Debug)]
         pub struct $name<Relation> {
@@ -86,14 +86,19 @@ macro_rules! plonk_api {
             }
 
             /// PLONK proving algorithm.
-            pub fn prove(
+            pub fn prove<H>(
                 params: &ParamsKZG<$engine>,
                 pk: &ProvingKey<$native, KZGCommitmentScheme<$engine>>,
                 circuit: &Relation,
                 nb_instance_commitments: usize,
                 pi: &[&[$native]],
                 rng: impl RngCore + CryptoRng,
-            ) -> Result<Vec<u8>, Error> {
+            ) -> Result<Vec<u8>, Error>
+            where
+                H: TranscriptHash,
+                $projective: Hashable<H>,
+                $native: Hashable<H> + Sampleable<H>,
+            {
                 #[cfg(test)]
                 let start = Instant::now();
                 let proof = {
@@ -101,7 +106,7 @@ macro_rules! plonk_api {
                     create_proof::<
                         $native,
                         KZGCommitmentScheme<$engine>,
-                        CircuitTranscript<blake2b_simd::State>,
+                        CircuitTranscript<H>,
                         Relation,
                     >(
                         params,
@@ -125,22 +130,23 @@ macro_rules! plonk_api {
             }
 
             /// PLONK verification algorithm.
-            pub fn verify(
+            pub fn verify<H>(
                 params_verifier: &ParamsVerifierKZG<$engine>,
                 vk: &VerifyingKey<$native, KZGCommitmentScheme<$engine>>,
                 instance_commitments: &[$curve],
                 pi: &[&[$native]],
                 proof: &[u8],
-            ) -> Result<(), Error> {
+            ) -> Result<(), Error>
+            where
+                H: TranscriptHash,
+                $projective: Hashable<H>,
+                $native: Hashable<H> + Sampleable<H>,
+            {
                 let mut transcript = CircuitTranscript::init_from_bytes(proof);
 
                 #[cfg(test)]
                 let start = Instant::now();
-                let res = prepare::<
-                    $native,
-                    KZGCommitmentScheme<$engine>,
-                    CircuitTranscript<blake2b_simd::State>,
-                >(
+                let res = prepare::<$native, KZGCommitmentScheme<$engine>, CircuitTranscript<H>>(
                     vk,
                     &[&instance_commitments
                         .iter()
@@ -158,16 +164,23 @@ macro_rules! plonk_api {
     };
 }
 
-plonk_api!(BnPLONK, bn256::Bn256, bn256::Fr, bn256::G1Affine);
+plonk_api!(BnPLONK, bn256::Bn256, bn256::Fr, bn256::G1Affine, bn256::G1);
 
 plonk_api!(
     BlsPLONK,
     halo2curves::bls12381::Bls12381,
     halo2curves::bls12381::Fr,
-    halo2curves::bls12381::G1Affine
+    halo2curves::bls12381::G1Affine,
+    halo2curves::bls12381::G1
 );
 
-plonk_api!(BlstPLONK, blstrs::Bls12, blstrs::Fq, blstrs::G1Affine);
+plonk_api!(
+    BlstPLONK,
+    blstrs::Bls12,
+    blstrs::Fq,
+    blstrs::G1Affine,
+    blstrs::G1Projective
+);
 
 /// Check that the VK is the same as the stored VK for Logic. This function
 /// panics if:

@@ -129,13 +129,18 @@ fn pi_test(nb_public_inputs: u32, extra_pi: bool) {
         instance.push(F::ONE);
     }
 
-    let proof = compact_std_lib::prove(&srs, &pk, &relation, &instance, witness, rng)
-        .expect("Proof generation should not fail");
-
-    assert!(
-        compact_std_lib::verify::<PIsCircuit>(&srs.verifier_params(), &vk, &instance, &proof)
-            .is_ok()
+    let proof = compact_std_lib::prove::<PIsCircuit, blake2b_simd::State>(
+        &srs, &pk, &relation, &instance, witness, rng,
     )
+    .expect("Proof generation should not fail");
+
+    assert!(compact_std_lib::verify::<PIsCircuit, blake2b_simd::State>(
+        &srs.verifier_params(),
+        &vk,
+        &instance,
+        &proof
+    )
+    .is_ok())
 }
 
 #[test]
