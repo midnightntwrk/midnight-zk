@@ -525,7 +525,7 @@ fn plonk_api() {
         let verifier = prepare_plonk_proof(
             vk,
             #[cfg(feature = "committed-instances")]
-            &[&[]],
+            &[&[], &[]],
             &[&[&pubinputs[..]], &[&pubinputs[..]]],
             &mut transcript,
         )
