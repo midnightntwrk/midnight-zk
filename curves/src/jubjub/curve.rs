@@ -218,7 +218,7 @@ impl<'a> From<&'a JubjubExtended> for JubjubAffine {
     /// using the map `(U, V, Z, T1, T2) => (U/Z, V/Z)`
     /// as Z is always nonzero. **This requires a field inversion
     /// and so it is recommended to perform these in a batch
-    /// using [`batch_normalize`](crate::batch_normalize) instead.**
+    /// using [batch_normalize] instead.**
     fn from(extended: &'a JubjubExtended) -> JubjubAffine {
         // Z coordinate is always nonzero, so this is
         // its inverse.
@@ -239,7 +239,7 @@ impl From<JubjubExtended> for JubjubAffine {
 
 /// This is a pre-processed version of an affine point `(u, v)`
 /// in the form `(v + u, v - u, u * v * 2d)`. This can be added to an
-/// [`JubjubExtended`](crate::JubjubExtended).
+/// [JubjubExtended].
 #[derive(Clone, Copy, Debug)]
 pub struct JubjubAffineNiels {
     v_plus_u: Base,

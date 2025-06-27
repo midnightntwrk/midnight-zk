@@ -47,10 +47,10 @@ impl<F: WithSmallOrderMulGroup<3> + Ord> Argument<F> {
     ///   theta^{m-2} S_1 + ... + \theta S_{m-2} + S_{m-1},
     /// - permutes A_compressed and S_compressed using permute_expression_pair()
     ///   helper, obtaining A' and S', and
-    /// - constructs Permuted<C> struct using permuted_input_value = A', and
+    /// - constructs `Permuted<C>` struct using permuted_input_value = A', and
     ///   permuted_table_expression = S'.
     ///
-    /// The Permuted<C> struct is used to update the Lookup, and is then
+    /// The `Permuted<C>` struct is used to update the Lookup, and is then
     /// returned.
     #[allow(clippy::too_many_arguments)]
     pub(in crate::plonk) fn commit_permuted<
@@ -148,8 +148,8 @@ impl<F: WithSmallOrderMulGroup<3>> Permuted<F> {
     /// Given a Lookup with input expressions, table expressions, and the
     /// permuted input expression and permuted table expression, this method
     /// constructs the grand product polynomial over the lookup. The grand
-    /// product polynomial is used to populate the Product<C> struct. The
-    /// Product<C> struct is added to the Lookup and finally returned by the
+    /// product polynomial is used to populate the `Product<C>` struct. The
+    /// `Product<C>` struct is added to the Lookup and finally returned by the
     /// method.
     pub(in crate::plonk) fn commit_product<CS: PolynomialCommitmentScheme<F>, T: Transcript>(
         self,

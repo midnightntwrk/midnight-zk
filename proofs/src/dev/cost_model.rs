@@ -164,8 +164,7 @@ pub struct CircuitModel {
 
 impl CostOptions {
     /// Convert [CostOptions] to [CircuitModel]. The proof sizè is computed
-    /// depending on the base and scalar field size of the curve used,
-    /// together with the [CommitmentScheme].
+    /// depending on the base and scalar field size of the curve used.
     fn into_circuit_model<const COMM: usize, const SCALAR: usize>(self) -> CircuitModel {
         let mut queries: Vec<_> = iter::empty()
             .chain(self.advice.iter())
