@@ -19,6 +19,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Install libfontconfig1-dev
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev
       - name: Add github.com credentials to netrc
         uses: extractions/netrc@f6f1722d05ce2890aa86fd9654565b1214ac53a4
         with:
