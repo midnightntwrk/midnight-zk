@@ -1,10 +1,10 @@
 name: Real Examples
 
 on:
-  pull_request:
   push:
     branches:
       - main
+  pull_request:
 
 jobs:
   test-examples:
@@ -49,17 +49,7 @@ jobs:
       - name: Download SRS
         run: curl -L -o ./examples/assets/bls_filecoin_2p19 https://midnight-s3-fileshare-dev-eu-west-1.s3.eu-west-1.amazonaws.com/bls_filecoin_2p19
 
-      # Step for running with the feature during pull requests
-      - name: Check VK in example ${{ matrix.example }}
-        if: github.event_name == 'pull_request'
-        uses: actions-rs/cargo@ae10961054e4aa8b4aa7dffede299aaf087aa33b
-        with:
-         command: run
-         args: --release --example ${{ matrix.example }}
-
-      # Step for running without the feature on main branch
       - name: Run example ${{ matrix.example }}
-        if: github.ref == 'refs/heads/main'
         uses: actions-rs/cargo@ae10961054e4aa8b4aa7dffede299aaf087aa33b
         with:
          command: run

@@ -651,7 +651,8 @@ impl<V> Value<V> {
     /// # Examples
     ///
     /// If you have a `Value<F: Field>`, convert it to `Value<Rational<F>>`
-    /// first: ```
+    /// first:
+    /// ```
     /// # use halo2curves::pasta::pallas::Base as F;
     /// use midnight_proofs::{circuit::Value, utils::rational::Rational};
     ///
