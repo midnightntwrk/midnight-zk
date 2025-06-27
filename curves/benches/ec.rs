@@ -39,46 +39,45 @@ fn bench_curve_ops<G: CurveExt>(c: &mut Criterion, name: &'static str) {
         group.significance_level(0.1).sample_size(1000);
         group.throughput(Throughput::Elements(1));
 
-        group.bench_function(&format!("{name} check on curve"), move |b| {
+        group.bench_function(format!("{name} check on curve"), move |b| {
             b.iter(|| black_box(p1).is_on_curve())
         });
-        group.bench_function(&format!("{name} check equality"), move |b| {
+        group.bench_function(format!("{name} check equality"), move |b| {
             b.iter(|| black_box(p1) == black_box(p1))
         });
-        group.bench_function(&format!("{name} to affine"), move |b| {
+        group.bench_function(format!("{name} to affine"), move |b| {
             b.iter(|| G::AffineExt::from(black_box(p1)))
         });
 
-        group.bench_function(&format!("{name} addition"), move |b| {
+        group.bench_function(format!("{name} addition"), move |b| {
             b.iter(|| black_box(&p1).add(&p2))
         });
 
-        group.bench_function(&format!("{name} assigned addition"), move |b| {
+        group.bench_function(format!("{name} assigned addition"), move |b| {
             b.iter(|| black_box(&mut ret).add_assign(&p2))
         });
 
-        group.bench_function(&format!("{name} mixed addition"), move |b| {
+        group.bench_function(format!("{name} mixed addition"), move |b| {
             b.iter(|| black_box(&p1).add(&p2_affine))
         });
 
         ret = p1;
-        group.bench_function(&format!("{name} assigned mixed addition"), move |b| {
+        group.bench_function(format!("{name} assigned mixed addition"), move |b| {
             b.iter(|| black_box(&mut ret).add(&p2_affine))
         });
 
-        group.bench_function(&format!("{name} scalar multiplication"), move |b| {
+        group.bench_function(format!("{name} scalar multiplication"), move |b| {
             b.iter(|| black_box(p1) * black_box(s))
         });
 
-        group.bench_function(
-            &format!("{name} assigned scalar multiplication"),
-            move |b| b.iter(|| black_box(&mut ret).mul_assign(black_box(s))),
-        );
+        group.bench_function(format!("{name} assigned scalar multiplication"), move |b| {
+            b.iter(|| black_box(&mut ret).mul_assign(black_box(s)))
+        });
 
-        group.bench_function(&format!("{name} doubling"), move |b| {
+        group.bench_function(format!("{name} doubling"), move |b| {
             b.iter(|| black_box(&p1).double())
         });
-        group.bench_function(&format!("{name} batch to affine n={N}"), move |b| {
+        group.bench_function(format!("{name} batch to affine n={N}"), move |b| {
             b.iter(|| {
                 G::batch_normalize(black_box(&v), black_box(&mut q));
             })
