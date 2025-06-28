@@ -34,10 +34,69 @@
 
 use std::{
     collections::{HashMap, HashSet},
+    fmt::Debug,
     hash::Hash,
 };
 
-use super::RegexLetter;
+/// Maximal size of the alphabet of an automaton/regex, since input characters
+/// are represented by `AssignedByte`. The parser (`automaton_chip::parse`) is
+/// using this information to store automaton final states in the transition
+/// table, by encoding them as impossible transitions starting from the said
+/// state, and labelled with letter `ALPHABET_MAX_SIZE`. This bound is also
+/// needed to represent letters as u8.
+pub const ALPHABET_MAX_SIZE: usize = 256;
+
+/// A letter from the automaton alphabet. Includes output markers.
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+pub struct Letter {
+    /// The actual byte represented by the letter.
+    pub char: u8,
+    /// The potential marker of the letter. By convention, 0 means no marker.
+    pub marker: usize,
+}
+
+impl From<u8> for Letter {
+    fn from(value: u8) -> Self {
+        Letter {
+            char: value,
+            marker: 0,
+        }
+    }
+}
+
+impl From<&u8> for Letter {
+    fn from(value: &u8) -> Self {
+        (*value).into()
+    }
+}
+
+impl Letter {
+    /// Encodes a `Letter` bijectively as a usize, in order to use them more
+    /// easily as vector indexes. The size of the encoding is polynomial in the
+    /// number of different markers and the alphabet size.
+    pub fn encode(&self, alphabet_size: usize, markers: &[usize]) -> usize {
+        let marker = markers
+            .iter()
+            .enumerate()
+            .find(|(_, m)| **m == self.marker)
+            .unwrap()
+            .0;
+        marker * alphabet_size + self.char as usize
+    }
+
+    /// Inverse function of `Letter::encode`.
+    pub fn decode(letter_encoding: usize, alphabet_size: usize, markers: &[usize]) -> Self {
+        Letter {
+            char: (letter_encoding % alphabet_size) as u8,
+            marker: markers[letter_encoding / alphabet_size],
+        }
+    }
+
+    /// Maximal output of the function `Letter::encode`.
+    pub fn encoding_bound(alphabet_size: usize, markers: &[usize]) -> usize {
+        alphabet_size * markers.len()
+    }
+}
 
 /// A type for non-deterministic finite automata with a parametric type to
 /// represent its states.

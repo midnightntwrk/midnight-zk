@@ -11,26 +11,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// This module implements a type of regular expressions, `Regex` similar to
-// the usual notion used in, e.g., the grep terminal command. Formally, a
-// regular expression recognises a set of strings (seen as sequences of bytes),
-// and are defined recursively by the closure of byte singletons by union,
-// concatenation, and iteration ("Kleene star").
+// This module implements a type of regular expressions. As in `automaton.rs`,
+// regex include a notion of markers, that allow to identify some parts of the
+// expression by integers (one marker maximum per byte).
 //
 // The `Regex` type is opaque so that functions outside of this module only use
 // the dedicated set of public methods (`RegexInstructions`) to construct
 // regular expressions. A method `to_automaton()` is also defined to convert
-// them into a finite automata as they are easier to process in circuits. This
-// conversion is a straightforward traversal of the `Regex`, calling the more
-// involved constructions defined in `automaton.rs`.
-//
-// The module includes a couple of tests on actual strings to test the
-// conversion of regex into automata and how they recognise strings.
+// them into a finite automata as they are easier to process in circuits.
 
-use super::{
-    automaton::{Automaton, RawAutomaton},
-    RegexLetter, REGEX_ALPHABET_MAX_SIZE,
-};
+use std::{collections::HashSet, iter::once};
+
+use super::automaton::{Automaton, RawAutomaton, ALPHABET_MAX_SIZE};
 
 /// A type for formal languages described as regular expressions.
 #[derive(Clone, Debug)]

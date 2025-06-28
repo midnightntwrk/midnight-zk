@@ -11,20 +11,25 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Implementation of automaton parsing in circuit. Simply converts a regular
-// expression into an Automaton using `Regex::to_automaton` and loads the
-// transition table as a lookup table. Its entries are of the form `(source
-// state, byte number, target state)`. In addition, several dummy transitions
-// are added to the lookup table:
-// - (0,0,0). By offsetting the automata states (`Automaton::offset_states`), it
-//   is ensured that `0` is never a reachable state, so this transition will
-//   never be used. It is simply there to satisfy lookup checks when the
-//   associated selector is deactivated.
-// - (s,REGEX_ALPHABET_MAX_SIZE,0) for each final state `s`. This transition can
-//   also never be valid assuming the input alphabet only contains letters
-//   (non-negative integers) lower than `REGEX_ALPHABET_MAX_SIZE`. These dummy
-//   transitions are used to check whether the terminal state of an automaton
-//   run is final.
+// Implementation of automaton parsing in circuit. Given a collection of regular
+// expressions:
+//  - each one is converted into an Automaton using `Regex::to_automaton`;
+//  - their states are renamed using `Automaton::offset_states` so that they do
+//    not share states;
+//  - all transitions are loaded into a single lookup table.
+//
+// The entries of the table are of the form `(source state, byte number, target
+// state, marker)`. Several dummy transitions are also added:
+//
+//  - (0,0,0,0). By offsetting the automata states (`Automaton::offset_states`),
+//    it is ensured that `0` is never a reachable state, so this transition will
+//    never be used. It is simply there to satisfy lookup checks when the
+//    associated selector is deactivated.
+//  - (s,alphabet::ALPHABET_MAX_SIZE,0,0) for each final state `s`. This
+//    transition can also never be valid assuming the input alphabet only
+//    contains letters (non-negative integers) lower than
+//    `alphabet::ALPHABET_MAX_SIZE`. These dummy transitions are used to check
+//    whether the terminal state of an automaton run is final.
 
 use std::collections::{BTreeMap, BTreeSet};
 
