@@ -748,7 +748,7 @@ impl Automaton {
 pub(super) mod tests {
     use itertools::Itertools;
 
-    use crate::json::regex::{Regex, RegexInstructions};
+    use crate::parsing::regex::{Regex, RegexInstructions};
 
     // Tests whether a given regular expression accepts or rejects two sets of
     // corresponding strings. Takes the alphabet size as a parameter to allow for

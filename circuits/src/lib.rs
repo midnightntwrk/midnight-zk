@@ -30,8 +30,8 @@ pub mod biguint;
 pub mod ecc;
 pub mod field;
 pub mod hash;
-pub mod json;
 pub mod map;
+pub mod parsing;
 pub mod vec;
 pub mod verifier;
 
