@@ -22,7 +22,6 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
 
     /// Type of a committed polynomial
     type Commitment: Clone
-        + Copy
         + Debug
         + Default
         + PartialEq

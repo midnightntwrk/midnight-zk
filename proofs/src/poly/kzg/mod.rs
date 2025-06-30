@@ -212,7 +212,17 @@ where
 
         for com_data in commitment_map.into_iter() {
             let mut msm = MSMKZG::new();
-            msm.append_term(E::Fr::ONE, *com_data.commitment);
+            let eval_point_opt = if com_data.commitment.is_chopped() {
+                // When the commitment is in chopped form, we require that it be evaluated
+                // in a single point.
+                debug_assert!(com_data.point_indices.len() == 1);
+                Some(point_sets[com_data.set_index][com_data.point_indices[0]])
+            } else {
+                None
+            };
+            for (scalar, commitment) in com_data.commitment.as_terms(eval_point_opt) {
+                msm.append_term(scalar, commitment);
+            }
             q_coms[com_data.set_index].push(msm);
             q_eval_sets[com_data.set_index].push(com_data.evals);
         }

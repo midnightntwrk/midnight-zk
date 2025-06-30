@@ -120,7 +120,12 @@ impl<E: Engine + Debug> ParamsKZG<E> {
         }
     }
 
-    /// Returns gernerator on G2
+    /// Returns the committed lagrange polynomials of these KZG params.
+    pub fn g_lagrange(&self) -> &[E::G1] {
+        &self.g_lagrange
+    }
+
+    /// Returns generator on G2
     pub fn g2(&self) -> E::G2 {
         self.g2
     }
