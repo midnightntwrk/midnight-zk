@@ -132,7 +132,6 @@ fn vk_serde_test(architecture: ZkStdLibArch, write_format: SerdeFormat, read_for
 
     assert_eq!(buffer, buffer2);
     assert_eq!(buffer, buffer3);
-
 }
 
 #[test]

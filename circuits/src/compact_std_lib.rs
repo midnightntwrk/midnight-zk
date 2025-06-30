@@ -1123,10 +1123,11 @@ impl MidnightVK {
         })
     }
 
-    /// Reads a verification key from a buffer, without taking as input a `Relation`.
-    /// The implications of not giving as input the `Relation` is that the verifier
-    /// cannot define the structure of the instance, which in turn implies that the
-    /// verifier needs to format the instance as a vector of `F`.
+    /// Reads a verification key from a buffer, without taking as input a
+    /// `Relation`. The implications of not giving as input the `Relation`
+    /// is that the verifier cannot define the structure of the instance,
+    /// which in turn implies that the verifier needs to format the instance
+    /// as a vector of `F`.
     ///
     /// The `format` must match the one that was used when writing the key.
     /// If the key was written with `RawBytes`, it can be read with `RawBytes`
@@ -1135,16 +1136,13 @@ impl MidnightVK {
     /// # WARNING
     /// - Use `RawBytesUnchecked` only if you trust the party who wrote the key.
     ///
-    /// - If you know the relation being verified, use [read], as that allows you
-    ///   to use formatted instance, instead of its raw `Vec<F>` form.
-    pub fn read_raw<R: io::Read>(
-        reader: &mut R,
-        format: SerdeFormat,
-    ) -> io::Result<Self> {
+    /// - If you know the relation being verified, use [read], as that allows
+    ///   you to use formatted instance, instead of its raw `Vec<F>` form.
+    pub fn read_raw<R: io::Read>(reader: &mut R, format: SerdeFormat) -> io::Result<Self> {
         #[derive(Clone)]
-        /// We create a dummy relation to be able to deserialise the verifying key. The
-        /// implication of using this relation is that the instances are assumed to be
-        /// in raw `Vec<F>` form.
+        /// We create a dummy relation to be able to deserialise the verifying
+        /// key. The implication of using this relation is that the
+        /// instances are assumed to be in raw `Vec<F>` form.
         struct DummyRelation;
 
         impl Relation for DummyRelation {
@@ -1155,7 +1153,13 @@ impl MidnightVK {
                 todo!()
             }
 
-            fn circuit(&self, _std_lib: &ZkStdLib, _layouter: &mut impl Layouter<F>, _instance: Value<Self::Instance>, _witness: Value<Self::Witness>) -> Result<(), Error> {
+            fn circuit(
+                &self,
+                _std_lib: &ZkStdLib,
+                _layouter: &mut impl Layouter<F>,
+                _instance: Value<Self::Instance>,
+                _witness: Value<Self::Witness>,
+            ) -> Result<(), Error> {
                 todo!()
             }
 
@@ -1173,7 +1177,8 @@ impl MidnightVK {
         reader.read_exact(&mut bytes)?;
         let nb_public_inputs = u32::from_le_bytes(bytes) as usize;
 
-        let vk = VerifyingKey::read::<R, MidnightCircuit<DummyRelation>>(reader, format, architecture)?;
+        let vk =
+            VerifyingKey::read::<R, MidnightCircuit<DummyRelation>>(reader, format, architecture)?;
 
         Ok(MidnightVK {
             architecture,

@@ -28,6 +28,7 @@ verification keys break backwards compatibility.
 * EqualityInstructions & AssertionInstructions implementation for AssignedVectors [#574](https://github.com/midnightntwrk/midnight-circuits/pull/574)
 * DivisionInstructions [#574](https://github.com/midnightntwrk/midnight-circuits/pull/574)
 * Add Base64Vec intialization instruction + fix alignment bug [#20](https://github.com/midnightntwrk/midnight-zk/pull/20)
+* Add a deserialisation function that does not need to know the relation [#18](https://github.com/midnightntwrk/midnight-zk/pull/18/commits/973467fecd6c31c6b57d06c89dfa0c7dd00bef2b)
 
 ### Changed
 * Add holder key check on credential example [#542](https://github.com/midnightntwrk/midnight-circuits/pull/542)
