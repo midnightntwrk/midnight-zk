@@ -240,14 +240,18 @@ fn main() {
     let instance = (msg_hash, pks);
     let witness = signatures;
 
-    let proof = compact_std_lib::prove(&srs, &pk, &relation, &instance, witness, OsRng)
-        .expect("Proof generation should not fail");
-
-    assert!(compact_std_lib::verify::<BitcoinThresholdECDSA>(
-        &srs.verifier_params(),
-        &vk,
-        &instance,
-        &proof
+    let proof = compact_std_lib::prove::<BitcoinThresholdECDSA, blake2b_simd::State>(
+        &srs, &pk, &relation, &instance, witness, OsRng,
     )
-    .is_ok())
+    .expect("Proof generation should not fail");
+
+    assert!(
+        compact_std_lib::verify::<BitcoinThresholdECDSA, blake2b_simd::State>(
+            &srs.verifier_params(),
+            &vk,
+            &instance,
+            &proof
+        )
+        .is_ok()
+    )
 }

@@ -279,16 +279,20 @@ fn main() {
     let witness = AtalaJsonECDSA::witness_from_blob(BLOB);
     let witness = (witness.0, witness.1, HOLDER_SK);
 
-    let proof = compact_std_lib::prove(&srs, &pk, &relation, &instance, witness, OsRng)
-        .expect("Proof generation should not fail");
-
-    assert!(compact_std_lib::verify::<AtalaJsonECDSA>(
-        &srs.verifier_params(),
-        &vk,
-        &instance,
-        &proof
+    let proof = compact_std_lib::prove::<AtalaJsonECDSA, blake2b_simd::State>(
+        &srs, &pk, &relation, &instance, witness, OsRng,
     )
-    .is_ok())
+    .expect("Proof generation should not fail");
+
+    assert!(
+        compact_std_lib::verify::<AtalaJsonECDSA, blake2b_simd::State>(
+            &srs.verifier_params(),
+            &vk,
+            &instance,
+            &proof
+        )
+        .is_ok()
+    )
 }
 
 // Helper functions for base64 encoded credentials.

@@ -106,15 +106,21 @@ fn main() {
     for _ in 0..N {
         let witness = JubjubScalar::random(&mut OsRng);
         let instance = JubjubSubgroup::generator() * witness;
-        let proof = compact_std_lib::prove(&srs, &pk, &relation, &instance, witness, OsRng)
-            .expect("Proof generation should not fail");
+        let proof = compact_std_lib::prove::<EccExample, blake2b_simd::State>(
+            &srs, &pk, &relation, &instance, witness, OsRng,
+        )
+        .expect("Proof generation should not fail");
 
         vks.push(vk.clone());
         pis.push(EccExample::format_instance(&instance));
         proofs.push(proof);
     }
 
-    assert!(
-        compact_std_lib::batch_verify(&vec![srs.verifier_params(); N], &vks, &pis, &proofs).is_ok()
+    assert!(compact_std_lib::batch_verify::<blake2b_simd::State>(
+        &vec![srs.verifier_params(); N],
+        &vks,
+        &pis,
+        &proofs
     )
+    .is_ok())
 }

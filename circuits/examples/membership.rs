@@ -135,14 +135,18 @@ fn main() {
     let witness = (F::ONE, sets, mt.clone());
     let instance = (mt.succinct_repr(), proof_set);
 
-    let proof = compact_std_lib::prove(&srs, &pk, &relation, &instance, witness, OsRng)
-        .expect("Proof generation should not fail");
-
-    assert!(compact_std_lib::verify::<MembershipExample>(
-        &srs.verifier_params(),
-        &vk,
-        &instance,
-        &proof
+    let proof = compact_std_lib::prove::<MembershipExample, blake2b_simd::State>(
+        &srs, &pk, &relation, &instance, witness, OsRng,
     )
-    .is_ok())
+    .expect("Proof generation should not fail");
+
+    assert!(
+        compact_std_lib::verify::<MembershipExample, blake2b_simd::State>(
+            &srs.verifier_params(),
+            &vk,
+            &instance,
+            &proof
+        )
+        .is_ok()
+    )
 }

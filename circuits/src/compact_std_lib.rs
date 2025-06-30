@@ -27,7 +27,6 @@
 
 use std::{cell::RefCell, cmp::max, convert::TryInto, fmt::Debug, io, rc::Rc};
 
-use blake2b_simd::State as Blake2bState;
 use blstrs::G1Projective;
 use ff::Field;
 use group::{prime::PrimeCurveAffine, Group};
@@ -44,7 +43,7 @@ use midnight_proofs::{
             KZGCommitmentScheme,
         },
     },
-    transcript::{CircuitTranscript, Transcript},
+    transcript::{CircuitTranscript, Hashable, Sampleable, Transcript, TranscriptHash},
     utils::SerdeFormat,
 };
 use num_bigint::BigUint;
@@ -1128,6 +1127,11 @@ impl MidnightVK {
     pub fn k(&self) -> u8 {
         self.vk.get_domain().k() as u8
     }
+
+    /// The underlying midnight-proofs verifying key.
+    pub fn vk(&self) -> &VerifyingKey<blstrs::Fq, KZGCommitmentScheme<blstrs::Bls12>> {
+        &self.vk
+    }
 }
 
 /// A proving key of a Midnight circuit.
@@ -1182,6 +1186,11 @@ impl<Rel: Relation> MidnightPK<Rel> {
     /// The size of the domain associated to this proving key.
     pub fn k(&self) -> u8 {
         self.k
+    }
+
+    /// The underlying midnight-proofs proving key.
+    pub fn pk(&self) -> &ProvingKey<blstrs::Fq, KZGCommitmentScheme<blstrs::Bls12>> {
+        &self.pk
     }
 }
 
@@ -1276,16 +1285,19 @@ impl<Rel: Relation> MidnightPK<Rel> {
 /// let witness: [u8; 24] = core::array::from_fn(|_| rng.gen());
 /// let instance = sha2::Sha256::digest(witness).into();
 ///
-/// let proof = compact_std_lib::prove(&srs, &pk, &relation, &instance, witness, rng)
-///     .expect("Proof generation should not fail");
-///
-/// assert!(compact_std_lib::verify::<ShaPreImageCircuit>(
-///     &srs.verifier_params(),
-///     &vk,
-///     &instance,
-///     &proof
+/// let proof = compact_std_lib::prove::<ShaPreImageCircuit, blake2b_simd::State>(
+///     &srs, &pk, &relation, &instance, witness, OsRng,
 /// )
-/// .is_ok())
+/// .expect("Proof generation should not fail");
+/// assert!(
+///     compact_std_lib::verify::<ShaPreImageCircuit, blake2b_simd::State>(
+///         &srs.verifier_params(),
+///         &vk,
+///         &instance,
+///         &proof
+///     )
+///     .is_ok()
+/// )
 /// ```
 pub trait Relation: Clone {
     /// The instance of the NP-relation described by this circuit.
@@ -1440,14 +1452,18 @@ pub fn setup_pk<R: Relation>(relation: &R, vk: &MidnightVK) -> MidnightPK<R> {
 
 /// Produces a proof of relation `R` for the given instance (using the given
 /// proving key and witness).
-pub fn prove<R: Relation>(
+pub fn prove<R: Relation, H: TranscriptHash>(
     params: &ParamsKZG<blstrs::Bls12>,
     pk: &MidnightPK<R>,
     relation: &R,
     instance: &R::Instance,
     witness: R::Witness,
     rng: impl RngCore + CryptoRng,
-) -> Result<Vec<u8>, Error> {
+) -> Result<Vec<u8>, Error>
+where
+    G1Projective: Hashable<H>,
+    F: Hashable<H> + Sampleable<H>,
+{
     let circuit = MidnightCircuit {
         relation,
         instance: Value::known(instance.clone()),
@@ -1455,22 +1471,26 @@ pub fn prove<R: Relation>(
         nb_public_inputs: Rc::new(RefCell::new(None)),
     };
     let pi = R::format_instance(instance);
-    BlstPLONK::<MidnightCircuit<R>>::prove(params, &pk.pk, &circuit, 1, &[&[], &pi], rng)
+    BlstPLONK::<MidnightCircuit<R>>::prove::<H>(params, &pk.pk, &circuit, 1, &[&[], &pi], rng)
 }
 
 /// Verifies the given proof of relation `R` with respect to the given instance.
 /// Returns `Ok(())` if the proof is valid.
-pub fn verify<R: Relation>(
+pub fn verify<R: Relation, H: TranscriptHash>(
     params_verifier: &ParamsVerifierKZG<blstrs::Bls12>,
     vk: &MidnightVK,
     instance: &R::Instance,
     proof: &[u8],
-) -> Result<(), Error> {
+) -> Result<(), Error>
+where
+    G1Projective: Hashable<H>,
+    F: Hashable<H> + Sampleable<H>,
+{
     let pi = R::format_instance(instance);
     if pi.len() != vk.nb_public_inputs {
         return Err(Error::InvalidInstances);
     }
-    BlstPLONK::<MidnightCircuit<R>>::verify(
+    BlstPLONK::<MidnightCircuit<R>>::verify::<H>(
         params_verifier,
         &vk.vk,
         &[blstrs::G1Affine::identity()],
@@ -1486,41 +1506,41 @@ pub fn verify<R: Relation>(
 /// in raw format (`Vec<F>`).
 ///
 /// Returns `Ok(())` if all proofs are valid.
-pub fn batch_verify(
+pub fn batch_verify<H: TranscriptHash>(
     params_verifier: &[ParamsVerifierKZG<blstrs::Bls12>],
     vks: &[MidnightVK],
     pis: &[Vec<F>],
     proofs: &[Vec<u8>],
-) -> Result<(), Error> {
+) -> Result<(), Error>
+where
+    G1Projective: Hashable<H>,
+    F: Hashable<H> + Sampleable<H>,
+{
     let n = params_verifier.len();
     if vks.len() != n || pis.len() != n || proofs.len() != n {
         // TODO: have richer types in halo2
         return Err(Error::InvalidInstances);
     }
 
-    let guards =
-        vks.iter()
-            .zip(pis.iter())
-            .zip(proofs.iter())
-            .map(|((vk, pi), proof)| {
-                if pi.len() != vk.nb_public_inputs {
-                    return Err(Error::InvalidInstances);
-                }
+    let guards = vks
+        .iter()
+        .zip(pis.iter())
+        .zip(proofs.iter())
+        .map(|((vk, pi), proof)| {
+            if pi.len() != vk.nb_public_inputs {
+                return Err(Error::InvalidInstances);
+            }
 
-                let mut transcript = CircuitTranscript::init_from_bytes(proof);
-                prepare::<
-                    blstrs::Fq,
-                    KZGCommitmentScheme<blstrs::Bls12>,
-                    CircuitTranscript<Blake2bState>,
-                >(
-                    &vk.vk,
-                    &[&[blstrs::G1Projective::identity()]],
-                    // TODO: We could batch here proofs with the same vk.
-                    &[&[pi]],
-                    &mut transcript,
-                )
-            })
-            .collect::<Result<Vec<_>, Error>>()?;
+            let mut transcript = CircuitTranscript::init_from_bytes(proof);
+            prepare::<blstrs::Fq, KZGCommitmentScheme<blstrs::Bls12>, CircuitTranscript<H>>(
+                &vk.vk,
+                &[&[blstrs::G1Projective::identity()]],
+                // TODO: We could batch here proofs with the same vk.
+                &[&[pi]],
+                &mut transcript,
+            )
+        })
+        .collect::<Result<Vec<_>, Error>>()?;
 
     if DualMSM::batch_verify(guards.into_iter(), params_verifier.iter()).is_ok() {
         Ok(())

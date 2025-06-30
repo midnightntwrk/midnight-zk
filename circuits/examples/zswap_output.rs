@@ -235,14 +235,18 @@ fn main() {
     let witness = (zswap_pk, coin, rc);
     let instance = (coin_com, value_com);
 
-    let proof = compact_std_lib::prove(&srs, &pk, &relation, &instance, witness, OsRng)
-        .expect("Proof generation should not fail");
-
-    assert!(compact_std_lib::verify::<ZSwapOutputCircuit>(
-        &srs.verifier_params(),
-        &vk,
-        &instance,
-        &proof
+    let proof = compact_std_lib::prove::<ZSwapOutputCircuit, blake2b_simd::State>(
+        &srs, &pk, &relation, &instance, witness, OsRng,
     )
-    .is_ok())
+    .expect("Proof generation should not fail");
+
+    assert!(
+        compact_std_lib::verify::<ZSwapOutputCircuit, blake2b_simd::State>(
+            &srs.verifier_params(),
+            &vk,
+            &instance,
+            &proof
+        )
+        .is_ok()
+    )
 }

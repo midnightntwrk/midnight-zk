@@ -114,16 +114,19 @@ let mut rng = ChaCha8Rng::from_entropy();
 let witness: [u8; 24] = core::array::from_fn(|_| rng.gen());
 let instance = sha2::Sha256::digest(witness).into();
 
-let proof = compact_std_lib::prove(&srs, &pk, &relation, &instance, witness, OsRng)
-    .expect("Proof generation should not fail");
-
-assert!(compact_std_lib::verify::<ShaPreImageCircuit>(
-    &srs.verifier_params(),
-    &vk,
-    &instance,
-    &proof
+let proof = compact_std_lib::prove::<ShaPreImageCircuit, blake2b_simd::State>(
+    &srs, &pk, &relation, &instance, witness, OsRng,
 )
-.is_ok())
+.expect("Proof generation should not fail");
+assert!(
+    compact_std_lib::verify::<ShaPreImageCircuit, blake2b_simd::State>(
+        &srs.verifier_params(),
+        &vk,
+        &instance,
+        &proof
+    )
+    .is_ok()
+)
 ```
 
 You can find more examples in the examples directory.
