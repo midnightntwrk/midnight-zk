@@ -160,11 +160,33 @@ impl<F: PrimeField, const M: usize, const A: usize> Base64VarInstructions<F, M, 
         Ok(Base64Vec(vec))
     }
 
-    fn var_decode_base64url<const M_OUT: usize>(
+    fn base64_from_vec(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        vec: &AssignedVector<F, AssignedByte<F>, M, A>,
+    ) -> Result<Base64Vec<F, M, A>, Error> {
+        let ng = &self.native_gadget;
+        let filler = ng.assign_fixed(layouter, ALT_PAD as u8)?;
+        let flags = ng.padding_flag(layouter, &vec)?;
+        let result = vec
+            .buffer
+            .iter()
+            .zip(flags.iter())
+            .map(|(elem, is_padding)| ng.select(layouter, is_padding, &filler, elem))
+            .collect::<Result<Vec<_>, Error>>()?
+            .try_into()
+            .unwrap();
+        Ok(Base64Vec(AssignedVector {
+            buffer: result,
+            len: vec.len.clone(),
+        }))
+    }
+
+    fn var_decode_base64url<const M_OUT: usize, const A_OUT: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
         b64url_input: &Base64Vec<F, M, A>,
-    ) -> Result<AssignedVector<F, AssignedByte<F>, M_OUT, 3>, Error> {
+    ) -> Result<AssignedVector<F, AssignedByte<F>, M_OUT, A_OUT>, Error> {
         let vec = self.url_to_standard(layouter, &b64url_input.0.buffer)?;
 
         let b64_input = Base64Vec::<F, M, A>(AssignedVector {
@@ -175,16 +197,17 @@ impl<F: PrimeField, const M: usize, const A: usize> Base64VarInstructions<F, M, 
         self.var_decode_base64(layouter, &b64_input)
     }
 
-    fn var_decode_base64<const M_OUT: usize>(
+    fn var_decode_base64<const M_OUT: usize, const A_OUT: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
         b64_input: &Base64Vec<F, M, A>,
-    ) -> Result<AssignedVector<F, AssignedByte<F>, M_OUT, 3>, Error> {
+    ) -> Result<AssignedVector<F, AssignedByte<F>, M_OUT, A_OUT>, Error> {
         // Assert correct capacity.
         // This is critical! We are decoding the whole buffer, so we must
         // be certain that the actual data is correctly aligned.
         assert_eq!(A % 4, 0);
         assert_eq!(M * 3, M_OUT * 4);
+        assert_eq!(A * 3, A_OUT * 4);
 
         // Compute and constrain new length.
         let three = F::from(3u64);
@@ -206,7 +229,7 @@ impl<F: PrimeField, const M: usize, const A: usize> Base64VarInstructions<F, M, 
         // Compute decoded buffer.
         let out_buffer = self.decode_base64(layouter, &b64_input.0.buffer, true)?;
 
-        Ok(AssignedVector::<_, _, M_OUT, 3> {
+        Ok(AssignedVector::<_, _, M_OUT, A_OUT> {
             buffer: out_buffer.try_into().unwrap(),
             len: new_len,
         })
