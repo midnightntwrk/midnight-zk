@@ -1123,6 +1123,65 @@ impl MidnightVK {
         })
     }
 
+    /// Reads a verification key from a buffer, without taking as input a `Relation`.
+    /// The implications of not giving as input the `Relation` is that the verifier
+    /// cannot define the structure of the instance, which in turn implies that the
+    /// verifier needs to format the instance as a vector of `F`.
+    ///
+    /// The `format` must match the one that was used when writing the key.
+    /// If the key was written with `RawBytes`, it can be read with `RawBytes`
+    /// or `RawBytesUnchecked` (which is faster).
+    ///
+    /// # WARNING
+    /// - Use `RawBytesUnchecked` only if you trust the party who wrote the key.
+    ///
+    /// - If you know the relation being verified, use [read], as that allows you
+    ///   to use formatted instance, instead of its raw `Vec<F>` form.
+    pub fn read_raw<R: io::Read>(
+        reader: &mut R,
+        format: SerdeFormat,
+    ) -> io::Result<Self> {
+        #[derive(Clone)]
+        /// We create a dummy relation to be able to deserialise the verifying key. The
+        /// implication of using this relation is that the instances are assumed to be
+        /// in raw `Vec<F>` form.
+        struct DummyRelation;
+
+        impl Relation for DummyRelation {
+            type Instance = Vec<F>;
+            type Witness = ();
+
+            fn format_instance(_instance: &Self::Instance) -> Vec<F> {
+                todo!()
+            }
+
+            fn circuit(&self, _std_lib: &ZkStdLib, _layouter: &mut impl Layouter<F>, _instance: Value<Self::Instance>, _witness: Value<Self::Witness>) -> Result<(), Error> {
+                todo!()
+            }
+
+            fn write_relation<W: io::Write>(&self, _writer: &mut W) -> io::Result<()> {
+                todo!()
+            }
+
+            fn read_relation<R: io::Read>(_reader: &mut R) -> io::Result<Self> {
+                todo!()
+            }
+        }
+        let architecture = ZkStdLibArch::read(reader)?;
+
+        let mut bytes = [0u8; 4];
+        reader.read_exact(&mut bytes)?;
+        let nb_public_inputs = u32::from_le_bytes(bytes) as usize;
+
+        let vk = VerifyingKey::read::<R, MidnightCircuit<DummyRelation>>(reader, format, architecture)?;
+
+        Ok(MidnightVK {
+            architecture,
+            nb_public_inputs,
+            vk,
+        })
+    }
+
     /// The size of the domain associated to this verifying key.
     pub fn k(&self) -> u8 {
         self.vk.get_domain().k() as u8

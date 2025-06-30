@@ -124,7 +124,15 @@ fn vk_serde_test(architecture: ZkStdLibArch, write_format: SerdeFormat, read_for
     let mut buffer2 = Vec::new();
     vk2.write(&mut buffer2, write_format).unwrap();
 
-    assert_eq!(buffer, buffer2)
+    let mut cursor = std::io::Cursor::new(buffer.clone());
+    let vk3 = MidnightVK::read_raw(&mut cursor, read_format).unwrap();
+
+    let mut buffer3 = Vec::new();
+    vk3.write(&mut buffer3, write_format).unwrap();
+
+    assert_eq!(buffer, buffer2);
+    assert_eq!(buffer, buffer3);
+
 }
 
 #[test]
