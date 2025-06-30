@@ -126,7 +126,7 @@ impl<'com, F: PrimeField, CS: PolynomialCommitmentScheme<F>> CommitmentReference
     pub(crate) fn as_terms(&self, eval_point_opt: Option<F>) -> Vec<(F, CS::Commitment)> {
         match self.clone() {
             CommitmentReference::OnePiece(com) => {
-                debug_assert!(eval_point_opt.is_none());
+                assert!(eval_point_opt.is_none());
                 vec![(F::ONE, com.clone())]
             }
             CommitmentReference::Chopped(parts, n) => {
