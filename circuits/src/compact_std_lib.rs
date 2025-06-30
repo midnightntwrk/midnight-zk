@@ -268,7 +268,7 @@ impl ZkStdLib {
         let sha256_table16_chip = (config.table16_config.as_ref())
             .map(|table16_config| Table16Chip::construct(table16_config.clone()));
         let poseidon_gadget = (config.poseidon_config.as_ref())
-            .map(|poseidon_config| PoseidonChip::new(poseidon_config, &native_gadget));
+            .map(|poseidon_config| PoseidonChip::new(poseidon_config, &native_chip));
         let htc_gadget = (jubjub_chip.as_ref())
             .zip(poseidon_gadget.as_ref())
             .map(|(ecc_chip, poseidon_gadget)| HashToCurveGadget::new(poseidon_gadget, ecc_chip));

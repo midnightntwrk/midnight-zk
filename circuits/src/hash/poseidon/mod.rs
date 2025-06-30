@@ -107,6 +107,7 @@ pub mod round_skips;
 use constants::{PoseidonField, WIDTH};
 pub use poseidon_chip::*;
 pub use poseidon_cpu::*;
+pub use poseidon_varlen::VarLenPoseidonGadget;
 
 /// Number of advice columns used by the Poseidon chip.
 pub const NB_POSEIDON_ADVICE_COLS: usize = WIDTH + NB_SKIPS_CIRCUIT;

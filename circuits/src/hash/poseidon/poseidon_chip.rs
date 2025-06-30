@@ -30,14 +30,11 @@ use super::{
 };
 #[cfg(any(test, feature = "testing"))]
 use crate::field::{
-    decomposition::{
-        chip::P2RDecompositionConfig,
-        pow2range::{Pow2RangeChip, NB_POW2RANGE_COLS},
-    },
     native::{NB_ARITH_COLS, NB_ARITH_FIXED_COLS},
+    NativeConfig,
 };
 use crate::{
-    field::{decomposition::chip::P2RDecompositionChip, NativeChip, NativeGadget},
+    field::NativeChip,
     instructions::{
         ArithInstructions, AssignmentInstructions, HashInstructions, SpongeInstructions,
     },
@@ -56,9 +53,6 @@ pub(crate) const NB_SKIPS_CIRCUIT: usize = 5;
 // internal state of Poseidon's computation. Does not account for the additional
 // registers needed in skipped rounds.
 pub(super) type AssignedRegister<F> = [AssignedNative<F>; WIDTH];
-
-// Native gadget functions.
-type NG<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
 
 /// In-circuit Poseidon state.
 #[derive(Clone, Debug)]
@@ -82,7 +76,7 @@ pub struct PoseidonConfig<F: PoseidonField> {
     /// Advice columns, including those potentially needed for optimised
     /// skipping rounds. The Poseidon circuit (`PoseidonChip::permutation`)
     /// assumes that the first `WIDTH` columns of `register_cols` are the (first
-    /// `WIDTH`) columns where `native_gadget::add_constants_in_region` assigns
+    /// `WIDTH`) columns where `native_chip::add_constants_in_region` assigns
     /// its result. An assertion is checking this assumption in
     /// `PoseidonChip::permutation` in debug mode.
     register_cols: [Column<Advice>; NB_POSEIDON_ADVICE_COLS],
@@ -96,13 +90,11 @@ pub struct PoseidonConfig<F: PoseidonField> {
     pre_computed: PreComputedRoundCircuit<F>,
 }
 
-/// Chip for Native operations.
+/// Chip for Poseidon operations.
 #[derive(Clone, Debug)]
 pub struct PoseidonChip<F: PoseidonField> {
-    /// Configuration of Poseidon chips.
     config: PoseidonConfig<F>,
-    /// Calls to native gadgets functions.
-    pub(super) native_gadget: NG<F>,
+    native_chip: NativeChip<F>,
 }
 
 impl<F: PoseidonField> Chip<F> for PoseidonChip<F> {
@@ -171,12 +163,12 @@ impl<F: PoseidonField> ComposableChip<F> for PoseidonChip<F> {
         [Column<Fixed>; NB_POSEIDON_FIXED_COLS],
     );
 
-    type InstructionDeps = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
+    type InstructionDeps = NativeChip<F>;
 
-    fn new(config: &PoseidonConfig<F>, native_gadget: &Self::InstructionDeps) -> Self {
+    fn new(config: &PoseidonConfig<F>, native_chip: &Self::InstructionDeps) -> Self {
         Self {
             config: config.clone(),
-            native_gadget: native_gadget.clone(),
+            native_chip: native_chip.clone(),
         }
     }
 
@@ -424,7 +416,6 @@ impl<F: PoseidonField> PoseidonChip<F> {
                 let mut offset: usize = 0;
 
                 let mut state: AssignedRegister<F> = self
-                    .native_gadget
                     .native_chip
                     .add_constants_in_region(
                         &mut region,
@@ -473,9 +464,9 @@ impl<F: PoseidonField> SpongeInstructions<F, AssignedNative<F>, AssignedNative<F
         layouter: &mut impl Layouter<F>,
         input_len: Option<usize>,
     ) -> Result<Self::State, Error> {
-        let zero = self.native_gadget.assign_fixed(layouter, F::ZERO)?;
+        let zero = self.native_chip.assign_fixed(layouter, F::ZERO)?;
         let mut register: AssignedRegister<F> = vec![zero; WIDTH].try_into().unwrap();
-        register[RATE] = self.native_gadget.assign_fixed(
+        register[RATE] = self.native_chip.assign_fixed(
             layouter,
             F::from_u128(input_len.map(|len| len as u128).unwrap_or(1 << 64)),
         )?;
@@ -519,7 +510,7 @@ impl<F: PoseidonField> SpongeInstructions<F, AssignedNative<F>, AssignedNative<F
         match state.input_len {
             None => {
                 let padding = self
-                    .native_gadget
+                    .native_chip
                     .assign_fixed(layouter, F::from(state.queue.len() as u64))?;
                 state.queue.push(padding);
             }
@@ -532,7 +523,7 @@ impl<F: PoseidonField> SpongeInstructions<F, AssignedNative<F>, AssignedNative<F
 
         for chunk in state.queue.chunks(RATE) {
             for (entry, value) in state.register.iter_mut().zip(chunk.iter()) {
-                *entry = self.native_gadget.add(layouter, entry, value)?;
+                *entry = self.native_chip.add(layouter, entry, value)?;
             }
             state.register = self.permutation(layouter, &state.register)?;
         }
@@ -559,14 +550,11 @@ impl<F: PoseidonField> HashInstructions<F, AssignedNative<F>, AssignedNative<F>>
 
 #[cfg(any(test, feature = "testing"))]
 impl<F: PoseidonField> FromScratch<F> for PoseidonChip<F> {
-    type Config = (P2RDecompositionConfig, PoseidonConfig<F>);
+    type Config = (NativeConfig, PoseidonConfig<F>);
 
     fn new_from_scratch(config: &Self::Config) -> Self {
-        let max_bit_len = 8;
-        let native_chip = NativeChip::new(&config.0.native_config, &());
-        let core_decomposition_chip = P2RDecompositionChip::new(&config.0, &max_bit_len);
-        let native_gadget = NG::<F>::new(core_decomposition_chip, native_chip);
-        PoseidonChip::new(&config.1, &native_gadget)
+        let native_chip = NativeChip::new(&config.0, &());
+        PoseidonChip::new(&config.1, &native_chip)
     }
 
     fn configure_from_scratch(
@@ -599,17 +587,12 @@ impl<F: PoseidonField> FromScratch<F> for PoseidonChip<F> {
                 fixed_cols[..NB_POSEIDON_FIXED_COLS].try_into().unwrap(),
             ),
         );
-        let pow2range_config = Pow2RangeChip::configure(meta, &advice_cols[1..=NB_POW2RANGE_COLS]);
 
-        let native_gadget_config = P2RDecompositionConfig {
-            native_config,
-            pow2range_config,
-        };
-        (native_gadget_config, poseidon_config)
+        (native_config, poseidon_config)
     }
 
     fn load_from_scratch(layouter: &mut impl Layouter<F>, config: &Self::Config) {
-        NG::<F>::load_from_scratch(layouter, &config.0)
+        NativeChip::<F>::load_from_scratch(layouter, &config.0)
     }
 }
 
@@ -666,7 +649,7 @@ mod tests {
             PoseidonChip::load_from_scratch(&mut layouter, &config);
 
             let inputs: AssignedRegister<F> = poseidon_chip
-                .native_gadget
+                .native_chip
                 .assign_many(&mut layouter, &self.inputs)?
                 .try_into()
                 .unwrap();
@@ -674,7 +657,7 @@ mod tests {
 
             for (out, expected) in outputs.iter().zip(self.expected.iter()) {
                 poseidon_chip
-                    .native_gadget
+                    .native_chip
                     .assert_equal_to_fixed(&mut layouter, out, *expected)?;
             }
 
@@ -751,7 +734,7 @@ mod tests {
             AssignedNative<blstrs::Fq>,
             AssignedNative<blstrs::Fq>,
             PoseidonChip<blstrs::Fq>,
-            NG<blstrs::Fq>,
+            NativeChip<blstrs::Fq>,
         >(true, "Poseidon", 10);
     }
 }

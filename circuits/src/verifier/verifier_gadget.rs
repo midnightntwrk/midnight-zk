@@ -611,15 +611,15 @@ pub(crate) mod tests {
             config: Self::Config,
             mut layouter: impl Layouter<F>,
         ) -> Result<(), Error> {
-            let native_gadget = NativeGadget::new_from_scratch(&config.0);
+            let native_chip = NativeChip::new_from_scratch(&config.0);
             let poseidon_chip = PoseidonChip::new_from_scratch(&config);
             PoseidonChip::load_from_scratch(&mut layouter, &config);
 
-            let inputs = native_gadget
+            let inputs = native_chip
                 .assign_many(&mut layouter, &self.poseidon_preimage.transpose_array())?;
             let output = poseidon_chip.hash(&mut layouter, &inputs)?;
 
-            native_gadget.constrain_as_public_input(&mut layouter, &output)
+            native_chip.constrain_as_public_input(&mut layouter, &output)
         }
     }
 
@@ -699,7 +699,7 @@ pub(crate) mod tests {
             let core_decomp_chip = P2RDecompositionChip::new(&config.1, &16);
             let native_gadget = NativeGadget::new(core_decomp_chip.clone(), native_chip.clone());
             let curve_chip = { ForeignEccChip::new(&config.2, &native_gadget, &native_gadget) };
-            let poseidon_chip = PoseidonChip::new(&config.3, &native_gadget);
+            let poseidon_chip = PoseidonChip::new(&config.3, &native_chip);
 
             let verifier_chip = VerifierGadget::new(&curve_chip, &native_gadget, &poseidon_chip);
 

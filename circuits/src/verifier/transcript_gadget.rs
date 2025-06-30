@@ -218,10 +218,9 @@ impl<C: SelfEmulationCurve> FromScratch<C::Scalar> for TranscriptGadget<C> {
         let max_bit_len = 8;
         let native_chip = NativeChip::new_from_scratch(&config.0);
         let core_decomp_chip = P2RDecompositionChip::new(&config.1, &max_bit_len);
-        let native_gadget = NativeGadget::new(core_decomp_chip.clone(), native_chip.clone());
+        let poseidon_chip = PoseidonChip::new(&config.3, &native_chip);
         let scalar_chip = NativeGadget::new(core_decomp_chip, native_chip);
         let curve_chip = { ForeignEccChip::new(&config.2, &scalar_chip, &scalar_chip) };
-        let poseidon_chip = PoseidonChip::new(&config.3, &native_gadget);
         TranscriptGadget::new(&scalar_chip, &curve_chip, &poseidon_chip)
     }
 

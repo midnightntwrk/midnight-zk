@@ -26,60 +26,60 @@
   "Map gadget": {
     "Get": {
       "advice_columns": "13",
-      "column_queries": "79",
-      "fixed_columns": "44",
-      "lookups": "8",
+      "column_queries": "63",
+      "fixed_columns": "40",
+      "lookups": "4",
       "max_deg": "6",
       "permutations": "12",
       "point_sets": "4",
       "rows": "3447",
-      "table_rows": "1022"
+      "table_rows": "511"
     },
     "Insert": {
       "advice_columns": "13",
-      "column_queries": "79",
-      "fixed_columns": "44",
-      "lookups": "8",
+      "column_queries": "63",
+      "fixed_columns": "40",
+      "lookups": "4",
       "max_deg": "6",
       "permutations": "12",
       "point_sets": "4",
       "rows": "6861",
-      "table_rows": "1022"
+      "table_rows": "511"
     }
   },
   "Poseidon": {
     "hash": {
       "advice_columns": "13",
-      "column_queries": "79",
-      "fixed_columns": "44",
-      "lookups": "8",
+      "column_queries": "47",
+      "fixed_columns": "36",
+      "lookups": "0",
       "max_deg": "6",
       "permutations": "12",
-      "point_sets": "4",
+      "point_sets": "3",
       "rows": "599",
-      "table_rows": "1022"
+      "table_rows": "0"
     },
     "one_permutation": {
       "advice_columns": "8",
-      "column_queries": "46",
-      "fixed_columns": "24",
-      "lookups": "4",
+      "column_queries": "30",
+      "fixed_columns": "20",
+      "lookups": "0",
       "max_deg": "6",
       "permutations": "7",
-      "point_sets": "4",
+      "point_sets": "3",
       "rows": "24",
-      "table_rows": "511"
+      "table_rows": "0"
     },
     "sponge": {
       "advice_columns": "13",
-      "column_queries": "79",
-      "fixed_columns": "44",
-      "lookups": "8",
+      "column_queries": "63",
+      "fixed_columns": "40",
+      "lookups": "4",
       "max_deg": "6",
       "permutations": "12",
       "point_sets": "4",
       "rows": "661",
-      "table_rows": "1022"
+      "table_rows": "511"
     }
   },
   "ShaTable11": {
@@ -1779,14 +1779,14 @@
     },
     "hash_to_curve": {
       "advice_columns": "25",
-      "column_queries": "108",
-      "fixed_columns": "70",
-      "lookups": "8",
+      "column_queries": "92",
+      "fixed_columns": "66",
+      "lookups": "4",
       "max_deg": "7",
       "permutations": "24",
       "point_sets": "4",
       "rows": "299",
-      "table_rows": "1022"
+      "table_rows": "511"
     },
     "is_equal": {
       "advice_columns": "12",
