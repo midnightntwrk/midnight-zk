@@ -27,6 +27,7 @@ verification keys break backwards compatibility.
 * Adds support for multiple hard-coded automata in a single configurated circuit [#569](https://github.com/midnightntwrk/midnight-circuits/pull/569)
 * EqualityInstructions & AssertionInstructions implementation for AssignedVectors [#574](https://github.com/midnightntwrk/midnight-circuits/pull/574)
 * DivisionInstructions [#574](https://github.com/midnightntwrk/midnight-circuits/pull/574)
+* Add Base64Vec intialization instruction + fix alignment bug [#20](https://github.com/midnightntwrk/midnight-zk/pull/20)
 
 ### Changed
 * Add holder key check on credential example [#542](https://github.com/midnightntwrk/midnight-circuits/pull/542)
