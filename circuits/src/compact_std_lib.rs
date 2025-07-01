@@ -1136,7 +1136,7 @@ impl MidnightVK {
     /// # WARNING
     /// - Use `RawBytesUnchecked` only if you trust the party who wrote the key.
     ///
-    /// - If you know the relation being verified, use [read], as that allows
+    /// - If you know the relation being verified, use [Self::read], as that allows
     ///   you to use formatted instance, instead of its raw `Vec<F>` form.
     pub fn read_raw<R: io::Read>(reader: &mut R, format: SerdeFormat) -> io::Result<Self> {
         #[derive(Clone)]
