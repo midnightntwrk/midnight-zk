@@ -103,10 +103,10 @@ impl<C: SelfEmulationCurve> Committed<C> {
 impl<C: SelfEmulationCurve> Evaluated<C> {
     pub(crate) fn queries(
         &self,
-        one: &AssignedBoundedScalar<C>, // 1
-        x: &AssignedScalar<C>,          // evaluation point x
-        x_next: &AssignedScalar<C>,     // x * \omega
-        x_prev: &AssignedScalar<C>,     // x * \omega^(-1)
+        one: &AssignedBoundedScalar<C::ScalarField>, // 1
+        x: &AssignedScalar<C>,                       // evaluation point x
+        x_next: &AssignedScalar<C>,                  // x * \omega
+        x_prev: &AssignedScalar<C>,                  // x * \omega^(-1)
     ) -> Vec<VerifierQuery<C>> {
         vec![
             VerifierQuery::new(

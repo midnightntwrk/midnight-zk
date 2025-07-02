@@ -58,8 +58,8 @@ pub struct Msm<C: SelfEmulationCurve> {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AssignedMsm<C: SelfEmulationCurve> {
     bases: Vec<AssignedPoint<C>>,
-    scalars: Vec<AssignedBoundedScalar<C>>,
-    fixed_base_scalars: BTreeMap<String, AssignedBoundedScalar<C>>,
+    scalars: Vec<AssignedBoundedScalar<C::ScalarField>>,
+    fixed_base_scalars: BTreeMap<String, AssignedBoundedScalar<C::ScalarField>>,
 }
 
 impl<C: SelfEmulationCurve> Msm<C> {
@@ -340,7 +340,7 @@ impl<C: SelfEmulationCurve> AssignedMsm<C> {
 
         let bases = curve_chip.assign_many(layouter, &bases_val)?;
         let scalars = assign_bounded_scalars(layouter, scalar_chip, &scalars_val)?;
-        let fixed_base_scalars: BTreeMap<String, AssignedBoundedScalar<C>> = {
+        let fixed_base_scalars: BTreeMap<String, AssignedBoundedScalar<C::ScalarField>> = {
             let scalars = assign_bounded_scalars(layouter, scalar_chip, &fixed_base_scalars_val)?;
             fixed_base_names.iter().cloned().zip(scalars).collect()
         };
@@ -363,7 +363,10 @@ impl<C: SelfEmulationCurve> AssignedMsm<C> {
     }
 
     /// Creates a new MSM from the given base (with a scalar of 1).
-    pub fn from_term(scalar: &AssignedBoundedScalar<C>, base: &AssignedPoint<C>) -> Self {
+    pub fn from_term(
+        scalar: &AssignedBoundedScalar<C::ScalarField>,
+        base: &AssignedPoint<C>,
+    ) -> Self {
         Self {
             scalars: vec![scalar.clone()],
             bases: vec![base.clone()],
@@ -372,7 +375,10 @@ impl<C: SelfEmulationCurve> AssignedMsm<C> {
     }
 
     /// Creates a new MSM from the given fixed base name (with a scalar of 1).
-    pub fn from_fixed_term(scalar: &AssignedBoundedScalar<C>, base_name: &str) -> Self {
+    pub fn from_fixed_term(
+        scalar: &AssignedBoundedScalar<C::ScalarField>,
+        base_name: &str,
+    ) -> Self {
         Self {
             scalars: vec![],
             bases: vec![],
@@ -383,7 +389,11 @@ impl<C: SelfEmulationCurve> AssignedMsm<C> {
     }
 
     /// Adds a `(scalar, base)` term to the AssignedMsm.
-    pub fn add_term(&mut self, scalar: &AssignedBoundedScalar<C>, base: &AssignedPoint<C>) {
+    pub fn add_term(
+        &mut self,
+        scalar: &AssignedBoundedScalar<C::ScalarField>,
+        base: &AssignedPoint<C>,
+    ) {
         self.scalars.push(scalar.clone());
         self.bases.push(base.clone());
     }
@@ -442,7 +452,7 @@ impl<C: SelfEmulationCurve> AssignedMsm<C> {
         &mut self,
         layouter: &mut impl Layouter<C::ScalarExt>,
         scalar_chip: &ScalarChip<C>,
-        r: &AssignedBoundedScalar<C>,
+        r: &AssignedBoundedScalar<C::ScalarField>,
     ) -> Result<(), Error> {
         self.scalars = (self.scalars.iter())
             .map(|s| mul_bounded_scalars(layouter, scalar_chip, s, r))
@@ -463,7 +473,7 @@ impl<C: SelfEmulationCurve> AssignedMsm<C> {
         layouter: &mut impl Layouter<C::ScalarExt>,
         scalar_chip: &ScalarChip<C>,
         other: &Self,
-        r: &AssignedBoundedScalar<C>,
+        r: &AssignedBoundedScalar<C::ScalarField>,
     ) -> Result<Self, Error> {
         let mut other = other.clone();
         other.scale(layouter, scalar_chip, r)?;

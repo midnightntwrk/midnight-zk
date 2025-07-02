@@ -433,7 +433,7 @@ impl<C: SelfEmulationCurve> VerifierGadget<C> {
             vanishing.verify(layouter, &self.scalar_chip, &expressions, &y, &xn)
         }?;
 
-        let one = AssignedBoundedScalar::<C>::one(layouter, &self.scalar_chip)?;
+        let one = AssignedBoundedScalar::<C::ScalarField>::one(layouter, &self.scalar_chip)?;
         let omega = assigned_vk.domain.get_omega();
         let omega_inv = omega.invert().unwrap();
         let omega_last = omega_inv.pow([cs.blinding_factors() as u64 + 1]);

@@ -138,8 +138,8 @@ impl<C: SelfEmulationCurve> PartiallyEvaluated<C> {
 impl<C: SelfEmulationCurve> Evaluated<C> {
     pub(crate) fn queries(
         &self,
-        one: &AssignedBoundedScalar<C>, // 1
-        x: &AssignedScalar<C>,          // evaluation point x
+        one: &AssignedBoundedScalar<C::ScalarField>, // 1
+        x: &AssignedScalar<C>,                       // evaluation point x
     ) -> Vec<VerifierQuery<C>> {
         vec![
             VerifierQuery::new_from_msm(x, &self.h_commitment, &self.expected_h_eval),

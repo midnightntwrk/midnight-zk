@@ -123,10 +123,10 @@ impl<C: SelfEmulationCurve> Committed<C> {
 impl<C: SelfEmulationCurve> Evaluated<C> {
     pub(crate) fn queries(
         &self,
-        one: &AssignedBoundedScalar<C>, // 1
-        x: &AssignedScalar<C>,          // evaluation point x
-        x_next: &AssignedScalar<C>,     // x * \omega
-        x_last: &AssignedScalar<C>,     // x * \omega^(-blinding_factors + 1)
+        one: &AssignedBoundedScalar<C::ScalarField>, // 1
+        x: &AssignedScalar<C>,                       // evaluation point x
+        x_next: &AssignedScalar<C>,                  // x * \omega
+        x_last: &AssignedScalar<C>,                  // x * \omega^(-blinding_factors + 1)
     ) -> Vec<VerifierQuery<C>> {
         let mut queries = vec![];
         for set in self.sets.iter() {
@@ -167,8 +167,8 @@ impl<C: SelfEmulationCurve> CommonEvaluated<C> {
     pub(crate) fn queries(
         &self,
         commitment_names: &[String],
-        one: &AssignedBoundedScalar<C>, // 1
-        x: &AssignedScalar<C>,          // evaluation point x
+        one: &AssignedBoundedScalar<C::ScalarField>, // 1
+        x: &AssignedScalar<C>,                       // evaluation point x
     ) -> Vec<VerifierQuery<C>> {
         assert_eq!(commitment_names.len(), self.permutation_evals.len());
 

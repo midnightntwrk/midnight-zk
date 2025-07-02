@@ -26,10 +26,11 @@ use std::{
     fmt::Debug,
 };
 
-use ff::Field;
+use ff::{Field, PrimeField};
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 use crate::{
+    field::AssignedNative,
     instructions::{ArithInstructions, AssignmentInstructions},
     verifier::{
         msm::AssignedMsm,
@@ -212,7 +213,7 @@ impl<C: SelfEmulationCurve> VerifierQuery<C> {
     /// Create a verifier query on a commitment.
     /// This function requires an assigned bounded scalar of one as input.
     pub(crate) fn new(
-        one: &AssignedBoundedScalar<C>,
+        one: &AssignedBoundedScalar<C::ScalarField>,
         point: &AssignedScalar<C>,
         commitment: &AssignedPoint<C>,
         eval: &AssignedScalar<C>,
@@ -240,7 +241,7 @@ impl<C: SelfEmulationCurve> VerifierQuery<C> {
     /// Create a verifier query on a fixed commitment (given its name).
     /// This function requires an assigned bounded scalar of one as input.
     pub(crate) fn new_fixed(
-        one: &AssignedBoundedScalar<C>,
+        one: &AssignedBoundedScalar<C::ScalarField>,
         point: &AssignedScalar<C>,
         commitment_name: &str,
         eval: &AssignedScalar<C>,
@@ -273,7 +274,7 @@ fn msm_inner_product<C: SelfEmulationCurve>(
     layouter: &mut impl Layouter<C::ScalarExt>,
     scalar_chip: &ScalarChip<C>,
     msms: &[AssignedMsm<C>],
-    scalars: &[AssignedBoundedScalar<C>],
+    scalars: &[AssignedBoundedScalar<C::ScalarField>],
 ) -> Result<AssignedMsm<C>, Error> {
     let mut res = AssignedMsm::empty();
     let mut msms = msms.to_vec();
@@ -289,13 +290,13 @@ fn msm_inner_product<C: SelfEmulationCurve>(
 /// evaluations. Each vector in `evals_set` is multiplied element-wise by a
 /// corresponding scalar from `scalars`, and the results are accumulated
 /// into a single vector.
-fn evals_inner_product<C: SelfEmulationCurve>(
-    layouter: &mut impl Layouter<C::ScalarExt>,
-    scalar_chip: &ScalarChip<C>,
-    evals_set: &[Vec<AssignedScalar<C>>],
-    scalars: &[AssignedBoundedScalar<C>],
-) -> Result<Vec<AssignedScalar<C>>, Error> {
-    let zero: AssignedScalar<C> = scalar_chip.assign_fixed(layouter, C::ScalarExt::ZERO)?;
+fn evals_inner_product<F: PrimeField>(
+    layouter: &mut impl Layouter<F>,
+    scalar_chip: &impl ArithInstructions<F, AssignedNative<F>>,
+    evals_set: &[Vec<AssignedNative<F>>],
+    scalars: &[AssignedBoundedScalar<F>],
+) -> Result<Vec<AssignedNative<F>>, Error> {
+    let zero = scalar_chip.assign_fixed(layouter, F::ZERO)?;
     let mut res = vec![zero.clone(); evals_set[0].len()];
     for (poly_evals, s) in evals_set.iter().zip(scalars) {
         for i in 0..res.len() {
@@ -355,7 +356,7 @@ where
     let f_com = transcript_gadget.read_point(layouter)?;
 
     let x3 = transcript_gadget.squeeze_challenge(layouter)?;
-    let x3 = truncate::<C>(layouter, scalar_chip, &x3)?;
+    let x3 = truncate::<C::ScalarField>(layouter, scalar_chip, &x3)?;
 
     let mut q_evals_on_x3 = Vec::with_capacity(q_eval_sets.len());
     for _ in 0..q_eval_sets.len() {
@@ -387,7 +388,8 @@ where
         })?;
 
     let x4 = transcript_gadget.squeeze_challenge(layouter)?;
-    let truncated_x4_powers = truncated_powers::<C>(layouter, scalar_chip, &x4, 1 + q_coms.len())?;
+    let truncated_x4_powers =
+        truncated_powers::<C::ScalarField>(layouter, scalar_chip, &x4, 1 + q_coms.len())?;
 
     let one = AssignedBoundedScalar::one(layouter, scalar_chip)?;
 
