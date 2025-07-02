@@ -165,10 +165,6 @@ where
     /// # Unsatisfiable
     ///
     ///   If the vector length < `n_elems`.
-    ///
-    /// # Panics
-    ///
-    ///   If `n_elems` >= A.
     fn trim_beginning(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -271,28 +267,37 @@ where
         input: &AssignedVector<F, T, M, A>,
         n_elems: usize,
     ) -> Result<AssignedVector<F, T, M, A>, Error> {
-        assert!(n_elems < A);
-
         // Check len >= shift.
-        let a_bits = (usize::BITS - A.leading_zeros()) as usize;
-        let m_bits = (usize::BITS - M.leading_zeros()) as usize;
+        let m_max_bits = (usize::BITS - M.leading_zeros()) as usize;
+        let a_max_bits = (usize::BITS - M.leading_zeros()) as usize;
 
-        let bounded_len = self.bounded_of_element(layouter, m_bits, &input.len)?;
+        let bounded_len = self.bounded_of_element(layouter, m_max_bits, &input.len)?;
         let bounded_trim = {
             let trim = self.assign_fixed(layouter, F::from(n_elems as u64))?;
-            self.bounded_of_element(layouter, a_bits, &trim)
+            self.bounded_of_element(layouter, m_max_bits, &trim)
         }?;
         let len_geq_shift = self.geq(layouter, &bounded_len, &bounded_trim)?;
         self.assert_equal_to_fixed(layouter, &len_geq_shift, true)?;
 
+        // We divide the number of elements to be trimmed 2 parts.
+        // The A-sized whole chunks, one last <A sized piece.
+        // Trimming this last piece may require some realignment of the vector
+        // that ensures the padding at the end remains in [0, A).
+        // The A-sized chunks won't modify the alignment, so modifying the value
+        // the vector length is enough to have them trimmed. They will remain
+        // in the buffer but they will be considered padding.
+
+        let (_whole_chunks, last_trim) = (n_elems / A, n_elems % A);
+
         // Length of last chunk ( or 0 if its full ).
         let last_len = self.modulus(layouter, &input.len, M as u32, A as u32)?;
-        let bounded_last_len = self.bounded_of_element(layouter, a_bits + 1, &last_len)?;
+        let bounded_last_len = self.bounded_of_element(layouter, a_max_bits, &last_len)?;
 
         // We need to shift right by A if the pading at the end after the left shift is
         // >= A.
         let needs_adjust = {
-            let leq_shift = self.leq_fixed(layouter, &bounded_last_len, F::from(n_elems as u64))?;
+            let leq_shift =
+                self.leq_fixed(layouter, &bounded_last_len, F::from(last_trim as u64))?;
             let full_last = self.is_equal_to_fixed(layouter, &last_len, F::ZERO)?;
 
             // NOTE for reviewers:
@@ -304,12 +309,12 @@ where
             self.xor(layouter, &[full_last, leq_shift])
         }?;
 
-        // Shift the original buffer `n_elems` positions to the left.
+        // Shift the original buffer `last_trim` positions to the left.
         // Then, add A filler elements to the left, in case we need to shift A to the
         // right to adjust the padding at the end.
         let buffer = {
-            let filler = self.assign_many_fixed(layouter, &vec![T::FILLER; A + n_elems])?;
-            [&filler[..A], &input.buffer[n_elems..], &filler[A..]].concat()
+            let filler = self.assign_many_fixed(layouter, &vec![T::FILLER; A + last_trim])?;
+            [&filler[..A], &input.buffer[last_trim..], &filler[A..]].concat()
         };
         debug_assert_eq!(buffer.len(), M + A);
 
@@ -793,8 +798,8 @@ mod tests {
         let mut rng = ChaCha12Rng::seed_from_u64(0xdeadcafe);
         let inputs = (0..100).map(|_| F::random(&mut rng)).collect::<Vec<_>>();
 
-        // Test different alignments.
-        run_trim_vec_test::<_, 128, 64>(&[F::ONE, F::ONE], 1, false);
+        // Test different alignments (under A).
+        run_trim_vec_test::<_, 128, 64>(&[F::ONE, F::ONE], 1, true);
         run_trim_vec_test::<_, 128, 32>(&inputs, 0, false);
         run_trim_vec_test::<_, 128, 32>(&inputs, 1, false);
         run_trim_vec_test::<_, 128, 32>(&inputs, 2, false);
@@ -804,8 +809,24 @@ mod tests {
         run_trim_vec_test::<_, 128, 32>(&inputs, 30, false);
         run_trim_vec_test::<_, 128, 32>(&inputs, 31, false);
 
+        // Above or equal to A.
+        run_trim_vec_test::<_, 128, 3>(&inputs, 3, false);
+        run_trim_vec_test::<_, 128, 3>(&inputs, 4, false);
+        run_trim_vec_test::<_, 128, 3>(&inputs, 5, false);
+        run_trim_vec_test::<_, 128, 3>(&inputs, 6, false);
+        run_trim_vec_test::<_, 128, 3>(&inputs, 10, false);
+        run_trim_vec_test::<_, 128, 3>(&inputs, 20, false);
+        run_trim_vec_test::<_, 128, 3>(&inputs, 30, false);
+        run_trim_vec_test::<_, 128, 3>(&inputs, 40, false);
+
         // Edge case: offset of original vector = 0;
         run_trim_vec_test::<_, 128, 32>(&inputs[..96], 23, false);
+
+        // Edge case: full vector;
+        run_trim_vec_test::<_, 64, 32>(&inputs[..64], 20, false);
+
+        // Edge case: full vector, trim all elements.
+        run_trim_vec_test::<_, 64, 32>(&inputs[..64], 64, false);
 
         // The particular case of the credentials:
         run_trim_vec_test::<_, 128, 64>(&inputs, 39, false);
