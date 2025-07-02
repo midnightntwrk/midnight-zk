@@ -147,6 +147,19 @@
       "table_rows": "511"
     }
   },
+  "Vector trim beginning.": {
+    "Vector trim_beginning with M=128": {
+      "advice_columns": "5",
+      "column_queries": "41",
+      "fixed_columns": "22",
+      "lookups": "4",
+      "max_deg": "5",
+      "permutations": "7",
+      "point_sets": "4",
+      "rows": "179",
+      "table_rows": "511"
+    }
+  },
   "biguint_gadget": {
     "assert_eq": {
       "advice_columns": "5",
