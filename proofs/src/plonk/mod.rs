@@ -111,7 +111,7 @@ where
     ///   Montgomery form. Checks that field elements are less than modulus, and
     ///   then checks that the point is on the curve.
     /// - `RawBytesUnchecked`: Reads an uncompressed curve element with
-    ///   coordinates in Montgomery form; does not perform any checks
+    ///   coordinates in Montgomery form; does not perform any checks.
     pub fn read<R: io::Read, ConcreteCircuit: Circuit<F>>(
         reader: &mut R,
         format: SerdeFormat,
@@ -129,7 +129,7 @@ where
     /// Reads a verification key from a buffer, using the provided
     /// [ConstraintSystem].
     ///
-    /// Reads a curve element fRom the buffer and parses it according to the
+    /// Reads a curve element from the buffer and parses it according to the
     /// `format`:
     /// - `Processed`: Reads a compressed curve element and decompresses it.
     ///   Reads a field element in standard form, with endianness specified by
@@ -139,7 +139,7 @@ where
     ///   Montgomery form. Checks that field elements are less than modulus, and
     ///   then checks that the point is on the curve.
     /// - `RawBytesUnchecked`: Reads an uncompressed curve element with
-    ///   coordinates in Montgomery form; does not perform any checks
+    ///   coordinates in Montgomery form; does not perform any checks.
     pub fn read_from_cs<R: io::Read>(
         reader: &mut R,
         format: SerdeFormat,

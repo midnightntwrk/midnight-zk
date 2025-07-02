@@ -1104,42 +1104,7 @@ impl MidnightVK {
     ///
     /// # WARNING
     /// Use `RawBytesUnchecked` only if you trust the party who wrote the key.
-    pub fn read<R: io::Read, Rel: Relation>(
-        reader: &mut R,
-        format: SerdeFormat,
-    ) -> io::Result<Self> {
-        let architecture = ZkStdLibArch::read(reader)?;
-
-        let mut bytes = [0u8; 4];
-        reader.read_exact(&mut bytes)?;
-        let nb_public_inputs = u32::from_le_bytes(bytes) as usize;
-
-        let vk = VerifyingKey::read::<R, MidnightCircuit<Rel>>(reader, format, architecture)?;
-
-        Ok(MidnightVK {
-            architecture,
-            nb_public_inputs,
-            vk,
-        })
-    }
-
-    /// Reads a verification key from a buffer, without taking as input a
-    /// `Relation`. The implications of not giving as input the `Relation`
-    /// is that the verifier cannot define the structure of the instance,
-    /// which in turn implies that the verifier needs to format the instance
-    /// as a vector of `F`.
-    ///
-    /// The `format` must match the one that was used when writing the key.
-    /// If the key was written with `RawBytes`, it can be read with `RawBytes`
-    /// or `RawBytesUnchecked` (which is faster).
-    ///
-    /// # WARNING
-    /// - Use `RawBytesUnchecked` only if you trust the party who wrote the key.
-    ///
-    /// - If you know the relation being verified, use [Self::read], as that
-    ///   allows you to use formatted instance, instead of its raw `Vec<F>`
-    ///   form.
-    pub fn read_raw<R: io::Read>(reader: &mut R, format: SerdeFormat) -> io::Result<Self> {
+    pub fn read<R: io::Read>(reader: &mut R, format: SerdeFormat) -> io::Result<Self> {
         let architecture = ZkStdLibArch::read(reader)?;
 
         let mut bytes = [0u8; 4];

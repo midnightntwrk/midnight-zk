@@ -119,19 +119,12 @@ fn vk_serde_test(architecture: ZkStdLibArch, write_format: SerdeFormat, read_for
     vk.write(&mut buffer, write_format).unwrap();
 
     let mut cursor = std::io::Cursor::new(buffer.clone());
-    let vk2 = MidnightVK::read::<_, DummyCircuit>(&mut cursor, read_format).unwrap();
+    let vk2 = MidnightVK::read(&mut cursor, read_format).unwrap();
 
     let mut buffer2 = Vec::new();
     vk2.write(&mut buffer2, write_format).unwrap();
 
-    let mut cursor = std::io::Cursor::new(buffer.clone());
-    let vk3 = MidnightVK::read_raw(&mut cursor, read_format).unwrap();
-
-    let mut buffer3 = Vec::new();
-    vk3.write(&mut buffer3, write_format).unwrap();
-
     assert_eq!(buffer, buffer2);
-    assert_eq!(buffer, buffer3);
 }
 
 #[test]
