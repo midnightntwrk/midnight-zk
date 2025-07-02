@@ -18,11 +18,13 @@ use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
+use num_bigint::BigUint;
 
 use super::types::InnerValue;
 use crate::{
     field::{
-        decomposition::instructions::CoreDecompositionInstructions, AssignedNative, NativeGadget,
+        decomposition::instructions::CoreDecompositionInstructions, AssignedBounded,
+        AssignedNative, NativeGadget,
     },
     instructions::{
         divmod::DivisionInstructions, ArithInstructions, AssertionInstructions,
@@ -41,7 +43,7 @@ use crate::{
 /// The effective payload in the data is aligned in A sized chunks. This
 /// enables more efficient implementations of instructions like hashing
 /// over this type. As a result of this alignment, the data may contain filler
-/// values before and after the effective payload. The padding in front of of
+/// values before and after the effective payload. The padding in front of
 /// the payload will always be 0 mod A, so that the payload begins aligned in A
 /// sized chunks. The padding at the end of the payload will be have a size in
 /// [0, A) such that | front_pad | + | payload | + | back_pad | = M
@@ -267,17 +269,12 @@ where
         input: &AssignedVector<F, T, M, A>,
         n_elems: usize,
     ) -> Result<AssignedVector<F, T, M, A>, Error> {
-        // Check len >= shift.
-        let m_max_bits = (usize::BITS - M.leading_zeros()) as usize;
         let a_max_bits = (usize::BITS - M.leading_zeros()) as usize;
 
-        let bounded_len = self.bounded_of_element(layouter, m_max_bits, &input.len)?;
-        let bounded_trim = {
-            let trim = self.assign_fixed(layouter, F::from(n_elems as u64))?;
-            self.bounded_of_element(layouter, m_max_bits, &trim)
-        }?;
-        let len_geq_shift = self.geq(layouter, &bounded_len, &bounded_trim)?;
-        self.assert_equal_to_fixed(layouter, &len_geq_shift, true)?;
+        // Assert input.len >= n_elems.
+        let len_complement =
+            self.linear_combination(layouter, &[(-F::ONE, input.len.clone())], F::from(M as u64))?;
+        self.assert_lower_than_fixed(layouter, &len_complement, &BigUint::from(M + 1 - n_elems))?;
 
         // We divide the number of elements to be trimmed 2 parts.
         // The A-sized whole chunks, one last <A sized piece.
@@ -289,11 +286,15 @@ where
 
         let (_whole_chunks, last_trim) = (n_elems / A, n_elems % A);
 
-        // Length of last chunk ( or 0 if its full ).
+        // Length of last chunk ( or 0 if it is full ).
         let last_len = self.modulus(layouter, &input.len, M as u32, A as u32)?;
-        let bounded_last_len = self.bounded_of_element(layouter, a_max_bits, &last_len)?;
 
-        // We need to shift right by A if the pading at the end after the left shift is
+        // `modulus` already ensures last_len is in [0, A), so unsafe conversion can be
+        // used here.
+        let bounded_last_len =
+            AssignedBounded::to_assigned_bounded_unsafe(&last_len, a_max_bits as u32);
+
+        // We need to shift right by A if the padding at the end after the left shift is
         // >= A.
         let needs_adjust = {
             let leq_shift =
