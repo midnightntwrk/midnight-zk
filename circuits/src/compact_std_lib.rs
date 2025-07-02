@@ -1140,46 +1140,16 @@ impl MidnightVK {
     ///   allows you to use formatted instance, instead of its raw `Vec<F>`
     ///   form.
     pub fn read_raw<R: io::Read>(reader: &mut R, format: SerdeFormat) -> io::Result<Self> {
-        #[derive(Clone)]
-        /// We create a dummy relation to be able to deserialise the verifying
-        /// key. The implication of using this relation is that the
-        /// instances are assumed to be in raw `Vec<F>` form.
-        struct DummyRelation;
-
-        impl Relation for DummyRelation {
-            type Instance = Vec<F>;
-            type Witness = ();
-
-            fn format_instance(_instance: &Self::Instance) -> Vec<F> {
-                todo!()
-            }
-
-            fn circuit(
-                &self,
-                _std_lib: &ZkStdLib,
-                _layouter: &mut impl Layouter<F>,
-                _instance: Value<Self::Instance>,
-                _witness: Value<Self::Witness>,
-            ) -> Result<(), Error> {
-                todo!()
-            }
-
-            fn write_relation<W: io::Write>(&self, _writer: &mut W) -> io::Result<()> {
-                todo!()
-            }
-
-            fn read_relation<R: io::Read>(_reader: &mut R) -> io::Result<Self> {
-                todo!()
-            }
-        }
         let architecture = ZkStdLibArch::read(reader)?;
 
         let mut bytes = [0u8; 4];
         reader.read_exact(&mut bytes)?;
         let nb_public_inputs = u32::from_le_bytes(bytes) as usize;
 
-        let vk =
-            VerifyingKey::read::<R, MidnightCircuit<DummyRelation>>(reader, format, architecture)?;
+        let mut cs = ConstraintSystem::default();
+        let _config = ZkStdLib::configure(&mut cs, architecture);
+
+        let vk = VerifyingKey::read_from_cs::<R>(reader, format, cs)?;
 
         Ok(MidnightVK {
             architecture,
