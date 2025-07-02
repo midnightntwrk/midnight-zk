@@ -69,7 +69,7 @@ pub trait Base64Instructions<F: PrimeField> {
 ///  Soundness is always guaranteed.
 #[derive(Debug, Clone)]
 pub struct Base64Vec<F: PrimeField, const M: usize, const A: usize>(
-    pub AssignedVector<F, AssignedByte<F>, M, A>,
+    pub(crate) AssignedVector<F, AssignedByte<F>, M, A>,
 );
 
 impl<F: PrimeField, const M: usize, const A: usize> From<Base64Vec<F, M, A>>
@@ -95,21 +95,28 @@ pub trait Base64VarInstructions<F: PrimeField, const M: usize, const A: usize>:
         value: Value<Vec<u8>>,
     ) -> Result<Base64Vec<F, M, A>, Error>;
 
+    /// Returns a Base64Vec from an AssignedVector.
+    fn base64_from_vec(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        vec: &AssignedVector<F, AssignedByte<F>, M, A>,
+    ) -> Result<Base64Vec<F, M, A>, Error>;
+
     /// Variable length equivalent of `decode_base64_url` in
     /// `Base64Instructions`. Inputs must always be padded apropriately
     /// according to the base64 format.
-    fn var_decode_base64url<const M_OUT: usize>(
+    fn var_decode_base64url<const M_OUT: usize, const A_OUT: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
         b64url_input: &Base64Vec<F, M, A>,
-    ) -> Result<AssignedVector<F, AssignedByte<F>, M_OUT, 3>, Error>;
+    ) -> Result<AssignedVector<F, AssignedByte<F>, M_OUT, A_OUT>, Error>;
 
     /// Equivalent of `decode_base64` in `Base64Instructions`.
     /// Inputs must always be padded apropriately according to the base64
     /// format.
-    fn var_decode_base64<const M_OUT: usize>(
+    fn var_decode_base64<const M_OUT: usize, const A_OUT: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
         b64_input: &Base64Vec<F, M, A>,
-    ) -> Result<AssignedVector<F, AssignedByte<F>, M_OUT, 3>, Error>;
+    ) -> Result<AssignedVector<F, AssignedByte<F>, M_OUT, A_OUT>, Error>;
 }
