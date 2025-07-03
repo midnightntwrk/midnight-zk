@@ -504,6 +504,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         // as the following accumulator passes the invariant.
         let multiopen_check = kzg::multi_prepare::<_, S>(
             layouter,
+            #[cfg(feature = "truncated-challenges")]
             &self.curve_chip,
             &self.scalar_chip,
             &mut transcript,

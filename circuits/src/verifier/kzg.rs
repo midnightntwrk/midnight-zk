@@ -29,6 +29,8 @@ use std::{
 use ff::{Field, PrimeField};
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 
+#[cfg(feature = "truncated-challenges")]
+use crate::verifier::utils::truncate;
 use crate::{
     field::AssignedNative,
     instructions::{ArithInstructions, AssignmentInstructions},
@@ -36,7 +38,7 @@ use crate::{
         msm::AssignedMsm,
         transcript_gadget::TranscriptGadget,
         utils::{
-            evaluate_interpolated_polynomial, inner_product, mul_add, truncate, truncated_powers,
+            evaluate_interpolated_polynomial, inner_product, mul_add, truncated_powers,
             AssignedBoundedScalar,
         },
         AssignedAccumulator, SelfEmulation,
@@ -317,7 +319,7 @@ fn evals_inner_product<F: PrimeField>(
 /// The resulting accumulator satisfies the invariant iff all queries are valid.
 pub(crate) fn multi_prepare<I, S: SelfEmulation>(
     layouter: &mut impl Layouter<S::F>,
-    curve_chip: &S::CurveChip,
+    #[cfg(feature = "truncated-challenges")] curve_chip: &S::CurveChip,
     scalar_chip: &S::ScalarChip,
     transcript_gadget: &mut TranscriptGadget<S>,
     queries: I,
@@ -358,7 +360,10 @@ where
     let f_com = transcript_gadget.read_point(layouter)?;
 
     let x3 = transcript_gadget.squeeze_challenge(layouter)?;
+    #[cfg(feature = "truncated-challenges")]
     let x3 = truncate::<S::F>(layouter, scalar_chip, &x3)?;
+    #[cfg(not(feature = "truncated-challenges"))]
+    let x3 = AssignedBoundedScalar::new(&x3, None);
 
     let mut q_evals_on_x3 = Vec::with_capacity(q_eval_sets.len());
     for _ in 0..q_eval_sets.len() {
@@ -400,6 +405,7 @@ where
         // We collapse all AssignedMsm at this point to later leverage the fact that x4
         // powers are truncated. Exceptionally, the first one is not collapsed,
         // as the first x4 power is 1.
+        #[cfg(feature = "truncated-challenges")]
         coms.iter_mut()
             .skip(1)
             .try_for_each(|com| com.collapse(layouter, curve_chip, scalar_chip))?;

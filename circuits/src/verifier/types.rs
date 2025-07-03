@@ -30,6 +30,10 @@ use midnight_proofs::{
 };
 use pasta_curves::arithmetic::CurveAffine;
 
+#[cfg(not(feature = "truncated-challenges"))]
+use crate::instructions::FieldInstructions;
+#[cfg(feature = "truncated-challenges")]
+use crate::instructions::NativeInstructions;
 use crate::{
     ecc::{
         curves::{CircuitCurve, WeierstrassCurve},
@@ -38,8 +42,8 @@ use crate::{
     field::{decomposition::chip::P2RDecompositionChip, AssignedNative, NativeChip, NativeGadget},
     hash::poseidon::{PoseidonChip, PoseidonState},
     instructions::{
-        ecc::EccInstructions, AssignmentInstructions, HashInstructions, NativeInstructions,
-        PublicInputInstructions, SpongeInstructions,
+        ecc::EccInstructions, AssignmentInstructions, HashInstructions, PublicInputInstructions,
+        SpongeInstructions,
     },
     types::{AssignedForeignPoint, InnerValue, Instantiable},
 };
@@ -60,8 +64,12 @@ pub trait SelfEmulation: Clone + Debug {
     /// A type for the Fiat-Shamir hashing.
     type Hash: TranscriptHash;
 
+    #[cfg(feature = "truncated-challenges")]
     /// A chip implementing native field arithmetic operations.
     type ScalarChip: NativeInstructions<Self::F>;
+    #[cfg(not(feature = "truncated-challenges"))]
+    /// A chip implementing native field arithmetic operations.
+    type ScalarChip: FieldInstructions<Self::F, AssignedNative<Self::F>>;
 
     /// A chip implementing assignment operations for [Self::AssignedPoint].
     type CurveChip: Clone

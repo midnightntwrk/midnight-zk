@@ -21,9 +21,13 @@ use midnight_proofs::{
 use num_bigint::BigUint;
 use num_traits::One;
 
+#[cfg(not(feature = "truncated-challenges"))]
+use crate::instructions::FieldInstructions;
+#[cfg(feature = "truncated-challenges")]
+use crate::instructions::NativeInstructions;
 use crate::{
     field::AssignedNative,
-    instructions::{ArithInstructions, AssignmentInstructions, NativeInstructions},
+    instructions::{ArithInstructions, AssignmentInstructions},
     utils::util::modulus,
 };
 
@@ -114,10 +118,6 @@ pub(crate) fn truncate_off_circuit<F: PrimeField>(scalar: F) -> F {
     let bi = BigUint::from_bytes_le(&bytes);
     F::from_str_vartime(&BigUint::to_string(&bi)).unwrap()
 }
-#[cfg(not(feature = "truncated-challenges"))]
-pub(crate) fn truncate_off_circuit<F: PrimeField>(scalar: F) -> F {
-    scalar
-}
 
 /// In-circuit analog of [truncate].
 #[cfg(feature = "truncated-challenges")]
@@ -139,15 +139,6 @@ pub(crate) fn truncate<F: PrimeField>(
     let bound = (BigUint::one() << nb_half_bits) - BigUint::one();
     Ok(AssignedBoundedScalar::new(&scalar, Some(bound)))
 }
-#[cfg(not(feature = "truncated-challenges"))]
-pub(crate) fn truncate<F: PrimeField>(
-    _layouter: &mut impl Layouter<F>,
-    _scalar_chip: &impl ArithInstructions<F, AssignedNative<F>>,
-    x: &AssignedNative<F>,
-) -> Result<AssignedBoundedScalar<F>, Error> {
-    // Do nothing if "truncated-challenges" is not enabled.
-    Ok(AssignedBoundedScalar::new(x, None))
-}
 
 /// Evaluates the i-th Lagrange polynomial (with respect to n-root of unity w)
 /// at the given point x, for all the given i. That is, for every i, computes
@@ -159,7 +150,7 @@ pub(crate) fn truncate<F: PrimeField>(
 /// If x^n = 1, the system will become unsatisfiable.
 pub fn evaluate_lagrange_polynomials<F: PrimeField>(
     layouter: &mut impl Layouter<F>,
-    scalar_chip: &impl NativeInstructions<F>,
+    scalar_chip: &impl ArithInstructions<F, AssignedNative<F>>,
     n: u64,
     w: F,
     i_indices: Range<i32>,
@@ -190,7 +181,7 @@ pub fn evaluate_lagrange_polynomials<F: PrimeField>(
 /// for all i in \[n\]. This function returns f(x).
 pub fn evaluate_interpolated_polynomial<F: PrimeField>(
     layouter: &mut impl Layouter<F>,
-    scalar_chip: &impl NativeInstructions<F>,
+    scalar_chip: &impl ArithInstructions<F, AssignedNative<F>>,
     points: &[AssignedNative<F>],
     evals: &[AssignedNative<F>],
     x: &AssignedNative<F>,
@@ -234,7 +225,7 @@ pub fn evaluate_interpolated_polynomial<F: PrimeField>(
 /// Computes the addition of all the given scalars.
 pub(crate) fn sum<F: PrimeField>(
     layouter: &mut impl Layouter<F>,
-    scalar_chip: &impl NativeInstructions<F>,
+    scalar_chip: &impl ArithInstructions<F, AssignedNative<F>>,
     terms: &[AssignedNative<F>],
 ) -> Result<AssignedNative<F>, Error> {
     let terms = terms
@@ -247,7 +238,7 @@ pub(crate) fn sum<F: PrimeField>(
 /// Computes the product of all the given scalars.
 pub(crate) fn prod<F: PrimeField>(
     layouter: &mut impl Layouter<F>,
-    scalar_chip: &impl NativeInstructions<F>,
+    scalar_chip: &impl ArithInstructions<F, AssignedNative<F>>,
     terms: &[AssignedNative<F>],
 ) -> Result<AssignedNative<F>, Error> {
     let mut res = terms[0].clone();
@@ -265,7 +256,7 @@ pub(crate) fn prod<F: PrimeField>(
 /// If terms1.len() = 0.
 pub(crate) fn inner_product<F: PrimeField>(
     layouter: &mut impl Layouter<F>,
-    scalar_chip: &impl NativeInstructions<F>,
+    scalar_chip: &impl ArithInstructions<F, AssignedNative<F>>,
     terms1: &[AssignedNative<F>],
     terms2: &[AssignedNative<F>],
 ) -> Result<AssignedNative<F>, Error> {
@@ -304,7 +295,11 @@ pub(crate) fn powers<F: PrimeField>(
 /// The powers are then truncated by removing their most-significative half.
 pub(crate) fn truncated_powers<F: PrimeField>(
     layouter: &mut impl Layouter<F>,
-    scalar_chip: &impl NativeInstructions<F>,
+    #[cfg(feature = "truncated-challenges")] scalar_chip: &impl NativeInstructions<F>,
+    #[cfg(not(feature = "truncated-challenges"))] scalar_chip: &impl FieldInstructions<
+        F,
+        AssignedNative<F>,
+    >,
     x: &AssignedNative<F>,
     n: usize,
 ) -> Result<Vec<AssignedBoundedScalar<F>>, Error> {
@@ -317,7 +312,10 @@ pub(crate) fn truncated_powers<F: PrimeField>(
                 scalar_chip.assert_equal_to_fixed(layouter, p, F::ONE)?;
                 return Ok(AssignedBoundedScalar::new(p, Some(BigUint::one())));
             }
-            truncate::<F>(layouter, scalar_chip, p)
+            #[cfg(feature = "truncated-challenges")]
+            return truncate::<F>(layouter, scalar_chip, p);
+            #[cfg(not(feature = "truncated-challenges"))]
+            return Ok(AssignedBoundedScalar::new(p, None));
         })
         .collect()
 }

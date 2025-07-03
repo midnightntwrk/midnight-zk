@@ -39,12 +39,14 @@ use midnight_proofs::{
 use num_bigint::BigUint;
 use num_traits::One;
 
+#[cfg(feature = "truncated-challenges")]
+use crate::verifier::utils::{truncate, truncate_off_circuit};
 use crate::{
     instructions::{hash::HashCPU, HashInstructions, PublicInputInstructions},
     types::{AssignedBit, InnerValue, Instantiable},
     verifier::{
         msm::{AssignedMsm, Msm},
-        utils::{truncate, truncate_off_circuit, AssignedBoundedScalar},
+        utils::AssignedBoundedScalar,
         SelfEmulation,
     },
 };
@@ -118,6 +120,7 @@ impl<S: SelfEmulation> Accumulator<S> {
         .collect::<Vec<_>>();
 
         let r = <S::SpongeChip as HashCPU<S::F, S::F>>::hash(&hash_input);
+        #[cfg(feature = "truncated-challenges")]
         let r = truncate_off_circuit(r);
 
         Self {
@@ -278,7 +281,10 @@ impl<S: SelfEmulation> AssignedAccumulator<S> {
         .collect::<Vec<_>>();
 
         let r = sponge_chip.hash(layouter, &hash_input)?;
+        #[cfg(feature = "truncated-challenges")]
         let r = truncate(layouter, scalar_chip, &r)?;
+        #[cfg(not(feature = "truncated-challenges"))]
+        let r = AssignedBoundedScalar::new(&r, None);
 
         Ok(AssignedAccumulator::new(
             self.lhs
