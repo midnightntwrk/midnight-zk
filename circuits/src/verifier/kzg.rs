@@ -35,12 +35,11 @@ use crate::{
     verifier::{
         msm::AssignedMsm,
         transcript_gadget::TranscriptGadget,
-        types::{AssignedPoint, AssignedScalar, CurveChip, ScalarChip, SelfEmulationCurve},
         utils::{
             evaluate_interpolated_polynomial, inner_product, mul_add, truncate, truncated_powers,
             AssignedBoundedScalar,
         },
-        AssignedAccumulator,
+        AssignedAccumulator, SelfEmulation,
     },
 };
 
@@ -49,15 +48,15 @@ use crate::{
 // -------------------------------
 
 #[derive(Clone, Debug)]
-pub(crate) struct CommitmentData<C: SelfEmulationCurve> {
-    commitment: AssignedMsm<C>,
+pub(crate) struct CommitmentData<S: SelfEmulation> {
+    commitment: AssignedMsm<S>,
     set_index: usize,
     point_indices: Vec<usize>,
-    evals: Vec<AssignedScalar<C>>,
+    evals: Vec<AssignedNative<S::F>>,
 }
 
-impl<C: SelfEmulationCurve> CommitmentData<C> {
-    fn new(commitment: AssignedMsm<C>) -> Self {
+impl<S: SelfEmulation> CommitmentData<S> {
+    fn new(commitment: AssignedMsm<S>) -> Self {
         CommitmentData {
             commitment,
             set_index: 0,
@@ -67,18 +66,21 @@ impl<C: SelfEmulationCurve> CommitmentData<C> {
     }
 }
 
-type IntermediateSets<C> = (Vec<CommitmentData<C>>, Vec<Vec<AssignedScalar<C>>>);
+type IntermediateSets<S> = (
+    Vec<CommitmentData<S>>,
+    Vec<Vec<AssignedNative<<S as SelfEmulation>::F>>>,
+);
 
-fn construct_intermediate_sets<C: SelfEmulationCurve, I>(
+fn construct_intermediate_sets<S: SelfEmulation, I>(
     queries: I,
-    default_eval: AssignedScalar<C>,
-) -> Result<IntermediateSets<C>, Error>
+    default_eval: AssignedNative<S::F>,
+) -> Result<IntermediateSets<S>, Error>
 where
-    I: IntoIterator<Item = VerifierQuery<C>> + Clone,
+    I: IntoIterator<Item = VerifierQuery<S>> + Clone,
 {
     // Construct sets of unique commitments and corresponding information about
     // their queries.
-    let mut commitment_map: Vec<CommitmentData<C>> = vec![];
+    let mut commitment_map: Vec<CommitmentData<S>> = vec![];
 
     // Also construct mapping from a unique point to a point_index. This defines
     // an ordering on the points.
@@ -183,7 +185,7 @@ where
     }
 
     // Get actual points in each point set
-    let mut point_sets: Vec<Vec<AssignedScalar<C>>> = vec![Vec::new(); point_idx_sets.len()];
+    let mut point_sets: Vec<Vec<AssignedNative<S::F>>> = vec![Vec::new(); point_idx_sets.len()];
     for (point_idx_set, &set_idx) in point_idx_sets.iter() {
         for &point_idx in point_idx_set.iter() {
             let point = inverse_point_index_map.get(&point_idx).unwrap();
@@ -200,23 +202,23 @@ where
 
 #[derive(Clone, Debug)]
 /// Structure to store a VerifierQuery
-pub(crate) struct VerifierQuery<C: SelfEmulationCurve> {
+pub(crate) struct VerifierQuery<S: SelfEmulation> {
     /// Point at which polynomial is queried
-    point: AssignedScalar<C>,
+    point: AssignedNative<S::F>,
     /// Commitment to the polynomial
-    commitment: AssignedMsm<C>,
+    commitment: AssignedMsm<S>,
     /// Evaluation of polynomial at query point
-    eval: AssignedScalar<C>,
+    eval: AssignedNative<S::F>,
 }
 
-impl<C: SelfEmulationCurve> VerifierQuery<C> {
+impl<S: SelfEmulation> VerifierQuery<S> {
     /// Create a verifier query on a commitment.
     /// This function requires an assigned bounded scalar of one as input.
     pub(crate) fn new(
-        one: &AssignedBoundedScalar<C::ScalarField>,
-        point: &AssignedScalar<C>,
-        commitment: &AssignedPoint<C>,
-        eval: &AssignedScalar<C>,
+        one: &AssignedBoundedScalar<S::F>,
+        point: &AssignedNative<S::F>,
+        commitment: &S::AssignedPoint,
+        eval: &AssignedNative<S::F>,
     ) -> Self {
         Self {
             point: point.clone(),
@@ -227,9 +229,9 @@ impl<C: SelfEmulationCurve> VerifierQuery<C> {
 
     /// Create a verifier query on a commitment (respresented as an MSM).
     pub(crate) fn new_from_msm(
-        point: &AssignedScalar<C>,
-        commitment: &AssignedMsm<C>,
-        eval: &AssignedScalar<C>,
+        point: &AssignedNative<S::F>,
+        commitment: &AssignedMsm<S>,
+        eval: &AssignedNative<S::F>,
     ) -> Self {
         Self {
             point: point.clone(),
@@ -241,10 +243,10 @@ impl<C: SelfEmulationCurve> VerifierQuery<C> {
     /// Create a verifier query on a fixed commitment (given its name).
     /// This function requires an assigned bounded scalar of one as input.
     pub(crate) fn new_fixed(
-        one: &AssignedBoundedScalar<C::ScalarField>,
-        point: &AssignedScalar<C>,
+        one: &AssignedBoundedScalar<S::F>,
+        point: &AssignedNative<S::F>,
         commitment_name: &str,
-        eval: &AssignedScalar<C>,
+        eval: &AssignedNative<S::F>,
     ) -> Self {
         Self {
             point: point.clone(),
@@ -253,15 +255,15 @@ impl<C: SelfEmulationCurve> VerifierQuery<C> {
         }
     }
 
-    fn get_point(&self) -> AssignedScalar<C> {
+    fn get_point(&self) -> AssignedNative<S::F> {
         self.point.clone()
     }
 
-    fn get_eval(&self) -> AssignedScalar<C> {
+    fn get_eval(&self) -> AssignedNative<S::F> {
         self.eval.clone()
     }
 
-    fn get_commitment(&self) -> AssignedMsm<C> {
+    fn get_commitment(&self) -> AssignedMsm<S> {
         self.commitment.clone()
     }
 }
@@ -270,12 +272,12 @@ impl<C: SelfEmulationCurve> VerifierQuery<C> {
 // See halo2 src/utils/arithmetic.rs
 // ---------------------------------
 
-fn msm_inner_product<C: SelfEmulationCurve>(
-    layouter: &mut impl Layouter<C::ScalarExt>,
-    scalar_chip: &ScalarChip<C>,
-    msms: &[AssignedMsm<C>],
-    scalars: &[AssignedBoundedScalar<C::ScalarField>],
-) -> Result<AssignedMsm<C>, Error> {
+fn msm_inner_product<S: SelfEmulation>(
+    layouter: &mut impl Layouter<S::F>,
+    scalar_chip: &S::ScalarChip,
+    msms: &[AssignedMsm<S>],
+    scalars: &[AssignedBoundedScalar<S::F>],
+) -> Result<AssignedMsm<S>, Error> {
     let mut res = AssignedMsm::empty();
     let mut msms = msms.to_vec();
     for (msm, s) in msms.iter_mut().zip(scalars) {
@@ -313,20 +315,20 @@ fn evals_inner_product<F: PrimeField>(
 
 /// Verifies a bunch of KZG queries in a multi-open argument.
 /// The resulting accumulator satisfies the invariant iff all queries are valid.
-pub(crate) fn multi_prepare<I, C: SelfEmulationCurve>(
-    layouter: &mut impl Layouter<C::ScalarExt>,
-    curve_chip: &CurveChip<C>,
-    scalar_chip: &ScalarChip<C>,
-    transcript_gadget: &mut TranscriptGadget<C>,
+pub(crate) fn multi_prepare<I, S: SelfEmulation>(
+    layouter: &mut impl Layouter<S::F>,
+    curve_chip: &S::CurveChip,
+    scalar_chip: &S::ScalarChip,
+    transcript_gadget: &mut TranscriptGadget<S>,
     queries: I,
-) -> Result<AssignedAccumulator<C>, Error>
+) -> Result<AssignedAccumulator<S>, Error>
 where
-    I: IntoIterator<Item = VerifierQuery<C>> + Clone,
+    I: IntoIterator<Item = VerifierQuery<S>> + Clone,
 {
     let x1 = transcript_gadget.squeeze_challenge(layouter)?;
     let x2 = transcript_gadget.squeeze_challenge(layouter)?;
 
-    let default_eval = scalar_chip.assign_fixed(layouter, C::ScalarExt::default())?;
+    let default_eval = scalar_chip.assign_fixed(layouter, S::F::default())?;
     let (commitment_map, point_sets) = construct_intermediate_sets(queries, default_eval)?;
 
     let mut q_coms: Vec<_> = vec![vec![]; point_sets.len()];
@@ -356,14 +358,14 @@ where
     let f_com = transcript_gadget.read_point(layouter)?;
 
     let x3 = transcript_gadget.squeeze_challenge(layouter)?;
-    let x3 = truncate::<C::ScalarField>(layouter, scalar_chip, &x3)?;
+    let x3 = truncate::<S::F>(layouter, scalar_chip, &x3)?;
 
     let mut q_evals_on_x3 = Vec::with_capacity(q_eval_sets.len());
     for _ in 0..q_eval_sets.len() {
         q_evals_on_x3.push(transcript_gadget.read_scalar(layouter)?);
     }
 
-    let zero = scalar_chip.assign_fixed(layouter, C::ScalarExt::ZERO)?;
+    let zero = scalar_chip.assign_fixed(layouter, S::F::ZERO)?;
     let f_eval = point_sets
         .iter()
         .zip(q_eval_sets.iter())
@@ -389,7 +391,7 @@ where
 
     let x4 = transcript_gadget.squeeze_challenge(layouter)?;
     let truncated_x4_powers =
-        truncated_powers::<C::ScalarField>(layouter, scalar_chip, &x4, 1 + q_coms.len())?;
+        truncated_powers::<S::F>(layouter, scalar_chip, &x4, 1 + q_coms.len())?;
 
     let one = AssignedBoundedScalar::one(layouter, scalar_chip)?;
 

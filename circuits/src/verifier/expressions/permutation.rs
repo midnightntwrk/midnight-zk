@@ -23,30 +23,31 @@ use midnight_proofs::{
 };
 
 use crate::{
+    field::AssignedNative,
     instructions::ArithInstructions,
     verifier::{
         permutation::{CommonEvaluated, Evaluated},
-        types::{AssignedScalar, ScalarChip, SelfEmulationCurve},
+        SelfEmulation,
     },
 };
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn permutation_expressions<C: SelfEmulationCurve>(
-    layouter: &mut impl Layouter<C::ScalarExt>,
-    scalar_chip: &ScalarChip<C>,
-    cs: &ConstraintSystem<C::ScalarExt>,
-    permutation_evals: &Evaluated<C>,
-    permutations_common: &CommonEvaluated<C>,
-    advice_evals: &[AssignedScalar<C>],
-    fixed_evals: &[AssignedScalar<C>],
-    instance_evals: &[AssignedScalar<C>],
-    l_0: &AssignedScalar<C>,
-    l_last: &AssignedScalar<C>,
-    l_blind: &AssignedScalar<C>,
-    beta: &AssignedScalar<C>,
-    gamma: &AssignedScalar<C>,
-    x: &AssignedScalar<C>,
-) -> Result<Vec<AssignedScalar<C>>, Error> {
+pub(crate) fn permutation_expressions<S: SelfEmulation>(
+    layouter: &mut impl Layouter<S::F>,
+    scalar_chip: &S::ScalarChip,
+    cs: &ConstraintSystem<S::F>,
+    permutation_evals: &Evaluated<S>,
+    permutations_common: &CommonEvaluated<S>,
+    advice_evals: &[AssignedNative<S::F>],
+    fixed_evals: &[AssignedNative<S::F>],
+    instance_evals: &[AssignedNative<S::F>],
+    l_0: &AssignedNative<S::F>,
+    l_last: &AssignedNative<S::F>,
+    l_blind: &AssignedNative<S::F>,
+    beta: &AssignedNative<S::F>,
+    gamma: &AssignedNative<S::F>,
+    x: &AssignedNative<S::F>,
+) -> Result<Vec<AssignedNative<S::F>>, Error> {
     let chunk_len = cs.degree() - 2;
 
     // Enforce only for the first set.
@@ -58,11 +59,11 @@ pub(crate) fn permutation_expressions<C: SelfEmulationCurve>(
         // l_0 * (1 - z_0) computed as l_0 - l_0 * z_0
         scalar_chip.add_and_mul(
             layouter,
-            (C::ScalarExt::ONE, l_0),
-            (C::ScalarExt::ZERO, z_0),
-            (C::ScalarExt::ZERO, l_0),
-            C::ScalarExt::ZERO,
-            -C::ScalarExt::ONE,
+            (S::F::ONE, l_0),
+            (S::F::ZERO, z_0),
+            (S::F::ZERO, l_0),
+            S::F::ZERO,
+            -S::F::ONE,
         )?
     };
 
@@ -75,11 +76,11 @@ pub(crate) fn permutation_expressions<C: SelfEmulationCurve>(
         // z_l**2 - z_l
         let aux = scalar_chip.add_and_mul(
             layouter,
-            (-C::ScalarExt::ONE, z_l),
-            (C::ScalarExt::ZERO, z_l),
-            (C::ScalarExt::ZERO, z_l),
-            C::ScalarExt::ZERO,
-            C::ScalarExt::ONE,
+            (-S::F::ONE, z_l),
+            (S::F::ZERO, z_l),
+            (S::F::ZERO, z_l),
+            S::F::ZERO,
+            S::F::ONE,
         )?;
         scalar_chip.mul(layouter, l_last, &aux, None)?
     };
@@ -100,7 +101,7 @@ pub(crate) fn permutation_expressions<C: SelfEmulationCurve>(
             let aux = scalar_chip.sub(layouter, z_i, z_i_prev)?;
             scalar_chip.mul(layouter, l_0, &aux, None)
         })
-        .collect::<Result<Vec<AssignedScalar<C>>, Error>>()?;
+        .collect::<Result<Vec<AssignedNative<S::F>>, Error>>()?;
 
     // And for all the sets we enforce:
     // (1 - (l_last(X) + l_blind(X))) * (
@@ -133,11 +134,11 @@ pub(crate) fn permutation_expressions<C: SelfEmulationCurve>(
                 let aux = scalar_chip.linear_combination(
                     layouter,
                     &[
-                        (C::ScalarExt::ONE, aux),
-                        (C::ScalarExt::ONE, gamma.clone()),
-                        (C::ScalarExt::ONE, eval),
+                        (S::F::ONE, aux),
+                        (S::F::ONE, gamma.clone()),
+                        (S::F::ONE, eval),
                     ],
-                    C::ScalarExt::ZERO,
+                    S::F::ZERO,
                 )?;
 
                 left = scalar_chip.mul(layouter, &left, &aux, None)?;
@@ -146,8 +147,7 @@ pub(crate) fn permutation_expressions<C: SelfEmulationCurve>(
             let mut right = set.permutation_product_eval.clone();
 
             let mut current_delta = {
-                let delta_power =
-                    C::ScalarExt::DELTA.pow_vartime([(chunk_index * chunk_len) as u64]);
+                let delta_power = S::F::DELTA.pow_vartime([(chunk_index * chunk_len) as u64]);
                 scalar_chip.mul(layouter, beta, x, Some(delta_power))?
             };
 
@@ -164,33 +164,27 @@ pub(crate) fn permutation_expressions<C: SelfEmulationCurve>(
                 let aux = scalar_chip.linear_combination(
                     layouter,
                     &[
-                        (C::ScalarExt::ONE, eval),
-                        (C::ScalarExt::ONE, current_delta.clone()),
-                        (C::ScalarExt::ONE, gamma.clone()),
+                        (S::F::ONE, eval),
+                        (S::F::ONE, current_delta.clone()),
+                        (S::F::ONE, gamma.clone()),
                     ],
-                    C::ScalarExt::ZERO,
+                    S::F::ZERO,
                 )?;
                 right = scalar_chip.mul(layouter, &right, &aux, None)?;
-                current_delta = scalar_chip.mul_by_constant(
-                    layouter,
-                    &current_delta.clone(),
-                    C::ScalarExt::DELTA,
-                )?;
+                current_delta =
+                    scalar_chip.mul_by_constant(layouter, &current_delta.clone(), S::F::DELTA)?;
             }
 
-            // (left - &right) * (C::ScalarExt::ONE - &(l_last + &l_blind))
+            // (left - &right) * (S::F::ONE - &(l_last + &l_blind))
             let aux1 = scalar_chip.sub(layouter, &left, &right)?;
             let aux2 = scalar_chip.linear_combination(
                 layouter,
-                &[
-                    (-C::ScalarExt::ONE, l_last.clone()),
-                    (-C::ScalarExt::ONE, l_blind.clone()),
-                ],
-                C::ScalarExt::ONE,
+                &[(-S::F::ONE, l_last.clone()), (-S::F::ONE, l_blind.clone())],
+                S::F::ONE,
             )?;
             scalar_chip.mul(layouter, &aux1, &aux2, None)
         })
-        .collect::<Result<Vec<AssignedScalar<C>>, Error>>()?;
+        .collect::<Result<Vec<AssignedNative<S::F>>, Error>>()?;
 
     Ok([vec![id_1, id_2], ids_3, ids_4].concat())
 }

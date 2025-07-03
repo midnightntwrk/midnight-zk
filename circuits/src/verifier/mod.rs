@@ -15,6 +15,7 @@
 
 use std::collections::BTreeMap;
 
+use group::Group;
 use midnight_proofs::{
     circuit::Value,
     plonk,
@@ -23,8 +24,8 @@ use midnight_proofs::{
 };
 
 use crate::{
+    field::AssignedNative,
     types::{InnerValue, Instantiable},
-    verifier::types::AssignedScalar,
 };
 
 mod accumulator;
@@ -41,13 +42,11 @@ mod verifier_gadget;
 
 pub use accumulator::{Accumulator, AssignedAccumulator};
 pub use msm::Msm;
-pub use types::SelfEmulationCurve;
+pub use types::{BlstrsEmulation, SelfEmulation};
 pub use verifier_gadget::VerifierGadget;
 
-type VerifyingKey<C> = plonk::VerifyingKey<
-    <C as SelfEmulationCurve>::ScalarField,
-    KZGCommitmentScheme<<C as SelfEmulationCurve>::Engine>,
->;
+type VerifyingKey<S> =
+    plonk::VerifyingKey<<S as SelfEmulation>::F, KZGCommitmentScheme<<S as SelfEmulation>::Engine>>;
 
 /// Type for in-circuit verifying keys.
 ///
@@ -60,17 +59,17 @@ type VerifyingKey<C> = plonk::VerifyingKey<
 /// [VerifierGadget::prepare] contains the scalars of the
 /// fixed-commitments, in the `fixed_base_scalars` field (of its RHS).
 #[derive(Clone, Debug)]
-pub struct AssignedVk<C: SelfEmulationCurve> {
+pub struct AssignedVk<S: SelfEmulation> {
     vk_name: String,
-    domain: EvaluationDomain<C::ScalarField>,
-    cs: ConstraintSystem<C::ScalarField>,
-    transcript_repr: AssignedScalar<C>,
+    domain: EvaluationDomain<S::F>,
+    cs: ConstraintSystem<S::F>,
+    transcript_repr: AssignedNative<S::F>,
 }
 
-impl<C: SelfEmulationCurve> InnerValue for AssignedVk<C> {
-    type Element = VerifyingKey<C>;
+impl<S: SelfEmulation> InnerValue for AssignedVk<S> {
+    type Element = VerifyingKey<S>;
 
-    fn value(&self) -> Value<VerifyingKey<C>> {
+    fn value(&self) -> Value<VerifyingKey<S>> {
         unimplemented!(
             "It is not possible to get a full verifying key out of an
              AssignedVk, as the latter does not include fixed commitments."
@@ -78,9 +77,9 @@ impl<C: SelfEmulationCurve> InnerValue for AssignedVk<C> {
     }
 }
 
-impl<C: SelfEmulationCurve> Instantiable<C::ScalarField> for AssignedVk<C> {
-    fn as_public_input(vk: &VerifyingKey<C>) -> Vec<C::ScalarField> {
-        AssignedScalar::<C>::as_public_input(&vk.transcript_repr())
+impl<S: SelfEmulation> Instantiable<S::F> for AssignedVk<S> {
+    fn as_public_input(vk: &VerifyingKey<S>) -> Vec<S::F> {
+        AssignedNative::<S::F>::as_public_input(&vk.transcript_repr())
     }
 }
 
@@ -112,7 +111,7 @@ fn perm_commitment_name(prefix: &str, nb_perm_commitments: usize, i: usize) -> S
     commitment_name(String::from(prefix) + "_perm_com", nb_perm_commitments, i)
 }
 
-impl<C: SelfEmulationCurve> AssignedVk<C> {
+impl<S: SelfEmulation> AssignedVk<S> {
     /// Canonical name for the i-th fixed commitment of this AssignedVk.
     fn fixed_commitment_name(&self, i: usize) -> String {
         let nb_fixed_commitments = self.cs.num_fixed_columns() + self.cs.num_selectors();
@@ -128,13 +127,13 @@ impl<C: SelfEmulationCurve> AssignedVk<C> {
 
 /// Extracts the fixed bases from the verifying key, indexed by their
 /// canonical name.
-pub fn fixed_bases<C: SelfEmulationCurve>(
+pub fn fixed_bases<S: SelfEmulation>(
     vk_name: &str,
-    vk: &VerifyingKey<C>,
-) -> BTreeMap<String, C> {
+    vk: &VerifyingKey<S>,
+) -> BTreeMap<String, S::C> {
     let mut fixed_bases = BTreeMap::new();
 
-    fixed_bases.insert(String::from("~G"), -C::generator());
+    fixed_bases.insert(String::from("~G"), -S::C::generator());
 
     let fixed_commitments = vk.fixed_commitments();
     let perm_commitments = vk.permutation().commitments();
@@ -159,7 +158,7 @@ pub fn fixed_bases<C: SelfEmulationCurve>(
 /// The names of the fixed bases of a verifying key. This function is designed
 /// to be called before having an actual verifying key. Only the number of fixed
 /// and permutation commitments is necessary, not their actual values.
-pub fn fixed_base_names<C: SelfEmulationCurve>(
+pub fn fixed_base_names<S: SelfEmulation>(
     vk_name: &str,
     nb_fixed_commitments: usize,
     nb_perm_commitments: usize,
