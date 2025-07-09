@@ -269,22 +269,22 @@ where
         input: &AssignedVector<F, T, M, A>,
         n_elems: usize,
     ) -> Result<AssignedVector<F, T, M, A>, Error> {
-        let a_max_bits = (usize::BITS - M.leading_zeros()) as usize;
+        let a_max_bits = (usize::BITS - A.leading_zeros()) as usize;
 
         // Assert input.len >= n_elems.
         let len_complement =
             self.linear_combination(layouter, &[(-F::ONE, input.len.clone())], F::from(M as u64))?;
         self.assert_lower_than_fixed(layouter, &len_complement, &BigUint::from(M + 1 - n_elems))?;
 
-        // We divide the number of elements to be trimmed 2 parts.
+        // We divide the number of elements to be trimmed in 2 parts.
         // The A-sized whole chunks, one last <A sized piece.
-        // Trimming this last piece may require some realignment of the vector
-        // that ensures the padding at the end remains in [0, A).
-        // The A-sized chunks won't modify the alignment, so modifying the value
+        // (1) The A-sized chunks won't modify the alignment, so modifying the value
         // the vector length is enough to have them trimmed. They will remain
         // in the buffer but they will be considered padding.
+        // (2) Trimming this last piece may require some realignment of the vector
+        // that ensures the padding at the end remains in [0, A).
 
-        let (_whole_chunks, last_trim) = (n_elems / A, n_elems % A);
+        let last_trim = n_elems % A;
 
         // Length of last chunk ( or 0 if it is full ).
         let last_len = self.modulus(layouter, &input.len, M as u32, A as u32)?;
@@ -301,12 +301,10 @@ where
                 self.leq_fixed(layouter, &bounded_last_len, F::from(last_trim as u64))?;
             let full_last = self.is_equal_to_fixed(layouter, &last_len, F::ZERO)?;
 
-            // NOTE for reviewers:
-            // let not_full_last = self.not(layouter, &full_last)?;
-            // self.and(layouter, &[not_full_last, leq_shift])
-
             // Since full_last = 1 => leq_shift = 1:
-            // this is equivalent to the commented code above (but way more confusing).
+            //     let not_full_last = self.not(layouter, &full_last)?;
+            //     self.and(layouter, &[not_full_last, leq_shift])
+            // A XOR operation is equivalent to the commented code above.
             self.xor(layouter, &[full_last, leq_shift])
         }?;
 
