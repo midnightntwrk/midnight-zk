@@ -84,7 +84,8 @@ use crate::{
     json::{Base64Chip, Base64Config, ParserGadget, NB_BASE64_ADVICE_COLS},
     map::map_gadget::MapGadget,
     types::{
-        AssignedBit, AssignedByte, AssignedNative, AssignedNativePoint, InnerValue, Instantiable,
+        AssignedBit, AssignedByte, AssignedNative, AssignedNativePoint, AssignedVector, InnerValue,
+        Instantiable, VectorInstructions,
     },
     utils::{BlstPLONK, ComposableChip},
 };
@@ -1043,6 +1044,60 @@ impl BinaryInstructions<F> for ZkStdLib {
 }
 
 impl BitwiseInstructions<F, AssignedNative<F>> for ZkStdLib {}
+
+impl<const M: usize, const A: usize> VectorInstructions<F, AssignedNative<F>, M, A> for ZkStdLib {
+    fn trim_beginning(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        input: &AssignedVector<F, AssignedNative<F>, M, A>,
+        n_elems: usize,
+    ) -> Result<AssignedVector<F, AssignedNative<F>, M, A>, Error> {
+        self.native_gadget.trim_beginning(layouter, input, n_elems)
+    }
+
+    fn padding_flag(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        input: &AssignedVector<F, AssignedNative<F>, M, A>,
+    ) -> Result<[AssignedBit<F>; M], Error> {
+        self.native_gadget.padding_flag(layouter, input)
+    }
+
+    fn get_limits(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        input: &AssignedVector<F, AssignedNative<F>, M, A>,
+    ) -> Result<(AssignedNative<F>, AssignedNative<F>), Error> {
+        self.native_gadget.get_limits(layouter, input)
+    }
+}
+
+impl<const M: usize, const A: usize> VectorInstructions<F, AssignedByte<F>, M, A> for ZkStdLib {
+    fn trim_beginning(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        input: &AssignedVector<F, AssignedByte<F>, M, A>,
+        n_elems: usize,
+    ) -> Result<AssignedVector<F, AssignedByte<F>, M, A>, Error> {
+        self.native_gadget.trim_beginning(layouter, input, n_elems)
+    }
+
+    fn padding_flag(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        input: &AssignedVector<F, AssignedByte<F>, M, A>,
+    ) -> Result<[AssignedBit<F>; M], Error> {
+        self.native_gadget.padding_flag(layouter, input)
+    }
+
+    fn get_limits(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        input: &AssignedVector<F, AssignedByte<F>, M, A>,
+    ) -> Result<(AssignedNative<F>, AssignedNative<F>), Error> {
+        self.native_gadget.get_limits(layouter, input)
+    }
+}
 
 /// Circuit structure which is used to create any circuit that can be compiled
 /// into keys using the ZK standard library.

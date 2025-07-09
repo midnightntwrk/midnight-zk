@@ -28,6 +28,8 @@ verification keys break backwards compatibility.
 * EqualityInstructions & AssertionInstructions implementation for AssignedVectors [#574](https://github.com/midnightntwrk/midnight-circuits/pull/574)
 * DivisionInstructions [#574](https://github.com/midnightntwrk/midnight-circuits/pull/574)
 * Add Base64Vec intialization instruction + fix alignment bug [#20](https://github.com/midnightntwrk/midnight-zk/pull/20)
+* Add `trim_beginning` in `VectorInstructions` [#19](https://github.com/midnightntwrk/midnight-zk/pull/19)
+* Expose `VectorInstructions in `ZkstdLib` [#19](https://github.com/midnightntwrk/midnight-zk/pull/19)
 
 ### Changed
 * Add holder key check on credential example [#542](https://github.com/midnightntwrk/midnight-circuits/pull/542)
