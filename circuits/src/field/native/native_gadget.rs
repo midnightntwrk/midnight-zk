@@ -1698,6 +1698,7 @@ mod tests {
 
     test!(decomposition, test_bit_decomposition);
     test!(decomposition, test_byte_decomposition);
+    test!(decomposition, test_sgn0);
 
     macro_rules! test {
         ($module:ident, $operation:ident) => {
