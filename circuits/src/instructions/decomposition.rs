@@ -284,6 +284,7 @@ where
 
     /// Sign function as described in RFC 9380. `sgn0(x) := x mod 2`.
     fn sgn0(&self, layouter: &mut impl Layouter<F>, x: &Assigned) -> Result<AssignedBit<F>, Error> {
+        panic!("We want to use the other one");
         let bits = self.assigned_to_le_bits(layouter, x, None, true)?;
         Ok(bits[0].clone())
     }
