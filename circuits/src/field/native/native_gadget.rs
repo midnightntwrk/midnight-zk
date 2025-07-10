@@ -905,7 +905,6 @@ where
         x: &AssignedNative<F>,
     ) -> Result<AssignedBit<F>, Error> {
         // We decompose x as msb || mid_limb || lsb.
-
         let n = F::NUM_BITS as u64;
         let msb_factor = big_to_fe::<F>(BigUint::one() << (n - 1));
 
@@ -941,9 +940,9 @@ where
         // At this point we have that (x_msb, x_mid, x_lsb) is a valid split of x.
         // We want to make sure it is canonical before we can output x_lsb.
         // Let (1, p_mid, 1) be the representation of the native modulus.
-        // For canonicity, we will check that one of the following is true:
-        //   (1) x_msb = 1      =>  x_mid <= p_mid
-        //   (2) x_mid = p_mid  =>  x_lsb = 0
+        // For canonicity, we will check that following conditions are true:
+        //   (1) x_msb = 1                    ->  x_mid <= p_mid
+        //   (2) x_msb = 1 AND x_mid = p_mid  ->  x_lsb = 0
         let p = modulus::<F>();
         debug_assert!(p.bit(0));
         debug_assert!(p.bit(n - 1));
@@ -956,7 +955,7 @@ where
 
         // Check condition (2)
         let same_mid = self.is_equal_to_fixed(layouter, &x_mid, big_to_fe(p_mid))?;
-        let same_mid_and_lsb_set = self.and(layouter, &[same_mid, x_lsb.clone()])?;
+        let same_mid_and_lsb_set = self.and(layouter, &[x_msb, same_mid, x_lsb.clone()])?;
         self.assert_equal_to_fixed(layouter, &same_mid_and_lsb_set, false)?;
 
         Ok(x_lsb)
