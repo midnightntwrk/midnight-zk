@@ -905,60 +905,39 @@ where
         x: &AssignedNative<F>,
     ) -> Result<AssignedBit<F>, Error> {
         // We decompose x as msb || mid_limb || lsb.
-        let n = F::NUM_BITS as u64;
-        let msb_factor = big_to_fe::<F>(BigUint::one() << (n - 1));
+        // let n = F::NUM_BITS as u64;
+        // let msb_factor = big_to_fe::<F>(BigUint::one() << (n - 1));
 
         let x_val = x.value().copied().map(fe_to_big);
+        let w_val = x_val.clone().map(|x| &x >> 1);
         let lsb_val = x_val.clone().map(|x| x.bit(0));
-        let msb_val = x_val.clone().map(|x| x.bit(n - 1));
-        let mid_val = x_val.map(|x| {
-            let mut x = x;
-            x.set_bit(n - 1, false);
-            big_to_fe::<F>(x >> 1)
-        });
+
+        let is_zero: AssignedBit<F> = self.native_chip.is_equal_to_fixed(layouter, x, F::ZERO)?;
+        let not_is_zero: AssignedBit<F> = self.not(layouter, &is_zero)?;
+        // let zero: AssignedBit<F> = self.native_chip.assign_fixed(layouter, false)?;
 
         let x_lsb: AssignedBit<F> = self.assign(layouter, lsb_val)?;
-        let x_msb: AssignedBit<F> = self.assign(layouter, msb_val)?;
-        let x_mid = self.core_decomposition_chip.assign_less_than_pow2(
+        let w = self.assign_lower_than_fixed(
             layouter,
-            mid_val,
-            n as usize - 2,
+            w_val.map(big_to_fe::<F>),
+            &(&modulus::<F>() / BigUint::from(2u8) + BigUint::from(1u8)),
         )?;
-
+        // let w: AssignedNative<F> = self.assign(layouter, w_val.map(big_to_fe::<F>))?;
         let must_be_x = self.linear_combination(
             layouter,
             &[
                 (F::ONE, x_lsb.clone().into()),
-                (F::from(2), x_mid.clone()),
-                (msb_factor, x_msb.clone().into()),
+                (F::from(2), w.clone()),
             ],
             F::ZERO,
         )?;
 
         self.assert_equal(layouter, x, &must_be_x)?;
 
-        // At this point we have that (x_msb, x_mid, x_lsb) is a valid split of x.
-        // We want to make sure it is canonical before we can output x_lsb.
-        // Let (1, p_mid, 1) be the representation of the native modulus.
-        // For canonicity, we will check that following conditions are true:
-        //   (1) x_msb = 1                    ->  x_mid <= p_mid
-        //   (2) x_msb = 1 AND x_mid = p_mid  ->  x_lsb = 0
-        let p = modulus::<F>();
-        debug_assert!(p.bit(0));
-        debug_assert!(p.bit(n - 1));
-        let p_mid: BigUint = (p - fe_to_big(msb_factor)) >> 1;
+        // If x is zero, then sgn0(x) = 0, otherwise sgn0(x) = x_lsb.
+        let sgn0 = self.and(layouter, &[not_is_zero, x_lsb])?;
 
-        // Check condition (1)
-        let zero = self.assign_fixed(layouter, F::ZERO)?;
-        let aux = self.select(layouter, &x_msb, &x_mid, &zero)?;
-        self.assert_lower_than_fixed(layouter, &aux, &(p_mid.clone() + BigUint::one()))?;
-
-        // Check condition (2)
-        let same_mid = self.is_equal_to_fixed(layouter, &x_mid, big_to_fe(p_mid))?;
-        let same_mid_and_lsb_set = self.and(layouter, &[x_msb, same_mid, x_lsb.clone()])?;
-        self.assert_equal_to_fixed(layouter, &same_mid_and_lsb_set, false)?;
-
-        Ok(x_lsb)
+        Ok(sgn0)
     }
 }
 

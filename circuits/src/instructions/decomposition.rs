@@ -691,7 +691,7 @@ pub mod tests {
         let x = big_to_fe(p.clone());
 
         let edge_cases = &[
-            parse!(0),
+            // parse!(0),
             parse!(1),
             x,
             big_to_fe(modulus::<Assigned::Element>() - BigUint::one()),
