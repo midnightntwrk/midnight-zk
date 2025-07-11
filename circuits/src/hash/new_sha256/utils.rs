@@ -1,0 +1,274 @@
+use ff::PrimeField;
+
+use crate::utils::util::fe_to_u32;
+
+pub const MASK_EVEN_64: u64 = 0x5555_5555_5555_5555; // 0101010101010101... (even positions in u64)
+pub const MASK_ODD_64: u64 = 0xAAAA_AAAA_AAAA_AAAA; // 1010101010101010... (odd positions in u64)
+
+const LOOKUP_LENGTHS: [u32; 2] = [8, 12]; // bit lengths of plain values in lookup table (TODO: to be extended)
+const MAX_LOOKUP_LENGTH: usize = 12; // maximum bit length of plain values in lookup table
+
+/// Returns the even and odd bits of little-endian binary representation of u64.
+pub fn get_even_odd_bits(value: u64) -> (u32, u32) {
+    let mut even = 0u64;
+    let mut odd = 0u64;
+    let mut bit_pos = 0usize;
+
+    for i in 0..32 {
+        let even_bit = (value >> (2 * i)) & 1;
+        let odd_bit = (value >> (2 * i + 1)) & 1;
+        even |= even_bit << bit_pos;
+        odd |= odd_bit << bit_pos;
+        bit_pos += 1;
+    }
+
+    (even as u32, odd as u32)
+}
+
+/// Asserts x is in correct spreaded form, i.e. its little-endian binary
+/// representation has zeros in odd positions.
+fn in_valid_spreaded_form(x: u64) -> bool {
+    MASK_ODD_64 & x == 0
+}
+
+/// Computes off-circuit spreaded Σ₀(A) with A in (big endian) spreaded limbs.
+///
+/// # Panics
+///
+/// If the limbs are not in clean spreaded form.
+pub fn spreaded_Sigma_0(spreaded_limbs: [u64; 4]) -> u64 {
+    assert!(spreaded_limbs.into_iter().all(in_valid_spreaded_form));
+
+    let sA_10 = spreaded_limbs[0];
+    let sA_9 = spreaded_limbs[1];
+    let sA_11 = spreaded_limbs[2];
+    let sA_2 = spreaded_limbs[3];
+
+    // As each limb is in valid spreaded form, the sum of three rotations composed
+    // by the limbs is at most: 3 * 0b0101..01 = 0b1111..11.
+    // Hence, the following running sum should never overflow u64.
+    (4u64.pow(30) * sA_2 + 4u64.pow(20) * sA_10 + 4u64.pow(11) * sA_9 + sA_11)
+        + (4u64.pow(21) * sA_11 + 4u64.pow(19) * sA_2 + 4u64.pow(9) * sA_10 + sA_9)
+        + (4u64.pow(23) * sA_9 + 4u64.pow(12) * sA_11 + 4u64.pow(10) * sA_2 + sA_10)
+}
+
+/// Spreads the input value, which is by definition interleaving the (big
+/// endian) bit-array of input with zeros in the even indices:         
+/// [b_n, ..., b_1, b_0] ->  [0, b_n,..., 0, b_1, 0, b_0].
+pub fn spread(x: u32) -> u64 {
+    let mut le_bits = [false; 64];
+    for i in 0..32 {
+        le_bits[2 * i] = ((x >> i) & 1) == 1;
+    }
+
+    let ret = le_bits.iter().enumerate().fold(
+        0u64,
+        |acc, (i, &bit)| {
+            if bit {
+                acc | (1 << i)
+            } else {
+                acc
+            }
+        },
+    );
+    ret
+}
+
+/// Breaks the value into big-endian limbs following the required limb lengths.
+///
+/// # Panics
+///
+/// If sum(limb_lengths) != 32.
+/// If any given limb length equals to 0.
+pub fn u32_in_be_limbs<const N: usize>(value: u32, limb_lengths: [usize; N]) -> [u32; N] {
+    assert_eq!(limb_lengths.iter().sum::<usize>(), 32);
+
+    let mut result = Vec::new();
+    let mut remaining = value;
+    for limb_len in limb_lengths.iter().rev() {
+        assert!(*limb_len != 0);
+        let limb = remaining & ((1 << limb_len) - 1);
+        result.push(limb);
+        remaining >>= limb_len;
+    }
+    result.reverse();
+    result.try_into().unwrap()
+}
+
+pub fn u32_to_fe<F: PrimeField>(value: u32) -> F {
+    F::from(value.into())
+}
+
+pub fn u64_to_fe<F: PrimeField>(value: u64) -> F {
+    F::from(value)
+}
+
+/// Generates the spreaded lookup table lazily as it is only used in keygen.
+pub fn iter_of_table<F: PrimeField>() -> impl Iterator<Item = (F, F, F)> {
+    // Compute all pairs of (plain, spreaded) for the plain values in the range [0,
+    // 2^MAX_LOOKUP_LENGTH).
+    let plain_spreaded_max_len =
+        (1..=(1 << MAX_LOOKUP_LENGTH)).scan((F::ZERO, F::ZERO), |(plain, spreaded), i| {
+            let res = (*plain, *spreaded);
+            // Compute (plain, spreaded) for the next row.
+            *plain += F::ONE;
+            if i & 1 == 1 {
+                // The spreaded form of an odd number can be easily computed by adding 1 to the
+                // spreaded form of the previous even number.
+                *spreaded += F::ONE;
+            } else {
+                // Recompute the spreaded form for an even number.
+                let spreaded_u64 = spread(fe_to_u32(*plain));
+                *spreaded = u64_to_fe(spreaded_u64);
+            }
+
+            Some(res)
+        });
+
+    // Generate the sub-table consisting of (tag, plain, spreaded) for the plain
+    // values in the range [0, 2^tag).
+    let table_of_tag = |tag| {
+        plain_spreaded_max_len
+            .clone()
+            .take(1 << tag as usize)
+            .map(move |(plain, spreaded)| (u32_to_fe(tag), plain, spreaded))
+    };
+
+    // Generate the full table by concatenating sub-tables for each length in
+    // LOOKUP_LENGTHS.
+    LOOKUP_LENGTHS
+        .map(|limb_length| table_of_tag(limb_length))
+        .into_iter()
+        .flatten()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::u64;
+
+    use rand::{seq::SliceRandom, Rng};
+
+    use super::*;
+
+    type F = midnight_curves::Fq;
+
+    #[test]
+    fn test_get_even_odd_bits() {
+        [
+            (0, 0, 0),
+            (1, 1, 0),
+            (2, 0, 1),
+            (1 << 3, 0, 2),
+            (u64::MAX, 0xFFFF_FFFF, 0xFFFF_FFFF),
+            (MASK_EVEN_64, 0xFFFF_FFFF, 0),
+            (MASK_ODD_64, 0, 0xFFFF_FFFF),
+            (0b110101101u64, 19, 14),
+        ]
+        .into_iter()
+        .for_each(|(n, expected_even, expected_odd)| {
+            let (even, odd) = get_even_odd_bits(n);
+            assert_eq!(even, expected_even);
+            assert_eq!(odd, expected_odd);
+        });
+    }
+
+    #[test]
+    fn test_in_valid_spreaded_form() {
+        // Positive tests
+        assert!([MASK_EVEN_64, 0b101010101, 0, 1]
+            .into_iter()
+            .all(in_valid_spreaded_form));
+
+        // Negative tests
+        assert!(![MASK_ODD_64, u64::MAX, 2]
+            .into_iter()
+            .any(in_valid_spreaded_form));
+    }
+
+    #[test]
+    fn test_spreaded_Sigma_0() {
+        // Assert Σ₀(A) equals the even bits of the output of [`spreaded_Sigma_0`].
+        fn assert_even_of_spreaded_Sigma_0(val: u32) {
+            // Compute Σ₀(A) with the built-in methods.
+            let rot_by_2 = val.rotate_right(2);
+            let rot_by_13 = val.rotate_right(13);
+            let rot_by_22 = val.rotate_right(22);
+            let ret = rot_by_2 ^ rot_by_13 ^ rot_by_22;
+
+            // Compute Σ₀(A) by the even bits of the value returned by [`spreaded_Sigma_0`].
+            let plain_limbs: [u32; 4] = u32_in_be_limbs(val, [10, 9, 11, 2]);
+            let spreaded_limbs: [u64; 4] = plain_limbs.map(spread);
+            let (even, _) = get_even_odd_bits(spreaded_Sigma_0(spreaded_limbs));
+
+            assert_eq!(ret, even);
+        }
+
+        let mut rng = rand::thread_rng();
+        for _ in 0..10 {
+            assert_even_of_spreaded_Sigma_0(rng.gen());
+        }
+    }
+
+    #[test]
+    fn test_spread() {
+        [(0, 0), (1, 1), (0b10, 0b0100), (0b11, 0b0101)]
+            .into_iter()
+            .for_each(|(plain, spreaded)| assert_eq!(spread(plain), spreaded));
+    }
+
+    #[test]
+    fn test_u32_in_be_limbs() {
+        [
+            (0x12345678u32, [8, 8, 8, 8], [0x12, 0x34, 0x56, 0x78]),
+            (0x12345678u32, [4, 8, 12, 8], [0x1, 0x23, 0x456, 0x78]),
+        ]
+        .into_iter()
+        .for_each(|(value, limb_lengths, expected)| {
+            assert_eq!(u32_in_be_limbs(value, limb_lengths), expected)
+        });
+
+        // Test with 32 limbs of 1 bit each
+        let mut rng = rand::thread_rng();
+        let value: u32 = rng.gen();
+        let limb_lengths = [1; 32];
+        let result = u32_in_be_limbs(value, limb_lengths);
+        let expected: [u32; 32] = core::array::from_fn(|i| ((value >> (31 - i)) & 1));
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_iter_of_table() {
+        let table: Vec<_> = iter_of_table::<F>().collect();
+        let mut rng = rand::thread_rng();
+        let to_fe = |(tag, plain, spreaded)| {
+            (
+                u32_to_fe::<F>(tag),
+                u32_to_fe::<F>(plain),
+                u64_to_fe::<F>(spreaded),
+            )
+        };
+
+        for _ in 0..10 {
+            // Positive test: check that the table contains a valid triple of (tag, plain,
+            // spreaded) for a random tag in [`LOOKUP_LENGTHS`].
+            let tag = *LOOKUP_LENGTHS.choose(&mut rng).unwrap();
+            let plain = rng.gen_range(0..(1 << tag));
+            let spreaded = spread(plain);
+            let triple = to_fe((tag, plain, spreaded));
+            assert!(table.contains(&triple));
+
+            // Negative test: check that the table does not contain a random triple of
+            // (tag, plain, spreaded).
+            let random_triple = to_fe((rng.gen(), rng.gen(), rng.gen()));
+            assert!(!table.contains(&random_triple));
+        }
+
+        // Negative test: check that the table does not contain a triple with a tag not
+        // in [`LOOKUP_LENGTHS`].
+        let tag = 16; // Not in LOOKUP_LENGTHS
+        let plain = rng.gen_range(0..(1 << tag));
+        let spreaded = spread(plain);
+        let triple = to_fe((tag, plain, spreaded));
+        assert!(!table.contains(&triple));
+    }
+}
