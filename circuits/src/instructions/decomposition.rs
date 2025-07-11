@@ -462,8 +462,8 @@ pub mod tests {
                     let x: Assigned = chip.assign_fixed(&mut layouter, self.x)?;
                     let sign = chip.sgn0(&mut layouter, &x)?;
                     let lsb = match self.endianess {
-                        BE => decomposed[0] & 1,
-                        LE => decomposed.last().unwrap() & 1,
+                        LE => decomposed[0] & 1,
+                        BE => decomposed.last().unwrap() & 1,
                     };
                     aux_chip.assert_equal_to_fixed(&mut layouter, &sign, lsb == 1u8)
                 }
@@ -685,9 +685,8 @@ pub mod tests {
 
         // Edge case where x = 0 | p_mid | 1.
         // (same as the modulus p but with the msb turned to 0).
-        let mut p = BigUint::from_bytes_le((-F::ONE).to_repr().as_ref());
+        let mut p = modulus::<Assigned::Element>();
         p.set_bit(F::NUM_BITS as u64 - 1, false);
-        p.set_bit(0u64, true);
         let x = big_to_fe(p.clone());
 
         let edge_cases = &[
@@ -705,7 +704,7 @@ pub mod tests {
                 *x,
                 &bytes,
                 None,
-                Endianess::BE,
+                Endianess::LE,
                 Operation::Sgn0,
                 true,
                 i == 0, // Cost model on for the first example.
