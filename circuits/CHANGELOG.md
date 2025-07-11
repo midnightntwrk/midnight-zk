@@ -41,6 +41,7 @@ verification keys break backwards compatibility.
 * Change PoseidonChip dependency (from NativeGadget to NativeChip) [#12](https://github.com/midnightntwrk/midnight-zk/pull/12)
 * ZkStdLib API is not generic on the hash function for Fiat-Shamir [#13](https://github.com/midnightntwrk/midnight-zk/pull/13)
 * Fixed completeness bug in NativeGadget's `sgn0` [#26](https://github.com/midnightntwrk/midnight-zk/pull/26)
+* Optimize `sgn0` [#27](https://github.com/midnightntwrk/midnight-zk/pull/27)
 
 ### Removed
 * Bit and Byte off-circuit types [#548](https://github.com/midnightntwrk/midnight-circuits/pull/548)
