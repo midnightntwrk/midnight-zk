@@ -22,7 +22,7 @@ use midnight_proofs::{
     plonk::Error,
 };
 use num_bigint::BigUint;
-use num_traits::{One, Zero};
+use num_traits::Zero;
 #[cfg(any(test, feature = "testing"))]
 use {
     crate::field::decomposition::chip::P2RDecompositionConfig,
@@ -158,6 +158,8 @@ impl<F: PrimeField> BoundedElement<F> {
     pub fn new(value: F, bound: u32) -> Self {
         #[cfg(not(test))]
         {
+            use num_traits::One;
+
             let v_as_bint = fe_to_big(value);
             let bound_as_bint = BigUint::one() << bound;
             assert!(
