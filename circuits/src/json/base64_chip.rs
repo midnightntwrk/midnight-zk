@@ -173,7 +173,7 @@ impl<F: PrimeField, const M: usize, const A: usize> Base64VarInstructions<F, M, 
         let ng = &self.native_gadget;
         let vg = &self.vector_gadget;
         let filler = ng.assign_fixed(layouter, ALT_PAD as u8)?;
-        let flags = vg.padding_flag(layouter, &vec)?;
+        let flags = vg.padding_flag(layouter, vec)?;
         let result = vec
             .buffer
             .iter()
@@ -421,7 +421,7 @@ impl<F: PrimeField> ComposableChip<F> for Base64Chip<F> {
         Self {
             config: config.clone(),
             native_gadget: sub_chips.clone(),
-            vector_gadget: VectorGadget::new(&sub_chips),
+            vector_gadget: VectorGadget::new(sub_chips),
         }
     }
 

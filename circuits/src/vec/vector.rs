@@ -16,8 +16,11 @@ use std::ops::Range;
 use ff::PrimeField;
 use midnight_proofs::circuit::Value;
 
-use crate::types::InnerValue;
-use crate::{field::AssignedNative, types::AssignedByte, utils::util::fe_to_big};
+use crate::{
+    field::AssignedNative,
+    types::{AssignedByte, InnerValue},
+    utils::util::fe_to_big,
+};
 
 /// A variable-length vector of elements of type T, with size bound M.
 /// - `len` is the (potentially secret) effective length of the vector, its
@@ -43,7 +46,6 @@ pub struct AssignedVector<F: PrimeField, T: Vectorizable, const M: usize, const 
 
 /// Returns the range where the data should be placed in the buffer.
 pub fn get_lims<const M: usize, const A: usize>(len: usize) -> Range<usize> {
-    // TODO move to type impl
     let final_pad_len = (A - (len % A)) % A;
     M - len - final_pad_len..M - final_pad_len
 }

@@ -35,7 +35,8 @@ use crate::{
 type NG<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
 
 #[derive(Clone, Debug)]
-/// A gadget for vector operations of elements that are or fit within a native field element:
+/// A gadget for vector operations of elements that are or fit within a native
+/// field element:
 pub struct VectorGadget<F: PrimeField> {
     native_gadget: NG<F>,
 }
