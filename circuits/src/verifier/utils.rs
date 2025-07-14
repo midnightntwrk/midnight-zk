@@ -13,7 +13,7 @@
 
 use std::{cmp::min, ops::Range};
 
-use ff::{Field, PrimeField};
+use ff::PrimeField;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
@@ -21,37 +21,40 @@ use midnight_proofs::{
 use num_bigint::BigUint;
 use num_traits::One;
 
+#[cfg(not(feature = "truncated-challenges"))]
+use crate::instructions::FieldInstructions;
+#[cfg(feature = "truncated-challenges")]
+use crate::instructions::NativeInstructions;
 use crate::{
     field::AssignedNative,
-    instructions::{ArithInstructions, AssignmentInstructions, NativeInstructions},
+    instructions::{ArithInstructions, AssignmentInstructions},
     utils::util::modulus,
-    verifier::types::{AssignedScalar, ScalarChip, SelfEmulationCurve},
 };
 
 /// An assigned scalar known to be bounded in the range [0, bound].
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct AssignedBoundedScalar<C: SelfEmulationCurve> {
-    pub(crate) scalar: AssignedScalar<C>,
+pub struct AssignedBoundedScalar<F: PrimeField> {
+    pub(crate) scalar: AssignedNative<F>,
     pub(crate) bound: BigUint,
 }
 
-impl<C: SelfEmulationCurve> AssignedBoundedScalar<C> {
+impl<F: PrimeField> AssignedBoundedScalar<F> {
     /// Creates a new `AssignedBoundedScalar` from an assigned scalar and an
     /// inclusive bound on its value. The bound will default to maximum possible
     /// value of a field element when not provided.
-    pub(crate) fn new(scalar: &AssignedScalar<C>, bound_opt: Option<BigUint>) -> Self {
+    pub(crate) fn new(scalar: &AssignedNative<F>, bound_opt: Option<BigUint>) -> Self {
         Self {
             scalar: scalar.clone(),
-            bound: bound_opt.unwrap_or(modulus::<C::ScalarExt>() - BigUint::one()),
+            bound: bound_opt.unwrap_or(modulus::<F>() - BigUint::one()),
         }
     }
 
     /// An `AssignedBoundedScalar` with a fixed value of 1.
     pub(crate) fn one(
-        layouter: &mut impl Layouter<C::ScalarExt>,
-        scalar_chip: &ScalarChip<C>,
-    ) -> Result<AssignedBoundedScalar<C>, Error> {
-        let one = scalar_chip.assign_fixed(layouter, C::ScalarExt::ONE)?;
+        layouter: &mut impl Layouter<F>,
+        scalar_chip: &impl AssignmentInstructions<F, AssignedNative<F>>,
+    ) -> Result<AssignedBoundedScalar<F>, Error> {
+        let one = scalar_chip.assign_fixed(layouter, F::ONE)?;
         Ok(AssignedBoundedScalar {
             scalar: one,
             bound: BigUint::one(),
@@ -61,11 +64,11 @@ impl<C: SelfEmulationCurve> AssignedBoundedScalar<C> {
 
 /// Assigns a slice of scalars, producing a vector of assigned bounded scalars
 /// with worst-case bound.
-pub(crate) fn assign_bounded_scalars<C: SelfEmulationCurve>(
-    layouter: &mut impl Layouter<C::ScalarExt>,
-    scalar_chip: &ScalarChip<C>,
-    values: &[Value<C::ScalarExt>],
-) -> Result<Vec<AssignedBoundedScalar<C>>, Error> {
+pub(crate) fn assign_bounded_scalars<F: PrimeField>(
+    layouter: &mut impl Layouter<F>,
+    scalar_chip: &impl AssignmentInstructions<F, AssignedNative<F>>,
+    values: &[Value<F>],
+) -> Result<Vec<AssignedBoundedScalar<F>>, Error> {
     Ok(scalar_chip
         .assign_many(layouter, values)?
         .iter()
@@ -74,33 +77,33 @@ pub(crate) fn assign_bounded_scalars<C: SelfEmulationCurve>(
 }
 
 /// Adds the given assigned bounded scalars, updating the bound.
-pub(crate) fn add_bounded_scalars<C: SelfEmulationCurve>(
-    layouter: &mut impl Layouter<C::ScalarExt>,
-    scalar_chip: &ScalarChip<C>,
-    x1: &AssignedBoundedScalar<C>,
-    x2: &AssignedBoundedScalar<C>,
-) -> Result<AssignedBoundedScalar<C>, Error> {
+pub(crate) fn add_bounded_scalars<F: PrimeField>(
+    layouter: &mut impl Layouter<F>,
+    scalar_chip: &impl ArithInstructions<F, AssignedNative<F>>,
+    x1: &AssignedBoundedScalar<F>,
+    x2: &AssignedBoundedScalar<F>,
+) -> Result<AssignedBoundedScalar<F>, Error> {
     Ok(AssignedBoundedScalar {
         scalar: scalar_chip.add(layouter, &x1.scalar, &x2.scalar)?,
         bound: min(
             x1.bound.clone() + x2.bound.clone(),
-            modulus::<C::ScalarExt>() - BigUint::one(),
+            modulus::<F>() - BigUint::one(),
         ),
     })
 }
 
 /// Multiplies the given assigned bounded scalars, updating the bound.
-pub fn mul_bounded_scalars<C: SelfEmulationCurve>(
-    layouter: &mut impl Layouter<C::ScalarExt>,
-    scalar_chip: &ScalarChip<C>,
-    x1: &AssignedBoundedScalar<C>,
-    x2: &AssignedBoundedScalar<C>,
-) -> Result<AssignedBoundedScalar<C>, Error> {
+pub fn mul_bounded_scalars<F: PrimeField>(
+    layouter: &mut impl Layouter<F>,
+    scalar_chip: &impl ArithInstructions<F, AssignedNative<F>>,
+    x1: &AssignedBoundedScalar<F>,
+    x2: &AssignedBoundedScalar<F>,
+) -> Result<AssignedBoundedScalar<F>, Error> {
     Ok(AssignedBoundedScalar {
         scalar: scalar_chip.mul(layouter, &x1.scalar, &x2.scalar, None)?,
         bound: min(
             x1.bound.clone() * x2.bound.clone(),
-            modulus::<C::ScalarExt>() - BigUint::one(),
+            modulus::<F>() - BigUint::one(),
         ),
     })
 }
@@ -115,18 +118,14 @@ pub(crate) fn truncate_off_circuit<F: PrimeField>(scalar: F) -> F {
     let bi = BigUint::from_bytes_le(&bytes);
     F::from_str_vartime(&BigUint::to_string(&bi)).unwrap()
 }
-#[cfg(not(feature = "truncated-challenges"))]
-pub(crate) fn truncate_off_circuit<F: PrimeField>(scalar: F) -> F {
-    scalar
-}
 
 /// In-circuit analog of [truncate].
 #[cfg(feature = "truncated-challenges")]
-pub(crate) fn truncate<C: SelfEmulationCurve>(
-    layouter: &mut impl Layouter<C::ScalarExt>,
-    scalar_chip: &impl NativeInstructions<C::ScalarExt>,
-    x: &AssignedScalar<C>,
-) -> Result<AssignedBoundedScalar<C>, Error> {
+pub(crate) fn truncate<F: PrimeField>(
+    layouter: &mut impl Layouter<F>,
+    scalar_chip: &impl NativeInstructions<F>,
+    x: &AssignedNative<F>,
+) -> Result<AssignedBoundedScalar<F>, Error> {
     // TODO: This could be optimized by splitting in bigger chunks, but it is
     // a bit tricky to maintain consistency with upstream.
     // Also, enforcing canonicity when dividing into bigger chunks is a challenge.
@@ -135,19 +134,10 @@ pub(crate) fn truncate<C: SelfEmulationCurve>(
     // msm. This computation is not being reused. It is hard to combine
     // elegantly though.
     let bits = scalar_chip.assigned_to_le_bits(layouter, x, None, true)?;
-    let nb_half_bits = 8 * (C::ScalarExt::NUM_BITS.div_ceil(8).div_ceil(2) as usize);
+    let nb_half_bits = 8 * (F::NUM_BITS.div_ceil(8).div_ceil(2) as usize);
     let scalar = scalar_chip.assigned_from_le_bits(layouter, &bits[..nb_half_bits])?;
     let bound = (BigUint::one() << nb_half_bits) - BigUint::one();
     Ok(AssignedBoundedScalar::new(&scalar, Some(bound)))
-}
-#[cfg(not(feature = "truncated-challenges"))]
-pub(crate) fn truncate<C: SelfEmulationCurve>(
-    _layouter: &mut impl Layouter<C::ScalarExt>,
-    _scalar_chip: &impl NativeInstructions<C::ScalarExt>,
-    x: &AssignedScalar<C>,
-) -> Result<AssignedBoundedScalar<C>, Error> {
-    // Do nothing if "truncated-challenges" is not enabled.
-    Ok(AssignedBoundedScalar::new(x, None))
 }
 
 /// Evaluates the i-th Lagrange polynomial (with respect to n-root of unity w)
@@ -160,7 +150,7 @@ pub(crate) fn truncate<C: SelfEmulationCurve>(
 /// If x^n = 1, the system will become unsatisfiable.
 pub fn evaluate_lagrange_polynomials<F: PrimeField>(
     layouter: &mut impl Layouter<F>,
-    scalar_chip: &impl NativeInstructions<F>,
+    scalar_chip: &impl ArithInstructions<F, AssignedNative<F>>,
     n: u64,
     w: F,
     i_indices: Range<i32>,
@@ -191,7 +181,7 @@ pub fn evaluate_lagrange_polynomials<F: PrimeField>(
 /// for all i in \[n\]. This function returns f(x).
 pub fn evaluate_interpolated_polynomial<F: PrimeField>(
     layouter: &mut impl Layouter<F>,
-    scalar_chip: &impl NativeInstructions<F>,
+    scalar_chip: &impl ArithInstructions<F, AssignedNative<F>>,
     points: &[AssignedNative<F>],
     evals: &[AssignedNative<F>],
     x: &AssignedNative<F>,
@@ -235,7 +225,7 @@ pub fn evaluate_interpolated_polynomial<F: PrimeField>(
 /// Computes the addition of all the given scalars.
 pub(crate) fn sum<F: PrimeField>(
     layouter: &mut impl Layouter<F>,
-    scalar_chip: &impl NativeInstructions<F>,
+    scalar_chip: &impl ArithInstructions<F, AssignedNative<F>>,
     terms: &[AssignedNative<F>],
 ) -> Result<AssignedNative<F>, Error> {
     let terms = terms
@@ -248,7 +238,7 @@ pub(crate) fn sum<F: PrimeField>(
 /// Computes the product of all the given scalars.
 pub(crate) fn prod<F: PrimeField>(
     layouter: &mut impl Layouter<F>,
-    scalar_chip: &impl NativeInstructions<F>,
+    scalar_chip: &impl ArithInstructions<F, AssignedNative<F>>,
     terms: &[AssignedNative<F>],
 ) -> Result<AssignedNative<F>, Error> {
     let mut res = terms[0].clone();
@@ -266,7 +256,7 @@ pub(crate) fn prod<F: PrimeField>(
 /// If terms1.len() = 0.
 pub(crate) fn inner_product<F: PrimeField>(
     layouter: &mut impl Layouter<F>,
-    scalar_chip: &impl NativeInstructions<F>,
+    scalar_chip: &impl ArithInstructions<F, AssignedNative<F>>,
     terms1: &[AssignedNative<F>],
     terms2: &[AssignedNative<F>],
 ) -> Result<AssignedNative<F>, Error> {
@@ -281,13 +271,13 @@ pub(crate) fn inner_product<F: PrimeField>(
 }
 
 /// Computes n powers of the given scalar x, starting from the 0-th power: 1.
-pub(crate) fn powers<C: SelfEmulationCurve>(
-    layouter: &mut impl Layouter<C::ScalarExt>,
-    scalar_chip: &impl NativeInstructions<C::ScalarExt>,
-    x: &AssignedScalar<C>,
+pub(crate) fn powers<F: PrimeField>(
+    layouter: &mut impl Layouter<F>,
+    scalar_chip: &impl ArithInstructions<F, AssignedNative<F>>,
+    x: &AssignedNative<F>,
     n: usize,
-) -> Result<Vec<AssignedScalar<C>>, Error> {
-    let one = scalar_chip.assign_fixed(layouter, C::ScalarExt::ONE)?;
+) -> Result<Vec<AssignedNative<F>>, Error> {
+    let one = scalar_chip.assign_fixed(layouter, F::ONE)?;
     let mut powers = vec![one];
 
     let mut acc = x.clone();
@@ -303,22 +293,29 @@ pub(crate) fn powers<C: SelfEmulationCurve>(
 
 /// Computes n powers of the given scalar x, starting from the 0-th power: 1.
 /// The powers are then truncated by removing their most-significative half.
-pub(crate) fn truncated_powers<C: SelfEmulationCurve>(
-    layouter: &mut impl Layouter<C::ScalarExt>,
-    scalar_chip: &impl NativeInstructions<C::ScalarExt>,
-    x: &AssignedScalar<C>,
+pub(crate) fn truncated_powers<F: PrimeField>(
+    layouter: &mut impl Layouter<F>,
+    #[cfg(feature = "truncated-challenges")] scalar_chip: &impl NativeInstructions<F>,
+    #[cfg(not(feature = "truncated-challenges"))] scalar_chip: &impl FieldInstructions<
+        F,
+        AssignedNative<F>,
+    >,
+    x: &AssignedNative<F>,
     n: usize,
-) -> Result<Vec<AssignedBoundedScalar<C>>, Error> {
-    powers::<C>(layouter, scalar_chip, x, n)?
+) -> Result<Vec<AssignedBoundedScalar<F>>, Error> {
+    powers::<F>(layouter, scalar_chip, x, n)?
         .iter()
         .enumerate()
         .map(|(i, p)| {
             // The first power is known to be 1.
             if i == 0 {
-                scalar_chip.assert_equal_to_fixed(layouter, p, C::ScalarExt::ONE)?;
+                scalar_chip.assert_equal_to_fixed(layouter, p, F::ONE)?;
                 return Ok(AssignedBoundedScalar::new(p, Some(BigUint::one())));
             }
-            truncate::<C>(layouter, scalar_chip, p)
+            #[cfg(feature = "truncated-challenges")]
+            return truncate::<F>(layouter, scalar_chip, p);
+            #[cfg(not(feature = "truncated-challenges"))]
+            return Ok(AssignedBoundedScalar::new(p, None));
         })
         .collect()
 }
@@ -341,7 +338,7 @@ where
 /// Computes `x * y + z`.
 pub(crate) fn mul_add<F: PrimeField>(
     layouter: &mut impl Layouter<F>,
-    scalar_chip: &impl NativeInstructions<F>,
+    scalar_chip: &impl ArithInstructions<F, AssignedNative<F>>,
     x: &AssignedNative<F>,
     y: &AssignedNative<F>,
     z: &AssignedNative<F>,

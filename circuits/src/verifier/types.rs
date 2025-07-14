@@ -14,115 +14,131 @@
 //! Module that contains type and generic bounds.
 //! Its purpose is to minimize complexity in the rest of the verifier chip.
 
-use blstrs;
+use std::fmt::Debug;
+
 use ff::{PrimeField, WithSmallOrderMulGroup};
-use group::{prime::PrimeCurveAffine, Curve, Group};
+use group::{prime::PrimeCurveAffine, Curve};
 use halo2curves::{
     pairing::{Engine, MultiMillerLoop},
     serde::SerdeObject,
     CurveExt,
 };
-use midnight_proofs::transcript::Hashable;
+use midnight_proofs::{
+    circuit::Layouter,
+    plonk::Error,
+    transcript::{Hashable, TranscriptHash},
+};
 use pasta_curves::arithmetic::CurveAffine;
 
+#[cfg(not(feature = "truncated-challenges"))]
+use crate::instructions::FieldInstructions;
+#[cfg(feature = "truncated-challenges")]
+use crate::instructions::NativeInstructions;
 use crate::{
     ecc::{
         curves::{CircuitCurve, WeierstrassCurve},
-        foreign::{AssignedForeignPoint, ForeignEccChip},
+        foreign::ForeignEccChip,
     },
-    field::{
-        decomposition::chip::P2RDecompositionChip, foreign::params::FieldEmulationParams,
-        NativeChip, NativeGadget,
+    field::{decomposition::chip::P2RDecompositionChip, AssignedNative, NativeChip, NativeGadget},
+    hash::poseidon::{PoseidonChip, PoseidonState},
+    instructions::{
+        ecc::EccInstructions, AssignmentInstructions, HashInstructions, PublicInputInstructions,
+        SpongeInstructions,
     },
-    hash::poseidon::{constants::PoseidonField, PoseidonChip, PoseidonState},
-    instructions::SpongeInstructions,
-    types::AssignedNative,
+    types::{AssignedForeignPoint, InnerValue, Instantiable},
 };
 
-/// A curve amenable for self emulation.
-/// It must have a pairing and implement its own emulation parameters.
-pub trait SelfEmulationCurve:
-    WeierstrassCurve<CryptographicGroup = Self, Base = <Self as CurveExt>::Base>
-    + FieldEmulationParams<Self::ScalarField, <Self as CircuitCurve>::Base>
-    + CurveExt<ScalarExt = Self::ScalarField, AffineExt = Self::G1Affine>
-    + Group<Scalar = <Self as CurveExt>::ScalarExt>
-    + From<<Self as CurveExt>::AffineExt>
-    + Hashable<PoseidonState<Self::ScalarField>>
-{
-    /// The Scalar field of the underlying curve.
-    /// This is the SNARK native field.
-    type ScalarField: PrimeField
-        + WithSmallOrderMulGroup<3>
-        + PoseidonField
-        + Hashable<PoseidonState<Self::ScalarField>>
-        + SerdeObject;
+/// A trait for parametrizing the VerifierGadget.
+pub trait SelfEmulation: Clone + Debug {
+    /// The native field.
+    type F: PrimeField + WithSmallOrderMulGroup<3> + Hashable<Self::Hash>;
 
-    /// The first source group (type of KZG commitments).
-    type G1Affine: CurveAffine<
-            ScalarExt = Self::ScalarField,
-            CurveExt = Self,
-            Base = <Self as CircuitCurve>::Base,
-        > + Into<Self>
-        + From<Self>
+    /// The underlying curve of the self-emulation proof.
+    type C: CurveExt<ScalarExt = Self::F, AffineExt = Self::G1Affine>
+        + WeierstrassCurve<CryptographicGroup = Self::C, Base = <Self::C as CurveExt>::Base>
+        + Hashable<Self::Hash>;
+
+    /// An assigned point of curve C.
+    type AssignedPoint: InnerValue<Element = Self::C> + Instantiable<Self::F> + PartialEq + Eq;
+
+    /// A type for the Fiat-Shamir hashing.
+    type Hash: TranscriptHash;
+
+    #[cfg(feature = "truncated-challenges")]
+    /// A chip implementing native field arithmetic operations.
+    type ScalarChip: NativeInstructions<Self::F>;
+    #[cfg(not(feature = "truncated-challenges"))]
+    /// A chip implementing native field arithmetic operations.
+    type ScalarChip: FieldInstructions<Self::F, AssignedNative<Self::F>>;
+
+    /// A chip implementing assignment operations for [Self::AssignedPoint].
+    type CurveChip: Clone
+        + AssignmentInstructions<Self::F, Self::AssignedPoint>
+        + PublicInputInstructions<Self::F, Self::AssignedPoint>;
+
+    /// A chip implementing sponge operations over the native field.
+    type SpongeChip: Clone
+        + SpongeInstructions<Self::F, AssignedNative<Self::F>, AssignedNative<Self::F>>
+        + HashInstructions<Self::F, AssignedNative<Self::F>, AssignedNative<Self::F>>;
+
+    /// C in affine form (first source group).
+    type G1Affine: CurveAffine<ScalarExt = Self::F, CurveExt = Self::C, Base = <Self::C as CircuitCurve>::Base>
+        + Into<Self::C>
+        + From<Self::C>
         + SerdeObject;
 
     /// The second source group.
-    type G2Affine: SerdeObject + PrimeCurveAffine + From<<Self::Engine as Engine>::G2>;
+    type G2Affine: PrimeCurveAffine + From<<Self::Engine as Engine>::G2> + SerdeObject;
 
     /// Wrapper type for the pairing engine.
     type Engine: Engine
         + MultiMillerLoop<
-            Fr = Self::ScalarField,
-            G1 = Self,
-            G1Affine = <Self as Curve>::AffineRepr,
+            Fr = Self::F,
+            G1 = Self::C,
+            G1Affine = <Self::C as Curve>::AffineRepr,
             G2Affine = Self::G2Affine,
         >;
+
+    /// Variable-base multi-scalar multiplication, the `usize` next to each
+    /// scalar is an (inclusive) upper-bound on their bit-length.
+    ///
+    /// # Panics
+    ///
+    /// If `scalars.len() != bases.len()`.
+    fn msm(
+        layouter: &mut impl Layouter<Self::F>,
+        curve_chip: &Self::CurveChip,
+        scalars: &[(AssignedNative<Self::F>, usize)],
+        bases: &[Self::AssignedPoint],
+    ) -> Result<Self::AssignedPoint, Error>;
 }
-
-/// Alias on the self-emulated ECC chip, parametrized by a [SelfEmulationCurve].
-pub type CurveChip<C> =
-    ForeignEccChip<<C as SelfEmulationCurve>::ScalarField, C, C, ScalarChip<C>, ScalarChip<C>>;
-
-/// Alias on the self-emulation scalar field chip, parametrized by a
-/// [SelfEmulationCurve].
-pub type ScalarChip<C> = NativeGadget<
-    <C as SelfEmulationCurve>::ScalarField,
-    P2RDecompositionChip<<C as SelfEmulationCurve>::ScalarField>,
-    NativeChip<<C as SelfEmulationCurve>::ScalarField>,
->;
-
-/// Alias on the self-emulation base field chip, parametrized by a
-/// [SelfEmulationCurve].
-#[cfg(any(test, feature = "testing"))]
-pub type BaseChip<C> = crate::field::foreign::FieldChip<
-    <C as SelfEmulationCurve>::ScalarField,
-    <C as CircuitCurve>::Base,
-    C,
-    ScalarChip<C>,
->;
-
-/// Alias on an assigned native scalar, parametrized by a [SelfEmulationCurve].
-pub type AssignedScalar<C> = AssignedNative<<C as SelfEmulationCurve>::ScalarField>;
-
-/// Alias on an assigned self-emulated point, parametrized by a
-/// [SelfEmulationCurve].
-pub type AssignedPoint<C> = AssignedForeignPoint<<C as SelfEmulationCurve>::ScalarField, C, C>;
-
-/// Alias on the Poseidon chip, native over the [SelfEmulationCurve].
-pub type SpongeChip<C> = PoseidonChip<<C as SelfEmulationCurve>::ScalarField>;
-
-/// Alias on the Poseidon state, native over the [SelfEmulationCurve].
-pub type SpongeState<C> = <SpongeChip<C> as SpongeInstructions<
-    <C as SelfEmulationCurve>::ScalarField,
-    AssignedScalar<C>,
-    AssignedScalar<C>,
->>::State;
 
 // Implementations
 
-impl SelfEmulationCurve for blstrs::G1Projective {
-    type ScalarField = blstrs::Fq;
+/// Implementation of the SelfEmulation trait for blstrs.
+#[derive(Clone, Debug)]
+pub struct BlstrsEmulation {}
+
+impl SelfEmulation for BlstrsEmulation {
+    type F = blstrs::Fq;
+    type C = blstrs::G1Projective;
+    type AssignedPoint = AssignedForeignPoint<Self::F, Self::C, Self::C>;
+    type Hash = PoseidonState<Self::F>;
+
+    type ScalarChip = NativeGadget<Self::F, P2RDecompositionChip<Self::F>, NativeChip<Self::F>>;
+    type CurveChip = ForeignEccChip<Self::F, Self::C, Self::C, Self::ScalarChip, Self::ScalarChip>;
+    type SpongeChip = PoseidonChip<Self::F>;
+
     type G1Affine = blstrs::G1Affine;
     type G2Affine = blstrs::G2Affine;
     type Engine = blstrs::Bls12;
+
+    fn msm(
+        layouter: &mut impl Layouter<Self::F>,
+        curve_chip: &Self::CurveChip,
+        scalars: &[(AssignedNative<Self::F>, usize)],
+        bases: &[Self::AssignedPoint],
+    ) -> Result<Self::AssignedPoint, Error> {
+        curve_chip.msm_by_bounded_scalars(layouter, scalars, bases)
+    }
 }

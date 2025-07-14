@@ -16,6 +16,8 @@
 //! It provides functions for sponge-based hashing from a specified input type
 //! to another output one.
 
+use std::fmt::Debug;
+
 use ff::PrimeField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 
@@ -48,7 +50,7 @@ where
     Output: InnerValue,
 {
     /// The assigned sponge state.
-    type State;
+    type State: Clone + Debug;
 
     /// Initialize an empty sponge state.
     ///

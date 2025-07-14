@@ -22,40 +22,42 @@ use midnight_proofs::{
 };
 
 use crate::{
-    hash::poseidon::{PoseidonChip, PoseidonState},
     instructions::{AssignmentInstructions, PublicInputInstructions, SpongeInstructions},
     types::AssignedNative,
-    verifier::{
-        types::{AssignedPoint, AssignedScalar, CurveChip, ScalarChip, SpongeChip, SpongeState},
-        SelfEmulationCurve,
-    },
+    verifier::SelfEmulation,
 };
+
+type SpongeState<S> = <<S as SelfEmulation>::SpongeChip as SpongeInstructions<
+    <S as SelfEmulation>::F,
+    AssignedNative<<S as SelfEmulation>::F>,
+    AssignedNative<<S as SelfEmulation>::F>,
+>>::State;
 
 /// Gadget used to run the transcript reader in-circuit.
 #[derive(Clone, Debug)]
-pub struct TranscriptGadget<C: SelfEmulationCurve> {
-    native_chip: ScalarChip<C>,
-    curve_chip: CurveChip<C>,
-    sponge_chip: SpongeChip<C>,
-    sponge_state: Option<SpongeState<C>>,
+pub struct TranscriptGadget<S: SelfEmulation> {
+    scalar_chip: S::ScalarChip,
+    curve_chip: S::CurveChip,
+    sponge_chip: S::SpongeChip,
+    sponge_state: Option<SpongeState<S>>,
     // Track the number of field elements we have in the buffer.
     input_len: usize,
     // Transcript reader is included, to help parse the proof. This parsing
     // *does not* need to be verified in-circuit.
-    transcript_reader: Option<CircuitTranscript<PoseidonState<C::ScalarExt>>>,
+    transcript_reader: Option<CircuitTranscript<S::Hash>>,
 }
 
-impl<C: SelfEmulationCurve> TranscriptGadget<C> {
+impl<S: SelfEmulation> TranscriptGadget<S> {
     /// Creates a new `TranscriptGadget` from the corresponding chips.
     pub fn new(
-        scalar_chip: &ScalarChip<C>,
-        ecc_chip: &CurveChip<C>,
-        poseidon_chip: &PoseidonChip<C::Scalar>,
+        scalar_chip: &S::ScalarChip,
+        curve_chip: &S::CurveChip,
+        sponge_chip: &S::SpongeChip,
     ) -> Self {
         Self {
-            native_chip: scalar_chip.clone(),
-            curve_chip: ecc_chip.clone(),
-            sponge_chip: poseidon_chip.clone(),
+            scalar_chip: scalar_chip.clone(),
+            curve_chip: curve_chip.clone(),
+            sponge_chip: sponge_chip.clone(),
             sponge_state: None,
             input_len: 0,
             transcript_reader: None,
@@ -66,7 +68,7 @@ impl<C: SelfEmulationCurve> TranscriptGadget<C> {
     /// from a given witnessed proof in the form of `Value<Vec<u8>>`.
     pub fn init_with_proof(
         &mut self,
-        layouter: &mut impl Layouter<C::ScalarExt>,
+        layouter: &mut impl Layouter<S::F>,
         proof: Value<Vec<u8>>,
     ) -> Result<(), Error> {
         self.sponge_state = Some(self.sponge_chip.init(layouter, None)?);
@@ -87,8 +89,8 @@ impl<C: SelfEmulationCurve> TranscriptGadget<C> {
     /// Absorbs a scalar into the transcript.
     pub fn common_scalar(
         &mut self,
-        layouter: &mut impl Layouter<C::ScalarExt>,
-        scalar: &AssignedScalar<C>,
+        layouter: &mut impl Layouter<S::F>,
+        scalar: &AssignedNative<S::F>,
     ) -> Result<(), Error> {
         self.input_len += 1;
         let state = self
@@ -101,8 +103,8 @@ impl<C: SelfEmulationCurve> TranscriptGadget<C> {
     /// Absorbs a point into the transcript.
     pub fn common_point(
         &mut self,
-        layouter: &mut impl Layouter<C::ScalarExt>,
-        point: &AssignedPoint<C>,
+        layouter: &mut impl Layouter<S::F>,
+        point: &S::AssignedPoint,
     ) -> Result<(), Error> {
         let pis = self.curve_chip.as_public_input(layouter, point)?;
 
@@ -118,8 +120,8 @@ impl<C: SelfEmulationCurve> TranscriptGadget<C> {
     /// Derives a scalar challenge from the current transcript.
     pub fn squeeze_challenge(
         &mut self,
-        layouter: &mut impl Layouter<C::ScalarExt>,
-    ) -> Result<AssignedNative<C::ScalarExt>, Error> {
+        layouter: &mut impl Layouter<S::F>,
+    ) -> Result<AssignedNative<S::F>, Error> {
         let state = self
             .sponge_state
             .as_mut()
@@ -131,17 +133,17 @@ impl<C: SelfEmulationCurve> TranscriptGadget<C> {
     /// Think of the read point as a witness freely chosen by the prover.
     pub fn read_point(
         &mut self,
-        layouter: &mut impl Layouter<C::ScalarExt>,
-    ) -> Result<AssignedPoint<C>, Error> {
+        layouter: &mut impl Layouter<S::F>,
+    ) -> Result<S::AssignedPoint, Error> {
         let reader = self
             .transcript_reader
             .as_mut()
             .expect("You must init the transcript gadget");
         // If an error, do not fail, assign a default point instead.
         // (This allows us to parse dummy proofs.)
-        let point: Value<C> = match reader.read::<C>() {
+        let point: Value<S::C> = match reader.read::<S::C>() {
             Ok(point) => Value::known(point),
-            Err(_) => Value::known(C::default()),
+            Err(_) => Value::known(S::C::default()),
         };
 
         let assigned_point = self.curve_chip.assign(layouter, point)?;
@@ -154,20 +156,20 @@ impl<C: SelfEmulationCurve> TranscriptGadget<C> {
     /// Think of the read scalar as a witness freely chosen by the prover.
     pub fn read_scalar(
         &mut self,
-        layouter: &mut impl Layouter<C::ScalarExt>,
-    ) -> Result<AssignedScalar<C>, Error> {
+        layouter: &mut impl Layouter<S::F>,
+    ) -> Result<AssignedNative<S::F>, Error> {
         let reader = self
             .transcript_reader
             .as_mut()
             .expect("You must init the transcript gadget");
         // If an error, do not fail, assign a default scalar instead.
         // (This allows us to parse dummy proofs.)
-        let scalar: Value<C::ScalarExt> = match reader.read::<C::ScalarExt>() {
+        let scalar: Value<S::F> = match reader.read::<S::F>() {
             Ok(scalar) => Value::known(scalar),
-            Err(_) => Value::known(C::ScalarExt::ZERO),
+            Err(_) => Value::known(S::F::ZERO),
         };
 
-        let assigned_scalar = self.native_chip.assign(layouter, scalar)?;
+        let assigned_scalar = self.scalar_chip.assign(layouter, scalar)?;
         self.common_scalar(layouter, &assigned_scalar)?;
 
         Ok(assigned_scalar)
@@ -178,85 +180,42 @@ impl<C: SelfEmulationCurve> TranscriptGadget<C> {
 use midnight_proofs::plonk::{Column, ConstraintSystem, Instance};
 
 #[cfg(any(test, feature = "testing"))]
-use crate::{
-    ecc::foreign::{nb_foreign_ecc_chip_columns, ForeignEccChip, ForeignEccConfig},
-    field::decomposition::pow2range::Pow2RangeChip,
-    field::native::{NB_ARITH_COLS, NB_ARITH_FIXED_COLS},
-    field::{decomposition::chip::P2RDecompositionChip, NativeChip, NativeGadget},
-    field::{decomposition::chip::P2RDecompositionConfig, NativeConfig},
-    hash::poseidon::{PoseidonConfig, NB_POSEIDON_ADVICE_COLS, NB_POSEIDON_FIXED_COLS},
-    testing_utils::FromScratch,
-    utils::ComposableChip,
-    verifier::types::BaseChip,
-};
+use crate::testing_utils::FromScratch;
 
 #[cfg(any(test, feature = "testing"))]
-impl<C: SelfEmulationCurve> FromScratch<C::Scalar> for TranscriptGadget<C> {
+impl<S: SelfEmulation> FromScratch<S::F> for TranscriptGadget<S>
+where
+    S::ScalarChip: FromScratch<S::F>,
+    S::CurveChip: FromScratch<S::F>,
+    S::SpongeChip: FromScratch<S::F>,
+{
     type Config = (
-        NativeConfig,
-        P2RDecompositionConfig,
-        ForeignEccConfig<C>,
-        PoseidonConfig<C::Scalar>,
+        <S::ScalarChip as FromScratch<S::F>>::Config,
+        <S::CurveChip as FromScratch<S::F>>::Config,
+        <S::SpongeChip as FromScratch<S::F>>::Config,
     );
 
     fn new_from_scratch(config: &Self::Config) -> Self {
-        let max_bit_len = 8;
-        let native_chip = NativeChip::new_from_scratch(&config.0);
-        let core_decomp_chip = P2RDecompositionChip::new(&config.1, &max_bit_len);
-        let poseidon_chip = PoseidonChip::new(&config.3, &native_chip);
-        let scalar_chip = NativeGadget::new(core_decomp_chip, native_chip);
-        let curve_chip = { ForeignEccChip::new(&config.2, &scalar_chip, &scalar_chip) };
-        TranscriptGadget::new(&scalar_chip, &curve_chip, &poseidon_chip)
+        let scalar_chip = S::ScalarChip::new_from_scratch(&config.0);
+        let curve_chip = S::CurveChip::new_from_scratch(&config.1);
+        let sponge_chip = S::SpongeChip::new_from_scratch(&config.2);
+        TranscriptGadget::new(&scalar_chip, &curve_chip, &sponge_chip)
     }
 
-    fn load_from_scratch(layouter: &mut impl Layouter<C::Scalar>, config: &Self::Config) {
-        let max_bit_len = 8;
-        let pow2range_config = config.1.clone().pow2range_config;
-        let pow2range_chip = Pow2RangeChip::new(&pow2range_config, max_bit_len);
-        let _ = pow2range_chip.load_table(layouter);
+    fn load_from_scratch(layouter: &mut impl Layouter<S::F>, config: &Self::Config) {
+        S::ScalarChip::load_from_scratch(layouter, &config.0);
+        S::CurveChip::load_from_scratch(layouter, &config.1);
+        S::SpongeChip::load_from_scratch(layouter, &config.2);
     }
 
     fn configure_from_scratch(
-        meta: &mut ConstraintSystem<C::Scalar>,
+        meta: &mut ConstraintSystem<S::F>,
         instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
-        let nb_advice_cols = nb_foreign_ecc_chip_columns::<C::Scalar, C, C, ScalarChip<C>>();
-        let nb_fixed_cols = NB_ARITH_FIXED_COLS;
-        let advice_columns: Vec<_> = (0..nb_advice_cols).map(|_| meta.advice_column()).collect();
-        let fixed_columns: Vec<_> = (0..nb_fixed_cols).map(|_| meta.fixed_column()).collect();
-        let native_config = NativeChip::configure(
-            meta,
-            &(
-                advice_columns[..NB_ARITH_COLS].try_into().unwrap(),
-                fixed_columns[..].try_into().unwrap(),
-                *instance_columns,
-            ),
-        );
-        let core_decomp_config = {
-            let pow2conf = Pow2RangeChip::configure(meta, &advice_columns[1..NB_ARITH_COLS]);
-            P2RDecompositionChip::configure(meta, &(native_config.clone(), pow2conf))
-        };
-
-        let curve_config = {
-            let base_config = BaseChip::<C>::configure(meta, &advice_columns);
-            CurveChip::<C>::configure(meta, &base_config, &advice_columns)
-        };
-
-        let poseidon_config = PoseidonChip::configure(
-            meta,
-            &(
-                advice_columns[..NB_POSEIDON_ADVICE_COLS]
-                    .try_into()
-                    .unwrap(),
-                fixed_columns[..NB_POSEIDON_FIXED_COLS].try_into().unwrap(),
-            ),
-        );
-
         (
-            native_config,
-            core_decomp_config,
-            curve_config,
-            poseidon_config,
+            S::ScalarChip::configure_from_scratch(meta, instance_columns),
+            S::CurveChip::configure_from_scratch(meta, instance_columns),
+            S::SpongeChip::configure_from_scratch(meta, instance_columns),
         )
     }
 }
@@ -274,17 +233,14 @@ mod tests {
     use rand::rngs::OsRng;
 
     use super::*;
-    use crate::{
-        ecc::foreign::ForeignEccConfig,
-        field::{decomposition::chip::P2RDecompositionConfig, NativeConfig},
-        hash::poseidon::PoseidonConfig,
-        instructions::PublicInputInstructions,
-    };
+    use crate::{instructions::PublicInputInstructions, verifier::types::BlstrsEmulation};
 
     const SIZE: usize = 12;
 
-    type C = blstrs::G1Projective;
-    type F = blstrs::Fq;
+    type S = BlstrsEmulation;
+
+    type F = <S as SelfEmulation>::F;
+    type C = <S as SelfEmulation>::C;
 
     #[derive(Clone, Debug, Default)]
     struct TestCircuit {
@@ -294,22 +250,17 @@ mod tests {
 
     fn configure(
         meta: &mut ConstraintSystem<F>,
-    ) -> (
-        NativeConfig,
-        P2RDecompositionConfig,
-        ForeignEccConfig<C>,
-        PoseidonConfig<F>,
-    ) {
+    ) -> <TranscriptGadget<S> as FromScratch<F>>::Config {
         let committed_instance_column = meta.instance_column();
         let instance_column = meta.instance_column();
-        TranscriptGadget::configure_from_scratch(
+        TranscriptGadget::<S>::configure_from_scratch(
             meta,
             &[committed_instance_column, instance_column],
         )
     }
 
     impl Circuit<F> for TestCircuit {
-        type Config = <TranscriptGadget<C> as FromScratch<F>>::Config;
+        type Config = <TranscriptGadget<S> as FromScratch<F>>::Config;
         type FloorPlanner = SimpleFloorPlanner;
         type Params = ();
 
@@ -326,13 +277,13 @@ mod tests {
             config: Self::Config,
             mut layouter: impl Layouter<F>,
         ) -> Result<(), Error> {
-            let mut transcript_gadget = TranscriptGadget::new_from_scratch(&config);
+            let mut transcript_gadget = TranscriptGadget::<S>::new_from_scratch(&config);
             transcript_gadget.init_with_proof(&mut layouter, Value::unknown())?;
 
-            TranscriptGadget::load_from_scratch(&mut layouter, &config);
+            TranscriptGadget::<S>::load_from_scratch(&mut layouter, &config);
 
             let assigned_scalars = transcript_gadget
-                .native_chip
+                .scalar_chip
                 .assign_many(&mut layouter, &self.scalars.transpose_array())?;
 
             let assigned_points = transcript_gadget
@@ -346,7 +297,7 @@ mod tests {
 
             let challenge_1 = transcript_gadget.squeeze_challenge(&mut layouter)?;
             transcript_gadget
-                .native_chip
+                .scalar_chip
                 .constrain_as_public_input(&mut layouter, &challenge_1)?;
 
             for i in (SIZE / 2)..SIZE {
@@ -356,7 +307,7 @@ mod tests {
 
             let challenge_2 = transcript_gadget.squeeze_challenge(&mut layouter)?;
             transcript_gadget
-                .native_chip
+                .scalar_chip
                 .constrain_as_public_input(&mut layouter, &challenge_2)
         }
     }
@@ -371,7 +322,7 @@ mod tests {
             scalars: Value::known(scalars),
         };
 
-        let mut off_circuit_transcript = CircuitTranscript::<PoseidonState<F>>::init();
+        let mut off_circuit_transcript = CircuitTranscript::<<S as SelfEmulation>::Hash>::init();
 
         for i in 0..(SIZE / 2) {
             off_circuit_transcript.common(&scalars[i]).unwrap();

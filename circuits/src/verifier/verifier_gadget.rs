@@ -30,7 +30,6 @@ use midnight_proofs::{
 
 use crate::{
     field::AssignedNative,
-    hash::poseidon::PoseidonChip,
     instructions::{
         assignments::AssignmentInstructions, ArithInstructions, PublicInputInstructions,
     },
@@ -42,22 +41,21 @@ use crate::{
         lookup,
         permutation::{self, evaluate_permutation_common},
         transcript_gadget::TranscriptGadget,
-        types::{AssignedPoint, AssignedScalar, CurveChip, ScalarChip},
         utils::{evaluate_lagrange_polynomials, inner_product, sum, AssignedBoundedScalar},
-        vanishing, Accumulator, AssignedAccumulator, AssignedVk, SelfEmulationCurve, VerifyingKey,
+        vanishing, Accumulator, AssignedAccumulator, AssignedVk, SelfEmulation, VerifyingKey,
     },
 };
 
 /// A gadget for KZG-based in-circuit proof verification.
 #[derive(Clone, Debug)]
 #[doc(hidden)] // A bug in rustc prevents us from documenting the verifier gadget.
-pub struct VerifierGadget<C: SelfEmulationCurve> {
-    curve_chip: CurveChip<C>,
-    scalar_chip: ScalarChip<C>,
-    sponge_chip: PoseidonChip<C::Scalar>,
+pub struct VerifierGadget<S: SelfEmulation> {
+    curve_chip: S::CurveChip,
+    scalar_chip: S::ScalarChip,
+    sponge_chip: S::SpongeChip,
 }
 
-impl<C: SelfEmulationCurve> Chip<C::ScalarField> for VerifierGadget<C> {
+impl<S: SelfEmulation> Chip<S::F> for VerifierGadget<S> {
     type Config = ();
     type Loaded = ();
 
@@ -70,12 +68,12 @@ impl<C: SelfEmulationCurve> Chip<C::ScalarField> for VerifierGadget<C> {
     }
 }
 
-impl<C: SelfEmulationCurve> VerifierGadget<C> {
+impl<S: SelfEmulation> VerifierGadget<S> {
     /// Creates a new verifier gadget from its underlying components.
     pub fn new(
-        curve_chip: &CurveChip<C>,
-        scalar_chip: &ScalarChip<C>,
-        sponge_chip: &PoseidonChip<C::Scalar>,
+        curve_chip: &S::CurveChip,
+        scalar_chip: &S::ScalarChip,
+        sponge_chip: &S::SpongeChip,
     ) -> Self {
         Self {
             curve_chip: curve_chip.clone(),
@@ -85,22 +83,20 @@ impl<C: SelfEmulationCurve> VerifierGadget<C> {
     }
 }
 
-impl<C: SelfEmulationCurve> PublicInputInstructions<C::ScalarField, AssignedVk<C>>
-    for VerifierGadget<C>
-{
+impl<S: SelfEmulation> PublicInputInstructions<S::F, AssignedVk<S>> for VerifierGadget<S> {
     fn as_public_input(
         &self,
-        layouter: &mut impl Layouter<C::ScalarField>,
-        assigned_vk: &AssignedVk<C>,
-    ) -> Result<Vec<AssignedNative<C::ScalarField>>, Error> {
+        layouter: &mut impl Layouter<S::F>,
+        assigned_vk: &AssignedVk<S>,
+    ) -> Result<Vec<AssignedNative<S::F>>, Error> {
         self.scalar_chip
             .as_public_input(layouter, &assigned_vk.transcript_repr)
     }
 
     fn constrain_as_public_input(
         &self,
-        _layouter: &mut impl Layouter<C::ScalarField>,
-        _assigned_vk: &AssignedVk<C>,
+        _layouter: &mut impl Layouter<S::F>,
+        _assigned_vk: &AssignedVk<S>,
     ) -> Result<(), Error> {
         unimplemented!(
             "We intend [assign_vk_as_public_input] to be the only entry point 
@@ -110,9 +106,9 @@ impl<C: SelfEmulationCurve> PublicInputInstructions<C::ScalarField, AssignedVk<C
 
     fn assign_as_public_input(
         &self,
-        _layouter: &mut impl Layouter<C::ScalarField>,
-        _value: Value<VerifyingKey<C>>,
-    ) -> Result<AssignedVk<C>, Error> {
+        _layouter: &mut impl Layouter<S::F>,
+        _value: Value<VerifyingKey<S>>,
+    ) -> Result<AssignedVk<S>, Error> {
         unimplemented!(
             "We intend [assign_vk_as_public_input] to be the only entry point
             for assigned verifying keys. (Note that its signature is more complex
@@ -121,14 +117,12 @@ impl<C: SelfEmulationCurve> PublicInputInstructions<C::ScalarField, AssignedVk<C
     }
 }
 
-impl<C: SelfEmulationCurve> PublicInputInstructions<C::ScalarField, AssignedAccumulator<C>>
-    for VerifierGadget<C>
-{
+impl<S: SelfEmulation> PublicInputInstructions<S::F, AssignedAccumulator<S>> for VerifierGadget<S> {
     fn as_public_input(
         &self,
-        layouter: &mut impl Layouter<C::ScalarField>,
-        assigned: &AssignedAccumulator<C>,
-    ) -> Result<Vec<AssignedScalar<C>>, Error> {
+        layouter: &mut impl Layouter<S::F>,
+        assigned: &AssignedAccumulator<S>,
+    ) -> Result<Vec<AssignedNative<S::F>>, Error> {
         Ok([
             (assigned.lhs).in_circuit_as_public_input(layouter, &self.curve_chip)?,
             (assigned.rhs).in_circuit_as_public_input(layouter, &self.curve_chip)?,
@@ -138,8 +132,8 @@ impl<C: SelfEmulationCurve> PublicInputInstructions<C::ScalarField, AssignedAccu
 
     fn constrain_as_public_input(
         &self,
-        layouter: &mut impl Layouter<C::ScalarField>,
-        assigned: &AssignedAccumulator<C>,
+        layouter: &mut impl Layouter<S::F>,
+        assigned: &AssignedAccumulator<S>,
     ) -> Result<(), Error> {
         (assigned.lhs).constrain_as_public_input(layouter, &self.curve_chip, &self.scalar_chip)?;
         (assigned.rhs).constrain_as_public_input(layouter, &self.curve_chip, &self.scalar_chip)
@@ -147,27 +141,27 @@ impl<C: SelfEmulationCurve> PublicInputInstructions<C::ScalarField, AssignedAccu
 
     fn assign_as_public_input(
         &self,
-        _layouter: &mut impl Layouter<C::ScalarField>,
-        _value: Value<Accumulator<C>>,
-    ) -> Result<AssignedAccumulator<C>, Error> {
+        _layouter: &mut impl Layouter<S::F>,
+        _value: Value<Accumulator<S>>,
+    ) -> Result<AssignedAccumulator<S>, Error> {
         unimplemented!(
             "This is intentionally unimplemented, use [constrain_as_public_input] instead"
         )
     }
 }
 
-impl<C: SelfEmulationCurve> VerifierGadget<C> {
+impl<S: SelfEmulation> VerifierGadget<S> {
     /// Assigns a verifying key as a public input. All the necessary information
     /// is required off-circuit, except for the `transcript_repr` value.
     pub fn assign_vk_as_public_input(
         &self,
-        layouter: &mut impl Layouter<C::ScalarField>,
+        layouter: &mut impl Layouter<S::F>,
         vk_name: &str,
-        domain: &EvaluationDomain<C::ScalarField>,
-        cs: &ConstraintSystem<C::ScalarField>,
-        transcript_repr_value: Value<C::ScalarField>,
-    ) -> Result<AssignedVk<C>, Error> {
-        let transcript_repr: AssignedScalar<C> = self
+        domain: &EvaluationDomain<S::F>,
+        cs: &ConstraintSystem<S::F>,
+        transcript_repr_value: Value<S::F>,
+    ) -> Result<AssignedVk<S>, Error> {
+        let transcript_repr: AssignedNative<S::F> = self
             .scalar_chip
             .assign_as_public_input(layouter, transcript_repr_value)?;
 
@@ -187,7 +181,7 @@ impl<C: SelfEmulationCurve> VerifierGadget<C> {
     }
 }
 
-impl<C: SelfEmulationCurve> VerifierGadget<C> {
+impl<S: SelfEmulation> VerifierGadget<S> {
     /// This function verifies a witnessed proof (an unassigned vector of bytes)
     /// with respect to the provided assigned verifying key and assigned
     /// instances. It is the in-circuit analog of "prepare" from halo2 at
@@ -198,12 +192,12 @@ impl<C: SelfEmulationCurve> VerifierGadget<C> {
     /// with respect to the relevant `tau_in_g2`.
     pub fn prepare(
         &self,
-        layouter: &mut impl Layouter<C::ScalarField>,
-        assigned_vk: &AssignedVk<C>,
-        assigned_committed_instances: &[(&str, AssignedPoint<C>)], // (name, com)
-        assigned_instances: &[&[AssignedNative<C::ScalarField>]],
+        layouter: &mut impl Layouter<S::F>,
+        assigned_vk: &AssignedVk<S>,
+        assigned_committed_instances: &[(&str, S::AssignedPoint)], // (name, com)
+        assigned_instances: &[&[AssignedNative<S::F>]],
         proof: Value<Vec<u8>>,
-    ) -> Result<AssignedAccumulator<C>, Error> {
+    ) -> Result<AssignedAccumulator<S>, Error> {
         let cs = &assigned_vk.cs;
         let k = assigned_vk.domain.k();
 
@@ -358,8 +352,7 @@ impl<C: SelfEmulationCurve> VerifierGadget<C> {
             )?;
             assert_eq!(l_evals.len(), 2 + blinding_factors);
             let l_last = l_evals[0].clone();
-            let l_blind =
-                sum::<C::ScalarField>(layouter, &self.scalar_chip, &l_evals[1..=blinding_factors])?;
+            let l_blind = sum::<S::F>(layouter, &self.scalar_chip, &l_evals[1..=blinding_factors])?;
             let l_0 = l_evals[1 + blinding_factors].clone();
 
             // Compute the expected value of h(x)
@@ -368,7 +361,7 @@ impl<C: SelfEmulationCurve> VerifierGadget<C> {
                     let mut ids = vec![];
                     for gate in cs.gates().iter() {
                         for poly in gate.polynomials().iter() {
-                            ids.push(eval_expression::<C>(
+                            ids.push(eval_expression::<S>(
                                 layouter,
                                 &self.scalar_chip,
                                 &advice_evals,
@@ -433,7 +426,7 @@ impl<C: SelfEmulationCurve> VerifierGadget<C> {
             vanishing.verify(layouter, &self.scalar_chip, &expressions, &y, &xn)
         }?;
 
-        let one = AssignedBoundedScalar::<C>::one(layouter, &self.scalar_chip)?;
+        let one = AssignedBoundedScalar::<S::F>::one(layouter, &self.scalar_chip)?;
         let omega = assigned_vk.domain.get_omega();
         let omega_inv = omega.invert().unwrap();
         let omega_last = omega_inv.pow([cs.blinding_factors() as u64 + 1]);
@@ -442,7 +435,7 @@ impl<C: SelfEmulationCurve> VerifierGadget<C> {
         let x_last = self.scalar_chip.mul_by_constant(layouter, &x, omega_last)?;
 
         // Gets the evaluation point for a query at the given rotation.
-        let get_point = |rotation: &Rotation| -> &AssignedScalar<C> {
+        let get_point = |rotation: &Rotation| -> &AssignedNative<S::F> {
             match rotation.0 {
                 -1 => &x_prev,
                 0 => &x,
@@ -456,7 +449,7 @@ impl<C: SelfEmulationCurve> VerifierGadget<C> {
                 .chain(cs.instance_queries().iter().enumerate().filter_map(
                     |(query_index, &(column, rot))| {
                         if column.index() < nb_committed_instances {
-                            Some(VerifierQuery::<C>::new_fixed(
+                            Some(VerifierQuery::<S>::new_fixed(
                                 &one,
                                 get_point(&rot),
                                 assigned_committed_instances[column.index()].0,
@@ -469,7 +462,7 @@ impl<C: SelfEmulationCurve> VerifierGadget<C> {
                 ))
                 .chain(cs.advice_queries().iter().enumerate().map(
                     |(query_index, &(column, rot))| {
-                        VerifierQuery::<C>::new(
+                        VerifierQuery::<S>::new(
                             &one,
                             get_point(&rot),
                             &advice_commitments[column.index()],
@@ -509,8 +502,9 @@ impl<C: SelfEmulationCurve> VerifierGadget<C> {
         // We are now convinced the circuit is satisfied so long as the
         // polynomial commitments open to the correct values, which is true as long
         // as the following accumulator passes the invariant.
-        let multiopen_check = kzg::multi_prepare::<_, C>(
+        let multiopen_check = kzg::multi_prepare::<_, S>(
             layouter,
+            #[cfg(feature = "truncated-challenges")]
             &self.curve_chip,
             &self.scalar_chip,
             &mut transcript,
@@ -527,7 +521,6 @@ pub(crate) mod tests {
     use std::collections::BTreeMap;
 
     use group::Group;
-    use halo2curves::CurveAffine;
     use midnight_proofs::{
         circuit::SimpleFloorPlanner,
         dev::MockProver,
@@ -554,7 +547,8 @@ pub(crate) mod tests {
             NativeChip, NativeConfig, NativeGadget,
         },
         hash::poseidon::{
-            PoseidonConfig, PoseidonState, NB_POSEIDON_ADVICE_COLS, NB_POSEIDON_FIXED_COLS,
+            PoseidonChip, PoseidonConfig, PoseidonState, NB_POSEIDON_ADVICE_COLS,
+            NB_POSEIDON_FIXED_COLS,
         },
         instructions::{
             hash::{HashCPU, HashInstructions},
@@ -562,14 +556,18 @@ pub(crate) mod tests {
         },
         testing_utils::FromScratch,
         types::{ComposableChip, Instantiable},
-        verifier::accumulator::Accumulator,
+        verifier::{accumulator::Accumulator, BlstrsEmulation},
     };
 
-    type C = blstrs::G1Projective;
-    type CAffine = blstrs::G1Affine;
-    type E = blstrs::Bls12;
+    type S = BlstrsEmulation;
+
+    type F = <S as SelfEmulation>::F;
+    type C = <S as SelfEmulation>::C;
+
+    type E = <S as SelfEmulation>::Engine;
     type CBase = <C as CircuitCurve>::Base;
-    type F = <CAffine as CurveAffine>::ScalarExt;
+
+    type NG = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
 
     const NB_INNER_INSTANCES: usize = 1;
 
@@ -646,7 +644,7 @@ pub(crate) mod tests {
         }
 
         fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
-            let nb_advice_cols = nb_foreign_ecc_chip_columns::<F, C, C, ScalarChip<C>>();
+            let nb_advice_cols = nb_foreign_ecc_chip_columns::<F, C, C, NG>();
             let nb_fixed_cols = NB_ARITH_COLS + 4;
 
             let advice_columns: Vec<_> =
@@ -668,9 +666,9 @@ pub(crate) mod tests {
                 P2RDecompositionChip::configure(meta, &(native_config.clone(), pow2_config))
             };
 
-            let base_config =
-                FieldChip::<F, CBase, C, ScalarChip<C>>::configure(meta, &advice_columns);
-            let curve_config = CurveChip::<C>::configure(meta, &base_config, &advice_columns);
+            let base_config = FieldChip::<F, CBase, C, NG>::configure(meta, &advice_columns);
+            let curve_config =
+                ForeignEccChip::<F, C, C, NG, NG>::configure(meta, &base_config, &advice_columns);
 
             let poseidon_config = PoseidonChip::configure(
                 meta,
@@ -701,11 +699,12 @@ pub(crate) mod tests {
             let curve_chip = { ForeignEccChip::new(&config.2, &native_gadget, &native_gadget) };
             let poseidon_chip = PoseidonChip::new(&config.3, &native_chip);
 
-            let verifier_chip = VerifierGadget::new(&curve_chip, &native_gadget, &poseidon_chip);
+            let verifier_chip =
+                VerifierGadget::<S>::new(&curve_chip, &native_gadget, &poseidon_chip);
 
             core_decomp_chip.load(&mut layouter)?;
 
-            let assigned_inner_vk: AssignedVk<C> = verifier_chip.assign_vk_as_public_input(
+            let assigned_inner_vk: AssignedVk<S> = verifier_chip.assign_vk_as_public_input(
                 &mut layouter,
                 "inner_vk",
                 &self.inner_vk.0,
@@ -780,9 +779,9 @@ pub(crate) mod tests {
 
         let mut fixed_bases = BTreeMap::new();
         fixed_bases.insert(String::from("com_instance"), C::identity());
-        fixed_bases.extend(crate::verifier::fixed_bases("inner_vk", &inner_vk));
+        fixed_bases.extend(crate::verifier::fixed_bases::<S>("inner_vk", &inner_vk));
 
-        let mut inner_acc: Accumulator<C> = inner_dual_msm.clone().into();
+        let mut inner_acc: Accumulator<S> = inner_dual_msm.clone().into();
         inner_acc.extract_fixed_bases(&fixed_bases);
 
         assert!(inner_dual_msm.check(&inner_params.verifier_params()));
@@ -795,7 +794,7 @@ pub(crate) mod tests {
 
         const K: u32 = 18;
 
-        let mut public_inputs = AssignedVk::<C>::as_public_input(&inner_vk);
+        let mut public_inputs = AssignedVk::<S>::as_public_input(&inner_vk);
         public_inputs.extend(AssignedAccumulator::as_public_input(&inner_acc));
 
         let circuit = TestCircuit {
