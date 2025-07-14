@@ -195,8 +195,8 @@ where
         .concat();
 
         // In order to involve the is_id flag, we leverage the fact that the
-        // limbs of x are in the range [0, B) and e.g. add the is_id flag
-        // (scaled by B) to the first limb.
+        // limbs of x are in the range [0, B) and add the is_id flag (scaled by B) to
+        // the first limb.
         if p.is_identity().into() {
             pis[0] += F::from(2).pow_vartime([B::LOG2_BASE as u64]);
         }
@@ -342,8 +342,8 @@ where
         .concat();
 
         // In order to involve the is_id flag, we leverage the fact that the
-        // limbs of x are in the range [0, B) and e.g. add the is_id flag
-        // (scaled by B) to the first limb.
+        // limbs of x are in the range [0, B) and add the is_id flag (scaled by B) to
+        // the first limb.
         let base = F::from(2).pow_vartime([B::LOG2_BASE as u64]);
         pis[0] = self.native_gadget.linear_combination(
             layouter,
