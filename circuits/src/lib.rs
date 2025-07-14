@@ -32,6 +32,7 @@ pub mod field;
 pub mod hash;
 pub mod json;
 pub mod map;
+pub mod vec;
 pub mod verifier;
 
 // Re-exporting modules for convenience and usability.
@@ -60,8 +61,8 @@ pub mod types {
         },
         utils::{
             types::{InnerConstants, InnerValue, Instantiable},
-            vector::{AssignedVector, VectorInstructions, Vectorizable},
             ComposableChip,
         },
+        vec::{AssignedVector, Vectorizable},
     };
 }

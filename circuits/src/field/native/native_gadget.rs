@@ -49,10 +49,7 @@ use crate::{
         RangeCheckInstructions, ScalarFieldInstructions, UnsafeConversionInstructions,
         ZeroInstructions,
     },
-    types::{
-        AssignedBit, AssignedNative, AssignedVector, InnerValue, Instantiable, VectorInstructions,
-        Vectorizable,
-    },
+    types::{AssignedBit, AssignedNative, InnerValue, Instantiable},
     utils::util::{big_to_fe, fe_to_big, modulus},
 };
 
@@ -84,7 +81,7 @@ where
     CoreDecomposition: CoreDecompositionInstructions<F>,
     NativeArith: ArithInstructions<F, AssignedNative<F>>,
 {
-    /// Create a new gadget
+    /// Create a new gadget.
     pub fn new(core_decomposition_chip: CoreDecomposition, native_chip: NativeArith) -> Self {
         Self {
             core_decomposition_chip,
@@ -1018,34 +1015,6 @@ where
         value: &[Value<F>],
     ) -> Result<Vec<AssignedNative<F>>, Error> {
         self.native_chip.assign_many(layouter, value)
-    }
-}
-
-impl<F, CoreDecomposition, NativeArith, const M: usize, T, const A: usize>
-    AssignmentInstructions<F, AssignedVector<F, T, M, A>>
-    for NativeGadget<F, CoreDecomposition, NativeArith>
-where
-    F: PrimeField,
-    T: Vectorizable,
-    T::Element: Copy,
-    CoreDecomposition: CoreDecompositionInstructions<F>,
-    NativeArith: ArithInstructions<F, AssignedNative<F>>,
-    Self: VectorInstructions<F, T, M, A>,
-{
-    fn assign_fixed(
-        &self,
-        _layouter: &mut impl Layouter<F>,
-        _constant: <AssignedVector<F, T, M, A> as InnerValue>::Element,
-    ) -> Result<AssignedVector<F, T, M, A>, Error> {
-        unimplemented!("You should not be assigining a fixed `AssignedVector`")
-    }
-
-    fn assign(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        value: Value<<AssignedVector<F, T, M, A> as InnerValue>::Element>,
-    ) -> Result<AssignedVector<F, T, M, A>, Error> {
-        self.assign_with_filler(layouter, value, None)
     }
 }
 
