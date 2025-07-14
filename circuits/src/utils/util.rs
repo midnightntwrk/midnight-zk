@@ -106,12 +106,6 @@ pub fn le_bits_to_field_elem<F: PrimeField>(bits: &[bool]) -> F {
     F::from_repr(repr).unwrap()
 }
 
-/// Given a slice of vectors, returns the concatenation of all of them in order.
-#[inline]
-pub fn concat<T: Clone>(chunks: &[Vec<T>]) -> Vec<T> {
-    chunks.iter().flatten().cloned().collect()
-}
-
 /// Off-circuit GLV scalar decomposition.
 /// Given a scalar `x`, and the cubic-root `zeta`, returns `(s1, x1), (s2, x2)`
 /// with x = ±x1 + zeta * (±x2), where the sign in front of `x1`

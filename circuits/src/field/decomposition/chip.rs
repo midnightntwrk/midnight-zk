@@ -35,7 +35,7 @@ use crate::{
         NativeChip, NativeConfig,
     },
     types::AssignedNative,
-    utils::{util::concat, ComposableChip},
+    utils::ComposableChip,
 };
 
 #[derive(Clone, Debug)]
@@ -438,10 +438,10 @@ impl<F: PrimeField> CoreDecompositionInstructions<F> for P2RDecompositionChip<F>
         optimal_limb_sizes
             .iter_mut()
             .for_each(|row| process_limb_sizes(NB_POW2RANGE_COLS, row));
-        let limb_sizes = concat(optimal_limb_sizes.as_slice());
+        let limb_sizes = optimal_limb_sizes.concat();
 
         // 3. use decompose_core to compute the result
-        let (y, _) = self.decompose_core(layouter, value, limb_sizes.as_slice())?;
+        let (y, _) = self.decompose_core(layouter, value, &limb_sizes)?;
 
         Ok(y)
     }

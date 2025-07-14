@@ -23,9 +23,7 @@ use midnight_proofs::{
 
 use crate::{
     hash::poseidon::{PoseidonChip, PoseidonState},
-    instructions::{
-        AssignmentInstructions, EccInstructions, PublicInputInstructions, SpongeInstructions,
-    },
+    instructions::{AssignmentInstructions, PublicInputInstructions, SpongeInstructions},
     types::AssignedNative,
     verifier::{
         types::{AssignedPoint, AssignedScalar, CurveChip, ScalarChip, SpongeChip, SpongeState},
@@ -106,20 +104,7 @@ impl<C: SelfEmulationCurve> TranscriptGadget<C> {
         layouter: &mut impl Layouter<C::ScalarExt>,
         point: &AssignedPoint<C>,
     ) -> Result<(), Error> {
-        let x_as_public_input = self
-            .curve_chip
-            .base_field_chip()
-            .as_public_input(layouter, &self.curve_chip.x_coordinate(point))?;
-
-        let y_as_public_input = self
-            .curve_chip
-            .base_field_chip()
-            .as_public_input(layouter, &self.curve_chip.y_coordinate(point))?;
-
-        let pis = [x_as_public_input, y_as_public_input]
-            .into_iter()
-            .flatten()
-            .collect::<Vec<_>>();
+        let pis = self.curve_chip.as_public_input(layouter, point)?;
 
         self.input_len += pis.len();
 
@@ -154,8 +139,8 @@ impl<C: SelfEmulationCurve> TranscriptGadget<C> {
             .expect("You must init the transcript gadget");
         // If an error, do not fail, assign a default point instead.
         // (This allows us to parse dummy proofs.)
-        let point: Value<C> = match reader.read::<C::G1Affine>() {
-            Ok(point) => Value::known(point.into()),
+        let point: Value<C> = match reader.read::<C>() {
+            Ok(point) => Value::known(point),
             Err(_) => Value::known(C::default()),
         };
 
@@ -390,18 +375,14 @@ mod tests {
 
         for i in 0..(SIZE / 2) {
             off_circuit_transcript.common(&scalars[i]).unwrap();
-            off_circuit_transcript
-                .common::<blstrs::G1Affine>(&points[i].into())
-                .unwrap();
+            off_circuit_transcript.common::<C>(&points[i]).unwrap();
         }
 
         let challenge_1: F = off_circuit_transcript.squeeze_challenge();
 
         for i in (SIZE / 2)..SIZE {
             off_circuit_transcript.common(&scalars[i]).unwrap();
-            off_circuit_transcript
-                .common::<blstrs::G1Affine>(&points[i].into())
-                .unwrap();
+            off_circuit_transcript.common::<C>(&points[i]).unwrap();
         }
 
         let challenge_2 = off_circuit_transcript.squeeze_challenge();

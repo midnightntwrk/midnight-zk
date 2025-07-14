@@ -64,8 +64,7 @@ pub trait SelfEmulationCurve:
             Base = <Self as CircuitCurve>::Base,
         > + Into<Self>
         + From<Self>
-        + SerdeObject
-        + Hashable<PoseidonState<Self::ScalarField>>;
+        + SerdeObject;
 
     /// The second source group.
     type G2Affine: SerdeObject + PrimeCurveAffine + From<<Self::Engine as Engine>::G2>;
