@@ -67,8 +67,6 @@ pub struct FakeCurveChip<C: CircuitCurve> {
     public_points: Rc<RefCell<Vec<FakePoint<C>>>>,
 }
 
-/// TODO: This test label will be removed when the aggregator is implemented.
-#[cfg(test)]
 impl<C: CircuitCurve> FakeCurveChip<C> {
     /// Initializes a new `FakeCurveChip` from a native chip.
     pub fn new(scalar_chip: &NativeChip<C::Scalar>) -> Self {
@@ -200,5 +198,13 @@ impl SelfEmulation for LightBlstrsEmulation {
         _bases: &[Self::AssignedPoint],
     ) -> Result<Self::AssignedPoint, Error> {
         unimplemented!("msm is not allowed with light blstrs emulation")
+    }
+
+    fn constrain_scalar_as_committed_public_input(
+        layouter: &mut impl Layouter<Self::F>,
+        scalar_chip: &Self::ScalarChip,
+        assigned_scalar: &AssignedNative<Self::F>,
+    ) -> Result<(), Error> {
+        scalar_chip.constrain_as_committed_public_input(layouter, assigned_scalar)
     }
 }

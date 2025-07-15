@@ -9,8 +9,11 @@
 extern crate core;
 
 mod inner_product_argument;
+mod light_aggregator;
 mod light_fiat_shamir;
 mod light_self_emulation;
+
+pub use light_aggregator::LightAggregator;
 
 #[cfg(test)]
 mod light_verifier;
