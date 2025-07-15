@@ -906,35 +906,14 @@ where
         layouter: &mut impl Layouter<F>,
         x: &AssignedNative<F>,
     ) -> Result<AssignedBit<F>, Error> {
-        // Suppose 2 * w' + e' = 2 * w + e + n * p as integer equation, where
-        //   1) 0 <= e, e' <= 1
-        //   2) 0 <= w, w' <= (p - 1) / 2  (as p is always odd)
-        // Then we have:
-        //      2 * (w' - w) = (e - e') + n * p.
-        // and the range of LHS is:
-        //      -(p - 1) <= 2 * (w' - w) <= (p - 1)
-        // and the range of RHS is:
-        //      -1 + n * p <= (e - e') + n * p<= 1 + n * p
-        // To make the two ranges overlap, necessarily n = -1, 0, 1.
-        //   1. If n = 0, we get: 2 * (w' - w) = e - e'  ==> (e - e') = 0, as (e - e')
-        //      in {-1, 0, 1} by assumption, then w' - w = (e - e') / 2 = 0.
-        //   2. If n = 1, we get: 2 * (w' - w) = e - e' + p ==> w' = (p - 1) / 2, e' =
-        //      1, w = 0, e = 0. This can be derived from the fact: 2 * (w' - w) <= (p -
-        //      1) and e - e' + p >= p - 1, so both sides equal to p - 1 and each
-        //      variable has to be at its maximum or minimum value. Note that in this
-        //      case x = 2 * w' + e' = p, i.e x = 0 over the field F.
-        //   3. If n = -1, we get: 2 * w' + e' = 2 * w + e - p, then we only need to
-        //      switch the roles of (w, e) and (w', e') in case 2.
-        // In summary, for all x != 0 in F, the following identity is unique:
-        //   x = 2 * w + e, where w < (p + 1) / 2 and e in {0, 1}.
-        // When x = 0, the identity over the field F is not unique, as
-        //   x = 2 * (p - 1) / 2 + 1 = 2 * 0 + 0.
-        // Then we assign sgn0(0) = 0.
+        // Any element in Zp can be uniquely represented as 2 * w + e, where
+        // w in [0, (p-1)/2] and e in {0, 1}, with the exception of zero, which
+        // admits two representations: (w = 0, e = 0) and (w = (p-1)/2, e = 1).
         let x_val = x.value().copied().map(fe_to_big);
         let w_val = x_val.clone().map(|x| &x / BigUint::from(2u8));
-        let lsb_val = x_val.clone().map(|x| x.bit(0));
+        let e_val = x_val.clone().map(|x| x.bit(0));
 
-        let x_lsb: AssignedBit<F> = self.assign(layouter, lsb_val)?;
+        let e: AssignedBit<F> = self.assign(layouter, e_val)?;
         let w = self.assign_lower_than_fixed(
             layouter,
             w_val.map(big_to_fe::<F>),
@@ -942,16 +921,15 @@ where
         )?;
         let must_be_x = self.linear_combination(
             layouter,
-            &[(F::ONE, x_lsb.clone().into()), (F::from(2), w.clone())],
+            &[(F::ONE, e.clone().into()), (F::from(2), w.clone())],
             F::ZERO,
         )?;
         self.assert_equal(layouter, x, &must_be_x)?;
-        // The edge case: 0 = 2 * (p - 1) / 2 + 1, w = (p - 1) / 2, e = 1
-        // will pass the above constraint. However, as `is_not_zero` is false in this
-        // case, we will still assign sgn0(0) = 0.
-        let is_zero: AssignedBit<F> = self.is_equal_to_fixed(layouter, x, F::ZERO)?;
-        let is_not_zero: AssignedBit<F> = self.not(layouter, &is_zero)?;
-        let sgn0 = self.and(layouter, &[is_not_zero, x_lsb])?;
+        // The edge case x = 0 is no problem because `x_is_not_zero` is false in that
+        // case and we will still assign sgn0(0) = 0.
+        let x_is_zero: AssignedBit<F> = self.is_zero(layouter, x)?;
+        let x_is_not_zero: AssignedBit<F> = self.not(layouter, &x_is_zero)?;
+        let sgn0 = self.and(layouter, &[x_is_not_zero, e])?;
 
         Ok(sgn0)
     }
