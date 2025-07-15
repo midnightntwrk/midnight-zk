@@ -151,6 +151,28 @@ impl<S: SelfEmulation> PublicInputInstructions<S::F, AssignedAccumulator<S>> for
 }
 
 impl<S: SelfEmulation> VerifierGadget<S> {
+    /// Constrains the given accumulator as a public input. The (fixed and
+    /// non-fixed) scalars of its RHS are constrained in committed form (as a
+    /// committed instance), whereas the rest of the accumulator is constrained
+    /// as a normal instance.
+    ///
+    /// See [AssignedAccumulator::as_public_input_with_committed_scalars] for
+    /// the off-circuit analog of this function.
+    pub fn constrain_acc_as_public_input_with_committed_scalars(
+        &self,
+        layouter: &mut impl Layouter<S::F>,
+        acc: &AssignedAccumulator<S>,
+    ) -> Result<(), Error> {
+        (acc.lhs).constrain_as_public_input(layouter, &self.curve_chip, &self.scalar_chip)?;
+        (acc.rhs).constrain_as_public_input_with_committed_scalars(
+            layouter,
+            &self.curve_chip,
+            &self.scalar_chip,
+        )
+    }
+}
+
+impl<S: SelfEmulation> VerifierGadget<S> {
     /// Assigns a verifying key as a public input. All the necessary information
     /// is required off-circuit, except for the `transcript_repr` value.
     pub fn assign_vk_as_public_input(
@@ -341,7 +363,6 @@ impl<S: SelfEmulation> VerifierGadget<S> {
 
             let blinding_factors = cs.blinding_factors();
 
-            // TODO: Share this with assign_proof?
             let l_evals = evaluate_lagrange_polynomials(
                 layouter,
                 &self.scalar_chip,
@@ -696,7 +717,7 @@ pub(crate) mod tests {
             let native_chip = <NativeChip<F> as ComposableChip<F>>::new(&config.0, &());
             let core_decomp_chip = P2RDecompositionChip::new(&config.1, &16);
             let native_gadget = NativeGadget::new(core_decomp_chip.clone(), native_chip.clone());
-            let curve_chip = { ForeignEccChip::new(&config.2, &native_gadget, &native_gadget) };
+            let curve_chip = ForeignEccChip::new(&config.2, &native_gadget, &native_gadget);
             let poseidon_chip = PoseidonChip::new(&config.3, &native_chip);
 
             let verifier_chip =
