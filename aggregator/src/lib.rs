@@ -8,6 +8,7 @@
 
 extern crate core;
 
+mod inner_product_argument;
 mod light_fiat_shamir;
 mod light_self_emulation;
 
