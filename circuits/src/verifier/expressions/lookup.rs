@@ -22,40 +22,38 @@ use midnight_proofs::{
 };
 
 use crate::{
+    field::AssignedNative,
     instructions::ArithInstructions,
     verifier::{
         expressions::eval_expression,
         lookup::Evaluated,
-        types::{AssignedScalar, ScalarChip, SelfEmulationCurve},
         utils::{mul_add, try_reduce},
+        SelfEmulation,
     },
 };
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn lookup_expressions<C: SelfEmulationCurve>(
-    layouter: &mut impl Layouter<C::ScalarExt>,
-    scalar_chip: &ScalarChip<C>,
-    lookup_evals: &Evaluated<C>,
-    input_expressions: &[Expression<C::ScalarExt>],
-    table_expressions: &[Expression<C::ScalarExt>],
-    advice_evals: &[AssignedScalar<C>],
-    fixed_evals: &[AssignedScalar<C>],
-    instance_evals: &[AssignedScalar<C>],
-    l_0: &AssignedScalar<C>,
-    l_last: &AssignedScalar<C>,
-    l_blind: &AssignedScalar<C>,
-    theta: &AssignedScalar<C>,
-    beta: &AssignedScalar<C>,
-    gamma: &AssignedScalar<C>,
-) -> Result<Vec<AssignedScalar<C>>, Error> {
+pub(crate) fn lookup_expressions<S: SelfEmulation>(
+    layouter: &mut impl Layouter<S::F>,
+    scalar_chip: &S::ScalarChip,
+    lookup_evals: &Evaluated<S>,
+    input_expressions: &[Expression<S::F>],
+    table_expressions: &[Expression<S::F>],
+    advice_evals: &[AssignedNative<S::F>],
+    fixed_evals: &[AssignedNative<S::F>],
+    instance_evals: &[AssignedNative<S::F>],
+    l_0: &AssignedNative<S::F>,
+    l_last: &AssignedNative<S::F>,
+    l_blind: &AssignedNative<S::F>,
+    theta: &AssignedNative<S::F>,
+    beta: &AssignedNative<S::F>,
+    gamma: &AssignedNative<S::F>,
+) -> Result<Vec<AssignedNative<S::F>>, Error> {
     let active_rows = {
         scalar_chip.linear_combination(
             layouter,
-            &[
-                (-C::ScalarExt::ONE, l_last.clone()),
-                (-C::ScalarExt::ONE, l_blind.clone()),
-            ],
-            C::ScalarExt::ONE,
+            &[(-S::F::ONE, l_last.clone()), (-S::F::ONE, l_blind.clone())],
+            S::F::ONE,
         )?
     };
 
@@ -66,11 +64,11 @@ pub(crate) fn lookup_expressions<C: SelfEmulationCurve>(
         // l_0 * (1 - z) computed as l_0 - l_0 * z
         scalar_chip.add_and_mul(
             layouter,
-            (C::ScalarExt::ONE, l_0),
-            (C::ScalarExt::ZERO, z),
-            (C::ScalarExt::ZERO, l_0),
-            C::ScalarExt::ZERO,
-            -C::ScalarExt::ONE,
+            (S::F::ONE, l_0),
+            (S::F::ZERO, z),
+            (S::F::ZERO, l_0),
+            S::F::ZERO,
+            -S::F::ONE,
         )?
     };
 
@@ -81,11 +79,11 @@ pub(crate) fn lookup_expressions<C: SelfEmulationCurve>(
         // z(X)^2 - z(X)
         let aux = scalar_chip.add_and_mul(
             layouter,
-            (-C::ScalarExt::ONE, z),
-            (C::ScalarExt::ZERO, z),
-            (C::ScalarExt::ZERO, z),
-            C::ScalarExt::ZERO,
-            C::ScalarExt::ONE,
+            (-S::F::ONE, z),
+            (S::F::ZERO, z),
+            (S::F::ZERO, z),
+            S::F::ZERO,
+            S::F::ONE,
         )?;
         scalar_chip.mul(layouter, l_last, &aux, None)?
     };
@@ -103,7 +101,7 @@ pub(crate) fn lookup_expressions<C: SelfEmulationCurve>(
         };
 
         let right = {
-            let compressed1 = compress_expressions::<C>(
+            let compressed1 = compress_expressions::<S>(
                 layouter,
                 scalar_chip,
                 advice_evals,
@@ -112,7 +110,7 @@ pub(crate) fn lookup_expressions<C: SelfEmulationCurve>(
                 theta,
                 input_expressions,
             )?;
-            let compressed2 = compress_expressions::<C>(
+            let compressed2 = compress_expressions::<S>(
                 layouter,
                 scalar_chip,
                 advice_evals,
@@ -156,19 +154,19 @@ pub(crate) fn lookup_expressions<C: SelfEmulationCurve>(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn compress_expressions<C: SelfEmulationCurve>(
-    layouter: &mut impl Layouter<C::ScalarExt>,
-    scalar_chip: &ScalarChip<C>,
-    advice_evals: &[AssignedScalar<C>],
-    fixed_evals: &[AssignedScalar<C>],
-    instance_evals: &[AssignedScalar<C>],
-    theta: &AssignedScalar<C>,
-    expressions: &[Expression<C::ScalarExt>],
-) -> Result<AssignedScalar<C>, Error> {
+fn compress_expressions<S: SelfEmulation>(
+    layouter: &mut impl Layouter<S::F>,
+    scalar_chip: &S::ScalarChip,
+    advice_evals: &[AssignedNative<S::F>],
+    fixed_evals: &[AssignedNative<S::F>],
+    instance_evals: &[AssignedNative<S::F>],
+    theta: &AssignedNative<S::F>,
+    expressions: &[Expression<S::F>],
+) -> Result<AssignedNative<S::F>, Error> {
     let evaluated_expressions = expressions
         .iter()
         .map(|expression| {
-            eval_expression::<C>(
+            eval_expression::<S>(
                 layouter,
                 scalar_chip,
                 advice_evals,

@@ -26,10 +26,11 @@ use midnight_proofs::{
 };
 
 use crate::{
-    instructions::{AssignmentInstructions, EccInstructions, PublicInputInstructions},
+    field::AssignedNative,
+    instructions::{AssignmentInstructions, PublicInputInstructions},
     types::{InnerValue, Instantiable},
     verifier::{
-        types::{AssignedPoint, AssignedScalar, CurveChip, ScalarChip, SelfEmulationCurve},
+        types::SelfEmulation,
         utils::{
             add_bounded_scalars, assign_bounded_scalars, mul_bounded_scalars, AssignedBoundedScalar,
         },
@@ -46,23 +47,33 @@ use crate::{
 ///
 /// (`scalars` and `bases` are guaranteed to have the same length.)
 #[derive(Clone, Debug)]
-pub struct Msm<C: SelfEmulationCurve> {
-    bases: Vec<C>,
-    scalars: Vec<C::ScalarExt>,
-    fixed_base_scalars: BTreeMap<String, C::ScalarExt>,
+pub struct Msm<S: SelfEmulation> {
+    bases: Vec<S::C>,
+    scalars: Vec<S::F>,
+    fixed_base_scalars: BTreeMap<String, S::F>,
 }
 
 /// Type for in-circuit multi-scalar multiplications.
 ///
 /// This is the in-circuit analog of `Msm<C>`.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct AssignedMsm<C: SelfEmulationCurve> {
-    bases: Vec<AssignedPoint<C>>,
-    scalars: Vec<AssignedBoundedScalar<C>>,
-    fixed_base_scalars: BTreeMap<String, AssignedBoundedScalar<C>>,
+#[derive(Clone, Debug)]
+pub struct AssignedMsm<S: SelfEmulation> {
+    bases: Vec<S::AssignedPoint>,
+    scalars: Vec<AssignedBoundedScalar<S::F>>,
+    fixed_base_scalars: BTreeMap<String, AssignedBoundedScalar<S::F>>,
 }
 
-impl<C: SelfEmulationCurve> Msm<C> {
+impl<S: SelfEmulation> PartialEq for AssignedMsm<S> {
+    fn eq(&self, other: &Self) -> bool {
+        self.bases == other.bases
+            && self.scalars == other.scalars
+            && self.fixed_base_scalars == other.fixed_base_scalars
+    }
+}
+
+impl<S: SelfEmulation> Eq for AssignedMsm<S> {}
+
+impl<S: SelfEmulation> Msm<S> {
     /// Creates a new MSM from the given slice of bases, scalars and a BTreeMap
     /// of fixed_base_scalars.
     ///
@@ -70,9 +81,9 @@ impl<C: SelfEmulationCurve> Msm<C> {
     ///
     /// If `bases` and `scalars` do not have the same length.
     pub fn new(
-        bases: &[C],
-        scalars: &[C::ScalarExt],
-        fixed_base_scalars: &BTreeMap<String, C::ScalarExt>,
+        bases: &[S::C],
+        scalars: &[S::F],
+        fixed_base_scalars: &BTreeMap<String, S::F>,
     ) -> Self {
         assert_eq!(bases.len(), scalars.len());
         Msm {
@@ -88,7 +99,7 @@ impl<C: SelfEmulationCurve> Msm<C> {
     /// # Panics
     ///
     /// If `bases` and `scalars` do not have the same length.
-    pub fn from_terms(bases: &[C], scalars: &[C::ScalarExt]) -> Self {
+    pub fn from_terms(bases: &[S::C], scalars: &[S::F]) -> Self {
         assert_eq!(bases.len(), scalars.len());
         Msm {
             bases: bases.to_vec(),
@@ -103,11 +114,11 @@ impl<C: SelfEmulationCurve> Msm<C> {
     ///
     /// This function mutates self.
     pub fn collapse(&mut self) {
-        let affine_bases: Vec<C::G1Affine> = self.bases.iter().map(|&b| b.into()).collect();
+        let affine_bases: Vec<S::G1Affine> = self.bases.iter().map(|&b| b.into()).collect();
         let collapsed_base = msm_best(&self.scalars, &affine_bases);
 
         self.bases = vec![collapsed_base];
-        self.scalars = vec![C::ScalarExt::ONE];
+        self.scalars = vec![S::F::ONE];
     }
 
     /// Evaluates the MSM with the provided fixed_bases.
@@ -119,7 +130,7 @@ impl<C: SelfEmulationCurve> Msm<C> {
     ///
     /// Note that the converse is not a problem, i.e., the keys of
     /// `fixed_bases` can be a superset of the keys of `fixed_base_scalars`.
-    pub fn eval(&self, fixed_bases: &BTreeMap<String, C>) -> C {
+    pub fn eval(&self, fixed_bases: &BTreeMap<String, S::C>) -> S::C {
         let mut bases = self.bases.clone();
         let mut scalars = self.scalars.clone();
 
@@ -129,14 +140,14 @@ impl<C: SelfEmulationCurve> Msm<C> {
             scalars.push(*scalar);
         }
 
-        let affine_bases: Vec<C::G1Affine> = bases.iter().map(|&b| b.into()).collect();
+        let affine_bases: Vec<S::G1Affine> = bases.iter().map(|&b| b.into()).collect();
         msm_best(&scalars, &affine_bases)
     }
 
     /// Accumulates two MSMs with the given scalar r.
     /// The resulting MSM evaluates (on any `fixed_bases`) to
     /// `self.eval(fixed_bases) + r * other.eval(fixed_bases)`.
-    pub fn accumulate_with_r(&self, other: &Self, r: C::ScalarExt) -> Self {
+    pub fn accumulate_with_r(&self, other: &Self, r: S::F) -> Self {
         let mut acc = self.clone();
 
         acc.bases.extend(other.bases.clone());
@@ -173,7 +184,7 @@ impl<C: SelfEmulationCurve> Msm<C> {
     ///
     /// If some of the provided fixed bases does not appear in `self.bases`
     /// with the exact required multiplicity.
-    pub fn extract_fixed_bases(&mut self, fixed_bases: &BTreeMap<String, C>) {
+    pub fn extract_fixed_bases(&mut self, fixed_bases: &BTreeMap<String, S::C>) {
         assert!(
             (fixed_bases.keys()).all(|name| !self.fixed_base_scalars.contains_key(name)),
             "fixed_bases should not contain keys (names) that appear in self.fixed_base_scalars"
@@ -211,16 +222,16 @@ impl<C: SelfEmulationCurve> Msm<C> {
     }
 }
 
-impl<C: SelfEmulationCurve> InnerValue for AssignedMsm<C> {
-    type Element = Msm<C>;
+impl<S: SelfEmulation> InnerValue for AssignedMsm<S> {
+    type Element = Msm<S>;
 
     fn value(&self) -> Value<Self::Element> {
-        let bases: Value<Vec<C>> = Value::from_iter(self.bases.iter().map(|base| base.value()));
+        let bases: Value<Vec<S::C>> = Value::from_iter(self.bases.iter().map(|base| base.value()));
 
-        let scalars: Value<Vec<C::ScalarExt>> =
+        let scalars: Value<Vec<S::F>> =
             Value::from_iter(self.scalars.iter().map(|s| s.scalar.value().copied()));
 
-        let fixed_based_scalars: Value<BTreeMap<String, C::ScalarExt>> = Value::from_iter(
+        let fixed_based_scalars: Value<BTreeMap<String, S::F>> = Value::from_iter(
             self.fixed_base_scalars
                 .iter()
                 .map(|(name, s)| s.scalar.value().map(|s| (name.clone(), *s))),
@@ -237,12 +248,12 @@ impl<C: SelfEmulationCurve> InnerValue for AssignedMsm<C> {
     }
 }
 
-impl<C: SelfEmulationCurve> Instantiable<C::ScalarExt> for AssignedMsm<C> {
-    fn as_public_input(msm: &Msm<C>) -> Vec<C::ScalarExt> {
+impl<S: SelfEmulation> Instantiable<S::F> for AssignedMsm<S> {
+    fn as_public_input(msm: &Msm<S>) -> Vec<S::F> {
         [
             msm.bases
                 .iter()
-                .flat_map(AssignedPoint::<C>::as_public_input)
+                .flat_map(S::AssignedPoint::as_public_input)
                 .collect::<Vec<_>>(),
             msm.scalars.clone(),
             msm.fixed_base_scalars.values().copied().collect::<Vec<_>>(),
@@ -253,12 +264,12 @@ impl<C: SelfEmulationCurve> Instantiable<C::ScalarExt> for AssignedMsm<C> {
     }
 }
 
-impl<C: SelfEmulationCurve> AssignedMsm<C> {
+impl<S: SelfEmulation> AssignedMsm<S> {
     pub(crate) fn in_circuit_as_public_input(
         &self,
-        layouter: &mut impl Layouter<C::ScalarExt>,
-        curve_chip: &CurveChip<C>,
-    ) -> Result<Vec<AssignedScalar<C>>, Error> {
+        layouter: &mut impl Layouter<S::F>,
+        curve_chip: &S::CurveChip,
+    ) -> Result<Vec<AssignedNative<S::F>>, Error> {
         Ok([
             self.bases
                 .iter()
@@ -283,9 +294,9 @@ impl<C: SelfEmulationCurve> AssignedMsm<C> {
 
     pub(crate) fn constrain_as_public_input(
         &self,
-        layouter: &mut impl Layouter<C::ScalarExt>,
-        curve_chip: &CurveChip<C>,
-        scalar_chip: &ScalarChip<C>,
+        layouter: &mut impl Layouter<S::F>,
+        curve_chip: &S::CurveChip,
+        scalar_chip: &S::ScalarChip,
     ) -> Result<(), Error> {
         self.bases
             .iter()
@@ -301,16 +312,16 @@ impl<C: SelfEmulationCurve> AssignedMsm<C> {
     }
 }
 
-impl<C: SelfEmulationCurve> AssignedMsm<C> {
+impl<S: SelfEmulation> AssignedMsm<S> {
     /// Witnesses an MSM computation of `len` bases/scalars and a `BTreeMap` of
     /// fixed_base_scalars indexed by the given `fixed_base_names`.
     pub fn assign(
-        layouter: &mut impl Layouter<C::ScalarExt>,
-        curve_chip: &CurveChip<C>,
-        scalar_chip: &ScalarChip<C>,
+        layouter: &mut impl Layouter<S::F>,
+        curve_chip: &S::CurveChip,
+        scalar_chip: &S::ScalarChip,
         len: usize,
         fixed_base_names: &[String],
-        msm_value: Value<Msm<C>>,
+        msm_value: Value<Msm<S>>,
     ) -> Result<Self, Error> {
         let bases_val = msm_value
             .as_ref()
@@ -340,7 +351,7 @@ impl<C: SelfEmulationCurve> AssignedMsm<C> {
 
         let bases = curve_chip.assign_many(layouter, &bases_val)?;
         let scalars = assign_bounded_scalars(layouter, scalar_chip, &scalars_val)?;
-        let fixed_base_scalars: BTreeMap<String, AssignedBoundedScalar<C>> = {
+        let fixed_base_scalars: BTreeMap<String, AssignedBoundedScalar<S::F>> = {
             let scalars = assign_bounded_scalars(layouter, scalar_chip, &fixed_base_scalars_val)?;
             fixed_base_names.iter().cloned().zip(scalars).collect()
         };
@@ -363,7 +374,7 @@ impl<C: SelfEmulationCurve> AssignedMsm<C> {
     }
 
     /// Creates a new MSM from the given base (with a scalar of 1).
-    pub fn from_term(scalar: &AssignedBoundedScalar<C>, base: &AssignedPoint<C>) -> Self {
+    pub fn from_term(scalar: &AssignedBoundedScalar<S::F>, base: &S::AssignedPoint) -> Self {
         Self {
             scalars: vec![scalar.clone()],
             bases: vec![base.clone()],
@@ -372,7 +383,7 @@ impl<C: SelfEmulationCurve> AssignedMsm<C> {
     }
 
     /// Creates a new MSM from the given fixed base name (with a scalar of 1).
-    pub fn from_fixed_term(scalar: &AssignedBoundedScalar<C>, base_name: &str) -> Self {
+    pub fn from_fixed_term(scalar: &AssignedBoundedScalar<S::F>, base_name: &str) -> Self {
         Self {
             scalars: vec![],
             bases: vec![],
@@ -383,7 +394,7 @@ impl<C: SelfEmulationCurve> AssignedMsm<C> {
     }
 
     /// Adds a `(scalar, base)` term to the AssignedMsm.
-    pub fn add_term(&mut self, scalar: &AssignedBoundedScalar<C>, base: &AssignedPoint<C>) {
+    pub fn add_term(&mut self, scalar: &AssignedBoundedScalar<S::F>, base: &S::AssignedPoint) {
         self.scalars.push(scalar.clone());
         self.bases.push(base.clone());
     }
@@ -391,8 +402,8 @@ impl<C: SelfEmulationCurve> AssignedMsm<C> {
     /// Adds two AssignedMsm.
     pub fn add_msm(
         &mut self,
-        layouter: &mut impl Layouter<C::ScalarExt>,
-        scalar_chip: &ScalarChip<C>,
+        layouter: &mut impl Layouter<S::F>,
+        scalar_chip: &S::ScalarChip,
         other: &Self,
     ) -> Result<(), Error> {
         self.scalars.extend(other.scalars.clone());
@@ -419,15 +430,17 @@ impl<C: SelfEmulationCurve> AssignedMsm<C> {
     /// This function mutates self.
     pub fn collapse(
         &mut self,
-        layouter: &mut impl Layouter<C::ScalarExt>,
-        curve_chip: &CurveChip<C>,
-        scalar_chip: &ScalarChip<C>,
+        layouter: &mut impl Layouter<S::F>,
+        curve_chip: &S::CurveChip,
+        scalar_chip: &S::ScalarChip,
     ) -> Result<(), Error> {
-        let scalars = (self.scalars.iter())
+        let scalars = self
+            .scalars
+            .iter()
             .map(|s| (s.scalar.clone(), s.bound.bits() as usize))
             .collect::<Vec<_>>();
 
-        let collapsed_base = curve_chip.msm_by_bounded_scalars(layouter, &scalars, &self.bases)?;
+        let collapsed_base = S::msm(layouter, curve_chip, &scalars, &self.bases)?;
 
         self.bases = vec![collapsed_base];
         self.scalars = vec![AssignedBoundedScalar::one(layouter, scalar_chip)?];
@@ -440,9 +453,9 @@ impl<C: SelfEmulationCurve> AssignedMsm<C> {
     /// This function mutates self.
     pub fn scale(
         &mut self,
-        layouter: &mut impl Layouter<C::ScalarExt>,
-        scalar_chip: &ScalarChip<C>,
-        r: &AssignedBoundedScalar<C>,
+        layouter: &mut impl Layouter<S::F>,
+        scalar_chip: &S::ScalarChip,
+        r: &AssignedBoundedScalar<S::F>,
     ) -> Result<(), Error> {
         self.scalars = (self.scalars.iter())
             .map(|s| mul_bounded_scalars(layouter, scalar_chip, s, r))
@@ -460,10 +473,10 @@ impl<C: SelfEmulationCurve> AssignedMsm<C> {
     /// `self.eval(fixed_bases) + r * other.eval(fixed_bases)`.
     pub fn accumulate_with_r(
         &self,
-        layouter: &mut impl Layouter<C::ScalarExt>,
-        scalar_chip: &ScalarChip<C>,
+        layouter: &mut impl Layouter<S::F>,
+        scalar_chip: &S::ScalarChip,
         other: &Self,
-        r: &AssignedBoundedScalar<C>,
+        r: &AssignedBoundedScalar<S::F>,
     ) -> Result<Self, Error> {
         let mut other = other.clone();
         other.scale(layouter, scalar_chip, r)?;

@@ -39,14 +39,15 @@ use midnight_proofs::{
 use num_bigint::BigUint;
 use num_traits::One;
 
+#[cfg(feature = "truncated-challenges")]
+use crate::verifier::utils::{truncate, truncate_off_circuit};
 use crate::{
     instructions::{hash::HashCPU, HashInstructions, PublicInputInstructions},
     types::{AssignedBit, InnerValue, Instantiable},
     verifier::{
         msm::{AssignedMsm, Msm},
-        types::{CurveChip, ScalarChip, SpongeChip},
-        utils::{truncate, truncate_off_circuit, AssignedBoundedScalar},
-        SelfEmulationCurve,
+        utils::AssignedBoundedScalar,
+        SelfEmulation,
     },
 };
 
@@ -56,24 +57,24 @@ use crate::{
 /// a fixed-base scalars part. In order to evaluate the accumulator, one may
 /// thus need to provide the corresponding fixed bases.
 #[derive(Clone, Debug)]
-pub struct Accumulator<C: SelfEmulationCurve> {
-    lhs: Msm<C>,
-    rhs: Msm<C>,
+pub struct Accumulator<S: SelfEmulation> {
+    lhs: Msm<S>,
+    rhs: Msm<S>,
 }
 
 /// Type for in-circuit accumulators (in-circuit analog of `Accumulator`).
 #[derive(Clone, Debug)]
-pub struct AssignedAccumulator<C: SelfEmulationCurve> {
+pub struct AssignedAccumulator<C: SelfEmulation> {
     pub(crate) lhs: AssignedMsm<C>,
     pub(crate) rhs: AssignedMsm<C>,
 }
 
-impl<C: SelfEmulationCurve> From<DualMSM<C::Engine>> for Accumulator<C> {
-    fn from(dual_msm: DualMSM<C::Engine>) -> Self {
+impl<S: SelfEmulation> From<DualMSM<S::Engine>> for Accumulator<S> {
+    fn from(dual_msm: DualMSM<S::Engine>) -> Self {
         let (lhs, rhs) = dual_msm.split();
 
-        let lhs: (Vec<C>, Vec<C::ScalarField>) = lhs.into_iter().map(|(s, b)| (*b, *s)).unzip();
-        let rhs: (Vec<C>, Vec<C::ScalarField>) = rhs.into_iter().map(|(s, b)| (*b, *s)).unzip();
+        let lhs: (Vec<S::C>, Vec<S::F>) = lhs.into_iter().map(|(s, b)| (*b, *s)).unzip();
+        let rhs: (Vec<S::C>, Vec<S::F>) = rhs.into_iter().map(|(s, b)| (*b, *s)).unzip();
 
         Accumulator {
             lhs: Msm::from_terms(&lhs.0, &lhs.1),
@@ -82,18 +83,18 @@ impl<C: SelfEmulationCurve> From<DualMSM<C::Engine>> for Accumulator<C> {
     }
 }
 
-impl<C: SelfEmulationCurve> Accumulator<C> {
+impl<S: SelfEmulation> Accumulator<S> {
     /// Checks whether the accumulator, when evaluated with the provided
     /// fixed-bases, satisfies the invariant w.r.t. the given \[τ\]₂.
-    pub fn check(&self, tau_in_g2: &C::G2Affine, fixed_bases: &BTreeMap<String, C>) -> bool {
+    pub fn check(&self, tau_in_g2: &S::G2Affine, fixed_bases: &BTreeMap<String, S::C>) -> bool {
         // TODO: Share the Miller-loop?
         let lhs = self.lhs.eval(fixed_bases).into();
         let rhs = self.rhs.eval(fixed_bases).into();
-        C::Engine::pairing(&lhs, tau_in_g2) == C::Engine::pairing(&rhs, &C::G2Affine::generator())
+        S::Engine::pairing(&lhs, tau_in_g2) == S::Engine::pairing(&rhs, &S::G2Affine::generator())
     }
 
     /// An accumulator a given lhs and rhs terms respectively.
-    pub fn new(lhs: Msm<C>, rhs: Msm<C>) -> Self {
+    pub fn new(lhs: Msm<S>, rhs: Msm<S>) -> Self {
         Accumulator { lhs, rhs }
     }
 
@@ -118,7 +119,8 @@ impl<C: SelfEmulationCurve> Accumulator<C> {
         .flatten()
         .collect::<Vec<_>>();
 
-        let r = <SpongeChip<C> as HashCPU<C::ScalarField, C::ScalarField>>::hash(&hash_input);
+        let r = <S::SpongeChip as HashCPU<S::F, S::F>>::hash(&hash_input);
+        #[cfg(feature = "truncated-challenges")]
         let r = truncate_off_circuit(r);
 
         Self {
@@ -150,23 +152,23 @@ impl<C: SelfEmulationCurve> Accumulator<C> {
     ///
     /// If some of the provided fixed bases does not appear in `self.rhs.bases`
     /// with the exact required multiplicity.
-    pub fn extract_fixed_bases(&mut self, fixed_bases: &BTreeMap<String, C>) {
+    pub fn extract_fixed_bases(&mut self, fixed_bases: &BTreeMap<String, S::C>) {
         self.rhs.extract_fixed_bases(fixed_bases);
     }
 }
 
-impl<C: SelfEmulationCurve> InnerValue for AssignedAccumulator<C> {
-    type Element = Accumulator<C>;
+impl<S: SelfEmulation> InnerValue for AssignedAccumulator<S> {
+    type Element = Accumulator<S>;
 
-    fn value(&self) -> Value<Accumulator<C>> {
+    fn value(&self) -> Value<Accumulator<S>> {
         (self.lhs.value())
             .zip(self.rhs.value())
             .map(|(lhs, rhs)| Accumulator { lhs, rhs })
     }
 }
 
-impl<C: SelfEmulationCurve> Instantiable<C::ScalarField> for AssignedAccumulator<C> {
-    fn as_public_input(acc: &Accumulator<C>) -> Vec<C::ScalarField> {
+impl<S: SelfEmulation> Instantiable<S::F> for AssignedAccumulator<S> {
+    fn as_public_input(acc: &Accumulator<S>) -> Vec<S::F> {
         [
             AssignedMsm::as_public_input(&acc.lhs),
             AssignedMsm::as_public_input(&acc.rhs),
@@ -177,7 +179,7 @@ impl<C: SelfEmulationCurve> Instantiable<C::ScalarField> for AssignedAccumulator
     }
 }
 
-impl<C: SelfEmulationCurve> AssignedAccumulator<C> {
+impl<S: SelfEmulation> AssignedAccumulator<S> {
     /// Witnesses an accumulator of `lhs_len` bases/scalars and a `BTreeMap` of
     /// fixed_base_scalars indexed by the given `lhs_fixed_base_names`.
     ///
@@ -185,18 +187,18 @@ impl<C: SelfEmulationCurve> AssignedAccumulator<C> {
     /// right-hand side.
     #[allow(clippy::too_many_arguments)]
     pub fn assign(
-        layouter: &mut impl Layouter<C::ScalarField>,
-        curve_chip: &CurveChip<C>,
-        scalar_chip: &ScalarChip<C>,
+        layouter: &mut impl Layouter<S::F>,
+        curve_chip: &S::CurveChip,
+        scalar_chip: &S::ScalarChip,
         lhs_len: usize,
         rhs_len: usize,
         lhs_fixed_base_names: &[String],
         rhs_fixed_base_names: &[String],
-        acc_val: Value<Accumulator<C>>,
+        acc_val: Value<Accumulator<S>>,
     ) -> Result<Self, Error> {
         let (acc_lhs_val, acc_rhs_val) = acc_val.map(|acc| (acc.lhs, acc.rhs)).unzip();
         Ok(AssignedAccumulator::new(
-            AssignedMsm::<C>::assign(
+            AssignedMsm::<S>::assign(
                 layouter,
                 curve_chip,
                 scalar_chip,
@@ -204,7 +206,7 @@ impl<C: SelfEmulationCurve> AssignedAccumulator<C> {
                 lhs_fixed_base_names,
                 acc_lhs_val,
             )?,
-            AssignedMsm::<C>::assign(
+            AssignedMsm::<S>::assign(
                 layouter,
                 curve_chip,
                 scalar_chip,
@@ -216,7 +218,7 @@ impl<C: SelfEmulationCurve> AssignedAccumulator<C> {
     }
 
     /// An `AssignedAccumulator` a given lhs and rhs terms respectively.
-    pub fn new(lhs: AssignedMsm<C>, rhs: AssignedMsm<C>) -> Self {
+    pub fn new(lhs: AssignedMsm<S>, rhs: AssignedMsm<S>) -> Self {
         Self { lhs, rhs }
     }
 
@@ -224,9 +226,9 @@ impl<C: SelfEmulationCurve> AssignedAccumulator<C> {
     ///
     /// This function mutates self.
     pub fn scale_by_bit(
-        layouter: &mut impl Layouter<C::ScalarField>,
-        scalar_chip: &ScalarChip<C>,
-        cond: &AssignedBit<C::ScalarField>,
+        layouter: &mut impl Layouter<S::F>,
+        scalar_chip: &S::ScalarChip,
+        cond: &AssignedBit<S::F>,
         acc: &mut Self,
     ) -> Result<(), Error> {
         let cond_as_bounded = AssignedBoundedScalar {
@@ -252,9 +254,9 @@ impl<C: SelfEmulationCurve> AssignedAccumulator<C> {
     /// This function mutates self.
     pub fn collapse(
         &mut self,
-        layouter: &mut impl Layouter<C::ScalarField>,
-        curve_chip: &CurveChip<C>,
-        scalar_chip: &ScalarChip<C>,
+        layouter: &mut impl Layouter<S::F>,
+        curve_chip: &S::CurveChip,
+        scalar_chip: &S::ScalarChip,
     ) -> Result<(), Error> {
         self.lhs.collapse(layouter, curve_chip, scalar_chip)?;
         self.rhs.collapse(layouter, curve_chip, scalar_chip)
@@ -264,10 +266,10 @@ impl<C: SelfEmulationCurve> AssignedAccumulator<C> {
     /// The resulting acc will satisfy the invariant iff `self` and `other` do.
     pub fn accumulate(
         &self,
-        layouter: &mut impl Layouter<C::ScalarField>,
-        acc_pi_chip: &impl PublicInputInstructions<C::ScalarField, AssignedAccumulator<C>>,
-        scalar_chip: &ScalarChip<C>,
-        sponge_chip: &SpongeChip<C>,
+        layouter: &mut impl Layouter<S::F>,
+        acc_pi_chip: &impl PublicInputInstructions<S::F, AssignedAccumulator<S>>,
+        scalar_chip: &S::ScalarChip,
+        sponge_chip: &S::SpongeChip,
         other: &Self,
     ) -> Result<Self, Error> {
         let hash_input = vec![
@@ -279,7 +281,10 @@ impl<C: SelfEmulationCurve> AssignedAccumulator<C> {
         .collect::<Vec<_>>();
 
         let r = sponge_chip.hash(layouter, &hash_input)?;
+        #[cfg(feature = "truncated-challenges")]
         let r = truncate(layouter, scalar_chip, &r)?;
+        #[cfg(not(feature = "truncated-challenges"))]
+        let r = AssignedBoundedScalar::new(&r, None);
 
         Ok(AssignedAccumulator::new(
             self.lhs

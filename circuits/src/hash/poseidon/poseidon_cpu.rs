@@ -23,9 +23,9 @@ use super::{
     PoseidonChip, NB_SKIPS_CIRCUIT,
 };
 use crate::{
-    field::foreign::params::MultiEmulationParams,
+    field::foreign::params::MultiEmulationParams as MEP,
     instructions::{hash::HashCPU, SpongeCPU},
-    types::{AssignedField, Instantiable},
+    types::{AssignedForeignPoint, Instantiable},
 };
 
 /// Number of times the linear part of the partial rounds is skipped in the
@@ -202,48 +202,30 @@ impl<F: PoseidonField> TranscriptHash for PoseidonState<F> {
 /// Implementation of Hashable for BLS12-381 with Poseidon //
 /////////////////////////////////////////////////////////////
 
-impl Hashable<PoseidonState<blstrs::Fq>> for blstrs::G1Affine {
+impl Hashable<PoseidonState<blstrs::Fq>> for blstrs::G1Projective {
     fn to_input(&self) -> Vec<blstrs::Fq> {
-        // This implementation hard-codes MultiEmulationParams. This could
-        // be a limitation for using the transcript gadget with other parameters
-        // of emulation.
-        [self.x(), self.y()]
-            .iter()
-            .flat_map(
-                AssignedField::<blstrs::Fq, blstrs::Fp, MultiEmulationParams>::as_public_input,
-            )
-            .collect()
+        AssignedForeignPoint::<blstrs::Fq, blstrs::G1Projective, MEP>::as_public_input(self)
     }
 
     fn to_bytes(&self) -> Vec<u8> {
-        <Self as GroupEncoding>::to_bytes(self).as_ref().to_vec()
+        <blstrs::G1Affine as GroupEncoding>::to_bytes(&self.into())
+            .as_ref()
+            .to_vec()
     }
 
     fn read(buffer: &mut impl Read) -> io::Result<Self> {
-        let mut bytes = <Self as GroupEncoding>::Repr::default();
+        let mut bytes = <blstrs::G1Affine as GroupEncoding>::Repr::default();
 
         buffer.read_exact(bytes.as_mut())?;
 
-        Option::from(Self::from_bytes(&bytes)).ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::Other,
-                "Invalid BLS12-381 point encoding in proof",
-            )
-        })
-    }
-}
-
-impl Hashable<PoseidonState<blstrs::Fq>> for blstrs::G1Projective {
-    fn to_input(&self) -> Vec<blstrs::Fq> {
-        <blstrs::G1Affine as Hashable<PoseidonState<blstrs::Fq>>>::to_input(&self.into())
-    }
-
-    fn to_bytes(&self) -> Vec<u8> {
-        <blstrs::G1Affine as Hashable<PoseidonState<blstrs::Fq>>>::to_bytes(&self.into())
-    }
-
-    fn read(buffer: &mut impl Read) -> io::Result<Self> {
-        Ok(<blstrs::G1Affine as Hashable<PoseidonState<blstrs::Fq>>>::read(buffer)?.into())
+        Option::from(blstrs::G1Affine::from_bytes(&bytes))
+            .ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::Other,
+                    "Invalid BLS12-381 point encoding in proof",
+                )
+            })
+            .map(|p: blstrs::G1Affine| p.into())
     }
 }
 

@@ -18,39 +18,40 @@
 
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 
-use crate::verifier::{
-    kzg::VerifierQuery,
-    transcript_gadget::TranscriptGadget,
-    types::{AssignedPoint, AssignedScalar, SelfEmulationCurve},
-    utils::AssignedBoundedScalar,
+use crate::{
+    field::AssignedNative,
+    verifier::{
+        kzg::VerifierQuery, transcript_gadget::TranscriptGadget, utils::AssignedBoundedScalar,
+        SelfEmulation,
+    },
 };
 
 #[derive(Clone, Debug)]
-pub(crate) struct PermutationCommitments<C: SelfEmulationCurve> {
-    permuted_input_commitment: AssignedPoint<C>,
-    permuted_table_commitment: AssignedPoint<C>,
+pub(crate) struct PermutationCommitments<S: SelfEmulation> {
+    permuted_input_commitment: S::AssignedPoint,
+    permuted_table_commitment: S::AssignedPoint,
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct Committed<C: SelfEmulationCurve> {
-    permuted: PermutationCommitments<C>,
-    product_commitment: AssignedPoint<C>,
+pub(crate) struct Committed<S: SelfEmulation> {
+    permuted: PermutationCommitments<S>,
+    product_commitment: S::AssignedPoint,
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct Evaluated<C: SelfEmulationCurve> {
-    committed: Committed<C>,
-    pub(crate) product_eval: AssignedScalar<C>,
-    pub(crate) product_next_eval: AssignedScalar<C>,
-    pub(crate) permuted_input_eval: AssignedScalar<C>,
-    pub(crate) permuted_input_inv_eval: AssignedScalar<C>,
-    pub(crate) permuted_table_eval: AssignedScalar<C>,
+pub(crate) struct Evaluated<S: SelfEmulation> {
+    committed: Committed<S>,
+    pub(crate) product_eval: AssignedNative<S::F>,
+    pub(crate) product_next_eval: AssignedNative<S::F>,
+    pub(crate) permuted_input_eval: AssignedNative<S::F>,
+    pub(crate) permuted_input_inv_eval: AssignedNative<S::F>,
+    pub(crate) permuted_table_eval: AssignedNative<S::F>,
 }
 
-pub(crate) fn read_permuted_commitments<C: SelfEmulationCurve>(
-    layouter: &mut impl Layouter<C::ScalarExt>,
-    transcript_gadget: &mut TranscriptGadget<C>,
-) -> Result<PermutationCommitments<C>, Error> {
+pub(crate) fn read_permuted_commitments<S: SelfEmulation>(
+    layouter: &mut impl Layouter<S::F>,
+    transcript_gadget: &mut TranscriptGadget<S>,
+) -> Result<PermutationCommitments<S>, Error> {
     let permuted_input_commitment = transcript_gadget.read_point(layouter)?;
     let permuted_table_commitment = transcript_gadget.read_point(layouter)?;
 
@@ -60,12 +61,12 @@ pub(crate) fn read_permuted_commitments<C: SelfEmulationCurve>(
     })
 }
 
-impl<C: SelfEmulationCurve> PermutationCommitments<C> {
+impl<S: SelfEmulation> PermutationCommitments<S> {
     pub(crate) fn read_product_commitment(
         self,
-        layouter: &mut impl Layouter<C::ScalarExt>,
-        transcript_gadget: &mut TranscriptGadget<C>,
-    ) -> Result<Committed<C>, Error> {
+        layouter: &mut impl Layouter<S::F>,
+        transcript_gadget: &mut TranscriptGadget<S>,
+    ) -> Result<Committed<S>, Error> {
         let product_commitment = transcript_gadget.read_point(layouter)?;
 
         Ok(Committed {
@@ -75,12 +76,12 @@ impl<C: SelfEmulationCurve> PermutationCommitments<C> {
     }
 }
 
-impl<C: SelfEmulationCurve> Committed<C> {
+impl<S: SelfEmulation> Committed<S> {
     pub(crate) fn evaluate(
         self,
-        layouter: &mut impl Layouter<C::ScalarExt>,
-        transcript_gadget: &mut TranscriptGadget<C>,
-    ) -> Result<Evaluated<C>, Error> {
+        layouter: &mut impl Layouter<S::F>,
+        transcript_gadget: &mut TranscriptGadget<S>,
+    ) -> Result<Evaluated<S>, Error> {
         let product_eval = transcript_gadget.read_scalar(layouter)?;
         let product_next_eval = transcript_gadget.read_scalar(layouter)?;
         let permuted_input_eval = transcript_gadget.read_scalar(layouter)?;
@@ -100,14 +101,14 @@ impl<C: SelfEmulationCurve> Committed<C> {
 
 // "expressions" is implemented in `expressions/lookup.rs`
 
-impl<C: SelfEmulationCurve> Evaluated<C> {
+impl<S: SelfEmulation> Evaluated<S> {
     pub(crate) fn queries(
         &self,
-        one: &AssignedBoundedScalar<C>, // 1
-        x: &AssignedScalar<C>,          // evaluation point x
-        x_next: &AssignedScalar<C>,     // x * \omega
-        x_prev: &AssignedScalar<C>,     // x * \omega^(-1)
-    ) -> Vec<VerifierQuery<C>> {
+        one: &AssignedBoundedScalar<S::F>, // 1
+        x: &AssignedNative<S::F>,          // evaluation point x
+        x_next: &AssignedNative<S::F>,     // x * \omega
+        x_prev: &AssignedNative<S::F>,     // x * \omega^(-1)
+    ) -> Vec<VerifierQuery<S>> {
         vec![
             VerifierQuery::new(
                 one,

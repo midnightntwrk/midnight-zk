@@ -21,41 +21,42 @@ use midnight_proofs::{
     plonk::{ConstraintSystem, Error},
 };
 
-use crate::verifier::{
-    kzg::VerifierQuery,
-    transcript_gadget::TranscriptGadget,
-    types::{AssignedPoint, AssignedScalar, SelfEmulationCurve},
-    utils::AssignedBoundedScalar,
+use crate::{
+    field::AssignedNative,
+    verifier::{
+        kzg::VerifierQuery, transcript_gadget::TranscriptGadget, utils::AssignedBoundedScalar,
+        SelfEmulation,
+    },
 };
 
 #[derive(Clone, Debug)]
-pub(crate) struct Committed<C: SelfEmulationCurve> {
-    permutation_product_commitments: Vec<AssignedPoint<C>>,
+pub(crate) struct Committed<S: SelfEmulation> {
+    permutation_product_commitments: Vec<S::AssignedPoint>,
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct EvaluatedSet<C: SelfEmulationCurve> {
-    permutation_product_commitment: AssignedPoint<C>,
-    pub(crate) permutation_product_eval: AssignedScalar<C>,
-    pub(crate) permutation_product_next_eval: AssignedScalar<C>,
-    pub(crate) permutation_product_last_eval: Option<AssignedScalar<C>>,
+pub(crate) struct EvaluatedSet<S: SelfEmulation> {
+    permutation_product_commitment: S::AssignedPoint,
+    pub(crate) permutation_product_eval: AssignedNative<S::F>,
+    pub(crate) permutation_product_next_eval: AssignedNative<S::F>,
+    pub(crate) permutation_product_last_eval: Option<AssignedNative<S::F>>,
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct CommonEvaluated<C: SelfEmulationCurve> {
-    pub(crate) permutation_evals: Vec<AssignedScalar<C>>,
+pub(crate) struct CommonEvaluated<S: SelfEmulation> {
+    pub(crate) permutation_evals: Vec<AssignedNative<S::F>>,
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct Evaluated<C: SelfEmulationCurve> {
-    pub(crate) sets: Vec<EvaluatedSet<C>>,
+pub(crate) struct Evaluated<S: SelfEmulation> {
+    pub(crate) sets: Vec<EvaluatedSet<S>>,
 }
 
-pub(crate) fn read_product_commitments<C: SelfEmulationCurve>(
-    layouter: &mut impl Layouter<C::ScalarExt>,
-    transcript_gadget: &mut TranscriptGadget<C>,
-    cs: &ConstraintSystem<C::ScalarExt>,
-) -> Result<Committed<C>, Error> {
+pub(crate) fn read_product_commitments<S: SelfEmulation>(
+    layouter: &mut impl Layouter<S::F>,
+    transcript_gadget: &mut TranscriptGadget<S>,
+    cs: &ConstraintSystem<S::F>,
+) -> Result<Committed<S>, Error> {
     let chunk_len = cs.degree() - 2;
 
     let permutation_product_commitments = cs
@@ -75,11 +76,11 @@ pub(crate) fn read_product_commitments<C: SelfEmulationCurve>(
 ///
 /// Instead of evaluating it for the `VerifyingKey`, we directly require the
 /// `nb_perm_commitments` as an argument.
-pub(crate) fn evaluate_permutation_common<C: SelfEmulationCurve>(
-    layouter: &mut impl Layouter<C::ScalarExt>,
-    transcript_gadget: &mut TranscriptGadget<C>,
+pub(crate) fn evaluate_permutation_common<S: SelfEmulation>(
+    layouter: &mut impl Layouter<S::F>,
+    transcript_gadget: &mut TranscriptGadget<S>,
     nb_perm_commitments: usize,
-) -> Result<CommonEvaluated<C>, Error> {
+) -> Result<CommonEvaluated<S>, Error> {
     let permutation_evals = (0..nb_perm_commitments)
         .map(|_| transcript_gadget.read_scalar(layouter))
         .collect::<Result<Vec<_>, _>>()?;
@@ -87,12 +88,12 @@ pub(crate) fn evaluate_permutation_common<C: SelfEmulationCurve>(
     Ok(CommonEvaluated { permutation_evals })
 }
 
-impl<C: SelfEmulationCurve> Committed<C> {
+impl<S: SelfEmulation> Committed<S> {
     pub(crate) fn evaluate(
         self,
-        layouter: &mut impl Layouter<C::ScalarExt>,
-        transcript_gadget: &mut TranscriptGadget<C>,
-    ) -> Result<Evaluated<C>, Error> {
+        layouter: &mut impl Layouter<S::F>,
+        transcript_gadget: &mut TranscriptGadget<S>,
+    ) -> Result<Evaluated<S>, Error> {
         let mut sets = vec![];
 
         let mut iter = self.permutation_product_commitments.into_iter();
@@ -120,14 +121,14 @@ impl<C: SelfEmulationCurve> Committed<C> {
 
 // "expressions" is implemented in `expressions/permutation.rs`
 
-impl<C: SelfEmulationCurve> Evaluated<C> {
+impl<S: SelfEmulation> Evaluated<S> {
     pub(crate) fn queries(
         &self,
-        one: &AssignedBoundedScalar<C>, // 1
-        x: &AssignedScalar<C>,          // evaluation point x
-        x_next: &AssignedScalar<C>,     // x * \omega
-        x_last: &AssignedScalar<C>,     // x * \omega^(-blinding_factors + 1)
-    ) -> Vec<VerifierQuery<C>> {
+        one: &AssignedBoundedScalar<S::F>, // 1
+        x: &AssignedNative<S::F>,          // evaluation point x
+        x_next: &AssignedNative<S::F>,     // x * \omega
+        x_last: &AssignedNative<S::F>,     // x * \omega^(-blinding_factors + 1)
+    ) -> Vec<VerifierQuery<S>> {
         let mut queries = vec![];
         for set in self.sets.iter() {
             // Open permutation product commitments at x and \omega^{-1} x
@@ -160,16 +161,16 @@ impl<C: SelfEmulationCurve> Evaluated<C> {
     }
 }
 
-impl<C: SelfEmulationCurve> CommonEvaluated<C> {
+impl<S: SelfEmulation> CommonEvaluated<S> {
     /// This function differs from the halo2 one because we deal with fixed
     /// commitments off-circuit. Thus, we do not require the actual permutation
     /// common commitments, but their names.
     pub(crate) fn queries(
         &self,
         commitment_names: &[String],
-        one: &AssignedBoundedScalar<C>, // 1
-        x: &AssignedScalar<C>,          // evaluation point x
-    ) -> Vec<VerifierQuery<C>> {
+        one: &AssignedBoundedScalar<S::F>, // 1
+        x: &AssignedNative<S::F>,          // evaluation point x
+    ) -> Vec<VerifierQuery<S>> {
         assert_eq!(commitment_names.len(), self.permutation_evals.len());
 
         commitment_names

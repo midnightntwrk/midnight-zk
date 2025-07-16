@@ -89,14 +89,15 @@ impl Relation for ZSwapOutputCircuit {
         let coin_com = {
             std_lib.sha256(
                 layouter,
-                &concat(&[
+                &[
                     coin.color_bytes.to_vec(),
                     coin.nonce_bytes.to_vec(),
                     coin.value_bytes.to_vec(),
                     vec![pk.is_contract.into()],
                     pk.bytes.to_vec(),
                     domain_sep,
-                ]),
+                ]
+                .concat(),
             )?
         };
 
@@ -180,10 +181,6 @@ fn assign_fixed_domain_sep(
     domain_sep: &str,
 ) -> Result<Vec<AssignedByte<F>>, Error> {
     std_lib.assign_many_fixed(layouter, domain_sep.as_bytes())
-}
-
-fn concat(bytes_vector: &[Vec<AssignedByte<F>>]) -> Vec<AssignedByte<F>> {
-    bytes_vector.iter().flatten().cloned().collect()
 }
 
 fn main() {

@@ -18,16 +18,18 @@ use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
+use num_bigint::BigUint;
 
 use super::types::InnerValue;
 use crate::{
     field::{
-        decomposition::instructions::CoreDecompositionInstructions, AssignedNative, NativeGadget,
+        decomposition::instructions::CoreDecompositionInstructions, AssignedBounded,
+        AssignedNative, NativeGadget,
     },
     instructions::{
         divmod::DivisionInstructions, ArithInstructions, AssertionInstructions,
-        AssignmentInstructions, BinaryInstructions, ControlFlowInstructions, EqualityInstructions,
-        RangeCheckInstructions,
+        AssignmentInstructions, BinaryInstructions, ComparisonInstructions,
+        ControlFlowInstructions, EqualityInstructions, RangeCheckInstructions,
     },
     types::{AssignedBit, AssignedByte},
 };
@@ -41,7 +43,7 @@ use crate::{
 /// The effective payload in the data is aligned in A sized chunks. This
 /// enables more efficient implementations of instructions like hashing
 /// over this type. As a result of this alignment, the data may contain filler
-/// values before and after the effective payload. The padding in front of of
+/// values before and after the effective payload. The padding in front of
 /// the payload will always be 0 mod A, so that the payload begins aligned in A
 /// sized chunks. The padding at the end of the payload will be have a size in
 /// [0, A) such that | front_pad | + | payload | + | back_pad | = M
@@ -132,7 +134,7 @@ where
     ///
     /// # Panics
     ///
-    /// If |value| > M.
+    ///   If |value| > M.
     fn assign_with_filler(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -157,6 +159,20 @@ where
         let len = self.assign_lower_than_fixed(layouter, len_val, &(M + 1).into())?;
         Ok(AssignedVector { buffer: data, len })
     }
+
+    /// Trims `n_elems` elements from the beginning of the vector.
+    /// The trimmed elements will not be changed by filler elements,
+    /// they will remain in the buffer but not as part of the effective payload.
+    ///
+    /// # Unsatisfiable
+    ///
+    ///   If the vector length < `n_elems`.
+    fn trim_beginning(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        input: &AssignedVector<F, T, M, A>,
+        n_elems: usize,
+    ) -> Result<AssignedVector<F, T, M, A>, Error>;
 
     /// Returns a vector of AssignedBits signaling the cells that represent
     /// padding with a 1, and the ones that represent payload data with a 0.
@@ -188,7 +204,9 @@ where
         + EqualityInstructions<F, AssignedNative<F>>
         + BinaryInstructions<F>
         + ControlFlowInstructions<F, AssignedNative<F>>
-        + DivisionInstructions<F>,
+        + ControlFlowInstructions<F, T>
+        + DivisionInstructions<F>
+        + AssertionInstructions<F, AssignedBit<F>>,
     NA: ArithInstructions<F, AssignedNative<F>>,
 {
     fn padding_flag(
@@ -229,7 +247,7 @@ where
         let end: AssignedNative<F> = {
             // The last data position within the last chunk. Value in [0, A);
             // 0 means the last chunk is full, all its positions are data.
-            let (_, offset) = self.div_rem(layouter, &input.len, M as u32, A as u32)?;
+            let offset = self.modulus(layouter, &input.len, M as u32, A as u32)?;
 
             // if offset != 0.  End = M - (A - offset).
             let end1 = self.add_constant(layouter, &offset, F::from(M as u64 - A as u64))?;
@@ -243,6 +261,72 @@ where
         let start: AssignedNative<F> = self.sub(layouter, &end, &input.len)?;
 
         Ok((start, end))
+    }
+
+    fn trim_beginning(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        input: &AssignedVector<F, T, M, A>,
+        n_elems: usize,
+    ) -> Result<AssignedVector<F, T, M, A>, Error> {
+        let a_max_bits = (usize::BITS - A.leading_zeros()) as usize;
+
+        // Assert input.len >= n_elems.
+        let len_complement =
+            self.linear_combination(layouter, &[(-F::ONE, input.len.clone())], F::from(M as u64))?;
+        self.assert_lower_than_fixed(layouter, &len_complement, &BigUint::from(M + 1 - n_elems))?;
+
+        // We divide the number of elements to be trimmed in 2 parts.
+        // The A-sized whole chunks, one last <A sized piece.
+        // (1) The A-sized chunks won't modify the alignment, so modifying the value
+        // the vector length is enough to have them trimmed. They will remain
+        // in the buffer but they will be considered padding.
+        // (2) Trimming this last piece may require some realignment of the vector
+        // that ensures the padding at the end remains in [0, A).
+
+        let last_trim = n_elems % A;
+
+        // Length of last chunk ( or 0 if it is full ).
+        let last_len = self.modulus(layouter, &input.len, M as u32, A as u32)?;
+
+        // `modulus` already ensures last_len is in [0, A), so unsafe conversion can be
+        // used here.
+        let bounded_last_len =
+            AssignedBounded::to_assigned_bounded_unsafe(&last_len, a_max_bits as u32);
+
+        // We need to shift right by A if the padding at the end after the left shift is
+        // >= A.
+        let needs_adjust = {
+            let leq_shift =
+                self.leq_fixed(layouter, &bounded_last_len, F::from(last_trim as u64))?;
+            let full_last = self.is_equal_to_fixed(layouter, &last_len, F::ZERO)?;
+
+            // Since full_last = 1 => leq_shift = 1:
+            //     let not_full_last = self.not(layouter, &full_last)?;
+            //     self.and(layouter, &[not_full_last, leq_shift])
+            // A XOR operation is equivalent to the commented code above.
+            self.xor(layouter, &[full_last, leq_shift])
+        }?;
+
+        // Shift the original buffer `last_trim` positions to the left.
+        // Then, add A filler elements to the left, in case we need to shift A to the
+        // right to adjust the padding at the end.
+        let buffer = {
+            let filler = self.assign_many_fixed(layouter, &vec![T::FILLER; A + last_trim])?;
+            [&filler[..A], &input.buffer[last_trim..], &filler[A..]].concat()
+        };
+        debug_assert_eq!(buffer.len(), M + A);
+
+        let buffer: [_; M] = (0..M)
+            .map(|i| self.select(layouter, &needs_adjust, &buffer[i], &buffer[A + i]))
+            .collect::<Result<Vec<_>, Error>>()?
+            .try_into()
+            .unwrap();
+
+        // Compute final length.
+        let len = self.add_constant(layouter, &input.len, -F::from(n_elems as u64))?;
+
+        Ok(AssignedVector { buffer, len })
     }
 }
 
@@ -402,6 +486,8 @@ mod tests {
         Limits,
         // Test padding_flag instruction.
         Padding,
+        // Test trim.
+        Trim { trim_size: usize },
     }
 
     type NG<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
@@ -503,6 +589,15 @@ mod tests {
                         ng.assert_equal(&mut layouter, &e, r)?;
                     }
                 }
+
+                TestOpts::Trim { trim_size: n_elems } => {
+                    let vec_1: AssignedVector<F, AssignedNative<F>, M, A> =
+                        ng.assign(&mut layouter, self.input_1.clone())?;
+
+                    let result = ng.trim_beginning(&mut layouter, &vec_1, n_elems)?;
+
+                    ng.assert_equal_to_fixed(&mut layouter, &result, self.input_2.clone())?;
+                }
             }
 
             Ok(())
@@ -598,6 +693,38 @@ mod tests {
         }
     }
 
+    fn run_trim_vec_test<F, const M: usize, const A: usize>(
+        input_1: &[F],
+        trim_size: usize,
+        cost_model: bool,
+    ) where
+        F: PrimeField + FromUniformBytes<64> + Ord,
+    {
+        let input = input_1.to_vec();
+        assert!(trim_size <= input.len());
+        let circuit = TestCircuit::<F, M, A> {
+            input_1: Value::known(input.clone()),
+            input_2: input[trim_size..].to_vec(),
+            opts: TestOpts::Trim { trim_size },
+        };
+
+        let k = 14;
+
+        MockProver::run(k, &circuit, vec![vec![], vec![]])
+            .unwrap()
+            .assert_satisfied();
+
+        if cost_model {
+            circuit_to_json(
+                k,
+                "Vector trim beginning.",
+                format!("Vector trim_beginning with M={M}").as_str(),
+                0,
+                circuit,
+            );
+        }
+    }
+
     #[test]
     fn vector_eq() {
         type F = blstrs::Fq;
@@ -660,5 +787,47 @@ mod tests {
         run_padding_flags_test::<_, 128, 64>(&inputs, false);
         run_padding_flags_test::<F, 128, 64>(&[], false);
         run_padding_flags_test::<F, 64, 16>(&inputs[..64], false);
+    }
+
+    #[test]
+    fn vector_trim_beginning() {
+        type F = blstrs::Fq;
+
+        // Create a random number generator
+        let mut rng = ChaCha12Rng::seed_from_u64(0xdeadcafe);
+        let inputs = (0..100).map(|_| F::random(&mut rng)).collect::<Vec<_>>();
+
+        // Test different alignments (under A).
+        run_trim_vec_test::<_, 128, 64>(&[F::ONE, F::ONE], 1, true);
+        run_trim_vec_test::<_, 128, 32>(&inputs, 0, false);
+        run_trim_vec_test::<_, 128, 32>(&inputs, 1, false);
+        run_trim_vec_test::<_, 128, 32>(&inputs, 2, false);
+        run_trim_vec_test::<_, 128, 32>(&inputs, 3, false);
+        run_trim_vec_test::<_, 128, 32>(&inputs, 4, false);
+        run_trim_vec_test::<_, 128, 32>(&inputs, 5, false);
+        run_trim_vec_test::<_, 128, 32>(&inputs, 30, false);
+        run_trim_vec_test::<_, 128, 32>(&inputs, 31, false);
+
+        // Above or equal to A.
+        run_trim_vec_test::<_, 128, 3>(&inputs, 3, false);
+        run_trim_vec_test::<_, 128, 3>(&inputs, 4, false);
+        run_trim_vec_test::<_, 128, 3>(&inputs, 5, false);
+        run_trim_vec_test::<_, 128, 3>(&inputs, 6, false);
+        run_trim_vec_test::<_, 128, 3>(&inputs, 10, false);
+        run_trim_vec_test::<_, 128, 3>(&inputs, 20, false);
+        run_trim_vec_test::<_, 128, 3>(&inputs, 30, false);
+        run_trim_vec_test::<_, 128, 3>(&inputs, 40, false);
+
+        // Edge case: offset of original vector = 0;
+        run_trim_vec_test::<_, 128, 32>(&inputs[..96], 23, false);
+
+        // Edge case: full vector;
+        run_trim_vec_test::<_, 64, 32>(&inputs[..64], 20, false);
+
+        // Edge case: full vector, trim all elements.
+        run_trim_vec_test::<_, 64, 32>(&inputs[..64], 64, false);
+
+        // The particular case of the credentials:
+        run_trim_vec_test::<_, 128, 64>(&inputs, 39, false);
     }
 }

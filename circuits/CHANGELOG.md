@@ -29,6 +29,8 @@ verification keys break backwards compatibility.
 * DivisionInstructions [#574](https://github.com/midnightntwrk/midnight-circuits/pull/574)
 * Add Base64Vec intialization instruction + fix alignment bug [#20](https://github.com/midnightntwrk/midnight-zk/pull/20)
 * Add a deserialisation function that does not need to know the relation [#18](https://github.com/midnightntwrk/midnight-zk/pull/18/commits/973467fecd6c31c6b57d06c89dfa0c7dd00bef2b)
+* Add `trim_beginning` in `VectorInstructions` [#19](https://github.com/midnightntwrk/midnight-zk/pull/19)
+* Expose `VectorInstructions in `ZkstdLib` [#19](https://github.com/midnightntwrk/midnight-zk/pull/19)
 
 ### Changed
 * Add holder key check on credential example [#542](https://github.com/midnightntwrk/midnight-circuits/pull/542)
@@ -41,6 +43,8 @@ verification keys break backwards compatibility.
 * Improve readability and efficiency of Poseidon after audit's remarks [#557](https://github.com/midnightntwrk/midnight-circuits/pull/557)
 * Change PoseidonChip dependency (from NativeGadget to NativeChip) [#12](https://github.com/midnightntwrk/midnight-zk/pull/12)
 * ZkStdLib API is not generic on the hash function for Fiat-Shamir [#13](https://github.com/midnightntwrk/midnight-zk/pull/13)
+* Fix minor issue with is_id flag in Fiat-Shamir with foreign points [#15](https://github.com/midnightntwrk/midnight-zk/pull/15)
+* Generalized VerifierGadget with a new `SelfEmulation` trait [#24](https://github.com/midnightntwrk/midnight-zk/pull/24)
 
 ### Removed
 * Bit and Byte off-circuit types [#548](https://github.com/midnightntwrk/midnight-circuits/pull/548)

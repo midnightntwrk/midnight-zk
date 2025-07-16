@@ -65,9 +65,7 @@ use crate::{
         PublicInputInstructions, ScalarFieldInstructions, ZeroInstructions,
     },
     types::{AssignedBit, AssignedField, AssignedNative, InnerConstants, InnerValue, Instantiable},
-    utils::util::{
-        big_to_fe, bigint_to_fe, concat, fe_to_big, fe_to_le_bits, glv_scalar_decomposition,
-    },
+    utils::util::{big_to_fe, bigint_to_fe, fe_to_big, fe_to_le_bits, glv_scalar_decomposition},
 };
 
 /// Foreign ECC configuration.
@@ -185,16 +183,25 @@ where
     B: FieldEmulationParams<F, C::Base>,
 {
     fn as_public_input(p: &C::CryptographicGroup) -> Vec<F> {
-        let b = p.is_identity().into();
         let (x, y) = (*p)
             .into()
             .coordinates()
             .unwrap_or((C::Base::ZERO, C::Base::ZERO));
-        concat(&[
-            AssignedBit::<F>::as_public_input(&b),
-            AssignedField::<F, C::Base, B>::as_public_input(&x),
-            AssignedField::<F, C::Base, B>::as_public_input(&y),
-        ])
+        // From y we only keep one limb, since it is enough to resolve the +- ambiguity.
+        let mut pis = [
+            AssignedField::<F, C::Base, B>::as_public_input(&x).as_slice(),
+            &AssignedField::<F, C::Base, B>::as_public_input(&y)[..1],
+        ]
+        .concat();
+
+        // In order to involve the is_id flag, we leverage the fact that the
+        // limbs of x are in the range [0, B) and add the is_id flag (scaled by B) to
+        // the first limb.
+        if p.is_identity().into() {
+            pis[0] += F::from(2).pow_vartime([B::LOG2_BASE as u64]);
+        }
+
+        pis
     }
 }
 
@@ -327,11 +334,24 @@ where
         layouter: &mut impl Layouter<F>,
         p: &AssignedForeignPoint<F, C, B>,
     ) -> Result<Vec<AssignedNative<F>>, Error> {
-        Ok(concat(&[
-            self.native_gadget.as_public_input(layouter, &p.is_id)?,
-            self.base_field_chip.as_public_input(layouter, &p.x)?,
-            self.base_field_chip.as_public_input(layouter, &p.y)?,
-        ]))
+        // From y we only keep one limb, since it is enough to resolve the +- ambiguity.
+        let mut pis = [
+            (self.base_field_chip.as_public_input(layouter, &p.x)?).as_slice(),
+            &self.base_field_chip.as_public_input(layouter, &p.y)?[..1],
+        ]
+        .concat();
+
+        // In order to involve the is_id flag, we leverage the fact that the
+        // limbs of x are in the range [0, B) and add the is_id flag (scaled by B) to
+        // the first limb.
+        let base = F::from(2).pow_vartime([B::LOG2_BASE as u64]);
+        pis[0] = self.native_gadget.linear_combination(
+            layouter,
+            &[(F::ONE, pis[0].clone()), (base, p.is_id.clone().into())],
+            F::ZERO,
+        )?;
+
+        Ok(pis)
     }
 
     fn constrain_as_public_input(
@@ -349,26 +369,12 @@ where
         layouter: &mut impl Layouter<F>,
         value: Value<C::CryptographicGroup>,
     ) -> Result<AssignedForeignPoint<F, C, B>, Error> {
-        let b_val = value.map(|p| C::CryptographicGroup::is_identity(&p).into());
-        let x_val = value.map(|p| {
-            p.into()
-                .coordinates()
-                .map(|opt| opt.0)
-                .unwrap_or(C::Base::ZERO)
-        });
-        let y_val = value.map(|p| {
-            p.into()
-                .coordinates()
-                .map(|opt| opt.1)
-                .unwrap_or(C::Base::ZERO)
-        });
-
-        let base_chip = self.base_field_chip();
-        let is_id = self.native_gadget.assign_as_public_input(layouter, b_val)?;
-        let x = base_chip.assign_as_public_input(layouter, x_val)?;
-        let y = base_chip.assign_as_public_input(layouter, y_val)?;
-        let point = value;
-        Ok(AssignedForeignPoint::<F, C, B> { point, is_id, x, y })
+        // Given our optimized way of constraining a point as public input, we
+        // cannot optimize the direct assignment as PI. We just compose `assign`
+        // with `constrain_as_public_input`.
+        let point = self.assign(layouter, value)?;
+        self.constrain_as_public_input(layouter, &point)?;
+        Ok(point)
     }
 }
 

@@ -16,10 +16,7 @@ use midnight_proofs::{circuit::Layouter, plonk::Error};
 use num_bigint::BigUint;
 
 use super::ParserGadget;
-use crate::{
-    field::AssignedNative, instructions::NativeInstructions, types::AssignedByte,
-    utils::util::concat,
-};
+use crate::{field::AssignedNative, instructions::NativeInstructions, types::AssignedByte};
 
 /// Order of day, month and year in the date string.
 #[allow(clippy::upper_case_acronyms)]
@@ -155,13 +152,9 @@ where
             }
         };
 
-        let bytes = concat(&[
-            input[indices.2].to_vec(),
-            input[indices.1].to_vec(),
-            input[indices.0].to_vec(),
-        ]);
+        let bytes = [&input[indices.2], &input[indices.1], &input[indices.0]].concat();
 
-        self.ascii_to_int(layouter, bytes.as_slice())
+        self.ascii_to_int(layouter, &bytes)
     }
 }
 
