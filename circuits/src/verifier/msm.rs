@@ -93,6 +93,21 @@ impl<S: SelfEmulation> Msm<S> {
         }
     }
 
+    /// The bases of this MSM.
+    pub fn bases(&self) -> Vec<S::C> {
+        self.bases.clone()
+    }
+
+    /// The (non-fixed-base) scalars of this MSM.
+    pub fn scalars(&self) -> Vec<S::F> {
+        self.scalars.clone()
+    }
+
+    /// The fixed-base scalars of this MSM.
+    pub fn fixed_base_scalars(&self) -> BTreeMap<String, S::F> {
+        self.fixed_base_scalars.clone()
+    }
+
     /// Creates a new MSM from the given base-scalar pairs, with an empty tree
     /// of fixed_base_scalars.
     ///
@@ -265,6 +280,30 @@ impl<S: SelfEmulation> Instantiable<S::F> for AssignedMsm<S> {
 }
 
 impl<S: SelfEmulation> AssignedMsm<S> {
+    /// Converts the off-circuit MSM into two vectors of scalars. The first
+    /// will be used as a normal instance, whereas the second will be plugged-in
+    /// in as a committed instance.
+    ///
+    /// The committed instance part corresponds to the (fixed and non-fixed)
+    /// scalars of the MSM.
+    pub fn as_public_input_with_committed_scalars(msm: &Msm<S>) -> (Vec<S::F>, Vec<S::F>) {
+        let normal_instance = msm
+            .bases
+            .iter()
+            .flat_map(S::AssignedPoint::as_public_input)
+            .collect();
+
+        let committed_instance = [
+            msm.scalars.clone(),
+            msm.fixed_base_scalars.values().copied().collect(),
+        ]
+        .concat();
+
+        (normal_instance, committed_instance)
+    }
+}
+
+impl<S: SelfEmulation> AssignedMsm<S> {
     pub(crate) fn in_circuit_as_public_input(
         &self,
         layouter: &mut impl Layouter<S::F>,
@@ -309,6 +348,27 @@ impl<S: SelfEmulation> AssignedMsm<S> {
         self.fixed_base_scalars
             .values()
             .try_for_each(|s| scalar_chip.constrain_as_public_input(layouter, &s.clone().scalar))
+    }
+
+    pub(crate) fn constrain_as_public_input_with_committed_scalars(
+        &self,
+        layouter: &mut impl Layouter<S::F>,
+        curve_chip: &S::CurveChip,
+        scalar_chip: &S::ScalarChip,
+    ) -> Result<(), Error> {
+        self.bases
+            .iter()
+            .try_for_each(|base| curve_chip.constrain_as_public_input(layouter, base))?;
+
+        self.scalars.iter().try_for_each(|s| {
+            let mut a = S::F::ZERO;
+            s.scalar.clone().value().map(|v| a = *v);
+            S::constrain_scalar_as_committed_public_input(layouter, scalar_chip, &s.scalar)
+        })?;
+
+        self.fixed_base_scalars.values().try_for_each(|s| {
+            S::constrain_scalar_as_committed_public_input(layouter, scalar_chip, &s.scalar)
+        })
     }
 }
 

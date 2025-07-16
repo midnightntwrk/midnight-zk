@@ -111,6 +111,13 @@ pub trait SelfEmulation: Clone + Debug {
         scalars: &[(AssignedNative<Self::F>, usize)],
         bases: &[Self::AssignedPoint],
     ) -> Result<Self::AssignedPoint, Error>;
+
+    /// Constrains the given scalar as a committed public input.
+    fn constrain_scalar_as_committed_public_input(
+        layouter: &mut impl Layouter<Self::F>,
+        scalar_chip: &Self::ScalarChip,
+        assigned_scalar: &AssignedNative<Self::F>,
+    ) -> Result<(), Error>;
 }
 
 // Implementations
@@ -140,5 +147,13 @@ impl SelfEmulation for BlstrsEmulation {
         bases: &[Self::AssignedPoint],
     ) -> Result<Self::AssignedPoint, Error> {
         curve_chip.msm_by_bounded_scalars(layouter, scalars, bases)
+    }
+
+    fn constrain_scalar_as_committed_public_input(
+        layouter: &mut impl Layouter<Self::F>,
+        scalar_chip: &Self::ScalarChip,
+        assigned_scalar: &AssignedNative<Self::F>,
+    ) -> Result<(), Error> {
+        scalar_chip.constrain_as_committed_public_input(layouter, assigned_scalar)
     }
 }

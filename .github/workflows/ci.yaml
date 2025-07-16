@@ -9,7 +9,7 @@ on:
 jobs:
   test:
     if: github.event.pull_request.draft == false
-    name: Test on ${{ matrix.os }}
+    name: Test
     runs-on: ubuntu-latest
 
     steps:
@@ -43,11 +43,29 @@ jobs:
       - name: Download SRS
         run: curl -L -o ./circuits/examples/assets/bls_filecoin_2p19 https://midnight-s3-fileshare-dev-eu-west-1.s3.eu-west-1.amazonaws.com/bls_filecoin_2p19
 
-      - name: Run tests
+      - name: Run `blstrs` tests
         uses: actions-rs/cargo@ae10961054e4aa8b4aa7dffede299aaf087aa33b
         with:
           command: test
-          args: --release --all --all-features
+          args: -p blstrs --release --all-features
+
+      - name: Run `proofs` tests
+        uses: actions-rs/cargo@ae10961054e4aa8b4aa7dffede299aaf087aa33b
+        with:
+          command: test
+          args: -p midnight_proofs --release --all-features
+
+      - name: Run `circuits` tests
+        uses: actions-rs/cargo@ae10961054e4aa8b4aa7dffede299aaf087aa33b
+        with:
+          command: test
+          args: -p midnight-circuits --release --all-features
+
+      - name: Run `aggregator` tests
+        uses: actions-rs/cargo@ae10961054e4aa8b4aa7dffede299aaf087aa33b
+        with:
+          command: test
+          args: -p midnight-aggregator --release --all-features
 
       # Save the Cargo Cache
       - name: Save Cargo Cache
@@ -131,10 +149,29 @@ jobs:
         with:
           components: clippy
           override: false
-      - name: Run Clippy
+
+      - name: Run Clippy on `blstrs`
         uses: actions-rs/clippy-check@b5b5f21f4797c02da247df37026fcd0a5024aa4d
         continue-on-error: true
         with:
-          name: Clippy
-          token: ${{ secrets.GITHUB_TOKEN }}
-          args: --all-targets --all-features -- -Dwarnings
+          args: -p blstrs --all-targets --all-features -- -Dwarnings
+
+      - name: Run Clippy on `proofs`
+        uses: actions-rs/clippy-check@b5b5f21f4797c02da247df37026fcd0a5024aa4d
+        continue-on-error: true
+        with: 
+          args: -p midnight_proofs --all-targets --all-features -- -Dwarnings
+
+
+      - name: Run Clippy on `circuits`
+        uses: actions-rs/clippy-check@b5b5f21f4797c02da247df37026fcd0a5024aa4d
+        continue-on-error: true
+        with:
+          args: -p midnight-circuits --all-targets --all-features -- -Dwarnings
+
+
+      - name: Run Clippy on `aggregator`
+        uses: actions-rs/clippy-check@b5b5f21f4797c02da247df37026fcd0a5024aa4d
+        continue-on-error: true
+        with:
+          args: -p midnight-aggregator --all-targets --all-features -- -Dwarnings

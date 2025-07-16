@@ -1,0 +1,37 @@
+[package]
+name = "midnight-aggregator"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.76.0"
+description = "Toolkit for proof aggregation of midnight-proofs"
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+categories = ["cryptography"]
+keywords = ["halo", "proofs", "zkp", "zkSNARKs", "aggregation"]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs", "--html-in-header", "katex-header.html"]
+
+[dependencies]
+group = { workspace = true }
+ff = { workspace = true }
+halo2curves = { version = "0.7.0", default-features = false }
+blstrs = { path = "../curves" }
+midnight_proofs = { path = "../proofs", default-features = false, features = [
+    "bits",
+    "cost-estimator",
+    "circuit-params",
+    "committed-instances",
+] }
+midnight-circuits = { path = "../circuits", default-features = false, features = [
+    "testing",
+] }
+
+rand = "0.8"
+num-integer = "0.1"
+blake2b_simd = "1.0.1"
+sha2 = "0.10.8"
+
+[dev-dependencies]
+rand_chacha = "0.3.1"

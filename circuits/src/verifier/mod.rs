@@ -41,7 +41,7 @@ mod vanishing;
 mod verifier_gadget;
 
 pub use accumulator::{Accumulator, AssignedAccumulator};
-pub use msm::Msm;
+pub use msm::{AssignedMsm, Msm};
 pub use types::{BlstrsEmulation, SelfEmulation};
 pub use verifier_gadget::VerifierGadget;
 

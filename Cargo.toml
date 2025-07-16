@@ -1,11 +1,7 @@
 [workspace]
 resolver = "2"
 
-members = [
-    "proofs",
-    "curves",
-    "circuits"
-]
+members = ["proofs", "curves", "circuits", "aggregator"]
 
 [workspace.dependencies]
 ff = "0.13"
@@ -13,7 +9,7 @@ group = "0.13"
 halo2curves = { version = "0.7.0", default-features = false }
 rand_core = { version = "0.6", default-features = false }
 tracing = "0.1"
-blake2b_simd = "1" # MSRV 1.66.0
+blake2b_simd = "1"                                            # MSRV 1.66.0
 sha3 = "0.9.1"
 rand_chacha = "0.3"
 rayon = "1.8"

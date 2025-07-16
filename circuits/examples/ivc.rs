@@ -216,12 +216,12 @@ impl Circuit<F> for IvcCircuit {
 
         // Accumulate the `proof_acc` with the previous witnessed accumulator.
         // `next_acc` will satisfy the invariant iff both `proof_acc` and `prev_acc` do.
-        let mut next_acc = proof_acc.accumulate(
+        let mut next_acc = AssignedAccumulator::<S>::accumulate(
             &mut layouter,
             &verifier_chip,
             &scalar_chip,
             &poseidon_chip,
-            &prev_acc,
+            &[proof_acc, prev_acc],
         )?;
 
         // Finally, collapse the resulting accumulator and constraint it as public.
@@ -359,7 +359,7 @@ fn main() {
         // If `acc` satisfies the invariant and `proof` is valid, we know that `state`
         // must be valid. We can asset the validity of both at the same time by
         // accumulating them first.
-        let mut accumulated = proof_acc.accumulate(&acc);
+        let mut accumulated = Accumulator::accumulate(&[proof_acc, acc]);
         accumulated.collapse();
 
         assert!(

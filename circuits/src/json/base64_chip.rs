@@ -167,7 +167,7 @@ impl<F: PrimeField, const M: usize, const A: usize> Base64VarInstructions<F, M, 
     ) -> Result<Base64Vec<F, M, A>, Error> {
         let ng = &self.native_gadget;
         let filler = ng.assign_fixed(layouter, ALT_PAD as u8)?;
-        let flags = ng.padding_flag(layouter, &vec)?;
+        let flags = ng.padding_flag(layouter, vec)?;
         let result = vec
             .buffer
             .iter()

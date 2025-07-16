@@ -29,6 +29,7 @@
 
 use std::collections::BTreeMap;
 
+use ff::Field;
 use group::prime::PrimeCurveAffine;
 use halo2curves::pairing::Engine;
 use midnight_proofs::{
@@ -39,8 +40,10 @@ use midnight_proofs::{
 use num_bigint::BigUint;
 use num_traits::One;
 
+#[cfg(not(feature = "truncated-challenges"))]
+use crate::verifier::utils::powers;
 #[cfg(feature = "truncated-challenges")]
-use crate::verifier::utils::{truncate, truncate_off_circuit};
+use crate::verifier::utils::{truncate_off_circuit, truncated_powers};
 use crate::{
     instructions::{hash::HashCPU, HashInstructions, PublicInputInstructions},
     types::{AssignedBit, InnerValue, Instantiable},
@@ -98,6 +101,16 @@ impl<S: SelfEmulation> Accumulator<S> {
         Accumulator { lhs, rhs }
     }
 
+    /// The left-hand side of this accumulator.
+    pub fn lhs(&self) -> Msm<S> {
+        self.lhs.clone()
+    }
+
+    /// The right-hand side of this accumulator.
+    pub fn rhs(&self) -> Msm<S> {
+        self.rhs.clone()
+    }
+
     /// Evaluates the variable part of the Accumulator collapsing each
     /// side to a single point (and a scalar of 1), leaving the fixed-base part
     /// of both sides intact.
@@ -108,25 +121,26 @@ impl<S: SelfEmulation> Accumulator<S> {
         self.rhs.collapse();
     }
 
-    /// Accumulates `self` with `other`.
-    /// The resulting acc will satisfy the invariant iff `self` and `other` do.
-    pub fn accumulate(&self, other: &Self) -> Self {
-        let hash_input = vec![
-            AssignedAccumulator::as_public_input(self),
-            AssignedAccumulator::as_public_input(other),
-        ]
-        .into_iter()
-        .flatten()
-        .collect::<Vec<_>>();
+    /// Accumulates several accumulators together. The resulting acc will
+    /// satisfy the invariant iff all the accumulators individually do.
+    pub fn accumulate(accs: &[Self]) -> Self {
+        let hash_input = accs
+            .iter()
+            .flat_map(AssignedAccumulator::as_public_input)
+            .collect::<Vec<_>>();
 
         let r = <S::SpongeChip as HashCPU<S::F, S::F>>::hash(&hash_input);
+        let rs = (0..accs.len()).map(|i| r.pow([i as u64]));
         #[cfg(feature = "truncated-challenges")]
-        let r = truncate_off_circuit(r);
+        let rs = rs.map(truncate_off_circuit).collect::<Vec<_>>();
 
-        Self {
-            lhs: self.lhs.accumulate_with_r(&other.lhs, r),
-            rhs: self.rhs.accumulate_with_r(&other.rhs, r),
+        let mut acc = accs[0].clone();
+        for (other, ri) in accs.iter().zip(rs).skip(1) {
+            acc.lhs = acc.lhs.accumulate_with_r(&other.lhs, ri);
+            acc.rhs = acc.rhs.accumulate_with_r(&other.rhs, ri);
         }
+
+        acc
     }
 
     /// Given a set of fixed bases (a map indexed by the base name),
@@ -176,6 +190,26 @@ impl<S: SelfEmulation> Instantiable<S::F> for AssignedAccumulator<S> {
         .into_iter()
         .flatten()
         .collect()
+    }
+}
+
+impl<S: SelfEmulation> AssignedAccumulator<S> {
+    /// Converts the off-circuit accumulator into two vectors of scalars. The
+    /// first will be used as a normal instance, whereas the second will be
+    /// plugged-in in as a committed instance.
+    ///
+    /// The committed instance part corresponds to the MSM (fixed and non-fixed)
+    /// scalars of the accumulator RHS.
+    pub fn as_public_input_with_committed_scalars(acc: &Accumulator<S>) -> (Vec<S::F>, Vec<S::F>) {
+        let (rhs_scalars, rhs_committed_scalars) =
+            AssignedMsm::as_public_input_with_committed_scalars(&acc.rhs);
+
+        let normal_instance = [AssignedMsm::as_public_input(&acc.lhs), rhs_scalars]
+            .into_iter()
+            .flatten()
+            .collect();
+
+        (normal_instance, rhs_committed_scalars)
     }
 }
 
@@ -262,35 +296,42 @@ impl<S: SelfEmulation> AssignedAccumulator<S> {
         self.rhs.collapse(layouter, curve_chip, scalar_chip)
     }
 
-    /// Accumulates `self` with `other`.
-    /// The resulting acc will satisfy the invariant iff `self` and `other` do.
+    /// Accumulates several accumulators together. The resulting acc will
+    /// satisfy the invariant iff all the accumulators individually do.
     pub fn accumulate(
-        &self,
         layouter: &mut impl Layouter<S::F>,
         acc_pi_chip: &impl PublicInputInstructions<S::F, AssignedAccumulator<S>>,
         scalar_chip: &S::ScalarChip,
         sponge_chip: &S::SpongeChip,
-        other: &Self,
+        accs: &[Self],
     ) -> Result<Self, Error> {
-        let hash_input = vec![
-            acc_pi_chip.as_public_input(layouter, self)?,
-            acc_pi_chip.as_public_input(layouter, other)?,
-        ]
-        .into_iter()
-        .flatten()
-        .collect::<Vec<_>>();
+        let hash_input = accs
+            .iter()
+            .map(|acc| acc_pi_chip.as_public_input(layouter, acc))
+            .collect::<Result<Vec<_>, Error>>()?
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
 
         let r = sponge_chip.hash(layouter, &hash_input)?;
         #[cfg(feature = "truncated-challenges")]
-        let r = truncate(layouter, scalar_chip, &r)?;
+        let rs = truncated_powers::<S::F>(layouter, scalar_chip, &r, accs.len())?;
         #[cfg(not(feature = "truncated-challenges"))]
-        let r = AssignedBoundedScalar::new(&r, None);
+        let rs = powers::<S::F>(layouter, scalar_chip, &r, accs.len())?
+            .iter()
+            .map(|ri| AssignedBoundedScalar::new(ri, None))
+            .collect::<Vec<_>>();
 
-        Ok(AssignedAccumulator::new(
-            self.lhs
-                .accumulate_with_r(layouter, scalar_chip, &other.lhs, &r)?,
-            self.rhs
-                .accumulate_with_r(layouter, scalar_chip, &other.rhs, &r)?,
-        ))
+        let mut acc = accs[0].clone();
+        for (other, ri) in accs.iter().zip(rs).skip(1) {
+            acc.lhs = acc
+                .lhs
+                .accumulate_with_r(layouter, scalar_chip, &other.lhs, &ri)?;
+            acc.rhs = acc
+                .rhs
+                .accumulate_with_r(layouter, scalar_chip, &other.rhs, &ri)?;
+        }
+
+        Ok(acc)
     }
 }
