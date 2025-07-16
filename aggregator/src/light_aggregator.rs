@@ -28,11 +28,11 @@
 //! These Dual MSM scalars are then committed into a single group element σ
 //! with [midnight_proofs::plonk::commit_to_instances]. Therefore, the light
 //! aggregator circuit guarantees that steps 1 and 2 are performed correctly and
-//! that σ (passed as an committed instance) is the correct commitment (with
+//! that σ (passed as a committed instance) is the correct commitment (with
 //! Lagrange bases) to the Dual MSM scalars.
 //!
-//! This allows us to remove all the scalars from all the k inner proofs.
-//! What remains is the group elements of every proof (and an extra PLONK proof
+//! This allows us to remove all the scalars from all the k inner proofs. We
+//! are left with the group elements of every proof (and an extra PLONK proof
 //! for the above circuit). What remains is to check step 3 (for all inner
 //! proofs at once) by verifying that the Dual MSM evaluates to something that
 //! satisfies the pairing invariant. However, since the Dual MSM scalars are in
