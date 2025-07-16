@@ -1798,7 +1798,7 @@
       "max_deg": "7",
       "permutations": "24",
       "point_sets": "4",
-      "rows": "299",
+      "rows": "267",
       "table_rows": "511"
     },
     "is_equal": {
@@ -2077,6 +2077,17 @@
       "point_sets": "4",
       "rows": "16",
       "table_rows": "511"
+    },
+    "sgn0": {
+      "advice_columns": "10",
+      "column_queries": "74",
+      "fixed_columns": "42",
+      "lookups": "8",
+      "max_deg": "5",
+      "permutations": "12",
+      "point_sets": "4",
+      "rows": "23",
+      "table_rows": "1022"
     },
     "to_bits": {
       "advice_columns": "10",

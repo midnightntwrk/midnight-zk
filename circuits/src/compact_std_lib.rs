@@ -894,6 +894,14 @@ impl DecompositionInstructions<F, AssignedNative<F>> for ZkStdLib {
         self.native_gadget
             .assigned_to_le_chunks(layouter, x, nb_bits_per_chunk, nb_chunks)
     }
+
+    fn sgn0(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &AssignedNative<F>,
+    ) -> Result<AssignedBit<F>, Error> {
+        self.native_gadget.sgn0(layouter, x)
+    }
 }
 
 impl ArithInstructions<F, AssignedNative<F>> for ZkStdLib {

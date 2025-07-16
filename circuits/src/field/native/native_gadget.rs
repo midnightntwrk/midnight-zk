@@ -22,7 +22,7 @@ use midnight_proofs::{
     plonk::Error,
 };
 use num_bigint::BigUint;
-use num_traits::{One, Zero};
+use num_traits::Zero;
 #[cfg(any(test, feature = "testing"))]
 use {
     crate::field::decomposition::chip::P2RDecompositionConfig,
@@ -158,6 +158,8 @@ impl<F: PrimeField> BoundedElement<F> {
     pub fn new(value: F, bound: u32) -> Self {
         #[cfg(not(test))]
         {
+            use num_traits::One;
+
             let v_as_bint = fe_to_big(value);
             let bound_as_bint = BigUint::one() << bound;
             assert!(
@@ -904,62 +906,32 @@ where
         layouter: &mut impl Layouter<F>,
         x: &AssignedNative<F>,
     ) -> Result<AssignedBit<F>, Error> {
-        // We decompose x as msb || mid_limb || lsb.
-
-        let n = F::NUM_BITS as u64;
-        let msb_factor = big_to_fe::<F>(BigUint::one() << (n - 1));
-
+        // Any element in Zp can be uniquely represented as 2 * w + e, where
+        // w in [0, (p-1)/2] and e in {0, 1}, with the exception of zero, which
+        // admits two representations: (w = 0, e = 0) and (w = (p-1)/2, e = 1).
         let x_val = x.value().copied().map(fe_to_big);
-        let lsb_val = x_val.clone().map(|x| x.bit(0));
-        let msb_val = x_val.clone().map(|x| x.bit(n - 1));
-        let mid_val = x_val.map(|x| {
-            let mut x = x;
-            x.set_bit(n - 1, false);
-            big_to_fe::<F>(x >> 1)
-        });
+        let w_val = x_val.clone().map(|x| &x / BigUint::from(2u8));
+        let e_val = x_val.clone().map(|x| x.bit(0));
 
-        let x_lsb: AssignedBit<F> = self.assign(layouter, lsb_val)?;
-        let x_msb: AssignedBit<F> = self.assign(layouter, msb_val)?;
-        let x_mid = self.core_decomposition_chip.assign_less_than_pow2(
+        let e: AssignedBit<F> = self.assign(layouter, e_val)?;
+        let w = self.assign_lower_than_fixed(
             layouter,
-            mid_val,
-            n as usize - 2,
+            w_val.map(big_to_fe::<F>),
+            &(&(modulus::<F>() + BigUint::from(1u8)) / BigUint::from(2u8)),
         )?;
-
         let must_be_x = self.linear_combination(
             layouter,
-            &[
-                (F::ONE, x_lsb.clone().into()),
-                (F::from(2), x_mid.clone()),
-                (msb_factor, x_msb.clone().into()),
-            ],
+            &[(F::ONE, e.clone().into()), (F::from(2), w.clone())],
             F::ZERO,
         )?;
-
         self.assert_equal(layouter, x, &must_be_x)?;
+        // The edge case x = 0 is no problem because `x_is_not_zero` is false in that
+        // case and we will still assign sgn0(0) = 0.
+        let x_is_zero: AssignedBit<F> = self.is_zero(layouter, x)?;
+        let x_is_not_zero: AssignedBit<F> = self.not(layouter, &x_is_zero)?;
+        let sgn0 = self.and(layouter, &[x_is_not_zero, e])?;
 
-        // At this point we have that (x_msb, x_mid, x_lsb) is a valid split of x.
-        // We want to make sure it is canonical before we can output x_lsb.
-        // Let (1, p_mid, 1) be the representation of the native modulus.
-        // For canonicity, we will check that one of the following is true:
-        //   (1) x_msb = 1      =>  x_mid <= p_mid
-        //   (2) x_mid = p_mid  =>  x_lsb = 0
-        let p = modulus::<F>();
-        debug_assert!(p.bit(0));
-        debug_assert!(p.bit(n - 1));
-        let p_mid: BigUint = (p - fe_to_big(msb_factor)) >> 1;
-
-        // Check condition (1)
-        let zero = self.assign_fixed(layouter, F::ZERO)?;
-        let aux = self.select(layouter, &x_msb, &x_mid, &zero)?;
-        self.assert_lower_than_fixed(layouter, &aux, &(p_mid.clone() + BigUint::one()))?;
-
-        // Check condition (2)
-        let same_mid = self.is_equal_to_fixed(layouter, &x_mid, big_to_fe(p_mid))?;
-        let same_mid_and_lsb_set = self.and(layouter, &[same_mid, x_lsb.clone()])?;
-        self.assert_equal_to_fixed(layouter, &same_mid_and_lsb_set, false)?;
-
-        Ok(x_lsb)
+        Ok(sgn0)
     }
 }
 
@@ -1699,6 +1671,7 @@ mod tests {
 
     test!(decomposition, test_bit_decomposition);
     test!(decomposition, test_byte_decomposition);
+    test!(decomposition, test_sgn0);
 
     macro_rules! test {
         ($module:ident, $operation:ident) => {

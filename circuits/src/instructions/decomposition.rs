@@ -304,7 +304,7 @@ pub trait Pow2RangeInstructions<F: PrimeField>: Debug + Clone {
 pub mod tests {
     use std::marker::PhantomData;
 
-    use ff::FromUniformBytes;
+    use ff::{Field, FromUniformBytes};
     use midnight_proofs::{
         circuit::{Layouter, SimpleFloorPlanner},
         dev::MockProver,
@@ -320,7 +320,10 @@ pub mod tests {
         instructions::{AssertionInstructions, AssignmentInstructions},
         testing_utils::FromScratch,
         types::InnerValue,
-        utils::{circuit_modeling::circuit_to_json, util::modulus},
+        utils::{
+            circuit_modeling::circuit_to_json,
+            util::{big_to_fe, fe_to_big, modulus},
+        },
     };
 
     #[derive(Clone, Debug)]
@@ -335,6 +338,7 @@ pub mod tests {
         ToBytes,
         FromBits,
         FromBytes,
+        Sgn0,
     }
 
     #[derive(Clone, Debug)]
@@ -447,6 +451,21 @@ pub mod tests {
                         BE => chip.assigned_from_be_bytes(&mut layouter, &bytes),
                     }?;
                     chip.assert_equal_to_fixed(&mut layouter, &x, self.x)
+                }
+                Operation::Sgn0 => {
+                    // Handle 0.
+                    let decomposed = if self.decomposed.is_empty() {
+                        &vec![0u8]
+                    } else {
+                        &self.decomposed
+                    };
+                    let x: Assigned = chip.assign_fixed(&mut layouter, self.x)?;
+                    let sign = chip.sgn0(&mut layouter, &x)?;
+                    let lsb = match self.endianess {
+                        LE => decomposed[0] & 1,
+                        BE => decomposed.last().unwrap() & 1,
+                    };
+                    aux_chip.assert_equal_to_fixed(&mut layouter, &sign, lsb == 1u8)
                 }
             }
         }
@@ -593,6 +612,7 @@ pub mod tests {
     {
         use Endianess::*;
         use Operation::*;
+
         let mut rng = ChaCha8Rng::seed_from_u64(0xc0ffee);
         let r = rng.next_u64();
         let mut bytes_of_r = biguint_to_bytes(&r.into());
@@ -643,5 +663,54 @@ pub mod tests {
                 *x, &rev, None, BE, FromBytes, *ok_from, false, "", "",
             );
         });
+    }
+
+    pub fn test_sgn0<F, Assigned, DecompChip, AuxChip>(name: &str)
+    where
+        F: PrimeField + FromUniformBytes<64> + Ord,
+        Assigned::Element: PrimeField,
+        Assigned: Instantiable<F> + InnerConstants + Clone,
+        DecompChip: DecompositionInstructions<F, Assigned> + FromScratch<F>,
+        AuxChip: AssertionInstructions<F, AssignedBit<F>>
+            + AssertionInstructions<F, AssignedByte<F>>
+            + AssignmentInstructions<F, AssignedBit<F>>
+            + AssignmentInstructions<F, AssignedByte<F>>
+            + FromScratch<F>,
+    {
+        // Random test cases.
+        let mut rng = ChaCha8Rng::seed_from_u64(0xc0ffee);
+        let random_test_cases: Vec<_> = (0..100)
+            .map(|_| Assigned::Element::random(&mut rng))
+            .collect();
+
+        // Edge case where x = 0 | p_mid | 1.
+        // (same as the modulus p but with the msb turned to 0).
+        let mut p = modulus::<Assigned::Element>();
+        p.set_bit(F::NUM_BITS as u64 - 1, false);
+        let x = big_to_fe(p.clone());
+
+        let edge_cases = &[
+            parse!(0),
+            parse!(1),
+            x,
+            big_to_fe(modulus::<Assigned::Element>() - BigUint::one()),
+        ];
+
+        let test_cases = &[random_test_cases.as_slice(), edge_cases].concat();
+
+        test_cases.iter().enumerate().for_each(|(i, x)| {
+            let bytes = biguint_to_bytes(&fe_to_big(*x));
+            run::<F, Assigned, DecompChip, AuxChip>(
+                *x,
+                &bytes,
+                None,
+                Endianess::LE,
+                Operation::Sgn0,
+                true,
+                i == 0, // Cost model on for the first example.
+                name,
+                "sgn0",
+            );
+        })
     }
 }
