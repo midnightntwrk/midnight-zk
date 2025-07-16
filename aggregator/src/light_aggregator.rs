@@ -3,10 +3,46 @@
 //! scalars are optimized away). This is achieved by in-circuit verifying the
 //! native part of every proof.
 //!
-//! BLS12-381 is hard-coded here as the underlying curve of the PLONK proofs.
-//! This is for the sake of simplicity, since we need to configure and
-//! instantiate a chip, which would require extra traits that do not exist in
-//! order to do it generically.
+//! More concretely, a PLONK proof consists of a bunch of scalars and group
+//! elements. The proof is valid iff:
+//!
+//!  1. The scalars and group elements are consistent with the Fiat-Shamir
+//!     schedule (some of the scalars are the result of hashing other scalars
+//!     and group elements).
+//!
+//!  2. The scalars satisfy a system of polynomial equations.
+//!
+//!  3. The evaluation of a Dual MSM (whose bases involve the group elements in
+//!     the proof and the group elements in the verifying key and whose scalars
+//!     are derived from the proof) satisfies the pairing invariant w.r.t. the
+//!     SRS element \[𝜏\]₂.
+//!
+//! Notably, conditions 1 and 2 can be expressed "natively" in a PLONK circuit
+//! with the same base curve as the original proof (the "inner" proof), if a
+//! SNARK-friendly hash function like Poseidon is used for the Fiat-Shamir of
+//! the inner proof.
+//!
+//! Our light aggregator verifies steps 1 and 2 in-circuit for all the k inner
+//! proofs and computes in-circuit the scalars of the combined Dual MSM of
+//! step 3 (yes, all k inner proofs can be combined into a single Dual MSM).
+//! These Dual MSM scalars are then committed into a single group element σ
+//! with [midnight_proofs::plonk::commit_to_instances]. Therefore, the light
+//! aggregator circuit guarantees that steps 1 and 2 are performed correctly and
+//! that σ (passed as an committed instance) is the correct commitment (with
+//! Lagrange bases) to the Dual MSM scalars.
+//!
+//! This allows us to remove all the scalars from all the k inner proofs.
+//! What remains is the group elements of every proof (and an extra PLONK proof
+//! for the above circuit). What remains is to check step 3 (for all inner
+//! proofs at once) by verifying that the Dual MSM evaluates to something that
+//! satisfies the pairing invariant. However, since the Dual MSM scalars are in
+//! committed form (in σ), the verifier cannot do this by themself. Instead,
+//! the prover will provide the evaluation C of the Dual MSM (actually, of the
+//! RHS of the Dual MSM, as the LHS part can be directly evaluated by the
+//! verifier). After checking that evaluated Dual MSM satisfies the invariant
+//! (trusting C as the evaluation of its RHS), the only thing that remains is to
+//! verify the validity of C. This is done via an IPA proof for relation
+//! PoK { s in F^l : <s, LAGRANGE_BASES> = σ /\ <s, DUAL_MSM_RHS_BASES> = C }.
 
 use std::{collections::BTreeMap, io};
 
@@ -48,21 +84,29 @@ use midnight_proofs::{
 use rand::{CryptoRng, RngCore};
 
 use crate::{
-    inner_product_argument::{InnerProductArgument, IpaProof},
+    inner_product_argument::{ipa_prove, ipa_verify, IpaProof},
     light_fiat_shamir::LightPoseidonFS,
     light_self_emulation::{FakeCurveChip, LightBlstrsEmulation},
 };
 
+// BLS12-381 is hard-coded here as the underlying curve of the PLONK proofs.
+// This is for the sake of simplicity, since we need to configure and
+// instantiate a chip, which would require extra traits that do not exist in
+// order to do it generically.
+
 type S = LightBlstrsEmulation;
 
-type F = <S as SelfEmulation>::F;
-type C = <S as SelfEmulation>::C;
-type E = <S as SelfEmulation>::Engine;
+// type F = <S as SelfEmulation>::F;
+// type C = <S as SelfEmulation>::C;
+// type E = <S as SelfEmulation>::Engine;
+type F = blstrs::Fq;
+type C = blstrs::G1Projective;
+type E = blstrs::Bls12;
 
 type VerifyingKey = plonk::VerifyingKey<F, KZGCommitmentScheme<E>>;
 type ProvingKey = plonk::ProvingKey<F, KZGCommitmentScheme<E>>;
 
-/// A light aggregator of KZG-based proofs over curve C.
+/// A light aggregator of KZG-based proofs over BLS12-381.
 /// The internal Fiat-Shamir of proofs must have been performed with Poseidon.
 ///
 /// This first version can only aggregate circuits with the same vk,
@@ -107,7 +151,7 @@ impl<const NB_PROOFS: usize> MetaProof<NB_PROOFS> {
         self.ipa_proof.write(writer, format)
     }
 
-    // Reads a meta proof from a buffer.
+    /// Reads a meta proof from a buffer.
     pub fn read<R: io::Read>(reader: &mut R, format: SerdeFormat) -> io::Result<Self> {
         let mut bytes = [0u8; 8];
 
@@ -309,7 +353,7 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
     /// (Not necessarily in size, but must share the same toxic waste.)
     //  (This assumption is not strictly necessary, but simplifies the API.)
     ///
-    /// # Panics
+    /// # Errors
     ///
     /// If some of the provided proofs are invalid.
     pub fn aggregate_proofs(
@@ -318,7 +362,7 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
         instances: &[Vec<F>; NB_PROOFS],
         proofs: &[Vec<u8>; NB_PROOFS],
         mut rng: impl RngCore + CryptoRng,
-    ) -> MetaProof<NB_PROOFS> {
+    ) -> Result<MetaProof<NB_PROOFS>, Error> {
         // We first verify all proofs off-circuit, to get the final batched accumulator,
         // which must be a public input of the aggregator circuit.
         let proof_accs: Vec<Accumulator<S>> = (proofs.iter())
@@ -336,8 +380,7 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
                     &[&[C::identity()]],
                     &[&[proof_instances]],
                     &mut transcript,
-                )
-                .expect("aggregate_proofs: one of the proofs is invalid");
+                )?;
 
                 assert!(dual_msm.clone().check(&srs.verifier_params()));
 
@@ -350,9 +393,9 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
 
                 let mut proof_acc: Accumulator<S> = dual_msm.into();
                 proof_acc.extract_fixed_bases(&fixed_bases);
-                proof_acc
+                Ok(proof_acc)
             })
-            .collect();
+            .collect::<Result<_, Error>>()?;
 
         let acc = Accumulator::<S>::accumulate(&proof_accs);
 
@@ -364,7 +407,7 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
             "inner_vk",
             &self.inner_vk,
         ));
-        acc.check(&srs.s_g2().into(), &fixed_bases); // sanity check
+        assert!(acc.check(&srs.s_g2().into(), &fixed_bases)); // sanity check
 
         // We now proceed to aggregating all proofs.
         let aggregator_circuit = AggregatorCircuit::<NB_PROOFS> {
@@ -398,8 +441,7 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
                 &[&[&acc_committed_instances, &aggregator_instances]],
                 &mut rng,
                 &mut transcript,
-            )
-            .unwrap_or_else(|_| panic!("Problem creating the inner proof"));
+            )?;
             transcript.finalize()
         };
 
@@ -420,23 +462,23 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
             bases1.resize(k, C::identity());
             bases2.resize(k, C::identity());
             scalars.resize(k, F::default());
-            InnerProductArgument::<Blake2bState, _>::prove(
+            ipa_prove::<Blake2bState, _>(
                 &scalars,
                 &bases1,
                 &bases2,
                 &acc_rhs_evaluated,
                 &acc_rhs_scalars_committed,
             )
-        };
+        }?;
 
-        MetaProof {
+        Ok(MetaProof {
             proof: meta_proof,
             acc_lhs: acc.lhs(),
             acc_rhs_evaluated,
             acc_rhs_bases: acc.rhs().bases(),
             acc_rhs_scalars_committed,
             ipa_proof,
-        }
+        })
     }
 
     /// Verifies an aggregation proof.
@@ -505,15 +547,13 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
         bases1.resize(k, C::identity());
         bases2.resize(k, C::identity());
 
-        InnerProductArgument::<Blake2bState, _>::verify(
+        ipa_verify::<Blake2bState, _>(
             &bases1,
             &bases2,
             &meta_proof.acc_rhs_evaluated,
             &meta_proof.acc_rhs_scalars_committed,
             &meta_proof.ipa_proof,
-        );
-
-        Ok(())
+        )
     }
 }
 
@@ -661,7 +701,9 @@ mod tests {
             .unwrap();
 
         let t = std::time::Instant::now();
-        let meta_proof = aggregator.aggregate_proofs(&srs, &all_instances, &proofs, &mut rng);
+        let meta_proof = aggregator
+            .aggregate_proofs(&srs, &all_instances, &proofs, &mut rng)
+            .unwrap();
         println!(
             "Aggregation proof generated in {:?} s",
             t.elapsed().as_secs()
