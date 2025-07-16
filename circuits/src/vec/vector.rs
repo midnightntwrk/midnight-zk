@@ -34,7 +34,7 @@ use crate::{
 /// values before and after the effective payload. The padding in front of
 /// the payload will always be 0 mod A, so that the payload begins aligned in A
 /// sized chunks. The padding at the end of the payload will be have a size in
-/// [0, A) such that | front_pad | + | payload | + | back_pad | = M
+/// [0, A) such that | front_pad | + | payload | + | back_pad | = M.
 #[derive(Clone, Debug)]
 pub struct AssignedVector<F: PrimeField, T: Vectorizable, const M: usize, const A: usize> {
     /// Padded payload of the vector.

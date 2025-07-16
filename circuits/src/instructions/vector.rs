@@ -13,9 +13,9 @@
 
 //! Vector manipulation instructions interface.
 //!
-//! The trait is parametrised by the type `T` of elements cotained in the
-//! vector, as well as 2 constants: its maximum size `M` and its alignment value
-//! `A`.
+//! The trait is parameterized by the type `T` of elements contained in the
+//! vector, as well as 2 constants: its maximum size `M` and its chunk alignment
+//! value `A`.
 
 use ff::PrimeField;
 use midnight_proofs::{
