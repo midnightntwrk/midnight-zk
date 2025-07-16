@@ -24,7 +24,9 @@ midnight_proofs = { path = "../proofs", default-features = false, features = [
     "circuit-params",
     "committed-instances",
 ] }
-midnight-circuits = { path = "../circuits", features = ["testing"] }
+midnight-circuits = { path = "../circuits", default-features = false, features = [
+    "testing",
+] }
 
 rand = "0.8"
 num-integer = "0.1"
