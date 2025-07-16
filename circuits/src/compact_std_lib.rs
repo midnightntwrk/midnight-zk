@@ -79,15 +79,16 @@ use crate::{
         AssignmentInstructions, BinaryInstructions, BitwiseInstructions, CanonicityInstructions,
         ComparisonInstructions, ControlFlowInstructions, ConversionInstructions,
         DecompositionInstructions, EccInstructions, EqualityInstructions, FieldInstructions,
-        HashInstructions, PublicInputInstructions, RangeCheckInstructions, ZeroInstructions,
+        HashInstructions, PublicInputInstructions, RangeCheckInstructions, VectorInstructions,
+        ZeroInstructions,
     },
     json::{Base64Chip, Base64Config, ParserGadget, NB_BASE64_ADVICE_COLS},
     map::map_gadget::MapGadget,
     types::{
-        AssignedBit, AssignedByte, AssignedNative, AssignedNativePoint, AssignedVector, InnerValue,
-        Instantiable, VectorInstructions,
+        AssignedBit, AssignedByte, AssignedNative, AssignedNativePoint, InnerValue, Instantiable,
     },
     utils::{BlstPLONK, ComposableChip},
+    vec::{vector_gadget::VectorGadget, AssignedVector, Vectorizable},
 };
 
 const SHA256_SIZE_IN_WORDS: usize = 8;
@@ -248,6 +249,7 @@ pub struct ZkStdLib {
     bls12_381_curve_chip: Option<Bls12381Chip>,
     base64_chip: Option<Base64Chip<F>>,
     parser_gadget: ParserGadget<F, NG>,
+    vector_gadget: VectorGadget<F>,
 
     // A flag that indicates if the SHA chip has been used. This way we can load the SHA table only
     // when necessary (thus reducing the min_k in some cases).
@@ -290,6 +292,7 @@ impl ZkStdLib {
             .map(|base64_config| Base64Chip::new(base64_config, &native_gadget));
 
         let parser_gadget = ParserGadget::new(&native_gadget);
+        let vector_gadget = VectorGadget::new(&native_gadget);
 
         Self {
             native_gadget,
@@ -306,6 +309,7 @@ impl ZkStdLib {
             bls12_381_curve_chip,
             base64_chip,
             parser_gadget,
+            vector_gadget,
             used_sha: Rc::new(RefCell::new(false)),
         }
     }
@@ -1053,57 +1057,53 @@ impl BinaryInstructions<F> for ZkStdLib {
 
 impl BitwiseInstructions<F, AssignedNative<F>> for ZkStdLib {}
 
-impl<const M: usize, const A: usize> VectorInstructions<F, AssignedNative<F>, M, A> for ZkStdLib {
+impl<const M: usize, const A: usize, T> VectorInstructions<F, T, M, A> for ZkStdLib
+where
+    T: Vectorizable,
+    T::Element: Copy,
+    NG: AssignmentInstructions<F, T> + ControlFlowInstructions<F, T>,
+{
     fn trim_beginning(
         &self,
         layouter: &mut impl Layouter<F>,
-        input: &AssignedVector<F, AssignedNative<F>, M, A>,
+        input: &AssignedVector<F, T, M, A>,
         n_elems: usize,
-    ) -> Result<AssignedVector<F, AssignedNative<F>, M, A>, Error> {
-        self.native_gadget.trim_beginning(layouter, input, n_elems)
+    ) -> Result<AssignedVector<F, T, M, A>, Error> {
+        self.vector_gadget.trim_beginning(layouter, input, n_elems)
     }
 
     fn padding_flag(
         &self,
         layouter: &mut impl Layouter<F>,
-        input: &AssignedVector<F, AssignedNative<F>, M, A>,
+        input: &AssignedVector<F, T, M, A>,
     ) -> Result<[AssignedBit<F>; M], Error> {
-        self.native_gadget.padding_flag(layouter, input)
+        self.vector_gadget.padding_flag(layouter, input)
     }
 
     fn get_limits(
         &self,
         layouter: &mut impl Layouter<F>,
-        input: &AssignedVector<F, AssignedNative<F>, M, A>,
+        input: &AssignedVector<F, T, M, A>,
     ) -> Result<(AssignedNative<F>, AssignedNative<F>), Error> {
-        self.native_gadget.get_limits(layouter, input)
-    }
-}
-
-impl<const M: usize, const A: usize> VectorInstructions<F, AssignedByte<F>, M, A> for ZkStdLib {
-    fn trim_beginning(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        input: &AssignedVector<F, AssignedByte<F>, M, A>,
-        n_elems: usize,
-    ) -> Result<AssignedVector<F, AssignedByte<F>, M, A>, Error> {
-        self.native_gadget.trim_beginning(layouter, input, n_elems)
+        self.vector_gadget.get_limits(layouter, input)
     }
 
-    fn padding_flag(
+    fn resize<const L: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
-        input: &AssignedVector<F, AssignedByte<F>, M, A>,
-    ) -> Result<[AssignedBit<F>; M], Error> {
-        self.native_gadget.padding_flag(layouter, input)
+        input: AssignedVector<F, T, M, A>,
+    ) -> Result<AssignedVector<F, T, L, A>, Error> {
+        self.vector_gadget.resize(layouter, input)
     }
 
-    fn get_limits(
+    fn assign_with_filler(
         &self,
         layouter: &mut impl Layouter<F>,
-        input: &AssignedVector<F, AssignedByte<F>, M, A>,
-    ) -> Result<(AssignedNative<F>, AssignedNative<F>), Error> {
-        self.native_gadget.get_limits(layouter, input)
+        value: Value<Vec<<T>::Element>>,
+        filler: Option<<T>::Element>,
+    ) -> Result<AssignedVector<F, T, M, A>, Error> {
+        self.vector_gadget
+            .assign_with_filler(layouter, value, filler)
     }
 }
 

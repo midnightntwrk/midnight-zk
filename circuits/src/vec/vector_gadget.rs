@@ -11,8 +11,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::ops::Range;
-
 use ff::PrimeField;
 use midnight_proofs::{
     circuit::{Layouter, Value},
@@ -20,95 +18,58 @@ use midnight_proofs::{
 };
 use num_bigint::BigUint;
 
-use super::types::InnerValue;
 use crate::{
     field::{
-        decomposition::instructions::CoreDecompositionInstructions, AssignedBounded,
-        AssignedNative, NativeGadget,
+        decomposition::chip::P2RDecompositionChip, AssignedBounded, AssignedNative, NativeChip,
+        NativeGadget,
     },
     instructions::{
-        divmod::DivisionInstructions, ArithInstructions, AssertionInstructions,
-        AssignmentInstructions, BinaryInstructions, ComparisonInstructions,
+        divmod::DivisionInstructions, vector::VectorInstructions, ArithInstructions,
+        AssertionInstructions, AssignmentInstructions, BinaryInstructions, ComparisonInstructions,
         ControlFlowInstructions, EqualityInstructions, RangeCheckInstructions,
     },
-    types::{AssignedBit, AssignedByte},
+    types::{AssignedBit, AssignedVector, InnerValue, Vectorizable},
+    vec::get_lims,
 };
 
-/// A variable-length vector of elements of type T, with size bound M.
-/// - `len` is the (potentially secret) effective length of the vector, its
-///   value is guaranteed to be in the range `[0, M]`.
-/// - `buffer` is the padded payload of this vector; it contains the effective
-///   data of the vector as well as filler values, which are UNCONSTRAINED.
-///
-/// The effective payload in the data is aligned in A sized chunks. This
-/// enables more efficient implementations of instructions like hashing
-/// over this type. As a result of this alignment, the data may contain filler
-/// values before and after the effective payload. The padding in front of
-/// the payload will always be 0 mod A, so that the payload begins aligned in A
-/// sized chunks. The padding at the end of the payload will be have a size in
-/// [0, A) such that | front_pad | + | payload | + | back_pad | = M
+type NG<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
+
 #[derive(Clone, Debug)]
-pub struct AssignedVector<F: PrimeField, T: Vectorizable, const M: usize, const A: usize> {
-    /// Padded payload of the vector.
-    pub(crate) buffer: [T; M],
-
-    /// Effective length of the vector.
-    pub(crate) len: AssignedNative<F>,
+/// A gadget for vector operations of elements that are or fit within a native
+/// field element:
+pub struct VectorGadget<F: PrimeField> {
+    native_gadget: NG<F>,
 }
 
-/// Returns the range where the data should be placed in the buffer.
-fn get_lims<const M: usize, const A: usize>(len: usize) -> Range<usize> {
-    let final_pad_len = (A - (len % A)) % A;
-    M - len - final_pad_len..M - final_pad_len
-}
-
-impl<F: PrimeField, const M: usize, T: Vectorizable, const A: usize> InnerValue
-    for AssignedVector<F, T, M, A>
+impl<F> VectorGadget<F>
+where
+    F: PrimeField,
 {
-    type Element = Vec<T::Element>;
-
-    fn value(&self) -> Value<Self::Element> {
-        let data = Value::<Vec<T::Element>>::from_iter(self.buffer.iter().map(|v| v.value()));
-        let idxs: Value<_> = self.len.value().map(|len| {
-            let len: usize = super::util::fe_to_big(*len).try_into().unwrap();
-
-            let end_pad = (A - (len % A)) % A;
-            (M - len - end_pad, M - end_pad)
-        });
-        data.zip(idxs)
-            .map(|(data, idxs)| data[idxs.0..idxs.1].to_vec())
+    /// Create a new vector gadgets.
+    pub fn new(native_gadget: &NG<F>) -> Self {
+        Self {
+            native_gadget: native_gadget.clone(),
+        }
     }
 }
 
-/// Trait for the individual elements of an AssignedVector.
-pub trait Vectorizable: InnerValue {
-    /// Value to fill the space in the buffer that is not occupied with vector
-    /// data.
-    const FILLER: Self::Element;
-}
-
-impl<F: PrimeField> Vectorizable for AssignedNative<F> {
-    const FILLER: F = F::ZERO;
-}
-
-impl<F: PrimeField> Vectorizable for AssignedByte<F> {
-    const FILLER: u8 = 0u8;
-}
-
-/// Instruction set for transforming vectors.
-pub trait VectorInstructions<F, T, const M: usize, const A: usize>:
-    AssignmentInstructions<F, T>
+impl<F, T, const M: usize, const A: usize> VectorInstructions<F, T, M, A> for VectorGadget<F>
 where
     F: PrimeField,
     T: Vectorizable,
     T::Element: Copy,
-    Self: RangeCheckInstructions<F, AssignedNative<F>> + AssignmentInstructions<F, T>,
+    NG<F>: RangeCheckInstructions<F, AssignedNative<F>>
+        + AssignmentInstructions<F, T>
+        + AssignmentInstructions<F, AssignedNative<F>>
+        + AssignmentInstructions<F, AssignedBit<F>>
+        + EqualityInstructions<F, AssignedNative<F>>
+        + BinaryInstructions<F>
+        + ControlFlowInstructions<F, AssignedNative<F>>
+        + ControlFlowInstructions<F, T>
+        + DivisionInstructions<F>
+        + AssertionInstructions<F, AssignedBit<F>>
+        + ArithInstructions<F, AssignedNative<F>>,
 {
-    /// Changes the size of an AssignedVector from M to L.
-    ///
-    /// # Panics
-    ///
-    /// If `L <= M` or `A` does not divide `L`.
     fn resize<const L: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -117,7 +78,9 @@ where
         assert_eq!(L % A, 0);
         assert!(L > M);
 
-        let extra_pad = self.assign_many(layouter, &vec![Value::known(T::FILLER); L - M])?;
+        let extra_pad = self
+            .native_gadget
+            .assign_many(layouter, &vec![Value::known(T::FILLER); L - M])?;
 
         let buffer: [T; L] = [extra_pad.as_slice(), input.buffer.as_slice()]
             .concat()
@@ -130,17 +93,13 @@ where
         })
     }
 
-    /// Assigns vector with a chosen filler value.
-    ///
-    /// # Panics
-    ///
-    ///   If |value| > M.
     fn assign_with_filler(
         &self,
         layouter: &mut impl Layouter<F>,
         value: Value<Vec<T::Element>>,
         filler: Option<T::Element>,
     ) -> Result<AssignedVector<F, T, M, A>, Error> {
+        let ng = &self.native_gadget;
         let filler = filler.unwrap_or(T::FILLER);
         let (data_val, len_val) = value
             .map(|v| {
@@ -152,83 +111,35 @@ where
             })
             .unzip();
 
-        let data = self
+        let data = ng
             .assign_many(layouter, &data_val.transpose_array())?
             .try_into()
             .expect("Length mismatch in AssignedVector.");
-        let len = self.assign_lower_than_fixed(layouter, len_val, &(M + 1).into())?;
+        let len = ng.assign_lower_than_fixed(layouter, len_val, &(M + 1).into())?;
         Ok(AssignedVector { buffer: data, len })
     }
 
-    /// Trims `n_elems` elements from the beginning of the vector.
-    /// The trimmed elements will not be changed by filler elements,
-    /// they will remain in the buffer but not as part of the effective payload.
-    ///
-    /// # Unsatisfiable
-    ///
-    ///   If the vector length < `n_elems`.
-    fn trim_beginning(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        input: &AssignedVector<F, T, M, A>,
-        n_elems: usize,
-    ) -> Result<AssignedVector<F, T, M, A>, Error>;
-
-    /// Returns a vector of AssignedBits signaling the cells that represent
-    /// padding with a 1, and the ones that represent payload data with a 0.
-    fn padding_flag(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        input: &AssignedVector<F, T, M, A>,
-    ) -> Result<[AssignedBit<F>; M], Error>;
-
-    /// Returns the first and last positions of data in the buffer.
-    fn get_limits(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        input: &AssignedVector<F, T, M, A>,
-    ) -> Result<(AssignedNative<F>, AssignedNative<F>), Error>;
-}
-
-impl<F, CD, NA, T, const M: usize, const A: usize> VectorInstructions<F, T, M, A>
-    for NativeGadget<F, CD, NA>
-where
-    F: PrimeField,
-    T: Vectorizable,
-    T::Element: Copy,
-    CD: CoreDecompositionInstructions<F>,
-    Self: RangeCheckInstructions<F, AssignedNative<F>>
-        + AssignmentInstructions<F, T>
-        + AssignmentInstructions<F, AssignedNative<F>>
-        + AssignmentInstructions<F, AssignedBit<F>>
-        + EqualityInstructions<F, AssignedNative<F>>
-        + BinaryInstructions<F>
-        + ControlFlowInstructions<F, AssignedNative<F>>
-        + ControlFlowInstructions<F, T>
-        + DivisionInstructions<F>
-        + AssertionInstructions<F, AssignedBit<F>>,
-    NA: ArithInstructions<F, AssignedNative<F>>,
-{
     fn padding_flag(
         &self,
         layouter: &mut impl Layouter<F>,
         input: &AssignedVector<F, T, M, A>,
     ) -> Result<[AssignedBit<F>; M], Error> {
+        let ng = &self.native_gadget;
         let (start, end) = self.get_limits(layouter, input)?;
-        let mut is_data: AssignedBit<F> = self.assign_fixed(layouter, true)?;
+        let mut is_data: AssignedBit<F> = ng.assign_fixed(layouter, true)?;
 
         let result = (0..M - A)
             .map(|i| {
-                let is_start = self.is_equal_to_fixed(layouter, &start, F::from(i as u64))?;
-                is_data = self.xor(layouter, &[is_data.clone(), is_start])?;
+                let is_start = ng.is_equal_to_fixed(layouter, &start, F::from(i as u64))?;
+                is_data = ng.xor(layouter, &[is_data.clone(), is_start])?;
                 Ok(is_data.clone())
             })
             .collect::<Result<Vec<_>, Error>>()?;
 
         let last_chunk = (M - A..M)
             .map(|i| {
-                let is_end = self.is_equal_to_fixed(layouter, &end, F::from(i as u64))?;
-                is_data = self.xor(layouter, &[is_data.clone(), is_end])?;
+                let is_end = ng.is_equal_to_fixed(layouter, &end, F::from(i as u64))?;
+                is_data = ng.xor(layouter, &[is_data.clone(), is_end])?;
                 Ok(is_data.clone())
             })
             .collect::<Result<Vec<_>, Error>>()?;
@@ -244,21 +155,22 @@ where
         layouter: &mut impl Layouter<F>,
         input: &AssignedVector<F, T, M, A>,
     ) -> Result<(AssignedNative<F>, AssignedNative<F>), Error> {
+        let ng = &self.native_gadget;
         let end: AssignedNative<F> = {
             // The last data position within the last chunk. Value in [0, A);
             // 0 means the last chunk is full, all its positions are data.
-            let offset = self.modulus(layouter, &input.len, M as u32, A as u32)?;
+            let offset = ng.modulus(layouter, &input.len, M as u32, A as u32)?;
 
             // if offset != 0.  End = M - (A - offset).
-            let end1 = self.add_constant(layouter, &offset, F::from(M as u64 - A as u64))?;
+            let end1 = ng.add_constant(layouter, &offset, F::from(M as u64 - A as u64))?;
             // if offset == 0.  End = M - (A - offset) + A = M.
-            let end2 = self.add_constant(layouter, &end1, F::from(A as u64))?;
-            let is_zero = self.is_equal_to_fixed(layouter, &offset, F::ZERO)?;
-            self.select(layouter, &is_zero, &end2, &end1)
+            let end2 = ng.add_constant(layouter, &end1, F::from(A as u64))?;
+            let is_zero = ng.is_equal_to_fixed(layouter, &offset, F::ZERO)?;
+            ng.select(layouter, &is_zero, &end2, &end1)
         }?;
 
         // The index where the data starts.
-        let start: AssignedNative<F> = self.sub(layouter, &end, &input.len)?;
+        let start: AssignedNative<F> = ng.sub(layouter, &end, &input.len)?;
 
         Ok((start, end))
     }
@@ -269,12 +181,13 @@ where
         input: &AssignedVector<F, T, M, A>,
         n_elems: usize,
     ) -> Result<AssignedVector<F, T, M, A>, Error> {
+        let ng = &self.native_gadget;
         let a_max_bits = (usize::BITS - A.leading_zeros()) as usize;
 
         // Assert input.len >= n_elems.
         let len_complement =
-            self.linear_combination(layouter, &[(-F::ONE, input.len.clone())], F::from(M as u64))?;
-        self.assert_lower_than_fixed(layouter, &len_complement, &BigUint::from(M + 1 - n_elems))?;
+            ng.linear_combination(layouter, &[(-F::ONE, input.len.clone())], F::from(M as u64))?;
+        ng.assert_lower_than_fixed(layouter, &len_complement, &BigUint::from(M + 1 - n_elems))?;
 
         // We divide the number of elements to be trimmed in 2 parts.
         // The A-sized whole chunks, one last <A sized piece.
@@ -287,7 +200,7 @@ where
         let last_trim = n_elems % A;
 
         // Length of last chunk ( or 0 if it is full ).
-        let last_len = self.modulus(layouter, &input.len, M as u32, A as u32)?;
+        let last_len = ng.modulus(layouter, &input.len, M as u32, A as u32)?;
 
         // `modulus` already ensures last_len is in [0, A), so unsafe conversion can be
         // used here.
@@ -297,51 +210,73 @@ where
         // We need to shift right by A if the padding at the end after the left shift is
         // >= A.
         let needs_adjust = {
-            let leq_shift =
-                self.leq_fixed(layouter, &bounded_last_len, F::from(last_trim as u64))?;
-            let full_last = self.is_equal_to_fixed(layouter, &last_len, F::ZERO)?;
+            let leq_shift = ng.leq_fixed(layouter, &bounded_last_len, F::from(last_trim as u64))?;
+            let full_last = ng.is_equal_to_fixed(layouter, &last_len, F::ZERO)?;
 
             // Since full_last = 1 => leq_shift = 1:
-            //     let not_full_last = self.not(layouter, &full_last)?;
-            //     self.and(layouter, &[not_full_last, leq_shift])
+            //     let not_full_last = ng.not(layouter, &full_last)?;
+            //     ng.and(layouter, &[not_full_last, leq_shift])
             // A XOR operation is equivalent to the commented code above.
-            self.xor(layouter, &[full_last, leq_shift])
+            ng.xor(layouter, &[full_last, leq_shift])
         }?;
 
         // Shift the original buffer `last_trim` positions to the left.
         // Then, add A filler elements to the left, in case we need to shift A to the
         // right to adjust the padding at the end.
         let buffer = {
-            let filler = self.assign_many_fixed(layouter, &vec![T::FILLER; A + last_trim])?;
+            let filler = ng.assign_many_fixed(layouter, &vec![T::FILLER; A + last_trim])?;
             [&filler[..A], &input.buffer[last_trim..], &filler[A..]].concat()
         };
         debug_assert_eq!(buffer.len(), M + A);
 
         let buffer: [_; M] = (0..M)
-            .map(|i| self.select(layouter, &needs_adjust, &buffer[i], &buffer[A + i]))
+            .map(|i| ng.select(layouter, &needs_adjust, &buffer[i], &buffer[A + i]))
             .collect::<Result<Vec<_>, Error>>()?
             .try_into()
             .unwrap();
 
         // Compute final length.
-        let len = self.add_constant(layouter, &input.len, -F::from(n_elems as u64))?;
+        let len = ng.add_constant(layouter, &input.len, -F::from(n_elems as u64))?;
 
         Ok(AssignedVector { buffer, len })
     }
 }
 
-impl<F, CoreDecomposition, NativeArith, const M: usize, T, const A: usize>
-    EqualityInstructions<F, AssignedVector<F, T, M, A>>
-    for NativeGadget<F, CoreDecomposition, NativeArith>
+impl<F, const M: usize, T, const A: usize> AssignmentInstructions<F, AssignedVector<F, T, M, A>>
+    for VectorGadget<F>
 where
     F: PrimeField,
     T: Vectorizable,
     T::Element: Copy,
-    CoreDecomposition: CoreDecompositionInstructions<F>,
-    NativeArith: ArithInstructions<F, AssignedNative<F>>,
-    Self: EqualityInstructions<F, T>
+    Self: VectorInstructions<F, T, M, A>,
+{
+    fn assign_fixed(
+        &self,
+        _layouter: &mut impl Layouter<F>,
+        _constant: <AssignedVector<F, T, M, A> as InnerValue>::Element,
+    ) -> Result<AssignedVector<F, T, M, A>, Error> {
+        unimplemented!("You should not be assigining a fixed `AssignedVector`")
+    }
+
+    fn assign(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        value: Value<<AssignedVector<F, T, M, A> as InnerValue>::Element>,
+    ) -> Result<AssignedVector<F, T, M, A>, Error> {
+        self.assign_with_filler(layouter, value, None)
+    }
+}
+
+impl<F, const M: usize, T, const A: usize> EqualityInstructions<F, AssignedVector<F, T, M, A>>
+    for VectorGadget<F>
+where
+    F: PrimeField,
+    T: Vectorizable,
+    T::Element: Copy,
+    Self: VectorInstructions<F, T, M, A>,
+    NG<F>: ArithInstructions<F, AssignedNative<F>>
+        + EqualityInstructions<F, T>
         + EqualityInstructions<F, AssignedNative<F>>
-        + VectorInstructions<F, T, M, A>
         + BinaryInstructions<F>,
 {
     fn is_equal(
@@ -350,21 +285,22 @@ where
         x: &AssignedVector<F, T, M, A>,
         y: &AssignedVector<F, T, M, A>,
     ) -> Result<AssignedBit<F>, Error> {
+        let ng = &self.native_gadget;
         // Check all data values are equal.
         let val_checks = self
             .padding_flag(layouter, x)?
             .into_iter()
             .zip(x.buffer.iter().zip(y.buffer.iter()))
             .map(|(is_padding, (a, b))| {
-                let a_eq_b = self.is_equal(layouter, a, b)?;
-                self.or(layouter, &[is_padding, a_eq_b])
+                let a_eq_b = ng.is_equal(layouter, a, b)?;
+                ng.or(layouter, &[is_padding, a_eq_b])
             })
             .collect::<Result<Vec<_>, Error>>()?;
 
         // Check lengths are equal.
-        let len_check = self.is_equal(layouter, &x.len, &y.len)?;
+        let len_check = ng.is_equal(layouter, &x.len, &y.len)?;
 
-        self.and(layouter, &[val_checks.as_slice(), &[len_check]].concat())
+        ng.and(layouter, &[val_checks.as_slice(), &[len_check]].concat())
     }
 
     fn is_equal_to_fixed(
@@ -373,36 +309,34 @@ where
         x: &AssignedVector<F, T, M, A>,
         constant: Vec<T::Element>,
     ) -> Result<AssignedBit<F>, Error> {
+        let ng = &self.native_gadget;
         let ct_len = constant.len();
 
-        let eq_len = self.is_equal_to_fixed(layouter, &x.len, F::from(ct_len as u64))?;
+        let eq_len = ng.is_equal_to_fixed(layouter, &x.len, F::from(ct_len as u64))?;
 
         let mut element_checks = x.buffer[get_lims::<M, A>(ct_len)]
             .iter()
             .zip(constant.iter())
-            .map(|(a, c)| self.is_equal_to_fixed(layouter, a, *c))
+            .map(|(a, c)| ng.is_equal_to_fixed(layouter, a, *c))
             .collect::<Result<Vec<_>, Error>>()?;
         element_checks.push(eq_len);
 
-        self.and(layouter, &element_checks)
+        ng.and(layouter, &element_checks)
     }
 }
 
-impl<F, CoreDecomposition, NativeArith, const M: usize, T, const A: usize>
-    AssertionInstructions<F, AssignedVector<F, T, M, A>>
-    for NativeGadget<F, CoreDecomposition, NativeArith>
+impl<F, T, const M: usize, const A: usize> AssertionInstructions<F, AssignedVector<F, T, M, A>>
+    for VectorGadget<F>
 where
     F: PrimeField,
     T: Vectorizable,
     T::Element: Copy,
-    CoreDecomposition: CoreDecompositionInstructions<F>,
-    NativeArith: ArithInstructions<F, AssignedNative<F>>,
-    Self: EqualityInstructions<F, T>
+    Self: VectorInstructions<F, T, M, A> + EqualityInstructions<F, AssignedVector<F, T, M, A>>,
+    NG<F>: ArithInstructions<F, AssignedNative<F>>
+        + EqualityInstructions<F, T>
         + EqualityInstructions<F, AssignedNative<F>>
-        + EqualityInstructions<F, AssignedVector<F, T, M, A>>
         + AssertionInstructions<F, AssignedBit<F>>
         + AssertionInstructions<F, T>
-        + VectorInstructions<F, T, M, A>
         + BinaryInstructions<F>,
 {
     fn assert_equal(
@@ -412,7 +346,8 @@ where
         y: &AssignedVector<F, T, M, A>,
     ) -> Result<(), Error> {
         let is_equal = self.is_equal(layouter, x, y)?;
-        self.assert_equal_to_fixed(layouter, &is_equal, true)
+        self.native_gadget
+            .assert_equal_to_fixed(layouter, &is_equal, true)
     }
 
     fn assert_not_equal(
@@ -422,7 +357,8 @@ where
         y: &AssignedVector<F, T, M, A>,
     ) -> Result<(), Error> {
         let x_eq_y = self.is_equal(layouter, x, y)?;
-        self.assert_equal_to_fixed(layouter, &x_eq_y, false)
+        self.native_gadget
+            .assert_equal_to_fixed(layouter, &x_eq_y, false)
     }
 
     fn assert_equal_to_fixed(
@@ -431,13 +367,14 @@ where
         x: &AssignedVector<F, T, M, A>,
         constant: <AssignedVector<F, T, M, A> as InnerValue>::Element,
     ) -> Result<(), Error> {
+        let ng = &self.native_gadget;
         let ct_len = constant.len();
-        self.assert_equal_to_fixed(layouter, &x.len, F::from(ct_len as u64))?;
+        ng.assert_equal_to_fixed(layouter, &x.len, F::from(ct_len as u64))?;
 
         x.buffer[get_lims::<M, A>(ct_len)]
             .iter()
             .zip(constant.iter())
-            .map(|(a, c)| self.assert_equal_to_fixed(layouter, a, *c))
+            .map(|(a, c)| ng.assert_equal_to_fixed(layouter, a, *c))
             .collect::<Result<Vec<()>, Error>>()?;
         Ok(())
     }
@@ -449,7 +386,8 @@ where
         constant: <AssignedVector<F, T, M, A> as InnerValue>::Element,
     ) -> Result<(), Error> {
         let is_equal = self.is_equal_to_fixed(layouter, x, constant)?;
-        self.assert_equal_to_fixed(layouter, &is_equal, false)
+        self.native_gadget
+            .assert_equal_to_fixed(layouter, &is_equal, false)
     }
 }
 
@@ -514,6 +452,7 @@ mod tests {
             mut layouter: impl Layouter<F>,
         ) -> Result<(), Error> {
             let ng = NG::<F>::new_from_scratch(&config);
+            let vg = VectorGadget::new(&ng);
             NG::<F>::load_from_scratch(&mut layouter, &config);
 
             match self.opts {
@@ -522,10 +461,10 @@ mod tests {
                     equal,
                 } => {
                     let vec_1: AssignedVector<F, AssignedNative<F>, M, A> =
-                        ng.assign(&mut layouter, self.input_1.clone())?;
+                        vg.assign(&mut layouter, self.input_1.clone())?;
 
                     let mut vec_2: AssignedVector<F, AssignedNative<F>, M, A> =
-                        ng.assign(&mut layouter, Value::known(self.input_2.clone()))?;
+                        vg.assign(&mut layouter, Value::known(self.input_2.clone()))?;
 
                     // Mutate padding
                     if mutate_padding {
@@ -540,15 +479,15 @@ mod tests {
                         }
                     }
 
-                    let check = ng.is_equal(&mut layouter, &vec_1, &vec_2)?;
+                    let check = vg.is_equal(&mut layouter, &vec_1, &vec_2)?;
 
                     ng.assert_equal_to_fixed(&mut layouter, &check, equal)?;
                 }
                 TestOpts::Limits => {
                     let vec_1: AssignedVector<F, AssignedNative<F>, M, A> =
-                        ng.assign(&mut layouter, self.input_1.clone())?;
+                        vg.assign(&mut layouter, self.input_1.clone())?;
 
-                    let limits = ng.get_limits(&mut layouter, &vec_1)?;
+                    let limits = vg.get_limits(&mut layouter, &vec_1)?;
                     let (start, end) = vec_1
                         .len
                         .value()
@@ -566,7 +505,7 @@ mod tests {
 
                 TestOpts::Padding => {
                     let vec_1: AssignedVector<F, AssignedNative<F>, M, A> =
-                        ng.assign(&mut layouter, self.input_1.clone())?;
+                        vg.assign(&mut layouter, self.input_1.clone())?;
 
                     let expected: [Value<bool>; M] = vec_1
                         .len
@@ -582,7 +521,7 @@ mod tests {
                         })
                         .transpose_array();
 
-                    let result = ng.padding_flag(&mut layouter, &vec_1)?;
+                    let result = vg.padding_flag(&mut layouter, &vec_1)?;
 
                     for (r, e) in result.iter().zip(expected.iter()) {
                         let e: AssignedBit<F> = ng.assign(&mut layouter, *e)?;
@@ -592,11 +531,11 @@ mod tests {
 
                 TestOpts::Trim { trim_size: n_elems } => {
                     let vec_1: AssignedVector<F, AssignedNative<F>, M, A> =
-                        ng.assign(&mut layouter, self.input_1.clone())?;
+                        vg.assign(&mut layouter, self.input_1.clone())?;
 
-                    let result = ng.trim_beginning(&mut layouter, &vec_1, n_elems)?;
+                    let result = vg.trim_beginning(&mut layouter, &vec_1, n_elems)?;
 
-                    ng.assert_equal_to_fixed(&mut layouter, &result, self.input_2.clone())?;
+                    vg.assert_equal_to_fixed(&mut layouter, &result, self.input_2.clone())?;
                 }
             }
 

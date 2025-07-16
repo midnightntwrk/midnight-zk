@@ -35,6 +35,7 @@ pub mod public_input;
 pub mod range_check;
 pub mod scalar_field;
 pub mod sponge;
+pub mod vector;
 pub mod zero;
 
 pub use arithmetic::ArithInstructions;
@@ -59,4 +60,5 @@ pub use public_input::PublicInputInstructions;
 pub use range_check::RangeCheckInstructions;
 pub use scalar_field::ScalarFieldInstructions;
 pub use sponge::{SpongeCPU, SpongeInstructions};
+pub use vector::VectorInstructions;
 pub use zero::ZeroInstructions;

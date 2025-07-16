@@ -34,10 +34,12 @@ use crate::{
     instructions::{
         base64::{Base64VarInstructions, Base64Vec},
         ArithInstructions, AssignmentInstructions, Base64Instructions, ControlFlowInstructions,
-        DecompositionInstructions, EqualityInstructions, RangeCheckInstructions, ZeroInstructions,
+        DecompositionInstructions, EqualityInstructions, RangeCheckInstructions,
+        VectorInstructions, ZeroInstructions,
     },
-    types::{AssignedByte, AssignedVector, InnerValue, VectorInstructions},
+    types::{AssignedByte, AssignedVector, InnerValue},
     utils::ComposableChip,
+    vec::vector_gadget::VectorGadget,
 };
 
 /// Number of advice columns in [Base64Chip].
@@ -79,6 +81,7 @@ where
     F: PrimeField,
 {
     config: Base64Config,
+    vector_gadget: VectorGadget<F>,
     native_gadget: NG<F>,
 }
 
@@ -139,7 +142,9 @@ impl<F: PrimeField, const M: usize, const A: usize> Base64VarInstructions<F, M, 
     ) -> Result<Base64Vec<F, M, A>, Error> {
         let ng = &self.native_gadget;
 
-        let vec = ng.assign_with_filler(layouter, value.clone(), Some(ALT_PAD as u8))?;
+        let vec =
+            self.vector_gadget
+                .assign_with_filler(layouter, value.clone(), Some(ALT_PAD as u8))?;
 
         //  A base64 string length must be multiple of 4.
         let q = {
@@ -166,8 +171,9 @@ impl<F: PrimeField, const M: usize, const A: usize> Base64VarInstructions<F, M, 
         vec: &AssignedVector<F, AssignedByte<F>, M, A>,
     ) -> Result<Base64Vec<F, M, A>, Error> {
         let ng = &self.native_gadget;
+        let vg = &self.vector_gadget;
         let filler = ng.assign_fixed(layouter, ALT_PAD as u8)?;
-        let flags = ng.padding_flag(layouter, vec)?;
+        let flags = vg.padding_flag(layouter, vec)?;
         let result = vec
             .buffer
             .iter()
@@ -415,6 +421,7 @@ impl<F: PrimeField> ComposableChip<F> for Base64Chip<F> {
         Self {
             config: config.clone(),
             native_gadget: sub_chips.clone(),
+            vector_gadget: VectorGadget::new(sub_chips),
         }
     }
 
@@ -499,6 +506,7 @@ mod tests {
         field::decomposition::chip::P2RDecompositionConfig,
         instructions::{AssertionInstructions, AssignmentInstructions},
         testing_utils::FromScratch,
+        vec::vector_gadget::VectorGadget,
     };
 
     type Fp = blstrs::Fq;
@@ -581,6 +589,7 @@ mod tests {
 
             // Create chips.
             let ng: NG<F> = NativeGadget::new_from_scratch(&config.0);
+            let vg = VectorGadget::new(&ng);
             let b64_chip = Base64Chip::new(&config.1, &ng);
 
             // Load tables.
@@ -596,7 +605,7 @@ mod tests {
                 } else {
                     b64_chip.var_decode_base64(&mut layouter, &assigned_in_var)
                 }?;
-                ng.assert_equal_to_fixed(&mut layouter, &ret_var, self.output.clone())?;
+                vg.assert_equal_to_fixed(&mut layouter, &ret_var, self.output.clone())?;
             } else {
                 // Fixed length.
                 let input_vals: Vec<Value<u8>> =
