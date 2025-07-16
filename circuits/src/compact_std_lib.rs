@@ -1159,17 +1159,17 @@ impl MidnightVK {
     ///
     /// # WARNING
     /// Use `RawBytesUnchecked` only if you trust the party who wrote the key.
-    pub fn read<R: io::Read, Rel: Relation>(
-        reader: &mut R,
-        format: SerdeFormat,
-    ) -> io::Result<Self> {
+    pub fn read<R: io::Read>(reader: &mut R, format: SerdeFormat) -> io::Result<Self> {
         let architecture = ZkStdLibArch::read(reader)?;
 
         let mut bytes = [0u8; 4];
         reader.read_exact(&mut bytes)?;
         let nb_public_inputs = u32::from_le_bytes(bytes) as usize;
 
-        let vk = VerifyingKey::read::<R, MidnightCircuit<Rel>>(reader, format, architecture)?;
+        let mut cs = ConstraintSystem::default();
+        let _config = ZkStdLib::configure(&mut cs, architecture);
+
+        let vk = VerifyingKey::read_from_cs::<R>(reader, format, cs)?;
 
         Ok(MidnightVK {
             architecture,

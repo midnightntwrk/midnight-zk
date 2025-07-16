@@ -99,7 +99,7 @@ where
         Ok(())
     }
 
-    /// Reads a verification key from a buffer.
+    /// Reads a verification key from a buffer for the associated [Circuit].
     ///
     /// Reads a curve element from the buffer and parses it according to the
     /// `format`:
@@ -111,11 +111,39 @@ where
     ///   Montgomery form. Checks that field elements are less than modulus, and
     ///   then checks that the point is on the curve.
     /// - `RawBytesUnchecked`: Reads an uncompressed curve element with
-    ///   coordinates in Montgomery form; does not perform any checks
+    ///   coordinates in Montgomery form; does not perform any checks.
     pub fn read<R: io::Read, ConcreteCircuit: Circuit<F>>(
         reader: &mut R,
         format: SerdeFormat,
         #[cfg(feature = "circuit-params")] params: ConcreteCircuit::Params,
+    ) -> io::Result<Self> {
+        let mut cs = ConstraintSystem::default();
+        #[cfg(feature = "circuit-params")]
+        let _config = ConcreteCircuit::configure_with_params(&mut cs, params);
+        #[cfg(not(feature = "circuit-params"))]
+        let _config = ConcreteCircuit::configure(&mut cs);
+
+        Self::read_from_cs(reader, format, cs)
+    }
+
+    /// Reads a verification key from a buffer, using the provided
+    /// [ConstraintSystem].
+    ///
+    /// Reads a curve element from the buffer and parses it according to the
+    /// `format`:
+    /// - `Processed`: Reads a compressed curve element and decompresses it.
+    ///   Reads a field element in standard form, with endianness specified by
+    ///   the `PrimeField` implementation, and checks that the element is less
+    ///   than the modulus.
+    /// - `RawBytes`: Reads an uncompressed curve element with coordinates in
+    ///   Montgomery form. Checks that field elements are less than modulus, and
+    ///   then checks that the point is on the curve.
+    /// - `RawBytesUnchecked`: Reads an uncompressed curve element with
+    ///   coordinates in Montgomery form; does not perform any checks.
+    pub fn read_from_cs<R: io::Read>(
+        reader: &mut R,
+        format: SerdeFormat,
+        cs: ConstraintSystem<F>,
     ) -> io::Result<Self> {
         let mut version_byte = [0u8; 1];
         reader.read_exact(&mut version_byte)?;
@@ -136,11 +164,8 @@ where
             ));
         }
 
-        let (domain, cs, _) = keygen::create_domain::<F, ConcreteCircuit>(
-            k as u32,
-            #[cfg(feature = "circuit-params")]
-            params,
-        );
+        let domain = EvaluationDomain::new(cs.degree() as u32, k.into());
+
         let mut num_fixed_columns = [0u8; 4];
         reader.read_exact(&mut num_fixed_columns)?;
         let num_fixed_columns = u32::from_le_bytes(num_fixed_columns);
