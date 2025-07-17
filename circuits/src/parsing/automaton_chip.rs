@@ -48,7 +48,7 @@ use {
     crate::testing_utils::FromScratch, midnight_proofs::plonk::Instance,
 };
 
-use super::{automaton::Automaton, REGEX_ALPHABET_MAX_SIZE};
+use super::automaton::{Automaton, ALPHABET_MAX_SIZE};
 use crate::{
     field::{decomposition::chip::P2RDecompositionChip, AssignedNative, NativeChip, NativeGadget},
     instructions::AssignmentInstructions,
@@ -57,9 +57,9 @@ use crate::{
 };
 
 /// Number of columns for the automata chip.
-pub const NB_AUTOMATA_COLS: usize = 2;
+pub const NB_AUTOMATA_COLS: usize = 3;
 /// Number of columns for the tables of the automata chip.
-pub const NB_AUTOMATA_TABLE_COLS: usize = 3;
+pub const NB_AUTOMATA_TABLE_COLS: usize = 4;
 
 // Native gadget functions.
 type NG<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
@@ -72,10 +72,11 @@ pub struct NativeAutomaton<F> {
     pub initial_state: F,
     /// The final states of the automaton.
     pub final_states: BTreeSet<F>,
-    /// `transitions[state][letter]` gives the transition target when in state
-    /// `state`, reading input `letter`. Can be undefined, in which case it
-    /// means the automaton jumps into an implicit deadlock state.
-    pub transitions: BTreeMap<(F, F), F>,
+    /// `transitions[state][letter]` gives the transition target and its marker
+    /// when in state `state`, reading input `letter`. Can be undefined, in
+    /// which case it means the automaton jumps into an implicit deadlock
+    /// state.
+    pub transitions: BTreeMap<(F, F), (F, F)>,
 }
 
 impl<F> From<&Automaton> for NativeAutomaton<F>
@@ -93,8 +94,11 @@ where
             transitions: value
                 .transitions
                 .iter()
-                .map(|(&(s1, a), &s2)| {
-                    ((F::from(s1 as u64), F::from(a as u64)), F::from(s2 as u64))
+                .map(|(&(s1, a), &(s2, marker))| {
+                    (
+                        (F::from(s1 as u64), F::from(a as u64)),
+                        (F::from(s2 as u64), F::from(marker as u64)),
+                    )
                 })
                 .collect::<BTreeMap<_, _>>(),
         }
@@ -137,9 +141,11 @@ pub struct AutomatonConfig<F> {
     q_automaton: Selector,
     state_col: Column<Advice>,
     letter_col: Column<Advice>,
+    output_col: Column<Advice>,
     t_source: TableColumn,
     t_letter: TableColumn,
     t_target: TableColumn,
+    t_output: TableColumn,
 }
 
 /// Chip for Automaton parsing.
@@ -194,9 +200,11 @@ where
         let (advice_cols, table_cols, automata) = shared_res;
         let state_col = advice_cols[0];
         let letter_col = advice_cols[1];
+        let output_col = advice_cols[2];
         let t_source = table_cols[0];
         let t_letter = table_cols[1];
         let t_target = table_cols[2];
+        let t_output = table_cols[3];
         // The fixed automaton of the configuration. Its set of states is offset by 1 to
         // ensure that 0 is not a reachable state (required due to how the table lookup
         // is filled).
@@ -207,10 +215,12 @@ where
             let source = meta.query_advice(state_col, Rotation::cur());
             let letter = meta.query_advice(letter_col, Rotation::cur());
             let target = meta.query_advice(state_col, Rotation::next());
+            let output = meta.query_advice(output_col, Rotation::cur());
             vec![
                 (q.clone() * source, t_source),
                 (q.clone() * letter, t_letter),
-                (q * target, t_target),
+                (q.clone() * target, t_target),
+                (q * output, t_output),
             ]
         });
 
@@ -219,9 +229,11 @@ where
             q_automaton,
             state_col,
             letter_col,
+            output_col,
             t_source,
             t_letter,
             t_target,
+            t_output,
         }
     }
 
@@ -239,7 +251,7 @@ where
             |mut table| {
                 let mut offset = 0;
                 let mut add_entry =
-                    |source: F, letter: F, target: F| -> Result<(), Error> {
+                    |source: F, letter: F, target: F, marker:F| -> Result<(), Error> {
                         table.assign_cell(
                             || "t_source",
                             self.config.t_source,
@@ -258,27 +270,33 @@ where
                             offset,
                             || Value::known(target),
                         )?;
+                        table.assign_cell(
+                            || "t_output",
+                            self.config.t_output,
+                            offset,
+                            || Value::known(marker),
+                        )?;
                         offset += 1;
                         Ok(())
                     };
 
                 // Dummy transition for empty rows.
-                add_entry(F::ZERO, F::ZERO, F::ZERO)?;
+                add_entry(F::ZERO, F::ZERO, F::ZERO, F::ZERO)?;
 
                 // Main transitions.
                 for automaton in self.config.automata.iter() {
-                    for ((source, letter), target) in automaton.transitions.iter() {
+                    for ((source, letter), (target,output_extr)) in automaton.transitions.iter() {
                             assert!(
                                 *source != F::ZERO && *target != F::ZERO ,
                                 "sanity check failed: the circuit requires that state 0 is not used, but the automaton generation failed to ensure it."
                             );
-                            add_entry(*source, *letter, *target)?
+                            add_entry(*source, *letter, *target, *output_extr)?
                     }
                     // Dummy transitions to represent final states. Recall that letter are 
                     // represented in-circuit by elements of `AssignedByte`, which are therefore 
                     // range-checked to be lower than `REGEX_ALPHABET_MAX_SIZE`.
                     for state in automaton.final_states.iter() {
-                        add_entry(*state, F::from(REGEX_ALPHABET_MAX_SIZE as u64), F::ZERO)?
+                        add_entry(*state, F::from(ALPHABET_MAX_SIZE as u64), F::ZERO, F::ZERO)?
                     }
                 }
                 Ok(())
@@ -305,6 +323,7 @@ where
         automaton_index: usize,
         state: &mut AssignedNative<F>,
         letter: &AssignedByte<F>,
+        markers: &mut Vec<AssignedNative<F>>,
         offset: &mut usize,
     ) -> Result<(), Error> {
         self.config.q_automaton.enable(region, *offset)?;
@@ -318,14 +337,23 @@ where
             self.config.letter_col,
             *offset,
         )?;
-        let next_state_opt_value = state.value().zip(letter.value()).map(|(state, letter)| {
+        let target_opt_value = state.value().zip(letter.value()).map(|(state, letter)| {
             self.config.automata[automaton_index]
                 .transitions
                 .get(&(*state, *letter))
                 .copied()
         });
-        next_state_opt_value.error_if_known_and(|o| o.is_none())?;
-        let next_state_value = next_state_opt_value.map(|o| o.unwrap());
+        target_opt_value.error_if_known_and(|o| o.is_none())?;
+        let target_value = target_opt_value.map(|o| o.unwrap());
+        let next_state_value = target_value.map(|t| t.0);
+        let next_output_value = target_value.map(|t| t.1);
+        let output = region.assign_advice(
+            || "parsing output boolean",
+            self.config.output_col,
+            *offset,
+            || next_output_value,
+        )?;
+        markers.push(output);
         *offset += 1;
         *state = region.assign_advice(
             || "parsing next state",
@@ -337,8 +365,9 @@ where
     }
 
     // Checks that the state, assigned at the current offset in the column
-    // `t_source`, is a final state. This is done by using a dummy transition label
-    // with the invalid byte number 256. If the state is not final (which means the
+    // `t_source`, is a final state. This is done by using a dummy transition
+    // labelled with the invalid byte number 256, and with the target state and
+    // the output marker set to 0. If the state is not final (which means the
     // parsed input does not match the expected regular expression), the circuit
     // will become unsatisfiable.
     fn assert_final_state(
@@ -350,9 +379,15 @@ where
     ) -> Result<(), Error> {
         self.config.q_automaton.enable(region, *offset)?;
         invalid_letter.copy_advice(
-            || (format!("dummy invalid letter ({})", REGEX_ALPHABET_MAX_SIZE)),
+            || (format!("dummy invalid letter ({})", ALPHABET_MAX_SIZE)),
             region,
             self.config.letter_col,
+            *offset,
+        )?;
+        invalid_state.copy_advice(
+            || "dummy output boolean (0)",
+            region,
+            self.config.output_col,
             *offset,
         )?;
         *offset += 1;
@@ -368,7 +403,7 @@ where
     /// Verifies that an input, taken under the form of a slice of
     /// `AssignedNative`, matches the regular expression represented by the
     /// automaton in `self.config.automaton`. Additionally asserts that all
-    /// assigned values of `input` are lower than `REGEX_ALPHABET_MAX_SIZE` to
+    /// assigned values of `input` are lower than `regex::ALPHABET_MAX_SIZE` to
     /// enforce that the slice elements represent valid elements of type
     /// `RegexLetter`.
     pub fn parse(
@@ -376,7 +411,7 @@ where
         layouter: &mut impl Layouter<F>,
         automaton_index: usize,
         input: &[AssignedByte<F>],
-    ) -> Result<(), Error> {
+    ) -> Result<Vec<AssignedNative<F>>, Error> {
         assert!(automaton_index < self.config.automata.len(),
             "Attempted to parse the automaton nb {automaton_index} of a configuration that only contains {} automata.", 
             self.config.automata.len()
@@ -387,13 +422,14 @@ where
         )?;
         let invalid_letter: AssignedNative<F> = self
             .native_gadget
-            .assign_fixed(layouter, F::from(REGEX_ALPHABET_MAX_SIZE as u64))?;
+            .assign_fixed(layouter, F::from(ALPHABET_MAX_SIZE as u64))?;
         let invalid_state: AssignedNative<F> =
             self.native_gadget.assign_fixed(layouter, F::from(0))?;
         layouter.assign_region(
             || "parsing layout",
             |mut region| {
                 let mut offset = 0;
+                let mut markers = Vec::with_capacity(input.len());
                 let mut state = init_state.copy_advice(
                     || "initial state",
                     &mut region,
@@ -406,6 +442,7 @@ where
                         automaton_index,
                         &mut state,
                         letter,
+                        &mut markers,
                         &mut offset,
                     )
                 })?;
@@ -414,7 +451,8 @@ where
                     invalid_letter.clone(),
                     invalid_state.clone(),
                     &mut offset,
-                )
+                )?;
+                Ok(markers)
             },
         )
     }
@@ -430,28 +468,43 @@ impl Automaton {
     // 2. at least one "hello" and one "world"
     // 3. an arbitrary sequence of characters different from '!' at the end of the
     //    string.
+    // The definition of the regex purposely performs some non succinct operations
+    // to test several constructions of the library.
     fn hard_coded_example0() -> Self {
-        let hellos = Regex::word("hello").separated_non_empty_list(" ".into());
-        let worlds = Regex::word("world").separated_non_empty_list(",".into());
+        let hellos = Regex::word("hello").separated_non_empty_list(Regex::blanks_strict());
+        let worlds = Regex::word("world").separated_non_empty_list(Regex::cat([
+            Regex::blanks(),
+            ",".into(),
+            Regex::blanks(),
+        ]));
         let marks5 = Regex::word("!").repeat(5);
-        let trail = Regex::once_any().minus("!".into()).list();
+        let trail = Regex::any_byte().minus("!".into()).list();
         let regex = Regex::separated_cat(
             [
-                hellos.terminated(Regex::one_space()),
-                worlds.delimited(Regex::lparen(), Regex::rparen()),
+                hellos.terminated(Regex::one_blank()),
+                worlds
+                    .delimited(Regex::blanks(), Regex::blanks())
+                    .delimited("(".into(), ")".into()),
                 marks5,
                 trail,
             ],
-            Regex::epsilon(),
+            Regex::blanks(),
         );
         regex.to_automaton()
     }
 
     fn hard_coded_example1() -> Self {
+        // `marker_regex` accepts any character, marking 'l' as 2, and
+        // any other non-blank character different from 'h' as 1.
+        let marker_regex = Regex::any_byte()
+            .update_markers_when(&|b| !b"h\n\t ".contains(&b), 1)
+            .update_markers_on(b"l", 2)
+            .list();
         let holy = Regex::word("holy").terminated(Regex::word("y").list());
         let hell = Regex::word("hell");
         let marks = Regex::word("!").non_empty_list();
-        let regex = Regex::separated_cat([holy, hell, marks], Regex::one_space());
+        let sentence = Regex::separated_cat([holy, hell, marks], Regex::blanks_strict());
+        let regex = sentence.and(marker_regex);
         regex.to_automaton()
     }
 }
