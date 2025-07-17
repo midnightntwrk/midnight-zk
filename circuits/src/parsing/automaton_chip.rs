@@ -581,6 +581,7 @@ where
 mod test {
 
     use ff::PrimeField;
+    use itertools::Itertools;
     use midnight_proofs::{
         circuit::{Layouter, SimpleFloorPlanner, Value},
         dev::MockProver,
@@ -589,27 +590,36 @@ mod test {
 
     use super::AutomatonChip;
     use crate::{
-        instructions::AssignmentInstructions, testing_utils::FromScratch,
+        field::AssignedNative,
+        instructions::{AssertionInstructions, AssignmentInstructions},
+        testing_utils::FromScratch,
+        types::AssignedByte,
         utils::circuit_modeling::circuit_to_json,
     };
 
     #[derive(Clone, Debug, Default)]
-    struct RegexCircuit {
+    struct RegexCircuit<F> {
         input: Vec<Value<u8>>,
+        output: Vec<Value<F>>,
         automaton_index: usize, // Which automaton to use from the hardcoded examples.
     }
 
-    impl RegexCircuit {
-        fn new(s: &str, index: usize) -> Self {
-            let input_bytes = s.bytes().map(Value::known).collect::<Vec<_>>();
+    impl<F: PrimeField> RegexCircuit<F> {
+        fn new(s: &str, output: &[usize], automaton_index: usize) -> Self {
+            let input = s.bytes().map(Value::known).collect::<Vec<_>>();
+            let output = output
+                .iter()
+                .map(|&x| Value::known(F::from(x as u64)))
+                .collect::<Vec<_>>();
             RegexCircuit {
-                input: input_bytes,
-                automaton_index: index,
+                input,
+                output,
+                automaton_index,
             }
         }
     }
 
-    impl<F> Circuit<F> for RegexCircuit
+    impl<F> Circuit<F> for RegexCircuit<F>
     where
         F: PrimeField + Ord,
     {
@@ -640,52 +650,82 @@ mod test {
             let automaton_chip = AutomatonChip::<F>::new_from_scratch(&config);
             AutomatonChip::load_from_scratch(&mut layouter, &config);
 
-            let bytes = automaton_chip
+            let input: Vec<AssignedByte<F>> = automaton_chip
                 .native_gadget
                 .assign_many(&mut layouter, &self.input.clone())?;
+            let output: Vec<AssignedNative<F>> = automaton_chip
+                .native_gadget
+                .assign_many(&mut layouter, &self.output)?;
 
             // The line below can be uncommented to estimate the cost of parsing two times.
             // The difference with parsing 1 time gives a more precise estimate of how many
             // rows the chip consumes.
 
-            // automaton_chip.parse(&mut layouter, 0, &bytes)?;
+            // automaton_chip.parse(&mut layouter, self.automaton_index, &bytes)?;
 
-            automaton_chip.parse(&mut layouter, self.automaton_index, &bytes)
+            println!(">> [test] About to parse an automaton with index {}, which contains {} transitions, and {} final states.",
+                self.automaton_index,
+                automaton_chip.config.automata[self.automaton_index].transitions.len(),
+                automaton_chip.config.automata[self.automaton_index].final_states.len()
+            );
+            let parsed_output =
+                automaton_chip.parse(&mut layouter, self.automaton_index, &input)?;
+            assert!(
+                parsed_output.len() == output.len(),
+                "test failed: the lengths of the
+            parsed output (len = {}) and of the expected output (len = {}) are
+            different",
+                parsed_output.len(),
+                output.len()
+            );
+            parsed_output
+                .iter()
+                .zip_eq(output.iter())
+                .try_for_each(|(o1, o2)| {
+                    automaton_chip
+                        .native_gadget
+                        .assert_equal(&mut layouter, o1, o2)
+                })
         }
     }
 
     fn parsing_one_test(
+        test_index: usize,
         cost_model: bool,
         k: u32,
         input: &str,
-        circuit: &RegexCircuit,
+        output: &[usize],
+        circuit: &RegexCircuit<blstrs::Fq>,
         must_pass: bool,
     ) {
         assert!(
             !cost_model || must_pass,
-            "if cost_model is set to true, must_pass should be set to true"
+            ">> [test {test_index}] (bug) if cost_model is set to true, must_pass should be set to true"
         );
         let prover = MockProver::<midnight_curves::Fq>::run(k, circuit, vec![vec![], vec![]]);
         if must_pass {
             println!(
-                ">> Parsing input {} with automaton {}, which should pass",
-                input, circuit.automaton_index
+                ">> [test {test_index}] Parsing input {} with automaton {}, which should pass (output: {:?})",
+                input, circuit.automaton_index, output
             );
             prover.unwrap().assert_satisfied()
         } else {
             match prover {
                 Ok(prover) => {
                     if let Ok(()) = prover.verify() {
-                        panic!("input {} is incorrectly accepted", input)
+                        panic!(
+                            ">> [test {test_index}] (bug) input {} is incorrectly accepted (output {:?})",
+                            input, output
+                        )
                     } else {
                         println!(
-                            ">> The verifier failed on input {}, which is expected",
+                            ">> [test {test_index}] The verifier failed on input {}, which is expected",
                             input
                         )
                     }
                 }
                 Err(_) => println!(
-                    ">> The prover failed on input {}, which is (supposedly) expected",
+                    ">> [test {test_index}] The prover failed on input {}, which is (supposedly) expected",
                     input
                 ),
             }
@@ -703,27 +743,49 @@ mod test {
     }
 
     // A test to check the validity of the circuit.
-    fn basic_test(input: &str, automaton_index: usize, must_pass: bool) {
+    fn basic_test(
+        test_index: usize,
+        input: &str,
+        output: &[usize],
+        automaton_index: usize,
+        must_pass: bool,
+    ) {
         parsing_one_test(
+            test_index,
             false,
             10,
             input,
-            &RegexCircuit::new(input, automaton_index),
+            output,
+            &RegexCircuit::new(input, output, automaton_index),
             must_pass,
         )
     }
 
+    // A test for inputs that do not match the tested regex.
+    fn basic_fail_test(test_index: usize, input: &str, automaton_index: usize) {
+        basic_test(
+            test_index,
+            input,
+            &vec![0; input.len()],
+            automaton_index,
+            false,
+        )
+    }
+
     // A test to record the performances of the circuit in the golden files.
-    fn perf_test(input: &str, automaton_index: usize, k: u32) {
+    fn perf_test(test_index: usize, input: &str, automaton_index: usize, k: u32) {
         println!(
             "\n>> Performance test (automaton {automaton_index}), input size {}:",
             input.len()
         );
+        let output = vec![0; input.len()];
         parsing_one_test(
+            test_index,
             true,
             k,
             input,
-            &RegexCircuit::new(input, automaton_index),
+            &output,
+            &RegexCircuit::new(input, &output, automaton_index),
             true,
         )
     }
@@ -732,62 +794,115 @@ mod test {
     // Tests automaton parsing.
     fn parsing_test() {
         // Correct inputs for automaton 0.
-        basic_test("hello (world)!!!!!", 0, true);
-        basic_test("hello (world)!!!!!oipdsfihs32,;'p'';@", 0, true);
-        basic_test("hello (world)  !!!!!", 0, true);
-        basic_test("hello (world  )!!!!!", 0, true);
-        basic_test("hello (  world)!!!!!", 0, true);
-        basic_test("hello  hello hello  (world , world ) !!!!!", 0, true);
+        basic_test(0, "hello (world)!!!!!", &[0; 18], 0, true);
+        basic_test(0, "hello (world)!!!!!", &[1; 18], 0, false); // Variant with a wrong output.
         basic_test(
-            "hello  hello hello  (world , world ) !!!!!  ;'{][0(*&6235%  /.,><",
+            1,
+            "hello (world)!!!!!oipdsfihs32,;'p'';@",
+            &[0; 37],
+            0,
+            true,
+        );
+        basic_test(2, "hello (world)  !!!!!", &[0; 20], 0, true);
+        basic_test(2, "hello (world)  !!!!!", &[1; 20], 0, false); // Variant with a wrong output.
+        basic_test(3, "hello (world  )!!!!!", &[0; 20], 0, true);
+        basic_test(4, "hello (  world)!!!!!", &[0; 20], 0, true);
+        basic_test(
+            5,
+            "hello  hello hello  (world , world ) !!!!!",
+            &[0; 42],
             0,
             true,
         );
         basic_test(
+            6,
+            "hello  hello hello  (world , world ) !!!!!  ;'{][0(*&6235%  /.,><",
+            &[0; 65],
+            0,
+            true,
+        );
+        basic_test(
+            7,
             "hello   hello  hello ( world,world  , world )!!!!!",
+            &[0; 50],
             0,
             true,
         );
 
         // Incorrect inputs for automaton 0:
         // Missing '!'.
-        basic_test("hello (world)!!!!", 0, false);
+        basic_fail_test(8, "hello (world)!!!!", 0);
         // Additional '!'.
-        basic_test("hello (world)!!!!!!", 0, false);
+        basic_fail_test(9, "hello (world)!!!!!!", 0);
         // Missing '('.
-        basic_test("hello world)!!!!!", 0, false);
+        basic_fail_test(10, "hello world)!!!!!", 0);
         // Spelling.
-        basic_test("hello (warudo)!!!!!", 0, false);
+        basic_fail_test(11, "hello (warudo)!!!!!", 0);
         // Missing space before '('.
-        basic_test("hello hello hello(world)!!!!!", 0, false);
+        basic_fail_test(12, "hello hello hello(world)!!!!!", 0);
         // "world"s should be separated by ','.
-        basic_test("hello  hello hello  (world  world ) !!!!!", 0, false);
+        basic_fail_test(13, "hello  hello hello  (world  world ) !!!!!", 0);
         // Missing space.
-        basic_test("hello hellohello ( world,world )!!!!!", 0, false);
+        basic_fail_test(14, "hello hellohello ( world,world )!!!!!", 0);
         // Spaces between '!'s.
-        basic_test("hello hellohello ( world,world )!!! !!", 0, false);
+        basic_fail_test(15, "hello hellohello ( world,world )!!! !!", 0);
 
         // Correct inputs for automaton 1.
-        basic_test("holy hell !!!", 1, true);
-        basic_test("holy   hell    !!!!!!", 1, true);
-        basic_test("holyyyy hell !!!", 1, true);
-        basic_test("holyyyy   hell    !!!!!!", 1, true);
+        basic_test(
+            16,
+            "holy hell !!!",
+            &[0, 1, 2, 1, 0, 0, 1, 2, 2, 0, 1, 1, 1],
+            1,
+            true,
+        );
+        basic_test(16, "holy hell !!!", &[0; 13], 1, false); // Variant with a wrong output.
+        basic_test(
+            17,
+            "holy   hell    !!!!!!",
+            &[
+                0, 1, 2, 1, 0, 0, 0, 0, 1, 2, 2, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1,
+            ],
+            1,
+            true,
+        );
+        basic_test(17, "holy   hell    !!!!!!", &[0; 21], 1, false); // Variant with a wrong output.
+        basic_test(
+            18,
+            "holyyyy hell !!!",
+            &[0, 1, 2, 1, 1, 1, 1, 0, 0, 1, 2, 2, 0, 1, 1, 1],
+            1,
+            true,
+        );
+        basic_test(
+            19,
+            "holyyyy   hell    !!!!!!",
+            &[
+                0, 1, 2, 1, 1, 1, 1, 0, 0, 0, 0, 1, 2, 2, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1,
+            ],
+            1,
+            true,
+        );
 
         // Incorrect inputs for automaton 1:
         // Missing space.
-        basic_test("holy hell!!!", 1, false);
-        basic_test("holyhell !!!", 1, false);
-        basic_test("holyhell!!!", 1, false);
-        basic_test("holyyyy hell!!!", 1, false);
-        basic_test("holyyyyhell    !!!!!!", 1, false);
+        basic_fail_test(20, "holy hell!!!", 1);
+        basic_fail_test(21, "holyhell !!!", 1);
+        basic_fail_test(22, "holyhell!!!", 1);
+        basic_fail_test(23, "holyyyy hell!!!", 1);
+        basic_fail_test(24, "holyyyyhell    !!!!!!", 1);
         // Missing '!'.
-        basic_test("holy hell ", 1, false);
-        basic_test("holyyyy      hell   ", 1, false);
+        basic_fail_test(25, "holy hell ", 1);
+        basic_fail_test(26, "holyyyy      hell   ", 1);
         // Additional 'l'.
-        basic_test("holy hellllll !!!", 1, false);
+        basic_fail_test(27, "holy hellllll !!!", 1);
 
-        // Performance inputs for the golden files, using automaton 0.
-        perf_test("hello (world)!!!!!", 0, 10);
-        perf_test("hello hello  hello (world, world  , world )  !!!!!", 0, 10);
+        // Performance inputs for the golden files, using automaton 0, for an input of
+        // 50 bytes.
+        perf_test(
+            28,
+            "hello hello  hello (world, world  , world )  !!!!!",
+            0,
+            10,
+        );
     }
 }

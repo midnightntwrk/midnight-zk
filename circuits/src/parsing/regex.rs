@@ -524,22 +524,23 @@ impl Regex {
 mod tests {
 
     use super::{Regex, RegexInstructions};
-    use crate::parsing::{automaton, regex::REGEX_ALPHABET_MAX_SIZE};
+    use crate::parsing::{automaton, regex::ALPHABET_MAX_SIZE};
 
     // Tests whether a given regular expression accepts or rejects two sets of
     // corresponding strings. Uses the sub-method used in the `automaton.rs` test
     // module.
-    fn regex_one_test(index: usize, regex: &Regex, accepted: &[&str], rejected: &[&str]) {
-        println!("\n>> Testing the regex:\n{:?}", regex);
-        let accepted: &[&[u8]] = &accepted.iter().map(|s| s.as_bytes()).collect::<Vec<_>>();
+    fn regex_one_test(
+        index: usize,
+        regex: &Regex,
+        accepted: &[(&str, &[usize])],
+        rejected: &[&str],
+    ) {
+        let accepted: &[(&[u8], &[usize])] = &accepted
+            .iter()
+            .map(|(s, output)| (s.as_bytes(), *output))
+            .collect::<Vec<_>>();
         let rejected: &[&[u8]] = &rejected.iter().map(|s| s.as_bytes()).collect::<Vec<_>>();
-        automaton::tests::automaton_one_test(
-            index,
-            REGEX_ALPHABET_MAX_SIZE,
-            regex,
-            accepted,
-            rejected,
-        );
+        automaton::tests::automaton_one_test(index, ALPHABET_MAX_SIZE, regex, accepted, rejected);
     }
 
     #[test]
@@ -549,23 +550,17 @@ mod tests {
         let lmao = Regex::word("lmao!");
 
         // hello( )+test( )+lmao!
-        let regex1 = Regex::separated_cat(
+        let regex0 = Regex::separated_cat(
             [hello.clone(), test.clone(), lmao.clone()],
-            Regex::one_space(),
+            Regex::blanks_strict(),
         );
 
-        // [{(hello)*}{(test)*}], with arbitrary spaces between all words and
-        // delimiters (and at least one space between each word).
-        fn bracket_list(r: Regex) -> Regex {
-            r.separated_list(Regex::one_space())
-                .delimited(Regex::lbracket(), Regex::rbracket())
-        }
-        let regex2 = bracket_list(hello.clone())
-            .separated(Regex::spaces(), bracket_list(test.clone()))
-            .delimited(Regex::lsqbracket(), Regex::rsqbracket());
-
-        let accepted1: Vec<&str> = vec!["hello test lmao!", "hello    test    lmao!"];
-        let rejected1: Vec<&str> = vec![
+        let accepted0: Vec<(&str, &[usize])> = vec![
+            ("hello test lmao!", &[0; 16]),
+            ("hello    test    lmao!", &[0; 22]),
+            ("hello \t\t test \n \t lmao!", &[0; 23]),
+        ];
+        let rejected0: Vec<&str> = vec![
             " hello    test    lmao!",
             "hello test lmao! ",
             "hello    test    lmao  !",
@@ -576,17 +571,74 @@ mod tests {
             "hello lma0!",
             "goodbye lmao!",
         ];
-        let accepted2: Vec<&str> = vec![
-            "[ { hello hello hello } { test test test test } ]",
-            "[ { } { test test test test } ]",
-            "[ { hello hello hello } { } ]",
-            "[ { hello      hello   hello } {  test    test test  test   } ]",
-            "[ { hello } { test } ]",
-            "[ { hello}{}]",
-            "[{}{}]",
-            "[{hello hello hello}{test test test test}]",
+
+        // [{(hello)*}{(test)*}], with arbitrary blank characters between all words and
+        // delimiters (and at least one space between each word). All lowercase letters
+        // are marked as 1.
+        fn bracket_list(r: Regex) -> Regex {
+            r.separated_list(Regex::blanks_strict())
+                .delimited(Regex::blanks(), Regex::blanks())
+                .delimited("{".into(), "}".into())
+        }
+
+        let regex1 = Regex::separated_cat(
+            [
+                "[".into(),
+                bracket_list(hello.clone()),
+                bracket_list(test.clone()),
+                "]".into(),
+            ],
+            Regex::blanks(),
+        )
+        .update_markers_when(&|b| b.is_ascii_lowercase(), 1);
+
+        let accepted1: Vec<(&str, &[usize])> = vec![
+            (
+                "[ { hello hello hello } { test test test test } ]",
+                &[
+                    0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0,
+                    1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 0, 0, 0,
+                ],
+            ),
+            (
+                "[ { } { test test test test } ]",
+                &[
+                    0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1,
+                    1, 0, 0, 0, 0,
+                ],
+            ),
+            (
+                "[ { hello hello hello } { } ]",
+                &[
+                    0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0,
+                    0, 0, 0,
+                ],
+            ),
+            (
+                "[ { hello      hello   hello } {  test    test test  test   } ]",
+                &[
+                    0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1,
+                    1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0,
+                    0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0,
+                ],
+            ),
+            (
+                "[ { hello } { test } ]",
+                &[
+                    0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0,
+                ],
+            ),
+            ("[ { hello}{}]", &[0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0]),
+            ("[{}{}]", &[0; 6]),
+            (
+                "[{hello hello hello}{test test test test}]",
+                &[
+                    0, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 0,
+                    1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 0,
+                ],
+            ),
         ];
-        let rejected2: Vec<&str> = vec![
+        let rejected1: Vec<&str> = vec![
             "[ { hello hellohello } { test test test } ]",
             "[ { hello hello hello } { test testtest test } ]",
             "[ { hell hello hello } { test test test test } ]",
@@ -594,7 +646,133 @@ mod tests {
             "[ { { hello hello hello } } { test test test test } ]",
         ];
 
-        regex_one_test(0, &regex1, &accepted1, &rejected1);
-        regex_one_test(1, &regex2, &accepted2, &rejected2);
+        // A regex that accepts any string, and outputs its blank spaces with marker 1.
+        let regex2 = Regex::any_byte().update_markers_on(b" \n\t", 1).list();
+
+        let accepted2: Vec<(&str, &[usize])> = vec![
+            ("", &[]),
+            (
+                "hello test lmao!",
+                &[0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
+            ),
+            (
+                "hello test lmao!\n",
+                &[0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1],
+            ),
+            (
+                " hello    test    lmao!",
+                &[
+                    1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0,
+                ],
+            ),
+            (
+                " he\nllo  \n  test  \t  lmao!",
+                &[
+                    1, 0, 0, 1, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0,
+                ],
+            ),
+            (
+                "[ { hello hello hello } { test test test test } ]",
+                &[
+                    0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1,
+                    0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0,
+                ],
+            ),
+            (
+                "[ { hello hellohello } { test test test } ]",
+                &[
+                    0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0,
+                    0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0,
+                ],
+            ),
+            ("lidhf8*&3@#!$", &[0; 13]),
+            (
+                "lid\n  \thf8 *&3@ #\t!$",
+                &[0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0],
+            ),
+        ];
+        let rejected2: Vec<&str> = vec![];
+
+        // Same as regex2, but outputs spaces, newlines, and tabs with a different
+        // marker (1,2,3 respectively).
+        let regex3 = Regex::any_byte()
+            .update_markers_on(b" ", 1)
+            .update_markers_on(b"\n", 2)
+            .update_markers_on(b"\t", 3)
+            .list();
+
+        let accepted3: Vec<(&str, &[usize])> = vec![
+            ("", &[]),
+            (
+                "hello test lmao!",
+                &[0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
+            ),
+            (
+                "hello test lmao!\n",
+                &[0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 2],
+            ),
+            (
+                " hello    test    lmao!",
+                &[
+                    1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0,
+                ],
+            ),
+            (
+                " he\nllo  \n  test  \t  lmao!",
+                &[
+                    1, 0, 0, 2, 0, 0, 0, 1, 1, 2, 1, 1, 0, 0, 0, 0, 1, 1, 3, 1, 1, 0, 0, 0, 0, 0,
+                ],
+            ),
+            (
+                "[ { hello hello hello } { test test test test } ]",
+                &[
+                    0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1,
+                    0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0,
+                ],
+            ),
+            (
+                "[ { hello hellohello } { test test test } ]",
+                &[
+                    0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0,
+                    0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0,
+                ],
+            ),
+            ("lidhf8*&3@#!$", &[0; 13]),
+            (
+                "lid\n  \thf8 *&3@ #\t!$",
+                &[0, 0, 0, 2, 1, 1, 3, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 3, 0, 0],
+            ),
+        ];
+        let rejected3: Vec<&str> = vec![];
+
+        // Same as regex0, but outputs all blank characters. Harnesses the semantics of
+        // the intersection, which permits to simply intersect regex0 with regex2.
+        let regex4 = regex0.clone().and(regex3.clone());
+
+        let accepted4: Vec<(&str, &[usize])> = vec![
+            (
+                "hello test lmao!",
+                &[0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
+            ),
+            (
+                "hello    test    lmao!",
+                &[
+                    0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0,
+                ],
+            ),
+            (
+                "hello \t\t test \n \t lmao!",
+                &[
+                    0, 0, 0, 0, 0, 1, 3, 3, 1, 0, 0, 0, 0, 1, 2, 1, 3, 1, 0, 0, 0, 0, 0,
+                ],
+            ),
+        ];
+        let rejected4: Vec<&str> = rejected0.clone();
+
+        regex_one_test(0, &regex0, &accepted0, &rejected0);
+        regex_one_test(1, &regex1, &accepted1, &rejected1);
+        regex_one_test(2, &regex2, &accepted2, &rejected2);
+        regex_one_test(3, &regex3, &accepted3, &rejected3);
+        regex_one_test(4, &regex4, &accepted4, &rejected4);
     }
 }

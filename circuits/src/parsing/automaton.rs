@@ -927,33 +927,32 @@ impl Automaton {
 #[cfg(test)]
 impl Automaton {
     /// Executes an automaton for a given sequence of bytes. Returns a vector of
-    /// states, corresponding to the states of the run, and a boolean indicating
-    /// whether the run was stuck.
-    pub(super) fn run(&self, input: &[u8]) -> (Vec<usize>, bool) {
+    /// states (corresponding to the states of the run), a vector of bytes (the
+    /// output of markers for this input), and a boolean indicating whether the
+    /// run was stuck.
+    pub(super) fn run(&self, input: &[u8]) -> (Vec<usize>, Vec<usize>, bool) {
         let mut iter = input.iter();
         let mut current_state = self.initial_state;
+        let mut output = Vec::new();
         let mut states = Vec::new();
         let mut letter = iter.next();
         states.push(current_state);
         // Iterates over the letters of the input and moves accross the states
         // accordingly.
-        while letter.is_some() {
-            match self
-                .transitions
-                .get(&(current_state, *letter.unwrap()))
-                .copied()
-            {
+        while let Some(a) = letter {
+            match self.transitions.get(&(current_state, *a)).copied() {
                 // Interrupted run.
-                None => return (states, true),
+                None => return (states, Vec::new(), true),
                 // The run goes on.
-                Some(state) => {
+                Some((state, marker)) => {
                     current_state = state;
                     states.push(current_state);
+                    output.push(marker);
                     letter = iter.next();
                 }
             }
         }
-        (states, false)
+        (states, output, false)
     }
 }
 
@@ -970,20 +969,25 @@ pub(super) mod tests {
         index: usize,
         alphabet_size: usize,
         regex: &Regex,
-        accepted: &[&[u8]],
+        accepted: &[(&[u8], &[usize])],
         rejected: &[&[u8]],
     ) {
+        accepted.iter().for_each(|(s,o)|
+            assert!(s.len() == o.len(),
+            "[test {index}] There is probably a typo in the tests vectors: the input ({:?}, length = {}) and the expected output ({:?}, length = {}) have different lengths.", 
+            s, s.len(), o, o.len())
+        );
         let automaton = regex.to_automaton_param(alphabet_size);
         println!(
-            "\n\n** TEST no {index}\n** alphabet size = {alphabet_size}\n** {:?}\n** converted to {:?}",
-            regex, automaton
+            "\n\n** TEST no {index}\n** alphabet size = {alphabet_size}\n** automaton {:?}",
+            automaton
         );
-        accepted.iter().for_each(|&s| {
+        accepted.iter().for_each(|&(s,o)| {
             println!(
                 "\n -> testing on input string \"{}\" (bytes: [{}])", String::from_utf8_lossy(s),
                 s.iter().map(|b| b.to_string()).join(", ")
             );
-            let (v,interrupted) = automaton.run(s);
+            let (v,output,interrupted) = automaton.run(s);
             if interrupted {
                 panic!("input was unexpectedly rejected after being stuck after {} transitions", v.len())
             }
@@ -992,7 +996,11 @@ pub(super) mod tests {
                 let state = v[counter-1];
                 let f = automaton.final_states.contains(&state);
                 if f {
-                    println!("... which is accepted as expected (the automaton reached the final state {} in {} transitions).", state, counter)
+                    if o.len() == output.len() && o.iter().zip_eq(output.iter()).all(|(o1,o2)| o1 == o2) {
+                        println!("... which is accepted and marked:\n{:?}\nas expected. The automaton reached the final state {} in {} transitions.", output, state, counter)
+                    } else {
+                        panic!("[test {index}]: the input {:?} is accepted as expected, but it is marked:\n{:?}\nwhereas the following markers were expected:\n{:?}\nThe automaton reached the final state {} in {} transitions.", s, output, o, state, counter)
+                    }
                 } else {
                     panic!("input was unexpectedly rejected (automaton run ended up in the non-final state {} after {} transitions)", state, counter)
                 }
@@ -1003,7 +1011,7 @@ pub(super) mod tests {
                 "\n -> testing on input string \"{}\" (bytes: [{}])", String::from_utf8_lossy(s),
                 s.iter().map(|b| b.to_string()).join(", ")
             );
-            let (v,interrupted) = automaton.run(s);
+            let (v,output,interrupted) = automaton.run(s);
             if interrupted {
                 println!("... which is rejected as expected (the automaton run was stuck after {} transitions).", v.len())
             } else {
@@ -1011,7 +1019,7 @@ pub(super) mod tests {
                 let state = v[counter-1];
                     let f = automaton.final_states.contains(&state);
                     if f {
-                        panic!("input was unexpectedly accepted (reached final state {} after {} transitions).", state, counter)
+                        panic!("input was unexpectedly accepted (reached final state {} after {} transitions and outputs {:?}).", state, counter, output)
                     } else {
                         println!("... which is rejected as expected (the automaton run ended up in the non-final state {} after {} transitions).", state, counter)
                     }
@@ -1021,41 +1029,52 @@ pub(super) mod tests {
 
     #[test]
     fn automaton_test() {
-        let regex0 = Regex::once(1);
-        let accepted0: &[&[u8]] = &[&[1]];
+        let zero: Regex = 0.into();
+        let one: Regex = 1.into();
+        let two: Regex = 2.into();
+
+        let regex0 = one.clone();
+        let accepted0: &[(&[u8], &[usize])] = &[(&[1], &[0])];
         let rejected0: &[&[u8]] = &[&[0], &[], &[0, 1], &[1, 1], &[2]];
 
-        let regex1 = Regex::once(1).terminated(Regex::once(2));
-        let accepted1: &[&[u8]] = &[&[1, 2]];
+        let regex1 = one.clone().terminated(two.clone());
+        let accepted1: &[(&[u8], &[usize])] = &[(&[1, 2], &[0; 2])];
         let rejected1: &[&[u8]] = &[&[0], &[], &[0, 1], &[1, 1], &[1, 2, 0]];
 
-        let regex2 = Regex::cat([Regex::once(1), Regex::list(Regex::once(2)), Regex::once(0)]);
-        let accepted2: &[&[u8]] = &[&[1, 0], &[1, 2, 0], &[1, 2, 2, 0], &[1, 2, 2, 2, 0]];
+        let regex2 = Regex::cat([one.clone(), two.clone().list(), zero.clone()]);
+        let accepted2: &[(&[u8], &[usize])] = &[
+            (&[1, 0], &[0; 2]),
+            (&[1, 2, 0], &[0; 3]),
+            (&[1, 2, 2, 0], &[0; 4]),
+            (&[1, 2, 2, 2, 0], &[0; 5]),
+        ];
         let rejected2: &[&[u8]] = &[&[0], &[], &[0, 1], &[1, 1], &[1, 0, 2], &[1, 2]];
 
         let regex3 = Regex::cat([
-            Regex::once(1),
-            Regex::non_empty_list(Regex::once(2)),
-            Regex::list(Regex::once(0)),
+            one.clone(),
+            two.clone().non_empty_list(),
+            zero.clone().list(),
         ]);
-        let accepted3: &[&[u8]] = &[&[1, 2, 0], &[1, 2], &[1, 2, 2, 0], &[1, 2, 2, 2, 0]];
+        let accepted3: &[(&[u8], &[usize])] = &[
+            (&[1, 2, 0], &[0; 3]),
+            (&[1, 2], &[0; 2]),
+            (&[1, 2, 2, 0], &[0; 4]),
+            (&[1, 2, 2, 2, 0], &[0; 5]),
+        ];
         let rejected3: &[&[u8]] = &[&[0], &[], &[0, 1], &[1, 0], &[1, 1], &[1, 0, 2], &[1, 2, 1]];
 
-        let regex4 = Regex::minus(Regex::once(1), Regex::once(1));
-        let accepted4: &[&[u8]] = &[];
+        let regex4 = one.clone().minus(one.clone());
+        let accepted4: &[(&[u8], &[usize])] = &[];
         let rejected4: &[&[u8]] = &[&[0], &[], &[0, 1], &[1, 0], &[1, 1], &[1, 0, 2], &[1, 2]];
 
-        let regex5 = Regex::minus(
-            Regex::list(Regex::once_any()),
-            Regex::list(Regex::or([Regex::once(0), Regex::once(1)])),
-        );
-        let accepted5: &[&[u8]] = &[
-            &[2],
-            &[0, 2],
-            &[2, 1],
-            &[0, 2, 1],
-            &[0, 2, 2, 1, 2],
-            &[2, 1, 2, 0, 1, 1],
+        let regex5 = Regex::any().minus(zero.clone().or(one.clone()).list());
+        let accepted5: &[(&[u8], &[usize])] = &[
+            (&[2], &[0]),
+            (&[0, 2], &[0; 2]),
+            (&[2, 1], &[0; 2]),
+            (&[0, 2, 1], &[0; 3]),
+            (&[0, 2, 2, 1, 2], &[0; 5]),
+            (&[2, 1, 2, 0, 1, 1], &[0; 6]),
         ];
         let rejected5: &[&[u8]] = &[
             &[],
@@ -1067,21 +1086,24 @@ pub(super) mod tests {
             &[1, 1, 1, 0, 1, 1],
         ];
 
-        let regex6 = Regex::minus(
-            regex5.clone(),
-            Regex::minus(
-                Regex::list(Regex::once_any()),
-                Regex::list(Regex::minus(Regex::once_any(), Regex::once(2))),
-            ),
-        );
-        let accepted6: &[&[u8]] = &[];
+        let regex6 = regex5
+            .clone()
+            .minus(Regex::any().minus(Regex::any_byte().minus(two.clone()).list()));
+        let accepted6: &[(&[u8], &[usize])] = &[];
         let rejected6: &[&[u8]] = &[&[0], &[], &[0, 1], &[1, 0], &[1, 1], &[1, 0, 2], &[1, 2]];
 
-        let regex7 = Regex::minus(
-            Regex::list(Regex::minus(Regex::once_any(), Regex::once(2))),
-            Regex::once(0),
-        );
-        let accepted7: &[&[u8]] = &[&[], &[0, 1], &[0, 0], &[1, 0], &[1, 1], &[0, 1, 0, 1, 0]];
+        let regex7 = Regex::any_byte()
+            .minus(Regex::byte_from([2]))
+            .list()
+            .minus(Regex::byte_from([0]));
+        let accepted7: &[(&[u8], &[usize])] = &[
+            (&[], &[]),
+            (&[0, 1], &[0; 2]),
+            (&[0, 0], &[0; 2]),
+            (&[1, 0], &[0; 2]),
+            (&[1, 1], &[0; 2]),
+            (&[0, 1, 0, 1, 0], &[0; 5]),
+        ];
         let rejected7: &[&[u8]] = &[
             &[0],
             &[2],
