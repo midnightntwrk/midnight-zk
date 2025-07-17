@@ -83,6 +83,7 @@ impl Relation for RSASignatureCircuit {
             bls12_381: false,
             base64: false,
             nr_pow2range_cols: 4,
+            automaton: false,
         }
     }
 

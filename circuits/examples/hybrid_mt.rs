@@ -339,6 +339,7 @@ impl Relation for HybridMtExample {
             bls12_381: false,
             base64: false,
             nr_pow2range_cols: 1,
+            automaton: false,
         }
     }
 

@@ -1,5 +1,7 @@
 //! Example of verifying the validity of an ECDSA signed Atala identity JSON.
 
+use std::time::Instant;
+
 use halo2curves::secp256k1::{Fq as secp256k1Scalar, Secp256k1};
 use midnight_circuits::{
     compact_std_lib::{self, Relation, ShaTableSize, ZkStdLib, ZkStdLibArch},
@@ -137,6 +139,7 @@ impl Relation for AtalaJsonECDSA {
             bls12_381: false,
             base64: true,
             nr_pow2range_cols: 3,
+            automaton: false,
         }
     }
 
@@ -272,19 +275,31 @@ fn main() {
 
     let relation = AtalaJsonECDSA;
 
+    let start = |msg: &str| -> Instant {
+        println!("{msg}");
+        Instant::now()
+    };
+
+    let setup = start("Setting up the vk/pk");
     let vk = compact_std_lib::setup_vk(&srs, &relation);
     let pk = compact_std_lib::setup_pk(&relation, &vk);
+    println!("... done ({:?})", setup.elapsed());
 
     // Build the instance and witness to be proven.
+    let wit = start("Computing instance and witnesses");
     let instance = PublicKey::from_base64(PUB_KEY).expect("Base64 encoded PK");
     let witness = AtalaJsonECDSA::witness_from_blob(BLOB);
     let witness = (witness.0, witness.1, HOLDER_SK);
+    println!("... done ({:?})", wit.elapsed());
 
+    let p = start("Proof generation");
     let proof = compact_std_lib::prove::<AtalaJsonECDSA, blake2b_simd::State>(
         &srs, &pk, &relation, &instance, witness, OsRng,
     )
     .expect("Proof generation should not fail");
+    println!("... done ({:?})", p.elapsed());
 
+    let v = start("Proof verification");
     assert!(
         compact_std_lib::verify::<AtalaJsonECDSA, blake2b_simd::State>(
             &srs.verifier_params(),
@@ -293,7 +308,8 @@ fn main() {
             &proof
         )
         .is_ok()
-    )
+    );
+    println!("... done ({:?})", v.elapsed())
 }
 
 // Helper functions for base64 encoded credentials.
