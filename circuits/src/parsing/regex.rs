@@ -20,7 +20,10 @@
 // regular expressions. A method `to_automaton()` is also defined to convert
 // them into a finite automata as they are easier to process in circuits.
 
-use std::{collections::HashSet, iter::once};
+use std::{
+    collections::{HashMap, HashSet},
+    iter::once,
+};
 
 use super::automaton::{Automaton, RawAutomaton, ALPHABET_MAX_SIZE};
 
@@ -115,83 +118,19 @@ where
     /// collection.
     fn byte_from(l: impl IntoIterator<Item = u8>) -> Self;
 
-    /// The complement of a regular expression, that is, it characterises any
-    /// sequence of bytes that does not match the regular expression. Fails if
-    /// any marker is under an odd number of negations.
-    fn neg(self) -> Self;
-
-    /// Union of the languages of a finite sequence of regular expressions.
-    /// Yields the empty language for empty iterators.
-    ///
-    /// Note: Avoid using this method (and `Self::and`) when alternatives exist,
-    /// such as `Self::byte_from`. This method is generic and tends to create a
-    /// large number of additional states which are costly to handle during the
-    /// (exponential) determinisation process.
-    fn union<S: IntoIterator<Item = Self>>(l: S) -> Self;
-
-    /// Intersection of the languages of a finite sequence of regular
-    /// expressions. Yields the universal language for empty iterators.
-    ///
-    /// Two identical bytes with different markers are considered different when
-    /// intersecting, except when one of the two markers is 0 (in which case
-    /// the intersection yields the letter with the non-zero marker).
-    fn inter<S: IntoIterator<Item = Self>>(l: S) -> Self;
-
-    /// Extension of `Regex::terminated` to the concatenation of a finite
-    /// sequence of regular expressions. Yields the empty word
-    /// (`Self::epsilon`) for empty iterators.
-    fn cat<S: IntoIterator<Item = Self>>(l: S) -> Self;
-
-    /// Matches any number of successive copies (0 or more) of a regular
-    /// expression.
-    fn list(self) -> Self;
-
-    /// Regular expression matching the empty string.
-    fn epsilon() -> Self {
-        Self::cat([])
+    /// A regular expression matching any single unmarked byte that does not
+    /// belong to a given collection. Is equivalent to
+    /// `Self::any_byte().minus(Self::byte_from(l))` but is more efficient.
+    fn byte_not_from(l: impl IntoIterator<Item = u8>) -> Self {
+        let mut bytes: [bool; ALPHABET_MAX_SIZE - 1] = core::array::from_fn(|_| true);
+        l.into_iter().for_each(|b| bytes[b as usize] = false);
+        Self::byte_from((0..(ALPHABET_MAX_SIZE - 1) as u8).filter(|&b| bytes[b as usize]))
     }
-
-    /// Matches any positive number of successive copies (1 or more) of a
-    /// regular expression.
-    fn non_empty_list(self) -> Self;
 
     /// A regular expression consisting of a single, arbitrary, and unmarked
     /// byte.
     fn any_byte() -> Self {
         Self::byte_from(0..=(ALPHABET_MAX_SIZE - 1) as u8)
-    }
-
-    /// Concatenates `other` after `self`. This is the binary version of
-    /// `Self::cat`.
-    fn terminated(self, other: Self) -> Self {
-        Self::cat([self, other])
-    }
-
-    /// Union of the two languages represented by `self` and `other`. This is
-    /// the binary version of `Self::union` and has the same limitations.
-    fn or(self, other: Self) -> Self {
-        Self::union([self, other])
-    }
-
-    /// Intersection of the two languages represented by `self` and `other`.
-    /// This is the binary version of `Self::inter` and has the same
-    /// behaviour regarding the intersection of marked strings.
-    fn and(self, other: Self) -> Self {
-        Self::inter([self, other])
-    }
-
-    /// A regular expression accepting any unmarked string. This is equivalent
-    /// to `Self::any_byte().list()`, but more efficient to process.
-    fn any() -> Self {
-        Self::inter([])
-    }
-
-    /// Accepts any word accepted by `self` but not `other`. Is equivalent to
-    /// `and([self, other.neg()])`, in particular regarding markers being
-    /// forbidden in `other`, and markers of `self` not being erased because of
-    /// the absence of markers in `other`.
-    fn minus(self, other: Self) -> Self {
-        self.and(other.neg())
     }
 
     /// Regular expression matching a single string.
@@ -240,27 +179,142 @@ where
         Self::one_blank().list()
     }
 
+    /// The complement of a regular expression, that is, it characterises any
+    /// sequence of bytes that does not match the regular expression. Fails if
+    /// any marker is under an odd number of negations.
+    fn neg(self) -> Self;
+
+    /// Union of the languages of a finite sequence of regular expressions.
+    /// Yields the empty language for empty iterators.
+    fn union<S: IntoIterator<Item = Self>>(l: S) -> Self;
+
+    /// Intersection of the languages of a finite sequence of regular
+    /// expressions. Yields the universal language for empty iterators.
+    ///
+    /// Two identical bytes with different markers are considered different when
+    /// intersecting, except when one of the two markers is 0 (in which case
+    /// the intersection yields the letter with the non-zero marker).
+    fn inter<S: IntoIterator<Item = Self>>(l: S) -> Self;
+
+    /// Concatenates a finite sequence of regular expressions. This is the n-ary
+    /// Extension of `Regex::terminated`. Yields the empty word
+    /// (`Self::epsilon`) for empty iterators.
+    fn cat<S: IntoIterator<Item = Self>>(l: S) -> Self;
+
+    /// Similar as `Self::cat` but inserts 0 or more blank characters between
+    /// each concatenated object.
+    fn spaced_cat<S: IntoIterator<Item = Self>>(l: S) -> Self {
+        Self::separated_cat(l, Self::blanks())
+    }
+
+    /// Matches any number of successive copies (0 or more) of a regular
+    /// expression.
+    fn list(self) -> Self;
+
+    /// Similar as `Self::list`, but inserts (0 or more) blank characters
+    /// between each consecutive iteration. Spaces are not inserted when
+    /// considering only 0 or 1 iteration.
+    fn spaced_list(self) -> Self {
+        Self::epsilon().or(self.spaced_non_empty_list())
+    }
+
+    /// Regular expression matching the empty string.
+    fn epsilon() -> Self {
+        Self::cat([])
+    }
+
+    /// Matches any positive number of successive copies (1 or more) of a
+    /// regular expression.
+    fn non_empty_list(self) -> Self;
+
+    /// Similar as `Self::list`, but inserts (0 or more) blank characters
+    /// between each consecutive iteration. Spaces are not inserted when
+    /// considering only 0 or 1 iteration.
+    fn spaced_non_empty_list(self) -> Self {
+        self.clone()
+            .terminated(Self::blanks().terminated(self).list())
+    }
+
+    /// Concatenates `other` after `self`. This is the binary version of
+    /// `Self::cat`.
+    fn terminated(self, other: Self) -> Self {
+        Self::cat([self, other])
+    }
+
+    /// Concatenates `self`, 0 or more blank characters, and `other`. This is
+    /// the binary version of `Self::spaced_cat`.
+    fn spaced_terminated(self, other: Self) -> Self {
+        Self::cat([self, Self::blanks(), other])
+    }
+
+    /// Union of the two languages represented by `self` and `other`. This is
+    /// the binary version of `Self::union`.
+    fn or(self, other: Self) -> Self {
+        Self::union([self, other])
+    }
+
+    /// Intersection of the two languages represented by `self` and `other`.
+    /// This is the binary version of `Self::inter` and has the same
+    /// behaviour regarding the intersection of marked strings.
+    fn and(self, other: Self) -> Self {
+        Self::inter([self, other])
+    }
+
+    /// A regular expression accepting any unmarked string. This is equivalent
+    /// to `Self::any_byte().list()`, but more efficient to process.
+    fn any() -> Self {
+        Self::inter([])
+    }
+
+    /// Accepts any word accepted by `self` but not `other`. Is equivalent to
+    /// `and([self, other.neg()])`, in particular regarding markers being
+    /// forbidden in `other`, and markers of `self` not being erased because of
+    /// the absence of markers in `other`.
+    fn minus(self, other: Self) -> Self {
+        self.and(other.neg())
+    }
+
     /// Regular expression accepting any word of `self` and the empty string.
     fn optional(self) -> Self {
         self.or(Self::epsilon())
     }
 
-    /// Regular expression matching `self` surrounded by two delimiters `op` and
-    /// `cl`.
+    /// Regular expression matching `self` surrounded by two delimiters
+    /// `opening` and `closing`.
     fn delimited(self, opening: Self, closing: Self) -> Self {
         Self::cat([opening, self, closing])
+    }
+
+    /// Regular expression matching `self` surrounded by two delimiters
+    /// `opening` and `closing`. Any (0 or more) blank characters may be
+    /// present after `opening` and before `closing`.
+    fn spaced_delimited(self, opening: Self, closing: Self) -> Self {
+        Self::cat([opening, Self::blanks(), self, Self::blanks(), closing])
     }
 
     /// Similar to `self.non_empty_list`, except that two consecutive
     /// occurrences of `self` are separated by the separator `sep`.
     fn separated_non_empty_list(self, sep: Self) -> Self {
-        self.clone().terminated(Self::cat([sep, self]).list())
+        self.clone().terminated(sep.terminated(self).list())
     }
 
-    /// Similar to `self.list`, except that two consecutive
-    /// occurrences of `self` are separated by the separator `sep`.
+    /// Similar to `self.separated_non_empty_list`, except that 0 or more blank
+    /// characters may surround the separator `sep`.
+    fn spaced_separated_non_empty_list(self, sep: Self) -> Self {
+        self.clone()
+            .terminated(Self::cat([Self::blanks(), sep, Self::blanks(), self]).list())
+    }
+
+    /// Similar to `self.list`, except that two consecutive occurrences of
+    /// `self` are separated by the separator `sep`.
     fn separated_list(self, sep: Self) -> Self {
         Self::epsilon().or(self.separated_non_empty_list(sep))
+    }
+
+    /// Similar to `self.separated_list`, except that 0 or more blank characters
+    /// may surround the separator `sep`.
+    fn spaced_separated_list(self, sep: Self) -> Self {
+        Self::epsilon().or(self.spaced_separated_non_empty_list(sep))
     }
 
     /// Similar to `self::cat`, except that two consecutive
@@ -271,14 +325,37 @@ where
             .unwrap_or(Self::epsilon())
     }
 
+    /// Similar to `self.separated_cat`, except that 0 or more blank characters
+    /// may surround the separator `sep`.
+    fn spaced_separated_cat<S: IntoIterator<Item = Self>>(l: S, sep: Self) -> Self {
+        l.into_iter()
+            .reduce(|acc, r| Self::cat([acc, Self::blanks(), sep.clone(), Self::blanks(), r]))
+            .unwrap_or(Self::epsilon())
+    }
+
     /// Concatenates `self` exactly `n` times.
     fn repeat(self, n: usize) -> Self {
         Self::cat(vec![self; n])
     }
 
-    /// Concatenates `self` between 0 and `n` times (inclusive).
+    /// Concatenates `self` exactly `n` times, with 0 or more blank characters
+    /// between each copy.
+    fn spaced_repeat(self, n: usize) -> Self {
+        Self::spaced_cat(vec![self; n])
+    }
+
+    /// Concatenates `self` between 0 and `n` times (inclusive). The cost of its
+    /// determinisation (happens during the circuit configuration) is
+    /// exponential in `n`.
     fn repeat_at_most(self, n: usize) -> Self {
         Self::union((0..=n).map(|i| self.clone().repeat(i)))
+    }
+
+    /// Concatenates `self` between 0 and `n` times (inclusive), with 0 or more
+    /// blank characters between each copy. The cost of its determinisation
+    /// (happens during the circuit configuration) is exponential in `n`.
+    fn spaced_repeat_at_most(self, n: usize) -> Self {
+        Self::union((0..=n).map(|i| self.clone().spaced_repeat(i)))
     }
 
     /// Same as `Self::repeat`, but uses `Self::separated_cat` instead of
@@ -287,11 +364,26 @@ where
         Self::separated_cat(vec![self; n], sep)
     }
 
+    /// Same as `Self::repeat`, but uses `Self::spaced_separated_cat` instead of
+    /// `Self::cat`.
+    fn spaced_separated_repeat(self, n: usize, sep: Self) -> Self {
+        Self::spaced_separated_cat(vec![self; n], sep)
+    }
+
     /// Same as `Self::repeat_at_most`, but uses `Self::separated_cat` instead
-    /// of `Self::cat`.
+    /// of `Self::cat`. The cost of its determinisation (happens during the
+    /// circuit configuration) is exponential in `n`.
     fn separated_repeat_at_most(self, n: usize, sep: Self) -> Self {
         Self::union((0..=n).map(|i| self.clone().separated_repeat(i, sep.clone())))
     }
+
+    /// Same as `Self::repeat_at_most`, but uses `Self::spaced_separated_cat`
+    /// instead of `Self::cat`. The cost of its determinisation (happens during
+    /// the circuit configuration) is exponential in `n`.
+    fn spaced_separated_repeat_at_most(self, n: usize, sep: Self) -> Self {
+        Self::union((0..=n).map(|i| self.clone().spaced_separated_repeat(i, sep.clone())))
+    }
+
     /// Code Point Sequences of UTF-8 encodings. They are patterns of 1 to 4
     /// bytes at the base of UTF-8 (a sequence of bytes corresponds to a valid
     /// UTF-8 encoding if it is a sequence of such patterns). They can be
@@ -565,6 +657,34 @@ impl From<&u8> for Regex {
 }
 
 impl Regex {
+    // Flattens out `Union` structures, and pre-computes disjoint unions of
+    // single-byte ranges. This produces an equivalent Regex which will however be
+    // translated as a smaller automaton. This makes determinisation significant
+    // more efficient for Regex defined with many nested unions.
+    fn flatten_union(l: &[Self]) -> Vec<Self> {
+        let mut res = Vec::with_capacity(l.len());
+        let mut res_single: HashMap<usize, HashSet<u8>> = HashMap::new();
+        let mut pending = Vec::from_iter(l.iter().cloned());
+        while let Some(r) = pending.pop() {
+            match r.content {
+                RegexInternal::Union(v) => pending.extend(v),
+                RegexInternal::Single(v) => {
+                    res_single
+                        .entry(r.toplevel_marker)
+                        .and_modify(|range| range.extend(v.clone()))
+                        .or_insert(HashSet::from_iter(v));
+                }
+                _ => res.push(r),
+            }
+        }
+        for (marker, range) in res_single {
+            let mut r: Regex = RegexInternal::Single(Vec::from_iter(range)).into();
+            r.toplevel_marker = marker;
+            res.push(r);
+        }
+        res
+    }
+
     // Straightforward conversion of a regular expression into a non-deterministic
     // automaton, using the constructions provided in the `automaton` module.
     fn to_raw_automaton(&self, alphabet_size: usize) -> RawAutomaton<usize> {
@@ -574,10 +694,13 @@ impl Regex {
                 accu.concat(&r.to_raw_automaton(alphabet_size))
                     .normalise_states()
             }),
-            RegexInternal::Union(l) => l.iter().fold(RawAutomaton::empty(), |accu, r| {
-                accu.union(&r.to_raw_automaton(alphabet_size))
-                    .normalise_states()
-            }),
+            RegexInternal::Union(l) => RawAutomaton::union(
+                &Self::flatten_union(l)
+                    .iter()
+                    .map(|r| r.to_raw_automaton(alphabet_size))
+                    .collect::<Vec<_>>(),
+            )
+            .normalise_states(),
             RegexInternal::Inter(l) => {
                 l.iter()
                     .fold(RawAutomaton::universal(alphabet_size), |accu, r| {

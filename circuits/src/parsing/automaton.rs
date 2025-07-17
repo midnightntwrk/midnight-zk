@@ -36,6 +36,7 @@ use std::{
     collections::{HashMap, HashSet},
     fmt::Debug,
     hash::Hash,
+    iter::once,
 };
 
 /// Maximal size of the alphabet of an automaton/regex, since input characters
@@ -241,14 +242,14 @@ where
 
 impl<State> RawAutomaton<State>
 where
-    State: Copy + Clone + Eq + Hash + Debug,
+    State: Clone + Eq + Hash + Debug,
 {
     // Adds the set of successors of a given state inside an accumulator, except
     // those belonging to `visited`.
     fn add_next_states(&self, accu: &mut Vec<State>, visited: &HashSet<State>, state: &State) {
         self.transitions.iter().for_each(|(source, _, target)| {
             if *source == *state && !visited.contains(target) {
-                accu.push(*target);
+                accu.push(target.clone());
             }
         });
     }
@@ -258,7 +259,7 @@ where
     fn add_prev_states(&self, accu: &mut Vec<State>, visited: &HashSet<State>, state: &State) {
         self.transitions.iter().for_each(|(source, _, target)| {
             if *target == *state && !visited.contains(source) {
-                accu.push(*source);
+                accu.push(source.clone());
             }
         });
     }
@@ -267,10 +268,10 @@ where
     fn reachable_states(&self) -> HashSet<State> {
         let mut reach_states = HashSet::new();
         let mut pending_states = Vec::with_capacity(self.nb_states);
-        pending_states.push(self.initial_state);
+        pending_states.push(self.initial_state.clone());
 
         while let Some(current_state) = pending_states.pop() {
-            if reach_states.insert(current_state) {
+            if reach_states.insert(current_state.clone()) {
                 self.add_next_states(&mut pending_states, &reach_states, &current_state);
             }
         }
@@ -310,7 +311,7 @@ where
                                 }
                             }
                             Some(a) => {
-                                accu.insert((*state, Some(a), *target));
+                                accu.insert((state.clone(), Some(a), target.clone()));
                             }
                         }
                     }
@@ -330,10 +331,12 @@ where
         // Computing backward reachable states from final states.
         self.final_states
             .iter()
-            .for_each(|s| pending_states.push(*s));
+            .for_each(|s| pending_states.push(s.clone()));
         while let Some(current_state) = pending_states.pop() {
-            if visited.insert(current_state) && reach_states.contains(&current_state) {
-                back_reach_states.insert(current_state);
+            if visited.insert(current_state.clone())
+                && reach_states.contains(&current_state.clone())
+            {
+                back_reach_states.insert(current_state.clone());
                 self.add_prev_states(&mut pending_states, &visited, &current_state);
             }
         }
@@ -341,17 +344,15 @@ where
     }
 }
 
-// Implementation of determinisation and state normalisation.
 impl<State> RawAutomaton<State>
 where
-    State: Copy + Clone + Eq + Hash + Debug,
+    State: Clone + Eq + Hash + Debug,
 {
-    // Converts the set of states into `usize`. Allows in particular to ensure
-    // states now have the Copy and Hash traits. Also, removes non reachable
-    // states, or states that are not backward-reachable from the final states.
-    // Preserves determinism but *not* completeness, since dead states are
-    // removed; therefore the field `deterministic_and_complete`
-    // is set to `false`.
+    /// Converts the set of states into `usize`. Allows in particular to ensure
+    /// states now have the Hash trait. Also, removes non reachable states, or
+    /// states that are not backward-reachable from the final states. Preserves
+    /// determinism but *not* completeness, since dead states are removed;
+    /// therefore the field `deterministic_and_complete` is set to `false`.
     pub(super) fn normalise_states(&self) -> RawAutomaton<usize> {
         let mut states_numbering = HashMap::new();
         let mut counter: usize = 0;
@@ -391,7 +392,13 @@ where
             transitions,
         }
     }
+}
 
+// Implementation of determinisation.
+impl<State> RawAutomaton<State>
+where
+    State: Copy + Clone + Eq + Hash + Debug,
+{
     // Mutates the argument into an equivalent automaton without epsilon
     // transitions.
     //
@@ -518,20 +525,77 @@ impl<State> RawAutomaton<State>
 where
     State: Copy + Clone + Eq + Hash + Debug,
 {
-    // Puts two automata "side-by-side", without connecting their states, and with
-    // an empty set of final states. The initial state is `(None,None)` but is not
-    // connected to the rest of the automaton, this function is only meant to be
-    // used as a precomputation for other automaton methods. The `with_capacity`
-    // argument indicates the expected number of transitions of the final automaton.
-    fn weak_union<S>(
+    /// Computes the union of a collection of automata. Calling this function
+    /// over a collection of size `N` leads to a smaller automaton (before
+    /// minimisation) than calling the function `N-1` in a binary way.
+    pub(super) fn union(automata: &[Self]) -> RawAutomaton<Vec<Option<State>>> {
+        let n = automata.len();
+        let (capacity, nb_states) =
+            automata
+                .iter()
+                .fold((n, 0), |(accu_tr, accu_states), automaton| {
+                    (
+                        accu_tr + automaton.transitions.len(),
+                        accu_states + automaton.nb_states,
+                    )
+                });
+
+        // Computes the embedding of a state of one automaton of `automata` inside the
+        // new automaton (whose states represent the disjoint union of all previous
+        // automata).
+        let combined_state = |index: usize, state: &State| -> Vec<Option<State>> {
+            let mut res = vec![None; n];
+            res[index] = Some(*state);
+            res
+        };
+        // Initial state of the new automaton. It will be linked to the initial states
+        // of all automata of `automata` by epsilon transitions.
+        let initial_state = vec![None; n];
+        let mut transitions = Vec::with_capacity(capacity);
+        let mut final_states = HashSet::new();
+
+        for (index, automaton) in automata.iter().enumerate() {
+            // Pushing an epsilon transition from the new initial state to the initial state
+            // of automaton number `index`.
+            transitions.push((
+                initial_state.clone(),
+                None,
+                combined_state(index, &automaton.initial_state),
+            ));
+            // Adding all transitions of automaton number `index`.
+            for (source, letter, target) in &automaton.transitions {
+                transitions.push((
+                    combined_state(index, source),
+                    *letter,
+                    combined_state(index, target),
+                ));
+            }
+            // Adding all final states of automaton number `index`.
+            for state in &automaton.final_states {
+                final_states.insert(combined_state(index, state));
+            }
+        }
+        RawAutomaton {
+            nb_states,
+            deterministic_and_complete: false,
+            epsilon_transitions: true,
+            initial_state,
+            final_states,
+            transitions,
+        }
+    }
+
+    /// Computes an automaton for the concatenation of two languages.
+    pub(super) fn concat<S>(
         &self,
         rhs: &RawAutomaton<S>,
-        with_capacity: usize,
     ) -> RawAutomaton<(Option<State>, Option<S>)>
     where
-        S: Copy + Clone + Eq + Hash,
+        S: Copy + Clone + Eq + Hash + Debug,
     {
-        let mut transitions = Vec::with_capacity(with_capacity);
+        let mut transitions = Vec::with_capacity(
+            self.transitions.len() + rhs.transitions.len() + self.final_states.len(),
+        );
         self.transitions
             .iter()
             .for_each(|(source, letter, target)| {
@@ -540,60 +604,23 @@ where
         rhs.transitions.iter().for_each(|(source, letter, target)| {
             transitions.push(((None, Some(*source)), *letter, (None, Some(*target))))
         });
-        RawAutomaton {
-            nb_states: self.nb_states + rhs.nb_states,
-            deterministic_and_complete: false,
-            epsilon_transitions: self.epsilon_transitions || rhs.epsilon_transitions,
-            initial_state: (None, None),
-            final_states: HashSet::new(),
-            transitions,
-        }
-    }
-
-    // Computes an automaton for the union of two languages.
-    pub(super) fn union<S>(&self, rhs: &RawAutomaton<S>) -> RawAutomaton<(Option<State>, Option<S>)>
-    where
-        S: Copy + Clone + Eq + Hash,
-    {
-        let mut base = self.weak_union(rhs, self.transitions.len() + rhs.transitions.len() + 2);
-        base.nb_states += 1;
-        base.transitions
-            .push(((None, None), None, (Some(self.initial_state), None)));
-        base.transitions
-            .push(((None, None), None, (None, Some(rhs.initial_state))));
-        base.final_states = (self.final_states.iter().map(|&state| (Some(state), None)))
-            .chain(rhs.final_states.iter().map(|&state| (None, Some(state))))
-            .collect::<HashSet<_>>();
-        base.epsilon_transitions = true;
-        base.deterministic_and_complete = false;
-        base
-    }
-
-    // Computes an automaton for the concatenation of two languages.
-    pub(super) fn concat<S>(
-        &self,
-        rhs: &RawAutomaton<S>,
-    ) -> RawAutomaton<(Option<State>, Option<S>)>
-    where
-        S: Copy + Clone + Eq + Hash + Debug,
-    {
-        let mut base = self.weak_union(
-            rhs,
-            self.transitions.len() + rhs.transitions.len() + self.final_states.len(),
-        );
-        base.initial_state = (Some(self.initial_state), None);
+        let initial_state = (Some(self.initial_state), None);
         self.final_states.iter().for_each(|&state| {
-            base.transitions
-                .push(((Some(state), None), None, (None, Some(rhs.initial_state))));
+            transitions.push(((Some(state), None), None, (None, Some(rhs.initial_state))));
         });
-        base.final_states = rhs
+        let final_states = rhs
             .final_states
             .iter()
             .map(|&state| (None, Some(state)))
             .collect::<HashSet<_>>();
-        base.epsilon_transitions = true;
-        base.deterministic_and_complete = false;
-        base
+        RawAutomaton {
+            nb_states: self.nb_states + rhs.nb_states,
+            deterministic_and_complete: false,
+            epsilon_transitions: true,
+            initial_state,
+            final_states,
+            transitions,
+        }
     }
 
     // Computes an automton for the intersection of two languages. Requires that
@@ -858,6 +885,39 @@ impl Automaton {
 }
 
 impl RawAutomaton<usize> {
+    // Exhibits a path from the initial state to a given state in the automaton.
+    // Panics if such a path does not exist, or if the automaton is not
+    // deterministic (ignoring output-determinism).
+    fn witness_reachability(&self, state: usize) -> Vec<u8> {
+        // `reachability[s]` contains a minimal sequence of `Letter` that can be read to
+        // reach `state` from `s`.
+        let mut reachability = vec![None; self.nb_states];
+        reachability[state] = Some(vec![]);
+        // `pending` contains some states that have recently been assigned a path in
+        // `reachability`.
+        let mut pending = vec![state];
+        // Main loop, extending paths backwards from pending states.
+        while let Some(pending_state) = pending.pop() {
+            if reachability[self.initial_state].is_some() {
+                break;
+            }
+            for (source, letter, target) in &self.transitions {
+                if *target == pending_state && reachability[*source].is_none() {
+                    let letter = letter.expect("(bug) witness_reachability has been called on an automaton with epsilon transitions");
+                    let path = reachability[pending_state].as_ref().unwrap();
+                    let extended_path = once(letter.char)
+                        .chain(path.iter().copied())
+                        .collect::<Vec<_>>();
+                    reachability[*source] = Some(extended_path);
+                    pending.push(*source);
+                }
+            }
+        }
+        reachability[self.initial_state]
+            .clone()
+            .expect("(bug) witness_reachability has been called on an unreachable state {state}")
+    }
+
     /// Conversion into a minimal deterministic automaton. Mutates the argument
     /// to determinise it.
     pub(super) fn normalise(&mut self) -> Automaton {
@@ -884,7 +944,16 @@ impl RawAutomaton<usize> {
                             if letter.marker == marker2 {
                                 panic!("(bug) determinisation was incorrect: source state {source} was pointing to both targets {target} and {target2} after letter {} (marked {})", letter.char, letter.marker)
                             } else {
-                                panic!("a non output-deterministic language has been specified. In some cases, it is unclear whether letter {} should be marked {} or {}", letter.char, letter.marker, marker2)
+                                let bugged_path = self.witness_reachability(*source);
+                                panic!(
+                                    "a non output-deterministic language has been specified. After reading the string:\n\n{}\n\n(i.e., bytes [{:?}])\nit is unclear whether character '{}' (byte {}) should be marked {} or {}",
+                                    String::from_utf8_lossy(&bugged_path),
+                                    bugged_path,
+                                    letter.char as char,
+                                    letter.char,
+                                    letter.marker,
+                                    marker2
+                                )
                             }
                         }
                     }
@@ -989,11 +1058,11 @@ pub(super) mod tests {
             );
             let (v,output,interrupted) = automaton.run(s);
             if interrupted {
-                panic!("input was unexpectedly rejected after being stuck after {} transitions", v.len())
+                panic!("input was unexpectedly rejected after being stuck after {} transitions", v.len()-1)
             }
             else {
-                let counter = v.len();
-                let state = v[counter-1];
+                let counter = v.len() - 1;
+                let state = v[counter];
                 let f = automaton.final_states.contains(&state);
                 if f {
                     if o.len() == output.len() && o.iter().zip_eq(output.iter()).all(|(o1,o2)| o1 == o2) {
@@ -1015,8 +1084,8 @@ pub(super) mod tests {
             if interrupted {
                 println!("... which is rejected as expected (the automaton run was stuck after {} transitions).", v.len())
             } else {
-                let counter = v.len();
-                let state = v[counter-1];
+                let counter = v.len() - 1;
+                let state = v[counter];
                     let f = automaton.final_states.contains(&state);
                     if f {
                         panic!("input was unexpectedly accepted (reached final state {} after {} transitions and outputs {:?}).", state, counter, output)
