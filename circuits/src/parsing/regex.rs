@@ -119,13 +119,6 @@ where
     /// sequence of bytes that does not match the regular expression. Fails if
     /// any marker is under an odd number of negations.
     fn neg(self) -> Self;
-    /// Intersection of the languages of a finite sequence of regular
-    /// expressions. Yields the universal language for empty iterators.
-    ///
-    /// Two identical bytes with different markers are considered different when
-    /// intersecting, except when one of the two markers is 0 (in which case
-    /// the intersection yields the letter with the non-zero marker).
-    fn inter<S: IntoIterator<Item = Self>>(l: S) -> Self;
 
     /// Union of the languages of a finite sequence of regular expressions.
     /// Yields the empty language for empty iterators.
