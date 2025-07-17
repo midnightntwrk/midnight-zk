@@ -84,7 +84,7 @@ use midnight_proofs::{
 use rand::{CryptoRng, RngCore};
 
 use crate::{
-    inner_product_argument::{ipa_prove, ipa_verify, IpaProof},
+    inner_product_argument::{ipa_prove, ipa_verify},
     light_fiat_shamir::LightPoseidonFS,
     light_self_emulation::{FakeCurveChip, LightBlstrsEmulation},
 };
@@ -127,7 +127,7 @@ pub struct MetaProof<const NB_PROOFS: usize> {
     acc_rhs_evaluated: C, // The validity of this will be guaranteed by an IPA proof
     acc_rhs_bases: Vec<C>,
     acc_rhs_scalars_committed: C,
-    ipa_proof: IpaProof<C>,
+    ipa_proof: Vec<u8>,
 }
 
 impl<const NB_PROOFS: usize> MetaProof<NB_PROOFS> {
@@ -148,7 +148,8 @@ impl<const NB_PROOFS: usize> MetaProof<NB_PROOFS> {
 
         self.acc_rhs_scalars_committed.write(writer, format)?;
 
-        self.ipa_proof.write(writer, format)
+        writer.write_all(&(self.ipa_proof.len() as u64).to_le_bytes())?;
+        writer.write_all(&self.ipa_proof)
     }
 
     /// Reads a meta proof from a buffer.
@@ -174,7 +175,9 @@ impl<const NB_PROOFS: usize> MetaProof<NB_PROOFS> {
 
         let acc_rhs_scalars_committed = C::read(reader, format)?;
 
-        let ipa_proof = IpaProof::read(reader, format)?;
+        reader.read_exact(&mut bytes)?;
+        let mut ipa_proof = vec![0u8; u64::from_le_bytes(bytes) as usize];
+        reader.read_exact(&mut ipa_proof)?;
 
         Ok(Self {
             proof,
@@ -462,14 +465,18 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
             bases1.resize(k, C::identity());
             bases2.resize(k, C::identity());
             scalars.resize(k, F::default());
-            ipa_prove::<Blake2bState, _>(
+
+            let mut transcript = CircuitTranscript::<Blake2bState>::init();
+            ipa_prove(
                 &scalars,
                 &bases1,
                 &bases2,
                 &acc_rhs_evaluated,
                 &acc_rhs_scalars_committed,
-            )
-        }?;
+                &mut transcript,
+            )?;
+            transcript.finalize()
+        };
 
         Ok(MetaProof {
             proof: meta_proof,
@@ -547,12 +554,14 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
         bases1.resize(k, C::identity());
         bases2.resize(k, C::identity());
 
-        ipa_verify::<Blake2bState, _>(
+        let mut transcript =
+            CircuitTranscript::<Blake2bState>::init_from_bytes(&meta_proof.ipa_proof);
+        ipa_verify(
             &bases1,
             &bases2,
             &meta_proof.acc_rhs_evaluated,
             &meta_proof.acc_rhs_scalars_committed,
-            &meta_proof.ipa_proof,
+            &mut transcript,
         )
     }
 }
