@@ -292,6 +292,113 @@ where
     fn separated_repeat_at_most(self, n: usize, sep: Self) -> Self {
         Self::union((0..=n).map(|i| self.clone().separated_repeat(i, sep.clone())))
     }
+    /// Code Point Sequences of UTF-8 encodings. They are patterns of 1 to 4
+    /// bytes at the base of UTF-8 (a sequence of bytes corresponds to a valid
+    /// UTF-8 encoding if it is a sequence of such patterns). They can be
+    /// defined by the following regex in informal notation:
+    ///
+    /// ```text
+    ///   [0x00-0x7F]                          | # 1-byte (ASCII)
+    ///   [0xC2-0xDF][0x80-0xBF]               | # 2-byte
+    ///   0xE0[0xA0-0xBF][0x80-0xBF]           | # 3-byte (no overlongs)
+    ///   [0xE1-0xEC0xEE-0xEF][0x80-0xBF]{2}   | # 3-byte (general)
+    ///   0xED[0x80-0x9F][0x80-0xBF]           | # 3-byte (excluding UTF-16
+    ///                                          # surrogates)
+    ///   0xF0[0x90-0xBF][0x80-0xBF]{2}        | # 4-byte (start after U+FFFF)
+    ///   [0xF1-0xF3][0x80-0xBF]{3}            | # 4-byte (general)
+    ///   0xF4[0x80-0x8F][0x80-0xBF]{2}          # 4-byte (up to U+10FFFF)
+    /// ```
+    fn utf8_cps() -> Self {
+        Self::union([
+            // 1-byte.
+            Self::byte_from(0x00..=0x7F),
+            // 2-byte.
+            Self::cat([Self::byte_from(0xC2..=0xDF), Self::byte_from(0x80..=0xBF)]),
+            // 3-byte (no overlongs).
+            Self::cat([
+                Self::byte_from([0xE0]),
+                Self::byte_from(0xA0..=0xBF),
+                Self::byte_from(0x80..=0xBF),
+            ]),
+            // 3-byte (general).
+            Self::byte_from((0xE1..=0xEC).chain(0xEE..=0xEF))
+                .terminated(Self::byte_from(0x80..=0xBF).repeat(2)),
+            // 3-byte (excluding UTF-16 surrogates).
+            Self::cat([
+                Self::byte_from([0xED]),
+                Self::byte_from(0x80..=0x9F),
+                Self::byte_from(0x80..=0xBF),
+            ]),
+            // 4-byte (start after U+FFFF).
+            Self::cat([
+                Self::byte_from([0xF0]),
+                Self::byte_from(0x90..=0xBF),
+                Self::byte_from(0x80..=0xBF).repeat(2),
+            ]),
+            // 4-byte (general).
+            Self::byte_from(0xF1..=0xF3).terminated(Self::byte_from(0x80..=0xBF).repeat(3)),
+            // 4-byte (up to U+10FFFF).
+            Self::cat([
+                Self::byte_from([0xF4]),
+                Self::byte_from(0x80..=0x8F),
+                Self::byte_from(0x80..=0xBF).repeat(2),
+            ]),
+        ])
+    }
+
+    /// Accepts any sequence of bytes that represents a (possibly-empty) UTF-8
+    /// encoded string. That is, a sequence of UTF-8 code point sequence.
+    fn utf8() -> Self {
+        Self::utf8_cps().list()
+    }
+
+    /// Accepts any JSON string, as defined in RFC 8259 §7:
+    ///
+    /// https://datatracker.ietf.org/doc/html/rfc8259
+    ///
+    /// These strings are used to specify atomic data in .json files and are
+    /// defined by the following properties:
+    ///
+    ///   - They are delimited by double quotes (byte 0x22). Here, the quoted
+    ///     content is marked with the `marker` argument (using
+    ///     `RegexInstructions::add_marker`), when `marker` is not 0.
+    ///
+    ///   - They are valid UTF-8 encoding.
+    ///
+    ///   - Within the quotes, the following characters are forbidden: any byte
+    ///     from 0x00 to 0x1F inclusive, " (0x22), and \ (0x5C). The only
+    ///     exception are the following escape sequences: \" \\ \/ \b \f \n \r
+    ///     \t, and Unicode escapes \uXXXX where X ∈ [0-9a-fA-F].
+    ///
+    /// In informal notation (assuming the UTF-8 encoding is already checked):
+    ///
+    /// ```text
+    /// 0x22 (
+    ///   [0x20-0x21]        |
+    ///   [0x23-0x5B]        |
+    ///   [0x5D-0x10FFFF]    |
+    ///   \\["\\/bfnrt]      |
+    ///   \\u[0-9a-fA-F]{4}
+    /// )* 0x22
+    /// ```
+    fn json_string(marker: usize) -> Self {
+        // All Unicode code points except control chars, `"` and `\`.
+        let unescaped_utf8_cps =
+            Self::utf8_cps().and(Self::byte_not_from((0x00..=0x1F).chain(*b"\"\\")));
+        // \", \\, \/, \b, \f, \n, \r, \t.
+        let simple_escape = Self::word("\\").terminated(Self::byte_from(*b"\"\\/bfnrt"));
+        // \uXXXX (hex digits).
+        let hex = Self::byte_from((b'0'..=b'9').chain(b'a'..=b'f').chain(b'A'..=b'F'));
+        let unicode_escape = Self::word("\\u").terminated(hex.repeat(4));
+
+        let content = Self::union([unescaped_utf8_cps, simple_escape, unicode_escape]).list();
+        let marked_content = if marker == 0 {
+            content
+        } else {
+            content.add_marker(marker)
+        };
+        marked_content.delimited(Self::word("\""), Self::word("\""))
+    }
 }
 
 impl RegexInstructions for Regex {
