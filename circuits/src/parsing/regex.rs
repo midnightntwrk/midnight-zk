@@ -111,9 +111,24 @@ where
     /// `update_markers_when` for this specific task.
     fn remove_markers(&self) -> Self;
 
+    /// A regular expression matching any single unmarked byte from a
+    /// collection.
+    fn byte_from(l: impl IntoIterator<Item = u8>) -> Self;
+
     /// The complement of a regular expression, that is, it characterises any
-    /// Sequence of bytes that does not match the regular expression.
+    /// sequence of bytes that does not match the regular expression. Fails if
+    /// any marker is under an odd number of negations.
     fn neg(self) -> Self;
+
+    /// Union of the languages of a finite sequence of regular expressions.
+    /// Yields the empty language for empty iterators.
+    ///
+    /// Note: Avoid using this method (and `Self::and`) when alternatives exist,
+    /// such as `Self::byte_from`. This method is generic and tends to create a
+    /// large number of additional states which are costly to handle during the
+    /// (exponential) determinisation process.
+    fn union<S: IntoIterator<Item = Self>>(l: S) -> Self;
+
     /// Intersection of the languages of a finite sequence of regular
     /// expressions. Yields the universal language for empty iterators.
     ///
@@ -122,53 +137,40 @@ where
     /// the intersection yields the letter with the non-zero marker).
     fn inter<S: IntoIterator<Item = Self>>(l: S) -> Self;
 
+    /// Extension of `Regex::terminated` to the concatenation of a finite
+    /// sequence of regular expressions. Yields the empty word
+    /// (`Self::epsilon`) for empty iterators.
+    fn cat<S: IntoIterator<Item = Self>>(l: S) -> Self;
+
     /// Matches any number of successive copies (0 or more) of a regular
     /// expression.
     fn list(self) -> Self;
 
-    /// The intersection of a finite sequence of regular expressions.
-    fn and<S: IntoIterator<Item = Self>>(l: S) -> Self {
-        Self::or(l.into_iter().map(Self::neg)).neg()
-    }
-
-    /// Matches any sequence of bytes that matches `self` but not `other`.
-    fn minus(self, other: Self) -> Self {
-        Self::and([self, other.neg()])
-    }
-
-    /// Regular expression matching a single string.
-    fn word(word: &str) -> Self {
-        Self::cat(word.bytes().map(Self::once))
-    }
-
     /// Regular expression matching the empty string.
     fn epsilon() -> Self {
-        Self::word("")
+        Self::cat([])
     }
 
-    /// Regular expression matching `{`.
-    fn lbracket() -> Self {
-        Self::word("{")
+    /// Matches any positive number of successive copies (1 or more) of a
+    /// regular expression.
+    fn non_empty_list(self) -> Self;
+
+    /// A regular expression consisting of a single, arbitrary, and unmarked
+    /// byte.
+    fn any_byte() -> Self {
+        Self::byte_from(0..=(ALPHABET_MAX_SIZE - 1) as u8)
     }
 
-    /// Regular expression matching `}`.
-    fn rbracket() -> Self {
-        Self::word("}")
+    /// Concatenates `other` after `self`. This is the binary version of
+    /// `Self::cat`.
+    fn terminated(self, other: Self) -> Self {
+        Self::cat([self, other])
     }
 
-    /// Regular expression matching `[`.
-    fn lsqbracket() -> Self {
-        Self::word("[")
-    }
-
-    /// Regular expression matching `]`.
-    fn rsqbracket() -> Self {
-        Self::word("]")
-    }
-
-    /// Regular expression matching `(`.
-    fn lparen() -> Self {
-        Self::word("(")
+    /// Union of the two languages represented by `self` and `other`. This is
+    /// the binary version of `Self::union` and has the same limitations.
+    fn or(self, other: Self) -> Self {
+        Self::union([self, other])
     }
 
     /// Intersection of the two languages represented by `self` and `other`.
@@ -178,134 +180,95 @@ where
         Self::inter([self, other])
     }
 
-    /// Regular expression matching `'`.
-    fn single_quote() -> Self {
-        Self::word("'")
+    /// A regular expression accepting any unmarked string. This is equivalent
+    /// to `Self::any_byte().list()`, but more efficient to process.
+    fn any() -> Self {
+        Self::inter([])
     }
 
-    /// Regular expression matching `,`.
-    fn comma() -> Self {
-        Self::word(",")
+    /// Accepts any word accepted by `self` but not `other`. Is equivalent to
+    /// `and([self, other.neg()])`, in particular regarding markers being
+    /// forbidden in `other`, and markers of `self` not being erased because of
+    /// the absence of markers in `other`.
+    fn minus(self, other: Self) -> Self {
+        self.and(other.neg())
     }
 
-    /// Regular expression matching `:`.
-    fn colon() -> Self {
-        Self::word(":")
-    }
-
-    /// Regular expression matching `;`.
-    fn semicolon() -> Self {
-        Self::word(";")
-    }
-
-    /// Regular expression matching `_`.
-    fn underscore() -> Self {
-        Self::word("_")
+    /// Regular expression matching a single string.
+    fn word(word: &str) -> Self {
+        Self::cat(word.bytes().map(|b| Self::byte_from([b])))
     }
 
     /// Regular expression matching any digit (['0'..'9']).
     fn digit() -> Self {
-        Self::or((0..9).map(|n| Self::word(&n.to_string())))
+        Self::byte_from(b'0'..=b'9')
     }
 
     /// Regular expression matching any lowercase letter (['a'..'z']).
     fn lowercase_letter() -> Self {
-        Self::or(('a'..='z').map(|n| Self::word(&n.to_string())))
+        Self::byte_from(b'a'..=b'z')
     }
 
     /// Regular expression matching any uppercase letter (['A'..'Z']).
     fn uppercase_letter() -> Self {
-        Self::or(('A'..='Z').map(|n| Self::word(&n.to_string())))
+        Self::byte_from(b'A'..=b'Z')
     }
 
     /// Regular expression matching any letter (['a'..'z' 'A'..'Z']).
     fn letter() -> Self {
-        Self::or([Self::lowercase_letter(), Self::uppercase_letter()])
+        Self::byte_from((b'a'..=b'z').chain(b'A'..=b'Z'))
     }
 
     /// Regular expression matching any alphanumeric character (['a'..'z'
     /// 'A'..'Z' '0'..'9']).
     fn alphanumeric() -> Self {
-        Self::or([
-            Self::lowercase_letter(),
-            Self::uppercase_letter(),
-            Self::digit(),
-        ])
+        Self::byte_from((b'a'..=b'z').chain(b'A'..=b'Z').chain(b'0'..=b'9'))
     }
 
-    /// Regular expression recognising `self` or the empty string.
-    fn optional(self) -> Self {
-        Self::or([self, Self::epsilon()])
-    }
-
-    /// Matches any positive number of successive copies (1 or more) of a
-    /// regular expression.
-    fn non_empty_list(self) -> Self {
-        self.list().minus(Self::epsilon())
-    }
-
-    /// Regular expression matching the space character ` `.
-    fn one_space() -> Self {
-        Self::word(" ")
+    /// A blank character (space, newline, or tab).
+    fn one_blank() -> Self {
+        Self::byte_from(*b" \t\n")
     }
 
     /// Regular expression matching any sequence of 1 or more spaces.
-    fn spaces_strict() -> Self {
-        Self::one_space().non_empty_list()
+    fn blanks_strict() -> Self {
+        Self::one_blank().non_empty_list()
     }
 
     /// Regular expression matching any sequence of 0 or more spaces.
-    fn spaces() -> Self {
-        Self::one_space().list()
+    fn blanks() -> Self {
+        Self::one_blank().list()
+    }
+
+    /// Regular expression accepting any word of `self` and the empty string.
+    fn optional(self) -> Self {
+        self.or(Self::epsilon())
     }
 
     /// Regular expression matching `self` surrounded by two delimiters `op` and
-    /// `cl`. Additionally, any number of spaces (0 or more) may appear between
-    /// `op` and `self`, and between `self` and `cl`.
+    /// `cl`.
     fn delimited(self, opening: Self, closing: Self) -> Self {
-        Self::cat([opening, Self::spaces(), self, Self::spaces(), closing])
+        Self::cat([opening, self, closing])
     }
 
     /// Similar to `self.non_empty_list`, except that two consecutive
-    /// occurrences of `self` are separated by an arbitrary number of spaces (0
-    /// or more), the separator `sep`, and again another arbitrary number of
-    /// spaces.
+    /// occurrences of `self` are separated by the separator `sep`.
     fn separated_non_empty_list(self, sep: Self) -> Self {
-        Self::cat([
-            self.clone(),
-            Self::list(Self::cat([Self::spaces(), sep, Self::spaces(), self])),
-        ])
+        self.clone().terminated(Self::cat([sep, self]).list())
     }
 
     /// Similar to `self.list`, except that two consecutive
-    /// occurrences of `self` are separated by an arbitrary number of spaces (0
-    /// or more), the separator `sep`, and again another arbitrary number of
-    /// spaces.
+    /// occurrences of `self` are separated by the separator `sep`.
     fn separated_list(self, sep: Self) -> Self {
-        Self::or([Self::epsilon(), self.separated_non_empty_list(sep)])
+        Self::epsilon().or(self.separated_non_empty_list(sep))
     }
 
-    /// Concatenates two regular expressions: puts `self`, then an arbitrary
-    /// number of spaces (0 or more), followed by the separator `sep`, again
-    /// another arbitrary number of spaces, and `other`.
-    fn separated(self, sep: Self, other: Self) -> Self {
-        Self::cat([self, Self::spaces(), sep, Self::spaces(), other])
-    }
-
-    /// Similar to `self.cat`, except that two consecutive
-    /// occurrences of `self` are separated by an arbitrary number of spaces (0
-    /// or more), the separator `sep`, and again another arbitrary number of
-    /// spaces.
+    /// Similar to `self::cat`, except that two consecutive
+    /// occurrences of `self` are separated by the separator `sep`.
     fn separated_cat<S: IntoIterator<Item = Self>>(l: S, sep: Self) -> Self {
         l.into_iter()
-            .reduce(|acc, r| acc.separated(sep.clone(), r))
+            .reduce(|acc, r| Self::cat([acc, sep.clone(), r]))
             .unwrap_or(Self::epsilon())
-    }
-
-    /// Concatenates `other` after `self`. This has the same behaviour as
-    /// `Self::cat` for iterators of length 2.
-    fn terminated(self, other: Self) -> Self {
-        Self::cat([self, other])
     }
 
     /// Concatenates `self` exactly `n` times.
@@ -315,16 +278,22 @@ where
 
     /// Concatenates `self` between 0 and `n` times (inclusive).
     fn repeat_at_most(self, n: usize) -> Self {
-        Self::or((0..=n).map(|i| self.clone().repeat(i)))
+        Self::union((0..=n).map(|i| self.clone().repeat(i)))
     }
 
-    /// Same as `repeat`, but uses `separated_cat` instead of `cat`.
+    /// Same as `Self::repeat`, but uses `Self::separated_cat` instead of
+    /// `Self::cat`.
     fn separated_repeat(self, n: usize, sep: Self) -> Self {
         Self::separated_cat(vec![self; n], sep)
     }
 
-    /// Same as `repeat_at_most`, but uses `separated_cat` instead of `cat`.
+    /// Same as `Self::repeat_at_most`, but uses `Self::separated_cat` instead
+    /// of `Self::cat`.
     fn separated_repeat_at_most(self, n: usize, sep: Self) -> Self {
+        Self::union((0..=n).map(|i| self.clone().separated_repeat(i, sep.clone())))
+    }
+}
+
 impl RegexInstructions for Regex {
     fn update_markers_when(&self, pred: &impl Fn(u8) -> bool, marker: usize) -> Self {
         let mut toplevel_marker = self.toplevel_marker;
@@ -476,31 +445,15 @@ impl From<&str> for Regex {
     }
 }
 
-impl RegexInstructions for Regex {
-    fn once(u: RegexLetter) -> Self {
-        RegexInternal::Single(Some(u)).into()
+impl From<u8> for Regex {
+    fn from(value: u8) -> Self {
+        Self::byte_from([value])
     }
-    fn once_any() -> Self {
-        RegexInternal::Single(None).into()
-    }
-    fn cat<S: IntoIterator<Item = Self>>(l: S) -> Self {
-        RegexInternal::Concat(l.into_iter().map(|r| r.content).collect::<Vec<_>>()).into()
-    }
-    fn or<S: IntoIterator<Item = Self>>(l: S) -> Self {
-        RegexInternal::Union(l.into_iter().map(|r| r.content).collect::<Vec<_>>()).into()
-    }
-    fn neg(self) -> Self {
-        match self.content {
-            // The first case is simply to reduce the Regex's depth.
-            RegexInternal::Complement(e) => (*e).into(),
-            _ => RegexInternal::Complement(Box::new(self.content)).into(),
-        }
-    }
-    fn list(self) -> Self {
-        RegexInternal::Star(false, Box::new(self.content)).into()
-    }
-    fn non_empty_list(self) -> Self {
-        RegexInternal::Star(true, Box::new(self.content)).into()
+}
+
+impl From<&u8> for Regex {
+    fn from(value: &u8) -> Self {
+        Self::byte_from([*value])
     }
 }
 
@@ -518,6 +471,14 @@ impl Regex {
                 accu.union(&r.to_raw_automaton(alphabet_size))
                     .normalise_states()
             }),
+            RegexInternal::Inter(l) => {
+                l.iter()
+                    .fold(RawAutomaton::universal(alphabet_size), |accu, r| {
+                        let mut r = r.to_raw_automaton(alphabet_size);
+                        r.remove_epsilon_transitions();
+                        accu.inter(&r).normalise_states()
+                    })
+            }
             RegexInternal::Star(strict, e) => {
                 let mut automaton = e.to_raw_automaton(alphabet_size);
                 automaton.repeat(*strict);
