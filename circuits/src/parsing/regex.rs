@@ -27,50 +27,85 @@ use super::automaton::{Automaton, RawAutomaton, ALPHABET_MAX_SIZE};
 /// A type for formal languages described as regular expressions.
 #[derive(Clone, Debug)]
 pub struct Regex {
+    // The acutal regular expression.
     content: RegexInternal,
+    // Marker of the regular expression, with 0 meaning the expession will not output anything. The
+    // code will panic when attempting to use nested non-zero values for this field.
+    toplevel_marker: usize,
+    // Stores all non-zero markers of the regular expression, except the one at toplevel.
+    other_markers: HashSet<usize>,
 }
 
 #[derive(Clone, Debug)]
 enum RegexInternal {
-    /// A language accepting a word of length 1. `Single(Some(x))` represents
-    /// the singleton language {x}, and `Single(None)` represents the wildcard,
-    /// i.e., {x | x of type RegexLetter}.
-    Single(Option<RegexLetter>),
-    /// Concatenation of a vector of languages.
-    Concat(Vec<RegexInternal>),
-    /// Union of a vector of languages.
-    Union(Vec<RegexInternal>),
-    /// Iteration of a given language (including the empty word for 0
-    /// iteration). The boolean indicates whether the iteration is strict, that
-    /// is, the boolean being true means that the empty word is not accepted.
-    Star(bool, Box<RegexInternal>),
-    /// Complement of a language.
-    Complement(Box<RegexInternal>),
+    // A language accepting a word of one arbitrary byte from the range (`Vec`) taken as an
+    // argument. Working with ranges instead of single bytes allows to precompute some single-byte
+    // operations that weight heavy on the determinisation process.
+    Single(Vec<u8>),
+    // Concatenation of a vector of languages.
+    Concat(Vec<Regex>),
+    // Union of a vector of languages.
+    Union(Vec<Regex>),
+    // Iteration of a given language (including the empty word for 0 iteration). The boolean
+    // indicates whether the iteration is strict, that is, the boolean being true means that the
+    // empty word is not accepted.
+    Star(bool, Box<Regex>),
+    // Complement of a language. The code enforces that its argument does not contain markers
+    // (panics if attempted to put any).
+    Complement(Box<Regex>),
 }
 
+// Conversion from the internal representation of a regex to an actual one,
+// without marker at toplevel. The `other_marker` field is computed consistently
+// with the internal data.
 impl From<RegexInternal> for Regex {
     fn from(value: RegexInternal) -> Self {
-        Regex { content: value }
+        let mut other_markers = HashSet::new();
+        match &value {
+            RegexInternal::Single(_) => (),
+            RegexInternal::Concat(l) | RegexInternal::Union(l) | RegexInternal::Inter(l) => l
+                .iter()
+                .for_each(|r| other_markers.extend(&r.other_markers)),
+            RegexInternal::Star(_, r) | RegexInternal::Complement(r) => {
+                other_markers.extend(&r.other_markers)
+            }
+        };
+        Regex {
+            content: value,
+            toplevel_marker: 0,
+            other_markers,
+        }
     }
 }
 
-/// Public instructions that can be used to build a regular expression.
+/// Public instructions that can be used to build a regular expression. Other
+/// functions will require that the constructed expressions are
+/// output-deterministic, i.e., that each word matching a given regex can only
+/// be marked in a unique way.
 pub trait RegexInstructions
 where
     Self: Sized + Clone,
 {
-    /// A regular expression consisting of a unique byte.
-    fn once(u: RegexLetter) -> Self;
+    /// Updates all markers appearing on bytes satisfying the predicate `pred`
+    /// to the new value `marker`. If `pred` is always true and `self` is not
+    /// already marked, it is more efficient to call `add_marker`.
+    fn update_markers_when(&self, pred: &impl Fn(u8) -> bool, marker: usize) -> Self;
 
-    /// A regular expression consisting of a unique, arbitrary byte.
-    fn once_any() -> Self;
+    /// Analogue of `update_markers_when`, but uses a slice of bytes rather than
+    /// a predicate.
+    fn update_markers_on(&self, bytes: &[u8], marker: usize) -> Self {
+        self.update_markers_when(&|b| bytes.contains(&b), marker)
+    }
 
-    /// The concatenation of a finite sequence of regular expressions. The empty
-    /// sequence yields the empty word, i.e., `Self::epsilon`.
-    fn cat<S: IntoIterator<Item = Self>>(l: S) -> Self;
+    /// Marks all bytes from an unmarked regular expression with `marker`.
+    /// Panics if `marker == 0`, or if any prior marker exists in `self`. In
+    /// exchange, is more efficient than `update_markers_when` for this specific
+    /// task.
+    fn add_marker(self, marker: usize) -> Self;
 
-    /// The union of a finite sequence of regular expressions.
-    fn or<S: IntoIterator<Item = Self>>(l: S) -> Self;
+    /// Removes all markers from `self`. More efficient than
+    /// `update_markers_when` for this specific task.
+    fn remove_markers(&self) -> Self;
 
     /// The complement of a regular expression, that is, it characterises any
     /// Sequence of bytes that does not match the regular expression.
@@ -282,7 +317,96 @@ where
 
     /// Same as `repeat_at_most`, but uses `separated_cat` instead of `cat`.
     fn separated_repeat_at_most(self, n: usize, sep: Self) -> Self {
-        Self::or((0..=n).map(|i| self.clone().separated_repeat(i, sep.clone())))
+impl RegexInstructions for Regex {
+    fn update_markers_when(&self, pred: &impl Fn(u8) -> bool, marker: usize) -> Self {
+        let mut toplevel_marker = self.toplevel_marker;
+        // This pattern matching updates the toplevel marker, and computes the field
+        // `.content` of the regular expression to return.
+        let content = match &self.content {
+            // The case of single-letter languages is handled separately to return a simpler regex.
+            // Not doing this sends a significantly higher load to the determinisation algorithm, as
+            // single-letter ranges would otherwise be translated as automata with a number of
+            // states proportional to the range size, which are extremely costly to determinise.
+            RegexInternal::Single(range) => {
+                if toplevel_marker == marker {
+                    // Nothing to do if the new and previous markers are identical.
+                    self.content.clone()
+                } else {
+                    // Otherwise, partition the range according to the `pred` predicate, and return
+                    // the union of the two ranges with the corresponding markers.
+                    let (pos, neg): (Vec<u8>, Vec<u8>) = range.iter().partition(|a| pred(**a));
+                    if pos.is_empty() {
+                        self.content.clone()
+                    } else if neg.is_empty() {
+                        toplevel_marker = marker;
+                        RegexInternal::Single(pos)
+                    } else {
+                        let regex_pos = Regex {
+                            content: RegexInternal::Single(pos),
+                            toplevel_marker: marker,
+                            other_markers: HashSet::new(),
+                        };
+                        let regex_neg = Regex {
+                            content: RegexInternal::Single(neg),
+                            toplevel_marker: self.toplevel_marker,
+                            other_markers: HashSet::new(),
+                        };
+                        toplevel_marker = 0;
+                        RegexInternal::Union(vec![regex_pos, regex_neg])
+                    }
+                }
+            }
+            RegexInternal::Concat(l) => RegexInternal::Concat(
+                l.iter()
+                    .map(|e| e.update_markers_when(pred, marker))
+                    .collect::<Vec<_>>(),
+            ),
+            RegexInternal::Union(l) => RegexInternal::Union(
+                l.iter()
+                    .map(|e| e.update_markers_when(pred, marker))
+                    .collect::<Vec<_>>(),
+            ),
+            RegexInternal::Star(b, r) => {
+                RegexInternal::Star(*b, Box::new(r.update_markers_when(pred, marker)))
+            }
+            RegexInternal::Complement(r) => {
+                RegexInternal::Complement(Box::new(r.update_markers_when(pred, marker)))
+            }
+        };
+        let mut regex: Regex = content.into();
+        regex.toplevel_marker = toplevel_marker;
+        regex
+    }
+
+    // All information is carried at toplevel with the fields `toplevel_marker` and
+    // `other_markers`. No need to explore the regex recursively like in
+    // `update_markers_when`.
+    fn add_marker(self, index: usize) -> Self {
+        assert!(index != 0, "Regex::add_marker cannot be called with index 0 (because 0 is the convention for no marking).");
+        if self.toplevel_marker != 0 || !self.other_markers.is_empty() {
+            panic!("Attempted to add the two markers {index} and {} to a part of a regular expression. Nested markers are not allowed.", self.other_markers.iter().chain(once(&self.toplevel_marker)).find(|&&b| b != 0).unwrap())
+        } else {
+            Self {
+                toplevel_marker: index,
+                ..self
+            }
+        }
+    }
+
+    fn remove_markers(&self) -> Self {
+        match &self.content {
+            RegexInternal::Single(_) => self.content.clone(),
+            RegexInternal::Concat(l) => {
+                RegexInternal::Concat(l.iter().map(|e| e.remove_markers()).collect::<Vec<_>>())
+            }
+            RegexInternal::Union(l) => {
+                RegexInternal::Union(l.iter().map(|e| e.remove_markers()).collect::<Vec<_>>())
+            }
+            RegexInternal::Star(b, r) => RegexInternal::Star(*b, Box::new(r.remove_markers())),
+            RegexInternal::Complement(r) => RegexInternal::Complement(Box::new(r.remove_markers())),
+        }
+        .into()
+    }
     }
 }
 
@@ -330,54 +454,46 @@ impl Regex {
     // Straightforward conversion of a regular expression into a non-deterministic
     // automaton, using the constructions provided in the `automaton` module.
     fn to_raw_automaton(&self, alphabet_size: usize) -> RawAutomaton<usize> {
-        match self.content.clone() {
-            RegexInternal::Single(a) => {
-                assert!(a.iter().all(|&b| (b as usize) < alphabet_size), "conversion from regular expression to automaton uses inconsistent alphabet data");
-                RawAutomaton::singleton(a, alphabet_size)
-            }
-            RegexInternal::Concat(l) => l.iter().fold(RawAutomaton::epsilon(), |automaton, e| {
-                let e: Self = e.clone().into();
-                automaton
-                    .concat(&e.to_raw_automaton(alphabet_size))
+        let automaton = match &self.content {
+            RegexInternal::Single(a) => RawAutomaton::singleton(a, alphabet_size),
+            RegexInternal::Concat(l) => l.iter().fold(RawAutomaton::epsilon(), |accu, r| {
+                accu.concat(&r.to_raw_automaton(alphabet_size))
                     .normalise_states()
             }),
-            RegexInternal::Union(l) => l.iter().fold(RawAutomaton::empty(), |automaton, e| {
-                let e: Self = e.clone().into();
-                automaton
-                    .union(&e.to_raw_automaton(alphabet_size))
+            RegexInternal::Union(l) => l.iter().fold(RawAutomaton::empty(), |accu, r| {
+                accu.union(&r.to_raw_automaton(alphabet_size))
                     .normalise_states()
             }),
             RegexInternal::Star(strict, e) => {
-                let e: Self = (*e).into();
                 let mut automaton = e.to_raw_automaton(alphabet_size);
-                automaton.repeat(strict);
+                automaton.repeat(*strict);
                 automaton
             }
             RegexInternal::Complement(e) => {
-                let e: Self = (*e).into();
                 let mut automaton = e.to_raw_automaton(alphabet_size);
-                automaton.determinise(alphabet_size);
+                // This determinisation assumes that when complement are constructed (see
+                // `RegexInstructions`), it is ensured that `e` above only contains `0` as a
+                // marker.
+                automaton.determinise(alphabet_size, &[0]);
                 automaton.complement();
-                automaton
+                automaton.normalise_states()
             }
+        };
+        // After the determinisation is finished, add the markers if needed.
+        if self.toplevel_marker == 0 {
+            automaton
+        } else {
+            automaton.add_marker(self.toplevel_marker)
         }
     }
 
-    // Converts a regular expression into a state automaton. All states of the
-    // automaton are reachable from the initial state, and can reach a final
-    // state. Being unable to find a transition from a given state upon reading
-    // a given letter means that the word is to be rejected.
-    //
-    // Note: this function can specify the alphabet size, so that smaller alphabets
-    // can be considered for more readable testing purpose. Only the instanciation
-    // with `alphabet_size == ALPPHABET_MAX_SIZE` is accessible outside of this
-    // module.
+    // Converts a regular expression into a state automaton. This function can
+    // specify the alphabet size, so that smaller alphabets can be considered for
+    // more readable testing purpose. Only the instanciation with `alphabet_size
+    // == ALPPHABET_MAX_SIZE` is accessible outside of this module.
     pub(super) fn to_automaton_param(&self, alphabet_size: usize) -> Automaton {
-        if alphabet_size > REGEX_ALPHABET_MAX_SIZE {
-            panic!("Attempt to generate an automaton with an alphabet of size {alphabet_size}. Letters are represented by bytes, hence the maximal alphabet size is {REGEX_ALPHABET_MAX_SIZE}")
-        }
-        self.to_raw_automaton(alphabet_size)
-            .normalise(alphabet_size)
+        assert!(alphabet_size <= ALPHABET_MAX_SIZE,"Attempt to generate an automaton with an alphabet of size {alphabet_size}. Letters are represented by bytes, hence the maximal alphabet size is {ALPHABET_MAX_SIZE}");
+        self.to_raw_automaton(alphabet_size).normalise()
     }
 
     /// Converts a regular expression into a state automaton. All states of the
@@ -385,7 +501,7 @@ impl Regex {
     /// state. Being unable to find a transition from a given state upon reading
     /// a given letter means that the word is to be rejected.
     pub fn to_automaton(&self) -> Automaton {
-        self.to_automaton_param(REGEX_ALPHABET_MAX_SIZE)
+        self.to_automaton_param(ALPHABET_MAX_SIZE)
     }
 }
 
