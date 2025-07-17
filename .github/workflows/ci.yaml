@@ -7,74 +7,101 @@ on:
       - main
 
 jobs:
-  test:
+  download-srs:
+    runs-on: ubuntu-latest
+    outputs:
+      srs-cache-hit: ${{ steps.cache-srs.outputs.cache-hit }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Restore SRS from cache
+        id: restore-srs
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684
+        with:
+          path: circuits/examples/assets/bls_filecoin_2p19
+          key: fixed-srs-cache
+
+      - name: Download SRS if not cached
+        if: steps.restore-srs.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p circuits/examples/assets
+          curl -L -o circuits/examples/assets/bls_filecoin_2p19 \
+            https://midnight-s3-fileshare-dev-eu-west-1.s3.eu-west-1.amazonaws.com/bls_filecoin_2p19
+
+  test-blstrs:
     if: github.event.pull_request.draft == false
-    name: Test
+    name: Test blstrs
     runs-on: ubuntu-latest
 
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: ./.github/actions/cargo-test
+        with:
+          package: blstrs
+          args: --release --all-features
+
+  test-circuits:
+    needs: download-srs
+    if: github.event.pull_request.draft == false
+    name: Test circuits
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Restore SRS from cache
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684
+        with:
+          path: circuits/examples/assets/bls_filecoin_2p19
+          key: fixed-srs-cache
+
+      - uses: ./.github/actions/cargo-test
+        with:
+          package: midnight-circuits
+          args: --release --all-features
+
+  test-vk-consistency:
+    needs: download-srs
+    if: github.event.pull_request.draft == false
+    name: Test circuits
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Restore SRS from cache
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684
+        with:
+          path: circuits/examples/assets/bls_filecoin_2p19
+          key: fixed-srs-cache
+
+      - uses: ./.github/actions/cargo-test
+        with:
+          package: midnight-circuits
+          args: --release --all-features -- --ignored
+
+  test-proofs:
+    if: github.event.pull_request.draft == false
+    name: Test proofs
+    runs-on: ubuntu-latest
     steps:
       - name: Install libfontconfig1-dev
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev
-      - name: Add github.com credentials to netrc
-        uses: extractions/netrc@f6f1722d05ce2890aa86fd9654565b1214ac53a4
-        with:
-          machine: github.com
-          username: ${{ secrets.GH_USERNAME }}
-          password: ${{ secrets.GH_PASSWORD }}
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-      - uses: actions-rs/toolchain@b2417cde72dcf67f306c0ae8e0828a81bf0b189f
+      - uses: ./.github/actions/cargo-test
         with:
-          override: false
+          package: midnight_proofs
+          args: --release --all-features
 
-      - name: Restore Cargo Cache
-        uses: actions/cache@v4
+  test-aggregator:
+    if: github.event.pull_request.draft == false
+    name: Test Aggregator
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: ./.github/actions/cargo-test
         with:
-          path: |
-            ~/.cargo
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
-
-      - name: Create directory
-        run: mkdir -p ./examples/assets
-
-      - name: Download SRS
-        run: curl -L -o ./circuits/examples/assets/bls_filecoin_2p19 https://midnight-s3-fileshare-dev-eu-west-1.s3.eu-west-1.amazonaws.com/bls_filecoin_2p19
-
-      - name: Run `blstrs` tests
-        uses: actions-rs/cargo@ae10961054e4aa8b4aa7dffede299aaf087aa33b
-        with:
-          command: test
-          args: -p blstrs --release --all-features
-
-      - name: Run `proofs` tests
-        uses: actions-rs/cargo@ae10961054e4aa8b4aa7dffede299aaf087aa33b
-        with:
-          command: test
-          args: -p midnight_proofs --release --all-features
-
-      - name: Run `circuits` tests
-        uses: actions-rs/cargo@ae10961054e4aa8b4aa7dffede299aaf087aa33b
-        with:
-          command: test
-          args: -p midnight-circuits --release --all-features
-
-      - name: Run `aggregator` tests
-        uses: actions-rs/cargo@ae10961054e4aa8b4aa7dffede299aaf087aa33b
-        with:
-          command: test
-          args: -p midnight-aggregator --release --all-features
-
-      # Save the Cargo Cache
-      - name: Save Cargo Cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          package: midnight-aggregator
+          args: --release --all-features
 
 
   doc-links:
@@ -83,12 +110,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Add github.com credentials to netrc
-        uses: extractions/netrc@f6f1722d05ce2890aa86fd9654565b1214ac53a4
-        with:
-          machine: github.com
-          username: ${{ secrets.GH_USERNAME }}
-          password: ${{ secrets.GH_PASSWORD }}
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       - uses: actions-rs/toolchain@b2417cde72dcf67f306c0ae8e0828a81bf0b189f
         with:
@@ -112,12 +133,6 @@ jobs:
     timeout-minutes: 30
     runs-on: ubuntu-latest
     steps:
-      - name: Add github.com credentials to netrc
-        uses: extractions/netrc@f6f1722d05ce2890aa86fd9654565b1214ac53a4
-        with:
-          machine: github.com
-          username: ${{ secrets.GH_USERNAME }}
-          password: ${{ secrets.GH_PASSWORD }}
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       - uses: actions-rs/toolchain@b2417cde72dcf67f306c0ae8e0828a81bf0b189f
         with:
@@ -138,12 +153,6 @@ jobs:
     continue-on-error: true
 
     steps:
-      - name: Add github.com credentials to netrc
-        uses: extractions/netrc@f6f1722d05ce2890aa86fd9654565b1214ac53a4
-        with:
-          machine: github.com
-          username: ${{ secrets.GH_USERNAME }}
-          password: ${{ secrets.GH_PASSWORD }}
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       - uses: actions-rs/toolchain@b2417cde72dcf67f306c0ae8e0828a81bf0b189f
         with:
@@ -159,7 +168,7 @@ jobs:
       - name: Run Clippy on `proofs`
         uses: actions-rs/clippy-check@b5b5f21f4797c02da247df37026fcd0a5024aa4d
         continue-on-error: true
-        with: 
+        with:
           args: -p midnight_proofs --all-targets --all-features -- -Dwarnings
 
 
