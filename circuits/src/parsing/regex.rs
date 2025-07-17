@@ -46,6 +46,10 @@ enum RegexInternal {
     Concat(Vec<Regex>),
     // Union of a vector of languages.
     Union(Vec<Regex>),
+    // Intersection of a vector of languages. Similarly as for `automaton::inter`, letters with
+    // different markers are always treated as different letters, except when one of the markers
+    // is 0 (in which case they are unified into the non-zero marker).
+    Inter(Vec<Regex>),
     // Iteration of a given language (including the empty word for 0 iteration). The boolean
     // indicates whether the iteration is strict, that is, the boolean being true means that the
     // empty word is not accepted.
@@ -110,6 +114,13 @@ where
     /// The complement of a regular expression, that is, it characterises any
     /// Sequence of bytes that does not match the regular expression.
     fn neg(self) -> Self;
+    /// Intersection of the languages of a finite sequence of regular
+    /// expressions. Yields the universal language for empty iterators.
+    ///
+    /// Two identical bytes with different markers are considered different when
+    /// intersecting, except when one of the two markers is 0 (in which case
+    /// the intersection yields the letter with the non-zero marker).
+    fn inter<S: IntoIterator<Item = Self>>(l: S) -> Self;
 
     /// Matches any number of successive copies (0 or more) of a regular
     /// expression.
@@ -160,14 +171,11 @@ where
         Self::word("(")
     }
 
-    /// Regular expression matching `)`.
-    fn rparen() -> Self {
-        Self::word(")")
-    }
-
-    /// Regular expression matching `"`.
-    fn double_quote() -> Self {
-        Self::word("\"")
+    /// Intersection of the two languages represented by `self` and `other`.
+    /// This is the binary version of `Self::inter` and has the same
+    /// behaviour regarding the intersection of marked strings.
+    fn and(self, other: Self) -> Self {
+        Self::inter([self, other])
     }
 
     /// Regular expression matching `'`.
@@ -366,6 +374,11 @@ impl RegexInstructions for Regex {
                     .map(|e| e.update_markers_when(pred, marker))
                     .collect::<Vec<_>>(),
             ),
+            RegexInternal::Inter(l) => RegexInternal::Inter(
+                l.iter()
+                    .map(|e| e.update_markers_when(pred, marker))
+                    .collect::<Vec<_>>(),
+            ),
             RegexInternal::Star(b, r) => {
                 RegexInternal::Star(*b, Box::new(r.update_markers_when(pred, marker)))
             }
@@ -402,11 +415,52 @@ impl RegexInstructions for Regex {
             RegexInternal::Union(l) => {
                 RegexInternal::Union(l.iter().map(|e| e.remove_markers()).collect::<Vec<_>>())
             }
+            RegexInternal::Inter(l) => {
+                RegexInternal::Inter(l.iter().map(|e| e.remove_markers()).collect::<Vec<_>>())
+            }
             RegexInternal::Star(b, r) => RegexInternal::Star(*b, Box::new(r.remove_markers())),
             RegexInternal::Complement(r) => RegexInternal::Complement(Box::new(r.remove_markers())),
         }
         .into()
     }
+
+    fn byte_from(l: impl IntoIterator<Item = u8>) -> Self {
+        RegexInternal::Single(Vec::from_iter(l)).into()
+    }
+
+    fn cat<S: IntoIterator<Item = Self>>(l: S) -> Self {
+        RegexInternal::Concat(l.into_iter().collect::<Vec<_>>()).into()
+    }
+
+    fn inter<S: IntoIterator<Item = Self>>(l: S) -> Self {
+        RegexInternal::Inter(l.into_iter().collect::<Vec<_>>()).into()
+    }
+
+    fn union<S: IntoIterator<Item = Self>>(l: S) -> Self {
+        RegexInternal::Union(l.into_iter().collect::<Vec<_>>()).into()
+    }
+
+    fn neg(self) -> Self {
+        match self.content {
+            // The first case is simply to reduce the Regex's depth.
+            RegexInternal::Complement(e) => *e,
+            // The second case additionally checks that `self` contains no markers.
+            _ => {
+                assert!(
+                    self.other_markers.is_empty(),
+                    "in regular expressions, markers are not allowed under complement/negation ({:?})", self
+                );
+                RegexInternal::Complement(Box::new(self)).into()
+            }
+        }
+    }
+
+    fn list(self) -> Self {
+        RegexInternal::Star(false, Box::new(self)).into()
+    }
+
+    fn non_empty_list(self) -> Self {
+        RegexInternal::Star(true, Box::new(self)).into()
     }
 }
 

@@ -344,7 +344,7 @@ where
 // Implementation of determinisation and state normalisation.
 impl<State> RawAutomaton<State>
 where
-    State: Copy + Clone + Eq + Hash + std::fmt::Debug,
+    State: Copy + Clone + Eq + Hash + Debug,
 {
     // Converts the set of states into `usize`. Allows in particular to ensure
     // states now have the Copy and Hash traits. Also, removes non reachable
@@ -594,6 +594,71 @@ where
         base.epsilon_transitions = true;
         base.deterministic_and_complete = false;
         base
+    }
+
+    // Computes an automton for the intersection of two languages. Requires that
+    // they do not contain epsilon transitions. The intersection takes markers into
+    // account: two copies of letter `a` with different (non-0) markers are
+    // considered as different letters. However, `a` marked with 0 will be unified
+    // with `a` with a non-0 marker.
+    //
+    // Apart from that, the intersection is a classical carthesian-product
+    // construction.
+    pub(super) fn inter<S>(&self, rhs: &RawAutomaton<S>) -> RawAutomaton<(State, S)>
+    where
+        S: Copy + Clone + Eq + Hash + Debug,
+    {
+        assert!(
+            !self.epsilon_transitions && !rhs.epsilon_transitions,
+            "(bug) intersection cannot operate with epsilon transitions."
+        );
+
+        let mut transitions = Vec::with_capacity(self.transitions.len() * rhs.transitions.len());
+        let mut final_states = Vec::with_capacity(self.final_states.len() * rhs.final_states.len());
+        // If two transitions have the same letter, the closure below adds the product
+        // transition to the accumulator. Transitions that have the same letter, but
+        // different markers, are only merged if one of the markers is zero (in which
+        // case the non-zero marker is used).
+        let mut join =
+            |(source1, letter1, target1): (State, Option<Letter>, State),
+             (source2, letter2, target2): (S, Option<Letter>, S)| {
+                let letter1 = letter1.unwrap();
+                let letter2 = letter2.unwrap();
+                if letter1.char == letter2.char
+                    && (letter1.marker == letter2.marker
+                        || letter1.marker == 0
+                        || letter2.marker == 0)
+                {
+                    transitions.push((
+                        (source1, source2),
+                        Some(Letter {
+                            char: letter1.char,
+                            marker: std::cmp::max(letter1.marker, letter2.marker),
+                        }),
+                        (target1, target2),
+                    ));
+                }
+            };
+        for tr1 in self.transitions.iter() {
+            for tr2 in rhs.transitions.iter() {
+                join(*tr1, *tr2)
+            }
+        }
+        for s1 in self.final_states.iter() {
+            for s2 in rhs.final_states.iter() {
+                final_states.push((*s1, *s2));
+            }
+        }
+        RawAutomaton {
+            nb_states: self.nb_states * rhs.nb_states,
+            deterministic_and_complete: false, /* Even when all intersected automata are
+                                                * deterministic, `join` may introduce
+                                                * non-determinism to do the marker merging. */
+            epsilon_transitions: false,
+            initial_state: (self.initial_state, rhs.initial_state),
+            final_states: HashSet::from_iter(final_states),
+            transitions,
+        }
     }
 }
 
