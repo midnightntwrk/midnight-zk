@@ -144,6 +144,7 @@ impl Relation for BitcoinSigExample {
             secp256k1: true,
             bls12_381: false,
             base64: false,
+            automaton: false,
         }
     }
 

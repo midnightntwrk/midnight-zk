@@ -62,6 +62,7 @@ impl Relation for ShaPreImageCircuit {
             secp256k1: false,
             bls12_381: false,
             base64: false,
+            automaton: false,
         }
     }
 

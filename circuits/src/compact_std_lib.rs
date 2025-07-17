@@ -34,7 +34,10 @@ use midnight_curves::G1Projective;
 use midnight_proofs::{
     circuit::{Chip, Layouter, SimpleFloorPlanner, Value},
     dev::cost_model::{from_circuit_to_circuit_model, CircuitModel},
-    plonk::{k_from_circuit, prepare, Circuit, ConstraintSystem, Error, ProvingKey, VerifyingKey},
+    plonk::{
+        k_from_circuit, prepare, Circuit, ConstraintSystem, Error, ProvingKey, TableColumn,
+        VerifyingKey,
+    },
     poly::{
         commitment::{Guard, Params},
         kzg::{
@@ -83,7 +86,13 @@ use crate::{
         ZeroInstructions,
     },
     map::map_gadget::MapGadget,
-    parsing::{Base64Chip, Base64Config, ParserGadget, NB_BASE64_ADVICE_COLS},
+    parsing::{
+        self,
+        automaton_chip::{
+            AutomatonChip, AutomatonConfig, NB_AUTOMATA_COLS, NB_AUTOMATA_TABLE_COLS,
+        },
+        Base64Chip, Base64Config, ParserGadget, StdLibParser, NB_BASE64_ADVICE_COLS,
+    },
     types::{
         AssignedBit, AssignedByte, AssignedNative, AssignedNativePoint, InnerValue, Instantiable,
     },
@@ -138,6 +147,9 @@ pub struct ZkStdLibArch {
 
     /// Enable base64 chip?
     pub base64: bool,
+
+    /// Enable automaton?
+    pub automaton: bool,
 }
 
 impl Default for ZkStdLibArch {
@@ -149,6 +161,7 @@ impl Default for ZkStdLibArch {
             secp256k1: false,
             bls12_381: false,
             base64: false,
+            automaton: false,
         }
     }
 }
@@ -165,7 +178,8 @@ impl From<ZkStdLibArch> for u8 {
         let bit4 = if arch.secp256k1 { 1 } else { 0 };
         let bit5 = if arch.bls12_381 { 1 } else { 0 };
         let bit6 = if arch.base64 { 1 } else { 0 };
-        bit0 ^ (bit1 << 1) ^ (bits23 << 2) ^ (bit4 << 4) ^ (bit5 << 5) ^ (bit6 << 6)
+        let bit7 = if arch.automaton { 1 } else { 0 };
+        bit0 ^ (bit1 << 1) ^ (bits23 << 2) ^ (bit4 << 4) ^ (bit5 << 5) ^ (bit6 << 6) ^ (bit7 << 7)
     }
 }
 
@@ -185,6 +199,7 @@ impl TryInto<ZkStdLibArch> for u8 {
             secp256k1: self & 16 != 0,
             bls12_381: self & 32 != 0,
             base64: self & 64 != 0,
+            automaton: self & 128 != 0,
         })
     }
 }
@@ -203,9 +218,10 @@ impl ZkStdLibArch {
         let version = u32::from_le_bytes(version);
         match version {
             1 => {
-                let mut byte = [0u8; 1];
-                reader.read_exact(&mut byte)?;
-                byte[0].try_into()
+                let mut bytes = [0u8; 1];
+                reader.read_exact(&mut bytes)?;
+                let chips = u8::from_be_bytes(bytes);
+                chips.try_into()
             }
             _ => Err(io::Error::new(
                 io::ErrorKind::InvalidData,
@@ -229,6 +245,7 @@ pub struct ZkStdLibConfig {
     secp256k1_config: Option<ForeignEccConfig<Secp256k1>>,
     bls12_381_config: Option<ForeignEccConfig<midnight_curves::G1Projective>>,
     base64_config: Option<Base64Config>,
+    automaton_config: Option<AutomatonConfig<StdLibParser, blstrs::Fq>>,
 }
 
 /// The `ZkStdLib` exposes all tools that are used in circuit generation.
@@ -250,6 +267,7 @@ pub struct ZkStdLib {
     base64_chip: Option<Base64Chip<F>>,
     parser_gadget: ParserGadget<F, NG>,
     vector_gadget: VectorGadget<F>,
+    automaton_chip: Option<AutomatonChip<StdLibParser, F>>,
 
     // A flag that indicates if the SHA chip has been used. This way we can load the SHA table only
     // when necessary (thus reducing the min_k in some cases).
@@ -293,6 +311,8 @@ impl ZkStdLib {
 
         let parser_gadget = ParserGadget::new(&native_gadget);
         let vector_gadget = VectorGadget::new(&native_gadget);
+        let automaton_chip =
+            (config.automaton_config.as_ref()).map(|c| AutomatonChip::new(c, &native_gadget));
 
         Self {
             native_gadget,
@@ -310,6 +330,7 @@ impl ZkStdLib {
             base64_chip,
             parser_gadget,
             vector_gadget,
+            automaton_chip,
             used_sha: Rc::new(RefCell::new(false)),
         }
     }
@@ -356,6 +377,7 @@ impl ZkStdLib {
             } else {
                 0
             },
+            NB_AUTOMATA_COLS,
         ]
         .into_iter()
         .max()
@@ -470,6 +492,20 @@ impl ZkStdLib {
             false => None,
         };
 
+        let automata_table_cols: [TableColumn; NB_AUTOMATA_TABLE_COLS] =
+            core::array::from_fn(|_| meta.lookup_table_column());
+        let automaton_config = match arch.automaton {
+            true => Some(AutomatonChip::configure(
+                meta,
+                &(
+                    advice_columns[..NB_AUTOMATA_COLS].try_into().unwrap(),
+                    automata_table_cols,
+                    parsing::spec_library(),
+                ),
+            )),
+            false => None,
+        };
+
         // FIXME: Some chips need this, should we unify the treatment of constants?
         let constants_column = meta.fixed_column();
         meta.enable_constant(constants_column);
@@ -486,6 +522,7 @@ impl ZkStdLib {
             secp256k1_config,
             bls12_381_config,
             base64_config,
+            automaton_config,
         }
     }
 }
@@ -545,6 +582,11 @@ impl ZkStdLib {
     /// Gadget for parsing properties of a JSON object.
     pub fn parser(&self) -> &ParserGadget<F, NG> {
         &self.parser_gadget
+    }
+
+    /// Chip for performing automaton-based parsing.
+    pub fn automaton(&self) -> &AutomatonChip<StdLibParser, F> {
+        (self.automaton_chip.as_ref()).unwrap_or_else(|| panic!("ZkStdArch must enable automaton"))
     }
 
     /// Assert that a given assigned bit is true.
