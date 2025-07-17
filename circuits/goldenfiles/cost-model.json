@@ -13,14 +13,14 @@
     },
     "parsing perf (input length = 50)": {
       "advice_columns": "5",
-      "column_queries": "48",
-      "fixed_columns": "26",
+      "column_queries": "49",
+      "fixed_columns": "27",
       "lookups": "5",
       "max_deg": "5",
       "permutations": "7",
       "point_sets": "4",
-      "rows": "68",
-      "table_rows": "808"
+      "rows": "78",
+      "table_rows": "826"
     }
   },
   "Map gadget": {

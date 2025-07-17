@@ -38,6 +38,7 @@ verification keys break backwards compatibility.
 * Expose `VectorInstructions in `ZkstdLib` [#19](https://github.com/midnightntwrk/midnight-zk/pull/19)
 * Extra functions in `verifier` for the light aggregator [#25](https://github.com/midnightntwrk/midnight-zk/pull/25)
 * Add `VectorGadget` [#28](https://github.com/midnightntwrk/midnight-zk/pull/28)
+* Adds input extraction feature to the automaton chip [#16](https://github.com/midnightntwrk/midnight-zk/pull/16)
 
 ### Changed
 * Add holder key check on credential example [#542](https://github.com/midnightntwrk/midnight-circuits/pull/542)
