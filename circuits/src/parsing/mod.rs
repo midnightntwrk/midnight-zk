@@ -13,21 +13,24 @@
 
 //! Module implementing chips and gadgets to process JSON objects.
 
-mod automaton_chip;
 mod base64_chip;
 mod data_types;
 mod parser_gadget;
+mod specs;
 
 /// A module to convert regular expressions to finite automata that can be used
 /// as basis for circuit gates.
 pub mod automaton;
+/// A module containing the definitions of the automata that will be loaded in
+/// the standard library.
+pub mod automaton_chip;
 /// A module to specify languages as regular expressions and convert them into
 /// finite automata.
 pub mod regex;
 
 mod table;
 
-pub use automaton_chip::AutomatonChip;
 pub use base64_chip::*;
 pub use data_types::{DateFormat, Separator};
 pub use parser_gadget::*;
+pub use specs::{spec_library, StdLibParser};
