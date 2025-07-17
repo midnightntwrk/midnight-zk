@@ -263,7 +263,6 @@ pub fn filecoin_srs(k: u32) -> ParamsKZG<Bls12> {
     let mut fetching_path = srs_path.clone();
 
     if !Path::new(fetching_path.as_str()).exists() {
-        println!("Entered here");
         fetching_path = format!("{srs_dir}/bls_filecoin_2p19")
     }
 

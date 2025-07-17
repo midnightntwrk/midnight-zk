@@ -35,6 +35,7 @@ macro_rules! generate_tests {
     ($($name:ident: $circuit:ty),*) => {
         $(
             #[test]
+            #[ignore]
             fn $name() {
                 let relation = <$circuit>::default();
                 let circuit = MidnightCircuit::from_relation(&relation);

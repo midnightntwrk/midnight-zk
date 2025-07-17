@@ -1,0 +1,40 @@
+name: Cargo Test With Cache
+description: Restore cache, run tests, save cache with rust-cache + sccache
+
+inputs:
+  package:
+    required: true
+  args:
+    required: false
+
+runs:
+  using: "composite"
+  steps:
+    - uses: actions-rs/toolchain@b2417cde72dcf67f306c0ae8e0828a81bf0b189f
+      with:
+        override: true
+
+    - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684
+      with:
+        path: ~/.cargo
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-${{ inputs.package }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-
+
+    - uses: Swatinem/rust-cache@v2
+      with:
+        cache-on-failure: true
+        shared-key: "ci"
+
+    - name: Cache /target directory
+      uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684
+      with:
+        path: target
+        key: ${{ runner.os }}-cargo-target-${{ hashFiles('**/Cargo.lock') }}-${{ inputs.package }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-target-
+
+    - uses: actions-rs/cargo@ae10961054e4aa8b4aa7dffede299aaf087aa33b
+      with:
+        command: test
+        args: -p ${{ inputs.package }} ${{ inputs.args }}
