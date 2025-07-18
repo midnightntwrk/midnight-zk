@@ -1463,9 +1463,9 @@ impl<F: PrimeField> FromScratch<F> for NativeChip<F> {
 
 #[cfg(test)]
 mod tests {
-    use blstrs::Fq as BlsScalar;
     use ff::FromUniformBytes;
     use halo2curves::pasta::{Fp as VestaScalar, Fq as PallasScalar};
+    use midnight_curves::Fq as BlsScalar;
 
     use super::*;
     use crate::instructions::{

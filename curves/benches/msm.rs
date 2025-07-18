@@ -122,16 +122,18 @@ fn msm_blst(c: &mut Criterion) {
     let mut group = c.benchmark_group("Msm");
     group.significance_level(0.1).sample_size(SAMPLE_SIZE);
 
-    let (bases, coeffs) = setup::<blstrs::G1Affine>();
+    let (bases, coeffs) = setup::<midnight_curves::G1Affine>();
 
     // Blstrs version.
     for (b_index, b) in BITS.iter().enumerate() {
         for k in MULTICORE_RANGE {
             let n: usize = 1 << k;
             let id = format!("blstrs_{b}b_{k}");
-            let points: Vec<blstrs::G1Projective> = bases.iter().map(Into::into).collect();
+            let points: Vec<midnight_curves::G1Projective> = bases.iter().map(Into::into).collect();
             group.bench_function(BenchmarkId::new("Blst", id), |b| {
-                b.iter(|| blstrs::G1Projective::multi_exp(&points[..n], &coeffs[b_index][..n]))
+                b.iter(|| {
+                    midnight_curves::G1Projective::multi_exp(&points[..n], &coeffs[b_index][..n])
+                })
             });
         }
     }

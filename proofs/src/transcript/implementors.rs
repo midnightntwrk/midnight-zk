@@ -89,7 +89,7 @@ impl Sampleable<Blake2bState> for Fr {
 /// Implementation of Hashable for BLS12-381 with Blake //
 //////////////////////////////////////////////////////////
 
-impl Hashable<Blake2bState> for blstrs::G1Projective {
+impl Hashable<Blake2bState> for midnight_curves::G1Projective {
     /// Converts it to compressed form in bytes
     fn to_input(&self) -> Vec<u8> {
         Hashable::to_bytes(self)
@@ -113,7 +113,7 @@ impl Hashable<Blake2bState> for blstrs::G1Projective {
     }
 }
 
-impl Hashable<Blake2bState> for blstrs::Fq {
+impl Hashable<Blake2bState> for midnight_curves::Fq {
     fn to_input(&self) -> Vec<u8> {
         self.to_repr().to_vec()
     }
@@ -136,13 +136,13 @@ impl Hashable<Blake2bState> for blstrs::Fq {
     }
 }
 
-impl Sampleable<Blake2bState> for blstrs::Fq {
+impl Sampleable<Blake2bState> for midnight_curves::Fq {
     fn sample(hash_output: Vec<u8>) -> Self {
         assert!(hash_output.len() <= 64);
-        assert!(hash_output.len() >= (blstrs::Fq::NUM_BITS as usize / 8) + 12);
+        assert!(hash_output.len() >= (midnight_curves::Fq::NUM_BITS as usize / 8) + 12);
         let mut bytes = [0u8; 64];
         bytes[..hash_output.len()].copy_from_slice(&hash_output);
-        blstrs::Fq::from_uniform_bytes(&bytes)
+        midnight_curves::Fq::from_uniform_bytes(&bytes)
     }
 }
 

@@ -251,7 +251,7 @@ mod test {
 
     #[test]
     fn div_rem() {
-        type F = blstrs::Fq;
+        type F = midnight_curves::Fq;
         run_div_rem_test::<F>(17, 5, false);
         run_div_rem_test::<F>(0, 1, false);
         run_div_rem_test::<F>(1, 1, false);

@@ -27,10 +27,10 @@
 
 use std::{cell::RefCell, cmp::max, convert::TryInto, fmt::Debug, io, rc::Rc};
 
-use blstrs::G1Projective;
 use ff::Field;
 use group::{prime::PrimeCurveAffine, Group};
 use halo2curves::secp256k1::{self, Secp256k1};
+use midnight_curves::G1Projective;
 use midnight_proofs::{
     circuit::{Chip, Layouter, SimpleFloorPlanner, Value},
     dev::cost_model::{from_circuit_to_circuit_model, CircuitModel},
@@ -94,16 +94,16 @@ use crate::{
 const SHA256_SIZE_IN_WORDS: usize = 8;
 const SHA256_SIZE_IN_BYTES: usize = 4 * SHA256_SIZE_IN_WORDS;
 
-type C = blstrs::JubjubExtended;
-type F = blstrs::Fq;
+type C = midnight_curves::JubjubExtended;
+type F = midnight_curves::Fq;
 
 // Type aliases, for readability.
 type NG = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
 type Secp256k1BaseChip = FieldChip<F, secp256k1::Fp, MEP, NG>;
 type Secp256k1ScalarChip = FieldChip<F, secp256k1::Fq, MEP, NG>;
 type Secp256k1Chip = ForeignEccChip<F, Secp256k1, MEP, Secp256k1ScalarChip, NG>;
-type Bls12381BaseChip = FieldChip<F, blstrs::Fp, MEP, NG>;
-type Bls12381Chip = ForeignEccChip<F, blstrs::G1Projective, MEP, NG, NG>;
+type Bls12381BaseChip = FieldChip<F, midnight_curves::Fp, MEP, NG>;
+type Bls12381Chip = ForeignEccChip<F, midnight_curves::G1Projective, MEP, NG, NG>;
 
 /// Size of the lookup table for SHA.
 #[derive(Clone, Copy, Debug)]
@@ -224,10 +224,10 @@ pub struct ZkStdLibConfig {
     jubjub_config: Option<EccConfig>,
     table11_config: Option<Table11Config>,
     table16_config: Option<Table16Config>,
-    poseidon_config: Option<PoseidonConfig<blstrs::Fq>>,
+    poseidon_config: Option<PoseidonConfig<midnight_curves::Fq>>,
     secp256k1_scalar_config: Option<FieldChipConfig>,
     secp256k1_config: Option<ForeignEccConfig<Secp256k1>>,
-    bls12_381_config: Option<ForeignEccConfig<blstrs::G1Projective>>,
+    bls12_381_config: Option<ForeignEccConfig<midnight_curves::G1Projective>>,
     base64_config: Option<Base64Config>,
 }
 
@@ -340,8 +340,13 @@ impl ZkStdLib {
             },
             if arch.bls12_381 {
                 max(
-                    nb_field_chip_columns::<F, blstrs::Fp, MEP>(),
-                    nb_foreign_ecc_chip_columns::<F, blstrs::G1Projective, MEP, blstrs::Fp>(),
+                    nb_field_chip_columns::<F, midnight_curves::Fp, MEP>(),
+                    nb_foreign_ecc_chip_columns::<
+                        F,
+                        midnight_curves::G1Projective,
+                        MEP,
+                        midnight_curves::Fp,
+                    >(),
                 )
             } else {
                 0
@@ -1139,7 +1144,7 @@ impl<'a, R: Relation> MidnightCircuit<'a, R> {
 pub struct MidnightVK {
     architecture: ZkStdLibArch,
     nb_public_inputs: usize,
-    vk: VerifyingKey<blstrs::Fq, KZGCommitmentScheme<blstrs::Bls12>>,
+    vk: VerifyingKey<midnight_curves::Fq, KZGCommitmentScheme<midnight_curves::Bls12>>,
 }
 
 impl MidnightVK {
@@ -1192,7 +1197,9 @@ impl MidnightVK {
     }
 
     /// The underlying midnight-proofs verifying key.
-    pub fn vk(&self) -> &VerifyingKey<blstrs::Fq, KZGCommitmentScheme<blstrs::Bls12>> {
+    pub fn vk(
+        &self,
+    ) -> &VerifyingKey<midnight_curves::Fq, KZGCommitmentScheme<midnight_curves::Bls12>> {
         &self.vk
     }
 }
@@ -1202,7 +1209,7 @@ impl MidnightVK {
 pub struct MidnightPK<R: Relation> {
     k: u8,
     relation: R,
-    pk: ProvingKey<blstrs::Fq, KZGCommitmentScheme<blstrs::Bls12>>,
+    pk: ProvingKey<midnight_curves::Fq, KZGCommitmentScheme<midnight_curves::Bls12>>,
 }
 
 impl<Rel: Relation> MidnightPK<Rel> {
@@ -1252,7 +1259,9 @@ impl<Rel: Relation> MidnightPK<Rel> {
     }
 
     /// The underlying midnight-proofs proving key.
-    pub fn pk(&self) -> &ProvingKey<blstrs::Fq, KZGCommitmentScheme<blstrs::Bls12>> {
+    pub fn pk(
+        &self,
+    ) -> &ProvingKey<midnight_curves::Fq, KZGCommitmentScheme<midnight_curves::Bls12>> {
         &self.pk
     }
 }
@@ -1276,7 +1285,7 @@ impl<Rel: Relation> MidnightPK<Rel> {
 /// # Example
 ///
 /// ```
-/// # use blstrs::G1Affine;
+/// # use midnight_curves::G1Affine;
 /// # use midnight_proofs::{
 /// #     circuit::{Layouter, Value},
 /// #     plonk::Error,
@@ -1291,7 +1300,7 @@ impl<Rel: Relation> MidnightPK<Rel> {
 /// # use rand_chacha::ChaCha8Rng;
 /// # use sha2::Digest;
 /// #
-/// type F = blstrs::Fq;
+/// type F = midnight_curves::Fq;
 ///
 /// #[derive(Clone)]
 /// struct ShaPreImageCircuit;
@@ -1481,13 +1490,19 @@ impl<'a, R: Relation> Circuit<F> for MidnightCircuit<'a, R> {
 /// Downsizes the given SRS to the size required by the given circuit (which is
 /// computed automatically). This step does not need to be done if you know that
 /// the SRS already has the correct size.
-pub fn downsize_srs_for_relation<R: Relation>(srs: &mut ParamsKZG<blstrs::Bls12>, relation: &R) {
+pub fn downsize_srs_for_relation<R: Relation>(
+    srs: &mut ParamsKZG<midnight_curves::Bls12>,
+    relation: &R,
+) {
     srs.downsize_from_circuit(&MidnightCircuit::from_relation(relation))
 }
 
 /// Generates a verifying key for a `MidnightCircuit<R>` circuit. Downsizes the
 /// parameters to match the size of the Relation.
-pub fn setup_vk<R: Relation>(params: &ParamsKZG<blstrs::Bls12>, relation: &R) -> MidnightVK {
+pub fn setup_vk<R: Relation>(
+    params: &ParamsKZG<midnight_curves::Bls12>,
+    relation: &R,
+) -> MidnightVK {
     let circuit = MidnightCircuit::from_relation(relation);
     let vk = BlstPLONK::<MidnightCircuit<R>>::setup_vk(params, &circuit);
 
@@ -1516,7 +1531,7 @@ pub fn setup_pk<R: Relation>(relation: &R, vk: &MidnightVK) -> MidnightPK<R> {
 /// Produces a proof of relation `R` for the given instance (using the given
 /// proving key and witness).
 pub fn prove<R: Relation, H: TranscriptHash>(
-    params: &ParamsKZG<blstrs::Bls12>,
+    params: &ParamsKZG<midnight_curves::Bls12>,
     pk: &MidnightPK<R>,
     relation: &R,
     instance: &R::Instance,
@@ -1540,7 +1555,7 @@ where
 /// Verifies the given proof of relation `R` with respect to the given instance.
 /// Returns `Ok(())` if the proof is valid.
 pub fn verify<R: Relation, H: TranscriptHash>(
-    params_verifier: &ParamsVerifierKZG<blstrs::Bls12>,
+    params_verifier: &ParamsVerifierKZG<midnight_curves::Bls12>,
     vk: &MidnightVK,
     instance: &R::Instance,
     proof: &[u8],
@@ -1556,7 +1571,7 @@ where
     BlstPLONK::<MidnightCircuit<R>>::verify::<H>(
         params_verifier,
         &vk.vk,
-        &[blstrs::G1Affine::identity()],
+        &[midnight_curves::G1Affine::identity()],
         &[&pi],
         proof,
     )
@@ -1570,7 +1585,7 @@ where
 ///
 /// Returns `Ok(())` if all proofs are valid.
 pub fn batch_verify<H: TranscriptHash>(
-    params_verifier: &[ParamsVerifierKZG<blstrs::Bls12>],
+    params_verifier: &[ParamsVerifierKZG<midnight_curves::Bls12>],
     vks: &[MidnightVK],
     pis: &[Vec<F>],
     proofs: &[Vec<u8>],
@@ -1595,9 +1610,13 @@ where
             }
 
             let mut transcript = CircuitTranscript::init_from_bytes(proof);
-            prepare::<blstrs::Fq, KZGCommitmentScheme<blstrs::Bls12>, CircuitTranscript<H>>(
+            prepare::<
+                midnight_curves::Fq,
+                KZGCommitmentScheme<midnight_curves::Bls12>,
+                CircuitTranscript<H>,
+            >(
                 &vk.vk,
-                &[&[blstrs::G1Projective::identity()]],
+                &[&[midnight_curves::G1Projective::identity()]],
                 // TODO: We could batch here proofs with the same vk.
                 &[&[pi]],
                 &mut transcript,

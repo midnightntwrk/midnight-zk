@@ -23,8 +23,8 @@ use std::{
     path::Path,
 };
 
-use blstrs::Bls12;
 use halo2curves::bn256;
+use midnight_curves::Bls12;
 use midnight_proofs::{
     plonk::{
         create_proof, keygen_pk, keygen_vk, prepare, Circuit, Error, ProvingKey, VerifyingKey,
@@ -176,10 +176,10 @@ plonk_api!(
 
 plonk_api!(
     BlstPLONK,
-    blstrs::Bls12,
-    blstrs::Fq,
-    blstrs::G1Affine,
-    blstrs::G1Projective
+    midnight_curves::Bls12,
+    midnight_curves::Fq,
+    midnight_curves::G1Affine,
+    midnight_curves::G1Projective
 );
 
 /// Check that the VK is the same as the stored VK for Logic. This function
@@ -193,7 +193,7 @@ plonk_api!(
 ///    breaking change to midnight_lib, and should change the ChangeLog
 ///    accordingly. To update the VK, re-run the example with
 ///    CHANGE_VK=BREAKING.
-pub fn check_vk<Relation: Circuit<blstrs::Fq>>(vk: &MidnightVK) {
+pub fn check_vk<Relation: Circuit<midnight_curves::Fq>>(vk: &MidnightVK) {
     // Read fixed VK hash
     let vk_name = format!(
         "./tests/static_vks/{}Vk",

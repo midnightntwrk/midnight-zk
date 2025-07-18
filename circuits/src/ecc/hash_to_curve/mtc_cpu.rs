@@ -13,10 +13,10 @@
 
 //! Map to curve off-circuit implementations.
 
-use blstrs::{JubjubExtended as Jubjub, JubjubSubgroup};
 use ff::{Field, PrimeField};
 use group::cofactor::CofactorGroup;
 use halo2curves::ff_ext::Legendre;
+use midnight_curves::{JubjubExtended as Jubjub, JubjubSubgroup};
 use subtle::{ConditionallySelectable, ConstantTimeEq};
 
 // use crate::instructions::ecc::EdwardsCurve;

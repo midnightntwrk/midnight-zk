@@ -106,7 +106,7 @@ use rand::{rngs::OsRng, Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use sha2::Digest;
 
-type F = blstrs::Fq;
+type F = midnight_curves::Fq;
 
 // The height of the tree.
 const TREE_HEIGHT: usize = 64;

@@ -1,7 +1,6 @@
 //! Example of proving knowledge of k out of n Bitcoin ECDSA signatures on a
 //! public message.
 
-use blstrs::Fq as Scalar;
 use ff::Field;
 use halo2curves::{
     group::Curve,
@@ -20,6 +19,7 @@ use midnight_circuits::{
     },
     types::{AssignedForeignPoint, InnerValue, Instantiable},
 };
+use midnight_curves::Fq as Scalar;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,

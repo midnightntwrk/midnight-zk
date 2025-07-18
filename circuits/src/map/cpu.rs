@@ -255,6 +255,6 @@ mod tests {
 
     #[test]
     fn test_map_poseidon() {
-        run_poseidon_test::<blstrs::Fq>();
+        run_poseidon_test::<midnight_curves::Fq>();
     }
 }

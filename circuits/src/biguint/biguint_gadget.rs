@@ -802,9 +802,9 @@ where
 #[cfg(test)]
 mod tests {
 
-    use blstrs::Fq as BlsScalar;
     use ff::FromUniformBytes;
     use halo2curves::pasta::{Fp as VestaScalar, Fq as PallasScalar};
+    use midnight_curves::Fq as BlsScalar;
     use midnight_proofs::{
         circuit::SimpleFloorPlanner,
         dev::MockProver,
@@ -957,7 +957,7 @@ mod tests {
 
     #[test]
     fn test_add_biguint() {
-        type F = blstrs::Fq;
+        type F = midnight_curves::Fq;
         let zero = BigUint::ZERO;
         for _ in 0..10 {
             let x: BigUint = random_biguint(1024);
@@ -970,7 +970,7 @@ mod tests {
 
     #[test]
     fn test_sub_biguint() {
-        type F = blstrs::Fq;
+        type F = midnight_curves::Fq;
         let zero = BigUint::ZERO;
         let one = BigUint::one();
         for _ in 0..10 {
@@ -989,7 +989,7 @@ mod tests {
 
     #[test]
     fn test_mul_biguint() {
-        type F = blstrs::Fq;
+        type F = midnight_curves::Fq;
         let zero = BigUint::ZERO;
         let one = BigUint::one();
         for _ in 0..10 {
@@ -1006,7 +1006,7 @@ mod tests {
 
     #[test]
     fn test_div_rem_biguint() {
-        type F = blstrs::Fq;
+        type F = midnight_curves::Fq;
         let zero = BigUint::ZERO;
         let one = BigUint::one();
         for _ in 0..10 {
@@ -1030,7 +1030,7 @@ mod tests {
 
     #[test]
     fn test_mod_exp_biguint() {
-        type F = blstrs::Fq;
+        type F = midnight_curves::Fq;
         let zero = BigUint::ZERO;
         let one = BigUint::one();
         for _ in 0..10 {
@@ -1046,7 +1046,7 @@ mod tests {
 
     #[test]
     fn test_biguint_to_and_from_bits() {
-        type F = blstrs::Fq;
+        type F = midnight_curves::Fq;
         let zero = BigUint::ZERO;
         let one = BigUint::one();
         for _ in 0..10 {
@@ -1060,7 +1060,7 @@ mod tests {
 
     #[test]
     fn test_lower_than_biguint() {
-        type F = blstrs::Fq;
+        type F = midnight_curves::Fq;
         let zero = BigUint::ZERO;
         let one = BigUint::one();
         for _ in 0..10 {

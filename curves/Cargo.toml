@@ -1,5 +1,5 @@
 [package]
-name = "blstrs"
+name = "midnight-curves"
 description = "Implementation of BLS12 381 and Jubjub curves."
 version = "0.1.0"
 authors = ["dignifiedquire <me@dignifiedquire.com>", "Midnight team"]

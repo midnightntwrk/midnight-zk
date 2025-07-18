@@ -309,7 +309,7 @@ mod tests {
 
     #[test]
     fn test_get_subsequence() {
-        type F = blstrs::Fq;
+        type F = midnight_curves::Fq;
         [
             (vec![1, 2, 3, 4, 5, 6], 0, vec![1, 2, 3], true),
             (vec![1, 2, 3, 4, 5, 6], 1, vec![2, 3, 4, 5], true),
@@ -331,7 +331,7 @@ mod tests {
 
     #[test]
     fn test_fetch_bytes() {
-        type F = blstrs::Fq;
+        type F = midnight_curves::Fq;
         let short = "L'essentiel est invisible pour les yeux".as_bytes();
         let long: Vec<u8> = (0..=2000).map(|i| i as u8).collect();
         [

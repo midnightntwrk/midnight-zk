@@ -178,8 +178,8 @@ where
 pub struct LightBlstrsEmulation {}
 
 impl SelfEmulation for LightBlstrsEmulation {
-    type F = blstrs::Fq;
-    type C = blstrs::G1Projective;
+    type F = midnight_curves::Fq;
+    type C = midnight_curves::G1Projective;
     type AssignedPoint = FakePoint<Self::C>;
     type Hash = LightPoseidonFS<Self::F>;
 
@@ -187,9 +187,9 @@ impl SelfEmulation for LightBlstrsEmulation {
     type CurveChip = FakeCurveChip<Self::C>;
     type SpongeChip = PoseidonChip<Self::F>;
 
-    type G1Affine = blstrs::G1Affine;
-    type G2Affine = blstrs::G2Affine;
-    type Engine = blstrs::Bls12;
+    type G1Affine = midnight_curves::G1Affine;
+    type G2Affine = midnight_curves::G2Affine;
+    type Engine = midnight_curves::Bls12;
 
     fn msm(
         _layouter: &mut impl Layouter<Self::F>,

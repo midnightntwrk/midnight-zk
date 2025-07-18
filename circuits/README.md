@@ -32,7 +32,7 @@ The motivations for a fixed configuration are:
 `ZkStdLib` also serves as an abstraction layer, allowing developers to focus on circuit logic rather than the configuration and chip creation. Developers only need to implement the `Relation` trait, avoiding the boilerplate of Halo2's `Circuit`. For example, to prove knowledge of a SHA preimage:
 
 ```rust
-use blstrs::G1Affine;
+use midnight_curves::G1Affine;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
@@ -47,7 +47,7 @@ use rand::{rngs::OsRng, Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use sha2::Digest;
 
-type F = blstrs::Fq;
+type F = midnight_curves::Fq;
 
 // In this example we show how to build a circuit for proving the knowledge of a
 // SHA256 preimage. Concretely, given public input x, we will argue that we know

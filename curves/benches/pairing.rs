@@ -4,9 +4,9 @@
 //!
 //!     cargo bench --bench  pairing
 
-use blstrs::{G1Affine, G1Projective, G2Affine, G2Prepared, G2Projective};
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 use group::Group;
+use midnight_curves::{G1Affine, G1Projective, G2Affine, G2Prepared, G2Projective};
 use pairing_lib::{Engine, MillerLoopResult, MultiMillerLoop};
 use rand_core::SeedableRng;
 use rand_xorshift::XorShiftRng;
@@ -22,7 +22,7 @@ fn bench_pairing(c: &mut Criterion) {
     let g2_affine = G2Affine::from(&g2_projective);
     let g2_prepared = G2Prepared::from(g2_affine);
 
-    let mm_loop_res = blstrs::Bls12::multi_miller_loop(&[(&g1_affine, &g2_prepared)]);
+    let mm_loop_res = midnight_curves::Bls12::multi_miller_loop(&[(&g1_affine, &g2_prepared)]);
 
     let mut group = c.benchmark_group("Bls12-381 pairing");
     group.significance_level(0.1).sample_size(100);
@@ -33,7 +33,9 @@ fn bench_pairing(c: &mut Criterion) {
     });
 
     group.bench_function("Multi-miller loop", |b| {
-        b.iter(|| blstrs::Bls12::multi_miller_loop(black_box(&[(&g1_affine, &g2_prepared)])))
+        b.iter(|| {
+            midnight_curves::Bls12::multi_miller_loop(black_box(&[(&g1_affine, &g2_prepared)]))
+        })
     });
 
     group.bench_function("Final exponentiantion", |b| {
@@ -41,7 +43,7 @@ fn bench_pairing(c: &mut Criterion) {
     });
 
     group.bench_function("Full Pairing", |b| {
-        b.iter(|| blstrs::Bls12::pairing(black_box(&g1_affine), black_box(&g2_affine)))
+        b.iter(|| midnight_curves::Bls12::pairing(black_box(&g1_affine), black_box(&g2_affine)))
     });
 
     group.finish();

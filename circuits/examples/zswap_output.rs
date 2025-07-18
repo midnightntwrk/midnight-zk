@@ -3,7 +3,6 @@
 //! For more details, visit:
 //! https://github.com/midnightntwrk/midnight-ledger-prototype/blob/main/zswap/zswap.compact
 
-use blstrs::{Fr as JubjubScalar, JubjubExtended as Jubjub, JubjubSubgroup};
 use ff::Field;
 use group::Group;
 use midnight_circuits::{
@@ -17,6 +16,7 @@ use midnight_circuits::{
     testing_utils::plonk_api::filecoin_srs,
     types::{AssignedBit, AssignedByte, AssignedNative, AssignedNativePoint, Instantiable},
 };
+use midnight_curves::{Fr as JubjubScalar, JubjubExtended as Jubjub, JubjubSubgroup};
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
@@ -25,7 +25,7 @@ use rand::{rngs::OsRng, Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use sha2::Digest;
 
-type F = blstrs::Fq;
+type F = midnight_curves::Fq;
 
 type CoinCom = [u8; 32];
 type ValueCom = JubjubSubgroup;

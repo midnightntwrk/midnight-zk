@@ -7,11 +7,11 @@
 //!
 //!     cargo bench --bench ec
 
-use blstrs::G1Projective;
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 use ff::Field;
 use group::prime::PrimeCurveAffine;
 use halo2curves::CurveExt;
+use midnight_curves::G1Projective;
 use rand_core::SeedableRng;
 use rand_xorshift::XorShiftRng;
 

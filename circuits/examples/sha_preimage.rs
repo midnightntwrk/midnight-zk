@@ -22,7 +22,7 @@ use rand::{rngs::OsRng, Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use sha2::Digest;
 
-type F = blstrs::Fq;
+type F = midnight_curves::Fq;
 
 #[derive(Clone, Default)]
 pub struct ShaPreImageCircuit;

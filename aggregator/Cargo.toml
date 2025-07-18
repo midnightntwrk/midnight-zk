@@ -17,8 +17,8 @@ rustdoc-args = ["--cfg", "docsrs", "--html-in-header", "katex-header.html"]
 group = { workspace = true }
 ff = { workspace = true }
 halo2curves = { version = "0.7.0", default-features = false }
-blstrs = { path = "../curves" }
-midnight_proofs = { path = "../proofs", default-features = false, features = [
+midnight-curves = { path = "../curves" }
+midnight-proofs = { path = "../proofs", default-features = false, features = [
     "bits",
     "cost-estimator",
     "circuit-params",

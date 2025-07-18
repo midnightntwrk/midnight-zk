@@ -43,39 +43,43 @@ impl<F: PoseidonField> TranscriptHash for LightPoseidonFS<F> {
     }
 }
 
-impl Hashable<LightPoseidonFS<blstrs::Fq>> for blstrs::G1Projective {
-    fn to_input(&self) -> Vec<blstrs::Fq> {
+impl Hashable<LightPoseidonFS<midnight_curves::Fq>> for midnight_curves::G1Projective {
+    fn to_input(&self) -> Vec<midnight_curves::Fq> {
         use sha2::Digest;
-        let bytes = Hashable::<LightPoseidonFS<blstrs::Fq>>::to_bytes(self);
+        let bytes = Hashable::<LightPoseidonFS<midnight_curves::Fq>>::to_bytes(self);
         let digest_bytes: [u8; 64] = sha2::Sha512::digest(bytes).into();
-        vec![blstrs::Fq::from_uniform_bytes(&digest_bytes)]
+        vec![midnight_curves::Fq::from_uniform_bytes(&digest_bytes)]
     }
 
     fn to_bytes(&self) -> Vec<u8> {
-        <blstrs::G1Projective as Hashable<PoseidonState<blstrs::Fq>>>::to_bytes(self)
+        <midnight_curves::G1Projective as Hashable<PoseidonState<midnight_curves::Fq>>>::to_bytes(
+            self,
+        )
     }
 
     fn read(buffer: &mut impl Read) -> io::Result<Self> {
-        <blstrs::G1Projective as Hashable<PoseidonState<blstrs::Fq>>>::read(buffer)
+        <midnight_curves::G1Projective as Hashable<PoseidonState<midnight_curves::Fq>>>::read(
+            buffer,
+        )
     }
 }
 
-impl Hashable<LightPoseidonFS<blstrs::Fq>> for blstrs::Fq {
-    fn to_input(&self) -> Vec<blstrs::Fq> {
-        <blstrs::Fq as Hashable<PoseidonState<blstrs::Fq>>>::to_input(self)
+impl Hashable<LightPoseidonFS<midnight_curves::Fq>> for midnight_curves::Fq {
+    fn to_input(&self) -> Vec<midnight_curves::Fq> {
+        <midnight_curves::Fq as Hashable<PoseidonState<midnight_curves::Fq>>>::to_input(self)
     }
 
     fn to_bytes(&self) -> Vec<u8> {
-        <blstrs::Fq as Hashable<PoseidonState<blstrs::Fq>>>::to_bytes(self)
+        <midnight_curves::Fq as Hashable<PoseidonState<midnight_curves::Fq>>>::to_bytes(self)
     }
 
     fn read(buffer: &mut impl Read) -> io::Result<Self> {
-        <blstrs::Fq as Hashable<PoseidonState<blstrs::Fq>>>::read(buffer)
+        <midnight_curves::Fq as Hashable<PoseidonState<midnight_curves::Fq>>>::read(buffer)
     }
 }
 
-impl Sampleable<LightPoseidonFS<blstrs::Fq>> for blstrs::Fq {
-    fn sample(out: blstrs::Fq) -> Self {
+impl Sampleable<LightPoseidonFS<midnight_curves::Fq>> for midnight_curves::Fq {
+    fn sample(out: midnight_curves::Fq) -> Self {
         out
     }
 }

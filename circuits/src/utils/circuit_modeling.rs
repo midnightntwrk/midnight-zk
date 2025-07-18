@@ -18,9 +18,9 @@ use std::{
     sync::{Arc, Mutex, OnceLock},
 };
 
-use blstrs::Fq;
 use ff::{FromUniformBytes, PrimeField};
 use goldenfile::Mint;
+use midnight_curves::Fq;
 use midnight_proofs::{
     dev::cost_model::{from_circuit_to_circuit_model, CircuitModel},
     plonk::Circuit,

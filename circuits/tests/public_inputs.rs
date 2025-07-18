@@ -34,7 +34,7 @@ use midnight_proofs::{
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 
-type F = blstrs::Fq;
+type F = midnight_curves::Fq;
 
 #[derive(Clone)]
 struct PIsCircuit {

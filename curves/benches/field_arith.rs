@@ -7,9 +7,9 @@
 //!
 //!     cargo bench --bench field_arith
 
-use blstrs::*;
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 use ff::Field;
+use midnight_curves::*;
 use rand_core::{RngCore, SeedableRng};
 use rand_xorshift::XorShiftRng;
 
