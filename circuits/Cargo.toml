@@ -10,7 +10,7 @@ group = { workspace = true }
 ff = { workspace = true }
 halo2curves = { workspace = true }
 blake2b_simd = { workspace = true }
-midnight-curves = {path = "../curves" }
+midnight-curves = {path = "../curves", version = "0.1.0" }
 midnight-proofs = { path = "../proofs", default-features = false, features = [
     "bits",
     "cost-estimator",
