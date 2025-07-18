@@ -35,6 +35,22 @@ impl TranscriptHash for Blake2bState {
 // /// Implementation of Hashable for BN with Blake //
 // ///////////////////////////////////////////////////
 
+impl<T: TranscriptHash<Input = Vec<u8>>> Hashable<T> for u8 {
+    fn to_input(&self) -> Vec<u8> {
+        vec![*self]
+    }
+
+    fn to_bytes(&self) -> Vec<u8> {
+        vec![*self]
+    }
+
+    fn read(buffer: &mut impl Read) -> io::Result<Self> {
+        let mut byte = [0u8; 1];
+        buffer.read_exact(&mut byte)?;
+        Ok(byte[0])
+    }
+}
+
 impl Hashable<Blake2bState> for G1 {
     /// Converts it to compressed form in bytes
     fn to_input(&self) -> Vec<u8> {
