@@ -50,6 +50,7 @@ verification keys break backwards compatibility.
 * Fixed completeness bug in NativeGadget's `sgn0` [#26](https://github.com/midnightntwrk/midnight-zk/pull/26)
 * Optimize `sgn0` [#27](https://github.com/midnightntwrk/midnight-zk/pull/27)
 * Make `check_vk` tests optional (for speeding up CI) [#31](https://github.com/midnightntwrk/midnight-zk/pull/31)
+* Update dependency names [#32](https://github.com/midnightntwrk/midnight-zk/pull/32)
 
 ### Removed
 * Bit and Byte off-circuit types [#548](https://github.com/midnightntwrk/midnight-circuits/pull/548)
