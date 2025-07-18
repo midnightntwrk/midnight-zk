@@ -1585,7 +1585,7 @@ where
 ///
 /// Returns `Ok(())` if all proofs are valid.
 pub fn batch_verify<H: TranscriptHash>(
-    params_verifier: &[ParamsVerifierKZG<midnight_curves::Bls12>],
+    params_verifier: &ParamsVerifierKZG<midnight_curves::Bls12>,
     vks: &[MidnightVK],
     pis: &[Vec<F>],
     proofs: &[Vec<u8>],
@@ -1594,8 +1594,8 @@ where
     G1Projective: Hashable<H>,
     F: Hashable<H> + Sampleable<H>,
 {
-    let n = params_verifier.len();
-    if vks.len() != n || pis.len() != n || proofs.len() != n {
+    let n = vks.len();
+    if pis.len() != n || proofs.len() != n {
         // TODO: have richer types in halo2
         return Err(Error::InvalidInstances);
     }
@@ -1626,12 +1626,14 @@ where
         })
         .collect::<Result<Vec<_>, Error>>()?;
 
-    if DualMSM::batch_verify(guards.into_iter(), params_verifier.iter()).is_ok() {
-        Ok(())
-    } else {
-        // TODO: Have richer error types
-        Err(Error::Opening)
+    let mut acc_guard = DualMSM::init();
+    for guard in guards {
+        acc_guard.add_msm(guard);
     }
+    // TODO: Have richer error types
+    acc_guard
+        .verify(params_verifier)
+        .map_err(|_| Error::Opening)
 }
 
 /// Cost model of the given relation.
