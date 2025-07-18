@@ -11,6 +11,11 @@ verification keys break backwards compatibility.
 * PATCH: Incremented when you make backward-compatible bug fixes
 
 ## [Unreleased]
+### Added
+### Changed
+### Removed
+
+## [4.0.0] - 18-07-2025
 
 ### Added
 * Add Url-Safe Base64 support [#540](https://github.com/midnightntwrk/midnight-circuits/pull/540)
@@ -51,6 +56,7 @@ verification keys break backwards compatibility.
 * Optimize `sgn0` [#27](https://github.com/midnightntwrk/midnight-zk/pull/27)
 * Make `check_vk` tests optional (for speeding up CI) [#31](https://github.com/midnightntwrk/midnight-zk/pull/31)
 * Update dependency names [#32](https://github.com/midnightntwrk/midnight-zk/pull/32)
+* Fix versions of crates in monorepo [#33](https://github.com/midnightntwrk/midnight-zk/pull/33)
 
 ### Removed
 * Bit and Byte off-circuit types [#548](https://github.com/midnightntwrk/midnight-circuits/pull/548)
