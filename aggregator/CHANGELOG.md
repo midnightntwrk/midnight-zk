@@ -8,8 +8,10 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 ## [Unreleased]
 
 ### Added
+
 ### Changed
 * Update dependency names [#32](https://github.com/midnightntwrk/midnight-zk/pull/32)
 * Fix versions of crates in monorepo [#33](https://github.com/midnightntwrk/midnight-zk/pull/33)
+* Unify transcript style [#34](https://github.com/midnightntwrk/midnight-zk/pull/34)
 
 ### Removed

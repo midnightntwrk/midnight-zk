@@ -58,6 +58,8 @@ verification keys break backwards compatibility.
 * Make `check_vk` tests optional (for speeding up CI) [#31](https://github.com/midnightntwrk/midnight-zk/pull/31)
 * Update dependency names [#32](https://github.com/midnightntwrk/midnight-zk/pull/32)
 * Fix versions of crates in monorepo [#33](https://github.com/midnightntwrk/midnight-zk/pull/33)
+* Change transcript ends up empty in `compact_std_lib` verification functions [#34](https://github.com/midnightntwrk/midnight-zk/pull/34)
+* Optimize `compact_std_lib::batch_very` [#34](https://github.com/midnightntwrk/midnight-zk/pull/34)
 
 ### Removed
 * Bit and Byte off-circuit types [#548](https://github.com/midnightntwrk/midnight-circuits/pull/548)
