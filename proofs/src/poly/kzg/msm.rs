@@ -29,7 +29,7 @@ pub struct MSMKZG<E: Engine> {
 
 impl<E: Engine> MSMKZG<E> {
     /// Create an empty MSM instance
-    pub fn new() -> Self {
+    pub fn init() -> Self {
         MSMKZG {
             scalars: vec![],
             bases: vec![],
@@ -110,7 +110,7 @@ where
     E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
 {
     fn default() -> Self {
-        Self::new()
+        Self::init()
     }
 }
 
@@ -132,10 +132,10 @@ where
     E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
 {
     /// Create a new two channel MSM accumulator instance
-    pub fn new() -> Self {
+    pub fn init() -> Self {
         Self {
-            left: MSMKZG::new(),
-            right: MSMKZG::new(),
+            left: MSMKZG::init(),
+            right: MSMKZG::init(),
         }
     }
 
