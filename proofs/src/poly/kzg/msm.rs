@@ -1,5 +1,6 @@
 use std::fmt::Debug;
 
+use ff::Field;
 use group::{prime::PrimeCurveAffine, Curve, Group};
 use halo2curves::{
     msm::msm_best,
@@ -36,15 +37,11 @@ impl<E: Engine> MSMKZG<E> {
         }
     }
 
-    /// Prepares all scalars in the MSM to linear combination
-    pub fn combine_with_base(&mut self, base: E::Fr) {
-        use ff::Field;
-        let mut acc = E::Fr::ONE;
-        if !self.scalars.is_empty() {
-            for scalar in self.scalars.iter_mut().rev() {
-                *scalar *= &acc;
-                acc *= base;
-            }
+    /// Create a new MSM from a given base (with scalar of 1).
+    pub fn from_base(base: &E::G1) -> Self {
+        MSMKZG {
+            scalars: vec![E::Fr::ONE],
+            bases: vec![*base],
         }
     }
 }
@@ -131,7 +128,7 @@ impl<E: MultiMillerLoop + Debug> DualMSM<E>
 where
     E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
 {
-    /// Create a new two channel MSM accumulator instance
+    /// Create an empty two channel MSM accumulator instance
     pub fn init() -> Self {
         Self {
             left: MSMKZG::init(),
@@ -139,7 +136,12 @@ where
         }
     }
 
-    /// Split the [DualMSM] into `left` and `right`.
+    /// Create a new two channel MSM accumulator instance
+    pub fn new(left: MSMKZG<E>, right: MSMKZG<E>) -> Self {
+        Self { left, right }
+    }
+
+    /// Split the [DualMSM] into `left` and `right`
     pub fn split(&self) -> SplitDualMSM<E> {
         let left = self
             .left
