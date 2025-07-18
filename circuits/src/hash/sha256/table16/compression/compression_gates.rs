@@ -29,6 +29,7 @@ impl<F: PrimeField> CompressionGate<F> {
     // Decompose `A,B,C,D` words
     // (2, 11, 9, 10)-bit chunks
     #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::type_complexity)]
     pub fn s_decompose_abcd(
         s_decompose_abcd: Expression<F>,
         a: Expression<F>,
@@ -97,6 +98,7 @@ impl<F: PrimeField> CompressionGate<F> {
     // Decompose `E,F,G,H` words
     // (6, 5, 14, 7)-bit chunks
     #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::type_complexity)]
     pub fn s_decompose_efgh(
         s_decompose_efgh: Expression<F>,
         a_lo: Expression<F>,
@@ -280,6 +282,7 @@ impl<F: PrimeField> CompressionGate<F> {
 
     // Second part of Choice gate on (E, F, G), ¬E ∧ G
     #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::type_complexity)]
     pub fn s_ch_neg(
         s_ch_neg: Expression<F>,
         spread_q0_even: Expression<F>,

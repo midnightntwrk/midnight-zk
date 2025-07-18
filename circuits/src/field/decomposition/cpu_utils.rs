@@ -148,7 +148,7 @@ pub(super) fn compute_optimal_limb_sizes(
     // solution already computed
     #[allow(clippy::map_entry)]
     if solutions.contains_key(&bound) {
-        return solutions.get(&bound).unwrap().to_vec();
+        solutions.get(&bound).unwrap().to_vec()
     }
     // trivial bound
     else if bound == 0 {

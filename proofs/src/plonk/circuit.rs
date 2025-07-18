@@ -1616,7 +1616,7 @@ pub struct PinnedConstraintSystem<'a, F: Field> {
     minimum_degree: &'a Option<usize>,
 }
 
-impl<'a, F: Field> std::fmt::Debug for PinnedConstraintSystem<'a, F> {
+impl<F: Field> std::fmt::Debug for PinnedConstraintSystem<'_, F> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let &Self {
             num_fixed_columns,
@@ -1664,7 +1664,7 @@ impl<'a, F: Field> std::fmt::Debug for PinnedConstraintSystem<'a, F> {
 
 struct PinnedGates<'a, F: Field>(&'a Vec<Gate<F>>);
 
-impl<'a, F: Field> std::fmt::Debug for PinnedGates<'a, F> {
+impl<F: Field> std::fmt::Debug for PinnedGates<'_, F> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
         f.debug_list()
             .entries(self.0.iter().flat_map(|gate| gate.polynomials().iter()))

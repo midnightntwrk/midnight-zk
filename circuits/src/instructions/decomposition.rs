@@ -301,6 +301,7 @@ pub trait Pow2RangeInstructions<F: PrimeField>: Debug + Clone {
 }
 
 #[cfg(test)]
+#[allow(missing_docs)]
 pub mod tests {
     use std::marker::PhantomData;
 

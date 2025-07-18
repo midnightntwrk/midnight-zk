@@ -58,7 +58,6 @@ pub type Base = BlsScalar;
 
 /// Represents an element of the scalar field $\mathbb{F}_r$ of the Jubjub
 /// elliptic curve construction.
-
 const FR_MODULUS_BYTES: [u8; 32] = [
     183, 44, 247, 214, 94, 14, 151, 208, 130, 16, 200, 204, 147, 32, 104, 166, 0, 59, 52, 1, 1, 59,
     103, 6, 169, 175, 51, 101, 234, 180, 125, 14,
@@ -290,7 +289,7 @@ impl JubjubAffineNiels {
     }
 }
 
-impl<'a, 'b> Mul<&'b Fr> for &'a JubjubAffineNiels {
+impl<'b> Mul<&'b Fr> for &JubjubAffineNiels {
     type Output = JubjubExtended;
 
     fn mul(self, other: &'b Fr) -> JubjubExtended {
@@ -374,7 +373,7 @@ impl ExtendedNielsPoint {
     }
 }
 
-impl<'a, 'b> Mul<&'b Fr> for &'a ExtendedNielsPoint {
+impl<'b> Mul<&'b Fr> for &ExtendedNielsPoint {
     type Output = JubjubExtended;
 
     fn mul(self, other: &'b Fr) -> JubjubExtended {
@@ -870,7 +869,7 @@ impl JubjubExtended {
     }
 }
 
-impl<'a, 'b> Mul<&'b Fr> for &'a JubjubExtended {
+impl<'b> Mul<&'b Fr> for &JubjubExtended {
     type Output = JubjubExtended;
 
     fn mul(self, other: &'b Fr) -> JubjubExtended {
@@ -880,7 +879,7 @@ impl<'a, 'b> Mul<&'b Fr> for &'a JubjubExtended {
 
 impl_binops_multiplicative!(JubjubExtended, Fr);
 
-impl<'a, 'b> Add<&'b ExtendedNielsPoint> for &'a JubjubExtended {
+impl<'b> Add<&'b ExtendedNielsPoint> for &JubjubExtended {
     type Output = JubjubExtended;
 
     #[allow(clippy::suspicious_arithmetic_impl)]
@@ -919,7 +918,7 @@ impl<'a, 'b> Add<&'b ExtendedNielsPoint> for &'a JubjubExtended {
     }
 }
 
-impl<'a, 'b> Sub<&'b ExtendedNielsPoint> for &'a JubjubExtended {
+impl<'b> Sub<&'b ExtendedNielsPoint> for &JubjubExtended {
     type Output = JubjubExtended;
 
     #[allow(clippy::suspicious_arithmetic_impl)]
@@ -941,7 +940,7 @@ impl<'a, 'b> Sub<&'b ExtendedNielsPoint> for &'a JubjubExtended {
 
 impl_binops_additive!(JubjubExtended, ExtendedNielsPoint);
 
-impl<'a, 'b> Add<&'b JubjubAffineNiels> for &'a JubjubExtended {
+impl<'b> Add<&'b JubjubAffineNiels> for &JubjubExtended {
     type Output = JubjubExtended;
 
     #[allow(clippy::suspicious_arithmetic_impl)]
@@ -967,7 +966,7 @@ impl<'a, 'b> Add<&'b JubjubAffineNiels> for &'a JubjubExtended {
     }
 }
 
-impl<'a, 'b> Sub<&'b JubjubAffineNiels> for &'a JubjubExtended {
+impl<'b> Sub<&'b JubjubAffineNiels> for &JubjubExtended {
     type Output = JubjubExtended;
 
     #[allow(clippy::suspicious_arithmetic_impl)]
@@ -989,7 +988,7 @@ impl<'a, 'b> Sub<&'b JubjubAffineNiels> for &'a JubjubExtended {
 
 impl_binops_additive!(JubjubExtended, JubjubAffineNiels);
 
-impl<'a, 'b> Add<&'b JubjubExtended> for &'a JubjubExtended {
+impl<'b> Add<&'b JubjubExtended> for &JubjubExtended {
     type Output = JubjubExtended;
 
     #[inline]
@@ -998,7 +997,7 @@ impl<'a, 'b> Add<&'b JubjubExtended> for &'a JubjubExtended {
     }
 }
 
-impl<'a, 'b> Sub<&'b JubjubExtended> for &'a JubjubExtended {
+impl<'b> Sub<&'b JubjubExtended> for &JubjubExtended {
     type Output = JubjubExtended;
 
     #[inline]
@@ -1009,7 +1008,7 @@ impl<'a, 'b> Sub<&'b JubjubExtended> for &'a JubjubExtended {
 
 impl_binops_additive!(JubjubExtended, JubjubExtended);
 
-impl<'a, 'b> Add<&'b JubjubAffine> for &'a JubjubExtended {
+impl<'b> Add<&'b JubjubAffine> for &JubjubExtended {
     type Output = JubjubExtended;
 
     #[inline]
@@ -1018,7 +1017,7 @@ impl<'a, 'b> Add<&'b JubjubAffine> for &'a JubjubExtended {
     }
 }
 
-impl<'a, 'b> Sub<&'b JubjubAffine> for &'a JubjubExtended {
+impl<'b> Sub<&'b JubjubAffine> for &JubjubExtended {
     type Output = JubjubExtended;
 
     #[inline]
@@ -1029,7 +1028,7 @@ impl<'a, 'b> Sub<&'b JubjubAffine> for &'a JubjubExtended {
 
 impl_binops_additive!(JubjubExtended, JubjubAffine);
 
-impl<'a, 'b> Add<&'b JubjubAffine> for &'a JubjubAffine {
+impl<'b> Add<&'b JubjubAffine> for &JubjubAffine {
     type Output = JubjubExtended;
 
     #[inline]
@@ -1038,7 +1037,7 @@ impl<'a, 'b> Add<&'b JubjubAffine> for &'a JubjubAffine {
     }
 }
 
-impl<'a, 'b> Sub<&'b JubjubAffine> for &'a JubjubAffine {
+impl<'b> Sub<&'b JubjubAffine> for &JubjubAffine {
     type Output = JubjubExtended;
 
     #[inline]
@@ -1126,7 +1125,7 @@ pub fn batch_normalize(v: &mut [JubjubExtended]) -> impl Iterator<Item = JubjubA
     v.iter().map(|p| JubjubAffine { u: p.u, v: p.v })
 }
 
-impl<'a, 'b> Mul<&'b Fr> for &'a JubjubAffine {
+impl<'b> Mul<&'b Fr> for &JubjubAffine {
     type Output = JubjubExtended;
 
     fn mul(self, other: &'b Fr) -> JubjubExtended {
@@ -1209,7 +1208,7 @@ impl Neg for &JubjubSubgroup {
     }
 }
 
-impl<'a, 'b> Add<&'b JubjubSubgroup> for &'a JubjubExtended {
+impl<'b> Add<&'b JubjubSubgroup> for &JubjubExtended {
     type Output = JubjubExtended;
 
     #[inline]
@@ -1218,7 +1217,7 @@ impl<'a, 'b> Add<&'b JubjubSubgroup> for &'a JubjubExtended {
     }
 }
 
-impl<'a, 'b> Sub<&'b JubjubSubgroup> for &'a JubjubExtended {
+impl<'b> Sub<&'b JubjubSubgroup> for &JubjubExtended {
     type Output = JubjubExtended;
 
     #[inline]
@@ -1229,7 +1228,7 @@ impl<'a, 'b> Sub<&'b JubjubSubgroup> for &'a JubjubExtended {
 
 impl_binops_additive!(JubjubExtended, JubjubSubgroup);
 
-impl<'a, 'b> Add<&'b JubjubSubgroup> for &'a JubjubSubgroup {
+impl<'b> Add<&'b JubjubSubgroup> for &JubjubSubgroup {
     type Output = JubjubSubgroup;
 
     #[inline]
@@ -1238,7 +1237,7 @@ impl<'a, 'b> Add<&'b JubjubSubgroup> for &'a JubjubSubgroup {
     }
 }
 
-impl<'a, 'b> Sub<&'b JubjubSubgroup> for &'a JubjubSubgroup {
+impl<'b> Sub<&'b JubjubSubgroup> for &JubjubSubgroup {
     type Output = JubjubSubgroup;
 
     #[inline]
@@ -1249,7 +1248,7 @@ impl<'a, 'b> Sub<&'b JubjubSubgroup> for &'a JubjubSubgroup {
 
 impl_binops_additive!(JubjubSubgroup, JubjubSubgroup);
 
-impl<'a, 'b> Mul<&'b Fr> for &'a JubjubSubgroup {
+impl<'b> Mul<&'b Fr> for &JubjubSubgroup {
     type Output = JubjubSubgroup;
 
     fn mul(self, other: &'b Fr) -> JubjubSubgroup {

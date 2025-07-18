@@ -176,7 +176,7 @@ where
         _marker: std::marker::PhantomData<F>,
     }
 
-    impl<'a, F: Field> Assignment<F> for WitnessCollection<'a, F> {
+    impl<F: Field> Assignment<F> for WitnessCollection<'_, F> {
         fn enter_region<NR, N>(&mut self, _: N)
         where
             NR: Into<String>,

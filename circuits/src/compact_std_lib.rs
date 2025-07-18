@@ -1411,7 +1411,7 @@ pub trait Relation: Clone {
     fn read_relation<R: io::Read>(reader: &mut R) -> io::Result<Self>;
 }
 
-impl<'a, R: Relation> Circuit<F> for MidnightCircuit<'a, R> {
+impl<R: Relation> Circuit<F> for MidnightCircuit<'_, R> {
     type Config = ZkStdLibConfig;
 
     // FIXME: this could be parametrised by MidnightCircuit.
