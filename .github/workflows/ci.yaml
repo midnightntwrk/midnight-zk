@@ -37,7 +37,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       - uses: ./.github/actions/cargo-test
         with:
-          package: blstrs
+          package: midnight-curves
           args: --release --all-features
 
   test-circuits:
@@ -89,7 +89,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       - uses: ./.github/actions/cargo-test
         with:
-          package: midnight_proofs
+          package: midnight-proofs
           args: --release --all-features
 
   test-aggregator:
