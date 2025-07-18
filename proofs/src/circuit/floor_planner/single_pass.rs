@@ -228,9 +228,7 @@ struct SingleChipLayouterRegion<'r, 'a, F: Field, CS: Assignment<F> + 'a> {
     constants: Vec<(Rational<F>, Cell)>,
 }
 
-impl<'a, F: Field, CS: Assignment<F> + 'a> fmt::Debug
-    for SingleChipLayouterRegion<'_, 'a, F, CS>
-{
+impl<'a, F: Field, CS: Assignment<F> + 'a> fmt::Debug for SingleChipLayouterRegion<'_, 'a, F, CS> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SingleChipLayouterRegion")
             .field("layouter", &self.layouter)

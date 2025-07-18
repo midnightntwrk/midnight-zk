@@ -69,9 +69,7 @@ impl<'r, 'a, F: Field, CS: Assignment<F> + 'a> SimpleTableLayouter<'r, 'a, F, CS
     }
 }
 
-impl<'a, F: Field, CS: Assignment<F> + 'a> TableLayouter<F>
-    for SimpleTableLayouter<'_, 'a, F, CS>
-{
+impl<'a, F: Field, CS: Assignment<F> + 'a> TableLayouter<F> for SimpleTableLayouter<'_, 'a, F, CS> {
     fn assign_cell<'v>(
         &'v mut self,
         annotation: &'v (dyn Fn() -> String + 'v),
