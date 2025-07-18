@@ -1,7 +1,6 @@
 //! Examples on how to perform ECC operations using the ECC Chip inside of
 //! ZkStdLib.
 
-use midnight_curves::{Fr as JubjubScalar, JubjubExtended as Jubjub, JubjubSubgroup};
 use ff::Field;
 use group::Group;
 use midnight_circuits::{
@@ -13,6 +12,7 @@ use midnight_circuits::{
     testing_utils::plonk_api::filecoin_srs,
     types::{AssignedNativePoint, Instantiable},
 };
+use midnight_curves::{Fr as JubjubScalar, JubjubExtended as Jubjub, JubjubSubgroup};
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,

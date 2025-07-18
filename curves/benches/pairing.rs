@@ -4,9 +4,9 @@
 //!
 //!     cargo bench --bench  pairing
 
-use midnight_curves::{G1Affine, G1Projective, G2Affine, G2Prepared, G2Projective};
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 use group::Group;
+use midnight_curves::{G1Affine, G1Projective, G2Affine, G2Prepared, G2Projective};
 use pairing_lib::{Engine, MillerLoopResult, MultiMillerLoop};
 use rand_core::SeedableRng;
 use rand_xorshift::XorShiftRng;
@@ -33,7 +33,9 @@ fn bench_pairing(c: &mut Criterion) {
     });
 
     group.bench_function("Multi-miller loop", |b| {
-        b.iter(|| midnight_curves::Bls12::multi_miller_loop(black_box(&[(&g1_affine, &g2_prepared)])))
+        b.iter(|| {
+            midnight_curves::Bls12::multi_miller_loop(black_box(&[(&g1_affine, &g2_prepared)]))
+        })
     });
 
     group.bench_function("Final exponentiantion", |b| {

@@ -52,11 +52,15 @@ impl Hashable<LightPoseidonFS<midnight_curves::Fq>> for midnight_curves::G1Proje
     }
 
     fn to_bytes(&self) -> Vec<u8> {
-        <midnight_curves::G1Projective as Hashable<PoseidonState<midnight_curves::Fq>>>::to_bytes(self)
+        <midnight_curves::G1Projective as Hashable<PoseidonState<midnight_curves::Fq>>>::to_bytes(
+            self,
+        )
     }
 
     fn read(buffer: &mut impl Read) -> io::Result<Self> {
-        <midnight_curves::G1Projective as Hashable<PoseidonState<midnight_curves::Fq>>>::read(buffer)
+        <midnight_curves::G1Projective as Hashable<PoseidonState<midnight_curves::Fq>>>::read(
+            buffer,
+        )
     }
 }
 

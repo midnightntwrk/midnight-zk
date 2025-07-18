@@ -802,9 +802,9 @@ where
 #[cfg(test)]
 mod tests {
 
-    use midnight_curves::Fq as BlsScalar;
     use ff::FromUniformBytes;
     use halo2curves::pasta::{Fp as VestaScalar, Fq as PallasScalar};
+    use midnight_curves::Fq as BlsScalar;
     use midnight_proofs::{
         circuit::SimpleFloorPlanner,
         dev::MockProver,

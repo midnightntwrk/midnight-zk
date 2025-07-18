@@ -23,8 +23,8 @@ use std::{
     path::Path,
 };
 
-use midnight_curves::Bls12;
 use halo2curves::bn256;
+use midnight_curves::Bls12;
 use midnight_proofs::{
     plonk::{
         create_proof, keygen_pk, keygen_vk, prepare, Circuit, Error, ProvingKey, VerifyingKey,

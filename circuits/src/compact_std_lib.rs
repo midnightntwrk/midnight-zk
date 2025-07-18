@@ -27,10 +27,10 @@
 
 use std::{cell::RefCell, cmp::max, convert::TryInto, fmt::Debug, io, rc::Rc};
 
-use midnight_curves::G1Projective;
 use ff::Field;
 use group::{prime::PrimeCurveAffine, Group};
 use halo2curves::secp256k1::{self, Secp256k1};
+use midnight_curves::G1Projective;
 use midnight_proofs::{
     circuit::{Chip, Layouter, SimpleFloorPlanner, Value},
     dev::cost_model::{from_circuit_to_circuit_model, CircuitModel},
@@ -341,7 +341,12 @@ impl ZkStdLib {
             if arch.bls12_381 {
                 max(
                     nb_field_chip_columns::<F, midnight_curves::Fp, MEP>(),
-                    nb_foreign_ecc_chip_columns::<F, midnight_curves::G1Projective, MEP, midnight_curves::Fp>(),
+                    nb_foreign_ecc_chip_columns::<
+                        F,
+                        midnight_curves::G1Projective,
+                        MEP,
+                        midnight_curves::Fp,
+                    >(),
                 )
             } else {
                 0
@@ -1192,7 +1197,9 @@ impl MidnightVK {
     }
 
     /// The underlying midnight-proofs verifying key.
-    pub fn vk(&self) -> &VerifyingKey<midnight_curves::Fq, KZGCommitmentScheme<midnight_curves::Bls12>> {
+    pub fn vk(
+        &self,
+    ) -> &VerifyingKey<midnight_curves::Fq, KZGCommitmentScheme<midnight_curves::Bls12>> {
         &self.vk
     }
 }
@@ -1252,7 +1259,9 @@ impl<Rel: Relation> MidnightPK<Rel> {
     }
 
     /// The underlying midnight-proofs proving key.
-    pub fn pk(&self) -> &ProvingKey<midnight_curves::Fq, KZGCommitmentScheme<midnight_curves::Bls12>> {
+    pub fn pk(
+        &self,
+    ) -> &ProvingKey<midnight_curves::Fq, KZGCommitmentScheme<midnight_curves::Bls12>> {
         &self.pk
     }
 }
@@ -1481,13 +1490,19 @@ impl<'a, R: Relation> Circuit<F> for MidnightCircuit<'a, R> {
 /// Downsizes the given SRS to the size required by the given circuit (which is
 /// computed automatically). This step does not need to be done if you know that
 /// the SRS already has the correct size.
-pub fn downsize_srs_for_relation<R: Relation>(srs: &mut ParamsKZG<midnight_curves::Bls12>, relation: &R) {
+pub fn downsize_srs_for_relation<R: Relation>(
+    srs: &mut ParamsKZG<midnight_curves::Bls12>,
+    relation: &R,
+) {
     srs.downsize_from_circuit(&MidnightCircuit::from_relation(relation))
 }
 
 /// Generates a verifying key for a `MidnightCircuit<R>` circuit. Downsizes the
 /// parameters to match the size of the Relation.
-pub fn setup_vk<R: Relation>(params: &ParamsKZG<midnight_curves::Bls12>, relation: &R) -> MidnightVK {
+pub fn setup_vk<R: Relation>(
+    params: &ParamsKZG<midnight_curves::Bls12>,
+    relation: &R,
+) -> MidnightVK {
     let circuit = MidnightCircuit::from_relation(relation);
     let vk = BlstPLONK::<MidnightCircuit<R>>::setup_vk(params, &circuit);
 
@@ -1595,7 +1610,11 @@ where
             }
 
             let mut transcript = CircuitTranscript::init_from_bytes(proof);
-            prepare::<midnight_curves::Fq, KZGCommitmentScheme<midnight_curves::Bls12>, CircuitTranscript<H>>(
+            prepare::<
+                midnight_curves::Fq,
+                KZGCommitmentScheme<midnight_curves::Bls12>,
+                CircuitTranscript<H>,
+            >(
                 &vk.vk,
                 &[&[midnight_curves::G1Projective::identity()]],
                 // TODO: We could batch here proofs with the same vk.
