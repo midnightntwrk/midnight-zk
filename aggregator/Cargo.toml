@@ -5,7 +5,6 @@ edition = "2021"
 rust-version = "1.76.0"
 description = "Toolkit for proof aggregation of midnight-proofs"
 license = "MIT OR Apache-2.0"
-readme = "README.md"
 categories = ["cryptography"]
 keywords = ["halo", "proofs", "zkp", "zkSNARKs", "aggregation"]
 
