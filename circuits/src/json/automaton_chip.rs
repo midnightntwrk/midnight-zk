@@ -607,7 +607,7 @@ mod test {
             !cost_model || must_pass,
             "if cost_model is set to true, must_pass should be set to true"
         );
-        let prover = MockProver::<blstrs::Fq>::run(k, circuit, vec![vec![], vec![]]);
+        let prover = MockProver::<midnight_curves::Fq>::run(k, circuit, vec![vec![], vec![]]);
         if must_pass {
             println!(
                 ">> Parsing input {} with automaton {}, which should pass",
@@ -634,7 +634,7 @@ mod test {
         }
 
         if cost_model {
-            circuit_to_json::<blstrs::Fq>(
+            circuit_to_json::<midnight_curves::Fq>(
                 k,
                 "Automaton",
                 &format!("parsing perf (input length = {})", circuit.input.len()),

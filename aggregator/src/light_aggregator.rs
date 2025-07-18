@@ -99,9 +99,9 @@ type S = LightBlstrsEmulation;
 // type F = <S as SelfEmulation>::F;
 // type C = <S as SelfEmulation>::C;
 // type E = <S as SelfEmulation>::Engine;
-type F = blstrs::Fq;
-type C = blstrs::G1Projective;
-type E = blstrs::Bls12;
+type F = midnight_curves::Fq;
+type C = midnight_curves::G1Projective;
+type E = midnight_curves::Bls12;
 
 type VerifyingKey = plonk::VerifyingKey<F, KZGCommitmentScheme<E>>;
 type ProvingKey = plonk::ProvingKey<F, KZGCommitmentScheme<E>>;

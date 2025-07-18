@@ -18,7 +18,7 @@ use std::{
     sync::{Arc, Mutex, OnceLock},
 };
 
-use blstrs::Fq;
+use midnight_curves::Fq;
 use ff::{FromUniformBytes, PrimeField};
 use goldenfile::Mint;
 use midnight_proofs::{

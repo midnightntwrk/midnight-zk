@@ -266,7 +266,7 @@ mod tests {
 
     #[test]
     fn test_parse_int() {
-        type F = blstrs::Fq;
+        type F = midnight_curves::Fq;
         let test_vecs: Vec<(&[u8], u64, bool)> = vec![
             (b"987654321", 987654321, true),
             (b"123456", 123456, true),
@@ -285,7 +285,7 @@ mod tests {
 
     #[test]
     fn test_parse_date() {
-        type F = blstrs::Fq;
+        type F = midnight_curves::Fq;
         let format1 = (DateFormat::DDMMYYYY, Separator::NoSep);
         let format2 = (DateFormat::DDMMYYYY, Separator::Sep('-'));
         let format3 = (DateFormat::YYYYMMDD, Separator::Sep('-'));

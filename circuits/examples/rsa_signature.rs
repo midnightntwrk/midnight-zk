@@ -19,7 +19,7 @@ use num_bigint::{BigUint, RandBigInt};
 use num_traits::{Num, One};
 use rand::rngs::OsRng;
 
-type F = blstrs::Fq;
+type F = midnight_curves::Fq;
 
 type Modulus = BigUint;
 type Message = BigUint;

@@ -1,7 +1,7 @@
 //! Examples on how to perform ECC operations using the ECC Chip inside of
 //! ZkStdLib.
 
-use blstrs::{Fr as JubjubScalar, JubjubExtended as Jubjub, JubjubSubgroup};
+use midnight_curves::{Fr as JubjubScalar, JubjubExtended as Jubjub, JubjubSubgroup};
 use ff::Field;
 use group::Group;
 use midnight_circuits::{
@@ -19,7 +19,7 @@ use midnight_proofs::{
 };
 use rand::rngs::OsRng;
 
-type F = blstrs::Fq;
+type F = midnight_curves::Fq;
 
 #[derive(Clone, Default)]
 pub struct EccExample;

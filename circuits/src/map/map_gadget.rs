@@ -461,6 +461,6 @@ mod test {
 
     #[test]
     fn test_map_poseidon() {
-        run_poseidon_test::<blstrs::Fq>(true);
+        run_poseidon_test::<midnight_curves::Fq>(true);
     }
 }

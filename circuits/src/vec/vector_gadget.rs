@@ -666,7 +666,7 @@ mod tests {
 
     #[test]
     fn vector_eq() {
-        type F = blstrs::Fq;
+        type F = midnight_curves::Fq;
 
         // Create a random number generator
         let mut rng = ChaCha12Rng::seed_from_u64(0xdeadcafe);
@@ -694,7 +694,7 @@ mod tests {
 
     #[test]
     fn vector_lims() {
-        type F = blstrs::Fq;
+        type F = midnight_curves::Fq;
 
         // Create a random number generator
         let mut rng = ChaCha12Rng::seed_from_u64(0xdeadcafe);
@@ -714,7 +714,7 @@ mod tests {
 
     #[test]
     fn vector_padding_flags() {
-        type F = blstrs::Fq;
+        type F = midnight_curves::Fq;
 
         // Create a random number generator
         let mut rng = ChaCha12Rng::seed_from_u64(0xdeadcafe);
@@ -730,7 +730,7 @@ mod tests {
 
     #[test]
     fn vector_trim_beginning() {
-        type F = blstrs::Fq;
+        type F = midnight_curves::Fq;
 
         // Create a random number generator
         let mut rng = ChaCha12Rng::seed_from_u64(0xdeadcafe);

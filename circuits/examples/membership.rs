@@ -26,7 +26,7 @@ use midnight_proofs::{
 };
 use rand::rngs::OsRng;
 
-type F = blstrs::Fq;
+type F = midnight_curves::Fq;
 type SuccinctRepr = F;
 type Set = F;
 type Map = MapMt<F, PoseidonChip<F>>;

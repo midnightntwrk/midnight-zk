@@ -1694,7 +1694,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use blstrs::Fq as BlsScalar;
+    use midnight_curves::Fq as BlsScalar;
     use halo2curves::{
         pasta::{Fp as VestaScalar, Fq as PallasScalar},
         secp256k1::{Fp as secp256k1Base, Fq as secp256k1Scalar},

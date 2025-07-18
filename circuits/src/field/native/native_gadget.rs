@@ -1619,7 +1619,7 @@ impl<F: PrimeField> FromScratch<F> for NativeGadget<F, P2RDecompositionChip<F>, 
 
 #[cfg(test)]
 mod tests {
-    use blstrs::Fq as BlsScalar;
+    use midnight_curves::Fq as BlsScalar;
 
     use super::*;
     use crate::instructions::{bitwise, comparison, decomposition, range_check};

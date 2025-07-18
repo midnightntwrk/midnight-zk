@@ -722,7 +722,7 @@ impl<F: Field> Assignment<F> for DevAssembly<F> {
 #[cfg(test)]
 mod tests {
     use blake2b_simd::State;
-    use blstrs::{Bls12, Fq};
+    use midnight_curves::{Bls12, Fq};
     use rand_core::{OsRng, RngCore};
 
     use super::*;

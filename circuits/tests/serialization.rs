@@ -28,7 +28,7 @@ use midnight_proofs::{
     utils::SerdeFormat,
 };
 
-type F = blstrs::Fq;
+type F = midnight_curves::Fq;
 
 #[derive(Clone)]
 struct DummyCircuit {

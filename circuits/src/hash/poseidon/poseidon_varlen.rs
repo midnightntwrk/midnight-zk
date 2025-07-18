@@ -329,7 +329,7 @@ mod tests {
 
     #[test]
     fn test_poseidon_varhash() {
-        type F = blstrs::Fq;
+        type F = midnight_curves::Fq;
 
         // Create a random number generator
         let mut rng = ChaCha12Rng::seed_from_u64(0xdeadcafe);

@@ -14,7 +14,7 @@ use midnight_proofs::{
 use rand::{rngs::OsRng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 
-type F = blstrs::Fq;
+type F = midnight_curves::Fq;
 
 #[derive(Clone, Default)]
 pub struct PoseidonExample;

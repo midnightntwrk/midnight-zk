@@ -526,7 +526,7 @@ fn test_rotate() {
 
 #[test]
 fn test_l_i() {
-    use blstrs::Fq;
+    use midnight_curves::Fq;
     use rand_core::OsRng;
 
     use crate::utils::arithmetic::{eval_polynomial, lagrange_interpolate};

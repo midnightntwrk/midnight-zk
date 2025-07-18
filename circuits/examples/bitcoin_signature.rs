@@ -21,7 +21,7 @@ use midnight_proofs::{
 use rand::rngs::OsRng;
 use sha2::Digest;
 
-type F = blstrs::Fq;
+type F = midnight_curves::Fq;
 
 type Message = [u8; 32];
 type PK = Secp256k1;

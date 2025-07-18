@@ -127,8 +127,8 @@ pub trait SelfEmulation: Clone + Debug {
 pub struct BlstrsEmulation {}
 
 impl SelfEmulation for BlstrsEmulation {
-    type F = blstrs::Fq;
-    type C = blstrs::G1Projective;
+    type F = midnight_curves::Fq;
+    type C = midnight_curves::G1Projective;
     type AssignedPoint = AssignedForeignPoint<Self::F, Self::C, Self::C>;
     type Hash = PoseidonState<Self::F>;
 
@@ -136,9 +136,9 @@ impl SelfEmulation for BlstrsEmulation {
     type CurveChip = ForeignEccChip<Self::F, Self::C, Self::C, Self::ScalarChip, Self::ScalarChip>;
     type SpongeChip = PoseidonChip<Self::F>;
 
-    type G1Affine = blstrs::G1Affine;
-    type G2Affine = blstrs::G2Affine;
-    type Engine = blstrs::Bls12;
+    type G1Affine = midnight_curves::G1Affine;
+    type G2Affine = midnight_curves::G2Affine;
+    type Engine = midnight_curves::Bls12;
 
     fn msm(
         layouter: &mut impl Layouter<Self::F>,

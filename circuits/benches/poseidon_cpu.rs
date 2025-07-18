@@ -6,7 +6,7 @@ use midnight_circuits::hash::poseidon::{
 use rand::SeedableRng;
 use rand_chacha::ChaCha12Rng;
 
-type F = blstrs::Fq;
+type F = midnight_curves::Fq;
 
 const WIDTH: usize = PoseidonChip::<F>::register_size();
 

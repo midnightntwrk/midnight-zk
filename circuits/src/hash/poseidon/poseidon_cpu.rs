@@ -202,35 +202,35 @@ impl<F: PoseidonField> TranscriptHash for PoseidonState<F> {
 /// Implementation of Hashable for BLS12-381 with Poseidon //
 /////////////////////////////////////////////////////////////
 
-impl Hashable<PoseidonState<blstrs::Fq>> for blstrs::G1Projective {
-    fn to_input(&self) -> Vec<blstrs::Fq> {
-        AssignedForeignPoint::<blstrs::Fq, blstrs::G1Projective, MEP>::as_public_input(self)
+impl Hashable<PoseidonState<midnight_curves::Fq>> for midnight_curves::G1Projective {
+    fn to_input(&self) -> Vec<midnight_curves::Fq> {
+        AssignedForeignPoint::<midnight_curves::Fq, midnight_curves::G1Projective, MEP>::as_public_input(self)
     }
 
     fn to_bytes(&self) -> Vec<u8> {
-        <blstrs::G1Affine as GroupEncoding>::to_bytes(&self.into())
+        <midnight_curves::G1Affine as GroupEncoding>::to_bytes(&self.into())
             .as_ref()
             .to_vec()
     }
 
     fn read(buffer: &mut impl Read) -> io::Result<Self> {
-        let mut bytes = <blstrs::G1Affine as GroupEncoding>::Repr::default();
+        let mut bytes = <midnight_curves::G1Affine as GroupEncoding>::Repr::default();
 
         buffer.read_exact(bytes.as_mut())?;
 
-        Option::from(blstrs::G1Affine::from_bytes(&bytes))
+        Option::from(midnight_curves::G1Affine::from_bytes(&bytes))
             .ok_or_else(|| {
                 io::Error::new(
                     io::ErrorKind::Other,
                     "Invalid BLS12-381 point encoding in proof",
                 )
             })
-            .map(|p: blstrs::G1Affine| p.into())
+            .map(|p: midnight_curves::G1Affine| p.into())
     }
 }
 
-impl Hashable<PoseidonState<blstrs::Fq>> for blstrs::Fq {
-    fn to_input(&self) -> Vec<blstrs::Fq> {
+impl Hashable<PoseidonState<midnight_curves::Fq>> for midnight_curves::Fq {
+    fn to_input(&self) -> Vec<midnight_curves::Fq> {
         vec![*self]
     }
 
@@ -252,8 +252,8 @@ impl Hashable<PoseidonState<blstrs::Fq>> for blstrs::Fq {
     }
 }
 
-impl Sampleable<PoseidonState<blstrs::Fq>> for blstrs::Fq {
-    fn sample(out: blstrs::Fq) -> Self {
+impl Sampleable<PoseidonState<midnight_curves::Fq>> for midnight_curves::Fq {
+    fn sample(out: midnight_curves::Fq) -> Self {
         out
     }
 }
@@ -318,6 +318,6 @@ mod tests {
     fn cpu_test() {
         // Testing cpu performances. In debug mode, also tests the consistency between
         // the optimised and non-optimised cpu implementations of the permutation.
-        consistency_cpu::<blstrs::Fq>(1);
+        consistency_cpu::<midnight_curves::Fq>(1);
     }
 }

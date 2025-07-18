@@ -16,7 +16,7 @@ use midnight_proofs::{
 };
 use rand::rngs::OsRng;
 
-type F = blstrs::Fq;
+type F = midnight_curves::Fq;
 
 #[derive(Clone, Default)]
 pub struct NativeGadgetExample;

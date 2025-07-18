@@ -13,7 +13,7 @@
 
 //! Elliptic curves used in-circuit.
 
-use blstrs::{Fq as BlsScalar, JubjubAffine, JubjubExtended, JubjubSubgroup};
+use midnight_curves::{Fq as BlsScalar, JubjubAffine, JubjubExtended, JubjubSubgroup};
 use ff::PrimeField;
 use group::{Curve, Group};
 use halo2curves::{
@@ -160,7 +160,7 @@ impl WeierstrassCurve for Secp256k1 {
 }
 
 // Implementation for Bls12-381.
-use blstrs::{Fp as BlsBase, G1Affine, G1Projective};
+use midnight_curves::{Fp as BlsBase, G1Affine, G1Projective};
 use group::cofactor::CofactorGroup;
 
 impl CircuitCurve for G1Projective {
@@ -183,8 +183,8 @@ impl CircuitCurve for G1Projective {
 }
 
 impl WeierstrassCurve for G1Projective {
-    const A: Self::Base = blstrs::A;
-    const B: Self::Base = blstrs::B;
+    const A: Self::Base = midnight_curves::A;
+    const B: Self::Base = midnight_curves::B;
 
     const BASE_ZETA: Self::Base = <BlsBase as ff::WithSmallOrderMulGroup<3>>::ZETA;
     const SCALAR_ZETA: Self::Scalar = <BlsScalar as ff::WithSmallOrderMulGroup<3>>::ZETA;

@@ -715,7 +715,7 @@ mod tests {
     #[test]
     // Testing Poseidon's permutation.
     fn permutation_test() {
-        let inputs = [blstrs::Fq::from(0); WIDTH];
+        let inputs = [midnight_curves::Fq::from(0); WIDTH];
         // Set the second argument to true to experiment on the permutation cost.
         run_permutation_test(inputs, true);
     }
@@ -724,17 +724,17 @@ mod tests {
     fn sponge_test() {
         // Consistency tests between the cpu and circuit implementations of the
         // permutation.
-        run_sponge_test::<blstrs::Fq>("blstrs", true);
+        run_sponge_test::<midnight_curves::Fq>("blstrs", true);
     }
 
     #[test]
     fn test_poseidon_hash() {
         test_hash::<
-            blstrs::Fq,
-            AssignedNative<blstrs::Fq>,
-            AssignedNative<blstrs::Fq>,
-            PoseidonChip<blstrs::Fq>,
-            NativeChip<blstrs::Fq>,
+            midnight_curves::Fq,
+            AssignedNative<midnight_curves::Fq>,
+            AssignedNative<midnight_curves::Fq>,
+            PoseidonChip<midnight_curves::Fq>,
+            NativeChip<midnight_curves::Fq>,
         >(true, "Poseidon", 10);
     }
 }

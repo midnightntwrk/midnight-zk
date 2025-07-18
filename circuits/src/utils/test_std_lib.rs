@@ -35,7 +35,7 @@ macro_rules! run_test_std_lib {
             compact_std_lib::{MidnightCircuit, Relation, ZkStdLib},
         };
 
-        type F = blstrs::Fq;
+        type F = midnight_curves::Fq;
 
         #[derive(Clone)]
         struct TestCircuit;

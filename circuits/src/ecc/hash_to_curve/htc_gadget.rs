@@ -153,7 +153,7 @@ where
 #[cfg(test)]
 mod tests {
 
-    use blstrs::{Fq as JubjubBase, JubjubExtended as Jubjub};
+    use midnight_curves::{Fq as JubjubBase, JubjubExtended as Jubjub};
     use rand::{Rng, SeedableRng};
 
     use super::*;

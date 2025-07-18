@@ -509,7 +509,7 @@ mod tests {
         vec::vector_gadget::VectorGadget,
     };
 
-    type Fp = blstrs::Fq;
+    type Fp = midnight_curves::Fq;
 
     struct TestCircuit<F: PrimeField> {
         input: Vec<u8>,  // base64 encoded string

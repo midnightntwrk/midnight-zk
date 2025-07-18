@@ -261,8 +261,8 @@ mod tests {
 
     use super::*;
 
-    type S = blstrs::Fq;
-    type C = blstrs::G1Projective;
+    type S = midnight_curves::Fq;
+    type C = midnight_curves::G1Projective;
     type H = blake2b_simd::State;
 
     #[test]
