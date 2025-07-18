@@ -143,7 +143,7 @@ const DELTA: Fr = Fr([
     0x0e30_3e96_f8cb_47bd,
 ]);
 
-impl<'a> Neg for &'a Fr {
+impl Neg for &Fr {
     type Output = Fr;
 
     #[inline]
@@ -161,7 +161,7 @@ impl Neg for Fr {
     }
 }
 
-impl<'a, 'b> Sub<&'b Fr> for &'a Fr {
+impl<'b> Sub<&'b Fr> for &Fr {
     type Output = Fr;
 
     #[inline]
@@ -170,7 +170,7 @@ impl<'a, 'b> Sub<&'b Fr> for &'a Fr {
     }
 }
 
-impl<'a, 'b> Add<&'b Fr> for &'a Fr {
+impl<'b> Add<&'b Fr> for &Fr {
     type Output = Fr;
 
     #[inline]
@@ -179,7 +179,7 @@ impl<'a, 'b> Add<&'b Fr> for &'a Fr {
     }
 }
 
-impl<'a, 'b> Mul<&'b Fr> for &'a Fr {
+impl<'b> Mul<&'b Fr> for &Fr {
     type Output = Fr;
 
     #[inline]

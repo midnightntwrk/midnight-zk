@@ -61,7 +61,7 @@ pub fn eval_polynomial<F: Field>(poly: &[F], point: F) -> F {
     if n * 2 < num_threads {
         evaluate(poly, point)
     } else {
-        let chunk_size = (n + num_threads - 1) / num_threads;
+        let chunk_size = n.div_ceil(num_threads);
         let mut parts = vec![F::ZERO; num_threads];
         rayon::scope(|scope| {
             for (chunk_idx, (out, poly)) in

@@ -793,7 +793,6 @@ const TWO_INV: Fp = Fp(blst_fp {
 /// GENERATOR = 2.
 /// Montgomery form:
 /// 0x11ebab9dbb81e28c6cf28d7901622c038b256521ed1f9bcb57605e0db0ddbb51b93c0018d6c40005321300000006554f
-
 const GENERATOR: Fp = Fp(blst_fp {
     l: [
         0x3213_0000_0006_554f,

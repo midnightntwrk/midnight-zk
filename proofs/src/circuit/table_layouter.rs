@@ -49,7 +49,7 @@ pub struct SimpleTableLayouter<'r, 'a, F: Field, CS: Assignment<F> + 'a> {
     pub default_and_assigned: HashMap<TableColumn, (DefaultTableValue<F>, Vec<bool>)>,
 }
 
-impl<'r, 'a, F: Field, CS: Assignment<F> + 'a> fmt::Debug for SimpleTableLayouter<'r, 'a, F, CS> {
+impl<'a, F: Field, CS: Assignment<F> + 'a> fmt::Debug for SimpleTableLayouter<'_, 'a, F, CS> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SimpleTableLayouter")
             .field("used_columns", &self.used_columns)
@@ -69,9 +69,7 @@ impl<'r, 'a, F: Field, CS: Assignment<F> + 'a> SimpleTableLayouter<'r, 'a, F, CS
     }
 }
 
-impl<'r, 'a, F: Field, CS: Assignment<F> + 'a> TableLayouter<F>
-    for SimpleTableLayouter<'r, 'a, F, CS>
-{
+impl<'a, F: Field, CS: Assignment<F> + 'a> TableLayouter<F> for SimpleTableLayouter<'_, 'a, F, CS> {
     fn assign_cell<'v>(
         &'v mut self,
         annotation: &'v (dyn Fn() -> String + 'v),

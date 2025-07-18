@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 
 ### Added
 ### Changed
-* Update dependency names [#32](https://github.com/midnightntwrk/midnight-zk/pull/32)
-
 ### Removed
+
+## 0.1.0
+Initial release

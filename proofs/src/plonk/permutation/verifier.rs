@@ -214,7 +214,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
         &'r self,
         vk: &'r plonk::VerifyingKey<F, CS>,
         x: F,
-    ) -> impl Iterator<Item = VerifierQuery<F, CS>> + Clone + 'r {
+    ) -> impl Iterator<Item = VerifierQuery<'r, F, CS>> + Clone + 'r {
         let blinding_factors = vk.cs.blinding_factors();
         let x_next = vk.domain.rotate_omega(x, Rotation::next());
         let x_last = vk

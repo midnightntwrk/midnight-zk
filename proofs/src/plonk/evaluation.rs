@@ -320,7 +320,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
         {
             // Custom gates
             rayon::scope(|scope| {
-                let chunk_size = (size + num_threads - 1) / num_threads;
+                let chunk_size = size.div_ceil(num_threads);
                 for (thread_idx, values) in values.chunks_mut(chunk_size).enumerate() {
                     let start = thread_idx * chunk_size;
                     scope.spawn(move |_| {

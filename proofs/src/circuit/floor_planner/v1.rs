@@ -162,7 +162,7 @@ impl<'p, 'a, F: Field, CS: Assignment<F> + 'a> V1Pass<'p, 'a, F, CS> {
     }
 }
 
-impl<'p, 'a, F: Field, CS: Assignment<F> + SyncDeps> Layouter<F> for V1Pass<'p, 'a, F, CS> {
+impl<F: Field, CS: Assignment<F> + SyncDeps> Layouter<F> for V1Pass<'_, '_, F, CS> {
     type Root = Self;
 
     fn assign_region<A, AR, N, NR>(&mut self, name: N, assignment: A) -> Result<AR, Error>
@@ -355,7 +355,7 @@ struct V1Region<'r, 'a, F: Field, CS: Assignment<F> + 'a> {
     region_index: RegionIndex,
 }
 
-impl<'r, 'a, F: Field, CS: Assignment<F> + 'a> fmt::Debug for V1Region<'r, 'a, F, CS> {
+impl<'a, F: Field, CS: Assignment<F> + 'a> fmt::Debug for V1Region<'_, 'a, F, CS> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("V1Region")
             .field("plan", &self.plan)
@@ -370,7 +370,7 @@ impl<'r, 'a, F: Field, CS: Assignment<F> + 'a> V1Region<'r, 'a, F, CS> {
     }
 }
 
-impl<'r, 'a, F: Field, CS: Assignment<F> + SyncDeps> RegionLayouter<F> for V1Region<'r, 'a, F, CS> {
+impl<F: Field, CS: Assignment<F> + SyncDeps> RegionLayouter<F> for V1Region<'_, '_, F, CS> {
     fn enable_selector<'v>(
         &'v mut self,
         annotation: &'v (dyn Fn() -> String + 'v),

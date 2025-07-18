@@ -41,7 +41,7 @@ pub struct PolynomialPointer<'com, F: PrimeField> {
     pub(crate) poly: &'com Polynomial<F, Coeff>,
 }
 
-impl<'com, F: PrimeField> PartialEq for PolynomialPointer<'com, F> {
+impl<F: PrimeField> PartialEq for PolynomialPointer<'_, F> {
     fn eq(&self, other: &Self) -> bool {
         std::ptr::eq(self.poly, other.poly)
     }
@@ -77,8 +77,8 @@ pub enum CommitmentReference<'com, F: PrimeField, CS: PolynomialCommitmentScheme
     Chopped(Vec<&'com CS::Commitment>, u64),
 }
 
-impl<'com, F: PrimeField, CS: PolynomialCommitmentScheme<F>> PartialEq
-    for CommitmentReference<'com, F, CS>
+impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> PartialEq
+    for CommitmentReference<'_, F, CS>
 {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
@@ -107,7 +107,7 @@ impl<'com, F: PrimeField, CS: PolynomialCommitmentScheme<F>> PartialEq
     }
 }
 
-impl<'com, F: PrimeField, CS: PolynomialCommitmentScheme<F>> CommitmentReference<'com, F, CS> {
+impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> CommitmentReference<'_, F, CS> {
     pub(crate) fn is_chopped(&self) -> bool {
         matches!(self, CommitmentReference::Chopped(_, _))
     }

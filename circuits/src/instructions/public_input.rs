@@ -75,6 +75,7 @@ where
 }
 
 #[cfg(test)]
+#[allow(missing_docs)]
 pub mod tests {
     use std::marker::PhantomData;
 
