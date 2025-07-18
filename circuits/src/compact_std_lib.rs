@@ -1610,7 +1610,7 @@ where
             }
 
             let mut transcript = CircuitTranscript::init_from_bytes(proof);
-            prepare::<
+            let dual_msm = prepare::<
                 midnight_curves::Fq,
                 KZGCommitmentScheme<midnight_curves::Bls12>,
                 CircuitTranscript<H>,
@@ -1620,7 +1620,9 @@ where
                 // TODO: We could batch here proofs with the same vk.
                 &[&[pi]],
                 &mut transcript,
-            )
+            )?;
+            transcript.assert_empty().map_err(|_| Error::Opening)?;
+            Ok(dual_msm)
         })
         .collect::<Result<Vec<_>, Error>>()?;
 

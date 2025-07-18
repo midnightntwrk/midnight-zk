@@ -333,7 +333,6 @@ where
         msm_accumulator.right.append_term(v, -E::G1::generator()); // -vG
         msm_accumulator.right.add_msm(&scaled_pi); // zπ
 
-        transcript.assert_empty().map_err(|_| Error::OpeningError)?;
         Ok(msm_accumulator)
     }
 }
