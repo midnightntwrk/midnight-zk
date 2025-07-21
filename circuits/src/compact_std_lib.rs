@@ -1621,14 +1621,16 @@ where
                 &[&[pi]],
                 &mut transcript,
             )?;
+            let r: F = transcript.squeeze_challenge();
             transcript.assert_empty().map_err(|_| Error::Opening)?;
-            Ok(dual_msm)
+            Ok((dual_msm, r))
         })
         .collect::<Result<Vec<_>, Error>>()?;
 
     let mut acc_guard = DualMSM::init();
-    for guard in guards {
+    for (guard, r) in guards {
         acc_guard.add_msm(guard);
+        acc_guard.scale(r);
     }
     // TODO: Have richer error types
     acc_guard

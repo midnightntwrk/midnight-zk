@@ -427,8 +427,6 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
         u8: Hashable<T::Hash>,
     {
         // Read the LHS of the acc from the transcript.
-        // The length is assumed to be 3, when generalized, we could read a byte
-        // from the transcript to figure out the exact length.
         let acc_lhs: Msm<S> = {
             let n: u8 = transcript.read()?;
             let lhs_bases: Result<Vec<C>, io::Error> = (0..n).map(|_| transcript.read()).collect();
@@ -504,7 +502,9 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
         )?;
 
         let mut dual_msm = DualMSM::init();
+        let r: F = transcript.squeeze_challenge();
         dual_msm.add_msm(acc_dual_msm);
+        dual_msm.scale(r);
         dual_msm.add_msm(proof_dual_msm);
         dual_msm.verify(srs_verifier).map_err(|_| Error::Opening)
     }

@@ -27,7 +27,7 @@ use midnight_proofs::{
 /// Creates a proof of knowledge of `scalars` such that
 /// `<scalars, bases1> = res1` and `<scalars, bases2> = res2`.
 ///
-/// The prove is appended to the given running transcript.
+/// The proof is appended to the given running transcript.
 ///
 /// # Panics
 ///
