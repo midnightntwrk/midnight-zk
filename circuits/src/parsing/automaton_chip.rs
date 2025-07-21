@@ -292,8 +292,8 @@ where
                             );
                             add_entry(*source, *letter, *target, *output_extr)?
                     }
-                    // Dummy transitions to represent final states. Recall that letter are 
-                    // represented in-circuit by elements of `AssignedByte`, which are therefore 
+                    // Dummy transitions to represent final states. Recall that letter are
+                    // represented in-circuit by elements of `AssignedByte`, which are therefore
                     // range-checked to be lower than `REGEX_ALPHABET_MAX_SIZE`.
                     for state in automaton.final_states.iter() {
                         add_entry(*state, F::from(ALPHABET_MAX_SIZE as u64), F::ZERO, F::ZERO)?
@@ -413,7 +413,7 @@ where
         input: &[AssignedByte<F>],
     ) -> Result<Vec<AssignedNative<F>>, Error> {
         assert!(automaton_index < self.config.automata.len(),
-            "Attempted to parse the automaton nb {automaton_index} of a configuration that only contains {} automata.", 
+            "Attempted to parse the automaton nb {automaton_index} of a configuration that only contains {} automata.",
             self.config.automata.len()
         );
         let init_state: AssignedNative<F> = self.native_gadget.assign_fixed(
@@ -695,7 +695,7 @@ mod test {
         k: u32,
         input: &str,
         output: &[usize],
-        circuit: &RegexCircuit<blstrs::Fq>,
+        circuit: &RegexCircuit<midnight_curves::Fq>,
         must_pass: bool,
     ) {
         assert!(
