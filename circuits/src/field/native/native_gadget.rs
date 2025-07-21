@@ -26,7 +26,7 @@ use num_traits::Zero;
 #[cfg(any(test, feature = "testing"))]
 use {
     crate::field::decomposition::chip::P2RDecompositionConfig,
-    crate::field::decomposition::pow2range::{Pow2RangeChip, NB_POW2RANGE_COLS},
+    crate::field::decomposition::pow2range::Pow2RangeChip,
     crate::field::native::{NB_ARITH_COLS, NB_ARITH_FIXED_COLS},
     crate::testing_utils::FromScratch,
     crate::testing_utils::Sampleable,
@@ -1607,8 +1607,8 @@ impl<F: PrimeField> FromScratch<F> for NativeGadget<F, P2RDecompositionChip<F>, 
 
         let native_config =
             NativeChip::configure(meta, &(advice_columns, fixed_columns, *instance_columns));
-        let pow2range_config =
-            Pow2RangeChip::configure(meta, &advice_columns[1..=NB_POW2RANGE_COLS]);
+        // Use hard-coded value for nr of range check cols in test
+        let pow2range_config = Pow2RangeChip::configure(meta, &advice_columns[1..=4]);
 
         P2RDecompositionConfig {
             native_config,

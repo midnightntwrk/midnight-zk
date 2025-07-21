@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 ### Added
 
 ### Changed
+* Modify `pow2range` chip: adjust architecture in light aggregator [#38](https://github.com/midnightntwrk/midnight-zk/pull/38)
 * Update dependency names [#32](https://github.com/midnightntwrk/midnight-zk/pull/32)
 * Fix versions of crates in monorepo [#33](https://github.com/midnightntwrk/midnight-zk/pull/33)
 * Unify transcript style [#34](https://github.com/midnightntwrk/midnight-zk/pull/34)

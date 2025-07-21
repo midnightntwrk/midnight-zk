@@ -76,6 +76,7 @@ impl Relation for EccExample {
             secp256k1: false,
             bls12_381: false,
             base64: false,
+            nr_pow2range_cols: 1,
         }
     }
 

@@ -48,6 +48,7 @@ impl Relation for PoseidonExample {
             secp256k1: false,
             bls12_381: false,
             base64: false,
+            nr_pow2range_cols: 1,
         }
     }
 

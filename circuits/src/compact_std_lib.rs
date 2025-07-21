@@ -58,7 +58,7 @@ use crate::{
     field::{
         decomposition::{
             chip::{P2RDecompositionChip, P2RDecompositionConfig},
-            pow2range::{Pow2RangeChip, NB_POW2RANGE_COLS},
+            pow2range::Pow2RangeChip,
         },
         foreign::{
             nb_field_chip_columns, params::MultiEmulationParams as MEP, FieldChip, FieldChipConfig,
@@ -137,6 +137,9 @@ pub struct ZkStdLibArch {
 
     /// Enable base64 chip?
     pub base64: bool,
+
+    /// Number of parallel lookups for range checks
+    pub nr_pow2range_cols: usize,
 }
 
 impl Default for ZkStdLibArch {
@@ -148,11 +151,12 @@ impl Default for ZkStdLibArch {
             secp256k1: false,
             bls12_381: false,
             base64: false,
+            nr_pow2range_cols: 1,
         }
     }
 }
 
-impl From<ZkStdLibArch> for u8 {
+impl From<ZkStdLibArch> for u16 {
     fn from(arch: ZkStdLibArch) -> Self {
         let bit0 = if arch.jubjub { 1 } else { 0 };
         let bit1 = if arch.poseidon { 1 } else { 0 };
@@ -164,11 +168,19 @@ impl From<ZkStdLibArch> for u8 {
         let bit4 = if arch.secp256k1 { 1 } else { 0 };
         let bit5 = if arch.bls12_381 { 1 } else { 0 };
         let bit6 = if arch.base64 { 1 } else { 0 };
-        bit0 ^ (bit1 << 1) ^ (bits23 << 2) ^ (bit4 << 4) ^ (bit5 << 5) ^ (bit6 << 6)
+        let bits789 = arch.nr_pow2range_cols;
+
+        // (Big-endian) binary representation 0b|bit9|bit8|bit7|...|bit3|bit2|bit1|bit0|
+        bit0 ^ (bit1 << 1)
+            ^ (bits23 << 2)
+            ^ (bit4 << 4)
+            ^ (bit5 << 5)
+            ^ (bit6 << 6)
+            ^ (bits789 << 7) as u16
     }
 }
 
-impl TryInto<ZkStdLibArch> for u8 {
+impl TryInto<ZkStdLibArch> for u16 {
     type Error = io::Error;
 
     fn try_into(self) -> Result<ZkStdLibArch, Self::Error> {
@@ -184,6 +196,7 @@ impl TryInto<ZkStdLibArch> for u8 {
             secp256k1: self & 16 != 0,
             bls12_381: self & 32 != 0,
             base64: self & 64 != 0,
+            nr_pow2range_cols: ((self >> 7) & 0b111) as usize,
         })
     }
 }
@@ -192,7 +205,7 @@ impl ZkStdLibArch {
     /// Writes the ZKStd architecture to a buffer.
     pub fn write<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
         writer.write_all(&ZKSTD_VERSION.to_le_bytes())?;
-        writer.write_all(&[(*self).into()])
+        writer.write_all(&u16::from(*self).to_le_bytes())
     }
 
     /// Reads the ZkStd architecture from a buffer.
@@ -202,9 +215,9 @@ impl ZkStdLibArch {
         let version = u32::from_le_bytes(version);
         match version {
             1 => {
-                let mut byte = [0u8; 1];
-                reader.read_exact(&mut byte)?;
-                byte[0].try_into()
+                let mut bytes = [0u8; 2];
+                reader.read_exact(&mut bytes)?;
+                u16::from_le_bytes(bytes).try_into()
             }
             _ => Err(io::Error::new(
                 io::ErrorKind::InvalidData,
@@ -317,7 +330,6 @@ impl ZkStdLib {
     pub fn configure(meta: &mut ConstraintSystem<F>, arch: ZkStdLibArch) -> ZkStdLibConfig {
         let nb_advice_cols = [
             NB_ARITH_COLS,
-            NB_POW2RANGE_COLS,
             if arch.jubjub { NB_EDWARDS_COLS } else { 0 },
             if arch.poseidon {
                 NB_POSEIDON_ADVICE_COLS
@@ -396,7 +408,7 @@ impl ZkStdLib {
         );
 
         let pow2range_config =
-            Pow2RangeChip::configure(meta, &advice_columns[1..=NB_POW2RANGE_COLS]);
+            Pow2RangeChip::configure(meta, &advice_columns[1..=arch.nr_pow2range_cols]);
 
         let core_decomposition_config =
             P2RDecompositionChip::configure(meta, &(native_config.clone(), pow2range_config));
