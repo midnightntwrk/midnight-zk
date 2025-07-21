@@ -62,7 +62,7 @@ jobs:
   test-vk-consistency:
     needs: download-srs
     if: github.event.pull_request.draft == false
-    name: Test circuits
+    name: Test VK consistency
     runs-on: ubuntu-latest
 
     steps:
