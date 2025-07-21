@@ -8,7 +8,10 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 ## [Unreleased]
 
 ### Added
+* Add original Blstrs licenses [#36](https://github.com/midnightntwrk/midnight-zk/pull/36)
+*
 ### Changed
+
 ### Removed
 
 ## 0.1.0
