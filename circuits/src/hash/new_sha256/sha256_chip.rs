@@ -21,10 +21,10 @@ use crate::{
 const NB_SHA256_ADVICE_COLS: usize = 7;
 const NB_SHA256_FIXED_COLS: usize = 2;
 
-/// Tag of the two parallel lookups.
-enum SpreadedLookup {
-    First,
-    Second,
+/// Tag for the even and odd 12-12-8 decompositions.
+enum Parity {
+    Even,
+    Odd,
 }
 
 /// Plain-Spreaded lookup table.
@@ -231,7 +231,6 @@ impl<F: PrimeField> Sha256Chip<F> {
             || "Σ₀(A)",
             |mut region| {
                 self.config().s_Sigma_0.enable(&mut region, 0)?;
-                self.config().s_12_12_8.enable(&mut region, 0)?;
 
                 // Copy and assign the input.
                 (a.spreaded_limb_10.0).copy_advice(|| "~A.10", &mut region, adv_cols[5], 0)?;
@@ -240,7 +239,8 @@ impl<F: PrimeField> Sha256Chip<F> {
                 (a.spreaded_limb_2.0).copy_advice(|| "~A.2", &mut region, adv_cols[6], 1)?;
 
                 // Compute the spreaded Σ₀(A) off-circuit, assign the 12-12-8 limbs
-                // of its even and odd bits into the circuit.
+                // of its even and odd bits into the circuit, and enable the s_12_12_8 selector
+                // for the even part.
                 let val_of_spreaded_limbs: Value<[u64; 4]> = Value::from_iter([
                     a.spreaded_limb_10.0.value().copied().map(fe_to_u64),
                     a.spreaded_limb_9.0.value().copied().map(fe_to_u64),
@@ -253,6 +253,7 @@ impl<F: PrimeField> Sha256Chip<F> {
                     &mut region,
                     val_of_spreaded_limbs,
                     spreaded_Sigma_0,
+                    Parity::Even,
                 )?;
 
                 // Return the 32 even bits as the result of Σ₀(A).
@@ -263,27 +264,23 @@ impl<F: PrimeField> Sha256Chip<F> {
         )
     }
 
-    /// Given a plain value of bits L, assigns (tag, plain, spreaded) in the row
-    /// of the specified offset as lookup inputs, and enables the lookup
-    /// selector for this row.
+    /// Given a plain value of bits L, assigns (tag, plain, spreaded) in the
+    /// corresponding columns with the specified lookup index, and enables
+    /// the lookup selector for this row.
     fn assign_spreaded_lookup<const L: usize>(
         &self,
         region: &mut Region<'_, F>,
         tag: usize,
         plain_val: Value<u32>,
         offset: usize,
-        lookup: SpreadedLookup,
+        lookup_idx: usize,
     ) -> Result<AssignedPlainSpreaded<F, L>, Error> {
         self.config().s_lookup.enable(region, offset)?;
 
         let tag = F::from(tag as u64);
-        let idx = match lookup {
-            SpreadedLookup::First => 0,
-            SpreadedLookup::Second => 1,
-        };
-        let tag_col = self.config().fixed_cols[idx]; // 0 or 1
-        let plain_col = self.config().advice_cols[2 * idx]; // 0 or 2
-        let spreaded_col = self.config().advice_cols[2 * idx + 1]; // 1 or 3
+        let tag_col = self.config().fixed_cols[lookup_idx]; // 0 or 1
+        let plain_col = self.config().advice_cols[2 * lookup_idx]; // 0 or 2
+        let spreaded_col = self.config().advice_cols[2 * lookup_idx + 1]; // 1 or 3
         region.assign_fixed(|| "tag", tag_col, offset, || Value::known(tag))?;
         self.assign_plain_spreaded(region, plain_val, plain_col, spreaded_col, offset)
     }
@@ -313,24 +310,38 @@ impl<F: PrimeField> Sha256Chip<F> {
     }
 
     /// Computes off-circuit the result of the operation (e.g spreaded-Σ₀),
-    /// and assigns the 12-12-8 limbs of its even and odd bits.
+    /// assigns the 12-12-8 limbs of its even and odd bits into the
+    /// corresponding columns depending on whether the output is even or
+    /// odd, and enables the s_12_12_8 selector.
     fn assign_even_odd_12_12_8<const N: usize>(
         &self,
         region: &mut Region<'_, F>,
         val: Value<[u64; N]>,
         op: fn([u64; N]) -> u64,
+        even_or_odd: Parity,
     ) -> Result<(Value<u32>, Value<u32>), Error> {
+        self.config().s_12_12_8.enable(region, 0)?;
+
         // Compute off-circuit the result of the given operation, and derive its 32 even
         // and odd bits.
         let (even_val, odd_val) = val.map(op).map(get_even_odd_bits).unzip();
         /*
-        Compute the 12-12-8 limbs of the even and odd bits, then assign to the circuit as follows:
+        Compute the 12-12-8 limbs of the even and odd bits, then assign to the circuit
+        1) when the 12-12-8 decomposition is for the even part:
 
-        | T_0 |    A_0   |     A_1   | T_1 |    A_2  |    A_3   |
-        |-----|----------|-----------|-----|---------|----------|
-        |  12 | Even.12a | ~Even.12a |  12 | Odd.12a | ~Odd.12a |
+        | T_0 |    A_0   |     A_1   | T_1 |    A_2  |    A_3   |  A_4  |
+        |-----|----------|-----------|-----|---------|----------|-------|
+        |  12 | Even.12a | ~Even.12a |  12 | Odd.12a | ~Odd.12a | Even  |
         |  12 | Even.12b | ~Even.12b |  12 | Odd.12b | ~Odd.12b |
         |   8 | Even.8   | ~Even.8   |   8 | Odd.2   | ~Odd.8   |
+
+        2) when the 12-12-8 decomposition is for the odd part:
+
+        | T_0 |   A_0   |    A_1   | T_1 |    A_2   |    A_3    |  A_4  |
+        |-----|---------|----------|-----|----------|-----------|-------|
+        |  12 | Odd.12a | ~Odd.12a |  12 | Even.12a | ~Even.12a |  Odd  |
+        |  12 | Odd.12b | ~Odd.12b |  12 | Even.12b | ~Even.12b |       |
+        |   8 | Odd.8   | ~Odd.8   |   8 | Even.2   | ~Even.8   |       |
         */
         let [even_12a, even_12b, even_8] = even_val
             .map(|v| u32_in_be_limbs(v, [12, 12, 8]))
@@ -340,13 +351,18 @@ impl<F: PrimeField> Sha256Chip<F> {
             .map(|v| u32_in_be_limbs(v, [12, 12, 8]))
             .transpose_array();
 
-        self.assign_spreaded_lookup::<12>(region, 12, even_12a, 0, SpreadedLookup::First)?;
-        self.assign_spreaded_lookup::<12>(region, 12, even_12b, 1, SpreadedLookup::First)?;
-        self.assign_spreaded_lookup::<8>(region, 8, even_8, 2, SpreadedLookup::First)?;
+        let idx = match even_or_odd {
+            Parity::Even => 0usize,
+            Parity::Odd => 1usize,
+        };
 
-        self.assign_spreaded_lookup::<12>(region, 12, odd_12a, 0, SpreadedLookup::Second)?;
-        self.assign_spreaded_lookup::<12>(region, 12, odd_12b, 1, SpreadedLookup::Second)?;
-        self.assign_spreaded_lookup::<8>(region, 8, odd_8, 2, SpreadedLookup::Second)?;
+        self.assign_spreaded_lookup::<12>(region, 12, even_12a, 0, idx)?; // 0 or 1
+        self.assign_spreaded_lookup::<12>(region, 12, even_12b, 1, idx)?;
+        self.assign_spreaded_lookup::<8>(region, 8, even_8, 2, idx)?;
+
+        self.assign_spreaded_lookup::<12>(region, 12, odd_12a, 0, (idx + 1) % 2)?; // 1 or 0
+        self.assign_spreaded_lookup::<12>(region, 12, odd_12b, 1, (idx + 1) % 2)?;
+        self.assign_spreaded_lookup::<8>(region, 8, odd_8, 2, (idx + 1) % 2)?;
 
         Ok((even_val, odd_val))
     }
