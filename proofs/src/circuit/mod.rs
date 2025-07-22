@@ -208,7 +208,7 @@ impl<'r, F: Field> From<&'r mut dyn layouter::RegionLayouter<F>> for Region<'r, 
     }
 }
 
-impl<'r, F: Field> Region<'r, F> {
+impl<F: Field> Region<'_, F> {
     /// Enables a selector at the given offset.
     pub(crate) fn enable_selector<A, AR>(
         &mut self,
@@ -418,7 +418,7 @@ impl<'r, F: Field> From<&'r mut dyn TableLayouter<F>> for Table<'r, F> {
     }
 }
 
-impl<'r, F: Field> Table<'r, F> {
+impl<F: Field> Table<'_, F> {
     /// Assigns a fixed value to a table cell.
     ///
     /// Returns an error if the table cell has already been assigned to.

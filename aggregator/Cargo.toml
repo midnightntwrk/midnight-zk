@@ -5,7 +5,6 @@ edition = "2021"
 rust-version = "1.76.0"
 description = "Toolkit for proof aggregation of midnight-proofs"
 license = "MIT OR Apache-2.0"
-readme = "README.md"
 categories = ["cryptography"]
 keywords = ["halo", "proofs", "zkp", "zkSNARKs", "aggregation"]
 
@@ -17,8 +16,8 @@ rustdoc-args = ["--cfg", "docsrs", "--html-in-header", "katex-header.html"]
 group = { workspace = true }
 ff = { workspace = true }
 halo2curves = { version = "0.7.0", default-features = false }
-midnight-curves = { path = "../curves" }
-midnight-proofs = { path = "../proofs", default-features = false, features = [
+midnight-curves = { path = "../curves", version = "0.1.0" }
+midnight-proofs = { path = "../proofs", version = "0.4.0", default-features = false, features = [
     "bits",
     "cost-estimator",
     "circuit-params",

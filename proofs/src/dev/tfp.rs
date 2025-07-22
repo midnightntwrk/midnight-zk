@@ -133,7 +133,7 @@ impl<'c, F: Field, C: Circuit<F>> TracingCircuit<'c, F, C> {
     }
 }
 
-impl<'c, F: Field, C: Circuit<F>> Circuit<F> for TracingCircuit<'c, F, C> {
+impl<F: Field, C: Circuit<F>> Circuit<F> for TracingCircuit<'_, F, C> {
     type Config = C::Config;
     type FloorPlanner = C::FloorPlanner;
     #[cfg(feature = "circuit-params")]
@@ -244,7 +244,7 @@ fn debug_value_and_return_cell<F: Field, V: fmt::Debug>(value: AssignedCell<V, F
 #[derive(Debug)]
 struct TracingRegion<'r, F: Field>(Region<'r, F>);
 
-impl<'r, F: Field> RegionLayouter<F> for TracingRegion<'r, F> {
+impl<F: Field> RegionLayouter<F> for TracingRegion<'_, F> {
     fn enable_selector<'v>(
         &'v mut self,
         annotation: &'v (dyn Fn() -> String + 'v),
@@ -379,7 +379,7 @@ impl<'cs, F: Field, CS: Assignment<F>> TracingAssignment<'cs, F, CS> {
     }
 }
 
-impl<'cs, F: Field, CS: Assignment<F>> Assignment<F> for TracingAssignment<'cs, F, CS> {
+impl<F: Field, CS: Assignment<F>> Assignment<F> for TracingAssignment<'_, F, CS> {
     fn enter_region<NR, N>(&mut self, name_fn: N)
     where
         NR: Into<String>,

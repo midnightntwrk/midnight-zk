@@ -301,7 +301,7 @@ impl<F: Field, B: Basis> Mul<F> for Polynomial<F, B> {
     }
 }
 
-impl<'a, F: Field, B: Basis> Sub<F> for &'a Polynomial<F, B> {
+impl<F: Field, B: Basis> Sub<F> for &Polynomial<F, B> {
     type Output = Polynomial<F, B>;
 
     fn sub(self, rhs: F) -> Polynomial<F, B> {

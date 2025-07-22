@@ -1,6 +1,6 @@
 [package]
 name = "midnight-circuits"
-version = "3.0.0"
+version = "4.0.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -10,8 +10,8 @@ group = { workspace = true }
 ff = { workspace = true }
 halo2curves = { workspace = true }
 blake2b_simd = { workspace = true }
-midnight-curves = {path = "../curves" }
-midnight-proofs = { path = "../proofs", default-features = false, features = [
+midnight-curves = {path = "../curves", version = "0.1.0" }
+midnight-proofs = { path = "../proofs", version = "0.4.0", default-features = false, features = [
     "bits",
     "cost-estimator",
     "circuit-params",
