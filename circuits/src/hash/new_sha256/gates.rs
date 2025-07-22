@@ -78,6 +78,38 @@ pub fn decompose_12_12_8<F: PrimeField>(
     )
 }
 
+/// Major(A, B, C) gate.
+pub fn major<F: PrimeField>(
+    s_maj: Expression<F>,
+    [spreaded_a, spreaded_b, spreaded_c]: [Expression<F>; 3],
+    [spreaded_even_12a, spreaded_even_12b, spreaded_even_8]: [Expression<F>; 3],
+    [spreaded_odd_12a, spreaded_odd_12b, spreaded_odd_8]: [Expression<F>; 3],
+) -> Constraints<
+    F,
+    (&'static str, Expression<F>),
+    impl Iterator<Item = (&'static str, Expression<F>)>,
+> {
+    // 4^20 * ~Even.12a + 4^8 * ~Even.12b + ~Even.8
+    let spreaded_even = linear_combination_pow4(
+        [20, 8, 0],
+        [&spreaded_even_12a, &spreaded_even_12b, &spreaded_even_8],
+    );
+    // 4^20 *  ~Odd.12a + 4^8 *  ~Odd.12b +  ~Odd.8
+    let spreaded_odd = linear_combination_pow4(
+        [20, 8, 0],
+        [&spreaded_odd_12a, &spreaded_odd_12b, &spreaded_odd_8],
+    );
+    // (~A + ~B + ~C) - (~Even + 2 * ~Odd)
+    let spreaded_maj_check = (spreaded_a + spreaded_b + spreaded_c)
+        + Expression::Constant(-F::ONE)
+            * (spreaded_even + Expression::Constant(F::from(2)) * spreaded_odd);
+
+    Constraints::with_selector(
+        s_maj,
+        [("Spreaded Major check", spreaded_maj_check)].into_iter(),
+    )
+}
+
 /// Computes a linear combination of terms with coefficients of powers of two.
 fn linear_combination_pow2<F: PrimeField, const N: usize>(
     pow_of_coeffs: [u8; N],
