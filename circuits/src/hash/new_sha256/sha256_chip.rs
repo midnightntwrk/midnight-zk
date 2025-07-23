@@ -454,13 +454,13 @@ impl<F: PrimeField> Sha256Chip<F> {
             Parity::Odd => 1,
         };
 
-        self.assign_spreaded_lookup::<12>(region, 12, evn_12a, 0, idx)?; // 0 or 1
+        self.assign_spreaded_lookup::<12>(region, 12, evn_12a, 0, idx)?;
         self.assign_spreaded_lookup::<12>(region, 12, evn_12b, 1, idx)?;
         self.assign_spreaded_lookup::<8>(region, 8, evn_8, 2, idx)?;
 
-        self.assign_spreaded_lookup::<12>(region, 12, odd_12a, 0, (idx + 1) % 2)?; // 1 or 0
-        self.assign_spreaded_lookup::<12>(region, 12, odd_12b, 1, (idx + 1) % 2)?;
-        self.assign_spreaded_lookup::<8>(region, 8, odd_8, 2, (idx + 1) % 2)?;
+        self.assign_spreaded_lookup::<12>(region, 12, odd_12a, 0, 1 - idx)?;
+        self.assign_spreaded_lookup::<12>(region, 12, odd_12b, 1, 1 - idx)?;
+        self.assign_spreaded_lookup::<8>(region, 8, odd_8, 2, 1 - idx)?;
 
         let out_col = self.config().advice_cols[4];
         match evn_or_odd {
