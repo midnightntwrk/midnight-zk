@@ -8,14 +8,17 @@ use midnight_proofs::{
 use crate::{
     field::NativeChip,
     hash::new_sha256::{
-        gates::{decompose_12_12_8_gate, maj_gate, Sigma_0_gate},
+        gates::{a_in_10_9_11_2_gate, decompose_12_12_8_gate, maj_gate, Sigma_0_gate},
         types::{AssignedPlain, AssignedPlainSpreaded, AssignedSpreaded, LimbsOfA},
         utils::{
             gen_spread_table, get_even_odd_bits, spread, spreaded_Sigma_0, spreaded_maj,
             u32_in_be_limbs, u32_to_fe, u64_to_fe,
         },
     },
-    utils::{util::fe_to_u64, ComposableChip},
+    utils::{
+        util::{fe_to_u32, fe_to_u64},
+        ComposableChip,
+    },
 };
 
 const NB_SHA256_ADVICE_COLS: usize = 7;
@@ -40,6 +43,7 @@ pub(super) struct SpreadTable {
 pub struct Sha256Config {
     advice_cols: [Column<Advice>; NB_SHA256_ADVICE_COLS],
     fixed_cols: [Column<Fixed>; NB_SHA256_FIXED_COLS],
+    q_a_10_9_11_2: Selector,
     q_Sigma_0: Selector,
     q_12_12_8: Selector,
     q_lookup: Selector,
@@ -92,6 +96,7 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
         let plain_tab = meta.lookup_table_column();
         let sprdd_tab = meta.lookup_table_column();
 
+        let q_a_10_9_11_2 = meta.selector();
         let q_Sigma_0 = meta.selector();
         let q_12_12_8 = meta.selector();
         let q_maj = meta.selector();
@@ -122,6 +127,30 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
             let output = meta.query_advice(advice_cols[4], Rotation(0));
 
             decompose_12_12_8_gate(q_12_12_8, [limb_12a, limb_12b, limb_8], output)
+        });
+
+        meta.create_gate("assign A in 10-9-11-2 decomposition", |meta| {
+            let q_a_10_9_11_2 = meta.query_selector(q_a_10_9_11_2);
+
+            let a = meta.query_advice(advice_cols[4], Rotation(1));
+            let spreaded_a = meta.query_advice(advice_cols[5], Rotation(1));
+            let a_11 = meta.query_advice(advice_cols[0], Rotation(0));
+            let spreaded_a_11 = meta.query_advice(advice_cols[1], Rotation(0));
+            let a_10 = meta.query_advice(advice_cols[2], Rotation(0));
+            let spreaded_a_10 = meta.query_advice(advice_cols[3], Rotation(0));
+            let a_9 = meta.query_advice(advice_cols[0], Rotation(1));
+            let spreaded_a_9 = meta.query_advice(advice_cols[1], Rotation(1));
+            let a_1a = meta.query_advice(advice_cols[4], Rotation(0));
+            let a_1b = meta.query_advice(advice_cols[5], Rotation(0));
+            let spreaded_a_2 = meta.query_advice(advice_cols[6], Rotation(0));
+
+            a_in_10_9_11_2_gate(
+                q_a_10_9_11_2,
+                [a_10, a_9, a_11, a_1a, a_1b],
+                [spreaded_a_10, spreaded_a_9, spreaded_a_11, spreaded_a_2],
+                a,
+                spreaded_a,
+            )
         });
 
         meta.create_gate("Σ₀(A)", |meta| {
@@ -170,6 +199,7 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
         Sha256Config {
             advice_cols,
             fixed_cols,
+            q_a_10_9_11_2,
             q_Sigma_0,
             q_12_12_8,
             q_maj,
@@ -204,6 +234,102 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
 }
 
 impl<F: PrimeField> Sha256Chip<F> {
+    /// Assigns the 10, 9, 11 and 2 limbs (in big-endian) of A, as well as their
+    /// spreaded values.
+    pub(super) fn a_in_10_9_11_2(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        plain_a: AssignedPlain<F, 32>,
+    ) -> Result<(AssignedPlainSpreaded<F, 32>, LimbsOfA<F>), Error> {
+        /*
+        We need to decompose the 32-bit value A into 10-9-11-2 limbs in big-endian, their spreaded values
+        will be inputs to computing Σ₀(A). Meanwhile, ~A should be asserted as being the valid spreaded value
+        so that (A, ~A) could be pulled back to the previous round and prepared for the register A of the
+        current round, also it will be served as the value of register B for the next round.
+
+        This can be achieved by
+
+        1) applying plain-spreaded lookup on 10-9-11 limbs. Instead of applying 2 bits
+           rangecheck and Lagrange interpolation polynomial check on (A.2, ~A.2), we further split the limb A.2
+           into two 1-bit limbs A.1a and A.1b in big-endian, then it suffices to apply 1-bit rangecheck for
+           each limb and assert the following identity:
+             ~A.2 = 4 * A.1a + A.1b
+
+        2) asserting the 10-9-11-1-1 decomposition identity:
+             A = 2^22 *  A.10 + 2^13 *  A.9 + 2^2 *  A.11 + 2 *  A.1a +  A.1b
+
+        3) asserting the spreaded value identity:
+            ~A = 4^22 * ~A.10 + 4^13 * ~A.9 + 4^2 * ~A.11 + ~A.2
+
+        We distribute these values in the PLONK table as follows.
+
+        | T_0 |   A_0  |   A_1   | T_1 |  A_2 |  A_3  |  A_4 | A_5  |  A_6  |
+        |-----|--------|---------|-----|------|-------|------|------|-------|
+        |  11 |  A.11  |  ~A.11  | 10  | A.10 | ~A.10 | A.1a | A.1b | ~A.2  |
+        |  9  |  A.9   |  ~A.9   |  0  |   0  |   0   |  A   | ~A   |       |
+        */
+
+        let adv_cols = self.config().advice_cols;
+        let [limb_10, limb_9, limb_11, limb_1a, limb_1b] = plain_a
+            .0
+            .value()
+            .copied()
+            .map(fe_to_u32)
+            .map(|a| u32_in_be_limbs(a, [10, 9, 11, 1, 1]))
+            .transpose_array();
+
+        layouter.assign_region(
+            || "assign A in 10-9-11-2",
+            |mut region| {
+                self.config().q_a_10_9_11_2.enable(&mut region, 0)?;
+
+                let plain_spreaded_a = self.assign_plain_spreaded(
+                    &mut region,
+                    plain_a.0.value().copied().map(fe_to_u32),
+                    adv_cols[4],
+                    adv_cols[5],
+                    1,
+                )?;
+                let spreaded_limb_11 = self
+                    .assign_plain_and_spreaded(&mut region, limb_11, 0, 0)?
+                    .spreaded;
+                let spreaded_limb_10 = self
+                    .assign_plain_and_spreaded(&mut region, limb_10, 0, 1)?
+                    .spreaded;
+                let spreaded_limb_9 = self
+                    .assign_plain_and_spreaded(&mut region, limb_9, 1, 0)?
+                    .spreaded;
+                let _spreaded_zero = self
+                    .assign_plain_and_spreaded::<0>(&mut region, Value::known(0), 1, 1)?
+                    .spreaded;
+
+                let _plain_limb_1a: AssignedPlain<F, 1> = region
+                    .assign_advice(|| "A.1a", adv_cols[4], 0, || limb_1a.map(u32_to_fe))
+                    .map(AssignedPlain)?;
+                let _plain_limb_1b: AssignedPlain<F, 1> = region
+                    .assign_advice(|| "A.1b", adv_cols[5], 0, || limb_1b.map(u32_to_fe))
+                    .map(AssignedPlain)?;
+                let spreaded_limb_2 = region
+                    .assign_advice(
+                        || "~A.2",
+                        adv_cols[6],
+                        0,
+                        || (Value::known(4) * limb_1a + limb_1b).map(u32_to_fe),
+                    )
+                    .map(AssignedSpreaded)?;
+
+                let limbs_of_a = LimbsOfA {
+                    spreaded_limb_10,
+                    spreaded_limb_9,
+                    spreaded_limb_11,
+                    spreaded_limb_2,
+                };
+
+                Ok((plain_spreaded_a, limbs_of_a))
+            },
+        )
+    }
+
     /// Computes Σ₀(A).
     pub(super) fn Sigma_0(
         &self,

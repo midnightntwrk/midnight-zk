@@ -1,5 +1,54 @@
 use ff::PrimeField;
 use midnight_proofs::plonk::{Constraints, Expression};
+/// A in 10-9-11-2 decomposition gate.
+pub fn a_in_10_9_11_2_gate<F: PrimeField>(
+    s_a_in_10_9_11_2: Expression<F>,
+    [limb_10, limb_9, limb_11, limb_1a, limb_1b]: [Expression<F>; 5],
+    [spreaded_limb_10, spreaded_limb_9, spreaded_limb_11, spreaded_limb_2]: [Expression<F>; 4],
+    a: Expression<F>,
+    spreaded_a: Expression<F>,
+) -> Constraints<
+    F,
+    (&'static str, Expression<F>),
+    impl Iterator<Item = (&'static str, Expression<F>)>,
+> {
+    // (2^22 * A.10 + 2^13 * A.9 + 2^2 * A.11 + 2 * A.1a + A.1b) - A
+    let a_decomposition_check = linear_combination_pow2(
+        [22, 13, 2, 1, 0],
+        [&limb_10, &limb_9, &limb_11, &limb_1a, &limb_1b],
+    ) + (Expression::Constant(-F::ONE) * a);
+
+    // (4^22 * ~A.10 + 4^13 * ~A.9 + 4^2 * ~A.11 + ~A.2) - ~A
+    let a_spreaded_check = linear_combination_pow4(
+        [22, 13, 2, 0],
+        [
+            &spreaded_limb_10,
+            &spreaded_limb_9,
+            &spreaded_limb_11,
+            &spreaded_limb_2,
+        ],
+    ) + (Expression::Constant(-F::ONE) * spreaded_a);
+
+    // 1-bit rangecheck
+    let limb_1a_check = limb_1a.clone() * (limb_1a.clone() - Expression::Constant(F::from(1)));
+    let limb_1b_check = limb_1b.clone() * (limb_1b.clone() - Expression::Constant(F::from(1)));
+
+    // (4 * A.1a + A.1b) - ~A.2
+    let limb_2_spreaded_check = linear_combination_pow4([1, 0], [&limb_1a, &limb_1b])
+        + (Expression::Constant(-F::ONE) * spreaded_limb_2);
+
+    Constraints::with_selector(
+        s_a_in_10_9_11_2,
+        [
+            ("A decomposition check", a_decomposition_check),
+            ("A spreaded check", a_spreaded_check),
+            ("Limb 1a check", limb_1a_check),
+            ("Limb 1b check", limb_1b_check),
+            ("Limb 2 spreaded check", limb_2_spreaded_check),
+        ]
+        .into_iter(),
+    )
+}
 
 /// Σ₀(A) gate.
 pub fn Sigma_0_gate<F: PrimeField>(
