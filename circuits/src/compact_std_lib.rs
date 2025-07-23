@@ -82,8 +82,8 @@ use crate::{
         HashInstructions, PublicInputInstructions, RangeCheckInstructions, VectorInstructions,
         ZeroInstructions,
     },
-    json::{Base64Chip, Base64Config, ParserGadget, NB_BASE64_ADVICE_COLS},
     map::map_gadget::MapGadget,
+    parsing::{Base64Chip, Base64Config, ParserGadget, NB_BASE64_ADVICE_COLS},
     types::{
         AssignedBit, AssignedByte, AssignedNative, AssignedNativePoint, InnerValue, Instantiable,
     },

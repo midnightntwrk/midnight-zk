@@ -34,10 +34,69 @@
 
 use std::{
     collections::{HashMap, HashSet},
+    fmt::Debug,
     hash::Hash,
 };
 
-use super::RegexLetter;
+/// Maximal size of the alphabet of an automaton/regex, since input characters
+/// are represented by `AssignedByte`. The parser (`automaton_chip::parse`) is
+/// using this information to store automaton final states in the transition
+/// table, by encoding them as impossible transitions starting from the said
+/// state, and labelled with letter `ALPHABET_MAX_SIZE`. This bound is also
+/// needed to represent letters as u8.
+pub const ALPHABET_MAX_SIZE: usize = 256;
+
+/// A letter from the automaton alphabet. Includes output markers.
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+pub struct Letter {
+    /// The actual byte represented by the letter.
+    pub char: u8,
+    /// The potential marker of the letter. By convention, 0 means no marker.
+    pub marker: usize,
+}
+
+impl From<u8> for Letter {
+    fn from(value: u8) -> Self {
+        Letter {
+            char: value,
+            marker: 0,
+        }
+    }
+}
+
+impl From<&u8> for Letter {
+    fn from(value: &u8) -> Self {
+        (*value).into()
+    }
+}
+
+impl Letter {
+    /// Encodes a `Letter` bijectively as a usize, in order to use them more
+    /// easily as vector indexes. The size of the encoding is polynomial in the
+    /// number of different markers and the alphabet size.
+    pub fn encode(&self, alphabet_size: usize, markers: &[usize]) -> usize {
+        let marker = markers
+            .iter()
+            .enumerate()
+            .find(|(_, m)| **m == self.marker)
+            .unwrap()
+            .0;
+        marker * alphabet_size + self.char as usize
+    }
+
+    /// Inverse function of `Letter::encode`.
+    pub fn decode(letter_encoding: usize, alphabet_size: usize, markers: &[usize]) -> Self {
+        Letter {
+            char: (letter_encoding % alphabet_size) as u8,
+            marker: markers[letter_encoding / alphabet_size],
+        }
+    }
+
+    /// Maximal output of the function `Letter::encode`.
+    pub fn encoding_bound(alphabet_size: usize, markers: &[usize]) -> usize {
+        alphabet_size * markers.len()
+    }
+}
 
 /// A type for non-deterministic finite automata with a parametric type to
 /// represent its states.
@@ -53,13 +112,16 @@ pub(super) struct RawAutomaton<State> {
     initial_state: State,
     /// The final states of the automaton.
     final_states: HashSet<State>,
-    /// The set of transitions, including epsilon-transitions.
-    transitions: Vec<(State, Option<RegexLetter>, State)>,
+    /// The set of transitions, including epsilon-transitions. At this stage,
+    /// this transition table is simply a collection of transitions with no
+    /// check of redundancy or determinism. This will be handled during the
+    /// conversion into the more structured type `Automaton`.
+    transitions: Vec<(State, Option<Letter>, State)>,
 }
 
-/// A simple model of a deterministic (but not complete) finite automaton
-/// operating on bytes. The set of states is implicitly represented by the range
-/// `0..nb_states`.
+/// A normalised model of a deterministic (but not necessarily complete) finite
+/// automaton operating on bytes. The set of states is implicitly represented by
+/// the range `0..nb_states`.
 #[derive(Clone, Debug)]
 pub struct Automaton {
     /// Strict upper bound on the maximal reachable state. I.e., it is
@@ -70,14 +132,15 @@ pub struct Automaton {
     pub initial_state: usize,
     /// The final states of the automaton.
     pub final_states: HashSet<usize>,
-    /// `transitions[state][letter]` gives the transition target when in state
-    /// `state`, reading input `letter`. Can be undefined, in which case it
-    /// means the automaton jumps into an implicit deadlock state.
-    pub transitions: HashMap<(usize, RegexLetter), usize>,
+    /// `transitions.get(state,byte)` returns the transition target and its
+    /// marker upon reading input `byte` in state `state`. A key may be
+    /// undefined, in which case it means the automaton jumps into an
+    /// implicit deadlock state.
+    pub transitions: HashMap<(usize, u8), (usize, usize)>,
 }
 
 impl RawAutomaton<usize> {
-    // Creates an empty automaton with a unique default state.
+    /// Creates an empty automaton with a unique default state.
     pub(super) fn empty() -> RawAutomaton<usize> {
         Self {
             nb_states: 1,
@@ -89,7 +152,7 @@ impl RawAutomaton<usize> {
         }
     }
 
-    // Creates an automaton recognising only the empty word.
+    /// Creates an automaton recognising only the empty word.
     pub(super) fn epsilon() -> RawAutomaton<usize> {
         Self {
             nb_states: 1,
@@ -101,12 +164,10 @@ impl RawAutomaton<usize> {
         }
     }
 
-    // Creates an automaton recognising a singleton language: `Some(a)` makes it
-    // accept {a} and `None` makes it accept any word of length 1.
-    pub(super) fn singleton(
-        letter: Option<RegexLetter>,
-        alphabet_size: usize,
-    ) -> RawAutomaton<usize> {
+    /// Creates an automaton accepting any word of 1 byte belonging to
+    /// `letters`. The alphabet size can be specified, which effectively filters
+    /// out any transition involving a byte outside of the alphabet.
+    pub(super) fn singleton(letters: &[u8], alphabet_size: usize) -> RawAutomaton<usize> {
         Self {
             nb_states: 2,
             deterministic_and_complete: false,
@@ -114,20 +175,73 @@ impl RawAutomaton<usize> {
             initial_state: 0,
             final_states: HashSet::from([1]),
             transitions: {
-                match letter {
-                    None => (0..alphabet_size)
-                        .map(|i| (0, Some(i as RegexLetter), 1))
-                        .collect::<Vec<_>>(),
-                    Some(_) => vec![(0, letter, 1)],
-                }
+                letters
+                    .iter()
+                    .map_while(|&i| {
+                        if (i as usize) < alphabet_size {
+                            Some((0, Some(i.into()), 1))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect()
             },
+        }
+    }
+
+    /// Creates an automaton accepting any word.
+    pub(super) fn universal(alphabet_size: usize) -> RawAutomaton<usize> {
+        assert!(
+            alphabet_size <= ALPHABET_MAX_SIZE,
+            "attempt to construct an automaton with an alphabet of size {alphabet_size} (will overflow u8"
+        );
+        Self {
+            nb_states: 1,
+            deterministic_and_complete: true,
+            epsilon_transitions: false,
+            initial_state: 0,
+            final_states: HashSet::from_iter([0]),
+            transitions: (0..alphabet_size)
+                .map(|b| (0, Some((b as u8).into()), 0))
+                .collect::<Vec<_>>(),
         }
     }
 }
 
 impl<State> RawAutomaton<State>
 where
-    State: Copy + Clone + Eq + Hash + std::fmt::Debug,
+    State: Copy + Clone + Eq + Hash + Debug,
+{
+    // Marks all transitions of an automaton with a given marker.
+    //
+    // Note: Safety check: panics if an already marked transition is found. Should
+    // already be enforced by the invariant that nested markers are rejected
+    // when constructing regular expression in `regex.rs`.
+    pub(super) fn add_marker(self, index: usize) -> Self {
+        let transitions = self
+            .transitions
+            .iter()
+            .map(|(source, letter, target)| {
+                (
+                    *source,
+                    letter.map(|a| {
+                        assert!(a.marker == 0, "(bug) non-nested markers were not enforced");
+                        Letter { marker: index, ..a }
+                    }),
+                    *target,
+                )
+            })
+            .collect::<Vec<_>>();
+        Self {
+            transitions,
+            ..self
+        }
+    }
+}
+
+impl<State> RawAutomaton<State>
+where
+    State: Copy + Clone + Eq + Hash + Debug,
 {
     // Adds the set of successors of a given state inside an accumulator, except
     // those belonging to `visited`.
@@ -174,7 +288,7 @@ where
     // `state`.
     fn epsilon_closure(
         &self,
-        accu: &mut HashSet<(State, Option<RegexLetter>, State)>,
+        accu: &mut HashSet<(State, Option<Letter>, State)>,
         state: &State,
     ) -> bool {
         let mut visited = HashSet::new();
@@ -230,13 +344,13 @@ where
 // Implementation of determinisation and state normalisation.
 impl<State> RawAutomaton<State>
 where
-    State: Copy + Clone + Eq + Hash + std::fmt::Debug,
+    State: Copy + Clone + Eq + Hash + Debug,
 {
     // Converts the set of states into `usize`. Allows in particular to ensure
     // states now have the Copy and Hash traits. Also, removes non reachable
-    // states, or non-backward-reachable states from the final states. Preserves
-    // determinism but *not* completeness, since dead states are removed; therefore
-    // the field `deterministic_and_complete`
+    // states, or states that are not backward-reachable from the final states.
+    // Preserves determinism but *not* completeness, since dead states are
+    // removed; therefore the field `deterministic_and_complete`
     // is set to `false`.
     pub(super) fn normalise_states(&self) -> RawAutomaton<usize> {
         let mut states_numbering = HashMap::new();
@@ -282,7 +396,7 @@ where
     // transitions.
     //
     // Note: the result may contain non-backward-reachable states.
-    fn remove_epsilon_transitions(&mut self) {
+    pub(super) fn remove_epsilon_transitions(&mut self) {
         if !self.epsilon_transitions {
             return;
         }
@@ -306,13 +420,12 @@ where
     }
 
     // Computes a deterministic version of an automaton. Uses the standard
-    // "set-of-states" automaton construction, and then renames the states to make
-    // them integers. Mutates the argument to remove epsilon transitions.
+    // powerset automaton construction, and then renames the states as `usize`.
+    // Mutates the argument to remove epsilon transitions.
     //
     // Note: the final automaton is a deterministic *and complete* automaton. In
-    // particular, calling `normalise_states` usually breaks completeness (and
-    // completeness is needed, e.g., for the `complement` operation).
-    fn determinise_raw(&mut self, alphabet_size: usize) -> RawAutomaton<usize> {
+    // particular, calling `normalise_states` afterwards will break this property.
+    fn determinise_raw(&mut self, alphabet_size: usize, markers: &[usize]) -> RawAutomaton<usize> {
         // The determinisation operates with integer states for simplicity, and is only
         // valid if there is no epsilon transitions anymore.
         self.remove_epsilon_transitions();
@@ -354,18 +467,26 @@ where
                 // automaton. For each letter `letter`, `power_set` is mapped to the set of
                 // states `target` such that a transition `(source,Some(letter),target)`
                 // exists in `base`, with `source` in `power_set`.
-                let mut successors = vec![vec![false; base.nb_states]; alphabet_size];
+                let mut successors = vec![
+                    vec![false; base.nb_states];
+                    Letter::encoding_bound(alphabet_size, markers)
+                ];
                 base.transitions
                     .iter()
                     .for_each(|(source, letter, target)| {
+                        let letter = letter.unwrap();
                         if power_state[*source] {
-                            successors[letter.unwrap() as usize][*target] = true
+                            successors[letter.encode(alphabet_size, markers)][*target] = true
                         }
                     });
-                successors.iter().enumerate().for_each(|(letter, target)| {
-                    transitions.push((power_state.clone(), letter, target.clone()));
-                    pending.push(target.clone());
-                })
+                successors
+                    .iter()
+                    .enumerate()
+                    .for_each(|(letter_encoding, target)| {
+                        let letter = Letter::decode(letter_encoding, alphabet_size, markers);
+                        transitions.push((power_state.clone(), letter, target.clone()));
+                        pending.push(target.clone());
+                    })
             }
         }
 
@@ -377,7 +498,7 @@ where
                     (None, _) | (_, None) => {
                         panic!("determinisation did not label states correctly")
                     }
-                    (Some(source), Some(target)) => (*source, Some(*letter as u8), *target),
+                    (Some(source), Some(target)) => (*source, Some(*letter as Letter), *target),
                 },
             )
             .collect::<Vec<_>>();
@@ -395,7 +516,7 @@ where
 // Implementation of automaton combination operations.
 impl<State> RawAutomaton<State>
 where
-    State: Copy + Clone + Eq + Hash + std::fmt::Debug,
+    State: Copy + Clone + Eq + Hash + Debug,
 {
     // Puts two automata "side-by-side", without connecting their states, and with
     // an empty set of final states. The initial state is `(None,None)` but is not
@@ -454,7 +575,7 @@ where
         rhs: &RawAutomaton<S>,
     ) -> RawAutomaton<(Option<State>, Option<S>)>
     where
-        S: Copy + Clone + Eq + Hash + std::fmt::Debug,
+        S: Copy + Clone + Eq + Hash + Debug,
     {
         let mut base = self.weak_union(
             rhs,
@@ -474,6 +595,71 @@ where
         base.deterministic_and_complete = false;
         base
     }
+
+    // Computes an automton for the intersection of two languages. Requires that
+    // they do not contain epsilon transitions. The intersection takes markers into
+    // account: two copies of letter `a` with different (non-0) markers are
+    // considered as different letters. However, `a` marked with 0 will be unified
+    // with `a` with a non-0 marker.
+    //
+    // Apart from that, the intersection is a classical carthesian-product
+    // construction.
+    pub(super) fn inter<S>(&self, rhs: &RawAutomaton<S>) -> RawAutomaton<(State, S)>
+    where
+        S: Copy + Clone + Eq + Hash + Debug,
+    {
+        assert!(
+            !self.epsilon_transitions && !rhs.epsilon_transitions,
+            "(bug) intersection cannot operate with epsilon transitions."
+        );
+
+        let mut transitions = Vec::with_capacity(self.transitions.len() * rhs.transitions.len());
+        let mut final_states = Vec::with_capacity(self.final_states.len() * rhs.final_states.len());
+        // If two transitions have the same letter, the closure below adds the product
+        // transition to the accumulator. Transitions that have the same letter, but
+        // different markers, are only merged if one of the markers is zero (in which
+        // case the non-zero marker is used).
+        let mut join =
+            |(source1, letter1, target1): (State, Option<Letter>, State),
+             (source2, letter2, target2): (S, Option<Letter>, S)| {
+                let letter1 = letter1.unwrap();
+                let letter2 = letter2.unwrap();
+                if letter1.char == letter2.char
+                    && (letter1.marker == letter2.marker
+                        || letter1.marker == 0
+                        || letter2.marker == 0)
+                {
+                    transitions.push((
+                        (source1, source2),
+                        Some(Letter {
+                            char: letter1.char,
+                            marker: std::cmp::max(letter1.marker, letter2.marker),
+                        }),
+                        (target1, target2),
+                    ));
+                }
+            };
+        for tr1 in self.transitions.iter() {
+            for tr2 in rhs.transitions.iter() {
+                join(*tr1, *tr2)
+            }
+        }
+        for s1 in self.final_states.iter() {
+            for s2 in rhs.final_states.iter() {
+                final_states.push((*s1, *s2));
+            }
+        }
+        RawAutomaton {
+            nb_states: self.nb_states * rhs.nb_states,
+            deterministic_and_complete: false, /* Even when all intersected automata are
+                                                * deterministic, `join` may introduce
+                                                * non-determinism to do the marker merging. */
+            epsilon_transitions: false,
+            initial_state: (self.initial_state, rhs.initial_state),
+            final_states: HashSet::from_iter(final_states),
+            transitions,
+        }
+    }
 }
 
 impl RawAutomaton<usize> {
@@ -481,14 +667,14 @@ impl RawAutomaton<usize> {
     // `determinise_raw` since it can check whether the automaton is already
     // deterministic. Also, mutates the argument so that cloning is not needed when
     // the input is already deterministic and complete.
-    pub(super) fn determinise(&mut self, alphabet_size: usize) {
-        debug_assert!(
+    pub(super) fn determinise(&mut self, alphabet_size: usize, markers: &[usize]) {
+        assert!(
             !self.deterministic_and_complete || !self.epsilon_transitions,
-            "[deterministic] and [epsilon_transitions] fields are not correctly enforced. {:?}",
+            "(bug) [deterministic] and [epsilon_transitions] fields are not correctly enforced. {:?}",
             self
         );
         if !self.deterministic_and_complete {
-            *self = self.determinise_raw(alphabet_size);
+            *self = self.determinise_raw(alphabet_size, markers);
         }
     }
 
@@ -496,7 +682,10 @@ impl RawAutomaton<usize> {
     // Assumes that all states are numbered from 0 to `self.nb_states - 1`, and that
     // the automaton is deterministic and complete. Mutates the argument.
     pub(super) fn complement(&mut self) {
-        assert!(self.deterministic_and_complete);
+        assert!(
+            self.deterministic_and_complete,
+            "(bug) complement can only be performed on deterministic and complete automata"
+        );
         self.final_states = (0..self.nb_states)
             .filter(|i| !self.final_states.contains(i))
             .collect::<HashSet<_>>();
@@ -532,13 +721,7 @@ impl Automaton {
     // automaton, i.e., two states are equivalent if they accept exactly the same
     // inputs. The implementation represents sets of states by boolean vectors. The
     // function also returns the size of the effective alphabet.
-    fn nerode_congruence(&self) -> (Vec<Vec<bool>>, usize) {
-        let alphabet_size = self
-            .transitions
-            .iter()
-            .map(|((_, a), _)| 1 + *a as usize)
-            .max()
-            .unwrap_or(0);
+    fn nerode_congruence(&self, alphabet_size: usize, markers: &[usize]) -> Vec<Vec<bool>> {
         let mut final_states = vec![false; self.state_bound];
         self.final_states
             .iter()
@@ -559,11 +742,18 @@ impl Automaton {
         let mut distinguishers = partition.clone();
         while let Some(dist) = distinguishers.pop() {
             // For each alphabet letter, computes the set of states that can reach a set in
-            // the distinguisher by reading this letter.
-            let mut predecessors = vec![vec![false; self.state_bound]; alphabet_size];
-            for ((source, a), target) in self.transitions.iter() {
+            // the distinguisher by reading this letter. See `alphabet.rs` for details about
+            // the encoding of `Letter` as `usize`.
+            let mut predecessors =
+                vec![vec![false; self.state_bound]; Letter::encoding_bound(alphabet_size, markers)];
+            for ((source, a), (target, marker)) in self.transitions.iter() {
+                let encoding = Letter {
+                    char: *a,
+                    marker: *marker,
+                }
+                .encode(alphabet_size, markers);
                 if dist[*target] {
-                    predecessors[*a as usize][*source] = true;
+                    predecessors[encoding][*source] = true;
                 }
             }
             // For each letter, use the predecessor set to refine the partition (in short,
@@ -619,15 +809,19 @@ impl Automaton {
                 partition.append(&mut partition_temp)
             }
         }
-        (partition, alphabet_size)
+        partition
     }
 
     // Implementation of minimisation using the Nerode's congruence. It simply
     // numbers each equivalence class, and generates the transitions between the
     // different classes accordingly.
-    fn minimise(&self) -> Self {
-        let (partition, alphabet_size) = self.nerode_congruence();
-        let partition = partition.iter().cloned().enumerate().collect::<Vec<_>>();
+    fn minimise(&self, alphabet_size: usize, markers: &[usize]) -> Self {
+        let partition = self
+            .nerode_congruence(alphabet_size, markers)
+            .iter()
+            .cloned()
+            .enumerate()
+            .collect::<Vec<_>>();
         let state_bound = partition.len();
         let initial_state = partition
             .iter()
@@ -641,16 +835,16 @@ impl Automaton {
                 final_states.insert(*index);
             }
         });
-        let mut transitions = HashMap::new();
+        let mut transitions: HashMap<(usize, u8), (usize, usize)> = HashMap::new();
         for (index1, class1) in partition.clone() {
             let source = class1.iter().enumerate().find(|(_, &b)| b).unwrap().0;
             for letter in 0..alphabet_size {
                 self.transitions
-                    .get(&(source, letter.try_into().unwrap()))
+                    .get(&(source, letter as u8))
                     .iter()
-                    .for_each(|&&target| {
+                    .for_each(|&&(target, marker)| {
                         let index2 = partition.iter().find(|(_, class)| class[target]).unwrap().0;
-                        transitions.insert((index1, letter.try_into().unwrap()), index2);
+                        transitions.insert((index1, letter as u8), (index2, marker));
                     });
             }
         }
@@ -665,19 +859,36 @@ impl Automaton {
 
 impl RawAutomaton<usize> {
     /// Conversion into a minimal deterministic automaton. Mutates the argument
-    /// to normalise it.
-    pub(super) fn normalise(&mut self, alphabet_size: usize) -> Automaton {
-        self.determinise(alphabet_size);
+    /// to determinise it.
+    pub(super) fn normalise(&mut self) -> Automaton {
+        let mut markers = HashSet::new();
+        let mut alphabet_size = 0;
+        self.transitions.iter().for_each(|(_, letter_option, _)| {
+            letter_option.iter().for_each(|letter| {
+                markers.insert(letter.marker);
+                alphabet_size = std::cmp::max(alphabet_size, 1 + letter.char as usize)
+            })
+        });
+        let markers = markers.iter().copied().collect::<Vec<_>>();
+        self.determinise(alphabet_size, &markers);
         *self = self.normalise_states();
         let mut transitions = HashMap::new();
         self.transitions
             .iter()
             .for_each(|(source, letter, target)| match letter {
-                None => panic!("determinisation failed to remove an epsilon transition. The automaton is:\n{:?}\n\n", self),
-                Some(letter) => {match transitions.insert((*source, *letter), *target) {
-                    None => (),
-                    Some(target2) => panic!("determinisation was incorrect: source state {source} was pointing to both targets {target} and {target2} after letter {letter}")
-                }},
+                None => panic!("(bug) determinisation failed to remove an epsilon transition. The automaton is:\n{:?}\n\n", self),
+                Some(letter) => {
+                    match transitions.insert((*source, letter.char), (*target, letter.marker)) {
+                        None => (),
+                        Some((target2, marker2)) => {
+                            if letter.marker == marker2 {
+                                panic!("(bug) determinisation was incorrect: source state {source} was pointing to both targets {target} and {target2} after letter {} (marked {})", letter.char, letter.marker)
+                            } else {
+                                panic!("a non output-deterministic language has been specified. In some cases, it is unclear whether letter {} should be marked {} or {}", letter.char, letter.marker, marker2)
+                            }
+                        }
+                    }
+                },
             });
         Automaton {
             state_bound: self.nb_states,
@@ -685,7 +896,7 @@ impl RawAutomaton<usize> {
             final_states: self.final_states.clone(),
             transitions,
         }
-        .minimise()
+        .minimise(alphabet_size, &markers)
     }
 }
 
@@ -705,7 +916,9 @@ impl Automaton {
             transitions: self
                 .transitions
                 .iter()
-                .map(|((source, letter), target)| ((*source + offset, *letter), *target + offset))
+                .map(|((source, letter), (target, marker))| {
+                    ((*source + offset, *letter), (*target + offset, *marker))
+                })
                 .collect::<HashMap<_, _>>(),
         }
     }
@@ -714,33 +927,32 @@ impl Automaton {
 #[cfg(test)]
 impl Automaton {
     /// Executes an automaton for a given sequence of bytes. Returns a vector of
-    /// states, corresponding to the states of the run, and a boolean indicating
-    /// whether the run was stuck.
-    pub(super) fn run(&self, input: &[u8]) -> (Vec<usize>, bool) {
+    /// states (corresponding to the states of the run), a vector of bytes (the
+    /// output of markers for this input), and a boolean indicating whether the
+    /// run was stuck.
+    pub(super) fn run(&self, input: &[u8]) -> (Vec<usize>, Vec<usize>, bool) {
         let mut iter = input.iter();
         let mut current_state = self.initial_state;
+        let mut output = Vec::new();
         let mut states = Vec::new();
         let mut letter = iter.next();
         states.push(current_state);
         // Iterates over the letters of the input and moves accross the states
         // accordingly.
-        while letter.is_some() {
-            match self
-                .transitions
-                .get(&(current_state, *letter.unwrap()))
-                .copied()
-            {
+        while let Some(a) = letter {
+            match self.transitions.get(&(current_state, *a)).copied() {
                 // Interrupted run.
-                None => return (states, true),
+                None => return (states, Vec::new(), true),
                 // The run goes on.
-                Some(state) => {
+                Some((state, marker)) => {
                     current_state = state;
                     states.push(current_state);
+                    output.push(marker);
                     letter = iter.next();
                 }
             }
         }
-        (states, false)
+        (states, output, false)
     }
 }
 
@@ -748,7 +960,7 @@ impl Automaton {
 pub(super) mod tests {
     use itertools::Itertools;
 
-    use crate::json::regex::{Regex, RegexInstructions};
+    use crate::parsing::regex::{Regex, RegexInstructions};
 
     // Tests whether a given regular expression accepts or rejects two sets of
     // corresponding strings. Takes the alphabet size as a parameter to allow for
@@ -757,20 +969,25 @@ pub(super) mod tests {
         index: usize,
         alphabet_size: usize,
         regex: &Regex,
-        accepted: &[&[u8]],
+        accepted: &[(&[u8], &[usize])],
         rejected: &[&[u8]],
     ) {
+        accepted.iter().for_each(|(s,o)|
+            assert!(s.len() == o.len(),
+            "[test {index}] There is probably a typo in the tests vectors: the input ({:?}, length = {}) and the expected output ({:?}, length = {}) have different lengths.", 
+            s, s.len(), o, o.len())
+        );
         let automaton = regex.to_automaton_param(alphabet_size);
         println!(
-            "\n\n** TEST no {index}\n** alphabet size = {alphabet_size}\n** {:?}\n** converted to {:?}",
-            regex, automaton
+            "\n\n** TEST no {index}\n** alphabet size = {alphabet_size}\n** automaton {:?}",
+            automaton
         );
-        accepted.iter().for_each(|&s| {
+        accepted.iter().for_each(|&(s,o)| {
             println!(
                 "\n -> testing on input string \"{}\" (bytes: [{}])", String::from_utf8_lossy(s),
                 s.iter().map(|b| b.to_string()).join(", ")
             );
-            let (v,interrupted) = automaton.run(s);
+            let (v,output,interrupted) = automaton.run(s);
             if interrupted {
                 panic!("input was unexpectedly rejected after being stuck after {} transitions", v.len())
             }
@@ -779,7 +996,11 @@ pub(super) mod tests {
                 let state = v[counter-1];
                 let f = automaton.final_states.contains(&state);
                 if f {
-                    println!("... which is accepted as expected (the automaton reached the final state {} in {} transitions).", state, counter)
+                    if o.len() == output.len() && o.iter().zip_eq(output.iter()).all(|(o1,o2)| o1 == o2) {
+                        println!("... which is accepted and marked:\n{:?}\nas expected. The automaton reached the final state {} in {} transitions.", output, state, counter)
+                    } else {
+                        panic!("[test {index}]: the input {:?} is accepted as expected, but it is marked:\n{:?}\nwhereas the following markers were expected:\n{:?}\nThe automaton reached the final state {} in {} transitions.", s, output, o, state, counter)
+                    }
                 } else {
                     panic!("input was unexpectedly rejected (automaton run ended up in the non-final state {} after {} transitions)", state, counter)
                 }
@@ -790,7 +1011,7 @@ pub(super) mod tests {
                 "\n -> testing on input string \"{}\" (bytes: [{}])", String::from_utf8_lossy(s),
                 s.iter().map(|b| b.to_string()).join(", ")
             );
-            let (v,interrupted) = automaton.run(s);
+            let (v,output,interrupted) = automaton.run(s);
             if interrupted {
                 println!("... which is rejected as expected (the automaton run was stuck after {} transitions).", v.len())
             } else {
@@ -798,7 +1019,7 @@ pub(super) mod tests {
                 let state = v[counter-1];
                     let f = automaton.final_states.contains(&state);
                     if f {
-                        panic!("input was unexpectedly accepted (reached final state {} after {} transitions).", state, counter)
+                        panic!("input was unexpectedly accepted (reached final state {} after {} transitions and outputs {:?}).", state, counter, output)
                     } else {
                         println!("... which is rejected as expected (the automaton run ended up in the non-final state {} after {} transitions).", state, counter)
                     }
@@ -808,41 +1029,52 @@ pub(super) mod tests {
 
     #[test]
     fn automaton_test() {
-        let regex0 = Regex::once(1);
-        let accepted0: &[&[u8]] = &[&[1]];
+        let zero: Regex = 0.into();
+        let one: Regex = 1.into();
+        let two: Regex = 2.into();
+
+        let regex0 = one.clone();
+        let accepted0: &[(&[u8], &[usize])] = &[(&[1], &[0])];
         let rejected0: &[&[u8]] = &[&[0], &[], &[0, 1], &[1, 1], &[2]];
 
-        let regex1 = Regex::once(1).terminated(Regex::once(2));
-        let accepted1: &[&[u8]] = &[&[1, 2]];
+        let regex1 = one.clone().terminated(two.clone());
+        let accepted1: &[(&[u8], &[usize])] = &[(&[1, 2], &[0; 2])];
         let rejected1: &[&[u8]] = &[&[0], &[], &[0, 1], &[1, 1], &[1, 2, 0]];
 
-        let regex2 = Regex::cat([Regex::once(1), Regex::list(Regex::once(2)), Regex::once(0)]);
-        let accepted2: &[&[u8]] = &[&[1, 0], &[1, 2, 0], &[1, 2, 2, 0], &[1, 2, 2, 2, 0]];
+        let regex2 = Regex::cat([one.clone(), two.clone().list(), zero.clone()]);
+        let accepted2: &[(&[u8], &[usize])] = &[
+            (&[1, 0], &[0; 2]),
+            (&[1, 2, 0], &[0; 3]),
+            (&[1, 2, 2, 0], &[0; 4]),
+            (&[1, 2, 2, 2, 0], &[0; 5]),
+        ];
         let rejected2: &[&[u8]] = &[&[0], &[], &[0, 1], &[1, 1], &[1, 0, 2], &[1, 2]];
 
         let regex3 = Regex::cat([
-            Regex::once(1),
-            Regex::non_empty_list(Regex::once(2)),
-            Regex::list(Regex::once(0)),
+            one.clone(),
+            two.clone().non_empty_list(),
+            zero.clone().list(),
         ]);
-        let accepted3: &[&[u8]] = &[&[1, 2, 0], &[1, 2], &[1, 2, 2, 0], &[1, 2, 2, 2, 0]];
+        let accepted3: &[(&[u8], &[usize])] = &[
+            (&[1, 2, 0], &[0; 3]),
+            (&[1, 2], &[0; 2]),
+            (&[1, 2, 2, 0], &[0; 4]),
+            (&[1, 2, 2, 2, 0], &[0; 5]),
+        ];
         let rejected3: &[&[u8]] = &[&[0], &[], &[0, 1], &[1, 0], &[1, 1], &[1, 0, 2], &[1, 2, 1]];
 
-        let regex4 = Regex::minus(Regex::once(1), Regex::once(1));
-        let accepted4: &[&[u8]] = &[];
+        let regex4 = one.clone().minus(one.clone());
+        let accepted4: &[(&[u8], &[usize])] = &[];
         let rejected4: &[&[u8]] = &[&[0], &[], &[0, 1], &[1, 0], &[1, 1], &[1, 0, 2], &[1, 2]];
 
-        let regex5 = Regex::minus(
-            Regex::list(Regex::once_any()),
-            Regex::list(Regex::or([Regex::once(0), Regex::once(1)])),
-        );
-        let accepted5: &[&[u8]] = &[
-            &[2],
-            &[0, 2],
-            &[2, 1],
-            &[0, 2, 1],
-            &[0, 2, 2, 1, 2],
-            &[2, 1, 2, 0, 1, 1],
+        let regex5 = Regex::any().minus(zero.clone().or(one.clone()).list());
+        let accepted5: &[(&[u8], &[usize])] = &[
+            (&[2], &[0]),
+            (&[0, 2], &[0; 2]),
+            (&[2, 1], &[0; 2]),
+            (&[0, 2, 1], &[0; 3]),
+            (&[0, 2, 2, 1, 2], &[0; 5]),
+            (&[2, 1, 2, 0, 1, 1], &[0; 6]),
         ];
         let rejected5: &[&[u8]] = &[
             &[],
@@ -854,21 +1086,24 @@ pub(super) mod tests {
             &[1, 1, 1, 0, 1, 1],
         ];
 
-        let regex6 = Regex::minus(
-            regex5.clone(),
-            Regex::minus(
-                Regex::list(Regex::once_any()),
-                Regex::list(Regex::minus(Regex::once_any(), Regex::once(2))),
-            ),
-        );
-        let accepted6: &[&[u8]] = &[];
+        let regex6 = regex5
+            .clone()
+            .minus(Regex::any().minus(Regex::any_byte().minus(two.clone()).list()));
+        let accepted6: &[(&[u8], &[usize])] = &[];
         let rejected6: &[&[u8]] = &[&[0], &[], &[0, 1], &[1, 0], &[1, 1], &[1, 0, 2], &[1, 2]];
 
-        let regex7 = Regex::minus(
-            Regex::list(Regex::minus(Regex::once_any(), Regex::once(2))),
-            Regex::once(0),
-        );
-        let accepted7: &[&[u8]] = &[&[], &[0, 1], &[0, 0], &[1, 0], &[1, 1], &[0, 1, 0, 1, 0]];
+        let regex7 = Regex::any_byte()
+            .minus(Regex::byte_from([2]))
+            .list()
+            .minus(Regex::byte_from([0]));
+        let accepted7: &[(&[u8], &[usize])] = &[
+            (&[], &[]),
+            (&[0, 1], &[0; 2]),
+            (&[0, 0], &[0; 2]),
+            (&[1, 0], &[0; 2]),
+            (&[1, 1], &[0; 2]),
+            (&[0, 1, 0, 1, 0], &[0; 5]),
+        ];
         let rejected7: &[&[u8]] = &[
             &[0],
             &[2],

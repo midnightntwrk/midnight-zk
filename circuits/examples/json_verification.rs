@@ -9,7 +9,7 @@ use midnight_circuits::{
         DecompositionInstructions, EccInstructions, PublicInputInstructions,
         RangeCheckInstructions,
     },
-    json::{DateFormat, Separator},
+    parsing::{DateFormat, Separator},
     testing_utils::{
         ecdsa::{ECDSASig, Ecdsa, FromBase64, PublicKey},
         plonk_api::filecoin_srs,
