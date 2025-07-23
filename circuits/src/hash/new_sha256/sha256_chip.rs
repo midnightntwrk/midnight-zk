@@ -411,11 +411,13 @@ impl<F: PrimeField> Sha256Chip<F> {
     ///
     /// If `evn_or_odd` = `Parity::Evn`:
     ///
-    ///  | T_0 |   A_0   |    A_1   | T_1 |    A_2  |    A_3   |  A_4  |
+    ///  | T_0 |   A_0   |    A_1   | T_1 |   A_2   |    A_3   |  A_4  |
     ///  |-----|---------|----------|-----|---------|----------|-------|
-    ///  |  12 | Evn.12a | ~Evn.12a |  12 | Odd.12a | ~Odd.12a | Evn  |
+    ///  |  12 | Evn.12a | ~Evn.12a |  12 | Odd.12a | ~Odd.12a |  Evn  |
     ///  |  12 | Evn.12b | ~Evn.12b |  12 | Odd.12b | ~Odd.12b |       |
     ///  |   8 | Evn.8   | ~Evn.8   |   8 | Odd.2   | ~Odd.8   |       |
+    ///
+    /// and returns `Evn`.
     ///
     /// If `evn_or_odd` = `Parity::Odd`:
     ///
@@ -424,6 +426,8 @@ impl<F: PrimeField> Sha256Chip<F> {
     ///  |  12 | Odd.12a | ~Odd.12a |  12 | Evn.12a | ~Evn.12a |  Odd  |
     ///  |  12 | Odd.12b | ~Odd.12b |  12 | Evn.12b | ~Evn.12b |       |
     ///  |   8 | Odd.8   | ~Odd.8   |   8 | Evn.2   | ~Evn.8   |       |
+    ///
+    /// and returns `Odd`.
     ///
     /// This function guarantees that the returned value is consistent with
     /// the values in the filled lookup table.
