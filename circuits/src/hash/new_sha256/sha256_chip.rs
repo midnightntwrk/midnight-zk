@@ -265,7 +265,8 @@ impl<F: PrimeField> Sha256Chip<F> {
 
                 // Compute the spreaded Σ₀(A) off-circuit, assign the 12-12-8 limbs
                 // of its even and odd bits into the circuit, enable the s_12_12_8 selector
-                // for the even part and s_lookup selector for the related rows.
+                // for the even part and s_lookup selector for the related rows, return the
+                // assigned 32 even bits.
                 let val_of_spreaded_limbs: Value<[u64; 4]> = Value::from_iter([
                     a.spreaded_limb_10.0.value().copied().map(fe_to_u64),
                     a.spreaded_limb_9.0.value().copied().map(fe_to_u64),
@@ -274,17 +275,12 @@ impl<F: PrimeField> Sha256Chip<F> {
                 ])
                 .map(|limbs: Vec<u64>| limbs.try_into().unwrap());
 
-                let (even_val, _odd_val) = self.assign_even_odd_12_12_8(
+                self.assign_even_odd_12_12_8(
                     &mut region,
                     val_of_spreaded_limbs,
                     spreaded_Sigma_0,
                     Parity::Even,
-                )?;
-
-                // Return the 32 even bits as the result of Σ₀(A).
-                region
-                    .assign_advice(|| "Even", adv_cols[4], 0, || even_val.map(u32_to_fe))
-                    .map(AssignedPlain)
+                )
             },
         )
     }
@@ -338,7 +334,8 @@ impl<F: PrimeField> Sha256Chip<F> {
 
                 // Compute the spreaded Maj(A, B, C) off-circuit, assign the 12-12-8 limbs
                 // of its even and odd bits into the circuit, enable the s_12_12_8 selector
-                // for the odd part and s_lookup selector for the related rows.
+                // for the odd part and s_lookup selector for the related rows, return the
+                // assigned 32 odd bits.
                 let val_of_spreaded_forms: Value<[u64; 3]> = Value::from_iter([
                     spreaded_a.0.value().copied().map(fe_to_u64),
                     spreaded_b.0.value().copied().map(fe_to_u64),
@@ -346,17 +343,12 @@ impl<F: PrimeField> Sha256Chip<F> {
                 ])
                 .map(|spreaded_forms: Vec<u64>| spreaded_forms.try_into().unwrap());
 
-                let (_even_val, odd_val) = self.assign_even_odd_12_12_8(
+                self.assign_even_odd_12_12_8(
                     &mut region,
                     val_of_spreaded_forms,
                     spreaded_maj,
                     Parity::Odd,
-                )?;
-
-                // Return the 32 odd bits as the result of Maj(A, B, C).
-                region
-                    .assign_advice(|| "Odd", adv_cols[4], 0, || odd_val.map(u32_to_fe))
-                    .map(AssignedPlain)
+                )
             },
         )
     }
@@ -408,15 +400,15 @@ impl<F: PrimeField> Sha256Chip<F> {
 
     /// Computes off-circuit the result of the operation (e.g spreaded-Σ₀),
     /// assigns the 12-12-8 limbs of its even and odd bits into the
-    /// corresponding columns depending on whether the 12-12-8 decomposition
-    /// is for the even or odd part, and enables the s_12_12_8 selector.
+    /// circuit, enables the s_12_12_8 and s_lookup selectors, returns the
+    /// assigned 32 even or odd bits.
     fn assign_even_odd_12_12_8<const N: usize>(
         &self,
         region: &mut Region<'_, F>,
         val: Value<[u64; N]>,
         op: fn([u64; N]) -> u64,
         even_or_odd: Parity,
-    ) -> Result<(Value<u32>, Value<u32>), Error> {
+    ) -> Result<AssignedPlain<F, 32>, Error> {
         self.config().s_12_12_8.enable(region, 0)?;
 
         // Compute off-circuit the result of the given operation, and derive its 32 even
@@ -461,6 +453,29 @@ impl<F: PrimeField> Sha256Chip<F> {
         self.assign_spreaded_lookup::<12>(region, 12, odd_12b, 1, (idx + 1) % 2)?;
         self.assign_spreaded_lookup::<8>(region, 8, odd_8, 2, (idx + 1) % 2)?;
 
-        Ok((even_val, odd_val))
+        match even_or_odd {
+            Parity::Even => {
+                // Return the 32 even bits as the result of the operation.
+                region
+                    .assign_advice(
+                        || "Even",
+                        self.config().advice_cols[4],
+                        0,
+                        || even_val.map(u32_to_fe),
+                    )
+                    .map(AssignedPlain)
+            }
+            Parity::Odd => {
+                // Return the 32 odd bits as the result of the operation.
+                region
+                    .assign_advice(
+                        || "Odd",
+                        self.config().advice_cols[4],
+                        0,
+                        || odd_val.map(u32_to_fe),
+                    )
+                    .map(AssignedPlain)
+            }
+        }
     }
 }
