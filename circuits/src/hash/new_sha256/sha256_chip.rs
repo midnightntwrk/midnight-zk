@@ -8,7 +8,7 @@ use midnight_proofs::{
 use crate::{
     field::NativeChip,
     hash::new_sha256::{
-        gates::{decompose_12_12_8, maj, Sigma_0},
+        gates::{decompose_12_12_8_gate, maj_gate, Sigma_0_gate},
         types::{AssignedPlain, AssignedPlainSpreaded, AssignedSpreaded, LimbsOfA},
         utils::{
             get_even_odd_bits, iter_of_table, spread, spreaded_Sigma_0, spreaded_maj,
@@ -21,7 +21,7 @@ use crate::{
 const NB_SHA256_ADVICE_COLS: usize = 7;
 const NB_SHA256_FIXED_COLS: usize = 2;
 
-/// Tag for the evn and odd 12-12-8 decompositions.
+/// Tag for the even and odd 12-12-8 decompositions.
 enum Parity {
     Evn,
     Odd,
@@ -121,7 +121,7 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
             let limb_8 = meta.query_advice(advice_cols[0], Rotation(2));
             let output = meta.query_advice(advice_cols[4], Rotation(0));
 
-            decompose_12_12_8(q_12_12_8, [limb_12a, limb_12b, limb_8], output)
+            decompose_12_12_8_gate(q_12_12_8, [limb_12a, limb_12b, limb_8], output)
         });
 
         meta.create_gate("spreaded Σ₀(A)", |meta| {
@@ -138,7 +138,7 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
             let spreaded_odd_12b = meta.query_advice(advice_cols[3], Rotation(1));
             let spreaded_odd_8 = meta.query_advice(advice_cols[3], Rotation(2));
 
-            Sigma_0(
+            Sigma_0_gate(
                 q_Sigma_0,
                 [spreaded_a_10, spreaded_a_9, spreaded_a_11, spreaded_a_2],
                 [spreaded_evn_12a, spreaded_evn_12b, spreaded_evn_8],
@@ -152,15 +152,14 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
             let spreaded_a = meta.query_advice(advice_cols[5], Rotation(0));
             let spreaded_b = meta.query_advice(advice_cols[6], Rotation(0));
             let spreaded_c = meta.query_advice(advice_cols[5], Rotation(1));
+            let spreaded_odd_12a = meta.query_advice(advice_cols[1], Rotation(0));
+            let spreaded_odd_12b = meta.query_advice(advice_cols[1], Rotation(1));
+            let spreaded_odd_8 = meta.query_advice(advice_cols[1], Rotation(2));
+            let spreaded_evn_12a = meta.query_advice(advice_cols[3], Rotation(0));
+            let spreaded_evn_12b = meta.query_advice(advice_cols[3], Rotation(1));
+            let spreaded_evn_8 = meta.query_advice(advice_cols[3], Rotation(2));
 
-            let spreaded_evn_12a = meta.query_advice(advice_cols[1], Rotation(0));
-            let spreaded_evn_12b = meta.query_advice(advice_cols[1], Rotation(1));
-            let spreaded_evn_8 = meta.query_advice(advice_cols[1], Rotation(2));
-            let spreaded_odd_12a = meta.query_advice(advice_cols[3], Rotation(0));
-            let spreaded_odd_12b = meta.query_advice(advice_cols[3], Rotation(1));
-            let spreaded_odd_8 = meta.query_advice(advice_cols[3], Rotation(2));
-
-            maj(
+            maj_gate(
                 q_maj,
                 [spreaded_a, spreaded_b, spreaded_c],
                 [spreaded_evn_12a, spreaded_evn_12b, spreaded_evn_8],
@@ -214,7 +213,7 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
 
 impl<F: PrimeField> Sha256Chip<F> {
     /// Computes Σ₀(A).
-    pub(super) fn compute_Sigma_0(
+    pub(super) fn Sigma_0(
         &self,
         layouter: &mut impl Layouter<F>,
         a: &LimbsOfA<F>,
@@ -288,7 +287,7 @@ impl<F: PrimeField> Sha256Chip<F> {
     }
 
     /// Computes Maj(A, B, C)
-    pub(super) fn compute_maj(
+    pub(super) fn maj(
         &self,
         layouter: &mut impl Layouter<F>,
         spreaded_a: &AssignedSpreaded<F, 32>,
@@ -357,22 +356,20 @@ impl<F: PrimeField> Sha256Chip<F> {
         )
     }
 
-    /// Given a plain value of bits L, assigns (tag, plain, spreaded) in the
-    /// corresponding columns with the specified lookup index, and enables
-    /// the lookup selector for this row.
-    ///
-    /// TODO: Document arguments, especially `lookup_idx`.
+    /// Given a plain value of bits L, enables the lookup selector for the
+    /// row of the specified offset. When lookup index equals 0, assigns
+    /// (tag, plain, spreaded) to the columns T_0, A_0, A_1; when lookup
+    /// index equals 1, assigns to the columns T_1, A_2, A_3.
     fn assign_spreaded_lookup<const L: usize>(
         &self,
         region: &mut Region<'_, F>,
-        tag: usize,
         plain_val: Value<u32>,
         offset: usize,
         lookup_idx: usize,
     ) -> Result<AssignedPlainSpreaded<F, L>, Error> {
         self.config().q_lookup.enable(region, offset)?;
 
-        let tag = F::from(tag as u64);
+        let tag = F::from(L as u64);
         let tag_col = self.config().fixed_cols[lookup_idx]; // 0 or 1
         let plain_col = self.config().advice_cols[2 * lookup_idx]; // 0 or 2
         let spreaded_col = self.config().advice_cols[2 * lookup_idx + 1]; // 1 or 3
@@ -407,9 +404,9 @@ impl<F: PrimeField> Sha256Chip<F> {
     /// Given a u64, representing an spreaded value, this function fills a
     /// lookup table with the limbs of its even and odd parts (or vice versa)
     /// and returns the former or the latter, depending on the desired value
-    /// `evn_or_odd`.
+    /// `even_or_odd`.
     ///
-    /// If `evn_or_odd` = `Parity::Evn`:
+    /// If `even_or_odd` = `Parity::Evn`:
     ///
     ///  | T_0 |   A_0   |    A_1   | T_1 |   A_2   |    A_3   |  A_4  |
     ///  |-----|---------|----------|-----|---------|----------|-------|
@@ -419,7 +416,7 @@ impl<F: PrimeField> Sha256Chip<F> {
     ///
     /// and returns `Evn`.
     ///
-    /// If `evn_or_odd` = `Parity::Odd`:
+    /// If `even_or_odd` = `Parity::Odd`:
     ///
     ///  | T_0 |   A_0   |    A_1   | T_1 |   A_2   |    A_3   |  A_4  |
     ///  |-----|---------|----------|-----|---------|----------|-------|
@@ -435,7 +432,7 @@ impl<F: PrimeField> Sha256Chip<F> {
         &self,
         region: &mut Region<'_, F>,
         value: Value<u64>,
-        evn_or_odd: Parity,
+        even_or_odd: Parity,
     ) -> Result<AssignedPlain<F, 32>, Error> {
         self.config().q_12_12_8.enable(region, 0)?;
 
@@ -449,21 +446,21 @@ impl<F: PrimeField> Sha256Chip<F> {
             .map(|v| u32_in_be_limbs(v, [12, 12, 8]))
             .transpose_array();
 
-        let idx = match evn_or_odd {
+        let idx = match even_or_odd {
             Parity::Evn => 0,
             Parity::Odd => 1,
         };
 
-        self.assign_spreaded_lookup::<12>(region, 12, evn_12a, 0, idx)?;
-        self.assign_spreaded_lookup::<12>(region, 12, evn_12b, 1, idx)?;
-        self.assign_spreaded_lookup::<8>(region, 8, evn_8, 2, idx)?;
+        self.assign_spreaded_lookup::<12>(region, evn_12a, 0, idx)?;
+        self.assign_spreaded_lookup::<12>(region, evn_12b, 1, idx)?;
+        self.assign_spreaded_lookup::<8>(region, evn_8, 2, idx)?;
 
-        self.assign_spreaded_lookup::<12>(region, 12, odd_12a, 0, 1 - idx)?;
-        self.assign_spreaded_lookup::<12>(region, 12, odd_12b, 1, 1 - idx)?;
-        self.assign_spreaded_lookup::<8>(region, 8, odd_8, 2, 1 - idx)?;
+        self.assign_spreaded_lookup::<12>(region, odd_12a, 0, 1 - idx)?;
+        self.assign_spreaded_lookup::<12>(region, odd_12b, 1, 1 - idx)?;
+        self.assign_spreaded_lookup::<8>(region, odd_8, 2, 1 - idx)?;
 
         let out_col = self.config().advice_cols[4];
-        match evn_or_odd {
+        match even_or_odd {
             Parity::Evn => region.assign_advice(|| "Evn", out_col, 0, || evn_val.map(u32_to_fe)),
             Parity::Odd => region.assign_advice(|| "Odd", out_col, 0, || odd_val.map(u32_to_fe)),
         }
