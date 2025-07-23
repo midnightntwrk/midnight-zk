@@ -79,7 +79,7 @@ pub fn decompose_12_12_8<F: PrimeField>(
 }
 
 /// Major(A, B, C) gate.
-pub fn major<F: PrimeField>(
+pub fn maj<F: PrimeField>(
     q_maj: Expression<F>,
     [spreaded_a, spreaded_b, spreaded_c]: [Expression<F>; 3],
     [spreaded_even_12a, spreaded_even_12b, spreaded_even_8]: [Expression<F>; 3],

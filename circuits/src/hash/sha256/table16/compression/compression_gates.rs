@@ -323,7 +323,7 @@ impl<F: PrimeField> CompressionGate<F> {
         Constraints::with_selector(s_ch_neg, neg_check.chain(Some(("s_ch_neg", lhs - rhs))))
     }
 
-    // Majority gate on (A, B, C)
+    /// Maj gate on (A, B, C).
     #[allow(clippy::too_many_arguments)]
     pub fn s_maj(
         s_maj: Expression<F>,

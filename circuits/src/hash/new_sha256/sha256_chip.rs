@@ -8,7 +8,7 @@ use midnight_proofs::{
 use crate::{
     field::NativeChip,
     hash::new_sha256::{
-        gates::{decompose_12_12_8, major, Sigma_0},
+        gates::{decompose_12_12_8, maj, Sigma_0},
         types::{AssignedPlain, AssignedPlainSpreaded, AssignedSpreaded, LimbsOfA},
         utils::{
             get_even_odd_bits, iter_of_table, spread, spreaded_Sigma_0, spreaded_maj,
@@ -21,9 +21,9 @@ use crate::{
 const NB_SHA256_ADVICE_COLS: usize = 7;
 const NB_SHA256_FIXED_COLS: usize = 2;
 
-/// Tag for the even and odd 12-12-8 decompositions.
+/// Tag for the evn and odd 12-12-8 decompositions.
 enum Parity {
-    Even,
+    Evn,
     Odd,
 }
 
@@ -131,9 +131,9 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
             let spreaded_a_9 = meta.query_advice(advice_cols[6], Rotation(0));
             let spreaded_a_11 = meta.query_advice(advice_cols[5], Rotation(1));
             let spreaded_a_2 = meta.query_advice(advice_cols[6], Rotation(1));
-            let spreaded_even_12a = meta.query_advice(advice_cols[1], Rotation(0));
-            let spreaded_even_12b = meta.query_advice(advice_cols[1], Rotation(1));
-            let spreaded_even_8 = meta.query_advice(advice_cols[1], Rotation(2));
+            let spreaded_evn_12a = meta.query_advice(advice_cols[1], Rotation(0));
+            let spreaded_evn_12b = meta.query_advice(advice_cols[1], Rotation(1));
+            let spreaded_evn_8 = meta.query_advice(advice_cols[1], Rotation(2));
             let spreaded_odd_12a = meta.query_advice(advice_cols[3], Rotation(0));
             let spreaded_odd_12b = meta.query_advice(advice_cols[3], Rotation(1));
             let spreaded_odd_8 = meta.query_advice(advice_cols[3], Rotation(2));
@@ -141,7 +141,7 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
             Sigma_0(
                 q_Sigma_0,
                 [spreaded_a_10, spreaded_a_9, spreaded_a_11, spreaded_a_2],
-                [spreaded_even_12a, spreaded_even_12b, spreaded_even_8],
+                [spreaded_evn_12a, spreaded_evn_12b, spreaded_evn_8],
                 [spreaded_odd_12a, spreaded_odd_12b, spreaded_odd_8],
             )
         });
@@ -153,17 +153,17 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
             let spreaded_b = meta.query_advice(advice_cols[6], Rotation(0));
             let spreaded_c = meta.query_advice(advice_cols[5], Rotation(1));
 
-            let spreaded_even_12a = meta.query_advice(advice_cols[1], Rotation(0));
-            let spreaded_even_12b = meta.query_advice(advice_cols[1], Rotation(1));
-            let spreaded_even_8 = meta.query_advice(advice_cols[1], Rotation(2));
+            let spreaded_evn_12a = meta.query_advice(advice_cols[1], Rotation(0));
+            let spreaded_evn_12b = meta.query_advice(advice_cols[1], Rotation(1));
+            let spreaded_evn_8 = meta.query_advice(advice_cols[1], Rotation(2));
             let spreaded_odd_12a = meta.query_advice(advice_cols[3], Rotation(0));
             let spreaded_odd_12b = meta.query_advice(advice_cols[3], Rotation(1));
             let spreaded_odd_8 = meta.query_advice(advice_cols[3], Rotation(2));
 
-            major(
+            maj(
                 q_maj,
                 [spreaded_a, spreaded_b, spreaded_c],
-                [spreaded_even_12a, spreaded_even_12b, spreaded_even_8],
+                [spreaded_evn_12a, spreaded_evn_12b, spreaded_evn_8],
                 [spreaded_odd_12a, spreaded_odd_12b, spreaded_odd_8],
             )
         });
@@ -226,28 +226,31 @@ impl<F: PrimeField> Sha256Chip<F> {
           ⊕ A >>> 22 :    ⊕  (   A.9  ||  A.11  ||   A.2  ||  A.10  )
 
         which can be achieved by
-        1) applying plain-spreaded lookup on 12-12-8 limbs of Even and Odd:
-            Even: (Even.12a, Even.12b, Even.8)
-             Odd: ( Odd.12a,  Odd.12b,  Odd.8)
-        2) asserting the 12-12-8 decomposition identity for Even:
-              2^20 * Even.12a + 2^8 * Even.12b + Even.8
-            = Even
+
+        1) applying plain-spreaded lookup on 12-12-8 limbs of Evn and Odd:
+             Evn: (Evn.12a, Evn.12b, Evn.8)
+             Odd: (Odd.12a, Odd.12b, Odd.8)
+
+        2) asserting the 12-12-8 decomposition identity for Evn:
+              2^20 * Evn.12a + 2^8 * Evn.12b + Evn.8
+            = Evn
+
         3) asserting the Sigma_0 identity regarding the spreaded values:
-              (4^20 * ~Even.12a + 4^8 * ~Even.12b + ~Even.8) +
-          2 * (4^20 *  ~Odd.12a + 4^8 *  ~Odd.12b +  ~Odd.8)
+              (4^20 * ~Evn.12a + 4^8 * ~Evn.12b + ~Evn.8) +
+          2 * (4^20 * ~Odd.12a + 4^8 * ~Odd.12b + ~Odd.8)
              = 4^30 *  ~A.2  +  4^20 * ~A.10  +  4^11 * ~A.9  +  ~A.11
              + 4^21 * ~A.11  +  4^19 *  ~A.2  +  4^9 * ~A.10  +   ~A.9
              + 4^23 *  ~A.9  +  4^12 * ~A.11  +  4^10 * ~A.2  +  ~A.10
 
-        The output is Even.
+        The output is Evn.
 
         We distribute these values in the PLONK table as follows.
 
-        | T_0 |    A_0   |    A_1    | T_1 |   A_2   |    A_3   |  A_4  |  A_5  |  A_6  |
-        |-----|----------|-----------|-----|---------|----------|-------|-------|-------|
-        |  12 | Even.12a | ~Even.12a |  12 | Odd.12a | ~Odd.12a | Even  | ~A.10 |  ~A.9 |
-        |  12 | Even.12b | ~Even.12b |  12 | Odd.12b | ~Odd.12b |       | ~A.11 |  ~A.2 |
-        |   8 |   Even.8 |   ~Even.8 |   8 |   Odd.8 |   ~Odd.8 |       |       |       |
+        | T_0 |    A_0  |    A_1   | T_1 |   A_2   |    A_3   |  A_4  |  A_5  |  A_6  |
+        |-----|---------|----------|-----|---------|----------|-------|-------|-------|
+        |  12 | Evn.12a | ~Evn.12a |  12 | Odd.12a | ~Odd.12a |  Evn  | ~A.10 |  ~A.9 |
+        |  12 | Evn.12b | ~Evn.12b |  12 | Odd.12b | ~Odd.12b |       | ~A.11 |  ~A.2 |
+        |   8 |   Evn.8 |   ~Evn.8 |   8 |   Odd.8 |   ~Odd.8 |       |       |       |
         */
 
         let adv_cols = self.config().advice_cols;
@@ -275,11 +278,10 @@ impl<F: PrimeField> Sha256Chip<F> {
                 ])
                 .map(|limbs: Vec<u64>| limbs.try_into().unwrap());
 
-                self.assign_even_odd_12_12_8(
+                self.assign_spreaded_12_12_8(
                     &mut region,
-                    val_of_spreaded_limbs,
-                    spreaded_Sigma_0,
-                    Parity::Even,
+                    val_of_spreaded_limbs.map(spreaded_Sigma_0),
+                    Parity::Evn,
                 )
             },
         )
@@ -298,26 +300,29 @@ impl<F: PrimeField> Sha256Chip<F> {
             Maj(A, B, C) = (A ∧ B) ⊕ (A ∧ C) ⊕ (B ∧ C)
 
         which can be achieved by
-        1) applying plain-spreaded lookup on 12-12-8 limbs of Even and Odd:
-            Even: (Even.12a, Even.12b, Even.8)
-             Odd: ( Odd.12a,  Odd.12b,  Odd.8)
+
+        1) applying plain-spreaded lookup on 12-12-8 limbs of Evn and Odd:
+             Evn: (Evn.12a, Evn.12b, Evn.8)
+             Odd: (Odd.12a, Odd.12b, Odd.8)
+
         2) asserting the 12-12-8 decomposition identity for Odd:
               2^20 * Odd.12a + 2^8 * Odd.12b + Odd.8
             = Odd
+
         3) asserting the major identity regarding the spreaded values:
-              (4^20 * ~Even.12a + 4^8 * ~Even.12b + ~Even.8)
-          2 * (4^20 *  ~Odd.12a + 4^8 *  ~Odd.12b +  ~Odd.8)
+              (4^20 * ~Evn.12a + 4^8 * ~Evn.12b + ~Evn.8)
+          2 * (4^20 * ~Odd.12a + 4^8 * ~Odd.12b + ~Odd.8)
              = ~A + ~B + ~C
 
         The output is Odd.
 
         We distribute these values in the PLONK table as follows.
 
-        | T_0 |   A_0   |    A_1   | T_1 |    A_2   |    A_3    |  A_4  |  A_5  |  A_6  |
-        |-----|---------|----------|-----|----------|-----------|-------|-------|-------|
-        |  12 | Odd.12a | ~Odd.12a |  12 | Even.12a | ~Even.12a |  Odd  | ~A    | ~B    |
-        |  12 | Odd.12b | ~Odd.12b |  12 | Even.12b | ~Even.12b |       | ~C    |       |
-        |   8 | Odd.8   | ~Odd.8   |   8 | Even.2   | ~Even.8   |       |       |       |
+        | T_0 |   A_0   |    A_1   | T_1 |    A_2   |    A_3  |  A_4  |  A_5  |  A_6  |
+        |-----|---------|----------|-----|----------|---------|-------|-------|-------|
+        |  12 | Odd.12a | ~Odd.12a |  12 | Evn.12a | ~Evn.12a |  Odd  |  ~A   |  ~B   |
+        |  12 | Odd.12b | ~Odd.12b |  12 | Evn.12b | ~Evn.12b |       |  ~C   |       |
+        |   8 | Odd.8   | ~Odd.8   |   8 | Evn.2   | ~Evn.8   |       |       |       |
         */
 
         let adv_cols = self.config().advice_cols;
@@ -343,10 +348,9 @@ impl<F: PrimeField> Sha256Chip<F> {
                 ])
                 .map(|spreaded_forms: Vec<u64>| spreaded_forms.try_into().unwrap());
 
-                self.assign_even_odd_12_12_8(
+                self.assign_spreaded_12_12_8(
                     &mut region,
-                    val_of_spreaded_forms,
-                    spreaded_maj,
+                    val_of_spreaded_forms.map(spreaded_maj),
                     Parity::Odd,
                 )
             },
@@ -356,6 +360,8 @@ impl<F: PrimeField> Sha256Chip<F> {
     /// Given a plain value of bits L, assigns (tag, plain, spreaded) in the
     /// corresponding columns with the specified lookup index, and enables
     /// the lookup selector for this row.
+    ///
+    /// TODO: Document arguments, especially `lookup_idx`.
     fn assign_spreaded_lookup<const L: usize>(
         &self,
         region: &mut Region<'_, F>,
@@ -398,41 +404,40 @@ impl<F: PrimeField> Sha256Chip<F> {
         Ok(AssignedPlainSpreaded { plain, spreaded })
     }
 
-    /// Computes off-circuit the result of the operation (e.g spreaded-Σ₀),
-    /// assigns the 12-12-8 limbs of its even and odd bits into the
-    /// circuit, enables the q_12_12_8 and q_lookup selectors, returns the
-    /// assigned 32 even or odd bits.
-    fn assign_even_odd_12_12_8<const N: usize>(
+    /// Given a u64, representing an spreaded value, this function fills a
+    /// lookup table with the limbs of its even and odd parts (or vice versa)
+    /// and returns the former or the latter, depending on the desired value
+    /// `evn_or_odd`.
+    ///
+    /// If `evn_or_odd` = `Parity::Evn`:
+    ///
+    ///  | T_0 |   A_0   |    A_1   | T_1 |    A_2  |    A_3   |  A_4  |
+    ///  |-----|---------|----------|-----|---------|----------|-------|
+    ///  |  12 | Evn.12a | ~Evn.12a |  12 | Odd.12a | ~Odd.12a | Evn  |
+    ///  |  12 | Evn.12b | ~Evn.12b |  12 | Odd.12b | ~Odd.12b |       |
+    ///  |   8 | Evn.8   | ~Evn.8   |   8 | Odd.2   | ~Odd.8   |       |
+    ///
+    /// If `evn_or_odd` = `Parity::Odd`:
+    ///
+    ///  | T_0 |   A_0   |    A_1   | T_1 |   A_2   |    A_3   |  A_4  |
+    ///  |-----|---------|----------|-----|---------|----------|-------|
+    ///  |  12 | Odd.12a | ~Odd.12a |  12 | Evn.12a | ~Evn.12a |  Odd  |
+    ///  |  12 | Odd.12b | ~Odd.12b |  12 | Evn.12b | ~Evn.12b |       |
+    ///  |   8 | Odd.8   | ~Odd.8   |   8 | Evn.2   | ~Evn.8   |       |
+    ///
+    /// This function guarantees that the returned value is consistent with
+    /// the values in the filled lookup table.
+    fn assign_spreaded_12_12_8(
         &self,
         region: &mut Region<'_, F>,
-        val: Value<[u64; N]>,
-        op: fn([u64; N]) -> u64,
-        even_or_odd: Parity,
+        value: Value<u64>,
+        evn_or_odd: Parity,
     ) -> Result<AssignedPlain<F, 32>, Error> {
         self.config().q_12_12_8.enable(region, 0)?;
 
-        // Compute off-circuit the result of the given operation, and derive its 32 even
-        // and odd bits.
-        let (even_val, odd_val) = val.map(op).map(get_even_odd_bits).unzip();
-        /*
-        Compute the 12-12-8 limbs of the even and odd bits, then assign to the circuit
-        1) when the 12-12-8 decomposition is for the even part:
+        let (evn_val, odd_val) = value.map(get_even_odd_bits).unzip();
 
-        | T_0 |    A_0   |     A_1   | T_1 |    A_2  |    A_3   |  A_4  |
-        |-----|----------|-----------|-----|---------|----------|-------|
-        |  12 | Even.12a | ~Even.12a |  12 | Odd.12a | ~Odd.12a | Even  |
-        |  12 | Even.12b | ~Even.12b |  12 | Odd.12b | ~Odd.12b |
-        |   8 | Even.8   | ~Even.8   |   8 | Odd.2   | ~Odd.8   |
-
-        2) when the 12-12-8 decomposition is for the odd part:
-
-        | T_0 |   A_0   |    A_1   | T_1 |    A_2   |    A_3    |  A_4  |
-        |-----|---------|----------|-----|----------|-----------|-------|
-        |  12 | Odd.12a | ~Odd.12a |  12 | Even.12a | ~Even.12a |  Odd  |
-        |  12 | Odd.12b | ~Odd.12b |  12 | Even.12b | ~Even.12b |       |
-        |   8 | Odd.8   | ~Odd.8   |   8 | Even.2   | ~Even.8   |       |
-        */
-        let [even_12a, even_12b, even_8] = even_val
+        let [evn_12a, evn_12b, evn_8] = evn_val
             .map(|v| u32_in_be_limbs(v, [12, 12, 8]))
             .transpose_array();
 
@@ -440,42 +445,24 @@ impl<F: PrimeField> Sha256Chip<F> {
             .map(|v| u32_in_be_limbs(v, [12, 12, 8]))
             .transpose_array();
 
-        let idx = match even_or_odd {
-            Parity::Even => 0usize,
-            Parity::Odd => 1usize,
+        let idx = match evn_or_odd {
+            Parity::Evn => 0,
+            Parity::Odd => 1,
         };
 
-        self.assign_spreaded_lookup::<12>(region, 12, even_12a, 0, idx)?; // 0 or 1
-        self.assign_spreaded_lookup::<12>(region, 12, even_12b, 1, idx)?;
-        self.assign_spreaded_lookup::<8>(region, 8, even_8, 2, idx)?;
+        self.assign_spreaded_lookup::<12>(region, 12, evn_12a, 0, idx)?; // 0 or 1
+        self.assign_spreaded_lookup::<12>(region, 12, evn_12b, 1, idx)?;
+        self.assign_spreaded_lookup::<8>(region, 8, evn_8, 2, idx)?;
 
         self.assign_spreaded_lookup::<12>(region, 12, odd_12a, 0, (idx + 1) % 2)?; // 1 or 0
         self.assign_spreaded_lookup::<12>(region, 12, odd_12b, 1, (idx + 1) % 2)?;
         self.assign_spreaded_lookup::<8>(region, 8, odd_8, 2, (idx + 1) % 2)?;
 
-        match even_or_odd {
-            Parity::Even => {
-                // Return the 32 even bits as the result of the operation.
-                region
-                    .assign_advice(
-                        || "Even",
-                        self.config().advice_cols[4],
-                        0,
-                        || even_val.map(u32_to_fe),
-                    )
-                    .map(AssignedPlain)
-            }
-            Parity::Odd => {
-                // Return the 32 odd bits as the result of the operation.
-                region
-                    .assign_advice(
-                        || "Odd",
-                        self.config().advice_cols[4],
-                        0,
-                        || odd_val.map(u32_to_fe),
-                    )
-                    .map(AssignedPlain)
-            }
+        let out_col = self.config().advice_cols[4];
+        match evn_or_odd {
+            Parity::Evn => region.assign_advice(|| "Evn", out_col, 0, || evn_val.map(u32_to_fe)),
+            Parity::Odd => region.assign_advice(|| "Odd", out_col, 0, || odd_val.map(u32_to_fe)),
         }
+        .map(AssignedPlain)
     }
 }
