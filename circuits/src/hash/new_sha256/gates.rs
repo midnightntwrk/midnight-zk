@@ -3,7 +3,7 @@ use midnight_proofs::plonk::{Constraints, Expression};
 
 /// Σ₀(A) gate.
 pub fn Sigma_0<F: PrimeField>(
-    s_Sigma_0: Expression<F>,
+    q_Sigma_0: Expression<F>,
     [spreaded_a_10, spreaded_a_9, spreaded_a_11, spreaded_a_2]: [Expression<F>; 4],
     [spreaded_even_12a, spreaded_even_12b, spreaded_even_8]: [Expression<F>; 3],
     [spreaded_odd_12a, spreaded_odd_12b, spreaded_odd_8]: [Expression<F>; 3],
@@ -53,14 +53,14 @@ pub fn Sigma_0<F: PrimeField>(
             * (spreaded_even + Expression::Constant(F::from(2)) * spreaded_odd);
 
     Constraints::with_selector(
-        s_Sigma_0,
+        q_Sigma_0,
         [("Spreaded Sigma_0 check", spreaded_Sigma_0_check)].into_iter(),
     )
 }
 
 /// Decompose 12-12-8 gate.
 pub fn decompose_12_12_8<F: PrimeField>(
-    s_12_12_8: Expression<F>,
+    q_12_12_8: Expression<F>,
     [limb_12a, limb_12b, limb_8]: [Expression<F>; 3],
     output: Expression<F>,
 ) -> Constraints<
@@ -73,14 +73,14 @@ pub fn decompose_12_12_8<F: PrimeField>(
         + (Expression::Constant(-F::ONE) * output);
 
     Constraints::with_selector(
-        s_12_12_8,
+        q_12_12_8,
         [("12-12-8 decomposition check", decomposition_check)].into_iter(),
     )
 }
 
 /// Major(A, B, C) gate.
 pub fn major<F: PrimeField>(
-    s_maj: Expression<F>,
+    q_maj: Expression<F>,
     [spreaded_a, spreaded_b, spreaded_c]: [Expression<F>; 3],
     [spreaded_even_12a, spreaded_even_12b, spreaded_even_8]: [Expression<F>; 3],
     [spreaded_odd_12a, spreaded_odd_12b, spreaded_odd_8]: [Expression<F>; 3],
@@ -105,7 +105,7 @@ pub fn major<F: PrimeField>(
             * (spreaded_even + Expression::Constant(F::from(2)) * spreaded_odd);
 
     Constraints::with_selector(
-        s_maj,
+        q_maj,
         [("Spreaded Major check", spreaded_maj_check)].into_iter(),
     )
 }

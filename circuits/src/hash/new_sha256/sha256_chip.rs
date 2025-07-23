@@ -40,10 +40,10 @@ pub(super) struct SpreadedTable {
 pub struct Sha256Config {
     advice_cols: [Column<Advice>; NB_SHA256_ADVICE_COLS],
     fixed_cols: [Column<Fixed>; NB_SHA256_FIXED_COLS],
-    s_Sigma_0: Selector,
-    s_12_12_8: Selector,
-    s_lookup: Selector,
-    s_maj: Selector,
+    q_Sigma_0: Selector,
+    q_12_12_8: Selector,
+    q_lookup: Selector,
+    q_maj: Selector,
     table: SpreadedTable,
 }
 
@@ -92,40 +92,40 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
         let table_plain = meta.lookup_table_column();
         let table_spreaded = meta.lookup_table_column();
 
-        let s_Sigma_0 = meta.selector();
-        let s_12_12_8 = meta.selector();
-        let s_maj = meta.selector();
-        let s_lookup = meta.complex_selector();
+        let q_Sigma_0 = meta.selector();
+        let q_12_12_8 = meta.selector();
+        let q_maj = meta.selector();
+        let q_lookup = meta.complex_selector();
 
         (0..2).into_iter().for_each(|idx| {
             meta.lookup("plain-spreaded lookup", |meta| {
-                let s_lookup = meta.query_selector(s_lookup);
+                let q_lookup = meta.query_selector(q_lookup);
 
                 let tag = meta.query_fixed(fixed_cols[idx], Rotation(0));
                 let plain = meta.query_advice(advice_cols[2 * idx], Rotation(0));
                 let spreaded = meta.query_advice(advice_cols[2 * idx + 1], Rotation(0));
 
                 vec![
-                    (s_lookup.clone() * tag, table_tag),
-                    (s_lookup.clone() * plain, table_plain),
-                    (s_lookup * spreaded, table_spreaded),
+                    (q_lookup.clone() * tag, table_tag),
+                    (q_lookup.clone() * plain, table_plain),
+                    (q_lookup * spreaded, table_spreaded),
                 ]
             });
         });
 
         meta.create_gate("12-12-8 decomposition", |meta| {
-            let s_12_12_8 = meta.query_selector(s_12_12_8);
+            let q_12_12_8 = meta.query_selector(q_12_12_8);
 
             let limb_12a = meta.query_advice(advice_cols[0], Rotation(0));
             let limb_12b = meta.query_advice(advice_cols[0], Rotation(1));
             let limb_8 = meta.query_advice(advice_cols[0], Rotation(2));
             let output = meta.query_advice(advice_cols[4], Rotation(0));
 
-            decompose_12_12_8(s_12_12_8, [limb_12a, limb_12b, limb_8], output)
+            decompose_12_12_8(q_12_12_8, [limb_12a, limb_12b, limb_8], output)
         });
 
         meta.create_gate("spreaded Σ₀(A)", |meta| {
-            let s_Sigma_0 = meta.query_selector(s_Sigma_0);
+            let q_Sigma_0 = meta.query_selector(q_Sigma_0);
 
             let spreaded_a_10 = meta.query_advice(advice_cols[5], Rotation(0));
             let spreaded_a_9 = meta.query_advice(advice_cols[6], Rotation(0));
@@ -139,7 +139,7 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
             let spreaded_odd_8 = meta.query_advice(advice_cols[3], Rotation(2));
 
             Sigma_0(
-                s_Sigma_0,
+                q_Sigma_0,
                 [spreaded_a_10, spreaded_a_9, spreaded_a_11, spreaded_a_2],
                 [spreaded_even_12a, spreaded_even_12b, spreaded_even_8],
                 [spreaded_odd_12a, spreaded_odd_12b, spreaded_odd_8],
@@ -147,7 +147,7 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
         });
 
         meta.create_gate("spreaded Maj(A, B, C)", |meta| {
-            let s_maj = meta.query_selector(s_maj);
+            let q_maj = meta.query_selector(q_maj);
 
             let spreaded_a = meta.query_advice(advice_cols[5], Rotation(0));
             let spreaded_b = meta.query_advice(advice_cols[6], Rotation(0));
@@ -161,7 +161,7 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
             let spreaded_odd_8 = meta.query_advice(advice_cols[3], Rotation(2));
 
             major(
-                s_maj,
+                q_maj,
                 [spreaded_a, spreaded_b, spreaded_c],
                 [spreaded_even_12a, spreaded_even_12b, spreaded_even_8],
                 [spreaded_odd_12a, spreaded_odd_12b, spreaded_odd_8],
@@ -171,10 +171,10 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
         Sha256Config {
             advice_cols,
             fixed_cols,
-            s_Sigma_0,
-            s_12_12_8,
-            s_maj,
-            s_lookup,
+            q_Sigma_0,
+            q_12_12_8,
+            q_maj,
+            q_lookup,
             table: SpreadedTable {
                 table_tag,
                 table_plain,
@@ -232,7 +232,7 @@ impl<F: PrimeField> Sha256Chip<F> {
         2) asserting the 12-12-8 decomposition identity for Even:
               2^20 * Even.12a + 2^8 * Even.12b + Even.8
             = Even
-        3) asserting the s_Sigma_0 identity regarding the spreaded values:
+        3) asserting the Sigma_0 identity regarding the spreaded values:
               (4^20 * ~Even.12a + 4^8 * ~Even.12b + ~Even.8) +
           2 * (4^20 *  ~Odd.12a + 4^8 *  ~Odd.12b +  ~Odd.8)
              = 4^30 *  ~A.2  +  4^20 * ~A.10  +  4^11 * ~A.9  +  ~A.11
@@ -255,7 +255,7 @@ impl<F: PrimeField> Sha256Chip<F> {
         layouter.assign_region(
             || "Σ₀(A)",
             |mut region| {
-                self.config().s_Sigma_0.enable(&mut region, 0)?;
+                self.config().q_Sigma_0.enable(&mut region, 0)?;
 
                 // Copy and assign the input.
                 (a.spreaded_limb_10.0).copy_advice(|| "~A.10", &mut region, adv_cols[5], 0)?;
@@ -264,8 +264,8 @@ impl<F: PrimeField> Sha256Chip<F> {
                 (a.spreaded_limb_2.0).copy_advice(|| "~A.2", &mut region, adv_cols[6], 1)?;
 
                 // Compute the spreaded Σ₀(A) off-circuit, assign the 12-12-8 limbs
-                // of its even and odd bits into the circuit, enable the s_12_12_8 selector
-                // for the even part and s_lookup selector for the related rows, return the
+                // of its even and odd bits into the circuit, enable the q_12_12_8 selector
+                // for the even part and q_lookup selector for the related rows, return the
                 // assigned 32 even bits.
                 let val_of_spreaded_limbs: Value<[u64; 4]> = Value::from_iter([
                     a.spreaded_limb_10.0.value().copied().map(fe_to_u64),
@@ -304,7 +304,7 @@ impl<F: PrimeField> Sha256Chip<F> {
         2) asserting the 12-12-8 decomposition identity for Odd:
               2^20 * Odd.12a + 2^8 * Odd.12b + Odd.8
             = Odd
-        3) asserting the s_maj identity regarding the spreaded values:
+        3) asserting the major identity regarding the spreaded values:
               (4^20 * ~Even.12a + 4^8 * ~Even.12b + ~Even.8)
           2 * (4^20 *  ~Odd.12a + 4^8 *  ~Odd.12b +  ~Odd.8)
              = ~A + ~B + ~C
@@ -325,7 +325,7 @@ impl<F: PrimeField> Sha256Chip<F> {
         layouter.assign_region(
             || "Maj(A, B, C)",
             |mut region| {
-                self.config().s_maj.enable(&mut region, 0)?;
+                self.config().q_maj.enable(&mut region, 0)?;
 
                 // Copy and assign the input.
                 (spreaded_a.0).copy_advice(|| "~A", &mut region, adv_cols[5], 0)?;
@@ -333,8 +333,8 @@ impl<F: PrimeField> Sha256Chip<F> {
                 (spreaded_c.0).copy_advice(|| "~C", &mut region, adv_cols[5], 1)?;
 
                 // Compute the spreaded Maj(A, B, C) off-circuit, assign the 12-12-8 limbs
-                // of its even and odd bits into the circuit, enable the s_12_12_8 selector
-                // for the odd part and s_lookup selector for the related rows, return the
+                // of its even and odd bits into the circuit, enable the q_12_12_8 selector
+                // for the odd part and q_lookup selector for the related rows, return the
                 // assigned 32 odd bits.
                 let val_of_spreaded_forms: Value<[u64; 3]> = Value::from_iter([
                     spreaded_a.0.value().copied().map(fe_to_u64),
@@ -364,7 +364,7 @@ impl<F: PrimeField> Sha256Chip<F> {
         offset: usize,
         lookup_idx: usize,
     ) -> Result<AssignedPlainSpreaded<F, L>, Error> {
-        self.config().s_lookup.enable(region, offset)?;
+        self.config().q_lookup.enable(region, offset)?;
 
         let tag = F::from(tag as u64);
         let tag_col = self.config().fixed_cols[lookup_idx]; // 0 or 1
@@ -400,7 +400,7 @@ impl<F: PrimeField> Sha256Chip<F> {
 
     /// Computes off-circuit the result of the operation (e.g spreaded-Σ₀),
     /// assigns the 12-12-8 limbs of its even and odd bits into the
-    /// circuit, enables the s_12_12_8 and s_lookup selectors, returns the
+    /// circuit, enables the q_12_12_8 and q_lookup selectors, returns the
     /// assigned 32 even or odd bits.
     fn assign_even_odd_12_12_8<const N: usize>(
         &self,
@@ -409,7 +409,7 @@ impl<F: PrimeField> Sha256Chip<F> {
         op: fn([u64; N]) -> u64,
         even_or_odd: Parity,
     ) -> Result<AssignedPlain<F, 32>, Error> {
-        self.config().s_12_12_8.enable(region, 0)?;
+        self.config().q_12_12_8.enable(region, 0)?;
 
         // Compute off-circuit the result of the given operation, and derive its 32 even
         // and odd bits.
