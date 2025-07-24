@@ -464,10 +464,10 @@ impl<F: PrimeField> Sha256Chip<F> {
         let sprdd_col = self.config().advice_cols[2 * lookup_idx + 1]; // 1 or 3
 
         let nbits_val = Value::known(F::from(L as u64));
-        let plain_val = plain_val.map(u32_to_fe);
         let sprdd_val = plain_val.map(spread).map(u64_to_fe);
+        let plain_val = plain_val.map(u32_to_fe);
 
-        region.assign_fixed(|| "nbits", tag_col, offset, || nbits_val)?;
+        region.assign_fixed(|| "nbits", nbits_col, offset, || nbits_val)?;
         let plain = region.assign_advice(|| "plain", plain_col, offset, || plain_val)?;
         let spreaded = region.assign_advice(|| "sprdd", sprdd_col, offset, || sprdd_val)?;
 
