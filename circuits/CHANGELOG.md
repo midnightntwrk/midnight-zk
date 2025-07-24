@@ -12,8 +12,12 @@ verification keys break backwards compatibility.
 
 ## [Unreleased]
 ### Added
+
 ### Changed
+* full_round custom ids now have degree 4 (instead of 6) [#44](https://github.com/midnightntwrk/midnight-zk/pull/44)
+
 ### Removed
+
 
 ## [4.0.0] - 18-07-2025
 
