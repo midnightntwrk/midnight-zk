@@ -5,7 +5,7 @@ use crate::utils::util::fe_to_u32;
 pub const MASK_EVEN_64: u64 = 0x5555_5555_5555_5555; // 0101010101010101... (even positions in u64)
 pub const MASK_ODD_64: u64 = 0xAAAA_AAAA_AAAA_AAAA; // 1010101010101010... (odd positions in u64)
 
-const LOOKUP_LENGTHS: [u32; 5] = [8, 9, 10, 11, 12]; // bit lengths of plain values in lookup table (TODO: to be extended)
+const LOOKUP_LENGTHS: [u32; 6] = [2, 8, 9, 10, 11, 12]; // supported lookup bit lengths
 const MAX_LOOKUP_LENGTH: usize = 12; // maximum bit length of plain values in lookup table
 
 /// Returns the even and odd bits of little-endian binary representation of u64.

@@ -23,7 +23,7 @@ pub(super) struct AssignedPlainSpreaded<F: PrimeField, const L: usize> {
 #[derive(Clone, Debug)]
 pub(super) struct LimbsOfA<F: PrimeField> {
     pub spreaded_limb_10: AssignedSpreaded<F, 10>,
-    pub spreaded_limb_9: AssignedSpreaded<F, 9>,
+    pub spreaded_limb_09: AssignedSpreaded<F, 9>,
     pub spreaded_limb_11: AssignedSpreaded<F, 11>,
-    pub spreaded_limb_2: AssignedSpreaded<F, 2>,
+    pub spreaded_limb_02: AssignedSpreaded<F, 2>,
 }
