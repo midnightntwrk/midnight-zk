@@ -38,7 +38,6 @@ use midnight_proofs::{
     poly::{
         commitment::{Guard, Params},
         kzg::{
-            msm::DualMSM,
             params::{ParamsKZG, ParamsVerifierKZG},
             KZGCommitmentScheme,
         },

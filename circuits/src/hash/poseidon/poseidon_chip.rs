@@ -133,10 +133,10 @@ impl<F: PoseidonField> PoseidonChip<F> {
     }
 }
 
-// Computes the identity of the linear layer of Poseidon's rounds
-// (multiplication by the MDS matrix and addition of round constants). To save
-// up the cost of addition, the identity is computed by mutating a variable
-// initialised as the round-constant argument.
+/// Computes the identity of the linear layer of Poseidon's rounds
+/// (multiplication by the MDS matrix and addition of round constants). To save
+/// up the cost of addition, the identity is computed by mutating a variable
+/// initialised as the round-constant argument.
 fn linear_layer<F: PoseidonField>(
     inputs: [Expression<F>; WIDTH],
     outputs: [Expression<F>; WIDTH],
@@ -153,7 +153,7 @@ fn linear_layer<F: PoseidonField>(
     ids
 }
 
-// Performs an S-box computation.
+/// Performs an S-box computation.
 pub(crate) fn sbox<F: Field>(x: Expression<F>) -> Expression<F> {
     x.clone() * x.square().square()
 }
@@ -278,7 +278,7 @@ impl<F: PoseidonField> ComposableChip<F> for PoseidonChip<F> {
 }
 
 impl<F: PoseidonField> PoseidonChip<F> {
-    // Assign constants in the circuit for a full round.
+    /// Assign constants in the circuit for a full round.
     fn assign_constants_full(
         &self,
         region: &mut Region<'_, F>,
@@ -304,7 +304,7 @@ impl<F: PoseidonField> PoseidonChip<F> {
         Ok(())
     }
 
-    // Assign constants in the circuit for a partial round.
+    /// Assign constants in the circuit for a partial round.
     fn assign_constants_partial(
         &self,
         region: &mut Region<'_, F>,
@@ -327,11 +327,11 @@ impl<F: PoseidonField> PoseidonChip<F> {
         Ok(())
     }
 
-    // Operates a full round in-circuit. The variable assignment in the circuit is
-    // done by calling `full_round_cpu`.
-    // # Note:
-    // this function does not copy the inputs in the current offset, but assumes
-    // they were copied there earlier.
+    /// Operates a full round in-circuit. The variable assignment in the circuit
+    /// is done by calling `full_round_cpu`.
+    ///
+    /// Note: This function does not copy the inputs in the current offset, but
+    /// assumes they were copied there earlier.
     fn full_round(
         &self,
         region: &mut Region<'_, F>,
@@ -373,11 +373,12 @@ impl<F: PoseidonField> PoseidonChip<F> {
             })
     }
 
-    // Analogue for optimised partial rounds.
-    // Note: initially, only the first `WIDTH` inputs are assigned, but not the
-    // `NB_SKIPS_CIRCUIT` auxiliary advice columns at the current offset. This
-    // function assigns them as well as the first `WIDTH` columns of the
-    // resulting output.
+    /// Analogue for optimised partial rounds.
+    ///
+    /// Note: Initially, only the first `WIDTH` inputs are assigned, but not the
+    /// `NB_SKIPS_CIRCUIT` auxiliary advice columns at the current offset. This
+    /// function assigns them as well as the first `WIDTH` columns of the
+    /// resulting output.
     fn partial_round(
         &self,
         region: &mut Region<'_, F>,
@@ -423,9 +424,10 @@ impl<F: PoseidonField> PoseidonChip<F> {
             })
     }
 
-    // A combination of the different circuit gates to produce the full Poseidon
-    // permutation (`NB_FULL_ROUNDS` full rounds, separated in the middle by
-    // `NB_PARTIAL_ROUNDS` partial rounds, possibly with optimized skips).
+    /// A combination of the different circuit gates to produce the full
+    /// Poseidon permutation (`NB_FULL_ROUNDS` full rounds, separated in the
+    /// middle by `NB_PARTIAL_ROUNDS` partial rounds, possibly with
+    /// optimized skips).
     pub(super) fn permutation(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -734,7 +736,6 @@ mod tests {
     }
 
     #[test]
-    // Testing Poseidon's permutation.
     fn permutation_test() {
         let inputs = [midnight_curves::Fq::from(0); WIDTH];
         // Set the second argument to true to experiment on the permutation cost.
@@ -743,7 +744,7 @@ mod tests {
 
     #[test]
     fn sponge_test() {
-        // Consistency tests between the cpu and circuit implementations of the
+        // Consistency tests between the CPU and circuit implementations of the
         // permutation.
         run_sponge_test::<midnight_curves::Fq>("blstrs", true);
     }
