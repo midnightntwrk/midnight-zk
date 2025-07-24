@@ -83,7 +83,7 @@ pub fn u64_to_fe<F: PrimeField>(value: u64) -> F {
 }
 
 /// Generates the spreaded lookup table lazily as it is only used in keygen.
-pub fn iter_of_table<F: PrimeField>() -> impl Iterator<Item = (F, F, F)> {
+pub fn gen_spread_table<F: PrimeField>() -> impl Iterator<Item = (F, F, F)> {
     // Compute all pairs of (plain, spreaded) for the plain values in the range [0,
     // 2^MAX_LOOKUP_LENGTH).
     let plain_spreaded_max_len =
@@ -231,8 +231,8 @@ mod tests {
     }
 
     #[test]
-    fn test_iter_of_table() {
-        let table: Vec<_> = iter_of_table::<F>().collect();
+    fn test_gen_spread_table() {
+        let table: Vec<_> = gen_spread_table::<F>().collect();
         let mut rng = rand::thread_rng();
         let to_fe = |(tag, plain, spreaded)| {
             (
