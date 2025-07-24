@@ -45,8 +45,8 @@ pub struct Sha256Config {
     fixed_cols: [Column<Fixed>; NB_SHA256_FIXED_COLS],
     q_Sigma_0: Selector,
     q_maj: Selector,
-    q_10_9_11_2: Selector,
     q_12_12_8: Selector,
+    q_10_9_11_2: Selector,
     q_lookup: Selector,
     table: SpreadTable,
 }
@@ -98,8 +98,8 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
 
         let q_Sigma_0 = meta.selector();
         let q_maj = meta.selector();
-        let q_10_9_11_2 = meta.selector();
         let q_12_12_8 = meta.selector();
+        let q_10_9_11_2 = meta.selector();
         let q_lookup = meta.complex_selector();
 
         (0..2).into_iter().for_each(|idx| {
@@ -199,8 +199,8 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
             fixed_cols,
             q_Sigma_0,
             q_maj,
-            q_10_9_11_2,
             q_12_12_8,
+            q_10_9_11_2,
             q_lookup,
             table: SpreadTable {
                 nbits_tab,

@@ -1,42 +1,6 @@
 use ff::PrimeField;
 use midnight_proofs::plonk::{Constraints, Expression};
 
-/// Decompose in 10-9-11-2 gate.
-pub fn decompose_10_9_11_2_gate<F: PrimeField>(
-    selector: Expression<F>,
-    [limb_10, limb_09, limb_11, limb_02]: [Expression<F>; 4],
-    [sprdd_limb_10, sprdd_limb_09, sprdd_limb_11, sprdd_limb_02]: [Expression<F>; 4],
-    (plain, sprdd): (Expression<F>, Expression<F>),
-) -> Constraints<
-    F,
-    (&'static str, Expression<F>),
-    impl Iterator<Item = (&'static str, Expression<F>)>,
-> {
-    // 2^22 * limb_10 + 2^13 * limb_09 + 2^2 * limb_11 + limb_02 - plain
-    let plain_id =
-        linear_combination_pow2([22, 13, 2, 0], [&limb_10, &limb_09, &limb_11, &limb_02]) - plain;
-
-    // 4^22 * ~limb_10 + 4^13 * ~limb_09 + 4^2 * ~limb_11 + ~limb_02 - sprdd
-    let sprdd_id = linear_combination_pow4(
-        [22, 13, 2, 0],
-        [
-            &sprdd_limb_10,
-            &sprdd_limb_09,
-            &sprdd_limb_11,
-            &sprdd_limb_02,
-        ],
-    ) - sprdd;
-
-    Constraints::with_selector(
-        selector,
-        [
-            ("10_9_11_2 decomposition plain check", plain_id),
-            ("10_9_11_2 decomposition sprdd check", sprdd_id),
-        ]
-        .into_iter(),
-    )
-}
-
 /// Σ₀(A) gate.
 pub fn Sigma_0_gate<F: PrimeField>(
     selector: Expression<F>,
@@ -93,26 +57,6 @@ pub fn Sigma_0_gate<F: PrimeField>(
     )
 }
 
-/// Decompose 12-12-8 gate.
-pub fn decompose_12_12_8_gate<F: PrimeField>(
-    selector: Expression<F>,
-    [limb_12a, limb_12b, limb_8]: [Expression<F>; 3],
-    output: Expression<F>,
-) -> Constraints<
-    F,
-    (&'static str, Expression<F>),
-    impl Iterator<Item = (&'static str, Expression<F>)>,
-> {
-    // (2^20 * Limb.12a + 2^8 * Limb.12b + Limb.8) - output
-    let decomposition_check =
-        linear_combination_pow2([20, 8, 0], [&limb_12a, &limb_12b, &limb_8]) - output;
-
-    Constraints::with_selector(
-        selector,
-        [("12-12-8 decomposition check", decomposition_check)].into_iter(),
-    )
-}
-
 /// Major(A, B, C) gate.
 pub fn maj_gate<F: PrimeField>(
     selector: Expression<F>,
@@ -139,6 +83,62 @@ pub fn maj_gate<F: PrimeField>(
     Constraints::with_selector(
         selector,
         [("Spreaded Major check", sprdd_maj_check)].into_iter(),
+    )
+}
+
+/// Decompose 12-12-8 gate.
+pub fn decompose_12_12_8_gate<F: PrimeField>(
+    selector: Expression<F>,
+    [limb_12a, limb_12b, limb_8]: [Expression<F>; 3],
+    output: Expression<F>,
+) -> Constraints<
+    F,
+    (&'static str, Expression<F>),
+    impl Iterator<Item = (&'static str, Expression<F>)>,
+> {
+    // (2^20 * Limb.12a + 2^8 * Limb.12b + Limb.8) - output
+    let decomposition_check =
+        linear_combination_pow2([20, 8, 0], [&limb_12a, &limb_12b, &limb_8]) - output;
+
+    Constraints::with_selector(
+        selector,
+        [("12-12-8 decomposition check", decomposition_check)].into_iter(),
+    )
+}
+
+/// Decompose in 10-9-11-2 gate.
+pub fn decompose_10_9_11_2_gate<F: PrimeField>(
+    selector: Expression<F>,
+    [limb_10, limb_09, limb_11, limb_02]: [Expression<F>; 4],
+    [sprdd_limb_10, sprdd_limb_09, sprdd_limb_11, sprdd_limb_02]: [Expression<F>; 4],
+    (plain, sprdd): (Expression<F>, Expression<F>),
+) -> Constraints<
+    F,
+    (&'static str, Expression<F>),
+    impl Iterator<Item = (&'static str, Expression<F>)>,
+> {
+    // 2^22 * limb_10 + 2^13 * limb_09 + 2^2 * limb_11 + limb_02 - plain
+    let plain_id =
+        linear_combination_pow2([22, 13, 2, 0], [&limb_10, &limb_09, &limb_11, &limb_02]) - plain;
+
+    // 4^22 * ~limb_10 + 4^13 * ~limb_09 + 4^2 * ~limb_11 + ~limb_02 - sprdd
+    let sprdd_id = linear_combination_pow4(
+        [22, 13, 2, 0],
+        [
+            &sprdd_limb_10,
+            &sprdd_limb_09,
+            &sprdd_limb_11,
+            &sprdd_limb_02,
+        ],
+    ) - sprdd;
+
+    Constraints::with_selector(
+        selector,
+        [
+            ("10_9_11_2 decomposition plain check", plain_id),
+            ("10_9_11_2 decomposition sprdd check", sprdd_id),
+        ]
+        .into_iter(),
     )
 }
 
