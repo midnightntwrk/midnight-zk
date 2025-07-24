@@ -8,14 +8,17 @@ use midnight_proofs::{
 use crate::{
     field::NativeChip,
     hash::new_sha256::{
-        gates::{decompose_12_12_8_gate, maj_gate, Sigma_0_gate},
+        gates::{decompose_10_9_11_2_gate, decompose_12_12_8_gate, maj_gate, Sigma_0_gate},
         types::{AssignedPlain, AssignedPlainSpreaded, AssignedSpreaded, LimbsOfA},
         utils::{
             gen_spread_table, get_even_odd_bits, spread, spreaded_Sigma_0, spreaded_maj,
             u32_in_be_limbs, u32_to_fe, u64_to_fe,
         },
     },
-    utils::{util::fe_to_u64, ComposableChip},
+    utils::{
+        util::{fe_to_u32, fe_to_u64},
+        ComposableChip,
+    },
 };
 
 const NB_SHA256_ADVICE_COLS: usize = 7;
@@ -41,9 +44,10 @@ pub struct Sha256Config {
     advice_cols: [Column<Advice>; NB_SHA256_ADVICE_COLS],
     fixed_cols: [Column<Fixed>; NB_SHA256_FIXED_COLS],
     q_Sigma_0: Selector,
-    q_12_12_8: Selector,
-    q_lookup: Selector,
     q_maj: Selector,
+    q_12_12_8: Selector,
+    q_10_9_11_2: Selector,
+    q_lookup: Selector,
     table: SpreadTable,
 }
 
@@ -93,22 +97,23 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
         let sprdd_tab = meta.lookup_table_column();
 
         let q_Sigma_0 = meta.selector();
-        let q_12_12_8 = meta.selector();
         let q_maj = meta.selector();
+        let q_12_12_8 = meta.selector();
+        let q_10_9_11_2 = meta.selector();
         let q_lookup = meta.complex_selector();
 
         (0..2).into_iter().for_each(|idx| {
             meta.lookup("plain-spreaded lookup", |meta| {
                 let q_lookup = meta.query_selector(q_lookup);
 
-                let tag = meta.query_fixed(fixed_cols[idx], Rotation(0));
+                let nbits = meta.query_fixed(fixed_cols[idx], Rotation(0));
                 let plain = meta.query_advice(advice_cols[2 * idx], Rotation(0));
-                let spreaded = meta.query_advice(advice_cols[2 * idx + 1], Rotation(0));
+                let sprdd = meta.query_advice(advice_cols[2 * idx + 1], Rotation(0));
 
                 vec![
-                    (q_lookup.clone() * tag, nbits_tab),
+                    (q_lookup.clone() * nbits, nbits_tab),
                     (q_lookup.clone() * plain, plain_tab),
-                    (q_lookup * spreaded, sprdd_tab),
+                    (q_lookup * sprdd, sprdd_tab),
                 ]
             });
         });
@@ -124,46 +129,68 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
             decompose_12_12_8_gate(q_12_12_8, [limb_12a, limb_12b, limb_8], output)
         });
 
+        meta.create_gate("10-9-11-2 decomposition", |meta| {
+            let q_10_9_11_2 = meta.query_selector(q_10_9_11_2);
+
+            let limb_10 = meta.query_advice(advice_cols[0], Rotation(0));
+            let limb_09 = meta.query_advice(advice_cols[2], Rotation(0));
+            let limb_11 = meta.query_advice(advice_cols[0], Rotation(1));
+            let limb_02 = meta.query_advice(advice_cols[2], Rotation(1));
+            let sprdd_limb_10 = meta.query_advice(advice_cols[1], Rotation(0));
+            let sprdd_limb_09 = meta.query_advice(advice_cols[3], Rotation(0));
+            let sprdd_limb_11 = meta.query_advice(advice_cols[1], Rotation(1));
+            let sprdd_limb_02 = meta.query_advice(advice_cols[3], Rotation(1));
+            let plain = meta.query_advice(advice_cols[4], Rotation(0));
+            let sprdd = meta.query_advice(advice_cols[4], Rotation(1));
+
+            decompose_10_9_11_2_gate(
+                q_10_9_11_2,
+                [limb_10, limb_09, limb_11, limb_02],
+                [sprdd_limb_10, sprdd_limb_09, sprdd_limb_11, sprdd_limb_02],
+                (plain, sprdd),
+            )
+        });
+
         meta.create_gate("Σ₀(A)", |meta| {
             let q_Sigma_0 = meta.query_selector(q_Sigma_0);
 
-            let spreaded_a_10 = meta.query_advice(advice_cols[5], Rotation(0));
-            let spreaded_a_9 = meta.query_advice(advice_cols[6], Rotation(0));
-            let spreaded_a_11 = meta.query_advice(advice_cols[5], Rotation(1));
-            let spreaded_a_2 = meta.query_advice(advice_cols[6], Rotation(1));
-            let spreaded_evn_12a = meta.query_advice(advice_cols[1], Rotation(0));
-            let spreaded_evn_12b = meta.query_advice(advice_cols[1], Rotation(1));
-            let spreaded_evn_8 = meta.query_advice(advice_cols[1], Rotation(2));
-            let spreaded_odd_12a = meta.query_advice(advice_cols[3], Rotation(0));
-            let spreaded_odd_12b = meta.query_advice(advice_cols[3], Rotation(1));
-            let spreaded_odd_8 = meta.query_advice(advice_cols[3], Rotation(2));
+            let sprdd_a_10 = meta.query_advice(advice_cols[5], Rotation(0));
+            let sprdd_a_09 = meta.query_advice(advice_cols[6], Rotation(0));
+            let sprdd_a_11 = meta.query_advice(advice_cols[5], Rotation(1));
+            let sprdd_a_02 = meta.query_advice(advice_cols[6], Rotation(1));
+            let sprdd_evn_12a = meta.query_advice(advice_cols[1], Rotation(0));
+            let sprdd_evn_12b = meta.query_advice(advice_cols[1], Rotation(1));
+            let sprdd_evn_8 = meta.query_advice(advice_cols[1], Rotation(2));
+            let sprdd_odd_12a = meta.query_advice(advice_cols[3], Rotation(0));
+            let sprdd_odd_12b = meta.query_advice(advice_cols[3], Rotation(1));
+            let sprdd_odd_8 = meta.query_advice(advice_cols[3], Rotation(2));
 
             Sigma_0_gate(
                 q_Sigma_0,
-                [spreaded_a_10, spreaded_a_9, spreaded_a_11, spreaded_a_2],
-                [spreaded_evn_12a, spreaded_evn_12b, spreaded_evn_8],
-                [spreaded_odd_12a, spreaded_odd_12b, spreaded_odd_8],
+                [sprdd_a_10, sprdd_a_09, sprdd_a_11, sprdd_a_02],
+                [sprdd_evn_12a, sprdd_evn_12b, sprdd_evn_8],
+                [sprdd_odd_12a, sprdd_odd_12b, sprdd_odd_8],
             )
         });
 
         meta.create_gate("Maj(A, B, C)", |meta| {
             let q_maj = meta.query_selector(q_maj);
 
-            let spreaded_a = meta.query_advice(advice_cols[5], Rotation(0));
-            let spreaded_b = meta.query_advice(advice_cols[6], Rotation(0));
-            let spreaded_c = meta.query_advice(advice_cols[5], Rotation(1));
-            let spreaded_odd_12a = meta.query_advice(advice_cols[1], Rotation(0));
-            let spreaded_odd_12b = meta.query_advice(advice_cols[1], Rotation(1));
-            let spreaded_odd_8 = meta.query_advice(advice_cols[1], Rotation(2));
-            let spreaded_evn_12a = meta.query_advice(advice_cols[3], Rotation(0));
-            let spreaded_evn_12b = meta.query_advice(advice_cols[3], Rotation(1));
-            let spreaded_evn_8 = meta.query_advice(advice_cols[3], Rotation(2));
+            let sprdd_a = meta.query_advice(advice_cols[5], Rotation(0));
+            let sprdd_b = meta.query_advice(advice_cols[6], Rotation(0));
+            let sprdd_c = meta.query_advice(advice_cols[5], Rotation(1));
+            let sprdd_odd_12a = meta.query_advice(advice_cols[1], Rotation(0));
+            let sprdd_odd_12b = meta.query_advice(advice_cols[1], Rotation(1));
+            let sprdd_odd_8 = meta.query_advice(advice_cols[1], Rotation(2));
+            let sprdd_evn_12a = meta.query_advice(advice_cols[3], Rotation(0));
+            let sprdd_evn_12b = meta.query_advice(advice_cols[3], Rotation(1));
+            let sprdd_evn_8 = meta.query_advice(advice_cols[3], Rotation(2));
 
             maj_gate(
                 q_maj,
-                [spreaded_a, spreaded_b, spreaded_c],
-                [spreaded_evn_12a, spreaded_evn_12b, spreaded_evn_8],
-                [spreaded_odd_12a, spreaded_odd_12b, spreaded_odd_8],
+                [sprdd_a, sprdd_b, sprdd_c],
+                [sprdd_evn_12a, sprdd_evn_12b, sprdd_evn_8],
+                [sprdd_odd_12a, sprdd_odd_12b, sprdd_odd_8],
             )
         });
 
@@ -171,8 +198,9 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
             advice_cols,
             fixed_cols,
             q_Sigma_0,
-            q_12_12_8,
             q_maj,
+            q_12_12_8,
+            q_10_9_11_2,
             q_lookup,
             table: SpreadTable {
                 nbits_tab,
@@ -204,6 +232,65 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
 }
 
 impl<F: PrimeField> Sha256Chip<F> {
+    /// Decomposes the given `AssignedPlain` into (bit-endian) limbs of bit
+    /// sizes 10, 9, 11 and 2.
+    ///
+    /// This function also returns the spreaded version of the given input.
+    pub(super) fn decompose_in_10_9_11_2(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        plain: &AssignedPlain<F, 32>,
+    ) -> Result<(AssignedPlainSpreaded<F, 32>, LimbsOfA<F>), Error> {
+        /*
+        On a plain input A, we use the following table distribution.
+
+        | T_0 |  A_0 |  A_1  | T_1 | A_2 |  A_3 | A_4 |
+        |-----|------|-------|-----|-----|------|-----|
+        |  10 | A.10 | ~A.10 |  9  | A.9 | ~A.9 |  A  | <- a copy of plain
+        |  11 | A.11 | ~A.11 |  2  | A.2 | ~A.2 | ~A  |
+
+        Apart from the lookups, the following identities are checked via a
+        custom gate:
+            A = 2^22 *  A.10 + 2^13 *  A.9 + 2^2 *  A.11 +  A.2
+           ~A = 4^22 * ~A.10 + 4^13 * ~A.9 + 4^2 * ~A.11 + ~A.2
+        */
+
+        let adv_cols = self.config().advice_cols;
+        let plain_val = plain.0.value().copied();
+        let sprdd_val = plain_val.map(fe_to_u32).map(spread).map(u64_to_fe);
+        let [val_10, val_09, val_11, val_02] = plain_val
+            .map(|a| u32_in_be_limbs(fe_to_u32(a), [10, 9, 11, 2]))
+            .transpose_array();
+
+        layouter.assign_region(
+            || "decompose A in 10-9-11-2",
+            |mut region| {
+                self.config().q_10_9_11_2.enable(&mut region, 0)?;
+
+                let limb_10 = self.assign_plain_and_spreaded(&mut region, val_10, 0, 0)?;
+                let limb_09 = self.assign_plain_and_spreaded(&mut region, val_09, 0, 1)?;
+                let limb_11 = self.assign_plain_and_spreaded(&mut region, val_11, 1, 0)?;
+                let limb_02 = self.assign_plain_and_spreaded(&mut region, val_02, 1, 1)?;
+
+                plain.0.copy_advice(|| "A", &mut region, adv_cols[4], 0)?;
+                let spreaded = region.assign_advice(|| "~A", adv_cols[4], 1, || sprdd_val)?;
+
+                Ok((
+                    AssignedPlainSpreaded {
+                        plain: plain.clone(),
+                        spreaded: AssignedSpreaded(spreaded),
+                    },
+                    LimbsOfA {
+                        spreaded_limb_10: limb_10.spreaded,
+                        spreaded_limb_09: limb_09.spreaded,
+                        spreaded_limb_11: limb_11.spreaded,
+                        spreaded_limb_02: limb_02.spreaded,
+                    },
+                ))
+            },
+        )
+    }
+
     /// Computes Σ₀(A).
     pub(super) fn Sigma_0(
         &self,
@@ -253,25 +340,25 @@ impl<F: PrimeField> Sha256Chip<F> {
 
                 // Copy and assign the input.
                 (a.spreaded_limb_10.0).copy_advice(|| "~A.10", &mut region, adv_cols[5], 0)?;
-                (a.spreaded_limb_9.0).copy_advice(|| "~A.9", &mut region, adv_cols[6], 0)?;
+                (a.spreaded_limb_09.0).copy_advice(|| "~A.09", &mut region, adv_cols[6], 0)?;
                 (a.spreaded_limb_11.0).copy_advice(|| "~A.11", &mut region, adv_cols[5], 1)?;
-                (a.spreaded_limb_2.0).copy_advice(|| "~A.2", &mut region, adv_cols[6], 1)?;
+                (a.spreaded_limb_02.0).copy_advice(|| "~A.02", &mut region, adv_cols[6], 1)?;
 
                 // Compute the spreaded Σ₀(A) off-circuit, assign the 12-12-8 limbs
                 // of its even and odd bits into the circuit, enable the q_12_12_8 selector
                 // for the even part and q_lookup selector for the related rows, return the
                 // assigned 32 even bits.
-                let val_of_spreaded_limbs: Value<[u64; 4]> = Value::from_iter([
+                let val_of_sprdd_limbs: Value<[u64; 4]> = Value::from_iter([
                     a.spreaded_limb_10.0.value().copied().map(fe_to_u64),
-                    a.spreaded_limb_9.0.value().copied().map(fe_to_u64),
+                    a.spreaded_limb_09.0.value().copied().map(fe_to_u64),
                     a.spreaded_limb_11.0.value().copied().map(fe_to_u64),
-                    a.spreaded_limb_2.0.value().copied().map(fe_to_u64),
+                    a.spreaded_limb_02.0.value().copied().map(fe_to_u64),
                 ])
                 .map(|limbs: Vec<u64>| limbs.try_into().unwrap());
 
-                self.assign_spreaded_12_12_8(
+                self.assign_sprdd_12_12_8(
                     &mut region,
-                    val_of_spreaded_limbs.map(spreaded_Sigma_0),
+                    val_of_sprdd_limbs.map(spreaded_Sigma_0),
                     Parity::Evn,
                 )
             },
@@ -282,9 +369,9 @@ impl<F: PrimeField> Sha256Chip<F> {
     pub(super) fn maj(
         &self,
         layouter: &mut impl Layouter<F>,
-        spreaded_a: &AssignedSpreaded<F, 32>,
-        spreaded_b: &AssignedSpreaded<F, 32>,
-        spreaded_c: &AssignedSpreaded<F, 32>,
+        sprdd_a: &AssignedSpreaded<F, 32>,
+        sprdd_b: &AssignedSpreaded<F, 32>,
+        sprdd_c: &AssignedSpreaded<F, 32>,
     ) -> Result<AssignedPlain<F, 32>, Error> {
         /*
         We need to compute:
@@ -324,24 +411,24 @@ impl<F: PrimeField> Sha256Chip<F> {
                 self.config().q_maj.enable(&mut region, 0)?;
 
                 // Copy and assign the input.
-                (spreaded_a.0).copy_advice(|| "~A", &mut region, adv_cols[5], 0)?;
-                (spreaded_b.0).copy_advice(|| "~B", &mut region, adv_cols[6], 0)?;
-                (spreaded_c.0).copy_advice(|| "~C", &mut region, adv_cols[5], 1)?;
+                (sprdd_a.0).copy_advice(|| "~A", &mut region, adv_cols[5], 0)?;
+                (sprdd_b.0).copy_advice(|| "~B", &mut region, adv_cols[6], 0)?;
+                (sprdd_c.0).copy_advice(|| "~C", &mut region, adv_cols[5], 1)?;
 
                 // Compute the spreaded Maj(A, B, C) off-circuit, assign the 12-12-8 limbs
                 // of its even and odd bits into the circuit, enable the q_12_12_8 selector
                 // for the odd part and q_lookup selector for the related rows, return the
                 // assigned 32 odd bits.
-                let val_of_spreaded_forms: Value<[u64; 3]> = Value::from_iter([
-                    spreaded_a.0.value().copied().map(fe_to_u64),
-                    spreaded_b.0.value().copied().map(fe_to_u64),
-                    spreaded_c.0.value().copied().map(fe_to_u64),
+                let val_of_sprdd_forms: Value<[u64; 3]> = Value::from_iter([
+                    sprdd_a.0.value().copied().map(fe_to_u64),
+                    sprdd_b.0.value().copied().map(fe_to_u64),
+                    sprdd_c.0.value().copied().map(fe_to_u64),
                 ])
-                .map(|spreaded_forms: Vec<u64>| spreaded_forms.try_into().unwrap());
+                .map(|sprdd_forms: Vec<u64>| sprdd_forms.try_into().unwrap());
 
-                self.assign_spreaded_12_12_8(
+                self.assign_sprdd_12_12_8(
                     &mut region,
-                    val_of_spreaded_forms.map(spreaded_maj),
+                    val_of_sprdd_forms.map(spreaded_maj),
                     Parity::Odd,
                 )
             },
@@ -372,17 +459,17 @@ impl<F: PrimeField> Sha256Chip<F> {
     ) -> Result<AssignedPlainSpreaded<F, L>, Error> {
         self.config().q_lookup.enable(region, offset)?;
 
-        let tag_col = self.config().fixed_cols[lookup_idx]; // 0 or 1
+        let nbits_col = self.config().fixed_cols[lookup_idx]; // 0 or 1
         let plain_col = self.config().advice_cols[2 * lookup_idx]; // 0 or 2
-        let spreaded_col = self.config().advice_cols[2 * lookup_idx + 1]; // 1 or 3
+        let sprdd_col = self.config().advice_cols[2 * lookup_idx + 1]; // 1 or 3
 
         let nbits_val = Value::known(F::from(L as u64));
-        let sprdd_val = plain_val.map(spread).map(u64_to_fe);
         let plain_val = plain_val.map(u32_to_fe);
+        let sprdd_val = plain_val.map(spread).map(u64_to_fe);
 
         region.assign_fixed(|| "nbits", tag_col, offset, || nbits_val)?;
         let plain = region.assign_advice(|| "plain", plain_col, offset, || plain_val)?;
-        let spreaded = region.assign_advice(|| "sprdd", spreaded_col, offset, || sprdd_val)?;
+        let spreaded = region.assign_advice(|| "sprdd", sprdd_col, offset, || sprdd_val)?;
 
         Ok(AssignedPlainSpreaded {
             plain: AssignedPlain(plain),
@@ -417,7 +504,7 @@ impl<F: PrimeField> Sha256Chip<F> {
     ///
     /// This function guarantees that the returned value is consistent with
     /// the values in the filled lookup table.
-    fn assign_spreaded_12_12_8(
+    fn assign_sprdd_12_12_8(
         &self,
         region: &mut Region<'_, F>,
         value: Value<u64>,
