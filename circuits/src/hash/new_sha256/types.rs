@@ -28,12 +28,13 @@ pub(super) struct LimbsOfA<F: PrimeField> {
     pub spreaded_limb_02: AssignedSpreaded<F, 2>,
 }
 
-/// The assigned spreaded values of 7-14-5-6 limbs (in big-endian) for the
+/// The assigned spreaded values of 7-12-2-5-6 limbs (in big-endian) for the
 /// register E of 32 bits. Input type of Σ₁(E).
 #[derive(Clone, Debug)]
 pub(super) struct LimbsOfE<F: PrimeField> {
     pub spreaded_limb_07: AssignedSpreaded<F, 7>,
-    pub spreaded_limb_14: AssignedSpreaded<F, 14>,
+    pub spreaded_limb_12: AssignedSpreaded<F, 12>,
+    pub spreaded_limb_02: AssignedSpreaded<F, 2>,
     pub spreaded_limb_05: AssignedSpreaded<F, 5>,
     pub spreaded_limb_06: AssignedSpreaded<F, 6>,
 }

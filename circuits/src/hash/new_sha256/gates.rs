@@ -142,26 +142,31 @@ pub fn decompose_10_9_11_2_gate<F: PrimeField>(
     )
 }
 
-/// Decompose in 7-14-5-6 gate.
-pub fn decompose_7_14_5_6_gate<F: PrimeField>(
+/// Decompose in 7-12-2-5-6 gate.
+pub fn decompose_7_12_2_5_6_gate<F: PrimeField>(
     selector: Expression<F>,
-    [limb_07, limb_14, limb_05, limb_06]: [Expression<F>; 4],
-    [sprdd_limb_07, sprdd_limb_14, sprdd_limb_05, sprdd_limb_06]: [Expression<F>; 4],
+    [limb_07, limb_12, limb_02, limb_05, limb_06]: [Expression<F>; 5],
+    [sprdd_limb_07, sprdd_limb_12, sprdd_limb_02, sprdd_limb_05, sprdd_limb_06]: [Expression<F>; 5],
     (plain, sprdd): (Expression<F>, Expression<F>),
 ) -> Constraints<
     F,
     (&'static str, Expression<F>),
     impl Iterator<Item = (&'static str, Expression<F>)>,
 > {
-    // (2^25 * limb_07 + 2^11 * limb_14 + 2^6 * limb_05 + limb_06) - plain
-    let plain_id =
-        linear_combination_pow2([25, 11, 6, 0], [&limb_07, &limb_14, &limb_05, &limb_06]) - plain;
-    // (4^25 * ~limb_07 + 4^11 * ~limb_14 + 4^6 * ~limb_05 + ~limb_06) - sprdd
+    // (2^25 * limb_07 + 2^13 * limb_12 + 2^11 * limb_02 + 2^6 * limb_05 + limb_06)
+    // - plain
+    let plain_id = linear_combination_pow2(
+        [25, 13, 11, 6, 0],
+        [&limb_07, &limb_12, &limb_02, &limb_05, &limb_06],
+    ) - plain;
+    // (4^25 * ~limb_07 + 4^13 * ~limb_12 + 4^11 * ~limb_02 + 4^6 * ~limb_05 +
+    // ~limb_06) - sprdd
     let sprdd_id = linear_combination_pow4(
-        [25, 11, 6, 0],
+        [25, 13, 11, 6, 0],
         [
             &sprdd_limb_07,
-            &sprdd_limb_14,
+            &sprdd_limb_12,
+            &sprdd_limb_02,
             &sprdd_limb_05,
             &sprdd_limb_06,
         ],
@@ -170,8 +175,8 @@ pub fn decompose_7_14_5_6_gate<F: PrimeField>(
     Constraints::with_selector(
         selector,
         [
-            ("7_14_5_6 decomposition plain check", plain_id),
-            ("7_14_5_6 decomposition sprdd check", sprdd_id),
+            ("7_12_2_5_6 decomposition plain check", plain_id),
+            ("7_12_2_5_6 decomposition sprdd check", sprdd_id),
         ]
         .into_iter(),
     )
