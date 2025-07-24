@@ -198,13 +198,26 @@ impl<F: PoseidonField> ComposableChip<F> for PoseidonChip<F> {
         // applying a permutation, and the last full round will use `[F::ZERO;
         // WIDTH]` as round constants.
         meta.create_gate("full_round_gate", |meta| {
-            let inputs = from_fn(|i| meta.query_advice(register_cols[i], Rotation::cur()));
+            // We provide hints for computing the S-box on the inputs.
+            // Concretely, for every input, we hint its cube.
+            let inputs_and_hints: [(Expression<F>, Expression<F>); WIDTH] = from_fn(|i| {
+                (
+                    meta.query_advice(register_cols[i], Rotation::cur()),
+                    meta.query_advice(register_cols[i + WIDTH], Rotation::cur()),
+                )
+            });
             let outputs = from_fn(|i| meta.query_advice(register_cols[i], Rotation::next()));
             let constants = from_fn(|i| meta.query_fixed(constant_cols[i], Rotation::cur()));
 
+            let sboxed_inputs = inputs_and_hints.clone().map(|(x, x3)| x.square() * x3);
+
             Constraints::with_selector(
                 meta.query_selector(q_full_round),
-                linear_layer(inputs.map(sbox), outputs, constants),
+                [
+                    inputs_and_hints.map(|(x, x3)| x.clone() * x.square() - x3),
+                    linear_layer(sboxed_inputs, outputs, constants),
+                ]
+                .concat(),
             )
         });
 
@@ -322,12 +335,24 @@ impl<F: PoseidonField> PoseidonChip<F> {
     fn full_round(
         &self,
         region: &mut Region<'_, F>,
-        inputs: &mut [AssignedNative<F>], // Length `WIDTH`.
+        inputs: &mut [AssignedNative<F>; WIDTH],
         round_index: usize,
         offset: &mut usize,
     ) -> Result<(), Error> {
         self.config.q_full_round.enable(region, *offset)?;
         self.assign_constants_full(region, round_index, *offset)?;
+
+        // Assign the hints (inputs cubed).
+        for (x, col) in (inputs.iter()).zip(self.config.register_cols[WIDTH..(2 * WIDTH)].iter()) {
+            region.assign_advice(
+                || "full round hint",
+                *col,
+                *offset,
+                || x.value().map(|x| *x * x.square()),
+            )?;
+        }
+
+        *offset += 1;
 
         let outputs = Value::from_iter(inputs.iter().map(|x| x.value().copied()))
             .map(|inputs: Vec<F>| {
@@ -336,7 +361,7 @@ impl<F: PoseidonField> PoseidonChip<F> {
                 inputs
             })
             .transpose_vec(WIDTH);
-        *offset += 1;
+
         outputs
             .iter()
             .zip(self.config.register_cols[0..WIDTH].iter())
