@@ -1632,10 +1632,10 @@ where
 
     let r = r_transcript.squeeze_challenge();
 
-    let mut acc_guard = DualMSM::init();
-    for guard in guards {
-        acc_guard.add_msm(guard);
+    let mut acc_guard = guards[0].clone();
+    for guard in guards.into_iter().skip(1) {
         acc_guard.scale(r);
+        acc_guard.add_msm(guard);
     }
     // TODO: Have richer error types
     acc_guard
