@@ -155,6 +155,7 @@ macro_rules! plonk_api {
                     &[pi],
                     &mut transcript,
                 )?;
+                transcript.assert_empty().map_err(|_| Error::Opening)?;
                 let res = res.verify(params_verifier);
                 #[cfg(test)]
                 println!("Proof verified in {:?} us", start.elapsed().as_micros());

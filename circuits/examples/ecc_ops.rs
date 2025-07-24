@@ -117,7 +117,7 @@ fn main() {
     }
 
     assert!(compact_std_lib::batch_verify::<blake2b_simd::State>(
-        &vec![srs.verifier_params(); N],
+        &srs.verifier_params(),
         &vks,
         &pis,
         &proofs

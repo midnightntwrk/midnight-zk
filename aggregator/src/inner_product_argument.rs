@@ -14,54 +14,20 @@
 //!  - <https://eprint.iacr.org/2019/1021.pdf> (Section 3.1)
 //!  - <https://eprint.iacr.org/2022/1352.pdf> (Figure 3 and Lemma 4)
 
-use std::{
-    io,
-    ops::{Add, Mul},
-};
+use std::ops::{Add, Mul};
 
 use ff::Field;
 use group::prime::PrimeCurveAffine;
-use halo2curves::{msm::msm_best, serde::SerdeObject, CurveExt};
+use halo2curves::{msm::msm_best, CurveExt};
 use midnight_proofs::{
     plonk::Error,
-    transcript::{CircuitTranscript, Hashable, Sampleable, Transcript, TranscriptHash},
-    utils::{helpers::ProcessedSerdeObject, SerdeFormat},
+    transcript::{Hashable, Sampleable, Transcript},
 };
-
-#[derive(Clone, Debug)]
-pub struct IpaProof<C: CurveExt> {
-    lhs: Vec<C>,
-    rhs: Vec<C>,
-    s: C::ScalarExt,
-}
-
-impl<C> IpaProof<C>
-where
-    C: CurveExt + ProcessedSerdeObject,
-    C::ScalarExt: SerdeObject,
-{
-    /// Writes the IPA proof to a buffer.
-    pub fn write<W: io::Write>(&self, writer: &mut W, format: SerdeFormat) -> io::Result<()> {
-        writer.write_all(&[self.lhs.len() as u8])?;
-        self.lhs.iter().try_for_each(|p| p.write(writer, format))?;
-        self.rhs.iter().try_for_each(|p| p.write(writer, format))?;
-        self.s.write_raw(writer)
-    }
-
-    /// Reads an IPA proof from a buffer.
-    pub fn read<R: io::Read>(reader: &mut R, format: SerdeFormat) -> io::Result<Self> {
-        let mut byte = [0u8; 1];
-        reader.read_exact(&mut byte)?;
-        let n = byte[0];
-        let lhs = ((0..n).map(|_| C::read(reader, format))).collect::<io::Result<_>>()?;
-        let rhs = ((0..n).map(|_| C::read(reader, format))).collect::<io::Result<_>>()?;
-        let s = C::ScalarExt::read_raw(reader)?;
-        Ok(Self { lhs, rhs, s })
-    }
-}
 
 /// Creates a proof of knowledge of `scalars` such that
 /// `<scalars, bases1> = res1` and `<scalars, bases2> = res2`.
+///
+/// The proof is appended to the given running transcript.
 ///
 /// # Panics
 ///
@@ -71,24 +37,23 @@ where
 ///
 /// This function does not panic if the given results are incorrect.
 /// However, the IPA.verify will not accept the proof in that case.
-pub fn ipa_prove<H, C>(
+pub fn ipa_prove<T, C>(
     scalars: &[C::Scalar],
     bases1: &[C],
     bases2: &[C],
     res1: &C,
     res2: &C,
-) -> Result<IpaProof<C>, Error>
+    transcript: &mut T,
+) -> Result<(), Error>
 where
-    H: TranscriptHash,
-    C: CurveExt + Hashable<H>,
-    C::Scalar: Sampleable<H>,
+    T: Transcript,
+    C: CurveExt + Hashable<T::Hash>,
+    C::Scalar: Sampleable<T::Hash> + Hashable<T::Hash>,
 {
     assert_eq!(scalars.len(), bases1.len());
     assert_eq!(scalars.len(), bases2.len());
     assert!(scalars.len().is_power_of_two());
     let k = scalars.len().trailing_zeros() as usize;
-
-    let mut transcript = CircuitTranscript::<H>::init();
 
     bases1.iter().try_for_each(|b| transcript.common(b))?;
     bases2.iter().try_for_each(|b| transcript.common(b))?;
@@ -100,9 +65,6 @@ where
     let r: C::Scalar = transcript.squeeze_challenge();
     let bases = fold((C::Scalar::from(1), bases1), (r, bases2));
 
-    let mut lhs = Vec::with_capacity(k);
-    let mut rhs = Vec::with_capacity(k);
-
     let mut s = scalars.to_vec();
     let mut b = bases.to_vec();
 
@@ -111,11 +73,8 @@ where
         let l = inner_product::<C>(&s[..half], &b[half..]); // <s_left,  b_right>
         let r = inner_product::<C>(&s[half..], &b[..half]); // <s_right, b_left>
 
-        lhs.push(l);
-        rhs.push(r);
-
-        transcript.common(&l)?;
-        transcript.common(&r)?;
+        transcript.write(&l)?;
+        transcript.write(&r)?;
 
         let uj: C::Scalar = transcript.squeeze_challenge();
         let uj_inv = uj.invert().unwrap();
@@ -125,7 +84,9 @@ where
     }
 
     debug_assert_eq!(s.len(), 1);
-    Ok(IpaProof { lhs, rhs, s: s[0] })
+    transcript.write(&s[0])?;
+
+    Ok(())
 }
 
 /// Verifies a proof of knowledge of `scalars` such that
@@ -135,23 +96,21 @@ where
 ///
 /// If `|bases1| != |bases2|`.
 /// If `|bases1|` is not a power of 2.
-pub fn ipa_verify<H, C>(
+pub fn ipa_verify<T, C>(
     bases1: &[C],
     bases2: &[C],
     res1: &C,
     res2: &C,
-    proof: &IpaProof<C>,
+    transcript: &mut T,
 ) -> Result<(), Error>
 where
-    H: TranscriptHash,
-    C: CurveExt + Hashable<H>,
-    C::Scalar: Sampleable<H>,
+    T: Transcript,
+    C: CurveExt + Hashable<T::Hash>,
+    C::Scalar: Sampleable<T::Hash> + Hashable<T::Hash>,
 {
     assert_eq!(bases1.len(), bases2.len());
     assert!(bases1.len().is_power_of_two());
     let k = bases1.len().trailing_zeros() as usize;
-
-    let mut transcript = CircuitTranscript::<H>::init();
 
     bases1.iter().try_for_each(|b| transcript.common(b))?;
     bases2.iter().try_for_each(|b| transcript.common(b))?;
@@ -163,10 +122,10 @@ where
     let r = transcript.squeeze_challenge();
 
     // The verification check is:
-    // b[0] * proof.s == (res1 + r * res2) + sum_j (L_j * uj^2 + R_j * uj^(-2))
+    // b[0] * s == (res1 + r * res2) + sum_j (L_j * uj^2 + R_j * uj^(-2))
     //
-    // where L_j := proof.lhs[j], R_j = proof.rhs[j], {uj}_j are the Fiat-Shamir
-    // challenges, and b[0] is the result of folding the bases
+    // where the proof contains {L_j, R_j}_j and s and {uj}_j are the
+    // Fiat-Shamir challenges, and b[0] is the result of folding the bases
     // `bases1 + r * bases2` just like the prover did.
 
     let mut msm_bases: Vec<C> = vec![];
@@ -174,23 +133,25 @@ where
 
     let mut ujs = vec![];
 
-    for j in 0..k {
-        transcript.common(&proof.lhs[j])?;
-        transcript.common(&proof.rhs[j])?;
+    for _ in 0..k {
+        let lhs_j = transcript.read()?;
+        let rhs_j = transcript.read()?;
 
         let uj: C::Scalar = transcript.squeeze_challenge();
         let uj_inv = uj.invert().unwrap();
 
         // L_j * uj^2 + R_j * uj^(-2)
-        msm_bases.push(proof.lhs[j]);
-        msm_bases.push(proof.rhs[j]);
+        msm_bases.push(lhs_j);
+        msm_bases.push(rhs_j);
         msm_scalars.push(uj.square());
         msm_scalars.push(uj_inv.square());
 
         ujs.push((uj, uj_inv));
     }
 
-    let mut ipa_scalars = vec![-proof.s];
+    let s: C::ScalarExt = transcript.read()?;
+
+    let mut ipa_scalars = vec![-s];
     for (uj, uj_inv) in ujs.iter().rev() {
         ipa_scalars = [
             ipa_scalars.iter().map(|s| *s * uj_inv).collect::<Vec<_>>(),
@@ -257,6 +218,7 @@ where
 mod tests {
 
     use group::Group;
+    use midnight_proofs::transcript::CircuitTranscript;
     use rand::rngs::OsRng;
 
     use super::*;
@@ -273,8 +235,12 @@ mod tests {
             let bases2: [C; N] = core::array::from_fn(|_| C::random(OsRng));
             let res1 = inner_product::<C>(&scalars, &bases1);
             let res2 = inner_product::<C>(&scalars, &bases2);
-            let proof = ipa_prove::<H, C>(&scalars, &bases1, &bases2, &res1, &res2).unwrap();
-            assert!(ipa_verify::<H, C>(&bases1, &bases2, &res1, &res2, &proof).is_ok());
+
+            let mut transcript = CircuitTranscript::<H>::init();
+            ipa_prove(&scalars, &bases1, &bases2, &res1, &res2, &mut transcript).unwrap();
+
+            let mut transcript = CircuitTranscript::<H>::init_from_bytes(&transcript.finalize());
+            assert!(ipa_verify(&bases1, &bases2, &res1, &res2, &mut transcript).is_ok());
         }
         test::<2>();
         test::<4>();

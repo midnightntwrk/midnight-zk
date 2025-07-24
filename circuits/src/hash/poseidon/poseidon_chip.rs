@@ -11,6 +11,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use core::array::from_fn;
 use std::iter::once;
 
 use ff::{Field, PrimeField};
@@ -197,14 +198,9 @@ impl<F: PoseidonField> ComposableChip<F> for PoseidonChip<F> {
         // applying a permutation, and the last full round will use `[F::ZERO;
         // WIDTH]` as round constants.
         meta.create_gate("full_round_gate", |meta| {
-            let inputs =
-                core::array::from_fn(|i| meta.query_advice(register_cols[i], Rotation::cur()));
-
-            let outputs =
-                core::array::from_fn(|i| meta.query_advice(register_cols[i], Rotation::next()));
-
-            let constants =
-                core::array::from_fn(|i| meta.query_fixed(constant_cols[i], Rotation::cur()));
+            let inputs = from_fn(|i| meta.query_advice(register_cols[i], Rotation::cur()));
+            let outputs = from_fn(|i| meta.query_advice(register_cols[i], Rotation::next()));
+            let constants = from_fn(|i| meta.query_fixed(constant_cols[i], Rotation::cur()));
 
             Constraints::with_selector(
                 meta.query_selector(q_full_round),

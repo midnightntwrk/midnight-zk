@@ -46,9 +46,7 @@
 
 use std::{collections::BTreeMap, io};
 
-use blake2b_simd::State as Blake2bState;
-use group::{prime::PrimeCurveAffine, Group};
-use halo2curves::{pairing::Engine, serde::SerdeObject};
+use group::Group;
 use midnight_circuits::{
     field::{
         native::{NB_ARITH_COLS, NB_ARITH_FIXED_COLS},
@@ -71,20 +69,20 @@ use midnight_proofs::{
         ConstraintSystem, Error,
     },
     poly::{
-        commitment::Params,
+        commitment::{Guard, Params},
         kzg::{
+            msm::{DualMSM, MSMKZG},
             params::{ParamsKZG, ParamsVerifierKZG},
             KZGCommitmentScheme,
         },
         EvaluationDomain,
     },
-    transcript::{CircuitTranscript, Transcript},
-    utils::{helpers::ProcessedSerdeObject, SerdeFormat},
+    transcript::{CircuitTranscript, Hashable, Sampleable, Transcript},
 };
 use rand::{CryptoRng, RngCore};
 
 use crate::{
-    inner_product_argument::{ipa_prove, ipa_verify, IpaProof},
+    inner_product_argument::{ipa_prove, ipa_verify},
     light_fiat_shamir::LightPoseidonFS,
     light_self_emulation::{FakeCurveChip, LightBlstrsEmulation},
 };
@@ -117,74 +115,6 @@ pub struct LightAggregator<const NB_PROOFS: usize> {
     aggregator_vk: VerifyingKey,
     aggregator_pk: ProvingKey,
     lagrange_commitments: Vec<C>,
-}
-
-/// The type of an aggregated proof (of NB_PROOFS statements).
-#[derive(Clone, Debug)]
-pub struct MetaProof<const NB_PROOFS: usize> {
-    proof: Vec<u8>,
-    acc_lhs: Msm<S>,
-    acc_rhs_evaluated: C, // The validity of this will be guaranteed by an IPA proof
-    acc_rhs_bases: Vec<C>,
-    acc_rhs_scalars_committed: C,
-    ipa_proof: IpaProof<C>,
-}
-
-impl<const NB_PROOFS: usize> MetaProof<NB_PROOFS> {
-    /// Writes the meta proof to a buffer.
-    pub fn write<W: io::Write>(&self, writer: &mut W, format: SerdeFormat) -> io::Result<()> {
-        writer.write_all(&(self.proof.len() as u64).to_le_bytes())?;
-        writer.write_all(&self.proof)?;
-
-        writer.write_all(&(self.acc_lhs.bases().len() as u64).to_le_bytes())?;
-        (self.acc_lhs.bases().iter()).try_for_each(|p| p.write(writer, format))?;
-        (self.acc_lhs.scalars().iter()).try_for_each(|s| s.write_raw(writer))?;
-        assert!(self.acc_lhs.fixed_base_scalars().is_empty());
-
-        self.acc_rhs_evaluated.write(writer, format)?;
-
-        writer.write_all(&(self.acc_rhs_bases.len() as u64).to_le_bytes())?;
-        (self.acc_rhs_bases.iter()).try_for_each(|p| p.write(writer, format))?;
-
-        self.acc_rhs_scalars_committed.write(writer, format)?;
-
-        self.ipa_proof.write(writer, format)
-    }
-
-    /// Reads a meta proof from a buffer.
-    pub fn read<R: io::Read>(reader: &mut R, format: SerdeFormat) -> io::Result<Self> {
-        let mut bytes = [0u8; 8];
-
-        reader.read_exact(&mut bytes)?;
-        let mut proof = vec![0u8; u64::from_le_bytes(bytes) as usize];
-        reader.read_exact(&mut proof)?;
-
-        reader.read_exact(&mut bytes)?;
-        let n = u64::from_le_bytes(bytes);
-        let bases = ((0..n).map(|_| C::read(reader, format))).collect::<io::Result<Vec<_>>>()?;
-        let scalars = ((0..n).map(|_| F::read_raw(reader))).collect::<io::Result<Vec<_>>>()?;
-        let acc_lhs = Msm::new(&bases, &scalars, &BTreeMap::new());
-
-        let acc_rhs_evaluated = C::read(reader, format)?;
-
-        reader.read_exact(&mut bytes)?;
-        let n = u64::from_le_bytes(bytes);
-        let acc_rhs_bases =
-            ((0..n).map(|_| C::read(reader, format))).collect::<io::Result<Vec<_>>>()?;
-
-        let acc_rhs_scalars_committed = C::read(reader, format)?;
-
-        let ipa_proof = IpaProof::read(reader, format)?;
-
-        Ok(Self {
-            proof,
-            acc_lhs,
-            acc_rhs_evaluated,
-            acc_rhs_bases,
-            acc_rhs_scalars_committed,
-            ipa_proof,
-        })
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -356,20 +286,27 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
     /// # Errors
     ///
     /// If some of the provided proofs are invalid.
-    pub fn aggregate_proofs(
+    pub fn aggregate_proofs<T>(
         &self,
         srs: &ParamsKZG<E>,
         instances: &[Vec<F>; NB_PROOFS],
         proofs: &[Vec<u8>; NB_PROOFS],
         mut rng: impl RngCore + CryptoRng,
-    ) -> Result<MetaProof<NB_PROOFS>, Error> {
+        transcript: &mut T,
+    ) -> Result<(), Error>
+    where
+        T: Transcript,
+        C: Hashable<T::Hash>,
+        F: Sampleable<T::Hash> + Hashable<T::Hash>,
+        u8: Hashable<T::Hash>,
+    {
         // We first verify all proofs off-circuit, to get the final batched accumulator,
         // which must be a public input of the aggregator circuit.
         let proof_accs: Vec<Accumulator<S>> = (proofs.iter())
             .zip(instances.iter())
             .enumerate()
             .map(|(i, (proof, proof_instances))| {
-                let mut transcript =
+                let mut inner_transcript =
                     CircuitTranscript::<LightPoseidonFS<F>>::init_from_bytes(proof);
                 let dual_msm = plonk::prepare::<
                     F,
@@ -379,7 +316,7 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
                     &self.inner_vk,
                     &[&[C::identity()]],
                     &[&[proof_instances]],
-                    &mut transcript,
+                    &mut inner_transcript,
                 )?;
 
                 assert!(dual_msm.clone().check(&srs.verifier_params()));
@@ -426,134 +363,150 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
             AssignedAccumulator::as_public_input_with_committed_scalars(&acc);
         aggregator_instances.extend(acc_normal_instances);
 
-        let meta_proof = {
-            let mut transcript = CircuitTranscript::<Blake2bState>::init();
-            create_proof::<
-                F,
-                KZGCommitmentScheme<E>,
-                CircuitTranscript<Blake2bState>,
-                AggregatorCircuit<NB_PROOFS>,
-            >(
-                srs,
-                &self.aggregator_pk,
-                &[aggregator_circuit],
-                1,
-                &[&[&acc_committed_instances, &aggregator_instances]],
-                &mut rng,
-                &mut transcript,
-            )?;
-            transcript.finalize()
-        };
-
         let acc_rhs_scalars_committed = commit_to_instances::<F, KZGCommitmentScheme<E>>(
             srs,
             self.aggregator_vk.get_domain(),
             &acc_committed_instances,
         );
-
         let acc_rhs_evaluated = acc.rhs().eval(&fixed_bases);
 
-        let ipa_proof = {
-            let mut scalars = acc_committed_instances.clone();
-            let mut bases1 = [acc.rhs().bases(), fixed_bases.values().cloned().collect()].concat();
-            let mut bases2 = self.lagrange_commitments[..bases1.len()].to_vec();
+        // Add the LHS of acc to the transcript.
+        transcript.write(&(acc.lhs().bases().len() as u8))?;
+        (acc.lhs().bases().iter()).try_for_each(|p| transcript.write(p))?;
+        (acc.lhs().scalars().iter()).try_for_each(|s| transcript.write(s))?;
+        assert!(acc.lhs().fixed_base_scalars().is_empty());
 
-            let k = bases1.len().next_power_of_two();
-            bases1.resize(k, C::identity());
-            bases2.resize(k, C::identity());
-            scalars.resize(k, F::default());
-            ipa_prove::<Blake2bState, _>(
-                &scalars,
-                &bases1,
-                &bases2,
-                &acc_rhs_evaluated,
-                &acc_rhs_scalars_committed,
-            )
-        }?;
+        // Add the RHS of the acc to the transcript (with scalars in committed form).
+        transcript.write(&(acc.rhs().bases().len() as u8))?;
+        (acc.rhs().bases().iter()).try_for_each(|p| transcript.write(p))?;
+        transcript.write(&acc_rhs_scalars_committed)?;
+        transcript.write(&acc_rhs_evaluated)?;
 
-        Ok(MetaProof {
-            proof: meta_proof,
-            acc_lhs: acc.lhs(),
-            acc_rhs_evaluated,
-            acc_rhs_bases: acc.rhs().bases(),
-            acc_rhs_scalars_committed,
-            ipa_proof,
-        })
+        // Create a proof of having verified the native part of all inner proofs.
+        create_proof::<F, KZGCommitmentScheme<E>, T, AggregatorCircuit<NB_PROOFS>>(
+            srs,
+            &self.aggregator_pk,
+            &[aggregator_circuit],
+            1,
+            &[&[&acc_committed_instances, &aggregator_instances]],
+            &mut rng,
+            transcript,
+        )?;
+
+        // Create the IPA proof
+        let mut scalars = acc_committed_instances.clone();
+        let mut bases1 = [acc.rhs().bases(), fixed_bases.values().cloned().collect()].concat();
+        let mut bases2 = self.lagrange_commitments[..bases1.len()].to_vec();
+
+        let k = bases1.len().next_power_of_two();
+        bases1.resize(k, C::identity());
+        bases2.resize(k, C::identity());
+        scalars.resize(k, F::default());
+
+        ipa_prove(
+            &scalars,
+            &bases1,
+            &bases2,
+            &acc_rhs_evaluated,
+            &acc_rhs_scalars_committed,
+            transcript,
+        )
     }
 
     /// Verifies an aggregation proof.
-    pub fn verify(
+    pub fn verify<T>(
         &self,
         srs_verifier: &ParamsVerifierKZG<E>,
-        s_g2: &<S as SelfEmulation>::G2Affine,
         instances: &[Vec<F>; NB_PROOFS],
-        meta_proof: &MetaProof<NB_PROOFS>,
-    ) -> Result<(), Error> {
-        // Verify the meta_proof.
+        transcript: &mut T,
+    ) -> Result<(), Error>
+    where
+        T: Transcript,
+        C: Hashable<T::Hash>,
+        F: Sampleable<T::Hash> + Hashable<T::Hash>,
+        u8: Hashable<T::Hash>,
+    {
+        // Read the LHS of the acc from the transcript.
+        let acc_lhs: Msm<S> = {
+            let n: u8 = transcript.read()?;
+            let lhs_bases: Result<Vec<C>, io::Error> = (0..n).map(|_| transcript.read()).collect();
+            let lhs_scalars: Result<Vec<F>, io::Error> =
+                (0..n).map(|_| transcript.read()).collect();
+            Msm::new(&lhs_bases?, &lhs_scalars?, &BTreeMap::new())
+        };
+
+        // Read the RHS of the acc from the transcript (with scalars in committed form).
+        let acc_rhs_bases = {
+            let n: u8 = transcript.read()?;
+            (0..n)
+                .map(|_| transcript.read())
+                .collect::<Result<Vec<C>, io::Error>>()?
+        };
+        let acc_rhs_scalars_committed: C = transcript.read()?;
+        let acc_rhs_evaluated: C = transcript.read()?;
+
+        // Verify the proof of validity of the native verification of all inner proofs.
         let mut aggregator_instances = AssignedVk::<S>::as_public_input(&self.inner_vk);
         (instances.iter()).for_each(|inner_instances| aggregator_instances.extend(inner_instances));
-        aggregator_instances.extend(AssignedMsm::as_public_input(&meta_proof.acc_lhs));
+        aggregator_instances.extend(AssignedMsm::as_public_input(&acc_lhs));
         aggregator_instances.extend(
-            meta_proof
-                .acc_rhs_bases
+            acc_rhs_bases
+                .clone()
                 .iter()
                 .flat_map(<S as SelfEmulation>::AssignedPoint::as_public_input)
                 .collect::<Vec<_>>(),
         );
 
-        let dual_msm = {
-            let mut transcript =
-                CircuitTranscript::<Blake2bState>::init_from_bytes(&meta_proof.proof);
-            prepare::<F, KZGCommitmentScheme<E>, CircuitTranscript<Blake2bState>>(
+        let proof_dual_msm = {
+            prepare::<F, KZGCommitmentScheme<E>, T>(
                 &self.aggregator_vk,
-                &[&[meta_proof.acc_rhs_scalars_committed]],
+                &[&[acc_rhs_scalars_committed]],
                 &[&[&aggregator_instances]],
-                &mut transcript,
+                transcript,
             )?
         };
 
-        if !dual_msm.check(srs_verifier) {
-            return Err(Error::Opening);
-        };
-
         // Now verify that the final accumulator satisfies the invariant.
-        let mut fixed_bases = BTreeMap::new();
-        for i in 0..NB_PROOFS {
-            fixed_bases.insert(com_instance_name::<NB_PROOFS>(i), C::identity());
-        }
-        fixed_bases.extend(midnight_circuits::verifier::fixed_bases::<S>(
-            "inner_vk",
-            &self.inner_vk,
-        ));
-
-        let lhs = meta_proof.acc_lhs.eval(&fixed_bases).into();
-        let rhs = meta_proof.acc_rhs_evaluated.into();
-
-        if E::pairing(&lhs, s_g2) != E::pairing(&rhs, &<S as SelfEmulation>::G2Affine::generator())
-        {
-            return Err(Error::Opening);
+        let fixed_bases = {
+            let mut fixed_bases = BTreeMap::new();
+            for i in 0..NB_PROOFS {
+                fixed_bases.insert(com_instance_name::<NB_PROOFS>(i), C::identity());
+            }
+            fixed_bases.extend(midnight_circuits::verifier::fixed_bases::<S>(
+                "inner_vk",
+                &self.inner_vk,
+            ));
+            fixed_bases
         };
+
+        let acc_dual_msm = DualMSM::new(
+            MSMKZG::<E>::from_base(&acc_lhs.eval(&fixed_bases)),
+            MSMKZG::<E>::from_base(&acc_rhs_evaluated),
+        );
 
         // We conclude by checking the IPA proof which guarantess the validity of
         // acc_rhs_evaluated.
-        let mut bases1 = [
-            meta_proof.acc_rhs_bases.clone(),
-            fixed_bases.values().cloned().collect(),
-        ]
-        .concat();
+        let mut bases1 = [acc_rhs_bases, fixed_bases.values().cloned().collect()].concat();
         let mut bases2 = self.lagrange_commitments[..bases1.len()].to_vec();
 
         let k = bases1.len().next_power_of_two();
         bases1.resize(k, C::identity());
         bases2.resize(k, C::identity());
 
-        ipa_verify::<Blake2bState, _>(
+        ipa_verify(
             &bases1,
             &bases2,
-            &meta_proof.acc_rhs_evaluated,
-            &meta_proof.acc_rhs_scalars_committed,
-            &meta_proof.ipa_proof,
-        )
+            &acc_rhs_evaluated,
+            &acc_rhs_scalars_committed,
+            transcript,
+        )?;
+
+        let mut dual_msm = DualMSM::init();
+        let r: F = transcript.squeeze_challenge();
+        dual_msm.add_msm(acc_dual_msm);
+        dual_msm.scale(r);
+        dual_msm.add_msm(proof_dual_msm);
+        dual_msm.verify(srs_verifier).map_err(|_| Error::Opening)
     }
 }
 
@@ -564,8 +517,8 @@ fn com_instance_name<const NB_PROOFS: usize>(i: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use std::io::Cursor;
 
+    use blake2b_simd::State as Blake2bState;
     use ff::Field;
     use group::Group;
     use midnight_circuits::{
@@ -701,52 +654,25 @@ mod tests {
             .unwrap();
 
         let t = std::time::Instant::now();
-        let meta_proof = aggregator
-            .aggregate_proofs(&srs, &all_instances, &proofs, &mut rng)
+        let mut transcript = CircuitTranscript::<Blake2bState>::init();
+        aggregator
+            .aggregate_proofs(&srs, &all_instances, &proofs, &mut rng, &mut transcript)
             .unwrap();
         println!(
             "Aggregation proof generated in {:?} s",
             t.elapsed().as_secs()
         );
 
+        let meta_proof = transcript.finalize();
+        println!("Size of meta proof in bytes: {}", meta_proof.len());
+
         let t = std::time::Instant::now();
+        let mut transcript = CircuitTranscript::<Blake2bState>::init_from_bytes(&meta_proof);
         assert!(aggregator
-            .verify(
-                &srs.verifier_params(),
-                &srs.s_g2().into(),
-                &all_instances,
-                &meta_proof
-            )
+            .verify(&srs.verifier_params(), &all_instances, &mut transcript)
             .is_ok());
         println!(
             "Aggregation proof verified in {:?} ms",
-            t.elapsed().as_millis()
-        );
-
-        let mut buffer = Vec::new();
-        meta_proof
-            .write(&mut buffer, SerdeFormat::Processed)
-            .expect("Meta proof serialization failed");
-
-        println!("Size of meta proof in bytes: {}", buffer.len());
-
-        // Read the meta proof from the buffer and verify it again.
-
-        let mut cursor = Cursor::new(&buffer);
-        let meta_proof = MetaProof::read(&mut cursor, SerdeFormat::Processed)
-            .expect("Meta proof deserialization failed");
-
-        let t = std::time::Instant::now();
-        assert!(aggregator
-            .verify(
-                &srs.verifier_params(),
-                &srs.s_g2().into(),
-                &all_instances,
-                &meta_proof
-            )
-            .is_ok());
-        println!(
-            "Deserialized aggregation proof verified in {:?} ms",
             t.elapsed().as_millis()
         );
     }

@@ -1585,7 +1585,7 @@ where
 ///
 /// Returns `Ok(())` if all proofs are valid.
 pub fn batch_verify<H: TranscriptHash>(
-    params_verifier: &[ParamsVerifierKZG<midnight_curves::Bls12>],
+    params_verifier: &ParamsVerifierKZG<midnight_curves::Bls12>,
     vks: &[MidnightVK],
     pis: &[Vec<F>],
     proofs: &[Vec<u8>],
@@ -1594,11 +1594,13 @@ where
     G1Projective: Hashable<H>,
     F: Hashable<H> + Sampleable<H>,
 {
-    let n = params_verifier.len();
-    if vks.len() != n || pis.len() != n || proofs.len() != n {
+    let n = vks.len();
+    if pis.len() != n || proofs.len() != n {
         // TODO: have richer types in halo2
         return Err(Error::InvalidInstances);
     }
+
+    let mut r_transcript = CircuitTranscript::init();
 
     let guards = vks
         .iter()
@@ -1610,7 +1612,7 @@ where
             }
 
             let mut transcript = CircuitTranscript::init_from_bytes(proof);
-            prepare::<
+            let dual_msm = prepare::<
                 midnight_curves::Fq,
                 KZGCommitmentScheme<midnight_curves::Bls12>,
                 CircuitTranscript<H>,
@@ -1620,16 +1622,25 @@ where
                 // TODO: We could batch here proofs with the same vk.
                 &[&[pi]],
                 &mut transcript,
-            )
+            )?;
+            let summary: F = transcript.squeeze_challenge();
+            r_transcript.common(&summary)?;
+            transcript.assert_empty().map_err(|_| Error::Opening)?;
+            Ok(dual_msm)
         })
         .collect::<Result<Vec<_>, Error>>()?;
 
-    if DualMSM::batch_verify(guards.into_iter(), params_verifier.iter()).is_ok() {
-        Ok(())
-    } else {
-        // TODO: Have richer error types
-        Err(Error::Opening)
+    let r = r_transcript.squeeze_challenge();
+
+    let mut acc_guard = guards[0].clone();
+    for guard in guards.into_iter().skip(1) {
+        acc_guard.scale(r);
+        acc_guard.add_msm(guard);
     }
+    // TODO: Have richer error types
+    acc_guard
+        .verify(params_verifier)
+        .map_err(|_| Error::Opening)
 }
 
 /// Cost model of the given relation.

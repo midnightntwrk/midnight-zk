@@ -211,7 +211,7 @@ where
         let mut q_eval_sets = vec![vec![]; point_sets.len()];
 
         for com_data in commitment_map.into_iter() {
-            let mut msm = MSMKZG::new();
+            let mut msm = MSMKZG::init();
             let eval_point_opt = if com_data.commitment.is_chopped() {
                 // When the commitment is in chopped form, we require that it be evaluated
                 // in a single point.
@@ -288,7 +288,7 @@ where
 
         let final_com = {
             let mut coms = q_coms;
-            let mut f_com_as_msm = MSMKZG::new();
+            let mut f_com_as_msm = MSMKZG::init();
 
             f_com_as_msm.append_term(E::Fr::ONE, f_com);
             coms.push(f_com_as_msm);
@@ -317,14 +317,14 @@ where
 
         let pi: E::G1 = transcript.read().map_err(|_| Error::SamplingError)?;
 
-        let mut pi_msm = MSMKZG::<E>::new();
+        let mut pi_msm = MSMKZG::<E>::init();
         pi_msm.append_term(E::Fr::ONE, pi);
 
         // Scale zπ
-        let mut scaled_pi = MSMKZG::<E>::new();
+        let mut scaled_pi = MSMKZG::<E>::init();
         scaled_pi.append_term(x3, pi);
 
-        let mut msm_accumulator = DualMSM::new();
+        let mut msm_accumulator = DualMSM::init();
 
         // (π, C − vG + zπ)
         msm_accumulator.left.add_msm(&pi_msm); // π
@@ -333,7 +333,6 @@ where
         msm_accumulator.right.append_term(v, -E::G1::generator()); // -vG
         msm_accumulator.right.add_msm(&scaled_pi); // zπ
 
-        transcript.assert_empty().map_err(|_| Error::OpeningError)?;
         Ok(msm_accumulator)
     }
 }

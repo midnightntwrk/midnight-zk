@@ -288,7 +288,7 @@ where
     E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
     E::Fr: Ord,
 {
-    let mut res = MSMKZG::<E>::new();
+    let mut res = MSMKZG::<E>::init();
     let mut msms = msms.to_vec();
     for (msm, s) in msms.iter_mut().zip(scalars) {
         msm.scale(s);
