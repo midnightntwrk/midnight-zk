@@ -1600,6 +1600,8 @@ where
         return Err(Error::InvalidInstances);
     }
 
+    let mut r_transcript = CircuitTranscript::init();
+
     let guards = vks
         .iter()
         .zip(pis.iter())
@@ -1621,14 +1623,17 @@ where
                 &[&[pi]],
                 &mut transcript,
             )?;
-            let r: F = transcript.squeeze_challenge();
+            let summary: F = transcript.squeeze_challenge();
+            r_transcript.common(&summary)?;
             transcript.assert_empty().map_err(|_| Error::Opening)?;
-            Ok((dual_msm, r))
+            Ok(dual_msm)
         })
         .collect::<Result<Vec<_>, Error>>()?;
 
+    let r = r_transcript.squeeze_challenge();
+
     let mut acc_guard = DualMSM::init();
-    for (guard, r) in guards {
+    for guard in guards {
         acc_guard.add_msm(guard);
         acc_guard.scale(r);
     }
