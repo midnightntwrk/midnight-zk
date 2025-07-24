@@ -242,10 +242,8 @@ impl<F: PrimeField> Sha256Chip<F> {
         plain_a: AssignedPlain<F, 32>,
     ) -> Result<(AssignedPlainSpreaded<F, 32>, LimbsOfA<F>), Error> {
         /*
-        We need to decompose the 32-bit value A into 10-9-11-2 limbs in big-endian, their spreaded values
-        will be inputs to computing Σ₀(A). Meanwhile, ~A should be asserted as being the valid spreaded value
-        so that (A, ~A) could be pulled back to the previous round and prepared for the register A of the
-        current round, also it will be served as the value of register B for the next round.
+        We need to decompose the 32-bit value A into 10-9-11-2 limbs in big-endian with their spreaded values,
+        and assert (A, ~A) to be valid plain-spreaded pair.
 
         This can be achieved by
 
