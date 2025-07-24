@@ -8,8 +8,11 @@ use midnight_proofs::{
 use crate::{
     field::NativeChip,
     hash::new_sha256::{
-        gates::{decompose_10_9_11_2_gate, decompose_12_12_8_gate, maj_gate, Sigma_0_gate},
-        types::{AssignedPlain, AssignedPlainSpreaded, AssignedSpreaded, LimbsOfA},
+        gates::{
+            decompose_10_9_11_2_gate, decompose_12_12_8_gate, decompose_7_14_5_6_gate, maj_gate,
+            Sigma_0_gate,
+        },
+        types::{AssignedPlain, AssignedPlainSpreaded, AssignedSpreaded, LimbsOfA, LimbsOfE},
         utils::{
             gen_spread_table, get_even_odd_bits, spread, spreaded_Sigma_0, spreaded_maj,
             u32_in_be_limbs, u32_to_fe, u64_to_fe,
@@ -47,6 +50,7 @@ pub struct Sha256Config {
     q_maj: Selector,
     q_12_12_8: Selector,
     q_10_9_11_2: Selector,
+    q_7_14_5_6: Selector,
     q_lookup: Selector,
     table: SpreadTable,
 }
@@ -100,6 +104,7 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
         let q_maj = meta.selector();
         let q_12_12_8 = meta.selector();
         let q_10_9_11_2 = meta.selector();
+        let q_7_14_5_6 = meta.selector();
         let q_lookup = meta.complex_selector();
 
         (0..2).into_iter().for_each(|idx| {
@@ -194,6 +199,27 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
             )
         });
 
+        meta.create_gate("7-14-5-6 decomposition", |meta| {
+            let q_7_14_5_6 = meta.query_selector(q_7_14_5_6);
+
+            let limb_07 = meta.query_advice(advice_cols[0], Rotation(0));
+            let limb_14 = meta.query_advice(advice_cols[2], Rotation(0));
+            let limb_05 = meta.query_advice(advice_cols[0], Rotation(1));
+            let limb_06 = meta.query_advice(advice_cols[2], Rotation(1));
+            let sprdd_limb_07 = meta.query_advice(advice_cols[1], Rotation(0));
+            let sprdd_limb_14 = meta.query_advice(advice_cols[3], Rotation(0));
+            let sprdd_limb_05 = meta.query_advice(advice_cols[1], Rotation(1));
+            let sprdd_limb_06 = meta.query_advice(advice_cols[3], Rotation(1));
+            let plain = meta.query_advice(advice_cols[4], Rotation(0));
+            let sprdd = meta.query_advice(advice_cols[4], Rotation(1));
+
+            decompose_7_14_5_6_gate(
+                q_7_14_5_6,
+                [limb_07, limb_14, limb_05, limb_06],
+                [sprdd_limb_07, sprdd_limb_14, sprdd_limb_05, sprdd_limb_06],
+                (plain, sprdd),
+            )
+        });
         Sha256Config {
             advice_cols,
             fixed_cols,
@@ -201,6 +227,7 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
             q_maj,
             q_12_12_8,
             q_10_9_11_2,
+            q_7_14_5_6,
             q_lookup,
             table: SpreadTable {
                 nbits_tab,
@@ -431,6 +458,65 @@ impl<F: PrimeField> Sha256Chip<F> {
                     val_of_sprdd_forms.map(spreaded_maj),
                     Parity::Odd,
                 )
+            },
+        )
+    }
+
+    /// Decomposes the given `AssignedPlain` into (bit-endian) limbs of bit
+    /// sizes 7, 14, 5 and 6.
+    ///
+    /// This function also returns the spreaded version of the given input.
+    pub(super) fn decompose_in_7_14_5_6(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        plain: &AssignedPlain<F, 32>,
+    ) -> Result<(AssignedPlainSpreaded<F, 32>, LimbsOfE<F>), Error> {
+        /*
+        On a plain input E, we use the following table distribution.
+
+        | T_0 |  A_0 |  A_1  | T_1 |  A_2  |   A_3  | A_4 |
+        |-----|------|-------|-----|-------|--------|-----|
+        |  07 | E.07 | ~E.07 | 14  |  E.14 | ~E.14  |  E  | <- a copy of plain
+        |  05 | E.05 | ~E.05 | 06  |  E.06 | ~E.06  | ~E  |
+
+        Apart from the lookups, the following identities are checked via a
+        custom gate:
+            E = 2^25 *  E.07 + 2^11 *  E.14 + 2^6 *  E.05 +  E.06
+           ~E = 4^25 * ~E.07 + 4^11 * ~E.14 + 4^6 * ~E.05 + ~E.06
+        */
+
+        let adv_cols = self.config().advice_cols;
+        let plain_val = plain.0.value().copied();
+        let sprdd_val = plain_val.map(fe_to_u32).map(spread).map(u64_to_fe);
+        let [val_07, val_14, val_05, val_06] = plain_val
+            .map(|e| u32_in_be_limbs(fe_to_u32(e), [7, 14, 5, 6]))
+            .transpose_array();
+
+        layouter.assign_region(
+            || "decompose E in 7-14-5-6",
+            |mut region| {
+                self.config().q_7_14_5_6.enable(&mut region, 0)?;
+
+                let limb_07 = self.assign_plain_and_spreaded(&mut region, val_07, 0, 0)?;
+                let limb_14 = self.assign_plain_and_spreaded(&mut region, val_14, 0, 1)?;
+                let limb_05 = self.assign_plain_and_spreaded(&mut region, val_05, 1, 0)?;
+                let limb_06 = self.assign_plain_and_spreaded(&mut region, val_06, 1, 1)?;
+
+                plain.0.copy_advice(|| "E", &mut region, adv_cols[4], 0)?;
+                let spreaded = region.assign_advice(|| "~E", adv_cols[4], 1, || sprdd_val)?;
+
+                Ok((
+                    AssignedPlainSpreaded {
+                        plain: plain.clone(),
+                        spreaded: AssignedSpreaded(spreaded),
+                    },
+                    LimbsOfE {
+                        spreaded_limb_07: limb_07.spreaded,
+                        spreaded_limb_14: limb_14.spreaded,
+                        spreaded_limb_05: limb_05.spreaded,
+                        spreaded_limb_06: limb_06.spreaded,
+                    },
+                ))
             },
         )
     }

@@ -142,6 +142,41 @@ pub fn decompose_10_9_11_2_gate<F: PrimeField>(
     )
 }
 
+/// Decompose in 7-14-5-6 gate.
+pub fn decompose_7_14_5_6_gate<F: PrimeField>(
+    selector: Expression<F>,
+    [limb_07, limb_14, limb_05, limb_06]: [Expression<F>; 4],
+    [sprdd_limb_07, sprdd_limb_14, sprdd_limb_05, sprdd_limb_06]: [Expression<F>; 4],
+    (plain, sprdd): (Expression<F>, Expression<F>),
+) -> Constraints<
+    F,
+    (&'static str, Expression<F>),
+    impl Iterator<Item = (&'static str, Expression<F>)>,
+> {
+    // (2^25 * limb_07 + 2^11 * limb_14 + 2^6 * limb_05 + limb_06) - plain
+    let plain_id =
+        linear_combination_pow2([25, 11, 6, 0], [&limb_07, &limb_14, &limb_05, &limb_06]) - plain;
+    // (4^25 * ~limb_07 + 4^11 * ~limb_14 + 4^6 * ~limb_05 + ~limb_06) - sprdd
+    let sprdd_id = linear_combination_pow4(
+        [25, 11, 6, 0],
+        [
+            &sprdd_limb_07,
+            &sprdd_limb_14,
+            &sprdd_limb_05,
+            &sprdd_limb_06,
+        ],
+    ) - sprdd;
+
+    Constraints::with_selector(
+        selector,
+        [
+            ("7_14_5_6 decomposition plain check", plain_id),
+            ("7_14_5_6 decomposition sprdd check", sprdd_id),
+        ]
+        .into_iter(),
+    )
+}
+
 /// Computes a linear combination of terms with coefficients of powers of two.
 fn linear_combination_pow2<F: PrimeField, const N: usize>(
     pow_of_coeffs: [u8; N],
