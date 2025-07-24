@@ -459,7 +459,7 @@ impl<F: PrimeField> Sha256Chip<F> {
     ) -> Result<AssignedPlainSpreaded<F, L>, Error> {
         self.config().q_lookup.enable(region, offset)?;
 
-        let tag_col = self.config().fixed_cols[lookup_idx]; // 0 or 1
+        let nbits_col = self.config().fixed_cols[lookup_idx]; // 0 or 1
         let plain_col = self.config().advice_cols[2 * lookup_idx]; // 0 or 2
         let sprdd_col = self.config().advice_cols[2 * lookup_idx + 1]; // 1 or 3
 
