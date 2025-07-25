@@ -226,6 +226,25 @@ pub fn decompose_7_12_2_5_6_gate<F: PrimeField>(
     )
 }
 
+/// Addition modulo 2^32. The carry and result must be range-checked elsewhere.
+/// At least one summand is required.
+pub fn add_mod_2_32<F: PrimeField>(
+    selector: Expression<F>,
+    summands: &[Expression<F>],
+    carry: Expression<F>,
+    result: Expression<F>,
+) -> Constraints<
+    F,
+    (&'static str, Expression<F>),
+    impl Iterator<Item = (&'static str, Expression<F>)>,
+> {
+    assert!(!summands.is_empty(), "At least one summand is required");
+    let lhs = (summands.iter().cloned()).reduce(|acc, x| acc + x).unwrap();
+    let rhs = result + carry * Expression::Constant(F::from(1u64 << 32));
+
+    Constraints::with_selector(selector, [("add_mod_2_32 check", lhs - rhs)].into_iter())
+}
+
 /// Computes a linear combination of terms with coefficients of powers of two.
 fn linear_combination_pow2<F: PrimeField, const N: usize>(
     pow_of_coeffs: [u8; N],
