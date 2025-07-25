@@ -645,7 +645,7 @@ impl<F: PrimeField> Sha256Chip<F> {
     /// Note that we have two parallel lookup arguments. The caller must
     /// choose which of the two is used via the `lookup_idx`.
     /// If `lookup_idx = 0`, the lookup on columns (T_0, A_0, A_1) will be used.
-    /// If `lookup_idx = 0`, the lookup on columns (T_1, A_2, A_3) will be used.
+    /// If `lookup_idx = 1`, the lookup on columns (T_1, A_2, A_3) will be used.
     ///
     /// # Unsatisfiable
     ///
