@@ -6,10 +6,12 @@ use std::{
     fmt::Debug,
     io,
     marker::PhantomData,
-    ops::{Add, Deref, DerefMut, Index, IndexMut, Mul, RangeFrom, RangeFull, Sub},
+    ops::{
+        Add, AddAssign, Deref, DerefMut, Index, IndexMut, Mul, MulAssign, RangeFrom, RangeFull, Sub,
+    },
 };
 
-use ff::{BatchInvert, PrimeField};
+use ff::{BatchInvert, PrimeField, WithSmallOrderMulGroup};
 use group::ff::Field;
 use halo2curves::serde::SerdeObject;
 
@@ -42,23 +44,116 @@ pub enum Error {
 }
 
 /// The basis over which a polynomial is described.
-pub trait Basis: Copy + Debug + Send + Sync {}
+pub trait Basis: Copy + Debug + Send + Sync {
+    /// Returns the length of the representation, given the domain.
+    fn len<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> usize;
+
+    /// Returns an empty polynomial for the given domain.
+    fn empty<F: WithSmallOrderMulGroup<3>>(
+        evaluation_domain: &EvaluationDomain<F>,
+    ) -> Polynomial<F, Self> {
+        Polynomial {
+            values: vec![F::ZERO; Self::len(evaluation_domain)],
+            _marker: Default::default(),
+        }
+    }
+
+    /// Returns omega for the domain that the polynomial is represented in.
+    fn omega<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> F;
+
+    /// Returns k for the domain that the polynomial is represented in.
+    fn k<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> u32;
+
+    /// Converts a polynomial in coefficient form to Self's form.
+    fn coeff_to_self<F: WithSmallOrderMulGroup<3>>(
+        evaluation_domain: &EvaluationDomain<F>,
+        other: Polynomial<F, Coeff>,
+    ) -> Polynomial<F, Self>;
+
+    /// Returns g_coset if domain is extended
+    // TODO: This shouldn't really be linked to the `Basis`.. not sure I like this
+    // method
+    fn g_coset<F: WithSmallOrderMulGroup<3>>(_evaluation_domain: &EvaluationDomain<F>) -> F {
+        F::ONE
+    }
+}
 
 /// The polynomial is defined as coefficients
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Coeff;
-impl Basis for Coeff {}
+impl Basis for Coeff {
+    fn len<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> usize {
+        evaluation_domain.n as usize
+    }
+
+    fn omega<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> F {
+        evaluation_domain.get_omega()
+    }
+
+    fn k<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> u32 {
+        evaluation_domain.k()
+    }
+
+    fn coeff_to_self<F: WithSmallOrderMulGroup<3>>(
+        _evaluation_domain: &EvaluationDomain<F>,
+        _other: Polynomial<F, Coeff>,
+    ) -> Polynomial<F, Self> {
+        unreachable!()
+    }
+}
 
 /// The polynomial is defined as coefficients of Lagrange basis polynomials
 #[derive(Clone, Copy, Debug)]
 pub struct LagrangeCoeff;
-impl Basis for LagrangeCoeff {}
+impl Basis for LagrangeCoeff {
+    fn len<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> usize {
+        evaluation_domain.n as usize
+    }
+
+    fn omega<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> F {
+        evaluation_domain.get_omega()
+    }
+
+    fn k<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> u32 {
+        evaluation_domain.k()
+    }
+
+    fn coeff_to_self<F: WithSmallOrderMulGroup<3>>(
+        evaluation_domain: &EvaluationDomain<F>,
+        other: Polynomial<F, Coeff>,
+    ) -> Polynomial<F, Self> {
+        evaluation_domain.coeff_to_lagrange(other)
+    }
+}
 
 /// The polynomial is defined as coefficients of Lagrange basis polynomials in
 /// an extended size domain which supports multiplication
 #[derive(Clone, Copy, Debug)]
 pub struct ExtendedLagrangeCoeff;
-impl Basis for ExtendedLagrangeCoeff {}
+impl Basis for ExtendedLagrangeCoeff {
+    fn len<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> usize {
+        evaluation_domain.extended_len()
+    }
+
+    fn omega<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> F {
+        evaluation_domain.get_extended_omega()
+    }
+
+    fn k<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> u32 {
+        evaluation_domain.extended_k()
+    }
+
+    fn coeff_to_self<F: WithSmallOrderMulGroup<3>>(
+        evaluation_domain: &EvaluationDomain<F>,
+        other: Polynomial<F, Coeff>,
+    ) -> Polynomial<F, Self> {
+        evaluation_domain.coeff_to_extended(other)
+    }
+
+    fn g_coset<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> F {
+        evaluation_domain.g_coset
+    }
+}
 
 /// Represents a univariate polynomial defined over a field and a particular
 /// basis.
@@ -66,6 +161,16 @@ impl Basis for ExtendedLagrangeCoeff {}
 pub struct Polynomial<F, B> {
     pub(crate) values: Vec<F>,
     pub(crate) _marker: PhantomData<B>,
+}
+
+impl<F: PrimeField, B> Polynomial<F, B> {
+    /// Creates a zero polynomial of the given size.
+    pub fn init(num_coeffs: usize) -> Self {
+        Polynomial {
+            values: vec![F::ZERO; num_coeffs],
+            _marker: PhantomData,
+        }
+    }
 }
 
 impl<F, B> Index<usize> for Polynomial<F, B> {
@@ -221,13 +326,18 @@ impl<'a, F: Field, B: Basis> Add<&'a Polynomial<F, B>> for Polynomial<F, B> {
     type Output = Polynomial<F, B>;
 
     fn add(mut self, rhs: &'a Polynomial<F, B>) -> Polynomial<F, B> {
+        self.add_assign(rhs);
+        self
+    }
+}
+
+impl<'a, F: Field, B: Basis> AddAssign<&'a Polynomial<F, B>> for Polynomial<F, B> {
+    fn add_assign(&mut self, rhs: &'a Polynomial<F, B>) {
         parallelize(&mut self.values, |lhs, start| {
             for (lhs, rhs) in lhs.iter_mut().zip(rhs.values[start..].iter()) {
                 *lhs += *rhs;
             }
         });
-
-        self
     }
 }
 
@@ -279,25 +389,26 @@ impl<F: Field, B: Basis> Mul<F> for Polynomial<F, B> {
     type Output = Polynomial<F, B>;
 
     fn mul(mut self, rhs: F) -> Polynomial<F, B> {
+        self.mul_assign(rhs);
+        self
+    }
+}
+
+impl<F: Field, B: Basis> MulAssign<F> for Polynomial<F, B> {
+    fn mul_assign(&mut self, rhs: F) {
         if rhs == F::ZERO {
             parallelize(&mut self.values, |lhs, _| {
                 for lhs in lhs.iter_mut() {
                     *lhs = F::ZERO;
                 }
             });
-            return self;
+        } else if rhs != F::ONE {
+            parallelize(&mut self.values, |lhs, _| {
+                for lhs in lhs.iter_mut() {
+                    *lhs *= rhs;
+                }
+            });
         }
-        if rhs == F::ONE {
-            return self;
-        }
-
-        parallelize(&mut self.values, |lhs, _| {
-            for lhs in lhs.iter_mut() {
-                *lhs *= rhs;
-            }
-        });
-
-        self
     }
 }
 
