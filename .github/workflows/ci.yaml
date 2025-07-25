@@ -150,7 +150,6 @@ jobs:
     name: Clippy
     timeout-minutes: 30
     runs-on: ubuntu-latest
-    continue-on-error: true
 
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
@@ -163,19 +162,22 @@ jobs:
         uses: actions-rs/clippy-check@b5b5f21f4797c02da247df37026fcd0a5024aa4d
         continue-on-error: true
         with:
-          args: -p blstrs --all-targets --all-features -- -Dwarnings
+          token: ${{ secrets.GITHUB_TOKEN }}
+          args: -p midnight-curves --all-targets --all-features -- -Dwarnings
 
       - name: Run Clippy on `proofs`
         uses: actions-rs/clippy-check@b5b5f21f4797c02da247df37026fcd0a5024aa4d
         continue-on-error: true
         with:
-          args: -p midnight_proofs --all-targets --all-features -- -Dwarnings
+          token: ${{ secrets.GITHUB_TOKEN }}
+          args: -p midnight-proofs --all-targets --all-features -- -Dwarnings
 
 
       - name: Run Clippy on `circuits`
         uses: actions-rs/clippy-check@b5b5f21f4797c02da247df37026fcd0a5024aa4d
         continue-on-error: true
         with:
+          token: ${{ secrets.GITHUB_TOKEN }}
           args: -p midnight-circuits --all-targets --all-features -- -Dwarnings
 
 
@@ -183,4 +185,5 @@ jobs:
         uses: actions-rs/clippy-check@b5b5f21f4797c02da247df37026fcd0a5024aa4d
         continue-on-error: true
         with:
+          token: ${{ secrets.GITHUB_TOKEN }}
           args: -p midnight-aggregator --all-targets --all-features -- -Dwarnings
