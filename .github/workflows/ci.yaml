@@ -163,12 +163,14 @@ jobs:
         uses: actions-rs/clippy-check@b5b5f21f4797c02da247df37026fcd0a5024aa4d
         continue-on-error: true
         with:
+          token: ${{ secrets.GITHUB_TOKEN }}
           args: -p blstrs --all-targets --all-features -- -Dwarnings
 
       - name: Run Clippy on `proofs`
         uses: actions-rs/clippy-check@b5b5f21f4797c02da247df37026fcd0a5024aa4d
         continue-on-error: true
         with:
+          token: ${{ secrets.GITHUB_TOKEN }}
           args: -p midnight_proofs --all-targets --all-features -- -Dwarnings
 
 
@@ -176,6 +178,7 @@ jobs:
         uses: actions-rs/clippy-check@b5b5f21f4797c02da247df37026fcd0a5024aa4d
         continue-on-error: true
         with:
+          token: ${{ secrets.GITHUB_TOKEN }}
           args: -p midnight-circuits --all-targets --all-features -- -Dwarnings
 
 
@@ -183,4 +186,5 @@ jobs:
         uses: actions-rs/clippy-check@b5b5f21f4797c02da247df37026fcd0a5024aa4d
         continue-on-error: true
         with:
+          token: ${{ secrets.GITHUB_TOKEN }}
           args: -p midnight-aggregator --all-targets --all-features -- -Dwarnings
