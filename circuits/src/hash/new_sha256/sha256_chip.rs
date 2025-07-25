@@ -14,7 +14,7 @@ use crate::{
         },
         types::{AssignedPlain, AssignedPlainSpreaded, AssignedSpreaded, LimbsOfA, LimbsOfE},
         utils::{
-            gen_spread_table, get_even_odd_bits, spread, spreaded_Sigma_0, spreaded_Sigma_1,
+            gen_spread_table, get_even_and_odd_bits, spread, spreaded_Sigma_0, spreaded_Sigma_1,
             spreaded_maj, u32_in_be_limbs, u32_to_fe, u64_to_fe,
         },
     },
@@ -95,8 +95,8 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
         meta: &mut ConstraintSystem<F>,
         shared_res: &Self::SharedResources,
     ) -> Sha256Config {
-        let advice_cols = shared_res.0.clone();
-        let fixed_cols = shared_res.1.clone();
+        let advice_cols = shared_res.0;
+        let fixed_cols = shared_res.1;
         let nbits_tab = meta.lookup_table_column();
         let plain_tab = meta.lookup_table_column();
         let sprdd_tab = meta.lookup_table_column();
@@ -361,13 +361,13 @@ impl<F: PrimeField> Sha256Chip<F> {
     ) -> Result<AssignedPlain<F, 32>, Error> {
         /*
         We need to compute:
-             A >>> 2 :  (   A.2  ||  A.10  ||   A.9  ||  A.11  )
-          ⊕ A >>> 13 :  (  A.11  ||   A.2  ||  A.10  ||   A.9  )
-          ⊕ A >>> 22 :  (   A.9  ||  A.11  ||   A.2  ||  A.10  )
+             A >>> 2 :  ( A.02 || A.10 || A.09 || A.11 )
+          ⊕ A >>> 13 :  ( A.11 || A.02 || A.10 || A.09 )
+          ⊕ A >>> 22 :  ( A.09 || A.11 || A.02 || A.10 )
 
         which can be achieved by
 
-        1) applying plain-spreaded lookup on 12-12-8 limbs of Evn and Odd:
+        1) applying the plain-spreaded lookup on 12-12-8 limbs of Evn and Odd:
              Evn: (Evn.12a, Evn.12b, Evn.8)
              Odd: (Odd.12a, Odd.12b, Odd.8)
 
@@ -378,9 +378,9 @@ impl<F: PrimeField> Sha256Chip<F> {
         3) asserting the Sigma_0 identity regarding the spreaded values:
               (4^20 * ~Evn.12a + 4^8 * ~Evn.12b + ~Evn.8) +
           2 * (4^20 * ~Odd.12a + 4^8 * ~Odd.12b + ~Odd.8)
-             = 4^30 *  ~A.2  +  4^20 * ~A.10  +  4^11 * ~A.9  +  ~A.11
-             + 4^21 * ~A.11  +  4^19 *  ~A.2  +  4^9 * ~A.10  +   ~A.9
-             + 4^23 *  ~A.9  +  4^12 * ~A.11  +  4^10 * ~A.2  +  ~A.10
+             = 4^30 * ~A.02 + 4^20 * ~A.10 + 4^11 * ~A.09 + ~A.11
+             + 4^21 * ~A.11 + 4^19 * ~A.02 + 4^9  * ~A.10 + ~A.09
+             + 4^23 * ~A.09 + 4^12 * ~A.11 + 4^10 * ~A.02 + ~A.10
 
         The output is Evn.
 
@@ -388,8 +388,8 @@ impl<F: PrimeField> Sha256Chip<F> {
 
         | T_0 |    A_0  |    A_1   | T_1 |   A_2   |    A_3   |  A_4  |  A_5  |  A_6  |
         |-----|---------|----------|-----|---------|----------|-------|-------|-------|
-        |  12 | Evn.12a | ~Evn.12a |  12 | Odd.12a | ~Odd.12a |  Evn  | ~A.10 |  ~A.9 |
-        |  12 | Evn.12b | ~Evn.12b |  12 | Odd.12b | ~Odd.12b |       | ~A.11 |  ~A.2 |
+        |  12 | Evn.12a | ~Evn.12a |  12 | Odd.12a | ~Odd.12a |  Evn  | ~A.10 | ~A.09 |
+        |  12 | Evn.12b | ~Evn.12b |  12 | Odd.12b | ~Odd.12b |       | ~A.11 | ~A.02 |
         |   8 |   Evn.8 |   ~Evn.8 |   8 |   Odd.8 |   ~Odd.8 |       |       |       |
         */
 
@@ -441,7 +441,7 @@ impl<F: PrimeField> Sha256Chip<F> {
 
         which can be achieved by
 
-        1) applying plain-spreaded lookup on 12-12-8 limbs of Evn and Odd:
+        1) applying the plain-spreaded lookup on 12-12-8 limbs of Evn and Odd:
              Evn: (Evn.12a, Evn.12b, Evn.8)
              Odd: (Odd.12a, Odd.12b, Odd.8)
 
@@ -511,9 +511,9 @@ impl<F: PrimeField> Sha256Chip<F> {
 
         | T_0 |  A_0 |  A_1  | T_1 |  A_2  |   A_3  | A_4 |
         |-----|------|-------|-----|-------|--------|-----|
-        |  07 | E.07 | ~E.07 | 12  |  E.12 | ~E.12  |  E  | <- a copy of plain
-        |  02 | E.02 | ~E.02 | 05  |  E.05 | ~E.05  | ~E  |
-        |  06 | E.06 | ~E.06 |  0  |   0   |    0   |     |
+        |  07 | E.07 | ~E.07 |  12 |  E.12 | ~E.12  |  E  | <- a copy of plain
+        |  02 | E.02 | ~E.02 |  05 |  E.05 | ~E.05  | ~E  |
+        |  06 | E.06 | ~E.06 |   0 |   0   |    0   |     |
 
         Apart from the lookups, the following identities are checked via a
         custom gate:
@@ -568,13 +568,13 @@ impl<F: PrimeField> Sha256Chip<F> {
     ) -> Result<AssignedPlain<F, 32>, Error> {
         /*
         We need to compute:
-             E >>> 6 :  (   E.06  ||   E.07  ||   E.12  ||   E.02   ||   E.05   )
-          ⊕ E >>> 11 :  (   E.05  ||   E.06  ||   E.07  ||   E.12   ||   E.02   )
-          ⊕ E >>> 25 :  (   E.12  ||   E.02  ||   E.05  ||   E.06   ||   E.07   )
+             E >>> 6 :  ( E.06 || E.07 || E.12 || E.02 || E.05 )
+          ⊕ E >>> 11 :  ( E.05 || E.06 || E.07 || E.12 || E.02 )
+          ⊕ E >>> 25 :  ( E.12 || E.02 || E.05 || E.06 || E.07 )
 
         which can be achieved by
 
-        1) applying plain-spreaded lookup on 12-12-8 limbs of Evn and Odd:
+        1) applying the plain-spreaded lookup on 12-12-8 limbs of Evn and Odd:
              Evn: (Evn.12a, Evn.12b, Evn.8)
              Odd: (Odd.12a, Odd.12b, Odd.8)
 
@@ -585,19 +585,19 @@ impl<F: PrimeField> Sha256Chip<F> {
          3) asserting the Sigma_1 identity regarding the spreaded values:
               (4^20 * ~Evn.12a + 4^8 * ~Evn.12b + ~Evn.8) +
           2 * (4^20 * ~Odd.12a + 4^8 * ~Odd.12b + ~Odd.8)
-             = 4^26 *  ~E.6  +  4^19 * ~E.7  +  4^7  * ~E.12  + 4^5 *  ~E.2  + ~E.5
-             + 4^27 *  ~E.5  +  4^21 * ~E.6  +  4^14 *  ~E.7  + 4^2 * ~E.12  + ~E.2
-             + 4^20 * ~E.12  +  4^18 * ~E.2  +  4^13 *  ~E.5  + 4^7 *  ~E.6  + ~E.7
+             = 4^26 * ~E.06 + 4^19 * ~E.07 + 4^7  * ~E.12 + 4^5 * ~E.02 + ~E.05
+             + 4^27 * ~E.05 + 4^21 * ~E.06 + 4^14 * ~E.07 + 4^2 * ~E.12 + ~E.02
+             + 4^20 * ~E.12 + 4^18 * ~E.02 + 4^13 * ~E.05 + 4^7 * ~E.06 + ~E.07
 
         The output is Evn.
 
         We distribute these values in the PLONK table as follows.
 
-        | T_0 |    A_0   |    A_1    | T_1 |   A_2   |    A_3   |  A_4  |  A_5  |  A_6  |
-        |-----|----------|-----------|-----|---------|----------|-------|-------|-------|
-        |  12 | Even.12a | ~Even.12a |  12 | Odd.12a | ~Odd.12a | Even  | ~E.07 | ~E.12 |
-        |  12 | Even.12b | ~Even.12b |  12 | Odd.12b | ~Odd.12b |       | ~E.02 | ~E.05 |
-        |   8 |   Even.8 |   ~Even.8 |   8 |   Odd.8 |   ~Odd.8 |       | ~E.06 |       |
+        | T_0 |   A_0   |    A_1   | T_1 |   A_2   |    A_3   | A_4 |  A_5  |  A_6  |
+        |-----|---------|----------|-----|---------|----------|-----|-------|-------|
+        |  12 | Evn.12a | ~Evn.12a |  12 | Odd.12a | ~Odd.12a | Evn | ~E.07 | ~E.12 |
+        |  12 | Evn.12b | ~Evn.12b |  12 | Odd.12b | ~Odd.12b |     | ~E.02 | ~E.05 |
+        |   8 |   Evn.8 |   ~Evn.8 |   8 |   Odd.8 |   ~Odd.8 |     | ~E.06 |       |
         */
 
         let adv_cols = self.config().advice_cols;
@@ -713,7 +713,7 @@ impl<F: PrimeField> Sha256Chip<F> {
     ) -> Result<AssignedPlain<F, 32>, Error> {
         self.config().q_12_12_8.enable(region, 0)?;
 
-        let (evn_val, odd_val) = value.map(get_even_odd_bits).unzip();
+        let (evn_val, odd_val) = value.map(get_even_and_odd_bits).unzip();
 
         let [evn_12a, evn_12b, evn_8] = evn_val
             .map(|v| u32_in_be_limbs(v, [12, 12, 8]))

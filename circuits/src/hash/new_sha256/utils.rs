@@ -2,14 +2,14 @@ use ff::PrimeField;
 
 use crate::utils::util::fe_to_u32;
 
-pub const MASK_EVEN_64: u64 = 0x5555_5555_5555_5555; // 0101010101010101... (even positions in u64)
-pub const MASK_ODD_64: u64 = 0xAAAA_AAAA_AAAA_AAAA; // 1010101010101010... (odd positions in u64)
+const MASK_EVN_64: u64 = 0x5555_5555_5555_5555; // 0101010101010101... (even positions in u64)
+const MASK_ODD_64: u64 = 0xAAAA_AAAA_AAAA_AAAA; // 1010101010101010... (odd positions in u64)
 
 const LOOKUP_LENGTHS: [u32; 9] = [2, 5, 6, 7, 8, 9, 10, 11, 12]; // supported lookup bit lengths
 const MAX_LOOKUP_LENGTH: usize = 12; // maximum bit length of plain values in lookup table
 
 /// Returns the even and odd bits of little-endian binary representation of u64.
-pub fn get_even_odd_bits(value: u64) -> (u32, u32) {
+pub fn get_even_and_odd_bits(value: u64) -> (u32, u32) {
     let mut even = 0u64;
     let mut odd = 0u64;
     let mut bit_pos = 0usize;
@@ -129,17 +129,14 @@ pub fn gen_spread_table<F: PrimeField>() -> impl Iterator<Item = (F, F, F)> {
 pub fn spreaded_Sigma_0(spreaded_limbs: [u64; 4]) -> u64 {
     assert!(spreaded_limbs.into_iter().all(in_valid_spreaded_form));
 
-    let sA_10 = spreaded_limbs[0];
-    let sA_9 = spreaded_limbs[1];
-    let sA_11 = spreaded_limbs[2];
-    let sA_2 = spreaded_limbs[3];
+    let [sA_10, sA_09, sA_11, sA_02] = spreaded_limbs;
 
     // As each limb is in valid spreaded form, the sum of three rotations composed
     // by the limbs is at most: 3 * 0b0101..01 = 0b1111..11.
-    // Hence, the sum should never overflow u64.
-    (pow4(30) * sA_2 + pow4(20) * sA_10 + pow4(11) * sA_9 + sA_11)
-        + (pow4(21) * sA_11 + pow4(19) * sA_2 + pow4(9) * sA_10 + sA_9)
-        + (pow4(23) * sA_9 + pow4(12) * sA_11 + pow4(10) * sA_2 + sA_10)
+    // Hence, the sum will never overflow u64.
+    (pow4(30) * sA_02 + pow4(20) * sA_10 + pow4(11) * sA_09 + sA_11)
+        + (pow4(21) * sA_11 + pow4(19) * sA_02 + pow4(09) * sA_10 + sA_09)
+        + (pow4(23) * sA_09 + pow4(12) * sA_11 + pow4(10) * sA_02 + sA_10)
 }
 
 /// Computes off-circuit spreaded Maj(A, B, C) with A, B, C in spreaded forms.
@@ -150,13 +147,11 @@ pub fn spreaded_Sigma_0(spreaded_limbs: [u64; 4]) -> u64 {
 pub fn spreaded_maj(spreaded_forms: [u64; 3]) -> u64 {
     assert!(spreaded_forms.into_iter().all(in_valid_spreaded_form));
 
-    let sA = spreaded_forms[0];
-    let sB = spreaded_forms[1];
-    let sC = spreaded_forms[2];
+    let [sA, sB, sC] = spreaded_forms;
 
     // As each of sA, sB, sC is in valid spreaded form, their sum
     // is at most: 3 * 0b0101..01 = 0b1111..11.
-    // Hence, the sum should never overflow u64.
+    // Hence, the sum will never overflow u64.
     sA + sB + sC
 }
 
@@ -168,18 +163,14 @@ pub fn spreaded_maj(spreaded_forms: [u64; 3]) -> u64 {
 pub fn spreaded_Sigma_1(spreaded_limbs: [u64; 5]) -> u64 {
     assert!(spreaded_limbs.into_iter().all(in_valid_spreaded_form));
 
-    let sE_7 = spreaded_limbs[0];
-    let sE_12 = spreaded_limbs[1];
-    let sE_2 = spreaded_limbs[2];
-    let sE_5 = spreaded_limbs[3];
-    let sE_6 = spreaded_limbs[4];
+    let [sE_07, sE_12, sE_02, sE_05, sE_06] = spreaded_limbs;
 
     // As each limb is in valid spreaded form, the sum of three rotations composed
     // by the limbs is at most: 3 * 0b0101..01 = 0b1111..11.
-    // Hence, the sum should never overflow u64.
-    (pow4(26) * sE_6 + pow4(19) * sE_7 + pow4(7) * sE_12 + pow4(5) * sE_2 + sE_5)
-        + (pow4(27) * sE_5 + pow4(21) * sE_6 + pow4(14) * sE_7 + pow4(2) * sE_12 + sE_2)
-        + (pow4(20) * sE_12 + pow4(18) * sE_2 + pow4(13) * sE_5 + pow4(7) * sE_6 + sE_7)
+    // Hence, the sum will never overflow u64.
+    (pow4(26) * sE_06 + pow4(19) * sE_07 + pow4(7) * sE_12 + pow4(5) * sE_02 + sE_05)
+        + (pow4(27) * sE_05 + pow4(21) * sE_06 + pow4(14) * sE_07 + pow4(2) * sE_12 + sE_02)
+        + (pow4(20) * sE_12 + pow4(18) * sE_02 + pow4(13) * sE_05 + pow4(7) * sE_06 + sE_07)
 }
 
 fn pow4(n: u32) -> u64 {
@@ -197,20 +188,20 @@ mod tests {
     type F = midnight_curves::Fq;
 
     #[test]
-    fn test_get_even_odd_bits() {
+    fn test_get_even_and_odd_bits() {
         [
             (0, 0, 0),
             (1, 1, 0),
             (2, 0, 1),
             (1 << 3, 0, 2),
             (u64::MAX, 0xFFFF_FFFF, 0xFFFF_FFFF),
-            (MASK_EVEN_64, 0xFFFF_FFFF, 0),
+            (MASK_EVN_64, 0xFFFF_FFFF, 0),
             (MASK_ODD_64, 0, 0xFFFF_FFFF),
             (0b110101101u64, 19, 14),
         ]
         .into_iter()
         .for_each(|(n, expected_even, expected_odd)| {
-            let (even, odd) = get_even_odd_bits(n);
+            let (even, odd) = get_even_and_odd_bits(n);
             assert_eq!(even, expected_even);
             assert_eq!(odd, expected_odd);
         });
@@ -219,7 +210,7 @@ mod tests {
     #[test]
     fn test_in_valid_spreaded_form() {
         // Positive tests
-        assert!([MASK_EVEN_64, 0b101010101, 0, 1]
+        assert!([MASK_EVN_64, 0b101010101, 0, 1]
             .into_iter()
             .all(in_valid_spreaded_form));
 
@@ -305,7 +296,7 @@ mod tests {
             // Compute Σ₀(A) by the even bits of the value returned by [`spreaded_Sigma_0`].
             let plain_limbs: [u32; 4] = u32_in_be_limbs(val, [10, 9, 11, 2]);
             let spreaded_limbs: [u64; 4] = plain_limbs.map(spread);
-            let (even, _) = get_even_odd_bits(spreaded_Sigma_0(spreaded_limbs));
+            let (even, _) = get_even_and_odd_bits(spreaded_Sigma_0(spreaded_limbs));
 
             assert_eq!(ret, even);
         }
@@ -327,7 +318,7 @@ mod tests {
             // Compute Maj(A, B, C) by the odd bits of the value returned by
             // [`spreaded_maj`].
             let spreaded_forms: [u64; 3] = vals.map(spread);
-            let (_even, odd) = get_even_odd_bits(spreaded_maj(spreaded_forms));
+            let (_even, odd) = get_even_and_odd_bits(spreaded_maj(spreaded_forms));
 
             assert_eq!(ret, odd);
         }
@@ -352,7 +343,7 @@ mod tests {
             // Compute Σ₁(E) by the even bits of the value returned by [`spreaded_Sigma_1`].
             let plain_limbs: [u32; 5] = u32_in_be_limbs(val, [7, 12, 2, 5, 6]);
             let spreaded_limbs: [u64; 5] = plain_limbs.map(spread);
-            let (even, _) = get_even_odd_bits(spreaded_Sigma_1(spreaded_limbs));
+            let (even, _) = get_even_and_odd_bits(spreaded_Sigma_1(spreaded_limbs));
 
             assert_eq!(ret, even);
         }

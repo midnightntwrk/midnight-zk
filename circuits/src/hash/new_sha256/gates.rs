@@ -12,7 +12,7 @@ pub fn Sigma_0_gate<F: PrimeField>(
     (&'static str, Expression<F>),
     impl Iterator<Item = (&'static str, Expression<F>)>,
 > {
-    // 4^30 * ~limb_02 + 4^20 * ~limb_10 + 4^11 * ~limb_09  + ~limb_11
+    // 4^30 * ~L02 + 4^20 * ~L10 + 4^11 * ~L09  + ~L11
     let sprdd_1st_rot = linear_combination_pow4(
         [30, 20, 11, 0],
         [
@@ -23,7 +23,7 @@ pub fn Sigma_0_gate<F: PrimeField>(
         ],
     );
 
-    // 4^21 * ~limb_11 + 4^19 * ~limb_02 + 4^9 * ~limb_10 + ~limb_09
+    // 4^21 * ~L11 + 4^19 * ~L02 + 4^9 * ~L10 + ~L09
     let sprdd_2nd_rot = linear_combination_pow4(
         [21, 19, 9, 0],
         [
@@ -34,7 +34,7 @@ pub fn Sigma_0_gate<F: PrimeField>(
         ],
     );
 
-    // 4^23 * ~limb_09 + 4^12 * ~limb_11 + 4^10 * ~limb_02 + ~limb_10
+    // 4^23 * ~L09 + 4^12 * ~L11 + 4^10 * ~L02 + ~L10
     let sprdd_3rd_rot = linear_combination_pow4(
         [23, 12, 10, 0],
         [&sprdd_09, &sprdd_11, &sprdd_02, &sprdd_10],
@@ -97,22 +97,19 @@ pub fn Sigma_1_gate<F: PrimeField>(
     (&'static str, Expression<F>),
     impl Iterator<Item = (&'static str, Expression<F>)>,
 > {
-    // 4^26 * ~limb_06 + 4^19 * ~limb_07 + 4^7 * ~limb_12 + 4^5 * ~limb_02 +
-    // ~limb_05
+    // 4^26 * ~L06 + 4^19 * ~L07 + 4^7 * ~L12 + 4^5 * ~L02 + ~L05
     let sprdd_1st_rot = linear_combination_pow4(
         [26, 19, 7, 5, 0],
         [&sprdd_06, &sprdd_07, &sprdd_12, &sprdd_02, &sprdd_05],
     );
 
-    // 4^27 * ~limb_05 + 4^21 * ~limb_06 + 4^14 * ~limb_07 + 4^2 * ~limb_12 +
-    // ~limb_02
+    // 4^27 * ~L05 + 4^21 * ~L06 + 4^14 * ~L07 + 4^2 * ~L12 + ~L02
     let sprdd_2nd_rot = linear_combination_pow4(
         [27, 21, 14, 2, 0],
         [&sprdd_05, &sprdd_06, &sprdd_07, &sprdd_12, &sprdd_02],
     );
 
-    // 4^20 * ~limb_12 + 4^18 * ~limb_02 + 4^13 * ~limb_05 + 4^7 * ~limb_06 +
-    // ~limb_07
+    // 4^20 * ~L12 + 4^18 * ~L02 + 4^13 * ~L05 + 4^7 * ~L06 + ~L07
     let sprdd_3rd_rot = linear_combination_pow4(
         [20, 18, 13, 7, 0],
         [&sprdd_12, &sprdd_02, &sprdd_05, &sprdd_06, &sprdd_07],
@@ -166,11 +163,11 @@ pub fn decompose_10_9_11_2_gate<F: PrimeField>(
     (&'static str, Expression<F>),
     impl Iterator<Item = (&'static str, Expression<F>)>,
 > {
-    // 2^22 * limb_10 + 2^13 * limb_09 + 2^2 * limb_11 + limb_02 - plain
+    // 2^22 * L10 + 2^13 * L09 + 2^2 * L11 + L02 - plain
     let plain_id =
         linear_combination_pow2([22, 13, 2, 0], [&limb_10, &limb_09, &limb_11, &limb_02]) - plain;
 
-    // 4^22 * ~limb_10 + 4^13 * ~limb_09 + 4^2 * ~limb_11 + ~limb_02 - sprdd
+    // 4^22 * ~L10 + 4^13 * ~L09 + 4^2 * ~L11 + ~L02 - sprdd
     let sprdd_id = linear_combination_pow4(
         [22, 13, 2, 0],
         [
@@ -202,14 +199,12 @@ pub fn decompose_7_12_2_5_6_gate<F: PrimeField>(
     (&'static str, Expression<F>),
     impl Iterator<Item = (&'static str, Expression<F>)>,
 > {
-    // (2^25 * limb_07 + 2^13 * limb_12 + 2^11 * limb_02 + 2^6 * limb_05 + limb_06)
-    // - plain
+    // (2^25 * L07 + 2^13 * L12 + 2^11 * L02 + 2^6 * L05 + L06) - plain
     let plain_id = linear_combination_pow2(
         [25, 13, 11, 6, 0],
         [&limb_07, &limb_12, &limb_02, &limb_05, &limb_06],
     ) - plain;
-    // (4^25 * ~limb_07 + 4^13 * ~limb_12 + 4^11 * ~limb_02 + 4^6 * ~limb_05 +
-    // ~limb_06) - sprdd
+    // (4^25 * ~L07 + 4^13 * ~L12 + 4^11 * ~L02 + 4^6 * ~L05 + ~L06) - sprdd
     let sprdd_id = linear_combination_pow4(
         [25, 13, 11, 6, 0],
         [
