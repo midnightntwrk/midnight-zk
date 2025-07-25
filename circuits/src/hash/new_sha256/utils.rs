@@ -2,7 +2,7 @@ use ff::PrimeField;
 
 use crate::utils::util::fe_to_u32;
 
-const MASK_EVN_64: u64 = 0x5555_5555_5555_5555; // 0101010101010101... (even positions in u64)
+pub(super) const MASK_EVN_64: u64 = 0x5555_5555_5555_5555; // 0101010101010101... (even positions in u64)
 const MASK_ODD_64: u64 = 0xAAAA_AAAA_AAAA_AAAA; // 1010101010101010... (odd positions in u64)
 
 const LOOKUP_LENGTHS: [u32; 9] = [2, 5, 6, 7, 8, 9, 10, 11, 12]; // supported lookup bit lengths
@@ -51,6 +51,19 @@ pub fn spread(x: u32) -> u64 {
         },
     );
     ret
+}
+
+/// Negates the even bits of u64 (in little-endian representation).
+///
+/// # Panics
+///
+/// If the input is not in clean spreaded form.
+pub fn negate_spreaded(x: u64) -> u64 {
+    assert!(
+        in_valid_spreaded_form(x),
+        "Input must be in valid spreaded form"
+    );
+    x ^ MASK_EVN_64
 }
 
 /// Breaks the value into big-endian limbs following the required limb lengths.
@@ -225,6 +238,15 @@ mod tests {
         [(0, 0), (1, 1), (0b10, 0b0100), (0b11, 0b0101)]
             .into_iter()
             .for_each(|(plain, spreaded)| assert_eq!(spread(plain), spreaded));
+    }
+
+    #[test]
+    fn test_negate_spreaded() {
+        // Positive tests
+        assert_eq!(negate_spreaded(MASK_EVN_64), 0);
+        assert_eq!(negate_spreaded(1), MASK_EVN_64 - 1);
+        // Negative tests
+        assert_ne!(negate_spreaded(0), 0);
     }
 
     #[test]

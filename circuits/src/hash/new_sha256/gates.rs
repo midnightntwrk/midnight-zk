@@ -76,7 +76,7 @@ pub fn maj_gate<F: PrimeField>(
     let sprdd_odd =
         linear_combination_pow4([20, 8, 0], [&sprdd_odd_12a, &sprdd_odd_12b, &sprdd_odd_8]);
 
-    // (~A + ~B + ~C) - (~Even + 2 * ~Odd)
+    // (~A + ~B + ~C) - (~Evn + 2 * ~Odd)
     let sprdd_maj_check =
         (sprdd_a + sprdd_b + sprdd_c) - (sprdd_evn + Expression::Constant(F::from(2)) * sprdd_odd);
 
@@ -228,7 +228,7 @@ pub fn decompose_7_12_2_5_6_gate<F: PrimeField>(
 
 /// Addition modulo 2^32. The carry and result must be range-checked elsewhere.
 /// At least one summand is required.
-pub fn add_mod_2_32<F: PrimeField>(
+pub fn add_mod_2_32_gate<F: PrimeField>(
     selector: Expression<F>,
     summands: &[Expression<F>],
     carry: Expression<F>,
@@ -243,6 +243,43 @@ pub fn add_mod_2_32<F: PrimeField>(
     let rhs = result + carry * Expression::Constant(F::from(1u64 << 32));
 
     Constraints::with_selector(selector, [("add_mod_2_32 check", lhs - rhs)].into_iter())
+}
+
+/// Helper gate, used to compute Ch(E, F, G).
+pub fn ch_helper_gate<F: PrimeField>(
+    selector: Expression<F>,
+    [sprdd_x, sprdd_y]: [Expression<F>; 2],
+    [sprdd_evn_12a, sprdd_evn_12b, sprdd_evn_8]: [Expression<F>; 3],
+    [sprdd_odd_12a, sprdd_odd_12b, sprdd_odd_8]: [Expression<F>; 3],
+    [summand_1, summand_2, sum]: [Expression<F>; 3],
+) -> Constraints<
+    F,
+    (&'static str, Expression<F>),
+    impl Iterator<Item = (&'static str, Expression<F>)>,
+> {
+    // 4^20 * ~Evn.12a + 4^8 * ~Evn.12b + ~Evn.8
+    let sprdd_evn =
+        linear_combination_pow4([20, 8, 0], [&sprdd_evn_12a, &sprdd_evn_12b, &sprdd_evn_8]);
+
+    // 4^20 * ~Odd.12a + 4^8 * ~Odd.12b + ~Odd.8
+    let sprdd_odd =
+        linear_combination_pow4([20, 8, 0], [&sprdd_odd_12a, &sprdd_odd_12b, &sprdd_odd_8]);
+
+    // (~X + ~Y) - (~Evn + 2 * ~Odd)
+    let sprdd_add_check =
+        (sprdd_x + sprdd_y) - (sprdd_evn + Expression::Constant(F::from(2)) * sprdd_odd);
+
+    // (summand_1 + summand_2) - sum
+    let add_check = (summand_1 + summand_2) - sum;
+
+    Constraints::with_selector(
+        selector,
+        [
+            ("Spreaded addition check", sprdd_add_check),
+            ("Addition check", add_check),
+        ]
+        .into_iter(),
+    )
 }
 
 /// Computes a linear combination of terms with coefficients of powers of two.
