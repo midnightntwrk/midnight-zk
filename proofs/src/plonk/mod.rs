@@ -25,11 +25,12 @@ use crate::{
 
 mod circuit;
 mod error;
-mod evaluation;
+pub(crate) mod evaluation;
 mod keygen;
-mod lookup;
+pub(crate) mod lookup;
 pub mod permutation;
-mod vanishing;
+pub(crate) mod traces;
+pub(crate) mod vanishing;
 
 mod prover;
 mod verifier;
@@ -38,7 +39,7 @@ use std::io;
 
 pub use circuit::*;
 pub use error::*;
-use evaluation::Evaluator;
+pub(crate) use evaluation::Evaluator;
 use ff::{PrimeField, WithSmallOrderMulGroup};
 use halo2curves::serde::SerdeObject;
 pub use keygen::*;
@@ -51,10 +52,10 @@ use crate::poly::commitment::PolynomialCommitmentScheme;
 /// particular circuit.
 #[derive(Clone, Debug)]
 pub struct VerifyingKey<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
-    domain: EvaluationDomain<F>,
+    pub(crate) domain: EvaluationDomain<F>,
     fixed_commitments: Vec<CS::Commitment>,
     permutation: permutation::VerifyingKey<F, CS>,
-    cs: ConstraintSystem<F>,
+    pub(crate) cs: ConstraintSystem<F>,
     /// Cached maximum degree of `cs` (which doesn't change after construction).
     cs_degree: usize,
     /// The representative of this `VerifyingKey` in transcripts.
@@ -329,15 +330,15 @@ pub struct PinnedVerificationKey<'a, F: PrimeField, CS: PolynomialCommitmentSche
 /// particular circuit.
 #[derive(Clone, Debug)]
 pub struct ProvingKey<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
-    vk: VerifyingKey<F, CS>,
-    l0: Polynomial<F, ExtendedLagrangeCoeff>,
-    l_last: Polynomial<F, ExtendedLagrangeCoeff>,
-    l_active_row: Polynomial<F, ExtendedLagrangeCoeff>,
-    fixed_values: Vec<Polynomial<F, LagrangeCoeff>>,
-    fixed_polys: Vec<Polynomial<F, Coeff>>,
-    fixed_cosets: Vec<Polynomial<F, ExtendedLagrangeCoeff>>,
-    permutation: permutation::ProvingKey<F>,
-    ev: Evaluator<F>,
+    pub(crate) vk: VerifyingKey<F, CS>,
+    pub(crate) l0: Polynomial<F, ExtendedLagrangeCoeff>,
+    pub(crate) l_last: Polynomial<F, ExtendedLagrangeCoeff>,
+    pub(crate) l_active_row: Polynomial<F, ExtendedLagrangeCoeff>,
+    pub(crate) fixed_values: Vec<Polynomial<F, LagrangeCoeff>>,
+    pub(crate) fixed_polys: Vec<Polynomial<F, Coeff>>,
+    pub(crate) fixed_cosets: Vec<Polynomial<F, ExtendedLagrangeCoeff>>,
+    pub(crate) permutation: permutation::ProvingKey<F>,
+    pub(crate) ev: Evaluator<F>,
 }
 
 impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> ProvingKey<F, CS>

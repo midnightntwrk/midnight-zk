@@ -16,22 +16,23 @@ use crate::{
     utils::arithmetic::{eval_polynomial, parallelize},
 };
 
-pub(in crate::plonk) struct Committed<F: PrimeField> {
-    random_poly: Polynomial<F, Coeff>,
+#[derive(Debug)]
+pub(crate) struct Committed<F: PrimeField> {
+    pub(crate) random_poly: Polynomial<F, Coeff>,
 }
 
-pub(in crate::plonk) struct Constructed<F: PrimeField> {
+pub(crate) struct Constructed<F: PrimeField> {
     h_pieces: Vec<Polynomial<F, Coeff>>,
     committed: Committed<F>,
 }
 
-pub(in crate::plonk) struct Evaluated<F: PrimeField> {
+pub(crate) struct Evaluated<F: PrimeField> {
     h_poly: Polynomial<F, Coeff>,
     committed: Committed<F>,
 }
 
 impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Argument<F, CS> {
-    pub(in crate::plonk) fn commit<R: RngCore, T: Transcript>(
+    pub(crate) fn commit<R: RngCore, T: Transcript>(
         params: &CS::Parameters,
         domain: &EvaluationDomain<F>,
         mut rng: R,
@@ -80,7 +81,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Argument<F
 }
 
 impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
-    pub(in crate::plonk) fn construct<CS: PolynomialCommitmentScheme<F>, T: Transcript>(
+    pub(crate) fn construct<CS: PolynomialCommitmentScheme<F>, T: Transcript>(
         self,
         params: &CS::Parameters,
         domain: &EvaluationDomain<F>,
@@ -123,7 +124,7 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
 }
 
 impl<F: WithSmallOrderMulGroup<3>> Constructed<F> {
-    pub(in crate::plonk) fn evaluate<T: Transcript>(
+    pub(crate) fn evaluate<T: Transcript>(
         self,
         x: F,
         domain: &EvaluationDomain<F>,
@@ -151,7 +152,7 @@ impl<F: WithSmallOrderMulGroup<3>> Constructed<F> {
 }
 
 impl<F: PrimeField> Evaluated<F> {
-    pub(in crate::plonk) fn open(&self, x: F) -> impl Iterator<Item = ProverQuery<'_, F>> + Clone {
+    pub(crate) fn open(&self, x: F) -> impl Iterator<Item = ProverQuery<'_, F>> + Clone {
         iter::empty()
             .chain(Some(ProverQuery {
                 point: x,

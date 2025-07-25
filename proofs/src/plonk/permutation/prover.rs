@@ -15,10 +15,12 @@ use crate::{
     utils::arithmetic::{eval_polynomial, parallelize},
 };
 
+#[derive(Debug)]
 pub(crate) struct CommittedSet<F: PrimeField> {
     pub(crate) permutation_product_poly: Polynomial<F, Coeff>,
 }
 
+#[derive(Debug)]
 pub(crate) struct Committed<F: PrimeField> {
     pub(crate) sets: Vec<CommittedSet<F>>,
 }
@@ -29,7 +31,7 @@ pub(crate) struct Evaluated<F: PrimeField> {
 
 impl Argument {
     #[allow(clippy::too_many_arguments)]
-    pub(in crate::plonk) fn commit<
+    pub(crate) fn commit<
         F: WithSmallOrderMulGroup<3>,
         CS: PolynomialCommitmentScheme<F>,
         R: RngCore,
@@ -169,17 +171,13 @@ impl Argument {
 }
 
 impl<F: PrimeField> super::ProvingKey<F> {
-    pub(in crate::plonk) fn open(&self, x: F) -> impl Iterator<Item = ProverQuery<'_, F>> + Clone {
+    pub(crate) fn open(&self, x: F) -> impl Iterator<Item = ProverQuery<'_, F>> + Clone {
         self.polys
             .iter()
             .map(move |poly| ProverQuery { point: x, poly })
     }
 
-    pub(in crate::plonk) fn evaluate<T: Transcript>(
-        &self,
-        x: F,
-        transcript: &mut T,
-    ) -> Result<(), Error>
+    pub(crate) fn evaluate<T: Transcript>(&self, x: F, transcript: &mut T) -> Result<(), Error>
     where
         F: Hashable<T::Hash>,
     {
@@ -193,7 +191,7 @@ impl<F: PrimeField> super::ProvingKey<F> {
 }
 
 impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
-    pub(in crate::plonk) fn evaluate<T: Transcript, CS: PolynomialCommitmentScheme<F>>(
+    pub(crate) fn evaluate<T: Transcript, CS: PolynomialCommitmentScheme<F>>(
         self,
         pk: &plonk::ProvingKey<F, CS>,
         x: F,
@@ -243,7 +241,7 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
 }
 
 impl<F: WithSmallOrderMulGroup<3>> Evaluated<F> {
-    pub(in crate::plonk) fn open<'a, CS: PolynomialCommitmentScheme<F>>(
+    pub(crate) fn open<'a, CS: PolynomialCommitmentScheme<F>>(
         &'a self,
         pk: &'a plonk::ProvingKey<F, CS>,
         x: F,

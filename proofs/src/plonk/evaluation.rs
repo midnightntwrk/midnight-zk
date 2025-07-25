@@ -12,7 +12,7 @@ use crate::{
 };
 
 /// Return the index in the polynomial of size `isize` after rotation `rot`.
-fn get_rotation_idx(idx: usize, rot: i32, rot_scale: i32, isize: i32) -> usize {
+pub(crate) fn get_rotation_idx(idx: usize, rot: i32, rot_scale: i32, isize: i32) -> usize {
     (((idx as i32) + (rot * rot_scale)).rem_euclid(isize)) as usize
 }
 

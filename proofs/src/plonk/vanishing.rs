@@ -4,7 +4,7 @@ use ff::PrimeField;
 
 use crate::poly::commitment::PolynomialCommitmentScheme;
 
-mod prover;
+pub(crate) mod prover;
 mod verifier;
 
 /// A vanishing argument.
