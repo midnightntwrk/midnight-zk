@@ -86,6 +86,55 @@ pub fn maj_gate<F: PrimeField>(
     )
 }
 
+/// Σ₁(E) gate.
+pub fn Sigma_1_gate<F: PrimeField>(
+    selector: Expression<F>,
+    [sprdd_07, sprdd_12, sprdd_02, sprdd_05, sprdd_06]: [Expression<F>; 5],
+    [sprdd_evn_12a, sprdd_evn_12b, sprdd_evn_8]: [Expression<F>; 3],
+    [sprdd_odd_12a, sprdd_odd_12b, sprdd_odd_8]: [Expression<F>; 3],
+) -> Constraints<
+    F,
+    (&'static str, Expression<F>),
+    impl Iterator<Item = (&'static str, Expression<F>)>,
+> {
+    // 4^26 * ~limb_06 + 4^19 * ~limb_07 + 4^7 * ~limb_12 + 4^5 * ~limb_02 +
+    // ~limb_05
+    let sprdd_1st_rot = linear_combination_pow4(
+        [26, 19, 7, 5, 0],
+        [&sprdd_06, &sprdd_07, &sprdd_12, &sprdd_02, &sprdd_05],
+    );
+
+    // 4^27 * ~limb_05 + 4^21 * ~limb_06 + 4^14 * ~limb_07 + 4^2 * ~limb_12 +
+    // ~limb_02
+    let sprdd_2nd_rot = linear_combination_pow4(
+        [27, 21, 14, 2, 0],
+        [&sprdd_05, &sprdd_06, &sprdd_07, &sprdd_12, &sprdd_02],
+    );
+
+    // 4^20 * ~limb_12 + 4^18 * ~limb_02 + 4^13 * ~limb_05 + 4^7 * ~limb_06 +
+    // ~limb_07
+    let sprdd_3rd_rot = linear_combination_pow4(
+        [20, 18, 13, 7, 0],
+        [&sprdd_12, &sprdd_02, &sprdd_05, &sprdd_06, &sprdd_07],
+    );
+
+    // 4^20 * ~Evn.12a + 4^8 * ~Evn.12b + ~Evn.8
+    let sprdd_evn =
+        linear_combination_pow4([20, 8, 0], [&sprdd_evn_12a, &sprdd_evn_12b, &sprdd_evn_8]);
+
+    // 4^20 * ~Odd.12a + 4^8 * ~Odd.12b + ~Odd.8
+    let sprdd_odd =
+        linear_combination_pow4([20, 8, 0], [&sprdd_odd_12a, &sprdd_odd_12b, &sprdd_odd_8]);
+
+    let sprdd_Sigma_1_check = (sprdd_1st_rot + sprdd_2nd_rot + sprdd_3rd_rot)
+        - (sprdd_evn + Expression::Constant(F::from(2)) * sprdd_odd);
+
+    Constraints::with_selector(
+        selector,
+        [("Sigma_1 check", sprdd_Sigma_1_check)].into_iter(),
+    )
+}
+
 /// Decompose 12-12-8 gate.
 pub fn decompose_12_12_8_gate<F: PrimeField>(
     selector: Expression<F>,

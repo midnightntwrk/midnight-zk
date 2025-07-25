@@ -160,6 +160,36 @@ pub fn spreaded_maj(spreaded_forms: [u64; 3]) -> u64 {
     sA + sB + sC
 }
 
+/// Computes off-circuit spreaded Σ₁(E) with E in (big endian) spreaded limbs.
+///
+/// # Panics
+///
+/// If the limbs are not in clean spreaded form.
+pub fn spreaded_Sigma_1(spreaded_limbs: [u64; 5]) -> u64 {
+    assert!(spreaded_limbs.into_iter().all(in_valid_spreaded_form));
+
+    let sE_7 = spreaded_limbs[0];
+    let sE_12 = spreaded_limbs[1];
+    let sE_2 = spreaded_limbs[2];
+    let sE_5 = spreaded_limbs[3];
+    let sE_6 = spreaded_limbs[4];
+
+    // As each limb is in valid spreaded form, the sum of three rotations composed
+    // by the limbs is at most: 3 * 0b0101..01 = 0b1111..11.
+    // Hence, the sum should never overflow u64.
+    (4u64.pow(26) * sE_6 + 4u64.pow(19) * sE_7 + 4u64.pow(7) * sE_12 + 4u64.pow(5) * sE_2 + sE_5)
+        + (4u64.pow(27) * sE_5
+            + 4u64.pow(21) * sE_6
+            + 4u64.pow(14) * sE_7
+            + 4u64.pow(2) * sE_12
+            + sE_2)
+        + (4u64.pow(20) * sE_12
+            + 4u64.pow(18) * sE_2
+            + 4u64.pow(13) * sE_5
+            + 4u64.pow(7) * sE_6
+            + sE_7)
+}
+
 #[cfg(test)]
 mod tests {
     use std::u64;
@@ -310,6 +340,30 @@ mod tests {
         for _ in 0..10 {
             let vals: [u32; 3] = [rng.gen(), rng.gen(), rng.gen()];
             assert_odd_of_spreaded_maj(vals);
+        }
+    }
+
+    #[test]
+    fn test_spreaded_Sigma_1() {
+        // Assert Σ₁(E) equals the even bits of the output of [`spreaded_Sigma_1`].
+        fn assert_even_of_spreaded_Sigma_1(val: u32) {
+            // Compute Σ₁(E) with the built-in methods.
+            let rot_by_6 = val.rotate_right(6);
+            let rot_by_11 = val.rotate_right(11);
+            let rot_by_25 = val.rotate_right(25);
+            let ret = rot_by_6 ^ rot_by_11 ^ rot_by_25;
+
+            // Compute Σ₁(E) by the even bits of the value returned by [`spreaded_Sigma_1`].
+            let plain_limbs: [u32; 5] = u32_in_be_limbs(val, [7, 12, 2, 5, 6]);
+            let spreaded_limbs: [u64; 5] = plain_limbs.map(spread);
+            let (even, _) = get_even_odd_bits(spreaded_Sigma_1(spreaded_limbs));
+
+            assert_eq!(ret, even);
+        }
+
+        let mut rng = rand::thread_rng();
+        for _ in 0..10 {
+            assert_even_of_spreaded_Sigma_1(rng.gen());
         }
     }
 }
