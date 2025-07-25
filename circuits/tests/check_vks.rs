@@ -28,7 +28,6 @@ use exposing_types::{
     hybrid_mt::HybridMtExample, json_verification::AtalaJsonECDSA, membership::MembershipExample,
     native_gadget::NativeGadgetExample, poseidon::PoseidonExample,
     rsa_signature::RSASignatureCircuit, sha_preimage::ShaPreImageCircuit,
-    zswap_output::ZSwapOutputCircuit,
 };
 
 macro_rules! generate_tests {
@@ -60,6 +59,5 @@ generate_tests!(
     check_vk_membership: MembershipExample,
     check_vk_atala: AtalaJsonECDSA,
     check_vk_hybrid_mt: HybridMtExample,
-    check_vk_sha: ShaPreImageCircuit,
-    check_vk_zswap: ZSwapOutputCircuit
+    check_vk_sha: ShaPreImageCircuit
 );

@@ -65,3 +65,7 @@ path = "examples/json_verification.rs"
 [[bench]]
 name = "poseidon_cpu"
 harness = false
+
+[[bench]]
+name = "zswap_output"
+harness = false

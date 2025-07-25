@@ -1,8 +1,12 @@
-//! Zswap output circuit from the zswap protocol.
+//! Bechmarks for the prover and verifier performance on the Zswap-output
+//! circuit from the zswap protocol.
 //!
 //! For more details, visit:
 //! https://github.com/midnightntwrk/midnight-ledger-prototype/blob/main/zswap/zswap.compact
 
+use std::hint::black_box;
+
+use criterion::{criterion_group, criterion_main, Criterion};
 use ff::Field;
 use group::Group;
 use midnight_circuits::{
@@ -13,13 +17,13 @@ use midnight_circuits::{
         AssignmentInstructions, ConversionInstructions, DecompositionInstructions, EccInstructions,
         HashToCurveCPU, PublicInputInstructions,
     },
-    testing_utils::plonk_api::filecoin_srs,
     types::{AssignedBit, AssignedByte, AssignedNative, AssignedNativePoint, Instantiable},
 };
 use midnight_curves::{Fr as JubjubScalar, JubjubExtended as Jubjub, JubjubSubgroup};
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
+    poly::kzg::params::ParamsKZG,
 };
 use rand::{rngs::OsRng, Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
@@ -183,15 +187,10 @@ fn assign_fixed_domain_sep(
     std_lib.assign_many_fixed(layouter, domain_sep.as_bytes())
 }
 
-fn main() {
-    const K: u32 = 14;
-    let srs = filecoin_srs(K);
-
-    let relation = ZSwapOutputCircuit;
-    let vk = compact_std_lib::setup_vk(&srs, &relation);
-    let pk = compact_std_lib::setup_pk(&relation, &vk);
-
-    // Sample a instance-witness pair.
+fn sample_zswap_inputs() -> (
+    <ZSwapOutputCircuit as Relation>::Instance,
+    <ZSwapOutputCircuit as Relation>::Witness,
+) {
     let mut rng = ChaCha8Rng::from_entropy();
 
     let zswap_pk_bytes = core::array::from_fn(|_| rng.gen());
@@ -232,18 +231,61 @@ fn main() {
     let witness = (zswap_pk, coin, rc);
     let instance = (coin_com, value_com);
 
+    (instance, witness)
+}
+
+fn bench_zswap_output(c: &mut Criterion) {
+    const K: u32 = 14;
+    let srs = ParamsKZG::unsafe_setup(K, OsRng);
+
+    let relation = ZSwapOutputCircuit;
+    let vk = compact_std_lib::setup_vk(&srs, &relation);
+    let pk = compact_std_lib::setup_pk(&relation, &vk);
+
+    let mut group = c.benchmark_group("zswap-output");
+
+    group.sample_size(10);
+    group.bench_function("prove", |b| {
+        b.iter_batched(
+            || sample_zswap_inputs(),
+            |(instance, witness)| {
+                let _proof = compact_std_lib::prove::<ZSwapOutputCircuit, blake2b_simd::State>(
+                    black_box(&srs),
+                    black_box(&pk),
+                    black_box(&relation),
+                    black_box(&instance),
+                    black_box(witness),
+                    OsRng,
+                )
+                .expect("proof generation failed");
+            },
+            criterion::BatchSize::SmallInput,
+        );
+    });
+
+    let (instance, witness) = sample_zswap_inputs();
     let proof = compact_std_lib::prove::<ZSwapOutputCircuit, blake2b_simd::State>(
         &srs, &pk, &relation, &instance, witness, OsRng,
     )
-    .expect("Proof generation should not fail");
+    .expect("proof generation failed");
 
-    assert!(
-        compact_std_lib::verify::<ZSwapOutputCircuit, blake2b_simd::State>(
-            &srs.verifier_params(),
-            &vk,
-            &instance,
-            &proof
-        )
-        .is_ok()
-    )
+    group.sample_size(100);
+    group.bench_function("verify", |b| {
+        b.iter(|| {
+            assert!(
+                compact_std_lib::verify::<ZSwapOutputCircuit, blake2b_simd::State>(
+                    black_box(&srs.verifier_params()),
+                    black_box(&vk),
+                    black_box(&instance),
+                    black_box(&proof)
+                )
+                .is_ok()
+            )
+        });
+    });
+
+    group.finish();
 }
+
+criterion_group!(benches, bench_zswap_output);
+criterion_main!(benches);
