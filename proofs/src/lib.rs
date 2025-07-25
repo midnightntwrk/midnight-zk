@@ -12,6 +12,7 @@ pub mod circuit;
 pub use halo2curves;
 pub mod plonk;
 pub mod poly;
+pub mod protogalaxy;
 pub mod transcript;
 
 pub mod dev;
