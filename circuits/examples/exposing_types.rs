@@ -14,7 +14,6 @@ pub mod native_gadget;
 pub mod poseidon;
 pub mod rsa_signature;
 pub mod sha_preimage;
-pub mod zswap_output;
 
 // We are doing a bit of a hack to be able to reuse the circuits that are
 // defined in the examples folder. To keep clippy happy, we need to define a

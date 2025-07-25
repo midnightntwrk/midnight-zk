@@ -12,7 +12,10 @@ verification keys break backwards compatibility.
 
 ## [Unreleased]
 ### Added
+
 ### Changed
+* Zswap example was moved to a benchmark [#46](https://github.com/midnightntwrk/midnight-zk/pull/46)
+
 ### Removed
 
 ## [4.0.0] - 18-07-2025
