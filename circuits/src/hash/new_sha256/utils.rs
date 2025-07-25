@@ -137,9 +137,9 @@ pub fn spreaded_Sigma_0(spreaded_limbs: [u64; 4]) -> u64 {
     // As each limb is in valid spreaded form, the sum of three rotations composed
     // by the limbs is at most: 3 * 0b0101..01 = 0b1111..11.
     // Hence, the sum should never overflow u64.
-    (4u64.pow(30) * sA_2 + 4u64.pow(20) * sA_10 + 4u64.pow(11) * sA_9 + sA_11)
-        + (4u64.pow(21) * sA_11 + 4u64.pow(19) * sA_2 + 4u64.pow(9) * sA_10 + sA_9)
-        + (4u64.pow(23) * sA_9 + 4u64.pow(12) * sA_11 + 4u64.pow(10) * sA_2 + sA_10)
+    (pow4(30) * sA_2 + pow4(20) * sA_10 + pow4(11) * sA_9 + sA_11)
+        + (pow4(21) * sA_11 + pow4(19) * sA_2 + pow4(9) * sA_10 + sA_9)
+        + (pow4(23) * sA_9 + pow4(12) * sA_11 + pow4(10) * sA_2 + sA_10)
 }
 
 /// Computes off-circuit spreaded Maj(A, B, C) with A, B, C in spreaded forms.
@@ -177,17 +177,13 @@ pub fn spreaded_Sigma_1(spreaded_limbs: [u64; 5]) -> u64 {
     // As each limb is in valid spreaded form, the sum of three rotations composed
     // by the limbs is at most: 3 * 0b0101..01 = 0b1111..11.
     // Hence, the sum should never overflow u64.
-    (4u64.pow(26) * sE_6 + 4u64.pow(19) * sE_7 + 4u64.pow(7) * sE_12 + 4u64.pow(5) * sE_2 + sE_5)
-        + (4u64.pow(27) * sE_5
-            + 4u64.pow(21) * sE_6
-            + 4u64.pow(14) * sE_7
-            + 4u64.pow(2) * sE_12
-            + sE_2)
-        + (4u64.pow(20) * sE_12
-            + 4u64.pow(18) * sE_2
-            + 4u64.pow(13) * sE_5
-            + 4u64.pow(7) * sE_6
-            + sE_7)
+    (pow4(26) * sE_6 + pow4(19) * sE_7 + pow4(7) * sE_12 + pow4(5) * sE_2 + sE_5)
+        + (pow4(27) * sE_5 + pow4(21) * sE_6 + pow4(14) * sE_7 + pow4(2) * sE_12 + sE_2)
+        + (pow4(20) * sE_12 + pow4(18) * sE_2 + pow4(13) * sE_5 + pow4(7) * sE_6 + sE_7)
+}
+
+fn pow4(n: u32) -> u64 {
+    1 << (2 * n)
 }
 
 #[cfg(test)]
