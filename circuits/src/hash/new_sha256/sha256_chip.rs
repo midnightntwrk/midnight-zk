@@ -132,6 +132,96 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
             });
         });
 
+        meta.create_gate("Σ₀(A)", |meta| {
+            let q_Sigma_0 = meta.query_selector(q_Sigma_0);
+
+            let sprdd_a_10 = meta.query_advice(advice_cols[5], Rotation(0));
+            let sprdd_a_09 = meta.query_advice(advice_cols[6], Rotation(0));
+            let sprdd_a_11 = meta.query_advice(advice_cols[5], Rotation(1));
+            let sprdd_a_02 = meta.query_advice(advice_cols[6], Rotation(1));
+            let sprdd_evn_12a = meta.query_advice(advice_cols[1], Rotation(0));
+            let sprdd_evn_12b = meta.query_advice(advice_cols[1], Rotation(1));
+            let sprdd_evn_8 = meta.query_advice(advice_cols[1], Rotation(2));
+            let sprdd_odd_12a = meta.query_advice(advice_cols[3], Rotation(0));
+            let sprdd_odd_12b = meta.query_advice(advice_cols[3], Rotation(1));
+            let sprdd_odd_8 = meta.query_advice(advice_cols[3], Rotation(2));
+
+            Sigma_0_gate(
+                q_Sigma_0,
+                [sprdd_a_10, sprdd_a_09, sprdd_a_11, sprdd_a_02],
+                [sprdd_evn_12a, sprdd_evn_12b, sprdd_evn_8],
+                [sprdd_odd_12a, sprdd_odd_12b, sprdd_odd_8],
+            )
+        });
+
+        meta.create_gate("Σ₁(E)", |meta| {
+            let q_Sigma_1 = meta.query_selector(q_Sigma_1);
+
+            let sprdd_e_07 = meta.query_advice(advice_cols[5], Rotation(0));
+            let sprdd_e_12 = meta.query_advice(advice_cols[6], Rotation(0));
+            let sprdd_e_02 = meta.query_advice(advice_cols[5], Rotation(1));
+            let sprdd_e_05 = meta.query_advice(advice_cols[6], Rotation(1));
+            let sprdd_e_06 = meta.query_advice(advice_cols[5], Rotation(2));
+            let sprdd_evn_12a = meta.query_advice(advice_cols[1], Rotation(0));
+            let sprdd_evn_12b = meta.query_advice(advice_cols[1], Rotation(1));
+            let sprdd_evn_8 = meta.query_advice(advice_cols[1], Rotation(2));
+            let sprdd_odd_12a = meta.query_advice(advice_cols[3], Rotation(0));
+            let sprdd_odd_12b = meta.query_advice(advice_cols[3], Rotation(1));
+            let sprdd_odd_8 = meta.query_advice(advice_cols[3], Rotation(2));
+
+            Sigma_1_gate(
+                q_Sigma_1,
+                [sprdd_e_07, sprdd_e_12, sprdd_e_02, sprdd_e_05, sprdd_e_06],
+                [sprdd_evn_12a, sprdd_evn_12b, sprdd_evn_8],
+                [sprdd_odd_12a, sprdd_odd_12b, sprdd_odd_8],
+            )
+        });
+
+        meta.create_gate("Maj(A, B, C)", |meta| {
+            let q_maj = meta.query_selector(q_maj);
+
+            let sprdd_a = meta.query_advice(advice_cols[5], Rotation(0));
+            let sprdd_b = meta.query_advice(advice_cols[6], Rotation(0));
+            let sprdd_c = meta.query_advice(advice_cols[5], Rotation(1));
+            let sprdd_odd_12a = meta.query_advice(advice_cols[1], Rotation(0));
+            let sprdd_odd_12b = meta.query_advice(advice_cols[1], Rotation(1));
+            let sprdd_odd_8 = meta.query_advice(advice_cols[1], Rotation(2));
+            let sprdd_evn_12a = meta.query_advice(advice_cols[3], Rotation(0));
+            let sprdd_evn_12b = meta.query_advice(advice_cols[3], Rotation(1));
+            let sprdd_evn_8 = meta.query_advice(advice_cols[3], Rotation(2));
+
+            maj_gate(
+                q_maj,
+                [sprdd_a, sprdd_b, sprdd_c],
+                [sprdd_evn_12a, sprdd_evn_12b, sprdd_evn_8],
+                [sprdd_odd_12a, sprdd_odd_12b, sprdd_odd_8],
+            )
+        });
+
+        meta.create_gate("half Ch(E, F, G)", |meta| {
+            let q_half_ch = meta.query_selector(q_half_ch);
+
+            let sprdd_x = meta.query_advice(advice_cols[5], Rotation(0));
+            let sprdd_y = meta.query_advice(advice_cols[6], Rotation(0));
+            let sprdd_odd_12a = meta.query_advice(advice_cols[1], Rotation(0));
+            let sprdd_odd_12b = meta.query_advice(advice_cols[1], Rotation(1));
+            let sprdd_odd_8 = meta.query_advice(advice_cols[1], Rotation(2));
+            let sprdd_evn_12a = meta.query_advice(advice_cols[3], Rotation(0));
+            let sprdd_evn_12b = meta.query_advice(advice_cols[3], Rotation(1));
+            let sprdd_evn_8 = meta.query_advice(advice_cols[3], Rotation(2));
+            let summand_1 = meta.query_advice(advice_cols[4], Rotation(1));
+            let summand_2 = meta.query_advice(advice_cols[5], Rotation(1));
+            let sum = meta.query_advice(advice_cols[6], Rotation(1));
+
+            half_ch_gate(
+                q_half_ch,
+                [sprdd_x, sprdd_y],
+                [sprdd_evn_12a, sprdd_evn_12b, sprdd_evn_8],
+                [sprdd_odd_12a, sprdd_odd_12b, sprdd_odd_8],
+                [summand_1, summand_2, sum],
+            )
+        });
+
         meta.create_gate("12-12-8 decomposition", |meta| {
             let q_12_12_8 = meta.query_selector(q_12_12_8);
 
@@ -165,49 +255,6 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
             )
         });
 
-        meta.create_gate("Σ₀(A)", |meta| {
-            let q_Sigma_0 = meta.query_selector(q_Sigma_0);
-
-            let sprdd_a_10 = meta.query_advice(advice_cols[5], Rotation(0));
-            let sprdd_a_09 = meta.query_advice(advice_cols[6], Rotation(0));
-            let sprdd_a_11 = meta.query_advice(advice_cols[5], Rotation(1));
-            let sprdd_a_02 = meta.query_advice(advice_cols[6], Rotation(1));
-            let sprdd_evn_12a = meta.query_advice(advice_cols[1], Rotation(0));
-            let sprdd_evn_12b = meta.query_advice(advice_cols[1], Rotation(1));
-            let sprdd_evn_8 = meta.query_advice(advice_cols[1], Rotation(2));
-            let sprdd_odd_12a = meta.query_advice(advice_cols[3], Rotation(0));
-            let sprdd_odd_12b = meta.query_advice(advice_cols[3], Rotation(1));
-            let sprdd_odd_8 = meta.query_advice(advice_cols[3], Rotation(2));
-
-            Sigma_0_gate(
-                q_Sigma_0,
-                [sprdd_a_10, sprdd_a_09, sprdd_a_11, sprdd_a_02],
-                [sprdd_evn_12a, sprdd_evn_12b, sprdd_evn_8],
-                [sprdd_odd_12a, sprdd_odd_12b, sprdd_odd_8],
-            )
-        });
-
-        meta.create_gate("Maj(A, B, C)", |meta| {
-            let q_maj = meta.query_selector(q_maj);
-
-            let sprdd_a = meta.query_advice(advice_cols[5], Rotation(0));
-            let sprdd_b = meta.query_advice(advice_cols[6], Rotation(0));
-            let sprdd_c = meta.query_advice(advice_cols[5], Rotation(1));
-            let sprdd_odd_12a = meta.query_advice(advice_cols[1], Rotation(0));
-            let sprdd_odd_12b = meta.query_advice(advice_cols[1], Rotation(1));
-            let sprdd_odd_8 = meta.query_advice(advice_cols[1], Rotation(2));
-            let sprdd_evn_12a = meta.query_advice(advice_cols[3], Rotation(0));
-            let sprdd_evn_12b = meta.query_advice(advice_cols[3], Rotation(1));
-            let sprdd_evn_8 = meta.query_advice(advice_cols[3], Rotation(2));
-
-            maj_gate(
-                q_maj,
-                [sprdd_a, sprdd_b, sprdd_c],
-                [sprdd_evn_12a, sprdd_evn_12b, sprdd_evn_8],
-                [sprdd_odd_12a, sprdd_odd_12b, sprdd_odd_8],
-            )
-        });
-
         meta.create_gate("7-12-2-5-6 decomposition", |meta| {
             let q_7_12_2_5_6 = meta.query_selector(q_7_12_2_5_6);
 
@@ -238,29 +285,6 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
             )
         });
 
-        meta.create_gate("Σ₁(E)", |meta| {
-            let q_Sigma_1 = meta.query_selector(q_Sigma_1);
-
-            let sprdd_e_07 = meta.query_advice(advice_cols[5], Rotation(0));
-            let sprdd_e_12 = meta.query_advice(advice_cols[6], Rotation(0));
-            let sprdd_e_02 = meta.query_advice(advice_cols[5], Rotation(1));
-            let sprdd_e_05 = meta.query_advice(advice_cols[6], Rotation(1));
-            let sprdd_e_06 = meta.query_advice(advice_cols[5], Rotation(2));
-            let sprdd_evn_12a = meta.query_advice(advice_cols[1], Rotation(0));
-            let sprdd_evn_12b = meta.query_advice(advice_cols[1], Rotation(1));
-            let sprdd_evn_8 = meta.query_advice(advice_cols[1], Rotation(2));
-            let sprdd_odd_12a = meta.query_advice(advice_cols[3], Rotation(0));
-            let sprdd_odd_12b = meta.query_advice(advice_cols[3], Rotation(1));
-            let sprdd_odd_8 = meta.query_advice(advice_cols[3], Rotation(2));
-
-            Sigma_1_gate(
-                q_Sigma_1,
-                [sprdd_e_07, sprdd_e_12, sprdd_e_02, sprdd_e_05, sprdd_e_06],
-                [sprdd_evn_12a, sprdd_evn_12b, sprdd_evn_8],
-                [sprdd_odd_12a, sprdd_odd_12b, sprdd_odd_8],
-            )
-        });
-
         meta.create_gate("add mod 2^32", |meta| {
             let q_add_mod_2_32 = meta.query_selector(q_add_mod_2_32);
 
@@ -276,30 +300,6 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
             let result = meta.query_advice(advice_cols[4], Rotation(0));
 
             add_mod_2_32_gate(q_add_mod_2_32, &[s0, s1, s2, s3, s4, s5, s6], carry, result)
-        });
-
-        meta.create_gate("half Ch(E, F, G)", |meta| {
-            let q_half_ch = meta.query_selector(q_half_ch);
-
-            let sprdd_x = meta.query_advice(advice_cols[5], Rotation(0));
-            let sprdd_y = meta.query_advice(advice_cols[6], Rotation(0));
-            let sprdd_odd_12a = meta.query_advice(advice_cols[1], Rotation(0));
-            let sprdd_odd_12b = meta.query_advice(advice_cols[1], Rotation(1));
-            let sprdd_odd_8 = meta.query_advice(advice_cols[1], Rotation(2));
-            let sprdd_evn_12a = meta.query_advice(advice_cols[3], Rotation(0));
-            let sprdd_evn_12b = meta.query_advice(advice_cols[3], Rotation(1));
-            let sprdd_evn_8 = meta.query_advice(advice_cols[3], Rotation(2));
-            let summand_1 = meta.query_advice(advice_cols[4], Rotation(1));
-            let summand_2 = meta.query_advice(advice_cols[5], Rotation(1));
-            let sum = meta.query_advice(advice_cols[6], Rotation(1));
-
-            half_ch_gate(
-                q_half_ch,
-                [sprdd_x, sprdd_y],
-                [sprdd_evn_12a, sprdd_evn_12b, sprdd_evn_8],
-                [sprdd_odd_12a, sprdd_odd_12b, sprdd_odd_8],
-                [summand_1, summand_2, sum],
-            )
         });
 
         Sha256Config {
