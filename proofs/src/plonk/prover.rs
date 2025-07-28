@@ -497,9 +497,15 @@ where
         .unzip();
 
     Ok(Trace {
-        advice_polys: advice.into_iter().map(|a| {
-            a.advice_polys.into_iter().map(|p| domain.lagrange_to_coeff(p)).collect()
-        }).collect(),
+        advice_polys: advice
+            .into_iter()
+            .map(|a| {
+                a.advice_polys
+                    .into_iter()
+                    .map(|p| domain.lagrange_to_coeff(p))
+                    .collect()
+            })
+            .collect(),
         instance_polys,
         instance_values,
         vanishing,
