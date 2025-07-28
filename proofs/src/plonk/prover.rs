@@ -47,14 +47,13 @@ where
     CS::commit_lagrange(params, &poly)
 }
 
-/// This computes traces proof for the provided `circuits` when given the public
-/// parameters `params` and the proving key [`ProvingKey`] that was
+/// This computes a proof trace for the provided `circuits` when given the
+/// public parameters `params` and the proving key [`ProvingKey`] that was
 /// generated previously for the same circuit. The provided `instances`
 /// are zero-padded internally.
 ///
-/// The traces can then be used to finalise each proof individually, or
-/// to fold them.
-pub(crate) fn compute_trace<
+/// The trace can then be used to finalise proofs, or to fold them.
+pub(crate) fn trace<
     F,
     CS: PolynomialCommitmentScheme<F>,
     T: Transcript,
@@ -519,7 +518,7 @@ where
     })
 }
 
-/// This takes the computed traces of a set of witnesses and creates a proof
+/// This takes the computed trace of a set of witnesses and creates a proof
 /// for the provided `circuit` when given the public
 /// parameters `params` and the proving key [`ProvingKey`] that was
 /// generated previously for the same circuit. The provided `instances`
@@ -608,6 +607,8 @@ where
         &pk.permutation.cosets,
     );
 
+    // Advice and instance cosets are no longer required and are dropped to reduce
+    // memory usage.
     drop(advice_cosets);
     drop(instance_cosets);
 
@@ -756,7 +757,7 @@ where
         + Ord
         + FromUniformBytes<64>,
 {
-    let tmp = compute_trace(
+    let tmp = trace(
         params,
         pk,
         circuits,

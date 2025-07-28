@@ -45,10 +45,12 @@ pub enum Error {
 
 /// The basis over which a polynomial is described.
 pub trait Basis: Copy + Debug + Send + Sync {
-    /// Returns the length of the representation, given the domain.
+    /// Returns the number of field elements required to represent a polynomial
+    /// in this basis, for the given evaluation domain.
     fn len<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> usize;
 
-    /// Returns an empty polynomial for the given domain.
+    /// Constructs an empty (zero) polynomial in this basis, appropriate for the
+    /// given domain.
     fn empty<F: WithSmallOrderMulGroup<3>>(
         evaluation_domain: &EvaluationDomain<F>,
     ) -> Polynomial<F, Self> {
@@ -58,24 +60,22 @@ pub trait Basis: Copy + Debug + Send + Sync {
         }
     }
 
-    /// Returns omega for the domain that the polynomial is represented in.
+    /// Returns the generator `ω` associated with the evaluation domain.
     fn omega<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> F;
 
-    /// Returns k for the domain that the polynomial is represented in.
+    /// Returns the logarithmic size parameter `k` of the evaluation domain,
+    /// where the domain size is `2^k`.
     fn k<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> u32;
 
-    /// Converts a polynomial in coefficient form to Self's form.
+    /// Converts a polynomial from coefficient form into this basis.
     fn coeff_to_self<F: WithSmallOrderMulGroup<3>>(
         evaluation_domain: &EvaluationDomain<F>,
-        other: Polynomial<F, Coeff>,
+        poly: Polynomial<F, Coeff>,
     ) -> Polynomial<F, Self>;
 
-    /// Returns g_coset if domain is extended
-    // TODO: This shouldn't really be linked to the `Basis`.. not sure I like this
-    // method
-    fn g_coset<F: WithSmallOrderMulGroup<3>>(_evaluation_domain: &EvaluationDomain<F>) -> F {
-        F::ONE
-    }
+    /// Returns the multiplicative coset generator `g_coset` if this basis uses
+    /// an extended domain.
+    fn g_coset<F: WithSmallOrderMulGroup<3>>(_evaluation_domain: &EvaluationDomain<F>) -> F;
 }
 
 /// The polynomial is defined as coefficients
@@ -96,9 +96,13 @@ impl Basis for Coeff {
 
     fn coeff_to_self<F: WithSmallOrderMulGroup<3>>(
         _evaluation_domain: &EvaluationDomain<F>,
-        _other: Polynomial<F, Coeff>,
+        poly: Polynomial<F, Coeff>,
     ) -> Polynomial<F, Self> {
-        unreachable!()
+        poly
+    }
+
+    fn g_coset<F: WithSmallOrderMulGroup<3>>(_evaluation_domain: &EvaluationDomain<F>) -> F {
+        F::ONE
     }
 }
 
@@ -120,9 +124,13 @@ impl Basis for LagrangeCoeff {
 
     fn coeff_to_self<F: WithSmallOrderMulGroup<3>>(
         evaluation_domain: &EvaluationDomain<F>,
-        other: Polynomial<F, Coeff>,
+        poly: Polynomial<F, Coeff>,
     ) -> Polynomial<F, Self> {
-        evaluation_domain.coeff_to_lagrange(other)
+        evaluation_domain.coeff_to_lagrange(poly)
+    }
+
+    fn g_coset<F: WithSmallOrderMulGroup<3>>(_evaluation_domain: &EvaluationDomain<F>) -> F {
+        F::ONE
     }
 }
 
@@ -145,9 +153,9 @@ impl Basis for ExtendedLagrangeCoeff {
 
     fn coeff_to_self<F: WithSmallOrderMulGroup<3>>(
         evaluation_domain: &EvaluationDomain<F>,
-        other: Polynomial<F, Coeff>,
+        poly: Polynomial<F, Coeff>,
     ) -> Polynomial<F, Self> {
-        evaluation_domain.coeff_to_extended(other)
+        evaluation_domain.coeff_to_extended(poly)
     }
 
     fn g_coset<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> F {

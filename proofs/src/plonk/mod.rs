@@ -52,10 +52,10 @@ use crate::poly::commitment::PolynomialCommitmentScheme;
 /// particular circuit.
 #[derive(Clone, Debug)]
 pub struct VerifyingKey<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
-    pub(crate) domain: EvaluationDomain<F>,
+    domain: EvaluationDomain<F>,
     fixed_commitments: Vec<CS::Commitment>,
     permutation: permutation::VerifyingKey<F, CS>,
-    pub(crate) cs: ConstraintSystem<F>,
+    cs: ConstraintSystem<F>,
     /// Cached maximum degree of `cs` (which doesn't change after construction).
     cs_degree: usize,
     /// The representative of this `VerifyingKey` in transcripts.

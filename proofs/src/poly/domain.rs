@@ -8,10 +8,7 @@ use group::ff::{BatchInvert, Field};
 use halo2curves::fft::best_fft;
 
 use super::{Coeff, ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial, Rotation};
-use crate::utils::{
-    arithmetic::{eval_polynomial, parallelize},
-    rational::Rational,
-};
+use crate::utils::{arithmetic::parallelize, rational::Rational};
 
 /// This structure contains precomputed constants and other details needed for
 /// performing operations on an evaluation domain of size $2^k$ and an extended
@@ -221,8 +218,8 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
 
     /// This takes us from an n-length vector into the coefficient form.
     ///
-    /// This function will panic if the provided vector is not the correct
-    /// length.
+    /// This function will panic if the provided vector does not have the
+    /// correct length.
     pub fn lagrange_to_coeff(&self, mut a: Polynomial<F, LagrangeCoeff>) -> Polynomial<F, Coeff> {
         assert_eq!(a.values.len(), 1 << self.k);
 
@@ -269,8 +266,8 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
     /// This takes us from the extended evaluation domain and gets us the
     /// quotient polynomial coefficients.
     ///
-    /// This function will panic if the provided vector is not the correct
-    /// length.
+    /// This function will panic if the provided vector does not have the
+    /// correct length.
     ///
     /// # WARNING
     ///
@@ -305,8 +302,8 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
     /// This takes us from the extended evaluation domain and gets us to the
     /// small evaluation domain (of size `n`).
     ///
-    /// This function will panic if the provided vector is not the correct
-    /// length.
+    /// This function will panic if the provided vector does not have the
+    /// correct length.
     pub fn extended_to_lagrange(
         &self,
         mut a: Polynomial<F, ExtendedLagrangeCoeff>,
@@ -329,25 +326,6 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
             values: a.values,
             _marker: PhantomData,
         }
-    }
-
-    /// Evaluates the polynomial in the given point.
-    pub fn eval_extended_lagrange(&self, mut a: Polynomial<F, ExtendedLagrangeCoeff>, x: F) -> F {
-        assert_eq!(a.values.len(), self.extended_len());
-
-        // Inverse FFT
-        Self::ifft(
-            &mut a.values,
-            self.extended_omega_inv,
-            self.extended_k,
-            self.extended_ifft_divisor,
-        );
-
-        // Distribute powers to move from coset; opposite from the
-        // transformation we performed earlier.
-        self.distribute_powers_zeta(&mut a.values, false);
-
-        eval_polynomial(&a.values, x)
     }
 
     /// This divides the polynomial (in the extended domain) by the vanishing
