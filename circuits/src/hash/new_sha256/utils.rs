@@ -2,8 +2,8 @@ use ff::PrimeField;
 
 use crate::utils::util::fe_to_u32;
 
-pub(super) const MASK_EVN_64: u64 = 0x5555_5555_5555_5555; // 0101010101010101... (even positions in u64)
-const MASK_ODD_64: u64 = 0xAAAA_AAAA_AAAA_AAAA; // 1010101010101010... (odd positions in u64)
+pub(super) const MASK_EVN_64: u64 = 0x5555_5555_5555_5555; // 010101...01 (even positions in u64)
+pub(super) const MASK_ODD_64: u64 = 0xAAAA_AAAA_AAAA_AAAA; // 101010...10 (odd positions in u64)
 
 const LOOKUP_LENGTHS: [u32; 9] = [2, 5, 6, 7, 8, 9, 10, 11, 12]; // supported lookup bit lengths
 const MAX_LOOKUP_LENGTH: usize = 12; // maximum bit length of plain values in lookup table

@@ -10,8 +10,8 @@ use crate::{
     field::NativeChip,
     hash::new_sha256::{
         gates::{
-            add_mod_2_32_gate, ch_helper_gate, decompose_10_9_11_2_gate, decompose_12_12_8_gate,
-            decompose_7_12_2_5_6_gate, maj_gate, Sigma_0_gate, Sigma_1_gate,
+            add_mod_2_32_gate, decompose_10_9_11_2_gate, decompose_12_12_8_gate,
+            decompose_7_12_2_5_6_gate, half_ch_gate, maj_gate, Sigma_0_gate, Sigma_1_gate,
         },
         types::{AssignedPlain, AssignedPlainSpreaded, AssignedSpreaded, LimbsOfA, LimbsOfE},
         utils::{
@@ -19,6 +19,8 @@ use crate::{
             spreaded_Sigma_1, spreaded_maj, u32_in_be_limbs, u32_to_fe, u64_to_fe, MASK_EVN_64,
         },
     },
+    instructions::assignments::AssignmentInstructions,
+    types::AssignedNative,
     utils::{
         util::{fe_to_u32, fe_to_u64},
         ComposableChip,
@@ -54,7 +56,7 @@ pub struct Sha256Config {
     q_10_9_11_2: Selector,
     q_7_12_2_5_6: Selector,
     q_add_mod_2_32: Selector,
-    q_ch_helper: Selector,
+    q_half_ch: Selector,
     q_lookup: Selector,
     table: SpreadTable,
 }
@@ -111,7 +113,7 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
         let q_10_9_11_2 = meta.selector();
         let q_7_12_2_5_6 = meta.selector();
         let q_add_mod_2_32 = meta.selector();
-        let q_ch_helper = meta.selector();
+        let q_half_ch = meta.selector();
         let q_lookup = meta.complex_selector();
 
         (0..2).into_iter().for_each(|idx| {
@@ -276,8 +278,8 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
             add_mod_2_32_gate(q_add_mod_2_32, &[s0, s1, s2, s3, s4, s5, s6], carry, result)
         });
 
-        meta.create_gate("helper of Ch(E, F, G)", |meta| {
-            let q_ch_helper = meta.query_selector(q_ch_helper);
+        meta.create_gate("half Ch(E, F, G)", |meta| {
+            let q_half_ch = meta.query_selector(q_half_ch);
 
             let sprdd_x = meta.query_advice(advice_cols[5], Rotation(0));
             let sprdd_y = meta.query_advice(advice_cols[6], Rotation(0));
@@ -291,8 +293,8 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
             let summand_2 = meta.query_advice(advice_cols[5], Rotation(1));
             let sum = meta.query_advice(advice_cols[6], Rotation(1));
 
-            ch_helper_gate(
-                q_ch_helper,
+            half_ch_gate(
+                q_half_ch,
                 [sprdd_x, sprdd_y],
                 [sprdd_evn_12a, sprdd_evn_12b, sprdd_evn_8],
                 [sprdd_odd_12a, sprdd_odd_12b, sprdd_odd_8],
@@ -310,7 +312,7 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
             q_10_9_11_2,
             q_7_12_2_5_6,
             q_add_mod_2_32,
-            q_ch_helper,
+            q_half_ch,
             q_lookup,
             table: SpreadTable {
                 nbits_tab,
@@ -725,9 +727,9 @@ impl<F: PrimeField> Sha256Chip<F> {
     pub(super) fn ch(
         &self,
         layouter: &mut impl Layouter<F>,
-        sprdd_e: &AssignedSpreaded<F, 32>,
-        sprdd_f: &AssignedSpreaded<F, 32>,
-        sprdd_g: &AssignedSpreaded<F, 32>,
+        sprdd_E: &AssignedSpreaded<F, 32>,
+        sprdd_F: &AssignedSpreaded<F, 32>,
+        sprdd_G: &AssignedSpreaded<F, 32>,
     ) -> Result<AssignedPlain<F, 32>, Error> {
         /*
         We need to compute:
@@ -735,111 +737,88 @@ impl<F: PrimeField> Sha256Chip<F> {
 
         which can be achieved by
 
-        1) applying the plain-spreaded lookup on 12-12-8 limbs of Evn and Odd for both (~E + ~F) and (~¬E + ~G):
-             Evn: (Evn.12a, Evn.12b, Evn.8)
-             Odd: (Odd.12a, Odd.12b, Odd.8)
+        1) applying the plain-spreaded lookup on 12-12-8 limbs of Evn and Odd,
+           for both (~E + ~F) and (~(¬E) + ~G):
+             Evn_EF: (Evn_EF.12a, Evn_EF.12b, Evn_EF.8)
+             Odd_EF: (Odd_EF.12a, Odd_EF.12b, Odd_EF.8)
 
-        2) asserting the 12-12-8 decomposition identity for Odd_0 of (~E + ~F) and for Odd_1 of (~¬E + ~G):
-              2^20 * Odd.12a + 2^8 * Odd.12b + Odd.8
-            = Odd_i
+             Evn_nEG: (Evn_nEG.12a, Evn_nEG.12b, Evn_nEG.8)
+             Odd_nEG: (Odd_nEG.12a, Odd_nEG.12b, Odd_nEG.8)
 
-        3) asserting the spreaded addition identity for both (~E + ~F) and (~¬E + ~G):
-              (4^20 * ~Evn.12a + 4^8 * ~Evn.12b + ~Evn.8)
-          2 * (4^20 * ~Odd.12a + 4^8 * ~Odd.12b + ~Odd.8)
-             = ~E + ~F (or ~¬E + ~G)
+        2) asserting the 12-12-8 decomposition identity for Odd_EF and Odd_nEG:
+              2^20 * Odd_EF.12a + 2^8 * Odd_EF.12b + Odd_EF.8
+            = Odd_EF
+
+              2^20 * Odd_nEG.12a + 2^8 * Odd_nEG.12b + Odd_nEG.8
+            = Odd_nEG
+
+        3) asserting the spreaded addition identity for (~E + ~F) and (~(¬E) + ~G):
+              (4^20 * ~Evn_EF.12a + 4^8 * ~Evn_EF.12b + ~Evn_EF.8)
+          2 * (4^20 * ~Odd_EF.12a + 4^8 * ~Odd_EF.12b + ~Odd_EF.8)
+             = ~E + ~F
+
+              (4^20 * ~Evn_nEG.12a + 4^8 * ~Evn_nEG.12b + ~Evn_nEG.8)
+          2 * (4^20 * ~Odd_nEG.12a + 4^8 * ~Odd_nEG.12b + ~Odd_nEG.8)
+             = ~(¬E) + ~G
 
         4) asserting the following two addition identities:
-                    Ret = Odd_0 + Odd_1
-            MASK_EVN_64 =    ~E + ~¬E
+                    Ret = Odd_EF + Odd_nEG
+            MASK_EVN_64 = ~E + ~(¬E)
 
         The output is Ret.
 
         We distribute these values in the PLONK table as follows.
 
-        | T_0 |    A_0   |     A_1   | T_1 |    A_2  |    A_3   |  A_4  |  A_5  |    A_6     |
-        |-----|----------|-----------|-----|---------|----------|-------|-------|------------|
-        |  12 | Odd.12a  | ~Odd.12a  |  12 | Evn.12a | ~Evn.12a | Odd_0 |   ~E  |     ~F     |
-        |  12 | Odd.12b  | ~Odd.12b  |  12 | Evn.12b | ~Evn.12b | Odd_0 |Odd_1  |    Ret     |
-        |   8 |   Odd.8  |   ~Odd.8  |   8 |   Evn.8 |   ~Evn.8 |       |       |            |
-        |  12 | Odd.12a  | ~Odd.12a  |  12 | Evn.12a | ~Evn.12a | Odd_1 |  ~¬E  |     ~G     |
-        |  12 | Odd.12b  | ~Odd.12b  |  12 | Evn.12b | ~Evn.12b |    ~E |  ~¬E  |MASK_EVN_64 |
-        |   8 |   Odd.8  |   ~Odd.8  |   8 |   Evn.2 |   ~Evn.8 |       |       |            |
+        | T_0 |      A_0    |      A_1     | T_1 |      A_2    |      A_3     |   A_4   |   A_5   |     A_6     |
+        |-----|-------------|--------------|-----|-------------|--------------|---------|---------|-------------|
+        |  12 |  Odd_EF.12a |  ~Odd_EF.12a |  12 |  Evn_EF.12a |  ~Evn_EF.12a | Odd_EF  |   ~E    |      ~F     |
+        |  12 |  Odd_EF.12b |  ~Odd_EF.12b |  12 |  Evn_EF.12b |  ~Evn_EF.12b | Odd_EF  | Odd_nEG |     Ret     |
+        |   8 |  Odd_EF.8   |  ~Odd_EF.8   |   8 |  Evn_EF.8   |  ~Evn_EF.8   |         |         |             |
+        |  12 | Odd_nEG.12a | ~Odd_nEG.12a |  12 | Evn_nEG.12a | ~Evn_nEG.12a | Odd_nEG |  ~(¬E)  |      ~G     |
+        |  12 | Odd_nEG.12b | ~Odd_nEG.12b |  12 | Evn_nEG.12b | ~Evn_nEG.12b |   ~E    |  ~(¬E)  | MASK_EVN_64 |
+        |   8 | Odd_nEG.8   | ~Odd_nEG.8   |   8 | Evn_nEG.2   | ~Evn_nEG.8   |         |         |             |
         */
 
         let adv_cols = self.config().advice_cols;
-        // ~E + ~F
-        let sprdd_e_plus_sprdd_f_val = Value::zip(
-            sprdd_e.0.value().copied().map(fe_to_u64),
-            sprdd_f.0.value().copied().map(fe_to_u64),
-        )
-        .map(|(e, f)| e + f);
-        // ~¬E
-        let sprdd_neg_e_val = sprdd_e
-            .0
-            .value()
-            .copied()
-            .map(fe_to_u64)
-            .map(negate_spreaded);
-        // ~¬E + ~G
-        let sprdd_neg_e_plus_sprdd_g_val =
-            Value::zip(sprdd_neg_e_val, sprdd_g.0.value().copied().map(fe_to_u64))
-                .map(|(neg_e, g)| neg_e + g);
-        // MASK_EVN_64
-        let mask_evn_64_val = Value::known(MASK_EVN_64);
+
+        let sprdd_E_val = sprdd_E.0.value().copied().map(fe_to_u64);
+        let sprdd_F_val = sprdd_F.0.value().copied().map(fe_to_u64);
+        let sprdd_G_val = sprdd_G.0.value().copied().map(fe_to_u64);
+        let sprdd_nE_val = sprdd_E_val.map(negate_spreaded);
+
+        let EpF_val = sprdd_E_val + sprdd_F_val;
+        let nEpG_val = sprdd_nE_val + sprdd_G_val;
+        let sprdd_nE_val: Value<F> = sprdd_nE_val.map(u64_to_fe);
+
+        let mask_evn_64: AssignedNative<F> =
+            (self.native_chip).assign_fixed(layouter, F::from(MASK_EVN_64))?;
 
         layouter.assign_region(
             || "Ch(E, F, G)",
             |mut region| {
-                self.config().q_ch_helper.enable(&mut region, 0)?;
-                self.config().q_ch_helper.enable(&mut region, 3)?;
+                self.config().q_half_ch.enable(&mut region, 0)?;
+                self.config().q_half_ch.enable(&mut region, 3)?;
 
-                (sprdd_e.0).copy_advice(|| "~E", &mut region, adv_cols[5], 0)?;
-                (sprdd_f.0).copy_advice(|| "~F", &mut region, adv_cols[6], 0)?;
-                (sprdd_g.0).copy_advice(|| "~G", &mut region, adv_cols[6], 3)?;
-                (sprdd_e.0).copy_advice(|| "~E", &mut region, adv_cols[4], 4)?;
-                let sprdd_neg_e = region
-                    .assign_advice(|| "~¬E", adv_cols[5], 3, || sprdd_neg_e_val.map(u64_to_fe))
-                    .map(AssignedSpreaded::<F, 32>)?;
-                sprdd_neg_e
-                    .0
-                    .copy_advice(|| "~¬E", &mut region, adv_cols[5], 4)?;
-                let _mask_evn_64 = region
-                    .assign_advice(
-                        || "MASK_EVN_64",
-                        adv_cols[6],
-                        4,
-                        || mask_evn_64_val.map(u64_to_fe),
-                    )
-                    .map(AssignedSpreaded::<F, 32>)?;
+                (sprdd_E.0).copy_advice(|| "~E", &mut region, adv_cols[5], 0)?;
+                (sprdd_E.0).copy_advice(|| "~E", &mut region, adv_cols[4], 4)?;
 
-                let odd_0 = self.assign_sprdd_12_12_8(
-                    &mut region,
-                    sprdd_e_plus_sprdd_f_val,
-                    Parity::Odd,
-                    0,
-                )?;
-                odd_0
-                    .0
-                    .copy_advice(|| "Odd_0", &mut region, adv_cols[4], 1)?;
+                (sprdd_F.0).copy_advice(|| "~F", &mut region, adv_cols[6], 0)?;
+                (sprdd_G.0).copy_advice(|| "~G", &mut region, adv_cols[6], 3)?;
 
-                let odd_1 = self.assign_sprdd_12_12_8(
-                    &mut region,
-                    sprdd_neg_e_plus_sprdd_g_val,
-                    Parity::Odd,
-                    3,
-                )?;
-                odd_1
-                    .0
-                    .copy_advice(|| "Odd_1", &mut region, adv_cols[5], 1)?;
+                let sprdd_nE = region.assign_advice(|| "~(¬E)", adv_cols[5], 3, || sprdd_nE_val)?;
+                sprdd_nE.copy_advice(|| "~(¬E)", &mut region, adv_cols[5], 4)?;
 
-                let ret_val = Value::zip(
-                    odd_0.0.value().copied().map(fe_to_u32),
-                    odd_1.0.value().copied().map(fe_to_u32),
-                )
-                .map(|(odd_0_val, odd_1_val)| odd_0_val + odd_1_val);
+                mask_evn_64.copy_advice(|| "MASK_EVN_64", &mut region, adv_cols[6], 4)?;
 
+                let odd_EF = self.assign_sprdd_12_12_8(&mut region, EpF_val, Parity::Odd, 0)?;
+                (odd_EF.0).copy_advice(|| "Odd_EF", &mut region, adv_cols[4], 1)?;
+
+                let odd_nEG = self.assign_sprdd_12_12_8(&mut region, nEpG_val, Parity::Odd, 3)?;
+                (odd_nEG.0).copy_advice(|| "Odd_nEG", &mut region, adv_cols[5], 1)?;
+
+                let ret_val = odd_EF.0.value().copied() + odd_nEG.0.value().copied();
                 region
-                    .assign_advice(|| "Ret", adv_cols[6], 1, || ret_val.map(u32_to_fe))
+                    .assign_advice(|| "Ret", adv_cols[6], 1, || ret_val)
                     .map(AssignedPlain::<F, 32>)
             },
         )

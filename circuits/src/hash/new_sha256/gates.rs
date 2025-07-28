@@ -82,7 +82,7 @@ pub fn maj_gate<F: PrimeField>(
 
     Constraints::with_selector(
         selector,
-        [("Spreaded Major check", sprdd_maj_check)].into_iter(),
+        [("Spreaded Maj check", sprdd_maj_check)].into_iter(),
     )
 }
 
@@ -245,8 +245,8 @@ pub fn add_mod_2_32_gate<F: PrimeField>(
     Constraints::with_selector(selector, [("add_mod_2_32 check", lhs - rhs)].into_iter())
 }
 
-/// Helper gate, used to compute Ch(E, F, G).
-pub fn ch_helper_gate<F: PrimeField>(
+/// Half Ch(E, F, G) gate.
+pub fn half_ch_gate<F: PrimeField>(
     selector: Expression<F>,
     [sprdd_x, sprdd_y]: [Expression<F>; 2],
     [sprdd_evn_12a, sprdd_evn_12b, sprdd_evn_8]: [Expression<F>; 3],
@@ -275,8 +275,8 @@ pub fn ch_helper_gate<F: PrimeField>(
     Constraints::with_selector(
         selector,
         [
-            ("Spreaded addition check", sprdd_add_check),
-            ("Addition check", add_check),
+            ("Spreaded half Ch check", sprdd_add_check),
+            ("Half Ch check (2-term add)", add_check),
         ]
         .into_iter(),
     )
