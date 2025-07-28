@@ -419,6 +419,83 @@ impl<F: PrimeField> Sha256Chip<F> {
         )
     }
 
+    /// Computes Σ₁(E).
+    pub(super) fn Sigma_1(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        e: &LimbsOfE<F>,
+    ) -> Result<AssignedPlain<F, 32>, Error> {
+        /*
+        We need to compute:
+             E >>> 6 :  ( E.06 || E.07 || E.12 || E.02 || E.05 )
+          ⊕ E >>> 11 :  ( E.05 || E.06 || E.07 || E.12 || E.02 )
+          ⊕ E >>> 25 :  ( E.12 || E.02 || E.05 || E.06 || E.07 )
+
+        which can be achieved by
+
+        1) applying the plain-spreaded lookup on 12-12-8 limbs of Evn and Odd:
+             Evn: (Evn.12a, Evn.12b, Evn.8)
+             Odd: (Odd.12a, Odd.12b, Odd.8)
+
+        2) asserting the 12-12-8 decomposition identity for Evn:
+              2^20 * Evn.12a + 2^8 * Evn.12b + Evn.8
+            = Evn
+
+         3) asserting the Sigma_1 identity regarding the spreaded values:
+              (4^20 * ~Evn.12a + 4^8 * ~Evn.12b + ~Evn.8) +
+          2 * (4^20 * ~Odd.12a + 4^8 * ~Odd.12b + ~Odd.8)
+             = 4^26 * ~E.06 + 4^19 * ~E.07 + 4^7  * ~E.12 + 4^5 * ~E.02 + ~E.05
+             + 4^27 * ~E.05 + 4^21 * ~E.06 + 4^14 * ~E.07 + 4^2 * ~E.12 + ~E.02
+             + 4^20 * ~E.12 + 4^18 * ~E.02 + 4^13 * ~E.05 + 4^7 * ~E.06 + ~E.07
+
+        The output is Evn.
+
+        We distribute these values in the PLONK table as follows.
+
+        | T_0 |   A_0   |    A_1   | T_1 |   A_2   |    A_3   | A_4 |  A_5  |  A_6  |
+        |-----|---------|----------|-----|---------|----------|-----|-------|-------|
+        |  12 | Evn.12a | ~Evn.12a |  12 | Odd.12a | ~Odd.12a | Evn | ~E.07 | ~E.12 |
+        |  12 | Evn.12b | ~Evn.12b |  12 | Odd.12b | ~Odd.12b |     | ~E.02 | ~E.05 |
+        |   8 |   Evn.8 |   ~Evn.8 |   8 |   Odd.8 |   ~Odd.8 |     | ~E.06 |       |
+        */
+
+        let adv_cols = self.config().advice_cols;
+
+        layouter.assign_region(
+            || "Σ₁(E)",
+            |mut region| {
+                self.config().q_Sigma_1.enable(&mut region, 0)?;
+
+                // Copy and assign the input.
+                (e.spreaded_limb_07.0).copy_advice(|| "~E.07", &mut region, adv_cols[5], 0)?;
+                (e.spreaded_limb_12.0).copy_advice(|| "~E.12", &mut region, adv_cols[6], 0)?;
+                (e.spreaded_limb_02.0).copy_advice(|| "~E.02", &mut region, adv_cols[5], 1)?;
+                (e.spreaded_limb_05.0).copy_advice(|| "~E.05", &mut region, adv_cols[6], 1)?;
+                (e.spreaded_limb_06.0).copy_advice(|| "~E.06", &mut region, adv_cols[5], 2)?;
+
+                // Compute the spreaded Σ₁(E) off-circuit, assign the 12-12-8 limbs
+                // of its even and odd bits into the circuit, enable the q_12_12_8 selector
+                // for the even part and q_lookup selector for the related rows, return the
+                // assigned 32 even bits.
+                let val_of_sprdd_limbs: Value<[u64; 5]> = Value::from_iter([
+                    e.spreaded_limb_07.0.value().copied().map(fe_to_u64),
+                    e.spreaded_limb_12.0.value().copied().map(fe_to_u64),
+                    e.spreaded_limb_02.0.value().copied().map(fe_to_u64),
+                    e.spreaded_limb_05.0.value().copied().map(fe_to_u64),
+                    e.spreaded_limb_06.0.value().copied().map(fe_to_u64),
+                ])
+                .map(|limbs: Vec<u64>| limbs.try_into().unwrap());
+
+                self.assign_sprdd_12_12_8(
+                    &mut region,
+                    val_of_sprdd_limbs.map(spreaded_Sigma_1),
+                    Parity::Evn,
+                    0,
+                )
+            },
+        )
+    }
+
     /// Computes Maj(A, B, C)
     pub(super) fn maj(
         &self,
@@ -677,83 +754,6 @@ impl<F: PrimeField> Sha256Chip<F> {
                         spreaded_limb_06: limb_06.spreaded,
                     },
                 ))
-            },
-        )
-    }
-
-    /// Computes Σ₁(E).
-    pub(super) fn Sigma_1(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        e: &LimbsOfE<F>,
-    ) -> Result<AssignedPlain<F, 32>, Error> {
-        /*
-        We need to compute:
-             E >>> 6 :  ( E.06 || E.07 || E.12 || E.02 || E.05 )
-          ⊕ E >>> 11 :  ( E.05 || E.06 || E.07 || E.12 || E.02 )
-          ⊕ E >>> 25 :  ( E.12 || E.02 || E.05 || E.06 || E.07 )
-
-        which can be achieved by
-
-        1) applying the plain-spreaded lookup on 12-12-8 limbs of Evn and Odd:
-             Evn: (Evn.12a, Evn.12b, Evn.8)
-             Odd: (Odd.12a, Odd.12b, Odd.8)
-
-        2) asserting the 12-12-8 decomposition identity for Evn:
-              2^20 * Evn.12a + 2^8 * Evn.12b + Evn.8
-            = Evn
-
-         3) asserting the Sigma_1 identity regarding the spreaded values:
-              (4^20 * ~Evn.12a + 4^8 * ~Evn.12b + ~Evn.8) +
-          2 * (4^20 * ~Odd.12a + 4^8 * ~Odd.12b + ~Odd.8)
-             = 4^26 * ~E.06 + 4^19 * ~E.07 + 4^7  * ~E.12 + 4^5 * ~E.02 + ~E.05
-             + 4^27 * ~E.05 + 4^21 * ~E.06 + 4^14 * ~E.07 + 4^2 * ~E.12 + ~E.02
-             + 4^20 * ~E.12 + 4^18 * ~E.02 + 4^13 * ~E.05 + 4^7 * ~E.06 + ~E.07
-
-        The output is Evn.
-
-        We distribute these values in the PLONK table as follows.
-
-        | T_0 |   A_0   |    A_1   | T_1 |   A_2   |    A_3   | A_4 |  A_5  |  A_6  |
-        |-----|---------|----------|-----|---------|----------|-----|-------|-------|
-        |  12 | Evn.12a | ~Evn.12a |  12 | Odd.12a | ~Odd.12a | Evn | ~E.07 | ~E.12 |
-        |  12 | Evn.12b | ~Evn.12b |  12 | Odd.12b | ~Odd.12b |     | ~E.02 | ~E.05 |
-        |   8 |   Evn.8 |   ~Evn.8 |   8 |   Odd.8 |   ~Odd.8 |     | ~E.06 |       |
-        */
-
-        let adv_cols = self.config().advice_cols;
-
-        layouter.assign_region(
-            || "Σ₁(E)",
-            |mut region| {
-                self.config().q_Sigma_1.enable(&mut region, 0)?;
-
-                // Copy and assign the input.
-                (e.spreaded_limb_07.0).copy_advice(|| "~E.07", &mut region, adv_cols[5], 0)?;
-                (e.spreaded_limb_12.0).copy_advice(|| "~E.12", &mut region, adv_cols[6], 0)?;
-                (e.spreaded_limb_02.0).copy_advice(|| "~E.02", &mut region, adv_cols[5], 1)?;
-                (e.spreaded_limb_05.0).copy_advice(|| "~E.05", &mut region, adv_cols[6], 1)?;
-                (e.spreaded_limb_06.0).copy_advice(|| "~E.06", &mut region, adv_cols[5], 2)?;
-
-                // Compute the spreaded Σ₁(E) off-circuit, assign the 12-12-8 limbs
-                // of its even and odd bits into the circuit, enable the q_12_12_8 selector
-                // for the even part and q_lookup selector for the related rows, return the
-                // assigned 32 even bits.
-                let val_of_sprdd_limbs: Value<[u64; 5]> = Value::from_iter([
-                    e.spreaded_limb_07.0.value().copied().map(fe_to_u64),
-                    e.spreaded_limb_12.0.value().copied().map(fe_to_u64),
-                    e.spreaded_limb_02.0.value().copied().map(fe_to_u64),
-                    e.spreaded_limb_05.0.value().copied().map(fe_to_u64),
-                    e.spreaded_limb_06.0.value().copied().map(fe_to_u64),
-                ])
-                .map(|limbs: Vec<u64>| limbs.try_into().unwrap());
-
-                self.assign_sprdd_12_12_8(
-                    &mut region,
-                    val_of_sprdd_limbs.map(spreaded_Sigma_1),
-                    Parity::Evn,
-                    0,
-                )
             },
         )
     }
