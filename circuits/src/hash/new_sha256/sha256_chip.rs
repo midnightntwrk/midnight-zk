@@ -391,7 +391,7 @@ impl<F: PrimeField> Sha256Chip<F> {
                 .map(|(carry, a)| (carry as u32, u64_to_fe(a)))
                 .unzip();
 
-        let a_spreaded_val = a_val.map(fe_to_u32).map(spread).map(u64_to_fe);
+        let a_sprdd_val = a_val.map(fe_to_u32).map(spread).map(u64_to_fe);
 
         let [val_10, val_09, val_11, val_02] = a_val
             .map(|a| u32_in_be_limbs(fe_to_u32(a), [10, 9, 11, 2]))
@@ -411,7 +411,7 @@ impl<F: PrimeField> Sha256Chip<F> {
                     self.assign_plain_and_spreaded(&mut region, carry_val, 2, 1)?;
 
                 let a_plain = region.assign_advice(|| " A", adv_cols[4], 0, || a_val)?;
-                let a_sprdd = region.assign_advice(|| "~A", adv_cols[4], 1, || a_spreaded_val)?;
+                let a_sprdd = region.assign_advice(|| "~A", adv_cols[4], 1, || a_sprdd_val)?;
 
                 (summands[0].0).copy_advice(|| "S0", &mut region, adv_cols[5], 0)?;
                 (summands[1].0).copy_advice(|| "S1", &mut region, adv_cols[6], 0)?;
@@ -583,56 +583,91 @@ impl<F: PrimeField> Sha256Chip<F> {
         )
     }
 
-    /// Decomposes the given `AssignedPlain` into (bit-endian) limbs of bit
+    /// Given an array of 6 `AssignedPlain` values, it adds them modulo 2^32
+    /// and decomposes the result (named E) into (bit-endian) limbs of bit
     /// sizes 7, 12, 2, 5 and 6.
     ///
-    /// This function also returns the spreaded version of the given input.
-    pub(super) fn decompose_in_7_12_2_5_6(
+    /// This function also returns the spreaded version of the sum, ~E and
+    /// the limbs of E.
+    pub(super) fn prepare_E(
         &self,
         layouter: &mut impl Layouter<F>,
-        plain: &AssignedPlain<F, 32>,
+        summands: &[AssignedPlain<F, 32>; 6],
     ) -> Result<(AssignedPlainSpreaded<F, 32>, LimbsOfE<F>), Error> {
         /*
-        On a plain input E, we use the following table distribution.
+        Given assigned plain inputs S0, ..., S5, let E be their sum modulo 2^32.
+        We use the following table distribution.
 
-        | T_0 |  A_0 |  A_1  | T_1 |  A_2  |   A_3  | A_4 |
-        |-----|------|-------|-----|-------|--------|-----|
-        |  07 | E.07 | ~E.07 |  12 |  E.12 | ~E.12  |  E  | <- a copy of plain
-        |  02 | E.02 | ~E.02 |  05 |  E.05 | ~E.05  | ~E  |
-        |  06 | E.06 | ~E.06 |   0 |   0   |    0   |     |
+        | T_0 |  A_0 |  A_1  | T_1 |   A_2   |   A_3  | A_4 | A_5 | A_6 |
+        |-----|------|-------|-----|---------|--------|-----|-----|-----|
+        |   7 | E.07 | ~E.07 |  12 |   E.12  |  ~E.12 |  E  |  S0 |  S1 |
+        |   2 | E.02 | ~E.02 |   5 |   E.05  |  ~E.05 | ~E  |  S2 |  S3 |
+        |   6 | E.06 | ~E.06 |   3 |  carry  | ~carry |  0  |  S4 |  S5 |
 
         Apart from the lookups, the following identities are checked via a
-        custom gate:
+        custom gate with selector q_7_12_2_5_6:
+
             E = 2^25 *  E.07 + 2^13 *  E.12 + 2^11 *  E.02 + 2^6 *  E.05 +  E.06
            ~E = 4^25 * ~E.07 + 4^13 * ~E.12 + 4^11 * ~E.02 + 4^6 * ~E.05 + ~E.06
+
+        and the following is checked with a custom gate with selector
+        q_add_mod_2_32:
+
+            S0 + S1 + S2 + S3 + 0 + S4 + S5 = E + carry * 2^32
+
+        Note that E is implicitly being range-checked in [0, 2^32) via
+        the lookup, and the carry is range-checked in [0, 8). This makes
+        the gate complete and sound (the range on the carry does not need
+        to be tight as long as it prevents overflows in the native field).
         */
 
         let adv_cols = self.config().advice_cols;
-        let plain_val = plain.0.value().copied();
-        let sprdd_val = plain_val.map(fe_to_u32).map(spread).map(u64_to_fe);
-        let [val_07, val_12, val_02, val_05, val_06] = plain_val
+
+        let (carry_val, e_val): (Value<u32>, Value<F>) =
+            Value::<Vec<F>>::from_iter(summands.iter().map(|s| s.0.value().copied()))
+                .map(|v| v.into_iter().map(fe_to_u64).sum())
+                .map(|s: u64| s.div_rem(&(1 << 32)))
+                .map(|(carry, e)| (carry as u32, u64_to_fe(e)))
+                .unzip();
+
+        let e_sprdd_val = e_val.map(fe_to_u32).map(spread).map(u64_to_fe);
+
+        let [val_07, val_12, val_02, val_05, val_06] = e_val
             .map(|e| u32_in_be_limbs(fe_to_u32(e), [7, 12, 2, 5, 6]))
             .transpose_array();
+
+        let zero: AssignedNative<F> = self.native_chip.assign_fixed(layouter, F::ZERO)?;
 
         layouter.assign_region(
             || "decompose E in 7-12-2-5-6",
             |mut region| {
                 self.config().q_7_12_2_5_6.enable(&mut region, 0)?;
+                self.config().q_add_mod_2_32.enable(&mut region, 0)?;
 
                 let limb_07 = self.assign_plain_and_spreaded(&mut region, val_07, 0, 0)?;
                 let limb_12 = self.assign_plain_and_spreaded(&mut region, val_12, 0, 1)?;
                 let limb_02 = self.assign_plain_and_spreaded(&mut region, val_02, 1, 0)?;
                 let limb_05 = self.assign_plain_and_spreaded(&mut region, val_05, 1, 1)?;
                 let limb_06 = self.assign_plain_and_spreaded(&mut region, val_06, 2, 0)?;
-                let _ = self.assign_plain_and_spreaded::<0>(&mut region, Value::known(0), 2, 1)?;
+                let _carry: AssignedPlainSpreaded<F, 3> =
+                    self.assign_plain_and_spreaded(&mut region, carry_val, 2, 1)?;
 
-                plain.0.copy_advice(|| "E", &mut region, adv_cols[4], 0)?;
-                let spreaded = region.assign_advice(|| "~E", adv_cols[4], 1, || sprdd_val)?;
+                let e_plain = region.assign_advice(|| " E", adv_cols[4], 0, || e_val)?;
+                let e_sprdd = region.assign_advice(|| "~E", adv_cols[4], 1, || e_sprdd_val)?;
+
+                (summands[0].0).copy_advice(|| "S0", &mut region, adv_cols[5], 0)?;
+                (summands[1].0).copy_advice(|| "S1", &mut region, adv_cols[6], 0)?;
+                (summands[2].0).copy_advice(|| "S2", &mut region, adv_cols[5], 1)?;
+                (summands[3].0).copy_advice(|| "S3", &mut region, adv_cols[6], 1)?;
+                (summands[4].0).copy_advice(|| "S4", &mut region, adv_cols[5], 2)?;
+                (summands[5].0).copy_advice(|| "S5", &mut region, adv_cols[6], 2)?;
+
+                zero.copy_advice(|| "0", &mut region, adv_cols[4], 2)?;
 
                 Ok((
                     AssignedPlainSpreaded {
-                        plain: plain.clone(),
-                        spreaded: AssignedSpreaded(spreaded),
+                        plain: AssignedPlain(e_plain),
+                        spreaded: AssignedSpreaded(e_sprdd),
                     },
                     LimbsOfE {
                         spreaded_limb_07: limb_07.spreaded,
