@@ -64,6 +64,8 @@ midnight-circuits = {path = "../circuits" }
 sha2 = { workspace = true }
 rand = { workspace = true }
 
+dhat = "0.3"
+
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
 getrandom = { version = "0.2", features = ["js"] }
 

@@ -4,6 +4,7 @@ use std::{
     iter,
     ops::RangeTo,
 };
+use std::time::Instant;
 
 #[cfg(feature = "bench-internal")]
 use bench_macros::inner_bench;
@@ -261,7 +262,7 @@ where
 /// parameters `params` and the proving key [`ProvingKey`] that was
 /// generated previously for the same circuit. The provided `instances`
 /// are zero-padded internally.
-pub(crate) fn finalise_proof<'a, F, CS: PolynomialCommitmentScheme<F>, T: Transcript>(
+pub fn finalise_proof<'a, F, CS: PolynomialCommitmentScheme<F>, T: Transcript>(
     params: &'a CS::Parameters,
     pk: &'a ProvingKey<F, CS>,
     // The prover needs to get all instances in non-committed form. However,
@@ -664,6 +665,7 @@ fn compute_h_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F
         })
         .collect();
 
+    let now = Instant::now();
     // Evaluate the h(X) polynomial
     pk.ev.evaluate_h::<ExtendedLagrangeCoeff>(
         &pk.vk.domain,
@@ -684,7 +686,8 @@ fn compute_h_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F
         &pk.l_last,
         &pk.l_active_row,
         &pk.permutation.cosets,
-    )
+    );
+    println!("Evaluate H: {:?}ms", now.elapsed().as_millis());
 }
 
 fn write_evals_to_transcript<F, CS, T>(
