@@ -13,7 +13,10 @@ use crate::{
             add_mod_2_32_gate, decompose_10_9_11_2_gate, decompose_12_12_8_gate,
             decompose_7_12_2_5_6_gate, half_ch_gate, maj_gate, Sigma_0_gate, Sigma_1_gate,
         },
-        types::{AssignedPlain, AssignedPlainSpreaded, AssignedSpreaded, LimbsOfA, LimbsOfE},
+        types::{
+            AssignedPlain, AssignedPlainSpreaded, AssignedSpreaded, CompressionState, LimbsOfA,
+            LimbsOfE,
+        },
         utils::{
             gen_spread_table, get_even_and_odd_bits, negate_spreaded, spread, spreaded_Sigma_0,
             spreaded_Sigma_1, spreaded_maj, u32_in_be_limbs, u32_to_fe, u64_to_fe, MASK_EVN_64,
@@ -678,7 +681,7 @@ impl<F: PrimeField> Sha256Chip<F> {
         &self,
         layouter: &mut impl Layouter<F>,
         summands: &[AssignedPlain<F, 32>; 7],
-    ) -> Result<(AssignedPlainSpreaded<F, 32>, LimbsOfA<F>), Error> {
+    ) -> Result<LimbsOfA<F>, Error> {
         /*
         Given assigned plain inputs S0, ..., S6, let A be their sum modulo 2^32.
         We use the following table distribution.
@@ -745,18 +748,16 @@ impl<F: PrimeField> Sha256Chip<F> {
                 (summands[5].0).copy_advice(|| "S5", &mut region, adv_cols[5], 2)?;
                 (summands[6].0).copy_advice(|| "S6", &mut region, adv_cols[6], 2)?;
 
-                Ok((
-                    AssignedPlainSpreaded {
+                Ok(LimbsOfA {
+                    combined: AssignedPlainSpreaded {
                         plain: AssignedPlain(a_plain),
                         spreaded: AssignedSpreaded(a_sprdd),
                     },
-                    LimbsOfA {
-                        spreaded_limb_10: limb_10.spreaded,
-                        spreaded_limb_09: limb_09.spreaded,
-                        spreaded_limb_11: limb_11.spreaded,
-                        spreaded_limb_02: limb_02.spreaded,
-                    },
-                ))
+                    spreaded_limb_10: limb_10.spreaded,
+                    spreaded_limb_09: limb_09.spreaded,
+                    spreaded_limb_11: limb_11.spreaded,
+                    spreaded_limb_02: limb_02.spreaded,
+                })
             },
         )
     }
@@ -771,7 +772,7 @@ impl<F: PrimeField> Sha256Chip<F> {
         &self,
         layouter: &mut impl Layouter<F>,
         summands: &[AssignedPlain<F, 32>; 6],
-    ) -> Result<(AssignedPlainSpreaded<F, 32>, LimbsOfE<F>), Error> {
+    ) -> Result<LimbsOfE<F>, Error> {
         /*
         Given assigned plain inputs S0, ..., S5, let E be their sum modulo 2^32.
         We use the following table distribution.
@@ -842,19 +843,17 @@ impl<F: PrimeField> Sha256Chip<F> {
 
                 zero.copy_advice(|| "0", &mut region, adv_cols[4], 2)?;
 
-                Ok((
-                    AssignedPlainSpreaded {
+                Ok(LimbsOfE {
+                    combined: AssignedPlainSpreaded {
                         plain: AssignedPlain(e_plain),
                         spreaded: AssignedSpreaded(e_sprdd),
                     },
-                    LimbsOfE {
-                        spreaded_limb_07: limb_07.spreaded,
-                        spreaded_limb_12: limb_12.spreaded,
-                        spreaded_limb_02: limb_02.spreaded,
-                        spreaded_limb_05: limb_05.spreaded,
-                        spreaded_limb_06: limb_06.spreaded,
-                    },
-                ))
+                    spreaded_limb_07: limb_07.spreaded,
+                    spreaded_limb_12: limb_12.spreaded,
+                    spreaded_limb_02: limb_02.spreaded,
+                    spreaded_limb_05: limb_05.spreaded,
+                    spreaded_limb_06: limb_06.spreaded,
+                })
             },
         )
     }
@@ -970,5 +969,59 @@ impl<F: PrimeField> Sha256Chip<F> {
             }
         }
         .map(AssignedPlain)
+    }
+
+    /// A compression round. This is called 64 times per block.
+    fn compression_round(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        state: &CompressionState<F>,
+        round_k: &AssignedPlain<F, 32>,
+        round_w: &AssignedPlain<F, 32>,
+    ) -> Result<CompressionState<F>, Error> {
+        let Sigma_0_of_a = self.Sigma_0(layouter, &state.a)?;
+        let Maj_of_a_b_c = self.maj(
+            layouter,
+            &state.a.combined.spreaded,
+            &state.b.spreaded,
+            &state.c.spreaded,
+        )?;
+        let Sigma_1_of_e = self.Sigma_1(layouter, &state.e)?;
+        let Ch_of_e_f_g = self.ch(
+            layouter,
+            &state.e.combined.spreaded,
+            &state.f.spreaded,
+            &state.g.spreaded,
+        )?;
+
+        let next_a_summands = [
+            state.h.plain.clone(),
+            Sigma_1_of_e.clone(),
+            Ch_of_e_f_g.clone(),
+            round_k.clone(),
+            round_w.clone(),
+            Sigma_0_of_a,
+            Maj_of_a_b_c,
+        ];
+
+        let next_e_summands = [
+            state.d.plain.clone(),
+            state.h.plain.clone(),
+            Sigma_1_of_e,
+            Ch_of_e_f_g,
+            round_k.clone(),
+            round_w.clone(),
+        ];
+
+        Ok(CompressionState {
+            a: self.prepare_A(layouter, &next_a_summands)?,
+            b: state.a.combined.clone(),
+            c: state.b.clone(),
+            d: state.c.clone(),
+            e: self.prepare_E(layouter, &next_e_summands)?,
+            f: state.e.combined.clone(),
+            g: state.f.clone(),
+            h: state.g.clone(),
+        })
     }
 }

@@ -22,6 +22,7 @@ pub(super) struct AssignedPlainSpreaded<F: PrimeField, const L: usize> {
 /// register A of 32 bits. Input type of Σ₀(A).
 #[derive(Clone, Debug)]
 pub(super) struct LimbsOfA<F: PrimeField> {
+    pub combined: AssignedPlainSpreaded<F, 32>,
     pub spreaded_limb_10: AssignedSpreaded<F, 10>,
     pub spreaded_limb_09: AssignedSpreaded<F, 9>,
     pub spreaded_limb_11: AssignedSpreaded<F, 11>,
@@ -32,9 +33,21 @@ pub(super) struct LimbsOfA<F: PrimeField> {
 /// register E of 32 bits. Input type of Σ₁(E).
 #[derive(Clone, Debug)]
 pub(super) struct LimbsOfE<F: PrimeField> {
+    pub combined: AssignedPlainSpreaded<F, 32>,
     pub spreaded_limb_07: AssignedSpreaded<F, 7>,
     pub spreaded_limb_12: AssignedSpreaded<F, 12>,
     pub spreaded_limb_02: AssignedSpreaded<F, 2>,
     pub spreaded_limb_05: AssignedSpreaded<F, 5>,
     pub spreaded_limb_06: AssignedSpreaded<F, 6>,
+}
+
+pub(super) struct CompressionState<F: PrimeField> {
+    pub(super) a: LimbsOfA<F>,
+    pub(super) b: AssignedPlainSpreaded<F, 32>,
+    pub(super) c: AssignedPlainSpreaded<F, 32>,
+    pub(super) d: AssignedPlainSpreaded<F, 32>,
+    pub(super) e: LimbsOfE<F>,
+    pub(super) f: AssignedPlainSpreaded<F, 32>,
+    pub(super) g: AssignedPlainSpreaded<F, 32>,
+    pub(super) h: AssignedPlainSpreaded<F, 32>,
 }
