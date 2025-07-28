@@ -34,10 +34,7 @@ use midnight_curves::G1Projective;
 use midnight_proofs::{
     circuit::{Chip, Layouter, SimpleFloorPlanner, Value},
     dev::cost_model::{from_circuit_to_circuit_model, CircuitModel},
-    plonk::{
-        k_from_circuit, prepare, Circuit, ConstraintSystem, Error, ProvingKey, TableColumn,
-        VerifyingKey,
-    },
+    plonk::{k_from_circuit, prepare, Circuit, ConstraintSystem, Error, ProvingKey, VerifyingKey},
     poly::{
         commitment::{Guard, Params},
         kzg::{
@@ -88,9 +85,7 @@ use crate::{
     map::map_gadget::MapGadget,
     parsing::{
         self,
-        automaton_chip::{
-            AutomatonChip, AutomatonConfig, NB_AUTOMATA_COLS, NB_AUTOMATA_TABLE_COLS,
-        },
+        automaton_chip::{AutomatonChip, AutomatonConfig, NB_AUTOMATA_COLS},
         Base64Chip, Base64Config, ParserGadget, StdLibParser, NB_BASE64_ADVICE_COLS,
     },
     types::{
@@ -455,14 +450,11 @@ impl ZkStdLib {
             false => None,
         };
 
-        let automata_table_cols: [TableColumn; NB_AUTOMATA_TABLE_COLS] =
-            core::array::from_fn(|_| meta.lookup_table_column());
         let automaton_config = match arch.automaton {
             true => Some(AutomatonChip::configure(
                 meta,
                 &(
                     advice_columns[..NB_AUTOMATA_COLS].try_into().unwrap(),
-                    automata_table_cols,
                     parsing::spec_library(),
                 ),
             )),

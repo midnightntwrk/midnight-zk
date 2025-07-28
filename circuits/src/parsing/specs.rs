@@ -17,13 +17,8 @@ pub enum StdLibParser {
     /// # Description and sources
     ///
     /// A JWT (Json Web Token) credential payload format, in compliance with the
-    /// RFC 7519 of the IETF:
-    ///
-    /// https://datatracker.ietf.org/doc/html/rfc7519
-    ///
-    /// It uses the following data model in the VC field:
-    ///
-    /// https://www.w3.org/TR/vc-data-model-2.0/
+    /// [RFC 7519](https://datatracker.ietf.org/doc/html/rfc7519) of the IETF. It uses
+    /// [this data model in the VC field](https://www.w3.org/TR/vc-data-model-2.0/).
     ///
     /// # Output Behaviour:
     ///
@@ -38,9 +33,8 @@ pub enum StdLibParser {
     ///
     /// If `ENFORCE_JSON_STRINGS` is set to `true`, this parser enforces the
     /// low-level requirements of JSON strings, such as being UTF-8 encoded
-    /// or correctly escaped, as required in RFC 8259 §7:
-    ///
-    /// https://datatracker.ietf.org/doc/html/rfc8259
+    /// or correctly escaped, as required in
+    /// [RFC 8259](https://datatracker.ietf.org/doc/html/rfc8259) §7.
     ///
     /// Setting `ENFORCE_JSON_STRINGS` to `false` replaces all JSON strings by
     /// arbitrary sequences of bytes delimited by two double quotes (byte

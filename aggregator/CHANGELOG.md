@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 
 ### Added
 
+<<<<<<< HEAD
 ### Changed
 * Modify `pow2range` chip: adjust architecture in light aggregator [#38](https://github.com/midnightntwrk/midnight-zk/pull/38)
 * Update dependency names [#32](https://github.com/midnightntwrk/midnight-zk/pull/32)
@@ -16,3 +17,6 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 * Unify transcript style [#34](https://github.com/midnightntwrk/midnight-zk/pull/34)
 
 ### Removed
+=======
+* Add a turned-off automaton configuration due to the automaton chip being exposed in std_lib [#30](https://github.com/midnightntwrk/midnight-zk/pull/30)
+>>>>>>> 1203cf0 (chores (update vk, fix table cols in automaton_chip, changelog))

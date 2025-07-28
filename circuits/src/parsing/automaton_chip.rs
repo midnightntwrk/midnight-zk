@@ -61,8 +61,6 @@ use crate::{
 
 /// Number of columns for the automata chip.
 pub const NB_AUTOMATA_COLS: usize = 3;
-/// Number of columns for the tables of the automata chip.
-pub const NB_AUTOMATA_TABLE_COLS: usize = 4;
 
 // Native gadget functions.
 type NG<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
@@ -191,7 +189,6 @@ where
 
     type SharedResources = (
         [Column<Advice>; NB_AUTOMATA_COLS],
-        [TableColumn; NB_AUTOMATA_TABLE_COLS],
         HashMap<LibIndex, Automaton>,
     );
 
@@ -208,14 +205,15 @@ where
     ) -> AutomatonConfig<LibIndex, F> {
         let q_automaton = meta.complex_selector();
 
-        let (advice_cols, table_cols, automata) = shared_res;
+        let (advice_cols, automata) = shared_res;
         let state_col = advice_cols[0];
         let letter_col = advice_cols[1];
         let output_col = advice_cols[2];
-        let t_source = table_cols[0];
-        let t_letter = table_cols[1];
-        let t_target = table_cols[2];
-        let t_output = table_cols[3];
+        let t_source = meta.lookup_table_column();
+        let t_letter = meta.lookup_table_column();
+        let t_target = meta.lookup_table_column();
+        let t_output = meta.lookup_table_column();
+
         // The fixed automaton of the configuration. Its set of states is offset by 1 to
         // ensure that 0 is not a reachable state (required due to how the table lookup
         // is filled).
@@ -543,8 +541,6 @@ where
         let fixed_cols = (0..NB_ARITH_COLS + 4)
             .map(|_| meta.fixed_column())
             .collect::<Vec<_>>();
-        let table_cols: [TableColumn; NB_AUTOMATA_TABLE_COLS] =
-            core::array::from_fn(|_| meta.lookup_table_column());
         let automata = HashMap::from_iter(
             [
                 Automaton::hard_coded_example0(),
@@ -567,7 +563,6 @@ where
             meta,
             &(
                 advice_cols[..NB_AUTOMATA_COLS].try_into().unwrap(),
-                table_cols,
                 automata,
             ),
         );
