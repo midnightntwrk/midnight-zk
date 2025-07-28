@@ -497,8 +497,9 @@ where
         .unzip();
 
     Ok(Trace {
-        fixed_polys: pk.fixed_values.clone(),
-        advice_polys: advice.into_iter().map(|a| a.advice_polys).collect(),
+        advice_polys: advice.into_iter().map(|a| {
+            a.advice_polys.into_iter().map(|p| domain.lagrange_to_coeff(p)).collect()
+        }).collect(),
         instance_polys,
         instance_values,
         vanishing,
@@ -555,18 +556,8 @@ where
         ..
     } = trace;
 
-    let advice = advice_polys
-        .iter()
-        .map(|polys| {
-            polys
-                .iter()
-                .map(|poly| pk.get_vk().get_domain().lagrange_to_coeff(poly.clone()))
-                .collect::<Vec<_>>()
-        })
-        .collect::<Vec<_>>();
-
     // Calculate the advice and instance cosets
-    let advice_cosets: Vec<Vec<Polynomial<F, ExtendedLagrangeCoeff>>> = advice
+    let advice_cosets: Vec<Vec<Polynomial<F, ExtendedLagrangeCoeff>>> = advice_polys
         .iter()
         .map(|advice_polys| {
             advice_polys
@@ -633,7 +624,7 @@ where
     }
 
     // Compute and hash advice evals for each circuit instance
-    for advice in advice.iter() {
+    for advice in advice_polys.iter() {
         // Evaluate polynomials at omega^i x
         let advice_evals: Vec<_> = meta
             .advice_queries
@@ -687,7 +678,7 @@ where
 
     let queries = instance_polys
         .iter()
-        .zip(advice.iter())
+        .zip(advice_polys.iter())
         .zip(permutations.iter())
         .zip(lookups.iter())
         .flat_map(|(((instance, advice), permutation), lookups)| {

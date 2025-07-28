@@ -12,10 +12,7 @@ use crate::{
 /// vector of its fields has the same size.
 #[derive(Debug)]
 pub struct Trace<F: PrimeField> {
-    #[allow(dead_code)]
-    // This field will be useful for split accumulation
-    pub(crate) fixed_polys: Vec<Polynomial<F, LagrangeCoeff>>,
-    pub(crate) advice_polys: Vec<Vec<Polynomial<F, LagrangeCoeff>>>,
+    pub(crate) advice_polys: Vec<Vec<Polynomial<F, Coeff>>>,
     pub(crate) instance_polys: Vec<Vec<Polynomial<F, Coeff>>>,
     #[allow(dead_code)]
     // This field will be useful for split accumulation
