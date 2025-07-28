@@ -1,9 +1,10 @@
 //! TODO
 #![allow(dead_code)]
 
+use std::time::Instant;
 use ff::{PrimeField, WithSmallOrderMulGroup};
 use rand_chacha::ChaCha8Rng;
-use rand_core::SeedableRng;
+use rand_core::{CryptoRng, RngCore, SeedableRng};
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
@@ -17,13 +18,19 @@ use crate::{
     },
     utils::arithmetic::eval_polynomial,
 };
+use crate::plonk::Circuit;
+use crate::poly::commitment::PolynomialCommitmentScheme;
+use crate::transcript::Transcript;
 
-fn fold<F: WithSmallOrderMulGroup<3>>(
+/// TODO: Fold instances
+pub fn fold<F: WithSmallOrderMulGroup<3>>(
     pk: &FoldingPk<F>,
     dk_domain: &EvaluationDomain<F>,
     traces: &[&FoldingTrace<F>],
 ) -> FoldingTrace<F> {
+    let time = Instant::now();
     let lifted_trace = batch_traces(dk_domain, traces);
+    let lift_trace_time = time.elapsed().as_millis();
 
     let mut rng = ChaCha8Rng::from_seed([0u8; 32]);
     let mut betas = vec![F::ONE; pk.domain.k() as usize];
@@ -33,7 +40,10 @@ fn fold<F: WithSmallOrderMulGroup<3>>(
         beta_pow *= beta_pow
     }
 
+    let beta_time = time.elapsed().as_millis() - lift_trace_time;
+
     let poly_g = compute_poly_g(pk, &betas, &lifted_trace);
+    let poly_g_time = time.elapsed().as_millis() - beta_time - lift_trace_time;
 
     let poly_k = dk_domain.divide_by_vanishing_poly(poly_g.clone());
 
@@ -48,7 +58,15 @@ fn fold<F: WithSmallOrderMulGroup<3>>(
 
     assert_eq!(g_in_gamma, k_in_gamma * z_in_gamma);
 
-    fold_traces(dk_domain, traces, &gamma)
+    let res = fold_traces(dk_domain, traces, &gamma);
+    let rest_time = time.elapsed().as_millis() - poly_g_time  - beta_time - lift_trace_time;
+
+    println!("    Lift trace time      : {:?}ms", lift_trace_time);
+    println!("    Beta powers time     : {:?}ms", beta_time);
+    println!("    Poly G time          : {:?}ms", poly_g_time);
+    println!("    Rest time            : {:?}ms", rest_time);
+
+    res
 }
 
 /// Tasks to clean this up a bit:
@@ -335,7 +353,7 @@ mod tests {
 
     #[test]
     fn folding_test() {
-        const K: u32 = 16;
+        const K: u32 = 9;
         let k = 4; // number of folding instances
 
         let rng = ChaCha8Rng::from_seed([0u8; 32]);
@@ -345,7 +363,7 @@ mod tests {
         let mut rand_bytes = [0u8; 1 << 8];
         rng.fill_bytes(&mut rand_bytes);
 
-        let witnesses = (0..4)
+        let witnesses = (0..k)
             .map(|_| {
                 rand_bytes
                     .into_iter()
@@ -402,7 +420,7 @@ mod tests {
         let folded_trace = fold(
             &folding_pk,
             &dk_domain,
-            &[&traces[0], &traces[1], &traces[2], &traces[3]],
+            &traces.iter().collect::<Vec<&_>>(),
         );
 
         // Now we create the final proof
@@ -438,9 +456,9 @@ mod tests {
             .expect("Failed to finalise proofs");
 
         let full_proof_time = now.elapsed().as_millis();
-        println!("Compute four traces      :  {:?}ms", traces_time);
+        println!("Compute {k} traces         :  {:?}ms", traces_time);
         println!(
-            "Compute four full proofs : {:?}ms",
+            "Compute {k} full proofs    : {:?}ms",
             traces_time + full_proof_time
         );
         println!("Protogalaxy              : {:?}ms", folding_time);

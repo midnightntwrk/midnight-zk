@@ -49,6 +49,11 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
             extended_k += 1;
         }
 
+        println!("n            : {n}");
+        println!("k            : {k}");
+        println!("quotient_poly: {quotient_poly_degree}");
+        println!("extended_k   : {extended_k}");
+
         // ensure extended_k <= S
         assert!(extended_k <= F::S);
 

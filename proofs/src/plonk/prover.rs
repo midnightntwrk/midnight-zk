@@ -3,6 +3,7 @@ use std::{
     iter,
     ops::RangeTo,
 };
+use std::time::Instant;
 
 use ff::{Field, FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
 use rand_core::{CryptoRng, RngCore};
@@ -523,7 +524,7 @@ where
 /// parameters `params` and the proving key [`ProvingKey`] that was
 /// generated previously for the same circuit. The provided `instances`
 /// are zero-padded internally.
-pub(crate) fn finalise_proof<'a, F, CS: PolynomialCommitmentScheme<F>, T: Transcript>(
+pub fn finalise_proof<'a, F, CS: PolynomialCommitmentScheme<F>, T: Transcript>(
     params: &'a CS::Parameters,
     pk: &'a ProvingKey<F, CS>,
     // The prover needs to get all instances in non-committed form. However,
@@ -581,6 +582,7 @@ where
         })
         .collect();
 
+    let now = Instant::now();
     // Evaluate the h(X) polynomial
     let h_poly = pk.ev.evaluate_h::<ExtendedLagrangeCoeff>(
         &pk.vk.domain,
@@ -606,6 +608,7 @@ where
         &pk.l_active_row,
         &pk.permutation.cosets,
     );
+    println!("Evaluate H: {:?}ms", now.elapsed().as_millis());
 
     // Advice and instance cosets are no longer required and are dropped to reduce
     // memory usage.

@@ -334,7 +334,8 @@ pub struct ProvingKey<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
     pub(crate) l0: Polynomial<F, ExtendedLagrangeCoeff>,
     pub(crate) l_last: Polynomial<F, ExtendedLagrangeCoeff>,
     pub(crate) l_active_row: Polynomial<F, ExtendedLagrangeCoeff>,
-    pub(crate) fixed_values: Vec<Polynomial<F, LagrangeCoeff>>,
+    /// TODO: this probably does not have to be exposed
+    pub fixed_values: Vec<Polynomial<F, LagrangeCoeff>>,
     pub(crate) fixed_polys: Vec<Polynomial<F, Coeff>>,
     pub(crate) fixed_cosets: Vec<Polynomial<F, ExtendedLagrangeCoeff>>,
     pub(crate) permutation: permutation::ProvingKey<F>,

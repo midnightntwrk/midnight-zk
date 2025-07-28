@@ -1,6 +1,7 @@
 use std::ops::{Add, Mul};
 
 use ff::{Field, PrimeField, WithSmallOrderMulGroup};
+use rayon::iter::{IntoParallelRefIterator, IntoParallelRefMutIterator, IndexedParallelIterator, ParallelIterator};
 
 use crate::{
     plonk::{
@@ -200,9 +201,9 @@ impl<F: PrimeField> Add<&FoldingTrace<F>> for FoldingTrace<F> {
         assert_eq!(self.fixed_polys.len(), rhs.fixed_polys.len());
         assert_eq!(self.challenges.len(), rhs.challenges.len());
 
-        for (lhs, rhs) in self.fixed_polys.iter_mut().zip(rhs.fixed_polys.iter()) {
+        self.fixed_polys.par_iter_mut().zip(rhs.fixed_polys.par_iter()).for_each(|(lhs, rhs)| {
             *lhs += rhs;
-        }
+        });
 
         (0..self.advice_polys.len()).for_each(|i| {
             assert_eq!(self.advice_polys[i].len(), rhs.advice_polys[i].len());
@@ -213,31 +214,33 @@ impl<F: PrimeField> Add<&FoldingTrace<F>> for FoldingTrace<F> {
                 rhs.permutations[i].sets.len()
             );
 
-            for (lhs, rhs) in self.advice_polys[i]
-                .iter_mut()
-                .zip(rhs.advice_polys[i].iter())
+            self.advice_polys[i]
+                .par_iter_mut()
+                .zip(rhs.advice_polys[i].par_iter())
+                .for_each(|(lhs, rhs)| {
+                *lhs += rhs;
+            });
+
+            (self.instance_polys[i].par_iter_mut()).zip(rhs.instance_polys[i].par_iter()).for_each(|(lhs, rhs)|
             {
                 *lhs += rhs;
-            }
-            for (lhs, rhs) in (self.instance_polys[i].iter_mut()).zip(rhs.instance_polys[i].iter())
-            {
-                *lhs += rhs;
-            }
-            for (lhs, rhs) in self.lookups[i].iter_mut().zip(rhs.lookups[i].iter()) {
+            });
+            self.lookups[i].par_iter_mut().zip(rhs.lookups[i].par_iter()).for_each(|(lhs, rhs)| {
                 lhs.permuted_input_poly += &rhs.permuted_input_poly;
                 lhs.permuted_table_poly += &rhs.permuted_table_poly;
                 lhs.product_poly += &rhs.product_poly;
-            }
-            for (lhs, rhs) in
-                (self.permutations[i].sets.iter_mut()).zip(rhs.permutations[i].sets.iter())
+            });
+
+            (self.permutations[i].sets.par_iter_mut()).zip(rhs.permutations[i].sets.par_iter()).for_each(|(lhs, rhs)|
             {
                 lhs.permutation_product_poly += &rhs.permutation_product_poly;
-            }
+            });
         });
 
-        for (lhs, rhs) in self.challenges.iter_mut().zip(rhs.challenges.iter()) {
+        self.challenges.par_iter_mut().zip(rhs.challenges.par_iter()).for_each(|(lhs, rhs)| {
             *lhs += *rhs;
-        }
+        });
+
         self.beta += rhs.beta;
         self.gamma += rhs.gamma;
         self.theta += rhs.theta;
@@ -251,30 +254,30 @@ impl<F: PrimeField> Mul<F> for FoldingTrace<F> {
     type Output = Self;
 
     fn mul(mut self, scalar: F) -> Self {
-        for p in self.fixed_polys.iter_mut() {
+        self.fixed_polys.par_iter_mut().for_each(|p| {
             *p *= scalar;
-        }
+        });
 
         (0..self.advice_polys.len()).for_each(|i| {
-            for p in self.advice_polys[i].iter_mut() {
+            self.advice_polys[i].par_iter_mut().for_each(|p| {
                 *p *= scalar;
-            }
-            for p in self.instance_polys[i].iter_mut() {
+            });
+            self.instance_polys[i].par_iter_mut().for_each(|p| {
                 *p *= scalar;
-            }
-            for lhs in self.lookups[i].iter_mut() {
+            });
+            self.lookups[i].par_iter_mut().for_each(|lhs| {
                 lhs.permuted_input_poly *= scalar;
                 lhs.permuted_table_poly *= scalar;
                 lhs.product_poly *= scalar;
-            }
-            for lhs in self.permutations[i].sets.iter_mut() {
+            });
+            self.permutations[i].sets.par_iter_mut().for_each(|lhs| {
                 lhs.permutation_product_poly *= scalar;
-            }
+            });
         });
 
-        for p in self.challenges.iter_mut() {
+        self.challenges.par_iter_mut().for_each(|p| {
             *p *= scalar;
-        }
+        });
         self.beta *= scalar;
         self.gamma *= scalar;
         self.theta *= scalar;
