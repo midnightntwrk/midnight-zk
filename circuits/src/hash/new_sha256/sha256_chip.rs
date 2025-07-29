@@ -1,7 +1,7 @@
 use ff::PrimeField;
 use midnight_proofs::{
     circuit::{Chip, Layouter, Region, Value},
-    plonk::{Advice, Column, ConstraintSystem, Error, Fixed, Selector, TableColumn},
+    plonk::{Advice, Column, ConstraintSystem, Constraints, Error, Fixed, Selector, TableColumn},
     poly::Rotation,
 };
 use num_integer::Integer;
@@ -56,7 +56,7 @@ enum Parity {
 
 /// Plain-Spreaded lookup table.
 #[derive(Clone, Debug)]
-pub(super) struct SpreadTable {
+struct SpreadTable {
     nbits_tab: TableColumn,
     plain_tab: TableColumn,
     sprdd_tab: TableColumn,
@@ -134,7 +134,7 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
         let q_add_mod_2_32 = meta.selector();
         let q_lookup = meta.complex_selector();
 
-        (0..2).into_iter().for_each(|idx| {
+        (0..2).for_each(|idx| {
             meta.lookup("plain-spreaded lookup", |meta| {
                 let q_lookup = meta.query_selector(q_lookup);
 
@@ -164,11 +164,13 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
             let sprdd_odd_12b = meta.query_advice(advice_cols[3], Rotation(1));
             let sprdd_odd_8 = meta.query_advice(advice_cols[3], Rotation(2));
 
-            Sigma_0_gate(
+            Constraints::with_selector(
                 q_Sigma_0,
-                [sprdd_a_10, sprdd_a_09, sprdd_a_11, sprdd_a_02],
-                [sprdd_evn_12a, sprdd_evn_12b, sprdd_evn_8],
-                [sprdd_odd_12a, sprdd_odd_12b, sprdd_odd_8],
+                Sigma_0_gate(
+                    [sprdd_a_10, sprdd_a_09, sprdd_a_11, sprdd_a_02],
+                    [sprdd_evn_12a, sprdd_evn_12b, sprdd_evn_8],
+                    [sprdd_odd_12a, sprdd_odd_12b, sprdd_odd_8],
+                ),
             )
         });
 
@@ -187,11 +189,13 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
             let sprdd_odd_12b = meta.query_advice(advice_cols[3], Rotation(1));
             let sprdd_odd_8 = meta.query_advice(advice_cols[3], Rotation(2));
 
-            Sigma_1_gate(
+            Constraints::with_selector(
                 q_Sigma_1,
-                [sprdd_e_07, sprdd_e_12, sprdd_e_02, sprdd_e_05, sprdd_e_06],
-                [sprdd_evn_12a, sprdd_evn_12b, sprdd_evn_8],
-                [sprdd_odd_12a, sprdd_odd_12b, sprdd_odd_8],
+                Sigma_1_gate(
+                    [sprdd_e_07, sprdd_e_12, sprdd_e_02, sprdd_e_05, sprdd_e_06],
+                    [sprdd_evn_12a, sprdd_evn_12b, sprdd_evn_8],
+                    [sprdd_odd_12a, sprdd_odd_12b, sprdd_odd_8],
+                ),
             )
         });
 
@@ -208,11 +212,13 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
             let sprdd_evn_12b = meta.query_advice(advice_cols[3], Rotation(1));
             let sprdd_evn_8 = meta.query_advice(advice_cols[3], Rotation(2));
 
-            maj_gate(
+            Constraints::with_selector(
                 q_maj,
-                [sprdd_a, sprdd_b, sprdd_c],
-                [sprdd_evn_12a, sprdd_evn_12b, sprdd_evn_8],
-                [sprdd_odd_12a, sprdd_odd_12b, sprdd_odd_8],
+                maj_gate(
+                    [sprdd_a, sprdd_b, sprdd_c],
+                    [sprdd_evn_12a, sprdd_evn_12b, sprdd_evn_8],
+                    [sprdd_odd_12a, sprdd_odd_12b, sprdd_odd_8],
+                ),
             )
         });
 
@@ -231,12 +237,14 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
             let summand_2 = meta.query_advice(advice_cols[5], Rotation(1));
             let sum = meta.query_advice(advice_cols[6], Rotation(1));
 
-            half_ch_gate(
+            Constraints::with_selector(
                 q_half_ch,
-                [sprdd_x, sprdd_y],
-                [sprdd_evn_12a, sprdd_evn_12b, sprdd_evn_8],
-                [sprdd_odd_12a, sprdd_odd_12b, sprdd_odd_8],
-                [summand_1, summand_2, sum],
+                half_ch_gate(
+                    [sprdd_x, sprdd_y],
+                    [sprdd_evn_12a, sprdd_evn_12b, sprdd_evn_8],
+                    [sprdd_odd_12a, sprdd_odd_12b, sprdd_odd_8],
+                    [summand_1, summand_2, sum],
+                ),
             )
         });
 
@@ -248,7 +256,10 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
             let limb_8 = meta.query_advice(advice_cols[0], Rotation(2));
             let output = meta.query_advice(advice_cols[4], Rotation(0));
 
-            decompose_12_12_8_gate(q_12_12_8, [limb_12a, limb_12b, limb_8], output)
+            Constraints::with_selector(
+                q_12_12_8,
+                decompose_12_12_8_gate([limb_12a, limb_12b, limb_8], output),
+            )
         });
 
         meta.create_gate("10-9-11-2 decomposition", |meta| {
@@ -265,11 +276,13 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
             let plain = meta.query_advice(advice_cols[4], Rotation(0));
             let sprdd = meta.query_advice(advice_cols[4], Rotation(1));
 
-            decompose_10_9_11_2_gate(
+            Constraints::with_selector(
                 q_10_9_11_2,
-                [limb_10, limb_09, limb_11, limb_02],
-                [sprdd_limb_10, sprdd_limb_09, sprdd_limb_11, sprdd_limb_02],
-                (plain, sprdd),
+                decompose_10_9_11_2_gate(
+                    [limb_10, limb_09, limb_11, limb_02],
+                    [sprdd_limb_10, sprdd_limb_09, sprdd_limb_11, sprdd_limb_02],
+                    (plain, sprdd),
+                ),
             )
         });
 
@@ -289,17 +302,19 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
             let plain = meta.query_advice(advice_cols[4], Rotation(0));
             let sprdd = meta.query_advice(advice_cols[4], Rotation(1));
 
-            decompose_7_12_2_5_6_gate(
+            Constraints::with_selector(
                 q_7_12_2_5_6,
-                [limb_07, limb_12, limb_02, limb_05, limb_06],
-                [
-                    sprdd_limb_07,
-                    sprdd_limb_12,
-                    sprdd_limb_02,
-                    sprdd_limb_05,
-                    sprdd_limb_06,
-                ],
-                (plain, sprdd),
+                decompose_7_12_2_5_6_gate(
+                    [limb_07, limb_12, limb_02, limb_05, limb_06],
+                    [
+                        sprdd_limb_07,
+                        sprdd_limb_12,
+                        sprdd_limb_02,
+                        sprdd_limb_05,
+                        sprdd_limb_06,
+                    ],
+                    (plain, sprdd),
+                ),
             )
         });
 
@@ -317,7 +332,10 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
             let carry = meta.query_advice(advice_cols[2], Rotation(2));
             let result = meta.query_advice(advice_cols[4], Rotation(0));
 
-            add_mod_2_32_gate(q_add_mod_2_32, &[s0, s1, s2, s3, s4, s5, s6], carry, result)
+            Constraints::with_selector(
+                q_add_mod_2_32,
+                add_mod_2_32_gate(&[s0, s1, s2, s3, s4, s5, s6], carry, result),
+            )
         });
 
         Sha256Config {
@@ -363,7 +381,7 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
 
 impl<F: PrimeField> Sha256Chip<F> {
     /// Computes Σ₀(A).
-    pub(super) fn Sigma_0(
+    fn Sigma_0(
         &self,
         layouter: &mut impl Layouter<F>,
         a: &LimbsOfA<F>,
@@ -438,7 +456,7 @@ impl<F: PrimeField> Sha256Chip<F> {
     }
 
     /// Computes Σ₁(E).
-    pub(super) fn Sigma_1(
+    fn Sigma_1(
         &self,
         layouter: &mut impl Layouter<F>,
         e: &LimbsOfE<F>,
@@ -515,7 +533,7 @@ impl<F: PrimeField> Sha256Chip<F> {
     }
 
     /// Computes Maj(A, B, C)
-    pub(super) fn maj(
+    fn maj(
         &self,
         layouter: &mut impl Layouter<F>,
         sprdd_a: &AssignedSpreaded<F, 32>,
@@ -586,7 +604,7 @@ impl<F: PrimeField> Sha256Chip<F> {
     }
 
     /// Computes Ch(E, F, G)
-    pub(super) fn ch(
+    fn ch(
         &self,
         layouter: &mut impl Layouter<F>,
         sprdd_E: &AssignedSpreaded<F, 32>,
@@ -692,7 +710,7 @@ impl<F: PrimeField> Sha256Chip<F> {
     ///
     /// This function also returns the spreaded version of the sum, ~A and
     /// the limbs of A.
-    pub(super) fn prepare_A(
+    fn prepare_A(
         &self,
         layouter: &mut impl Layouter<F>,
         summands: &[AssignedPlain<F, 32>],
@@ -790,7 +808,7 @@ impl<F: PrimeField> Sha256Chip<F> {
     ///
     /// This function also returns the spreaded version of the sum, ~E and
     /// the limbs of E.
-    pub(super) fn prepare_E(
+    fn prepare_E(
         &self,
         layouter: &mut impl Layouter<F>,
         summands: &[AssignedPlain<F, 32>],
@@ -1062,7 +1080,7 @@ impl<F: PrimeField> Sha256Chip<F> {
     }
 
     /// SHA256 computation.
-    fn sha256(
+    pub fn sha256(
         &self,
         layouter: &mut impl Layouter<F>,
         input_bytes: &[AssignedByte<F>],
@@ -1080,7 +1098,7 @@ impl<F: PrimeField> Sha256Chip<F> {
                     &block[i],
                 )?;
             }
-            state = state.add(&self, layouter, &compression_state)?;
+            state = state.add(self, layouter, &compression_state)?;
         }
 
         Ok(state.plain())

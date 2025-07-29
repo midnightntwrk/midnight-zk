@@ -9,7 +9,7 @@ use crate::{
 
 /// Assigned plain value of given number of bits L.
 #[derive(Clone, Debug)]
-pub(super) struct AssignedPlain<F: PrimeField, const L: usize>(pub AssignedNative<F>);
+pub struct AssignedPlain<F: PrimeField, const L: usize>(pub AssignedNative<F>);
 
 /// Assigned spreaded value of given number of bits L.
 #[derive(Clone, Debug)]

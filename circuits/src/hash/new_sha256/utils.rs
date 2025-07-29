@@ -12,14 +12,12 @@ const MAX_LOOKUP_LENGTH: usize = 12; // maximum bit length of plain values in lo
 pub fn get_even_and_odd_bits(value: u64) -> (u32, u32) {
     let mut even = 0u64;
     let mut odd = 0u64;
-    let mut bit_pos = 0usize;
 
     for i in 0..32 {
         let even_bit = (value >> (2 * i)) & 1;
         let odd_bit = (value >> (2 * i + 1)) & 1;
-        even |= even_bit << bit_pos;
-        odd |= odd_bit << bit_pos;
-        bit_pos += 1;
+        even |= even_bit << i;
+        odd |= odd_bit << i;
     }
 
     (even as u32, odd as u32)
@@ -148,7 +146,7 @@ pub fn spreaded_Sigma_0(spreaded_limbs: [u64; 4]) -> u64 {
     // by the limbs is at most: 3 * 0b0101..01 = 0b1111..11.
     // Hence, the sum will never overflow u64.
     (pow4(30) * sA_02 + pow4(20) * sA_10 + pow4(11) * sA_09 + sA_11)
-        + (pow4(21) * sA_11 + pow4(19) * sA_02 + pow4(09) * sA_10 + sA_09)
+        + (pow4(21) * sA_11 + pow4(19) * sA_02 + pow4(9) * sA_10 + sA_09)
         + (pow4(23) * sA_09 + pow4(12) * sA_11 + pow4(10) * sA_02 + sA_10)
 }
 
@@ -192,7 +190,6 @@ fn pow4(n: u32) -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use std::u64;
 
     use rand::{seq::SliceRandom, Rng};
 

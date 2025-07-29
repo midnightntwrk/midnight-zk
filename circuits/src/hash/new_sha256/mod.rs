@@ -19,3 +19,5 @@ mod gates;
 mod sha256_chip;
 mod types;
 mod utils;
+
+pub use sha256_chip::{Sha256Chip, Sha256Config};
