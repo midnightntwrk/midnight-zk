@@ -422,28 +422,18 @@ impl<C: EdwardsCurve> EccChip<C> {
         Ok(AssignedNativePoint { x: xr, y: yr })
     }
 
-    /// Given `P`, `Q`, and and bit `b`, compute in-circuit:
-    /// * `S = P + b * Q`
-    /// * `R = 2 * S`
-    ///
-    /// Here, `P`, `Q`,`b` are supposed to be assigned in the current row.
-    ///
-    /// Assign in the current row:
-    /// * `S = (xs, ys)`
-    /// * `xs_pow2 = xs * xs`
-    /// * `xp_yp_xq_yq = xp * yp * xq * yq`
-    ///
-    /// Assign in the next row:
-    /// * `R = (xr, yr)`
-    ///
-    /// Use columns:
-    ///  
-    /// ```text
-    /// --------------------------------------------------------------------------
-    /// |  xp  |  yp  |  xq  |  yq  |  b   |  xs  |  ys  | xs_pow2 | xp_yp_xq_yq |
-    /// |  xr  |  yr  |      |      |      |      |      |         |             |
-    /// --------------------------------------------------------------------------
-    /// ```
+    /// Given `P`, `Q`, and bit `b`, supposedly already assigned in the
+    /// current row, this function assigns `R` in the next row and
+    /// enforces that `R = 2 * (P + b * Q)`.
+    //
+    // We use the following layout.
+    //  
+    // ```text
+    // --------------------------------------------------------------------------
+    // |  xp  |  yp  |  xq  |  yq  |  b   |  xs  |  ys  | xs_pow2 | xp_yp_xq_yq |
+    // |  xr  |  yr  |      |      |      |      |      |         |             |
+    // --------------------------------------------------------------------------
+    // ```
     fn assign_add_then_double(
         &self,
         region: &mut Region<C::Base>,
