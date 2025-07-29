@@ -747,7 +747,7 @@ impl<F: PrimeField> Sha256Chip<F> {
 
         let adv_cols = self.config().advice_cols;
 
-        let zero = AssignedPlain::<F, 32>(self.native_chip.assign_fixed(layouter, F::ZERO)?);
+        let zero = AssignedPlain::<F, 32>::fixed(layouter, &self.native_chip, 0)?;
         let mut summands = summands.to_vec();
         summands.resize(7, zero);
 
@@ -843,7 +843,7 @@ impl<F: PrimeField> Sha256Chip<F> {
 
         let adv_cols = self.config().advice_cols;
 
-        let zero = AssignedPlain::<F, 32>(self.native_chip.assign_fixed(layouter, F::ZERO)?);
+        let zero = AssignedPlain::<F, 32>::fixed(layouter, &self.native_chip, 0)?;
         let mut summands = summands.to_vec();
         summands.resize(7, zero);
 
