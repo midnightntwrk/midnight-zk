@@ -671,19 +671,22 @@ impl<F: PrimeField> Sha256Chip<F> {
         )
     }
 
-    /// Given an array of 7 `AssignedPlain` values, it adds them modulo 2^32
-    /// and decomposes the result (named A) into (bit-endian) limbs of bit
-    /// sizes 10, 9, 11 and 2.
+    /// Given a slice of at most 7 `AssignedPlain` values, it adds them
+    /// modulo 2^32 and decomposes the result (named A) into (bit-endian)
+    /// limbs of bit sizes 10, 9, 11 and 2.
     ///
     /// This function also returns the spreaded version of the sum, ~A and
     /// the limbs of A.
     pub(super) fn prepare_A(
         &self,
         layouter: &mut impl Layouter<F>,
-        summands: &[AssignedPlain<F, 32>; 7],
+        summands: &[AssignedPlain<F, 32>],
     ) -> Result<LimbsOfA<F>, Error> {
         /*
-        Given assigned plain inputs S0, ..., S6, let A be their sum modulo 2^32.
+        Given assigned plain inputs S0, ..., S6 (if fewer inputs are given
+        they will be completed up to length 7, padding with fixed zeros),
+        let A be their sum modulo 2^32.
+
         We use the following table distribution.
 
         | T_0 |  A_0 |  A_1  | T_1 |  A_2  |   A_3  | A_4 | A_5 | A_6 |
@@ -710,6 +713,10 @@ impl<F: PrimeField> Sha256Chip<F> {
         */
 
         let adv_cols = self.config().advice_cols;
+
+        let zero = AssignedPlain::<F, 32>(self.native_chip.assign_fixed(layouter, F::ZERO)?);
+        let mut summands = summands.to_vec();
+        summands.resize(7, zero);
 
         let (carry_val, a_val): (Value<u32>, Value<F>) =
             Value::<Vec<F>>::from_iter(summands.iter().map(|s| s.0.value().copied()))
@@ -762,26 +769,27 @@ impl<F: PrimeField> Sha256Chip<F> {
         )
     }
 
-    /// Given an array of 6 `AssignedPlain` values, it adds them modulo 2^32
-    /// and decomposes the result (named E) into (bit-endian) limbs of bit
-    /// sizes 7, 12, 2, 5 and 6.
+    /// Given a slice of at most 7 `AssignedPlain` values, it adds them
+    /// modulo 2^32 and decomposes the result (named E) into (bit-endian)
+    /// limbs of bit sizes 7, 12, 2, 5 and 6.
     ///
     /// This function also returns the spreaded version of the sum, ~E and
     /// the limbs of E.
     pub(super) fn prepare_E(
         &self,
         layouter: &mut impl Layouter<F>,
-        summands: &[AssignedPlain<F, 32>; 6],
+        summands: &[AssignedPlain<F, 32>],
     ) -> Result<LimbsOfE<F>, Error> {
         /*
-        Given assigned plain inputs S0, ..., S5, let E be their sum modulo 2^32.
-        We use the following table distribution.
+        Given assigned plain inputs S0, ..., S6 (if fewer inputs are given
+        they will be completed up to length 7, padding with fixed zeros),
+        let E be their sum modulo 2^32.
 
         | T_0 |  A_0 |  A_1  | T_1 |   A_2   |   A_3  | A_4 | A_5 | A_6 |
         |-----|------|-------|-----|---------|--------|-----|-----|-----|
         |   7 | E.07 | ~E.07 |  12 |   E.12  |  ~E.12 |  E  |  S0 |  S1 |
         |   2 | E.02 | ~E.02 |   5 |   E.05  |  ~E.05 | ~E  |  S2 |  S3 |
-        |   6 | E.06 | ~E.06 |   3 |  carry  | ~carry |  0  |  S4 |  S5 |
+        |   6 | E.06 | ~E.06 |   3 |  carry  | ~carry |  S4 |  S5 |  S6 |
 
         Apart from the lookups, the following identities are checked via a
         custom gate with selector q_7_12_2_5_6:
@@ -792,7 +800,7 @@ impl<F: PrimeField> Sha256Chip<F> {
         and the following is checked with a custom gate with selector
         q_add_mod_2_32:
 
-            S0 + S1 + S2 + S3 + 0 + S4 + S5 = E + carry * 2^32
+            S0 + S1 + S2 + S3 + S4 + S5 + S6 = E + carry * 2^32
 
         Note that E is implicitly being range-checked in [0, 2^32) via
         the lookup, and the carry is range-checked in [0, 8). This makes
@@ -801,6 +809,10 @@ impl<F: PrimeField> Sha256Chip<F> {
         */
 
         let adv_cols = self.config().advice_cols;
+
+        let zero = AssignedPlain::<F, 32>(self.native_chip.assign_fixed(layouter, F::ZERO)?);
+        let mut summands = summands.to_vec();
+        summands.resize(7, zero);
 
         let (carry_val, e_val): (Value<u32>, Value<F>) =
             Value::<Vec<F>>::from_iter(summands.iter().map(|s| s.0.value().copied()))
@@ -814,8 +826,6 @@ impl<F: PrimeField> Sha256Chip<F> {
         let [val_07, val_12, val_02, val_05, val_06] = e_val
             .map(|e| u32_in_be_limbs(fe_to_u32(e), [7, 12, 2, 5, 6]))
             .transpose_array();
-
-        let zero: AssignedNative<F> = self.native_chip.assign_fixed(layouter, F::ZERO)?;
 
         layouter.assign_region(
             || "decompose E in 7-12-2-5-6",
@@ -838,10 +848,9 @@ impl<F: PrimeField> Sha256Chip<F> {
                 (summands[1].0).copy_advice(|| "S1", &mut region, adv_cols[6], 0)?;
                 (summands[2].0).copy_advice(|| "S2", &mut region, adv_cols[5], 1)?;
                 (summands[3].0).copy_advice(|| "S3", &mut region, adv_cols[6], 1)?;
-                (summands[4].0).copy_advice(|| "S4", &mut region, adv_cols[5], 2)?;
-                (summands[5].0).copy_advice(|| "S5", &mut region, adv_cols[6], 2)?;
-
-                zero.copy_advice(|| "0", &mut region, adv_cols[4], 2)?;
+                (summands[4].0).copy_advice(|| "S4", &mut region, adv_cols[4], 2)?;
+                (summands[5].0).copy_advice(|| "S5", &mut region, adv_cols[5], 2)?;
+                (summands[6].0).copy_advice(|| "S6", &mut region, adv_cols[6], 2)?;
 
                 Ok(LimbsOfE {
                     combined: AssignedPlainSpreaded {
@@ -976,9 +985,11 @@ impl<F: PrimeField> Sha256Chip<F> {
         &self,
         layouter: &mut impl Layouter<F>,
         state: &CompressionState<F>,
-        round_k: &AssignedPlain<F, 32>,
+        round_k: u32,
         round_w: &AssignedPlain<F, 32>,
     ) -> Result<CompressionState<F>, Error> {
+        let round_k = AssignedPlain::<F, 32>::fixed(layouter, &self.native_chip, round_k)?;
+
         let Sigma_0_of_a = self.Sigma_0(layouter, &state.a)?;
         let Maj_of_a_b_c = self.maj(
             layouter,
