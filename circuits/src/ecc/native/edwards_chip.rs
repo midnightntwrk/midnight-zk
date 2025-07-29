@@ -382,23 +382,18 @@ impl<C: EdwardsCurve> ComposableChip<C::Base> for EccChip<C> {
 }
 
 impl<C: EdwardsCurve> EccChip<C> {
-    /// Given `Q`, `S`, and and bit `b`, compute in-circuit:
-    /// * `R = Q + b * S`
-    ///
-    /// Here, `Q`, `S`,`b` are supposed to be assigned in the current row.
-    ///
-    /// Assign in the current row:
-    /// * `R = (xr, yr)`
-    /// * `xq_yq_xs_ys = xq * yq * xs * ys`
-    ///
-    /// Use columns:
-    ///
-    /// ```text
-    ///    0      1      2      3       4     5      6      7         8
-    /// ----------------------------------------------------------------------
-    /// |  xq  |  yq  |  xs  |  ys  |   b   | xr  |  yr  |     | xq_yq_xs_ys |
-    /// ----------------------------------------------------------------------
-    /// ```
+    /// Given `Q`, `S`, and bit `b`, supposedly already assigned in the
+    /// current row, this function assigns `R` in the same row and
+    /// enforces that `R = Q + b * S`.
+    //
+    // We use the following layout.
+    //
+    // ```text
+    //    0      1      2      3       4     5      6      7         8
+    // ----------------------------------------------------------------------
+    // |  xq  |  yq  |  xs  |  ys  |   b   | xr  |  yr  |     | xq_yq_xs_ys |
+    // ----------------------------------------------------------------------
+    // ```
     fn assign_cond_add(
         &self,
         region: &mut Region<C::Base>,
