@@ -222,7 +222,7 @@ impl<F: Field> Circuit<F> for MyCircuit<F> {
             let sm = meta.query_fixed(sm, Rotation::cur());
 
             Constraints::without_selector(vec![
-                a.clone() * sa + b.clone() * sb + a * b * sm - (c * sc) + sf * (d * e),
+                &a * sa + &b * sb + a * b * sm - (c * sc) + sf * (d * e),
             ])
         });
 

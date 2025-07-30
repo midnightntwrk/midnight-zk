@@ -198,12 +198,10 @@ impl<F: PrimeField> ComposableChip<F> for NativeChip<F> {
             let id = values
                 .iter()
                 .zip(coeffs.iter())
-                .fold(constant, |acc, (value, coeff)| {
-                    acc + coeff.clone() * value.clone()
-                })
+                .fold(constant, |acc, (value, coeff)| acc + coeff * value)
                 + q_next_coeff * next_value
-                + mul_ab_coeff * values[0].clone() * values[1].clone()
-                + mul_cd_coeff * values[2].clone() * values[3].clone();
+                + mul_ab_coeff * &values[0] * &values[1]
+                + mul_cd_coeff * &values[2] * &values[3];
 
             Constraints::with_selector(q_arith, vec![id])
         });

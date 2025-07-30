@@ -164,18 +164,18 @@ impl<C: WeierstrassCurve> OnCurveConfig<C> {
             let const_b = Expression::Constant(bigint_to_fe::<F>(&b));
 
             // 2 * sum_y + sum_y2 - (sum_xz + sum_z + (a+1) * sum_x + b) = (u + k_min) * m
-            let native_id = cond.clone()
+            let native_id = &cond
                 * (Expression::Constant(F::from(2)) * sum_exprs::<F>(&bs, &ys)
                     + sum_exprs::<F>(&bs2, &y2s)
                     - (sum_exprs::<F>(&bs2, &xzs)
                         + sum_exprs::<F>(&bs, &zs)
                         + sum_exprs::<F>(&bs, &xs)
                         + const_b)
-                    - (u.clone() + Expression::Constant(bigint_to_fe::<F>(&k_min)))
+                    - (&u + Expression::Constant(bigint_to_fe::<F>(&k_min)))
                         * Expression::Constant(bigint_to_fe::<F>(m)));
             let mut moduli_ids = moduli
                 .iter()
-                .zip(vs.iter())
+                .zip(vs)
                 .zip(vs_bounds.iter())
                 .map(|((mj, vj), vj_bounds)| {
                     let (lj_min, _vj_max) = vj_bounds;
@@ -186,16 +186,16 @@ impl<C: WeierstrassCurve> OnCurveConfig<C> {
                     // 2 * sum_y_mj + sum_y2_mj - (sum_xz_mj + sum_z_mj
                     //  + ((a+1) % mj) * sum_x_mj + b % mj)
                     //  - u * (m % mj) - (k_min * m) % mj - (vj + lj_min) * mj = 0
-                    cond.clone()
+                    &cond
                         * (Expression::Constant(F::ONE + F::ONE) * sum_exprs::<F>(&bs_mj, &ys)
                             + sum_exprs::<F>(&bs2_mj, &y2s)
                             - (sum_exprs::<F>(&bs2_mj, &xzs)
                                 + sum_exprs::<F>(&bs_mj, &zs)
                                 + sum_exprs::<F>(&bs_mj, &xs)
                                 + const_b_mj)
-                            - u.clone() * Expression::Constant(bigint_to_fe::<F>(&urem(m, mj)))
+                            - &u * Expression::Constant(bigint_to_fe::<F>(&urem(m, mj)))
                             - Expression::Constant(bigint_to_fe::<F>(&urem(&(&k_min * m), mj)))
-                            - (vj.clone() + Expression::Constant(bigint_to_fe::<F>(lj_min)))
+                            - (vj + Expression::Constant(bigint_to_fe::<F>(lj_min)))
                                 * Expression::Constant(bigint_to_fe::<F>(mj)))
                 })
                 .collect::<Vec<_>>();

@@ -781,12 +781,7 @@ mod tests {
                         .map(|column| meta.query_fixed(column, Rotation::cur()));
                     let instance = meta.query_instance(instance, Rotation::cur());
                     Constraints::without_selector(vec![
-                        q_a * a.clone()
-                            + q_b * b.clone()
-                            + q_c * c
-                            + q_ab * a * b
-                            + constant
-                            + instance,
+                        q_a * &a + q_b * &b + q_c * c + q_ab * a * b + constant + instance,
                     ])
                 },
             );

@@ -143,11 +143,11 @@ fn linear_layer<F: PoseidonField>(
     constants: [Expression<F>; WIDTH],
 ) -> [Expression<F>; WIDTH] {
     let mut ids = constants;
-    for i in 0..WIDTH {
-        ids[i] = ids[i].clone() - outputs[i].clone();
+    for (i, output) in outputs.into_iter().enumerate() {
+        ids[i] = &ids[i] - output;
         #[allow(clippy::needless_range_loop)]
         for j in 0..WIDTH {
-            ids[i] = ids[i].clone() + Expression::Constant(F::MDS[i][j]) * inputs[j].clone();
+            ids[i] = &ids[i] + Expression::Constant(F::MDS[i][j]) * &inputs[j];
         }
     }
     ids
@@ -245,14 +245,13 @@ impl<F: PoseidonField> ComposableChip<F> for PoseidonChip<F> {
 
             let constraints = ids.to_expression(&inputs);
 
-            let output_lin_constraints = (0..WIDTH - 1)
-                .map(|i| round_constants[i].clone() - outputs[i].clone() + constraints[i].clone());
-            let input_pow_constraints = (WIDTH - 1..WIDTH + NB_SKIPS_CIRCUIT - 1).map(|i| {
-                round_constants[i].clone() - inputs[i + 1].clone() + constraints[i].clone()
-            });
+            let output_lin_constraints =
+                (0..WIDTH - 1).map(|i| &round_constants[i] - &outputs[i] + &constraints[i]);
+            let input_pow_constraints = (WIDTH - 1..WIDTH + NB_SKIPS_CIRCUIT - 1)
+                .map(|i| &round_constants[i] - &inputs[i + 1] + &constraints[i]);
             let output_pow_constraint: Expression<F> =
-                round_constants[WIDTH + NB_SKIPS_CIRCUIT - 1].clone() - outputs[WIDTH - 1].clone()
-                    + constraints[WIDTH + NB_SKIPS_CIRCUIT - 1].clone();
+                &round_constants[WIDTH + NB_SKIPS_CIRCUIT - 1] - &outputs[WIDTH - 1]
+                    + &constraints[WIDTH + NB_SKIPS_CIRCUIT - 1];
 
             let constraints = output_lin_constraints
                 .chain(input_pow_constraints)
