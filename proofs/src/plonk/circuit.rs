@@ -1333,6 +1333,12 @@ impl<F: Field> Add for Expression<F> {
         if self.contains_simple_selector() || rhs.contains_simple_selector() {
             panic!("attempted to use a simple selector in an addition");
         }
+        if self == Expression::Constant(F::ZERO) {
+            return rhs;
+        }
+        if rhs == Expression::Constant(F::ZERO) {
+            return self;
+        }
         Expression::Sum(Box::new(self), Box::new(rhs))
     }
 }
@@ -1364,6 +1370,12 @@ impl<F: Field> Sub for Expression<F> {
         if self.contains_simple_selector() || rhs.contains_simple_selector() {
             panic!("attempted to use a simple selector in a subtraction");
         }
+        if self == Expression::Constant(F::ZERO) {
+            return -rhs;
+        }
+        if rhs == Expression::Constant(F::ZERO) {
+            return self;
+        }
         Expression::Sum(Box::new(self), Box::new(-rhs))
     }
 }
@@ -1394,6 +1406,15 @@ impl<F: Field> Mul for Expression<F> {
     fn mul(self, rhs: Expression<F>) -> Expression<F> {
         if self.contains_simple_selector() && rhs.contains_simple_selector() {
             panic!("attempted to multiply two expressions containing simple selectors");
+        }
+        if self == Expression::Constant(F::ZERO) || rhs == Expression::Constant(F::ZERO) {
+            return Expression::Constant(F::ZERO);
+        }
+        if self == Expression::Constant(F::ONE) {
+            return rhs;
+        }
+        if rhs == Expression::Constant(F::ONE) {
+            return self;
         }
         Expression::Product(Box::new(self), Box::new(rhs))
     }
@@ -2576,17 +2597,17 @@ mod tests {
     #[test]
     fn iter_product() {
         let exprs: Vec<Expression<Fr>> = vec![
-            Expression::Constant(1.into()),
             Expression::Constant(2.into()),
             Expression::Constant(3.into()),
+            Expression::Constant(6.into()),
         ];
         let happened: Expression<Fr> = exprs.into_iter().product();
         let expected: Expression<Fr> = Expression::Product(
             Box::new(Expression::Product(
-                Box::new(Expression::Constant(1.into())),
                 Box::new(Expression::Constant(2.into())),
+                Box::new(Expression::Constant(3.into())),
             )),
-            Box::new(Expression::Constant(3.into())),
+            Box::new(Expression::Constant(6.into())),
         );
 
         assert_eq!(happened, expected);
