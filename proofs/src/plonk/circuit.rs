@@ -1320,6 +1320,13 @@ impl<F: Field> Neg for Expression<F> {
     }
 }
 
+impl<F: Field> Neg for &Expression<F> {
+    type Output = Expression<F>;
+    fn neg(self) -> Self::Output {
+        -self.clone()
+    }
+}
+
 impl<F: Field> Add for Expression<F> {
     type Output = Expression<F>;
     fn add(self, rhs: Expression<F>) -> Expression<F> {
@@ -1327,6 +1334,27 @@ impl<F: Field> Add for Expression<F> {
             panic!("attempted to use a simple selector in an addition");
         }
         Expression::Sum(Box::new(self), Box::new(rhs))
+    }
+}
+
+impl<'a, F: Field> Add for &'a Expression<F> {
+    type Output = Expression<F>;
+    fn add(self, rhs: &'a Expression<F>) -> Expression<F> {
+        self.clone() + rhs.clone()
+    }
+}
+
+impl<F: Field> Add<Expression<F>> for &Expression<F> {
+    type Output = Expression<F>;
+    fn add(self, rhs: Expression<F>) -> Expression<F> {
+        self.clone() + rhs
+    }
+}
+
+impl<'a, F: Field> Add<&'a Expression<F>> for Expression<F> {
+    type Output = Expression<F>;
+    fn add(self, rhs: &'a Expression<F>) -> Expression<F> {
+        self + rhs.clone()
     }
 }
 
@@ -1340,6 +1368,27 @@ impl<F: Field> Sub for Expression<F> {
     }
 }
 
+impl<'a, F: Field> Sub for &'a Expression<F> {
+    type Output = Expression<F>;
+    fn sub(self, rhs: &'a Expression<F>) -> Expression<F> {
+        self.clone() - rhs.clone()
+    }
+}
+
+impl<F: Field> Sub<Expression<F>> for &Expression<F> {
+    type Output = Expression<F>;
+    fn sub(self, rhs: Expression<F>) -> Expression<F> {
+        self.clone() - rhs
+    }
+}
+
+impl<'a, F: Field> Sub<&'a Expression<F>> for Expression<F> {
+    type Output = Expression<F>;
+    fn sub(self, rhs: &'a Expression<F>) -> Expression<F> {
+        self - rhs.clone()
+    }
+}
+
 impl<F: Field> Mul for Expression<F> {
     type Output = Expression<F>;
     fn mul(self, rhs: Expression<F>) -> Expression<F> {
@@ -1350,10 +1399,38 @@ impl<F: Field> Mul for Expression<F> {
     }
 }
 
+impl<'a, F: Field> Mul for &'a Expression<F> {
+    type Output = Expression<F>;
+    fn mul(self, rhs: &'a Expression<F>) -> Expression<F> {
+        self.clone() * rhs.clone()
+    }
+}
+
+impl<F: Field> Mul<Expression<F>> for &Expression<F> {
+    type Output = Expression<F>;
+    fn mul(self, rhs: Expression<F>) -> Expression<F> {
+        self.clone() * rhs
+    }
+}
+
+impl<'a, F: Field> Mul<&'a Expression<F>> for Expression<F> {
+    type Output = Expression<F>;
+    fn mul(self, rhs: &'a Expression<F>) -> Expression<F> {
+        self * rhs.clone()
+    }
+}
+
 impl<F: Field> Mul<F> for Expression<F> {
     type Output = Expression<F>;
     fn mul(self, rhs: F) -> Expression<F> {
         Expression::Scaled(Box::new(self), rhs)
+    }
+}
+
+impl<F: Field> Mul<F> for &Expression<F> {
+    type Output = Expression<F>;
+    fn mul(self, rhs: F) -> Expression<F> {
+        self.clone() * rhs
     }
 }
 
