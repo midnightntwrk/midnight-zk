@@ -91,7 +91,10 @@ where
             || instances.len() < nb_committed_instances
         {
             println!("Instances len           : {:?}", instances.len());
-            println!("Num instance columns    : {:?}", pk.vk.cs.num_instance_columns);
+            println!(
+                "Num instance columns    : {:?}",
+                pk.vk.cs.num_instance_columns
+            );
             println!("Num committed instances : {nb_committed_instances}");
             return Err(Error::InvalidInstances);
         }
