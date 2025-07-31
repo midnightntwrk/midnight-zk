@@ -40,7 +40,9 @@ use crate::{
 
 #[derive(Clone, Debug)]
 /// A decomposition config consists of a NativeConfig and a Pow2RangeConfig. It
-/// assumes that the chips share the NB_POW2RANGE_COLS lookup enabled columns.
+/// assumes that the chips share the
+/// [crate::compact_std_lib::ZkStdLibArch::nr_pow2range_cols] lookup enabled
+/// columns.
 pub struct P2RDecompositionConfig {
     pub(crate) native_config: NativeConfig,
     pub(crate) pow2range_config: Pow2RangeConfig,
@@ -49,20 +51,22 @@ pub struct P2RDecompositionConfig {
 impl P2RDecompositionConfig {
     /// Creates the config from the configs of a native and and a pow2range
     /// chips. It assumes that
-    ///  - advice_cols [0..NB_POW2RANGE_COLS] of pow2range_chip
-    ///  - advice_cols [1..NB_POW2RANGE_COLS+1] of native_chip are the same
+    ///
+    ///  - advice_cols of pow2range_chip
+    ///  - advice_cols [1..`ZkStdLibArch::nr_pow2range_cols`+1] of native_chip
+    ///
+    /// are the same.
     ///
     /// # Panics
     ///
     /// This function panics when
-    /// native_config advice_cols[1..NB_POW2RANGE_COLS+1]
+    /// native_config advice_cols[1..`ZkStdLibArch::nr_pow2range_cols`+1]
     /// !=
-    /// pow2range_config advice_cols[0..NB_POW2RANGE_COLS]
+    /// pow2range_config val_cols
     pub fn new(native_config: &NativeConfig, pow2range_config: &Pow2RangeConfig) -> Self {
-        // we assume that the *first NB_POW2RANGE_COLS columns* of the two configs are
-        // shared we assume that
-        //  - advice_cols [0..NB_POW2RANGE_COLS] of pow2range_chip
-        //  - advice_cols [1..NB_POW2RANGE_COLS+1] of native_chip
+        // We assume that
+        //  - advice_cols of pow2range_chip
+        //  - advice_cols [1..`ZkStdLibArch::nr_pow2range_cols`+1] of native_chip
         // are shared
         #[cfg(not(test))]
         assert!(
@@ -195,9 +199,10 @@ impl<F: PrimeField> P2RDecompositionChip<F> {
     ///
     ///  It assumes that the following about the limbs:
     ///  - all limbs are all smaller than or equal to self.max_bit_len
-    ///  - the total number of limbs is a multiple of NB_POW2RANGE_COLS
-    ///  - each NB_POW2RANGE_COLS - chunk consists of a signle limb_bit_size and
-    ///    possibly zeros, the latter coming always at the end
+    ///  - the total number of limbs is a multiple of
+    ///    `ZkStdLibArch::nr_pow2range_cols`
+    ///  - each `ZkStdLibArch::nr_pow2range_cols` - chunk consists of a single
+    ///    limb_bit_size and possibly zeros, the latter coming always at the end
     ///
     ///  # Panics
     ///
@@ -220,14 +225,15 @@ impl<F: PrimeField> P2RDecompositionChip<F> {
             "Decomposition chip: Try to use decompose_core with limb sizes greater than the supported max limb length",
         );
 
-        // 2. the number of given limbs is multiple of NB_POW2RANGE_COLS
+        // 2. the number of given limbs is multiple of ZkStdLibArch::nr_pow2range_cols
         #[cfg(not(test))]
         assert!(
             limb_sizes.len() % nr_pow2range_cols == 0,
-            "Decomposition chip: number of limbs passed in decompose_core is not a multiple of NB_POW2RANGE_COLS",
+            "Decomposition chip: number of limbs passed in decompose_core is not a multiple of ZkStdLibArch::nr_pow2range_cols",
         );
 
-        // 3. each NB_POW2RANGE_COLS chunk is the same number and possibly some zeros
+        // 3. each ZkStdLibArch::nr_pow2range_cols chunk is the same number and possibly
+        // some zeros
         #[cfg(not(test))]
         {
             let limb_sizes_structure = limb_sizes.chunks(nr_pow2range_cols).all(|chunk| {
@@ -335,17 +341,19 @@ impl<F: PrimeField> CoreDecompositionInstructions<F> for P2RDecompositionChip<F>
         let number_of_limbs = bit_length / limb_size;
         let last_limb_size = bit_length % limb_size;
 
+        let nr_pow2range_cols = self.pow2range_chip.config().val_cols.len();
+
         // limb decomposition can be supported natively by the lookup table
         if limb_size <= self.max_bit_len {
             // prepare the limb_size slice by filling with zeros to do parallel lookups
             let mut limb_sizes = vec![limb_size; number_of_limbs];
-            process_limb_sizes(self.pow2range_chip.config().val_cols.len(), &mut limb_sizes);
+            process_limb_sizes(nr_pow2range_cols, &mut limb_sizes);
             // prepare the limb sizes for last (possibly smaller limb). This is either empty
-            // or contains exactly NB_POW2RANGE_COLS elements where the last
-            // NB_POW2RANGE_COLS-1 are 0s
+            // or contains exactly ZkStdLibArch::nr_pow2range_cols elements where the last
+            // ZkStdLibArch::nr_pow2range_cols-1 are 0s
             if last_limb_size != 0 {
                 limb_sizes.push(last_limb_size);
-                process_limb_sizes(self.pow2range_chip.config().val_cols.len(), &mut limb_sizes);
+                process_limb_sizes(nr_pow2range_cols, &mut limb_sizes);
             }
 
             // we call the core function to retrieve the result
@@ -400,7 +408,7 @@ impl<F: PrimeField> CoreDecompositionInstructions<F> for P2RDecompositionChip<F>
                             terms.as_slice(),
                             F::ZERO,
                             &x.value().copied(),
-                            self.pow2range_chip.config().val_cols.len(),
+                            nr_pow2range_cols,
                             &mut offset,
                         )?;
 

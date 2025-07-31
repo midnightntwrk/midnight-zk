@@ -86,7 +86,6 @@ struct TestDecompositionCircuit<F: PrimeField, const NR_COLS: usize> {
     expected: Vec<F>,
 }
 
-// todo: add genernic NR_COLS
 impl<F, const NR_COLS: usize> Circuit<F> for TestDecompositionCircuit<F, NR_COLS>
 where
     F: PrimeField,
@@ -242,7 +241,7 @@ fn run_decomposition_chip_variable_test<const NR_COLS: usize>() {
         .collect::<Vec<_>>();
     let expected = decompose_in_variable_limbsizes(&x, non_zero_limb_sizes.as_slice());
 
-    let circuit_variable: TestDecompositionCircuit<Fp, NR_COLS> = TestDecompositionCircuit {
+    let circuit_variable = TestDecompositionCircuit::<Fp, NR_COLS> {
         input: x,
         limb_sizes: LimbType::Variable(limb_sizes),
         expected,
@@ -282,7 +281,7 @@ fn run_decomposition_chip_fixed_test<const NR_COLS: usize>() {
 
         let expected = decompose_in_variable_limbsizes(&x, limb_sizes.as_slice());
 
-        let circuit_fixed: TestDecompositionCircuit<Fp, NR_COLS> = TestDecompositionCircuit {
+        let circuit_fixed = TestDecompositionCircuit::<Fp, NR_COLS> {
             input: x,
             limb_sizes: LimbType::Fixed((Fp::NUM_BITS as usize, limb_size)),
             expected,
@@ -373,7 +372,7 @@ fn run_decomposition_less_than_pow2_test<const NR_COLS: usize>() {
 
     let x: Fp = bigint_to_fe(&bign);
 
-    let circuit: TestLessThanPow2Circuit<Fp, NR_COLS> = TestLessThanPow2Circuit { input: x, bound };
+    let circuit = TestLessThanPow2Circuit::<Fp, NR_COLS> { input: x, bound };
 
     let prover =
         MockProver::run(K, &circuit, vec![vec![], vec![]]).expect("Failed to run mock prover");

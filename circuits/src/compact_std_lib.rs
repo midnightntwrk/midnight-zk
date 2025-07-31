@@ -118,6 +118,8 @@ const ZKSTD_VERSION: u32 = 1;
 
 /// Architecture of the standard library. Specifies what chips need to be
 /// configured.
+///
+/// Note, the maximum number of [`ZkStdLibArch::nr_pow2range_cols`] is 7.
 #[derive(Clone, Copy, Debug)]
 pub struct ZkStdLibArch {
     /// Enable the Jubjub chip?
@@ -138,8 +140,8 @@ pub struct ZkStdLibArch {
     /// Enable base64 chip?
     pub base64: bool,
 
-    /// Number of parallel lookups for range checks
-    pub nr_pow2range_cols: usize,
+    /// Number of parallel lookups for range checks.
+    pub nr_pow2range_cols: u8,
 }
 
 impl Default for ZkStdLibArch {
@@ -196,7 +198,7 @@ impl TryInto<ZkStdLibArch> for u16 {
             secp256k1: self & 16 != 0,
             bls12_381: self & 32 != 0,
             base64: self & 64 != 0,
-            nr_pow2range_cols: ((self >> 7) & 0b111) as usize,
+            nr_pow2range_cols: ((self >> 7) & 0b111) as u8,
         })
     }
 }
@@ -330,6 +332,7 @@ impl ZkStdLib {
     pub fn configure(meta: &mut ConstraintSystem<F>, arch: ZkStdLibArch) -> ZkStdLibConfig {
         let nb_advice_cols = [
             NB_ARITH_COLS,
+            arch.nr_pow2range_cols as usize,
             if arch.jubjub { NB_EDWARDS_COLS } else { 0 },
             if arch.poseidon {
                 NB_POSEIDON_ADVICE_COLS
@@ -408,7 +411,7 @@ impl ZkStdLib {
         );
 
         let pow2range_config =
-            Pow2RangeChip::configure(meta, &advice_columns[1..=arch.nr_pow2range_cols]);
+            Pow2RangeChip::configure(meta, &advice_columns[1..=arch.nr_pow2range_cols as usize]);
 
         let core_decomposition_config =
             P2RDecompositionChip::configure(meta, &(native_config.clone(), pow2range_config));
