@@ -23,7 +23,10 @@ use midnight_proofs::{
     poly::Rotation,
 };
 
-use crate::{instructions::decomposition::Pow2RangeInstructions, types::AssignedNative};
+use crate::{
+    field::native::NB_ARITH_COLS, instructions::decomposition::Pow2RangeInstructions,
+    types::AssignedNative,
+};
 
 /// Pow2Range gate configuration.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -172,6 +175,10 @@ impl<F: PrimeField> Pow2RangeChip<F> {
         columns: &[Column<Advice>],
     ) -> Pow2RangeConfig {
         let val_cols = columns.to_vec();
+        assert!(
+            val_cols.len() < NB_ARITH_COLS,
+            "Nr of range-check columns should be smaller than NB_ARITHM_COLS."
+        );
 
         let q_pow2range = meta.complex_selector();
         let tag_col = meta.fixed_column();
