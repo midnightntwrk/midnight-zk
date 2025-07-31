@@ -2,8 +2,8 @@ use std::{
     collections::{BTreeSet, HashMap, HashSet},
     iter,
     ops::RangeTo,
+    time::Instant,
 };
-use std::time::Instant;
 
 use ff::{Field, FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
 use rand_core::{CryptoRng, RngCore};
@@ -90,6 +90,9 @@ where
         if instances.len() != pk.vk.cs.num_instance_columns
             || instances.len() < nb_committed_instances
         {
+            println!("Instances len           : {:?}", instances.len());
+            println!("Num instance columns    : {:?}", pk.vk.cs.num_instance_columns);
+            println!("Num committed instances : {nb_committed_instances}");
             return Err(Error::InvalidInstances);
         }
     }
