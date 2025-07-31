@@ -1,8 +1,9 @@
 //! TODO
 #![allow(dead_code)]
 
-use std::time::Instant;
-use ff::{PrimeField, WithSmallOrderMulGroup};
+use std::{iter, marker::PhantomData, time::Instant};
+
+use ff::{FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
 use rand_chacha::ChaCha8Rng;
 use rand_core::{CryptoRng, RngCore, SeedableRng};
 use rayon::iter::{
@@ -10,24 +11,310 @@ use rayon::iter::{
 };
 
 use crate::{
-    plonk::traces::FoldingTrace,
-    poly::{EvaluationDomain, ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial},
+    plonk::{
+        compute_trace,
+        traces::FoldingTrace,
+        Circuit, Error, ProvingKey,
+    },
+    poly::{
+        commitment::PolynomialCommitmentScheme, Coeff, EvaluationDomain, ExtendedLagrangeCoeff,
+        LagrangeCoeff, Polynomial,
+    },
     protogalaxy::{
         utils::{batch_traces, linear_combination, pow_vec, LiftedFoldingTrace},
         FoldingPk,
     },
     utils::arithmetic::eval_polynomial,
 };
-use crate::plonk::Circuit;
-use crate::poly::commitment::PolynomialCommitmentScheme;
-use crate::transcript::Transcript;
+
+/// This prover can perform a 2**K - 1 to one folding
+struct ProtogalaxyProver<F: PrimeField, CS: PolynomialCommitmentScheme<F>, const K: usize> {
+    folding_pk: FoldingPk<F>,
+    folded_trace: FoldingTrace<F>,
+    error_term: F,
+    beta_powers: [F; K],
+    _commitment_scheme: PhantomData<CS>,
+}
+
+/// This verifier can perform a 2**K - 1 to one folding
+struct ProtogalaxyVerifier<F: PrimeField, const K: usize> {
+    // Still need to figure out what this is
+    folded_instance: F,
+    error_term: F,
+    beta_powers: [F; K],
+}
+
+impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>, const K: usize> ProtogalaxyProver<F, CS, K> {
+    /// Initialise a Protogalaxy prover from a provided trace. Beta powers are
+    /// initialised to `1`, while the error term is initialised as `0`.
+    pub fn init<C, T>(
+        params: &CS::Parameters,
+        pk: ProvingKey<F, CS>,
+        circuit: C,
+        #[cfg(feature = "committed-instances")] nb_committed_instances: usize,
+        instance: &[&[F]],
+        mut rng: impl CryptoRng + RngCore,
+        transcript: &mut T,
+    ) -> Result<Self, Error>
+    where
+        C: Circuit<F>,
+        T: Transcript,
+        CS: PolynomialCommitmentScheme<F>,
+        CS::Commitment: Hashable<T::Hash>,
+        F: WithSmallOrderMulGroup<3>
+            + Sampleable<T::Hash>
+            + Hashable<T::Hash>
+            + Ord
+            + FromUniformBytes<64>,
+    {
+        let folded_trace = compute_trace(
+            params,
+            &pk,
+            &[circuit],
+            #[cfg(feature = "committed-instances")]
+            nb_committed_instances,
+            &[instance],
+            &mut rng,
+            transcript,
+        )?.into_folding_trace(pk.fixed_values.clone());
+
+        Ok(Self {
+            folding_pk: FoldingPk::from(pk),
+            folded_trace,
+            error_term: F::ZERO,
+            beta_powers: [F::ONE; K],
+            _commitment_scheme: Default::default(),
+        })
+    }
+
+    /// Fold
+    /// TODO: We assume that circuits.len() + 1 is a power of 2.
+    pub fn fold<C, T>(
+        mut self,
+        params: &CS::Parameters,
+        pk: &ProvingKey<F, CS>,
+        circuits: Vec<C>,
+        #[cfg(feature = "committed-instances")] nb_committed_instances: usize,
+        instances: &[&[&[F]]],
+        mut rng: impl CryptoRng + RngCore,
+        transcript: &mut T,
+    ) -> Result<Self, Error>
+    where
+        C: Circuit<F>,
+        T: Transcript,
+        CS: PolynomialCommitmentScheme<F>,
+        CS::Commitment: Hashable<T::Hash>,
+        F: WithSmallOrderMulGroup<3>
+            + Sampleable<T::Hash>
+            + Hashable<T::Hash>
+            + Ord
+            + FromUniformBytes<64>,
+    {
+        assert_eq!(circuits.len(), instances.len());
+
+        // TODO: Bunch of optimisations here. We could compute the trace for all
+        // circuits at the same time. But the goal eventually is to fold
+        // different circuits at a time.
+        let traces = circuits
+            .into_iter()
+            .map(|c| {
+                let trace = compute_trace(
+                    params,
+                    pk,
+                    &[c],
+                    #[cfg(feature = "committed-instances")]
+                    nb_committed_instances,
+                    &[&[]],
+                    &mut rng,
+                    transcript,
+                )?;
+                Ok(trace.into_folding_trace(pk.fixed_values.clone()))
+            })
+            .collect::<Result<Vec<_>, Error>>()?;
+
+        let mut delta = transcript.squeeze_challenge();
+        let delta_powers: [F; K] = std::array::from_fn(|_| {
+            let res = delta;
+            delta = delta * delta;
+            res
+        });
+
+        let f_poly_domain = EvaluationDomain::new(K as u32 + 1, 1);
+        let f_poly = compute_f(&self.folding_pk, &f_poly_domain, &self.folded_trace, &self.beta_powers, &delta_powers);
+        let f_poly = f_poly_domain.extended_to_coeff(f_poly);
+        let constant_term = Polynomial { values: vec![self.error_term], _marker: PhantomData };
+        let committed_f_poly = Polynomial { values: f_poly, _marker: PhantomData} - &constant_term;
+        transcript.write(&CS::commit(params, &committed_f_poly))?;
+
+        let alpha = transcript.squeeze_challenge();
+
+        let f_at_alpha = eval_polynomial(&committed_f_poly.values, alpha) + self.error_term;
+        let beta_star = self.beta_powers.iter().zip(delta_powers.iter()).map(|(beta, delta)| *beta + alpha * delta).collect::<Vec<_>>();
+
+        let time = Instant::now();
+        // We now perform folding of the traces
+        let degree = pk.vk.cs.degree() as u32;
+
+        let k_log2_ceil = (K as f64 - 1.).log2() as u32 + 1;
+        // We must increase the degree, since we need to count y as a variable.
+        // Computing the real degree seems hard.
+        let dk_domain = EvaluationDomain::new(degree + 3, k_log2_ceil);
+        let traces = std::iter::once(&self.folded_trace).chain(traces.iter()).collect::<Vec<_>>();
+
+        // TODO: collecting to vector - careful with allocation.
+        let lifted_trace = batch_traces(&dk_domain, &traces);
+        let lift_trace_time = time.elapsed().as_millis();
+
+        let mut rng = ChaCha8Rng::from_seed([0u8; 32]);
+        let mut betas = vec![F::ONE; self.folding_pk.domain.k() as usize];
+        let mut beta_pow = F::random(&mut rng);
+        for beta in betas.iter_mut() {
+            *beta = beta_pow;
+            beta_pow *= beta_pow
+        }
+
+        let beta_time = time.elapsed().as_millis() - lift_trace_time;
+
+        let poly_g = compute_poly_g(&self.folding_pk, &beta_star, &lifted_trace);
+        let poly_g_time = time.elapsed().as_millis() - beta_time - lift_trace_time;
+
+        // Now we subtract f_at_alpha and divide by the vanishing polynomial
+         let mut poly_g_minus_f_at_alpha = poly_g.clone();
+        poly_g_minus_f_at_alpha.values[0] -= f_at_alpha;
+        let poly_k = dk_domain.divide_by_vanishing_poly(poly_g_minus_f_at_alpha.clone());
+        let poly_k_coeff =Polynomial { values: dk_domain.extended_to_coeff(poly_k), _marker: PhantomData };
+
+        transcript.write(&CS::commit(params, &poly_k_coeff))?;
+
+        let gamma = transcript.squeeze_challenge();
+
+        // Final check. Eval G(X), K(X) and Z(X) in \gamma
+        let g_in_gamma = dk_domain.eval_extended_lagrange(poly_g_minus_f_at_alpha, gamma);
+        let k_in_gamma = eval_polynomial(&poly_k_coeff.values, gamma);
+        let z_in_gamma = gamma.pow_vartime([dk_domain.n]) - F::ONE;
+
+        assert_ne!(g_in_gamma, F::ZERO);
+        assert_eq!(g_in_gamma, k_in_gamma * z_in_gamma);
+
+        // Update error term
+        self.error_term = dk_domain.eval_extended_lagrange(poly_g, gamma);
+
+        self.folded_trace = fold_traces(&dk_domain, &traces, &gamma);
+        let rest_time = time.elapsed().as_millis() - poly_g_time - beta_time - lift_trace_time;
+
+        println!("    Lift trace time      : {:?}ms", lift_trace_time);
+        println!("    Beta powers time     : {:?}ms", beta_time);
+        println!("    Poly G time          : {:?}ms", poly_g_time);
+        println!("    Rest time            : {:?}ms", rest_time);
+
+        Ok(self)
+    }
+}
+
+// Ugly, but we need to pass one for now. Would be nice if there is an identity trait.
+fn pow_i<'a, F>(powers: &'a [F], i: usize, one: &'a F) -> F
+where
+    F: std::iter::Product<&'a F> + 'a,
+{
+    println!("Index in binary: {i:b}");
+    println!("Bits used: {:?}", usize::BITS - i.leading_zeros());
+    println!("Size powers: {:?}", powers.len());
+    powers
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| (i >> index) & 1 == 1)
+        .map(|(_, power)| power)
+        .chain(iter::once(one))
+        .product()
+}
+
+// TODO: This can be optimised. Follow claim 4.4 from paper
+fn compute_f<F: WithSmallOrderMulGroup<3>, const K: usize>(
+    pk: &FoldingPk<F>,
+    domain: &EvaluationDomain<F>,
+    trace: &FoldingTrace<F>,
+    betas: &[F; K],
+    deltas: &[F; K],
+) -> Polynomial<F, ExtendedLagrangeCoeff> {
+    let one_poly: Polynomial<_, Coeff> = Polynomial { values: vec![F::ONE], _marker: PhantomData};
+    let one_poly = domain.coeff_to_extended(one_poly);
+    let extended_polys = betas.iter().zip(deltas.iter()).map(|(beta, delta)| {
+        let poly: Polynomial<_, Coeff> = Polynomial { values: vec![*beta, *delta], _marker: PhantomData};
+        domain.coeff_to_extended(poly)
+    }).collect::<Vec<_>>();
+
+    let FoldingTrace {
+        fixed_polys,
+        advice_polys,
+        instance_values,
+        lookups,
+        permutations: permutation,
+        challenges,
+        beta,
+        gamma,
+        theta,
+        y,
+        ..
+    } = trace;
+
+    let advice_lagrange = advice_polys
+        .iter()
+        .map(|a| {
+            a.iter()
+                .map(|p| pk.domain.coeff_to_lagrange(p.clone()))
+                .collect()
+        })
+        .collect::<Vec<_>>();
+
+    let witness_poly = pk.ev.evaluate_h::<LagrangeCoeff>(
+        &pk.domain,
+        &pk.cs,
+        &advice_lagrange
+            .iter()
+            .map(Vec::as_slice)
+            .collect::<Vec<_>>(),
+        &instance_values
+            .iter()
+            .map(|i| i.as_slice())
+            .collect::<Vec<_>>(),
+        fixed_polys,
+        challenges,
+        *y,
+        *beta,
+        *gamma,
+        *theta,
+        lookups,
+        permutation,
+        &pk.l0,
+        &pk.l_last,
+        &pk.l_active_row,
+        &pk.permutation_pk_cosets,
+    );
+
+    let res = witness_poly
+        .values
+        .into_iter()
+        .enumerate()
+        .map(|(index, witness)| {
+            let pow_i_poly = pow_i(&extended_polys, index + 1, &one_poly);
+            pow_i_poly * witness
+        })
+        .reduce(|a, b| a + b).expect("LEFTOVER");
+
+    res
+}
+
+use crate::transcript::{Hashable, Sampleable, Transcript};
 
 /// TODO: Fold instances
-pub fn fold<F: WithSmallOrderMulGroup<3>>(
+pub fn fold<F>(
     pk: &FoldingPk<F>,
     dk_domain: &EvaluationDomain<F>,
     traces: &[&FoldingTrace<F>],
-) -> FoldingTrace<F> {
+) -> FoldingTrace<F>
+where
+    F: WithSmallOrderMulGroup<3>,
+{
     let time = Instant::now();
     let lifted_trace = batch_traces(dk_domain, traces);
     let lift_trace_time = time.elapsed().as_millis();
@@ -56,10 +343,11 @@ pub fn fold<F: WithSmallOrderMulGroup<3>>(
     let k_in_gamma = eval_polynomial(&poly_k_coeff, gamma);
     let z_in_gamma = gamma.pow_vartime([dk_domain.n]) - F::ONE;
 
+    assert_ne!(g_in_gamma, F::ZERO);
     assert_eq!(g_in_gamma, k_in_gamma * z_in_gamma);
 
     let res = fold_traces(dk_domain, traces, &gamma);
-    let rest_time = time.elapsed().as_millis() - poly_g_time  - beta_time - lift_trace_time;
+    let rest_time = time.elapsed().as_millis() - poly_g_time - beta_time - lift_trace_time;
 
     println!("    Lift trace time      : {:?}ms", lift_trace_time);
     println!("    Beta powers time     : {:?}ms", beta_time);
@@ -234,16 +522,16 @@ mod tests {
     use crate::{
         circuit::{Layouter, SimpleFloorPlanner, Value},
         plonk::{
-            compute_trace, finalise_proof, keygen_pk, keygen_vk_with_k, Advice, Circuit, Column,
+            keygen_pk, keygen_vk_with_k, Advice, Circuit, Column,
             ConstraintSystem, Error, Expression, Selector, TableColumn,
         },
         poly::{
             kzg::{params::ParamsKZG, KZGCommitmentScheme},
-            EvaluationDomain, Rotation,
+            Rotation,
         },
-        protogalaxy::prover::{fold, FoldingPk},
         transcript::{CircuitTranscript, Transcript},
     };
+    use crate::protogalaxy::prover::ProtogalaxyProver;
 
     #[derive(Clone, Copy)]
     struct TestCircuit {
@@ -353,11 +641,11 @@ mod tests {
 
     #[test]
     fn folding_test() {
-        const K: u32 = 9;
+        const K: usize = 9;
         let k = 4; // number of folding instances
 
         let rng = ChaCha8Rng::from_seed([0u8; 32]);
-        let params: ParamsKZG<Bls12> = ParamsKZG::unsafe_setup(K, rng);
+        let params: ParamsKZG<Bls12> = ParamsKZG::unsafe_setup(K as u32, rng);
 
         let mut rng = ChaCha8Rng::from_seed([0u8; 32]);
         let mut rand_bytes = [0u8; 1 << 8];
@@ -378,89 +666,64 @@ mod tests {
             .map(TestCircuit::from)
             .collect::<Vec<_>>();
 
-        let vk = keygen_vk_with_k::<_, KZGCommitmentScheme<Bls12>, _>(&params, &circuits[0], K)
+        let vk = keygen_vk_with_k::<_, KZGCommitmentScheme<Bls12>, _>(&params, &circuits[0], K as u32)
             .expect("keygen_vk should not fail");
         let pk = keygen_pk(vk.clone(), &circuits[0]).expect("keygen_pk should not fail");
 
         let mut rng = ChaCha8Rng::from_seed([0u8; 32]);
 
-        // Compute traces
+        // Fold proofs. We first initialise folding with the first circuit
         let folding = Instant::now();
         let now = Instant::now();
         let mut transcript = CircuitTranscript::init();
-
-        let traces = circuits
-            .into_iter()
-            .map(|c| {
-                compute_trace(
-                    &params,
-                    &pk,
-                    &[c],
-                    #[cfg(feature = "committed-instances")]
-                    0,
-                    &[&[]],
-                    &mut rng,
-                    &mut transcript,
-                )
-                .expect("Failed to compute the folding trace")
-                .into_folding_trace(pk.fixed_values.clone())
-            })
-            .collect::<Vec<_>>();
-
-        let traces_time = now.elapsed().as_millis();
-
-        // We now perform folding of the traces
-        let degree = pk.vk.cs.degree() as u32;
-
-        let k_log2_ceil = (k as f64 - 1.).log2() as u32 + 1;
-        // We must increase the degree, since we need to count y as a variable.
-        // Computing the real degree seems hard.
-        let dk_domain = EvaluationDomain::new(degree + 3, k_log2_ceil);
-        let folding_pk = FoldingPk::from(pk.clone());
-        let folded_trace = fold(
-            &folding_pk,
-            &dk_domain,
-            &traces.iter().collect::<Vec<&_>>(),
-        );
-
-        // Now we create the final proof
-        let final_pk = folding_pk.into_proving_key(&folded_trace, &vk);
-        finalise_proof(
+        let protogalaxy = ProtogalaxyProver::<_, _, K>::init(
             &params,
-            &final_pk,
+            pk.clone(),
+            circuits[0],
             #[cfg(feature = "committed-instances")]
             0,
-            folded_trace.into(),
-            &mut transcript,
-        )
-        .expect("Failed to finalise proof");
+            &[],
+            &mut rng,
+            &mut transcript
+        ).expect("Failed to initialise folder");
+
+        protogalaxy.fold(
+            &params,
+            &pk,
+            circuits[1..].to_vec(),
+            #[cfg(feature = "committed-instances")]
+            0,
+            &[&[&[]], &[&[]], &[&[]]],
+            &mut rng,
+            &mut transcript
+        ).expect("Failed to fold many instances");
 
         let folding_time = folding.elapsed().as_millis();
 
-        // Now we see how long it would have taken to produce four normal proofs
-        let now = Instant::now();
-        let mut finalise_transcript = transcript.clone();
-
-        traces
-            .into_iter()
-            .try_for_each(|t| {
-                finalise_proof(
-                    &params,
-                    &pk,
-                    #[cfg(feature = "committed-instances")]
-                    0,
-                    t.into(),
-                    &mut finalise_transcript,
-                )
-            })
-            .expect("Failed to finalise proofs");
-
-        let full_proof_time = now.elapsed().as_millis();
-        println!("Compute {k} traces         :  {:?}ms", traces_time);
-        println!(
-            "Compute {k} full proofs    : {:?}ms",
-            traces_time + full_proof_time
-        );
-        println!("Protogalaxy              : {:?}ms", folding_time);
+        // // Now we see how long it would have taken to produce four normal proofs
+        // let now = Instant::now();
+        // let mut finalise_transcript = transcript.clone();
+        //
+        // traces
+        //     .into_iter()
+        //     .try_for_each(|t| {
+        //         finalise_proof(
+        //             &params,
+        //             &pk,
+        //             #[cfg(feature = "committed-instances")]
+        //             0,
+        //             t.into(),
+        //             &mut finalise_transcript,
+        //         )
+        //     })
+        //     .expect("Failed to finalise proofs");
+        //
+        // let full_proof_time = now.elapsed().as_millis();
+        // println!("Compute {k} traces         :  {:?}ms", traces_time);
+        // println!(
+        //     "Compute {k} full proofs    : {:?}ms",
+        //     traces_time + full_proof_time
+        // );
+        // println!("Protogalaxy              : {:?}ms", folding_time);
     }
 }

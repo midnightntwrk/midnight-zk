@@ -1,22 +1,24 @@
-use std::convert::TryInto;
-use std::time::Instant;
+use std::{convert::TryInto, time::Instant};
 
 use ff::Field;
 use midnight_curves::{Bls12, Fq};
-use rand_chacha::ChaCha8Rng;
-use rand_chacha::rand_core::{RngCore, SeedableRng};
-
 use midnight_proofs::{
-    circuit::{Value, SimpleFloorPlanner, Layouter,},
-    plonk::{Selector, TableColumn, Column, Advice, Circuit, ConstraintSystem, Expression, Error},
-    poly::{Rotation}
+    circuit::{Layouter, SimpleFloorPlanner, Value},
+    plonk::{
+        compute_trace, finalise_proof, keygen_pk, keygen_vk_with_k, Advice, Circuit, Column,
+        ConstraintSystem, Error, Expression, Selector, TableColumn,
+    },
+    poly::{
+        kzg::{params::ParamsKZG, KZGCommitmentScheme},
+        EvaluationDomain, Rotation,
+    },
+    protogalaxy::{prover::fold, FoldingPk},
+    transcript::{CircuitTranscript, Transcript},
 };
-use midnight_proofs::plonk::{compute_trace, finalise_proof, keygen_pk, keygen_vk_with_k};
-use midnight_proofs::poly::EvaluationDomain;
-use midnight_proofs::poly::kzg::KZGCommitmentScheme;
-use midnight_proofs::poly::kzg::params::ParamsKZG;
-use midnight_proofs::protogalaxy::{FoldingPk, prover::fold};
-use midnight_proofs::transcript::{CircuitTranscript, Transcript};
+use rand_chacha::{
+    rand_core::{RngCore, SeedableRng},
+    ChaCha8Rng,
+};
 
 #[global_allocator]
 static ALLOC: dhat::Alloc = dhat::Alloc;
@@ -85,11 +87,7 @@ impl Circuit<Fq> for TestCircuit {
         config
     }
 
-    fn synthesize(
-        &self,
-        config: MyConfig,
-        mut layouter: impl Layouter<Fq>,
-    ) -> Result<(), Error> {
+    fn synthesize(&self, config: MyConfig, mut layouter: impl Layouter<Fq>) -> Result<(), Error> {
         layouter.assign_table(
             || "8-bit table",
             |mut table| {
@@ -179,8 +177,8 @@ fn main() {
                 &mut rng,
                 &mut transcript,
             )
-                .expect("Failed to compute the folding trace")
-                .into_folding_trace(pk.fixed_values.clone())
+            .expect("Failed to compute the folding trace")
+            .into_folding_trace(pk.fixed_values.clone())
         })
         .collect::<Vec<_>>();
 
@@ -194,11 +192,7 @@ fn main() {
     // Computing the real degree seems hard.
     let dk_domain = EvaluationDomain::new(degree + 3, k_log2_ceil);
     let folding_pk = FoldingPk::from(pk.clone());
-    let folded_trace = fold(
-        &folding_pk,
-        &dk_domain,
-        &traces.iter().collect::<Vec<&_>>(),
-    );
+    let folded_trace = fold(&folding_pk, &dk_domain, &traces.iter().collect::<Vec<&_>>());
 
     let folding_time = folding.elapsed().as_millis();
     // Now we create the final proof
@@ -211,7 +205,7 @@ fn main() {
         folded_trace.into(),
         &mut transcript,
     )
-        .expect("Failed to finalise proof");
+    .expect("Failed to finalise proof");
 
     let final_proof_time = folding.elapsed().as_millis() - folding_time;
 
@@ -242,4 +236,3 @@ fn main() {
     println!("Protogalaxy              : {:?}ms", folding_time);
     println!("Protogalaxy final time   : {:?}ms", final_proof_time);
 }
-

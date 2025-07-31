@@ -1,14 +1,12 @@
 use std::ops::{Add, Mul};
 
 use ff::{Field, PrimeField, WithSmallOrderMulGroup};
-use rayon::iter::{IntoParallelRefIterator, IntoParallelRefMutIterator, IndexedParallelIterator, ParallelIterator};
+use rayon::iter::{
+    IndexedParallelIterator, IntoParallelRefIterator, IntoParallelRefMutIterator, ParallelIterator,
+};
 
 use crate::{
-    plonk::{
-        lookup, permutation,
-        traces::FoldingTrace,
-        vanishing,
-    },
+    plonk::{lookup, permutation, traces::FoldingTrace, vanishing},
     poly::{EvaluationDomain, Polynomial},
 };
 
@@ -201,9 +199,12 @@ impl<F: PrimeField> Add<&FoldingTrace<F>> for FoldingTrace<F> {
         assert_eq!(self.fixed_polys.len(), rhs.fixed_polys.len());
         assert_eq!(self.challenges.len(), rhs.challenges.len());
 
-        self.fixed_polys.par_iter_mut().zip(rhs.fixed_polys.par_iter()).for_each(|(lhs, rhs)| {
-            *lhs += rhs;
-        });
+        self.fixed_polys
+            .par_iter_mut()
+            .zip(rhs.fixed_polys.par_iter())
+            .for_each(|(lhs, rhs)| {
+                *lhs += rhs;
+            });
 
         (0..self.advice_polys.len()).for_each(|i| {
             assert_eq!(self.advice_polys[i].len(), rhs.advice_polys[i].len());
@@ -218,28 +219,36 @@ impl<F: PrimeField> Add<&FoldingTrace<F>> for FoldingTrace<F> {
                 .par_iter_mut()
                 .zip(rhs.advice_polys[i].par_iter())
                 .for_each(|(lhs, rhs)| {
-                *lhs += rhs;
-            });
+                    *lhs += rhs;
+                });
 
-            (self.instance_polys[i].par_iter_mut()).zip(rhs.instance_polys[i].par_iter()).for_each(|(lhs, rhs)|
-            {
-                *lhs += rhs;
-            });
-            self.lookups[i].par_iter_mut().zip(rhs.lookups[i].par_iter()).for_each(|(lhs, rhs)| {
-                lhs.permuted_input_poly += &rhs.permuted_input_poly;
-                lhs.permuted_table_poly += &rhs.permuted_table_poly;
-                lhs.product_poly += &rhs.product_poly;
-            });
+            (self.instance_polys[i].par_iter_mut())
+                .zip(rhs.instance_polys[i].par_iter())
+                .for_each(|(lhs, rhs)| {
+                    *lhs += rhs;
+                });
+            self.lookups[i]
+                .par_iter_mut()
+                .zip(rhs.lookups[i].par_iter())
+                .for_each(|(lhs, rhs)| {
+                    lhs.permuted_input_poly += &rhs.permuted_input_poly;
+                    lhs.permuted_table_poly += &rhs.permuted_table_poly;
+                    lhs.product_poly += &rhs.product_poly;
+                });
 
-            (self.permutations[i].sets.par_iter_mut()).zip(rhs.permutations[i].sets.par_iter()).for_each(|(lhs, rhs)|
-            {
-                lhs.permutation_product_poly += &rhs.permutation_product_poly;
-            });
+            (self.permutations[i].sets.par_iter_mut())
+                .zip(rhs.permutations[i].sets.par_iter())
+                .for_each(|(lhs, rhs)| {
+                    lhs.permutation_product_poly += &rhs.permutation_product_poly;
+                });
         });
 
-        self.challenges.par_iter_mut().zip(rhs.challenges.par_iter()).for_each(|(lhs, rhs)| {
-            *lhs += *rhs;
-        });
+        self.challenges
+            .par_iter_mut()
+            .zip(rhs.challenges.par_iter())
+            .for_each(|(lhs, rhs)| {
+                *lhs += *rhs;
+            });
 
         self.beta += rhs.beta;
         self.gamma += rhs.gamma;
