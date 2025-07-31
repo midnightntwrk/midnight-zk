@@ -247,7 +247,7 @@ fn bench_zswap_output(c: &mut Criterion) {
     group.sample_size(10);
     group.bench_function("prove", |b| {
         b.iter_batched(
-            || sample_zswap_inputs(),
+            sample_zswap_inputs,
             |(instance, witness)| {
                 let _proof = compact_std_lib::prove::<ZSwapOutputCircuit, blake2b_simd::State>(
                     black_box(&srs),

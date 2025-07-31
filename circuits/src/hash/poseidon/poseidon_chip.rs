@@ -204,7 +204,10 @@ impl<F: PoseidonField> ComposableChip<F> for PoseidonChip<F> {
 
             Constraints::with_selector(
                 meta.query_selector(q_full_round),
-                linear_layer(inputs.map(sbox), outputs, constants),
+                linear_layer(inputs.map(sbox), outputs, constants)
+                    .into_iter()
+                    .map(|c| c.into())
+                    .collect(),
             )
         });
 
@@ -246,6 +249,7 @@ impl<F: PoseidonField> ComposableChip<F> for PoseidonChip<F> {
             let constraints = output_lin_constraints
                 .chain(input_pow_constraints)
                 .chain(once(output_pow_constraint))
+                .map(|c| c.into())
                 .collect::<Vec<_>>();
             Constraints::with_selector(q, constraints)
         });

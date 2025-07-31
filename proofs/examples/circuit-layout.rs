@@ -208,7 +208,7 @@ impl<F: Field> Circuit<F> for MyCircuit<F> {
             vec![(a_, sl)]
         });
 
-        meta.create_gate("Combined add-mult", |meta| {
+        meta.A("Combined add-mult", |meta| {
             let d = meta.query_advice(d, Rotation::next());
             let a = meta.query_advice(a, Rotation::cur());
             let sf = meta.query_fixed(sf, Rotation::cur());
