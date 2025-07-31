@@ -199,8 +199,8 @@ impl EccConfig {
             Constraints::with_selector(
                 q_double,
                 vec![
-                    ("qx constraint for q = 2 * p", id1).into(),
-                    ("qy constraint for q = 2 * p", id2).into(),
+                    ("qx constraint for q = 2 * p", id1),
+                    ("qy constraint for q = 2 * p", id2),
                 ],
             )
         })
@@ -254,8 +254,8 @@ impl EccConfig {
             Constraints::with_selector(
                 q_cond_add,
                 vec![
-                    ("rx constraint for r = q + b * s", id1).into(),
-                    ("ry constraint for r = q + b * s", id2).into(),
+                    ("rx constraint for r = q + b * s", id1),
+                    ("ry constraint for r = q + b * s", id2),
                 ],
             )
         })
@@ -288,7 +288,7 @@ impl EccConfig {
 
             let id = y2.clone() - x2.clone() - (one + edwards_d * x2 * y2);
 
-            Constraints::with_selector(q_point, vec![("curve equation", id).into()])
+            Constraints::with_selector(q_point, vec![("curve equation", id)])
         })
     }
 }

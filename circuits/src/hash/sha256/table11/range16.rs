@@ -81,10 +81,7 @@ impl Range16Config {
             all_checks.push(decompose_check);
             all_checks.extend(cols_range2_check);
 
-            Constraints::with_selector(
-                s_range16,
-                all_checks.into_iter().map(|c| c.into()).collect(),
-            )
+            Constraints::with_selector(s_range16, all_checks)
         });
 
         Range16Config {

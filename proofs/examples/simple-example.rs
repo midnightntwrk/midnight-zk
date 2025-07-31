@@ -115,7 +115,7 @@ impl<F: Field> FieldChip<F> {
             // has the following properties:
             // - When s_mul = 0, any value is allowed in lhs, rhs, and out.
             // - When s_mul != 0, this constrains lhs * rhs = out.
-            Constraints::with_selector(s_mul, vec![(lhs * rhs - out).into()])
+            Constraints::with_selector(s_mul, vec![lhs * rhs - out])
         });
 
         FieldConfig {

@@ -232,7 +232,7 @@ impl<F: Field> Mul<F> for Value<F> {
 ///             let s = meta.query_selector(s);
 ///
 ///             // BUG: Should be a * b - c
-///             Constraints::with_selector(s, vec![("buggy R1CS", (a * b + c)).into()])
+///             Constraints::with_selector(s, vec![("buggy R1CS", (a * b + c))])
 ///         });
 ///
 ///         MyConfig { a, b, c, s }
@@ -1334,7 +1334,7 @@ mod tests {
                     let q = cells.query_selector(q);
 
                     // If q is enabled, a and b must be assigned to.
-                    Constraints::with_selector(q, vec![(a - b).into()])
+                    Constraints::with_selector(q, vec![a - b])
                 });
 
                 FaultyCircuitConfig { a, b, q }
@@ -1733,7 +1733,7 @@ mod tests {
                     let q = cells.query_selector(q);
 
                     // If q is enabled, a and b must be assigned to.
-                    Constraints::with_selector(q, vec![((a - b) * (c - d)).into()])
+                    Constraints::with_selector(q, vec![(a - b) * (c - d)])
                 });
 
                 FaultyCircuitConfig { a, b, c, d, q }

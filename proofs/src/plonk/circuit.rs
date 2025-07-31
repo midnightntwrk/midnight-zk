@@ -423,7 +423,7 @@ impl TryFrom<Column<Any>> for Column<Instance> {
 ///
 ///     // On rows where the selector is enabled, a is constrained to equal b.
 ///     // On rows where the selector is disabled, a and b can take any value.
-///     Constraints::with_selector(s, vec![(a - b).into()])
+///     Constraints::with_selector(s, vec![a - b])
 /// });
 /// ```
 ///
@@ -1453,8 +1453,8 @@ impl<F: Field> From<Expression<F>> for Vec<Constraint<F>> {
 ///     Constraints::with_selector(
 ///         s_ternary,
 ///         vec![
-///             ("a is boolean", a.clone() * one_minus_a.clone()).into(),
-///             ("next == a ? b : c", next - (a * b + one_minus_a * c)).into(),
+///             ("a is boolean", a.clone() * one_minus_a.clone()),
+///             ("next == a ? b : c", next - (a * b + one_minus_a * c)),
 ///         ],
 ///     )
 /// });
@@ -1472,10 +1472,13 @@ impl<F: Field> Constraints<F> {
     ///
     /// Each constraint `c` in `iterator` will be converted into the constraint
     /// `selector * c`.
-    pub fn with_selector(selector: Expression<F>, constraints: Vec<Constraint<F>>) -> Self {
+    pub fn with_selector<I: Into<Constraint<F>>>(
+        selector: Expression<F>,
+        constraints: Vec<I>,
+    ) -> Self {
         Constraints {
             selector,
-            constraints,
+            constraints: constraints.into_iter().map(|c| c.into()).collect(),
         }
     }
 

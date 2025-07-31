@@ -165,7 +165,7 @@ impl<F: Field> AddChip<F> {
             let out = meta.query_advice(advice[0], Rotation::next());
             let s_add = meta.query_selector(s_add);
 
-            Constraints::with_selector(s_add, vec![(lhs + rhs - out).into()])
+            Constraints::with_selector(s_add, vec![lhs + rhs - out])
         });
 
         AddConfig { advice, s_add }
@@ -287,7 +287,7 @@ impl<F: Field> MulChip<F> {
             // has the following properties:
             // - When s_mul = 0, any value is allowed in lhs, rhs, and out.
             // - When s_mul != 0, this constrains lhs * rhs = out.
-            Constraints::with_selector(s_mul, vec![(lhs * rhs - out).into()])
+            Constraints::with_selector(s_mul, vec![lhs * rhs - out])
         });
 
         MulConfig { advice, s_mul }

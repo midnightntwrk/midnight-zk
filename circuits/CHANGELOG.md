@@ -15,6 +15,7 @@ verification keys break backwards compatibility.
 
 ### Changed
 * Zswap example was moved to a benchmark [#46](https://github.com/midnightntwrk/midnight-zk/pull/46)
+* Rebase to new API for custom constraints [#53](https://github.com/midnightntwrk/midnight-zk/pull/53)
 
 ### Removed
 

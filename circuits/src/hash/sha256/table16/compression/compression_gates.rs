@@ -88,7 +88,6 @@ impl<F: PrimeField> CompressionGate<F> {
                 .chain(Some(("range_check_tag_d", range_check_tag_d)))
                 .chain(Some(("dense_check", dense_check)))
                 .chain(Some(("spread_check", spread_check)))
-                .map(|c| c.into())
                 .collect(),
         )
     }
@@ -158,7 +157,6 @@ impl<F: PrimeField> CompressionGate<F> {
                 .chain(Some(("range_check_tag_d", range_check_tag_d)))
                 .chain(Some(("dense_check", dense_check)))
                 .chain(Some(("spread_check", spread_check)))
-                .map(|c| c.into())
                 .collect(),
         )
     }
@@ -203,7 +201,7 @@ impl<F: PrimeField> CompressionGate<F> {
         let xor = xor_0 + xor_1 + xor_2;
         let check = spread_witness + (xor * -F::ONE);
 
-        Constraints::with_selector(s_upper_sigma_0, vec![("s_upper_sigma_0", check).into()])
+        Constraints::with_selector(s_upper_sigma_0, vec![("s_upper_sigma_0", check)])
     }
 
     // s_upper_sigma_1 on efgh words
@@ -247,7 +245,7 @@ impl<F: PrimeField> CompressionGate<F> {
         let xor = xor_0 + xor_1 + xor_2;
         let check = spread_witness + (xor * -F::ONE);
 
-        Constraints::with_selector(s_upper_sigma_1, vec![("s_upper_sigma_1", check).into()])
+        Constraints::with_selector(s_upper_sigma_1, vec![("s_upper_sigma_1", check)])
     }
 
     // First part of choice gate on (E, F, G), E ∧ F
@@ -273,7 +271,7 @@ impl<F: PrimeField> CompressionGate<F> {
 
         let check = lhs + rhs * -F::ONE;
 
-        Constraints::with_selector(s_ch, vec![("s_ch", check).into()])
+        Constraints::with_selector(s_ch, vec![("s_ch", check)])
     }
 
     // Second part of Choice gate on (E, F, G), ¬E ∧ G
@@ -314,10 +312,7 @@ impl<F: PrimeField> CompressionGate<F> {
 
         Constraints::with_selector(
             s_ch_neg,
-            neg_check
-                .chain(Some(("s_ch_neg", lhs - rhs)))
-                .map(|c| c.into())
-                .collect(),
+            neg_check.chain(Some(("s_ch_neg", lhs - rhs))).collect(),
         )
     }
 
@@ -345,7 +340,7 @@ impl<F: PrimeField> CompressionGate<F> {
         let c = spread_c_lo + spread_c_hi * F::from(1 << 32);
         let sum = a + b + c;
 
-        Constraints::with_selector(s_maj, vec![("maj", sum - maj).into()])
+        Constraints::with_selector(s_maj, vec![("maj", sum - maj)])
     }
 
     // s_h_prime to get H' = H + Ch(E, F, G) + s_upper_sigma_1(E) + K + W
@@ -393,9 +388,9 @@ impl<F: PrimeField> CompressionGate<F> {
         Constraints::with_selector(
             s_h_prime,
             vec![
-                ("h_prime equality check", h_prime_equ_check).into(),
-                ("h_prime carry_msb check", carry_lsb_check).into(),
-                ("h_prime carry equality check", carry_equ_check).into(),
+                ("h_prime equality check", h_prime_equ_check),
+                ("h_prime carry_msb check", carry_lsb_check),
+                ("h_prime carry equality check", carry_equ_check),
             ],
         )
     }
@@ -421,7 +416,7 @@ impl<F: PrimeField> CompressionGate<F> {
 
         let check = sum - (new_carry * F::from(1 << 32)) - new;
 
-        Constraints::with_selector(s_add_halves, vec![("s_add_halves", check).into()])
+        Constraints::with_selector(s_add_halves, vec![("s_add_halves", check)])
     }
 
     // s_a_new to get A_new = H' + Maj(A, B, C) + s_upper_sigma_0(A)
@@ -449,10 +444,7 @@ impl<F: PrimeField> CompressionGate<F> {
 
         Constraints::with_selector(
             s_a_new,
-            vec![
-                ("equality_check", equ_check).into(),
-                ("carry_check", carry_check).into(),
-            ],
+            vec![("equality_check", equ_check), ("carry_check", carry_check)],
         )
     }
 
@@ -479,10 +471,7 @@ impl<F: PrimeField> CompressionGate<F> {
 
         Constraints::with_selector(
             s_e_new,
-            vec![
-                ("equality_check", equ_check).into(),
-                ("carry_check", carry_check).into(),
-            ],
+            vec![("equality_check", equ_check), ("carry_check", carry_check)],
         )
     }
 
@@ -510,10 +499,10 @@ impl<F: PrimeField> CompressionGate<F> {
         Constraints::with_selector(
             s_digest,
             vec![
-                ("check_lo_hi_0", check_lo_hi(lo_0, hi_0, word_0)).into(),
-                ("check_lo_hi_1", check_lo_hi(lo_1, hi_1, word_1)).into(),
-                ("check_lo_hi_2", check_lo_hi(lo_2, hi_2, word_2)).into(),
-                ("check_lo_hi_3", check_lo_hi(lo_3, hi_3, word_3)).into(),
+                ("check_lo_hi_0", check_lo_hi(lo_0, hi_0, word_0)),
+                ("check_lo_hi_1", check_lo_hi(lo_1, hi_1, word_1)),
+                ("check_lo_hi_2", check_lo_hi(lo_2, hi_2, word_2)),
+                ("check_lo_hi_3", check_lo_hi(lo_3, hi_3, word_3)),
             ],
         )
     }

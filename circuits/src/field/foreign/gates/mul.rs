@@ -167,9 +167,8 @@ impl MulConfig {
                         - (vj.clone() + Expression::Constant(bigint_to_fe::<F>(lj_min)))
                             * Expression::Constant(bigint_to_fe::<F>(mj))
                 })
-                .map(|c| c.into())
                 .collect::<Vec<_>>();
-            moduli_ids.push(native_id.into());
+            moduli_ids.push(native_id);
 
             Constraints::with_selector(q, moduli_ids)
         });

@@ -48,10 +48,7 @@ impl<F: PrimeField> ScheduleGate<F> {
 
         Constraints::with_selector(
             s_word,
-            vec![
-                ("word_check", word_check).into(),
-                ("carry_check", carry_check).into(),
-            ],
+            vec![("word_check", word_check), ("carry_check", carry_check)],
         )
     }
 
@@ -63,7 +60,7 @@ impl<F: PrimeField> ScheduleGate<F> {
         word: Expression<F>,
     ) -> Constraints<F> {
         let check = lo + hi * F::from(1 << 16) - word;
-        Constraints::with_selector(s_decompose_0, vec![("s_decompose_0", check).into()])
+        Constraints::with_selector(s_decompose_0, vec![("s_decompose_0", check)])
     }
 
     /// s_decompose_1 for W_1 to W_13
@@ -80,10 +77,7 @@ impl<F: PrimeField> ScheduleGate<F> {
         let decompose_check =
             a + b * F::from(1 << 3) + c * F::from(1 << 7) + d * F::from(1 << 18) + word * (-F::ONE);
 
-        Constraints::with_selector(
-            s_decompose_1,
-            vec![("decompose_check", decompose_check).into()],
-        )
+        Constraints::with_selector(s_decompose_1, vec![("decompose_check", decompose_check)])
     }
 
     /// s_decompose_2 for W_14 to W_48
@@ -117,9 +111,9 @@ impl<F: PrimeField> ScheduleGate<F> {
         Constraints::with_selector(
             s_decompose_2,
             vec![
-                ("decompose_check", decompose_check).into(),
-                ("1-bit range check for e", e_onebit_check).into(),
-                ("1-bit range check for f", f_onebit_check).into(),
+                ("decompose_check", decompose_check),
+                ("1-bit range check for e", e_onebit_check),
+                ("1-bit range check for f", f_onebit_check),
             ],
         )
     }
@@ -141,10 +135,7 @@ impl<F: PrimeField> ScheduleGate<F> {
             + d * F::from(1 << 19)
             + word * (-F::ONE);
 
-        Constraints::with_selector(
-            s_decompose_3,
-            vec![("decompose_check", decompose_check).into()],
-        )
+        Constraints::with_selector(s_decompose_3, vec![("decompose_check", decompose_check)])
     }
 
     /// b_lo + 2^2 * b_mid = b, on W_[1..49]
@@ -201,7 +192,6 @@ impl<F: PrimeField> ScheduleGate<F> {
             check_spread_and_range
                 .chain(Some(("check_b", check_b)))
                 .chain(Some(("lower_sigma_0", spread_witness - xor)))
-                .map(|c| c.into())
                 .collect(),
         )
     }
@@ -266,7 +256,6 @@ impl<F: PrimeField> ScheduleGate<F> {
             check_spread_and_range
                 .chain(Some(("check_b1", check_b1)))
                 .chain(Some(("lower_sigma_1", spread_witness - xor)))
-                .map(|c| c.into())
                 .collect(),
         )
     }
@@ -332,7 +321,6 @@ impl<F: PrimeField> ScheduleGate<F> {
             check_spread_and_range
                 .chain(Some(("check_b", check_b)))
                 .chain(Some(("lower_sigma_0_v2", spread_witness - xor)))
-                .map(|c| c.into())
                 .collect(),
         )
     }
@@ -395,7 +383,6 @@ impl<F: PrimeField> ScheduleGate<F> {
             check_spread_and_range
                 .chain(Some(("check_b", check_b)))
                 .chain(Some(("lower_sigma_1_v2", spread_witness - xor)))
-                .map(|c| c.into())
                 .collect(),
         )
     }
