@@ -21,8 +21,8 @@ use crate::{
     circuit::Value,
     plonk::traces::ProverTrace,
     poly::{
-        batch_invert_rational, commitment::PolynomialCommitmentScheme, Basis, Coeff,
-        ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial, ProverQuery,
+        batch_invert_rational, commitment::PolynomialCommitmentScheme, Coeff,
+        ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial, PolynomialRepresentation, ProverQuery,
     },
     transcript::{Hashable, Sampleable, Transcript},
     utils::{arithmetic::eval_polynomial, rational::Rational},
@@ -161,7 +161,7 @@ where
         .collect::<Result<Vec<_>, _>>()?;
 
     #[derive(Clone)]
-    struct AdviceSingle<F: PrimeField, B: Basis> {
+    struct AdviceSingle<F: PrimeField, B: PolynomialRepresentation> {
         pub advice_polys: Vec<Polynomial<F, B>>,
     }
 

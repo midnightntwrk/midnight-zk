@@ -165,7 +165,7 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
         }
     }
 
-    /// Returns an empty (zero) polynomial in the coefficient basis
+    /// Returns an empty (zero) polynomial in the coefficient representation
     pub fn empty_coeff(&self) -> Polynomial<F, Coeff> {
         Polynomial {
             values: vec![F::ZERO; self.n as usize],
@@ -173,7 +173,8 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
         }
     }
 
-    /// Returns an empty (zero) polynomial in the Lagrange coefficient basis
+    /// Returns an empty (zero) polynomial in the Lagrange coefficient
+    /// representation
     pub fn empty_lagrange(&self) -> Polynomial<F, LagrangeCoeff> {
         Polynomial {
             values: vec![F::ZERO; self.n as usize],
@@ -181,8 +182,8 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
         }
     }
 
-    /// Returns an empty (zero) polynomial in the Lagrange coefficient basis,
-    /// with deferred inversions.
+    /// Returns an empty (zero) polynomial in the Lagrange coefficient
+    /// representation, with deferred inversions.
     pub fn empty_lagrange_rational(&self) -> Polynomial<Rational<F>, LagrangeCoeff> {
         Polynomial {
             values: vec![F::ZERO.into(); self.n as usize],
@@ -190,7 +191,7 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
         }
     }
 
-    /// Returns a constant polynomial in the Lagrange coefficient basis
+    /// Returns a constant polynomial in the Lagrange coefficient representation
     pub fn constant_lagrange(&self, scalar: F) -> Polynomial<F, LagrangeCoeff> {
         Polynomial {
             values: vec![scalar; self.n as usize],
@@ -199,7 +200,7 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
     }
 
     /// Returns an empty (zero) polynomial in the extended Lagrange coefficient
-    /// basis
+    /// representation
     pub fn empty_extended(&self) -> Polynomial<F, ExtendedLagrangeCoeff> {
         Polynomial {
             values: vec![F::ZERO; self.extended_len()],
@@ -208,7 +209,7 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
     }
 
     /// Returns a constant polynomial in the extended Lagrange coefficient
-    /// basis
+    /// representation
     pub fn constant_extended(&self, scalar: F) -> Polynomial<F, ExtendedLagrangeCoeff> {
         Polynomial {
             values: vec![scalar; self.extended_len()],
@@ -419,7 +420,7 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
     }
 
     /// Computes evaluations (at the point `x`, where `xn = x^n`) of Lagrange
-    /// basis polynomials `l_i(X)` defined such that `l_i(omega^i) = 1` and
+    /// polynomials `l_i(X)` defined such that `l_i(omega^i) = 1` and
     /// `l_i(omega^j) = 0` for all `j != i` at each provided rotation `i`.
     ///
     /// # Implementation

@@ -4,7 +4,7 @@ use group::ff::Field;
 use super::{ConstraintSystem, Expression};
 use crate::{
     plonk::{lookup, permutation, Any},
-    poly::{Basis, EvaluationDomain, Polynomial, Rotation},
+    poly::{EvaluationDomain, Polynomial, PolynomialRepresentation, Rotation},
     utils::arithmetic::parallelize,
 };
 
@@ -49,7 +49,7 @@ impl Default for ValueSource {
 impl ValueSource {
     /// Get the value for this source
     #[allow(clippy::too_many_arguments)]
-    pub fn get<F: Field, B: Basis>(
+    pub fn get<F: Field, B: PolynomialRepresentation>(
         &self,
         rotations: &[usize],
         constants: &[F],
@@ -110,7 +110,7 @@ pub enum Calculation {
 impl Calculation {
     /// Get the resulting value of this calculation
     #[allow(clippy::too_many_arguments)]
-    pub fn evaluate<F: Field, B: Basis>(
+    pub fn evaluate<F: Field, B: PolynomialRepresentation>(
         &self,
         rotations: &[usize],
         constants: &[F],
@@ -260,7 +260,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
 
     /// Evaluate h poly
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn evaluate_h<B: Basis>(
+    pub(crate) fn evaluate_h<B: PolynomialRepresentation>(
         &self,
         domain: &EvaluationDomain<F>,
         cs: &ConstraintSystem<F>,
@@ -662,7 +662,7 @@ impl<F: PrimeField> GraphEvaluator<F> {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn evaluate<B: Basis>(
+    pub fn evaluate<B: PolynomialRepresentation>(
         &self,
         data: &mut EvaluationData<F>,
         fixed: &[Polynomial<F, B>],
@@ -711,7 +711,7 @@ impl<F: PrimeField> GraphEvaluator<F> {
 }
 
 /// Simple evaluation of an expression
-pub fn evaluate<F: Field, B: Basis>(
+pub fn evaluate<F: Field, B: PolynomialRepresentation>(
     expression: &Expression<F>,
     size: usize,
     rot_scale: i32,

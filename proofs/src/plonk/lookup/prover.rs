@@ -244,7 +244,7 @@ impl<F: WithSmallOrderMulGroup<3>> Permuted<F> {
         // This test works only with intermediate representations in this method.
         // It can be used for debugging purposes.
         {
-            // While in Lagrange basis, check that product is correctly constructed
+            // While in Lagrange representation, check that product is correctly constructed
             let u = (pk.vk.n() as usize) - (blinding_factors + 1);
 
             // l_0(X) * (1 - z(X)) = 0
