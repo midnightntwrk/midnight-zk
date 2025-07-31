@@ -11,14 +11,10 @@ use rayon::iter::{
 };
 
 use crate::{
-    plonk::{
-        compute_trace,
-        traces::FoldingTrace,
-        Circuit, Error, ProvingKey,
-    },
+    plonk::{compute_trace, traces::FoldingTrace, Circuit, Error, ProvingKey},
     poly::{
-        commitment::PolynomialCommitmentScheme, Coeff, EvaluationDomain, ExtendedLagrangeCoeff,
-        LagrangeCoeff, Polynomial,
+        commitment::PolynomialCommitmentScheme, Basis, Coeff, EvaluationDomain,
+        ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial,
     },
     protogalaxy::{
         utils::{batch_traces, linear_combination, pow_vec, LiftedFoldingTrace},
@@ -38,7 +34,7 @@ struct ProtogalaxyProver<F: PrimeField, CS: PolynomialCommitmentScheme<F>, const
 
 /// This verifier can perform a 2**K - 1 to one folding
 struct ProtogalaxyVerifier<F: PrimeField, const K: usize> {
-    // Still need to figure out what this is
+    // Still need to figure out how to represent this
     folded_instance: F,
     error_term: F,
     beta_powers: [F; K],
@@ -76,7 +72,8 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>, const K: usize> Protogala
             &[instance],
             &mut rng,
             transcript,
-        )?.into_folding_trace(pk.fixed_values.clone());
+        )?
+        .into_folding_trace(pk.fixed_values.clone());
 
         Ok(Self {
             folding_pk: FoldingPk::from(pk),
@@ -139,27 +136,48 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>, const K: usize> Protogala
             res
         });
 
-        let f_poly_domain = EvaluationDomain::new(K as u32 + 1, 1);
-        let f_poly = compute_f(&self.folding_pk, &f_poly_domain, &self.folded_trace, &self.beta_powers, &delta_powers);
-        let f_poly = f_poly_domain.extended_to_coeff(f_poly);
-        let constant_term = Polynomial { values: vec![self.error_term], _marker: PhantomData };
-        let committed_f_poly = Polynomial { values: f_poly, _marker: PhantomData} - &constant_term;
+        let now = Instant::now();
+        let f_poly_domain =
+            EvaluationDomain::new(2, (usize::BITS - (K - 1).leading_zeros()) as u32);
+        let f_poly = compute_f(
+            &self.folding_pk,
+            &f_poly_domain,
+            &self.folded_trace,
+            &self.beta_powers,
+            &delta_powers,
+        );
+        let f_poly = f_poly_domain.lagrange_to_coeff(f_poly);
+        println!("F poly length: {:?}", f_poly.len());
+        assert_eq!(self.error_term, f_poly.values[0]);
+        let mut committed_f_poly = f_poly;
+        committed_f_poly[0] = F::ZERO;
         transcript.write(&CS::commit(params, &committed_f_poly))?;
+        println!("Time poly f: {:?}", now.elapsed());
 
         let alpha = transcript.squeeze_challenge();
 
         let f_at_alpha = eval_polynomial(&committed_f_poly.values, alpha) + self.error_term;
-        let beta_star = self.beta_powers.iter().zip(delta_powers.iter()).map(|(beta, delta)| *beta + alpha * delta).collect::<Vec<_>>();
+
+        let beta_star = self
+            .beta_powers
+            .iter()
+            .zip(delta_powers.iter())
+            .map(|(beta, delta)| *beta + alpha * delta)
+            .collect::<Vec<_>>();
 
         let time = Instant::now();
+        let traces = std::iter::once(&self.folded_trace)
+            .chain(traces.iter())
+            .collect::<Vec<_>>();
+
+        assert!(traces.len().is_power_of_two());
+
         // We now perform folding of the traces
         let degree = pk.vk.cs.degree() as u32;
 
-        let k_log2_ceil = (K as f64 - 1.).log2() as u32 + 1;
         // We must increase the degree, since we need to count y as a variable.
         // Computing the real degree seems hard.
-        let dk_domain = EvaluationDomain::new(degree + 3, k_log2_ceil);
-        let traces = std::iter::once(&self.folded_trace).chain(traces.iter()).collect::<Vec<_>>();
+        let dk_domain = EvaluationDomain::new(degree + 3, traces.len().trailing_zeros());
 
         // TODO: collecting to vector - careful with allocation.
         let lifted_trace = batch_traces(&dk_domain, &traces);
@@ -179,10 +197,13 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>, const K: usize> Protogala
         let poly_g_time = time.elapsed().as_millis() - beta_time - lift_trace_time;
 
         // Now we subtract f_at_alpha and divide by the vanishing polynomial
-         let mut poly_g_minus_f_at_alpha = poly_g.clone();
+        let mut poly_g_minus_f_at_alpha = poly_g.clone();
         poly_g_minus_f_at_alpha.values[0] -= f_at_alpha;
         let poly_k = dk_domain.divide_by_vanishing_poly(poly_g_minus_f_at_alpha.clone());
-        let poly_k_coeff =Polynomial { values: dk_domain.extended_to_coeff(poly_k), _marker: PhantomData };
+        let poly_k_coeff = Polynomial {
+            values: dk_domain.extended_to_coeff(poly_k),
+            _marker: PhantomData,
+        };
 
         transcript.write(&CS::commit(params, &poly_k_coeff))?;
 
@@ -211,14 +232,12 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>, const K: usize> Protogala
     }
 }
 
-// Ugly, but we need to pass one for now. Would be nice if there is an identity trait.
+// Ugly, but we need to pass one for now. Would be nice if there is an identity
+// trait.
 fn pow_i<'a, F>(powers: &'a [F], i: usize, one: &'a F) -> F
 where
     F: std::iter::Product<&'a F> + 'a,
 {
-    println!("Index in binary: {i:b}");
-    println!("Bits used: {:?}", usize::BITS - i.leading_zeros());
-    println!("Size powers: {:?}", powers.len());
     powers
         .iter()
         .enumerate()
@@ -235,14 +254,20 @@ fn compute_f<F: WithSmallOrderMulGroup<3>, const K: usize>(
     trace: &FoldingTrace<F>,
     betas: &[F; K],
     deltas: &[F; K],
-) -> Polynomial<F, ExtendedLagrangeCoeff> {
-    let one_poly: Polynomial<_, Coeff> = Polynomial { values: vec![F::ONE], _marker: PhantomData};
-    let one_poly = domain.coeff_to_extended(one_poly);
-    let extended_polys = betas.iter().zip(deltas.iter()).map(|(beta, delta)| {
-        let poly: Polynomial<_, Coeff> = Polynomial { values: vec![*beta, *delta], _marker: PhantomData};
-        domain.coeff_to_extended(poly)
-    }).collect::<Vec<_>>();
-
+) -> Polynomial<F, LagrangeCoeff> {
+    let mut one_poly = Coeff::empty(domain);
+    one_poly.values[0] = F::ONE;
+    let one_poly = domain.coeff_to_lagrange(one_poly);
+    let lagrange_polys = betas
+        .iter()
+        .zip(deltas.iter())
+        .map(|(beta, delta)| {
+            let mut poly = Coeff::empty(domain);
+            poly.values[0] = *beta;
+            poly.values[1] = *delta;
+            domain.coeff_to_lagrange(poly)
+        })
+        .collect::<Vec<_>>();
     let FoldingTrace {
         fixed_polys,
         advice_polys,
@@ -275,7 +300,7 @@ fn compute_f<F: WithSmallOrderMulGroup<3>, const K: usize>(
             .collect::<Vec<_>>(),
         &instance_values
             .iter()
-            .map(|i| i.as_slice())
+            .map(Vec::as_slice)
             .collect::<Vec<_>>(),
         fixed_polys,
         challenges,
@@ -296,10 +321,11 @@ fn compute_f<F: WithSmallOrderMulGroup<3>, const K: usize>(
         .into_iter()
         .enumerate()
         .map(|(index, witness)| {
-            let pow_i_poly = pow_i(&extended_polys, index + 1, &one_poly);
+            let pow_i_poly = pow_i(&lagrange_polys, index + 1, &one_poly);
             pow_i_poly * witness
         })
-        .reduce(|a, b| a + b).expect("LEFTOVER");
+        .reduce(|a, b| a + b)
+        .expect("LEFTOVER - this should be parallelised");
 
     res
 }
@@ -522,16 +548,16 @@ mod tests {
     use crate::{
         circuit::{Layouter, SimpleFloorPlanner, Value},
         plonk::{
-            keygen_pk, keygen_vk_with_k, Advice, Circuit, Column,
-            ConstraintSystem, Error, Expression, Selector, TableColumn,
+            keygen_pk, keygen_vk_with_k, Advice, Circuit, Column, ConstraintSystem, Error,
+            Expression, Selector, TableColumn,
         },
         poly::{
             kzg::{params::ParamsKZG, KZGCommitmentScheme},
             Rotation,
         },
+        protogalaxy::prover::ProtogalaxyProver,
         transcript::{CircuitTranscript, Transcript},
     };
-    use crate::protogalaxy::prover::ProtogalaxyProver;
 
     #[derive(Clone, Copy)]
     struct TestCircuit {
@@ -666,8 +692,9 @@ mod tests {
             .map(TestCircuit::from)
             .collect::<Vec<_>>();
 
-        let vk = keygen_vk_with_k::<_, KZGCommitmentScheme<Bls12>, _>(&params, &circuits[0], K as u32)
-            .expect("keygen_vk should not fail");
+        let vk =
+            keygen_vk_with_k::<_, KZGCommitmentScheme<Bls12>, _>(&params, &circuits[0], K as u32)
+                .expect("keygen_vk should not fail");
         let pk = keygen_pk(vk.clone(), &circuits[0]).expect("keygen_pk should not fail");
 
         let mut rng = ChaCha8Rng::from_seed([0u8; 32]);
@@ -684,24 +711,27 @@ mod tests {
             0,
             &[],
             &mut rng,
-            &mut transcript
-        ).expect("Failed to initialise folder");
+            &mut transcript,
+        )
+        .expect("Failed to initialise folder");
 
-        protogalaxy.fold(
-            &params,
-            &pk,
-            circuits[1..].to_vec(),
-            #[cfg(feature = "committed-instances")]
-            0,
-            &[&[&[]], &[&[]], &[&[]]],
-            &mut rng,
-            &mut transcript
-        ).expect("Failed to fold many instances");
+        protogalaxy
+            .fold(
+                &params,
+                &pk,
+                circuits[1..].to_vec(),
+                #[cfg(feature = "committed-instances")]
+                0,
+                &[&[&[]], &[&[]], &[&[]]],
+                &mut rng,
+                &mut transcript,
+            )
+            .expect("Failed to fold many instances");
 
         let folding_time = folding.elapsed().as_millis();
 
-        // // Now we see how long it would have taken to produce four normal proofs
-        // let now = Instant::now();
+        // // Now we see how long it would have taken to produce four normal
+        // proofs let now = Instant::now();
         // let mut finalise_transcript = transcript.clone();
         //
         // traces

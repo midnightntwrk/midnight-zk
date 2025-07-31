@@ -5,12 +5,12 @@
 use std::{
     fmt::Debug,
     io,
+    iter::Product,
     marker::PhantomData,
     ops::{
         Add, AddAssign, Deref, DerefMut, Index, IndexMut, Mul, MulAssign, RangeFrom, RangeFull, Sub,
     },
 };
-use std::iter::Product;
 
 use ff::{BatchInvert, PrimeField, WithSmallOrderMulGroup};
 use group::ff::Field;
@@ -377,7 +377,7 @@ impl<'a, F: Field, B: PolynomialRepresentation> Sub<&'a Polynomial<F, B>> for Po
     }
 }
 
-impl<'a, F: PrimeField> Product<&'a Self> for Polynomial<F, ExtendedLagrangeCoeff> {
+impl<'a, F: PrimeField> Product<&'a Self> for Polynomial<F, LagrangeCoeff> {
     fn product<I: Iterator<Item = &'a Self>>(mut iter: I) -> Self {
         let first = iter.next().expect("Iterator should not be empty").clone();
         iter.fold(first, |mut acc, poly| {
