@@ -19,7 +19,7 @@ use super::{
 use crate::poly::EvaluationDomain;
 use crate::{
     circuit::Value,
-    plonk::traces::Trace,
+    plonk::traces::ProverTrace,
     poly::{
         batch_invert_rational, commitment::PolynomialCommitmentScheme, Basis, Coeff,
         ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial, ProverQuery,
@@ -53,7 +53,7 @@ where
 /// are zero-padded internally.
 ///
 /// The trace can then be used to finalise proofs, or to fold them.
-pub(crate) fn trace<
+pub(crate) fn compute_trace<
     F,
     CS: PolynomialCommitmentScheme<F>,
     T: Transcript,
@@ -69,7 +69,7 @@ pub(crate) fn trace<
     instances: &[&[&[F]]],
     mut rng: impl RngCore + CryptoRng,
     transcript: &mut T,
-) -> Result<Trace<F>, Error>
+) -> Result<ProverTrace<F>, Error>
 where
     CS::Commitment: Hashable<T::Hash>,
     F: WithSmallOrderMulGroup<3>
@@ -495,7 +495,7 @@ where
         .map(|i| (i.instance_polys, i.instance_values))
         .unzip();
 
-    Ok(Trace {
+    Ok(ProverTrace {
         advice_polys: advice
             .into_iter()
             .map(|a| {
@@ -530,7 +530,7 @@ pub(crate) fn finalise_proof<'a, F, CS: PolynomialCommitmentScheme<F>, T: Transc
     // the first `nb_committed_instances` instance columns are dedicated for
     // instances that the verifier receives in committed form.
     #[cfg(feature = "committed-instances")] nb_committed_instances: usize,
-    trace: Trace<F>,
+    trace: ProverTrace<F>,
     transcript: &mut T,
 ) -> Result<(), Error>
 where
@@ -547,7 +547,7 @@ where
     let domain = pk.get_vk().get_domain();
     let meta = pk.get_vk().cs();
 
-    let Trace {
+    let ProverTrace {
         advice_polys,
         instance_polys,
         lookups,
@@ -757,7 +757,7 @@ where
         + Ord
         + FromUniformBytes<64>,
 {
-    let tmp = trace(
+    let trace = compute_trace(
         params,
         pk,
         circuits,
@@ -772,7 +772,7 @@ where
         pk,
         #[cfg(feature = "committed-instances")]
         nb_committed_instances,
-        tmp,
+        trace,
         transcript,
     )
 }

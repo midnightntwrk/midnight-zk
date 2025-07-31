@@ -8,10 +8,10 @@ use crate::{
     poly::{commitment::PolynomialCommitmentScheme, Coeff, LagrangeCoeff, Polynomial},
 };
 
-/// Trace of a set of proofs. This type guarantees that the size of the outer
-/// vector of its fields has the same size.
+/// Prover's trace of a set of proofs. This type guarantees that the size of the
+/// outer vector of its fields has the same size.
 #[derive(Debug)]
-pub struct Trace<F: PrimeField> {
+pub struct ProverTrace<F: PrimeField> {
     pub(crate) advice_polys: Vec<Vec<Polynomial<F, Coeff>>>,
     pub(crate) instance_polys: Vec<Vec<Polynomial<F, Coeff>>>,
     #[allow(dead_code)]
