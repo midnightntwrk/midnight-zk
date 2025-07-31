@@ -17,7 +17,10 @@ use std::iter::once;
 use ff::{Field, PrimeField};
 use midnight_proofs::{
     circuit::{Chip, Layouter, Region, Value},
-    plonk::{Advice, Column, ConstraintSystem, Constraints, Error, Expression, Fixed, Selector},
+    plonk::{
+        Advice, Challenge, Column, ConstraintSystem, Constraints, Error, Expression, FirstPhase,
+        Fixed, Selector,
+    },
     poly::Rotation,
 };
 #[cfg(any(test, feature = "testing"))]
@@ -86,6 +89,10 @@ pub struct PoseidonConfig<F: PoseidonField> {
     /// loaded from the precomputed array stored at the field
     /// `round_constant_opt`).
     constant_cols: [Column<Fixed>; NB_POSEIDON_FIXED_COLS],
+
+    /// A column used to disable the partial-round identities with an additive
+    /// selector (to not increasing the degree).
+    trash_challenge: Challenge,
 
     /// Precomputed data for partial rounds (identities and round constants).
     pre_computed: PreComputedRoundCircuit<F>,
@@ -180,6 +187,8 @@ impl<F: PoseidonField> ComposableChip<F> for PoseidonChip<F> {
         let register_cols = shared_res.0;
         let constant_cols = shared_res.1;
 
+        let trash_challenge = meta.challenge_usable_after(FirstPhase);
+
         let q_full_round = meta.selector();
         let q_partial_round = meta.selector();
 
@@ -260,7 +269,18 @@ impl<F: PoseidonField> ComposableChip<F> for PoseidonChip<F> {
                 .chain(input_pow_constraints)
                 .chain(once(output_pow_constraint))
                 .collect::<Vec<_>>();
-            Constraints::with_selector(q, constraints)
+
+            // We batch all constraints with powers of the `trash_challenge`.
+            let r = meta.query_challenge(trash_challenge);
+
+            Constraints::with_selector(
+                q,
+                [constraints
+                    .into_iter()
+                    .reduce(|acc, e| acc * r.clone() + e)
+                    .unwrap()]
+                .into_iter(),
+            )
         });
 
         PoseidonConfig {
@@ -268,6 +288,7 @@ impl<F: PoseidonField> ComposableChip<F> for PoseidonChip<F> {
             q_partial_round,
             register_cols,
             constant_cols,
+            trash_challenge,
             pre_computed,
         }
     }
