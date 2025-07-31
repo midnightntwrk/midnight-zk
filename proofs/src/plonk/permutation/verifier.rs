@@ -9,6 +9,7 @@ use crate::{
     transcript::{Hashable, Transcript},
 };
 
+#[derive(Debug)]
 pub struct Committed<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
     permutation_product_commitments: Vec<CS::Commitment>,
 }

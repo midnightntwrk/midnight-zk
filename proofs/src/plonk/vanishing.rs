@@ -5,7 +5,7 @@ use ff::PrimeField;
 use crate::poly::commitment::PolynomialCommitmentScheme;
 
 pub(crate) mod prover;
-mod verifier;
+pub(crate) mod verifier;
 
 /// A vanishing argument.
 pub(crate) struct Argument<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
