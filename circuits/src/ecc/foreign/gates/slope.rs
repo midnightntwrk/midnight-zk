@@ -16,7 +16,7 @@ use std::{marker::PhantomData, ops::Rem};
 use ff::PrimeField;
 use midnight_proofs::{
     circuit::{Chip, Layouter},
-    plonk::{Advice, Column, ConstraintSystem, Error, Expression, Selector},
+    plonk::{Advice, Column, ConstraintSystem, Constraints, Error, Expression, Selector},
     poly::Rotation,
 };
 use num_bigint::{BigInt as BI, ToBigInt};
@@ -179,8 +179,7 @@ impl<C: CircuitCurve> SlopeConfig<C> {
             // sign - 1 + sign * sum_qy - sum_py - sum_qx + sum_px - sum_lqx + sum_lpx
             //  = (u + k_min) * m
 
-            let native_id = q.clone()
-                * cond.clone()
+            let native_id = cond.clone()
                 * (sign.clone() - Expression::Constant(F::ONE)
                     + sign.clone() * sum_exprs::<F>(&bs, &qys)
                     - sum_exprs::<F>(&bs, &pys)
@@ -201,8 +200,7 @@ impl<C: CircuitCurve> SlopeConfig<C> {
                     // sign - 1 + sign * sum_qy_mj - sum_py_mj
                     //  - sum_qx_mj + sum_px_mj - sum_lqx_mj + sum_lpx_mj
                     //  - u * (m % mj) - (k_min * m) % mj - (vj + lj_min) * mj = 0
-                    q.clone()
-                        * cond.clone()
+                    cond.clone()
                         * (sign.clone() - Expression::Constant(F::ONE)
                             + sign.clone() * sum_exprs::<F>(&bs_mj, &qys)
                             - sum_exprs::<F>(&bs_mj, &pys)
@@ -217,7 +215,8 @@ impl<C: CircuitCurve> SlopeConfig<C> {
                 })
                 .collect::<Vec<_>>();
             moduli_ids.push(native_id);
-            moduli_ids
+
+            Constraints::with_selector(q, moduli_ids)
         });
 
         SlopeConfig {

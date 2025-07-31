@@ -17,7 +17,7 @@ use std::ops::Rem;
 use ff::PrimeField;
 use midnight_proofs::{
     circuit::{Chip, Layouter},
-    plonk::{Advice, Column, ConstraintSystem, Error, Expression, Selector},
+    plonk::{Advice, Column, ConstraintSystem, Constraints, Error, Expression, Selector},
     poly::Rotation,
 };
 use num_bigint::{BigInt as BI, ToBigInt};
@@ -165,8 +165,7 @@ impl<C: WeierstrassCurve> OnCurveConfig<C> {
             let const_b = Expression::Constant(bigint_to_fe::<F>(&b));
 
             // 2 * sum_y + sum_y2 - (sum_xz + sum_z + (a+1) * sum_x + b) = (u + k_min) * m
-            let native_id = q.clone()
-                * cond.clone()
+            let native_id = cond.clone()
                 * (Expression::Constant(F::from(2)) * sum_exprs::<F>(&bs, &ys)
                     + sum_exprs::<F>(&bs2, &y2s)
                     - (sum_exprs::<F>(&bs2, &xzs)
@@ -188,8 +187,7 @@ impl<C: WeierstrassCurve> OnCurveConfig<C> {
                     // 2 * sum_y_mj + sum_y2_mj - (sum_xz_mj + sum_z_mj
                     //  + ((a+1) % mj) * sum_x_mj + b % mj)
                     //  - u * (m % mj) - (k_min * m) % mj - (vj + lj_min) * mj = 0
-                    q.clone()
-                        * cond.clone()
+                    cond.clone()
                         * (Expression::Constant(F::ONE + F::ONE) * sum_exprs::<F>(&bs_mj, &ys)
                             + sum_exprs::<F>(&bs2_mj, &y2s)
                             - (sum_exprs::<F>(&bs2_mj, &xzs)
@@ -203,7 +201,8 @@ impl<C: WeierstrassCurve> OnCurveConfig<C> {
                 })
                 .collect::<Vec<_>>();
             moduli_ids.push(native_id);
-            moduli_ids
+
+            Constraints::with_selector(q, moduli_ids)
         });
 
         OnCurveConfig {

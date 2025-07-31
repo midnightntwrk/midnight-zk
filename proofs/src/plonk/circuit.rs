@@ -409,7 +409,7 @@ impl TryFrom<Column<Any>> for Column<Instance> {
 /// ```
 /// use midnight_proofs::poly::Rotation;
 /// # use halo2curves::pasta::Fp;
-/// # use midnight_proofs::plonk::ConstraintSystem;
+/// # use midnight_proofs::plonk::{Constraints, ConstraintSystem};
 ///
 /// # let mut meta = ConstraintSystem::<Fp>::default();
 /// let a = meta.advice_column();
@@ -423,7 +423,7 @@ impl TryFrom<Column<Any>> for Column<Instance> {
 ///
 ///     // On rows where the selector is enabled, a is constrained to equal b.
 ///     // On rows where the selector is disabled, a and b can take any value.
-///     vec![s * (a - b)]
+///     Constraints::with_selector(s, vec![a - b])
 /// });
 /// ```
 ///
@@ -1452,64 +1452,43 @@ impl<F: Field> From<Expression<F>> for Vec<Constraint<F>> {
 ///
 ///     Constraints::with_selector(
 ///         s_ternary,
-///         [
+///         vec![
 ///             ("a is boolean", a.clone() * one_minus_a.clone()),
 ///             ("next == a ? b : c", next - (a * b + one_minus_a * c)),
-///         ]
-///         .into_iter(),
+///         ],
 ///     )
 /// });
 /// ```
-///
-/// Note that the use of `std::array::IntoIter::new` is only necessary if you
-/// need to support Rust 1.51 or 1.52. If your minimum supported Rust version is
-/// 1.53 or greater, you can pass an array directly.
+
 #[derive(Debug)]
-pub struct Constraints<F: Field, C: Into<Constraint<F>>, Iter: IntoIterator<Item = C>> {
+pub struct Constraints<F: Field> {
     selector: Expression<F>,
-    constraints: Iter,
+    constraints: Vec<Constraint<F>>,
 }
 
-impl<F: Field, C: Into<Constraint<F>>, Iter: IntoIterator<Item = C>> Constraints<F, C, Iter> {
+impl<F: Field> Constraints<F> {
     /// Constructs a set of constraints that are controlled by the given
     /// selector.
     ///
     /// Each constraint `c` in `iterator` will be converted into the constraint
     /// `selector * c`.
-    pub fn with_selector(selector: Expression<F>, constraints: Iter) -> Self {
+    pub fn with_selector<I: Into<Constraint<F>>>(
+        selector: Expression<F>,
+        constraints: Vec<I>,
+    ) -> Self {
         Constraints {
             selector,
-            constraints,
+            constraints: constraints.into_iter().map(|c| c.into()).collect(),
         }
     }
-}
 
-fn apply_selector_to_constraint<F: Field, C: Into<Constraint<F>>>(
-    (selector, c): (Expression<F>, C),
-) -> Constraint<F> {
-    let constraint: Constraint<F> = c.into();
-    Constraint {
-        name: constraint.name,
-        poly: selector * constraint.poly,
-    }
-}
-
-type ApplySelectorToConstraint<F, C> = fn((Expression<F>, C)) -> Constraint<F>;
-type ConstraintsIterator<F, C, I> = std::iter::Map<
-    std::iter::Zip<std::iter::Repeat<Expression<F>>, I>,
-    ApplySelectorToConstraint<F, C>,
->;
-
-impl<F: Field, C: Into<Constraint<F>>, Iter: IntoIterator<Item = C>> IntoIterator
-    for Constraints<F, C, Iter>
-{
-    type Item = Constraint<F>;
-    type IntoIter = ConstraintsIterator<F, C, Iter::IntoIter>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        std::iter::repeat(self.selector)
-            .zip(self.constraints)
-            .map(apply_selector_to_constraint)
+    /// Constructs a set of constraints that do not have a selector and
+    /// therefore are always enabled.
+    pub fn without_selector(constraints: Vec<Constraint<F>>) -> Self {
+        Constraints {
+            selector: Expression::Constant(F::ONE),
+            constraints,
+        }
     }
 }
 
@@ -1918,16 +1897,17 @@ impl<F: Field> ConstraintSystem<F> {
     ///
     /// A gate is required to contain polynomial constraints. This method will
     /// panic if `constraints` returns an empty iterator.
-    pub fn create_gate<C: Into<Constraint<F>>, Iter: IntoIterator<Item = C>, S: AsRef<str>>(
+    pub fn create_gate(
         &mut self,
-        name: S,
-        constraints: impl FnOnce(&mut VirtualCells<'_, F>) -> Iter,
+        name: &'static str,
+        constraints: impl FnOnce(&mut VirtualCells<'_, F>) -> Constraints<F>,
     ) {
         let mut cells = VirtualCells::new(self);
         let constraints = constraints(&mut cells);
-        let (constraint_names, polys): (_, Vec<_>) = constraints
+        let (constraint_names, polys): (_, Vec<_>) = cells
+            .meta
+            .apply_selector_to_constraints(constraints)
             .into_iter()
-            .map(|c| c.into())
             .map(|mut c: Constraint<F>| {
                 c.poly.query_cells(&mut cells);
                 (c.name, c.poly)
@@ -1943,12 +1923,22 @@ impl<F: Field> ConstraintSystem<F> {
         );
 
         self.gates.push(Gate {
-            name: name.as_ref().to_string(),
+            name: name.into(),
             constraint_names,
             polys,
             queried_selectors,
             queried_cells,
         });
+    }
+
+    fn apply_selector_to_constraints(&mut self, c: Constraints<F>) -> Vec<Constraint<F>> {
+        std::iter::repeat(c.selector)
+            .zip(c.constraints)
+            .map(|(s, constraint)| Constraint {
+                name: constraint.name,
+                poly: s * constraint.poly,
+            })
+            .collect()
     }
 
     /// Does not combine selectors and directly replaces them everywhere with

@@ -14,7 +14,7 @@
 use std::marker::PhantomData;
 
 use ff::PrimeField;
-use midnight_proofs::plonk::Expression;
+use midnight_proofs::plonk::{Constraints, Expression};
 
 use super::super::Gate;
 
@@ -35,7 +35,7 @@ impl<F: PrimeField> ScheduleGate<F> {
         w_minus_16_hi: Expression<F>,
         word: Expression<F>,
         carry: Expression<F>,
-    ) -> impl Iterator<Item = (&'static str, Expression<F>)> {
+    ) -> Constraints<F> {
         let lo = sigma_0_lo + sigma_1_lo + w_minus_9_lo + w_minus_16_lo;
         let hi = sigma_0_hi + sigma_1_hi + w_minus_9_hi + w_minus_16_hi;
 
@@ -46,9 +46,10 @@ impl<F: PrimeField> ScheduleGate<F> {
 
         let carry_check = Gate::range_check(carry, 0, 3);
 
-        [("word_check", word_check), ("carry_check", carry_check)]
-            .into_iter()
-            .map(move |(name, poly)| (name, s_word.clone() * poly))
+        Constraints::with_selector(
+            s_word,
+            vec![("word_check", word_check), ("carry_check", carry_check)],
+        )
     }
 
     /// s_decompose_0 for all words
@@ -57,9 +58,9 @@ impl<F: PrimeField> ScheduleGate<F> {
         lo: Expression<F>,
         hi: Expression<F>,
         word: Expression<F>,
-    ) -> Option<(&'static str, Expression<F>)> {
+    ) -> Constraints<F> {
         let check = lo + hi * F::from(1 << 16) - word;
-        Some(("s_decompose_0", s_decompose_0 * check))
+        Constraints::with_selector(s_decompose_0, vec![("s_decompose_0", check)])
     }
 
     /// s_decompose_1 for W_1 to W_13
@@ -72,13 +73,11 @@ impl<F: PrimeField> ScheduleGate<F> {
         c: Expression<F>,
         d: Expression<F>,
         word: Expression<F>,
-    ) -> impl Iterator<Item = (&'static str, Expression<F>)> {
+    ) -> Constraints<F> {
         let decompose_check =
             a + b * F::from(1 << 3) + c * F::from(1 << 7) + d * F::from(1 << 18) + word * (-F::ONE);
 
-        [("decompose_check", decompose_check)]
-            .into_iter()
-            .map(move |(name, poly)| (name, s_decompose_1.clone() * poly))
+        Constraints::with_selector(s_decompose_1, vec![("decompose_check", decompose_check)])
     }
 
     /// s_decompose_2 for W_14 to W_48
@@ -95,7 +94,7 @@ impl<F: PrimeField> ScheduleGate<F> {
         f: Expression<F>,
         g: Expression<F>,
         word: Expression<F>,
-    ) -> impl Iterator<Item = (&'static str, Expression<F>)> {
+    ) -> Constraints<F> {
         let decompose_check = a
             + b * F::from(1 << 3)
             + c * F::from(1 << 7)
@@ -109,13 +108,14 @@ impl<F: PrimeField> ScheduleGate<F> {
 
         let f_onebit_check = Gate::range_check(f, 0, 1);
 
-        [
-            ("decompose_check", decompose_check),
-            ("1-bit range check for e", e_onebit_check),
-            ("1-bit range check for f", f_onebit_check),
-        ]
-        .into_iter()
-        .map(move |(name, poly)| (name, s_decompose_2.clone() * poly))
+        Constraints::with_selector(
+            s_decompose_2,
+            vec![
+                ("decompose_check", decompose_check),
+                ("1-bit range check for e", e_onebit_check),
+                ("1-bit range check for f", f_onebit_check),
+            ],
+        )
     }
 
     /// s_decompose_3 for W_49 to W_61
@@ -128,16 +128,14 @@ impl<F: PrimeField> ScheduleGate<F> {
         c: Expression<F>,
         d: Expression<F>,
         word: Expression<F>,
-    ) -> impl Iterator<Item = (&'static str, Expression<F>)> {
+    ) -> Constraints<F> {
         let decompose_check = a
             + b * F::from(1 << 10)
             + c * F::from(1 << 17)
             + d * F::from(1 << 19)
             + word * (-F::ONE);
 
-        [("decompose_check", decompose_check)]
-            .into_iter()
-            .map(move |(name, poly)| (name, s_decompose_3.clone() * poly))
+        Constraints::with_selector(s_decompose_3, vec![("decompose_check", decompose_check)])
     }
 
     /// b_lo + 2^2 * b_mid = b, on W_[1..49]
@@ -164,7 +162,7 @@ impl<F: PrimeField> ScheduleGate<F> {
         spread_b_hi: Expression<F>,
         spread_c: Expression<F>,
         spread_d: Expression<F>,
-    ) -> impl Iterator<Item = (&'static str, Expression<F>)> {
+    ) -> Constraints<F> {
         let check_spread_and_range =
             Gate::two_bit_spread_and_range(b_lo.clone(), spread_b_lo.clone()).chain(
                 Gate::two_bit_spread_and_range(b_hi.clone(), spread_b_hi.clone()),
@@ -189,10 +187,13 @@ impl<F: PrimeField> ScheduleGate<F> {
             + spread_c * F::from(1 << 42);
         let xor = xor_0 + xor_1 + xor_2;
 
-        check_spread_and_range
-            .chain(Some(("check_b", check_b)))
-            .chain(Some(("lower_sigma_0", spread_witness - xor)))
-            .map(move |(name, poly)| (name, s_lower_sigma_0.clone() * poly))
+        Constraints::with_selector(
+            s_lower_sigma_0,
+            check_spread_and_range
+                .chain(Some(("check_b", check_b)))
+                .chain(Some(("lower_sigma_0", spread_witness - xor)))
+                .collect(),
+        )
     }
 
     /// sigma_1 v1 on W_49 to W_61
@@ -215,7 +216,7 @@ impl<F: PrimeField> ScheduleGate<F> {
         c: Expression<F>,
         spread_c: Expression<F>,
         spread_d: Expression<F>,
-    ) -> impl Iterator<Item = (&'static str, Expression<F>)> {
+    ) -> Constraints<F> {
         let check_spread_and_range =
             Gate::two_bit_spread_and_range(b_lo.clone(), spread_b_lo.clone())
                 .chain(Gate::two_bit_spread_and_range(
@@ -250,10 +251,13 @@ impl<F: PrimeField> ScheduleGate<F> {
             + spread_c * F::from(1 << 60);
         let xor = xor_0 + xor_1 + xor_2;
 
-        check_spread_and_range
-            .chain(Some(("check_b1", check_b1)))
-            .chain(Some(("lower_sigma_1", spread_witness - xor)))
-            .map(move |(name, poly)| (name, s_lower_sigma_1.clone() * poly))
+        Constraints::with_selector(
+            s_lower_sigma_1,
+            check_spread_and_range
+                .chain(Some(("check_b1", check_b1)))
+                .chain(Some(("lower_sigma_1", spread_witness - xor)))
+                .collect(),
+        )
     }
 
     /// sigma_0 v2 on W_14 to W_48
@@ -278,7 +282,7 @@ impl<F: PrimeField> ScheduleGate<F> {
         spread_e: Expression<F>,
         spread_f: Expression<F>,
         spread_g: Expression<F>,
-    ) -> impl Iterator<Item = (&'static str, Expression<F>)> {
+    ) -> Constraints<F> {
         let check_spread_and_range =
             Gate::two_bit_spread_and_range(b_lo.clone(), spread_b_lo.clone()).chain(
                 Gate::two_bit_spread_and_range(b_hi.clone(), spread_b_hi.clone()),
@@ -312,10 +316,13 @@ impl<F: PrimeField> ScheduleGate<F> {
             + spread_e * F::from(1 << 62);
         let xor = xor_0 + xor_1 + xor_2;
 
-        check_spread_and_range
-            .chain(Some(("check_b", check_b)))
-            .chain(Some(("lower_sigma_0_v2", spread_witness - xor)))
-            .map(move |(name, poly)| (name, s_lower_sigma_0_v2.clone() * poly))
+        Constraints::with_selector(
+            s_lower_sigma_0_v2,
+            check_spread_and_range
+                .chain(Some(("check_b", check_b)))
+                .chain(Some(("lower_sigma_0_v2", spread_witness - xor)))
+                .collect(),
+        )
     }
 
     /// sigma_1 v2 on W_14 to W_48
@@ -340,7 +347,7 @@ impl<F: PrimeField> ScheduleGate<F> {
         spread_e: Expression<F>,
         spread_f: Expression<F>,
         spread_g: Expression<F>,
-    ) -> impl Iterator<Item = (&'static str, Expression<F>)> {
+    ) -> Constraints<F> {
         let check_spread_and_range =
             Gate::two_bit_spread_and_range(b_lo.clone(), spread_b_lo.clone()).chain(
                 Gate::two_bit_spread_and_range(b_hi.clone(), spread_b_hi.clone()),
@@ -371,9 +378,12 @@ impl<F: PrimeField> ScheduleGate<F> {
             + spread_f * F::from(1 << 62);
         let xor = xor_0 + xor_1 + xor_2;
 
-        check_spread_and_range
-            .chain(Some(("check_b", check_b)))
-            .chain(Some(("lower_sigma_1_v2", spread_witness - xor)))
-            .map(move |(name, poly)| (name, s_lower_sigma_1_v2.clone() * poly))
+        Constraints::with_selector(
+            s_lower_sigma_1_v2,
+            check_spread_and_range
+                .chain(Some(("check_b", check_b)))
+                .chain(Some(("lower_sigma_1_v2", spread_witness - xor)))
+                .collect(),
+        )
     }
 }

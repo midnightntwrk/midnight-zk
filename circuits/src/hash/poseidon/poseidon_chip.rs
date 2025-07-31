@@ -215,7 +215,9 @@ impl<F: PoseidonField> ComposableChip<F> for PoseidonChip<F> {
                 meta.query_selector(q_full_round),
                 [
                     inputs_and_hints.map(|(x, x3)| x.clone() * x.square() - x3),
-                    linear_layer(sboxed_inputs, outputs, constants),
+                    linear_layer(sboxed_inputs, outputs, constants)
+                        .into_iter()
+                        .collect(),
                 ]
                 .concat(),
             )

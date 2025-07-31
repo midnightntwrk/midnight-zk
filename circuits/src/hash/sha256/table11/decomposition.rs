@@ -611,7 +611,7 @@ impl SpreadTableConfig {
             let dense = a - (a_lo + c * a_hi);
             let spread = a_spread - (a_lo_spread + c_prime * a_hi_spread);
 
-            Constraints::with_selector(q, [dense, spread])
+            Constraints::with_selector(q, vec![dense, spread])
         });
 
         let decomposed = DecomposedSpreadColumns {

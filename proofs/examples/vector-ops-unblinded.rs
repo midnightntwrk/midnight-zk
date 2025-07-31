@@ -127,7 +127,7 @@ impl<F: Field> MultChip<F> {
             let out = meta.query_advice(advice[2], Rotation::cur());
             let s_mul = meta.query_selector(s);
 
-            vec![s_mul * (lhs * rhs - out)]
+            Constraints::with_selector(s_mul, vec![lhs * rhs - out])
         });
 
         FieldConfig {
@@ -166,7 +166,7 @@ impl<F: Field> AddChip<F> {
             let out = meta.query_advice(advice[2], Rotation::cur());
             let s_add = meta.query_selector(s);
 
-            vec![s_add * (lhs + rhs - out)]
+            Constraints::with_selector(s_add, vec![lhs + rhs - out])
         });
 
         FieldConfig {
