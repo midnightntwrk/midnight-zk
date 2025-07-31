@@ -65,7 +65,7 @@ struct Gate {
 ///             let c = meta.query_advice(c, Rotation::cur());
 ///             let s = meta.query_selector(s);
 ///
-///             Constraints::with_selector( s, vec![("R1CS", (a * b - c)).into()])
+///             Constraints::with_selector(s, vec![("R1CS", (a * b - c)).into()])
 ///         });
 ///
 ///         // We aren't using this circuit for anything in this example.

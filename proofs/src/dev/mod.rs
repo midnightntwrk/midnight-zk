@@ -190,7 +190,7 @@ impl<F: Field> Mul<F> for Value<F> {
 /// use midnight_proofs::{
 ///     circuit::{Layouter, SimpleFloorPlanner, Value},
 ///     dev::{FailureLocation, MockProver, VerifyFailure},
-///     plonk::{Advice, Any, Circuit, Column, Constraints, ConstraintSystem, Error, Selector},
+///     plonk::{Advice, Any, Circuit, Column, ConstraintSystem, Constraints, Error, Selector},
 ///     poly::Rotation,
 /// };
 /// const K: u32 = 5;
@@ -232,7 +232,7 @@ impl<F: Field> Mul<F> for Value<F> {
 ///             let s = meta.query_selector(s);
 ///
 ///             // BUG: Should be a * b - c
-///             Constraints::with_selector( s, vec![("buggy R1CS", (a * b + c)).into()])
+///             Constraints::with_selector(s, vec![("buggy R1CS", (a * b + c)).into()])
 ///         });
 ///
 ///         MyConfig { a, b, c, s }
