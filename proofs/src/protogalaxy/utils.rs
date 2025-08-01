@@ -6,13 +6,16 @@ use rayon::iter::{
 };
 
 use crate::{
-    plonk::{lookup, permutation, traces::FoldingProverTrace, vanishing},
-    poly::{EvaluationDomain, Polynomial},
+    plonk::{
+        lookup,
+        lookup::verifier::PermutationCommitments,
+        permutation,
+        traces::{FoldingProverTrace, VerifierFoldingTrace},
+        vanishing,
+    },
+    poly::{commitment::PolynomialCommitmentScheme, EvaluationDomain, Polynomial},
+    utils::arithmetic::eval_polynomial,
 };
-use crate::plonk::lookup::verifier::PermutationCommitments;
-use crate::plonk::traces::VerifierFoldingTrace;
-use crate::poly::commitment::PolynomialCommitmentScheme;
-use crate::utils::arithmetic::eval_polynomial;
 
 /// Given a vector v, computes a vector of length 2^|v| whose i-th element
 /// is the product of {v_j : bin(i)_j = 1}. Where bin(i)_j is the
@@ -327,7 +330,10 @@ impl<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> VerifierFoldingTrace<F, 
             },
             lookups: vec![lookups],
             permutations: vec![permutation::verifier::Committed {
-                permutation_product_commitments: vec![PCS::Commitment::default(); num_permutation_sets]
+                permutation_product_commitments: vec![
+                    PCS::Commitment::default();
+                    num_permutation_sets
+                ],
             }],
             challenges: vec![F::ZERO; num_challenges],
             beta: F::ZERO,
@@ -338,7 +344,9 @@ impl<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> VerifierFoldingTrace<F, 
     }
 }
 
-impl<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> Add<&VerifierFoldingTrace<F, PCS>> for VerifierFoldingTrace<F, PCS> {
+impl<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> Add<&VerifierFoldingTrace<F, PCS>>
+    for VerifierFoldingTrace<F, PCS>
+{
     type Output = Self;
 
     /// TODO: parallelize.
@@ -358,7 +366,10 @@ impl<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> Add<&VerifierFoldingTrac
             });
 
         (0..self.advice_commitments.len()).for_each(|i| {
-            assert_eq!(self.advice_commitments[i].len(), rhs.advice_commitments[i].len());
+            assert_eq!(
+                self.advice_commitments[i].len(),
+                rhs.advice_commitments[i].len()
+            );
             assert_eq!(self.lookups[i].len(), rhs.lookups[i].len());
             assert_eq!(
                 self.permutations[i].permutation_product_commitments.len(),
@@ -376,16 +387,27 @@ impl<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> Add<&VerifierFoldingTrac
                 .par_iter_mut()
                 .zip(rhs.lookups[i].par_iter())
                 .for_each(|(lhs, rhs)| {
-                    lhs.permuted.permuted_input_commitment = lhs.permuted.permuted_input_commitment.clone() + rhs.permuted.permuted_input_commitment.clone();
-                    lhs.permuted.permuted_table_commitment = lhs.permuted.permuted_table_commitment.clone() + rhs.permuted.permuted_table_commitment.clone();
-                    lhs.product_commitment = lhs.product_commitment.clone() + rhs.product_commitment.clone();
+                    lhs.permuted.permuted_input_commitment =
+                        lhs.permuted.permuted_input_commitment.clone()
+                            + rhs.permuted.permuted_input_commitment.clone();
+                    lhs.permuted.permuted_table_commitment =
+                        lhs.permuted.permuted_table_commitment.clone()
+                            + rhs.permuted.permuted_table_commitment.clone();
+                    lhs.product_commitment =
+                        lhs.product_commitment.clone() + rhs.product_commitment.clone();
                 });
 
-            (self.permutations[i].permutation_product_commitments.par_iter_mut())
-                .zip(rhs.permutations[i].permutation_product_commitments.par_iter())
-                .for_each(|(lhs, rhs)| {
-                    *lhs = lhs.clone() + rhs.clone();
-                });
+            (self.permutations[i]
+                .permutation_product_commitments
+                .par_iter_mut())
+            .zip(
+                rhs.permutations[i]
+                    .permutation_product_commitments
+                    .par_iter(),
+            )
+            .for_each(|(lhs, rhs)| {
+                *lhs = lhs.clone() + rhs.clone();
+            });
         });
 
         self.challenges
@@ -417,13 +439,18 @@ impl<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> Mul<F> for VerifierFoldi
                 *p = p.clone() * scalar;
             });
             self.lookups[i].par_iter_mut().for_each(|lhs| {
-                lhs.permuted.permuted_input_commitment = lhs.permuted.permuted_input_commitment.clone() * scalar;
-                lhs.permuted.permuted_table_commitment = lhs.permuted.permuted_table_commitment.clone() * scalar;
+                lhs.permuted.permuted_input_commitment =
+                    lhs.permuted.permuted_input_commitment.clone() * scalar;
+                lhs.permuted.permuted_table_commitment =
+                    lhs.permuted.permuted_table_commitment.clone() * scalar;
                 lhs.product_commitment = lhs.product_commitment.clone() * scalar;
             });
-            self.permutations[i].permutation_product_commitments.par_iter_mut().for_each(|lhs| {
-                *lhs = lhs.clone() * scalar;
-            });
+            self.permutations[i]
+                .permutation_product_commitments
+                .par_iter_mut()
+                .for_each(|lhs| {
+                    *lhs = lhs.clone() * scalar;
+                });
         });
 
         self.challenges.par_iter_mut().for_each(|p| {
@@ -443,8 +470,9 @@ impl<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> Mul<F> for VerifierFoldi
 /// constraint system.
 ///
 /// We could handle each output folding trace one by one instead.
-// TODO: I have the feeling we can merge traces into a single type, that takes representation of
-// columns generically, and this function also be implemented once.
+// TODO: I have the feeling we can merge traces into a single type, that takes
+// representation of columns generically, and this function also be implemented
+// once.
 pub fn batch_verifier_traces<F: WithSmallOrderMulGroup<3>, PCS: PolynomialCommitmentScheme<F>>(
     dk_domain: &EvaluationDomain<F>,
     traces: &[&VerifierFoldingTrace<F, PCS>],
@@ -469,7 +497,9 @@ pub fn batch_verifier_traces<F: WithSmallOrderMulGroup<3>, PCS: PolynomialCommit
         traces[0].fixed_commitments.len(),
         traces[0].advice_commitments[0].len(),
         traces[0].lookups[0].len(),
-        traces[0].permutations[0].permutation_product_commitments.len(),
+        traces[0].permutations[0]
+            .permutation_product_commitments
+            .len(),
         traces[0].challenges.len(),
     );
 

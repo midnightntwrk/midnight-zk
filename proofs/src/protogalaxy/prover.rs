@@ -13,8 +13,8 @@ use rayon::iter::{
 use crate::{
     plonk::{compute_trace, traces::FoldingProverTrace, Circuit, Error, ProvingKey},
     poly::{
-        commitment::PolynomialCommitmentScheme, PolynomialRepresentation, Coeff, EvaluationDomain,
-        ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial,
+        commitment::PolynomialCommitmentScheme, Coeff, EvaluationDomain, ExtendedLagrangeCoeff,
+        LagrangeCoeff, Polynomial, PolynomialRepresentation,
     },
     protogalaxy::{
         utils::{batch_traces, linear_combination, pow_vec, LiftedFoldingTrace},
@@ -106,7 +106,7 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>, const K: usize> Protogala
         // different circuits at a time.
         let traces = circuits
             .into_iter()
-            .zip(instances.into_iter())
+            .zip(instances.iter())
             .map(|(c, instance)| {
                 let trace = compute_trace(
                     params,
@@ -130,8 +130,7 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>, const K: usize> Protogala
         });
 
         let now = Instant::now();
-        let f_poly_domain =
-            EvaluationDomain::new(2, usize::BITS - (K - 1).leading_zeros());
+        let f_poly_domain = EvaluationDomain::new(2, usize::BITS - (K - 1).leading_zeros());
         let f_poly = compute_f(
             &self.folding_pk,
             &f_poly_domain,
@@ -558,7 +557,7 @@ mod tests {
             kzg::{params::ParamsKZG, KZGCommitmentScheme},
             Rotation,
         },
-        protogalaxy::prover::ProtogalaxyProver,
+        protogalaxy::{prover::ProtogalaxyProver, verifier::ProtogalaxyVerifier},
         transcript::{CircuitTranscript, Transcript},
     };
 
@@ -718,20 +717,53 @@ mod tests {
         )
         .expect("Failed to initialise folder");
 
-        protogalaxy
+        let protogalaxy = protogalaxy
             .fold(
                 &params,
                 &pk,
                 circuits[1..].to_vec(),
                 #[cfg(feature = "committed-instances")]
                 0,
-                &[&[&[]], &[&[]], &[&[]]],
+                &[&[], &[], &[]],
                 &mut rng,
                 &mut transcript,
             )
             .expect("Failed to fold many instances");
 
         let folding_time = folding.elapsed().as_millis();
+
+        let mut transcript = CircuitTranscript::init_from_bytes(&transcript.finalize());
+        // Now we begin verification
+        let protogalaxy_verifier = ProtogalaxyVerifier::<_, _, K>::init(
+            &vk,
+            #[cfg(feature = "committed-instances")]
+            &[&[]],
+            &[&[]],
+            &mut transcript,
+        )
+        .expect("Failed - unexpected");
+
+        protogalaxy_verifier
+            .fold(
+                &vk,
+                #[cfg(feature = "committed-instances")]
+                &[&[]],
+                &[&[], &[], &[]],
+                &mut transcript,
+            )
+            .expect("Failed to fold instances by the verifier")
+            .is_sat(
+                &vk,
+                &pk.ev,
+                protogalaxy.folded_trace,
+                &protogalaxy.folding_pk.l0,
+                &protogalaxy.folding_pk.l_last,
+                &protogalaxy.folding_pk.l_active_row,
+                &protogalaxy.folding_pk.permutation_pk_cosets,
+            )
+            .expect("Folding finalizer failed");
+
+        println!("Folding was a success");
 
         // // Now we see how long it would have taken to produce four normal
         // proofs let now = Instant::now();
