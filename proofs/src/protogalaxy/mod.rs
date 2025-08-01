@@ -4,7 +4,7 @@ use ff::{PrimeField, WithSmallOrderMulGroup};
 
 use crate::{
     plonk::{
-        permutation, traces::FoldingTrace, ConstraintSystem, Evaluator, ProvingKey, VerifyingKey,
+        permutation, traces::FoldingProverTrace, ConstraintSystem, Evaluator, ProvingKey, VerifyingKey,
     },
     poly::{
         commitment::PolynomialCommitmentScheme, Coeff, EvaluationDomain, ExtendedLagrangeCoeff,
@@ -41,7 +41,7 @@ impl<F: PrimeField + WithSmallOrderMulGroup<3>> FoldingPk<F> {
     /// Unsure what the verifier needs to do.
     pub fn into_proving_key<CS: PolynomialCommitmentScheme<F>>(
         self,
-        folded_trace: &FoldingTrace<F>,
+        folded_trace: &FoldingProverTrace<F>,
         vk: &VerifyingKey<F, CS>,
     ) -> ProvingKey<F, CS> {
         let FoldingPk {
@@ -87,8 +87,8 @@ impl<F: PrimeField + WithSmallOrderMulGroup<3>> FoldingPk<F> {
                 cosets: permutation_pk_cosets
                     .into_iter()
                     .map(|poly| {
-                        let poly = vk.domain.lagrange_to_coeff(poly);
-                        vk.domain.coeff_to_extended(poly)
+                        let poly = vk.get_domain().lagrange_to_coeff(poly);
+                        vk.get_domain().coeff_to_extended(poly)
                     })
                     .collect(),
             },
@@ -102,7 +102,7 @@ impl<F: PrimeField + WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F
 {
     fn from(pk: ProvingKey<F, CS>) -> Self {
         let domain = pk.vk.get_domain().clone();
-        let cs = pk.vk.cs;
+        let cs = pk.vk.cs();
 
         let mut l0 = domain.empty_lagrange();
         l0[0] = F::ONE;
@@ -129,7 +129,7 @@ impl<F: PrimeField + WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F
         });
 
         Self {
-            cs,
+            cs: cs.clone(),
             l0,
             l_last,
             l_active_row,

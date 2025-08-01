@@ -11,7 +11,7 @@ use crate::{
 
 #[derive(Debug)]
 pub struct Committed<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
-    random_poly_commitment: CS::Commitment,
+    pub(crate) random_poly_commitment: CS::Commitment,
 }
 
 pub struct Constructed<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
