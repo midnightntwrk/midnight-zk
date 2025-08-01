@@ -1484,10 +1484,10 @@ impl<F: Field> Constraints<F> {
 
     /// Constructs a set of constraints that do not have a selector and
     /// therefore are always enabled.
-    pub fn without_selector(constraints: Vec<Constraint<F>>) -> Self {
+    pub fn without_selector<I: Into<Constraint<F>>>(constraints: Vec<I>) -> Self {
         Constraints {
             selector: SelectorType::None,
-            constraints,
+            constraints: constraints.into_iter().map(|c| c.into()).collect(),
         }
     }
 }

@@ -328,10 +328,9 @@ fn plonk_api() {
                 let sb = meta.query_fixed(sb, Rotation::cur());
                 let sc = meta.query_fixed(sc, Rotation::cur());
                 let sm = meta.query_fixed(sm, Rotation::cur());
-                Constraints::without_selector(vec![(a.clone() * sa + b.clone() * sb + a * b * sm
-                    - (c * sc)
-                    + sf * (d * e))
-                    .into()])
+                Constraints::without_selector(vec![
+                    a.clone() * sa + b.clone() * sb + a * b * sm - (c * sc) + sf * (d * e),
+                ])
             });
 
             meta.create_gate("Public input", |meta| {
@@ -339,7 +338,7 @@ fn plonk_api() {
                 let p = meta.query_instance(p, Rotation::cur());
                 let sp = meta.query_fixed(sp, Rotation::cur());
 
-                Constraints::without_selector(vec![(sp * (a - p)).into()])
+                Constraints::without_selector(vec![sp * (a - p)])
             });
 
             meta.enable_equality(sf);
