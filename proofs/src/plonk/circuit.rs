@@ -1484,6 +1484,12 @@ impl<F: Field> Constraints<F> {
         }
     }
 
+    /// Constructs a set of constraints that are controlled by the given
+    /// selector. The selector is involved additively (via a trash::argument)
+    /// and thus, it does not increase the constraints degree.
+    ///
+    /// The enforce constraint will have the form
+    /// `(sum_i r^i constraints[i]) - (1 - selector) * trash`, where `trash` is
     /// an unrestricted column.
     pub fn with_additive_selector<I: Into<Constraint<F>>>(
         selector: Selector,
@@ -2439,13 +2445,13 @@ impl<'a, F: Field> VirtualCells<'a, F> {
                     })
                     .collect()
             }
-
             SelectorType::Additive(s) => {
                 self.queried_selectors.push(s);
+                let names: Vec<_> = c.constraints.iter().map(|c| c.name.clone()).collect();
+                let polys: Vec<_> = c.constraints.into_iter().map(|c| c.poly).collect();
                 (self.meta.trashcans).push(Argument::new(names.join("&"), s, polys));
                 vec![]
             }
-
             SelectorType::None => c.constraints,
         }
     }
