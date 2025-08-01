@@ -110,7 +110,11 @@ pub use poseidon_cpu::*;
 pub use poseidon_varlen::VarLenPoseidonGadget;
 
 /// Number of advice columns used by the Poseidon chip.
-pub const NB_POSEIDON_ADVICE_COLS: usize = WIDTH + NB_SKIPS_CIRCUIT;
+pub const NB_POSEIDON_ADVICE_COLS: usize = if NB_SKIPS_CIRCUIT >= WIDTH {
+    WIDTH + NB_SKIPS_CIRCUIT
+} else {
+    2 * WIDTH
+};
 
 /// Number of fixed columns used by the Poseidon chip.
 pub const NB_POSEIDON_FIXED_COLS: usize = WIDTH + NB_SKIPS_CIRCUIT;
