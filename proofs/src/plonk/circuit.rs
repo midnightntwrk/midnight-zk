@@ -1425,6 +1425,12 @@ impl<F: Field> From<Expression<F>> for Vec<Constraint<F>> {
     }
 }
 
+#[derive(Debug)]
+enum SelectorExpr<F> {
+    Multiplicative(Expression<F>),
+    Additive(usize),
+}
+
 /// A set of polynomial constraints with a common selector.
 ///
 /// ```
@@ -1459,10 +1465,9 @@ impl<F: Field> From<Expression<F>> for Vec<Constraint<F>> {
 ///     )
 /// });
 /// ```
-
 #[derive(Debug)]
 pub struct Constraints<F: Field> {
-    selector: Expression<F>,
+    selector: SelectorExpr<F>,
     constraints: Vec<Constraint<F>>,
 }
 
@@ -1477,7 +1482,7 @@ impl<F: Field> Constraints<F> {
         constraints: Vec<I>,
     ) -> Self {
         Constraints {
-            selector,
+            selector: SelectorExpr::Multiplicative(selector),
             constraints: constraints.into_iter().map(|c| c.into()).collect(),
         }
     }
@@ -1486,7 +1491,7 @@ impl<F: Field> Constraints<F> {
     /// therefore are always enabled.
     pub fn without_selector(constraints: Vec<Constraint<F>>) -> Self {
         Constraints {
-            selector: Expression::Constant(F::ONE),
+            selector: SelectorExpr::Multiplicative(Expression::Constant(F::ONE)),
             constraints,
         }
     }
@@ -1905,7 +1910,6 @@ impl<F: Field> ConstraintSystem<F> {
         let mut cells = VirtualCells::new(self);
         let constraints = constraints(&mut cells);
         let (constraint_names, polys): (_, Vec<_>) = cells
-            .meta
             .apply_selector_to_constraints(constraints)
             .into_iter()
             .map(|mut c: Constraint<F>| {
@@ -1929,16 +1933,6 @@ impl<F: Field> ConstraintSystem<F> {
             queried_selectors,
             queried_cells,
         });
-    }
-
-    fn apply_selector_to_constraints(&mut self, c: Constraints<F>) -> Vec<Constraint<F>> {
-        std::iter::repeat(c.selector)
-            .zip(c.constraints)
-            .map(|(s, constraint)| Constraint {
-                name: constraint.name,
-                poly: s * constraint.poly,
-            })
-            .collect()
     }
 
     /// Does not combine selectors and directly replaces them everywhere with
@@ -2422,6 +2416,40 @@ impl<'a, F: Field> VirtualCells<'a, F> {
     /// Query a challenge
     pub fn query_challenge(&mut self, challenge: Challenge) -> Expression<F> {
         Expression::Challenge(challenge)
+    }
+
+    fn apply_selector_to_constraints(&mut self, c: Constraints<F>) -> Vec<Constraint<F>> {
+        match c.selector {
+            SelectorExpr::Multiplicative(s) => (c.constraints.into_iter())
+                .map(|constraint| Constraint {
+                    name: constraint.name,
+                    poly: s.clone() * constraint.poly,
+                })
+                .collect(),
+            SelectorExpr::Additive(s) => {
+                // TODO: Handle the phases proplery, do not hard-code First and Second.
+                // let trash_col = self.meta.advice_column_in(SecondPhase);
+                // let trash_challenge = self.meta.challenge_usable_after(FirstPhase);
+
+                // let r = self.query_challenge(trash_challenge);
+                // let trash = self.query_advice(trash_col, Rotation::cur());
+
+                // let batched_polys = c
+                //     .constraints
+                //     .into_iter()
+                //     .fold(Expression::Constant(F::ZERO), |acc, c| {
+                //         acc * r.clone() + c.poly
+                //     });
+                // vec![Constraint {
+                //     name: "batched_polys".into(), // TODO: concat all the names instead
+                //     poly: batched_polys - (Expression::Constant(F::ONE) - s) * trash,
+                // }]
+
+                let polys: Vec<_> = c.constraints.into_iter().map(|c| c.poly).collect();
+
+                vec![]
+            }
+        }
     }
 }
 

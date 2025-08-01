@@ -303,6 +303,7 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
     where
         F: Hashable<T::Hash>,
     {
+        // TODO: Do not pass pk, pass x_inv instead.
         let domain = &pk.vk.domain;
         let x_inv = domain.rotate_omega(x, Rotation::prev());
         let x_next = domain.rotate_omega(x, Rotation::next());
