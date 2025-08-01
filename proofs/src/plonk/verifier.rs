@@ -417,7 +417,7 @@ where
     CS::multi_prepare(queries, transcript).map_err(|_| Error::Opening)
 }
 
-/// Prepares a [VerifierTrace] into a PCS instance that can be finalized or
+/// Prepares a plonk proof into a PCS instance that can be finalized or
 /// batched. It is responsibility of the verifier to check the validity of the
 /// instance columns.
 ///
