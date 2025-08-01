@@ -19,6 +19,7 @@ use super::{
 use crate::poly::EvaluationDomain;
 use crate::{
     circuit::Value,
+    plonk::trash,
     poly::{batch_invert_rational, commitment::PolynomialCommitmentScheme},
     transcript::{Hashable, Sampleable, Transcript},
     utils::rational::Rational,
@@ -484,6 +485,35 @@ where
         })
         .collect::<Result<Vec<_>, _>>()?;
 
+    // Thrash argument
+    let trash_challenge: F = transcript.squeeze_challenge();
+
+    let trashcans: Vec<Vec<trash::prover::Committed<F>>> = instance
+        .iter()
+        .zip(advice.iter())
+        .map(|(instance, advice)| -> Result<Vec<_>, Error> {
+            // Construct and commit to permuted values for each lookup
+            pk.vk
+                .cs
+                .trashcans
+                .iter()
+                .map(|trash| {
+                    trash.commit(
+                        pk,
+                        params,
+                        domain,
+                        trash_challenge,
+                        &advice.advice_polys,
+                        &pk.fixed_values,
+                        &instance.instance_values,
+                        &challenges,
+                        transcript,
+                    )
+                })
+                .collect()
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
     // Commit to the vanishing argument's random polynomial for blinding h(x_3)
     let vanishing = vanishing::Argument::<F, CS>::commit(params, domain, &mut rng, transcript)?;
 
@@ -597,12 +627,24 @@ where
         })
         .collect::<Result<Vec<_>, _>>()?;
 
+    // Evaluate the trashcans, if any, at x.
+    let trashcans: Vec<Vec<trash::prover::Evaluated<F>>> = trashcans
+        .into_iter()
+        .map(|trash| -> Result<Vec<_>, _> {
+            trash
+                .into_iter()
+                .map(|p| p.evaluate(x, transcript))
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
     let queries = instance
         .iter()
         .zip(advice.iter())
         .zip(permutations.iter())
         .zip(lookups.iter())
-        .flat_map(|(((instance, advice), permutation), lookups)| {
+        .zip(trashcans.iter())
+        .flat_map(|((((instance, advice), permutation), lookups), trash)| {
             iter::empty()
                 .chain(
                     pk.vk
@@ -627,6 +669,7 @@ where
                 )
                 .chain(permutation.open(pk, x))
                 .chain(lookups.iter().flat_map(move |p| p.open(pk, x)))
+                .chain(trash.iter().flat_map(move |p| p.open(x)))
         })
         .chain(
             pk.vk

@@ -16,6 +16,19 @@ pub struct Evaluated<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
     trash_eval: F,
 }
 
+impl<F: PrimeField> Argument<F> {
+    pub(crate) fn read_committed<CS: PolynomialCommitmentScheme<F>, T: Transcript>(
+        &self,
+        transcript: &mut T,
+    ) -> Result<Committed<F, CS>, Error>
+    where
+        CS::Commitment: Hashable<T::Hash>,
+    {
+        let trash_commitment = transcript.read()?;
+        Ok(Committed { trash_commitment })
+    }
+}
+
 impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> Committed<F, CS> {
     pub(crate) fn evaluate<T: Transcript>(
         self,

@@ -13,10 +13,11 @@ use std::{
 use ff::Field;
 use sealed::SealedPhase;
 
-use super::{lookup, permutation, Error};
+use super::{lookup, permutation, trash, Error};
 use crate::{
     circuit::{layouter::SyncDeps, Layouter, Region, Value},
     dev::metadata,
+    plonk::trash::Argument,
     poly::Rotation,
     utils::rational::Rational,
 };
@@ -1570,6 +1571,9 @@ pub struct ConstraintSystem<F: Field> {
     // input expressions and a sequence of table expressions involved in the lookup.
     pub(crate) lookups: Vec<lookup::Argument<F>>,
 
+    // Vector of trash arguments. TODO complete description
+    pub(crate) trashcans: Vec<trash::Argument<F>>,
+
     // List of indexes of Fixed columns which are associated to a circuit-general Column tied to
     // their annotation.
     pub(crate) general_column_annotations: HashMap<metadata::Column, String>,
@@ -1675,6 +1679,7 @@ impl<F: Field> Default for ConstraintSystem<F> {
             instance_queries: Vec::new(),
             permutation: permutation::Argument::new(),
             lookups: Vec::new(),
+            trashcans: Vec::new(),
             general_column_annotations: HashMap::new(),
             constants: vec![],
             minimum_degree: None,
@@ -2446,7 +2451,9 @@ impl<'a, F: Field> VirtualCells<'a, F> {
                 // }]
 
                 let polys: Vec<_> = c.constraints.into_iter().map(|c| c.poly).collect();
-
+                self.meta
+                    .trashcans
+                    .push(Argument::new("TODO".into(), s, polys));
                 vec![]
             }
         }

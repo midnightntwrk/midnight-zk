@@ -23,7 +23,7 @@ pub(in crate::plonk) struct Evaluated<F: PrimeField>(Committed<F>);
 
 impl<F: WithSmallOrderMulGroup<3> + Ord> Argument<F> {
     #[allow(clippy::too_many_arguments)]
-    pub(in crate::plonk) fn commit_permuted<'a, 'params: 'a, CS, T>(
+    pub(in crate::plonk) fn commit<'a, 'params: 'a, CS, T>(
         &self,
         pk: &ProvingKey<F, CS>,
         params: &'params CS::Parameters,
@@ -70,7 +70,7 @@ impl<F: WithSmallOrderMulGroup<3> + Ord> Argument<F> {
 }
 
 impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
-    pub(in crate::plonk) fn evaluate<T, CS>(
+    pub(in crate::plonk) fn evaluate<T>(
         self,
         x: F,
         transcript: &mut T,
@@ -78,7 +78,6 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
     where
         F: Hashable<T::Hash>,
         T: Transcript,
-        CS: PolynomialCommitmentScheme<F>,
     {
         let trash_eval = eval_polynomial(&self.trash_poly, x);
         transcript.write(&trash_eval)?;
@@ -88,7 +87,7 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
 }
 
 impl<F: WithSmallOrderMulGroup<3>> Evaluated<F> {
-    pub(in crate::plonk) fn open<'a, CS: PolynomialCommitmentScheme<F>>(
+    pub(in crate::plonk) fn open<'a>(
         &'a self,
         x: F,
     ) -> impl Iterator<Item = ProverQuery<'a, F>> + Clone {
