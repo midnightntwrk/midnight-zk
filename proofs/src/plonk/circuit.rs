@@ -13,10 +13,11 @@ use std::{
 use ff::Field;
 use sealed::SealedPhase;
 
-use super::{lookup, permutation, Error};
+use super::{lookup, permutation, trash, Error};
 use crate::{
     circuit::{layouter::SyncDeps, Layouter, Region, Value},
     dev::metadata,
+    plonk::trash::Argument,
     poly::Rotation,
     utils::rational::Rational,
 };
@@ -1424,9 +1425,10 @@ impl<F: Field> From<Expression<F>> for Vec<Constraint<F>> {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 enum SelectorType {
-    Multiplicative(Selector),
+     Multiplicative(Selector),
+    Additive(Selector),
     None,
 }
 
@@ -1479,6 +1481,17 @@ impl<F: Field> Constraints<F> {
         Constraints {
             selector: SelectorType::Multiplicative(selector),
             constraints: constraints.into_iter().map(|c| c.into()).collect(),
+          }
+    }
+
+    /// an unrestricted column.
+    pub fn with_additive_selector<I: Into<Constraint<F>>>(
+        selector: Selector,
+        constraints: Vec<I>,
+    ) -> Self {
+        Constraints {
+            selector: SelectorType::Additive(selector),
+            constraints: constraints.into_iter().map(|c| c.into()).collect(),
         }
     }
 
@@ -1490,11 +1503,13 @@ impl<F: Field> Constraints<F> {
             constraints: constraints.into_iter().map(|c| c.into()).collect(),
         }
     }
+
+    
 }
 
 /// Gate
 #[derive(Clone, Debug)]
-pub struct Gate<F: Field> {
+struct   Gate<F>   {
     name: String,
     constraint_names: Vec<String>,
     polys: Vec<Expression<F>>,
@@ -1565,6 +1580,9 @@ pub struct ConstraintSystem<F: Field> {
     // input expressions and a sequence of table expressions involved in the lookup.
     pub(crate) lookups: Vec<lookup::Argument<F>>,
 
+    // Vector of trash arguments. TODO complete description
+    pub(crate) trashcans: Vec<trash::Argument<F>>,
+
     // List of indexes of Fixed columns which are associated to a circuit-general Column tied to
     // their annotation.
     pub(crate) general_column_annotations: HashMap<metadata::Column, String>,
@@ -1592,6 +1610,7 @@ pub struct PinnedConstraintSystem<'a, F: Field> {
     fixed_queries: &'a Vec<(Column<Fixed>, Rotation)>,
     permutation: &'a permutation::Argument,
     lookups: &'a Vec<lookup::Argument<F>>,
+    trashcans: &'a Vec<trash::Argument<F>>,
     constants: &'a Vec<Column<Fixed>>,
     minimum_degree: &'a Option<usize>,
 }
@@ -1612,6 +1631,7 @@ impl<F: Field> std::fmt::Debug for PinnedConstraintSystem<'_, F> {
             fixed_queries,
             permutation,
             lookups,
+            trashcans,
             constants,
             minimum_degree,
         } = &self;
@@ -1634,7 +1654,8 @@ impl<F: Field> std::fmt::Debug for PinnedConstraintSystem<'_, F> {
             .field("instance_queries", instance_queries)
             .field("fixed_queries", fixed_queries)
             .field("permutation", permutation)
-            .field("lookups", lookups);
+            .field("lookups", lookups)
+            .field("trashcans", trashcans);
         debug_struct
             .field("constants", constants)
             .field("minimum_degree", minimum_degree);
@@ -1670,6 +1691,7 @@ impl<F: Field> Default for ConstraintSystem<F> {
             instance_queries: Vec::new(),
             permutation: permutation::Argument::new(),
             lookups: Vec::new(),
+            trashcans: Vec::new(),
             general_column_annotations: HashMap::new(),
             constants: vec![],
             minimum_degree: None,
@@ -1696,6 +1718,7 @@ impl<F: Field> ConstraintSystem<F> {
             instance_queries: &self.instance_queries,
             permutation: &self.permutation,
             lookups: &self.lookups,
+            trashcans: &self.trashcans,
             constants: &self.constants,
             minimum_degree: &self.minimum_degree,
         }
@@ -1904,6 +1927,14 @@ impl<F: Field> ConstraintSystem<F> {
     ) {
         let mut cells = VirtualCells::new(self);
         let constraints = constraints(&mut cells);
+
+
+        assert!(
+            !constraints.constraints.is_empty(),
+            "Gates must contain at least one constraint."
+        );
+
+
         let (constraint_names, polys): (_, Vec<_>) = cells
             .apply_selector_to_constraints(constraints)
             .into_iter()
@@ -1915,11 +1946,6 @@ impl<F: Field> ConstraintSystem<F> {
 
         let queried_selectors = cells.queried_selectors;
         let queried_cells = cells.queried_cells;
-
-        assert!(
-            !polys.is_empty(),
-            "Gates must contain at least one constraint."
-        );
 
         self.gates.push(Gate {
             name: name.into(),
@@ -2194,33 +2220,20 @@ impl<F: Field> ConstraintSystem<F> {
     /// Compute the degree of the constraint system (the maximum degree of all
     /// constraints).
     pub fn degree(&self) -> usize {
-        // The permutation argument will serve alongside the gates, so must be
-        // accounted for.
-        let mut degree = self.permutation.required_degree();
-
-        // The lookup argument also serves alongside the gates and must be accounted
-        // for.
-        degree = std::cmp::max(
-            degree,
-            self.lookups
-                .iter()
-                .map(|l| l.required_degree())
-                .max()
-                .unwrap_or(1),
-        );
-
-        // Account for each gate to ensure our quotient polynomial is the
-        // correct degree and that our extended domain is the right size.
-        degree = std::cmp::max(
-            degree,
+        [
+            Some(self.permutation.required_degree()),
+            self.lookups.iter().map(|l| l.required_degree()).max(),
+            self.trashcans.iter().map(|l| l.required_degree()).max(),
             self.gates
                 .iter()
                 .flat_map(|gate| gate.polynomials().iter().map(|poly| poly.degree()))
-                .max()
-                .unwrap_or(0),
-        );
-
-        std::cmp::max(degree, self.minimum_degree.unwrap_or(1))
+                .max(),
+            self.minimum_degree,
+        ]
+        .iter()
+        .filter_map(|&d| d)
+        .max()
+        .unwrap_or(1)
     }
 
     /// Compute the number of blinding factors necessary to perfectly blind
@@ -2337,6 +2350,11 @@ impl<F: Field> ConstraintSystem<F> {
         &self.lookups
     }
 
+    /// Returns trash arguments
+    pub fn trashcans(&self) -> &Vec<trash::Argument<F>> {
+        &self.trashcans
+    }
+
     /// Returns constants
     pub fn constants(&self) -> &Vec<Column<Fixed>> {
         &self.constants
@@ -2424,11 +2442,17 @@ impl<'a, F: Field> VirtualCells<'a, F> {
                         poly: q.clone() * constraint.poly,
                     })
                     .collect()
+                }
+
+
+              SelectorType::Additive(s) => {
+                self.queried_selectors.push(s);
+                (self.meta.trashcans).push(Argument::new(names.join("&"), s, polys));
+                vec![]
             }
             SelectorType::None => c.constraints,
         }
     }
-}
 
 #[cfg(test)]
 mod tests {

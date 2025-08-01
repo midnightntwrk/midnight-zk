@@ -341,11 +341,7 @@ fn plonk_api() {
                 Constraints::without_selector(vec![sp * (a - p)])
             });
 
-            meta.enable_equality(sf);
             meta.enable_equality(e);
-            meta.enable_equality(d);
-            meta.enable_equality(p);
-            meta.enable_equality(sm);
             meta.enable_equality(sa);
             meta.enable_equality(sb);
             meta.enable_equality(sc);
