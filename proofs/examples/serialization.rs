@@ -59,8 +59,7 @@ impl StandardPlonkConfig {
                         + q_ab * a * b
                         + constant
                         + instance,
-                )
-                    .into()])
+                )])
             },
         );
 

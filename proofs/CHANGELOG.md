@@ -8,11 +8,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 ### Added
 ### Changed
-### Removed
-
-## [0.5.0] - 31-07-2025
-### Added
-### Changed
 * API for defining custom constraints was unified [#53](https://github.com/midnightntwrk/midnight-zk/pull/53)
 ### Removed
 
