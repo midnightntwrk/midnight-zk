@@ -14,7 +14,7 @@
 use std::marker::PhantomData;
 
 use ff::PrimeField;
-use midnight_proofs::plonk::{Constraints, Expression};
+use midnight_proofs::plonk::{Constraints, Expression, Selector};
 
 use super::super::Gate;
 use crate::hash::sha256::util::MASK_EVEN_32;
@@ -31,7 +31,7 @@ impl<F: PrimeField> CompressionGate<F> {
     #[allow(clippy::too_many_arguments)]
     #[allow(clippy::type_complexity)]
     pub fn s_decompose_abcd(
-        s_decompose_abcd: Expression<F>,
+        s_decompose_abcd: Selector,
         a: Expression<F>,
         spread_a: Expression<F>,
         b: Expression<F>,
@@ -81,7 +81,7 @@ impl<F: PrimeField> CompressionGate<F> {
     #[allow(clippy::too_many_arguments)]
     #[allow(clippy::type_complexity)]
     pub fn s_decompose_efgh(
-        s_decompose_efgh: Expression<F>,
+        s_decompose_efgh: Selector,
         a_lo: Expression<F>,
         spread_a_lo: Expression<F>,
         a_hi: Expression<F>,
@@ -131,7 +131,7 @@ impl<F: PrimeField> CompressionGate<F> {
     // (2, 11, 9, 10)-bit chunks
     #[allow(clippy::too_many_arguments)]
     pub fn s_upper_sigma_0(
-        s_upper_sigma_0: Expression<F>,
+        s_upper_sigma_0: Selector,
         spread_r0_even: Expression<F>,
         spread_r0_odd: Expression<F>,
         spread_r1_even: Expression<F>,
@@ -174,7 +174,7 @@ impl<F: PrimeField> CompressionGate<F> {
     // (6, 5, 14, 7)-bit chunks
     #[allow(clippy::too_many_arguments)]
     pub fn s_upper_sigma_1(
-        s_upper_sigma_1: Expression<F>,
+        s_upper_sigma_1: Selector,
         spread_r0_even: Expression<F>,
         spread_r0_odd: Expression<F>,
         spread_r1_even: Expression<F>,
@@ -217,7 +217,7 @@ impl<F: PrimeField> CompressionGate<F> {
     // First part of choice gate on (E, F, G), E ∧ F
     #[allow(clippy::too_many_arguments)]
     pub fn s_ch(
-        s_ch: Expression<F>,
+        s_ch: Selector,
         spread_p0_even: Expression<F>,
         spread_p0_odd: Expression<F>,
         spread_p1_even: Expression<F>,
@@ -244,7 +244,7 @@ impl<F: PrimeField> CompressionGate<F> {
     #[allow(clippy::too_many_arguments)]
     #[allow(clippy::type_complexity)]
     pub fn s_ch_neg(
-        s_ch_neg: Expression<F>,
+        s_ch_neg: Selector,
         spread_q0_even: Expression<F>,
         spread_q0_odd: Expression<F>,
         spread_q1_even: Expression<F>,
@@ -285,7 +285,7 @@ impl<F: PrimeField> CompressionGate<F> {
     // Majority gate on (A, B, C)
     #[allow(clippy::too_many_arguments)]
     pub fn s_maj(
-        s_maj: Expression<F>,
+        s_maj: Selector,
         spread_m_0_even: Expression<F>,
         spread_m_0_odd: Expression<F>,
         spread_m_1_even: Expression<F>,
@@ -312,7 +312,7 @@ impl<F: PrimeField> CompressionGate<F> {
     // s_h_prime to get H' = H + Ch(E, F, G) + s_upper_sigma_1(E) + K + W
     #[allow(clippy::too_many_arguments)]
     pub fn s_h_prime(
-        s_h_prime: Expression<F>,
+        s_h_prime: Selector,
         h_prime_lo: Expression<F>,
         h_prime_hi: Expression<F>,
         h_prime_carry: Expression<F>,
@@ -366,7 +366,7 @@ impl<F: PrimeField> CompressionGate<F> {
     // is not constrained
     #[allow(clippy::too_many_arguments)]
     pub fn s_add_halves(
-        s_add_halves: Expression<F>,
+        s_add_halves: Selector,
         new_lo: Expression<F>,
         new_hi: Expression<F>,
         new_carry: Expression<F>,
@@ -388,7 +388,7 @@ impl<F: PrimeField> CompressionGate<F> {
     // s_a_new to get A_new = H' + Maj(A, B, C) + s_upper_sigma_0(A)
     #[allow(clippy::too_many_arguments)]
     pub fn s_a_new(
-        s_a_new: Expression<F>,
+        s_a_new: Selector,
         a_new_lo: Expression<F>,
         a_new_hi: Expression<F>,
         a_new_carry: Expression<F>,
@@ -417,7 +417,7 @@ impl<F: PrimeField> CompressionGate<F> {
     // s_e_new to get E_new = H' + D
     #[allow(clippy::too_many_arguments)]
     pub fn s_e_new(
-        s_e_new: Expression<F>,
+        s_e_new: Selector,
         e_new_lo: Expression<F>,
         e_new_hi: Expression<F>,
         e_new_carry: Expression<F>,
@@ -444,7 +444,7 @@ impl<F: PrimeField> CompressionGate<F> {
     // s_digest on final round
     #[allow(clippy::too_many_arguments)]
     pub fn s_digest(
-        s_digest: Expression<F>,
+        s_digest: Selector,
         lo_0: Expression<F>,
         hi_0: Expression<F>,
         word_0: Expression<F>,

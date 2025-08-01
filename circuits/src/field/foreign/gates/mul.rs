@@ -129,7 +129,6 @@ impl MulConfig {
         // | y0 ... yk | u v0 ... vl |
 
         meta.create_gate("Foreign-field multiplication", |meta| {
-            let q = meta.query_selector(q_mul);
             let xs = get_advice_vec(meta, xy_cols, Rotation::cur());
             let ys = get_advice_vec(meta, xy_cols, Rotation::next());
             let zs = get_advice_vec(meta, z_cols, Rotation::cur());
@@ -170,7 +169,7 @@ impl MulConfig {
                 .collect::<Vec<_>>();
             moduli_ids.push(native_id);
 
-            Constraints::with_selector(q, moduli_ids)
+            Constraints::with_selector(q_mul, moduli_ids)
         });
 
         MulConfig {

@@ -102,7 +102,6 @@ impl<F: Field> FieldChip<F> {
             let lhs = meta.query_advice(advice[0], Rotation::cur());
             let rhs = meta.query_advice(advice[1], Rotation::cur());
             let out = meta.query_advice(advice[2], Rotation::cur());
-            let s_mul = meta.query_selector(s_mul);
 
             // Finally, we return the polynomial expressions that constrain this gate.
             // For our multiplication gate, we only need a single polynomial constraint.

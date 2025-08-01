@@ -163,7 +163,6 @@ impl<F: Field> AddChip<F> {
             let lhs = meta.query_advice(advice[0], Rotation::cur());
             let rhs = meta.query_advice(advice[1], Rotation::cur());
             let out = meta.query_advice(advice[0], Rotation::next());
-            let s_add = meta.query_selector(s_add);
 
             Constraints::with_selector(s_add, vec![lhs + rhs - out])
         });
@@ -280,7 +279,6 @@ impl<F: Field> MulChip<F> {
             let lhs = meta.query_advice(advice[0], Rotation::cur());
             let rhs = meta.query_advice(advice[1], Rotation::cur());
             let out = meta.query_advice(advice[0], Rotation::next());
-            let s_mul = meta.query_selector(s_mul);
 
             // The polynomial expression returned from `create_gate` will be
             // constrained by the proving system to equal zero. Our expression

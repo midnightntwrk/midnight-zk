@@ -63,7 +63,6 @@ struct Gate {
 ///             let a = meta.query_advice(a, Rotation::cur());
 ///             let b = meta.query_advice(b, Rotation::cur());
 ///             let c = meta.query_advice(c, Rotation::cur());
-///             let s = meta.query_selector(s);
 ///
 ///             Constraints::with_selector(s, vec![("R1CS", (a * b - c))])
 ///         });

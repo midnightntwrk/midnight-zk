@@ -58,7 +58,7 @@ impl Range16Config {
     ) -> Self {
         let selector = meta.selector();
         meta.create_gate("16-bit range check", |meta| {
-            let s_range16 = meta.query_selector(selector);
+            let s_range16 = selector;
             let cols: [Expression<F>; 9] = [a_1, a_2, a_3, a_4, a_5, a_6, a_7, a_8, a_9]
                 .map(|col| meta.query_advice(col, Rotation::cur()));
 

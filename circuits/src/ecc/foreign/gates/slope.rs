@@ -157,7 +157,6 @@ impl<C: CircuitCurve> SlopeConfig<C> {
         // |  λ_0 ...  λ_k | u v0 ... vl cond |
 
         meta.create_gate("Foreign-field EC lambda slope", |meta| {
-            let q = meta.query_selector(q_slope);
             let cond = meta.query_advice(*cond_col, Rotation::next());
             // We store the sign in the same place as `cond`. This is no problem, as
             // when `cond = 0` the gate will be disabled, and when it is enabled,
@@ -216,7 +215,7 @@ impl<C: CircuitCurve> SlopeConfig<C> {
                 .collect::<Vec<_>>();
             moduli_ids.push(native_id);
 
-            Constraints::with_selector(q, moduli_ids)
+            Constraints::with_selector(q_slope, moduli_ids)
         });
 
         SlopeConfig {

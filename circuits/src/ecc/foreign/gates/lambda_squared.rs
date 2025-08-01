@@ -148,7 +148,6 @@ impl<C: CircuitCurve> LambdaSquaredConfig<C> {
         // |  λ_0 ...  λ_k | u v0 ... vl cond |
 
         meta.create_gate("Foreign-field EC assert_lambda_squared", |meta| {
-            let q = meta.query_selector(q_lambda_squared);
             let cond = meta.query_advice(*cond_col, Rotation::next());
             let pxs = get_advice_vec(meta, &field_chip_config.x_cols, Rotation::prev());
             let qxs = get_advice_vec(meta, &field_chip_config.x_cols, Rotation::cur());
@@ -197,7 +196,7 @@ impl<C: CircuitCurve> LambdaSquaredConfig<C> {
                 .collect::<Vec<_>>();
             moduli_ids.push(native_id);
 
-            Constraints::with_selector(q, moduli_ids)
+            Constraints::with_selector(q_lambda_squared, moduli_ids)
         });
 
         LambdaSquaredConfig {

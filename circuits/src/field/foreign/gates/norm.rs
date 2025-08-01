@@ -143,7 +143,6 @@ impl NormConfig {
         // |           | u v0 ... vl |
 
         meta.create_gate("Foreign-field normalization", |meta| {
-            let q = meta.query_selector(q_norm);
             let xs = get_advice_vec(meta, x_cols, Rotation::cur());
             let zs = get_advice_vec(meta, z_cols, Rotation::cur());
             let u = meta.query_advice(z_cols[0], Rotation::next());
@@ -185,7 +184,7 @@ impl NormConfig {
                 .collect::<Vec<_>>();
             moduli_ids.push(native_id);
 
-            Constraints::with_selector(q, moduli_ids)
+            Constraints::with_selector(q_norm, moduli_ids)
         });
 
         NormConfig {

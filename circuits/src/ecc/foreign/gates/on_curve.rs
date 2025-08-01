@@ -151,7 +151,6 @@ impl<C: WeierstrassCurve> OnCurveConfig<C> {
         // y_cols, u_col, vs_cols and cond_col.
 
         meta.create_gate("Foreign-field EC is_on_curve", |meta| {
-            let q = meta.query_selector(q_on_curve);
             let cond = meta.query_advice(*cond_col, Rotation::next());
             let xs = get_advice_vec(meta, &field_chip_config.x_cols, Rotation::cur());
             let ys = get_advice_vec(meta, &field_chip_config.y_cols, Rotation::next());
@@ -202,7 +201,7 @@ impl<C: WeierstrassCurve> OnCurveConfig<C> {
                 .collect::<Vec<_>>();
             moduli_ids.push(native_id);
 
-            Constraints::with_selector(q, moduli_ids)
+            Constraints::with_selector(q_on_curve, moduli_ids)
         });
 
         OnCurveConfig {

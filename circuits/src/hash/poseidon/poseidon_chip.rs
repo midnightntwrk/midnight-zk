@@ -212,7 +212,7 @@ impl<F: PoseidonField> ComposableChip<F> for PoseidonChip<F> {
             let sboxed_inputs = inputs_and_hints.clone().map(|(x, x3)| x.square() * x3);
 
             Constraints::with_selector(
-                meta.query_selector(q_full_round),
+                q_full_round,
                 [
                     inputs_and_hints.map(|(x, x3)| x.clone() * x.square() - x3),
                     linear_layer(sboxed_inputs, outputs, constants)
@@ -232,8 +232,6 @@ impl<F: PoseidonField> ComposableChip<F> for PoseidonChip<F> {
         // previous line, with `ids` now storing the expressions that will be used to
         // represent the core of the gates' polynomial identities.
         meta.create_gate("partial_round_gate", |meta| {
-            let q = meta.query_selector(q_partial_round);
-
             let inputs = register_cols
                 .iter()
                 .map(|col| meta.query_advice(*col, Rotation::cur()))
@@ -262,7 +260,7 @@ impl<F: PoseidonField> ComposableChip<F> for PoseidonChip<F> {
                 .chain(input_pow_constraints)
                 .chain(once(output_pow_constraint))
                 .collect::<Vec<_>>();
-            Constraints::with_selector(q, constraints)
+            Constraints::with_selector(q_partial_round, constraints)
         });
 
         PoseidonConfig {

@@ -14,7 +14,7 @@
 use std::marker::PhantomData;
 
 use ff::PrimeField;
-use midnight_proofs::plonk::{Constraints, Expression};
+use midnight_proofs::plonk::{Constraints, Expression, Selector};
 
 use super::super::Gate;
 
@@ -24,7 +24,7 @@ impl<F: PrimeField> ScheduleGate<F> {
     /// s_word for W_16 to W_63
     #[allow(clippy::too_many_arguments)]
     pub fn s_word(
-        s_word: Expression<F>,
+        s_word: Selector,
         sigma_0_lo: Expression<F>,
         sigma_0_hi: Expression<F>,
         sigma_1_lo: Expression<F>,
@@ -54,7 +54,7 @@ impl<F: PrimeField> ScheduleGate<F> {
 
     /// s_decompose_0 for all words
     pub fn s_decompose_0(
-        s_decompose_0: Expression<F>,
+        s_decompose_0: Selector,
         lo: Expression<F>,
         hi: Expression<F>,
         word: Expression<F>,
@@ -67,7 +67,7 @@ impl<F: PrimeField> ScheduleGate<F> {
     /// (3, 4, 11, 14)-bit chunks
     #[allow(clippy::too_many_arguments)]
     pub fn s_decompose_1(
-        s_decompose_1: Expression<F>,
+        s_decompose_1: Selector,
         a: Expression<F>,
         b: Expression<F>,
         c: Expression<F>,
@@ -85,7 +85,7 @@ impl<F: PrimeField> ScheduleGate<F> {
     #[allow(clippy::many_single_char_names)]
     #[allow(clippy::too_many_arguments)]
     pub fn s_decompose_2(
-        s_decompose_2: Expression<F>,
+        s_decompose_2: Selector,
         a: Expression<F>,
         b: Expression<F>,
         c: Expression<F>,
@@ -122,7 +122,7 @@ impl<F: PrimeField> ScheduleGate<F> {
     /// (10, 7, 2, 13)-bit chunks
     #[allow(clippy::too_many_arguments)]
     pub fn s_decompose_3(
-        s_decompose_3: Expression<F>,
+        s_decompose_3: Selector,
         a: Expression<F>,
         b: Expression<F>,
         c: Expression<F>,
@@ -148,7 +148,7 @@ impl<F: PrimeField> ScheduleGate<F> {
     /// (3, 4, 11, 14)-bit chunks
     #[allow(clippy::too_many_arguments)]
     pub fn s_lower_sigma_0(
-        s_lower_sigma_0: Expression<F>,
+        s_lower_sigma_0: Selector,
         spread_r0_even: Expression<F>,
         spread_r0_odd: Expression<F>,
         spread_r1_even: Expression<F>,
@@ -200,7 +200,7 @@ impl<F: PrimeField> ScheduleGate<F> {
     /// (10, 7, 2, 13)-bit chunks
     #[allow(clippy::too_many_arguments)]
     pub fn s_lower_sigma_1(
-        s_lower_sigma_1: Expression<F>,
+        s_lower_sigma_1: Selector,
         spread_r0_even: Expression<F>,
         spread_r0_odd: Expression<F>,
         spread_r1_even: Expression<F>,
@@ -264,7 +264,7 @@ impl<F: PrimeField> ScheduleGate<F> {
     /// (3, 4, 3, 7, 1, 1, 13)-bit chunks
     #[allow(clippy::too_many_arguments)]
     pub fn s_lower_sigma_0_v2(
-        s_lower_sigma_0_v2: Expression<F>,
+        s_lower_sigma_0_v2: Selector,
         spread_r0_even: Expression<F>,
         spread_r0_odd: Expression<F>,
         spread_r1_even: Expression<F>,
@@ -329,7 +329,7 @@ impl<F: PrimeField> ScheduleGate<F> {
     /// (3, 4, 3, 7, 1, 1, 13)-bit chunks
     #[allow(clippy::too_many_arguments)]
     pub fn s_lower_sigma_1_v2(
-        s_lower_sigma_1_v2: Expression<F>,
+        s_lower_sigma_1_v2: Selector,
         spread_r0_even: Expression<F>,
         spread_r0_odd: Expression<F>,
         spread_r1_even: Expression<F>,

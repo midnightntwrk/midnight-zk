@@ -149,7 +149,6 @@ impl<C: CircuitCurve> TangentConfig<C> {
         // |  λ_0 ...  λ_k | u v0 ... vl cond |
 
         meta.create_gate("Foreign-field EC assert_tangent", |meta| {
-            let q = meta.query_selector(q_tangent);
             let cond = meta.query_advice(*cond_col, Rotation::next());
             let pxs = get_advice_vec(meta, &field_chip_config.x_cols, Rotation::cur());
             let pys = get_advice_vec(meta, &field_chip_config.z_cols, Rotation::cur());
@@ -202,7 +201,7 @@ impl<C: CircuitCurve> TangentConfig<C> {
                 .collect::<Vec<_>>();
             moduli_ids.push(native_id);
 
-            Constraints::with_selector(q, moduli_ids)
+            Constraints::with_selector(q_tangent, moduli_ids)
         });
 
         TangentConfig {

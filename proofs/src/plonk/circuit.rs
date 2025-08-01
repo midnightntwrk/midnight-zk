@@ -419,7 +419,6 @@ impl TryFrom<Column<Any>> for Column<Instance> {
 /// meta.create_gate("foo", |meta| {
 ///     let a = meta.query_advice(a, Rotation::prev());
 ///     let b = meta.query_advice(b, Rotation::cur());
-///     let s = meta.query_selector(s);
 ///
 ///     // On rows where the selector is enabled, a is constrained to equal b.
 ///     // On rows where the selector is disabled, a and b can take any value.
@@ -1425,6 +1424,12 @@ impl<F: Field> From<Expression<F>> for Vec<Constraint<F>> {
     }
 }
 
+#[derive(Clone, Debug)]
+enum SelectorType {
+    Multiplicative(Selector),
+    None,
+}
+
 /// A set of polynomial constraints with a common selector.
 ///
 /// ```
@@ -1439,14 +1444,13 @@ impl<F: Field> From<Expression<F>> for Vec<Constraint<F>> {
 /// let a = meta.advice_column();
 /// let b = meta.advice_column();
 /// let c = meta.advice_column();
-/// let s = meta.selector();
+/// let s_ternary = meta.selector();
 ///
 /// meta.create_gate("foo", |meta| {
 ///     let next = meta.query_advice(a, Rotation::next());
 ///     let a = meta.query_advice(a, Rotation::cur());
 ///     let b = meta.query_advice(b, Rotation::cur());
 ///     let c = meta.query_advice(c, Rotation::cur());
-///     let s_ternary = meta.query_selector(s);
 ///
 ///     let one_minus_a = Expression::Constant(Fp::one()) - a.clone();
 ///
@@ -1459,10 +1463,9 @@ impl<F: Field> From<Expression<F>> for Vec<Constraint<F>> {
 ///     )
 /// });
 /// ```
-
 #[derive(Debug)]
 pub struct Constraints<F: Field> {
-    selector: Expression<F>,
+    selector: SelectorType,
     constraints: Vec<Constraint<F>>,
 }
 
@@ -1472,12 +1475,9 @@ impl<F: Field> Constraints<F> {
     ///
     /// Each constraint `c` in `iterator` will be converted into the constraint
     /// `selector * c`.
-    pub fn with_selector<I: Into<Constraint<F>>>(
-        selector: Expression<F>,
-        constraints: Vec<I>,
-    ) -> Self {
+    pub fn with_selector<I: Into<Constraint<F>>>(selector: Selector, constraints: Vec<I>) -> Self {
         Constraints {
-            selector,
+            selector: SelectorType::Multiplicative(selector),
             constraints: constraints.into_iter().map(|c| c.into()).collect(),
         }
     }
@@ -1486,7 +1486,7 @@ impl<F: Field> Constraints<F> {
     /// therefore are always enabled.
     pub fn without_selector(constraints: Vec<Constraint<F>>) -> Self {
         Constraints {
-            selector: Expression::Constant(F::ONE),
+            selector: SelectorType::None,
             constraints,
         }
     }
@@ -1905,7 +1905,6 @@ impl<F: Field> ConstraintSystem<F> {
         let mut cells = VirtualCells::new(self);
         let constraints = constraints(&mut cells);
         let (constraint_names, polys): (_, Vec<_>) = cells
-            .meta
             .apply_selector_to_constraints(constraints)
             .into_iter()
             .map(|mut c: Constraint<F>| {
@@ -1929,16 +1928,6 @@ impl<F: Field> ConstraintSystem<F> {
             queried_selectors,
             queried_cells,
         });
-    }
-
-    fn apply_selector_to_constraints(&mut self, c: Constraints<F>) -> Vec<Constraint<F>> {
-        std::iter::repeat(c.selector)
-            .zip(c.constraints)
-            .map(|(s, constraint)| Constraint {
-                name: constraint.name,
-                poly: s * constraint.poly,
-            })
-            .collect()
     }
 
     /// Does not combine selectors and directly replaces them everywhere with
@@ -2422,6 +2411,22 @@ impl<'a, F: Field> VirtualCells<'a, F> {
     /// Query a challenge
     pub fn query_challenge(&mut self, challenge: Challenge) -> Expression<F> {
         Expression::Challenge(challenge)
+    }
+
+    fn apply_selector_to_constraints(&mut self, c: Constraints<F>) -> Vec<Constraint<F>> {
+        match c.selector {
+            SelectorType::Multiplicative(s) => {
+                let q = self.query_selector(s);
+                c.constraints
+                    .into_iter()
+                    .map(|constraint| Constraint {
+                        name: constraint.name,
+                        poly: q.clone() * constraint.poly,
+                    })
+                    .collect()
+            }
+            SelectorType::None => c.constraints,
+        }
     }
 }
 
