@@ -157,7 +157,15 @@ impl<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> VerifierTrace<F, PCS> {
         fixed_commitments: &Vec<PCS::Commitment>,
     ) -> VerifierFoldingTrace<F, PCS> {
         let VerifierTrace {
-            advice_commitments, vanishing, lookups, permutations, challenges, beta, gamma, theta, y,
+            advice_commitments,
+            vanishing,
+            lookups,
+            permutations,
+            challenges,
+            beta,
+            gamma,
+            theta,
+            y,
         } = self;
         VerifierFoldingTrace {
             advice_commitments,
@@ -174,7 +182,9 @@ impl<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> VerifierTrace<F, PCS> {
     }
 }
 
-impl<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> From<VerifierFoldingTrace<F, PCS>> for VerifierTrace<F, PCS> {
+impl<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> From<VerifierFoldingTrace<F, PCS>>
+    for VerifierTrace<F, PCS>
+{
     fn from(value: VerifierFoldingTrace<F, PCS>) -> Self {
         let VerifierFoldingTrace {
             advice_commitments,

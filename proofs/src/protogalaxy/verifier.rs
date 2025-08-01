@@ -1,24 +1,37 @@
 //! TODO
 
 use ff::{FromUniformBytes, WithSmallOrderMulGroup};
-use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, IndexedParallelIterator, ParallelIterator};
-use crate::plonk::{Error, Evaluator, parse_trace, VerifyingKey};
-use crate::plonk::traces::{FoldingProverTrace, VerifierFoldingTrace};
-use crate::poly::commitment::PolynomialCommitmentScheme;
-use crate::poly::{EvaluationDomain, LagrangeCoeff, Polynomial};
-use crate::transcript::{Hashable, Sampleable, Transcript};
-use crate::utils::arithmetic::eval_polynomial;
+use rayon::iter::{
+    IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
+};
+
+use crate::{
+    plonk::{
+        parse_trace,
+        traces::{FoldingProverTrace, VerifierFoldingTrace},
+        Error, Evaluator, VerifyingKey,
+    },
+    poly::{commitment::PolynomialCommitmentScheme, EvaluationDomain, LagrangeCoeff, Polynomial},
+    transcript::{Hashable, Sampleable, Transcript},
+    utils::arithmetic::eval_polynomial,
+};
 
 /// This verifier can perform a 2**K - 1 to one folding
 #[derive(Debug)]
-pub struct ProtogalaxyVerifier<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: usize> {
+pub struct ProtogalaxyVerifier<
+    F: WithSmallOrderMulGroup<3>,
+    CS: PolynomialCommitmentScheme<F>,
+    const K: usize,
+> {
     // TODO Still need to verify this
     _verifier_folding_trace: VerifierFoldingTrace<F, CS>,
     error_term: F,
     beta_powers: [F; K],
 }
 
-impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: usize> ProtogalaxyVerifier<F, CS, K> {
+impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: usize>
+    ProtogalaxyVerifier<F, CS, K>
+{
     /// Initialise the Protogalaxy verifier given an initial instance
     // TODO: We can probably start with no instance at all.
     pub fn init<T>(
@@ -37,17 +50,19 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         CS: PolynomialCommitmentScheme<F>,
         CS::Commitment: Hashable<T::Hash>,
         F: WithSmallOrderMulGroup<3>
-        + Sampleable<T::Hash>
-        + Hashable<T::Hash>
-        + Ord
-        + FromUniformBytes<64>,
+            + Sampleable<T::Hash>
+            + Hashable<T::Hash>
+            + Ord
+            + FromUniformBytes<64>,
     {
         let folded_trace = parse_trace(
             vk,
-            #[cfg(feature = "committed-instances")] committed_instances,
+            #[cfg(feature = "committed-instances")]
+            committed_instances,
             instances,
-            transcript
-        )?.into_folding_trace(vk.fixed_commitments());
+            transcript,
+        )?
+        .into_folding_trace(vk.fixed_commitments());
 
         Ok(Self {
             _verifier_folding_trace: folded_trace,
@@ -56,9 +71,9 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         })
     }
 
-    /// Fold the given traces. Concretely, the verifier receives [Transcript]s from [K] proofs,
-    /// parses them to extract the [VerifierTrace], and folds them following the protogalaxy
-    /// protocol.
+    /// Fold the given traces. Concretely, the verifier receives [Transcript]s
+    /// from [K] proofs, parses them to extract the [VerifierTrace], and
+    /// folds them following the protogalaxy protocol.
     /// TODO: We assume that nr of proofs is a power of 2.
     /// TODO: PCS not verified
     pub fn fold<T>(
@@ -73,25 +88,29 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         CS: PolynomialCommitmentScheme<F>,
         CS::Commitment: Hashable<T::Hash>,
         F: WithSmallOrderMulGroup<3>
-        + Sampleable<T::Hash>
-        + Hashable<T::Hash>
-        + Ord
-        + FromUniformBytes<64>,
+            + Sampleable<T::Hash>
+            + Hashable<T::Hash>
+            + Ord
+            + FromUniformBytes<64>,
     {
         // We must increase the degree, since we need to count y as a variable.
         // TODO: We'll use independent challenges, instead of powers of y.
-        let dk_domain = EvaluationDomain::new(vk.cs().degree() as u32 + 3, (instances.len() + 1).trailing_zeros());
+        let dk_domain = EvaluationDomain::new(
+            vk.cs().degree() as u32 + 3,
+            (instances.len() + 1).trailing_zeros(),
+        );
 
-        // TODO: Is this sufficient to check H-consistency? I'm not 'checking' anything, but I'm computing
-        // the challenges myself - I believe that is enough.
+        // TODO: Is this sufficient to check H-consistency? I'm not 'checking' anything,
+        // but I'm computing the challenges myself - I believe that is enough.
         let _traces = instances
             .into_iter()
             .map(|instance| {
                 let trace = parse_trace(
                     vk,
-                    #[cfg(feature = "committed-instances")] committed_instances,
+                    #[cfg(feature = "committed-instances")]
+                    committed_instances,
                     &[instance],
-                    transcript
+                    transcript,
                 )?;
 
                 Ok(trace.into_folding_trace(vk.fixed_commitments()))
@@ -116,7 +135,9 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
             .iter()
             .zip(delta_powers.iter())
             .map(|(beta, delta)| *beta + alpha * delta)
-            .collect::<Vec<_>>().try_into().unwrap();
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap();
 
         let _poly_k: CS::Commitment = transcript.read()?;
         let gamma: F = transcript.squeeze_challenge();
@@ -134,7 +155,8 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         Ok(self)
     }
 
-    /// This function verifies that a folde trace satisfies the relaxed relation.
+    /// This function verifies that a folde trace satisfies the relaxed
+    /// relation.
     // TODO: need to verify that the commitment is correct as well.
     pub fn is_sat<PCS: PolynomialCommitmentScheme<F>>(
         &self,
@@ -202,7 +224,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
             .reduce(|| F::ZERO, |a, b| a + b);
 
         if expected_result == self.error_term {
-            return Ok(())
+            return Ok(());
         } else {
             Err(Error::Opening)
         }

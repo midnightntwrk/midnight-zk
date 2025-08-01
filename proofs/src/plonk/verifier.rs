@@ -38,6 +38,7 @@ where
     let nb_committed_instances = committed_instances[0].len();
     for committed_instances in committed_instances.iter() {
         if committed_instances.len() != nb_committed_instances {
+            println!("Here? with {} and {nb_committed_instances}", committed_instances.len());
             return Err(Error::InvalidInstances);
         }
     }
@@ -45,6 +46,7 @@ where
     // Check that instances matches the expected number of instance columns
     for (committed_instances, instances) in committed_instances.iter().zip(instances.iter()) {
         if committed_instances.len() + instances.len() != vk.cs.num_instance_columns {
+            println!("Or here");
             return Err(Error::InvalidInstances);
         }
     }

@@ -83,6 +83,7 @@ where
     let nb_committed_instances: usize = 0;
 
     if circuits.len() != instances.len() {
+        println!("Is it here now?");
         return Err(Error::InvalidInstances);
     }
 

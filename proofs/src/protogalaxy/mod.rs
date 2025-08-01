@@ -4,7 +4,8 @@ use ff::{PrimeField, WithSmallOrderMulGroup};
 
 use crate::{
     plonk::{
-        permutation, traces::FoldingProverTrace, ConstraintSystem, Evaluator, ProvingKey, VerifyingKey,
+        permutation, traces::FoldingProverTrace, ConstraintSystem, Evaluator, ProvingKey,
+        VerifyingKey,
     },
     poly::{
         commitment::PolynomialCommitmentScheme, Coeff, EvaluationDomain, ExtendedLagrangeCoeff,
