@@ -5,7 +5,7 @@ use crate::utils::util::fe_to_u32;
 pub(super) const MASK_EVN_64: u64 = 0x5555_5555_5555_5555; // 010101...01 (even positions in u64)
 pub(super) const MASK_ODD_64: u64 = 0xAAAA_AAAA_AAAA_AAAA; // 101010...10 (odd positions in u64)
 
-const LOOKUP_LENGTHS: [u32; 9] = [2, 5, 6, 7, 8, 9, 10, 11, 12]; // supported lookup bit lengths
+const LOOKUP_LENGTHS: [u32; 11] = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]; // supported lookup bit lengths
 const MAX_LOOKUP_LENGTH: usize = 12; // maximum bit length of plain values in lookup table
 
 /// Returns the even and odd bits of little-endian binary representation of u64.
@@ -182,6 +182,76 @@ pub fn spreaded_Sigma_1(spreaded_limbs: [u64; 5]) -> u64 {
     (pow4(26) * sE_06 + pow4(19) * sE_07 + pow4(7) * sE_12 + pow4(5) * sE_02 + sE_05)
         + (pow4(27) * sE_05 + pow4(21) * sE_06 + pow4(14) * sE_07 + pow4(2) * sE_12 + sE_02)
         + (pow4(20) * sE_12 + pow4(18) * sE_02 + pow4(13) * sE_05 + pow4(7) * sE_06 + sE_07)
+}
+
+/// Computes off-circuit spreaded σ₀(W) with W in (big endian) spreaded limbs.
+///
+/// # Panics
+///
+/// If the limbs are not in clean spreaded form.
+pub fn spreaded_sigma_0(spreaded_limbs: [u64; 8]) -> u64 {
+    assert!(spreaded_limbs.into_iter().all(in_valid_spreaded_form));
+
+    let [sW_12, sW_1a, sW_1b, sW_1c, sW_07, sW_3a, sW_04, sW_3b] = spreaded_limbs;
+
+    // As each limb is in valid spreaded form, the sum of three rotations composed
+    // by the limbs is at most: 3 * 0b0101..01 = 0b1111..11.
+    // Hence, the sum will never overflow u64.
+    (pow4(17) * sW_12
+        + pow4(16) * sW_1a
+        + pow4(15) * sW_1b
+        + pow4(14) * sW_1c
+        + pow4(7) * sW_07
+        + pow4(4) * sW_3a
+        + sW_04)
+        + (pow4(28) * sW_04
+            + pow4(25) * sW_3b
+            + pow4(13) * sW_12
+            + pow4(12) * sW_1a
+            + pow4(11) * sW_1b
+            + pow4(10) * sW_1c
+            + pow4(3) * sW_07
+            + sW_3a)
+        + (pow4(31) * sW_1c
+            + pow4(24) * sW_07
+            + pow4(21) * sW_3a
+            + pow4(17) * sW_04
+            + pow4(14) * sW_3b
+            + pow4(2) * sW_12
+            + pow4(1) * sW_1a
+            + sW_1b)
+}
+
+/// Computes off-circuit spreaded σ₁(W) with W in (big endian) spreaded limbs.
+///
+/// # Panics
+///
+/// If the limbs are not in clean spreaded form.
+pub fn spreaded_sigma_1(spreaded_limbs: [u64; 8]) -> u64 {
+    assert!(spreaded_limbs.into_iter().all(in_valid_spreaded_form));
+
+    let [sW_12, sW_1a, sW_1b, sW_1c, sW_07, sW_3a, sW_04, sW_3b] = spreaded_limbs;
+
+    // As each limb is in valid spreaded form, the sum of three rotations composed
+    // by the limbs is at most: 3 * 0b0101..01 = 0b1111..11.
+    // Hence, the sum will never overflow u64.
+    (pow4(10) * sW_12 + pow4(9) * sW_1a + pow4(8) * sW_1b + pow4(7) * sW_1c + sW_07)
+        + (pow4(25) * sW_07
+            + pow4(22) * sW_3a
+            + pow4(18) * sW_04
+            + pow4(15) * sW_3b
+            + pow4(3) * sW_12
+            + pow4(2) * sW_1a
+            + pow4(1) * sW_1b
+            + sW_1c)
+        + (pow4(31) * sW_1b
+            + pow4(30) * sW_1c
+            + pow4(23) * sW_07
+            + pow4(20) * sW_3a
+            + pow4(16) * sW_04
+            + pow4(13) * sW_3b
+            + pow4(1) * sW_12
+            + sW_1a)
 }
 
 fn pow4(n: u32) -> u64 {
@@ -370,6 +440,54 @@ mod tests {
         let mut rng = rand::thread_rng();
         for _ in 0..10 {
             assert_even_of_spreaded_Sigma_1(rng.gen());
+        }
+    }
+
+    #[test]
+    fn test_spreaded_sigma_0() {
+        // Assert σ₀(W) equals the even bits of the output of [`spreaded_sigma_0`].
+        fn assert_even_of_spreaded_sigma_0(val: u32) {
+            // Compute σ₀(W) with the built-in methods.
+            let shifted_by_3 = val >> 3;
+            let rot_by_7 = val.rotate_right(7);
+            let rot_by_18 = val.rotate_right(18);
+            let ret = shifted_by_3 ^ rot_by_7 ^ rot_by_18;
+
+            // Compute σ₀(W) by the even bits of the value returned by [`spreaded_sigma_0`].
+            let plain_limbs: [u32; 8] = u32_in_be_limbs(val, [12, 1, 1, 1, 7, 3, 4, 3]);
+            let spreaded_limbs: [u64; 8] = plain_limbs.map(spread);
+            let (even, _) = get_even_and_odd_bits(spreaded_sigma_0(spreaded_limbs));
+
+            assert_eq!(ret, even);
+        }
+
+        let mut rng = rand::thread_rng();
+        for _ in 0..10 {
+            assert_even_of_spreaded_sigma_0(rng.gen());
+        }
+    }
+
+    #[test]
+    fn test_spreaded_sigma_1() {
+        // Assert σ₁(W) equals the even bits of the output of [`spreaded_sigma_1`].
+        fn assert_even_of_spreaded_sigma_1(val: u32) {
+            // Compute σ₁(W) with the built-in methods.
+            let shifted_by_10 = val >> 10;
+            let rot_by_17 = val.rotate_right(17);
+            let rot_by_19 = val.rotate_right(19);
+            let ret = shifted_by_10 ^ rot_by_17 ^ rot_by_19;
+
+            // Compute σ₁(W) by the even bits of the value returned by [`spreaded_sigma_1`].
+            let plain_limbs: [u32; 8] = u32_in_be_limbs(val, [12, 1, 1, 1, 7, 3, 4, 3]);
+            let spreaded_limbs: [u64; 8] = plain_limbs.map(spread);
+            let (even, _) = get_even_and_odd_bits(spreaded_sigma_1(spreaded_limbs));
+
+            assert_eq!(ret, even);
+        }
+
+        let mut rng = rand::thread_rng();
+        for _ in 0..10 {
+            assert_even_of_spreaded_sigma_1(rng.gen());
         }
     }
 }

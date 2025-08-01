@@ -11,11 +11,12 @@ use crate::{
     hash::new_sha256::{
         gates::{
             add_mod_2_32_gate, decompose_10_9_11_2_gate, decompose_12_12_8_gate,
-            decompose_7_12_2_5_6_gate, half_ch_gate, maj_gate, Sigma_0_gate, Sigma_1_gate,
+            decompose_12_1_1_1_7_3_4_3_gate, decompose_7_12_2_5_6_gate, half_ch_gate, maj_gate,
+            sigma_0_gate, sigma_1_gate, Sigma_0_gate, Sigma_1_gate,
         },
         types::{
             AssignedPlain, AssignedPlainSpreaded, AssignedSpreaded, CompressionState, LimbsOfA,
-            LimbsOfE,
+            LimbsOfE, MessageWord,
         },
         utils::{
             gen_spread_table, get_even_and_odd_bits, negate_spreaded, spread, spreaded_Sigma_0,
@@ -45,8 +46,10 @@ const IV: [u32; 8] = [
     0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
 ];
 
-const NB_SHA256_ADVICE_COLS: usize = 7;
+const NB_SHA256_ADVICE_COLS: usize = 8;
 const NB_SHA256_FIXED_COLS: usize = 2;
+const ROUND: usize = 64;
+const BLOCK: usize = 16;
 
 /// Tag for the even and odd 12-12-8 decompositions.
 enum Parity {
@@ -74,6 +77,9 @@ pub struct Sha256Config {
     q_12_12_8: Selector,
     q_10_9_11_2: Selector,
     q_7_12_2_5_6: Selector,
+    q_12_1_1_1_7_3_4_3: Selector,
+    q_sigma_0: Selector,
+    q_sigma_1: Selector,
     q_add_mod_2_32: Selector,
     q_lookup: Selector,
     table: SpreadTable,
@@ -131,6 +137,9 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
         let q_12_12_8 = meta.selector();
         let q_10_9_11_2 = meta.selector();
         let q_7_12_2_5_6 = meta.selector();
+        let q_12_1_1_1_7_3_4_3 = meta.selector();
+        let q_sigma_0 = meta.selector();
+        let q_sigma_1 = meta.selector();
         let q_add_mod_2_32 = meta.selector();
         let q_lookup = meta.complex_selector();
 
@@ -338,6 +347,90 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
             )
         });
 
+        meta.create_gate("12-1-1-1-7-3-4-3 decomposition", |meta| {
+            let q_12_1_1_1_7_3_4_3 = meta.query_selector(q_12_1_1_1_7_3_4_3);
+
+            let w_12 = meta.query_advice(advice_cols[0], Rotation(0));
+            let w_07 = meta.query_advice(advice_cols[2], Rotation(0));
+            let w_3a = meta.query_advice(advice_cols[0], Rotation(1));
+            let w_04 = meta.query_advice(advice_cols[2], Rotation(1));
+            let w_3b = meta.query_advice(advice_cols[0], Rotation(2));
+            let w_1a = meta.query_advice(advice_cols[7], Rotation(0));
+            let w_1b = meta.query_advice(advice_cols[7], Rotation(1));
+            let w_1c = meta.query_advice(advice_cols[7], Rotation(2));
+            let w_plain = meta.query_advice(advice_cols[4], Rotation(0));
+
+            Constraints::with_selector(
+                q_12_1_1_1_7_3_4_3,
+                decompose_12_1_1_1_7_3_4_3_gate(
+                    [w_12, w_1a, w_1b, w_1c, w_07, w_3a, w_04, w_3b],
+                    w_plain,
+                ),
+            )
+        });
+
+        meta.create_gate("σ₀(W)", |meta| {
+            let q_sigma_0 = meta.query_selector(q_sigma_0);
+
+            let sprdd_w_12 = meta.query_advice(advice_cols[5], Rotation(0));
+            let sprdd_w_1a = meta.query_advice(advice_cols[6], Rotation(0));
+            let sprdd_w_1b = meta.query_advice(advice_cols[4], Rotation(1));
+            let sprdd_w_1c = meta.query_advice(advice_cols[5], Rotation(1));
+            let sprdd_w_07 = meta.query_advice(advice_cols[6], Rotation(1));
+            let sprdd_w_3a = meta.query_advice(advice_cols[4], Rotation(2));
+            let sprdd_w_04 = meta.query_advice(advice_cols[5], Rotation(2));
+            let sprdd_w_3b = meta.query_advice(advice_cols[6], Rotation(2));
+            let sprdd_evn_12a = meta.query_advice(advice_cols[1], Rotation(0));
+            let sprdd_evn_12b = meta.query_advice(advice_cols[1], Rotation(1));
+            let sprdd_evn_8 = meta.query_advice(advice_cols[1], Rotation(2));
+            let sprdd_odd_12a = meta.query_advice(advice_cols[3], Rotation(0));
+            let sprdd_odd_12b = meta.query_advice(advice_cols[3], Rotation(1));
+            let sprdd_odd_8 = meta.query_advice(advice_cols[3], Rotation(2));
+
+            Constraints::with_selector(
+                q_sigma_0,
+                sigma_0_gate(
+                    [
+                        sprdd_w_12, sprdd_w_1a, sprdd_w_1b, sprdd_w_1c, sprdd_w_07, sprdd_w_3a,
+                        sprdd_w_04, sprdd_w_3b,
+                    ],
+                    [sprdd_evn_12a, sprdd_evn_12b, sprdd_evn_8],
+                    [sprdd_odd_12a, sprdd_odd_12b, sprdd_odd_8],
+                ),
+            )
+        });
+
+        meta.create_gate("σ₁(W)", |meta| {
+            let q_sigma_1 = meta.query_selector(q_sigma_1);
+
+            let sprdd_w_12 = meta.query_advice(advice_cols[5], Rotation(0));
+            let sprdd_w_1a = meta.query_advice(advice_cols[6], Rotation(0));
+            let sprdd_w_1b = meta.query_advice(advice_cols[4], Rotation(1));
+            let sprdd_w_1c = meta.query_advice(advice_cols[5], Rotation(1));
+            let sprdd_w_07 = meta.query_advice(advice_cols[6], Rotation(1));
+            let sprdd_w_3a = meta.query_advice(advice_cols[4], Rotation(2));
+            let sprdd_w_04 = meta.query_advice(advice_cols[5], Rotation(2));
+            let sprdd_w_3b = meta.query_advice(advice_cols[6], Rotation(2));
+            let sprdd_evn_12a = meta.query_advice(advice_cols[1], Rotation(0));
+            let sprdd_evn_12b = meta.query_advice(advice_cols[1], Rotation(1));
+            let sprdd_evn_8 = meta.query_advice(advice_cols[1], Rotation(2));
+            let sprdd_odd_12a = meta.query_advice(advice_cols[3], Rotation(0));
+            let sprdd_odd_12b = meta.query_advice(advice_cols[3], Rotation(1));
+            let sprdd_odd_8 = meta.query_advice(advice_cols[3], Rotation(2));
+
+            Constraints::with_selector(
+                q_sigma_1,
+                sigma_1_gate(
+                    [
+                        sprdd_w_12, sprdd_w_1a, sprdd_w_1b, sprdd_w_1c, sprdd_w_07, sprdd_w_3a,
+                        sprdd_w_04, sprdd_w_3b,
+                    ],
+                    [sprdd_evn_12a, sprdd_evn_12b, sprdd_evn_8],
+                    [sprdd_odd_12a, sprdd_odd_12b, sprdd_odd_8],
+                ),
+            )
+        });
+
         Sha256Config {
             advice_cols,
             fixed_cols,
@@ -348,6 +441,9 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
             q_12_12_8,
             q_10_9_11_2,
             q_7_12_2_5_6,
+            q_12_1_1_1_7_3_4_3,
+            q_sigma_0,
+            q_sigma_1,
             q_add_mod_2_32,
             q_lookup,
             table: SpreadTable {
@@ -1073,9 +1169,239 @@ impl<F: PrimeField> Sha256Chip<F> {
     /// TODO
     fn message_schedule(
         &self,
-        _layouter: &mut impl Layouter<F>,
-        _input_bytes: &[AssignedByte<F>],
-    ) -> Result<Vec<[AssignedPlain<F, 32>; 64]>, Error> {
+        layouter: &mut impl Layouter<F>,
+        block: &[AssignedPlain<F, 32>; BLOCK],
+    ) -> Result<[AssignedPlain<F, 32>; ROUND], Error> {
+        let message_word = self.decompose_word(layouter, &block[0])?;
+        let mut message_words: [MessageWord<F>; ROUND] =
+            core::array::from_fn(|_| message_word.clone());
+
+        for i in 1..BLOCK {
+            message_words[i] = self.decompose_word(layouter, &block[i])?;
+        }
+
+        for i in BLOCK..ROUND {
+            message_words[i] = self.prepare_word(layouter, &message_words, i)?;
+        }
+
+        Ok(message_words.map(|w| w.combined_plain))
+    }
+
+    fn decompose_word(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        block_word: &AssignedPlain<F, 32>,
+    ) -> Result<MessageWord<F>, Error> {
+        /*
+        | T_0 |  A_0 |  A_1  | T_1 |  A_2  |   A_3  |  A_4  |     A_5     |     A_6    |  A_7  |
+        |-----|------|-------|-----|-------|--------|-------|-------------|------------|-------|
+        |  12 | W.12 | ~W.12 | 07  |  W.07 | ~W.07  |  W.i  |             |            |  W.1a |
+        |  03 | W.3a | ~W.3a | 04  |  W.04 | ~W.04  |       |             |            |  W.1b |
+        |  03 | W.3b | ~W.3b | 00  |   0   |   0    |       |             |            |  W.1c |
+        */
+        let [val_12, val_1a, val_1b, val_1c, val_07, val_3a, val_04, val_3b] = block_word
+            .0
+            .value()
+            .copied()
+            .map(|w| u32_in_be_limbs(fe_to_u32(w), [12, 1, 1, 1, 7, 3, 4, 3]))
+            .transpose_array();
+
+        layouter.assign_region(
+            || "decompose block word",
+            |mut region| {
+                self.config().q_12_1_1_1_7_3_4_3.enable(&mut region, 0)?;
+                // The spreaded form of W.1a, W.1b and W.1c equal themselves, as they are 1-bit
+                // values.
+                let limb_1a = region.assign_advice(
+                    || "W.1a",
+                    self.config().advice_cols[7],
+                    0,
+                    || val_1a.map(|v| u64_to_fe(v as u64)),
+                )?;
+                let limb_1b = region.assign_advice(
+                    || "W.1b",
+                    self.config().advice_cols[7],
+                    1,
+                    || val_1b.map(|v| u64_to_fe(v as u64)),
+                )?;
+                let limb_1c = region.assign_advice(
+                    || "W.1c",
+                    self.config().advice_cols[7],
+                    2,
+                    || val_1c.map(|v| u64_to_fe(v as u64)),
+                )?;
+
+                let w_plain = block_word.0.copy_advice(
+                    || "W_i",
+                    &mut region,
+                    self.config().advice_cols[4],
+                    0,
+                )?;
+
+                let limb_12 = self.assign_plain_and_spreaded(&mut region, val_12, 0, 0)?;
+                let limb_07 = self.assign_plain_and_spreaded(&mut region, val_07, 0, 1)?;
+                let limb_3a = self.assign_plain_and_spreaded(&mut region, val_3a, 1, 0)?;
+                let limb_04 = self.assign_plain_and_spreaded(&mut region, val_04, 1, 1)?;
+                let limb_3b = self.assign_plain_and_spreaded(&mut region, val_3b, 2, 0)?;
+                let _zero =
+                    self.assign_plain_and_spreaded::<0>(&mut region, Value::known(0), 2, 1)?;
+
+                Ok(MessageWord {
+                    combined_plain: AssignedPlain(w_plain),
+                    spreaded_w_12: limb_12.spreaded,
+                    spreaded_w_1a: AssignedSpreaded(limb_1a),
+                    spreaded_w_1b: AssignedSpreaded(limb_1b),
+                    spreaded_w_1c: AssignedSpreaded(limb_1c),
+                    spreaded_w_07: limb_07.spreaded,
+                    spreaded_w_3a: limb_3a.spreaded,
+                    spreaded_w_04: limb_04.spreaded,
+                    spreaded_w_3b: limb_3b.spreaded,
+                })
+            },
+        )
+    }
+
+    fn prepare_word(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        message_words: &[MessageWord<F>; ROUND],
+        word_idx: usize,
+    ) -> Result<MessageWord<F>, Error> {
+        /*
+        | T_0 |  A_0 |  A_1  | T_1 |  A_2  |   A_3  |  A_4  |     A_5     |     A_6    |  A_7  |
+        |-----|------|-------|-----|-------|--------|-------|-------------|------------|-------|
+        |  12 | W.12 | ~W.12 | 07  |  W.07 | ~W.07  |  W.i  |  W_(i-16)   |  W_(i-7)   |  W.1a |
+        |  03 | W.3a | ~W.3a | 04  |  W.04 | ~W.04  |       | s0(W_(i-15))| s1(W_(i-2))|  W.1b |
+        |  03 | W.3b | ~W.3b | 03  | carry | ~carry |       |             |            |  W.1c |
+        */
+        let w_i_minus_16 = &message_words[word_idx - 16].combined_plain;
+        let w_i_minus_7 = &message_words[word_idx - 7].combined_plain;
+        let sigma0_w_i_minus_15 = &self.sigma_0(layouter, &message_words[word_idx - 15])?;
+        let sigma1_w_i_minus_2 = &self.sigma_1(layouter, &message_words[word_idx - 2])?;
+        let (carry_val, w_i): (Value<u32>, Value<F>) = Value::<Vec<F>>::from_iter(
+            [
+                w_i_minus_16,
+                w_i_minus_7,
+                sigma0_w_i_minus_15,
+                sigma1_w_i_minus_2,
+            ]
+            .into_iter()
+            .map(|v| v.0.value().copied()),
+        )
+        .map(|v| v.into_iter().map(fe_to_u64).sum::<u64>())
+        .map(|s| s.div_rem(&(1 << 32)))
+        .map(|(carry, w_i)| (carry as u32, u64_to_fe(w_i)))
+        .unzip();
+
+        let [val_12, val_1a, val_1b, val_1c, val_07, val_3a, val_04, val_3b] = w_i
+            .map(|w| u32_in_be_limbs(fe_to_u32(w), [12, 1, 1, 1, 7, 3, 4, 3]))
+            .transpose_array();
+
+        layouter.assign_region(
+            || "prepare new message word",
+            |mut region| {
+                self.config().q_12_1_1_1_7_3_4_3.enable(&mut region, 0)?;
+                self.config().q_add_mod_2_32.enable(&mut region, 0)?;
+
+                w_i_minus_16.0.copy_advice(
+                    || "w_i_minus_16",
+                    &mut region,
+                    self.config().advice_cols[5],
+                    0,
+                )?;
+                w_i_minus_7.0.copy_advice(
+                    || "w_i_minus_7",
+                    &mut region,
+                    self.config().advice_cols[6],
+                    0,
+                )?;
+                sigma0_w_i_minus_15.0.copy_advice(
+                    || "σ₀(w_i_minus_15)",
+                    &mut region,
+                    self.config().advice_cols[5],
+                    1,
+                )?;
+                sigma1_w_i_minus_2.0.copy_advice(
+                    || "σ₁(w_i_minus_2)",
+                    &mut region,
+                    self.config().advice_cols[6],
+                    1,
+                )?;
+                // The spreaded form of W.1a, W.1b and W.1c equal themselves, as they are 1-bit
+                // values.
+                let limb_1a = region.assign_advice(
+                    || "W.1a",
+                    self.config().advice_cols[7],
+                    0,
+                    || val_1a.map(|v| u64_to_fe(v as u64)),
+                )?;
+                let limb_1b = region.assign_advice(
+                    || "W.1b",
+                    self.config().advice_cols[7],
+                    1,
+                    || val_1b.map(|v| u64_to_fe(v as u64)),
+                )?;
+                let limb_1c = region.assign_advice(
+                    || "W.1c",
+                    self.config().advice_cols[7],
+                    2,
+                    || val_1c.map(|v| u64_to_fe(v as u64)),
+                )?;
+
+                let w_i_plain =
+                    region.assign_advice(|| "W_i", self.config().advice_cols[4], 0, || w_i)?;
+
+                let limb_12 = self.assign_plain_and_spreaded(&mut region, val_12, 0, 0)?;
+                let limb_07 = self.assign_plain_and_spreaded(&mut region, val_07, 0, 1)?;
+                let limb_3a = self.assign_plain_and_spreaded(&mut region, val_3a, 1, 0)?;
+                let limb_04 = self.assign_plain_and_spreaded(&mut region, val_04, 1, 1)?;
+                let limb_3b = self.assign_plain_and_spreaded(&mut region, val_3b, 2, 0)?;
+                let _carry = self.assign_plain_and_spreaded::<3>(&mut region, carry_val, 2, 1)?;
+
+                Ok(MessageWord {
+                    combined_plain: AssignedPlain(w_i_plain),
+                    spreaded_w_12: limb_12.spreaded,
+                    spreaded_w_1a: AssignedSpreaded(limb_1a),
+                    spreaded_w_1b: AssignedSpreaded(limb_1b),
+                    spreaded_w_1c: AssignedSpreaded(limb_1c),
+                    spreaded_w_07: limb_07.spreaded,
+                    spreaded_w_3a: limb_3a.spreaded,
+                    spreaded_w_04: limb_04.spreaded,
+                    spreaded_w_3b: limb_3b.spreaded,
+                })
+            },
+        )
+    }
+
+    /// Computes σ₀(W).
+    fn sigma_0(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        w: &MessageWord<F>,
+    ) -> Result<AssignedPlain<F, 32>, Error> {
+        /*
+        | T_0 |    A_0   |    A_1    | T_1 |   A_2   |    A_3   |  A_4  |   A_5  |   A_6  |
+        |-----|----------|-----------|-----|---------|----------|-------|--------|--------|
+        |  12 | Even.12a | ~Even.12a |  12 | Odd.12a | ~Odd.12a | Even  | ~W.12  | ~W.1a  |
+        |  12 | Even.12b | ~Even.12b |  12 | Odd.12b | ~Odd.12b | ~W.1b | ~W.1c  | ~W.07  |
+        |   8 | Even.8   | ~Even.8   |   8 | Odd.8   | ~Odd.8   | ~W.3a | ~W.04  | ~W.3b  |
+        */
+        todo!()
+    }
+
+    /// Computes σ₁(W).
+    fn sigma_1(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        w: &MessageWord<F>,
+    ) -> Result<AssignedPlain<F, 32>, Error> {
+        /*
+        | T_0 |    A_0   |    A_1    | T_1 |   A_2   |    A_3   |  A_4  |   A_5  |   A_6  |
+        |-----|----------|-----------|-----|---------|----------|-------|--------|--------|
+        |  12 | Even.12a | ~Even.12a |  12 | Odd.12a | ~Odd.12a | Even  | ~W.12  | ~W.1a  |
+        |  12 | Even.12b | ~Even.12b |  12 | Odd.12b | ~Odd.12b | ~W.1b | ~W.1c  | ~W.07  |
+        |   8 | Even.8   | ~Even.8   |   8 | Odd.8   | ~Odd.8   | ~W.3a | ~W.04  | ~W.3b  |
+        */
         todo!()
     }
 
