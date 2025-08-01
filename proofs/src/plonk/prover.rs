@@ -54,7 +54,7 @@ where
 /// are zero-padded internally.
 ///
 /// The trace can then be used to finalise proofs, or to fold them.
-pub(crate) fn compute_trace<
+pub fn compute_trace<
     F,
     CS: PolynomialCommitmentScheme<F>,
     T: Transcript,

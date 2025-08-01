@@ -11,7 +11,7 @@ use crate::{
 
 #[derive(Debug)]
 pub struct Committed<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
-    permutation_product_commitments: Vec<CS::Commitment>,
+    pub(crate) permutation_product_commitments: Vec<CS::Commitment>,
 }
 
 pub struct EvaluatedSet<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {

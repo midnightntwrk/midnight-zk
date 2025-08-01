@@ -11,9 +11,9 @@ use rayon::iter::{
 };
 
 use crate::{
-    plonk::{compute_trace, traces::FoldingTrace, Circuit, Error, ProvingKey},
+    plonk::{compute_trace, traces::FoldingProverTrace, Circuit, Error, ProvingKey},
     poly::{
-        commitment::PolynomialCommitmentScheme, Basis, Coeff, EvaluationDomain,
+        commitment::PolynomialCommitmentScheme, PolynomialRepresentation, Coeff, EvaluationDomain,
         ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial,
     },
     protogalaxy::{
@@ -26,18 +26,10 @@ use crate::{
 /// This prover can perform a 2**K - 1 to one folding
 struct ProtogalaxyProver<F: PrimeField, CS: PolynomialCommitmentScheme<F>, const K: usize> {
     folding_pk: FoldingPk<F>,
-    folded_trace: FoldingTrace<F>,
+    folded_trace: FoldingProverTrace<F>,
     error_term: F,
     beta_powers: [F; K],
     _commitment_scheme: PhantomData<CS>,
-}
-
-/// This verifier can perform a 2**K - 1 to one folding
-struct ProtogalaxyVerifier<F: PrimeField, const K: usize> {
-    // Still need to figure out how to represent this
-    folded_instance: F,
-    error_term: F,
-    beta_powers: [F; K],
 }
 
 impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>, const K: usize> ProtogalaxyProver<F, CS, K> {
@@ -114,14 +106,15 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>, const K: usize> Protogala
         // different circuits at a time.
         let traces = circuits
             .into_iter()
-            .map(|c| {
+            .zip(instances.into_iter())
+            .map(|(c, instance)| {
                 let trace = compute_trace(
                     params,
                     pk,
                     &[c],
                     #[cfg(feature = "committed-instances")]
                     nb_committed_instances,
-                    &[&[]],
+                    &[instance],
                     &mut rng,
                     transcript,
                 )?;
@@ -138,7 +131,7 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>, const K: usize> Protogala
 
         let now = Instant::now();
         let f_poly_domain =
-            EvaluationDomain::new(2, (usize::BITS - (K - 1).leading_zeros()) as u32);
+            EvaluationDomain::new(2, usize::BITS - (K - 1).leading_zeros());
         let f_poly = compute_f(
             &self.folding_pk,
             &f_poly_domain,
@@ -156,7 +149,11 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>, const K: usize> Protogala
 
         let alpha = transcript.squeeze_challenge();
 
-        let f_at_alpha = eval_polynomial(&committed_f_poly.values, alpha) + self.error_term;
+        let committed_at_alpha = eval_polynomial(&committed_f_poly.values, alpha);
+        let f_at_alpha = committed_at_alpha + self.error_term;
+
+        // We include the evaluation of the committed f at alpha
+        transcript.write(&committed_at_alpha)?;
 
         let beta_star = self
             .beta_powers
@@ -173,7 +170,7 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>, const K: usize> Protogala
         assert!(traces.len().is_power_of_two());
 
         // We now perform folding of the traces
-        let degree = pk.vk.cs.degree() as u32;
+        let degree = pk.vk.cs().degree() as u32;
 
         // We must increase the degree, since we need to count y as a variable.
         // Computing the real degree seems hard.
@@ -198,6 +195,7 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>, const K: usize> Protogala
 
         // Now we subtract f_at_alpha and divide by the vanishing polynomial
         let mut poly_g_minus_f_at_alpha = poly_g.clone();
+        // TODO: Is this correct?
         poly_g_minus_f_at_alpha.values[0] -= f_at_alpha;
         let poly_k = dk_domain.divide_by_vanishing_poly(poly_g_minus_f_at_alpha.clone());
         let poly_k_coeff = Polynomial {
@@ -210,15 +208,19 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>, const K: usize> Protogala
         let gamma = transcript.squeeze_challenge();
 
         // Final check. Eval G(X), K(X) and Z(X) in \gamma
-        let g_in_gamma = dk_domain.eval_extended_lagrange(poly_g_minus_f_at_alpha, gamma);
+        let poly_to_eval_coeff = dk_domain.extended_to_coeff(poly_g_minus_f_at_alpha);
+        let g_in_gamma = eval_polynomial(&poly_to_eval_coeff, gamma);
         let k_in_gamma = eval_polynomial(&poly_k_coeff.values, gamma);
         let z_in_gamma = gamma.pow_vartime([dk_domain.n]) - F::ONE;
+
+        transcript.write(&k_in_gamma)?;
 
         assert_ne!(g_in_gamma, F::ZERO);
         assert_eq!(g_in_gamma, k_in_gamma * z_in_gamma);
 
         // Update error term
-        self.error_term = dk_domain.eval_extended_lagrange(poly_g, gamma);
+        let poly_g_coeff = dk_domain.extended_to_coeff(poly_g);
+        self.error_term = eval_polynomial(&poly_g_coeff, gamma);
 
         self.folded_trace = fold_traces(&dk_domain, &traces, &gamma);
         let rest_time = time.elapsed().as_millis() - poly_g_time - beta_time - lift_trace_time;
@@ -251,7 +253,7 @@ where
 fn compute_f<F: WithSmallOrderMulGroup<3>, const K: usize>(
     pk: &FoldingPk<F>,
     domain: &EvaluationDomain<F>,
-    trace: &FoldingTrace<F>,
+    trace: &FoldingProverTrace<F>,
     betas: &[F; K],
     deltas: &[F; K],
 ) -> Polynomial<F, LagrangeCoeff> {
@@ -268,7 +270,7 @@ fn compute_f<F: WithSmallOrderMulGroup<3>, const K: usize>(
             domain.coeff_to_lagrange(poly)
         })
         .collect::<Vec<_>>();
-    let FoldingTrace {
+    let FoldingProverTrace {
         fixed_polys,
         advice_polys,
         instance_values,
@@ -336,8 +338,8 @@ use crate::transcript::{Hashable, Sampleable, Transcript};
 pub fn fold<F>(
     pk: &FoldingPk<F>,
     dk_domain: &EvaluationDomain<F>,
-    traces: &[&FoldingTrace<F>],
-) -> FoldingTrace<F>
+    traces: &[&FoldingProverTrace<F>],
+) -> FoldingProverTrace<F>
 where
     F: WithSmallOrderMulGroup<3>,
 {
@@ -365,7 +367,8 @@ where
     let poly_k_coeff = dk_domain.extended_to_coeff(poly_k);
 
     // Final check. Eval G(X), K(X) and Z(X) in \gamma
-    let g_in_gamma = dk_domain.eval_extended_lagrange(poly_g, gamma);
+    let poly_g_coeff = dk_domain.extended_to_coeff(poly_g);
+    let g_in_gamma = eval_polynomial(&poly_g_coeff, gamma);
     let k_in_gamma = eval_polynomial(&poly_k_coeff, gamma);
     let z_in_gamma = gamma.pow_vartime([dk_domain.n]) - F::ONE;
 
@@ -438,7 +441,7 @@ fn compute_poly_g<F: PrimeField + WithSmallOrderMulGroup<3>>(
 
     let mut g_poly = vec![F::ZERO; lifted_folding_trace.len()];
     for (j, instance) in g_poly.iter_mut().enumerate() {
-        let FoldingTrace {
+        let FoldingProverTrace {
             fixed_polys,
             advice_polys,
             instance_values,
@@ -503,9 +506,9 @@ fn compute_poly_g<F: PrimeField + WithSmallOrderMulGroup<3>>(
 /// Function to fold traces over an evaluation `\gamma`
 fn fold_traces<F: PrimeField + WithSmallOrderMulGroup<3>>(
     dk_domain: &EvaluationDomain<F>,
-    traces: &[&FoldingTrace<F>],
+    traces: &[&FoldingProverTrace<F>],
     gamma: &F,
-) -> FoldingTrace<F> {
+) -> FoldingProverTrace<F> {
     let lagrange_polys = (0..traces.len())
         .map(|i| {
             // For the moment we only support batching of traces of dimension one.
@@ -519,7 +522,7 @@ fn fold_traces<F: PrimeField + WithSmallOrderMulGroup<3>>(
 
     let trace_domain_size = traces[0].fixed_polys[0].num_coeffs();
 
-    let buffer = FoldingTrace::init(
+    let buffer = FoldingProverTrace::init(
         trace_domain_size,
         traces[0].fixed_polys.len(),
         traces[0].advice_polys[0].len(),
@@ -667,7 +670,7 @@ mod tests {
 
     #[test]
     fn folding_test() {
-        const K: usize = 9;
+        const K: usize = 14;
         let k = 4; // number of folding instances
 
         let rng = ChaCha8Rng::from_seed([0u8; 32]);

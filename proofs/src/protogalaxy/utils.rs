@@ -6,9 +6,13 @@ use rayon::iter::{
 };
 
 use crate::{
-    plonk::{lookup, permutation, traces::FoldingTrace, vanishing},
+    plonk::{lookup, permutation, traces::FoldingProverTrace, vanishing},
     poly::{EvaluationDomain, Polynomial},
 };
+use crate::plonk::lookup::verifier::PermutationCommitments;
+use crate::plonk::traces::VerifierFoldingTrace;
+use crate::poly::commitment::PolynomialCommitmentScheme;
+use crate::utils::arithmetic::eval_polynomial;
 
 /// Given a vector v, computes a vector of length 2^|v| whose i-th element
 /// is the product of {v_j : bin(i)_j = 1}. Where bin(i)_j is the
@@ -94,7 +98,7 @@ where
 /// A folding trace where, instead of field elements, we have polynomials.
 /// It is represented as a vector of folding traces, where the i-th folding
 /// trace represents the evaluation of the polynomial at the i-th domain point.
-pub type LiftedFoldingTrace<F> = Vec<FoldingTrace<F>>;
+pub type LiftedFoldingTrace<F> = Vec<FoldingProverTrace<F>>;
 
 /// Computes \sum_{j = 0}^k L_j(X) ω_j, where ω_j is the j-th trace,
 /// for j = 0, ..., k. The `degree` is the maximum degree of the
@@ -104,7 +108,7 @@ pub type LiftedFoldingTrace<F> = Vec<FoldingTrace<F>>;
 /// We could handle each output folding trace one by one instead.
 pub fn batch_traces<F: PrimeField + WithSmallOrderMulGroup<3>>(
     dk_domain: &EvaluationDomain<F>,
-    traces: &[&FoldingTrace<F>],
+    traces: &[&FoldingProverTrace<F>],
 ) -> LiftedFoldingTrace<F> {
     let lagrange_polys = (0..traces.len())
         .map(|i| {
@@ -123,7 +127,7 @@ pub fn batch_traces<F: PrimeField + WithSmallOrderMulGroup<3>>(
 
     (0..dk_domain_size)
         .map(|i| {
-            let buffer = FoldingTrace::init(
+            let buffer = FoldingProverTrace::init(
                 trace_domain_size,
                 traces[0].fixed_polys.len(),
                 traces[0].advice_polys[0].len(),
@@ -142,7 +146,7 @@ pub fn batch_traces<F: PrimeField + WithSmallOrderMulGroup<3>>(
         .collect()
 }
 
-impl<F: PrimeField> FoldingTrace<F> {
+impl<F: PrimeField> FoldingProverTrace<F> {
     pub fn init(
         domain_size: usize,
         num_fixed_polys: usize,
@@ -166,7 +170,7 @@ impl<F: PrimeField> FoldingTrace<F> {
                 permutation_product_poly: Polynomial::init(domain_size),
             });
         }
-        FoldingTrace {
+        FoldingProverTrace {
             fixed_polys: vec![Polynomial::init(domain_size); num_fixed_polys],
             advice_polys: vec![vec![Polynomial::init(domain_size); num_advice_polys]],
             instance_polys: vec![vec![Polynomial::init(domain_size); num_instance_polys]],
@@ -187,11 +191,11 @@ impl<F: PrimeField> FoldingTrace<F> {
     }
 }
 
-impl<F: PrimeField> Add<&FoldingTrace<F>> for FoldingTrace<F> {
+impl<F: PrimeField> Add<&FoldingProverTrace<F>> for FoldingProverTrace<F> {
     type Output = Self;
 
     /// TODO: parallelize.
-    fn add(mut self, rhs: &FoldingTrace<F>) -> Self {
+    fn add(mut self, rhs: &FoldingProverTrace<F>) -> Self {
         // Verifying a single outer vector is enough, as the type guarantees
         // the rest
         assert_eq!(self.advice_polys.len(), rhs.advice_polys.len());
@@ -259,7 +263,7 @@ impl<F: PrimeField> Add<&FoldingTrace<F>> for FoldingTrace<F> {
     }
 }
 
-impl<F: PrimeField> Mul<F> for FoldingTrace<F> {
+impl<F: PrimeField> Mul<F> for FoldingProverTrace<F> {
     type Output = Self;
 
     fn mul(mut self, scalar: F) -> Self {
@@ -294,6 +298,182 @@ impl<F: PrimeField> Mul<F> for FoldingTrace<F> {
 
         self
     }
+}
+
+impl<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> VerifierFoldingTrace<F, PCS> {
+    /// Initialise an empty verifier folding trace
+    pub fn init(
+        num_fixed_polys: usize,
+        num_advice_polys: usize,
+        num_lookups: usize,
+        num_permutation_sets: usize,
+        num_challenges: usize,
+    ) -> Self {
+        let mut lookups = Vec::with_capacity(num_lookups);
+        for _ in 0..num_lookups {
+            lookups.push(lookup::verifier::Committed {
+                permuted: PermutationCommitments {
+                    permuted_input_commitment: PCS::Commitment::default(),
+                    permuted_table_commitment: PCS::Commitment::default(),
+                },
+                product_commitment: PCS::Commitment::default(),
+            });
+        }
+        VerifierFoldingTrace {
+            advice_commitments: vec![vec![PCS::Commitment::default(); num_advice_polys]],
+            fixed_commitments: vec![PCS::Commitment::default(); num_fixed_polys],
+            vanishing: vanishing::verifier::Committed {
+                random_poly_commitment: PCS::Commitment::default(),
+            },
+            lookups: vec![lookups],
+            permutations: vec![permutation::verifier::Committed {
+                permutation_product_commitments: vec![PCS::Commitment::default(); num_permutation_sets]
+            }],
+            challenges: vec![F::ZERO; num_challenges],
+            beta: F::ZERO,
+            gamma: F::ZERO,
+            theta: F::ZERO,
+            y: F::ZERO,
+        }
+    }
+}
+
+impl<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> Add<&VerifierFoldingTrace<F, PCS>> for VerifierFoldingTrace<F, PCS> {
+    type Output = Self;
+
+    /// TODO: parallelize.
+    fn add(mut self, rhs: &VerifierFoldingTrace<F, PCS>) -> Self {
+        // Verifying a single outer vector is enough, as the type guarantees
+        // the rest
+        assert_eq!(self.advice_commitments.len(), rhs.advice_commitments.len());
+
+        assert_eq!(self.fixed_commitments.len(), rhs.fixed_commitments.len());
+        assert_eq!(self.challenges.len(), rhs.challenges.len());
+
+        self.fixed_commitments
+            .par_iter_mut()
+            .zip(rhs.fixed_commitments.par_iter())
+            .for_each(|(lhs, rhs)| {
+                *lhs = lhs.clone() + rhs.clone();
+            });
+
+        (0..self.advice_commitments.len()).for_each(|i| {
+            assert_eq!(self.advice_commitments[i].len(), rhs.advice_commitments[i].len());
+            assert_eq!(self.lookups[i].len(), rhs.lookups[i].len());
+            assert_eq!(
+                self.permutations[i].permutation_product_commitments.len(),
+                rhs.permutations[i].permutation_product_commitments.len()
+            );
+
+            self.advice_commitments[i]
+                .par_iter_mut()
+                .zip(rhs.advice_commitments[i].par_iter())
+                .for_each(|(lhs, rhs)| {
+                    *lhs = lhs.clone() + rhs.clone();
+                });
+
+            self.lookups[i]
+                .par_iter_mut()
+                .zip(rhs.lookups[i].par_iter())
+                .for_each(|(lhs, rhs)| {
+                    lhs.permuted.permuted_input_commitment = lhs.permuted.permuted_input_commitment.clone() + rhs.permuted.permuted_input_commitment.clone();
+                    lhs.permuted.permuted_table_commitment = lhs.permuted.permuted_table_commitment.clone() + rhs.permuted.permuted_table_commitment.clone();
+                    lhs.product_commitment = lhs.product_commitment.clone() + rhs.product_commitment.clone();
+                });
+
+            (self.permutations[i].permutation_product_commitments.par_iter_mut())
+                .zip(rhs.permutations[i].permutation_product_commitments.par_iter())
+                .for_each(|(lhs, rhs)| {
+                    *lhs = lhs.clone() + rhs.clone();
+                });
+        });
+
+        self.challenges
+            .par_iter_mut()
+            .zip(rhs.challenges.par_iter())
+            .for_each(|(lhs, rhs)| {
+                *lhs = *lhs + *rhs;
+            });
+
+        self.beta += rhs.beta;
+        self.gamma += rhs.gamma;
+        self.theta += rhs.theta;
+        self.y += rhs.y;
+
+        self
+    }
+}
+
+impl<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> Mul<F> for VerifierFoldingTrace<F, PCS> {
+    type Output = Self;
+
+    fn mul(mut self, scalar: F) -> Self {
+        self.fixed_commitments.par_iter_mut().for_each(|p| {
+            *p = p.clone() * scalar;
+        });
+
+        (0..self.advice_commitments.len()).for_each(|i| {
+            self.advice_commitments[i].par_iter_mut().for_each(|p| {
+                *p = p.clone() * scalar;
+            });
+            self.lookups[i].par_iter_mut().for_each(|lhs| {
+                lhs.permuted.permuted_input_commitment = lhs.permuted.permuted_input_commitment.clone() * scalar;
+                lhs.permuted.permuted_table_commitment = lhs.permuted.permuted_table_commitment.clone() * scalar;
+                lhs.product_commitment = lhs.product_commitment.clone() * scalar;
+            });
+            self.permutations[i].permutation_product_commitments.par_iter_mut().for_each(|lhs| {
+                *lhs = lhs.clone() * scalar;
+            });
+        });
+
+        self.challenges.par_iter_mut().for_each(|p| {
+            *p *= scalar;
+        });
+        self.beta *= scalar;
+        self.gamma *= scalar;
+        self.theta *= scalar;
+        self.y *= scalar;
+
+        self
+    }
+}
+
+/// Computes \sum_{j = 0}^k L_j(gamma) ω_j, where ω_j is the j-th trace,
+/// for j = 0, ..., k. The `degree` is the maximum degree of the
+/// constraint system.
+///
+/// We could handle each output folding trace one by one instead.
+// TODO: I have the feeling we can merge traces into a single type, that takes representation of
+// columns generically, and this function also be implemented once.
+pub fn batch_verifier_traces<F: WithSmallOrderMulGroup<3>, PCS: PolynomialCommitmentScheme<F>>(
+    dk_domain: &EvaluationDomain<F>,
+    traces: &[&VerifierFoldingTrace<F, PCS>],
+    gamma: &F,
+) -> VerifierFoldingTrace<F, PCS> {
+    let lagrange_evals = (0..traces.len())
+        .map(|i| {
+            // For the moment we only support batching of traces of dimension one.
+            assert_eq!(traces[i].advice_commitments.len(), 1);
+            let mut l = dk_domain.empty_lagrange();
+            l[i] = F::ONE;
+            l
+        })
+        .map(|p| dk_domain.lagrange_to_coeff(p))
+        .map(|p| eval_polynomial(&p.values, *gamma))
+        .collect::<Vec<_>>();
+
+    // let dk_domain_size = lagrange_polys[0].num_coeffs();
+    // let trace_domain_size = traces[0].fixed_polys[0].num_coeffs();
+
+    let buffer = VerifierFoldingTrace::init(
+        traces[0].fixed_commitments.len(),
+        traces[0].advice_commitments[0].len(),
+        traces[0].lookups[0].len(),
+        traces[0].permutations[0].permutation_product_commitments.len(),
+        traces[0].challenges.len(),
+    );
+
+    linear_combination(buffer, traces, &lagrange_evals)
 }
 
 #[cfg(test)]
