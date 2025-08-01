@@ -1427,7 +1427,7 @@ impl<F: Field> From<Expression<F>> for Vec<Constraint<F>> {
 
 #[derive(Debug)]
 enum SelectorType {
-     Multiplicative(Selector),
+    Multiplicative(Selector),
     Additive(Selector),
     None,
 }
@@ -1481,7 +1481,7 @@ impl<F: Field> Constraints<F> {
         Constraints {
             selector: SelectorType::Multiplicative(selector),
             constraints: constraints.into_iter().map(|c| c.into()).collect(),
-          }
+        }
     }
 
     /// an unrestricted column.
@@ -1503,13 +1503,11 @@ impl<F: Field> Constraints<F> {
             constraints: constraints.into_iter().map(|c| c.into()).collect(),
         }
     }
-
-    
 }
 
 /// Gate
 #[derive(Clone, Debug)]
-struct   Gate<F>   {
+pub struct Gate<F: Field> {
     name: String,
     constraint_names: Vec<String>,
     polys: Vec<Expression<F>>,
@@ -1928,12 +1926,10 @@ impl<F: Field> ConstraintSystem<F> {
         let mut cells = VirtualCells::new(self);
         let constraints = constraints(&mut cells);
 
-
         assert!(
             !constraints.constraints.is_empty(),
             "Gates must contain at least one constraint."
         );
-
 
         let (constraint_names, polys): (_, Vec<_>) = cells
             .apply_selector_to_constraints(constraints)
@@ -2442,17 +2438,18 @@ impl<'a, F: Field> VirtualCells<'a, F> {
                         poly: q.clone() * constraint.poly,
                     })
                     .collect()
-                }
+            }
 
-
-              SelectorType::Additive(s) => {
+            SelectorType::Additive(s) => {
                 self.queried_selectors.push(s);
                 (self.meta.trashcans).push(Argument::new(names.join("&"), s, polys));
                 vec![]
             }
+
             SelectorType::None => c.constraints,
         }
     }
+}
 
 #[cfg(test)]
 mod tests {
