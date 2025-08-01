@@ -133,10 +133,10 @@ impl<F: PoseidonField> PoseidonChip<F> {
     }
 }
 
-// Computes the identity of the linear layer of Poseidon's rounds
-// (multiplication by the MDS matrix and addition of round constants). To save
-// up the cost of addition, the identity is computed by mutating a variable
-// initialised as the round-constant argument.
+/// Computes the identity of the linear layer of Poseidon's rounds
+/// (multiplication by the MDS matrix and addition of round constants). To save
+/// up the cost of addition, the identity is computed by mutating a variable
+/// initialised as the round-constant argument.
 fn linear_layer<F: PoseidonField>(
     inputs: [Expression<F>; WIDTH],
     outputs: [Expression<F>; WIDTH],
@@ -153,7 +153,7 @@ fn linear_layer<F: PoseidonField>(
     ids
 }
 
-// Performs an S-box computation.
+/// Performs an S-box computation.
 pub(crate) fn sbox<F: Field>(x: Expression<F>) -> Expression<F> {
     x.clone() * x.square().square()
 }
@@ -198,13 +198,26 @@ impl<F: PoseidonField> ComposableChip<F> for PoseidonChip<F> {
         // applying a permutation, and the last full round will use `[F::ZERO;
         // WIDTH]` as round constants.
         meta.create_gate("full_round_gate", |meta| {
-            let inputs = from_fn(|i| meta.query_advice(register_cols[i], Rotation::cur()));
+            // We provide hints for computing the S-box on the inputs.
+            // Concretely, for every input, we hint its cube.
+            let inputs_and_hints: [(Expression<F>, Expression<F>); WIDTH] = from_fn(|i| {
+                (
+                    meta.query_advice(register_cols[i], Rotation::cur()),
+                    meta.query_advice(register_cols[i + WIDTH], Rotation::cur()),
+                )
+            });
             let outputs = from_fn(|i| meta.query_advice(register_cols[i], Rotation::next()));
             let constants = from_fn(|i| meta.query_fixed(constant_cols[i], Rotation::cur()));
 
+            let sboxed_inputs = inputs_and_hints.clone().map(|(x, x3)| x.square() * x3);
+
             Constraints::with_selector(
                 meta.query_selector(q_full_round),
-                linear_layer(inputs.map(sbox), outputs, constants),
+                [
+                    inputs_and_hints.map(|(x, x3)| x.clone() * x.square() - x3),
+                    linear_layer(sboxed_inputs, outputs, constants),
+                ]
+                .concat(),
             )
         });
 
@@ -265,7 +278,7 @@ impl<F: PoseidonField> ComposableChip<F> for PoseidonChip<F> {
 }
 
 impl<F: PoseidonField> PoseidonChip<F> {
-    // Assign constants in the circuit for a full round.
+    /// Assign constants in the circuit for a full round.
     fn assign_constants_full(
         &self,
         region: &mut Region<'_, F>,
@@ -291,7 +304,7 @@ impl<F: PoseidonField> PoseidonChip<F> {
         Ok(())
     }
 
-    // Assign constants in the circuit for a partial round.
+    /// Assign constants in the circuit for a partial round.
     fn assign_constants_partial(
         &self,
         region: &mut Region<'_, F>,
@@ -314,20 +327,32 @@ impl<F: PoseidonField> PoseidonChip<F> {
         Ok(())
     }
 
-    // Operates a full round in-circuit. The variable assignment in the circuit is
-    // done by calling `full_round_cpu`.
-    // # Note:
-    // this function does not copy the inputs in the current offset, but assumes
-    // they were copied there earlier.
+    /// Operates a full round in-circuit. The variable assignment in the circuit
+    /// is done by calling `full_round_cpu`.
+    ///
+    /// Note: This function does not copy the inputs in the current offset, but
+    /// assumes they were copied there earlier.
     fn full_round(
         &self,
         region: &mut Region<'_, F>,
-        inputs: &mut [AssignedNative<F>], // Length `WIDTH`.
+        inputs: &mut [AssignedNative<F>; WIDTH],
         round_index: usize,
         offset: &mut usize,
     ) -> Result<(), Error> {
         self.config.q_full_round.enable(region, *offset)?;
         self.assign_constants_full(region, round_index, *offset)?;
+
+        // Assign the hints (inputs cubed).
+        for (x, col) in (inputs.iter()).zip(self.config.register_cols[WIDTH..(2 * WIDTH)].iter()) {
+            region.assign_advice(
+                || "full round hint",
+                *col,
+                *offset,
+                || x.value().map(|x| *x * x.square()),
+            )?;
+        }
+
+        *offset += 1;
 
         let outputs = Value::from_iter(inputs.iter().map(|x| x.value().copied()))
             .map(|inputs: Vec<F>| {
@@ -336,7 +361,7 @@ impl<F: PoseidonField> PoseidonChip<F> {
                 inputs
             })
             .transpose_vec(WIDTH);
-        *offset += 1;
+
         outputs
             .iter()
             .zip(self.config.register_cols[0..WIDTH].iter())
@@ -348,11 +373,12 @@ impl<F: PoseidonField> PoseidonChip<F> {
             })
     }
 
-    // Analogue for optimised partial rounds.
-    // Note: initially, only the first `WIDTH` inputs are assigned, but not the
-    // `NB_SKIPS_CIRCUIT` auxiliary advice columns at the current offset. This
-    // function assigns them as well as the first `WIDTH` columns of the
-    // resulting output.
+    /// Analogue for optimised partial rounds.
+    ///
+    /// Note: Initially, only the first `WIDTH` inputs are assigned, but not the
+    /// `NB_SKIPS_CIRCUIT` auxiliary advice columns at the current offset. This
+    /// function assigns them as well as the first `WIDTH` columns of the
+    /// resulting output.
     fn partial_round(
         &self,
         region: &mut Region<'_, F>,
@@ -398,9 +424,10 @@ impl<F: PoseidonField> PoseidonChip<F> {
             })
     }
 
-    // A combination of the different circuit gates to produce the full Poseidon
-    // permutation (`NB_FULL_ROUNDS` full rounds, separated in the middle by
-    // `NB_PARTIAL_ROUNDS` partial rounds, possibly with optimized skips).
+    /// A combination of the different circuit gates to produce the full
+    /// Poseidon permutation (`NB_FULL_ROUNDS` full rounds, separated in the
+    /// middle by `NB_PARTIAL_ROUNDS` partial rounds, possibly with
+    /// optimized skips).
     pub(super) fn permutation(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -709,7 +736,6 @@ mod tests {
     }
 
     #[test]
-    // Testing Poseidon's permutation.
     fn permutation_test() {
         let inputs = [midnight_curves::Fq::from(0); WIDTH];
         // Set the second argument to true to experiment on the permutation cost.
@@ -718,7 +744,7 @@ mod tests {
 
     #[test]
     fn sponge_test() {
-        // Consistency tests between the cpu and circuit implementations of the
+        // Consistency tests between the CPU and circuit implementations of the
         // permutation.
         run_sponge_test::<midnight_curves::Fq>("blstrs", true);
     }
