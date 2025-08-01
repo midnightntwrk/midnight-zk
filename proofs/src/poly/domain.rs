@@ -165,7 +165,7 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
         }
     }
 
-    /// Returns an empty (zero) polynomial in the coefficient basis
+    /// Returns an empty (zero) polynomial in the coefficient representation
     pub fn empty_coeff(&self) -> Polynomial<F, Coeff> {
         Polynomial {
             values: vec![F::ZERO; self.n as usize],
@@ -173,7 +173,8 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
         }
     }
 
-    /// Returns an empty (zero) polynomial in the Lagrange coefficient basis
+    /// Returns an empty (zero) polynomial in the Lagrange coefficient
+    /// representation
     pub fn empty_lagrange(&self) -> Polynomial<F, LagrangeCoeff> {
         Polynomial {
             values: vec![F::ZERO; self.n as usize],
@@ -181,8 +182,8 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
         }
     }
 
-    /// Returns an empty (zero) polynomial in the Lagrange coefficient basis,
-    /// with deferred inversions.
+    /// Returns an empty (zero) polynomial in the Lagrange coefficient
+    /// representation, with deferred inversions.
     pub fn empty_lagrange_rational(&self) -> Polynomial<Rational<F>, LagrangeCoeff> {
         Polynomial {
             values: vec![F::ZERO.into(); self.n as usize],
@@ -190,7 +191,7 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
         }
     }
 
-    /// Returns a constant polynomial in the Lagrange coefficient basis
+    /// Returns a constant polynomial in the Lagrange coefficient representation
     pub fn constant_lagrange(&self, scalar: F) -> Polynomial<F, LagrangeCoeff> {
         Polynomial {
             values: vec![scalar; self.n as usize],
@@ -199,7 +200,7 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
     }
 
     /// Returns an empty (zero) polynomial in the extended Lagrange coefficient
-    /// basis
+    /// representation
     pub fn empty_extended(&self) -> Polynomial<F, ExtendedLagrangeCoeff> {
         Polynomial {
             values: vec![F::ZERO; self.extended_len()],
@@ -208,7 +209,7 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
     }
 
     /// Returns a constant polynomial in the extended Lagrange coefficient
-    /// basis
+    /// representation
     pub fn constant_extended(&self, scalar: F) -> Polynomial<F, ExtendedLagrangeCoeff> {
         Polynomial {
             values: vec![scalar; self.extended_len()],
@@ -218,13 +219,26 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
 
     /// This takes us from an n-length vector into the coefficient form.
     ///
-    /// This function will panic if the provided vector is not the correct
-    /// length.
+    /// This function will panic if the provided vector does not have the
+    /// correct length.
     pub fn lagrange_to_coeff(&self, mut a: Polynomial<F, LagrangeCoeff>) -> Polynomial<F, Coeff> {
         assert_eq!(a.values.len(), 1 << self.k);
 
         // Perform inverse FFT to obtain the polynomial in coefficient form
         Self::ifft(&mut a.values, self.omega_inv, self.k, self.ifft_divisor);
+
+        Polynomial {
+            values: a.values,
+            _marker: PhantomData,
+        }
+    }
+
+    /// This takes us from an n-length coefficient vector into the
+    /// lagrange evaluation domain.
+    pub fn coeff_to_lagrange(&self, mut a: Polynomial<F, Coeff>) -> Polynomial<F, LagrangeCoeff> {
+        assert_eq!(a.values.len(), 1 << self.k);
+
+        best_fft(&mut a.values, self.omega, self.k);
 
         Polynomial {
             values: a.values,
@@ -250,31 +264,11 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
         }
     }
 
-    /// Rotate the extended domain polynomial over the original domain.
-    pub fn rotate_extended(
-        &self,
-        poly: &Polynomial<F, ExtendedLagrangeCoeff>,
-        rotation: Rotation,
-    ) -> Polynomial<F, ExtendedLagrangeCoeff> {
-        let new_rotation = ((1 << (self.extended_k - self.k)) * rotation.0.abs()) as usize;
-
-        let mut poly = poly.clone();
-
-        if rotation.0 >= 0 {
-            poly.values.rotate_left(new_rotation);
-        } else {
-            poly.values.rotate_right(new_rotation);
-        }
-
-        poly
-    }
-
     /// This takes us from the extended evaluation domain and gets us the
     /// quotient polynomial coefficients.
     ///
-    /// This function will panic if the provided vector is not the correct
-    /// length.
-    // TODO/FIXME: caller should be responsible for truncating
+    /// This function will panic if the provided vector does not have the
+    /// correct length.
     pub fn extended_to_coeff(&self, mut a: Polynomial<F, ExtendedLagrangeCoeff>) -> Vec<F> {
         assert_eq!(a.values.len(), self.extended_len());
 
@@ -290,13 +284,36 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
         // transformation we performed earlier.
         self.distribute_powers_zeta(&mut a.values, false);
 
-        // Truncate it to match the size of the quotient polynomial; the
-        // evaluation domain might be slightly larger than necessary because
-        // it always lies on a power-of-two boundary.
         a.values
-            .truncate((&self.n * self.quotient_poly_degree) as usize);
+    }
 
-        a.values
+    /// This takes us from the extended evaluation domain and gets us to the
+    /// small evaluation domain (of size `n`).
+    ///
+    /// This function will panic if the provided vector does not have the
+    /// correct length.
+    pub fn extended_to_lagrange(
+        &self,
+        mut a: Polynomial<F, ExtendedLagrangeCoeff>,
+    ) -> Polynomial<F, LagrangeCoeff> {
+        assert_eq!(a.values.len(), self.extended_len());
+
+        Self::ifft(
+            &mut a.values,
+            self.extended_omega_inv,
+            self.extended_k,
+            self.extended_ifft_divisor,
+        );
+
+        a.values.truncate(self.n as usize);
+        self.distribute_powers_zeta(&mut a.values, false);
+
+        best_fft(&mut a.values, self.omega, self.k);
+
+        Polynomial {
+            values: a.values,
+            _marker: PhantomData,
+        }
     }
 
     /// This divides the polynomial (in the extended domain) by the vanishing
@@ -403,7 +420,7 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
     }
 
     /// Computes evaluations (at the point `x`, where `xn = x^n`) of Lagrange
-    /// basis polynomials `l_i(X)` defined such that `l_i(omega^i) = 1` and
+    /// polynomials `l_i(X)` defined such that `l_i(omega^i) = 1` and
     /// `l_i(omega^j) = 0` for all `j != i` at each provided rotation `i`.
     ///
     /// # Implementation

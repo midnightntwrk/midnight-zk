@@ -1452,10 +1452,11 @@ impl<F: Field> From<Expression<F>> for Vec<Constraint<F>> {
 ///
 ///     Constraints::with_selector(
 ///         s_ternary,
-///         std::array::IntoIter::new([
+///         [
 ///             ("a is boolean", a.clone() * one_minus_a.clone()),
 ///             ("next == a ? b : c", next - (a * b + one_minus_a * c)),
-///         ]),
+///         ]
+///         .into_iter(),
 ///     )
 /// });
 /// ```

@@ -19,5 +19,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Update dependency names [#32](https://github.com/midnightntwrk/midnight-zk/pull/32)
 * Fix versions of crates in monorepo [#33](https://github.com/midnightntwrk/midnight-zk/pull/33)
 * Do not check transcript ends up empty [#34](https://github.com/midnightntwrk/midnight-zk/pull/34)
+* Split `create_proof` into `trace` and `finalize` [#47](https://github.com/midnightntwrk/midnight-zk/pull/47)
 
 ### Removed

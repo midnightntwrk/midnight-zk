@@ -3,16 +3,13 @@ use group::ff::Field;
 
 use super::{ConstraintSystem, Expression};
 use crate::{
-    plonk::{lookup, permutation, Any, ProvingKey},
-    poly::{
-        commitment::PolynomialCommitmentScheme, Basis, Coeff, ExtendedLagrangeCoeff, Polynomial,
-        Rotation,
-    },
+    plonk::{lookup, permutation, Any},
+    poly::{EvaluationDomain, Polynomial, PolynomialRepresentation, Rotation},
     utils::arithmetic::parallelize,
 };
 
 /// Return the index in the polynomial of size `isize` after rotation `rot`.
-fn get_rotation_idx(idx: usize, rot: i32, rot_scale: i32, isize: i32) -> usize {
+pub(crate) fn get_rotation_idx(idx: usize, rot: i32, rot_scale: i32, isize: i32) -> usize {
     (((idx as i32) + (rot * rot_scale)).rem_euclid(isize)) as usize
 }
 
@@ -52,7 +49,7 @@ impl Default for ValueSource {
 impl ValueSource {
     /// Get the value for this source
     #[allow(clippy::too_many_arguments)]
-    pub fn get<F: Field, B: Basis>(
+    pub fn get<F: Field, B: PolynomialRepresentation>(
         &self,
         rotations: &[usize],
         constants: &[F],
@@ -113,7 +110,7 @@ pub enum Calculation {
 impl Calculation {
     /// Get the resulting value of this calculation
     #[allow(clippy::too_many_arguments)]
-    pub fn evaluate<F: Field, B: Basis>(
+    pub fn evaluate<F: Field, B: PolynomialRepresentation>(
         &self,
         rotations: &[usize],
         constants: &[F],
@@ -263,11 +260,13 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
 
     /// Evaluate h poly
     #[allow(clippy::too_many_arguments)]
-    pub(in crate::plonk) fn evaluate_h<CS: PolynomialCommitmentScheme<F>>(
+    pub(crate) fn evaluate_h<B: PolynomialRepresentation>(
         &self,
-        pk: &ProvingKey<F, CS>,
-        advice_polys: &[&[Polynomial<F, Coeff>]],
-        instance_polys: &[&[Polynomial<F, Coeff>]],
+        domain: &EvaluationDomain<F>,
+        cs: &ConstraintSystem<F>,
+        advice: &[&[Polynomial<F, B>]],
+        instance: &[&[Polynomial<F, B>]],
+        fixed: &[Polynomial<F, B>],
         challenges: &[F],
         y: F,
         beta: F,
@@ -275,40 +274,20 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
         theta: F,
         lookups: &[Vec<lookup::prover::Committed<F>>],
         permutations: &[permutation::prover::Committed<F>],
-    ) -> Polynomial<F, ExtendedLagrangeCoeff> {
-        let domain = &pk.vk.domain;
-        let size = domain.extended_len();
-        let rot_scale = 1 << (domain.extended_k() - domain.k());
-        let fixed = &pk.fixed_cosets[..];
-        let extended_omega = domain.get_extended_omega();
+        l0: &Polynomial<F, B>,
+        l_last: &Polynomial<F, B>,
+        l_active_row: &Polynomial<F, B>,
+        permutation_pk_cosets: &[Polynomial<F, B>],
+    ) -> Polynomial<F, B> {
+        let size = B::len(domain);
+        let rot_scale = 1 << (B::k(domain) - domain.k());
+        let omega = B::omega(domain);
         let isize = size as i32;
         let one = F::ONE;
-        let l0 = &pk.l0;
-        let l_last = &pk.l_last;
-        let l_active_row = &pk.l_active_row;
-        let p = &pk.vk.cs.permutation;
 
-        // Calculate the advice and instance cosets
-        let advice: Vec<Vec<Polynomial<F, ExtendedLagrangeCoeff>>> = advice_polys
-            .iter()
-            .map(|advice_polys| {
-                advice_polys
-                    .iter()
-                    .map(|poly| domain.coeff_to_extended(poly.clone()))
-                    .collect()
-            })
-            .collect();
-        let instance: Vec<Vec<Polynomial<F, ExtendedLagrangeCoeff>>> = instance_polys
-            .iter()
-            .map(|instance_polys| {
-                instance_polys
-                    .iter()
-                    .map(|poly| domain.coeff_to_extended(poly.clone()))
-                    .collect()
-            })
-            .collect();
+        let p = &cs.permutation;
 
-        let mut values = domain.empty_extended();
+        let mut values = B::empty(domain);
 
         // Core expression evaluations
         let num_threads = rayon::current_num_threads();
@@ -327,7 +306,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                         let mut eval_data = self.custom_gates.instance();
                         for (i, value) in values.iter_mut().enumerate() {
                             let idx = start + i;
-                            *value = self.custom_gates.evaluate(
+                            *value = self.custom_gates.evaluate::<B>(
                                 &mut eval_data,
                                 fixed,
                                 advice,
@@ -350,14 +329,14 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
             // Permutations
             let sets = &permutation.sets;
             if !sets.is_empty() {
-                let blinding_factors = pk.vk.cs.blinding_factors();
+                let blinding_factors = cs.blinding_factors();
                 let last_rotation = Rotation(-((blinding_factors + 1) as i32));
-                let chunk_len = pk.vk.cs.degree() - 2;
-                let delta_start = beta * &pk.vk.domain.g_coset;
+                let chunk_len = cs.degree() - 2;
+                let delta_start = beta * &B::g_coset(domain);
 
-                let permutation_product_cosets: Vec<Polynomial<F, ExtendedLagrangeCoeff>> = sets
+                let permutation_product_cosets: Vec<Polynomial<F, B>> = sets
                     .iter()
-                    .map(|set| domain.coeff_to_extended(set.permutation_product_poly.clone()))
+                    .map(|set| B::coeff_to_self(domain, set.permutation_product_poly.clone()))
                     .collect();
 
                 let first_set_permutation_product_coset =
@@ -366,7 +345,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
 
                 // Permutation constraints
                 parallelize(&mut values, |values, start| {
-                    let mut beta_term = extended_omega.pow_vartime([start as u64, 0, 0, 0]);
+                    let mut beta_term = omega.pow_vartime([start as u64, 0, 0, 0]);
                     for (i, value) in values.iter_mut().enumerate() {
                         let idx = start + i;
                         let r_next = get_rotation_idx(idx, 1, rot_scale, isize);
@@ -403,7 +382,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                             permutation_product_cosets
                                 .iter()
                                 .zip(p.columns.chunks(chunk_len))
-                                .zip(pk.permutation.cosets.chunks(chunk_len))
+                                .zip(permutation_pk_cosets.chunks(chunk_len))
                         {
                             let mut left = permutation_product_coset[r_next];
                             for (values, permutation) in columns
@@ -430,7 +409,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
 
                             *value = *value * y + ((left - right) * l_active_row[idx]);
                         }
-                        beta_term *= &extended_omega;
+                        beta_term *= &omega;
                     }
                 });
             }
@@ -440,15 +419,11 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                 // Polynomials required for this lookup.
                 // Calculated here so these only have to be kept in memory for the short time
                 // they are actually needed.
-                let product_coset = pk.vk.domain.coeff_to_extended(lookup.product_poly.clone());
-                let permuted_input_coset = pk
-                    .vk
-                    .domain
-                    .coeff_to_extended(lookup.permuted_input_poly.clone());
-                let permuted_table_coset = pk
-                    .vk
-                    .domain
-                    .coeff_to_extended(lookup.permuted_table_poly.clone());
+                let product_coset = B::coeff_to_self(domain, lookup.product_poly.clone());
+                let permuted_input_coset =
+                    B::coeff_to_self(domain, lookup.permuted_input_poly.clone());
+                let permuted_table_coset =
+                    B::coeff_to_self(domain, lookup.permuted_table_poly.clone());
 
                 // Lookup constraints
                 parallelize(&mut values, |values, start| {
@@ -687,7 +662,7 @@ impl<F: PrimeField> GraphEvaluator<F> {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn evaluate<B: Basis>(
+    pub fn evaluate<B: PolynomialRepresentation>(
         &self,
         data: &mut EvaluationData<F>,
         fixed: &[Polynomial<F, B>],
@@ -736,7 +711,7 @@ impl<F: PrimeField> GraphEvaluator<F> {
 }
 
 /// Simple evaluation of an expression
-pub fn evaluate<F: Field, B: Basis>(
+pub fn evaluate<F: Field, B: PolynomialRepresentation>(
     expression: &Expression<F>,
     size: usize,
     rot_scale: i32,

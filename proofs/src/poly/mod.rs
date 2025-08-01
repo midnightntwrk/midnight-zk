@@ -6,10 +6,12 @@ use std::{
     fmt::Debug,
     io,
     marker::PhantomData,
-    ops::{Add, Deref, DerefMut, Index, IndexMut, Mul, RangeFrom, RangeFull, Sub},
+    ops::{
+        Add, AddAssign, Deref, DerefMut, Index, IndexMut, Mul, MulAssign, RangeFrom, RangeFull, Sub,
+    },
 };
 
-use ff::{BatchInvert, PrimeField};
+use ff::{BatchInvert, PrimeField, WithSmallOrderMulGroup};
 use group::ff::Field;
 use halo2curves::serde::SerdeObject;
 
@@ -41,31 +43,143 @@ pub enum Error {
     DuplicatedQuery,
 }
 
-/// The basis over which a polynomial is described.
-pub trait Basis: Copy + Debug + Send + Sync {}
+/// The representation with which a polynomial is encoded.
+pub trait PolynomialRepresentation: Copy + Debug + Send + Sync {
+    /// Computes the number of field elements needed to encode a polynomial
+    /// in this representation for a given evaluation domain.
+    fn len<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> usize;
+
+    /// Constructs an empty (zero) polynomial in this representation,
+    /// appropriate for the given domain.
+    fn empty<F: WithSmallOrderMulGroup<3>>(
+        evaluation_domain: &EvaluationDomain<F>,
+    ) -> Polynomial<F, Self> {
+        Polynomial {
+            values: vec![F::ZERO; Self::len(evaluation_domain)],
+            _marker: Default::default(),
+        }
+    }
+
+    /// Returns the generator `ω` associated with the evaluation domain.
+    fn omega<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> F;
+
+    /// Returns the logarithmic size parameter `k` of the evaluation domain,
+    /// where the domain size is `2^k`.
+    fn k<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> u32;
+
+    /// Converts a polynomial from coefficient form into this representation
+    /// over the given evaluation domain.
+    fn coeff_to_self<F: WithSmallOrderMulGroup<3>>(
+        evaluation_domain: &EvaluationDomain<F>,
+        poly: Polynomial<F, Coeff>,
+    ) -> Polynomial<F, Self>;
+
+    /// Returns the multiplicative coset generator `g_coset` if this
+    /// representation uses an extended domain.
+    fn g_coset<F: WithSmallOrderMulGroup<3>>(_evaluation_domain: &EvaluationDomain<F>) -> F;
+}
 
 /// The polynomial is defined as coefficients
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Coeff;
-impl Basis for Coeff {}
+impl PolynomialRepresentation for Coeff {
+    fn len<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> usize {
+        evaluation_domain.n as usize
+    }
+
+    fn omega<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> F {
+        evaluation_domain.get_omega()
+    }
+
+    fn k<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> u32 {
+        evaluation_domain.k()
+    }
+
+    fn coeff_to_self<F: WithSmallOrderMulGroup<3>>(
+        _evaluation_domain: &EvaluationDomain<F>,
+        poly: Polynomial<F, Coeff>,
+    ) -> Polynomial<F, Self> {
+        poly
+    }
+
+    fn g_coset<F: WithSmallOrderMulGroup<3>>(_evaluation_domain: &EvaluationDomain<F>) -> F {
+        F::ONE
+    }
+}
 
 /// The polynomial is defined as coefficients of Lagrange basis polynomials
 #[derive(Clone, Copy, Debug)]
 pub struct LagrangeCoeff;
-impl Basis for LagrangeCoeff {}
+impl PolynomialRepresentation for LagrangeCoeff {
+    fn len<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> usize {
+        evaluation_domain.n as usize
+    }
+
+    fn omega<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> F {
+        evaluation_domain.get_omega()
+    }
+
+    fn k<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> u32 {
+        evaluation_domain.k()
+    }
+
+    fn coeff_to_self<F: WithSmallOrderMulGroup<3>>(
+        evaluation_domain: &EvaluationDomain<F>,
+        poly: Polynomial<F, Coeff>,
+    ) -> Polynomial<F, Self> {
+        evaluation_domain.coeff_to_lagrange(poly)
+    }
+
+    fn g_coset<F: WithSmallOrderMulGroup<3>>(_evaluation_domain: &EvaluationDomain<F>) -> F {
+        F::ONE
+    }
+}
 
 /// The polynomial is defined as coefficients of Lagrange basis polynomials in
 /// an extended size domain which supports multiplication
 #[derive(Clone, Copy, Debug)]
 pub struct ExtendedLagrangeCoeff;
-impl Basis for ExtendedLagrangeCoeff {}
+impl PolynomialRepresentation for ExtendedLagrangeCoeff {
+    fn len<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> usize {
+        evaluation_domain.extended_len()
+    }
+
+    fn omega<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> F {
+        evaluation_domain.get_extended_omega()
+    }
+
+    fn k<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> u32 {
+        evaluation_domain.extended_k()
+    }
+
+    fn coeff_to_self<F: WithSmallOrderMulGroup<3>>(
+        evaluation_domain: &EvaluationDomain<F>,
+        poly: Polynomial<F, Coeff>,
+    ) -> Polynomial<F, Self> {
+        evaluation_domain.coeff_to_extended(poly)
+    }
+
+    fn g_coset<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> F {
+        evaluation_domain.g_coset
+    }
+}
 
 /// Represents a univariate polynomial defined over a field and a particular
-/// basis.
+/// representation.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Polynomial<F, B> {
     pub(crate) values: Vec<F>,
     pub(crate) _marker: PhantomData<B>,
+}
+
+impl<F: PrimeField, B> Polynomial<F, B> {
+    /// Creates a zero polynomial of the given size.
+    pub fn init(num_coeffs: usize) -> Self {
+        Polynomial {
+            values: vec![F::ZERO; num_coeffs],
+            _marker: PhantomData,
+        }
+    }
 }
 
 impl<F, B> Index<usize> for Polynomial<F, B> {
@@ -126,13 +240,13 @@ impl<F, B> DerefMut for Polynomial<F, B> {
 
 impl<F, B> Polynomial<F, B> {
     /// Iterate over the values, which are either in coefficient or evaluation
-    /// form depending on the basis `B`.
+    /// form depending on the representation `B`.
     pub fn iter(&self) -> impl Iterator<Item = &F> {
         self.values.iter()
     }
 
     /// Iterate over the values mutably, which are either in coefficient or
-    /// evaluation form depending on the basis `B`.
+    /// evaluation form depending on the representation `B`.
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut F> {
         self.values.iter_mut()
     }
@@ -217,21 +331,28 @@ impl<F: Field> Polynomial<Rational<F>, LagrangeCoeff> {
     }
 }
 
-impl<'a, F: Field, B: Basis> Add<&'a Polynomial<F, B>> for Polynomial<F, B> {
+impl<'a, F: Field, B: PolynomialRepresentation> Add<&'a Polynomial<F, B>> for Polynomial<F, B> {
     type Output = Polynomial<F, B>;
 
     fn add(mut self, rhs: &'a Polynomial<F, B>) -> Polynomial<F, B> {
+        self.add_assign(rhs);
+        self
+    }
+}
+
+impl<'a, F: Field, B: PolynomialRepresentation> AddAssign<&'a Polynomial<F, B>>
+    for Polynomial<F, B>
+{
+    fn add_assign(&mut self, rhs: &'a Polynomial<F, B>) {
         parallelize(&mut self.values, |lhs, start| {
             for (lhs, rhs) in lhs.iter_mut().zip(rhs.values[start..].iter()) {
                 *lhs += *rhs;
             }
         });
-
-        self
     }
 }
 
-impl<F: Field, B: Basis> Add<Polynomial<F, B>> for Polynomial<F, B> {
+impl<F: Field, B: PolynomialRepresentation> Add<Polynomial<F, B>> for Polynomial<F, B> {
     type Output = Polynomial<F, B>;
 
     fn add(mut self, rhs: Polynomial<F, B>) -> Polynomial<F, B> {
@@ -245,7 +366,7 @@ impl<F: Field, B: Basis> Add<Polynomial<F, B>> for Polynomial<F, B> {
     }
 }
 
-impl<'a, F: Field, B: Basis> Sub<&'a Polynomial<F, B>> for Polynomial<F, B> {
+impl<'a, F: Field, B: PolynomialRepresentation> Sub<&'a Polynomial<F, B>> for Polynomial<F, B> {
     type Output = Polynomial<F, B>;
 
     fn sub(mut self, rhs: &'a Polynomial<F, B>) -> Polynomial<F, B> {
@@ -260,7 +381,7 @@ impl<'a, F: Field, B: Basis> Sub<&'a Polynomial<F, B>> for Polynomial<F, B> {
 }
 
 impl<F: Field> Polynomial<F, LagrangeCoeff> {
-    /// Rotates the values in a Lagrange basis polynomial by `Rotation`
+    /// Rotates the values in a `LagrangeCoeff` polynomial by `Rotation`
     pub fn rotate(&self, rotation: Rotation) -> Polynomial<F, LagrangeCoeff> {
         let mut values = self.values.clone();
         if rotation.0 < 0 {
@@ -275,33 +396,34 @@ impl<F: Field> Polynomial<F, LagrangeCoeff> {
     }
 }
 
-impl<F: Field, B: Basis> Mul<F> for Polynomial<F, B> {
+impl<F: Field, B: PolynomialRepresentation> Mul<F> for Polynomial<F, B> {
     type Output = Polynomial<F, B>;
 
     fn mul(mut self, rhs: F) -> Polynomial<F, B> {
+        self.mul_assign(rhs);
+        self
+    }
+}
+
+impl<F: Field, B: PolynomialRepresentation> MulAssign<F> for Polynomial<F, B> {
+    fn mul_assign(&mut self, rhs: F) {
         if rhs == F::ZERO {
             parallelize(&mut self.values, |lhs, _| {
                 for lhs in lhs.iter_mut() {
                     *lhs = F::ZERO;
                 }
             });
-            return self;
+        } else if rhs != F::ONE {
+            parallelize(&mut self.values, |lhs, _| {
+                for lhs in lhs.iter_mut() {
+                    *lhs *= rhs;
+                }
+            });
         }
-        if rhs == F::ONE {
-            return self;
-        }
-
-        parallelize(&mut self.values, |lhs, _| {
-            for lhs in lhs.iter_mut() {
-                *lhs *= rhs;
-            }
-        });
-
-        self
     }
 }
 
-impl<F: Field, B: Basis> Sub<F> for &Polynomial<F, B> {
+impl<F: Field, B: PolynomialRepresentation> Sub<F> for &Polynomial<F, B> {
     type Output = Polynomial<F, B>;
 
     fn sub(self, rhs: F) -> Polynomial<F, B> {

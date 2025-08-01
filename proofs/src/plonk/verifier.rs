@@ -4,17 +4,14 @@ use ff::{FromUniformBytes, WithSmallOrderMulGroup};
 
 use super::{vanishing, Error, VerifyingKey};
 use crate::{
+    plonk::traces::VerifierTrace,
     poly::{commitment::PolynomialCommitmentScheme, VerifierQuery},
     transcript::{read_n, Hashable, Sampleable, Transcript},
     utils::arithmetic::compute_inner_product,
 };
 
-/// Prepares a plonk proof into a PCS instance that can be finalized or batched.
-/// It is responsibility of the verifier to check the validity of the instance
-/// columns.
-///
-/// The verifier will error if there are trailing bytes in the transcript.
-pub fn prepare<F, CS: PolynomialCommitmentScheme<F>, T: Transcript>(
+/// Given a plonk proof, this function parses it to extract the verifying trace.
+pub(crate) fn parse_trace<F, CS, T>(
     vk: &VerifyingKey<F, CS>,
     // Unlike the prover, the verifier gets their instances in two arguments:
     // committed and normal (non-committed). Note that the total number of
@@ -24,8 +21,10 @@ pub fn prepare<F, CS: PolynomialCommitmentScheme<F>, T: Transcript>(
     #[cfg(feature = "committed-instances")] committed_instances: &[&[CS::Commitment]],
     instances: &[&[&[F]]],
     transcript: &mut T,
-) -> Result<CS::VerificationGuard, Error>
+) -> Result<VerifierTrace<F, CS>, Error>
 where
+    CS: PolynomialCommitmentScheme<F>,
+    T: Transcript,
     F: WithSmallOrderMulGroup<3>
         + Hashable<T::Hash>
         + Sampleable<T::Hash>
@@ -143,6 +142,60 @@ where
     // Sample y challenge, which keeps the gates linearly independent.
     let y: F = transcript.squeeze_challenge();
 
+    Ok(VerifierTrace {
+        advice_commitments,
+        vanishing,
+        lookups: lookups_committed,
+        permutations: permutations_committed,
+        challenges,
+        beta,
+        gamma,
+        theta,
+        y,
+    })
+}
+
+/// Given a [VerifierTrace], this function verifies the algebraic constraints
+/// with the claimed evaluations, but does not verify the PCS proof.
+///
+/// The verifier will error if there are trailing bits in the transcript.
+pub(crate) fn verify_algebraic_constraints<F, CS: PolynomialCommitmentScheme<F>, T: Transcript>(
+    vk: &VerifyingKey<F, CS>,
+    trace: VerifierTrace<F, CS>,
+    // Unlike the prover, the verifier gets their instances in two arguments:
+    // committed and normal (non-committed). Note that the total number of
+    // instance columns is expected to be the sum of committed instances and
+    // normal instances for every proof. (Committed instances go first, that is,
+    // the first instance columns are devoted to committed instances.)
+    #[cfg(feature = "committed-instances")] committed_instances: &[&[CS::Commitment]],
+    instances: &[&[&[F]]],
+    transcript: &mut T,
+) -> Result<CS::VerificationGuard, Error>
+where
+    F: WithSmallOrderMulGroup<3>
+        + Hashable<T::Hash>
+        + Sampleable<T::Hash>
+        + FromUniformBytes<64>
+        + Ord,
+    CS::Commitment: Hashable<T::Hash>,
+{
+    #[cfg(not(feature = "committed-instances"))]
+    let committed_instances: Vec<Vec<CS::Commitment>> = vec![vec![]; instances.len()];
+    let nb_committed_instances = committed_instances[0].len();
+    let num_proofs = instances.len();
+
+    let VerifierTrace {
+        advice_commitments,
+        vanishing,
+        lookups,
+        permutations,
+        challenges,
+        beta,
+        gamma,
+        theta,
+        y,
+    } = trace;
+
     let vanishing = vanishing.read_commitments_after_y(vk, transcript)?;
 
     // Sample x challenge, which is used to ensure the circuit is
@@ -206,12 +259,12 @@ where
 
     let permutations_common = vk.permutation.evaluate(transcript)?;
 
-    let permutations_evaluated = permutations_committed
+    let permutations_evaluated = permutations
         .into_iter()
         .map(|permutation| permutation.evaluate(transcript))
         .collect::<Result<Vec<_>, _>>()?;
 
-    let lookups_evaluated = lookups_committed
+    let lookups_evaluated = lookups
         .into_iter()
         .map(|lookups| -> Result<Vec<_>, _> {
             lookups
@@ -362,4 +415,46 @@ where
     // We are now convinced the circuit is satisfied so long as the
     // polynomial commitments open to the correct values.
     CS::multi_prepare(queries, transcript).map_err(|_| Error::Opening)
+}
+
+/// Prepares a plonk proof into a PCS instance that can be finalized or
+/// batched. It is responsibility of the verifier to check the validity of the
+/// instance columns.
+///
+/// The verifier will error if there are trailing bytes in the transcript.
+pub fn prepare<F, CS: PolynomialCommitmentScheme<F>, T: Transcript>(
+    vk: &VerifyingKey<F, CS>,
+    // Unlike the prover, the verifier gets their instances in two arguments:
+    // committed and normal (non-committed). Note that the total number of
+    // instance columns is expected to be the sum of committed instances and
+    // normal instances for every proof. (Committed instances go first, that is,
+    // the first instance columns are devoted to committed instances.)
+    #[cfg(feature = "committed-instances")] committed_instances: &[&[CS::Commitment]],
+    instances: &[&[&[F]]],
+    transcript: &mut T,
+) -> Result<CS::VerificationGuard, Error>
+where
+    F: WithSmallOrderMulGroup<3>
+        + Hashable<T::Hash>
+        + Sampleable<T::Hash>
+        + FromUniformBytes<64>
+        + Ord,
+    CS::Commitment: Hashable<T::Hash>,
+{
+    let trace = parse_trace(
+        vk,
+        #[cfg(feature = "committed-instances")]
+        committed_instances,
+        instances,
+        transcript,
+    )?;
+
+    verify_algebraic_constraints(
+        vk,
+        trace,
+        #[cfg(feature = "committed-instances")]
+        committed_instances,
+        instances,
+        transcript,
+    )
 }
