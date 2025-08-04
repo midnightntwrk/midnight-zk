@@ -16,6 +16,8 @@ verification keys break backwards compatibility.
 * Add goldenfiles with examples cost-model [#89](https://github.com/midnightntwrk/midnight-zk/pull/89)
 * New SHA256 chip [#39](https://github.com/midnightntwrk/midnight-zk/pull/39)
 
+* Add Schnorr signature example [#55](https://github.com/midnightntwrk/midnight-zk/pull/55)
+
 ### Changed
 * Refactored crate to prepare for edition 2024.
 * Zswap example was moved to a benchmark [#46](https://github.com/midnightntwrk/midnight-zk/pull/46)
