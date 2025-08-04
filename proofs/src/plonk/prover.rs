@@ -589,6 +589,7 @@ where
         beta,
         gamma,
         theta,
+        trash_challenge,
         vanishing,
         ..
     } = trace;
@@ -631,7 +632,9 @@ where
         beta,
         gamma,
         theta,
+        trash_challenge,
         &lookups,
+        &trashcans,
         &permutations,
         &pk.l0,
         &pk.l_last,
