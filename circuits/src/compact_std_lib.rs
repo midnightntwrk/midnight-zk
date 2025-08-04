@@ -47,6 +47,7 @@ use midnight_proofs::{
 };
 use num_bigint::BigUint;
 use rand::{CryptoRng, RngCore};
+use serde::{Deserialize, Serialize};
 
 use crate::{
     biguint::biguint_gadget::BigUintGadget,
@@ -105,7 +106,7 @@ type Bls12381BaseChip = FieldChip<F, midnight_curves::Fp, MEP, NG>;
 type Bls12381Chip = ForeignEccChip<F, midnight_curves::G1Projective, MEP, NG, NG>;
 
 /// Size of the lookup table for SHA.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub enum ShaTableSize {
     /// Table of size 2^11.
     Table11,
@@ -120,7 +121,7 @@ const ZKSTD_VERSION: u32 = 1;
 /// configured.
 ///
 /// Note, the maximum number of [`ZkStdLibArch::nr_pow2range_cols`] is 7.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct ZkStdLibArch {
     /// Enable the Jubjub chip?
     pub jubjub: bool,
@@ -158,56 +159,11 @@ impl Default for ZkStdLibArch {
     }
 }
 
-impl From<ZkStdLibArch> for u16 {
-    fn from(arch: ZkStdLibArch) -> Self {
-        let bit0 = if arch.jubjub { 1 } else { 0 };
-        let bit1 = if arch.poseidon { 1 } else { 0 };
-        let bits23 = match arch.sha256 {
-            None => 0,
-            Some(ShaTableSize::Table11) => 1,
-            Some(ShaTableSize::Table16) => 2,
-        };
-        let bit4 = if arch.secp256k1 { 1 } else { 0 };
-        let bit5 = if arch.bls12_381 { 1 } else { 0 };
-        let bit6 = if arch.base64 { 1 } else { 0 };
-        let bits789 = arch.nr_pow2range_cols;
-
-        // (Big-endian) binary representation 0b|bit9|bit8|bit7|...|bit3|bit2|bit1|bit0|
-        bit0 ^ (bit1 << 1)
-            ^ (bits23 << 2)
-            ^ (bit4 << 4)
-            ^ (bit5 << 5)
-            ^ (bit6 << 6)
-            ^ (bits789 << 7) as u16
-    }
-}
-
-impl TryInto<ZkStdLibArch> for u16 {
-    type Error = io::Error;
-
-    fn try_into(self) -> Result<ZkStdLibArch, Self::Error> {
-        Ok(ZkStdLibArch {
-            jubjub: self & 1 != 0,
-            poseidon: self & 2 != 0,
-            sha256: match (self >> 2) & 0b11 {
-                0 => None,
-                1 => Some(ShaTableSize::Table11),
-                2 => Some(ShaTableSize::Table16),
-                _ => return Err(io::Error::from(io::ErrorKind::InvalidInput)),
-            },
-            secp256k1: self & 16 != 0,
-            bls12_381: self & 32 != 0,
-            base64: self & 64 != 0,
-            nr_pow2range_cols: ((self >> 7) & 0b111) as u8,
-        })
-    }
-}
-
 impl ZkStdLibArch {
     /// Writes the ZKStd architecture to a buffer.
     pub fn write<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
         writer.write_all(&ZKSTD_VERSION.to_le_bytes())?;
-        writer.write_all(&u16::from(*self).to_le_bytes())
+        bincode::serialize_into(writer, self).map_err(|e| io::Error::new(io::ErrorKind::Other, e))
     }
 
     /// Reads the ZkStd architecture from a buffer.
@@ -216,11 +172,8 @@ impl ZkStdLibArch {
         reader.read_exact(&mut version)?;
         let version = u32::from_le_bytes(version);
         match version {
-            1 => {
-                let mut bytes = [0u8; 2];
-                reader.read_exact(&mut bytes)?;
-                u16::from_le_bytes(bytes).try_into()
-            }
+            1 => bincode::deserialize_from(reader)
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e)),
             _ => Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 format!("Unsupported ZKStd version: {}", version),
