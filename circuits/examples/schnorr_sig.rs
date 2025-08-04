@@ -77,12 +77,9 @@ fn sign(message: Message, secret_key: SchnorrSK, mut rng: impl RngCore) -> Schno
     let (x, y) = get_coords(r);
 
     let e = Scalar(PoseidonChip::hash(&[x, y, message]));
-
     let s = k + e.to_scalar() * secret_key;
-    SchnorrSignature {
-        s: s.into(),
-        e: e.into(),
-    }
+
+    SchnorrSignature { s: s.into(), e }
 }
 
 fn verify(sig: SchnorrSignature, pk: SchnorrPK, m: Message) -> Result<(), Error> {
@@ -95,7 +92,7 @@ fn verify(sig: SchnorrSignature, pk: SchnorrPK, m: Message) -> Result<(), Error>
     let ev = PoseidonChip::hash(&[x, y, m]);
 
     assert_eq!(ev, sig.e.0);
-    return Ok(());
+    Ok(())
 }
 
 // Returns the affine coordinates of a given Jubjub point.
@@ -114,7 +111,7 @@ impl Relation for SchnorrExample {
         let sig_e = instance.0.e.0;
         let pk = AssignedNativePoint::<Jubjub>::as_public_input(&instance.1);
         let m = instance.2;
-        [vec![sig_s, sig_e], pk, vec![m]].concat().into()
+        [vec![sig_s, sig_e], pk, vec![m]].concat()
     }
 
     fn circuit(
@@ -199,10 +196,10 @@ fn main() {
     for _ in 0..N {
         let (schnorr_pk, sk) = keygen(&mut rng);
         let m = F::random(&mut rng);
-        let sig = sign(m.clone(), sk, &mut rng);
+        let sig = sign(m, sk, &mut rng);
 
         // sanity check
-        assert!(verify(sig.clone(), schnorr_pk.clone(), m.clone()).is_ok());
+        assert!(verify(sig.clone(), schnorr_pk, m).is_ok());
 
         let instance = (sig, schnorr_pk, m);
 
