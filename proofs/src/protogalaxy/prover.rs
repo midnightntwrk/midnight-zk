@@ -67,11 +67,72 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>, const K: usize> Protogala
         )?
         .into_folding_trace(pk.fixed_values.clone());
 
+        let FoldingProverTrace {
+            fixed_polys,
+            advice_polys,
+            instance_values,
+            lookups,
+            permutations: permutation,
+            challenges,
+            beta,
+            gamma,
+            theta,
+            y,
+            ..
+        } = &folded_trace;
+
+        let advice_lagrange = advice_polys
+            .iter()
+            .map(|a| {
+                a.iter()
+                    .map(|p| pk.vk.get_domain().coeff_to_lagrange(p.clone()))
+                    .collect()
+            })
+            .collect::<Vec<_>>();
+
+        let folding_pk = FoldingPk::from(pk);
+
+        let witness_poly = folding_pk.ev.evaluate_h::<LagrangeCoeff>(
+            &folding_pk.domain,
+            &folding_pk.cs,
+            &advice_lagrange
+                .iter()
+                .map(Vec::as_slice)
+                .collect::<Vec<_>>(),
+            &instance_values
+                .iter()
+                .map(|i| i.as_slice())
+                .collect::<Vec<_>>(),
+            &fixed_polys,
+            &challenges,
+            *y,
+            *beta,
+            *gamma,
+            *theta,
+            &lookups,
+            &permutation,
+            &folding_pk.l0,
+            &folding_pk.l_last,
+            &folding_pk.l_active_row,
+            &folding_pk.permutation_pk_cosets,
+        );
+
+        let beta_powers = [F::ONE; K];
+        let expected_result = witness_poly
+            .values
+            .into_par_iter()
+            .zip(beta_powers.par_iter())
+            .map(|(witness, beta_pow)| witness * beta_pow)
+            .reduce(|| F::ZERO, |a, b| a + b);
+
+        assert_eq!(expected_result, F::ZERO);
+        println!("Passed initialisation");
+
         Ok(Self {
-            folding_pk: FoldingPk::from(pk),
+            folding_pk,
             folded_trace,
             error_term: F::ZERO,
-            beta_powers: [F::ONE; K],
+            beta_powers,
             _commitment_scheme: Default::default(),
         })
     }
@@ -123,6 +184,7 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>, const K: usize> Protogala
             .collect::<Result<Vec<_>, Error>>()?;
 
         let mut delta = transcript.squeeze_challenge();
+        println!("Delta: {:?}", delta);
         let delta_powers: [F; K] = std::array::from_fn(|_| {
             let res = delta;
             delta = delta * delta;
@@ -149,6 +211,7 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>, const K: usize> Protogala
         let alpha = transcript.squeeze_challenge();
 
         let committed_at_alpha = eval_polynomial(&committed_f_poly.values, alpha);
+        assert_eq!(committed_at_alpha, F::ZERO);
         let f_at_alpha = committed_at_alpha + self.error_term;
 
         // We include the evaluation of the committed f at alpha
@@ -179,24 +242,10 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>, const K: usize> Protogala
         let lifted_trace = batch_traces(&dk_domain, &traces);
         let lift_trace_time = time.elapsed().as_millis();
 
-        let mut rng = ChaCha8Rng::from_seed([0u8; 32]);
-        let mut betas = vec![F::ONE; self.folding_pk.domain.k() as usize];
-        let mut beta_pow = F::random(&mut rng);
-        for beta in betas.iter_mut() {
-            *beta = beta_pow;
-            beta_pow *= beta_pow
-        }
-
-        let beta_time = time.elapsed().as_millis() - lift_trace_time;
-
         let poly_g = compute_poly_g(&self.folding_pk, &beta_star, &lifted_trace);
-        let poly_g_time = time.elapsed().as_millis() - beta_time - lift_trace_time;
+        let poly_g_time = time.elapsed().as_millis() - lift_trace_time;
 
-        // Now we subtract f_at_alpha and divide by the vanishing polynomial
-        let mut poly_g_minus_f_at_alpha = poly_g.clone();
-        // TODO: Is this correct?
-        poly_g_minus_f_at_alpha.values[0] -= f_at_alpha;
-        let poly_k = dk_domain.divide_by_vanishing_poly(poly_g_minus_f_at_alpha.clone());
+        let poly_k = dk_domain.divide_by_vanishing_poly(poly_g.clone());
         let poly_k_coeff = Polynomial {
             values: dk_domain.extended_to_coeff(poly_k),
             _marker: PhantomData,
@@ -205,9 +254,10 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>, const K: usize> Protogala
         transcript.write(&CS::commit(params, &poly_k_coeff))?;
 
         let gamma = transcript.squeeze_challenge();
+        println!("Gamma: {:?}", gamma);
 
         // Final check. Eval G(X), K(X) and Z(X) in \gamma
-        let poly_to_eval_coeff = dk_domain.extended_to_coeff(poly_g_minus_f_at_alpha);
+        let poly_to_eval_coeff = dk_domain.extended_to_coeff(poly_g);
         let g_in_gamma = eval_polynomial(&poly_to_eval_coeff, gamma);
         let k_in_gamma = eval_polynomial(&poly_k_coeff.values, gamma);
         let z_in_gamma = gamma.pow_vartime([dk_domain.n]) - F::ONE;
@@ -218,14 +268,74 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>, const K: usize> Protogala
         assert_eq!(g_in_gamma, k_in_gamma * z_in_gamma);
 
         // Update error term
-        let poly_g_coeff = dk_domain.extended_to_coeff(poly_g);
-        self.error_term = eval_polynomial(&poly_g_coeff, gamma);
+        self.error_term = g_in_gamma;
+        self.beta_powers = beta_star.try_into().unwrap();
+        println!("Error term prover: {:?}", self.error_term);
 
         self.folded_trace = fold_traces(&dk_domain, &traces, &gamma);
-        let rest_time = time.elapsed().as_millis() - poly_g_time - beta_time - lift_trace_time;
+        let rest_time = time.elapsed().as_millis() - poly_g_time - lift_trace_time;
+
+        let FoldingProverTrace {
+            fixed_polys,
+            advice_polys,
+            instance_values,
+            lookups,
+            permutations: permutation,
+            challenges,
+            beta,
+            gamma,
+            theta,
+            y,
+            ..
+        } = &self.folded_trace;
+
+        let advice_lagrange = advice_polys
+            .iter()
+            .map(|a| {
+                a.iter()
+                    .map(|p| pk.vk.get_domain().coeff_to_lagrange(p.clone()))
+                    .collect()
+            })
+            .collect::<Vec<_>>();
+
+        let witness_poly = pk.ev.evaluate_h::<LagrangeCoeff>(
+            pk.vk.get_domain(),
+            pk.vk.cs(),
+            &advice_lagrange
+                .iter()
+                .map(Vec::as_slice)
+                .collect::<Vec<_>>(),
+            &instance_values
+                .iter()
+                .map(|i| i.as_slice())
+                .collect::<Vec<_>>(),
+            &fixed_polys,
+            &challenges,
+            *y,
+            *beta,
+            *gamma,
+            *theta,
+            &lookups,
+            &permutation,
+            &self.folding_pk.l0,
+            &self.folding_pk.l_last,
+            &self.folding_pk.l_active_row,
+            &self.folding_pk.permutation_pk_cosets,
+        );
+
+        let beta_powers = pow_vec(&self.beta_powers);
+        // God bless rubber ducking
+        let expected_result = witness_poly
+            .values
+            .into_par_iter()
+            .zip(beta_powers.par_iter())
+            .map(|(witness, beta_pow)| witness * beta_pow)
+            .reduce(|| F::ZERO, |a, b| a + b);
+
+        assert_eq!(expected_result, self.error_term);
+
 
         println!("    Lift trace time      : {:?}ms", lift_trace_time);
-        println!("    Beta powers time     : {:?}ms", beta_time);
         println!("    Poly G time          : {:?}ms", poly_g_time);
         println!("    Rest time            : {:?}ms", rest_time);
 
@@ -733,6 +843,7 @@ mod tests {
         let folding_time = folding.elapsed().as_millis();
 
         let mut transcript = CircuitTranscript::init_from_bytes(&transcript.finalize());
+
         // Now we begin verification
         let protogalaxy_verifier = ProtogalaxyVerifier::<_, _, K>::init(
             &vk,
