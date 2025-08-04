@@ -64,7 +64,7 @@ pub struct Pow2RangeConfig {
 /// those columns will be asserted to be in the range [0, 2^tag), where tag is
 /// the value of the tag column at the relevant offset. Note that if the lookup
 /// is enabled, all lookup columns are range-checked in the same range. It is
-/// not possible range-check only some of them. However, different rows may
+/// not possible to range-check only some of them. However, different rows may
 /// assert different ranges (specified by the tag).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Pow2RangeChip<F: PrimeField> {
@@ -270,7 +270,6 @@ mod tests {
             layouter.assign_region(
                 || "pow2range test",
                 |mut region| {
-                    // let nr_range_check_cols = pow2range_chip.config.val_cols.len();
                     for (offset, input) in self.inputs.iter().enumerate() {
                         for i in 0..NR_COLS {
                             let col = pow2range_chip.config.val_cols[i];

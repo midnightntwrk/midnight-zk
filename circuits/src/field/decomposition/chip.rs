@@ -49,25 +49,16 @@ pub struct P2RDecompositionConfig {
 }
 
 impl P2RDecompositionConfig {
-    /// Creates the config from the configs of a native and and a pow2range
-    /// chips. It assumes that
+    /// Creates the config from the configs of a native and a pow2range chips.
     ///
-    ///  - advice_cols of pow2range_chip
-    ///  - advice_cols [1..`ZkStdLibArch::nr_pow2range_cols`+1] of native_chip
-    ///
-    /// are the same.
+    /// It assumes that the advice columns of the pow2range_chip are exactly
+    /// advice_cols[1..`ZkStdLibArch::nr_pow2range_cols`+1] of the
+    /// native chip.
     ///
     /// # Panics
     ///
-    /// This function panics when
-    /// native_config advice_cols[1..`ZkStdLibArch::nr_pow2range_cols`+1]
-    /// !=
-    /// pow2range_config val_cols
+    /// If the above condition does not hold.
     pub fn new(native_config: &NativeConfig, pow2range_config: &Pow2RangeConfig) -> Self {
-        // We assume that
-        //  - advice_cols of pow2range_chip
-        //  - advice_cols [1..`ZkStdLibArch::nr_pow2range_cols`+1] of native_chip
-        // are shared
         #[cfg(not(test))]
         assert!(
             native_config.value_cols[1..]
