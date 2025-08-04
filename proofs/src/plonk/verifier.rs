@@ -159,11 +159,13 @@ where
         advice_commitments,
         vanishing,
         lookups: lookups_committed,
+        trashcans: trashcans_committed,
         permutations: permutations_committed,
         challenges,
         beta,
         gamma,
         theta,
+        trash_challenge,
         y,
     })
 }
@@ -201,11 +203,13 @@ where
         advice_commitments,
         vanishing,
         lookups,
+        trashcans,
         permutations,
         challenges,
         beta,
         gamma,
         theta,
+        trash_challenge,
         y,
     } = trace;
 
@@ -287,7 +291,7 @@ where
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    let trashcans_evaluated = trashcans_committed
+    let trashcans_evaluated = trashcans
         .into_iter()
         .map(|trash| -> Result<Vec<_>, _> {
             trash

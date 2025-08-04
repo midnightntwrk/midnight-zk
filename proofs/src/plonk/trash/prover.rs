@@ -15,15 +15,15 @@ use crate::{
 };
 
 #[derive(Debug)]
-pub(in crate::plonk) struct Committed<F: PrimeField> {
-    pub(in crate::plonk) trash_poly: Polynomial<F, Coeff>,
+pub(crate) struct Committed<F: PrimeField> {
+    pub(crate) trash_poly: Polynomial<F, Coeff>,
 }
 
-pub(in crate::plonk) struct Evaluated<F: PrimeField>(Committed<F>);
+pub(crate) struct Evaluated<F: PrimeField>(Committed<F>);
 
 impl<F: WithSmallOrderMulGroup<3> + Ord> Argument<F> {
     #[allow(clippy::too_many_arguments)]
-    pub(in crate::plonk) fn commit<'a, 'params: 'a, CS, T>(
+    pub(crate) fn commit<'a, 'params: 'a, CS, T>(
         &self,
         pk: &ProvingKey<F, CS>,
         params: &'params CS::Parameters,
@@ -70,11 +70,7 @@ impl<F: WithSmallOrderMulGroup<3> + Ord> Argument<F> {
 }
 
 impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
-    pub(in crate::plonk) fn evaluate<T>(
-        self,
-        x: F,
-        transcript: &mut T,
-    ) -> Result<Evaluated<F>, Error>
+    pub(crate) fn evaluate<T>(self, x: F, transcript: &mut T) -> Result<Evaluated<F>, Error>
     where
         F: Hashable<T::Hash>,
         T: Transcript,
@@ -87,7 +83,7 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
 }
 
 impl<F: WithSmallOrderMulGroup<3>> Evaluated<F> {
-    pub(in crate::plonk) fn open(&self, x: F) -> impl Iterator<Item = ProverQuery<'_, F>> + Clone {
+    pub(crate) fn open(&self, x: F) -> impl Iterator<Item = ProverQuery<'_, F>> + Clone {
         vec![ProverQuery {
             point: x,
             poly: &self.0.trash_poly,

@@ -7,6 +7,7 @@ use crate::{
     transcript::{Hashable, Transcript},
 };
 
+#[derive(Debug)]
 pub struct Committed<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
     trash_commitment: CS::Commitment,
 }
@@ -48,7 +49,7 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> Committed<F, CS> {
 
 impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<F, CS> {
     #[allow(clippy::too_many_arguments)]
-    pub(in crate::plonk) fn expressions<'a>(
+    pub(crate) fn expressions<'a>(
         &'a self,
         argument: &'a Argument<F>,
         trash_challenge: F,
@@ -80,10 +81,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
         vec![compressed_expressions - (F::ONE - q) * self.trash_eval].into_iter()
     }
 
-    pub(in crate::plonk) fn queries(
-        &self,
-        x: F,
-    ) -> impl Iterator<Item = VerifierQuery<F, CS>> + Clone {
+    pub(crate) fn queries(&self, x: F) -> impl Iterator<Item = VerifierQuery<F, CS>> + Clone {
         vec![VerifierQuery::new(
             x,
             &self.committed.trash_commitment,

@@ -211,7 +211,7 @@ impl<F: PoseidonField> ComposableChip<F> for PoseidonChip<F> {
 
             let sboxed_inputs = inputs_and_hints.clone().map(|(x, x3)| x.square() * x3);
 
-            Constraints::with_selector(
+            Constraints::with_additive_selector(
                 q_full_round,
                 [
                     inputs_and_hints.map(|(x, x3)| x.clone() * x.square() - x3),

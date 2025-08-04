@@ -538,11 +538,13 @@ where
         instance_values,
         vanishing,
         lookups,
+        trashcans,
         permutations,
         challenges,
         beta,
         gamma,
         theta,
+        trash_challenge,
         y,
     })
 }
@@ -580,6 +582,7 @@ where
         advice_polys,
         instance_polys,
         lookups,
+        trashcans,
         permutations,
         challenges,
         y,
