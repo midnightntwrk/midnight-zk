@@ -519,7 +519,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
             }
 
             // Trashcans
-            for (n, trash) in trashcans.iter().enumerate() {
+            for (n, (trash, arg)) in trashcans.iter().zip(cs.trashcans.iter()).enumerate() {
                 // Polynomials required for this trash argument.
                 // Calculated here so these only have to be kept in memory for the short time
                 // they are actually needed.
@@ -550,9 +550,9 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                         );
 
                         // compressed_expressions - (1 - q ) * trash
-                        // TODO: Pick, the proper fixed poly.
                         *value = *value * y
-                            + (compressed_expression - (one - fixed[0][idx]) * trash_poly[idx]);
+                            + (compressed_expression
+                                - (one - fixed[arg.selector().index()][idx]) * trash_poly[idx]);
                     }
                 });
             }
