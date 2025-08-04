@@ -57,11 +57,10 @@ impl<C: CircuitCurve> InnerValue for AssignedNativePoint<C> {
     type Element = C::CryptographicGroup;
 
     fn value(&self) -> Value<Self::Element> {
-        self.x.value().zip(self.y.value()).map(|(x, y)| {
-            C::from_xy(*x, *y)
-                .expect("Valid coordinates.")
-                .into_subgroup()
-        })
+        self.x
+            .value()
+            .zip(self.y.value())
+            .map(|(x, y)| C::from_xy(*x, *y).expect("non-id").into_subgroup())
     }
 }
 
@@ -90,7 +89,7 @@ impl<C: CircuitCurve> AssignedNativePoint<C> {
 impl<C: CircuitCurve> Instantiable<C::Base> for AssignedNativePoint<C> {
     fn as_public_input(p: &C::CryptographicGroup) -> Vec<C::Base> {
         let point: C = (*p).into();
-        let coordinates = point.coordinates().expect("Valid affine point.");
+        let coordinates = point.coordinates().expect("non-id");
         vec![coordinates.0, coordinates.1]
     }
 }
@@ -417,18 +416,10 @@ impl<C: EdwardsCurve> EccChip<C> {
         let xr = region.assign_advice(|| "xr", config.advice_cols[5], offset, || xr_val)?;
         let yr = region.assign_advice(|| "yr", config.advice_cols[6], offset, || yr_val)?;
 
-        let (xq, yq) = q
-            .map(|q| q.coordinates().expect("Valid affine point"))
-            .unzip();
-        let (xs, ys) = s
-            .map(|s| s.coordinates().expect("Valid affine point"))
-            .unzip();
-        region.assign_advice(
-            || "xq_yq_xs_ys",
-            config.advice_cols[8],
-            offset,
-            || xq * yq * xs * ys,
-        )?;
+        let (xq, yq) = q.map(|q| q.coordinates().expect("non-id")).unzip();
+        let (xs, ys) = s.map(|s| s.coordinates().expect("non-id")).unzip();
+        let prod_val = xq * yq * xs * ys;
+        region.assign_advice(|| "xq_yq_xs_ys", config.advice_cols[8], offset, || prod_val)?;
 
         Ok(AssignedNativePoint { x: xr, y: yr })
     }
@@ -468,8 +459,8 @@ impl<C: EdwardsCurve> EccChip<C> {
             .map(|(xs, ys)| C::from_xy(xs, ys).unwrap());
         let r_val = s_val.map(|s| s + s);
 
-        let xr_val = r_val.map(|r: C| r.coordinates().expect("Valid affine point.").0);
-        let yr_val = r_val.map(|r: C| r.coordinates().expect("Valid affine point.").1);
+        let xr_val = r_val.map(|r: C| r.coordinates().expect("non-id").0);
+        let yr_val = r_val.map(|r: C| r.coordinates().expect("non-id").1);
 
         let xr = region.assign_advice(|| "xr", config.advice_cols[0], offset + 1, || xr_val)?;
         let yr = region.assign_advice(|| "yr", config.advice_cols[1], offset + 1, || yr_val)?;
@@ -481,18 +472,10 @@ impl<C: EdwardsCurve> EccChip<C> {
             || xs_val * xs_val,
         )?;
 
-        let (xp, yp) = p_val
-            .map(|c| c.coordinates().expect("Valid affine point."))
-            .unzip();
-        let (xq, yq) = q_val
-            .map(|c| c.coordinates().expect("Valid affine point."))
-            .unzip();
-        region.assign_advice(
-            || "xp_yp_xq_yq",
-            config.advice_cols[8],
-            offset,
-            || xp * yp * xq * yq,
-        )?;
+        let (xp, yp) = p_val.map(|c| c.coordinates().expect("non-id")).unzip();
+        let (xq, yq) = q_val.map(|c| c.coordinates().expect("non-id")).unzip();
+        let prod_val = xp * yp * xq * yq;
+        region.assign_advice(|| "xp_yp_xq_yq", config.advice_cols[8], offset, || prod_val)?;
 
         Ok(AssignedNativePoint { x: xr, y: yr })
     }
@@ -558,7 +541,7 @@ impl<C: EdwardsCurve> EccChip<C> {
         p.zip(q)
             .zip(b)
             .map(|((p, q), b)| if b { p + q } else { p })
-            .map(|r| r.coordinates().expect("Valid affine point."))
+            .map(|r| r.coordinates().expect("non-id"))
             .unzip()
     }
 
@@ -700,8 +683,8 @@ impl<C: EdwardsCurve> AssignmentInstructions<C::Base, AssignedNativePoint<C>> fo
         let cofactor = C::Scalar::from_u128(C::COFACTOR);
         let (x_val, y_val) = value
             .map(|p| {
-                let p = p * cofactor.invert().expect("Cofactor should not be 0");
-                p.into().coordinates().expect("Valid affine point.")
+                let p = p * cofactor.invert().expect("cofactor should not be 0");
+                p.into().coordinates().expect("non-id")
             })
             .unzip();
 
@@ -723,7 +706,7 @@ impl<C: EdwardsCurve> AssignmentInstructions<C::Base, AssignedNativePoint<C>> fo
         layouter: &mut impl Layouter<C::Base>,
         constant: C::CryptographicGroup,
     ) -> Result<AssignedNativePoint<C>, Error> {
-        let coords = constant.into().coordinates().expect("Valid affine point.");
+        let coords = constant.into().coordinates().expect("non-id");
         let x = self.native_gadget.assign_fixed(layouter, coords.0)?;
         let y = self.native_gadget.assign_fixed(layouter, coords.1)?;
         Ok(AssignedNativePoint { x, y })
@@ -783,7 +766,7 @@ impl<C: EdwardsCurve> AssertionInstructions<C::Base, AssignedNativePoint<C>> for
         p: &AssignedNativePoint<C>,
         constant: C::CryptographicGroup,
     ) -> Result<(), Error> {
-        let (cx, cy) = constant.into().coordinates().expect("Valid affine point.");
+        let (cx, cy) = constant.into().coordinates().expect("non-id");
         self.native_gadget
             .assert_equal_to_fixed(layouter, &p.x, cx)?;
         self.native_gadget.assert_equal_to_fixed(layouter, &p.y, cy)
@@ -826,9 +809,7 @@ impl<C: EdwardsCurve> PublicInputInstructions<C::Base, AssignedNativePoint<C>> f
         p: Value<C::CryptographicGroup>,
     ) -> Result<AssignedNativePoint<C>, Error> {
         // We can skip the curve equation check in this case.
-        let (x, y) = p
-            .map(|p| p.into().coordinates().expect("Valid affine point."))
-            .unzip();
+        let (x, y) = p.map(|p| p.into().coordinates().expect("non-id")).unzip();
         let x = self.native_gadget.assign_as_public_input(layouter, x)?;
         let y = self.native_gadget.assign_as_public_input(layouter, y)?;
         Ok(AssignedNativePoint { x, y })
@@ -889,7 +870,7 @@ impl<C: EdwardsCurve> EqualityInstructions<C::Base, AssignedNativePoint<C>> for 
         p: &AssignedNativePoint<C>,
         constant: C::CryptographicGroup,
     ) -> Result<AssignedBit<C::Base>, Error> {
-        let (cx, cy) = constant.into().coordinates().expect("Valid affine point.");
+        let (cx, cy) = constant.into().coordinates().expect("non-id");
         let eq_x = self.native_gadget.is_equal_to_fixed(layouter, &p.x, cx)?;
         let eq_y = self.native_gadget.is_equal_to_fixed(layouter, &p.y, cy)?;
         self.native_gadget.and(layouter, &[eq_x, eq_y])
