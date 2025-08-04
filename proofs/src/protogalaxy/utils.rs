@@ -126,9 +126,10 @@ pub fn batch_traces<F: PrimeField + WithSmallOrderMulGroup<3>>(
         .collect::<Vec<_>>();
 
     let dk_domain_size = lagrange_polys[0].num_coeffs();
+    assert_eq!(dk_domain_size, dk_domain.extended_len());
     let trace_domain_size = traces[0].fixed_polys[0].num_coeffs();
 
-    (0..dk_domain_size)
+    (0..dk_domain.extended_len())
         .map(|i| {
             let buffer = FoldingProverTrace::init(
                 trace_domain_size,

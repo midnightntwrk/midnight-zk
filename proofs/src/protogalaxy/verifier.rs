@@ -118,6 +118,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
             .collect::<Result<Vec<_>, Error>>()?;
 
         let mut delta = transcript.squeeze_challenge();
+        println!("Delta: {:?}", delta);
         let delta_powers: [F; K] = std::array::from_fn(|_| {
             let res = delta;
             delta = delta * delta;
@@ -141,6 +142,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
 
         let _poly_k: CS::Commitment = transcript.read()?;
         let gamma: F = transcript.squeeze_challenge();
+        println!("Gamma: {:?}", gamma);
         let k_at_gamma: F = transcript.read()?;
         let z_in_gamma = gamma.pow_vartime([dk_domain.n]) - F::ONE;
 
@@ -150,6 +152,8 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         let l0_at_gamma = eval_polynomial(&l0_coeff, gamma);
 
         self.error_term = f_at_alpha * l0_at_gamma + z_in_gamma * k_at_gamma;
+        println!("Error term verifier: {:?}", self.error_term);
+        println!("Beta powers verifier: {:?}", self.beta_powers);
 
         // TODO: need to verify the polynomial commitment openings
         Ok(self)
