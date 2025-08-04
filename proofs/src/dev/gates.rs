@@ -33,7 +33,7 @@ struct Gate {
 /// use midnight_proofs::{
 ///     circuit::{Layouter, SimpleFloorPlanner},
 ///     dev::CircuitGates,
-///     plonk::{Circuit, ConstraintSystem, Error},
+///     plonk::{Circuit, ConstraintSystem, Constraints, Error},
 ///     poly::Rotation,
 /// };
 ///
@@ -63,9 +63,8 @@ struct Gate {
 ///             let a = meta.query_advice(a, Rotation::cur());
 ///             let b = meta.query_advice(b, Rotation::cur());
 ///             let c = meta.query_advice(c, Rotation::cur());
-///             let s = meta.query_selector(s);
 ///
-///             Some(("R1CS", s * (a * b - c)))
+///             Constraints::with_selector(s, vec![("R1CS", (a * b - c))])
 ///         });
 ///
 ///         // We aren't using this circuit for anything in this example.

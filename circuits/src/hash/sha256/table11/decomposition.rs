@@ -606,12 +606,10 @@ impl SpreadTableConfig {
             let c = meta.query_fixed(c, Rotation::cur());
             let c_prime = meta.query_fixed(c_prime, Rotation::cur());
 
-            let q = meta.query_selector(selector);
-
             let dense = a - (a_lo + c * a_hi);
             let spread = a_spread - (a_lo_spread + c_prime * a_hi_spread);
 
-            Constraints::with_selector(q, [dense, spread])
+            Constraints::with_selector(selector, vec![dense, spread])
         });
 
         let decomposed = DecomposedSpreadColumns {

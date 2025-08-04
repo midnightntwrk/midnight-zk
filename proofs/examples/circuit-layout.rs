@@ -4,7 +4,7 @@ use ff::Field;
 use halo2curves::pasta::Fp;
 use midnight_proofs::{
     circuit::{Cell, Layouter, Region, SimpleFloorPlanner, Value},
-    plonk::{Advice, Circuit, Column, ConstraintSystem, Error, Fixed, TableColumn},
+    plonk::{Advice, Circuit, Column, ConstraintSystem, Constraints, Error, Fixed, TableColumn},
     poly::Rotation,
     utils::rational::Rational,
 };
@@ -221,7 +221,9 @@ impl<F: Field> Circuit<F> for MyCircuit<F> {
             let sc = meta.query_fixed(sc, Rotation::cur());
             let sm = meta.query_fixed(sm, Rotation::cur());
 
-            vec![a.clone() * sa + b.clone() * sb + a * b * sm - (c * sc) + sf * (d * e)]
+            Constraints::without_selector(vec![
+                a.clone() * sa + b.clone() * sb + a * b * sm - (c * sc) + sf * (d * e),
+            ])
         });
 
         PlonkConfig {

@@ -113,8 +113,6 @@ impl MessageScheduleConfig {
 
         // s_word for W_[16..64]
         meta.create_gate("s_word for W_[16..64]", |meta| {
-            let s_word = meta.query_selector(s_word);
-
             let sigma_0_lo = meta.query_advice(a_6, Rotation::prev());
             let sigma_0_hi = meta.query_advice(a_6, Rotation::cur());
 
@@ -147,7 +145,6 @@ impl MessageScheduleConfig {
 
         // s_decompose_0 for all words
         meta.create_gate("s_decompose_0", |meta| {
-            let s_decompose_0 = meta.query_selector(s_decompose_0);
             let lo = meta.query_advice(a_3, Rotation::cur());
             let hi = meta.query_advice(a_4, Rotation::cur());
             let word = meta.query_advice(a_5, Rotation::cur());
@@ -158,7 +155,6 @@ impl MessageScheduleConfig {
         // s_decompose_1 for W_[1..14]
         // (3, 4, 11, 14)-bit chunks
         meta.create_gate("s_decompose_1", |meta| {
-            let s_decompose_1 = meta.query_selector(s_decompose_1);
             let a = meta.query_advice(a_3, Rotation::next()); // 3-bit chunk
             let b = meta.query_advice(a_4, Rotation::next()); // 4-bit chunk
             let c = meta.query_advice(a_1, Rotation::next()); // 11-bit chunk
@@ -171,7 +167,6 @@ impl MessageScheduleConfig {
         // s_decompose_2 for W_[14..49]
         // (3, 4, 3, 7, 1, 1, 13)-bit chunks
         meta.create_gate("s_decompose_2", |meta| {
-            let s_decompose_2 = meta.query_selector(s_decompose_2);
             let a = meta.query_advice(a_3, Rotation::prev()); // 3-bit chunk
             let b = meta.query_advice(a_1, Rotation::next()); // 4-bit chunk
             let c = meta.query_advice(a_4, Rotation::prev()); // 3-bit chunk
@@ -187,7 +182,6 @@ impl MessageScheduleConfig {
         // s_decompose_3 for W_49 to W_61
         // (10, 7, 2, 13)-bit chunks
         meta.create_gate("s_decompose_3", |meta| {
-            let s_decompose_3 = meta.query_selector(s_decompose_3);
             let a = meta.query_advice(a_1, Rotation::next()); // 10-bit chunk
             let b = meta.query_advice(a_4, Rotation::next()); // 7-bit chunk
             let c = meta.query_advice(a_3, Rotation::next()); // 2-bit chunk
@@ -201,7 +195,7 @@ impl MessageScheduleConfig {
         // (3, 4, 11, 14)-bit chunks
         meta.create_gate("sigma_0 v1", |meta| {
             ScheduleGate::s_lower_sigma_0(
-                meta.query_selector(s_lower_sigma_0),
+                s_lower_sigma_0,
                 meta.query_advice(a_2, Rotation::prev()), // spread_r0_even
                 meta.query_advice(a_2, Rotation::cur()),  // spread_r0_odd
                 meta.query_advice(a_2, Rotation::next()), // spread_r1_even
@@ -222,7 +216,7 @@ impl MessageScheduleConfig {
         // (3, 4, 3, 7, 1, 1, 13)-bit chunks
         meta.create_gate("sigma_0 v2", |meta| {
             ScheduleGate::s_lower_sigma_0_v2(
-                meta.query_selector(s_lower_sigma_0_v2),
+                s_lower_sigma_0_v2,
                 meta.query_advice(a_2, Rotation::prev()), // spread_r0_even
                 meta.query_advice(a_2, Rotation::cur()),  // spread_r0_odd
                 meta.query_advice(a_2, Rotation::next()), // spread_r1_even
@@ -247,7 +241,7 @@ impl MessageScheduleConfig {
         // (3, 4, 3, 7, 1, 1, 13)-bit chunks
         meta.create_gate("sigma_1 v2", |meta| {
             ScheduleGate::s_lower_sigma_1_v2(
-                meta.query_selector(s_lower_sigma_1_v2),
+                s_lower_sigma_1_v2,
                 meta.query_advice(a_2, Rotation::prev()), // spread_r0_even
                 meta.query_advice(a_2, Rotation::cur()),  // spread_r0_odd
                 meta.query_advice(a_2, Rotation::next()), // spread_r1_even
@@ -272,7 +266,7 @@ impl MessageScheduleConfig {
         // (10, 7, 2, 13)-bit chunks
         meta.create_gate("sigma_1 v1", |meta| {
             ScheduleGate::s_lower_sigma_1(
-                meta.query_selector(s_lower_sigma_1),
+                s_lower_sigma_1,
                 meta.query_advice(a_2, Rotation::prev()), // spread_r0_even
                 meta.query_advice(a_2, Rotation::cur()),  // spread_r0_odd
                 meta.query_advice(a_2, Rotation::next()), // spread_r1_even

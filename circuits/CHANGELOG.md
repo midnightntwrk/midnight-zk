@@ -16,6 +16,7 @@ verification keys break backwards compatibility.
 ### Changed
 * Zswap example was moved to a benchmark [#46](https://github.com/midnightntwrk/midnight-zk/pull/46)
 * Poseidon `full_round` custom ids now have degree 4 (instead of 6) [#44](https://github.com/midnightntwrk/midnight-zk/pull/44)
+* Rebase to new API for custom constraints [#53](https://github.com/midnightntwrk/midnight-zk/pull/53)
 
 ### Removed
 

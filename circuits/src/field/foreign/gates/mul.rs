@@ -16,7 +16,7 @@ use std::ops::Rem;
 use ff::PrimeField;
 use midnight_proofs::{
     circuit::{Layouter, Value},
-    plonk::{Advice, Column, ConstraintSystem, Error, Expression, Selector},
+    plonk::{Advice, Column, ConstraintSystem, Constraints, Error, Expression, Selector},
     poly::Rotation,
 };
 use num_bigint::{BigInt as BI, ToBigInt};
@@ -129,7 +129,6 @@ impl MulConfig {
         // | y0 ... yk | u v0 ... vl |
 
         meta.create_gate("Foreign-field multiplication", |meta| {
-            let q = meta.query_selector(q_mul);
             let xs = get_advice_vec(meta, xy_cols, Rotation::cur());
             let ys = get_advice_vec(meta, xy_cols, Rotation::next());
             let zs = get_advice_vec(meta, z_cols, Rotation::cur());
@@ -139,13 +138,12 @@ impl MulConfig {
             let xys = pair_wise_prod(&xs, &ys);
 
             //  sum_xy + sum_x + sum_y - sum_z - (u + k_min) * m = 0
-            let native_id = q.clone()
-                * (sum_exprs::<F>(&double_base_powers, &xys)
-                    + sum_exprs::<F>(&base_powers, &xs)
-                    + sum_exprs::<F>(&base_powers, &ys)
-                    - sum_exprs::<F>(&base_powers, &zs)
-                    - (u.clone() + Expression::Constant(bigint_to_fe::<F>(&k_min)))
-                        * Expression::Constant(bigint_to_fe::<F>(m)));
+            let native_id = sum_exprs::<F>(&double_base_powers, &xys)
+                + sum_exprs::<F>(&base_powers, &xs)
+                + sum_exprs::<F>(&base_powers, &ys)
+                - sum_exprs::<F>(&base_powers, &zs)
+                - (u.clone() + Expression::Constant(bigint_to_fe::<F>(&k_min)))
+                    * Expression::Constant(bigint_to_fe::<F>(m));
             let mut moduli_ids = moduli
                 .iter()
                 .zip(vs.iter())
@@ -159,19 +157,19 @@ impl MulConfig {
                     let bi_powers_mj = base_powers.iter().map(|b| b.rem(mj)).collect::<Vec<_>>();
                     //  sum_xy_mj + sum_x_mj + sum_y_mj - sum_z_mj - u * (m % mj) - (k_min * m) % mj
                     //    - (vj + lj_min) * mj = 0
-                    q.clone()
-                        * (sum_exprs::<F>(&bij_powers_mj, &xys)
-                            + sum_exprs::<F>(&bi_powers_mj, &xs)
-                            + sum_exprs::<F>(&bi_powers_mj, &ys)
-                            - sum_exprs::<F>(&bi_powers_mj, &zs)
-                            - u.clone() * Expression::Constant(bigint_to_fe::<F>(&urem(m, mj)))
-                            - Expression::Constant(bigint_to_fe::<F>(&urem(&(&k_min * m), mj)))
-                            - (vj.clone() + Expression::Constant(bigint_to_fe::<F>(lj_min)))
-                                * Expression::Constant(bigint_to_fe::<F>(mj)))
+                    sum_exprs::<F>(&bij_powers_mj, &xys)
+                        + sum_exprs::<F>(&bi_powers_mj, &xs)
+                        + sum_exprs::<F>(&bi_powers_mj, &ys)
+                        - sum_exprs::<F>(&bi_powers_mj, &zs)
+                        - u.clone() * Expression::Constant(bigint_to_fe::<F>(&urem(m, mj)))
+                        - Expression::Constant(bigint_to_fe::<F>(&urem(&(&k_min * m), mj)))
+                        - (vj.clone() + Expression::Constant(bigint_to_fe::<F>(lj_min)))
+                            * Expression::Constant(bigint_to_fe::<F>(mj))
                 })
                 .collect::<Vec<_>>();
             moduli_ids.push(native_id);
-            moduli_ids
+
+            Constraints::with_selector(q_mul, moduli_ids)
         });
 
         MulConfig {

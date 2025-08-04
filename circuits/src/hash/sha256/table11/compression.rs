@@ -558,7 +558,6 @@ impl CompressionConfig {
         // Decompose `A,B,C,D` words into (2, 11, 9, 10)-bit chunks.
         // `c` is split into (3, 3, 3)-bit c_lo, c_mid, c_hi.
         meta.create_gate("decompose ABCD", |meta| {
-            let s_decompose_abcd = meta.query_selector(s_decompose_abcd);
             let a = meta.query_advice(a_3, Rotation::next()); // 2-bit chunk
             let spread_a = meta.query_advice(a_4, Rotation::next());
             let b = meta.query_advice(a_1, Rotation::cur()); // 11-bit chunk
@@ -601,7 +600,6 @@ impl CompressionConfig {
         // `a` is split into (3, 3)-bit a_lo, a_hi
         // `b` is split into (2, 3)-bit b_lo, b_hi
         meta.create_gate("Decompose EFGH", |meta| {
-            let s_decompose_efgh = meta.query_selector(s_decompose_efgh);
             let a_lo = meta.query_advice(a_3, Rotation::next()); // 3-bit chunk
             let spread_a_lo = meta.query_advice(a_4, Rotation::next());
             let a_hi = meta.query_advice(a_5, Rotation::next()); // 3-bit chunk
@@ -643,7 +641,6 @@ impl CompressionConfig {
         // s_upper_sigma_0 on abcd words
         // (2, 11, 9, 10)-bit chunks
         meta.create_gate("s_upper_sigma_0", |meta| {
-            let s_upper_sigma_0 = meta.query_selector(s_upper_sigma_0);
             let spread_r0_even = meta.query_advice(a_2, Rotation::prev());
             let spread_r0_odd = meta.query_advice(a_2, Rotation::cur());
             let spread_r1_even = meta.query_advice(a_2, Rotation::next());
@@ -674,7 +671,6 @@ impl CompressionConfig {
         // s_upper_sigma_1 on efgh words
         // (6, 5, 14, 7)-bit chunks
         meta.create_gate("s_upper_sigma_1", |meta| {
-            let s_upper_sigma_1 = meta.query_selector(s_upper_sigma_1);
             let spread_r0_even = meta.query_advice(a_2, Rotation::prev());
             let spread_r0_odd = meta.query_advice(a_2, Rotation::cur());
             let spread_r1_even = meta.query_advice(a_2, Rotation::next());
@@ -704,7 +700,6 @@ impl CompressionConfig {
         // s_ch on efgh words
         // First part of choice gate on (E, F, G), E ∧ F
         meta.create_gate("s_ch", |meta| {
-            let s_ch = meta.query_selector(s_ch);
             let spread_p0_even = meta.query_advice(a_2, Rotation::prev());
             let spread_p0_odd = meta.query_advice(a_2, Rotation::cur());
             let spread_p1_even = meta.query_advice(a_2, Rotation::next());
@@ -730,7 +725,6 @@ impl CompressionConfig {
         // s_ch_neg on efgh words
         // Second part of Choice gate on (E, F, G), ¬E ∧ G
         meta.create_gate("s_ch_neg", |meta| {
-            let s_ch_neg = meta.query_selector(s_ch_neg);
             let spread_q0_even = meta.query_advice(a_2, Rotation::prev());
             let spread_q0_odd = meta.query_advice(a_2, Rotation::cur());
             let spread_q1_even = meta.query_advice(a_2, Rotation::next());
@@ -759,7 +753,6 @@ impl CompressionConfig {
 
         // s_maj on abcd words
         meta.create_gate("s_maj", |meta| {
-            let s_maj = meta.query_selector(s_maj);
             let spread_m0_even = meta.query_advice(a_2, Rotation::prev());
             let spread_m0_odd = meta.query_advice(a_2, Rotation::cur());
             let spread_m1_even = meta.query_advice(a_2, Rotation::next());
@@ -788,7 +781,6 @@ impl CompressionConfig {
 
         // s_h_prime to compute H' = H + Ch(E, F, G) + s_upper_sigma_1(E) + K + W
         meta.create_gate("s_h_prime", |meta| {
-            let s_h_prime = meta.query_selector(s_h_prime);
             let h_prime_lo = meta.query_advice(a_7, Rotation::next());
             let h_prime_hi = meta.query_advice(a_8, Rotation::next());
             let h_prime_carry = meta.query_advice(a_9, Rotation::next());
@@ -831,7 +823,6 @@ impl CompressionConfig {
 
         // s_add_halves
         meta.create_gate("s_add_halves", |meta| {
-            let s_add_halves = meta.query_selector(s_add_halves);
             let st_new_lo = meta.query_advice(a_7, Rotation::cur());
             let st_new_hi = meta.query_advice(a_8, Rotation::cur());
             let st_new_carry = meta.query_advice(a_9, Rotation::cur());
@@ -854,7 +845,6 @@ impl CompressionConfig {
 
         // s_a_new
         meta.create_gate("s_a_new", |meta| {
-            let s_a_new = meta.query_selector(s_a_new);
             let a_new_lo = meta.query_advice(a_8, Rotation::cur());
             let a_new_hi = meta.query_advice(a_8, Rotation::next());
             let a_new_carry = meta.query_advice(a_9, Rotation::cur());
@@ -881,7 +871,6 @@ impl CompressionConfig {
 
         // s_e_new
         meta.create_gate("s_e_new", |meta| {
-            let s_e_new = meta.query_selector(s_e_new);
             let e_new_lo = meta.query_advice(a_8, Rotation::cur());
             let e_new_hi = meta.query_advice(a_8, Rotation::next());
             let e_new_carry = meta.query_advice(a_9, Rotation::next());
@@ -904,7 +893,6 @@ impl CompressionConfig {
 
         // s_digest for final round
         meta.create_gate("s_digest", |meta| {
-            let s_digest = meta.query_selector(s_digest);
             let lo_0 = meta.query_advice(a_3, Rotation::cur());
             let hi_0 = meta.query_advice(a_4, Rotation::cur());
             let word_0 = meta.query_advice(a_5, Rotation::cur());

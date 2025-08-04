@@ -2,7 +2,7 @@ use std::marker::PhantomData;
 
 use midnight_proofs::{
     circuit::{AssignedCell, Chip, Layouter, Region, SimpleFloorPlanner, Value},
-    plonk::{Advice, Circuit, Column, ConstraintSystem, Error, Instance, Selector},
+    plonk::{Advice, Circuit, Column, ConstraintSystem, Constraints, Error, Instance, Selector},
     poly::Rotation,
     utils::arithmetic::Field,
 };
@@ -102,7 +102,6 @@ impl<F: Field> FieldChip<F> {
             let lhs = meta.query_advice(advice[0], Rotation::cur());
             let rhs = meta.query_advice(advice[1], Rotation::cur());
             let out = meta.query_advice(advice[2], Rotation::cur());
-            let s_mul = meta.query_selector(s_mul);
 
             // Finally, we return the polynomial expressions that constrain this gate.
             // For our multiplication gate, we only need a single polynomial constraint.
@@ -112,7 +111,7 @@ impl<F: Field> FieldChip<F> {
             // has the following properties:
             // - When s_mul = 0, any value is allowed in lhs, rhs, and out.
             // - When s_mul != 0, this constrains lhs * rhs = out.
-            vec![s_mul * (lhs * rhs - out)]
+            Constraints::with_selector(s_mul, vec![lhs * rhs - out])
         });
 
         FieldConfig {

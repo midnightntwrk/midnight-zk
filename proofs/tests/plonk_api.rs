@@ -12,8 +12,8 @@ use midnight_proofs::{
     dev::MockProver,
     plonk::{
         create_proof as create_plonk_proof, keygen_pk, keygen_vk, keygen_vk_with_k,
-        prepare as prepare_plonk_proof, Advice, Circuit, Column, ConstraintSystem, Error, Fixed,
-        ProvingKey, TableColumn, VerifyingKey,
+        prepare as prepare_plonk_proof, Advice, Circuit, Column, ConstraintSystem, Constraints,
+        Error, Fixed, ProvingKey, TableColumn, VerifyingKey,
     },
     poly::{
         commitment::{Guard, PolynomialCommitmentScheme},
@@ -328,8 +328,9 @@ fn plonk_api() {
                 let sb = meta.query_fixed(sb, Rotation::cur());
                 let sc = meta.query_fixed(sc, Rotation::cur());
                 let sm = meta.query_fixed(sm, Rotation::cur());
-
-                vec![a.clone() * sa + b.clone() * sb + a * b * sm - (c * sc) + sf * (d * e)]
+                Constraints::without_selector(vec![
+                    a.clone() * sa + b.clone() * sb + a * b * sm - (c * sc) + sf * (d * e),
+                ])
             });
 
             meta.create_gate("Public input", |meta| {
@@ -337,7 +338,7 @@ fn plonk_api() {
                 let p = meta.query_instance(p, Rotation::cur());
                 let sp = meta.query_fixed(sp, Rotation::cur());
 
-                vec![sp * (a - p)]
+                Constraints::without_selector(vec![sp * (a - p)])
             });
 
             meta.enable_equality(sf);

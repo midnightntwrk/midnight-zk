@@ -212,7 +212,9 @@ fn criterion_benchmark(c: &mut Criterion) {
                 let sc = meta.query_fixed(sc, Rotation::cur());
                 let sm = meta.query_fixed(sm, Rotation::cur());
 
-                vec![a.clone() * sa + b.clone() * sb + a * b * sm - (c * sc)]
+                Constraints::without_selector(vec![
+                    a.clone() * sa + b.clone() * sb + a * b * sm - (c * sc),
+                ])
             });
 
             PlonkConfig {

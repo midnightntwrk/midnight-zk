@@ -178,7 +178,6 @@ impl EccConfig {
         q_double: &Selector,
     ) {
         meta.create_gate("double", |meta| {
-            let q_double = meta.query_selector(*q_double);
             let xp = meta.query_advice(self.advice_cols[4], Rotation::cur());
             let yp = meta.query_advice(self.advice_cols[5], Rotation::cur());
             let xq = meta.query_advice(self.advice_cols[0], Rotation::next());
@@ -197,8 +196,8 @@ impl EccConfig {
             let id2 = yq * (one - d_xp_xp_yp_yp) - (yp_times_yp + xp_times_xp);
 
             Constraints::with_selector(
-                q_double,
-                [
+                *q_double,
+                vec![
                     ("qx constraint for q = 2 * p", id1),
                     ("qy constraint for q = 2 * p", id2),
                 ],
@@ -227,7 +226,6 @@ impl EccConfig {
         q_cond_add: &Selector,
     ) {
         meta.create_gate("conditional add", |meta| {
-            let q_cond_add = meta.query_selector(*q_cond_add);
             let xq = meta.query_advice(self.advice_cols[0], Rotation::cur());
             let yq = meta.query_advice(self.advice_cols[1], Rotation::cur());
             let xs = meta.query_advice(self.advice_cols[2], Rotation::cur());
@@ -252,8 +250,8 @@ impl EccConfig {
                 yr * (one - b_d_xq_xs_yq_ys) - (yq.clone() + b * (yq_times_ys + xq_times_xs - yq));
 
             Constraints::with_selector(
-                q_cond_add,
-                [
+                *q_cond_add,
+                vec![
                     ("rx constraint for r = q + b * s", id1),
                     ("ry constraint for r = q + b * s", id2),
                 ],
@@ -275,8 +273,6 @@ impl EccConfig {
         q_point: &Selector,
     ) {
         meta.create_gate("witness point", |meta| {
-            let q_point = meta.query_selector(*q_point);
-
             let x = meta.query_advice(self.advice_cols[0], Rotation::cur());
             let y = meta.query_advice(self.advice_cols[1], Rotation::cur());
 
@@ -288,7 +284,7 @@ impl EccConfig {
 
             let id = y2.clone() - x2.clone() - (one + edwards_d * x2 * y2);
 
-            Constraints::with_selector(q_point, [("curve equation", id)])
+            Constraints::with_selector(*q_point, vec![("curve equation", id)])
         })
     }
 }

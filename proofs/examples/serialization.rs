@@ -10,7 +10,7 @@ use midnight_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
     plonk::{
         create_proof, keygen_pk, keygen_vk_with_k, prepare, Advice, Circuit, Column,
-        ConstraintSystem, Error, Fixed, Instance, ProvingKey,
+        ConstraintSystem, Constraints, Error, Fixed, Instance, ProvingKey,
     },
     poly::{
         commitment::Guard,
@@ -51,14 +51,15 @@ impl StandardPlonkConfig {
                 let [q_a, q_b, q_c, q_ab, constant] = [q_a, q_b, q_c, q_ab, constant]
                     .map(|column| meta.query_fixed(column, Rotation::cur()));
                 let instance = meta.query_instance(instance, Rotation::cur());
-                Some(
+                Constraints::without_selector(vec![(
+                    "Arithmetic gate",
                     q_a * a.clone()
                         + q_b * b.clone()
                         + q_c * c
                         + q_ab * a * b
                         + constant
                         + instance,
-                )
+                )])
             },
         );
 

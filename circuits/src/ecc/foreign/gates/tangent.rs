@@ -16,7 +16,7 @@ use std::{marker::PhantomData, ops::Rem};
 use ff::PrimeField;
 use midnight_proofs::{
     circuit::{Chip, Layouter},
-    plonk::{Advice, Column, ConstraintSystem, Error, Expression, Selector},
+    plonk::{Advice, Column, ConstraintSystem, Constraints, Error, Expression, Selector},
     poly::Rotation,
 };
 use num_bigint::{BigInt as BI, ToBigInt};
@@ -149,7 +149,6 @@ impl<C: CircuitCurve> TangentConfig<C> {
         // |  λ_0 ...  λ_k | u v0 ... vl cond |
 
         meta.create_gate("Foreign-field EC assert_tangent", |meta| {
-            let q = meta.query_selector(q_tangent);
             let cond = meta.query_advice(*cond_col, Rotation::next());
             let pxs = get_advice_vec(meta, &field_chip_config.x_cols, Rotation::cur());
             let pys = get_advice_vec(meta, &field_chip_config.z_cols, Rotation::cur());
@@ -162,8 +161,7 @@ impl<C: CircuitCurve> TangentConfig<C> {
 
             //   3 * (2 * sum_px + sum_px2) + 1
             // - 2 * (sum_py + sum_lambda + sum_lpy) = (u + k_min) * m
-            let native_id = q.clone()
-                * cond.clone()
+            let native_id = cond.clone()
                 * (Expression::Constant(F::from(3))
                     * (Expression::Constant(F::from(2)) * sum_exprs::<F>(&bs, &pxs)
                         + sum_exprs::<F>(&bs2, &px2s))
@@ -186,8 +184,7 @@ impl<C: CircuitCurve> TangentConfig<C> {
                     //   3 * (2 * sum_px_mj + sum_px2_mj) + 1
                     // - 2 * (sum_py_mj + sum_lambda_mj + sum_lpy_mj)
                     // - u * (m % mj) - (k_min * m) % mj - (vj + lj_min) * mj = 0
-                    q.clone()
-                        * cond.clone()
+                    cond.clone()
                         * (Expression::Constant(F::from(3))
                             * (Expression::Constant(F::from(2)) * sum_exprs::<F>(&bs_mj, &pxs)
                                 + sum_exprs::<F>(&bs2_mj, &px2s))
@@ -203,7 +200,8 @@ impl<C: CircuitCurve> TangentConfig<C> {
                 })
                 .collect::<Vec<_>>();
             moduli_ids.push(native_id);
-            moduli_ids
+
+            Constraints::with_selector(q_tangent, moduli_ids)
         });
 
         TangentConfig {

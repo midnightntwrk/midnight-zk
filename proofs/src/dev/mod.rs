@@ -190,7 +190,7 @@ impl<F: Field> Mul<F> for Value<F> {
 /// use midnight_proofs::{
 ///     circuit::{Layouter, SimpleFloorPlanner, Value},
 ///     dev::{FailureLocation, MockProver, VerifyFailure},
-///     plonk::{Advice, Any, Circuit, Column, ConstraintSystem, Error, Selector},
+///     plonk::{Advice, Any, Circuit, Column, ConstraintSystem, Constraints, Error, Selector},
 ///     poly::Rotation,
 /// };
 /// const K: u32 = 5;
@@ -229,10 +229,9 @@ impl<F: Field> Mul<F> for Value<F> {
 ///             let a = meta.query_advice(a, Rotation::cur());
 ///             let b = meta.query_advice(b, Rotation::cur());
 ///             let c = meta.query_advice(c, Rotation::cur());
-///             let s = meta.query_selector(s);
 ///
 ///             // BUG: Should be a * b - c
-///             Some(("buggy R1CS", s * (a * b + c)))
+///             Constraints::with_selector(s, vec![("buggy R1CS", (a * b + c))])
 ///         });
 ///
 ///         MyConfig { a, b, c, s }
@@ -1298,8 +1297,8 @@ mod tests {
     use crate::{
         circuit::{Layouter, SimpleFloorPlanner, Value},
         plonk::{
-            sealed::SealedPhase, Advice, Any, Circuit, Column, ConstraintSystem, Error, Expression,
-            FirstPhase, Fixed, Instance, Selector, TableColumn,
+            sealed::SealedPhase, Advice, Any, Circuit, Column, ConstraintSystem, Constraints,
+            Error, Expression, FirstPhase, Fixed, Instance, Selector, TableColumn,
         },
         poly::Rotation,
     };
@@ -1331,10 +1330,9 @@ mod tests {
                 meta.create_gate("Equality check", |cells| {
                     let a = cells.query_advice(a, Rotation::prev());
                     let b = cells.query_advice(b, Rotation::cur());
-                    let q = cells.query_selector(q);
 
                     // If q is enabled, a and b must be assigned to.
-                    vec![q * (a - b)]
+                    Constraints::with_selector(q, vec![a - b])
                 });
 
                 FaultyCircuitConfig { a, b, q }
@@ -1730,10 +1728,9 @@ mod tests {
                     let b = cells.query_advice(b, Rotation::cur());
                     let c = cells.query_advice(c, Rotation::cur());
                     let d = cells.query_fixed(d, Rotation::cur());
-                    let q = cells.query_selector(q);
 
                     // If q is enabled, a and b must be assigned to.
-                    vec![q * (a - b) * (c - d)]
+                    Constraints::with_selector(q, vec![(a - b) * (c - d)])
                 });
 
                 FaultyCircuitConfig { a, b, c, d, q }

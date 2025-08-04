@@ -16,7 +16,7 @@ use std::ops::Rem;
 use ff::PrimeField;
 use midnight_proofs::{
     circuit::{Layouter, Value},
-    plonk::{Advice, Column, ConstraintSystem, Error, Expression, Selector},
+    plonk::{Advice, Column, ConstraintSystem, Constraints, Error, Expression, Selector},
     poly::Rotation,
 };
 use num_bigint::{BigInt as BI, ToBigInt};
@@ -143,7 +143,6 @@ impl NormConfig {
         // |           | u v0 ... vl |
 
         meta.create_gate("Foreign-field normalization", |meta| {
-            let q = meta.query_selector(q_norm);
             let xs = get_advice_vec(meta, x_cols, Rotation::cur());
             let zs = get_advice_vec(meta, z_cols, Rotation::cur());
             let u = meta.query_advice(z_cols[0], Rotation::next());
@@ -158,12 +157,11 @@ impl NormConfig {
             let sum_shifts = sum_bigints(&base_powers, &shifts);
 
             //  sum_shifted_x - sum_z - sum_shifts - (u + k_min) * m = 0
-            let native_id = q.clone()
-                * (sum_exprs::<F>(&base_powers, &shifted_x)
-                    - sum_exprs::<F>(&base_powers, &zs)
-                    - Expression::Constant(bigint_to_fe::<F>(&sum_shifts))
-                    - (u.clone() + Expression::Constant(bigint_to_fe::<F>(&k_min)))
-                        * Expression::Constant(bigint_to_fe::<F>(m)));
+            let native_id = sum_exprs::<F>(&base_powers, &shifted_x)
+                - sum_exprs::<F>(&base_powers, &zs)
+                - Expression::Constant(bigint_to_fe::<F>(&sum_shifts))
+                - (u.clone() + Expression::Constant(bigint_to_fe::<F>(&k_min)))
+                    * Expression::Constant(bigint_to_fe::<F>(m));
 
             //  vs_norm_bounds may be shorter than moduli
             let mut moduli_ids = moduli
@@ -175,18 +173,18 @@ impl NormConfig {
                     let base_powers_mj = base_powers.iter().map(|b| b.rem(mj)).collect::<Vec<_>>();
                     //  sum_shifted_x_mj - sum_z_mj - sum_shifts % mj - u * (m % mj) - (k_min * m) %
                     // mj - (vj + lj_min) * mj = 0
-                    q.clone()
-                        * (sum_exprs::<F>(&base_powers_mj, &shifted_x)
-                            - sum_exprs::<F>(&base_powers_mj, &zs)
-                            - Expression::Constant(bigint_to_fe::<F>(&urem(&sum_shifts, mj)))
-                            - u.clone() * Expression::Constant(bigint_to_fe::<F>(&urem(m, mj)))
-                            - Expression::Constant(bigint_to_fe::<F>(&urem(&(&k_min * m), mj)))
-                            - (vj.clone() + Expression::Constant(bigint_to_fe::<F>(lj_min)))
-                                * Expression::Constant(bigint_to_fe::<F>(mj)))
+                    sum_exprs::<F>(&base_powers_mj, &shifted_x)
+                        - sum_exprs::<F>(&base_powers_mj, &zs)
+                        - Expression::Constant(bigint_to_fe::<F>(&urem(&sum_shifts, mj)))
+                        - u.clone() * Expression::Constant(bigint_to_fe::<F>(&urem(m, mj)))
+                        - Expression::Constant(bigint_to_fe::<F>(&urem(&(&k_min * m), mj)))
+                        - (vj.clone() + Expression::Constant(bigint_to_fe::<F>(lj_min)))
+                            * Expression::Constant(bigint_to_fe::<F>(mj))
                 })
                 .collect::<Vec<_>>();
             moduli_ids.push(native_id);
-            moduli_ids
+
+            Constraints::with_selector(q_norm, moduli_ids)
         });
 
         NormConfig {

@@ -178,8 +178,6 @@ impl<F: PrimeField> ComposableChip<F> for NativeChip<F> {
         meta.enable_equality(instance_col);
 
         meta.create_gate("arith_gate", |meta| {
-            let q = meta.query_selector(q_arith);
-
             let values = value_columns
                 .iter()
                 .map(|col| meta.query_advice(*col, Rotation::cur()))
@@ -207,12 +205,10 @@ impl<F: PrimeField> ComposableChip<F> for NativeChip<F> {
                 + mul_ab_coeff * values[0].clone() * values[1].clone()
                 + mul_cd_coeff * values[2].clone() * values[3].clone();
 
-            Constraints::with_selector(q, [id])
+            Constraints::with_selector(q_arith, vec![id])
         });
 
         meta.create_gate("parallel_add_gate", |meta| {
-            let q = meta.query_selector(q_par_add);
-
             let ids = (value_columns[0..NB_PARALLEL_ADD_COLS].iter())
                 .zip(coeff_cols[0..NB_PARALLEL_ADD_COLS].iter())
                 .map(|(val_col, const_col)| {
@@ -223,7 +219,7 @@ impl<F: PrimeField> ComposableChip<F> for NativeChip<F> {
                 })
                 .collect::<Vec<_>>();
 
-            Constraints::with_selector(q, ids)
+            Constraints::with_selector(q_par_add, ids)
         });
 
         NativeConfig {
