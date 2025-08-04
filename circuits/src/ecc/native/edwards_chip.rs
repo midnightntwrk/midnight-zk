@@ -43,7 +43,7 @@ use crate::{
 };
 
 /// The number of advice columns used by the EccChip.
-pub(crate) const NB_EDWARDS_COLS: usize = 7;
+pub const NB_EDWARDS_COLS: usize = 9;
 
 /// A twisted Edwards curve point represented in affine (x, y) coordinates, the
 /// identity represented as (0, 1).
@@ -57,11 +57,10 @@ impl<C: CircuitCurve> InnerValue for AssignedNativePoint<C> {
     type Element = C::CryptographicGroup;
 
     fn value(&self) -> Value<Self::Element> {
-        self.x.value().zip(self.y.value()).map(|(x, y)| {
-            C::from_xy(*x, *y)
-                .expect("Valid coordinates.")
-                .into_subgroup()
-        })
+        self.x
+            .value()
+            .zip(self.y.value())
+            .map(|(x, y)| C::from_xy(*x, *y).expect("non-id").into_subgroup())
     }
 }
 
@@ -90,7 +89,7 @@ impl<C: CircuitCurve> AssignedNativePoint<C> {
 impl<C: CircuitCurve> Instantiable<C::Base> for AssignedNativePoint<C> {
     fn as_public_input(p: &C::CryptographicGroup) -> Vec<C::Base> {
         let point: C = (*p).into();
-        let coordinates = point.coordinates().expect("Valid affine point.");
+        let coordinates = point.coordinates().expect("non-id");
         vec![coordinates.0, coordinates.1]
     }
 }
@@ -146,7 +145,7 @@ impl<C: EdwardsCurve> Sampleable for ScalarVar<C> {
     }
 }
 
-/// [`EccConfig`], which uses 7 advice columns.
+/// [`EccConfig`], which uses [`NB_EDWARDS_COLS`] advice columns.
 #[derive(Clone, Debug)]
 pub struct EccConfig {
     pub(crate) q_double: Selector,
@@ -156,70 +155,97 @@ pub struct EccConfig {
 }
 
 impl EccConfig {
-    /// Enforce Q = 2 * P, using columns:
-    /// -------------------------------------------
-    /// |      |      |      |      |  xp  |  yp  |
-    /// |  xq  |  yq  |      |      |      |      |
-    /// -------------------------------------------
+    /// Enforce `Q = 2 * P`, using columns:
+    ///
+    /// ```text
+    ///    0      1      2      3       4      5      6       7      8     
+    /// ------------------------------------------------------------------
+    /// |      |      |      |      |      |  xp  |  yp  | xp_xp |       |
+    /// |  xq  |  yq  |      |      |      |      |      |       |       |
+    /// ------------------------------------------------------------------
+    /// ```
     ///
     /// The curve equation is `-x^2 + y^2 = 1 + d * x^2 * y^2`.
-    /// The result of doubling, Q, can be computed as:
+    /// The result of doubling, the point `Q = (xq, yq)`, can be computed as:
+    /// * `xq = (2 * xp * yp) / (1 + d * xp * xp * yp * yp)`
+    /// * `yq = (yp * yp + xp * xp) / (1 - d * xp * xp * yp * yp)`
     ///
-    ///  xq = (2 * xp * yp) / (1 + d * xp * xp * yp * yp)
-    ///  yq = (yp * yp + xp * xp) / (1 - d * xp * xp * yp * yp)
+    /// Equivalently, the above can be computed as:
+    /// * `xq * (1 + d * xp * xp * yp * yp) = 2 * xp * yp`
+    /// * `yq * (1 - d * xp * xp * yp * yp) = yp * yp + xp * xp`
     ///
-    /// Equivalently, the above can be enforced as:
+    /// Note, that `d * xp * xp * yp * yp != 1,-1` if `P` satisfies the
+    /// curve equation (since `-1` is a square and `d` is not a square
+    /// in the base field).
+    /// See <https://eprint.iacr.org/2008/013.pdf>.
     ///
-    ///  xq * (1 + d * xp * xp * yp * yp) = 2 * xp * yp
-    ///  yq * (1 - d * xp * xp * yp * yp) = yp * yp + xp * xp
+    /// Enforce the constraints:
+    /// * `xq * (1 + d * xp_xp * yp * yp) = 2 * xp * yp`
+    /// * `yq * (1 - d * xp_xp * yp * yp) = yp * yp + xp * xp`
+    /// * `xp_xp = xp * xp`
     fn create_double_gate<C: EdwardsCurve>(
         &self,
         meta: &mut ConstraintSystem<C::Base>,
         q_double: &Selector,
     ) {
         meta.create_gate("double", |meta| {
-            let xp = meta.query_advice(self.advice_cols[4], Rotation::cur());
-            let yp = meta.query_advice(self.advice_cols[5], Rotation::cur());
+            let xp = meta.query_advice(self.advice_cols[5], Rotation::cur());
+            let yp = meta.query_advice(self.advice_cols[6], Rotation::cur());
             let xq = meta.query_advice(self.advice_cols[0], Rotation::next());
             let yq = meta.query_advice(self.advice_cols[1], Rotation::next());
 
+            let xp_xp = meta.query_advice(self.advice_cols[7], Rotation::cur());
+
             let one = Expression::Constant(C::Base::ONE);
             let edwards_d = Expression::Constant(C::D);
-            let xp_times_xp = xp.clone() * xp.clone();
-            let yp_times_yp = yp.clone() * yp.clone();
-            let xp_times_yp = xp.clone() * yp.clone();
-            let d_xp_xp_yp_yp = edwards_d * xp_times_xp.clone() * yp_times_yp.clone();
+            let xp_yp = xp.clone() * yp.clone();
+            let yp_yp = yp.square();
+            let d_xp_xp_yp_yp = edwards_d * xp_xp.clone() * yp_yp.clone();
 
-            let id1 =
-                xq * (one.clone() + d_xp_xp_yp_yp.clone()) - (xp_times_yp.clone() + xp_times_yp);
+            let id1 = xq * (one.clone() + d_xp_xp_yp_yp.clone()) - (xp_yp.clone() + xp_yp);
 
-            let id2 = yq * (one - d_xp_xp_yp_yp) - (yp_times_yp + xp_times_xp);
+            let id2 = yq * (one - d_xp_xp_yp_yp) - (yp_yp + xp_xp.clone());
+
+            let id3 = xp.clone() * xp - xp_xp;
 
             Constraints::with_selector(
                 *q_double,
                 vec![
                     ("qx constraint for q = 2 * p", id1),
                     ("qy constraint for q = 2 * p", id2),
+                    ("constraint for xp_xp = xp * xp", id3),
                 ],
             )
         })
     }
 
-    /// Enforce R = Q + b * S, using columns:
-    /// -------------------------------------------------
-    /// |  xq  |  yq  |  xs  |  ys  |  xr  |  yr  |  b  |
-    /// -------------------------------------------------
+    /// Enforce `R = Q + b * S`, using columns:
+    ///
+    /// ```text
+    ///    0      1      2      3       4      5      6      7         8
+    /// -----------------------------------------------------------------------
+    /// |  xq  |  yq  |  xs  |  ys  |   b   |  xr  |  yr  |     | xq_yq_xs_ys |
+    /// -----------------------------------------------------------------------
+    /// ```
     ///
     /// The curve equation is `-x^2 + y^2 = 1 + d * x^2 * y^2`.
-    /// The result, R, can be computed as:
+    /// The result, `R = (xr, yr)`, can be computed as:
+    /// * `xr = (xq + b * (xq*ys + xs*yq - xq)) / (1 + b*d * xq*xs*yq*ys)`
+    /// * `yr = (yq + b * (yq*ys + xq*xs - yq)) / (1 - b*d * xq*xs*yq*ys)`
     ///
-    ///  xr = (xq + b * (xq*ys + xs*yq - xq)) / (1 + b * d * xq * xs * yq * ys)
-    ///  yr = (yq + b * (yq*ys + xq*xs - yq)) / (1 - b * d * xq * xs * yq * ys)
+    /// Equivalently, the above can be computed as:
+    /// * `xr * (1 + b * d * xq * xs * yq * ys) = xq + b * (xq*ys + xs*yq - xq)`
+    /// * `yr * (1 - b * d * xq * xs * yq * ys) = yq + b * (yq*ys + xq*xs - yq)`
     ///
-    /// Equivalently, the above can be enforced as:
+    /// Note, that `b * d * xq * xs * yq * ys != 1,-1` if `Q`, `S` satisfy the
+    /// curve equation (since `-1` is a square and `d` is not a square
+    /// in the base field).
+    /// See <https://eprint.iacr.org/2008/013.pdf>.
     ///
-    ///  xr * (1 + b * d * xq * xs * yq * ys) = xq + b * (xq*ys + xs*yq - xq)
-    ///  yr * (1 - b * d * xq * xs * yq * ys) = yq + b * (yq*ys + xq*xs - yq)
+    /// Enforce the constraints:
+    /// * `xr * (1 + b * d * xq_yq_xs_ys) = xq + b * (xq*ys + xs*yq - xq)`
+    /// * `yr * (1 - b * d * xq_yq_xs_ys) = yq + b * (yq*ys + xq*xs - yq)`
+    /// * `xq_yq_xs_ys = xq * yq * xs * ys`
     fn create_cond_add_gate<C: EdwardsCurve>(
         &self,
         meta: &mut ConstraintSystem<C::Base>,
@@ -230,43 +256,50 @@ impl EccConfig {
             let yq = meta.query_advice(self.advice_cols[1], Rotation::cur());
             let xs = meta.query_advice(self.advice_cols[2], Rotation::cur());
             let ys = meta.query_advice(self.advice_cols[3], Rotation::cur());
-            let xr = meta.query_advice(self.advice_cols[4], Rotation::cur());
-            let yr = meta.query_advice(self.advice_cols[5], Rotation::cur());
-            let b = meta.query_advice(self.advice_cols[6], Rotation::cur());
+            let xr = meta.query_advice(self.advice_cols[5], Rotation::cur());
+            let yr = meta.query_advice(self.advice_cols[6], Rotation::cur());
+            let b = meta.query_advice(self.advice_cols[4], Rotation::cur());
 
             let one = Expression::Constant(C::Base::ONE);
             let edwards_d = Expression::Constant(C::D);
 
-            let xq_times_xs = xq.clone() * xs.clone();
-            let yq_times_ys = yq.clone() * ys.clone();
-            let xq_times_ys = xq.clone() * ys;
-            let xs_times_yq = xs * yq.clone();
-            let b_d_xq_xs_yq_ys = b.clone() * edwards_d * xq_times_xs.clone() * yq_times_ys.clone();
+            let xq_yq_xs_ys = meta.query_advice(self.advice_cols[8], Rotation::cur());
+
+            let xq_xs = xq.clone() * xs.clone();
+            let yq_ys = yq.clone() * ys.clone();
+            let xq_ys = xq.clone() * ys.clone();
+            let xs_yq = xs.clone() * yq.clone();
+            let b_d_xq_xs_yq_ys = b.clone() * edwards_d * xq_yq_xs_ys.clone();
 
             let id1 = xr * (one.clone() + b_d_xq_xs_yq_ys.clone())
-                - (xq.clone() + b.clone() * (xq_times_ys + xs_times_yq - xq));
+                - (xq.clone() + b.clone() * (xq_ys + xs_yq - xq.clone()));
 
             let id2 =
-                yr * (one - b_d_xq_xs_yq_ys) - (yq.clone() + b * (yq_times_ys + xq_times_xs - yq));
+                yr * (one - b_d_xq_xs_yq_ys) - (yq.clone() + b * (yq_ys + xq_xs - yq.clone()));
+
+            let id3 = xq_yq_xs_ys - xq * yq * xs * ys;
 
             Constraints::with_selector(
                 *q_cond_add,
                 vec![
                     ("rx constraint for r = q + b * s", id1),
                     ("ry constraint for r = q + b * s", id2),
+                    ("constraint for xq_yq_xs_ys = xq * yq * xs * ys", id3),
                 ],
             )
         })
     }
 
-    /// Enforce P = (x, y) is on the curve, using columns:
-    /// ---------------
-    /// |  xp  |  yp  |
-    /// ---------------
+    /// Enforce `P = (x, y)` is on the curve, using columns:
     ///
-    /// We enforce:
+    /// ```text
+    /// -------------
+    /// |  x  |  y  |
+    /// -------------
+    /// ```
     ///
-    ///  -x^2 + y^2 = 1 + d * x^2 * y^2
+    /// Enforce the constraint:
+    /// * `-x^2 + y^2 = 1 + d * x^2 * y^2`
     fn create_membership_gate<C: EdwardsCurve>(
         &self,
         meta: &mut ConstraintSystem<C::Base>,
@@ -356,11 +389,18 @@ impl<C: EdwardsCurve> ComposableChip<C::Base> for EccChip<C> {
 }
 
 impl<C: EdwardsCurve> EccChip<C> {
-    /// Given values of points Q, S and bit b, supposedly assigned in the
-    /// current row, assigns R in the next row and enforces R = Q + b * S.
-    /// -------------------------------------------------
-    /// |  xq  |  yq  |  xs  |  ys  |  xr  |  yr  |  b  |
-    /// -------------------------------------------------
+    /// Given `Q`, `S`, and bit `b`, supposedly already assigned in the
+    /// current row, this function assigns `R` in the same row and
+    /// enforces that `R = Q + b * S`.
+    //
+    // We use the following layout.
+    //
+    // ```text
+    //    0      1      2      3       4     5      6      7         8
+    // ----------------------------------------------------------------------
+    // |  xq  |  yq  |  xs  |  ys  |   b   | xr  |  yr  |     | xq_yq_xs_ys |
+    // ----------------------------------------------------------------------
+    // ```
     fn assign_cond_add(
         &self,
         region: &mut Region<C::Base>,
@@ -373,20 +413,29 @@ impl<C: EdwardsCurve> EccChip<C> {
         config.q_cond_add.enable(region, offset)?;
 
         let (xr_val, yr_val) = Self::p_plus_b_q(q, s, b);
-        let xr = region.assign_advice(|| "xr", config.advice_cols[4], offset, || xr_val)?;
-        let yr = region.assign_advice(|| "yr", config.advice_cols[5], offset, || yr_val)?;
+        let xr = region.assign_advice(|| "xr", config.advice_cols[5], offset, || xr_val)?;
+        let yr = region.assign_advice(|| "yr", config.advice_cols[6], offset, || yr_val)?;
+
+        let (xq, yq) = q.map(|q| q.coordinates().expect("non-id")).unzip();
+        let (xs, ys) = s.map(|s| s.coordinates().expect("non-id")).unzip();
+        let prod_val = xq * yq * xs * ys;
+        region.assign_advice(|| "xq_yq_xs_ys", config.advice_cols[8], offset, || prod_val)?;
 
         Ok(AssignedNativePoint { x: xr, y: yr })
     }
 
-    /// Given values of point P, Q and bit b, supposedly assigned in the current
-    /// row, assigns S in the current row and R in the next row, enforcing:
-    ///  S = P + b * Q
-    ///  R = 2 * S
-    /// -------------------------------------------------
-    /// |  xp  |  yp  |  xq  |  yq  |  xs  |  ys  |  b  |
-    /// |  xr  |  yr  |      |      |      |      |     |
-    /// -------------------------------------------------
+    /// Given `P`, `Q`, and bit `b`, supposedly already assigned in the
+    /// current row, this function assigns `R` in the next row and
+    /// enforces that `R = 2 * (P + b * Q)`.
+    //
+    // We use the following layout.
+    //
+    // ```text
+    // ------------------------------------------------------------------------
+    // |  xp  |  yp  |  xq  |  yq  |  b   |  xs  |  ys  | xs_xs | xp_yp_xq_yq |
+    // |  xr  |  yr  |      |      |      |      |      |       |             |
+    // ------------------------------------------------------------------------
+    // ```
     fn assign_add_then_double(
         &self,
         region: &mut Region<C::Base>,
@@ -402,19 +451,31 @@ impl<C: EdwardsCurve> EccChip<C> {
 
         let (xs_val, ys_val) = Self::p_plus_b_q(p_val, q_val, b_val);
 
-        region.assign_advice(|| "xs", config.advice_cols[4], offset, || xs_val)?;
-        region.assign_advice(|| "ys", config.advice_cols[5], offset, || ys_val)?;
+        region.assign_advice(|| "xs", config.advice_cols[5], offset, || xs_val)?;
+        region.assign_advice(|| "ys", config.advice_cols[6], offset, || ys_val)?;
 
         let s_val = xs_val
             .zip(ys_val)
             .map(|(xs, ys)| C::from_xy(xs, ys).unwrap());
         let r_val = s_val.map(|s| s + s);
 
-        let xr_val = r_val.map(|r: C| r.coordinates().expect("Valid affine point.").0);
-        let yr_val = r_val.map(|r: C| r.coordinates().expect("Valid affine point.").1);
+        let xr_val = r_val.map(|r: C| r.coordinates().expect("non-id").0);
+        let yr_val = r_val.map(|r: C| r.coordinates().expect("non-id").1);
 
         let xr = region.assign_advice(|| "xr", config.advice_cols[0], offset + 1, || xr_val)?;
         let yr = region.assign_advice(|| "yr", config.advice_cols[1], offset + 1, || yr_val)?;
+
+        region.assign_advice(
+            || "xs_xs",
+            config.advice_cols[7],
+            offset,
+            || xs_val * xs_val,
+        )?;
+
+        let (xp, yp) = p_val.map(|c| c.coordinates().expect("non-id")).unzip();
+        let (xq, yq) = q_val.map(|c| c.coordinates().expect("non-id")).unzip();
+        let prod_val = xp * yp * xq * yq;
+        region.assign_advice(|| "xp_yp_xq_yq", config.advice_cols[8], offset, || prod_val)?;
 
         Ok(AssignedNativePoint { x: xr, y: yr })
     }
@@ -447,7 +508,7 @@ impl<C: EdwardsCurve> EccChip<C> {
                 for (i, bit) in scalar_be_bits.iter().enumerate() {
                     (base.x).copy_advice(|| "base.x", &mut region, config.advice_cols[2], i)?;
                     (base.y).copy_advice(|| "base.y", &mut region, config.advice_cols[3], i)?;
-                    (bit.0).copy_advice(|| "b cond_add", &mut region, config.advice_cols[6], i)?;
+                    (bit.0).copy_advice(|| "b cond_add", &mut region, config.advice_cols[4], i)?;
 
                     if i < scalar_be_bits.len() - 1 {
                         acc = self.assign_add_then_double(
@@ -480,7 +541,7 @@ impl<C: EdwardsCurve> EccChip<C> {
         p.zip(q)
             .zip(b)
             .map(|((p, q), b)| if b { p + q } else { p })
-            .map(|r| r.coordinates().expect("Valid affine point."))
+            .map(|r| r.coordinates().expect("non-id"))
             .unzip()
     }
 
@@ -511,7 +572,7 @@ impl<C: EdwardsCurve> EccInstructions<C::Base, C> for EccChip<C> {
                 p.y.copy_advice(|| "py", &mut region, config.advice_cols[1], 0)?;
                 q.x.copy_advice(|| "qx", &mut region, config.advice_cols[2], 0)?;
                 q.y.copy_advice(|| "qy", &mut region, config.advice_cols[3], 0)?;
-                b.0.copy_advice(|| "b", &mut region, config.advice_cols[6], 0)?;
+                b.0.copy_advice(|| "b", &mut region, config.advice_cols[4], 0)?;
 
                 self.assign_cond_add(&mut region, 0, p.curve_value(), q.curve_value(), b.value())
             },
@@ -622,8 +683,8 @@ impl<C: EdwardsCurve> AssignmentInstructions<C::Base, AssignedNativePoint<C>> fo
         let cofactor = C::Scalar::from_u128(C::COFACTOR);
         let (x_val, y_val) = value
             .map(|p| {
-                let p = p * cofactor.invert().expect("Cofactor should not be 0");
-                p.into().coordinates().expect("Valid affine point.")
+                let p = p * cofactor.invert().expect("cofactor should not be 0");
+                p.into().coordinates().expect("non-id")
             })
             .unzip();
 
@@ -645,7 +706,7 @@ impl<C: EdwardsCurve> AssignmentInstructions<C::Base, AssignedNativePoint<C>> fo
         layouter: &mut impl Layouter<C::Base>,
         constant: C::CryptographicGroup,
     ) -> Result<AssignedNativePoint<C>, Error> {
-        let coords = constant.into().coordinates().expect("Valid affine point.");
+        let coords = constant.into().coordinates().expect("non-id");
         let x = self.native_gadget.assign_fixed(layouter, coords.0)?;
         let y = self.native_gadget.assign_fixed(layouter, coords.1)?;
         Ok(AssignedNativePoint { x, y })
@@ -705,7 +766,7 @@ impl<C: EdwardsCurve> AssertionInstructions<C::Base, AssignedNativePoint<C>> for
         p: &AssignedNativePoint<C>,
         constant: C::CryptographicGroup,
     ) -> Result<(), Error> {
-        let (cx, cy) = constant.into().coordinates().expect("Valid affine point.");
+        let (cx, cy) = constant.into().coordinates().expect("non-id");
         self.native_gadget
             .assert_equal_to_fixed(layouter, &p.x, cx)?;
         self.native_gadget.assert_equal_to_fixed(layouter, &p.y, cy)
@@ -748,9 +809,7 @@ impl<C: EdwardsCurve> PublicInputInstructions<C::Base, AssignedNativePoint<C>> f
         p: Value<C::CryptographicGroup>,
     ) -> Result<AssignedNativePoint<C>, Error> {
         // We can skip the curve equation check in this case.
-        let (x, y) = p
-            .map(|p| p.into().coordinates().expect("Valid affine point."))
-            .unzip();
+        let (x, y) = p.map(|p| p.into().coordinates().expect("non-id")).unzip();
         let x = self.native_gadget.assign_as_public_input(layouter, x)?;
         let y = self.native_gadget.assign_as_public_input(layouter, y)?;
         Ok(AssignedNativePoint { x, y })
@@ -811,7 +870,7 @@ impl<C: EdwardsCurve> EqualityInstructions<C::Base, AssignedNativePoint<C>> for 
         p: &AssignedNativePoint<C>,
         constant: C::CryptographicGroup,
     ) -> Result<AssignedBit<C::Base>, Error> {
-        let (cx, cy) = constant.into().coordinates().expect("Valid affine point.");
+        let (cx, cy) = constant.into().coordinates().expect("non-id");
         let eq_x = self.native_gadget.is_equal_to_fixed(layouter, &p.x, cx)?;
         let eq_y = self.native_gadget.is_equal_to_fixed(layouter, &p.y, cy)?;
         self.native_gadget.and(layouter, &[eq_x, eq_y])
