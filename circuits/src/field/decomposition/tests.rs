@@ -31,7 +31,7 @@ use crate::{
     field::{
         decomposition::{
             cpu_utils::{decompose_in_variable_limbsizes, variable_limbsize_coefficients},
-            pow2range::{Pow2RangeChip, NB_POW2RANGE_COLS},
+            pow2range::Pow2RangeChip,
         },
         native::{NB_ARITH_COLS, NB_ARITH_FIXED_COLS},
         NativeChip,
@@ -80,13 +80,13 @@ enum LimbType {
 }
 
 #[derive(Clone, Debug)]
-struct TestDecompositionCircuit<F: PrimeField> {
+struct TestDecompositionCircuit<F: PrimeField, const NR_COLS: usize> {
     input: F,
     limb_sizes: LimbType,
     expected: Vec<F>,
 }
 
-impl<F> Circuit<F> for TestDecompositionCircuit<F>
+impl<F, const NR_COLS: usize> Circuit<F> for TestDecompositionCircuit<F, NR_COLS>
 where
     F: PrimeField,
 {
@@ -112,8 +112,7 @@ where
                 [committed_instance_column, instance_column],
             ),
         );
-        let pow2range_config =
-            Pow2RangeChip::configure(meta, &advice_columns[1..=NB_POW2RANGE_COLS]);
+        let pow2range_config = Pow2RangeChip::configure(meta, &advice_columns[1..=NR_COLS]);
 
         P2RDecompositionConfig::new(&native_config, &pow2range_config)
     }
@@ -206,8 +205,7 @@ where
     }
 }
 
-#[test]
-fn test_decomposition_chip_variable() {
+fn run_decomposition_chip_variable_test<const NR_COLS: usize>() {
     const K: u32 = 10;
 
     let mut rng = ChaCha8Rng::from_entropy();
@@ -226,7 +224,7 @@ fn test_decomposition_chip_variable() {
         for _ in 0..i {
             limb_sizes.push(limb_size_group);
         }
-        while limb_sizes.len() % NB_POW2RANGE_COLS != 0 {
+        while limb_sizes.len() % NR_COLS != 0 {
             limb_sizes.push(0);
         }
     }
@@ -243,7 +241,7 @@ fn test_decomposition_chip_variable() {
         .collect::<Vec<_>>();
     let expected = decompose_in_variable_limbsizes(&x, non_zero_limb_sizes.as_slice());
 
-    let circuit_variable = TestDecompositionCircuit {
+    let circuit_variable = TestDecompositionCircuit::<Fp, NR_COLS> {
         input: x,
         limb_sizes: LimbType::Variable(limb_sizes),
         expected,
@@ -254,7 +252,14 @@ fn test_decomposition_chip_variable() {
 }
 
 #[test]
-fn test_decomposition_chip_fixed() {
+fn test_decomposition_chip_variable() {
+    run_decomposition_chip_variable_test::<1>();
+    run_decomposition_chip_variable_test::<2>();
+    run_decomposition_chip_variable_test::<3>();
+    run_decomposition_chip_variable_test::<4>();
+}
+
+fn run_decomposition_chip_fixed_test<const NR_COLS: usize>() {
     const K: u32 = 10;
 
     let mut rng = ChaCha8Rng::from_entropy();
@@ -276,7 +281,7 @@ fn test_decomposition_chip_fixed() {
 
         let expected = decompose_in_variable_limbsizes(&x, limb_sizes.as_slice());
 
-        let circuit_fixed = TestDecompositionCircuit {
+        let circuit_fixed = TestDecompositionCircuit::<Fp, NR_COLS> {
             input: x,
             limb_sizes: LimbType::Fixed((Fp::NUM_BITS as usize, limb_size)),
             expected,
@@ -288,13 +293,21 @@ fn test_decomposition_chip_fixed() {
     }
 }
 
+#[test]
+fn test_decomposition_chip_fixed() {
+    run_decomposition_chip_fixed_test::<1>();
+    run_decomposition_chip_fixed_test::<2>();
+    run_decomposition_chip_fixed_test::<3>();
+    run_decomposition_chip_fixed_test::<4>();
+}
+
 #[derive(Clone, Debug)]
-struct TestLessThanPow2Circuit<F: PrimeField> {
+struct TestLessThanPow2Circuit<F: PrimeField, const NR_COLS: usize> {
     input: F,
     bound: usize,
 }
 
-impl<F> Circuit<F> for TestLessThanPow2Circuit<F>
+impl<F, const NR_COLS: usize> Circuit<F> for TestLessThanPow2Circuit<F, NR_COLS>
 where
     F: PrimeField,
 {
@@ -320,8 +333,7 @@ where
                 [committed_instance_column, instance_column],
             ),
         );
-        let pow2range_config =
-            Pow2RangeChip::configure(meta, &advice_columns[1..=NB_POW2RANGE_COLS]);
+        let pow2range_config = Pow2RangeChip::configure(meta, &advice_columns[1..=NR_COLS]);
 
         P2RDecompositionConfig::new(&native_config, &pow2range_config)
     }
@@ -346,8 +358,7 @@ where
     }
 }
 
-#[test]
-fn decomposition_test_less_than_pow2() {
+fn run_decomposition_less_than_pow2_test<const NR_COLS: usize>() {
     const K: u32 = 10;
 
     let mut rng = ChaCha8Rng::from_entropy();
@@ -361,9 +372,17 @@ fn decomposition_test_less_than_pow2() {
 
     let x: Fp = bigint_to_fe(&bign);
 
-    let circuit = TestLessThanPow2Circuit { input: x, bound };
+    let circuit = TestLessThanPow2Circuit::<Fp, NR_COLS> { input: x, bound };
 
     let prover =
         MockProver::run(K, &circuit, vec![vec![], vec![]]).expect("Failed to run mock prover");
     prover.assert_satisfied();
+}
+
+#[test]
+fn test_decomposition_less_than_pow2() {
+    run_decomposition_less_than_pow2_test::<1>();
+    run_decomposition_less_than_pow2_test::<2>();
+    run_decomposition_less_than_pow2_test::<3>();
+    run_decomposition_less_than_pow2_test::<4>();
 }
