@@ -36,11 +36,13 @@ use crate::{
     verifier::{
         expressions::{
             eval_expression, lookup::lookup_expressions, permutation::permutation_expressions,
+            trash::trash_expressions,
         },
         kzg::{self, VerifierQuery},
         lookup,
         permutation::{self, evaluate_permutation_common},
         transcript_gadget::TranscriptGadget,
+        trash,
         utils::{evaluate_lagrange_polynomials, inner_product, sum, AssignedBoundedScalar},
         vanishing, Accumulator, AssignedAccumulator, AssignedVk, SelfEmulation, VerifyingKey,
     },
@@ -282,6 +284,14 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                  lookup.read_product_commitment(layouter, &mut transcript))
             .collect::<Result<Vec<_>, _>>()?;
 
+        let trash_challenge = transcript.squeeze_challenge(layouter)?;
+
+        let trashcans_committed = cs
+            .trashcans()
+            .iter()
+            .map(|_| trash::read_committed(layouter, &mut transcript))
+            .collect::<Result<Vec<_>, _>>()?;
+
         let vanishing = vanishing::read_commitments_before_y(layouter, &mut transcript)?;
 
         // Sample y challenge, which keeps the gates linearly independent
@@ -354,6 +364,11 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         let lookups_evaluated = lookups_committed
             .into_iter()
             .map(|lookup| lookup.evaluate(layouter, &mut transcript))
+            .collect::<Result<Vec<_>, Error>>()?;
+
+        let trashcans_evaluated = trashcans_committed
+            .into_iter()
+            .map(|trash| trash.evaluate(layouter, &mut transcript))
             .collect::<Result<Vec<_>, Error>>()?;
 
         // This check ensures the circuit is satisfied so long as the polynomial
@@ -436,11 +451,32 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                     .collect::<Result<Vec<Vec<_>>, Error>>()?
                     .concat();
 
+                let evaluated_trashcan_ids = cs
+                    .trashcans()
+                    .iter()
+                    .enumerate()
+                    .map(|(index, _)| {
+                        trash_expressions(
+                            layouter,
+                            &self.scalar_chip,
+                            &trashcans_evaluated[index],
+                            cs.trashcans()[index].selector(),
+                            cs.trashcans()[index].constraint_expressions(),
+                            &advice_evals,
+                            &fixed_evals,
+                            &instance_evals,
+                            &trash_challenge,
+                        )
+                    })
+                    .collect::<Result<Vec<Vec<_>>, Error>>()?
+                    .concat();
+
                 std::iter::empty()
                     // Evaluate the circuit using the custom gates provided
                     .chain(evaluated_gate_ids)
                     .chain(evaluated_perm_ids)
                     .chain(evaluated_lookup_ids)
+                    .chain(evaluated_trashcan_ids)
                     .collect::<Vec<_>>()
             };
 
@@ -496,6 +532,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                     (lookups_evaluated.iter())
                         .flat_map(|lookup| lookup.queries(&one, &x, &x_next, &x_prev)),
                 )
+                .chain((trashcans_evaluated.iter()).flat_map(|trash| trash.queries(&one, &x)))
                 .chain(
                     cs.fixed_queries()
                         .iter()

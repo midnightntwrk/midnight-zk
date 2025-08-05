@@ -35,6 +35,7 @@ mod lookup;
 mod msm;
 mod permutation;
 mod transcript_gadget;
+mod trash;
 mod types;
 mod utils;
 mod vanishing;

@@ -27,6 +27,7 @@ use crate::{
 
 pub(crate) mod lookup;
 pub(crate) mod permutation;
+pub(crate) mod trash;
 
 /// Function to evaluate expressions in-circuit.
 pub(crate) fn eval_expression<S: SelfEmulation>(
