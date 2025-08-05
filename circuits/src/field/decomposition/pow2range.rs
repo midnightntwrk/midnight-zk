@@ -23,18 +23,20 @@ use midnight_proofs::{
     poly::Rotation,
 };
 
-use crate::{instructions::decomposition::Pow2RangeInstructions, types::AssignedNative};
-
-/// Number of pow2range check lookup columns enabled.
-pub const NB_POW2RANGE_COLS: usize = 4;
+use crate::{
+    field::native::NB_ARITH_COLS, instructions::decomposition::Pow2RangeInstructions,
+    types::AssignedNative,
+};
 
 /// Pow2Range gate configuration.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Pow2RangeConfig {
     pub(crate) q_pow2range: Selector,
     pub(crate) tag_col: Column<Fixed>,
-    /// The columns where the range-checked values are placed.
-    pub(crate) val_cols: [Column<Advice>; NB_POW2RANGE_COLS],
+    /// The columns where the range-checked values are placed. All of these
+    /// columns are lookup-enabled, i.e., the length of this field
+    /// determines the number of parallel lookups.
+    pub(crate) val_cols: Vec<Column<Advice>>,
     t_tag: TableColumn,
     t_val: TableColumn,
 }
@@ -57,13 +59,13 @@ pub struct Pow2RangeConfig {
 //    |   N   |    1    |
 //    |  ...  |   ...   |
 //    |   N   | 2^N - 1 |
-/// There exist `NB_POW2RANGE_COLS` columns designated for the lookup. If the
-/// lookup is enabled, the values in those columns will be asserted to be in the
-/// range [0, 2^tag), where tag is the value of the tag column at the relevant
-/// offset. Note that if the lookup is enabled, all lookup columns are
-/// range-checked in the same range. It is not possible range-check only some of
-/// them. However, different rows may assert different ranges (specified by the
-/// tag).
+/// There exist [crate::compact_std_lib::ZkStdLibArch::nr_pow2range_cols]
+/// columns designated for the lookup. If the lookup is enabled, the values in
+/// those columns will be asserted to be in the range [0, 2^tag), where tag is
+/// the value of the tag column at the relevant offset. Note that if the lookup
+/// is enabled, all lookup columns are range-checked in the same range. It is
+/// not possible to range-check only some of them. However, different rows may
+/// assert different ranges (specified by the tag).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Pow2RangeChip<F: PrimeField> {
     config: Pow2RangeConfig,
@@ -112,7 +114,8 @@ impl<F: PrimeField> Pow2RangeInstructions<F> for Pow2RangeChip<F> {
         values: &[AssignedNative<F>],
         n: usize,
     ) -> Result<(), Error> {
-        for chunk in values.chunks(NB_POW2RANGE_COLS) {
+        let nr_range_check_cols = self.config.val_cols.len();
+        for chunk in values.chunks(nr_range_check_cols) {
             layouter.assign_region(
                 || "Assign values",
                 |mut region| {
@@ -127,8 +130,8 @@ impl<F: PrimeField> Pow2RangeInstructions<F> for Pow2RangeChip<F> {
                         region.constrain_equal(x.cell(), assigned.cell())?
                     }
                     // Assign zeros in the unassigned lookup columns in case |chunk| <
-                    // NB_POW2RANGE_COLS.
-                    for i in chunk.len()..NB_POW2RANGE_COLS {
+                    // ZkStdLibArch::nr_pow2range_cols.
+                    for i in chunk.len()..nr_range_check_cols {
                         region.assign_advice(
                             || "pow2range zero",
                             self.config.val_cols[i],
@@ -165,24 +168,28 @@ impl<F: PrimeField> Pow2RangeChip<F> {
     ///
     /// # Panics
     ///
-    /// If the number of provided columns is smaller than `NB_POW2RANGE_COLS`.
+    /// If the number of provided columns is smaller than
+    /// [crate::compact_std_lib::ZkStdLibArch::nr_pow2range_cols].
     pub fn configure(
         meta: &mut ConstraintSystem<F>,
         columns: &[Column<Advice>],
     ) -> Pow2RangeConfig {
-        let val_cols: [Column<Advice>; NB_POW2RANGE_COLS] =
-            columns[..NB_POW2RANGE_COLS].try_into().unwrap();
+        let val_cols = columns.to_vec();
+        assert!(
+            val_cols.len() < NB_ARITH_COLS,
+            "Nr of range-check columns should be smaller than NB_ARITHM_COLS."
+        );
 
         let q_pow2range = meta.complex_selector();
         let tag_col = meta.fixed_column();
         let t_tag = meta.lookup_table_column();
         let t_val = meta.lookup_table_column();
 
-        for val_col in val_cols {
+        for val_col in &val_cols {
             meta.lookup("pow2range column check", |meta| {
                 let sel = meta.query_selector(q_pow2range);
                 let tag = meta.query_fixed(tag_col, Rotation::cur());
-                let val = meta.query_advice(val_col, Rotation::cur());
+                let val = meta.query_advice(*val_col, Rotation::cur());
                 vec![(tag, t_tag), (sel * val, t_val)]
             });
         }
@@ -231,27 +238,23 @@ mod tests {
 
     use super::*;
 
-    struct TestCircuit<F: PrimeField> {
-        inputs: Vec<([u64; NB_POW2RANGE_COLS], usize)>, // (values, bit_len)
+    struct TestCircuit<F: PrimeField, const NR_COLS: usize> {
+        inputs: Vec<([u64; NR_COLS], usize)>, // (values, bit_len)
         max_bit_len: usize,
         _marker: PhantomData<F>,
     }
 
-    impl<F: PrimeField> Circuit<F> for TestCircuit<F> {
+    impl<F: PrimeField, const NR_COLS: usize> Circuit<F> for TestCircuit<F, NR_COLS> {
         type Config = Pow2RangeConfig;
         type FloorPlanner = SimpleFloorPlanner;
         type Params = ();
 
         fn without_witnesses(&self) -> Self {
-            Self {
-                inputs: vec![],
-                max_bit_len: 0,
-                _marker: PhantomData,
-            }
+            unreachable!();
         }
 
         fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
-            let columns = (0..NB_POW2RANGE_COLS)
+            let columns = (0..NR_COLS)
                 .map(|_| meta.advice_column())
                 .collect::<Vec<_>>();
             Pow2RangeChip::configure(meta, &columns)
@@ -268,7 +271,7 @@ mod tests {
                 || "pow2range test",
                 |mut region| {
                     for (offset, input) in self.inputs.iter().enumerate() {
-                        for i in 0..NB_POW2RANGE_COLS {
+                        for i in 0..NR_COLS {
                             let col = pow2range_chip.config.val_cols[i];
                             let val = Value::known(F::from(input.0[i]));
                             region.assign_advice(|| "pow2range val", col, offset, || val)?;
@@ -282,8 +285,7 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_pow2range() {
+    fn run_pow2range_test<const NR_COLS: usize>() {
         const MAX_BIT_LEN: usize = 10;
         // FIXME: Ideally k should be (MAX_BIT_LEN + 1), this is currently not possible
         // because there seem to be 6 unusable rows for the ZK adjustment.
@@ -292,16 +294,16 @@ mod tests {
 
         let inputs = (0..MAX_BIT_LEN)
             .map(|n| {
-                let mut values = [0u64; NB_POW2RANGE_COLS];
+                let mut values = [0u64; NR_COLS];
                 values[0] = (1 << n) - 1;
                 for value in values.iter_mut().skip(1) {
                     *value = rng.gen_range(0..(1 << n));
                 }
                 (values, n)
             })
-            .collect::<Vec<_>>();
+            .collect();
 
-        let circuit = TestCircuit::<Fp> {
+        let circuit = TestCircuit::<Fp, NR_COLS> {
             inputs,
             max_bit_len: MAX_BIT_LEN,
             _marker: PhantomData,
@@ -317,20 +319,27 @@ mod tests {
     }
 
     #[test]
-    fn test_pow2range_negative() {
+    fn test_pow2range() {
+        run_pow2range_test::<1>();
+        run_pow2range_test::<2>();
+        run_pow2range_test::<3>();
+        run_pow2range_test::<4>();
+    }
+
+    fn run_pow2range_negative_test<const NR_COLS: usize>() {
         const MAX_BIT_LEN: usize = 10;
         // FIXME: Ideally k should be (MAX_BIT_LEN + 1), this is currently not possible
         // because there seem to be 6 unusable rows for the ZK adjustment.
         let k = (MAX_BIT_LEN + 2) as u32;
 
         (0..MAX_BIT_LEN).for_each(|n| {
-            let mut values = [0u64; NB_POW2RANGE_COLS];
+            let mut values = [0u64; NR_COLS];
             // Set the i-th position to 2^n to make the circuit fail.
             // We vary i to check that the assertion works in all enabled columns.
-            let i = n % NB_POW2RANGE_COLS;
+            let i = n % NR_COLS;
             values[i] = 1 << n;
 
-            let circuit = TestCircuit::<Fp> {
+            let circuit = TestCircuit::<Fp, NR_COLS> {
                 inputs: vec![(values, n)],
                 max_bit_len: MAX_BIT_LEN,
                 _marker: PhantomData,
@@ -344,5 +353,13 @@ mod tests {
 
             assert!(prover.verify() != Ok(()));
         })
+    }
+
+    #[test]
+    fn test_pow2range_negative() {
+        run_pow2range_negative_test::<1>();
+        run_pow2range_negative_test::<2>();
+        run_pow2range_negative_test::<3>();
+        run_pow2range_negative_test::<4>();
     }
 }

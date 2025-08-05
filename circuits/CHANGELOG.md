@@ -47,7 +47,9 @@ verification keys break backwards compatibility.
 * Adds input extraction feature to the automaton chip [#16](https://github.com/midnightntwrk/midnight-zk/pull/16)
 
 ### Changed
+* Increase # of pow2range cols in json_verification example [#58](https://github.com/midnightntwrk/midnight-zk/pull/58)
 * Add additional identities to gates in `edwards_chip`such that max degree is 5 [#49](https://github.com/midnightntwrk/midnight-zk/pull/49)
+* Modify `pow2range` chip: make number of parallel lookups variable [#38](https://github.com/midnightntwrk/midnight-zk/pull/38)
 * Add holder key check on credential example [#542](https://github.com/midnightntwrk/midnight-circuits/pull/542)
 * Normalize after various foreign field ops if bound limit is close [#546](https://github.com/midnightntwrk/midnight-circuits/pull/546)
 * Fix optimized `assign_many` from `NativeChip` [#551](https://github.com/midnightntwrk/midnight-circuits/pull/551)

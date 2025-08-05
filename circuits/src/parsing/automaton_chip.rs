@@ -43,8 +43,7 @@ use midnight_proofs::{
 use {
     super::regex::Regex, super::regex::RegexInstructions,
     crate::field::decomposition::chip::P2RDecompositionConfig,
-    crate::field::decomposition::pow2range::Pow2RangeChip,
-    crate::field::decomposition::pow2range::NB_POW2RANGE_COLS, crate::field::native::NB_ARITH_COLS,
+    crate::field::decomposition::pow2range::Pow2RangeChip, crate::field::native::NB_ARITH_COLS,
     crate::testing_utils::FromScratch, midnight_proofs::plonk::Instance,
 };
 
@@ -560,7 +559,7 @@ where
             ),
         );
 
-        let pow2range_config = Pow2RangeChip::configure(meta, &advice_cols[1..=NB_POW2RANGE_COLS]);
+        let pow2range_config = Pow2RangeChip::configure(meta, &advice_cols[1..=4]);
 
         let native_gadget_config = P2RDecompositionConfig {
             native_config,

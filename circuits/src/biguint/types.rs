@@ -33,9 +33,9 @@ use crate::{
 // recommended to exceed 120.
 //
 // In general, a good choice for the value of LOG2_BASE is a multiple of
-// `MAX_BIT_LEN * NB_POW2RANGE_COLS` where the former is the table size of the
-// native_gadget range-checks and the latter the number of columns dedicated to
-// such lookup. Here, we pick a multiple of 8 * 4 = 32.
+// `MAX_BIT_LEN * ZkStdLibArch::nr_pow2range_cols` where the former is the
+// table size of the native_gadget range-checks and the latter the number of
+// columns dedicated to such lookup. Here, we pick a multiple of 8 * 4 = 32.
 pub(crate) const LOG2_BASE: u32 = 96;
 
 /// Type for assigned big unsigned integers, emulated over native field `F`.

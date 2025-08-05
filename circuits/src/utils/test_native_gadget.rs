@@ -29,17 +29,17 @@ macro_rules! run_test_native_gadget {
             field::{
                 decomposition::{
                     chip::{P2RDecompositionChip, P2RDecompositionConfig},
-                    pow2range::{Pow2RangeChip, NB_POW2RANGE_COLS},
+                    pow2range::Pow2RangeChip,
                 },
                 AssignedBounded, NativeChip, NativeGadget, native::{NB_ARITH_COLS, NB_ARITH_FIXED_COLS},
             },
         };
 
-        struct TestCircuit {}
+        struct TestCircuit<const NB_POW2RANGE_COLS: usize>;
 
         type NG<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
 
-        impl<F: PrimeField> Circuit<F> for TestCircuit {
+        impl<F: PrimeField, const NB_POW2RANGE_COLS: usize> Circuit<F> for TestCircuit<NB_POW2RANGE_COLS> {
             type Config = P2RDecompositionConfig;
             type FloorPlanner = SimpleFloorPlanner;
             type Params = ();
@@ -92,7 +92,7 @@ macro_rules! run_test_native_gadget {
         }
 
         assert_eq!(
-            MockProver::<Fp>::run(10, &(TestCircuit {}), vec![vec![], vec![]])
+            MockProver::<Fp>::run(10, &(TestCircuit::<4> {}), vec![vec![], vec![]])
                 .unwrap()
                 .verify(),
             Ok(())
