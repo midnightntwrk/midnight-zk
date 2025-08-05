@@ -1513,7 +1513,6 @@ mod tests {
             assert_eq!(G1Affine::from_compressed_unchecked(&c).unwrap(), el);
 
             let u = el.to_uncompressed();
-            dbg!(u);
             assert_eq!(G1Affine::from_uncompressed(&u).unwrap(), el);
             assert_eq!(G1Affine::from_uncompressed_unchecked(&u).unwrap(), el);
 
@@ -1522,7 +1521,6 @@ mod tests {
             assert_eq!(G1Affine::from_bytes_unchecked(&c).unwrap(), el);
 
             let c = el.to_raw_bytes();
-            dbg!(c.clone());
             assert_eq!(G1Affine::from_raw_bytes(&c).unwrap(), el);
             assert_eq!(G1Affine::from_raw_bytes_unchecked(&c), el);
 

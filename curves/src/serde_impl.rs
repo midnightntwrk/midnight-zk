@@ -264,7 +264,6 @@ mod tests {
     use super::*;
 
     fn test_roundtrip<T: Serialize + for<'a> Deserialize<'a> + Debug + PartialEq>(t: &T) {
-        // dbg!(t);
         let ser = serde_json::to_vec(t).unwrap();
         assert_eq!(*t, serde_json::from_slice(&ser).unwrap());
     }

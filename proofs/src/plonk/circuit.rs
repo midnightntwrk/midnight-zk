@@ -1993,13 +1993,13 @@ impl<F: Field> ConstraintSystem<F> {
             );
         }
 
-        // Substitute selectors for the real fixed columns in all gates
+        // Substitute selectors for the real fixed columns in all gates.
         for expr in self.gates.iter_mut().flat_map(|gate| gate.polys.iter_mut()) {
             replace_selectors(expr, selector_replacements, false);
         }
 
         // Substitute non-simple selectors for the real fixed columns in all
-        // lookup expressions
+        // lookup expressions.
         for expr in self.lookups.iter_mut().flat_map(|lookup| {
             lookup
                 .input_expressions
