@@ -18,21 +18,16 @@ midnight-proofs = { path = "../proofs", version = "0.4.0", default-features = fa
     "committed-instances",
 ] }
 
-arrayvec = "0.7.2"
 rand = "0.8"
 pasta_curves = "0.5"
 num-bigint = { version = "0.4" }
-const_num_bigint = "0.2.1"
 num-traits = "0.2"
 subtle = "2.5"
 num-integer = "0.1"
-uint = "0.9.2"
 serde = { version = "1", optional = true }
 serde_derive = { version = "1", optional = true }
 serde_json = { version = "1", optional = true }
-toml = { version = "0.8.8", optional = true }
 sha2 = "0.10.8"
-bitvec = "1.0.1"
 base64 = "0.13.0"
 lazy_static = "1.5.0"
 
@@ -42,16 +37,12 @@ rand_chacha = "0.3.1"
 goldenfile = "1.7.1"
 num-bigint = { version = "0.4", features = ["rand"] }
 serde_json = "1.0"
-pasta_curves = "0.5"
-proptest = "1.2.0"
 itertools = "0.12"
-dhat = "0.3"
-parking_lot = "0.12.3"
 bellman = "0.14.0"
 
 [features]
 default = []
-regression = ["serde", "serde_derive", "serde_json", "toml"]
+regression = ["serde", "serde_derive", "serde_json"]
 # Feature that exposes some testing functionality, such as load from scratch or instantiable
 testing = ["num-bigint/rand"]
 heap_profiling = []
