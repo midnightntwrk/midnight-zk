@@ -46,7 +46,7 @@ rayon = { workspace = true }
 rand_chacha = "0.3"
 
 # Developer tooling dependencies
-plotters = { version = "0.3.0", default-features = false, optional = true }
+plotters = { version = "0.3.7", default-features = false, optional = true }
 tabbycat = { version = "0.1", features = ["attributes"], optional = true }
 
 

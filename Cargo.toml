@@ -12,7 +12,7 @@ tracing = "0.1"
 blake2b_simd = "1"                                            # MSRV 1.66.0
 sha3 = "0.9.1"
 rand_chacha = "0.3"
-rayon = "1.8"
+rayon = "1.10"
 
 
 ## Benchmarks
