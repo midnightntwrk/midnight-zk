@@ -136,7 +136,7 @@ impl Relation for AtalaJsonECDSA {
             secp256k1: true,
             bls12_381: false,
             base64: true,
-            nr_pow2range_cols: 1,
+            nr_pow2range_cols: 3,
         }
     }
 
