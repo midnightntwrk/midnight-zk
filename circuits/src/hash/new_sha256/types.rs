@@ -172,7 +172,7 @@ impl<F: PrimeField> CompressionState<F> {
 }
 
 #[derive(Clone, Debug)]
-pub(super) struct MessageWord<F: PrimeField> {
+pub(super) struct AssignedMessageWord<F: PrimeField> {
     pub combined_plain: AssignedPlain<F, 32>,
     pub spreaded_w_12: AssignedSpreaded<F, 12>,
     pub spreaded_w_1a: AssignedSpreaded<F, 1>,

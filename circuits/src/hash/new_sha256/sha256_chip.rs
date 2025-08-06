@@ -15,12 +15,13 @@ use crate::{
             sigma_0_gate, sigma_1_gate, Sigma_0_gate, Sigma_1_gate,
         },
         types::{
-            AssignedPlain, AssignedPlainSpreaded, AssignedSpreaded, CompressionState, LimbsOfA,
-            LimbsOfE, MessageWord,
+            AssignedMessageWord, AssignedPlain, AssignedPlainSpreaded, AssignedSpreaded,
+            CompressionState, LimbsOfA, LimbsOfE,
         },
         utils::{
             gen_spread_table, get_even_and_odd_bits, negate_spreaded, spread, spreaded_Sigma_0,
-            spreaded_Sigma_1, spreaded_maj, u32_in_be_limbs, u32_to_fe, u64_to_fe, MASK_EVN_64,
+            spreaded_Sigma_1, spreaded_maj, spreaded_sigma_0, spreaded_sigma_1, u32_in_be_limbs,
+            u32_to_fe, u64_to_fe, MASK_EVN_64,
         },
     },
     instructions::assignments::AssignmentInstructions,
@@ -1172,184 +1173,67 @@ impl<F: PrimeField> Sha256Chip<F> {
         layouter: &mut impl Layouter<F>,
         block: &[AssignedPlain<F, 32>; BLOCK],
     ) -> Result<[AssignedPlain<F, 32>; ROUND], Error> {
-        let message_word = self.decompose_word(layouter, &block[0])?;
-        let mut message_words: [MessageWord<F>; ROUND] =
+        let message_word = self.prepare_message_word(layouter, &[block[0].clone()])?;
+        let mut message_words: [AssignedMessageWord<F>; ROUND] =
             core::array::from_fn(|_| message_word.clone());
 
-        for i in 1..BLOCK {
-            message_words[i] = self.decompose_word(layouter, &block[i])?;
+        for word_idx in 1..BLOCK {
+            message_words[word_idx] =
+                self.prepare_message_word(layouter, &[block[word_idx].clone()])?;
         }
 
-        for i in BLOCK..ROUND {
-            message_words[i] = self.prepare_word(layouter, &message_words, i)?;
+        for word_idx in BLOCK..ROUND {
+            let sigma0_w_i_minus_15 = &self.sigma_0(layouter, &message_words[word_idx - 15])?;
+            let sigma1_w_i_minus_2 = &self.sigma_1(layouter, &message_words[word_idx - 2])?;
+            message_words[word_idx] = self.prepare_message_word(
+                layouter,
+                &[
+                    message_words[word_idx - 16].combined_plain.clone(),
+                    message_words[word_idx - 7].combined_plain.clone(),
+                    sigma0_w_i_minus_15.clone(),
+                    sigma1_w_i_minus_2.clone(),
+                ],
+            )?;
         }
 
         Ok(message_words.map(|w| w.combined_plain))
     }
 
-    fn decompose_word(
+    fn prepare_message_word(
         &self,
         layouter: &mut impl Layouter<F>,
-        block_word: &AssignedPlain<F, 32>,
-    ) -> Result<MessageWord<F>, Error> {
+        summands: &[AssignedPlain<F, 32>],
+    ) -> Result<AssignedMessageWord<F>, Error> {
         /*
-        | T_0 |  A_0 |  A_1  | T_1 |  A_2  |   A_3  |  A_4  |     A_5     |     A_6    |  A_7  |
-        |-----|------|-------|-----|-------|--------|-------|-------------|------------|-------|
-        |  12 | W.12 | ~W.12 | 07  |  W.07 | ~W.07  |  W.i  |             |            |  W.1a |
-        |  03 | W.3a | ~W.3a | 04  |  W.04 | ~W.04  |       |             |            |  W.1b |
-        |  03 | W.3b | ~W.3b | 00  |   0   |   0    |       |             |            |  W.1c |
+        | T_0 |  A_0 |  A_1  | T_1 |  A_2  |   A_3  | A_4 |  A_5 |  A_6 |  A_7  |
+        |-----|------|-------|-----|-------|--------|-----|------|------|-------|
+        |  12 | W.12 | ~W.12 | 07  |  W.07 | ~W.07  | W.i |  S0  |  S1  |  W.1a |
+        |  03 | W.3a | ~W.3a | 04  |  W.04 | ~W.04  |     |  S2  |  S3  |  W.1b |
+        |  03 | W.3b | ~W.3b | 03  | carry | ~carry | S4  |  S5  |  S6  |  W.1c |
         */
-        let [val_12, val_1a, val_1b, val_1c, val_07, val_3a, val_04, val_3b] = block_word
-            .0
-            .value()
-            .copied()
+
+        let adv_cols = self.config().advice_cols;
+
+        let zero = AssignedPlain::<F, 32>::fixed(layouter, &self.native_chip, 0)?;
+        let mut summands = summands.to_vec();
+        summands.resize(7, zero);
+
+        let (carry_val, w_val): (Value<u32>, Value<F>) =
+            Value::<Vec<F>>::from_iter(summands.iter().map(|s| s.0.value().copied()))
+                .map(|v| v.into_iter().map(fe_to_u64).sum())
+                .map(|s: u64| s.div_rem(&(1 << 32)))
+                .map(|(carry, w)| (carry as u32, u64_to_fe(w)))
+                .unzip();
+
+        let [val_12, val_1a, val_1b, val_1c, val_07, val_3a, val_04, val_3b] = w_val
             .map(|w| u32_in_be_limbs(fe_to_u32(w), [12, 1, 1, 1, 7, 3, 4, 3]))
             .transpose_array();
 
         layouter.assign_region(
-            || "decompose block word",
-            |mut region| {
-                self.config().q_12_1_1_1_7_3_4_3.enable(&mut region, 0)?;
-                // The spreaded form of W.1a, W.1b and W.1c equal themselves, as they are 1-bit
-                // values.
-                let limb_1a = region.assign_advice(
-                    || "W.1a",
-                    self.config().advice_cols[7],
-                    0,
-                    || val_1a.map(|v| u64_to_fe(v as u64)),
-                )?;
-                let limb_1b = region.assign_advice(
-                    || "W.1b",
-                    self.config().advice_cols[7],
-                    1,
-                    || val_1b.map(|v| u64_to_fe(v as u64)),
-                )?;
-                let limb_1c = region.assign_advice(
-                    || "W.1c",
-                    self.config().advice_cols[7],
-                    2,
-                    || val_1c.map(|v| u64_to_fe(v as u64)),
-                )?;
-
-                let w_plain = block_word.0.copy_advice(
-                    || "W_i",
-                    &mut region,
-                    self.config().advice_cols[4],
-                    0,
-                )?;
-
-                let limb_12 = self.assign_plain_and_spreaded(&mut region, val_12, 0, 0)?;
-                let limb_07 = self.assign_plain_and_spreaded(&mut region, val_07, 0, 1)?;
-                let limb_3a = self.assign_plain_and_spreaded(&mut region, val_3a, 1, 0)?;
-                let limb_04 = self.assign_plain_and_spreaded(&mut region, val_04, 1, 1)?;
-                let limb_3b = self.assign_plain_and_spreaded(&mut region, val_3b, 2, 0)?;
-                let _zero =
-                    self.assign_plain_and_spreaded::<0>(&mut region, Value::known(0), 2, 1)?;
-
-                Ok(MessageWord {
-                    combined_plain: AssignedPlain(w_plain),
-                    spreaded_w_12: limb_12.spreaded,
-                    spreaded_w_1a: AssignedSpreaded(limb_1a),
-                    spreaded_w_1b: AssignedSpreaded(limb_1b),
-                    spreaded_w_1c: AssignedSpreaded(limb_1c),
-                    spreaded_w_07: limb_07.spreaded,
-                    spreaded_w_3a: limb_3a.spreaded,
-                    spreaded_w_04: limb_04.spreaded,
-                    spreaded_w_3b: limb_3b.spreaded,
-                })
-            },
-        )
-    }
-
-    fn prepare_word(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        message_words: &[MessageWord<F>; ROUND],
-        word_idx: usize,
-    ) -> Result<MessageWord<F>, Error> {
-        /*
-        | T_0 |  A_0 |  A_1  | T_1 |  A_2  |   A_3  |  A_4  |     A_5     |     A_6    |  A_7  |
-        |-----|------|-------|-----|-------|--------|-------|-------------|------------|-------|
-        |  12 | W.12 | ~W.12 | 07  |  W.07 | ~W.07  |  W.i  |  W_(i-16)   |  W_(i-7)   |  W.1a |
-        |  03 | W.3a | ~W.3a | 04  |  W.04 | ~W.04  |       | s0(W_(i-15))| s1(W_(i-2))|  W.1b |
-        |  03 | W.3b | ~W.3b | 03  | carry | ~carry |       |             |            |  W.1c |
-        */
-        let w_i_minus_16 = &message_words[word_idx - 16].combined_plain;
-        let w_i_minus_7 = &message_words[word_idx - 7].combined_plain;
-        let sigma0_w_i_minus_15 = &self.sigma_0(layouter, &message_words[word_idx - 15])?;
-        let sigma1_w_i_minus_2 = &self.sigma_1(layouter, &message_words[word_idx - 2])?;
-        let (carry_val, w_i): (Value<u32>, Value<F>) = Value::<Vec<F>>::from_iter(
-            [
-                w_i_minus_16,
-                w_i_minus_7,
-                sigma0_w_i_minus_15,
-                sigma1_w_i_minus_2,
-            ]
-            .into_iter()
-            .map(|v| v.0.value().copied()),
-        )
-        .map(|v| v.into_iter().map(fe_to_u64).sum::<u64>())
-        .map(|s| s.div_rem(&(1 << 32)))
-        .map(|(carry, w_i)| (carry as u32, u64_to_fe(w_i)))
-        .unzip();
-
-        let [val_12, val_1a, val_1b, val_1c, val_07, val_3a, val_04, val_3b] = w_i
-            .map(|w| u32_in_be_limbs(fe_to_u32(w), [12, 1, 1, 1, 7, 3, 4, 3]))
-            .transpose_array();
-
-        layouter.assign_region(
-            || "prepare new message word",
+            || "prepare message word",
             |mut region| {
                 self.config().q_12_1_1_1_7_3_4_3.enable(&mut region, 0)?;
                 self.config().q_add_mod_2_32.enable(&mut region, 0)?;
-
-                w_i_minus_16.0.copy_advice(
-                    || "w_i_minus_16",
-                    &mut region,
-                    self.config().advice_cols[5],
-                    0,
-                )?;
-                w_i_minus_7.0.copy_advice(
-                    || "w_i_minus_7",
-                    &mut region,
-                    self.config().advice_cols[6],
-                    0,
-                )?;
-                sigma0_w_i_minus_15.0.copy_advice(
-                    || "σ₀(w_i_minus_15)",
-                    &mut region,
-                    self.config().advice_cols[5],
-                    1,
-                )?;
-                sigma1_w_i_minus_2.0.copy_advice(
-                    || "σ₁(w_i_minus_2)",
-                    &mut region,
-                    self.config().advice_cols[6],
-                    1,
-                )?;
-                // The spreaded form of W.1a, W.1b and W.1c equal themselves, as they are 1-bit
-                // values.
-                let limb_1a = region.assign_advice(
-                    || "W.1a",
-                    self.config().advice_cols[7],
-                    0,
-                    || val_1a.map(|v| u64_to_fe(v as u64)),
-                )?;
-                let limb_1b = region.assign_advice(
-                    || "W.1b",
-                    self.config().advice_cols[7],
-                    1,
-                    || val_1b.map(|v| u64_to_fe(v as u64)),
-                )?;
-                let limb_1c = region.assign_advice(
-                    || "W.1c",
-                    self.config().advice_cols[7],
-                    2,
-                    || val_1c.map(|v| u64_to_fe(v as u64)),
-                )?;
-
-                let w_i_plain =
-                    region.assign_advice(|| "W_i", self.config().advice_cols[4], 0, || w_i)?;
 
                 let limb_12 = self.assign_plain_and_spreaded(&mut region, val_12, 0, 0)?;
                 let limb_07 = self.assign_plain_and_spreaded(&mut region, val_07, 0, 1)?;
@@ -1358,7 +1242,38 @@ impl<F: PrimeField> Sha256Chip<F> {
                 let limb_3b = self.assign_plain_and_spreaded(&mut region, val_3b, 2, 0)?;
                 let _carry = self.assign_plain_and_spreaded::<3>(&mut region, carry_val, 2, 1)?;
 
-                Ok(MessageWord {
+                // The spreaded form of W.1a, W.1b and W.1c equal themselves, as they are 1-bit
+                // values.
+                let limb_1a = region.assign_advice(
+                    || "W.1a",
+                    adv_cols[7],
+                    0,
+                    || val_1a.map(|v| u64_to_fe(v as u64)),
+                )?;
+                let limb_1b = region.assign_advice(
+                    || "W.1b",
+                    adv_cols[7],
+                    1,
+                    || val_1b.map(|v| u64_to_fe(v as u64)),
+                )?;
+                let limb_1c = region.assign_advice(
+                    || "W.1c",
+                    adv_cols[7],
+                    2,
+                    || val_1c.map(|v| u64_to_fe(v as u64)),
+                )?;
+
+                let w_i_plain = region.assign_advice(|| "W_i", adv_cols[4], 0, || w_val)?;
+
+                (summands[0].0).copy_advice(|| "S0", &mut region, adv_cols[5], 0)?;
+                (summands[1].0).copy_advice(|| "S1", &mut region, adv_cols[6], 0)?;
+                (summands[2].0).copy_advice(|| "S2", &mut region, adv_cols[5], 1)?;
+                (summands[3].0).copy_advice(|| "S3", &mut region, adv_cols[6], 1)?;
+                (summands[4].0).copy_advice(|| "S4", &mut region, adv_cols[4], 2)?;
+                (summands[5].0).copy_advice(|| "S5", &mut region, adv_cols[5], 2)?;
+                (summands[6].0).copy_advice(|| "S6", &mut region, adv_cols[6], 2)?;
+
+                Ok(AssignedMessageWord {
                     combined_plain: AssignedPlain(w_i_plain),
                     spreaded_w_12: limb_12.spreaded,
                     spreaded_w_1a: AssignedSpreaded(limb_1a),
@@ -1377,7 +1292,7 @@ impl<F: PrimeField> Sha256Chip<F> {
     fn sigma_0(
         &self,
         layouter: &mut impl Layouter<F>,
-        w: &MessageWord<F>,
+        w: &AssignedMessageWord<F>,
     ) -> Result<AssignedPlain<F, 32>, Error> {
         /*
         | T_0 |    A_0   |    A_1    | T_1 |   A_2   |    A_3   |  A_4  |   A_5  |   A_6  |
@@ -1386,14 +1301,49 @@ impl<F: PrimeField> Sha256Chip<F> {
         |  12 | Even.12b | ~Even.12b |  12 | Odd.12b | ~Odd.12b | ~W.1b | ~W.1c  | ~W.07  |
         |   8 | Even.8   | ~Even.8   |   8 | Odd.8   | ~Odd.8   | ~W.3a | ~W.04  | ~W.3b  |
         */
-        todo!()
+        let adv_cols = self.config().advice_cols;
+
+        layouter.assign_region(
+            || "σ₀(W)",
+            |mut region| {
+                self.config().q_sigma_0.enable(&mut region, 0)?;
+
+                (w.spreaded_w_12.0).copy_advice(|| "~W.12", &mut region, adv_cols[5], 0)?;
+                (w.spreaded_w_1a.0).copy_advice(|| "~W.1a", &mut region, adv_cols[6], 0)?;
+                (w.spreaded_w_1b.0).copy_advice(|| "~W.1b", &mut region, adv_cols[4], 1)?;
+                (w.spreaded_w_1c.0).copy_advice(|| "~W.1c", &mut region, adv_cols[5], 1)?;
+                (w.spreaded_w_07.0).copy_advice(|| "~W.07", &mut region, adv_cols[6], 1)?;
+                (w.spreaded_w_3a.0).copy_advice(|| "~W.3a", &mut region, adv_cols[4], 2)?;
+                (w.spreaded_w_04.0).copy_advice(|| "~W.04", &mut region, adv_cols[5], 2)?;
+                (w.spreaded_w_3b.0).copy_advice(|| "~W.3b", &mut region, adv_cols[6], 2)?;
+
+                let val_of_sprdd_limbs: Value<[u64; 8]> = Value::from_iter([
+                    w.spreaded_w_12.0.value().copied().map(fe_to_u64),
+                    w.spreaded_w_1a.0.value().copied().map(fe_to_u64),
+                    w.spreaded_w_1b.0.value().copied().map(fe_to_u64),
+                    w.spreaded_w_1c.0.value().copied().map(fe_to_u64),
+                    w.spreaded_w_07.0.value().copied().map(fe_to_u64),
+                    w.spreaded_w_3a.0.value().copied().map(fe_to_u64),
+                    w.spreaded_w_04.0.value().copied().map(fe_to_u64),
+                    w.spreaded_w_3b.0.value().copied().map(fe_to_u64),
+                ])
+                .map(|limbs: Vec<u64>| limbs.try_into().unwrap());
+
+                self.assign_sprdd_12_12_8(
+                    &mut region,
+                    val_of_sprdd_limbs.map(spreaded_sigma_0),
+                    Parity::Evn,
+                    0,
+                )
+            },
+        )
     }
 
     /// Computes σ₁(W).
     fn sigma_1(
         &self,
         layouter: &mut impl Layouter<F>,
-        w: &MessageWord<F>,
+        w: &AssignedMessageWord<F>,
     ) -> Result<AssignedPlain<F, 32>, Error> {
         /*
         | T_0 |    A_0   |    A_1    | T_1 |   A_2   |    A_3   |  A_4  |   A_5  |   A_6  |
@@ -1402,7 +1352,42 @@ impl<F: PrimeField> Sha256Chip<F> {
         |  12 | Even.12b | ~Even.12b |  12 | Odd.12b | ~Odd.12b | ~W.1b | ~W.1c  | ~W.07  |
         |   8 | Even.8   | ~Even.8   |   8 | Odd.8   | ~Odd.8   | ~W.3a | ~W.04  | ~W.3b  |
         */
-        todo!()
+        let adv_cols = self.config().advice_cols;
+
+        layouter.assign_region(
+            || "σ₁(W)",
+            |mut region| {
+                self.config().q_sigma_1.enable(&mut region, 0)?;
+
+                (w.spreaded_w_12.0).copy_advice(|| "~W.12", &mut region, adv_cols[5], 0)?;
+                (w.spreaded_w_1a.0).copy_advice(|| "~W.1a", &mut region, adv_cols[6], 0)?;
+                (w.spreaded_w_1b.0).copy_advice(|| "~W.1b", &mut region, adv_cols[4], 1)?;
+                (w.spreaded_w_1c.0).copy_advice(|| "~W.1c", &mut region, adv_cols[5], 1)?;
+                (w.spreaded_w_07.0).copy_advice(|| "~W.07", &mut region, adv_cols[6], 1)?;
+                (w.spreaded_w_3a.0).copy_advice(|| "~W.3a", &mut region, adv_cols[4], 2)?;
+                (w.spreaded_w_04.0).copy_advice(|| "~W.04", &mut region, adv_cols[5], 2)?;
+                (w.spreaded_w_3b.0).copy_advice(|| "~W.3b", &mut region, adv_cols[6], 2)?;
+
+                let val_of_sprdd_limbs: Value<[u64; 8]> = Value::from_iter([
+                    w.spreaded_w_12.0.value().copied().map(fe_to_u64),
+                    w.spreaded_w_1a.0.value().copied().map(fe_to_u64),
+                    w.spreaded_w_1b.0.value().copied().map(fe_to_u64),
+                    w.spreaded_w_1c.0.value().copied().map(fe_to_u64),
+                    w.spreaded_w_07.0.value().copied().map(fe_to_u64),
+                    w.spreaded_w_3a.0.value().copied().map(fe_to_u64),
+                    w.spreaded_w_04.0.value().copied().map(fe_to_u64),
+                    w.spreaded_w_3b.0.value().copied().map(fe_to_u64),
+                ])
+                .map(|limbs: Vec<u64>| limbs.try_into().unwrap());
+
+                self.assign_sprdd_12_12_8(
+                    &mut region,
+                    val_of_sprdd_limbs.map(spreaded_sigma_1),
+                    Parity::Evn,
+                    0,
+                )
+            },
+        )
     }
 
     /// SHA256 computation.
