@@ -166,6 +166,7 @@ impl Relation for SchnorrExample {
             secp256k1: false,
             bls12_381: false,
             base64: false,
+            nr_pow2range_cols: 1,
         }
     }
 
@@ -177,6 +178,7 @@ impl Relation for SchnorrExample {
         Ok(SchnorrExample)
     }
 }
+
 fn main() {
     const K: u32 = 11;
 

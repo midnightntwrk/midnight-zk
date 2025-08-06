@@ -13,6 +13,7 @@ pub mod membership;
 pub mod native_gadget;
 pub mod poseidon;
 pub mod rsa_signature;
+pub mod schnorr_sig;
 pub mod sha_preimage;
 
 // We are doing a bit of a hack to be able to reuse the circuits that are
