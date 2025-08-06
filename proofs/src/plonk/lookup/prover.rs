@@ -28,7 +28,8 @@ pub(crate) struct Permuted<F: PrimeField> {
     permuted_table_poly: Polynomial<F, Coeff>,
 }
 
-#[derive(Debug)]
+// TODO: REMOVE CLONE - JUST FOR DEBUGGING
+#[derive(Clone, Debug)]
 pub(crate) struct Committed<F: PrimeField> {
     pub(crate) permuted_input_poly: Polynomial<F, Coeff>,
     pub(crate) permuted_table_poly: Polynomial<F, Coeff>,

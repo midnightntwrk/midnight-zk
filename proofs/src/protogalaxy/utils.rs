@@ -127,19 +127,10 @@ pub fn batch_traces<F: PrimeField + WithSmallOrderMulGroup<3>>(
 
     let dk_domain_size = lagrange_polys[0].num_coeffs();
     assert_eq!(dk_domain_size, dk_domain.extended_len());
-    let trace_domain_size = traces[0].fixed_polys[0].num_coeffs();
 
     (0..dk_domain.extended_len())
         .map(|i| {
-            let buffer = FoldingProverTrace::init(
-                trace_domain_size,
-                traces[0].fixed_polys.len(),
-                traces[0].advice_polys[0].len(),
-                traces[0].instance_polys[0].len(),
-                traces[0].lookups[0].len(),
-                traces[0].permutations[0].sets.len(),
-                traces[0].challenges.len(),
-            );
+            let buffer = FoldingProverTrace::with_same_dimensions(&traces[0]);
             let coordinate_i_lagrange = lagrange_polys
                 .iter()
                 .map(|poly| poly.values[i])
@@ -151,6 +142,7 @@ pub fn batch_traces<F: PrimeField + WithSmallOrderMulGroup<3>>(
 }
 
 impl<F: PrimeField> FoldingProverTrace<F> {
+    /// Initialise a folding prover trace.
     pub fn init(
         domain_size: usize,
         num_fixed_polys: usize,
@@ -192,6 +184,20 @@ impl<F: PrimeField> FoldingProverTrace<F> {
             theta: F::ZERO,
             y: F::ZERO,
         }
+    }
+
+    /// Initialises a `FoldingProverTrace` with the same dimensions as the given trace.
+    pub(crate) fn with_same_dimensions(trace: &Self) -> Self {
+        let trace_domain_size = trace.fixed_polys[0].num_coeffs();
+        FoldingProverTrace::init(
+            trace_domain_size,
+            trace.fixed_polys.len(),
+            trace.advice_polys[0].len(),
+            trace.instance_polys[0].len(),
+            trace.lookups[0].len(),
+            trace.permutations[0].sets.len(),
+            trace.challenges.len(),
+        )
     }
 }
 

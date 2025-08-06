@@ -16,7 +16,8 @@ use crate::{
     utils::arithmetic::{eval_polynomial, parallelize},
 };
 
-#[derive(Debug)]
+// TODO: REMOVE CLONE - JUST FOR DEBUGGING
+#[derive(Clone, Debug)]
 pub(crate) struct Committed<F: PrimeField> {
     pub(crate) random_poly: Polynomial<F, Coeff>,
 }

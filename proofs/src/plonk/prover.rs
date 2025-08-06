@@ -575,7 +575,9 @@ where
         .map(|advice_polys| {
             advice_polys
                 .iter()
-                .map(|poly| domain.coeff_to_extended(poly.clone()))
+                .map(|poly| {
+                    domain.coeff_to_extended(poly.clone())
+                })
                 .collect()
         })
         .collect();
@@ -589,7 +591,6 @@ where
         })
         .collect();
 
-    let now = Instant::now();
     // Evaluate the h(X) polynomial
     let h_poly = pk.ev.evaluate_h::<ExtendedLagrangeCoeff>(
         &pk.vk.domain,
@@ -615,12 +616,6 @@ where
         &pk.l_active_row,
         &pk.permutation.cosets,
     );
-    println!("Evaluate H: {:?}ms", now.elapsed().as_millis());
-
-    // Advice and instance cosets are no longer required and are dropped to reduce
-    // memory usage.
-    drop(advice_cosets);
-    drop(instance_cosets);
 
     // Construct the vanishing argument's h(X) commitments
     let vanishing =

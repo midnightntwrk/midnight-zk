@@ -9,7 +9,7 @@ use crate::{
     transcript::{read_n, Hashable, Transcript},
 };
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub struct Committed<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
     pub(crate) random_poly_commitment: CS::Commitment,
 }

@@ -1,6 +1,6 @@
 //! TODO
 
-use ff::{FromUniformBytes, WithSmallOrderMulGroup};
+use ff::{FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
@@ -15,6 +15,7 @@ use crate::{
     transcript::{Hashable, Sampleable, Transcript},
     utils::arithmetic::eval_polynomial,
 };
+use crate::protogalaxy::utils::{linear_combination, pow_vec};
 
 /// This verifier can perform a 2**K - 1 to one folding
 #[derive(Debug)]
@@ -23,8 +24,7 @@ pub struct ProtogalaxyVerifier<
     CS: PolynomialCommitmentScheme<F>,
     const K: usize,
 > {
-    // TODO Still need to verify this
-    _verifier_folding_trace: VerifierFoldingTrace<F, CS>,
+    verifier_folding_trace: VerifierFoldingTrace<F, CS>,
     error_term: F,
     beta_powers: [F; K],
 }
@@ -65,7 +65,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         .into_folding_trace(vk.fixed_commitments());
 
         Ok(Self {
-            _verifier_folding_trace: folded_trace,
+            verifier_folding_trace: folded_trace,
             error_term: F::ZERO,
             beta_powers: [F::ONE; K],
         })
@@ -102,7 +102,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
 
         // TODO: Is this sufficient to check H-consistency? I'm not 'checking' anything,
         // but I'm computing the challenges myself - I believe that is enough.
-        let _traces = instances
+        let traces = instances
             .into_iter()
             .map(|instance| {
                 let trace = parse_trace(
@@ -118,7 +118,6 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
             .collect::<Result<Vec<_>, Error>>()?;
 
         let mut delta = transcript.squeeze_challenge();
-        println!("Delta: {:?}", delta);
         let delta_powers: [F; K] = std::array::from_fn(|_| {
             let res = delta;
             delta = delta * delta;
@@ -142,7 +141,6 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
 
         let _poly_k: CS::Commitment = transcript.read()?;
         let gamma: F = transcript.squeeze_challenge();
-        println!("Gamma: {:?}", gamma);
         let k_at_gamma: F = transcript.read()?;
         let z_in_gamma = gamma.pow_vartime([dk_domain.n]) - F::ONE;
 
@@ -152,8 +150,12 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         let l0_at_gamma = eval_polynomial(&l0_coeff, gamma);
 
         self.error_term = f_at_alpha * l0_at_gamma + z_in_gamma * k_at_gamma;
-        println!("Error term verifier: {:?}", self.error_term);
-        println!("Beta powers verifier: {:?}", self.beta_powers);
+        let traces = std::iter::once(&self.verifier_folding_trace)
+            .chain(traces.iter())
+            .collect::<Vec<_>>();
+
+        assert!(traces.len().is_power_of_two());
+        self.verifier_folding_trace = fold_traces(&dk_domain, &traces, &gamma);
 
         // TODO: need to verify the polynomial commitment openings
         Ok(self)
@@ -162,9 +164,10 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
     /// This function verifies that a folde trace satisfies the relaxed
     /// relation.
     // TODO: need to verify that the commitment is correct as well.
-    pub fn is_sat<PCS: PolynomialCommitmentScheme<F>>(
+    pub fn is_sat(
         &self,
-        vk: &VerifyingKey<F, PCS>,
+        params: &CS::Parameters,
+        vk: &VerifyingKey<F, CS>,
         evaluator: &Evaluator<F>,
         folded_witness: FoldingProverTrace<F>,
         l0: &Polynomial<F, LagrangeCoeff>,
@@ -172,6 +175,14 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         l_active_row: &Polynomial<F, LagrangeCoeff>,
         permutation_pk_cosets: &[Polynomial<F, LagrangeCoeff>],
     ) -> Result<(), Error> {
+        // First we check that the committed folded witness corresponds to the folded
+        // instance
+        let committed_folded_witness = folded_witness.commit(params, vk.get_domain());
+
+        assert_eq!(committed_folded_witness, self.verifier_folding_trace);
+
+        // Next, we evaluate the f_i function over the folded trace, to see it corresponds
+        // with the computed error.
         let FoldingProverTrace {
             fixed_polys,
             advice_polys,
@@ -186,19 +197,10 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
             ..
         } = folded_witness;
 
-        let advice_lagrange = advice_polys
-            .iter()
-            .map(|a| {
-                a.iter()
-                    .map(|p| vk.get_domain().coeff_to_lagrange(p.clone()))
-                    .collect()
-            })
-            .collect::<Vec<_>>();
-
         let witness_poly = evaluator.evaluate_h::<LagrangeCoeff>(
             vk.get_domain(),
             vk.cs(),
-            &advice_lagrange
+            &advice_polys
                 .iter()
                 .map(Vec::as_slice)
                 .collect::<Vec<_>>(),
@@ -220,10 +222,11 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
             permutation_pk_cosets,
         );
 
+        let beta_powers = pow_vec(&self.beta_powers);
         let expected_result = witness_poly
             .values
             .into_par_iter()
-            .zip(self.beta_powers.par_iter())
+            .zip(beta_powers.par_iter())
             .map(|(witness, beta_pow)| witness * beta_pow)
             .reduce(|| F::ZERO, |a, b| a + b);
 
@@ -233,4 +236,36 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
             Err(Error::Opening)
         }
     }
+}
+
+/// Function to fold traces over an evaluation `\gamma`
+fn fold_traces<F: WithSmallOrderMulGroup<3>, PCS: PolynomialCommitmentScheme<F>>(
+    dk_domain: &EvaluationDomain<F>,
+    traces: &[&VerifierFoldingTrace<F, PCS>],
+    gamma: &F,
+) -> VerifierFoldingTrace<F, PCS> {
+    let lagrange_polys = (0..traces.len())
+        .map(|i| {
+            // For the moment we only support batching of traces of dimension one.
+            assert_eq!(traces[i].advice_commitments.len(), 1);
+            let mut l = dk_domain.empty_lagrange();
+            l[i] = F::ONE;
+            l
+        })
+        .map(|p| dk_domain.lagrange_to_coeff(p))
+        .collect::<Vec<_>>();
+
+    let buffer = VerifierFoldingTrace::init(
+        traces[0].fixed_commitments.len(),
+        traces[0].advice_commitments[0].len(),
+        traces[0].lookups[0].len(),
+        traces[0].permutations[0].permutation_product_commitments.len(),
+        traces[0].challenges.len(),
+    );
+    let lagranges_in_gamma = lagrange_polys
+        .iter()
+        .map(|poly| eval_polynomial(poly, *gamma))
+        .collect::<Vec<_>>();
+
+    linear_combination(buffer, traces, &lagranges_in_gamma)
 }
