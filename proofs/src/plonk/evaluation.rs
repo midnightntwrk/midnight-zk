@@ -141,8 +141,8 @@ impl Calculation {
                 challenges,
                 beta,
                 gamma,
-                theta,
                 trash_challenge,
+                theta,
                 y,
                 previous_value,
             )
@@ -338,8 +338,8 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                                 challenges,
                                 &beta,
                                 &gamma,
-                                &theta,
                                 &trash_challenge,
+                                &theta,
                                 &y,
                                 value,
                                 idx,
@@ -384,17 +384,17 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                         // l_last(X) * (z_l(X)^2 - z_l(X)) = 0
                         *value = *value * y
                             + ((last_set_permutation_product_coset[idx]
-                                * last_set_permutation_product_coset[idx]
-                                - last_set_permutation_product_coset[idx])
-                                * l_last[idx]);
+                            * last_set_permutation_product_coset[idx]
+                            - last_set_permutation_product_coset[idx])
+                            * l_last[idx]);
                         // Except for the first set, enforce.
                         // l_0(X) * (z_i(X) - z_{i-1}(\omega^(last) X)) = 0
                         for set_idx in 0..sets.len() {
                             if set_idx != 0 {
                                 *value = *value * y
                                     + ((permutation_product_cosets[set_idx][idx]
-                                        - permutation_product_cosets[set_idx - 1][r_last])
-                                        * l0[idx]);
+                                    - permutation_product_cosets[set_idx - 1][r_last])
+                                    * l0[idx]);
                             }
                         }
                         // And for all the sets we enforce:
@@ -763,8 +763,8 @@ impl<F: PrimeField> GraphEvaluator<F> {
                 beta,
                 gamma,
                 theta,
-                trash_challenge,
                 y,
+                trash_challenge,
                 previous_value,
             );
         }

@@ -16,6 +16,7 @@ use crate::{
     poly::{commitment::PolynomialCommitmentScheme, EvaluationDomain, Polynomial},
     utils::arithmetic::eval_polynomial,
 };
+use crate::plonk::trash;
 
 /// Given a vector v, computes a vector of length 2^|v| whose i-th element
 /// is the product of {v_j : bin(i)_j = 1}. Where bin(i)_j is the
@@ -127,19 +128,10 @@ pub fn batch_traces<F: PrimeField + WithSmallOrderMulGroup<3>>(
 
     let dk_domain_size = lagrange_polys[0].num_coeffs();
     assert_eq!(dk_domain_size, dk_domain.extended_len());
-    let trace_domain_size = traces[0].fixed_polys[0].num_coeffs();
 
     (0..dk_domain.extended_len())
         .map(|i| {
-            let buffer = FoldingProverTrace::init(
-                trace_domain_size,
-                traces[0].fixed_polys.len(),
-                traces[0].advice_polys[0].len(),
-                traces[0].instance_polys[0].len(),
-                traces[0].lookups[0].len(),
-                traces[0].permutations[0].sets.len(),
-                traces[0].challenges.len(),
-            );
+            let buffer = FoldingProverTrace::with_same_dimensions(&traces[0]);
             let coordinate_i_lagrange = lagrange_polys
                 .iter()
                 .map(|poly| poly.values[i])
@@ -151,12 +143,14 @@ pub fn batch_traces<F: PrimeField + WithSmallOrderMulGroup<3>>(
 }
 
 impl<F: PrimeField> FoldingProverTrace<F> {
+    /// Initialise a folding prover trace.
     pub fn init(
         domain_size: usize,
         num_fixed_polys: usize,
         num_advice_polys: usize,
         num_instance_polys: usize,
         num_lookups: usize,
+        num_trashcans: usize,
         num_permutation_sets: usize,
         num_challenges: usize,
     ) -> Self {
@@ -168,6 +162,12 @@ impl<F: PrimeField> FoldingProverTrace<F> {
                 product_poly: Polynomial::init(domain_size),
             });
         }
+
+        let mut trashcans = Vec::with_capacity(num_trashcans);
+        for _ in 0..num_trashcans {
+            trashcans.push(trash::prover::Committed { trash_poly: Polynomial::init(domain_size) })
+        }
+
         let mut permutation_sets = Vec::with_capacity(num_permutation_sets);
         for _ in 0..num_permutation_sets {
             permutation_sets.push(permutation::prover::CommittedSet {
@@ -186,12 +186,29 @@ impl<F: PrimeField> FoldingProverTrace<F> {
             permutations: vec![permutation::prover::Committed {
                 sets: permutation_sets,
             }],
+            trashcans: vec![trashcans],
             challenges: vec![F::ZERO; num_challenges],
             beta: F::ZERO,
             gamma: F::ZERO,
             theta: F::ZERO,
             y: F::ZERO,
+            trash_challenge: F::ZERO,
         }
+    }
+
+    /// Initialises a `FoldingProverTrace` with the same dimensions as the given trace.
+    pub(crate) fn with_same_dimensions(trace: &Self) -> Self {
+        let trace_domain_size = trace.fixed_polys[0].num_coeffs();
+        FoldingProverTrace::init(
+            trace_domain_size,
+            trace.fixed_polys.len(),
+            trace.advice_polys[0].len(),
+            trace.instance_polys[0].len(),
+            trace.lookups[0].len(),
+            trace.trashcans[0].len(),
+            trace.permutations[0].sets.len(),
+            trace.challenges.len(),
+        )
     }
 }
 
@@ -310,6 +327,7 @@ impl<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> VerifierFoldingTrace<F, 
         num_fixed_polys: usize,
         num_advice_polys: usize,
         num_lookups: usize,
+        num_trashcans: usize,
         num_permutation_sets: usize,
         num_challenges: usize,
     ) -> Self {
@@ -322,6 +340,10 @@ impl<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> VerifierFoldingTrace<F, 
                 },
                 product_commitment: PCS::Commitment::default(),
             });
+        }
+        let mut trashcans = Vec::with_capacity(num_trashcans);
+        for _ in 0..num_trashcans {
+            trashcans.push(trash::verifier::Committed { trash_commitment: PCS::Commitment::default() })
         }
         VerifierFoldingTrace {
             advice_commitments: vec![vec![PCS::Commitment::default(); num_advice_polys]],
@@ -336,11 +358,13 @@ impl<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> VerifierFoldingTrace<F, 
                     num_permutation_sets
                 ],
             }],
+            trashcans: vec![trashcans],
             challenges: vec![F::ZERO; num_challenges],
             beta: F::ZERO,
             gamma: F::ZERO,
             theta: F::ZERO,
             y: F::ZERO,
+            trash_challenge: F::ZERO,
         }
     }
 }
@@ -498,6 +522,7 @@ pub fn batch_verifier_traces<F: WithSmallOrderMulGroup<3>, PCS: PolynomialCommit
         traces[0].fixed_commitments.len(),
         traces[0].advice_commitments[0].len(),
         traces[0].lookups[0].len(),
+        traces[0].trashcans[0].len(),
         traces[0].permutations[0]
             .permutation_product_commitments
             .len(),

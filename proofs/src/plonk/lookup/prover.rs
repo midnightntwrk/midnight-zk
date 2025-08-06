@@ -30,7 +30,8 @@ pub(crate) struct Permuted<F: PrimeField> {
 }
 
 #[cfg_attr(feature = "bench-internal", derive(Clone))]
-#[derive(Debug)]
+// TODO: REMOVE CLONE - JUST FOR DEBUGGING
+#[derive(Clone, Debug)]
 pub(crate) struct Committed<F: PrimeField> {
     pub(crate) permuted_input_poly: Polynomial<F, Coeff>,
     pub(crate) permuted_table_poly: Polynomial<F, Coeff>,

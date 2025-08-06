@@ -16,13 +16,15 @@ use crate::{
 };
 
 #[cfg_attr(feature = "bench-internal", derive(Clone))]
-#[derive(Debug)]
+// TODO: REMOVE CLONE - JUST FOR DEBUGGING
+#[derive(Clone, Debug)]
 pub(crate) struct CommittedSet<F: PrimeField> {
     pub(crate) permutation_product_poly: Polynomial<F, Coeff>,
 }
 
+// TODO: REMOVE CLONE - JUST FOR DEBUGGING
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "bench-internal", derive(Clone))]
-#[derive(Debug)]
 pub(crate) struct Committed<F: PrimeField> {
     pub(crate) sets: Vec<CommittedSet<F>>,
 }

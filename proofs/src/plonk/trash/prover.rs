@@ -13,6 +13,8 @@ use crate::{
 
 #[cfg_attr(feature = "bench-internal", derive(Clone))]
 #[derive(Debug)]
+// TODO REMOVE - just for debugging
+#[derive(Clone)]
 pub(crate) struct Committed<F: PrimeField> {
     pub(crate) trash_poly: Polynomial<F, Coeff>,
 }

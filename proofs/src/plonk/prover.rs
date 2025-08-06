@@ -672,7 +672,6 @@ fn compute_h_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F
         })
         .collect();
 
-    let now = Instant::now();
     // Evaluate the h(X) polynomial
     pk.ev.evaluate_h::<ExtendedLagrangeCoeff>(
         &pk.vk.domain,
@@ -693,8 +692,7 @@ fn compute_h_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F
         &pk.l_last,
         &pk.l_active_row,
         &pk.permutation.cosets,
-    );
-    println!("Evaluate H: {:?}ms", now.elapsed().as_millis());
+    )
 }
 
 fn write_evals_to_transcript<F, CS, T>(
@@ -759,7 +757,7 @@ where
 }
 
 #[allow(clippy::too_many_arguments)]
-fn compute_queries<'a, F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>>(
+fn compute_queries<'a, F: WithSmallOrderMulGroup<3> + Hash, CS: PolynomialCommitmentScheme<F>>(
     pk: &'a ProvingKey<F, CS>,
     nb_committed_instances: usize,
     instance_polys: &'a [Vec<Polynomial<F, Coeff>>],

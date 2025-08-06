@@ -19,6 +19,7 @@ use rand_chacha::{
     rand_core::{RngCore, SeedableRng},
     ChaCha8Rng,
 };
+use midnight_proofs::plonk::traces::ProverTrace;
 
 #[global_allocator]
 static ALLOC: dhat::Alloc = dhat::Alloc;
@@ -178,7 +179,7 @@ fn main() {
                 &mut transcript,
             )
             .expect("Failed to compute the folding trace")
-            .into_folding_trace(pk.fixed_values.clone())
+            .into_folding_trace(pk.get_vk().get_domain(), pk.fixed_values.clone())
         })
         .collect::<Vec<_>>();
 
@@ -202,7 +203,7 @@ fn main() {
         &final_pk,
         #[cfg(feature = "committed-instances")]
         0,
-        folded_trace.into(),
+        ProverTrace::from_folding_trace(vk.get_domain(), folded_trace),
         &mut transcript,
     )
     .expect("Failed to finalise proof");
@@ -221,7 +222,7 @@ fn main() {
                 &pk,
                 #[cfg(feature = "committed-instances")]
                 0,
-                t.into(),
+                ProverTrace::from_folding_trace(vk.get_domain(), t),
                 &mut finalise_transcript,
             )
         })

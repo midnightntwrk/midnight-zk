@@ -9,7 +9,7 @@ use crate::{
 
 #[derive(Debug)]
 pub struct Committed<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
-    trash_commitment: CS::Commitment,
+    pub(crate) trash_commitment: CS::Commitment,
 }
 
 pub struct Evaluated<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
