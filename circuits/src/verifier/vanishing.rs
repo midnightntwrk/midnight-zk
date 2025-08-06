@@ -12,7 +12,7 @@
 // limitations under the License.
 
 //! A module for the in-circuit vanishing argument. This is the in-circuit
-//! analog of file src/plonk/vanishing/verifier.rs from halo2.
+//! analog of file proofs/src/plonk/vanishing/verifier.rs.
 
 use ff::Field;
 use midnight_proofs::{circuit::Layouter, plonk::Error};

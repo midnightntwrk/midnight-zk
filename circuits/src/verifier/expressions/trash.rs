@@ -11,9 +11,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! A module for in-circuit lookup arguments identities (expressions).
+//! A module for in-circuit trash arguments identities (expressions).
 //! This is the in-circuit analog of the expressions from file
-//! src/plonk/lookup/verifier.rs from halo2.
+//! proofs/src/plonk/trash/verifier.rs.
 
 use ff::Field;
 use midnight_proofs::{

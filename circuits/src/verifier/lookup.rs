@@ -12,7 +12,7 @@
 // limitations under the License.
 
 //! A module for in-circuit lookup arguments. It is the in-circuit analog
-//! of file src/plonk/lookup/verifier.rs from halo2.
+//! of file proofs/src/plonk/lookup/verifier.rs.
 //!
 //! The "expressions" part is dealt with in our `expressions/` directory.
 

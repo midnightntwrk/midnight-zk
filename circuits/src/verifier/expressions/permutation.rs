@@ -13,7 +13,7 @@
 
 //! A module for the in-circuit permutation argument identities (expressions).
 //! This is the in-circuit analog of the expressions from file
-//! src/plonk/permutation/verifier.rs from halo2.
+//! proofs/src/plonk/permutation/verifier.rs.
 
 use ff::{Field, PrimeField};
 use midnight_proofs::{
