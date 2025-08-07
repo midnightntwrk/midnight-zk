@@ -8,6 +8,7 @@
 #[global_allocator]
 static ALLOC: dhat::Alloc = dhat::Alloc;
 
+use std::time::Instant;
 use midnight_circuits::{
     compact_std_lib::{self, Relation, ShaTableSize, ZkStdLib, ZkStdLibArch},
     instructions::{AssignmentInstructions, PublicInputInstructions},
@@ -88,10 +89,12 @@ fn main() {
     let witness: [u8; 24] = core::array::from_fn(|_| rng.gen());
     let instance = sha2::Sha256::digest(witness).into();
 
+    let now = Instant::now();
     let proof = compact_std_lib::prove::<ShaPreImageCircuit, blake2b_simd::State>(
         &srs, &pk, &relation, &instance, witness, OsRng,
     )
     .expect("Proof generation should not fail");
+    println!("Proof generation time: {:?}", now.elapsed());
 
     assert!(
         compact_std_lib::verify::<ShaPreImageCircuit, blake2b_simd::State>(

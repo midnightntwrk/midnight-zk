@@ -1,6 +1,8 @@
 //! Trait for a commitment scheme
 use core::ops::{Add, Mul};
 use std::fmt::Debug;
+use std::sync::Mutex;
+use std::time::Duration;
 
 use ff::{FromUniformBytes, PrimeField};
 
@@ -10,6 +12,8 @@ use crate::{
     transcript::{Hashable, Sampleable, Transcript},
     utils::helpers::ProcessedSerdeObject,
 };
+
+pub(crate) static TOTAL_PCS_TIME: Mutex<Duration> = Mutex::new(Duration::ZERO);
 
 /// Public interface for a additively homomorphic Polynomial Commitment Scheme
 /// (PCS)

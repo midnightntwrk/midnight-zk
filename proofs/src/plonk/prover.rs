@@ -4,6 +4,9 @@ use std::{
     ops::RangeTo,
     time::Instant,
 };
+use std::hash::Hash;
+use std::sync::Mutex;
+use std::time::Duration;
 
 use ff::{Field, FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
 use rand_core::{CryptoRng, RngCore};
@@ -28,6 +31,8 @@ use crate::{
     transcript::{Hashable, Sampleable, Transcript},
     utils::{arithmetic::eval_polynomial, rational::Rational},
 };
+use crate::dev::util::bench;
+use crate::poly::commitment::TOTAL_PCS_TIME;
 
 #[cfg(feature = "committed-instances")]
 /// Commit to a vector of raw instances. This function can be used to prepare
@@ -76,6 +81,7 @@ where
     F: WithSmallOrderMulGroup<3>
         + Sampleable<T::Hash>
         + Hashable<T::Hash>
+        + Hash
         + Ord
         + FromUniformBytes<64>,
 {
@@ -83,7 +89,6 @@ where
     let nb_committed_instances: usize = 0;
 
     if circuits.len() != instances.len() {
-        println!("Is it here now?");
         return Err(Error::InvalidInstances);
     }
 
@@ -105,11 +110,13 @@ where
     pk.vk.hash_into(transcript)?;
 
     let domain = &pk.vk.domain;
-    let mut meta = ConstraintSystem::default();
-    #[cfg(feature = "circuit-params")]
-    let config = ConcreteCircuit::configure_with_params(&mut meta, circuits[0].params());
-    #[cfg(not(feature = "circuit-params"))]
-    let config = ConcreteCircuit::configure(&mut meta);
+    let config = bench("Configure circuit", || {
+        let mut meta = ConstraintSystem::default();
+        #[cfg(feature = "circuit-params")]
+        return Ok::<_, Error>(ConcreteCircuit::configure_with_params(&mut meta, circuits[0].params()));
+        #[cfg(not(feature = "circuit-params"))]
+        return Ok::<_, Error>(ConcreteCircuit::configure(&mut meta));
+    })?;
 
     // Selector optimizations cannot be applied here; use the ConstraintSystem
     // from the verification key.
@@ -120,7 +127,8 @@ where
         pub instance_polys: Vec<Polynomial<F, Coeff>>,
     }
 
-    let instance: Vec<InstanceSingle<F>> = instances
+
+    let instance: Vec<InstanceSingle<F>> = bench("Manage instances", || {instances
         .iter()
         .map(|instance| -> Result<InstanceSingle<F>, Error> {
             let instance_values = instance
@@ -166,7 +174,7 @@ where
                 instance_polys,
             })
         })
-        .collect::<Result<Vec<_>, _>>()?;
+        .collect::<Result<Vec<_>, _>>()})?;
 
     #[derive(Clone)]
     struct AdviceSingle<F: PrimeField, B: PolynomialRepresentation> {
@@ -318,7 +326,7 @@ where
         }
     }
 
-    let (advice, challenges) = {
+    let (advice, challenges) = bench("Manage advices and challenges", || {{
         let mut advice = vec![
             AdviceSingle::<F, LagrangeCoeff> {
                 advice_polys: vec![domain.empty_lagrange(); meta.num_advice_columns],
@@ -396,6 +404,7 @@ where
                     }
                 }
 
+                bench("Commit to advices", || {
                 let advice_commitments: Vec<_> = advice_values
                     .iter()
                     .map(|poly| CS::commit_lagrange(params, poly))
@@ -407,6 +416,8 @@ where
                 for (column_index, advice_values) in column_indices.iter().zip(advice_values) {
                     advice.advice_polys[*column_index] = advice_values;
                 }
+                    Ok::<_, Error>(())
+                })?
             }
 
             for (index, phase) in meta.challenge_phase.iter().enumerate() {
@@ -422,13 +433,13 @@ where
             .map(|index| challenges.remove(&index).unwrap())
             .collect::<Vec<_>>();
 
-        (advice, challenges)
-    };
+        Ok::<_, Error>((advice, challenges))
+    }})?;
 
     // Sample theta challenge for keeping lookup columns linearly independent
     let theta: F = transcript.squeeze_challenge();
 
-    let lookups: Vec<Vec<lookup::prover::Permuted<F>>> = instance
+    let lookups: Vec<Vec<lookup::prover::Permuted<F>>> = bench("Prepare lookup", || {instance
         .iter()
         .zip(advice.iter())
         .map(|(instance, advice)| -> Result<Vec<_>, Error> {
@@ -453,7 +464,7 @@ where
                 })
                 .collect()
         })
-        .collect::<Result<Vec<_>, _>>()?;
+        .collect::<Result<Vec<_>, _>>()})?;
 
     // Sample beta challenge
     let beta: F = transcript.squeeze_challenge();
@@ -462,7 +473,7 @@ where
     let gamma: F = transcript.squeeze_challenge();
 
     // Commit to permutations.
-    let permutations: Vec<permutation::prover::Committed<F>> = instance
+    let permutations: Vec<permutation::prover::Committed<F>> = bench("Permutations", || {instance
         .iter()
         .zip(advice.iter())
         .map(|(instance, advice)| {
@@ -479,9 +490,9 @@ where
                 transcript,
             )
         })
-        .collect::<Result<Vec<_>, _>>()?;
+        .collect::<Result<Vec<_>, _>>()})?;
 
-    let lookups: Vec<Vec<lookup::prover::Committed<F>>> = lookups
+    let lookups: Vec<Vec<lookup::prover::CommittedLagrange<F>>> = bench("Lookup product", || {lookups
         .into_iter()
         .map(|lookups| -> Result<Vec<_>, _> {
             // Construct and commit to products for each lookup
@@ -490,7 +501,7 @@ where
                 .map(|lookup| lookup.commit_product(pk, params, beta, gamma, &mut rng, transcript))
                 .collect::<Result<Vec<_>, _>>()
         })
-        .collect::<Result<Vec<_>, _>>()?;
+        .collect::<Result<Vec<_>, _>>()})?;
 
     // Commit to the vanishing argument's random polynomial for blinding h(x_3)
     let vanishing = vanishing::Argument::<F, CS>::commit(params, domain, &mut rng, transcript)?;
@@ -504,15 +515,7 @@ where
         .unzip();
 
     Ok(ProverTrace {
-        advice_polys: advice
-            .into_iter()
-            .map(|a| {
-                a.advice_polys
-                    .into_iter()
-                    .map(|p| domain.lagrange_to_coeff(p))
-                    .collect()
-            })
-            .collect(),
+        advice_polys: advice.into_iter().map(|a| a.advice_polys).collect(),
         instance_polys,
         instance_values,
         vanishing,
@@ -546,6 +549,7 @@ where
     F: WithSmallOrderMulGroup<3>
         + Sampleable<T::Hash>
         + Hashable<T::Hash>
+        + Hash
         + Ord
         + FromUniformBytes<64>,
 {
@@ -569,15 +573,22 @@ where
         ..
     } = trace;
 
+    let advice_polys: Vec<Vec<Polynomial<F, Coeff>>> = advice_polys
+        .into_iter()
+        .map(|a| {
+            a.into_iter()
+                .map(|poly| domain.lagrange_to_coeff(poly))
+                .collect()
+        })
+        .collect();
+
     // Calculate the advice and instance cosets
     let advice_cosets: Vec<Vec<Polynomial<F, ExtendedLagrangeCoeff>>> = advice_polys
         .iter()
         .map(|advice_polys| {
             advice_polys
                 .iter()
-                .map(|poly| {
-                    domain.coeff_to_extended(poly.clone())
-                })
+                .map(|poly| domain.coeff_to_extended(poly.clone()))
                 .collect()
         })
         .collect();
@@ -759,9 +770,11 @@ where
     F: WithSmallOrderMulGroup<3>
         + Sampleable<T::Hash>
         + Hashable<T::Hash>
+        + Hash
         + Ord
         + FromUniformBytes<64>,
 {
+    *TOTAL_PCS_TIME.lock().unwrap() = Duration::ZERO;
     let trace = compute_trace(
         params,
         pk,
@@ -772,14 +785,17 @@ where
         rng,
         transcript,
     )?;
-    finalise_proof(
+    let res = finalise_proof(
         params,
         pk,
         #[cfg(feature = "committed-instances")]
         nb_committed_instances,
         trace,
         transcript,
-    )
+    );
+    println!("Time spend in PCS: {:?}", TOTAL_PCS_TIME);
+
+    res
 }
 
 #[test]

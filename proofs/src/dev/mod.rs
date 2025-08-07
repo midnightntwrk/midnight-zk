@@ -28,7 +28,7 @@ use crate::{
 
 pub mod metadata;
 use metadata::Column as ColumnMetadata;
-mod util;
+pub(crate) mod util;
 
 mod failure;
 pub use failure::{FailureLocation, VerifyFailure};

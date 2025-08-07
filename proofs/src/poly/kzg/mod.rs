@@ -18,6 +18,7 @@ pub mod params;
 mod utils;
 
 use std::fmt::Debug;
+use std::time::Instant;
 
 use ff::Field;
 use group::{prime::PrimeCurveAffine, Curve, Group};
@@ -46,6 +47,7 @@ use crate::{
         helpers::ProcessedSerdeObject,
     },
 };
+use crate::poly::commitment::TOTAL_PCS_TIME;
 
 #[derive(Clone, Debug)]
 /// KZG verifier
@@ -75,19 +77,32 @@ where
         params: &Self::Parameters,
         polynomial: &Polynomial<E::Fr, Coeff>,
     ) -> Self::Commitment {
+        #[cfg(feature = "bench-internals")]
+        let start = Instant::now();
+
         let mut scalars = Vec::with_capacity(polynomial.len());
         scalars.extend(polynomial.iter());
         let mut bases = vec![<E::G1 as Curve>::AffineRepr::identity(); params.g.len()];
         <E::G1 as Curve>::batch_normalize(&params.g, bases.as_mut_slice());
         let size = scalars.len();
         assert!(bases.len() >= size);
-        msm_best(&scalars, &bases[0..size])
+        let res = msm_best(&scalars, &bases[0..size]);
+
+        #[cfg(feature = "bench-internals")]
+        {
+            let elapsed = start.elapsed();
+            *TOTAL_PCS_TIME.lock().unwrap() += elapsed;
+        }
+        res
     }
 
     fn commit_lagrange(
         params: &Self::Parameters,
         poly: &Polynomial<E::Fr, LagrangeCoeff>,
     ) -> E::G1 {
+        #[cfg(feature = "bench-internals")]
+        let start = Instant::now();
+
         let mut scalars = Vec::with_capacity(poly.len());
         scalars.extend(poly.iter());
         let size = scalars.len();
@@ -96,7 +111,15 @@ where
         <E::G1 as Curve>::batch_normalize(&params.g_lagrange, bases.as_mut_slice());
         assert!(bases.len() >= size);
 
-        msm_best(&scalars, &bases[0..size])
+        let res = msm_best(&scalars, &bases[0..size]);
+
+
+        #[cfg(feature = "bench-internals")]
+        {
+            let elapsed = start.elapsed();
+            *TOTAL_PCS_TIME.lock().unwrap() += elapsed;
+        }
+        res
     }
 
     fn multi_open<'com, T: Transcript>(

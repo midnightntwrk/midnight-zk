@@ -5,8 +5,8 @@ use midnight_curves::{Bls12, Fq};
 use midnight_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
     plonk::{
-        compute_trace, finalise_proof, keygen_pk, keygen_vk_with_k, Advice, Circuit, Column,
-        ConstraintSystem, Error, Expression, Selector, TableColumn,
+        compute_trace, finalise_proof, keygen_pk, keygen_vk_with_k, traces::ProverTrace, Advice,
+        Circuit, Column, ConstraintSystem, Error, Expression, Selector, TableColumn,
     },
     poly::{
         kzg::{params::ParamsKZG, KZGCommitmentScheme},
@@ -19,7 +19,6 @@ use rand_chacha::{
     rand_core::{RngCore, SeedableRng},
     ChaCha8Rng,
 };
-use midnight_proofs::plonk::traces::ProverTrace;
 
 #[global_allocator]
 static ALLOC: dhat::Alloc = dhat::Alloc;
@@ -179,7 +178,7 @@ fn main() {
                 &mut transcript,
             )
             .expect("Failed to compute the folding trace")
-            .into_folding_trace(pk.get_vk().get_domain(), pk.fixed_values.clone())
+            .into_folding_trace(pk.fixed_values.clone())
         })
         .collect::<Vec<_>>();
 
@@ -203,7 +202,7 @@ fn main() {
         &final_pk,
         #[cfg(feature = "committed-instances")]
         0,
-        ProverTrace::from_folding_trace(vk.get_domain(), folded_trace),
+        ProverTrace::from_folding_trace(folded_trace),
         &mut transcript,
     )
     .expect("Failed to finalise proof");
@@ -222,7 +221,7 @@ fn main() {
                 &pk,
                 #[cfg(feature = "committed-instances")]
                 0,
-                ProverTrace::from_folding_trace(vk.get_domain(), t),
+                ProverTrace::from_folding_trace(t),
                 &mut finalise_transcript,
             )
         })

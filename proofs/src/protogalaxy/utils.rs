@@ -154,7 +154,7 @@ impl<F: PrimeField> FoldingProverTrace<F> {
     ) -> Self {
         let mut lookups = Vec::with_capacity(num_lookups);
         for _ in 0..num_lookups {
-            lookups.push(lookup::prover::Committed {
+            lookups.push(lookup::prover::CommittedLagrange {
                 permuted_input_poly: Polynomial::init(domain_size),
                 permuted_table_poly: Polynomial::init(domain_size),
                 product_poly: Polynomial::init(domain_size),
@@ -186,7 +186,8 @@ impl<F: PrimeField> FoldingProverTrace<F> {
         }
     }
 
-    /// Initialises a `FoldingProverTrace` with the same dimensions as the given trace.
+    /// Initialises a `FoldingProverTrace` with the same dimensions as the given
+    /// trace.
     pub(crate) fn with_same_dimensions(trace: &Self) -> Self {
         let trace_domain_size = trace.fixed_polys[0].num_coeffs();
         FoldingProverTrace::init(

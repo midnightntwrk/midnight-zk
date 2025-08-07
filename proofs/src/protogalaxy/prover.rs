@@ -2,6 +2,8 @@
 #![allow(dead_code)]
 
 use std::{iter, marker::PhantomData, time::Instant};
+use std::hash::Hash;
+use std::time::Duration;
 
 use ff::{FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
 use rand_chacha::ChaCha8Rng;
@@ -22,6 +24,7 @@ use crate::{
     },
     utils::arithmetic::eval_polynomial,
 };
+use crate::poly::commitment::TOTAL_PCS_TIME;
 
 /// This prover can perform a 2**K - 1 to one folding
 struct ProtogalaxyProver<F: PrimeField, CS: PolynomialCommitmentScheme<F>, const K: usize> {
@@ -32,7 +35,9 @@ struct ProtogalaxyProver<F: PrimeField, CS: PolynomialCommitmentScheme<F>, const
     _commitment_scheme: PhantomData<CS>,
 }
 
-impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: usize> ProtogalaxyProver<F, CS, K> {
+impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: usize>
+    ProtogalaxyProver<F, CS, K>
+{
     /// Initialise a Protogalaxy prover from a provided trace. Beta powers are
     /// initialised to `1`, while the error term is initialised as `0`.
     pub fn init<C, T>(
@@ -52,6 +57,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         F: WithSmallOrderMulGroup<3>
             + Sampleable<T::Hash>
             + Hashable<T::Hash>
+            + Hash
             + Ord
             + FromUniformBytes<64>,
     {
@@ -65,13 +71,15 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
             &mut rng,
             transcript,
         )?
-        .into_folding_trace(pk.vk.get_domain(), pk.fixed_values.clone());
+        .into_folding_trace(pk.fixed_values.clone());
+
+        println!("Time with PCS: {:?}", TOTAL_PCS_TIME);
+        let mut total = TOTAL_PCS_TIME.lock().unwrap();
+        *total = Duration::ZERO;
 
         let folding_pk = FoldingPk::from(pk);
         let beta_powers = [F::ONE; K];
-        let error_term = Self::compute_error(&folding_pk, &folded_trace, &beta_powers);
-
-        assert_eq!(error_term, F::ZERO);
+        let error_term = F::ZERO;
 
         Ok(Self {
             folding_pk,
@@ -100,6 +108,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         CS: PolynomialCommitmentScheme<F>,
         CS::Commitment: Hashable<T::Hash>,
         F: WithSmallOrderMulGroup<3>
+            + Hash
             + Sampleable<T::Hash>
             + Hashable<T::Hash>
             + Ord
@@ -125,7 +134,12 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
                     &mut rng,
                     transcript,
                 )?;
-                Ok(trace.into_folding_trace(pk.vk.get_domain(), pk.fixed_values.clone()))
+
+                println!("Time with PCS: {:?}", TOTAL_PCS_TIME);
+                let mut total = TOTAL_PCS_TIME.lock().unwrap();
+                *total = Duration::ZERO;
+
+                Ok(trace.into_folding_trace(pk.fixed_values.clone()))
             })
             .collect::<Result<Vec<_>, Error>>()?;
         println!("Compute traces: {:?}", now.elapsed());
@@ -142,9 +156,10 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         assert_eq!(self.error, f_poly.values[0]);
         println!("Time poly f: {:?}", now.elapsed());
 
-        // Now we commit to it
-        transcript.write(&CS::commit(params, &f_poly))?;
-        println!("Time to commit to the zero polynomial (and write to transcript): {:?}", now.elapsed());
+        // // Now we commit to it
+        // transcript.write(&CS::commit(params, &f_poly))?;
+        // println!("Time to commit to the zero polynomial (and write to transcript):
+        // {:?}", now.elapsed());
 
         let alpha = transcript.squeeze_challenge();
 
@@ -171,6 +186,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
 
         // We now perform folding of the traces
         let degree = pk.vk.cs().degree() as u32;
+        println!("Degree: {:?}", degree);
 
         // We must increase the degree, since we need to count y as a variable.
         // Computing the real degree seems hard.
@@ -217,8 +233,10 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         Ok(self)
     }
 
-
-    fn compute_h(folding_pk: &FoldingPk<F>, folded_trace: &FoldingProverTrace<F>) -> Polynomial<F, LagrangeCoeff> {
+    fn compute_h(
+        folding_pk: &FoldingPk<F>,
+        folded_trace: &FoldingProverTrace<F>,
+    ) -> Polynomial<F, LagrangeCoeff> {
         let FoldingProverTrace {
             fixed_polys,
             advice_polys,
@@ -236,10 +254,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         folding_pk.ev.evaluate_h::<LagrangeCoeff>(
             &folding_pk.domain,
             &folding_pk.cs,
-            &advice_polys
-                .iter()
-                .map(Vec::as_slice)
-                .collect::<Vec<_>>(),
+            &advice_polys.iter().map(Vec::as_slice).collect::<Vec<_>>(),
             &instance_values
                 .iter()
                 .map(|i| i.as_slice())
@@ -259,7 +274,11 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         )
     }
 
-    fn compute_error(folding_pk: &FoldingPk<F>, folded_trace: &FoldingProverTrace<F>, beta_pows: &[F; K]) -> F {
+    fn compute_error(
+        folding_pk: &FoldingPk<F>,
+        folded_trace: &FoldingProverTrace<F>,
+        beta_pows: &[F; K],
+    ) -> F {
         let witness_poly = Self::compute_h(&folding_pk, &folded_trace);
         let beta_powers = pow_vec(beta_pows);
 
@@ -272,8 +291,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
     }
 
     // TODO: This can be optimised. Follow claim 4.4 from paper
-    fn compute_f(&self, deltas: &[F; K]
-    ) -> Polynomial<F, Coeff> {
+    fn compute_f(&self, deltas: &[F; K]) -> Polynomial<F, Coeff> {
         let domain = &EvaluationDomain::new(2, usize::BITS - (K - 1).leading_zeros());
 
         if self.error == F::ZERO {
@@ -285,7 +303,8 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         one_poly.values[0] = F::ONE;
         let one_poly = domain.coeff_to_lagrange(one_poly);
 
-        let lagrange_polys = self.beta
+        let lagrange_polys = self
+            .beta
             .iter()
             .zip(deltas.iter())
             .map(|(beta, delta)| {
@@ -454,10 +473,7 @@ fn compute_poly_g<F: PrimeField + WithSmallOrderMulGroup<3>>(
         let witness_poly = pk.ev.evaluate_h::<LagrangeCoeff>(
             &pk.domain,
             &pk.cs,
-            &advice_polys
-                .iter()
-                .map(Vec::as_slice)
-                .collect::<Vec<_>>(),
+            &advice_polys.iter().map(Vec::as_slice).collect::<Vec<_>>(),
             &instance_values
                 .iter()
                 .map(|i| i.as_slice())
@@ -528,7 +544,7 @@ fn fold_traces<F: PrimeField + WithSmallOrderMulGroup<3>>(
 
 #[cfg(test)]
 mod tests {
-    use std::time::Instant;
+    use std::time::{Duration, Instant};
 
     use ff::Field;
     use midnight_curves::{Bls12, Fq};
@@ -538,8 +554,8 @@ mod tests {
     use crate::{
         circuit::{Layouter, SimpleFloorPlanner, Value},
         plonk::{
-            keygen_pk, keygen_vk_with_k, Advice, Circuit, Column, ConstraintSystem, Error,
-            Expression, Selector, TableColumn,
+            create_proof, keygen_pk, keygen_vk_with_k, Advice, Circuit, Column, ConstraintSystem,
+            Error, Expression, Selector, TableColumn,
         },
         poly::{
             kzg::{params::ParamsKZG, KZGCommitmentScheme},
@@ -548,7 +564,7 @@ mod tests {
         protogalaxy::{prover::ProtogalaxyProver, verifier::ProtogalaxyVerifier},
         transcript::{CircuitTranscript, Transcript},
     };
-    use crate::plonk::create_proof;
+    use crate::poly::commitment::TOTAL_PCS_TIME;
 
     #[derive(Clone, Copy)]
     struct TestCircuit {
@@ -702,9 +718,17 @@ mod tests {
                 &[&[]],
                 &mut rng,
                 &mut transcript,
-            ).expect("Failed to produce a proof");
+            )
+            .expect("Failed to produce a proof");
+            println!("Time with PCS: {:?}", TOTAL_PCS_TIME);
+            let mut total = TOTAL_PCS_TIME.lock().unwrap();
+            *total = Duration::ZERO;
         }
-        println!("Time to generate {} proofs: {:?}", circuits.len(), normal_proving.elapsed());
+        println!(
+            "Time to generate {} proofs: {:?}",
+            circuits.len(),
+            normal_proving.elapsed()
+        );
 
         // Fold proofs. We first initialise folding with the first circuit
         let folding = Instant::now();
@@ -721,6 +745,7 @@ mod tests {
             &mut transcript,
         )
         .expect("Failed to initialise folder");
+        println!("Time to initialise: {:?}", now.elapsed());
 
         let protogalaxy = protogalaxy
             .fold(

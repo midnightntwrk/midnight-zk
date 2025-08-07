@@ -82,6 +82,7 @@ sanity-checks = []
 circuit-params = []
 cost-estimator = ["serde", "serde_derive"]
 derive_serde = ["halo2curves/derive_serde"]
+bench-internals = []
 
 # This feature truncates challenges to half the size of the scalar field.
 truncated-challenges = []
