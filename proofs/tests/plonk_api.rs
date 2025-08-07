@@ -1,8 +1,7 @@
 #![allow(clippy::many_single_char_names)]
 #![allow(clippy::op_ref)]
 
-use std::hash::Hash;
-use std::marker::PhantomData;
+use std::{hash::Hash, marker::PhantomData};
 
 use assert_matches::assert_matches;
 use blake2b_simd::State;
