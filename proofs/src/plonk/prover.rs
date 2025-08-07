@@ -1,5 +1,6 @@
 use std::{
     collections::{BTreeSet, HashMap, HashSet},
+    hash::Hash,
     iter,
     ops::RangeTo,
 };
@@ -75,6 +76,7 @@ where
     F: WithSmallOrderMulGroup<3>
         + Sampleable<T::Hash>
         + Hashable<T::Hash>
+        + Hash
         + Ord
         + FromUniformBytes<64>,
 {
@@ -800,6 +802,7 @@ where
     F: WithSmallOrderMulGroup<3>
         + Sampleable<T::Hash>
         + Hashable<T::Hash>
+        + Hash
         + Ord
         + FromUniformBytes<64>,
 {

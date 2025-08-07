@@ -1,3 +1,4 @@
+use std::hash::Hash;
 /// Here we construct two circuits one for adding two vectors and one for
 /// multiplying and we check that their transcripts have the same inputs
 /// by way of the unblinded inputs.
@@ -506,6 +507,7 @@ where
         + FromUniformBytes<64>
         + Sampleable<State>
         + Hashable<State>
+        + Hash
         + Ord,
 {
     let params: ParamsKZG<E> = ParamsKZG::unsafe_setup(k, OsRng);
