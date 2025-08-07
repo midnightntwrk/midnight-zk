@@ -1,4 +1,8 @@
-use std::{collections::BTreeMap, iter};
+use std::{
+    collections::HashMap,
+    hash::Hash,
+    iter,
+};
 
 use ff::{FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
 use group::ff::BatchInvert;
@@ -39,7 +43,7 @@ pub(crate) struct Evaluated<F: PrimeField> {
     constructed: Committed<F>,
 }
 
-impl<F: WithSmallOrderMulGroup<3> + Ord> Argument<F> {
+impl<F: WithSmallOrderMulGroup<3> + Ord + Hash> Argument<F> {
     /// Given a Lookup with input expressions [A_0, A_1, ..., A_{m-1}] and table
     /// expressions [S_0, S_1, ..., S_{m-1}], this method
     /// - constructs A_compressed = \theta^{m-1} A_0 + theta^{m-2} A_1 + ... +
@@ -383,7 +387,7 @@ fn permute_expression_pair<F, CS: PolynomialCommitmentScheme<F>, R: RngCore>(
     table_expression: &Polynomial<F, LagrangeCoeff>,
 ) -> Result<ExpressionPair<F>, Error>
 where
-    F: WithSmallOrderMulGroup<3> + Ord + FromUniformBytes<64>,
+    F: WithSmallOrderMulGroup<3> + Hash + Ord + FromUniformBytes<64>,
 {
     let blinding_factors = pk.vk.cs.blinding_factors();
     let usable_rows = pk.vk.n() as usize - (blinding_factors + 1);
@@ -395,11 +399,11 @@ where
     permuted_input_expression.sort();
 
     // A BTreeMap of each unique element in the table expression and its count
-    let mut leftover_table_map: BTreeMap<F, u32> =
+    let mut leftover_table_map: HashMap<F, u32> =
         table_expression
             .iter()
             .take(usable_rows)
-            .fold(BTreeMap::new(), |mut acc, coeff| {
+            .fold(HashMap::new(), |mut acc, coeff| {
                 *acc.entry(*coeff).or_insert(0) += 1;
                 acc
             });
