@@ -294,7 +294,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
         gamma: F,
         theta: F,
         trash_challenge: F,
-        lookups: &[Vec<lookup::prover::Committed<F>>],
+        lookups: &[Vec<lookup::prover::CommittedLagrange<F>>],
         trashcans: &[Vec<trash::prover::Committed<F>>],
         permutations: &[permutation::prover::Committed<F>],
         l0: &Polynomial<F, B>,
@@ -361,7 +361,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
 
                 let permutation_product_cosets: Vec<Polynomial<F, B>> = sets
                     .iter()
-                    .map(|set| B::coeff_to_self(domain, set.permutation_product_poly.clone()))
+                    .map(|set| B::lagrange_to_self(domain, set.permutation_product_poly.clone()))
                     .collect();
 
                 let first_set_permutation_product_coset =
@@ -444,11 +444,11 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                 // Polynomials required for this lookup.
                 // Calculated here so these only have to be kept in memory for the short time
                 // they are actually needed.
-                let product_coset = B::coeff_to_self(domain, lookup.product_poly.clone());
+                let product_coset = B::lagrange_to_self(domain, lookup.product_poly.clone());
                 let permuted_input_coset =
-                    B::coeff_to_self(domain, lookup.permuted_input_poly.clone());
+                    B::lagrange_to_self(domain, lookup.permuted_input_poly.clone());
                 let permuted_table_coset =
-                    B::coeff_to_self(domain, lookup.permuted_table_poly.clone());
+                    B::lagrange_to_self(domain, lookup.permuted_table_poly.clone());
 
                 // Lookup constraints
                 parallelize(&mut values, |values, start| {

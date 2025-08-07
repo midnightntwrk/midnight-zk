@@ -17,6 +17,7 @@ midnight-proofs = { path = "../proofs", version = "0.4.0", default-features = fa
     "cost-estimator",
     "circuit-params",
     "committed-instances",
+    "bench-internals",
 ] }
 bench_macros = { path = "../bench-macros"}
 

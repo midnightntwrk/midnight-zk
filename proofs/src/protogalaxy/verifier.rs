@@ -12,10 +12,10 @@ use crate::{
         Error, Evaluator, VerifyingKey,
     },
     poly::{commitment::PolynomialCommitmentScheme, EvaluationDomain, LagrangeCoeff, Polynomial},
+    protogalaxy::utils::{linear_combination, pow_vec},
     transcript::{Hashable, Sampleable, Transcript},
     utils::arithmetic::eval_polynomial,
 };
-use crate::protogalaxy::utils::{linear_combination, pow_vec};
 
 /// This verifier can perform a 2**K - 1 to one folding
 #[derive(Debug)]
@@ -124,7 +124,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
             res
         });
 
-        let _committed_f: CS::Commitment = transcript.read()?;
+        // let _committed_f: CS::Commitment = transcript.read()?;
         let alpha: F = transcript.squeeze_challenge();
         let eval_commited_f: F = transcript.read()?;
 
@@ -181,8 +181,8 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
 
         assert_eq!(committed_folded_witness, self.verifier_folding_trace);
 
-        // Next, we evaluate the f_i function over the folded trace, to see it corresponds
-        // with the computed error.
+        // Next, we evaluate the f_i function over the folded trace, to see it
+        // corresponds with the computed error.
         let FoldingProverTrace {
             fixed_polys,
             advice_polys,
@@ -202,10 +202,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         let witness_poly = evaluator.evaluate_h::<LagrangeCoeff>(
             vk.get_domain(),
             vk.cs(),
-            &advice_polys
-                .iter()
-                .map(Vec::as_slice)
-                .collect::<Vec<_>>(),
+            &advice_polys.iter().map(Vec::as_slice).collect::<Vec<_>>(),
             &instance_values
                 .iter()
                 .map(|i| i.as_slice())

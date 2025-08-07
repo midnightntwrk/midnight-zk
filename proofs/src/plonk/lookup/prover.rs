@@ -1,32 +1,37 @@
-use std::{collections::HashMap, hash::Hash, iter};
+use std::{collections::BTreeMap, iter};
+use std::collections::HashMap;
+use std::hash::Hash;
 
 use ff::{FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
 use group::ff::BatchInvert;
 use rand_core::{CryptoRng, RngCore};
+use rayon::iter::{IntoParallelRefIterator, IndexedParallelIterator, ParallelIterator};
 
 use super::{
     super::{circuit::Expression, Error, ProvingKey},
     Argument,
 };
-use crate::{
-    plonk::evaluation::evaluate,
-    poly::{
-        commitment::PolynomialCommitmentScheme, Coeff, EvaluationDomain, LagrangeCoeff, Polynomial,
-        ProverQuery, Rotation,
-    },
-    transcript::{Hashable, Transcript},
-    utils::arithmetic::{eval_polynomial, parallelize},
-};
+use crate::{plonk::evaluation::evaluate, poly::{
+    commitment::PolynomialCommitmentScheme, Coeff, EvaluationDomain, LagrangeCoeff, Polynomial,
+    ProverQuery, Rotation,
+}, transcript::{Hashable, Transcript}, utils::arithmetic::{eval_polynomial, parallelize}};
+use crate::dev::util::bench;
 
 #[cfg_attr(feature = "bench-internal", derive(Clone))]
 #[derive(Debug)]
 pub(crate) struct Permuted<F: PrimeField> {
     compressed_input_expression: Polynomial<F, LagrangeCoeff>,
     permuted_input_expression: Polynomial<F, LagrangeCoeff>,
-    permuted_input_poly: Polynomial<F, Coeff>,
     compressed_table_expression: Polynomial<F, LagrangeCoeff>,
     permuted_table_expression: Polynomial<F, LagrangeCoeff>,
-    permuted_table_poly: Polynomial<F, Coeff>,
+}
+
+// TODO: REMOVE CLONE - JUST FOR DEBUGGING
+#[derive(Clone, Debug)]
+pub(crate) struct CommittedLagrange<F: PrimeField> {
+    pub(crate) permuted_input_poly: Polynomial<F, LagrangeCoeff>,
+    pub(crate) permuted_table_poly: Polynomial<F, LagrangeCoeff>,
+    pub(crate) product_poly: Polynomial<F, LagrangeCoeff>,
 }
 
 #[cfg_attr(feature = "bench-internal", derive(Clone))]
@@ -107,42 +112,34 @@ impl<F: WithSmallOrderMulGroup<3> + Ord + Hash> Argument<F> {
         let compressed_table_expression = compress_expressions(&self.table_expressions);
 
         // Permute compressed (InputExpression, TableExpression) pair
-        let (permuted_input_expression, permuted_table_expression) = permute_expression_pair(
+        let (permuted_input_expression, permuted_table_expression) = bench("Permute expression pair", || {permute_expression_pair(
             pk,
             domain,
             &mut rng,
             &compressed_input_expression,
             &compressed_table_expression,
-        )?;
+        )})?;
 
-        // Closure to construct commitment to vector of values
-        let commit_values = |values: &Polynomial<F, LagrangeCoeff>| {
-            let poly = pk.vk.domain.lagrange_to_coeff(values.clone());
-            let commitment = CS::commit_lagrange(params, values);
-            (poly, commitment)
-        };
-
+        bench("Commit to lookup expressions", || {
         // Commit to permuted input expression
-        let (permuted_input_poly, permuted_input_commitment) =
-            commit_values(&permuted_input_expression);
+        let permuted_input_commitment = CS::commit_lagrange(params, &permuted_input_expression);
 
         // Commit to permuted table expression
-        let (permuted_table_poly, permuted_table_commitment) =
-            commit_values(&permuted_table_expression);
+        let permuted_table_commitment = CS::commit_lagrange(params, &permuted_table_expression);
 
         // Hash permuted input commitment
         transcript.write(&permuted_input_commitment)?;
 
         // Hash permuted table commitment
         transcript.write(&permuted_table_commitment)?;
+            Ok::<_, Error>(())
+            })?;
 
         Ok(Permuted {
             compressed_input_expression,
             permuted_input_expression,
-            permuted_input_poly,
             compressed_table_expression,
             permuted_table_expression,
-            permuted_table_poly,
         })
     }
 }
@@ -162,7 +159,7 @@ impl<F: WithSmallOrderMulGroup<3>> Permuted<F> {
         gamma: F,
         mut rng: impl RngCore + CryptoRng,
         transcript: &mut T,
-    ) -> Result<Committed<F>, Error>
+    ) -> Result<CommittedLagrange<F>, Error>
     where
         F: WithSmallOrderMulGroup<3> + FromUniformBytes<64>,
         CS::Commitment: Hashable<T::Hash>,
@@ -182,6 +179,7 @@ impl<F: WithSmallOrderMulGroup<3>> Permuted<F> {
         // s'(X) is the compression of the permuted table expressions,
         // and i is the ith row of the expression.
         let mut lookup_product = vec![F::ZERO; pk.vk.n() as usize];
+        bench("Batch invert", || {
         // Denominator uses the permuted input expression and permuted table expression
         parallelize(&mut lookup_product, |lookup_product, start| {
             for ((lookup_product, permuted_input_value), permuted_table_value) in lookup_product
@@ -196,7 +194,9 @@ impl<F: WithSmallOrderMulGroup<3>> Permuted<F> {
         // Batch invert to obtain the denominators for the lookup product
         // polynomials
         lookup_product.iter_mut().batch_invert();
+            Ok::<_, Error>(())})?;
 
+        bench("Finish computation", || {
         // Finish the computation of the entire fraction by computing the numerators
         // (\theta^{m-1} a_0(\omega^i) + \theta^{m-2} a_1(\omega^i) + ... + \theta
         // a_{m-2}(\omega^i) + a_{m-1}(\omega^i) + \beta)
@@ -210,6 +210,7 @@ impl<F: WithSmallOrderMulGroup<3>> Permuted<F> {
                 *product *= &(self.compressed_table_expression[i] + &gamma);
             }
         });
+            Ok::<_, Error>(())})?;
 
         // The product vector is a vector of products of fractions of the form
         //
@@ -226,9 +227,9 @@ impl<F: WithSmallOrderMulGroup<3>> Permuted<F> {
         // s'(\omega^i) is the permuted table expression,
         // and i is the ith row of the expression.
 
-        // Compute the evaluations of the lookup product polynomial
+        let z = bench("Compute z", || {// Compute the evaluations of the lookup product polynomial
         // over our domain, starting with z[0] = 1
-        let z = iter::once(F::ONE)
+        Ok::<_, Error>(iter::once(F::ONE)
             .chain(lookup_product)
             .scan(F::ONE, |state, cur| {
                 *state *= &cur;
@@ -239,7 +240,7 @@ impl<F: WithSmallOrderMulGroup<3>> Permuted<F> {
             .take(pk.vk.n() as usize - blinding_factors)
             // Chain random blinding factors.
             .chain((0..blinding_factors).map(|_| F::random(&mut rng)))
-            .collect::<Vec<_>>();
+            .collect::<Vec<_>>())})?;
         assert_eq!(z.len(), pk.vk.n() as usize);
         let z = pk.vk.domain.lagrange_from_vec(z);
 
@@ -282,21 +283,23 @@ impl<F: WithSmallOrderMulGroup<3>> Permuted<F> {
             assert_eq!(z[u], F::ONE);
         }
 
+        bench("Commit to Z polynomial (lookup)", || {
         let product_commitment = CS::commit_lagrange(params, &z);
-        let z = pk.vk.domain.lagrange_to_coeff(z);
 
         // Hash product commitment
         transcript.write(&product_commitment)?;
+            Ok::<_, Error>(())
+            })?;
 
-        Ok(Committed::<F> {
-            permuted_input_poly: self.permuted_input_poly,
-            permuted_table_poly: self.permuted_table_poly,
+        Ok(CommittedLagrange::<F> {
+            permuted_input_poly: self.permuted_input_expression,
+            permuted_table_poly: self.permuted_table_expression,
             product_poly: z,
         })
     }
 }
 
-impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
+impl<F: WithSmallOrderMulGroup<3>> CommittedLagrange<F> {
     pub(crate) fn evaluate<T: Transcript, CS: PolynomialCommitmentScheme<F>>(
         self,
         pk: &ProvingKey<F, CS>,
@@ -310,11 +313,17 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
         let x_inv = domain.rotate_omega(x, Rotation::prev());
         let x_next = domain.rotate_omega(x, Rotation::next());
 
-        let product_eval = eval_polynomial(&self.product_poly, x);
-        let product_next_eval = eval_polynomial(&self.product_poly, x_next);
-        let permuted_input_eval = eval_polynomial(&self.permuted_input_poly, x);
-        let permuted_input_inv_eval = eval_polynomial(&self.permuted_input_poly, x_inv);
-        let permuted_table_eval = eval_polynomial(&self.permuted_table_poly, x);
+        let committed_coeff = Committed {
+            permuted_input_poly: domain.lagrange_to_coeff(self.permuted_input_poly),
+            permuted_table_poly: domain.lagrange_to_coeff(self.permuted_table_poly),
+            product_poly: domain.lagrange_to_coeff(self.product_poly),
+        };
+
+        let product_eval = eval_polynomial(&committed_coeff.product_poly, x);
+        let product_next_eval = eval_polynomial(&committed_coeff.product_poly, x_next);
+        let permuted_input_eval = eval_polynomial(&committed_coeff.permuted_input_poly, x);
+        let permuted_input_inv_eval = eval_polynomial(&committed_coeff.permuted_input_poly, x_inv);
+        let permuted_table_eval = eval_polynomial(&committed_coeff.permuted_table_poly, x);
 
         // Hash each advice evaluation
         for eval in iter::empty()
@@ -327,11 +336,13 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
             transcript.write(&eval)?;
         }
 
-        Ok(Evaluated { constructed: self })
+        Ok(Evaluated {
+            constructed: committed_coeff,
+        })
     }
 }
 
-impl<F: WithSmallOrderMulGroup<3>> Evaluated<F> {
+impl<F: WithSmallOrderMulGroup<3> + Hash> Evaluated<F> {
     pub(crate) fn open<'a, CS: PolynomialCommitmentScheme<F>>(
         &'a self,
         pk: &'a ProvingKey<F, CS>,
@@ -378,7 +389,7 @@ type ExpressionPair<F> = (Polynomial<F, LagrangeCoeff>, Polynomial<F, LagrangeCo
 ///   corresponding value in S'.
 ///
 /// This method returns (A', S') if no errors are encountered.
-fn permute_expression_pair<F, CS: PolynomialCommitmentScheme<F>, R: RngCore>(
+fn permute_expression_pair<F: Hash, CS: PolynomialCommitmentScheme<F>, R: RngCore>(
     pk: &ProvingKey<F, CS>,
     domain: &EvaluationDomain<F>,
     mut rng: R,
@@ -395,7 +406,7 @@ where
     permuted_input_expression.truncate(usable_rows);
 
     // Sort input lookup expression values
-    permuted_input_expression.sort();
+    bench("Sort", || {Ok::<(), Error>(permuted_input_expression.sort())})?;
 
     // A HashMap of each unique element in the table expression and its count
     let mut leftover_table_map = HashMap::<F, u32>::with_capacity(table_expression.len());
@@ -404,7 +415,7 @@ where
     });
     let mut permuted_table_coeffs = vec![F::ZERO; usable_rows];
 
-    let mut repeated_input_rows = permuted_input_expression
+    let mut repeated_input_rows = bench("Repeated input rows", || {permuted_input_expression
         .iter()
         .zip(permuted_table_coeffs.iter_mut())
         .enumerate()
@@ -426,7 +437,7 @@ where
                 Some(Ok(row))
             }
         })
-        .collect::<Result<Vec<_>, _>>()?;
+        .collect::<Result<Vec<_>, _>>()})?;
 
     // Populate permuted table at unfilled rows with leftover table elements
     for (coeff, count) in leftover_table_map.iter() {

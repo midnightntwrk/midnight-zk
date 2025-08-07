@@ -5,6 +5,9 @@ use std::{
     ops::RangeTo,
     time::Instant,
 };
+use std::hash::Hash;
+use std::sync::Mutex;
+use std::time::Duration;
 
 #[cfg(feature = "bench-internal")]
 use bench_macros::inner_bench;
@@ -32,6 +35,8 @@ use crate::{
     transcript::{Hashable, Sampleable, Transcript},
     utils::{arithmetic::eval_polynomial, rational::Rational},
 };
+use crate::dev::util::bench;
+use crate::poly::commitment::TOTAL_PCS_TIME;
 
 #[cfg(feature = "committed-instances")]
 /// Commit to a vector of raw instances. This function can be used to prepare
@@ -89,7 +94,6 @@ where
     let nb_committed_instances: usize = 0;
 
     if circuits.len() != instances.len() {
-        println!("Is it here now?");
         return Err(Error::InvalidInstances);
     }
 

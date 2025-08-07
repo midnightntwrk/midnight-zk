@@ -17,6 +17,7 @@ pub mod msm;
 pub mod params;
 mod utils;
 
+use std::time::Instant;
 use std::{fmt::Debug, hash::Hash};
 
 use ff::Field;
@@ -46,6 +47,7 @@ use crate::{
         helpers::ProcessedSerdeObject,
     },
 };
+use crate::poly::commitment::TOTAL_PCS_TIME;
 
 #[derive(Clone, Debug)]
 /// KZG verifier
@@ -75,24 +77,44 @@ where
         params: &Self::Parameters,
         polynomial: &Polynomial<E::Fr, Coeff>,
     ) -> Self::Commitment {
+        #[cfg(feature = "bench-internals")]
+        let start = Instant::now();
+
         let mut scalars = Vec::<E::Fr>::with_capacity(polynomial.len());
         scalars.extend(polynomial.iter());
         let size = scalars.len();
         assert!(params.g.len() >= size);
-        msm_specific::<E::G1Affine>(&scalars, &params.g[..size])
+        let res = msm_specific::<E::G1Affine>(&scalars, &params.g[..size]);
+
+        #[cfg(feature = "bench-internals")]
+        {
+            let elapsed = start.elapsed();
+            *TOTAL_PCS_TIME.lock().unwrap() += elapsed;
+        }
+        res
     }
 
     fn commit_lagrange(
         params: &Self::Parameters,
         poly: &Polynomial<E::Fr, LagrangeCoeff>,
     ) -> E::G1 {
+        #[cfg(feature = "bench-internals")]
+        let start = Instant::now();
+
         let mut scalars = Vec::with_capacity(poly.len());
         scalars.extend(poly.iter());
         let size = scalars.len();
 
         assert!(params.g_lagrange.len() >= size);
 
-        msm_specific::<E::G1Affine>(&scalars, &params.g_lagrange[0..size])
+        let res = msm_specific::<E::G1Affine>(&scalars, &params.g_lagrange[0..size]);
+
+        #[cfg(feature = "bench-internals")]
+        {
+            let elapsed = start.elapsed();
+            *TOTAL_PCS_TIME.lock().unwrap() += elapsed;
+        }
+        res
     }
 
     fn multi_open<T: Transcript>(

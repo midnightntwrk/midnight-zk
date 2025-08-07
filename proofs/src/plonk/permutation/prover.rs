@@ -5,20 +5,21 @@ use group::ff::BatchInvert;
 use rand_core::RngCore;
 
 use super::{super::circuit::Any, Argument, ProvingKey};
-use crate::{
-    plonk::{self, Error},
-    poly::{
-        commitment::PolynomialCommitmentScheme, Coeff, LagrangeCoeff, Polynomial, ProverQuery,
-        Rotation,
-    },
-    transcript::{Hashable, Transcript},
-    utils::arithmetic::{eval_polynomial, parallelize},
-};
+use crate::{plonk::{self, Error}, poly::{
+    commitment::PolynomialCommitmentScheme, Coeff, LagrangeCoeff, Polynomial, ProverQuery,
+    Rotation,
+}, transcript::{Hashable, Transcript}, utils::arithmetic::{eval_polynomial, parallelize}};
+use crate::dev::util::bench;
 
 #[cfg_attr(feature = "bench-internal", derive(Clone))]
 // TODO: REMOVE CLONE - JUST FOR DEBUGGING
 #[derive(Clone, Debug)]
 pub(crate) struct CommittedSet<F: PrimeField> {
+    pub(crate) permutation_product_poly: Polynomial<F, LagrangeCoeff>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct CommittedSetCoeff<F: PrimeField> {
     pub(crate) permutation_product_poly: Polynomial<F, Coeff>,
 }
 
@@ -29,8 +30,14 @@ pub(crate) struct Committed<F: PrimeField> {
     pub(crate) sets: Vec<CommittedSet<F>>,
 }
 
+// TODO: REMOVE CLONE - JUST FOR DEBUGGING
+#[derive(Clone, Debug)]
+pub(crate) struct CommittedCoeff<F: PrimeField> {
+    pub(crate) sets: Vec<CommittedSetCoeff<F>>,
+}
+
 pub(crate) struct Evaluated<F: PrimeField> {
-    constructed: Committed<F>,
+    constructed: CommittedCoeff<F>,
 }
 
 impl Argument {
@@ -156,14 +163,16 @@ impl Argument {
             // Set new last_z
             last_z = z[domain.n as usize - (blinding_factors + 1)];
 
+            bench("Commit to permutations", || {
             let permutation_product_commitment = CS::commit_lagrange(params, &z);
-            let permutation_product_poly = domain.lagrange_to_coeff(z);
 
             // Hash the permutation product commitment
             transcript.write(&permutation_product_commitment)?;
+                Ok::<_, Error>(())
+                })?;
 
             sets.push(CommittedSet {
-                permutation_product_poly,
+                permutation_product_poly: z,
             });
         }
 
@@ -201,9 +210,18 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
     {
         let domain = &pk.vk.domain;
         let blinding_factors = pk.vk.cs.blinding_factors();
+        let committed_coeff = CommittedCoeff {
+            sets: self
+                .sets
+                .into_iter()
+                .map(|a| CommittedSetCoeff {
+                    permutation_product_poly: domain.lagrange_to_coeff(a.permutation_product_poly),
+                })
+                .collect(),
+        };
 
         {
-            let mut sets = self.sets.iter();
+            let mut sets = committed_coeff.sets.iter();
 
             while let Some(set) = sets.next() {
                 let permutation_product_eval = eval_polynomial(&set.permutation_product_poly, x);
@@ -235,7 +253,9 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
             }
         }
 
-        Ok(Evaluated { constructed: self })
+        Ok(Evaluated {
+            constructed: committed_coeff,
+        })
     }
 }
 
@@ -245,6 +265,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluated<F> {
         pk: &'a plonk::ProvingKey<F, CS>,
         x: F,
     ) -> impl Iterator<Item = ProverQuery<'a, F>> + Clone {
+        let domain = pk.vk.get_domain();
         let blinding_factors = pk.vk.cs.blinding_factors();
         let x_next = pk.vk.domain.rotate_omega(x, Rotation::next());
         let x_last = pk.vk.domain.rotate_omega(x, Rotation(-((blinding_factors + 1) as i32)));

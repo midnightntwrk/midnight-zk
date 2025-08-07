@@ -70,9 +70,9 @@ pub trait PolynomialRepresentation: Copy + Debug + Send + Sync {
 
     /// Converts a polynomial from coefficient form into this representation
     /// over the given evaluation domain.
-    fn coeff_to_self<F: WithSmallOrderMulGroup<3>>(
+    fn lagrange_to_self<F: WithSmallOrderMulGroup<3>>(
         evaluation_domain: &EvaluationDomain<F>,
-        poly: Polynomial<F, Coeff>,
+        poly: Polynomial<F, LagrangeCoeff>,
     ) -> Polynomial<F, Self>;
 
     /// Returns the multiplicative coset generator `g_coset` if this
@@ -96,11 +96,11 @@ impl PolynomialRepresentation for Coeff {
         evaluation_domain.k()
     }
 
-    fn coeff_to_self<F: WithSmallOrderMulGroup<3>>(
-        _evaluation_domain: &EvaluationDomain<F>,
-        poly: Polynomial<F, Coeff>,
+    fn lagrange_to_self<F: WithSmallOrderMulGroup<3>>(
+        evaluation_domain: &EvaluationDomain<F>,
+        poly: Polynomial<F, LagrangeCoeff>,
     ) -> Polynomial<F, Self> {
-        poly
+        evaluation_domain.lagrange_to_coeff(poly)
     }
 
     fn g_coset<F: WithSmallOrderMulGroup<3>>(_evaluation_domain: &EvaluationDomain<F>) -> F {
@@ -124,11 +124,11 @@ impl PolynomialRepresentation for LagrangeCoeff {
         evaluation_domain.k()
     }
 
-    fn coeff_to_self<F: WithSmallOrderMulGroup<3>>(
-        evaluation_domain: &EvaluationDomain<F>,
-        poly: Polynomial<F, Coeff>,
+    fn lagrange_to_self<F: WithSmallOrderMulGroup<3>>(
+        _evaluation_domain: &EvaluationDomain<F>,
+        poly: Polynomial<F, LagrangeCoeff>,
     ) -> Polynomial<F, Self> {
-        evaluation_domain.coeff_to_lagrange(poly)
+        poly
     }
 
     fn g_coset<F: WithSmallOrderMulGroup<3>>(_evaluation_domain: &EvaluationDomain<F>) -> F {
@@ -153,11 +153,12 @@ impl PolynomialRepresentation for ExtendedLagrangeCoeff {
         evaluation_domain.extended_k()
     }
 
-    fn coeff_to_self<F: WithSmallOrderMulGroup<3>>(
+    fn lagrange_to_self<F: WithSmallOrderMulGroup<3>>(
         evaluation_domain: &EvaluationDomain<F>,
-        poly: Polynomial<F, Coeff>,
+        poly: Polynomial<F, LagrangeCoeff>,
     ) -> Polynomial<F, Self> {
-        evaluation_domain.coeff_to_extended(poly)
+        let coeff = evaluation_domain.lagrange_to_coeff(poly);
+        evaluation_domain.coeff_to_extended(coeff)
     }
 
     fn g_coset<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> F {

@@ -40,7 +40,10 @@ where
     let nb_committed_instances = committed_instances[0].len();
     for committed_instances in committed_instances.iter() {
         if committed_instances.len() != nb_committed_instances {
-            println!("Here? with {} and {nb_committed_instances}", committed_instances.len());
+            println!(
+                "Here? with {} and {nb_committed_instances}",
+                committed_instances.len()
+            );
             return Err(Error::InvalidInstances);
         }
     }

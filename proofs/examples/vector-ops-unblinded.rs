@@ -506,6 +506,7 @@ where
     E::Fr: WithSmallOrderMulGroup<3>
         + FromUniformBytes<64>
         + Sampleable<State>
+        + Hash
         + Hashable<State>
         + Hash
         + Ord,
