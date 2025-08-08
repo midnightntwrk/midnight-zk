@@ -33,6 +33,7 @@ use crate::{
 };
 use crate::dev::util::bench;
 use crate::poly::commitment::TOTAL_PCS_TIME;
+use crate::poly::TOTAL_FFT_TIME;
 
 #[cfg(feature = "committed-instances")]
 /// Commit to a vector of raw instances. This function can be used to prepare
@@ -775,6 +776,7 @@ where
         + FromUniformBytes<64>,
 {
     *TOTAL_PCS_TIME.lock().unwrap() = Duration::ZERO;
+    *TOTAL_FFT_TIME.lock().unwrap() = Duration::ZERO;
     let trace = compute_trace(
         params,
         pk,
@@ -793,8 +795,9 @@ where
         trace,
         transcript,
     );
-    println!("Time spend in PCS: {:?}", TOTAL_PCS_TIME);
 
+    println!("Time with PCS: {:?}", TOTAL_PCS_TIME.lock().unwrap());
+    println!("Time with FFTs: {:?}", TOTAL_FFT_TIME.lock().unwrap());
     res
 }
 

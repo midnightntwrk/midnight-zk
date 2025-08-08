@@ -1,6 +1,7 @@
 #![allow(clippy::many_single_char_names)]
 #![allow(clippy::op_ref)]
 
+use std::hash::Hash;
 use std::marker::PhantomData;
 
 use assert_matches::assert_matches;
@@ -470,6 +471,7 @@ fn plonk_api() {
             + FromUniformBytes<64>
             + Sampleable<T::Hash>
             + Hashable<T::Hash>
+            + Hash
             + SerdeObject,
         Scheme::Commitment: Hashable<T::Hash>,
     {
