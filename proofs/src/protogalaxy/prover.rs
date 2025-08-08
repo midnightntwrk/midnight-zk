@@ -25,6 +25,7 @@ use crate::{
     utils::arithmetic::eval_polynomial,
 };
 use crate::poly::commitment::TOTAL_PCS_TIME;
+use crate::poly::TOTAL_FFT_TIME;
 
 /// This prover can perform a 2**K - 1 to one folding
 struct ProtogalaxyProver<F: PrimeField, CS: PolynomialCommitmentScheme<F>, const K: usize> {
@@ -72,10 +73,6 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
             transcript,
         )?
         .into_folding_trace(pk.fixed_values.clone());
-
-        println!("Time with PCS: {:?}", TOTAL_PCS_TIME);
-        let mut total = TOTAL_PCS_TIME.lock().unwrap();
-        *total = Duration::ZERO;
 
         let folding_pk = FoldingPk::from(pk);
         let beta_powers = [F::ONE; K];
@@ -137,8 +134,9 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
                 )?;
 
                 println!("Time with PCS: {:?}", TOTAL_PCS_TIME);
-                let mut total = TOTAL_PCS_TIME.lock().unwrap();
-                *total = Duration::ZERO;
+                println!("Time with FFTs: {:?}", TOTAL_FFT_TIME);
+                *TOTAL_PCS_TIME.lock().unwrap() = Duration::ZERO;
+                *TOTAL_FFT_TIME.lock().unwrap() = Duration::ZERO;
 
                 Ok(trace.into_folding_trace(pk.fixed_values.clone()))
             })
@@ -579,6 +577,7 @@ mod tests {
     };
     use crate::plonk::{Constraints, create_proof};
     use crate::poly::commitment::TOTAL_PCS_TIME;
+    use crate::poly::TOTAL_FFT_TIME;
 
     #[derive(Clone, Copy)]
     struct TestCircuit {
@@ -687,7 +686,7 @@ mod tests {
 
     #[test]
     fn folding_test() {
-        const K: usize = 14;
+        const K: usize = 17;
         let k = 4; // number of folding instances
 
         let rng = ChaCha8Rng::from_seed([0u8; 32]);
@@ -717,6 +716,9 @@ mod tests {
                 .expect("keygen_vk should not fail");
         let pk = keygen_pk(vk.clone(), &circuits[0]).expect("keygen_pk should not fail");
 
+        *TOTAL_PCS_TIME.lock().unwrap() = Duration::ZERO;
+        *TOTAL_FFT_TIME.lock().unwrap() = Duration::ZERO;
+
         let mut rng = ChaCha8Rng::from_seed([0u8; 32]);
         // Normal proofs. We first generate normal proofs to test performance
         let normal_proving = Instant::now();
@@ -734,8 +736,9 @@ mod tests {
             )
             .expect("Failed to produce a proof");
             println!("Time with PCS: {:?}", TOTAL_PCS_TIME);
-            let mut total = TOTAL_PCS_TIME.lock().unwrap();
-            *total = Duration::ZERO;
+            println!("Time with FFTs: {:?}", TOTAL_FFT_TIME);
+            *TOTAL_PCS_TIME.lock().unwrap() = Duration::ZERO;
+            *TOTAL_FFT_TIME.lock().unwrap() = Duration::ZERO;
         }
         println!(
             "Time to generate {} proofs: {:?}",
@@ -759,6 +762,12 @@ mod tests {
         )
         .expect("Failed to initialise folder");
         println!("Time to initialise: {:?}", now.elapsed());
+
+
+        println!("Time with PCS in init: {:?}", TOTAL_PCS_TIME);
+        println!("Time with FFTs in init: {:?}", TOTAL_FFT_TIME);
+        *TOTAL_PCS_TIME.lock().unwrap() = Duration::ZERO;
+        *TOTAL_FFT_TIME.lock().unwrap() = Duration::ZERO;
 
         let protogalaxy = protogalaxy
             .fold(

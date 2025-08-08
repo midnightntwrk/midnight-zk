@@ -2,6 +2,7 @@
 //! and public key) using midnight's ZK std lib. The test vectors were generated
 //! using Bitcoin's C library https://github.com/bitcoin-core/secp256k1.
 
+use std::time::Instant;
 use group::GroupEncoding;
 use halo2curves::secp256k1::{Fp as secp256k1Base, Fq as secp256k1Scalar, Secp256k1};
 use midnight_circuits::{
@@ -189,10 +190,12 @@ fn main() {
         secp256k1Scalar::from_bytes(&reverse_bytes(&sig_bytes[32..])).expect("Secp scalar"),
     );
 
+    let now = Instant::now();
     let proof = compact_std_lib::prove::<BitcoinSigExample, blake2b_simd::State>(
         &srs, &pk, &relation, &instance, witness, OsRng,
     )
     .expect("Proof generation should not fail");
+    println!("Time to produce proof: {:?}", now.elapsed());
 
     assert!(
         compact_std_lib::verify::<BitcoinSigExample, blake2b_simd::State>(

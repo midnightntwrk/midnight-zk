@@ -37,6 +37,7 @@ use crate::{
 };
 use crate::dev::util::bench;
 use crate::poly::commitment::TOTAL_PCS_TIME;
+use crate::poly::TOTAL_FFT_TIME;
 
 #[cfg(feature = "committed-instances")]
 /// Commit to a vector of raw instances. This function can be used to prepare
