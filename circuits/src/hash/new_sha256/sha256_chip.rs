@@ -805,8 +805,8 @@ impl<F: PrimeField> Sha256Chip<F> {
     /// modulo 2^32 and decomposes the result (named A) into (bit-endian)
     /// limbs of bit sizes 10, 9, 11 and 2.
     ///
-    /// This function also returns the spreaded version of the sum, ~A and
-    /// the limbs of A.
+    /// This function returns the plain and spreaded forms, as well as
+    /// the spreaded limbs of A.
     fn prepare_A(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -842,53 +842,37 @@ impl<F: PrimeField> Sha256Chip<F> {
         to be tight as long as it prevents overflows in the native field).
         */
 
-        let adv_cols = self.config().advice_cols;
-
         let zero = AssignedPlain::<F, 32>::fixed(layouter, &self.native_chip, 0)?;
         let mut summands = summands.to_vec();
         summands.resize(7, zero);
-
-        let (carry_val, a_val): (Value<u32>, Value<F>) =
-            Value::<Vec<F>>::from_iter(summands.iter().map(|s| s.0.value().copied()))
-                .map(|v| v.into_iter().map(fe_to_u64).sum())
-                .map(|s: u64| s.div_rem(&(1 << 32)))
-                .map(|(carry, a)| (carry as u32, u64_to_fe(a)))
-                .unzip();
-
-        let a_sprdd_val = a_val.map(fe_to_u32).map(spread).map(u64_to_fe);
-
-        let [val_10, val_09, val_11, val_02] = a_val
-            .map(|a| u32_in_be_limbs(fe_to_u32(a), [10, 9, 11, 2]))
-            .transpose_array();
+        let summands: [AssignedPlain<F, 32>; 7] = summands.try_into().unwrap();
 
         layouter.assign_region(
             || "decompose A in 10-9-11-2",
             |mut region| {
                 self.config().q_10_9_11_2.enable(&mut region, 0)?;
-                self.config().q_add_mod_2_32.enable(&mut region, 0)?;
+
+                let (a_plain, a_sprdd) =
+                    self.assign_add_mod_2_32(&mut region, summands.clone(), true)?;
+
+                let [val_10, val_09, val_11, val_02] = a_plain
+                    .0
+                    .value()
+                    .copied()
+                    .map(|a| u32_in_be_limbs(fe_to_u32(a), [10, 9, 11, 2]))
+                    .transpose_array();
 
                 let limb_10 = self.assign_plain_and_spreaded(&mut region, val_10, 0, 0)?;
                 let limb_09 = self.assign_plain_and_spreaded(&mut region, val_09, 0, 1)?;
                 let limb_11 = self.assign_plain_and_spreaded(&mut region, val_11, 1, 0)?;
                 let limb_02 = self.assign_plain_and_spreaded(&mut region, val_02, 1, 1)?;
-                let _carry: AssignedPlainSpreaded<F, 3> =
-                    self.assign_plain_and_spreaded(&mut region, carry_val, 2, 1)?;
-
-                let a_plain = region.assign_advice(|| " A", adv_cols[4], 0, || a_val)?;
-                let a_sprdd = region.assign_advice(|| "~A", adv_cols[4], 1, || a_sprdd_val)?;
-
-                (summands[0].0).copy_advice(|| "S0", &mut region, adv_cols[5], 0)?;
-                (summands[1].0).copy_advice(|| "S1", &mut region, adv_cols[6], 0)?;
-                (summands[2].0).copy_advice(|| "S2", &mut region, adv_cols[5], 1)?;
-                (summands[3].0).copy_advice(|| "S3", &mut region, adv_cols[6], 1)?;
-                (summands[4].0).copy_advice(|| "S4", &mut region, adv_cols[4], 2)?;
-                (summands[5].0).copy_advice(|| "S5", &mut region, adv_cols[5], 2)?;
-                (summands[6].0).copy_advice(|| "S6", &mut region, adv_cols[6], 2)?;
+                let _zeros =
+                    self.assign_plain_and_spreaded::<0>(&mut region, Value::known(0), 2, 0)?;
 
                 Ok(LimbsOfA {
                     combined: AssignedPlainSpreaded {
-                        plain: AssignedPlain(a_plain),
-                        spreaded: AssignedSpreaded(a_sprdd),
+                        plain: a_plain,
+                        spreaded: a_sprdd.unwrap(),
                     },
                     spreaded_limb_10: limb_10.spreaded,
                     spreaded_limb_09: limb_09.spreaded,
@@ -903,8 +887,8 @@ impl<F: PrimeField> Sha256Chip<F> {
     /// modulo 2^32 and decomposes the result (named E) into (bit-endian)
     /// limbs of bit sizes 7, 12, 2, 5 and 6.
     ///
-    /// This function also returns the spreaded version of the sum, ~E and
-    /// the limbs of E.
+    /// This function returns the plain and spreaded forms, as well as
+    /// the spreaded limbs of E.
     fn prepare_E(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -938,54 +922,36 @@ impl<F: PrimeField> Sha256Chip<F> {
         to be tight as long as it prevents overflows in the native field).
         */
 
-        let adv_cols = self.config().advice_cols;
-
         let zero = AssignedPlain::<F, 32>::fixed(layouter, &self.native_chip, 0)?;
         let mut summands = summands.to_vec();
         summands.resize(7, zero);
-
-        let (carry_val, e_val): (Value<u32>, Value<F>) =
-            Value::<Vec<F>>::from_iter(summands.iter().map(|s| s.0.value().copied()))
-                .map(|v| v.into_iter().map(fe_to_u64).sum())
-                .map(|s: u64| s.div_rem(&(1 << 32)))
-                .map(|(carry, e)| (carry as u32, u64_to_fe(e)))
-                .unzip();
-
-        let e_sprdd_val = e_val.map(fe_to_u32).map(spread).map(u64_to_fe);
-
-        let [val_07, val_12, val_02, val_05, val_06] = e_val
-            .map(|e| u32_in_be_limbs(fe_to_u32(e), [7, 12, 2, 5, 6]))
-            .transpose_array();
+        let summands: [AssignedPlain<F, 32>; 7] = summands.try_into().unwrap();
 
         layouter.assign_region(
             || "decompose E in 7-12-2-5-6",
             |mut region| {
                 self.config().q_7_12_2_5_6.enable(&mut region, 0)?;
-                self.config().q_add_mod_2_32.enable(&mut region, 0)?;
+
+                let (e_plain, e_sprdd) =
+                    self.assign_add_mod_2_32(&mut region, summands.clone(), true)?;
+
+                let [val_07, val_12, val_02, val_05, val_06] = e_plain
+                    .0
+                    .value()
+                    .copied()
+                    .map(|e| u32_in_be_limbs(fe_to_u32(e), [7, 12, 2, 5, 6]))
+                    .transpose_array();
 
                 let limb_07 = self.assign_plain_and_spreaded(&mut region, val_07, 0, 0)?;
                 let limb_12 = self.assign_plain_and_spreaded(&mut region, val_12, 0, 1)?;
                 let limb_02 = self.assign_plain_and_spreaded(&mut region, val_02, 1, 0)?;
                 let limb_05 = self.assign_plain_and_spreaded(&mut region, val_05, 1, 1)?;
                 let limb_06 = self.assign_plain_and_spreaded(&mut region, val_06, 2, 0)?;
-                let _carry: AssignedPlainSpreaded<F, 3> =
-                    self.assign_plain_and_spreaded(&mut region, carry_val, 2, 1)?;
-
-                let e_plain = region.assign_advice(|| " E", adv_cols[4], 0, || e_val)?;
-                let e_sprdd = region.assign_advice(|| "~E", adv_cols[4], 1, || e_sprdd_val)?;
-
-                (summands[0].0).copy_advice(|| "S0", &mut region, adv_cols[5], 0)?;
-                (summands[1].0).copy_advice(|| "S1", &mut region, adv_cols[6], 0)?;
-                (summands[2].0).copy_advice(|| "S2", &mut region, adv_cols[5], 1)?;
-                (summands[3].0).copy_advice(|| "S3", &mut region, adv_cols[6], 1)?;
-                (summands[4].0).copy_advice(|| "S4", &mut region, adv_cols[4], 2)?;
-                (summands[5].0).copy_advice(|| "S5", &mut region, adv_cols[5], 2)?;
-                (summands[6].0).copy_advice(|| "S6", &mut region, adv_cols[6], 2)?;
 
                 Ok(LimbsOfE {
                     combined: AssignedPlainSpreaded {
-                        plain: AssignedPlain(e_plain),
-                        spreaded: AssignedSpreaded(e_sprdd),
+                        plain: e_plain,
+                        spreaded: e_sprdd.unwrap(),
                     },
                     spreaded_limb_07: limb_07.spreaded,
                     spreaded_limb_12: limb_12.spreaded,
@@ -1203,28 +1169,25 @@ impl<F: PrimeField> Sha256Chip<F> {
         Ok(message_words.map(|w| w.combined_plain))
     }
 
-    /// Given a slice of at most 7 `AssignedPlain` values, it adds them
-    /// modulo 2^32 and decomposes the result (named W.i) into (bit-endian)
+    /// Given the slice of 4 `AssignedPlain` values, this function computes
+    /// the message word W_i and decomposes W_i into (bit-endian)
     /// limbs of bit sizes 12, 1, 1, 1, 7, 3, 4 and 3.
-    ///
-    /// This function is used to prepare message words W.i for i in [0, 63].
     fn prepare_message_word(
         &self,
         layouter: &mut impl Layouter<F>,
         summands: &[AssignedPlain<F, 32>],
     ) -> Result<AssignedMessageWord<F>, Error> {
         /*
-        Given assigned plain inputs S0, ..., S6 (if fewer inputs are given
-        they will be completed up to length 7, padding with fixed zeros),
-        let W.i be their sum modulo 2^32.
+        Given the 4 assigned plain inputs W_(i-16), W_(i-7), σ₀(W_(i-15)), σ₁(W_(i-2)),
+        completes up to length 7 by padding with 3 fixed zeros, and computes W.i as their sum modulo 2^32.
 
         We use the following table distribution.
 
-        | T_0 |  A_0 |  A_1  | T_1 |  A_2  |   A_3  | A_4 |  A_5 |  A_6 |  A_7  |
-        |-----|------|-------|-----|-------|--------|-----|------|------|-------|
-        |  12 | W.12 | ~W.12 | 07  |  W.07 | ~W.07  | W.i |  S0  |  S1  |  W.1a |
-        |  03 | W.3a | ~W.3a | 04  |  W.04 | ~W.04  |     |  S2  |  S3  |  W.1b |
-        |  03 | W.3b | ~W.3b | 03  | carry | ~carry | S4  |  S5  |  S6  |  W.1c |
+        | T_0 |  A_0 |  A_1  | T_1 |  A_2  |   A_3  | A_4 |      A_5     |     A_6    |  A_7  |
+        |-----|------|-------|-----|-------|--------|-----|--------------|------------|-------|
+        |  12 | W.12 | ~W.12 | 07  |  W.07 | ~W.07  | W.i |    W_(i-16)  |   W_(i-7)  |  W.1a |
+        |  03 | W.3a | ~W.3a | 04  |  W.04 | ~W.04  |     | σ₀(W_(i-15)) | σ₁(W_(i-2))|  W.1b |
+        |  03 | W.3b | ~W.3b | 03  | carry | ~carry |  0  |       0      |      0     |  W.1c |
 
         Apart from the lookups, the following identity is checked via a
         custom gate with selector q_12_1_1_1_7_3_4_3:
@@ -1234,7 +1197,7 @@ impl<F: PrimeField> Sha256Chip<F> {
         and the following is checked with a custom gate with selector
         q_add_mod_2_32:
 
-            S0 + S1 + S2 + S3 + S4 + S5 + S6 = W.i + carry * 2^32
+            W_(i-16) + W_(i-7) + σ₀(W_(i-15)) + σ₁(W_(i-2)) = W.i + carry * 2^32
 
         Note that W.i is implicitly being range-checked in [0, 2^32) via
         the lookup, and the carry is range-checked in [0, 8). This makes
@@ -1242,69 +1205,53 @@ impl<F: PrimeField> Sha256Chip<F> {
         to be tight as long as it prevents overflows in the native field).
         */
 
-        let adv_cols = self.config().advice_cols;
-
         let zero = AssignedPlain::<F, 32>::fixed(layouter, &self.native_chip, 0)?;
         let mut summands = summands.to_vec();
         summands.resize(7, zero);
-
-        let (carry_val, w_val): (Value<u32>, Value<F>) =
-            Value::<Vec<F>>::from_iter(summands.iter().map(|s| s.0.value().copied()))
-                .map(|v| v.into_iter().map(fe_to_u64).sum())
-                .map(|s: u64| s.div_rem(&(1 << 32)))
-                .map(|(carry, w)| (carry as u32, u64_to_fe(w)))
-                .unzip();
-
-        let [val_12, val_1a, val_1b, val_1c, val_07, val_3a, val_04, val_3b] = w_val
-            .map(|w| u32_in_be_limbs(fe_to_u32(w), [12, 1, 1, 1, 7, 3, 4, 3]))
-            .transpose_array();
+        let summands: [AssignedPlain<F, 32>; 7] = summands.try_into().unwrap();
 
         layouter.assign_region(
             || "prepare message word",
             |mut region| {
                 self.config().q_12_1_1_1_7_3_4_3.enable(&mut region, 0)?;
-                self.config().q_add_mod_2_32.enable(&mut region, 0)?;
+                // No need to assign the spreaded form of W.i.
+                let (w_i_plain, _) =
+                    self.assign_add_mod_2_32(&mut region, summands.clone(), false)?;
 
+                let [val_12, val_1a, val_1b, val_1c, val_07, val_3a, val_04, val_3b] = w_i_plain
+                    .0
+                    .value()
+                    .copied()
+                    .map(|w| u32_in_be_limbs(fe_to_u32(w), [12, 1, 1, 1, 7, 3, 4, 3]))
+                    .transpose_array();
                 let limb_12 = self.assign_plain_and_spreaded(&mut region, val_12, 0, 0)?;
                 let limb_07 = self.assign_plain_and_spreaded(&mut region, val_07, 0, 1)?;
                 let limb_3a = self.assign_plain_and_spreaded(&mut region, val_3a, 1, 0)?;
                 let limb_04 = self.assign_plain_and_spreaded(&mut region, val_04, 1, 1)?;
                 let limb_3b = self.assign_plain_and_spreaded(&mut region, val_3b, 2, 0)?;
-                let _carry = self.assign_plain_and_spreaded::<3>(&mut region, carry_val, 2, 1)?;
 
-                // The spreaded form of W.1a, W.1b and W.1c equal themselves, as they are 1-bit
-                // values.
+                // The spreaded forms of 1-bit values W.1a, W.1b and W.1c equal themselves.
                 let limb_1a = region.assign_advice(
                     || "W.1a",
-                    adv_cols[7],
+                    self.config().advice_cols[7],
                     0,
                     || val_1a.map(|v| u64_to_fe(v as u64)),
                 )?;
                 let limb_1b = region.assign_advice(
                     || "W.1b",
-                    adv_cols[7],
+                    self.config().advice_cols[7],
                     1,
                     || val_1b.map(|v| u64_to_fe(v as u64)),
                 )?;
                 let limb_1c = region.assign_advice(
                     || "W.1c",
-                    adv_cols[7],
+                    self.config().advice_cols[7],
                     2,
                     || val_1c.map(|v| u64_to_fe(v as u64)),
                 )?;
 
-                let w_i_plain = region.assign_advice(|| "W_i", adv_cols[4], 0, || w_val)?;
-
-                (summands[0].0).copy_advice(|| "S0", &mut region, adv_cols[5], 0)?;
-                (summands[1].0).copy_advice(|| "S1", &mut region, adv_cols[6], 0)?;
-                (summands[2].0).copy_advice(|| "S2", &mut region, adv_cols[5], 1)?;
-                (summands[3].0).copy_advice(|| "S3", &mut region, adv_cols[6], 1)?;
-                (summands[4].0).copy_advice(|| "S4", &mut region, adv_cols[4], 2)?;
-                (summands[5].0).copy_advice(|| "S5", &mut region, adv_cols[5], 2)?;
-                (summands[6].0).copy_advice(|| "S6", &mut region, adv_cols[6], 2)?;
-
                 Ok(AssignedMessageWord {
-                    combined_plain: AssignedPlain(w_i_plain),
+                    combined_plain: w_i_plain,
                     spreaded_w_12: limb_12.spreaded,
                     spreaded_w_1a: AssignedSpreaded(limb_1a),
                     spreaded_w_1b: AssignedSpreaded(limb_1b),
@@ -1357,6 +1304,7 @@ impl<F: PrimeField> Sha256Chip<F> {
         |  12 | Even.12b | ~Even.12b |  12 | Odd.12b | ~Odd.12b | ~W.1b | ~W.1c  | ~W.07  |
         |   8 | Even.8   | ~Even.8   |   8 | Odd.8   | ~Odd.8   | ~W.3a | ~W.04  | ~W.3b  |
         */
+
         let adv_cols = self.config().advice_cols;
 
         layouter.assign_region(
@@ -1434,7 +1382,7 @@ impl<F: PrimeField> Sha256Chip<F> {
         |  12 | Even.12b | ~Even.12b |  12 | Odd.12b | ~Odd.12b | ~W.1b | ~W.1c  | ~W.07  |
         |   8 | Even.8   | ~Even.8   |   8 | Odd.8   | ~Odd.8   | ~W.3a | ~W.04  | ~W.3b  |
         */
-        
+
         let adv_cols = self.config().advice_cols;
 
         layouter.assign_region(
@@ -1471,6 +1419,60 @@ impl<F: PrimeField> Sha256Chip<F> {
                 )
             },
         )
+    }
+
+    /// Given 7 `AssignedPlain` values, this function adds them modulo 2^32:
+    ///
+    ///     S0 + S1 + S2 + S3 + S4 + S5 + S6 = sum_plain + carry * 2^32
+    ///
+    /// and computes sum_sprdd when `with_spreaded` is true.
+    ///
+    ///  | T_1 |  A_2  |   A_3  |    A_4    |  A_5 |  A_6 |
+    ///  |-----|-------|--------|-----------|------|------|
+    ///  |     |       |        | sum_plain |  S0  |  S1  |
+    ///  |     |       |        | sum_sprdd |  S2  |  S3  |
+    ///  | 03  | carry | ~carry |     S4    |  S5  |  S6  |
+    ///
+    /// It returns sum_plain and sum_sprdd (if `with_spreaded` is true).
+    fn assign_add_mod_2_32(
+        &self,
+        region: &mut Region<'_, F>,
+        summands: [AssignedPlain<F, 32>; 7],
+        with_spreaded: bool,
+    ) -> Result<(AssignedPlain<F, 32>, Option<AssignedSpreaded<F, 32>>), Error> {
+        self.config().q_add_mod_2_32.enable(region, 0)?;
+        let adv_cols = self.config().advice_cols;
+
+        let (carry_val, sum_val): (Value<u32>, Value<F>) =
+            Value::<Vec<F>>::from_iter(summands.iter().map(|s| s.0.value().copied()))
+                .map(|v| v.into_iter().map(fe_to_u64).sum())
+                .map(|s: u64| s.div_rem(&(1 << 32)))
+                .map(|(carry, r)| (carry as u32, u64_to_fe(r)))
+                .unzip();
+
+        (summands[0].0).copy_advice(|| "S0", region, adv_cols[5], 0)?;
+        (summands[1].0).copy_advice(|| "S1", region, adv_cols[6], 0)?;
+        (summands[2].0).copy_advice(|| "S2", region, adv_cols[5], 1)?;
+        (summands[3].0).copy_advice(|| "S3", region, adv_cols[6], 1)?;
+        (summands[4].0).copy_advice(|| "S4", region, adv_cols[4], 2)?;
+        (summands[5].0).copy_advice(|| "S5", region, adv_cols[5], 2)?;
+        (summands[6].0).copy_advice(|| "S6", region, adv_cols[6], 2)?;
+        let _carry: AssignedPlainSpreaded<F, 3> =
+            self.assign_plain_and_spreaded(region, carry_val, 2, 1)?;
+        let sum_plain = region
+            .assign_advice(|| "sum", adv_cols[4], 0, || sum_val)
+            .map(AssignedPlain)?;
+
+        if with_spreaded {
+            let sum_sprdd_val = sum_val.map(fe_to_u32).map(spread).map(u64_to_fe);
+            let sum_sprdd = region
+                .assign_advice(|| "~sum", adv_cols[4], 1, || sum_sprdd_val)
+                .map(AssignedSpreaded)?;
+
+            Ok((sum_plain, Some(sum_sprdd)))
+        } else {
+            Ok((sum_plain, None))
+        }
     }
 
     /// SHA256 computation.
@@ -1531,4 +1533,3 @@ impl<F: PrimeField> CompressionState<F> {
         })
     }
 }
-// TODO: refactor the assign add_mod_2_32 function.
