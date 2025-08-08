@@ -14,7 +14,6 @@ use crate::{
         vanishing,
     },
     poly::{commitment::PolynomialCommitmentScheme, EvaluationDomain, Polynomial},
-    utils::arithmetic::eval_polynomial,
 };
 
 /// Given a vector v, computes a vector of length 2^|v| whose i-th element
@@ -130,7 +129,7 @@ pub fn batch_traces<F: PrimeField + WithSmallOrderMulGroup<3>>(
 
     (0..dk_domain.extended_len())
         .map(|i| {
-            let buffer = FoldingProverTrace::with_same_dimensions(&traces[0]);
+            let buffer = FoldingProverTrace::with_same_dimensions(traces[0]);
             let coordinate_i_lagrange = lagrange_polys
                 .iter()
                 .map(|poly| poly.values[i])
@@ -422,7 +421,7 @@ impl<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> Add<&VerifierFoldingTrac
             .par_iter_mut()
             .zip(rhs.challenges.par_iter())
             .for_each(|(lhs, rhs)| {
-                *lhs = *lhs + *rhs;
+                *lhs += *rhs;
             });
 
         self.beta += rhs.beta;
@@ -471,47 +470,6 @@ impl<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> Mul<F> for VerifierFoldi
 
         self
     }
-}
-
-/// Computes \sum_{j = 0}^k L_j(gamma) ω_j, where ω_j is the j-th trace,
-/// for j = 0, ..., k. The `degree` is the maximum degree of the
-/// constraint system.
-///
-/// We could handle each output folding trace one by one instead.
-// TODO: I have the feeling we can merge traces into a single type, that takes
-// representation of columns generically, and this function also be implemented
-// once.
-pub fn batch_verifier_traces<F: WithSmallOrderMulGroup<3>, PCS: PolynomialCommitmentScheme<F>>(
-    dk_domain: &EvaluationDomain<F>,
-    traces: &[&VerifierFoldingTrace<F, PCS>],
-    gamma: &F,
-) -> VerifierFoldingTrace<F, PCS> {
-    let lagrange_evals = (0..traces.len())
-        .map(|i| {
-            // For the moment we only support batching of traces of dimension one.
-            assert_eq!(traces[i].advice_commitments.len(), 1);
-            let mut l = dk_domain.empty_lagrange();
-            l[i] = F::ONE;
-            l
-        })
-        .map(|p| dk_domain.lagrange_to_coeff(p))
-        .map(|p| eval_polynomial(&p.values, *gamma))
-        .collect::<Vec<_>>();
-
-    // let dk_domain_size = lagrange_polys[0].num_coeffs();
-    // let trace_domain_size = traces[0].fixed_polys[0].num_coeffs();
-
-    let buffer = VerifierFoldingTrace::init(
-        traces[0].fixed_commitments.len(),
-        traces[0].advice_commitments[0].len(),
-        traces[0].lookups[0].len(),
-        traces[0].permutations[0]
-            .permutation_product_commitments
-            .len(),
-        traces[0].challenges.len(),
-    );
-
-    linear_combination(buffer, traces, &lagrange_evals)
 }
 
 #[cfg(test)]

@@ -5,11 +5,16 @@ use group::ff::BatchInvert;
 use rand_core::RngCore;
 
 use super::{super::circuit::Any, Argument, ProvingKey};
-use crate::{plonk::{self, Error}, poly::{
-    commitment::PolynomialCommitmentScheme, Coeff, LagrangeCoeff, Polynomial, ProverQuery,
-    Rotation,
-}, transcript::{Hashable, Transcript}, utils::arithmetic::{eval_polynomial, parallelize}};
-use crate::dev::util::bench;
+use crate::{
+    dev::util::bench,
+    plonk::{self, Error},
+    poly::{
+        commitment::PolynomialCommitmentScheme, Coeff, LagrangeCoeff, Polynomial, ProverQuery,
+        Rotation,
+    },
+    transcript::{Hashable, Transcript},
+    utils::arithmetic::{eval_polynomial, parallelize},
+};
 
 // TODO: REMOVE CLONE - JUST FOR DEBUGGING
 #[derive(Clone, Debug)]
@@ -165,12 +170,12 @@ impl Argument {
             last_z = z[domain.n as usize - (blinding_factors + 1)];
 
             bench("Commit to permutations", || {
-            let permutation_product_commitment = CS::commit_lagrange(params, &z);
+                let permutation_product_commitment = CS::commit_lagrange(params, &z);
 
-            // Hash the permutation product commitment
-            transcript.write(&permutation_product_commitment)?;
+                // Hash the permutation product commitment
+                transcript.write(&permutation_product_commitment)?;
                 Ok::<_, Error>(())
-                })?;
+            })?;
 
             sets.push(CommittedSet {
                 permutation_product_poly: z,
