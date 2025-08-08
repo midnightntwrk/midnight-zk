@@ -1,21 +1,23 @@
-use std::{collections::BTreeMap, iter};
-use std::collections::HashMap;
-use std::hash::Hash;
+use std::{collections::HashMap, hash::Hash, iter};
 
 use ff::{FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
 use group::ff::BatchInvert;
 use rand_core::{CryptoRng, RngCore};
-use rayon::iter::{IntoParallelRefIterator, IndexedParallelIterator, ParallelIterator};
 
 use super::{
     super::{circuit::Expression, Error, ProvingKey},
     Argument,
 };
-use crate::{plonk::evaluation::evaluate, poly::{
-    commitment::PolynomialCommitmentScheme, Coeff, EvaluationDomain, LagrangeCoeff, Polynomial,
-    ProverQuery, Rotation,
-}, transcript::{Hashable, Transcript}, utils::arithmetic::{eval_polynomial, parallelize}};
-use crate::dev::util::bench;
+use crate::{
+    dev::util::bench,
+    plonk::evaluation::evaluate,
+    poly::{
+        commitment::PolynomialCommitmentScheme, Coeff, EvaluationDomain, LagrangeCoeff, Polynomial,
+        ProverQuery, Rotation,
+    },
+    transcript::{Hashable, Transcript},
+    utils::arithmetic::{eval_polynomial, parallelize},
+};
 
 #[cfg_attr(feature = "bench-internal", derive(Clone))]
 #[derive(Debug)]
@@ -112,28 +114,31 @@ impl<F: WithSmallOrderMulGroup<3> + Ord + Hash> Argument<F> {
         let compressed_table_expression = compress_expressions(&self.table_expressions);
 
         // Permute compressed (InputExpression, TableExpression) pair
-        let (permuted_input_expression, permuted_table_expression) = bench("Permute expression pair", || {permute_expression_pair(
-            pk,
-            domain,
-            &mut rng,
-            &compressed_input_expression,
-            &compressed_table_expression,
-        )})?;
+        let (permuted_input_expression, permuted_table_expression) =
+            bench("Permute expression pair", || {
+                permute_expression_pair(
+                    pk,
+                    domain,
+                    &mut rng,
+                    &compressed_input_expression,
+                    &compressed_table_expression,
+                )
+            })?;
 
         bench("Commit to lookup expressions", || {
-        // Commit to permuted input expression
-        let permuted_input_commitment = CS::commit_lagrange(params, &permuted_input_expression);
+            // Commit to permuted input expression
+            let permuted_input_commitment = CS::commit_lagrange(params, &permuted_input_expression);
 
-        // Commit to permuted table expression
-        let permuted_table_commitment = CS::commit_lagrange(params, &permuted_table_expression);
+            // Commit to permuted table expression
+            let permuted_table_commitment = CS::commit_lagrange(params, &permuted_table_expression);
 
-        // Hash permuted input commitment
-        transcript.write(&permuted_input_commitment)?;
+            // Hash permuted input commitment
+            transcript.write(&permuted_input_commitment)?;
 
-        // Hash permuted table commitment
-        transcript.write(&permuted_table_commitment)?;
+            // Hash permuted table commitment
+            transcript.write(&permuted_table_commitment)?;
             Ok::<_, Error>(())
-            })?;
+        })?;
 
         Ok(Permuted {
             compressed_input_expression,
@@ -180,37 +185,40 @@ impl<F: WithSmallOrderMulGroup<3>> Permuted<F> {
         // and i is the ith row of the expression.
         let mut lookup_product = vec![F::ZERO; pk.vk.n() as usize];
         bench("Batch invert", || {
-        // Denominator uses the permuted input expression and permuted table expression
-        parallelize(&mut lookup_product, |lookup_product, start| {
-            for ((lookup_product, permuted_input_value), permuted_table_value) in lookup_product
-                .iter_mut()
-                .zip(self.permuted_input_expression[start..].iter())
-                .zip(self.permuted_table_expression[start..].iter())
-            {
-                *lookup_product = (beta + permuted_input_value) * &(gamma + permuted_table_value);
-            }
-        });
+            // Denominator uses the permuted input expression and permuted table expression
+            parallelize(&mut lookup_product, |lookup_product, start| {
+                for ((lookup_product, permuted_input_value), permuted_table_value) in lookup_product
+                    .iter_mut()
+                    .zip(self.permuted_input_expression[start..].iter())
+                    .zip(self.permuted_table_expression[start..].iter())
+                {
+                    *lookup_product =
+                        (beta + permuted_input_value) * &(gamma + permuted_table_value);
+                }
+            });
 
-        // Batch invert to obtain the denominators for the lookup product
-        // polynomials
-        lookup_product.iter_mut().batch_invert();
-            Ok::<_, Error>(())})?;
+            // Batch invert to obtain the denominators for the lookup product
+            // polynomials
+            lookup_product.iter_mut().batch_invert();
+            Ok::<_, Error>(())
+        })?;
 
         bench("Finish computation", || {
-        // Finish the computation of the entire fraction by computing the numerators
-        // (\theta^{m-1} a_0(\omega^i) + \theta^{m-2} a_1(\omega^i) + ... + \theta
-        // a_{m-2}(\omega^i) + a_{m-1}(\omega^i) + \beta)
-        // * (\theta^{m-1} s_0(\omega^i) + \theta^{m-2} s_1(\omega^i) + ... + \theta
-        //   s_{m-2}(\omega^i) + s_{m-1}(\omega^i) + \gamma)
-        parallelize(&mut lookup_product, |product, start| {
-            for (i, product) in product.iter_mut().enumerate() {
-                let i = i + start;
+            // Finish the computation of the entire fraction by computing the numerators
+            // (\theta^{m-1} a_0(\omega^i) + \theta^{m-2} a_1(\omega^i) + ... + \theta
+            // a_{m-2}(\omega^i) + a_{m-1}(\omega^i) + \beta)
+            // * (\theta^{m-1} s_0(\omega^i) + \theta^{m-2} s_1(\omega^i) + ... + \theta
+            //   s_{m-2}(\omega^i) + s_{m-1}(\omega^i) + \gamma)
+            parallelize(&mut lookup_product, |product, start| {
+                for (i, product) in product.iter_mut().enumerate() {
+                    let i = i + start;
 
-                *product *= &(self.compressed_input_expression[i] + &beta);
-                *product *= &(self.compressed_table_expression[i] + &gamma);
-            }
-        });
-            Ok::<_, Error>(())})?;
+                    *product *= &(self.compressed_input_expression[i] + &beta);
+                    *product *= &(self.compressed_table_expression[i] + &gamma);
+                }
+            });
+            Ok::<_, Error>(())
+        })?;
 
         // The product vector is a vector of products of fractions of the form
         //
@@ -227,20 +235,24 @@ impl<F: WithSmallOrderMulGroup<3>> Permuted<F> {
         // s'(\omega^i) is the permuted table expression,
         // and i is the ith row of the expression.
 
-        let z = bench("Compute z", || {// Compute the evaluations of the lookup product polynomial
-        // over our domain, starting with z[0] = 1
-        Ok::<_, Error>(iter::once(F::ONE)
-            .chain(lookup_product)
-            .scan(F::ONE, |state, cur| {
-                *state *= &cur;
-                Some(*state)
-            })
-            // Take all rows including the "last" row which should
-            // be a boolean (and ideally 1, else soundness is broken)
-            .take(pk.vk.n() as usize - blinding_factors)
-            // Chain random blinding factors.
-            .chain((0..blinding_factors).map(|_| F::random(&mut rng)))
-            .collect::<Vec<_>>())})?;
+        let z = bench("Compute z", || {
+            // Compute the evaluations of the lookup product polynomial
+            // over our domain, starting with z[0] = 1
+            Ok::<_, Error>(
+                iter::once(F::ONE)
+                    .chain(lookup_product)
+                    .scan(F::ONE, |state, cur| {
+                        *state *= &cur;
+                        Some(*state)
+                    })
+                    // Take all rows including the "last" row which should
+                    // be a boolean (and ideally 1, else soundness is broken)
+                    .take(pk.vk.n() as usize - blinding_factors)
+                    // Chain random blinding factors.
+                    .chain((0..blinding_factors).map(|_| F::random(&mut rng)))
+                    .collect::<Vec<_>>(),
+            )
+        })?;
         assert_eq!(z.len(), pk.vk.n() as usize);
         let z = pk.vk.domain.lagrange_from_vec(z);
 
@@ -284,12 +296,12 @@ impl<F: WithSmallOrderMulGroup<3>> Permuted<F> {
         }
 
         bench("Commit to Z polynomial (lookup)", || {
-        let product_commitment = CS::commit_lagrange(params, &z);
+            let product_commitment = CS::commit_lagrange(params, &z);
 
-        // Hash product commitment
-        transcript.write(&product_commitment)?;
+            // Hash product commitment
+            transcript.write(&product_commitment)?;
             Ok::<_, Error>(())
-            })?;
+        })?;
 
         Ok(CommittedLagrange::<F> {
             permuted_input_poly: self.permuted_input_expression,
@@ -389,7 +401,7 @@ type ExpressionPair<F> = (Polynomial<F, LagrangeCoeff>, Polynomial<F, LagrangeCo
 ///   corresponding value in S'.
 ///
 /// This method returns (A', S') if no errors are encountered.
-fn permute_expression_pair<F: Hash, CS: PolynomialCommitmentScheme<F>, R: RngCore>(
+fn permute_expression_pair<F, CS: PolynomialCommitmentScheme<F>, R: RngCore>(
     pk: &ProvingKey<F, CS>,
     domain: &EvaluationDomain<F>,
     mut rng: R,
@@ -406,7 +418,10 @@ where
     permuted_input_expression.truncate(usable_rows);
 
     // Sort input lookup expression values
-    bench("Sort", || {Ok::<(), Error>(permuted_input_expression.sort())})?;
+    bench("Sort", || {
+        permuted_input_expression.sort();
+        Ok::<(), Error>(())
+    })?;
 
     // A HashMap of each unique element in the table expression and its count
     let mut leftover_table_map = HashMap::<F, u32>::with_capacity(table_expression.len());
@@ -415,29 +430,31 @@ where
     });
     let mut permuted_table_coeffs = vec![F::ZERO; usable_rows];
 
-    let mut repeated_input_rows = bench("Repeated input rows", || {permuted_input_expression
-        .iter()
-        .zip(permuted_table_coeffs.iter_mut())
-        .enumerate()
-        .filter_map(|(row, (input_value, table_value))| {
-            // If this is the first occurrence of `input_value` in the input expression
-            if row == 0 || *input_value != permuted_input_expression[row - 1] {
-                *table_value = *input_value;
-                // Remove one instance of input_value from leftover_table_map
-                if let Some(count) = leftover_table_map.get_mut(input_value) {
-                    assert!(*count > 0);
-                    *count -= 1;
-                    None
+    let mut repeated_input_rows = bench("Repeated input rows", || {
+        permuted_input_expression
+            .iter()
+            .zip(permuted_table_coeffs.iter_mut())
+            .enumerate()
+            .filter_map(|(row, (input_value, table_value))| {
+                // If this is the first occurrence of `input_value` in the input expression
+                if row == 0 || *input_value != permuted_input_expression[row - 1] {
+                    *table_value = *input_value;
+                    // Remove one instance of input_value from leftover_table_map
+                    if let Some(count) = leftover_table_map.get_mut(input_value) {
+                        assert!(*count > 0);
+                        *count -= 1;
+                        None
+                    } else {
+                        // Return error if input_value not found
+                        Some(Err(Error::ConstraintSystemFailure))
+                    }
+                // If input value is repeated
                 } else {
-                    // Return error if input_value not found
-                    Some(Err(Error::ConstraintSystemFailure))
+                    Some(Ok(row))
                 }
-            // If input value is repeated
-            } else {
-                Some(Ok(row))
-            }
-        })
-        .collect::<Result<Vec<_>, _>>()})?;
+            })
+            .collect::<Result<Vec<_>, _>>()
+    })?;
 
     // Populate permuted table at unfilled rows with leftover table elements
     for (coeff, count) in leftover_table_map.iter() {

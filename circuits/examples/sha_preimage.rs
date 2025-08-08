@@ -9,6 +9,7 @@
 static ALLOC: dhat::Alloc = dhat::Alloc;
 
 use std::time::Instant;
+
 use midnight_circuits::{
     compact_std_lib::{self, Relation, ZkStdLib, ZkStdLibArch},
     instructions::{AssignmentInstructions, PublicInputInstructions},

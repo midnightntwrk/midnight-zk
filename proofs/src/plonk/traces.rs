@@ -151,7 +151,6 @@ impl<F: WithSmallOrderMulGroup<3>> FoldingProverTrace<F> {
     pub fn commit<PCS: PolynomialCommitmentScheme<F>>(
         &self,
         params: &PCS::Parameters,
-        domain: &EvaluationDomain<F>,
     ) -> VerifierFoldingTrace<F, PCS> {
         let nb_proofs = self.advice_polys.len();
         // We currently only support one proof at a time - though we'll make this
@@ -309,7 +308,7 @@ impl<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> VerifierTrace<F, PCS> {
     /// polynomials.
     pub fn into_folding_trace(
         self,
-        fixed_commitments: &Vec<PCS::Commitment>,
+        fixed_commitments: &[PCS::Commitment],
     ) -> VerifierFoldingTrace<F, PCS> {
         let VerifierTrace {
             advice_commitments,
@@ -326,7 +325,7 @@ impl<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> VerifierTrace<F, PCS> {
         } = self;
         VerifierFoldingTrace {
             advice_commitments,
-            fixed_commitments: fixed_commitments.clone(),
+            fixed_commitments: fixed_commitments.to_owned(),
             vanishing,
             lookups,
             permutations,

@@ -17,8 +17,7 @@ pub mod msm;
 pub mod params;
 mod utils;
 
-use std::time::Instant;
-use std::{fmt::Debug, hash::Hash};
+use std::{fmt::Debug, time::Instant, hash::Hash};
 
 use ff::Field;
 use group::Group;
@@ -29,7 +28,7 @@ use rand_core::OsRng;
 use crate::utils::arithmetic::{truncate, truncated_powers};
 use crate::{
     poly::{
-        commitment::{Params, PolynomialCommitmentScheme},
+        commitment::{Params, PolynomialCommitmentScheme, TOTAL_PCS_TIME},
         kzg::{
             msm::{msm_specific, DualMSM, MSMKZG},
             params::{ParamsKZG, ParamsVerifierKZG},
@@ -47,7 +46,6 @@ use crate::{
         helpers::ProcessedSerdeObject,
     },
 };
-use crate::poly::commitment::TOTAL_PCS_TIME;
 
 #[derive(Clone, Debug)]
 /// KZG verifier

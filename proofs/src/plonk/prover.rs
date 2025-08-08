@@ -3,11 +3,8 @@ use std::{
     hash::Hash,
     iter,
     ops::RangeTo,
-    time::Instant,
+    time::Duration,
 };
-use std::hash::Hash;
-use std::sync::Mutex;
-use std::time::Duration;
 
 #[cfg(feature = "bench-internal")]
 use bench_macros::inner_bench;
@@ -28,16 +25,16 @@ use crate::{
     bench_and_run,
     circuit::Value,
     plonk::{traces::ProverTrace, trash},
+    dev::util::bench,
     poly::{
-        batch_invert_rational, commitment::PolynomialCommitmentScheme, Coeff,
-        ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial, PolynomialRepresentation, ProverQuery,
+        batch_invert_rational,
+        commitment::{PolynomialCommitmentScheme, TOTAL_PCS_TIME},
+        Coeff, ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial, PolynomialRepresentation,
+        ProverQuery, TOTAL_FFT_TIME,
     },
     transcript::{Hashable, Sampleable, Transcript},
     utils::{arithmetic::eval_polynomial, rational::Rational},
 };
-use crate::dev::util::bench;
-use crate::poly::commitment::TOTAL_PCS_TIME;
-use crate::poly::TOTAL_FFT_TIME;
 
 #[cfg(feature = "committed-instances")]
 /// Commit to a vector of raw instances. This function can be used to prepare

@@ -1,6 +1,6 @@
 //! TODO
 
-use ff::{FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
+use ff::{FromUniformBytes, WithSmallOrderMulGroup};
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
@@ -103,7 +103,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         // TODO: Is this sufficient to check H-consistency? I'm not 'checking' anything,
         // but I'm computing the challenges myself - I believe that is enough.
         let traces = instances
-            .into_iter()
+            .iter()
             .map(|instance| {
                 let trace = parse_trace(
                     vk,
@@ -164,6 +164,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
     /// This function verifies that a folde trace satisfies the relaxed
     /// relation.
     // TODO: need to verify that the commitment is correct as well.
+    #[allow(clippy::too_many_arguments)]
     pub fn is_sat(
         &self,
         params: &CS::Parameters,
@@ -177,7 +178,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
     ) -> Result<(), Error> {
         // First we check that the committed folded witness corresponds to the folded
         // instance
-        let committed_folded_witness = folded_witness.commit(params, vk.get_domain());
+        let committed_folded_witness = folded_witness.commit(params);
 
         assert_eq!(committed_folded_witness, self.verifier_folding_trace);
 
@@ -232,7 +233,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
             .reduce(|| F::ZERO, |a, b| a + b);
 
         if expected_result == self.error_term {
-            return Ok(());
+            Ok(())
         } else {
             Err(Error::Opening)
         }

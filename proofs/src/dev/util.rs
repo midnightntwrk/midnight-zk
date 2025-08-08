@@ -165,7 +165,7 @@ pub(super) fn cell_values<'a, F: Field>(
 pub fn bench<T, E, F: FnOnce() -> Result<T, E>>(label: &str, f: F) -> Result<T, E> {
     let start = std::time::Instant::now();
     let result = f();
-    println!("{}:{:?}", format!("{:<width$}", label, width = 40), start.elapsed());
+    println!("{:<40}:{:?}", label, start.elapsed());
     result
 }
 

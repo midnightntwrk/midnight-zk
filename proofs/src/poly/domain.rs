@@ -1,14 +1,15 @@
 //! Contains utilities for performing polynomial arithmetic over an evaluation
 //! domain that is of a suitable size for the application.
 
-use std::marker::PhantomData;
-use std::sync::Mutex;
-use std::time::{Duration, Instant};
+use std::{
+    marker::PhantomData,
+    sync::Mutex,
+    time::{Duration, Instant},
+};
 
 use ff::WithSmallOrderMulGroup;
 use group::ff::{BatchInvert, Field};
 use halo2curves::fft::best_fft;
-use crate::poly::commitment::TOTAL_PCS_TIME;
 
 use super::{Coeff, ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial, Rotation};
 use crate::utils::{arithmetic::parallelize, rational::Rational};
