@@ -46,6 +46,8 @@ pub(super) struct LimbsOfE<F: PrimeField> {
     pub spreaded_limb_06: AssignedSpreaded<F, 6>,
 }
 
+/// The assigned values of the state vector (A, B, C, D, E, F, G, H).
+/// They are provided and updated in each compression round.
 #[derive(Clone, Debug)]
 pub(super) struct CompressionState<F: PrimeField> {
     pub(super) a: LimbsOfA<F>,
@@ -171,6 +173,8 @@ impl<F: PrimeField> CompressionState<F> {
     }
 }
 
+/// The assigned values of 12-1-1-1-7-3-4-3 limbs (in big-endian) for the
+/// word W of 32 bits. Input type of σ₀(W) and σ₁(W).
 #[derive(Clone, Debug)]
 pub(super) struct AssignedMessageWord<F: PrimeField> {
     pub combined_plain: AssignedPlain<F, 32>,

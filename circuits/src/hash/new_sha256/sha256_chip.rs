@@ -1166,8 +1166,8 @@ impl<F: PrimeField> Sha256Chip<F> {
         })
     }
 
-    /// Message schedule.
-    /// TODO
+    /// Message schedule per block. The output will be used in the compression
+    /// rounds.
     fn message_schedule(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -1177,11 +1177,15 @@ impl<F: PrimeField> Sha256Chip<F> {
         let mut message_words: [AssignedMessageWord<F>; ROUND] =
             core::array::from_fn(|_| message_word.clone());
 
+        // The first 16 message words are got by decomposing the block words
+        // into 12-1-1-1-7-3-4-3 limbs directly.
         for word_idx in 1..BLOCK {
             message_words[word_idx] =
                 self.prepare_message_word(layouter, &[block[word_idx].clone()])?;
         }
-
+        // The remaining 48 message words are computed using the recurrence relation
+        // W.i = W.(i-16) + W.(i-7) + σ₀(W.(i-15)) + σ₁(W.(i-2))
+        // and decomposing into 12-1-1-1-7-3-4-3 limbs.
         for word_idx in BLOCK..ROUND {
             let sigma0_w_i_minus_15 = &self.sigma_0(layouter, &message_words[word_idx - 15])?;
             let sigma1_w_i_minus_2 = &self.sigma_1(layouter, &message_words[word_idx - 2])?;
@@ -1199,17 +1203,43 @@ impl<F: PrimeField> Sha256Chip<F> {
         Ok(message_words.map(|w| w.combined_plain))
     }
 
+    /// Given a slice of at most 7 `AssignedPlain` values, it adds them
+    /// modulo 2^32 and decomposes the result (named W.i) into (bit-endian)
+    /// limbs of bit sizes 12, 1, 1, 1, 7, 3, 4 and 3.
+    ///
+    /// This function is used to prepare message words W.i for i in [0, 63].
     fn prepare_message_word(
         &self,
         layouter: &mut impl Layouter<F>,
         summands: &[AssignedPlain<F, 32>],
     ) -> Result<AssignedMessageWord<F>, Error> {
         /*
+        Given assigned plain inputs S0, ..., S6 (if fewer inputs are given
+        they will be completed up to length 7, padding with fixed zeros),
+        let W.i be their sum modulo 2^32.
+
+        We use the following table distribution.
+
         | T_0 |  A_0 |  A_1  | T_1 |  A_2  |   A_3  | A_4 |  A_5 |  A_6 |  A_7  |
         |-----|------|-------|-----|-------|--------|-----|------|------|-------|
         |  12 | W.12 | ~W.12 | 07  |  W.07 | ~W.07  | W.i |  S0  |  S1  |  W.1a |
         |  03 | W.3a | ~W.3a | 04  |  W.04 | ~W.04  |     |  S2  |  S3  |  W.1b |
         |  03 | W.3b | ~W.3b | 03  | carry | ~carry | S4  |  S5  |  S6  |  W.1c |
+
+        Apart from the lookups, the following identity is checked via a
+        custom gate with selector q_12_1_1_1_7_3_4_3:
+
+            W.i = 2^20 * W.12 + 2^19 * W.1a + 2^18 * W.1b + 2^17 * W.1c + 2^10 * W.07 + 2^7 * W.3a + 2^3 * W.04 + W.3b
+
+        and the following is checked with a custom gate with selector
+        q_add_mod_2_32:
+
+            S0 + S1 + S2 + S3 + S4 + S5 + S6 = W.i + carry * 2^32
+
+        Note that W.i is implicitly being range-checked in [0, 2^32) via
+        the lookup, and the carry is range-checked in [0, 8). This makes
+        the gate complete and sound (the range on the carry does not need
+        to be tight as long as it prevents overflows in the native field).
         */
 
         let adv_cols = self.config().advice_cols;
@@ -1295,9 +1325,35 @@ impl<F: PrimeField> Sha256Chip<F> {
         w: &AssignedMessageWord<F>,
     ) -> Result<AssignedPlain<F, 32>, Error> {
         /*
+         We need to compute:
+            W  >>  3 :          ( W.12 || W.1a || W.1b || W.1c || W.07 || W.3a || W.04 )
+          ⊕ W >>>  7 :  ( W.04 || W.3b || W.12 || W.1a || W.1b || W.1c || W.07 || W.3a )
+          ⊕ W >>> 18 :  ( W.1c || W.07 || W.3a || W.04 || W.3b || W.12 || W.1a || W.1b )
+
+        which can be achieved by
+
+         1) applying the plain-spreaded lookup on 12-12-8 limbs of Evn and Odd:
+             Evn: (Evn.12a, Evn.12b, Evn.8)
+             Odd: (Odd.12a, Odd.12b, Odd.8)
+
+        2) asserting the 12-12-8 decomposition identity for Evn:
+              2^20 * Evn.12a + 2^8 * Evn.12b + Evn.8
+            = Evn
+
+        3) asserting the sigma_0 identity regarding the spreaded values:
+              (4^20 * ~Evn.12a + 4^8 * ~Evn.12b + ~Evn.8) +
+          2 * (4^20 * ~Odd.12a + 4^8 * ~Odd.12b + ~Odd.8)
+             =                4^17 * ~W.12 + 4^16 * ~W.1a + 4^15 * ~W.1b + 4^14 * ~W.1c + 4^7 * ~W.07 +  4^4 * ~W.3a + ~W.04
+             + 4^28 * ~W.04 + 4^25 * ~W.3b + 4^13 * ~W.12 + 4^12 * ~W.1a + 4^11 * ~W.1b + 4^10 * ~W.1c + 4^3 * ~W.07 + ~W.3a
+             + 4^31 * ~W.1c + 4^24 * ~W.07 + 4^21 * ~W.3a + 4^17 * ~W.04 + 4^14 * ~W.3b +  4^2 * ~W.12 + 4^1 * ~W.1a + ~W.1b
+
+        The output is Evn.
+
+        We distribute these values in the PLONK table as follows.
+
         | T_0 |    A_0   |    A_1    | T_1 |   A_2   |    A_3   |  A_4  |   A_5  |   A_6  |
         |-----|----------|-----------|-----|---------|----------|-------|--------|--------|
-        |  12 | Even.12a | ~Even.12a |  12 | Odd.12a | ~Odd.12a | Even  | ~W.12  | ~W.1a  |
+        |  12 | Even.12a | ~Even.12a |  12 | Odd.12a | ~Odd.12a |  Evn  | ~W.12  | ~W.1a  |
         |  12 | Even.12b | ~Even.12b |  12 | Odd.12b | ~Odd.12b | ~W.1b | ~W.1c  | ~W.07  |
         |   8 | Even.8   | ~Even.8   |   8 | Odd.8   | ~Odd.8   | ~W.3a | ~W.04  | ~W.3b  |
         */
@@ -1346,12 +1402,39 @@ impl<F: PrimeField> Sha256Chip<F> {
         w: &AssignedMessageWord<F>,
     ) -> Result<AssignedPlain<F, 32>, Error> {
         /*
+         We need to compute:
+            W  >> 10 :                          ( W.12 || W.1a || W.1b || W.1c || W.07 )
+          ⊕ W >>> 17 :  ( W.07 || W.3a || W.04 || W.3b || W.12 || W.1a || W.1b || W.1c )
+          ⊕ W >>> 19 :  ( W.1b || W.1c || W.07 || W.3a || W.04 || W.3b || W.12 || W.1a )
+
+        which can be achieved by
+
+         1) applying the plain-spreaded lookup on 12-12-8 limbs of Evn and Odd:
+             Evn: (Evn.12a, Evn.12b, Evn.8)
+             Odd: (Odd.12a, Odd.12b, Odd.8)
+
+        2) asserting the 12-12-8 decomposition identity for Evn:
+              2^20 * Evn.12a + 2^8 * Evn.12b + Evn.8
+            = Evn
+
+        3) asserting the sigma_0 identity regarding the spreaded values:
+              (4^20 * ~Evn.12a + 4^8 * ~Evn.12b + ~Evn.8) +
+          2 * (4^20 * ~Odd.12a + 4^8 * ~Odd.12b + ~Odd.8)
+             =                                              4^10 * ~W.12 +  4^9 * ~W.1a +  4^8 * ~W.1b + 4^7 * ~W.1c + ~W.07
+             + 4^25 * ~W.07 + 4^22 * ~W.3a + 4^18 * ~W.04 + 4^15 * ~W.3b +  4^3 * ~W.12 +  4^2 * ~W.1a + 4^1 * ~W.1b + ~W.1c
+             + 4^31 * ~W.1b + 4^30 * ~W.1c + 4^23 * ~W.07 + 4^20 * ~W.3a + 4^16 * ~W.04 + 4^13 * ~W.3b + 4^1 * ~W.12 + ~W.1a
+
+        The output is Evn.
+
+        We distribute these values in the PLONK table as follows.
+
         | T_0 |    A_0   |    A_1    | T_1 |   A_2   |    A_3   |  A_4  |   A_5  |   A_6  |
         |-----|----------|-----------|-----|---------|----------|-------|--------|--------|
-        |  12 | Even.12a | ~Even.12a |  12 | Odd.12a | ~Odd.12a | Even  | ~W.12  | ~W.1a  |
+        |  12 | Even.12a | ~Even.12a |  12 | Odd.12a | ~Odd.12a |  Evn  | ~W.12  | ~W.1a  |
         |  12 | Even.12b | ~Even.12b |  12 | Odd.12b | ~Odd.12b | ~W.1b | ~W.1c  | ~W.07  |
         |   8 | Even.8   | ~Even.8   |   8 | Odd.8   | ~Odd.8   | ~W.3a | ~W.04  | ~W.3b  |
         */
+        
         let adv_cols = self.config().advice_cols;
 
         layouter.assign_region(
@@ -1448,3 +1531,4 @@ impl<F: PrimeField> CompressionState<F> {
         })
     }
 }
+// TODO: refactor the assign add_mod_2_32 function.

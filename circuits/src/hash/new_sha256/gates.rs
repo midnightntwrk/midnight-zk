@@ -331,8 +331,7 @@ pub fn sigma_1_gate<F: PrimeField>(
     );
 
     // 4^25 * ~W.07 + 4^22 * ~W.3a + 4^18 * ~W.04 + 4^15 * ~W.3b + 4^3 * ~W.12 + 4^2
-    // * ~W.1a + 4^1
-    // * ~W.1b + ~W.1c
+    // * ~W.1a + 4^1 * ~W.1b + ~W.1c
     let sprdd_2nd_rot = linear_combination_pow4(
         [25, 22, 18, 15, 3, 2, 1, 0],
         [
