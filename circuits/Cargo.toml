@@ -60,7 +60,11 @@ bench-internal = ["criterion", "midnight-proofs/bench-internal"]
 
 [[example]]
 name = "json_verification"
-path = "examples/json_verification.rs"
+path = "examples/identity/json_verification.rs"
+
+[[example]]
+name = "enrollment"
+path = "examples/identity/enrollment.rs"
 
 [[bench]]
 name = "poseidon_cpu"
