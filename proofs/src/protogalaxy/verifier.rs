@@ -208,10 +208,10 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
                 .collect::<Vec<_>>(),
             &fixed_polys,
             &challenges,
-            y,
+            &y,
             beta,
             gamma,
-            theta,
+            &theta,
             &lookups,
             &permutation,
             l0,
@@ -261,6 +261,8 @@ fn fold_traces<F: WithSmallOrderMulGroup<3>, PCS: PolynomialCommitmentScheme<F>>
             .permutation_product_commitments
             .len(),
         traces[0].challenges.len(),
+        traces[0].theta.len(),
+        traces[0].y.len(),
     );
     let lagranges_in_gamma = lagrange_polys
         .iter()

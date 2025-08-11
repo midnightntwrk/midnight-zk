@@ -72,7 +72,7 @@ impl<F: WithSmallOrderMulGroup<3> + Ord + Hash> Argument<F> {
         pk: &ProvingKey<F, CS>,
         params: &'params CS::Parameters,
         domain: &EvaluationDomain<F>,
-        theta: F,
+        theta: &[F],
         advice_values: &'a [Polynomial<F, LagrangeCoeff>],
         fixed_values: &'a [Polynomial<F, LagrangeCoeff>],
         instance_values: &'a [Polynomial<F, LagrangeCoeff>],
@@ -86,6 +86,7 @@ impl<F: WithSmallOrderMulGroup<3> + Ord + Hash> Argument<F> {
     {
         // Closure to get values of expressions and compress them
         let compress_expressions = |expressions: &[Expression<F>]| {
+            println!("Size expressions: {:?}. Size theta: {:?}", expressions.len(), theta.len());
             let compressed_expression = expressions
                 .iter()
                 .map(|expression| {
@@ -99,8 +100,9 @@ impl<F: WithSmallOrderMulGroup<3> + Ord + Hash> Argument<F> {
                         challenges,
                     ))
                 })
-                .fold(domain.empty_lagrange(), |acc, expression| {
-                    acc * theta + &expression
+                .zip(theta.iter())
+                .fold(domain.empty_lagrange(), |acc, (expression, &theta)| {
+                    acc + expression * theta
                 });
             compressed_expression
         };

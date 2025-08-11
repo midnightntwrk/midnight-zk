@@ -16,7 +16,8 @@ use std::{marker::PhantomData, ops::Rem};
 use ff::PrimeField;
 use midnight_proofs::{
     circuit::{Chip, Layouter},
-    plonk::{Advice, Column, ConstraintSystem, Error, Expression, Selector},
+    plonk::{Advice, Column, ConstraintSystem, Error,
+            Expression, Selector},
     poly::Rotation,
 };
 use num_bigint::{BigInt as BI, ToBigInt};

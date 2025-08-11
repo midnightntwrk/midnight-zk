@@ -150,6 +150,8 @@ impl<F: PrimeField> FoldingProverTrace<F> {
         num_lookups: usize,
         num_permutation_sets: usize,
         num_challenges: usize,
+        num_theta: usize,
+        num_y: usize,
     ) -> Self {
         let mut lookups = Vec::with_capacity(num_lookups);
         for _ in 0..num_lookups {
@@ -180,8 +182,8 @@ impl<F: PrimeField> FoldingProverTrace<F> {
             challenges: vec![F::ZERO; num_challenges],
             beta: F::ZERO,
             gamma: F::ZERO,
-            theta: F::ZERO,
-            y: F::ZERO,
+            theta: vec![F::ZERO; num_theta],
+            y: vec![F::ZERO; num_y],
         }
     }
 
@@ -197,6 +199,8 @@ impl<F: PrimeField> FoldingProverTrace<F> {
             trace.lookups[0].len(),
             trace.permutations[0].sets.len(),
             trace.challenges.len(),
+            trace.theta.len(),
+            trace.y.len(),
         )
     }
 }
@@ -266,8 +270,18 @@ impl<F: PrimeField> Add<&FoldingProverTrace<F>> for FoldingProverTrace<F> {
 
         self.beta += rhs.beta;
         self.gamma += rhs.gamma;
-        self.theta += rhs.theta;
-        self.y += rhs.y;
+        self.theta
+            .par_iter_mut()
+            .zip(rhs.theta.par_iter())
+            .for_each(|(lhs, rhs)| {
+                *lhs += *rhs;
+            });
+        self.y
+            .par_iter_mut()
+            .zip(rhs.y.par_iter())
+            .for_each(|(lhs, rhs)| {
+                *lhs += *rhs;
+            });
 
         self
     }
@@ -303,8 +317,14 @@ impl<F: PrimeField> Mul<F> for FoldingProverTrace<F> {
         });
         self.beta *= scalar;
         self.gamma *= scalar;
-        self.theta *= scalar;
-        self.y *= scalar;
+
+        self.theta.par_iter_mut().for_each(|p| {
+            *p *= scalar;
+        });
+
+        self.y.par_iter_mut().for_each(|p| {
+            *p *= scalar;
+        });
 
         self
     }
@@ -318,6 +338,8 @@ impl<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> VerifierFoldingTrace<F, 
         num_lookups: usize,
         num_permutation_sets: usize,
         num_challenges: usize,
+        num_theta: usize,
+        num_y: usize,
     ) -> Self {
         let mut lookups = Vec::with_capacity(num_lookups);
         for _ in 0..num_lookups {
@@ -345,8 +367,8 @@ impl<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> VerifierFoldingTrace<F, 
             challenges: vec![F::ZERO; num_challenges],
             beta: F::ZERO,
             gamma: F::ZERO,
-            theta: F::ZERO,
-            y: F::ZERO,
+            theta: vec![F::ZERO; num_theta],
+            y: vec![F::ZERO; num_y],
         }
     }
 }
@@ -426,8 +448,20 @@ impl<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> Add<&VerifierFoldingTrac
 
         self.beta += rhs.beta;
         self.gamma += rhs.gamma;
-        self.theta += rhs.theta;
-        self.y += rhs.y;
+
+        self.theta
+            .par_iter_mut()
+            .zip(rhs.theta.par_iter())
+            .for_each(|(lhs, rhs)| {
+                *lhs += *rhs;
+            });
+
+        self.y
+            .par_iter_mut()
+            .zip(rhs.y.par_iter())
+            .for_each(|(lhs, rhs)| {
+                *lhs += *rhs;
+            });
 
         self
     }
@@ -465,8 +499,14 @@ impl<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> Mul<F> for VerifierFoldi
         });
         self.beta *= scalar;
         self.gamma *= scalar;
-        self.theta *= scalar;
-        self.y *= scalar;
+
+        self.theta.par_iter_mut().for_each(|p| {
+            *p *= scalar;
+        });
+
+        self.y.par_iter_mut().for_each(|p| {
+            *p *= scalar;
+        });
 
         self
     }

@@ -192,7 +192,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
 
         // We must increase the degree, since we need to count y as a variable.
         // Computing the real degree seems hard.
-        let dk_domain = EvaluationDomain::new(degree + 3, traces.len().trailing_zeros());
+        let dk_domain = EvaluationDomain::new(degree + 2, traces.len().trailing_zeros());
 
         let poly_g = self.compute_poly_g(&dk_domain, &beta_star, &traces);
 
@@ -255,10 +255,10 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
                 .collect::<Vec<_>>(),
             fixed_polys,
             challenges,
-            *y,
+            y,
             *beta,
             *gamma,
-            *theta,
+            theta,
             lookups,
             permutations,
             &folding_pk.l0,
@@ -554,7 +554,7 @@ mod tests {
 
     #[test]
     fn folding_test() {
-        const K: usize = 17;
+        const K: usize = 14;
         let k = 4; // number of folding instances
 
         let rng = ChaCha8Rng::from_seed([0u8; 32]);
