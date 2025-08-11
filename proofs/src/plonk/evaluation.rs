@@ -33,11 +33,11 @@ pub enum ValueSource {
     /// gamma
     Gamma(),
     /// theta
-    Theta(),
+    Theta(usize),
     /// trash challenge
     TrashChallenge(),
     /// y
-    Y(),
+    Y(usize),
     /// Previous value
     PreviousValue(),
 }
@@ -62,9 +62,9 @@ impl ValueSource {
         challenges: &[F],
         beta: &F,
         gamma: &F,
-        theta: &F,
         trash_challenge: &F,
-        y: &F,
+        theta: &[F],
+        y: &[F],
         previous_value: &F,
     ) -> F {
         match self {
@@ -82,9 +82,9 @@ impl ValueSource {
             ValueSource::Challenge(index) => challenges[*index],
             ValueSource::Beta() => *beta,
             ValueSource::Gamma() => *gamma,
-            ValueSource::Theta() => *theta,
+            ValueSource::Theta(index) => theta[*index],
+            ValueSource::Y(index) => y[*index],
             ValueSource::TrashChallenge() => *trash_challenge,
-            ValueSource::Y() => *y,
             ValueSource::PreviousValue() => *previous_value,
         }
     }
@@ -105,8 +105,6 @@ pub enum Calculation {
     Double(ValueSource),
     /// This is a negation
     Negate(ValueSource),
-    /// This is Horner's rule: `val = a; val = val * c + b[]`
-    Horner(ValueSource, Vec<ValueSource>, ValueSource),
     /// This is a simple assignment
     Store(ValueSource),
 }
@@ -125,9 +123,9 @@ impl Calculation {
         challenges: &[F],
         beta: &F,
         gamma: &F,
-        theta: &F,
+        theta: &[F],
+        y: &[F],
         trash_challenge: &F,
-        y: &F,
         previous_value: &F,
     ) -> F {
         let get_value = |value: &ValueSource| {
@@ -154,14 +152,6 @@ impl Calculation {
             Calculation::Square(v) => get_value(v).square(),
             Calculation::Double(v) => get_value(v).double(),
             Calculation::Negate(v) => -get_value(v),
-            Calculation::Horner(start_value, parts, factor) => {
-                let factor = get_value(factor);
-                let mut value = get_value(start_value);
-                for part in parts.iter() {
-                    value = value * factor + get_value(part);
-                }
-                value
-            }
             Calculation::Store(v) => get_value(v),
         }
     }
@@ -215,47 +205,61 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
         let mut ev = Evaluator::default();
 
         // Custom gates
-        let mut parts = Vec::new();
-        for gate in cs.gates.iter() {
-            parts
-                .extend(gate.polynomials().iter().map(|poly| ev.custom_gates.add_expression(poly)));
+        // y'th power index
+        let mut y_index = 0;
+        let polys: Vec<&Expression<F>> = cs.gates.iter().flat_map(|g| g.polynomials().iter().map(|p| p).collect::<Vec<_>>()).collect();
+        let polys_len = polys.len();
+        for poly in &polys[polys_len - 2..] {
+            let expr = ev.custom_gates.add_expression(poly);
+            let scaled_expr = ev.custom_gates
+                .add_calculation(Calculation::Mul(expr, ValueSource::Y(y_index)));
+            ev.custom_gates.add_calculation(Calculation::Add(ValueSource::PreviousValue(), scaled_expr));
         }
-        ev.custom_gates.add_calculation(Calculation::Horner(
-            ValueSource::PreviousValue(),
-            parts,
-            ValueSource::Y(),
-        ));
+        // for gate in cs.gates.iter() {
+        //     for poly in gate.polynomials().iter() {
+        //         // println!("polynomial prover: {:?}", poly);
+        //         let expr = ev.custom_gates.add_expression(poly);
+        //         // let scaled_expr = ev.custom_gates
+        //         //     .add_calculation(Calculation::Mul(expr, ValueSource::Y(y_index)));
+        //         ev.custom_gates.add_calculation(Calculation::Add(ValueSource::PreviousValue(), expr));
+        //         // ev.custom_gates.add_calculation(Calculation::Store(expr));
+        //         y_index += 1;
+        //     }
+        // }
 
-        // Lookups
-        for lookup in cs.lookups.iter() {
-            let mut graph = GraphEvaluator::default();
-
-            let mut evaluate_lc = |expressions: &Vec<Expression<_>>| {
-                let parts = expressions.iter().map(|expr| graph.add_expression(expr)).collect();
-                graph.add_calculation(Calculation::Horner(
-                    ValueSource::Constant(0),
-                    parts,
-                    ValueSource::Theta(),
-                ))
-            };
-
-            // Input coset
-            let compressed_input_coset = evaluate_lc(&lookup.input_expressions);
-            // table coset
-            let compressed_table_coset = evaluate_lc(&lookup.table_expressions);
-            // z(\omega X) (a'(X) + \beta) (s'(X) + \gamma)
-            let right_gamma = graph.add_calculation(Calculation::Add(
-                compressed_table_coset,
-                ValueSource::Gamma(),
-            ));
-            let lc = graph.add_calculation(Calculation::Add(
-                compressed_input_coset,
-                ValueSource::Beta(),
-            ));
-            graph.add_calculation(Calculation::Mul(lc, right_gamma));
-
-            ev.lookups.push(graph);
-        }
+        // // Lookups
+        // for lookup in cs.lookups.iter() {
+        //     let mut graph = GraphEvaluator::default();
+        //
+        //     let mut evaluate_lc = |expressions: &Vec<Expression<_>>| {
+        //        expressions
+        //             .iter()
+        //             .enumerate()
+        //             .fold(ValueSource::Constant(0), |acc, (index, expr)| {
+        //                 let expr = graph.add_expression(expr);
+        //                 let expr = graph
+        //                     .add_calculation(Calculation::Mul(expr, ValueSource::Theta(index)));
+        //                 graph.add_calculation(Calculation::Add(expr, acc))
+        //             })
+        //     };
+        //
+        //     // Input coset
+        //     let compressed_input_coset = evaluate_lc(&lookup.input_expressions);
+        //     // table coset
+        //     let compressed_table_coset = evaluate_lc(&lookup.table_expressions);
+        //     // z(\omega X) (a'(X) + \beta) (s'(X) + \gamma)
+        //     let right_gamma = graph.add_calculation(Calculation::Add(
+        //         compressed_table_coset,
+        //         ValueSource::Gamma(),
+        //     ));
+        //     let lc = graph.add_calculation(Calculation::Add(
+        //         compressed_input_coset,
+        //         ValueSource::Beta(),
+        //     ));
+        //     graph.add_calculation(Calculation::Mul(lc, right_gamma));
+        //
+        //     ev.lookups.push(graph);
+        // }
 
         // Trashcans
         for trash in cs.trashcans.iter() {
@@ -289,10 +293,10 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
         instance: &[&[Polynomial<F, B>]],
         fixed: &[Polynomial<F, B>],
         challenges: &[F],
-        y: F,
+        y: &[F],
         beta: F,
         gamma: F,
-        theta: F,
+        theta: &[F],
         trash_challenge: F,
         lookups: &[Vec<lookup::prover::CommittedLagrange<F>>],
         trashcans: &[Vec<trash::prover::Committed<F>>],
@@ -339,8 +343,8 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                                 &beta,
                                 &gamma,
                                 &trash_challenge,
-                                &theta,
-                                &y,
+                                theta,
+                                y,
                                 value,
                                 idx,
                                 rot_scale,
@@ -737,9 +741,9 @@ impl<F: PrimeField> GraphEvaluator<F> {
         challenges: &[F],
         beta: &F,
         gamma: &F,
-        theta: &F,
         trash_challenge: &F,
-        y: &F,
+        theta: &[F],
+        y: &[F],
         previous_value: &F,
         idx: usize,
         rot_scale: i32,

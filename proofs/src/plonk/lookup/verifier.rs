@@ -101,7 +101,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
         l_last: F,
         l_blind: F,
         argument: &'a Argument<F>,
-        theta: F,
+        theta: &[F],
         beta: F,
         gamma: F,
         advice_evals: &[F],
@@ -120,6 +120,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
                 * &(self.permuted_table_eval + &gamma);
 
             let compress_expressions = |expressions: &[Expression<F>]| {
+                println!("Size of expressions (verifier): {:?}, size theta {:?}", expressions.len(), theta.len());
                 expressions
                     .iter()
                     .map(|expression| {
@@ -136,7 +137,8 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
                             &|a, scalar| a * &scalar,
                         )
                     })
-                    .fold(F::ZERO, |acc, eval| acc * &theta + &eval)
+                    .zip(theta.iter())
+                    .fold(F::ZERO, |acc, (eval, theta)| acc + *theta * eval)
             };
             let right = self.product_eval
                 * &(compress_expressions(&argument.input_expressions) + &beta)

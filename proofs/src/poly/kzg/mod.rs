@@ -172,6 +172,7 @@ where
         transcript.write(&f_com).map_err(|_| Error::OpeningError)?;
 
         let x3: E::Fr = transcript.squeeze_challenge();
+        println!("X3 prover: {:?}", x3);
         #[cfg(feature = "truncated-challenges")]
         let x3 = truncate(x3);
 
@@ -182,6 +183,7 @@ where
         }
 
         let x4: E::Fr = transcript.squeeze_challenge();
+        println!("X4 (prover): {x4:?}");
 
         let final_poly = {
             let mut polys = q_polys;
@@ -266,6 +268,7 @@ where
         // Sample a challenge x_3 for checking that f(X) was committed to
         // correctly.
         let x3: E::Fr = transcript.squeeze_challenge();
+        println!("X3: {:?}", x3);
         #[cfg(feature = "truncated-challenges")]
         let x3 = truncate(x3);
 
@@ -290,6 +293,7 @@ where
             );
 
         let x4: E::Fr = transcript.squeeze_challenge();
+        println!("X4 (verifier): {x4:?}");
 
         let final_com = {
             let size = q_coms.len() + 1;
@@ -322,6 +326,7 @@ where
         };
 
         let pi: E::G1 = transcript.read().map_err(|_| Error::SamplingError)?;
+        println!("Apprently passed reading the proof");
 
         let mut pi_msm = MSMKZG::<E>::init();
         pi_msm.append_term(E::Fr::ONE, pi);

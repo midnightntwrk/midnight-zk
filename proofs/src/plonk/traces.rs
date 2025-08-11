@@ -24,9 +24,9 @@ pub struct ProverTrace<F: PrimeField> {
     pub(crate) challenges: Vec<F>,
     pub(crate) beta: F,
     pub(crate) gamma: F,
-    pub(crate) theta: F,
+    pub(crate) theta: Vec<F>,
+    pub(crate) y: Vec<F>,
     pub(crate) trash_challenge: F,
-    pub(crate) y: F,
 }
 
 /// Verifier's trace of a set of proofs. This type guarantees that the size of
@@ -41,9 +41,9 @@ pub struct VerifierTrace<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> {
     pub(crate) challenges: Vec<F>,
     pub(crate) beta: F,
     pub(crate) gamma: F,
-    pub(crate) theta: F,
     pub(crate) trash_challenge: F,
-    pub(crate) y: F,
+    pub(crate) theta: Vec<F>,
+    pub(crate) y: Vec<F>,
 }
 
 /// Trace of a set of proofs folded with folding. This type guarantees that the
@@ -63,9 +63,9 @@ pub struct FoldingProverTrace<F: PrimeField> {
     pub(crate) challenges: Vec<F>,
     pub(crate) beta: F,
     pub(crate) gamma: F,
-    pub(crate) theta: F,
-    pub(crate) y: F,
     pub(crate) trash_challenge: F,
+    pub(crate) theta: Vec<F>,
+    pub(crate) y: Vec<F>,
 }
 
 impl<F: WithSmallOrderMulGroup<3>> ProverTrace<F> {
@@ -217,9 +217,9 @@ impl<F: WithSmallOrderMulGroup<3>> FoldingProverTrace<F> {
             challenges: self.challenges.clone(),
             beta: self.beta,
             gamma: self.gamma,
-            theta: self.theta,
-            y: self.y,
             trash_challenge: self.trash_challenge,
+            theta: self.theta.clone(),
+            y: self.y.clone(),
         }
     }
 }
@@ -238,9 +238,9 @@ pub struct VerifierFoldingTrace<F: PrimeField, PCS: PolynomialCommitmentScheme<F
     pub(crate) challenges: Vec<F>,
     pub(crate) beta: F,
     pub(crate) gamma: F,
-    pub(crate) theta: F,
-    pub(crate) y: F,
     pub(crate) trash_challenge: F,
+    pub(crate) theta: Vec<F>,
+    pub(crate) y: Vec<F>,
 }
 
 impl<F: WithSmallOrderMulGroup<3>, PCS: PolynomialCommitmentScheme<F>> PartialEq

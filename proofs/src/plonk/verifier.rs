@@ -104,7 +104,23 @@ where
     };
 
     // Sample theta challenge for keeping lookup columns linearly independent
+    // We also need to get as many theta as we would use powers, to avoid increasing
+    // the degree of the identity. We need max of lookup.input_expressions =
+    // lookup.table_expressions len Do check that they are equal
+    let nb_theta = vk
+        .cs
+        .lookups
+        .iter()
+        .map(|l| {
+            assert_eq!(l.input_expressions.len(), l.table_expressions.len());
+            l.input_expressions.len()
+        })
+        .max()
+        .unwrap_or(1);
+
+
     let theta: F = transcript.squeeze_challenge();
+    let theta: Vec<F> = vec![theta; nb_theta];
 
     let lookups_permuted = (0..num_proofs)
         .map(|_| -> Result<Vec<_>, _> {
@@ -155,8 +171,32 @@ where
 
     let vanishing = vanishing::Argument::read_commitments_before_y(transcript)?;
 
-    // Sample y challenge, which keeps the gates linearly independent.
+    // To avoid increasing the degree in folding, we need to sample one commit for
+    // each expression that we batch (instead of using powers).
+    let mut nb_y = 0;
+
+    // We need one challenge per polynomial, per gate.
+    vk.cs
+        .gates
+        .iter()
+        .for_each(|g| nb_y += g.polynomials().len());
+
+    // We need two for the permutation argument (1 for the first, 1 for the last),
+    // sets.len() - 1 for linking each column, and sets.len() for the product rule
+    nb_y += 2;
+    nb_y += permutations_committed[0]
+        .permutation_product_commitments
+        .len()
+        - 1;
+    nb_y += permutations_committed[0]
+        .permutation_product_commitments
+        .len();
+
+    // We need five for each lookup argument
+    nb_y += lookups_committed[0].len() * 5;
+
     let y: F = transcript.squeeze_challenge();
+    let y: Vec<F> = vec![y; nb_y];
 
     Ok(VerifierTrace {
         advice_commitments,
@@ -224,6 +264,7 @@ where
     // satisfied with high probability.
     let x: F = transcript.squeeze_challenge();
     let xn = x.pow_vartime([vk.n()]);
+    println!("X(verifier): {:?}", x);
 
     let instance_evals = {
         let (min_rotation, max_rotation) =
@@ -360,6 +401,7 @@ where
                             x,
                         ))
                         .chain(lookups.iter().zip(vk.cs.lookups.iter()).flat_map(
+                            let theta = theta.clone();
                             move |(p, argument)| {
                                 p.expressions(
                                     l_0,
@@ -450,6 +492,7 @@ where
                 )
             }),
         )
+    // TODO: NOTE TO SELF VERIFICATION IS FAILING. RUBBER DUCKING WOULD BE USEFUL
         .chain(permutations_common.queries(&vk.permutation, x))
         .chain(vanishing.queries(x, vk.n()))
         .collect::<Vec<_>>();

@@ -152,4 +152,15 @@ fn main() {
         )
         .is_ok()
     )
+        .unwrap();
+
+    // assert!(
+    //     compact_std_lib::verify::<MembershipExample, blake2b_simd::State>(
+    //         &srs.verifier_params(),
+    //         &vk,
+    //         &instance,
+    //         &proof
+    //     )
+    //     .is_ok()
+    // )
 }
