@@ -64,10 +64,10 @@ use num_traits::Zero;
 use crate::testing_utils::FromScratch;
 use crate::{
     instructions::{
-        ArithInstructions, AssertionInstructions, AssignmentInstructions, BinaryInstructions,
-        CanonicityInstructions, ControlFlowInstructions, ConversionInstructions,
-        EqualityInstructions, FieldInstructions, PublicInputInstructions,
-        UnsafeConversionInstructions, ZeroInstructions,
+        public_input::CommittedInstanceInstructions, ArithInstructions, AssertionInstructions,
+        AssignmentInstructions, BinaryInstructions, CanonicityInstructions,
+        ControlFlowInstructions, ConversionInstructions, EqualityInstructions, FieldInstructions,
+        PublicInputInstructions, UnsafeConversionInstructions, ZeroInstructions,
     },
     types::{AssignedNative, InnerValue, Instantiable},
     utils::{
@@ -675,10 +675,11 @@ where
     }
 }
 
-impl<F: PrimeField> NativeChip<F> {
-    /// Constrains the given assigned value as a public input that will be
-    /// plugged-in in committed form.
-    pub fn constrain_as_committed_public_input(
+impl<F> CommittedInstanceInstructions<F, AssignedNative<F>> for NativeChip<F>
+where
+    F: PrimeField,
+{
+    fn constrain_as_committed_public_input(
         &self,
         layouter: &mut impl Layouter<F>,
         assigned: &AssignedNative<F>,

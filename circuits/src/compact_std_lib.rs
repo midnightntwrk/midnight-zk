@@ -27,7 +27,7 @@
 
 use std::{cell::RefCell, cmp::max, convert::TryInto, fmt::Debug, io, rc::Rc};
 
-use ff::Field;
+use ff::{Field, PrimeField};
 use group::{prime::PrimeCurveAffine, Group};
 use halo2curves::secp256k1::{self, Secp256k1};
 use midnight_curves::G1Projective;
@@ -75,12 +75,12 @@ use crate::{
         },
     },
     instructions::{
-        hash_to_curve::HashToCurveInstructions, ArithInstructions, AssertionInstructions,
-        AssignmentInstructions, BinaryInstructions, BitwiseInstructions, CanonicityInstructions,
-        ComparisonInstructions, ControlFlowInstructions, ConversionInstructions,
-        DecompositionInstructions, EccInstructions, EqualityInstructions, FieldInstructions,
-        HashInstructions, PublicInputInstructions, RangeCheckInstructions, VectorInstructions,
-        ZeroInstructions,
+        hash_to_curve::HashToCurveInstructions, public_input::CommittedInstanceInstructions,
+        ArithInstructions, AssertionInstructions, AssignmentInstructions, BinaryInstructions,
+        BitwiseInstructions, CanonicityInstructions, ComparisonInstructions,
+        ControlFlowInstructions, ConversionInstructions, DecompositionInstructions,
+        EccInstructions, EqualityInstructions, FieldInstructions, HashInstructions,
+        PublicInputInstructions, RangeCheckInstructions, VectorInstructions, ZeroInstructions,
     },
     map::map_gadget::MapGadget,
     parsing::{
@@ -147,6 +147,7 @@ pub struct ZkStdLibArch {
 
     /// Number of parallel lookups for range checks.
     pub nr_pow2range_cols: u8,
+
     /// Enable automaton?
     pub automaton: bool,
 }
@@ -772,6 +773,22 @@ where
         value: Value<<T>::Element>,
     ) -> Result<T, Error> {
         self.native_gadget.assign_as_public_input(layouter, value)
+    }
+}
+
+impl<T> CommittedInstanceInstructions<F, T> for ZkStdLib
+where
+    F: PrimeField,
+    T: Instantiable<F>,
+    NG: CommittedInstanceInstructions<F, T>,
+{
+    fn constrain_as_committed_public_input(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        assigned: &T,
+    ) -> Result<(), Error> {
+        self.native_gadget
+            .constrain_as_committed_public_input(layouter, assigned)
     }
 }
 

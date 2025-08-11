@@ -74,6 +74,21 @@ where
     ) -> Result<Assigned, Error>;
 }
 
+/// Instruction to constrain public inputs in committed form.
+pub trait CommittedInstanceInstructions<F, Assigned>
+where
+    F: PrimeField,
+    Assigned: Instantiable<F>,
+{
+    /// Constrains the given assigned value as a public input that will be
+    /// provided in committed form.
+    fn constrain_as_committed_public_input(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        assigned: &Assigned,
+    ) -> Result<(), Error>;
+}
+
 #[cfg(test)]
 #[allow(missing_docs)]
 pub mod tests {
