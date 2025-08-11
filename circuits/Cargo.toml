@@ -61,7 +61,11 @@ truncated-challenges = ["midnight-proofs/truncated-challenges"]
 
 [[example]]
 name = "json_verification"
-path = "examples/json_verification.rs"
+path = "examples/identity/json_verification.rs"
+
+[[example]]
+name = "enrollment"
+path = "examples/identity/enrollment.rs"
 
 [[bench]]
 name = "poseidon_cpu"
