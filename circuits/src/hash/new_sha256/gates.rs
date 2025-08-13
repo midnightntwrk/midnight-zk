@@ -218,6 +218,164 @@ pub fn add_mod_2_32_gate<F: PrimeField>(
     vec![("add_mod_2_32 check", lhs - rhs)]
 }
 
+/// Decompose in 12-1-1-1-7-3-4-3 gate.
+pub fn decompose_12_1_1_1_7_3_4_3_gate<F: PrimeField>(
+    [w_12, w_1a, w_1b, w_1c, w_07, w_3a, w_04, w_3b]: [Expression<F>; 8],
+    plain: Expression<F>,
+) -> Vec<(&'static str, Expression<F>)> {
+    // (2^20 * W.12 + 2^19 * W.1a + 2^18 * W.1b + 2^17 * W.1c + 2^10 * W.07 + 2^7 *
+    // W.3a + 2^3 * W.04 + W.3b) - plain
+    let plain_id = linear_combination_pow2(
+        [20, 19, 18, 17, 10, 7, 3, 0],
+        [&w_12, &w_1a, &w_1b, &w_1c, &w_07, &w_3a, &w_04, &w_3b],
+    ) - plain;
+
+    // 1-bit check for W.1a, W.1b and W.1c
+    let w_1a_check = w_1a.clone() * (w_1a - Expression::Constant(F::ONE));
+    let w_1b_check = w_1b.clone() * (w_1b - Expression::Constant(F::ONE));
+    let w_1c_check = w_1c.clone() * (w_1c - Expression::Constant(F::ONE));
+
+    vec![
+        ("12_1_1_1_7_3_4_3 decomposition plain check", plain_id),
+        ("W.1a 1-bit check", w_1a_check),
+        ("W.1b 1-bit check", w_1b_check),
+        ("W.1c 1-bit check", w_1c_check),
+    ]
+}
+
+/// σ₀(W) gate.
+pub fn sigma_0_gate<F: PrimeField>(
+    [sprdd_w_12, sprdd_w_1a, sprdd_w_1b, sprdd_w_1c, sprdd_w_07, sprdd_w_3a, sprdd_w_04, sprdd_w_3b]: [Expression<F>;
+        8],
+    [sprdd_evn_12a, sprdd_evn_12b, sprdd_evn_8]: [Expression<F>; 3],
+    [sprdd_odd_12a, sprdd_odd_12b, sprdd_odd_8]: [Expression<F>; 3],
+) -> Vec<(&'static str, Expression<F>)> {
+    // 4^17 * ~W.12 + 4^16 * ~W.1a + 4^15 * ~W.1b + 4^14 * ~W.1c + 4^7 * ~W.07 + 4^4
+    // * ~W.3a + ~W.04
+    let sprdd_1st_shift = linear_combination_pow4(
+        [17, 16, 15, 14, 7, 4, 0],
+        [
+            &sprdd_w_12,
+            &sprdd_w_1a,
+            &sprdd_w_1b,
+            &sprdd_w_1c,
+            &sprdd_w_07,
+            &sprdd_w_3a,
+            &sprdd_w_04,
+        ],
+    );
+
+    // 4^28 * ~W.04 + 4^25 * ~W.3b + 4^13 * ~W.12 + 4^12 * ~W.1a + 4^11 * ~W.1b +
+    // 4^10 * ~W.1c + 4^3 * ~W.07 + ~W.3a
+    let sprdd_2nd_rot = linear_combination_pow4(
+        [28, 25, 13, 12, 11, 10, 3, 0],
+        [
+            &sprdd_w_04,
+            &sprdd_w_3b,
+            &sprdd_w_12,
+            &sprdd_w_1a,
+            &sprdd_w_1b,
+            &sprdd_w_1c,
+            &sprdd_w_07,
+            &sprdd_w_3a,
+        ],
+    );
+
+    // 4^31 * ~W.1c + 4^24 * ~W.07 + 4^21 * ~W.3a + 4^17 * ~W.04 + 4^14 * ~W.3b +
+    // 4^2 * ~W.12 + 4^1 * ~W.1a + ~W.1b
+    let sprdd_3rd_rot = linear_combination_pow4(
+        [31, 24, 21, 17, 14, 2, 1, 0],
+        [
+            &sprdd_w_1c,
+            &sprdd_w_07,
+            &sprdd_w_3a,
+            &sprdd_w_04,
+            &sprdd_w_3b,
+            &sprdd_w_12,
+            &sprdd_w_1a,
+            &sprdd_w_1b,
+        ],
+    );
+
+    // 4^20 * ~Evn.12a + 4^8 * ~Evn.12b + ~Evn.8
+    let sprdd_evn =
+        linear_combination_pow4([20, 8, 0], [&sprdd_evn_12a, &sprdd_evn_12b, &sprdd_evn_8]);
+
+    // 4^20 * ~Odd.12a + 4^8 * ~Odd.12b + ~Odd.8
+    let sprdd_odd =
+        linear_combination_pow4([20, 8, 0], [&sprdd_odd_12a, &sprdd_odd_12b, &sprdd_odd_8]);
+
+    let sprdd_sigma_0_check = (sprdd_1st_shift + sprdd_2nd_rot + sprdd_3rd_rot)
+        - (sprdd_evn + Expression::Constant(F::from(2)) * sprdd_odd);
+
+    vec![("Spreaded σ₀(W) check", sprdd_sigma_0_check)]
+}
+
+/// σ₁(W) gate.
+pub fn sigma_1_gate<F: PrimeField>(
+    [sprdd_w_12, sprdd_w_1a, sprdd_w_1b, sprdd_w_1c, sprdd_w_07, sprdd_w_3a, sprdd_w_04, sprdd_w_3b]: [Expression<F>;
+        8],
+    [sprdd_evn_12a, sprdd_evn_12b, sprdd_evn_8]: [Expression<F>; 3],
+    [sprdd_odd_12a, sprdd_odd_12b, sprdd_odd_8]: [Expression<F>; 3],
+) -> Vec<(&'static str, Expression<F>)> {
+    // 4^10 * ~W.12 + 4^9 * ~W.1a + 4^8 * ~W.1b + 4^7 * ~W.1c + ~W.07
+    let sprdd_1st_shift = linear_combination_pow4(
+        [10, 9, 8, 7, 0],
+        [
+            &sprdd_w_12,
+            &sprdd_w_1a,
+            &sprdd_w_1b,
+            &sprdd_w_1c,
+            &sprdd_w_07,
+        ],
+    );
+
+    // 4^25 * ~W.07 + 4^22 * ~W.3a + 4^18 * ~W.04 + 4^15 * ~W.3b + 4^3 * ~W.12 + 4^2
+    // * ~W.1a + 4^1 * ~W.1b + ~W.1c
+    let sprdd_2nd_rot = linear_combination_pow4(
+        [25, 22, 18, 15, 3, 2, 1, 0],
+        [
+            &sprdd_w_07,
+            &sprdd_w_3a,
+            &sprdd_w_04,
+            &sprdd_w_3b,
+            &sprdd_w_12,
+            &sprdd_w_1a,
+            &sprdd_w_1b,
+            &sprdd_w_1c,
+        ],
+    );
+
+    // 4^31 * ~W.1b + 4^30 * ~W.1c + 4^23 * ~W.07 + 4^20 * ~W.3a + 4^16 * ~W.04 +
+    // 4^13 * ~W.3b + 4^1 * ~W.12 + ~W.1a
+    let sprdd_3rd_rot = linear_combination_pow4(
+        [31, 30, 23, 20, 16, 13, 1, 0],
+        [
+            &sprdd_w_1b,
+            &sprdd_w_1c,
+            &sprdd_w_07,
+            &sprdd_w_3a,
+            &sprdd_w_04,
+            &sprdd_w_3b,
+            &sprdd_w_12,
+            &sprdd_w_1a,
+        ],
+    );
+
+    // 4^20 * ~Evn.12a + 4^8 * ~Evn.12b + ~Evn.8
+    let sprdd_evn =
+        linear_combination_pow4([20, 8, 0], [&sprdd_evn_12a, &sprdd_evn_12b, &sprdd_evn_8]);
+
+    // 4^20 * ~Odd.12a + 4^8 * ~Odd.12b + ~Odd.8
+    let sprdd_odd =
+        linear_combination_pow4([20, 8, 0], [&sprdd_odd_12a, &sprdd_odd_12b, &sprdd_odd_8]);
+
+    let sprdd_sigma_1_check = (sprdd_1st_shift + sprdd_2nd_rot + sprdd_3rd_rot)
+        - (sprdd_evn + Expression::Constant(F::from(2)) * sprdd_odd);
+
+    vec![("Spreaded σ₁(W) check", sprdd_sigma_1_check)]
+}
+
 /// Computes a linear combination of terms with coefficients of powers of two.
 fn linear_combination_pow2<F: PrimeField, const N: usize>(
     pow_of_coeffs: [u8; N],
