@@ -110,7 +110,7 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
         [Column<Fixed>; NB_SHA256_FIXED_COLS],
     );
 
-    type InstructionDeps = NativeChip<F>;
+    type InstructionDeps = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
 
     fn new(config: &Sha256Config, native_gadget: &Self::InstructionDeps) -> Self {
         Self {
@@ -1167,8 +1167,8 @@ impl<F: PrimeField> Sha256Chip<F> {
         Ok(message_words.map(|w| w.combined_plain))
     }
 
-    /// Given the slice of 4 `AssignedPlain` values, this function computes
-    /// the message word W_i and decomposes W_i into (bit-endian)
+    /// Given a slice of at most 7 `AssignedPlain` values, this function adds
+    /// them modulo 2^32 and decomposes the result (named W_i) into (bit-endian)
     /// limbs of bit sizes 12, 1, 1, 1, 7, 3, 4 and 3.
     fn prepare_message_word(
         &self,
@@ -1176,16 +1176,17 @@ impl<F: PrimeField> Sha256Chip<F> {
         summands: &[AssignedPlain<F, 32>],
     ) -> Result<AssignedMessageWord<F>, Error> {
         /*
-        Given the 4 assigned plain inputs W_(i-16), W_(i-7), σ₀(W_(i-15)), σ₁(W_(i-2)),
-        completes up to length 7 by padding with 3 fixed zeros, and computes W.i as their sum modulo 2^32.
+        Given assigned plain inputs S0, ..., S6 (if fewer inputs are given
+        they will be completed up to length 7, padding with fixed zeros),
+        and computes W.i as their sum modulo 2^32.
 
         We use the following table distribution.
 
-        | T_0 |  A_0 |  A_1  | T_1 |  A_2  |   A_3  | A_4 |      A_5     |     A_6    |  A_7  |
-        |-----|------|-------|-----|-------|--------|-----|--------------|------------|-------|
-        |  12 | W.12 | ~W.12 | 07  |  W.07 | ~W.07  | W.i |    W_(i-16)  |   W_(i-7)  |  W.1a |
-        |  03 | W.3a | ~W.3a | 04  |  W.04 | ~W.04  |     | σ₀(W_(i-15)) | σ₁(W_(i-2))|  W.1b |
-        |  03 | W.3b | ~W.3b | 03  | carry | ~carry |  0  |       0      |      0     |  W.1c |
+        | T_0 |  A_0 |  A_1  | T_1 |  A_2  |   A_3  | A_4 | A_5 | A_6 |  A_7  |
+        |-----|------|-------|-----|-------|--------|-----|-----|-----|-------|
+        |  12 | W.12 | ~W.12 | 07  |  W.07 | ~W.07  | W.i |  S0 |  S1 |  W.1a |
+        |  03 | W.3a | ~W.3a | 04  |  W.04 | ~W.04  |     |  S2 |  S3 |  W.1b |
+        |  03 | W.3b | ~W.3b | 03  | carry | ~carry |  S4 |  S5 |  S6 |  W.1c |
 
         Apart from the lookups, the following identity is checked via a
         custom gate with selector q_12_1_1_1_7_3_4_3:
@@ -1195,7 +1196,7 @@ impl<F: PrimeField> Sha256Chip<F> {
         and the following is checked with a custom gate with selector
         q_add_mod_2_32:
 
-            W_(i-16) + W_(i-7) + σ₀(W_(i-15)) + σ₁(W_(i-2)) = W.i + carry * 2^32
+            S0 + S1 + S2 + S3 + S4 + S5 + S6 = W.i + carry * 2^32
 
         Note that W.i is implicitly being range-checked in [0, 2^32) via
         the lookup, and the carry is range-checked in [0, 8). This makes
@@ -1209,7 +1210,7 @@ impl<F: PrimeField> Sha256Chip<F> {
             || "prepare message word",
             |mut region| {
                 self.config().q_12_1_1_1_7_3_4_3.enable(&mut region, 0)?;
-                // No need to assign the spreaded form of W.i.
+
                 let w_i_plain = self.assign_add_mod_2_32(&mut region, &summands, &zero)?;
 
                 let [val_12, val_1a, val_1b, val_1c, val_07, val_3a, val_04, val_3b] =
@@ -1399,19 +1400,16 @@ impl<F: PrimeField> Sha256Chip<F> {
         )
     }
 
-    /// Given 7 `AssignedPlain` values, this function adds them modulo 2^32:
+    /// Given a slice of at most 7 `AssignedPlain` values, this function adds
+    /// them modulo 2^32 and returns sum_plain:
     ///
     ///     S0 + S1 + S2 + S3 + S4 + S5 + S6 = sum_plain + carry * 2^32
-    ///
-    /// and computes sum_sprdd when `with_spreaded` is true.
     ///
     ///  | T_1 |  A_2  |   A_3  |    A_4    |  A_5 |  A_6 |
     ///  |-----|-------|--------|-----------|------|------|
     ///  |     |       |        | sum_plain |  S0  |  S1  |
-    ///  |     |       |        | sum_sprdd |  S2  |  S3  |
+    ///  |     |       |        |           |  S2  |  S3  |
     ///  | 03  | carry | ~carry |     S4    |  S5  |  S6  |
-    ///
-    /// It returns sum_plain and sum_sprdd (if `with_spreaded` is true).
     ///
     /// The `zero` argument is supposed to contain an assigned plain containing
     /// value 0, this is not enforced in this function, it is the responsibility
@@ -1426,10 +1424,11 @@ impl<F: PrimeField> Sha256Chip<F> {
         summands: &[AssignedPlain<F, 32>],
         zero: &AssignedPlain<F, 32>,
     ) -> Result<AssignedPlain<F, 32>, Error> {
+        assert!(summands.len() <= 7);
+
         self.config().q_add_mod_2_32.enable(region, 0)?;
         let adv_cols = self.config().advice_cols;
 
-        assert!(summands.len() <= 7);
         let mut summands = summands.to_vec();
         summands.resize(7, zero.clone());
 
@@ -1454,13 +1453,14 @@ impl<F: PrimeField> Sha256Chip<F> {
             .map(AssignedPlain)
     }
 
-    pub fn pad(
+    /// Pads the input byte array to be a multiple of 512 bits.
+    fn pad(
         &self,
         layouter: &mut impl Layouter<F>,
         bytes: &[AssignedByte<F>],
     ) -> Result<Vec<AssignedByte<F>>, Error> {
         let l = bytes.len();
-        let k = 512 - (l + 65) % 512;
+        let k = 512 - (8 * l + 65) % 512;
 
         let zero = self.native_gadget.assign_fixed(layouter, 0u8)?;
         let one = self.native_gadget.assign_fixed(layouter, 1u8)?;
@@ -1475,12 +1475,14 @@ impl<F: PrimeField> Sha256Chip<F> {
         Ok(padded)
     }
 
-    /// TODO
+    /// Given a byte array of exactly 64 bytes, this function converts it into a
+    /// block of 16 `AssignedPlain` values, each (32 bits) value
+    /// representing 4 bytes in big-endian.
     ///
     /// # Panics
     ///
     /// If it does not receive exactly 64 bytes.
-    pub fn block_from_bytes(
+    fn block_from_bytes(
         &self,
         layouter: &mut impl Layouter<F>,
         bytes: &[AssignedByte<F>],
@@ -1489,9 +1491,9 @@ impl<F: PrimeField> Sha256Chip<F> {
 
         let block = bytes
             .chunks(4)
-            .map(|block_bytes| {
+            .map(|word_bytes| {
                 self.native_gadget
-                    .assigned_from_le_bytes(layouter, block_bytes)
+                    .assigned_from_be_bytes(layouter, word_bytes)
                     .map(AssignedPlain)
             })
             .collect::<Result<Vec<_>, Error>>()?;
