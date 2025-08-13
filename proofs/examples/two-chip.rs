@@ -285,14 +285,7 @@ impl<F: Field> MulChip<F> {
             // has the following properties:
             // - When s_mul = 0, any value is allowed in lhs, rhs, and out.
             // - When s_mul != 0, this constrains lhs * rhs = out.
-            Constraints::with_additive_selector(
-                s_mul,
-                vec![
-                    lhs.clone() * rhs.clone() - out.clone(),
-                    lhs.clone() * rhs.clone() - out.clone(),
-                    out - lhs * rhs,
-                ],
-            )
+            Constraints::with_additive_selector(s_mul, vec![lhs * rhs - out])
         });
 
         MulConfig { advice, s_mul }
