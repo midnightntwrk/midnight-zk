@@ -46,6 +46,7 @@ verification keys break backwards compatibility.
 * Extra functions in `verifier` for the light aggregator [#25](https://github.com/midnightntwrk/midnight-zk/pull/25)
 * Add `VectorGadget` [#28](https://github.com/midnightntwrk/midnight-zk/pull/28)
 * Adds input extraction feature to the automaton chip [#16](https://github.com/midnightntwrk/midnight-zk/pull/16)
+* Expose automaton chip and JWT parsing in std_lib [#30](https://github.com/midnightntwrk/midnight-zk/pull/30)
 
 ### Changed
 * Increase # of pow2range cols in json_verification example [#58](https://github.com/midnightntwrk/midnight-zk/pull/58)

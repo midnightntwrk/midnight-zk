@@ -31,7 +31,11 @@
 //    `alphabet::ALPHABET_MAX_SIZE`. These dummy transitions are used to check
 //    whether the terminal state of an automaton run is final.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet, HashMap},
+    fmt::Debug,
+    hash::Hash,
+};
 
 use ff::PrimeField;
 use midnight_proofs::{
@@ -57,8 +61,6 @@ use crate::{
 
 /// Number of columns for the automata chip.
 pub const NB_AUTOMATA_COLS: usize = 3;
-/// Number of columns for the tables of the automata chip.
-pub const NB_AUTOMATA_TABLE_COLS: usize = 4;
 
 // Native gadget functions.
 type NG<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
@@ -117,26 +119,32 @@ impl<F> NativeAutomaton<F>
 where
     F: PrimeField + Ord,
 {
-    fn from_collection(automata: &[Automaton]) -> Vec<Self> {
+    fn from_collection<LibIndex>(
+        automata: &HashMap<LibIndex, Automaton>,
+    ) -> HashMap<LibIndex, NativeAutomaton<F>>
+    where
+        LibIndex: Hash + Eq + Copy,
+    {
         // The offset needs to start from 1 and not 0, to ensure that no automata will
         // use the state 0 (required by the automaton chip for soundness, since
         // 0 is used as a dummy state to encode some checks as fake
         // transitions).
         let mut offset = 1;
-        let mut v = Vec::with_capacity(automata.len());
-        for automaton in automata {
-            let na: NativeAutomaton<F> = automaton.offset_states(offset).into();
-            v.push(na);
-            offset += automaton.state_bound;
-        }
-        v
+        automata
+            .iter()
+            .map(|(name, automaton)| {
+                let na: NativeAutomaton<F> = automaton.offset_states(offset).into();
+                offset += automaton.state_bound;
+                (*name, na)
+            })
+            .collect::<HashMap<_, _>>()
     }
 }
 
 /// Automaton gate configuration.
 #[derive(Clone, Debug)]
-pub struct AutomatonConfig<F> {
-    automata: Vec<NativeAutomaton<F>>,
+pub struct AutomatonConfig<LibIndex, F> {
+    automata: HashMap<LibIndex, NativeAutomaton<F>>,
     q_automaton: Selector,
     state_col: Column<Advice>,
     letter_col: Column<Advice>,
@@ -149,19 +157,20 @@ pub struct AutomatonConfig<F> {
 
 /// Chip for Automaton parsing.
 #[derive(Clone, Debug)]
-pub struct AutomatonChip<F>
+pub struct AutomatonChip<LibIndex, F>
 where
     F: PrimeField,
 {
-    config: AutomatonConfig<F>,
+    config: AutomatonConfig<LibIndex, F>,
     native_gadget: NG<F>,
 }
 
-impl<F> Chip<F> for AutomatonChip<F>
+impl<LibIndex, F> Chip<F> for AutomatonChip<LibIndex, F>
 where
+    LibIndex: Clone + Debug,
     F: PrimeField,
 {
-    type Config = AutomatonConfig<F>;
+    type Config = AutomatonConfig<LibIndex, F>;
     type Loaded = ();
     fn config(&self) -> &Self::Config {
         &self.config
@@ -171,19 +180,19 @@ where
     }
 }
 
-impl<F> ComposableChip<F> for AutomatonChip<F>
+impl<LibIndex, F> ComposableChip<F> for AutomatonChip<LibIndex, F>
 where
+    LibIndex: Copy + Clone + Debug + Hash + Eq,
     F: PrimeField + Ord,
 {
     type InstructionDeps = NG<F>;
 
     type SharedResources = (
         [Column<Advice>; NB_AUTOMATA_COLS],
-        [TableColumn; NB_AUTOMATA_TABLE_COLS],
-        Vec<Automaton>,
+        HashMap<LibIndex, Automaton>,
     );
 
-    fn new(config: &AutomatonConfig<F>, deps: &Self::InstructionDeps) -> Self {
+    fn new(config: &AutomatonConfig<LibIndex, F>, deps: &Self::InstructionDeps) -> Self {
         Self {
             config: config.clone(),
             native_gadget: deps.clone(),
@@ -193,21 +202,22 @@ where
     fn configure(
         meta: &mut ConstraintSystem<F>,
         shared_res: &Self::SharedResources,
-    ) -> AutomatonConfig<F> {
+    ) -> AutomatonConfig<LibIndex, F> {
         let q_automaton = meta.complex_selector();
 
-        let (advice_cols, table_cols, automata) = shared_res;
+        let (advice_cols, automata) = shared_res;
         let state_col = advice_cols[0];
         let letter_col = advice_cols[1];
         let output_col = advice_cols[2];
-        let t_source = table_cols[0];
-        let t_letter = table_cols[1];
-        let t_target = table_cols[2];
-        let t_output = table_cols[3];
+        let t_source = meta.lookup_table_column();
+        let t_letter = meta.lookup_table_column();
+        let t_target = meta.lookup_table_column();
+        let t_output = meta.lookup_table_column();
+
         // The fixed automaton of the configuration. Its set of states is offset by 1 to
         // ensure that 0 is not a reachable state (required due to how the table lookup
         // is filled).
-        let automata: Vec<NativeAutomaton<F>> = NativeAutomaton::<F>::from_collection(automata);
+        let automata = NativeAutomaton::<F>::from_collection(automata);
 
         meta.lookup("automaton transition check", |meta| {
             let q = meta.query_selector(q_automaton);
@@ -284,7 +294,7 @@ where
 
                 // Main transitions.
                 for automaton in self.config.automata.iter() {
-                    for ((source, letter), (target,output_extr)) in automaton.transitions.iter() {
+                    for ((source, letter), (target,output_extr)) in automaton.1.transitions.iter() {
                             assert!(
                                 *source != F::ZERO && *target != F::ZERO ,
                                 "sanity check failed: the circuit requires that state 0 is not used, but the automaton generation failed to ensure it."
@@ -294,7 +304,7 @@ where
                     // Dummy transitions to represent final states. Recall that letter are
                     // represented in-circuit by elements of `AssignedByte`, which are therefore
                     // range-checked to be lower than `REGEX_ALPHABET_MAX_SIZE`.
-                    for state in automaton.final_states.iter() {
+                    for state in automaton.1.final_states.iter() {
                         add_entry(*state, F::from(ALPHABET_MAX_SIZE as u64), F::ZERO, F::ZERO)?
                     }
                 }
@@ -304,8 +314,9 @@ where
     }
 }
 
-impl<F> AutomatonChip<F>
+impl<LibIndex, F> AutomatonChip<LibIndex, F>
 where
+    LibIndex: Eq + Hash,
     F: PrimeField + Ord,
 {
     // Updates the state of the automaton (AssignedNative) according to the letter
@@ -319,7 +330,7 @@ where
     fn apply_one_transition(
         &self,
         region: &mut Region<'_, F>,
-        automaton_index: usize,
+        automaton_index: &LibIndex,
         state: &mut AssignedNative<F>,
         letter: &AssignedByte<F>,
         markers: &mut Vec<AssignedNative<F>>,
@@ -408,13 +419,9 @@ where
     pub fn parse(
         &self,
         layouter: &mut impl Layouter<F>,
-        automaton_index: usize,
+        automaton_index: &LibIndex,
         input: &[AssignedByte<F>],
     ) -> Result<Vec<AssignedNative<F>>, Error> {
-        assert!(automaton_index < self.config.automata.len(),
-            "Attempted to parse the automaton nb {automaton_index} of a configuration that only contains {} automata.",
-            self.config.automata.len()
-        );
         let init_state: AssignedNative<F> = self.native_gadget.assign_fixed(
             layouter,
             self.config.automata[automaton_index].initial_state,
@@ -509,18 +516,18 @@ impl Automaton {
 }
 
 #[cfg(test)]
-impl<F> FromScratch<F> for AutomatonChip<F>
+impl<F> FromScratch<F> for AutomatonChip<usize, F>
 where
     F: PrimeField + Ord,
 {
-    type Config = (P2RDecompositionConfig, AutomatonConfig<F>);
+    type Config = (P2RDecompositionConfig, AutomatonConfig<usize, F>);
 
     fn new_from_scratch(config: &Self::Config) -> Self {
         let max_bit_len = 8;
         let native_chip = NativeChip::new(&config.0.native_config, &());
         let core_decomposition_chip = P2RDecompositionChip::new(&config.0, &max_bit_len);
         let native_gadget = NG::<F>::new(core_decomposition_chip, native_chip);
-        <AutomatonChip<F> as ComposableChip<F>>::new(&config.1, &native_gadget)
+        <AutomatonChip<usize, F> as ComposableChip<F>>::new(&config.1, &native_gadget)
     }
 
     fn configure_from_scratch(
@@ -534,12 +541,14 @@ where
         let fixed_cols = (0..NB_ARITH_COLS + 4)
             .map(|_| meta.fixed_column())
             .collect::<Vec<_>>();
-        let table_cols: [TableColumn; NB_AUTOMATA_TABLE_COLS] =
-            core::array::from_fn(|_| meta.lookup_table_column());
-        let automata = vec![
-            Automaton::hard_coded_example0(),
-            Automaton::hard_coded_example1(),
-        ];
+        let automata = HashMap::from_iter(
+            [
+                Automaton::hard_coded_example0(),
+                Automaton::hard_coded_example1(),
+            ]
+            .into_iter()
+            .enumerate(),
+        );
 
         let native_config = NativeChip::configure(
             meta,
@@ -554,7 +563,6 @@ where
             meta,
             &(
                 advice_cols[..NB_AUTOMATA_COLS].try_into().unwrap(),
-                table_cols,
                 automata,
             ),
         );
@@ -622,7 +630,7 @@ mod test {
     where
         F: PrimeField + Ord,
     {
-        type Config = <AutomatonChip<F> as FromScratch<F>>::Config;
+        type Config = <AutomatonChip<usize, F> as FromScratch<F>>::Config;
 
         type FloorPlanner = SimpleFloorPlanner;
 
@@ -646,7 +654,7 @@ mod test {
             config: Self::Config,
             mut layouter: impl Layouter<F>,
         ) -> Result<(), Error> {
-            let automaton_chip = AutomatonChip::<F>::new_from_scratch(&config);
+            let automaton_chip = AutomatonChip::<usize, F>::new_from_scratch(&config);
             AutomatonChip::load_from_scratch(&mut layouter, &config);
 
             let input: Vec<AssignedByte<F>> = automaton_chip
@@ -664,11 +672,11 @@ mod test {
 
             println!(">> [test] About to parse an automaton with index {}, which contains {} transitions, and {} final states.",
                 self.automaton_index,
-                automaton_chip.config.automata[self.automaton_index].transitions.len(),
-                automaton_chip.config.automata[self.automaton_index].final_states.len()
+                automaton_chip.config.automata[&self.automaton_index].transitions.len(),
+                automaton_chip.config.automata[&self.automaton_index].final_states.len()
             );
             let parsed_output =
-                automaton_chip.parse(&mut layouter, self.automaton_index, &input)?;
+                automaton_chip.parse(&mut layouter, &self.automaton_index, &input)?;
             assert!(
                 parsed_output.len() == output.len(),
                 "test failed: the lengths of the

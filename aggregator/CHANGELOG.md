@@ -16,3 +16,4 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 * Unify transcript style [#34](https://github.com/midnightntwrk/midnight-zk/pull/34)
 
 ### Removed
+* Add a turned-off automaton configuration due to the automaton chip being exposed in std_lib [#30](https://github.com/midnightntwrk/midnight-zk/pull/30)

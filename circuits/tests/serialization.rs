@@ -81,6 +81,7 @@ const ARCHITECTURES: [ZkStdLibArch; 4] = [
         bls12_381: true,
         base64: false,
         nr_pow2range_cols: 4,
+        automaton: false,
     },
     ZkStdLibArch {
         jubjub: true,
@@ -90,6 +91,7 @@ const ARCHITECTURES: [ZkStdLibArch; 4] = [
         bls12_381: false,
         base64: false,
         nr_pow2range_cols: 4,
+        automaton: false,
     },
     ZkStdLibArch {
         jubjub: false,
@@ -99,6 +101,7 @@ const ARCHITECTURES: [ZkStdLibArch; 4] = [
         bls12_381: true,
         base64: false,
         nr_pow2range_cols: 4,
+        automaton: false,
     },
     ZkStdLibArch {
         jubjub: false,
@@ -108,6 +111,7 @@ const ARCHITECTURES: [ZkStdLibArch; 4] = [
         bls12_381: false,
         base64: true,
         nr_pow2range_cols: 4,
+        automaton: false,
     },
 ];
 
