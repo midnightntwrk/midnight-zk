@@ -1539,6 +1539,24 @@ where
     G1Projective: Hashable<H>,
     F: Hashable<H> + Sampleable<H>,
 {
+    prove_with_committed_instance(params, pk, relation, instance, &[], witness, rng)
+}
+
+/// Produces a proof of relation `R` for the given instances and committed instances (using the given
+/// proving key and witness).
+pub fn prove_with_committed_instance<R: Relation, H: TranscriptHash>(
+    params: &ParamsKZG<midnight_curves::Bls12>,
+    pk: &MidnightPK<R>,
+    relation: &R,
+    instance: &R::Instance,
+    com_inst: &[F],
+    witness: R::Witness,
+    rng: impl RngCore + CryptoRng,
+) -> Result<Vec<u8>, Error>
+where
+    G1Projective: Hashable<H>,
+    F: Hashable<H> + Sampleable<H>,
+{
     let circuit = MidnightCircuit {
         relation,
         instance: Value::known(instance.clone()),
@@ -1546,7 +1564,7 @@ where
         nb_public_inputs: Rc::new(RefCell::new(None)),
     };
     let pi = R::format_instance(instance);
-    BlstPLONK::<MidnightCircuit<R>>::prove::<H>(params, &pk.pk, &circuit, 1, &[&[], &pi], rng)
+    BlstPLONK::<MidnightCircuit<R>>::prove::<H>(params, &pk.pk, &circuit, 1, &[com_inst, &pi], rng)
 }
 
 /// Verifies the given proof of relation `R` with respect to the given instance.
