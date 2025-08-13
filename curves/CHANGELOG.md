@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 ### Changed
 
 ### Removed
+* Some dbg prints [#59](https://github.com/midnightntwrk/midnight-zk/pull/59)
 
 ## 0.1.0
 Initial release

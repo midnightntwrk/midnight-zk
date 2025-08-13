@@ -12,7 +12,7 @@
 // limitations under the License.
 
 //! A module for the in-circuit permutation argument. It is the in-circuit
-//! analog of file src/plonk/permutation/verifier.rs from halo2.
+//! analog of file proofs/src/plonk/permutation/verifier.rs.
 //!
 //! The "expressions" part is dealt with in our `expressions/` directory.
 

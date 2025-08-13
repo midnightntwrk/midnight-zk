@@ -19,7 +19,7 @@ use super::{
 use crate::poly::EvaluationDomain;
 use crate::{
     circuit::Value,
-    plonk::traces::ProverTrace,
+    plonk::{traces::ProverTrace, trash},
     poly::{
         batch_invert_rational, commitment::PolynomialCommitmentScheme, Coeff,
         ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial, PolynomialRepresentation, ProverQuery,
@@ -484,6 +484,33 @@ where
         })
         .collect::<Result<Vec<_>, _>>()?;
 
+    // Trash argument
+    let trash_challenge: F = transcript.squeeze_challenge();
+
+    let trashcans: Vec<Vec<trash::prover::Committed<F>>> = instance
+        .iter()
+        .zip(advice.iter())
+        .map(|(instance, advice)| -> Result<Vec<_>, Error> {
+            pk.vk
+                .cs
+                .trashcans
+                .iter()
+                .map(|trash| {
+                    trash.commit::<CS, _>(
+                        params,
+                        domain,
+                        trash_challenge,
+                        &advice.advice_polys,
+                        &pk.fixed_values,
+                        &instance.instance_values,
+                        &challenges,
+                        transcript,
+                    )
+                })
+                .collect()
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
     // Commit to the vanishing argument's random polynomial for blinding h(x_3)
     let vanishing = vanishing::Argument::<F, CS>::commit(params, domain, &mut rng, transcript)?;
 
@@ -509,11 +536,13 @@ where
         instance_values,
         vanishing,
         lookups,
+        trashcans,
         permutations,
         challenges,
         beta,
         gamma,
         theta,
+        trash_challenge,
         y,
     })
 }
@@ -551,12 +580,14 @@ where
         advice_polys,
         instance_polys,
         lookups,
+        trashcans,
         permutations,
         challenges,
         y,
         beta,
         gamma,
         theta,
+        trash_challenge,
         vanishing,
         ..
     } = trace;
@@ -599,7 +630,9 @@ where
         beta,
         gamma,
         theta,
+        trash_challenge,
         &lookups,
+        &trashcans,
         &permutations,
         &pk.l0,
         &pk.l_last,
@@ -683,12 +716,24 @@ where
         })
         .collect::<Result<Vec<_>, _>>()?;
 
+    // Evaluate the trashcans, if any, at x.
+    let trashcans: Vec<Vec<trash::prover::Evaluated<F>>> = trashcans
+        .into_iter()
+        .map(|trash| -> Result<Vec<_>, _> {
+            trash
+                .into_iter()
+                .map(|p| p.evaluate(x, transcript))
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
     let queries = instance_polys
         .iter()
         .zip(advice_polys.iter())
         .zip(permutations.iter())
         .zip(lookups.iter())
-        .flat_map(|(((instance, advice), permutation), lookups)| {
+        .zip(trashcans.iter())
+        .flat_map(|((((instance, advice), permutation), lookups), trash)| {
             iter::empty()
                 .chain(
                     pk.vk
@@ -713,6 +758,7 @@ where
                 )
                 .chain(permutation.open(pk, x))
                 .chain(lookups.iter().flat_map(move |p| p.open(pk, x)))
+                .chain(trash.iter().flat_map(move |p| p.open(x)))
         })
         .chain(
             pk.vk

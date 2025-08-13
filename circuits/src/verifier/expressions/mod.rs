@@ -19,11 +19,15 @@ use midnight_proofs::{
 use crate::{
     field::AssignedNative,
     instructions::{ArithInstructions, AssignmentInstructions},
-    verifier::SelfEmulation,
+    verifier::{
+        utils::{mul_add, try_reduce},
+        SelfEmulation,
+    },
 };
 
 pub(crate) mod lookup;
 pub(crate) mod permutation;
+pub(crate) mod trash;
 
 /// Function to evaluate expressions in-circuit.
 pub(crate) fn eval_expression<S: SelfEmulation>(
@@ -62,4 +66,33 @@ pub(crate) fn eval_expression<S: SelfEmulation>(
             scalar_chip.mul_by_constant(layouter, &val, *k)
         }
     }
+}
+
+pub(crate) fn compress_expressions<S: SelfEmulation>(
+    layouter: &mut impl Layouter<S::F>,
+    scalar_chip: &S::ScalarChip,
+    advice_evals: &[AssignedNative<S::F>],
+    fixed_evals: &[AssignedNative<S::F>],
+    instance_evals: &[AssignedNative<S::F>],
+    r: &AssignedNative<S::F>,
+    expressions: &[Expression<S::F>],
+) -> Result<AssignedNative<S::F>, Error> {
+    let evaluated_expressions = expressions
+        .iter()
+        .map(|expression| {
+            eval_expression::<S>(
+                layouter,
+                scalar_chip,
+                advice_evals,
+                fixed_evals,
+                instance_evals,
+                expression,
+            )
+        })
+        .collect::<Result<Vec<_>, Error>>()?;
+
+    try_reduce(evaluated_expressions, |acc, eval| {
+        // acc := acc * r + eval
+        mul_add(layouter, scalar_chip, &acc, r, &eval)
+    })
 }

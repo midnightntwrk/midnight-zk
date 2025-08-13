@@ -3,7 +3,7 @@ use group::ff::Field;
 
 use super::{ConstraintSystem, Expression};
 use crate::{
-    plonk::{lookup, permutation, Any},
+    plonk::{lookup, permutation, trash, Any},
     poly::{EvaluationDomain, Polynomial, PolynomialRepresentation, Rotation},
     utils::arithmetic::parallelize,
 };
@@ -34,6 +34,8 @@ pub enum ValueSource {
     Gamma(),
     /// theta
     Theta(),
+    /// trash challenge
+    TrashChallenge(),
     /// y
     Y(),
     /// Previous value
@@ -61,6 +63,7 @@ impl ValueSource {
         beta: &F,
         gamma: &F,
         theta: &F,
+        trash_challenge: &F,
         y: &F,
         previous_value: &F,
     ) -> F {
@@ -80,6 +83,7 @@ impl ValueSource {
             ValueSource::Beta() => *beta,
             ValueSource::Gamma() => *gamma,
             ValueSource::Theta() => *theta,
+            ValueSource::TrashChallenge() => *trash_challenge,
             ValueSource::Y() => *y,
             ValueSource::PreviousValue() => *previous_value,
         }
@@ -122,6 +126,7 @@ impl Calculation {
         beta: &F,
         gamma: &F,
         theta: &F,
+        trash_challenge: &F,
         y: &F,
         previous_value: &F,
     ) -> F {
@@ -137,6 +142,7 @@ impl Calculation {
                 beta,
                 gamma,
                 theta,
+                trash_challenge,
                 y,
                 previous_value,
             )
@@ -168,6 +174,8 @@ pub struct Evaluator<F: PrimeField> {
     pub custom_gates: GraphEvaluator<F>,
     ///  Lookups evalution
     pub lookups: Vec<GraphEvaluator<F>>,
+    ///  Trashcans evalution
+    pub trashcans: Vec<GraphEvaluator<F>>,
 }
 
 /// GraphEvaluator
@@ -255,6 +263,25 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
             ev.lookups.push(graph);
         }
 
+        // Trashcans
+        for trash in cs.trashcans.iter() {
+            let mut graph = GraphEvaluator::default();
+
+            let parts = trash
+                .constraint_expressions()
+                .iter()
+                .map(|expr| graph.add_expression(expr))
+                .collect();
+
+            graph.add_calculation(Calculation::Horner(
+                ValueSource::Constant(0),
+                parts,
+                ValueSource::TrashChallenge(),
+            ));
+
+            ev.trashcans.push(graph);
+        }
+
         ev
     }
 
@@ -272,7 +299,9 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
         beta: F,
         gamma: F,
         theta: F,
+        trash_challenge: F,
         lookups: &[Vec<lookup::prover::Committed<F>>],
+        trashcans: &[Vec<trash::prover::Committed<F>>],
         permutations: &[permutation::prover::Committed<F>],
         l0: &Polynomial<F, B>,
         l_last: &Polynomial<F, B>,
@@ -291,10 +320,11 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
 
         // Core expression evaluations
         let num_threads = rayon::current_num_threads();
-        for (((advice, instance), lookups), permutation) in advice
+        for ((((advice, instance), lookups), trashcans), permutation) in advice
             .iter()
             .zip(instance.iter())
             .zip(lookups.iter())
+            .zip(trashcans.iter())
             .zip(permutations.iter())
         {
             // Custom gates
@@ -315,6 +345,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                                 &beta,
                                 &gamma,
                                 &theta,
+                                &trash_challenge,
                                 &y,
                                 value,
                                 idx,
@@ -441,6 +472,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                             &beta,
                             &gamma,
                             &theta,
+                            &trash_challenge,
                             &y,
                             &F::ZERO,
                             idx,
@@ -482,6 +514,49 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                             + (a_minus_s
                                 * (permuted_input_coset[idx] - permuted_input_coset[r_prev])
                                 * l_active_row[idx]);
+                    }
+                });
+            }
+
+            // Trashcans
+            for (n, trash) in trashcans.iter().enumerate() {
+                // Polynomials required for this trash argument.
+                // Calculated here so these only have to be kept in memory for the short time
+                // they are actually needed.
+                let trash_poly = B::coeff_to_self(domain, trash.trash_poly.clone());
+
+                // Trash argument constraints.
+                parallelize(&mut values, |values, start| {
+                    let trash_evaluator = &self.trashcans[n];
+                    let argument = &cs.trashcans[n];
+                    let mut eval_data = trash_evaluator.instance();
+                    for (i, value) in values.iter_mut().enumerate() {
+                        let idx = start + i;
+
+                        let compressed_expression = trash_evaluator.evaluate(
+                            &mut eval_data,
+                            fixed,
+                            advice,
+                            instance,
+                            challenges,
+                            &beta,
+                            &gamma,
+                            &theta,
+                            &trash_challenge,
+                            &y,
+                            &F::ZERO,
+                            idx,
+                            rot_scale,
+                            isize,
+                        );
+
+                        let q = match argument.selector() {
+                            Expression::Fixed(query) => fixed[query.index().unwrap()][idx],
+                            _ => unreachable!(),
+                        };
+
+                        // compressed_expressions - (1 - q) * trash
+                        *value = *value * y + (compressed_expression - (one - q) * trash_poly[idx]);
                     }
                 });
             }
@@ -672,6 +747,7 @@ impl<F: PrimeField> GraphEvaluator<F> {
         beta: &F,
         gamma: &F,
         theta: &F,
+        trash_challenge: &F,
         y: &F,
         previous_value: &F,
         idx: usize,
@@ -696,6 +772,7 @@ impl<F: PrimeField> GraphEvaluator<F> {
                 beta,
                 gamma,
                 theta,
+                trash_challenge,
                 y,
                 previous_value,
             );

@@ -13,7 +13,7 @@
 
 //! A module for in-circuit lookup arguments identities (expressions).
 //! This is the in-circuit analog of the expressions from file
-//! src/plonk/lookup/verifier.rs from halo2.
+//! proofs/src/plonk/lookup/verifier.rs.
 
 use ff::Field;
 use midnight_proofs::{
@@ -24,12 +24,7 @@ use midnight_proofs::{
 use crate::{
     field::AssignedNative,
     instructions::ArithInstructions,
-    verifier::{
-        expressions::eval_expression,
-        lookup::Evaluated,
-        utils::{mul_add, try_reduce},
-        SelfEmulation,
-    },
+    verifier::{expressions::compress_expressions, lookup::Evaluated, SelfEmulation},
 };
 
 #[allow(clippy::too_many_arguments)]
@@ -151,34 +146,4 @@ pub(crate) fn lookup_expressions<S: SelfEmulation>(
     };
 
     Ok(vec![id_1, id_2, id_3, id_4, id_5])
-}
-
-#[allow(clippy::too_many_arguments)]
-fn compress_expressions<S: SelfEmulation>(
-    layouter: &mut impl Layouter<S::F>,
-    scalar_chip: &S::ScalarChip,
-    advice_evals: &[AssignedNative<S::F>],
-    fixed_evals: &[AssignedNative<S::F>],
-    instance_evals: &[AssignedNative<S::F>],
-    theta: &AssignedNative<S::F>,
-    expressions: &[Expression<S::F>],
-) -> Result<AssignedNative<S::F>, Error> {
-    let evaluated_expressions = expressions
-        .iter()
-        .map(|expression| {
-            eval_expression::<S>(
-                layouter,
-                scalar_chip,
-                advice_evals,
-                fixed_evals,
-                instance_evals,
-                expression,
-            )
-        })
-        .collect::<Result<Vec<_>, Error>>()?;
-
-    try_reduce(evaluated_expressions, |acc, eval| {
-        // acc := acc * theta + eval
-        mul_add(layouter, scalar_chip, &acc, theta, &eval)
-    })
 }

@@ -181,7 +181,7 @@ impl<F: PoseidonField> ComposableChip<F> for PoseidonChip<F> {
         let constant_cols = shared_res.1;
 
         let q_full_round = meta.selector();
-        let q_partial_round = meta.selector();
+        let q_partial_round = meta.complex_selector();
 
         register_cols[..WIDTH]
             .iter()
@@ -258,7 +258,7 @@ impl<F: PoseidonField> ComposableChip<F> for PoseidonChip<F> {
                 .chain(input_pow_constraints)
                 .chain(once(output_pow_constraint))
                 .collect::<Vec<_>>();
-            Constraints::with_selector(q_partial_round, constraints)
+            Constraints::with_additive_selector(q_partial_round, constraints)
         });
 
         PoseidonConfig {
