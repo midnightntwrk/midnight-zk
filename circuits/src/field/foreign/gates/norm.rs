@@ -149,10 +149,7 @@ impl NormConfig {
             let vs = get_advice_vec(meta, &z_cols[1..=vs_bounds.len()], Rotation::next());
 
             let shift = Expression::Constant(bigint_to_fe::<F>(&max_limb_bound));
-            let shifted_x = xs
-                .iter()
-                .map(|x| x.clone() + shift.clone())
-                .collect::<Vec<_>>();
+            let shifted_x = xs.iter().map(|x| x + &shift).collect::<Vec<_>>();
             let shifts = vec![max_limb_bound; nb_limbs as usize];
             let sum_shifts = sum_bigints(&base_powers, &shifts);
 
@@ -160,13 +157,13 @@ impl NormConfig {
             let native_id = sum_exprs::<F>(&base_powers, &shifted_x)
                 - sum_exprs::<F>(&base_powers, &zs)
                 - Expression::Constant(bigint_to_fe::<F>(&sum_shifts))
-                - (u.clone() + Expression::Constant(bigint_to_fe::<F>(&k_min)))
+                - (&u + Expression::Constant(bigint_to_fe::<F>(&k_min)))
                     * Expression::Constant(bigint_to_fe::<F>(m));
 
             //  vs_norm_bounds may be shorter than moduli
             let mut moduli_ids = moduli
                 .iter()
-                .zip(vs.iter())
+                .zip(vs)
                 .zip(vs_bounds.iter())
                 .map(|((mj, vj), vj_bounds)| {
                     let (lj_min, _vj_max) = vj_bounds;
@@ -176,9 +173,9 @@ impl NormConfig {
                     sum_exprs::<F>(&base_powers_mj, &shifted_x)
                         - sum_exprs::<F>(&base_powers_mj, &zs)
                         - Expression::Constant(bigint_to_fe::<F>(&urem(&sum_shifts, mj)))
-                        - u.clone() * Expression::Constant(bigint_to_fe::<F>(&urem(m, mj)))
+                        - &u * Expression::Constant(bigint_to_fe::<F>(&urem(m, mj)))
                         - Expression::Constant(bigint_to_fe::<F>(&urem(&(&k_min * m), mj)))
-                        - (vj.clone() + Expression::Constant(bigint_to_fe::<F>(lj_min)))
+                        - (vj + Expression::Constant(bigint_to_fe::<F>(lj_min)))
                             * Expression::Constant(bigint_to_fe::<F>(mj))
                 })
                 .collect::<Vec<_>>();

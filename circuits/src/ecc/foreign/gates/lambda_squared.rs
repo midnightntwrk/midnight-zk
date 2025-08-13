@@ -162,18 +162,18 @@ impl<C: CircuitCurve> LambdaSquaredConfig<C> {
             //   = (u + k_min) * m
 
             let two = Expression::Constant(F::from(2));
-            let native_id = cond.clone()
-                * (two.clone()
+            let native_id = &cond
+                * (&two
                     + sum_exprs::<F>(&bs, &pxs)
                     + sum_exprs::<F>(&bs, &qxs)
                     + sum_exprs::<F>(&bs, &rxs)
-                    - two.clone() * sum_exprs::<F>(&bs, &lambdas)
+                    - &two * sum_exprs::<F>(&bs, &lambdas)
                     - sum_exprs::<F>(&bs2, &lambdas2)
-                    - (u.clone() + Expression::Constant(bigint_to_fe::<F>(&k_min)))
+                    - (&u + Expression::Constant(bigint_to_fe::<F>(&k_min)))
                         * Expression::Constant(bigint_to_fe::<F>(m)));
             let mut moduli_ids = moduli
                 .iter()
-                .zip(vs.iter())
+                .zip(vs)
                 .zip(vs_bounds.iter())
                 .map(|((mj, vj), vj_bounds)| {
                     let (lj_min, _vj_max) = vj_bounds;
@@ -181,16 +181,16 @@ impl<C: CircuitCurve> LambdaSquaredConfig<C> {
                     let bs2_mj = bs2.iter().map(|b| b.rem(mj)).collect::<Vec<_>>();
                     // 2 + sum_px_mj + sum_qx_mj + sum_rx_mj - (2 sum_lambda_mj + sum_lambda2_mj)
                     // - u * (m % mj) - (k_min * m) % mj - (vj + lj_min) * mj = 0
-                    cond.clone()
-                        * (two.clone()
+                    &cond
+                        * (&two
                             + sum_exprs::<F>(&bs_mj, &pxs)
                             + sum_exprs::<F>(&bs_mj, &qxs)
                             + sum_exprs::<F>(&bs_mj, &rxs)
-                            - two.clone() * sum_exprs::<F>(&bs_mj, &lambdas)
+                            - &two * sum_exprs::<F>(&bs_mj, &lambdas)
                             - sum_exprs::<F>(&bs2_mj, &lambdas2)
-                            - u.clone() * Expression::Constant(bigint_to_fe::<F>(&urem(m, mj)))
+                            - &u * Expression::Constant(bigint_to_fe::<F>(&urem(m, mj)))
                             - Expression::Constant(bigint_to_fe::<F>(&urem(&(&k_min * m), mj)))
-                            - (vj.clone() + Expression::Constant(bigint_to_fe::<F>(lj_min)))
+                            - (vj + Expression::Constant(bigint_to_fe::<F>(lj_min)))
                                 * Expression::Constant(bigint_to_fe::<F>(mj)))
                 })
                 .collect::<Vec<_>>();

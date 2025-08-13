@@ -64,6 +64,7 @@ verification keys break backwards compatibility.
 * ZkStdLib API is not generic on the hash function for Fiat-Shamir [#13](https://github.com/midnightntwrk/midnight-zk/pull/13)
 * Fix minor issue with is_id flag in Fiat-Shamir with foreign points [#15](https://github.com/midnightntwrk/midnight-zk/pull/15)
 * Generalized VerifierGadget with a new `SelfEmulation` trait [#24](https://github.com/midnightntwrk/midnight-zk/pull/24)
+* Clean up identities with & instead of clones [#52](https://github.com/midnightntwrk/midnight-zk/pull/52)
 * Fixed completeness bug in NativeGadget's `sgn0` [#26](https://github.com/midnightntwrk/midnight-zk/pull/26)
 * Optimize `sgn0` [#27](https://github.com/midnightntwrk/midnight-zk/pull/27)
 * Make `check_vk` tests optional (for speeding up CI) [#31](https://github.com/midnightntwrk/midnight-zk/pull/31)

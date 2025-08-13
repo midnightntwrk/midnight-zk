@@ -198,14 +198,12 @@ impl EccConfig {
 
             let one = Expression::Constant(C::Base::ONE);
             let edwards_d = Expression::Constant(C::D);
-            let xp_yp = xp.clone() * yp.clone();
+            let xp_yp = &xp * &yp;
             let yp_yp = yp.square();
-            let d_xp_xp_yp_yp = edwards_d * xp_xp.clone() * yp_yp.clone();
+            let d_xp_xp_yp_yp = edwards_d * &xp_xp * &yp_yp;
 
-            let id1 = xq * (one.clone() + d_xp_xp_yp_yp.clone()) - (xp_yp.clone() + xp_yp);
-
-            let id2 = yq * (one - d_xp_xp_yp_yp) - (yp_yp + xp_xp.clone());
-
+            let id1 = xq * (&one + &d_xp_xp_yp_yp) - (xp_yp.clone() + xp_yp);
+            let id2 = yq * (one - d_xp_xp_yp_yp) - (yp_yp + &xp_xp);
             let id3 = xp.clone() * xp - xp_xp;
 
             Constraints::with_selector(
@@ -265,18 +263,14 @@ impl EccConfig {
 
             let xq_yq_xs_ys = meta.query_advice(self.advice_cols[8], Rotation::cur());
 
-            let xq_xs = xq.clone() * xs.clone();
-            let yq_ys = yq.clone() * ys.clone();
-            let xq_ys = xq.clone() * ys.clone();
-            let xs_yq = xs.clone() * yq.clone();
-            let b_d_xq_xs_yq_ys = b.clone() * edwards_d * xq_yq_xs_ys.clone();
+            let xq_xs = &xq * &xs;
+            let yq_ys = &yq * &ys;
+            let xq_ys = &xq * &ys;
+            let xs_yq = &xs * &yq;
+            let b_d_xq_xs_yq_ys = &b * edwards_d * &xq_yq_xs_ys;
 
-            let id1 = xr * (one.clone() + b_d_xq_xs_yq_ys.clone())
-                - (xq.clone() + b.clone() * (xq_ys + xs_yq - xq.clone()));
-
-            let id2 =
-                yr * (one - b_d_xq_xs_yq_ys) - (yq.clone() + b * (yq_ys + xq_xs - yq.clone()));
-
+            let id1 = xr * (&one + &b_d_xq_xs_yq_ys) - (&xq + &b * (xq_ys + xs_yq - &xq));
+            let id2 = yr * (one - b_d_xq_xs_yq_ys) - (&yq + b * (yq_ys + xq_xs - &yq));
             let id3 = xq_yq_xs_ys - xq * yq * xs * ys;
 
             Constraints::with_selector(

@@ -1320,13 +1320,47 @@ impl<F: Field> Neg for Expression<F> {
     }
 }
 
+impl<F: Field> Neg for &Expression<F> {
+    type Output = Expression<F>;
+    fn neg(self) -> Self::Output {
+        -self.clone()
+    }
+}
+
 impl<F: Field> Add for Expression<F> {
     type Output = Expression<F>;
     fn add(self, rhs: Expression<F>) -> Expression<F> {
         if self.contains_simple_selector() || rhs.contains_simple_selector() {
             panic!("attempted to use a simple selector in an addition");
         }
+        if self == Expression::Constant(F::ZERO) {
+            return rhs;
+        }
+        if rhs == Expression::Constant(F::ZERO) {
+            return self;
+        }
         Expression::Sum(Box::new(self), Box::new(rhs))
+    }
+}
+
+impl<'a, F: Field> Add for &'a Expression<F> {
+    type Output = Expression<F>;
+    fn add(self, rhs: &'a Expression<F>) -> Expression<F> {
+        self.clone() + rhs.clone()
+    }
+}
+
+impl<F: Field> Add<Expression<F>> for &Expression<F> {
+    type Output = Expression<F>;
+    fn add(self, rhs: Expression<F>) -> Expression<F> {
+        self.clone() + rhs
+    }
+}
+
+impl<'a, F: Field> Add<&'a Expression<F>> for Expression<F> {
+    type Output = Expression<F>;
+    fn add(self, rhs: &'a Expression<F>) -> Expression<F> {
+        self + rhs.clone()
     }
 }
 
@@ -1336,7 +1370,34 @@ impl<F: Field> Sub for Expression<F> {
         if self.contains_simple_selector() || rhs.contains_simple_selector() {
             panic!("attempted to use a simple selector in a subtraction");
         }
+        if self == Expression::Constant(F::ZERO) {
+            return -rhs;
+        }
+        if rhs == Expression::Constant(F::ZERO) {
+            return self;
+        }
         Expression::Sum(Box::new(self), Box::new(-rhs))
+    }
+}
+
+impl<'a, F: Field> Sub for &'a Expression<F> {
+    type Output = Expression<F>;
+    fn sub(self, rhs: &'a Expression<F>) -> Expression<F> {
+        self.clone() - rhs.clone()
+    }
+}
+
+impl<F: Field> Sub<Expression<F>> for &Expression<F> {
+    type Output = Expression<F>;
+    fn sub(self, rhs: Expression<F>) -> Expression<F> {
+        self.clone() - rhs
+    }
+}
+
+impl<'a, F: Field> Sub<&'a Expression<F>> for Expression<F> {
+    type Output = Expression<F>;
+    fn sub(self, rhs: &'a Expression<F>) -> Expression<F> {
+        self - rhs.clone()
     }
 }
 
@@ -1346,7 +1407,37 @@ impl<F: Field> Mul for Expression<F> {
         if self.contains_simple_selector() && rhs.contains_simple_selector() {
             panic!("attempted to multiply two expressions containing simple selectors");
         }
+        if self == Expression::Constant(F::ZERO) || rhs == Expression::Constant(F::ZERO) {
+            return Expression::Constant(F::ZERO);
+        }
+        if self == Expression::Constant(F::ONE) {
+            return rhs;
+        }
+        if rhs == Expression::Constant(F::ONE) {
+            return self;
+        }
         Expression::Product(Box::new(self), Box::new(rhs))
+    }
+}
+
+impl<'a, F: Field> Mul for &'a Expression<F> {
+    type Output = Expression<F>;
+    fn mul(self, rhs: &'a Expression<F>) -> Expression<F> {
+        self.clone() * rhs.clone()
+    }
+}
+
+impl<F: Field> Mul<Expression<F>> for &Expression<F> {
+    type Output = Expression<F>;
+    fn mul(self, rhs: Expression<F>) -> Expression<F> {
+        self.clone() * rhs
+    }
+}
+
+impl<'a, F: Field> Mul<&'a Expression<F>> for Expression<F> {
+    type Output = Expression<F>;
+    fn mul(self, rhs: &'a Expression<F>) -> Expression<F> {
+        self * rhs.clone()
     }
 }
 
@@ -1354,6 +1445,13 @@ impl<F: Field> Mul<F> for Expression<F> {
     type Output = Expression<F>;
     fn mul(self, rhs: F) -> Expression<F> {
         Expression::Scaled(Box::new(self), rhs)
+    }
+}
+
+impl<F: Field> Mul<F> for &Expression<F> {
+    type Output = Expression<F>;
+    fn mul(self, rhs: F) -> Expression<F> {
+        self.clone() * rhs
     }
 }
 
@@ -2499,17 +2597,17 @@ mod tests {
     #[test]
     fn iter_product() {
         let exprs: Vec<Expression<Fr>> = vec![
-            Expression::Constant(1.into()),
             Expression::Constant(2.into()),
             Expression::Constant(3.into()),
+            Expression::Constant(6.into()),
         ];
         let happened: Expression<Fr> = exprs.into_iter().product();
         let expected: Expression<Fr> = Expression::Product(
             Box::new(Expression::Product(
-                Box::new(Expression::Constant(1.into())),
                 Box::new(Expression::Constant(2.into())),
+                Box::new(Expression::Constant(3.into())),
             )),
-            Box::new(Expression::Constant(3.into())),
+            Box::new(Expression::Constant(6.into())),
         );
 
         assert_eq!(happened, expected);

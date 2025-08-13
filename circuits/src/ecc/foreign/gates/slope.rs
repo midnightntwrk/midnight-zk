@@ -178,19 +178,18 @@ impl<C: CircuitCurve> SlopeConfig<C> {
             // sign - 1 + sign * sum_qy - sum_py - sum_qx + sum_px - sum_lqx + sum_lpx
             //  = (u + k_min) * m
 
-            let native_id = cond.clone()
-                * (sign.clone() - Expression::Constant(F::ONE)
-                    + sign.clone() * sum_exprs::<F>(&bs, &qys)
+            let native_id = &cond
+                * (&sign - Expression::Constant(F::ONE) + &sign * sum_exprs::<F>(&bs, &qys)
                     - sum_exprs::<F>(&bs, &pys)
                     - sum_exprs::<F>(&bs, &qxs)
                     + sum_exprs::<F>(&bs, &pxs)
                     - sum_exprs::<F>(&bs2, &lqxs)
                     + sum_exprs::<F>(&bs2, &lpxs)
-                    - (u.clone() + Expression::Constant(bigint_to_fe::<F>(&k_min)))
+                    - (&u + Expression::Constant(bigint_to_fe::<F>(&k_min)))
                         * Expression::Constant(bigint_to_fe::<F>(m)));
             let mut moduli_ids = moduli
                 .iter()
-                .zip(vs.iter())
+                .zip(vs)
                 .zip(vs_bounds.iter())
                 .map(|((mj, vj), vj_bounds)| {
                     let (lj_min, _vj_max) = vj_bounds;
@@ -199,17 +198,17 @@ impl<C: CircuitCurve> SlopeConfig<C> {
                     // sign - 1 + sign * sum_qy_mj - sum_py_mj
                     //  - sum_qx_mj + sum_px_mj - sum_lqx_mj + sum_lpx_mj
                     //  - u * (m % mj) - (k_min * m) % mj - (vj + lj_min) * mj = 0
-                    cond.clone()
-                        * (sign.clone() - Expression::Constant(F::ONE)
-                            + sign.clone() * sum_exprs::<F>(&bs_mj, &qys)
+                    &cond
+                        * (&sign - Expression::Constant(F::ONE)
+                            + &sign * sum_exprs::<F>(&bs_mj, &qys)
                             - sum_exprs::<F>(&bs_mj, &pys)
                             - sum_exprs::<F>(&bs_mj, &qxs)
                             + sum_exprs::<F>(&bs_mj, &pxs)
                             - sum_exprs::<F>(&bs2_mj, &lqxs)
                             + sum_exprs::<F>(&bs2_mj, &lpxs)
-                            - u.clone() * Expression::Constant(bigint_to_fe::<F>(&urem(m, mj)))
+                            - &u * Expression::Constant(bigint_to_fe::<F>(&urem(m, mj)))
                             - Expression::Constant(bigint_to_fe::<F>(&urem(&(&k_min * m), mj)))
-                            - (vj.clone() + Expression::Constant(bigint_to_fe::<F>(lj_min)))
+                            - (vj + Expression::Constant(bigint_to_fe::<F>(lj_min)))
                                 * Expression::Constant(bigint_to_fe::<F>(mj)))
                 })
                 .collect::<Vec<_>>();

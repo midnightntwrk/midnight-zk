@@ -142,11 +142,11 @@ impl MulConfig {
                 + sum_exprs::<F>(&base_powers, &xs)
                 + sum_exprs::<F>(&base_powers, &ys)
                 - sum_exprs::<F>(&base_powers, &zs)
-                - (u.clone() + Expression::Constant(bigint_to_fe::<F>(&k_min)))
+                - (&u + Expression::Constant(bigint_to_fe::<F>(&k_min)))
                     * Expression::Constant(bigint_to_fe::<F>(m));
             let mut moduli_ids = moduli
                 .iter()
-                .zip(vs.iter())
+                .zip(vs)
                 .zip(vs_bounds.iter())
                 .map(|((mj, vj), vj_bounds)| {
                     let (lj_min, _vj_max) = vj_bounds;
@@ -161,9 +161,9 @@ impl MulConfig {
                         + sum_exprs::<F>(&bi_powers_mj, &xs)
                         + sum_exprs::<F>(&bi_powers_mj, &ys)
                         - sum_exprs::<F>(&bi_powers_mj, &zs)
-                        - u.clone() * Expression::Constant(bigint_to_fe::<F>(&urem(m, mj)))
+                        - &u * Expression::Constant(bigint_to_fe::<F>(&urem(m, mj)))
                         - Expression::Constant(bigint_to_fe::<F>(&urem(&(&k_min * m), mj)))
-                        - (vj.clone() + Expression::Constant(bigint_to_fe::<F>(lj_min)))
+                        - (vj + Expression::Constant(bigint_to_fe::<F>(lj_min)))
                             * Expression::Constant(bigint_to_fe::<F>(mj))
                 })
                 .collect::<Vec<_>>();
