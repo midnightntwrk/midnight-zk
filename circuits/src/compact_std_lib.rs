@@ -1560,6 +1560,7 @@ where
 {
     let pi = R::format_instance(instance);
     let com_inst = R::format_committed_instances(&witness);
+
     let circuit = MidnightCircuit {
         relation,
         instance: Value::known(instance.clone()),
