@@ -2,9 +2,9 @@ use ff::PrimeField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 use crate::{
-    field::{AssignedNative, NativeChip},
+    field::AssignedNative,
     hash::new_sha256::utils::{spread, u32_in_be_limbs},
-    instructions::AssignmentInstructions,
+    instructions::FieldInstructions,
 };
 
 /// Assigned plain value of given number of bits L.
@@ -63,37 +63,35 @@ pub(super) struct CompressionState<F: PrimeField> {
 impl<F: PrimeField, const N: usize> AssignedPlain<F, N> {
     pub(super) fn fixed(
         layouter: &mut impl Layouter<F>,
-        native_chip: &NativeChip<F>,
+        field_chip: &impl FieldInstructions<F, AssignedNative<F>>,
         c: u32,
     ) -> Result<Self, Error> {
         assert!(c < (1 << N));
-        Ok(Self(native_chip.assign_fixed(layouter, F::from(c as u64))?))
+        Ok(Self(field_chip.assign_fixed(layouter, F::from(c as u64))?))
     }
 }
 
 impl<F: PrimeField, const N: usize> AssignedSpreaded<F, N> {
     pub(super) fn fixed(
         layouter: &mut impl Layouter<F>,
-        native_chip: &NativeChip<F>,
+        field_chip: &impl FieldInstructions<F, AssignedNative<F>>,
         c: u32,
     ) -> Result<Self, Error> {
         assert!(c < (1 << N));
-        Ok(Self(
-            native_chip.assign_fixed(layouter, F::from(spread(c)))?,
-        ))
+        Ok(Self(field_chip.assign_fixed(layouter, F::from(spread(c)))?))
     }
 }
 
 impl<F: PrimeField, const N: usize> AssignedPlainSpreaded<F, N> {
     pub(super) fn fixed(
         layouter: &mut impl Layouter<F>,
-        native_chip: &NativeChip<F>,
+        field_chip: &impl FieldInstructions<F, AssignedNative<F>>,
         c: u32,
     ) -> Result<Self, Error> {
         assert!(c < (1 << N));
         Ok(Self {
-            plain: AssignedPlain::<F, N>::fixed(layouter, native_chip, c)?,
-            spreaded: AssignedSpreaded::<F, N>::fixed(layouter, native_chip, c)?,
+            plain: AssignedPlain::<F, N>::fixed(layouter, field_chip, c)?,
+            spreaded: AssignedSpreaded::<F, N>::fixed(layouter, field_chip, c)?,
         })
     }
 }
@@ -101,16 +99,16 @@ impl<F: PrimeField, const N: usize> AssignedPlainSpreaded<F, N> {
 impl<F: PrimeField> LimbsOfA<F> {
     pub(super) fn fixed(
         layouter: &mut impl Layouter<F>,
-        native_chip: &NativeChip<F>,
+        field_chip: &impl FieldInstructions<F, AssignedNative<F>>,
         constant: u32,
     ) -> Result<Self, Error> {
         let [c10, c09, c11, c02] = u32_in_be_limbs(constant, [10, 9, 11, 2]);
         Ok(Self {
-            combined: AssignedPlainSpreaded::<F, 32>::fixed(layouter, native_chip, constant)?,
-            spreaded_limb_10: AssignedSpreaded::<F, 10>::fixed(layouter, native_chip, c10)?,
-            spreaded_limb_09: AssignedSpreaded::<F, 9>::fixed(layouter, native_chip, c09)?,
-            spreaded_limb_11: AssignedSpreaded::<F, 11>::fixed(layouter, native_chip, c11)?,
-            spreaded_limb_02: AssignedSpreaded::<F, 2>::fixed(layouter, native_chip, c02)?,
+            combined: AssignedPlainSpreaded::<F, 32>::fixed(layouter, field_chip, constant)?,
+            spreaded_limb_10: AssignedSpreaded::<F, 10>::fixed(layouter, field_chip, c10)?,
+            spreaded_limb_09: AssignedSpreaded::<F, 9>::fixed(layouter, field_chip, c09)?,
+            spreaded_limb_11: AssignedSpreaded::<F, 11>::fixed(layouter, field_chip, c11)?,
+            spreaded_limb_02: AssignedSpreaded::<F, 2>::fixed(layouter, field_chip, c02)?,
         })
     }
 
@@ -122,17 +120,17 @@ impl<F: PrimeField> LimbsOfA<F> {
 impl<F: PrimeField> LimbsOfE<F> {
     pub(super) fn fixed(
         layouter: &mut impl Layouter<F>,
-        native_chip: &NativeChip<F>,
+        field_chip: &impl FieldInstructions<F, AssignedNative<F>>,
         constant: u32,
     ) -> Result<Self, Error> {
         let [c07, c12, c02, c05, c06] = u32_in_be_limbs(constant, [7, 12, 2, 5, 6]);
         Ok(Self {
-            combined: AssignedPlainSpreaded::<F, 32>::fixed(layouter, native_chip, constant)?,
-            spreaded_limb_07: AssignedSpreaded::<F, 7>::fixed(layouter, native_chip, c07)?,
-            spreaded_limb_12: AssignedSpreaded::<F, 12>::fixed(layouter, native_chip, c12)?,
-            spreaded_limb_02: AssignedSpreaded::<F, 2>::fixed(layouter, native_chip, c02)?,
-            spreaded_limb_05: AssignedSpreaded::<F, 5>::fixed(layouter, native_chip, c05)?,
-            spreaded_limb_06: AssignedSpreaded::<F, 6>::fixed(layouter, native_chip, c06)?,
+            combined: AssignedPlainSpreaded::<F, 32>::fixed(layouter, field_chip, constant)?,
+            spreaded_limb_07: AssignedSpreaded::<F, 7>::fixed(layouter, field_chip, c07)?,
+            spreaded_limb_12: AssignedSpreaded::<F, 12>::fixed(layouter, field_chip, c12)?,
+            spreaded_limb_02: AssignedSpreaded::<F, 2>::fixed(layouter, field_chip, c02)?,
+            spreaded_limb_05: AssignedSpreaded::<F, 5>::fixed(layouter, field_chip, c05)?,
+            spreaded_limb_06: AssignedSpreaded::<F, 6>::fixed(layouter, field_chip, c06)?,
         })
     }
 
@@ -144,18 +142,18 @@ impl<F: PrimeField> LimbsOfE<F> {
 impl<F: PrimeField> CompressionState<F> {
     pub(super) fn fixed(
         layouter: &mut impl Layouter<F>,
-        native_chip: &NativeChip<F>,
+        field_chip: &impl FieldInstructions<F, AssignedNative<F>>,
         v: &[u32; 8],
     ) -> Result<Self, Error> {
         Ok(Self {
-            a: LimbsOfA::<F>::fixed(layouter, native_chip, v[0])?,
-            b: AssignedPlainSpreaded::<F, 32>::fixed(layouter, native_chip, v[1])?,
-            c: AssignedPlainSpreaded::<F, 32>::fixed(layouter, native_chip, v[2])?,
-            d: AssignedPlain::<F, 32>::fixed(layouter, native_chip, v[3])?,
-            e: LimbsOfE::<F>::fixed(layouter, native_chip, v[4])?,
-            f: AssignedPlainSpreaded::<F, 32>::fixed(layouter, native_chip, v[5])?,
-            g: AssignedPlainSpreaded::<F, 32>::fixed(layouter, native_chip, v[6])?,
-            h: AssignedPlain::<F, 32>::fixed(layouter, native_chip, v[7])?,
+            a: LimbsOfA::<F>::fixed(layouter, field_chip, v[0])?,
+            b: AssignedPlainSpreaded::<F, 32>::fixed(layouter, field_chip, v[1])?,
+            c: AssignedPlainSpreaded::<F, 32>::fixed(layouter, field_chip, v[2])?,
+            d: AssignedPlain::<F, 32>::fixed(layouter, field_chip, v[3])?,
+            e: LimbsOfE::<F>::fixed(layouter, field_chip, v[4])?,
+            f: AssignedPlainSpreaded::<F, 32>::fixed(layouter, field_chip, v[5])?,
+            g: AssignedPlainSpreaded::<F, 32>::fixed(layouter, field_chip, v[6])?,
+            h: AssignedPlain::<F, 32>::fixed(layouter, field_chip, v[7])?,
         })
     }
 

@@ -7,7 +7,7 @@ use midnight_proofs::{
 use num_integer::Integer;
 
 use crate::{
-    field::NativeChip,
+    field::{decomposition::chip::P2RDecompositionChip, NativeChip, NativeGadget},
     hash::new_sha256::{
         gates::{
             add_mod_2_32_gate, decompose_10_9_11_2_gate, decompose_12_12_8_gate,
@@ -24,7 +24,7 @@ use crate::{
             u32_to_fe, u64_to_fe, MASK_EVN_64,
         },
     },
-    instructions::assignments::AssignmentInstructions,
+    instructions::{assignments::AssignmentInstructions, DecompositionInstructions},
     types::{AssignedByte, AssignedNative},
     utils::{
         util::{fe_to_u32, fe_to_u64},
@@ -49,8 +49,6 @@ const IV: [u32; 8] = [
 
 const NB_SHA256_ADVICE_COLS: usize = 8;
 const NB_SHA256_FIXED_COLS: usize = 2;
-const ROUND: usize = 64;
-const BLOCK: usize = 16;
 
 /// Tag for the even and odd 12-12-8 decompositions.
 enum Parity {
@@ -90,7 +88,7 @@ pub struct Sha256Config {
 #[derive(Clone, Debug)]
 pub struct Sha256Chip<F: PrimeField> {
     config: Sha256Config,
-    native_chip: NativeChip<F>,
+    native_gadget: NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>,
 }
 
 impl<F: PrimeField> Chip<F> for Sha256Chip<F> {
@@ -114,10 +112,10 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
 
     type InstructionDeps = NativeChip<F>;
 
-    fn new(config: &Sha256Config, native_chip: &Self::InstructionDeps) -> Self {
+    fn new(config: &Sha256Config, native_gadget: &Self::InstructionDeps) -> Self {
         Self {
             config: config.clone(),
-            native_chip: native_chip.clone(),
+            native_gadget: native_gadget.clone(),
         }
     }
 
@@ -768,7 +766,7 @@ impl<F: PrimeField> Sha256Chip<F> {
         let sprdd_nE_val: Value<F> = sprdd_nE_val.map(u64_to_fe);
 
         let mask_evn_64: AssignedNative<F> =
-            (self.native_chip).assign_fixed(layouter, F::from(MASK_EVN_64))?;
+            (self.native_gadget).assign_fixed(layouter, F::from(MASK_EVN_64))?;
 
         layouter.assign_region(
             || "Ch(E, F, G)",
@@ -842,7 +840,7 @@ impl<F: PrimeField> Sha256Chip<F> {
         to be tight as long as it prevents overflows in the native field).
         */
 
-        let zero = AssignedPlain::<F, 32>::fixed(layouter, &self.native_chip, 0)?;
+        let zero = AssignedPlain::<F, 32>::fixed(layouter, &self.native_gadget, 0)?;
 
         layouter.assign_region(
             || "decompose A in 10-9-11-2",
@@ -922,7 +920,7 @@ impl<F: PrimeField> Sha256Chip<F> {
         to be tight as long as it prevents overflows in the native field).
         */
 
-        let zero = AssignedPlain::<F, 32>::fixed(layouter, &self.native_chip, 0)?;
+        let zero = AssignedPlain::<F, 32>::fixed(layouter, &self.native_gadget, 0)?;
 
         layouter.assign_region(
             || "decompose E in 7-12-2-5-6",
@@ -1084,7 +1082,7 @@ impl<F: PrimeField> Sha256Chip<F> {
         round_k: u32,
         round_w: &AssignedPlain<F, 32>,
     ) -> Result<CompressionState<F>, Error> {
-        let round_k = AssignedPlain::<F, 32>::fixed(layouter, &self.native_chip, round_k)?;
+        let round_k = AssignedPlain::<F, 32>::fixed(layouter, &self.native_gadget, round_k)?;
 
         let Sigma_0_of_a = self.Sigma_0(layouter, &state.a)?;
         let Maj_of_a_b_c = self.maj(
@@ -1137,22 +1135,22 @@ impl<F: PrimeField> Sha256Chip<F> {
     fn message_schedule(
         &self,
         layouter: &mut impl Layouter<F>,
-        block: &[AssignedPlain<F, 32>; BLOCK],
-    ) -> Result<[AssignedPlain<F, 32>; ROUND], Error> {
+        block: &[AssignedPlain<F, 32>; 16],
+    ) -> Result<[AssignedPlain<F, 32>; 64], Error> {
         let message_word = self.prepare_message_word(layouter, &[block[0].clone()])?;
-        let mut message_words: [AssignedMessageWord<F>; ROUND] =
+        let mut message_words: [AssignedMessageWord<F>; 64] =
             core::array::from_fn(|_| message_word.clone());
 
         // The first 16 message words are got by decomposing the block words
         // into 12-1-1-1-7-3-4-3 limbs directly.
-        for word_idx in 1..BLOCK {
+        for word_idx in 1..16 {
             message_words[word_idx] =
                 self.prepare_message_word(layouter, &[block[word_idx].clone()])?;
         }
         // The remaining 48 message words are computed using the recurrence relation
         // W.i = W.(i-16) + W.(i-7) + σ₀(W.(i-15)) + σ₁(W.(i-2))
         // and decomposing into 12-1-1-1-7-3-4-3 limbs.
-        for word_idx in BLOCK..ROUND {
+        for word_idx in 16..64 {
             let sigma0_w_i_minus_15 = &self.sigma_0(layouter, &message_words[word_idx - 15])?;
             let sigma1_w_i_minus_2 = &self.sigma_1(layouter, &message_words[word_idx - 2])?;
             message_words[word_idx] = self.prepare_message_word(
@@ -1205,7 +1203,7 @@ impl<F: PrimeField> Sha256Chip<F> {
         to be tight as long as it prevents overflows in the native field).
         */
 
-        let zero = AssignedPlain::<F, 32>::fixed(layouter, &self.native_chip, 0)?;
+        let zero = AssignedPlain::<F, 32>::fixed(layouter, &self.native_gadget, 0)?;
 
         layouter.assign_region(
             || "prepare message word",
@@ -1418,6 +1416,10 @@ impl<F: PrimeField> Sha256Chip<F> {
     /// The `zero` argument is supposed to contain an assigned plain containing
     /// value 0, this is not enforced in this function, it is the responsibility
     /// of the caller to do so.
+    ///
+    /// # Panics
+    ///
+    /// If the more than 7 summands are provided.
     fn assign_add_mod_2_32(
         &self,
         region: &mut Region<'_, F>,
@@ -1427,6 +1429,7 @@ impl<F: PrimeField> Sha256Chip<F> {
         self.config().q_add_mod_2_32.enable(region, 0)?;
         let adv_cols = self.config().advice_cols;
 
+        assert!(summands.len() <= 7);
         let mut summands = summands.to_vec();
         summands.resize(7, zero.clone());
 
@@ -1451,23 +1454,69 @@ impl<F: PrimeField> Sha256Chip<F> {
             .map(AssignedPlain)
     }
 
+    pub fn pad(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        bytes: &[AssignedByte<F>],
+    ) -> Result<Vec<AssignedByte<F>>, Error> {
+        let l = bytes.len();
+        let k = 512 - (l + 65) % 512;
+
+        let zero = self.native_gadget.assign_fixed(layouter, 0u8)?;
+        let one = self.native_gadget.assign_fixed(layouter, 1u8)?;
+        let len = (self.native_gadget).assign_fixed(layouter, F::from(l as u64))?;
+        let len_bytes = (self.native_gadget).assigned_to_be_bytes(layouter, &len, Some(8))?;
+
+        let mut padded = bytes.to_vec();
+        padded.push(one);
+        padded.extend(vec![zero; k]);
+        padded.extend(len_bytes);
+
+        Ok(padded)
+    }
+
+    /// TODO
+    ///
+    /// # Panics
+    ///
+    /// If it does not receive exactly 64 bytes.
+    pub fn block_from_bytes(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        bytes: &[AssignedByte<F>],
+    ) -> Result<[AssignedPlain<F, 32>; 16], Error> {
+        assert_eq!(bytes.len(), 64);
+
+        let block = bytes
+            .chunks(4)
+            .map(|block_bytes| {
+                self.native_gadget
+                    .assigned_from_le_bytes(layouter, block_bytes)
+                    .map(AssignedPlain)
+            })
+            .collect::<Result<Vec<_>, Error>>()?;
+
+        Ok(block.try_into().unwrap())
+    }
+
     /// SHA256 computation.
     pub fn sha256(
         &self,
         layouter: &mut impl Layouter<F>,
         input_bytes: &[AssignedByte<F>],
     ) -> Result<[AssignedPlain<F, 32>; 8], Error> {
-        let message_blocks = self.message_schedule(layouter, input_bytes)?;
-        let mut state = CompressionState::<F>::fixed(layouter, &self.native_chip, &IV)?;
+        let mut state = CompressionState::<F>::fixed(layouter, &self.native_gadget, &IV)?;
 
-        for block in message_blocks {
+        for block_bytes in self.pad(layouter, input_bytes)?.chunks(64) {
+            let block = self.block_from_bytes(layouter, block_bytes)?;
+            let message_blocks = self.message_schedule(layouter, &block)?;
             let mut compression_state = state.clone();
             for i in 0..64 {
                 compression_state = self.compression_round(
                     layouter,
                     &compression_state,
                     ROUND_CONSTANTS[i],
-                    &block[i],
+                    &message_blocks[i],
                 )?;
             }
             state = state.add(self, layouter, &compression_state)?;
