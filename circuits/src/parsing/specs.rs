@@ -5,11 +5,6 @@ use super::{
     regex::{Regex, RegexInstructions},
 };
 
-/// Indicates if the parsing circuit for JWT credentials should enforce that
-/// JSON fields are valid JSON strings. See the documentation of
-/// `StdlibParser::Jwt` for more details.
-const ENFORCE_JSON_STRINGS: bool = true;
-
 /// Explicit names (and documentation) for indexing the various parsing
 /// specifications hard-coded in the standard library.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -20,102 +15,74 @@ pub enum StdLibParser {
     /// [RFC 7519](https://datatracker.ietf.org/doc/html/rfc7519) of the IETF. It uses
     /// [this data model in the VC field](https://www.w3.org/TR/vc-data-model-2.0/).
     ///
+    /// Notes:
+    ///   - Compliance with RFC 7519: the optional fields "iat" and "jti" are
+    ///     not checked by this credential. The fields "iss", "sub", "nbf" and
+    ///     "exp" are required by this credential.
+    ///   - The parser only accepts fields *in the same order as below*.
+    ///
+    /// ```text
+    /// {
+    ///     iss: string,
+    ///     sub: string,
+    ///     nbf: number,
+    ///     exp: number,
+    ///     vc: {
+    ///       credentialSchema?: {
+    ///         id: string,
+    ///         type: string
+    ///       }[],
+    ///       credentialSubject: {
+    ///         nationalId: string,
+    ///         familyName: string,
+    ///         givenName: string,  # marked "1"
+    ///         publicKeyJwk: {
+    ///           kty: string,
+    ///           crv: string,
+    ///           x: string, # marked "3"
+    ///           y: string  # marked "4"
+    ///         }
+    ///         id: string,
+    ///         birthDate: string,  # marked "2"
+    ///       },
+    ///       type: string[],
+    ///       @context: string[],
+    ///       issuer: string | { id: string, type?: string },
+    ///       credentialStatus: {
+    ///         statusPurpose: string,
+    ///         statusListIndex: number,
+    ///         id: string,
+    ///         type: string,
+    ///         statusListCredential: string
+    ///       }
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// In particular, the `string` token above refers to JSON strings. This
+    /// parser notably enforces the low-level requirements of JSON strings,
+    /// such as being UTF-8 encoded or correctly escaped, as required in
+    /// [RFC 8259](https://datatracker.ietf.org/doc/html/rfc8259) §7.
+    ///
     /// # Output Behaviour:
     ///
-    /// The following field contents (excluding the double quotes) are marked as
-    /// follows:
+    /// As Specified in the above grammar, the following field contents
+    /// (excluding the double quotes) are marked as follows:
     ///   - `"givenName"` -> 1
     ///   - `"birthDate"` -> 2
     ///   - `"x"` -> 3
     ///   - `"y"` -> 4
-    ///
-    /// # Optional simplified version
-    ///
-    /// If `ENFORCE_JSON_STRINGS` is set to `true`, this parser enforces the
-    /// low-level requirements of JSON strings, such as being UTF-8 encoded
-    /// or correctly escaped, as required in
-    /// [RFC 8259](https://datatracker.ietf.org/doc/html/rfc8259) §7.
-    ///
-    /// Setting `ENFORCE_JSON_STRINGS` to `false` replaces all JSON strings by
-    /// arbitrary sequences of bytes delimited by two double quotes (byte
-    /// `0x22`), and without double quotes except these two. This makes the
-    /// automaton lighter to handle in circuit (smaller lookup table). This
-    /// however assumes that the credentials will never use escaped quotes
-    /// (which are RFC compliant but are rejected here), and moves the
-    /// responsibility of all other JSON-string checks to the credential
-    /// issuer (which must be entirely trusted to avoid potential malicious
-    /// injections).
     Jwt,
 }
 
-// Specifies the format of a JWT (Json Web Token) credential payload format (see
-// the documentation of `ParsingSpecs::Jwt`). Informal description of the regex
-// in TypeScript interface notation below.
-//
-// Notes:
-//   - Compliance with RFC 7519: the optional fields "iat" and "jti" are not
-//     checked by this credential. The fields "iss", "sub", "nbf" and "exp" are
-//     required by this credential.
-//   - The parser only accepts fields *in the same order as below*.
-//
-// {
-//     iss: string,
-//     sub: string,
-//     nbf: number,
-//     exp: number,
-//     vc: {
-//       credentialSchema?: {
-//         id: string,
-//         type: string
-//       }[],
-//       credentialSubject: {
-//         nationalId: string,
-//         familyName: string,
-//         givenName: string,  # marked "1"
-//         publicKeyJwk: {
-//           kty: string,
-//           crv: string,
-//           x: string, # marked "3"
-//           y: string  # marked "4"
-//         }
-//         id: string,
-//         birthDate: string,  # marked "2"
-//       },
-//       type: string[],
-//       @context: string[],
-//       issuer: string | { id: string, type?: string },
-//       credentialStatus: {
-//         statusPurpose: string,
-//         statusListIndex: number,
-//         id: string,
-//         type: string,
-//         statusListCredential: string
-//       }
-//     }
-// }
+// Regex formalising the spec of `StdLIbParser::Jwt`.
 fn spec_jwt() -> Regex {
-    // Content of a basic field, possibly marked if `marker` is not 0.
-    let string = |marker: usize| -> Regex {
-        if ENFORCE_JSON_STRINGS {
-            // RFC 8259 JSON string.
-            Regex::json_string(marker)
-        } else {
-            // Simplified string: any byte sequence without double quotes, itself being
-            // delimited by double quotes.
-            let content = Regex::byte_not_from(*b"\"").list();
-            let marked_content = if marker == 0 {
-                content
-            } else {
-                content.add_marker(marker)
-            };
-            marked_content.delimited("\"".into(), "\"".into())
-        }
-    };
     // A json field, with possible white spaces.
     let field = |name: &str, content: Regex| -> Regex {
         Regex::spaced_cat([format!("\"{name}\"").into(), ":".into(), content])
     };
-    let string_field = |name: &str, marker: usize| -> Regex { field(name, string(marker)) };
+    let string_field =
+        |name: &str, marker: usize| -> Regex { field(name, Regex::json_string(marker)) };
     let int_field = |name: &str| -> Regex { field(name, Regex::digit().non_empty_list()) };
 
     // A collection of regular expressions, delimited by `opening` and `closing`,
@@ -127,7 +94,7 @@ fn spec_jwt() -> Regex {
     };
 
     // A JSON list of strings.
-    let string_list = string(0)
+    let string_list = Regex::json_string(0)
         .spaced_separated_list(",".into())
         .spaced_delimited("[".into(), "]".into());
 
@@ -173,7 +140,7 @@ fn spec_jwt() -> Regex {
     let issuer = field(
         "issuer",
         Regex::union([
-            string(0),
+            Regex::json_string(0),
             collec(
                 "{",
                 vec![string_field("id", 0), string_field("type", 0)],

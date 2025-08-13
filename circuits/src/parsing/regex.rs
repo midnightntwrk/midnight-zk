@@ -659,7 +659,7 @@ impl From<&u8> for Regex {
 impl Regex {
     // Flattens out `Union` structures, and pre-computes disjoint unions of
     // single-byte ranges. This produces an equivalent Regex which will however be
-    // translated as a smaller automaton. This makes determinisation significant
+    // translated as a smaller automaton. This makes determinisation significantly
     // more efficient for Regex defined with many nested unions.
     fn flatten_union(l: &[Self]) -> Vec<Self> {
         let mut res = Vec::with_capacity(l.len());
