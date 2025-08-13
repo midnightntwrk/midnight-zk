@@ -32,6 +32,7 @@ name = "dev_lookup"
 harness = false
 
 [dependencies]
+ahash = "0.8"
 backtrace = { version = "0.3", optional = true }
 ff = { workspace = true }
 group = { workspace = true }

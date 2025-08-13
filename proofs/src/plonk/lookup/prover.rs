@@ -1,4 +1,4 @@
-use std::{collections::HashMap, hash::Hash, iter};
+use std::{hash::Hash, iter};
 
 use ff::{FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
 use group::ff::BatchInvert;
@@ -395,14 +395,10 @@ where
     permuted_input_expression.sort();
 
     // A BTreeMap of each unique element in the table expression and its count
-    let mut leftover_table_map: HashMap<F, u32> =
-        table_expression
-            .iter()
-            .take(usable_rows)
-            .fold(HashMap::new(), |mut acc, coeff| {
-                *acc.entry(*coeff).or_insert(0) += 1;
-                acc
-            });
+    let mut leftover_table_map = ahash::AHashMap::<F, u32>::new();
+    table_expression.iter().take(usable_rows).for_each(|coeff| {
+        *leftover_table_map.entry(*coeff).or_insert(0) += 1;
+    });
     let mut permuted_table_coeffs = vec![F::ZERO; usable_rows];
 
     let mut repeated_input_rows = permuted_input_expression
