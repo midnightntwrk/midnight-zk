@@ -484,7 +484,7 @@ where
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    // Thrash argument
+    // Trash argument
     let trash_challenge: F = transcript.squeeze_challenge();
 
     let trashcans: Vec<Vec<trash::prover::Committed<F>>> = instance
