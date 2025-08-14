@@ -88,7 +88,7 @@ pub struct Sha256Config {
 #[derive(Clone, Debug)]
 pub struct Sha256Chip<F: PrimeField> {
     config: Sha256Config,
-    native_gadget: NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>,
+    pub(super) native_gadget: NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>,
 }
 
 impl<F: PrimeField> Chip<F> for Sha256Chip<F> {

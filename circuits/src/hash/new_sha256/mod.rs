@@ -20,4 +20,43 @@ mod sha256_chip;
 mod types;
 mod utils;
 
+use ff::PrimeField;
+use midnight_proofs::{circuit::Layouter, plonk::Error};
+use sha2::Digest;
 pub use sha256_chip::{Sha256Chip, Sha256Config};
+
+use crate::{
+    instructions::{hash::HashCPU, DecompositionInstructions, HashInstructions},
+    types::AssignedByte,
+};
+
+impl<F: PrimeField> HashCPU<u8, [u8; 32]> for Sha256Chip<F> {
+    fn hash(inputs: &[u8]) -> [u8; 32] {
+        let output = sha2::Sha256::digest(inputs);
+        output.into_iter().collect::<Vec<_>>().try_into().unwrap()
+    }
+}
+
+impl<F: PrimeField> HashInstructions<F, AssignedByte<F>, [AssignedByte<F>; 32]> for Sha256Chip<F> {
+    fn hash(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        inputs: &[AssignedByte<F>],
+    ) -> Result<[AssignedByte<F>; 32], Error> {
+        let output_words = self.sha256(layouter, inputs)?;
+
+        // convert the assigned 32-bit words to assigned bytes in big-endian order
+        let assigned_bytes = output_words
+            .into_iter()
+            .map(|word| {
+                self.native_gadget
+                    .assigned_to_be_bytes(layouter, &word.0, Some(4))
+            })
+            .collect::<Result<Vec<_>, Error>>()?
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
+
+        Ok(assigned_bytes.try_into().unwrap())
+    }
+}
