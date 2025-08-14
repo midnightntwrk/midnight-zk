@@ -60,3 +60,24 @@ impl<F: PrimeField> HashInstructions<F, AssignedByte<F>, [AssignedByte<F>; 32]> 
         Ok(assigned_bytes.try_into().unwrap())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use midnight_curves::Fq as Scalar;
+
+    use crate::{
+        field::NativeGadget, hash::new_sha256::Sha256Chip, instructions::hash::tests::test_hash,
+        types::AssignedByte,
+    };
+
+    #[test]
+    fn test_new_sha_hash() {
+        test_hash::<
+            Scalar,
+            AssignedByte<Scalar>,
+            [AssignedByte<Scalar>; 32],
+            Sha256Chip<Scalar>,
+            NativeGadget<Scalar, _, _>,
+        >(true, "New SHA256", 16);
+    }
+}

@@ -1,4 +1,6 @@
 use ff::PrimeField;
+#[cfg(any(test, feature = "testing"))]
+use midnight_proofs::plonk::Instance;
 use midnight_proofs::{
     circuit::{Chip, Layouter, Region, Value},
     plonk::{Advice, Column, ConstraintSystem, Constraints, Error, Fixed, Selector, TableColumn},
@@ -6,6 +8,8 @@ use midnight_proofs::{
 };
 use num_integer::Integer;
 
+#[cfg(any(test, feature = "testing"))]
+use crate::testing_utils::FromScratch;
 use crate::{
     field::{decomposition::chip::P2RDecompositionChip, NativeChip, NativeGadget},
     hash::new_sha256::{
@@ -1453,14 +1457,23 @@ impl<F: PrimeField> Sha256Chip<F> {
             .map(AssignedPlain)
     }
 
-    /// Pads the input byte array to be a multiple of 512 bits.
+    /// Pads the input byte array to be a multiple of 64 bytes.
     fn pad(
         &self,
         layouter: &mut impl Layouter<F>,
         bytes: &[AssignedByte<F>],
     ) -> Result<Vec<AssignedByte<F>>, Error> {
         let l = bytes.len();
-        let k = 512 - (8 * l + 65) % 512;
+        // We always pad (64 / 8) bytes for the input length and 1 byte for the padded
+        // one, thus when the number of bytes sums to: (64 / 8) + 1 + l % 64 >
+        // 64, the number of padded zero bytes should be: 64 - ((64 / 8) + 1 + l
+        // % 64 - 64)
+        let temp_bytes = (64 / 8) + 1 + l % 64;
+        let padding_zero_bytes = if temp_bytes <= 64 {
+            64 - temp_bytes
+        } else {
+            64 - (temp_bytes - 64)
+        };
 
         let zero = self.native_gadget.assign_fixed(layouter, 0u8)?;
         let one = self.native_gadget.assign_fixed(layouter, 1u8)?;
@@ -1469,8 +1482,10 @@ impl<F: PrimeField> Sha256Chip<F> {
 
         let mut padded = bytes.to_vec();
         padded.push(one);
-        padded.extend(vec![zero; k]);
+        padded.extend(vec![zero; padding_zero_bytes]);
         padded.extend(len_bytes);
+
+        assert_eq!(padded.len() % 64, 0);
 
         Ok(padded)
     }
@@ -1558,5 +1573,48 @@ impl<F: PrimeField> CompressionState<F> {
             g: g.combined,
             h: h.combined.plain,
         })
+    }
+}
+
+#[cfg(any(test, feature = "testing"))]
+impl<F: PrimeField> FromScratch<F> for Sha256Chip<F> {
+    type Config = (
+        Sha256Config,
+        <NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>> as FromScratch<F>>::Config,
+    );
+
+    fn new_from_scratch(config: &Self::Config) -> Self {
+        Self {
+            config: config.0.clone(),
+            native_gadget: NativeGadget::new_from_scratch(&config.1),
+        }
+    }
+
+    fn configure_from_scratch(
+        meta: &mut ConstraintSystem<F>,
+        instance_columns: &[Column<Instance>; 2],
+    ) -> Self::Config {
+        let adv_cols: [Column<Advice>; NB_SHA256_ADVICE_COLS] =
+            std::array::from_fn(|_| meta.advice_column());
+        let fixed_cols: [Column<Fixed>; NB_SHA256_FIXED_COLS] =
+            std::array::from_fn(|_| meta.fixed_column());
+        // Add all advice columns to permutation
+        for column in adv_cols.iter() {
+            meta.enable_equality(*column);
+        }
+
+        for column in fixed_cols.iter() {
+            meta.enable_constant(*column);
+        }
+        (
+            <Sha256Chip<F> as ComposableChip<F>>::configure(meta, &(adv_cols, fixed_cols)),
+            NativeGadget::configure_from_scratch(meta, instance_columns),
+        )
+    }
+
+    fn load_from_scratch(layouter: &mut impl Layouter<F>, config: &Self::Config) {
+        let sha256_chip = Sha256Chip::new_from_scratch(config);
+        let _ = sha256_chip.load(layouter);
+        NativeGadget::load_from_scratch(layouter, &config.1);
     }
 }

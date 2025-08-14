@@ -66,7 +66,7 @@ impl<F: PrimeField, const N: usize> AssignedPlain<F, N> {
         field_chip: &impl FieldInstructions<F, AssignedNative<F>>,
         c: u32,
     ) -> Result<Self, Error> {
-        assert!(c < (1 << N));
+        assert!((c as u64) < (1 << N));
         Ok(Self(field_chip.assign_fixed(layouter, F::from(c as u64))?))
     }
 }
@@ -77,7 +77,7 @@ impl<F: PrimeField, const N: usize> AssignedSpreaded<F, N> {
         field_chip: &impl FieldInstructions<F, AssignedNative<F>>,
         c: u32,
     ) -> Result<Self, Error> {
-        assert!(c < (1 << N));
+        assert!((c as u64) < (1 << N));
         Ok(Self(field_chip.assign_fixed(layouter, F::from(spread(c)))?))
     }
 }
@@ -88,7 +88,6 @@ impl<F: PrimeField, const N: usize> AssignedPlainSpreaded<F, N> {
         field_chip: &impl FieldInstructions<F, AssignedNative<F>>,
         c: u32,
     ) -> Result<Self, Error> {
-        assert!(c < (1 << N));
         Ok(Self {
             plain: AssignedPlain::<F, N>::fixed(layouter, field_chip, c)?,
             spreaded: AssignedSpreaded::<F, N>::fixed(layouter, field_chip, c)?,
