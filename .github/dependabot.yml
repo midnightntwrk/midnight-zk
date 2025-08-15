@@ -5,12 +5,12 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-      
-#  - package-ecosystem: "cargo"
-#    directory: "/"
-#    registries: "*"
-#    schedule:
-#      interval: "daily"
+
+  - package-ecosystem: "cargo"
+    directory: "/"
+    registries: "*"
+    schedule:
+      interval: "daily"
 #
 #  - package-ecosystem: "npm"
 #    directory: "/"
