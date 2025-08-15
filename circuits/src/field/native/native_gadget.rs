@@ -139,7 +139,7 @@ impl<F: PrimeField> From<AssignedBit<F>> for AssignedByte<F> {
 #[cfg(any(test, feature = "testing"))]
 impl<F: PrimeField> Sampleable for AssignedByte<F> {
     fn sample_inner(mut rng: impl RngCore) -> Self::Element {
-        rng.gen()
+        rng.r#gen()
     }
 }
 
