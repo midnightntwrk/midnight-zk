@@ -347,7 +347,7 @@ mod tests {
                 u64_to_fe::<F>(spreaded),
             )
         };
-        
+
         assert!(table.contains(&to_fe((0, 0, 0))));
         for _ in 0..10 {
             // Positive test: check that the table contains a valid triple of (tag, plain,

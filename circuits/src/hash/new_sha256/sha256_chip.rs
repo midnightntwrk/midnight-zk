@@ -1545,7 +1545,7 @@ impl<F: PrimeField> Sha256Chip<F> {
 
 impl<F: PrimeField> CompressionState<F> {
     /// Adds pair-wise (modulo 2^32) the fields of two compression states.
-    fn add(
+    pub fn add(
         &self,
         sha256_chip: &Sha256Chip<F>,
         layouter: &mut impl Layouter<F>,
@@ -1616,5 +1616,265 @@ impl<F: PrimeField> FromScratch<F> for Sha256Chip<F> {
         let sha256_chip = Sha256Chip::new_from_scratch(config);
         let _ = sha256_chip.load(layouter);
         NativeGadget::load_from_scratch(layouter, &config.1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use ff::PrimeField;
+    use halo2curves::pasta::pallas;
+    use midnight_proofs::{
+        circuit::{Layouter, SimpleFloorPlanner, Value},
+        dev::MockProver,
+        plonk::{Circuit, ConstraintSystem, Error},
+    };
+    use sha2::Digest;
+
+    use super::*;
+    use crate::{
+        instructions::AssignmentInstructions, testing_utils::FromScratch, utils::util::fe_to_u32,
+    };
+
+    /// Test vector: "abc"
+    #[cfg(test)]
+    pub fn msg_schedule_test_input() -> [Value<u32>; 16] {
+        [
+            Value::known(0b01100001011000100110001110000000),
+            Value::known(0b00000000000000000000000000000000),
+            Value::known(0b00000000000000000000000000000000),
+            Value::known(0b00000000000000000000000000000000),
+            Value::known(0b00000000000000000000000000000000),
+            Value::known(0b00000000000000000000000000000000),
+            Value::known(0b00000000000000000000000000000000),
+            Value::known(0b00000000000000000000000000000000),
+            Value::known(0b00000000000000000000000000000000),
+            Value::known(0b00000000000000000000000000000000),
+            Value::known(0b00000000000000000000000000000000),
+            Value::known(0b00000000000000000000000000000000),
+            Value::known(0b00000000000000000000000000000000),
+            Value::known(0b00000000000000000000000000000000),
+            Value::known(0b00000000000000000000000000000000),
+            Value::known(0b00000000000000000000000000011000),
+        ]
+    }
+
+    #[cfg(test)]
+    pub const MSG_SCHEDULE_TEST_OUTPUT: [u32; 64] = [
+        0b01100001011000100110001110000000,
+        0b00000000000000000000000000000000,
+        0b00000000000000000000000000000000,
+        0b00000000000000000000000000000000,
+        0b00000000000000000000000000000000,
+        0b00000000000000000000000000000000,
+        0b00000000000000000000000000000000,
+        0b00000000000000000000000000000000,
+        0b00000000000000000000000000000000,
+        0b00000000000000000000000000000000,
+        0b00000000000000000000000000000000,
+        0b00000000000000000000000000000000,
+        0b00000000000000000000000000000000,
+        0b00000000000000000000000000000000,
+        0b00000000000000000000000000000000,
+        0b00000000000000000000000000011000,
+        0b01100001011000100110001110000000,
+        0b00000000000011110000000000000000,
+        0b01111101101010000110010000000101,
+        0b01100000000000000000001111000110,
+        0b00111110100111010111101101111000,
+        0b00000001100000111111110000000000,
+        0b00010010110111001011111111011011,
+        0b11100010111000101100001110001110,
+        0b11001000001000010101110000011010,
+        0b10110111001101100111100110100010,
+        0b11100101101111000011100100001001,
+        0b00110010011001100011110001011011,
+        0b10011101001000001001110101100111,
+        0b11101100100001110010011011001011,
+        0b01110000001000010011100010100100,
+        0b11010011101101111001011100111011,
+        0b10010011111101011001100101111111,
+        0b00111011011010001011101001110011,
+        0b10101111111101001111111111000001,
+        0b11110001000010100101110001100010,
+        0b00001010100010110011100110010110,
+        0b01110010101011111000001100001010,
+        0b10010100000010011110001100111110,
+        0b00100100011001000001010100100010,
+        0b10011111010001111011111110010100,
+        0b11110000101001100100111101011010,
+        0b00111110001001000110101001111001,
+        0b00100111001100110011101110100011,
+        0b00001100010001110110001111110010,
+        0b10000100000010101011111100100111,
+        0b01111010001010010000110101011101,
+        0b00000110010111000100001111011010,
+        0b11111011001111101000100111001011,
+        0b11001100011101100001011111011011,
+        0b10111001111001100110110000110100,
+        0b10101001100110010011011001100111,
+        0b10000100101110101101111011011101,
+        0b11000010000101000110001010111100,
+        0b00010100100001110100011100101100,
+        0b10110010000011110111101010011001,
+        0b11101111010101111011100111001101,
+        0b11101011111001101011001000111000,
+        0b10011111111000110000100101011110,
+        0b01111000101111001000110101001011,
+        0b10100100001111111100111100010101,
+        0b01100110100010110010111111111000,
+        0b11101110101010111010001011001100,
+        0b00010010101100011110110111101011,
+    ];
+
+    #[test]
+    fn message_schedule() {
+        struct MyCircuit {}
+
+        impl<F: PrimeField> Circuit<F> for MyCircuit {
+            type Config = <Sha256Chip<F> as FromScratch<F>>::Config;
+            type FloorPlanner = SimpleFloorPlanner;
+            type Params = ();
+
+            fn without_witnesses(&self) -> Self {
+                MyCircuit {}
+            }
+
+            fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+                let committed_instance_column = meta.instance_column();
+                let instance_column = meta.instance_column();
+                <Sha256Chip<F> as FromScratch<F>>::configure_from_scratch(
+                    meta,
+                    &[committed_instance_column, instance_column],
+                )
+            }
+
+            fn synthesize(
+                &self,
+                config: Self::Config,
+                mut layouter: impl Layouter<F>,
+            ) -> Result<(), Error> {
+                <Sha256Chip<F> as FromScratch<F>>::load_from_scratch(&mut layouter, &config);
+                let sha256_chip = Sha256Chip::new_from_scratch(&config);
+                let native_gadget = sha256_chip.native_gadget.clone();
+                // Provide input
+                // Test vector: "abc"
+                let inputs: [Value<F>; 16] = msg_schedule_test_input().map(|x| x.map(u32_to_fe));
+                let assigned_inputs: [AssignedPlain<F, 32>; 16] = native_gadget
+                    .assign_many(&mut layouter, &inputs)?
+                    .into_iter()
+                    .map(AssignedPlain)
+                    .collect::<Vec<_>>()
+                    .try_into()
+                    .unwrap();
+
+                let message_words =
+                    sha256_chip.message_schedule(&mut layouter, &assigned_inputs)?;
+                for (word, test_word) in message_words.iter().zip(MSG_SCHEDULE_TEST_OUTPUT.iter()) {
+                    word.0.value().copied().assert_if_known(|word| {
+                        let word = fe_to_u32(*word);
+                        word == *test_word
+                    });
+                }
+                Ok(())
+            }
+        }
+
+        let circuit: MyCircuit = MyCircuit {};
+
+        let prover = match MockProver::<pallas::Base>::run(16, &circuit, vec![vec![], vec![]]) {
+            Ok(prover) => prover,
+            Err(e) => panic!("{:?}", e),
+        };
+        assert_eq!(prover.verify(), Ok(()));
+    }
+
+    #[test]
+    fn compress() {
+        struct MyCircuit {}
+
+        impl<F: PrimeField> Circuit<F> for MyCircuit {
+            type Config = <Sha256Chip<F> as FromScratch<F>>::Config;
+            type FloorPlanner = SimpleFloorPlanner;
+            type Params = ();
+
+            fn without_witnesses(&self) -> Self {
+                MyCircuit {}
+            }
+
+            fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+                let committed_instance_column = meta.instance_column();
+                let instance_column = meta.instance_column();
+                <Sha256Chip<F> as FromScratch<F>>::configure_from_scratch(
+                    meta,
+                    &[committed_instance_column, instance_column],
+                )
+            }
+
+            fn synthesize(
+                &self,
+                config: Self::Config,
+                mut layouter: impl Layouter<F>,
+            ) -> Result<(), Error> {
+                <Sha256Chip<F> as FromScratch<F>>::load_from_scratch(&mut layouter, &config);
+                let sha256_chip = Sha256Chip::new_from_scratch(&config);
+                let native_gadget = sha256_chip.native_gadget.clone();
+                // Provide input
+                // Test vector: "abc"
+                let inputs: [Value<F>; 64] =
+                    MSG_SCHEDULE_TEST_OUTPUT.map(|x| Value::known(u32_to_fe(x)));
+                let assigned_inputs: [AssignedPlain<F, 32>; 64] = native_gadget
+                    .assign_many(&mut layouter, &inputs)?
+                    .into_iter()
+                    .map(AssignedPlain)
+                    .collect::<Vec<_>>()
+                    .try_into()
+                    .unwrap();
+
+                let mut state = CompressionState::<F>::fixed(&mut layouter, &native_gadget, &IV)?;
+                let mut compression_state = state.clone();
+
+                for i in 0..64 {
+                    compression_state = sha256_chip.compression_round(
+                        &mut layouter,
+                        &compression_state,
+                        ROUND_CONSTANTS[i],
+                        &assigned_inputs[i],
+                    )?;
+                }
+                state = state.add(&sha256_chip, &mut layouter, &compression_state)?;
+
+                let state = state.plain();
+
+                let hash_output = sha2::Sha256::digest("abc");
+
+                let expected_result: Vec<u32> = hash_output
+                    .chunks(4)
+                    .map(|bytes| u32::from_be_bytes(bytes.try_into().unwrap()))
+                    .collect();
+
+                for (idx, word) in state.into_iter().enumerate() {
+                    word.0.value().copied().assert_if_known(|word| {
+                        let f_bytes = word
+                            .to_repr()
+                            .as_ref()
+                            .chunks(4)
+                            .map(|bytes| u32::from_le_bytes(bytes.try_into().unwrap()))
+                            .collect::<Vec<_>>();
+                        let (x, xs) = (f_bytes[0], &f_bytes[1..]);
+                        x == expected_result[idx] && xs.iter().all(|&x| x == 0)
+                    });
+                }
+
+                Ok(())
+            }
+        }
+
+        let circuit = MyCircuit {};
+
+        let prover = match MockProver::<pallas::Base>::run(16, &circuit, vec![vec![], vec![]]) {
+            Ok(prover) => prover,
+            Err(e) => panic!("{:?}", e),
+        };
+        assert_eq!(prover.verify(), Ok(()));
     }
 }

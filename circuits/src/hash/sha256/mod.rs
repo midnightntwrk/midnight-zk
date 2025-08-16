@@ -33,7 +33,7 @@ use {
 mod instructions;
 mod table11;
 mod table16;
-mod util;
+pub(super) mod util;
 
 pub use instructions::Sha256Instructions;
 pub use table11::{Table11Chip, Table11Config, NB_TABLE11_ADVICE_COLS, NB_TABLE11_FIXED_COLS};
