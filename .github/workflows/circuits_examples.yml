@@ -30,9 +30,8 @@ jobs:
           username: ${{ secrets.GH_USERNAME }}
           password: ${{ secrets.GH_PASSWORD }}
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
-      - uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af
-        with:
-          override: false
+      - name: 'Install rust-toolchain.toml'
+        run: rustup toolchain install
       - name: Restore Cargo Cache
         uses: actions/cache@v4
         with:
@@ -49,10 +48,7 @@ jobs:
         run: curl -L -o ./examples/assets/bls_filecoin_2p19 https://midnight-s3-fileshare-dev-eu-west-1.s3.eu-west-1.amazonaws.com/bls_filecoin_2p19
 
       - name: Run example ${{ matrix.example }}
-        uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505
-        with:
-         command: run
-         args: --release --example ${{ matrix.example }}
+        run: cargo run --release --example ${{ matrix.example }}
 
       # Save the Cargo Cache
       - name: Save Cargo Cache
