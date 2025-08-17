@@ -1464,19 +1464,19 @@ impl<F: PrimeField> Sha256Chip<F> {
         bytes: &[AssignedByte<F>],
     ) -> Result<Vec<AssignedByte<F>>, Error> {
         let l = bytes.len();
+        let remaining_bytes = 64 - (l % 64);
         // We always pad (64 / 8) bytes for the input length and 1 byte for the padded
-        // one, thus when the number of bytes sums to: (64 / 8) + 1 + l % 64 >
-        // 64, the number of padded zero bytes should be: 64 - ((64 / 8) + 1 + l
-        // % 64 - 64)
-        let temp_bytes = (64 / 8) + 1 + l % 64;
-        let padding_zero_bytes = if temp_bytes <= 64 {
-            64 - temp_bytes
+        // one
+        let padding_zero_bytes = if remaining_bytes < (64 / 8) + 1 {
+            // need two blocks for padding
+            64 + remaining_bytes - 9
         } else {
-            64 - (temp_bytes - 64)
+            // need one block for padding
+            remaining_bytes - 9
         };
 
-        let zero = self.native_gadget.assign_fixed(layouter, 0u8)?;
         let one = self.native_gadget.assign_fixed(layouter, 1u8)?;
+        let zero = self.native_gadget.assign_fixed(layouter, 0u8)?;
         let len = (self.native_gadget).assign_fixed(layouter, F::from(l as u64))?;
         let len_bytes = (self.native_gadget).assigned_to_be_bytes(layouter, &len, Some(8))?;
 
@@ -1632,29 +1632,34 @@ mod tests {
 
     use super::*;
     use crate::{
-        instructions::AssignmentInstructions, testing_utils::FromScratch, utils::util::fe_to_u32,
+        instructions::{AssertionInstructions, AssignmentInstructions},
+        testing_utils::FromScratch,
+        utils::util::fe_to_u32,
     };
 
     /// Test vector: "abc"
     #[cfg(test)]
-    pub fn msg_schedule_test_input() -> [Value<u32>; 16] {
+    pub const PAD_TEST_INPUT: [u8; 3] = [0x61, 0x62, 0x63];
+
+    #[cfg(test)]
+    pub fn msg_schedule_test_input() -> [u32; 16] {
         [
-            Value::known(0b01100001011000100110001110000000),
-            Value::known(0b00000000000000000000000000000000),
-            Value::known(0b00000000000000000000000000000000),
-            Value::known(0b00000000000000000000000000000000),
-            Value::known(0b00000000000000000000000000000000),
-            Value::known(0b00000000000000000000000000000000),
-            Value::known(0b00000000000000000000000000000000),
-            Value::known(0b00000000000000000000000000000000),
-            Value::known(0b00000000000000000000000000000000),
-            Value::known(0b00000000000000000000000000000000),
-            Value::known(0b00000000000000000000000000000000),
-            Value::known(0b00000000000000000000000000000000),
-            Value::known(0b00000000000000000000000000000000),
-            Value::known(0b00000000000000000000000000000000),
-            Value::known(0b00000000000000000000000000000000),
-            Value::known(0b00000000000000000000000000011000),
+            0b01100001_01100010_01100011_10000000,
+            0b00000000000000000000000000000000,
+            0b00000000000000000000000000000000,
+            0b00000000000000000000000000000000,
+            0b00000000000000000000000000000000,
+            0b00000000000000000000000000000000,
+            0b00000000000000000000000000000000,
+            0b00000000000000000000000000000000,
+            0b00000000000000000000000000000000,
+            0b00000000000000000000000000000000,
+            0b00000000000000000000000000000000,
+            0b00000000000000000000000000000000,
+            0b00000000000000000000000000000000,
+            0b00000000000000000000000000000000,
+            0b00000000000000000000000000000000,
+            0b00000000000000000000000000011000,
         ]
     }
 
@@ -1758,7 +1763,8 @@ mod tests {
                 let native_gadget = sha256_chip.native_gadget.clone();
                 // Provide input
                 // Test vector: "abc"
-                let inputs: [Value<F>; 16] = msg_schedule_test_input().map(|x| x.map(u32_to_fe));
+                let inputs: [Value<F>; 16] =
+                    msg_schedule_test_input().map(|x| Value::known(u32_to_fe(x)));
                 let assigned_inputs: [AssignedPlain<F, 32>; 16] = native_gadget
                     .assign_many(&mut layouter, &inputs)?
                     .into_iter()
@@ -1863,6 +1869,86 @@ mod tests {
                         let (x, xs) = (f_bytes[0], &f_bytes[1..]);
                         x == expected_result[idx] && xs.iter().all(|&x| x == 0)
                     });
+                }
+
+                Ok(())
+            }
+        }
+
+        let circuit = MyCircuit {};
+
+        let prover = match MockProver::<pallas::Base>::run(16, &circuit, vec![vec![], vec![]]) {
+            Ok(prover) => prover,
+            Err(e) => panic!("{:?}", e),
+        };
+        assert_eq!(prover.verify(), Ok(()));
+    }
+
+    #[test]
+    fn pad() {
+        struct MyCircuit {}
+
+        impl<F: PrimeField> Circuit<F> for MyCircuit {
+            type Config = <Sha256Chip<F> as FromScratch<F>>::Config;
+            type FloorPlanner = SimpleFloorPlanner;
+            type Params = ();
+
+            fn without_witnesses(&self) -> Self {
+                MyCircuit {}
+            }
+
+            fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+                let committed_instance_column = meta.instance_column();
+                let instance_column = meta.instance_column();
+                <Sha256Chip<F> as FromScratch<F>>::configure_from_scratch(
+                    meta,
+                    &[committed_instance_column, instance_column],
+                )
+            }
+
+            fn synthesize(
+                &self,
+                config: Self::Config,
+                mut layouter: impl Layouter<F>,
+            ) -> Result<(), Error> {
+                <Sha256Chip<F> as FromScratch<F>>::load_from_scratch(&mut layouter, &config);
+                let sha256_chip = Sha256Chip::new_from_scratch(&config);
+                let native_gadget = sha256_chip.native_gadget.clone();
+
+                // Provide input
+                // Test vector: "abc"
+                let assigned_padding_input: [AssignedByte<F>; 3] =
+                    PAD_TEST_INPUT.map(|x| native_gadget.assign_fixed(&mut layouter, x).unwrap());
+
+                let assigned_padding_output =
+                    sha256_chip.pad(&mut layouter, &assigned_padding_input)?;
+                let block_words =
+                    sha256_chip.block_from_bytes(&mut layouter, &assigned_padding_output)?;
+                // convert the assigned 32-bit words to assigned bytes in big-endian order
+                let assigned_output_bytes = block_words
+                    .iter()
+                    .map(|word| native_gadget.assigned_to_be_bytes(&mut layouter, &word.0, Some(4)))
+                    .collect::<Result<Vec<_>, Error>>()?
+                    .into_iter()
+                    .flatten()
+                    .collect::<Vec<_>>();
+                let expected_result = msg_schedule_test_input();
+
+                // Check padding
+                //    for (word, test_word) in
+                // block_words.iter().zip(msg_schedule_test_input().iter()) {
+                //         word.0.value().copied().assert_if_known(|word| {
+                //             let word = fe_to_u32(*word);
+                //             word == *test_word
+                //         });
+                //     }
+
+                for (idx, word) in block_words.iter().enumerate() {
+                    let _ = native_gadget.assert_equal_to_fixed(
+                        &mut layouter,
+                        &word.0,
+                        u32_to_fe(expected_result[idx]),
+                    );
                 }
 
                 Ok(())

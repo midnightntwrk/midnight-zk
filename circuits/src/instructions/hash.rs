@@ -138,8 +138,7 @@ pub mod tests {
                     <HashChip as HashCPU<Input::Element, Output::Element>>::hash(input);
 
                 let output = chip.hash(&mut layouter, &inputs)?;
-                // assign_chip.assert_equal_to_fixed(&mut layouter, &output,
-                // expected_output)?;
+                assign_chip.assert_equal_to_fixed(&mut layouter, &output, expected_output)?;
             }
 
             Ok(())
