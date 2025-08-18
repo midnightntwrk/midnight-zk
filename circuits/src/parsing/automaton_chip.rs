@@ -32,7 +32,7 @@
 //    whether the terminal state of an automaton run is final.
 
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap},
+    collections::{BTreeMap, BTreeSet},
     fmt::Debug,
     hash::Hash,
 };
@@ -43,6 +43,7 @@ use midnight_proofs::{
     plonk::{Advice, Column, ConstraintSystem, Error, Selector, TableColumn},
     poly::Rotation,
 };
+use rustc_hash::FxHashMap;
 #[cfg(test)]
 use {
     super::regex::Regex, super::regex::RegexInstructions,
@@ -87,14 +88,10 @@ where
     fn from(value: &Automaton) -> Self {
         NativeAutomaton {
             initial_state: F::from(value.initial_state as u64),
-            final_states: value
-                .final_states
-                .iter()
+            final_states: (value.final_states.iter())
                 .map(|s| F::from(*s as u64))
                 .collect::<BTreeSet<_>>(),
-            transitions: value
-                .transitions
-                .iter()
+            transitions: (value.transitions.iter())
                 .map(|(&(s1, a), &(s2, marker))| {
                     (
                         (F::from(s1 as u64), F::from(a as u64)),
@@ -120,8 +117,8 @@ where
     F: PrimeField + Ord,
 {
     fn from_collection<LibIndex>(
-        automata: &HashMap<LibIndex, Automaton>,
-    ) -> HashMap<LibIndex, NativeAutomaton<F>>
+        automata: &FxHashMap<LibIndex, Automaton>,
+    ) -> FxHashMap<LibIndex, NativeAutomaton<F>>
     where
         LibIndex: Hash + Eq + Copy,
     {
@@ -130,21 +127,20 @@ where
         // 0 is used as a dummy state to encode some checks as fake
         // transitions).
         let mut offset = 1;
-        automata
-            .iter()
+        (automata.iter())
             .map(|(name, automaton)| {
                 let na: NativeAutomaton<F> = automaton.offset_states(offset).into();
-                offset += automaton.state_bound;
+                offset += automaton.nb_states;
                 (*name, na)
             })
-            .collect::<HashMap<_, _>>()
+            .collect::<FxHashMap<_, _>>()
     }
 }
 
 /// Automaton gate configuration.
 #[derive(Clone, Debug)]
 pub struct AutomatonConfig<LibIndex, F> {
-    automata: HashMap<LibIndex, NativeAutomaton<F>>,
+    automata: FxHashMap<LibIndex, NativeAutomaton<F>>,
     q_automaton: Selector,
     state_col: Column<Advice>,
     letter_col: Column<Advice>,
@@ -189,7 +185,7 @@ where
 
     type SharedResources = (
         [Column<Advice>; NB_AUTOMATA_COLS],
-        HashMap<LibIndex, Automaton>,
+        FxHashMap<LibIndex, Automaton>,
     );
 
     fn new(config: &AutomatonConfig<LibIndex, F>, deps: &Self::InstructionDeps) -> Self {
@@ -541,7 +537,7 @@ where
         let fixed_cols = (0..NB_ARITH_COLS + 4)
             .map(|_| meta.fixed_column())
             .collect::<Vec<_>>();
-        let automata = HashMap::from_iter(
+        let automata = FxHashMap::from_iter(
             [
                 Automaton::hard_coded_example0(),
                 Automaton::hard_coded_example1(),
