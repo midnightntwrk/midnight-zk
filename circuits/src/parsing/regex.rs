@@ -29,21 +29,16 @@ use super::automaton::{Automaton, Letter, RawAutomaton, ALPHABET_MAX_SIZE};
 /// A type for formal languages described as regular expressions.
 #[derive(Clone, Debug)]
 pub struct Regex {
-    // The acutal regular expression.
+    /// The acutal regular expression.
     content: RegexInternal,
-    // Marker of the regular expression, with 0 meaning the expession will not output anything. The
-    // code will panic when attempting to use nested non-zero values for this field.
-    toplevel_marker: usize,
-    // Stores all non-zero markers of the regular expression, except the one at toplevel.
-    other_markers: HashSet<usize>,
 }
 
 #[derive(Clone, Debug)]
 enum RegexInternal {
-    // A language accepting a word of one arbitrary byte from the range (`Vec`) taken as an
+    // A language accepting a word of one arbitrary marked byte from the range (`Vec`) taken as an
     // argument. Working with ranges instead of single bytes allows to precompute some single-byte
     // operations that weight heavy on the determinisation process.
-    Single(Vec<u8>),
+    Single(Vec<Letter>),
     // Concatenation of a vector of languages.
     Concat(Vec<Regex>),
     // Union of a vector of languages.
@@ -52,9 +47,8 @@ enum RegexInternal {
     // different markers are always treated as different letters, except when one of the markers
     // is 0 (in which case they are unified into the non-zero marker).
     Inter(Vec<Regex>),
-    // Iteration of a given language (including the empty word for 0 iteration). The boolean
-    // indicates whether the iteration is strict, that is, the boolean being true means that the
-    // empty word is not accepted.
+    // Iteration of a given language. The boolean indicates whether the iteration is strict, that
+    // is, the boolean being true means that the empty word is not accepted.
     Star(bool, Box<Regex>),
     // Complement of a language. The code enforces that its argument does not contain markers
     // (panics if attempted to put any).
@@ -66,21 +60,7 @@ enum RegexInternal {
 // with the internal data.
 impl From<RegexInternal> for Regex {
     fn from(value: RegexInternal) -> Self {
-        let mut other_markers = HashSet::new();
-        match &value {
-            RegexInternal::Single(_) => (),
-            RegexInternal::Concat(l) | RegexInternal::Union(l) | RegexInternal::Inter(l) => l
-                .iter()
-                .for_each(|r| other_markers.extend(&r.other_markers)),
-            RegexInternal::Star(_, r) | RegexInternal::Complement(r) => {
-                other_markers.extend(&r.other_markers)
-            }
-        };
-        Regex {
-            content: value,
-            toplevel_marker: 0,
-            other_markers,
-        }
+        Regex { content: value }
     }
 }
 
@@ -92,26 +72,22 @@ pub trait RegexInstructions
 where
     Self: Sized + Clone,
 {
-    /// Updates all markers appearing on bytes satisfying the predicate `pred`
-    /// to the new value `marker`. If `pred` is always true and `self` is not
-    /// already marked, it is more efficient to call `add_marker`.
-    fn update_markers_when(&self, pred: &impl Fn(u8) -> bool, marker: usize) -> Self;
+    /// For all bytes `b` of `self`, overwrites its marker with `m` if `f(b) ==
+    /// Some(m)`, and leave it unchanged if `f(b) == None`. Note in particular
+    /// that `f(b) == Some(0)` removes the marker on `b`, which is different
+    /// from `f(b) == None`.
+    fn mark(&self, f: &impl Fn(u8) -> Option<usize>) -> Self;
 
-    /// Analogue of `update_markers_when`, but uses a slice of bytes rather than
-    /// a predicate.
-    fn update_markers_on(&self, bytes: &[u8], marker: usize) -> Self {
-        self.update_markers_when(&|b| bytes.contains(&b), marker)
-    }
+    /// Specific (more efficient) implementation of `RegexInstructions::mark`
+    /// that marks a given slice of bytes with a fixed marker. Overwrites
+    /// previous markers. Also note that choosing `marker` to be `0` means
+    /// erasing any markers present on `bytes`.
+    fn mark_bytes(&self, bytes: impl IntoIterator<Item = u8>, marker: usize) -> Self;
 
-    /// Marks all bytes from an unmarked regular expression with `marker`.
-    /// Panics if `marker == 0`, or if any prior marker exists in `self`. In
-    /// exchange, is more efficient than `update_markers_when` for this specific
-    /// task.
-    fn add_marker(self, marker: usize) -> Self;
-
-    /// Removes all markers from `self`. More efficient than
-    /// `update_markers_when` for this specific task.
-    fn remove_markers(&self) -> Self;
+    /// Takes the markers of `self` and replace them accordingly to the `upd`
+    /// function (`upd(m) == None` meaning that the marker `m` is left
+    /// unchanged).
+    fn replace_markers(&self, upd: &impl Fn(usize) -> Option<usize>) -> Self;
 
     /// A regular expression matching any single unmarked byte from a
     /// collection.
@@ -121,9 +97,9 @@ where
     /// belong to a given collection. Is equivalent to
     /// `Self::any_byte().minus(Self::byte_from(l))` but is more efficient.
     fn byte_not_from(l: impl IntoIterator<Item = u8>) -> Self {
-        let mut bytes: [bool; ALPHABET_MAX_SIZE - 1] = core::array::from_fn(|_| true);
+        let mut bytes: [bool; ALPHABET_MAX_SIZE] = core::array::from_fn(|_| true);
         l.into_iter().for_each(|b| bytes[b as usize] = false);
-        Self::byte_from((0..(ALPHABET_MAX_SIZE - 1) as u8).filter(|&b| bytes[b as usize]))
+        Self::byte_from((0..=(ALPHABET_MAX_SIZE - 1) as u8).filter(|&b| bytes[b as usize]))
     }
 
     /// A regular expression consisting of a single, arbitrary, and unmarked
@@ -208,7 +184,9 @@ where
 
     /// Matches any number of successive copies (0 or more) of a regular
     /// expression.
-    fn list(self) -> Self;
+    fn list(self) -> Self {
+        self.non_empty_list().or(Self::epsilon())
+    }
 
     /// Similar as `Self::list`, but inserts (0 or more) blank characters
     /// between each consecutive iteration. Spaces are not inserted when
@@ -451,8 +429,7 @@ where
     /// defined by the following properties:
     ///
     ///   - They are delimited by double quotes (byte 0x22). Here, the quoted
-    ///     content is marked with the `marker` argument (using
-    ///     `RegexInstructions::add_marker`), when `marker` is not 0.
+    ///     content is marked with 1.
     ///
     ///   - They are valid UTF-8 encoding.
     ///
@@ -472,7 +449,7 @@ where
     ///   \\u[0-9a-fA-F]{4}
     /// )* 0x22
     /// ```
-    fn json_string(marker: usize) -> Self {
+    fn json_string() -> Self {
         // All Unicode code points except control chars, `"` and `\`.
         let unescaped_utf8_cps =
             Self::utf8_cps().and(Self::byte_not_from((0x00..=0x1F).chain(*b"\"\\")));
@@ -483,116 +460,85 @@ where
         let unicode_escape = Self::word("\\u").terminated(hex.repeat(4));
 
         let content = Self::union([unescaped_utf8_cps, simple_escape, unicode_escape]).list();
-        let marked_content = if marker == 0 {
-            content
-        } else {
-            content.add_marker(marker)
-        };
-        marked_content.delimited(Self::word("\""), Self::word("\""))
+        content
+            .mark(&|_| Some(1))
+            .delimited(Self::word("\""), Self::word("\""))
     }
 }
 
-impl RegexInstructions for Regex {
-    fn update_markers_when(&self, pred: &impl Fn(u8) -> bool, marker: usize) -> Self {
-        let mut toplevel_marker = self.toplevel_marker;
-        // This pattern matching updates the toplevel marker, and computes the field
-        // `.content` of the regular expression to return.
-        let content = match &self.content {
-            // The case of single-letter languages is handled separately to return a simpler regex.
-            // Not doing this sends a significantly higher load to the determinisation algorithm, as
-            // single-letter ranges would otherwise be translated as automata with a number of
-            // states proportional to the range size, which are extremely costly to determinise.
-            RegexInternal::Single(range) => {
-                if toplevel_marker == marker {
-                    // Nothing to do if the new and previous markers are identical.
-                    self.content.clone()
-                } else {
-                    // Otherwise, partition the range according to the `pred` predicate, and return
-                    // the union of the two ranges with the corresponding markers.
-                    let (pos, neg): (Vec<u8>, Vec<u8>) = range.iter().partition(|a| pred(**a));
-                    if pos.is_empty() {
-                        self.content.clone()
-                    } else if neg.is_empty() {
-                        toplevel_marker = marker;
-                        RegexInternal::Single(pos)
-                    } else {
-                        let regex_pos = Regex {
-                            content: RegexInternal::Single(pos),
-                            toplevel_marker: marker,
-                            other_markers: HashSet::new(),
-                        };
-                        let regex_neg = Regex {
-                            content: RegexInternal::Single(neg),
-                            toplevel_marker: self.toplevel_marker,
-                            other_markers: HashSet::new(),
-                        };
-                        toplevel_marker = 0;
-                        RegexInternal::Union(vec![regex_pos, regex_neg])
-                    }
-                }
-            }
-            RegexInternal::Concat(l) => RegexInternal::Concat(
-                l.iter()
-                    .map(|e| e.update_markers_when(pred, marker))
-                    .collect::<Vec<_>>(),
-            ),
-            RegexInternal::Union(l) => RegexInternal::Union(
-                l.iter()
-                    .map(|e| e.update_markers_when(pred, marker))
-                    .collect::<Vec<_>>(),
-            ),
-            RegexInternal::Inter(l) => RegexInternal::Inter(
-                l.iter()
-                    .map(|e| e.update_markers_when(pred, marker))
-                    .collect::<Vec<_>>(),
-            ),
-            RegexInternal::Star(b, r) => {
-                RegexInternal::Star(*b, Box::new(r.update_markers_when(pred, marker)))
-            }
-            RegexInternal::Complement(r) => {
-                RegexInternal::Complement(Box::new(r.update_markers_when(pred, marker)))
-            }
-        };
-        let mut regex: Regex = content.into();
-        regex.toplevel_marker = toplevel_marker;
-        regex
-    }
-
-    // All information is carried at toplevel with the fields `toplevel_marker` and
-    // `other_markers`. No need to explore the regex recursively like in
-    // `update_markers_when`.
-    fn add_marker(self, index: usize) -> Self {
-        assert!(index != 0, "Regex::add_marker cannot be called with index 0 (because 0 is the convention for no marking).");
-        if self.toplevel_marker != 0 || !self.other_markers.is_empty() {
-            panic!("Attempted to add the two markers {index} and {} to a part of a regular expression. Nested markers are not allowed.", self.other_markers.iter().chain(once(&self.toplevel_marker)).find(|&&b| b != 0).unwrap())
-        } else {
-            Self {
-                toplevel_marker: index,
-                ..self
-            }
-        }
-    }
-
-    fn remove_markers(&self) -> Self {
+impl Regex {
+    /// Checks if `self` contains a non-0 marker.
+    fn contains_markers(&self) -> bool {
         match &self.content {
-            RegexInternal::Single(_) => self.content.clone(),
-            RegexInternal::Concat(l) => {
-                RegexInternal::Concat(l.iter().map(|e| e.remove_markers()).collect::<Vec<_>>())
+            RegexInternal::Single(bytes) => bytes.iter().any(|b| b.marker != 0),
+            RegexInternal::Concat(v) | RegexInternal::Union(v) | RegexInternal::Inter(v) => {
+                v.iter().any(|r| r.contains_markers())
             }
-            RegexInternal::Union(l) => {
-                RegexInternal::Union(l.iter().map(|e| e.remove_markers()).collect::<Vec<_>>())
-            }
-            RegexInternal::Inter(l) => {
-                RegexInternal::Inter(l.iter().map(|e| e.remove_markers()).collect::<Vec<_>>())
-            }
-            RegexInternal::Star(b, r) => RegexInternal::Star(*b, Box::new(r.remove_markers())),
-            RegexInternal::Complement(r) => RegexInternal::Complement(Box::new(r.remove_markers())),
+            RegexInternal::Star(_, r) | RegexInternal::Complement(r) => r.contains_markers(),
         }
-        .into()
+    }
+}
+
+impl Regex {
+    /// Applies an operation on all `Letter` appearing in a Regex. Duplicates
+    /// are removed from `Single` arguments after the map is applied.
+    fn map(&self, f: &impl Fn(&Letter) -> Letter) -> Self {
+        match &self.content {
+            RegexInternal::Single(bytes) => Regex {
+                content: RegexInternal::Single(
+                    bytes
+                        .iter()
+                        .map(f)
+                        .collect::<FxHashSet<_>>() // Removing duplicates.
+                        .into_iter()
+                        .collect(),
+                ),
+            },
+            RegexInternal::Concat(v) => {
+                RegexInternal::Concat(v.iter().map(|r| r.map(f)).collect()).into()
+            }
+            RegexInternal::Union(v) => {
+                RegexInternal::Union(v.iter().map(|r| r.map(f)).collect()).into()
+            }
+            RegexInternal::Inter(v) => {
+                RegexInternal::Inter(v.iter().map(|r| r.map(f)).collect()).into()
+            }
+            RegexInternal::Star(strict, r) => {
+                RegexInternal::Star(*strict, Box::new(r.map(f))).into()
+            }
+            RegexInternal::Complement(r) => RegexInternal::Complement(Box::new(r.map(f))).into(),
+        }
+    }
+}
+
+// This implementation of `RegexInstructions` reimplements a few methods for
+// efficiency purposes:
+// - non_empty_list
+impl RegexInstructions for Regex {
+    fn mark(&self, f: &impl Fn(u8) -> Option<usize>) -> Self {
+        self.map(&|&letter| Letter {
+            char: letter.char,
+            marker: f(letter.char).unwrap_or(letter.marker),
+        })
+    }
+
+    fn mark_bytes(&self, bytes: impl IntoIterator<Item = u8>, marker: usize) -> Self {
+        let mut marker_update = [None; ALPHABET_MAX_SIZE];
+        for b in bytes {
+            marker_update[b as usize] = Some(marker)
+        }
+        self.mark(&|b| marker_update[b as usize])
+    }
+
+    fn replace_markers(&self, upd: &impl Fn(usize) -> Option<usize>) -> Self {
+        self.map(&|&letter| Letter {
+            char: letter.char,
+            marker: upd(letter.marker).unwrap_or(letter.marker),
+        })
     }
 
     fn byte_from(l: impl IntoIterator<Item = u8>) -> Self {
-        RegexInternal::Single(Vec::from_iter(l)).into()
+        RegexInternal::Single(l.into_iter().map(u8::into).collect()).into()
     }
 
     fn cat<S: IntoIterator<Item = Self>>(l: S) -> Self {
@@ -608,24 +554,18 @@ impl RegexInstructions for Regex {
     }
 
     fn neg(self) -> Self {
-        match self.content {
-            // The first case is simply to reduce the Regex's depth.
-            RegexInternal::Complement(e) => *e,
-            // The second case additionally checks that `self` contains no markers.
-            _ => {
-                assert!(
-                    self.other_markers.is_empty(),
-                    "in regular expressions, markers are not allowed under complement/negation ({:?})", self
-                );
-                RegexInternal::Complement(Box::new(self)).into()
-            }
-        }
+        // Checks that no markers appear, so that the semantic of negation is properly
+        // defined.
+        assert!(
+            !self.contains_markers(),
+            "in regular expressions, markers are not allowed under complement/negation ({:?})",
+            self
+        );
+        RegexInternal::Complement(Box::new(self)).into()
     }
 
-    fn list(self) -> Self {
-        RegexInternal::Star(false, Box::new(self)).into()
-    }
-
+    // When calling `Regex::list()`, the internal optimisations will put the boolean
+    // argument to false (see `Regex::flatten_union`).
     fn non_empty_list(self) -> Self {
         RegexInternal::Star(true, Box::new(self)).into()
     }
@@ -754,6 +694,20 @@ impl Regex {
         res
     }
 
+    /// Straightforward conversion of a regular expression into a
+    /// non-deterministic automaton, using the constructions provided in the
+    /// `automaton` module.
+    ///
+    /// # Invariant
+    ///
+    /// This function always returns an automaton without dead states (all
+    /// states are reacheable from the initial state, and can reach the final
+    /// state).
+    fn to_raw_automaton(&self, alphabet_size: usize) -> RawAutomaton {
+        match &self.content {
+            RegexInternal::Single(bytes) => {
+                RawAutomaton::byte_concat(&[bytes.clone()], alphabet_size)
+            }
             RegexInternal::Concat(l) => {
                 RawAutomaton::concat(&Self::flatten_concat(l, alphabet_size))
             }
@@ -773,8 +727,31 @@ impl Regex {
                     automaton.weak_repeat()
                 }
             }
+            RegexInternal::Complement(e) => {
+                if let RegexInternal::Complement(ee) = &e.content {
+                    // Cancelling out involutive complements.
+                    ee.to_raw_automaton(alphabet_size)
+                } else {
+                    // Note: `complement()` requires that the argument is complete (and
+                    // deterministic), but will remove the resulting dead states afterwards.
+                    e.to_raw_automaton(alphabet_size)
+                        .determinise(true, alphabet_size)
+                        .complement()
+                }
+            }
+        }
+    }
+
+    /// Converts a regular expression into a state automaton. This function can
+    /// specify the alphabet size, so that smaller alphabets can be considered
+    /// for more readable testing purpose. Only the instanciation with
+    /// `alphabet_size == ALPPHABET_MAX_SIZE` is accessible outside of this
+    /// module.
     pub(super) fn to_automaton_param(&self, alphabet_size: usize) -> Automaton {
-        assert!(alphabet_size <= ALPHABET_MAX_SIZE,"Attempt to generate an automaton with an alphabet of size {alphabet_size}. Letters are represented by bytes, hence the maximal alphabet size is {ALPHABET_MAX_SIZE}");
+        assert!(
+            alphabet_size <= ALPHABET_MAX_SIZE,
+            "Attempt to generate an automaton with an alphabet of size {alphabet_size}. Letters are represented by bytes, hence the maximal alphabet size is {ALPHABET_MAX_SIZE}"
+        );
         self.to_raw_automaton(alphabet_size).normalise()
     }
 
@@ -807,7 +784,14 @@ mod tests {
             .map(|(s, output)| (s.as_bytes(), *output))
             .collect::<Vec<_>>();
         let rejected: &[&[u8]] = &rejected.iter().map(|s| s.as_bytes()).collect::<Vec<_>>();
-        automaton::tests::automaton_one_test(index, ALPHABET_MAX_SIZE, regex, accepted, rejected);
+        automaton::tests::automaton_one_test(
+            index,
+            ALPHABET_MAX_SIZE,
+            regex,
+            accepted,
+            rejected,
+            false,
+        );
     }
 
     #[test]
@@ -857,7 +841,13 @@ mod tests {
             ],
             Regex::blanks(),
         )
-        .update_markers_when(&|b| b.is_ascii_lowercase(), 1);
+        .mark(&|b| {
+            if b.is_ascii_lowercase() {
+                Some(1)
+            } else {
+                None
+            }
+        });
 
         let accepted1: Vec<(&str, &[usize])> = vec![
             (
@@ -914,7 +904,7 @@ mod tests {
         ];
 
         // A regex that accepts any string, and outputs its blank spaces with marker 1.
-        let regex2 = Regex::any_byte().update_markers_on(b" \n\t", 1).list();
+        let regex2 = Regex::any_byte().mark_bytes(*b" \n\t", 1).list();
 
         let accepted2: Vec<(&str, &[usize])> = vec![
             ("", &[]),
@@ -963,9 +953,12 @@ mod tests {
         // Same as regex2, but outputs spaces, newlines, and tabs with a different
         // marker (1,2,3 respectively).
         let regex3 = Regex::any_byte()
-            .update_markers_on(b" ", 1)
-            .update_markers_on(b"\n", 2)
-            .update_markers_on(b"\t", 3)
+            .mark(&|b| match b {
+                b' ' => Some(1),
+                b'\n' => Some(2),
+                b'\t' => Some(3),
+                _ => None,
+            })
             .list();
 
         let accepted3: Vec<(&str, &[usize])> = vec![
