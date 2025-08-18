@@ -579,14 +579,111 @@ impl RawAutomaton {
         union_automaton.powerset_construction(&union_initial_states, false, alphabet_size)
     }
 
+    /// Computes an automaton for the concatenation of two languages.
+    ///
+    /// Renames states of the two automata to ensure they are disjoint, and
+    /// simply plugs the final states of `self` to the initial state of `rhs`.
+    pub(super) fn concat(automata: &[Self]) -> Self {
+        let mut concat_automaton = RawAutomaton::epsilon();
+        // A storage for dead states to be eliminated as during post-processing. Dead
+        // states are generated:
+        // - when an initial state has no cycle to itself in an automaton, it will
+        //   become
+        // a dead state after concatenation, and can safely be removed.
+        // - when concatenating a automaton whose final states have no outgoing
+        //   transitions, transitions pointing to these final states can be redirected
+        //   to the initial state of the next automaton. The old final states can then
+        //   be removed.
+        let mut garbage = FxHashSet::with_capacity_and_hasher(automata.len(), FxBuildHasher);
+        let mut loop_on_initial = false;
+
+        // The `rev()` is important for correctness. Each step concatenates the language
+        // of `automaton` to the language of `concat_automaton`, which is done by
+        // copying the outgoing transitions of `concat_automaton.initial_state`
+        // to each final state of `automaton`. In particular, proceeding in the
+        // forward order would miss some transitions when some initial states
+        // happen to be final as well.
+        for automaton in automata.iter().rev() {
+            let nb_states = concat_automaton.transitions.len();
+            let (mut transitions, _) = RawAutomaton::filter_map_transitions(
+                &automaton.transitions,
+                |state| Some(state + nb_states),
+                automaton.transitions.len(),
+                nb_states,
+            );
+            if automaton.nothing_after_final() {
+                // In this branch, an optimisation can be done to save one state and one
+                // transition (redirect transitions pointing to the final states of `automaton`
+                // towards `concat_automaton.initial_state`).
+                for succ in transitions.iter_mut() {
+                    for (_, target) in succ {
+                        if automaton.final_states.contains(&(*target - nb_states)) {
+                            garbage.insert(*target);
+                            *target = concat_automaton.initial_state;
+                        }
+                    }
+                }
+                concat_automaton.transitions.extend(transitions);
+                loop_on_initial = automaton.loop_on_initial();
+                concat_automaton.initial_state = automaton.initial_state + nb_states;
+            } else {
+                concat_automaton.transitions.extend(transitions);
+                // Copying outgoing transitions from `concat_automaton.initial` to each final
+                // state of `automaton`.
+                for state in &automaton.final_states {
+                    let outgoing =
+                        concat_automaton.transitions[concat_automaton.initial_state].clone();
+                    concat_automaton.transitions[state + nb_states].extend(outgoing);
+                }
+                // If the initial state of `concat_automaton` is also final, the final states of
+                // `automaton` have to be added as final states of `concat_automaton`.
+                if concat_automaton
+                    .final_states
+                    .contains(&concat_automaton.initial_state)
+                {
+                    concat_automaton
+                        .final_states
+                        .extend(automaton.final_states.iter().map(|s| s + nb_states));
+                }
+
+                // Updating the initial state and garbage collecting the previous one if
+                // necessary.
+                if !loop_on_initial {
+                    garbage.insert(concat_automaton.initial_state);
+                }
+                loop_on_initial = automaton.loop_on_initial();
+                concat_automaton.initial_state = automaton.initial_state + nb_states;
+            }
+        }
+
+        // Renames the states of `concat_automaton` that are not to be removed, using a
+        // continuous range of integer.
+        let renaming = (0..concat_automaton.transitions.len())
+            .filter(|source| !garbage.contains(source))
+            .enumerate()
+            .map(|(new_source, old_source)| (old_source, new_source))
+            .collect::<FxHashMap<_, _>>();
+        let (transitions, markers) = RawAutomaton::filter_map_transitions(
+            &concat_automaton.transitions,
+            |state| renaming.get(&state).copied(),
+            renaming.len(),
+            0,
+        );
+        let initial_state = *renaming.get(&concat_automaton.initial_state).unwrap();
+        let final_states = (concat_automaton.final_states.iter())
+            .filter_map(|state| renaming.get(state).copied())
+            .collect::<FxHashSet<_>>();
         RawAutomaton {
-            nb_states: self.nb_states + rhs.nb_states,
-            deterministic_and_complete: false,
-            epsilon_transitions: true,
-            initial_state,
+            // False in general, but true in many practical cases. Will be double checked in the
+            // next instruction.
+            deterministic: false,
+            complete: automata.iter().all(|a| a.complete),
             final_states,
+            initial_state,
+            markers,
             transitions,
         }
+        .check_determinism()
     }
 
     // Computes an automton for the intersection of two languages. Requires that

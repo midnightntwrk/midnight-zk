@@ -708,10 +708,55 @@ impl Regex {
         }
     }
 
+    /// Flattens out `Concat` structures, and converts all its elements to
+    /// `RawAutomaton`. When several `Single` ranges are adjacent in the
+    /// flattened structure, they are merged to be converted into a single
+    /// automaton using `RawAutomaton::byte_concat`.
+    fn flatten_concat(l: &[Self], alphabet_size: usize) -> Vec<RawAutomaton> {
+        let mut rev_flattened = Vec::with_capacity(l.len());
+        let mut pending = Vec::from_iter(l.iter().cloned());
+
+        // Flattening the Concat structure (reverses the order).
+        while let Some(regex) = pending.pop() {
+            if let RegexInternal::Concat(v) = regex.content {
+                pending.extend(v)
+            } else {
+                rev_flattened.push(regex)
+            }
+        }
+
+        // Conversion into RawAutomaton, grouping adjacent Singles together.
+        // Before the loop below, `res` contains the flattened version of `l`,
+        // in reversed order.
+        let mut res = Vec::with_capacity(rev_flattened.len());
+        let mut consecutive_singles = Vec::with_capacity(rev_flattened.len());
+        for regex in rev_flattened.into_iter().rev() {
+            if let RegexInternal::Single(bytes) = regex.content {
+                consecutive_singles.push(bytes);
+            } else {
+                if !consecutive_singles.is_empty() {
+                    res.push(RawAutomaton::byte_concat(
+                        &consecutive_singles,
+                        alphabet_size,
+                    ));
+                    consecutive_singles.clear();
+                }
+                res.push(regex.to_raw_automaton(alphabet_size));
+            }
+        }
+        if !consecutive_singles.is_empty() {
+            res.push(RawAutomaton::byte_concat(
+                &consecutive_singles,
+                alphabet_size,
+            ));
+            consecutive_singles.clear();
         }
         res
     }
 
+            RegexInternal::Concat(l) => {
+                RawAutomaton::concat(&Self::flatten_concat(l, alphabet_size))
+            }
             RegexInternal::Union(l) => {
                 RawAutomaton::union(&Self::flatten_union(l, alphabet_size), alphabet_size)
             }
