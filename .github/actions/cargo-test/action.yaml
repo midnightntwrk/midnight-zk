@@ -10,9 +10,9 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - uses: actions-rs/toolchain@b2417cde72dcf67f306c0ae8e0828a81bf0b189f
-      with:
-        override: true
+    - name: 'Install rust-toolchain.toml'
+      shell: bash
+      run: rustup toolchain install
 
     - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684
       with:
@@ -26,7 +26,5 @@ runs:
         cache-on-failure: true
         shared-key: "ci"
 
-    - uses: actions-rs/cargo@ae10961054e4aa8b4aa7dffede299aaf087aa33b
-      with:
-        command: test
-        args: -p ${{ inputs.package }} ${{ inputs.args }}
+    - run: cargo test -p ${{ inputs.package }} ${{ inputs.args }}
+      shell: bash
