@@ -656,57 +656,64 @@ impl From<&u8> for Regex {
 }
 
 impl Regex {
-    // Flattens out `Union` structures, and pre-computes disjoint unions of
-    // single-byte ranges. This produces an equivalent Regex which will however be
-    // translated as a smaller automaton. This makes determinisation significantly
-    // more efficient for Regex defined with many nested unions.
-    fn flatten_union(l: &[Self]) -> Vec<Self> {
+    /// Flattens out `Union` structures, and pre-computes disjoint unions of
+    /// single-byte ranges. This produces an equivalent Regex which will however
+    /// be translated as a smaller automaton. This makes determinisation
+    /// significant more efficient for Regex defined with many nested
+    /// unions.
+    fn flatten_union(l: &[Self], alphabet_size: usize) -> Vec<RawAutomaton> {
         let mut res = Vec::with_capacity(l.len());
-        let mut res_single: HashMap<usize, HashSet<u8>> = HashMap::new();
         let mut pending = Vec::from_iter(l.iter().cloned());
+        let mut singles: FxHashSet<Letter> =
+            FxHashSet::with_capacity_and_hasher(ALPHABET_MAX_SIZE, FxBuildHasher);
+        let mut contains_epsilon = false;
+        // Main loop flattening the `Union` structure of `pending` into a single
+        // vector, and gathers all `Single` bytes and markers into `singles`.
         while let Some(r) = pending.pop() {
             match r.content {
                 RegexInternal::Union(v) => pending.extend(v),
-                RegexInternal::Single(v) => {
-                    res_single
-                        .entry(r.toplevel_marker)
-                        .and_modify(|range| range.extend(v.clone()))
-                        .or_insert(HashSet::from_iter(v));
-                }
+                RegexInternal::Concat(v) if v.is_empty() => contains_epsilon = true,
+                RegexInternal::Single(bytes) => singles.extend(bytes),
                 _ => res.push(r),
             }
         }
-        for (marker, range) in res_single {
-            let mut r: Regex = RegexInternal::Single(Vec::from_iter(range)).into();
-            r.toplevel_marker = marker;
-            res.push(r);
+        if !singles.is_empty() {
+            res.push(RegexInternal::Single(singles.into_iter().collect()).into());
+        }
+        // Adds to all `Star` constructors of the disjunction that they can be
+        // considered as not strict anymore. Non-strict iterations are usually cheaper
+        // to translate.
+        if contains_epsilon {
+            for r in res.iter_mut() {
+                if let RegexInternal::Star(_, rr) = &r.content {
+                    r.content = RegexInternal::Star(false, rr.clone());
+                    contains_epsilon = false
+                }
+            }
+        }
+        // Converts all regex to automata.
+        if contains_epsilon {
+            let last = match res.pop() {
+                None => RawAutomaton::epsilon(),
+                Some(regex) => regex.to_raw_automaton(alphabet_size).make_optional(),
+            };
+            res.iter()
+                .map(|r| r.to_raw_automaton(alphabet_size))
+                .chain(once(last))
+                .collect::<Vec<_>>()
+        } else {
+            res.iter()
+                .map(|r| r.to_raw_automaton(alphabet_size))
+                .collect::<Vec<_>>()
+        }
+    }
+
         }
         res
     }
 
-    // Straightforward conversion of a regular expression into a non-deterministic
-    // automaton, using the constructions provided in the `automaton` module.
-    fn to_raw_automaton(&self, alphabet_size: usize) -> RawAutomaton<usize> {
-        let automaton = match &self.content {
-            RegexInternal::Single(a) => RawAutomaton::singleton(a, alphabet_size),
-            RegexInternal::Concat(l) => l.iter().fold(RawAutomaton::epsilon(), |accu, r| {
-                accu.concat(&r.to_raw_automaton(alphabet_size))
-                    .normalise_states()
-            }),
-            RegexInternal::Union(l) => RawAutomaton::union(
-                &Self::flatten_union(l)
-                    .iter()
-                    .map(|r| r.to_raw_automaton(alphabet_size))
-                    .collect::<Vec<_>>(),
-            )
-            .normalise_states(),
-            RegexInternal::Inter(l) => {
-                l.iter()
-                    .fold(RawAutomaton::universal(alphabet_size), |accu, r| {
-                        let mut r = r.to_raw_automaton(alphabet_size);
-                        r.remove_epsilon_transitions();
-                        accu.inter(&r).normalise_states()
-                    })
+            RegexInternal::Union(l) => {
+                RawAutomaton::union(&Self::flatten_union(l, alphabet_size), alphabet_size)
             }
             RegexInternal::Star(strict, e) => {
                 let mut automaton = e.to_raw_automaton(alphabet_size);

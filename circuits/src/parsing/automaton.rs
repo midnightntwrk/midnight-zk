@@ -544,98 +544,41 @@ impl RawAutomaton {
 }
 
 // Implementation of automaton combination operations.
-impl<State> RawAutomaton<State>
-where
-    State: Copy + Clone + Eq + Hash + Debug,
-{
-    /// Computes the union of a collection of automata. Calling this function
-    /// over a collection of size `N` leads to a smaller automaton (before
-    /// minimisation) than calling the function `N-1` in a binary way.
-    pub(super) fn union(automata: &[Self]) -> RawAutomaton<Vec<Option<State>>> {
-        let n = automata.len();
-        let (capacity, nb_states) =
-            automata
-                .iter()
-                .fold((n, 0), |(accu_tr, accu_states), automaton| {
-                    (
-                        accu_tr + automaton.transitions.len(),
-                        accu_states + automaton.nb_states,
-                    )
-                });
-
-        // Computes the embedding of a state of one automaton of `automata` inside the
-        // new automaton (whose states represent the disjoint union of all previous
-        // automata).
-        let combined_state = |index: usize, state: &State| -> Vec<Option<State>> {
-            let mut res = vec![None; n];
-            res[index] = Some(*state);
-            res
-        };
-        // Initial state of the new automaton. It will be linked to the initial states
-        // of all automata of `automata` by epsilon transitions.
-        let initial_state = vec![None; n];
-        let mut transitions = Vec::with_capacity(capacity);
-        let mut final_states = HashSet::new();
-
-        for (index, automaton) in automata.iter().enumerate() {
-            // Pushing an epsilon transition from the new initial state to the initial state
-            // of automaton number `index`.
-            transitions.push((
-                initial_state.clone(),
-                None,
-                combined_state(index, &automaton.initial_state),
-            ));
-            // Adding all transitions of automaton number `index`.
-            for (source, letter, target) in &automaton.transitions {
-                transitions.push((
-                    combined_state(index, source),
-                    *letter,
-                    combined_state(index, target),
-                ));
-            }
-            // Adding all final states of automaton number `index`.
-            for state in &automaton.final_states {
-                final_states.insert(combined_state(index, state));
-            }
+impl RawAutomaton {
+    /// Computes the union of a collection of automata.
+    ///
+    /// The automaton is obtained by alpha-renaming all states of the different
+    /// automata to avoid collisions (a state `s` of automata number `i` will be
+    /// represented by `s + offsets[i]`), and so that `0` is a state of neither
+    /// renamed automata. Then he final automaton simply has 0 as an initial
+    /// states, which has an epsilon transition to the initial states of all
+    /// automata.
+    pub(super) fn union(automata: &[Self], alphabet_size: usize) -> Self {
+        if automata.len() == 1 {
+            // Avoids determinising automaton in this case. Happens often due to the
+            // pre-processing performed by `Regex::flatten_union`.
+            return automata[0].clone();
         }
-        RawAutomaton {
-            nb_states,
-            deterministic_and_complete: false,
-            epsilon_transitions: true,
-            initial_state,
-            final_states,
-            transitions,
+        let mut union_automaton = RawAutomaton::empty();
+        let mut union_initial_states = Vec::with_capacity(automata.len());
+        for automaton in automata {
+            let nb_states = union_automaton.transitions.len();
+            let (transitions, markers) = RawAutomaton::filter_map_transitions(
+                &automaton.transitions,
+                |state| Some(state + nb_states),
+                automaton.transitions.len(),
+                nb_states,
+            );
+            union_initial_states.push(automaton.initial_state + nb_states);
+            union_automaton
+                .final_states
+                .extend(automaton.final_states.iter().map(|state| state + nb_states));
+            union_automaton.markers.extend(markers);
+            union_automaton.transitions.extend(transitions);
         }
+        union_automaton.powerset_construction(&union_initial_states, false, alphabet_size)
     }
 
-    /// Computes an automaton for the concatenation of two languages.
-    pub(super) fn concat<S>(
-        &self,
-        rhs: &RawAutomaton<S>,
-    ) -> RawAutomaton<(Option<State>, Option<S>)>
-    where
-        S: Copy + Clone + Eq + Hash + Debug,
-    {
-        let mut transitions = Vec::with_capacity(
-            self.transitions.len() + rhs.transitions.len() + self.final_states.len(),
-        );
-        self.transitions
-            .iter()
-            .for_each(|(source, letter, target)| {
-                transitions.push(((Some(*source), None), *letter, (Some(*target), None)))
-            });
-        rhs.transitions.iter().for_each(|(source, letter, target)| {
-            transitions.push(((None, Some(*source)), *letter, (None, Some(*target))))
-        });
-        let initial_state = (Some(self.initial_state), None);
-        self.final_states.iter().for_each(|&state| {
-            transitions.push(((Some(state), None), None, (None, Some(rhs.initial_state))));
-        });
-        let final_states = rhs
-            .final_states
-            .iter()
-            .map(|&state| (None, Some(state)))
-            .collect::<HashSet<_>>();
         RawAutomaton {
             nb_states: self.nb_states + rhs.nb_states,
             deterministic_and_complete: false,
