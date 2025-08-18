@@ -760,6 +760,11 @@ impl Regex {
             RegexInternal::Union(l) => {
                 RawAutomaton::union(&Self::flatten_union(l, alphabet_size), alphabet_size)
             }
+            RegexInternal::Inter(l) => l
+                .iter()
+                .fold(RawAutomaton::universal(alphabet_size), |accu, r| {
+                    accu.inter(&r.to_raw_automaton(alphabet_size))
+                }),
             RegexInternal::Star(strict, e) => {
                 let mut automaton = e.to_raw_automaton(alphabet_size);
                 automaton.repeat(*strict);
