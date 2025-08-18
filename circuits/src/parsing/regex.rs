@@ -20,12 +20,11 @@
 // regular expressions. A method `to_automaton()` is also defined to convert
 // them into a finite automata as they are easier to process in circuits.
 
-use std::{
-    collections::{HashMap, HashSet},
-    iter::once,
-};
+use std::iter::once;
 
-use super::automaton::{Automaton, RawAutomaton, ALPHABET_MAX_SIZE};
+use rustc_hash::{FxBuildHasher, FxHashSet};
+
+use super::automaton::{Automaton, Letter, RawAutomaton, ALPHABET_MAX_SIZE};
 
 /// A type for formal languages described as regular expressions.
 #[derive(Clone, Debug)]

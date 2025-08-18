@@ -22,7 +22,7 @@
 //  - `RawAutomaton` -> `Automaton` (deterministic automaton). Uses the standard
 //    powerset construction to construct a normalised automaton whose
 //    transitions are represented by a `HashMap`. Dead states are also removed
-//    with `RawAutomaton::normalise_states`.
+//    with `RawAutomaton::remove_dead_states`.
 //
 //  - `Automaton.minimise` (minimisation). Implements Hopcroft's algorithm to
 //    compute the Nerode's congruence of the automaton. It intuitively detects
@@ -32,12 +32,9 @@
 // The module also implements a couple of tests with a minimal alphabet (only
 // bytes 0,1,2 are allowed) to check the validity of the constructions.
 
-use std::{
-    collections::{HashMap, HashSet},
-    fmt::Debug,
-    hash::Hash,
-    iter::once,
-};
+use std::{collections::hash_map::Entry, fmt::Debug, hash::Hash, iter::once};
+
+use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
 
 /// Maximal size of the alphabet of an automaton/regex, since input characters
 /// are represented by `AssignedByte`. The parser (`automaton_chip::parse`) is
@@ -79,7 +76,7 @@ impl Letter {
         let marker = markers
             .iter()
             .enumerate()
-            .find(|(_, m)| **m == self.marker)
+            .find(|(_, &m)| m == self.marker)
             .unwrap()
             .0;
         marker * alphabet_size + self.char as usize
@@ -1031,26 +1028,27 @@ pub(super) mod tests {
 
     use crate::parsing::regex::{Regex, RegexInstructions};
 
-    // Tests whether a given regular expression accepts or rejects two sets of
-    // corresponding strings. Takes the alphabet size as a parameter to allow for
-    // more readable tests with a restricted byte alphabet.
+    /// Tests whether a given regular expression accepts or rejects two sets of
+    /// corresponding strings. Takes the alphabet size as a parameter to allow
+    /// for more readable tests with a restricted byte alphabet.
     pub(crate) fn automaton_one_test(
         index: usize,
         alphabet_size: usize,
         regex: &Regex,
         accepted: &[(&[u8], &[usize])],
         rejected: &[&[u8]],
+        print_automaton: bool,
     ) {
         accepted.iter().for_each(|(s,o)|
             assert!(s.len() == o.len(),
             "[test {index}] There is probably a typo in the tests vectors: the input ({:?}, length = {}) and the expected output ({:?}, length = {}) have different lengths.", 
             s, s.len(), o, o.len())
         );
+        println!("\n\n** TEST no {index}\n** alphabet size = {alphabet_size}");
         let automaton = regex.to_automaton_param(alphabet_size);
-        println!(
-            "\n\n** TEST no {index}\n** alphabet size = {alphabet_size}\n** automaton {:?}",
-            automaton
-        );
+        if print_automaton {
+            println!("** automaton {:?}", automaton)
+        }
         accepted.iter().for_each(|&(s,o)| {
             println!(
                 "\n -> testing on input string \"{}\" (bytes: [{}])", String::from_utf8_lossy(s),
@@ -1094,6 +1092,7 @@ pub(super) mod tests {
                     }
             }
         });
+        println!(">> Test nb {index} is finished!\n==========");
     }
 
     #[test]
@@ -1183,6 +1182,28 @@ pub(super) mod tests {
             &[1, 1, 1, 0, 1, 2],
         ];
 
+        let regex8 = one
+            .clone()
+            .non_empty_list()
+            .mark_bytes([1], 1)
+            .separated_list(two.clone());
+        let accepted8: &[(&[u8], &[usize])] = &[
+            (&[], &[]),
+            (&[1, 1], &[1, 1]),
+            (&[1, 1, 2, 1, 1], &[1, 1, 0, 1, 1]),
+            (&[1, 2, 1, 1, 1, 2, 1], &[1, 0, 1, 1, 1, 0, 1]),
+            (&[1, 2, 1, 2, 1, 2, 1], &[1, 0, 1, 0, 1, 0, 1]),
+        ];
+        let rejected8: &[&[u8]] = &[
+            &[0],
+            &[2],
+            &[0, 1, 2],
+            &[1, 2],
+            &[0, 2, 1],
+            &[1, 1, 2, 2, 1, 1],
+            &[1, 2, 1, 2, 1, 2, 0],
+        ];
+
         // Tests with a small alphabet to debug automata constructions.
         let regex = [
             (regex0, accepted0, rejected0),
@@ -1193,12 +1214,13 @@ pub(super) mod tests {
             (regex5, accepted5, rejected5),
             (regex6, accepted6, rejected6),
             (regex7, accepted7, rejected7),
+            (regex8, accepted8, rejected8),
         ];
         regex
             .iter()
             .enumerate()
             .for_each(|(index, (regex, accepted, rejected))| {
-                automaton_one_test(index, 3, regex, accepted, rejected)
+                automaton_one_test(index, 3, regex, accepted, rejected, true)
             });
     }
 }
