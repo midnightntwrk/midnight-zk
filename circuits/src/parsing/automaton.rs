@@ -99,22 +99,28 @@ impl Letter {
 /// A type for non-deterministic finite automata with a parametric type to
 /// represent its states.
 #[derive(Clone, Debug)]
-pub(super) struct RawAutomaton<State> {
-    /// Upper bound on the number of reachable states.
-    nb_states: usize,
-    /// Indicator of whether the automaton is deterministic and complete.
-    deterministic_and_complete: bool,
-    /// Indicator of whether the automaton contains epsilon transitions.
-    epsilon_transitions: bool,
+pub(super) struct RawAutomaton {
+    /// Indicator of whether the automaton is deterministic.
+    deterministic: bool,
+    /// Indicator of whether the automaton is complete.
+    complete: bool,
     /// The initial state of the automaton.
-    initial_state: State,
+    initial_state: usize,
     /// The final states of the automaton.
-    final_states: HashSet<State>,
-    /// The set of transitions, including epsilon-transitions. At this stage,
-    /// this transition table is simply a collection of transitions with no
-    /// check of redundancy or determinism. This will be handled during the
-    /// conversion into the more structured type `Automaton`.
-    transitions: Vec<(State, Option<Letter>, State)>,
+    final_states: FxHashSet<usize>,
+    /// The set of transitions, where `self.transitions[state]` is the vector of
+    /// successors (i.e., pairs (letter, target state)) of the state `state`.
+    /// The vector will always have one entry per state (even if no transitions
+    /// start from this state). In particular, `self.transition.len()` is the
+    /// number of states of `self`.
+    ///
+    /// At this stage, this transition table is simply a
+    /// collection of transitions with no check of redundancy or
+    /// determinism. This will be handled during the conversion into the
+    /// more structured type `Automaton`.
+    transitions: Vec<Vec<(Letter, usize)>>,
+    /// All markers effectively used in the automaton.
+    markers: FxHashSet<usize>,
 }
 
 /// A normalised model of a deterministic (but not necessarily complete) finite
@@ -122,154 +128,91 @@ pub(super) struct RawAutomaton<State> {
 /// the range `0..nb_states`.
 #[derive(Clone, Debug)]
 pub struct Automaton {
-    /// Strict upper bound on the maximal reachable state. I.e., it is
-    /// guaranteed that all states appearing in `self.transitions` are lower
-    /// than `self.state_bound`.
-    pub state_bound: usize,
+    /// Upper bound on the number of reachable states.
+    pub nb_states: usize,
     /// The initial state of the automaton.
     pub initial_state: usize,
     /// The final states of the automaton.
-    pub final_states: HashSet<usize>,
+    pub final_states: FxHashSet<usize>,
     /// `transitions.get(state,byte)` returns the transition target and its
     /// marker upon reading input `byte` in state `state`. A key may be
     /// undefined, in which case it means the automaton jumps into an
     /// implicit deadlock state.
-    pub transitions: HashMap<(usize, u8), (usize, usize)>,
+    pub transitions: FxHashMap<(usize, u8), (usize, usize)>,
 }
 
-impl RawAutomaton<usize> {
+// Basic automaton constructions.
+impl RawAutomaton {
     /// Creates an empty automaton with a unique default state.
-    pub(super) fn empty() -> RawAutomaton<usize> {
+    pub(super) fn empty() -> Self {
         Self {
-            nb_states: 1,
-            deterministic_and_complete: false,
-            epsilon_transitions: false,
+            deterministic: true,
+            complete: false,
             initial_state: 0,
-            final_states: HashSet::new(),
-            transitions: Vec::new(),
+            final_states: FxHashSet::default(),
+            transitions: vec![vec![]],
+            markers: FxHashSet::default(),
         }
     }
 
     /// Creates an automaton recognising only the empty word.
-    pub(super) fn epsilon() -> RawAutomaton<usize> {
+    pub(super) fn epsilon() -> Self {
         Self {
-            nb_states: 1,
-            deterministic_and_complete: false,
-            epsilon_transitions: false,
+            deterministic: true,
+            complete: false,
             initial_state: 0,
-            final_states: HashSet::from_iter([0]),
-            transitions: Vec::new(),
+            final_states: FxHashSet::from_iter([0]),
+            transitions: vec![vec![]],
+            markers: FxHashSet::default(),
         }
     }
 
-    /// Creates an automaton accepting any word of 1 byte belonging to
-    /// `letters`. The alphabet size can be specified, which effectively filters
+    /// An automaton that accepts a finite concatenation of disjunctions of
+    /// bytes. The alphabet size can be specified, which effectively filters
     /// out any transition involving a byte outside of the alphabet.
-    pub(super) fn singleton(letters: &[u8], alphabet_size: usize) -> RawAutomaton<usize> {
+    pub(super) fn byte_concat(word: &[Vec<Letter>], alphabet_size: usize) -> Self {
+        let mut transitions = Vec::from_iter(
+            word.iter()
+                .map(Vec::len)
+                .map(Vec::with_capacity)
+                .chain(once(vec![])),
+        );
+        let mut markers = FxHashSet::with_capacity_and_hasher(2, FxBuildHasher);
+        for (position, byte_range) in word.iter().enumerate() {
+            for byte in byte_range {
+                if (byte.char as usize) < alphabet_size {
+                    markers.insert(byte.marker);
+                    transitions[position].push((*byte, position + 1));
+                }
+            }
+        }
         Self {
-            nb_states: 2,
-            deterministic_and_complete: false,
-            epsilon_transitions: false,
+            deterministic: true,
+            complete: false,
             initial_state: 0,
-            final_states: HashSet::from([1]),
-            transitions: {
-                letters
-                    .iter()
-                    .map_while(|&i| {
-                        if (i as usize) < alphabet_size {
-                            Some((0, Some(i.into()), 1))
-                        } else {
-                            None
-                        }
-                    })
-                    .collect()
-            },
+            final_states: FxHashSet::from_iter([word.len()]),
+            transitions,
+            markers,
         }
     }
 
-    /// Creates an automaton accepting any word.
-    pub(super) fn universal(alphabet_size: usize) -> RawAutomaton<usize> {
+    /// Creates an automaton accepting any unmarked word.
+    pub(super) fn universal(alphabet_size: usize) -> Self {
         assert!(
             alphabet_size <= ALPHABET_MAX_SIZE,
             "attempt to construct an automaton with an alphabet of size {alphabet_size} (will overflow u8"
         );
         Self {
-            nb_states: 1,
-            deterministic_and_complete: true,
-            epsilon_transitions: false,
+            deterministic: true,
+            complete: true,
             initial_state: 0,
-            final_states: HashSet::from_iter([0]),
-            transitions: (0..alphabet_size)
-                .map(|b| (0, Some((b as u8).into()), 0))
-                .collect::<Vec<_>>(),
+            final_states: FxHashSet::from_iter([0]),
+            transitions: Vec::from_iter([(0..alphabet_size)
+                .map(|b| ((b as u8).into(), 0))
+                .collect::<Vec<_>>()]),
+            markers: FxHashSet::default(),
         }
     }
-}
-
-impl<State> RawAutomaton<State>
-where
-    State: Copy + Clone + Eq + Hash + Debug,
-{
-    // Marks all transitions of an automaton with a given marker.
-    //
-    // Note: Safety check: panics if an already marked transition is found. Should
-    // already be enforced by the invariant that nested markers are rejected
-    // when constructing regular expression in `regex.rs`.
-    pub(super) fn add_marker(self, index: usize) -> Self {
-        let transitions = self
-            .transitions
-            .iter()
-            .map(|(source, letter, target)| {
-                (
-                    *source,
-                    letter.map(|a| {
-                        assert!(a.marker == 0, "(bug) non-nested markers were not enforced");
-                        Letter { marker: index, ..a }
-                    }),
-                    *target,
-                )
-            })
-            .collect::<Vec<_>>();
-        Self {
-            transitions,
-            ..self
-        }
-    }
-}
-
-impl<State> RawAutomaton<State>
-where
-    State: Clone + Eq + Hash + Debug,
-{
-    // Adds the set of successors of a given state inside an accumulator, except
-    // those belonging to `visited`.
-    fn add_next_states(&self, accu: &mut Vec<State>, visited: &HashSet<State>, state: &State) {
-        self.transitions.iter().for_each(|(source, _, target)| {
-            if *source == *state && !visited.contains(target) {
-                accu.push(target.clone());
-            }
-        });
-    }
-
-    // Adds the set of predecessors of a given state inside an accumulator, except
-    // those belonging to `visited`.
-    fn add_prev_states(&self, accu: &mut Vec<State>, visited: &HashSet<State>, state: &State) {
-        self.transitions.iter().for_each(|(source, _, target)| {
-            if *target == *state && !visited.contains(source) {
-                accu.push(source.clone());
-            }
-        });
-    }
-
-    // Computing forward reachable states from the initial state.
-    fn reachable_states(&self) -> HashSet<State> {
-        let mut reach_states = HashSet::new();
-        let mut pending_states = Vec::with_capacity(self.nb_states);
-        pending_states.push(self.initial_state.clone());
-
-        while let Some(current_state) = pending_states.pop() {
-            if reach_states.insert(current_state.clone()) {
-                self.add_next_states(&mut pending_states, &reach_states, &current_state);
             }
         }
         reach_states
@@ -328,31 +271,35 @@ where
         // Computing backward reachable states from final states.
         self.final_states
             .iter()
-            .for_each(|s| pending_states.push(s.clone()));
-        while let Some(current_state) = pending_states.pop() {
-            if visited.insert(current_state.clone())
-                && reach_states.contains(&current_state.clone())
-            {
-                back_reach_states.insert(current_state.clone());
-                self.add_prev_states(&mut pending_states, &visited, &current_state);
+// Post processing of automata handling the aftermath of a suboptimal operation.
+impl RawAutomaton {
+    /// Updates the set of transitions of an automaton accordingly to an update
+    /// function. If the update function returns `None` on a given state, all
+    /// transitions involving it are removed. Also recomputes the set of markers
+    /// in case some are removed.
+    ///
+    /// Also takes as argument the minimal value of the updated states
+    /// (`offset`) to compute a transition table more easily.
+    fn filter_map_transitions(
+        transitions: &[Vec<(Letter, usize)>],
+        f: impl Fn(usize) -> Option<usize>,
+        new_nb_states: usize,
+        offset: usize,
+    ) -> (Vec<Vec<(Letter, usize)>>, FxHashSet<usize>) {
+        let mut new_transitions = vec![vec![]; new_nb_states];
+        let mut markers = FxHashSet::with_capacity_and_hasher(2, FxBuildHasher);
+        for (source, succ) in transitions.iter().enumerate() {
+            for (letter, target) in succ {
+                f(source).map(|new_source| {
+                    f(*target).map(|new_target| {
+                        markers.insert(letter.marker);
+                        new_transitions[new_source - offset].push((*letter, new_target));
+                    })
+                });
             }
         }
-        back_reach_states
+        (new_transitions, markers)
     }
-}
-
-impl<State> RawAutomaton<State>
-where
-    State: Clone + Eq + Hash + Debug,
-{
-    /// Converts the set of states into `usize`. Allows in particular to ensure
-    /// states now have the Hash trait. Also, removes non reachable states, or
-    /// states that are not backward-reachable from the final states. Preserves
-    /// determinism but *not* completeness, since dead states are removed;
-    /// therefore the field `deterministic_and_complete` is set to `false`.
-    pub(super) fn normalise_states(&self) -> RawAutomaton<usize> {
-        let mut states_numbering = HashMap::new();
-        let mut counter: usize = 0;
         let live_states = self.live_states();
         live_states.iter().for_each(|state| {
             states_numbering.insert(state, counter);
@@ -387,54 +334,24 @@ where
             initial_state,
             final_states,
             transitions,
+    /// Checks if an automaton is deterministic. If the field `deterministic` or
+    /// `epsilon_transition` are set to true, nothing is done; otherwise, this
+    /// function scans the transition table to rule out a potential false
+    /// negative.
+    ///
+    /// If a successful check is performed, the `determinisitc` field is
+    /// updated.
+    pub(super) fn check_determinism(self) -> Self {
+        Self {
+            deterministic: self.deterministic
+                || self.transitions.iter().all(|succ| {
+                    let mut seen = FxHashSet::with_capacity_and_hasher(succ.len(), FxBuildHasher);
+                    succ.iter().all(|(letter, _)| seen.insert(letter))
+                }),
+            ..self
         }
     }
 }
-
-// Implementation of determinisation.
-impl<State> RawAutomaton<State>
-where
-    State: Copy + Clone + Eq + Hash + Debug,
-{
-    // Mutates the argument into an equivalent automaton without epsilon
-    // transitions.
-    //
-    // Note: the result may contain non-backward-reachable states.
-    pub(super) fn remove_epsilon_transitions(&mut self) {
-        if !self.epsilon_transitions {
-            return;
-        }
-        let mut transitions = HashSet::new();
-        let mut final_states = self.final_states.clone();
-        let mut pending = self.transitions.clone();
-        while let Some((source, _, _)) = pending.pop() {
-            pending = pending
-                .iter()
-                .filter(|(s, _, _)| source != *s)
-                .copied()
-                .collect::<Vec<_>>();
-            if self.epsilon_closure(&mut transitions, &source) {
-                final_states.insert(source);
-            }
-        }
-        let transitions = transitions.iter().copied().collect::<Vec<_>>();
-        self.final_states = final_states;
-        self.transitions = transitions;
-        self.epsilon_transitions = false;
-    }
-
-    // Computes a deterministic version of an automaton. Uses the standard
-    // powerset automaton construction, and then renames the states as `usize`.
-    // Mutates the argument to remove epsilon transitions.
-    //
-    // Note: the final automaton is a deterministic *and complete* automaton. In
-    // particular, calling `normalise_states` afterwards will break this property.
-    fn determinise_raw(&mut self, alphabet_size: usize, markers: &[usize]) -> RawAutomaton<usize> {
-        // The determinisation operates with integer states for simplicity, and is only
-        // valid if there is no epsilon transitions anymore.
-        self.remove_epsilon_transitions();
-        let base = self.normalise_states();
-
         // States of the new deterministic automaton are represented by sets of states
         // of `base`. These sets are represented by boolean vectors of length
         // `base.nb_states`, where each index indicates whether the set contains a given
@@ -682,59 +599,26 @@ where
             initial_state: (self.initial_state, rhs.initial_state),
             final_states: HashSet::from_iter(final_states),
             transitions,
-        }
-    }
-}
-
-impl RawAutomaton<usize> {
-    // Computes a deterministic version of an automaton. Less redundant than
-    // `determinise_raw` since it can check whether the automaton is already
-    // deterministic. Also, mutates the argument so that cloning is not needed when
-    // the input is already deterministic and complete.
-    pub(super) fn determinise(&mut self, alphabet_size: usize, markers: &[usize]) {
+impl RawAutomaton {
+    /// Computes an automaton for the complement of a language.
+    /// Assumes that all states are numbered from 0 to `self.nb_states - 1`, and
+    /// that the automaton is deterministic and complete. Mutates the
+    /// argument.
+    pub(super) fn complement(self) -> Self {
         assert!(
-            !self.deterministic_and_complete || !self.epsilon_transitions,
-            "(bug) [deterministic] and [epsilon_transitions] fields are not correctly enforced. {:?}",
-            self
-        );
-        if !self.deterministic_and_complete {
-            *self = self.determinise_raw(alphabet_size, markers);
-        }
-    }
-
-    // Computes an automaton for the complement of a language.
-    // Assumes that all states are numbered from 0 to `self.nb_states - 1`, and that
-    // the automaton is deterministic and complete. Mutates the argument.
-    pub(super) fn complement(&mut self) {
-        assert!(
-            self.deterministic_and_complete,
+            self.deterministic && self.complete,
             "(bug) complement can only be performed on deterministic and complete automata"
         );
-        self.final_states = (0..self.nb_states)
+        let final_states = (0..self.transitions.len())
             .filter(|i| !self.final_states.contains(i))
-            .collect::<HashSet<_>>();
+            .collect::<FxHashSet<_>>();
+        Self {
+            final_states,
+            ..self
+        }
+        .remove_dead_states()
     }
 
-    // Computes an automaton for the iteration (Kleene star) of a language. Putting
-    // `strict` as true requires that at least one iteration is done, whereas
-    // `strict` set as false always allows for the empty word (epsilon) to be
-    // accepted.
-    //
-    // Assumes that all states are numbered from 0 to `self.nb_states - 1`. Mutates
-    // the argument.
-    pub(super) fn repeat(&mut self, strict: bool) {
-        let old_initial_state = self.initial_state;
-        self.initial_state = self.nb_states;
-        self.nb_states += 1;
-        self.final_states
-            .iter()
-            .for_each(|&state| self.transitions.push((state, None, self.initial_state)));
-        self.transitions
-            .push((self.initial_state, None, old_initial_state));
-        self.epsilon_transitions = true;
-        self.deterministic_and_complete = false;
-        if !strict {
-            self.final_states.insert(self.initial_state);
         }
     }
 }
@@ -972,20 +856,20 @@ impl Automaton {
     /// ensure their state numbers do not overlap).
     pub fn offset_states(&self, offset: usize) -> Self {
         Self {
-            state_bound: self.state_bound + offset,
+            nb_states: self.nb_states + offset,
             initial_state: self.initial_state + offset,
             final_states: self
                 .final_states
                 .iter()
                 .map(|s| s + offset)
-                .collect::<HashSet<_>>(),
+                .collect::<FxHashSet<_>>(),
             transitions: self
                 .transitions
                 .iter()
                 .map(|((source, letter), (target, marker))| {
                     ((*source + offset, *letter), (*target + offset, *marker))
                 })
-                .collect::<HashMap<_, _>>(),
+                .collect::<FxHashMap<_, _>>(),
         }
     }
 }
@@ -999,8 +883,8 @@ impl Automaton {
     pub(super) fn run(&self, input: &[u8]) -> (Vec<usize>, Vec<usize>, bool) {
         let mut iter = input.iter();
         let mut current_state = self.initial_state;
-        let mut output = Vec::new();
-        let mut states = Vec::new();
+        let mut output = Vec::with_capacity(input.len());
+        let mut states = Vec::with_capacity(input.len() + 1);
         let mut letter = iter.next();
         states.push(current_state);
         // Iterates over the letters of the input and moves accross the states
