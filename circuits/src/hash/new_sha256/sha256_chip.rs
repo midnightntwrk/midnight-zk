@@ -1463,29 +1463,15 @@ impl<F: PrimeField> Sha256Chip<F> {
         layouter: &mut impl Layouter<F>,
         bytes: &[AssignedByte<F>],
     ) -> Result<Vec<AssignedByte<F>>, Error> {
-        let l = bytes.len();
-        let remaining_bytes = 64 - (l % 64);
-        // We always pad (64 / 8) bytes for the input length and 1 byte for the padded
-        // one
-        let padding_zero_bytes = if remaining_bytes < (64 / 8) + 1 {
-            // need two blocks for padding
-            64 + remaining_bytes - 9
-        } else {
-            // need one block for padding
-            remaining_bytes - 9
-        };
-
-        let one = self.native_gadget.assign_fixed(layouter, 1u8)?;
-        let zero = self.native_gadget.assign_fixed(layouter, 0u8)?;
-        let len = (self.native_gadget).assign_fixed(layouter, F::from(l as u64))?;
-        let len_bytes = (self.native_gadget).assigned_to_be_bytes(layouter, &len, Some(8))?;
+        let l = 8 * bytes.len();
+        let k = 512 - (l + 65) % 512;
 
         let mut padded = bytes.to_vec();
-        padded.push(one);
-        padded.extend(vec![zero; padding_zero_bytes]);
-        padded.extend(len_bytes);
-
-        assert_eq!(padded.len() % 64, 0);
+        padded.push(self.native_gadget.assign_fixed(layouter, 128u8)?); // k is always 7 mod 8
+        padded.extend(vec![self.native_gadget.assign_fixed(layouter, 0u8)?; k / 8]);
+        for byte in u64::to_be_bytes(l as u64) {
+            padded.push(self.native_gadget.assign_fixed(layouter, byte)?);
+        }
 
         Ok(padded)
     }
