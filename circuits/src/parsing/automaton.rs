@@ -693,61 +693,110 @@ impl RawAutomaton {
     // with `a` with a non-0 marker.
     //
     // Apart from that, the intersection is a classical carthesian-product
-    // construction.
-    pub(super) fn inter<S>(&self, rhs: &RawAutomaton<S>) -> RawAutomaton<(State, S)>
-    where
-        S: Copy + Clone + Eq + Hash + Debug,
-    {
-        assert!(
-            !self.epsilon_transitions && !rhs.epsilon_transitions,
-            "(bug) intersection cannot operate with epsilon transitions."
-        );
+    // construction, i.e., it is simply an automaton whose states are pairs of
+    // states of the initial automata. A pair `(s1,s2)` is encoded as `s1 * n + s2`,
+    // where `n` is the number of states of `rhs`.
+    pub(super) fn inter(&self, rhs: &Self) -> Self {
+        let mut raw_transitions =
+            Vec::with_capacity(self.transitions.len() * rhs.transitions.len());
+        let mut markers = FxHashSet::with_capacity_and_hasher(2, FxBuildHasher);
 
-        let mut transitions = Vec::with_capacity(self.transitions.len() * rhs.transitions.len());
-        let mut final_states = Vec::with_capacity(self.final_states.len() * rhs.final_states.len());
+        // Tracks if the resulting automaton is deterministic and complete (may not be
+        // due to the `join` operation below, since it may change some markers).
+        let mut deterministic = self.deterministic && rhs.deterministic;
+        let mut complete = self.complete && rhs.complete;
+
         // If two transitions have the same letter, the closure below adds the product
         // transition to the accumulator. Transitions that have the same letter, but
         // different markers, are only merged if one of the markers is zero (in which
         // case the non-zero marker is used).
-        let mut join =
-            |(source1, letter1, target1): (State, Option<Letter>, State),
-             (source2, letter2, target2): (S, Option<Letter>, S)| {
-                let letter1 = letter1.unwrap();
-                let letter2 = letter2.unwrap();
-                if letter1.char == letter2.char
-                    && (letter1.marker == letter2.marker
-                        || letter1.marker == 0
-                        || letter2.marker == 0)
-                {
-                    transitions.push((
-                        (source1, source2),
-                        Some(Letter {
-                            char: letter1.char,
-                            marker: std::cmp::max(letter1.marker, letter2.marker),
-                        }),
-                        (target1, target2),
-                    ));
+        let mut join = |(source1, letter1, target1): (usize, Letter, usize),
+                        (source2, letter2, target2): (usize, Letter, usize)|
+         -> bool {
+            if letter1.char == letter2.char
+                && (letter1.marker == letter2.marker || letter1.marker == 0 || letter2.marker == 0)
+            {
+                let marker = std::cmp::max(letter1.marker, letter2.marker);
+                let tr = (
+                    (source1, source2),
+                    Letter {
+                        char: letter1.char,
+                        marker,
+                    },
+                    (target1, target2),
+                );
+
+                // Only case where determinism might be violated.
+                if deterministic && letter1.marker != letter2.marker {
+                    deterministic = false
+                };
+                // Only case where completion might be violated.
+                if complete && letter1.marker != letter2.marker {
+                    complete = false
                 }
-            };
-        for tr1 in self.transitions.iter() {
-            for tr2 in rhs.transitions.iter() {
-                join(*tr1, *tr2)
+                // Adding the marker and the transition.
+                markers.insert(marker);
+                raw_transitions.push(tr);
+                true
+            } else {
+                false
+            }
+        };
+
+        // Joining all reachable pairs of states in the product automaton.
+        let mut visited = FxHashSet::with_capacity_and_hasher(
+            std::cmp::max(self.transitions.len(), rhs.transitions.len()),
+            FxBuildHasher,
+        );
+        let mut pending = Vec::with_capacity(self.transitions.len() * rhs.transitions.len());
+        pending.push((self.initial_state, rhs.initial_state));
+        while let Some((source1, source2)) = pending.pop() {
+            if visited.insert((source1, source2)) {
+                for (letter1, target1) in &self.transitions[source1] {
+                    for (letter2, target2) in &rhs.transitions[source2] {
+                        let tr1 = (source1, *letter1, *target1);
+                        let tr2 = (source2, *letter2, *target2);
+                        if join(tr1, tr2) {
+                            pending.push((*target1, *target2))
+                        }
+                    }
+                }
             }
         }
+
+        // Renaming the states using a continuous range.
+        let renaming = (visited.iter().enumerate())
+            .map(|(new_source, old_source)| ((old_source.0, old_source.1), new_source))
+            .collect::<FxHashMap<_, _>>();
+        let mut transitions = vec![vec![]; renaming.len()];
+        for (source, letter, target) in &raw_transitions {
+            transitions[renaming[source]].push((*letter, renaming[target]));
+        }
+        // Computing the initial state.
+        let initial_state = renaming[&(self.initial_state, rhs.initial_state)];
+        // Computing the final states.
+        let mut final_states = FxHashSet::default();
         for s1 in self.final_states.iter() {
             for s2 in rhs.final_states.iter() {
-                final_states.push((*s1, *s2));
+                if visited.contains(&(*s1, *s2)) {
+                    final_states.insert(renaming[&(*s1, *s2)]);
+                }
             }
         }
+
         RawAutomaton {
-            nb_states: self.nb_states * rhs.nb_states,
-            deterministic_and_complete: false, /* Even when all intersected automata are
-                                                * deterministic, `join` may introduce
-                                                * non-determinism to do the marker merging. */
-            epsilon_transitions: false,
-            initial_state: (self.initial_state, rhs.initial_state),
-            final_states: HashSet::from_iter(final_states),
+            deterministic,
+            complete,
+            initial_state,
+            final_states,
             transitions,
+            markers,
+        }
+        .remove_dead_states()
+        .check_determinism()
+    }
+}
+
 impl RawAutomaton {
     /// Computes an automaton for the complement of a language.
     /// Assumes that all states are numbered from 0 to `self.nb_states - 1`, and
