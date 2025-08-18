@@ -123,6 +123,10 @@ pub(super) struct RawAutomaton {
     markers: FxHashSet<usize>,
 }
 
+/// Type for representing reachability graphs for automata, that is, its set of
+/// transitions without letters.
+type ReachGraph = Vec<FxHashSet<usize>>;
+
 /// A normalised model of a deterministic (but not necessarily complete) finite
 /// automaton operating on bytes. The set of states is implicitly represented by
 /// the range `0..nb_states`.
@@ -213,64 +217,128 @@ impl RawAutomaton {
             markers: FxHashSet::default(),
         }
     }
+
+    /// Creates an automaton recognising the same language as `self` + the empty
+    /// word epsilon. As this operation is quite common, saving even one state
+    /// in this construction can have an observable effect on the load of the
+    /// final minimisation of a big regex.
+    ///
+    /// Since the modification to the automaton are often small, this function
+    /// operates by mutating the argument to avoid cloning the entire structure.
+    pub(super) fn make_optional(self) -> Self {
+        // If the initial state is already final, the automaton already accepts epsilon
+        // and there is nothing to do.
+        if !self.final_states.contains(&self.initial_state) {
+            if self.loop_on_initial() {
+                // If there exists a cycle of transitions from the initial state to itself, we
+                // add a fresh state with the same outgoing transitions. The previous initial
+                // state is not removed, but the fresh state becomes the new initial state, and
+                // is also final to accept epsilon while avoiding cycles.
+                let initial_state = self.transitions.len();
+                let mut final_states = self.final_states;
+                let mut transitions = self.transitions;
+                final_states.insert(initial_state);
+                transitions.push(transitions[self.initial_state].clone());
+                Self {
+                    initial_state,
+                    final_states,
+                    transitions,
+                    ..self
+                }
+            } else {
+                let mut final_states = self.final_states;
+                // If the initial state cannot reach itself non-trivially, marking it as a final
+                // state only adds epsilon to the language.
+                final_states.insert(self.initial_state);
+                Self {
+                    final_states,
+                    ..self
+                }
+            }
+        } else {
+            self
+        }
+    }
+}
+
+// Functions for graph analysis in automata.
+
+/// Computes the reverse graph of a simplified automaton graph.
+fn reverse_graph(graph: &ReachGraph) -> ReachGraph {
+    let mut backward_edges = vec![FxHashSet::default(); graph.len()];
+    for (source, succ) in graph.iter().enumerate() {
+        for &target in succ {
+            backward_edges[target].insert(source);
+        }
+    }
+    backward_edges
+}
+
+impl RawAutomaton {
+    /// Computes the simplified reachability graph of an automaton, i.e., the
+    /// transitions without letters. Computing once and for all a simplified
+    /// graph tends to make the code more efficient when the transition table
+    /// has be traversed many times, since there are often 10~100 transitions
+    /// between the same two states.
+    fn simplified_graph(&self) -> ReachGraph {
+        let mut forward_edges = vec![FxHashSet::default(); self.transitions.len()];
+        for (source, succ) in self.transitions.iter().enumerate() {
+            for (_, target) in succ {
+                forward_edges[source].insert(*target);
             }
         }
-        reach_states
+        forward_edges
     }
 
-    // Inserts in the accumulator `accu` all transitions of the form `(state,a,s)`,
-    // where a sequence of transitions
-    //
-    // state -> s1 -> ... -> sn -> s
-    //
-    // exists in `self`, with all these transitions being epsilon transitions,
-    // except sn -> s which is labelled by `a`. The function additionally returns a
-    // boolean indicating whether a final state of `self` is epsilon-reachable from
-    // `state`.
-    fn epsilon_closure(
-        &self,
-        accu: &mut HashSet<(State, Option<Letter>, State)>,
-        state: &State,
-    ) -> bool {
-        let mut visited = HashSet::new();
-        let mut pending_states = Vec::with_capacity(self.nb_states);
-        pending_states.push(state);
-        visited.insert(state);
-        let mut is_final = false;
+    /// Computes the set of states of an automaton that are both reachable from
+    /// the initial state, and can reach a final state.
+    fn live_states(&self) -> FxHashSet<usize> {
+        let forward_edges = self.simplified_graph();
+        let backward_edges = reverse_graph(&forward_edges);
+        let mut visited =
+            FxHashSet::with_capacity_and_hasher(self.transitions.len(), FxBuildHasher);
+        let mut pending = Vec::with_capacity(self.transitions.len());
 
-        while let Some(current_state) = pending_states.pop() {
-            is_final = is_final || self.final_states.contains(current_state);
-            self.transitions
-                .iter()
-                .for_each(|(source, letter, target)| {
-                    if source == current_state {
-                        match *letter {
-                            None => {
-                                if visited.insert(target) {
-                                    pending_states.push(target);
-                                }
-                            }
-                            Some(a) => {
-                                accu.insert((state.clone(), Some(a), target.clone()));
-                            }
-                        }
-                    }
-                });
+        // Computing forward reachable states.
+        pending.push(self.initial_state);
+        while let Some(state) = pending.pop() {
+            if visited.insert(state) {
+                pending.extend(forward_edges[state].iter());
+            }
         }
-        is_final
+        // Refining with backward reachable states.
+        let mut live = FxHashSet::with_capacity_and_hasher(self.transitions.len(), FxBuildHasher);
+        let reachable = visited.clone();
+        pending.clear();
+        visited.clear();
+        pending.extend(&self.final_states);
+        while let Some(state) = pending.pop() {
+            if visited.insert(state) && reachable.contains(&state) {
+                live.insert(state);
+                pending.extend(backward_edges[state].iter());
+            }
+        }
+        live
     }
 
-    // Computes the set of states of an automaton that are both reachable from the
-    // initial state, and can reach a final state.
-    fn live_states(&self) -> HashSet<State> {
-        let reach_states = self.reachable_states();
-        let mut back_reach_states = HashSet::new();
-        let mut visited = HashSet::new();
-        let mut pending_states = Vec::with_capacity(self.nb_states);
+    /// Checks if the graph contains a self loop on `self.initial_state`. Under
+    /// the assumption that all states of the automaton are reachable (invariant
+    /// of `Regex::to_automaton_serialized`), it suffices to check whether there
+    /// exists a transition pointing to the initial state.
+    fn loop_on_initial(&self) -> bool {
+        self.transitions
+            .iter()
+            .any(|succ| succ.iter().any(|(_, target)| *target == self.initial_state))
+    }
 
-        // Computing backward reachable states from final states.
+    /// Checks whether final states have no successors.
+    fn nothing_after_final(&self) -> bool {
         self.final_states
             .iter()
+            .all(|&state| self.transitions[state].is_empty())
+    }
+}
+
 // Post processing of automata handling the aftermath of a suboptimal operation.
 impl RawAutomaton {
     /// Updates the set of transitions of an automaton accordingly to an update
@@ -300,40 +368,52 @@ impl RawAutomaton {
         }
         (new_transitions, markers)
     }
+
+    /// Removes non reachable states, or states that are not backward-reachable
+    /// from the final states. Preserves determinism but *not* completeness,
+    /// since dead states are removed; therefore the field `complete` is set to
+    /// `false`.
+    ///
+    /// Also updates the `markers` field to account for some markers potentially
+    /// disappearing from the transition table.
+    fn remove_dead_states(self) -> Self {
+        // The goal is to restrict the states and transitions of `self` to those
+        // appearing in `live_states`.
         let live_states = self.live_states();
-        live_states.iter().for_each(|state| {
-            states_numbering.insert(state, counter);
-            counter += 1
-        });
-        if counter == 0 {
-            return RawAutomaton::empty();
+        // Handling this case separately, so that in the rest of the code, we can assume
+        // that at least the initial state is live.
+        if live_states.is_empty() {
+            return Self::empty();
         }
-        let initial_state = *states_numbering.get(&self.initial_state).unwrap();
+        // Maps bijectively each live state to an integer in `0..live_states.len()`.
+        let renaming = live_states
+            .iter()
+            .enumerate()
+            .map(|(index, &elt)| (elt, index))
+            .collect::<FxHashMap<_, _>>();
+        let initial_state = *renaming.get(&self.initial_state).unwrap();
         let final_states = self
             .final_states
             .iter()
-            .filter_map(|state| states_numbering.get(state).copied())
-            .collect::<HashSet<_>>();
-        let transitions = self
-            .transitions
-            .iter()
-            .filter_map(|(source, letter, target)| {
-                states_numbering.get(source).and_then(|source| {
-                    states_numbering
-                        .get(target)
-                        .map(|target| (*source, *letter, *target))
-                })
-            })
-            .collect::<Vec<_>>();
-        RawAutomaton {
-            nb_states: counter,
-            deterministic_and_complete: false, /* Only reachable and backward-reachable states
-                                                * are kept, hence
-                                                * the automaton may not be complete. */
-            epsilon_transitions: self.epsilon_transitions,
+            .filter_map(|state| renaming.get(state).copied())
+            .collect::<FxHashSet<_>>();
+        let (transitions, markers) = RawAutomaton::filter_map_transitions(
+            &self.transitions,
+            |state| renaming.get(&state).copied(),
+            live_states.len(),
+            0,
+        );
+
+        Self {
+            deterministic: self.deterministic,
+            complete: false, // `false` most of the time.
             initial_state,
             final_states,
             transitions,
+            markers,
+        }
+    }
+
     /// Checks if an automaton is deterministic. If the field `deterministic` or
     /// `epsilon_transition` are set to true, nothing is done; otherwise, this
     /// function scans the transition table to rule out a potential false
@@ -765,14 +845,14 @@ impl Automaton {
     }
 }
 
-impl RawAutomaton<usize> {
-    // Exhibits a path from the initial state to a given state in the automaton.
-    // Panics if such a path does not exist, or if the automaton is not
-    // deterministic (ignoring output-determinism).
+impl RawAutomaton {
+    /// Exhibits a path from the initial state to a given state in the
+    /// automaton. Panics if such a path does not exist, or if the automaton
+    /// is not deterministic (ignoring output-determinism).
     fn witness_reachability(&self, state: usize) -> Vec<u8> {
         // `reachability[s]` contains a minimal sequence of `Letter` that can be read to
         // reach `state` from `s`.
-        let mut reachability = vec![None; self.nb_states];
+        let mut reachability = vec![None; self.transitions.len()];
         reachability[state] = Some(vec![]);
         // `pending` contains some states that have recently been assigned a path in
         // `reachability`.
@@ -782,15 +862,16 @@ impl RawAutomaton<usize> {
             if reachability[self.initial_state].is_some() {
                 break;
             }
-            for (source, letter, target) in &self.transitions {
-                if *target == pending_state && reachability[*source].is_none() {
-                    let letter = letter.expect("(bug) witness_reachability has been called on an automaton with epsilon transitions");
-                    let path = reachability[pending_state].as_ref().unwrap();
-                    let extended_path = once(letter.char)
-                        .chain(path.iter().copied())
-                        .collect::<Vec<_>>();
-                    reachability[*source] = Some(extended_path);
-                    pending.push(*source);
+            for (source, succ) in self.transitions.iter().enumerate() {
+                for (letter, target) in succ {
+                    if *target == pending_state && reachability[source].is_none() {
+                        let path = reachability[pending_state].as_ref().unwrap();
+                        let extended_path = once(letter.char)
+                            .chain(path.iter().copied())
+                            .collect::<Vec<_>>();
+                        reachability[source] = Some(extended_path);
+                        pending.push(source);
+                    }
                 }
             }
         }
