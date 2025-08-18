@@ -432,84 +432,113 @@ impl RawAutomaton {
         }
     }
 }
+
+// Implementation of determinisation.
+impl RawAutomaton {
+    /// Performs the powerset construction for `self`, assuming
+    /// `self.transition` as a transition table, and all states of `initials` as
+    /// initial state. Then assigns the final result to `self`.
+    ///
+    /// Note: if `completion` is set to false, the automaton is guaranteed not
+    /// to have dead states if `self` did not have any either.
+    fn powerset_construction(
+        self,
+        initials: &[usize],
+        completion: bool,
+        alphabet_size: usize,
+    ) -> Self {
         // States of the new deterministic automaton are represented by sets of states
-        // of `base`. These sets are represented by boolean vectors of length
-        // `base.nb_states`, where each index indicates whether the set contains a given
-        // state of `base`.
-        let mut initial_state = vec![false; base.nb_states];
-        initial_state[base.initial_state] = true;
+        // of `self`. These sets are represented by bitsets.
+        let mut initial_state = vec![false; self.transitions.len()];
+        initials.iter().for_each(|&s| initial_state[s] = true);
         let mut state_counter = 0;
 
         // A Map recording the visited states of the new automaton, mapping them
         // injectively to an integer for renaming purpose at the end.
-        let mut visited = HashMap::new();
+        let mut visited =
+            FxHashMap::with_capacity_and_hasher(self.transitions.len(), FxBuildHasher);
 
-        // The list of states that remain to be handled by the transition-generation
-        // loop.
-        let mut pending = vec![initial_state];
+        // The list of states that remain to be handled by the transition generation.
+        let mut pending = Vec::with_capacity(self.transitions.len());
+        pending.push(initial_state);
 
         // Storage for the transitions and final states of the new automaton.
-        let mut transitions = Vec::with_capacity(base.transitions.len());
-        let mut final_states = HashSet::new();
+        let mut power_transitions = Vec::with_capacity(self.transitions.len());
+        let mut final_states =
+            FxHashSet::with_capacity_and_hasher(self.final_states.len(), FxBuildHasher);
+        let markers = Vec::from_iter(self.markers.clone());
 
         while let Some(power_state) = pending.pop() {
-            if !visited.contains_key(&power_state) {
-                visited.insert(power_state.clone(), state_counter);
-                // In this branch, we handle a never-encountered state the new automaton.
-                // So, we check whether it is final (i.e., if the set of states of `base` it
-                // represents contains a final state of `base`), and increment the state
-                // counter.
-                if base.final_states.iter().any(|state| power_state[*state]) {
+            if let Entry::Vacant(entry) = visited.entry(power_state.clone()) {
+                // A never-encountered state the new automaton. So, we check whether it is final
+                // (i.e., if the bitset contains a final state), and increment the counter.
+                if self.final_states.iter().any(|state| power_state[*state]) {
                     final_states.insert(state_counter);
                 }
+                entry.insert(state_counter);
                 state_counter += 1;
 
                 // Generation of the transitions starting from `power_state` in the new
-                // automaton. For each letter `letter`, `power_set` is mapped to the set of
-                // states `target` such that a transition `(source,Some(letter),target)`
-                // exists in `base`, with `source` in `power_set`.
-                let mut successors = vec![
-                    vec![false; base.nb_states];
-                    Letter::encoding_bound(alphabet_size, markers)
-                ];
-                base.transitions
-                    .iter()
-                    .for_each(|(source, letter, target)| {
-                        let letter = letter.unwrap();
-                        if power_state[*source] {
-                            successors[letter.encode(alphabet_size, markers)][*target] = true
+                // automaton. For each letter, `power_state` is potentially mapped to the
+                // set of states `target` such that a transition `(source,letter,target)`
+                // exists in `self` with `source` in `power_state`.
+                let mut successors = if completion {
+                    // In case completion is required, we initialise a successor for all possible
+                    // marked Letter.
+                    (0..Letter::encoding_bound(alphabet_size, &markers))
+                        .map(|i| (i, vec![false; self.transitions.len()]))
+                        .collect::<FxHashMap<_, _>>()
+                } else {
+                    // Otherwise, the capacity of the HashMap is chosen so that it cover most common
+                    // cases (letters marked 0), and marked letters will require a reallocation.
+                    FxHashMap::with_capacity_and_hasher(alphabet_size, FxBuildHasher)
+                };
+                for (source, b) in power_state.iter().enumerate() {
+                    if *b {
+                        // Marking all successors of `source` in `self.transitions` as true in the
+                        // powerset successor of `power_state`.
+                        for (letter, target) in &self.transitions[source] {
+                            successors
+                                .entry(letter.encode(alphabet_size, &markers))
+                                .or_insert(vec![false; self.transitions.len()])[*target] = true
                         }
-                    });
-                successors
-                    .iter()
-                    .enumerate()
-                    .for_each(|(letter_encoding, target)| {
-                        let letter = Letter::decode(letter_encoding, alphabet_size, markers);
-                        transitions.push((power_state.clone(), letter, target.clone()));
-                        pending.push(target.clone());
-                    })
+                    }
+                }
+                successors.iter().for_each(|(&letter_encoding, target)| {
+                    let letter = Letter::decode(letter_encoding, alphabet_size, &markers);
+                    power_transitions.push((power_state.clone(), letter, target.clone()));
+                    pending.push(target.clone());
+                })
             }
         }
 
         // Replacing powerset transitions with their numbered version.
-        let transitions = transitions
-            .iter()
-            .map(
-                |(source, letter, target)| match (visited.get(source), visited.get(target)) {
-                    (None, _) | (_, None) => {
-                        panic!("determinisation did not label states correctly")
-                    }
-                    (Some(source), Some(target)) => (*source, Some(*letter as Letter), *target),
-                },
-            )
-            .collect::<Vec<_>>();
-        RawAutomaton {
-            nb_states: state_counter,
-            deterministic_and_complete: true,
-            epsilon_transitions: false,
+        let mut transitions = vec![vec![]; state_counter];
+        for (source, letter, target) in &power_transitions {
+            let (source, target) = visited
+                .get(source)
+                .zip(visited.get(target))
+                .expect("determinisation did not label states correctly");
+            transitions[*source].push((*letter, *target));
+        }
+        Self {
+            deterministic: true,
+            complete: self.complete || completion,
             initial_state: 0,
             final_states,
             transitions,
+            markers: self.markers,
+        }
+    }
+
+    /// Computes a deterministic version of an automaton, using the powerset
+    /// construction.
+    pub(super) fn determinise(self, completion: bool, alphabet_size: usize) -> Self {
+        if self.deterministic && (!completion || self.complete) {
+            self
+        } else {
+            let initial_state = &[self.initial_state];
+            self.powerset_construction(initial_state, completion, alphabet_size)
         }
     }
 }
