@@ -901,13 +901,14 @@ impl RawAutomaton {
 }
 
 // Implementation of automaton minimisation.
-impl Automaton {
-    // Computes the Nerode equivalence classes for the set of states of an
-    // automaton, i.e., two states are equivalent if they accept exactly the same
-    // inputs. The implementation represents sets of states by boolean vectors. The
-    // function also returns the size of the effective alphabet.
+impl RawAutomaton {
+    /// Computes the Nerode equivalence classes for the set of states of an
+    /// automaton, i.e., two states are equivalent if they accept exactly the
+    /// same inputs. The implementation represents sets of states by boolean
+    /// vectors. The function also returns the size of the effective
+    /// alphabet.
     fn nerode_congruence(&self, alphabet_size: usize, markers: &[usize]) -> Vec<Vec<bool>> {
-        let mut final_states = vec![false; self.state_bound];
+        let mut final_states = vec![false; self.transitions.len()];
         self.final_states
             .iter()
             .for_each(|&i| final_states[i] = true);
@@ -917,9 +918,8 @@ impl Automaton {
         // It simply contains (at most) two classes, which are the (non-empty sets among
         // the) set of final states and its complement.
         let mut partition = [final_states, non_final_states]
-            .iter()
+            .into_iter()
             .filter(|vec| vec.iter().any(|b| *b))
-            .cloned()
             .collect::<Vec<_>>();
 
         // The set of distinguishers that will be used as criterion to refined the
@@ -929,22 +929,26 @@ impl Automaton {
             // For each alphabet letter, computes the set of states that can reach a set in
             // the distinguisher by reading this letter. See `alphabet.rs` for details about
             // the encoding of `Letter` as `usize`.
-            let mut predecessors =
-                vec![vec![false; self.state_bound]; Letter::encoding_bound(alphabet_size, markers)];
-            for ((source, a), (target, marker)) in self.transitions.iter() {
-                let encoding = Letter {
-                    char: *a,
-                    marker: *marker,
-                }
-                .encode(alphabet_size, markers);
-                if dist[*target] {
-                    predecessors[encoding][*source] = true;
+            let mut predecessors = vec![
+                vec![false; self.transitions.len()];
+                Letter::encoding_bound(alphabet_size, markers)
+            ];
+            for (source, succ) in self.transitions.iter().enumerate() {
+                for (a, target) in succ {
+                    if dist[*target] {
+                        predecessors[a.encode(alphabet_size, markers)][source] = true;
+                    }
                 }
             }
-            // For each letter, use the predecessor set to refine the partition (in short,
-            // intersect it with all classes of the partition). The set of distinguishers is
-            // updated accordingly to Hopcroft's criterion.
-            for pred in predecessors {
+
+            // For each predecessor set (up to duplicates), refine the partition (in
+            // short, intersect it with all classes of the partition). The set of
+            // distinguishers is updated accordingly to Hopcroft's criterion.
+            //
+            // Note: The conversion to a HashSet removes duplicates in the iteration (not
+            // doing so worsened performances an order of magnitude in prior
+            // implementations).
+            for pred in predecessors.iter().collect::<FxHashSet<_>>() {
                 let mut partition_temp = Vec::with_capacity(partition.len() * 2);
                 while let Some(class) = partition.pop() {
                     // Compute the refinement of the partition class (intersection
@@ -997,47 +1001,54 @@ impl Automaton {
         partition
     }
 
-    // Implementation of minimisation using the Nerode's congruence. It simply
-    // numbers each equivalence class, and generates the transitions between the
-    // different classes accordingly.
-    fn minimise(&self, alphabet_size: usize, markers: &[usize]) -> Self {
+    /// Implementation of minimisation using the Nerode's congruence. It simply
+    /// numbers each equivalence class, and generates the transitions between
+    /// the different classes accordingly. Correctness assumes the automaton is
+    /// deterministic.
+    ///
+    /// Will only be called once, just before converting the `RawAutomaton` to
+    /// `Automaton`. Additionally calls are performed when serializing, since it
+    /// may compress the resulting `RawAutomaton` which will be serialized
+    /// anyway.
+    pub(super) fn minimise(self, alphabet_size: usize) -> Self {
+        assert!(
+            self.deterministic,
+            "minimisation is only possible on deterministic automata"
+        );
         let partition = self
-            .nerode_congruence(alphabet_size, markers)
-            .iter()
-            .cloned()
+            .nerode_congruence(alphabet_size, &Vec::from_iter(self.markers.clone()))
+            .into_iter()
             .enumerate()
             .collect::<Vec<_>>();
-        let state_bound = partition.len();
         let initial_state = partition
             .iter()
             .find(|(_, v)| v[self.initial_state])
             .unwrap()
             .0;
-        let mut final_states = HashSet::new();
+        let mut final_states =
+            FxHashSet::with_capacity_and_hasher(self.final_states.len(), FxBuildHasher);
         partition.iter().for_each(|(index, class)| {
             let elt = class.iter().enumerate().find(|&(_, &b)| b).unwrap().0;
             if self.final_states.contains(&elt) {
                 final_states.insert(*index);
             }
         });
-        let mut transitions: HashMap<(usize, u8), (usize, usize)> = HashMap::new();
-        for (index1, class1) in partition.clone() {
-            let source = class1.iter().enumerate().find(|&(_, &b)| b).unwrap().0;
-            for letter in 0..alphabet_size {
-                self.transitions
-                    .get(&(source, letter as u8))
-                    .iter()
-                    .for_each(|&&(target, marker)| {
-                        let index2 = partition.iter().find(|(_, class)| class[target]).unwrap().0;
-                        transitions.insert((index1, letter as u8), (index2, marker));
-                    });
+        let mut transitions = vec![vec![]; partition.len()];
+        for (index1, class1) in &partition {
+            let source = class1.iter().enumerate().find(|(_, &b)| b).unwrap().0;
+            for (letter, target) in &self.transitions[source] {
+                let index2 = (partition.iter().find(|(_, class)| class[*target]))
+                    .unwrap()
+                    .0;
+                transitions[*index1].push((*letter, index2));
             }
         }
         Self {
-            state_bound,
+            deterministic: true,
             initial_state,
             final_states,
             transitions,
+            ..self
         }
     }
 }
@@ -1079,52 +1090,52 @@ impl RawAutomaton {
 
     /// Conversion into a minimal deterministic automaton. Mutates the argument
     /// to determinise it.
-    pub(super) fn normalise(&mut self) -> Automaton {
-        let mut markers = HashSet::new();
-        let mut alphabet_size = 0;
-        self.transitions.iter().for_each(|(_, letter_option, _)| {
-            letter_option.iter().for_each(|letter| {
-                markers.insert(letter.marker);
-                alphabet_size = std::cmp::max(alphabet_size, 1 + letter.char as usize)
+    pub(super) fn normalise(self) -> Automaton {
+        let alphabet_size = (self.transitions.iter())
+            .map(|succ| {
+                (succ.iter().map(|(letter, _)| letter.char as usize + 1))
+                    .max()
+                    .unwrap_or(0)
             })
-        });
-        let markers = markers.iter().copied().collect::<Vec<_>>();
-        self.determinise(alphabet_size, &markers);
-        *self = self.normalise_states();
-        let mut transitions = HashMap::new();
-        self.transitions
-            .iter()
-            .for_each(|(source, letter, target)| match letter {
-                None => panic!("(bug) determinisation failed to remove an epsilon transition. The automaton is:\n{:?}\n\n", self),
-                Some(letter) => {
-                    match transitions.insert((*source, letter.char), (*target, letter.marker)) {
-                        None => (),
-                        Some((target2, marker2)) => {
-                            if letter.marker == marker2 {
-                                panic!("(bug) determinisation was incorrect: source state {source} was pointing to both targets {target} and {target2} after letter {} (marked {})", letter.char, letter.marker)
-                            } else {
-                                let bugged_path = self.witness_reachability(*source);
-                                panic!(
-                                    "a non output-deterministic language has been specified. After reading the string:\n\n{}\n\n(i.e., bytes [{:?}])\nit is unclear whether character '{}' (byte {}) should be marked {} or {}",
-                                    String::from_utf8_lossy(&bugged_path),
-                                    bugged_path,
-                                    letter.char as char,
-                                    letter.char,
-                                    letter.marker,
-                                    marker2
-                                )
-                            }
-                        }
+            .max()
+            .unwrap_or(0);
+        let base = self
+            .determinise(false, alphabet_size)
+            .minimise(alphabet_size);
+
+        let mut transitions =
+            FxHashMap::with_capacity_and_hasher(base.transitions.len(), FxBuildHasher);
+        for (source, succ) in base.transitions.iter().enumerate() {
+            for (letter, target) in succ {
+                if let Some((target2, marker2)) =
+                    transitions.insert((source, letter.char), (*target, letter.marker))
+                {
+                    if letter.marker == marker2 {
+                        panic!(
+                            "(bug) determinisation was incorrect: source state {source} was pointing to both targets {target} and {target2} after letter {} (marked {})",
+                            letter.char,
+                            letter.marker)
+                    } else {
+                        let bugged_path = base.witness_reachability(source);
+                        panic!(
+                            "a non output-deterministic language has been specified. After reading the string:\n\n{}\n\n(i.e., bytes [{:?}])\nit is unclear whether character '{}' (byte {}) should be marked {} or {}",
+                            String::from_utf8_lossy(&bugged_path),
+                            bugged_path,
+                            letter.char as char,
+                            letter.char,
+                            letter.marker,
+                            marker2
+                        )
                     }
-                },
-            });
+                }
+            }
+        }
         Automaton {
-            state_bound: self.nb_states,
-            initial_state: self.initial_state,
-            final_states: self.final_states.clone(),
+            nb_states: base.transitions.len(),
+            initial_state: base.initial_state,
+            final_states: base.final_states,
             transitions,
         }
-        .minimise(alphabet_size, &markers)
     }
 }
 
