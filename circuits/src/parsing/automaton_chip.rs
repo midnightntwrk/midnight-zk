@@ -499,8 +499,15 @@ impl Automaton {
         // `marker_regex` accepts any character, marking 'l' as 2, and
         // any other non-blank character different from 'h' as 1.
         let marker_regex = Regex::any_byte()
-            .update_markers_when(&|b| !b"h\n\t ".contains(&b), 1)
-            .update_markers_on(b"l", 2)
+            .mark(&|b| {
+                if b == b'l' {
+                    Some(2)
+                } else if !b"h\n\t ".contains(&b) {
+                    Some(1)
+                } else {
+                    None
+                }
+            })
             .list();
         let holy = Regex::word("holy").terminated(Regex::word("y").list());
         let hell = Regex::word("hell");
