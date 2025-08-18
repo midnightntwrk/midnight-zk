@@ -81,12 +81,16 @@ pub enum StdLibParser {
 
 // Regex formalising the spec of `StdLIbParser::Jwt`.
 fn spec_jwt() -> Regex {
+    // Content of a basic field (RFC 8259 JSON string), possibly marked if `marker`
+    // is not 0.
+    let string = |marker: usize| -> Regex {
+        Regex::json_string().replace_markers(&|m| if m == 1 { Some(marker) } else { None })
+    };
     // A json field, with possible white spaces.
     let field = |name: &str, content: Regex| -> Regex {
         Regex::spaced_cat([format!("\"{name}\"").into(), ":".into(), content])
     };
-    let string_field =
-        |name: &str, marker: usize| -> Regex { field(name, Regex::json_string(marker)) };
+    let string_field = |name: &str, marker: usize| -> Regex { field(name, string(marker)) };
     let int_field = |name: &str| -> Regex { field(name, Regex::digit().non_empty_list()) };
 
     // A collection of regular expressions, delimited by `opening` and `closing`,
@@ -98,7 +102,7 @@ fn spec_jwt() -> Regex {
     };
 
     // A JSON list of strings.
-    let string_list = Regex::json_string(0)
+    let string_list = string(0)
         .spaced_separated_list(",".into())
         .spaced_delimited("[".into(), "]".into());
 
@@ -144,7 +148,7 @@ fn spec_jwt() -> Regex {
     let issuer = field(
         "issuer",
         Regex::union([
-            Regex::json_string(0),
+            string(0),
             collec(
                 "{",
                 vec![string_field("id", 0), string_field("type", 0)],
@@ -337,7 +341,7 @@ mod tests {
             println!(
                 "  - {:?} automaton: {} states, {} transitions",
                 name,
-                automaton.state_bound,
+                automaton.nb_states,
                 automaton.transitions.len()
             )
         }
