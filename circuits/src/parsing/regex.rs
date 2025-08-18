@@ -766,32 +766,13 @@ impl Regex {
                     accu.inter(&r.to_raw_automaton(alphabet_size))
                 }),
             RegexInternal::Star(strict, e) => {
-                let mut automaton = e.to_raw_automaton(alphabet_size);
-                automaton.repeat(*strict);
-                automaton
+                let automaton = e.to_raw_automaton(alphabet_size);
+                if *strict {
+                    automaton.strict_repeat()
+                } else {
+                    automaton.weak_repeat()
+                }
             }
-            RegexInternal::Complement(e) => {
-                let mut automaton = e.to_raw_automaton(alphabet_size);
-                // This determinisation assumes that when complement are constructed (see
-                // `RegexInstructions`), it is ensured that `e` above only contains `0` as a
-                // marker.
-                automaton.determinise(alphabet_size, &[0]);
-                automaton.complement();
-                automaton.normalise_states()
-            }
-        };
-        // After the determinisation is finished, add the markers if needed.
-        if self.toplevel_marker == 0 {
-            automaton
-        } else {
-            automaton.add_marker(self.toplevel_marker)
-        }
-    }
-
-    // Converts a regular expression into a state automaton. This function can
-    // specify the alphabet size, so that smaller alphabets can be considered for
-    // more readable testing purpose. Only the instanciation with `alphabet_size
-    // == ALPPHABET_MAX_SIZE` is accessible outside of this module.
     pub(super) fn to_automaton_param(&self, alphabet_size: usize) -> Automaton {
         assert!(alphabet_size <= ALPHABET_MAX_SIZE,"Attempt to generate an automaton with an alphabet of size {alphabet_size}. Letters are represented by bytes, hence the maximal alphabet size is {ALPHABET_MAX_SIZE}");
         self.to_raw_automaton(alphabet_size).normalise()

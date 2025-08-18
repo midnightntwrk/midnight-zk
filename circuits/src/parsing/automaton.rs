@@ -817,6 +817,85 @@ impl RawAutomaton {
         .remove_dead_states()
     }
 
+    /// Computes an automaton for the iteration (Kleene star) of a language.
+    /// Only considers a non-null number of iterations. Mutates the
+    /// argument, by copying all outgoing transitions from the initial
+    /// state, to each of the final states.
+    pub(super) fn strict_repeat(self) -> Self {
+        let mut transitions = self.transitions;
+        let outgoing_from_initial = transitions[self.initial_state].clone();
+        for state in &self.final_states {
+            transitions[*state].extend(outgoing_from_initial.clone());
+            // Removing potential duplicates.
+            transitions[*state] = (transitions[*state].iter().copied())
+                .collect::<FxHashSet<_>>()
+                .into_iter()
+                .collect::<Vec<_>>()
+        }
+        Self {
+            deterministic: false,
+            transitions,
+            ..self
+        }
+        .check_determinism()
+    }
+
+    /// Removes final states and redirects any transition pointing to them to
+    /// the a given state of `self` instead. Assumes there are no outgoing
+    /// transitions from final states. Also makes the initial state final.
+    fn redirect_final_to_initial(self) -> Self {
+        let mut transitions = self.transitions;
+        // Redirecting any transitions pointing to a final state, to the initial state.
+        for succ in transitions.iter_mut() {
+            for (_, target) in succ {
+                if self.final_states.contains(target) {
+                    *target = self.initial_state
+                }
+            }
+        }
+        // Removing final states (but not the initial state, if it is final).
+        let renaming = (transitions.iter().enumerate())
+            .filter(|(source, _)| {
+                !self.final_states.contains(source) || *source == self.initial_state
+            })
+            .enumerate()
+            .map(|(new_source, (old_source, _))| (old_source, new_source))
+            .collect::<FxHashMap<_, _>>();
+        let initial_state = renaming[&self.initial_state];
+        let final_states = FxHashSet::from_iter([initial_state]);
+        let (transitions, markers) = RawAutomaton::filter_map_transitions(
+            &transitions,
+            |state| renaming.get(&state).copied(),
+            transitions.len() - self.final_states.len(),
+            0,
+        );
+        Self {
+            deterministic: self.deterministic,
+            complete: self.complete,
+            final_states,
+            initial_state,
+            markers,
+            transitions,
+        }
+    }
+
+    /// Computes an automaton for the iteration (Kleene star) of a language,
+    /// including 0 iterations. Mutates the argument. A smaller automaton can be
+    /// computed using `self.redirect_final_to_initial()` when there are no
+    /// loops on the initial state nor outgoing transitions from the final
+    /// states.
+    pub(super) fn weak_repeat(self) -> Self {
+        if self.nothing_after_final()
+            && (!self.loop_on_initial() || self.final_states.contains(&self.initial_state))
+        {
+            // In this branch, we can replace the final states by the initial state.
+            // Reducing the number of states lightens future determinisation and
+            // minimisation.
+            self.redirect_final_to_initial()
+        } else {
+            // Otherwise, the optimisation in unsound. So we just default to applying a
+            // non-trivial repeat or returning epsilon.
+            self.strict_repeat().make_optional()
         }
     }
 }
