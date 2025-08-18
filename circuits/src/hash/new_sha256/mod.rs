@@ -23,7 +23,7 @@ mod utils;
 use ff::PrimeField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 use sha2::Digest;
-pub use sha256_chip::{Sha256Chip, Sha256Config};
+pub use sha256_chip::{Sha256Chip, Sha256Config, NB_SHA256_ADVICE_COLS, NB_SHA256_FIXED_COLS};
 
 use crate::{
     instructions::{hash::HashCPU, DecompositionInstructions, HashInstructions},

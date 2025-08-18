@@ -51,8 +51,11 @@ const IV: [u32; 8] = [
     0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
 ];
 
-const NB_SHA256_ADVICE_COLS: usize = 8;
-const NB_SHA256_FIXED_COLS: usize = 2;
+/// Number of advice columns used by the identities of the SHA256 chip.
+pub const NB_SHA256_ADVICE_COLS: usize = 8;
+
+/// Number of fixed columns used by the identities of the SHA256 chip.
+pub const NB_SHA256_FIXED_COLS: usize = 2;
 
 /// Tag for the even and odd 12-12-8 decompositions.
 enum Parity {
@@ -132,6 +135,8 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
         let nbits_tab = meta.lookup_table_column();
         let plain_tab = meta.lookup_table_column();
         let sprdd_tab = meta.lookup_table_column();
+
+        advice_cols.iter().for_each(|c| meta.enable_equality(*c));
 
         let q_Sigma_0 = meta.selector();
         let q_Sigma_1 = meta.selector();

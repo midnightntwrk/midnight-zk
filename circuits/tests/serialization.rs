@@ -14,9 +14,7 @@
 //! Unit tests on serialization of Midnight keys.
 
 use midnight_circuits::{
-    compact_std_lib::{
-        self, MidnightPK, MidnightVK, Relation, ShaTableSize, ZkStdLib, ZkStdLibArch,
-    },
+    compact_std_lib::{self, MidnightPK, MidnightVK, Relation, ZkStdLib, ZkStdLibArch},
     instructions::{
         ArithInstructions, AssertionInstructions, AssignmentInstructions, PublicInputInstructions,
     },
@@ -76,7 +74,7 @@ const ARCHITECTURES: [ZkStdLibArch; 4] = [
     ZkStdLibArch {
         jubjub: true,
         poseidon: true,
-        sha256: None,
+        sha256: false,
         secp256k1: true,
         bls12_381: true,
         base64: false,
@@ -84,7 +82,7 @@ const ARCHITECTURES: [ZkStdLibArch; 4] = [
     ZkStdLibArch {
         jubjub: true,
         poseidon: true,
-        sha256: Some(ShaTableSize::Table11),
+        sha256: true,
         secp256k1: false,
         bls12_381: false,
         base64: false,
@@ -92,7 +90,7 @@ const ARCHITECTURES: [ZkStdLibArch; 4] = [
     ZkStdLibArch {
         jubjub: false,
         poseidon: true,
-        sha256: Some(ShaTableSize::Table11),
+        sha256: true,
         secp256k1: false,
         bls12_381: true,
         base64: false,
@@ -100,7 +98,7 @@ const ARCHITECTURES: [ZkStdLibArch; 4] = [
     ZkStdLibArch {
         jubjub: false,
         poseidon: false,
-        sha256: Some(ShaTableSize::Table11),
+        sha256: true,
         secp256k1: true,
         bls12_381: false,
         base64: true,

@@ -5,7 +5,7 @@
 use group::GroupEncoding;
 use halo2curves::secp256k1::{Fp as secp256k1Base, Fq as secp256k1Scalar, Secp256k1};
 use midnight_circuits::{
-    compact_std_lib::{self, Relation, ShaTableSize, ZkStdLib, ZkStdLibArch},
+    compact_std_lib::{self, Relation, ZkStdLib, ZkStdLibArch},
     field::foreign::params::MultiEmulationParams,
     instructions::{
         AssertionInstructions, AssignmentInstructions, DecompositionInstructions, EccInstructions,
@@ -140,7 +140,7 @@ impl Relation for BitcoinSigExample {
         ZkStdLibArch {
             jubjub: false,
             poseidon: false,
-            sha256: Some(ShaTableSize::Table11),
+            sha256: true,
             secp256k1: true,
             bls12_381: false,
             base64: false,

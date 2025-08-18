@@ -32,7 +32,7 @@ use group::{prime::PrimeCurveAffine, Group};
 use halo2curves::secp256k1::{self, Secp256k1};
 use midnight_curves::G1Projective;
 use midnight_proofs::{
-    circuit::{Chip, Layouter, SimpleFloorPlanner, Value},
+    circuit::{Layouter, SimpleFloorPlanner, Value},
     dev::cost_model::{from_circuit_to_circuit_model, CircuitModel},
     plonk::{k_from_circuit, prepare, Circuit, ConstraintSystem, Error, ProvingKey, VerifyingKey},
     poly::{
@@ -68,11 +68,8 @@ use crate::{
         NativeChip, NativeConfig, NativeGadget,
     },
     hash::{
+        new_sha256::{Sha256Chip, Sha256Config, NB_SHA256_ADVICE_COLS, NB_SHA256_FIXED_COLS},
         poseidon::{PoseidonChip, PoseidonConfig, NB_POSEIDON_ADVICE_COLS, NB_POSEIDON_FIXED_COLS},
-        sha256::{
-            Sha256, Table11Chip, Table11Config, Table16Chip, Table16Config, NB_TABLE11_ADVICE_COLS,
-            NB_TABLE11_FIXED_COLS,
-        },
     },
     instructions::{
         hash_to_curve::HashToCurveInstructions, ArithInstructions, AssertionInstructions,
@@ -91,9 +88,6 @@ use crate::{
     vec::{vector_gadget::VectorGadget, AssignedVector, Vectorizable},
 };
 
-const SHA256_SIZE_IN_WORDS: usize = 8;
-const SHA256_SIZE_IN_BYTES: usize = 4 * SHA256_SIZE_IN_WORDS;
-
 type C = midnight_curves::JubjubExtended;
 type F = midnight_curves::Fq;
 
@@ -104,16 +98,6 @@ type Secp256k1ScalarChip = FieldChip<F, secp256k1::Fq, MEP, NG>;
 type Secp256k1Chip = ForeignEccChip<F, Secp256k1, MEP, Secp256k1ScalarChip, NG>;
 type Bls12381BaseChip = FieldChip<F, midnight_curves::Fp, MEP, NG>;
 type Bls12381Chip = ForeignEccChip<F, midnight_curves::G1Projective, MEP, NG, NG>;
-
-/// Size of the lookup table for SHA.
-#[derive(Clone, Copy, Debug)]
-pub enum ShaTableSize {
-    /// Table of size 2^11.
-    Table11,
-
-    /// Table of size 2^16.
-    Table16,
-}
 
 const ZKSTD_VERSION: u32 = 1;
 
@@ -127,8 +111,8 @@ pub struct ZkStdLibArch {
     /// Enable the Poseidon chip?
     pub poseidon: bool,
 
-    /// Enable the SHA256 chip? Using Table11 or Table16?
-    pub sha256: Option<ShaTableSize>,
+    /// Enable the SHA256 chip?
+    pub sha256: bool,
 
     /// Enable the Secp256k1 chip?
     pub secp256k1: bool,
@@ -145,7 +129,7 @@ impl Default for ZkStdLibArch {
         ZkStdLibArch {
             jubjub: true,
             poseidon: true,
-            sha256: Some(ShaTableSize::Table11),
+            sha256: true,
             secp256k1: false,
             bls12_381: false,
             base64: false,
@@ -157,15 +141,11 @@ impl From<ZkStdLibArch> for u8 {
     fn from(arch: ZkStdLibArch) -> Self {
         let bit0 = if arch.jubjub { 1 } else { 0 };
         let bit1 = if arch.poseidon { 1 } else { 0 };
-        let bits23 = match arch.sha256 {
-            None => 0,
-            Some(ShaTableSize::Table11) => 1,
-            Some(ShaTableSize::Table16) => 2,
-        };
-        let bit4 = if arch.secp256k1 { 1 } else { 0 };
-        let bit5 = if arch.bls12_381 { 1 } else { 0 };
-        let bit6 = if arch.base64 { 1 } else { 0 };
-        bit0 ^ (bit1 << 1) ^ (bits23 << 2) ^ (bit4 << 4) ^ (bit5 << 5) ^ (bit6 << 6)
+        let bit2 = if arch.sha256 { 1 } else { 0 };
+        let bit3 = if arch.secp256k1 { 1 } else { 0 };
+        let bit4 = if arch.bls12_381 { 1 } else { 0 };
+        let bit5 = if arch.base64 { 1 } else { 0 };
+        bit0 ^ (bit1 << 1) ^ (bit2 << 2) ^ (bit3 << 3) ^ (bit4 << 4) ^ (bit5 << 5)
     }
 }
 
@@ -176,15 +156,10 @@ impl TryInto<ZkStdLibArch> for u8 {
         Ok(ZkStdLibArch {
             jubjub: self & 1 != 0,
             poseidon: self & 2 != 0,
-            sha256: match (self >> 2) & 0b11 {
-                0 => None,
-                1 => Some(ShaTableSize::Table11),
-                2 => Some(ShaTableSize::Table16),
-                _ => return Err(io::Error::from(io::ErrorKind::InvalidInput)),
-            },
-            secp256k1: self & 16 != 0,
-            bls12_381: self & 32 != 0,
-            base64: self & 64 != 0,
+            sha256: self & 4 != 0,
+            secp256k1: self & 8 != 0,
+            bls12_381: self & 16 != 0,
+            base64: self & 32 != 0,
         })
     }
 }
@@ -222,8 +197,7 @@ pub struct ZkStdLibConfig {
     native_config: NativeConfig,
     core_decomposition_config: P2RDecompositionConfig,
     jubjub_config: Option<EccConfig>,
-    table11_config: Option<Table11Config>,
-    table16_config: Option<Table16Config>,
+    sha256_config: Option<Sha256Config>,
     poseidon_config: Option<PoseidonConfig<midnight_curves::Fq>>,
     secp256k1_scalar_config: Option<FieldChipConfig>,
     secp256k1_config: Option<ForeignEccConfig<Secp256k1>>,
@@ -238,8 +212,7 @@ pub struct ZkStdLib {
     native_gadget: NG,
     core_decomposition_chip: P2RDecompositionChip<F>,
     jubjub_chip: Option<EccChip<C>>,
-    sha256_table11_chip: Option<Table11Chip<F>>,
-    sha256_table16_chip: Option<Table16Chip<F>>,
+    sha256_chip: Option<Sha256Chip<F>>,
     poseidon_gadget: Option<PoseidonChip<F>>,
     htc_gadget: Option<HashToCurveGadget<F, C, AssignedNative<F>, PoseidonChip<F>, EccChip<C>>>,
     map_gadget: Option<MapGadget<F, NG, PoseidonChip<F>>>,
@@ -250,10 +223,6 @@ pub struct ZkStdLib {
     base64_chip: Option<Base64Chip<F>>,
     parser_gadget: ParserGadget<F, NG>,
     vector_gadget: VectorGadget<F>,
-
-    // A flag that indicates if the SHA chip has been used. This way we can load the SHA table only
-    // when necessary (thus reducing the min_k in some cases).
-    used_sha: Rc<RefCell<bool>>,
 }
 
 impl ZkStdLib {
@@ -265,10 +234,8 @@ impl ZkStdLib {
         let native_gadget = NativeGadget::new(core_decomposition_chip.clone(), native_chip.clone());
         let jubjub_chip = (config.jubjub_config.as_ref())
             .map(|jubjub_config| EccChip::new(jubjub_config, &native_gadget));
-        let sha256_table11_chip = (config.table11_config.as_ref())
-            .map(|table11_config| Table11Chip::construct(table11_config.clone()));
-        let sha256_table16_chip = (config.table16_config.as_ref())
-            .map(|table16_config| Table16Chip::construct(table16_config.clone()));
+        let sha256_chip = (config.sha256_config.as_ref())
+            .map(|sha256_config| Sha256Chip::new(sha256_config, &native_gadget));
         let poseidon_gadget = (config.poseidon_config.as_ref())
             .map(|poseidon_config| PoseidonChip::new(poseidon_config, &native_chip));
         let htc_gadget = (jubjub_chip.as_ref())
@@ -298,8 +265,7 @@ impl ZkStdLib {
             native_gadget,
             core_decomposition_chip,
             jubjub_chip,
-            sha256_table11_chip,
-            sha256_table16_chip,
+            sha256_chip,
             poseidon_gadget,
             map_gadget,
             htc_gadget,
@@ -310,7 +276,6 @@ impl ZkStdLib {
             base64_chip,
             parser_gadget,
             vector_gadget,
-            used_sha: Rc::new(RefCell::new(false)),
         }
     }
 
@@ -325,10 +290,10 @@ impl ZkStdLib {
             } else {
                 0
             },
-            match arch.sha256 {
-                Some(ShaTableSize::Table11) => NB_TABLE11_ADVICE_COLS,
-                Some(ShaTableSize::Table16) => 0, // Table16 advice cols are not shareable
-                None => 0,
+            if arch.sha256 {
+                NB_SHA256_ADVICE_COLS
+            } else {
+                0
             },
             if arch.secp256k1 {
                 max(
@@ -368,11 +333,7 @@ impl ZkStdLib {
             } else {
                 0
             },
-            match arch.sha256 {
-                Some(ShaTableSize::Table11) => NB_TABLE11_FIXED_COLS,
-                Some(ShaTableSize::Table16) => 0, // Table16 fixed cols are not shareable
-                None => 0,
-            },
+            if arch.sha256 { NB_SHA256_FIXED_COLS } else { 0 },
         ]
         .into_iter()
         .max()
@@ -410,17 +371,14 @@ impl ZkStdLib {
             false => None,
         };
 
-        let table11_config = match arch.sha256 {
-            Some(ShaTableSize::Table11) => Some(Table11Chip::configure(
+        let sha256_config = match arch.sha256 {
+            true => Some(Sha256Chip::configure(
                 meta,
-                &advice_columns[..NB_TABLE11_ADVICE_COLS].try_into().unwrap(),
-                fixed_columns[..NB_TABLE11_FIXED_COLS].try_into().unwrap(),
+                &(
+                    advice_columns[..NB_SHA256_ADVICE_COLS].try_into().unwrap(),
+                    fixed_columns[..NB_SHA256_FIXED_COLS].try_into().unwrap(),
+                ),
             )),
-            _ => None,
-        };
-
-        let table16_config = match arch.sha256 {
-            Some(ShaTableSize::Table16) => Some(Table16Chip::configure(meta)),
             _ => None,
         };
 
@@ -479,8 +437,7 @@ impl ZkStdLib {
             native_config,
             core_decomposition_config,
             jubjub_config,
-            table11_config,
-            table16_config,
+            sha256_config,
             poseidon_config,
             secp256k1_scalar_config,
             secp256k1_config,
@@ -675,22 +632,11 @@ impl ZkStdLib {
         &self,
         layouter: &mut impl Layouter<F>,
         input: &[AssignedByte<F>], // F -> decompose_bytes -> hash
-    ) -> Result<[AssignedByte<F>; SHA256_SIZE_IN_BYTES], Error> {
-        *self.used_sha.borrow_mut() = true;
-
-        // Note that both table11 and table16 SHA chips cannot be enabled at the same
-        // time, but one must be enabled.
-        if let Some(sha256_chip) = self.sha256_table11_chip.as_ref() {
-            let hasher = Sha256::new(sha256_chip.clone(), self.native_gadget.clone())?;
-            return hasher.hash(layouter, input);
-        }
-
-        if let Some(sha256_chip) = self.sha256_table16_chip.as_ref() {
-            let hasher = Sha256::new(sha256_chip.clone(), self.native_gadget.clone())?;
-            return hasher.hash(layouter, input);
-        }
-
-        panic!("ZkStdArch must enable sha256 (as Table11 or Table16)")
+    ) -> Result<[AssignedByte<F>; 32], Error> {
+        self.sha256_chip
+            .as_ref()
+            .expect("ZkStdArch must enable sha256")
+            .hash(layouter, input)
     }
 }
 
@@ -1440,11 +1386,7 @@ impl<R: Relation> Circuit<F> for MidnightCircuit<'_, R> {
         config: Self::Config,
         mut layouter: impl Layouter<F>,
     ) -> Result<(), Error> {
-        let max_bit_len = match config.architecture.sha256 {
-            None => 8,
-            Some(ShaTableSize::Table11) => 10,
-            Some(ShaTableSize::Table16) => 15,
-        };
+        let max_bit_len = if config.architecture.sha256 { 11 } else { 8 };
         let zk_std_lib = ZkStdLib::new(&config, max_bit_len);
 
         self.relation.circuit(
@@ -1473,14 +1415,8 @@ impl<R: Relation> Circuit<F> for MidnightCircuit<'_, R> {
             b64_chip.load(&mut layouter)?;
         }
 
-        if *zk_std_lib.used_sha.borrow() {
-            if let Some(sha256_chip) = zk_std_lib.sha256_table11_chip {
-                Table11Chip::load(sha256_chip.config().clone(), &mut layouter)?
-            }
-
-            if let Some(sha256_chip) = zk_std_lib.sha256_table16_chip {
-                Table16Chip::load(sha256_chip.config().clone(), &mut layouter)?
-            }
+        if let Some(sha256_chip) = zk_std_lib.sha256_chip {
+            sha256_chip.load(&mut layouter)?;
         }
 
         Ok(())
