@@ -857,14 +857,14 @@ impl Automaton {
             .0;
         let mut final_states = HashSet::new();
         partition.iter().for_each(|(index, class)| {
-            let elt = class.iter().enumerate().find(|(_, &b)| b).unwrap().0;
+            let elt = class.iter().enumerate().find(|&(_, &b)| b).unwrap().0;
             if self.final_states.contains(&elt) {
                 final_states.insert(*index);
             }
         });
         let mut transitions: HashMap<(usize, u8), (usize, usize)> = HashMap::new();
         for (index1, class1) in partition.clone() {
-            let source = class1.iter().enumerate().find(|(_, &b)| b).unwrap().0;
+            let source = class1.iter().enumerate().find(|&(_, &b)| b).unwrap().0;
             for letter in 0..alphabet_size {
                 self.transitions
                     .get(&(source, letter as u8))

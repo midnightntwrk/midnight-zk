@@ -1017,7 +1017,7 @@ where
         assert_eq!(xs.len(), constants.len());
 
         let pairs = (xs.iter().zip(constants.iter()))
-            .filter(|(_, &c)| c != F::ZERO)
+            .filter(|&(_, &c)| c != F::ZERO)
             .collect::<Vec<_>>();
 
         let mut non_trivial_outputs = Vec::with_capacity(pairs.len());

@@ -339,7 +339,7 @@ pub mod tests {
     {
         let mut rng = ChaCha8Rng::seed_from_u64(0xc0ffee);
         let id = C::CryptographicGroup::identity();
-        let gen = C::CryptographicGroup::generator();
+        let g = C::CryptographicGroup::generator();
         let r = C::CryptographicGroup::random(&mut rng);
         let s = C::CryptographicGroup::random(&mut rng);
         let wrong = C::CryptographicGroup::random(&mut rng);
@@ -347,14 +347,14 @@ pub mod tests {
         [
             (&id, &r),
             (&r, &id),
-            (&gen, &r),
-            (&r, &gen),
+            (&g, &r),
+            (&r, &g),
             (&r, &r),
             (&r, &s),
             (&id, &id),
-            (&id, &gen),
-            (&gen, &id),
-            (&gen, &gen),
+            (&id, &g),
+            (&g, &id),
+            (&g, &g),
         ]
         .into_iter()
         .for_each(|(x, y)| {

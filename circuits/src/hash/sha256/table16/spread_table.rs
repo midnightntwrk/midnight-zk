@@ -471,7 +471,7 @@ mod tests {
                         }
 
                         for _ in 0..10 {
-                            let word: u16 = rng.gen();
+                            let word: u16 = rng.r#gen();
                             add_row(
                                 F::from(u64::from(get_tag(word))),
                                 F::from(u64::from(word)),
