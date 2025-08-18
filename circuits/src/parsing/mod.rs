@@ -27,6 +27,8 @@ pub mod automaton_chip;
 /// A module to specify languages as regular expressions and convert them into
 /// finite automata.
 pub mod regex;
+/// A module to serialize automata as sequences of bytes.
+pub mod serialization;
 
 mod table;
 

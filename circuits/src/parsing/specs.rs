@@ -1,3 +1,28 @@
+//! A library of parsers, represented as a Hash Map from documented custom
+//! tokens (`StdLibParser`) to deterministic minimal automata (`Automata`).
+//! Since these parsers can be relatively costly to generate, the automata are
+//! serialized. The tests check in particular the consistency between the
+//! serialised data and a freshly computed one.
+//!
+//! Whenever a new parser has to be added to the parser library, the following
+//! steps have to be followed:
+//! 1. Add a corresponding entry (and documentation) in the `StdLibParser` type.
+//! 2. Define a function `spec_*` returning the `Regex` defining the parser.
+//! 3. Create an empty file whose name and location matches the result of
+//!    `parser.serialization_file()`, where `parser` is the entry defined at
+//!    step 1.
+//! 4. Add an entry `(parser, spec, serialization)` in the function
+//!    `spec_library_data`, following the format of the other entries. The
+//!    `serialization` component is, in particular, an `include_bytes!` of the
+//!    file created at step 3.
+//! 5. Run the tests of this file from the root of the repository. This will
+//!    bootstrap the serialisation file created at step 1.
+//! 6. If the serialisation data needs to be updated, truncate the content of
+//!    the corresponding serialisation file, and re-run step 5.
+//!
+//! ```shell
+//!    cargo test --lib -p midnight-circuits --release -- --nocapture regex_test automaton_test specs_test
+//! ```
 
 #[cfg(test)]
 use std::{fs, path::Path};
@@ -8,6 +33,12 @@ use super::{
     automaton::Automaton,
     regex::{Regex, RegexInstructions},
 };
+use crate::parsing::serialization::Serialize;
+
+/// Folder where the serialized automata for the standard library will be
+/// stored.
+#[cfg(test)]
+const AUTOMATON_CACHE: &str = "src/parsing/automaton_cache";
 
 /// Explicit names (and documentation) for indexing the various parsing
 /// specifications hard-coded in the standard library.
@@ -77,6 +108,51 @@ pub enum StdLibParser {
     ///   - `"x"` -> 3
     ///   - `"y"` -> 4
     Jwt,
+}
+
+#[cfg(test)]
+impl StdLibParser {
+    /// Returns the file name where the parser index is serialised. The path
+    /// starts from the root of the repository.
+    pub(super) fn serialization_file(&self) -> String {
+        format!("{}/{:?}", AUTOMATON_CACHE, self)
+    }
+}
+
+/// The raw entry of the parsing library. Contains the different parser names
+/// (`StdLibParser`), the functions used to generate the corresponding `Regex`
+/// (functions typically named `spec_*`), and the serialization bytes.
+type LibraryData = &'static [(StdLibParser, &'static dyn Fn() -> Regex, &'static [u8])];
+
+/// A library of parsing automata, computed or deserialised.
+type ParsingLibrary = FxHashMap<StdLibParser, Automaton>;
+
+/// The basic, non computed data of the parsing library. When serialization is
+/// enabled, the automata will be deserialized in `spec_library` from the third
+/// components. When serialization is disabled, the automaton will be computed
+/// using the second argument.
+fn spec_library_data() -> LibraryData {
+    &[(
+        StdLibParser::Jwt,
+        &spec_jwt as &'static dyn Fn() -> Regex,
+        include_bytes!("automaton_cache/Jwt") as &'static [u8],
+    )]
+}
+
+/// All automata that can be used as a parsing basis in the standard library.
+/// Exclusively uses serialised data.
+pub fn spec_library() -> ParsingLibrary {
+    spec_library_data()
+            .iter()
+            .map(|(name, _, serialization)| {
+                assert!(
+                    !serialization.is_empty(),
+                    "Empty serialisation data for {:?}. The bootstrapping of the serialisation process has not been conducted. (see documentation of `midnight_circuits::parsing::specs`)",
+                    *name
+                );
+                (*name, Automaton::deserialize_unwrap(serialization))
+            })
+            .collect::<FxHashMap<_, _>>()
 }
 
 // Regex formalising the spec of `StdLIbParser::Jwt`.
@@ -202,28 +278,96 @@ fn spec_jwt() -> Regex {
     )
 }
 
-/// All automata that can be used as a parsing basis in the standard
-/// library.
-pub fn spec_library() -> HashMap<StdLibParser, Automaton> {
-    let specs = [(StdLibParser::Jwt, spec_jwt())];
-    specs
-        .iter()
-        .map(|(name, regex)| (*name, regex.to_automaton()))
-        .collect::<HashMap<_, _>>()
+#[cfg(test)]
+/// Re-serialises the data in `checks`, and:
+///
+/// 1. If some non-empty serialisation file exists and
+///    `AUTOMATON_BREAKING_CHANGE` is set to false, panics if the serialized
+///    data is inconsistent.
+/// 2. If some empty serialisation file exists, writes the serialised data
+///    inside.
+/// 3. If the expected serialisation files do not exist, panics.
+///
+/// Will also panic and request a re-compilation if the serialisation data is
+/// updated at any point.
+///
+/// Note: This function is only available in tests.
+fn check_serialization(checks: &ParsingLibrary) {
+    // Tracks whether a recompilation is needed so that the serialisation data is in
+    // sync.
+    let mut recompile = false;
+    for (parser, automaton) in checks {
+        let file_name = parser.serialization_file();
+        assert!(
+                Path::new(&file_name).exists(),
+                "serialisation file {file_name} does not exist! Follow the documentation of `midnight_circuits::parsing::specs` for instructions on how to add a new parser to the standard library."
+            );
+        let previous_data = fs::read(file_name.clone()).unwrap();
+        let mut current_data = Vec::new();
+        automaton.serialize(&mut current_data);
+        if previous_data.is_empty() {
+            println!("-> bootstrapping the serialisation of {:?}. Recompilation will be necessary so that the executable contains the correct serialised data.", parser);
+            recompile = true;
+            fs::write(file_name, &current_data).unwrap();
+        } else {
+            assert!(
+                current_data == previous_data,
+                "The serialisation data of the parsing library (parser name: {:?}) is not up to date. If this is intentional, clear the content of {}, and run the test again to replace its content.",
+                parser, parser.serialization_file()
+            );
+            println!("-> serialisation data of {:?} is up to date.", parser)
+        }
+        println!(">> Serialisation checks completed.\n======");
+        assert!(
+            !recompile,
+            "The executable has to be re-compiled so that the serialisation data is up-to-date."
+        );
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::HashMap, time::Instant};
+    use std::time::Instant;
 
-    use super::{StdLibParser, StdLibParser::Jwt};
-    use crate::parsing::{automaton::Automaton, spec_library};
+    use rustc_hash::{FxBuildHasher, FxHashMap};
 
-    // Tests whether a given regular expression accepts or rejects two sets of
-    // corresponding strings. For accepted strings, checks the list of outputs for
-    // each markers.
+    use super::{
+        spec_library_data,
+        StdLibParser::{self, Jwt},
+    };
+    use crate::parsing::{automaton::Automaton, spec_library, specs::check_serialization};
+
+    /// Sets up the serialised library (bootstraps it if empty serialisation
+    /// data is found), and performs consistency checks or updates accordingly
+    /// to the value of `AUTOMATON_BREAKING_CHANGE`.
+    fn configure_serialisation() {
+        let lib_data = spec_library_data();
+
+        println!("======\nRecomputing the parsing library automata...");
+        let mut lib = FxHashMap::with_capacity_and_hasher(lib_data.len(), FxBuildHasher);
+        let start = Instant::now();
+        for (name, spec, _) in lib_data {
+            let start_local = Instant::now();
+            let automaton = spec().to_automaton();
+            println!(
+                "-> Generated {:?} automaton in {:?}",
+                *name,
+                start_local.elapsed()
+            );
+            lib.insert(*name, automaton);
+        }
+        println!(
+            ">> Full parsing library re-computed in {:?}!\n======\n>> Now checking the consistency of serialised data.",
+            start.elapsed()
+        );
+        check_serialization(&lib)
+    }
+
+    /// Tests whether a given regular expression accepts or rejects two sets of
+    /// corresponding strings. For accepted strings, checks the list of outputs
+    /// for each markers.
     fn specs_one_test(
-        spec_library: &HashMap<StdLibParser, Automaton>,
+        spec_library: &FxHashMap<StdLibParser, Automaton>,
         spec: StdLibParser,
         accepted: &[(&str, &[(usize, &str)])],
         rejected: &[&str],
@@ -330,10 +474,11 @@ mod tests {
 
     #[test]
     fn specs_test() {
-        println!(">> Configuring the spec library...");
-        if cfg!(debug_assertions) {
-            println!("WARNING: Running in debug mode, this may take a while!");
-        }
+        // Enforces that serialisation data is consistent and up to date.
+        configure_serialisation();
+
+        // Performs the tests using the serialised data.
+        println!(">> Now configuring the spec library for tests... (using the serialised data)");
         let start = Instant::now();
         let spec_library = spec_library();
         println!(">> Configuration completed in {:?}", start.elapsed());
