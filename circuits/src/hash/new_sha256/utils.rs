@@ -6,7 +6,6 @@ pub(super) const MASK_EVN_64: u64 = 0x5555_5555_5555_5555; // 010101...01 (even 
 pub(super) const MASK_ODD_64: u64 = 0xAAAA_AAAA_AAAA_AAAA; // 101010...10 (odd positions in u64)
 
 const LOOKUP_LENGTHS: [u32; 12] = [0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]; // supported lookup bit lengths
-const MAX_LOOKUP_LENGTH: usize = 12; // maximum bit length of plain values in lookup table
 
 /// Returns the even and odd bits of little-endian binary representation of u64.
 pub fn get_even_and_odd_bits(value: u64) -> (u32, u32) {
@@ -93,43 +92,16 @@ pub fn u64_to_fe<F: PrimeField>(value: u64) -> F {
     F::from(value)
 }
 
-/// Generates the spreaded lookup table lazily as it is only used in keygen.
-pub fn gen_spread_table<F: PrimeField>() -> impl Iterator<Item = (F, F, F)> {
-    // Compute all pairs of (plain, spreaded) for the plain values in the range [0,
-    // 2^MAX_LOOKUP_LENGTH).
-    let plain_spreaded_max_len =
-        (1..=(1 << MAX_LOOKUP_LENGTH)).scan((F::ZERO, F::ZERO), |(plain, spreaded), i| {
-            let res = (*plain, *spreaded);
-            // Compute (plain, spreaded) for the next row.
-            *plain += F::ONE;
-            if i & 1 == 1 {
-                // The spreaded form of an odd number can be easily computed by adding 1 to the
-                // spreaded form of the previous even number.
-                *spreaded += F::ONE;
-            } else {
-                // Recompute the spreaded form for an even number.
-                let spreaded_u64 = spread(fe_to_u32(*plain));
-                *spreaded = u64_to_fe(spreaded_u64);
-            }
-
-            Some(res)
-        });
-
-    // Generate the sub-table consisting of (tag, plain, spreaded) for the plain
-    // values in the range [0, 2^tag).
-    let table_of_tag = |tag| {
-        plain_spreaded_max_len
-            .clone()
-            .take(1 << tag as usize)
-            .map(move |(plain, spreaded)| (u32_to_fe(tag), plain, spreaded))
-    };
-
-    // Generate the full table by concatenating sub-tables for each length in
-    // LOOKUP_LENGTHS.
-    LOOKUP_LENGTHS
-        .map(|limb_length| table_of_tag(limb_length))
-        .into_iter()
-        .flatten()
+/// Generates the plain-spreaded lookup table.
+pub fn gen_spread_table<F: PrimeField>() -> Vec<(F, F, F)> {
+    let mut table = vec![];
+    for len in LOOKUP_LENGTHS.into_iter() {
+        let tag = F::from(len as u64);
+        for i in 0..(1 << len) {
+            table.push((tag, F::from(i as u64), F::from(spread(i as u32))))
+        }
+    }
+    table
 }
 
 /// Computes off-circuit spreaded Σ₀(A) with A in (big endian) spreaded limbs.
@@ -338,7 +310,7 @@ mod tests {
 
     #[test]
     fn test_gen_spread_table() {
-        let table: Vec<_> = gen_spread_table::<F>().collect();
+        let table: Vec<_> = gen_spread_table::<F>();
         let mut rng = rand::thread_rng();
         let to_fe = |(tag, plain, spreaded)| {
             (
