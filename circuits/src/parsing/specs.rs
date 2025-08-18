@@ -1,4 +1,8 @@
-use std::collections::HashMap;
+
+#[cfg(test)]
+use std::{fs, path::Path};
+
+use rustc_hash::FxHashMap;
 
 use super::{
     automaton::Automaton,
@@ -238,7 +242,7 @@ mod tests {
             );
 
             // Gathering outputs.
-            let mut outputs = HashMap::new();
+            let mut outputs = FxHashMap::with_capacity_and_hasher(2, FxBuildHasher);
             for (&o,&i) in output_automaton.iter().zip(s_bytes) {
                 if o != 0 {
                     outputs.entry(o).or_insert(vec![]).push(i);
@@ -300,7 +304,7 @@ mod tests {
                 let state = v[counter];
                 if automaton.final_states.contains(&state) {
                     // Gathering outputs.
-                    let mut outputs = HashMap::new();
+                    let mut outputs = FxHashMap::with_capacity_and_hasher(2, FxBuildHasher);
                     for (&o,&i) in output.iter().zip(s_bytes) {
                         if o != 0 {
                             outputs.entry(o).or_insert(vec![]).push(i);
