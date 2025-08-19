@@ -14,7 +14,7 @@ use crate::{
     field::{decomposition::chip::P2RDecompositionChip, NativeChip, NativeGadget},
     hash::new_sha256::{
         gates::{
-            add_mod_2_32_gate, decompose_10_9_11_2_gate, decompose_12_12_8_gate,
+            add_mod_2_32_gate, decompose_10_9_11_2_gate, decompose_11_11_10_gate,
             decompose_12_1_1_1_7_3_4_3_gate, decompose_7_12_2_5_6_gate, half_ch_gate, maj_gate,
             sigma_0_gate, sigma_1_gate, Sigma_0_gate, Sigma_1_gate,
         },
@@ -80,7 +80,7 @@ pub struct Sha256Config {
     q_Sigma_1: Selector,
     q_maj: Selector,
     q_half_ch: Selector,
-    q_12_12_8: Selector,
+    q_11_11_10: Selector,
     q_10_9_11_2: Selector,
     q_7_12_2_5_6: Selector,
     q_12_1_1_1_7_3_4_3: Selector,
@@ -142,7 +142,7 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
         let q_Sigma_1 = meta.selector();
         let q_maj = meta.selector();
         let q_half_ch = meta.selector();
-        let q_12_12_8 = meta.selector();
+        let q_11_11_10 = meta.selector();
         let q_10_9_11_2 = meta.selector();
         let q_7_12_2_5_6 = meta.selector();
         let q_12_1_1_1_7_3_4_3 = meta.selector();
@@ -265,17 +265,17 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
             )
         });
 
-        meta.create_gate("12-12-8 decomposition", |meta| {
-            let q_12_12_8 = meta.query_selector(q_12_12_8);
+        meta.create_gate("11-11-10 decomposition", |meta| {
+            let q_11_11_10 = meta.query_selector(q_11_11_10);
 
-            let limb_12a = meta.query_advice(advice_cols[0], Rotation(0));
-            let limb_12b = meta.query_advice(advice_cols[0], Rotation(1));
-            let limb_8 = meta.query_advice(advice_cols[0], Rotation(2));
+            let limb_11a = meta.query_advice(advice_cols[0], Rotation(0));
+            let limb_11b = meta.query_advice(advice_cols[0], Rotation(1));
+            let limb_10 = meta.query_advice(advice_cols[0], Rotation(2));
             let output = meta.query_advice(advice_cols[4], Rotation(0));
 
             Constraints::with_selector(
-                q_12_12_8,
-                decompose_12_12_8_gate([limb_12a, limb_12b, limb_8], output),
+                q_11_11_10,
+                decompose_11_11_10_gate([limb_11a, limb_11b, limb_10], output),
             )
         });
 
@@ -446,7 +446,7 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
             q_Sigma_1,
             q_maj,
             q_half_ch,
-            q_12_12_8,
+            q_11_11_10,
             q_10_9_11_2,
             q_7_12_2_5_6,
             q_12_1_1_1_7_3_4_3,
@@ -549,7 +549,7 @@ impl<F: PrimeField> Sha256Chip<F> {
                 ])
                 .map(|limbs: Vec<u64>| limbs.try_into().unwrap());
 
-                self.assign_sprdd_12_12_8(
+                self.assign_sprdd_11_11_10(
                     &mut region,
                     val_of_sprdd_limbs.map(spreaded_Sigma_0),
                     Parity::Evn,
@@ -626,7 +626,7 @@ impl<F: PrimeField> Sha256Chip<F> {
                 ])
                 .map(|limbs: Vec<u64>| limbs.try_into().unwrap());
 
-                self.assign_sprdd_12_12_8(
+                self.assign_sprdd_11_11_10(
                     &mut region,
                     val_of_sprdd_limbs.map(spreaded_Sigma_1),
                     Parity::Evn,
@@ -697,7 +697,7 @@ impl<F: PrimeField> Sha256Chip<F> {
                 ])
                 .map(|sprdd_forms: Vec<u64>| sprdd_forms.try_into().unwrap());
 
-                self.assign_sprdd_12_12_8(
+                self.assign_sprdd_11_11_10(
                     &mut region,
                     val_of_sprdd_forms.map(spreaded_maj),
                     Parity::Odd,
@@ -794,10 +794,10 @@ impl<F: PrimeField> Sha256Chip<F> {
 
                 mask_evn_64.copy_advice(|| "MASK_EVN_64", &mut region, adv_cols[6], 4)?;
 
-                let odd_EF = self.assign_sprdd_12_12_8(&mut region, EpF_val, Parity::Odd, 0)?;
+                let odd_EF = self.assign_sprdd_11_11_10(&mut region, EpF_val, Parity::Odd, 0)?;
                 (odd_EF.0).copy_advice(|| "Odd_EF", &mut region, adv_cols[4], 1)?;
 
-                let odd_nEG = self.assign_sprdd_12_12_8(&mut region, nEpG_val, Parity::Odd, 3)?;
+                let odd_nEG = self.assign_sprdd_11_11_10(&mut region, nEpG_val, Parity::Odd, 3)?;
                 (odd_nEG.0).copy_advice(|| "Odd_nEG", &mut region, adv_cols[5], 1)?;
 
                 let ret_val = odd_EF.0.value().copied() + odd_nEG.0.value().copied();
@@ -1039,23 +1039,23 @@ impl<F: PrimeField> Sha256Chip<F> {
     ///
     /// This function guarantees that the returned value is consistent with
     /// the values in the filled lookup table.
-    fn assign_sprdd_12_12_8(
+    fn assign_sprdd_11_11_10(
         &self,
         region: &mut Region<'_, F>,
         value: Value<u64>,
         even_or_odd: Parity,
         offset: usize,
     ) -> Result<AssignedPlain<F, 32>, Error> {
-        self.config().q_12_12_8.enable(region, offset)?;
+        self.config().q_11_11_10.enable(region, offset)?;
 
         let (evn_val, odd_val) = value.map(get_even_and_odd_bits).unzip();
 
-        let [evn_12a, evn_12b, evn_8] = evn_val
-            .map(|v| u32_in_be_limbs(v, [12, 12, 8]))
+        let [evn_11a, evn_11b, evn_10] = evn_val
+            .map(|v| u32_in_be_limbs(v, [11, 11, 10]))
             .transpose_array();
 
-        let [odd_12a, odd_12b, odd_8] = odd_val
-            .map(|v| u32_in_be_limbs(v, [12, 12, 8]))
+        let [odd_11a, odd_11b, odd_10] = odd_val
+            .map(|v| u32_in_be_limbs(v, [11, 11, 10]))
             .transpose_array();
 
         let idx = match even_or_odd {
@@ -1063,13 +1063,13 @@ impl<F: PrimeField> Sha256Chip<F> {
             Parity::Odd => 1,
         };
 
-        self.assign_plain_and_spreaded::<12>(region, evn_12a, offset, idx)?;
-        self.assign_plain_and_spreaded::<12>(region, evn_12b, offset + 1, idx)?;
-        self.assign_plain_and_spreaded::<8>(region, evn_8, offset + 2, idx)?;
+        self.assign_plain_and_spreaded::<11>(region, evn_11a, offset, idx)?;
+        self.assign_plain_and_spreaded::<11>(region, evn_11b, offset + 1, idx)?;
+        self.assign_plain_and_spreaded::<10>(region, evn_10, offset + 2, idx)?;
 
-        self.assign_plain_and_spreaded::<12>(region, odd_12a, offset, 1 - idx)?;
-        self.assign_plain_and_spreaded::<12>(region, odd_12b, offset + 1, 1 - idx)?;
-        self.assign_plain_and_spreaded::<8>(region, odd_8, offset + 2, 1 - idx)?;
+        self.assign_plain_and_spreaded::<11>(region, odd_11a, offset, 1 - idx)?;
+        self.assign_plain_and_spreaded::<11>(region, odd_11b, offset + 1, 1 - idx)?;
+        self.assign_plain_and_spreaded::<10>(region, odd_10, offset + 2, 1 - idx)?;
 
         let out_col = self.config().advice_cols[4];
         match even_or_odd {
@@ -1321,7 +1321,7 @@ impl<F: PrimeField> Sha256Chip<F> {
                 ])
                 .map(|limbs: Vec<u64>| limbs.try_into().unwrap());
 
-                self.assign_sprdd_12_12_8(
+                self.assign_sprdd_11_11_10(
                     &mut region,
                     val_of_sprdd_limbs.map(spreaded_sigma_0),
                     Parity::Evn,
@@ -1399,7 +1399,7 @@ impl<F: PrimeField> Sha256Chip<F> {
                 ])
                 .map(|limbs: Vec<u64>| limbs.try_into().unwrap());
 
-                self.assign_sprdd_12_12_8(
+                self.assign_sprdd_11_11_10(
                     &mut region,
                     val_of_sprdd_limbs.map(spreaded_sigma_1),
                     Parity::Evn,
