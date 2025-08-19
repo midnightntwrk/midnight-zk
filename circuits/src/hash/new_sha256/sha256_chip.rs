@@ -472,7 +472,7 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
         layouter.assign_table(
             || "spread table",
             |mut table| {
-                for (index, triple) in gen_spread_table::<F>().enumerate() {
+                for (index, triple) in gen_spread_table::<F>().into_iter().enumerate() {
                     table.assign_cell(|| "nbits", nbits_tab, index, || Value::known(triple.0))?;
                     table.assign_cell(|| "plain", plain_tab, index, || Value::known(triple.1))?;
                     table.assign_cell(|| "sprdd", sprdd_tab, index, || Value::known(triple.2))?;
@@ -1916,7 +1916,7 @@ mod tests {
                 let block_words =
                     sha256_chip.block_from_bytes(&mut layouter, &assigned_padding_output)?;
                 // convert the assigned 32-bit words to assigned bytes in big-endian order
-                let assigned_output_bytes = block_words
+                let _assigned_output_bytes = block_words
                     .iter()
                     .map(|word| native_gadget.assigned_to_be_bytes(&mut layouter, &word.0, Some(4)))
                     .collect::<Result<Vec<_>, Error>>()?

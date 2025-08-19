@@ -78,6 +78,6 @@ mod tests {
             [AssignedByte<Scalar>; 32],
             Sha256Chip<Scalar>,
             NativeGadget<Scalar, _, _>,
-        >(true, "New SHA256", 16);
+        >(true, "New SHA256", 15);
     }
 }
