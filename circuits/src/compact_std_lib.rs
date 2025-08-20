@@ -30,7 +30,7 @@ use std::{cell::RefCell, cmp::max, convert::TryInto, fmt::Debug, io, rc::Rc};
 use ff::{Field, PrimeField};
 use group::{prime::PrimeCurveAffine, Group};
 use halo2curves::secp256k1::{self, Secp256k1};
-use midnight_curves::G1Projective;
+use midnight_curves::{G1Affine, G1Projective};
 use midnight_proofs::{
     circuit::{Chip, Layouter, SimpleFloorPlanner, Value},
     dev::cost_model::{from_circuit_to_circuit_model, CircuitModel},
@@ -1380,6 +1380,7 @@ impl<Rel: Relation> MidnightPK<Rel> {
 ///         &srs.verifier_params(),
 ///         &vk,
 ///         &instance,
+///         None,
 ///         &proof
 ///     )
 ///     .is_ok()
@@ -1395,6 +1396,12 @@ pub trait Relation: Clone {
     /// Produces a vector of field elements in PLONK format representing the
     /// given [Self::Instance].
     fn format_instance(instance: &Self::Instance) -> Vec<F>;
+
+    /// Produces a vector of field elements in PLONK format representing the
+    /// data inside the committed instance.
+    fn format_el_witness_que_va_en_committed_instance(_witness: &Self::Witness) -> Vec<F> {
+        vec![]
+    }
 
     /// Defines the circuit's logic.
     fn circuit(
@@ -1556,32 +1563,22 @@ where
     G1Projective: Hashable<H>,
     F: Hashable<H> + Sampleable<H>,
 {
-    prove_with_committed_instance(params, pk, relation, instance, &[], witness, rng)
-}
-
-/// Produces a proof of relation `R` for the given instances and committed instances (using the given
-/// proving key and witness).
-pub fn prove_with_committed_instance<R: Relation, H: TranscriptHash>(
-    params: &ParamsKZG<midnight_curves::Bls12>,
-    pk: &MidnightPK<R>,
-    relation: &R,
-    instance: &R::Instance,
-    com_inst: &[F],
-    witness: R::Witness,
-    rng: impl RngCore + CryptoRng,
-) -> Result<Vec<u8>, Error>
-where
-    G1Projective: Hashable<H>,
-    F: Hashable<H> + Sampleable<H>,
-{
+    let pi = R::format_instance(instance);
+    let com_inst = R::format_el_witness_que_va_en_committed_instance(&witness);
     let circuit = MidnightCircuit {
         relation,
         instance: Value::known(instance.clone()),
         witness: Value::known(witness),
         nb_public_inputs: Rc::new(RefCell::new(None)),
     };
-    let pi = R::format_instance(instance);
-    BlstPLONK::<MidnightCircuit<R>>::prove::<H>(params, &pk.pk, &circuit, 1, &[com_inst, &pi], rng)
+    BlstPLONK::<MidnightCircuit<R>>::prove::<H>(
+        params,
+        &pk.pk,
+        &circuit,
+        1,
+        &[com_inst.as_slice(), &pi],
+        rng,
+    )
 }
 
 /// Verifies the given proof of relation `R` with respect to the given instance.
@@ -1590,6 +1587,7 @@ pub fn verify<R: Relation, H: TranscriptHash>(
     params_verifier: &ParamsVerifierKZG<midnight_curves::Bls12>,
     vk: &MidnightVK,
     instance: &R::Instance,
+    committed_instance: Option<G1Affine>,
     proof: &[u8],
 ) -> Result<(), Error>
 where
@@ -1597,13 +1595,14 @@ where
     F: Hashable<H> + Sampleable<H>,
 {
     let pi = R::format_instance(instance);
+    let committed_pi = committed_instance.unwrap_or(G1Affine::identity());
     if pi.len() != vk.nb_public_inputs {
         return Err(Error::InvalidInstances);
     }
     BlstPLONK::<MidnightCircuit<R>>::verify::<H>(
         params_verifier,
         &vk.vk,
-        &[midnight_curves::G1Affine::identity()],
+        &[committed_pi],
         &[&pi],
         proof,
     )
@@ -1626,6 +1625,7 @@ where
     G1Projective: Hashable<H>,
     F: Hashable<H> + Sampleable<H>,
 {
+    // TODO: For the moment, committed instances are not supported.
     let n = vks.len();
     if pis.len() != n || proofs.len() != n {
         // TODO: have richer types in halo2
