@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 * Add original Blstrs licenses [#36](https://github.com/midnightntwrk/midnight-zk/pull/36)
 *
 ### Changed
-
+* Use native batch normalize [#76](https://github.com/midnightntwrk/midnight-zk/pull/76) 
 ### Removed
 * Some dbg prints [#59](https://github.com/midnightntwrk/midnight-zk/pull/59)
 

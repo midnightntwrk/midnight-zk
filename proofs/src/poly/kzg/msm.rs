@@ -112,8 +112,8 @@ pub fn msm_specific<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C::Curve]) ->
         // Safe: we just checked type
         let coeffs = unsafe { &*(coeffs as *const _ as *const [Fq]) };
         let bases = unsafe { &*(bases as *const _ as *const [G1Projective]) };
-        let res = G1Projective::multi_exp(&bases, &coeffs);
-        return unsafe {std::mem::transmute_copy(&res) };
+        let res = G1Projective::multi_exp(bases, coeffs);
+        unsafe {std::mem::transmute_copy(&res) }
     } else {
         let mut affine_bases = vec![C::identity(); coeffs.len()];
         C::Curve::batch_normalize(bases, &mut affine_bases);
