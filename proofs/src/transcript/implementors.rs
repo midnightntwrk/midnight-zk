@@ -35,19 +35,19 @@ impl TranscriptHash for Blake2bState {
 // /// Implementation of Hashable for BN with Blake //
 // ///////////////////////////////////////////////////
 
-impl<T: TranscriptHash<Input = Vec<u8>>> Hashable<T> for u8 {
+impl<T: TranscriptHash<Input = Vec<u8>>> Hashable<T> for u32 {
     fn to_input(&self) -> Vec<u8> {
-        vec![*self]
+        self.to_le_bytes().to_vec()
     }
 
     fn to_bytes(&self) -> Vec<u8> {
-        vec![*self]
+        self.to_le_bytes().to_vec()
     }
 
     fn read(buffer: &mut impl Read) -> io::Result<Self> {
-        let mut byte = [0u8; 1];
-        buffer.read_exact(&mut byte)?;
-        Ok(byte[0])
+        let mut bytes = [0u8; 4];
+        buffer.read_exact(&mut bytes)?;
+        Ok(u32::from_le_bytes(bytes))
     }
 }
 
