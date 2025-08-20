@@ -20,8 +20,8 @@ mod utils;
 use std::fmt::Debug;
 
 use ff::Field;
-use group::{prime::PrimeCurveAffine, Curve, Group};
-use halo2curves::{msm::msm_best, pairing::MultiMillerLoop};
+use group::Group;
+use halo2curves::pairing::MultiMillerLoop;
 use rand_core::OsRng;
 
 #[cfg(feature = "truncated-challenges")]
@@ -46,6 +46,7 @@ use crate::{
         helpers::ProcessedSerdeObject,
     },
 };
+use crate::poly::kzg::msm::msm_specific;
 
 #[derive(Clone, Debug)]
 /// KZG verifier
@@ -75,13 +76,11 @@ where
         params: &Self::Parameters,
         polynomial: &Polynomial<E::Fr, Coeff>,
     ) -> Self::Commitment {
-        let mut scalars = Vec::with_capacity(polynomial.len());
+        let mut scalars = Vec::<E::Fr>::with_capacity(polynomial.len());
         scalars.extend(polynomial.iter());
-        let mut bases = vec![<E::G1 as Curve>::AffineRepr::identity(); params.g.len()];
-        <E::G1 as Curve>::batch_normalize(&params.g, bases.as_mut_slice());
         let size = scalars.len();
-        assert!(bases.len() >= size);
-        msm_best(&scalars, &bases[0..size])
+        assert!(params.g.len() >= size);
+        msm_specific::<E::G1Affine>(&scalars, &params.g[..size])
     }
 
     fn commit_lagrange(
@@ -92,11 +91,9 @@ where
         scalars.extend(poly.iter());
         let size = scalars.len();
 
-        let mut bases = vec![<E::G1 as Curve>::AffineRepr::identity(); params.g.len()];
-        <E::G1 as Curve>::batch_normalize(&params.g_lagrange, bases.as_mut_slice());
-        assert!(bases.len() >= size);
+        assert!(params.g_lagrange.len() >= size);
 
-        msm_best(&scalars, &bases[0..size])
+        msm_specific::<E::G1Affine>(&scalars, &params.g_lagrange[0..size])
     }
 
     fn multi_open<'com, T: Transcript>(
