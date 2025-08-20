@@ -298,7 +298,7 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
         T: Transcript,
         C: Hashable<T::Hash>,
         F: Sampleable<T::Hash> + Hashable<T::Hash>,
-        u8: Hashable<T::Hash>,
+        u32: Hashable<T::Hash>,
     {
         // We first verify all proofs off-circuit, to get the final batched accumulator,
         // which must be a public input of the aggregator circuit.
@@ -371,13 +371,13 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
         let acc_rhs_evaluated = acc.rhs().eval(&fixed_bases);
 
         // Add the LHS of acc to the transcript.
-        transcript.write(&(acc.lhs().bases().len() as u8))?;
+        transcript.write(&(acc.lhs().bases().len() as u32))?;
         (acc.lhs().bases().iter()).try_for_each(|p| transcript.write(p))?;
         (acc.lhs().scalars().iter()).try_for_each(|s| transcript.write(s))?;
         assert!(acc.lhs().fixed_base_scalars().is_empty());
 
         // Add the RHS of the acc to the transcript (with scalars in committed form).
-        transcript.write(&(acc.rhs().bases().len() as u8))?;
+        transcript.write(&(acc.rhs().bases().len() as u32))?;
         (acc.rhs().bases().iter()).try_for_each(|p| transcript.write(p))?;
         transcript.write(&acc_rhs_scalars_committed)?;
         transcript.write(&acc_rhs_evaluated)?;
@@ -424,11 +424,11 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
         T: Transcript,
         C: Hashable<T::Hash>,
         F: Sampleable<T::Hash> + Hashable<T::Hash>,
-        u8: Hashable<T::Hash>,
+        u32: Hashable<T::Hash>,
     {
         // Read the LHS of the acc from the transcript.
         let acc_lhs: Msm<S> = {
-            let n: u8 = transcript.read()?;
+            let n: u32 = transcript.read()?;
             let lhs_bases: Result<Vec<C>, io::Error> = (0..n).map(|_| transcript.read()).collect();
             let lhs_scalars: Result<Vec<F>, io::Error> =
                 (0..n).map(|_| transcript.read()).collect();
@@ -437,7 +437,7 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
 
         // Read the RHS of the acc from the transcript (with scalars in committed form).
         let acc_rhs_bases = {
-            let n: u8 = transcript.read()?;
+            let n: u32 = transcript.read()?;
             (0..n)
                 .map(|_| transcript.read())
                 .collect::<Result<Vec<C>, io::Error>>()?
