@@ -225,29 +225,26 @@ where
             q_eval_sets[com_data.set_index].push(com_data.evals);
         }
 
+        let nb_x1_powers = q_coms.iter().map(|v| v.len()).max().unwrap_or(0);
+        assert!(nb_x1_powers >= q_eval_sets.iter().map(|v| v.len()).max().unwrap_or(0));
+
+        #[cfg(feature = "truncated-challenges")]
+        let powers_x1 = truncated_powers(x1).take(nb_x1_powers).collect::<Vec<_>>();
+
+        #[cfg(not(feature = "truncated-challenges"))]
+        let powers_x1 = powers(x1).take(nb_x1_powers).collect::<Vec<_>>();
+
         let q_coms = q_coms
-            .iter()
+            .into_iter()
             .map(|msms| {
-                #[cfg(feature = "truncated-challenges")]
-                let powers = truncated_powers(x1);
-
-                #[cfg(not(feature = "truncated-challenges"))]
-                let powers = powers(x1);
-
-                msm_inner_product(msms, powers)
+                msm_inner_product(msms, &powers_x1)
             })
             .collect::<Vec<_>>();
 
         let q_eval_sets = q_eval_sets
             .iter()
             .map(|evals| {
-                #[cfg(feature = "truncated-challenges")]
-                let powers = truncated_powers(x1);
-
-                #[cfg(not(feature = "truncated-challenges"))]
-                let powers = powers(x1);
-
-                evals_inner_product(evals, powers)
+                evals_inner_product(evals, &powers_x1)
             })
             .collect::<Vec<_>>();
 
@@ -285,6 +282,7 @@ where
         let x4: E::Fr = transcript.squeeze_challenge();
 
         let final_com = {
+            let size = q_coms.len() + 1;
             let mut coms = q_coms;
             let mut f_com_as_msm = MSMKZG::init();
 
@@ -297,7 +295,7 @@ where
             #[cfg(not(feature = "truncated-challenges"))]
             let powers = powers(x4);
 
-            msm_inner_product(&coms, powers)
+            msm_inner_product(coms, &powers.take(size).collect::<Vec<_>>())
         };
 
         let v = {
@@ -318,17 +316,18 @@ where
         let mut pi_msm = MSMKZG::<E>::init();
         pi_msm.append_term(E::Fr::ONE, pi);
 
-        // Scale zπ
-        let mut scaled_pi = MSMKZG::<E>::init();
-        scaled_pi.append_term(x3, pi);
+        // Scale zπ -vG
+        let scaled_pi = MSMKZG {
+            scalars: vec![x3, v],
+            bases: vec![pi, -E::G1::generator()],
+        };
 
-        let mut msm_accumulator = DualMSM::init();
+        // (π, C − vG)
+        let mut msm_accumulator = DualMSM {
+            left: pi_msm,
+            right: final_com,
+        };
 
-        // (π, C − vG + zπ)
-        msm_accumulator.left.add_msm(&pi_msm); // π
-
-        msm_accumulator.right.add_msm(&final_com); // C
-        msm_accumulator.right.append_term(v, -E::G1::generator()); // -vG
         msm_accumulator.right.add_msm(&scaled_pi); // zπ
 
         Ok(msm_accumulator)
