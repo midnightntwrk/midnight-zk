@@ -17,6 +17,7 @@ use group::{
 };
 use halo2curves::{serde::SerdeObject, Coordinates, CurveAffine, CurveExt};
 use rand_core::RngCore;
+use rayon::iter::{IntoParallelRefIterator, IntoParallelRefMutIterator, IndexedParallelIterator, ParallelIterator};
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 
 use crate::{
@@ -345,7 +346,7 @@ impl G1Affine {
     /// Attempts to deserialize an uncompressed element.
     fn from_uncompressed(bytes: &[u8; UNCOMPRESSED_SIZE]) -> CtOption<Self> {
         G1Affine::from_uncompressed_unchecked(bytes)
-            .and_then(|p| CtOption::new(p, p.is_on_curve() & p.is_torsion_free()))
+            .and_then(|p| CtOption::new(p, p.is_on_curve()))
     }
 
     /// Attempts to deserialize an uncompressed element, not checking if the
@@ -711,6 +712,15 @@ impl PrimeGroup for G1Projective {}
 
 impl Curve for G1Projective {
     type AffineRepr = G1Affine;
+
+    /// Converts a batch of projective elements into affine elements. This function will
+    /// panic if `p.len() != q.len()`.
+    fn batch_normalize(p: &[Self], q: &mut [Self::AffineRepr]) {
+        let points =
+            unsafe { std::slice::from_raw_parts(p.as_ptr() as *const blst_p1, p.len()) };
+
+        p1_affines::from(points).as_slice().iter().zip(q.iter_mut()).for_each(|(val, res)| {*res = G1Affine(*val)});
+    }
 
     fn to_affine(&self) -> Self::AffineRepr {
         self.into()

@@ -84,7 +84,7 @@ fn bench_field_arithmetic<F: Field>(c: &mut Criterion, name: &'static str) {
     });
 
     ret = a;
-    group.bench_function(format!("{}_sub", name), |bencher| {
+    group.bench_function(format!("{}_sub_ret", name), |bencher| {
         bencher.iter(|| black_box(&mut ret).sub(black_box(&b)))
     });
 
@@ -101,7 +101,7 @@ fn bench_field_arithmetic<F: Field>(c: &mut Criterion, name: &'static str) {
     });
 
     ret = a;
-    group.bench_function(format!("{}_mul", name), |bencher| {
+    group.bench_function(format!("{}_mul_ret", name), |bencher| {
         bencher.iter(|| black_box(&mut ret).mul(black_box(&b)))
     });
 
