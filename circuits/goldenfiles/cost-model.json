@@ -47,6 +47,19 @@
       "table_rows": "511"
     }
   },
+  "New SHA256": {
+    "hash": {
+      "advice_columns": "18",
+      "column_queries": "107",
+      "fixed_columns": "65",
+      "lookups": "10",
+      "max_deg": "5",
+      "permutations": "18",
+      "point_sets": "5",
+      "rows": "19022",
+      "table_rows": "8955"
+    }
+  },
   "Poseidon": {
     "hash": {
       "advice_columns": "13",

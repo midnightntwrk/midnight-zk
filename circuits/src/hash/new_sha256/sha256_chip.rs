@@ -57,7 +57,7 @@ pub const NB_SHA256_ADVICE_COLS: usize = 8;
 /// Number of fixed columns used by the identities of the SHA256 chip.
 pub const NB_SHA256_FIXED_COLS: usize = 2;
 
-/// Tag for the even and odd 12-12-8 decompositions.
+/// Tag for the even and odd 11-11-10 decompositions.
 enum Parity {
     Evn,
     Odd,
@@ -136,7 +136,12 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
         let plain_tab = meta.lookup_table_column();
         let sprdd_tab = meta.lookup_table_column();
 
-        advice_cols.iter().for_each(|c| meta.enable_equality(*c));
+        for (i, column) in advice_cols.iter().enumerate() {
+            // A_0 and A_2 are not involved in the copy-constraint.
+            if i != 0 && i != 2 {
+                meta.enable_equality(*column);
+            }
+        }
 
         let q_Sigma_0 = meta.selector();
         let q_Sigma_1 = meta.selector();
@@ -174,19 +179,19 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
             let sprdd_a_09 = meta.query_advice(advice_cols[6], Rotation(0));
             let sprdd_a_11 = meta.query_advice(advice_cols[5], Rotation(1));
             let sprdd_a_02 = meta.query_advice(advice_cols[6], Rotation(1));
-            let sprdd_evn_12a = meta.query_advice(advice_cols[1], Rotation(0));
-            let sprdd_evn_12b = meta.query_advice(advice_cols[1], Rotation(1));
-            let sprdd_evn_8 = meta.query_advice(advice_cols[1], Rotation(2));
-            let sprdd_odd_12a = meta.query_advice(advice_cols[3], Rotation(0));
-            let sprdd_odd_12b = meta.query_advice(advice_cols[3], Rotation(1));
-            let sprdd_odd_8 = meta.query_advice(advice_cols[3], Rotation(2));
+            let sprdd_evn_11a = meta.query_advice(advice_cols[1], Rotation(0));
+            let sprdd_evn_11b = meta.query_advice(advice_cols[1], Rotation(1));
+            let sprdd_evn_10 = meta.query_advice(advice_cols[1], Rotation(2));
+            let sprdd_odd_11a = meta.query_advice(advice_cols[3], Rotation(0));
+            let sprdd_odd_11b = meta.query_advice(advice_cols[3], Rotation(1));
+            let sprdd_odd_10 = meta.query_advice(advice_cols[3], Rotation(2));
 
             Constraints::with_selector(
                 q_Sigma_0,
                 Sigma_0_gate(
                     [sprdd_a_10, sprdd_a_09, sprdd_a_11, sprdd_a_02],
-                    [sprdd_evn_12a, sprdd_evn_12b, sprdd_evn_8],
-                    [sprdd_odd_12a, sprdd_odd_12b, sprdd_odd_8],
+                    [sprdd_evn_11a, sprdd_evn_11b, sprdd_evn_10],
+                    [sprdd_odd_11a, sprdd_odd_11b, sprdd_odd_10],
                 ),
             )
         });
@@ -199,19 +204,19 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
             let sprdd_e_02 = meta.query_advice(advice_cols[5], Rotation(1));
             let sprdd_e_05 = meta.query_advice(advice_cols[6], Rotation(1));
             let sprdd_e_06 = meta.query_advice(advice_cols[5], Rotation(2));
-            let sprdd_evn_12a = meta.query_advice(advice_cols[1], Rotation(0));
-            let sprdd_evn_12b = meta.query_advice(advice_cols[1], Rotation(1));
-            let sprdd_evn_8 = meta.query_advice(advice_cols[1], Rotation(2));
-            let sprdd_odd_12a = meta.query_advice(advice_cols[3], Rotation(0));
-            let sprdd_odd_12b = meta.query_advice(advice_cols[3], Rotation(1));
-            let sprdd_odd_8 = meta.query_advice(advice_cols[3], Rotation(2));
+            let sprdd_evn_11a = meta.query_advice(advice_cols[1], Rotation(0));
+            let sprdd_evn_11b = meta.query_advice(advice_cols[1], Rotation(1));
+            let sprdd_evn_10 = meta.query_advice(advice_cols[1], Rotation(2));
+            let sprdd_odd_11a = meta.query_advice(advice_cols[3], Rotation(0));
+            let sprdd_odd_11b = meta.query_advice(advice_cols[3], Rotation(1));
+            let sprdd_odd_10 = meta.query_advice(advice_cols[3], Rotation(2));
 
             Constraints::with_selector(
                 q_Sigma_1,
                 Sigma_1_gate(
                     [sprdd_e_07, sprdd_e_12, sprdd_e_02, sprdd_e_05, sprdd_e_06],
-                    [sprdd_evn_12a, sprdd_evn_12b, sprdd_evn_8],
-                    [sprdd_odd_12a, sprdd_odd_12b, sprdd_odd_8],
+                    [sprdd_evn_11a, sprdd_evn_11b, sprdd_evn_10],
+                    [sprdd_odd_11a, sprdd_odd_11b, sprdd_odd_10],
                 ),
             )
         });
@@ -222,19 +227,19 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
             let sprdd_a = meta.query_advice(advice_cols[5], Rotation(0));
             let sprdd_b = meta.query_advice(advice_cols[6], Rotation(0));
             let sprdd_c = meta.query_advice(advice_cols[5], Rotation(1));
-            let sprdd_odd_12a = meta.query_advice(advice_cols[1], Rotation(0));
-            let sprdd_odd_12b = meta.query_advice(advice_cols[1], Rotation(1));
-            let sprdd_odd_8 = meta.query_advice(advice_cols[1], Rotation(2));
-            let sprdd_evn_12a = meta.query_advice(advice_cols[3], Rotation(0));
-            let sprdd_evn_12b = meta.query_advice(advice_cols[3], Rotation(1));
-            let sprdd_evn_8 = meta.query_advice(advice_cols[3], Rotation(2));
+            let sprdd_odd_11a = meta.query_advice(advice_cols[1], Rotation(0));
+            let sprdd_odd_11b = meta.query_advice(advice_cols[1], Rotation(1));
+            let sprdd_odd_10 = meta.query_advice(advice_cols[1], Rotation(2));
+            let sprdd_evn_11a = meta.query_advice(advice_cols[3], Rotation(0));
+            let sprdd_evn_11b = meta.query_advice(advice_cols[3], Rotation(1));
+            let sprdd_evn_10 = meta.query_advice(advice_cols[3], Rotation(2));
 
             Constraints::with_selector(
                 q_maj,
                 maj_gate(
                     [sprdd_a, sprdd_b, sprdd_c],
-                    [sprdd_evn_12a, sprdd_evn_12b, sprdd_evn_8],
-                    [sprdd_odd_12a, sprdd_odd_12b, sprdd_odd_8],
+                    [sprdd_evn_11a, sprdd_evn_11b, sprdd_evn_10],
+                    [sprdd_odd_11a, sprdd_odd_11b, sprdd_odd_10],
                 ),
             )
         });
@@ -244,12 +249,12 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
 
             let sprdd_x = meta.query_advice(advice_cols[5], Rotation(0));
             let sprdd_y = meta.query_advice(advice_cols[6], Rotation(0));
-            let sprdd_odd_12a = meta.query_advice(advice_cols[1], Rotation(0));
-            let sprdd_odd_12b = meta.query_advice(advice_cols[1], Rotation(1));
-            let sprdd_odd_8 = meta.query_advice(advice_cols[1], Rotation(2));
-            let sprdd_evn_12a = meta.query_advice(advice_cols[3], Rotation(0));
-            let sprdd_evn_12b = meta.query_advice(advice_cols[3], Rotation(1));
-            let sprdd_evn_8 = meta.query_advice(advice_cols[3], Rotation(2));
+            let sprdd_odd_11a = meta.query_advice(advice_cols[1], Rotation(0));
+            let sprdd_odd_11b = meta.query_advice(advice_cols[1], Rotation(1));
+            let sprdd_odd_10 = meta.query_advice(advice_cols[1], Rotation(2));
+            let sprdd_evn_11a = meta.query_advice(advice_cols[3], Rotation(0));
+            let sprdd_evn_11b = meta.query_advice(advice_cols[3], Rotation(1));
+            let sprdd_evn_10 = meta.query_advice(advice_cols[3], Rotation(2));
             let summand_1 = meta.query_advice(advice_cols[4], Rotation(1));
             let summand_2 = meta.query_advice(advice_cols[5], Rotation(1));
             let sum = meta.query_advice(advice_cols[6], Rotation(1));
@@ -258,8 +263,8 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
                 q_half_ch,
                 half_ch_gate(
                     [sprdd_x, sprdd_y],
-                    [sprdd_evn_12a, sprdd_evn_12b, sprdd_evn_8],
-                    [sprdd_odd_12a, sprdd_odd_12b, sprdd_odd_8],
+                    [sprdd_evn_11a, sprdd_evn_11b, sprdd_evn_10],
+                    [sprdd_odd_11a, sprdd_odd_11b, sprdd_odd_10],
                     [summand_1, summand_2, sum],
                 ),
             )
@@ -388,12 +393,12 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
             let sprdd_w_3a = meta.query_advice(advice_cols[4], Rotation(2));
             let sprdd_w_04 = meta.query_advice(advice_cols[5], Rotation(2));
             let sprdd_w_3b = meta.query_advice(advice_cols[6], Rotation(2));
-            let sprdd_evn_12a = meta.query_advice(advice_cols[1], Rotation(0));
-            let sprdd_evn_12b = meta.query_advice(advice_cols[1], Rotation(1));
-            let sprdd_evn_8 = meta.query_advice(advice_cols[1], Rotation(2));
-            let sprdd_odd_12a = meta.query_advice(advice_cols[3], Rotation(0));
-            let sprdd_odd_12b = meta.query_advice(advice_cols[3], Rotation(1));
-            let sprdd_odd_8 = meta.query_advice(advice_cols[3], Rotation(2));
+            let sprdd_evn_11a = meta.query_advice(advice_cols[1], Rotation(0));
+            let sprdd_evn_11b = meta.query_advice(advice_cols[1], Rotation(1));
+            let sprdd_evn_10 = meta.query_advice(advice_cols[1], Rotation(2));
+            let sprdd_odd_11a = meta.query_advice(advice_cols[3], Rotation(0));
+            let sprdd_odd_11b = meta.query_advice(advice_cols[3], Rotation(1));
+            let sprdd_odd_10 = meta.query_advice(advice_cols[3], Rotation(2));
 
             Constraints::with_selector(
                 q_sigma_0,
@@ -402,8 +407,8 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
                         sprdd_w_12, sprdd_w_1a, sprdd_w_1b, sprdd_w_1c, sprdd_w_07, sprdd_w_3a,
                         sprdd_w_04, sprdd_w_3b,
                     ],
-                    [sprdd_evn_12a, sprdd_evn_12b, sprdd_evn_8],
-                    [sprdd_odd_12a, sprdd_odd_12b, sprdd_odd_8],
+                    [sprdd_evn_11a, sprdd_evn_11b, sprdd_evn_10],
+                    [sprdd_odd_11a, sprdd_odd_11b, sprdd_odd_10],
                 ),
             )
         });
@@ -419,12 +424,12 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
             let sprdd_w_3a = meta.query_advice(advice_cols[4], Rotation(2));
             let sprdd_w_04 = meta.query_advice(advice_cols[5], Rotation(2));
             let sprdd_w_3b = meta.query_advice(advice_cols[6], Rotation(2));
-            let sprdd_evn_12a = meta.query_advice(advice_cols[1], Rotation(0));
-            let sprdd_evn_12b = meta.query_advice(advice_cols[1], Rotation(1));
-            let sprdd_evn_8 = meta.query_advice(advice_cols[1], Rotation(2));
-            let sprdd_odd_12a = meta.query_advice(advice_cols[3], Rotation(0));
-            let sprdd_odd_12b = meta.query_advice(advice_cols[3], Rotation(1));
-            let sprdd_odd_8 = meta.query_advice(advice_cols[3], Rotation(2));
+            let sprdd_evn_11a = meta.query_advice(advice_cols[1], Rotation(0));
+            let sprdd_evn_11b = meta.query_advice(advice_cols[1], Rotation(1));
+            let sprdd_evn_10 = meta.query_advice(advice_cols[1], Rotation(2));
+            let sprdd_odd_11a = meta.query_advice(advice_cols[3], Rotation(0));
+            let sprdd_odd_11b = meta.query_advice(advice_cols[3], Rotation(1));
+            let sprdd_odd_10 = meta.query_advice(advice_cols[3], Rotation(2));
 
             Constraints::with_selector(
                 q_sigma_1,
@@ -433,8 +438,8 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
                         sprdd_w_12, sprdd_w_1a, sprdd_w_1b, sprdd_w_1c, sprdd_w_07, sprdd_w_3a,
                         sprdd_w_04, sprdd_w_3b,
                     ],
-                    [sprdd_evn_12a, sprdd_evn_12b, sprdd_evn_8],
-                    [sprdd_odd_12a, sprdd_odd_12b, sprdd_odd_8],
+                    [sprdd_evn_11a, sprdd_evn_11b, sprdd_evn_10],
+                    [sprdd_odd_11a, sprdd_odd_11b, sprdd_odd_10],
                 ),
             )
         });
@@ -498,17 +503,17 @@ impl<F: PrimeField> Sha256Chip<F> {
 
         which can be achieved by
 
-        1) applying the plain-spreaded lookup on 12-12-8 limbs of Evn and Odd:
-             Evn: (Evn.12a, Evn.12b, Evn.8)
-             Odd: (Odd.12a, Odd.12b, Odd.8)
+        1) applying the plain-spreaded lookup on 11-11-10 limbs of Evn and Odd:
+             Evn: (Evn.11a, Evn.11b, Evn.10)
+             Odd: (Odd.11a, Odd.11b, Odd.10)
 
-        2) asserting the 12-12-8 decomposition identity for Evn:
-              2^20 * Evn.12a + 2^8 * Evn.12b + Evn.8
+        2) asserting the 11-11-10 decomposition identity for Evn:
+              2^21 * Evn.11a + 2^10 * Evn.11b + Evn.10
             = Evn
 
         3) asserting the Sigma_0 identity regarding the spreaded values:
-              (4^20 * ~Evn.12a + 4^8 * ~Evn.12b + ~Evn.8) +
-          2 * (4^20 * ~Odd.12a + 4^8 * ~Odd.12b + ~Odd.8)
+              (4^21 * ~Evn.11a + 4^10 * ~Evn.11b + ~Evn.10) +
+          2 * (4^21 * ~Odd.11a + 4^10 * ~Odd.11b + ~Odd.10)
              = 4^30 * ~A.02 + 4^20 * ~A.10 + 4^11 * ~A.09 + ~A.11
              + 4^21 * ~A.11 + 4^19 * ~A.02 + 4^9  * ~A.10 + ~A.09
              + 4^23 * ~A.09 + 4^12 * ~A.11 + 4^10 * ~A.02 + ~A.10
@@ -519,9 +524,9 @@ impl<F: PrimeField> Sha256Chip<F> {
 
         | T_0 |    A_0  |    A_1   | T_1 |   A_2   |    A_3   |  A_4  |  A_5  |  A_6  |
         |-----|---------|----------|-----|---------|----------|-------|-------|-------|
-        |  12 | Evn.12a | ~Evn.12a |  12 | Odd.12a | ~Odd.12a |  Evn  | ~A.10 | ~A.09 |
-        |  12 | Evn.12b | ~Evn.12b |  12 | Odd.12b | ~Odd.12b |       | ~A.11 | ~A.02 |
-        |   8 |   Evn.8 |   ~Evn.8 |   8 |   Odd.8 |   ~Odd.8 |       |       |       |
+        |  11 | Evn.11a | ~Evn.11a |  11 | Odd.11a | ~Odd.11a |  Evn  | ~A.10 | ~A.09 |
+        |  11 | Evn.11b | ~Evn.11b |  11 | Odd.11b | ~Odd.11b |       | ~A.11 | ~A.02 |
+        |  10 |  Evn.10 |  ~Evn.10 |  10 |  Odd.10 |  ~Odd.10 |       |       |       |
         */
 
         let adv_cols = self.config().advice_cols;
@@ -537,8 +542,8 @@ impl<F: PrimeField> Sha256Chip<F> {
                 (a.spreaded_limb_11.0).copy_advice(|| "~A.11", &mut region, adv_cols[5], 1)?;
                 (a.spreaded_limb_02.0).copy_advice(|| "~A.02", &mut region, adv_cols[6], 1)?;
 
-                // Compute the spreaded Σ₀(A) off-circuit, assign the 12-12-8 limbs
-                // of its even and odd bits into the circuit, enable the q_12_12_8 selector
+                // Compute the spreaded Σ₀(A) off-circuit, assign the 11-11-10 limbs
+                // of its even and odd bits into the circuit, enable the q_11_11_10 selector
                 // for the even part and q_lookup selector for the related rows, return the
                 // assigned 32 even bits.
                 let val_of_sprdd_limbs: Value<[u64; 4]> = Value::from_iter([
@@ -573,17 +578,17 @@ impl<F: PrimeField> Sha256Chip<F> {
 
         which can be achieved by
 
-        1) applying the plain-spreaded lookup on 12-12-8 limbs of Evn and Odd:
-             Evn: (Evn.12a, Evn.12b, Evn.8)
-             Odd: (Odd.12a, Odd.12b, Odd.8)
+        1) applying the plain-spreaded lookup on 11-11-10 limbs of Evn and Odd:
+             Evn: (Evn.11a, Evn.11b, Evn.10)
+             Odd: (Odd.11a, Odd.11b, Odd.10)
 
-        2) asserting the 12-12-8 decomposition identity for Evn:
-              2^20 * Evn.12a + 2^8 * Evn.12b + Evn.8
+        2) asserting the 11-11-10 decomposition identity for Evn:
+              2^21 * Evn.11a + 2^10 * Evn.11b + Evn.10
             = Evn
 
          3) asserting the Sigma_1 identity regarding the spreaded values:
-              (4^20 * ~Evn.12a + 4^8 * ~Evn.12b + ~Evn.8) +
-          2 * (4^20 * ~Odd.12a + 4^8 * ~Odd.12b + ~Odd.8)
+              (4^21 * ~Evn.11a + 4^10 * ~Evn.11b + ~Evn.10) +
+          2 * (4^21 * ~Odd.11a + 4^10 * ~Odd.11b + ~Odd.10)
              = 4^26 * ~E.06 + 4^19 * ~E.07 + 4^7  * ~E.12 + 4^5 * ~E.02 + ~E.05
              + 4^27 * ~E.05 + 4^21 * ~E.06 + 4^14 * ~E.07 + 4^2 * ~E.12 + ~E.02
              + 4^20 * ~E.12 + 4^18 * ~E.02 + 4^13 * ~E.05 + 4^7 * ~E.06 + ~E.07
@@ -594,9 +599,9 @@ impl<F: PrimeField> Sha256Chip<F> {
 
         | T_0 |   A_0   |    A_1   | T_1 |   A_2   |    A_3   | A_4 |  A_5  |  A_6  |
         |-----|---------|----------|-----|---------|----------|-----|-------|-------|
-        |  12 | Evn.12a | ~Evn.12a |  12 | Odd.12a | ~Odd.12a | Evn | ~E.07 | ~E.12 |
-        |  12 | Evn.12b | ~Evn.12b |  12 | Odd.12b | ~Odd.12b |     | ~E.02 | ~E.05 |
-        |   8 |   Evn.8 |   ~Evn.8 |   8 |   Odd.8 |   ~Odd.8 |     | ~E.06 |       |
+        |  11 | Evn.11a | ~Evn.11a |  11 | Odd.11a | ~Odd.11a | Evn | ~E.07 | ~E.12 |
+        |  11 | Evn.11b | ~Evn.11b |  11 | Odd.11b | ~Odd.11b |     | ~E.02 | ~E.05 |
+        |  10 |  Evn.10 |  ~Evn.10 |  10 |  Odd.10 |  ~Odd.10 |     | ~E.06 |       |
         */
 
         let adv_cols = self.config().advice_cols;
@@ -613,8 +618,8 @@ impl<F: PrimeField> Sha256Chip<F> {
                 (e.spreaded_limb_05.0).copy_advice(|| "~E.05", &mut region, adv_cols[6], 1)?;
                 (e.spreaded_limb_06.0).copy_advice(|| "~E.06", &mut region, adv_cols[5], 2)?;
 
-                // Compute the spreaded Σ₁(E) off-circuit, assign the 12-12-8 limbs
-                // of its even and odd bits into the circuit, enable the q_12_12_8 selector
+                // Compute the spreaded Σ₁(E) off-circuit, assign the 11-11-10 limbs
+                // of its even and odd bits into the circuit, enable the q_11_11_10 selector
                 // for the even part and q_lookup selector for the related rows, return the
                 // assigned 32 even bits.
                 let val_of_sprdd_limbs: Value<[u64; 5]> = Value::from_iter([
@@ -650,17 +655,17 @@ impl<F: PrimeField> Sha256Chip<F> {
 
         which can be achieved by
 
-        1) applying the plain-spreaded lookup on 12-12-8 limbs of Evn and Odd:
-             Evn: (Evn.12a, Evn.12b, Evn.8)
-             Odd: (Odd.12a, Odd.12b, Odd.8)
+        1) applying the plain-spreaded lookup on 11-11-10 limbs of Evn and Odd:
+             Evn: (Evn.11a, Evn.11b, Evn.10)
+             Odd: (Odd.11a, Odd.11b, Odd.10)
 
-        2) asserting the 12-12-8 decomposition identity for Odd:
-              2^20 * Odd.12a + 2^8 * Odd.12b + Odd.8
+        2) asserting the 11-11-10 decomposition identity for Odd:
+              2^21 * Odd.11a + 2^10 * Odd.11b + Odd.10
             = Odd
 
         3) asserting the major identity regarding the spreaded values:
-              (4^20 * ~Evn.12a + 4^8 * ~Evn.12b + ~Evn.8)
-          2 * (4^20 * ~Odd.12a + 4^8 * ~Odd.12b + ~Odd.8)
+              (4^21 * ~Evn.11a + 4^10 * ~Evn.11b + ~Evn.10)
+          2 * (4^21 * ~Odd.11a + 4^10 * ~Odd.11b + ~Odd.10)
              = ~A + ~B + ~C
 
         The output is Odd.
@@ -669,9 +674,9 @@ impl<F: PrimeField> Sha256Chip<F> {
 
         | T_0 |   A_0   |    A_1   | T_1 |   A_2   |    A_3   |  A_4  |  A_5  |  A_6  |
         |-----|---------|----------|-----|---------|----------|-------|-------|-------|
-        |  12 | Odd.12a | ~Odd.12a |  12 | Evn.12a | ~Evn.12a |  Odd  |  ~A   |  ~B   |
-        |  12 | Odd.12b | ~Odd.12b |  12 | Evn.12b | ~Evn.12b |       |  ~C   |       |
-        |   8 | Odd.8   | ~Odd.8   |   8 | Evn.2   | ~Evn.8   |       |       |       |
+        |  11 | Odd.11a | ~Odd.11a |  11 | Evn.11a | ~Evn.11a |  Odd  |  ~A   |  ~B   |
+        |  11 | Odd.11b | ~Odd.11b |  11 | Evn.11b | ~Evn.11b |       |  ~C   |       |
+        |  10 |  Odd.10 |  ~Odd.10 |  10 |  Evn.10 |  ~Evn.10 |       |       |       |
         */
 
         let adv_cols = self.config().advice_cols;
@@ -686,8 +691,8 @@ impl<F: PrimeField> Sha256Chip<F> {
                 (sprdd_b.0).copy_advice(|| "~B", &mut region, adv_cols[6], 0)?;
                 (sprdd_c.0).copy_advice(|| "~C", &mut region, adv_cols[5], 1)?;
 
-                // Compute the spreaded Maj(A, B, C) off-circuit, assign the 12-12-8 limbs
-                // of its even and odd bits into the circuit, enable the q_12_12_8 selector
+                // Compute the spreaded Maj(A, B, C) off-circuit, assign the 11-11-10 limbs
+                // of its even and odd bits into the circuit, enable the q_11_11_10 selector
                 // for the odd part and q_lookup selector for the related rows, return the
                 // assigned 32 odd bits.
                 let val_of_sprdd_forms: Value<[u64; 3]> = Value::from_iter([
@@ -721,28 +726,28 @@ impl<F: PrimeField> Sha256Chip<F> {
 
         which can be achieved by
 
-        1) applying the plain-spreaded lookup on 12-12-8 limbs of Evn and Odd,
+        1) applying the plain-spreaded lookup on 11-11-10 limbs of Evn and Odd,
            for both (~E + ~F) and (~(¬E) + ~G):
-             Evn_EF: (Evn_EF.12a, Evn_EF.12b, Evn_EF.8)
-             Odd_EF: (Odd_EF.12a, Odd_EF.12b, Odd_EF.8)
+             Evn_EF: (Evn_EF.11a, Evn_EF.11b, Evn_EF.10)
+             Odd_EF: (Odd_EF.11a, Odd_EF.11b, Odd_EF.10)
 
-             Evn_nEG: (Evn_nEG.12a, Evn_nEG.12b, Evn_nEG.8)
-             Odd_nEG: (Odd_nEG.12a, Odd_nEG.12b, Odd_nEG.8)
+             Evn_nEG: (Evn_nEG.11a, Evn_nEG.11b, Evn_nEG.10)
+             Odd_nEG: (Odd_nEG.11a, Odd_nEG.11b, Odd_nEG.10)
 
-        2) asserting the 12-12-8 decomposition identity for Odd_EF and Odd_nEG:
-              2^20 * Odd_EF.12a + 2^8 * Odd_EF.12b + Odd_EF.8
+        2) asserting the 11-11-10 decomposition identity for Odd_EF and Odd_nEG:
+              2^21 * Odd_EF.11a + 2^10 * Odd_EF.11b + Odd_EF.10
             = Odd_EF
 
-              2^20 * Odd_nEG.12a + 2^8 * Odd_nEG.12b + Odd_nEG.8
+              2^21 * Odd_nEG.11a + 2^10 * Odd_nEG.11b + Odd_nEG.10
             = Odd_nEG
 
         3) asserting the spreaded addition identity for (~E + ~F) and (~(¬E) + ~G):
-              (4^20 * ~Evn_EF.12a + 4^8 * ~Evn_EF.12b + ~Evn_EF.8)
-          2 * (4^20 * ~Odd_EF.12a + 4^8 * ~Odd_EF.12b + ~Odd_EF.8)
+              (4^21 * ~Evn_EF.11a + 4^10 * ~Evn_EF.11b + ~Evn_EF.10)
+          2 * (4^21 * ~Odd_EF.11a + 4^10 * ~Odd_EF.11b + ~Odd_EF.10)
              = ~E + ~F
 
-              (4^20 * ~Evn_nEG.12a + 4^8 * ~Evn_nEG.12b + ~Evn_nEG.8)
-          2 * (4^20 * ~Odd_nEG.12a + 4^8 * ~Odd_nEG.12b + ~Odd_nEG.8)
+              (4^21 * ~Evn_nEG.11a + 4^10 * ~Evn_nEG.11b + ~Evn_nEG.10)
+          2 * (4^21 * ~Odd_nEG.11a + 4^10 * ~Odd_nEG.11b + ~Odd_nEG.10)
              = ~(¬E) + ~G
 
         4) asserting the following two addition identities:
@@ -755,12 +760,12 @@ impl<F: PrimeField> Sha256Chip<F> {
 
         | T_0 |      A_0    |      A_1     | T_1 |      A_2    |      A_3     |   A_4   |   A_5   |     A_6     |
         |-----|-------------|--------------|-----|-------------|--------------|---------|---------|-------------|
-        |  12 |  Odd_EF.12a |  ~Odd_EF.12a |  12 |  Evn_EF.12a |  ~Evn_EF.12a | Odd_EF  |   ~E    |      ~F     |
-        |  12 |  Odd_EF.12b |  ~Odd_EF.12b |  12 |  Evn_EF.12b |  ~Evn_EF.12b | Odd_EF  | Odd_nEG |     Ret     |
-        |   8 |  Odd_EF.8   |  ~Odd_EF.8   |   8 |  Evn_EF.8   |  ~Evn_EF.8   |         |         |             |
-        |  12 | Odd_nEG.12a | ~Odd_nEG.12a |  12 | Evn_nEG.12a | ~Evn_nEG.12a | Odd_nEG |  ~(¬E)  |      ~G     |
-        |  12 | Odd_nEG.12b | ~Odd_nEG.12b |  12 | Evn_nEG.12b | ~Evn_nEG.12b |   ~E    |  ~(¬E)  | MASK_EVN_64 |
-        |   8 | Odd_nEG.8   | ~Odd_nEG.8   |   8 | Evn_nEG.2   | ~Evn_nEG.8   |         |         |             |
+        |  11 |  Odd_EF.11a |  ~Odd_EF.11a |  11 |  Evn_EF.11a |  ~Evn_EF.11a | Odd_EF  |   ~E    |      ~F     |
+        |  11 |  Odd_EF.11b |  ~Odd_EF.11b |  11 |  Evn_EF.11b |  ~Evn_EF.11b | Odd_EF  | Odd_nEG |     Ret     |
+        |  10 |   Odd_EF.10 |   ~Odd_EF.10 |  10 |   Evn_EF.10 |   ~Evn_EF.10 |         |         |             |
+        |  11 | Odd_nEG.11a | ~Odd_nEG.11a |  11 | Evn_nEG.11a | ~Evn_nEG.11a | Odd_nEG |  ~(¬E)  |      ~G     |
+        |  11 | Odd_nEG.11b | ~Odd_nEG.11b |  11 | Evn_nEG.11b | ~Evn_nEG.11b |   ~E    |  ~(¬E)  | MASK_EVN_64 |
+        |  10 |  Odd_nEG.10 |  ~Odd_nEG.10 |  10 |  Evn_nEG.10 |  ~Evn_nEG.10 |         |         |             |
         */
 
         let adv_cols = self.config().advice_cols;
@@ -1021,9 +1026,9 @@ impl<F: PrimeField> Sha256Chip<F> {
     ///
     ///  | T_0 |   A_0   |    A_1   | T_1 |   A_2   |    A_3   |  A_4  |
     ///  |-----|---------|----------|-----|---------|----------|-------|
-    ///  |  12 | Evn.12a | ~Evn.12a |  12 | Odd.12a | ~Odd.12a |  Evn  |
-    ///  |  12 | Evn.12b | ~Evn.12b |  12 | Odd.12b | ~Odd.12b |       |
-    ///  |   8 | Evn.8   | ~Evn.8   |   8 | Odd.2   | ~Odd.8   |       |
+    ///  |  11 | Evn.11a | ~Evn.11a |  11 | Odd.11a | ~Odd.11a |  Evn  |
+    ///  |  11 | Evn.11b | ~Evn.11b |  11 | Odd.11b | ~Odd.11b |       |
+    ///  |  10 |  Evn.10 |  ~Evn.10 |  10 |  Odd.10 |  ~Odd.10 |       |
     ///
     /// and returns `Evn`.
     ///
@@ -1031,9 +1036,9 @@ impl<F: PrimeField> Sha256Chip<F> {
     ///
     ///  | T_0 |   A_0   |    A_1   | T_1 |   A_2   |    A_3   |  A_4  |
     ///  |-----|---------|----------|-----|---------|----------|-------|
-    ///  |  12 | Odd.12a | ~Odd.12a |  12 | Evn.12a | ~Evn.12a |  Odd  |
-    ///  |  12 | Odd.12b | ~Odd.12b |  12 | Evn.12b | ~Evn.12b |       |
-    ///  |   8 | Odd.8   | ~Odd.8   |   8 | Evn.2   | ~Evn.8   |       |
+    ///  |  11 | Odd.11a | ~Odd.11a |  11 | Evn.11a | ~Evn.11a |  Odd  |
+    ///  |  11 | Odd.11b | ~Odd.11b |  11 | Evn.11b | ~Evn.11b |       |
+    ///  |  10 |  Odd.10 |  ~Odd.10 |  10 |  Evn.10 |  ~Evn.10 |       |
     ///
     /// and returns `Odd`.
     ///
@@ -1267,17 +1272,17 @@ impl<F: PrimeField> Sha256Chip<F> {
 
         which can be achieved by
 
-         1) applying the plain-spreaded lookup on 12-12-8 limbs of Evn and Odd:
-             Evn: (Evn.12a, Evn.12b, Evn.8)
-             Odd: (Odd.12a, Odd.12b, Odd.8)
+         1) applying the plain-spreaded lookup on 11-11-10 limbs of Evn and Odd:
+             Evn: (Evn.11a, Evn.11b, Evn.10)
+             Odd: (Odd.11a, Odd.11b, Odd.10)
 
-        2) asserting the 12-12-8 decomposition identity for Evn:
-              2^20 * Evn.12a + 2^8 * Evn.12b + Evn.8
+        2) asserting the 11-11-10 decomposition identity for Evn:
+              2^21 * Evn.11a + 2^10 * Evn.11b + Evn.10
             = Evn
 
         3) asserting the sigma_0 identity regarding the spreaded values:
-              (4^20 * ~Evn.12a + 4^8 * ~Evn.12b + ~Evn.8) +
-          2 * (4^20 * ~Odd.12a + 4^8 * ~Odd.12b + ~Odd.8)
+              (4^21 * ~Evn.11a + 4^10 * ~Evn.11b + ~Evn.10) +
+          2 * (4^21 * ~Odd.11a + 4^10 * ~Odd.11b + ~Odd.10)
              =                4^17 * ~W.12 + 4^16 * ~W.1a + 4^15 * ~W.1b + 4^14 * ~W.1c + 4^7 * ~W.07 +  4^4 * ~W.3a + ~W.04
              + 4^28 * ~W.04 + 4^25 * ~W.3b + 4^13 * ~W.12 + 4^12 * ~W.1a + 4^11 * ~W.1b + 4^10 * ~W.1c + 4^3 * ~W.07 + ~W.3a
              + 4^31 * ~W.1c + 4^24 * ~W.07 + 4^21 * ~W.3a + 4^17 * ~W.04 + 4^14 * ~W.3b +  4^2 * ~W.12 + 4^1 * ~W.1a + ~W.1b
@@ -1288,9 +1293,9 @@ impl<F: PrimeField> Sha256Chip<F> {
 
         | T_0 |    A_0   |    A_1    | T_1 |   A_2   |    A_3   |  A_4  |   A_5  |   A_6  |
         |-----|----------|-----------|-----|---------|----------|-------|--------|--------|
-        |  12 | Even.12a | ~Even.12a |  12 | Odd.12a | ~Odd.12a |  Evn  | ~W.12  | ~W.1a  |
-        |  12 | Even.12b | ~Even.12b |  12 | Odd.12b | ~Odd.12b | ~W.1b | ~W.1c  | ~W.07  |
-        |   8 | Even.8   | ~Even.8   |   8 | Odd.8   | ~Odd.8   | ~W.3a | ~W.04  | ~W.3b  |
+        |  11 | Even.11a | ~Even.11a |  11 | Odd.11a | ~Odd.11a |  Evn  | ~W.12  | ~W.1a  |
+        |  11 | Even.11b | ~Even.11b |  11 | Odd.11b | ~Odd.11b | ~W.1b | ~W.1c  | ~W.07  |
+        |  10 |  Even.10 |  ~Even.10 |  10 |  Odd.10 |  ~Odd.10 | ~W.3a | ~W.04  | ~W.3b  |
         */
 
         let adv_cols = self.config().advice_cols;
@@ -1345,17 +1350,17 @@ impl<F: PrimeField> Sha256Chip<F> {
 
         which can be achieved by
 
-         1) applying the plain-spreaded lookup on 12-12-8 limbs of Evn and Odd:
-             Evn: (Evn.12a, Evn.12b, Evn.8)
-             Odd: (Odd.12a, Odd.12b, Odd.8)
+         1) applying the plain-spreaded lookup on 11-11-10 limbs of Evn and Odd:
+             Evn: (Evn.11a, Evn.11b, Evn.10)
+             Odd: (Odd.11a, Odd.11b, Odd.10)
 
-        2) asserting the 12-12-8 decomposition identity for Evn:
-              2^20 * Evn.12a + 2^8 * Evn.12b + Evn.8
+        2) asserting the 11-11-10 decomposition identity for Evn:
+              2^21 * Evn.11a + 2^10 * Evn.11b + Evn.10
             = Evn
 
         3) asserting the sigma_0 identity regarding the spreaded values:
-              (4^20 * ~Evn.12a + 4^8 * ~Evn.12b + ~Evn.8) +
-          2 * (4^20 * ~Odd.12a + 4^8 * ~Odd.12b + ~Odd.8)
+              (4^21 * ~Evn.11a + 4^10 * ~Evn.11b + ~Evn.10) +
+          2 * (4^21 * ~Odd.11a + 4^10 * ~Odd.11b + ~Odd.10)
              =                                              4^10 * ~W.12 +  4^9 * ~W.1a +  4^8 * ~W.1b + 4^7 * ~W.1c + ~W.07
              + 4^25 * ~W.07 + 4^22 * ~W.3a + 4^18 * ~W.04 + 4^15 * ~W.3b +  4^3 * ~W.12 +  4^2 * ~W.1a + 4^1 * ~W.1b + ~W.1c
              + 4^31 * ~W.1b + 4^30 * ~W.1c + 4^23 * ~W.07 + 4^20 * ~W.3a + 4^16 * ~W.04 + 4^13 * ~W.3b + 4^1 * ~W.12 + ~W.1a
@@ -1366,9 +1371,9 @@ impl<F: PrimeField> Sha256Chip<F> {
 
         | T_0 |    A_0   |    A_1    | T_1 |   A_2   |    A_3   |  A_4  |   A_5  |   A_6  |
         |-----|----------|-----------|-----|---------|----------|-------|--------|--------|
-        |  12 | Even.12a | ~Even.12a |  12 | Odd.12a | ~Odd.12a |  Evn  | ~W.12  | ~W.1a  |
-        |  12 | Even.12b | ~Even.12b |  12 | Odd.12b | ~Odd.12b | ~W.1b | ~W.1c  | ~W.07  |
-        |   8 | Even.8   | ~Even.8   |   8 | Odd.8   | ~Odd.8   | ~W.3a | ~W.04  | ~W.3b  |
+        |  11 | Even.11a | ~Even.11a |  11 | Odd.11a | ~Odd.11a |  Evn  | ~W.12  | ~W.1a  |
+        |  11 | Even.11b | ~Even.11b |  11 | Odd.11b | ~Odd.11b | ~W.1b | ~W.1c  | ~W.07  |
+        |  10 |  Even.10 |  ~Even.10 |  10 |  Odd.10 |  ~Odd.10 | ~W.3a | ~W.04  | ~W.3b  |
         */
 
         let adv_cols = self.config().advice_cols;
@@ -1589,14 +1594,7 @@ impl<F: PrimeField> FromScratch<F> for Sha256Chip<F> {
             std::array::from_fn(|_| meta.advice_column());
         let fixed_cols: [Column<Fixed>; NB_SHA256_FIXED_COLS] =
             std::array::from_fn(|_| meta.fixed_column());
-        // Add all advice columns to permutation
-        for column in adv_cols.iter() {
-            meta.enable_equality(*column);
-        }
 
-        for column in fixed_cols.iter() {
-            meta.enable_constant(*column);
-        }
         (
             <Sha256Chip<F> as ComposableChip<F>>::configure(meta, &(adv_cols, fixed_cols)),
             NativeGadget::configure_from_scratch(meta, instance_columns),

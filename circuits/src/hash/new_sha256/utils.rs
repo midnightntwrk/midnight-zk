@@ -3,7 +3,7 @@ use ff::PrimeField;
 pub(super) const MASK_EVN_64: u64 = 0x5555_5555_5555_5555; // 010101...01 (even positions in u64)
 pub(super) const MASK_ODD_64: u64 = 0xAAAA_AAAA_AAAA_AAAA; // 101010...10 (odd positions in u64)
 
-const LOOKUP_LENGTHS: [u32; 11] = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]; // supported lookup bit lengths
+const LOOKUP_LENGTHS: [u32; 10] = [2, 3, 4, 5, 6, 7, 9, 10, 11, 12]; // supported lookup bit lengths
 
 /// Returns the even and odd bits of little-endian binary representation of u64.
 pub fn get_even_and_odd_bits(value: u64) -> (u32, u32) {
