@@ -1,12 +1,15 @@
+use std::any::TypeId;
 use std::fmt::Debug;
 
 use ff::Field;
-use group::{prime::PrimeCurveAffine, Curve, Group};
+use group::{Curve, Group};
 use halo2curves::{
     msm::msm_best,
     pairing::{Engine, MillerLoopResult, MultiMillerLoop},
     CurveAffine,
 };
+use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
+use midnight_curves::{Fq, G1Affine, G1Projective};
 
 use super::params::ParamsVerifierKZG;
 use crate::{
@@ -16,7 +19,7 @@ use crate::{
         Error,
     },
     utils::{
-        arithmetic::{parallelize, CurveExt, MSM},
+        arithmetic::{CurveExt, MSM},
         helpers::ProcessedSerdeObject,
     },
 };
@@ -75,9 +78,7 @@ where
     }
 
     fn eval(&self) -> E::G1 {
-        let mut bases = vec![E::G1Affine::identity(); self.scalars.len()];
-        E::G1::batch_normalize(&self.bases, &mut bases);
-        msm_best(&self.scalars, &bases)
+        msm_specific::<E::G1Affine>(&self.scalars, &self.bases)
     }
 
     fn bases(&self) -> Vec<E::G1> {
@@ -86,6 +87,22 @@ where
 
     fn scalars(&self) -> Vec<E::Fr> {
         self.scalars.clone()
+    }
+}
+
+#[allow(unsafe_code)]
+/// Wrapper over the MSM function to use the blstrs underlying function
+pub fn msm_specific<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C::Curve]) -> C::Curve {
+    if coeffs.len() <= (2 << 18) && TypeId::of::<C>() == TypeId::of::<G1Affine>() {
+        // Safe: we just checked type
+        let coeffs = unsafe { &*(coeffs as *const _ as *const [Fq]) };
+        let bases = unsafe { &*(bases as *const _ as *const [G1Projective]) };
+        let res = G1Projective::multi_exp(&bases, &coeffs);
+        return unsafe {std::mem::transmute_copy(&res) };
+    } else {
+        let mut affine_bases = vec![C::identity(); coeffs.len()];
+        C::Curve::batch_normalize(bases, &mut affine_bases);
+        msm_best(coeffs, &affine_bases)
     }
 }
 
