@@ -40,6 +40,22 @@ impl<E: Engine> MSMKZG<E> {
         }
     }
 
+    /// Create an MSM from various MSMs
+    pub fn from_many(msms: Vec<Self>) -> Self {
+        let total_scalars: usize = msms.iter().map(|m| m.scalars.len()).sum();
+        let total_bases: usize = msms.iter().map(|m| m.bases.len()).sum();
+
+        let mut scalars = Vec::with_capacity(total_scalars);
+        let mut bases = Vec::with_capacity(total_bases);
+
+        for mut msm in msms {
+            scalars.append(&mut msm.scalars);
+            bases.append(&mut msm.bases);
+        }
+
+        Self { scalars, bases }
+    }
+
     /// Create a new MSM from a given base (with scalar of 1).
     pub fn from_base(base: &E::G1) -> Self {
         MSMKZG {
@@ -59,18 +75,17 @@ where
     }
 
     fn add_msm(&mut self, other: &Self) {
-        self.scalars.extend(other.scalars().iter());
-        self.bases.extend(other.bases().iter());
+        self.scalars.reserve(other.scalars().len());
+        self.scalars.extend_from_slice(&other.scalars());
+
+        self.bases.reserve(other.bases().len());
+        self.bases.extend_from_slice(&other.bases());
     }
 
     fn scale(&mut self, factor: E::Fr) {
-        if !self.scalars.is_empty() {
-            parallelize(&mut self.scalars, |scalars, _| {
-                for other_scalar in scalars {
-                    *other_scalar *= &factor;
-                }
-            })
-        }
+        self.scalars.par_iter_mut().for_each(|s| {
+            *s *= &factor;
+        })
     }
 
     fn check(&self) -> bool {
@@ -190,15 +205,12 @@ where
     /// Performs final pairing check with given verifier params and two channel
     /// linear combination
     pub fn check(self, params: &ParamsVerifierKZG<E>) -> bool {
-        let s_g2_prepared = E::G2Prepared::from(params.s_g2.into());
-        let n_g2_prepared = E::G2Prepared::from(-E::G2Affine::generator());
-
         let left = self.left.eval();
         let right = self.right.eval();
 
         let (term_1, term_2) = (
-            (&left.into(), &s_g2_prepared),
-            (&right.into(), &n_g2_prepared),
+            (&left.into(), &params.s_g2_prepared),
+            (&right.into(), &params.n_g2_prepared),
         );
         let terms = &[term_1, term_2];
 
