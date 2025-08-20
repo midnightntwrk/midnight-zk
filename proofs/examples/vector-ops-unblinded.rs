@@ -5,6 +5,7 @@ use std::hash::Hash;
 /// This is a simple example of how to use unblinded inputs to match up circuits
 /// that might be proved on different host machines.
 use std::marker::PhantomData;
+use std::hash::Hash;
 
 use blake2b_simd::State;
 use ff::{FromUniformBytes, WithSmallOrderMulGroup};
