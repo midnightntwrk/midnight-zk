@@ -136,6 +136,7 @@ fn main() {
             &srs.verifier_params(),
             &vk,
             &instance,
+            None,
             &proof
         )
         .is_ok()
