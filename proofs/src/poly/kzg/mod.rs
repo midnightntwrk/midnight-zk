@@ -18,6 +18,7 @@ pub mod params;
 mod utils;
 
 use std::fmt::Debug;
+use std::hash::Hash;
 
 use ff::Field;
 use group::Group;
@@ -102,7 +103,7 @@ where
         transcript: &mut T,
     ) -> Result<(), Error>
     where
-        E::Fr: Sampleable<T::Hash> + Ord + Hashable<T::Hash>,
+        E::Fr: Sampleable<T::Hash> + Hash + Ord + Hashable<T::Hash>,
         E::G1: Hashable<T::Hash>,
     {
         // Refer to the halo2 book for docs:
@@ -194,7 +195,7 @@ where
         transcript: &mut T,
     ) -> Result<DualMSM<E>, Error>
     where
-        E::Fr: Sampleable<T::Hash> + Ord + Hashable<T::Hash>,
+        E::Fr: Sampleable<T::Hash> + Ord + Hash + Hashable<T::Hash>,
         E::G1: Hashable<T::Hash> + CurveExt<ScalarExt = E::Fr>,
     {
         // Refer to the halo2 book for docs:
@@ -336,6 +337,7 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::hash::Hash;
     use blake2b_simd::State as Blake2bState;
     use ff::WithSmallOrderMulGroup;
     use halo2curves::{pairing::MultiMillerLoop, serde::SerdeObject, CurveAffine, CurveExt};
@@ -375,7 +377,7 @@ mod tests {
     where
         E: MultiMillerLoop,
         T: Transcript,
-        E::Fr: Hashable<T::Hash> + Sampleable<T::Hash> + Ord,
+        E::Fr: Hashable<T::Hash> + Sampleable<T::Hash> + Ord + Hash,
         E::G1: Hashable<T::Hash> + CurveExt<ScalarExt = E::Fr, AffineExt = E::G1Affine>,
         E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1> + SerdeObject,
     {
@@ -421,7 +423,7 @@ mod tests {
     where
         E: MultiMillerLoop,
         T: Transcript,
-        E::Fr: WithSmallOrderMulGroup<3> + Hashable<T::Hash> + Sampleable<T::Hash> + Ord,
+        E::Fr: WithSmallOrderMulGroup<3> + Hashable<T::Hash> + Hash + Sampleable<T::Hash> + Ord,
         E::G1: Hashable<T::Hash> + CurveExt<ScalarExt = E::Fr, AffineExt = E::G1Affine>,
         E::G1Affine: SerdeObject + CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
     {
