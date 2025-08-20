@@ -821,9 +821,9 @@ where
         let mut scalars_of_non_id_bases = vec![];
         let scalar_chip = self.scalar_field_chip();
         let zero: S::Scalar = scalar_chip.assign_fixed(layouter, C::Scalar::ZERO)?;
-        let gen = self.assign_fixed(layouter, C::CryptographicGroup::generator())?;
+        let g = self.assign_fixed(layouter, C::CryptographicGroup::generator())?;
         for (s, b) in scalars.iter().zip(bases.iter()) {
-            let new_b = self.select(layouter, &b.is_id, &gen, b)?;
+            let new_b = self.select(layouter, &b.is_id, &g, b)?;
             let new_s = scalar_chip.select(layouter, &b.is_id, &zero, &s.0)?;
             non_id_bases.push(new_b);
             scalars_of_non_id_bases.push((new_s, s.1));

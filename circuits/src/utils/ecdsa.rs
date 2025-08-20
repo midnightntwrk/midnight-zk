@@ -104,12 +104,12 @@ impl Ecdsa {
 
     /// Verify a `signature` for `msg_hash` over key `pk`
     pub fn verify(pk: &PublicKey, msg_hash: &secp256k1Scalar, signature: &ECDSASig) -> bool {
-        let gen = Secp256k1::generator();
+        let g = Secp256k1::generator();
         let r_as_scalar = secp256k1Scalar::from_bytes(&signature.r).unwrap();
         let r_as_base = secp256k1Base::from_bytes(&signature.r).unwrap();
 
         let s_inv = signature.s.invert().unwrap();
-        let k_point = gen * (s_inv * msg_hash) + pk * (s_inv * r_as_scalar);
+        let k_point = g * (s_inv * msg_hash) + pk * (s_inv * r_as_scalar);
 
         k_point.to_affine().x == r_as_base
     }
