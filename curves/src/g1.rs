@@ -17,7 +17,6 @@ use group::{
 };
 use halo2curves::{serde::SerdeObject, Coordinates, CurveAffine, CurveExt};
 use rand_core::RngCore;
-use rayon::iter::{IntoParallelRefIterator, IntoParallelRefMutIterator, IndexedParallelIterator, ParallelIterator};
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 
 use crate::{

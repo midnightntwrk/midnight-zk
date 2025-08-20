@@ -23,5 +23,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Optimize ops for `Expression<F>` and implement them for `&Expression<F>` [#52](https://github.com/midnightntwrk/midnight-zk/pull/52)
 * Introduce trash arguments for additive selectors [#59](https://github.com/midnightntwrk/midnight-zk/pull/59)
 * Implement TranscriptHash for u32 [#75](https://github.com/midnightntwrk/midnight-zk/pull/75)
+* Improvement on verifier allocation and use of blstrs MSM [#76](https://github.com/midnightntwrk/midnight-zk/pull/76)
 
 ### Removed
