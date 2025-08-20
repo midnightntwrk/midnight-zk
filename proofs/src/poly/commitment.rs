@@ -1,6 +1,7 @@
 //! Trait for a commitment scheme
 use core::ops::{Add, Mul};
 use std::fmt::Debug;
+use std::hash::Hash;
 
 use ff::{FromUniformBytes, PrimeField};
 
@@ -57,7 +58,7 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
         transcript: &mut T,
     ) -> Result<(), Error>
     where
-        F: Sampleable<T::Hash> + Ord + Hashable<T::Hash>,
+        F: Sampleable<T::Hash> + Hash + Ord + Hashable<T::Hash>,
         Self::Commitment: Hashable<T::Hash>;
 
     /// Verify an multi-opening proof for a given set of [VerifierQuery]'s.
@@ -67,7 +68,7 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
         transcript: &mut T,
     ) -> Result<Self::VerificationGuard, Error>
     where
-        F: Sampleable<T::Hash> + Ord + Hashable<T::Hash>,
+        F: Sampleable<T::Hash> + Hash + Ord + Hashable<T::Hash>,
         Self::Commitment: 'com + Hashable<T::Hash>;
 }
 

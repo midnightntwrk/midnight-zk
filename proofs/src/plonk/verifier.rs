@@ -1,3 +1,4 @@
+use std::hash::Hash;
 use std::iter;
 
 use ff::{FromUniformBytes, WithSmallOrderMulGroup};
@@ -11,7 +12,7 @@ use crate::{
 };
 
 /// Given a plonk proof, this function parses it to extract the verifying trace.
-pub(crate) fn parse_trace<F, CS, T>(
+pub fn parse_trace<F, CS, T>(
     vk: &VerifyingKey<F, CS>,
     // Unlike the prover, the verifier gets their instances in two arguments:
     // committed and normal (non-committed). Note that the total number of
@@ -173,7 +174,7 @@ where
 /// with the claimed evaluations, but does not verify the PCS proof.
 ///
 /// The verifier will error if there are trailing bits in the transcript.
-pub(crate) fn verify_algebraic_constraints<F, CS: PolynomialCommitmentScheme<F>, T: Transcript>(
+pub fn verify_algebraic_constraints<F, CS: PolynomialCommitmentScheme<F>, T: Transcript>(
     vk: &VerifyingKey<F, CS>,
     trace: VerifierTrace<F, CS>,
     // Unlike the prover, the verifier gets their instances in two arguments:
@@ -190,6 +191,7 @@ where
         + Hashable<T::Hash>
         + Sampleable<T::Hash>
         + FromUniformBytes<64>
+        + Hash
         + Ord,
     CS::Commitment: Hashable<T::Hash>,
 {
@@ -217,9 +219,9 @@ where
     // Sample x challenge, which is used to ensure the circuit is
     // satisfied with high probability.
     let x: F = transcript.squeeze_challenge();
+    let xn = x.pow_vartime([vk.n()]);
 
     let instance_evals = {
-        let xn = x.pow([vk.n()]);
         let (min_rotation, max_rotation) =
             vk.cs
                 .instance_queries
@@ -303,9 +305,6 @@ where
     // This check ensures the circuit is satisfied so long as the polynomial
     // commitments open to the correct values.
     let vanishing = {
-        // x^n
-        let xn = x.pow([vk.n()]);
-
         let blinding_factors = vk.cs.blinding_factors();
         let l_evals = vk
             .domain
@@ -486,6 +485,7 @@ where
         + Hashable<T::Hash>
         + Sampleable<T::Hash>
         + FromUniformBytes<64>
+        + Hash
         + Ord,
     CS::Commitment: Hashable<T::Hash>,
 {

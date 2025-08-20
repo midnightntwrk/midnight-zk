@@ -3,6 +3,7 @@ use std::{
     iter,
     ops::RangeTo,
 };
+use std::hash::Hash;
 
 use ff::{Field, FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
 use rand_core::{CryptoRng, RngCore};
@@ -567,6 +568,7 @@ where
     F: WithSmallOrderMulGroup<3>
         + Sampleable<T::Hash>
         + Hashable<T::Hash>
+        + Hash
         + Ord
         + FromUniformBytes<64>,
 {
@@ -800,6 +802,7 @@ where
     F: WithSmallOrderMulGroup<3>
         + Sampleable<T::Hash>
         + Hashable<T::Hash>
+        + Hash
         + Ord
         + FromUniformBytes<64>,
 {
