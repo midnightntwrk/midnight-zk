@@ -12,6 +12,7 @@ verification keys break backwards compatibility.
 
 ## [Unreleased]
 ### Added
+* Add CommittedInstanceInstructions [#381](https://github.com/midnightntwrk/midnight-zk/pull/381)
 
 ### Changed
 * Refactored crate to prepare for edition 2024.
