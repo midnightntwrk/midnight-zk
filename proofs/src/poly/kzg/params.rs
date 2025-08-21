@@ -1,8 +1,7 @@
 use std::{fmt::Debug, io};
 
 use ff::{Field, PrimeField};
-use group::{Curve, Group};
-use group::prime::PrimeCurveAffine;
+use group::{prime::PrimeCurveAffine, Curve, Group};
 use halo2curves::pairing::{Engine, MultiMillerLoop};
 use rand_core::RngCore;
 
@@ -266,7 +265,11 @@ where
         let s_g2_prepared = E::G2Prepared::from(s_g2.into());
         let n_g2_prepared = E::G2Prepared::from(-E::G2Affine::generator());
 
-        Ok(Self { s_g2, n_g2_prepared, s_g2_prepared })
+        Ok(Self {
+            s_g2,
+            n_g2_prepared,
+            s_g2_prepared,
+        })
     }
 }
 
@@ -276,7 +279,11 @@ impl<E: MultiMillerLoop + Debug> ParamsKZG<E> {
     pub fn verifier_params(&self) -> ParamsVerifierKZG<E> {
         let n_g2_prepared = E::G2Prepared::from((-self.g2).into());
         let s_g2_prepared = E::G2Prepared::from(self.s_g2.into());
-        ParamsVerifierKZG { s_g2: self.s_g2, n_g2_prepared, s_g2_prepared }
+        ParamsVerifierKZG {
+            s_g2: self.s_g2,
+            n_g2_prepared,
+            s_g2_prepared,
+        }
     }
 }
 

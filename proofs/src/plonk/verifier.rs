@@ -1,5 +1,4 @@
-use std::hash::Hash;
-use std::iter;
+use std::{hash::Hash, iter};
 
 use ff::{FromUniformBytes, WithSmallOrderMulGroup};
 

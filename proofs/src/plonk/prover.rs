@@ -1,9 +1,9 @@
 use std::{
     collections::{BTreeSet, HashMap, HashSet},
+    hash::Hash,
     iter,
     ops::RangeTo,
 };
-use std::hash::Hash;
 
 use ff::{Field, FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
 use rand_core::{CryptoRng, RngCore};
