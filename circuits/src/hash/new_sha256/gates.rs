@@ -376,22 +376,22 @@ pub fn sigma_1_gate<F: PrimeField>(
     vec![("Spreaded σ₁(W) check", sprdd_sigma_1_check)]
 }
 
-/// Computes a linear combination of terms with coefficients of powers of two.
+/// Returns sum_i 2^(exponents[i]) * terms[i].
 fn linear_combination_pow2<F: PrimeField, const N: usize>(
-    pow_of_coeffs: [u8; N],
+    exponents: [u8; N],
     terms: [&Expression<F>; N],
 ) -> Expression<F> {
     let mut expr = Expression::Constant(F::ZERO);
-    for (pow, term) in pow_of_coeffs.into_iter().zip(terms.into_iter()) {
+    for (pow, term) in exponents.into_iter().zip(terms.into_iter()) {
         expr = expr + Expression::Constant(F::from(1 << pow)) * term.clone();
     }
     expr
 }
 
-/// Computes a linear combination of terms with coefficients of powers of four.
+/// Returns sum_i 4^(exponents[i]) * terms[i].
 fn linear_combination_pow4<F: PrimeField, const N: usize>(
-    pow_of_coeffs: [u8; N],
+    exponents: [u8; N],
     terms: [&Expression<F>; N],
 ) -> Expression<F> {
-    linear_combination_pow2(pow_of_coeffs.map(|l| 2 * l), terms)
+    linear_combination_pow2(exponents.map(|l| 2 * l), terms)
 }

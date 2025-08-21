@@ -25,13 +25,13 @@ use crate::{
         utils::{
             gen_spread_table, get_even_and_odd_bits, negate_spreaded, spread, spreaded_Sigma_0,
             spreaded_Sigma_1, spreaded_maj, spreaded_sigma_0, spreaded_sigma_1, u32_in_be_limbs,
-            u32_to_fe, u64_to_fe, MASK_EVN_64,
+            MASK_EVN_64,
         },
     },
     instructions::{assignments::AssignmentInstructions, DecompositionInstructions},
     types::{AssignedByte, AssignedNative},
     utils::{
-        util::{fe_to_u32, fe_to_u64},
+        util::{fe_to_u32, fe_to_u64, u32_to_fe, u64_to_fe},
         ComposableChip,
     },
 };

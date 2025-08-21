@@ -66,6 +66,14 @@ pub fn fe_to_u64<F: PrimeField>(fe: F) -> u64 {
     }
 }
 
+pub fn u32_to_fe<F: PrimeField>(x: u32) -> F {
+    F::from(x as u64)
+}
+
+pub fn u64_to_fe<F: PrimeField>(x: u64) -> F {
+    F::from(x)
+}
+
 pub fn bigint_to_fe<F: PrimeField>(value: &BI) -> F {
     let f = F::from_str_vartime(&BI::to_string(&value.abs())).unwrap();
     if value.is_negative() {

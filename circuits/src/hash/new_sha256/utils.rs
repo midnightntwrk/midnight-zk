@@ -82,14 +82,6 @@ pub fn u32_in_be_limbs<const N: usize>(value: u32, limb_lengths: [usize; N]) -> 
     result.try_into().unwrap()
 }
 
-pub fn u32_to_fe<F: PrimeField>(value: u32) -> F {
-    F::from(value.into())
-}
-
-pub fn u64_to_fe<F: PrimeField>(value: u64) -> F {
-    F::from(value)
-}
-
 /// Generates the plain-spreaded lookup table.
 pub fn gen_spread_table<F: PrimeField>() -> Vec<(F, F, F)> {
     let mut table = vec![(F::ZERO, F::ZERO, F::ZERO)]; // base case (disabled lookup)
@@ -115,9 +107,9 @@ pub fn spreaded_Sigma_0(spreaded_limbs: [u64; 4]) -> u64 {
     // As each limb is in valid spreaded form, the sum of three rotations composed
     // by the limbs is at most: 3 * 0b0101..01 = 0b1111..11.
     // Hence, the sum will never overflow u64.
-    (pow4(30) * sA_02 + pow4(20) * sA_10 + pow4(11) * sA_09 + sA_11)
-        + (pow4(21) * sA_11 + pow4(19) * sA_02 + pow4(9) * sA_10 + sA_09)
-        + (pow4(23) * sA_09 + pow4(12) * sA_11 + pow4(10) * sA_02 + sA_10)
+    pow4_ip([30, 20, 11, 0], [sA_02, sA_10, sA_09, sA_11])
+        + pow4_ip([21, 19, 9, 0], [sA_11, sA_02, sA_10, sA_09])
+        + pow4_ip([23, 12, 10, 0], [sA_09, sA_11, sA_02, sA_10])
 }
 
 /// Computes off-circuit spreaded Maj(A, B, C) with A, B, C in spreaded forms.
@@ -149,9 +141,9 @@ pub fn spreaded_Sigma_1(spreaded_limbs: [u64; 5]) -> u64 {
     // As each limb is in valid spreaded form, the sum of three rotations composed
     // by the limbs is at most: 3 * 0b0101..01 = 0b1111..11.
     // Hence, the sum will never overflow u64.
-    (pow4(26) * sE_06 + pow4(19) * sE_07 + pow4(7) * sE_12 + pow4(5) * sE_02 + sE_05)
-        + (pow4(27) * sE_05 + pow4(21) * sE_06 + pow4(14) * sE_07 + pow4(2) * sE_12 + sE_02)
-        + (pow4(20) * sE_12 + pow4(18) * sE_02 + pow4(13) * sE_05 + pow4(7) * sE_06 + sE_07)
+    pow4_ip([26, 19, 7, 5, 0], [sE_06, sE_07, sE_12, sE_02, sE_05])
+        + pow4_ip([27, 21, 14, 2, 0], [sE_05, sE_06, sE_07, sE_12, sE_02])
+        + pow4_ip([20, 18, 13, 7, 0], [sE_12, sE_02, sE_05, sE_06, sE_07])
 }
 
 /// Computes off-circuit spreaded σ₀(W) with W in (big endian) spreaded limbs.
@@ -167,29 +159,16 @@ pub fn spreaded_sigma_0(spreaded_limbs: [u64; 8]) -> u64 {
     // As each limb is in valid spreaded form, the sum of three rotations composed
     // by the limbs is at most: 3 * 0b0101..01 = 0b1111..11.
     // Hence, the sum will never overflow u64.
-    (pow4(17) * sW_12
-        + pow4(16) * sW_1a
-        + pow4(15) * sW_1b
-        + pow4(14) * sW_1c
-        + pow4(7) * sW_07
-        + pow4(4) * sW_3a
-        + sW_04)
-        + (pow4(28) * sW_04
-            + pow4(25) * sW_3b
-            + pow4(13) * sW_12
-            + pow4(12) * sW_1a
-            + pow4(11) * sW_1b
-            + pow4(10) * sW_1c
-            + pow4(3) * sW_07
-            + sW_3a)
-        + (pow4(31) * sW_1c
-            + pow4(24) * sW_07
-            + pow4(21) * sW_3a
-            + pow4(17) * sW_04
-            + pow4(14) * sW_3b
-            + pow4(2) * sW_12
-            + pow4(1) * sW_1a
-            + sW_1b)
+    pow4_ip(
+        [17, 16, 15, 14, 7, 4, 0],
+        [sW_12, sW_1a, sW_1b, sW_1c, sW_07, sW_3a, sW_04],
+    ) + pow4_ip(
+        [28, 25, 13, 12, 11, 10, 3, 0],
+        [sW_04, sW_3b, sW_12, sW_1a, sW_1b, sW_1c, sW_07, sW_3a],
+    ) + pow4_ip(
+        [31, 24, 21, 17, 14, 2, 1, 0],
+        [sW_1c, sW_07, sW_3a, sW_04, sW_3b, sW_12, sW_1a, sW_1b],
+    )
 }
 
 /// Computes off-circuit spreaded σ₁(W) with W in (big endian) spreaded limbs.
@@ -205,27 +184,22 @@ pub fn spreaded_sigma_1(spreaded_limbs: [u64; 8]) -> u64 {
     // As each limb is in valid spreaded form, the sum of three rotations composed
     // by the limbs is at most: 3 * 0b0101..01 = 0b1111..11.
     // Hence, the sum will never overflow u64.
-    (pow4(10) * sW_12 + pow4(9) * sW_1a + pow4(8) * sW_1b + pow4(7) * sW_1c + sW_07)
-        + (pow4(25) * sW_07
-            + pow4(22) * sW_3a
-            + pow4(18) * sW_04
-            + pow4(15) * sW_3b
-            + pow4(3) * sW_12
-            + pow4(2) * sW_1a
-            + pow4(1) * sW_1b
-            + sW_1c)
-        + (pow4(31) * sW_1b
-            + pow4(30) * sW_1c
-            + pow4(23) * sW_07
-            + pow4(20) * sW_3a
-            + pow4(16) * sW_04
-            + pow4(13) * sW_3b
-            + pow4(1) * sW_12
-            + sW_1a)
+    pow4_ip([10, 9, 8, 7, 0], [sW_12, sW_1a, sW_1b, sW_1c, sW_07])
+        + pow4_ip(
+            [25, 22, 18, 15, 3, 2, 1, 0],
+            [sW_07, sW_3a, sW_04, sW_3b, sW_12, sW_1a, sW_1b, sW_1c],
+        )
+        + pow4_ip(
+            [31, 30, 23, 20, 16, 13, 1, 0],
+            [sW_1b, sW_1c, sW_07, sW_3a, sW_04, sW_3b, sW_12, sW_1a],
+        )
 }
 
-fn pow4(n: u32) -> u64 {
-    1 << (2 * n)
+/// Returns sum_i 4^(exponents[i]) * terms[i].
+fn pow4_ip<const N: usize>(exponents: [u8; N], terms: [u64; N]) -> u64 {
+    (exponents.iter().zip(terms.iter()))
+        .map(|(e, t)| (1 << (2 * e)) * t)
+        .sum()
 }
 
 #[cfg(test)]
@@ -312,9 +286,9 @@ mod tests {
         let mut rng = rand::thread_rng();
         let to_fe = |(tag, plain, spreaded)| {
             (
-                u32_to_fe::<F>(tag),
-                u32_to_fe::<F>(plain),
-                u64_to_fe::<F>(spreaded),
+                F::from(tag as u64),
+                F::from(plain as u64),
+                F::from(spreaded),
             )
         };
 
