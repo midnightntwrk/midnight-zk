@@ -35,7 +35,6 @@ macro_rules! generate_tests {
     ($($name:ident: $circuit:ty),*) => {
         $(
             #[test]
-            #[ignore]
             fn $name() {
                 let relation = <$circuit>::default();
                 let circuit = MidnightCircuit::from_relation(&relation);
@@ -59,7 +58,8 @@ generate_tests!(
     check_vk_poseidon: PoseidonExample,
     check_vk_native: NativeGadgetExample,
     check_vk_membership: MembershipExample,
-    check_vk_atala: AtalaJsonECDSA,
+    check_vk_atala_full: AtalaJsonECDSA,
+    check_vk_atala_enrollment: AtalaEnrollment,
     check_vk_hybrid_mt: HybridMtExample,
     check_vk_sha: ShaPreImageCircuit,
     check_vk_schnorr: SchnorrExample
