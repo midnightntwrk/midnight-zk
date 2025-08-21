@@ -1482,11 +1482,6 @@ impl<R: Relation> Circuit<F> for MidnightCircuit<'_, R> {
         *self.nb_public_inputs.borrow_mut() =
             Some(zk_std_lib.native_gadget.native_chip.nb_public_inputs());
 
-        assert_eq!(
-            (zk_std_lib.native_gadget.native_chip).nb_committed_public_inputs(),
-            0
-        );
-
         // We load the tables at the end, once we have figured out what chips/gadgets
         // were actually used.
         zk_std_lib.core_decomposition_chip.load(&mut layouter)?;
