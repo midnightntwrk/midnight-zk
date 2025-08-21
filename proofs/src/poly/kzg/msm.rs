@@ -1,5 +1,4 @@
-use std::any::TypeId;
-use std::fmt::Debug;
+use std::{any::TypeId, fmt::Debug};
 
 use ff::Field;
 use group::{Curve, Group};
@@ -8,8 +7,8 @@ use halo2curves::{
     pairing::{Engine, MillerLoopResult, MultiMillerLoop},
     CurveAffine,
 };
-use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 use midnight_curves::{Fq, G1Affine, G1Projective};
+use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 
 use super::params::ParamsVerifierKZG;
 use crate::{
@@ -113,7 +112,7 @@ pub fn msm_specific<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C::Curve]) ->
         let coeffs = unsafe { &*(coeffs as *const _ as *const [Fq]) };
         let bases = unsafe { &*(bases as *const _ as *const [G1Projective]) };
         let res = G1Projective::multi_exp(bases, coeffs);
-        unsafe {std::mem::transmute_copy(&res) }
+        unsafe { std::mem::transmute_copy(&res) }
     } else {
         let mut affine_bases = vec![C::identity(); coeffs.len()];
         C::Curve::batch_normalize(bases, &mut affine_bases);

@@ -4,7 +4,9 @@
 //!
 //!     cargo bench --bench  pairing
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
+use std::hint::black_box;
+
+use criterion::{criterion_group, criterion_main, Criterion, Throughput};
 use group::Group;
 use midnight_curves::{G1Affine, G1Projective, G2Affine, G2Prepared, G2Projective};
 use pairing_lib::{Engine, MillerLoopResult, MultiMillerLoop};

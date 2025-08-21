@@ -7,7 +7,9 @@
 //!
 //!     cargo bench --bench field_arith
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
+use std::hint::black_box;
+
+use criterion::{criterion_group, criterion_main, Criterion, Throughput};
 use ff::Field;
 use midnight_curves::*;
 use rand_core::{RngCore, SeedableRng};

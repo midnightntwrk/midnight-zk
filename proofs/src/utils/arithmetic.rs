@@ -279,10 +279,7 @@ pub(crate) fn inner_product<F: PrimeField, T: Mul<F, Output = T> + Add<T, Output
         .unwrap()
 }
 
-pub(crate) fn msm_inner_product<E>(
-    mut msms: Vec<MSMKZG<E>>,
-    scalars: &[E::Fr],
-) -> MSMKZG<E>
+pub(crate) fn msm_inner_product<E>(mut msms: Vec<MSMKZG<E>>, scalars: &[E::Fr]) -> MSMKZG<E>
 where
     E: MultiMillerLoop + Debug,
     E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
@@ -294,14 +291,11 @@ where
     let mut new_scalars = Vec::with_capacity(total_scalars);
     let mut new_bases = Vec::with_capacity(total_bases);
 
-    msms
-        .iter_mut()
-        .zip(scalars.iter())
-        .for_each(|(msm, s)| {
-            msm.scale(*s);
-            new_scalars.extend(&msm.scalars);
-            new_bases.extend(&msm.bases);
-        });
+    msms.iter_mut().zip(scalars.iter()).for_each(|(msm, s)| {
+        msm.scale(*s);
+        new_scalars.extend(&msm.scalars);
+        new_bases.extend(&msm.bases);
+    });
 
     MSMKZG {
         scalars: new_scalars,
