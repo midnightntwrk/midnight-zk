@@ -1,9 +1,8 @@
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, HashMap},
     fmt::Debug,
+    hash::Hash,
 };
-use std::collections::HashMap;
-use std::hash::Hash;
 
 use ff::Field;
 

@@ -17,8 +17,7 @@ pub mod msm;
 pub mod params;
 mod utils;
 
-use std::fmt::Debug;
-use std::hash::Hash;
+use std::{fmt::Debug, hash::Hash};
 
 use ff::Field;
 use group::Group;
@@ -31,7 +30,7 @@ use crate::{
     poly::{
         commitment::{Params, PolynomialCommitmentScheme},
         kzg::{
-            msm::{DualMSM, MSMKZG},
+            msm::{msm_specific, DualMSM, MSMKZG},
             params::{ParamsKZG, ParamsVerifierKZG},
             utils::construct_intermediate_sets,
         },
@@ -47,7 +46,6 @@ use crate::{
         helpers::ProcessedSerdeObject,
     },
 };
-use crate::poly::kzg::msm::msm_specific;
 
 #[derive(Clone, Debug)]
 /// KZG verifier
@@ -236,16 +234,12 @@ where
 
         let q_coms = q_coms
             .into_iter()
-            .map(|msms| {
-                msm_inner_product(msms, &powers_x1)
-            })
+            .map(|msms| msm_inner_product(msms, &powers_x1))
             .collect::<Vec<_>>();
 
         let q_eval_sets = q_eval_sets
             .iter()
-            .map(|evals| {
-                evals_inner_product(evals, &powers_x1)
-            })
+            .map(|evals| evals_inner_product(evals, &powers_x1))
             .collect::<Vec<_>>();
 
         let f_com: E::G1 = transcript.read().map_err(|_| Error::SamplingError)?;
@@ -337,6 +331,7 @@ where
 #[cfg(test)]
 mod tests {
     use std::hash::Hash;
+
     use blake2b_simd::State as Blake2bState;
     use ff::WithSmallOrderMulGroup;
     use halo2curves::{pairing::MultiMillerLoop, serde::SerdeObject, CurveAffine, CurveExt};
