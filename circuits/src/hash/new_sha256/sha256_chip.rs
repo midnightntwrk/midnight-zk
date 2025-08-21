@@ -1205,12 +1205,12 @@ impl<F: PrimeField> Sha256Chip<F> {
         Apart from the lookups, the following identity is checked via a
         custom gate with selector q_12_1_1_1_7_3_4_3:
 
-            W.i = 2^20 * W.12 + 2^19 * W.1a + 2^18 * W.1b + 2^17 * W.1c + 2^10 * W.07 + 2^7 * W.3a + 2^3 * W.04 + W.3b
+          W.i = 2^20 * W.12 + 2^19 * W.1a + 2^18 * W.1b + 2^17 * W.1c + 2^10 * W.07 + 2^7 * W.3a + 2^3 * W.04 + W.3b
 
         and the following is checked with a custom gate with selector
         q_add_mod_2_32:
 
-            S0 + S1 + S2 + S3 + S4 + S5 + S6 = W.i + carry * 2^32
+          S0 + S1 + S2 + S3 + S4 + S5 + S6 = W.i + carry * 2^32
 
         Note that W.i is implicitly being range-checked in [0, 2^32) via
         the lookup, and the carry is range-checked in [0, 8). This makes
@@ -1415,19 +1415,11 @@ impl<F: PrimeField> Sha256Chip<F> {
     }
 
     /// Given a slice of at most 7 `AssignedPlain` values, this function adds
-    /// them modulo 2^32 and returns sum_plain:
+    /// them modulo 2^32.
     ///
-    ///     S0 + S1 + S2 + S3 + S4 + S5 + S6 = sum_plain + carry * 2^32
-    ///
-    ///  | T_1 |  A_2  |   A_3  |    A_4    |  A_5 |  A_6 |
-    ///  |-----|-------|--------|-----------|------|------|
-    ///  |     |       |        | sum_plain |  S0  |  S1  |
-    ///  |     |       |        |           |  S2  |  S3  |
-    ///  | 03  | carry | ~carry |     S4    |  S5  |  S6  |
-    ///
-    /// The `zero` argument is supposed to contain an assigned plain containing
-    /// value 0, this is not enforced in this function, it is the responsibility
-    /// of the caller to do so.
+    /// The `zero` argument is supposed to contain a fixed assigned plain
+    /// containing value 0, this is not enforced in this function, it is the
+    /// responsibility of the caller to do so.
     ///
     /// # Panics
     ///
@@ -1438,6 +1430,18 @@ impl<F: PrimeField> Sha256Chip<F> {
         summands: &[AssignedPlain<F, 32>],
         zero: &AssignedPlain<F, 32>,
     ) -> Result<AssignedPlain<F, 32>, Error> {
+        /*
+        We distribute values in the PLONK table as follows.
+
+        | T_1 |  A_2  |   A_3  |    A_4    |  A_5 |  A_6 |
+        |-----|-------|--------|-----------|------|------|
+        |     |       |        | sum_plain |  S0  |  S1  |
+        |     |       |        |           |  S2  |  S3  |
+        | 03  | carry | ~carry |     S4    |  S5  |  S6  |
+
+        We enforce S0 + S1 + S2 + S3 + S4 + S5 + S6 = sum_plain + carry * 2^32.
+        */
+
         assert!(summands.len() <= 7);
 
         self.config().q_add_mod_2_32.enable(region, 0)?;
@@ -1453,13 +1457,13 @@ impl<F: PrimeField> Sha256Chip<F> {
                 .map(|(carry, r)| (carry as u32, u64_to_fe(r)))
                 .unzip();
 
-        (summands[0].0).copy_advice(|| "S0", region, adv_cols[5], 0)?;
-        (summands[1].0).copy_advice(|| "S1", region, adv_cols[6], 0)?;
-        (summands[2].0).copy_advice(|| "S2", region, adv_cols[5], 1)?;
-        (summands[3].0).copy_advice(|| "S3", region, adv_cols[6], 1)?;
-        (summands[4].0).copy_advice(|| "S4", region, adv_cols[4], 2)?;
-        (summands[5].0).copy_advice(|| "S5", region, adv_cols[5], 2)?;
-        (summands[6].0).copy_advice(|| "S6", region, adv_cols[6], 2)?;
+        summands[0].0.copy_advice(|| "S0", region, adv_cols[5], 0)?;
+        summands[1].0.copy_advice(|| "S1", region, adv_cols[6], 0)?;
+        summands[2].0.copy_advice(|| "S2", region, adv_cols[5], 1)?;
+        summands[3].0.copy_advice(|| "S3", region, adv_cols[6], 1)?;
+        summands[4].0.copy_advice(|| "S4", region, adv_cols[4], 2)?;
+        summands[5].0.copy_advice(|| "S5", region, adv_cols[5], 2)?;
+        summands[6].0.copy_advice(|| "S6", region, adv_cols[6], 2)?;
         let _carry: AssignedPlainSpreaded<F, 3> =
             self.assign_plain_and_spreaded(region, carry_val, 2, 1)?;
         region
