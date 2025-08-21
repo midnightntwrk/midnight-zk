@@ -76,6 +76,7 @@ where
     F: WithSmallOrderMulGroup<3>
         + Sampleable<T::Hash>
         + Hashable<T::Hash>
+        + Hash
         + Ord
         + FromUniformBytes<64>,
 {
