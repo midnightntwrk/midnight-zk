@@ -1,6 +1,6 @@
 //! Example of verifying the validity of an ECDSA signed Atala identity JSON.
 
-use std::{fs::OpenOptions, io::Read};
+use std::{fs::OpenOptions, io::Read, time::Instant};
 
 use halo2curves::secp256k1::{Fq as secp256k1Scalar, Secp256k1};
 use midnight_circuits::{
@@ -282,6 +282,11 @@ fn main() {
     let credential_blob = read_credential::<4096>(CRED_PATH).expect("Path to credential file.");
 
     let relation = AtalaJsonECDSA;
+
+    let start = |msg: &str| -> Instant {
+        println!("{msg}");
+        Instant::now()
+    };
 
     let setup = start("Setting up the vk/pk");
     let vk = compact_std_lib::setup_vk(&srs, &relation);
