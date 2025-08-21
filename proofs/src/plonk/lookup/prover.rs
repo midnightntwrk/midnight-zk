@@ -394,15 +394,11 @@ where
     // Sort input lookup expression values
     permuted_input_expression.sort();
 
-    // A BTreeMap of each unique element in the table expression and its count
-    let mut leftover_table_map: HashMap<F, u32> =
-        table_expression
-            .iter()
-            .take(usable_rows)
-            .fold(HashMap::new(), |mut acc, coeff| {
-                *acc.entry(*coeff).or_insert(0) += 1;
-                acc
-            });
+    // A HashMap of each unique element in the table expression and its count
+    let mut leftover_table_map = HashMap::<F, u32>::with_capacity(table_expression.len());
+    table_expression.iter().take(usable_rows).for_each(|coeff| {
+        *leftover_table_map.entry(*coeff).or_insert(0) += 1;
+    });
     let mut permuted_table_coeffs = vec![F::ZERO; usable_rows];
 
     let mut repeated_input_rows = permuted_input_expression
