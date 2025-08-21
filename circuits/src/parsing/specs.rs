@@ -110,6 +110,8 @@ pub enum StdLibParser {
     ///   - `"x"` -> 5
     ///   - `"y"` -> 6
     Jwt,
+    /// Just for debugging.
+    Test,
 }
 
 #[cfg(test)]
@@ -134,11 +136,18 @@ type ParsingLibrary = FxHashMap<StdLibParser, Automaton>;
 /// components. When serialization is disabled, the automaton will be computed
 /// using the second argument.
 fn spec_library_data() -> LibraryData {
-    &[(
-        StdLibParser::Jwt,
-        &spec_jwt as &'static dyn Fn() -> Regex,
-        include_bytes!("automaton_cache/Jwt") as &'static [u8],
-    )]
+    &[
+        (
+            StdLibParser::Jwt,
+            &spec_jwt as &'static dyn Fn() -> Regex,
+            include_bytes!("automaton_cache/Jwt") as &'static [u8],
+        ),
+        (
+            StdLibParser::Test,
+            &|| Regex::word("hello"),
+            include_bytes!("automaton_cache/Test") as &'static [u8],
+        ),
+    ]
 }
 
 /// All automata that can be used as a parsing basis in the standard library.
@@ -333,10 +342,7 @@ mod tests {
 
     use rustc_hash::{FxBuildHasher, FxHashMap};
 
-    use super::{
-        spec_library_data,
-        StdLibParser::{self, Jwt},
-    };
+    use super::{spec_library_data, StdLibParser};
     use crate::parsing::{automaton::Automaton, spec_library, specs::check_serialization};
 
     /// Sets up the serialised library (bootstraps it if empty serialisation
@@ -515,11 +521,28 @@ mod tests {
                     (6, "y"),
                 ],
             ),
+            (
+                CREDENTIAL,
+                &[
+                    (1, "id"),
+                    (2, "Wonderland"),
+                    (3, "Alice"),
+                    (4, "2000-11-13"),
+                    (5, "x"),
+                    (6, "y"),
+                ],
+            ),
         ];
         let rejected0: Vec<&str> =
             vec!["hello world", &FULL_INPUT_JWT[..1000], &MINIMAL_JWT[..600]];
 
-        specs_one_test(&spec_library, Jwt, &accepted0, &rejected0);
+        specs_one_test(&spec_library, StdLibParser::Jwt, &accepted0, &rejected0);
+        specs_one_test(
+            &spec_library,
+            StdLibParser::Test,
+            &[("hello", &[])],
+            &["hello ", "world", ""],
+        );
     }
 
     const FULL_INPUT_JWT: &str = r#"{
@@ -585,6 +608,38 @@ mod tests {
           },
           "id" : "",
           "birthDate" : "bd"
+       },
+       "type" : [],
+       "@context" : [],
+       "issuer" : "",
+       "credentialStatus" : {
+          "statusPurpose" : "",
+          "statusListIndex" : 3,
+          "id" : "",
+          "type" : "",
+          "statusListCredential" : ""
+       }
+    }
+}"#;
+
+    const CREDENTIAL: &str = r#"{
+    "iss" : "",
+    "sub" : "",
+    "nbf" : 0,
+    "exp" : 1,
+    "vc" : {
+       "credentialSubject" : {
+          "nationalId" : "id",
+          "familyName" : "Wonderland",
+          "givenName" : "Alice",
+          "publicKeyJwk" : {
+             "kty" : "",
+             "crv" : "",
+             "x" : "x",
+             "y" : "y"
+          },
+          "id" : "",
+          "birthDate" : "2000-11-13"
        },
        "type" : [],
        "@context" : [],
