@@ -715,6 +715,7 @@ impl Curve for G1Projective {
     /// Converts a batch of projective elements into affine elements. This function will
     /// panic if `p.len() != q.len()`.
     fn batch_normalize(p: &[Self], q: &mut [Self::AffineRepr]) {
+        assert_eq!(p.len(), q.len());
         let points =
             unsafe { std::slice::from_raw_parts(p.as_ptr() as *const blst_p1, p.len()) };
 
