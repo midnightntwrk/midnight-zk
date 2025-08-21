@@ -145,10 +145,11 @@ pub struct ZkStdLibArch {
     /// Enable base64 chip?
     pub base64: bool,
 
-    /// Number of parallel lookups for range checks.
-    pub nr_pow2range_cols: u8,
     /// Enable automaton?
     pub automaton: bool,
+
+    /// Number of parallel lookups for range checks.
+    pub nr_pow2range_cols: u8,
 }
 
 impl Default for ZkStdLibArch {
@@ -1466,8 +1467,13 @@ impl<R: Relation> Circuit<F> for MidnightCircuit<'_, R> {
         // We load the tables at the end, once we have figured out what chips/gadgets
         // were actually used.
         zk_std_lib.core_decomposition_chip.load(&mut layouter)?;
+
         if let Some(b64_chip) = zk_std_lib.base64_chip {
             b64_chip.load(&mut layouter)?;
+        }
+
+        if let Some(automaton_chip) = zk_std_lib.automaton_chip {
+            automaton_chip.load(&mut layouter)?;
         }
 
         if *zk_std_lib.used_sha.borrow() {
