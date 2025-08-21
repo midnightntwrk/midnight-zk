@@ -45,7 +45,7 @@ num-bigint = { version = "0.4", features = ["rand"] }
 serde_json = "1.0"
 pasta_curves = "0.5"
 proptest = "1.2.0"
-itertools = "0.12"
+itertools = "0.14"
 dhat = "0.3"
 parking_lot = "0.12.3"
 bellman = "0.14.0"
