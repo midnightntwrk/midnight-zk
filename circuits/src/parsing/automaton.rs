@@ -414,10 +414,9 @@ impl RawAutomaton {
         }
     }
 
-    /// Checks if an automaton is deterministic. If the field `deterministic` or
-    /// `epsilon_transition` are set to true, nothing is done; otherwise, this
-    /// function scans the transition table to rule out a potential false
-    /// negative.
+    /// Checks if an automaton is deterministic. If the field `deterministic` is
+    /// set to true, nothing is done; otherwise, this function scans the
+    /// transition table to rule out a potential false negative.
     ///
     /// If a successful check is performed, the `determinisitc` field is
     /// updated.
@@ -550,9 +549,9 @@ impl RawAutomaton {
     /// The automaton is obtained by alpha-renaming all states of the different
     /// automata to avoid collisions (a state `s` of automata number `i` will be
     /// represented by `s + offsets[i]`), and so that `0` is a state of neither
-    /// renamed automata. Then he final automaton simply has 0 as an initial
-    /// states, which has an epsilon transition to the initial states of all
-    /// automata.
+    /// renamed automata. Then the final automaton is simply obtained by
+    /// performing a powerstate construction whose initial state is the set of
+    /// all initial states of the original automata.
     pub(super) fn union(automata: &[Self], alphabet_size: usize) -> Self {
         if automata.len() == 1 {
             // Avoids determinising automaton in this case. Happens often due to the
@@ -686,16 +685,16 @@ impl RawAutomaton {
         .check_determinism()
     }
 
-    // Computes an automton for the intersection of two languages. Requires that
-    // they do not contain epsilon transitions. The intersection takes markers into
-    // account: two copies of letter `a` with different (non-0) markers are
-    // considered as different letters. However, `a` marked with 0 will be unified
-    // with `a` with a non-0 marker.
-    //
-    // Apart from that, the intersection is a classical carthesian-product
-    // construction, i.e., it is simply an automaton whose states are pairs of
-    // states of the initial automata. A pair `(s1,s2)` is encoded as `s1 * n + s2`,
-    // where `n` is the number of states of `rhs`.
+    /// Computes an automton for the intersection of two languages. The
+    /// intersection takes markers into account: two copies of letter `a`
+    /// with different (non-0) markers are considered as different letters.
+    /// However, `a` marked with 0 will be unified with `a` with a non-0
+    /// marker.
+    ///
+    /// Apart from that, the intersection is a classical carthesian-product
+    /// construction, i.e., it is simply an automaton whose states are pairs of
+    /// states of the initial automata. A pair `(s1,s2)` is encoded as `s1 * n +
+    /// s2`, where `n` is the number of states of `rhs`.
     pub(super) fn inter(&self, rhs: &Self) -> Self {
         let mut raw_transitions =
             Vec::with_capacity(self.transitions.len() * rhs.transitions.len());

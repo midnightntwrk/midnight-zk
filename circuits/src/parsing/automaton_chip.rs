@@ -74,10 +74,10 @@ pub struct NativeAutomaton<F> {
     pub initial_state: F,
     /// The final states of the automaton.
     pub final_states: BTreeSet<F>,
-    /// `transitions[state][letter]` gives the transition target and its marker
-    /// when in state `state`, reading input `letter`. Can be undefined, in
-    /// which case it means the automaton jumps into an implicit deadlock
-    /// state.
+    /// When `transitions[(source_state,letter)] = (target_state,marker)`, it
+    /// means that in state `source_state`, upon reading the byte `letter`, the
+    /// automaton run moves to state `target_state` and marks `letter` with
+    /// `marker`. If the entry is undefined, the automaton run gets stuck.
     pub transitions: BTreeMap<(F, F), (F, F)>,
 }
 

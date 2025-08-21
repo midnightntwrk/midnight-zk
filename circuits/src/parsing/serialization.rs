@@ -1,7 +1,6 @@
-use std::{
-    collections::{HashMap, HashSet},
-    hash::{BuildHasher, Hash},
-};
+use std::hash::Hash;
+
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use super::automaton::Automaton;
 
@@ -195,10 +194,9 @@ where
     }
 }
 
-impl<T, S> Serialize for HashSet<T, S>
+impl<T> Serialize for FxHashSet<T>
 where
     T: Serialize + Copy + Hash + Ord,
-    S: Default + BuildHasher,
 {
     #[cfg(test)]
     fn serialize(&self, buf: &mut Vec<u8>) {
@@ -209,7 +207,7 @@ where
     }
     fn deserialize(buf: &mut &[u8]) -> Result<Self, String> {
         let v = Vec::<T>::deserialize(buf)?;
-        Ok(HashSet::from_iter(v))
+        Ok(FxHashSet::from_iter(v))
     }
 }
 
@@ -217,11 +215,10 @@ where
 // `K` can be unambiguously done even if the key's encoding is followed directly
 // by the value's encoding. In practice, keys will always be types that have a
 // fixed size anyway.
-impl<K, T, S> Serialize for HashMap<K, T, S>
+impl<K, T> Serialize for FxHashMap<K, T>
 where
     K: Serialize + Copy + Hash + Ord,
     T: Serialize + Clone,
-    S: Default + BuildHasher,
 {
     #[cfg(test)]
     fn serialize(&self, buf: &mut Vec<u8>) {
@@ -232,7 +229,7 @@ where
     }
     fn deserialize(buf: &mut &[u8]) -> Result<Self, String> {
         let v = Vec::<(K, T)>::deserialize(buf)?;
-        Ok(HashMap::from_iter(v))
+        Ok(FxHashMap::from_iter(v))
     }
 }
 
@@ -240,7 +237,7 @@ where
 /// already implement it. To call the macro, e.g., on a struct `S` with two
 /// fields called `x` and `y`, one would write:
 ///
-/// ```
+/// ```text
 /// impl_serialize_for_struct(S { x, y })
 /// ```
 macro_rules! impl_serialize_for_struct {
