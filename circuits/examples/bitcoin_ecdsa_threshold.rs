@@ -187,7 +187,7 @@ impl Relation for BitcoinThresholdECDSA {
         ZkStdLibArch {
             jubjub: false,
             poseidon: false,
-            sha256: None,
+            sha256: false,
             secp256k1: true,
             bls12_381: false,
             base64: false,

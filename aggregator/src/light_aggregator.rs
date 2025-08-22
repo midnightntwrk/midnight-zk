@@ -562,7 +562,7 @@ mod tests {
             ZkStdLibArch {
                 jubjub: true,
                 poseidon: true,
-                sha256: Some(compact_std_lib::ShaTableSize::Table11),
+                sha256: true,
                 secp256k1: false,
                 bls12_381: false,
                 base64: false,

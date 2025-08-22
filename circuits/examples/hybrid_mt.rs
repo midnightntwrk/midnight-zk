@@ -89,7 +89,7 @@
 
 use ff::{Field, PrimeField};
 use midnight_circuits::{
-    compact_std_lib::{self, Relation, ShaTableSize, ZkStdLib, ZkStdLibArch},
+    compact_std_lib::{self, Relation, ZkStdLib, ZkStdLibArch},
     hash::poseidon::{constants::PoseidonField, PoseidonChip},
     instructions::{
         hash::HashCPU, ArithInstructions, AssignmentInstructions, ControlFlowInstructions,
@@ -334,7 +334,7 @@ impl Relation for HybridMtExample {
         ZkStdLibArch {
             jubjub: false,
             poseidon: true,
-            sha256: Some(ShaTableSize::Table11),
+            sha256: true,
             secp256k1: false,
             bls12_381: false,
             base64: false,
