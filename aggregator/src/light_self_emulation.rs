@@ -4,7 +4,10 @@ use midnight_circuits::{
     ecc::curves::CircuitCurve,
     field::NativeChip,
     hash::poseidon::{constants::PoseidonField, PoseidonChip},
-    instructions::{AssignmentInstructions, PublicInputInstructions},
+    instructions::{
+        public_input::CommittedInstanceInstructions, AssignmentInstructions,
+        PublicInputInstructions,
+    },
     types::{AssignedNative, InnerValue, Instantiable},
     verifier::SelfEmulation,
 };
