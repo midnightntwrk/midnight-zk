@@ -1313,6 +1313,12 @@ impl<F: std::fmt::Debug> std::fmt::Debug for Expression<F> {
     }
 }
 
+impl<F: Field + From<u64>> From<u64> for Expression<F> {
+    fn from(value: u64) -> Self {
+        Expression::Constant(F::from(value))
+    }
+}
+
 impl<F: Field> Neg for Expression<F> {
     type Output = Expression<F>;
     fn neg(self) -> Self::Output {

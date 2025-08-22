@@ -13,5 +13,6 @@
 
 //! Implementations for in-circuit hashes
 
+pub mod new_sha256;
 pub mod poseidon;
 pub mod sha256;
