@@ -13,23 +13,16 @@ compile_error!("blstrs is only supported on little endian architectures");
 #[macro_use]
 mod arithmetic;
 
-mod fp;
-mod fp12;
-mod fp2;
-mod fp6;
-mod fq;
-mod g1;
-mod g2;
-mod gt;
+mod bls12_381;
 mod pairing;
 
 mod jubjub;
 
-pub use fp::Fp;
-pub use fq::Fq;
-pub use g1::{G1Affine, G1Projective, A, B};
-pub use g2::{G2Affine, G2Prepared, G2Projective};
-pub use gt::Gt;
+pub use bls12_381::fp::Fp;
+pub use bls12_381::fq::Fq;
+pub use bls12_381::g1::{G1Affine, G1Projective, A, B};
+pub use bls12_381::g2::{G2Affine, G2Prepared, G2Projective};
+pub use bls12_381::gt::Gt;
 pub use jubjub::*;
 pub use pairing::*;
 
@@ -45,7 +38,7 @@ use group::prime::PrimeCurveAffine;
 use pairing_lib::{Engine, MultiMillerLoop, PairingCurveAffine};
 
 #[cfg(feature = "__private_bench")]
-pub use crate::{fp12::Fp12, fp2::Fp2};
+pub use crate::{bls12_381::fp12::Fp12, bls12_381::fp2::Fp2};
 
 /// Bls12-381 engine
 #[derive(Debug, Copy, Clone)]
@@ -77,7 +70,7 @@ impl MultiMillerLoop for Bls12 {
             let mut tmp = blst::blst_fp12::default();
             if (p.is_identity() | q.is_identity()).into() {
                 // Define pairing with zero as one, matching what `pairing` does.
-                tmp = crate::fp12::Fp12::ONE.0;
+                tmp = bls12_381::fp12::Fp12::ONE.0;
             } else {
                 unsafe {
                     blst::blst_miller_loop_lines(&mut tmp, q.lines.as_ptr(), &p.0);
@@ -92,7 +85,7 @@ impl MultiMillerLoop for Bls12 {
             }
         }
 
-        MillerLoopResult(crate::fp12::Fp12(res))
+        MillerLoopResult(bls12_381::fp12::Fp12(res))
     }
 }
 
