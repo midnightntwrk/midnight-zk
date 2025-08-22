@@ -59,7 +59,7 @@ mod tests {
     use midnight_curves::Fq as Scalar;
 
     use crate::{
-        field::NativeGadget, hash::new_sha256::Sha256Chip, instructions::hash::tests::test_hash,
+        field::NativeGadget, hash::sha256::Sha256Chip, instructions::hash::tests::test_hash,
         types::AssignedByte,
     };
 

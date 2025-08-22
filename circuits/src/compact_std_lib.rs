@@ -68,8 +68,8 @@ use crate::{
         NativeChip, NativeConfig, NativeGadget,
     },
     hash::{
-        new_sha256::{Sha256Chip, Sha256Config, NB_SHA256_ADVICE_COLS, NB_SHA256_FIXED_COLS},
         poseidon::{PoseidonChip, PoseidonConfig, NB_POSEIDON_ADVICE_COLS, NB_POSEIDON_FIXED_COLS},
+        sha256::{Sha256Chip, Sha256Config, NB_SHA256_ADVICE_COLS, NB_SHA256_FIXED_COLS},
     },
     instructions::{
         hash_to_curve::HashToCurveInstructions, public_input::CommittedInstanceInstructions,

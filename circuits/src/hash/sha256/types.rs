@@ -3,7 +3,7 @@ use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 use crate::{
     field::AssignedNative,
-    hash::new_sha256::utils::{spread, u32_in_be_limbs},
+    hash::sha256::utils::{spread, u32_in_be_limbs},
     instructions::FieldInstructions,
 };
 

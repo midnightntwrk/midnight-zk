@@ -51,7 +51,7 @@ use num_integer::Integer;
 
 use crate::{
     field::{decomposition::chip::P2RDecompositionChip, NativeChip, NativeGadget},
-    hash::new_sha256::{
+    hash::sha256::{
         types::{
             AssignedMessageWord, AssignedPlain, AssignedPlainSpreaded, AssignedSpreaded,
             CompressionState, LimbsOfA, LimbsOfE,
