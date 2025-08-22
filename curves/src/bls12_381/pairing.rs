@@ -4,7 +4,12 @@ use blst::*;
 use ff::Field;
 use subtle::{Choice, ConditionallySelectable};
 
-use crate::{fp12::Fp12, G1Affine, G2Affine, Gt};
+use crate::{Fq, G1Affine, G1Projective, G2Affine, G2Prepared, G2Projective, Gt};
+
+use group::prime::PrimeCurveAffine;
+use pairing_lib::{Engine, MultiMillerLoop};
+
+use super::fp12::{self, Fp12};
 
 /// Execute a complete pairing operation `(p, q)`.
 pub fn pairing(p: &G1Affine, q: &G2Affine) -> Gt {
@@ -145,6 +150,60 @@ pub fn unique_messages(msgs: &[&[u8]]) -> bool {
     }
 
     true
+}
+
+/// Bls12-381 engine
+#[derive(Debug, Copy, Clone)]
+pub struct Bls12;
+
+impl Engine for Bls12 {
+    type Fr = Fq;
+    type G1 = G1Projective;
+    type G1Affine = G1Affine;
+    type G2 = G2Projective;
+    type G2Affine = G2Affine;
+    type Gt = Gt;
+
+    fn pairing(p: &Self::G1Affine, q: &Self::G2Affine) -> Self::Gt {
+        pairing(p, q)
+    }
+}
+
+impl MultiMillerLoop for Bls12 {
+    type G2Prepared = G2Prepared;
+    type Result = MillerLoopResult;
+
+    /// Computes $$\sum_{i=1}^n \textbf{ML}(a_i, b_i)$$ given a series of terms
+    /// $$(a_1, b_1), (a_2, b_2), ..., (a_n, b_n).$$
+    fn multi_miller_loop(terms: &[(&Self::G1Affine, &Self::G2Prepared)]) -> Self::Result {
+        let mut res = blst::blst_fp12::default();
+
+        for (i, (p, q)) in terms.iter().enumerate() {
+            let mut tmp = blst::blst_fp12::default();
+            if (p.is_identity() | q.is_identity()).into() {
+                // Define pairing with zero as one, matching what `pairing` does.
+                tmp = Fp12::ONE.0;
+            } else {
+                unsafe {
+                    blst::blst_miller_loop_lines(&mut tmp, q.lines.as_ptr(), &p.0);
+                }
+            }
+            if i == 0 {
+                res = tmp;
+            } else {
+                unsafe {
+                    blst::blst_fp12_mul(&mut res, &res, &tmp);
+                }
+            }
+        }
+
+        MillerLoopResult(fp12::Fp12(res))
+    }
+}
+
+#[test]
+fn bls12_engine_tests() {
+    crate::tests::engine::engine_tests::<Bls12>();
 }
 
 /// Represents results of a Miller loop, one of the most expensive portions

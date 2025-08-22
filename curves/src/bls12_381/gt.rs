@@ -11,7 +11,9 @@ use group::Group;
 use rand_core::RngCore;
 use subtle::{Choice, ConstantTimeEq};
 
-use crate::{fp::Fp, fp12::Fp12, fp2::Fp2, fp6::Fp6, Fq};
+use crate::{bls12_381::fp6::Fp6, Fp, Fq};
+
+use super::{fp12::Fp12, fp2::Fp2};
 
 /// This is an element of $\mathbb{G}_T$, the target group of the pairing
 /// function. As with $\mathbb{G}_1$ and $\mathbb{G}_2$ this group has order

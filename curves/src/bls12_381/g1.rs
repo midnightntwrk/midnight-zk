@@ -9,19 +9,20 @@ use core::{
 };
 use std::{convert::TryInto, io::Read};
 
+use crate::curve::{Coordinates, CurveAffine, CurveExt};
 use blst::*;
 use ff::Field;
 use group::{
     prime::{PrimeCurve, PrimeCurveAffine, PrimeGroup},
     Curve, Group, GroupEncoding, UncompressedEncoding, WnafGroup,
 };
-use halo2curves::{serde::SerdeObject, Coordinates, CurveAffine, CurveExt};
+use pairing_lib::{Engine, PairingCurveAffine};
 use rand_core::RngCore;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 
 use crate::{
-    fp::{Fp, ZETA_BASE},
-    Bls12, Engine, Fq, G2Affine, Gt, PairingCurveAffine,
+    Bls12, Fq, G2Affine, Gt,
+    {bls12_381::fp::ZETA_BASE, Fp},
 };
 
 /// This is an element of $\mathbb{G}_1$ represented in the affine coordinate
@@ -416,50 +417,50 @@ impl G1Affine {
     }
 }
 
-impl SerdeObject for G1Affine {
-    fn from_raw_bytes_unchecked(bytes: &[u8]) -> Self {
-        debug_assert_eq!(bytes.len(), UNCOMPRESSED_SIZE);
-        let input: [u8; UNCOMPRESSED_SIZE] = bytes.try_into().unwrap();
-        Self::from_uncompressed_unchecked(&input).unwrap()
-    }
+// impl SerdeObject for G1Affine {
+//     fn from_raw_bytes_unchecked(bytes: &[u8]) -> Self {
+//         debug_assert_eq!(bytes.len(), UNCOMPRESSED_SIZE);
+//         let input: [u8; UNCOMPRESSED_SIZE] = bytes.try_into().unwrap();
+//         Self::from_uncompressed_unchecked(&input).unwrap()
+//     }
 
-    fn from_raw_bytes(bytes: &[u8]) -> Option<Self> {
-        debug_assert_eq!(bytes.len(), UNCOMPRESSED_SIZE);
-        let input: [u8; UNCOMPRESSED_SIZE] = bytes.try_into().unwrap();
-        Self::from_uncompressed(&input).into()
-    }
+//     fn from_raw_bytes(bytes: &[u8]) -> Option<Self> {
+//         debug_assert_eq!(bytes.len(), UNCOMPRESSED_SIZE);
+//         let input: [u8; UNCOMPRESSED_SIZE] = bytes.try_into().unwrap();
+//         Self::from_uncompressed(&input).into()
+//     }
 
-    fn to_raw_bytes(&self) -> Vec<u8> {
-        self.to_uncompressed().into()
-    }
+//     fn to_raw_bytes(&self) -> Vec<u8> {
+//         self.to_uncompressed().into()
+//     }
 
-    fn read_raw_unchecked<R: Read>(reader: &mut R) -> Self {
-        let mut buf = [0u8; UNCOMPRESSED_SIZE];
-        reader
-            .read_exact(&mut buf)
-            .expect("Could not read from buffer.");
-        Self::from_uncompressed_unchecked(&buf)
-            .expect("from_uncompressed_unchecked should return a point.")
-    }
+//     fn read_raw_unchecked<R: Read>(reader: &mut R) -> Self {
+//         let mut buf = [0u8; UNCOMPRESSED_SIZE];
+//         reader
+//             .read_exact(&mut buf)
+//             .expect("Could not read from buffer.");
+//         Self::from_uncompressed_unchecked(&buf)
+//             .expect("from_uncompressed_unchecked should return a point.")
+//     }
 
-    fn read_raw<R: Read>(reader: &mut R) -> std::io::Result<Self> {
-        let mut buf = [0u8; UNCOMPRESSED_SIZE];
-        reader.read_exact(&mut buf)?;
-        let res = Self::from_uncompressed(&buf);
-        if res.is_some().into() {
-            Ok(res.unwrap())
-        } else {
-            Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "Invalid point. (Either not on curve, or not in subgroup.",
-            ))
-        }
-    }
+//     fn read_raw<R: Read>(reader: &mut R) -> std::io::Result<Self> {
+//         let mut buf = [0u8; UNCOMPRESSED_SIZE];
+//         reader.read_exact(&mut buf)?;
+//         let res = Self::from_uncompressed(&buf);
+//         if res.is_some().into() {
+//             Ok(res.unwrap())
+//         } else {
+//             Err(std::io::Error::new(
+//                 std::io::ErrorKind::InvalidData,
+//                 "Invalid point. (Either not on curve, or not in subgroup.",
+//             ))
+//         }
+//     }
 
-    fn write_raw<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        writer.write_all(&self.to_uncompressed())
-    }
-}
+//     fn write_raw<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+//         writer.write_all(&self.to_uncompressed())
+//     }
+// }
 
 /// This is an element of $\mathbb{G}_1$ represented in the projective
 /// coordinate space.
@@ -1520,9 +1521,9 @@ mod tests {
             assert_eq!(G1Affine::from_bytes(&c).unwrap(), el);
             assert_eq!(G1Affine::from_bytes_unchecked(&c).unwrap(), el);
 
-            let c = el.to_raw_bytes();
-            assert_eq!(G1Affine::from_raw_bytes(&c).unwrap(), el);
-            assert_eq!(G1Affine::from_raw_bytes_unchecked(&c), el);
+            // let c = el.to_raw_bytes();
+            // assert_eq!(G1Affine::from_raw_bytes(&c).unwrap(), el);
+            // assert_eq!(G1Affine::from_raw_bytes_unchecked(&c), el);
 
             // Projective
             let el = G1Projective::random(&mut rng);

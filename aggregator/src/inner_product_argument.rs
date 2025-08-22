@@ -16,13 +16,14 @@
 
 use std::ops::{Add, Mul};
 
+use curve::CurveExt;
 use ff::Field;
 use group::prime::PrimeCurveAffine;
-use halo2curves::{msm::msm_best, CurveExt};
 use midnight_proofs::{
     plonk::Error,
     transcript::{Hashable, Sampleable, Transcript},
 };
+use msm::msm_best;
 
 /// Creates a proof of knowledge of `scalars` such that
 /// `<scalars, bases1> = res1` and `<scalars, bases2> = res2`.

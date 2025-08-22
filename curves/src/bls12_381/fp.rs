@@ -10,11 +10,11 @@ use std::{convert::TryInto, ops::Deref};
 
 use blst::*;
 use ff::{Field, PrimeField, PrimeFieldBits, WithSmallOrderMulGroup};
-use halo2curves::serde::SerdeObject;
+// use halo2curves::serde::SerdeObject;
 use rand_core::RngCore;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 
-use crate::fp2::Fp2;
+use crate::bls12_381::fp2::Fp2;
 
 // Little-endian non-Montgomery form.
 const MODULUS: [u64; NUM_LIMBS] = [
@@ -704,21 +704,22 @@ impl Fp {
         ret
     }
 
-    // Returns the Jacobi symbol, where the numerator and denominator
-    // are the element and the characteristic of the field, respectively.
-    // The Jacobi symbol is applicable to odd moduli
-    // while the Legendre symbol is applicable to prime moduli.
-    // They are equivalent for prime moduli.
-    #[inline(always)]
-    fn jacobi(&self) -> i64 {
-        let mut res = [0u64; 6];
-        let bytes = self.to_bytes_le();
-        res.iter_mut().enumerate().for_each(|(i, limb)| {
-            let off = i * 8;
-            *limb = u64::from_le_bytes(bytes[off..off + 8].try_into().unwrap());
-        });
-        halo2curves::ff_ext::jacobi::jacobi::<7>(&res, &MODULUS)
-    }
+    //TODO
+    // // Returns the Jacobi symbol, where the numerator and denominator
+    // // are the element and the characteristic of the field, respectively.
+    // // The Jacobi symbol is applicable to odd moduli
+    // // while the Legendre symbol is applicable to prime moduli.
+    // // They are equivalent for prime moduli.
+    // #[inline(always)]
+    // fn jacobi(&self) -> i64 {
+    //     let mut res = [0u64; 6];
+    //     let bytes = self.to_bytes_le();
+    //     res.iter_mut().enumerate().for_each(|(i, limb)| {
+    //         let off = i * 8;
+    //         *limb = u64::from_le_bytes(bytes[off..off + 8].try_into().unwrap());
+    //     });
+    //     halo2curves::ff_ext::jacobi::jacobi::<7>(&res, &MODULUS)
+    // }
 
     #[inline]
     pub fn square_assign(&mut self) {
@@ -804,12 +805,13 @@ const GENERATOR: Fp = Fp(blst_fp {
     ],
 });
 
-impl halo2curves::ff_ext::Legendre for Fp {
-    #[inline(always)]
-    fn legendre(&self) -> i64 {
-        self.jacobi()
-    }
-}
+// TODO
+// impl halo2curves::ff_ext::Legendre for Fp {
+//     #[inline(always)]
+//     fn legendre(&self) -> i64 {
+//         self.jacobi()
+//     }
+// }
 impl WithSmallOrderMulGroup<3> for Fp {
     const ZETA: Self = ZETA_BASE;
 }
@@ -882,60 +884,60 @@ impl PrimeFieldBits for Fp {
     }
 }
 
-impl SerdeObject for Fp {
-    // Don't call this method with untrusted input. No checks performed before
-    // unsafe block.
-    fn from_raw_bytes_unchecked(bytes: &[u8]) -> Self {
-        debug_assert_eq!(bytes.len(), SIZE);
-        let bytes: [u8; SIZE] = bytes.try_into().unwrap();
-        let inner = u64s_from_bytes(&bytes);
-        Fp(blst_fp { l: inner })
-    }
+// impl SerdeObject for Fp {
+//     // Don't call this method with untrusted input. No checks performed before
+//     // unsafe block.
+//     fn from_raw_bytes_unchecked(bytes: &[u8]) -> Self {
+//         debug_assert_eq!(bytes.len(), SIZE);
+//         let bytes: [u8; SIZE] = bytes.try_into().unwrap();
+//         let inner = u64s_from_bytes(&bytes);
+//         Fp(blst_fp { l: inner })
+//     }
 
-    fn from_raw_bytes(bytes: &[u8]) -> Option<Self> {
-        if bytes.len() != SIZE {
-            return None;
-        }
-        Some(Self::from_raw_bytes_unchecked(bytes))
-    }
+//     fn from_raw_bytes(bytes: &[u8]) -> Option<Self> {
+//         if bytes.len() != SIZE {
+//             return None;
+//         }
+//         Some(Self::from_raw_bytes_unchecked(bytes))
+//     }
 
-    fn to_raw_bytes(&self) -> Vec<u8> {
-        let mut res = Vec::with_capacity(NUM_LIMBS * 8);
-        for limb in self.0.l.iter() {
-            res.extend_from_slice(&limb.to_le_bytes());
-        }
-        res
-    }
+//     fn to_raw_bytes(&self) -> Vec<u8> {
+//         let mut res = Vec::with_capacity(NUM_LIMBS * 8);
+//         for limb in self.0.l.iter() {
+//             res.extend_from_slice(&limb.to_le_bytes());
+//         }
+//         res
+//     }
 
-    // Don't call this method with untrusted input. No checks performed before
-    // unsafe block.
-    fn read_raw_unchecked<R: std::io::Read>(reader: &mut R) -> Self {
-        let mut bytes = [0u8; SIZE];
-        reader
-            .read_exact(&mut bytes)
-            .unwrap_or_else(|_| panic!("Expected {} bytes.", SIZE));
-        Self::from_raw_bytes_unchecked(&bytes)
-    }
+//     // Don't call this method with untrusted input. No checks performed before
+//     // unsafe block.
+//     fn read_raw_unchecked<R: std::io::Read>(reader: &mut R) -> Self {
+//         let mut bytes = [0u8; SIZE];
+//         reader
+//             .read_exact(&mut bytes)
+//             .unwrap_or_else(|_| panic!("Expected {} bytes.", SIZE));
+//         Self::from_raw_bytes_unchecked(&bytes)
+//     }
 
-    fn read_raw<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        use std::io::{Error, ErrorKind};
-        let mut bytes = [0u8; SIZE];
-        reader.read_exact(&mut bytes)?;
-        let out = Self::from_raw_bytes(&bytes);
-        if let Some(out) = out {
-            Ok(out)
-        } else {
-            Err(Error::new(ErrorKind::InvalidData, "Invalid data."))
-        }
-    }
+//     fn read_raw<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+//         use std::io::{Error, ErrorKind};
+//         let mut bytes = [0u8; SIZE];
+//         reader.read_exact(&mut bytes)?;
+//         let out = Self::from_raw_bytes(&bytes);
+//         if let Some(out) = out {
+//             Ok(out)
+//         } else {
+//             Err(Error::new(ErrorKind::InvalidData, "Invalid data."))
+//         }
+//     }
 
-    fn write_raw<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        for limb in self.0.l.iter() {
-            writer.write_all(&limb.to_le_bytes())?;
-        }
-        Ok(())
-    }
-}
+//     fn write_raw<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+//         for limb in self.0.l.iter() {
+//             writer.write_all(&limb.to_le_bytes())?;
+//         }
+//         Ok(())
+//     }
+// }
 
 #[cfg(test)]
 mod tests {
@@ -1661,10 +1663,10 @@ mod tests {
 
     crate::field_testing_suite!(Fp, "field_arithmetic");
     crate::field_testing_suite!(Fp, "conversion");
-    crate::field_testing_suite!(Fp, "quadratic_residue");
+    // crate::field_testing_suite!(Fp, "quadratic_residue");
     crate::field_testing_suite!(Fp, "bits");
-    crate::field_testing_suite!(Fp, "serdeobject");
+    // crate::field_testing_suite!(Fp, "serdeobject");
     crate::field_testing_suite!(Fp, "constants");
-    crate::field_testing_suite!(Fp, "sqrt");
+    // crate::field_testing_suite!(Fp, "sqrt");
     crate::field_testing_suite!(Fp, "zeta");
 }

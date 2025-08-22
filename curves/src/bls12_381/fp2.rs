@@ -8,11 +8,12 @@ use core::{
 
 use blst::*;
 use ff::Field;
-use halo2curves::serde::SerdeObject;
+// TODO Serde stuff
+// use halo2curves::serde::SerdeObject;
 use rand_core::RngCore;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 
-use crate::fp::{Fp, FROBENIUS_COEFF_FP2_C1};
+use crate::{bls12_381::fp::FROBENIUS_COEFF_FP2_C1, Fp};
 
 #[derive(Copy, Clone)]
 #[repr(transparent)]
@@ -304,25 +305,27 @@ impl Field for Fp2 {
     }
 }
 
-// Instead of implmenting [`SerdeObject`] for Fp2, we implement just
-// `write_raw`. This is all we need to implement [`SerdeObject`] for
-// [`G2Affine`].
-impl Fp2 {
-    pub fn write_raw<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        self.c0().write_raw(writer)?;
-        self.c1().write_raw(writer)
-    }
-}
+// TODO
+// // Instead of implmenting [`SerdeObject`] for Fp2, we implement just
+// // `write_raw`. This is all we need to implement [`SerdeObject`] for
+// // [`G2Affine`].
+// impl Fp2 {
+//     pub fn write_raw<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+//         self.c0().write_raw(writer)?;
+//         self.c1().write_raw(writer)
+//     }
+// }
 
 impl ff::WithSmallOrderMulGroup<3> for Fp2 {
     const ZETA: Self = Fp2::new(Fp::ZETA, Fp::ZERO);
 }
 
-impl halo2curves::ff_ext::Legendre for Fp2 {
-    fn legendre(&self) -> i64 {
-        self.norm().legendre()
-    }
-}
+//TODO
+// impl halo2curves::ff_ext::Legendre for Fp2 {
+//     fn legendre(&self) -> i64 {
+//         self.norm().legendre()
+//     }
+// }
 
 #[cfg(test)]
 mod tests {
