@@ -29,6 +29,15 @@ use rand::{rngs::OsRng, Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use sha2::Digest;
 
+// #[global_allocator]
+// static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
+
+#[global_allocator]
+static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
+//
+// #[global_allocator]
+// static ALLOC: snmalloc_rs::SnMalloc = snmalloc_rs::SnMalloc;
+
 type F = midnight_curves::Fq;
 
 type CoinCom = [u8; 32];

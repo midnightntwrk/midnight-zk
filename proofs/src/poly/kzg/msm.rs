@@ -107,7 +107,7 @@ where
 #[allow(unsafe_code)]
 /// Wrapper over the MSM function to use the blstrs underlying function
 pub fn msm_specific<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C::Curve]) -> C::Curve {
-    if coeffs.len() <= (2 << 18) && TypeId::of::<C>() == TypeId::of::<G1Affine>() {
+    if coeffs.len() <= (2 << 17) && TypeId::of::<C>() == TypeId::of::<G1Affine>() {
         // Safe: we just checked type
         let coeffs = unsafe { &*(coeffs as *const _ as *const [Fq]) };
         let bases = unsafe { &*(bases as *const _ as *const [G1Projective]) };

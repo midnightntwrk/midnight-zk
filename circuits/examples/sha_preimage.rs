@@ -8,6 +8,7 @@
 #[global_allocator]
 static ALLOC: dhat::Alloc = dhat::Alloc;
 
+use std::time::Instant;
 use midnight_circuits::{
     compact_std_lib::{self, Relation, ShaTableSize, ZkStdLib, ZkStdLibArch},
     instructions::{AssignmentInstructions, PublicInputInstructions},
@@ -28,15 +29,12 @@ type F = midnight_curves::Fq;
 pub struct ShaPreImageCircuit;
 
 impl Relation for ShaPreImageCircuit {
-    type Instance = [u8; 32];
+    type Instance = ();
 
     type Witness = [u8; 24]; // 192 = 24 * 8
 
     fn format_instance(instance: &Self::Instance) -> Vec<F> {
-        instance
-            .iter()
-            .flat_map(AssignedByte::<F>::as_public_input)
-            .collect()
+        vec![]
     }
 
     fn circuit(
@@ -48,10 +46,12 @@ impl Relation for ShaPreImageCircuit {
     ) -> Result<(), Error> {
         let witness_bytes = witness.transpose_array();
         let assigned_input = std_lib.assign_many(layouter, &witness_bytes)?;
-        let output = std_lib.sha256(layouter, &assigned_input)?;
-        output
-            .iter()
-            .try_for_each(|b| std_lib.constrain_as_public_input(layouter, b))
+        let mut output = std_lib.sha256(layouter, &assigned_input)?;
+        for _ in 0..100 {
+            output = std_lib.sha256(layouter, &output)?;
+        }
+
+        Ok(())
     }
 
     fn used_chips(&self) -> ZkStdLibArch {
@@ -77,7 +77,7 @@ impl Relation for ShaPreImageCircuit {
 }
 
 fn main() {
-    const K: u32 = 17;
+    const K: u32 = 18;
     let srs = filecoin_srs(K);
 
     let relation = ShaPreImageCircuit;
@@ -88,18 +88,19 @@ fn main() {
     // Sample a random preimage as the witness.
     let mut rng = ChaCha8Rng::from_entropy();
     let witness: [u8; 24] = core::array::from_fn(|_| rng.gen());
-    let instance = sha2::Sha256::digest(witness).into();
 
+    let now = Instant::now();
     let proof = compact_std_lib::prove::<ShaPreImageCircuit, blake2b_simd::State>(
-        &srs, &pk, &relation, &instance, witness, OsRng,
+        &srs, &pk, &relation, &(), witness, OsRng,
     )
     .expect("Proof generation should not fail");
+    println!("Prover time: {:?}", now.elapsed());
 
     assert!(
         compact_std_lib::verify::<ShaPreImageCircuit, blake2b_simd::State>(
             &srs.verifier_params(),
             &vk,
-            &instance,
+            &(),
             &proof
         )
         .is_ok()
