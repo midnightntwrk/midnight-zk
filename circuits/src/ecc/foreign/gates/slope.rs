@@ -152,12 +152,15 @@ impl<C: CircuitCurve> SlopeConfig<C> {
         let q_slope = meta.selector();
 
         // The layout is in three rows:
-        // | px_0 ... px_k | qx_0 ... qx_k    |
-        // | py_0 ... py_k | qy_0 ... qy_k    |  <- selector enabled here
-        // |  λ_0 ...  λ_k | u v0 ... vl cond |
+        // | px_0 ... px_k |
+        // | qx_0 ... qx_k    |  <- selector enabled here
+        // | py_0 ... py_k |
+        // | qy_0 ... qy_k    |
+        // |  λ_0 ...  λ_k |
+        // | u v0 ... vl cond |
 
         meta.create_gate("Foreign-field EC lambda slope", |meta| {
-            let cond = meta.query_advice(*cond_col, Rotation::next());
+            let cond = meta.query_advice(*cond_col, Rotation(4));
             // We store the sign in the same place as `cond`. This is no problem, as
             // when `cond = 0` the gate will be disabled, and when it is enabled,
             // we will have `cond = ±1`, which is fine.
@@ -165,12 +168,12 @@ impl<C: CircuitCurve> SlopeConfig<C> {
             // when enabled, this is not asserted with constraints.
             let sign = cond.clone();
             let pxs = get_advice_vec(meta, &field_chip_config.x_cols, Rotation::prev());
-            let pys = get_advice_vec(meta, &field_chip_config.x_cols, Rotation::cur());
-            let qxs = get_advice_vec(meta, &field_chip_config.z_cols, Rotation::prev());
-            let qys = get_advice_vec(meta, &field_chip_config.z_cols, Rotation::cur());
-            let lambdas = get_advice_vec(meta, &field_chip_config.x_cols, Rotation::next());
-            let u = meta.query_advice(field_chip_config.u_col, Rotation::next());
-            let vs = get_advice_vec(meta, &field_chip_config.v_cols, Rotation::next());
+            let qxs = get_advice_vec(meta, &field_chip_config.x_cols, Rotation::cur());
+            let pys = get_advice_vec(meta, &field_chip_config.z_cols, Rotation::next());
+            let qys = get_advice_vec(meta, &field_chip_config.z_cols, Rotation(2));
+            let lambdas = get_advice_vec(meta, &field_chip_config.x_cols, Rotation(3));
+            let u = meta.query_advice(field_chip_config.u_col, Rotation(4));
+            let vs = get_advice_vec(meta, &field_chip_config.v_cols, Rotation(4));
 
             let lpxs = pair_wise_prod(&lambdas, &pxs);
             let lqxs = pair_wise_prod(&lambdas, &qxs);
@@ -348,20 +351,30 @@ where
             let qx_iter = qx_limbs.iter().zip(base_chip_config.z_cols.iter());
 
             px_iter
-                .chain(qx_iter)
                 .map(|(cell, &col)| cell.copy_advice(|| "ECC.slope x", &mut region, col, offset))
                 .collect::<Result<Vec<_>, _>>()?;
 
             offset += 1;
 
             slope_config.q_slope.enable(&mut region, offset)?;
+            qx_iter
+                .map(|(cell, &col)| cell.copy_advice(|| "ECC.slope x", &mut region, col, offset))
+                .collect::<Result<Vec<_>, _>>()?;
+
+            offset += 1;
 
             let py_limbs = py.limb_values();
             let qy_limbs = qy.limb_values();
             let py_iter = py_limbs.iter().zip(base_chip_config.x_cols.iter());
             let qy_iter = qy_limbs.iter().zip(base_chip_config.z_cols.iter());
+
             py_iter
-                .chain(qy_iter)
+                .map(|(cell, &col)| cell.copy_advice(|| "ECC.slope y", &mut region, col, offset))
+                .collect::<Result<Vec<_>, _>>()?;
+
+            offset += 1;
+
+            qy_iter
                 .map(|(cell, &col)| cell.copy_advice(|| "ECC.slope y", &mut region, col, offset))
                 .collect::<Result<Vec<_>, _>>()?;
 
@@ -374,6 +387,8 @@ where
                     cell.copy_advice(|| "ECC.slope lambda", &mut region, col, offset)
                 })
                 .collect::<Result<Vec<_>, _>>()?;
+
+            offset += 1;
 
             let u_value = u.clone().map(|u| bigint_to_fe::<F>(&u));
             let u_cell = region.assign_advice(

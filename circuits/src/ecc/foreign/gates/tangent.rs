@@ -145,16 +145,18 @@ impl<C: CircuitCurve> TangentConfig<C> {
         let q_tangent = meta.selector();
 
         // The layout is in two rows:
-        // | px_0 ... px_k | py_0 ... py_k    | <- selector enabled here
-        // |  λ_0 ...  λ_k | u v0 ... vl cond |
+        // | px_0 ... px_k |
+        // | py_0 ... py_k    | <- selector enabled here
+        // |  λ_0 ...  λ_k |
+        // | u v0 ... vl cond |
 
         meta.create_gate("Foreign-field EC assert_tangent", |meta| {
-            let cond = meta.query_advice(*cond_col, Rotation::next());
-            let pxs = get_advice_vec(meta, &field_chip_config.x_cols, Rotation::cur());
+            let cond = meta.query_advice(*cond_col, Rotation(2));
+            let pxs = get_advice_vec(meta, &field_chip_config.x_cols, Rotation::prev());
             let pys = get_advice_vec(meta, &field_chip_config.z_cols, Rotation::cur());
             let lambdas = get_advice_vec(meta, &field_chip_config.x_cols, Rotation::next());
-            let u = meta.query_advice(field_chip_config.u_col, Rotation::next());
-            let vs = get_advice_vec(meta, &field_chip_config.v_cols, Rotation::next());
+            let u = meta.query_advice(field_chip_config.u_col, Rotation(2));
+            let vs = get_advice_vec(meta, &field_chip_config.v_cols, Rotation(2));
 
             let px2s = pair_wise_prod(&pxs, &pxs);
             let lpys = pair_wise_prod(&lambdas, &pys);
@@ -296,17 +298,23 @@ where
                             compute_vj(m, mj, &e, &u, &k_min, (&lj_min, &vj_max), cond.value())
                         })
                     });
-
-            tangent_config.q_tangent.enable(&mut region, offset)?;
-
             let px_limbs = px.limb_values();
             let py_limbs = py.limb_values();
             let lambda_limbs = lambda.limb_values();
 
             let px_iter = px_limbs.iter().zip(base_chip_config.x_cols.iter());
             let py_iter = py_limbs.iter().zip(base_chip_config.z_cols.iter());
+
             px_iter
-                .chain(py_iter)
+                .map(|(cell, &col)| {
+                    cell.copy_advice(|| "ECC.tangent input", &mut region, col, offset)
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+
+            offset += 1;
+            tangent_config.q_tangent.enable(&mut region, offset)?;
+
+            py_iter
                 .map(|(cell, &col)| {
                     cell.copy_advice(|| "ECC.tangent input", &mut region, col, offset)
                 })
@@ -321,6 +329,8 @@ where
                     cell.copy_advice(|| "ECC.tangent lambda", &mut region, col, offset)
                 })
                 .collect::<Result<Vec<_>, _>>()?;
+
+            offset += 1;
 
             let u_value = u.clone().map(|u| bigint_to_fe::<F>(&u));
             let u_cell = region.assign_advice(

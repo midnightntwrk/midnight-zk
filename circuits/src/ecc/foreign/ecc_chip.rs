@@ -97,7 +97,8 @@ where
     // The 2 in `2 + |moduli|` corresponds to `u_col` + `cond_col`.
     // The outer `+ 1` corresponds to the advice column for the index of
     // `multi_select`.
-    B::NB_LIMBS as usize + max(B::NB_LIMBS as usize, 2 + B::moduli().len()) + 1
+    // B::NB_LIMBS as usize + max(B::NB_LIMBS as usize, 2 + B::moduli().len()) + 1
+    max(B::NB_LIMBS as usize, 2 + B::moduli().len()) + 1
 }
 
 /// ['ECChip'] to perform foreign EC operations.
@@ -988,7 +989,7 @@ where
     ) -> ForeignEccConfig<C> {
         // Assert that there is room for the cond_col in the existing columns of the
         // field_chip configurations.
-        let cond_col_idx = base_field_config.x_cols.len() + base_field_config.v_cols.len() + 1;
+        let cond_col_idx = base_field_config.v_cols.len() + 1;
         assert!(advice_columns.len() > cond_col_idx);
         let cond_col = advice_columns[cond_col_idx];
         meta.enable_equality(cond_col);
@@ -1012,19 +1013,23 @@ where
         // Given a list of points `p1, ..., pn` (the table), and a table `tag`, we'll
         // prepare the following set of rows:
         //
-        //   | p1.x limbs | p1.y limbs |  0  | tag |
-        //   | p2.x limbs | p2.y limbs |  1  | tag |
-        //   |     ...    |     ...    | ... | tag |
-        //   | pn.x limbs | pn.y limbs | n-1 | tag |
+        //   | p1.x limbs |  0  | tag |
+        //   | p1.y limbs |     |     |
+        //   | p2.x limbs |  1  | tag |
+        //   | p2.y limbs |     |     |
+        //   |     ...    | ... |     |
+        //   | pn.x limbs | n-1 | tag |
+        //   | pn.y limbs |     |     |
         //
         // This will allow us to then select the `i`-th table point, by witnessing a
         // fresh point `q` and enforcing that:
         //
-        //   | q.x limbs | q.y limbs |  i  | tag |
+        //   | q.x limbs |  i  | tag |
+        //   | q.y limbs |     |     |
         //
-        // is in the lookup table.
+        // are in the lookup table.
         let q_multi_select = meta.complex_selector();
-        assert!(advice_columns.len() > 2 * base_field_config.x_cols.len());
+        assert!(advice_columns.len() > base_field_config.x_cols.len());
         let idx_col_multi_select = *advice_columns.last().unwrap();
         meta.enable_equality(idx_col_multi_select);
 
@@ -1051,12 +1056,16 @@ where
             let mut identities = [idx_col_multi_select]
                 .iter()
                 .chain(base_field_config.x_cols.iter())
-                .chain(base_field_config.z_cols.iter())
                 .map(|col| {
                     let val = meta.query_advice(*col, Rotation::cur());
                     (val.clone(), not_sel.clone() * val)
                 })
                 .collect::<Vec<_>>();
+
+            identities.extend(base_field_config.z_cols.iter().map(|col| {
+                let val = meta.query_advice(*col, Rotation::next());
+                (val.clone(), not_sel.clone() * val)
+            }));
 
             // Handle tag indpendently, since it is a fixed column
             let tag = meta.query_fixed(tag_col_multi_select, Rotation::cur());
@@ -1407,12 +1416,12 @@ where
                         let x_val = x_limbs[i].value().copied();
                         let y_val = y_limbs[i].value().copied();
                         xs.push(region.assign_advice(|| "x", x_cols[i], 0, || x_val)?);
-                        ys.push(region.assign_advice(|| "y", y_cols[i], 0, || y_val)?);
+                        ys.push(region.assign_advice(|| "y", y_cols[i], 1, || y_val)?);
                     }
                     // If the lookup is disabled we copy the limbs into the current row.
                     else {
                         xs.push(x_limbs[i].copy_advice(|| "x", &mut region, x_cols[i], 0)?);
-                        ys.push(y_limbs[i].copy_advice(|| "y", &mut region, y_cols[i], 0)?);
+                        ys.push(y_limbs[i].copy_advice(|| "y", &mut region, y_cols[i], 1)?);
                     }
                 }
                 index.copy_advice(|| "x", &mut region, idx_col, 0)?;

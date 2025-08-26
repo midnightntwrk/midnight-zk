@@ -42,8 +42,7 @@ pub struct NormConfig {
     q_norm: Selector,
     u_bounds: (BI, BI),
     vs_bounds: Vec<(BI, BI)>,
-    x_cols: Vec<Column<Advice>>,
-    z_cols: Vec<Column<Advice>>,
+    xz_cols: Vec<Column<Advice>>,
 }
 
 impl NormConfig {
@@ -120,8 +119,7 @@ impl NormConfig {
     /// Configures the foreign normalization chip
     pub fn configure<F, K, P>(
         meta: &mut ConstraintSystem<F>,
-        x_cols: &[Column<Advice>],
-        z_cols: &[Column<Advice>],
+        xz_cols: &[Column<Advice>],
     ) -> NormConfig
     where
         F: PrimeField,
@@ -138,15 +136,16 @@ impl NormConfig {
 
         let q_norm = meta.selector();
 
-        // The layout is in two rows:
-        // | x0 ... xk | z0 ... zk   |  <- selector enabled here
-        // |           | u v0 ... vl |
+        // The layout is in three rows:
+        // | x0 ...   xk |
+        // | z0 ...   zk |  <- selector enabled here
+        // | u v0 ... vl |
 
         meta.create_gate("Foreign-field normalization", |meta| {
-            let xs = get_advice_vec(meta, x_cols, Rotation::cur());
-            let zs = get_advice_vec(meta, z_cols, Rotation::cur());
-            let u = meta.query_advice(z_cols[0], Rotation::next());
-            let vs = get_advice_vec(meta, &z_cols[1..=vs_bounds.len()], Rotation::next());
+            let xs = get_advice_vec(meta, xz_cols, Rotation::prev());
+            let zs = get_advice_vec(meta, xz_cols, Rotation::cur());
+            let u = meta.query_advice(xz_cols[0], Rotation::next());
+            let vs = get_advice_vec(meta, &xz_cols[1..=vs_bounds.len()], Rotation::next());
 
             let shift = Expression::Constant(bigint_to_fe::<F>(&max_limb_bound));
             let shifted_x = xs.iter().map(|x| x + &shift).collect::<Vec<_>>();
@@ -188,8 +187,7 @@ impl NormConfig {
             q_norm,
             u_bounds: (k_min, u_max),
             vs_bounds,
-            x_cols: x_cols.to_vec(),
-            z_cols: z_cols.to_vec(),
+            xz_cols: xz_cols.to_vec(),
         }
     }
 }
@@ -273,16 +271,17 @@ where
                 })
                 .collect::<Vec<_>>();
 
-            norm_config.q_norm.enable(&mut region, offset)?;
-
             let x_limb_values = x.limb_values();
-            let x_iter = x_limb_values.iter().zip(norm_config.x_cols.iter());
+            let x_iter = x_limb_values.iter().zip(norm_config.xz_cols.iter());
             x_iter
                 .map(|(cell, &col)| cell.copy_advice(|| "norm input", &mut region, col, offset))
                 .collect::<Result<Vec<_>, _>>()?;
 
+            offset += 1;
+            norm_config.q_norm.enable(&mut region, offset)?;
+
             let z_cells = z_values
-                .zip(norm_config.z_cols.iter())
+                .zip(norm_config.xz_cols.iter())
                 .map(|(z, &z_col)| region.assign_advice(|| "norm output", z_col, offset, || z))
                 .collect::<Result<Vec<_>, _>>()?;
 
@@ -290,11 +289,11 @@ where
 
             let u_value = u.clone().map(|u| bigint_to_fe::<F>(&u));
             let u_cell =
-                region.assign_advice(|| "norm u", norm_config.z_cols[0], offset, || u_value)?;
+                region.assign_advice(|| "norm u", norm_config.xz_cols[0], offset, || u_value)?;
 
             let vs_cells = vs_values
                 .iter()
-                .zip(norm_config.z_cols[1..=norm_config.vs_bounds.len()].iter())
+                .zip(norm_config.xz_cols[1..=norm_config.vs_bounds.len()].iter())
                 .map(|(vj, &vj_col)| {
                     let vj_value = vj.clone().map(|vj| bigint_to_fe::<F>(&vj));
                     region.assign_advice(|| "norm vj", vj_col, offset, || vj_value)

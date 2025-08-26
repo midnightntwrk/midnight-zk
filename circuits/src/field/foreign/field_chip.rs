@@ -218,7 +218,8 @@ where
     K: PrimeField,
     P: FieldEmulationParams<F, K>,
 {
-    P::NB_LIMBS as usize + max(P::NB_LIMBS as usize, 1 + P::moduli().len())
+    // P::NB_LIMBS as usize + max(P::NB_LIMBS as usize, 1 + P::moduli().len())
+    max(P::NB_LIMBS as usize, 1 + P::moduli().len())
 }
 
 /// Creates a vector of upper-bounds (one per limb), specifiying the maximum
@@ -1305,20 +1306,19 @@ where
         let nb_limbs = P::NB_LIMBS;
         let x_cols = advice_columns[..(nb_limbs as usize)].to_vec();
         let y_cols = x_cols.clone();
-        let z_cols = advice_columns[(nb_limbs as usize)..(2 * nb_limbs as usize)].to_vec();
+        let z_cols = x_cols.clone();
 
         x_cols
             .iter()
-            .chain(z_cols.iter())
             .for_each(|&col| meta.enable_equality(col));
 
-        let u_col = advice_columns[nb_limbs as usize];
+        let u_col = advice_columns[0];
         let v_cols = advice_columns
-            [(nb_limbs as usize + 1)..(nb_limbs as usize + 1 + P::moduli().len())]
+            [1..1 + P::moduli().len()]
             .to_vec();
 
-        let mul_config = MulConfig::configure::<F, K, P>(meta, &x_cols, &z_cols);
-        let norm_config = NormConfig::configure::<F, K, P>(meta, &x_cols, &z_cols);
+        let mul_config = MulConfig::configure::<F, K, P>(meta, &x_cols);
+        let norm_config = NormConfig::configure::<F, K, P>(meta, &x_cols);
 
         FieldChipConfig {
             mul_config,
