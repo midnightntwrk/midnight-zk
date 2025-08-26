@@ -39,6 +39,7 @@ use midnight_proofs::{
     transcript::{CircuitTranscript, Transcript},
 };
 use rand::rngs::OsRng;
+use midnight_proofs::dev::cost_model::from_circuit_to_circuit_model;
 
 type S = BlstrsEmulation;
 
@@ -248,6 +249,8 @@ fn main() {
         prev_proof: Value::unknown(),
         prev_acc: Value::unknown(),
     };
+
+    println!("Cost model: {:?}", from_circuit_to_circuit_model::<_, _, 48, 32>(Some(self_k), &default_ivc_circuit, 0));
 
     let srs = filecoin_srs(self_k);
 

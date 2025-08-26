@@ -490,6 +490,9 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         let x_next = self.scalar_chip.mul_by_constant(layouter, &x, omega)?;
         let x_prev = self.scalar_chip.mul_by_constant(layouter, &x, omega_inv)?;
         let x_last = self.scalar_chip.mul_by_constant(layouter, &x, omega_last)?;
+        let x2 = self.scalar_chip.mul_by_constant(layouter, &x_next, omega)?;
+        let x3 = self.scalar_chip.mul_by_constant(layouter, &x2, omega)?;
+        let x4 = self.scalar_chip.mul_by_constant(layouter, &x3, omega)?;
 
         // Gets the evaluation point for a query at the given rotation.
         let get_point = |rotation: &Rotation| -> &AssignedNative<S::F> {
@@ -497,6 +500,9 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                 -1 => &x_prev,
                 0 => &x,
                 1 => &x_next,
+                2 => &x2,
+                3 => &x3,
+                4 => &x4,
                 _ => panic!("We do not support other rotations"),
             }
         };
