@@ -20,8 +20,8 @@ use num_bigint::BigUint;
 use super::PublicInputInstructions;
 use crate::{
     instructions::{
-        ArithInstructions, AssertionInstructions, AssignmentInstructions, ControlFlowInstructions,
-        EqualityInstructions, ZeroInstructions,
+        public_input::CommittedInstanceInstructions, ArithInstructions, AssertionInstructions,
+        AssignmentInstructions, ControlFlowInstructions, EqualityInstructions, ZeroInstructions,
     },
     types::{AssignedBit, InnerConstants, Instantiable},
     utils::util::qnr,
@@ -31,6 +31,7 @@ use crate::{
 pub trait FieldInstructions<F, Assigned>:
     AssignmentInstructions<F, Assigned>
     + PublicInputInstructions<F, Assigned>
+    + CommittedInstanceInstructions<F, Assigned>
     + AssertionInstructions<F, Assigned>
     + ArithInstructions<F, Assigned>
     + EqualityInstructions<F, Assigned>

@@ -47,10 +47,10 @@ use crate::{
         util::{bi_from_limbs, bi_to_limbs},
     },
     instructions::{
-        ArithInstructions, AssertionInstructions, AssignmentInstructions, CanonicityInstructions,
-        ControlFlowInstructions, ConversionInstructions, DecompositionInstructions,
-        EqualityInstructions, FieldInstructions, NativeInstructions, PublicInputInstructions,
-        ScalarFieldInstructions, ZeroInstructions,
+        public_input::CommittedInstanceInstructions, ArithInstructions, AssertionInstructions,
+        AssignmentInstructions, CanonicityInstructions, ControlFlowInstructions,
+        ConversionInstructions, DecompositionInstructions, EqualityInstructions, FieldInstructions,
+        NativeInstructions, PublicInputInstructions, ScalarFieldInstructions, ZeroInstructions,
     },
     types::{AssignedBit, AssignedByte, AssignedNative, InnerConstants, InnerValue, Instantiable},
     utils::util::{bigint_to_fe, fe_to_bigint, modulus},
@@ -516,6 +516,27 @@ where
         };
         self.constrain_as_public_input(layouter, &assigned_field)?;
         Ok(assigned_field)
+    }
+}
+
+impl<F, K, P, N> CommittedInstanceInstructions<F, AssignedField<F, K, P>> for FieldChip<F, K, P, N>
+where
+    F: PrimeField,
+    K: PrimeField,
+    P: FieldEmulationParams<F, K>,
+    N: NativeInstructions<F>,
+{
+    fn constrain_as_committed_public_input(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        assigned: &AssignedField<F, K, P>,
+    ) -> Result<(), Error> {
+        self.as_public_input(layouter, assigned)?
+            .iter()
+            .try_for_each(|c| {
+                self.native_gadget
+                    .constrain_as_committed_public_input(layouter, c)
+            })
     }
 }
 
@@ -1308,14 +1329,10 @@ where
         let y_cols = x_cols.clone();
         let z_cols = x_cols.clone();
 
-        x_cols
-            .iter()
-            .for_each(|&col| meta.enable_equality(col));
+        x_cols.iter().for_each(|&col| meta.enable_equality(col));
 
         let u_col = advice_columns[0];
-        let v_cols = advice_columns
-            [1..1 + P::moduli().len()]
-            .to_vec();
+        let v_cols = advice_columns[1..1 + P::moduli().len()].to_vec();
 
         let mul_config = MulConfig::configure::<F, K, P>(meta, &x_cols);
         let norm_config = NormConfig::configure::<F, K, P>(meta, &x_cols);

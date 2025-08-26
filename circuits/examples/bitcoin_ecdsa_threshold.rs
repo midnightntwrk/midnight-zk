@@ -12,8 +12,8 @@ use midnight_circuits::{
     compact_std_lib::{self, Relation, ZkStdLib, ZkStdLibArch},
     field::foreign::{params::MultiEmulationParams as MEP, AssignedField},
     instructions::{
-        ArithInstructions, AssignmentInstructions, DecompositionInstructions, EccInstructions,
-        PublicInputInstructions, ZeroInstructions,
+        public_input::CommittedInstanceInstructions, ArithInstructions, AssignmentInstructions,
+        DecompositionInstructions, EccInstructions, PublicInputInstructions, ZeroInstructions,
     },
     testing_utils::{
         ecdsa::{ECDSASig, Ecdsa},
@@ -24,13 +24,14 @@ use midnight_circuits::{
 use midnight_curves::Fq as Scalar;
 use midnight_proofs::{
     circuit::{Layouter, Value},
-    plonk::Error,
-    poly::kzg::params::ParamsKZG,
+    plonk::{commit_to_instances, Error},
+    poly::kzg::{params::ParamsKZG, KZGCommitmentScheme},
 };
 use rand::{prelude::SliceRandom, rngs::OsRng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 
 type F = Scalar;
+type E = midnight_curves::Bls12;
 
 include!(concat!(env!("OUT_DIR"), "/consts.rs"));
 
@@ -58,21 +59,19 @@ pub struct BitcoinThresholdECDSA;
 impl Relation for BitcoinThresholdECDSA {
     // The actual message should be hashed by the verifier. Since this example
     // is "public message", we work directly with its hash for simplicity.
-    type Instance = (MsgHash, [PK; N]);
+    type Instance = MsgHash;
 
-    type Witness = [(PK, ECDSASig); T];
+    type Witness = ([PK; N], [(PK, ECDSASig); T]);
 
-    fn format_instance((msg_hash, pks): &Self::Instance) -> Vec<F> {
+    fn format_instance(msg_hash: &Self::Instance) -> Vec<F> {
         dbg!(T);
-        [
-            AssignedField::<F, secp256k1Scalar, MEP>::as_public_input(msg_hash),
-            pks.iter()
-                .flat_map(AssignedForeignPoint::<F, Secp256k1, MEP>::as_public_input)
-                .collect::<Vec<_>>(),
-        ]
-        .into_iter()
-        .flatten()
-        .collect()
+        AssignedField::<F, secp256k1Scalar, MEP>::as_public_input(msg_hash)
+    }
+
+    fn format_committed_instances((pks, _): &Self::Witness) -> Vec<F> {
+        pks.iter()
+            .flat_map(AssignedForeignPoint::<F, Secp256k1, MEP>::as_public_input)
+            .collect::<Vec<_>>()
     }
 
     fn circuit(
@@ -87,16 +86,16 @@ impl Relation for BitcoinThresholdECDSA {
         let secp256k1_base = secp256k1_curve.base_field_chip();
 
         // Assign the message hash as a public input.
-        let msg_hash = secp256k1_scalar.assign_as_public_input(layouter, instance.unzip().0)?;
+        let msg_hash = secp256k1_scalar.assign_as_public_input(layouter, instance)?;
 
         // Assign the PKs and constrain them as public inputs.
-        let pks = secp256k1_curve.assign_many(layouter, &instance.unzip().1.transpose_array())?;
+        let pks = secp256k1_curve.assign_many(layouter, &witness.unzip().0.transpose_array())?;
         pks.iter()
-            .try_for_each(|pk| secp256k1_curve.constrain_as_public_input(layouter, pk))?;
+            .try_for_each(|pk| secp256k1_curve.constrain_as_committed_public_input(layouter, pk))?;
 
         // Assigned the public keys with known signature asserting they are on the set
         // of public keys.
-        let signatures = witness.transpose_array();
+        let signatures = witness.unzip().1.transpose_array();
         let selected_pks_values = signatures.map(|v| v.map(|(pk, _)| pk));
         let selected_sigs_values = signatures.map(|v| v.map(|(_, s)| s));
 
@@ -171,18 +170,19 @@ impl Relation for BitcoinThresholdECDSA {
             .iter()
             .zip(r_i_as_base.iter())
             .map(|(val, r_i)| {
-                let k_point_y_val = val.zip(instance.unzip().0).zip(r_i.value()).map(
-                    |(((pk_i, sig_i), msg_hash), r_i)| {
-                        let gen = Secp256k1::generator();
-                        let r_as_scalar = secp256k1Scalar::from_bytes(&sig_i.get_r()).unwrap();
-                        let s_inv = sig_i.get_s().invert().unwrap();
-                        let k_point = gen * (s_inv * msg_hash) + pk_i * (s_inv * r_as_scalar);
+                let k_point_y_val =
+                    val.zip(instance)
+                        .zip(r_i.value())
+                        .map(|(((pk_i, sig_i), msg_hash), r_i)| {
+                            let gen = Secp256k1::generator();
+                            let r_as_scalar = secp256k1Scalar::from_bytes(&sig_i.get_r()).unwrap();
+                            let s_inv = sig_i.get_s().invert().unwrap();
+                            let k_point = gen * (s_inv * msg_hash) + pk_i * (s_inv * r_as_scalar);
 
-                        // cpu sanity check
-                        assert_eq!(r_i, k_point.to_affine().x);
-                        k_point.to_affine().y
-                    },
-                );
+                            // cpu sanity check
+                            assert_eq!(r_i, k_point.to_affine().x);
+                            k_point.to_affine().y
+                        });
 
                 let y_i = secp256k1_base.assign(layouter, k_point_y_val)?;
                 secp256k1_curve.point_from_coordinates(layouter, r_i, &y_i)
@@ -285,8 +285,14 @@ fn main() {
         assert!(Ecdsa::verify(pk, &msg_hash, sig));
     });
 
-    let instance = (msg_hash, pks);
-    let witness = signatures;
+    let instance = msg_hash;
+    let witness = (pks, signatures);
+
+    let instance_commitment = commit_to_instances::<F, KZGCommitmentScheme<E>>(
+        &srs,
+        &vk.vk().get_domain(),
+        &BitcoinThresholdECDSA::format_committed_instances(&witness),
+    );
 
     let now = Instant::now();
     let proof = compact_std_lib::prove::<BitcoinThresholdECDSA, blake2b_simd::State>(
@@ -301,7 +307,7 @@ fn main() {
             &srs.verifier_params(),
             &vk,
             &instance,
-            None,
+            Some(instance_commitment.into()),
             &proof
         )
         .is_ok()

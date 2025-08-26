@@ -62,9 +62,10 @@ use crate::{
         params::FieldEmulationParams,
     },
     instructions::{
-        ArithInstructions, AssertionInstructions, AssignmentInstructions, ControlFlowInstructions,
-        DecompositionInstructions, EccInstructions, EqualityInstructions, NativeInstructions,
-        PublicInputInstructions, ScalarFieldInstructions, ZeroInstructions,
+        public_input::CommittedInstanceInstructions, ArithInstructions, AssertionInstructions,
+        AssignmentInstructions, ControlFlowInstructions, DecompositionInstructions,
+        EccInstructions, EqualityInstructions, NativeInstructions, PublicInputInstructions,
+        ScalarFieldInstructions, ZeroInstructions,
     },
     types::{AssignedBit, AssignedField, AssignedNative, InnerConstants, InnerValue, Instantiable},
     utils::util::{big_to_fe, bigint_to_fe, fe_to_big, fe_to_le_bits, glv_scalar_decomposition},
@@ -379,6 +380,30 @@ where
         let point = self.assign(layouter, value)?;
         self.constrain_as_public_input(layouter, &point)?;
         Ok(point)
+    }
+}
+
+impl<F, C, B, S, N> CommittedInstanceInstructions<F, AssignedForeignPoint<F, C, B>>
+    for ForeignEccChip<F, C, B, S, N>
+where
+    F: PrimeField + FromUniformBytes<64> + Ord,
+    C: WeierstrassCurve,
+    B: FieldEmulationParams<F, C::Base>,
+    S: ScalarFieldInstructions<F>,
+    S::Scalar: InnerValue<Element = C::Scalar>,
+    N: NativeInstructions<F> + PublicInputInstructions<F, AssignedBit<F>>,
+{
+    fn constrain_as_committed_public_input(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        assigned: &AssignedForeignPoint<F, C, B>,
+    ) -> Result<(), Error> {
+        self.as_public_input(layouter, assigned)?
+            .iter()
+            .try_for_each(|c| {
+                self.native_gadget
+                    .constrain_as_committed_public_input(layouter, c)
+            })
     }
 }
 
@@ -1060,14 +1085,13 @@ where
                 .map(|col| {
                     let val = meta.query_advice(*col, Rotation::cur());
                     (sel.clone() * val.clone(), not_sel.clone() * val)
-                }).collect::<Vec<_>>();
+                })
+                .collect::<Vec<_>>();
 
-            identities.extend(base_field_config.z_cols.iter()
-                .map(|col| {
-                    let val = meta.query_advice(*col, Rotation::next());
-                    (sel.clone() * val.clone(), not_sel.clone() * val)
-                }));
-
+            identities.extend(base_field_config.z_cols.iter().map(|col| {
+                let val = meta.query_advice(*col, Rotation::next());
+                (sel.clone() * val.clone(), not_sel.clone() * val)
+            }));
 
             // Handle tag indpendently, since it is a fixed column
             let tag = meta.query_fixed(tag_col_multi_select, Rotation::cur());
