@@ -75,6 +75,9 @@ where
 }
 
 /// Instruction to constrain public inputs in committed form.
+///
+/// This trait should **NOT** be extended with an "assign" version, since
+/// there is no way to enforce types or make any check on the committed values.
 pub trait CommittedInstanceInstructions<F, Assigned>
 where
     F: PrimeField,
