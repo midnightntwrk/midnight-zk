@@ -16,10 +16,10 @@ rustdoc-args = [ "--html-in-header", "katex-header.html" ]
 [dependencies]
 blst = { version = "0.3.15", default-features = true }
 pairing_lib = { version = "0.23", package = "pairing" }
-subtle = "2.5"
+subtle = "2.6"
 bitvec = "1.0.1"
 serde = { version = "1.0", features = ["derive"], optional = true }
-byte-slice-cast = "1.0.0"
+byte-slice-cast = "1.2.3"
 num-bigint = "0.4.6"
 
 rand_core = { workspace = true }
@@ -30,10 +30,10 @@ halo2curves = { workspace = true }
 
 
 [dev-dependencies]
-rayon = "1.8"
+rayon = "1.10"
 rand_xorshift = "0.3.0"
-serde_json = "1.0.57"
-hex = "0.4.2"
+serde_json = "1.0.143"
+hex = "0.4.3"
 criterion = { version = "0.7", features = ["html_reports"] }
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
 getrandom = { version = "0.2", features = ["js"] }

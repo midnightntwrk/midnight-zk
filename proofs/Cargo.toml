@@ -47,7 +47,7 @@ serde_derive = { version = "1", optional = true }
 rayon = { workspace = true }
 
 # Developer tooling dependencies
-plotters = { version = "0.3.0", default-features = false, optional = true }
+plotters = { version = "0.3.7", default-features = false, optional = true }
 tabbycat = { version = "0.1", features = ["attributes"], optional = true }
 
 # Legacy circuit compatibility
