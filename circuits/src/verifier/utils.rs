@@ -293,7 +293,7 @@ pub(crate) fn powers<F: PrimeField>(
 
 /// Computes n powers of the given scalar x, starting from the 0-th power: 1.
 /// The powers are then truncated by removing their most-significative half.
-pub(crate) fn truncated_powers<F: PrimeField>(
+pub fn truncated_powers<F: PrimeField>(
     layouter: &mut impl Layouter<F>,
     #[cfg(feature = "truncated-challenges")] scalar_chip: &impl NativeInstructions<F>,
     #[cfg(not(feature = "truncated-challenges"))] scalar_chip: &impl FieldInstructions<

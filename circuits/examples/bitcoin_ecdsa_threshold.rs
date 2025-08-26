@@ -29,8 +29,8 @@ use rand_chacha::ChaCha8Rng;
 
 type F = Scalar;
 
-const N: usize = 5; // The total number of public keys.
-const T: usize = 4; // The threshold of valid signatures.
+const N: usize = 10; // The total number of public keys.
+const T: usize = 10; // The threshold of valid signatures.
 
 type PK = Secp256k1;
 type MsgHash = secp256k1Scalar;
@@ -86,14 +86,15 @@ impl Relation for BitcoinThresholdECDSA {
             secp256k1_curve.k_out_of_n_points(layouter, &pks, &selected_pks_values)?;
 
         // For every i, we need to verify that:
-        //   s_i * K_i  =?=  msg_hash * G + r_i * PK_i
+        //   K_i  =?=  msg_hash * s_i^{-1} * G + r_i * s_i^{-1} * PK_i
         //
         // where K_i is a witnessed point different from the identity and whose
         // x-coordinate equals r_i.
         // We will batch the above equation with some randomness α derived from the
         // signatures with Poseidon. The equation becomes:
         //
-        //  \sum_i (α^i * r_i * PK_i - α^i * s_i * K_i) + (sum_i α^i) * msg_hash * G
+        //     \sum_i (-α^i * r_i * s_i^{-1} * PK_i + α^i K_i)
+        //   - (sum_i α^i * s_i^{-1}) * msg_hash * G
         //   =?=
         //   id
 
@@ -106,13 +107,18 @@ impl Relation for BitcoinThresholdECDSA {
         for i in 1..T {
             alpha_powers[i] = secp256k1_scalar.mul(layouter, &alpha_powers[i - 1], &alpha, None)?;
         }
-
-        let neg_s_i_times_alpha_i = selected_sigs_values
+        let alpha_powers = alpha_powers
             .iter()
-            .zip(alpha_powers.iter())
-            .map(|(sig_i, alpha_i)| {
-                let neg_s_i = secp256k1_scalar.assign(layouter, sig_i.map(|sig| -sig.get_s()))?;
-                secp256k1_scalar.mul(layouter, &neg_s_i, alpha_i, None)
+            .map(|alpha_i| {
+                let bits = secp256k1_scalar.assigned_to_le_bits(layouter, alpha_i, None, true)?;
+                secp256k1_scalar.assigned_from_le_bits(layouter, &bits[..128])
+            })
+            .collect::<Result<Vec<_>, Error>>()?;
+
+        let neg_si_inv = selected_sigs_values
+            .iter()
+            .map(|sig_i| {
+                secp256k1_scalar.assign(layouter, sig_i.map(|sig| -sig.get_s().invert().unwrap()))
             })
             .collect::<Result<Vec<_>, Error>>()?;
 
@@ -131,10 +137,16 @@ impl Relation for BitcoinThresholdECDSA {
             .map(|bytes| secp256k1_base.assigned_from_le_bytes(layouter, bytes))
             .collect::<Result<Vec<_>, Error>>()?;
 
-        let r_i_times_alpha_i = r_i_as_scalar
+        let alpha_i_times_neg_si_inv = alpha_powers
             .iter()
-            .zip(alpha_powers.iter())
-            .map(|(r_i, alpha_i)| secp256k1_scalar.mul(layouter, r_i, alpha_i, None))
+            .zip(neg_si_inv.iter())
+            .map(|(a, s)| secp256k1_scalar.mul(layouter, a, s, None))
+            .collect::<Result<Vec<_>, Error>>()?;
+
+        let r_i_times_alpha_i_times_s_i_inv = r_i_as_scalar
+            .iter()
+            .zip(alpha_i_times_neg_si_inv.iter())
+            .map(|(r, p)| secp256k1_scalar.mul(layouter, r, p, None))
             .collect::<Result<Vec<_>, Error>>()?;
 
         let k_points = signatures
@@ -160,9 +172,9 @@ impl Relation for BitcoinThresholdECDSA {
             .collect::<Result<Vec<_>, Error>>()?;
 
         let sum_alphas = {
-            let terms = alpha_powers
+            let terms = alpha_i_times_neg_si_inv
                 .iter()
-                .map(|alpha_i| (secp256k1Scalar::ONE, alpha_i.clone()))
+                .map(|p| (secp256k1Scalar::ONE, p.clone()))
                 .collect::<Vec<_>>();
             secp256k1_scalar.linear_combination(layouter, &terms, secp256k1Scalar::ZERO)
         }?;
@@ -174,11 +186,21 @@ impl Relation for BitcoinThresholdECDSA {
         bases.extend(assigned_selected_pks);
         bases.extend(k_points);
 
-        let mut scalars = vec![sum_alphas_times_msg_hash];
-        scalars.extend(r_i_times_alpha_i);
-        scalars.extend(neg_s_i_times_alpha_i);
+        let mut scalars = vec![(sum_alphas_times_msg_hash, 256)];
+        scalars.extend(
+            r_i_times_alpha_i_times_s_i_inv
+                .iter()
+                .map(|s| (s.clone(), 256))
+                .collect::<Vec<_>>(),
+        );
+        scalars.extend(
+            alpha_powers
+                .iter()
+                .map(|s| (s.clone(), 128))
+                .collect::<Vec<_>>(),
+        );
 
-        let res = secp256k1_curve.msm(layouter, &scalars, &bases)?;
+        let res = secp256k1_curve.msm_by_bounded_scalars(layouter, &scalars, &bases)?;
 
         secp256k1_curve.assert_zero(layouter, &res)
     }
@@ -206,10 +228,11 @@ impl Relation for BitcoinThresholdECDSA {
 }
 
 fn main() {
-    const K: u32 = 16;
+    const K: u32 = 17;
     let srs = filecoin_srs(K);
 
     let relation = BitcoinThresholdECDSA;
+
     use midnight_circuits::compact_std_lib::cost_model;
     println!("Cost model: {:?}", cost_model(&relation));
 

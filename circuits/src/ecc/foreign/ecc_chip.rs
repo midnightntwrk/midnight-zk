@@ -21,15 +21,15 @@
 use std::{
     cell::RefCell,
     cmp::max,
-    collections::HashMap,
+    collections::{BTreeSet, HashMap},
     fmt::Debug,
     hash::{Hash, Hasher},
     ops::Mul,
     rc::Rc,
 };
 
-use ff::{Field, PrimeField};
-use group::Group;
+use ff::{Field, FromUniformBytes, PrimeField};
+use group::{Group, GroupEncoding};
 use midnight_proofs::{
     circuit::{Chip, Layouter, Value},
     plonk::{Advice, Column, ConstraintSystem, Error, Expression, Fixed, Selector},
@@ -39,6 +39,7 @@ use num_bigint::BigUint;
 use num_traits::One;
 use rand::{rngs::OsRng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
+use sha2::{Digest, Sha512};
 #[cfg(any(test, feature = "testing"))]
 use {
     crate::testing_utils::Sampleable, crate::utils::util::FromScratch,
@@ -89,7 +90,7 @@ where
 /// Number of columns required by the custom gates of this chip.
 pub fn nb_foreign_ecc_chip_columns<F, C, B, S>() -> usize
 where
-    F: PrimeField,
+    F: PrimeField + FromUniformBytes<64> + Ord,
     C: WeierstrassCurve,
     B: FieldEmulationParams<F, C::Base>,
 {
@@ -105,7 +106,7 @@ where
 #[derive(Clone, Debug)]
 pub struct ForeignEccChip<F, C, B, S, N>
 where
-    F: PrimeField,
+    F: PrimeField + FromUniformBytes<64> + Ord,
     C: WeierstrassCurve,
     B: FieldEmulationParams<F, C::Base>,
     S: ScalarFieldInstructions<F>,
@@ -121,6 +122,7 @@ where
     // It will never overflow unless you include more than 2^64 tables, will you?
     // Even in that case, we would get a compile-time error.
     tag_cnt: Rc<RefCell<u64>>,
+    loaded_fixed_base_tags: Rc<RefCell<BTreeSet<F>>>,
 }
 
 /// Type for foreign EC points.
@@ -135,7 +137,7 @@ where
 #[must_use]
 pub struct AssignedForeignPoint<F, C, B>
 where
-    F: PrimeField,
+    F: PrimeField + FromUniformBytes<64> + Ord,
     C: WeierstrassCurve,
     B: FieldEmulationParams<F, C::Base>,
 {
@@ -147,7 +149,7 @@ where
 
 impl<F, C, B> PartialEq for AssignedForeignPoint<F, C, B>
 where
-    F: PrimeField,
+    F: PrimeField + FromUniformBytes<64> + Ord,
     C: WeierstrassCurve,
     B: FieldEmulationParams<F, C::Base>,
 {
@@ -158,7 +160,7 @@ where
 
 impl<F, C, B> Eq for AssignedForeignPoint<F, C, B>
 where
-    F: PrimeField,
+    F: PrimeField + FromUniformBytes<64> + Ord,
     C: WeierstrassCurve,
     B: FieldEmulationParams<F, C::Base>,
 {
@@ -166,7 +168,7 @@ where
 
 impl<F, C, B> Hash for AssignedForeignPoint<F, C, B>
 where
-    F: PrimeField,
+    F: PrimeField + FromUniformBytes<64> + Ord,
     C: WeierstrassCurve,
     B: FieldEmulationParams<F, C::Base>,
 {
@@ -179,7 +181,7 @@ where
 
 impl<F, C, B> Instantiable<F> for AssignedForeignPoint<F, C, B>
 where
-    F: PrimeField,
+    F: PrimeField + FromUniformBytes<64> + Ord,
     C: WeierstrassCurve,
     B: FieldEmulationParams<F, C::Base>,
 {
@@ -208,7 +210,7 @@ where
 
 impl<F, C, B> InnerValue for AssignedForeignPoint<F, C, B>
 where
-    F: PrimeField,
+    F: PrimeField + FromUniformBytes<64> + Ord,
     C: WeierstrassCurve,
     B: FieldEmulationParams<F, C::Base>,
 {
@@ -221,7 +223,7 @@ where
 
 impl<F, C, B> InnerConstants for AssignedForeignPoint<F, C, B>
 where
-    F: PrimeField,
+    F: PrimeField + FromUniformBytes<64> + Ord,
     C: WeierstrassCurve,
     B: FieldEmulationParams<F, C::Base>,
 {
@@ -237,7 +239,7 @@ where
 #[cfg(any(test, feature = "testing"))]
 impl<F, C, B> Sampleable for AssignedForeignPoint<F, C, B>
 where
-    F: PrimeField,
+    F: PrimeField + FromUniformBytes<64> + Ord,
     C: WeierstrassCurve,
     B: FieldEmulationParams<F, C::Base>,
 {
@@ -248,7 +250,7 @@ where
 
 impl<F, C, B, S, N> Chip<F> for ForeignEccChip<F, C, B, S, N>
 where
-    F: PrimeField,
+    F: PrimeField + FromUniformBytes<64> + Ord,
     C: WeierstrassCurve,
     B: FieldEmulationParams<F, C::Base>,
     S: ScalarFieldInstructions<F>,
@@ -268,7 +270,7 @@ where
 impl<F, C, B, S, N> AssignmentInstructions<F, AssignedForeignPoint<F, C, B>>
     for ForeignEccChip<F, C, B, S, N>
 where
-    F: PrimeField,
+    F: PrimeField + FromUniformBytes<64> + Ord,
     C: WeierstrassCurve,
     B: FieldEmulationParams<F, C::Base>,
     S: ScalarFieldInstructions<F>,
@@ -323,7 +325,7 @@ where
 impl<F, C, B, S, N> PublicInputInstructions<F, AssignedForeignPoint<F, C, B>>
     for ForeignEccChip<F, C, B, S, N>
 where
-    F: PrimeField,
+    F: PrimeField + FromUniformBytes<64> + Ord,
     C: WeierstrassCurve,
     B: FieldEmulationParams<F, C::Base>,
     S: ScalarFieldInstructions<F>,
@@ -386,7 +388,7 @@ where
 /// of this implementation.
 impl<F, C, B, S, N> AssignmentInstructions<F, AssignedNative<F>> for ForeignEccChip<F, C, B, S, N>
 where
-    F: PrimeField,
+    F: PrimeField + FromUniformBytes<64> + Ord,
     C: WeierstrassCurve,
     B: FieldEmulationParams<F, C::Base>,
     S: ScalarFieldInstructions<F, Scalar = AssignedNative<F>>,
@@ -417,7 +419,7 @@ where
 impl<F, C, B, S, SP, N> AssignmentInstructions<F, AssignedField<F, C::Scalar, SP>>
     for ForeignEccChip<F, C, B, S, N>
 where
-    F: PrimeField,
+    F: PrimeField + FromUniformBytes<64> + Ord,
     C: WeierstrassCurve,
     B: FieldEmulationParams<F, C::Base>,
     S: ScalarFieldInstructions<F, Scalar = AssignedField<F, C::Scalar, SP>>,
@@ -445,7 +447,7 @@ where
 impl<F, C, B, S, N> AssertionInstructions<F, AssignedForeignPoint<F, C, B>>
     for ForeignEccChip<F, C, B, S, N>
 where
-    F: PrimeField,
+    F: PrimeField + FromUniformBytes<64> + Ord,
     C: WeierstrassCurve,
     B: FieldEmulationParams<F, C::Base>,
     S: ScalarFieldInstructions<F>,
@@ -519,7 +521,7 @@ where
 impl<F, C, B, S, N> EqualityInstructions<F, AssignedForeignPoint<F, C, B>>
     for ForeignEccChip<F, C, B, S, N>
 where
-    F: PrimeField,
+    F: PrimeField + FromUniformBytes<64> + Ord,
     C: WeierstrassCurve,
     B: FieldEmulationParams<F, C::Base>,
     S: ScalarFieldInstructions<F>,
@@ -575,7 +577,7 @@ where
 impl<F, C, B, S, N> ZeroInstructions<F, AssignedForeignPoint<F, C, B>>
     for ForeignEccChip<F, C, B, S, N>
 where
-    F: PrimeField,
+    F: PrimeField + FromUniformBytes<64> + Ord,
     C: WeierstrassCurve,
     B: FieldEmulationParams<F, C::Base>,
     S: ScalarFieldInstructions<F>,
@@ -594,7 +596,7 @@ where
 impl<F, C, B, S, N> ControlFlowInstructions<F, AssignedForeignPoint<F, C, B>>
     for ForeignEccChip<F, C, B, S, N>
 where
-    F: PrimeField,
+    F: PrimeField + FromUniformBytes<64> + Ord,
     C: WeierstrassCurve,
     B: FieldEmulationParams<F, C::Base>,
     S: ScalarFieldInstructions<F>,
@@ -624,7 +626,7 @@ where
 
 impl<F, C, B, S, N> EccInstructions<F, C> for ForeignEccChip<F, C, B, S, N>
 where
-    F: PrimeField,
+    F: PrimeField + FromUniformBytes<64> + Ord,
     C: WeierstrassCurve,
     B: FieldEmulationParams<F, C::Base>,
     S: ScalarFieldInstructions<F>,
@@ -949,7 +951,7 @@ where
 
 impl<F, C, B, S, N> ForeignEccChip<F, C, B, S, N>
 where
-    F: PrimeField,
+    F: PrimeField + FromUniformBytes<64> + Ord,
     C: WeierstrassCurve,
     B: FieldEmulationParams<F, C::Base>,
     S: ScalarFieldInstructions<F>,
@@ -965,6 +967,7 @@ where
             base_field_chip,
             scalar_field_chip: scalar_field_chip.clone(),
             tag_cnt: Rc::new(RefCell::new(1)),
+            loaded_fixed_base_tags: Rc::new(RefCell::new(BTreeSet::new())),
         }
     }
 
@@ -1858,7 +1861,7 @@ where
 
         // Get the global tag counter and increase it with |bases|
         let tag_cnt = *self.tag_cnt.clone().borrow();
-        self.tag_cnt.replace(tag_cnt + bases.len() as u64);
+        self.tag_cnt.replace(tag_cnt + l as u64);
 
         let mut rng = ChaCha8Rng::from_seed([1u8; 32]);
         let s = C::Scalar::random(&mut rng);
@@ -1879,6 +1882,14 @@ where
                     acc = acc + C::CryptographicGroup::generator();
                     p_table.push(self.assign_fixed(layouter, acc)?);
                 }
+
+                let bytes: [u8; 64] =
+                    Sha512::digest(C::CryptographicGroup::generator().to_bytes()).into();
+                let tag = F::from_uniform_bytes(&bytes);
+                if !(self.loaded_fixed_base_tags.borrow().contains(&tag)) {
+                    self.load_multi_select_table(layouter, &p_table, tag)?;
+                }
+                self.loaded_fixed_base_tags.borrow_mut().insert(tag);
             } else if self.is_fixed(layouter, p, g_friend)? {
                 let mut acc = -r_for_fixed;
                 let foo = self.assign_fixed(layouter, acc)?;
@@ -1887,6 +1898,12 @@ where
                     acc = acc + g_friend;
                     p_table.push(self.assign_fixed(layouter, acc)?);
                 }
+                let bytes: [u8; 64] = Sha512::digest(g_friend.to_bytes()).into();
+                let tag = F::from_uniform_bytes(&bytes);
+                if !(self.loaded_fixed_base_tags.borrow().contains(&tag)) {
+                    self.load_multi_select_table(layouter, &p_table, tag)?;
+                }
+                self.loaded_fixed_base_tags.borrow_mut().insert(tag);
             } else {
                 let mut acc = neg_alpha.clone();
                 p_table.push(acc.clone());
@@ -1915,8 +1932,10 @@ where
                     assert!(acc.x.is_well_formed() && acc.y.is_well_formed());
                     p_table.push(acc.clone())
                 }
+
+                self.load_multi_select_table(layouter, &p_table, F::from(tag_cnt + i as u64))?;
             }
-            self.load_multi_select_table(layouter, &p_table, F::from(tag_cnt + i as u64))?;
+
             tables.push(p_table)
         }
 
@@ -1941,12 +1960,19 @@ where
                             &[(F::ONE, window0), (F::from(1u64 << WS), window1)],
                             F::ZERO,
                         )?;
-                        let addend = self.multi_select(
+                        let base_offcircuit = if self.is_fixed(
                             layouter,
-                            &window,
-                            &tables[j],
-                            F::from(tag_cnt + j as u64),
-                        )?;
+                            &bases[j],
+                            C::CryptographicGroup::generator(),
+                        )? {
+                            C::CryptographicGroup::generator()
+                        } else {
+                            g_friend
+                        };
+                        let bytes: [u8; 64] = Sha512::digest(base_offcircuit.to_bytes()).into();
+                        let tag = F::from_uniform_bytes(&bytes);
+                        self.loaded_fixed_base_tags.borrow_mut().insert(tag);
+                        let addend = self.multi_select(layouter, &window, &tables[j], tag)?;
                         self.incomplete_assert_different_x(layouter, &acc, &addend)?;
                         acc = self.incomplete_add(layouter, &acc, &addend)?;
                     }
@@ -1979,6 +2005,75 @@ where
 
         let r_correction = self.negate(layouter, &l_times_r)?;
         self.add(layouter, &acc, &r_correction)
+    }
+
+    /// Curve multi-scalar multiplication.
+    ///
+    /// The scalar is represented by little-endian sequences of chunks in the
+    /// range [0, 2^WS), represented by an AssignedNative value.
+    ///
+    /// The base is given off-circuit, since it is fixed.
+    ///
+    /// # Preconditions
+    ///
+    /// (1) `scalars[j] in [0, 2^WS)` for every `j`.
+    /// (2) `base != identity` for every `i`
+    ///
+    /// # Panics
+    ///
+    /// It is the responsibility of the caller to meet precondition (1).
+    /// Panics if precondition (2) is violated.
+    pub fn fixed_base_mul<const WS: usize>(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        scalar: &[AssignedNative<F>],
+        base: C::CryptographicGroup,
+    ) -> Result<AssignedForeignPoint<F, C, B>, Error> {
+        let base_is_id: bool = base.is_identity().into();
+        assert!(!base_is_id);
+
+        if scalar.is_empty() {
+            return self.assign_fixed(layouter, C::CryptographicGroup::identity());
+        }
+
+        // Get the global tag counter and increase it.
+        // let tag_cnt = *self.tag_cnt.clone().borrow();
+        // self.tag_cnt
+        // .replace(tag_cnt + scalar.len().div_ceil(WS) as u64);
+        let bytes: [u8; 64] = Sha512::digest(base.to_bytes()).into();
+        let tag = F::from_uniform_bytes(&bytes);
+
+        // For base P and the i-th window, we will precompute a table.
+        // Compute table with (2^(i*WS)*j)*P for every j in 0..2^WS.
+        let mut tables = vec![];
+        for i in 0..scalar.len() {
+            let mut table_i = vec![];
+            for j in 0..(1 << WS) {
+                let entry = C::CryptographicGroup::mul(
+                    base,
+                    C::Scalar::from(2).pow_vartime(&[(i * WS) as u64]) * C::Scalar::from(j as u64),
+                );
+                table_i.push(self.assign_fixed(layouter, entry)?);
+            }
+
+            if !(self.loaded_fixed_base_tags.borrow().contains(&tag)) {
+                self.load_multi_select_table(layouter, &table_i, tag + F::from(i as u64))?;
+            }
+            tables.push(table_i)
+        }
+
+        self.loaded_fixed_base_tags.borrow_mut().insert(tag);
+
+        let mut acc = self.multi_select(layouter, &scalar[0], &tables[0], tag)?;
+        for (i, (window, table)) in scalar.iter().zip(tables).enumerate().skip(1) {
+            let addend = self.multi_select(layouter, window, &table, tag + F::from(i as u64))?;
+
+            // TODO: Is this needed?
+            // self.incomplete_assert_different_x(layouter, &acc, &addend)?;
+            acc = self.incomplete_add(layouter, &acc, &addend)?;
+        }
+
+        Ok(acc)
     }
 
     /// Same as [self.msm], but the scalars are represented as little-endian
@@ -2136,7 +2231,7 @@ where
 /// should only be used for testing.
 pub struct ForeignEccTestConfig<F, C, S, N>
 where
-    F: PrimeField,
+    F: PrimeField + FromUniformBytes<64> + Ord,
     C: WeierstrassCurve,
     S: ScalarFieldInstructions<F> + FromScratch<F>,
     S::Scalar: InnerValue<Element = C::Scalar>,
@@ -2150,7 +2245,7 @@ where
 #[cfg(any(test, feature = "testing"))]
 impl<F, C, B, S, N> FromScratch<F> for ForeignEccChip<F, C, B, S, N>
 where
-    F: PrimeField,
+    F: PrimeField + FromUniformBytes<64> + Ord,
     C: WeierstrassCurve,
     B: FieldEmulationParams<F, C::Base>,
     S: ScalarFieldInstructions<F> + FromScratch<F>,

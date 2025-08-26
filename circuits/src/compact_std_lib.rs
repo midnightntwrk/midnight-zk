@@ -341,6 +341,8 @@ impl ZkStdLib {
         .max()
         .unwrap_or(0);
 
+        dbg!(nb_advice_cols);
+
         let nb_fixed_cols = [
             NB_ARITH_FIXED_COLS,
             if arch.poseidon {

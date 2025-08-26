@@ -76,12 +76,37 @@ impl Relation for SecpECDSA {
             let r_as_base = secp256k1_base.assigned_from_le_bytes(layouter, &r_as_le_bytes)?;
 
             let k = {
-                let gen = secp256k1_curve.assign_fixed(layouter, Secp256k1::generator())?;
-                let mut bases: Vec<AssignedForeignPoint<_, _, _>> = vec![gen];
-                bases.push(pk.clone());
+                let bases: Vec<AssignedForeignPoint<_, _, _>> = vec![
+                    secp256k1_curve.assign_fixed(layouter, Secp256k1::generator())?,
+                    pk.clone(),
+                ];
 
-                let mut scalars = vec![secp256k1_scalar.mul(layouter, &msg_hash, &s_inv, None)?];
-                scalars.push(secp256k1_scalar.mul(layouter, &r_as_scalar, &s_inv, None)?);
+                let scalars = vec![
+                    secp256k1_scalar.mul(layouter, &msg_hash, &s_inv, None)?,
+                    secp256k1_scalar.mul(layouter, &r_as_scalar, &s_inv, None)?,
+                ];
+
+                // const WS: usize = 8;
+                // let scalar_in_chunks = secp256k1_scalar.assigned_to_le_chunks(
+                //     layouter,
+                //     &msg_hash,
+                //     WS,
+                //     Some(256usize.div_ceil(WS)),
+                // )?;
+
+                // // let foo = secp256k1_curve.fixed_base_mul::<WS>(
+                // //     layouter,
+                // //     &scalar_in_chunks,
+                // //     Secp256k1::generator(),
+                // // )?;
+                // let foo = secp256k1_curve.fixed_base_mul::<WS>(
+                //     layouter,
+                //     &scalar_in_chunks,
+                //     Secp256k1::generator(),
+                // )?;
+                // use halo2curves::group::Curve;
+                // use midnight_circuits::types::InnerValue;
+                // dbg!(foo.value().zip(witness).map(|(p, _)| p.to_affine()));
 
                 secp256k1_curve.msm(layouter, &scalars, &bases)
             }?;

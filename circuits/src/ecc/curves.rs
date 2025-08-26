@@ -14,7 +14,7 @@
 //! Elliptic curves used in-circuit.
 
 use ff::PrimeField;
-use group::{Curve, Group};
+use group::{Curve, Group, GroupEncoding};
 use halo2curves::{
     bn256,
     secp256k1::{Secp256k1, Secp256k1Affine},
@@ -29,7 +29,7 @@ pub trait CircuitCurve: Curve + Default {
     type Base: PrimeField;
 
     /// Cryptographic group.
-    type CryptographicGroup: Group<Scalar = Self::Scalar> + Into<Self>;
+    type CryptographicGroup: Group<Scalar = Self::Scalar> + GroupEncoding + Into<Self>;
 
     /// Cofactor of the curve.
     const COFACTOR: u128 = 1;
