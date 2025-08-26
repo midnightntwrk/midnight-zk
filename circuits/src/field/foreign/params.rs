@@ -355,15 +355,16 @@ impl FieldEmulationParams<bls12381::Fr, bls12381::Fq> for MultiEmulationParams {
 
 /// BLS12-381's Base field over BLS12-381's Scalar field.
 impl FieldEmulationParams<midnight_curves::Fq, midnight_curves::Fp> for MultiEmulationParams {
-    const LOG2_BASE: u32 = 56;
-    const NB_LIMBS: u32 = 7;
+    const LOG2_BASE: u32 = 64;
+    const NB_LIMBS: u32 = 6;
     fn moduli() -> Vec<BigInt> {
         vec![
-            BigInt::from(2).pow(134),
-            BigInt::from(2).pow(134) - BigInt::from(1),
+            BigInt::from(2).pow(118),
+            BigInt::from(2).pow(118) - BigInt::from(2),
+            BigInt::from(2).pow(118) - BigInt::from(3),
         ]
     }
-    const RC_LIMB_SIZE: u32 = 15;
+    const RC_LIMB_SIZE: u32 = 17;
 }
 
 /*

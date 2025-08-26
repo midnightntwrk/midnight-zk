@@ -48,7 +48,7 @@ use crate::{
 ///
 /// Note: The chip configuration will panic if `NB_PARTIAL_ROUNDS` is not
 /// dividable by `1 + NB_SKIPS_CIRCUIT`.
-pub(crate) const NB_SKIPS_CIRCUIT: usize = 5;
+pub(crate) const NB_SKIPS_CIRCUIT: usize = 4;
 
 // A recurring type representing a set of assigned registers, representing the
 // internal state of Poseidon's computation. Does not account for the additional
