@@ -1788,7 +1788,6 @@ where
         constant: C::CryptographicGroup,
     ) -> Result<bool, Error> {
         let fixed_point = self.assign_fixed(layouter, constant)?;
-        return Ok(false);
         Ok(*base == fixed_point)
     }
 
