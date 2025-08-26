@@ -28,7 +28,6 @@ midnight-circuits = { path = "../circuits", default-features = false, features =
 ] }
 
 rand = "0.8"
-num-integer = "0.1"
 blake2b_simd = "1.0.3"
 sha2 = "0.10.9"
 
