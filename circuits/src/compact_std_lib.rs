@@ -1438,7 +1438,7 @@ impl<R: Relation> Circuit<F> for MidnightCircuit<'_, R> {
         mut layouter: impl Layouter<F>,
     ) -> Result<(), Error> {
         let max_bit_len = match config.architecture.sha256 {
-            None => 8,
+            None => 16,
             Some(ShaTableSize::Table11) => 10,
             Some(ShaTableSize::Table16) => 15,
         };

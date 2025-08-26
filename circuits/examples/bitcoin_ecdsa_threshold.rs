@@ -210,8 +210,10 @@ fn main() {
     let srs = filecoin_srs(K);
 
     let relation = BitcoinThresholdECDSA;
-    let vk = compact_std_lib::setup_vk(&srs, &relation);
+    use midnight_circuits::compact_std_lib::cost_model;
+    println!("Cost model: {:?}", cost_model(&relation));
 
+    let vk = compact_std_lib::setup_vk(&srs, &relation);
     let pk = compact_std_lib::setup_pk(&relation, &vk);
 
     // Generate a random instance-witness pair.

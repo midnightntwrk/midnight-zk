@@ -194,8 +194,6 @@ pub fn glv_scalar_decomposition<F: PrimeField>(x: &F, zeta: &F) -> ((bool, F), (
     ((s1, bigint_to_fe(&x1)), (s2, bigint_to_fe(&x2)))
 }
 
-/// A temporary trait (until David's work on Composable Chips is finished) to
-/// create chips from scratch.
 #[cfg(any(test, feature = "testing"))]
 pub trait FromScratch<F: PrimeField> {
     type Config: Clone + std::fmt::Debug;

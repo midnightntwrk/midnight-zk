@@ -37,7 +37,8 @@ use midnight_proofs::{
 };
 use num_bigint::BigUint;
 use num_traits::One;
-use rand::rngs::OsRng;
+use rand::{rngs::OsRng, SeedableRng};
+use rand_chacha::ChaCha8Rng;
 #[cfg(any(test, feature = "testing"))]
 use {
     crate::testing_utils::Sampleable, crate::utils::util::FromScratch,
@@ -614,15 +615,8 @@ where
         let x = self.base_field_chip().select(layouter, cond, &p.x, &q.x)?;
         let y = self.base_field_chip().select(layouter, cond, &p.y, &q.y)?;
 
-        // This is kind of hacky:
-        // When the value of the condition is unknown (during the setup phase)
-        // we select the first point, instead of passing an unknown value.
-        // In reality, this is equivalent, since in the setup phase the
-        // value of the points will be unknown as well.
-
-        // point = p if cond is unknown or 1, q if cond is known and 0
-        let a = cond.value().error_if_known_and(|&v| !v);
-        let point = if a.is_ok() { p.point } else { q.point };
+        let point =
+            (p.point.zip(q.point).zip(cond.value())).map(|((p, q), b)| if b { p } else { q });
 
         Ok(AssignedForeignPoint::<F, C, B> { point, is_id, x, y })
     }
@@ -817,17 +811,20 @@ where
         // based on the value of is_id and put a 0 scalar and an arbitrary non-id point
         // (e.g. the generator) for the base when is_id equals 1.
 
-        let mut non_id_bases = vec![];
-        let mut scalars_of_non_id_bases = vec![];
-        let scalar_chip = self.scalar_field_chip();
-        let zero: S::Scalar = scalar_chip.assign_fixed(layouter, C::Scalar::ZERO)?;
-        let g = self.assign_fixed(layouter, C::CryptographicGroup::generator())?;
-        for (s, b) in scalars.iter().zip(bases.iter()) {
-            let new_b = self.select(layouter, &b.is_id, &g, b)?;
-            let new_s = scalar_chip.select(layouter, &b.is_id, &zero, &s.0)?;
-            non_id_bases.push(new_b);
-            scalars_of_non_id_bases.push((new_s, s.1));
-        }
+        // let mut non_id_bases = vec![];
+        // let mut scalars_of_non_id_bases = vec![];
+        // let scalar_chip = self.scalar_field_chip();
+        // let zero: S::Scalar = scalar_chip.assign_fixed(layouter, C::Scalar::ZERO)?;
+        // let g = self.assign_fixed(layouter, C::CryptographicGroup::generator())?;
+        // for (s, b) in scalars.iter().zip(bases.iter()) {
+        //     let new_b = self.select(layouter, &b.is_id, &g, b)?;
+        //     let new_s = scalar_chip.select(layouter, &b.is_id, &zero, &s.0)?;
+        //     non_id_bases.push(new_b);
+        //     scalars_of_non_id_bases.push((new_s, s.1));
+        // }
+
+        let non_id_bases = bases;
+        let scalars_of_non_id_bases = scalars;
 
         // Scalars with a "bad" bound will be split with GLV into 2 scalars with a
         // half-size bound.
@@ -842,9 +839,9 @@ where
             // following sense. Note that, ATM, in windowed_msm all sequences
             // are padded with zeros to meet the longest one.
             if s.1 > nb_bits_per_glv_scalar + WS {
-                let ((s1, s2), (b1, b2)) = self.glv_split(layouter, &s.0, b)?;
-                glv_scalars.push((s1, nb_bits_per_glv_scalar));
-                glv_scalars.push((s2, nb_bits_per_glv_scalar));
+                let ((s1, s2), (b1, b2)) = self.glv_split::<WS>(layouter, &s.0, b)?;
+                glv_scalars.push(s1);
+                glv_scalars.push(s2);
                 glv_bases.push(b1);
                 glv_bases.push(b2);
             } else {
@@ -853,11 +850,11 @@ where
             }
         }
 
-        let scalars = [glv_scalars, non_glv_scalars].concat();
         let bases = [glv_bases, non_glv_bases].concat();
 
-        let mut decomposed_scalars = vec![];
-        for (s, nb_bits_s) in scalars.iter() {
+        let mut decomposed_scalars = glv_scalars.clone();
+
+        for (s, nb_bits_s) in non_glv_scalars.iter() {
             let s_bits = self.scalar_field_chip().assigned_to_le_chunks(
                 layouter,
                 s,
@@ -866,6 +863,7 @@ where
             )?;
             decomposed_scalars.push(s_bits)
         }
+
         let res = self.windowed_msm::<WS>(layouter, &decomposed_scalars, &bases)?;
 
         bases_without_coeff
@@ -1745,6 +1743,17 @@ where
         Ok(res.unwrap())
     }
 
+    /// TODO
+    fn is_fixed(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        base: &AssignedForeignPoint<F, C, B>,
+        constant: C::CryptographicGroup,
+    ) -> Result<bool, Error> {
+        let fixed_point = self.assign_fixed(layouter, constant)?;
+        Ok(*base == fixed_point)
+    }
+
     /// Curve multi-scalar multiplication.
     /// This implementation uses a windowed double-and-add with `WS` window
     /// size.
@@ -1799,20 +1808,20 @@ where
             padded_scalars.push(rev_s_bits)
         }
 
-        // Sample `r`, a random point that allows us to use incomplete addition in the
+        // Sample `R`, a random point that allows us to use incomplete addition in the
         // double-and-add loop.
-        // The value of `r` can be chosen by the prover (who will choose it uniformly
+        // The value of `R` can be chosen by the prover (who will choose it uniformly
         // at random for statistical completeness) and this is not a problem for
         // soundness.
         //
         // Let l := bases.len(), the initial double-and-add accumulator will be
-        // acc := l * r. On every double-and-add iteration i, we will double WS times
-        // and then, for every j in [l], conditionally add (kj_i * base_j - α)
-        // or (-α), depending on the relevant segment, kj_i, of scalars_j at
-        // that iteration, where α := (2^WS - 1) r. After this, the total randomness in
-        // the accumulator becomes:
-        //   2^WS (l * r) - l * α = 2^WS (l * r) - l * (2^WS - 1) r = l * r.
-        // This makes the total randomness invariant (l * r) at the beginning of every
+        // Acc := l * R. On every double-and-add iteration i, we will double WS times
+        // and then, for every j in [l], conditionally add (kj_i * base_j - ALPHA)
+        // or (-ALPHA), depending on the relevant segment, kj_i, of scalars_j at
+        // that iteration, where ALPHA := (2^WS - 1) R. After this, the total randomness
+        // in the accumulator becomes:
+        //   2^WS (l * R) - l * ALPHA = 2^WS (l * R) - l * (2^WS - 1) R = l * R.
+        // This makes the total randomness invariant (l * R) at the beginning of every
         // iteration.
         //
         // To finish the computation we will thus need to subtract l * r, which will
@@ -1831,7 +1840,19 @@ where
             .native_gadget
             .assert_equal_to_fixed(layouter, &r.is_id, false)?;
 
-        let l_times_r = self.mul_by_u128(layouter, bases.len() as u128, &r)?;
+        let mut l = bases.len();
+        let g_friend = C::CryptographicGroup::mul(
+            C::CryptographicGroup::generator(),
+            C::Scalar::from(2).pow_vartime(&[128]),
+        );
+        for base in bases {
+            if self.is_fixed(layouter, base, C::CryptographicGroup::generator())?
+                || self.is_fixed(layouter, base, g_friend)?
+            {
+                l -= 1;
+            }
+        }
+        let l_times_r = self.mul_by_u128(layouter, l as u128, &r)?;
         let alpha = self.mul_by_u128(layouter, (1u128 << WS) - 1, &r)?;
         let neg_alpha = self.negate(layouter, &alpha)?;
 
@@ -1839,33 +1860,61 @@ where
         let tag_cnt = *self.tag_cnt.clone().borrow();
         self.tag_cnt.replace(tag_cnt + bases.len() as u64);
 
+        let mut rng = ChaCha8Rng::from_seed([1u8; 32]);
+        let s = C::Scalar::random(&mut rng);
+        let r_for_fixed = C::CryptographicGroup::mul(C::CryptographicGroup::generator(), s);
+
         // Compute table, [-α, p-α, 2p-α, ..., (2^WS-1)p-α] for every p in bases.
         let mut tables = vec![];
         for (i, p) in bases.iter().enumerate() {
-            self.incomplete_assert_different_x(layouter, &alpha, p)?;
-            let mut acc = neg_alpha.clone();
-            let mut p_table = vec![acc.clone()];
-            for _ in 1..(1usize << WS) {
-                // In order to safetly use [incomplete_add] here, we need to ensure that:
-                //   (1) acc != id
-                //   (2) p != id
-                //   (3) acc != p
-                //
-                // (1) holds because acc is initially -α, which cannot be the identity,
-                //     because r is not and we have asserted 2^WS < Scalar::ORDER. Then,
-                //     acc is always the result of incomplete_add, which is guaranteed to
-                //     not produce the identity.
-                // (2) holds because all the bases were asserted to not be the identity.
-                // (3) holds because acc is initially -α, which has been asserted to not
-                //     share the x coordinate with p, so the first iteration is fine.
-                //     In other iterations, acc will be of the form kp-α for some
-                //     k = 1,...,(2^WS-2). Note that (k-1)p-α cannot be the identity as it is
-                //     the result of a previous call to [incomplete_add], thus kp-α != p, so
-                //     the third precondition of [incomplete_add] is met.
-                acc = self.incomplete_add(layouter, &acc, p)?;
+            let mut p_table = vec![];
+            // let alpha_unassigned =
+            //     C::CryptographicGroup::mul(r_unassigned, C::Scalar::from_u128((1u128 <<
+            // WS) - 1));
+            if self.is_fixed(layouter, p, C::CryptographicGroup::generator())? {
+                let mut acc = r_for_fixed;
+                let foo = self.assign_fixed(layouter, acc)?;
+                p_table.push(foo);
+                for _ in 1..(1usize << WS << WS) {
+                    acc = acc + C::CryptographicGroup::generator();
+                    p_table.push(self.assign_fixed(layouter, acc)?);
+                }
+            } else if self.is_fixed(layouter, p, g_friend)? {
+                let mut acc = -r_for_fixed;
+                let foo = self.assign_fixed(layouter, acc)?;
+                p_table.push(foo);
+                for _ in 1..(1usize << WS << WS) {
+                    acc = acc + g_friend;
+                    p_table.push(self.assign_fixed(layouter, acc)?);
+                }
+            } else {
+                let mut acc = neg_alpha.clone();
+                p_table.push(acc.clone());
+                self.incomplete_assert_different_x(layouter, &alpha, p)?;
 
-                assert!(acc.x.is_well_formed() && acc.y.is_well_formed());
-                p_table.push(acc.clone())
+                for _ in 1..(1usize << WS) {
+                    // In order to safetly use [incomplete_add] here, we need to ensure that:
+                    //   (1) acc != id
+                    //   (2) p != id
+                    //   (3) acc != p
+                    //
+                    // (1) holds because acc is initially -α, which cannot be the identity,
+                    //     because r is not and we have asserted 2^WS < Scalar::ORDER. Then,
+                    //     acc is always the result of incomplete_add, which is guaranteed to
+                    //     not produce the identity.
+                    // (2) holds because all the bases were asserted to not be the identity.
+                    // (3) holds because acc is initially -α, which has been asserted to not
+                    //     share the x coordinate with p, so the first iteration is fine.
+                    //     In other iterations, acc will be of the form kp-α for some
+                    //     k = 1,...,(2^WS-2). Note that (k-1)p-α cannot be the identity as it
+                    // is     the result of a previous call to
+                    // [incomplete_add], thus kp-α != p, so
+                    //     the third precondition of [incomplete_add] is met.
+                    acc = self.incomplete_add(layouter, &acc, p)?;
+
+                    assert!(acc.x.is_well_formed() && acc.y.is_well_formed());
+                    p_table.push(acc.clone())
+                }
             }
             self.load_multi_select_table(layouter, &p_table, F::from(tag_cnt + i as u64))?;
             tables.push(p_table)
@@ -1874,29 +1923,57 @@ where
         let nb_iterations = max_len;
         let mut acc = l_times_r.clone();
 
+        assert!(nb_iterations % 2 == 0);
+
         for i in 0..nb_iterations {
             for _ in 0..WS {
                 acc = self.double(layouter, &acc)?;
             }
             for j in 0..bases.len() {
-                let window = &padded_scalars[j][i];
-                let addend =
-                    self.multi_select(layouter, window, &tables[j], F::from(tag_cnt + j as u64))?;
-                // In order to safetly use [incomplete_add] here, we need to ensure that:
-                //   (1) acc != id
-                //   (2) addend != id
-                //   (3) acc != addend
-                //
-                // (1) holds because acc is the result of doubling a non-identity point
-                //     (this is guaranteed because in the first iteration acc != id, and in
-                //     any other iteration acc is the result of incomplete_add, which is
-                //     guaranteed to not produce the identity.)
-                // (2) holds because all the points in the tables are different from the
-                //     identity, as asserted above (in the construction of the tables).
-                // (3) is asserted here, this assertion will not hinder completeness except
-                //     with negligible probability (over the choice of α).
-                self.incomplete_assert_different_x(layouter, &acc, &addend)?;
-                acc = self.incomplete_add(layouter, &acc, &addend)?;
+                if self.is_fixed(layouter, &bases[j], C::CryptographicGroup::generator())?
+                    || self.is_fixed(layouter, &bases[j], g_friend)?
+                {
+                    if i % 2 == 1 {
+                        let window0 = padded_scalars[j][i].clone();
+                        let window1 = padded_scalars[j][i - 1].clone();
+                        let window = self.native_gadget.linear_combination(
+                            layouter,
+                            &[(F::ONE, window0), (F::from(1u64 << WS), window1)],
+                            F::ZERO,
+                        )?;
+                        let addend = self.multi_select(
+                            layouter,
+                            &window,
+                            &tables[j],
+                            F::from(tag_cnt + j as u64),
+                        )?;
+                        self.incomplete_assert_different_x(layouter, &acc, &addend)?;
+                        acc = self.incomplete_add(layouter, &acc, &addend)?;
+                    }
+                } else {
+                    let window = &padded_scalars[j][i];
+                    let addend = self.multi_select(
+                        layouter,
+                        window,
+                        &tables[j],
+                        F::from(tag_cnt + j as u64),
+                    )?;
+                    // In order to safetly use [incomplete_add] here, we need to ensure that:
+                    //   (1) acc != id
+                    //   (2) addend != id
+                    //   (3) acc != addend
+                    //
+                    // (1) holds because acc is the result of doubling a non-identity point
+                    //     (this is guaranteed because in the first iteration acc != id, and in
+                    //     any other iteration acc is the result of incomplete_add, which is
+                    //     guaranteed to not produce the identity.)
+                    // (2) holds because all the points in the tables are different from the
+                    //     identity, as asserted above (in the construction of the tables).
+                    // (3) is asserted here, this assertion will not hinder completeness except
+                    //     with negligible probability (over the choice of α).
+                    self.incomplete_assert_different_x(layouter, &acc, &addend)?;
+                    acc = self.incomplete_add(layouter, &acc, &addend)?;
+                }
             }
         }
 
@@ -1947,18 +2024,40 @@ where
     /// enforced with constraints here, so they can be decomposed into
     /// C::Scalar::NUM_BITS / 2 bits without completeness errors.
     #[allow(clippy::type_complexity)]
-    fn glv_split(
+    fn glv_split<const WS: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
         scalar: &S::Scalar,
         base: &AssignedForeignPoint<F, C, B>,
     ) -> Result<
         (
-            (S::Scalar, S::Scalar),
+            (Vec<AssignedNative<F>>, Vec<AssignedNative<F>>),
             (AssignedForeignPoint<F, C, B>, AssignedForeignPoint<F, C, B>),
         ),
         Error,
     > {
+        if self.is_fixed(layouter, base, C::CryptographicGroup::generator())? {
+            let s_limbs = self.scalar_field_chip().assigned_to_le_chunks(
+                layouter,
+                scalar,
+                WS,
+                Some(256usize.div_ceil(WS)),
+            )?;
+            let g = self.assign_fixed(layouter, C::CryptographicGroup::generator())?;
+            let g_times_2_pow_128 = self.assign_fixed(
+                layouter,
+                C::CryptographicGroup::mul(
+                    C::CryptographicGroup::generator(),
+                    C::Scalar::from(2).pow_vartime(&[128]),
+                ),
+            )?;
+            let n = s_limbs.len();
+            return Ok((
+                (s_limbs[..n / 2].to_vec(), s_limbs[n / 2..].to_vec()),
+                (g, g_times_2_pow_128),
+            ));
+        }
+
         let zeta_base = C::BASE_ZETA;
         let zeta_scalar = C::SCALAR_ZETA;
 
@@ -2013,6 +2112,19 @@ where
 
         let p1 = self.select(layouter, &s1, base, &neg_base)?;
         let p2 = self.select(layouter, &s2, &zeta_p, &neg_zeta_p)?;
+
+        let x1 = self.scalar_field_chip().assigned_to_le_chunks(
+            layouter,
+            &x1,
+            WS,
+            Some(128usize.div_ceil(WS)),
+        )?;
+        let x2 = self.scalar_field_chip().assigned_to_le_chunks(
+            layouter,
+            &x2,
+            WS,
+            Some(128usize.div_ceil(WS)),
+        )?;
 
         Ok(((x1, x2), (p1, p2)))
     }
