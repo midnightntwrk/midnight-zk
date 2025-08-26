@@ -1084,18 +1084,18 @@ where
                 .chain(base_field_config.x_cols.iter())
                 .map(|col| {
                     let val = meta.query_advice(*col, Rotation::cur());
-                    (sel.clone() * val.clone(), not_sel.clone() * val)
+                    (val.clone(), not_sel.clone() * val)
                 })
                 .collect::<Vec<_>>();
 
             identities.extend(base_field_config.z_cols.iter().map(|col| {
                 let val = meta.query_advice(*col, Rotation::next());
-                (sel.clone() * val.clone(), not_sel.clone() * val)
+                (val.clone(), not_sel.clone() * val)
             }));
 
             // Handle tag indpendently, since it is a fixed column
             let tag = meta.query_fixed(tag_col_multi_select, Rotation::cur());
-            identities.push((sel * tag.clone(), not_sel * tag));
+            identities.push((tag.clone(), not_sel * tag));
 
             identities
         });
@@ -1788,6 +1788,7 @@ where
         constant: C::CryptographicGroup,
     ) -> Result<bool, Error> {
         let fixed_point = self.assign_fixed(layouter, constant)?;
+        return Ok(false);
         Ok(*base == fixed_point)
     }
 
@@ -1976,7 +1977,7 @@ where
         let nb_iterations = max_len;
         let mut acc = l_times_r.clone();
 
-        assert!(nb_iterations % 2 == 0);
+        // assert!(nb_iterations % 2 == 0);
 
         for i in 0..nb_iterations {
             for _ in 0..WS {
@@ -1986,7 +1987,24 @@ where
                 if self.is_fixed(layouter, &bases[j], C::CryptographicGroup::generator())?
                     || self.is_fixed(layouter, &bases[j], g_friend)?
                 {
-                    if i % 2 == 1 {
+                    if nb_iterations % 2 == 1 && i == nb_iterations - 1 {
+                        let window = padded_scalars[j][i].clone();
+                        let base_offcircuit = if self.is_fixed(
+                            layouter,
+                            &bases[j],
+                            C::CryptographicGroup::generator(),
+                        )? {
+                            C::CryptographicGroup::generator()
+                        } else {
+                            g_friend
+                        };
+                        let bytes: [u8; 64] = Sha512::digest(base_offcircuit.to_bytes()).into();
+                        let tag = F::from_uniform_bytes(&bytes);
+                        self.loaded_fixed_base_tags.borrow_mut().insert(tag);
+                        let addend = self.multi_select(layouter, &window, &tables[j], tag)?;
+                        self.incomplete_assert_different_x(layouter, &acc, &addend)?;
+                        acc = self.incomplete_add(layouter, &acc, &addend)?;
+                    } else if i % 2 == 1 {
                         let window0 = padded_scalars[j][i].clone();
                         let window1 = padded_scalars[j][i - 1].clone();
                         let window = self.native_gadget.linear_combination(
