@@ -1399,7 +1399,7 @@ pub trait Relation: Clone {
 
     /// Produces a vector of field elements in PLONK format representing the
     /// data inside the committed instance.
-    fn format_el_witness_que_va_en_committed_instance(_witness: &Self::Witness) -> Vec<F> {
+    fn format_committed_instances(_witness: &Self::Witness) -> Vec<F> {
         vec![]
     }
 
@@ -1559,7 +1559,7 @@ where
     F: Hashable<H> + Sampleable<H>,
 {
     let pi = R::format_instance(instance);
-    let com_inst = R::format_el_witness_que_va_en_committed_instance(&witness);
+    let com_inst = R::format_committed_instances(&witness);
     let circuit = MidnightCircuit {
         relation,
         instance: Value::known(instance.clone()),
