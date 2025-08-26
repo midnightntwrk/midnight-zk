@@ -102,7 +102,8 @@ pub struct Cell {
 /// An assigned cell.
 #[derive(Clone, Debug)]
 pub struct AssignedCell<V, F: Field> {
-    value: Value<V>,
+    /// TODO
+    pub value: Value<V>,
     cell: Cell,
     _marker: PhantomData<F>,
 }

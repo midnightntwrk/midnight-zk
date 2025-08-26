@@ -57,7 +57,7 @@ impl Relation for SecpECDSA {
         // Assign the message hash as a public input.
         let msg_hash = secp256k1_scalar.assign_as_public_input(layouter, instance)?;
 
-        for _ in 0..1 {
+        for _ in 0..2 {
             // Assign the PK and constrain it as public inputs.
             let pk: AssignedForeignPoint<_, _, _> =
                 secp256k1_curve.assign(layouter, witness.unzip().0)?;

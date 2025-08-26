@@ -1,6 +1,8 @@
 //! Example of proving knowledge of k out of n Bitcoin ECDSA signatures on a
 //! public message.
 
+use std::time::Instant;
+
 use ff::Field;
 use halo2curves::{
     group::Curve,
@@ -23,14 +25,29 @@ use midnight_curves::Fq as Scalar;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
+    poly::kzg::params::ParamsKZG,
 };
 use rand::{prelude::SliceRandom, rngs::OsRng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 
 type F = Scalar;
 
-const N: usize = 10; // The total number of public keys.
-const T: usize = 10; // The threshold of valid signatures.
+include!(concat!(env!("OUT_DIR"), "/consts.rs"));
+
+// const T: usize = 10; // The threshold of valid signatures.
+const N: usize = 2 * T; // The total number of public keys.
+
+const K: u32 = if T <= 15 {
+    17
+} else if T <= 32 {
+    18
+} else if T <= 65 {
+    19
+} else if T <= 132 {
+    20
+} else {
+    21
+};
 
 type PK = Secp256k1;
 type MsgHash = secp256k1Scalar;
@@ -46,6 +63,7 @@ impl Relation for BitcoinThresholdECDSA {
     type Witness = [(PK, ECDSASig); T];
 
     fn format_instance((msg_hash, pks): &Self::Instance) -> Vec<F> {
+        dbg!(T);
         [
             AssignedField::<F, secp256k1Scalar, MEP>::as_public_input(msg_hash),
             pks.iter()
@@ -228,8 +246,11 @@ impl Relation for BitcoinThresholdECDSA {
 }
 
 fn main() {
-    const K: u32 = 17;
-    let srs = filecoin_srs(K);
+    let srs = if K <= 19 {
+        filecoin_srs(K)
+    } else {
+        ParamsKZG::unsafe_setup(K, OsRng)
+    };
 
     let relation = BitcoinThresholdECDSA;
 
@@ -267,11 +288,14 @@ fn main() {
     let instance = (msg_hash, pks);
     let witness = signatures;
 
+    let now = Instant::now();
     let proof = compact_std_lib::prove::<BitcoinThresholdECDSA, blake2b_simd::State>(
         &srs, &pk, &relation, &instance, witness, OsRng,
     )
     .expect("Proof generation should not fail");
+    println!("Prover time: {:?}", now.elapsed());
 
+    let now = Instant::now();
     assert!(
         compact_std_lib::verify::<BitcoinThresholdECDSA, blake2b_simd::State>(
             &srs.verifier_params(),
@@ -280,5 +304,6 @@ fn main() {
             &proof
         )
         .is_ok()
-    )
+    );
+    println!("Verifier time: {:?}", now.elapsed());
 }
