@@ -42,12 +42,12 @@ use crate::{
         NativeChip,
     },
     instructions::{
-        ArithInstructions, AssertionInstructions, AssignmentInstructions, BinaryInstructions,
-        BitwiseInstructions, CanonicityInstructions, ComparisonInstructions,
-        ControlFlowInstructions, ConversionInstructions, DecompositionInstructions,
-        EqualityInstructions, FieldInstructions, NativeInstructions, PublicInputInstructions,
-        RangeCheckInstructions, ScalarFieldInstructions, UnsafeConversionInstructions,
-        ZeroInstructions,
+        public_input::CommittedInstanceInstructions, ArithInstructions, AssertionInstructions,
+        AssignmentInstructions, BinaryInstructions, BitwiseInstructions, CanonicityInstructions,
+        ComparisonInstructions, ControlFlowInstructions, ConversionInstructions,
+        DecompositionInstructions, EqualityInstructions, FieldInstructions, NativeInstructions,
+        PublicInputInstructions, RangeCheckInstructions, ScalarFieldInstructions,
+        UnsafeConversionInstructions, ZeroInstructions,
     },
     types::{AssignedBit, AssignedNative, InnerValue, Instantiable},
     utils::util::{big_to_fe, fe_to_big, modulus},
@@ -510,6 +510,26 @@ where
     }
 }
 
+impl<F, CD, NA, Assigned> CommittedInstanceInstructions<F, Assigned> for NativeGadget<F, CD, NA>
+where
+    F: PrimeField,
+    CD: CoreDecompositionInstructions<F>,
+
+    NA: CommittedInstanceInstructions<F, AssignedNative<F>>
+        + ArithInstructions<F, AssignedNative<F>>,
+    Assigned: Instantiable<F> + Into<AssignedNative<F>>,
+{
+    fn constrain_as_committed_public_input(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        assigned: &Assigned,
+    ) -> Result<(), Error> {
+        let assigned_as_native = assigned.clone().into();
+        self.native_chip
+            .constrain_as_committed_public_input(layouter, &assigned_as_native)
+    }
+}
+
 /// The set of circuit instructions for assignment of bytes.
 impl<F, CoreDecomposition, NativeArith> AssignmentInstructions<F, AssignedByte<F>>
     for NativeGadget<F, CoreDecomposition, NativeArith>
@@ -964,24 +984,6 @@ where
         value: Value<F>,
     ) -> Result<AssignedNative<F>, Error> {
         self.native_chip.assign_as_public_input(layouter, value)
-    }
-}
-
-// Inherit F Public Input Instructions.
-impl<F, CoreDecomposition> NativeGadget<F, CoreDecomposition, NativeChip<F>>
-where
-    F: PrimeField,
-    CoreDecomposition: CoreDecompositionInstructions<F>,
-{
-    /// Constrains the given assigned value as a public input that will be
-    /// plugged-in in committed form.
-    pub fn constrain_as_committed_public_input(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        assigned: &AssignedNative<F>,
-    ) -> Result<(), Error> {
-        self.native_chip
-            .constrain_as_committed_public_input(layouter, assigned)
     }
 }
 

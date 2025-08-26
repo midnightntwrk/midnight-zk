@@ -9,11 +9,11 @@
 static ALLOC: dhat::Alloc = dhat::Alloc;
 
 use std::time::Instant;
+
 use midnight_circuits::{
     compact_std_lib::{self, Relation, ShaTableSize, ZkStdLib, ZkStdLibArch},
-    instructions::{AssignmentInstructions, PublicInputInstructions},
+    instructions::AssignmentInstructions,
     testing_utils::plonk_api::filecoin_srs,
-    types::{AssignedByte, Instantiable},
 };
 use midnight_proofs::{
     circuit::{Layouter, Value},
@@ -21,7 +21,6 @@ use midnight_proofs::{
 };
 use rand::{rngs::OsRng, Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
-use sha2::Digest;
 
 type F = midnight_curves::Fq;
 
@@ -33,7 +32,7 @@ impl Relation for ShaPreImageCircuit {
 
     type Witness = [u8; 24]; // 192 = 24 * 8
 
-    fn format_instance(instance: &Self::Instance) -> Vec<F> {
+    fn format_instance(_instance: &Self::Instance) -> Vec<F> {
         vec![]
     }
 
@@ -91,7 +90,12 @@ fn main() {
 
     let now = Instant::now();
     let proof = compact_std_lib::prove::<ShaPreImageCircuit, blake2b_simd::State>(
-        &srs, &pk, &relation, &(), witness, OsRng,
+        &srs,
+        &pk,
+        &relation,
+        &(),
+        witness,
+        OsRng,
     )
     .expect("Proof generation should not fail");
     println!("Prover time: {:?}", now.elapsed());
@@ -101,6 +105,7 @@ fn main() {
             &srs.verifier_params(),
             &vk,
             &(),
+            None,
             &proof
         )
         .is_ok()

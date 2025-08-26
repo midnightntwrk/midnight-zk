@@ -138,6 +138,7 @@ fn pi_test(nb_public_inputs: u32, extra_pi: bool) {
         &srs.verifier_params(),
         &vk,
         &instance,
+        None,
         &proof
     )
     .is_ok())
