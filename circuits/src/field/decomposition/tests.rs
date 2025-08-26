@@ -12,6 +12,7 @@
 // limitations under the License.
 
 use ff::{Field, PrimeField};
+use halo2curves::pasta::Fp;
 use midnight_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
     dev::MockProver,
@@ -19,7 +20,6 @@ use midnight_proofs::{
 };
 use num_bigint::{BigInt, RandBigInt};
 use num_traits::Zero;
-use pasta_curves::Fp;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 

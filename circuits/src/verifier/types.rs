@@ -18,6 +18,7 @@ use std::fmt::Debug;
 
 use ff::{PrimeField, WithSmallOrderMulGroup};
 use group::{prime::PrimeCurveAffine, Curve};
+use halo2curves::CurveAffine;
 use halo2curves::{
     pairing::{Engine, MultiMillerLoop},
     serde::SerdeObject,
@@ -28,7 +29,6 @@ use midnight_proofs::{
     plonk::Error,
     transcript::{Hashable, TranscriptHash},
 };
-use pasta_curves::arithmetic::CurveAffine;
 
 #[cfg(not(feature = "truncated-challenges"))]
 use crate::instructions::FieldInstructions;
