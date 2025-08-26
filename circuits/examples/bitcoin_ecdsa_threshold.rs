@@ -301,16 +301,18 @@ fn main() {
     .expect("Proof generation should not fail");
     println!("Prover time: {:?}", now.elapsed());
 
-    let now = Instant::now();
-    assert!(
-        compact_std_lib::verify::<BitcoinThresholdECDSA, blake2b_simd::State>(
-            &srs.verifier_params(),
-            &vk,
-            &instance,
-            Some(instance_commitment.into()),
-            &proof
-        )
-        .is_ok()
-    );
-    println!("Verifier time: {:?}", now.elapsed());
+    for _ in 0..5 {
+        let now = Instant::now();
+        assert!(
+            compact_std_lib::verify::<BitcoinThresholdECDSA, blake2b_simd::State>(
+                &srs.verifier_params(),
+                &vk,
+                &instance,
+                Some(instance_commitment.into()),
+                &proof
+            )
+            .is_ok()
+        );
+        println!("Verifier time: {:?}", now.elapsed());
+    }
 }
