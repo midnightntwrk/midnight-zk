@@ -277,6 +277,7 @@ fn bench_zswap_output(c: &mut Criterion) {
                     black_box(&srs.verifier_params()),
                     black_box(&vk),
                     black_box(&instance),
+                    black_box(None),
                     black_box(&proof)
                 )
                 .is_ok()

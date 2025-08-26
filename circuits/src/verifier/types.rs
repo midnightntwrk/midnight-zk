@@ -42,8 +42,8 @@ use crate::{
     field::{decomposition::chip::P2RDecompositionChip, AssignedNative, NativeChip, NativeGadget},
     hash::poseidon::{PoseidonChip, PoseidonState},
     instructions::{
-        ecc::EccInstructions, AssignmentInstructions, HashInstructions, PublicInputInstructions,
-        SpongeInstructions,
+        ecc::EccInstructions, public_input::CommittedInstanceInstructions, AssignmentInstructions,
+        HashInstructions, PublicInputInstructions, SpongeInstructions,
     },
     types::{AssignedForeignPoint, InnerValue, Instantiable},
 };

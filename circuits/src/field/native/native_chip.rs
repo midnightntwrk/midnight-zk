@@ -64,10 +64,10 @@ use num_traits::Zero;
 use crate::testing_utils::FromScratch;
 use crate::{
     instructions::{
-        ArithInstructions, AssertionInstructions, AssignmentInstructions, BinaryInstructions,
-        CanonicityInstructions, ControlFlowInstructions, ConversionInstructions,
-        EqualityInstructions, FieldInstructions, PublicInputInstructions,
-        UnsafeConversionInstructions, ZeroInstructions,
+        public_input::CommittedInstanceInstructions, ArithInstructions, AssertionInstructions,
+        AssignmentInstructions, BinaryInstructions, CanonicityInstructions,
+        ControlFlowInstructions, ConversionInstructions, EqualityInstructions, FieldInstructions,
+        PublicInputInstructions, UnsafeConversionInstructions, ZeroInstructions,
     },
     types::{AssignedNative, InnerValue, Instantiable},
     utils::{
@@ -516,12 +516,6 @@ impl<F: PrimeField> NativeChip<F> {
     pub(crate) fn nb_public_inputs(&self) -> usize {
         *self.instance_offset.borrow()
     }
-
-    /// The total number of public inputs (as raw scalars) that have been
-    /// constrained (in committed form) so far by this chip.
-    pub(crate) fn nb_committed_public_inputs(&self) -> usize {
-        *self.committed_instance_offset.borrow()
-    }
 }
 
 impl<F: PrimeField> NativeChip<F> {
@@ -675,10 +669,11 @@ where
     }
 }
 
-impl<F: PrimeField> NativeChip<F> {
-    /// Constrains the given assigned value as a public input that will be
-    /// plugged-in in committed form.
-    pub fn constrain_as_committed_public_input(
+impl<F> CommittedInstanceInstructions<F, AssignedNative<F>> for NativeChip<F>
+where
+    F: PrimeField,
+{
+    fn constrain_as_committed_public_input(
         &self,
         layouter: &mut impl Layouter<F>,
         assigned: &AssignedNative<F>,

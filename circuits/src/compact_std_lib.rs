@@ -27,10 +27,10 @@
 
 use std::{cell::RefCell, cmp::max, convert::TryInto, fmt::Debug, io, rc::Rc};
 
-use ff::Field;
+use ff::{Field, PrimeField};
 use group::{prime::PrimeCurveAffine, Group};
 use halo2curves::secp256k1::{self, Secp256k1};
-use midnight_curves::G1Projective;
+use midnight_curves::{G1Affine, G1Projective};
 use midnight_proofs::{
     circuit::{Chip, Layouter, SimpleFloorPlanner, Value},
     dev::cost_model::{from_circuit_to_circuit_model, CircuitModel},
@@ -75,12 +75,12 @@ use crate::{
         },
     },
     instructions::{
-        hash_to_curve::HashToCurveInstructions, ArithInstructions, AssertionInstructions,
-        AssignmentInstructions, BinaryInstructions, BitwiseInstructions, CanonicityInstructions,
-        ComparisonInstructions, ControlFlowInstructions, ConversionInstructions,
-        DecompositionInstructions, EccInstructions, EqualityInstructions, FieldInstructions,
-        HashInstructions, PublicInputInstructions, RangeCheckInstructions, VectorInstructions,
-        ZeroInstructions,
+        hash_to_curve::HashToCurveInstructions, public_input::CommittedInstanceInstructions,
+        ArithInstructions, AssertionInstructions, AssignmentInstructions, BinaryInstructions,
+        BitwiseInstructions, CanonicityInstructions, ComparisonInstructions,
+        ControlFlowInstructions, ConversionInstructions, DecompositionInstructions,
+        EccInstructions, EqualityInstructions, FieldInstructions, HashInstructions,
+        PublicInputInstructions, RangeCheckInstructions, VectorInstructions, ZeroInstructions,
     },
     map::map_gadget::MapGadget,
     parsing::{
@@ -147,6 +147,7 @@ pub struct ZkStdLibArch {
 
     /// Number of parallel lookups for range checks.
     pub nr_pow2range_cols: u8,
+
     /// Enable automaton?
     pub automaton: bool,
 }
@@ -775,6 +776,22 @@ where
     }
 }
 
+impl<T> CommittedInstanceInstructions<F, T> for ZkStdLib
+where
+    F: PrimeField,
+    T: Instantiable<F>,
+    NG: CommittedInstanceInstructions<F, T>,
+{
+    fn constrain_as_committed_public_input(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        assigned: &T,
+    ) -> Result<(), Error> {
+        self.native_gadget
+            .constrain_as_committed_public_input(layouter, assigned)
+    }
+}
+
 impl<T> AssertionInstructions<F, T> for ZkStdLib
 where
     T: InnerValue,
@@ -1363,6 +1380,7 @@ impl<Rel: Relation> MidnightPK<Rel> {
 ///         &srs.verifier_params(),
 ///         &vk,
 ///         &instance,
+///         None,
 ///         &proof
 ///     )
 ///     .is_ok()
@@ -1378,6 +1396,12 @@ pub trait Relation: Clone {
     /// Produces a vector of field elements in PLONK format representing the
     /// given [Self::Instance].
     fn format_instance(instance: &Self::Instance) -> Vec<F>;
+
+    /// Produces a vector of field elements in PLONK format representing the
+    /// data inside the committed instance.
+    fn format_committed_instances(_witness: &Self::Witness) -> Vec<F> {
+        vec![]
+    }
 
     /// Defines the circuit's logic.
     fn circuit(
@@ -1458,11 +1482,6 @@ impl<R: Relation> Circuit<F> for MidnightCircuit<'_, R> {
         *self.nb_public_inputs.borrow_mut() =
             Some(zk_std_lib.native_gadget.native_chip.nb_public_inputs());
 
-        assert_eq!(
-            (zk_std_lib.native_gadget.native_chip).nb_committed_public_inputs(),
-            0
-        );
-
         // We load the tables at the end, once we have figured out what chips/gadgets
         // were actually used.
         zk_std_lib.core_decomposition_chip.load(&mut layouter)?;
@@ -1539,14 +1558,22 @@ where
     G1Projective: Hashable<H>,
     F: Hashable<H> + Sampleable<H>,
 {
+    let pi = R::format_instance(instance);
+    let com_inst = R::format_committed_instances(&witness);
     let circuit = MidnightCircuit {
         relation,
         instance: Value::known(instance.clone()),
         witness: Value::known(witness),
         nb_public_inputs: Rc::new(RefCell::new(None)),
     };
-    let pi = R::format_instance(instance);
-    BlstPLONK::<MidnightCircuit<R>>::prove::<H>(params, &pk.pk, &circuit, 1, &[&[], &pi], rng)
+    BlstPLONK::<MidnightCircuit<R>>::prove::<H>(
+        params,
+        &pk.pk,
+        &circuit,
+        1,
+        &[com_inst.as_slice(), &pi],
+        rng,
+    )
 }
 
 /// Verifies the given proof of relation `R` with respect to the given instance.
@@ -1555,6 +1582,7 @@ pub fn verify<R: Relation, H: TranscriptHash>(
     params_verifier: &ParamsVerifierKZG<midnight_curves::Bls12>,
     vk: &MidnightVK,
     instance: &R::Instance,
+    committed_instance: Option<G1Affine>,
     proof: &[u8],
 ) -> Result<(), Error>
 where
@@ -1562,13 +1590,14 @@ where
     F: Hashable<H> + Sampleable<H>,
 {
     let pi = R::format_instance(instance);
+    let committed_pi = committed_instance.unwrap_or(G1Affine::identity());
     if pi.len() != vk.nb_public_inputs {
         return Err(Error::InvalidInstances);
     }
     BlstPLONK::<MidnightCircuit<R>>::verify::<H>(
         params_verifier,
         &vk.vk,
-        &[midnight_curves::G1Affine::identity()],
+        &[committed_pi],
         &[&pi],
         proof,
     )
@@ -1591,6 +1620,7 @@ where
     G1Projective: Hashable<H>,
     F: Hashable<H> + Sampleable<H>,
 {
+    // TODO: For the moment, committed instances are not supported.
     let n = vks.len();
     if pis.len() != n || proofs.len() != n {
         // TODO: have richer types in halo2
