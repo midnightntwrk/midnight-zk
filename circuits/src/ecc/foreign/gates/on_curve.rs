@@ -145,18 +145,21 @@ impl<C: WeierstrassCurve> OnCurveConfig<C> {
         let q_on_curve = meta.selector();
 
         // The layout is in two rows:
-        // | x0 ... xk | z0 ... zk        |
-        // | y0 ... yk | u v0 ... vl cond |
+        // | x0   ... xk      |
+        // | y0   ... yk      | <-- selector active
+        // | z0   ... zk      |
+        // | u v0 ... vl cond |
+        //
         // For this, we require that x_cols and z_cols be disjoint and the same for
         // y_cols, u_col, vs_cols and cond_col.
 
         meta.create_gate("Foreign-field EC is_on_curve", |meta| {
-            let cond = meta.query_advice(*cond_col, Rotation::next());
-            let xs = get_advice_vec(meta, &field_chip_config.x_cols, Rotation::cur());
-            let ys = get_advice_vec(meta, &field_chip_config.y_cols, Rotation::next());
-            let zs = get_advice_vec(meta, &field_chip_config.z_cols, Rotation::cur());
-            let u = meta.query_advice(field_chip_config.u_col, Rotation::next());
-            let vs = get_advice_vec(meta, &field_chip_config.v_cols, Rotation::next());
+            let cond = meta.query_advice(*cond_col, Rotation(2));
+            let xs = get_advice_vec(meta, &field_chip_config.x_cols, Rotation::prev());
+            let ys = get_advice_vec(meta, &field_chip_config.y_cols, Rotation::cur());
+            let zs = get_advice_vec(meta, &field_chip_config.z_cols, Rotation::next());
+            let u = meta.query_advice(field_chip_config.u_col, Rotation(2));
+            let vs = get_advice_vec(meta, &field_chip_config.v_cols, Rotation(2));
 
             let xzs = pair_wise_prod(&xs, &zs);
             let y2s = pair_wise_prod(&ys, &ys);
@@ -293,27 +296,33 @@ where
                             compute_vj(m, mj, &e, &u, &k_min, (&lj_min, &vj_max), cond.value())
                         })
                     });
-
-            on_curve_config.q_on_curve.enable(&mut region, offset)?;
-
             let x_limbs = x.limb_values();
             let y_limbs = y.limb_values();
             let z_limbs = z.limb_values();
 
             let x_iter = x_limbs.iter().zip(field_chip_config.x_cols.iter());
-            let z_iter = z_limbs.iter().zip(field_chip_config.z_cols.iter());
             x_iter
-                .chain(z_iter)
                 .map(|(cell, &col)| cell.copy_advice(|| "ECC.mem input", &mut region, col, offset))
                 .collect::<Result<Vec<_>, _>>()?;
 
             offset += 1;
+
+            on_curve_config.q_on_curve.enable(&mut region, offset)?;
 
             y_limbs
                 .iter()
                 .zip(field_chip_config.y_cols.iter())
                 .map(|(cell, &col)| cell.copy_advice(|| "ECC.mem input", &mut region, col, offset))
                 .collect::<Result<Vec<_>, _>>()?;
+
+            offset += 1;
+
+            let z_iter = z_limbs.iter().zip(field_chip_config.z_cols.iter());
+            z_iter
+                .map(|(cell, &col)| cell.copy_advice(|| "ECC.mem input", &mut region, col, offset))
+                .collect::<Result<Vec<_>, _>>()?;
+
+            offset += 1;
 
             let u_value = u.clone().map(|u| bigint_to_fe::<F>(&u));
             let u_cell = region.assign_advice(

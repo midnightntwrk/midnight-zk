@@ -41,8 +41,7 @@ pub struct MulConfig {
     q_mul: Selector,
     u_bounds: (BI, BI),
     vs_bounds: Vec<(BI, BI)>,
-    xy_cols: Vec<Column<Advice>>,
-    z_cols: Vec<Column<Advice>>,
+    xyz_cols: Vec<Column<Advice>>,
 }
 
 impl MulConfig {
@@ -107,8 +106,7 @@ impl MulConfig {
     /// Configures the foreign multiplication chip
     pub fn configure<F, K, P>(
         meta: &mut ConstraintSystem<F>,
-        xy_cols: &[Column<Advice>],
-        z_cols: &[Column<Advice>],
+        xyz_cols: &[Column<Advice>],
     ) -> Self
     where
         F: PrimeField,
@@ -125,15 +123,17 @@ impl MulConfig {
         let q_mul = meta.selector();
 
         // The layout is in two rows:
-        // | x0 ... xk | z0 ... zk   |  <- selector enabled here
-        // | y0 ... yk | u v0 ... vl |
+        // | x0 ... xk |
+        // | y0 ... yk |
+        // | z0 ... zk   |  <- selector enabled here
+        // | u v0 ... vl |
 
         meta.create_gate("Foreign-field multiplication", |meta| {
-            let xs = get_advice_vec(meta, xy_cols, Rotation::cur());
-            let ys = get_advice_vec(meta, xy_cols, Rotation::next());
-            let zs = get_advice_vec(meta, z_cols, Rotation::cur());
-            let u = meta.query_advice(z_cols[0], Rotation::next());
-            let vs = get_advice_vec(meta, &z_cols[1..=vs_bounds.len()], Rotation::next());
+            let xs = get_advice_vec(meta, xyz_cols, Rotation::prev());
+            let ys = get_advice_vec(meta, xyz_cols, Rotation::cur());
+            let zs = get_advice_vec(meta, xyz_cols, Rotation::next());
+            let u = meta.query_advice(xyz_cols[0], Rotation(2));
+            let vs = get_advice_vec(meta, &xyz_cols[1..=vs_bounds.len()], Rotation(2));
 
             let xys = pair_wise_prod(&xs, &ys);
 
@@ -176,8 +176,7 @@ impl MulConfig {
             q_mul,
             u_bounds: (k_min, u_max),
             vs_bounds,
-            xy_cols: xy_cols.to_vec(),
-            z_cols: z_cols.to_vec(),
+            xyz_cols: xyz_cols.to_vec(),
         }
     }
 }
@@ -258,38 +257,41 @@ where
                         })
                     });
 
-            mul_config.q_mul.enable(&mut region, offset)?;
-
             x.limb_values()
                 .iter()
-                .zip(mul_config.xy_cols.iter())
+                .zip(mul_config.xyz_cols.iter())
                 .map(|(cell, &col)| cell.copy_advice(|| "assert_mul x", &mut region, col, offset))
                 .collect::<Result<Vec<_>, _>>()?;
 
+            offset += 1;
+            mul_config.q_mul.enable(&mut region, offset)?;
+
+            y.limb_values()
+                .iter()
+                .zip(mul_config.xyz_cols.iter())
+                .map(|(cell, &col)| cell.copy_advice(|| "assert_mul y", &mut region, col, offset))
+                .collect::<Result<Vec<_>, _>>()?;
+
+            offset += 1;
+
             z.limb_values()
                 .iter()
-                .zip(mul_config.z_cols.iter())
+                .zip(mul_config.xyz_cols.iter())
                 .map(|(cell, &col)| cell.copy_advice(|| "assert_mul z", &mut region, col, offset))
                 .collect::<Result<Vec<_>, _>>()?;
 
             offset += 1;
 
-            y.limb_values()
-                .iter()
-                .zip(mul_config.xy_cols.iter())
-                .map(|(cell, &col)| cell.copy_advice(|| "assert_mul y", &mut region, col, offset))
-                .collect::<Result<Vec<_>, _>>()?;
-
             let u_value = u.clone().map(|u| bigint_to_fe::<F>(&u));
             let u_cell = region.assign_advice(
                 || "assert_mul u",
-                mul_config.z_cols[0],
+                mul_config.xyz_cols[0],
                 offset,
                 || u_value,
             )?;
 
             let vs_cells = vs_values
-                .zip(mul_config.z_cols[1..=mul_config.vs_bounds.len()].iter())
+                .zip(mul_config.xyz_cols[1..=mul_config.vs_bounds.len()].iter())
                 .map(|(vj, &vj_col)| {
                     let vj_value = vj.map(|vj| bigint_to_fe::<F>(&vj));
                     region.assign_advice(|| "assert_mul vj", vj_col, offset, || vj_value)

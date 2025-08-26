@@ -143,18 +143,20 @@ impl<C: CircuitCurve> LambdaSquaredConfig<C> {
         let q_lambda_squared = meta.selector();
 
         // The layout is in three rows:
-        // | px_0 ... px_k |                  |
-        // | qx_0 ... qx_k | rx_0 ... rx_k    |  <- selector enabled here
-        // |  λ_0 ...  λ_k | u v0 ... vl cond |
+        // | px_0 ... px_k |
+        // | qx_0 ... qx_k |  <- selector enabled here
+        // | rx_0 ... rx_k    |
+        // |  λ_0 ...  λ_k |
+        // | u v0 ... vl cond |
 
         meta.create_gate("Foreign-field EC assert_lambda_squared", |meta| {
-            let cond = meta.query_advice(*cond_col, Rotation::next());
+            let cond = meta.query_advice(*cond_col, Rotation(3));
             let pxs = get_advice_vec(meta, &field_chip_config.x_cols, Rotation::prev());
             let qxs = get_advice_vec(meta, &field_chip_config.x_cols, Rotation::cur());
-            let rxs = get_advice_vec(meta, &field_chip_config.z_cols, Rotation::cur());
-            let lambdas = get_advice_vec(meta, &field_chip_config.x_cols, Rotation::next());
-            let u = meta.query_advice(field_chip_config.u_col, Rotation::next());
-            let vs = get_advice_vec(meta, &field_chip_config.v_cols, Rotation::next());
+            let rxs = get_advice_vec(meta, &field_chip_config.z_cols, Rotation::next());
+            let lambdas = get_advice_vec(meta, &field_chip_config.x_cols, Rotation(2));
+            let u = meta.query_advice(field_chip_config.u_col, Rotation(3));
+            let vs = get_advice_vec(meta, &field_chip_config.v_cols, Rotation(3));
 
             let lambdas2 = pair_wise_prod(&lambdas, &lambdas);
 
@@ -306,9 +308,16 @@ where
                 .enable(&mut region, offset)?;
 
             let qx_iter = qx_limbs.iter().zip(field_chip_config.x_cols.iter());
-            let rx_iter = rx_limbs.iter().zip(field_chip_config.z_cols.iter());
             qx_iter
-                .chain(rx_iter)
+                .map(|(cell, &col)| {
+                    cell.copy_advice(|| "ECC.lambda_squared x", &mut region, col, offset)
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+
+            offset +=1;
+
+            let rx_iter = rx_limbs.iter().zip(field_chip_config.z_cols.iter());
+            rx_iter
                 .map(|(cell, &col)| {
                     cell.copy_advice(|| "ECC.lambda_squared x", &mut region, col, offset)
                 })
@@ -325,6 +334,7 @@ where
                 })
                 .collect::<Result<Vec<_>, _>>()?;
 
+            offset += 1;
             let u_value = u.clone().map(|u| bigint_to_fe::<F>(&u));
             let u_cell = region.assign_advice(
                 || "ECC.lambda_squared u",
