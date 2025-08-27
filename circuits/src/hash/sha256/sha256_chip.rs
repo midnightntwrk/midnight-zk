@@ -2,11 +2,11 @@
 //! SHA256 hash function.
 //!
 //! Throughout the file, we use the notation from NIST FIPS PUB 180-4:
-//! https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf (Section 6.2).
+//! <https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf> (Section 6.2).
 //!
 //! This implementation use the amazing trick of a plain-spreaded table, devised
 //! by the Zcash team (to the best of our knowledge):
-//! See https://zcash.github.io/halo2/design/gadgets/sha256/table16.html.
+//! See <https://zcash.github.io/halo2/design/gadgets/sha256/table16.html>.
 //!
 //! In a nutshell, the "spreaded" form of a u32 is the u64 resulting from
 //! inserting a zero between all its bits. For example, the spreaded version

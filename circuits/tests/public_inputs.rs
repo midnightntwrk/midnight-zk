@@ -108,7 +108,7 @@ impl Relation for PIsCircuit {
 }
 
 fn pi_test(nb_public_inputs: u32, extra_pi: bool) {
-    let srs = filecoin_srs(12);
+    let srs = filecoin_srs(13);
 
     let relation = PIsCircuit { nb_public_inputs };
     let vk = compact_std_lib::setup_vk(&srs, &relation);

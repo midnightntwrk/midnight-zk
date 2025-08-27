@@ -46,16 +46,16 @@ pub fn fe_to_big<F: PrimeField>(fe: F) -> BigUint {
 
 /// Panics if the conversion is not possible.
 pub fn fe_to_u32<F: PrimeField>(fe: F) -> u32 {
-    let bytes = fe_to_big(fe).to_u32_digits();
-    assert!(bytes.len() <= 4);
-    bytes.first().cloned().unwrap_or(0)
+    let u32_digits = fe_to_big(fe).to_u32_digits();
+    assert!(u32_digits.len() <= 1);
+    u32_digits.first().cloned().unwrap_or(0)
 }
 
 /// Panics if the conversion is not possible.
 pub fn fe_to_u64<F: PrimeField>(fe: F) -> u64 {
-    let bytes = fe_to_big(fe).to_u64_digits();
-    assert!(bytes.len() <= 8);
-    bytes.first().cloned().unwrap_or(0)
+    let u64_digits = fe_to_big(fe).to_u64_digits();
+    assert!(u64_digits.len() <= 1);
+    u64_digits.first().cloned().unwrap_or(0)
 }
 
 pub fn u32_to_fe<F: PrimeField>(x: u32) -> F {

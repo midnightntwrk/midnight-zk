@@ -79,7 +79,7 @@ impl Relation for ShaPreImageCircuit {
 fn main() {
     dbg!(compact_std_lib::cost_model(&ShaPreImageCircuit));
 
-    const K: u32 = 14;
+    const K: u32 = 13;
     let srs = filecoin_srs(K);
 
     let relation = ShaPreImageCircuit;

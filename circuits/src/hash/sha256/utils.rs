@@ -28,9 +28,8 @@ fn assert_in_valid_spreaded_form(x: u64) {
     assert_eq!(MASK_ODD_64 & x, 0, "Input must be in valid spreaded form")
 }
 
-/// Spreads the input value, which is by definition interleaving the (big
-/// endian) bit-array of input with zeros in the even indices:         
-/// [b_n, ..., b_1, b_0] ->  [0, b_n,..., 0, b_1, 0, b_0].
+/// Spreads the input value, which is by definition inserting a zero between all
+/// its bits: [bn, ..., b1, b0] ->  [0, bn,..., 0, b1, 0, b0].
 pub fn spread(x: u32) -> u64 {
     (0..32).fold(0u64, |acc, i| acc | (((x as u64 >> i) & 1) << (2 * i)))
 }
@@ -179,15 +178,15 @@ pub fn spreaded_sigma_1(spreaded_limbs: [u64; 8]) -> u64 {
         )
 }
 
-/// Returns sum_i 4^(exponents[i]) * terms[i].
+/// Returns sum_i 4^(exponents\[i\]) * terms\[i\].
 fn pow4_ip<const N: usize>(exponents: [u8; N], terms: [u64; N]) -> u64 {
     (exponents.iter().zip(terms.iter()))
         .map(|(e, t)| (1 << (2 * e)) * t)
         .sum()
 }
 
-/// Returns sum_i 2^(exponents[i]) * terms[i].
-pub fn expr_pow2_ip<F: PrimeField, const N: usize>(
+/// Returns sum_i 2^(exponents\[i\]) * terms\[i\].
+pub(crate) fn expr_pow2_ip<F: PrimeField, const N: usize>(
     exponents: [u8; N],
     terms: [&Expression<F>; N],
 ) -> Expression<F> {
@@ -198,8 +197,8 @@ pub fn expr_pow2_ip<F: PrimeField, const N: usize>(
     expr
 }
 
-/// Returns sum_i 4^(exponents[i]) * terms[i].
-pub fn expr_pow4_ip<F: PrimeField, const N: usize>(
+/// Returns sum_i 4^(exponents\[i\]) * terms\[i\].
+pub(crate) fn expr_pow4_ip<F: PrimeField, const N: usize>(
     exponents: [u8; N],
     terms: [&Expression<F>; N],
 ) -> Expression<F> {

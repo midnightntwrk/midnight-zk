@@ -446,7 +446,7 @@ where
 
     /// Accepts any JSON string, as defined in RFC 8259 §7:
     ///
-    /// https://datatracker.ietf.org/doc/html/rfc8259
+    /// <https://datatracker.ietf.org/doc/html/rfc8259>
     ///
     /// These strings are used to specify atomic data in .json files and are
     /// defined by the following properties:

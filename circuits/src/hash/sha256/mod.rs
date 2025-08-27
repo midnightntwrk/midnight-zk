@@ -64,13 +64,13 @@ mod tests {
     };
 
     #[test]
-    fn test_new_sha_hash() {
+    fn test_sha_hash() {
         test_hash::<
             Scalar,
             AssignedByte<Scalar>,
             [AssignedByte<Scalar>; 32],
             Sha256Chip<Scalar>,
             NativeGadget<Scalar, _, _>,
-        >(true, "New SHA256", 15);
+        >(true, "SHA256", 15);
     }
 }

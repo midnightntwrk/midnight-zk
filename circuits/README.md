@@ -32,16 +32,15 @@ The motivations for a fixed configuration are:
 `ZkStdLib` also serves as an abstraction layer, allowing developers to focus on circuit logic rather than the configuration and chip creation. Developers only need to implement the `Relation` trait, avoiding the boilerplate of Halo2's `Circuit`. For example, to prove knowledge of a SHA preimage:
 
 ```rust
-use midnight_curves::G1Affine;
-use midnight_proofs::{
-    circuit::{Layouter, Value},
-    plonk::Error,
-};
 use midnight_circuits::{
-    compact_std_lib::{self, MidnightCircuit, Relation, ShaTableSize, ZkStdLib, ZkStdLibArch},
+    compact_std_lib::{self, Relation, ZkStdLib, ZkStdLibArch},
     instructions::{AssignmentInstructions, PublicInputInstructions},
     testing_utils::plonk_api::filecoin_srs,
     types::{AssignedByte, Instantiable},
+};
+use midnight_proofs::{
+    circuit::{Layouter, Value},
+    plonk::Error,
 };
 use rand::{rngs::OsRng, Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
@@ -53,7 +52,7 @@ type F = midnight_curves::Fq;
 // SHA256 preimage. Concretely, given public input x, we will argue that we know
 // w ∈ {0,1}^192 such that x = SHA-256(w).
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 struct ShaPreImageCircuit;
 
 impl Relation for ShaPreImageCircuit {
@@ -118,6 +117,7 @@ let proof = compact_std_lib::prove::<ShaPreImageCircuit, blake2b_simd::State>(
     &srs, &pk, &relation, &instance, witness, OsRng,
 )
 .expect("Proof generation should not fail");
+
 assert!(
     compact_std_lib::verify::<ShaPreImageCircuit, blake2b_simd::State>(
         &srs.verifier_params(),

@@ -1,16 +1,5 @@
 {
   "Automaton": {
-    "parsing perf (input length = 18)": {
-      "advice_columns": "5",
-      "column_queries": "48",
-      "fixed_columns": "26",
-      "lookups": "5",
-      "max_deg": "5",
-      "permutations": "7",
-      "point_sets": "4",
-      "rows": "28",
-      "table_rows": "808"
-    },
     "parsing perf (input length = 50)": {
       "advice_columns": "5",
       "column_queries": "49",
@@ -45,19 +34,6 @@
       "point_sets": "4",
       "rows": "6861",
       "table_rows": "511"
-    }
-  },
-  "New SHA256": {
-    "hash": {
-      "advice_columns": "13",
-      "column_queries": "99",
-      "fixed_columns": "60",
-      "lookups": "10",
-      "max_deg": "5",
-      "permutations": "15",
-      "point_sets": "5",
-      "rows": "19022",
-      "table_rows": "8955"
     }
   },
   "Poseidon": {
@@ -95,30 +71,17 @@
       "table_rows": "511"
     }
   },
-  "ShaTable11": {
+  "SHA256": {
     "hash": {
-      "advice_columns": "19",
-      "column_queries": "123",
-      "fixed_columns": "82",
+      "advice_columns": "13",
+      "column_queries": "99",
+      "fixed_columns": "60",
       "lookups": "10",
       "max_deg": "5",
-      "permutations": "21",
-      "point_sets": "5",
-      "rows": "47854",
-      "table_rows": "4503"
-    }
-  },
-  "ShaTable16": {
-    "hash": {
-      "advice_columns": "20",
-      "column_queries": "115",
-      "fixed_columns": "76",
-      "lookups": "9",
-      "max_deg": "9",
-      "permutations": "21",
-      "point_sets": "5",
-      "rows": "25484",
-      "table_rows": "66558"
+      "permutations": "15",
+      "point_sets": "6",
+      "rows": "19022",
+      "table_rows": "8955"
     }
   },
   "Vector equality": {
@@ -2125,32 +2088,6 @@
       "table_rows": "1022"
     }
   },
-  "public_inputs": {
-    "public_inputs": {
-      "advice_columns": "12",
-      "column_queries": "61",
-      "fixed_columns": "16",
-      "lookups": "4",
-      "max_deg": "7",
-      "permutations": "13",
-      "point_sets": "3",
-      "rows": "385",
-      "table_rows": "511"
-    }
-  },
-  "public_inputs_biguint": {
-    "public_inputs": {
-      "advice_columns": "5",
-      "column_queries": "44",
-      "fixed_columns": "15",
-      "lookups": "4",
-      "max_deg": "5",
-      "permutations": "6",
-      "point_sets": "3",
-      "rows": "32",
-      "table_rows": "511"
-    }
-  },
   "public_inputs_scalar_var": {
     "public_inputs": {
       "advice_columns": "14",
@@ -2162,32 +2099,6 @@
       "point_sets": "4",
       "rows": "194",
       "table_rows": "511"
-    }
-  },
-  "sha-table11": {
-    "hash": {
-      "advice_columns": "14",
-      "column_queries": "101",
-      "fixed_columns": "47",
-      "lookups": "6",
-      "max_deg": "5",
-      "permutations": "16",
-      "point_sets": "5",
-      "rows": "4808",
-      "table_rows": "3992"
-    }
-  },
-  "sha-table16": {
-    "hash": {
-      "advice_columns": "15",
-      "column_queries": "97",
-      "fixed_columns": "41",
-      "lookups": "5",
-      "max_deg": "9",
-      "permutations": "16",
-      "point_sets": "5",
-      "rows": "2554",
-      "table_rows": "66047"
     }
   }
 }

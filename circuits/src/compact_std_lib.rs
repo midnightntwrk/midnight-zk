@@ -521,7 +521,7 @@ impl ZkStdLib {
     /// Assert that a given assigned bit is true.
     ///
     /// ```
-    /// # midnight_circuits::run_test_std_lib!(chip, layouter, 12, {
+    /// # midnight_circuits::run_test_std_lib!(chip, layouter, 13, {
     /// let input: AssignedBit<F> = chip.assign_fixed(layouter, true)?;
     /// chip.assert_true(layouter, &input)?;
     /// # });
@@ -548,7 +548,7 @@ impl ZkStdLib {
     /// Returns `1` iff `x < y`.
     ///
     /// ```
-    /// # midnight_circuits::run_test_std_lib!(chip, layouter, 12, {
+    /// # midnight_circuits::run_test_std_lib!(chip, layouter, 13, {
     /// let x: AssignedNative<F> = chip.assign_fixed(layouter, F::from(127))?;
     /// let y: AssignedNative<F> = chip.assign_fixed(layouter, F::from(212))?;
     /// let condition = chip.lower_than(layouter, &x, &y, 8)?;
@@ -563,7 +563,7 @@ impl ZkStdLib {
     /// condition is violated, the circuit becomes unsatisfiable.
     ///
     /// ```should_panic
-    /// # midnight_circuits::run_test_std_lib!(chip, layouter, 12, {
+    /// # midnight_circuits::run_test_std_lib!(chip, layouter, 13, {
     /// let x: AssignedNative<F> = chip.assign_fixed(layouter, F::from(127))?;
     /// let y: AssignedNative<F> = chip.assign_fixed(layouter, F::from(212))?;
     /// let _condition = chip.lower_than(layouter, &x, &y, 7)?;
@@ -592,7 +592,7 @@ impl ZkStdLib {
     /// Poseidon hash from a slice of native valure into a native value.
     ///
     /// ```
-    /// # midnight_circuits::run_test_std_lib!(chip, layouter, 12, {
+    /// # midnight_circuits::run_test_std_lib!(chip, layouter, 13, {
     /// let x: AssignedNative<F> = chip.assign_fixed(layouter, F::from(127))?;
     /// let y: AssignedNative<F> = chip.assign_fixed(layouter, F::from(212))?;
     ///
@@ -647,6 +647,7 @@ impl ZkStdLib {
         layouter: &mut impl Layouter<F>,
         input: &[AssignedByte<F>], // F -> decompose_bytes -> hash
     ) -> Result<[AssignedByte<F>; 32], Error> {
+        *self.used_sha.borrow_mut() = true;
         self.sha256_chip
             .as_ref()
             .expect("ZkStdArch must enable sha256")
@@ -1261,16 +1262,15 @@ impl<Rel: Relation> MidnightPK<Rel> {
 /// # Example
 ///
 /// ```
-/// # use midnight_curves::G1Affine;
-/// # use midnight_proofs::{
-/// #     circuit::{Layouter, Value},
-/// #     plonk::Error,
-/// # };
 /// # use midnight_circuits::{
-/// #     compact_std_lib::{self, MidnightCircuit, Relation, ShaTableSize, ZkStdLib, ZkStdLibArch},
+/// #     compact_std_lib::{self, Relation, ZkStdLib, ZkStdLibArch},
 /// #     instructions::{AssignmentInstructions, PublicInputInstructions},
 /// #     testing_utils::plonk_api::filecoin_srs,
 /// #     types::{AssignedByte, Instantiable},
+/// # };
+/// # use midnight_proofs::{
+/// #     circuit::{Layouter, Value},
+/// #     plonk::Error,
 /// # };
 /// # use rand::{rngs::OsRng, Rng, SeedableRng};
 /// # use rand_chacha::ChaCha8Rng;
@@ -1278,7 +1278,7 @@ impl<Rel: Relation> MidnightPK<Rel> {
 /// #
 /// type F = midnight_curves::Fq;
 ///
-/// #[derive(Clone)]
+/// #[derive(Clone, Default)]
 /// struct ShaPreImageCircuit;
 ///
 /// impl Relation for ShaPreImageCircuit {
@@ -1313,11 +1313,11 @@ impl<Rel: Relation> MidnightPK<Rel> {
 ///     }
 ///
 ///     fn write_relation<W: std::io::Write>(&self, _writer: &mut W) -> std::io::Result<()> {
-///        Ok(())
+///         Ok(())
 ///     }
 ///
 ///     fn read_relation<R: std::io::Read>(_reader: &mut R) -> std::io::Result<Self> {
-///        Ok(ShaPreImageCircuit)
+///         Ok(ShaPreImageCircuit)
 ///     }
 /// }
 ///
@@ -1337,6 +1337,7 @@ impl<Rel: Relation> MidnightPK<Rel> {
 ///     &srs, &pk, &relation, &instance, witness, OsRng,
 /// )
 /// .expect("Proof generation should not fail");
+///
 /// assert!(
 ///     compact_std_lib::verify::<ShaPreImageCircuit, blake2b_simd::State>(
 ///         &srs.verifier_params(),
