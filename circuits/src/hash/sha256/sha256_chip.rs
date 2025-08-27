@@ -215,15 +215,15 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
 
         meta.create_gate("Maj(A, B, C)", |meta| {
             // See function `maj` for a description of the following layout.
-            let sA = meta.query_advice(advice_cols[5], Rotation(0));
-            let sB = meta.query_advice(advice_cols[6], Rotation(0));
-            let sC = meta.query_advice(advice_cols[5], Rotation(1));
-            let s_odd_11a = meta.query_advice(advice_cols[1], Rotation(0));
-            let s_odd_11b = meta.query_advice(advice_cols[1], Rotation(1));
-            let s_odd_010 = meta.query_advice(advice_cols[1], Rotation(2));
-            let s_evn_11a = meta.query_advice(advice_cols[3], Rotation(0));
-            let s_evn_11b = meta.query_advice(advice_cols[3], Rotation(1));
-            let s_evn_010 = meta.query_advice(advice_cols[3], Rotation(2));
+            let sA = meta.query_advice(advice_cols[5], Rotation(-1));
+            let sB = meta.query_advice(advice_cols[6], Rotation(-1));
+            let sC = meta.query_advice(advice_cols[5], Rotation(0));
+            let s_odd_11a = meta.query_advice(advice_cols[1], Rotation(-1));
+            let s_odd_11b = meta.query_advice(advice_cols[1], Rotation(0));
+            let s_odd_010 = meta.query_advice(advice_cols[1], Rotation(1));
+            let s_evn_11a = meta.query_advice(advice_cols[3], Rotation(-1));
+            let s_evn_11b = meta.query_advice(advice_cols[3], Rotation(0));
+            let s_evn_010 = meta.query_advice(advice_cols[3], Rotation(1));
 
             let s_evn = expr_pow4_ip([21, 10, 0], [&s_evn_11a, &s_evn_11b, &s_evn_010]);
             let s_odd = expr_pow4_ip([21, 10, 0], [&s_odd_11a, &s_odd_11b, &s_odd_010]);
@@ -235,17 +235,17 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
 
         meta.create_gate("half Ch(E, F, G)", |meta| {
             // See function `ch` for a description of the following layout.
-            let sX = meta.query_advice(advice_cols[5], Rotation(0));
-            let sY = meta.query_advice(advice_cols[6], Rotation(0));
-            let s_odd_11a = meta.query_advice(advice_cols[1], Rotation(0));
-            let s_odd_11b = meta.query_advice(advice_cols[1], Rotation(1));
-            let s_odd_010 = meta.query_advice(advice_cols[1], Rotation(2));
-            let s_evn_11a = meta.query_advice(advice_cols[3], Rotation(0));
-            let s_evn_11b = meta.query_advice(advice_cols[3], Rotation(1));
-            let s_evn_010 = meta.query_advice(advice_cols[3], Rotation(2));
-            let summand_1 = meta.query_advice(advice_cols[4], Rotation(1));
-            let summand_2 = meta.query_advice(advice_cols[5], Rotation(1));
-            let sum = meta.query_advice(advice_cols[6], Rotation(1));
+            let sX = meta.query_advice(advice_cols[5], Rotation(-1));
+            let sY = meta.query_advice(advice_cols[6], Rotation(-1));
+            let s_odd_11a = meta.query_advice(advice_cols[1], Rotation(-1));
+            let s_odd_11b = meta.query_advice(advice_cols[1], Rotation(0));
+            let s_odd_010 = meta.query_advice(advice_cols[1], Rotation(1));
+            let s_evn_11a = meta.query_advice(advice_cols[3], Rotation(-1));
+            let s_evn_11b = meta.query_advice(advice_cols[3], Rotation(0));
+            let s_evn_010 = meta.query_advice(advice_cols[3], Rotation(1));
+            let summand_1 = meta.query_advice(advice_cols[4], Rotation(0));
+            let summand_2 = meta.query_advice(advice_cols[5], Rotation(0));
+            let sum = meta.query_advice(advice_cols[6], Rotation(0));
 
             let s_evn = expr_pow4_ip([21, 10, 0], [&s_evn_11a, &s_evn_11b, &s_evn_010]);
             let s_odd = expr_pow4_ip([21, 10, 0], [&s_odd_11a, &s_odd_11b, &s_odd_010]);
@@ -264,16 +264,16 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
 
         meta.create_gate("Σ₀(A)", |meta| {
             // See function `Sigma_0` for a description of the following layout.
-            let s10 = meta.query_advice(advice_cols[5], Rotation(0));
-            let s09 = meta.query_advice(advice_cols[6], Rotation(0));
-            let s11 = meta.query_advice(advice_cols[5], Rotation(1));
-            let s02 = meta.query_advice(advice_cols[6], Rotation(1));
-            let s_evn_11a = meta.query_advice(advice_cols[1], Rotation(0));
-            let s_evn_11b = meta.query_advice(advice_cols[1], Rotation(1));
-            let s_evn_010 = meta.query_advice(advice_cols[1], Rotation(2));
-            let s_odd_11a = meta.query_advice(advice_cols[3], Rotation(0));
-            let s_odd_11b = meta.query_advice(advice_cols[3], Rotation(1));
-            let s_odd_010 = meta.query_advice(advice_cols[3], Rotation(2));
+            let s10 = meta.query_advice(advice_cols[5], Rotation(-1));
+            let s09 = meta.query_advice(advice_cols[6], Rotation(-1));
+            let s11 = meta.query_advice(advice_cols[5], Rotation(0));
+            let s02 = meta.query_advice(advice_cols[6], Rotation(0));
+            let s_evn_11a = meta.query_advice(advice_cols[1], Rotation(-1));
+            let s_evn_11b = meta.query_advice(advice_cols[1], Rotation(0));
+            let s_evn_010 = meta.query_advice(advice_cols[1], Rotation(1));
+            let s_odd_11a = meta.query_advice(advice_cols[3], Rotation(-1));
+            let s_odd_11b = meta.query_advice(advice_cols[3], Rotation(0));
+            let s_odd_010 = meta.query_advice(advice_cols[3], Rotation(1));
 
             let s_1st_rot = expr_pow4_ip([30, 20, 11, 0], [&s02, &s10, &s09, &s11]);
             let s_2nd_rot = expr_pow4_ip([21, 19, 9, 0], [&s11, &s02, &s10, &s09]);
@@ -289,17 +289,17 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
 
         meta.create_gate("Σ₁(E)", |meta| {
             // See function `Sigma_1` for a description of the following layout.
-            let s07 = meta.query_advice(advice_cols[5], Rotation(0));
-            let s12 = meta.query_advice(advice_cols[6], Rotation(0));
-            let s02 = meta.query_advice(advice_cols[5], Rotation(1));
-            let s05 = meta.query_advice(advice_cols[6], Rotation(1));
-            let s06 = meta.query_advice(advice_cols[5], Rotation(2));
-            let s_evn_11a = meta.query_advice(advice_cols[1], Rotation(0));
-            let s_evn_11b = meta.query_advice(advice_cols[1], Rotation(1));
-            let s_evn_10 = meta.query_advice(advice_cols[1], Rotation(2));
-            let s_odd_11a = meta.query_advice(advice_cols[3], Rotation(0));
-            let s_odd_11b = meta.query_advice(advice_cols[3], Rotation(1));
-            let s_odd_10 = meta.query_advice(advice_cols[3], Rotation(2));
+            let s07 = meta.query_advice(advice_cols[5], Rotation(-1));
+            let s12 = meta.query_advice(advice_cols[6], Rotation(-1));
+            let s02 = meta.query_advice(advice_cols[5], Rotation(0));
+            let s05 = meta.query_advice(advice_cols[6], Rotation(0));
+            let s06 = meta.query_advice(advice_cols[5], Rotation(1));
+            let s_evn_11a = meta.query_advice(advice_cols[1], Rotation(-1));
+            let s_evn_11b = meta.query_advice(advice_cols[1], Rotation(0));
+            let s_evn_10 = meta.query_advice(advice_cols[1], Rotation(1));
+            let s_odd_11a = meta.query_advice(advice_cols[3], Rotation(-1));
+            let s_odd_11b = meta.query_advice(advice_cols[3], Rotation(0));
+            let s_odd_10 = meta.query_advice(advice_cols[3], Rotation(1));
 
             let s_1st_rot = expr_pow4_ip([26, 19, 7, 5, 0], [&s06, &s07, &s12, &s02, &s05]);
             let s_2nd_rot = expr_pow4_ip([27, 21, 14, 2, 0], [&s05, &s06, &s07, &s12, &s02]);
@@ -315,20 +315,20 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
 
         meta.create_gate("σ₀(W)", |meta| {
             // See function `sigma_0` for a description of the following layout.
-            let s12 = meta.query_advice(advice_cols[5], Rotation(0));
-            let s1a = meta.query_advice(advice_cols[6], Rotation(0));
-            let s1b = meta.query_advice(advice_cols[4], Rotation(1));
-            let s1c = meta.query_advice(advice_cols[5], Rotation(1));
-            let s07 = meta.query_advice(advice_cols[6], Rotation(1));
-            let s3a = meta.query_advice(advice_cols[4], Rotation(2));
-            let s04 = meta.query_advice(advice_cols[5], Rotation(2));
-            let s3b = meta.query_advice(advice_cols[6], Rotation(2));
-            let s_evn_11a = meta.query_advice(advice_cols[1], Rotation(0));
-            let s_evn_11b = meta.query_advice(advice_cols[1], Rotation(1));
-            let s_evn_10 = meta.query_advice(advice_cols[1], Rotation(2));
-            let s_odd_11a = meta.query_advice(advice_cols[3], Rotation(0));
-            let s_odd_11b = meta.query_advice(advice_cols[3], Rotation(1));
-            let s_odd_10 = meta.query_advice(advice_cols[3], Rotation(2));
+            let s12 = meta.query_advice(advice_cols[5], Rotation(-1));
+            let s1a = meta.query_advice(advice_cols[6], Rotation(-1));
+            let s1b = meta.query_advice(advice_cols[4], Rotation(0));
+            let s1c = meta.query_advice(advice_cols[5], Rotation(0));
+            let s07 = meta.query_advice(advice_cols[6], Rotation(0));
+            let s3a = meta.query_advice(advice_cols[4], Rotation(1));
+            let s04 = meta.query_advice(advice_cols[5], Rotation(1));
+            let s3b = meta.query_advice(advice_cols[6], Rotation(1));
+            let s_evn_11a = meta.query_advice(advice_cols[1], Rotation(-1));
+            let s_evn_11b = meta.query_advice(advice_cols[1], Rotation(0));
+            let s_evn_10 = meta.query_advice(advice_cols[1], Rotation(1));
+            let s_odd_11a = meta.query_advice(advice_cols[3], Rotation(-1));
+            let s_odd_11b = meta.query_advice(advice_cols[3], Rotation(0));
+            let s_odd_10 = meta.query_advice(advice_cols[3], Rotation(1));
 
             let sprdd_1st_shift = expr_pow4_ip(
                 [17, 16, 15, 14, 7, 4, 0],
@@ -354,20 +354,20 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
 
         meta.create_gate("σ₁(W)", |meta| {
             // See function `sigma_1` for a description of the following layout.
-            let s12 = meta.query_advice(advice_cols[5], Rotation(0));
-            let s1a = meta.query_advice(advice_cols[6], Rotation(0));
-            let s1b = meta.query_advice(advice_cols[4], Rotation(1));
-            let s1c = meta.query_advice(advice_cols[5], Rotation(1));
-            let s07 = meta.query_advice(advice_cols[6], Rotation(1));
-            let s3a = meta.query_advice(advice_cols[4], Rotation(2));
-            let s04 = meta.query_advice(advice_cols[5], Rotation(2));
-            let s3b = meta.query_advice(advice_cols[6], Rotation(2));
-            let s_evn_11a = meta.query_advice(advice_cols[1], Rotation(0));
-            let s_evn_11b = meta.query_advice(advice_cols[1], Rotation(1));
-            let s_evn_10 = meta.query_advice(advice_cols[1], Rotation(2));
-            let s_odd_11a = meta.query_advice(advice_cols[3], Rotation(0));
-            let s_odd_11b = meta.query_advice(advice_cols[3], Rotation(1));
-            let s_odd_10 = meta.query_advice(advice_cols[3], Rotation(2));
+            let s12 = meta.query_advice(advice_cols[5], Rotation(-1));
+            let s1a = meta.query_advice(advice_cols[6], Rotation(-1));
+            let s1b = meta.query_advice(advice_cols[4], Rotation(0));
+            let s1c = meta.query_advice(advice_cols[5], Rotation(0));
+            let s07 = meta.query_advice(advice_cols[6], Rotation(0));
+            let s3a = meta.query_advice(advice_cols[4], Rotation(1));
+            let s04 = meta.query_advice(advice_cols[5], Rotation(1));
+            let s3b = meta.query_advice(advice_cols[6], Rotation(1));
+            let s_evn_11a = meta.query_advice(advice_cols[1], Rotation(-1));
+            let s_evn_11b = meta.query_advice(advice_cols[1], Rotation(0));
+            let s_evn_10 = meta.query_advice(advice_cols[1], Rotation(1));
+            let s_odd_11a = meta.query_advice(advice_cols[3], Rotation(-1));
+            let s_odd_11b = meta.query_advice(advice_cols[3], Rotation(0));
+            let s_odd_10 = meta.query_advice(advice_cols[3], Rotation(1));
 
             let sprdd_1st_shift = expr_pow4_ip([10, 9, 8, 7, 0], [&s12, &s1a, &s1b, &s1c, &s07]);
             let sprdd_2nd_rot = expr_pow4_ip(
@@ -391,10 +391,10 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
         meta.create_gate("11-11-10 decomposition", |meta| {
             // See function `assign_sprdd_11_11_10` for a description of the following
             // layout.
-            let p11a = meta.query_advice(advice_cols[0], Rotation(0));
-            let p11b = meta.query_advice(advice_cols[0], Rotation(1));
-            let p_10 = meta.query_advice(advice_cols[0], Rotation(2));
-            let output = meta.query_advice(advice_cols[4], Rotation(0));
+            let p11a = meta.query_advice(advice_cols[0], Rotation(-1));
+            let p11b = meta.query_advice(advice_cols[0], Rotation(0));
+            let p_10 = meta.query_advice(advice_cols[0], Rotation(1));
+            let output = meta.query_advice(advice_cols[4], Rotation(-1));
 
             let id = expr_pow2_ip([21, 10, 0], [&p11a, &p11b, &p_10]) - output;
 
@@ -403,16 +403,16 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
 
         meta.create_gate("10-9-11-2 decomposition", |meta| {
             // See function `prepare_A` for a description of the following layout.
-            let p10 = meta.query_advice(advice_cols[0], Rotation(0));
-            let p09 = meta.query_advice(advice_cols[2], Rotation(0));
-            let p11 = meta.query_advice(advice_cols[0], Rotation(1));
-            let p02 = meta.query_advice(advice_cols[2], Rotation(1));
-            let s10 = meta.query_advice(advice_cols[1], Rotation(0));
-            let s09 = meta.query_advice(advice_cols[3], Rotation(0));
-            let s11 = meta.query_advice(advice_cols[1], Rotation(1));
-            let s02 = meta.query_advice(advice_cols[3], Rotation(1));
-            let plain = meta.query_advice(advice_cols[4], Rotation(0));
-            let sprdd = meta.query_advice(advice_cols[4], Rotation(1));
+            let p10 = meta.query_advice(advice_cols[0], Rotation(-1));
+            let p09 = meta.query_advice(advice_cols[2], Rotation(-1));
+            let p11 = meta.query_advice(advice_cols[0], Rotation(0));
+            let p02 = meta.query_advice(advice_cols[2], Rotation(0));
+            let s10 = meta.query_advice(advice_cols[1], Rotation(-1));
+            let s09 = meta.query_advice(advice_cols[3], Rotation(-1));
+            let s11 = meta.query_advice(advice_cols[1], Rotation(0));
+            let s02 = meta.query_advice(advice_cols[3], Rotation(0));
+            let plain = meta.query_advice(advice_cols[4], Rotation(-1));
+            let sprdd = meta.query_advice(advice_cols[4], Rotation(0));
 
             let plain_id = expr_pow2_ip([22, 13, 2, 0], [&p10, &p09, &p11, &p02]) - plain;
             let sprdd_id = expr_pow4_ip([22, 13, 2, 0], [&s10, &s09, &s11, &s02]) - sprdd;
@@ -428,18 +428,18 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
 
         meta.create_gate("7-12-2-5-6 decomposition", |meta| {
             // See function `prepare_E` for a description of the following layout.
-            let p07 = meta.query_advice(advice_cols[0], Rotation(0));
-            let p12 = meta.query_advice(advice_cols[2], Rotation(0));
-            let p02 = meta.query_advice(advice_cols[0], Rotation(1));
-            let p05 = meta.query_advice(advice_cols[2], Rotation(1));
-            let p06 = meta.query_advice(advice_cols[0], Rotation(2));
-            let s07 = meta.query_advice(advice_cols[1], Rotation(0));
-            let s12 = meta.query_advice(advice_cols[3], Rotation(0));
-            let s02 = meta.query_advice(advice_cols[1], Rotation(1));
-            let s05 = meta.query_advice(advice_cols[3], Rotation(1));
-            let s06 = meta.query_advice(advice_cols[1], Rotation(2));
-            let plain = meta.query_advice(advice_cols[4], Rotation(0));
-            let sprdd = meta.query_advice(advice_cols[4], Rotation(1));
+            let p07 = meta.query_advice(advice_cols[0], Rotation(-1));
+            let p12 = meta.query_advice(advice_cols[2], Rotation(-1));
+            let p02 = meta.query_advice(advice_cols[0], Rotation(0));
+            let p05 = meta.query_advice(advice_cols[2], Rotation(0));
+            let p06 = meta.query_advice(advice_cols[0], Rotation(1));
+            let s07 = meta.query_advice(advice_cols[1], Rotation(-1));
+            let s12 = meta.query_advice(advice_cols[3], Rotation(-1));
+            let s02 = meta.query_advice(advice_cols[1], Rotation(0));
+            let s05 = meta.query_advice(advice_cols[3], Rotation(0));
+            let s06 = meta.query_advice(advice_cols[1], Rotation(1));
+            let plain = meta.query_advice(advice_cols[4], Rotation(-1));
+            let sprdd = meta.query_advice(advice_cols[4], Rotation(0));
 
             let plain_id = expr_pow2_ip([25, 13, 11, 6, 0], [&p07, &p12, &p02, &p05, &p06]) - plain;
             let sprdd_id = expr_pow4_ip([25, 13, 11, 6, 0], [&s07, &s12, &s02, &s05, &s06]) - sprdd;
@@ -456,15 +456,15 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
         meta.create_gate("12-1x3-7-3-4-3 decomposition", |meta| {
             // See function `prepare_message_word` for a description of the following
             // layout.
-            let w12 = meta.query_advice(advice_cols[0], Rotation(0));
-            let w07 = meta.query_advice(advice_cols[2], Rotation(0));
-            let w3a = meta.query_advice(advice_cols[0], Rotation(1));
-            let w04 = meta.query_advice(advice_cols[2], Rotation(1));
-            let w3b = meta.query_advice(advice_cols[0], Rotation(2));
-            let w1a = meta.query_advice(advice_cols[7], Rotation(0));
-            let w1b = meta.query_advice(advice_cols[7], Rotation(1));
-            let w1c = meta.query_advice(advice_cols[7], Rotation(2));
-            let plain = meta.query_advice(advice_cols[4], Rotation(0));
+            let w12 = meta.query_advice(advice_cols[0], Rotation(-1));
+            let w07 = meta.query_advice(advice_cols[2], Rotation(-1));
+            let w3a = meta.query_advice(advice_cols[0], Rotation(0));
+            let w04 = meta.query_advice(advice_cols[2], Rotation(0));
+            let w3b = meta.query_advice(advice_cols[0], Rotation(1));
+            let w1a = meta.query_advice(advice_cols[7], Rotation(-1));
+            let w1b = meta.query_advice(advice_cols[7], Rotation(0));
+            let w1c = meta.query_advice(advice_cols[7], Rotation(1));
+            let plain = meta.query_advice(advice_cols[4], Rotation(-1));
 
             let plain_id = expr_pow2_ip(
                 [20, 19, 18, 17, 10, 7, 3, 0],
@@ -489,16 +489,16 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
 
         meta.create_gate("add mod 2^32", |meta| {
             // See function `assign_add_mod_2_32` for a description of the following layout.
-            let s0 = meta.query_advice(advice_cols[5], Rotation(0));
-            let s1 = meta.query_advice(advice_cols[6], Rotation(0));
-            let s2 = meta.query_advice(advice_cols[5], Rotation(1));
-            let s3 = meta.query_advice(advice_cols[6], Rotation(1));
-            let s4 = meta.query_advice(advice_cols[4], Rotation(2));
-            let s5 = meta.query_advice(advice_cols[5], Rotation(2));
-            let s6 = meta.query_advice(advice_cols[6], Rotation(2));
+            let s0 = meta.query_advice(advice_cols[5], Rotation(-1));
+            let s1 = meta.query_advice(advice_cols[6], Rotation(-1));
+            let s2 = meta.query_advice(advice_cols[5], Rotation(0));
+            let s3 = meta.query_advice(advice_cols[6], Rotation(0));
+            let s4 = meta.query_advice(advice_cols[4], Rotation(1));
+            let s5 = meta.query_advice(advice_cols[5], Rotation(1));
+            let s6 = meta.query_advice(advice_cols[6], Rotation(1));
 
-            let carry = meta.query_advice(advice_cols[2], Rotation(2));
-            let result = meta.query_advice(advice_cols[4], Rotation(0));
+            let carry = meta.query_advice(advice_cols[2], Rotation(1));
+            let result = meta.query_advice(advice_cols[4], Rotation(-1));
 
             let summands = [s0, s1, s2, s3, s4, s5, s6];
             let lhs = summands.into_iter().reduce(|acc, x| acc + x).unwrap();
@@ -750,7 +750,7 @@ impl<F: PrimeField> Sha256Chip<F> {
         | T0 |    A0   |     A1   | T1 |    A2   |    A3    |  A4 | A5 | A6 |
         |----|---------|----------|----|---------|----------|-----|----|----|
         | 11 | Odd.11a | ~Odd.11a | 11 | Evn.11a | ~Evn.11a | Odd | ~A | ~B |
-        | 11 | Odd.11b | ~Odd.11b | 11 | Evn.11b | ~Evn.11b |     | ~C |    |
+        | 11 | Odd.11b | ~Odd.11b | 11 | Evn.11b | ~Evn.11b |     | ~C |    | <- q_maj
         | 10 | Odd.10  | ~Odd.10  | 10 | Evn.10  | ~Evn.10  |     |    |    |
         */
 
@@ -759,7 +759,7 @@ impl<F: PrimeField> Sha256Chip<F> {
         layouter.assign_region(
             || "Maj(A, B, C)",
             |mut region| {
-                self.config().q_maj.enable(&mut region, 0)?;
+                self.config().q_maj.enable(&mut region, 1)?;
 
                 (sprdd_a.0).copy_advice(|| "~A", &mut region, adv_cols[5], 0)?;
                 (sprdd_b.0).copy_advice(|| "~B", &mut region, adv_cols[6], 0)?;
@@ -831,10 +831,10 @@ impl<F: PrimeField> Sha256Chip<F> {
         | T0 |      A0     |      A1      | T1 |      A2     |      A3      |    A4   |    A5   |      A6     |
         |----|-------------|--------------|----|-------------|--------------|---------|---------|-------------|
         | 11 |  Odd_EF.11a |  ~Odd_EF.11a | 11 |  Evn_EF.11a |  ~Evn_EF.11a | Odd_EF  |   ~E    |      ~F     |
-        | 11 |  Odd_EF.11b |  ~Odd_EF.11b | 11 |  Evn_EF.11b |  ~Evn_EF.11b | Odd_EF  | Odd_nEG |     Ret     |
+        | 11 |  Odd_EF.11b |  ~Odd_EF.11b | 11 |  Evn_EF.11b |  ~Evn_EF.11b | Odd_EF  | Odd_nEG |     Ret     | <- q_ch
         | 10 |  Odd_EF.10  |   ~Odd_EF.10 | 10 |  Evn_EF.10  |  ~Evn_EF.10  |         |         |             |
         | 11 | Odd_nEG.11a | ~Odd_nEG.11a | 11 | Evn_nEG.11a | ~Evn_nEG.11a | Odd_nEG |  ~(¬E)  |      ~G     |
-        | 11 | Odd_nEG.11b | ~Odd_nEG.11b | 11 | Evn_nEG.11b | ~Evn_nEG.11b |   ~E    |  ~(¬E)  | MASK_EVN_64 |
+        | 11 | Odd_nEG.11b | ~Odd_nEG.11b | 11 | Evn_nEG.11b | ~Evn_nEG.11b |   ~E    |  ~(¬E)  | MASK_EVN_64 | <- q_ch
         | 10 | Odd_nEG.10  |  ~Odd_nEG.10 | 10 | Evn_nEG.10  | ~Evn_nEG.10  |         |         |             |
         */
 
@@ -855,8 +855,8 @@ impl<F: PrimeField> Sha256Chip<F> {
         layouter.assign_region(
             || "Ch(E, F, G)",
             |mut region| {
-                self.config().q_half_ch.enable(&mut region, 0)?;
-                self.config().q_half_ch.enable(&mut region, 3)?;
+                self.config().q_half_ch.enable(&mut region, 1)?;
+                self.config().q_half_ch.enable(&mut region, 4)?;
 
                 (sprdd_E.0).copy_advice(|| "~E", &mut region, adv_cols[5], 0)?;
                 (sprdd_E.0).copy_advice(|| "~E", &mut region, adv_cols[4], 4)?;
@@ -919,7 +919,7 @@ impl<F: PrimeField> Sha256Chip<F> {
         | T0 |    A0   |    A1    | T1 |    A2   |    A3    |  A4 |   A5  |   A6  |
         |----|---------|----------|----|---------|----------|-----|-------|-------|
         | 11 | Evn.11a | ~Evn.11a | 11 | Odd.11a | ~Odd.11a | Evn | ~A.10 | ~A.09 |
-        | 11 | Evn.11b | ~Evn.11b | 11 | Odd.11b | ~Odd.11b |     | ~A.11 | ~A.02 |
+        | 11 | Evn.11b | ~Evn.11b | 11 | Odd.11b | ~Odd.11b |     | ~A.11 | ~A.02 | <- q_Sigma_0
         | 10 | Evn.10  | ~Evn.10  | 10 | Odd.10  | ~Odd.10  |     |       |       |
         */
 
@@ -928,7 +928,7 @@ impl<F: PrimeField> Sha256Chip<F> {
         layouter.assign_region(
             || "Σ₀(A)",
             |mut region| {
-                self.config().q_Sigma_0.enable(&mut region, 0)?;
+                self.config().q_Sigma_0.enable(&mut region, 1)?;
 
                 // Copy and assign the input.
                 (a.spreaded_limb_10.0).copy_advice(|| "~A.10", &mut region, adv_cols[5], 0)?;
@@ -994,7 +994,7 @@ impl<F: PrimeField> Sha256Chip<F> {
         | T0 |    A0   |    A1    | T1 |    A2   |    A3    |  A4 |  A5  |   A6  |
         |----|---------|----------|----|---------|----------|-----|------|-------|
         | 11 | Evn.11a | ~Evn.11a | 11 | Odd.11a | ~Odd.11a | Evn | ~E.7 | ~E.12 |
-        | 11 | Evn.11b | ~Evn.11b | 11 | Odd.11b | ~Odd.11b |     | ~E.2 | ~E.5  |
+        | 11 | Evn.11b | ~Evn.11b | 11 | Odd.11b | ~Odd.11b |     | ~E.2 | ~E.5  | <- q_Sigma_1
         | 10 | Evn.10  | ~Evn.10  | 10 | Odd.10  | ~Odd.10  |     | ~E.6 |       |
         */
 
@@ -1003,7 +1003,7 @@ impl<F: PrimeField> Sha256Chip<F> {
         layouter.assign_region(
             || "Σ₁(E)",
             |mut region| {
-                self.config().q_Sigma_1.enable(&mut region, 0)?;
+                self.config().q_Sigma_1.enable(&mut region, 1)?;
 
                 // Copy and assign the input.
                 (e.spreaded_limb_07.0).copy_advice(|| "~E.07", &mut region, adv_cols[5], 0)?;
@@ -1071,7 +1071,7 @@ impl<F: PrimeField> Sha256Chip<F> {
         | T0 |    A0    |     A1    | T1 |   A_2   |    A3    |   A4  |   A5  |   A6  |
         |----|----------|-----------|----|---------|----------|-------|-------|-------|
         | 11 | Even.11a | ~Even.11a | 11 | Odd.11a | ~Odd.11a |  Evn  | ~W.12 | ~W.1a |
-        | 11 | Even.11b | ~Even.11b | 11 | Odd.11b | ~Odd.11b | ~W.1b | ~W.1c | ~W.7  |
+        | 11 | Even.11b | ~Even.11b | 11 | Odd.11b | ~Odd.11b | ~W.1b | ~W.1c | ~W.7  | <- q_sigma_0
         | 10 | Even.10  | ~Even.10  | 10 | Odd.10  | ~Odd.10  | ~W.3a | ~W.4  | ~W.3b |
         */
 
@@ -1080,7 +1080,7 @@ impl<F: PrimeField> Sha256Chip<F> {
         layouter.assign_region(
             || "σ₀(W)",
             |mut region| {
-                self.config().q_sigma_0.enable(&mut region, 0)?;
+                self.config().q_sigma_0.enable(&mut region, 1)?;
 
                 (w.spreaded_w_12.0).copy_advice(|| "~W.12", &mut region, adv_cols[5], 0)?;
                 (w.spreaded_w_1a.0).copy_advice(|| "~W.1a", &mut region, adv_cols[6], 0)?;
@@ -1149,7 +1149,7 @@ impl<F: PrimeField> Sha256Chip<F> {
         | T0 |    A0    |     A1    | T1 |    A2   |    A3    |   A4  |   A5  |   A6  |
         |----|----------|-----------|----|---------|----------|-------|-------|-------|
         | 11 | Even.11a | ~Even.11a | 11 | Odd.11a | ~Odd.11a |  Evn  | ~W.12 | ~W.1a |
-        | 11 | Even.11b | ~Even.11b | 11 | Odd.11b | ~Odd.11b | ~W.1b | ~W.1c | ~W.7  |
+        | 11 | Even.11b | ~Even.11b | 11 | Odd.11b | ~Odd.11b | ~W.1b | ~W.1c | ~W.7  | <- q_sigma_1
         | 10 | Even.10  | ~Even.10  | 10 | Odd.10  | ~Odd.10  | ~W.3a | ~W.4  | ~W.3b |
         */
 
@@ -1158,7 +1158,7 @@ impl<F: PrimeField> Sha256Chip<F> {
         layouter.assign_region(
             || "σ₁(W)",
             |mut region| {
-                self.config().q_sigma_1.enable(&mut region, 0)?;
+                self.config().q_sigma_1.enable(&mut region, 1)?;
 
                 (w.spreaded_w_12.0).copy_advice(|| "~W.12", &mut region, adv_cols[5], 0)?;
                 (w.spreaded_w_1a.0).copy_advice(|| "~W.1a", &mut region, adv_cols[6], 0)?;
@@ -1201,7 +1201,7 @@ impl<F: PrimeField> Sha256Chip<F> {
     ///  | T0 |    A0   |    A1    | T1 |    A2   |    A3    |  A4 |
     ///  |----|---------|----------|----|---------|----------|-----|
     ///  | 11 | Evn.11a | ~Evn.11a | 11 | Odd.11a | ~Odd.11a | Evn |
-    ///  | 11 | Evn.11b | ~Evn.11b | 11 | Odd.11b | ~Odd.11b |     |
+    ///  | 11 | Evn.11b | ~Evn.11b | 11 | Odd.11b | ~Odd.11b |     | <- q_11_11_10
     ///  | 10 | Evn.10  | ~Evn.10  | 10 | Odd.10  | ~Odd.10  |     |
     ///
     /// and returns `Evn`.
@@ -1211,7 +1211,7 @@ impl<F: PrimeField> Sha256Chip<F> {
     ///  | T0 |    A0   |    A1    | T1 |    A2   |    A3    |  A4 |
     ///  |----|---------|----------|----|---------|----------|-----|
     ///  | 11 | Odd.11a | ~Odd.11a | 11 | Evn.11a | ~Evn.11a | Odd |
-    ///  | 11 | Odd.11b | ~Odd.11b | 11 | Evn.11b | ~Evn.11b |     |
+    ///  | 11 | Odd.11b | ~Odd.11b | 11 | Evn.11b | ~Evn.11b |     | <- q_11_11_10
     ///  | 10 | Odd.10  | ~Odd.10  | 10 | Evn.10  | ~Evn.10  |     |
     ///
     /// and returns `Odd`.
@@ -1225,7 +1225,7 @@ impl<F: PrimeField> Sha256Chip<F> {
         even_or_odd: Parity,
         offset: usize,
     ) -> Result<AssignedPlain<F, 32>, Error> {
-        self.config().q_11_11_10.enable(region, offset)?;
+        self.config().q_11_11_10.enable(region, offset + 1)?;
 
         let (evn_val, odd_val) = value.map(get_even_and_odd_bits).unzip();
 
@@ -1283,7 +1283,7 @@ impl<F: PrimeField> Sha256Chip<F> {
         | T0 |  A0  |  A1   | T1 |   A2  |   A3   | A4 | A5 | A6 |
         |----|------|-------|----|-------|--------|----|----|----|
         | 10 | A.10 | ~A.10 |  9 |  A.9  |  ~A.9  |  A | S0 | S1 |
-        | 11 | A.11 | ~A.11 |  2 |  A.2  |  ~A.2  | ~A | S2 | S3 |
+        | 11 | A.11 | ~A.11 |  2 |  A.2  |  ~A.2  | ~A | S2 | S3 | <- q_10_9_11_2
         |  0 |   0  |   0   |  3 | carry | ~carry | S4 | S5 | S6 |
 
         Apart from the lookups, the following identities are checked via a
@@ -1308,7 +1308,7 @@ impl<F: PrimeField> Sha256Chip<F> {
         layouter.assign_region(
             || "decompose A in 10-9-11-2",
             |mut region| {
-                self.config().q_10_9_11_2.enable(&mut region, 0)?;
+                self.config().q_10_9_11_2.enable(&mut region, 1)?;
 
                 let a_plain = self.assign_add_mod_2_32(&mut region, summands, &zero)?;
                 let a_sprdd_val = (a_plain.0.value().copied())
@@ -1363,7 +1363,7 @@ impl<F: PrimeField> Sha256Chip<F> {
         | T0 |  A0  |   A1  | T1 |   A2  |   A3   | A4 | A5 | A6 |
         |----|------|-------|----|-------|--------|----|----|----|
         |  7 | E.07 | ~E.07 | 12 |  E.12 |  ~E.12 |  E | S0 | S1 |
-        |  2 | E.02 | ~E.02 |  5 |  E.5  |  ~E.5  | ~E | S2 | S3 |
+        |  2 | E.02 | ~E.02 |  5 |  E.5  |  ~E.5  | ~E | S2 | S3 | <- q_7_12_2_5_6
         |  6 | E.06 | ~E.06 |  3 | carry | ~carry | S4 | S5 | S6 |
 
         Apart from the lookups, the following identities are checked via a
@@ -1388,7 +1388,7 @@ impl<F: PrimeField> Sha256Chip<F> {
         layouter.assign_region(
             || "decompose E in 7-12-2-5-6",
             |mut region| {
-                self.config().q_7_12_2_5_6.enable(&mut region, 0)?;
+                self.config().q_7_12_2_5_6.enable(&mut region, 1)?;
 
                 let e_plain = self.assign_add_mod_2_32(&mut region, summands, &zero)?;
                 let e_sprdd_val = (e_plain.0.value().copied())
@@ -1442,7 +1442,7 @@ impl<F: PrimeField> Sha256Chip<F> {
         | T0 |  A0  |   A1  | T1 |   A2  |   A3   |  A4 | A5 | A6 |  A7  |
         |----|------|-------|----|-------|--------|-----|----|----|------|
         | 12 | W.12 | ~W.12 |  7 |  W.07 | ~W.07  | W.i | S0 | S1 | W.1a |
-        |  3 | W.3a | ~W.3a |  4 |  W.04 | ~W.04  |     | S2 | S3 | W.1b |
+        |  3 | W.3a | ~W.3a |  4 |  W.04 | ~W.04  |     | S2 | S3 | W.1b | <- q_12_1x3_7_3_4_3
         |  3 | W.3b | ~W.3b |  3 | carry | ~carry |  S4 | S5 | S6 | W.1c |
 
         Apart from the lookups, the following identity is checked via a
@@ -1466,7 +1466,7 @@ impl<F: PrimeField> Sha256Chip<F> {
         layouter.assign_region(
             || "prepare message word",
             |mut region| {
-                self.config().q_12_1x3_7_3_4_3.enable(&mut region, 0)?;
+                self.config().q_12_1x3_7_3_4_3.enable(&mut region, 1)?;
 
                 let w_i_plain = self.assign_add_mod_2_32(&mut region, summands, &zero)?;
 
@@ -1565,7 +1565,7 @@ impl<F: PrimeField> Sha256Chip<F> {
         | T1 |   A2  |   A3   |     A4    | A5 | A6 |
         |----|-------|--------|-----------|----|----|
         |    |       |        | sum_plain | S0 | S1 |
-        |    |       |        |           | S2 | S3 |
+        |    |       |        |           | S2 | S3 | <- q_add_mod_2_32
         |  3 | carry | ~carry |     S4    | S5 | S6 |
 
         We enforce S0 + S1 + S2 + S3 + S4 + S5 + S6 = sum_plain + carry * 2^32.
@@ -1573,7 +1573,7 @@ impl<F: PrimeField> Sha256Chip<F> {
 
         assert!(summands.len() <= 7);
 
-        self.config().q_add_mod_2_32.enable(region, 0)?;
+        self.config().q_add_mod_2_32.enable(region, 1)?;
         let adv_cols = self.config().advice_cols;
 
         let mut summands = summands.to_vec();
