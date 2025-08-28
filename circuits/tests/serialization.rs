@@ -126,6 +126,8 @@ fn vk_serde_test(architecture: ZkStdLibArch, write_format: SerdeFormat, read_for
     let mut buffer = Vec::new();
     vk.write(&mut buffer, write_format).unwrap();
 
+    println!("VK buffer length after write: {}", buffer.len());
+
     let mut cursor = std::io::Cursor::new(buffer.clone());
     let vk2 = MidnightVK::read(&mut cursor, read_format).unwrap();
 
@@ -181,6 +183,8 @@ fn pk_serde_test(architecture: ZkStdLibArch, write_format: SerdeFormat, read_for
 
     let mut buffer = Vec::new();
     pk.write(&mut buffer, write_format).unwrap();
+
+    println!("PK buffer length after write: {}", buffer.len());
 
     let mut cursor = std::io::Cursor::new(buffer.clone());
     let pk2 = MidnightPK::<DummyCircuit>::read(&mut cursor, read_format).unwrap();
