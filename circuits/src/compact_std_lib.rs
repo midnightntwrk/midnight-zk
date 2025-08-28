@@ -27,6 +27,7 @@
 
 use std::{cell::RefCell, cmp::max, convert::TryInto, fmt::Debug, io, rc::Rc};
 
+use bincode::{config::standard, Decode, Encode};
 use ff::{Field, PrimeField};
 use group::{prime::PrimeCurveAffine, Group};
 use halo2curves::secp256k1::{self, Secp256k1};
@@ -47,7 +48,6 @@ use midnight_proofs::{
 };
 use num_bigint::BigUint;
 use rand::{CryptoRng, RngCore};
-use serde::{Deserialize, Serialize};
 
 use crate::{
     biguint::biguint_gadget::BigUintGadget,
@@ -110,7 +110,7 @@ type Bls12381BaseChip = FieldChip<F, midnight_curves::Fp, MEP, NG>;
 type Bls12381Chip = ForeignEccChip<F, midnight_curves::G1Projective, MEP, NG, NG>;
 
 /// Size of the lookup table for SHA.
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Encode, Decode)]
 pub enum ShaTableSize {
     /// Table of size 2^11.
     Table11,
@@ -125,7 +125,7 @@ const ZKSTD_VERSION: u32 = 1;
 /// configured.
 ///
 /// Note, the maximum number of [`ZkStdLibArch::nr_pow2range_cols`] is 7.
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Encode, Decode)]
 pub struct ZkStdLibArch {
     /// Enable the Jubjub chip?
     pub jubjub: bool,
@@ -171,7 +171,9 @@ impl ZkStdLibArch {
     /// Writes the ZKStd architecture to a buffer.
     pub fn write<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
         writer.write_all(&ZKSTD_VERSION.to_le_bytes())?;
-        bincode::serialize_into(writer, self).map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+        bincode::encode_into_std_write(self, writer, standard())
+            .map(|_| ())
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
     }
 
     /// Reads the ZkStd architecture from a buffer.
@@ -180,7 +182,7 @@ impl ZkStdLibArch {
         reader.read_exact(&mut version)?;
         let version = u32::from_le_bytes(version);
         match version {
-            1 => bincode::deserialize_from(reader)
+            1 => bincode::decode_from_std_read(reader, standard())
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e)),
             _ => Err(io::Error::new(
                 io::ErrorKind::InvalidData,

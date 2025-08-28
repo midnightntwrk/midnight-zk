@@ -18,11 +18,10 @@ use std::fmt::Debug;
 
 use ff::{PrimeField, WithSmallOrderMulGroup};
 use group::{prime::PrimeCurveAffine, Curve};
-use halo2curves::CurveAffine;
 use halo2curves::{
     pairing::{Engine, MultiMillerLoop},
     serde::SerdeObject,
-    CurveExt,
+    CurveAffine, CurveExt,
 };
 use midnight_proofs::{
     circuit::Layouter,
