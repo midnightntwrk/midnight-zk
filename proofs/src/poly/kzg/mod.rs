@@ -316,13 +316,12 @@ where
             bases: vec![pi, -E::G1::generator()],
         };
 
-        // (π, C − vG)
+        // (π, C − vG + zπ)
         let mut msm_accumulator = DualMSM {
             left: pi_msm,
             right: final_com,
         };
-
-        msm_accumulator.right.add_msm(&scaled_pi); // zπ
+        msm_accumulator.right.add_msm(&scaled_pi);
 
         Ok(msm_accumulator)
     }
