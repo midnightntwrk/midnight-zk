@@ -228,12 +228,12 @@ impl<F: PrimeField> Pow2RangeChip<F> {
 mod tests {
     use std::marker::PhantomData;
 
+    use halo2curves::pasta::Fp;
     use midnight_proofs::{
         circuit::{Layouter, SimpleFloorPlanner, Value},
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem, Error},
     };
-    use pasta_curves::Fp;
     use rand::Rng;
 
     use super::*;
