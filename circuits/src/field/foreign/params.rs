@@ -19,8 +19,11 @@
 use std::{fmt::Debug, ops::Rem};
 
 use ff::PrimeField;
-use halo2curves::pasta::{pallas, vesta};
-use halo2curves::{bls12381, bn256, secp256k1};
+use halo2curves::{
+    bls12381, bn256,
+    pasta::{pallas, vesta},
+    secp256k1,
+};
 use num_bigint::{BigInt, BigInt as BI, ToBigInt};
 use num_traits::{One, Signed};
 
