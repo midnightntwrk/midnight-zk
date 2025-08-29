@@ -126,14 +126,16 @@ pub mod tests {
             let inputs_chip = InputsChip::new_from_scratch(&config.0);
             let htc_chip = HashToCurveChip::new_from_scratch(&config.1);
 
-            InputsChip::load_from_scratch(&mut layouter, &config.0);
-            HashToCurveChip::load_from_scratch(&mut layouter, &config.1);
-
             let input = inputs_chip.assign(&mut layouter, self.input.clone())?;
             let res = htc_chip.hash_to_curve(&mut layouter, &[input])?;
             htc_chip
                 .ecc_chip()
-                .assert_equal_to_fixed(&mut layouter, &res, self.expected)
+                .assert_equal_to_fixed(&mut layouter, &res, self.expected)?;
+
+            InputsChip::load_from_scratch(&mut layouter, &config.0);
+            HashToCurveChip::load_from_scratch(&mut layouter, &config.1);
+
+            Ok(())
         }
     }
 

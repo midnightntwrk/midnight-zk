@@ -181,7 +181,6 @@ pub mod tests {
             mut layouter: impl Layouter<F>,
         ) -> Result<(), Error> {
             let chip = AssertionChip::new_from_scratch(&config);
-            AssertionChip::load_from_scratch(&mut layouter, &config);
 
             let x = chip.assign(&mut layouter, Value::known(self.x.clone()))?;
             let y = chip.assign_fixed(&mut layouter, self.y.clone())?;
@@ -193,7 +192,11 @@ pub mod tests {
                 Operation::NeqFixed => {
                     chip.assert_not_equal_to_fixed(&mut layouter, &x, self.y.clone())
                 }
-            }
+            }?;
+
+            AssertionChip::load_from_scratch(&mut layouter, &config);
+
+            Ok(())
         }
     }
 

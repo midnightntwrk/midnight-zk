@@ -145,7 +145,6 @@ pub mod tests {
             mut layouter: impl Layouter<F>,
         ) -> Result<(), Error> {
             let chip = EqualityChip::new_from_scratch(&config);
-            EqualityChip::load_from_scratch(&mut layouter, &config);
 
             let x = chip.assign_fixed(&mut layouter, self.x.clone())?;
             let y = chip.assign_fixed(&mut layouter, self.y.clone())?;
@@ -164,7 +163,11 @@ pub mod tests {
                         if self.expected { F::ONE } else { F::ZERO },
                     )
                 },
-            )
+            )?;
+
+            EqualityChip::load_from_scratch(&mut layouter, &config);
+
+            Ok(())
         }
     }
 
