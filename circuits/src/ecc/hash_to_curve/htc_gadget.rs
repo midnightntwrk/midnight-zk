@@ -144,12 +144,9 @@ where
         )
     }
 
-    fn load_from_scratch(
-        layouter: &mut impl Layouter<F>,
-        config: &Self::Config,
-    ) -> Result<(), Error> {
-        H::load_from_scratch(layouter, &config.0)?;
-        E::load_from_scratch(layouter, &config.1)
+    fn load_from_scratch(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
+        self.sponge_chip.load_from_scratch(layouter)?;
+        self.ecc_chip.load_from_scratch(layouter)
     }
 }
 

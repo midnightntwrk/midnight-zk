@@ -761,7 +761,8 @@ pub(crate) mod tests {
 
             native_chip.constrain_as_public_input(&mut layouter, &output)?;
 
-            PoseidonChip::load_from_scratch(&mut layouter, &config)
+            native_chip.load_from_scratch(&mut layouter)?;
+            poseidon_chip.load_from_scratch(&mut layouter)
         }
     }
 

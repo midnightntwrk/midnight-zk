@@ -127,7 +127,7 @@ pub mod tests {
             let x = chip.assign(&mut layouter, Value::known(self.x))?;
             chip.assert_lower_than_fixed(&mut layouter, &x, &self.bound)?;
 
-            Chip::load_from_scratch(&mut layouter, &config)
+            chip.load_from_scratch(&mut layouter)
         }
     }
     fn run<F, Assigned, Chip>(

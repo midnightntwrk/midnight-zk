@@ -124,8 +124,6 @@ where
     ) -> Result<(), Error> {
         let max_bit_len = 8;
         let native_chip = NativeChip::<F>::new(&config.native_config, &());
-        let pow2range_chip = Pow2RangeChip::<F>::new(&config.pow2range_config, max_bit_len);
-
         let decomposition_chip = P2RDecompositionChip::new(&config, &max_bit_len);
 
         let assigned_input: AssignedNative<F> =
@@ -201,7 +199,7 @@ where
 
         native_chip.assert_equal(&mut layouter, &lc_result, &assigned_input)?;
 
-        pow2range_chip.load_table(&mut layouter)
+        decomposition_chip.load(&mut layouter)
     }
 }
 
@@ -345,16 +343,12 @@ where
     ) -> Result<(), Error> {
         let max_bit_len = 8;
         let native_chip = NativeChip::<F>::new(&config.native_config, &());
-        let pow2range_chip = Pow2RangeChip::<F>::new(&config.pow2range_config, max_bit_len);
-
         let decomposition_chip = P2RDecompositionChip::new(&config, &max_bit_len);
 
-        // assign the element to be decomposed
         let assigned_input = native_chip.assign(&mut layouter, Value::known(self.input))?;
-
         decomposition_chip.assert_less_than_pow2(&mut layouter, &assigned_input, self.bound)?;
 
-        pow2range_chip.load_table(&mut layouter)
+        decomposition_chip.load(&mut layouter)
     }
 }
 

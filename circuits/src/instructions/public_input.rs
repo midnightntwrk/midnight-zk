@@ -187,7 +187,7 @@ pub mod tests {
                     });
             }
 
-            Chip::load_from_scratch(&mut layouter, &config)
+            chip.load_from_scratch(&mut layouter)
         }
     }
 

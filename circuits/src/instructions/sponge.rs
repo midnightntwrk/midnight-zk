@@ -181,8 +181,8 @@ pub mod tests {
                 }
             }
 
-            SpongeChip::load_from_scratch(&mut layouter, &config.0)?;
-            AssignChip::load_from_scratch(&mut layouter, &config.1)
+            chip.load_from_scratch(&mut layouter)?;
+            assign_chip.load_from_scratch(&mut layouter)
         }
     }
 
