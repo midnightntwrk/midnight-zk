@@ -1298,7 +1298,6 @@ impl Group for JubjubExtended {
         self.is_identity()
     }
 
-    #[must_use]
     fn double(&self) -> Self {
         self.double()
     }
@@ -1329,7 +1328,6 @@ impl Group for JubjubSubgroup {
         self.0.is_identity()
     }
 
-    #[must_use]
     fn double(&self) -> Self {
         JubjubSubgroup(self.0.double())
     }

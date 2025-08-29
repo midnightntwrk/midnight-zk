@@ -107,7 +107,7 @@ impl<F: PrimeField> Base64Instructions<F> for Base64Chip<F> {
             "If pad is selected, the Base64 encoded input length must be a multiple of 4."
         );
         let mut last_chunk: B64Chunk<F>;
-        let mut result = Vec::with_capacity((b64_input.len() + 3) / 4 * 3); // +3 for rounding up.
+        let mut result = Vec::with_capacity(b64_input.len().div_ceil(4) * 3);
         let mut chunk_iter = b64_input.chunks(4).peekable();
         while let Some(b64_chunk) = chunk_iter.next() {
             let chunk_array: &B64Chunk<F> = if chunk_iter.peek().is_none() {
