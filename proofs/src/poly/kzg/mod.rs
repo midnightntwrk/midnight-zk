@@ -17,11 +17,11 @@ pub mod msm;
 pub mod params;
 mod utils;
 
-use std::fmt::Debug;
+use std::{fmt::Debug, hash::Hash};
 
 use ff::Field;
-use group::{prime::PrimeCurveAffine, Curve, Group};
-use halo2curves::{msm::msm_best, pairing::MultiMillerLoop};
+use group::Group;
+use halo2curves::pairing::MultiMillerLoop;
 use rand_core::OsRng;
 
 #[cfg(feature = "truncated-challenges")]
@@ -30,7 +30,7 @@ use crate::{
     poly::{
         commitment::{Params, PolynomialCommitmentScheme},
         kzg::{
-            msm::{DualMSM, MSMKZG},
+            msm::{msm_specific, DualMSM, MSMKZG},
             params::{ParamsKZG, ParamsVerifierKZG},
             utils::construct_intermediate_sets,
         },
@@ -75,13 +75,11 @@ where
         params: &Self::Parameters,
         polynomial: &Polynomial<E::Fr, Coeff>,
     ) -> Self::Commitment {
-        let mut scalars = Vec::with_capacity(polynomial.len());
+        let mut scalars = Vec::<E::Fr>::with_capacity(polynomial.len());
         scalars.extend(polynomial.iter());
-        let mut bases = vec![<E::G1 as Curve>::AffineRepr::identity(); params.g.len()];
-        <E::G1 as Curve>::batch_normalize(&params.g, bases.as_mut_slice());
         let size = scalars.len();
-        assert!(bases.len() >= size);
-        msm_best(&scalars, &bases[0..size])
+        assert!(params.g.len() >= size);
+        msm_specific::<E::G1Affine>(&scalars, &params.g[..size])
     }
 
     fn commit_lagrange(
@@ -92,20 +90,18 @@ where
         scalars.extend(poly.iter());
         let size = scalars.len();
 
-        let mut bases = vec![<E::G1 as Curve>::AffineRepr::identity(); params.g.len()];
-        <E::G1 as Curve>::batch_normalize(&params.g_lagrange, bases.as_mut_slice());
-        assert!(bases.len() >= size);
+        assert!(params.g_lagrange.len() >= size);
 
-        msm_best(&scalars, &bases[0..size])
+        msm_specific::<E::G1Affine>(&scalars, &params.g_lagrange[0..size])
     }
 
-    fn multi_open<'com, T: Transcript>(
+    fn multi_open<T: Transcript>(
         params: &Self::Parameters,
-        prover_query: impl IntoIterator<Item = ProverQuery<'com, E::Fr>> + Clone,
+        prover_query: &[ProverQuery<E::Fr>],
         transcript: &mut T,
     ) -> Result<(), Error>
     where
-        E::Fr: Sampleable<T::Hash> + Ord + Hashable<T::Hash>,
+        E::Fr: Sampleable<T::Hash> + Hash + Ord + Hashable<T::Hash>,
         E::G1: Hashable<T::Hash>,
     {
         // Refer to the halo2 book for docs:
@@ -192,13 +188,12 @@ where
     }
 
     fn multi_prepare<'com, T: Transcript>(
-        verifier_query: impl IntoIterator<Item = VerifierQuery<'com, E::Fr, KZGCommitmentScheme<E>>>
-            + Clone,
+        verifier_query: &[VerifierQuery<'com, E::Fr, KZGCommitmentScheme<E>>],
         transcript: &mut T,
     ) -> Result<DualMSM<E>, Error>
     where
-        E::Fr: Sampleable<T::Hash> + Ord + Hashable<T::Hash>,
-        E::G1: Hashable<T::Hash> + CurveExt<ScalarExt = E::Fr>,
+        E::Fr: Sampleable<T::Hash> + Ord + Hash + Hashable<T::Hash>,
+        E::G1: 'com + Hashable<T::Hash> + CurveExt<ScalarExt = E::Fr>,
     {
         // Refer to the halo2 book for docs:
         // https://zcash.github.io/halo2/design/proving-system/multipoint-opening.html
@@ -227,30 +222,23 @@ where
             q_eval_sets[com_data.set_index].push(com_data.evals);
         }
 
+        let nb_x1_powers = q_coms.iter().map(|v| v.len()).max().unwrap_or(0);
+        assert!(nb_x1_powers >= q_eval_sets.iter().map(|v| v.len()).max().unwrap_or(0));
+
+        #[cfg(feature = "truncated-challenges")]
+        let powers_x1 = truncated_powers(x1).take(nb_x1_powers).collect::<Vec<_>>();
+
+        #[cfg(not(feature = "truncated-challenges"))]
+        let powers_x1 = powers(x1).take(nb_x1_powers).collect::<Vec<_>>();
+
         let q_coms = q_coms
-            .iter()
-            .map(|msms| {
-                #[cfg(feature = "truncated-challenges")]
-                let powers = truncated_powers(x1);
-
-                #[cfg(not(feature = "truncated-challenges"))]
-                let powers = powers(x1);
-
-                msm_inner_product(msms, powers)
-            })
+            .into_iter()
+            .map(|msms| msm_inner_product(msms, &powers_x1))
             .collect::<Vec<_>>();
 
         let q_eval_sets = q_eval_sets
             .iter()
-            .map(|evals| {
-                #[cfg(feature = "truncated-challenges")]
-                let powers = truncated_powers(x1);
-
-                #[cfg(not(feature = "truncated-challenges"))]
-                let powers = powers(x1);
-
-                evals_inner_product(evals, powers)
-            })
+            .map(|evals| evals_inner_product(evals, &powers_x1))
             .collect::<Vec<_>>();
 
         let f_com: E::G1 = transcript.read().map_err(|_| Error::SamplingError)?;
@@ -287,6 +275,7 @@ where
         let x4: E::Fr = transcript.squeeze_challenge();
 
         let final_com = {
+            let size = q_coms.len() + 1;
             let mut coms = q_coms;
             let mut f_com_as_msm = MSMKZG::init();
 
@@ -299,7 +288,7 @@ where
             #[cfg(not(feature = "truncated-challenges"))]
             let powers = powers(x4);
 
-            msm_inner_product(&coms, powers)
+            msm_inner_product(coms, &powers.take(size).collect::<Vec<_>>())
         };
 
         let v = {
@@ -320,18 +309,18 @@ where
         let mut pi_msm = MSMKZG::<E>::init();
         pi_msm.append_term(E::Fr::ONE, pi);
 
-        // Scale zπ
-        let mut scaled_pi = MSMKZG::<E>::init();
-        scaled_pi.append_term(x3, pi);
-
-        let mut msm_accumulator = DualMSM::init();
+        // Scale zπ -vG
+        let scaled_pi = MSMKZG {
+            scalars: vec![x3, v],
+            bases: vec![pi, -E::G1::generator()],
+        };
 
         // (π, C − vG + zπ)
-        msm_accumulator.left.add_msm(&pi_msm); // π
-
-        msm_accumulator.right.add_msm(&final_com); // C
-        msm_accumulator.right.append_term(v, -E::G1::generator()); // -vG
-        msm_accumulator.right.add_msm(&scaled_pi); // zπ
+        let mut msm_accumulator = DualMSM {
+            left: pi_msm,
+            right: final_com,
+        };
+        msm_accumulator.right.add_msm(&scaled_pi);
 
         Ok(msm_accumulator)
     }
@@ -339,6 +328,8 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::hash::Hash;
+
     use blake2b_simd::State as Blake2bState;
     use ff::WithSmallOrderMulGroup;
     use halo2curves::{pairing::MultiMillerLoop, serde::SerdeObject, CurveAffine, CurveExt};
@@ -378,7 +369,7 @@ mod tests {
     where
         E: MultiMillerLoop,
         T: Transcript,
-        E::Fr: Hashable<T::Hash> + Sampleable<T::Hash> + Ord,
+        E::Fr: Hashable<T::Hash> + Sampleable<T::Hash> + Ord + Hash,
         E::G1: Hashable<T::Hash> + CurveExt<ScalarExt = E::Fr, AffineExt = E::G1Affine>,
         E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1> + SerdeObject,
     {
@@ -411,7 +402,9 @@ mod tests {
             valid_queries
         };
 
-        let result = KZGCommitmentScheme::multi_prepare(queries, &mut transcript).unwrap();
+        let result =
+            KZGCommitmentScheme::multi_prepare(&queries.collect::<Vec<_>>(), &mut transcript)
+                .unwrap();
 
         if should_fail {
             assert!(result.verify(verifier_params).is_err());
@@ -424,7 +417,7 @@ mod tests {
     where
         E: MultiMillerLoop,
         T: Transcript,
-        E::Fr: WithSmallOrderMulGroup<3> + Hashable<T::Hash> + Sampleable<T::Hash> + Ord,
+        E::Fr: WithSmallOrderMulGroup<3> + Hashable<T::Hash> + Hash + Sampleable<T::Hash> + Ord,
         E::G1: Hashable<T::Hash> + CurveExt<ScalarExt = E::Fr, AffineExt = E::G1Affine>,
         E::G1Affine: SerdeObject + CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
     {
@@ -483,7 +476,8 @@ mod tests {
         ]
         .into_iter();
 
-        KZGCommitmentScheme::multi_open(kzg_params, queries, &mut transcript).unwrap();
+        KZGCommitmentScheme::multi_open(kzg_params, &queries.collect::<Vec<_>>(), &mut transcript)
+            .unwrap();
 
         transcript.finalize()
     }

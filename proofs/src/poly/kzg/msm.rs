@@ -1,12 +1,14 @@
-use std::fmt::Debug;
+use std::{any::TypeId, fmt::Debug};
 
 use ff::Field;
-use group::{prime::PrimeCurveAffine, Curve, Group};
+use group::{Curve, Group};
 use halo2curves::{
     msm::msm_best,
     pairing::{Engine, MillerLoopResult, MultiMillerLoop},
     CurveAffine,
 };
+use midnight_curves::{Fq, G1Projective};
+use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 
 use super::params::ParamsVerifierKZG;
 use crate::{
@@ -16,7 +18,7 @@ use crate::{
         Error,
     },
     utils::{
-        arithmetic::{parallelize, CurveExt, MSM},
+        arithmetic::{CurveExt, MSM},
         helpers::ProcessedSerdeObject,
     },
 };
@@ -35,6 +37,21 @@ impl<E: Engine> MSMKZG<E> {
             scalars: vec![],
             bases: vec![],
         }
+    }
+
+    /// Create an MSM from various MSMs
+    pub fn from_many(msms: Vec<Self>) -> Self {
+        let len = msms.iter().map(|m| m.scalars.len()).sum();
+
+        let mut scalars = Vec::with_capacity(len);
+        let mut bases = Vec::with_capacity(len);
+
+        for mut msm in msms {
+            scalars.append(&mut msm.scalars);
+            bases.append(&mut msm.bases);
+        }
+
+        Self { scalars, bases }
     }
 
     /// Create a new MSM from a given base (with scalar of 1).
@@ -56,18 +73,17 @@ where
     }
 
     fn add_msm(&mut self, other: &Self) {
-        self.scalars.extend(other.scalars().iter());
-        self.bases.extend(other.bases().iter());
+        self.scalars.reserve(other.scalars().len());
+        self.scalars.extend_from_slice(&other.scalars());
+
+        self.bases.reserve(other.bases().len());
+        self.bases.extend_from_slice(&other.bases());
     }
 
     fn scale(&mut self, factor: E::Fr) {
-        if !self.scalars.is_empty() {
-            parallelize(&mut self.scalars, |scalars, _| {
-                for other_scalar in scalars {
-                    *other_scalar *= &factor;
-                }
-            })
-        }
+        self.scalars.par_iter_mut().for_each(|s| {
+            *s *= &factor;
+        })
     }
 
     fn check(&self) -> bool {
@@ -75,9 +91,7 @@ where
     }
 
     fn eval(&self) -> E::G1 {
-        let mut bases = vec![E::G1Affine::identity(); self.scalars.len()];
-        E::G1::batch_normalize(&self.bases, &mut bases);
-        msm_best(&self.scalars, &bases)
+        msm_specific::<E::G1Affine>(&self.scalars, &self.bases)
     }
 
     fn bases(&self) -> Vec<E::G1> {
@@ -86,6 +100,24 @@ where
 
     fn scalars(&self) -> Vec<E::Fr> {
         self.scalars.clone()
+    }
+}
+
+#[allow(unsafe_code)]
+/// Wrapper over the MSM function to use the blstrs underlying function
+pub fn msm_specific<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C::Curve]) -> C::Curve {
+    // We empirically checked that for MSMs larger than 2**18, the blstrs
+    // implementation regresses.
+    if coeffs.len() <= (2 << 18) && TypeId::of::<C>() == TypeId::of::<midnight_curves::G1Affine>() {
+        // Safe: we just checked type
+        let coeffs = unsafe { &*(coeffs as *const _ as *const [Fq]) };
+        let bases = unsafe { &*(bases as *const _ as *const [G1Projective]) };
+        let res = G1Projective::multi_exp(bases, coeffs);
+        unsafe { std::mem::transmute_copy(&res) }
+    } else {
+        let mut affine_bases = vec![C::identity(); coeffs.len()];
+        C::Curve::batch_normalize(bases, &mut affine_bases);
+        msm_best(coeffs, &affine_bases)
     }
 }
 
@@ -173,15 +205,12 @@ where
     /// Performs final pairing check with given verifier params and two channel
     /// linear combination
     pub fn check(self, params: &ParamsVerifierKZG<E>) -> bool {
-        let s_g2_prepared = E::G2Prepared::from(params.s_g2.into());
-        let n_g2_prepared = E::G2Prepared::from(-E::G2Affine::generator());
-
         let left = self.left.eval();
         let right = self.right.eval();
 
         let (term_1, term_2) = (
-            (&left.into(), &s_g2_prepared),
-            (&right.into(), &n_g2_prepared),
+            (&left.into(), &params.s_g2_prepared),
+            (&right.into(), &params.n_g2_prepared),
         );
         let terms = &[term_1, term_2];
 

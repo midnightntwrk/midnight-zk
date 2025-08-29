@@ -516,6 +516,7 @@ fn plonk_api() {
             + FromUniformBytes<64>
             + Sampleable<T::Hash>
             + Hashable<T::Hash>
+            + Hash
             + SerdeObject,
         Scheme::Commitment: Hashable<T::Hash>,
     {

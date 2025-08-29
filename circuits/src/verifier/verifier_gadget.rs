@@ -206,26 +206,27 @@ impl<S: SelfEmulation> VerifierGadget<S> {
 }
 
 impl<S: SelfEmulation> VerifierGadget<S> {
-    /// This function verifies a witnessed proof (an unassigned vector of bytes)
-    /// with respect to the provided assigned verifying key and assigned
-    /// instances. It is the in-circuit analog of "prepare" from halo2 at
+    /// Given a plonk proof, this function parses it to extract the verifying
+    /// trace.
+    /// This function computes all Fiat-Shamir challenges, with the exception of
+    /// `x`, which is computed in [Self::verify_algebraic_constraints]. It
+    /// is the in-circuit analog of "parse_trace" from midnight-proofs at
     /// src/plonk/verifier.rs.
     ///
-    /// The proof is considered to be valid if the resulting accumulator
-    /// satisfies the [invariant](crate::verifier::Accumulator::check)
-    /// with respect to the relevant `tau_in_g2`.
-    pub fn prepare(
+    /// The trace is considered to be valid if it satisfies the
+    /// [algebraic
+    /// constraints](crate::verifier::VerifierGadget::verify_algebraic_constraints),
+    /// and the resulting accumulator satisfies the
+    /// [invariant](crate::verifier::Accumulator::check).
+    pub fn parse_trace(
         &self,
         layouter: &mut impl Layouter<S::F>,
         assigned_vk: &AssignedVk<S>,
         assigned_committed_instances: &[(&str, S::AssignedPoint)], // (name, com)
         assigned_instances: &[&[AssignedNative<S::F>]],
         proof: Value<Vec<u8>>,
-    ) -> Result<AssignedAccumulator<S>, Error> {
+    ) -> Result<(super::traces::VerifierTrace<S>, TranscriptGadget<S>), Error> {
         let cs = &assigned_vk.cs;
-        let k = assigned_vk.domain.k();
-
-        let nb_committed_instances = assigned_committed_instances.len();
 
         // Check that instances matches the expected number of instance columns
         assert_eq!(
@@ -281,7 +282,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             .into_iter()
             .map(|lookup|
                 // Hash each lookup product commitment
-                 lookup.read_product_commitment(layouter, &mut transcript))
+                lookup.read_product_commitment(layouter, &mut transcript))
             .collect::<Result<Vec<_>, _>>()?;
 
         let trash_challenge = transcript.squeeze_challenge(layouter)?;
@@ -297,6 +298,57 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         // Sample y challenge, which keeps the gates linearly independent
         let y = transcript.squeeze_challenge(layouter)?;
 
+        Ok((
+            super::traces::VerifierTrace {
+                advice_commitments,
+                vanishing,
+                lookups: lookups_committed,
+                trashcans: trashcans_committed,
+                permutations: permutation_committed,
+                beta,
+                gamma,
+                theta,
+                trash_challenge,
+                y,
+            },
+            transcript,
+        ))
+    }
+
+    /// Given a [super::traces::VerifierTrace], this function computes the
+    /// opening challenge, x, and proceeds to verify the algebraic constraints
+    /// with the claimed evaluations. This function does not verify the PCS
+    /// proof.
+    ///
+    /// The proof is considered to be valid if the resulting accumulator
+    /// satisfies the [invariant](crate::verifier::Accumulator::check)
+    /// with respect to the relevant `tau_in_g2`.
+    pub fn verify_algebraic_constraints(
+        &self,
+        layouter: &mut impl Layouter<S::F>,
+        assigned_vk: &AssignedVk<S>,
+        trace: super::traces::VerifierTrace<S>,
+        assigned_committed_instances: &[(&str, S::AssignedPoint)], // (name, com)
+        assigned_instances: &[&[AssignedNative<S::F>]],
+        mut transcript: TranscriptGadget<S>,
+    ) -> Result<AssignedAccumulator<S>, Error> {
+        let cs = &assigned_vk.cs;
+        let k = assigned_vk.domain.k();
+        let nb_committed_instances = assigned_committed_instances.len();
+
+        let super::traces::VerifierTrace {
+            advice_commitments,
+            vanishing,
+            lookups,
+            trashcans,
+            permutations,
+            beta,
+            gamma,
+            theta,
+            trash_challenge,
+            y,
+        } = trace;
+
         let vanishing = vanishing.read_commitment_after_y(
             layouter,
             &mut transcript,
@@ -306,6 +358,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         // Sample x challenge, which is used to ensure the circuit is satisfied with
         // high probability
         let x = transcript.squeeze_challenge(layouter)?;
+        let xn = ArithInstructions::pow(&self.scalar_chip, layouter, &x, 1 << k)?;
 
         let instance_evals = {
             let instance_queries = cs.instance_queries();
@@ -359,14 +412,14 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         let permutations_common =
             evaluate_permutation_common(layouter, &mut transcript, cs.permutation().columns.len())?;
 
-        let permutations_evaluated = permutation_committed.evaluate(layouter, &mut transcript)?;
+        let permutations_evaluated = permutations.evaluate(layouter, &mut transcript)?;
 
-        let lookups_evaluated = lookups_committed
+        let lookups_evaluated = lookups
             .into_iter()
             .map(|lookup| lookup.evaluate(layouter, &mut transcript))
             .collect::<Result<Vec<_>, Error>>()?;
 
-        let trashcans_evaluated = trashcans_committed
+        let trashcans_evaluated = trashcans
             .into_iter()
             .map(|trash| trash.evaluate(layouter, &mut transcript))
             .collect::<Result<Vec<_>, Error>>()?;
@@ -374,8 +427,6 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         // This check ensures the circuit is satisfied so long as the polynomial
         // commitments open to the correct values.
         let vanishing = {
-            let xn = ArithInstructions::pow(&self.scalar_chip, layouter, &x, 1 << k)?;
-
             let blinding_factors = cs.blinding_factors();
 
             let l_evals = evaluate_lagrange_polynomials(
@@ -570,6 +621,40 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         )?;
 
         Ok(multiopen_check)
+    }
+
+    /// Prepares a plonk proof into a PCS instance that can be finalized or
+    /// batched. It is responsibility of the verifier to check the validity of
+    /// the instance columns. It is the in-circuit analog of "prepare" from
+    /// midnight-proofs at src/plonk/verifier.rs.
+    ///
+    /// The proof is considered to be valid if the resulting accumulator
+    /// satisfies the [invariant](crate::verifier::Accumulator::check)
+    /// with respect to the relevant `tau_in_g2`.
+    pub fn prepare(
+        &self,
+        layouter: &mut impl Layouter<S::F>,
+        assigned_vk: &AssignedVk<S>,
+        assigned_committed_instances: &[(&str, S::AssignedPoint)], // (name, com)
+        assigned_instances: &[&[AssignedNative<S::F>]],
+        proof: Value<Vec<u8>>,
+    ) -> Result<AssignedAccumulator<S>, Error> {
+        let (trace, transcript) = self.parse_trace(
+            layouter,
+            assigned_vk,
+            assigned_committed_instances,
+            assigned_instances,
+            proof,
+        )?;
+
+        self.verify_algebraic_constraints(
+            layouter,
+            assigned_vk,
+            trace,
+            assigned_committed_instances,
+            assigned_instances,
+            transcript,
+        )
     }
 }
 

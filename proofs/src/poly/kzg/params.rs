@@ -1,8 +1,8 @@
 use std::{fmt::Debug, io};
 
 use ff::{Field, PrimeField};
-use group::{Curve, Group};
-use halo2curves::pairing::Engine;
+use group::{prime::PrimeCurveAffine, Curve, Group};
+use halo2curves::pairing::{Engine, MultiMillerLoop};
 use rand_core::RngCore;
 
 use crate::{
@@ -243,13 +243,14 @@ impl<E: Engine + Debug> ParamsKZG<E> {
 // should be in verifier keys.
 /// KZG multi-open verification parameters
 #[derive(Clone, Debug)]
-pub struct ParamsVerifierKZG<E: Engine> {
+pub struct ParamsVerifierKZG<E: MultiMillerLoop> {
     pub(crate) s_g2: E::G2,
+    pub(crate) n_g2_prepared: E::G2Prepared,
+    pub(crate) s_g2_prepared: E::G2Prepared,
 }
 
-impl<E: Engine + Debug> ParamsVerifierKZG<E>
+impl<E: MultiMillerLoop + Debug> ParamsVerifierKZG<E>
 where
-    E::G1: Curve + ProcessedSerdeObject,
     E::G2: Curve + ProcessedSerdeObject,
 {
     /// Writes parameters to buffer
@@ -261,16 +262,28 @@ where
     /// Reads params from a buffer.
     pub fn read<R: io::Read>(reader: &mut R, format: SerdeFormat) -> io::Result<Self> {
         let s_g2 = E::G2::read(reader, format)?;
+        let s_g2_prepared = E::G2Prepared::from(s_g2.into());
+        let n_g2_prepared = E::G2Prepared::from(-E::G2Affine::generator());
 
-        Ok(Self { s_g2 })
+        Ok(Self {
+            s_g2,
+            n_g2_prepared,
+            s_g2_prepared,
+        })
     }
 }
 
-impl<E: Engine + Debug> ParamsKZG<E> {
+impl<E: MultiMillerLoop + Debug> ParamsKZG<E> {
     /// Consume the prover parameters into verifier parameters. Need to specify
     /// the size of public inputs.
     pub fn verifier_params(&self) -> ParamsVerifierKZG<E> {
-        ParamsVerifierKZG { s_g2: self.s_g2 }
+        let n_g2_prepared = E::G2Prepared::from((-self.g2).into());
+        let s_g2_prepared = E::G2Prepared::from(self.s_g2.into());
+        ParamsVerifierKZG {
+            s_g2: self.s_g2,
+            n_g2_prepared,
+            s_g2_prepared,
+        }
     }
 }
 

@@ -396,12 +396,14 @@ where
 
     let x4 = transcript_gadget.squeeze_challenge(layouter)?;
     let truncated_x4_powers =
-        truncated_powers::<S::F>(layouter, scalar_chip, &x4, 1 + q_coms.len())?;
+        truncated_powers::<S::F>(layouter, scalar_chip, &x4, q_coms.len() + 1)?;
 
     let one = AssignedBoundedScalar::one(layouter, scalar_chip)?;
 
     let final_com = {
         let mut coms = q_coms;
+        let f_com_as_msm = AssignedMsm::from_term(&one, &f_com);
+
         // We collapse all AssignedMsm at this point to later leverage the fact that x4
         // powers are truncated. Exceptionally, the first one is not collapsed,
         // as the first x4 power is 1.
@@ -409,7 +411,8 @@ where
         coms.iter_mut()
             .skip(1)
             .try_for_each(|com| com.collapse(layouter, curve_chip, scalar_chip))?;
-        coms.push(AssignedMsm::from_term(&one, &f_com));
+        coms.push(f_com_as_msm);
+
         msm_inner_product(layouter, scalar_chip, &coms, &truncated_x4_powers)?
     };
 

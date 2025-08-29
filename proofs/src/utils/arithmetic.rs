@@ -279,22 +279,27 @@ pub(crate) fn inner_product<F: PrimeField, T: Mul<F, Output = T> + Add<T, Output
         .unwrap()
 }
 
-pub(crate) fn msm_inner_product<E>(
-    msms: &[MSMKZG<E>],
-    scalars: impl Iterator<Item = E::Fr>,
-) -> MSMKZG<E>
+pub(crate) fn msm_inner_product<E>(mut msms: Vec<MSMKZG<E>>, scalars: &[E::Fr]) -> MSMKZG<E>
 where
     E: MultiMillerLoop + Debug,
     E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
     E::Fr: Ord,
 {
-    let mut res = MSMKZG::<E>::init();
-    let mut msms = msms.to_vec();
-    for (msm, s) in msms.iter_mut().zip(scalars) {
-        msm.scale(s);
-        res.add_msm(msm);
+    let len: usize = msms.iter().map(|m| m.scalars.len()).sum();
+
+    let mut new_scalars = Vec::with_capacity(len);
+    let mut new_bases = Vec::with_capacity(len);
+
+    msms.iter_mut().zip(scalars.iter()).for_each(|(msm, s)| {
+        msm.scale(*s);
+        new_scalars.extend(&msm.scalars);
+        new_bases.extend(&msm.bases);
+    });
+
+    MSMKZG {
+        scalars: new_scalars,
+        bases: new_bases,
     }
-    res
 }
 
 /// Computes the inner product of a set of polynomial evaluations and a set of
@@ -304,7 +309,7 @@ where
 /// into a single vector.
 pub(crate) fn evals_inner_product<F: PrimeField + Clone>(
     evals_set: &[Vec<F>],
-    scalars: impl Iterator<Item = F>,
+    scalars: &[F],
 ) -> Vec<F> {
     let mut res = vec![F::ZERO; evals_set[0].len()];
     for (poly_evals, s) in evals_set.iter().zip(scalars) {

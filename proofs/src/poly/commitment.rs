@@ -1,6 +1,6 @@
 //! Trait for a commitment scheme
 use core::ops::{Add, Mul};
-use std::fmt::Debug;
+use std::{fmt::Debug, hash::Hash};
 
 use ff::{FromUniformBytes, PrimeField};
 
@@ -51,23 +51,23 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
     ) -> Self::Commitment;
 
     /// Create a multi-opening proof at a set of [ProverQuery]'s.
-    fn multi_open<'com, T: Transcript>(
+    fn multi_open<T: Transcript>(
         params: &Self::Parameters,
-        prover_query: impl IntoIterator<Item = ProverQuery<'com, F>> + Clone,
+        prover_query: &[ProverQuery<F>],
         transcript: &mut T,
     ) -> Result<(), Error>
     where
-        F: Sampleable<T::Hash> + Ord + Hashable<T::Hash>,
+        F: Sampleable<T::Hash> + Hash + Ord + Hashable<T::Hash>,
         Self::Commitment: Hashable<T::Hash>;
 
     /// Verify an multi-opening proof for a given set of [VerifierQuery]'s.
     /// The function fails if the transcript has trailing bytes.
     fn multi_prepare<'com, T: Transcript>(
-        verifier_query: impl IntoIterator<Item = VerifierQuery<'com, F, Self>> + Clone,
+        verifier_query: &[VerifierQuery<'com, F, Self>],
         transcript: &mut T,
     ) -> Result<Self::VerificationGuard, Error>
     where
-        F: Sampleable<T::Hash> + Ord + Hashable<T::Hash>,
+        F: Sampleable<T::Hash> + Hash + Ord + Hashable<T::Hash>,
         Self::Commitment: 'com + Hashable<T::Hash>;
 }
 

@@ -34,6 +34,7 @@ mod kzg;
 mod lookup;
 mod msm;
 mod permutation;
+mod traces;
 mod transcript_gadget;
 mod trash;
 mod types;
