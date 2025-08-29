@@ -284,14 +284,14 @@ mod tests {
             let poseidon_chip = PoseidonChip::new_from_scratch(&config.1);
             let varlen_poseidon_gadget = VarLenPoseidonGadget::new(&poseidon_chip, &native_gadget);
 
-            NG::load_from_scratch(&mut layouter, &config.0);
-            PoseidonChip::load_from_scratch(&mut layouter, &config.1);
-
             let assigned_input: AssignedVector<F, AssignedNative<F>, MAX_LEN, RATE> =
                 vec_gadget.assign(&mut layouter, self.inputs.clone())?;
 
             let output = varlen_poseidon_gadget.varhash(&mut layouter, &assigned_input)?;
             native_gadget.assert_equal_to_fixed(&mut layouter, &output, self.expected)?;
+
+            NG::load_from_scratch(&mut layouter, &config.0);
+            PoseidonChip::load_from_scratch(&mut layouter, &config.1);
 
             Ok(())
         }

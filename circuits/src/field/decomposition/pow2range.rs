@@ -266,7 +266,7 @@ mod tests {
             mut layouter: impl Layouter<F>,
         ) -> Result<(), Error> {
             let pow2range_chip = Pow2RangeChip::<F>::new(&config, self.max_bit_len);
-            pow2range_chip.load_table(&mut layouter)?;
+
             layouter.assign_region(
                 || "pow2range test",
                 |mut region| {
@@ -281,7 +281,9 @@ mod tests {
 
                     Ok(())
                 },
-            )
+            )?;
+
+            pow2range_chip.load_table(&mut layouter)
         }
     }
 

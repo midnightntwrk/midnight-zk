@@ -123,10 +123,7 @@ pub mod tests {
             mut layouter: impl Layouter<F>,
         ) -> Result<(), Error> {
             let chip = HashChip::new_from_scratch(&config.0);
-            HashChip::load_from_scratch(&mut layouter, &config.0);
-
             let assign_chip = AssignChip::new_from_scratch(&config.1);
-            AssignChip::load_from_scratch(&mut layouter, &config.1);
 
             for input in self.inputs.iter() {
                 let vec_input = input
@@ -140,6 +137,9 @@ pub mod tests {
                 let output = chip.hash(&mut layouter, &inputs)?;
                 assign_chip.assert_equal_to_fixed(&mut layouter, &output, expected_output)?;
             }
+
+            HashChip::load_from_scratch(&mut layouter, &config.0);
+            AssignChip::load_from_scratch(&mut layouter, &config.1);
 
             Ok(())
         }

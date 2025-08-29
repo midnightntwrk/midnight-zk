@@ -141,8 +141,6 @@ impl Circuit<F> for IvcCircuit {
 
         let verifier_chip = VerifierGadget::new(&curve_chip, &scalar_chip, &poseidon_chip);
 
-        core_decomp_chip.load(&mut layouter)?;
-
         let self_vk_name = "self_vk";
         let (self_domain, self_cs, self_vk_value) = &self.self_vk;
         let assigned_self_vk: AssignedVk<S> = verifier_chip.assign_vk_as_public_input(
@@ -227,7 +225,9 @@ impl Circuit<F> for IvcCircuit {
         // Finally, collapse the resulting accumulator and constraint it as public.
         next_acc.collapse(&mut layouter, &curve_chip, &scalar_chip)?;
 
-        verifier_chip.constrain_as_public_input(&mut layouter, &next_acc)
+        verifier_chip.constrain_as_public_input(&mut layouter, &next_acc)?;
+
+        core_decomp_chip.load(&mut layouter)
     }
 }
 

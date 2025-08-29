@@ -280,8 +280,6 @@ mod tests {
             let mut transcript_gadget = TranscriptGadget::<S>::new_from_scratch(&config);
             transcript_gadget.init_with_proof(&mut layouter, Value::unknown())?;
 
-            TranscriptGadget::<S>::load_from_scratch(&mut layouter, &config);
-
             let assigned_scalars = transcript_gadget
                 .scalar_chip
                 .assign_many(&mut layouter, &self.scalars.transpose_array())?;
@@ -308,7 +306,11 @@ mod tests {
             let challenge_2 = transcript_gadget.squeeze_challenge(&mut layouter)?;
             transcript_gadget
                 .scalar_chip
-                .constrain_as_public_input(&mut layouter, &challenge_2)
+                .constrain_as_public_input(&mut layouter, &challenge_2)?;
+
+            TranscriptGadget::<S>::load_from_scratch(&mut layouter, &config);
+
+            Ok(())
         }
     }
 

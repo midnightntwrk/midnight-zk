@@ -147,10 +147,7 @@ pub mod tests {
             mut layouter: impl Layouter<F>,
         ) -> Result<(), Error> {
             let chip = SpongeChip::new_from_scratch(&config.0);
-            SpongeChip::load_from_scratch(&mut layouter, &config.0);
-
             let assign_chip = AssignChip::new_from_scratch(&config.1);
-            AssignChip::load_from_scratch(&mut layouter, &config.1);
 
             let mut input_idx = 0;
             let mut state = chip.init(&mut layouter, None)?;
@@ -183,6 +180,9 @@ pub mod tests {
                     assign_chip.assert_equal_to_fixed(&mut layouter, &out, expected_out)?;
                 }
             }
+
+            SpongeChip::load_from_scratch(&mut layouter, &config.0);
+            AssignChip::load_from_scratch(&mut layouter, &config.1);
 
             Ok(())
         }

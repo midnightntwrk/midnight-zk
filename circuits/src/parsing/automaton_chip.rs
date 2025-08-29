@@ -655,7 +655,6 @@ mod test {
             mut layouter: impl Layouter<F>,
         ) -> Result<(), Error> {
             let automaton_chip = AutomatonChip::<usize, F>::new_from_scratch(&config);
-            AutomatonChip::load_from_scratch(&mut layouter, &config);
 
             let input: Vec<AssignedByte<F>> = automaton_chip
                 .native_gadget
@@ -692,7 +691,11 @@ mod test {
                     automaton_chip
                         .native_gadget
                         .assert_equal(&mut layouter, o1, o2)
-                })
+                })?;
+
+            AutomatonChip::load_from_scratch(&mut layouter, &config);
+
+            Ok(())
         }
     }
 

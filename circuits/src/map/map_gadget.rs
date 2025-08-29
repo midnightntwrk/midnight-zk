@@ -349,7 +349,6 @@ mod test {
             let native_gadget = N::new_from_scratch(&config.0);
             let poseidon_gadget = H::new_from_scratch(&config.1);
             let mut map_gadget = MapGadget::<F, N, H>::new(&native_gadget, &poseidon_gadget);
-            MapGadget::<F, N, H>::load_from_scratch(&mut layouter, &config);
 
             map_gadget.init(&mut layouter, self.map.clone())?;
 
@@ -375,6 +374,8 @@ mod test {
                         .constrain_as_public_input(&mut layouter, &map_gadget.succinct_repr())?;
                 }
             }
+
+            MapGadget::<F, N, H>::load_from_scratch(&mut layouter, &config);
 
             Ok(())
         }

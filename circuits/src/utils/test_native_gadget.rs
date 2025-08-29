@@ -83,11 +83,10 @@ macro_rules! run_test_native_gadget {
 
                 let pow2range_config = config.pow2range_config();
                 let pow2range_chip = Pow2RangeChip::new(pow2range_config, max_bit_len);
-                pow2range_chip.load_table(&mut $layouter);
 
                 $synthesize_body
 
-                Ok(())
+                pow2range_chip.load_table(&mut $layouter)
             }
         }
 

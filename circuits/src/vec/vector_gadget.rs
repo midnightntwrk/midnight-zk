@@ -453,7 +453,6 @@ mod tests {
         ) -> Result<(), Error> {
             let ng = NG::<F>::new_from_scratch(&config);
             let vg = VectorGadget::new(&ng);
-            NG::<F>::load_from_scratch(&mut layouter, &config);
 
             match self.opts {
                 TestOpts::Eq {
@@ -538,6 +537,8 @@ mod tests {
                     vg.assert_equal_to_fixed(&mut layouter, &result, self.input_2.clone())?;
                 }
             }
+
+            NG::<F>::load_from_scratch(&mut layouter, &config);
 
             Ok(())
         }
