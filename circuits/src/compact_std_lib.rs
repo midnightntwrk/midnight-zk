@@ -159,7 +159,7 @@ impl ZkStdLibArch {
         writer.write_all(&ZKSTD_VERSION.to_le_bytes())?;
         bincode::encode_into_std_write(self, writer, standard())
             .map(|_| ())
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+            .map_err(io::Error::other)
     }
 
     /// Reads the ZkStd architecture from a buffer.

@@ -188,20 +188,12 @@ impl<E: Engine + Debug> ParamsKZG<E> {
                 let g = load_points_from_file_parallelly(reader)?;
                 let g: Vec<<E as Engine>::G1> = g
                     .iter()
-                    .map(|point| {
-                        point.ok_or_else(|| {
-                            io::Error::new(io::ErrorKind::Other, "invalid point encoding")
-                        })
-                    })
+                    .map(|point| point.ok_or_else(|| io::Error::other("invalid point encoding")))
                     .collect::<Result<_, _>>()?;
                 let g_lagrange = load_points_from_file_parallelly(reader)?;
                 let g_lagrange: Vec<<E as Engine>::G1> = g_lagrange
                     .iter()
-                    .map(|point| {
-                        point.ok_or_else(|| {
-                            io::Error::new(io::ErrorKind::Other, "invalid point encoding")
-                        })
-                    })
+                    .map(|point| point.ok_or_else(|| io::Error::other("invalid point encoding")))
                     .collect::<Result<_, _>>()?;
                 (g, g_lagrange)
             }

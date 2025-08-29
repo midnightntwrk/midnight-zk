@@ -84,9 +84,8 @@ where
                 SerdeFormat::Processed => {
                     let mut compressed = <Self as GroupEncoding>::Repr::default();
                     reader.read_exact(compressed.as_mut())?;
-                    Option::from(Self::from_bytes(&compressed)).ok_or_else(|| {
-                        io::Error::new(io::ErrorKind::Other, "Invalid point encoding in proof")
-                    })
+                    Option::from(Self::from_bytes(&compressed))
+                        .ok_or_else(|| io::Error::other("Invalid point encoding in proof"))
                 }
                 SerdeFormat::RawBytes => {
                     <Self as Curve>::AffineRepr::read_raw(reader).map(|p| p.into())

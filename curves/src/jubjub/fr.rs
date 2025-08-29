@@ -685,12 +685,10 @@ impl Field for Fr {
         Self::from_bytes_wide(&buf)
     }
 
-    #[must_use]
     fn square(&self) -> Self {
         self.square()
     }
 
-    #[must_use]
     fn double(&self) -> Self {
         self.double()
     }

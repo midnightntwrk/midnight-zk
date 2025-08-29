@@ -70,7 +70,7 @@ impl<F: PrimeField> Instantiable<F> for AssignedNative<F> {
 
 impl<F: PrimeField> InnerValue for AssignedNative<F> {
     type Element = F;
-    #[must_use]
+
     fn value(&self) -> Value<F> {
         self.value().cloned()
     }
