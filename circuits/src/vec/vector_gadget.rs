@@ -538,7 +538,7 @@ mod tests {
                 }
             }
 
-            NG::<F>::load_from_scratch(&mut layouter, &config)
+            ng.load_from_scratch(&mut layouter)
         }
     }
 

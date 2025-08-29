@@ -916,11 +916,8 @@ impl<C: EdwardsCurve> FromScratch<C::Base> for EccChip<C> {
         (ecc_config, native_gadget_config)
     }
 
-    fn load_from_scratch(
-        layouter: &mut impl Layouter<C::Base>,
-        config: &Self::Config,
-    ) -> Result<(), Error> {
-        NativeGadget::load_from_scratch(layouter, &config.1)
+    fn load_from_scratch(&self, layouter: &mut impl Layouter<C::Base>) -> Result<(), Error> {
+        self.native_gadget.load_from_scratch(layouter)
     }
 }
 
