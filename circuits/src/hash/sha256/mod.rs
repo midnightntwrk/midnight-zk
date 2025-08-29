@@ -16,6 +16,7 @@
 #![allow(non_snake_case)]
 
 mod sha256_chip;
+pub mod sha256_varlen;
 mod types;
 mod utils;
 
