@@ -63,12 +63,11 @@ impl Relation for PoseidonExample {
 }
 
 fn main() {
-    const K: u32 = 10;
+    const K: u32 = 6;
     let srs = filecoin_srs(K);
 
     let relation = PoseidonExample;
     let vk = compact_std_lib::setup_vk(&srs, &relation);
-
     let pk = compact_std_lib::setup_pk(&relation, &vk);
 
     let mut rng = ChaCha8Rng::from_entropy();
