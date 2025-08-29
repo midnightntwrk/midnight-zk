@@ -196,7 +196,7 @@ impl EccConfig {
 
             let xp_xp = meta.query_advice(self.advice_cols[7], Rotation::cur());
 
-            let one = Expression::Constant(C::Base::ONE);
+            let one = Expression::from(1);
             let edwards_d = Expression::Constant(C::D);
             let xp_yp = &xp * &yp;
             let yp_yp = yp.square();
@@ -258,7 +258,7 @@ impl EccConfig {
             let yr = meta.query_advice(self.advice_cols[6], Rotation::cur());
             let b = meta.query_advice(self.advice_cols[4], Rotation::cur());
 
-            let one = Expression::Constant(C::Base::ONE);
+            let one = Expression::from(1);
             let edwards_d = Expression::Constant(C::D);
 
             let xq_yq_xs_ys = meta.query_advice(self.advice_cols[8], Rotation::cur());
@@ -303,7 +303,7 @@ impl EccConfig {
             let x = meta.query_advice(self.advice_cols[0], Rotation::cur());
             let y = meta.query_advice(self.advice_cols[1], Rotation::cur());
 
-            let one = Expression::Constant(C::Base::ONE);
+            let one = Expression::from(1);
             let edwards_d = Expression::Constant(C::D);
 
             let x2 = x.square();

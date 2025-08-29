@@ -179,7 +179,7 @@ impl<C: CircuitCurve> SlopeConfig<C> {
             //  = (u + k_min) * m
 
             let native_id = &cond
-                * (&sign - Expression::Constant(F::ONE) + &sign * sum_exprs::<F>(&bs, &qys)
+                * (&sign - Expression::from(1) + &sign * sum_exprs::<F>(&bs, &qys)
                     - sum_exprs::<F>(&bs, &pys)
                     - sum_exprs::<F>(&bs, &qxs)
                     + sum_exprs::<F>(&bs, &pxs)
@@ -199,8 +199,7 @@ impl<C: CircuitCurve> SlopeConfig<C> {
                     //  - sum_qx_mj + sum_px_mj - sum_lqx_mj + sum_lpx_mj
                     //  - u * (m % mj) - (k_min * m) % mj - (vj + lj_min) * mj = 0
                     &cond
-                        * (&sign - Expression::Constant(F::ONE)
-                            + &sign * sum_exprs::<F>(&bs_mj, &qys)
+                        * (&sign - Expression::from(1) + &sign * sum_exprs::<F>(&bs_mj, &qys)
                             - sum_exprs::<F>(&bs_mj, &pys)
                             - sum_exprs::<F>(&bs_mj, &qxs)
                             + sum_exprs::<F>(&bs_mj, &pxs)

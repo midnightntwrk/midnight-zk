@@ -450,17 +450,16 @@ impl<F: PrimeField> ComposableChip<F> for Base64Chip<F> {
 
             let col_1 = meta.query_advice(advice_cols[0], Rotation::cur());
             let col_2 = meta.query_advice(advice_cols[1], Rotation::cur());
-            let characters = col_1 * Expression::Constant(F::from(1 << 8)) + col_2;
+            let characters = col_1 * Expression::from(1 << 8) + col_2;
 
             let value = meta.query_advice(advice_cols[2], Rotation::cur());
 
             // Default value for the deactivated lookup.
-            let default_char = Expression::Constant(F::from(super::table::two_entry_default()));
+            let default_char = Expression::from(super::table::two_entry_default());
 
             vec![
                 (
-                    s.clone() * characters
-                        + (Expression::Constant(F::ONE) - s.clone()) * default_char,
+                    s.clone() * characters + (Expression::from(1) - s.clone()) * default_char,
                     t_char,
                 ),
                 (s.clone() * value, t_val),
