@@ -182,11 +182,8 @@ impl<F: PrimeField> FromScratch<F> for Table11Chip<F> {
         }
     }
 
-    fn load_from_scratch(
-        layouter: &mut impl Layouter<F>,
-        config: &Self::Config,
-    ) -> Result<(), Error> {
-        SpreadTableConfig::load(config.clone().decomposition_config, layouter)
+    fn load_from_scratch(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
+        SpreadTableConfig::load(self.config.clone().decomposition_config, layouter)
     }
 }
 

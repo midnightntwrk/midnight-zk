@@ -625,8 +625,7 @@ mod tests {
                 }
             }
 
-            // Load tables.
-            NativeGadget::load_from_scratch(&mut layouter, &config.0)?;
+            ng.load_from_scratch(&mut layouter)?;
             b64_chip.load(&mut layouter)
         }
     }
