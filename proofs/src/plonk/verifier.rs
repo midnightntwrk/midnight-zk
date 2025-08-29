@@ -11,6 +11,8 @@ use crate::{
 };
 
 /// Given a plonk proof, this function parses it to extract the verifying trace.
+/// This function computes all Fiat-Shamir challenges, with the exception of
+/// `x`, which is computed in [verify_algebraic_constraints]
 pub fn parse_trace<F, CS, T>(
     vk: &VerifyingKey<F, CS>,
     // Unlike the prover, the verifier gets their instances in two arguments:
@@ -169,8 +171,9 @@ where
     })
 }
 
-/// Given a [VerifierTrace], this function verifies the algebraic constraints
-/// with the claimed evaluations, but does not verify the PCS proof.
+/// Given a [VerifierTrace], this function computes the opening challenge, x,
+/// and proceeds to verify the algebraic constraints with the claimed
+/// evaluations. This function does not verify the PCS proof.
 ///
 /// The verifier will error if there are trailing bits in the transcript.
 pub fn verify_algebraic_constraints<F, CS: PolynomialCommitmentScheme<F>, T: Transcript>(
@@ -456,11 +459,12 @@ where
                 }),
         )
         .chain(permutations_common.queries(&vk.permutation, x))
-        .chain(vanishing.queries(x, vk.n()));
+        .chain(vanishing.queries(x, vk.n()))
+        .collect::<Vec<_>>();
 
     // We are now convinced the circuit is satisfied so long as the
     // polynomial commitments open to the correct values.
-    CS::multi_prepare(queries, transcript).map_err(|_| Error::Opening)
+    CS::multi_prepare(&queries, transcript).map_err(|_| Error::Opening)
 }
 
 /// Prepares a plonk proof into a PCS instance that can be finalized or

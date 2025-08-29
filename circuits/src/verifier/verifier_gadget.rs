@@ -207,8 +207,11 @@ impl<S: SelfEmulation> VerifierGadget<S> {
 
 impl<S: SelfEmulation> VerifierGadget<S> {
     /// Given a plonk proof, this function parses it to extract the verifying
-    /// trace. It is the in-circuit analog of "parse_trace" from
-    /// midnight-proofs at src/plonk/verifier.rs.
+    /// trace.
+    /// This function computes all Fiat-Shamir challenges, with the exception of
+    /// `x`, which is computed in [Self::verify_algebraic_constraints]. It
+    /// is the in-circuit analog of "parse_trace" from midnight-proofs at
+    /// src/plonk/verifier.rs.
     ///
     /// The trace is considered to be valid if it satisfies the
     /// [algebraic
@@ -278,8 +281,8 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         let lookups_committed = lookups_permuted
             .into_iter()
             .map(|lookup|
-            // Hash each lookup product commitment
-            lookup.read_product_commitment(layouter, &mut transcript))
+                // Hash each lookup product commitment
+                lookup.read_product_commitment(layouter, &mut transcript))
             .collect::<Result<Vec<_>, _>>()?;
 
         let trash_challenge = transcript.squeeze_challenge(layouter)?;
@@ -312,9 +315,10 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         ))
     }
 
-    /// Given a [super::traces::VerifierTrace], this function verifies the
-    /// algebraic constrains with the claimed evaluations, but does not
-    /// verify the PCS proof.
+    /// Given a [super::traces::VerifierTrace], this function computes the
+    /// opening challenge, x, and proceeds to verify the algebraic constraints
+    /// with the claimed evaluations. This function does not verify the PCS
+    /// proof.
     ///
     /// The proof is considered to be valid if the resulting accumulator
     /// satisfies the [invariant](crate::verifier::Accumulator::check)
@@ -619,10 +623,10 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         Ok(multiopen_check)
     }
 
-    /// This function verifies a witnessed proof (an unassigned vector of bytes)
-    /// with respect to the provided assigned verifying key and assigned
-    /// instances. It is the in-circuit analog of "prepare" from midnight-proofs
-    /// at src/plonk/verifier.rs.
+    /// Prepares a plonk proof into a PCS instance that can be finalized or
+    /// batched. It is responsibility of the verifier to check the validity of
+    /// the instance columns. It is the in-circuit analog of "prepare" from
+    /// midnight-proofs at src/plonk/verifier.rs.
     ///
     /// The proof is considered to be valid if the resulting accumulator
     /// satisfies the [invariant](crate::verifier::Accumulator::check)

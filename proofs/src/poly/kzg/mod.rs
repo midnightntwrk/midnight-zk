@@ -95,9 +95,9 @@ where
         msm_specific::<E::G1Affine>(&scalars, &params.g_lagrange[0..size])
     }
 
-    fn multi_open<'com, T: Transcript>(
+    fn multi_open<T: Transcript>(
         params: &Self::Parameters,
-        prover_query: impl IntoIterator<Item = ProverQuery<'com, E::Fr>> + Clone,
+        prover_query: &[ProverQuery<E::Fr>],
         transcript: &mut T,
     ) -> Result<(), Error>
     where
@@ -188,13 +188,12 @@ where
     }
 
     fn multi_prepare<'com, T: Transcript>(
-        verifier_query: impl IntoIterator<Item = VerifierQuery<'com, E::Fr, KZGCommitmentScheme<E>>>
-            + Clone,
+        verifier_query: &[VerifierQuery<'com, E::Fr, KZGCommitmentScheme<E>>],
         transcript: &mut T,
     ) -> Result<DualMSM<E>, Error>
     where
         E::Fr: Sampleable<T::Hash> + Ord + Hash + Hashable<T::Hash>,
-        E::G1: Hashable<T::Hash> + CurveExt<ScalarExt = E::Fr>,
+        E::G1: 'com + Hashable<T::Hash> + CurveExt<ScalarExt = E::Fr>,
     {
         // Refer to the halo2 book for docs:
         // https://zcash.github.io/halo2/design/proving-system/multipoint-opening.html
@@ -403,7 +402,9 @@ mod tests {
             valid_queries
         };
 
-        let result = KZGCommitmentScheme::multi_prepare(queries, &mut transcript).unwrap();
+        let result =
+            KZGCommitmentScheme::multi_prepare(&queries.collect::<Vec<_>>(), &mut transcript)
+                .unwrap();
 
         if should_fail {
             assert!(result.verify(verifier_params).is_err());
@@ -475,7 +476,8 @@ mod tests {
         ]
         .into_iter();
 
-        KZGCommitmentScheme::multi_open(kzg_params, queries, &mut transcript).unwrap();
+        KZGCommitmentScheme::multi_open(kzg_params, &queries.collect::<Vec<_>>(), &mut transcript)
+            .unwrap();
 
         transcript.finalize()
     }

@@ -7,7 +7,7 @@ use halo2curves::{
     pairing::{Engine, MillerLoopResult, MultiMillerLoop},
     CurveAffine,
 };
-use midnight_curves::{Fq, G1Affine, G1Projective};
+use midnight_curves::{Fq, G1Projective};
 use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 
 use super::params::ParamsVerifierKZG;
@@ -41,11 +41,10 @@ impl<E: Engine> MSMKZG<E> {
 
     /// Create an MSM from various MSMs
     pub fn from_many(msms: Vec<Self>) -> Self {
-        let total_scalars: usize = msms.iter().map(|m| m.scalars.len()).sum();
-        let total_bases: usize = msms.iter().map(|m| m.bases.len()).sum();
+        let len = msms.iter().map(|m| m.scalars.len()).sum();
 
-        let mut scalars = Vec::with_capacity(total_scalars);
-        let mut bases = Vec::with_capacity(total_bases);
+        let mut scalars = Vec::with_capacity(len);
+        let mut bases = Vec::with_capacity(len);
 
         for mut msm in msms {
             scalars.append(&mut msm.scalars);
@@ -107,7 +106,9 @@ where
 #[allow(unsafe_code)]
 /// Wrapper over the MSM function to use the blstrs underlying function
 pub fn msm_specific<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C::Curve]) -> C::Curve {
-    if coeffs.len() <= (2 << 18) && TypeId::of::<C>() == TypeId::of::<G1Affine>() {
+    // We empirically checked that for MSMs larger than 2**18, the blstrs
+    // implementation regresses.
+    if coeffs.len() <= (2 << 18) && TypeId::of::<C>() == TypeId::of::<midnight_curves::G1Affine>() {
         // Safe: we just checked type
         let coeffs = unsafe { &*(coeffs as *const _ as *const [Fq]) };
         let bases = unsafe { &*(bases as *const _ as *const [G1Projective]) };

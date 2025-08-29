@@ -32,14 +32,9 @@ pub(super) type IntermediateSets<F, Q> = (
     Vec<Vec<F>>,
 );
 
-pub fn construct_intermediate_sets<F: Field + Hash + Ord, I, Q: Query<F>>(
-    queries: I,
-) -> Result<IntermediateSets<F, Q>, Error>
-where
-    I: IntoIterator<Item = Q> + Clone,
-{
-    // Collect queries once to allow multiple passes
-    let queries: Vec<Q> = queries.into_iter().collect();
+pub fn construct_intermediate_sets<F: Field + Hash + Ord, Q: Query<F>>(
+    queries: &[Q],
+) -> Result<IntermediateSets<F, Q>, Error> {
     // Construct sets of unique commitments and corresponding information about
     // their queries.
     let mut commitment_map: Vec<CommitmentData<Q::Eval, Q::Commitment>> = vec![];
@@ -50,7 +45,7 @@ where
 
     // Iterate over all of the queries, computing the ordering of the points
     // while also creating new commitment data.
-    for query in &queries {
+    for query in queries {
         let num_points = point_index_map.len();
         let point_idx = point_index_map
             .entry(query.get_point())
@@ -60,11 +55,10 @@ where
             .iter()
             .position(|comm| comm.commitment == query.get_commitment())
         {
-            let data = &mut commitment_map[pos];
-            if data.point_indices.contains(point_idx) {
+            if commitment_map[pos].point_indices.contains(point_idx) {
                 return Err(Error::DuplicatedQuery);
             }
-            data.point_indices.push(*point_idx);
+            commitment_map[pos].point_indices.push(*point_idx);
         } else {
             let mut tmp = CommitmentData::new(query.get_commitment());
             tmp.point_indices.push(*point_idx);
@@ -98,7 +92,7 @@ where
     }
 
     // Populate set_index, evals and points for each commitment using point_idx_sets
-    for query in &queries {
+    for query in queries {
         // The index of the point at which the commitment is queried
         let point_index = point_index_map.get(&query.get_point()).unwrap();
 

@@ -775,9 +775,10 @@ where
         )
         .chain(pk.permutation.open(x))
         // We query the h(X) polynomial at x
-        .chain(vanishing.open(x));
+        .chain(vanishing.open(x))
+        .collect::<Vec<_>>();
 
-    CS::multi_open(params, queries, transcript).map_err(|_| Error::ConstraintSystemFailure)
+    CS::multi_open(params, &queries, transcript).map_err(|_| Error::ConstraintSystemFailure)
 }
 
 /// This creates a proof for the provided `circuit` when given the public

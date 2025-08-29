@@ -285,11 +285,10 @@ where
     E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
     E::Fr: Ord,
 {
-    let total_scalars: usize = msms.iter().map(|m| m.scalars.len()).sum();
-    let total_bases: usize = msms.iter().map(|m| m.bases.len()).sum();
+    let len: usize = msms.iter().map(|m| m.scalars.len()).sum();
 
-    let mut new_scalars = Vec::with_capacity(total_scalars);
-    let mut new_bases = Vec::with_capacity(total_bases);
+    let mut new_scalars = Vec::with_capacity(len);
+    let mut new_bases = Vec::with_capacity(len);
 
     msms.iter_mut().zip(scalars.iter()).for_each(|(msm, s)| {
         msm.scale(*s);
