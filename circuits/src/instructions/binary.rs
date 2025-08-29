@@ -172,7 +172,6 @@ pub mod tests {
             mut layouter: impl Layouter<F>,
         ) -> Result<(), Error> {
             let chip = BinaryChip::new_from_scratch(&config);
-            BinaryChip::load_from_scratch(&mut layouter, &config);
 
             // b2 does not apply in tests of arity-1 functions.
             let b2_idx = min(self.inputs.len() - 1, 1);
@@ -186,7 +185,11 @@ pub mod tests {
                 Operation::Not => chip.not(&mut layouter, &b1),
             }?;
 
-            chip.assert_equal_to_fixed(&mut layouter, &res, self.expected)
+            chip.assert_equal_to_fixed(&mut layouter, &res, self.expected)?;
+
+            BinaryChip::load_from_scratch(&mut layouter, &config);
+
+            Ok(())
         }
     }
 

@@ -249,7 +249,6 @@ pub mod tests {
             mut layouter: impl Layouter<F>,
         ) -> Result<(), Error> {
             let chip = BitwiseChip::new_from_scratch(&config);
-            BitwiseChip::load_from_scratch(&mut layouter, &config);
 
             // y does not apply in tests of arity-1 functions.
             let y_idx = min(self.inputs.len() - 1, 1);
@@ -263,7 +262,11 @@ pub mod tests {
                 Operation::Bnot => chip.bnot(&mut layouter, &x, self.n),
             }?;
 
-            chip.assert_equal_to_fixed(&mut layouter, &res, self.expected)
+            chip.assert_equal_to_fixed(&mut layouter, &res, self.expected)?;
+
+            BitwiseChip::load_from_scratch(&mut layouter, &config);
+
+            Ok(())
         }
     }
 

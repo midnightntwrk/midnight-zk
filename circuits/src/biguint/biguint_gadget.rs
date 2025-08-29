@@ -901,7 +901,6 @@ mod tests {
         ) -> Result<(), Error> {
             let native_gadget = <N as FromScratch<F>>::new_from_scratch(&config);
             let biguint_gadget = BigUintGadget::<F, N>::new(&native_gadget);
-            <N as FromScratch<F>>::load_from_scratch(&mut layouter, &config);
 
             let x = biguint_gadget.assign_biguint(&mut layouter, self.x.clone(), 1024)?;
             let y = biguint_gadget.assign_biguint(&mut layouter, self.y.clone(), 1024)?;
@@ -925,7 +924,11 @@ mod tests {
 
             let expected = biguint_gadget.assign_fixed(&mut layouter, self.expected.clone())?;
 
-            biguint_gadget.assert_equal(&mut layouter, &expected, &res)
+            biguint_gadget.assert_equal(&mut layouter, &expected, &res)?;
+
+            <N as FromScratch<F>>::load_from_scratch(&mut layouter, &config);
+
+            Ok(())
         }
     }
 

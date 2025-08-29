@@ -666,7 +666,6 @@ mod tests {
             mut layouter: impl Layouter<F>,
         ) -> Result<(), Error> {
             let poseidon_chip = PoseidonChip::new_from_scratch(&config);
-            PoseidonChip::load_from_scratch(&mut layouter, &config);
 
             let inputs: AssignedRegister<F> = poseidon_chip
                 .native_chip
@@ -685,6 +684,8 @@ mod tests {
             // number of rows of a single permutation.
 
             // let _ = poseidon_chip.permutation(&mut layouter, &inputs)?;
+
+            PoseidonChip::load_from_scratch(&mut layouter, &config);
 
             Ok(())
         }
