@@ -24,6 +24,7 @@ verification keys break backwards compatibility.
 * Updated bincode to v2.0.0 - This is a breaking change [#82](https://github.com/midnightntwrk/midnight-zk/pull/82)
 * Adapted in-circuit verifier to changes of off-circuit counterpart [#76](https://github.com/midnightntwrk/midnight-zk/pull/76)
 * Load only necessary bit_lens in pow2range_chip [#90](https://github.com/midnightntwrk/midnight-zk/pull/90)
+* Reduce degree of foreign/ecc_chip lookup from 6 to 5 [#91](https://github.com/midnightntwrk/midnight-zk/pull/91)
 
 ### Removed
 

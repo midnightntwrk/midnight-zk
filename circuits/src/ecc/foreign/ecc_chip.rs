@@ -1037,30 +1037,30 @@ where
             let sel = meta.query_selector(q_multi_select);
             let not_sel = Expression::Constant(F::ONE) - sel.clone();
 
-            // All identities are of the form: `(sel * value, (1 - sel) * value)`.
-            // The selector `sel` will only be enabled when "selecting a point" and it will
-            // be disabled in all other rows (including those defining a table of points).
-            // By multiplying by `(1 - sel)`, we make sure that the rows where the selector
-            // is enabled are not part of the table. (Otherwise they would be trivially on
-            // the table.)
-            // All other rows are part of the lookup table, including those that correspond
-            // to unrelated parts of the circuit. This is not a problem, as the tag column
-            // (which is fixed) makes sure that the multi_selected point is restricted with
-            // respect to the relevant section of the lookup table, thus an adversary cannot
-            // leverage unexpected parts of the circuit to bypass this check.
+            // This is a lookup of a column on itself!
+            //
+            // All identities are of the form: `(value, (1 - sel) * value)`.
+            // That means, every value in the column (it is actually 2 columns including the
+            // tag) is requested to be in the table! Most values, where the selector is
+            // disabled are trivially in the table (at least at their own position).
+            // Those values that we really wanna lookup have a `sel` value of 1, thus
+            // `(1 - sel) * value` is zero and they themselves are not part of the lookup
+            // meaning they must be somewhere else (in the column positions that are part of
+            // the table). An exception is when value = 0 and tag = 0, but we actually use
+            // tag = 0 as a default case that we never want to lookup.
             let mut identities = [idx_col_multi_select]
                 .iter()
                 .chain(base_field_config.x_cols.iter())
                 .chain(base_field_config.z_cols.iter())
                 .map(|col| {
                     let val = meta.query_advice(*col, Rotation::cur());
-                    (sel.clone() * val.clone(), not_sel.clone() * val)
+                    (val.clone(), not_sel.clone() * val)
                 })
                 .collect::<Vec<_>>();
 
             // Handle tag indpendently, since it is a fixed column
             let tag = meta.query_fixed(tag_col_multi_select, Rotation::cur());
-            identities.push((sel * tag.clone(), not_sel * tag));
+            identities.push((tag.clone(), not_sel * tag));
 
             identities
         });
