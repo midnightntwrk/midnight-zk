@@ -1446,7 +1446,8 @@ impl<F: PrimeField> FromScratch<F> for NativeChip<F> {
     fn load_from_scratch(
         _layouter: &mut impl midnight_proofs::circuit::Layouter<F>,
         _config: &Self::Config,
-    ) {
+    ) -> Result<(), Error> {
+        Ok(())
     }
 }
 

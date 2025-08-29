@@ -234,9 +234,7 @@ mod tests {
 
             native_gadget.assert_equal_to_fixed(&mut layouter, &res, self.expected)?;
 
-            <N as FromScratch<F>>::load_from_scratch(&mut layouter, &config);
-
-            Ok(())
+            <N as FromScratch<F>>::load_from_scratch(&mut layouter, &config)
         }
     }
 

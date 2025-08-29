@@ -264,9 +264,7 @@ pub mod tests {
 
             chip.assert_equal_to_fixed(&mut layouter, &res, self.expected)?;
 
-            BitwiseChip::load_from_scratch(&mut layouter, &config);
-
-            Ok(())
+            BitwiseChip::load_from_scratch(&mut layouter, &config)
         }
     }
 

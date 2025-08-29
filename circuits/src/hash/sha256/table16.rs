@@ -84,8 +84,11 @@ impl<F: PrimeField> FromScratch<F> for Table16Chip<F> {
         Table16Chip::configure(meta)
     }
 
-    fn load_from_scratch(layouter: &mut impl Layouter<F>, config: &Self::Config) {
-        Table16Chip::load(config.clone(), layouter).expect("Failed to load table")
+    fn load_from_scratch(
+        layouter: &mut impl Layouter<F>,
+        config: &Self::Config,
+    ) -> Result<(), Error> {
+        Table16Chip::load(config.clone(), layouter)
     }
 }
 

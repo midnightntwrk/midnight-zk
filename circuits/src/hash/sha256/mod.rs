@@ -444,9 +444,12 @@ where
         )
     }
 
-    fn load_from_scratch(layouter: &mut impl Layouter<F>, config: &Self::Config) {
-        <H as FromScratch<F>>::load_from_scratch(layouter, &config.0);
-        NativeGadget::load_from_scratch(layouter, &config.1);
+    fn load_from_scratch(
+        layouter: &mut impl Layouter<F>,
+        config: &Self::Config,
+    ) -> Result<(), Error> {
+        <H as FromScratch<F>>::load_from_scratch(layouter, &config.0)?;
+        NativeGadget::load_from_scratch(layouter, &config.1)
     }
 }
 

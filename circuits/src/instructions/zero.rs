@@ -165,9 +165,7 @@ pub mod tests {
                 }
             }?;
 
-            ZeroChip::load_from_scratch(&mut layouter, &config);
-
-            Ok(())
+            ZeroChip::load_from_scratch(&mut layouter, &config)
         }
     }
 

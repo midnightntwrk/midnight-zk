@@ -180,9 +180,7 @@ pub mod tests {
                 Operation::CondAssertEqual => chip.cond_assert_equal(&mut layouter, &cond, &x, &y),
             }?;
 
-            ControlFlowChip::load_from_scratch(&mut layouter, &config);
-
-            Ok(())
+            ControlFlowChip::load_from_scratch(&mut layouter, &config)
         }
     }
 

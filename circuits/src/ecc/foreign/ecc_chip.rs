@@ -2057,8 +2057,8 @@ where
     fn load_from_scratch(
         layouter: &mut impl Layouter<F>,
         config: &ForeignEccTestConfig<F, C, S, N>,
-    ) {
-        <N as FromScratch<F>>::load_from_scratch(layouter, &config.native_gadget_config);
+    ) -> Result<(), Error> {
+        <N as FromScratch<F>>::load_from_scratch(layouter, &config.native_gadget_config)?;
         <S as FromScratch<F>>::load_from_scratch(layouter, &config.scalar_field_config)
     }
 
