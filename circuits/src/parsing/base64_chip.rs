@@ -626,7 +626,7 @@ mod tests {
             }
 
             // Load tables.
-            NativeGadget::load_from_scratch(&mut layouter, &config.0);
+            NativeGadget::load_from_scratch(&mut layouter, &config.0)?;
             b64_chip.load(&mut layouter)
         }
     }

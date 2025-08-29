@@ -202,10 +202,13 @@ where
         TranscriptGadget::new(&scalar_chip, &curve_chip, &sponge_chip)
     }
 
-    fn load_from_scratch(layouter: &mut impl Layouter<S::F>, config: &Self::Config) {
-        S::ScalarChip::load_from_scratch(layouter, &config.0);
-        S::CurveChip::load_from_scratch(layouter, &config.1);
-        S::SpongeChip::load_from_scratch(layouter, &config.2);
+    fn load_from_scratch(
+        layouter: &mut impl Layouter<S::F>,
+        config: &Self::Config,
+    ) -> Result<(), Error> {
+        S::ScalarChip::load_from_scratch(layouter, &config.0)?;
+        S::CurveChip::load_from_scratch(layouter, &config.1)?;
+        S::SpongeChip::load_from_scratch(layouter, &config.2)
     }
 
     fn configure_from_scratch(
@@ -308,9 +311,7 @@ mod tests {
                 .scalar_chip
                 .constrain_as_public_input(&mut layouter, &challenge_2)?;
 
-            TranscriptGadget::<S>::load_from_scratch(&mut layouter, &config);
-
-            Ok(())
+            TranscriptGadget::<S>::load_from_scratch(&mut layouter, &config)
         }
     }
 

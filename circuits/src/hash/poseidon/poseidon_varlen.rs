@@ -290,10 +290,8 @@ mod tests {
             let output = varlen_poseidon_gadget.varhash(&mut layouter, &assigned_input)?;
             native_gadget.assert_equal_to_fixed(&mut layouter, &output, self.expected)?;
 
-            NG::load_from_scratch(&mut layouter, &config.0);
-            PoseidonChip::load_from_scratch(&mut layouter, &config.1);
-
-            Ok(())
+            NG::load_from_scratch(&mut layouter, &config.0)?;
+            PoseidonChip::load_from_scratch(&mut layouter, &config.1)
         }
     }
 

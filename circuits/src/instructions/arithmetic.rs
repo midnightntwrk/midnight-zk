@@ -500,9 +500,7 @@ pub mod tests {
             let expected = chip.assign_fixed(&mut layouter, self.expected.clone())?;
             chip.assert_equal(&mut layouter, &expected, &res)?;
 
-            ArithChip::load_from_scratch(&mut layouter, &config);
-
-            Ok(())
+            ArithChip::load_from_scratch(&mut layouter, &config)
         }
     }
 

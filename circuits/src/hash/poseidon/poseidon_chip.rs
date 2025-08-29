@@ -611,7 +611,10 @@ impl<F: PoseidonField> FromScratch<F> for PoseidonChip<F> {
         (native_config, poseidon_config)
     }
 
-    fn load_from_scratch(layouter: &mut impl Layouter<F>, config: &Self::Config) {
+    fn load_from_scratch(
+        layouter: &mut impl Layouter<F>,
+        config: &Self::Config,
+    ) -> Result<(), Error> {
         NativeChip::<F>::load_from_scratch(layouter, &config.0)
     }
 }
@@ -685,9 +688,7 @@ mod tests {
 
             // let _ = poseidon_chip.permutation(&mut layouter, &inputs)?;
 
-            PoseidonChip::load_from_scratch(&mut layouter, &config);
-
-            Ok(())
+            PoseidonChip::load_from_scratch(&mut layouter, &config)
         }
     }
 

@@ -1669,7 +1669,10 @@ where
         FieldChip::new(&config.field_chip_config, &native_gadget)
     }
 
-    fn load_from_scratch(layouter: &mut impl Layouter<F>, config: &FieldChipConfigForTests<F, N>) {
+    fn load_from_scratch(
+        layouter: &mut impl Layouter<F>,
+        config: &FieldChipConfigForTests<F, N>,
+    ) -> Result<(), Error> {
         <N as FromScratch<F>>::load_from_scratch(layouter, &config.native_gadget_config)
     }
 

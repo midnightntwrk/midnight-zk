@@ -194,9 +194,7 @@ pub mod tests {
                 }
             }?;
 
-            AssertionChip::load_from_scratch(&mut layouter, &config);
-
-            Ok(())
+            AssertionChip::load_from_scratch(&mut layouter, &config)
         }
     }
 

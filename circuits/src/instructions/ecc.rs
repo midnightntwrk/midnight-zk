@@ -274,9 +274,7 @@ pub mod tests {
 
             ecc_chip.assert_equal_to_fixed(&mut layouter, &res, self.expected)?;
 
-            EccChip::load_from_scratch(&mut layouter, &config);
-
-            Ok(())
+            EccChip::load_from_scratch(&mut layouter, &config)
         }
     }
 

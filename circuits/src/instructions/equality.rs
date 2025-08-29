@@ -165,9 +165,7 @@ pub mod tests {
                 },
             )?;
 
-            EqualityChip::load_from_scratch(&mut layouter, &config);
-
-            Ok(())
+            EqualityChip::load_from_scratch(&mut layouter, &config)
         }
     }
 
