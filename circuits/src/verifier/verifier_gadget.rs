@@ -217,7 +217,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
     /// [algebraic
     /// constraints](crate::verifier::VerifierGadget::verify_algebraic_constraints),
     /// and the resulting accumulator satisfies the
-    /// [invariant](crate::verifier::Accumulator::check)
+    /// [invariant](crate::verifier::Accumulator::check).
     pub fn parse_trace(
         &self,
         layouter: &mut impl Layouter<S::F>,
