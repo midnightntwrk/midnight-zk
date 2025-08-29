@@ -42,7 +42,10 @@ use midnight_proofs::{
 use rand::{CryptoRng, RngCore};
 use sha2::Digest;
 
-use crate::{compact_std_lib::MidnightVK, midnight_proofs::transcript::TranscriptHash};
+use crate::{
+    compact_std_lib::{cost_model, MidnightVK, Relation},
+    midnight_proofs::transcript::TranscriptHash,
+};
 
 macro_rules! plonk_api {
     ($name:ident, $engine:ty, $native:ty, $curve:ty, $projective:ty) => {
@@ -195,17 +198,14 @@ plonk_api!(
 ///    accordingly. To update the VK, re-run the example with
 ///    CHANGE_VK=BREAKING.
 pub fn check_vk<Relation: Circuit<midnight_curves::Fq>>(vk: &MidnightVK) {
-    // Read fixed VK hash
-    let vk_name = format!(
-        "./tests/static_vks/{}Vk",
-        std::any::type_name::<Relation>()
-            .split("::")
-            .last()
-            .unwrap()
-            .split('>')
-            .next()
-            .unwrap(),
-    );
+    let circuit_name = std::any::type_name::<Relation>()
+        .split("::")
+        .last()
+        .unwrap()
+        .split('>')
+        .next()
+        .unwrap();
+    let vk_name = format!("./tests/static_vks/{}Vk", circuit_name);
 
     let mut vk_buffer: Vec<u8> = Vec::new();
     vk.write(&mut vk_buffer, SerdeFormat::RawBytes).unwrap();
@@ -252,6 +252,23 @@ pub fn check_vk<Relation: Circuit<midnight_curves::Fq>>(vk: &MidnightVK) {
             _ => panic!("{}", error_msg),
         }
     }
+}
+
+/// Updates the circuit goldenfiles.
+pub fn update_circuit_goldenfiles<R: Relation>(relation: &R) {
+    let circuit_name = std::any::type_name::<R>()
+        .split("::")
+        .last()
+        .unwrap()
+        .split('>')
+        .next()
+        .unwrap();
+
+    let file_name = format!("./goldenfiles/examples/{}", circuit_name);
+    let path = Path::new(&file_name);
+    let mut f = File::create(path).expect(&format!("Could not create file {}", file_name));
+    writeln!(f, "{:#?}", cost_model(relation))
+        .expect(&format!("Could not write to file {}", file_name));
 }
 
 /// Use filecoin's SRS (over BLS12-381)

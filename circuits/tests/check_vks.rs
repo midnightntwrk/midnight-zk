@@ -16,7 +16,7 @@
 use midnight_circuits::{
     compact_std_lib,
     compact_std_lib::MidnightCircuit,
-    testing_utils::plonk_api::{check_vk, filecoin_srs},
+    testing_utils::plonk_api::{check_vk, filecoin_srs, update_circuit_goldenfiles},
 };
 use midnight_proofs::plonk::k_from_circuit;
 
@@ -38,12 +38,13 @@ macro_rules! generate_tests {
             fn $name() {
                 let relation = <$circuit>::default();
                 let circuit = MidnightCircuit::from_relation(&relation);
+
+                update_circuit_goldenfiles(&relation);
+
                 let k = k_from_circuit(&circuit);
                 let srs = filecoin_srs(k);
 
-
                 let vk = compact_std_lib::setup_vk(&srs, &relation);
-
                 check_vk::<MidnightCircuit<$circuit>>(&vk);
             }
         )*

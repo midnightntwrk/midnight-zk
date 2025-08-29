@@ -12,7 +12,8 @@ verification keys break backwards compatibility.
 
 ## [Unreleased]
 ### Added
-* Add CommittedInstanceInstructions [#381](https://github.com/midnightntwrk/midnight-zk/pull/381)
+* Add CommittedInstanceInstructions [#63](https://github.com/midnightntwrk/midnight-zk/pull/63)
+* Add goldenfiles with examples cost-model [#89](https://github.com/midnightntwrk/midnight-zk/pull/89)
 
 ### Changed
 * Refactored crate to prepare for edition 2024.

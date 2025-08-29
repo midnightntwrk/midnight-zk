@@ -81,6 +81,17 @@ jobs:
           package: midnight-circuits
           args: --release --all-features -- --ignored
 
+      - name: Check for changes in goldenfiles/examples.
+        run: |
+          if ! git diff --quiet -- circuits/goldenfiles/examples; then
+            echo "Files in circuits/goldenfiles/examples have changed"
+            echo "Run "cargo test --release --all-features -- --ignored" locally and commit the changes"
+            git diff -- circuits/goldenfiles/examples
+            exit 1
+          else
+            echo "No changes in goldenfiles/examples"
+          fi
+
   test-proofs:
     if: github.event.pull_request.draft == false
     name: Test proofs
