@@ -1035,7 +1035,7 @@ where
 
         meta.lookup_any("multi_select lookup", |meta| {
             let sel = meta.query_selector(q_multi_select);
-            let not_sel = Expression::Constant(F::ONE) - sel.clone();
+            let not_sel = Expression::from(1) - sel.clone();
 
             // This is a lookup of a column on itself!
             //

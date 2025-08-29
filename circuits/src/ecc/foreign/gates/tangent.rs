@@ -162,11 +162,11 @@ impl<C: CircuitCurve> TangentConfig<C> {
             //   3 * (2 * sum_px + sum_px2) + 1
             // - 2 * (sum_py + sum_lambda + sum_lpy) = (u + k_min) * m
             let native_id = &cond
-                * (Expression::Constant(F::from(3))
-                    * (Expression::Constant(F::from(2)) * sum_exprs::<F>(&bs, &pxs)
+                * (Expression::from(3)
+                    * (Expression::from(2) * sum_exprs::<F>(&bs, &pxs)
                         + sum_exprs::<F>(&bs2, &px2s))
-                    + Expression::Constant(F::ONE)
-                    - Expression::Constant(F::from(2))
+                    + Expression::from(1)
+                    - Expression::from(2)
                         * (sum_exprs::<F>(&bs, &pys)
                             + sum_exprs::<F>(&bs, &lambdas)
                             + sum_exprs::<F>(&bs2, &lpys))
@@ -185,11 +185,11 @@ impl<C: CircuitCurve> TangentConfig<C> {
                     // - 2 * (sum_py_mj + sum_lambda_mj + sum_lpy_mj)
                     // - u * (m % mj) - (k_min * m) % mj - (vj + lj_min) * mj = 0
                     &cond
-                        * (Expression::Constant(F::from(3))
-                            * (Expression::Constant(F::from(2)) * sum_exprs::<F>(&bs_mj, &pxs)
+                        * (Expression::from(3)
+                            * (Expression::from(2) * sum_exprs::<F>(&bs_mj, &pxs)
                                 + sum_exprs::<F>(&bs2_mj, &px2s))
-                            + Expression::Constant(F::ONE)
-                            - Expression::Constant(F::from(2))
+                            + Expression::from(1)
+                            - Expression::from(2)
                                 * (sum_exprs::<F>(&bs_mj, &pys)
                                     + sum_exprs::<F>(&bs_mj, &lambdas)
                                     + sum_exprs::<F>(&bs2_mj, &lpys))
