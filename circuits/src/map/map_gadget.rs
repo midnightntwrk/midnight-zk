@@ -266,9 +266,12 @@ where
         )
     }
 
-    fn load_from_scratch(layouter: &mut impl Layouter<F>, config: &Self::Config) {
-        N::load_from_scratch(layouter, &config.0);
-        H::load_from_scratch(layouter, &config.1);
+    fn load_from_scratch(
+        layouter: &mut impl Layouter<F>,
+        config: &Self::Config,
+    ) -> Result<(), Error> {
+        N::load_from_scratch(layouter, &config.0)?;
+        H::load_from_scratch(layouter, &config.1)
     }
 }
 
@@ -375,9 +378,7 @@ mod test {
                 }
             }
 
-            MapGadget::<F, N, H>::load_from_scratch(&mut layouter, &config);
-
-            Ok(())
+            MapGadget::<F, N, H>::load_from_scratch(&mut layouter, &config)
         }
     }
 

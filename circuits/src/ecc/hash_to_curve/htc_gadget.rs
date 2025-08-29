@@ -144,9 +144,12 @@ where
         )
     }
 
-    fn load_from_scratch(layouter: &mut impl Layouter<F>, config: &Self::Config) {
-        H::load_from_scratch(layouter, &config.0);
-        E::load_from_scratch(layouter, &config.1);
+    fn load_from_scratch(
+        layouter: &mut impl Layouter<F>,
+        config: &Self::Config,
+    ) -> Result<(), Error> {
+        H::load_from_scratch(layouter, &config.0)?;
+        E::load_from_scratch(layouter, &config.1)
     }
 }
 

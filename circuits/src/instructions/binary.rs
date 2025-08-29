@@ -187,9 +187,7 @@ pub mod tests {
 
             chip.assert_equal_to_fixed(&mut layouter, &res, self.expected)?;
 
-            BinaryChip::load_from_scratch(&mut layouter, &config);
-
-            Ok(())
+            BinaryChip::load_from_scratch(&mut layouter, &config)
         }
     }
 

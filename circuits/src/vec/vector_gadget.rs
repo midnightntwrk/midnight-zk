@@ -538,9 +538,7 @@ mod tests {
                 }
             }
 
-            NG::<F>::load_from_scratch(&mut layouter, &config);
-
-            Ok(())
+            NG::<F>::load_from_scratch(&mut layouter, &config)
         }
     }
 

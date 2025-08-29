@@ -467,10 +467,8 @@ pub mod tests {
                 }
             }?;
 
-            DecompChip::load_from_scratch(&mut layouter, &config.0);
-            AuxChip::load_from_scratch(&mut layouter, &config.1);
-
-            Ok(())
+            DecompChip::load_from_scratch(&mut layouter, &config.0)?;
+            AuxChip::load_from_scratch(&mut layouter, &config.1)
         }
     }
 

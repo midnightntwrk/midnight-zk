@@ -794,8 +794,11 @@ where
         <N as FromScratch<F>>::configure_from_scratch(meta, instance_columns)
     }
 
-    fn load_from_scratch(layouter: &mut impl Layouter<F>, config: &Self::Config) {
-        <N as FromScratch<F>>::load_from_scratch(layouter, config);
+    fn load_from_scratch(
+        layouter: &mut impl Layouter<F>,
+        config: &Self::Config,
+    ) -> Result<(), Error> {
+        <N as FromScratch<F>>::load_from_scratch(layouter, config)
     }
 }
 
@@ -926,9 +929,7 @@ mod tests {
 
             biguint_gadget.assert_equal(&mut layouter, &expected, &res)?;
 
-            <N as FromScratch<F>>::load_from_scratch(&mut layouter, &config);
-
-            Ok(())
+            <N as FromScratch<F>>::load_from_scratch(&mut layouter, &config)
         }
     }
 

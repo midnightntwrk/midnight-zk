@@ -132,10 +132,8 @@ pub mod tests {
                 .ecc_chip()
                 .assert_equal_to_fixed(&mut layouter, &res, self.expected)?;
 
-            InputsChip::load_from_scratch(&mut layouter, &config.0);
-            HashToCurveChip::load_from_scratch(&mut layouter, &config.1);
-
-            Ok(())
+            InputsChip::load_from_scratch(&mut layouter, &config.0)?;
+            HashToCurveChip::load_from_scratch(&mut layouter, &config.1)
         }
     }
 

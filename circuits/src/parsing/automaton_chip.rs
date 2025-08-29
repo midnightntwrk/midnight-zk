@@ -577,10 +577,13 @@ where
         (native_gadget_config, automaton_config)
     }
 
-    fn load_from_scratch(layouter: &mut impl Layouter<F>, config: &Self::Config) {
-        NG::<F>::load_from_scratch(layouter, &config.0);
+    fn load_from_scratch(
+        layouter: &mut impl Layouter<F>,
+        config: &Self::Config,
+    ) -> Result<(), Error> {
+        NG::<F>::load_from_scratch(layouter, &config.0)?;
         let chip = Self::new_from_scratch(config);
-        let _ = chip.load(layouter);
+        chip.load(layouter)
     }
 }
 
@@ -693,9 +696,7 @@ mod test {
                         .assert_equal(&mut layouter, o1, o2)
                 })?;
 
-            AutomatonChip::load_from_scratch(&mut layouter, &config);
-
-            Ok(())
+            AutomatonChip::load_from_scratch(&mut layouter, &config)
         }
     }
 

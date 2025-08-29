@@ -225,9 +225,7 @@ mod test {
             ng.assert_equal(&mut layouter, &q, &expected_q)?;
             ng.assert_equal(&mut layouter, &r, &expected_r)?;
 
-            NG::<F>::load_from_scratch(&mut layouter, &config);
-
-            Ok(())
+            NG::<F>::load_from_scratch(&mut layouter, &config)
         }
     }
 

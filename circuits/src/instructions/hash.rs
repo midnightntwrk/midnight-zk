@@ -138,10 +138,8 @@ pub mod tests {
                 assign_chip.assert_equal_to_fixed(&mut layouter, &output, expected_output)?;
             }
 
-            HashChip::load_from_scratch(&mut layouter, &config.0);
-            AssignChip::load_from_scratch(&mut layouter, &config.1);
-
-            Ok(())
+            HashChip::load_from_scratch(&mut layouter, &config.0)?;
+            AssignChip::load_from_scratch(&mut layouter, &config.1)
         }
     }
 

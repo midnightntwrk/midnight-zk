@@ -15,6 +15,8 @@
 #![allow(missing_docs)]
 
 use ff::PrimeField;
+#[cfg(any(test, feature = "testing"))]
+use midnight_proofs::plonk::Error;
 use num_bigint::{BigInt as BI, BigUint, Sign};
 use num_integer::Integer;
 use num_traits::{Num, One, Signed, Zero};
@@ -229,5 +231,8 @@ pub trait FromScratch<F: PrimeField> {
         instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config;
 
-    fn load_from_scratch(layouter: &mut impl Layouter<F>, config: &Self::Config);
+    fn load_from_scratch(
+        layouter: &mut impl Layouter<F>,
+        config: &Self::Config,
+    ) -> Result<(), Error>;
 }
