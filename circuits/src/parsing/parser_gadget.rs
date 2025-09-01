@@ -126,8 +126,12 @@ where
         //   * chunk_idx       := idx / nb_bytes_per_chunk
         //   * fine_search_idx := idx % nb_bytes_per_chunk
         //
-        let (chunk_idx, fine_search_idx) =
-            native.div_rem(layouter, idx, 1 << 18, nb_bytes_per_chunk as u32)?;
+        let (chunk_idx, fine_search_idx) = native.div_rem(
+            layouter,
+            idx,
+            nb_bytes_per_chunk.into(),
+            Some((1u64 << 18).into()),
+        )?;
 
         // Add 1 because the index of interest could be between 2 chunks, even if
         // the length we are looking for fits in 1 chunk.

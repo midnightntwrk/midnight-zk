@@ -20,6 +20,7 @@ use ff::PrimeField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 use num_bigint::BigUint;
 use num_integer::Integer;
+use num_traits::{One, Zero};
 
 use crate::{
     instructions::{ArithInstructions, RangeCheckInstructions},
@@ -45,17 +46,21 @@ where
     /// bounded by `bound`), and a constant `divisor`, returns the quotient
     /// and remainder of dividing the former by the latter, as integers.
     ///
-    /// # Unsatisfiable
-    ///  If `dividend >= bound` (when interpreted as an integer).
+    /// An optional (inclusive) upper bound can be provided on the value of
+    /// the `dividend`. It is the responsibility of the caller that, if
+    /// provided, the bound on the dividend be valid.
     ///
     /// # Panics
-    ///  If `divisor = 0`.
+    ///  - If `divisor = 0`.
+    ///  - If `divisor >= dividend_bound` when the bound is provided or if
+    ///    `divisor` is greater than or equal to the maximum value that an
+    ///    `Assigned::Element` can take.
     ///
     /// ```
     /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
     /// let x = chip.assign(&mut layouter, Value::known(F::from(17)))?;
     ///
-    /// let (q, r) = chip.div_rem(&mut layouter, &x, 32u32, 5u32)?;
+    /// let (q, r) = chip.div_rem(&mut layouter, &x, 5u64.into(), None)?;
     /// chip.assert_equal_to_fixed(&mut layouter, &q, F::from(3))?;
     /// chip.assert_equal_to_fixed(&mut layouter, &r, F::from(2))?;
     /// # });
@@ -64,38 +69,36 @@ where
         &self,
         layouter: &mut impl Layouter<F>,
         dividend: &Assigned,
-        bound: u32,
-        divisor: u32,
+        divisor: BigUint,
+        dividend_bound: Option<BigUint>,
     ) -> Result<(Assigned, Assigned), Error> {
-        assert!(divisor != 0);
-        assert!((F::NUM_BITS > 31) && (bound < 1 << 31) && (divisor < 1 << 31)); // Ensure the operations fit in the native field.
+        let dividend_bound = dividend_bound.unwrap_or((-Assigned::Element::from(1)).into_biguint());
 
-        let divisor_bu = BigUint::from(divisor as u64);
+        assert!(divisor != BigUint::zero());
+        assert!(divisor < dividend_bound);
+
         let (q, r) = dividend
             .value()
             .map(|v| {
-                let (q, r) = v.into_biguint().div_rem(&divisor_bu);
+                let (q, r) = v.into_biguint().div_rem(&divisor);
                 (FromBigUint::from_biguint(q), FromBigUint::from_biguint(r))
             })
             .unzip();
 
-        let r = self.assign_lower_than_fixed(layouter, r, &divisor_bu)?;
+        let q_strict_bound = (dividend_bound / &divisor) + BigUint::one();
 
-        let q = self.assign_lower_than_fixed(
-            layouter,
-            q,
-            &(BigUint::from(divisor + bound) / divisor_bu),
-        )?;
+        let r = self.assign_lower_than_fixed(layouter, r, &divisor)?;
+        let q = self.assign_lower_than_fixed(layouter, q, &q_strict_bound)?;
 
-        let expected_div = self.linear_combination(
+        let sum = self.linear_combination(
             layouter,
             &[
-                (Assigned::Element::from(divisor as u64), q.clone()),
+                (FromBigUint::from_biguint(divisor), q.clone()),
                 (Assigned::Element::from(1), r.clone()),
             ],
             Assigned::Element::from(0),
         )?;
-        self.assert_equal(layouter, dividend, &expected_div)?;
+        self.assert_equal(layouter, dividend, &sum)?;
 
         Ok((q, r))
     }
@@ -106,20 +109,25 @@ where
     /// value has an integer structure (enforced by requiring the
     /// `FromBigUint` trait).
     ///
-    /// Given a `dividend` as an assigned element (interpreted as an integer
+    /// Given an `input` as an assigned element (interpreted as an integer
     /// bounded by `bound`), and a constant `modulus`, returns the remainder of
     /// dividing the former by the latter, as integers.
     ///
-    /// # Unsatisfiable
-    ///  If `dividend >= bound` (when interpreted as an integer).
+    /// An optional (inclusive) upper bound can be provided on the value of
+    /// the `dividend`. It is the responsibility of the caller that, if
+    /// provided, the bound on the dividend be valid.
     ///
     /// # Panics
-    ///  If `modulus = 0`.
+    ///  - If `modulus = 0`.
+    ///  - If `modulus > input_bound` when the bound is provided or if `modulus`
+    ///    is greater than or equal to the maximum value that an
+    ///    `Assigned::Element` can take.
+    ///
     /// ```
     /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
     /// let x = chip.assign(&mut layouter, Value::known(F::from(17)))?;
     ///
-    /// let r = chip.rem(&mut layouter, &x, 32u32, 5u32)?;
+    /// let r = chip.rem(&mut layouter, &x, 5u64.into(), None)?;
     /// chip.assert_equal_to_fixed(&mut layouter, &r, F::from(2))?;
     /// # });
     /// ```
@@ -127,10 +135,11 @@ where
         &self,
         layouter: &mut impl Layouter<F>,
         input: &Assigned,
-        bound: u32,
-        modulus: u32,
+        modulus: BigUint,
+        input_bound: Option<BigUint>,
     ) -> Result<Assigned, Error> {
-        self.div_rem(layouter, input, bound, modulus).map(|p| p.1)
+        self.div_rem(layouter, input, modulus, input_bound)
+            .map(|(_, r)| r)
     }
 }
 
@@ -155,7 +164,7 @@ pub(crate) mod tests {
         Assigned: InnerValue,
     {
         dividend: Value<Assigned::Element>,
-        divisor: u32,
+        divisor: BigUint,
         expected: (Assigned::Element, Assigned::Element),
         _marker: PhantomData<(F, DivChip)>,
     }
@@ -191,7 +200,7 @@ pub(crate) mod tests {
             let chip = DivChip::new_from_scratch(&config);
 
             let x = chip.assign(&mut layouter, self.dividend.clone())?;
-            let (q, r) = chip.div_rem(&mut layouter, &x, 1 << 12, self.divisor)?;
+            let (q, r) = chip.div_rem(&mut layouter, &x, self.divisor.clone(), None)?;
 
             chip.assert_equal_to_fixed(&mut layouter, &q, self.expected.0.clone())?;
             chip.assert_equal_to_fixed(&mut layouter, &r, self.expected.1.clone())?;
@@ -201,9 +210,9 @@ pub(crate) mod tests {
     }
 
     fn run<F, Assigned, DivChip>(
-        dividend: u64,
-        divisor: u32,
-        expected: (u64, u64),
+        dividend: Assigned::Element,
+        divisor: BigUint,
+        expected: (Assigned::Element, Assigned::Element),
         must_pass: bool,
         cost_model: bool,
         chip_name: &str,
@@ -214,12 +223,9 @@ pub(crate) mod tests {
         DivChip: DivisionInstructions<F, Assigned> + FromScratch<F>,
     {
         let circuit = TestCircuit::<F, Assigned, DivChip> {
-            dividend: Value::known(Assigned::Element::from(dividend as u64)),
+            dividend: Value::known(dividend),
             divisor,
-            expected: (
-                Assigned::Element::from(expected.0),
-                Assigned::Element::from(expected.1),
-            ),
+            expected,
             _marker: PhantomData,
         };
 
@@ -253,12 +259,44 @@ pub(crate) mod tests {
             (1, 1, (1, 0), true),
             (100, 5, (20, 0), true),
             (100, 7, (14, 2), true),
-            (1 << 13, 1, (1 << 13, 0), false),
+            (1 << 13, 1, (1 << 13, 0), true),
         ]
         .into_iter()
         .enumerate()
         .for_each(|(i, (dividend, divisor, (q, r), must_pass))| {
-            run::<F, Assigned, DivChip>(dividend, divisor, (q, r), must_pass, i == 0, chip_name)
+            run::<F, Assigned, DivChip>(
+                Assigned::Element::from(dividend),
+                BigUint::from(divisor as u64),
+                (Assigned::Element::from(q), Assigned::Element::from(r)),
+                must_pass,
+                i == 0,
+                chip_name,
+            )
+        });
+
+        let zero = BigUint::from(0u64);
+        let one = BigUint::from(1u64);
+        let two = BigUint::from(2u64);
+        let max = (-Assigned::Element::from(1)).into_biguint();
+
+        [
+            (&max, &(&max - &one), (&one, &one), true),
+            (&(&max + &one), &(&max - &one), (&one, &two), false),
+            (&(&max + &one), &(&max - &one), (&zero, &zero), true),
+        ]
+        .into_iter()
+        .for_each(|(dividend, divisor, (q, r), must_pass)| {
+            run::<F, Assigned, DivChip>(
+                FromBigUint::from_biguint(dividend.clone()),
+                divisor.clone(),
+                (
+                    FromBigUint::from_biguint(q.clone()),
+                    FromBigUint::from_biguint(r.clone()),
+                ),
+                must_pass,
+                false,
+                chip_name,
+            )
         });
     }
 }

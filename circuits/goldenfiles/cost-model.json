@@ -1965,8 +1965,8 @@
       "max_deg": "5",
       "permutations": "7",
       "point_sets": "4",
-      "rows": "14",
-      "table_rows": "13"
+      "rows": "21",
+      "table_rows": "389"
     },
     "from_bits": {
       "advice_columns": "10",

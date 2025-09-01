@@ -159,7 +159,7 @@ where
         let end: AssignedNative<F> = {
             // The last data position within the last chunk. Value in [0, A);
             // 0 means the last chunk is full, all its positions are data.
-            let offset = ng.rem(layouter, &input.len, M as u32, A as u32)?;
+            let offset = ng.rem(layouter, &input.len, A.into(), Some(M.into()))?;
 
             // if offset != 0.  End = M - (A - offset).
             let end1 = ng.add_constant(layouter, &offset, F::from(M as u64 - A as u64))?;
@@ -200,7 +200,7 @@ where
         let last_trim = n_elems % A;
 
         // Length of last chunk ( or 0 if it is full ).
-        let last_len = ng.rem(layouter, &input.len, M as u32, A as u32)?;
+        let last_len = ng.rem(layouter, &input.len, A.into(), Some(M.into()))?;
 
         // `modulus` already ensures last_len is in [0, A), so unsafe conversion can be
         // used here.
