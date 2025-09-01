@@ -219,12 +219,7 @@ impl Hashable<PoseidonState<midnight_curves::Fq>> for midnight_curves::G1Project
         buffer.read_exact(bytes.as_mut())?;
 
         Option::from(midnight_curves::G1Affine::from_bytes(&bytes))
-            .ok_or_else(|| {
-                io::Error::new(
-                    io::ErrorKind::Other,
-                    "Invalid BLS12-381 point encoding in proof",
-                )
-            })
+            .ok_or_else(|| io::Error::other("Invalid BLS12-381 point encoding in proof"))
             .map(|p: midnight_curves::G1Affine| p.into())
     }
 }
@@ -243,12 +238,8 @@ impl Hashable<PoseidonState<midnight_curves::Fq>> for midnight_curves::Fq {
 
         buffer.read_exact(bytes.as_mut())?;
 
-        Option::from(Self::from_repr(bytes)).ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::Other,
-                "Invalid BLS12-381 scalar encoding in proof",
-            )
-        })
+        Option::from(Self::from_repr(bytes))
+            .ok_or_else(|| io::Error::other("Invalid BLS12-381 scalar encoding in proof"))
     }
 }
 

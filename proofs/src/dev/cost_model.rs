@@ -767,7 +767,7 @@ mod tests {
 
             meta.lookup("lookup", |meta| {
                 let selector = meta.query_selector(table_selector);
-                let not_selector = Expression::Constant(Fq::ONE) - selector.clone();
+                let not_selector = Expression::from(1) - selector.clone();
                 let advice = meta.query_advice(a, Rotation::cur());
                 vec![(selector * advice + not_selector, sl)]
             });

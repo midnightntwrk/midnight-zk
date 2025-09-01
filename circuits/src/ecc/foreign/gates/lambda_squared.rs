@@ -161,7 +161,7 @@ impl<C: CircuitCurve> LambdaSquaredConfig<C> {
             // 2 + sum_px + sum_qx + sum_rx - (2 sum_lambda + sum_lambda2)
             //   = (u + k_min) * m
 
-            let two = Expression::Constant(F::from(2));
+            let two = Expression::from(2);
             let native_id = &cond
                 * (&two
                     + sum_exprs::<F>(&bs, &pxs)

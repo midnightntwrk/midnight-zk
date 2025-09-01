@@ -125,7 +125,7 @@ pub fn sum_exprs<F: PrimeField>(coeffs: &[BI], exprs: &[Expression<F>]) -> Expre
         .iter()
         .zip(coeffs.iter())
         .map(|(v, b)| Expression::Constant(bigint_to_fe::<F>(b)) * v.clone())
-        .fold(Expression::Constant(F::ZERO), |acc, e| acc + e)
+        .fold(Expression::from(0), |acc, e| acc + e)
 }
 
 /// On input `v`, `w`, returns `z : Vec<T>` with `z_i = v_i * w_i` for all `i`.

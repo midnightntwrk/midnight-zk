@@ -65,8 +65,7 @@ where
 }
 
 #[cfg(test)]
-#[allow(missing_docs)]
-pub mod tests {
+pub(crate) mod tests {
     use std::{fmt::Debug, marker::PhantomData};
 
     use ff::FromUniformBytes;

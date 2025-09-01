@@ -66,9 +66,8 @@ impl Hashable<Blake2bState> for G1 {
 
         buffer.read_exact(bytes.as_mut())?;
 
-        Option::from(Self::from_bytes(&bytes)).ok_or_else(|| {
-            io::Error::new(io::ErrorKind::Other, "Invalid BN point encoding in proof")
-        })
+        Option::from(Self::from_bytes(&bytes))
+            .ok_or_else(|| io::Error::other("Invalid BN point encoding in proof"))
     }
 }
 
@@ -86,9 +85,8 @@ impl Hashable<Blake2bState> for Fr {
 
         buffer.read_exact(bytes.as_mut())?;
 
-        Option::from(Self::from_repr(bytes)).ok_or_else(|| {
-            io::Error::new(io::ErrorKind::Other, "Invalid BN scalar encoding in proof")
-        })
+        Option::from(Self::from_repr(bytes))
+            .ok_or_else(|| io::Error::other("Invalid BN scalar encoding in proof"))
     }
 }
 
@@ -120,12 +118,8 @@ impl Hashable<Blake2bState> for midnight_curves::G1Projective {
 
         buffer.read_exact(bytes.as_mut())?;
 
-        Option::from(Self::from_bytes(&bytes)).ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::Other,
-                "Invalid BLS12-381 point encoding in proof",
-            )
-        })
+        Option::from(Self::from_bytes(&bytes))
+            .ok_or_else(|| io::Error::other("Invalid BLS12-381 point encoding in proof"))
     }
 }
 
@@ -143,12 +137,8 @@ impl Hashable<Blake2bState> for midnight_curves::Fq {
 
         buffer.read_exact(bytes.as_mut())?;
 
-        Option::from(Self::from_repr(bytes)).ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::Other,
-                "Invalid BLS12-381 scalar encoding in proof",
-            )
-        })
+        Option::from(Self::from_repr(bytes))
+            .ok_or_else(|| io::Error::other("Invalid BLS12-381 scalar encoding in proof"))
     }
 }
 
@@ -177,12 +167,8 @@ impl Hashable<Blake2bState> for halo2curves::bls12381::G1 {
 
         buffer.read_exact(bytes.as_mut())?;
 
-        Option::from(Self::from_bytes(&bytes)).ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::Other,
-                "Invalid BLS12-381 point encoding in proof",
-            )
-        })
+        Option::from(Self::from_bytes(&bytes))
+            .ok_or_else(|| io::Error::other("Invalid BLS12-381 point encoding in proof"))
     }
 }
 
@@ -200,12 +186,8 @@ impl Hashable<Blake2bState> for halo2curves::bls12381::Fr {
 
         buffer.read_exact(bytes.as_mut())?;
 
-        Option::from(Self::from_repr(bytes)).ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::Other,
-                "Invalid BLS12-381 scalar encoding in proof",
-            )
-        })
+        Option::from(Self::from_repr(bytes))
+            .ok_or_else(|| io::Error::other("Invalid BLS12-381 scalar encoding in proof"))
     }
 }
 

@@ -1,4 +1,3 @@
-use ff::Field;
 use halo2curves::pasta::Fp;
 use midnight_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
@@ -37,7 +36,7 @@ impl Circuit<Fp> for TestCircuit {
 
         meta.lookup("lookup", |meta| {
             let selector = meta.query_selector(config.selector);
-            let not_selector = Expression::Constant(Fp::ONE) - selector.clone();
+            let not_selector = Expression::from(1) - selector.clone();
             let advice = meta.query_advice(config.advice, Rotation::cur());
             vec![(selector * advice + not_selector, config.table)]
         });

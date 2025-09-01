@@ -107,7 +107,7 @@ impl<F: PrimeField> Base64Instructions<F> for Base64Chip<F> {
             "If pad is selected, the Base64 encoded input length must be a multiple of 4."
         );
         let mut last_chunk: B64Chunk<F>;
-        let mut result = Vec::with_capacity((b64_input.len() + 3) / 4 * 3); // +3 for rounding up.
+        let mut result = Vec::with_capacity(b64_input.len().div_ceil(4) * 3);
         let mut chunk_iter = b64_input.chunks(4).peekable();
         while let Some(b64_chunk) = chunk_iter.next() {
             let chunk_array: &B64Chunk<F> = if chunk_iter.peek().is_none() {
@@ -450,17 +450,16 @@ impl<F: PrimeField> ComposableChip<F> for Base64Chip<F> {
 
             let col_1 = meta.query_advice(advice_cols[0], Rotation::cur());
             let col_2 = meta.query_advice(advice_cols[1], Rotation::cur());
-            let characters = col_1 * Expression::Constant(F::from(1 << 8)) + col_2;
+            let characters = col_1 * Expression::from(1 << 8) + col_2;
 
             let value = meta.query_advice(advice_cols[2], Rotation::cur());
 
             // Default value for the deactivated lookup.
-            let default_char = Expression::Constant(F::from(super::table::two_entry_default()));
+            let default_char = Expression::from(super::table::two_entry_default());
 
             vec![
                 (
-                    s.clone() * characters
-                        + (Expression::Constant(F::ONE) - s.clone()) * default_char,
+                    s.clone() * characters + (Expression::from(1) - s.clone()) * default_char,
                     t_char,
                 ),
                 (s.clone() * value, t_val),

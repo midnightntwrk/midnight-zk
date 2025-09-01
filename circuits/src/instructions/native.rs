@@ -37,7 +37,7 @@ pub trait NativeInstructions<F>:
     + ComparisonInstructions<F, AssignedNative<F>>
     + RangeCheckInstructions<F, AssignedNative<F>>
     + UnsafeConversionInstructions<F, AssignedNative<F>, AssignedByte<F>>
-    + DivisionInstructions<F>
+    + DivisionInstructions<F, AssignedNative<F>>
 where
     F: PrimeField,
 {
