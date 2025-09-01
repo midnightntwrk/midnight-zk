@@ -176,7 +176,7 @@ impl<F: PoseidonField, const MAX_LEN: usize>
         // Position in the last chunk where the padding must be placed.
         let offset = self
             .native_gadget
-            .rem(layouter, len, MAX_LEN as u32, RATE as u32)?;
+            .rem(layouter, len, RATE.into(), Some(MAX_LEN.into()))?;
 
         // Length of the input rounded up to the chunk size or RATE.
         let rounded_len = {
