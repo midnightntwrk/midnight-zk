@@ -45,9 +45,9 @@ use crate::{
         public_input::CommittedInstanceInstructions, ArithInstructions, AssertionInstructions,
         AssignmentInstructions, BinaryInstructions, BitwiseInstructions, CanonicityInstructions,
         ComparisonInstructions, ControlFlowInstructions, ConversionInstructions,
-        DecompositionInstructions, EqualityInstructions, FieldInstructions, NativeInstructions,
-        PublicInputInstructions, RangeCheckInstructions, ScalarFieldInstructions,
-        UnsafeConversionInstructions, ZeroInstructions,
+        DecompositionInstructions, DivisionInstructions, EqualityInstructions, FieldInstructions,
+        NativeInstructions, PublicInputInstructions, RangeCheckInstructions,
+        ScalarFieldInstructions, UnsafeConversionInstructions, ZeroInstructions,
     },
     types::{AssignedBit, AssignedNative, InnerValue, Instantiable},
     utils::util::{big_to_fe, fe_to_big, modulus},
@@ -468,6 +468,21 @@ where
         let b = self.lower_than(layouter, x, y)?;
         self.not(layouter, &b)
     }
+}
+
+impl<F, CoreDecomposition, NativeArith> DivisionInstructions<F, AssignedNative<F>>
+    for NativeGadget<F, CoreDecomposition, NativeArith>
+where
+    F: PrimeField,
+    CoreDecomposition: CoreDecompositionInstructions<F>,
+    NativeArith: ArithInstructions<F, AssignedNative<F>>
+        + AssignmentInstructions<F, AssignedBit<F>>
+        + ConversionInstructions<F, AssignedBit<F>, AssignedNative<F>>
+        + UnsafeConversionInstructions<F, AssignedNative<F>, AssignedBit<F>>
+        + BinaryInstructions<F>
+        + EqualityInstructions<F, AssignedNative<F>>
+        + ControlFlowInstructions<F, AssignedNative<F>>,
+{
 }
 
 /// Instructions for constraining bytes as public inputs.
@@ -1621,7 +1636,7 @@ mod tests {
     use midnight_curves::Fq as BlsScalar;
 
     use super::*;
-    use crate::instructions::{bitwise, comparison, decomposition, range_check};
+    use crate::instructions::{bitwise, comparison, decomposition, division, range_check};
 
     macro_rules! test {
         ($module:ident, $operation:ident) => {
@@ -1657,6 +1672,7 @@ mod tests {
     test!(comparison, test_lower_and_greater);
     test!(comparison, test_assert_bounded_element);
     test!(range_check, test_assert_lower_than_fixed);
+    test!(division, test_div_rem);
 
     test!(bitwise, test_band);
     test!(bitwise, test_bor);

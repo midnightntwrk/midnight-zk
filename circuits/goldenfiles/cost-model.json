@@ -1957,6 +1957,17 @@
       "rows": "115",
       "table_rows": "3"
     },
+    "div_rem": {
+      "advice_columns": "5",
+      "column_queries": "41",
+      "fixed_columns": "22",
+      "lookups": "4",
+      "max_deg": "5",
+      "permutations": "7",
+      "point_sets": "4",
+      "rows": "14",
+      "table_rows": "13"
+    },
     "from_bits": {
       "advice_columns": "10",
       "column_queries": "74",
