@@ -8,7 +8,7 @@ pub mod bitcoin_ecdsa_threshold;
 pub mod bitcoin_signature;
 pub mod ecc_ops;
 pub mod hybrid_mt;
-pub mod json_verification;
+pub mod identity;
 pub mod membership;
 pub mod native_gadget;
 pub mod poseidon;
