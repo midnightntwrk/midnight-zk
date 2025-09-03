@@ -46,6 +46,10 @@ plotters = { version = "0.3.7", default-features = false, optional = true }
 tabbycat = { version = "0.1", features = ["attributes"], optional = true }
 num-bigint = "0.4.6"
 
+# Prover benchmarks
+criterion = { version = "0.7", optional = true }
+bench_macros = { path = "../bench-macros" }
+
 [dev-dependencies]
 assert_matches = "1.5"
 criterion = "0.7"
@@ -83,6 +87,12 @@ truncated-challenges = []
 #
 # This feature is very powerful for proving statements on committed data.
 committed-instances = []
+
+# Feature to enable granular benchmarks in the prover. If enabled,
+# the proof generation functions take an additional input,
+# _group: &mut BenchmarkGroup<WallTime>, and return granular benchmarks
+# of the prover for that concrete circuit.
+bench-internal = ["criterion"]
 
 [lib]
 bench = false
