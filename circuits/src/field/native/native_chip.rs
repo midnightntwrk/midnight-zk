@@ -1246,7 +1246,7 @@ where
         x: &AssignedNative<F>,
         y: &AssignedNative<F>,
     ) -> Result<AssignedBit<F>, Error> {
-        // We enforce (x - y) * aux = 1 - res where aux != 0 and res is a bit.
+        // We enforce (x - y) * aux = 1 - res where aux != 0.
         //  * If x = y, we have 0 = 1 - res, so res must be 1.
         //  * If x != y, res is forced to be 0 as desired (because aux != 0).
         //
@@ -1265,7 +1265,8 @@ where
             F::ONE,
             (-F::ONE, F::ONE),
         )?;
-        self.convert(layouter, &res)
+        // The two equations we have enforced guarantee the bit-ness of `res`.
+        Ok(AssignedBit(res))
     }
 
     fn is_equal_to_fixed(
@@ -1274,7 +1275,7 @@ where
         x: &AssignedNative<F>,
         constant: F,
     ) -> Result<AssignedBit<F>, Error> {
-        // We enforce (x - constant) * aux = 1 - res where aux != 0 and res is a bit.
+        // We enforce (x - constant) * aux = 1 - res where aux != 0.
         //  * If x = constant, we have 0 = 1 - res, so res must be 1.
         //  * If x != constant, res is forced to be 0 as desired (because aux != 0).
         //
@@ -1292,7 +1293,8 @@ where
             F::ONE,
             -F::ONE,
         )?;
-        self.convert(layouter, &res)
+        // The two equations we have enforced guarantee the bit-ness of `res`.
+        Ok(AssignedBit(res))
     }
 }
 
