@@ -1,22 +1,36 @@
 use crate::{
-    field::{decomposition::chip::P2RDecompositionChip, AssignedNative, NativeChip, NativeGadget},
-    hash::sha256::types::{
-        AssignedMessageWord, AssignedPlain, AssignedPlainSpreaded, AssignedSpreaded,
-        CompressionState, LimbsOfA, LimbsOfE,
+    field::{
+        decomposition::chip::P2RDecompositionChip, AssignedBounded, AssignedNative, NativeChip,
+        NativeGadget,
     },
-    instructions::AssertionInstructions,
-    types::{AssignedBit, InnerValue},
+    hash::sha256::{
+        sha256_chip::ROUND_CONSTANTS,
+        types::{
+            AssignedPlain, AssignedPlainSpreaded, AssignedSpreaded, CompressionState, LimbsOfA,
+            LimbsOfE,
+        },
+    },
+    instructions::{
+        ArithInstructions, AssertionInstructions, AssignmentInstructions, BinaryInstructions,
+        ComparisonInstructions, DecompositionInstructions, EqualityInstructions,
+        RangeCheckInstructions, ZeroInstructions,
+    },
+    types::{AssignedBit, AssignedByte, InnerValue},
+    utils::util::{big_to_fe, fe_to_big},
+    vec::AssignedVector,
 };
 use ff::PrimeField;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
+use num_bigint::BigUint;
 
 use crate::instructions::ControlFlowInstructions;
 
-use super::Sha256Chip;
+use super::{sha256_chip::IV, Sha256Chip};
 
+#[derive(Clone, Debug)]
 pub struct VarLenSha256Gadget<F: PrimeField> {
     pub(super) sha256chip: Sha256Chip<F>,
 }
@@ -27,6 +41,325 @@ impl<F: PrimeField> VarLenSha256Gadget<F> {
     }
 }
 
+const BITS_PER_WORD: usize = 32;
+const BITS_PER_BYTE: usize = 8;
+
+const BLOCK_BYTE_SIZE: usize = 64;
+
+impl<F> VarLenSha256Gadget<F>
+where
+    F: PrimeField,
+{
+    // Returns the length of the final chunk and if this length
+    // needs an extra block or not.
+    // If len=0, then the final block length is 0 and no extra block is needed.
+    // Otherwise, the final block length is in (0, L] and an extra block is
+    // needed if fb_len >= (L - 8).
+    fn final_chunk_len<const M: usize, const L: usize>(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        len: &AssignedNative<F>, // total input length in bytes
+    ) -> Result<(AssignedBounded<F>, AssignedBit<F>), Error> {
+        let block_len = BigUint::from(L);
+        let ng = &self.ng();
+
+        // TODO use DivRem instruction
+        // Final block length in [0, L).
+        // Computes and enforces fb_len = len % L
+        let fb_len = {
+            let (q, fb_len) = len
+                .value()
+                .map(|&l| {
+                    use num_integer::Integer;
+                    let l: BigUint = fe_to_big(l);
+                    let (q, r) = l.div_rem(&block_len);
+                    (big_to_fe(q), big_to_fe(r))
+                })
+                .unzip();
+
+            let fb_len = ng.assign_lower_than_fixed(layouter, fb_len, &block_len)?;
+            let q = ng.assign_lower_than_fixed(layouter, q, &(BigUint::from(M + L) / block_len))?;
+
+            // Check: q * L + fb_len = len
+            let expected_len = ng.linear_combination(
+                layouter,
+                &[(F::from(L as u64), q), (F::ONE, fb_len.clone())],
+                F::ZERO,
+            )?;
+            ng.assert_equal(layouter, len, &expected_len)?;
+            fb_len
+        };
+
+        // Limit on the final block length. If exceeded, an extra block will be needed.
+        // (BLOCK_BYTE_SIZE - 2 * BYTES_PER WORD) = 56
+        let len_lim: usize = L - 2 * (BITS_PER_WORD / BITS_PER_BYTE);
+        assert_eq!(L, 64);
+
+        let full_final_block = {
+            let len_is_zero = ng.is_zero(layouter, len)?;
+            let fb_is_zero = ng.is_zero(layouter, &fb_len)?;
+            ng.xor(layouter, &[len_is_zero, fb_is_zero])?
+        };
+
+        let max_block_len = ng.assign_fixed(layouter, F::from(L as u64))?;
+        let fb_len = ng.select(layouter, &full_final_block, &max_block_len, &fb_len)?;
+
+        // TODO Review this bound. Need to use 7 since we use the range (0, 64], instead
+        // of [0, 64);
+        let fb_len = ng.bounded_of_element(layouter, 7, &fb_len)?;
+        let not_extra = ng.lower_than_fixed(layouter, &fb_len, F::from(len_lim as u64))?;
+        let extra = ng.not(layouter, &not_extra)?;
+
+        Ok((fb_len, extra))
+    }
+
+    // Inserts `elem` in position `idx` of `array`.
+    fn insert_in_array<const L: usize>(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        idx: &AssignedNative<F>, // total input length in bytes
+        array: &mut [AssignedByte<F>; L],
+        elem: AssignedByte<F>,
+    ) -> Result<(), Error> {
+        // TODO idx must be in [0, L)
+        let ng = self.ng();
+        for i in 0..L {
+            let at_idx = ng.is_equal_to_fixed(layouter, idx, F::from(i as u64))?;
+            array[i] = ng.select(layouter, &at_idx, &elem, &array[i])?;
+        }
+        Ok(())
+    }
+
+    // Given 2 slices of AssignedBytes, merges them into 1 by selecting the
+    // first `len` bytes of the fist chunk, and the remaining bytes of second
+    // chunk.
+    // If `len` >= L, the output will be equal to `chunk_1`.
+    fn merge_chunks<const L: usize>(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        chunk_1: &[AssignedByte<F>; L],
+        chunk_2: &[AssignedByte<F>; L],
+        len: &AssignedNative<F>,
+    ) -> Result<[AssignedByte<F>; L], Error> {
+        let ng = &self.ng();
+        let mut first_chunk: AssignedBit<F> = ng.assign_fixed(layouter, true)?;
+        let result = chunk_1
+            .iter()
+            .zip(chunk_2.iter())
+            .enumerate()
+            .map(|(i, (a, b))| {
+                let switch = ng.is_equal_to_fixed(layouter, len, F::from(i as u64))?;
+                first_chunk = ng.xor(layouter, &[first_chunk.clone(), switch])?;
+                ng.select(layouter, &first_chunk, a, b)
+            })
+            .collect::<Result<Vec<_>, Error>>()?;
+        Ok(result.try_into().expect("Chunks of equal length."))
+    }
+
+    // Computes the last 2 blocks of padding given the length of the input.
+    fn compute_padding(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        input_len: &AssignedNative<F>,        // in bytes
+        final_chunk_len: &AssignedBounded<F>, // in bytes
+        final_chunk: &[AssignedByte<F>; BLOCK_BYTE_SIZE],
+        extra_block: &AssignedBit<F>,
+    ) -> Result<[AssignedByte<F>; 2 * BLOCK_BYTE_SIZE], Error> {
+        let ng = self.ng();
+        let final_chunk_len = &ng.element_of_bounded(layouter, final_chunk_len)?;
+
+        let not_extra_block: AssignedNative<F> = ng.not(layouter, extra_block)?.into();
+
+        let block_1 = {
+            let block_1: Vec<AssignedByte<F>> = ng.assign_many_fixed(layouter, &vec![0u8; 64])?;
+            let block_1 = &block_1.try_into().unwrap();
+
+            // We merge unconditionally in block_1 because:
+            //  - if the extra block is needed, final will be placed here.
+            //  - if no extra block is needed, this block will not update the state.
+            self.merge_chunks(layouter, final_chunk, block_1, final_chunk_len)?
+        };
+
+        let block_2 = {
+            let block_2: Vec<AssignedByte<F>> = ng.assign_many_fixed(layouter, &vec![0u8; 60])?;
+            let block_2 = &block_2.try_into().unwrap();
+            let final_chunk: &[_; 60] = (&final_chunk[..60]).try_into().unwrap();
+
+            let cond_len = ng.mul(layouter, final_chunk_len, &not_extra_block, None)?;
+            // We merge conditionally here. If an extra block is needed
+            // `cond_len` = 0 and the merge will result in the original block_2.
+            self.merge_chunks(layouter, final_chunk, block_2, &cond_len)?
+        };
+
+        let len_bytes = {
+            let len_in_bits = ng.mul_by_constant(layouter, input_len, F::from(8u64))?;
+            ng.assigned_to_be_bytes(layouter, &len_in_bits, Some(4usize))?
+        };
+
+        let mut padding = [block_1.as_slice(), &block_2, &len_bytes].concat();
+
+        // The valid range for idx in block_1 || block_2 is [56, 120].
+        // We offset with -56 since the array we will be indexing contains only
+        // the positions where the 1 may be placed.
+        let idx = {
+            // idx = final_chunk_len + 64 * not_extra_block - 56
+            ng.add_and_mul(
+                layouter,
+                (F::ONE, final_chunk_len),
+                (F::from(64u64), &not_extra_block),
+                (F::ZERO, final_chunk_len),
+                -F::from(56u64),
+                F::ZERO,
+            )?
+        };
+
+        // No extra block case -> final_chunk_len in (0, 56)
+        let one: AssignedByte<F> = ng.assign_fixed(layouter, 0x80)?;
+        self.insert_in_array::<64>(
+            layouter,
+            &idx,
+            (&mut padding[56..121]).try_into().unwrap(),
+            one,
+        )?;
+
+        Ok(padding.try_into().unwrap())
+    }
+}
+
+impl<F: PrimeField> VarLenSha256Gadget<F> {
+    // Updates the `state` with `block` if `update` is true.
+    // Otherwise returns the inputed state unchanged.
+    fn conditional_update_state(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        state: &CompressionState<F>,
+        block: &[AssignedByte<F>; BLOCK_BYTE_SIZE],
+        update: &AssignedBit<F>,
+    ) -> Result<CompressionState<F>, Error> {
+        let sha256 = &self.sha256chip;
+        let new_state = {
+            let block = sha256.block_from_bytes(layouter, block)?;
+            let message_blocks = sha256.message_schedule(layouter, &block)?;
+            let mut compression_state = state.clone();
+            for i in 0..64 {
+                compression_state = sha256.compression_round(
+                    layouter,
+                    &compression_state,
+                    ROUND_CONSTANTS[i],
+                    &message_blocks[i],
+                )?;
+            }
+
+            state.add(&sha256, layouter, &compression_state)?
+        };
+
+        // State gets updated if updating is enabled.
+        self.select(layouter, &update, &new_state, &state)
+    }
+
+    /// In-circuit valriable SHA256 computation, the protagonist of this chip.
+    pub fn sha256_varlen<const MAX_LEN: usize>(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        inputs: &AssignedVector<F, AssignedByte<F>, MAX_LEN, BLOCK_BYTE_SIZE>,
+    ) -> Result<[AssignedPlain<F, 32>; 8], Error> {
+        assert_eq!(inputs.buffer.len(), MAX_LEN);
+        assert_eq!(inputs.buffer.len() % BLOCK_BYTE_SIZE, 0);
+
+        let ng = self.ng();
+        let sha256 = &self.sha256chip;
+
+        // Compute the block where the effective data starts.
+        let (final_chunk_len, extra_block) =
+            self.final_chunk_len::<MAX_LEN, BLOCK_BYTE_SIZE>(layouter, &inputs.len)?;
+
+        // Length of the input rounded up to the chunk size.
+        let rounded_len = {
+            let fc_len = ng.element_of_bounded(layouter, &final_chunk_len)?;
+            let is_zero = ng.is_zero(layouter, &fc_len)?;
+            let len_round = ng.sub(layouter, &inputs.len, &fc_len)?;
+            let len_round_extra =
+                ng.add_constant(layouter, &len_round, F::from(BLOCK_BYTE_SIZE as u64))?;
+            ng.select(layouter, &is_zero, &len_round, &len_round_extra)
+        }?;
+
+        // Variable that signals the start of effective data in the input buffer
+        // and activates the update mechanism in the hash internal state.
+        let mut updating: AssignedBit<F> = ng.assign_fixed(layouter, false)?;
+
+        // Initial state
+        let mut state = CompressionState::<F>::fixed(layouter, ng, IV)?;
+
+        // Process input in chunks.
+        let mut chunk_iter = inputs.buffer.chunks_exact(BLOCK_BYTE_SIZE);
+        let mut chunk = chunk_iter.next().expect("At least one chunk.");
+
+        // Conditional update loop. Stops 1 chunk before the end.
+        for i in 0..(MAX_LEN / BLOCK_BYTE_SIZE) - 1 {
+            // Have we arrived to the start of the input to be hashed.
+            let b = ng.is_equal_to_fixed(
+                layouter,
+                &rounded_len,
+                F::from((MAX_LEN - (i * BLOCK_BYTE_SIZE)) as u64),
+            )?;
+
+            // Switch on the updating variable if we got to the start.
+            updating = ng.xor(layouter, &[b, updating])?;
+
+            // Compute the (potential) new state.
+            state = self.conditional_update_state(
+                layouter,
+                &state,
+                chunk.try_into().unwrap(),
+                &updating,
+            )?;
+
+            chunk = chunk_iter.next().expect("One more chunk.");
+        }
+
+        let final_chunk: &[_; BLOCK_BYTE_SIZE] = (chunk.try_into()).unwrap();
+
+        // --------------------------
+        // Padding stuff
+        // --------------------------
+        let padding_data = self.compute_padding(
+            layouter,
+            &inputs.len,
+            &final_chunk_len,
+            &final_chunk,
+            &extra_block,
+        )?;
+
+        // Conditionallly update with block1
+        state = self.conditional_update_state(
+            layouter,
+            &state,
+            (&padding_data[..BLOCK_BYTE_SIZE]).try_into().unwrap(),
+            &extra_block,
+        )?;
+
+        // Update with block2
+        state = {
+            let block = sha256.block_from_bytes(layouter, &padding_data[..BLOCK_BYTE_SIZE])?;
+            let message_blocks = sha256.message_schedule(layouter, &block)?;
+            let mut compression_state = state.clone();
+            for i in 0..64 {
+                compression_state = sha256.compression_round(
+                    layouter,
+                    &compression_state,
+                    ROUND_CONSTANTS[i],
+                    &message_blocks[i],
+                )?;
+            }
+
+            state.add(&sha256, layouter, &compression_state)?
+        };
+
+        Ok(state.plain())
+    }
+}
+
+// ----------------------------
 /// InnerValue impl for Sha internal types.
 
 // TODO We are using:
