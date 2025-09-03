@@ -16,7 +16,7 @@
 #![allow(non_snake_case)]
 
 mod sha256_chip;
-pub mod sha256_varlen;
+mod sha256_varlen;
 mod types;
 mod utils;
 
@@ -24,10 +24,15 @@ use ff::PrimeField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 use sha2::Digest;
 pub use sha256_chip::{Sha256Chip, Sha256Config, NB_SHA256_ADVICE_COLS, NB_SHA256_FIXED_COLS};
+use sha256_varlen::VarLenSha256Gadget;
 
 use crate::{
-    instructions::{hash::HashCPU, DecompositionInstructions, HashInstructions},
+    instructions::{
+        hash::{HashCPU, VarHashInstructions},
+        DecompositionInstructions, HashInstructions,
+    },
     types::AssignedByte,
+    vec::AssignedVector,
 };
 
 impl<F: PrimeField> HashCPU<u8, [u8; 32]> for Sha256Chip<F> {
@@ -48,6 +53,35 @@ impl<F: PrimeField> HashInstructions<F, AssignedByte<F>, [AssignedByte<F>; 32]> 
         // We convert each `AssignedPlain<32>` returned by `self.sha256` into 4 bytes.
         for word in self.sha256(layouter, inputs)? {
             let bytes = (self.native_gadget).assigned_to_be_bytes(layouter, &word.0, Some(4))?;
+            output_bytes.extend(bytes)
+        }
+
+        Ok(output_bytes.try_into().unwrap())
+    }
+}
+
+impl<F: PrimeField> HashCPU<u8, [u8; 32]> for VarLenSha256Gadget<F> {
+    fn hash(inputs: &[u8]) -> [u8; 32] {
+        let output = sha2::Sha256::digest(inputs);
+        output.into_iter().collect::<Vec<_>>().try_into().unwrap()
+    }
+}
+
+impl<F: PrimeField, const MAX_LEN: usize>
+    VarHashInstructions<F, MAX_LEN, AssignedByte<F>, [AssignedByte<F>; 32], 64usize>
+    for VarLenSha256Gadget<F>
+{
+    fn varhash(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        inputs: &AssignedVector<F, AssignedByte<F>, MAX_LEN, 64usize>,
+    ) -> Result<[AssignedByte<F>; 32], Error> {
+        let mut output_bytes = Vec::with_capacity(32);
+
+        // We convert each `AssignedPlain<32>` returned by `self.sha256_varlen` into 4 bytes.
+        for word in self.sha256_varlen(layouter, inputs)? {
+            let bytes =
+                (self.sha256chip.native_gadget).assigned_to_be_bytes(layouter, &word.0, Some(4))?;
             output_bytes.extend(bytes)
         }
 
