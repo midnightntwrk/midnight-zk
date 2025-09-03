@@ -1,0 +1,3 @@
+# Ignore everything in the assets directory.
+*
+!.gitignore

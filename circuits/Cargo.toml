@@ -1,0 +1,62 @@
+[package]
+name = "midnight-circuits"
+version = "4.0.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+group = { workspace = true }
+ff = { workspace = true }
+halo2curves = { workspace = true }
+blake2b_simd = { workspace = true }
+midnight-curves = { path = "../curves", version = "0.1.0" }
+midnight-proofs = { path = "../proofs", version = "0.4.0", default-features = false, features = [
+    "bits",
+    "cost-estimator",
+    "circuit-params",
+    "committed-instances",
+] }
+rand = "0.8"
+num-bigint = { version = "0.4" }
+num-traits = "0.2"
+subtle = "2.6"
+num-integer = "0.1"
+serde = { version = "1" }
+serde_derive = { version = "1", optional = true }
+serde_json = { version = "1", optional = true }
+sha2 = "0.10.9"
+base64 = "0.13.1"
+lazy_static = "1.5.0"
+bincode = "2.0"
+
+[dev-dependencies]
+criterion = "0.7"
+rand_chacha = "0.3.1"
+goldenfile = "1.8.0"
+num-bigint = { version = "0.4", features = ["rand"] }
+serde_json = "1.0"
+itertools = "0.14"
+dhat = "0.3"
+bellman = "0.14.0"
+
+[features]
+default = []
+regression = ["serde_derive", "serde_json"]
+# Feature that exposes some testing functionality, such as load from scratch or instantiable
+testing = ["num-bigint/rand"]
+heap_profiling = []
+# Enable truncated challenges. This makes recursive proofs more efficient
+truncated-challenges = ["midnight-proofs/truncated-challenges"]
+
+[[example]]
+name = "json_verification"
+path = "examples/json_verification.rs"
+
+[[bench]]
+name = "poseidon_cpu"
+harness = false
+
+[[bench]]
+name = "zswap_output"
+harness = false
