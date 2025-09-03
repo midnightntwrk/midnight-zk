@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 
-members = ["proofs", "curves", "circuits", "aggregator"]
+members = ["proofs", "curves", "circuits", "aggregator", "bench-macros"]
 
 [workspace.dependencies]
 ff = "0.13"
