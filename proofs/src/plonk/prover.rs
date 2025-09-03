@@ -5,6 +5,8 @@ use std::{
     ops::RangeTo,
 };
 
+#[cfg(feature = "bench-internal")]
+use bench_macros::inner_bench;
 use ff::{Field, FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
 use rand_core::{CryptoRng, RngCore};
 
@@ -19,6 +21,7 @@ use super::{
 #[cfg(feature = "committed-instances")]
 use crate::poly::EvaluationDomain;
 use crate::{
+    bench_and_run,
     circuit::Value,
     plonk::{traces::ProverTrace, trash},
     poly::{
@@ -48,6 +51,7 @@ where
     CS::commit_lagrange(params, &poly)
 }
 
+#[cfg_attr(feature = "bench-internal", inner_bench)]
 /// This computes a proof trace for the provided `circuits` when given the
 /// public parameters `params` and the proving key [`ProvingKey`] that was
 /// generated previously for the same circuit. The provided `instances`
@@ -96,19 +100,23 @@ where
     }
 
     // Hash verification key into transcript
-    pk.vk.hash_into(transcript)?;
+    bench_and_run!(_group ; ref transcript ; ; "Hash VK" ; |t| pk.vk.hash_into(t))?;
 
     let domain = &pk.vk.domain;
 
-    let instance = compute_instances(params, pk, instances, nb_committed_instances, transcript)?;
+    let instance = bench_and_run!(_group; ref transcript ; ; "Compute instances"; |t|
+    compute_instances(params, pk, instances, nb_committed_instances, t)
+    )?;
 
-    let (advice, challenges) =
-        parse_advices(params, pk, circuits, instances, transcript, &mut rng)?;
+    let (advice, challenges) = bench_and_run!(_group; ref transcript; ; "Parse advices"; |t|
+        parse_advices(params, pk, circuits, instances, t, &mut rng)
+    )?;
 
     // Sample theta challenge for keeping lookup columns linearly independent
     let theta: F = transcript.squeeze_challenge();
 
-    let lookups: Vec<Vec<lookup::prover::Permuted<F>>> = instance
+    let lookups: Vec<Vec<lookup::prover::Permuted<F>>> = bench_and_run!(
+        _group; ref transcript; ; "Construct and commit permuted columns"; |t: &mut T|  instance
         .iter()
         .zip(advice.iter())
         .map(|(instance, advice)| -> Result<Vec<_>, Error> {
@@ -128,12 +136,12 @@ where
                         &instance.instance_values,
                         &challenges,
                         &mut rng,
-                        transcript,
+                        &mut *t,
                     )
                 })
                 .collect()
         })
-        .collect::<Result<Vec<_>, _>>()?;
+        .collect::<Result<Vec<_>, _>>())?;
 
     // Sample beta challenge
     let beta: F = transcript.squeeze_challenge();
@@ -142,7 +150,8 @@ where
     let gamma: F = transcript.squeeze_challenge();
 
     // Commit to permutations.
-    let permutations: Vec<permutation::prover::Committed<F>> = instance
+    let permutations: Vec<permutation::prover::Committed<F>> = bench_and_run!(
+        _group; ref transcript; ; "Commit permutation functions"; |t: &mut T|  instance
         .iter()
         .zip(advice.iter())
         .map(|(instance, advice)| {
@@ -156,26 +165,29 @@ where
                 beta,
                 gamma,
                 &mut rng,
-                transcript,
+                &mut *t,
             )
         })
-        .collect::<Result<Vec<_>, _>>()?;
+        .collect::<Result<Vec<_>, _>>())?;
 
-    let lookups: Vec<Vec<lookup::prover::Committed<F>>> = lookups
+    let lookups: Vec<Vec<lookup::prover::Committed<F>>> = bench_and_run!(_group;
+        ref transcript;  own lookups; "Construct and commit lookup product polynomials";
+        |t: &mut T, l: Vec<Vec<lookup::prover::Permuted<F>>>| l
         .into_iter()
         .map(|lookups| -> Result<Vec<_>, _> {
             // Construct and commit to products for each lookup
             lookups
                 .into_iter()
-                .map(|lookup| lookup.commit_product(pk, params, beta, gamma, &mut rng, transcript))
+                .map(|lookup| lookup.commit_product(pk, params, beta, gamma, &mut rng, &mut *t))
                 .collect::<Result<Vec<_>, _>>()
         })
-        .collect::<Result<Vec<_>, _>>()?;
+        .collect::<Result<Vec<_>, _>>())?;
 
     // Trash argument
     let trash_challenge: F = transcript.squeeze_challenge();
 
-    let trashcans: Vec<Vec<trash::prover::Committed<F>>> = instance
+    let trashcans: Vec<Vec<trash::prover::Committed<F>>> = bench_and_run!(_group;
+        ref transcript ; ; "Construct trash argument"; |t: &mut T| instance
         .iter()
         .zip(advice.iter())
         .map(|(instance, advice)| -> Result<Vec<_>, Error> {
@@ -192,15 +204,17 @@ where
                         &pk.fixed_values,
                         &instance.instance_values,
                         &challenges,
-                        transcript,
+                        &mut *t,
                     )
                 })
                 .collect()
         })
-        .collect::<Result<Vec<_>, _>>()?;
+        .collect::<Result<Vec<_>, _>>())?;
 
     // Commit to the vanishing argument's random polynomial for blinding h(x_3)
-    let vanishing = vanishing::Argument::<F, CS>::commit(params, domain, &mut rng, transcript)?;
+    let vanishing = bench_and_run!(_group;
+        ref transcript; ; "Commit vanishing random poly"; |t|
+        vanishing::Argument::<F, CS>::commit(params, domain, &mut rng, t))?;
 
     // Obtain challenge for keeping all separate gates linearly independent
     let y: F = transcript.squeeze_challenge();
@@ -210,16 +224,20 @@ where
         .map(|i| (i.instance_polys, i.instance_values))
         .unzip();
 
-    Ok(ProverTrace {
-        advice_polys: advice
-            .into_iter()
+    let advice_polys = bench_and_run!(_group;
+        ; own advice ; "Advice to coeff"; |a: Vec<AdviceSingle<F, LagrangeCoeff>>|
+        a
+        .into_iter()
             .map(|a| {
                 a.advice_polys
                     .into_iter()
                     .map(|p| domain.lagrange_to_coeff(p))
-                    .collect()
+                    .collect::<Vec<_>>()
             })
-            .collect(),
+            .collect::<Vec<_>>());
+
+    Ok(ProverTrace {
+        advice_polys,
         instance_polys,
         instance_values,
         vanishing,
@@ -235,6 +253,7 @@ where
     })
 }
 
+#[cfg_attr(feature = "bench-internal", inner_bench)]
 /// This takes the computed trace of a set of witnesses and creates a proof
 /// for the provided `circuit` when given the public
 /// parameters `params` and the proving key [`ProvingKey`] that was
@@ -264,7 +283,7 @@ where
 
     let domain = pk.get_vk().get_domain();
 
-    let h_poly = compute_h_poly(pk, &trace);
+    let h_poly = bench_and_run!(_group; ; ;"Compute H poly"; || compute_h_poly(pk, &trace));
 
     let ProverTrace {
         advice_polys,
@@ -277,41 +296,41 @@ where
     } = trace;
 
     // Construct the vanishing argument's h(X) commitments
-    let vanishing =
-        vanishing.construct::<CS, T>(params, pk.get_vk().get_domain(), h_poly, transcript)?;
+    let vanishing = bench_and_run!(_group; ref transcript; own h_poly, own vanishing; "Construct vanishing commitments";
+        |t, h, v: vanishing::prover::Committed<F>| v.construct::<CS, T>(params, domain, h, t))?;
 
     let x: F = transcript.squeeze_challenge();
 
-    write_evals_to_transcript(
+    bench_and_run!(_group; ref transcript; ; "Write evals to transcript"; |t| write_evals_to_transcript(
         pk,
         nb_committed_instances,
         &instance_polys,
         &advice_polys,
         x,
-        transcript,
-    )?;
+        t,
+    ))?;
 
-    let vanishing = vanishing.evaluate(x, domain, transcript)?;
+    let vanishing = bench_and_run!(_group; ref transcript; own vanishing; "Evaluate vanishing"; |t, v: vanishing::prover::Constructed<F>| v.evaluate(x, domain, t))?;
 
     // Evaluate common permutation data
-    pk.permutation.evaluate(x, transcript)?;
+    bench_and_run!(_group; ref transcript; ; "Evaluate permutation data"; |t| pk.permutation.evaluate(x, t))?;
 
     // Evaluate the permutations, if any, at omega^i x.
-    let permutations: Vec<permutation::prover::Evaluated<F>> = permutations
+    let permutations: Vec<permutation::prover::Evaluated<F>> = bench_and_run!(_group; ref transcript; own permutations ; "Evaluate perms"; |t: &mut T, p: Vec<permutation::prover::Committed<F>>| p
         .into_iter()
-        .map(|permutation| -> Result<_, _> { permutation.evaluate(pk, x, transcript) })
-        .collect::<Result<Vec<_>, _>>()?;
+        .map(|permutation| -> Result<_, _> { permutation.evaluate(pk, x, &mut *t) })
+        .collect::<Result<Vec<_>, _>>())?;
 
     // Evaluate the lookups, if any, at omega^i x.
-    let lookups: Vec<Vec<lookup::prover::Evaluated<F>>> = lookups
+    let lookups: Vec<Vec<lookup::prover::Evaluated<F>>> = bench_and_run!(_group; ref transcript; own lookups; "Evaluate lookups"; |t: &mut T, l: Vec<Vec<lookup::prover::Committed<F>>>| l
         .into_iter()
         .map(|lookups| -> Result<Vec<_>, _> {
             lookups
                 .into_iter()
-                .map(|p| p.evaluate(pk, x, transcript))
+                .map(|p| p.evaluate(pk, x, &mut *t))
                 .collect::<Result<Vec<_>, _>>()
         })
-        .collect::<Result<Vec<_>, _>>()?;
+        .collect::<Result<Vec<_>, _>>())?;
 
     // Evaluate the trashcans, if any, at x.
     let trashcans: Vec<Vec<trash::prover::Evaluated<F>>> = trashcans
@@ -324,7 +343,7 @@ where
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    let queries = compute_queries(
+    let queries = bench_and_run!(_group; ; ; "Compute queries"; || compute_queries(
         pk,
         nb_committed_instances,
         &instance_polys,
@@ -334,11 +353,14 @@ where
         &trashcans,
         &vanishing,
         x,
-    );
+    ));
 
-    CS::multi_open(params, &queries, transcript).map_err(|_| Error::ConstraintSystemFailure)
+    bench_and_run!(_group; ref transcript; ; "Multi open argument"; |t|
+        CS::multi_open(params, &queries, t).map_err(|_| Error::ConstraintSystemFailure)
+    )
 }
 
+#[cfg_attr(feature = "bench-internal", inner_bench)]
 /// This creates a proof for the provided `circuit` when given the public
 /// parameters `params` and the proving key [`ProvingKey`] that was
 /// generated previously for the same circuit. The provided `instances`
@@ -375,6 +397,8 @@ where
         instances,
         rng,
         transcript,
+        #[cfg(feature = "bench-internal")]
+        _group,
     )?;
     finalise_proof(
         params,
@@ -383,6 +407,8 @@ where
         nb_committed_instances,
         trace,
         transcript,
+        #[cfg(feature = "bench-internal")]
+        _group,
     )
 }
 
