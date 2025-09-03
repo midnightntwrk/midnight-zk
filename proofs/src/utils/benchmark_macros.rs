@@ -43,7 +43,7 @@ macro_rules! bench_and_run {
                         let ($(mut $ref_var, )*$($own_var,)*) = clones;
                         let _ = $call($(&mut $ref_var, )* $( $own_var, )* );
                     },
-                    criterion::BatchSize::LargeInput,
+                    criterion::BatchSize::PerIteration,
                 )
             });
         }

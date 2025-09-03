@@ -1100,12 +1100,22 @@ pub struct MidnightCircuit<'a, R: Relation> {
 }
 
 impl<'a, R: Relation> MidnightCircuit<'a, R> {
-    /// A Midnight with unknown instance-witness for the given relation.
+    /// A MidnightCircuit with unknown instance-witness for the given relation.
     pub fn from_relation(relation: &'a R) -> Self {
         MidnightCircuit {
             relation,
             instance: Value::unknown(),
             witness: Value::unknown(),
+            nb_public_inputs: Rc::new(RefCell::new(None)),
+        }
+    }
+
+    /// Construct a MidnightCircuit from a known instance-witness for the given relation.
+    pub fn construct(relation: &'a R, instance: R::Instance, witness: R::Witness) -> Self {
+        MidnightCircuit {
+            relation,
+            instance: Value::known(instance),
+            witness: Value::known(witness),
             nb_public_inputs: Rc::new(RefCell::new(None)),
         }
     }
@@ -1499,6 +1509,8 @@ pub fn setup_pk<R: Relation>(relation: &R, vk: &MidnightVK) -> MidnightPK<R> {
     }
 }
 
+use bench_macros::inner_bench;
+#[cfg_attr(feature = "bench-internal", inner_bench)]
 /// Produces a proof of relation `R` for the given instance (using the given
 /// proving key and witness).
 pub fn prove<R: Relation, H: TranscriptHash>(
@@ -1528,6 +1540,8 @@ where
         1,
         &[com_inst.as_slice(), &pi],
         rng,
+        #[cfg(feature = "bench-internal")]
+        _group
     )
 }
 

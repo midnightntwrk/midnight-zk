@@ -47,6 +47,8 @@ use crate::{
     midnight_proofs::transcript::TranscriptHash,
 };
 
+use bench_macros::inner_bench;
+
 macro_rules! plonk_api {
     ($name:ident, $engine:ty, $native:ty, $curve:ty, $projective:ty) => {
         /// A struct providing all the basic functions of the PLONK proving system.
@@ -88,6 +90,7 @@ macro_rules! plonk_api {
                 pk
             }
 
+            #[cfg_attr(feature = "bench-internal", inner_bench)]
             /// PLONK proving algorithm.
             pub fn prove<H>(
                 params: &ParamsKZG<$engine>,
@@ -119,6 +122,8 @@ macro_rules! plonk_api {
                         &[pi],
                         rng,
                         &mut transcript,
+                        #[cfg(feature = "bench-internal")]
+                        _group
                     )?;
                     transcript.finalize()
                 };
