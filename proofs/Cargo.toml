@@ -27,6 +27,11 @@ harness = false
 name = "dev_lookup"
 harness = false
 
+[[bench]]
+name = "zswap_output"
+required-features = ["bench-internal"]
+harness = false
+
 [dependencies]
 backtrace = { version = "0.3", optional = true }
 ff = { workspace = true }
@@ -55,6 +60,9 @@ assert_matches = "1.5"
 criterion = "0.7"
 proptest = "1"
 serde_json = "1"
+midnight-circuits = {path = "../circuits" }
+sha2 = "0.10"
+rand = "0.8"
 
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
 getrandom = { version = "0.2", features = ["js"] }
@@ -92,7 +100,7 @@ committed-instances = []
 # the proof generation functions take an additional input,
 # _group: &mut BenchmarkGroup<WallTime>, and return granular benchmarks
 # of the prover for that concrete circuit.
-bench-internal = ["criterion"]
+bench-internal = ["criterion", "midnight-circuits/bench-internal"]
 
 [lib]
 bench = false
