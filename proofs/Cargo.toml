@@ -20,10 +20,6 @@ name = "commit_zk"
 harness = false
 
 [[bench]]
-name = "hashtocurve"
-harness = false
-
-[[bench]]
 name = "plonk"
 harness = false
 
