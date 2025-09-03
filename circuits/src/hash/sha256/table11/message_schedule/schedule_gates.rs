@@ -1,0 +1,389 @@
+// This file is part of MIDNIGHT-ZK.
+// Copyright (C) 2025 Midnight Foundation
+// SPDX-License-Identifier: Apache-2.0
+// Licensed under the Apache License, Version 2.0 (the "License");
+// You may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+// http://www.apache.org/licenses/LICENSE-2.0
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use std::marker::PhantomData;
+
+use ff::PrimeField;
+use midnight_proofs::plonk::{Constraints, Expression, Selector};
+
+use super::super::Gate;
+
+pub struct ScheduleGate<F: PrimeField>(PhantomData<F>);
+
+impl<F: PrimeField> ScheduleGate<F> {
+    /// s_word for W_16 to W_63
+    #[allow(clippy::too_many_arguments)]
+    pub fn s_word(
+        s_word: Selector,
+        sigma_0_lo: Expression<F>,
+        sigma_0_hi: Expression<F>,
+        sigma_1_lo: Expression<F>,
+        sigma_1_hi: Expression<F>,
+        w_minus_9_lo: Expression<F>,
+        w_minus_9_hi: Expression<F>,
+        w_minus_16_lo: Expression<F>,
+        w_minus_16_hi: Expression<F>,
+        word: Expression<F>,
+        carry: Expression<F>,
+    ) -> Constraints<F> {
+        let lo = sigma_0_lo + sigma_1_lo + w_minus_9_lo + w_minus_16_lo;
+        let hi = sigma_0_hi + sigma_1_hi + w_minus_9_hi + w_minus_16_hi;
+
+        let word_check = lo
+            + hi * F::from(1 << 16)
+            + (carry.clone() * F::from(1 << 32) * (-F::ONE))
+            + (word * (-F::ONE));
+
+        let carry_check = Gate::range_check(carry, 0, 3);
+
+        Constraints::with_selector(
+            s_word,
+            vec![("word_check", word_check), ("carry_check", carry_check)],
+        )
+    }
+
+    /// s_decompose_0 for all words
+    pub fn s_decompose_0(
+        s_decompose_0: Selector,
+        lo: Expression<F>,
+        hi: Expression<F>,
+        word: Expression<F>,
+    ) -> Constraints<F> {
+        let check = lo + hi * F::from(1 << 16) - word;
+        Constraints::with_selector(s_decompose_0, vec![("s_decompose_0", check)])
+    }
+
+    /// s_decompose_1 for W_1 to W_13
+    /// (3, 4, 11, 14)-bit chunks
+    #[allow(clippy::too_many_arguments)]
+    pub fn s_decompose_1(
+        s_decompose_1: Selector,
+        a: Expression<F>,
+        b: Expression<F>,
+        c: Expression<F>,
+        d: Expression<F>,
+        word: Expression<F>,
+    ) -> Constraints<F> {
+        let decompose_check =
+            a + b * F::from(1 << 3) + c * F::from(1 << 7) + d * F::from(1 << 18) + word * (-F::ONE);
+
+        Constraints::with_selector(s_decompose_1, vec![("decompose_check", decompose_check)])
+    }
+
+    /// s_decompose_2 for W_14 to W_48
+    /// (3, 4, 3, 7, 1, 1, 13)-bit chunks
+    #[allow(clippy::many_single_char_names)]
+    #[allow(clippy::too_many_arguments)]
+    pub fn s_decompose_2(
+        s_decompose_2: Selector,
+        a: Expression<F>,
+        b: Expression<F>,
+        c: Expression<F>,
+        d: Expression<F>,
+        e: Expression<F>,
+        f: Expression<F>,
+        g: Expression<F>,
+        word: Expression<F>,
+    ) -> Constraints<F> {
+        let decompose_check = a
+            + b * F::from(1 << 3)
+            + c * F::from(1 << 7)
+            + d * F::from(1 << 10)
+            + e.clone() * F::from(1 << 17)
+            + f.clone() * F::from(1 << 18)
+            + g * F::from(1 << 19)
+            + word * (-F::ONE);
+
+        let e_onebit_check = Gate::range_check(e, 0, 1);
+
+        let f_onebit_check = Gate::range_check(f, 0, 1);
+
+        Constraints::with_selector(
+            s_decompose_2,
+            vec![
+                ("decompose_check", decompose_check),
+                ("1-bit range check for e", e_onebit_check),
+                ("1-bit range check for f", f_onebit_check),
+            ],
+        )
+    }
+
+    /// s_decompose_3 for W_49 to W_61
+    /// (10, 7, 2, 13)-bit chunks
+    #[allow(clippy::too_many_arguments)]
+    pub fn s_decompose_3(
+        s_decompose_3: Selector,
+        a: Expression<F>,
+        b: Expression<F>,
+        c: Expression<F>,
+        d: Expression<F>,
+        word: Expression<F>,
+    ) -> Constraints<F> {
+        let decompose_check = a
+            + b * F::from(1 << 10)
+            + c * F::from(1 << 17)
+            + d * F::from(1 << 19)
+            + word * (-F::ONE);
+
+        Constraints::with_selector(s_decompose_3, vec![("decompose_check", decompose_check)])
+    }
+
+    /// b_lo + 2^2 * b_mid = b, on W_[1..49]
+    fn check_b(b: Expression<F>, b_lo: Expression<F>, b_hi: Expression<F>) -> Expression<F> {
+        let expected_b = b_lo + b_hi * F::from(1 << 2);
+        expected_b - b
+    }
+
+    /// sigma_0 v1 on W_1 to W_13
+    /// (3, 4, 11, 14)-bit chunks
+    #[allow(clippy::too_many_arguments)]
+    pub fn s_lower_sigma_0(
+        s_lower_sigma_0: Selector,
+        spread_r0_even: Expression<F>,
+        spread_r0_odd: Expression<F>,
+        spread_r1_even: Expression<F>,
+        spread_r1_odd: Expression<F>,
+        _a: Expression<F>,
+        spread_a: Expression<F>,
+        b: Expression<F>,
+        b_lo: Expression<F>,
+        spread_b_lo: Expression<F>,
+        b_hi: Expression<F>,
+        spread_b_hi: Expression<F>,
+        spread_c: Expression<F>,
+        spread_d: Expression<F>,
+    ) -> Constraints<F> {
+        let check_spread_and_range =
+            Gate::two_bit_spread_and_range(b_lo.clone(), spread_b_lo.clone()).chain(
+                Gate::two_bit_spread_and_range(b_hi.clone(), spread_b_hi.clone()),
+            );
+        let check_b = Self::check_b(b, b_lo, b_hi);
+        let spread_witness = spread_r0_even
+            + spread_r0_odd * F::from(2)
+            + (spread_r1_even + spread_r1_odd * F::from(2)) * F::from(1 << 32);
+        let xor_0 = spread_b_lo.clone()
+            + spread_b_hi.clone() * F::from(1 << 4)
+            + spread_c.clone() * F::from(1 << 8)
+            + spread_d.clone() * F::from(1 << 30);
+        let xor_1 = spread_c.clone()
+            + spread_d.clone() * F::from(1 << 22)
+            + spread_a.clone() * F::from(1 << 50)
+            + spread_b_lo.clone() * F::from(1 << 56)
+            + spread_b_hi.clone() * F::from(1 << 60);
+        let xor_2 = spread_d
+            + spread_a * F::from(1 << 28)
+            + spread_b_lo * F::from(1 << 34)
+            + spread_b_hi * F::from(1 << 38)
+            + spread_c * F::from(1 << 42);
+        let xor = xor_0 + xor_1 + xor_2;
+
+        Constraints::with_selector(
+            s_lower_sigma_0,
+            check_spread_and_range
+                .chain(Some(("check_b", check_b)))
+                .chain(Some(("lower_sigma_0", spread_witness - xor)))
+                .collect(),
+        )
+    }
+
+    /// sigma_1 v1 on W_49 to W_61
+    /// (10, 7, 2, 13)-bit chunks
+    #[allow(clippy::too_many_arguments)]
+    pub fn s_lower_sigma_1(
+        s_lower_sigma_1: Selector,
+        spread_r0_even: Expression<F>,
+        spread_r0_odd: Expression<F>,
+        spread_r1_even: Expression<F>,
+        spread_r1_odd: Expression<F>,
+        spread_a: Expression<F>,
+        b: Expression<F>,
+        b_lo: Expression<F>,
+        spread_b_lo: Expression<F>,
+        b_mid: Expression<F>,
+        spread_b_mid: Expression<F>,
+        b_hi: Expression<F>,
+        spread_b_hi: Expression<F>,
+        c: Expression<F>,
+        spread_c: Expression<F>,
+        spread_d: Expression<F>,
+    ) -> Constraints<F> {
+        let check_spread_and_range =
+            Gate::two_bit_spread_and_range(b_lo.clone(), spread_b_lo.clone())
+                .chain(Gate::two_bit_spread_and_range(
+                    b_mid.clone(),
+                    spread_b_mid.clone(),
+                ))
+                .chain(Gate::two_bit_spread_and_range(c, spread_c.clone()));
+        // b_lo + 2^2 * b_mid + 2^4 * b_hi = b, on W_[49..62]
+        let check_b1 = {
+            let expected_b = b_lo + b_mid * F::from(1 << 2) + b_hi * F::from(1 << 4);
+            expected_b - b
+        };
+        let spread_witness = spread_r0_even
+            + spread_r0_odd * F::from(2)
+            + (spread_r1_even + spread_r1_odd * F::from(2)) * F::from(1 << 32);
+        let xor_0 = spread_b_lo.clone()
+            + spread_b_mid.clone() * F::from(1 << 4)
+            + spread_b_hi.clone() * F::from(1 << 8)
+            + spread_c.clone() * F::from(1 << 14)
+            + spread_d.clone() * F::from(1 << 18);
+        let xor_1 = spread_c.clone()
+            + spread_d.clone() * F::from(1 << 4)
+            + spread_a.clone() * F::from(1 << 30)
+            + spread_b_lo.clone() * F::from(1 << 50)
+            + spread_b_mid.clone() * F::from(1 << 54)
+            + spread_b_hi.clone() * F::from(1 << 58);
+        let xor_2 = spread_d
+            + spread_a * F::from(1 << 26)
+            + spread_b_lo * F::from(1 << 46)
+            + spread_b_mid * F::from(1 << 50)
+            + spread_b_hi * F::from(1 << 54)
+            + spread_c * F::from(1 << 60);
+        let xor = xor_0 + xor_1 + xor_2;
+
+        Constraints::with_selector(
+            s_lower_sigma_1,
+            check_spread_and_range
+                .chain(Some(("check_b1", check_b1)))
+                .chain(Some(("lower_sigma_1", spread_witness - xor)))
+                .collect(),
+        )
+    }
+
+    /// sigma_0 v2 on W_14 to W_48
+    /// (3, 4, 3, 7, 1, 1, 13)-bit chunks
+    #[allow(clippy::too_many_arguments)]
+    pub fn s_lower_sigma_0_v2(
+        s_lower_sigma_0_v2: Selector,
+        spread_r0_even: Expression<F>,
+        spread_r0_odd: Expression<F>,
+        spread_r1_even: Expression<F>,
+        spread_r1_odd: Expression<F>,
+        _a: Expression<F>,
+        spread_a: Expression<F>,
+        b: Expression<F>,
+        b_lo: Expression<F>,
+        spread_b_lo: Expression<F>,
+        b_hi: Expression<F>,
+        spread_b_hi: Expression<F>,
+        _c: Expression<F>,
+        spread_c: Expression<F>,
+        spread_d: Expression<F>,
+        spread_e: Expression<F>,
+        spread_f: Expression<F>,
+        spread_g: Expression<F>,
+    ) -> Constraints<F> {
+        let check_spread_and_range =
+            Gate::two_bit_spread_and_range(b_lo.clone(), spread_b_lo.clone()).chain(
+                Gate::two_bit_spread_and_range(b_hi.clone(), spread_b_hi.clone()),
+            );
+        let check_b = Self::check_b(b, b_lo, b_hi);
+        let spread_witness = spread_r0_even
+            + spread_r0_odd * F::from(2)
+            + (spread_r1_even + spread_r1_odd * F::from(2)) * F::from(1 << 32);
+        let xor_0 = spread_b_lo.clone()
+            + spread_b_hi.clone() * F::from(1 << 4)
+            + spread_c.clone() * F::from(1 << 8)
+            + spread_d.clone() * F::from(1 << 14)
+            + spread_e.clone() * F::from(1 << 28)
+            + spread_f.clone() * F::from(1 << 30)
+            + spread_g.clone() * F::from(1 << 32);
+        let xor_1 = spread_c.clone()
+            + spread_d.clone() * F::from(1 << 6)
+            + spread_e.clone() * F::from(1 << 20)
+            + spread_f.clone() * F::from(1 << 22)
+            + spread_g.clone() * F::from(1 << 24)
+            + spread_a.clone() * F::from(1 << 50)
+            + spread_b_lo.clone() * F::from(1 << 56)
+            + spread_b_hi.clone() * F::from(1 << 60);
+        let xor_2 = spread_f
+            + spread_g * F::from(1 << 2)
+            + spread_a * F::from(1 << 28)
+            + spread_b_lo * F::from(1 << 34)
+            + spread_b_hi * F::from(1 << 38)
+            + spread_c * F::from(1 << 42)
+            + spread_d * F::from(1 << 48)
+            + spread_e * F::from(1 << 62);
+        let xor = xor_0 + xor_1 + xor_2;
+
+        Constraints::with_selector(
+            s_lower_sigma_0_v2,
+            check_spread_and_range
+                .chain(Some(("check_b", check_b)))
+                .chain(Some(("lower_sigma_0_v2", spread_witness - xor)))
+                .collect(),
+        )
+    }
+
+    /// sigma_1 v2 on W_14 to W_48
+    /// (3, 4, 3, 7, 1, 1, 13)-bit chunks
+    #[allow(clippy::too_many_arguments)]
+    pub fn s_lower_sigma_1_v2(
+        s_lower_sigma_1_v2: Selector,
+        spread_r0_even: Expression<F>,
+        spread_r0_odd: Expression<F>,
+        spread_r1_even: Expression<F>,
+        spread_r1_odd: Expression<F>,
+        _a: Expression<F>,
+        spread_a: Expression<F>,
+        b: Expression<F>,
+        b_lo: Expression<F>,
+        spread_b_lo: Expression<F>,
+        b_hi: Expression<F>,
+        spread_b_hi: Expression<F>,
+        _c: Expression<F>,
+        spread_c: Expression<F>,
+        spread_d: Expression<F>,
+        spread_e: Expression<F>,
+        spread_f: Expression<F>,
+        spread_g: Expression<F>,
+    ) -> Constraints<F> {
+        let check_spread_and_range =
+            Gate::two_bit_spread_and_range(b_lo.clone(), spread_b_lo.clone()).chain(
+                Gate::two_bit_spread_and_range(b_hi.clone(), spread_b_hi.clone()),
+            );
+        let check_b = Self::check_b(b, b_lo, b_hi);
+        let spread_witness = spread_r0_even
+            + spread_r0_odd * F::from(2)
+            + (spread_r1_even + spread_r1_odd * F::from(2)) * F::from(1 << 32);
+        let xor_0 = spread_d.clone()
+            + spread_e.clone() * F::from(1 << 14)
+            + spread_f.clone() * F::from(1 << 16)
+            + spread_g.clone() * F::from(1 << 18);
+        let xor_1 = spread_e.clone()
+            + spread_f.clone() * F::from(1 << 2)
+            + spread_g.clone() * F::from(1 << 4)
+            + spread_a.clone() * F::from(1 << 30)
+            + spread_b_lo.clone() * F::from(1 << 36)
+            + spread_b_hi.clone() * F::from(1 << 40)
+            + spread_c.clone() * F::from(1 << 44)
+            + spread_d.clone() * F::from(1 << 50);
+        let xor_2 = spread_g
+            + spread_a * F::from(1 << 26)
+            + spread_b_lo * F::from(1 << 32)
+            + spread_b_hi * F::from(1 << 36)
+            + spread_c * F::from(1 << 40)
+            + spread_d * F::from(1 << 46)
+            + spread_e * F::from(1 << 60)
+            + spread_f * F::from(1 << 62);
+        let xor = xor_0 + xor_1 + xor_2;
+
+        Constraints::with_selector(
+            s_lower_sigma_1_v2,
+            check_spread_and_range
+                .chain(Some(("check_b", check_b)))
+                .chain(Some(("lower_sigma_1_v2", spread_witness - xor)))
+                .collect(),
+        )
+    }
+}

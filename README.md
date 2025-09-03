@@ -1,72 +1,26 @@
-# Midnight Template Repository
+# Midnight ZK
 
-This GitHub repository should be used as a template when creating a new Midnight GitHub repository.
-The template is configured with default repository settings and a set of default files that are expected to exist in all Midnight GitHub repositories.
+This repository implements the proof system used in **Midnight**, along with tooling for building zero-knowledge circuits.
 
-### LICENSE
+## Repository Structure
 
-Apache 2.0.
+- `curves`: Implementation of elliptic curves used in midnight, concretely BLS12-381 and JubJub
+- `proof-system`: Plonk proof system using KZG commitments
+- `circuits`: Tooling for constructing ZK circuits
 
-### README.md
+## Acknowledgments
 
-Provides a brief description for users and developers who want to understand the purpose, setup, and usage of the repository.
+This project was originally built upon the foundations of several outstanding open-source libraries:
 
-### SECURITY.md
+- [`blstrs`](https://github.com/filecoin-project/blstrs) – by the Filecoin Project
+- [`jubjub`](https://github.com/zcash/jubjub) – by the Zcash Project
+- [`halo2`](https://github.com/privacy-scaling-explorations/halo2) v0.3.0 – by the Privacy Scaling Explorations (PSE) team, itself originally derived from the [Zcash Sapling proving system](https://github.com/zcash/halo2)
 
-Provides a brief description of the Midnight Foundation's security policy and how to properly disclose security issues.
+We initially maintained the following components as forks:
 
-### CONTRIBUTING.md
+- `bls12-381` and its embedded `jubjub` implementation originated as forks of `blstrs` and `jubjub`, respectively.
+- `proof-system` began as a fork of `halo2` v0.3.0.
 
-Provides guidelines for how people can contribute to the Midnight project.
+Over time, our codebases have diverged from the upstream projects. These components are no longer maintained as forks and have evolved into standalone implementations tailored to Midnight's needs.
 
-### CODEOWNERS
-
-Defines repository ownership rules.
-
-### ISSUE_TEMPLATE
-
-Provides templates for reporting various types of issues, such as: bug report, documentation improvement and feature request.
-
-### PULL_REQUEST_TEMPLATE
-
-Provides a template for a pull request.
-
-### CLA Assistant
-
-The Midnight Foundation appreciates contributions, and like many other open source projects asks contributors to sign a contributor
-License Agreement before accepting contributions. We use CLA assistant (https://github.com/cla-assistant/cla-assistant) to streamline the CLA
-signing process, enabling contributors to sign our CLAs directly within a GitHub pull request.
-
-### Dependabot
-
-The Midnight Foundation uses GitHub Dependabot feature to keep our projects dependencies up-to-date and address potential security vulnerabilities. 
-
-### Checkmarx
-
-The Midnight Foundation uses Checkmarx for application security (AppSec) to identify and fix security vulnerabilities.
-All repositories are scanned with Checkmarx's suite of tools including: Static Application Security Testing (SAST), Infrastructure as Code (IaC), Software Composition Analysis (SCA), API Security, Container Security and Supply Chain Scans (SCS).
-
-### Unito
-
-Facilitates two-way data synchronization, automated workflows and streamline processes between: Jira, GitHub issues and Github project Kanban board. 
-
-# TODO - New Repo Owner
-
-### Software Package Data Exchange (SPDX)
-Include the following Software Package Data Exchange (SPDX) short-form identifier in a comment at the top headers of each source code file.
-
-
- <I>// This file is part of <B>REPLACE WITH REPO-NAME</B>.<BR>
- // Copyright (C) 2025 Midnight Foundation<BR>
- // SPDX-License-Identifier: Apache-2.0<BR>
- // Licensed under the Apache License, Version 2.0 (the "License");<BR>
- // You may not use this file except in compliance with the License.<BR>
- // You may obtain a copy of the License at<BR>
- //<BR>
- //	http://www.apache.org/licenses/LICENSE-2.0<BR>
- //<BR>
- // Unless required by applicable law or agreed to in writing, software<BR>
- // distributed under the License is distributed on an "AS IS" BASIS,<BR>
- // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.<BR>
- // See the License for the specific language governing permissions and<BR>
- // limitations under the License.</I>
+We gratefully acknowledge the authors and maintainers of the original projects.

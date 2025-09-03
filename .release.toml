@@ -1,0 +1,13 @@
+sign-commit = true
+sign-tag = true
+push = false
+consolidate-commits = true
+
+# skips publishability
+skip-publish = true
+publish = false
+
+tag-prefix = "{{crate_name}}-v"
+tag-message = "Release of {{crate_name}} version {{version}}"
+
+allow-branch = ["release-candidate/*"]

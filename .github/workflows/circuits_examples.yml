@@ -1,0 +1,64 @@
+name: Real Examples
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  test-examples:
+    if: github.event.pull_request.draft == false
+    name: Run Example Tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        example:
+          - bitcoin_signature
+          - bitcoin_ecdsa_threshold
+          - ecc_ops
+          - hybrid_mt
+          - poseidon
+          - sha_preimage
+          - native_gadget
+          - json_verification
+
+    steps:
+      - name: Add github.com credentials to netrc
+        uses: extractions/netrc@f6f1722d05ce2890aa86fd9654565b1214ac53a4
+        with:
+          machine: github.com
+          username: ${{ secrets.GH_USERNAME }}
+          password: ${{ secrets.GH_PASSWORD }}
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af
+        with:
+          override: false
+      - name: Restore Cargo Cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Create directory
+        run: mkdir -p ./examples/assets
+      - name: Download SRS
+        run: curl -L -o ./examples/assets/bls_filecoin_2p19 https://midnight-s3-fileshare-dev-eu-west-1.s3.eu-west-1.amazonaws.com/bls_filecoin_2p19
+
+      - name: Run example ${{ matrix.example }}
+        uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505
+        with:
+         command: run
+         args: --release --example ${{ matrix.example }}
+
+      # Save the Cargo Cache
+      - name: Save Cargo Cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
