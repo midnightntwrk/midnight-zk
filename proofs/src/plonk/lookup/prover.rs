@@ -18,6 +18,7 @@ use crate::{
     utils::arithmetic::{eval_polynomial, parallelize},
 };
 
+#[cfg_attr(feature = "bench-internal", derive(Clone))]
 #[derive(Debug)]
 pub(crate) struct Permuted<F: PrimeField> {
     compressed_input_expression: Polynomial<F, LagrangeCoeff>,
@@ -28,6 +29,7 @@ pub(crate) struct Permuted<F: PrimeField> {
     permuted_table_poly: Polynomial<F, Coeff>,
 }
 
+#[cfg_attr(feature = "bench-internal", derive(Clone))]
 #[derive(Debug)]
 pub(crate) struct Committed<F: PrimeField> {
     pub(crate) permuted_input_poly: Polynomial<F, Coeff>,
