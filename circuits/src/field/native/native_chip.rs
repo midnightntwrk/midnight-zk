@@ -25,12 +25,12 @@
 //  (sum_i coeff[i] * value[i])
 //    + q_next * value[0](omega) +
 //    + mul_ab * value[0] * value[1] +
-//    + mul_cd * value[2] * value[3] +
+//    + mul_ac * value[0] * value[2] +
 //    + constant
 //  }
 //  = 0
 //
-// Here, `coeffs`, `q_next`, `mul_ab`, `mul_cd`, `constant` are stored in fixed
+// Here, `coeffs`, `q_next`, `mul_ab`, `mul_ac`, `constant` are stored in fixed
 // columns, whereas `values` are stored in advice columns.
 //
 // Also, an utilitary gate for parallel affine relation is defined for
@@ -101,7 +101,7 @@ pub struct NativeConfig {
     pub(crate) coeff_cols: [Column<Fixed>; NB_ARITH_COLS],
     pub(crate) q_next_col: Column<Fixed>,
     pub(crate) mul_ab_col: Column<Fixed>,
-    pub(crate) mul_cd_col: Column<Fixed>,
+    pub(crate) mul_ac_col: Column<Fixed>,
     pub(crate) constant_col: Column<Fixed>,
     pub(crate) committed_instance_col: Column<Instance>,
     pub(crate) instance_col: Column<Instance>,
@@ -168,7 +168,7 @@ impl<F: PrimeField> ComposableChip<F> for NativeChip<F> {
         let coeff_cols: [Column<Fixed>; NB_ARITH_COLS] = fixed_columns[4..].try_into().unwrap();
         let q_next_col = fixed_columns[0];
         let mul_ab_col = fixed_columns[1];
-        let mul_cd_col = fixed_columns[2];
+        let mul_ac_col = fixed_columns[2];
         let constant_col = fixed_columns[3];
 
         for col in value_columns.iter() {
@@ -192,7 +192,7 @@ impl<F: PrimeField> ComposableChip<F> for NativeChip<F> {
 
             let q_next_coeff = meta.query_fixed(q_next_col, Rotation::cur());
             let mul_ab_coeff = meta.query_fixed(mul_ab_col, Rotation::cur());
-            let mul_cd_coeff = meta.query_fixed(mul_cd_col, Rotation::cur());
+            let mul_ac_coeff = meta.query_fixed(mul_ac_col, Rotation::cur());
             let constant = meta.query_fixed(constant_col, Rotation::cur());
 
             let id = values
@@ -201,7 +201,7 @@ impl<F: PrimeField> ComposableChip<F> for NativeChip<F> {
                 .fold(constant, |acc, (value, coeff)| acc + coeff * value)
                 + q_next_coeff * next_value
                 + mul_ab_coeff * &values[0] * &values[1]
-                + mul_cd_coeff * &values[2] * &values[3];
+                + mul_ac_coeff * &values[0] * &values[2];
 
             Constraints::with_selector(q_arith, vec![id])
         });
@@ -227,7 +227,7 @@ impl<F: PrimeField> ComposableChip<F> for NativeChip<F> {
             coeff_cols,
             q_next_col,
             mul_ab_col,
-            mul_cd_col,
+            mul_ac_col,
             constant_col,
             committed_instance_col,
             instance_col,
@@ -276,8 +276,8 @@ impl<F: PrimeField> NativeChip<F> {
             || Value::known(mul_coeffs.0),
         )?;
         region.assign_fixed(
-            || "arith mul_cd",
-            self.config.mul_cd_col,
+            || "arith mul_ac",
+            self.config.mul_ac_col,
             offset,
             || Value::known(mul_coeffs.1),
         )?;
@@ -313,16 +313,12 @@ impl<F: PrimeField> NativeChip<F> {
     fn add_and_double_mul(
         &self,
         layouter: &mut impl Layouter<F>,
-        a_and_x: (F, &AssignedNative<F>),
-        b_and_y: (F, &AssignedNative<F>),
-        c_and_z: (F, &AssignedNative<F>),
+        (a, x): (F, &AssignedNative<F>),
+        (b, y): (F, &AssignedNative<F>),
+        (c, z): (F, &AssignedNative<F>),
         k: F,
-        m1_and_m2: (F, F),
+        (m1, m2): (F, F),
     ) -> Result<AssignedNative<F>, Error> {
-        let (a, x) = a_and_x;
-        let (b, y) = b_and_y;
-        let (c, z) = c_and_z;
-        let (m1, m2) = m1_and_m2;
         let res_value = x
             .value()
             .zip(y.value())
@@ -334,7 +330,6 @@ impl<F: PrimeField> NativeChip<F> {
                 self.copy_in_row(&mut region, x, &self.config.value_cols[0], 0)?;
                 self.copy_in_row(&mut region, y, &self.config.value_cols[1], 0)?;
                 self.copy_in_row(&mut region, z, &self.config.value_cols[2], 0)?;
-                self.copy_in_row(&mut region, x, &self.config.value_cols[3], 0)?;
                 let res =
                     region.assign_advice(|| "res", self.config.value_cols[4], 0, || res_value)?;
                 let mut coeffs = [F::ZERO; NB_ARITH_COLS];
@@ -766,13 +761,12 @@ where
             || "Assert not equal",
             |mut region| {
                 // We enforce (x - y) * r = 1, for a fresh r.
-                // Encoded as x * r - y * r - 1 = 0
+                // Encoded as r * x - r * y - 1 = 0
                 let r_value = (x.value().copied() - y.value().copied())
                     .map(|v| v.invert().unwrap_or(F::ZERO));
-                self.copy_in_row(&mut region, x, &self.config.value_cols[0], 0)?;
-                let r = region.assign_advice(|| "r", self.config.value_cols[1], 0, || r_value)?;
+                region.assign_advice(|| "r", self.config.value_cols[0], 0, || r_value)?;
+                self.copy_in_row(&mut region, x, &self.config.value_cols[1], 0)?;
                 self.copy_in_row(&mut region, y, &self.config.value_cols[2], 0)?;
-                self.copy_in_row(&mut region, &r, &self.config.value_cols[3], 0)?;
                 let coeffs = [F::ZERO; NB_ARITH_COLS];
                 self.custom(&mut region, &coeffs, F::ZERO, (F::ONE, -F::ONE), -F::ONE, 0)?;
                 Ok(())
@@ -967,13 +961,13 @@ where
     fn add_and_mul(
         &self,
         layouter: &mut impl Layouter<F>,
-        a_and_x: (F, &AssignedNative<F>),
-        b_and_y: (F, &AssignedNative<F>),
-        c_and_z: (F, &AssignedNative<F>),
+        (a, x): (F, &AssignedNative<F>),
+        (b, y): (F, &AssignedNative<F>),
+        (c, z): (F, &AssignedNative<F>),
         k: F,
         m: F,
     ) -> Result<AssignedNative<F>, Error> {
-        self.add_and_double_mul(layouter, a_and_x, b_and_y, c_and_z, k, (m, F::ZERO))
+        self.add_and_double_mul(layouter, (a, x), (b, y), (c, z), k, (m, F::ZERO))
     }
 
     fn add_constants(
