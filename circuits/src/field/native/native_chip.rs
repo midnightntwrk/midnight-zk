@@ -1305,12 +1305,19 @@ where
     fn is_equal(
         &self,
         layouter: &mut impl Layouter<F>,
-        b1: &AssignedBit<F>,
-        b2: &AssignedBit<F>,
+        a: &AssignedBit<F>,
+        b: &AssignedBit<F>,
     ) -> Result<AssignedBit<F>, Error> {
-        // TODO: The following could be optimized to just 1 row
-        let different = self.xor(layouter, &[b1.clone(), b2.clone()])?;
-        self.not(layouter, &different)
+        // 1 + 2ab - a - b
+        self.add_and_mul(
+            layouter,
+            (-F::ONE, &a.0),
+            (-F::ONE, &b.0),
+            (F::ZERO, &a.0),
+            F::ONE,
+            F::from(2),
+        )
+        .map(AssignedBit)
     }
 
     fn is_equal_to_fixed(
