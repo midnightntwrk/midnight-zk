@@ -4,10 +4,10 @@ CircuitModel {
     table_rows: 1927,
     max_deg: 5,
     advice_columns: 5,
-    fixed_columns: 24,
+    fixed_columns: 25,
     lookups: 4,
     permutations: 8,
-    column_queries: 42,
+    column_queries: 43,
     point_sets: 4,
-    size: 3376,
+    size: 3408,
 }

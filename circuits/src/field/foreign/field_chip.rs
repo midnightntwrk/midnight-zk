@@ -1733,6 +1733,7 @@ mod tests {
 
     test!(control_flow, test_select);
     test!(control_flow, test_cond_assert_equal);
+    test!(control_flow, test_cond_swap);
 
     test!(arithmetic, test_add);
     test!(arithmetic, test_sub);
