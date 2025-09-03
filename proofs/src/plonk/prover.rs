@@ -109,11 +109,6 @@ where
     // from the verification key.
     let meta = &pk.vk.cs;
 
-    struct InstanceSingle<F: PrimeField> {
-        pub instance_values: Vec<Polynomial<F, LagrangeCoeff>>,
-        pub instance_polys: Vec<Polynomial<F, Coeff>>,
-    }
-
     let instance: Vec<InstanceSingle<F>> = instances
         .iter()
         .map(|instance| -> Result<InstanceSingle<F>, Error> {
@@ -161,156 +156,6 @@ where
             })
         })
         .collect::<Result<Vec<_>, _>>()?;
-
-    #[derive(Clone)]
-    struct AdviceSingle<F: PrimeField, B: PolynomialRepresentation> {
-        pub advice_polys: Vec<Polynomial<F, B>>,
-    }
-
-    struct WitnessCollection<'a, F: Field> {
-        k: u32,
-        current_phase: sealed::Phase,
-        advice: Vec<Polynomial<Rational<F>, LagrangeCoeff>>,
-        unblinded_advice: HashSet<usize>,
-        challenges: &'a HashMap<usize, F>,
-        instances: &'a [&'a [F]],
-        usable_rows: RangeTo<usize>,
-        _marker: std::marker::PhantomData<F>,
-    }
-
-    impl<F: Field> Assignment<F> for WitnessCollection<'_, F> {
-        fn enter_region<NR, N>(&mut self, _: N)
-        where
-            NR: Into<String>,
-            N: FnOnce() -> NR,
-        {
-            // Do nothing; we don't care about regions in this context.
-        }
-
-        fn exit_region(&mut self) {
-            // Do nothing; we don't care about regions in this context.
-        }
-
-        fn enable_selector<A, AR>(&mut self, _: A, _: &Selector, _: usize) -> Result<(), Error>
-        where
-            A: FnOnce() -> AR,
-            AR: Into<String>,
-        {
-            // We only care about advice columns here
-
-            Ok(())
-        }
-
-        fn annotate_column<A, AR>(&mut self, _annotation: A, _column: Column<Any>)
-        where
-            A: FnOnce() -> AR,
-            AR: Into<String>,
-        {
-            // Do nothing
-        }
-
-        fn query_instance(&self, column: Column<Instance>, row: usize) -> Result<Value<F>, Error> {
-            if !self.usable_rows.contains(&row) {
-                return Err(Error::not_enough_rows_available(self.k));
-            }
-
-            self.instances
-                .get(column.index())
-                .and_then(|column| column.get(row))
-                .map(|v| Value::known(*v))
-                .ok_or(Error::BoundsFailure)
-        }
-
-        fn assign_advice<V, VR, A, AR>(
-            &mut self,
-            _: A,
-            column: Column<Advice>,
-            row: usize,
-            to: V,
-        ) -> Result<(), Error>
-        where
-            V: FnOnce() -> Value<VR>,
-            VR: Into<Rational<F>>,
-            A: FnOnce() -> AR,
-            AR: Into<String>,
-        {
-            // Ignore assignment of advice column in different phase than current one.
-            if self.current_phase != column.column_type().phase {
-                return Ok(());
-            }
-
-            if !self.usable_rows.contains(&row) {
-                return Err(Error::not_enough_rows_available(self.k));
-            }
-
-            *self
-                .advice
-                .get_mut(column.index())
-                .and_then(|v| v.get_mut(row))
-                .ok_or(Error::BoundsFailure)? = to().into_field().assign()?;
-
-            Ok(())
-        }
-
-        fn assign_fixed<V, VR, A, AR>(
-            &mut self,
-            _: A,
-            _: Column<Fixed>,
-            _: usize,
-            _: V,
-        ) -> Result<(), Error>
-        where
-            V: FnOnce() -> Value<VR>,
-            VR: Into<Rational<F>>,
-            A: FnOnce() -> AR,
-            AR: Into<String>,
-        {
-            // We only care about advice columns here
-
-            Ok(())
-        }
-
-        fn copy(
-            &mut self,
-            _: Column<Any>,
-            _: usize,
-            _: Column<Any>,
-            _: usize,
-        ) -> Result<(), Error> {
-            // We only care about advice columns here
-
-            Ok(())
-        }
-
-        fn fill_from_row(
-            &mut self,
-            _: Column<Fixed>,
-            _: usize,
-            _: Value<Rational<F>>,
-        ) -> Result<(), Error> {
-            Ok(())
-        }
-
-        fn get_challenge(&self, challenge: Challenge) -> Value<F> {
-            self.challenges
-                .get(&challenge.index())
-                .cloned()
-                .map(Value::known)
-                .unwrap_or_else(Value::unknown)
-        }
-
-        fn push_namespace<NR, N>(&mut self, _: N)
-        where
-            NR: Into<String>,
-            N: FnOnce() -> NR,
-        {
-            // Do nothing; we don't care about namespaces in this context.
-        }
-
-        fn pop_namespace(&mut self, _: Option<String>) {
-            // Do nothing; we don't care about namespaces in this context.
-        }
-    }
 
     let (advice, challenges) = {
         let mut advice = vec![
@@ -826,6 +671,155 @@ where
         trace,
         transcript,
     )
+}
+
+struct InstanceSingle<F: PrimeField> {
+    pub instance_values: Vec<Polynomial<F, LagrangeCoeff>>,
+    pub instance_polys: Vec<Polynomial<F, Coeff>>,
+}
+
+#[derive(Clone)]
+struct AdviceSingle<F: PrimeField, B: PolynomialRepresentation> {
+    pub advice_polys: Vec<Polynomial<F, B>>,
+}
+
+struct WitnessCollection<'a, F: Field> {
+    k: u32,
+    current_phase: sealed::Phase,
+    advice: Vec<Polynomial<Rational<F>, LagrangeCoeff>>,
+    unblinded_advice: HashSet<usize>,
+    challenges: &'a HashMap<usize, F>,
+    instances: &'a [&'a [F]],
+    usable_rows: RangeTo<usize>,
+    _marker: std::marker::PhantomData<F>,
+}
+
+impl<F: Field> Assignment<F> for WitnessCollection<'_, F> {
+    fn enter_region<NR, N>(&mut self, _: N)
+    where
+        NR: Into<String>,
+        N: FnOnce() -> NR,
+    {
+        // Do nothing; we don't care about regions in this context.
+    }
+
+    fn exit_region(&mut self) {
+        // Do nothing; we don't care about regions in this context.
+    }
+
+    fn enable_selector<A, AR>(&mut self, _: A, _: &Selector, _: usize) -> Result<(), Error>
+    where
+        A: FnOnce() -> AR,
+        AR: Into<String>,
+    {
+        // We only care about advice columns here
+
+        Ok(())
+    }
+
+    fn annotate_column<A, AR>(&mut self, _annotation: A, _column: Column<Any>)
+    where
+        A: FnOnce() -> AR,
+        AR: Into<String>,
+    {
+        // Do nothing
+    }
+
+    fn query_instance(&self, column: Column<Instance>, row: usize) -> Result<Value<F>, Error> {
+        if !self.usable_rows.contains(&row) {
+            return Err(Error::not_enough_rows_available(self.k));
+        }
+
+        self.instances
+            .get(column.index())
+            .and_then(|column| column.get(row))
+            .map(|v| Value::known(*v))
+            .ok_or(Error::BoundsFailure)
+    }
+
+    fn assign_advice<V, VR, A, AR>(
+        &mut self,
+        _: A,
+        column: Column<Advice>,
+        row: usize,
+        to: V,
+    ) -> Result<(), Error>
+    where
+        V: FnOnce() -> Value<VR>,
+        VR: Into<Rational<F>>,
+        A: FnOnce() -> AR,
+        AR: Into<String>,
+    {
+        // Ignore assignment of advice column in different phase than current one.
+        if self.current_phase != column.column_type().phase {
+            return Ok(());
+        }
+
+        if !self.usable_rows.contains(&row) {
+            return Err(Error::not_enough_rows_available(self.k));
+        }
+
+        *self
+            .advice
+            .get_mut(column.index())
+            .and_then(|v| v.get_mut(row))
+            .ok_or(Error::BoundsFailure)? = to().into_field().assign()?;
+
+        Ok(())
+    }
+
+    fn assign_fixed<V, VR, A, AR>(
+        &mut self,
+        _: A,
+        _: Column<Fixed>,
+        _: usize,
+        _: V,
+    ) -> Result<(), Error>
+    where
+        V: FnOnce() -> Value<VR>,
+        VR: Into<Rational<F>>,
+        A: FnOnce() -> AR,
+        AR: Into<String>,
+    {
+        // We only care about advice columns here
+
+        Ok(())
+    }
+
+    fn copy(&mut self, _: Column<Any>, _: usize, _: Column<Any>, _: usize) -> Result<(), Error> {
+        // We only care about advice columns here
+
+        Ok(())
+    }
+
+    fn fill_from_row(
+        &mut self,
+        _: Column<Fixed>,
+        _: usize,
+        _: Value<Rational<F>>,
+    ) -> Result<(), Error> {
+        Ok(())
+    }
+
+    fn get_challenge(&self, challenge: Challenge) -> Value<F> {
+        self.challenges
+            .get(&challenge.index())
+            .cloned()
+            .map(Value::known)
+            .unwrap_or_else(Value::unknown)
+    }
+
+    fn push_namespace<NR, N>(&mut self, _: N)
+    where
+        NR: Into<String>,
+        N: FnOnce() -> NR,
+    {
+        // Do nothing; we don't care about namespaces in this context.
+    }
+
+    fn pop_namespace(&mut self, _: Option<String>) {
+        // Do nothing; we don't care about namespaces in this context.
+    }
 }
 
 #[test]
