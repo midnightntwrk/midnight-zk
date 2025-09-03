@@ -973,39 +973,29 @@ impl ArithInstructions<F, AssignedNative<F>> for ZkStdLib {
 
 impl ZeroInstructions<F, AssignedNative<F>> for ZkStdLib {}
 
-impl ControlFlowInstructions<F, AssignedNative<F>> for ZkStdLib {
+impl<Assigned> ControlFlowInstructions<F, Assigned> for ZkStdLib
+where
+    Assigned: InnerValue,
+    NG: ControlFlowInstructions<F, Assigned>,
+{
     fn select(
         &self,
         layouter: &mut impl Layouter<F>,
         cond: &AssignedBit<F>,
-        x: &AssignedNative<F>,
-        y: &AssignedNative<F>,
-    ) -> Result<AssignedNative<F>, Error> {
+        x: &Assigned,
+        y: &Assigned,
+    ) -> Result<Assigned, Error> {
         self.native_gadget.select(layouter, cond, x, y)
     }
-}
 
-impl ControlFlowInstructions<F, AssignedBit<F>> for ZkStdLib {
-    fn select(
+    fn cond_swap(
         &self,
         layouter: &mut impl Layouter<F>,
         cond: &AssignedBit<F>,
-        x: &AssignedBit<F>,
-        y: &AssignedBit<F>,
-    ) -> Result<AssignedBit<F>, Error> {
-        self.native_gadget.select(layouter, cond, x, y)
-    }
-}
-
-impl ControlFlowInstructions<F, AssignedByte<F>> for ZkStdLib {
-    fn select(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        cond: &AssignedBit<F>,
-        x: &AssignedByte<F>,
-        y: &AssignedByte<F>,
-    ) -> Result<AssignedByte<F>, Error> {
-        self.native_gadget.select(layouter, cond, x, y)
+        x: &Assigned,
+        y: &Assigned,
+    ) -> Result<(Assigned, Assigned), Error> {
+        self.native_gadget.cond_swap(layouter, cond, x, y)
     }
 }
 

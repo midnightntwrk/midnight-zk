@@ -2113,6 +2113,7 @@ mod tests {
 
     test!(control_flow, test_select);
     test!(control_flow, test_cond_assert_equal);
+    test!(control_flow, test_cond_swap);
 
     macro_rules! ecc_test {
         ($op:ident, $native:ty, $curve:ty, $scalar_field:ty, $name:expr) => {

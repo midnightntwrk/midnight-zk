@@ -33,6 +33,11 @@
 // Here, `coeffs`, `q_next`, `mul_ab`, `mul_ac`, `constant` are stored in fixed
 // columns, whereas `values` are stored in advice columns.
 //
+// We also have the following identity, designed for speeding up
+// operations like conditional swaps.
+//
+//  q_12_minus_34 * (value[1] + value[2] - value[3] - value[4] = 0)
+//
 // Finally, an utilitary gate for parallel affine relation is defined for
 // performing parallel additions (by constant) x[omega] = x + c in one row.
 // The formal identities read as:
@@ -96,6 +101,7 @@ const NB_PARALLEL_ADD_COLS: usize = 3;
 #[derive(Clone, Debug)]
 pub struct NativeConfig {
     pub(crate) q_arith: Selector,
+    q_12_minus_34: Selector,
     pub(crate) q_par_add: Selector,
     pub(crate) value_cols: [Column<Advice>; NB_ARITH_COLS],
     pub(crate) coeff_cols: [Column<Fixed>; NB_ARITH_COLS],
@@ -164,6 +170,7 @@ impl<F: PrimeField> ComposableChip<F> for NativeChip<F> {
         let instance_col = shared_res.2[1];
 
         let q_arith = meta.selector();
+        let q_12_minus_34 = meta.selector();
         let q_par_add = meta.selector();
         let coeff_cols: [Column<Fixed>; NB_ARITH_COLS] = fixed_columns[4..].try_into().unwrap();
         let q_next_col = fixed_columns[0];
@@ -206,6 +213,15 @@ impl<F: PrimeField> ComposableChip<F> for NativeChip<F> {
             Constraints::with_selector(q_arith, vec![id])
         });
 
+        meta.create_gate("12_minus_34", |meta| {
+            let v1 = meta.query_advice(value_columns[1], Rotation::cur());
+            let v2 = meta.query_advice(value_columns[2], Rotation::cur());
+            let v3 = meta.query_advice(value_columns[3], Rotation::cur());
+            let v4 = meta.query_advice(value_columns[4], Rotation::cur());
+
+            Constraints::with_selector(q_12_minus_34, vec![v1 + v2 - v3 - v4])
+        });
+
         meta.create_gate("parallel_add_gate", |meta| {
             let ids = (value_columns[0..NB_PARALLEL_ADD_COLS].iter())
                 .zip(coeff_cols[0..NB_PARALLEL_ADD_COLS].iter())
@@ -222,6 +238,7 @@ impl<F: PrimeField> ComposableChip<F> for NativeChip<F> {
 
         NativeConfig {
             q_arith,
+            q_12_minus_34,
             q_par_add,
             value_cols: *value_columns,
             coeff_cols,
@@ -1226,10 +1243,9 @@ where
         let res = layouter.assign_region(
             || "is_equal (i)",
             |mut region| {
-                let aux = region.assign_advice(|| "aux", value_cols[0], 0, || aux_val)?;
+                region.assign_advice(|| "aux", value_cols[0], 0, || aux_val)?;
                 self.copy_in_row(&mut region, x, &value_cols[1], 0)?;
-                self.copy_in_row(&mut region, &aux, &value_cols[2], 0)?;
-                self.copy_in_row(&mut region, y, &value_cols[3], 0)?;
+                self.copy_in_row(&mut region, y, &value_cols[2], 0)?;
                 let res = region.assign_advice(|| "res", value_cols[4], 0, || res_val)?;
                 let mut coeffs = [F::ZERO; NB_ARITH_COLS];
                 coeffs[4] = F::ONE; // coeff of res
@@ -1353,6 +1369,44 @@ where
             (F::ONE, -F::ONE),
         )
     }
+
+    fn cond_swap(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        cond: &AssignedBit<F>,
+        x: &AssignedNative<F>,
+        y: &AssignedNative<F>,
+    ) -> Result<(AssignedNative<F>, AssignedNative<F>), Error> {
+        // Instead of performing 2 selects (which requires 2 rows), we
+        // can do the second select in the same row with the q_12_minus_34
+        // identity. The idea is that the sum of the inputs of a conditional
+        // swap is the same as the sum of the outputs.
+
+        let val2 = (x.value().zip(y.value()).zip(cond.value()))
+            .map(|((x, y), b)| if b { x } else { y })
+            .copied();
+        let val1 = x.value().copied() + y.value().copied() - val2;
+
+        // We enforce the following equations in 1 row:
+        //   0*bit + 0*x + 1*y + 0 + bit*x - bit*y - snd = 0
+        //   x + y - fst - snd = 0
+        layouter.assign_region(
+            || "cond swap",
+            |mut region| {
+                self.copy_in_row(&mut region, &cond.0, &self.config.value_cols[0], 0)?;
+                self.copy_in_row(&mut region, x, &self.config.value_cols[1], 0)?;
+                self.copy_in_row(&mut region, y, &self.config.value_cols[2], 0)?;
+                let fst = region.assign_advice(|| "fst", self.config.value_cols[3], 0, || val1)?;
+                let snd = region.assign_advice(|| "snd", self.config.value_cols[4], 0, || val2)?;
+                let mut coeffs = [F::ZERO; NB_ARITH_COLS];
+                coeffs[2] = F::ONE; // coeff of y
+                coeffs[4] = -F::ONE; // coeff of snd
+                self.custom(&mut region, &coeffs, F::ZERO, (F::ONE, -F::ONE), F::ZERO, 0)?;
+                self.config.q_12_minus_34.enable(&mut region, 0)?;
+                Ok((fst, snd))
+            },
+        )
+    }
 }
 
 impl<F> ControlFlowInstructions<F, AssignedBit<F>> for NativeChip<F>
@@ -1367,6 +1421,17 @@ where
         y: &AssignedBit<F>,
     ) -> Result<AssignedBit<F>, Error> {
         self.select(layouter, cond, &x.0, &y.0).map(AssignedBit)
+    }
+
+    fn cond_swap(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        cond: &AssignedBit<F>,
+        x: &AssignedBit<F>,
+        y: &AssignedBit<F>,
+    ) -> Result<(AssignedBit<F>, AssignedBit<F>), Error> {
+        self.cond_swap(layouter, cond, &x.0, &y.0)
+            .map(|(fst, snd)| (AssignedBit(fst), AssignedBit(snd)))
     }
 }
 
@@ -1509,6 +1574,7 @@ mod tests {
 
     test!(control_flow, test_select);
     test!(control_flow, test_cond_assert_equal);
+    test!(control_flow, test_cond_swap);
 
     test!(canonicity, test_canonical);
     test!(canonicity, test_le_bits_lower_and_geq);
