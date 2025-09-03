@@ -33,11 +33,11 @@
 // Here, `coeffs`, `q_next`, `mul_ab`, `mul_ac`, `constant` are stored in fixed
 // columns, whereas `values` are stored in advice columns.
 //
-// Also, an utilitary gate for parallel affine relation is defined for
+// Finally, an utilitary gate for parallel affine relation is defined for
 // performing parallel additions (by constant) x[omega] = x + c in one row.
 // The formal identities read as:
 //
-// q_par_add * { value[i] + coeff[i] - value[i](omega) } = 0
+//  q_par_add * { value[i] + coeff[i] - value[i](omega) } = 0
 //
 // for all i = 0..NB_PARALLEL_ADD_COLS.
 
@@ -727,11 +727,11 @@ where
         layouter: &mut impl Layouter<F>,
         value: Value<bool>,
     ) -> Result<AssignedBit<F>, Error> {
-        // We can skip the in-circuit boolean assertion as this condition will be
-        // enforced through the public inputs bind anyway.
-        let bit_val = value.map(|b| if b { F::ONE } else { F::ZERO });
-        let assigned_native = self.assign_as_public_input(layouter, bit_val)?;
-        self.convert_unsafe(layouter, &assigned_native)
+        // We could skip the in-circuit boolean assertion as this condition will be
+        // enforced through the public inputs bind anyway. But this takes 1 row anyway.
+        let assigned = self.assign(layouter, value)?;
+        self.constrain_as_public_input(layouter, &assigned)?;
+        Ok(assigned)
     }
 }
 
@@ -1366,8 +1366,7 @@ where
         x: &AssignedBit<F>,
         y: &AssignedBit<F>,
     ) -> Result<AssignedBit<F>, Error> {
-        let bit = self.select(layouter, cond, &x.0, &y.0)?;
-        Ok(AssignedBit(bit))
+        self.select(layouter, cond, &x.0, &y.0).map(AssignedBit)
     }
 }
 
