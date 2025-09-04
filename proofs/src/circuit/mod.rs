@@ -107,6 +107,14 @@ pub struct AssignedCell<V, F: Field> {
     _marker: PhantomData<F>,
 }
 
+impl<V, F: Field> AssignedCell<V, F> {
+    /// Update the value of an `AssignedCell`. Use with caution and only if you
+    /// know what you are doing.
+    pub fn update_value(&mut self, v: Value<V>) {
+        self.value = v;
+    }
+}
+
 impl<V, F: Field> PartialEq for AssignedCell<V, F> {
     fn eq(&self, other: &Self) -> bool {
         self.cell == other.cell
