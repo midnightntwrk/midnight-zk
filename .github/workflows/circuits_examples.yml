@@ -1,0 +1,60 @@
+name: Real Examples
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  test-examples:
+    if: github.event.pull_request.draft == false
+    name: Run Example Tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        example:
+          - bitcoin_signature
+          - bitcoin_ecdsa_threshold
+          - ecc_ops
+          - hybrid_mt
+          - poseidon
+          - sha_preimage
+          - native_gadget
+          - json_verification
+
+    steps:
+      - name: Add github.com credentials to netrc
+        uses: extractions/netrc@f6f1722d05ce2890aa86fd9654565b1214ac53a4
+        with:
+          machine: github.com
+          username: ${{ secrets.GH_USERNAME }}
+          password: ${{ secrets.GH_PASSWORD }}
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - name: 'Install rust-toolchain.toml'
+        run: rustup toolchain install
+      - name: Restore Cargo Cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Create directory
+        run: mkdir -p ./examples/assets
+      - name: Download SRS
+        run: curl -L -o ./examples/assets/bls_filecoin_2p19 https://midnight-s3-fileshare-dev-eu-west-1.s3.eu-west-1.amazonaws.com/bls_filecoin_2p19
+
+      - name: Run example ${{ matrix.example }}
+        run: cargo run --release --example ${{ matrix.example }}
+
+      # Save the Cargo Cache
+      - name: Save Cargo Cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}

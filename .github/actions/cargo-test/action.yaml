@@ -1,0 +1,30 @@
+name: Cargo Test With Cache
+description: Restore cache, run tests, save cache with rust-cache + sccache
+
+inputs:
+  package:
+    required: true
+  args:
+    required: false
+
+runs:
+  using: "composite"
+  steps:
+    - name: 'Install rust-toolchain.toml'
+      shell: bash
+      run: rustup toolchain install
+
+    - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684
+      with:
+        path: ~/.cargo
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-${{ inputs.package }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-
+
+    - uses: Swatinem/rust-cache@v2
+      with:
+        cache-on-failure: true
+        shared-key: "ci"
+
+    - run: cargo test -p ${{ inputs.package }} ${{ inputs.args }}
+      shell: bash
