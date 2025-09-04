@@ -1491,6 +1491,10 @@ impl<R: Relation> Circuit<F> for MidnightCircuit<'_, R> {
             b64_chip.load(&mut layouter)?;
         }
 
+        if let Some(automaton_chip) = zk_std_lib.automaton_chip {
+            automaton_chip.load(&mut layouter)?;
+        }
+
         if *zk_std_lib.used_sha.borrow() {
             if let Some(sha256_chip) = zk_std_lib.sha256_table11_chip {
                 Table11Chip::load(sha256_chip.config().clone(), &mut layouter)?
