@@ -7,9 +7,10 @@ use crate::{
     instructions::FieldInstructions,
 };
 
-/// An assigned value in plain form, guaranteed to be in the range [0, 2^L).
+/// An assigned value in plain (non-spreaded) form, guaranteed to be in the
+/// range [0, 2^L).
 #[derive(Clone, Debug)]
-pub struct AssignedPlain<F: PrimeField, const L: usize>(pub AssignedNative<F>);
+pub(super) struct AssignedPlain<F: PrimeField, const L: usize>(pub AssignedNative<F>);
 
 /// An assigned value in spreaded form, it is guaranteed to be the spreaded form
 /// of a value in the range [0, 2^L).
@@ -20,8 +21,8 @@ pub(super) struct AssignedSpreaded<F: PrimeField, const L: usize>(pub AssignedNa
 /// The plain value is also guaranteed to be in the range [0, 2^L).
 #[derive(Clone, Debug)]
 pub(super) struct AssignedPlainSpreaded<F: PrimeField, const L: usize> {
-    pub plain: AssignedPlain<F, L>,
-    pub spreaded: AssignedSpreaded<F, L>,
+    pub(super) plain: AssignedPlain<F, L>,
+    pub(super) spreaded: AssignedSpreaded<F, L>,
 }
 
 /// The assigned spreaded values of 10-9-11-2 limbs (in big-endian) for the
@@ -29,11 +30,11 @@ pub(super) struct AssignedPlainSpreaded<F: PrimeField, const L: usize> {
 /// The limb sizes are chosen to make the rotations required for Σ₀ efficient.
 #[derive(Clone, Debug)]
 pub(super) struct LimbsOfA<F: PrimeField> {
-    pub combined: AssignedPlainSpreaded<F, 32>,
-    pub spreaded_limb_10: AssignedSpreaded<F, 10>,
-    pub spreaded_limb_09: AssignedSpreaded<F, 9>,
-    pub spreaded_limb_11: AssignedSpreaded<F, 11>,
-    pub spreaded_limb_02: AssignedSpreaded<F, 2>,
+    pub(super) combined: AssignedPlainSpreaded<F, 32>,
+    pub(super) spreaded_limb_10: AssignedSpreaded<F, 10>,
+    pub(super) spreaded_limb_09: AssignedSpreaded<F, 9>,
+    pub(super) spreaded_limb_11: AssignedSpreaded<F, 11>,
+    pub(super) spreaded_limb_02: AssignedSpreaded<F, 2>,
 }
 
 /// The assigned spreaded values of 7-12-2-5-6 limbs (in big-endian) for the
@@ -41,12 +42,12 @@ pub(super) struct LimbsOfA<F: PrimeField> {
 /// The limb sizes are chosen to make the rotations required for Σ₁ efficient.
 #[derive(Clone, Debug)]
 pub(super) struct LimbsOfE<F: PrimeField> {
-    pub combined: AssignedPlainSpreaded<F, 32>,
-    pub spreaded_limb_07: AssignedSpreaded<F, 7>,
-    pub spreaded_limb_12: AssignedSpreaded<F, 12>,
-    pub spreaded_limb_02: AssignedSpreaded<F, 2>,
-    pub spreaded_limb_05: AssignedSpreaded<F, 5>,
-    pub spreaded_limb_06: AssignedSpreaded<F, 6>,
+    pub(super) combined: AssignedPlainSpreaded<F, 32>,
+    pub(super) spreaded_limb_07: AssignedSpreaded<F, 7>,
+    pub(super) spreaded_limb_12: AssignedSpreaded<F, 12>,
+    pub(super) spreaded_limb_02: AssignedSpreaded<F, 2>,
+    pub(super) spreaded_limb_05: AssignedSpreaded<F, 5>,
+    pub(super) spreaded_limb_06: AssignedSpreaded<F, 6>,
 }
 
 /// The assigned values of 12-1x3-7-3-4-3 limbs (in big-endian) for the
@@ -55,15 +56,15 @@ pub(super) struct LimbsOfE<F: PrimeField> {
 /// efficient.
 #[derive(Clone, Debug)]
 pub(super) struct AssignedMessageWord<F: PrimeField> {
-    pub combined_plain: AssignedPlain<F, 32>,
-    pub spreaded_w_12: AssignedSpreaded<F, 12>,
-    pub spreaded_w_1a: AssignedSpreaded<F, 1>,
-    pub spreaded_w_1b: AssignedSpreaded<F, 1>,
-    pub spreaded_w_1c: AssignedSpreaded<F, 1>,
-    pub spreaded_w_07: AssignedSpreaded<F, 7>,
-    pub spreaded_w_3a: AssignedSpreaded<F, 3>,
-    pub spreaded_w_04: AssignedSpreaded<F, 4>,
-    pub spreaded_w_3b: AssignedSpreaded<F, 3>,
+    pub(super) combined_plain: AssignedPlain<F, 32>,
+    pub(super) spreaded_w_12: AssignedSpreaded<F, 12>,
+    pub(super) spreaded_w_1a: AssignedSpreaded<F, 1>,
+    pub(super) spreaded_w_1b: AssignedSpreaded<F, 1>,
+    pub(super) spreaded_w_1c: AssignedSpreaded<F, 1>,
+    pub(super) spreaded_w_07: AssignedSpreaded<F, 7>,
+    pub(super) spreaded_w_3a: AssignedSpreaded<F, 3>,
+    pub(super) spreaded_w_04: AssignedSpreaded<F, 4>,
+    pub(super) spreaded_w_3b: AssignedSpreaded<F, 3>,
 }
 
 /// The assigned values of the state vector (A, B, C, D, E, F, G, H).

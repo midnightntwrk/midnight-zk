@@ -1,11 +1,11 @@
-//! This file implements a chip providing support in-circuit evaluation of the
-//! SHA256 hash function.
+//! This file implements a chip providing support for in-circuit evaluation of
+//! the SHA256 hash function.
 //!
 //! Throughout the file, we use the notation from NIST FIPS PUB 180-4:
 //! <https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf> (Section 6.2).
 //!
-//! This implementation use the amazing trick of a plain-spreaded table, devised
-//! by the Zcash team (to the best of our knowledge):
+//! This implementation uses the amazing trick of a plain-spreaded table,
+//! devised by the Zcash team (to the best of our knowledge):
 //! See <https://zcash.github.io/halo2/design/gadgets/sha256/table16.html>.
 //!
 //! In a nutshell, the "spreaded" form of a u32 is the u64 resulting from
@@ -100,9 +100,9 @@ enum Parity {
 /// Plain-Spreaded lookup table.
 #[derive(Clone, Debug)]
 struct SpreadTable {
-    nbits_tab: TableColumn,
-    plain_tab: TableColumn,
-    sprdd_tab: TableColumn,
+    nbits_col: TableColumn,
+    plain_col: TableColumn,
+    sprdd_col: TableColumn,
 }
 
 /// Configuration of Sha256Chip.
@@ -179,9 +179,9 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
 
         let q_lookup = meta.complex_selector();
         let table = SpreadTable {
-            nbits_tab: meta.lookup_table_column(),
-            plain_tab: meta.lookup_table_column(),
-            sprdd_tab: meta.lookup_table_column(),
+            nbits_col: meta.lookup_table_column(),
+            plain_col: meta.lookup_table_column(),
+            sprdd_col: meta.lookup_table_column(),
         };
 
         let q_maj = meta.selector();
@@ -206,9 +206,9 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
                 let sprdd = meta.query_advice(advice_cols[2 * idx + 1], Rotation(0));
 
                 vec![
-                    (q_lookup.clone() * nbits, table.nbits_tab),
-                    (q_lookup.clone() * plain, table.plain_tab),
-                    (q_lookup * sprdd, table.sprdd_tab),
+                    (q_lookup.clone() * nbits, table.nbits_col),
+                    (q_lookup.clone() * plain, table.plain_col),
+                    (q_lookup * sprdd, table.sprdd_col),
                 ]
             });
         });
@@ -531,18 +531,18 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
 
     fn load(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
         let SpreadTable {
-            nbits_tab,
-            plain_tab,
-            sprdd_tab,
+            nbits_col,
+            plain_col,
+            sprdd_col,
         } = self.config().table;
 
         layouter.assign_table(
             || "spread table",
             |mut table| {
-                for (index, triple) in gen_spread_table::<F>().into_iter().enumerate() {
-                    table.assign_cell(|| "nbits", nbits_tab, index, || Value::known(triple.0))?;
-                    table.assign_cell(|| "plain", plain_tab, index, || Value::known(triple.1))?;
-                    table.assign_cell(|| "sprdd", sprdd_tab, index, || Value::known(triple.2))?;
+                for (index, triple) in gen_spread_table::<F>().enumerate() {
+                    table.assign_cell(|| "nbits", nbits_col, index, || Value::known(triple.0))?;
+                    table.assign_cell(|| "plain", plain_col, index, || Value::known(triple.1))?;
+                    table.assign_cell(|| "sprdd", sprdd_col, index, || Value::known(triple.2))?;
                 }
                 Ok(())
             },
@@ -552,7 +552,7 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
 
 impl<F: PrimeField> Sha256Chip<F> {
     /// In-circuit SHA256 computation, the protagonist of this chip.
-    pub fn sha256(
+    pub(super) fn sha256(
         &self,
         layouter: &mut impl Layouter<F>,
         input_bytes: &[AssignedByte<F>],
@@ -728,7 +728,12 @@ impl<F: PrimeField> Sha256Chip<F> {
         We need to compute:
             Maj(A, B, C) = (A ∧ B) ⊕ (A ∧ C) ⊕ (B ∧ C)
 
-        which can be achieved by
+        Note that the "majority" function (bit-wise most commont value) between A, B, C
+        is encoded in the odd bits of (~A + ~B + ~C). This is because, for every bit
+        position i, iff at least two out of three are 1, the sum A_i + B_i + C_i will
+        overflow, leaving a carry bit of 1 (the result of majority for that bit).
+
+        Maj which can be encoded by
 
         1) applying the plain-spreaded lookup on 11-11-10 limbs of Evn and Odd:
              Evn: (Evn.11a, Evn.11b, Evn.10)
@@ -890,8 +895,11 @@ impl<F: PrimeField> Sha256Chip<F> {
         a: &LimbsOfA<F>,
     ) -> Result<AssignedPlain<F, 32>, Error> {
         /*
+        Given
+                    A:  ( A.10 || A.09 || A.11 || A.02 )
+
         We need to compute:
-             A >>> 2 :  ( A.02 || A.10 || A.09 || A.11 )
+            A >>>  2 :  ( A.02 || A.10 || A.09 || A.11 )
           ⊕ A >>> 13 :  ( A.11 || A.02 || A.10 || A.09 )
           ⊕ A >>> 22 :  ( A.09 || A.11 || A.02 || A.10 )
 
@@ -965,8 +973,11 @@ impl<F: PrimeField> Sha256Chip<F> {
         e: &LimbsOfE<F>,
     ) -> Result<AssignedPlain<F, 32>, Error> {
         /*
+        Given
+                    E:  ( E.07 || E.12 || E.02 || E.05 || E.06 )
+
         We need to compute:
-             E >>> 6 :  ( E.06 || E.07 || E.12 || E.02 || E.05 )
+            E >>>  6 :  ( E.06 || E.07 || E.12 || E.02 || E.05 )
           ⊕ E >>> 11 :  ( E.05 || E.06 || E.07 || E.12 || E.02 )
           ⊕ E >>> 25 :  ( E.12 || E.02 || E.05 || E.06 || E.07 )
 
@@ -1042,6 +1053,9 @@ impl<F: PrimeField> Sha256Chip<F> {
         w: &AssignedMessageWord<F>,
     ) -> Result<AssignedPlain<F, 32>, Error> {
         /*
+        Given
+                    W:  ( W.12 || W.1a || W.1b || W.1c || W.07 || W.3a || W.04 || W.3b )
+
          We need to compute:
             W  >>  3 :          ( W.12 || W.1a || W.1b || W.1c || W.07 || W.3a || W.04 )
           ⊕ W >>>  7 :  ( W.04 || W.3b || W.12 || W.1a || W.1b || W.1c || W.07 || W.3a )
@@ -1120,6 +1134,9 @@ impl<F: PrimeField> Sha256Chip<F> {
         w: &AssignedMessageWord<F>,
     ) -> Result<AssignedPlain<F, 32>, Error> {
         /*
+        Given
+                    W:  ( W.12 || W.1a || W.1b || W.1c || W.07 || W.3a || W.04 || W.3b )
+
          We need to compute:
             W  >> 10 :                          ( W.12 || W.1a || W.1b || W.1c || W.07 )
           ⊕ W >>> 17 :  ( W.07 || W.3a || W.04 || W.3b || W.12 || W.1a || W.1b || W.1c )
@@ -1191,7 +1208,7 @@ impl<F: PrimeField> Sha256Chip<F> {
         )
     }
 
-    /// Given a u64, representing an spreaded value, this function fills a
+    /// Given a u64, representing a spreaded value, this function fills a
     /// lookup table with the limbs of its even and odd parts (or vice versa)
     /// and returns the former or the latter, depending on the desired value
     /// `even_or_odd`.
@@ -1263,7 +1280,7 @@ impl<F: PrimeField> Sha256Chip<F> {
     }
 
     /// Given a slice of at most 7 `AssignedPlain` values, it adds them
-    /// modulo 2^32 and decomposes the result (named A) into (bit-endian)
+    /// modulo 2^32 and decomposes the result (named A) into (big-endian)
     /// limbs of bit sizes 10, 9, 11 and 2.
     ///
     /// This function returns the plain and spreaded forms, as well as
@@ -1345,7 +1362,7 @@ impl<F: PrimeField> Sha256Chip<F> {
     }
 
     /// Given a slice of at most 7 `AssignedPlain` values, it adds them
-    /// modulo 2^32 and decomposes the result (named E) into (bit-endian)
+    /// modulo 2^32 and decomposes the result (named E) into (big-endian)
     /// limbs of bit sizes 7, 12, 2, 5 and 6.
     ///
     /// This function returns the plain and spreaded forms, as well as
@@ -1425,7 +1442,7 @@ impl<F: PrimeField> Sha256Chip<F> {
     }
 
     /// Given a slice of at most 7 `AssignedPlain` values, this function adds
-    /// them modulo 2^32 and decomposes the result (named W_i) into (bit-endian)
+    /// them modulo 2^32 and decomposes the result (named W_i) into (big-endian)
     /// limbs of bit sizes 12, 1, 1, 1, 7, 3, 4 and 3.
     fn prepare_message_word(
         &self,
@@ -1445,10 +1462,15 @@ impl<F: PrimeField> Sha256Chip<F> {
         |  3 | W.3a | ~W.3a |  4 |  W.04 | ~W.04  |     | S2 | S3 | W.1b | <- q_12_1x3_7_3_4_3
         |  3 | W.3b | ~W.3b |  3 | carry | ~carry |  S4 | S5 | S6 | W.1c |
 
-        Apart from the lookups, the following identity is checked via a
+        Apart from the lookups, the following identities are checked via a
         custom gate with selector q_12_1x3_7_3_4_3:
 
-          W.i = 2^20 * W.12 + 2^19 * W.1a + 2^18 * W.1b + 2^17 * W.1c + 2^10 * W.07 + 2^7 * W.3a + 2^3 * W.04 + W.3b
+          W.i =   2^20 * W.12 + 2^19 * W.1a + 2^18 * W.1b + 2^17 * W.1c
+                + 2^10 * W.07 + 2^7 * W.3a + 2^3 * W.04 + W.3b
+
+          W.1a * (W.1a - 1) = 0
+          W.1b * (W.1b - 1) = 0
+          W.1c * (W.1c - 1) = 0
 
         and the following is checked with a custom gate with selector
         q_add_mod_2_32:
@@ -1613,13 +1635,13 @@ impl<F: PrimeField> CompressionState<F> {
         let b = sha256_chip.prepare_A(layouter, &[self.b.plain.clone(), other.b.plain.clone()])?;
         let c = sha256_chip.prepare_A(layouter, &[self.c.plain.clone(), other.c.plain.clone()])?;
         let d = sha256_chip.prepare_A(layouter, &[self.d.clone(), other.d.clone()])?;
-        // TODO: d can be optimized and do it in a single row without `prepare_A`.
+        // NB: d can be optimized and do it in a single row without `prepare_A`.
 
         let e = sha256_chip.prepare_E(layouter, &[self.e.plain(), other.e.plain()])?;
         let f = sha256_chip.prepare_E(layouter, &[self.f.plain.clone(), other.f.plain.clone()])?;
         let g = sha256_chip.prepare_E(layouter, &[self.g.plain.clone(), other.g.plain.clone()])?;
         let h = sha256_chip.prepare_E(layouter, &[self.h.clone(), other.h.clone()])?;
-        // TODO: h can be optimized and do it in a single row without `prepare_E`.
+        // NB: h can be optimized and do it in a single row without `prepare_E`.
 
         Ok(Self {
             a,

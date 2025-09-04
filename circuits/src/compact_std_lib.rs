@@ -1383,7 +1383,7 @@ pub trait Relation: Clone {
     /// The blanket implementation enables:
     ///  - jubjub
     ///  - poseidon
-    ///  - sha256 (with 2^11 table)
+    ///  - sha256
     fn used_chips(&self) -> ZkStdLibArch {
         ZkStdLibArch::default()
     }

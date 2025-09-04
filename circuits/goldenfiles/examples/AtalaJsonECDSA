@@ -9,6 +9,6 @@ CircuitModel {
     permutations: 12,
     column_queries: 84,
     point_sets: 5,
-    size: 6384,
+    size: 6128,
     compressed_rows_count: 138095,
 }

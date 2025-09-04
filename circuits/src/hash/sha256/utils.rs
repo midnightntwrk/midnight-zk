@@ -66,15 +66,12 @@ pub fn u32_in_be_limbs<const N: usize>(value: u32, limb_lengths: [usize; N]) -> 
 }
 
 /// Generates the plain-spreaded lookup table.
-pub fn gen_spread_table<F: PrimeField>() -> Vec<(F, F, F)> {
-    let mut table = vec![(F::ZERO, F::ZERO, F::ZERO)]; // base case (disabled lookup)
-    for len in LOOKUP_LENGTHS.into_iter() {
-        let tag = F::from(len as u64);
-        for i in 0..(1 << len) {
-            table.push((tag, F::from(i as u64), F::from(spread(i as u32))))
-        }
-    }
-    table
+pub fn gen_spread_table<F: PrimeField>() -> impl Iterator<Item = (F, F, F)> {
+    std::iter::once((F::ZERO, F::ZERO, F::ZERO)) // base case (disabled lookup)
+        .chain(LOOKUP_LENGTHS.into_iter().flat_map(|len| {
+            let tag = F::from(len as u64);
+            (0..(1 << len)).map(move |i| (tag, F::from(i as u64), F::from(spread(i as u32))))
+        }))
 }
 
 /// Computes off-circuit spreaded Maj(A, B, C) with A, B, C in spreaded forms.
@@ -272,7 +269,7 @@ mod tests {
 
     #[test]
     fn test_gen_spread_table() {
-        let table: Vec<_> = gen_spread_table::<F>();
+        let table: Vec<_> = gen_spread_table::<F>().collect();
         let mut rng = rand::thread_rng();
         let to_fe = |(tag, plain, spreaded)| {
             (
