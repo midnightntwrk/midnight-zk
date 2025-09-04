@@ -41,10 +41,9 @@ impl<F: PrimeField> VarLenSha256Gadget<F> {
     }
 }
 
+const BLOCK_BYTE_SIZE: usize = 64;
 const BITS_PER_WORD: usize = 32;
 const BITS_PER_BYTE: usize = 8;
-
-const BLOCK_BYTE_SIZE: usize = 64;
 
 impl<F> VarLenSha256Gadget<F>
 where
@@ -218,15 +217,44 @@ where
         self.insert_in_array::<64>(
             layouter,
             &idx,
-            (&mut padding[56..121]).try_into().unwrap(),
+            (&mut padding[56..120]).try_into().unwrap(),
             one,
         )?;
+
+        println!("Padding:");
+        for p in padding.iter() {
+            p.value().map(|p| {
+                eprintln!("{}", p);
+            });
+        }
 
         Ok(padding.try_into().unwrap())
     }
 }
 
 impl<F: PrimeField> VarLenSha256Gadget<F> {
+    // Updates the `state` with `block`.
+    fn update_state(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        state: &CompressionState<F>,
+        block: &[AssignedByte<F>; BLOCK_BYTE_SIZE],
+    ) -> Result<CompressionState<F>, Error> {
+        let sha256 = &self.sha256chip;
+        let block = sha256.block_from_bytes(layouter, block)?;
+        let message_blocks = sha256.message_schedule(layouter, &block)?;
+        let mut compression_state = state.clone();
+        for i in 0..64 {
+            compression_state = sha256.compression_round(
+                layouter,
+                &compression_state,
+                ROUND_CONSTANTS[i],
+                &message_blocks[i],
+            )?;
+        }
+        state.add(&sha256, layouter, &compression_state)
+    }
+
     // Updates the `state` with `block` if `update` is true.
     // Otherwise returns the inputed state unchanged.
     fn conditional_update_state(
@@ -236,22 +264,7 @@ impl<F: PrimeField> VarLenSha256Gadget<F> {
         block: &[AssignedByte<F>; BLOCK_BYTE_SIZE],
         update: &AssignedBit<F>,
     ) -> Result<CompressionState<F>, Error> {
-        let sha256 = &self.sha256chip;
-        let new_state = {
-            let block = sha256.block_from_bytes(layouter, block)?;
-            let message_blocks = sha256.message_schedule(layouter, &block)?;
-            let mut compression_state = state.clone();
-            for i in 0..64 {
-                compression_state = sha256.compression_round(
-                    layouter,
-                    &compression_state,
-                    ROUND_CONSTANTS[i],
-                    &message_blocks[i],
-                )?;
-            }
-
-            state.add(&sha256, layouter, &compression_state)?
-        };
+        let new_state = self.update_state(layouter, state, block)?;
 
         // State gets updated if updating is enabled.
         self.select(layouter, &update, &new_state, &state)
@@ -267,7 +280,6 @@ impl<F: PrimeField> VarLenSha256Gadget<F> {
         assert_eq!(inputs.buffer.len() % BLOCK_BYTE_SIZE, 0);
 
         let ng = self.ng();
-        let sha256 = &self.sha256chip;
 
         // Compute the block where the effective data starts.
         let (final_chunk_len, extra_block) =
@@ -319,7 +331,6 @@ impl<F: PrimeField> VarLenSha256Gadget<F> {
 
         let final_chunk: &[_; BLOCK_BYTE_SIZE] = (chunk.try_into()).unwrap();
 
-        // --------------------------
         // Padding stuff
         // --------------------------
         let padding_data = self.compute_padding(
@@ -330,30 +341,14 @@ impl<F: PrimeField> VarLenSha256Gadget<F> {
             &extra_block,
         )?;
 
-        // Conditionallly update with block1
-        state = self.conditional_update_state(
-            layouter,
-            &state,
-            (&padding_data[..BLOCK_BYTE_SIZE]).try_into().unwrap(),
-            &extra_block,
-        )?;
+        let block_1 = (&padding_data[..BLOCK_BYTE_SIZE]).try_into().unwrap();
+        let block_2 = (&padding_data[BLOCK_BYTE_SIZE..]).try_into().unwrap();
+
+        // Conditionally update with block1
+        state = self.conditional_update_state(layouter, &state, block_1, &extra_block)?;
 
         // Update with block2
-        state = {
-            let block = sha256.block_from_bytes(layouter, &padding_data[..BLOCK_BYTE_SIZE])?;
-            let message_blocks = sha256.message_schedule(layouter, &block)?;
-            let mut compression_state = state.clone();
-            for i in 0..64 {
-                compression_state = sha256.compression_round(
-                    layouter,
-                    &compression_state,
-                    ROUND_CONSTANTS[i],
-                    &message_blocks[i],
-                )?;
-            }
-
-            state.add(&sha256, layouter, &compression_state)?
-        };
+        state = self.update_state(layouter, &state, block_2)?;
 
         Ok(state.plain())
     }
@@ -405,15 +400,6 @@ impl<F: PrimeField> InnerValue for LimbsOfE<F> {
         self.combined.value()
     }
 }
-
-// TODO: Uncomment if necessary, delete otherwise.
-// impl<F: PrimeField> InnerValue for AssignedMessageWord<F> {
-//     type Element = F;
-
-//     fn value(&self) -> Value<Self::Element> {
-//         self.combined_plain.value()
-//     }
-// }
 
 impl<F: PrimeField> InnerValue for CompressionState<F> {
     type Element = [F; 8];
@@ -839,3 +825,30 @@ impl<F: PrimeField> ControlFlowInstructions<F, CompressionState<F>> for VarLenSh
 }
 
 // ----------------------------
+#[cfg(any(test, feature = "testing"))]
+use crate::testing_utils::FromScratch;
+
+#[cfg(any(test, feature = "testing"))]
+use midnight_proofs::plonk::{Column, ConstraintSystem, Instance};
+
+#[cfg(any(test, feature = "testing"))]
+impl<F: PrimeField> FromScratch<F> for VarLenSha256Gadget<F> {
+    type Config = <Sha256Chip<F> as FromScratch<F>>::Config;
+
+    fn new_from_scratch(config: &Self::Config) -> Self {
+        Self {
+            sha256chip: Sha256Chip::new_from_scratch(config),
+        }
+    }
+
+    fn configure_from_scratch(
+        meta: &mut ConstraintSystem<F>,
+        instance_columns: &[Column<Instance>; 2],
+    ) -> Self::Config {
+        Sha256Chip::configure_from_scratch(meta, instance_columns)
+    }
+
+    fn load_from_scratch(layouter: &mut impl Layouter<F>, config: &Self::Config) {
+        Sha256Chip::load_from_scratch(layouter, config);
+    }
+}
