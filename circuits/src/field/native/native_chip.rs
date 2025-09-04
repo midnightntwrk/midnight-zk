@@ -100,17 +100,18 @@ const NB_PARALLEL_ADD_COLS: usize = 3;
 /// Config defines fixed and witness columns of the main gate
 #[derive(Clone, Debug)]
 pub struct NativeConfig {
-    pub(crate) q_arith: Selector,
+    q_arith: Selector,
     q_12_minus_34: Selector,
-    pub(crate) q_par_add: Selector,
+    q_par_add: Selector,
     pub(crate) value_cols: [Column<Advice>; NB_ARITH_COLS],
-    pub(crate) coeff_cols: [Column<Fixed>; NB_ARITH_COLS],
-    pub(crate) q_next_col: Column<Fixed>,
-    pub(crate) mul_ab_col: Column<Fixed>,
-    pub(crate) mul_ac_col: Column<Fixed>,
-    pub(crate) constant_col: Column<Fixed>,
-    pub(crate) committed_instance_col: Column<Instance>,
-    pub(crate) instance_col: Column<Instance>,
+    coeff_cols: [Column<Fixed>; NB_ARITH_COLS],
+    q_next_col: Column<Fixed>,
+    mul_ab_col: Column<Fixed>,
+    mul_ac_col: Column<Fixed>,
+    constant_col: Column<Fixed>,
+    fixed_values_col: Column<Fixed>,
+    committed_instance_col: Column<Instance>,
+    instance_col: Column<Instance>,
 }
 
 /// Chip for Native operations
@@ -177,6 +178,9 @@ impl<F: PrimeField> ComposableChip<F> for NativeChip<F> {
         let mul_ab_col = fixed_columns[1];
         let mul_ac_col = fixed_columns[2];
         let constant_col = fixed_columns[3];
+
+        let fixed_values_col = meta.fixed_column();
+        meta.enable_equality(fixed_values_col);
 
         for col in value_columns.iter() {
             meta.enable_equality(*col);
@@ -246,6 +250,7 @@ impl<F: PrimeField> ComposableChip<F> for NativeChip<F> {
             mul_ab_col,
             mul_ac_col,
             constant_col,
+            fixed_values_col,
             committed_instance_col,
             instance_col,
         }
@@ -577,33 +582,26 @@ where
             return Ok(assigned.clone());
         };
 
-        layouter.assign_region(
+        let x = layouter.assign_region(
             || "Assign fixed",
             |mut region| {
-                // Enforce x - constant = 0.
-                let x = region.assign_advice(
-                    || "x",
-                    self.config.value_cols[0],
+                let mut x = region.assign_fixed(
+                    || "fixed",
+                    self.config.fixed_values_col,
                     0,
                     || Value::known(constant),
                 )?;
-                let mut coeffs = [F::ZERO; NB_ARITH_COLS];
-                coeffs[0] = F::ONE; // coeff of x
-                self.custom(
-                    &mut region,
-                    &coeffs,
-                    F::ZERO,
-                    (F::ZERO, F::ZERO),
-                    -constant,
-                    0,
-                )?;
-
-                // Save the assigned constant in the cache.
-                self.cached_fixed.borrow_mut().insert(constant_big.clone(), x.clone());
-
+                // This is hacky but necessary because we are treating a fixed cell as an
+                // assigned one. Fixed cells do not get properly filled until the end.
+                x.update_value(Value::known(constant));
                 Ok(x)
             },
-        )
+        )?;
+
+        // Save the assigned constant in the cache.
+        self.cached_fixed.borrow_mut().insert(constant_big.clone(), x.clone());
+
+        Ok(x)
     }
 
     // This is more efficient than the blanket implementation.
