@@ -1,7 +1,7 @@
 CircuitModel {
     k: 16,
-    rows: 63443,
-    table_rows: 505,
+    rows: 54055,
+    table_rows: 62745,
     max_deg: 5,
     advice_columns: 9,
     fixed_columns: 38,
@@ -10,5 +10,5 @@ CircuitModel {
     column_queries: 60,
     point_sets: 5,
     size: 5008,
-    compressed_rows_count: 63443,
+    compressed_rows_count: 62745,
 }

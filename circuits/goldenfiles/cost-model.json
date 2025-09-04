@@ -912,7 +912,7 @@
       "max_deg": "5",
       "permutations": "27",
       "point_sets": "5",
-      "rows": "207",
+      "rows": "206",
       "table_rows": "418"
     },
     "assert_neq_fixed": {
@@ -989,7 +989,7 @@
       "max_deg": "5",
       "permutations": "28",
       "point_sets": "5",
-      "rows": "133",
+      "rows": "132",
       "table_rows": "418"
     },
     "is_equal_to_fixed": {
@@ -1123,7 +1123,7 @@
       "max_deg": "5",
       "permutations": "29",
       "point_sets": "5",
-      "rows": "124",
+      "rows": "123",
       "table_rows": "450"
     },
     "assert_neq_fixed": {
@@ -1200,7 +1200,7 @@
       "max_deg": "5",
       "permutations": "30",
       "point_sets": "5",
-      "rows": "80",
+      "rows": "79",
       "table_rows": "450"
     },
     "is_equal_to_fixed": {
@@ -1787,7 +1787,7 @@
       "max_deg": "5",
       "permutations": "26",
       "point_sets": "4",
-      "rows": "257",
+      "rows": "255",
       "table_rows": "385"
     },
     "is_equal": {
