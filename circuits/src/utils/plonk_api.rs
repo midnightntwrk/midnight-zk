@@ -285,7 +285,7 @@ pub fn filecoin_srs(k: u32) -> ParamsKZG<Bls12> {
     }
 
     let params_fs = File::open(Path::new(&fetching_path))
-        .unwrap_or_else(|_| panic!("\nIt seems you have not downloaded and/or parsed the SRS from filecoin. Either download it with:
+        .unwrap_or_else(|_| panic!("\nIt seems you have not downloaded and/or parsed the SRS from filecoin. Either download it with (make sure you are under the directory `circuits/` first):
 
             * `curl -L -o {srs_dir}/bls_filecoin_2p19 https://midnight-s3-fileshare-dev-eu-west-1.s3.eu-west-1.amazonaws.com/bls_filecoin_2p19`
 
