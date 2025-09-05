@@ -11,8 +11,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Implementations for in-circuit hashes
+//! Implementation in-circuit of the SHA512 hash function.
 
-pub mod poseidon;
-pub mod sha256;
-pub mod sha512;
+#![allow(non_snake_case)]
+
+mod sha512_chip;
+// mod types;
+mod utils;
