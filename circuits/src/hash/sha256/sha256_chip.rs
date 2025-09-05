@@ -1716,9 +1716,8 @@ impl<F: PrimeField> FromScratch<F> for Sha256Chip<F> {
         (sha256_config, core_decomposition_config)
     }
 
-    fn load_from_scratch(layouter: &mut impl Layouter<F>, config: &Self::Config) {
-        NativeGadget::load_from_scratch(layouter, &config.1);
-        let sha256_chip = Sha256Chip::new_from_scratch(config);
-        sha256_chip.load(layouter).unwrap();
+    fn load_from_scratch(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
+        self.native_gadget.load_from_scratch(layouter)?;
+        self.load(layouter)
     }
 }

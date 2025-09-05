@@ -394,10 +394,7 @@ pub mod tests {
             mut layouter: impl Layouter<F>,
         ) -> Result<(), Error> {
             let chip = DecompChip::new_from_scratch(&config.0);
-            DecompChip::load_from_scratch(&mut layouter, &config.0);
-
             let aux_chip = AuxChip::new_from_scratch(&config.1);
-            AuxChip::load_from_scratch(&mut layouter, &config.1);
 
             use Endianess::*;
             match self.operation {
@@ -468,7 +465,10 @@ pub mod tests {
                     };
                     aux_chip.assert_equal_to_fixed(&mut layouter, &sign, lsb == 1u8)
                 }
-            }
+            }?;
+
+            chip.load_from_scratch(&mut layouter)?;
+            aux_chip.load_from_scratch(&mut layouter)
         }
     }
 

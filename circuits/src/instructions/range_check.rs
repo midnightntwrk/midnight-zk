@@ -123,10 +123,11 @@ pub mod tests {
             mut layouter: impl Layouter<F>,
         ) -> Result<(), Error> {
             let chip = Chip::new_from_scratch(&config);
-            Chip::load_from_scratch(&mut layouter, &config);
 
             let x = chip.assign(&mut layouter, Value::known(self.x))?;
-            chip.assert_lower_than_fixed(&mut layouter, &x, &self.bound)
+            chip.assert_lower_than_fixed(&mut layouter, &x, &self.bound)?;
+
+            chip.load_from_scratch(&mut layouter)
         }
     }
     fn run<F, Assigned, Chip>(

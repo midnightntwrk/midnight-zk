@@ -592,10 +592,6 @@ mod tests {
             let vg = VectorGadget::new(&ng);
             let b64_chip = Base64Chip::new(&config.1, &ng);
 
-            // Load tables.
-            NativeGadget::load_from_scratch(&mut layouter, &config.0);
-            b64_chip.load(&mut layouter)?;
-
             if options.variable {
                 // Variable length.
                 let assigned_in_var: Base64Vec<F, 1024, 4> =
@@ -629,7 +625,8 @@ mod tests {
                 }
             }
 
-            Ok(())
+            ng.load_from_scratch(&mut layouter)?;
+            b64_chip.load(&mut layouter)
         }
     }
 

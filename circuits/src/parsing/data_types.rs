@@ -218,7 +218,6 @@ mod tests {
         ) -> Result<(), Error> {
             let native_gadget = <N as FromScratch<F>>::new_from_scratch(&config);
             let parser_gadget = ParserGadget::<F, N>::new(&native_gadget);
-            <N as FromScratch<F>>::load_from_scratch(&mut layouter, &config);
 
             let string = native_gadget.assign_many(&mut layouter, &self.string)?;
             let bytes = string
@@ -235,7 +234,7 @@ mod tests {
 
             native_gadget.assert_equal_to_fixed(&mut layouter, &res, self.expected)?;
 
-            Ok(())
+            native_gadget.load_from_scratch(&mut layouter)
         }
     }
 

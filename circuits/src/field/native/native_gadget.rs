@@ -1592,12 +1592,9 @@ impl<F: PrimeField> FromScratch<F> for NativeGadget<F, P2RDecompositionChip<F>, 
         NativeGadget::new(core_decomposition_chip, native_chip)
     }
 
-    // This simply loads the pow2range chip's look up table
-    fn load_from_scratch(layouter: &mut impl Layouter<F>, config: &Self::Config) {
-        let max_bit_len = 8;
-        let pow2range_config = config.clone().pow2range_config;
-        let pow2range_chip = Pow2RangeChip::new(&pow2range_config, max_bit_len);
-        let _ = pow2range_chip.load_table(layouter);
+    fn load_from_scratch(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
+        self.native_chip.load_from_scratch(layouter)?;
+        self.core_decomposition_chip.load(layouter)
     }
 
     fn configure_from_scratch(

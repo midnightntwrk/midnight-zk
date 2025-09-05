@@ -754,13 +754,15 @@ pub(crate) mod tests {
         ) -> Result<(), Error> {
             let native_chip = NativeChip::new_from_scratch(&config.0);
             let poseidon_chip = PoseidonChip::new_from_scratch(&config);
-            PoseidonChip::load_from_scratch(&mut layouter, &config);
 
             let inputs = native_chip
                 .assign_many(&mut layouter, &self.poseidon_preimage.transpose_array())?;
             let output = poseidon_chip.hash(&mut layouter, &inputs)?;
 
-            native_chip.constrain_as_public_input(&mut layouter, &output)
+            native_chip.constrain_as_public_input(&mut layouter, &output)?;
+
+            native_chip.load_from_scratch(&mut layouter)?;
+            poseidon_chip.load_from_scratch(&mut layouter)
         }
     }
 
@@ -845,8 +847,6 @@ pub(crate) mod tests {
             let verifier_chip =
                 VerifierGadget::<S>::new(&curve_chip, &native_gadget, &poseidon_chip);
 
-            core_decomp_chip.load(&mut layouter)?;
-
             let assigned_inner_vk: AssignedVk<S> = verifier_chip.assign_vk_as_public_input(
                 &mut layouter,
                 "inner_vk",
@@ -871,7 +871,9 @@ pub(crate) mod tests {
 
             inner_proof_acc.collapse(&mut layouter, &curve_chip, &native_gadget)?;
 
-            verifier_chip.constrain_as_public_input(&mut layouter, &inner_proof_acc)
+            verifier_chip.constrain_as_public_input(&mut layouter, &inner_proof_acc)?;
+
+            core_decomp_chip.load(&mut layouter)
         }
     }
 

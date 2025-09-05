@@ -237,7 +237,6 @@ pub mod tests {
             mut layouter: impl Layouter<F>,
         ) -> Result<(), Error> {
             let chip = Chip::new_from_scratch(&config);
-            Chip::load_from_scratch(&mut layouter, &config);
 
             let x = chip.assign(&mut layouter, Value::known(self.x))?;
 
@@ -272,7 +271,9 @@ pub mod tests {
                     let expected = chip.assign_fixed(&mut layouter, self.expected)?;
                     chip.assert_equal(&mut layouter, &b, &expected)
                 }
-            }
+            }?;
+
+            chip.load_from_scratch(&mut layouter)
         }
     }
 

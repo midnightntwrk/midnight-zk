@@ -159,7 +159,6 @@ pub mod tests {
             mut layouter: impl Layouter<F>,
         ) -> Result<(), Error> {
             let chip = Chip::new_from_scratch(&config);
-            Chip::load_from_scratch(&mut layouter, &config);
 
             let x_val = if self.must_pass {
                 self.x.clone()
@@ -188,7 +187,7 @@ pub mod tests {
                     });
             }
 
-            Ok(())
+            chip.load_from_scratch(&mut layouter)
         }
     }
 

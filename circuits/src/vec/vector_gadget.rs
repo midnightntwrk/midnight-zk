@@ -453,7 +453,6 @@ mod tests {
         ) -> Result<(), Error> {
             let ng = NG::<F>::new_from_scratch(&config);
             let vg = VectorGadget::new(&ng);
-            NG::<F>::load_from_scratch(&mut layouter, &config);
 
             match self.opts {
                 TestOpts::Eq {
@@ -539,7 +538,7 @@ mod tests {
                 }
             }
 
-            Ok(())
+            ng.load_from_scratch(&mut layouter)
         }
     }
 

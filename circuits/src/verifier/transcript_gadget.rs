@@ -202,10 +202,10 @@ where
         TranscriptGadget::new(&scalar_chip, &curve_chip, &sponge_chip)
     }
 
-    fn load_from_scratch(layouter: &mut impl Layouter<S::F>, config: &Self::Config) {
-        S::ScalarChip::load_from_scratch(layouter, &config.0);
-        S::CurveChip::load_from_scratch(layouter, &config.1);
-        S::SpongeChip::load_from_scratch(layouter, &config.2);
+    fn load_from_scratch(&self, layouter: &mut impl Layouter<S::F>) -> Result<(), Error> {
+        self.scalar_chip.load_from_scratch(layouter)?;
+        self.curve_chip.load_from_scratch(layouter)?;
+        self.sponge_chip.load_from_scratch(layouter)
     }
 
     fn configure_from_scratch(
@@ -280,8 +280,6 @@ mod tests {
             let mut transcript_gadget = TranscriptGadget::<S>::new_from_scratch(&config);
             transcript_gadget.init_with_proof(&mut layouter, Value::unknown())?;
 
-            TranscriptGadget::<S>::load_from_scratch(&mut layouter, &config);
-
             let assigned_scalars = transcript_gadget
                 .scalar_chip
                 .assign_many(&mut layouter, &self.scalars.transpose_array())?;
@@ -308,7 +306,9 @@ mod tests {
             let challenge_2 = transcript_gadget.squeeze_challenge(&mut layouter)?;
             transcript_gadget
                 .scalar_chip
-                .constrain_as_public_input(&mut layouter, &challenge_2)
+                .constrain_as_public_input(&mut layouter, &challenge_2)?;
+
+            transcript_gadget.load_from_scratch(&mut layouter)
         }
     }
 

@@ -197,7 +197,6 @@ pub mod tests {
             mut layouter: impl Layouter<F>,
         ) -> Result<(), Error> {
             let chip = CanonicityChip::new_from_scratch(&config);
-            CanonicityChip::load_from_scratch(&mut layouter, &config);
 
             let bits = self
                 .bits
@@ -212,7 +211,9 @@ pub mod tests {
                 Operation::Geq => chip.le_bits_geq_than(&mut layouter, &bits, bound),
             }?;
 
-            chip.assert_equal_to_fixed(&mut layouter, &res, self.expected)
+            chip.assert_equal_to_fixed(&mut layouter, &res, self.expected)?;
+
+            chip.load_from_scratch(&mut layouter)
         }
     }
 

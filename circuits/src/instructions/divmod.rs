@@ -205,7 +205,6 @@ mod test {
             mut layouter: impl Layouter<F>,
         ) -> Result<(), Error> {
             let ng = NG::<F>::new_from_scratch(&config);
-            NG::<F>::load_from_scratch(&mut layouter, &config);
 
             let (q, r) = self
                 .input
@@ -225,7 +224,8 @@ mod test {
 
             ng.assert_equal(&mut layouter, &q, &expected_q)?;
             ng.assert_equal(&mut layouter, &r, &expected_r)?;
-            Ok(())
+
+            ng.load_from_scratch(&mut layouter)
         }
     }
 
