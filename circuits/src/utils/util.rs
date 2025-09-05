@@ -60,12 +60,26 @@ pub fn fe_to_u64<F: PrimeField>(fe: F) -> u64 {
     u64_digits.first().cloned().unwrap_or(0)
 }
 
+/// Panics if the conversion is not possible.
+pub fn fe_to_u128<F: PrimeField>(fe: F) -> u128 {
+    let u64_digits = fe_to_big(fe).to_u64_digits();
+    assert!(u64_digits.len() <= 2);
+    (u64_digits.get(1).cloned().unwrap_or(0) as u128) << 64
+        | (u64_digits.get(0).cloned().unwrap_or(0) as u128)
+}
+
 pub fn u32_to_fe<F: PrimeField>(x: u32) -> F {
     F::from(x as u64)
 }
 
 pub fn u64_to_fe<F: PrimeField>(x: u64) -> F {
     F::from(x)
+}
+
+pub fn u128_to_fe<F: PrimeField>(x: u128) -> F {
+    let lo = (x & ((1u128 << 64) - 1)) as u64;
+    let hi = (x >> 64) as u64;
+    F::from(lo) + F::from(hi) * F::from(1u64 << 63) * F::from(2) // avoid overflow in F::from(1u64 << 64)
 }
 
 pub fn bigint_to_fe<F: PrimeField>(value: &BI) -> F {
