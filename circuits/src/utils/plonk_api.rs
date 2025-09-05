@@ -23,6 +23,8 @@ use std::{
     path::Path,
 };
 
+#[cfg(feature = "bench-internal")]
+use bench_macros::inner_bench;
 use halo2curves::bn256;
 use midnight_curves::Bls12;
 use midnight_proofs::{
@@ -46,8 +48,6 @@ use crate::{
     compact_std_lib::{cost_model, MidnightVK, Relation},
     midnight_proofs::transcript::TranscriptHash,
 };
-
-use bench_macros::inner_bench;
 
 macro_rules! plonk_api {
     ($name:ident, $engine:ty, $native:ty, $curve:ty, $projective:ty) => {
@@ -123,7 +123,7 @@ macro_rules! plonk_api {
                         rng,
                         &mut transcript,
                         #[cfg(feature = "bench-internal")]
-                        _group
+                        _group,
                     )?;
                     transcript.finalize()
                 };
