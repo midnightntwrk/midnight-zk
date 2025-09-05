@@ -3,7 +3,7 @@
 //!
 //! For more details, visit:
 //! https://github.com/midnightntwrk/midnight-ledger-prototype/blob/main/zswap/zswap.compact
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use ff::Field;
 use group::Group;
 use midnight_circuits::{
@@ -19,8 +19,13 @@ use midnight_circuits::{
 use midnight_curves::{Bls12, Fr as JubjubScalar, JubjubExtended as Jubjub, JubjubSubgroup};
 use midnight_proofs::{
     circuit::{Layouter, Value},
-    plonk::{create_proof, keygen_pk, keygen_vk_with_k, Error},
-    poly::kzg::{params::ParamsKZG, KZGCommitmentScheme},
+    plonk::{
+        create_proof, keygen_pk, keygen_vk_with_k, parse_trace, verify_algebraic_constraints, Error,
+    },
+    poly::{
+        commitment::Guard,
+        kzg::{params::ParamsKZG, KZGCommitmentScheme},
+    },
     transcript::{CircuitTranscript, Transcript},
 };
 use rand::{rngs::OsRng, Rng, SeedableRng};
@@ -28,6 +33,7 @@ use rand_chacha::ChaCha8Rng;
 use sha2::Digest;
 
 type F = midnight_curves::Fq;
+type C = midnight_curves::G1Projective;
 
 type CoinCom = [u8; 32];
 type ValueCom = JubjubSubgroup;
@@ -241,7 +247,7 @@ fn bench_zswap_output(c: &mut Criterion) {
     let pk = keygen_pk(vk, &circuit).expect("Failed to generate PK");
     let (instance, circuit) = sample_zswap_inputs();
 
-    let mut group = c.benchmark_group("zswap-output");
+    let mut group = c.benchmark_group("ZSwap Prover");
     let mut transcript = CircuitTranscript::<blake2b_simd::State>::init();
     create_proof(
         &srs,
@@ -256,11 +262,65 @@ fn bench_zswap_output(c: &mut Criterion) {
     .expect("Failed to generate proof");
 
     group.finish();
+
+    let mut group = c.benchmark_group("ZSwap Verifier");
+    let transcript =
+        CircuitTranscript::<blake2b_simd::State>::init_from_bytes(&transcript.finalize());
+    group.bench_function("Parse trace", |b| {
+        b.iter_batched(
+            || transcript.clone(),
+            |mut t| parse_trace(pk.get_vk(), &[&[C::identity()]], &[&[&instance]], &mut t).unwrap(),
+            BatchSize::SmallInput,
+        )
+    });
+
+    group.bench_function("Verify algebraic constraints", |b| {
+        b.iter_batched(
+            || {
+                let mut t = transcript.clone();
+                (
+                    parse_trace(pk.get_vk(), &[&[C::identity()]], &[&[&instance]], &mut t).unwrap(),
+                    t,
+                )
+            },
+            |(trace, mut t)| {
+                verify_algebraic_constraints(
+                    pk.get_vk(),
+                    trace,
+                    &[&[C::identity()]],
+                    &[&[&instance]],
+                    &mut t,
+                )
+            },
+            BatchSize::SmallInput,
+        )
+    });
+
+    group.bench_function("Finalize proof verification", |b| {
+        b.iter_batched(
+            || {
+                let mut t = transcript.clone();
+                let trace =
+                    parse_trace(pk.get_vk(), &[&[C::identity()]], &[&[&instance]], &mut t).unwrap();
+                let guard = verify_algebraic_constraints(
+                    pk.get_vk(),
+                    trace,
+                    &[&[C::identity()]],
+                    &[&[&instance]],
+                    &mut t,
+                )
+                .unwrap();
+                guard
+            },
+            |guard| guard.verify(&srs.verifier_params()).unwrap(),
+            BatchSize::SmallInput,
+        )
+    });
 }
 
 criterion_group!(
     name = benches;
-    config = Criterion::default().sample_size(1000);
+    config = Criterion::default().sample_size(200);
     targets = bench_zswap_output
 );
 criterion_main!(benches);

@@ -100,12 +100,14 @@ where
     }
 
     // Hash verification key into transcript
-    bench_and_run!(_group ; ref transcript ; ; "Hash VK" ; |t| pk.vk.hash_into(t))?;
+    bench_and_run!(_group ; ref transcript ; ; "Hash VK" ;
+        |t| pk.vk.hash_into(t)
+    )?;
 
     let domain = &pk.vk.domain;
 
     let instance = bench_and_run!(_group; ref transcript ; ; "Compute instances"; |t|
-    compute_instances(params, pk, instances, nb_committed_instances, t)
+        compute_instances(params, pk, instances, nb_committed_instances, t)
     )?;
 
     let (advice, challenges) = bench_and_run!(_group; ref transcript; ; "Parse advices"; |t|
@@ -116,7 +118,8 @@ where
     let theta: F = transcript.squeeze_challenge();
 
     let lookups: Vec<Vec<lookup::prover::Permuted<F>>> = bench_and_run!(
-        _group; ref transcript; ; "Construct and commit permuted columns"; |t: &mut T|  instance
+        _group; ref transcript; ; "Construct and commit permuted columns";
+        |t: &mut T|  instance
         .iter()
         .zip(advice.iter())
         .map(|(instance, advice)| -> Result<Vec<_>, Error> {
@@ -151,7 +154,8 @@ where
 
     // Commit to permutations.
     let permutations: Vec<permutation::prover::Committed<F>> = bench_and_run!(
-        _group; ref transcript; ; "Commit permutation functions"; |t: &mut T|  instance
+        _group; ref transcript; ; "Commit permutation functions";
+        |t: &mut T|  instance
         .iter()
         .zip(advice.iter())
         .map(|(instance, advice)| {
@@ -172,7 +176,7 @@ where
 
     let lookups: Vec<Vec<lookup::prover::Committed<F>>> = bench_and_run!(_group;
         ref transcript;  own lookups; "Construct and commit lookup product polynomials";
-        |t: &mut T, l: Vec<Vec<lookup::prover::Permuted<F>>>| l
+        |t: &mut T, lookups: Vec<Vec<lookup::prover::Permuted<F>>>| lookups
         .into_iter()
         .map(|lookups| -> Result<Vec<_>, _> {
             // Construct and commit to products for each lookup
@@ -187,7 +191,8 @@ where
     let trash_challenge: F = transcript.squeeze_challenge();
 
     let trashcans: Vec<Vec<trash::prover::Committed<F>>> = bench_and_run!(_group;
-        ref transcript ; ; "Construct trash argument"; |t: &mut T| instance
+        ref transcript ; ; "Construct trash argument";
+        |t: &mut T| instance
         .iter()
         .zip(advice.iter())
         .map(|(instance, advice)| -> Result<Vec<_>, Error> {
@@ -213,8 +218,8 @@ where
 
     // Commit to the vanishing argument's random polynomial for blinding h(x_3)
     let vanishing = bench_and_run!(_group;
-        ref transcript; ; "Commit vanishing random poly"; |t|
-        vanishing::Argument::<F, CS>::commit(params, domain, &mut rng, t))?;
+        ref transcript; ; "Commit vanishing random poly";
+        |t| vanishing::Argument::<F, CS>::commit(params, domain, &mut rng, t))?;
 
     // Obtain challenge for keeping all separate gates linearly independent
     let y: F = transcript.squeeze_challenge();
@@ -224,9 +229,8 @@ where
         .map(|i| (i.instance_polys, i.instance_values))
         .unzip();
 
-    let advice_polys = bench_and_run!(_group;
-        ; own advice ; "Advice to coeff"; |a: Vec<AdviceSingle<F, LagrangeCoeff>>|
-        a
+    let advice_polys = bench_and_run!(_group; ; own advice ; "Advice to coeff";
+        |advice: Vec<AdviceSingle<F, LagrangeCoeff>>| advice
         .into_iter()
             .map(|a| {
                 a.advice_polys
@@ -297,11 +301,12 @@ where
 
     // Construct the vanishing argument's h(X) commitments
     let vanishing = bench_and_run!(_group; ref transcript; own h_poly, own vanishing; "Construct vanishing commitments";
-        |t, h, v: vanishing::prover::Committed<F>| v.construct::<CS, T>(params, domain, h, t))?;
+        |t, h, vanishing: vanishing::prover::Committed<F>| vanishing.construct::<CS, T>(params, domain, h, t))?;
 
     let x: F = transcript.squeeze_challenge();
 
-    bench_and_run!(_group; ref transcript; ; "Write evals to transcript"; |t| write_evals_to_transcript(
+    bench_and_run!(_group; ref transcript; ; "Write evals to transcript";
+        |t| write_evals_to_transcript(
         pk,
         nb_committed_instances,
         &instance_polys,
@@ -310,19 +315,27 @@ where
         t,
     ))?;
 
-    let vanishing = bench_and_run!(_group; ref transcript; own vanishing; "Evaluate vanishing"; |t, v: vanishing::prover::Constructed<F>| v.evaluate(x, domain, t))?;
+    let vanishing = bench_and_run!(_group; ref transcript; own vanishing; "Evaluate vanishing";
+        |t, vanishing: vanishing::prover::Constructed<F>| vanishing.evaluate(x, domain, t)
+    )?;
 
     // Evaluate common permutation data
-    bench_and_run!(_group; ref transcript; ; "Evaluate permutation data"; |t| pk.permutation.evaluate(x, t))?;
+    bench_and_run!(_group; ref transcript; ; "Evaluate permutation data"; |t|
+        pk.permutation.evaluate(x, t)
+    )?;
 
     // Evaluate the permutations, if any, at omega^i x.
-    let permutations: Vec<permutation::prover::Evaluated<F>> = bench_and_run!(_group; ref transcript; own permutations ; "Evaluate perms"; |t: &mut T, p: Vec<permutation::prover::Committed<F>>| p
+    let permutations: Vec<permutation::prover::Evaluated<F>> = bench_and_run!(_group; ref transcript; own permutations ; "Evaluate perms";
+    |t: &mut T, permutations: Vec<permutation::prover::Committed<F>>|
+    permutations
         .into_iter()
         .map(|permutation| -> Result<_, _> { permutation.evaluate(pk, x, &mut *t) })
-        .collect::<Result<Vec<_>, _>>())?;
+        .collect::<Result<Vec<_>, _>>()
+    )?;
 
     // Evaluate the lookups, if any, at omega^i x.
-    let lookups: Vec<Vec<lookup::prover::Evaluated<F>>> = bench_and_run!(_group; ref transcript; own lookups; "Evaluate lookups"; |t: &mut T, l: Vec<Vec<lookup::prover::Committed<F>>>| l
+    let lookups: Vec<Vec<lookup::prover::Evaluated<F>>> = bench_and_run!(_group; ref transcript; own lookups; "Evaluate lookups";
+        |t: &mut T, lookups: Vec<Vec<lookup::prover::Committed<F>>>| lookups
         .into_iter()
         .map(|lookups| -> Result<Vec<_>, _> {
             lookups
