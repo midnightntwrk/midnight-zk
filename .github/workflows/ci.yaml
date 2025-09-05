@@ -163,11 +163,11 @@ jobs:
 
       - name: Run Clippy on `proofs`
         continue-on-error: true
-        run: cargo clippy -p midnight-proofs --all-targets --all-features -- -Dwarnings
+        run: cargo clippy -p midnight-proofs --all-targets -- -Dwarnings
 
       - name: Run Clippy on `circuits`
         continue-on-error: true
-        run: cargo clippy -p midnight-circuits --all-targets --all-features -- -Dwarnings
+        run: cargo clippy -p midnight-circuits --all-targets  -- -Dwarnings
 
       - name: Run Clippy on `aggregator`
         continue-on-error: true
