@@ -27,6 +27,8 @@
 
 use std::{cell::RefCell, cmp::max, convert::TryInto, fmt::Debug, io, rc::Rc};
 
+#[cfg(feature = "bench-internal")]
+use bench_macros::inner_bench;
 use bincode::{config::standard, Decode, Encode};
 use ff::{Field, PrimeField};
 use group::{prime::PrimeCurveAffine, Group};
@@ -1149,7 +1151,8 @@ impl<'a, R: Relation> MidnightCircuit<'a, R> {
         }
     }
 
-    /// Construct a MidnightCircuit from a known instance-witness for the given relation.
+    /// Construct a MidnightCircuit from a known instance-witness for the given
+    /// relation.
     pub fn construct(relation: &'a R, instance: R::Instance, witness: R::Witness) -> Self {
         MidnightCircuit {
             relation,
@@ -1556,7 +1559,6 @@ pub fn setup_pk<R: Relation>(relation: &R, vk: &MidnightVK) -> MidnightPK<R> {
     }
 }
 
-use bench_macros::inner_bench;
 #[cfg_attr(feature = "bench-internal", inner_bench)]
 /// Produces a proof of relation `R` for the given instance (using the given
 /// proving key and witness).
@@ -1588,7 +1590,7 @@ where
         &[com_inst.as_slice(), &pi],
         rng,
         #[cfg(feature = "bench-internal")]
-        _group
+        _group,
     )
 }
 
