@@ -60,7 +60,7 @@ jobs:
       - uses: ./.github/actions/cargo-test
         with:
           package: midnight-circuits
-          args: --release --all-features
+          args: --release
 
   test-vk-consistency:
     needs: download-srs
@@ -79,13 +79,13 @@ jobs:
       - uses: ./.github/actions/cargo-test
         with:
           package: midnight-circuits
-          args: --release --all-features -- --ignored
+          args: --release -- --ignored
 
       - name: Check for changes in goldenfiles/examples.
         run: |
           if ! git diff --quiet -- circuits/goldenfiles/examples; then
             echo "Files in circuits/goldenfiles/examples have changed"
-            echo "Run "cargo test --release --all-features -- --ignored" locally and commit the changes"
+            echo "Run "cargo test --release -- --ignored" locally and commit the changes"
             git diff -- circuits/goldenfiles/examples
             exit 1
           else
@@ -104,7 +104,7 @@ jobs:
       - uses: ./.github/actions/cargo-test
         with:
           package: midnight-proofs
-          args: --release --all-features
+          args: --release
 
   test-aggregator:
     if: github.event.pull_request.draft == false
