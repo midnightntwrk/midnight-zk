@@ -23,6 +23,7 @@ verification keys break backwards compatibility.
 * Reduce poseidon identities degree to 5 with an additive selector [#59](https://github.com/midnightntwrk/midnight-zk/pull/59)
 * Updated bincode to v2.0.0 - This is a breaking change [#82](https://github.com/midnightntwrk/midnight-zk/pull/82)
 * Adapted in-circuit verifier to changes of off-circuit counterpart [#76](https://github.com/midnightntwrk/midnight-zk/pull/76)
+* Clarified the default directory to download SRS [#95](https://github.com/midnightntwrk/midnight-zk/pull/95)
 
 ### Removed
 
