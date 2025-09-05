@@ -72,7 +72,7 @@ impl Relation for EccExample {
         ZkStdLibArch {
             jubjub: true,
             poseidon: true,
-            sha256: None,
+            sha256: false,
             secp256k1: false,
             bls12_381: false,
             base64: false,

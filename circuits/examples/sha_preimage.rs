@@ -9,7 +9,7 @@
 static ALLOC: dhat::Alloc = dhat::Alloc;
 
 use midnight_circuits::{
-    compact_std_lib::{self, Relation, ShaTableSize, ZkStdLib, ZkStdLibArch},
+    compact_std_lib::{self, Relation, ZkStdLib, ZkStdLibArch},
     instructions::{AssignmentInstructions, PublicInputInstructions},
     testing_utils::plonk_api::filecoin_srs,
     types::{AssignedByte, Instantiable},
@@ -58,7 +58,7 @@ impl Relation for ShaPreImageCircuit {
         ZkStdLibArch {
             jubjub: false,
             poseidon: false,
-            sha256: Some(ShaTableSize::Table16),
+            sha256: true,
             secp256k1: false,
             bls12_381: false,
             base64: false,
@@ -77,12 +77,11 @@ impl Relation for ShaPreImageCircuit {
 }
 
 fn main() {
-    const K: u32 = 17;
+    const K: u32 = 13;
     let srs = filecoin_srs(K);
 
     let relation = ShaPreImageCircuit;
     let vk = compact_std_lib::setup_vk(&srs, &relation);
-
     let pk = compact_std_lib::setup_pk(&relation, &vk);
 
     // Sample a random preimage as the witness.

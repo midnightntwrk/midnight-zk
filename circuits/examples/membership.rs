@@ -88,7 +88,7 @@ impl Relation for MembershipExample {
         ZkStdLibArch {
             jubjub: false,
             poseidon: true,
-            sha256: None,
+            sha256: false,
             secp256k1: false,
             bls12_381: false,
             base64: false,

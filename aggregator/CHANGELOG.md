@@ -16,7 +16,8 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 * Unify transcript style [#34](https://github.com/midnightntwrk/midnight-zk/pull/34)
 * Fix minor issue (serialize u32 instead of u8 on acc lengths) [#75](https://github.com/midnightntwrk/midnight-zk/pull/75)
 * Import CommittedInstanceInstructions [#381](https://github.com/midnightntwrk/midnight-zk/pull/381)
-=======
+* Adapt ZkStdArch to new SHA256 chip [#39](https://github.com/midnightntwrk/midnight-zk/pull/39)
+
 
 ### Removed
 * Add a turned-off automaton configuration due to the automaton chip being exposed in std_lib [#30](https://github.com/midnightntwrk/midnight-zk/pull/30)

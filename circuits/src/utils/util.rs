@@ -44,6 +44,28 @@ pub fn fe_to_big<F: PrimeField>(fe: F) -> BigUint {
     BigUint::from_bytes_le(fe.to_repr().as_ref())
 }
 
+/// Panics if the conversion is not possible.
+pub fn fe_to_u32<F: PrimeField>(fe: F) -> u32 {
+    let u32_digits = fe_to_big(fe).to_u32_digits();
+    assert!(u32_digits.len() <= 1);
+    u32_digits.first().cloned().unwrap_or(0)
+}
+
+/// Panics if the conversion is not possible.
+pub fn fe_to_u64<F: PrimeField>(fe: F) -> u64 {
+    let u64_digits = fe_to_big(fe).to_u64_digits();
+    assert!(u64_digits.len() <= 1);
+    u64_digits.first().cloned().unwrap_or(0)
+}
+
+pub fn u32_to_fe<F: PrimeField>(x: u32) -> F {
+    F::from(x as u64)
+}
+
+pub fn u64_to_fe<F: PrimeField>(x: u64) -> F {
+    F::from(x)
+}
+
 pub fn bigint_to_fe<F: PrimeField>(value: &BI) -> F {
     let f = F::from_str_vartime(&BI::to_string(&value.abs())).unwrap();
     if value.is_negative() {

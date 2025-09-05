@@ -235,7 +235,7 @@ fn sample_zswap_inputs() -> (
 }
 
 fn bench_zswap_output(c: &mut Criterion) {
-    const K: u32 = 14;
+    const K: u32 = 13;
     let srs = ParamsKZG::unsafe_setup(K, OsRng);
 
     let relation = ZSwapOutputCircuit;
