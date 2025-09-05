@@ -15,11 +15,13 @@ use crate::{
     utils::arithmetic::{eval_polynomial, parallelize},
 };
 
+#[cfg_attr(feature = "bench-internal", derive(Clone))]
 #[derive(Debug)]
 pub(crate) struct CommittedSet<F: PrimeField> {
     pub(crate) permutation_product_poly: Polynomial<F, Coeff>,
 }
 
+#[cfg_attr(feature = "bench-internal", derive(Clone))]
 #[derive(Debug)]
 pub(crate) struct Committed<F: PrimeField> {
     pub(crate) sets: Vec<CommittedSet<F>>,

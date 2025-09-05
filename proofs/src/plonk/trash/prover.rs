@@ -11,6 +11,7 @@ use crate::{
     utils::arithmetic::eval_polynomial,
 };
 
+#[cfg_attr(feature = "bench-internal", derive(Clone))]
 #[derive(Debug)]
 pub(crate) struct Committed<F: PrimeField> {
     pub(crate) trash_poly: Polynomial<F, Coeff>,

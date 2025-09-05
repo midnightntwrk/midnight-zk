@@ -20,15 +20,16 @@ name = "commit_zk"
 harness = false
 
 [[bench]]
-name = "hashtocurve"
-harness = false
-
-[[bench]]
 name = "plonk"
 harness = false
 
 [[bench]]
 name = "dev_lookup"
+harness = false
+
+[[bench]]
+name = "zswap_output"
+required-features = ["bench-internal"]
 harness = false
 
 [dependencies]
@@ -50,17 +51,24 @@ plotters = { version = "0.3.7", default-features = false, optional = true }
 tabbycat = { version = "0.1", features = ["attributes"], optional = true }
 num-bigint = "0.4.6"
 
+# Prover benchmarks
+criterion = { version = "0.7", optional = true }
+bench_macros = { path = "../bench-macros" }
+
 [dev-dependencies]
 assert_matches = "1.5"
 criterion = "0.7"
 proptest = "1"
 serde_json = "1"
+midnight-circuits = {path = "../circuits" }
+sha2 = "0.10"
+rand = "0.8"
 
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
 getrandom = { version = "0.2", features = ["js"] }
 
 [features]
-default = ["bits"]
+default = ["bits", "committed-instances"]
 dev-graph = ["plotters", "tabbycat"]
 test-dev-graph = [
     "dev-graph",
@@ -87,6 +95,12 @@ truncated-challenges = []
 #
 # This feature is very powerful for proving statements on committed data.
 committed-instances = []
+
+# Feature to enable granular benchmarks in the prover. If enabled,
+# the proof generation functions take an additional input,
+# _group: &mut BenchmarkGroup<WallTime>, and return granular benchmarks
+# of the prover for that concrete circuit.
+bench-internal = ["criterion", "midnight-circuits/bench-internal"]
 
 [lib]
 bench = false

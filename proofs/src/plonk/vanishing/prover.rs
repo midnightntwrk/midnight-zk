@@ -16,11 +16,13 @@ use crate::{
     utils::arithmetic::{eval_polynomial, parallelize},
 };
 
+#[cfg_attr(feature = "bench-internal", derive(Clone))]
 #[derive(Debug)]
 pub(crate) struct Committed<F: PrimeField> {
     pub(crate) random_poly: Polynomial<F, Coeff>,
 }
 
+#[cfg_attr(feature = "bench-internal", derive(Clone))]
 pub(crate) struct Constructed<F: PrimeField> {
     h_pieces: Vec<Polynomial<F, Coeff>>,
     committed: Committed<F>,
