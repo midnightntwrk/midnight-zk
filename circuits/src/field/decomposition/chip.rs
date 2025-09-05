@@ -287,20 +287,10 @@ impl<F: PrimeField> P2RDecompositionChip<F> {
                 // linear combination terms
                 let pow2range_chip = self.pow2range_chip();
 
-                // get the lookup selector and tag columns
-                let range_selector_column = pow2range_chip.config().q_pow2range;
-                let range_tag_column = pow2range_chip.config().tag_col;
-
-                // we revers since we do the rangechecks from higher end to start
+                // we reverse since we do the range-checks from higher end to start
                 for (i, tag) in tags.into_iter().rev().enumerate() {
                     let current_row = offset - (i + 1);
-                    range_selector_column.enable(&mut region, current_row)?;
-                    region.assign_fixed(
-                        || "assign decomposition tag",
-                        range_tag_column,
-                        current_row,
-                        || Value::known(F::from(tag as u64)),
-                    )?;
+                    pow2range_chip.assert_row_lower_than_2_pow_n(&mut region, tag, current_row)?;
                 }
 
                 // we remove the trivial coefficients, i.e. those corresponding to a zero size
@@ -470,8 +460,11 @@ impl<F: PrimeField> CoreDecompositionInstructions<F> for P2RDecompositionChip<F>
                         Value::known(F::ZERO),
                     );
 
-                    self.pow2range_chip()
-                        .assert_row_lower_than_2_pow_n(&mut region, bit_length)?;
+                    self.pow2range_chip().assert_row_lower_than_2_pow_n(
+                        &mut region,
+                        bit_length,
+                        0,
+                    )?;
 
                     padded_chunk
                         .iter()

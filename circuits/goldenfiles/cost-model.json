@@ -9,7 +9,7 @@
       "permutations": "7",
       "point_sets": "4",
       "rows": "78",
-      "table_rows": "826"
+      "table_rows": "572"
     }
   },
   "Map gadget": {
@@ -22,7 +22,7 @@
       "permutations": "12",
       "point_sets": "4",
       "rows": "3447",
-      "table_rows": "511"
+      "table_rows": "3"
     },
     "Insert": {
       "advice_columns": "13",
@@ -33,7 +33,7 @@
       "permutations": "12",
       "point_sets": "4",
       "rows": "6861",
-      "table_rows": "511"
+      "table_rows": "3"
     }
   },
   "Poseidon": {
@@ -68,7 +68,7 @@
       "permutations": "12",
       "point_sets": "4",
       "rows": "661",
-      "table_rows": "511"
+      "table_rows": "1"
     }
   },
   "SHA256": {
@@ -81,7 +81,7 @@
       "permutations": "15",
       "point_sets": "5",
       "rows": "19022",
-      "table_rows": "8955"
+      "table_rows": "8447"
     }
   },
   "Vector equality": {
@@ -94,7 +94,7 @@
       "permutations": "7",
       "point_sets": "4",
       "rows": "1260",
-      "table_rows": "511"
+      "table_rows": "195"
     }
   },
   "Vector limits check": {
@@ -107,7 +107,7 @@
       "permutations": "7",
       "point_sets": "4",
       "rows": "47",
-      "table_rows": "511"
+      "table_rows": "129"
     }
   },
   "Vector padding flags.": {
@@ -120,7 +120,7 @@
       "permutations": "7",
       "point_sets": "4",
       "rows": "686",
-      "table_rows": "511"
+      "table_rows": "129"
     }
   },
   "Vector trim beginning.": {
@@ -133,7 +133,7 @@
       "permutations": "7",
       "point_sets": "4",
       "rows": "179",
-      "table_rows": "511"
+      "table_rows": "195"
     }
   },
   "biguint_gadget": {
@@ -146,7 +146,7 @@
       "permutations": "7",
       "point_sets": "4",
       "rows": "44",
-      "table_rows": "511"
+      "table_rows": "257"
     },
     "assert_eq_fixed": {
       "advice_columns": "5",
@@ -157,7 +157,7 @@
       "permutations": "7",
       "point_sets": "4",
       "rows": "43",
-      "table_rows": "511"
+      "table_rows": "257"
     },
     "assert_neq": {
       "advice_columns": "5",
@@ -168,7 +168,7 @@
       "permutations": "7",
       "point_sets": "4",
       "rows": "88",
-      "table_rows": "511"
+      "table_rows": "257"
     },
     "assert_neq_fixed": {
       "advice_columns": "5",
@@ -179,7 +179,7 @@
       "permutations": "7",
       "point_sets": "4",
       "rows": "88",
-      "table_rows": "511"
+      "table_rows": "257"
     },
     "assert_non_zero": {
       "advice_columns": "5",
@@ -190,7 +190,7 @@
       "permutations": "8",
       "point_sets": "4",
       "rows": "56",
-      "table_rows": "511"
+      "table_rows": "1"
     },
     "assert_zero": {
       "advice_columns": "5",
@@ -201,7 +201,7 @@
       "permutations": "8",
       "point_sets": "4",
       "rows": "12",
-      "table_rows": "511"
+      "table_rows": "1"
     },
     "cond_assert_equal": {
       "advice_columns": "5",
@@ -212,7 +212,7 @@
       "permutations": "8",
       "point_sets": "4",
       "rows": "23",
-      "table_rows": "512"
+      "table_rows": "2"
     },
     "is_equal": {
       "advice_columns": "5",
@@ -223,7 +223,7 @@
       "permutations": "8",
       "point_sets": "4",
       "rows": "56",
-      "table_rows": "511"
+      "table_rows": "1"
     },
     "is_equal_to_fixed": {
       "advice_columns": "5",
@@ -234,7 +234,7 @@
       "permutations": "8",
       "point_sets": "4",
       "rows": "55",
-      "table_rows": "511"
+      "table_rows": "1"
     },
     "is_zero": {
       "advice_columns": "5",
@@ -245,7 +245,7 @@
       "permutations": "8",
       "point_sets": "4",
       "rows": "55",
-      "table_rows": "511"
+      "table_rows": "1"
     },
     "select": {
       "advice_columns": "5",
@@ -256,7 +256,7 @@
       "permutations": "8",
       "point_sets": "4",
       "rows": "34",
-      "table_rows": "512"
+      "table_rows": "2"
     }
   },
   "field_chip_secp_base": {
@@ -269,7 +269,7 @@
       "permutations": "15",
       "point_sets": "4",
       "rows": "33",
-      "table_rows": "511"
+      "table_rows": "449"
     },
     "add_and_mul": {
       "advice_columns": "13",
@@ -280,7 +280,7 @@
       "permutations": "15",
       "point_sets": "4",
       "rows": "54",
-      "table_rows": "511"
+      "table_rows": "449"
     },
     "add_constant": {
       "advice_columns": "13",
@@ -291,7 +291,7 @@
       "permutations": "15",
       "point_sets": "4",
       "rows": "28",
-      "table_rows": "511"
+      "table_rows": "449"
     },
     "assert_eq": {
       "advice_columns": "13",
@@ -302,7 +302,7 @@
       "permutations": "15",
       "point_sets": "4",
       "rows": "12",
-      "table_rows": "511"
+      "table_rows": "257"
     },
     "assert_eq_fixed": {
       "advice_columns": "13",
@@ -313,7 +313,7 @@
       "permutations": "15",
       "point_sets": "4",
       "rows": "12",
-      "table_rows": "511"
+      "table_rows": "257"
     },
     "assert_neq": {
       "advice_columns": "13",
@@ -324,7 +324,7 @@
       "permutations": "15",
       "point_sets": "4",
       "rows": "51",
-      "table_rows": "511"
+      "table_rows": "449"
     },
     "assert_neq_fixed": {
       "advice_columns": "13",
@@ -335,7 +335,7 @@
       "permutations": "15",
       "point_sets": "4",
       "rows": "48",
-      "table_rows": "511"
+      "table_rows": "449"
     },
     "assert_non_zero": {
       "advice_columns": "13",
@@ -346,7 +346,7 @@
       "permutations": "16",
       "point_sets": "4",
       "rows": "21",
-      "table_rows": "511"
+      "table_rows": "1"
     },
     "assert_zero": {
       "advice_columns": "13",
@@ -357,7 +357,7 @@
       "permutations": "16",
       "point_sets": "4",
       "rows": "6",
-      "table_rows": "511"
+      "table_rows": "1"
     },
     "cond_assert_equal": {
       "advice_columns": "13",
@@ -368,7 +368,7 @@
       "permutations": "16",
       "point_sets": "4",
       "rows": "8",
-      "table_rows": "512"
+      "table_rows": "2"
     },
     "div": {
       "advice_columns": "13",
@@ -379,7 +379,7 @@
       "permutations": "15",
       "point_sets": "4",
       "rows": "43",
-      "table_rows": "511"
+      "table_rows": "449"
     },
     "from_bits": {
       "advice_columns": "18",
@@ -390,7 +390,7 @@
       "permutations": "20",
       "point_sets": "4",
       "rows": "38",
-      "table_rows": "1022"
+      "table_rows": "450"
     },
     "from_bytes": {
       "advice_columns": "18",
@@ -401,7 +401,7 @@
       "permutations": "20",
       "point_sets": "4",
       "rows": "31",
-      "table_rows": "1022"
+      "table_rows": "450"
     },
     "inv": {
       "advice_columns": "13",
@@ -412,7 +412,7 @@
       "permutations": "15",
       "point_sets": "4",
       "rows": "33",
-      "table_rows": "511"
+      "table_rows": "449"
     },
     "is_equal": {
       "advice_columns": "13",
@@ -423,7 +423,7 @@
       "permutations": "16",
       "point_sets": "4",
       "rows": "42",
-      "table_rows": "511"
+      "table_rows": "449"
     },
     "is_equal_to_fixed": {
       "advice_columns": "13",
@@ -434,7 +434,7 @@
       "permutations": "16",
       "point_sets": "4",
       "rows": "39",
-      "table_rows": "511"
+      "table_rows": "449"
     },
     "is_zero": {
       "advice_columns": "13",
@@ -445,7 +445,7 @@
       "permutations": "16",
       "point_sets": "4",
       "rows": "20",
-      "table_rows": "511"
+      "table_rows": "1"
     },
     "linear_comb": {
       "advice_columns": "13",
@@ -456,7 +456,7 @@
       "permutations": "15",
       "point_sets": "4",
       "rows": "76",
-      "table_rows": "511"
+      "table_rows": "449"
     },
     "mul": {
       "advice_columns": "13",
@@ -467,7 +467,7 @@
       "permutations": "15",
       "point_sets": "4",
       "rows": "30",
-      "table_rows": "511"
+      "table_rows": "449"
     },
     "mul_by_const": {
       "advice_columns": "13",
@@ -478,7 +478,7 @@
       "permutations": "15",
       "point_sets": "4",
       "rows": "31",
-      "table_rows": "511"
+      "table_rows": "449"
     },
     "neg": {
       "advice_columns": "13",
@@ -489,7 +489,7 @@
       "permutations": "15",
       "point_sets": "4",
       "rows": "33",
-      "table_rows": "511"
+      "table_rows": "449"
     },
     "pow": {
       "advice_columns": "13",
@@ -500,7 +500,7 @@
       "permutations": "15",
       "point_sets": "4",
       "rows": "30",
-      "table_rows": "511"
+      "table_rows": "449"
     },
     "public_inputs": {
       "advice_columns": "13",
@@ -511,7 +511,7 @@
       "permutations": "15",
       "point_sets": "4",
       "rows": "8",
-      "table_rows": "511"
+      "table_rows": "257"
     },
     "select": {
       "advice_columns": "13",
@@ -522,7 +522,7 @@
       "permutations": "16",
       "point_sets": "4",
       "rows": "12",
-      "table_rows": "512"
+      "table_rows": "2"
     },
     "sub": {
       "advice_columns": "13",
@@ -533,7 +533,7 @@
       "permutations": "15",
       "point_sets": "4",
       "rows": "32",
-      "table_rows": "511"
+      "table_rows": "449"
     },
     "to_bits": {
       "advice_columns": "18",
@@ -544,7 +544,7 @@
       "permutations": "20",
       "point_sets": "4",
       "rows": "85",
-      "table_rows": "1022"
+      "table_rows": "452"
     },
     "to_bytes": {
       "advice_columns": "18",
@@ -555,7 +555,7 @@
       "permutations": "20",
       "point_sets": "4",
       "rows": "107",
-      "table_rows": "1022"
+      "table_rows": "452"
     }
   },
   "field_chip_secp_scalar": {
@@ -568,7 +568,7 @@
       "permutations": "15",
       "point_sets": "4",
       "rows": "35",
-      "table_rows": "511"
+      "table_rows": "449"
     },
     "add_and_mul": {
       "advice_columns": "13",
@@ -579,7 +579,7 @@
       "permutations": "15",
       "point_sets": "4",
       "rows": "64",
-      "table_rows": "511"
+      "table_rows": "449"
     },
     "add_constant": {
       "advice_columns": "13",
@@ -590,7 +590,7 @@
       "permutations": "15",
       "point_sets": "4",
       "rows": "28",
-      "table_rows": "511"
+      "table_rows": "449"
     },
     "assert_eq": {
       "advice_columns": "13",
@@ -601,7 +601,7 @@
       "permutations": "15",
       "point_sets": "4",
       "rows": "12",
-      "table_rows": "511"
+      "table_rows": "257"
     },
     "assert_eq_fixed": {
       "advice_columns": "13",
@@ -612,7 +612,7 @@
       "permutations": "15",
       "point_sets": "4",
       "rows": "12",
-      "table_rows": "511"
+      "table_rows": "257"
     },
     "assert_neq": {
       "advice_columns": "13",
@@ -623,7 +623,7 @@
       "permutations": "15",
       "point_sets": "4",
       "rows": "53",
-      "table_rows": "511"
+      "table_rows": "449"
     },
     "assert_neq_fixed": {
       "advice_columns": "13",
@@ -634,7 +634,7 @@
       "permutations": "15",
       "point_sets": "4",
       "rows": "48",
-      "table_rows": "511"
+      "table_rows": "449"
     },
     "assert_non_zero": {
       "advice_columns": "13",
@@ -645,7 +645,7 @@
       "permutations": "16",
       "point_sets": "4",
       "rows": "21",
-      "table_rows": "511"
+      "table_rows": "1"
     },
     "assert_zero": {
       "advice_columns": "13",
@@ -656,7 +656,7 @@
       "permutations": "16",
       "point_sets": "4",
       "rows": "8",
-      "table_rows": "511"
+      "table_rows": "1"
     },
     "cond_assert_equal": {
       "advice_columns": "13",
@@ -667,7 +667,7 @@
       "permutations": "16",
       "point_sets": "4",
       "rows": "8",
-      "table_rows": "512"
+      "table_rows": "2"
     },
     "div": {
       "advice_columns": "13",
@@ -678,7 +678,7 @@
       "permutations": "15",
       "point_sets": "4",
       "rows": "51",
-      "table_rows": "511"
+      "table_rows": "449"
     },
     "from_bits": {
       "advice_columns": "18",
@@ -689,7 +689,7 @@
       "permutations": "20",
       "point_sets": "4",
       "rows": "40",
-      "table_rows": "1022"
+      "table_rows": "450"
     },
     "from_bytes": {
       "advice_columns": "18",
@@ -700,7 +700,7 @@
       "permutations": "20",
       "point_sets": "4",
       "rows": "33",
-      "table_rows": "1022"
+      "table_rows": "450"
     },
     "inv": {
       "advice_columns": "13",
@@ -711,7 +711,7 @@
       "permutations": "15",
       "point_sets": "4",
       "rows": "43",
-      "table_rows": "511"
+      "table_rows": "449"
     },
     "is_equal": {
       "advice_columns": "13",
@@ -722,7 +722,7 @@
       "permutations": "16",
       "point_sets": "4",
       "rows": "44",
-      "table_rows": "511"
+      "table_rows": "449"
     },
     "is_equal_to_fixed": {
       "advice_columns": "13",
@@ -733,7 +733,7 @@
       "permutations": "16",
       "point_sets": "4",
       "rows": "39",
-      "table_rows": "511"
+      "table_rows": "449"
     },
     "is_zero": {
       "advice_columns": "13",
@@ -744,7 +744,7 @@
       "permutations": "16",
       "point_sets": "4",
       "rows": "20",
-      "table_rows": "511"
+      "table_rows": "1"
     },
     "linear_comb": {
       "advice_columns": "13",
@@ -755,7 +755,7 @@
       "permutations": "15",
       "point_sets": "4",
       "rows": "86",
-      "table_rows": "511"
+      "table_rows": "449"
     },
     "mul": {
       "advice_columns": "13",
@@ -766,7 +766,7 @@
       "permutations": "15",
       "point_sets": "4",
       "rows": "40",
-      "table_rows": "511"
+      "table_rows": "449"
     },
     "mul_by_const": {
       "advice_columns": "13",
@@ -777,7 +777,7 @@
       "permutations": "15",
       "point_sets": "4",
       "rows": "31",
-      "table_rows": "511"
+      "table_rows": "449"
     },
     "neg": {
       "advice_columns": "13",
@@ -788,7 +788,7 @@
       "permutations": "15",
       "point_sets": "4",
       "rows": "35",
-      "table_rows": "511"
+      "table_rows": "449"
     },
     "pow": {
       "advice_columns": "13",
@@ -799,7 +799,7 @@
       "permutations": "15",
       "point_sets": "4",
       "rows": "40",
-      "table_rows": "511"
+      "table_rows": "449"
     },
     "public_inputs": {
       "advice_columns": "13",
@@ -810,7 +810,7 @@
       "permutations": "15",
       "point_sets": "4",
       "rows": "8",
-      "table_rows": "511"
+      "table_rows": "257"
     },
     "select": {
       "advice_columns": "13",
@@ -821,7 +821,7 @@
       "permutations": "16",
       "point_sets": "4",
       "rows": "12",
-      "table_rows": "512"
+      "table_rows": "2"
     },
     "sub": {
       "advice_columns": "13",
@@ -832,7 +832,7 @@
       "permutations": "15",
       "point_sets": "4",
       "rows": "34",
-      "table_rows": "511"
+      "table_rows": "449"
     },
     "to_bits": {
       "advice_columns": "18",
@@ -843,7 +843,7 @@
       "permutations": "20",
       "point_sets": "4",
       "rows": "85",
-      "table_rows": "1022"
+      "table_rows": "452"
     },
     "to_bytes": {
       "advice_columns": "18",
@@ -854,7 +854,7 @@
       "permutations": "20",
       "point_sets": "4",
       "rows": "107",
-      "table_rows": "1022"
+      "table_rows": "452"
     }
   },
   "foreign_ecc_bls_over_bls": {
@@ -867,7 +867,7 @@
       "permutations": "27",
       "point_sets": "5",
       "rows": "467",
-      "table_rows": "1022"
+      "table_rows": "418"
     },
     "assert_eq": {
       "advice_columns": "25",
@@ -878,7 +878,7 @@
       "permutations": "27",
       "point_sets": "5",
       "rows": "96",
-      "table_rows": "1022"
+      "table_rows": "418"
     },
     "assert_eq_fixed": {
       "advice_columns": "25",
@@ -889,7 +889,7 @@
       "permutations": "27",
       "point_sets": "5",
       "rows": "96",
-      "table_rows": "1022"
+      "table_rows": "418"
     },
     "assert_neq": {
       "advice_columns": "25",
@@ -900,7 +900,7 @@
       "permutations": "27",
       "point_sets": "5",
       "rows": "221",
-      "table_rows": "1022"
+      "table_rows": "418"
     },
     "assert_neq_fixed": {
       "advice_columns": "25",
@@ -911,7 +911,7 @@
       "permutations": "27",
       "point_sets": "5",
       "rows": "214",
-      "table_rows": "1022"
+      "table_rows": "418"
     },
     "assert_non_zero": {
       "advice_columns": "25",
@@ -922,7 +922,7 @@
       "permutations": "28",
       "point_sets": "5",
       "rows": "15",
-      "table_rows": "1022"
+      "table_rows": "2"
     },
     "assert_zero": {
       "advice_columns": "25",
@@ -933,7 +933,7 @@
       "permutations": "28",
       "point_sets": "5",
       "rows": "16",
-      "table_rows": "1022"
+      "table_rows": "2"
     },
     "cond_assert_equal": {
       "advice_columns": "25",
@@ -944,7 +944,7 @@
       "permutations": "28",
       "point_sets": "5",
       "rows": "30",
-      "table_rows": "1023"
+      "table_rows": "3"
     },
     "coordinates": {
       "advice_columns": "25",
@@ -955,7 +955,7 @@
       "permutations": "27",
       "point_sets": "5",
       "rows": "141",
-      "table_rows": "1022"
+      "table_rows": "418"
     },
     "double": {
       "advice_columns": "25",
@@ -966,7 +966,7 @@
       "permutations": "27",
       "point_sets": "5",
       "rows": "176",
-      "table_rows": "1022"
+      "table_rows": "418"
     },
     "is_equal": {
       "advice_columns": "25",
@@ -977,7 +977,7 @@
       "permutations": "28",
       "point_sets": "5",
       "rows": "147",
-      "table_rows": "1022"
+      "table_rows": "418"
     },
     "is_equal_to_fixed": {
       "advice_columns": "25",
@@ -988,7 +988,7 @@
       "permutations": "28",
       "point_sets": "5",
       "rows": "133",
-      "table_rows": "1022"
+      "table_rows": "418"
     },
     "is_zero": {
       "advice_columns": "25",
@@ -999,7 +999,7 @@
       "permutations": "28",
       "point_sets": "5",
       "rows": "15",
-      "table_rows": "1022"
+      "table_rows": "2"
     },
     "msm_3": {
       "advice_columns": "25",
@@ -1010,7 +1010,7 @@
       "permutations": "27",
       "point_sets": "5",
       "rows": "41533",
-      "table_rows": "1022"
+      "table_rows": "434"
     },
     "msm_by_bounded_scalars_3": {
       "advice_columns": "25",
@@ -1021,7 +1021,7 @@
       "permutations": "27",
       "point_sets": "5",
       "rows": "31941",
-      "table_rows": "1022"
+      "table_rows": "434"
     },
     "mul_by_constant": {
       "advice_columns": "25",
@@ -1032,7 +1032,7 @@
       "permutations": "27",
       "point_sets": "5",
       "rows": "32937",
-      "table_rows": "1022"
+      "table_rows": "418"
     },
     "neg": {
       "advice_columns": "25",
@@ -1043,7 +1043,7 @@
       "permutations": "27",
       "point_sets": "5",
       "rows": "135",
-      "table_rows": "1022"
+      "table_rows": "418"
     },
     "public_inputs": {
       "advice_columns": "25",
@@ -1054,7 +1054,7 @@
       "permutations": "27",
       "point_sets": "5",
       "rows": "84",
-      "table_rows": "1022"
+      "table_rows": "418"
     },
     "select": {
       "advice_columns": "25",
@@ -1065,7 +1065,7 @@
       "permutations": "28",
       "point_sets": "5",
       "rows": "44",
-      "table_rows": "1023"
+      "table_rows": "3"
     }
   },
   "foreign_ecc_secp": {
@@ -1078,7 +1078,7 @@
       "permutations": "29",
       "point_sets": "5",
       "rows": "281",
-      "table_rows": "1022"
+      "table_rows": "482"
     },
     "assert_eq": {
       "advice_columns": "27",
@@ -1089,7 +1089,7 @@
       "permutations": "29",
       "point_sets": "5",
       "rows": "55",
-      "table_rows": "1022"
+      "table_rows": "450"
     },
     "assert_eq_fixed": {
       "advice_columns": "27",
@@ -1100,7 +1100,7 @@
       "permutations": "29",
       "point_sets": "5",
       "rows": "55",
-      "table_rows": "1022"
+      "table_rows": "450"
     },
     "assert_neq": {
       "advice_columns": "27",
@@ -1111,7 +1111,7 @@
       "permutations": "29",
       "point_sets": "5",
       "rows": "132",
-      "table_rows": "1022"
+      "table_rows": "450"
     },
     "assert_neq_fixed": {
       "advice_columns": "27",
@@ -1122,7 +1122,7 @@
       "permutations": "29",
       "point_sets": "5",
       "rows": "127",
-      "table_rows": "1022"
+      "table_rows": "450"
     },
     "assert_non_zero": {
       "advice_columns": "27",
@@ -1133,7 +1133,7 @@
       "permutations": "30",
       "point_sets": "5",
       "rows": "9",
-      "table_rows": "1022"
+      "table_rows": "2"
     },
     "assert_zero": {
       "advice_columns": "27",
@@ -1144,7 +1144,7 @@
       "permutations": "30",
       "point_sets": "5",
       "rows": "10",
-      "table_rows": "1022"
+      "table_rows": "2"
     },
     "cond_assert_equal": {
       "advice_columns": "27",
@@ -1155,7 +1155,7 @@
       "permutations": "30",
       "point_sets": "5",
       "rows": "18",
-      "table_rows": "1023"
+      "table_rows": "3"
     },
     "coordinates": {
       "advice_columns": "27",
@@ -1166,7 +1166,7 @@
       "permutations": "29",
       "point_sets": "5",
       "rows": "82",
-      "table_rows": "1022"
+      "table_rows": "450"
     },
     "double": {
       "advice_columns": "27",
@@ -1177,7 +1177,7 @@
       "permutations": "29",
       "point_sets": "5",
       "rows": "104",
-      "table_rows": "1022"
+      "table_rows": "482"
     },
     "is_equal": {
       "advice_columns": "27",
@@ -1188,7 +1188,7 @@
       "permutations": "30",
       "point_sets": "5",
       "rows": "88",
-      "table_rows": "1022"
+      "table_rows": "450"
     },
     "is_equal_to_fixed": {
       "advice_columns": "27",
@@ -1199,7 +1199,7 @@
       "permutations": "30",
       "point_sets": "5",
       "rows": "81",
-      "table_rows": "1022"
+      "table_rows": "450"
     },
     "is_zero": {
       "advice_columns": "27",
@@ -1210,7 +1210,7 @@
       "permutations": "30",
       "point_sets": "5",
       "rows": "9",
-      "table_rows": "1022"
+      "table_rows": "2"
     },
     "msm_3": {
       "advice_columns": "27",
@@ -1221,7 +1221,7 @@
       "permutations": "29",
       "point_sets": "5",
       "rows": "25901",
-      "table_rows": "1022"
+      "table_rows": "946"
     },
     "msm_by_bounded_scalars_3": {
       "advice_columns": "27",
@@ -1232,7 +1232,7 @@
       "permutations": "29",
       "point_sets": "5",
       "rows": "19749",
-      "table_rows": "1022"
+      "table_rows": "946"
     },
     "mul_by_constant": {
       "advice_columns": "27",
@@ -1243,7 +1243,7 @@
       "permutations": "29",
       "point_sets": "5",
       "rows": "19996",
-      "table_rows": "1022"
+      "table_rows": "482"
     },
     "neg": {
       "advice_columns": "27",
@@ -1254,7 +1254,7 @@
       "permutations": "29",
       "point_sets": "5",
       "rows": "79",
-      "table_rows": "1022"
+      "table_rows": "450"
     },
     "public_inputs": {
       "advice_columns": "27",
@@ -1265,7 +1265,7 @@
       "permutations": "29",
       "point_sets": "5",
       "rows": "49",
-      "table_rows": "1022"
+      "table_rows": "450"
     },
     "select": {
       "advice_columns": "27",
@@ -1276,7 +1276,7 @@
       "permutations": "30",
       "point_sets": "5",
       "rows": "26",
-      "table_rows": "1023"
+      "table_rows": "3"
     }
   },
   "native_chip": {
@@ -1665,7 +1665,7 @@
       "permutations": "16",
       "point_sets": "4",
       "rows": "10",
-      "table_rows": "511"
+      "table_rows": "1"
     },
     "assert_eq": {
       "advice_columns": "14",
@@ -1676,7 +1676,7 @@
       "permutations": "16",
       "point_sets": "4",
       "rows": "9",
-      "table_rows": "511"
+      "table_rows": "1"
     },
     "assert_eq_fixed": {
       "advice_columns": "14",
@@ -1687,7 +1687,7 @@
       "permutations": "16",
       "point_sets": "4",
       "rows": "9",
-      "table_rows": "511"
+      "table_rows": "1"
     },
     "assert_neq": {
       "advice_columns": "14",
@@ -1698,7 +1698,7 @@
       "permutations": "16",
       "point_sets": "4",
       "rows": "16",
-      "table_rows": "511"
+      "table_rows": "1"
     },
     "assert_neq_fixed": {
       "advice_columns": "14",
@@ -1709,7 +1709,7 @@
       "permutations": "16",
       "point_sets": "4",
       "rows": "16",
-      "table_rows": "511"
+      "table_rows": "1"
     },
     "assert_non_zero": {
       "advice_columns": "14",
@@ -1720,7 +1720,7 @@
       "permutations": "17",
       "point_sets": "4",
       "rows": "11",
-      "table_rows": "511"
+      "table_rows": "1"
     },
     "assert_zero": {
       "advice_columns": "14",
@@ -1731,7 +1731,7 @@
       "permutations": "17",
       "point_sets": "4",
       "rows": "4",
-      "table_rows": "511"
+      "table_rows": "1"
     },
     "cond_assert_equal": {
       "advice_columns": "14",
@@ -1742,7 +1742,7 @@
       "permutations": "17",
       "point_sets": "4",
       "rows": "4",
-      "table_rows": "512"
+      "table_rows": "2"
     },
     "coordinates": {
       "advice_columns": "14",
@@ -1753,7 +1753,7 @@
       "permutations": "16",
       "point_sets": "4",
       "rows": "10",
-      "table_rows": "511"
+      "table_rows": "1"
     },
     "double": {
       "advice_columns": "14",
@@ -1764,7 +1764,7 @@
       "permutations": "16",
       "point_sets": "4",
       "rows": "8",
-      "table_rows": "511"
+      "table_rows": "1"
     },
     "hash_to_curve": {
       "advice_columns": "27",
@@ -1775,7 +1775,7 @@
       "permutations": "26",
       "point_sets": "4",
       "rows": "267",
-      "table_rows": "511"
+      "table_rows": "385"
     },
     "is_equal": {
       "advice_columns": "14",
@@ -1786,7 +1786,7 @@
       "permutations": "17",
       "point_sets": "4",
       "rows": "10",
-      "table_rows": "511"
+      "table_rows": "1"
     },
     "is_equal_to_fixed": {
       "advice_columns": "14",
@@ -1797,7 +1797,7 @@
       "permutations": "17",
       "point_sets": "4",
       "rows": "10",
-      "table_rows": "511"
+      "table_rows": "1"
     },
     "is_zero": {
       "advice_columns": "14",
@@ -1808,7 +1808,7 @@
       "permutations": "17",
       "point_sets": "4",
       "rows": "10",
-      "table_rows": "511"
+      "table_rows": "1"
     },
     "msm_3": {
       "advice_columns": "14",
@@ -1819,7 +1819,7 @@
       "permutations": "16",
       "point_sets": "4",
       "rows": "974",
-      "table_rows": "511"
+      "table_rows": "3"
     },
     "msm_by_bounded_scalars_3": {
       "advice_columns": "14",
@@ -1830,7 +1830,7 @@
       "permutations": "16",
       "point_sets": "4",
       "rows": "974",
-      "table_rows": "511"
+      "table_rows": "3"
     },
     "mul_by_constant": {
       "advice_columns": "14",
@@ -1841,7 +1841,7 @@
       "permutations": "16",
       "point_sets": "4",
       "rows": "268",
-      "table_rows": "511"
+      "table_rows": "1"
     },
     "neg": {
       "advice_columns": "14",
@@ -1852,7 +1852,7 @@
       "permutations": "16",
       "point_sets": "4",
       "rows": "11",
-      "table_rows": "511"
+      "table_rows": "1"
     },
     "public_inputs": {
       "advice_columns": "14",
@@ -1863,7 +1863,7 @@
       "permutations": "16",
       "point_sets": "4",
       "rows": "7",
-      "table_rows": "511"
+      "table_rows": "1"
     },
     "select": {
       "advice_columns": "14",
@@ -1874,7 +1874,7 @@
       "permutations": "17",
       "point_sets": "4",
       "rows": "6",
-      "table_rows": "512"
+      "table_rows": "2"
     }
   },
   "native_gadget_bls": {
@@ -1887,7 +1887,7 @@
       "permutations": "7",
       "point_sets": "4",
       "rows": "7",
-      "table_rows": "511"
+      "table_rows": "385"
     },
     "band": {
       "advice_columns": "5",
@@ -1898,7 +1898,7 @@
       "permutations": "7",
       "point_sets": "4",
       "rows": "116",
-      "table_rows": "511"
+      "table_rows": "3"
     },
     "bnot": {
       "advice_columns": "5",
@@ -1909,7 +1909,7 @@
       "permutations": "7",
       "point_sets": "4",
       "rows": "6",
-      "table_rows": "511"
+      "table_rows": "257"
     },
     "bor": {
       "advice_columns": "5",
@@ -1920,7 +1920,7 @@
       "permutations": "7",
       "point_sets": "4",
       "rows": "115",
-      "table_rows": "511"
+      "table_rows": "3"
     },
     "bounded_of_element": {
       "advice_columns": "5",
@@ -1931,7 +1931,7 @@
       "permutations": "7",
       "point_sets": "4",
       "rows": "4",
-      "table_rows": "511"
+      "table_rows": "257"
     },
     "bxor": {
       "advice_columns": "5",
@@ -1942,7 +1942,7 @@
       "permutations": "7",
       "point_sets": "4",
       "rows": "115",
-      "table_rows": "511"
+      "table_rows": "3"
     },
     "from_bits": {
       "advice_columns": "10",
@@ -1953,7 +1953,7 @@
       "permutations": "12",
       "point_sets": "4",
       "rows": "19",
-      "table_rows": "1022"
+      "table_rows": "2"
     },
     "from_bytes": {
       "advice_columns": "10",
@@ -1964,7 +1964,7 @@
       "permutations": "12",
       "point_sets": "4",
       "rows": "11",
-      "table_rows": "1022"
+      "table_rows": "2"
     },
     "geq": {
       "advice_columns": "5",
@@ -1975,7 +1975,7 @@
       "permutations": "7",
       "point_sets": "4",
       "rows": "18",
-      "table_rows": "511"
+      "table_rows": "257"
     },
     "geq_fixed": {
       "advice_columns": "5",
@@ -1986,7 +1986,7 @@
       "permutations": "7",
       "point_sets": "4",
       "rows": "16",
-      "table_rows": "511"
+      "table_rows": "257"
     },
     "greater": {
       "advice_columns": "5",
@@ -1997,7 +1997,7 @@
       "permutations": "7",
       "point_sets": "4",
       "rows": "23",
-      "table_rows": "511"
+      "table_rows": "257"
     },
     "greater_fixed": {
       "advice_columns": "5",
@@ -2008,7 +2008,7 @@
       "permutations": "7",
       "point_sets": "4",
       "rows": "17",
-      "table_rows": "511"
+      "table_rows": "257"
     },
     "leq": {
       "advice_columns": "5",
@@ -2019,7 +2019,7 @@
       "permutations": "7",
       "point_sets": "4",
       "rows": "21",
-      "table_rows": "511"
+      "table_rows": "257"
     },
     "leq_fixed": {
       "advice_columns": "5",
@@ -2030,7 +2030,7 @@
       "permutations": "7",
       "point_sets": "4",
       "rows": "15",
-      "table_rows": "511"
+      "table_rows": "257"
     },
     "lower": {
       "advice_columns": "5",
@@ -2041,7 +2041,7 @@
       "permutations": "7",
       "point_sets": "4",
       "rows": "18",
-      "table_rows": "511"
+      "table_rows": "257"
     },
     "lower_fixed": {
       "advice_columns": "5",
@@ -2052,7 +2052,7 @@
       "permutations": "7",
       "point_sets": "4",
       "rows": "16",
-      "table_rows": "511"
+      "table_rows": "257"
     },
     "sgn0": {
       "advice_columns": "10",
@@ -2063,7 +2063,7 @@
       "permutations": "12",
       "point_sets": "4",
       "rows": "23",
-      "table_rows": "1022"
+      "table_rows": "386"
     },
     "to_bits": {
       "advice_columns": "10",
@@ -2074,7 +2074,7 @@
       "permutations": "12",
       "point_sets": "4",
       "rows": "19",
-      "table_rows": "1022"
+      "table_rows": "4"
     },
     "to_bytes": {
       "advice_columns": "10",
@@ -2085,7 +2085,7 @@
       "permutations": "12",
       "point_sets": "4",
       "rows": "11",
-      "table_rows": "1022"
+      "table_rows": "258"
     }
   },
   "public_inputs_scalar_var": {
@@ -2098,7 +2098,7 @@
       "permutations": "16",
       "point_sets": "4",
       "rows": "194",
-      "table_rows": "511"
+      "table_rows": "3"
     }
   }
 }
