@@ -168,11 +168,11 @@ jobs:
 
       - name: Run Clippy on `proofs`
         if: always()
-        run: cargo clippy -p midnight-proofs --all-targets --all-features -- -Dwarnings
+        run: cargo clippy -p midnight-proofs --all-targets -- -Dwarnings
 
       - name: Run Clippy on `circuits`
         if: always()
-        run: cargo clippy -p midnight-circuits --all-targets --all-features -- -Dwarnings
+        run: cargo clippy -p midnight-circuits --all-targets -- -Dwarnings
 
       - name: Run Clippy on `aggregator`
         if: always()

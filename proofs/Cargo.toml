@@ -68,7 +68,7 @@ rand = "0.8"
 getrandom = { version = "0.2", features = ["js"] }
 
 [features]
-default = ["bits"]
+default = ["bits", "committed-instances"]
 dev-graph = ["plotters", "tabbycat"]
 test-dev-graph = [
     "dev-graph",
