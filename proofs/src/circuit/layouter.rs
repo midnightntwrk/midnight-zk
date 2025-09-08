@@ -30,7 +30,7 @@ impl<T> SyncDeps for T {}
 ///
 /// This trait is used for implementing region assignments:
 ///
-/// ```ignore
+/// ```text
 /// impl<'a, F: Field, C: Chip<F>, CS: Assignment<F> + 'a> Layouter<C> for MyLayouter<'a, C, CS> {
 ///     fn assign_region(
 ///         &mut self,

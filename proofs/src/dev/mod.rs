@@ -1208,7 +1208,7 @@ impl<F: FromUniformBytes<64> + Ord> MockProver<F> {
     /// function panics.
     ///
     /// Apart from the stderr output, this method is equivalent to:
-    /// ```ignore
+    /// ```text
     /// assert_eq!(prover.verify(), Ok(()));
     /// ```
     pub fn assert_satisfied(&self) {
@@ -1231,7 +1231,7 @@ impl<F: FromUniformBytes<64> + Ord> MockProver<F> {
     /// only checked at `lookup_input_row_ids`, parallelly.
     ///
     /// Apart from the stderr output, this method is equivalent to:
-    /// ```ignore
+    /// ```text
     /// assert_eq!(prover.verify_at_rows(), Ok(()));
     /// ```
     pub fn assert_satisfied_at_rows<I: Clone + Iterator<Item = usize>>(
