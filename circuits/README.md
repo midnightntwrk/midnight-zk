@@ -17,19 +17,38 @@ Midnight Circuits provides several tools to facilitate circuit development with 
 4. Bit/Byte decomposition tools and range-checks.
 5. SHA-256.
 6. Set (non-)membership.
+7. Big UInt.
+8. Variable length vectors.
+9. Automaton parsing.
+10. Verification of Plonk proofs
 
 We aim to expose these functionalities via traits, which can be found in `[src/instructions]`.
 
 ## ZkStdLib
 
-Midnight Circuits includes the `ZkStdLib`, which encapsulates the functionality required by Midnight. This library has a fixed configuration, meaning you cannot choose the number of columns, lookups, or gates. If you require this flexibility, you should build a circuit without using `ZkStdLib`.
+Midnight Circuits includes the `ZkStdLib`, which encapsulates the functionality required by Midnight. 
+The architecture of `ZkStdLib` is configurable via the following structure:
 
-The motivations for a fixed configuration are:
+```text
+pub struct ZkStdLibArch {
+    pub jubjub: bool,
+    pub poseidon: bool,
+    pub sha256: bool,
+    pub secp256k1: bool,
+    pub bls12_381: bool,
+    pub base64: bool,
+    pub nr_pow2range_cols: u8,
+    pub automaton: bool,
+}
+```
 
-1. Simplified reasoning for recursion.
-2. The verifier can perform pre-parsing of circuits since they all have the same structure.
+which can be defined via the `Relation` trait with the `used_chips` function. The default 
+architecture activates only `JubJub`, `Poseidon` and `sha256`, and uses a single column for
+`pow2range` chip. 
 
-`ZkStdLib` also serves as an abstraction layer, allowing developers to focus on circuit logic rather than the configuration and chip creation. Developers only need to implement the `Relation` trait, avoiding the boilerplate of Halo2's `Circuit`. For example, to prove knowledge of a SHA preimage:
+`ZkStdLib` also serves as an abstraction layer, allowing developers to focus on circuit logic 
+rather than the configuration and chip creation. Developers only need to implement the `Relation` 
+trait, avoiding the boilerplate of Halo2's `Circuit`. For example, to prove knowledge of a SHA preimage:
 
 ```rust
 use midnight_circuits::{
@@ -84,6 +103,19 @@ impl Relation for ShaPreImageCircuit {
         output
             .iter()
             .try_for_each(|b| std_lib.constrain_as_public_input(layouter, b))
+    }
+    
+    fn used_chips(&self) -> ZkStdLibArch {
+        ZkStdLibArch {
+            jubjub: false,
+            poseidon: false,
+            sha256: true,
+            secp256k1: false,
+            bls12_381: false,
+            base64: false,
+            nr_pow2range_cols: 1,
+            automaton: false,
+        }
     }
 
     fn write_relation<W: std::io::Write>(&self, _writer: &mut W) -> std::io::Result<()> {
