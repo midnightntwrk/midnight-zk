@@ -473,7 +473,7 @@ impl ZkStdLib {
     pub fn jubjub(&self) -> &EccChip<C> {
         self.jubjub_chip
             .as_ref()
-            .expect("ZkStdArch must enable jubjub")
+            .expect("ZkStdLibArch must enable jubjub")
     }
 
     /// Gadget for performing in-circuit big-unsigned integer operations.
@@ -485,7 +485,7 @@ impl ZkStdLib {
     pub fn map_gadget(&self) -> &MapGadget<F, NG, PoseidonChip<F>> {
         self.map_gadget
             .as_ref()
-            .unwrap_or_else(|| panic!("ZkStdArch must enable poseidon"))
+            .unwrap_or_else(|| panic!("ZkStdLibArch must enable poseidon"))
     }
 
     /// Chip for performing in-circuit operations over the Secp256k1 scalar
@@ -494,7 +494,7 @@ impl ZkStdLib {
         *self.used_secp256k1_scalar.borrow_mut() = true;
         self.secp256k1_scalar_chip
             .as_ref()
-            .unwrap_or_else(|| panic!("ZkStdArch must enable secp256k1"))
+            .unwrap_or_else(|| panic!("ZkStdLibArch must enable secp256k1"))
     }
 
     /// Chip for performing in-circuit operations over the Secp256k1 curve.
@@ -502,7 +502,7 @@ impl ZkStdLib {
         *self.used_secp256k1_curve.borrow_mut() = true;
         self.secp256k1_curve_chip
             .as_ref()
-            .unwrap_or_else(|| panic!("ZkStdArch must enable secp256k1"))
+            .unwrap_or_else(|| panic!("ZkStdLibArch must enable secp256k1"))
     }
 
     /// Chip for performing in-circuit operations over the BLS12-381 curve.
@@ -513,7 +513,7 @@ impl ZkStdLib {
         *self.used_bls12_381_curve.borrow_mut() = true;
         self.bls12_381_curve_chip
             .as_ref()
-            .unwrap_or_else(|| panic!("ZkStdArch must enable bls12_381"))
+            .unwrap_or_else(|| panic!("ZkStdLibArch must enable bls12_381"))
     }
 
     /// Chip for performing in-circuit base64 decoding.
@@ -521,7 +521,7 @@ impl ZkStdLib {
         *self.used_base64.borrow_mut() = true;
         self.base64_chip
             .as_ref()
-            .unwrap_or_else(|| panic!("ZkStdArch must enable base64"))
+            .unwrap_or_else(|| panic!("ZkStdLibArch must enable base64"))
     }
 
     /// Gadget for parsing properties of a JSON object.
@@ -532,7 +532,8 @@ impl ZkStdLib {
     /// Chip for performing automaton-based parsing.
     pub fn automaton(&self) -> &AutomatonChip<StdLibParser, F> {
         *self.used_automaton.borrow_mut() = true;
-        (self.automaton_chip.as_ref()).unwrap_or_else(|| panic!("ZkStdArch must enable automaton"))
+        (self.automaton_chip.as_ref())
+            .unwrap_or_else(|| panic!("ZkStdLibArch must enable automaton"))
     }
 
     /// Assert that a given assigned bit is true.
@@ -623,7 +624,7 @@ impl ZkStdLib {
     ) -> Result<AssignedNative<F>, Error> {
         self.poseidon_gadget
             .as_ref()
-            .unwrap_or_else(|| panic!("ZkStdArch must enable poseidon"))
+            .unwrap_or_else(|| panic!("ZkStdLibArch must enable poseidon"))
             .hash(layouter, input)
     }
 
@@ -636,7 +637,7 @@ impl ZkStdLib {
     ) -> Result<AssignedNativePoint<C>, Error> {
         self.htc_gadget
             .as_ref()
-            .unwrap_or_else(|| panic!("ZkStdArch must enable poseidon and jubjub"))
+            .unwrap_or_else(|| panic!("ZkStdLibArch must enable poseidon and jubjub"))
             .hash_to_curve(layouter, inputs)
     }
 
@@ -667,7 +668,7 @@ impl ZkStdLib {
         *self.used_sha.borrow_mut() = true;
         self.sha256_chip
             .as_ref()
-            .expect("ZkStdArch must enable sha256")
+            .expect("ZkStdLibArch must enable sha256")
             .hash(layouter, input)
     }
 }
