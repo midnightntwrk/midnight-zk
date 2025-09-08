@@ -1,31 +1,37 @@
-# `blstrs`
+# Midnight curves
 
-> Implementation of BLS12-381 pairing-friendly elliptic curve construction, using the [blst](https://github.com/supranational/blst) library as backend.
+This crate provides implementations of the **BLS12-381** and **JubJub** curves.
 
-## Pronounciation
+**Acknowledgments**
+- [Supranational](https://github.com/supranational) for their highly optimized implementation of BLS12-381.
+- The [Filecoin team](https://github.com/filecoin-project) for the Rust wrappers around Supranational’s library.
+- The [Zcash team](https://github.com/zcash) for the implementation of the JubJub curve.
 
-Most important section, the name is pronounced `blasters`.
+## BLS12-381
 
-## Supported Platforms
+> Implementation of BLS12-381 pairing-friendly elliptic curve construction, using the [blst](https://github.com/supranational/blst) library as backend,
+> based on the 'blasters' wrapper, [bltsrs](https://github.com/filecoin-project/blstrs).
+
+### Supported Platforms
 
 Due to the assembly based nature of the implementation in `blst`, currently only the following architectures are supported
 
 - `x86_64`,
 - `aarch64`.
 
-## BLST Portability
+### BLST Portability
 
 To enable portable features when building the blst dependency, use the 'portable' feature: `--features portable`.
 
 
-## Benchmarking
+### Benchmarking
 
 ```
 $ cargo bench --features __private_bench
 ```
 
 
-## BLS12 Parameterization
+### BLS12 Parameterization
 
 BLS12 curves are parameterized by a value *x* such that the base field modulus *q* and subgroup *r* can be computed by:
 
@@ -44,7 +50,7 @@ Many curves match our descriptions, but we require some extra properties for eff
 * F<sub>q<sup>12</sup></sub> is typically constructed using towers of extension fields. As a byproduct of [research](https://eprint.iacr.org/2011/465.pdf) for BLS curves of embedding degree 24, we can identify subfamilies of BLS12 curves (for our purposes, where x mod 72 = {16, 64}) that produce efficient extension field towers and twisting isomorphisms.
 * We desire *x* of small Hamming weight, to increase the performance of the pairing function.
 
-## BLS12-381 Instantiation
+### BLS12-381 Instantiation
 
 The BLS12-381 construction is instantiated by `x = -0xd201000000010000`, which produces the largest `q` and smallest Hamming weight of `x` that meets the above requirements. This produces:
 
@@ -61,48 +67,25 @@ Now, we instantiate the elliptic curve E(F<sub>q</sub>) : y<sup>2</sup> = x<sup>
 
 The group G<sub>1</sub> is the *r* order subgroup of E, which has cofactor (x - 1)<sup>2</sup> / 3. The group G<sub>2</sub> is the *r* order subgroup of E', which has cofactor (x<sup>8</sup> - 4x<sup>7</sup> + 5x<sup>6</sup> - 4x<sup>4</sup> + 6x<sup>3</sup> - 4x<sup>2</sup> - 4x + 13) / 9.
 
-### Generators
+#### Generators
 
 The generators of G<sub>1</sub> and G<sub>2</sub> are computed by finding the lexicographically smallest valid `x`-coordinate, and its lexicographically smallest `y`-coordinate and scaling it by the cofactor such that the result is not the point at infinity.
 
-#### G1
+##### G1
 
 ```
 x = 3685416753713387016781088315183077757961620795782546409894578378688607592378376318836054947676345821548104185464507
 y = 1339506544944476473020471379941921221584933875938349620426543736416511423956333506472724655353366534992391756441569
 ```
 
-#### G2
+##### G2
 
 ```
 x = 3059144344244213709971259814753781636986470325476647558659373206291635324768958432433509563104347017837885763365758*u + 352701069587466618187139116011060144890029952792775240219908644239793785735715026873347600343865175952761926303160
 y = 927553665492332455747201965776037880757740193453592970025027978793976877002675564980949289727957565575433344219582*u + 1985150602287291935568054521177171638300868978215655730859378665066344726373823718423869104263333984641494340347905
 ```
 
-## License
-
-<sup>
-Licensed under either of <a href="LICENSE-APACHE">Apache License, Version
-2.0</a> or <a href="LICENSE-MIT">MIT license</a> at your option.
-</sup>
-
-<br/>
-
-<sub>
-Unless you explicitly state otherwise, any contribution intentionally submitted
-for inclusion in this crate by you, as defined in the Apache-2.0 license, shall
-be dual licensed as above, without any additional terms or conditions.
-</sub>
-
-
-
-# jubjub [![Crates.io](https://img.shields.io/crates/v/jubjub.svg)](https://crates.io/crates/jubjub) #
-
-<img
- width="15%"
- align="right"
- src="https://raw.githubusercontent.com/zcash/zips/master/protocol/jubjub.png"/>
-
+## jubjub
 This is a pure Rust implementation of the Jubjub elliptic curve group and its associated fields.
 
 * **This implementation has not been reviewed or audited. Use at your own risk.**
@@ -110,15 +93,7 @@ This is a pure Rust implementation of the Jubjub elliptic curve group and its as
 * All operations are constant time unless explicitly noted.
 * This implementation does not require the Rust standard library.
 
-## RFC process
-
-This crate follows the [zkcrypto RFC process](https://zkcrypto.github.io/rfcs/).
-If you want to propose "substantial" changes to this crate, please
-[create an RFC](https://github.com/zkcrypto/rfcs) for wider discussion.
-
-## [Documentation](https://docs.rs/jubjub)
-
-## Curve Description
+### Curve Description
 
 Jubjub is the [twisted Edwards curve](https://en.wikipedia.org/wiki/Twisted_Edwards_curve) `-u^2 + v^2 = 1 + d.u^2.v^2` of rational points over `GF(q)` with a subgroup of prime order `r` and cofactor `8`.
 
@@ -134,12 +109,6 @@ Jubjub is birationally equivalent to a [Montgomery curve](https://en.wikipedia.o
 
 Please see [./doc/evidence/](./doc/evidence/) for supporting evidence that Jubjub meets the [SafeCurves](https://safecurves.cr.yp.to/index.html) criteria. The tool in [./doc/derive/](./doc/derive/) will derive the curve parameters via the above criteria to demonstrate rigidity.
 
-## Acknowledgements
-
-Jubjub was designed by Sean Bowe. Daira Hopwood is responsible for its name and specification. The security evidence in [./doc/evidence/](./doc/evidence/) is the product of Daira Hopwood and based on SafeCurves by Daniel J. Bernstein and Tanja Lange. Peter Newell and Daira Hopwood are responsible for the Jubjub bird image.
-
-Please see `Cargo.toml` for a list of primary authors of this codebase.
-
 ## License
 
 Licensed under either of
@@ -149,7 +118,7 @@ Licensed under either of
 
 at your option.
 
-### Contribution
+## Contribution
 
 Unless you explicitly state otherwise, any contribution intentionally
 submitted for inclusion in the work by you, as defined in the Apache-2.0
