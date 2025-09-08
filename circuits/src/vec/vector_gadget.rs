@@ -392,10 +392,10 @@ where
 }
 
 #[cfg(any(test, feature = "testing"))]
-use crate::testing_utils::FromScratch;
+use midnight_proofs::plonk::{Column, ConstraintSystem, Instance};
 
 #[cfg(any(test, feature = "testing"))]
-use midnight_proofs::plonk::{Column, ConstraintSystem, Instance};
+use crate::testing_utils::FromScratch;
 
 #[cfg(any(test, feature = "testing"))]
 impl<F: PrimeField> FromScratch<F> for VectorGadget<F> {

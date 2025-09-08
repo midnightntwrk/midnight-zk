@@ -78,7 +78,8 @@ impl<F: PrimeField, const MAX_LEN: usize>
     ) -> Result<[AssignedByte<F>; 32], Error> {
         let mut output_bytes = Vec::with_capacity(32);
 
-        // We convert each `AssignedPlain<32>` returned by `self.sha256_varlen` into 4 bytes.
+        // We convert each `AssignedPlain<32>` returned by `self.sha256_varlen` into 4
+        // bytes.
         for word in self.sha256_varlen(layouter, inputs)? {
             let bytes =
                 (self.sha256chip.native_gadget).assigned_to_be_bytes(layouter, &word.0, Some(4))?;
@@ -93,14 +94,13 @@ impl<F: PrimeField, const MAX_LEN: usize>
 mod tests {
     use midnight_curves::Fq as Scalar;
 
+    use super::sha256_varlen::VarLenSha256Gadget;
     use crate::{
         field::NativeGadget,
         hash::sha256::Sha256Chip,
         instructions::hash::tests::{test_hash, test_varhash},
         types::AssignedByte,
     };
-
-    use super::sha256_varlen::VarLenSha256Gadget;
 
     #[test]
     fn test_sha_hash() {
@@ -113,28 +113,28 @@ mod tests {
         >(true, "SHA256", 15);
     }
 
-    fn test_wrapper<const M: usize>(input_size: usize, k: u32) {
-        test_varhash::<
-            Scalar,
-            AssignedByte<Scalar>,
-            [AssignedByte<Scalar>; 32],
-            VarLenSha256Gadget<Scalar>,
-            M,
-            64,
-        >(false, "VarShaTable11", input_size, k)
-    }
-
     #[test]
     fn test_sha_varhash() {
-        test_wrapper::<512>(64, 16);
-        test_wrapper::<512>(63, 16);
-        test_wrapper::<256>(128, 16);
-        test_wrapper::<256>(127, 16);
+        fn test_wrapper<const M: usize>(input_size: usize, k: u32, cost_model: bool) {
+            test_varhash::<
+                Scalar,
+                AssignedByte<Scalar>,
+                [AssignedByte<Scalar>; 32],
+                VarLenSha256Gadget<Scalar>,
+                M,
+                64,
+            >(cost_model, "VarSHA256", input_size, k)
+        }
 
-        test_wrapper::<128>(55, 16); // padding edge cases
-        test_wrapper::<128>(56, 16);
+        test_wrapper::<512>(64, 16, true);
+        test_wrapper::<512>(63, 16, false);
+        test_wrapper::<256>(128, 16, false);
+        test_wrapper::<256>(127, 16, false);
 
-        test_wrapper::<128>(0, 16);
-        test_wrapper::<128>(1, 16);
+        test_wrapper::<128>(55, 16, false); // padding edge cases
+        test_wrapper::<128>(56, 16, false);
+
+        test_wrapper::<128>(0, 16, false);
+        test_wrapper::<128>(1, 16, false);
     }
 }

@@ -1,3 +1,10 @@
+use ff::PrimeField;
+use midnight_proofs::{
+    circuit::{Layouter, Value},
+    plonk::Error,
+};
+
+use super::{sha256_chip::IV, Sha256Chip};
 use crate::{
     field::{
         decomposition::chip::P2RDecompositionChip, AssignedBounded, AssignedNative, NativeChip,
@@ -12,21 +19,12 @@ use crate::{
     },
     instructions::{
         ArithInstructions, AssertionInstructions, AssignmentInstructions, BinaryInstructions,
-        ComparisonInstructions, DecompositionInstructions, DivisionInstructions,
-        EqualityInstructions, ZeroInstructions,
+        ComparisonInstructions, ControlFlowInstructions, DecompositionInstructions,
+        DivisionInstructions, EqualityInstructions, ZeroInstructions,
     },
     types::{AssignedBit, AssignedByte, InnerValue},
     vec::AssignedVector,
 };
-use ff::PrimeField;
-use midnight_proofs::{
-    circuit::{Layouter, Value},
-    plonk::Error,
-};
-
-use crate::instructions::ControlFlowInstructions;
-
-use super::{sha256_chip::IV, Sha256Chip};
 
 #[derive(Clone, Debug)]
 pub struct VarLenSha256Gadget<F: PrimeField> {
@@ -43,10 +41,10 @@ impl<F> VarLenSha256Gadget<F>
 where
     F: PrimeField,
 {
-    // Returns the length of the final chunk and if this length needs an extra block or not.
-    // If len=0, then the final block length is 0 and no extra block is needed.
-    // Otherwise, the final block length is in (0, 64]. Due to the allowing of value 64, the
-    // returned `AssignedBounded` has bound 2^7.
+    // Returns the length of the final chunk and if this length needs an extra block
+    // or not. If len=0, then the final block length is 0 and no extra block is
+    // needed. Otherwise, the final block length is in (0, 64]. Due to the
+    // allowing of value 64, the returned `AssignedBounded` has bound 2^7.
     // An extra block is needed if final_block_len >= (64 - 8).
     fn final_block_len<const M: usize>(
         &self,
@@ -58,7 +56,7 @@ where
         // Final block length in (0, 64].
         let final_block_len = {
             // Final block length in [0, 64).
-            let (_, fb_len) = ng.div_rem(layouter, len, M as u32, 64 as u32)?;
+            let (_, fb_len) = ng.div_rem(layouter, len, M as u32, 64)?;
 
             // The final block is full if len % 64 = 0; and the input length is not 0.
             let full_final_block = {
@@ -67,27 +65,28 @@ where
                 ng.xor(layouter, &[len_is_zero, fb_is_zero])?
             };
 
-            let max_block_len = ng.assign_fixed(layouter, F::from(64 as u64))?;
+            let max_block_len = ng.assign_fixed(layouter, F::from(64u64))?;
             ng.select(layouter, &full_final_block, &max_block_len, &fb_len)?
         };
 
         // Limit on the final block length: If exceeded, an extra block will be needed.
-        let len_lim: usize = 56;
+        let len_lim: u64 = 56;
 
         // Need to use 7 since we use the range (0, 64], instead of [0, 64);
         let final_block_len = ng.bounded_of_element(layouter, 7, &final_block_len)?;
-        let not_extra = ng.lower_than_fixed(layouter, &final_block_len, F::from(len_lim as u64))?;
+        let not_extra = ng.lower_than_fixed(layouter, &final_block_len, F::from(len_lim))?;
         let extra = ng.not(layouter, &not_extra)?;
 
         Ok((final_block_len, extra))
     }
 
+    // TODO Maybe move this somewhere else (VectorGadget? )
     // Inserts `elem` in position `idx` of `array`.
     // Idx values outside [0, L) are allowed, but they array will remain unchanged.
     fn insert_in_array<const L: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
-        idx: &AssignedNative<F>, // total input length in bytes
+        idx: &AssignedNative<F>,
         array: &mut [AssignedByte<F>; L],
         elem: AssignedByte<F>,
     ) -> Result<(), Error> {
@@ -150,9 +149,9 @@ where
         };
 
         let block_2 = {
-            let block_2: Vec<AssignedByte<F>> = ng.assign_many_fixed(layouter, &vec![0u8; 60])?;
+            let block_2: Vec<AssignedByte<F>> = ng.assign_many_fixed(layouter, &vec![0u8; 56])?;
             let block_2 = &block_2.try_into().unwrap();
-            let final_chunk: &[_; 60] = (&final_chunk[..60]).try_into().unwrap();
+            let final_chunk: &[_; 56] = (&final_chunk[..56]).try_into().unwrap();
 
             let cond_len = ng.mul(layouter, final_chunk_len, &not_extra_block, None)?;
             // We merge conditionally here. If an extra block is needed
@@ -162,7 +161,7 @@ where
 
         let len_bytes = {
             let len_in_bits = ng.mul_by_constant(layouter, input_len, F::from(8u64))?;
-            ng.assigned_to_be_bytes(layouter, &len_in_bits, Some(4usize))?
+            ng.assigned_to_be_bytes(layouter, &len_in_bits, Some(8usize))?
         };
 
         let mut padding = [block_1.as_slice(), &block_2, &len_bytes].concat();
@@ -242,8 +241,8 @@ impl<F: PrimeField> VarLenSha256Gadget<F> {
         layouter: &mut impl Layouter<F>,
         inputs: &AssignedVector<F, AssignedByte<F>, M, 64>,
     ) -> Result<[AssignedPlain<F, 32>; 8], Error> {
-        assert_eq!(inputs.buffer.len(), M);
-        assert_eq!(inputs.buffer.len() % 64, 0);
+        debug_assert_eq!(inputs.buffer.len(), M);
+        debug_assert_eq!(M % 64, 0);
 
         let ng = self.ng();
 
@@ -255,7 +254,7 @@ impl<F: PrimeField> VarLenSha256Gadget<F> {
             let fc_len = ng.element_of_bounded(layouter, &final_block_len)?;
             let is_zero = ng.is_zero(layouter, &fc_len)?;
             let len_round = ng.sub(layouter, &inputs.len, &fc_len)?;
-            let len_round_extra = ng.add_constant(layouter, &len_round, F::from(64 as u64))?;
+            let len_round_extra = ng.add_constant(layouter, &len_round, F::from(64u64))?;
             ng.select(layouter, &is_zero, &len_round, &len_round_extra)
         }?;
 
@@ -263,7 +262,6 @@ impl<F: PrimeField> VarLenSha256Gadget<F> {
         // and activates the update mechanism in the hash internal state.
         let mut updating: AssignedBit<F> = ng.assign_fixed(layouter, false)?;
 
-        // Initial state
         let mut state = CompressionState::<F>::fixed(layouter, ng, IV)?;
 
         // Process input in chunks.
@@ -778,10 +776,10 @@ impl<F: PrimeField> ControlFlowInstructions<F, CompressionState<F>> for VarLenSh
 
 // ----------------------------
 #[cfg(any(test, feature = "testing"))]
-use crate::testing_utils::FromScratch;
+use midnight_proofs::plonk::{Column, ConstraintSystem, Instance};
 
 #[cfg(any(test, feature = "testing"))]
-use midnight_proofs::plonk::{Column, ConstraintSystem, Instance};
+use crate::testing_utils::FromScratch;
 
 #[cfg(any(test, feature = "testing"))]
 impl<F: PrimeField> FromScratch<F> for VarLenSha256Gadget<F> {
