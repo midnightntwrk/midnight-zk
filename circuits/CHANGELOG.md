@@ -15,6 +15,7 @@ verification keys break backwards compatibility.
 * Add CommittedInstanceInstructions [#63](https://github.com/midnightntwrk/midnight-zk/pull/63)
 * Add goldenfiles with examples cost-model [#89](https://github.com/midnightntwrk/midnight-zk/pull/89)
 * New SHA256 chip [#39](https://github.com/midnightntwrk/midnight-zk/pull/39)
+* Variable-length SHA256 gadget [#98](https://github.com/midnightntwrk/midnight-zk/pull/98)
 
 * Add Schnorr signature example [#55](https://github.com/midnightntwrk/midnight-zk/pull/55)
 
