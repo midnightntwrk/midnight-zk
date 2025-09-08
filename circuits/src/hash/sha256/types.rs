@@ -4,7 +4,8 @@ use midnight_proofs::{circuit::Layouter, plonk::Error};
 use crate::{
     field::AssignedNative,
     hash::sha256::utils::{spread, u32_in_be_limbs},
-    instructions::FieldInstructions,
+    instructions::{ControlFlowInstructions, FieldInstructions},
+    types::AssignedBit,
 };
 
 /// An assigned value in plain (non-spreaded) form, guaranteed to be in the
@@ -188,5 +189,185 @@ impl<F: PrimeField> CompressionState<F> {
             self.g.plain,
             self.h,
         ]
+    }
+}
+
+impl<F: PrimeField, const N: usize> AssignedPlain<F, N> {
+    pub(super) fn select(
+        layouter: &mut impl Layouter<F>,
+        cf_chip: &impl ControlFlowInstructions<F, AssignedNative<F>>,
+        bit: &AssignedBit<F>,
+        x: &Self,
+        y: &Self,
+    ) -> Result<Self, Error> {
+        Ok(Self(cf_chip.select(layouter, bit, &x.0, &y.0)?))
+    }
+}
+
+impl<F: PrimeField, const N: usize> AssignedSpreaded<F, N> {
+    pub(super) fn select(
+        layouter: &mut impl Layouter<F>,
+        cf_chip: &impl ControlFlowInstructions<F, AssignedNative<F>>,
+        bit: &AssignedBit<F>,
+        x: &Self,
+        y: &Self,
+    ) -> Result<Self, Error> {
+        Ok(Self(cf_chip.select(layouter, bit, &x.0, &y.0)?))
+    }
+}
+
+impl<F: PrimeField, const N: usize> AssignedPlainSpreaded<F, N> {
+    pub(super) fn select(
+        layouter: &mut impl Layouter<F>,
+        cf_chip: &impl ControlFlowInstructions<F, AssignedNative<F>>,
+        bit: &AssignedBit<F>,
+        x: &Self,
+        y: &Self,
+    ) -> Result<Self, Error> {
+        let plain = AssignedPlain::select(layouter, cf_chip, bit, &x.plain, &y.plain)?;
+        let spreaded = AssignedSpreaded::select(layouter, cf_chip, bit, &x.spreaded, &y.spreaded)?;
+        Ok(Self { plain, spreaded })
+    }
+}
+
+impl<F: PrimeField> LimbsOfA<F> {
+    pub(super) fn select(
+        layouter: &mut impl Layouter<F>,
+        cf_chip: &impl ControlFlowInstructions<F, AssignedNative<F>>,
+        bit: &AssignedBit<F>,
+        x: &Self,
+        y: &Self,
+    ) -> Result<Self, Error> {
+        let combined =
+            AssignedPlainSpreaded::select(layouter, cf_chip, bit, &x.combined, &y.combined)?;
+        let spreaded_limb_10 = AssignedSpreaded::select(
+            layouter,
+            cf_chip,
+            bit,
+            &x.spreaded_limb_10,
+            &y.spreaded_limb_10,
+        )?;
+
+        let spreaded_limb_09 = AssignedSpreaded::select(
+            layouter,
+            cf_chip,
+            bit,
+            &x.spreaded_limb_09,
+            &y.spreaded_limb_09,
+        )?;
+
+        let spreaded_limb_11 = AssignedSpreaded::select(
+            layouter,
+            cf_chip,
+            bit,
+            &x.spreaded_limb_11,
+            &y.spreaded_limb_11,
+        )?;
+
+        let spreaded_limb_02 = AssignedSpreaded::select(
+            layouter,
+            cf_chip,
+            bit,
+            &x.spreaded_limb_02,
+            &y.spreaded_limb_02,
+        )?;
+        Ok(Self {
+            combined,
+            spreaded_limb_10,
+            spreaded_limb_09,
+            spreaded_limb_11,
+            spreaded_limb_02,
+        })
+    }
+}
+
+impl<F: PrimeField> LimbsOfE<F> {
+    pub(super) fn select(
+        layouter: &mut impl Layouter<F>,
+        cf_chip: &impl ControlFlowInstructions<F, AssignedNative<F>>,
+        bit: &AssignedBit<F>,
+        x: &Self,
+        y: &Self,
+    ) -> Result<Self, Error> {
+        let combined =
+            AssignedPlainSpreaded::select(layouter, cf_chip, bit, &x.combined, &y.combined)?;
+        let spreaded_limb_07 = AssignedSpreaded::select(
+            layouter,
+            cf_chip,
+            bit,
+            &x.spreaded_limb_07,
+            &y.spreaded_limb_07,
+        )?;
+
+        let spreaded_limb_12 = AssignedSpreaded::select(
+            layouter,
+            cf_chip,
+            bit,
+            &x.spreaded_limb_12,
+            &y.spreaded_limb_12,
+        )?;
+
+        let spreaded_limb_02 = AssignedSpreaded::select(
+            layouter,
+            cf_chip,
+            bit,
+            &x.spreaded_limb_02,
+            &y.spreaded_limb_02,
+        )?;
+
+        let spreaded_limb_05 = AssignedSpreaded::select(
+            layouter,
+            cf_chip,
+            bit,
+            &x.spreaded_limb_05,
+            &y.spreaded_limb_05,
+        )?;
+
+        let spreaded_limb_06 = AssignedSpreaded::select(
+            layouter,
+            cf_chip,
+            bit,
+            &x.spreaded_limb_06,
+            &y.spreaded_limb_06,
+        )?;
+
+        Ok(Self {
+            combined,
+            spreaded_limb_07,
+            spreaded_limb_12,
+            spreaded_limb_02,
+            spreaded_limb_05,
+            spreaded_limb_06,
+        })
+    }
+}
+
+impl<F: PrimeField> CompressionState<F> {
+    pub(super) fn select(
+        layouter: &mut impl Layouter<F>,
+        cf_chip: &impl ControlFlowInstructions<F, AssignedNative<F>>,
+        bit: &AssignedBit<F>,
+        x: &Self,
+        y: &Self,
+    ) -> Result<Self, Error> {
+        let a = LimbsOfA::select(layouter, cf_chip, bit, &x.a, &y.a)?;
+        let b = AssignedPlainSpreaded::select(layouter, cf_chip, bit, &x.b, &y.b)?;
+        let c = AssignedPlainSpreaded::select(layouter, cf_chip, bit, &x.c, &y.c)?;
+        let d = AssignedPlain::select(layouter, cf_chip, bit, &x.d, &y.d)?;
+        let e = LimbsOfE::select(layouter, cf_chip, bit, &x.e, &y.e)?;
+        let f = AssignedPlainSpreaded::select(layouter, cf_chip, bit, &x.f, &y.f)?;
+        let g = AssignedPlainSpreaded::select(layouter, cf_chip, bit, &x.g, &y.g)?;
+        let h = AssignedPlain::select(layouter, cf_chip, bit, &x.h, &y.h)?;
+
+        Ok(Self {
+            a,
+            b,
+            c,
+            d,
+            e,
+            f,
+            g,
+            h,
+        })
     }
 }
