@@ -355,7 +355,9 @@ impl<C: EdwardsCurve> ComposableChip<C::Base> for EccChip<C> {
         advice_cols: &Self::SharedResources,
     ) -> Self::Config {
         assert_eq!(C::A, -C::Base::ONE);
-        for col in advice_cols.iter() {
+
+        // Only the first 7 need to be copy-enabled.
+        for col in advice_cols.iter().take(7) {
             meta.enable_equality(*col)
         }
 
