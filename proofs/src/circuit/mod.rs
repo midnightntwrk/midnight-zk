@@ -461,7 +461,7 @@ pub trait Layouter<F: Field> {
     /// the circuit. Outside this closure, the `Layouter` is allowed to
     /// optimise as it sees fit.
     ///
-    /// ```ignore
+    /// ```text
     /// fn assign_region(&mut self, || "region name", |region| {
     ///     let config = chip.config();
     ///     region.assign_advice(config.a, offset, || { Some(value)});
@@ -475,7 +475,7 @@ pub trait Layouter<F: Field> {
 
     /// Assign a table region to an absolute row number.
     ///
-    /// ```ignore
+    /// ```text
     /// fn assign_table(&mut self, || "table name", |table| {
     ///     let config = chip.config();
     ///     table.assign_fixed(config.a, offset, || { Some(value)});

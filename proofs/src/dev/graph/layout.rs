@@ -20,12 +20,12 @@ use crate::{
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```text
 /// use midnight_proofs::dev::CircuitLayout;
 /// use plotters::prelude::*;
 ///
-/// let drawing_area = BitMapBackend::new("example-circuit-layout.png", (1024, 768))
-///     .into_drawing_area();
+/// let drawing_area =
+///     BitMapBackend::new("example-circuit-layout.png", (1024, 768)).into_drawing_area();
 /// drawing_area.fill(&WHITE).unwrap();
 /// let drawing_area = drawing_area
 ///     .titled("Example Circuit Layout", ("sans-serif", 60))
@@ -33,7 +33,9 @@ use crate::{
 ///
 /// let circuit = MyCircuit::default();
 /// let k = 5; // Suitable size for MyCircuit
-/// CircuitLayout::default().render(k, &circuit, &drawing_area).unwrap();
+/// CircuitLayout::default()
+///     .render(k, &circuit, &drawing_area)
+///     .unwrap();
 /// ```
 #[derive(Debug, Default)]
 pub struct CircuitLayout {
