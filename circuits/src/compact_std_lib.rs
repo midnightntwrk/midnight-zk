@@ -73,14 +73,7 @@ use crate::{
         poseidon::{PoseidonChip, PoseidonConfig, NB_POSEIDON_ADVICE_COLS, NB_POSEIDON_FIXED_COLS},
         sha256::{Sha256Chip, Sha256Config, NB_SHA256_ADVICE_COLS, NB_SHA256_FIXED_COLS},
     },
-    instructions::{
-        hash_to_curve::HashToCurveInstructions, public_input::CommittedInstanceInstructions,
-        ArithInstructions, AssertionInstructions, AssignmentInstructions, BinaryInstructions,
-        BitwiseInstructions, CanonicityInstructions, ComparisonInstructions,
-        ControlFlowInstructions, ConversionInstructions, DecompositionInstructions,
-        EccInstructions, EqualityInstructions, FieldInstructions, HashInstructions,
-        PublicInputInstructions, RangeCheckInstructions, VectorInstructions, ZeroInstructions,
-    },
+    instructions::{public_input::CommittedInstanceInstructions, *},
     map::map_gadget::MapGadget,
     parsing::{
         self,
@@ -1004,6 +997,8 @@ impl RangeCheckInstructions<F, AssignedNative<F>> for ZkStdLib {
             .assert_lower_than_fixed(layouter, x, bound)
     }
 }
+
+impl DivisionInstructions<F, AssignedNative<F>> for ZkStdLib {}
 
 impl BinaryInstructions<F> for ZkStdLib {
     fn and(
