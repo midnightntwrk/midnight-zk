@@ -1,3 +1,16 @@
+// This file is part of MIDNIGHT-ZK.
+// Copyright (C) 2025 Midnight Foundation
+// SPDX-License-Identifier: Apache-2.0
+// Licensed under the Apache License, Version 2.0 (the "License");
+// You may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+// http://www.apache.org/licenses/LICENSE-2.0
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 use ff::PrimeField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 
@@ -20,6 +33,7 @@ use crate::{
     vec::AssignedVector,
 };
 
+/// Gadget for SHA256 with variable-length input.
 #[derive(Clone, Debug)]
 pub struct VarLenSha256Gadget<F: PrimeField> {
     pub(super) sha256chip: Sha256Chip<F>,
@@ -76,7 +90,8 @@ where
 
     // TODO Maybe move this somewhere else (VectorGadget? )
     // Inserts `elem` in position `idx` of `array`.
-    // Idx values outside [0, L) are allowed, but they array will remain unchanged.
+    // Idx values outside [0, L) are allowed but, in thta case, the array will
+    // remain unchanged.
     fn insert_in_array<const L: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -95,7 +110,8 @@ where
     // Given 2 slices of AssignedBytes, merges them into 1 by selecting the
     // first `len` bytes of the fist chunk, and the remaining bytes of second
     // chunk.
-    // If `len` >= L, the output will be equal to `chunk_1`.
+    // If `len` >= L, the output will be equal to `chunk_1`. If `len` = 0,
+    // the output will be equal to `chunk_2`.
     fn merge_chunks<const L: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -128,29 +144,28 @@ where
         extra_block: &AssignedBit<F>,
     ) -> Result<[AssignedByte<F>; 2 * 64], Error> {
         let ng = self.ng();
-        let final_chunk_len = &ng.element_of_bounded(layouter, final_chunk_len)?;
+        let zero: AssignedByte<F> = ng.assign_fixed(layouter, 0u8)?;
 
+        let final_chunk_len = &ng.element_of_bounded(layouter, final_chunk_len)?;
         let not_extra_block: AssignedNative<F> = ng.not(layouter, extra_block)?.into();
 
         let block_1 = {
-            let block_1: Vec<AssignedByte<F>> = ng.assign_many_fixed(layouter, &vec![0u8; 64])?;
-            let block_1 = &block_1.try_into().unwrap();
+            let zeros = &vec![zero.clone(); 64].try_into().unwrap();
 
             // We merge unconditionally in block_1 because:
             //  * if the extra block is needed, final will be placed here.
             //  * if no extra block is needed, this block will not update the state.
-            self.merge_chunks(layouter, final_chunk, block_1, final_chunk_len)?
+            self.merge_chunks(layouter, final_chunk, zeros, final_chunk_len)?
         };
 
         let block_2 = {
-            let block_2: Vec<AssignedByte<F>> = ng.assign_many_fixed(layouter, &vec![0u8; 56])?;
-            let block_2 = &block_2.try_into().unwrap();
+            let zeros = &vec![zero; 56].try_into().unwrap();
             let final_chunk: &[_; 56] = (&final_chunk[..56]).try_into().unwrap();
 
             let cond_len = ng.mul(layouter, final_chunk_len, &not_extra_block, None)?;
             // We merge conditionally here. If an extra block is needed
             // `cond_len` = 0 and the merge will result in the original block_2.
-            self.merge_chunks(layouter, final_chunk, block_2, &cond_len)?
+            self.merge_chunks(layouter, final_chunk, zeros, &cond_len)?
         };
 
         let len_bytes = {
@@ -169,13 +184,13 @@ where
             // the positions where the 1 may be placed.
             let idx = {
                 // idx = final_chunk_len + 64 * not_extra_block - 56
-                ng.add_and_mul(
+                ng.linear_combination(
                     layouter,
-                    (F::ONE, final_chunk_len),
-                    (F::from(64u64), &not_extra_block),
-                    (F::ZERO, final_chunk_len),
+                    &[
+                        (F::ONE, final_chunk_len.clone()),
+                        (F::from(64u64), not_extra_block),
+                    ],
                     -F::from(56u64),
-                    F::ZERO,
                 )?
             };
 
@@ -215,7 +230,7 @@ impl<F: PrimeField> VarLenSha256Gadget<F> {
     }
 
     // Updates the `state` with `block` if `update` is true.
-    // Otherwise returns the inputed state unchanged.
+    // Otherwise returns the input state unchanged.
     fn conditional_update_state(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -229,15 +244,13 @@ impl<F: PrimeField> VarLenSha256Gadget<F> {
         CompressionState::select(layouter, self.ng(), &update, &new_state, state)
     }
 
-    /// In-circuit valriable SHA256 computation, the protagonist of this chip.
-    pub fn sha256_varlen<const M: usize>(
+    /// In-circuit variable input-length SHA256 computation, the protagonist of
+    /// this chip.
+    pub(super) fn sha256_varlen<const M: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
         inputs: &AssignedVector<F, AssignedByte<F>, M, 64>,
     ) -> Result<[AssignedPlain<F, 32>; 8], Error> {
-        debug_assert_eq!(inputs.buffer.len(), M);
-        debug_assert_eq!(M % 64, 0);
-
         let ng = self.ng();
 
         // Compute the block where the effective data starts.
@@ -277,6 +290,8 @@ impl<F: PrimeField> VarLenSha256Gadget<F> {
             block = block_iter.next().expect("One more block.");
         }
 
+        assert!(block_iter.next().is_none());
+
         let final_block: &[_; 64] = (block.try_into()).unwrap();
 
         // Padding
@@ -298,7 +313,6 @@ impl<F: PrimeField> VarLenSha256Gadget<F> {
     }
 }
 
-// ----------------------------
 #[cfg(any(test, feature = "testing"))]
 use midnight_proofs::plonk::{Column, ConstraintSystem, Instance};
 

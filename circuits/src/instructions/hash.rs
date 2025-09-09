@@ -237,7 +237,8 @@ pub mod tests {
 
             let vg = VectorGadget::new(&ng);
 
-            let assigned_input = vg.assign(&mut layouter, Value::known(self.input.clone()))?;
+            let assigned_input: AssignedVector<_, _, M, A> =
+                vg.assign(&mut layouter, Value::known(self.input.clone()))?;
             let expected_output =
                 <VarHashChip as HashCPU<Input::Element, Output::Element>>::hash(&self.input);
 
@@ -261,7 +262,6 @@ pub mod tests {
         VectorGadget<F>: AssignmentInstructions<F, AssignedVector<F, Input, M, A>>,
         NG<F>: AssignmentInstructions<F, Input> + AssertionInstructions<F, Output>,
     {
-        // Create a random number generator
         let mut rng = ChaCha12Rng::seed_from_u64(0xf007ba11);
 
         let input = (0..size)

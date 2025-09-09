@@ -24,7 +24,7 @@ use ff::PrimeField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 use sha2::Digest;
 pub use sha256_chip::{Sha256Chip, Sha256Config, NB_SHA256_ADVICE_COLS, NB_SHA256_FIXED_COLS};
-use sha256_varlen::VarLenSha256Gadget;
+pub use sha256_varlen::VarLenSha256Gadget;
 
 use crate::{
     instructions::{
@@ -68,13 +68,13 @@ impl<F: PrimeField> HashCPU<u8, [u8; 32]> for VarLenSha256Gadget<F> {
 }
 
 impl<F: PrimeField, const MAX_LEN: usize>
-    VarHashInstructions<F, MAX_LEN, AssignedByte<F>, [AssignedByte<F>; 32], 64usize>
+    VarHashInstructions<F, MAX_LEN, AssignedByte<F>, [AssignedByte<F>; 32], 64>
     for VarLenSha256Gadget<F>
 {
     fn varhash(
         &self,
         layouter: &mut impl Layouter<F>,
-        inputs: &AssignedVector<F, AssignedByte<F>, MAX_LEN, 64usize>,
+        inputs: &AssignedVector<F, AssignedByte<F>, MAX_LEN, 64>,
     ) -> Result<[AssignedByte<F>; 32], Error> {
         let mut output_bytes = Vec::with_capacity(32);
 
