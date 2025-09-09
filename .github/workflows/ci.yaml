@@ -158,23 +158,17 @@ jobs:
         run: rustup toolchain install
 
       - name: Run Clippy on `blstrs`
-        continue-on-error: true
+        if: always()
         run: cargo clippy -p midnight-curves --all-targets --all-features -- -Dwarnings
 
       - name: Run Clippy on `proofs`
-        continue-on-error: true
+        if: always()
         run: cargo clippy -p midnight-proofs --all-targets --all-features -- -Dwarnings
 
       - name: Run Clippy on `circuits`
-        continue-on-error: true
+        if: always()
         run: cargo clippy -p midnight-circuits --all-targets --all-features -- -Dwarnings
 
       - name: Run Clippy on `aggregator`
-        continue-on-error: true
+        if: always()
         run: cargo clippy -p midnight-aggregator --all-targets --all-features -- -Dwarnings
-
-      # Final gate: make the job red if ANY previous step failed
-      - name: Fail job if anything failed
-        if: failure()
-        # true if any previous step failed
-        run: exit 1
