@@ -172,3 +172,9 @@ jobs:
       - name: Run Clippy on `aggregator`
         continue-on-error: true
         run: cargo clippy -p midnight-aggregator --all-targets --all-features -- -Dwarnings
+
+      # Final gate: make the job red if ANY previous step failed
+      - name: Fail job if anything failed
+        if: failure()
+        # true if any previous step failed
+        run: exit 1
