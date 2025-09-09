@@ -1,18 +1,20 @@
 //! Example of a variation of the Schnorr Signature scheme.
-//! It uses the native hash function and elliptic curve of the proving system
-//! to maximize efficiency: Poseidon and Jubjub.
+//!
+//! It uses a native hash function (Poseidon) and a native elliptic curve
+//! (Jubjub) to maximize efficiency.
 
 use ff::Field;
 use group::Group;
 use midnight_circuits::{
     compact_std_lib::{self, Relation, ZkStdLib, ZkStdLibArch},
+    ecc::native::ScalarVar,
     hash::poseidon::PoseidonChip,
     instructions::{
-        hash::HashCPU, AssertionInstructions, AssignmentInstructions, ConversionInstructions,
+        hash::HashCPU, AssertionInstructions, AssignmentInstructions, DecompositionInstructions,
         EccInstructions, PublicInputInstructions,
     },
     testing_utils::plonk_api::filecoin_srs,
-    types::{AssignedNative, AssignedNativePoint, Instantiable},
+    types::{AssignedNativePoint, Instantiable},
 };
 use midnight_curves::{Fr as JubjubScalar, JubjubAffine, JubjubExtended as Jubjub, JubjubSubgroup};
 use midnight_proofs::{
@@ -24,39 +26,10 @@ use rand_chacha::ChaCha8Rng;
 
 type F = midnight_curves::Fq;
 
-// A jubjub scalar, represented as a native field of the circuit.
 #[derive(Clone, Default)]
-struct Scalar(F);
-
-impl From<F> for Scalar {
-    fn from(value: F) -> Self {
-        Self(value)
-    }
-}
-
-impl From<JubjubScalar> for Scalar {
-    fn from(value: JubjubScalar) -> Self {
-        // Scalar elements always fit in F.
-        Scalar(F::from_bytes_le(&value.to_bytes()).unwrap())
-    }
-}
-
-impl Scalar {
-    fn to_scalar(&self) -> JubjubScalar {
-        // Creates a scalar by reducing the native value mod r.
-        let mut buff = [0u8; 64];
-        buff[..32].copy_from_slice(&self.0.to_bytes_le());
-        JubjubScalar::from_bytes_wide(&buff)
-    }
-}
-
-#[derive(Clone, Default)]
-// A SchnorrSignature where s, e are represented as native fields instead
-// of Jubjub scalar fields. This is done to match the current Compact type
-// system, that exposes native field elements but not Jubjub scalars.
 pub struct SchnorrSignature {
-    s: Scalar,
-    e: Scalar,
+    s: JubjubScalar,
+    e_bytes: [u8; 32],
 }
 
 type SchnorrPK = JubjubSubgroup;
@@ -76,24 +49,34 @@ fn sign(message: Message, secret_key: &SchnorrSK, mut rng: impl RngCore) -> Schn
     let (rx, ry) = get_coords(&r);
     let (pkx, pky) = get_coords(&(JubjubSubgroup::generator() * secret_key));
 
-    let e = Scalar(PoseidonChip::hash(&[pkx, pky, rx, ry, message]));
-    let s = k - e.to_scalar() * secret_key;
+    let h = PoseidonChip::hash(&[pkx, pky, rx, ry, message]);
+    let e_bytes = h.to_bytes_le();
 
-    SchnorrSignature { s: s.into(), e }
+    let s = {
+        let mut buff = [0u8; 64];
+        buff[..32].copy_from_slice(&e_bytes);
+        let e = JubjubScalar::from_bytes_wide(&buff);
+        k - e * secret_key
+    };
+
+    SchnorrSignature { s, e_bytes }
 }
 
-fn verify(sig: &SchnorrSignature, pk: &SchnorrPK, m: Message) -> Result<(), Error> {
+fn verify(sig: &SchnorrSignature, pk: &SchnorrPK, m: Message) -> bool {
+    let mut buff = [0u8; 64];
+    buff[..32].copy_from_slice(&sig.e_bytes);
+    let e = JubjubScalar::from_bytes_wide(&buff);
+
     // 1. rv = s * G + e * Pk
-    let rv = JubjubSubgroup::generator() * sig.s.to_scalar() + pk * sig.e.to_scalar();
+    let rv = JubjubSubgroup::generator() * sig.s + pk * e;
 
     let (rx, ry) = get_coords(&rv);
     let (pkx, pky) = get_coords(pk);
 
     // 2. ev = hash( PK.x || PK.y || r.x || r.y || m)
-    let ev = PoseidonChip::hash(&[pkx, pky, rx, ry, m]);
+    let h = PoseidonChip::hash(&[pkx, pky, rx, ry, m]);
 
-    assert_eq!(ev, sig.e.0);
-    Ok(())
+    h.to_bytes_le() == sig.e_bytes
 }
 
 // Returns the affine coordinates of a given Jubjub point.
@@ -110,12 +93,12 @@ impl Relation for SchnorrExample {
     type Instance = (SchnorrPK, Message);
     type Witness = SchnorrSignature;
 
-    fn format_instance(instance: &Self::Instance) -> Vec<F> {
-        // let sig_s = instance.0.s.0;
-        // let sig_e = instance.0.e.0;
-        let pk = AssignedNativePoint::<Jubjub>::as_public_input(&instance.0);
-        let m = instance.1;
-        [pk, vec![m]].concat()
+    fn format_instance((pk, msg): &Self::Instance) -> Vec<F> {
+        [
+            AssignedNativePoint::<Jubjub>::as_public_input(&pk),
+            vec![*msg],
+        ]
+        .concat()
     }
 
     fn circuit(
@@ -125,52 +108,49 @@ impl Relation for SchnorrExample {
         instance: Value<Self::Instance>,
         witness: Value<Self::Witness>,
     ) -> Result<(), Error> {
-        // Jubjub chip.
         let jubjub = &std_lib.jubjub();
 
         // Assign public inputs.
         let (pk_val, m_val) = instance.map(|(pk, m)| (pk, m)).unzip();
-
         let pk: AssignedNativePoint<Jubjub> = jubjub.assign_as_public_input(layouter, pk_val)?;
         let message = std_lib.assign_as_public_input(layouter, m_val)?;
 
         // Assign witness values.
-        let (sig_s_val, sig_e_val) = witness.map(|sig| (sig.s.0, sig.e.0)).unzip();
-        let sig_s: AssignedNative<F> = std_lib.assign(layouter, sig_s_val)?;
-        let sig_e: AssignedNative<F> = std_lib.assign(layouter, sig_e_val)?;
+        let (sig_s_val, sig_e_bytes_val) = witness.map(|sig| (sig.s, sig.e_bytes)).unzip();
+        let sig_s: ScalarVar<Jubjub> = std_lib.jubjub().assign(layouter, sig_s_val)?;
+        let sig_e_bytes = std_lib.assign_many(layouter, &sig_e_bytes_val.transpose_array())?;
 
-        let generator: AssignedNativePoint<Jubjub> = std_lib
-            .jubjub()
-            .assign_fixed(layouter, <JubjubSubgroup as Group>::generator())?;
+        let generator: AssignedNativePoint<Jubjub> =
+            (std_lib.jubjub()).assign_fixed(layouter, <JubjubSubgroup as Group>::generator())?;
 
-        let sig_s_scalar = jubjub.convert(layouter, &sig_s)?;
-        let sig_e_scalar = jubjub.convert(layouter, &sig_e)?;
+        let sig_e = (std_lib.jubjub()).scalar_from_le_bytes(layouter, &sig_e_bytes)?;
 
         // 1. rv = s * G + e * Pk
-        let rv = std_lib.jubjub().msm(
-            layouter,
-            &[sig_s_scalar, sig_e_scalar],
-            &[generator, pk.clone()],
-        )?;
+        let rv =
+            (std_lib.jubjub()).msm(layouter, &[sig_s, sig_e.clone()], &[generator, pk.clone()])?;
 
         let coords = |p| (jubjub.x_coordinate(p), jubjub.y_coordinate(p));
         let (pkx, pky) = coords(&pk);
         let (rx, ry) = coords(&rv);
 
-        // 2. ev = hash( x || y || m)
-        let ev = std_lib.poseidon(layouter, &[pkx, pky, rx, ry, message])?;
+        // 2. ev = hash( PK.x || PK.y || r.x || r.y || m)
+        let h = std_lib.poseidon(layouter, &[pkx, pky, rx, ry, message])?;
+        let ev_bytes = std_lib.assigned_to_le_bytes(layouter, &h, None)?;
 
-        std_lib.assert_equal(layouter, &ev, &sig_e)
+        assert_eq!(ev_bytes.len(), sig_e_bytes.len());
+        (ev_bytes.iter().zip(sig_e_bytes.iter()))
+            .try_for_each(|(ev, e)| std_lib.assert_equal(layouter, ev, e))
     }
 
     fn used_chips(&self) -> ZkStdLibArch {
         ZkStdLibArch {
             jubjub: true,
             poseidon: true,
-            sha256: None,
+            sha256: false,
             secp256k1: false,
             bls12_381: false,
             base64: false,
+            automaton: false,
             nr_pow2range_cols: 1,
         }
     }
@@ -202,11 +182,12 @@ fn main() {
 
     for _ in 0..N {
         let (schnorr_pk, sk) = keygen(&mut rng);
+
         let m = F::random(&mut rng);
         let sig = sign(m, &sk, &mut rng);
 
         // sanity check
-        assert!(verify(&sig, &schnorr_pk, m).is_ok());
+        assert!(verify(&sig, &schnorr_pk, m));
 
         let instance = (schnorr_pk, m);
 
