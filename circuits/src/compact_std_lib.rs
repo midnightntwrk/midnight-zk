@@ -1454,6 +1454,10 @@ impl<R: Relation> Circuit<F> for MidnightCircuit<'_, R> {
             }
         }
 
+        if let Some(automaton_chip) = zk_std_lib.automaton_chip {
+            automaton_chip.load(&mut layouter)?;
+        }
+
         Ok(())
     }
 }
