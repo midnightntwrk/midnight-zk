@@ -68,17 +68,17 @@ pub enum StdLibParser {
     ///         type: string
     ///       }[],
     ///       credentialSubject: {
-    ///         nationalId: string,
-    ///         familyName: string,
-    ///         givenName: string,  # marked "1"
+    ///         nationalId: string, # marked "1"
+    ///         familyName: string, # marked "2"
+    ///         givenName: string,  # marked "3"
     ///         publicKeyJwk: {
     ///           kty: string,
     ///           crv: string,
-    ///           x: string, # marked "3"
-    ///           y: string  # marked "4"
+    ///           x: string, # marked "5"
+    ///           y: string  # marked "6"
     ///         }
     ///         id: string,
-    ///         birthDate: string,  # marked "2"
+    ///         birthDate: string,  # marked "4"
     ///       },
     ///       type: string[],
     ///       @context: string[],
@@ -103,10 +103,12 @@ pub enum StdLibParser {
     ///
     /// As Specified in the above grammar, the following field contents
     /// (excluding the double quotes) are marked as follows:
-    ///   - `"givenName"` -> 1
-    ///   - `"birthDate"` -> 2
-    ///   - `"x"` -> 3
-    ///   - `"y"` -> 4
+    ///   - `"nationalId"` -> 1
+    ///   - `"familyName"` -> 2
+    ///   - `"givenName"` -> 3
+    ///   - `"birthDate"` -> 4
+    ///   - `"x"` -> 5
+    ///   - `"y"` -> 6
     Jwt,
 }
 
@@ -200,8 +202,8 @@ fn spec_jwt() -> Regex {
             vec![
                 string_field("kty", 0),
                 string_field("crv", 0),
-                string_field("x", 3),
-                string_field("y", 4),
+                string_field("x", 5), // Marked 5.
+                string_field("y", 6), // Marked 6.
             ],
             "}",
         ),
@@ -211,12 +213,12 @@ fn spec_jwt() -> Regex {
         collec(
             "{",
             vec![
-                string_field("nationalId", 0),
-                string_field("familyName", 0),
-                string_field("givenName", 1), // Marked 1.
+                string_field("nationalId", 1), // Marked 1.
+                string_field("familyName", 2), // Marked 2.
+                string_field("givenName", 3),  // Marked 3.
                 public_key_jwk,
                 string_field("id", 0),
-                string_field("birthDate", 2), // Marked 2.
+                string_field("birthDate", 4), // Marked 4.
             ],
             "}",
         ),
@@ -494,13 +496,25 @@ mod tests {
             (
                 FULL_INPUT_JWT,
                 &[
-                    (1, "Alice"),
-                    (2, "2000-11-13"),
-                    (3, "S0kj3ydSeF86LU9BpHuVntMFN8SCKcHyci1tXFbRW8M"),
-                    (4, "dux8h-QcIA3aZG9CSPIltDwVvOkf0kfJRJLH7K1KSlQ"),
+                    (1, "12345"),
+                    (2, "Wonderland"),
+                    (3, "Alice"),
+                    (4, "2000-11-13"),
+                    (5, "S0kj3ydSeF86LU9BpHuVntMFN8SCKcHyci1tXFbRW8M"),
+                    (6, "dux8h-QcIA3aZG9CSPIltDwVvOkf0kfJRJLH7K1KSlQ"),
                 ],
             ),
-            (MINIMAL_JWT, &[(1, "A"), (2, "B"), (3, "x"), (4, "y")]),
+            (
+                MINIMAL_JWT,
+                &[
+                    (1, "id"),
+                    (2, "fn"),
+                    (3, "gn"),
+                    (4, "bd"),
+                    (5, "x"),
+                    (6, "y"),
+                ],
+            ),
         ];
         let rejected0: Vec<&str> =
             vec!["hello world", &FULL_INPUT_JWT[..1000], &MINIMAL_JWT[..600]];
@@ -560,9 +574,9 @@ mod tests {
     "exp" : 1,
     "vc" : {
        "credentialSubject" : {
-          "nationalId" : "12345",
-          "familyName" : "",
-          "givenName" : "A",
+          "nationalId" : "id",
+          "familyName" : "fn",
+          "givenName" : "gn",
           "publicKeyJwk" : {
              "kty" : "",
              "crv" : "",
@@ -570,7 +584,7 @@ mod tests {
              "y" : "y"
           },
           "id" : "",
-          "birthDate" : "B"
+          "birthDate" : "bd"
        },
        "type" : [],
        "@context" : [],

@@ -142,6 +142,15 @@ pub struct Automaton {
     /// marker upon reading input `byte` in state `state`. A key may be
     /// undefined, in which case it means the automaton jumps into an
     /// implicit deadlock state.
+    ///
+    /// Note: For this hashmap, we use a fast but non cryptographically secure
+    /// hasher (`FxBuildHasher`). This has no effect on soundness, apart from
+    /// the `serialization` module relying on this hasher's determinism for
+    /// testing purposes. Still, one could theoretically construct an automaton
+    /// inducing a lot of collisions, making its circuit configuration
+    /// abnormally slow. This however has no effect on the verifier time, and
+    /// does not affect users that only access the parsers we provide
+    /// through the standard library.
     pub transitions: FxHashMap<(usize, u8), (usize, usize)>,
 }
 
@@ -175,13 +184,13 @@ impl RawAutomaton {
     /// bytes. The alphabet size can be specified, which effectively filters
     /// out any transition involving a byte outside of the alphabet.
     pub(super) fn byte_concat(word: &[Vec<Letter>], alphabet_size: usize) -> Self {
-        let mut transitions = Vec::from_iter(
-            word.iter()
-                .map(Vec::len)
-                .map(Vec::with_capacity)
-                .chain(once(vec![])),
-        );
-        let mut markers = FxHashSet::with_capacity_and_hasher(2, FxBuildHasher);
+        let mut transitions = word
+            .iter()
+            .map(Vec::len)
+            .map(Vec::with_capacity)
+            .chain(once(vec![]))
+            .collect::<Vec<_>>();
+        let mut markers = FxHashSet::default();
         for (position, byte_range) in word.iter().enumerate() {
             for byte in byte_range {
                 if (byte.char as usize) < alphabet_size {
@@ -204,7 +213,7 @@ impl RawAutomaton {
     pub(super) fn universal(alphabet_size: usize) -> Self {
         assert!(
             alphabet_size <= ALPHABET_MAX_SIZE,
-            "attempt to construct an automaton with an alphabet of size {alphabet_size} (will overflow u8"
+            "attempt to construct an automaton with an alphabet of size {alphabet_size} (will overflow u8)"
         );
         Self {
             deterministic: true,
@@ -278,7 +287,7 @@ impl RawAutomaton {
     /// Computes the simplified reachability graph of an automaton, i.e., the
     /// transitions without letters. Computing once and for all a simplified
     /// graph tends to make the code more efficient when the transition table
-    /// has be traversed many times, since there are often 10~100 transitions
+    /// has to be traversed many times, since there are often 10~100 transitions
     /// between the same two states.
     fn simplified_graph(&self) -> ReachGraph {
         let mut forward_edges = vec![FxHashSet::default(); self.transitions.len()];
@@ -343,11 +352,11 @@ impl RawAutomaton {
 impl RawAutomaton {
     /// Updates the set of transitions of an automaton accordingly to an update
     /// function. If the update function returns `None` on a given state, all
-    /// transitions involving it are removed. Also recomputes the set of markers
-    /// in case some are removed.
+    /// transitions involving it are removed. The set of markers is then
+    /// recomputed to reflect any removals.
     ///
-    /// Also takes as argument the minimal value of the updated states
-    /// (`offset`) to compute a transition table more easily.
+    /// The function additionally takes the minimal value of the updated
+    /// states (`offset`) to simplify construction of the transition table.
     fn filter_map_transitions(
         transitions: &[Vec<(Letter, usize)>],
         f: impl Fn(usize) -> Option<usize>,
@@ -355,7 +364,7 @@ impl RawAutomaton {
         offset: usize,
     ) -> (Vec<Vec<(Letter, usize)>>, FxHashSet<usize>) {
         let mut new_transitions = vec![vec![]; new_nb_states];
-        let mut markers = FxHashSet::with_capacity_and_hasher(2, FxBuildHasher);
+        let mut markers = FxHashSet::default();
         for (source, succ) in transitions.iter().enumerate() {
             for (letter, target) in succ {
                 f(source).map(|new_source| {
@@ -404,9 +413,13 @@ impl RawAutomaton {
             0,
         );
 
+        // The automaton may still be complete in the rare cases, but checking
+        // completeness probably is likely more costly than just re-completing the
+        // automaton in the (very few) cases where it is required. So the flag is set to
+        // `false` for simplicity.
         Self {
             deterministic: self.deterministic,
-            complete: false, // `false` most of the time.
+            complete: false,
             initial_state,
             final_states,
             transitions,
@@ -414,10 +427,9 @@ impl RawAutomaton {
         }
     }
 
-    /// Checks if an automaton is deterministic. If the field `deterministic` or
-    /// `epsilon_transition` are set to true, nothing is done; otherwise, this
-    /// function scans the transition table to rule out a potential false
-    /// negative.
+    /// Checks if an automaton is deterministic. If the field `deterministic` is
+    /// set to true, nothing is done; otherwise, this function scans the
+    /// transition table to rule out a potential false negative.
     ///
     /// If a successful check is performed, the `determinisitc` field is
     /// updated.
@@ -470,8 +482,9 @@ impl RawAutomaton {
 
         while let Some(power_state) = pending.pop() {
             if let Entry::Vacant(entry) = visited.entry(power_state.clone()) {
-                // A never-encountered state the new automaton. So, we check whether it is final
-                // (i.e., if the bitset contains a final state), and increment the counter.
+                // A never-encountered state of the new automaton. So, we check whether it is
+                // final (i.e., if the bitset contains a final state), and
+                // increment the counter.
                 if self.final_states.iter().any(|state| power_state[*state]) {
                     final_states.insert(state_counter);
                 }
@@ -549,10 +562,9 @@ impl RawAutomaton {
     ///
     /// The automaton is obtained by alpha-renaming all states of the different
     /// automata to avoid collisions (a state `s` of automata number `i` will be
-    /// represented by `s + offsets[i]`), and so that `0` is a state of neither
-    /// renamed automata. Then he final automaton simply has 0 as an initial
-    /// states, which has an epsilon transition to the initial states of all
-    /// automata.
+    /// represented by `s + offsets[i]`). Then the final automaton is simply
+    /// obtained by performing a powerstate construction whose initial state
+    /// is the set of all initial states of the original automaton.
     pub(super) fn union(automata: &[Self], alphabet_size: usize) -> Self {
         if automata.len() == 1 {
             // Avoids determinising automaton in this case. Happens often due to the
@@ -579,18 +591,20 @@ impl RawAutomaton {
         union_automaton.powerset_construction(&union_initial_states, false, alphabet_size)
     }
 
-    /// Computes an automaton for the concatenation of two languages.
+    /// Computes an automaton for the concatenation of an arbitrary number of
+    /// languages.
     ///
-    /// Renames states of the two automata to ensure they are disjoint, and
-    /// simply plugs the final states of `self` to the initial state of `rhs`.
+    /// Renames states of the automata to ensure they are disjoint and, in
+    /// general, simply plugs the final states of each automata to the
+    /// initial state of the subsequent one. Removes some dead states when
+    /// these final states have no successors.
     pub(super) fn concat(automata: &[Self]) -> Self {
         let mut concat_automaton = RawAutomaton::epsilon();
-        // A storage for dead states to be eliminated as during post-processing. Dead
+        // A storage for dead states to be eliminated during post-processing. Dead
         // states are generated:
         // - when an initial state has no cycle to itself in an automaton, it will
-        //   become
-        // a dead state after concatenation, and can safely be removed.
-        // - when concatenating a automaton whose final states have no outgoing
+        //   become a dead state after concatenation, and can safely be removed.
+        // - when concatenating an automaton whose final states have no outgoing
         //   transitions, transitions pointing to these final states can be redirected
         //   to the initial state of the next automaton. The old final states can then
         //   be removed.
@@ -686,20 +700,20 @@ impl RawAutomaton {
         .check_determinism()
     }
 
-    // Computes an automton for the intersection of two languages. Requires that
-    // they do not contain epsilon transitions. The intersection takes markers into
-    // account: two copies of letter `a` with different (non-0) markers are
-    // considered as different letters. However, `a` marked with 0 will be unified
-    // with `a` with a non-0 marker.
-    //
-    // Apart from that, the intersection is a classical carthesian-product
-    // construction, i.e., it is simply an automaton whose states are pairs of
-    // states of the initial automata. A pair `(s1,s2)` is encoded as `s1 * n + s2`,
-    // where `n` is the number of states of `rhs`.
+    /// Computes an automaton for the intersection of two languages. The
+    /// intersection takes markers into account: two copies of letter `a`
+    /// with different (non-0) markers are considered as different letters.
+    /// However, `a` marked with 0 will be unified with `a` with a non-0
+    /// marker.
+    ///
+    /// Apart from that, the intersection is a classical carthesian-product
+    /// construction, i.e., it is simply an automaton whose states are pairs of
+    /// states of the initial automata. A pair `(s1,s2)` is encoded as `s1 * n +
+    /// s2`, where `n` is the number of states of `rhs`.
     pub(super) fn inter(&self, rhs: &Self) -> Self {
         let mut raw_transitions =
             Vec::with_capacity(self.transitions.len() * rhs.transitions.len());
-        let mut markers = FxHashSet::with_capacity_and_hasher(2, FxBuildHasher);
+        let mut markers = FxHashSet::default();
 
         // Tracks if the resulting automaton is deterministic and complete (may not be
         // due to the `join` operation below, since it may change some markers).

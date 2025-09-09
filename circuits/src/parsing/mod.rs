@@ -20,7 +20,7 @@ mod specs;
 
 /// A module to convert regular expressions to finite automata that can be used
 /// as basis for circuit gates.
-pub mod automaton;
+mod automaton;
 /// A module containing the definitions of the automata that will be loaded in
 /// the standard library.
 pub mod automaton_chip;
@@ -28,7 +28,7 @@ pub mod automaton_chip;
 /// finite automata.
 pub mod regex;
 /// A module to serialize automata as sequences of bytes.
-pub mod serialization;
+mod serialization;
 
 mod table;
 
