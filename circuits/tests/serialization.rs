@@ -195,6 +195,8 @@ fn pk_serde_test(architecture: ZkStdLibArch, write_format: SerdeFormat, read_for
 
 #[test]
 fn pk_write_then_read_processed() {
+    #[cfg(ci_build)]
+    panic!("CI build active");
     for arch in ARCHITECTURES {
         pk_serde_test(arch, SerdeFormat::Processed, SerdeFormat::Processed);
     }

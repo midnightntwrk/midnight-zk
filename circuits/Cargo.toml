@@ -45,6 +45,9 @@ itertools = "0.14"
 dhat = "0.3"
 bellman = "0.14.0"
 
+[target.'cfg(ci_build)'.dependencies]
+midnight-curves = { path = "../curves", features = ["portable"] }
+
 [features]
 default = []
 # Feature that exposes some testing functionality, such as load from scratch or instantiable

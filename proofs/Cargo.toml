@@ -67,6 +67,9 @@ rand = { workspace = true }
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
 getrandom = { version = "0.2", features = ["js"] }
 
+[target.'cfg(ci_build)'.dependencies]
+midnight-curves = { path = "../curves", features = ["portable"] }
+
 [features]
 default = ["bits", "committed-instances"]
 dev-graph = ["plotters", "tabbycat"]
