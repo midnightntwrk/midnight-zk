@@ -38,7 +38,7 @@ where
 {
     /// Integer division by a constant.
     ///
-    /// This trait is implemented with respect an Assigned type whose inner
+    /// This trait is implemented with respect to an Assigned type whose inner
     /// value has an integer structure (enforced by requiring the
     /// `FromBigUint` trait).
     ///
@@ -105,7 +105,7 @@ where
 
     /// Integer modulo operation.
     ///
-    /// This trait is implemented with respect an Assigned type whose inner
+    /// This trait is implemented with respect to an Assigned type whose inner
     /// value has an integer structure (enforced by requiring the
     /// `FromBigUint` trait).
     ///
@@ -114,8 +114,8 @@ where
     /// dividing the former by the latter, as integers.
     ///
     /// An optional (inclusive) upper bound can be provided on the value of
-    /// the `dividend`. It is the responsibility of the caller that, if
-    /// provided, the bound on the dividend be valid.
+    /// the `input`. It is the responsibility of the caller that, if
+    /// provided, the bound on the input be valid.
     ///
     /// # Panics
     ///  - If `modulus = 0`.
