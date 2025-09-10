@@ -15,7 +15,7 @@ rustdoc-args = ["--cfg", "docsrs", "--html-in-header", "katex-header.html"]
 [dependencies]
 group = { workspace = true }
 ff = { workspace = true }
-halo2curves = { version = "0.7.0", default-features = false }
+halo2curves = { workspace = true }
 midnight-curves = { path = "../curves", version = "0.1.0" }
 midnight-proofs = { path = "../proofs", version = "0.4.0", default-features = false, features = [
     "bits",
@@ -27,9 +27,9 @@ midnight-circuits = { path = "../circuits", default-features = false, features =
     "testing",
 ] }
 
-rand = "0.8"
-blake2b_simd = "1.0.3"
-sha2 = "0.10.9"
+rand = { workspace = true }
+blake2b_simd = {  workspace = true }
+sha2 = { workspace = true }
 
 [dev-dependencies]
 rand_chacha = { workspace = true }
