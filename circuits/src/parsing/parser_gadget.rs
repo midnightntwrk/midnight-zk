@@ -191,8 +191,8 @@ where
         <N as FromScratch<F>>::configure_from_scratch(meta, instance_columns)
     }
 
-    fn load_from_scratch(layouter: &mut impl Layouter<F>, config: &Self::Config) {
-        <N as FromScratch<F>>::load_from_scratch(layouter, config);
+    fn load_from_scratch(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
+        self.native_gadget.load_from_scratch(layouter)
     }
 }
 
@@ -252,7 +252,6 @@ mod tests {
         ) -> Result<(), Error> {
             let native_gadget = <N as FromScratch<F>>::new_from_scratch(&config);
             let parser_gadget = ParserGadget::<F, N>::new(&native_gadget);
-            <N as FromScratch<F>>::load_from_scratch(&mut layouter, &config);
 
             let sequence = native_gadget.assign_many(&mut layouter, &self.sequence)?;
             let idx = native_gadget.assign(&mut layouter, self.idx)?;
@@ -277,7 +276,7 @@ mod tests {
                 native_gadget.assert_equal_to_fixed(&mut layouter, resulted, *expected)?;
             }
 
-            Ok(())
+            native_gadget.load_from_scratch(&mut layouter)
         }
     }
 

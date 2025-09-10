@@ -577,10 +577,9 @@ where
         (native_gadget_config, automaton_config)
     }
 
-    fn load_from_scratch(layouter: &mut impl Layouter<F>, config: &Self::Config) {
-        NG::<F>::load_from_scratch(layouter, &config.0);
-        let chip = Self::new_from_scratch(config);
-        let _ = chip.load(layouter);
+    fn load_from_scratch(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
+        self.native_gadget.load_from_scratch(layouter)?;
+        self.load(layouter)
     }
 }
 
@@ -655,7 +654,6 @@ mod test {
             mut layouter: impl Layouter<F>,
         ) -> Result<(), Error> {
             let automaton_chip = AutomatonChip::<usize, F>::new_from_scratch(&config);
-            AutomatonChip::load_from_scratch(&mut layouter, &config);
 
             let input: Vec<AssignedByte<F>> = automaton_chip
                 .native_gadget
@@ -692,7 +690,9 @@ mod test {
                     automaton_chip
                         .native_gadget
                         .assert_equal(&mut layouter, o1, o2)
-                })
+                })?;
+
+            automaton_chip.load_from_scratch(&mut layouter)
         }
     }
 

@@ -50,6 +50,12 @@ type CBase = <C as CircuitCurve>::Base;
 
 type NG = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
 
+#[cfg(feature = "truncated-challenges")]
+const K: u32 = 18;
+
+#[cfg(not(feature = "truncated-challenges"))]
+const K: u32 = 19;
+
 #[derive(Clone, Debug)]
 pub struct IvcCircuit {
     self_vk: (EvaluationDomain<F>, ConstraintSystem<F>, Value<F>), // (domain, cs, vk_repr)
@@ -134,14 +140,12 @@ impl Circuit<F> for IvcCircuit {
         mut layouter: impl Layouter<F>,
     ) -> Result<(), Error> {
         let native_chip = <NativeChip<F> as ComposableChip<F>>::new(&config.0, &());
-        let core_decomp_chip = P2RDecompositionChip::new(&config.1, &16);
+        let core_decomp_chip = P2RDecompositionChip::new(&config.1, &(K as usize - 1));
         let scalar_chip = NativeGadget::new(core_decomp_chip.clone(), native_chip.clone());
         let curve_chip = { ForeignEccChip::new(&config.2, &scalar_chip, &scalar_chip) };
         let poseidon_chip = PoseidonChip::new(&config.3, &native_chip);
 
         let verifier_chip = VerifierGadget::new(&curve_chip, &scalar_chip, &poseidon_chip);
-
-        core_decomp_chip.load(&mut layouter)?;
 
         let self_vk_name = "self_vk";
         let (self_domain, self_cs, self_vk_value) = &self.self_vk;
@@ -227,16 +231,14 @@ impl Circuit<F> for IvcCircuit {
         // Finally, collapse the resulting accumulator and constraint it as public.
         next_acc.collapse(&mut layouter, &curve_chip, &scalar_chip)?;
 
-        verifier_chip.constrain_as_public_input(&mut layouter, &next_acc)
+        verifier_chip.constrain_as_public_input(&mut layouter, &next_acc)?;
+
+        core_decomp_chip.load(&mut layouter)
     }
 }
 
 fn main() {
-    #[cfg(feature = "truncated-challenges")]
-    let self_k = 18;
-
-    #[cfg(not(feature = "truncated-challenges"))]
-    let self_k = 19;
+    let self_k = K;
 
     let mut self_cs = ConstraintSystem::default();
     configure_ivc_circuit(&mut self_cs);

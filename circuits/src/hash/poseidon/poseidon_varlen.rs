@@ -280,12 +280,10 @@ mod tests {
             mut layouter: impl Layouter<F>,
         ) -> Result<(), Error> {
             let native_gadget = NG::<F>::new_from_scratch(&config.0);
-            let vec_gadget = VectorGadget::new(&native_gadget);
             let poseidon_chip = PoseidonChip::new_from_scratch(&config.1);
-            let varlen_poseidon_gadget = VarLenPoseidonGadget::new(&poseidon_chip, &native_gadget);
 
-            NG::load_from_scratch(&mut layouter, &config.0);
-            PoseidonChip::load_from_scratch(&mut layouter, &config.1);
+            let vec_gadget = VectorGadget::new(&native_gadget);
+            let varlen_poseidon_gadget = VarLenPoseidonGadget::new(&poseidon_chip, &native_gadget);
 
             let assigned_input: AssignedVector<F, AssignedNative<F>, MAX_LEN, RATE> =
                 vec_gadget.assign(&mut layouter, self.inputs.clone())?;
@@ -293,7 +291,8 @@ mod tests {
             let output = varlen_poseidon_gadget.varhash(&mut layouter, &assigned_input)?;
             native_gadget.assert_equal_to_fixed(&mut layouter, &output, self.expected)?;
 
-            Ok(())
+            native_gadget.load_from_scratch(&mut layouter)?;
+            poseidon_chip.load_from_scratch(&mut layouter)
         }
     }
 
