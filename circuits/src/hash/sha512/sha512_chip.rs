@@ -16,21 +16,21 @@
 
 // | T0 |    A0    |     A1    | T1 |    A2    |     A3    |  A4  |    A5    |   A6   |
 // |----|----------|-----------|----|----------|-----------|------|----------|--------|
-// | 13 |  Evn0.13 | ~Evn0.13  | 13 |  Evn1.13 | ~Evn1.13  | Evn  |  ~A.13a  | ~A.12  |
-// | 13 |  Evn2.13 | ~Evn2.13  | 13 |  Evn3.13 | ~Evn3.13  |      |  ~A.05   | ~A.06  |
-// | 12 |  Evn4.12 | ~Evn4.12  | 13 |  Odd0.13 | ~Odd0.13  |      |  ~A.13b  | ~A.13c |
-// | 13 |  Odd1.13 | ~Odd1.13  | 13 |  Odd2.13 | ~Odd2.13  |      |  ~A.02   |        |
-// | 13 |  Odd3.13 | ~Odd3.13  | 12 |  Odd4.12 | ~Odd4.12  |      |          |        |
+// | 13 |  Evn0.13 | ~Evn0.13  | 13 |  Odd0.13 | ~Odd0.13  | Evn  |  ~A.13a  | ~A.12  |
+// | 13 |  Evn1.13 | ~Evn1.13  | 13 |  Odd1.13 | ~Odd1.13  |      |  ~A.05   | ~A.06  |
+// | 13 |  Evn2.13 | ~Evn2.13  | 13 |  Odd2.13 | ~Odd2.13  |      |  ~A.13b  | ~A.13c |
+// | 13 |  Evn3.13 | ~Evn3.13  | 13 |  Odd3.13 | ~Odd3.13  |      |  ~A.02   |        |
+// | 12 |  Evn4.12 | ~Evn4.12  | 12 |  Odd4.12 | ~Odd4.12  |      |          |        |
 
 //  $Maj(A, B, C)$
 
 // | T0 |    A0    |     A1    | T1 |    A2    |     A3    |  A4  |   A5  |  A6   |
 // |----|----------|-----------|----|----------|-----------|------|-------|-------|
-// | 13 |  Odd0.13 | ~Odd0.13  | 13 |  Odd1.13 | ~Odd1.13  | Odd  |  ~A   |  ~B   |
-// | 13 |  Odd2.13 | ~Odd2.13  | 13 |  Odd3.13 | ~Odd3.13  |      |  ~C   |       |
-// | 12 |  Odd4.12 | ~Odd4.12  | 13 |  Evn0.13 | ~Evn0.13  |      |       |       |
-// | 13 |  Evn1.13 | ~Evn1.13  | 13 |  Evn2.13 | ~Evn2.13  |      |       |       |
-// | 13 |  Evn3.13 | ~Evn3.13  | 12 |  Evn4.12 | ~Evn4.12  |      |       |       |
+// | 13 |  Odd0.13 | ~Odd0.13  | 13 |  Evn0.13 | ~Evn0.13  | Odd  |  ~A   |  ~B   |
+// | 13 |  Odd1.13 | ~Odd1.13  | 13 |  Evn1.13 | ~Evn1.13  |      |  ~C   |       |
+// | 13 |  Odd2.13 | ~Odd2.13  | 13 |  Evn2.13 | ~Evn2.13  |      |       |       |
+// | 13 |  Odd3.13 | ~Odd3.13  | 13 |  Evn3.13 | ~Evn3.13  |      |       |       |
+// | 12 |  Odd4.12 | ~Odd4.12  | 12 |  Evn4.12 | ~Evn4.12  |      |       |       |
 
 // E: |----------|----------|-----|-----------|
 //        23          23       4       14
@@ -50,26 +50,26 @@
 
 // | T0 |    A0    |     A1    | T1 |    A2    |     A3    |  A4  |    A5    |    A6   |
 // |----|----------|-----------|----|----------|-----------|------|----------|---------|
-// | 13 |  Evn0.13 | ~Evn0.13  | 13 |  Evn1.13 | ~Evn1.13  | Evn  |  ~E.13a  | ~E.10a  |
-// | 13 |  Evn2.13 | ~Evn2.13  | 13 |  Evn3.13 | ~Evn3.13  |      |  ~E.13b  | ~E.10b  |
-// | 12 |  Evn4.12 | ~Evn4.12  | 13 |  Odd0.13 | ~Odd0.13  |      |  ~E.04   | ~E.13c  |
-// | 13 |  Odd1.13 | ~Odd1.13  | 13 |  Odd2.13 | ~Odd2.13  |      |  ~E.01   |         |
-// | 13 |  Odd3.13 | ~Odd3.13  | 12 |  Odd4.12 | ~Odd4.12  |      |          |         |
+// | 13 |  Evn0.13 | ~Evn0.13  | 13 |  Odd0.13 | ~Odd0.13  | Evn  |  ~E.13a  | ~E.10a  |
+// | 13 |  Evn1.13 | ~Evn1.13  | 13 |  Odd1.13 | ~Odd1.13  |      |  ~E.13b  | ~E.10b  |
+// | 13 |  Evn2.13 | ~Evn2.13  | 13 |  Odd2.13 | ~Odd2.13  |      |  ~E.04   | ~E.13c  |
+// | 13 |  Evn3.13 | ~Evn3.13  | 13 |  Odd3.13 | ~Odd3.13  |      |  ~E.01   |         |
+// | 12 |  Evn4.12 | ~Evn4.12  | 12 |  Odd4.12 | ~Odd4.12  |      |          |         |
 
 // $Ch(E, F, G)$
 
 // | T0 |      A0      |       A1      | T1 |       A2     |       A3      |     A4  |    A5   |      A6     |
 // |----|--------------|---------------|----|--------------|---------------|---------|---------|-------------|
-// | 13 |  Odd0_EF.13  |  ~Odd0_EF.13  | 13 |  Odd1_EF.13  |  ~Odd1_EF.13  | Odd_EF  |    ~E   |     ~F      |
-// | 13 |  Odd2_EF.13  |  ~Odd2_EF.13  | 13 |  Odd3_EF.13  |  ~Odd3_EF.13  | Odd_EF  | Odd_nEG |     Ret     |
-// | 12 |  Odd4_EF.12  |  ~Odd4_EF.12  | 13 |  Evn0_EF.13  |  ~Evn0_EF.13  |         |         |             |
-// | 13 |  Evn1_EF.13  |  ~Evn1_EF.13  | 13 |  Evn2_EF.13  |  ~Evn2_EF.13  |         |         |             |
-// | 13 |  Evn3_EF.13  |  ~Evn3_EF.13  | 12 |  Evn4_EF.12  |  ~Evn4_EF.12  |         |         |             |
-// | 13 |  Odd0_nEF.13 |  ~Odd0_nEF.13 | 13 |  Odd1_nEF.13 |  ~Odd1_nEF.13 | Odd_nEG |  ~(¬E)  |     ~G      |
-// | 13 |  Odd2_nEF.13 |  ~Odd2_nEF.13 | 13 |  Odd3_nEF.13 |  ~Odd3_nEF.13 |   ~E    |  ~(¬E)  |MASK_EVN_128 |
-// | 12 |  Odd4_nEF.12 |  ~Odd4_nEF.12 | 13 |  Evn0_nEF.13 |  ~Evn0_nEF.13 |         |         |             |
-// | 13 |  Evn1_nEF.13 |  ~Evn1_nEF.13 | 13 |  Evn2_nEF.13 |  ~Evn2_nEF.13 |         |         |             |
-// | 13 |  Evn3_nEF.13 |  ~Evn3_nEF.13 | 12 |  Evn4_nEF.12 |  ~Evn4_nEF.12 |         |         |             |
+// | 13 |  Odd0_EF.13  |  ~Odd0_EF.13  | 13 |  Evn0_EF.13  |  ~Evn0_EF.13  | Odd_EF  |    ~E   |     ~F      |
+// | 13 |  Odd1_EF.13  |  ~Odd1_EF.13  | 13 |  Evn1_EF.13  |  ~Evn1_EF.13  | Odd_EF  | Odd_nEG |     Ret     |
+// | 13 |  Odd2_EF.13  |  ~Odd2_EF.13  | 13 |  Evn2_EF.13  |  ~Evn2_EF.13  |         |         |             |
+// | 13 |  Odd3_EF.13  |  ~Odd3_EF.13  | 13 |  Evn3_EF.13  |  ~Evn3_EF.13  |         |         |             |
+// | 12 |  Odd4_EF.12  |  ~Odd4_EF.12  | 12 |  Evn4_EF.12  |  ~Evn4_EF.12  |         |         |             |
+// | 13 |  Odd0_nEF.13 |  ~Odd0_nEF.13 | 13 |  Evn0_nEF.13 |  ~Evn0_nEF.13 | Odd_nEG |  ~(¬E)  |     ~G      |
+// | 13 |  Odd1_nEF.13 |  ~Odd2_nEF.13 | 13 |  Evn1_nEF.13 |  ~Evn1_nEF.13 |   ~E    |  ~(¬E)  |MASK_EVN_128 |
+// | 13 |  Odd2_nEF.13 |  ~Odd4_nEF.13 | 13 |  Evn2_nEF.13 |  ~Evn2_nEF.13 |         |         |             |
+// | 13 |  Odd3_nEF.13 |  ~Odd1_nEF.13 | 13 |  Evn3_nEF.13 |  ~Evn3_nEF.13 |         |         |             |
+// | 12 |  Odd4_nEF.12 |  ~Odd3_nEF.12 | 12 |  Evn4_nEF.12 |  ~Evn4_nEF.12 |         |         |             |
 
 // message-word:
 
@@ -97,18 +97,439 @@
 
 // | T0 |    A0    |     A1    | T1 |    A2    |     A3    |  A4  |    A5    |    A6   |
 // |----|----------|-----------|----|----------|-----------|------|----------|---------|
-// | 13 |  Evn0.13 | ~Evn0.13  | 13 |  Evn1.13 | ~Evn1.13  | Evn  | ~W.03a   | ~W.13a  |
-// | 13 |  Evn2.13 | ~Evn2.13  | 13 |  Evn3.13 | ~Evn3.13  |      | ~W.13b   | ~W.13c  |
-// | 12 |  Evn4.12 | ~Evn4.12  | 13 |  Odd0.13 | ~Odd0.13  |      | ~W.03b   | ~W.11   |
-// | 13 |  Odd1.13 | ~Odd1.13  | 13 |  Odd2.13 | ~Odd2.13  |      | ~W.01a   | ~W.01b  |
-// | 13 |  Odd3.13 | ~Odd3.13  | 12 |  Odd4.12 | ~Odd4.12  |      | ~W.05    | ~W.01c |
+// | 13 |  Evn0.13 | ~Evn0.13  | 13 |  Odd0.13 | ~Odd0.13  | Evn  | ~W.03a   | ~W.13a  |
+// | 13 |  Evn1.13 | ~Evn1.13  | 13 |  Odd1.13 | ~Odd1.13  |      | ~W.13b   | ~W.13c  |
+// | 13 |  Evn2.13 | ~Evn2.13  | 13 |  Odd2.13 | ~Odd2.13  |      | ~W.03b   | ~W.11   |
+// | 13 |  Evn3.13 | ~Evn3.13  | 13 |  Odd3.13 | ~Odd3.13  |      | ~W.01a   | ~W.01b  |
+// | 12 |  Evn4.12 | ~Evn4.12  | 12 |  Odd4.12 | ~Odd4.12  |      | ~W.05    | ~W.01c  |
 
 // $\sigma_1(W)$
 
 // | T0 |    A0    |     A1    | T1 |    A2    |     A3    |  A4  |    A5    |    A6   |
 // |----|----------|-----------|----|----------|-----------|------|----------|---------|
-// | 13 |  Evn0.13 | ~Evn0.13  | 13 |  Evn1.13 | ~Evn1.13  | Evn  | ~W.03a   | ~W.13a  |
-// | 13 |  Evn2.13 | ~Evn2.13  | 13 |  Evn3.13 | ~Evn3.13  |      | ~W.13b   | ~W.13c  |
-// | 12 |  Evn4.12 | ~Evn4.12  | 13 |  Odd0.13 | ~Odd0.13  |      | ~W.03b   | ~W.11   |
-// | 13 |  Odd1.13 | ~Odd1.13  | 13 |  Odd2.13 | ~Odd2.13  |      | ~W.01a   | ~W.01b  |
-// | 13 |  Odd3.13 | ~Odd3.13  | 12 |  Odd4.12 | ~Odd4.12  |      | ~W.05    | ~W.01c  |
+// | 13 |  Evn0.13 | ~Evn0.13  | 13 |  Odd0.13 | ~Odd0.13  | Evn  | ~W.03a   | ~W.13a  |
+// | 13 |  Evn1.13 | ~Evn1.13  | 13 |  Odd1.13 | ~Odd1.13  |      | ~W.13b   | ~W.13c  |
+// | 13 |  Evn2.13 | ~Evn2.13  | 13 |  Odd2.13 | ~Odd2.13  |      | ~W.03b   | ~W.11   |
+// | 13 |  Evn3.13 | ~Evn3.13  | 13 |  Odd3.13 | ~Odd3.13  |      | ~W.01a   | ~W.01b  |
+// | 12 |  Evn4.12 | ~Evn4.12  | 12 |  Odd4.12 | ~Odd4.12  |      | ~W.05    | ~W.01c  |
+
+use ff::PrimeField;
+use midnight_proofs::{
+    circuit::{Chip, Layouter, Region, Value},
+    plonk::{
+        Advice, Column, ConstraintSystem, Constraints, Error, Expression, Fixed, Selector,
+        TableColumn,
+    },
+    poly::Rotation,
+};
+use num_integer::Integer;
+
+use crate::{
+    field::{decomposition::chip::P2RDecompositionChip, NativeChip, NativeGadget},
+    hash::sha512::{
+        types::{AssignedPlain, AssignedPlainSpreaded, AssignedSpreaded},
+        utils::{expr_pow2_ip, gen_spread_table, get_even_and_odd_bits, spread, u64_in_be_limbs},
+    },
+    utils::{
+        util::{u128_to_fe, u64_to_fe},
+        ComposableChip,
+    },
+};
+
+/// Number of advice columns used by the identities of the SHA512 chip.
+pub const NB_SHA512_ADVICE_COLS: usize = 8;
+
+/// Number of fixed columns used by the identities of the SHA512 chip.
+pub const NB_SHA512_FIXED_COLS: usize = 2;
+
+const ROUND_CONSTANTS: [u64; 80] = [
+    0x428a2f98d728ae22,
+    0x7137449123ef65cd,
+    0xb5c0fbcfec4d3b2f,
+    0xe9b5dba58189dbbc,
+    0x3956c25bf348b538,
+    0x59f111f1b605d019,
+    0x923f82a4af194f9b,
+    0xab1c5ed5da6d8118,
+    0xd807aa98a3030242,
+    0x12835b0145706fbe,
+    0x243185be4ee4b28c,
+    0x550c7dc3d5ffb4e2,
+    0x72be5d74f27b896f,
+    0x80deb1fe3b1696b1,
+    0x9bdc06a725c71235,
+    0xc19bf174cf692694,
+    0xe49b69c19ef14ad2,
+    0xefbe4786384f25e3,
+    0x0fc19dc68b8cd5b5,
+    0x240ca1cc77ac9c65,
+    0x2de92c6f592b0275,
+    0x4a7484aa6ea6e483,
+    0x5cb0a9dcbd41fbd4,
+    0x76f988da831153b5,
+    0x983e5152ee66dfab,
+    0xa831c66d2db43210,
+    0xb00327c898fb213f,
+    0xbf597fc7beef0ee4,
+    0xc6e00bf33da88fc2,
+    0xd5a79147930aa725,
+    0x06ca6351e003826f,
+    0x142929670a0e6e70,
+    0x27b70a8546d22ffc,
+    0x2e1b21385c26c926,
+    0x4d2c6dfc5ac42aed,
+    0x53380d139d95b3df,
+    0x650a73548baf63de,
+    0x766a0abb3c77b2a8,
+    0x81c2c92e47edaee6,
+    0x92722c851482353b,
+    0xa2bfe8a14cf10364,
+    0xa81a664bbc423001,
+    0xc24b8b70d0f89791,
+    0xc76c51a30654be30,
+    0xd192e819d6ef5218,
+    0xd69906245565a910,
+    0xf40e35855771202a,
+    0x106aa07032bbd1b8,
+    0x19a4c116b8d2d0c8,
+    0x1e376c085141ab53,
+    0x2748774cdf8eeb99,
+    0x34b0bcb5e19b48a8,
+    0x391c0cb3c5c95a63,
+    0x4ed8aa4ae3418acb,
+    0x5b9cca4f7763e373,
+    0x682e6ff3d6b2b8a3,
+    0x748f82ee5defb2fc,
+    0x78a5636f43172f60,
+    0x84c87814a1f0ab72,
+    0x8cc702081a6439ec,
+    0x90befffa23631e28,
+    0xa4506cebde82bde9,
+    0xbef9a3f7b2c67915,
+    0xc67178f2e372532b,
+    0xca273eceea26619c,
+    0xd186b8c721c0c207,
+    0xeada7dd6cde0eb1e,
+    0xf57d4f7fee6ed178,
+    0x06f067aa72176fba,
+    0x0a637dc5a2c898a6,
+    0x113f9804bef90dae,
+    0x1b710b35131c471b,
+    0x28db77f523047d84,
+    0x32caab7b40c72493,
+    0x3c9ebe0a15c9bebc,
+    0x431d67c49c100d4c,
+    0x4cc5d4becb3e42b6,
+    0x597f299cfc657e2a,
+    0x5fcb6fab3ad6faec,
+    0x6c44198c4a475817,
+];
+
+const IV: [u64; 8] = [
+    0x6a09e667f3bcc908,
+    0xbb67ae8584caa73b,
+    0x3c6ef372fe94f82b,
+    0xa54ff53a5f1d36f1,
+    0x510e527fade682d1,
+    0x9b05688c2b3e6c1f,
+    0x1f83d9abfb41bd6b,
+    0x5be0cd19137e2179,
+];
+
+/// Tag for the even and odd 13-13-13-13-12 decompositions.
+enum Parity {
+    Evn,
+    Odd,
+}
+
+/// Plain-Spreaded lookup table.
+#[derive(Clone, Debug)]
+struct SpreadTable {
+    nbits_col: TableColumn,
+    plain_col: TableColumn,
+    sprdd_col: TableColumn,
+}
+
+/// Configuration of Sha512Chip.
+#[derive(Clone, Debug)]
+pub struct Sha512Config {
+    advice_cols: [Column<Advice>; NB_SHA512_ADVICE_COLS],
+    fixed_cols: [Column<Fixed>; NB_SHA512_FIXED_COLS],
+
+    q_lookup: Selector,
+    table: SpreadTable,
+    // q_maj: Selector,
+    // q_half_ch: Selector,
+    // q_Sigma_0: Selector,
+    // q_Sigma_1: Selector,
+    // q_sigma_0: Selector,
+    // q_sigma_1: Selector,
+    q_13_13_13_13_12: Selector,
+    // q_10_9_11_2: Selector,
+    // q_7_12_2_5_6: Selector,
+    // q_12_1x3_7_3_4_3: Selector,
+    // q_add_mod_2_32: Selector,
+}
+
+/// Chip for SHA512.
+#[derive(Clone, Debug)]
+pub struct Sha512Chip<F: PrimeField> {
+    config: Sha512Config,
+    pub(super) native_gadget: NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>,
+}
+
+impl<F: PrimeField> Chip<F> for Sha512Chip<F> {
+    type Config = Sha512Config;
+    type Loaded = ();
+
+    fn config(&self) -> &Self::Config {
+        &self.config
+    }
+
+    fn loaded(&self) -> &Self::Loaded {
+        &()
+    }
+}
+
+impl<F: PrimeField> ComposableChip<F> for Sha512Chip<F> {
+    type SharedResources = (
+        [Column<Advice>; NB_SHA512_ADVICE_COLS],
+        [Column<Fixed>; NB_SHA512_FIXED_COLS],
+    );
+
+    type InstructionDeps = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
+
+    fn new(config: &Sha512Config, native_gadget: &Self::InstructionDeps) -> Self {
+        Self {
+            config: config.clone(),
+            native_gadget: native_gadget.clone(),
+        }
+    }
+
+    fn configure(
+        meta: &mut ConstraintSystem<F>,
+        shared_res: &Self::SharedResources,
+    ) -> Sha512Config {
+        let advice_cols = shared_res.0;
+        let fixed_cols = shared_res.1;
+
+        for (i, column) in advice_cols.iter().enumerate() {
+            // A0 and A2 are not involved in the copy-constraint.
+            if i != 0 && i != 2 {
+                meta.enable_equality(*column);
+            }
+        }
+
+        let q_lookup = meta.selector();
+        let table = SpreadTable {
+            nbits_col: meta.lookup_table_column(),
+            plain_col: meta.lookup_table_column(),
+            sprdd_col: meta.lookup_table_column(),
+        };
+
+        // let q_maj = meta.selector();
+        // let q_half_ch = meta.selector();
+        // let q_Sigma_0 = meta.selector();
+        // let q_Sigma_1 = meta.selector();
+        // let q_sigma_0 = meta.selector();
+        // let q_sigma_1 = meta.selector();
+
+        let q_13_13_13_13_12 = meta.selector();
+        // let q_10_9_11_2 = meta.selector();
+        // let q_7_12_2_5_6 = meta.selector();
+        // let q_12_1x3_7_3_4_3 = meta.selector();
+        // let q_add_mod_2_32 = meta.selector();
+
+        (0..2).for_each(|idx| {
+            meta.lookup("plain-spreaded lookup", |meta| {
+                let q_lookup = meta.query_selector(q_lookup);
+
+                let nbits = meta.query_fixed(fixed_cols[idx], Rotation(0));
+                let plain = meta.query_advice(advice_cols[2 * idx], Rotation(0));
+                let sprdd = meta.query_advice(advice_cols[2 * idx + 1], Rotation(0));
+
+                vec![
+                    (q_lookup.clone() * nbits, table.nbits_col),
+                    (q_lookup.clone() * plain, table.plain_col),
+                    (q_lookup * sprdd, table.sprdd_col),
+                ]
+            });
+        });
+
+        meta.create_gate("13-13-13-13-12 decomposition", |meta| {
+            // See function `assign_sprdd_13_13_13_13_12` for a description of the following
+            // layout.
+            let p13a = meta.query_advice(advice_cols[0], Rotation(-1));
+            let p13b = meta.query_advice(advice_cols[0], Rotation(0));
+            let p13c = meta.query_advice(advice_cols[0], Rotation(1));
+            let p13d = meta.query_advice(advice_cols[0], Rotation(2));
+            let p12 = meta.query_advice(advice_cols[0], Rotation(3));
+            let output = meta.query_advice(advice_cols[4], Rotation(-1));
+
+            let id = expr_pow2_ip([51, 38, 25, 12, 0], [&p13a, &p13b, &p13c, &p13d, &p12]) - output;
+
+            Constraints::with_selector(q_13_13_13_13_12, vec![("13-13-13-13-12 decomposition", id)])
+        });
+
+        Sha512Config {
+            advice_cols,
+            fixed_cols,
+            q_lookup,
+            table,
+            // q_maj,
+            // q_half_ch,
+            // q_Sigma_0,
+            // q_Sigma_1,
+            // q_sigma_0,
+            // q_sigma_1,
+            q_13_13_13_13_12,
+            // q_10_9_11_2,
+            // q_7_12_2_5_6,
+            // q_12_1x3_7_3_4_3,
+            // q_add_mod_2_32,
+        }
+    }
+
+    fn load(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
+        let SpreadTable {
+            nbits_col,
+            plain_col,
+            sprdd_col,
+        } = self.config().table;
+
+        layouter.assign_table(
+            || "spread table",
+            |mut table| {
+                for (index, triple) in gen_spread_table::<F>().enumerate() {
+                    table.assign_cell(|| "nbits", nbits_col, index, || Value::known(triple.0))?;
+                    table.assign_cell(|| "plain", plain_col, index, || Value::known(triple.1))?;
+                    table.assign_cell(|| "sprdd", sprdd_col, index, || Value::known(triple.2))?;
+                }
+                Ok(())
+            },
+        )
+    }
+}
+
+impl<F: PrimeField> Sha512Chip<F> {
+    /// Given a u128, representing a spreaded value, this function fills a
+    /// lookup table with the limbs of its even and odd parts (or vice versa)
+    /// and returns the former or the latter, depending on the desired value
+    /// `even_or_odd`.
+    ///
+    /// If `even_or_odd` = `Parity::Evn`:
+    ///
+    ///  | T0 |    A0   |    A1    | T1 |    A2   |    A3    |  A4 |
+    ///  |----|---------|----------|----|---------|----------|-----|
+    ///  | 13 | Evn0.13 | ~Evn0.13 | 13 | Odd0.13 | ~Odd0.13 | Evn |
+    ///  | 13 | Evn1.13 | ~Evn1.13 | 13 | Odd1.13 | ~Odd1.13 |     | <- q_13_13_13_13_12
+    ///  | 13 | Evn2.13 | ~Evn2.13 | 13 | Odd2.13 | ~Odd2.13 |     |
+    ///  | 13 | Evn3.13 | ~Evn3.13 | 13 | Odd3.13 | ~Odd3.13 |     |
+    ///  | 12 | Evn4.12 | ~Evn4.12 | 12 | Odd4.12 | ~Odd4.12 |     |
+    ///
+    /// and returns `Evn`.
+    ///
+    /// If `even_or_odd` = `Parity::Odd`:
+    ///
+    ///  | T0 |    A0   |    A1    | T1 |    A2   |    A3    |  A4 |
+    ///  |----|---------|----------|----|---------|----------|-----|
+    ///  | 13 | Odd0.13 | ~Odd0.13 | 13 | Evn0.13 | ~Evn0.13 | Odd |
+    ///  | 13 | Odd1.13 | ~Odd1.13 | 13 | Evn1.13 | ~Evn1.13 |     | <- q_13_13_13_13_12
+    ///  | 13 | Odd2.13 | ~Odd2.13 | 13 | Evn2.13 | ~Evn2.13 |     |
+    ///  | 13 | Odd3.13 | ~Odd3.13 | 13 | Evn3.13 | ~Evn3.13 |     |
+    ///  | 12 | Odd4.12 | ~Odd4.12 | 12 | Evn4.12 | ~Evn4.12 |     |
+    ///
+    /// and returns `Odd`.
+    ///
+    /// This function guarantees that the returned value is consistent with
+    /// the values in the filled lookup table.
+    fn assign_sprdd_13_13_13_13_12(
+        &self,
+        region: &mut Region<'_, F>,
+        value: Value<u128>,
+        even_or_odd: Parity,
+        offset: usize,
+    ) -> Result<AssignedPlain<F, 32>, Error> {
+        self.config().q_13_13_13_13_12.enable(region, offset + 1)?;
+
+        let (evn_val, odd_val) = value.map(get_even_and_odd_bits).unzip();
+
+        let [evn0_13, evn1_13, evn2_13, evn3_13, evn4_12] = evn_val
+            .map(|v| u64_in_be_limbs(v, [13, 13, 13, 13, 12]))
+            .transpose_array();
+
+        let [odd0_13, odd1_13, odd2_13, odd3_13, odd4_12] = odd_val
+            .map(|v| u64_in_be_limbs(v, [13, 13, 13, 13, 12]))
+            .transpose_array();
+
+        let idx = match even_or_odd {
+            Parity::Evn => 0,
+            Parity::Odd => 1,
+        };
+
+        self.assign_plain_and_spreaded::<13>(region, evn0_13, offset, idx)?;
+        self.assign_plain_and_spreaded::<13>(region, evn1_13, offset + 1, idx)?;
+        self.assign_plain_and_spreaded::<13>(region, evn2_13, offset + 2, idx)?;
+        self.assign_plain_and_spreaded::<13>(region, evn3_13, offset + 3, idx)?;
+        self.assign_plain_and_spreaded::<12>(region, evn4_12, offset + 4, idx)?;
+
+        self.assign_plain_and_spreaded::<13>(region, odd0_13, offset, 1 - idx)?;
+        self.assign_plain_and_spreaded::<13>(region, odd1_13, offset + 1, 1 - idx)?;
+        self.assign_plain_and_spreaded::<13>(region, odd2_13, offset + 2, 1 - idx)?;
+        self.assign_plain_and_spreaded::<13>(region, odd3_13, offset + 3, 1 - idx)?;
+        self.assign_plain_and_spreaded::<12>(region, odd4_12, offset + 4, 1 - idx)?;
+
+        let out_col = self.config().advice_cols[4];
+        match even_or_odd {
+            Parity::Evn => {
+                region.assign_advice(|| "Evn", out_col, offset, || evn_val.map(u64_to_fe))
+            }
+            Parity::Odd => {
+                region.assign_advice(|| "Odd", out_col, offset, || odd_val.map(u64_to_fe))
+            }
+        }
+        .map(AssignedPlain)
+    }
+
+    /// Given a plain u64 value, supposedly in the range [0, 2^L), assigns it
+    /// in plain and spreaded form, returning an `AssignedPlainSpreaded<F, L>`.
+    ///
+    /// The assigned values are guaranteed to be well-formed and consistent
+    /// via a lookup check at the specified offset.
+    ///
+    /// Note that we have two parallel lookup arguments. The caller must
+    /// choose which of the two is used via the `lookup_idx`.
+    /// If `lookup_idx = 0`, the lookup on columns (T0, A0, A1) will be used.
+    /// If `lookup_idx = 1`, the lookup on columns (T1, A2, A3) will be used.
+    ///
+    /// # Unsatisfiable
+    ///
+    /// If the given value is not in the range [0, 2^L), the circuit will become
+    /// unsatisfiable.
+    fn assign_plain_and_spreaded<const L: usize>(
+        &self,
+        region: &mut Region<'_, F>,
+        plain_val: Value<u64>,
+        offset: usize,
+        lookup_idx: usize,
+    ) -> Result<AssignedPlainSpreaded<F, L>, Error> {
+        self.config().q_lookup.enable(region, offset)?;
+
+        let nbits_col = self.config().fixed_cols[lookup_idx]; // 0 or 1
+        let plain_col = self.config().advice_cols[2 * lookup_idx]; // 0 or 2
+        let sprdd_col = self.config().advice_cols[2 * lookup_idx + 1]; // 1 or 3
+
+        let nbits_val = Value::known(F::from(L as u64));
+        let sprdd_val = plain_val.map(spread).map(u128_to_fe);
+        let plain_val = plain_val.map(u64_to_fe);
+
+        region.assign_fixed(|| "nbits", nbits_col, offset, || nbits_val)?;
+        let plain = region.assign_advice(|| "plain", plain_col, offset, || plain_val)?;
+        let spreaded = region.assign_advice(|| "sprdd", sprdd_col, offset, || sprdd_val)?;
+
+        Ok(AssignedPlainSpreaded {
+            plain: AssignedPlain(plain),
+            spreaded: AssignedSpreaded(spreaded),
+        })
+    }
+}
