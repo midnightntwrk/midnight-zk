@@ -20,7 +20,8 @@ midnight-proofs = { path = "../proofs", version = "0.4.0", default-features = fa
 serde = { workspace = true, optional = true }
 serde_derive = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
-sha2 = { workspace = true}
+sha2 = { workspace = true }
+rand = { workspace = true }
 
 
 num-bigint = { workspace = true }
