@@ -128,10 +128,13 @@ use crate::{
     field::{decomposition::chip::P2RDecompositionChip, NativeChip, NativeGadget},
     hash::sha512::{
         types::{AssignedPlain, AssignedPlainSpreaded, AssignedSpreaded},
-        utils::{expr_pow2_ip, gen_spread_table, get_even_and_odd_bits, spread, u64_in_be_limbs},
+        utils::{
+            expr_pow2_ip, expr_pow4_ip, gen_spread_table, get_even_and_odd_bits, spread,
+            spreaded_maj, u64_in_be_limbs,
+        },
     },
     utils::{
-        util::{u128_to_fe, u64_to_fe},
+        util::{fe_to_u128, u128_to_fe, u64_to_fe},
         ComposableChip,
     },
 };
@@ -258,7 +261,8 @@ pub struct Sha512Config {
 
     q_lookup: Selector,
     table: SpreadTable,
-    // q_maj: Selector,
+
+    q_maj: Selector,
     // q_half_ch: Selector,
     // q_Sigma_0: Selector,
     // q_Sigma_1: Selector,
@@ -327,7 +331,7 @@ impl<F: PrimeField> ComposableChip<F> for Sha512Chip<F> {
             sprdd_col: meta.lookup_table_column(),
         };
 
-        // let q_maj = meta.selector();
+        let q_maj = meta.selector();
         // let q_half_ch = meta.selector();
         // let q_Sigma_0 = meta.selector();
         // let q_Sigma_1 = meta.selector();
@@ -356,6 +360,36 @@ impl<F: PrimeField> ComposableChip<F> for Sha512Chip<F> {
             });
         });
 
+        meta.create_gate("Maj(A, B, C)", |meta| {
+            // See function `maj` for a description of the following layout.
+            let sA = meta.query_advice(advice_cols[5], Rotation(-1));
+            let sB = meta.query_advice(advice_cols[6], Rotation(-1));
+            let sC = meta.query_advice(advice_cols[5], Rotation(0));
+            let s_odd_13a = meta.query_advice(advice_cols[1], Rotation(-1));
+            let s_odd_13b = meta.query_advice(advice_cols[1], Rotation(0));
+            let s_odd_13c = meta.query_advice(advice_cols[1], Rotation(1));
+            let s_odd_13d = meta.query_advice(advice_cols[1], Rotation(2));
+            let s_odd_12 = meta.query_advice(advice_cols[1], Rotation(3));
+            let s_evn_13a = meta.query_advice(advice_cols[3], Rotation(-1));
+            let s_evn_13b = meta.query_advice(advice_cols[3], Rotation(0));
+            let s_evn_13c = meta.query_advice(advice_cols[3], Rotation(1));
+            let s_evn_13d = meta.query_advice(advice_cols[3], Rotation(2));
+            let s_evn_12 = meta.query_advice(advice_cols[3], Rotation(3));
+
+            let s_evn = expr_pow4_ip(
+                [51, 38, 25, 12, 0],
+                [&s_evn_13a, &s_evn_13b, &s_evn_13c, &s_evn_13d, &s_evn_12],
+            );
+            let s_odd = expr_pow4_ip(
+                [51, 38, 25, 12, 0],
+                [&s_odd_13a, &s_odd_13b, &s_odd_13c, &s_odd_13d, &s_odd_12],
+            );
+
+            let id = (sA + sB + sC) - (s_evn + Expression::from(2) * s_odd);
+
+            Constraints::with_selector(q_maj, vec![("Maj", id)])
+        });
+
         meta.create_gate("13-13-13-13-12 decomposition", |meta| {
             // See function `assign_sprdd_13_13_13_13_12` for a description of the following
             // layout.
@@ -376,7 +410,7 @@ impl<F: PrimeField> ComposableChip<F> for Sha512Chip<F> {
             fixed_cols,
             q_lookup,
             table,
-            // q_maj,
+            q_maj,
             // q_half_ch,
             // q_Sigma_0,
             // q_Sigma_1,
@@ -412,6 +446,79 @@ impl<F: PrimeField> ComposableChip<F> for Sha512Chip<F> {
 }
 
 impl<F: PrimeField> Sha512Chip<F> {
+    /// Computes Maj(A, B, C).
+    fn maj(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        sprdd_a: &AssignedSpreaded<F, 64>,
+        sprdd_b: &AssignedSpreaded<F, 64>,
+        sprdd_c: &AssignedSpreaded<F, 64>,
+    ) -> Result<AssignedPlain<F, 64>, Error> {
+        /*
+        We need to compute:
+            Maj(A, B, C) = (A ∧ B) ⊕ (A ∧ C) ⊕ (B ∧ C)
+
+        Note that the "majority" function (bit-wise most commont value) between A, B, C
+        is encoded in the odd bits of (~A + ~B + ~C). This is because, for every bit
+        position i, iff at least two out of three are 1, the sum A_i + B_i + C_i will
+        overflow, leaving a carry bit of 1 (the result of majority for that bit).
+
+        Maj which can be encoded by
+
+        1) applying the plain-spreaded lookup on 13-13-13-13-12 limbs of Evn and Odd:
+             Evn: (Evn.13a, Evn.13b, Evn.13c, Evn.12)
+             Odd: (Odd.13a, Odd.13b, Odd.12)
+
+        2) asserting the 13-13-12 decomposition identity for Odd:
+              2^21 * Odd.13a + 2^10 * Odd.13b + Odd.12
+            = Odd
+
+        3) asserting the major identity regarding the spreaded values:
+              (4^21 * ~Evn.11a + 4^10 * ~Evn.11b + ~Evn.10)
+          2 * (4^21 * ~Odd.11a + 4^10 * ~Odd.11b + ~Odd.10)
+             = ~A + ~B + ~C
+
+        The output is Odd.
+
+        We distribute these values in the PLONK table as follows.
+
+        | T0 |    A0    |     A1    | T1 |    A2    |     A3    |  A4  |   A5  |  A6   |
+        |----|----------|-----------|----|----------|-----------|------|-------|-------|
+        | 13 |  Odd.13a | ~Odd.13a  | 13 |  Evn.13a | ~Evn.13a  | Odd  |  ~A   |  ~B   |
+        | 13 |  Odd.13b | ~Odd.13b  | 13 |  Evn.13b | ~Evn.13b  |      |  ~C   |       | <- q_maj
+        | 13 |  Odd.13c | ~Odd.13c  | 13 |  Evn.13c | ~Evn.13c  |      |       |       |
+        | 13 |  Odd.13d | ~Odd.13d  | 13 |  Evn.13d | ~Evn.13d  |      |       |       |
+        | 12 |  Odd.12  | ~Odd.12   | 12 |  Evn.12  | ~Evn.12   |      |       |       |
+        */
+
+        let adv_cols = self.config().advice_cols;
+
+        layouter.assign_region(
+            || "Maj(A, B, C)",
+            |mut region| {
+                self.config().q_maj.enable(&mut region, 1)?;
+
+                (sprdd_a.0).copy_advice(|| "~A", &mut region, adv_cols[5], 0)?;
+                (sprdd_b.0).copy_advice(|| "~B", &mut region, adv_cols[6], 0)?;
+                (sprdd_c.0).copy_advice(|| "~C", &mut region, adv_cols[5], 1)?;
+
+                let val_of_sprdd_forms: Value<[u128; 3]> = Value::from_iter([
+                    sprdd_a.0.value().copied().map(fe_to_u128),
+                    sprdd_b.0.value().copied().map(fe_to_u128),
+                    sprdd_c.0.value().copied().map(fe_to_u128),
+                ])
+                .map(|sprdd_forms: Vec<u128>| sprdd_forms.try_into().unwrap());
+
+                self.assign_sprdd_13_13_13_13_12(
+                    &mut region,
+                    val_of_sprdd_forms.map(spreaded_maj),
+                    Parity::Odd,
+                    0,
+                )
+            },
+        )
+    }
+
     /// Given a u128, representing a spreaded value, this function fills a
     /// lookup table with the limbs of its even and odd parts (or vice versa)
     /// and returns the former or the latter, depending on the desired value
@@ -421,11 +528,11 @@ impl<F: PrimeField> Sha512Chip<F> {
     ///
     ///  | T0 |    A0   |    A1    | T1 |    A2   |    A3    |  A4 |
     ///  |----|---------|----------|----|---------|----------|-----|
-    ///  | 13 | Evn0.13 | ~Evn0.13 | 13 | Odd0.13 | ~Odd0.13 | Evn |
-    ///  | 13 | Evn1.13 | ~Evn1.13 | 13 | Odd1.13 | ~Odd1.13 |     | <- q_13_13_13_13_12
-    ///  | 13 | Evn2.13 | ~Evn2.13 | 13 | Odd2.13 | ~Odd2.13 |     |
-    ///  | 13 | Evn3.13 | ~Evn3.13 | 13 | Odd3.13 | ~Odd3.13 |     |
-    ///  | 12 | Evn4.12 | ~Evn4.12 | 12 | Odd4.12 | ~Odd4.12 |     |
+    ///  | 13 | Evn.13a | ~Evn.13a | 13 | Odd.13a | ~Odd.13a | Evn |
+    ///  | 13 | Evn.13b | ~Evn.13b | 13 | Odd.13b | ~Odd.13b |     | <- q_13_13_13_13_12
+    ///  | 13 | Evn.13c | ~Evn.13c | 13 | Odd.13c | ~Odd.13c |     |
+    ///  | 13 | Evn.13d | ~Evn.13d | 13 | Odd.13d | ~Odd.13d |     |
+    ///  | 12 | Evn.12  | ~Evn.12  | 12 | Odd.12  | ~Odd.12  |     |
     ///
     /// and returns `Evn`.
     ///
@@ -433,11 +540,11 @@ impl<F: PrimeField> Sha512Chip<F> {
     ///
     ///  | T0 |    A0   |    A1    | T1 |    A2   |    A3    |  A4 |
     ///  |----|---------|----------|----|---------|----------|-----|
-    ///  | 13 | Odd0.13 | ~Odd0.13 | 13 | Evn0.13 | ~Evn0.13 | Odd |
-    ///  | 13 | Odd1.13 | ~Odd1.13 | 13 | Evn1.13 | ~Evn1.13 |     | <- q_13_13_13_13_12
-    ///  | 13 | Odd2.13 | ~Odd2.13 | 13 | Evn2.13 | ~Evn2.13 |     |
-    ///  | 13 | Odd3.13 | ~Odd3.13 | 13 | Evn3.13 | ~Evn3.13 |     |
-    ///  | 12 | Odd4.12 | ~Odd4.12 | 12 | Evn4.12 | ~Evn4.12 |     |
+    ///  | 13 | Odd.13a | ~Odd.13a | 13 | Evn.13a | ~Evn.13a | Odd |
+    ///  | 13 | Odd.13b | ~Odd.13b | 13 | Evn.13b | ~Evn.13b |     | <- q_13_13_13_13_12
+    ///  | 13 | Odd.13c | ~Odd.13c | 13 | Evn.13c | ~Evn.13c |     |
+    ///  | 13 | Odd.13d | ~Odd.13d | 13 | Evn.13d | ~Evn.13d |     |
+    ///  | 12 | Odd.12  | ~Odd.12  | 12 | Evn.12  | ~Evn.12  |     |
     ///
     /// and returns `Odd`.
     ///
@@ -449,7 +556,7 @@ impl<F: PrimeField> Sha512Chip<F> {
         value: Value<u128>,
         even_or_odd: Parity,
         offset: usize,
-    ) -> Result<AssignedPlain<F, 32>, Error> {
+    ) -> Result<AssignedPlain<F, 64>, Error> {
         self.config().q_13_13_13_13_12.enable(region, offset + 1)?;
 
         let (evn_val, odd_val) = value.map(get_even_and_odd_bits).unzip();
