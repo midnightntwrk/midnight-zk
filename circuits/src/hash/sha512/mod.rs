@@ -16,5 +16,5 @@
 #![allow(non_snake_case)]
 
 mod sha512_chip;
-// mod types;
+mod types;
 mod utils;
