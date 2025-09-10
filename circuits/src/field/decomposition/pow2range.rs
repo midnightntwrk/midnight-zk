@@ -67,7 +67,7 @@ pub struct Pow2RangeConfig {
 /// not possible to range-check only some of them. However, different rows may
 /// assert different ranges (specified by the tag).
 ///
-/// Note: The table will include all the tag values that are actually used in
+/// Note: The table will include only the tag values that are actually used in
 /// the circuit! This allows us to have smaller tables when possible.
 /// For that, it is necessary to load this chip at the end of a synthesize,
 /// not at the beginning!
