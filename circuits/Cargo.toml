@@ -19,15 +19,17 @@ midnight-proofs = { path = "../proofs", version = "0.4.0", default-features = fa
     "committed-instances",
 ] }
 bench_macros = { path = "../bench-macros"}
-rand = "0.8"
+
+serde = { workspace = true, optional = true }
+serde_derive = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+sha2 = { workspace = true}
+rand = { workspace = true }
+
 num-bigint = { version = "0.4" }
 num-traits = "0.2"
-subtle = "2.6"
 num-integer = "0.1"
-serde = { version = "1" }
-serde_derive = { version = "1", optional = true }
-serde_json = { version = "1", optional = true }
-sha2 = "0.10.9"
+subtle = "2.6"
 base64 = "0.13.1"
 lazy_static = "1.5.0"
 bincode = "2.0"
@@ -37,15 +39,14 @@ criterion = { version = "0.7", optional = true }
 criterion = "0.7"
 rand_chacha = "0.3.1"
 goldenfile = "1.8.0"
-num-bigint = { version = "0.4", features = ["rand"] }
-serde_json = "1.0"
+num-bigint = { workspace = true, features = ["rand"] }
+serde_json = { workspace = true }
 itertools = "0.14"
 dhat = "0.3"
 bellman = "0.14.0"
 
 [features]
 default = []
-regression = ["serde_derive", "serde_json"]
 # Feature that exposes some testing functionality, such as load from scratch or instantiable
 testing = ["num-bigint/rand"]
 heap_profiling = []
