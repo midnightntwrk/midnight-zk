@@ -277,7 +277,7 @@ fn read_credential<const MAX: usize>(path: &str) -> Result<Vec<u8>, Error> {
 }
 
 fn main() {
-    const K: u32 = 18;
+    const K: u32 = 17;
     let srs = filecoin_srs(K);
     let credential_blob = read_credential::<4096>(CRED_PATH).expect("Path to credential file.");
 
@@ -304,7 +304,7 @@ fn main() {
     let proof = compact_std_lib::prove::<AtalaJsonECDSA, blake2b_simd::State>(
         &srs, &pk, &relation, &instance, witness, OsRng,
     )
-    .expect("Proof generation should not fail");
+    .expect("Proof generation should not fail.");
     println!("... done ({:?})", p.elapsed());
 
     let v = start("Proof verification");
