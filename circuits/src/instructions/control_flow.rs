@@ -155,7 +155,6 @@ pub mod tests {
             mut layouter: impl Layouter<F>,
         ) -> Result<(), Error> {
             let chip = ControlFlowChip::new_from_scratch(&config);
-            ControlFlowChip::load_from_scratch(&mut layouter, &config);
 
             let x = chip.assign_fixed(&mut layouter, self.x.clone())?;
             let y = chip.assign_fixed(&mut layouter, self.y.clone())?;
@@ -179,7 +178,9 @@ pub mod tests {
                     chip.assert_equal_to_fixed(&mut layouter, &res, self.expected.clone())
                 }
                 Operation::CondAssertEqual => chip.cond_assert_equal(&mut layouter, &cond, &x, &y),
-            }
+            }?;
+
+            chip.load_from_scratch(&mut layouter)
         }
     }
 

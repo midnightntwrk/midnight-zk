@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 ## [Unreleased]
 
 ### Added
+* Missing load of native_chip and poseidon (although they were not necessary) [#90](https://github.com/midnightntwrk/midnight-zk/pull/90)
 
 ### Changed
 * Modify `pow2range` chip: adjust architecture in light aggregator [#38](https://github.com/midnightntwrk/midnight-zk/pull/38)

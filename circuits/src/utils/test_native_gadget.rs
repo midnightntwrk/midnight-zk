@@ -79,15 +79,12 @@ macro_rules! run_test_native_gadget {
                 let max_bit_len = 8;
                 let native_chip = NativeChip::new(config.native_config(), &());
                 let core_decomposition_chip = P2RDecompositionChip::new(&config, &max_bit_len);
-                let $chip = NativeGadget::new(core_decomposition_chip, native_chip);
-
-                let pow2range_config = config.pow2range_config();
-                let pow2range_chip = Pow2RangeChip::new(pow2range_config, max_bit_len);
-                pow2range_chip.load_table(&mut $layouter);
+                let $chip = NativeGadget::new(core_decomposition_chip.clone(), native_chip.clone());
 
                 $synthesize_body
 
-                Ok(())
+                native_chip.load(&mut $layouter)?;
+                core_decomposition_chip.load(&mut $layouter)
             }
         }
 

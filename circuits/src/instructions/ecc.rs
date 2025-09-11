@@ -217,7 +217,6 @@ pub mod tests {
             mut layouter: impl Layouter<F>,
         ) -> Result<(), Error> {
             let ecc_chip = EccChip::new_from_scratch(&config);
-            EccChip::load_from_scratch(&mut layouter, &config);
 
             // y does not apply in tests of arity-1 functions.
             let y_idx = min(self.inputs.len() - 1, 1);
@@ -273,7 +272,9 @@ pub mod tests {
                 }
             }?;
 
-            ecc_chip.assert_equal_to_fixed(&mut layouter, &res, self.expected)
+            ecc_chip.assert_equal_to_fixed(&mut layouter, &res, self.expected)?;
+
+            ecc_chip.load_from_scratch(&mut layouter)
         }
     }
 

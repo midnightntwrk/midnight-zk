@@ -141,7 +141,6 @@ pub mod tests {
             mut layouter: impl Layouter<F>,
         ) -> Result<(), Error> {
             let chip = ZeroChip::new_from_scratch(&config);
-            ZeroChip::load_from_scratch(&mut layouter, &config);
 
             let x = chip.assign_fixed(&mut layouter, self.x.clone())?;
             match self.operation {
@@ -164,7 +163,9 @@ pub mod tests {
                         },
                     )
                 }
-            }
+            }?;
+
+            chip.load_from_scratch(&mut layouter)
         }
     }
 

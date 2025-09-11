@@ -611,8 +611,8 @@ impl<F: PoseidonField> FromScratch<F> for PoseidonChip<F> {
         (native_config, poseidon_config)
     }
 
-    fn load_from_scratch(layouter: &mut impl Layouter<F>, config: &Self::Config) {
-        NativeChip::<F>::load_from_scratch(layouter, &config.0)
+    fn load_from_scratch(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
+        self.native_chip.load_from_scratch(layouter)
     }
 }
 
@@ -666,7 +666,6 @@ mod tests {
             mut layouter: impl Layouter<F>,
         ) -> Result<(), Error> {
             let poseidon_chip = PoseidonChip::new_from_scratch(&config);
-            PoseidonChip::load_from_scratch(&mut layouter, &config);
 
             let inputs: AssignedRegister<F> = poseidon_chip
                 .native_chip
@@ -686,7 +685,7 @@ mod tests {
 
             // let _ = poseidon_chip.permutation(&mut layouter, &inputs)?;
 
-            Ok(())
+            poseidon_chip.load_from_scratch(&mut layouter)
         }
     }
 

@@ -220,6 +220,9 @@ impl<const NB_PROOFS: usize> Circuit<F> for AggregatorCircuit<NB_PROOFS> {
 
         verifier_chip.constrain_acc_as_public_input_with_committed_scalars(&mut layouter, &acc)?;
 
+        scalar_chip.load(&mut layouter)?;
+        sponge_chip.load(&mut layouter)?;
+
         // It is very important to call finalize in order to make sure all witnessed
         // points were at some point constrained as public inputs.
         fake_curve_chip.finalize()
