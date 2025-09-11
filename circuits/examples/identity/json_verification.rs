@@ -1,6 +1,6 @@
 //! Example of verifying the validity of an ECDSA signed Atala identity JSON.
 
-use std::{fs::OpenOptions, io::Read, time::Instant};
+use std::{io::Write, time::Instant};
 
 use halo2curves::secp256k1::{Fq as secp256k1Scalar, Secp256k1};
 use midnight_circuits::{
@@ -13,7 +13,7 @@ use midnight_circuits::{
     },
     parsing::{DateFormat, Separator},
     testing_utils::{
-        ecdsa::{ECDSASig, Ecdsa, FromBase64, PublicKey},
+        ecdsa::{ECDSASig, FromBase64, PublicKey},
         plonk_api::filecoin_srs,
     },
     types::{AssignedByte, AssignedForeignPoint, InnerValue, Instantiable},
@@ -24,8 +24,11 @@ use midnight_proofs::{
 };
 use num_bigint::BigUint;
 use rand::rngs::OsRng;
-use sha2::Digest;
 
+use utils::{read_credential, split_blob, verify_credential_sig};
+
+#[path = "./utils.rs"]
+mod utils;
 type F = midnight_curves::Fq;
 
 const CRED_PATH: &str = "./examples/identity/credentials/2k-credential";
@@ -268,14 +271,6 @@ where
     seq.windows(subseq.len()).position(|window| window == subseq)
 }
 
-// Reads a credential of up to MAX bytes from the specified path.
-fn read_credential<const MAX: usize>(path: &str) -> Result<Vec<u8>, Error> {
-    let mut fd = OpenOptions::new().read(true).open(path)?;
-    let mut buf = vec![0u8; MAX];
-    let len = fd.read(buf.as_mut_slice())?;
-    Ok(buf[..len - 1].into()) // -1 for the EOF
-}
-
 fn main() {
     const K: u32 = 17;
     let srs = filecoin_srs(K);
@@ -284,14 +279,15 @@ fn main() {
     let relation = AtalaJsonECDSA;
 
     let start = |msg: &str| -> Instant {
-        println!("{msg}");
+        print!("{msg}");
+        let _ = std::io::stdout().flush();
         Instant::now()
     };
 
     let setup = start("Setting up the vk/pk");
     let vk = compact_std_lib::setup_vk(&srs, &relation);
     let pk = compact_std_lib::setup_pk(&relation, &vk);
-    println!("... done ({:?})", setup.elapsed());
+    println!("... done\n{:?}", setup.elapsed());
 
     // Build the instance and witness to be proven.
     let wit = start("Computing instance and witnesses");
@@ -305,7 +301,7 @@ fn main() {
         &srs, &pk, &relation, &instance, witness, OsRng,
     )
     .expect("Proof generation should not fail.");
-    println!("... done ({:?})", p.elapsed());
+    println!("... done\n{:?}", p.elapsed());
 
     let v = start("Proof verification");
     assert!(
@@ -318,7 +314,7 @@ fn main() {
         )
         .is_ok()
     );
-    println!("... done ({:?})", v.elapsed())
+    println!("... done\n{:?}", v.elapsed())
 }
 
 // Helper functions for base64 encoded credentials.
@@ -339,41 +335,4 @@ impl AtalaJsonECDSA {
             signature,
         )
     }
-}
-
-/// Splits a JWT blob in its 3 parts:
-///  * header
-///  * body
-///  * signature
-///
-/// The signature is computed over payload := (header || body).
-/// Returns the payload and the signature.
-/// For reference: <https://auth0.com/docs/secure/tokens/json-web-tokens/json-web-token-structure>
-fn split_blob(blob: &[u8]) -> (Vec<u8>, Vec<u8>) {
-    let mut parts = blob.split(|char| *char as char == '.');
-
-    let header = parts.next().unwrap();
-    let body = parts.next().unwrap();
-    let signature = parts.next().unwrap();
-
-    assert!(parts.next().is_none());
-
-    let payload = [header, b".", body].concat();
-    let signature = signature.to_vec();
-
-    (payload, signature)
-}
-
-/// Verifies the signature of a credential (out of circuit).
-/// The public key, message (or payload) and signature are expected in base64
-/// encoding.
-fn verify_credential_sig(pk_base64: &[u8], msg: &[u8], sig_base64: &[u8]) -> bool {
-    let pk_affine = Secp256k1::from_base64(pk_base64).unwrap();
-    let sig = ECDSASig::from_base64(sig_base64).unwrap();
-
-    let mut msg_hash_bytes: [u8; 32] = sha2::Sha256::digest(msg).into();
-    msg_hash_bytes.reverse(); // BE to LE
-    let msg_scalar = secp256k1Scalar::from_bytes(&msg_hash_bytes).unwrap();
-
-    Ecdsa::verify(&pk_affine, &msg_scalar, &sig)
 }

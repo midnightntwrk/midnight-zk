@@ -1,9 +1,9 @@
 //! Example of verifying the validity of an ECDSA signed Atala identity JSON.
 
+use std::io::Write;
 use std::time::Instant;
-use std::{fs::OpenOptions, io::Read};
 
-use halo2curves::secp256k1::{Fq as secp256k1Scalar, Secp256k1};
+use halo2curves::secp256k1::Secp256k1;
 use midnight_circuits::instructions::public_input::CommittedInstanceInstructions;
 use midnight_circuits::{
     compact_std_lib::{self, Relation, ZkStdLib, ZkStdLibArch},
@@ -13,7 +13,7 @@ use midnight_circuits::{
         DecompositionInstructions, EccInstructions, PublicInputInstructions,
     },
     testing_utils::{
-        ecdsa::{ECDSASig, Ecdsa, FromBase64, PublicKey},
+        ecdsa::{ECDSASig, FromBase64, PublicKey},
         plonk_api::filecoin_srs,
     },
     types::{AssignedByte, AssignedForeignPoint, Instantiable},
@@ -25,8 +25,12 @@ use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
+
 use rand::rngs::OsRng;
-use sha2::Digest;
+use utils::{read_credential, split_blob, verify_credential_sig};
+
+#[path = "./utils.rs"]
+mod utils;
 
 type F = midnight_curves::Fq;
 
@@ -120,6 +124,22 @@ impl Relation for AtalaEnrollment {
 }
 
 impl AtalaEnrollment {
+    // Creates an AtalaJsonECDSA witness from:
+    // 1. A JWT encoded Atala credential.
+    // 2. The corresponding base64 encoded ECDSA public key.
+    fn witness_from_blob(blob: &[u8]) -> (Payload, ECDSASig) {
+        let (payload, signature_bytes) = split_blob(blob);
+
+        assert!(verify_credential_sig(PUB_KEY, &payload, &signature_bytes));
+
+        let signature = ECDSASig::from_base64(&signature_bytes).expect("Base64 encoded signature.");
+
+        (
+            payload.try_into().expect("Payload of length {PAYLOAD_LEN}"),
+            signature,
+        )
+    }
+
     /// Verifies the secp256k1 ECDSA signature of the given message.
     fn verify_ecdsa(
         std_lib: &ZkStdLib,
@@ -159,14 +179,6 @@ impl AtalaEnrollment {
     }
 }
 
-// Reads a credential of up to MAX bytes from the specified path.
-fn read_credential<const MAX: usize>(path: &str) -> Result<Vec<u8>, Error> {
-    let mut fd = OpenOptions::new().read(true).open(path)?;
-    let mut buf = vec![0u8; MAX];
-    let len = fd.read(buf.as_mut_slice())?;
-    Ok(buf[..len - 1].into()) // -1 for the EOF
-}
-
 fn main() {
     const K: u32 = 17;
     let srs = filecoin_srs(K);
@@ -175,7 +187,8 @@ fn main() {
     let relation = AtalaEnrollment;
 
     let start = |msg: &str| -> Instant {
-        println!("{msg}");
+        print!("{msg}");
+        let _ = std::io::stdout().flush();
         Instant::now()
     };
 
@@ -187,21 +200,23 @@ fn main() {
     // Build the instance and witness to be proven.
     let wit = start("Computing instance and witnesses");
     let instance = PublicKey::from_base64(PUB_KEY).expect("Base64 encoded PK");
-    let witness = AtalaEnrollment::witness_from_blob(credential_blob.as_slice());
-    let witness = (witness.0, witness.1);
+    let witness = {
+        let w = AtalaEnrollment::witness_from_blob(credential_blob.as_slice());
+        (w.0, w.1)
+    };
     let committed_credential: G1Affine = {
         let instance = AtalaEnrollment::format_committed_instances(&witness);
         commit_to_instances::<_, KZGCommitmentScheme<_>>(&srs, vk.vk().get_domain(), &instance)
             .into()
     };
-    println!("... done ({:?})", wit.elapsed());
+    println!("... done\n{:?}", wit.elapsed());
 
     let p = start("Proof generation");
     let proof = compact_std_lib::prove::<AtalaEnrollment, blake2b_simd::State>(
         &srs, &pk, &relation, &instance, witness, OsRng,
     )
     .expect("Proof generation should not fail");
-    println!("... done ({:?})", p.elapsed());
+    println!("... done\n{:?}", p.elapsed());
 
     let v = start("Proof verification");
     assert!(
@@ -214,62 +229,5 @@ fn main() {
         )
         .is_ok()
     );
-    println!("... done ({:?})", v.elapsed())
-}
-
-// Helper functions for base64 encoded credentials.
-// -----------------------------------------------
-impl AtalaEnrollment {
-    // Creates an AtalaJsonECDSA witness from:
-    // 1. A JWT encoded Atala credential.
-    // 2. The corresponding base64 encoded ECDSA public key.
-    fn witness_from_blob(blob: &[u8]) -> (Payload, ECDSASig) {
-        let (payload, signature_bytes) = split_blob(blob);
-
-        assert!(verify_credential_sig(PUB_KEY, &payload, &signature_bytes));
-
-        let signature = ECDSASig::from_base64(&signature_bytes).expect("Base64 encoded signature.");
-
-        (
-            payload.try_into().expect("Payload of length {PAYLOAD_LEN}"),
-            signature,
-        )
-    }
-}
-
-/// Splits a JWT blob in its 3 parts:
-///  * header
-///  * body
-///  * signature
-///
-/// The signature is computed over payload := (header || body).
-/// Returns the payload and the signature.
-/// For reference: <https://auth0.com/docs/secure/tokens/json-web-tokens/json-web-token-structure>
-fn split_blob(blob: &[u8]) -> (Vec<u8>, Vec<u8>) {
-    let mut parts = blob.split(|char| *char as char == '.');
-
-    let header = parts.next().unwrap();
-    let body = parts.next().unwrap();
-    let signature = parts.next().unwrap();
-
-    assert!(parts.next().is_none());
-
-    let payload = [header, b".", body].concat();
-    let signature = signature.to_vec();
-
-    (payload, signature)
-}
-
-/// Verifies the signature of a credential (out of circuit).
-/// The public key, message (or payload) and signature are expected in base64
-/// encoding.
-fn verify_credential_sig(pk_base64: &[u8], msg: &[u8], sig_base64: &[u8]) -> bool {
-    let pk_affine = Secp256k1::from_base64(pk_base64).unwrap();
-    let sig = ECDSASig::from_base64(sig_base64).unwrap();
-
-    let mut msg_hash_bytes: [u8; 32] = sha2::Sha256::digest(msg).into();
-    msg_hash_bytes.reverse(); // BE to LE
-    let msg_scalar = secp256k1Scalar::from_bytes(&msg_hash_bytes).unwrap();
-
-    Ecdsa::verify(&pk_affine, &msg_scalar, &sig)
+    println!("... done\n{:?}", v.elapsed())
 }
