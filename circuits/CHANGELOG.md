@@ -19,6 +19,8 @@ verification keys break backwards compatibility.
 * Add Schnorr signature example [#55](https://github.com/midnightntwrk/midnight-zk/pull/55)
 * Feature to run internal benchmarks [#93](https://github.com/midnightntwrk/midnight-zk/pull/93)
 * Add function to return number of points involved in a proof [#102](https://github.com/midnightntwrk/midnight-zk/pull/102)
+* Add crendential enrollment proof [#81](https://github.com/midnightntwrk/midnight-zk/pull/81)
+=======
 
 ### Changed
 * Refactored crate to prepare for edition 2024.
