@@ -35,7 +35,7 @@ use crate::{
     ecc::curves::{CircuitCurve, EdwardsCurve},
     field::{decomposition::chip::P2RDecompositionChip, NativeChip, NativeGadget},
     instructions::*,
-    types::{AssignedBit, AssignedNative, InnerConstants, InnerValue, Instantiable},
+    types::{AssignedBit, AssignedByte, AssignedNative, InnerConstants, InnerValue, Instantiable},
     utils::{
         util::{fe_to_le_bits, le_bits_to_field_elem},
         ComposableChip,
@@ -916,8 +916,8 @@ impl<C: EdwardsCurve> FromScratch<C::Base> for EccChip<C> {
         (ecc_config, native_gadget_config)
     }
 
-    fn load_from_scratch(layouter: &mut impl Layouter<C::Base>, config: &Self::Config) {
-        NativeGadget::load_from_scratch(layouter, &config.1)
+    fn load_from_scratch(&self, layouter: &mut impl Layouter<C::Base>) -> Result<(), Error> {
+        self.native_gadget.load_from_scratch(layouter)
     }
 }
 
@@ -925,6 +925,28 @@ impl<C: EdwardsCurve> FromScratch<C::Base> for EccChip<C> {
 impl<C: EdwardsCurve> Sampleable for AssignedNativePoint<C> {
     fn sample_inner(rng: impl RngCore) -> C::CryptographicGroup {
         C::CryptographicGroup::random(rng)
+    }
+}
+
+impl<C: EdwardsCurve> EccChip<C> {
+    /// Creates an assigned Jubjub scalar from an integer represented as a
+    /// sequence of little-endian bytes.
+    pub fn scalar_from_le_bytes(
+        &self,
+        layouter: &mut impl Layouter<C::Base>,
+        bytes: &[AssignedByte<C::Base>],
+    ) -> Result<ScalarVar<C>, Error> {
+        let mut bits = Vec::with_capacity(bytes.len() * 8);
+        for byte in bytes {
+            let byte_as_f: AssignedNative<C::Base> = self.native_gadget.convert(layouter, byte)?;
+            bits.extend(self.native_gadget.assigned_to_le_bits(
+                layouter,
+                &byte_as_f,
+                Some(8),
+                true,
+            )?)
+        }
+        Ok(ScalarVar(bits))
     }
 }
 

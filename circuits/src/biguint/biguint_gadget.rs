@@ -794,8 +794,8 @@ where
         <N as FromScratch<F>>::configure_from_scratch(meta, instance_columns)
     }
 
-    fn load_from_scratch(layouter: &mut impl Layouter<F>, config: &Self::Config) {
-        <N as FromScratch<F>>::load_from_scratch(layouter, config);
+    fn load_from_scratch(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
+        self.native_gadget.load_from_scratch(layouter)
     }
 }
 
@@ -901,7 +901,6 @@ mod tests {
         ) -> Result<(), Error> {
             let native_gadget = <N as FromScratch<F>>::new_from_scratch(&config);
             let biguint_gadget = BigUintGadget::<F, N>::new(&native_gadget);
-            <N as FromScratch<F>>::load_from_scratch(&mut layouter, &config);
 
             let x = biguint_gadget.assign_biguint(&mut layouter, self.x.clone(), 1024)?;
             let y = biguint_gadget.assign_biguint(&mut layouter, self.y.clone(), 1024)?;
@@ -925,7 +924,9 @@ mod tests {
 
             let expected = biguint_gadget.assign_fixed(&mut layouter, self.expected.clone())?;
 
-            biguint_gadget.assert_equal(&mut layouter, &expected, &res)
+            biguint_gadget.assert_equal(&mut layouter, &expected, &res)?;
+
+            native_gadget.load_from_scratch(&mut layouter)
         }
     }
 

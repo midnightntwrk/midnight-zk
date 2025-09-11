@@ -27,7 +27,8 @@ use exposing_types::{
     bitcoin_ecdsa_threshold::BitcoinThresholdECDSA, ecc_ops::EccExample,
     hybrid_mt::HybridMtExample, json_verification::AtalaJsonECDSA, membership::MembershipExample,
     native_gadget::NativeGadgetExample, poseidon::PoseidonExample,
-    rsa_signature::RSASignatureCircuit, sha_preimage::ShaPreImageCircuit,
+    rsa_signature::RSASignatureCircuit, schnorr_sig::SchnorrExample,
+    sha_preimage::ShaPreImageCircuit,
 };
 
 macro_rules! generate_tests {
@@ -60,5 +61,6 @@ generate_tests!(
     check_vk_membership: MembershipExample,
     check_vk_atala: AtalaJsonECDSA,
     check_vk_hybrid_mt: HybridMtExample,
-    check_vk_sha: ShaPreImageCircuit
+    check_vk_sha: ShaPreImageCircuit,
+    check_vk_schnorr: SchnorrExample
 );

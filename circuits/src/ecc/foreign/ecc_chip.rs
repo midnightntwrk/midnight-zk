@@ -2054,12 +2054,9 @@ where
         ForeignEccChip::new(&config.ff_ecc_config, &native_gadget, &scalar_field_chip)
     }
 
-    fn load_from_scratch(
-        layouter: &mut impl Layouter<F>,
-        config: &ForeignEccTestConfig<F, C, S, N>,
-    ) {
-        <N as FromScratch<F>>::load_from_scratch(layouter, &config.native_gadget_config);
-        <S as FromScratch<F>>::load_from_scratch(layouter, &config.scalar_field_config)
+    fn load_from_scratch(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
+        self.native_gadget.load_from_scratch(layouter)?;
+        self.scalar_field_chip.load_from_scratch(layouter)
     }
 
     fn configure_from_scratch(

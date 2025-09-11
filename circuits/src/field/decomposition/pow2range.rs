@@ -14,7 +14,7 @@
 //! `pow2range` is a chip for performing membership assertions in ranges of the
 //! form [0, 2^n) via lookups.
 
-use std::{fmt::Debug, marker::PhantomData};
+use std::{cell::RefCell, collections::HashSet, fmt::Debug, marker::PhantomData, rc::Rc};
 
 use ff::PrimeField;
 use midnight_proofs::{
@@ -66,10 +66,16 @@ pub struct Pow2RangeConfig {
 /// is enabled, all lookup columns are range-checked in the same range. It is
 /// not possible to range-check only some of them. However, different rows may
 /// assert different ranges (specified by the tag).
+///
+/// Note: The table will include only the tag values that are actually used in
+/// the circuit! This allows us to have smaller tables when possible.
+/// For that, it is necessary to load this chip at the end of a synthesize,
+/// not at the beginning!
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Pow2RangeChip<F: PrimeField> {
     config: Pow2RangeConfig,
     max_bit_len: usize,
+    queried_tags: Rc<RefCell<HashSet<usize>>>,
     _marker: PhantomData<F>,
 }
 
@@ -89,6 +95,7 @@ impl<F: PrimeField> Pow2RangeChip<F> {
         &self,
         region: &mut Region<'_, F>,
         n: usize,
+        offset: usize,
     ) -> Result<(), Error> {
         if n > self.max_bit_len {
             panic!(
@@ -96,13 +103,14 @@ impl<F: PrimeField> Pow2RangeChip<F> {
                 n, self.max_bit_len
             )
         }
-        self.config.q_pow2range.enable(region, 0)?;
+        self.config.q_pow2range.enable(region, offset)?;
         region.assign_fixed(
             || "pow2range_tag",
             self.config.tag_col,
-            0,
+            offset,
             || Value::known(F::from(n as u64)),
         )?;
+        self.queried_tags.borrow_mut().insert(n);
         Ok(())
     }
 }
@@ -139,7 +147,7 @@ impl<F: PrimeField> Pow2RangeInstructions<F> for Pow2RangeChip<F> {
                             || Value::known(F::ZERO),
                         )?;
                     }
-                    self.assert_row_lower_than_2_pow_n(&mut region, n)
+                    self.assert_row_lower_than_2_pow_n(&mut region, n, 0)
                 },
             )?;
         }
@@ -154,6 +162,7 @@ impl<F: PrimeField> Pow2RangeChip<F> {
         Self {
             config: config.clone(),
             max_bit_len,
+            queried_tags: Rc::new(RefCell::new(HashSet::new())),
             _marker: PhantomData,
         }
     }
@@ -210,6 +219,10 @@ impl<F: PrimeField> Pow2RangeChip<F> {
             |mut table| {
                 let mut offset = 0;
                 for bit_len in 0..=self.max_bit_len {
+                    // The lookup is disabled with tag 0, which we always include.
+                    if bit_len > 0 && !self.queried_tags.borrow().contains(&bit_len) {
+                        continue;
+                    }
                     let tag = Value::known(F::from(bit_len as u64));
                     for value in 0..(1 << bit_len) {
                         let val = Value::known(F::from(value));
@@ -266,7 +279,7 @@ mod tests {
             mut layouter: impl Layouter<F>,
         ) -> Result<(), Error> {
             let pow2range_chip = Pow2RangeChip::<F>::new(&config, self.max_bit_len);
-            pow2range_chip.load_table(&mut layouter)?;
+
             layouter.assign_region(
                 || "pow2range test",
                 |mut region| {
@@ -276,12 +289,14 @@ mod tests {
                             let val = Value::known(F::from(input.0[i]));
                             region.assign_advice(|| "pow2range val", col, offset, || val)?;
                         }
-                        pow2range_chip.assert_row_lower_than_2_pow_n(&mut region, input.1)?;
+                        pow2range_chip.assert_row_lower_than_2_pow_n(&mut region, input.1, 0)?;
                     }
 
                     Ok(())
                 },
-            )
+            )?;
+
+            pow2range_chip.load_table(&mut layouter)
         }
     }
 

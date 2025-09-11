@@ -459,7 +459,6 @@ pub mod tests {
             mut layouter: impl Layouter<F>,
         ) -> Result<(), Error> {
             let chip = ArithChip::new_from_scratch(&config);
-            ArithChip::load_from_scratch(&mut layouter, &config);
 
             // y does not apply in tests of arity-1 functions.
             let y_idx = min(self.inputs.len() - 1, 1);
@@ -499,7 +498,9 @@ pub mod tests {
             }?;
 
             let expected = chip.assign_fixed(&mut layouter, self.expected.clone())?;
-            chip.assert_equal(&mut layouter, &expected, &res)
+            chip.assert_equal(&mut layouter, &expected, &res)?;
+
+            chip.load_from_scratch(&mut layouter)
         }
     }
 

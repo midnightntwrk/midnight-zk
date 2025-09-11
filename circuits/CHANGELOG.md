@@ -16,6 +16,8 @@ verification keys break backwards compatibility.
 * Add goldenfiles with examples cost-model [#89](https://github.com/midnightntwrk/midnight-zk/pull/89)
 * New SHA256 chip [#39](https://github.com/midnightntwrk/midnight-zk/pull/39)
 
+* Add Schnorr signature example [#55](https://github.com/midnightntwrk/midnight-zk/pull/55)
+
 ### Changed
 * Refactored crate to prepare for edition 2024.
 * Zswap example was moved to a benchmark [#46](https://github.com/midnightntwrk/midnight-zk/pull/46)
@@ -25,6 +27,7 @@ verification keys break backwards compatibility.
 * Updated bincode to v2.0.0 - This is a breaking change [#82](https://github.com/midnightntwrk/midnight-zk/pull/82)
 * Adapted in-circuit verifier to changes of off-circuit counterpart [#76](https://github.com/midnightntwrk/midnight-zk/pull/76)
 * Clarified the default directory to download SRS [#95](https://github.com/midnightntwrk/midnight-zk/pull/95)
+* Load only necessary bit_lens in pow2range_chip [#90](https://github.com/midnightntwrk/midnight-zk/pull/90)
 
 ### Removed
 
