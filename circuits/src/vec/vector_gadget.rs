@@ -414,8 +414,8 @@ impl<F: PrimeField> FromScratch<F> for VectorGadget<F> {
         <NG<F>>::configure_from_scratch(meta, instance_columns)
     }
 
-    fn load_from_scratch(layouter: &mut impl Layouter<F>, config: &Self::Config) {
-        <NG<F>>::load_from_scratch(layouter, config);
+    fn load_from_scratch(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
+        self.native_gadget.load_from_scratch(layouter)
     }
 }
 

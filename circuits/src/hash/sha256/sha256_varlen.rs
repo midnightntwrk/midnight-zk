@@ -336,7 +336,7 @@ impl<F: PrimeField> FromScratch<F> for VarLenSha256Gadget<F> {
         Sha256Chip::configure_from_scratch(meta, instance_columns)
     }
 
-    fn load_from_scratch(layouter: &mut impl Layouter<F>, config: &Self::Config) {
-        Sha256Chip::load_from_scratch(layouter, config);
+    fn load_from_scratch(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
+        self.sha256chip.load_from_scratch(layouter)
     }
 }

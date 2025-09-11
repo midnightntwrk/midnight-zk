@@ -230,10 +230,7 @@ pub mod tests {
             mut layouter: impl Layouter<F>,
         ) -> Result<(), Error> {
             let chip = VarHashChip::new_from_scratch(&config.0);
-            VarHashChip::load_from_scratch(&mut layouter, &config.0);
-
             let ng = <NG<F>>::new_from_scratch(&config.1);
-            <NG<F>>::load_from_scratch(&mut layouter, &config.1);
 
             let vg = VectorGadget::new(&ng);
 
@@ -245,7 +242,8 @@ pub mod tests {
             let output = chip.varhash(&mut layouter, &assigned_input)?;
             ng.assert_equal_to_fixed(&mut layouter, &output, expected_output)?;
 
-            Ok(())
+            chip.load_from_scratch(&mut layouter)?;
+            ng.load_from_scratch(&mut layouter)
         }
     }
 
