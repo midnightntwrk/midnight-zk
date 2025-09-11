@@ -304,7 +304,7 @@ fn main() {
     let proof = compact_std_lib::prove::<AtalaJsonECDSA, blake2b_simd::State>(
         &srs, &pk, &relation, &instance, witness, OsRng,
     )
-    .expect("Proof generation should not fail");
+    .expect("Proof generation should not fail.");
     println!("... done ({:?})", p.elapsed());
 
     let v = start("Proof verification");

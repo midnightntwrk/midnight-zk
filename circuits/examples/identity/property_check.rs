@@ -1,30 +1,28 @@
 //! Example of verifying the validity of an ECDSA signed Atala identity JSON.
 
-use std::time::Instant;
-use std::{fs::OpenOptions, io::Read};
+use std::{fs::OpenOptions, io::Read, time::Instant};
 
 use halo2curves::secp256k1::{Fq as secp256k1Scalar, Secp256k1};
-use midnight_circuits::instructions::public_input::CommittedInstanceInstructions;
 use midnight_circuits::{
-    compact_std_lib::{self, Relation, ZkStdLib, ZkStdLibArch},
+    compact_std_lib::{self, Relation, ShaTableSize, ZkStdLib, ZkStdLibArch},
     field::foreign::{params::MultiEmulationParams, AssignedField},
     instructions::{
         ArithInstructions, AssertionInstructions, AssignmentInstructions, Base64Instructions,
         DecompositionInstructions, EccInstructions, PublicInputInstructions,
+        RangeCheckInstructions,
     },
+    parsing::{DateFormat, Separator},
     testing_utils::{
         ecdsa::{ECDSASig, Ecdsa, FromBase64, PublicKey},
         plonk_api::filecoin_srs,
     },
-    types::{AssignedByte, AssignedForeignPoint, Instantiable},
+    types::{AssignedByte, AssignedForeignPoint, InnerValue, Instantiable},
 };
-use midnight_curves::G1Affine;
-use midnight_proofs::plonk::commit_to_instances;
-use midnight_proofs::poly::kzg::KZGCommitmentScheme;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
+use num_bigint::BigUint;
 use rand::rngs::OsRng;
 use sha2::Digest;
 
@@ -36,6 +34,14 @@ const CRED_PATH: &str = "./examples/identity/credentials/2k-credential";
 const PUB_KEY: &[u8] =
     b"_bDXlQJ636HHOvXSe-flG0f-OkkRu8Jusm93PB2GBjoykg753nsOiW1vhEpCnxxybkMdarJLXIUJIYw1K2emQI";
 
+// Secret key of the credential holder.
+const HOLDER_SK: SK = SK::from_raw([
+    0x87c251f40ac6a55e,
+    0xc82dbae785c00836,
+    0x36f09fcb94100833,
+    0xc4e05a8ec16835ce,
+]);
+
 const HEADER_LEN: usize = 38;
 const PAYLOAD_LEN: usize = 2463;
 
@@ -43,26 +49,18 @@ const PAYLOAD_LEN: usize = 2463;
 type PK = Secp256k1;
 // Credential payload.
 type Payload = [u8; PAYLOAD_LEN];
+// Holder secret key.
+type SK = secp256k1Scalar;
 
-/// This relation checks the validity of an Identus credential.
-/// It receives as public inputs the public key of the credential signer and
-/// the decoded JSON of the credential in committed form.
 #[derive(Clone, Default)]
-pub struct AtalaEnrollment;
+pub struct AtalaJsonECDSA;
 
-impl Relation for AtalaEnrollment {
+impl Relation for AtalaJsonECDSA {
     type Instance = PK;
-    type Witness = (Payload, ECDSASig);
+    type Witness = (Payload, ECDSASig, SK);
 
     fn format_instance(instance: &Self::Instance) -> Vec<F> {
         AssignedForeignPoint::<F, Secp256k1, MultiEmulationParams>::as_public_input(instance)
-    }
-
-    fn format_committed_instances(witness: &Self::Witness) -> Vec<F> {
-        let json_b64 = &witness.0[HEADER_LEN + 1..PAYLOAD_LEN];
-        let json = base64::decode_config(json_b64, base64::STANDARD_NO_PAD)
-            .expect("Valid base64 encoded JSON.");
-        json.iter().map(|byte| F::from(*byte as u64)).collect()
     }
 
     fn circuit(
@@ -78,10 +76,11 @@ impl Relation for AtalaEnrollment {
         // Assign the PK as public input.
         let pk = secp256k1_curve.assign_as_public_input(layouter, instance)?;
 
-        let (payload, sig) = witness.unzip();
+        let payload = witness.map(|(payload, _, _)| payload).transpose_array();
+        let (sig, sk) = witness.map(|(_, sig, sk)| (sig, sk)).unzip();
 
         // Assign payload.
-        let payload = std_lib.assign_many(layouter, &payload.transpose_array())?;
+        let payload = std_lib.assign_many(layouter, &payload)?;
 
         // Verify credential signature.
         Self::verify_ecdsa(std_lib, layouter, pk, &payload, sig)?;
@@ -90,9 +89,42 @@ impl Relation for AtalaEnrollment {
         let json =
             b64_chip.decode_base64(layouter, &payload[HEADER_LEN + 1..PAYLOAD_LEN], false)?;
 
-        for val in json.iter() {
-            std_lib.constrain_as_committed_public_input(layouter, val)?;
-        }
+        // Check Name.
+        let name = Self::get_property(std_lib, layouter, &json, b"givenName", 7)?;
+        Self::assert_str_match(std_lib, layouter, &name[1..6], b"Alice")?;
+
+        // Check birth date.
+        let birthdate = Self::get_property(std_lib, layouter, &json, b"birthDate", 12)?;
+        let limit = Date {
+            day: 1,
+            month: 1,
+            year: 2004,
+        };
+        Self::assert_date_before(std_lib, layouter, &birthdate[1..11], limit)?;
+
+        // Get holder public key.
+        let holder_key = Self::get_property(std_lib, layouter, &json, b"publicKeyJwk", 220)?;
+        let x = Self::get_property(std_lib, layouter, &holder_key, b"x", 45)?;
+        let y = Self::get_property(std_lib, layouter, &holder_key, b"y", 45)?;
+        let x_val = b64_chip.decode_base64url(layouter, &x[1..44], false)?;
+        let y_val = b64_chip.decode_base64url(layouter, &y[1..44], false)?;
+
+        // Check knowledge of corresponding sk.
+        let x_coord = secp256k1_curve
+            .base_field_chip()
+            .assigned_from_be_bytes(layouter, &x_val[..32])?;
+        let y_coord = secp256k1_curve
+            .base_field_chip()
+            .assigned_from_be_bytes(layouter, &y_val[..32])?;
+
+        let holder_pk = secp256k1_curve.point_from_coordinates(layouter, &x_coord, &y_coord)?;
+        let holder_sk: AssignedField<_, secp256k1Scalar, MultiEmulationParams> =
+            std_lib.secp256k1_scalar().assign(layouter, sk)?;
+
+        let gen: AssignedForeignPoint<_, Secp256k1, MultiEmulationParams> =
+            secp256k1_curve.assign_fixed(layouter, Secp256k1::generator())?;
+        let must_be_pk = secp256k1_curve.msm(layouter, &[holder_sk], &[gen])?;
+        secp256k1_curve.assert_equal(layouter, &holder_pk, &must_be_pk)?;
 
         Ok(())
     }
@@ -101,7 +133,7 @@ impl Relation for AtalaEnrollment {
         ZkStdLibArch {
             jubjub: false,
             poseidon: false,
-            sha256: true,
+            sha256: Some(ShaTableSize::Table11),
             secp256k1: true,
             bls12_381: false,
             base64: true,
@@ -115,11 +147,11 @@ impl Relation for AtalaEnrollment {
     }
 
     fn read_relation<R: std::io::Read>(_reader: &mut R) -> std::io::Result<Self> {
-        Ok(AtalaEnrollment)
+        Ok(AtalaJsonECDSA)
     }
 }
 
-impl AtalaEnrollment {
+impl AtalaJsonECDSA {
     /// Verifies the secp256k1 ECDSA signature of the given message.
     fn verify_ecdsa(
         std_lib: &ZkStdLib,
@@ -157,6 +189,83 @@ impl AtalaEnrollment {
 
         secp256k1_base.assert_equal(layouter, &lhs_x, &r_as_base)
     }
+
+    /// Searches for "property": and returns the following `val_len` characters.
+    fn get_property(
+        std_lib: &ZkStdLib,
+        layouter: &mut impl Layouter<F>,
+        body: &[AssignedByte<F>],
+        property: &[u8],
+        val_len: usize,
+    ) -> Result<Vec<AssignedByte<F>>, Error> {
+        let parser = std_lib.parser();
+
+        let property = [b"\"", property, b"\":"].concat();
+        let p_len = property.len();
+        let seq: Value<Vec<u8>> = Value::from_iter(body.iter().map(|b| b.value()));
+
+        let idx = seq.map(|seq| {
+            let idx = find_subsequence(&seq, &property)
+                .expect("Property should appear in the credential.");
+            F::from(idx as u64)
+        });
+
+        let idx = std_lib.assign(layouter, idx)?; // idx will be range-checked in `fetch_bytes`.
+
+        let raw_propety = parser.fetch_bytes(layouter, body, &idx, p_len + val_len)?;
+        Ok(raw_propety[p_len..].to_vec())
+    }
+
+    fn assert_str_match(
+        std_lib: &ZkStdLib,
+        layouter: &mut impl Layouter<F>,
+        str1: &[AssignedByte<F>],
+        str2: &[u8],
+    ) -> Result<(), Error> {
+        assert_eq!(
+            str1.len(),
+            str2.len(),
+            "Compared string lengths must match."
+        );
+        for (b1, b2) in str1.iter().zip(str2.iter()) {
+            std_lib.assert_equal_to_fixed(layouter, b1, *b2)?
+        }
+        Ok(())
+    }
+
+    fn assert_date_before(
+        std_lib: &ZkStdLib,
+        layouter: &mut impl Layouter<F>,
+        date: &[AssignedByte<F>],
+        limit_date: Date,
+    ) -> Result<(), Error> {
+        let format = (DateFormat::YYYYMMDD, Separator::Sep('-'));
+        let date = std_lib.parser().date_to_int(layouter, date, format)?;
+        std_lib.assert_lower_than_fixed(layouter, &date, &limit_date.into())
+    }
+}
+
+struct Date {
+    day: u8,
+    month: u8,
+    year: u16,
+}
+
+impl From<Date> for BigUint {
+    fn from(value: Date) -> Self {
+        (value.year as u64 * 10_000 + value.month as u64 * 100 + value.day as u64).into()
+    }
+}
+
+// Returns the index of a subsequence inside a larger sequence, if it is
+// present. This function is made generic so it works over native types and
+// values.
+fn find_subsequence<T>(seq: &[T], subseq: &[T]) -> Option<usize>
+where
+    for<'a> &'a [T]: PartialEq,
+{
+    seq.windows(subseq.len())
+        .position(|window| window == subseq)
 }
 
 // Reads a credential of up to MAX bytes from the specified path.
@@ -168,11 +277,11 @@ fn read_credential<const MAX: usize>(path: &str) -> Result<Vec<u8>, Error> {
 }
 
 fn main() {
-    const K: u32 = 17;
+    const K: u32 = 18;
     let srs = filecoin_srs(K);
     let credential_blob = read_credential::<4096>(CRED_PATH).expect("Path to credential file.");
 
-    let relation = AtalaEnrollment;
+    let relation = AtalaJsonECDSA;
 
     let start = |msg: &str| -> Instant {
         println!("{msg}");
@@ -187,17 +296,12 @@ fn main() {
     // Build the instance and witness to be proven.
     let wit = start("Computing instance and witnesses");
     let instance = PublicKey::from_base64(PUB_KEY).expect("Base64 encoded PK");
-    let witness = AtalaEnrollment::witness_from_blob(credential_blob.as_slice());
-    let witness = (witness.0, witness.1);
-    let committed_credential: G1Affine = {
-        let instance = AtalaEnrollment::format_committed_instances(&witness);
-        commit_to_instances::<_, KZGCommitmentScheme<_>>(&srs, vk.vk().get_domain(), &instance)
-            .into()
-    };
+    let witness = AtalaJsonECDSA::witness_from_blob(credential_blob.as_slice());
+    let witness = (witness.0, witness.1, HOLDER_SK);
     println!("... done ({:?})", wit.elapsed());
 
     let p = start("Proof generation");
-    let proof = compact_std_lib::prove::<AtalaEnrollment, blake2b_simd::State>(
+    let proof = compact_std_lib::prove::<AtalaJsonECDSA, blake2b_simd::State>(
         &srs, &pk, &relation, &instance, witness, OsRng,
     )
     .expect("Proof generation should not fail");
@@ -205,11 +309,11 @@ fn main() {
 
     let v = start("Proof verification");
     assert!(
-        compact_std_lib::verify::<AtalaEnrollment, blake2b_simd::State>(
+        compact_std_lib::verify::<AtalaJsonECDSA, blake2b_simd::State>(
             &srs.verifier_params(),
             &vk,
             &instance,
-            Some(committed_credential),
+            None,
             &proof
         )
         .is_ok()
@@ -219,7 +323,7 @@ fn main() {
 
 // Helper functions for base64 encoded credentials.
 // -----------------------------------------------
-impl AtalaEnrollment {
+impl AtalaJsonECDSA {
     // Creates an AtalaJsonECDSA witness from:
     // 1. A JWT encoded Atala credential.
     // 2. The corresponding base64 encoded ECDSA public key.
