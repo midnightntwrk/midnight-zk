@@ -24,10 +24,15 @@ use midnight_proofs::plonk::k_from_circuit;
 mod exposing_types;
 
 use exposing_types::{
-    bitcoin_ecdsa_threshold::BitcoinThresholdECDSA, ecc_ops::EccExample,
-    hybrid_mt::HybridMtExample, json_verification::AtalaJsonECDSA, membership::MembershipExample,
-    native_gadget::NativeGadgetExample, poseidon::PoseidonExample,
-    rsa_signature::RSASignatureCircuit, schnorr_sig::SchnorrExample,
+    bitcoin_ecdsa_threshold::BitcoinThresholdECDSA,
+    ecc_ops::EccExample,
+    hybrid_mt::HybridMtExample,
+    identity::{enrollment::AtalaEnrollment, json_verification::AtalaJsonECDSA},
+    membership::MembershipExample,
+    native_gadget::NativeGadgetExample,
+    poseidon::PoseidonExample,
+    rsa_signature::RSASignatureCircuit,
+    schnorr_sig::SchnorrExample,
     sha_preimage::ShaPreImageCircuit,
 };
 
