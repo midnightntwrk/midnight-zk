@@ -1,3 +1,5 @@
+//! SHA-512 Chip
+
 // A: |-----------|-----|------|--------------|
 //        25         5     6         28
 
@@ -129,10 +131,12 @@ use crate::{
     hash::sha512::{
         types::{AssignedPlain, AssignedPlainSpreaded, AssignedSpreaded},
         utils::{
-            expr_pow2_ip, expr_pow4_ip, gen_spread_table, get_even_and_odd_bits, spread,
-            spreaded_maj, u64_in_be_limbs,
+            expr_pow2_ip, expr_pow4_ip, gen_spread_table, get_even_and_odd_bits, negate_spreaded,
+            spread, spreaded_maj, u64_in_be_limbs, MASK_EVN_128,
         },
     },
+    instructions::assignments::AssignmentInstructions,
+    types::AssignedNative,
     utils::{
         util::{fe_to_u128, u128_to_fe, u64_to_fe},
         ComposableChip,
@@ -263,7 +267,7 @@ pub struct Sha512Config {
     table: SpreadTable,
 
     q_maj: Selector,
-    // q_half_ch: Selector,
+    q_half_ch: Selector,
     // q_Sigma_0: Selector,
     // q_Sigma_1: Selector,
     // q_sigma_0: Selector,
@@ -332,7 +336,7 @@ impl<F: PrimeField> ComposableChip<F> for Sha512Chip<F> {
         };
 
         let q_maj = meta.selector();
-        // let q_half_ch = meta.selector();
+        let q_half_ch = meta.selector();
         // let q_Sigma_0 = meta.selector();
         // let q_Sigma_1 = meta.selector();
         // let q_sigma_0 = meta.selector();
@@ -390,6 +394,45 @@ impl<F: PrimeField> ComposableChip<F> for Sha512Chip<F> {
             Constraints::with_selector(q_maj, vec![("Maj", id)])
         });
 
+        meta.create_gate("half Ch(E, F, G)", |meta| {
+            // See function `ch` for a description of the following layout.
+            let sX = meta.query_advice(advice_cols[5], Rotation(-1));
+            let sY = meta.query_advice(advice_cols[6], Rotation(-1));
+            let s_odd_13a = meta.query_advice(advice_cols[1], Rotation(-1));
+            let s_odd_13b = meta.query_advice(advice_cols[1], Rotation(0));
+            let s_odd_13c = meta.query_advice(advice_cols[1], Rotation(1));
+            let s_odd_13d = meta.query_advice(advice_cols[1], Rotation(2));
+            let s_odd_12 = meta.query_advice(advice_cols[1], Rotation(3));
+            let s_evn_13a = meta.query_advice(advice_cols[3], Rotation(-1));
+            let s_evn_13b = meta.query_advice(advice_cols[3], Rotation(0));
+            let s_evn_13c = meta.query_advice(advice_cols[3], Rotation(1));
+            let s_evn_13d = meta.query_advice(advice_cols[3], Rotation(2));
+            let s_evn_12 = meta.query_advice(advice_cols[3], Rotation(3));
+            let summand_1 = meta.query_advice(advice_cols[4], Rotation(0));
+            let summand_2 = meta.query_advice(advice_cols[5], Rotation(0));
+            let sum = meta.query_advice(advice_cols[6], Rotation(0));
+
+            let s_evn = expr_pow4_ip(
+                [51, 38, 25, 12, 0],
+                [&s_evn_13a, &s_evn_13b, &s_evn_13c, &s_evn_13d, &s_evn_12],
+            );
+            let s_odd = expr_pow4_ip(
+                [51, 38, 25, 12, 0],
+                [&s_odd_13a, &s_odd_13b, &s_odd_13c, &s_odd_13d, &s_odd_12],
+            );
+
+            let sprdd_id = (sX + sY) - (s_evn + Expression::from(2) * s_odd);
+            let sum_id = (summand_1 + summand_2) - sum;
+
+            Constraints::with_selector(
+                q_half_ch,
+                vec![
+                    ("Half-Ch spreadded", sprdd_id),
+                    ("Half Ch sum (2 terms)", sum_id),
+                ],
+            )
+        });
+
         meta.create_gate("13-13-13-13-12 decomposition", |meta| {
             // See function `assign_sprdd_13_13_13_13_12` for a description of the following
             // layout.
@@ -411,7 +454,7 @@ impl<F: PrimeField> ComposableChip<F> for Sha512Chip<F> {
             q_lookup,
             table,
             q_maj,
-            // q_half_ch,
+            q_half_ch,
             // q_Sigma_0,
             // q_Sigma_1,
             // q_sigma_0,
@@ -466,16 +509,16 @@ impl<F: PrimeField> Sha512Chip<F> {
         Maj which can be encoded by
 
         1) applying the plain-spreaded lookup on 13-13-13-13-12 limbs of Evn and Odd:
-             Evn: (Evn.13a, Evn.13b, Evn.13c, Evn.12)
-             Odd: (Odd.13a, Odd.13b, Odd.12)
+             Evn: (Evn.13a, Evn.13b, Evn.13c, Evn.13d, Evn.12)
+             Odd: (Odd.13a, Odd.13b, Odd.13c, Odd.13d, Odd.12)
 
-        2) asserting the 13-13-12 decomposition identity for Odd:
-              2^21 * Odd.13a + 2^10 * Odd.13b + Odd.12
+        2) asserting the 13-13-13-13-12 decomposition identity for Odd:
+              2^51 * Odd.13a + 2^38 * Odd.13b + 2^25 * Odd.13c + 2^12 * Odd.13d + Odd.12
             = Odd
 
         3) asserting the major identity regarding the spreaded values:
-              (4^21 * ~Evn.11a + 4^10 * ~Evn.11b + ~Evn.10)
-          2 * (4^21 * ~Odd.11a + 4^10 * ~Odd.11b + ~Odd.10)
+              (4^51 * ~Evn.13a + 4^38 * ~Evn.13b + 4^25 * ~Evn.13c + 4^12 * ~Evn.13d + ~Evn.12)
+          2 * (4^51 * ~Odd.13a + 4^38 * ~Odd.13b + 4^25 * ~Odd.13c + 4^12 * ~Odd.13d + ~Odd.12)
              = ~A + ~B + ~C
 
         The output is Odd.
@@ -515,6 +558,113 @@ impl<F: PrimeField> Sha512Chip<F> {
                     Parity::Odd,
                     0,
                 )
+            },
+        )
+    }
+
+    /// Computes Ch(E, F, G)
+    fn ch(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        sprdd_E: &AssignedSpreaded<F, 64>,
+        sprdd_F: &AssignedSpreaded<F, 64>,
+        sprdd_G: &AssignedSpreaded<F, 64>,
+    ) -> Result<AssignedPlain<F, 64>, Error> {
+        /*
+        We need to compute:
+            Ch(E, F, G) = (E ∧ F) ⊕ (¬E ∧ G)
+
+        which can be achieved by
+
+        1) applying the plain-spreaded lookup on 13-13-13-13-12 limbs of Evn and Odd,
+           for both (~E + ~F) and (~(¬E) + ~G):
+             Evn_EF: (Evn_EF.13a, Evn_EF.13b, Evn_EF.13c, Evn_EF.13d, Evn_EF.12)
+             Odd_EF: (Odd_EF.13a, Odd_EF.13b, Odd_EF.13c, Odd_EF.13d, Odd_EF.12)
+
+             Evn_nEG: (Evn_nEG.13a, Evn_nEG.13b, Evn_nEG.13c, Evn_nEG.13d, Evn_nEG.12)
+             Odd_nEG: (Odd_nEG.13a, Odd_nEG.13b, Odd_nEG.13c, Odd_nEG.13d, Odd_nEG.12)
+
+        2) asserting the 13-13-13-13-12 decomposition identity for Odd_EF and Odd_nEG:
+              2^51 * Odd_EF.13a + 2^38 * Odd_EF.13b + 2^25 * Odd_EF.13c + 2^12 * Odd_EF.13d + Odd_EF.12
+            = Odd_EF
+
+              2^51 * Odd_nEG.13a + 2^38 * Odd_nEG.13b + 2^25 * Odd_nEG.13c + 2^12 * Odd_nEG.13d + Odd_nEG.12
+            = Odd_nEG
+
+        3) asserting the spreaded addition identity for (~E + ~F) and (~(¬E) + ~G):
+              (4^51 * ~Evn_EF.13a + 4^38 * ~Evn_EF.13b + 4^25 * ~Evn_EF.13c + 4^12 * ~Evn_EF.13d + ~Evn_EF.12)
+          2 * (4^51 * ~Odd_EF.13a + 4^38 * ~Odd_EF.13b + 4^25 * ~Odd_EF.13c + 4^12 * ~Odd_EF.13d + ~Odd_EF.12)
+             = ~E + ~F
+
+              (4^51 * ~Evn_nEG.13a + 4^38 * ~Evn_nEG.13b + 4^25 * ~Evn_nEG.13c + 4^12 * ~Evn_nEG.13d + ~Evn_nEG.12)
+          2 * (4^51 * ~Odd_nEG.13a + 4^38 * ~Odd_nEG.13b + 4^25 * ~Odd_nEG.13c + 4^12 * ~Odd_nEG.13d + ~Odd_nEG.12)
+             = ~(¬E) + ~G
+
+        4) asserting the following two addition identities:
+                     Ret = Odd_EF + Odd_nEG
+            MASK_EVN_128 = ~E + ~(¬E)
+
+        The output is Ret.
+
+        We distribute these values in the PLONK table as follows.
+
+        | T0 |      A0      |       A1      | T1 |       A2     |       A3      |     A4  |    A5   |      A6     |
+        |----|--------------|---------------|----|--------------|---------------|---------|---------|-------------|
+        | 13 |  Odd_EF.13a  |  ~Odd_EF.13a  | 13 |  Evn_EF.13a  |  ~Evn_EF.13a  | Odd_EF  |    ~E   |     ~F      |
+        | 13 |  Odd_EF.13b  |  ~Odd_EF.13b  | 13 |  Evn_EF.13b  |  ~Evn_EF.13b  | Odd_EF  | Odd_nEG |     Ret     | <- q_ch
+        | 13 |  Odd_EF.13c  |  ~Odd_EF.13c  | 13 |  Evn_EF.13c  |  ~Evn_EF.13c  |         |         |             |
+        | 13 |  Odd_EF.13d  |  ~Odd_EF.13d  | 13 |  Evn_EF.13d  |  ~Evn_EF.13d  |         |         |             |
+        | 12 |  Odd_EF.12   |  ~Odd_EF.12   | 12 |  Evn_EF.12   |  ~Evn_EF.12   |         |         |             |
+        | 13 |  Odd_nEF.13a |  ~Odd_nEF.13a | 13 |  Evn_nEF.13a |  ~Evn_nEF.13a | Odd_nEG |  ~(¬E)  |     ~G      |
+        | 13 |  Odd_nEF.13b |  ~Odd_nEF.13b | 13 |  Evn_nEF.13b |  ~Evn_nEF.13b |   ~E    |  ~(¬E)  |MASK_EVN_128 | <- q_ch
+        | 13 |  Odd_nEF.13c |  ~Odd_nEF.13c | 13 |  Evn_nEF.13c |  ~Evn_nEF.13c |         |         |             |
+        | 13 |  Odd_nEF.13d |  ~Odd_nEF.13d | 13 |  Evn_nEF.13d |  ~Evn_nEF.13d |         |         |             |
+        | 12 |  Odd_nEF.12  |  ~Odd_nEF.12  | 12 |  Evn_nEF.12  |  ~Evn_nEF.12  |         |         |             |
+        */
+
+        let adv_cols = self.config().advice_cols;
+
+        let sprdd_E_val = sprdd_E.0.value().copied().map(fe_to_u128);
+        let sprdd_F_val = sprdd_F.0.value().copied().map(fe_to_u128);
+        let sprdd_G_val = sprdd_G.0.value().copied().map(fe_to_u128);
+        let sprdd_nE_val = sprdd_E_val.map(negate_spreaded);
+
+        let EpF_val = sprdd_E_val + sprdd_F_val;
+        let nEpG_val = sprdd_nE_val + sprdd_G_val;
+        let sprdd_nE_val: Value<F> = sprdd_nE_val.map(u128_to_fe);
+
+        let mask_evn_128: AssignedNative<F> =
+            (self.native_gadget).assign_fixed(layouter, u128_to_fe(MASK_EVN_128))?;
+
+        layouter.assign_region(
+            || "Ch(E, F, G)",
+            |mut region| {
+                self.config().q_half_ch.enable(&mut region, 1)?;
+                self.config().q_half_ch.enable(&mut region, 6)?;
+
+                (sprdd_E.0).copy_advice(|| "~E", &mut region, adv_cols[5], 0)?;
+                (sprdd_E.0).copy_advice(|| "~E", &mut region, adv_cols[4], 6)?;
+
+                (sprdd_F.0).copy_advice(|| "~F", &mut region, adv_cols[6], 0)?;
+                (sprdd_G.0).copy_advice(|| "~G", &mut region, adv_cols[6], 5)?;
+
+                let sprdd_nE = region.assign_advice(|| "~(¬E)", adv_cols[5], 5, || sprdd_nE_val)?;
+                sprdd_nE.copy_advice(|| "~(¬E)", &mut region, adv_cols[5], 6)?;
+
+                mask_evn_128.copy_advice(|| "MASK_EVN_128", &mut region, adv_cols[6], 6)?;
+
+                let odd_EF =
+                    self.assign_sprdd_13_13_13_13_12(&mut region, EpF_val, Parity::Odd, 0)?;
+                (odd_EF.0).copy_advice(|| "Odd_EF", &mut region, adv_cols[4], 1)?;
+
+                let odd_nEG =
+                    self.assign_sprdd_13_13_13_13_12(&mut region, nEpG_val, Parity::Odd, 5)?;
+                (odd_nEG.0).copy_advice(|| "Odd_nEG", &mut region, adv_cols[5], 1)?;
+
+                let ret_val = odd_EF.0.value().copied() + odd_nEG.0.value().copied();
+                region
+                    .assign_advice(|| "Ret", adv_cols[6], 1, || ret_val)
+                    .map(AssignedPlain::<F, 64>)
             },
         )
     }
