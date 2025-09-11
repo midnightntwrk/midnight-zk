@@ -55,9 +55,10 @@ use {
 use super::automaton::{Automaton, ALPHABET_MAX_SIZE};
 use crate::{
     field::{decomposition::chip::P2RDecompositionChip, AssignedNative, NativeChip, NativeGadget},
-    instructions::AssignmentInstructions,
+    instructions::{AssignmentInstructions, ControlFlowInstructions, VectorInstructions},
     types::AssignedByte,
     utils::ComposableChip,
+    vec::{vector_gadget::VectorGadget, AssignedVector},
 };
 
 /// Number of columns for the automata chip.
@@ -159,6 +160,7 @@ where
 {
     config: AutomatonConfig<LibIndex, F>,
     native_gadget: NG<F>,
+    vector_gadget: VectorGadget<F>,
 }
 
 impl<LibIndex, F> Chip<F> for AutomatonChip<LibIndex, F>
@@ -192,6 +194,7 @@ where
         Self {
             config: config.clone(),
             native_gadget: deps.clone(),
+            vector_gadget: VectorGadget::new(deps),
         }
     }
 
@@ -457,6 +460,34 @@ where
                 Ok(markers)
             },
         )
+    }
+
+    /// Assumed padding for elements of the standard parsing library for
+    /// variable length vectors. The outputs of parsers of the standard library
+    /// should be invariant when adding or removing padding before or after the
+    /// parsed input.
+    pub const PAD: u8 = b' ';
+
+    /// Analogue of `parse` for vectors of variable length (parametrised by max
+    /// length `M` and chunk size `A`). Assumes the padding is performed using
+    /// the byte `Self::PAD`.
+    pub fn parse_varlen<const M: usize, const A: usize>(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        automaton_index: &LibIndex,
+        input: &AssignedVector<F, AssignedByte<F>, M, A>,
+    ) -> Result<Vec<AssignedNative<F>>, Error> {
+        let ng = &self.native_gadget;
+        let vg = &self.vector_gadget;
+        let filler = ng.assign_fixed(layouter, Self::PAD)?;
+        let flags = vg.padding_flag(layouter, input)?;
+        let result = input
+            .buffer
+            .iter()
+            .zip(flags.iter())
+            .map(|(elem, is_padding)| ng.select(layouter, is_padding, &filler, elem))
+            .collect::<Result<Vec<_>, Error>>()?;
+        self.parse(layouter, automaton_index, &result)
     }
 }
 
