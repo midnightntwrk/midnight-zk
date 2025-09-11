@@ -266,9 +266,9 @@ pub fn update_circuit_goldenfiles<R: Relation>(relation: &R) {
 
     let file_name = format!("./goldenfiles/examples/{}", circuit_name);
     let path = Path::new(&file_name);
-    let mut f = File::create(path).expect(&format!("Could not create file {}", file_name));
+    let mut f = File::create(path).unwrap_or_else(|_| panic!("Could not create file {file_name}"));
     writeln!(f, "{:#?}", cost_model(relation))
-        .expect(&format!("Could not write to file {}", file_name));
+        .unwrap_or_else(|_| panic!("Could not write to file {file_name}"));
 }
 
 /// Use filecoin's SRS (over BLS12-381)
