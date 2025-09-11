@@ -391,6 +391,34 @@ where
     }
 }
 
+#[cfg(any(test, feature = "testing"))]
+use midnight_proofs::plonk::{Column, ConstraintSystem, Instance};
+
+#[cfg(any(test, feature = "testing"))]
+use crate::testing_utils::FromScratch;
+
+#[cfg(any(test, feature = "testing"))]
+impl<F: PrimeField> FromScratch<F> for VectorGadget<F> {
+    type Config = <NG<F> as FromScratch<F>>::Config;
+
+    fn new_from_scratch(config: &Self::Config) -> Self {
+        Self {
+            native_gadget: <NG<F> as FromScratch<F>>::new_from_scratch(config),
+        }
+    }
+
+    fn configure_from_scratch(
+        meta: &mut ConstraintSystem<F>,
+        instance_columns: &[Column<Instance>; 2],
+    ) -> Self::Config {
+        <NG<F>>::configure_from_scratch(meta, instance_columns)
+    }
+
+    fn load_from_scratch(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
+        self.native_gadget.load_from_scratch(layouter)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use ff::{Field, FromUniformBytes, PrimeField};
@@ -429,6 +457,7 @@ mod tests {
     }
 
     type NG<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
+
     impl<F: PrimeField, const M: usize, const A: usize> Circuit<F> for TestCircuit<F, M, A> {
         type Config = P2RDecompositionConfig;
 

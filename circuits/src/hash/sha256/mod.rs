@@ -16,6 +16,7 @@
 #![allow(non_snake_case)]
 
 mod sha256_chip;
+mod sha256_varlen;
 mod types;
 mod utils;
 
@@ -23,10 +24,15 @@ use ff::PrimeField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 use sha2::Digest;
 pub use sha256_chip::{Sha256Chip, Sha256Config, NB_SHA256_ADVICE_COLS, NB_SHA256_FIXED_COLS};
+pub use sha256_varlen::VarLenSha256Gadget;
 
 use crate::{
-    instructions::{hash::HashCPU, DecompositionInstructions, HashInstructions},
+    instructions::{
+        hash::{HashCPU, VarHashInstructions},
+        DecompositionInstructions, HashInstructions,
+    },
     types::AssignedByte,
+    vec::AssignedVector,
 };
 
 impl<F: PrimeField> HashCPU<u8, [u8; 32]> for Sha256Chip<F> {
@@ -54,12 +60,45 @@ impl<F: PrimeField> HashInstructions<F, AssignedByte<F>, [AssignedByte<F>; 32]> 
     }
 }
 
+impl<F: PrimeField> HashCPU<u8, [u8; 32]> for VarLenSha256Gadget<F> {
+    fn hash(inputs: &[u8]) -> [u8; 32] {
+        let output = sha2::Sha256::digest(inputs);
+        output.into_iter().collect::<Vec<_>>().try_into().unwrap()
+    }
+}
+
+impl<F: PrimeField, const MAX_LEN: usize>
+    VarHashInstructions<F, MAX_LEN, AssignedByte<F>, [AssignedByte<F>; 32], 64>
+    for VarLenSha256Gadget<F>
+{
+    fn varhash(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        inputs: &AssignedVector<F, AssignedByte<F>, MAX_LEN, 64>,
+    ) -> Result<[AssignedByte<F>; 32], Error> {
+        let mut output_bytes = Vec::with_capacity(32);
+
+        // We convert each `AssignedPlain<32>` returned by `self.sha256_varlen` into 4
+        // bytes.
+        for word in self.sha256_varlen(layouter, inputs)? {
+            let bytes =
+                (self.sha256chip.native_gadget).assigned_to_be_bytes(layouter, &word.0, Some(4))?;
+            output_bytes.extend(bytes)
+        }
+
+        Ok(output_bytes.try_into().unwrap())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use midnight_curves::Fq as Scalar;
 
+    use super::sha256_varlen::VarLenSha256Gadget;
     use crate::{
-        field::NativeGadget, hash::sha256::Sha256Chip, instructions::hash::tests::test_hash,
+        field::NativeGadget,
+        hash::sha256::Sha256Chip,
+        instructions::hash::tests::{test_hash, test_varhash},
         types::AssignedByte,
     };
 
@@ -72,5 +111,30 @@ mod tests {
             Sha256Chip<Scalar>,
             NativeGadget<Scalar, _, _>,
         >(true, "SHA256", 15);
+    }
+
+    #[test]
+    fn test_sha_varhash() {
+        fn test_wrapper<const M: usize>(input_size: usize, k: u32, cost_model: bool) {
+            test_varhash::<
+                Scalar,
+                AssignedByte<Scalar>,
+                [AssignedByte<Scalar>; 32],
+                VarLenSha256Gadget<Scalar>,
+                M,
+                64,
+            >(cost_model, "VarSHA256", input_size, k)
+        }
+
+        test_wrapper::<512>(64, 16, true);
+        test_wrapper::<512>(63, 16, false);
+        test_wrapper::<256>(128, 16, false);
+        test_wrapper::<256>(127, 16, false);
+
+        test_wrapper::<128>(55, 16, false); // padding edge cases
+        test_wrapper::<128>(56, 16, false);
+
+        test_wrapper::<128>(0, 16, false);
+        test_wrapper::<128>(1, 16, false);
     }
 }
