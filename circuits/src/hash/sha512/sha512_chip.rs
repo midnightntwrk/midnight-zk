@@ -14,26 +14,6 @@
 // | 13 |   A.13b  |  ~A.13b   | 13 |   A.13c  |   ~A.13c  |   S4   |  S5  |  S6  |
 // | 02 |   A.02   |  ~A.02    | 03 |   carry  |   ~carry  |        |      |      |
 
-// $\Sigma_{0}(A)$
-
-// | T0 |    A0    |     A1    | T1 |    A2    |     A3    |  A4  |    A5    |   A6   |
-// |----|----------|-----------|----|----------|-----------|------|----------|--------|
-// | 13 |  Evn0.13 | ~Evn0.13  | 13 |  Odd0.13 | ~Odd0.13  | Evn  |  ~A.13a  | ~A.12  |
-// | 13 |  Evn1.13 | ~Evn1.13  | 13 |  Odd1.13 | ~Odd1.13  |      |  ~A.05   | ~A.06  |
-// | 13 |  Evn2.13 | ~Evn2.13  | 13 |  Odd2.13 | ~Odd2.13  |      |  ~A.13b  | ~A.13c |
-// | 13 |  Evn3.13 | ~Evn3.13  | 13 |  Odd3.13 | ~Odd3.13  |      |  ~A.02   |        |
-// | 12 |  Evn4.12 | ~Evn4.12  | 12 |  Odd4.12 | ~Odd4.12  |      |          |        |
-
-//  $Maj(A, B, C)$
-
-// | T0 |    A0    |     A1    | T1 |    A2    |     A3    |  A4  |   A5  |  A6   |
-// |----|----------|-----------|----|----------|-----------|------|-------|-------|
-// | 13 |  Odd0.13 | ~Odd0.13  | 13 |  Evn0.13 | ~Evn0.13  | Odd  |  ~A   |  ~B   |
-// | 13 |  Odd1.13 | ~Odd1.13  | 13 |  Evn1.13 | ~Evn1.13  |      |  ~C   |       |
-// | 13 |  Odd2.13 | ~Odd2.13  | 13 |  Evn2.13 | ~Evn2.13  |      |       |       |
-// | 13 |  Odd3.13 | ~Odd3.13  | 13 |  Evn3.13 | ~Evn3.13  |      |       |       |
-// | 12 |  Odd4.12 | ~Odd4.12  | 12 |  Evn4.12 | ~Evn4.12  |      |       |       |
-
 // E: |----------|----------|-----|-----------|
 //        23          23       4       14
 
@@ -47,31 +27,6 @@
 // | 13 |   E.13b  |  ~E.13b   | 10 |   E.10b  |   ~E.10b  |   ~E   |  S2  |  S3  |
 // | 04 |   E.04   |  ~E.04    | 13 |   E.13c  |   ~E.13c  |   S4   |  S5  |  S6  |
 // | 01 |   E.01   |  ~E.01    | 03 |   carry  |   ~carry  |        |      |      |
-
-// $\Sigma_{1}(E)$
-
-// | T0 |    A0    |     A1    | T1 |    A2    |     A3    |  A4  |    A5    |    A6   |
-// |----|----------|-----------|----|----------|-----------|------|----------|---------|
-// | 13 |  Evn0.13 | ~Evn0.13  | 13 |  Odd0.13 | ~Odd0.13  | Evn  |  ~E.13a  | ~E.10a  |
-// | 13 |  Evn1.13 | ~Evn1.13  | 13 |  Odd1.13 | ~Odd1.13  |      |  ~E.13b  | ~E.10b  |
-// | 13 |  Evn2.13 | ~Evn2.13  | 13 |  Odd2.13 | ~Odd2.13  |      |  ~E.04   | ~E.13c  |
-// | 13 |  Evn3.13 | ~Evn3.13  | 13 |  Odd3.13 | ~Odd3.13  |      |  ~E.01   |         |
-// | 12 |  Evn4.12 | ~Evn4.12  | 12 |  Odd4.12 | ~Odd4.12  |      |          |         |
-
-// $Ch(E, F, G)$
-
-// | T0 |      A0      |       A1      | T1 |       A2     |       A3      |     A4  |    A5   |      A6     |
-// |----|--------------|---------------|----|--------------|---------------|---------|---------|-------------|
-// | 13 |  Odd0_EF.13  |  ~Odd0_EF.13  | 13 |  Evn0_EF.13  |  ~Evn0_EF.13  | Odd_EF  |    ~E   |     ~F      |
-// | 13 |  Odd1_EF.13  |  ~Odd1_EF.13  | 13 |  Evn1_EF.13  |  ~Evn1_EF.13  | Odd_EF  | Odd_nEG |     Ret     |
-// | 13 |  Odd2_EF.13  |  ~Odd2_EF.13  | 13 |  Evn2_EF.13  |  ~Evn2_EF.13  |         |         |             |
-// | 13 |  Odd3_EF.13  |  ~Odd3_EF.13  | 13 |  Evn3_EF.13  |  ~Evn3_EF.13  |         |         |             |
-// | 12 |  Odd4_EF.12  |  ~Odd4_EF.12  | 12 |  Evn4_EF.12  |  ~Evn4_EF.12  |         |         |             |
-// | 13 |  Odd0_nEF.13 |  ~Odd0_nEF.13 | 13 |  Evn0_nEF.13 |  ~Evn0_nEF.13 | Odd_nEG |  ~(¬E)  |     ~G      |
-// | 13 |  Odd1_nEF.13 |  ~Odd2_nEF.13 | 13 |  Evn1_nEF.13 |  ~Evn1_nEF.13 |   ~E    |  ~(¬E)  |MASK_EVN_128 |
-// | 13 |  Odd2_nEF.13 |  ~Odd4_nEF.13 | 13 |  Evn2_nEF.13 |  ~Evn2_nEF.13 |         |         |             |
-// | 13 |  Odd3_nEF.13 |  ~Odd1_nEF.13 | 13 |  Evn3_nEF.13 |  ~Evn3_nEF.13 |         |         |             |
-// | 12 |  Odd4_nEF.12 |  ~Odd3_nEF.12 | 12 |  Evn4_nEF.12 |  ~Evn4_nEF.12 |         |         |             |
 
 // message-word:
 
@@ -132,7 +87,8 @@ use crate::{
         types::{AssignedPlain, AssignedPlainSpreaded, AssignedSpreaded, LimbsOfA, LimbsOfE},
         utils::{
             expr_pow2_ip, expr_pow4_ip, gen_spread_table, get_even_and_odd_bits, negate_spreaded,
-            spread, spreaded_Sigma_0, spreaded_maj, u64_in_be_limbs, MASK_EVN_128,
+            spread, spreaded_Sigma_0, spreaded_Sigma_1, spreaded_maj, u64_in_be_limbs,
+            MASK_EVN_128,
         },
     },
     instructions::assignments::AssignmentInstructions,
@@ -269,7 +225,7 @@ pub struct Sha512Config {
     q_maj: Selector,
     q_half_ch: Selector,
     q_Sigma_0: Selector,
-    // q_Sigma_1: Selector,
+    q_Sigma_1: Selector,
     // q_sigma_0: Selector,
     // q_sigma_1: Selector,
     q_13_13_13_13_12: Selector,
@@ -338,7 +294,7 @@ impl<F: PrimeField> ComposableChip<F> for Sha512Chip<F> {
         let q_maj = meta.selector();
         let q_half_ch = meta.selector();
         let q_Sigma_0 = meta.selector();
-        // let q_Sigma_1 = meta.selector();
+        let q_Sigma_1 = meta.selector();
         // let q_sigma_0 = meta.selector();
         // let q_sigma_1 = meta.selector();
 
@@ -480,6 +436,53 @@ impl<F: PrimeField> ComposableChip<F> for Sha512Chip<F> {
             Constraints::with_selector(q_Sigma_0, vec![("Sigma_0", id)])
         });
 
+        meta.create_gate("Σ₁(E)", |meta| {
+            // See function `Sigma_1` for a description of the following layout.
+            let s13a = meta.query_advice(advice_cols[5], Rotation(-1));
+            let s10a = meta.query_advice(advice_cols[6], Rotation(-1));
+            let s13b = meta.query_advice(advice_cols[5], Rotation(0));
+            let s10b = meta.query_advice(advice_cols[6], Rotation(0));
+            let s04 = meta.query_advice(advice_cols[5], Rotation(1));
+            let s13c = meta.query_advice(advice_cols[6], Rotation(1));
+            let s01 = meta.query_advice(advice_cols[5], Rotation(2));
+            let s_evn_13a = meta.query_advice(advice_cols[1], Rotation(-1));
+            let s_evn_13b = meta.query_advice(advice_cols[1], Rotation(0));
+            let s_evn_13c = meta.query_advice(advice_cols[1], Rotation(1));
+            let s_evn_13d = meta.query_advice(advice_cols[1], Rotation(2));
+            let s_evn_12 = meta.query_advice(advice_cols[1], Rotation(3));
+            let s_odd_13a = meta.query_advice(advice_cols[3], Rotation(-1));
+            let s_odd_13b = meta.query_advice(advice_cols[3], Rotation(0));
+            let s_odd_13c = meta.query_advice(advice_cols[3], Rotation(1));
+            let s_odd_13d = meta.query_advice(advice_cols[3], Rotation(2));
+            let s_odd_12 = meta.query_advice(advice_cols[3], Rotation(3));
+
+            let s_1st_rot = expr_pow4_ip(
+                [51, 50, 37, 27, 14, 4, 0],
+                [&s13c, &s01, &s13a, &s10a, &s13b, &s10b, &s04],
+            );
+            let s_2nd_rot = expr_pow4_ip(
+                [60, 47, 46, 33, 23, 10, 0],
+                [&s04, &s13c, &s01, &s13a, &s10a, &s13b, &s10b],
+            );
+            let s_3rd_rot = expr_pow4_ip(
+                [51, 41, 37, 24, 23, 10, 0],
+                [&s13b, &s10b, &s04, &s13c, &s01, &s13a, &s10a],
+            );
+
+            let s_evn = expr_pow4_ip(
+                [51, 38, 25, 12, 0],
+                [&s_evn_13a, &s_evn_13b, &s_evn_13c, &s_evn_13d, &s_evn_12],
+            );
+            let s_odd = expr_pow4_ip(
+                [51, 38, 25, 12, 0],
+                [&s_odd_13a, &s_odd_13b, &s_odd_13c, &s_odd_13d, &s_odd_12],
+            );
+
+            let id = (s_1st_rot + s_2nd_rot + s_3rd_rot) - (s_evn + Expression::from(2) * s_odd);
+
+            Constraints::with_selector(q_Sigma_1, vec![("Sigma_1", id)])
+        });
+
         meta.create_gate("13-13-13-13-12 decomposition", |meta| {
             // See function `assign_sprdd_13_13_13_13_12` for a description of the following
             // layout.
@@ -503,7 +506,7 @@ impl<F: PrimeField> ComposableChip<F> for Sha512Chip<F> {
             q_maj,
             q_half_ch,
             q_Sigma_0,
-            // q_Sigma_1,
+            q_Sigma_1,
             // q_sigma_0,
             // q_sigma_1,
             q_13_13_13_13_12,
@@ -795,6 +798,92 @@ impl<F: PrimeField> Sha512Chip<F> {
                 self.assign_sprdd_13_13_13_13_12(
                     &mut region,
                     val_of_sprdd_limbs.map(spreaded_Sigma_0),
+                    Parity::Evn,
+                    0,
+                )
+            },
+        )
+    }
+
+    /// Computes Σ₁(E).
+    fn Sigma_1(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        e: &LimbsOfE<F>,
+    ) -> Result<AssignedPlain<F, 64>, Error> {
+        /*
+        Given
+                    E:  ( E.13a || E.10a || E.13b || E.10b || E.04 || E.13c || E.01 )
+
+        We need to compute:
+            E >>> 14 :  ( E.13c || E.01  || E.13a || E.10a || E.13b || E.10b || E.04  )
+          ⊕ E >>> 18 :  ( E.04  || E.13c || E.01  || E.13a || E.10a || E.13b || E.10b )
+          ⊕ E >>> 41 :  ( E.13b || E.10b || E.04  || E.13c || E.01  || E.13a || E.10a )
+
+        which can be achieved by
+
+        1) applying the plain-spreaded lookup on 13-13-13-13-12 limbs of Evn and Odd:
+             Evn: (Evn.13a, Evn.13b, Evn.13c, Evn.13d, Evn.12)
+             Odd: (Odd.13a, Odd.13b, Odd.13c, Odd.13d, Odd.12)
+
+        2) asserting the 13-13-13-13-12 decomposition identity for Evn:
+              2^51 * Evn.13a + 2^38 * Evn.13b + 2^25 * Evn.13c + 2^12 * Evn.13d + Evn.12
+            = Evn
+
+        3) asserting the Sigma_0 identity regarding the spreaded values:
+              (4^51 * ~Evn.13a + 4^38 * ~Evn.13b + 4^25 * ~Evn.13c + 4^12 * ~Evn.13d + ~Evn.12) +
+          2 * (4^51 * ~Odd.13a + 4^38 * ~Odd.13b + 4^25 * ~Odd.13c + 4^12 * ~Odd.13d + ~Odd.12)
+             = 4^51 * ~E.13c + 4^50 * ~E.01  + 4^37 * ~E.13a + 4^27 * ~E.10a + 4^14 * ~E.13b + 4^4  * ~E.10b  + ~E.04
+             + 4^60 * ~E.04  + 4^47 * ~E.13c + 4^46 * ~E.01  + 4^33 * ~E.13a + 4^23 * ~E.10a + 4^10 * ~E.13b  + ~E.10b
+             + 4^51 * ~E.13b + 4^41 * ~E.10b + 4^37 * ~E.04  + 4^24 * ~E.13c + 4^23 * ~E.01  + 4^10 * ~E.13a  + ~E.10a
+
+        The output is Evn.
+
+        We distribute these values in the PLONK table as follows.
+
+        | T0 |    A0    |     A1    | T1 |    A2    |     A3    |  A4  |    A5    |   A6   |
+        |----|----------|-----------|----|----------|-----------|------|----------|--------|
+        | 13 |  Evn.13a | ~Evn.13a  | 13 |  Odd.13a | ~Odd.13a  | Evn  |  ~E.13a  | ~E.10a |
+        | 13 |  Evn.13b | ~Evn.13b  | 13 |  Odd.13b | ~Odd.13b  |      |  ~E.13b  | ~E.10b | <- q_Sigma_1
+        | 13 |  Evn.13c | ~Evn.13c  | 13 |  Odd.13c | ~Odd.13c  |      |  ~E.04   | ~E.13c |
+        | 13 |  Evn.13d | ~Evn.13d  | 13 |  Odd.13d | ~Odd.13d  |      |  ~E.01   |        |
+        | 12 |  Evn.12  | ~Evn.12   | 12 |  Odd.12  | ~Odd.12   |      |          |        |
+        */
+
+        let adv_cols = self.config().advice_cols;
+
+        layouter.assign_region(
+            || "Σ₁(E)",
+            |mut region| {
+                self.config().q_Sigma_1.enable(&mut region, 1)?;
+
+                // Copy and assign the input.
+                (e.spreaded_limb_13a.0).copy_advice(|| "~E.13a", &mut region, adv_cols[5], 0)?;
+                (e.spreaded_limb_10a.0).copy_advice(|| "~E.10a", &mut region, adv_cols[6], 0)?;
+                (e.spreaded_limb_13b.0).copy_advice(|| "~E.13b", &mut region, adv_cols[5], 1)?;
+                (e.spreaded_limb_10b.0).copy_advice(|| "~E.10b", &mut region, adv_cols[6], 1)?;
+                (e.spreaded_limb_04.0).copy_advice(|| "~E.04", &mut region, adv_cols[5], 2)?;
+                (e.spreaded_limb_13c.0).copy_advice(|| "~E.13c", &mut region, adv_cols[6], 2)?;
+                (e.spreaded_limb_01.0).copy_advice(|| "~E.01", &mut region, adv_cols[5], 3)?;
+
+                // Compute the spreaded Σ₁(E) off-circuit, assign the 13-13-13-13-12 limbs
+                // of its even and odd bits into the circuit, enable the q_13_13_13_13_12
+                // selector for the even part and q_lookup selector for the
+                // related rows, return the assigned 64 even bits.
+                let val_of_sprdd_limbs: Value<[u128; 7]> = Value::from_iter([
+                    e.spreaded_limb_13a.0.value().copied().map(fe_to_u128),
+                    e.spreaded_limb_10a.0.value().copied().map(fe_to_u128),
+                    e.spreaded_limb_13b.0.value().copied().map(fe_to_u128),
+                    e.spreaded_limb_10b.0.value().copied().map(fe_to_u128),
+                    e.spreaded_limb_04.0.value().copied().map(fe_to_u128),
+                    e.spreaded_limb_13c.0.value().copied().map(fe_to_u128),
+                    e.spreaded_limb_01.0.value().copied().map(fe_to_u128),
+                ])
+                .map(|limbs: Vec<u128>| limbs.try_into().unwrap());
+
+                self.assign_sprdd_13_13_13_13_12(
+                    &mut region,
+                    val_of_sprdd_limbs.map(spreaded_Sigma_1),
                     Parity::Evn,
                     0,
                 )
