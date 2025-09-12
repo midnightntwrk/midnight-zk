@@ -721,7 +721,7 @@ mod tests {
     }
 
     #[test]
-    fn vector_lims() {
+    fn vector_limits() {
         type F = midnight_curves::Fq;
 
         // Create a random number generator

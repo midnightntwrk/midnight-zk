@@ -42,9 +42,9 @@ where
     /// value has an integer structure (enforced by requiring the
     /// `FromBigUint` trait).
     ///
-    /// Given a `dividend` as an assigned element (interpreted as an integer
-    /// bounded by `bound`), and a constant `divisor`, returns the quotient
-    /// and remainder of dividing the former by the latter, as integers.
+    /// Given a `dividend` as an assigned element (interpreted as an integer),
+    /// and a constant `divisor`, returns the quotient and remainder of
+    /// dividing the former by the latter, as integers.
     ///
     /// An optional (inclusive) upper bound can be provided on the value of
     /// the `dividend`. It is the responsibility of the caller that, if
@@ -52,7 +52,7 @@ where
     ///
     /// # Panics
     ///  - If `divisor = 0`.
-    ///  - If `divisor >= dividend_bound` when the bound is provided or if
+    ///  - If `divisor > dividend_bound` when the bound is provided or if
     ///    `divisor` is greater than or equal to the maximum value that an
     ///    `Assigned::Element` can take.
     ///
@@ -72,10 +72,16 @@ where
         divisor: BigUint,
         dividend_bound: Option<BigUint>,
     ) -> Result<(Assigned, Assigned), Error> {
-        let dividend_bound = dividend_bound.unwrap_or((-Assigned::Element::from(1)).into_biguint());
+        if divisor == BigUint::one() {
+            return Ok((
+                dividend.clone(),
+                self.assign_fixed(layouter, Assigned::Element::from(0))?,
+            ));
+        }
 
-        assert!(divisor != BigUint::zero());
-        assert!(divisor < dividend_bound);
+        let dividend_bound = dividend_bound.unwrap_or((-Assigned::Element::from(1)).into_biguint());
+        assert!(divisor > BigUint::zero());
+        assert!(divisor <= dividend_bound);
 
         let (q, r) = dividend
             .value()

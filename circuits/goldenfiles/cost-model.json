@@ -88,12 +88,12 @@
     "hash": {
       "advice_columns": "13",
       "column_queries": "99",
-      "fixed_columns": "60",
+      "fixed_columns": "58",
       "lookups": "10",
       "max_deg": "5",
-      "permutations": "15",
+      "permutations": "13",
       "point_sets": "5",
-      "rows": "18142",
+      "rows": "17948",
       "table_rows": "8655"
     }
   },
@@ -119,7 +119,7 @@
       "max_deg": "5",
       "permutations": "7",
       "point_sets": "4",
-      "rows": "46",
+      "rows": "40",
       "table_rows": "129"
     }
   },
@@ -132,7 +132,7 @@
       "max_deg": "5",
       "permutations": "7",
       "point_sets": "4",
-      "rows": "557",
+      "rows": "551",
       "table_rows": "129"
     }
   },
