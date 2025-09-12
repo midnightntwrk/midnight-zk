@@ -157,6 +157,12 @@ jobs:
       - name: 'Install rust-toolchain.toml'
         run: rustup toolchain install
 
+      # font required for benchmarking charts generation
+      - name: Install dev prerequisites
+        run: |
+          apt-get update
+          apt-get install -y libfontconfig1-dev pkg-config
+
       - name: Run Clippy on `blstrs`
         if: always()
         run: cargo clippy -p midnight-curves --all-targets --all-features -- -Dwarnings
