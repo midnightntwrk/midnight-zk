@@ -1261,16 +1261,13 @@ where
         )?;
 
         // (ii) enforced as res * x - res * y = 0.
-        layouter.assign_region(
-            || "is_equal (ii)",
-            |mut region| {
-                self.copy_in_row(&mut region, &res, &value_cols[0], 0)?;
-                self.copy_in_row(&mut region, x, &value_cols[1], 0)?;
-                self.copy_in_row(&mut region, &res, &value_cols[2], 0)?;
-                self.copy_in_row(&mut region, y, &value_cols[3], 0)?;
-                let coeffs = [F::ZERO; NB_ARITH_COLS];
-                self.custom(&mut region, &coeffs, F::ZERO, (F::ONE, -F::ONE), F::ZERO, 0)
-            },
+        self.add_and_double_mul(
+            layouter,
+            (F::ZERO, &res),
+            (F::ZERO, x),
+            (F::ZERO, y),
+            F::ZERO,
+            (F::ONE, -F::ONE),
         )?;
 
         // The two equations we have enforced guarantee the bit-ness of `res`.
@@ -1308,15 +1305,13 @@ where
         )?;
 
         // (ii) enforced as -c * res + res * x = 0.
-        layouter.assign_region(
-            || "is_equal (ii)",
-            |mut region| {
-                self.copy_in_row(&mut region, &res, &value_cols[0], 0)?;
-                self.copy_in_row(&mut region, x, &value_cols[1], 0)?;
-                let mut coeffs = [F::ZERO; NB_ARITH_COLS];
-                coeffs[0] = -c; // coeff of res
-                self.custom(&mut region, &coeffs, F::ZERO, (F::ONE, F::ZERO), F::ZERO, 0)
-            },
+        self.add_and_mul(
+            layouter,
+            (-c, &res),
+            (F::ZERO, x),
+            (F::ZERO, x),
+            F::ZERO,
+            F::ONE,
         )?;
 
         // The two equations we have enforced guarantee the bit-ness of `res`.
