@@ -84,11 +84,14 @@ use num_integer::Integer;
 use crate::{
     field::{decomposition::chip::P2RDecompositionChip, NativeChip, NativeGadget},
     hash::sha512::{
-        types::{AssignedPlain, AssignedPlainSpreaded, AssignedSpreaded, LimbsOfA, LimbsOfE},
+        types::{
+            AssignedMessageWord, AssignedPlain, AssignedPlainSpreaded, AssignedSpreaded, LimbsOfA,
+            LimbsOfE,
+        },
         utils::{
             expr_pow2_ip, expr_pow4_ip, gen_spread_table, get_even_and_odd_bits, negate_spreaded,
-            spread, spreaded_Sigma_0, spreaded_Sigma_1, spreaded_maj, u64_in_be_limbs,
-            MASK_EVN_128,
+            spread, spreaded_Sigma_0, spreaded_Sigma_1, spreaded_maj, spreaded_sigma_0,
+            u64_in_be_limbs, MASK_EVN_128,
         },
     },
     instructions::assignments::AssignmentInstructions,
@@ -226,7 +229,7 @@ pub struct Sha512Config {
     q_half_ch: Selector,
     q_Sigma_0: Selector,
     q_Sigma_1: Selector,
-    // q_sigma_0: Selector,
+    q_sigma_0: Selector,
     // q_sigma_1: Selector,
     q_13_13_13_13_12: Selector,
     // q_10_9_11_2: Selector,
@@ -295,7 +298,7 @@ impl<F: PrimeField> ComposableChip<F> for Sha512Chip<F> {
         let q_half_ch = meta.selector();
         let q_Sigma_0 = meta.selector();
         let q_Sigma_1 = meta.selector();
-        // let q_sigma_0 = meta.selector();
+        let q_sigma_0 = meta.selector();
         // let q_sigma_1 = meta.selector();
 
         let q_13_13_13_13_12 = meta.selector();
@@ -483,6 +486,60 @@ impl<F: PrimeField> ComposableChip<F> for Sha512Chip<F> {
             Constraints::with_selector(q_Sigma_1, vec![("Sigma_1", id)])
         });
 
+        meta.create_gate("σ₀(W)", |meta| {
+            // See function `sigma_0` for a description of the following layout.
+            let s03a = meta.query_advice(advice_cols[5], Rotation(-1));
+            let s13a = meta.query_advice(advice_cols[6], Rotation(-1));
+            let s13b = meta.query_advice(advice_cols[5], Rotation(0));
+            let s13c = meta.query_advice(advice_cols[6], Rotation(0));
+            let s03b = meta.query_advice(advice_cols[5], Rotation(1));
+            let s11 = meta.query_advice(advice_cols[6], Rotation(1));
+            let s01a = meta.query_advice(advice_cols[5], Rotation(2));
+            let s01b = meta.query_advice(advice_cols[6], Rotation(2));
+            let s05 = meta.query_advice(advice_cols[5], Rotation(3));
+            let s01c = meta.query_advice(advice_cols[6], Rotation(3));
+            let s_evn_13a = meta.query_advice(advice_cols[1], Rotation(-1));
+            let s_evn_13b = meta.query_advice(advice_cols[1], Rotation(0));
+            let s_evn_13c = meta.query_advice(advice_cols[1], Rotation(1));
+            let s_evn_13d = meta.query_advice(advice_cols[1], Rotation(2));
+            let s_evn_12 = meta.query_advice(advice_cols[1], Rotation(3));
+            let s_odd_13a = meta.query_advice(advice_cols[3], Rotation(-1));
+            let s_odd_13b = meta.query_advice(advice_cols[3], Rotation(0));
+            let s_odd_13c = meta.query_advice(advice_cols[3], Rotation(1));
+            let s_odd_13d = meta.query_advice(advice_cols[3], Rotation(2));
+            let s_odd_12 = meta.query_advice(advice_cols[3], Rotation(3));
+
+            let s_1st_shift = expr_pow4_ip(
+                [54, 41, 28, 15, 12, 1, 0],
+                [&s03a, &s13a, &s13b, &s13c, &s03b, &s11, &s01a],
+            );
+            let s_2nd_rot = expr_pow4_ip(
+                [63, 60, 47, 34, 21, 18, 7, 6, 5, 0],
+                [
+                    &s01c, &s03a, &s13a, &s13b, &s13c, &s03b, &s11, &s01a, &s01b, &s05,
+                ],
+            );
+            let s_3rd_rot = expr_pow4_ip(
+                [63, 62, 57, 56, 53, 40, 27, 14, 11, 0],
+                [
+                    &s01a, &s01b, &s05, &s01c, &s03a, &s13a, &s13b, &s13c, &s03b, &s11,
+                ],
+            );
+
+            let s_evn = expr_pow4_ip(
+                [51, 38, 25, 12, 0],
+                [&s_evn_13a, &s_evn_13b, &s_evn_13c, &s_evn_13d, &s_evn_12],
+            );
+            let s_odd = expr_pow4_ip(
+                [51, 38, 25, 12, 0],
+                [&s_odd_13a, &s_odd_13b, &s_odd_13c, &s_odd_13d, &s_odd_12],
+            );
+
+            let id = (s_1st_shift + s_2nd_rot + s_3rd_rot) - (s_evn + Expression::from(2) * s_odd);
+
+            Constraints::with_selector(q_sigma_0, vec![("sigma_0", id)])
+        });
+
         meta.create_gate("13-13-13-13-12 decomposition", |meta| {
             // See function `assign_sprdd_13_13_13_13_12` for a description of the following
             // layout.
@@ -507,7 +564,7 @@ impl<F: PrimeField> ComposableChip<F> for Sha512Chip<F> {
             q_half_ch,
             q_Sigma_0,
             q_Sigma_1,
-            // q_sigma_0,
+            q_sigma_0,
             // q_sigma_1,
             q_13_13_13_13_12,
             // q_10_9_11_2,
@@ -884,6 +941,98 @@ impl<F: PrimeField> Sha512Chip<F> {
                 self.assign_sprdd_13_13_13_13_12(
                     &mut region,
                     val_of_sprdd_limbs.map(spreaded_Sigma_1),
+                    Parity::Evn,
+                    0,
+                )
+            },
+        )
+    }
+
+    /// Computes σ₀(W).
+    fn sigma_0(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        w: &AssignedMessageWord<F>,
+    ) -> Result<AssignedPlain<F, 64>, Error> {
+        /*
+        Given
+                    W:  ( W.03a || W.13a || W.13b || W.13c || W.03b || W.13c || W.11 || W.01a || W.01b || W.05 || W.01c )
+
+        We need to compute:
+            W  >>  7 :  ( W.03a || W.13a || W.13b || W.13c || W.03b || W.13c || W.11  || W.01a )
+          ⊕ W >>>  1 :  ( W.01c || W.03a || W.13a || W.13b || W.13c || W.03b || W.13c || W.11  || W.01a || W.01b || W.05 )
+          ⊕ W >>>  8 :  ( W.01a || W.01b || W.05  || W.01c || W.03a || W.13a || W.13b || W.13c || W.03b || W.13c || W.11 )
+
+        which can be achieved by
+
+        1) applying the plain-spreaded lookup on 13-13-13-13-12 limbs of Evn and Odd:
+             Evn: (Evn.13a, Evn.13b, Evn.13c, Evn.13d, Evn.12)
+             Odd: (Odd.13a, Odd.13b, Odd.13c, Odd.13d, Odd.12)
+
+        2) asserting the 13-13-13-13-12 decomposition identity for Evn:
+              2^51 * Evn.13a + 2^38 * Evn.13b + 2^25 * Evn.13c + 2^12 * Evn.13d + Evn.12
+            = Evn
+
+        3) asserting the Sigma_0 identity regarding the spreaded values:
+              (4^51 * ~Evn.13a + 4^38 * ~Evn.13b + 4^25 * ~Evn.13c + 4^12 * ~Evn.13d + ~Evn.12) +
+          2 * (4^51 * ~Odd.13a + 4^38 * ~Odd.13b + 4^25 * ~Odd.13c + 4^12 * ~Odd.13d + ~Odd.12)
+             = 4^54 * ~W.03a + 4^41 * ~W.13a + 4^28 * ~W.13b + 4^15 * ~W.13c + 4^12 * ~W.03b + 4^1  * ~W.11  + ~W.01a
+             + 4^63 * ~W.01c + 4^60 * ~W.03a + 4^47 * ~W.13a + 4^34 * ~W.13b + 4^21 * ~W.13c + 4^18 * ~W.03b + 4^7  * ~W.11 + 4^6  * ~W.01a + 4^5  * ~W.01b + ~W.05
+             + 4^63 * ~W.05  + 4^62 * ~W.06  + 4^57 * ~W.13b + 4^56 * ~W.13c + 4^53 * ~W.02  + 4^40 * ~W.13a + 4^27 * ~W.12 + 4^14 * ~W.12  + 4^11 * ~W.03b + ~W.11
+
+        The output is Evn.
+
+        We distribute these values in the PLONK table as follows.
+
+        | T0 |    A0    |     A1    | T1 |    A2    |     A3    |  A4  |    A5    |   A6   |
+        |----|----------|-----------|----|----------|-----------|------|----------|--------|
+        | 13 |  Evn.13a | ~Evn.13a  | 13 |  Odd.13a | ~Odd.13a  | Evn  |  ~W.03a  | ~W.13a |
+        | 13 |  Evn.13b | ~Evn.13b  | 13 |  Odd.13b | ~Odd.13b  |      |  ~W.13b  | ~W.13c | <- q_sigma_0
+        | 13 |  Evn.13c | ~Evn.13c  | 13 |  Odd.13c | ~Odd.13c  |      |  ~W.03b  | ~W.11  |
+        | 13 |  Evn.13d | ~Evn.13d  | 13 |  Odd.13d | ~Odd.13d  |      |  ~W.01a  | ~W.01b |
+        | 12 |  Evn.12  | ~Evn.12   | 12 |  Odd.12  | ~Odd.12   |      |  ~W.05   | ~W.01c |
+        */
+
+        let adv_cols = self.config().advice_cols;
+
+        layouter.assign_region(
+            || "σ₀(W)",
+            |mut region| {
+                self.config().q_sigma_0.enable(&mut region, 1)?;
+
+                // Copy and assign the input.
+                (w.spreaded_w_03a.0).copy_advice(|| "~W.03a", &mut region, adv_cols[5], 0)?;
+                (w.spreaded_w_13a.0).copy_advice(|| "~W.13a", &mut region, adv_cols[6], 0)?;
+                (w.spreaded_w_13b.0).copy_advice(|| "~W.13b", &mut region, adv_cols[5], 1)?;
+                (w.spreaded_w_13c.0).copy_advice(|| "~W.13c", &mut region, adv_cols[6], 1)?;
+                (w.spreaded_w_03b.0).copy_advice(|| "~W.03b", &mut region, adv_cols[5], 2)?;
+                (w.spreaded_w_11.0).copy_advice(|| "~W.11", &mut region, adv_cols[6], 2)?;
+                (w.spreaded_w_01a.0).copy_advice(|| "~W.01a", &mut region, adv_cols[5], 3)?;
+                (w.spreaded_w_01b.0).copy_advice(|| "~W.01b", &mut region, adv_cols[6], 3)?;
+                (w.spreaded_w_05.0).copy_advice(|| "~W.05", &mut region, adv_cols[5], 4)?;
+                (w.spreaded_w_01c.0).copy_advice(|| "~W.01c", &mut region, adv_cols[6], 4)?;
+
+                // Compute the spreaded σ₀(W) off-circuit, assign the 13-13-13-13-12 limbs
+                // of its even and odd bits into the circuit, enable the q_13_13_13_13_12
+                // selector for the even part and q_lookup selector for the
+                // related rows, return the assigned 64 even bits.
+                let val_of_sprdd_limbs: Value<[u128; 10]> = Value::from_iter([
+                    w.spreaded_w_03a.0.value().copied().map(fe_to_u128),
+                    w.spreaded_w_13a.0.value().copied().map(fe_to_u128),
+                    w.spreaded_w_13b.0.value().copied().map(fe_to_u128),
+                    w.spreaded_w_13c.0.value().copied().map(fe_to_u128),
+                    w.spreaded_w_03b.0.value().copied().map(fe_to_u128),
+                    w.spreaded_w_11.0.value().copied().map(fe_to_u128),
+                    w.spreaded_w_01a.0.value().copied().map(fe_to_u128),
+                    w.spreaded_w_01b.0.value().copied().map(fe_to_u128),
+                    w.spreaded_w_05.0.value().copied().map(fe_to_u128),
+                    w.spreaded_w_01c.0.value().copied().map(fe_to_u128),
+                ])
+                .map(|limbs: Vec<u128>| limbs.try_into().unwrap());
+
+                self.assign_sprdd_13_13_13_13_12(
+                    &mut region,
+                    val_of_sprdd_limbs.map(spreaded_sigma_0),
                     Parity::Evn,
                     0,
                 )
