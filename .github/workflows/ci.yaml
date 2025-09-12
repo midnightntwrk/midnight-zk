@@ -159,9 +159,7 @@ jobs:
 
       # font required for benchmarking charts generation
       - name: Install dev prerequisites
-        run: |
-          apt-get update
-          apt-get install -y libfontconfig1-dev pkg-config
+        run: apt-get install -y libfontconfig1-dev
 
       - name: Run Clippy on `blstrs`
         if: always()

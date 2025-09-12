@@ -95,7 +95,7 @@ impl Relation for SchnorrExample {
 
     fn format_instance((pk, msg): &Self::Instance) -> Vec<F> {
         [
-            AssignedNativePoint::<Jubjub>::as_public_input(&pk),
+            AssignedNativePoint::<Jubjub>::as_public_input(pk),
             vec![*msg],
         ]
         .concat()
