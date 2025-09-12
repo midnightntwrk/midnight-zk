@@ -58,6 +58,7 @@ jobs:
           path: circuits/examples/assets/bls_filecoin_2p19
           key: fixed-srs-cache
 
+      - run: cargo tree -e features -p midnight-curves
       - uses: ./.github/actions/cargo-test
         with:
           package: midnight-circuits
