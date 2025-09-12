@@ -171,7 +171,7 @@ where
     })
 }
 
-/// Given a [VerifierTrace], this function computes the opening challenge, x,
+/// Given a VerifierTrace, this function computes the opening challenge, x,
 /// and proceeds to verify the algebraic constraints with the claimed
 /// evaluations. This function does not verify the PCS proof.
 ///

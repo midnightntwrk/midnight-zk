@@ -48,6 +48,7 @@ jobs:
 
     env:
       RUST_BACKTRACE: full
+      RUSTFLAGS: --cfg ci_build
 
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
@@ -57,6 +58,7 @@ jobs:
           path: circuits/examples/assets/bls_filecoin_2p19
           key: fixed-srs-cache
 
+      - run: cargo tree -e features -p midnight-curves
       - uses: ./.github/actions/cargo-test
         with:
           package: midnight-circuits

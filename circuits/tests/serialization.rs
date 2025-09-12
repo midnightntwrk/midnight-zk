@@ -182,6 +182,7 @@ fn pk_serde_test(architecture: ZkStdLibArch, write_format: SerdeFormat, read_for
     let mut buffer = Vec::new();
     pk.write(&mut buffer, write_format).unwrap();
 
+    println!("Size of usize: {:?}", std::mem::size_of::<usize>());
     println!("PK buffer length after write: {}", buffer.len());
 
     let mut cursor = std::io::Cursor::new(buffer.clone());

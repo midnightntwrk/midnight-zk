@@ -138,7 +138,6 @@ fn msm_blst(c: &mut Criterion) {
         }
     }
 
-    #[cfg(feature = "h2c_compare")]
     // Halo2Curves version.
     for (b_index, b) in BITS.iter().enumerate() {
         for k in MULTICORE_RANGE {

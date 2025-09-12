@@ -19,8 +19,6 @@
 
 #[doc = include_str!("../README.md")]
 extern crate core;
-#[cfg(feature = "regression")]
-extern crate serde_derive;
 
 pub mod compact_std_lib;
 pub mod instructions;
