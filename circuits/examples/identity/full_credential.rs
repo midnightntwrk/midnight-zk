@@ -1,4 +1,5 @@
-//! Full example of a proof of validity and attributed in a ECDSA signed credential.
+//! Full example of a proof of validity and attributed in a ECDSA signed
+//! credential.
 
 use std::{io::Write, time::Instant};
 
@@ -24,7 +25,6 @@ use midnight_proofs::{
 };
 use num_bigint::BigUint;
 use rand::rngs::OsRng;
-
 use utils::{read_credential, split_blob, verify_credential_sig};
 
 #[path = "./utils.rs"]
