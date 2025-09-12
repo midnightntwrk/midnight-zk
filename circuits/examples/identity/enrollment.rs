@@ -1,29 +1,32 @@
-//! Example of verifying the validity of an ECDSA signed Atala identity JSON.
+//! Example of a proof of validity of an ECDSA signed credential.
 
 use std::io::Write;
 use std::time::Instant;
 
 use halo2curves::secp256k1::Secp256k1;
-use midnight_circuits::instructions::public_input::CommittedInstanceInstructions;
+
+use midnight_curves::G1Affine;
+
+use midnight_proofs::{
+    circuit::{Layouter, Value},
+    plonk::commit_to_instances,
+    plonk::Error,
+    poly::kzg::KZGCommitmentScheme,
+};
+
 use midnight_circuits::{
     compact_std_lib::{self, Relation, ZkStdLib, ZkStdLibArch},
     field::foreign::{params::MultiEmulationParams, AssignedField},
     instructions::{
-        ArithInstructions, AssertionInstructions, AssignmentInstructions, Base64Instructions,
-        DecompositionInstructions, EccInstructions, PublicInputInstructions,
+        public_input::CommittedInstanceInstructions, ArithInstructions, AssertionInstructions,
+        AssignmentInstructions, Base64Instructions, DecompositionInstructions, EccInstructions,
+        PublicInputInstructions,
     },
     testing_utils::{
         ecdsa::{ECDSASig, FromBase64, PublicKey},
         plonk_api::filecoin_srs,
     },
     types::{AssignedByte, AssignedForeignPoint, Instantiable},
-};
-use midnight_curves::G1Affine;
-use midnight_proofs::plonk::commit_to_instances;
-use midnight_proofs::poly::kzg::KZGCommitmentScheme;
-use midnight_proofs::{
-    circuit::{Layouter, Value},
-    plonk::Error,
 };
 
 use rand::rngs::OsRng;
@@ -52,9 +55,9 @@ type Payload = [u8; PAYLOAD_LEN];
 /// It receives as public inputs the public key of the credential signer and
 /// the decoded JSON of the credential in committed form.
 #[derive(Clone, Default)]
-pub struct AtalaEnrollment;
+pub struct CredentialEnrollment;
 
-impl Relation for AtalaEnrollment {
+impl Relation for CredentialEnrollment {
     type Instance = PK;
     type Witness = (Payload, ECDSASig);
 
@@ -119,13 +122,13 @@ impl Relation for AtalaEnrollment {
     }
 
     fn read_relation<R: std::io::Read>(_reader: &mut R) -> std::io::Result<Self> {
-        Ok(AtalaEnrollment)
+        Ok(CredentialEnrollment)
     }
 }
 
-impl AtalaEnrollment {
-    // Creates an AtalaJsonECDSA witness from:
-    // 1. A JWT encoded Atala credential.
+impl CredentialEnrollment {
+    // Creates a witness from:
+    // 1. A JWT encoded credential.
     // 2. The corresponding base64 encoded ECDSA public key.
     fn witness_from_blob(blob: &[u8]) -> (Payload, ECDSASig) {
         let (payload, signature_bytes) = split_blob(blob);
@@ -184,7 +187,7 @@ fn main() {
     let srs = filecoin_srs(K);
     let credential_blob = read_credential::<4096>(CRED_PATH).expect("Path to credential file.");
 
-    let relation = AtalaEnrollment;
+    let relation = CredentialEnrollment;
 
     let start = |msg: &str| -> Instant {
         print!("{msg}");
@@ -201,18 +204,18 @@ fn main() {
     let wit = start("Computing instance and witnesses");
     let instance = PublicKey::from_base64(PUB_KEY).expect("Base64 encoded PK");
     let witness = {
-        let w = AtalaEnrollment::witness_from_blob(credential_blob.as_slice());
+        let w = CredentialEnrollment::witness_from_blob(credential_blob.as_slice());
         (w.0, w.1)
     };
     let committed_credential: G1Affine = {
-        let instance = AtalaEnrollment::format_committed_instances(&witness);
+        let instance = CredentialEnrollment::format_committed_instances(&witness);
         commit_to_instances::<_, KZGCommitmentScheme<_>>(&srs, vk.vk().get_domain(), &instance)
             .into()
     };
     println!("... done\n{:?}", wit.elapsed());
 
     let p = start("Proof generation");
-    let proof = compact_std_lib::prove::<AtalaEnrollment, blake2b_simd::State>(
+    let proof = compact_std_lib::prove::<CredentialEnrollment, blake2b_simd::State>(
         &srs, &pk, &relation, &instance, witness, OsRng,
     )
     .expect("Proof generation should not fail");
@@ -220,7 +223,7 @@ fn main() {
 
     let v = start("Proof verification");
     assert!(
-        compact_std_lib::verify::<AtalaEnrollment, blake2b_simd::State>(
+        compact_std_lib::verify::<CredentialEnrollment, blake2b_simd::State>(
             &srs.verifier_params(),
             &vk,
             &instance,
