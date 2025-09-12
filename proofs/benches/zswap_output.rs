@@ -3,14 +3,11 @@
 //!
 //! For more details, visit:
 //! https://github.com/midnightntwrk/midnight-ledger-prototype/blob/main/zswap/zswap.compact
-
-use std::hint::black_box;
-
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use ff::Field;
 use group::Group;
 use midnight_circuits::{
-    compact_std_lib::{self, Relation, ZkStdLib},
+    compact_std_lib::{MidnightCircuit, Relation, ZkStdLib},
     ecc::{hash_to_curve::HashToCurveGadget, native::EccChip},
     hash::poseidon::PoseidonChip,
     instructions::{
@@ -19,17 +16,24 @@ use midnight_circuits::{
     },
     types::{AssignedBit, AssignedByte, AssignedNative, AssignedNativePoint, Instantiable},
 };
-use midnight_curves::{Fr as JubjubScalar, JubjubExtended as Jubjub, JubjubSubgroup};
+use midnight_curves::{Bls12, Fr as JubjubScalar, JubjubExtended as Jubjub, JubjubSubgroup};
 use midnight_proofs::{
     circuit::{Layouter, Value},
-    plonk::Error,
-    poly::kzg::params::ParamsKZG,
+    plonk::{
+        create_proof, keygen_pk, keygen_vk_with_k, parse_trace, verify_algebraic_constraints, Error,
+    },
+    poly::{
+        commitment::Guard,
+        kzg::{params::ParamsKZG, KZGCommitmentScheme},
+    },
+    transcript::{CircuitTranscript, Transcript},
 };
 use rand::{rngs::OsRng, Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use sha2::Digest;
 
 type F = midnight_curves::Fq;
+type C = midnight_curves::G1Projective;
 
 type CoinCom = [u8; 32];
 type ValueCom = JubjubSubgroup;
@@ -187,10 +191,7 @@ fn assign_fixed_domain_sep(
     std_lib.assign_many_fixed(layouter, domain_sep.as_bytes())
 }
 
-fn sample_zswap_inputs() -> (
-    <ZSwapOutputCircuit as Relation>::Instance,
-    <ZSwapOutputCircuit as Relation>::Witness,
-) {
+fn sample_zswap_inputs() -> (Vec<F>, MidnightCircuit<'static, ZSwapOutputCircuit>) {
     let mut rng = ChaCha8Rng::from_entropy();
 
     let zswap_pk_bytes = core::array::from_fn(|_| rng.gen());
@@ -231,62 +232,95 @@ fn sample_zswap_inputs() -> (
     let witness = (zswap_pk, coin, rc);
     let instance = (coin_com, value_com);
 
-    (instance, witness)
+    let circuit = MidnightCircuit::new(&ZSwapOutputCircuit, instance, witness);
+
+    (ZSwapOutputCircuit::format_instance(&instance), circuit)
 }
 
 fn bench_zswap_output(c: &mut Criterion) {
-    const K: u32 = 13;
+    const K: u32 = 14;
     let srs = ParamsKZG::unsafe_setup(K, OsRng);
 
-    let relation = ZSwapOutputCircuit;
-    let vk = compact_std_lib::setup_vk(&srs, &relation);
-    let pk = compact_std_lib::setup_pk(&relation, &vk);
+    let circuit = MidnightCircuit::from_relation(&ZSwapOutputCircuit);
+    let vk = keygen_vk_with_k::<_, KZGCommitmentScheme<Bls12>, _>(&srs, &circuit, K)
+        .expect("Failed to generate VK");
+    let pk = keygen_pk(vk, &circuit).expect("Failed to generate PK");
+    let (instance, circuit) = sample_zswap_inputs();
 
-    let mut group = c.benchmark_group("zswap-output");
-
-    group.sample_size(10);
-    group.bench_function("prove", |b| {
-        b.iter_batched(
-            sample_zswap_inputs,
-            |(instance, witness)| {
-                let _proof = compact_std_lib::prove::<ZSwapOutputCircuit, blake2b_simd::State>(
-                    black_box(&srs),
-                    black_box(&pk),
-                    black_box(&relation),
-                    black_box(&instance),
-                    black_box(witness),
-                    OsRng,
-                )
-                .expect("proof generation failed");
-            },
-            criterion::BatchSize::SmallInput,
-        );
-    });
-
-    let (instance, witness) = sample_zswap_inputs();
-    let proof = compact_std_lib::prove::<ZSwapOutputCircuit, blake2b_simd::State>(
-        &srs, &pk, &relation, &instance, witness, OsRng,
+    let mut group = c.benchmark_group("ZSwap Prover");
+    let mut transcript = CircuitTranscript::<blake2b_simd::State>::init();
+    create_proof(
+        &srs,
+        &pk,
+        &[circuit.clone()],
+        1,
+        &[&[&[], &instance]],
+        OsRng,
+        &mut transcript,
+        &mut group,
     )
-    .expect("proof generation failed");
-
-    group.sample_size(100);
-    group.bench_function("verify", |b| {
-        b.iter(|| {
-            assert!(
-                compact_std_lib::verify::<ZSwapOutputCircuit, blake2b_simd::State>(
-                    black_box(&srs.verifier_params()),
-                    black_box(&vk),
-                    black_box(&instance),
-                    black_box(None),
-                    black_box(&proof)
-                )
-                .is_ok()
-            )
-        });
-    });
+    .expect("Failed to generate proof");
 
     group.finish();
+
+    let mut group = c.benchmark_group("ZSwap Verifier");
+    let transcript =
+        CircuitTranscript::<blake2b_simd::State>::init_from_bytes(&transcript.finalize());
+    group.bench_function("Parse trace", |b| {
+        b.iter_batched(
+            || transcript.clone(),
+            |mut t| parse_trace(pk.get_vk(), &[&[C::identity()]], &[&[&instance]], &mut t).unwrap(),
+            BatchSize::SmallInput,
+        )
+    });
+
+    group.bench_function("Verify algebraic constraints", |b| {
+        b.iter_batched(
+            || {
+                let mut t = transcript.clone();
+                (
+                    parse_trace(pk.get_vk(), &[&[C::identity()]], &[&[&instance]], &mut t).unwrap(),
+                    t,
+                )
+            },
+            |(trace, mut t)| {
+                verify_algebraic_constraints(
+                    pk.get_vk(),
+                    trace,
+                    &[&[C::identity()]],
+                    &[&[&instance]],
+                    &mut t,
+                )
+            },
+            BatchSize::SmallInput,
+        )
+    });
+
+    group.bench_function("Finalize proof verification", |b| {
+        b.iter_batched(
+            || {
+                let mut t = transcript.clone();
+                let trace =
+                    parse_trace(pk.get_vk(), &[&[C::identity()]], &[&[&instance]], &mut t).unwrap();
+                let guard = verify_algebraic_constraints(
+                    pk.get_vk(),
+                    trace,
+                    &[&[C::identity()]],
+                    &[&[&instance]],
+                    &mut t,
+                )
+                .unwrap();
+                guard
+            },
+            |guard| guard.verify(&srs.verifier_params()).unwrap(),
+            BatchSize::SmallInput,
+        )
+    });
 }
 
-criterion_group!(benches, bench_zswap_output);
+criterion_group!(
+    name = benches;
+    config = Criterion::default().sample_size(200);
+    targets = bench_zswap_output
+);
 criterion_main!(benches);

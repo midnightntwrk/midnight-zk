@@ -55,7 +55,7 @@ fn bench_commit(c: &mut Criterion) {
     let mut group = c.benchmark_group("Blinder_poly");
     let rand = ChaCha20Rng::from_seed([1u8; 32]);
     for i in [
-        18usize, 19usize, 20usize, 21usize, 22usize, 23usize, 24usize, 25usize,
+        18usize, 19usize, //20usize, 21usize, 22usize, 23usize, 24usize, 25usize,
     ]
     .iter()
     {

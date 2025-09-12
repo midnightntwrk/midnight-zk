@@ -11,7 +11,7 @@ const BLAKE2B_PREFIX_CHALLENGE: u8 = 0;
 const BLAKE2B_PREFIX_COMMON: u8 = 1;
 
 /// Hash function that can be used for transcript
-pub trait TranscriptHash {
+pub trait TranscriptHash: Clone {
     /// Input type of the hash function
     type Input;
     /// Output type of the hash function
@@ -44,7 +44,7 @@ pub trait Sampleable<H: TranscriptHash> {
 }
 
 /// Generic transcript view
-pub trait Transcript {
+pub trait Transcript: Clone {
     /// Hash function
     type Hash: TranscriptHash;
 
