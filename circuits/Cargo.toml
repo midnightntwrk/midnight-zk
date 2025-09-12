@@ -65,12 +65,16 @@ truncated-challenges = ["midnight-proofs/truncated-challenges"]
 bench-internal = ["criterion", "midnight-proofs/bench-internal"]
 
 [[example]]
-name = "json_verification"
+name = "cred_full"
 path = "examples/identity/json_verification.rs"
 
 [[example]]
-name = "enrollment"
+name = "cred_enrollment"
 path = "examples/identity/enrollment.rs"
+
+[[example]]
+name = "cred_property"
+path = "examples/identity/property_check.rs"
 
 [[bench]]
 name = "poseidon_cpu"
