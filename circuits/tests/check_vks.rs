@@ -27,7 +27,10 @@ use exposing_types::{
     bitcoin_ecdsa_threshold::BitcoinThresholdECDSA,
     ecc_ops::EccExample,
     hybrid_mt::HybridMtExample,
-    identity::{enrollment::AtalaEnrollment, json_verification::AtalaJsonECDSA},
+    identity::{
+        enrollment::CredentialEnrollment, full_credential::FullCredential,
+        property_check::CredentialProperty,
+    },
     membership::MembershipExample,
     native_gadget::NativeGadgetExample,
     poseidon::PoseidonExample,
@@ -63,8 +66,9 @@ generate_tests!(
     check_vk_poseidon: PoseidonExample,
     check_vk_native: NativeGadgetExample,
     check_vk_membership: MembershipExample,
-    check_vk_atala_full: AtalaJsonECDSA,
-    check_vk_atala_enrollment: AtalaEnrollment,
+    check_vk_cred_full: FullCredential,
+    check_vk_cred_enrollment: CredentialEnrollment,
+    check_vk_cred_property: CredentialProperty,
     check_vk_hybrid_mt: HybridMtExample,
     check_vk_sha: ShaPreImageCircuit,
     check_vk_schnorr: SchnorrExample

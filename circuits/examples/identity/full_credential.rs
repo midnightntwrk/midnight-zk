@@ -1,4 +1,4 @@
-//! Example of verifying the validity of an ECDSA signed Atala identity JSON.
+//! Full example of a proof of validity and attributed in a ECDSA signed credential.
 
 use std::{io::Write, time::Instant};
 
@@ -56,9 +56,9 @@ type Payload = [u8; PAYLOAD_LEN];
 type SK = secp256k1Scalar;
 
 #[derive(Clone, Default)]
-pub struct AtalaJsonECDSA;
+pub struct FullCredential;
 
-impl Relation for AtalaJsonECDSA {
+impl Relation for FullCredential {
     type Instance = PK;
     type Witness = (Payload, ECDSASig, SK);
 
@@ -150,11 +150,11 @@ impl Relation for AtalaJsonECDSA {
     }
 
     fn read_relation<R: std::io::Read>(_reader: &mut R) -> std::io::Result<Self> {
-        Ok(AtalaJsonECDSA)
+        Ok(FullCredential)
     }
 }
 
-impl AtalaJsonECDSA {
+impl FullCredential {
     /// Verifies the secp256k1 ECDSA signature of the given message.
     fn verify_ecdsa(
         std_lib: &ZkStdLib,
@@ -276,7 +276,7 @@ fn main() {
     let srs = filecoin_srs(K);
     let credential_blob = read_credential::<4096>(CRED_PATH).expect("Path to credential file.");
 
-    let relation = AtalaJsonECDSA;
+    let relation = FullCredential;
 
     let start = |msg: &str| -> Instant {
         print!("{msg}");
@@ -292,12 +292,12 @@ fn main() {
     // Build the instance and witness to be proven.
     let wit = start("Computing instance and witnesses");
     let instance = PublicKey::from_base64(PUB_KEY).expect("Base64 encoded PK");
-    let witness = AtalaJsonECDSA::witness_from_blob(credential_blob.as_slice());
+    let witness = FullCredential::witness_from_blob(credential_blob.as_slice());
     let witness = (witness.0, witness.1, HOLDER_SK);
     println!("... done ({:?})", wit.elapsed());
 
     let p = start("Proof generation");
-    let proof = compact_std_lib::prove::<AtalaJsonECDSA, blake2b_simd::State>(
+    let proof = compact_std_lib::prove::<FullCredential, blake2b_simd::State>(
         &srs, &pk, &relation, &instance, witness, OsRng,
     )
     .expect("Proof generation should not fail.");
@@ -305,7 +305,7 @@ fn main() {
 
     let v = start("Proof verification");
     assert!(
-        compact_std_lib::verify::<AtalaJsonECDSA, blake2b_simd::State>(
+        compact_std_lib::verify::<FullCredential, blake2b_simd::State>(
             &srs.verifier_params(),
             &vk,
             &instance,
@@ -317,11 +317,9 @@ fn main() {
     println!("... done\n{:?}", v.elapsed())
 }
 
-// Helper functions for base64 encoded credentials.
-// -----------------------------------------------
-impl AtalaJsonECDSA {
-    // Creates an AtalaJsonECDSA witness from:
-    // 1. A JWT encoded Atala credential.
+impl FullCredential {
+    // Creates an witness from:
+    // 1. A JWT encoded credential.
     // 2. The corresponding base64 encoded ECDSA public key.
     fn witness_from_blob(blob: &[u8]) -> (Payload, ECDSASig) {
         let (payload, signature_bytes) = split_blob(blob);

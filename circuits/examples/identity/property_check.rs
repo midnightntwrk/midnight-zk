@@ -1,4 +1,4 @@
-//! Example of verifying the validity of an ECDSA signed Atala identity JSON.
+//! Example of property proofs in a JSON credential.
 
 use std::time::Instant;
 
@@ -61,7 +61,6 @@ pub struct CredentialProperty;
 
 impl Relation for CredentialProperty {
     type Instance = ();
-    // TODO: Payload or decoded json directly?
     type Witness = (Payload, SK);
 
     fn format_instance(_instance: &Self::Instance) -> Vec<F> {
@@ -167,6 +166,29 @@ impl Relation for CredentialProperty {
     }
 }
 
+struct Date {
+    day: u8,
+    month: u8,
+    year: u16,
+}
+
+impl From<Date> for BigUint {
+    fn from(value: Date) -> Self {
+        (value.year as u64 * 10_000 + value.month as u64 * 100 + value.day as u64).into()
+    }
+}
+
+// Returns the index of a subsequence inside a larger sequence, if it is
+// present. This function is made generic so it works over native types and
+// values.
+fn find_subsequence<T>(seq: &[T], subseq: &[T]) -> Option<usize>
+where
+    for<'a> &'a [T]: PartialEq,
+{
+    seq.windows(subseq.len())
+        .position(|window| window == subseq)
+}
+
 impl CredentialProperty {
     /// Searches for "property": and returns the following `val_len` characters.
     fn get_property(
@@ -221,29 +243,22 @@ impl CredentialProperty {
         let date = std_lib.parser().date_to_int(layouter, date, format)?;
         std_lib.assert_lower_than_fixed(layouter, &date, &limit_date.into())
     }
-}
 
-struct Date {
-    day: u8,
-    month: u8,
-    year: u16,
-}
+    // Creates an CredentialProperty witness from:
+    // 1. A JWT encoded credential.
+    // 2. The corresponding base64 encoded ECDSA public key.
+    fn witness_from_blob(blob: &[u8]) -> (Payload, ECDSASig) {
+        let (payload, signature_bytes) = split_blob(blob);
 
-impl From<Date> for BigUint {
-    fn from(value: Date) -> Self {
-        (value.year as u64 * 10_000 + value.month as u64 * 100 + value.day as u64).into()
+        assert!(verify_credential_sig(PUB_KEY, &payload, &signature_bytes));
+
+        let signature = ECDSASig::from_base64(&signature_bytes).expect("Base64 encoded signature.");
+
+        (
+            payload.try_into().expect("Payload of length {PAYLOAD_LEN}"),
+            signature,
+        )
     }
-}
-
-// Returns the index of a subsequence inside a larger sequence, if it is
-// present. This function is made generic so it works over native types and
-// values.
-fn find_subsequence<T>(seq: &[T], subseq: &[T]) -> Option<usize>
-where
-    for<'a> &'a [T]: PartialEq,
-{
-    seq.windows(subseq.len())
-        .position(|window| window == subseq)
 }
 
 fn main() {
@@ -299,24 +314,4 @@ fn main() {
         .is_ok()
     );
     println!("... done ({:?})", v.elapsed())
-}
-
-// Helper functions for base64 encoded credentials.
-// -----------------------------------------------
-impl CredentialProperty {
-    // Creates an CredentialProperty witness from:
-    // 1. A JWT encoded Atala credential.
-    // 2. The corresponding base64 encoded ECDSA public key.
-    fn witness_from_blob(blob: &[u8]) -> (Payload, ECDSASig) {
-        let (payload, signature_bytes) = split_blob(blob);
-
-        assert!(verify_credential_sig(PUB_KEY, &payload, &signature_bytes));
-
-        let signature = ECDSASig::from_base64(&signature_bytes).expect("Base64 encoded signature.");
-
-        (
-            payload.try_into().expect("Payload of length {PAYLOAD_LEN}"),
-            signature,
-        )
-    }
 }
