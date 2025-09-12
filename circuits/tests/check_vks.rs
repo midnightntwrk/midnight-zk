@@ -24,10 +24,18 @@ use midnight_proofs::plonk::k_from_circuit;
 mod exposing_types;
 
 use exposing_types::{
-    bitcoin_ecdsa_threshold::BitcoinThresholdECDSA, ecc_ops::EccExample,
-    hybrid_mt::HybridMtExample, json_verification::AtalaJsonECDSA, membership::MembershipExample,
-    native_gadget::NativeGadgetExample, poseidon::PoseidonExample,
-    rsa_signature::RSASignatureCircuit, schnorr_sig::SchnorrExample,
+    bitcoin_ecdsa_threshold::BitcoinThresholdECDSA,
+    ecc_ops::EccExample,
+    hybrid_mt::HybridMtExample,
+    identity::{
+        enrollment::CredentialEnrollment, full_credential::FullCredential,
+        property_check::CredentialProperty,
+    },
+    membership::MembershipExample,
+    native_gadget::NativeGadgetExample,
+    poseidon::PoseidonExample,
+    rsa_signature::RSASignatureCircuit,
+    schnorr_sig::SchnorrExample,
     sha_preimage::ShaPreImageCircuit,
 };
 
@@ -35,7 +43,6 @@ macro_rules! generate_tests {
     ($($name:ident: $circuit:ty),*) => {
         $(
             #[test]
-            #[ignore]
             fn $name() {
                 let relation = <$circuit>::default();
                 let circuit = MidnightCircuit::from_relation(&relation);
@@ -59,7 +66,9 @@ generate_tests!(
     check_vk_poseidon: PoseidonExample,
     check_vk_native: NativeGadgetExample,
     check_vk_membership: MembershipExample,
-    check_vk_atala: AtalaJsonECDSA,
+    check_vk_cred_full: FullCredential,
+    check_vk_cred_enrollment: CredentialEnrollment,
+    check_vk_cred_property: CredentialProperty,
     check_vk_hybrid_mt: HybridMtExample,
     check_vk_sha: ShaPreImageCircuit,
     check_vk_schnorr: SchnorrExample
