@@ -71,9 +71,11 @@ pub mod tests {
 
     use super::*;
     use crate::{
+        field::{decomposition::chip::P2RDecompositionChip, NativeChip, NativeGadget},
         instructions::{AssertionInstructions, AssignmentInstructions},
         testing_utils::{FromScratch, Sampleable},
         utils::circuit_modeling::circuit_to_json,
+        vec::vector_gadget::VectorGadget,
     };
 
     #[derive(Clone, Debug, Default)]
@@ -167,6 +169,105 @@ pub mod tests {
 
         let circuit = TestCircuit::<F, Input, Output, HashChip, AssignChip> {
             inputs: inputs.collect(),
+            _marker: PhantomData,
+        };
+
+        MockProver::run(k, &circuit, vec![vec![], vec![]])
+            .unwrap()
+            .assert_satisfied();
+
+        if cost_model {
+            circuit_to_json(k, chip_name, "hash", 0, circuit);
+        }
+    }
+
+    type NG<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
+
+    #[derive(Clone, Debug, Default)]
+    struct TestVarHashCircuit<F, Input, Output, VarHashChip, const M: usize, const A: usize>
+    where
+        Input: Vectorizable,
+        Output: InnerValue,
+    {
+        input: Vec<Input::Element>, // TODO This should be Value<>
+        _marker: PhantomData<(F, Output, VarHashChip)>,
+    }
+
+    impl<F, Input, Output, VarHashChip, const M: usize, const A: usize> Circuit<F>
+        for TestVarHashCircuit<F, Input, Output, VarHashChip, M, A>
+    where
+        F: PrimeField,
+        Input: Vectorizable,
+        Output: InnerValue,
+        VarHashChip: VarHashInstructions<F, M, Input, Output, A> + FromScratch<F>,
+        VectorGadget<F>: AssignmentInstructions<F, AssignedVector<F, Input, M, A>>,
+        NG<F>: AssignmentInstructions<F, Input> + AssertionInstructions<F, Output>,
+    {
+        type Config = (
+            <VarHashChip as FromScratch<F>>::Config,
+            <VectorGadget<F> as FromScratch<F>>::Config,
+        );
+        type FloorPlanner = SimpleFloorPlanner;
+        type Params = ();
+
+        fn without_witnesses(&self) -> Self {
+            unreachable!()
+        }
+
+        fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+            let committed_instance_column = meta.instance_column();
+            let instance_column = meta.instance_column();
+            let instance_columns = [committed_instance_column, instance_column];
+            (
+                VarHashChip::configure_from_scratch(meta, &instance_columns),
+                VectorGadget::configure_from_scratch(meta, &instance_columns),
+            )
+        }
+
+        fn synthesize(
+            &self,
+            config: Self::Config,
+            mut layouter: impl Layouter<F>,
+        ) -> Result<(), Error> {
+            let chip = VarHashChip::new_from_scratch(&config.0);
+            let ng = <NG<F>>::new_from_scratch(&config.1);
+
+            let vg = VectorGadget::new(&ng);
+
+            let assigned_input: AssignedVector<_, _, M, A> =
+                vg.assign(&mut layouter, Value::known(self.input.clone()))?;
+            let expected_output =
+                <VarHashChip as HashCPU<Input::Element, Output::Element>>::hash(&self.input);
+
+            let output = chip.varhash(&mut layouter, &assigned_input)?;
+            ng.assert_equal_to_fixed(&mut layouter, &output, expected_output)?;
+
+            chip.load_from_scratch(&mut layouter)?;
+            ng.load_from_scratch(&mut layouter)
+        }
+    }
+
+    pub fn test_varhash<F, Input, Output, VarHashChip, const M: usize, const A: usize>(
+        cost_model: bool,
+        chip_name: &str,
+        size: usize,
+        k: u32,
+    ) where
+        F: PrimeField + ff::FromUniformBytes<64> + Ord,
+        Input: Vectorizable + Sampleable,
+        Output: InnerValue,
+        VarHashChip: VarHashInstructions<F, M, Input, Output, A> + FromScratch<F>,
+        VectorGadget<F>: AssignmentInstructions<F, AssignedVector<F, Input, M, A>>,
+        NG<F>: AssignmentInstructions<F, Input> + AssertionInstructions<F, Output>,
+    {
+        let mut rng = ChaCha12Rng::seed_from_u64(0xf007ba11);
+
+        let input = (0..size)
+            .map(|_| Input::sample_inner(&mut rng))
+            .collect::<Vec<_>>();
+
+        let circuit = TestVarHashCircuit::<F, Input, Output, VarHashChip, M, A> {
+            input,
             _marker: PhantomData,
         };
 
