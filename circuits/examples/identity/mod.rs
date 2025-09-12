@@ -1,3 +1,3 @@
 pub mod enrollment;
-pub mod json_verification;
+pub mod full_credential;
 pub mod property_check;
