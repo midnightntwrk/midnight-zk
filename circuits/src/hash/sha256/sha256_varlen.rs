@@ -100,9 +100,9 @@ where
         elem: AssignedByte<F>,
     ) -> Result<(), Error> {
         let ng = self.ng();
-        for i in 0..L {
+        for (i, item) in array.iter_mut().enumerate() {
             let at_idx = ng.is_equal_to_fixed(layouter, idx, F::from(i as u64))?;
-            array[i] = ng.select(layouter, &at_idx, &elem, &array[i])?;
+            *item = ng.select(layouter, &at_idx, &elem, item)?;
         }
         Ok(())
     }
@@ -226,7 +226,7 @@ impl<F: PrimeField> VarLenSha256Gadget<F> {
                 &message_blocks[i],
             )?;
         }
-        state.add(&sha256, layouter, &compression_state)
+        state.add(sha256, layouter, &compression_state)
     }
 
     // Updates the `state` with `block` if `update` is true.
@@ -241,7 +241,7 @@ impl<F: PrimeField> VarLenSha256Gadget<F> {
         let new_state = self.update_state(layouter, state, block)?;
 
         // State gets updated if updating is enabled.
-        CompressionState::select(layouter, self.ng(), &update, &new_state, state)
+        CompressionState::select(layouter, self.ng(), update, &new_state, state)
     }
 
     /// In-circuit variable input-length SHA256 computation, the protagonist of
@@ -299,7 +299,7 @@ impl<F: PrimeField> VarLenSha256Gadget<F> {
             layouter,
             &inputs.len,
             &final_block_len,
-            &final_block,
+            final_block,
             &extra_block,
         )?;
 
