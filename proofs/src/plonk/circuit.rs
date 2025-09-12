@@ -2584,17 +2584,17 @@ mod tests {
     #[test]
     fn iter_sum() {
         let exprs: Vec<Expression<Fr>> = vec![
-            Expression::Constant(1.into()),
-            Expression::Constant(2.into()),
-            Expression::Constant(3.into()),
+            Expression::from(1),
+            Expression::from(2),
+            Expression::from(3),
         ];
         let happened: Expression<Fr> = exprs.into_iter().sum();
         let expected: Expression<Fr> = Expression::Sum(
             Box::new(Expression::Sum(
-                Box::new(Expression::Constant(1.into())),
-                Box::new(Expression::Constant(2.into())),
+                Box::new(Expression::from(1)),
+                Box::new(Expression::from(2)),
             )),
-            Box::new(Expression::Constant(3.into())),
+            Box::new(Expression::from(3)),
         );
 
         assert_eq!(happened, expected);
@@ -2603,17 +2603,17 @@ mod tests {
     #[test]
     fn iter_product() {
         let exprs: Vec<Expression<Fr>> = vec![
-            Expression::Constant(2.into()),
-            Expression::Constant(3.into()),
-            Expression::Constant(6.into()),
+            Expression::from(2),
+            Expression::from(3),
+            Expression::from(6),
         ];
         let happened: Expression<Fr> = exprs.into_iter().product();
         let expected: Expression<Fr> = Expression::Product(
             Box::new(Expression::Product(
-                Box::new(Expression::Constant(2.into())),
-                Box::new(Expression::Constant(3.into())),
+                Box::new(Expression::from(2)),
+                Box::new(Expression::from(3)),
             )),
-            Box::new(Expression::Constant(6.into())),
+            Box::new(Expression::from(6)),
         );
 
         assert_eq!(happened, expected);

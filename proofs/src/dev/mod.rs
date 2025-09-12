@@ -1428,8 +1428,8 @@ mod tests {
 
                     // If q is enabled, a must be in the table.
                     // When q is not enabled, lookup the default value instead.
-                    let not_q = Expression::Constant(Fp::one()) - q.clone();
-                    let default = Expression::Constant(Fp::from(2));
+                    let not_q = Expression::from(1) - q.clone();
+                    let default = Expression::from(2);
                     vec![
                         (
                             q.clone() * a.clone() + not_q.clone() * default.clone(),
@@ -1592,8 +1592,8 @@ mod tests {
 
                     // If q is enabled, a must be in the table.
                     // When q is not enabled, lookup the default value instead.
-                    let not_q = Expression::Constant(Fp::one()) - q.clone();
-                    let default = Expression::Constant(Fp::from(2));
+                    let not_q = Expression::from(1) - q.clone();
+                    let default = Expression::from(2);
                     vec![(q * a + not_q * default, table)]
                 });
 

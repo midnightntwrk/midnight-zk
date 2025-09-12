@@ -176,7 +176,7 @@ fn main() {
         58, 59, 239, 164, 80,
     ];
 
-    const K: u32 = 15;
+    const K: u32 = 16;
     let srs = filecoin_srs(K);
 
     let relation = BitcoinSigExample;

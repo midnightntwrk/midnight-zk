@@ -11,8 +11,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::iter::repeat;
-
 use ff::Field;
 use midnight_proofs::plonk::Expression;
 
@@ -254,7 +252,7 @@ impl<F: PoseidonField> RoundId<F> {
         instances[WIDTH - 1] *= instances[WIDTH - 1].square().square();
         let mut pow_instances_exp = instances
             .iter()
-            .chain(repeat(&F::ZERO).take(NB_SKIPS))
+            .chain(std::iter::repeat_n(&F::ZERO, NB_SKIPS))
             .copied()
             .collect::<Vec<_>>();
 
