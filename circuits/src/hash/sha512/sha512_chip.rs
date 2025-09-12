@@ -50,16 +50,6 @@
 // | 03 |   W.03b  |  ~W.03b   | 11 |   W.11   |  ~W.11    |   S4    |  S5  |  S6  | W.01c |
 // | 05 |   W.05   |  ~W.05    | 03 |   carry  |  ~carry   |         |      |      |       |
 
-// $\sigma_1(W)$
-
-// | T0 |    A0    |     A1    | T1 |    A2    |     A3    |  A4  |    A5    |    A6   |
-// |----|----------|-----------|----|----------|-----------|------|----------|---------|
-// | 13 |  Evn0.13 | ~Evn0.13  | 13 |  Odd0.13 | ~Odd0.13  | Evn  | ~W.03a   | ~W.13a  |
-// | 13 |  Evn1.13 | ~Evn1.13  | 13 |  Odd1.13 | ~Odd1.13  |      | ~W.13b   | ~W.13c  |
-// | 13 |  Evn2.13 | ~Evn2.13  | 13 |  Odd2.13 | ~Odd2.13  |      | ~W.03b   | ~W.11   |
-// | 13 |  Evn3.13 | ~Evn3.13  | 13 |  Odd3.13 | ~Odd3.13  |      | ~W.01a   | ~W.01b  |
-// | 12 |  Evn4.12 | ~Evn4.12  | 12 |  Odd4.12 | ~Odd4.12  |      | ~W.05    | ~W.01c  |
-
 use ff::PrimeField;
 use midnight_proofs::{
     circuit::{Chip, Layouter, Region, Value},
@@ -226,7 +216,7 @@ pub struct Sha512Config {
     // q_10_9_11_2: Selector,
     // q_7_12_2_5_6: Selector,
     // q_12_1x3_7_3_4_3: Selector,
-    // q_add_mod_2_32: Selector,
+    q_add_mod_2_64: Selector,
 }
 
 /// Chip for SHA512.
@@ -296,7 +286,7 @@ impl<F: PrimeField> ComposableChip<F> for Sha512Chip<F> {
         // let q_10_9_11_2 = meta.selector();
         // let q_7_12_2_5_6 = meta.selector();
         // let q_12_1x3_7_3_4_3 = meta.selector();
-        // let q_add_mod_2_32 = meta.selector();
+        let q_add_mod_2_64 = meta.selector();
 
         (0..2).for_each(|idx| {
             meta.lookup("plain-spreaded lookup", |meta| {
@@ -600,6 +590,26 @@ impl<F: PrimeField> ComposableChip<F> for Sha512Chip<F> {
             Constraints::with_selector(q_13_13_13_13_12, vec![("13-13-13-13-12 decomposition", id)])
         });
 
+        meta.create_gate("add mod 2^64", |meta| {
+            // See function `assign_add_mod_2_64` for a description of the following layout.
+            let s0 = meta.query_advice(advice_cols[5], Rotation(-1));
+            let s1 = meta.query_advice(advice_cols[6], Rotation(-1));
+            let s2 = meta.query_advice(advice_cols[5], Rotation(0));
+            let s3 = meta.query_advice(advice_cols[6], Rotation(0));
+            let s4 = meta.query_advice(advice_cols[4], Rotation(1));
+            let s5 = meta.query_advice(advice_cols[5], Rotation(1));
+            let s6 = meta.query_advice(advice_cols[6], Rotation(1));
+
+            let carry = meta.query_advice(advice_cols[2], Rotation(2));
+            let result = meta.query_advice(advice_cols[4], Rotation(-1));
+
+            let summands = [s0, s1, s2, s3, s4, s5, s6];
+            let lhs = summands.into_iter().reduce(|acc, x| acc + x).unwrap();
+            let rhs = result + carry * Expression::Constant(u128_to_fe(1u128 << 64));
+
+            Constraints::with_selector(q_add_mod_2_64, vec![("add_mod_2_64", lhs - rhs)])
+        });
+
         Sha512Config {
             advice_cols,
             fixed_cols,
@@ -615,7 +625,7 @@ impl<F: PrimeField> ComposableChip<F> for Sha512Chip<F> {
             // q_10_9_11_2,
             // q_7_12_2_5_6,
             // q_12_1x3_7_3_4_3,
-            // q_add_mod_2_32,
+            q_add_mod_2_64,
         }
     }
 
@@ -1296,5 +1306,63 @@ impl<F: PrimeField> Sha512Chip<F> {
             plain: AssignedPlain(plain),
             spreaded: AssignedSpreaded(spreaded),
         })
+    }
+
+    /// Given a slice of at most 7 `AssignedPlain` values, this function adds
+    /// them modulo 2^64.
+    ///
+    /// The `zero` argument is supposed to contain a fixed assigned plain
+    /// containing value 0, this is not enforced in this function, it is the
+    /// responsibility of the caller to do so.
+    ///
+    /// # Panics
+    ///
+    /// If the more than 7 summands are provided.
+    fn assign_add_mod_2_64(
+        &self,
+        region: &mut Region<'_, F>,
+        summands: &[AssignedPlain<F, 64>],
+        zero: &AssignedPlain<F, 64>,
+    ) -> Result<AssignedPlain<F, 64>, Error> {
+        /*
+        We distribute values in the PLONK table as follows.
+
+        | T1 |   A2  |   A3   |     A4    | A5 | A6 |
+        |----|-------|--------|-----------|----|----|
+        |    |       |        | sum_plain | S0 | S1 |
+        |    |       |        |           | S2 | S3 | <- q_add_mod_2_64
+        |    |       |        |     S4    | S5 | S6 |
+        |  3 | carry | ~carry |           |    |    |
+
+        We enforce S0 + S1 + S2 + S3 + S4 + S5 + S6 = sum_plain + carry * 2^64.
+        */
+
+        assert!(summands.len() <= 7);
+
+        self.config().q_add_mod_2_64.enable(region, 1)?;
+        let adv_cols = self.config().advice_cols;
+
+        let mut summands = summands.to_vec();
+        summands.resize(7, zero.clone());
+
+        let (carry_val, sum_val): (Value<u64>, Value<F>) =
+            Value::<Vec<F>>::from_iter(summands.iter().map(|s| s.0.value().copied()))
+                .map(|v| v.into_iter().map(fe_to_u128).sum())
+                .map(|s: u128| s.div_rem(&(1 << 64)))
+                .map(|(carry, r)| (carry as u64, u128_to_fe(r)))
+                .unzip();
+
+        summands[0].0.copy_advice(|| "S0", region, adv_cols[5], 0)?;
+        summands[1].0.copy_advice(|| "S1", region, adv_cols[6], 0)?;
+        summands[2].0.copy_advice(|| "S2", region, adv_cols[5], 1)?;
+        summands[3].0.copy_advice(|| "S3", region, adv_cols[6], 1)?;
+        summands[4].0.copy_advice(|| "S4", region, adv_cols[4], 2)?;
+        summands[5].0.copy_advice(|| "S5", region, adv_cols[5], 2)?;
+        summands[6].0.copy_advice(|| "S6", region, adv_cols[6], 2)?;
+        let _carry: AssignedPlainSpreaded<F, 3> =
+            self.assign_plain_and_spreaded(region, carry_val, 3, 1)?;
+        region
+            .assign_advice(|| "sum", adv_cols[4], 0, || sum_val)
+            .map(AssignedPlain)
     }
 }
