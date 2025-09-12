@@ -26,7 +26,6 @@ use midnight_proofs::{
 };
 use num_bigint::BigUint;
 use rand::rngs::OsRng;
-
 use utils::{read_credential, split_blob, verify_credential_sig};
 
 #[path = "./utils.rs"]
