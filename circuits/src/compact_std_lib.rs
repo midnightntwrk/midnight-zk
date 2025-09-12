@@ -1112,9 +1112,9 @@ impl<'a, R: Relation> MidnightCircuit<'a, R> {
         }
     }
 
-    /// Construct a MidnightCircuit from a known instance-witness for the given
+    /// Create a new MidnightCircuit from a known instance-witness for the given
     /// relation.
-    pub fn construct(relation: &'a R, instance: R::Instance, witness: R::Witness) -> Self {
+    pub fn new(relation: &'a R, instance: R::Instance, witness: R::Witness) -> Self {
         MidnightCircuit {
             relation,
             instance: Value::known(instance),
@@ -1529,12 +1529,7 @@ where
 {
     let pi = R::format_instance(instance);
     let com_inst = R::format_committed_instances(&witness);
-    let circuit = MidnightCircuit {
-        relation,
-        instance: Value::known(instance.clone()),
-        witness: Value::known(witness),
-        nb_public_inputs: Rc::new(RefCell::new(None)),
-    };
+    let circuit = MidnightCircuit::new(relation, instance.clone(), witness);
     BlstPLONK::<MidnightCircuit<R>>::prove::<H>(
         params,
         &pk.pk,

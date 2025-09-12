@@ -1,9 +1,14 @@
 #[macro_export]
 /// Macro to bench a function if feature "bench-internal" is enabled
 /// This macro takes two types of inputs - those passed as references ($ref_var)
-/// and those passed by value ($own_var). The input $batch_size determines the
-/// size of the input, and it will tell criterion whether it can keep several
-/// copies of the input in parallel runs.
+/// and those passed by value ($own_var).
+///
+/// The macro uses `BatchSize::SmallInput` or `BatchSize::LargeInput` depending
+/// on whether there are inputs passed by by value or not (inputs owned by the
+/// inner functions are usually large polynomials). The only input that is
+/// passed by reference is the transcript, as it is always used as a mutable
+/// reference. We clone both the owned inputs as the transcript outside of the
+/// scope that is being benchmarked.
 macro_rules! bench_and_run {
     ($group:expr ;
     $( ref $ref_var:ident),* ;

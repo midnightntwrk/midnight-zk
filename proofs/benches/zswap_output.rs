@@ -232,7 +232,7 @@ fn sample_zswap_inputs() -> (Vec<F>, MidnightCircuit<'static, ZSwapOutputCircuit
     let witness = (zswap_pk, coin, rc);
     let instance = (coin_com, value_com);
 
-    let circuit = MidnightCircuit::construct(&ZSwapOutputCircuit, instance, witness);
+    let circuit = MidnightCircuit::new(&ZSwapOutputCircuit, instance, witness);
 
     (ZSwapOutputCircuit::format_instance(&instance), circuit)
 }
