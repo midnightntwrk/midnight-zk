@@ -16,8 +16,8 @@ verification keys break backwards compatibility.
 * Add goldenfiles with examples cost-model [#89](https://github.com/midnightntwrk/midnight-zk/pull/89)
 * New SHA256 chip [#39](https://github.com/midnightntwrk/midnight-zk/pull/39)
 * Variable-length SHA256 gadget [#98](https://github.com/midnightntwrk/midnight-zk/pull/98)
-
 * Add Schnorr signature example [#55](https://github.com/midnightntwrk/midnight-zk/pull/55)
+* Add function to return number of points involved in a proof [#102](https://github.com/midnightntwrk/midnight-zk/pull/102)
 
 ### Changed
 * Refactored crate to prepare for edition 2024.
