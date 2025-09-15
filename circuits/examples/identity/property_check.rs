@@ -11,12 +11,12 @@ use midnight_circuits::{
         public_input::CommittedInstanceInstructions, AssertionInstructions, AssignmentInstructions,
         Base64Instructions, DecompositionInstructions, EccInstructions, RangeCheckInstructions,
     },
-    parsing::{DateFormat, Separator},
+    parsing::{DateFormat, Separator, StdLibParser},
     testing_utils::{
         ecdsa::{ECDSASig, FromBase64},
         plonk_api::filecoin_srs,
     },
-    types::{AssignedByte, AssignedForeignPoint, AssignedNative, InnerValue},
+    types::{AssignedByte, AssignedForeignPoint, AssignedNative},
 };
 use midnight_curves::G1Affine;
 use midnight_proofs::{
@@ -58,6 +58,17 @@ type SK = secp256k1Scalar;
 #[derive(Clone, Default)]
 pub struct CredentialProperty;
 
+const MAX_VALID_DATE: Date = Date {
+    day: 1,
+    month: 1,
+    year: 2004,
+};
+
+const VALID_NAME: &[u8] = b"Alice";
+const NAME_LEN: usize = VALID_NAME.len(); // TODO: this value should not be fixed.
+const BIRTHDATE_LEN: usize = 10;
+const COORD_LEN: usize = 43;
+
 impl Relation for CredentialProperty {
     type Instance = ();
     type Witness = (Payload, SK);
@@ -82,6 +93,7 @@ impl Relation for CredentialProperty {
     ) -> Result<(), Error> {
         let secp256k1_curve = std_lib.secp256k1_curve();
         let b64_chip = std_lib.base64();
+        let automaton_chip = std_lib.automaton();
 
         let (json, sk) = witness.unzip();
 
@@ -103,25 +115,22 @@ impl Relation for CredentialProperty {
             std_lib.constrain_as_committed_public_input(layouter, &byte_as_f)?;
         }
 
-        // Check Name.
-        let name = Self::get_property(std_lib, layouter, &json, b"givenName", 7)?;
-        Self::assert_str_match(std_lib, layouter, &name[1..6], b"Alice")?;
+        let parsed_json = automaton_chip.parse(layouter, &StdLibParser::Jwt, &json)?;
+
+        // // Check Name.
+        let name = Self::get_property(std_lib, layouter, &json, &parsed_json, 3, NAME_LEN)?;
+        Self::assert_str_match(std_lib, layouter, &name, VALID_NAME)?;
 
         // Check birth date.
-        let birthdate = Self::get_property(std_lib, layouter, &json, b"birthDate", 12)?;
-        let limit = Date {
-            day: 1,
-            month: 1,
-            year: 2004,
-        };
-        Self::assert_date_before(std_lib, layouter, &birthdate[1..11], limit)?;
+        let birthdate =
+            Self::get_property(std_lib, layouter, &json, &parsed_json, 4, BIRTHDATE_LEN)?;
+        Self::assert_date_before(std_lib, layouter, &birthdate, MAX_VALID_DATE)?;
 
         // Get holder public key.
-        let holder_key = Self::get_property(std_lib, layouter, &json, b"publicKeyJwk", 220)?;
-        let x = Self::get_property(std_lib, layouter, &holder_key, b"x", 45)?;
-        let y = Self::get_property(std_lib, layouter, &holder_key, b"y", 45)?;
-        let x_val = b64_chip.decode_base64url(layouter, &x[1..44], false)?;
-        let y_val = b64_chip.decode_base64url(layouter, &y[1..44], false)?;
+        let x = Self::get_property(std_lib, layouter, &json, &parsed_json, 5, COORD_LEN)?;
+        let y = Self::get_property(std_lib, layouter, &json, &parsed_json, 6, COORD_LEN)?;
+        let x_val = b64_chip.decode_base64url(layouter, &x, false)?;
+        let y_val = b64_chip.decode_base64url(layouter, &y, false)?;
 
         // Check knowledge of corresponding sk.
         let x_coord = secp256k1_curve
@@ -152,7 +161,7 @@ impl Relation for CredentialProperty {
             bls12_381: false,
             base64: true,
             nr_pow2range_cols: 3,
-            automaton: false,
+            automaton: true,
         }
     }
 
@@ -177,42 +186,29 @@ impl From<Date> for BigUint {
     }
 }
 
-// Returns the index of a subsequence inside a larger sequence, if it is
-// present. This function is made generic so it works over native types and
-// values.
-fn find_subsequence<T>(seq: &[T], subseq: &[T]) -> Option<usize>
-where
-    for<'a> &'a [T]: PartialEq,
-{
-    seq.windows(subseq.len())
-        .position(|window| window == subseq)
-}
-
 impl CredentialProperty {
     /// Searches for "property": and returns the following `val_len` characters.
     fn get_property(
         std_lib: &ZkStdLib,
         layouter: &mut impl Layouter<F>,
         body: &[AssignedByte<F>],
-        property: &[u8],
+        parsed_body: &[AssignedNative<F>],
+        marker: usize,
         val_len: usize,
     ) -> Result<Vec<AssignedByte<F>>, Error> {
         let parser = std_lib.parser();
-
-        let property = [b"\"", property, b"\":"].concat();
-        let p_len = property.len();
-        let seq: Value<Vec<u8>> = Value::from_iter(body.iter().map(|b| b.value()));
-
-        let idx = seq.map(|seq| {
-            let idx = find_subsequence(&seq, &property)
+        let parsed_seq: Value<Vec<F>> =
+            Value::from_iter(parsed_body.iter().map(|b| b.value().copied()));
+        let idx = parsed_seq.map(|parsed_seq| {
+            let idx = parsed_seq
+                .iter()
+                .position(|&m| m == F::from(marker as u64))
                 .expect("Property should appear in the credential.");
             F::from(idx as u64)
         });
 
         let idx = std_lib.assign(layouter, idx)?; // idx will be range-checked in `fetch_bytes`.
-
-        let raw_propety = parser.fetch_bytes(layouter, body, &idx, p_len + val_len)?;
-        Ok(raw_propety[p_len..].to_vec())
+        parser.fetch_bytes(layouter, body, &idx, val_len)
     }
 
     fn assert_str_match(
@@ -242,7 +238,6 @@ impl CredentialProperty {
         let date = std_lib.parser().date_to_int(layouter, date, format)?;
         std_lib.assert_lower_than_fixed(layouter, &date, &limit_date.into())
     }
-
     // Creates an CredentialProperty witness from:
     // 1. A JWT encoded credential.
     // 2. The corresponding base64 encoded ECDSA public key.
