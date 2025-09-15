@@ -1612,6 +1612,7 @@ where
 {
     let pi = R::format_instance(instance);
     let com_inst = R::format_committed_instances(&witness);
+
     let circuit = MidnightCircuit::new(relation, instance.clone(), witness);
     BlstPLONK::<MidnightCircuit<R>>::prove::<H>(
         params,
