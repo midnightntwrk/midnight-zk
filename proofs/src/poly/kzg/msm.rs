@@ -91,7 +91,11 @@ where
     }
 
     fn eval(&self) -> E::G1 {
-        msm_specific::<E::G1Affine>(&self.scalars, &self.bases)
+        if self.scalars == vec![E::Fr::ONE] {
+            self.bases[0]
+        } else {
+            msm_specific::<E::G1Affine>(&self.scalars, &self.bases)
+        }
     }
 
     fn bases(&self) -> Vec<E::G1> {
