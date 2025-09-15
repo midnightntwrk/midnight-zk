@@ -17,12 +17,23 @@ Midnight Circuits provides several tools to facilitate circuit development with 
 4. Bit/Byte decomposition tools and range-checks.
 5. SHA-256.
 6. Set (non-)membership.
-7. Big UInt.
-8. Variable length vectors.
-9. Automaton parsing.
-10. Verification of Plonk proofs
+7. BigUInt.
+8. Variable length vectors (see explanation below).
+9. Finite-state automata parsing.
+10. In-circuit verification of Plonk proofs (a.k.a. recursion)
 
 We aim to expose these functionalities via traits, which can be found in `[src/instructions]`.
+
+### Variable length vectors
+We provide support for variable-length vectors in-circuit, even when the exact size of the vector is unknown 
+at compilation time. Each variable-length vector is parameterized with a `MAX_LENGTH` attribute, which 
+specifies the maximum allowed size.
+
+The cost of using these structures in-circuit is proportional to the `MAX_LENGTH`, while the computed result 
+is guaranteed to correspond to the operation applied to the actual vector values. For example, operations 
+such as hashing or parsing are performed over the full vector of length `MAX_LENGTH`, and the final result 
+is conditionally selected to reflect the operation applied only to the actual elements of the vector.
+
 
 ## ZkStdLib
 
@@ -44,7 +55,8 @@ pub struct ZkStdLibArch {
 
 which can be defined via the `Relation` trait with the `used_chips` function. The default 
 architecture activates only `JubJub`, `Poseidon` and `sha256`, and uses a single column for
-`pow2range` chip. 
+`pow2range` chip. The maximum number of columns accepted for the `pow2range` chip is currently
+at 4.
 
 `ZkStdLib` also serves as an abstraction layer, allowing developers to focus on circuit logic 
 rather than the configuration and chip creation. Developers only need to implement the `Relation` 
