@@ -88,11 +88,11 @@ impl Relation for CredentialEnrollment {
         Self::verify_ecdsa(std_lib, layouter, pk, &payload, sig)?;
 
         // Decode Base64 JSON.
-        let json =
+        let json_bytes =
             b64_chip.decode_base64(layouter, &payload[HEADER_LEN + 1..PAYLOAD_LEN], false)?;
 
-        for val in json.iter() {
-            std_lib.constrain_as_committed_public_input(layouter, val)?;
+        for byte in json_bytes.iter() {
+            std_lib.constrain_as_committed_public_input(layouter, byte)?;
         }
 
         Ok(())
