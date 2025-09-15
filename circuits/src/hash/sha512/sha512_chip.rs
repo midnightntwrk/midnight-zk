@@ -214,7 +214,7 @@ pub struct Sha512Config {
 
     q_13_13_13_13_12: Selector,
     q_13_12_5_6_13_13_2: Selector,
-    // q_7_12_2_5_6: Selector,
+    q_13_10_13_10_4_13_1: Selector,
     // q_12_1x3_7_3_4_3: Selector,
     q_add_mod_2_64: Selector,
 }
@@ -284,7 +284,7 @@ impl<F: PrimeField> ComposableChip<F> for Sha512Chip<F> {
 
         let q_13_13_13_13_12 = meta.selector();
         let q_13_12_5_6_13_13_2 = meta.selector();
-        // let q_7_12_2_5_6 = meta.selector();
+        let q_13_10_13_10_4_13_1 = meta.selector();
         // let q_12_1x3_7_3_4_3 = meta.selector();
         let q_add_mod_2_64 = meta.selector();
 
@@ -627,6 +627,43 @@ impl<F: PrimeField> ComposableChip<F> for Sha512Chip<F> {
             )
         });
 
+        meta.create_gate("13-10-13-10-4-13-1 decomposition", |meta| {
+            // See function `prepare_A` for a description of the following layout.
+            let p13a = meta.query_advice(advice_cols[0], Rotation(-1));
+            let p10a = meta.query_advice(advice_cols[2], Rotation(-1));
+            let p13b = meta.query_advice(advice_cols[0], Rotation(0));
+            let p10b = meta.query_advice(advice_cols[2], Rotation(0));
+            let p04 = meta.query_advice(advice_cols[0], Rotation(1));
+            let p13c = meta.query_advice(advice_cols[2], Rotation(1));
+            let p01 = meta.query_advice(advice_cols[0], Rotation(2));
+            let s13a = meta.query_advice(advice_cols[1], Rotation(-1));
+            let s10a = meta.query_advice(advice_cols[3], Rotation(-1));
+            let s13b = meta.query_advice(advice_cols[1], Rotation(0));
+            let s10b = meta.query_advice(advice_cols[3], Rotation(0));
+            let s04 = meta.query_advice(advice_cols[3], Rotation(1));
+            let s13c = meta.query_advice(advice_cols[1], Rotation(1));
+            let s01 = meta.query_advice(advice_cols[1], Rotation(2));
+            let plain = meta.query_advice(advice_cols[4], Rotation(-1));
+            let sprdd = meta.query_advice(advice_cols[4], Rotation(0));
+
+            let plain_id = expr_pow2_ip(
+                [51, 41, 28, 18, 14, 1, 0],
+                [&p13a, &p10a, &p13b, &p10b, &p04, &p13c, &p01],
+            ) - plain;
+            let sprdd_id = expr_pow4_ip(
+                [51, 41, 28, 18, 14, 1, 0],
+                [&s13a, &s10a, &s13b, &s10b, &s04, &s13c, &s01],
+            ) - sprdd;
+
+            Constraints::with_selector(
+                q_13_10_13_10_4_13_1,
+                vec![
+                    ("13_10_13_10_4_13_1 decomposition plain", plain_id),
+                    ("13_10_13_10_4_13_1 decomposition sprdd", sprdd_id),
+                ],
+            )
+        });
+
         meta.create_gate("add mod 2^64", |meta| {
             // See function `assign_add_mod_2_64` for a description of the following layout.
             let s0 = meta.query_advice(advice_cols[5], Rotation(-1));
@@ -660,7 +697,7 @@ impl<F: PrimeField> ComposableChip<F> for Sha512Chip<F> {
             q_sigma_1,
             q_13_13_13_13_12,
             q_13_12_5_6_13_13_2,
-            // q_7_12_2_5_6,
+            q_13_10_13_10_4_13_1,
             // q_12_1x3_7_3_4_3,
             q_add_mod_2_64,
         }
@@ -1330,7 +1367,7 @@ impl<F: PrimeField> Sha512Chip<F> {
         | T0 |    A0    |     A1    | T1 |    A2    |     A3    |   A4   |  A5  |  A6  |
         |----|----------|-----------|----|----------|-----------|--------|------|------|
         | 13 |   A.13a  |  ~A.13a   | 12 |   A.12   |   ~A.12   |   A    |  S0  |  S1  |
-        | 05 |   A.05   |  ~A.05    | 06 |   A.06   |   ~A.06   |   ~A   |  S2  |  S3  | <- q_10_9_11_2
+        | 05 |   A.05   |  ~A.05    | 06 |   A.06   |   ~A.06   |   ~A   |  S2  |  S3  | <- q_13_12_5_6_13_13_2
         | 13 |   A.13b  |  ~A.13b   | 13 |   A.13c  |   ~A.13c  |   S4   |  S5  |  S6  |
         | 02 |   A.02   |  ~A.02    | 03 |   carry  |   ~carry  |        |      |      |
 
@@ -1394,6 +1431,96 @@ impl<F: PrimeField> Sha512Chip<F> {
                     spreaded_limb_13b: limb_13b.spreaded,
                     spreaded_limb_13c: limb_13c.spreaded,
                     spreaded_limb_02: limb_02.spreaded,
+                })
+            },
+        )
+    }
+
+    /// Given a slice of at most 7 `AssignedPlain` values, it adds them
+    /// modulo 2^64 and decomposes the result (named E) into (big-endian)
+    /// limbs of bit sizes 13, 10, 13, 10, 4, 13 and 1.
+    ///
+    /// This function returns the plain and spreaded forms, as well as
+    /// the spreaded limbs of E.
+    fn prepare_E(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        summands: &[AssignedPlain<F, 64>],
+    ) -> Result<LimbsOfE<F>, Error> {
+        /*
+        Given assigned plain inputs S0, ..., S6 (if fewer inputs are given
+        they will be completed up to length 7, padding with fixed zeros),
+        let E be their sum modulo 2^64.
+
+        We use the following table distribution.
+
+        | T0 |    A0    |     A1    | T1 |    A2    |     A3    |   A4   |  A5  |  A6  |
+        |----|----------|-----------|----|----------|-----------|--------|------|------|
+        | 13 |   E.13a  |  ~E.13a   | 10 |   E.10a  |   ~E.10a  |   E    |  S0  |  S1  |
+        | 13 |   E.13b  |  ~E.13b   | 10 |   E.10b  |   ~E.10b  |   ~E   |  S2  |  S3  | <- q_13_10_13_10_4_13_1
+        | 04 |   E.04   |  ~E.04    | 13 |   E.13c  |   ~E.13c  |   S4   |  S5  |  S6  |
+        | 01 |   E.01   |  ~E.01    | 03 |   carry  |   ~carry  |        |      |      |
+
+        Apart from the lookups, the following identities are checked via a
+        custom gate with selector q_13_10_13_10_4_13_1:
+
+            E = 2^51 *  E.13a + 2^41 *  E.10a + 2^28  *  E.13b + 2^18 * E.10b
+              + 2^14 *  E.04  + 2^1  *  E.13c + E.01
+           ~E = 4^51 * ~E.13a + 4^41 * ~E.10a + 4^28  * ~E.13b + 4^18 * ~E.10b
+              + 4^14 * ~E.04  + 4^1  * ~E.13c + ~E.01
+
+        and the following is checked with a custom gate with selector
+        q_add_mod_2_64:
+
+            S0 + S1 + S2 + S3 + S4 + S5 + S6 = E + carry * 2^64
+
+        Note that E is implicitly being range-checked in [0, 2^64) via
+        the lookup, and the carry is range-checked in [0, 8). This makes
+        the gate complete and sound (the range on the carry does not need
+        to be tight as long as it prevents overflows in the native field).
+        */
+
+        let zero = AssignedPlain::<F, 64>::fixed(layouter, &self.native_gadget, 0)?;
+
+        layouter.assign_region(
+            || "decompose E in 13-10-13-10-4-13-1 limbs",
+            |mut region| {
+                self.config().q_13_10_13_10_4_13_1.enable(&mut region, 1)?;
+
+                let e_plain = self.assign_add_mod_2_64(&mut region, summands, &zero)?;
+                let e_sprdd_val = (e_plain.0.value().copied())
+                    .map(fe_to_u64)
+                    .map(spread)
+                    .map(u128_to_fe);
+                let e_sprdd = region
+                    .assign_advice(|| "~E", self.config().advice_cols[4], 1, || e_sprdd_val)
+                    .map(AssignedSpreaded)?;
+
+                let [val_13a, val_10a, val_13b, val_10b, val_04, val_13c, val_01] =
+                    (e_plain.0.value().copied())
+                        .map(|e| u64_in_be_limbs(fe_to_u64(e), [13, 10, 13, 10, 4, 13, 1]))
+                        .transpose_array();
+
+                let limb_13a = self.assign_plain_and_spreaded(&mut region, val_13a, 0, 0)?;
+                let limb_10a = self.assign_plain_and_spreaded(&mut region, val_10a, 0, 1)?;
+                let limb_13b = self.assign_plain_and_spreaded(&mut region, val_13b, 1, 0)?;
+                let limb_10b = self.assign_plain_and_spreaded(&mut region, val_10b, 1, 1)?;
+                let limb_04 = self.assign_plain_and_spreaded(&mut region, val_04, 2, 0)?;
+                let limb_13c = self.assign_plain_and_spreaded(&mut region, val_13c, 2, 1)?;
+                let limb_01 = self.assign_plain_and_spreaded(&mut region, val_01, 3, 0)?;
+
+                Ok(LimbsOfE {
+                    combined: AssignedPlainSpreaded {
+                        plain: e_plain,
+                        spreaded: e_sprdd,
+                    },
+                    spreaded_limb_13a: limb_13a.spreaded,
+                    spreaded_limb_10a: limb_10a.spreaded,
+                    spreaded_limb_13b: limb_13b.spreaded,
+                    spreaded_limb_10b: limb_10b.spreaded,
+                    spreaded_limb_04: limb_04.spreaded,
+                    spreaded_limb_13c: limb_13c.spreaded,
+                    spreaded_limb_01: limb_01.spreaded,
                 })
             },
         )
