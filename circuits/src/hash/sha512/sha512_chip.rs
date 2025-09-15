@@ -77,7 +77,7 @@ use crate::{
     instructions::assignments::AssignmentInstructions,
     types::AssignedNative,
     utils::{
-        util::{fe_to_u128, u128_to_fe, u64_to_fe},
+        util::{fe_to_u128, fe_to_u64, u128_to_fe, u64_to_fe},
         ComposableChip,
     },
 };
@@ -213,7 +213,7 @@ pub struct Sha512Config {
     q_sigma_1: Selector,
 
     q_13_13_13_13_12: Selector,
-    // q_10_9_11_2: Selector,
+    q_13_12_5_6_13_13_2: Selector,
     // q_7_12_2_5_6: Selector,
     // q_12_1x3_7_3_4_3: Selector,
     q_add_mod_2_64: Selector,
@@ -283,7 +283,7 @@ impl<F: PrimeField> ComposableChip<F> for Sha512Chip<F> {
         let q_sigma_1 = meta.selector();
 
         let q_13_13_13_13_12 = meta.selector();
-        // let q_10_9_11_2 = meta.selector();
+        let q_13_12_5_6_13_13_2 = meta.selector();
         // let q_7_12_2_5_6 = meta.selector();
         // let q_12_1x3_7_3_4_3 = meta.selector();
         let q_add_mod_2_64 = meta.selector();
@@ -590,6 +590,43 @@ impl<F: PrimeField> ComposableChip<F> for Sha512Chip<F> {
             Constraints::with_selector(q_13_13_13_13_12, vec![("13-13-13-13-12 decomposition", id)])
         });
 
+        meta.create_gate("13-12-5-6-13-13-2 decomposition", |meta| {
+            // See function `prepare_A` for a description of the following layout.
+            let p13a = meta.query_advice(advice_cols[0], Rotation(-1));
+            let p12 = meta.query_advice(advice_cols[2], Rotation(-1));
+            let p05 = meta.query_advice(advice_cols[0], Rotation(0));
+            let p06 = meta.query_advice(advice_cols[2], Rotation(0));
+            let p13b = meta.query_advice(advice_cols[0], Rotation(1));
+            let p13c = meta.query_advice(advice_cols[2], Rotation(1));
+            let p02 = meta.query_advice(advice_cols[0], Rotation(2));
+            let s13a = meta.query_advice(advice_cols[1], Rotation(-1));
+            let s12 = meta.query_advice(advice_cols[3], Rotation(-1));
+            let s05 = meta.query_advice(advice_cols[1], Rotation(0));
+            let s06 = meta.query_advice(advice_cols[3], Rotation(0));
+            let s13b = meta.query_advice(advice_cols[1], Rotation(1));
+            let s13c = meta.query_advice(advice_cols[3], Rotation(1));
+            let s02 = meta.query_advice(advice_cols[1], Rotation(2));
+            let plain = meta.query_advice(advice_cols[4], Rotation(-1));
+            let sprdd = meta.query_advice(advice_cols[4], Rotation(0));
+
+            let plain_id = expr_pow2_ip(
+                [51, 39, 34, 28, 15, 2, 0],
+                [&p13a, &p12, &p05, &p06, &p13b, &p13c, &p02],
+            ) - plain;
+            let sprdd_id = expr_pow4_ip(
+                [51, 39, 34, 28, 15, 2, 0],
+                [&s13a, &s12, &s05, &s06, &s13b, &s13c, &s02],
+            ) - sprdd;
+
+            Constraints::with_selector(
+                q_13_12_5_6_13_13_2,
+                vec![
+                    ("13_12_5_6_13_13_2 decomposition plain", plain_id),
+                    ("13_12_5_6_13_13_2 decomposition sprdd", sprdd_id),
+                ],
+            )
+        });
+
         meta.create_gate("add mod 2^64", |meta| {
             // See function `assign_add_mod_2_64` for a description of the following layout.
             let s0 = meta.query_advice(advice_cols[5], Rotation(-1));
@@ -622,7 +659,7 @@ impl<F: PrimeField> ComposableChip<F> for Sha512Chip<F> {
             q_sigma_0,
             q_sigma_1,
             q_13_13_13_13_12,
-            // q_10_9_11_2,
+            q_13_12_5_6_13_13_2,
             // q_7_12_2_5_6,
             // q_12_1x3_7_3_4_3,
             q_add_mod_2_64,
@@ -1031,9 +1068,12 @@ impl<F: PrimeField> Sha512Chip<F> {
         3) asserting the Sigma_0 identity regarding the spreaded values:
               (4^51 * ~Evn.13a + 4^38 * ~Evn.13b + 4^25 * ~Evn.13c + 4^12 * ~Evn.13d + ~Evn.12) +
           2 * (4^51 * ~Odd.13a + 4^38 * ~Odd.13b + 4^25 * ~Odd.13c + 4^12 * ~Odd.13d + ~Odd.12)
-             = 4^54 * ~W.03a + 4^41 * ~W.13a + 4^28 * ~W.13b + 4^15 * ~W.13c + 4^12 * ~W.03b + 4^1  * ~W.11  + ~W.01a
-             + 4^63 * ~W.01c + 4^60 * ~W.03a + 4^47 * ~W.13a + 4^34 * ~W.13b + 4^21 * ~W.13c + 4^18 * ~W.03b + 4^7  * ~W.11 + 4^6  * ~W.01a + 4^5  * ~W.01b + ~W.05
-             + 4^63 * ~W.05  + 4^62 * ~W.06  + 4^57 * ~W.13b + 4^56 * ~W.13c + 4^53 * ~W.02  + 4^40 * ~W.13a + 4^27 * ~W.12 + 4^14 * ~W.12  + 4^11 * ~W.03b + ~W.11
+             = 4^54 * ~W.03a + 4^41 * ~W.13a + 4^28 * ~W.13b + 4^15 * ~W.13c + 4^12 * ~W.03b + 4^1
+             * ~W.11  + ~W.01a
+             + 4^63 * ~W.01c + 4^60 * ~W.03a + 4^47 * ~W.13a + 4^34 * ~W.13b + 4^21 * ~W.13c + 4^18
+             * ~W.03b + 4^7  * ~W.11 + 4^6  * ~W.01a + 4^5  * ~W.01b + ~W.05
+             + 4^63 * ~W.05  + 4^62 * ~W.06  + 4^57 * ~W.13b + 4^56 * ~W.13c + 4^53 * ~W.02  + 4^40
+             * ~W.13a + 4^27 * ~W.12 + 4^14 * ~W.12  + 4^11 * ~W.03b + ~W.11
 
         The output is Evn.
 
@@ -1123,9 +1163,12 @@ impl<F: PrimeField> Sha512Chip<F> {
         3) asserting the Sigma_0 identity regarding the spreaded values:
               (4^51 * ~Evn.13a + 4^38 * ~Evn.13b + 4^25 * ~Evn.13c + 4^12 * ~Evn.13d + ~Evn.12) +
           2 * (4^51 * ~Odd.13a + 4^38 * ~Odd.13b + 4^25 * ~Odd.13c + 4^12 * ~Odd.13d + ~Odd.12)
-             = 4^55 * ~W.03a + 4^42 * ~W.13a + 4^29 * ~W.13b + 4^16 * ~W.13c + 4^13 * ~W.03b + 4^2  * ~W.11  + 4^1  * ~W.01a + ~W.01b
-             + 4^53 * ~W.11  + 4^52 * ~W.01a + 4^51 * ~W.01b + 4^46 * ~W.05  + 4^45 * ~W.01c + 4^42 * ~W.03a + 4^29 * ~W.13a + 4^16 * ~W.13b + 4^3 * ~W.13c + ~W.03b
-             + 4^51 * ~W.13a + 4^38 * ~W.13b + 4^25 * ~W.13c + 4^22 * ~W.03b + 4^11 * ~W.11  + 4^10 * ~W.01a + 4^9 * ~W.01b  + 4^4  * ~W.05  + 4^3 * ~W.01c + ~W.03a
+             = 4^55 * ~W.03a + 4^42 * ~W.13a + 4^29 * ~W.13b + 4^16 * ~W.13c + 4^13 * ~W.03b + 4^2
+             * ~W.11  + 4^1  * ~W.01a + ~W.01b
+             + 4^53 * ~W.11  + 4^52 * ~W.01a + 4^51 * ~W.01b + 4^46 * ~W.05  + 4^45 * ~W.01c + 4^42
+             * ~W.03a + 4^29 * ~W.13a + 4^16 * ~W.13b + 4^3 * ~W.13c + ~W.03b
+             + 4^51 * ~W.13a + 4^38 * ~W.13b + 4^25 * ~W.13c + 4^22 * ~W.03b + 4^11 * ~W.11  + 4^10
+             * ~W.01a + 4^9 * ~W.01b  + 4^4  * ~W.05  + 4^3 * ~W.01c + ~W.03a
 
         The output is Evn.
 
@@ -1264,6 +1307,96 @@ impl<F: PrimeField> Sha512Chip<F> {
             }
         }
         .map(AssignedPlain)
+    }
+
+    /// Given a slice of at most 7 `AssignedPlain` values, it adds them
+    /// modulo 2^64 and decomposes the result (named A) into (big-endian)
+    /// limbs of bit sizes 13, 12, 5, 6, 13, 13 and 2.
+    ///
+    /// This function returns the plain and spreaded forms, as well as
+    /// the spreaded limbs of A.
+    fn prepare_A(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        summands: &[AssignedPlain<F, 64>],
+    ) -> Result<LimbsOfA<F>, Error> {
+        /*
+        Given assigned plain inputs S0, ..., S6 (if fewer inputs are given
+        they will be completed up to length 7, padding with fixed zeros),
+        let A be their sum modulo 2^64.
+
+        We use the following table distribution.
+
+        | T0 |    A0    |     A1    | T1 |    A2    |     A3    |   A4   |  A5  |  A6  |
+        |----|----------|-----------|----|----------|-----------|--------|------|------|
+        | 13 |   A.13a  |  ~A.13a   | 12 |   A.12   |   ~A.12   |   A    |  S0  |  S1  |
+        | 05 |   A.05   |  ~A.05    | 06 |   A.06   |   ~A.06   |   ~A   |  S2  |  S3  | <- q_10_9_11_2
+        | 13 |   A.13b  |  ~A.13b   | 13 |   A.13c  |   ~A.13c  |   S4   |  S5  |  S6  |
+        | 02 |   A.02   |  ~A.02    | 03 |   carry  |   ~carry  |        |      |      |
+
+        Apart from the lookups, the following identities are checked via a
+        custom gate with selector q_13_12_5_6_13_13_2:
+
+            A = 2^51 *  A.13a + 2^39 *  A.12  + 2^34 *  A.05 + 2^28 * A.06
+              + 2^15 *  A.13b + 2^2  *  A.13c + A.02
+           ~A = 4^51 * ~A.13a + 4^39 * ~A.12  + 4^34 * ~A.05 + 4^28 * ~A.06
+              + 4^15 * ~A.13b + 4^2  * ~A.13c + ~A.02
+
+        and the following is checked with a custom gate with selector
+        q_add_mod_2_32:
+
+            S0 + S1 + S2 + S3 + S4 + S5 + S6 = A + carry * 2^64
+
+        Note that A is implicitly being range-checked in [0, 2^64) via
+        the lookup, and the carry is range-checked in [0, 8). This makes
+        the gate complete and sound (the range on the carry does not need
+        to be tight as long as it prevents overflows in the native field).
+        */
+
+        let zero = AssignedPlain::<F, 64>::fixed(layouter, &self.native_gadget, 0)?;
+
+        layouter.assign_region(
+            || "decompose A in 13-12-5-6-13-13-2 limbs",
+            |mut region| {
+                self.config().q_13_12_5_6_13_13_2.enable(&mut region, 1)?;
+
+                let a_plain = self.assign_add_mod_2_64(&mut region, summands, &zero)?;
+                let a_sprdd_val = (a_plain.0.value().copied())
+                    .map(fe_to_u64)
+                    .map(spread)
+                    .map(u128_to_fe);
+                let a_sprdd = region
+                    .assign_advice(|| "~A", self.config().advice_cols[4], 1, || a_sprdd_val)
+                    .map(AssignedSpreaded)?;
+
+                let [val_13a, val_12, val_05, val_06, val_13b, val_13c, val_02] =
+                    (a_plain.0.value().copied())
+                        .map(|a| u64_in_be_limbs(fe_to_u64(a), [13, 12, 5, 6, 13, 13, 2]))
+                        .transpose_array();
+
+                let limb_13a = self.assign_plain_and_spreaded(&mut region, val_13a, 0, 0)?;
+                let limb_12 = self.assign_plain_and_spreaded(&mut region, val_12, 0, 1)?;
+                let limb_05 = self.assign_plain_and_spreaded(&mut region, val_05, 1, 0)?;
+                let limb_06 = self.assign_plain_and_spreaded(&mut region, val_06, 1, 1)?;
+                let limb_13b = self.assign_plain_and_spreaded(&mut region, val_13b, 2, 0)?;
+                let limb_13c = self.assign_plain_and_spreaded(&mut region, val_13c, 2, 1)?;
+                let limb_02 = self.assign_plain_and_spreaded(&mut region, val_02, 3, 0)?;
+
+                Ok(LimbsOfA {
+                    combined: AssignedPlainSpreaded {
+                        plain: a_plain,
+                        spreaded: a_sprdd,
+                    },
+                    spreaded_limb_13a: limb_13a.spreaded,
+                    spreaded_limb_12: limb_12.spreaded,
+                    spreaded_limb_05: limb_05.spreaded,
+                    spreaded_limb_06: limb_06.spreaded,
+                    spreaded_limb_13b: limb_13b.spreaded,
+                    spreaded_limb_13c: limb_13c.spreaded,
+                    spreaded_limb_02: limb_02.spreaded,
+                })
+            },
+        )
     }
 
     /// Given a plain u64 value, supposedly in the range [0, 2^L), assigns it
