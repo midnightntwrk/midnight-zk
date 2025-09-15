@@ -205,7 +205,12 @@ where
     /// Performs final pairing check with given verifier params and two channel
     /// linear combination
     pub fn check(self, params: &ParamsVerifierKZG<E>) -> bool {
-        let left = self.left.eval();
+        let left = if self.left.scalars.len() == 1 && self.left.scalars[0] == E::Fr::ONE {
+            self.left.bases[0]
+        } else {
+            self.left.eval()
+        };
+
         let right = self.right.eval();
 
         let (term_1, term_2) = (

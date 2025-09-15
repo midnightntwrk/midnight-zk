@@ -270,7 +270,7 @@ where
 }
 
 fn main() {
-    const K: u32 = 18;
+    const K: u32 = 17;
     let srs = filecoin_srs(K);
 
     let relation = AtalaJsonECDSA;
