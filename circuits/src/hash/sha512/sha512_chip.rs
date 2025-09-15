@@ -215,7 +215,7 @@ pub struct Sha512Config {
     q_13_13_13_13_12: Selector,
     q_13_12_5_6_13_13_2: Selector,
     q_13_10_13_10_4_13_1: Selector,
-    // q_12_1x3_7_3_4_3: Selector,
+    q_3_3x13_3_11_1_1_5_1: Selector,
     q_add_mod_2_64: Selector,
 }
 
@@ -285,7 +285,7 @@ impl<F: PrimeField> ComposableChip<F> for Sha512Chip<F> {
         let q_13_13_13_13_12 = meta.selector();
         let q_13_12_5_6_13_13_2 = meta.selector();
         let q_13_10_13_10_4_13_1 = meta.selector();
-        // let q_12_1x3_7_3_4_3 = meta.selector();
+        let q_3_3x13_3_11_1_1_5_1 = meta.selector();
         let q_add_mod_2_64 = meta.selector();
 
         (0..2).for_each(|idx| {
@@ -664,6 +664,44 @@ impl<F: PrimeField> ComposableChip<F> for Sha512Chip<F> {
             )
         });
 
+        meta.create_gate("3-3x13-3-11-1-1-5-1 decomposition", |meta| {
+            // See function `prepare_message_word` for a description of the following
+            // layout.
+            let w03a = meta.query_advice(advice_cols[0], Rotation(-1));
+            let w13a = meta.query_advice(advice_cols[2], Rotation(-1));
+            let w13b = meta.query_advice(advice_cols[0], Rotation(0));
+            let w13c = meta.query_advice(advice_cols[2], Rotation(0));
+            let w03b = meta.query_advice(advice_cols[0], Rotation(1));
+            let w11 = meta.query_advice(advice_cols[2], Rotation(1));
+            let w01a = meta.query_advice(advice_cols[7], Rotation(-1));
+            let w01b = meta.query_advice(advice_cols[7], Rotation(0));
+            let w05 = meta.query_advice(advice_cols[0], Rotation(2));
+            let w01c = meta.query_advice(advice_cols[7], Rotation(1));
+            let plain = meta.query_advice(advice_cols[4], Rotation(-1));
+
+            let plain_id = expr_pow2_ip(
+                [61, 48, 35, 22, 19, 8, 7, 6, 1, 0],
+                [
+                    &w03a, &w13a, &w13b, &w13c, &w03b, &w11, &w01a, &w01b, &w05, &w01c,
+                ],
+            ) - plain;
+
+            // 1-bit check for W.01a, W.01b and W.01c
+            let w_01a_check = w01a.clone() * (w01a - Expression::from(1));
+            let w_01b_check = w01b.clone() * (w01b - Expression::from(1));
+            let w_01c_check = w01c.clone() * (w01c - Expression::from(1));
+
+            Constraints::with_selector(
+                q_3_3x13_3_11_1_1_5_1,
+                vec![
+                    ("12_1x3_7_3_4_3 decomposition ", plain_id),
+                    ("W.1a 1-bit check", w_01a_check),
+                    ("W.1b 1-bit check", w_01b_check),
+                    ("W.1c 1-bit check", w_01c_check),
+                ],
+            )
+        });
+
         meta.create_gate("add mod 2^64", |meta| {
             // See function `assign_add_mod_2_64` for a description of the following layout.
             let s0 = meta.query_advice(advice_cols[5], Rotation(-1));
@@ -698,7 +736,7 @@ impl<F: PrimeField> ComposableChip<F> for Sha512Chip<F> {
             q_13_13_13_13_12,
             q_13_12_5_6_13_13_2,
             q_13_10_13_10_4_13_1,
-            // q_12_1x3_7_3_4_3,
+            q_3_3x13_3_11_1_1_5_1,
             q_add_mod_2_64,
         }
     }
@@ -1521,6 +1559,93 @@ impl<F: PrimeField> Sha512Chip<F> {
                     spreaded_limb_04: limb_04.spreaded,
                     spreaded_limb_13c: limb_13c.spreaded,
                     spreaded_limb_01: limb_01.spreaded,
+                })
+            },
+        )
+    }
+
+    /// Given a slice of at most 7 `AssignedPlain` values, this function adds
+    /// them modulo 2^64 and decomposes the result (named W_i) into (big-endian)
+    /// limbs of bit sizes 3, 13, 13, 13, 3, 11, 1, 1, 5 and 1.
+    fn prepare_message_word(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        summands: &[AssignedPlain<F, 64>],
+    ) -> Result<AssignedMessageWord<F>, Error> {
+        /*
+        Given assigned plain inputs S0, ..., S6 (if fewer inputs are given
+        they will be completed up to length 7, padding with fixed zeros),
+        and computes W.i as their sum modulo 2^64.
+
+        We use the following table distribution.
+
+        | T0 |    A0    |     A1    | T1 |    A2    |     A3    |    A4   |  A5  |  A6  |  A.7  |
+        |----|----------|-----------|----|----------|-----------|---------|------|------|-------|
+        | 03 |   W.03a  |  ~W.03a   | 13 |   W.13a  |  ~W.13a   |  W.i    |  S0  |  S1  | W.01a |
+        | 13 |   W.13b  |  ~W.13b   | 13 |   W.13c  |  ~W.13c   |         |  S2  |  S3  | W.01b | <- q_3_3x13_3_11_1_1_5_1
+        | 03 |   W.03b  |  ~W.03b   | 11 |   W.11   |  ~W.11    |   S4    |  S5  |  S6  | W.01c |
+        | 05 |   W.05   |  ~W.05    | 03 |   carry  |  ~carry   |         |      |      |       |
+
+        Apart from the lookups, the following identities are checked via a
+        custom gate with selector q_3_3x13_3_11_1_1_5_1:
+
+          W.i =   2^61 * W.03a + 2^48 * W.13a + 2^35 * W.13b + 2^22 * W.13c
+                + 2^19 * W.03b + 2^8  * W.11  + 2^7  * W.01a + 2^6  * W.01b + 2^1 * W.05 + W.01c
+
+          W.01a * (W.01a - 1) = 0
+          W.01b * (W.01b - 1) = 0
+          W.01c * (W.01c - 1) = 0
+
+        and the following is checked with a custom gate with selector
+        q_add_mod_2_32:
+
+          S0 + S1 + S2 + S3 + S4 + S5 + S6 = W.i + carry * 2^64
+
+        Note that W.i is implicitly being range-checked in [0, 2^64) via
+        the lookup, and the carry is range-checked in [0, 8). This makes
+        the gate complete and sound (the range on the carry does not need
+        to be tight as long as it prevents overflows in the native field).
+        */
+
+        let zero = AssignedPlain::<F, 64>::fixed(layouter, &self.native_gadget, 0)?;
+
+        layouter.assign_region(
+            || "prepare message word",
+            |mut region| {
+                self.config().q_3_3x13_3_11_1_1_5_1.enable(&mut region, 1)?;
+
+                let w_i_plain = self.assign_add_mod_2_64(&mut region, summands, &zero)?;
+
+                let [val_03a, val_13a, val_13b, val_13c, val_03b, val_11, val_01a, val_01b, val_05, val_01c] =
+                    (w_i_plain.0.value().copied())
+                        .map(|w| u64_in_be_limbs(fe_to_u64(w), [3, 13, 13, 13, 3, 11, 1, 1, 5, 1]))
+                        .transpose_array();
+                let limb_03a = self.assign_plain_and_spreaded(&mut region, val_03a, 0, 0)?;
+                let limb_13a = self.assign_plain_and_spreaded(&mut region, val_13a, 0, 1)?;
+                let limb_13b = self.assign_plain_and_spreaded(&mut region, val_13b, 1, 0)?;
+                let limb_13c = self.assign_plain_and_spreaded(&mut region, val_13c, 1, 1)?;
+                let limb_03b = self.assign_plain_and_spreaded(&mut region, val_03b, 2, 0)?;
+                let limb_11 = self.assign_plain_and_spreaded(&mut region, val_11, 2, 1)?;
+                let limb_05 = self.assign_plain_and_spreaded(&mut region, val_05, 3, 0)?;
+
+                // The spreaded forms of 1-bit values W.01a, W.01b and W.01c equal themselves.
+                let col = self.config().advice_cols[7];
+                let limb_01a = region.assign_advice(|| "W.01a", col, 0, || val_01a.map(u64_to_fe))?;
+                let limb_01b = region.assign_advice(|| "W.01b", col, 1, || val_01b.map(u64_to_fe))?;
+                let limb_01c = region.assign_advice(|| "W.01c", col, 2, || val_01c.map(u64_to_fe))?;
+
+                Ok(AssignedMessageWord {
+                    combined_plain: w_i_plain,
+                    spreaded_w_03a: limb_03a.spreaded,
+                    spreaded_w_13a: limb_13a.spreaded,
+                    spreaded_w_13b: limb_13b.spreaded,
+                    spreaded_w_13c: limb_13c.spreaded,
+                    spreaded_w_03b: limb_03b.spreaded,
+                    spreaded_w_11: limb_11.spreaded,
+                    spreaded_w_01a: AssignedSpreaded(limb_01a),
+                    spreaded_w_01b: AssignedSpreaded(limb_01b),
+                    spreaded_w_05: limb_05.spreaded,
+                    spreaded_w_01c: AssignedSpreaded(limb_01c),
                 })
             },
         )
