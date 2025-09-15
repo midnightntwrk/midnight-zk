@@ -307,7 +307,6 @@ impl Group for Gt {
         self.0.ct_eq(&Self::identity().0)
     }
 
-    #[must_use]
     fn double(&self) -> Self {
         Gt(self.0.square())
     }

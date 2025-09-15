@@ -25,8 +25,17 @@
 //!   description in memory and does not need to reproduce it everytime it
 //!   receives a new proof.
 
-use std::{cell::RefCell, cmp::max, convert::TryInto, fmt::Debug, io, rc::Rc};
+use std::{
+    cell::RefCell,
+    cmp::{max, min},
+    convert::TryInto,
+    fmt::Debug,
+    io,
+    rc::Rc,
+};
 
+#[cfg(feature = "bench-internal")]
+use bench_macros::inner_bench;
 use bincode::{config::standard, Decode, Encode};
 use ff::{Field, PrimeField};
 use group::{prime::PrimeCurveAffine, Group};
@@ -62,7 +71,9 @@ use crate::{
             pow2range::Pow2RangeChip,
         },
         foreign::{
-            nb_field_chip_columns, params::MultiEmulationParams as MEP, FieldChip, FieldChipConfig,
+            nb_field_chip_columns,
+            params::{FieldEmulationParams, MultiEmulationParams as MEP},
+            FieldChip, FieldChipConfig,
         },
         native::{NB_ARITH_COLS, NB_ARITH_FIXED_COLS},
         NativeChip, NativeConfig, NativeGadget,
@@ -71,14 +82,7 @@ use crate::{
         poseidon::{PoseidonChip, PoseidonConfig, NB_POSEIDON_ADVICE_COLS, NB_POSEIDON_FIXED_COLS},
         sha256::{Sha256Chip, Sha256Config, NB_SHA256_ADVICE_COLS, NB_SHA256_FIXED_COLS},
     },
-    instructions::{
-        hash_to_curve::HashToCurveInstructions, public_input::CommittedInstanceInstructions,
-        ArithInstructions, AssertionInstructions, AssignmentInstructions, BinaryInstructions,
-        BitwiseInstructions, CanonicityInstructions, ComparisonInstructions,
-        ControlFlowInstructions, ConversionInstructions, DecompositionInstructions,
-        EccInstructions, EqualityInstructions, FieldInstructions, HashInstructions,
-        PublicInputInstructions, RangeCheckInstructions, VectorInstructions, ZeroInstructions,
-    },
+    instructions::{public_input::CommittedInstanceInstructions, *},
     map::map_gadget::MapGadget,
     parsing::{
         self,
@@ -107,8 +111,6 @@ const ZKSTD_VERSION: u32 = 1;
 
 /// Architecture of the standard library. Specifies what chips need to be
 /// configured.
-///
-/// Note, the maximum number of [`ZkStdLibArch::nr_pow2range_cols`] is 7.
 #[derive(Clone, Copy, Debug, Encode, Decode)]
 pub struct ZkStdLibArch {
     /// Enable the Jubjub chip?
@@ -157,7 +159,7 @@ impl ZkStdLibArch {
         writer.write_all(&ZKSTD_VERSION.to_le_bytes())?;
         bincode::encode_into_std_write(self, writer, standard())
             .map(|_| ())
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+            .map_err(io::Error::other)
     }
 
     /// Reads the ZkStd architecture from a buffer.
@@ -212,9 +214,14 @@ pub struct ZkStdLib {
     vector_gadget: VectorGadget<F>,
     automaton_chip: Option<AutomatonChip<StdLibParser, F>>,
 
-    // A flag that indicates if the SHA chip has been used. This way we can load the SHA table only
+    // Flags that indicate if certain chips have been used. This way we can load the tables only
     // when necessary (thus reducing the min_k in some cases).
     used_sha: Rc<RefCell<bool>>,
+    used_secp256k1_scalar: Rc<RefCell<bool>>,
+    used_secp256k1_curve: Rc<RefCell<bool>>,
+    used_bls12_381_curve: Rc<RefCell<bool>>,
+    used_base64: Rc<RefCell<bool>>,
+    used_automaton: Rc<RefCell<bool>>,
 }
 
 impl ZkStdLib {
@@ -272,6 +279,11 @@ impl ZkStdLib {
             vector_gadget,
             automaton_chip,
             used_sha: Rc::new(RefCell::new(false)),
+            used_secp256k1_scalar: Rc::new(RefCell::new(false)),
+            used_secp256k1_curve: Rc::new(RefCell::new(false)),
+            used_bls12_381_curve: Rc::new(RefCell::new(false)),
+            used_base64: Rc::new(RefCell::new(false)),
+            used_automaton: Rc::new(RefCell::new(false)),
         }
     }
 
@@ -461,7 +473,7 @@ impl ZkStdLib {
     pub fn jubjub(&self) -> &EccChip<C> {
         self.jubjub_chip
             .as_ref()
-            .expect("ZkStdArch must enable jubjub")
+            .expect("ZkStdLibArch must enable jubjub")
     }
 
     /// Gadget for performing in-circuit big-unsigned integer operations.
@@ -473,22 +485,24 @@ impl ZkStdLib {
     pub fn map_gadget(&self) -> &MapGadget<F, NG, PoseidonChip<F>> {
         self.map_gadget
             .as_ref()
-            .unwrap_or_else(|| panic!("ZkStdArch must enable poseidon"))
+            .unwrap_or_else(|| panic!("ZkStdLibArch must enable poseidon"))
     }
 
     /// Chip for performing in-circuit operations over the Secp256k1 scalar
     /// field.
     pub fn secp256k1_scalar(&self) -> &Secp256k1ScalarChip {
+        *self.used_secp256k1_scalar.borrow_mut() = true;
         self.secp256k1_scalar_chip
             .as_ref()
-            .unwrap_or_else(|| panic!("ZkStdArch must enable secp256k1"))
+            .unwrap_or_else(|| panic!("ZkStdLibArch must enable secp256k1"))
     }
 
     /// Chip for performing in-circuit operations over the Secp256k1 curve.
     pub fn secp256k1_curve(&self) -> &Secp256k1Chip {
+        *self.used_secp256k1_curve.borrow_mut() = true;
         self.secp256k1_curve_chip
             .as_ref()
-            .unwrap_or_else(|| panic!("ZkStdArch must enable secp256k1"))
+            .unwrap_or_else(|| panic!("ZkStdLibArch must enable secp256k1"))
     }
 
     /// Chip for performing in-circuit operations over the BLS12-381 curve.
@@ -496,16 +510,18 @@ impl ZkStdLib {
     /// integer). If you need to work over the BLS subgroup, you may want to
     /// use [Bls12381Chip::assert_in_bls12_381_subgroup].
     pub fn bls12_381_curve(&self) -> &Bls12381Chip {
+        *self.used_bls12_381_curve.borrow_mut() = true;
         self.bls12_381_curve_chip
             .as_ref()
-            .unwrap_or_else(|| panic!("ZkStdArch must enable bls12_381"))
+            .unwrap_or_else(|| panic!("ZkStdLibArch must enable bls12_381"))
     }
 
     /// Chip for performing in-circuit base64 decoding.
     pub fn base64(&self) -> &Base64Chip<F> {
+        *self.used_base64.borrow_mut() = true;
         self.base64_chip
             .as_ref()
-            .unwrap_or_else(|| panic!("ZkStdArch must enable base64"))
+            .unwrap_or_else(|| panic!("ZkStdLibArch must enable base64"))
     }
 
     /// Gadget for parsing properties of a JSON object.
@@ -515,7 +531,9 @@ impl ZkStdLib {
 
     /// Chip for performing automaton-based parsing.
     pub fn automaton(&self) -> &AutomatonChip<StdLibParser, F> {
-        (self.automaton_chip.as_ref()).unwrap_or_else(|| panic!("ZkStdArch must enable automaton"))
+        *self.used_automaton.borrow_mut() = true;
+        (self.automaton_chip.as_ref())
+            .unwrap_or_else(|| panic!("ZkStdLibArch must enable automaton"))
     }
 
     /// Assert that a given assigned bit is true.
@@ -606,7 +624,7 @@ impl ZkStdLib {
     ) -> Result<AssignedNative<F>, Error> {
         self.poseidon_gadget
             .as_ref()
-            .unwrap_or_else(|| panic!("ZkStdArch must enable poseidon"))
+            .unwrap_or_else(|| panic!("ZkStdLibArch must enable poseidon"))
             .hash(layouter, input)
     }
 
@@ -619,7 +637,7 @@ impl ZkStdLib {
     ) -> Result<AssignedNativePoint<C>, Error> {
         self.htc_gadget
             .as_ref()
-            .unwrap_or_else(|| panic!("ZkStdArch must enable poseidon and jubjub"))
+            .unwrap_or_else(|| panic!("ZkStdLibArch must enable poseidon and jubjub"))
             .hash_to_curve(layouter, inputs)
     }
 
@@ -650,7 +668,7 @@ impl ZkStdLib {
         *self.used_sha.borrow_mut() = true;
         self.sha256_chip
             .as_ref()
-            .expect("ZkStdArch must enable sha256")
+            .expect("ZkStdLibArch must enable sha256")
             .hash(layouter, input)
     }
 }
@@ -1003,6 +1021,8 @@ impl RangeCheckInstructions<F, AssignedNative<F>> for ZkStdLib {
     }
 }
 
+impl DivisionInstructions<F, AssignedNative<F>> for ZkStdLib {}
+
 impl BinaryInstructions<F> for ZkStdLib {
     fn and(
         &self,
@@ -1100,12 +1120,23 @@ pub struct MidnightCircuit<'a, R: Relation> {
 }
 
 impl<'a, R: Relation> MidnightCircuit<'a, R> {
-    /// A Midnight with unknown instance-witness for the given relation.
+    /// A MidnightCircuit with unknown instance-witness for the given relation.
     pub fn from_relation(relation: &'a R) -> Self {
         MidnightCircuit {
             relation,
             instance: Value::unknown(),
             witness: Value::unknown(),
+            nb_public_inputs: Rc::new(RefCell::new(None)),
+        }
+    }
+
+    /// Create a new MidnightCircuit from a known instance-witness for the given
+    /// relation.
+    pub fn new(relation: &'a R, instance: R::Instance, witness: R::Witness) -> Self {
+        MidnightCircuit {
+            relation,
+            instance: Value::known(instance),
+            witness: Value::known(witness),
             nb_public_inputs: Rc::new(RefCell::new(None)),
         }
     }
@@ -1454,8 +1485,34 @@ impl<R: Relation> Circuit<F> for MidnightCircuit<'_, R> {
         config: Self::Config,
         mut layouter: impl Layouter<F>,
     ) -> Result<(), Error> {
-        let max_bit_len = if config.architecture.sha256 { 11 } else { 8 };
-        let zk_std_lib = ZkStdLib::new(&config, max_bit_len);
+        let secp256k1_rc_limb_size = max(
+            <MEP as FieldEmulationParams<F, secp256k1::Fp>>::RC_LIMB_SIZE,
+            <MEP as FieldEmulationParams<F, secp256k1::Fq>>::RC_LIMB_SIZE,
+        ) as usize;
+
+        let bls12_381_rc_limb_size =
+            <MEP as FieldEmulationParams<F, midnight_curves::Fp>>::RC_LIMB_SIZE as usize;
+
+        // We could do better and select the max bit length based on whether the chips
+        // are used (not just enabled), but that would require a first mock call to
+        // self.relation.circuit.
+        let max_bit_len = [
+            10,
+            secp256k1_rc_limb_size * (config.architecture.secp256k1 as usize),
+            bls12_381_rc_limb_size * (config.architecture.bls12_381 as usize),
+            // The following chips do not use the pow2range table, but have their own table and
+            // impose a lower bound on the circuit size. We want the pow2range table to be as large
+            // as possible without affecting the circuit size.
+            12 * (config.architecture.sha256 as usize), // ~2^13 table -> K = 13
+            12 * (config.architecture.base64 as usize), // 2^12 table + unusable rows -> K = 13
+            12 * (config.architecture.automaton as usize), // ~2^13 table (currently) -> K = 13
+        ]
+        .into_iter()
+        .max()
+        .unwrap();
+
+        // We limit max_bit_len by 15 (K = 16) to avoid huge circuits.
+        let zk_std_lib = ZkStdLib::new(&config, min(15, max_bit_len));
 
         self.relation.circuit(
             &zk_std_lib,
@@ -1474,13 +1531,22 @@ impl<R: Relation> Circuit<F> for MidnightCircuit<'_, R> {
         // We load the tables at the end, once we have figured out what chips/gadgets
         // were actually used.
         zk_std_lib.core_decomposition_chip.load(&mut layouter)?;
-        if let Some(b64_chip) = zk_std_lib.base64_chip {
-            b64_chip.load(&mut layouter)?;
-        }
 
         if let Some(sha256_chip) = zk_std_lib.sha256_chip {
             if *zk_std_lib.used_sha.borrow() {
                 sha256_chip.load(&mut layouter)?;
+            }
+        }
+
+        if let Some(b64_chip) = zk_std_lib.base64_chip {
+            if *zk_std_lib.used_base64.borrow() {
+                b64_chip.load(&mut layouter)?;
+            }
+        }
+
+        if let Some(automaton_chip) = zk_std_lib.automaton_chip {
+            if *zk_std_lib.used_automaton.borrow() {
+                automaton_chip.load(&mut layouter)?;
             }
         }
 
@@ -1529,6 +1595,7 @@ pub fn setup_pk<R: Relation>(relation: &R, vk: &MidnightVK) -> MidnightPK<R> {
     }
 }
 
+#[cfg_attr(feature = "bench-internal", inner_bench)]
 /// Produces a proof of relation `R` for the given instance (using the given
 /// proving key and witness).
 pub fn prove<R: Relation, H: TranscriptHash>(
@@ -1545,12 +1612,7 @@ where
 {
     let pi = R::format_instance(instance);
     let com_inst = R::format_committed_instances(&witness);
-    let circuit = MidnightCircuit {
-        relation,
-        instance: Value::known(instance.clone()),
-        witness: Value::known(witness),
-        nb_public_inputs: Rc::new(RefCell::new(None)),
-    };
+    let circuit = MidnightCircuit::new(relation, instance.clone(), witness);
     BlstPLONK::<MidnightCircuit<R>>::prove::<H>(
         params,
         &pk.pk,
@@ -1558,6 +1620,8 @@ where
         1,
         &[com_inst.as_slice(), &pi],
         rng,
+        #[cfg(feature = "bench-internal")]
+        _group,
     )
 }
 

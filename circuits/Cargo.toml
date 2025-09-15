@@ -17,6 +17,7 @@ midnight-proofs = { path = "../proofs", version = "0.4.0", default-features = fa
     "circuit-params",
     "committed-instances",
 ] }
+bench_macros = { path = "../bench-macros"}
 rand = "0.8"
 num-bigint = { version = "0.4" }
 num-traits = "0.2"
@@ -29,6 +30,7 @@ sha2 = "0.10.9"
 base64 = "0.13.1"
 lazy_static = "1.5.0"
 bincode = "2.0"
+criterion = { version = "0.7", optional = true }
 
 [dev-dependencies]
 criterion = "0.7"
@@ -49,14 +51,16 @@ heap_profiling = []
 # Enable truncated challenges. This makes recursive proofs more efficient
 truncated-challenges = ["midnight-proofs/truncated-challenges"]
 
+# Feature to enable granular benchmarks in the prover. If enabled,
+# the proof generation functions take an additional input,
+# _group: &mut BenchmarkGroup<WallTime>, and return granular benchmarks
+# of the prover for that concrete circuit.
+bench-internal = ["criterion", "midnight-proofs/bench-internal"]
+
 [[example]]
 name = "json_verification"
 path = "examples/json_verification.rs"
 
 [[bench]]
 name = "poseidon_cpu"
-harness = false
-
-[[bench]]
-name = "zswap_output"
 harness = false

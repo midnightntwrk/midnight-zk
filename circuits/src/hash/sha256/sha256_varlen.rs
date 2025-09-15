@@ -61,10 +61,10 @@ where
     ) -> Result<(AssignedBounded<F>, AssignedBit<F>), Error> {
         let ng = &self.ng();
 
-        // Final block length in (0, 64].
+        // Final block length in [0, 64].
         let final_block_len = {
             // Final block length in [0, 64).
-            let (_, fb_len) = ng.div_rem(layouter, len, M as u32, 64)?;
+            let fb_len = ng.rem(layouter, len, 64u64.into(), Some(M.into()))?;
 
             // The final block is full if len % 64 = 0; and the input length is not 0.
             let full_final_block = {

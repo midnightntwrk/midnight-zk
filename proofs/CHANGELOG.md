@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 ### Added
 * Implement `From<u64>` for Expression[#39](https://github.com/midnightntwrk/midnight-zk/pull/39)
+* Feature to run internal benchmarks [#93](https://github.com/midnightntwrk/midnight-zk/pull/93)
 ### Changed
 * API for defining custom constraints was unified [#53](https://github.com/midnightntwrk/midnight-zk/pull/53)
 ### Removed
@@ -15,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## 0.4.0
 ### Added
 * Add deserialisation function that directly takes as input the ConstraintSystem [#18](https://github.com/midnightntwrk/midnight-zk/pull/18/commits/973467fecd6c31c6b57d06c89dfa0c7dd00bef2b)
+
 ### Changed
 * VerifierQuery now accepts commitments in parts [#10](https://github.com/midnightntwrk/midnight-zk/pull/10)
 * Update dependency names [#32](https://github.com/midnightntwrk/midnight-zk/pull/32)

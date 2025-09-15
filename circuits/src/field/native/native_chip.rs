@@ -374,17 +374,6 @@ impl<F: PrimeField> NativeChip<F> {
         )
     }
 
-    /// Assigns the given value, introducing a constraint that guarantees that
-    /// it is non-zero.
-    fn assign_non_zero(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        value: Value<F>,
-    ) -> Result<AssignedNative<F>, Error> {
-        let (x, _) = self.assign_with_shifted_inverse(layouter, value, F::ZERO)?;
-        Ok(x)
-    }
-
     /// Assigns values to verify a linear combination of the given terms.
     ///
     /// Concretely, given terms s.t. `term_i = (c_i, a_i)` and result, it
@@ -1246,53 +1235,87 @@ where
         x: &AssignedNative<F>,
         y: &AssignedNative<F>,
     ) -> Result<AssignedBit<F>, Error> {
-        // We enforce (x - y) * aux = 1 - res where aux != 0 and res is a bit.
-        //  * If x = y, we have 0 = 1 - res, so res must be 1.
-        //  * If x != y, res is forced to be 0 as desired (because aux != 0).
-        //
-        // The equation is enforced as res := - aux * x + aux * y + 1
-        let aux_value = x
-            .value()
-            .zip(y.value())
-            .map(|(x, y)| (*x - *y).invert().unwrap_or(F::ONE));
-        let aux = self.assign_non_zero(layouter, aux_value)?;
-        // res := 0*aux + 0*x + 0*y + 1 - aux*x + aux*y
-        let res = self.add_and_double_mul(
+        // We enforce (i) (x - y) * aux = 1 - res
+        // and       (ii) (x - y) * res = 0.
+        //  * If  x = y, (i)  implies res = 1; (ii) becomes trivial.
+        //  * If x != y, (ii) implies res = 0; (i) can be relaxed with aux = (x - y)^-1.
+
+        let value_cols = &self.config.value_cols;
+        let res_val = (x.value().zip(y.value())).map(|(x, y)| F::from((x == y) as u64));
+        let aux_val = (x.value().zip(y.value())).map(|(x, y)| (*x - *y).invert().unwrap_or(F::ONE));
+
+        // (i) enforced as res + aux * x - aux * y - 1 = 0.
+        let res = layouter.assign_region(
+            || "is_equal (i)",
+            |mut region| {
+                let aux = region.assign_advice(|| "aux", value_cols[0], 0, || aux_val)?;
+                self.copy_in_row(&mut region, x, &value_cols[1], 0)?;
+                self.copy_in_row(&mut region, &aux, &value_cols[2], 0)?;
+                self.copy_in_row(&mut region, y, &value_cols[3], 0)?;
+                let res = region.assign_advice(|| "res", value_cols[4], 0, || res_val)?;
+                let mut coeffs = [F::ZERO; NB_ARITH_COLS];
+                coeffs[4] = F::ONE; // coeff of res
+                self.custom(&mut region, &coeffs, F::ZERO, (F::ONE, -F::ONE), -F::ONE, 0)?;
+                Ok(res)
+            },
+        )?;
+
+        // (ii) enforced as res * x - res * y = 0.
+        self.add_and_double_mul(
             layouter,
-            (F::ZERO, &aux),
+            (F::ZERO, &res),
             (F::ZERO, x),
             (F::ZERO, y),
-            F::ONE,
-            (-F::ONE, F::ONE),
+            F::ZERO,
+            (F::ONE, -F::ONE),
         )?;
-        self.convert(layouter, &res)
+
+        // The two equations we have enforced guarantee the bit-ness of `res`.
+        Ok(AssignedBit(res))
     }
 
     fn is_equal_to_fixed(
         &self,
         layouter: &mut impl Layouter<F>,
         x: &AssignedNative<F>,
-        constant: F,
+        c: F,
     ) -> Result<AssignedBit<F>, Error> {
-        // We enforce (x - constant) * aux = 1 - res where aux != 0 and res is a bit.
-        //  * If x = constant, we have 0 = 1 - res, so res must be 1.
-        //  * If x != constant, res is forced to be 0 as desired (because aux != 0).
-        //
-        // The equation is enforced as res := - x * aux + constant * aux + 1.
-        let aux_value = x
-            .value()
-            .map(|x| (*x - constant).invert().unwrap_or(F::ONE));
-        let aux = self.assign_non_zero(layouter, aux_value)?;
-        // res := 0*x + constant*aux + 1 - x*aux.
-        let res = self.add_and_mul(
-            layouter,
-            (F::ZERO, x),
-            (constant, &aux),
-            (F::ZERO, x),
-            F::ONE,
-            -F::ONE,
+        // We enforce (i) (x - c) * aux = 1 - res
+        // and       (ii) (x - c) * res = 0.
+        //  * If  x = c, (i)  implies res = 1; (ii) becomes trivial.
+        //  * If x != c, (ii) implies res = 0; (i) can be relaxed with aux = (x - c)^-1.
+
+        let value_cols = &self.config.value_cols;
+        let res_val = x.value().map(|x| F::from((*x == c) as u64));
+        let aux_val = x.value().map(|x| (*x - c).invert().unwrap_or(F::ONE));
+
+        // (i) enforced as res - c * aux + aux * x - 1 = 0.
+        let res = layouter.assign_region(
+            || "is_equal (i)",
+            |mut region| {
+                region.assign_advice(|| "aux", value_cols[0], 0, || aux_val)?;
+                self.copy_in_row(&mut region, x, &value_cols[1], 0)?;
+                let res = region.assign_advice(|| "res", value_cols[4], 0, || res_val)?;
+                let mut coeffs = [F::ZERO; NB_ARITH_COLS];
+                coeffs[0] = -c; // coeff of aux
+                coeffs[4] = F::ONE; // coeff of res
+                self.custom(&mut region, &coeffs, F::ZERO, (F::ONE, F::ZERO), -F::ONE, 0)?;
+                Ok(res)
+            },
         )?;
-        self.convert(layouter, &res)
+
+        // (ii) enforced as -c * res + res * x = 0.
+        self.add_and_mul(
+            layouter,
+            (-c, &res),
+            (F::ZERO, x),
+            (F::ZERO, x),
+            F::ZERO,
+            F::ONE,
+        )?;
+
+        // The two equations we have enforced guarantee the bit-ness of `res`.
+        Ok(AssignedBit(res))
     }
 }
 
@@ -1303,12 +1326,19 @@ where
     fn is_equal(
         &self,
         layouter: &mut impl Layouter<F>,
-        b1: &AssignedBit<F>,
-        b2: &AssignedBit<F>,
+        a: &AssignedBit<F>,
+        b: &AssignedBit<F>,
     ) -> Result<AssignedBit<F>, Error> {
-        // TODO: The following could be optimized to just 1 row
-        let different = self.xor(layouter, &[b1.clone(), b2.clone()])?;
-        self.not(layouter, &different)
+        // 1 + 2ab - a - b
+        self.add_and_mul(
+            layouter,
+            (-F::ONE, &a.0),
+            (-F::ONE, &b.0),
+            (F::ZERO, &a.0),
+            F::ONE,
+            F::from(2),
+        )
+        .map(AssignedBit)
     }
 
     fn is_equal_to_fixed(

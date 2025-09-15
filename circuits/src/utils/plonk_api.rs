@@ -23,6 +23,8 @@ use std::{
     path::Path,
 };
 
+#[cfg(feature = "bench-internal")]
+use bench_macros::inner_bench;
 use halo2curves::bn256;
 use midnight_curves::Bls12;
 use midnight_proofs::{
@@ -88,6 +90,7 @@ macro_rules! plonk_api {
                 pk
             }
 
+            #[cfg_attr(feature = "bench-internal", inner_bench)]
             /// PLONK proving algorithm.
             pub fn prove<H>(
                 params: &ParamsKZG<$engine>,
@@ -119,6 +122,8 @@ macro_rules! plonk_api {
                         &[pi],
                         rng,
                         &mut transcript,
+                        #[cfg(feature = "bench-internal")]
+                        _group,
                     )?;
                     transcript.finalize()
                 };
@@ -266,9 +271,10 @@ pub fn update_circuit_goldenfiles<R: Relation>(relation: &R) {
 
     let file_name = format!("./goldenfiles/examples/{}", circuit_name);
     let path = Path::new(&file_name);
-    let mut f = File::create(path).unwrap_or_else(|_| panic!("Could not create file {file_name}"));
+    let mut f =
+        File::create(path).unwrap_or_else(|_| panic!("Could not create file {}", file_name));
     writeln!(f, "{:#?}", cost_model(relation))
-        .unwrap_or_else(|_| panic!("Could not write to file {file_name}"));
+        .unwrap_or_else(|_| panic!("Could not write to file {}", file_name));
 }
 
 /// Use filecoin's SRS (over BLS12-381)

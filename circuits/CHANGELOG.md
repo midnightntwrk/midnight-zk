@@ -17,6 +17,7 @@ verification keys break backwards compatibility.
 * New SHA256 chip [#39](https://github.com/midnightntwrk/midnight-zk/pull/39)
 * Variable-length SHA256 gadget [#98](https://github.com/midnightntwrk/midnight-zk/pull/98)
 * Add Schnorr signature example [#55](https://github.com/midnightntwrk/midnight-zk/pull/55)
+* Feature to run internal benchmarks [#93](https://github.com/midnightntwrk/midnight-zk/pull/93)
 * Add function to return number of points involved in a proof [#102](https://github.com/midnightntwrk/midnight-zk/pull/102)
 
 ### Changed
@@ -29,6 +30,7 @@ verification keys break backwards compatibility.
 * Adapted in-circuit verifier to changes of off-circuit counterpart [#76](https://github.com/midnightntwrk/midnight-zk/pull/76)
 * Clarified the default directory to download SRS [#95](https://github.com/midnightntwrk/midnight-zk/pull/95)
 * Load only necessary bit_lens in pow2range_chip [#90](https://github.com/midnightntwrk/midnight-zk/pull/90)
+* Reduce degree of foreign/ecc_chip lookup from 6 to 5 [#91](https://github.com/midnightntwrk/midnight-zk/pull/91)
 
 ### Removed
 

@@ -165,8 +165,7 @@ impl<C: WeierstrassCurve> OnCurveConfig<C> {
 
             // 2 * sum_y + sum_y2 - (sum_xz + sum_z + (a+1) * sum_x + b) = (u + k_min) * m
             let native_id = &cond
-                * (Expression::Constant(F::from(2)) * sum_exprs::<F>(&bs, &ys)
-                    + sum_exprs::<F>(&bs2, &y2s)
+                * (Expression::from(2) * sum_exprs::<F>(&bs, &ys) + sum_exprs::<F>(&bs2, &y2s)
                     - (sum_exprs::<F>(&bs2, &xzs)
                         + sum_exprs::<F>(&bs, &zs)
                         + sum_exprs::<F>(&bs, &xs)
@@ -187,7 +186,7 @@ impl<C: WeierstrassCurve> OnCurveConfig<C> {
                     //  + ((a+1) % mj) * sum_x_mj + b % mj)
                     //  - u * (m % mj) - (k_min * m) % mj - (vj + lj_min) * mj = 0
                     &cond
-                        * (Expression::Constant(F::ONE + F::ONE) * sum_exprs::<F>(&bs_mj, &ys)
+                        * (Expression::from(2) * sum_exprs::<F>(&bs_mj, &ys)
                             + sum_exprs::<F>(&bs2_mj, &y2s)
                             - (sum_exprs::<F>(&bs2_mj, &xzs)
                                 + sum_exprs::<F>(&bs_mj, &zs)
