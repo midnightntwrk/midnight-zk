@@ -31,6 +31,7 @@ verification keys break backwards compatibility.
 * Clarified the default directory to download SRS [#95](https://github.com/midnightntwrk/midnight-zk/pull/95)
 * Load only necessary bit_lens in pow2range_chip [#90](https://github.com/midnightntwrk/midnight-zk/pull/90)
 * Reduce degree of foreign/ecc_chip lookup from 6 to 5 [#91](https://github.com/midnightntwrk/midnight-zk/pull/91)
+* Optimisation of Automaton configuration and serialisation of the parsing library [#73](https://github.com/midnightntwrk/midnight-zk/pull/73)
 
 ### Removed
 

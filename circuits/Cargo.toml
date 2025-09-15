@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 group = { workspace = true }
 ff = { workspace = true }
+rustc-hash = "2"
 halo2curves = { workspace = true }
 blake2b_simd = { workspace = true }
 midnight-curves = { path = "../curves", version = "0.1.0" }
