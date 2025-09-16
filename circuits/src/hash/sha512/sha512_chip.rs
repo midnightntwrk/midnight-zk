@@ -74,8 +74,8 @@ use crate::{
             spreaded_sigma_1, u64_in_be_limbs, MASK_EVN_128,
         },
     },
-    instructions::assignments::AssignmentInstructions,
-    types::AssignedNative,
+    instructions::{assignments::AssignmentInstructions, DecompositionInstructions},
+    types::{AssignedByte, AssignedNative},
     utils::{
         util::{fe_to_u128, fe_to_u64, u128_to_fe, u64_to_fe},
         ComposableChip,
@@ -763,6 +763,51 @@ impl<F: PrimeField> ComposableChip<F> for Sha512Chip<F> {
 }
 
 impl<F: PrimeField> Sha512Chip<F> {
+    /// Pads the input byte array to be a multiple of 128 bytes (1024 bits).
+    fn pad(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        bytes: &[AssignedByte<F>],
+    ) -> Result<Vec<AssignedByte<F>>, Error> {
+        let l = 8 * bytes.len();
+        let k = 1024 - (l + 129) % 1024;
+
+        let mut padded = bytes.to_vec();
+        padded.push(self.native_gadget.assign_fixed(layouter, 128u8)?); // k is always 7 mod 8
+        padded.extend(vec![self.native_gadget.assign_fixed(layouter, 0u8)?; k / 8]);
+        for byte in u128::to_be_bytes(l as u128) {
+            padded.push(self.native_gadget.assign_fixed(layouter, byte)?);
+        }
+
+        Ok(padded)
+    }
+
+    /// Given a byte array of exactly 128 bytes, this function converts it into
+    /// a block of 16 `AssignedPlain` values, each (64 bits) value
+    /// representing 8 bytes in big-endian.
+    ///
+    /// # Panics
+    ///
+    /// If it does not receive exactly 128 bytes.
+    pub(super) fn block_from_bytes(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        bytes: &[AssignedByte<F>],
+    ) -> Result<[AssignedPlain<F, 64>; 16], Error> {
+        assert_eq!(bytes.len(), 128);
+
+        Ok(bytes
+            .chunks(8)
+            .map(|word_bytes| {
+                self.native_gadget
+                    .assigned_from_be_bytes(layouter, word_bytes)
+                    .map(AssignedPlain)
+            })
+            .collect::<Result<Vec<_>, Error>>()?
+            .try_into()
+            .unwrap())
+    }
+
     /// Computes Maj(A, B, C).
     fn maj(
         &self,
