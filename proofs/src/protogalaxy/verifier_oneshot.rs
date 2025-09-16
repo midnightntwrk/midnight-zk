@@ -57,7 +57,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         // TODO: We'll use independent challenges, instead of powers of y.
         let dk_domain = EvaluationDomain::new(
             vk.cs().degree() as u32 + 3,
-            (instances.len() + 1).trailing_zeros(),
+            instances.len().trailing_zeros(),
         );
 
         // TODO: Is this sufficient to check H-consistency? I'm not 'checking' anything,

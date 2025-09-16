@@ -557,7 +557,7 @@ mod tests {
                 &vk,
                 #[cfg(feature = "committed-instances")]
                 &[&[]],
-                &[&[], &[], &[],&[]],
+                &[&[], &[], &[], &[]],
                 &mut transcript,
             )
             .expect("Failed to fold instances by the verifier")
