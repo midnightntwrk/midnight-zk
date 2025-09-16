@@ -537,12 +537,8 @@ where
         instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
         let nb_advice_cols = std::cmp::max(NB_AUTOMATA_COLS, NB_ARITH_COLS);
-        let advice_cols = (0..nb_advice_cols)
-            .map(|_| meta.advice_column())
-            .collect::<Vec<_>>();
-        let fixed_cols = (0..NB_ARITH_COLS + 4)
-            .map(|_| meta.fixed_column())
-            .collect::<Vec<_>>();
+        let advice_cols = (0..nb_advice_cols).map(|_| meta.advice_column()).collect::<Vec<_>>();
+        let fixed_cols = (0..NB_ARITH_COLS + 4).map(|_| meta.fixed_column()).collect::<Vec<_>>();
         let automata = FxHashMap::from_iter(
             [
                 Automaton::hard_coded_example0(),

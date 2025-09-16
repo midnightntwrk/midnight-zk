@@ -459,9 +459,7 @@ where
         let unicode_escape = Self::word("\\u").terminated(hex.repeat(4));
 
         let content = Self::union([unescaped_utf8_cps, simple_escape, unicode_escape]).list();
-        content
-            .mark(&|_| Some(1))
-            .delimited(Self::word("\""), Self::word("\""))
+        content.mark(&|_| Some(1)).delimited(Self::word("\""), Self::word("\""))
     }
 }
 
@@ -641,9 +639,7 @@ impl Regex {
                 .chain(once(last))
                 .collect::<Vec<_>>()
         } else {
-            res.iter()
-                .map(|r| r.to_raw_automaton(alphabet_size))
-                .collect::<Vec<_>>()
+            res.iter().map(|r| r.to_raw_automaton(alphabet_size)).collect::<Vec<_>>()
         }
     }
 
@@ -713,11 +709,11 @@ impl Regex {
             RegexInternal::Union(l) => {
                 RawAutomaton::union(&Self::flatten_union(l, alphabet_size), alphabet_size)
             }
-            RegexInternal::Inter(l) => l
-                .iter()
-                .fold(RawAutomaton::universal(alphabet_size), |accu, r| {
+            RegexInternal::Inter(l) => {
+                l.iter().fold(RawAutomaton::universal(alphabet_size), |accu, r| {
                     accu.inter(&r.to_raw_automaton(alphabet_size))
-                }),
+                })
+            }
             RegexInternal::Star(strict, e) => {
                 let automaton = e.to_raw_automaton(alphabet_size);
                 if *strict {
@@ -733,9 +729,7 @@ impl Regex {
                 } else {
                     // Note: `complement()` requires that the argument is complete (and
                     // deterministic), but will remove the resulting dead states afterwards.
-                    e.to_raw_automaton(alphabet_size)
-                        .determinise(true, alphabet_size)
-                        .complement()
+                    e.to_raw_automaton(alphabet_size).determinise(true, alphabet_size).complement()
                 }
             }
         }

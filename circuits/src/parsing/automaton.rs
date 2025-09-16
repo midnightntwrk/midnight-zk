@@ -337,9 +337,7 @@ impl RawAutomaton {
 
     /// Checks whether final states have no successors.
     fn nothing_after_final(&self) -> bool {
-        self.final_states
-            .iter()
-            .all(|&state| self.transitions[state].is_empty())
+        self.final_states.iter().all(|&state| self.transitions[state].is_empty())
     }
 }
 
@@ -646,10 +644,7 @@ impl RawAutomaton {
                 }
                 // If the initial state of `concat_automaton` is also final, the final states of
                 // `automaton` have to be added as final states of `concat_automaton`.
-                if concat_automaton
-                    .final_states
-                    .contains(&concat_automaton.initial_state)
-                {
+                if concat_automaton.final_states.contains(&concat_automaton.initial_state) {
                     concat_automaton
                         .final_states
                         .extend(automaton.final_states.iter().map(|s| s + nb_states));
@@ -918,9 +913,7 @@ impl RawAutomaton {
     /// alphabet.
     fn nerode_congruence(&self, alphabet_size: usize, markers: &[usize]) -> Vec<Vec<bool>> {
         let mut final_states = vec![false; self.transitions.len()];
-        self.final_states
-            .iter()
-            .for_each(|&i| final_states[i] = true);
+        self.final_states.iter().for_each(|&i| final_states[i] = true);
         let non_final_states = final_states.iter().map(|&b| !b).collect::<Vec<_>>();
 
         // The initial coarse partition which will be refined into Nerode's congruence.
@@ -1022,11 +1015,7 @@ impl RawAutomaton {
             .into_iter()
             .enumerate()
             .collect::<Vec<_>>();
-        let initial_state = partition
-            .iter()
-            .find(|(_, v)| v[self.initial_state])
-            .unwrap()
-            .0;
+        let initial_state = partition.iter().find(|(_, v)| v[self.initial_state]).unwrap().0;
         let mut final_states =
             FxHashSet::with_capacity_and_hasher(self.final_states.len(), FxBuildHasher);
         partition.iter().for_each(|(index, class)| {
@@ -1039,9 +1028,7 @@ impl RawAutomaton {
         for (index1, class1) in &partition {
             let source = class1.iter().enumerate().find(|(_, &b)| b).unwrap().0;
             for (letter, target) in &self.transitions[source] {
-                let index2 = (partition.iter().find(|(_, class)| class[*target]))
-                    .unwrap()
-                    .0;
+                let index2 = (partition.iter().find(|(_, class)| class[*target])).unwrap().0;
                 transitions[*index1].push((*letter, index2));
             }
         }
@@ -1076,9 +1063,8 @@ impl RawAutomaton {
                 for (letter, target) in succ {
                     if *target == pending_state && reachability[source].is_none() {
                         let path = reachability[pending_state].as_ref().unwrap();
-                        let extended_path = once(letter.char)
-                            .chain(path.iter().copied())
-                            .collect::<Vec<_>>();
+                        let extended_path =
+                            once(letter.char).chain(path.iter().copied()).collect::<Vec<_>>();
                         reachability[source] = Some(extended_path);
                         pending.push(source);
                     }
@@ -1095,15 +1081,11 @@ impl RawAutomaton {
     pub(super) fn normalise(self) -> Automaton {
         let alphabet_size = (self.transitions.iter())
             .map(|succ| {
-                (succ.iter().map(|(letter, _)| letter.char as usize + 1))
-                    .max()
-                    .unwrap_or(0)
+                (succ.iter().map(|(letter, _)| letter.char as usize + 1)).max().unwrap_or(0)
             })
             .max()
             .unwrap_or(0);
-        let base = self
-            .determinise(false, alphabet_size)
-            .minimise(alphabet_size);
+        let base = self.determinise(false, alphabet_size).minimise(alphabet_size);
 
         let mut transitions =
             FxHashMap::with_capacity_and_hasher(base.transitions.len(), FxBuildHasher);
@@ -1149,11 +1131,7 @@ impl Automaton {
         Self {
             nb_states: self.nb_states + offset,
             initial_state: self.initial_state + offset,
-            final_states: self
-                .final_states
-                .iter()
-                .map(|s| s + offset)
-                .collect::<FxHashSet<_>>(),
+            final_states: self.final_states.iter().map(|s| s + offset).collect::<FxHashSet<_>>(),
             transitions: self
                 .transitions
                 .iter()
@@ -1357,11 +1335,7 @@ pub(super) mod tests {
             &[1, 1, 1, 0, 1, 2],
         ];
 
-        let regex8 = one
-            .clone()
-            .non_empty_list()
-            .mark_bytes([1], 1)
-            .separated_list(two.clone());
+        let regex8 = one.clone().non_empty_list().mark_bytes([1], 1).separated_list(two.clone());
         let accepted8: &[(&[u8], &[usize])] = &[
             (&[], &[]),
             (&[1, 1], &[1, 1]),
@@ -1391,11 +1365,8 @@ pub(super) mod tests {
             (regex7, accepted7, rejected7),
             (regex8, accepted8, rejected8),
         ];
-        regex
-            .iter()
-            .enumerate()
-            .for_each(|(index, (regex, accepted, rejected))| {
-                automaton_one_test(index, 3, regex, accepted, rejected, true)
-            });
+        regex.iter().enumerate().for_each(|(index, (regex, accepted, rejected))| {
+            automaton_one_test(index, 3, regex, accepted, rejected, true)
+        });
     }
 }
