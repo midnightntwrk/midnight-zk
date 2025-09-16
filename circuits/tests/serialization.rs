@@ -127,7 +127,8 @@ fn vk_serde_test(architecture: ZkStdLibArch, write_format: SerdeFormat, read_for
     println!("VK buffer length after write: {}", buffer.len());
 
     let mut cursor = std::io::Cursor::new(buffer.clone());
-    let serialised_architecture = ZkStdLibArch::read_from_serialized_vk(&mut cursor.clone()).unwrap();
+    let serialised_architecture =
+        ZkStdLibArch::read_from_serialized_vk(&mut cursor.clone()).unwrap();
 
     let vk2 = MidnightVK::read(&mut cursor, read_format).unwrap();
 
