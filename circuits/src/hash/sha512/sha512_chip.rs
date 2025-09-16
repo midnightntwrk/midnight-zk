@@ -218,7 +218,7 @@ impl<F: PrimeField> ComposableChip<F> for Sha512Chip<F> {
             }
         }
 
-        let q_lookup = meta.selector();
+        let q_lookup = meta.complex_selector();
         let table = SpreadTable {
             nbits_col: meta.lookup_table_column(),
             plain_col: meta.lookup_table_column(),
@@ -578,7 +578,7 @@ impl<F: PrimeField> ComposableChip<F> for Sha512Chip<F> {
         });
 
         meta.create_gate("13-10-13-10-4-13-1 decomposition", |meta| {
-            // See function `prepare_A` for a description of the following layout.
+            // See function `prepare_E` for a description of the following layout.
             let p13a = meta.query_advice(advice_cols[0], Rotation(-1));
             let p10a = meta.query_advice(advice_cols[2], Rotation(-1));
             let p13b = meta.query_advice(advice_cols[0], Rotation(0));
@@ -590,8 +590,8 @@ impl<F: PrimeField> ComposableChip<F> for Sha512Chip<F> {
             let s10a = meta.query_advice(advice_cols[3], Rotation(-1));
             let s13b = meta.query_advice(advice_cols[1], Rotation(0));
             let s10b = meta.query_advice(advice_cols[3], Rotation(0));
-            let s04 = meta.query_advice(advice_cols[3], Rotation(1));
-            let s13c = meta.query_advice(advice_cols[1], Rotation(1));
+            let s04 = meta.query_advice(advice_cols[1], Rotation(1));
+            let s13c = meta.query_advice(advice_cols[3], Rotation(1));
             let s01 = meta.query_advice(advice_cols[1], Rotation(2));
             let plain = meta.query_advice(advice_cols[4], Rotation(-1));
             let sprdd = meta.query_advice(advice_cols[4], Rotation(0));
@@ -1462,13 +1462,11 @@ impl<F: PrimeField> Sha512Chip<F> {
 
         let (evn_val, odd_val) = value.map(get_even_and_odd_bits).unzip();
 
-        let [evn0_13, evn1_13, evn2_13, evn3_13, evn4_12] = evn_val
-            .map(|v| u64_in_be_limbs(v, [13, 13, 13, 13, 12]))
-            .transpose_array();
+        let [evn0_13, evn1_13, evn2_13, evn3_13, evn4_12] =
+            evn_val.map(|v| u64_in_be_limbs(v, [13, 13, 13, 13, 12])).transpose_array();
 
-        let [odd0_13, odd1_13, odd2_13, odd3_13, odd4_12] = odd_val
-            .map(|v| u64_in_be_limbs(v, [13, 13, 13, 13, 12]))
-            .transpose_array();
+        let [odd0_13, odd1_13, odd2_13, odd3_13, odd4_12] =
+            odd_val.map(|v| u64_in_be_limbs(v, [13, 13, 13, 13, 12])).transpose_array();
 
         let idx = match even_or_odd {
             Parity::Evn => 0,
@@ -1551,10 +1549,8 @@ impl<F: PrimeField> Sha512Chip<F> {
                 self.config().q_13_12_5_6_13_13_2.enable(&mut region, 1)?;
 
                 let a_plain = self.assign_add_mod_2_64(&mut region, summands, &zero)?;
-                let a_sprdd_val = (a_plain.0.value().copied())
-                    .map(fe_to_u64)
-                    .map(spread)
-                    .map(u128_to_fe);
+                let a_sprdd_val =
+                    (a_plain.0.value().copied()).map(fe_to_u64).map(spread).map(u128_to_fe);
                 let a_sprdd = region
                     .assign_advice(|| "~A", self.config().advice_cols[4], 1, || a_sprdd_val)
                     .map(AssignedSpreaded)?;
@@ -1641,10 +1637,8 @@ impl<F: PrimeField> Sha512Chip<F> {
                 self.config().q_13_10_13_10_4_13_1.enable(&mut region, 1)?;
 
                 let e_plain = self.assign_add_mod_2_64(&mut region, summands, &zero)?;
-                let e_sprdd_val = (e_plain.0.value().copied())
-                    .map(fe_to_u64)
-                    .map(spread)
-                    .map(u128_to_fe);
+                let e_sprdd_val =
+                    (e_plain.0.value().copied()).map(fe_to_u64).map(spread).map(u128_to_fe);
                 let e_sprdd = region
                     .assign_advice(|| "~E", self.config().advice_cols[4], 1, || e_sprdd_val)
                     .map(AssignedSpreaded)?;
@@ -1861,9 +1855,7 @@ impl<F: PrimeField> Sha512Chip<F> {
         summands[6].0.copy_advice(|| "S6", region, adv_cols[6], 2)?;
         let _carry: AssignedPlainSpreaded<F, 3> =
             self.assign_plain_and_spreaded(region, carry_val, 3, 1)?;
-        region
-            .assign_advice(|| "sum", adv_cols[4], 0, || sum_val)
-            .map(AssignedPlain)
+        region.assign_advice(|| "sum", adv_cols[4], 0, || sum_val).map(AssignedPlain)
     }
 }
 

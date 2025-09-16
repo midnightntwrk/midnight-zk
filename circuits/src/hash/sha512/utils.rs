@@ -6,7 +6,7 @@ use crate::utils::util::u128_to_fe;
 pub(super) const MASK_EVN_128: u128 = 0x5555_5555_5555_5555_5555_5555_5555_5555; // 010101...01 (even positions in u128)
 pub(super) const MASK_ODD_128: u128 = 0xAAAA_AAAA_AAAA_AAAA_AAAA_AAAA_AAAA_AAAA; // 101010...10 (odd positions in u128)
 
-const LOOKUP_LENGTHS: [u32; 2] = [12, 13]; // supported lookup bit lengths
+const LOOKUP_LENGTHS: [u32; 10] = [1, 2, 3, 4, 5, 6, 10, 11, 12, 13]; // supported lookup bit lengths
 
 /// Returns the even and odd bits of little-endian binary representation of
 /// u128.
@@ -208,9 +208,7 @@ pub fn spreaded_sigma_1(spreaded_limbs: [u128; 10]) -> u128 {
 
 /// Returns sum_i 4^(exponents\[i\]) * terms\[i\] for u128.
 fn pow4_ip<const N: usize>(exponents: [u8; N], terms: [u128; N]) -> u128 {
-    (exponents.iter().zip(terms.iter()))
-        .map(|(e, t)| (1 << (2 * e)) * t)
-        .sum()
+    (exponents.iter().zip(terms.iter())).map(|(e, t)| (1 << (2 * e)) * t).sum()
 }
 
 /// Returns sum_i 2^(exponents\[i\]) * terms\[i\].
@@ -220,7 +218,7 @@ pub(crate) fn expr_pow2_ip<F: PrimeField, const N: usize>(
 ) -> Expression<F> {
     let mut expr = Expression::Constant(F::ZERO);
     for (pow, term) in exponents.into_iter().zip(terms.into_iter()) {
-        expr = expr + Expression::Constant(F::from(1 << pow)) * term.clone();
+        expr = expr + Expression::Constant(u128_to_fe(1 << pow)) * term.clone();
     }
     expr
 }

@@ -84,6 +84,19 @@
       "table_rows": "7933"
     }
   },
+  "SHA512": {
+    "hash": {
+      "advice_columns": "13",
+      "column_queries": "99",
+      "fixed_columns": "60",
+      "lookups": "10",
+      "max_deg": "5",
+      "permutations": "15",
+      "point_sets": "7",
+      "rows": "37173",
+      "table_rows": "16001"
+    }
+  },
   "VarSHA256": {
     "hash": {
       "advice_columns": "13",
