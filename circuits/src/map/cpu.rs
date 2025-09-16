@@ -107,10 +107,7 @@ where
     }
 
     fn get(&self, key: &F) -> F {
-        self.map
-            .get(&fe_to_big(*key))
-            .copied()
-            .unwrap_or(self.default_nodes[0])
+        self.map.get(&fe_to_big(*key)).copied().unwrap_or(self.default_nodes[0])
     }
 }
 
@@ -126,9 +123,7 @@ where
     >;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.map
-            .into_iter()
-            .map(|(key, value)| (big_to_fe(key), value))
+        self.map.into_iter().map(|(key, value)| (big_to_fe(key), value))
     }
 }
 

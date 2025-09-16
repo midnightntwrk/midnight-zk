@@ -236,10 +236,8 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> VerifyingK
             transcript_repr: F::ZERO,
         };
 
-        let mut hasher = Blake2bParams::new()
-            .hash_length(64)
-            .personal(b"Halo2-Verify-Key")
-            .to_state();
+        let mut hasher =
+            Blake2bParams::new().hash_length(64).personal(b"Halo2-Verify-Key").to_state();
 
         // We serialise the commitments of the VK to get the `transcript_repr`.
         let mut buffer = Vec::new();

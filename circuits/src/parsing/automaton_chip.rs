@@ -422,9 +422,8 @@ where
             layouter,
             self.config.automata[automaton_index].initial_state,
         )?;
-        let invalid_letter: AssignedNative<F> = self
-            .native_gadget
-            .assign_fixed(layouter, F::from(ALPHABET_MAX_SIZE as u64))?;
+        let invalid_letter: AssignedNative<F> =
+            self.native_gadget.assign_fixed(layouter, F::from(ALPHABET_MAX_SIZE as u64))?;
         let invalid_state: AssignedNative<F> =
             self.native_gadget.assign_fixed(layouter, F::from(0))?;
         layouter.assign_region(
@@ -616,10 +615,8 @@ mod test {
     impl<F: PrimeField> RegexCircuit<F> {
         fn new(s: &str, output: &[usize], automaton_index: usize) -> Self {
             let input = s.bytes().map(Value::known).collect::<Vec<_>>();
-            let output = output
-                .iter()
-                .map(|&x| Value::known(F::from(x as u64)))
-                .collect::<Vec<_>>();
+            let output =
+                output.iter().map(|&x| Value::known(F::from(x as u64))).collect::<Vec<_>>();
             RegexCircuit {
                 input,
                 output,
@@ -658,12 +655,10 @@ mod test {
         ) -> Result<(), Error> {
             let automaton_chip = AutomatonChip::<usize, F>::new_from_scratch(&config);
 
-            let input: Vec<AssignedByte<F>> = automaton_chip
-                .native_gadget
-                .assign_many(&mut layouter, &self.input.clone())?;
-            let output: Vec<AssignedNative<F>> = automaton_chip
-                .native_gadget
-                .assign_many(&mut layouter, &self.output)?;
+            let input: Vec<AssignedByte<F>> =
+                automaton_chip.native_gadget.assign_many(&mut layouter, &self.input.clone())?;
+            let output: Vec<AssignedNative<F>> =
+                automaton_chip.native_gadget.assign_many(&mut layouter, &self.output)?;
 
             // The line below can be uncommented to estimate the cost of parsing two times.
             // The difference with parsing 1 time gives a more precise estimate of how many
@@ -686,14 +681,9 @@ mod test {
                 parsed_output.len(),
                 output.len()
             );
-            parsed_output
-                .iter()
-                .zip_eq(output.iter())
-                .try_for_each(|(o1, o2)| {
-                    automaton_chip
-                        .native_gadget
-                        .assert_equal(&mut layouter, o1, o2)
-                })?;
+            parsed_output.iter().zip_eq(output.iter()).try_for_each(|(o1, o2)| {
+                automaton_chip.native_gadget.assert_equal(&mut layouter, o1, o2)
+            })?;
 
             automaton_chip.load_from_scratch(&mut layouter)
         }

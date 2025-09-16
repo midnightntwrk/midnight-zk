@@ -148,9 +148,7 @@ where
     ///
     /// If the [MapGadget] has not been initialised.
     fn state(&self) -> &State<F, H> {
-        self.state
-            .as_ref()
-            .expect("Map gadget must be initialised before usage.")
+        self.state.as_ref().expect("Map gadget must be initialised before usage.")
     }
 
     /// Update the state by inserting a new value `(value, key)` pair into the
@@ -165,10 +163,7 @@ where
         key: &AssignedNative<F>,
         value: &AssignedNative<F>,
     ) -> Result<(), Error> {
-        let state = self
-            .state
-            .as_mut()
-            .expect("Map gadget must be initialised before usage.");
+        let state = self.state.as_mut().expect("Map gadget must be initialised before usage.");
 
         let new_root = key.value().zip(value.value()).map(|(key, value)| {
             state.map.insert(key, value);
@@ -194,15 +189,8 @@ where
         key: &AssignedNative<F>,
     ) -> Result<[AssignedNative<F>; TREE_HEIGHT as usize], Error> {
         // First we assign the MT path.
-        let path = key
-            .value()
-            .map(|key| self.state().map.get_path(key))
-            .transpose_array();
-        Ok(self
-            .native_gadget
-            .assign_many(layouter, &path)?
-            .try_into()
-            .unwrap())
+        let path = key.value().map(|key| self.state().map.get_path(key)).transpose_array();
+        Ok(self.native_gadget.assign_many(layouter, &path)?.try_into().unwrap())
     }
 
     /// Verify a `proof` is correct w.r.t. the `(key, value)` pair.
@@ -215,27 +203,18 @@ where
     ) -> Result<(), Error> {
         let zero = self.native_gadget.assign_fixed(layouter, F::ZERO)?;
         let path = self.hash_chip.hash(layouter, &[key.clone(), zero])?;
-        let path_as_bits = self
-            .native_gadget
-            .assigned_to_le_bits(layouter, &path, None, true)?;
+        let path_as_bits = self.native_gadget.assigned_to_le_bits(layouter, &path, None, true)?;
 
         let mut node: AssignedNative<F> = value.clone();
 
-        for (is_right, sibling) in path_as_bits[..TREE_HEIGHT as usize]
-            .iter()
-            .zip(proof.iter())
-        {
-            let (left_sibling, right_sibling) = self
-                .native_gadget
-                .cond_swap(layouter, is_right, &node, sibling)?;
+        for (is_right, sibling) in path_as_bits[..TREE_HEIGHT as usize].iter().zip(proof.iter()) {
+            let (left_sibling, right_sibling) =
+                self.native_gadget.cond_swap(layouter, is_right, &node, sibling)?;
 
-            node = self
-                .hash_chip
-                .hash(layouter, &[left_sibling, right_sibling])?;
+            node = self.hash_chip.hash(layouter, &[left_sibling, right_sibling])?;
         }
 
-        self.native_gadget
-            .assert_equal(layouter, &node, &self.state().succinct_repr)?;
+        self.native_gadget.assert_equal(layouter, &node, &self.state().succinct_repr)?;
 
         Ok(())
     }

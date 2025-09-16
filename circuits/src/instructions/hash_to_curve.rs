@@ -127,9 +127,7 @@ pub(crate) mod tests {
 
             let input = inputs_chip.assign(&mut layouter, self.input.clone())?;
             let res = htc_chip.hash_to_curve(&mut layouter, &[input])?;
-            htc_chip
-                .ecc_chip()
-                .assert_equal_to_fixed(&mut layouter, &res, self.expected)?;
+            htc_chip.ecc_chip().assert_equal_to_fixed(&mut layouter, &res, self.expected)?;
 
             inputs_chip.load_from_scratch(&mut layouter)?;
             htc_chip.load_from_scratch(&mut layouter)

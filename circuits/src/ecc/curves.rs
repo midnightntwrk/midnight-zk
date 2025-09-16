@@ -98,9 +98,7 @@ impl CircuitCurve for JubjubExtended {
         // significant bit.
         bytes[31] |= x_sign;
 
-        let point = JubjubAffine::from_bytes(bytes)
-            .into_option()
-            .expect("Failed here");
+        let point = JubjubAffine::from_bytes(bytes).into_option().expect("Failed here");
         if point.get_v() == y {
             Some(point.into())
         } else {
@@ -141,9 +139,7 @@ impl CircuitCurve for Secp256k1 {
     }
 
     fn from_xy(x: Self::Base, y: Self::Base) -> Option<Self> {
-        <Secp256k1Affine as CurveAffine>::from_xy(x, y)
-            .into_option()
-            .map(|p| p.into())
+        <Secp256k1Affine as CurveAffine>::from_xy(x, y).into_option().map(|p| p.into())
     }
 
     fn into_subgroup(self) -> Self::CryptographicGroup {
@@ -172,9 +168,7 @@ impl CircuitCurve for G1Projective {
     }
 
     fn from_xy(x: Self::Base, y: Self::Base) -> Option<Self> {
-        <G1Affine as CurveAffine>::from_xy(x, y)
-            .into_option()
-            .map(|p| p.into())
+        <G1Affine as CurveAffine>::from_xy(x, y).into_option().map(|p| p.into())
     }
 
     fn into_subgroup(self) -> Self::CryptographicGroup {
@@ -200,9 +194,7 @@ impl CircuitCurve for bn256::G1 {
     }
 
     fn from_xy(x: Self::Base, y: Self::Base) -> Option<Self> {
-        <bn256::G1Affine as CurveAffine>::from_xy(x, y)
-            .into_option()
-            .map(|p| p.into())
+        <bn256::G1Affine as CurveAffine>::from_xy(x, y).into_option().map(|p| p.into())
     }
 
     fn into_subgroup(self) -> Self::CryptographicGroup {
@@ -234,9 +226,7 @@ impl CircuitCurve for Vesta {
     }
 
     fn from_xy(x: Self::Base, y: Self::Base) -> Option<Self> {
-        <VestaAffine as CurveAffine>::from_xy(x, y)
-            .into_option()
-            .map(|p| p.into())
+        <VestaAffine as CurveAffine>::from_xy(x, y).into_option().map(|p| p.into())
     }
 
     fn into_subgroup(self) -> Self::CryptographicGroup {

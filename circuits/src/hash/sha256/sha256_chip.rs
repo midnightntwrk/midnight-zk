@@ -1249,13 +1249,11 @@ impl<F: PrimeField> Sha256Chip<F> {
 
         let (evn_val, odd_val) = value.map(get_even_and_odd_bits).unzip();
 
-        let [evn_11a, evn_11b, evn_10] = evn_val
-            .map(|v| u32_in_be_limbs(v, [11, 11, 10]))
-            .transpose_array();
+        let [evn_11a, evn_11b, evn_10] =
+            evn_val.map(|v| u32_in_be_limbs(v, [11, 11, 10])).transpose_array();
 
-        let [odd_11a, odd_11b, odd_10] = odd_val
-            .map(|v| u32_in_be_limbs(v, [11, 11, 10]))
-            .transpose_array();
+        let [odd_11a, odd_11b, odd_10] =
+            odd_val.map(|v| u32_in_be_limbs(v, [11, 11, 10])).transpose_array();
 
         let idx = match even_or_odd {
             Parity::Evn => 0,
@@ -1331,10 +1329,8 @@ impl<F: PrimeField> Sha256Chip<F> {
                 self.config().q_10_9_11_2.enable(&mut region, 1)?;
 
                 let a_plain = self.assign_add_mod_2_32(&mut region, summands, &zero)?;
-                let a_sprdd_val = (a_plain.0.value().copied())
-                    .map(fe_to_u32)
-                    .map(spread)
-                    .map(u64_to_fe);
+                let a_sprdd_val =
+                    (a_plain.0.value().copied()).map(fe_to_u32).map(spread).map(u64_to_fe);
                 let a_sprdd = region
                     .assign_advice(|| "~A", self.config().advice_cols[4], 1, || a_sprdd_val)
                     .map(AssignedSpreaded)?;
@@ -1411,10 +1407,8 @@ impl<F: PrimeField> Sha256Chip<F> {
                 self.config().q_7_12_2_5_6.enable(&mut region, 1)?;
 
                 let e_plain = self.assign_add_mod_2_32(&mut region, summands, &zero)?;
-                let e_sprdd_val = (e_plain.0.value().copied())
-                    .map(fe_to_u32)
-                    .map(spread)
-                    .map(u64_to_fe);
+                let e_sprdd_val =
+                    (e_plain.0.value().copied()).map(fe_to_u32).map(spread).map(u64_to_fe);
                 let e_sprdd = region
                     .assign_advice(|| "~E", self.config().advice_cols[4], 1, || e_sprdd_val)
                     .map(AssignedSpreaded)?;
@@ -1619,9 +1613,7 @@ impl<F: PrimeField> Sha256Chip<F> {
         summands[6].0.copy_advice(|| "S6", region, adv_cols[6], 2)?;
         let _carry: AssignedPlainSpreaded<F, 3> =
             self.assign_plain_and_spreaded(region, carry_val, 2, 1)?;
-        region
-            .assign_advice(|| "sum", adv_cols[4], 0, || sum_val)
-            .map(AssignedPlain)
+        region.assign_advice(|| "sum", adv_cols[4], 0, || sum_val).map(AssignedPlain)
     }
 }
 

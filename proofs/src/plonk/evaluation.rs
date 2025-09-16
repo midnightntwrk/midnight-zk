@@ -217,11 +217,8 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
         // Custom gates
         let mut parts = Vec::new();
         for gate in cs.gates.iter() {
-            parts.extend(
-                gate.polynomials()
-                    .iter()
-                    .map(|poly| ev.custom_gates.add_expression(poly)),
-            );
+            parts
+                .extend(gate.polynomials().iter().map(|poly| ev.custom_gates.add_expression(poly)));
         }
         ev.custom_gates.add_calculation(Calculation::Horner(
             ValueSource::PreviousValue(),
@@ -234,10 +231,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
             let mut graph = GraphEvaluator::default();
 
             let mut evaluate_lc = |expressions: &Vec<Expression<_>>| {
-                let parts = expressions
-                    .iter()
-                    .map(|expr| graph.add_expression(expr))
-                    .collect();
+                let parts = expressions.iter().map(|expr| graph.add_expression(expr)).collect();
                 graph.add_calculation(Calculation::Horner(
                     ValueSource::Constant(0),
                     parts,
@@ -607,10 +601,7 @@ impl<F: PrimeField> GraphEvaluator<F> {
     /// resulting value so the result can be reused  when that calculation
     /// is done multiple times.
     fn add_calculation(&mut self, calculation: Calculation) -> ValueSource {
-        let existing_calculation = self
-            .calculations
-            .iter()
-            .find(|c| c.calculation == calculation);
+        let existing_calculation = self.calculations.iter().find(|c| c.calculation == calculation);
         match existing_calculation {
             Some(existing_calculation) => ValueSource::Intermediate(existing_calculation.target),
             None => {

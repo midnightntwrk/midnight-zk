@@ -434,9 +434,7 @@ impl SerdeObject for G1Affine {
 
     fn read_raw_unchecked<R: Read>(reader: &mut R) -> Self {
         let mut buf = [0u8; UNCOMPRESSED_SIZE];
-        reader
-            .read_exact(&mut buf)
-            .expect("Could not read from buffer.");
+        reader.read_exact(&mut buf).expect("Could not read from buffer.");
         Self::from_uncompressed_unchecked(&buf)
             .expect("from_uncompressed_unchecked should return a point.")
     }

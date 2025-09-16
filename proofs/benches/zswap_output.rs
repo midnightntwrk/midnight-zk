@@ -76,9 +76,8 @@ impl Relation for ZSwapOutputCircuit {
     type Witness = (PK, CoinInfo, JubjubScalar);
 
     fn format_instance(instance: &Self::Instance) -> Vec<F> {
-        let mut pi: Vec<F> = (instance.0.iter())
-            .flat_map(AssignedByte::<F>::as_public_input)
-            .collect();
+        let mut pi: Vec<F> =
+            (instance.0.iter()).flat_map(AssignedByte::<F>::as_public_input).collect();
         pi.extend(AssignedNativePoint::<Jubjub>::as_public_input(&instance.1));
         pi
     }
@@ -111,12 +110,8 @@ impl Relation for ZSwapOutputCircuit {
 
         let value_com = {
             let color_base = std_lib.hash_to_curve(layouter, &[coin.color])?;
-            let gen = std_lib
-                .jubjub()
-                .assign_fixed(layouter, JubjubSubgroup::generator())?;
-            let rc = std_lib
-                .jubjub()
-                .assign(layouter, witness.as_ref().map(|w| w.2))?;
+            let gen = std_lib.jubjub().assign_fixed(layouter, JubjubSubgroup::generator())?;
+            let rc = std_lib.jubjub().assign(layouter, witness.as_ref().map(|w| w.2))?;
             let coin_value_as_scalar = std_lib.jubjub().convert(layouter, &coin.value)?;
             std_lib
                 .jubjub()
@@ -127,9 +122,7 @@ impl Relation for ZSwapOutputCircuit {
             .iter()
             .try_for_each(|b| std_lib.constrain_as_public_input(layouter, b))?;
 
-        std_lib
-            .jubjub()
-            .constrain_as_public_input(layouter, &value_com)
+        std_lib.jubjub().constrain_as_public_input(layouter, &value_com)
     }
 
     fn write_relation<W: std::io::Write>(&self, _writer: &mut W) -> std::io::Result<()> {

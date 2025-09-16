@@ -216,8 +216,7 @@ impl<S: SelfEmulation> Msm<S> {
                 }
                 if &self.bases[i] == fixed_base {
                     found = true;
-                    self.fixed_base_scalars
-                        .insert(name.clone(), self.scalars[i]);
+                    self.fixed_base_scalars.insert(name.clone(), self.scalars[i]);
                     self.bases.remove(i);
                     self.scalars.remove(i);
                     break;
@@ -267,10 +266,7 @@ impl<S: SelfEmulation> InnerValue for AssignedMsm<S> {
 impl<S: SelfEmulation> Instantiable<S::F> for AssignedMsm<S> {
     fn as_public_input(msm: &Msm<S>) -> Vec<S::F> {
         [
-            msm.bases
-                .iter()
-                .flat_map(S::AssignedPoint::as_public_input)
-                .collect::<Vec<_>>(),
+            msm.bases.iter().flat_map(S::AssignedPoint::as_public_input).collect::<Vec<_>>(),
             msm.scalars.clone(),
             msm.fixed_base_scalars.values().copied().collect::<Vec<_>>(),
         ]
@@ -288,11 +284,8 @@ impl<S: SelfEmulation> AssignedMsm<S> {
     /// The committed instance part corresponds to the (fixed and non-fixed)
     /// scalars of the MSM.
     pub fn as_public_input_with_committed_scalars(msm: &Msm<S>) -> (Vec<S::F>, Vec<S::F>) {
-        let normal_instance = msm
-            .bases
-            .iter()
-            .flat_map(S::AssignedPoint::as_public_input)
-            .collect();
+        let normal_instance =
+            msm.bases.iter().flat_map(S::AssignedPoint::as_public_input).collect();
 
         let committed_instance = [
             msm.scalars.clone(),
@@ -318,14 +311,8 @@ impl<S: SelfEmulation> AssignedMsm<S> {
                 .into_iter()
                 .flatten()
                 .collect::<Vec<_>>(),
-            self.scalars
-                .iter()
-                .map(|s| s.clone().scalar)
-                .collect::<Vec<_>>(),
-            self.fixed_base_scalars
-                .values()
-                .map(|s| s.clone().scalar)
-                .collect::<Vec<_>>(),
+            self.scalars.iter().map(|s| s.clone().scalar).collect::<Vec<_>>(),
+            self.fixed_base_scalars.values().map(|s| s.clone().scalar).collect::<Vec<_>>(),
         ]
         .into_iter()
         .flatten()
@@ -384,25 +371,16 @@ impl<S: SelfEmulation> AssignedMsm<S> {
         fixed_base_names: &[String],
         msm_value: Value<Msm<S>>,
     ) -> Result<Self, Error> {
-        let bases_val = msm_value
-            .as_ref()
-            .map(|msm| msm.bases.clone())
-            .transpose_vec(len);
+        let bases_val = msm_value.as_ref().map(|msm| msm.bases.clone()).transpose_vec(len);
 
-        let scalars_val = msm_value
-            .as_ref()
-            .map(|msm| msm.scalars.clone())
-            .transpose_vec(len);
+        let scalars_val = msm_value.as_ref().map(|msm| msm.scalars.clone()).transpose_vec(len);
 
         let fixed_base_scalars_val = msm_value
             .as_ref()
             .map(|msm| {
                 // We only use the keys inside the Value to iterate over it in the right order,
                 // these are then discarded.
-                msm.fixed_base_scalars
-                    .iter()
-                    .map(|s| *s.1)
-                    .collect::<Vec<_>>()
+                msm.fixed_base_scalars.iter().map(|s| *s.1).collect::<Vec<_>>()
             })
             .transpose_vec(fixed_base_names.len());
 
@@ -448,9 +426,7 @@ impl<S: SelfEmulation> AssignedMsm<S> {
         Self {
             scalars: vec![],
             bases: vec![],
-            fixed_base_scalars: [(base_name.to_string(), scalar.clone())]
-                .into_iter()
-                .collect(),
+            fixed_base_scalars: [(base_name.to_string(), scalar.clone())].into_iter().collect(),
         }
     }
 

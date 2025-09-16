@@ -113,10 +113,8 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
         drop(h_poly);
 
         // Compute commitments to each h(X) piece
-        let h_commitments: Vec<_> = h_pieces
-            .iter()
-            .map(|h_piece| CS::commit(params, h_piece))
-            .collect();
+        let h_commitments: Vec<_> =
+            h_pieces.iter().map(|h_piece| CS::commit(params, h_piece)).collect();
 
         // Hash each h(X) piece
         for c in h_commitments {

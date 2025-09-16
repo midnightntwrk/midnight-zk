@@ -220,9 +220,7 @@ impl<F: Field> AddInstructions<F> for AddChip<F> {
 
                 // Finally, we do the assignment to the output, returning a
                 // variable to be used in another part of the circuit.
-                region
-                    .assign_advice(|| "lhs + rhs", config.advice[0], 1, || value)
-                    .map(Number)
+                region.assign_advice(|| "lhs + rhs", config.advice[0], 1, || value).map(Number)
             },
         )
     }
@@ -340,9 +338,7 @@ impl<F: Field> MulInstructions<F> for MulChip<F> {
 
                 // Finally, we do the assignment to the output, returning a
                 // variable to be used in another part of the circuit.
-                region
-                    .assign_advice(|| "lhs * rhs", config.advice[0], 1, || value)
-                    .map(Number)
+                region.assign_advice(|| "lhs * rhs", config.advice[0], 1, || value).map(Number)
             },
         )
     }

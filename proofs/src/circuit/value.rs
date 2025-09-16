@@ -284,11 +284,7 @@ where
 
     fn add(self, rhs: Self) -> Self::Output {
         Value {
-            inner: self
-                .inner
-                .as_ref()
-                .zip(rhs.inner.as_ref())
-                .map(|(a, b)| a + b),
+            inner: self.inner.as_ref().zip(rhs.inner.as_ref()).map(|(a, b)| a + b),
         }
     }
 }
@@ -366,11 +362,7 @@ where
 
     fn sub(self, rhs: Self) -> Self::Output {
         Value {
-            inner: self
-                .inner
-                .as_ref()
-                .zip(rhs.inner.as_ref())
-                .map(|(a, b)| a - b),
+            inner: self.inner.as_ref().zip(rhs.inner.as_ref()).map(|(a, b)| a - b),
         }
     }
 }
@@ -448,11 +440,7 @@ where
 
     fn mul(self, rhs: Self) -> Self::Output {
         Value {
-            inner: self
-                .inner
-                .as_ref()
-                .zip(rhs.inner.as_ref())
-                .map(|(a, b)| a * b),
+            inner: self.inner.as_ref().zip(rhs.inner.as_ref()).map(|(a, b)| a * b),
         }
     }
 }

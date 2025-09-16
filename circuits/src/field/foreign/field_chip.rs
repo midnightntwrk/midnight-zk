@@ -153,8 +153,7 @@ where
                 // shift back after the conversion from F to BigInt
                 let shift = BI::abs(lower_bound);
                 let fe_shift = bigint_to_fe::<F>(&shift);
-                xi.value()
-                    .map(|xv| fe_to_bigint::<F>(&(*xv + fe_shift)) - &shift)
+                xi.value().map(|xv| fe_to_bigint::<F>(&(*xv + fe_shift)) - &shift)
             })
             .collect::<Vec<_>>();
         let bi_limbs: Value<Vec<BI>> = Value::from_iter(bi_limbs);
@@ -298,13 +297,12 @@ where
     /// AssignedField whose range is more restricted but included in the
     /// expected one are also considered well-formed.
     pub fn is_well_formed(&self) -> bool {
-        self.limb_bounds
-            .iter()
-            .zip(well_formed_log2_bounds::<F, K, P>())
-            .all(|((lower, upper), expected_upper)| {
+        self.limb_bounds.iter().zip(well_formed_log2_bounds::<F, K, P>()).all(
+            |((lower, upper), expected_upper)| {
                 assert!(lower <= upper);
                 !BI::is_negative(lower) && upper.bits() <= expected_upper as u64
-            })
+            },
+        )
     }
 
     /// The limb values associated to the given AssignedField.
@@ -325,8 +323,7 @@ where
                 // shift back after the conversion from F to BigInt
                 let shift = BI::abs(lbound);
                 let fe_shift = bigint_to_fe::<F>(&shift);
-                xi.value()
-                    .map(|xv| fe_to_bigint::<F>(&(*xv + fe_shift)) - &shift)
+                xi.value().map(|xv| fe_to_bigint::<F>(&(*xv + fe_shift)) - &shift)
             })
             .collect::<Vec<_>>();
         Value::from_iter(limbs)
@@ -432,10 +429,7 @@ where
         let constant_limbs = bi_to_limbs(P::NB_LIMBS, &base, &constant);
         let constant_cells = constant_limbs
             .iter()
-            .map(|x| {
-                self.native_gadget
-                    .assign_fixed(layouter, bigint_to_fe::<F>(x))
-            })
+            .map(|x| self.native_gadget.assign_fixed(layouter, bigint_to_fe::<F>(x)))
             .collect::<Result<Vec<_>, _>>()?;
 
         // All limbs will be in the range [0, base) by construction, no range-checks are
@@ -577,8 +571,7 @@ where
             .iter()
             .zip(constant_limbs.iter())
             .map(|(xi, ki)| {
-                self.native_gadget
-                    .assert_equal_to_fixed(layouter, xi, bigint_to_fe::<F>(ki))
+                self.native_gadget.assert_equal_to_fixed(layouter, xi, bigint_to_fe::<F>(ki))
             })
             .collect::<Result<Vec<_>, _>>()?;
         Ok(())
@@ -636,8 +629,7 @@ where
         x: &AssignedField<F, K, P>,
     ) -> Result<(), Error> {
         let b = self.is_zero(layouter, x)?;
-        self.native_gadget
-            .assert_equal_to_fixed(layouter, &b, false)
+        self.native_gadget.assert_equal_to_fixed(layouter, &b, false)
     }
 
     fn is_zero(
@@ -653,8 +645,7 @@ where
             .iter()
             .zip(limbs_of_zero::<F, K, P>().iter())
             .map(|(xi, ci)| {
-                self.native_gadget
-                    .is_equal_to_fixed(layouter, xi, bigint_to_fe::<F>(ci))
+                self.native_gadget.is_equal_to_fixed(layouter, xi, bigint_to_fe::<F>(ci))
             })
             .collect::<Result<Vec<_>, _>>()?;
         self.native_gadget.and(layouter, &bs)
@@ -904,8 +895,7 @@ where
             .iter()
             .zip(constants.iter().map(|ci| bigint_to_fe::<F>(ci)))
             .map(|(xi, ci)| {
-                self.native_gadget
-                    .linear_combination(layouter, &[(-F::ONE, xi.clone())], ci)
+                self.native_gadget.linear_combination(layouter, &[(-F::ONE, xi.clone())], ci)
             })
             .collect::<Result<Vec<_>, _>>()?;
 
@@ -1042,8 +1032,7 @@ where
             .iter()
             .zip(constants.iter().map(|ci| bigint_to_fe::<F>(ci)))
             .map(|(xi, ci)| {
-                self.native_gadget
-                    .linear_combination(layouter, &[(kv, xi.clone())], ci)
+                self.native_gadget.linear_combination(layouter, &[(kv, xi.clone())], ci)
             })
             .collect::<Result<Vec<_>, _>>()?;
 
@@ -1128,10 +1117,9 @@ where
         // Drop the most significant bits up to the desired length, but make sure
         // they encode 0.
         let nb_bits = nb_bits.unwrap_or(K::NUM_BITS as usize);
-        bits[nb_bits..].iter().try_for_each(|byte| {
-            self.native_gadget
-                .assert_equal_to_fixed(layouter, byte, false)
-        })?;
+        bits[nb_bits..]
+            .iter()
+            .try_for_each(|byte| self.native_gadget.assert_equal_to_fixed(layouter, byte, false))?;
         let bits = bits[0..nb_bits].to_vec();
         if enforce_canonical && nb_bits >= K::NUM_BITS as usize {
             let canonical = self.is_canonical(layouter, &bits)?;
@@ -1157,19 +1145,16 @@ where
                     .enumerate()
                     .map(|(i, bit)| (F::from(1 << i), bit.clone().into()))
                     .collect::<Vec<_>>();
-                let byte = self
-                    .native_gadget
-                    .linear_combination(layouter, &terms, F::ZERO)?;
+                let byte = self.native_gadget.linear_combination(layouter, &terms, F::ZERO)?;
                 self.native_gadget.convert_unsafe(layouter, &byte)
             })
             .collect::<Result<Vec<AssignedByte<F>>, Error>>()?;
 
         // Drop the most significant bytes up to the desired length, but make sure
         // they encode 0.
-        bytes[nb_bytes..].iter().try_for_each(|byte| {
-            self.native_gadget
-                .assert_equal_to_fixed(layouter, byte, 0u8)
-        })?;
+        bytes[nb_bytes..]
+            .iter()
+            .try_for_each(|byte| self.native_gadget.assert_equal_to_fixed(layouter, byte, 0u8))?;
         Ok(bytes[0..nb_bytes].to_vec())
     }
 
@@ -1190,8 +1175,7 @@ where
             }
             let term = {
                 let limb =
-                    self.native_gadget
-                        .linear_combination(layouter, &native_terms, F::ZERO)?;
+                    self.native_gadget.linear_combination(layouter, &native_terms, F::ZERO)?;
                 self.assigned_field_from_limb(layouter, &limb)?
             };
             terms.push((coeff, term));
@@ -1219,8 +1203,7 @@ where
             }
             let term = {
                 let limb =
-                    self.native_gadget
-                        .linear_combination(layouter, &native_terms, F::ZERO)?;
+                    self.native_gadget.linear_combination(layouter, &native_terms, F::ZERO)?;
                 self.assigned_field_from_limb(layouter, &limb)?
             };
             terms.push((coeff, term));
@@ -1269,8 +1252,7 @@ where
             let bits = self.assigned_to_le_bits(layouter, x, None, false)?;
             bits.chunks(nb_bits_per_chunk)
                 .map(|bits_of_chunk| {
-                    self.native_gadget
-                        .assigned_from_le_bits(layouter, bits_of_chunk)
+                    self.native_gadget.assigned_from_le_bits(layouter, bits_of_chunk)
                 })
                 .collect::<Result<Vec<_>, Error>>()
         }
@@ -1307,10 +1289,7 @@ where
         let y_cols = x_cols.clone();
         let z_cols = advice_columns[(nb_limbs as usize)..(2 * nb_limbs as usize)].to_vec();
 
-        x_cols
-            .iter()
-            .chain(z_cols.iter())
-            .for_each(|&col| meta.enable_equality(col));
+        x_cols.iter().chain(z_cols.iter()).for_each(|&col| meta.enable_equality(col));
 
         let u_col = advice_columns[nb_limbs as usize];
         let v_cols = advice_columns
@@ -1350,8 +1329,7 @@ where
         let x = self.normalize(layouter, x)?;
         let y = self.normalize(layouter, y)?;
 
-        y.value()
-            .error_if_known_and(|yv| division && K::is_zero(yv).into())?;
+        y.value().error_if_known_and(|yv| division && K::is_zero(yv).into())?;
 
         let zv = x
             .value()
@@ -1555,8 +1533,7 @@ where
         x: &AssignedBit<F>,
         constant: bool,
     ) -> Result<(), Error> {
-        self.native_gadget
-            .assert_equal_to_fixed(layouter, x, constant)
+        self.native_gadget.assert_equal_to_fixed(layouter, x, constant)
     }
 
     fn assert_not_equal_to_fixed(
@@ -1565,8 +1542,7 @@ where
         x: &AssignedBit<F>,
         constant: bool,
     ) -> Result<(), Error> {
-        self.native_gadget
-            .assert_not_equal_to_fixed(layouter, x, constant)
+        self.native_gadget.assert_not_equal_to_fixed(layouter, x, constant)
     }
 }
 

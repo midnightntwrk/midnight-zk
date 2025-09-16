@@ -227,11 +227,5 @@ fn parse_bitcoin_point(x_coord: &[u8; 32]) -> Secp256k1 {
 
 // Reverses the given bytes. Panics if the inputs does not have len 32.
 fn reverse_bytes(bytes: &[u8]) -> [u8; 32] {
-    bytes
-        .iter()
-        .copied()
-        .rev()
-        .collect::<Vec<_>>()
-        .try_into()
-        .unwrap()
+    bytes.iter().copied().rev().collect::<Vec<_>>().try_into().unwrap()
 }

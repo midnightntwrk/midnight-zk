@@ -179,18 +179,8 @@ where
 
     /// Split the [DualMSM] into `left` and `right`
     pub fn split(&self) -> SplitDualMSM<E> {
-        let left = self
-            .left
-            .scalars
-            .iter()
-            .zip(self.left.bases.iter())
-            .collect();
-        let right = self
-            .right
-            .scalars
-            .iter()
-            .zip(self.right.bases.iter())
-            .collect();
+        let left = self.left.scalars.iter().zip(self.left.bases.iter()).collect();
+        let right = self.right.scalars.iter().zip(self.right.bases.iter()).collect();
         (left, right)
     }
 
@@ -223,10 +213,6 @@ where
         );
         let terms = &[term_1, term_2];
 
-        bool::from(
-            E::multi_miller_loop(&terms[..])
-                .final_exponentiation()
-                .is_identity(),
-        )
+        bool::from(E::multi_miller_loop(&terms[..]).final_exponentiation().is_identity())
     }
 }

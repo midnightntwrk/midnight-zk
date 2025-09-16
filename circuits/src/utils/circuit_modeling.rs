@@ -74,9 +74,7 @@ fn get_file_mutex() -> &'static Arc<Mutex<()>> {
 
 fn update_json(chip_name: &str, op_name: &str, model: CircuitModel) -> io::Result<()> {
     // Acquire the lock on the mutex
-    let _lock = get_file_mutex()
-        .lock()
-        .expect("Failed to acquire mutex lock");
+    let _lock = get_file_mutex().lock().expect("Failed to acquire mutex lock");
 
     let file_path = "goldenfiles/cost-model.json";
     let mut mint = Mint::new("goldenfiles");
@@ -100,9 +98,8 @@ fn update_json(chip_name: &str, op_name: &str, model: CircuitModel) -> io::Resul
     // We need to sort the JSON, to make sure it is always the same
     json_value = sort_json(json_value);
 
-    let mut goldenfile = mint
-        .new_goldenfile("cost-model.json")
-        .expect("Failed to mint Goldenfile.");
+    let mut goldenfile =
+        mint.new_goldenfile("cost-model.json").expect("Failed to mint Goldenfile.");
     writeln!(goldenfile, "{}", serde_json::to_string_pretty(&json_value)?).expect("7");
 
     Ok(())

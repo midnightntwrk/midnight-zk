@@ -207,9 +207,7 @@ pub(crate) mod tests {
         let nb_absorb_calls = sequence.iter().map(|s| s.0).sum();
         let inputs = (0..nb_absorb_calls).map(|_| {
             let random_size: usize = rng.gen_range(1..10);
-            (0..random_size)
-                .map(|_| Input::sample_inner(&mut rng))
-                .collect::<Vec<_>>()
+            (0..random_size).map(|_| Input::sample_inner(&mut rng)).collect::<Vec<_>>()
         });
 
         let circuit = TestCircuit::<F, Input, Output, SpongeChip, AssignChip> {
@@ -218,9 +216,7 @@ pub(crate) mod tests {
             _marker: PhantomData,
         };
 
-        MockProver::run(k, &circuit, vec![vec![], vec![]])
-            .unwrap()
-            .assert_satisfied();
+        MockProver::run(k, &circuit, vec![vec![], vec![]]).unwrap().assert_satisfied();
 
         if cost_model {
             circuit_to_json(k, chip_name, "sponge", 0, circuit);

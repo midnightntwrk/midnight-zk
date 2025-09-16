@@ -152,16 +152,13 @@ impl<F: Field> RoundVarId<F> {
                 }
             },
         );
-        pow_coeffs
-            .iter()
-            .zip(pow_vars)
-            .fold(expr, |accu, (coeff, x)| {
-                if coeff.is_zero_vartime() {
-                    accu
-                } else {
-                    accu + Expression::Constant(*coeff) * sbox(x.clone())
-                }
-            })
+        pow_coeffs.iter().zip(pow_vars).fold(expr, |accu, (coeff, x)| {
+            if coeff.is_zero_vartime() {
+                accu
+            } else {
+                accu + Expression::Constant(*coeff) * sbox(x.clone())
+            }
+        })
     }
 }
 

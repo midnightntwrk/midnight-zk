@@ -110,10 +110,7 @@ fn setup<C: CurveAffine>() -> (Vec<C>, Vec<Vec<C::ScalarExt>>) {
     assert!(max_k < 64);
 
     let bases = generate_curvepoints::<C>(max_k);
-    let coeffs: Vec<_> = BITS
-        .iter()
-        .map(|b| generate_coefficients(max_k, *b))
-        .collect();
+    let coeffs: Vec<_> = BITS.iter().map(|b| generate_coefficients(max_k, *b)).collect();
 
     (bases, coeffs)
 }

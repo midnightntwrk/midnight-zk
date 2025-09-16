@@ -218,9 +218,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
     ) -> impl Iterator<Item = VerifierQuery<'r, F, CS>> + Clone + 'r {
         let blinding_factors = vk.cs.blinding_factors();
         let x_next = vk.domain.rotate_omega(x, Rotation::next());
-        let x_last = vk
-            .domain
-            .rotate_omega(x, Rotation(-((blinding_factors + 1) as i32)));
+        let x_last = vk.domain.rotate_omega(x, Rotation(-((blinding_factors + 1) as i32)));
 
         iter::empty()
             .chain(self.sets.iter().flat_map(move |set| {

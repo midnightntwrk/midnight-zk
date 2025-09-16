@@ -208,8 +208,7 @@ where
     /// between each consecutive iteration. Spaces are not inserted when
     /// considering only 0 or 1 iteration.
     fn spaced_non_empty_list(self) -> Self {
-        self.clone()
-            .terminated(Self::blanks().terminated(self).list())
+        self.clone().terminated(Self::blanks().terminated(self).list())
     }
 
     /// Concatenates `other` after `self`. This is the binary version of
@@ -779,10 +778,8 @@ mod tests {
         accepted: &[(&str, &[usize])],
         rejected: &[&str],
     ) {
-        let accepted: &[(&[u8], &[usize])] = &accepted
-            .iter()
-            .map(|(s, output)| (s.as_bytes(), *output))
-            .collect::<Vec<_>>();
+        let accepted: &[(&[u8], &[usize])] =
+            &accepted.iter().map(|(s, output)| (s.as_bytes(), *output)).collect::<Vec<_>>();
         let rejected: &[&[u8]] = &rejected.iter().map(|s| s.as_bytes()).collect::<Vec<_>>();
         automaton::tests::automaton_one_test(
             index,

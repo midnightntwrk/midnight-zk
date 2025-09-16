@@ -256,21 +256,18 @@ where
 
         // We can compute the expected msm_eval at x_3 using the u provided
         // by the prover and from x_2
-        let f_eval = point_sets
-            .iter()
-            .zip(q_eval_sets.iter())
-            .zip(q_evals_on_x3.iter())
-            .rev()
-            .fold(E::Fr::ZERO, |acc_eval, ((points, evals), proof_eval)| {
-                let r_poly = lagrange_interpolate(points, evals);
-                let r_eval = eval_polynomial(&r_poly, x3);
-                // eval = (proof_eval - r_eval) / prod_i (x3 - point_i)
-                let den = points
-                    .iter()
-                    .fold(E::Fr::ONE, |acc, point| acc * &(x3 - point));
-                let eval = (*proof_eval - &r_eval) * den.invert().unwrap();
-                acc_eval * &(x2) + &eval
-            });
+        let f_eval =
+            point_sets.iter().zip(q_eval_sets.iter()).zip(q_evals_on_x3.iter()).rev().fold(
+                E::Fr::ZERO,
+                |acc_eval, ((points, evals), proof_eval)| {
+                    let r_poly = lagrange_interpolate(points, evals);
+                    let r_eval = eval_polynomial(&r_poly, x3);
+                    // eval = (proof_eval - r_eval) / prod_i (x3 - point_i)
+                    let den = points.iter().fold(E::Fr::ONE, |acc, point| acc * &(x3 - point));
+                    let eval = (*proof_eval - &r_eval) * den.invert().unwrap();
+                    acc_eval * &(x2) + &eval
+                },
+            );
 
         let x4: E::Fr = transcript.squeeze_challenge();
 

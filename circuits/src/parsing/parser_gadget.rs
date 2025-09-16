@@ -289,11 +289,7 @@ mod tests {
         F: PrimeField + FromUniformBytes<64> + Ord,
     {
         let circuit = TestCircuit::<F, NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>> {
-            sequence: sequence
-                .iter()
-                .map(|x| F::from(*x as u64))
-                .map(Value::known)
-                .collect(),
+            sequence: sequence.iter().map(|x| F::from(*x as u64)).map(Value::known).collect(),
             idx: Value::known(F::from(idx as u64)),
             expected: expected.iter().map(|x| F::from(*x as u64)).collect(),
             operation,

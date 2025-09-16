@@ -177,9 +177,7 @@ pub fn spreaded_sigma_1(spreaded_limbs: [u64; 8]) -> u64 {
 
 /// Returns sum_i 4^(exponents\[i\]) * terms\[i\].
 fn pow4_ip<const N: usize>(exponents: [u8; N], terms: [u64; N]) -> u64 {
-    (exponents.iter().zip(terms.iter()))
-        .map(|(e, t)| (1 << (2 * e)) * t)
-        .sum()
+    (exponents.iter().zip(terms.iter())).map(|(e, t)| (1 << (2 * e)) * t).sum()
 }
 
 /// Returns sum_i 2^(exponents\[i\]) * terms\[i\].

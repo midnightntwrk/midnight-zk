@@ -111,9 +111,7 @@ fn main() {
     let d = BigUint::from(E).modinv(&phi).unwrap();
 
     let public_key = &p * &q;
-    let message = rand::thread_rng()
-        .gen_biguint(NB_BITS as u64)
-        .rem(&public_key);
+    let message = rand::thread_rng().gen_biguint(NB_BITS as u64).rem(&public_key);
 
     let signature = message.modpow(&d, &public_key);
 

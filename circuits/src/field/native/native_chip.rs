@@ -461,9 +461,8 @@ impl<F: PrimeField> NativeChip<F> {
         // Otherwise, we recurse on the remaining terms with the new result.
         else {
             // compute the next result: `result - \sum c_j a_j` for j in the chunk
-            let chunk_result = terms[..chunk_len]
-                .iter()
-                .fold(Value::known(constant), |acc, (coeff, x)| {
+            let chunk_result =
+                terms[..chunk_len].iter().fold(Value::known(constant), |acc, (coeff, x)| {
                     acc.zip(*x).map(|(acc, val)| acc + *coeff * val)
                 });
             let next_result = *result - chunk_result;
@@ -523,18 +522,14 @@ impl<F: PrimeField> NativeChip<F> {
             .zip(self.config.value_cols)
             .try_for_each(|(x, col)| self.copy_in_row(region, x, &col, *offset))?;
 
-        (constants.iter())
-            .zip(self.config.coeff_cols)
-            .try_for_each(|(c, col)| {
-                region.assign_fixed(|| "add_consts", col, *offset, || Value::known(*c))?;
-                Ok::<(), Error>(())
-            })?;
+        (constants.iter()).zip(self.config.coeff_cols).try_for_each(|(c, col)| {
+            region.assign_fixed(|| "add_consts", col, *offset, || Value::known(*c))?;
+            Ok::<(), Error>(())
+        })?;
 
         *offset += 1;
 
-        let res_values = (variables.iter())
-            .zip(constants)
-            .map(|(x, c)| x.value().map(|x| *x + *c));
+        let res_values = (variables.iter()).zip(constants).map(|(x, c)| x.value().map(|x| *x + *c));
 
         res_values
             .zip(self.config.value_cols)
@@ -592,9 +587,7 @@ where
                 )?;
 
                 // Save the assigned constant in the cache.
-                self.cached_fixed
-                    .borrow_mut()
-                    .insert(constant_big.clone(), x.clone());
+                self.cached_fixed.borrow_mut().insert(constant_big.clone(), x.clone());
 
                 Ok(x)
             },
@@ -865,11 +858,7 @@ where
         terms: &[(F, AssignedNative<F>)],
         constant: F,
     ) -> Result<AssignedNative<F>, Error> {
-        let terms: Vec<_> = terms
-            .iter()
-            .filter(|(c, _)| !F::is_zero_vartime(c))
-            .cloned()
-            .collect();
+        let terms: Vec<_> = terms.iter().filter(|(c, _)| !F::is_zero_vartime(c)).cloned().collect();
         if terms.is_empty() {
             return self.assign_fixed(layouter, constant);
         }
@@ -882,11 +871,9 @@ where
             .map(|(c, assigned_t)| (c, assigned_t.value().copied()))
             .collect::<Vec<_>>();
 
-        let result = terms
-            .iter()
-            .fold(Value::known(constant), |acc, (coeff, x)| {
-                acc.zip(x.value()).map(|(acc, val)| acc + *coeff * val)
-            });
+        let result = terms.iter().fold(Value::known(constant), |acc, (coeff, x)| {
+            acc.zip(x.value()).map(|(acc, val)| acc + *coeff * val)
+        });
 
         layouter.assign_region(
             || "Linear combination",
@@ -904,12 +891,9 @@ where
                 assert_eq!(assigned_limbs.len(), terms.len());
 
                 // assert the newly assigned values are equal to the one given as input
-                assigned_limbs
-                    .iter()
-                    .zip(terms.iter())
-                    .try_for_each(|(new_av, (_, av))| {
-                        region.constrain_equal(new_av.cell(), av.cell())
-                    })?;
+                assigned_limbs.iter().zip(terms.iter()).try_for_each(|(new_av, (_, av))| {
+                    region.constrain_equal(new_av.cell(), av.cell())
+                })?;
 
                 Ok(assigned_result)
             },

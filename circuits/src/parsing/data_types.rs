@@ -244,11 +244,7 @@ mod tests {
     {
         const K: u32 = 10;
         let circuit = TestCircuit::<F, NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>> {
-            string: string
-                .iter()
-                .map(|x| F::from(*x as u64))
-                .map(Value::known)
-                .collect(),
+            string: string.iter().map(|x| F::from(*x as u64)).map(Value::known).collect(),
             expected: F::from(expected),
             operation,
             _marker: PhantomData,
@@ -310,10 +306,8 @@ mod tests {
             (b"19700101", format4, 19700101, true),
             (b"19701225", format4, 19701225, true),
         ];
-        test_vecs
-            .iter()
-            .for_each(|(input, format, expected, must_pass)| {
-                run::<F>(input, *expected, Operation::ParseDate(*format), *must_pass)
-            });
+        test_vecs.iter().for_each(|(input, format, expected, must_pass)| {
+            run::<F>(input, *expected, Operation::ParseDate(*format), *must_pass)
+        });
     }
 }

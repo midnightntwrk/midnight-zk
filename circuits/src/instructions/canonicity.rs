@@ -262,9 +262,7 @@ pub(crate) mod tests {
     /// express the test vectors with integers `0` and `1` instead of
     /// `false` and `true` (respectively).
     fn decompose_biguint(n: &BigUint) -> Vec<u8> {
-        (0..(n.bits() as usize))
-            .map(|i| if n.bit(i as u64) { 1 } else { 0 })
-            .collect()
+        (0..(n.bits() as usize)).map(|i| if n.bit(i as u64) { 1 } else { 0 }).collect()
     }
 
     pub fn test_canonical<F, Assigned, CanonicityChip>(name: &str)

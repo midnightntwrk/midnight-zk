@@ -72,10 +72,8 @@ impl Argument {
 
         let mut sets = vec![];
 
-        for (columns, permutations) in self
-            .columns
-            .chunks(chunk_len)
-            .zip(pkey.permutations.chunks(chunk_len))
+        for (columns, permutations) in
+            self.columns.chunks(chunk_len).zip(pkey.permutations.chunks(chunk_len))
         {
             // Goal is to compute the products of fractions
             //
@@ -119,9 +117,8 @@ impl Argument {
                 };
                 parallelize(&mut modified_values, |modified_values, start| {
                     let mut deltaomega = deltaomega * &omega.pow_vartime([start as u64, 0, 0, 0]);
-                    for (modified_values, value) in modified_values
-                        .iter_mut()
-                        .zip(values[column.index()][start..].iter())
+                    for (modified_values, value) in
+                        modified_values.iter_mut().zip(values[column.index()][start..].iter())
                     {
                         // Multiply by p_j(\omega^i) + \delta^j \omega^i \beta
                         *modified_values *= &(deltaomega * &beta + &gamma + value);
@@ -174,9 +171,7 @@ impl Argument {
 
 impl<F: PrimeField> super::ProvingKey<F> {
     pub(crate) fn open(&self, x: F) -> impl Iterator<Item = ProverQuery<'_, F>> + Clone {
-        self.polys
-            .iter()
-            .map(move |poly| ProverQuery { point: x, poly })
+        self.polys.iter().map(move |poly| ProverQuery { point: x, poly })
     }
 
     pub(crate) fn evaluate<T: Transcript>(&self, x: F, transcript: &mut T) -> Result<(), Error>
@@ -250,10 +245,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluated<F> {
     ) -> impl Iterator<Item = ProverQuery<'a, F>> + Clone {
         let blinding_factors = pk.vk.cs.blinding_factors();
         let x_next = pk.vk.domain.rotate_omega(x, Rotation::next());
-        let x_last = pk
-            .vk
-            .domain
-            .rotate_omega(x, Rotation(-((blinding_factors + 1) as i32)));
+        let x_last = pk.vk.domain.rotate_omega(x, Rotation(-((blinding_factors + 1) as i32)));
 
         iter::empty()
             .chain(self.constructed.sets.iter().flat_map(move |set| {
@@ -272,17 +264,12 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluated<F> {
             // sensical for the first row, but we only use this rotation in a constraint
             // that is gated on l_0.
             .chain(
-                self.constructed
-                    .sets
-                    .iter()
-                    .rev()
-                    .skip(1)
-                    .flat_map(move |set| {
-                        Some(ProverQuery {
-                            point: x_last,
-                            poly: &set.permutation_product_poly,
-                        })
-                    }),
+                self.constructed.sets.iter().rev().skip(1).flat_map(move |set| {
+                    Some(ProverQuery {
+                        point: x_last,
+                        poly: &set.permutation_product_poly,
+                    })
+                }),
             )
     }
 }

@@ -100,8 +100,7 @@ where
         self.resize(layouter, n, &mut y)?;
 
         for i in 0..n {
-            self.native_gadget
-                .assert_equal(layouter, &x.limbs[i], &y.limbs[i])?;
+            self.native_gadget.assert_equal(layouter, &x.limbs[i], &y.limbs[i])?;
         }
         Ok(())
     }
@@ -113,8 +112,7 @@ where
         y: &AssignedBigUint<F>,
     ) -> Result<(), Error> {
         let x_eq_y = self.is_equal(layouter, x, y)?;
-        self.native_gadget
-            .assert_equal_to_fixed(layouter, &x_eq_y, false)
+        self.native_gadget.assert_equal_to_fixed(layouter, &x_eq_y, false)
     }
 
     fn assert_equal_to_fixed(
@@ -138,8 +136,7 @@ where
         constant_limbs.resize(x.limbs.len(), F::ZERO);
 
         for (i, ci) in constant_limbs.iter().enumerate() {
-            self.native_gadget
-                .assert_equal_to_fixed(layouter, &x.limbs[i], *ci)?;
+            self.native_gadget.assert_equal_to_fixed(layouter, &x.limbs[i], *ci)?;
         }
 
         Ok(())
@@ -152,8 +149,7 @@ where
         constant: BigUint,
     ) -> Result<(), Error> {
         let x_eq_constant = self.is_equal_to_fixed(layouter, x, constant)?;
-        self.native_gadget
-            .assert_equal_to_fixed(layouter, &x_eq_constant, false)
+        self.native_gadget.assert_equal_to_fixed(layouter, &x_eq_constant, false)
     }
 }
 
@@ -507,10 +503,7 @@ where
     ) -> Result<AssignedBigUint<F>, Error> {
         let limbs = bits
             .chunks(LOG2_BASE as usize)
-            .map(|chunk_bits| {
-                self.native_gadget
-                    .assigned_from_le_bits(layouter, chunk_bits)
-            })
+            .map(|chunk_bits| self.native_gadget.assigned_from_le_bits(layouter, chunk_bits))
             .collect::<Result<Vec<_>, Error>>()?;
 
         let limb_size_bounds = bits
@@ -677,19 +670,16 @@ where
         self.resize(layouter, n, &mut y)?;
 
         let init = self.native_gadget.assign_fixed(layouter, true)?;
-        x.limbs
-            .iter()
-            .zip(y.limbs.iter())
-            .try_fold(init, |acc, (xi, yi)| {
-                let xi_eq_yi = self.native_gadget.is_equal(layouter, xi, yi)?;
-                let xi = AssignedBounded::<F>::to_assigned_bounded_unsafe(xi, LOG2_BASE);
-                let yi = AssignedBounded::<F>::to_assigned_bounded_unsafe(yi, LOG2_BASE);
-                let xi_greater_than_yi = self.native_gadget.greater_than(layouter, &xi, &yi)?;
+        x.limbs.iter().zip(y.limbs.iter()).try_fold(init, |acc, (xi, yi)| {
+            let xi_eq_yi = self.native_gadget.is_equal(layouter, xi, yi)?;
+            let xi = AssignedBounded::<F>::to_assigned_bounded_unsafe(xi, LOG2_BASE);
+            let yi = AssignedBounded::<F>::to_assigned_bounded_unsafe(yi, LOG2_BASE);
+            let xi_greater_than_yi = self.native_gadget.greater_than(layouter, &xi, &yi)?;
 
-                let acc = self.native_gadget.and(layouter, &[xi_eq_yi, acc])?;
+            let acc = self.native_gadget.and(layouter, &[xi_eq_yi, acc])?;
 
-                self.native_gadget.or(layouter, &[xi_greater_than_yi, acc])
-            })
+            self.native_gadget.or(layouter, &[xi_greater_than_yi, acc])
+        })
     }
 
     /// Ensures that `x < y`.
@@ -700,8 +690,7 @@ where
         y: &AssignedBigUint<F>,
     ) -> Result<(), Error> {
         let b = self.geq(layouter, x, y)?;
-        self.native_gadget
-            .assert_equal_to_fixed(layouter, &b, false)
+        self.native_gadget.assert_equal_to_fixed(layouter, &b, false)
     }
 
     /// Division with remainder of the given native value by constant

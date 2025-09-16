@@ -63,9 +63,7 @@ impl Relation for EccExample {
             &[generator, extra_base],
         )?;
 
-        std_lib
-            .jubjub()
-            .constrain_as_public_input(layouter, &result)
+        std_lib.jubjub().constrain_as_public_input(layouter, &result)
     }
 
     fn used_chips(&self) -> ZkStdLibArch {

@@ -156,10 +156,7 @@ macro_rules! plonk_api {
                 let start = Instant::now();
                 let res = prepare::<$native, KZGCommitmentScheme<$engine>, CircuitTranscript<H>>(
                     vk,
-                    &[&instance_commitments
-                        .iter()
-                        .map(|c| c.into())
-                        .collect::<Vec<_>>()],
+                    &[&instance_commitments.iter().map(|c| c.into()).collect::<Vec<_>>()],
                     &[pi],
                     &mut transcript,
                 )?;
@@ -223,8 +220,7 @@ pub fn check_vk<Relation: Circuit<midnight_curves::Fq>>(vk: &MidnightVK) {
             Ok(value) => {
                 if value == "MINOR" {
                     let mut file = File::create(vk_path).expect("Failed to create file");
-                    file.write_all(&vk_hash)
-                        .expect("Failed to write transcript hash to file");
+                    file.write_all(&vk_hash).expect("Failed to write transcript hash to file");
                 } else {
                     panic!("{}", error_msg)
                 }
@@ -235,9 +231,7 @@ pub fn check_vk<Relation: Circuit<midnight_curves::Fq>>(vk: &MidnightVK) {
 
     let mut vk_fs = File::open(vk_path).expect("couldn't load proof parameters");
     let mut read_vk_hash = Vec::new();
-    vk_fs
-        .read_to_end(&mut read_vk_hash)
-        .expect("Failed to read VK hash");
+    vk_fs.read_to_end(&mut read_vk_hash).expect("Failed to read VK hash");
     let read_vk_hash: [u8; 32] = read_vk_hash
         .try_into()
         .expect("The serialized VK is expected to contain 32 bytes");
@@ -248,8 +242,7 @@ pub fn check_vk<Relation: Circuit<midnight_curves::Fq>>(vk: &MidnightVK) {
             Ok(var) => {
                 if var == "BREAKING" {
                     let mut file = File::create(vk_path).expect("Failed to create file");
-                    file.write_all(&vk_hash)
-                        .expect("Failed to write transcript hash to file");
+                    file.write_all(&vk_hash).expect("Failed to write transcript hash to file");
                 } else {
                     panic!("{}", error_msg)
                 }
@@ -317,8 +310,7 @@ or, if you don't trust the source, download it from IPFS and parse it (this migh
             .expect("Failed to write params");
         let mut file = File::create(srs_path).expect("Failed to create file");
 
-        file.write_all(&buf[..])
-            .expect("Failed to write params to file");
+        file.write_all(&buf[..]).expect("Failed to write params to file");
     }
 
     params

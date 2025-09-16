@@ -48,9 +48,8 @@ where
     /// Assert that the given input is a quadratic residue of the field.
     /// This is done by exhibiting a square root.
     fn assert_qr(&self, layouter: &mut impl Layouter<F>, x: &Assigned) -> Result<(), Error> {
-        let sqrt_x_value = x
-            .value()
-            .map(|x| Assigned::Element::sqrt(&x).expect("a quadratic residue"));
+        let sqrt_x_value =
+            x.value().map(|x| Assigned::Element::sqrt(&x).expect("a quadratic residue"));
 
         let sqrt_x = self.assign(layouter, sqrt_x_value)?;
         let sqr = self.mul(layouter, &sqrt_x, &sqrt_x, None)?;

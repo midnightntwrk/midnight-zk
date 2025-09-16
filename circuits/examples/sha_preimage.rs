@@ -33,10 +33,7 @@ impl Relation for ShaPreImageCircuit {
     type Witness = [u8; 24]; // 192 = 24 * 8
 
     fn format_instance(instance: &Self::Instance) -> Vec<F> {
-        instance
-            .iter()
-            .flat_map(AssignedByte::<F>::as_public_input)
-            .collect()
+        instance.iter().flat_map(AssignedByte::<F>::as_public_input).collect()
     }
 
     fn circuit(
@@ -49,9 +46,7 @@ impl Relation for ShaPreImageCircuit {
         let witness_bytes = witness.transpose_array();
         let assigned_input = std_lib.assign_many(layouter, &witness_bytes)?;
         let output = std_lib.sha256(layouter, &assigned_input)?;
-        output
-            .iter()
-            .try_for_each(|b| std_lib.constrain_as_public_input(layouter, b))
+        output.iter().try_for_each(|b| std_lib.constrain_as_public_input(layouter, b))
     }
 
     fn used_chips(&self) -> ZkStdLibArch {

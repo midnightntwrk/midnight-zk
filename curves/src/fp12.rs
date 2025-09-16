@@ -20,10 +20,7 @@ pub struct Fp12(pub(crate) blst_fp12);
 
 impl fmt::Debug for Fp12 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("Fp12")
-            .field("c0", &self.c0())
-            .field("c1", &self.c1())
-            .finish()
+        f.debug_struct("Fp12").field("c0", &self.c0()).field("c1", &self.c1()).finish()
     }
 }
 

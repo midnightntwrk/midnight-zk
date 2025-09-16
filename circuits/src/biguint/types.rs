@@ -124,9 +124,7 @@ impl<F: PrimeField> AssignedBigUint<F> {
     /// Returns `true` iff all the limb bounds of this `AssignedBigUint` are
     /// lower than or equal to LOG2_BASE.
     pub fn is_normalized(&self) -> bool {
-        self.limb_size_bounds
-            .iter()
-            .all(|bound| *bound <= LOG2_BASE)
+        self.limb_size_bounds.iter().all(|bound| *bound <= LOG2_BASE)
     }
 }
 

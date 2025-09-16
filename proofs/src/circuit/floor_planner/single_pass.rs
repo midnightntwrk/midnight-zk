@@ -124,10 +124,8 @@ impl<'a, F: Field, CS: Assignment<F> + 'a + SyncDeps> Layouter<F>
             }
         } else {
             let constants_column = self.constants[0];
-            let next_constant_row = self
-                .columns
-                .entry(Column::<Any>::from(constants_column).into())
-                .or_default();
+            let next_constant_row =
+                self.columns.entry(Column::<Any>::from(constants_column).into()).or_default();
             for (constant, advice) in constants_to_assign {
                 self.cs.assign_fixed(
                     || format!("Constant({:?})", constant.evaluate()),
@@ -178,8 +176,7 @@ impl<'a, F: Field, CS: Assignment<F> + 'a + SyncDeps> Layouter<F>
             // default_val must be Some because we must have assigned
             // at least one cell in each column, and in that case we checked
             // that all cells up to first_unused were assigned.
-            self.cs
-                .fill_from_row(col.inner(), first_unused, default_val.unwrap())?;
+            self.cs.fill_from_row(col.inner(), first_unused, default_val.unwrap())?;
         }
 
         Ok(())

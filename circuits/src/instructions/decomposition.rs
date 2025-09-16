@@ -187,10 +187,7 @@ where
             terms.push((coeff, b_as_element));
             coeff = coeff + coeff; // double the coeff
         }
-        let terms = terms
-            .iter()
-            .map(|(c, b)| (*c, b.clone()))
-            .collect::<Vec<_>>();
+        let terms = terms.iter().map(|(c, b)| (*c, b.clone())).collect::<Vec<_>>();
         self.linear_combination(layouter, &terms, Assigned::Element::from(0))
     }
 
@@ -237,10 +234,7 @@ where
             terms.push((coeff, byte_as_element));
             coeff = Assigned::Element::from(256) * coeff; // scale the coeff
         }
-        let terms = terms
-            .iter()
-            .map(|(c, b)| (*c, b.clone()))
-            .collect::<Vec<_>>();
+        let terms = terms.iter().map(|(c, b)| (*c, b.clone())).collect::<Vec<_>>();
         self.linear_combination(layouter, &terms, Assigned::Element::from(0))
     }
 
@@ -406,11 +400,9 @@ pub(crate) mod tests {
                         BE => chip.assigned_to_be_bits(&mut layouter, &x, nb_bits, true),
                     }?;
                     assert_eq!(bits.len(), self.decomposed.len());
-                    bits.iter()
-                        .zip(self.decomposed.iter())
-                        .try_for_each(|(bit, expected)| {
-                            aux_chip.assert_equal_to_fixed(&mut layouter, bit, *expected == 1)
-                        })
+                    bits.iter().zip(self.decomposed.iter()).try_for_each(|(bit, expected)| {
+                        aux_chip.assert_equal_to_fixed(&mut layouter, bit, *expected == 1)
+                    })
                 }
                 Operation::ToBytes => {
                     let x: Assigned = chip.assign_fixed(&mut layouter, self.x)?;
@@ -419,12 +411,9 @@ pub(crate) mod tests {
                         LE => chip.assigned_to_le_bytes(&mut layouter, &x, nb_bytes),
                         BE => chip.assigned_to_be_bytes(&mut layouter, &x, nb_bytes),
                     }?;
-                    bytes
-                        .iter()
-                        .zip(self.decomposed.iter())
-                        .try_for_each(|(bit, expected)| {
-                            aux_chip.assert_equal_to_fixed(&mut layouter, bit, *expected)
-                        })
+                    bytes.iter().zip(self.decomposed.iter()).try_for_each(|(bit, expected)| {
+                        aux_chip.assert_equal_to_fixed(&mut layouter, bit, *expected)
+                    })
                 }
                 Operation::FromBits => {
                     let bits = self
@@ -521,9 +510,7 @@ pub(crate) mod tests {
     /// express the test vectors with integers `0` and `1` instead of
     /// `false` and `true` (respectively).
     fn biguint_to_bits(n: &BigUint) -> Vec<u8> {
-        (0..(n.bits() as usize))
-            .map(|i| if n.bit(i as u64) { 1 } else { 0 })
-            .collect()
+        (0..(n.bits() as usize)).map(|i| if n.bit(i as u64) { 1 } else { 0 }).collect()
     }
 
     fn biguint_to_bytes(n: &BigUint) -> Vec<u8> {
@@ -680,9 +667,8 @@ pub(crate) mod tests {
     {
         // Random test cases.
         let mut rng = ChaCha8Rng::seed_from_u64(0xc0ffee);
-        let random_test_cases: Vec<_> = (0..100)
-            .map(|_| Assigned::Element::random(&mut rng))
-            .collect();
+        let random_test_cases: Vec<_> =
+            (0..100).map(|_| Assigned::Element::random(&mut rng)).collect();
 
         // Edge case where x = 0 | p_mid | 1.
         // (same as the modulus p but with the msb turned to 0).

@@ -117,9 +117,7 @@ fn pi_test(nb_public_inputs: u32, extra_pi: bool) {
 
     let mut rng = ChaCha8Rng::from_entropy();
 
-    let witness = (0..nb_public_inputs)
-        .map(|_| F::random(&mut rng))
-        .collect::<Vec<_>>();
+    let witness = (0..nb_public_inputs).map(|_| F::random(&mut rng)).collect::<Vec<_>>();
 
     let mut instance = witness
         .iter()

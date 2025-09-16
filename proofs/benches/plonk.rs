@@ -242,9 +242,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                 })?;
                 let (a1, b1, _) = cs.raw_add(&mut layouter, || {
                     let fin = a_squared + a;
-                    a.zip(a_squared)
-                        .zip(fin)
-                        .map(|((a, a_squared), fin)| (a, a_squared, fin))
+                    a.zip(a_squared).zip(fin).map(|((a, a_squared), fin)| (a, a_squared, fin))
                 })?;
                 cs.copy(&mut layouter, a0, a1)?;
                 cs.copy(&mut layouter, b1, c0)?;

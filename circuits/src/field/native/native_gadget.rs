@@ -218,9 +218,7 @@ impl<F: PrimeField> InnerValue for AssignedBounded<F> {
 
     fn value(&self) -> Value<BoundedElement<F>> {
         let (assigned_value, bound) = (self.value.clone(), self.bound());
-        assigned_value
-            .value()
-            .map(|&value| BoundedElement { value, bound })
+        assigned_value.value().map(|&value| BoundedElement { value, bound })
     }
 }
 
@@ -250,9 +248,7 @@ where
         // compute largest k such that 2^k <= bound
         let k = (bound.bits() - 1) as usize;
         if *bound == BigUint::from(1u8) << k {
-            return self
-                .core_decomposition_chip
-                .assign_less_than_pow2(layouter, value, k);
+            return self.core_decomposition_chip.assign_less_than_pow2(layouter, value, k);
         }
         let x = self.assign(layouter, value)?;
         self.assert_lower_than_fixed(layouter, &x, bound)?;
@@ -271,9 +267,7 @@ where
 
         // if the bound is a power of 2, the check is easier
         if two_pow_k == *bound {
-            return self
-                .core_decomposition_chip
-                .assert_less_than_pow2(layouter, x, k);
+            return self.core_decomposition_chip.assert_less_than_pow2(layouter, x, k);
         }
 
         // b := x in [0, 2^k)
@@ -285,8 +279,7 @@ where
         // x in [0, bound) <=> x in [0, 2^k) or (x - diff) in [0, 2^k)
         let shifted_x = self.add_constant(layouter, x, -diff)?;
         let y = self.select(layouter, &b, x, &shifted_x)?;
-        self.core_decomposition_chip
-            .assert_less_than_pow2(layouter, &y, k)
+        self.core_decomposition_chip.assert_less_than_pow2(layouter, &y, k)
     }
 }
 
@@ -415,9 +408,8 @@ where
         //   - if b = 1 ==> z = 2y-1 + x -2x - y =  y - 1 - x
 
         // assign b
-        let result_bit = x_as_bint
-            .zip(y_as_bint)
-            .map(|(x_as_bint, y_as_bint)| x_as_bint < y_as_bint);
+        let result_bit =
+            x_as_bint.zip(y_as_bint).map(|(x_as_bint, y_as_bint)| x_as_bint < y_as_bint);
         let assigned_result = self.assign(layouter, result_bit)?;
 
         // assign z: z is of the form "f1 a1 + f2 a2 + f a_1 a_2 + c"
@@ -559,9 +551,8 @@ where
         byte: Value<u8>,
     ) -> Result<AssignedByte<F>, Error> {
         let byte_as_f = byte.map(|b| F::from(b as u64));
-        let assigned = self
-            .core_decomposition_chip
-            .assign_less_than_pow2(layouter, byte_as_f, 8)?;
+        let assigned =
+            self.core_decomposition_chip.assign_less_than_pow2(layouter, byte_as_f, 8)?;
         Ok(AssignedByte(assigned))
     }
 
@@ -579,10 +570,7 @@ where
         layouter: &mut impl Layouter<F>,
         values: &[Value<u8>],
     ) -> Result<Vec<AssignedByte<F>>, Error> {
-        let values_as_f: Vec<_> = values
-            .iter()
-            .map(|v| v.map(|b| F::from(b as u64)))
-            .collect();
+        let values_as_f: Vec<_> = values.iter().map(|v| v.map(|b| F::from(b as u64))).collect();
 
         self.core_decomposition_chip
             .assign_many_small(layouter, &values_as_f, 8)?
@@ -670,8 +658,7 @@ where
         constant: u8,
     ) -> Result<AssignedBit<F>, Error> {
         let x: AssignedNative<F> = self.convert(layouter, byte)?;
-        self.native_chip
-            .is_equal_to_fixed(layouter, &x, F::from(constant as u64))
+        self.native_chip.is_equal_to_fixed(layouter, &x, F::from(constant as u64))
     }
 }
 
@@ -684,9 +671,7 @@ impl<F: PrimeField> AssertionInstructions<F, [AssignedByte<F>; 32]>
         x: &[AssignedByte<F>; 32],
         y: &[AssignedByte<F>; 32],
     ) -> Result<(), Error> {
-        x.iter()
-            .zip(y.iter())
-            .try_for_each(|(x, y)| self.assert_equal(layouter, x, y))
+        x.iter().zip(y.iter()).try_for_each(|(x, y)| self.assert_equal(layouter, x, y))
     }
 
     fn assert_not_equal(
@@ -989,8 +974,7 @@ where
         layouter: &mut impl Layouter<F>,
         assigned: &AssignedNative<F>,
     ) -> Result<(), Error> {
-        self.native_chip
-            .constrain_as_public_input(layouter, assigned)
+        self.native_chip.constrain_as_public_input(layouter, assigned)
     }
 
     fn assign_as_public_input(
@@ -1057,8 +1041,7 @@ where
         layouter: &mut impl Layouter<F>,
         assigned: &AssignedBit<F>,
     ) -> Result<(), Error> {
-        self.native_chip
-            .constrain_as_public_input(layouter, assigned)
+        self.native_chip.constrain_as_public_input(layouter, assigned)
     }
 
     fn assign_as_public_input(
@@ -1101,10 +1084,7 @@ where
         layouter: &mut impl Layouter<F>,
         values: &[Value<bool>],
     ) -> Result<Vec<AssignedBit<F>>, Error> {
-        let values_as_f: Vec<_> = values
-            .iter()
-            .map(|v| v.map(|b| F::from(b as u64)))
-            .collect();
+        let values_as_f: Vec<_> = values.iter().map(|v| v.map(|b| F::from(b as u64))).collect();
 
         self.core_decomposition_chip
             .assign_many_small(layouter, &values_as_f, 1)?
@@ -1146,8 +1126,7 @@ where
         x: &AssignedNative<F>,
         constant: F,
     ) -> Result<(), Error> {
-        self.native_chip
-            .assert_equal_to_fixed(layouter, x, constant)
+        self.native_chip.assert_equal_to_fixed(layouter, x, constant)
     }
 
     fn assert_not_equal_to_fixed(
@@ -1156,8 +1135,7 @@ where
         x: &AssignedNative<F>,
         constant: F,
     ) -> Result<(), Error> {
-        self.native_chip
-            .assert_not_equal_to_fixed(layouter, x, constant)
+        self.native_chip.assert_not_equal_to_fixed(layouter, x, constant)
     }
 }
 
@@ -1193,8 +1171,7 @@ where
         x: &AssignedBit<F>,
         constant: bool,
     ) -> Result<(), Error> {
-        self.native_chip
-            .assert_equal_to_fixed(layouter, x, constant)
+        self.native_chip.assert_equal_to_fixed(layouter, x, constant)
     }
 
     fn assert_not_equal_to_fixed(
@@ -1203,8 +1180,7 @@ where
         x: &AssignedBit<F>,
         constant: bool,
     ) -> Result<(), Error> {
-        self.native_chip
-            .assert_not_equal_to_fixed(layouter, x, constant)
+        self.native_chip.assert_not_equal_to_fixed(layouter, x, constant)
     }
 }
 
@@ -1222,8 +1198,7 @@ where
         terms: &[(F, AssignedNative<F>)],
         constant: F,
     ) -> Result<AssignedNative<F>, Error> {
-        self.native_chip
-            .linear_combination(layouter, terms, constant)
+        self.native_chip.linear_combination(layouter, terms, constant)
     }
 
     fn mul(
@@ -1270,8 +1245,7 @@ where
         k: F,
         m: F,
     ) -> Result<AssignedNative<F>, Error> {
-        self.native_chip
-            .add_and_mul(layouter, a_and_x, b_and_y, c_and_z, k, m)
+        self.native_chip.add_and_mul(layouter, a_and_x, b_and_y, c_and_z, k, m)
     }
 
     fn add_constants(

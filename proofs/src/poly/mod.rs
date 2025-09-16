@@ -289,11 +289,7 @@ pub(crate) fn batch_invert_rational<F: Field>(
 ) -> Vec<Polynomial<F, LagrangeCoeff>> {
     let mut assigned_denominators: Vec<_> = assigned
         .iter()
-        .map(|f| {
-            f.iter()
-                .map(|value| value.denominator())
-                .collect::<Vec<_>>()
-        })
+        .map(|f| f.iter().map(|value| value.denominator()).collect::<Vec<_>>())
         .collect();
 
     assigned_denominators

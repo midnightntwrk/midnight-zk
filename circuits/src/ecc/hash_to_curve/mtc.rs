@@ -171,10 +171,9 @@ where
     let gx = base_field.add_constant(layouter, &gx, C::B)?;
     // 33. y = sqrt(gx)
     let y = {
-        let y_val = gx.value().map(|gx| {
-            gx.sqrt()
-                .expect("gx should be a quadratic residue but is not.")
-        });
+        let y_val = gx
+            .value()
+            .map(|gx| gx.sqrt().expect("gx should be a quadratic residue but is not."));
         let y = base_field.assign(layouter, y_val)?;
         let y_square = base_field.mul(layouter, &y, &y, None)?;
         base_field.assert_equal(layouter, &y_square, &gx)?;

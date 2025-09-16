@@ -183,9 +183,7 @@ impl<F: PoseidonField> ComposableChip<F> for PoseidonChip<F> {
         let q_full_round = meta.selector();
         let q_partial_round = meta.complex_selector();
 
-        register_cols[..WIDTH]
-            .iter()
-            .for_each(|col| meta.enable_equality(*col));
+        register_cols[..WIDTH].iter().for_each(|col| meta.enable_equality(*col));
 
         // Custom full round gate. It focuses on only the first `WIDTH` advice/fixed
         // columns, and compute the corresponding identity (application of the power-5
@@ -287,10 +285,7 @@ impl<F: PoseidonField> PoseidonChip<F> {
         } else {
             F::ROUND_CONSTANTS[round_index + 1]
         };
-        for (col, constant) in self.config.constant_cols[0..WIDTH]
-            .iter()
-            .zip(round_constants)
-        {
+        for (col, constant) in self.config.constant_cols[0..WIDTH].iter().zip(round_constants) {
             region.assign_fixed(
                 || "load constant for a full round",
                 *col,
@@ -449,13 +444,12 @@ impl<F: PoseidonField> PoseidonChip<F> {
                 // The first full round assumes that `add_constants_in_region` above assigns
                 // `state` in the same columns as Poseidon in the region. This is checked by the
                 // below assertion.
-                assert!(state
-                    .iter()
-                    .zip(self.config.register_cols)
-                    .all(|(acell, col)| {
+                assert!(
+                    state.iter().zip(self.config.register_cols).all(|(acell, col)| {
                         let col1: Column<Advice> = acell.cell().column.try_into().unwrap();
                         col1 == col
-                    }));
+                    })
+                );
 
                 for round_index in 0..NB_FULL_ROUNDS / 2 {
                     self.full_round(&mut region, &mut state, round_index, &mut offset)?;
@@ -529,9 +523,8 @@ impl<F: PoseidonField> SpongeInstructions<F, AssignedNative<F>, AssignedNative<F
 
         match state.input_len {
             None => {
-                let padding = self
-                    .native_chip
-                    .assign_fixed(layouter, F::from(state.queue.len() as u64))?;
+                let padding =
+                    self.native_chip.assign_fixed(layouter, F::from(state.queue.len() as u64))?;
                 state.queue.push(padding);
             }
             Some(len) => {
@@ -584,13 +577,9 @@ impl<F: PoseidonField> FromScratch<F> for PoseidonChip<F> {
         let nb_advice_cols = std::cmp::max(NB_POSEIDON_ADVICE_COLS, NB_ARITH_COLS);
         let nb_fixed_cols = std::cmp::max(NB_POSEIDON_FIXED_COLS, NB_ARITH_FIXED_COLS);
 
-        let advice_cols = (0..nb_advice_cols)
-            .map(|_| meta.advice_column())
-            .collect::<Vec<_>>();
+        let advice_cols = (0..nb_advice_cols).map(|_| meta.advice_column()).collect::<Vec<_>>();
 
-        let fixed_cols = (0..nb_fixed_cols)
-            .map(|_| meta.fixed_column())
-            .collect::<Vec<_>>();
+        let fixed_cols = (0..nb_fixed_cols).map(|_| meta.fixed_column()).collect::<Vec<_>>();
 
         let native_config = NativeChip::configure(
             meta,
@@ -675,9 +664,7 @@ mod tests {
             let outputs = poseidon_chip.permutation(&mut layouter, &inputs)?;
 
             for (out, expected) in outputs.iter().zip(self.expected.iter()) {
-                poseidon_chip
-                    .native_chip
-                    .assert_equal_to_fixed(&mut layouter, out, *expected)?;
+                poseidon_chip.native_chip.assert_equal_to_fixed(&mut layouter, out, *expected)?;
             }
 
             // Comment or uncomment the below to get +N rows in the circuit, where N is the
@@ -704,9 +691,7 @@ mod tests {
 
         let k = 10;
 
-        MockProver::run(k, &circuit, vec![vec![], vec![]])
-            .unwrap()
-            .assert_satisfied();
+        MockProver::run(k, &circuit, vec![vec![], vec![]]).unwrap().assert_satisfied();
 
         if cost_model {
             circuit_to_json(k, "Poseidon", "one_permutation", 0, circuit);

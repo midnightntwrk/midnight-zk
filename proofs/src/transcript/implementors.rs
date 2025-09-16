@@ -14,10 +14,7 @@ impl TranscriptHash for Blake2bState {
     type Output = Vec<u8>;
 
     fn init() -> Self {
-        Params::new()
-            .hash_length(64)
-            .key(b"Domain separator for transcript")
-            .to_state()
+        Params::new().hash_length(64).key(b"Domain separator for transcript").to_state()
     }
 
     fn absorb(&mut self, input: &Self::Input) {

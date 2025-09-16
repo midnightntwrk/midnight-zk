@@ -341,16 +341,8 @@ mod tests {
     fn test_gt_bilinearity() {
         use crate::Fq;
 
-        let a = Fq::from_u64s_le(&[1, 2, 3, 4])
-            .unwrap()
-            .invert()
-            .unwrap()
-            .square();
-        let b = Fq::from_u64s_le(&[5, 6, 7, 8])
-            .unwrap()
-            .invert()
-            .unwrap()
-            .square();
+        let a = Fq::from_u64s_le(&[1, 2, 3, 4]).unwrap().invert().unwrap().square();
+        let b = Fq::from_u64s_le(&[5, 6, 7, 8]).unwrap().invert().unwrap().square();
         let c = a * b;
 
         let g = G1Affine::from(G1Affine::generator() * a);
@@ -390,56 +382,32 @@ mod tests {
 
         let a2 = G1Affine::from(
             G1Affine::generator()
-                * Fq::from_u64s_le(&[1, 2, 3, 4])
-                    .unwrap()
-                    .invert()
-                    .unwrap()
-                    .square(),
+                * Fq::from_u64s_le(&[1, 2, 3, 4]).unwrap().invert().unwrap().square(),
         );
         let b2 = G2Affine::from(
             G2Affine::generator()
-                * Fq::from_u64s_le(&[4, 2, 2, 4])
-                    .unwrap()
-                    .invert()
-                    .unwrap()
-                    .square(),
+                * Fq::from_u64s_le(&[4, 2, 2, 4]).unwrap().invert().unwrap().square(),
         );
 
         let a3 = G1Affine::identity();
         let b3 = G2Affine::from(
             G2Affine::generator()
-                * Fq::from_u64s_le(&[9, 2, 2, 4])
-                    .unwrap()
-                    .invert()
-                    .unwrap()
-                    .square(),
+                * Fq::from_u64s_le(&[9, 2, 2, 4]).unwrap().invert().unwrap().square(),
         );
 
         let a4 = G1Affine::from(
             G1Affine::generator()
-                * Fq::from_u64s_le(&[5, 5, 5, 5])
-                    .unwrap()
-                    .invert()
-                    .unwrap()
-                    .square(),
+                * Fq::from_u64s_le(&[5, 5, 5, 5]).unwrap().invert().unwrap().square(),
         );
         let b4 = G2Affine::identity();
 
         let a5 = G1Affine::from(
             G1Affine::generator()
-                * Fq::from_u64s_le(&[323, 32, 3, 1])
-                    .unwrap()
-                    .invert()
-                    .unwrap()
-                    .square(),
+                * Fq::from_u64s_le(&[323, 32, 3, 1]).unwrap().invert().unwrap().square(),
         );
         let b5 = G2Affine::from(
             G2Affine::generator()
-                * Fq::from_u64s_le(&[4, 2, 2, 9099])
-                    .unwrap()
-                    .invert()
-                    .unwrap()
-                    .square(),
+                * Fq::from_u64s_le(&[4, 2, 2, 9099]).unwrap().invert().unwrap().square(),
         );
 
         let b1_prepared = G2Prepared::from(b1);

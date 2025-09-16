@@ -53,11 +53,7 @@ impl Allocations {
     /// Returns the row that forms the unbounded unallocated interval [row,
     /// None).
     pub(crate) fn unbounded_interval_start(&self) -> usize {
-        self.0
-            .iter()
-            .last()
-            .map(|r| r.start + r.length)
-            .unwrap_or(0)
+        self.0.iter().last().map(|r| r.start + r.length).unwrap_or(0)
     }
 
     /// Return all the *unallocated* nonempty intervals intersecting [start,
@@ -122,12 +118,7 @@ fn first_fit_region(
 
     // Iterate over the unallocated non-empty intervals in c that intersect [start,
     // end).
-    for space in column_allocations
-        .entry(*c)
-        .or_default()
-        .clone()
-        .free_intervals(start, end)
-    {
+    for space in column_allocations.entry(*c).or_default().clone().free_intervals(start, end) {
         // Do we have enough room for this column of the region in this interval?
         let s_slack = space
             .end
@@ -147,14 +138,10 @@ fn first_fit_region(
                 if let Some(end) = end {
                     assert!(row + region_length <= end);
                 }
-                column_allocations
-                    .get_mut(c)
-                    .unwrap()
-                    .0
-                    .insert(AllocatedRegion {
-                        start: row,
-                        length: region_length,
-                    });
+                column_allocations.get_mut(c).unwrap().0.insert(AllocatedRegion {
+                    start: row,
+                    length: region_length,
+                });
                 return Some(row);
             }
         }
@@ -247,10 +234,7 @@ fn test_slot_in() {
         },
         RegionShape {
             region_index: 1.into(),
-            columns: vec![Column::new(2, Any::advice())]
-                .into_iter()
-                .map(|a| a.into())
-                .collect(),
+            columns: vec![Column::new(2, Any::advice())].into_iter().map(|a| a.into()).collect(),
             row_count: 10,
         },
         RegionShape {
@@ -263,11 +247,7 @@ fn test_slot_in() {
         },
     ];
     assert_eq!(
-        slot_in(regions)
-            .0
-            .into_iter()
-            .map(|(i, _)| i)
-            .collect::<Vec<_>>(),
+        slot_in(regions).0.into_iter().map(|(i, _)| i).collect::<Vec<_>>(),
         vec![0.into(), 0.into(), 15.into()]
     );
 }

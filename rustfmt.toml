@@ -8,3 +8,5 @@ imports_granularity = "Crate"
 wrap_comments = true
 # Rustlang core team is migrating to this
 group_imports = "StdExternalCrate"
+# Allows for larger chains
+chain_width = 80

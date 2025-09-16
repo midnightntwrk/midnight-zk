@@ -96,9 +96,7 @@ impl<F: PoseidonField> VarLenPoseidonGadget<F> {
 
         // Select the updated version or the original input according to `update`.
         for (register, result) in register.iter().zip(result.iter_mut()) {
-            *result = self
-                .native_gadget
-                .select(layouter, update, result, register)?;
+            *result = self.native_gadget.select(layouter, update, result, register)?;
         }
 
         Ok(result)
@@ -175,9 +173,7 @@ impl<F: PoseidonField, const MAX_LEN: usize>
         let mut updating: AssignedBit<F> = self.native_gadget.assign_fixed(layouter, false)?;
 
         // Position in the last chunk where the padding must be placed.
-        let offset = self
-            .native_gadget
-            .rem(layouter, len, RATE.into(), Some(MAX_LEN.into()))?;
+        let offset = self.native_gadget.rem(layouter, len, RATE.into(), Some(MAX_LEN.into()))?;
 
         // Length of the input rounded up to the chunk size or RATE.
         let rounded_len = {
@@ -312,9 +308,7 @@ mod tests {
 
         let k = 14;
 
-        MockProver::run(k, &circuit, vec![vec![], vec![]])
-            .unwrap()
-            .assert_satisfied();
+        MockProver::run(k, &circuit, vec![vec![], vec![]]).unwrap().assert_satisfied();
 
         if cost_model {
             circuit_to_json(

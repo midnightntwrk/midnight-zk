@@ -477,9 +477,7 @@ pub(crate) mod tests {
     {
         let mut rng = ChaCha8Rng::seed_from_u64(0xc0ffee);
         let n = 3;
-        let inputs = (0..n)
-            .map(|_| C::CryptographicGroup::random(&mut rng))
-            .collect::<Vec<_>>();
+        let inputs = (0..n).map(|_| C::CryptographicGroup::random(&mut rng)).collect::<Vec<_>>();
         let scalars = (0..n)
             .map(|_| (C::Scalar::random(&mut rng), C::Scalar::NUM_BITS as usize))
             .collect::<Vec<_>>();
@@ -528,9 +526,7 @@ pub(crate) mod tests {
         let mut rng = ChaCha8Rng::seed_from_u64(0xc0ffee);
         let n = 3;
         let r = C::Scalar::random(&mut rng);
-        let inputs = (0..n)
-            .map(|_| C::CryptographicGroup::random(&mut rng))
-            .collect::<Vec<_>>();
+        let inputs = (0..n).map(|_| C::CryptographicGroup::random(&mut rng)).collect::<Vec<_>>();
         let scalars = [
             (C::Scalar::from(3), 4),
             (C::Scalar::from(1025), 12),

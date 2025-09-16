@@ -73,12 +73,7 @@ impl Letter {
     /// easily as vector indexes. The size of the encoding is polynomial in the
     /// number of different markers and the alphabet size.
     pub fn encode(&self, alphabet_size: usize, markers: &[usize]) -> usize {
-        let marker = markers
-            .iter()
-            .enumerate()
-            .find(|(_, &m)| m == self.marker)
-            .unwrap()
-            .0;
+        let marker = markers.iter().enumerate().find(|(_, &m)| m == self.marker).unwrap().0;
         marker * alphabet_size + self.char as usize
     }
 
@@ -967,11 +962,8 @@ impl RawAutomaton {
                 while let Some(class) = partition.pop() {
                     // Compute the refinement of the partition class (intersection
                     // and complement with the distinguisher).
-                    let (inter, minus): (Vec<_>, Vec<_>) = pred
-                        .iter()
-                        .zip(class.iter())
-                        .map(|(&p, &c)| (p && c, !p && c))
-                        .unzip();
+                    let (inter, minus): (Vec<_>, Vec<_>) =
+                        pred.iter().zip(class.iter()).map(|(&p, &c)| (p && c, !p && c)).unzip();
                     let inter_size = inter.iter().filter(|b| **b).count();
                     let minus_size = minus.iter().filter(|b| **b).count();
                     if inter_size != 0 && minus_size != 0 {
@@ -979,11 +971,7 @@ impl RawAutomaton {
                         // refined.
                         partition_temp.push(inter.clone());
                         partition_temp.push(minus.clone());
-                        match distinguishers
-                            .iter()
-                            .enumerate()
-                            .find(|(_, d)| **d == class)
-                        {
+                        match distinguishers.iter().enumerate().find(|(_, d)| **d == class) {
                             Some((i, _)) => {
                                 // `class` was already a distinguisher: refine it as
                                 // well.

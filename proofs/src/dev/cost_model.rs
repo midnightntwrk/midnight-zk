@@ -98,10 +98,7 @@ impl Lookup {
         let input = "-1,0".parse().unwrap();
         let table = "0".parse().unwrap();
 
-        iter::empty()
-            .chain(Some(product))
-            .chain(Some(input))
-            .chain(Some(table))
+        iter::empty().chain(Some(product)).chain(Some(input)).chain(Some(table))
     }
 }
 
@@ -483,9 +480,8 @@ impl<F: FromUniformBytes<64> + Ord> DevAssembly<F> {
             )?;
         }
 
-        let (cs, selector_polys) = prover
-            .cs
-            .directly_convert_selectors_to_fixed(prover.selectors.clone());
+        let (cs, selector_polys) =
+            prover.cs.directly_convert_selectors_to_fixed(prover.selectors.clone());
         prover.cs = cs;
         prover.fixed.extend(selector_polys.into_iter().map(|poly| {
             let mut v = vec![CellValue::Unassigned; n];
@@ -673,8 +669,7 @@ impl<F: Field> Assignment<F> for DevAssembly<F> {
             self.k,
         );
 
-        self.permutation
-            .copy(left_column, left_row, right_column, right_row)
+        self.permutation.copy(left_column, left_row, right_column, right_row)
     }
 
     fn fill_from_row(

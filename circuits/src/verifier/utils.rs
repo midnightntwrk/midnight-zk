@@ -228,10 +228,7 @@ pub(crate) fn sum<F: PrimeField>(
     scalar_chip: &impl ArithInstructions<F, AssignedNative<F>>,
     terms: &[AssignedNative<F>],
 ) -> Result<AssignedNative<F>, Error> {
-    let terms = terms
-        .iter()
-        .map(|t| (F::ONE, t.clone()))
-        .collect::<Vec<_>>();
+    let terms = terms.iter().map(|t| (F::ONE, t.clone())).collect::<Vec<_>>();
     scalar_chip.linear_combination(layouter, &terms, F::ZERO)
 }
 
