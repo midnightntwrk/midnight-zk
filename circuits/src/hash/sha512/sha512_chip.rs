@@ -1866,3 +1866,36 @@ impl<F: PrimeField> Sha512Chip<F> {
             .map(AssignedPlain)
     }
 }
+
+impl<F: PrimeField> CompressionState<F> {
+    /// Adds pair-wise (modulo 2^64) the fields of two compression states.
+    pub fn add(
+        &self,
+        sha512_chip: &Sha512Chip<F>,
+        layouter: &mut impl Layouter<F>,
+        other: &Self,
+    ) -> Result<Self, Error> {
+        let a = sha512_chip.prepare_A(layouter, &[self.a.plain(), other.a.plain()])?;
+        let b = sha512_chip.prepare_A(layouter, &[self.b.plain.clone(), other.b.plain.clone()])?;
+        let c = sha512_chip.prepare_A(layouter, &[self.c.plain.clone(), other.c.plain.clone()])?;
+        let d = sha512_chip.prepare_A(layouter, &[self.d.clone(), other.d.clone()])?;
+        // NB: d can be optimized and do it in a single row without `prepare_A`.
+
+        let e = sha512_chip.prepare_E(layouter, &[self.e.plain(), other.e.plain()])?;
+        let f = sha512_chip.prepare_E(layouter, &[self.f.plain.clone(), other.f.plain.clone()])?;
+        let g = sha512_chip.prepare_E(layouter, &[self.g.plain.clone(), other.g.plain.clone()])?;
+        let h = sha512_chip.prepare_E(layouter, &[self.h.clone(), other.h.clone()])?;
+        // NB: h can be optimized and do it in a single row without `prepare_E`.
+
+        Ok(Self {
+            a,
+            b: b.combined,
+            c: c.combined,
+            d: d.combined.plain,
+            e,
+            f: f.combined,
+            g: g.combined,
+            h: h.combined.plain,
+        })
+    }
+}
