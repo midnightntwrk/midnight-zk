@@ -1,55 +1,5 @@
 //! SHA-512 Chip
 
-// A: |-----------|-----|------|--------------|
-//        25         5     6         28
-
-//  13-12-5-6-13-13-2
-
-// $Prepare(A)$
-
-// | T0 |    A0    |     A1    | T1 |    A2    |     A3    |   A4   |  A5  |  A6  |
-// |----|----------|-----------|----|----------|-----------|--------|------|------|
-// | 13 |   A.13a  |  ~A.13a   | 12 |   A.12   |   ~A.12   |   A    |  S0  |  S1  |
-// | 05 |   A.05   |  ~A.05    | 06 |   A.06   |   ~A.06   |   ~A   |  S2  |  S3  |
-// | 13 |   A.13b  |  ~A.13b   | 13 |   A.13c  |   ~A.13c  |   S4   |  S5  |  S6  |
-// | 02 |   A.02   |  ~A.02    | 03 |   carry  |   ~carry  |        |      |      |
-
-// E: |----------|----------|-----|-----------|
-//        23          23       4       14
-
-//  13-10-13-10-4-13-1
-
-// $Prepare(E)$
-
-// | T0 |    A0    |     A1    | T1 |    A2    |     A3    |   A4   |  A5  |  A6  |
-// |----|----------|-----------|----|----------|-----------|--------|------|------|
-// | 13 |   E.13a  |  ~E.13a   | 10 |   E.10a  |   ~E.10a  |   E    |  S0  |  S1  |
-// | 13 |   E.13b  |  ~E.13b   | 10 |   E.10b  |   ~E.10b  |   ~E   |  S2  |  S3  |
-// | 04 |   E.04   |  ~E.04    | 13 |   E.13c  |   ~E.13c  |   S4   |  S5  |  S6  |
-// | 01 |   E.01   |  ~E.01    | 03 |   carry  |   ~carry  |        |      |      |
-
-// message-word:
-
-// |----------------------------------------|-|-----------|-|
-//                     56                    1      6      1
-
-// |-----|----------------------------|---------|-----------|
-//    3                42                 13         6
-
-// |-----|----------------------------|-----|-|-|---------|-|
-//    3                42                11  1 1    5      1
-
-// 3-13-13-13-3-11-1-1-5-1
-
-// $Prepare_Word$
-
-// | T0 |    A0    |     A1    | T1 |    A2    |     A3    |    A4   |  A5  |  A6  |  A.7  |
-// |----|----------|-----------|----|----------|-----------|---------|------|------|-------|
-// | 03 |   W.03a  |  ~W.03a   | 13 |   W.13a  |  ~W.13a   |  W.i    |  S0  |  S1  | W.01a |
-// | 13 |   W.13b  |  ~W.13b   | 13 |   W.13c  |  ~W.13c   |         |  S2  |  S3  | W.01b |
-// | 03 |   W.03b  |  ~W.03b   | 11 |   W.11   |  ~W.11    |   S4    |  S5  |  S6  | W.01c |
-// | 05 |   W.05   |  ~W.05    | 03 |   carry  |  ~carry   |         |      |      |       |
-
 use ff::PrimeField;
 use midnight_proofs::{
     circuit::{Chip, Layouter, Region, Value},
@@ -806,6 +756,44 @@ impl<F: PrimeField> Sha512Chip<F> {
             .collect::<Result<Vec<_>, Error>>()?
             .try_into()
             .unwrap())
+    }
+
+    /// Takes a 1024-bits block, represented with 16 `AssignedPlain<64>` words.
+    /// Outputs the 80 `AssignedPlain<64>` words Wi from SHA512's message
+    /// schedule.
+    pub(super) fn message_schedule(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        block: &[AssignedPlain<F, 64>; 16],
+    ) -> Result<[AssignedPlain<F, 64>; 80], Error> {
+        let message_word = self.prepare_message_word(layouter, &[block[0].clone()])?;
+        let mut message_words: [AssignedMessageWord<F>; 80] =
+            core::array::from_fn(|_| message_word.clone());
+
+        // The first 16 message words are got by decomposing the block words
+        // into 3_3x13_3_11_1_1_5_1 limbs directly.
+        for word_idx in 1..16 {
+            message_words[word_idx] =
+                self.prepare_message_word(layouter, &[block[word_idx].clone()])?;
+        }
+        // The remaining 64 message words are computed using the recurrence relation
+        // W.i = W.(i-16) + W.(i-7) + σ₀(W.(i-15)) + σ₁(W.(i-2))
+        // and decomposing into 3_3x13_3_11_1_1_5_1 limbs.
+        for word_idx in 16..80 {
+            let sigma0_w_i_minus_15 = &self.sigma_0(layouter, &message_words[word_idx - 15])?;
+            let sigma1_w_i_minus_2 = &self.sigma_1(layouter, &message_words[word_idx - 2])?;
+            message_words[word_idx] = self.prepare_message_word(
+                layouter,
+                &[
+                    message_words[word_idx - 16].combined_plain.clone(),
+                    message_words[word_idx - 7].combined_plain.clone(),
+                    sigma0_w_i_minus_15.clone(),
+                    sigma1_w_i_minus_2.clone(),
+                ],
+            )?;
+        }
+
+        Ok(message_words.map(|w| w.combined_plain))
     }
 
     /// Computes Maj(A, B, C).
