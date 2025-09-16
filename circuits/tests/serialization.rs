@@ -203,6 +203,7 @@ fn pk_serde_test(architecture: ZkStdLibArch, write_format: SerdeFormat, read_for
 }
 
 #[test]
+#[serial]
 fn pk_write_then_read_processed() {
     for arch in ARCHITECTURES {
         pk_serde_test(arch, SerdeFormat::Processed, SerdeFormat::Processed);
@@ -210,6 +211,7 @@ fn pk_write_then_read_processed() {
 }
 
 #[test]
+#[serial]
 fn pk_write_then_read_raw() {
     for arch in ARCHITECTURES {
         pk_serde_test(arch, SerdeFormat::RawBytes, SerdeFormat::RawBytes);
