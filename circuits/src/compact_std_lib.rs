@@ -575,10 +575,9 @@ impl ZkStdLib {
     /// # });
     /// ```
     ///
-    /// # Panics
+    /// # Unsatisfiable Circuit
     ///
-    /// Both `x` and `y` are asserted to be in the range `[0, 2^n)`, if this
-    /// condition is violated, the circuit becomes unsatisfiable.
+    /// If `x` or `y` are not in the range `[0, 2^n)`.
     ///
     /// ```should_panic
     /// # midnight_circuits::run_test_std_lib!(chip, layouter, 13, {

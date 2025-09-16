@@ -1537,10 +1537,9 @@ impl<F: PrimeField> Sha256Chip<F> {
     /// If `lookup_idx = 0`, the lookup on columns (T0, A0, A1) will be used.
     /// If `lookup_idx = 1`, the lookup on columns (T1, A2, A3) will be used.
     ///
-    /// # Unsatisfiable
+    /// # Unsatisfiable Circuit
     ///
-    /// If the given value is not in the range [0, 2^L), the circuit will become
-    /// unsatisfiable.
+    /// If the given value is not in the range [0, 2^L).
     fn assign_plain_and_spreaded<const L: usize>(
         &self,
         region: &mut Region<'_, F>,

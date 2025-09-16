@@ -30,7 +30,7 @@ use crate::utils::util::{bigint_to_fe, fe_to_bigint};
 ///
 /// # Panics
 ///
-/// Panics if the field element cannot be represented with limb_sizes
+/// If the field element cannot be represented with limb_sizes
 pub(crate) fn decompose_in_variable_limbsizes<InF: PrimeField, OutF: PrimeField>(
     x: &InF,
     limb_sizes: &[usize],

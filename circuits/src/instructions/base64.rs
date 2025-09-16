@@ -32,6 +32,7 @@ pub trait Base64Instructions<F: PrimeField> {
     /// two ASCII_ZERO chars if necessary.
     ///
     /// # Panics
+    ///
     /// If `padded` = true and the input length is not a multiple of 4.
     fn decode_base64url(
         &self,
@@ -49,6 +50,7 @@ pub trait Base64Instructions<F: PrimeField> {
     /// two ASCII_ZERO chars if necessary.
     ///
     /// # Panics
+    ///
     /// If `padded` = true and the input length is not a multiple of 4.
     fn decode_base64(
         &self,
@@ -88,7 +90,7 @@ pub trait Base64VarInstructions<F: PrimeField, const M: usize, const A: usize>:
     ///
     /// # Panics
     ///
-    /// If |value| > M or A does not divide |value|.
+    /// If |value| > M or 4 does not divide |value|.
     fn assign_var_base64(
         &self,
         layouter: &mut impl Layouter<F>,

@@ -79,7 +79,7 @@ impl<S: SelfEmulation> Msm<S> {
     ///
     /// # Panics
     ///
-    /// If `bases` and `scalars` do not have the same length.
+    /// If `|bases| != |scalars|`.
     pub fn new(
         bases: &[S::C],
         scalars: &[S::F],
@@ -113,7 +113,7 @@ impl<S: SelfEmulation> Msm<S> {
     ///
     /// # Panics
     ///
-    /// If `bases` and `scalars` do not have the same length.
+    /// If `|bases| != |scalars|`.
     pub fn from_terms(bases: &[S::C], scalars: &[S::F]) -> Self {
         assert_eq!(bases.len(), scalars.len());
         Msm {
@@ -140,11 +140,12 @@ impl<S: SelfEmulation> Msm<S> {
     /// I.e. it computes `<scalars, bases> + <fixed_bases, fixed_base_scalars>`.
     ///
     /// # Panics
-    /// If one of the keys in the `fixed_base_scalars` of the MSM does not
-    /// appear in the tree of `fixed_bases`.
     ///
-    /// Note that the converse is not a problem, i.e., the keys of
-    /// `fixed_bases` can be a superset of the keys of `fixed_base_scalars`.
+    /// If some of the keys in the `fixed_base_scalars` of the MSM do not appear
+    /// in the tree of `fixed_bases`.
+    ///
+    /// Note that the converse is not a problem, i.e., the keys of `fixed_bases`
+    /// can be a superset of the keys of `fixed_base_scalars`.
     pub fn eval(&self, fixed_bases: &BTreeMap<String, S::C>) -> S::C {
         let mut bases = self.bases.clone();
         let mut scalars = self.scalars.clone();
@@ -197,8 +198,8 @@ impl<S: SelfEmulation> Msm<S> {
     ///
     /// If some of the base names exist as a key in `self.fixed_base_scalars`.
     ///
-    /// If some of the provided fixed bases does not appear in `self.bases`
-    /// with the exact required multiplicity.
+    /// If some of the provided fixed bases do not appear in `self.bases` with
+    /// the exact required multiplicity.
     pub fn extract_fixed_bases(&mut self, fixed_bases: &BTreeMap<String, S::C>) {
         assert!(
             (fixed_bases.keys()).all(|name| !self.fixed_base_scalars.contains_key(name)),

@@ -300,12 +300,12 @@ where
     /// BigUint.
     ///
     /// # Panics
-    /// If the provided bound does not coincide with the bound that can be
-    /// derived from the given `AssignedBigUint`.
-    /// This is to make sure that the user knows tight bounds for the BigUint
-    /// they are constraining, and that they will create the off-circuit
-    /// public inputs correctly (using the same bounds) via
-    /// `AssignedBigUint::as_public_input<NB_BITS>(...)`.
+    ///
+    /// If the provided bound `NB_BITS` does not coincide with the bound that
+    /// can be derived from the given `AssignedBigUint`. This is to make sure
+    /// that the user knows tight bounds for the BigUint they are constraining,
+    /// and that they will create the off-circuit public inputs correctly (using
+    /// the same bounds) via `AssignedBigUint::as_public_input<NB_BITS>(...)`.
     pub fn constrain_as_public_input<const NB_BITS: u32>(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -357,9 +357,9 @@ where
 
     /// Subtracts the given assigned big unsinged integers, returning `x - y`.
     ///
-    /// # Panics
+    /// # Unsatisfiable Circuit
     ///
-    /// The circuit will become unsatisfiable if `x < y`.
+    /// If `x < y`.
     pub fn sub(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -630,7 +630,7 @@ where
     ///
     /// # Panics
     ///
-    /// If the number of limbs of the `x` exceeds the desired size `n`.
+    /// If the number of limbs of `x` exceeds the desired size `n`.
     fn resize(
         &self,
         layouter: &mut impl Layouter<F>,

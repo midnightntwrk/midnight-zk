@@ -67,12 +67,13 @@ where
 
     /// Variable-base multi-scalar multiplication, returning
     /// sum_i (scalar_i * base_i).
-    /// Potentially more efficiently than folding with mul and add.
-    /// The base points can be the identity.
+    ///
+    /// Potentially more efficiently than folding with mul and add. The bases
+    /// are allowed to be the identity.
     ///
     /// # Panics
     ///
-    /// If `scalars.len() != bases.len()`.
+    /// If `|scalars| != |bases|`.
     fn msm(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -82,7 +83,7 @@ where
 
     /// Variable-base multi-scalar multiplication, returning
     /// sum_i (scalar_i * base_i).
-    /// The base points can be the identity.
+    /// The bases are allowed to be the identity.
     ///
     /// The scalars are provided with an upper-bound on the number of bits
     /// necessary to represent them, which can be used to implement the
@@ -92,13 +93,13 @@ where
     ///
     ///  `s.0` is a scalar in the range `[0, 2^s.1)`, for all scalars `s`.
     ///
-    /// # Panics
-    ///
-    /// If `scalars.len() != bases.len()`.
-    ///
     /// Meeting the precondition is the responsibility of the caller, that is,
     /// the bounds are not enforced with constraints here, but should be
     /// enforced by the caller somewhere else.
+    ///
+    /// # Panics
+    ///
+    /// If `|scalars| != |bases|`.
     fn msm_by_bounded_scalars(
         &self,
         layouter: &mut impl Layouter<F>,

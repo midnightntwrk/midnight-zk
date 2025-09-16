@@ -216,7 +216,7 @@ where
     ///
     /// # Panics
     ///
-    /// Panics if `self` is `Value::known(values)` and `values.len() != length`.
+    /// Panics if `self` is `Value::known(values)` and `|values| != length`.
     pub fn transpose_vec(self, length: usize) -> Vec<Value<V>> {
         match self.inner {
             Some(values) => {

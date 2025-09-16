@@ -145,9 +145,9 @@ pub(crate) fn truncate<F: PrimeField>(
 /// Li(x) where Li(X) is the degree-n polynomial such that Li(w^i) = 1 and
 /// Li(w^j) = 0 for all j in {1, ..., n} \ {i}.
 ///
-/// # Panics
+/// # Unsatisfiable Circuit
 ///
-/// If x^n = 1, the system will become unsatisfiable.
+/// If x^n = 1.
 pub fn evaluate_lagrange_polynomials<F: PrimeField>(
     layouter: &mut impl Layouter<F>,
     scalar_chip: &impl ArithInstructions<F, AssignedNative<F>>,
@@ -252,8 +252,7 @@ pub(crate) fn prod<F: PrimeField>(
 ///
 /// # Panics
 ///
-/// If terms1.len() != terms2.len().
-/// If terms1.len() = 0.
+/// If `terms1` is empty or `|terms1| != |terms2|`.
 pub(crate) fn inner_product<F: PrimeField>(
     layouter: &mut impl Layouter<F>,
     scalar_chip: &impl ArithInstructions<F, AssignedNative<F>>,

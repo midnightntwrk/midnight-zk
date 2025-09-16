@@ -70,10 +70,10 @@ where
     /// # });
     /// ```
     ///
-    /// # Panics
+    /// # Unsatisfiable Circuit
     ///
-    /// If `x` cannot be decomposed in `nb_bits` bits (when this argument is
-    /// specified), the circuit will become unsatisfiable.
+    /// If `x` cannot be decomposed in `nb_bits` bits when such argument is
+    /// provided.
     ///
     /// ```should_panic
     /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
@@ -129,10 +129,10 @@ where
     /// # });
     /// ```
     ///
-    /// # Panics
+    /// # Unsatisfiable Circuit
     ///
-    /// If `x` cannot be decomposed in `nb_bytes` bytes (when this argument is
-    /// specified), the circuit will become unsatisfiable.
+    /// If `x` cannot be decomposed in `nb_bytes` bytes when such argument is
+    /// provided.
     ///
     /// ```should_panic
     /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
@@ -267,13 +267,14 @@ where
     /// [AssignedNative] values. Note that this is possible because
     /// `Assigned::Element : PrimeField`.
     ///
+    /// # Unsatisfiable Circuit
+    ///
+    /// If `x` cannot be decomposed in `nb_chunks` chunks of `nb_bits_per_chunk`
+    /// bits, when the argument `nb_chunks` is provided.
+    ///
     /// # Panics
     ///
-    /// When `nb_chunks` is specified, if `x` cannot be decomposed in
-    /// `nb_chunks` chunks of `nb_bits_per_chunk` size, the circuit becomes
-    /// unsatisfiable.
-    ///
-    /// This function will panic if `nb_bits_per_chunk >= F::NUM_BITS`.
+    /// If `nb_bits_per_chunk >= F::NUM_BITS`.
     fn assigned_to_le_chunks(
         &self,
         layouter: &mut impl Layouter<F>,

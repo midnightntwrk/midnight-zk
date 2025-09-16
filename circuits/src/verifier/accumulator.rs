@@ -161,10 +161,9 @@ impl<S: SelfEmulation> Accumulator<S> {
     ///
     /// # Panics
     ///    
-    /// If some of the base names exist as a key in
-    /// `self.rhs.fixed_base_scalars`.
+    /// If some base names exist as a key in `self.rhs.fixed_base_scalars`.
     ///
-    /// If some of the provided fixed bases does not appear in `self.rhs.bases`
+    /// If some of the provided fixed bases do not appear in `self.rhs.bases`
     /// with the exact required multiplicity.
     pub fn extract_fixed_bases(&mut self, fixed_bases: &BTreeMap<String, S::C>) {
         self.rhs.extract_fixed_bases(fixed_bases);

@@ -149,7 +149,8 @@ impl<F: PoseidonField, const MAX_LEN: usize>
     /// Hashes the variable-length vector inputs.
     ///
     /// # Panics
-    ///  * If `MAX_LEN` is not a multiple of RATE.
+    ///
+    /// If `MAX_LEN` is not a multiple of `RATE`.
     fn varhash(
         &self,
         layouter: &mut impl Layouter<F>,

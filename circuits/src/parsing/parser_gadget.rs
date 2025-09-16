@@ -58,9 +58,9 @@ where
     ///
     /// This is enforced with constraints while keeping `idx` private.
     ///
-    /// # Panics
-    /// Let `n` be the length of the sequence. If `idx` is not in the range
-    /// `[0, n - len]`, the circuit will become unsatisfiable.
+    /// # Unsatisfiable Circuit
+    ///
+    /// If `idx` is not in the range `[0, |sequence| - len]`.
     fn get_subsequence(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -93,9 +93,9 @@ where
     ///
     /// This is enforced with constraints while keeping `idx` private.
     ///
-    /// # Panics
-    /// Let `n` be the length of the sequence. If `idx` is not in the range
-    /// `[0, n - len]`, the circuit will become unsatisfiable.
+    /// # Unsatisfiable Circuit
+    ///
+    /// If `idx` is not in the range `[0, |sequence| - len]`.
     pub fn fetch_bytes(
         &self,
         layouter: &mut impl Layouter<F>,

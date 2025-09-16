@@ -145,7 +145,8 @@ where
     /// Returns a reference to the state.
     ///
     /// # Panics
-    /// This function panics if the [MapGadget] has not been initialised.
+    ///
+    /// If the [MapGadget] has not been initialised.
     fn state(&self) -> &State<F, H> {
         self.state
             .as_ref()
@@ -156,7 +157,8 @@ where
     /// map and update the assigned succinct_repr accordingly.
     ///
     /// # Panics
-    /// This function panics if the [MapGadget] has not been initialised.
+    ///
+    /// If the [MapGadget] has not been initialised.
     fn update_state(
         &mut self,
         layouter: &mut impl Layouter<F>,

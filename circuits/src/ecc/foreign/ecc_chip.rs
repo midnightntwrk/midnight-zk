@@ -1130,9 +1130,9 @@ where
     /// preconditions are met, this function *does not* necessarily become
     /// unsatisfiable if they are violated.
     ///
-    /// # Panics
+    /// # Unsatisfiable Circuit
     ///
-    /// If `p = -q`, the system will become unsatisfiable.
+    /// If `p = -q`.
     fn incomplete_add(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -1244,9 +1244,9 @@ where
     /// preconditions are met, this function *does not* necessarily become
     /// unsatisfiable if they are violated.
     ///
-    /// # Panics
+    /// # Unsatisfiable Circuit
     ///
-    /// If `p = -q`, the system will become unsatisfiable.
+    /// If `p = -q`.
     /// The official prover will also experiment a runtime error when trying to
     /// invert (q.x - p.x) in that case.
     fn assert_add(
@@ -1460,12 +1460,18 @@ where
     ///
     /// We require that all points in the table be different from the identity.
     /// Furthermore, the coordinates of all the points in the tables must have
-    /// well-formed bounds.
+    /// well-formed bounds. Finally, we require that the table has been loaded
+    /// with indices in the range [0, |point_table|), see
+    /// `load_multi_select_table`.
+    ///
     /// It is the responsibility of the caller to make sure this is satisfied.
     ///
-    /// # Panics
+    /// # Unsatisfiable Circuit
     ///
-    /// If `len(point_table) != 2^len(selector)`.
+    /// If the preconditions are met but the value of `selector` is not in the
+    /// range [0, |point_table|).
+    /// In debug mode, the official prover will also get a runtime error in that
+    /// case, or if |point_table| exceeds 2^32.
     fn multi_select(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -1681,10 +1687,9 @@ where
     ///
     /// - `p != id`
     ///
-    /// # Panics
-    ///
-    /// This function does not panic if the precondition is violated, it is the
-    /// responsibility of the caller to make sure it is satisfied.
+    /// It is the responsibility of the caller to meet the precondition.
+    /// This function neither panics nor makes the circuit unsatisfiable if the
+    /// precondition is violated.
     fn mul_by_u128(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -1756,13 +1761,15 @@ where
     /// (1) `scalars[i][j] in [0, 2^WS)` for every `i, j`.
     /// (2) `base_i != identity` for every `i`
     ///
-    /// # Panics
-    ///
     /// It is the responsibility of the caller to meet precondition (1).
     ///
-    /// If precondition (2) is violated, the system will become unsatisfiable.
+    /// # Unsatisfiable Circuit
     ///
-    /// Panics also if `scalars.len() != bases.len()`.
+    /// If precondition (2) is violated.
+    ///
+    /// # Panics
+    ///
+    /// If `|scalars| != |bases|`.
     fn windowed_msm<const WS: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -1908,15 +1915,17 @@ where
     /// sequences of bits. The length of the bit sequences can be arbitrary
     /// and possibly distinct between terms.
     ///
-    /// # Preconditions
+    /// # Precondition
     ///
-    /// - `base_i != identity` for every `i`
+    /// `base_i != identity` for every `i`
+    ///
+    /// # Unsatisfiable Circuit
+    ///
+    /// If the precondition is violated.
     ///
     /// # Panics
     ///
-    /// - If `scalars.len() != bases.len()`.
-    /// - If the precondition is violated, the circuit will become
-    ///   unsatisfiable.
+    /// If `|scalars| != |bases|`.
     pub fn msm_by_le_bits(
         &self,
         layouter: &mut impl Layouter<F>,
