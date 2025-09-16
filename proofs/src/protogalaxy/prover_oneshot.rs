@@ -247,58 +247,6 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
 
 use crate::transcript::{Hashable, Sampleable, Transcript};
 
-/// TODO: Fold instances
-pub fn fold<F>(
-    pk: &FoldingPk<F>,
-    dk_domain: &EvaluationDomain<F>,
-    traces: &[&FoldingProverTrace<F>],
-) -> FoldingProverTrace<F>
-where
-    F: WithSmallOrderMulGroup<3>,
-{
-    let time = Instant::now();
-    let lifted_trace = batch_traces(dk_domain, traces);
-    let lift_trace_time = time.elapsed().as_millis();
-
-    let mut rng = ChaCha8Rng::from_seed([0u8; 32]);
-    let mut betas = vec![F::ONE; pk.domain.k() as usize];
-    let mut beta_pow = F::random(&mut rng);
-    for beta in betas.iter_mut() {
-        *beta = beta_pow;
-        beta_pow *= beta_pow
-    }
-
-    let beta_time = time.elapsed().as_millis() - lift_trace_time;
-
-    let poly_g = compute_poly_g(pk, &betas, &lifted_trace);
-    let poly_g_time = time.elapsed().as_millis() - beta_time - lift_trace_time;
-
-    let poly_k = dk_domain.divide_by_vanishing_poly(poly_g.clone());
-
-    let gamma = F::random(&mut rng);
-
-    let poly_k_coeff = dk_domain.extended_to_coeff(poly_k);
-
-    // Final check. Eval G(X), K(X) and Z(X) in \gamma
-    let poly_g_coeff = dk_domain.extended_to_coeff(poly_g);
-    let g_in_gamma = eval_polynomial(&poly_g_coeff, gamma);
-    let k_in_gamma = eval_polynomial(&poly_k_coeff, gamma);
-    let z_in_gamma = gamma.pow_vartime([dk_domain.n]) - F::ONE;
-
-    assert_ne!(g_in_gamma, F::ZERO);
-    assert_eq!(g_in_gamma, k_in_gamma * z_in_gamma);
-
-    let res = fold_traces(dk_domain, traces, &gamma);
-    let rest_time = time.elapsed().as_millis() - poly_g_time - beta_time - lift_trace_time;
-
-    println!("    Lift trace time      : {:?}ms", lift_trace_time);
-    println!("    Beta powers time     : {:?}ms", beta_time);
-    println!("    Poly G time          : {:?}ms", poly_g_time);
-    println!("    Rest time            : {:?}ms", rest_time);
-
-    res
-}
-
 /// Tasks to clean this up a bit:
 /// We should also start a proper interface for folding. In this way, all
 /// instances (meaning all challenges included) can be verified.

@@ -117,7 +117,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
             })
             .collect::<Result<Vec<_>, Error>>()?;
 
-        let mut beta: F = transcript.squeeze_challenge();
+        self.beta = transcript.squeeze_challenge();
 
         let _poly_k: CS::Commitment = transcript.read()?;
         let gamma: F = transcript.squeeze_challenge();
