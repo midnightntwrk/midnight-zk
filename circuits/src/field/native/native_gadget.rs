@@ -680,14 +680,14 @@ where
     }
 }
 
-impl<F: PrimeField> AssertionInstructions<F, [AssignedByte<F>; 32]>
+impl<F: PrimeField, const N: usize> AssertionInstructions<F, [AssignedByte<F>; N]>
     for NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>
 {
     fn assert_equal(
         &self,
         layouter: &mut impl Layouter<F>,
-        x: &[AssignedByte<F>; 32],
-        y: &[AssignedByte<F>; 32],
+        x: &[AssignedByte<F>; N],
+        y: &[AssignedByte<F>; N],
     ) -> Result<(), Error> {
         x.iter().zip(y.iter()).try_for_each(|(x, y)| self.assert_equal(layouter, x, y))
     }
@@ -695,8 +695,8 @@ impl<F: PrimeField> AssertionInstructions<F, [AssignedByte<F>; 32]>
     fn assert_not_equal(
         &self,
         layouter: &mut impl Layouter<F>,
-        x: &[AssignedByte<F>; 32],
-        y: &[AssignedByte<F>; 32],
+        x: &[AssignedByte<F>; N],
+        y: &[AssignedByte<F>; N],
     ) -> Result<(), Error> {
         // TODO: This can be optimized by first aggregating as many bytes as possible in
         // a single AssignedNative and only then comparing chunk-wise.
@@ -711,8 +711,8 @@ impl<F: PrimeField> AssertionInstructions<F, [AssignedByte<F>; 32]>
     fn assert_equal_to_fixed(
         &self,
         layouter: &mut impl Layouter<F>,
-        x: &[AssignedByte<F>; 32],
-        constant: [u8; 32],
+        x: &[AssignedByte<F>; N],
+        constant: [u8; N],
     ) -> Result<(), Error> {
         x.iter()
             .zip(constant.iter())
@@ -722,8 +722,8 @@ impl<F: PrimeField> AssertionInstructions<F, [AssignedByte<F>; 32]>
     fn assert_not_equal_to_fixed(
         &self,
         layouter: &mut impl Layouter<F>,
-        x: &[AssignedByte<F>; 32],
-        constant: [u8; 32],
+        x: &[AssignedByte<F>; N],
+        constant: [u8; N],
     ) -> Result<(), Error> {
         // TODO: This can be optimized by first aggregating as many bytes as possible in
         // a single AssignedNative and only then comparing chunk-wise.
