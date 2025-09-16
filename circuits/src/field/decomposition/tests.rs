@@ -46,9 +46,7 @@ fn test_decompose_variable_in_cpu() {
     let mut rng = ChaCha8Rng::from_entropy();
 
     // sample 6 random limb sizes in the range (0..16)
-    let mut limb_sizes = (0..6)
-        .map(|_| rng.gen_range(0..16usize))
-        .collect::<Vec<_>>();
+    let mut limb_sizes = (0..6).map(|_| rng.gen_range(0..16usize)).collect::<Vec<_>>();
     // add at least a non-zero limb size
     limb_sizes.push(rng.gen_range(1..16usize));
 
@@ -190,10 +188,7 @@ where
             }
         };
 
-        let terms = terms_owned
-            .iter()
-            .map(|(c, v)| (*c, v.clone()))
-            .collect::<Vec<_>>();
+        let terms = terms_owned.iter().map(|(c, v)| (*c, v.clone())).collect::<Vec<_>>();
 
         let lc_result = native_chip.linear_combination(&mut layouter, terms.as_slice(), F::ZERO)?;
 
@@ -232,11 +227,8 @@ fn run_decomposition_chip_variable_test<const NR_COLS: usize>() {
     let max_bound: u128 = 1 << limb_sizes.iter().sum::<usize>();
     let x = Fp::from_u128(rng.gen_range(0..max_bound));
 
-    let non_zero_limb_sizes = limb_sizes
-        .iter()
-        .filter(|x| !x.is_zero())
-        .copied()
-        .collect::<Vec<_>>();
+    let non_zero_limb_sizes =
+        limb_sizes.iter().filter(|x| !x.is_zero()).copied().collect::<Vec<_>>();
     let expected = decompose_in_variable_limbsizes(&x, non_zero_limb_sizes.as_slice());
 
     let circuit_variable = TestDecompositionCircuit::<Fp, NR_COLS> {

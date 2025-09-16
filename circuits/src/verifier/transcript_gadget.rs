@@ -93,10 +93,7 @@ impl<S: SelfEmulation> TranscriptGadget<S> {
         scalar: &AssignedNative<S::F>,
     ) -> Result<(), Error> {
         self.input_len += 1;
-        let state = self
-            .sponge_state
-            .as_mut()
-            .expect("You must init the transcript gadget");
+        let state = self.sponge_state.as_mut().expect("You must init the transcript gadget");
         self.sponge_chip.absorb(layouter, state, &[scalar.clone()])
     }
 
@@ -110,10 +107,7 @@ impl<S: SelfEmulation> TranscriptGadget<S> {
 
         self.input_len += pis.len();
 
-        let state = self
-            .sponge_state
-            .as_mut()
-            .expect("You must init the transcript gadget");
+        let state = self.sponge_state.as_mut().expect("You must init the transcript gadget");
         self.sponge_chip.absorb(layouter, state, &pis)
     }
 
@@ -122,10 +116,7 @@ impl<S: SelfEmulation> TranscriptGadget<S> {
         &mut self,
         layouter: &mut impl Layouter<S::F>,
     ) -> Result<AssignedNative<S::F>, Error> {
-        let state = self
-            .sponge_state
-            .as_mut()
-            .expect("You must init the transcript gadget");
+        let state = self.sponge_state.as_mut().expect("You must init the transcript gadget");
         self.sponge_chip.squeeze(layouter, state)
     }
 
@@ -135,10 +126,7 @@ impl<S: SelfEmulation> TranscriptGadget<S> {
         &mut self,
         layouter: &mut impl Layouter<S::F>,
     ) -> Result<S::AssignedPoint, Error> {
-        let reader = self
-            .transcript_reader
-            .as_mut()
-            .expect("You must init the transcript gadget");
+        let reader = self.transcript_reader.as_mut().expect("You must init the transcript gadget");
         // If an error, do not fail, assign a default point instead.
         // (This allows us to parse dummy proofs.)
         let point: Value<S::C> = match reader.read::<S::C>() {
@@ -158,10 +146,7 @@ impl<S: SelfEmulation> TranscriptGadget<S> {
         &mut self,
         layouter: &mut impl Layouter<S::F>,
     ) -> Result<AssignedNative<S::F>, Error> {
-        let reader = self
-            .transcript_reader
-            .as_mut()
-            .expect("You must init the transcript gadget");
+        let reader = self.transcript_reader.as_mut().expect("You must init the transcript gadget");
         // If an error, do not fail, assign a default scalar instead.
         // (This allows us to parse dummy proofs.)
         let scalar: Value<S::F> = match reader.read::<S::F>() {

@@ -123,7 +123,7 @@ impl Relation for SchnorrExample {
         let generator: AssignedNativePoint<Jubjub> =
             (std_lib.jubjub()).assign_fixed(layouter, <JubjubSubgroup as Group>::generator())?;
 
-        let sig_e = (std_lib.jubjub()).scalar_from_le_bytes(layouter, &sig_e_bytes)?;
+        let sig_e = std_lib.jubjub().scalar_from_le_bytes(layouter, &sig_e_bytes)?;
 
         // 1. rv = s * G + e * Pk
         let rv =

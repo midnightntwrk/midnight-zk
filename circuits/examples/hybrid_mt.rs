@@ -240,10 +240,7 @@ impl Relation for HybridMtExample {
         // The splitting in words is checked in the sha_gadget.
 
         // First we witness the preimage.
-        let input_bytes = witness
-            .clone()
-            .map(|mp| mp.leaf_bytes)
-            .transpose_vec(INPUT_BYTES);
+        let input_bytes = witness.clone().map(|mp| mp.leaf_bytes).transpose_vec(INPUT_BYTES);
 
         // Assign input u32 words.
         let assigned_input_bytes = std_lib.assign_many(layouter, input_bytes.as_slice())?;
@@ -311,10 +308,9 @@ impl Relation for HybridMtExample {
             .collect::<Result<Vec<AssignedBit<F>>, Error>>()?;
 
         // Compute root nodes.
-        let root = assigned_input_words
-            .iter()
-            .zip(assigned_input_positions.iter())
-            .try_fold(leaf, |acc, (x, pos)| {
+        let root = assigned_input_words.iter().zip(assigned_input_positions.iter()).try_fold(
+            leaf,
+            |acc, (x, pos)| {
                 // Choose the left child for hashing:
                 // If pos is 1 (sibling on right) choose the current node else the sibling.
                 let left = std_lib.select(layouter, pos, &acc, x)?;
@@ -325,7 +321,8 @@ impl Relation for HybridMtExample {
 
                 // Perform the hash.
                 std_lib.poseidon(layouter, &[left, right, zero.clone()])
-            })?;
+            },
+        )?;
 
         std_lib.constrain_as_public_input(layouter, &root)
     }

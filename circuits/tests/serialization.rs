@@ -25,6 +25,7 @@ use midnight_proofs::{
     plonk::Error,
     utils::SerdeFormat,
 };
+use serial_test::serial;
 
 type F = midnight_curves::Fq;
 
@@ -125,17 +126,23 @@ fn vk_serde_test(architecture: ZkStdLibArch, write_format: SerdeFormat, read_for
     vk.write(&mut buffer, write_format).unwrap();
 
     println!("VK buffer length after write: {}", buffer.len());
+    println!("usize length: {:?}", std::mem::size_of::<usize>());
 
     let mut cursor = std::io::Cursor::new(buffer.clone());
+    let serialised_architecture =
+        ZkStdLibArch::read_from_serialized_vk(&mut cursor.clone()).unwrap();
+
     let vk2 = MidnightVK::read(&mut cursor, read_format).unwrap();
 
     let mut buffer2 = Vec::new();
     vk2.write(&mut buffer2, write_format).unwrap();
 
+    assert_eq!(serialised_architecture, architecture);
     assert_eq!(buffer, buffer2);
 }
 
 #[test]
+#[serial]
 fn vk_write_then_read_processed() {
     for arch in ARCHITECTURES {
         vk_serde_test(arch, SerdeFormat::Processed, SerdeFormat::Processed);
@@ -143,6 +150,7 @@ fn vk_write_then_read_processed() {
 }
 
 #[test]
+#[serial]
 fn vk_write_then_read_raw() {
     for arch in ARCHITECTURES {
         vk_serde_test(arch, SerdeFormat::RawBytes, SerdeFormat::RawBytes);
@@ -182,6 +190,7 @@ fn pk_serde_test(architecture: ZkStdLibArch, write_format: SerdeFormat, read_for
     let mut buffer = Vec::new();
     pk.write(&mut buffer, write_format).unwrap();
 
+    println!("Size of usize: {:?}", std::mem::size_of::<usize>());
     println!("PK buffer length after write: {}", buffer.len());
 
     let mut cursor = std::io::Cursor::new(buffer.clone());
@@ -194,6 +203,7 @@ fn pk_serde_test(architecture: ZkStdLibArch, write_format: SerdeFormat, read_for
 }
 
 #[test]
+#[serial]
 fn pk_write_then_read_processed() {
     for arch in ARCHITECTURES {
         pk_serde_test(arch, SerdeFormat::Processed, SerdeFormat::Processed);
@@ -201,6 +211,7 @@ fn pk_write_then_read_processed() {
 }
 
 #[test]
+#[serial]
 fn pk_write_then_read_raw() {
     for arch in ARCHITECTURES {
         pk_serde_test(arch, SerdeFormat::RawBytes, SerdeFormat::RawBytes);

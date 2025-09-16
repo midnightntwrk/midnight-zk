@@ -79,7 +79,7 @@ impl<S: SelfEmulation> Msm<S> {
     ///
     /// # Panics
     ///
-    /// If `bases` and `scalars` do not have the same length.
+    /// If `|bases| != |scalars|`.
     pub fn new(
         bases: &[S::C],
         scalars: &[S::F],
@@ -113,7 +113,7 @@ impl<S: SelfEmulation> Msm<S> {
     ///
     /// # Panics
     ///
-    /// If `bases` and `scalars` do not have the same length.
+    /// If `|bases| != |scalars|`.
     pub fn from_terms(bases: &[S::C], scalars: &[S::F]) -> Self {
         assert_eq!(bases.len(), scalars.len());
         Msm {
@@ -140,11 +140,12 @@ impl<S: SelfEmulation> Msm<S> {
     /// I.e. it computes `<scalars, bases> + <fixed_bases, fixed_base_scalars>`.
     ///
     /// # Panics
-    /// If one of the keys in the `fixed_base_scalars` of the MSM does not
-    /// appear in the tree of `fixed_bases`.
     ///
-    /// Note that the converse is not a problem, i.e., the keys of
-    /// `fixed_bases` can be a superset of the keys of `fixed_base_scalars`.
+    /// If some of the keys in the `fixed_base_scalars` of the MSM do not appear
+    /// in the tree of `fixed_bases`.
+    ///
+    /// Note that the converse is not a problem, i.e., the keys of `fixed_bases`
+    /// can be a superset of the keys of `fixed_base_scalars`.
     pub fn eval(&self, fixed_bases: &BTreeMap<String, S::C>) -> S::C {
         let mut bases = self.bases.clone();
         let mut scalars = self.scalars.clone();
@@ -197,11 +198,11 @@ impl<S: SelfEmulation> Msm<S> {
     ///
     /// If some of the base names exist as a key in `self.fixed_base_scalars`.
     ///
-    /// If some of the provided fixed bases does not appear in `self.bases`
-    /// with the exact required multiplicity.
+    /// If some of the provided fixed bases do not appear in `self.bases` with
+    /// the exact required multiplicity.
     pub fn extract_fixed_bases(&mut self, fixed_bases: &BTreeMap<String, S::C>) {
         assert!(
-            (fixed_bases.keys()).all(|name| !self.fixed_base_scalars.contains_key(name)),
+            fixed_bases.keys().all(|name| !self.fixed_base_scalars.contains_key(name)),
             "fixed_bases should not contain keys (names) that appear in self.fixed_base_scalars"
         );
 
@@ -215,8 +216,7 @@ impl<S: SelfEmulation> Msm<S> {
                 }
                 if &self.bases[i] == fixed_base {
                     found = true;
-                    self.fixed_base_scalars
-                        .insert(name.clone(), self.scalars[i]);
+                    self.fixed_base_scalars.insert(name.clone(), self.scalars[i]);
                     self.bases.remove(i);
                     self.scalars.remove(i);
                     break;
@@ -266,10 +266,7 @@ impl<S: SelfEmulation> InnerValue for AssignedMsm<S> {
 impl<S: SelfEmulation> Instantiable<S::F> for AssignedMsm<S> {
     fn as_public_input(msm: &Msm<S>) -> Vec<S::F> {
         [
-            msm.bases
-                .iter()
-                .flat_map(S::AssignedPoint::as_public_input)
-                .collect::<Vec<_>>(),
+            msm.bases.iter().flat_map(S::AssignedPoint::as_public_input).collect::<Vec<_>>(),
             msm.scalars.clone(),
             msm.fixed_base_scalars.values().copied().collect::<Vec<_>>(),
         ]
@@ -287,11 +284,8 @@ impl<S: SelfEmulation> AssignedMsm<S> {
     /// The committed instance part corresponds to the (fixed and non-fixed)
     /// scalars of the MSM.
     pub fn as_public_input_with_committed_scalars(msm: &Msm<S>) -> (Vec<S::F>, Vec<S::F>) {
-        let normal_instance = msm
-            .bases
-            .iter()
-            .flat_map(S::AssignedPoint::as_public_input)
-            .collect();
+        let normal_instance =
+            msm.bases.iter().flat_map(S::AssignedPoint::as_public_input).collect();
 
         let committed_instance = [
             msm.scalars.clone(),
@@ -317,14 +311,8 @@ impl<S: SelfEmulation> AssignedMsm<S> {
                 .into_iter()
                 .flatten()
                 .collect::<Vec<_>>(),
-            self.scalars
-                .iter()
-                .map(|s| s.clone().scalar)
-                .collect::<Vec<_>>(),
-            self.fixed_base_scalars
-                .values()
-                .map(|s| s.clone().scalar)
-                .collect::<Vec<_>>(),
+            self.scalars.iter().map(|s| s.clone().scalar).collect::<Vec<_>>(),
+            self.fixed_base_scalars.values().map(|s| s.clone().scalar).collect::<Vec<_>>(),
         ]
         .into_iter()
         .flatten()
@@ -383,25 +371,16 @@ impl<S: SelfEmulation> AssignedMsm<S> {
         fixed_base_names: &[String],
         msm_value: Value<Msm<S>>,
     ) -> Result<Self, Error> {
-        let bases_val = msm_value
-            .as_ref()
-            .map(|msm| msm.bases.clone())
-            .transpose_vec(len);
+        let bases_val = msm_value.as_ref().map(|msm| msm.bases.clone()).transpose_vec(len);
 
-        let scalars_val = msm_value
-            .as_ref()
-            .map(|msm| msm.scalars.clone())
-            .transpose_vec(len);
+        let scalars_val = msm_value.as_ref().map(|msm| msm.scalars.clone()).transpose_vec(len);
 
         let fixed_base_scalars_val = msm_value
             .as_ref()
             .map(|msm| {
                 // We only use the keys inside the Value to iterate over it in the right order,
                 // these are then discarded.
-                msm.fixed_base_scalars
-                    .iter()
-                    .map(|s| *s.1)
-                    .collect::<Vec<_>>()
+                msm.fixed_base_scalars.iter().map(|s| *s.1).collect::<Vec<_>>()
             })
             .transpose_vec(fixed_base_names.len());
 
@@ -447,9 +426,7 @@ impl<S: SelfEmulation> AssignedMsm<S> {
         Self {
             scalars: vec![],
             bases: vec![],
-            fixed_base_scalars: [(base_name.to_string(), scalar.clone())]
-                .into_iter()
-                .collect(),
+            fixed_base_scalars: [(base_name.to_string(), scalar.clone())].into_iter().collect(),
         }
     }
 

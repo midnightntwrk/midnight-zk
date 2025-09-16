@@ -172,11 +172,7 @@ where
     msm_scalars.push(C::Scalar::from(1));
     msm_scalars.push(r);
 
-    if (!inner_product::<C>(&msm_scalars, &msm_bases)
-        .to_affine()
-        .is_identity())
-    .into()
-    {
+    if (!inner_product::<C>(&msm_scalars, &msm_bases).to_affine().is_identity()).into() {
         return Err(Error::Opening);
     }
 
@@ -208,10 +204,7 @@ where
     T: Copy + Add<Output = T> + Mul<S, Output = T>,
 {
     assert_eq!(v0.len(), v1.len());
-    v0.iter()
-        .zip(v1.iter())
-        .map(|(v0_i, v1_i)| *v0_i * c0 + *v1_i * c1)
-        .collect()
+    v0.iter().zip(v1.iter()).map(|(v0_i, v1_i)| *v0_i * c0 + *v1_i * c1).collect()
 }
 
 #[cfg(test)]

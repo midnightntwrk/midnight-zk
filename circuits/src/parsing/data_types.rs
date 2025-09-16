@@ -46,18 +46,17 @@ where
     /// Given an assigned byte as a character represented in ASCII,
     /// returns its numeric value as an assigned native.
     ///
-    /// # Unsatisfiable
-    ///  - The input byte is constrained to be an ASCII digit.
+    /// # Unsatisfiable Circuit
+    ///
+    /// If the input byte is not an ASCII digit, i.e. in the range \[48, 57\].
     fn ascii_to_digit(
         &self,
         layouter: &mut impl Layouter<F>,
         byte: &AssignedByte<F>,
     ) -> Result<AssignedNative<F>, Error> {
-        // Digits in ascii are represented by the values [48-58].
+        // Digits in ascii are represented by the values in [48, 57].
         // So substracting 48 gives the represented value.
-        let val = self
-            .native_gadget
-            .add_constant(layouter, &byte.into(), -F::from(48u64))?;
+        let val = self.native_gadget.add_constant(layouter, &byte.into(), -F::from(48u64))?;
         self.native_gadget
             .assert_lower_than_fixed(layouter, &val, &BigUint::from(10u64))?;
         Ok(val)
@@ -67,13 +66,15 @@ where
     /// represented integer as an assigned native.
     /// Leading 0s are allowed.
     ///
-    /// # Unsatisfiable
-    ///  - The input bytes are not valid ascii digits. That is, are outside the
-    ///    [48-58] range.
+    /// # Unsatisfiable Circuit
+    ///
+    /// If the input bytes are not valid ASCII digits, i.e. in the range
+    /// \[48, 57\].
     ///
     /// # Panics
-    ///  - The input length exceeds the number of digits that can fit in the
-    ///    native field.
+    ///
+    /// If |input| exceeds the maximum number of digits that can be reliably
+    /// stored in an `F` element.
     pub fn ascii_to_int(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -105,8 +106,8 @@ where
     /// native value. This function does not check the validity of the date,
     /// i.e. (in DDMMYYYY, NoSep) format, "32011990" will be accepted as 32
     /// January 1990. Concretely, no range check is performed on the values,
-    /// so implicitly all *dates* in the range [0-99] / [0-99] / [0-9999]
-    /// are accepted.
+    /// so implicitly all *dates* in the range 0-99 / 0-99 / 0-9999 are
+    /// accepted.
     pub fn date_to_int(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -244,11 +245,7 @@ mod tests {
     {
         const K: u32 = 10;
         let circuit = TestCircuit::<F, NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>> {
-            string: string
-                .iter()
-                .map(|x| F::from(*x as u64))
-                .map(Value::known)
-                .collect(),
+            string: string.iter().map(|x| F::from(*x as u64)).map(Value::known).collect(),
             expected: F::from(expected),
             operation,
             _marker: PhantomData,
@@ -310,10 +307,8 @@ mod tests {
             (b"19700101", format4, 19700101, true),
             (b"19701225", format4, 19701225, true),
         ];
-        test_vecs
-            .iter()
-            .for_each(|(input, format, expected, must_pass)| {
-                run::<F>(input, *expected, Operation::ParseDate(*format), *must_pass)
-            });
+        test_vecs.iter().for_each(|(input, format, expected, must_pass)| {
+            run::<F>(input, *expected, Operation::ParseDate(*format), *must_pass)
+        });
     }
 }

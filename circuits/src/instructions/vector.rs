@@ -63,9 +63,9 @@ where
     /// The trimmed elements will not be changed by filler elements,
     /// they will remain in the buffer but not as part of the effective payload.
     ///
-    /// # Unsatisfiable
+    /// # Unsatisfiable Circuit
     ///
-    ///   If the vector length < `n_elems`.
+    /// If the vector length < `n_elems`.
     fn trim_beginning(
         &self,
         layouter: &mut impl Layouter<F>,

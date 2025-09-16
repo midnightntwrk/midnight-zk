@@ -252,19 +252,14 @@ where
             let lambdas = lambda.bigint_limbs();
 
             let px2s = pxs.clone().map(|pxs| pair_wise_prod(&pxs, &pxs));
-            let lpys = lambdas
-                .clone()
-                .zip(pys.clone())
-                .map(|(ls, pys)| pair_wise_prod(&ls, &pys));
+            let lpys = lambdas.clone().zip(pys.clone()).map(|(ls, pys)| pair_wise_prod(&ls, &pys));
 
             let (k_min, u_max) = tangent_config.u_bounds.clone();
 
             //   3 * (2 * sum_px + sum_px2) + 1
             // - 2 * (sum_py + sum_lambda + sum_lpy) = (u + k_min) * m
             let expr = pxs.clone().map(|v| BI::from(6) * sum_bigints(&bs, &v))
-                + px2s
-                    .clone()
-                    .map(|v| BI::from(3) * sum_bigints(&bs2, &v) + BI::one())
+                + px2s.clone().map(|v| BI::from(3) * sum_bigints(&bs2, &v) + BI::one())
                 - (pys.clone().map(|v| sum_bigints(&bs, &v))
                     + lambdas.clone().map(|v| sum_bigints(&bs, &v))
                     + lpys.clone().map(|v| sum_bigints(&bs2, &v)))
@@ -272,30 +267,27 @@ where
             let u = expr.map(|e| compute_u(m, &e, (&k_min, &u_max), cond.value()));
 
             let vs_values =
-                moduli
-                    .iter()
-                    .zip(tangent_config.vs_bounds.iter())
-                    .map(|(mj, vj_bounds)| {
-                        let bs_mj = bs.iter().map(|b| b.rem(mj)).collect::<Vec<_>>();
-                        let bs2_mj = bs2.iter().map(|b| b.rem(mj)).collect::<Vec<_>>();
+                moduli.iter().zip(tangent_config.vs_bounds.iter()).map(|(mj, vj_bounds)| {
+                    let bs_mj = bs.iter().map(|b| b.rem(mj)).collect::<Vec<_>>();
+                    let bs2_mj = bs2.iter().map(|b| b.rem(mj)).collect::<Vec<_>>();
 
-                        let (lj_min, vj_max) = vj_bounds.clone();
+                    let (lj_min, vj_max) = vj_bounds.clone();
 
-                        //    3 * (2 * sum_px_mj + sum_px2_mj) + 1
-                        //  - 2 * (sum_py_mj + sum_lambda_mj + sum_lpy_mj)
-                        //  - u * (m % mj) - (k_min * m) % mj = (vj + lj_min) * mj
-                        let expr_mj = pxs.clone().map(|v| BI::from(6) * sum_bigints(&bs_mj, &v))
-                            + px2s
-                                .clone()
-                                .map(|v| BI::from(3) * sum_bigints(&bs2_mj, &v) + BI::from(1))
-                            - (pys.clone().map(|v| sum_bigints(&bs_mj, &v))
-                                + lambdas.clone().map(|v| sum_bigints(&bs_mj, &v))
-                                + lpys.clone().map(|v| sum_bigints(&bs2_mj, &v)))
-                            .map(|v| BI::from(2) * v);
-                        expr_mj.zip(u.clone()).map(|(e, u)| {
-                            compute_vj(m, mj, &e, &u, &k_min, (&lj_min, &vj_max), cond.value())
-                        })
-                    });
+                    //    3 * (2 * sum_px_mj + sum_px2_mj) + 1
+                    //  - 2 * (sum_py_mj + sum_lambda_mj + sum_lpy_mj)
+                    //  - u * (m % mj) - (k_min * m) % mj = (vj + lj_min) * mj
+                    let expr_mj = pxs.clone().map(|v| BI::from(6) * sum_bigints(&bs_mj, &v))
+                        + px2s
+                            .clone()
+                            .map(|v| BI::from(3) * sum_bigints(&bs2_mj, &v) + BI::from(1))
+                        - (pys.clone().map(|v| sum_bigints(&bs_mj, &v))
+                            + lambdas.clone().map(|v| sum_bigints(&bs_mj, &v))
+                            + lpys.clone().map(|v| sum_bigints(&bs2_mj, &v)))
+                        .map(|v| BI::from(2) * v);
+                    expr_mj.zip(u.clone()).map(|(e, u)| {
+                        compute_vj(m, mj, &e, &u, &k_min, (&lj_min, &vj_max), cond.value())
+                    })
+                });
 
             tangent_config.q_tangent.enable(&mut region, offset)?;
 
@@ -349,19 +341,11 @@ where
             let u_range_check = (u_cell, u_max);
 
             // Every vj_cell will be range-checked in [0, vj_max)
-            let vs_max = tangent_config
-                .vs_bounds
-                .clone()
-                .into_iter()
-                .map(|(_, vj_max)| vj_max);
-            let vs_range_checks = vs_cells
-                .into_iter()
-                .zip(vs_max.collect::<Vec<_>>())
-                .collect::<Vec<_>>();
+            let vs_max = tangent_config.vs_bounds.clone().into_iter().map(|(_, vj_max)| vj_max);
+            let vs_range_checks =
+                vs_cells.into_iter().zip(vs_max.collect::<Vec<_>>()).collect::<Vec<_>>();
 
-            Ok([u_range_check]
-                .into_iter()
-                .chain(vs_range_checks.into_iter()))
+            Ok([u_range_check].into_iter().chain(vs_range_checks.into_iter()))
         },
     )?;
 

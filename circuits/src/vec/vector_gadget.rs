@@ -82,10 +82,8 @@ where
             .native_gadget
             .assign_many(layouter, &vec![Value::known(T::FILLER); L - M])?;
 
-        let buffer: [T; L] = [extra_pad.as_slice(), input.buffer.as_slice()]
-            .concat()
-            .try_into()
-            .unwrap();
+        let buffer: [T; L] =
+            [extra_pad.as_slice(), input.buffer.as_slice()].concat().try_into().unwrap();
 
         Ok(AssignedVector {
             buffer,
@@ -144,10 +142,7 @@ where
             })
             .collect::<Result<Vec<_>, Error>>()?;
 
-        Ok([result, last_chunk]
-            .concat()
-            .try_into()
-            .expect("Mismatch in vector lengths"))
+        Ok([result, last_chunk].concat().try_into().expect("Mismatch in vector lengths"))
     }
 
     fn get_limits(
@@ -346,8 +341,7 @@ where
         y: &AssignedVector<F, T, M, A>,
     ) -> Result<(), Error> {
         let is_equal = self.is_equal(layouter, x, y)?;
-        self.native_gadget
-            .assert_equal_to_fixed(layouter, &is_equal, true)
+        self.native_gadget.assert_equal_to_fixed(layouter, &is_equal, true)
     }
 
     fn assert_not_equal(
@@ -357,8 +351,7 @@ where
         y: &AssignedVector<F, T, M, A>,
     ) -> Result<(), Error> {
         let x_eq_y = self.is_equal(layouter, x, y)?;
-        self.native_gadget
-            .assert_equal_to_fixed(layouter, &x_eq_y, false)
+        self.native_gadget.assert_equal_to_fixed(layouter, &x_eq_y, false)
     }
 
     fn assert_equal_to_fixed(
@@ -386,8 +379,7 @@ where
         constant: <AssignedVector<F, T, M, A> as InnerValue>::Element,
     ) -> Result<(), Error> {
         let is_equal = self.is_equal_to_fixed(layouter, x, constant)?;
-        self.native_gadget
-            .assert_equal_to_fixed(layouter, &is_equal, false)
+        self.native_gadget.assert_equal_to_fixed(layouter, &is_equal, false)
     }
 }
 
@@ -591,9 +583,7 @@ mod tests {
 
         let k = 14;
 
-        MockProver::run(k, &circuit, vec![vec![], vec![]])
-            .unwrap()
-            .assert_satisfied();
+        MockProver::run(k, &circuit, vec![vec![], vec![]]).unwrap().assert_satisfied();
 
         if cost_model {
             circuit_to_json(
@@ -618,9 +608,7 @@ mod tests {
 
         let k = 14;
 
-        MockProver::run(k, &circuit, vec![vec![], vec![]])
-            .unwrap()
-            .assert_satisfied();
+        MockProver::run(k, &circuit, vec![vec![], vec![]]).unwrap().assert_satisfied();
 
         if cost_model {
             circuit_to_json(
@@ -645,9 +633,7 @@ mod tests {
 
         let k = 14;
 
-        MockProver::run(k, &circuit, vec![vec![], vec![]])
-            .unwrap()
-            .assert_satisfied();
+        MockProver::run(k, &circuit, vec![vec![], vec![]]).unwrap().assert_satisfied();
 
         if cost_model {
             circuit_to_json(
@@ -677,9 +663,7 @@ mod tests {
 
         let k = 14;
 
-        MockProver::run(k, &circuit, vec![vec![], vec![]])
-            .unwrap()
-            .assert_satisfied();
+        MockProver::run(k, &circuit, vec![vec![], vec![]]).unwrap().assert_satisfied();
 
         if cost_model {
             circuit_to_json(

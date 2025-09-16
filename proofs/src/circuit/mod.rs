@@ -220,8 +220,7 @@ impl<F: Field> Region<'_, F> {
         A: Fn() -> AR,
         AR: Into<String>,
     {
-        self.region
-            .enable_selector(&|| annotation().into(), selector, offset)
+        self.region.enable_selector(&|| annotation().into(), selector, offset)
     }
 
     /// Allows the circuit implementor to name/annotate a Column within a Region
@@ -235,8 +234,7 @@ impl<F: Field> Region<'_, F> {
         AR: Into<String>,
         T: Into<Column<Any>>,
     {
-        self.region
-            .name_column(&|| annotation().into(), column.into());
+        self.region.name_column(&|| annotation().into(), column.into());
     }
 
     /// Assign an advice column value (witness).
@@ -258,13 +256,12 @@ impl<F: Field> Region<'_, F> {
     {
         let mut value = Value::unknown();
         let cell =
-            self.region
-                .assign_advice(&|| annotation().into(), column, offset, &mut || {
-                    let v = to();
-                    let value_f = v.to_field();
-                    value = v;
-                    value_f
-                })?;
+            self.region.assign_advice(&|| annotation().into(), column, offset, &mut || {
+                let v = to();
+                let value_f = v.to_field();
+                value = v;
+                value_f
+            })?;
 
         Ok(AssignedCell {
             value,
@@ -371,13 +368,12 @@ impl<F: Field> Region<'_, F> {
     {
         let mut value = Value::unknown();
         let cell =
-            self.region
-                .assign_fixed(&|| annotation().into(), column, offset, &mut || {
-                    let v = to();
-                    let value_f = v.to_field();
-                    value = v;
-                    value_f
-                })?;
+            self.region.assign_fixed(&|| annotation().into(), column, offset, &mut || {
+                let v = to();
+                let value_f = v.to_field();
+                value = v;
+                value_f
+            })?;
 
         Ok(AssignedCell {
             value,
@@ -438,10 +434,9 @@ impl<F: Field> Table<'_, F> {
         A: Fn() -> AR,
         AR: Into<String>,
     {
-        self.table
-            .assign_cell(&|| annotation().into(), column, offset, &mut || {
-                to().into_field()
-            })
+        self.table.assign_cell(&|| annotation().into(), column, offset, &mut || {
+            to().into_field()
+        })
     }
 }
 
@@ -461,7 +456,7 @@ pub trait Layouter<F: Field> {
     /// the circuit. Outside this closure, the `Layouter` is allowed to
     /// optimise as it sees fit.
     ///
-    /// ```ignore
+    /// ```text
     /// fn assign_region(&mut self, || "region name", |region| {
     ///     let config = chip.config();
     ///     region.assign_advice(config.a, offset, || { Some(value)});
@@ -475,7 +470,7 @@ pub trait Layouter<F: Field> {
 
     /// Assign a table region to an absolute row number.
     ///
-    /// ```ignore
+    /// ```text
     /// fn assign_table(&mut self, || "table name", |table| {
     ///     let config = chip.config();
     ///     table.assign_fixed(config.a, offset, || { Some(value)});

@@ -127,10 +127,8 @@ pub(crate) mod tests {
             let assign_chip = AssignChip::new_from_scratch(&config.1);
 
             for input in self.inputs.iter() {
-                let vec_input = input
-                    .iter()
-                    .map(|input| Value::known(input.clone()))
-                    .collect::<Vec<_>>();
+                let vec_input =
+                    input.iter().map(|input| Value::known(input.clone())).collect::<Vec<_>>();
                 let inputs = assign_chip.assign_many(&mut layouter, &vec_input)?;
                 let expected_output =
                     <HashChip as HashCPU<Input::Element, Output::Element>>::hash(input);
@@ -161,9 +159,7 @@ pub(crate) mod tests {
 
         let inputs = (0..10).map(|_| {
             let random_size: usize = rng.gen_range(1..10);
-            (0..random_size)
-                .map(|_| Input::sample_inner(&mut rng))
-                .collect::<Vec<_>>()
+            (0..random_size).map(|_| Input::sample_inner(&mut rng)).collect::<Vec<_>>()
         });
 
         let circuit = TestCircuit::<F, Input, Output, HashChip, AssignChip> {
@@ -171,9 +167,7 @@ pub(crate) mod tests {
             _marker: PhantomData,
         };
 
-        MockProver::run(k, &circuit, vec![vec![], vec![]])
-            .unwrap()
-            .assert_satisfied();
+        MockProver::run(k, &circuit, vec![vec![], vec![]]).unwrap().assert_satisfied();
 
         if cost_model {
             circuit_to_json(k, chip_name, "hash", 0, circuit);
@@ -261,18 +255,14 @@ pub(crate) mod tests {
     {
         let mut rng = ChaCha12Rng::seed_from_u64(0xf007ba11);
 
-        let input = (0..size)
-            .map(|_| Input::sample_inner(&mut rng))
-            .collect::<Vec<_>>();
+        let input = (0..size).map(|_| Input::sample_inner(&mut rng)).collect::<Vec<_>>();
 
         let circuit = TestVarHashCircuit::<F, Input, Output, VarHashChip, M, A> {
             input,
             _marker: PhantomData,
         };
 
-        MockProver::run(k, &circuit, vec![vec![], vec![]])
-            .unwrap()
-            .assert_satisfied();
+        MockProver::run(k, &circuit, vec![vec![], vec![]]).unwrap().assert_satisfied();
 
         if cost_model {
             circuit_to_json(k, chip_name, "hash", 0, circuit);

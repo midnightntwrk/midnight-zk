@@ -88,10 +88,8 @@ impl MulConfig {
             .iter()
             .map(|mj| {
                 let base_powers_mj = base_powers.iter().map(|b| b.rem(mj)).collect::<Vec<_>>();
-                let double_base_powers_mj = double_base_powers
-                    .iter()
-                    .map(|b| b.rem(mj))
-                    .collect::<Vec<_>>();
+                let double_base_powers_mj =
+                    double_base_powers.iter().map(|b| b.rem(mj)).collect::<Vec<_>>();
                 let max_sum_xy_mj = sum_bigints(&double_base_powers_mj, &limbs_max2);
                 let max_sum_z_mj = sum_bigints(&base_powers_mj, &limbs_max);
                 let max_sum_x_mj = max_sum_z_mj.clone();
@@ -150,10 +148,8 @@ impl MulConfig {
                 .zip(vs_bounds.iter())
                 .map(|((mj, vj), vj_bounds)| {
                     let (lj_min, _vj_max) = vj_bounds;
-                    let bij_powers_mj = double_base_powers
-                        .iter()
-                        .map(|b| b.rem(mj))
-                        .collect::<Vec<_>>();
+                    let bij_powers_mj =
+                        double_base_powers.iter().map(|b| b.rem(mj)).collect::<Vec<_>>();
                     let bi_powers_mj = base_powers.iter().map(|b| b.rem(mj)).collect::<Vec<_>>();
                     //  sum_xy_mj + sum_x_mj + sum_y_mj - sum_z_mj - u * (m % mj) - (k_min * m) % mj
                     //    - (vj + lj_min) * mj = 0
@@ -216,10 +212,7 @@ where
             let ys = y.bigint_limbs();
             let zs = z.bigint_limbs();
 
-            let xys = xs
-                .clone()
-                .zip(ys.clone())
-                .map(|(xs, ys)| pair_wise_prod(&xs, &ys));
+            let xys = xs.clone().zip(ys.clone()).map(|(xs, ys)| pair_wise_prod(&xs, &ys));
             let (k_min, u_max) = mul_config.u_bounds.clone();
 
             let expr = xys.clone().map(|v| sum_bigints(&double_base_powers, &v))
@@ -229,34 +222,28 @@ where
             let u = expr.map(|e| compute_u(m, &e, (&k_min, &u_max), Value::known(true)));
 
             let vs_values =
-                moduli
-                    .iter()
-                    .zip(mul_config.vs_bounds.iter())
-                    .map(|(mj, vj_bounds)| {
-                        let base_powers_mj =
-                            base_powers.iter().map(|b| b.rem(mj)).collect::<Vec<_>>();
-                        let double_base_powers_mj = double_base_powers
-                            .iter()
-                            .map(|b| b.rem(mj))
-                            .collect::<Vec<_>>();
-                        let (lj_min, vj_max) = vj_bounds.clone();
+                moduli.iter().zip(mul_config.vs_bounds.iter()).map(|(mj, vj_bounds)| {
+                    let base_powers_mj = base_powers.iter().map(|b| b.rem(mj)).collect::<Vec<_>>();
+                    let double_base_powers_mj =
+                        double_base_powers.iter().map(|b| b.rem(mj)).collect::<Vec<_>>();
+                    let (lj_min, vj_max) = vj_bounds.clone();
 
-                        let expr_mj = xys.clone().map(|v| sum_bigints(&double_base_powers_mj, &v))
-                            + xs.clone().map(|v| sum_bigints(&base_powers_mj, &v))
-                            + ys.clone().map(|v| sum_bigints(&base_powers_mj, &v))
-                            - zs.clone().map(|v| sum_bigints(&base_powers_mj, &v));
-                        expr_mj.zip(u.clone()).map(|(e, u)| {
-                            compute_vj(
-                                m,
-                                mj,
-                                &e,
-                                &u,
-                                &k_min,
-                                (&lj_min, &vj_max),
-                                Value::known(true),
-                            )
-                        })
-                    });
+                    let expr_mj = xys.clone().map(|v| sum_bigints(&double_base_powers_mj, &v))
+                        + xs.clone().map(|v| sum_bigints(&base_powers_mj, &v))
+                        + ys.clone().map(|v| sum_bigints(&base_powers_mj, &v))
+                        - zs.clone().map(|v| sum_bigints(&base_powers_mj, &v));
+                    expr_mj.zip(u.clone()).map(|(e, u)| {
+                        compute_vj(
+                            m,
+                            mj,
+                            &e,
+                            &u,
+                            &k_min,
+                            (&lj_min, &vj_max),
+                            Value::known(true),
+                        )
+                    })
+                });
 
             mul_config.q_mul.enable(&mut region, offset)?;
 
@@ -300,20 +287,12 @@ where
             let u_range_check = (u_cell, u_max);
 
             // Every vj_cell will be range-checked in [0, vj_max)
-            let vs_max = mul_config
-                .vs_bounds
-                .clone()
-                .into_iter()
-                .map(|(_, vj_max)| vj_max.clone());
-            let vs_range_checks = vs_cells
-                .into_iter()
-                .zip(vs_max.collect::<Vec<_>>())
-                .collect::<Vec<_>>();
+            let vs_max = mul_config.vs_bounds.clone().into_iter().map(|(_, vj_max)| vj_max.clone());
+            let vs_range_checks =
+                vs_cells.into_iter().zip(vs_max.collect::<Vec<_>>()).collect::<Vec<_>>();
 
             // Assert all range-checks
-            Ok([u_range_check]
-                .into_iter()
-                .chain(vs_range_checks.into_iter()))
+            Ok([u_range_check].into_iter().chain(vs_range_checks.into_iter()))
         },
     )?;
     range_checks.try_for_each(|(cell, ubound)| {

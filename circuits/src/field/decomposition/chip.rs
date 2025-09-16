@@ -252,10 +252,7 @@ impl<F: PrimeField> P2RDecompositionChip<F> {
                 let mut offset = 0;
 
                 // compute the range_check tags for each column
-                let tags = limb_sizes
-                    .chunks(nr_pow2range_cols)
-                    .map(|x| x[0])
-                    .collect::<Vec<_>>();
+                let tags = limb_sizes.chunks(nr_pow2range_cols).map(|x| x[0]).collect::<Vec<_>>();
 
                 // compute the linear combination terms, i.e. (coef, limb) pairs
                 // by convention the coefficient of a zero sized limb is 0 so no constraint
@@ -266,10 +263,7 @@ impl<F: PrimeField> P2RDecompositionChip<F> {
                     .transpose_vec(limb_sizes.len());
 
                 // we create the terms for the linear combination.
-                let terms = coefficients
-                    .into_iter()
-                    .zip(limbs.iter().copied())
-                    .collect::<Vec<_>>();
+                let terms = coefficients.into_iter().zip(limbs.iter().copied()).collect::<Vec<_>>();
 
                 // assign terms for linear combination
                 let native_chip = self.native_chip();
@@ -377,10 +371,8 @@ impl<F: PrimeField> CoreDecompositionInstructions<F> for P2RDecompositionChip<F>
                         .transpose_vec(limb_sizes.len());
 
                     // we create the terms for the linear combination
-                    let terms = coefficients
-                        .into_iter()
-                        .zip(limbs.iter().copied())
-                        .collect::<Vec<_>>();
+                    let terms =
+                        coefficients.into_iter().zip(limbs.iter().copied()).collect::<Vec<_>>();
 
                     // assign terms for linear combination to assert correct decomposition
                     let (assigned_limbs, assigned_result) =

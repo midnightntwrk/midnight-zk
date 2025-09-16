@@ -80,11 +80,8 @@ where
 
         for current_phase in vk.cs.phases() {
             for advice_commitments in advice_commitments.iter_mut() {
-                for (phase, commitment) in vk
-                    .cs
-                    .advice_column_phase
-                    .iter()
-                    .zip(advice_commitments.iter_mut())
+                for (phase, commitment) in
+                    vk.cs.advice_column_phase.iter().zip(advice_commitments.iter_mut())
                 {
                     if current_phase == *phase {
                         *commitment = transcript.read()?;
@@ -171,7 +168,7 @@ where
     })
 }
 
-/// Given a [VerifierTrace], this function computes the opening challenge, x,
+/// Given a VerifierTrace, this function computes the opening challenge, x,
 /// and proceeds to verify the algebraic constraints with the claimed
 /// evaluations. This function does not verify the PCS proof.
 ///
@@ -225,18 +222,15 @@ where
 
     let instance_evals = {
         let (min_rotation, max_rotation) =
-            vk.cs
-                .instance_queries
-                .iter()
-                .fold((0, 0), |(min, max), (_, rotation)| {
-                    if rotation.0 < min {
-                        (rotation.0, max)
-                    } else if rotation.0 > max {
-                        (min, rotation.0)
-                    } else {
-                        (min, max)
-                    }
-                });
+            vk.cs.instance_queries.iter().fold((0, 0), |(min, max), (_, rotation)| {
+                if rotation.0 < min {
+                    (rotation.0, max)
+                } else if rotation.0 > max {
+                    (min, rotation.0)
+                } else {
+                    (min, max)
+                }
+            });
         let max_instance_len = instances
             .iter()
             .flat_map(|instance| instance.iter().map(|instance| instance.len()))
@@ -308,14 +302,11 @@ where
     // commitments open to the correct values.
     let vanishing = {
         let blinding_factors = vk.cs.blinding_factors();
-        let l_evals = vk
-            .domain
-            .l_i_range(x, xn, (-((blinding_factors + 1) as i32))..=0);
+        let l_evals = vk.domain.l_i_range(x, xn, (-((blinding_factors + 1) as i32))..=0);
         assert_eq!(l_evals.len(), 2 + blinding_factors);
         let l_last = l_evals[0];
-        let l_blind: F = l_evals[1..(1 + blinding_factors)]
-            .iter()
-            .fold(F::ZERO, |acc, eval| acc + eval);
+        let l_blind: F =
+            l_evals[1..(1 + blinding_factors)].iter().fold(F::ZERO, |acc, eval| acc + eval);
         let l_0 = l_evals[1 + blinding_factors];
 
         // Compute the expected value of h(x)
@@ -446,17 +437,13 @@ where
             },
         )
         .chain(
-            vk.cs
-                .fixed_queries
-                .iter()
-                .enumerate()
-                .map(|(query_index, &(column, at))| {
-                    VerifierQuery::new(
-                        vk.domain.rotate_omega(x, at),
-                        &vk.fixed_commitments[column.index()],
-                        fixed_evals[query_index],
-                    )
-                }),
+            vk.cs.fixed_queries.iter().enumerate().map(|(query_index, &(column, at))| {
+                VerifierQuery::new(
+                    vk.domain.rotate_omega(x, at),
+                    &vk.fixed_commitments[column.index()],
+                    fixed_evals[query_index],
+                )
+            }),
         )
         .chain(permutations_common.queries(&vk.permutation, x))
         .chain(vanishing.queries(x, vk.n()))

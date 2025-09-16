@@ -265,27 +265,26 @@ where
                 - lambdas2.clone().map(|v| sum_bigints(&bs2, &v));
             let u = expr.map(|e| compute_u(m, &e, (&k_min, &u_max), cond.value()));
 
-            let vs_values = moduli
-                .iter()
-                .zip(lambda_squared_config.vs_bounds.iter())
-                .map(|(mj, vj_bounds)| {
-                    let bs_mj = bs.iter().map(|b| b.rem(mj)).collect::<Vec<_>>();
-                    let bs2_mj = bs2.iter().map(|b| b.rem(mj)).collect::<Vec<_>>();
-                    let (lj_min, vj_max) = vj_bounds.clone();
+            let vs_values =
+                moduli
+                    .iter()
+                    .zip(lambda_squared_config.vs_bounds.iter())
+                    .map(|(mj, vj_bounds)| {
+                        let bs_mj = bs.iter().map(|b| b.rem(mj)).collect::<Vec<_>>();
+                        let bs2_mj = bs2.iter().map(|b| b.rem(mj)).collect::<Vec<_>>();
+                        let (lj_min, vj_max) = vj_bounds.clone();
 
-                    // 2 + sum_px + sum_qx + sum_rx - (2 sum_lambda + sum_lambda2)
-                    //  - u * (m % mj) - (k_min * m) % mj = (vj + lj_min) * mj
-                    let expr_mj = pxs.clone().map(|v| BI::from(2) + sum_bigints(&bs_mj, &v))
-                        + qxs.clone().map(|v| sum_bigints(&bs_mj, &v))
-                        + rxs.clone().map(|v| sum_bigints(&bs_mj, &v))
-                        - lambdas
-                            .clone()
-                            .map(|v| BI::from(2) * sum_bigints(&bs_mj, &v))
-                        - lambdas2.clone().map(|v| sum_bigints(&bs2_mj, &v));
-                    expr_mj.zip(u.clone()).map(|(e, u)| {
-                        compute_vj(m, mj, &e, &u, &k_min, (&lj_min, &vj_max), cond.value())
-                    })
-                });
+                        // 2 + sum_px + sum_qx + sum_rx - (2 sum_lambda + sum_lambda2)
+                        //  - u * (m % mj) - (k_min * m) % mj = (vj + lj_min) * mj
+                        let expr_mj = pxs.clone().map(|v| BI::from(2) + sum_bigints(&bs_mj, &v))
+                            + qxs.clone().map(|v| sum_bigints(&bs_mj, &v))
+                            + rxs.clone().map(|v| sum_bigints(&bs_mj, &v))
+                            - lambdas.clone().map(|v| BI::from(2) * sum_bigints(&bs_mj, &v))
+                            - lambdas2.clone().map(|v| sum_bigints(&bs2_mj, &v));
+                        expr_mj.zip(u.clone()).map(|(e, u)| {
+                            compute_vj(m, mj, &e, &u, &k_min, (&lj_min, &vj_max), cond.value())
+                        })
+                    });
 
             let px_limbs = px.limb_values();
             let qx_limbs = qx.limb_values();
@@ -301,9 +300,7 @@ where
 
             offset += 1;
 
-            lambda_squared_config
-                .q_lambda_squared
-                .enable(&mut region, offset)?;
+            lambda_squared_config.q_lambda_squared.enable(&mut region, offset)?;
 
             let qx_iter = qx_limbs.iter().zip(field_chip_config.x_cols.iter());
             let rx_iter = rx_limbs.iter().zip(field_chip_config.z_cols.iter());
@@ -352,15 +349,10 @@ where
             let u_range_check = (u_cell, u_max);
 
             // Every vj_cell will be range-checked in [0, vj_max)
-            let vs_max = lambda_squared_config
-                .clone()
-                .vs_bounds
-                .into_iter()
-                .map(|(_, vj_max)| vj_max);
-            let vs_range_checks = vs_cells
-                .into_iter()
-                .zip(vs_max.collect::<Vec<_>>())
-                .collect::<Vec<_>>();
+            let vs_max =
+                lambda_squared_config.clone().vs_bounds.into_iter().map(|(_, vj_max)| vj_max);
+            let vs_range_checks =
+                vs_cells.into_iter().zip(vs_max.collect::<Vec<_>>()).collect::<Vec<_>>();
 
             // Assert all range-checks
             Ok([u_range_check]

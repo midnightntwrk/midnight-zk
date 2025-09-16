@@ -1463,15 +1463,13 @@ impl<F: Field> Mul<F> for &Expression<F> {
 
 impl<F: Field> Sum<Self> for Expression<F> {
     fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
-        iter.reduce(|acc, x| acc + x)
-            .unwrap_or(Expression::Constant(F::ZERO))
+        iter.reduce(|acc, x| acc + x).unwrap_or(Expression::Constant(F::ZERO))
     }
 }
 
 impl<F: Field> Product<Self> for Expression<F> {
     fn product<I: Iterator<Item = Self>>(iter: I) -> Self {
-        iter.reduce(|acc, x| acc * x)
-            .unwrap_or(Expression::Constant(F::ONE))
+        iter.reduce(|acc, x| acc * x).unwrap_or(Expression::Constant(F::ONE))
     }
 }
 
@@ -1878,8 +1876,7 @@ impl<F: Field> ConstraintSystem<F> {
             .collect();
         let index = self.lookups.len();
 
-        self.lookups
-            .push(lookup::Argument::new(name.as_ref(), table_map));
+        self.lookups.push(lookup::Argument::new(name.as_ref(), table_map));
 
         index
     }
@@ -1910,8 +1907,7 @@ impl<F: Field> ConstraintSystem<F> {
             .collect();
         let index = self.lookups.len();
 
-        self.lookups
-            .push(lookup::Argument::new(name.as_ref(), table_map));
+        self.lookups.push(lookup::Argument::new(name.as_ref(), table_map));
 
         index
     }
@@ -2029,8 +2025,8 @@ impl<F: Field> ConstraintSystem<F> {
     ///
     /// # Panics
     ///
-    /// A gate is required to contain polynomial constraints. This method will
-    /// panic if `constraints` returns an empty iterator.
+    /// If `constraints` returns an empty iterator.
+    /// (Gates are required to contain polynomial constraints.)
     pub fn create_gate(
         &mut self,
         name: &'static str,
@@ -2078,10 +2074,8 @@ impl<F: Field> ConstraintSystem<F> {
         let (polys, selector_replacements): (Vec<_>, Vec<_>) = selectors
             .into_iter()
             .map(|selector| {
-                let poly = selector
-                    .iter()
-                    .map(|b| if *b { F::ONE } else { F::ZERO })
-                    .collect::<Vec<_>>();
+                let poly =
+                    selector.iter().map(|b| if *b { F::ONE } else { F::ZERO }).collect::<Vec<_>>();
                 let column = self.fixed_column();
                 let rotation = Rotation::cur();
                 let expr = Expression::Fixed(FixedQuery {
@@ -2135,10 +2129,7 @@ impl<F: Field> ConstraintSystem<F> {
         // Substitute non-simple selectors for the real fixed columns in all
         // lookup expressions.
         for expr in self.lookups.iter_mut().flat_map(|lookup| {
-            lookup
-                .input_expressions
-                .iter_mut()
-                .chain(lookup.table_expressions.iter_mut())
+            lookup.input_expressions.iter_mut().chain(lookup.table_expressions.iter_mut())
         }) {
             replace_selectors(expr, selector_replacements, true);
         }
@@ -2256,8 +2247,7 @@ impl<F: Field> ConstraintSystem<F> {
     ///
     /// # Panics
     ///
-    /// It panics if previous phase before the given one doesn't have advice
-    /// column allocated.
+    /// If the previous phase does not have advice columns allocated.
     pub fn advice_column_in<P: Phase>(&mut self, phase: P) -> Column<Advice> {
         let phase = phase.to_sealed();
         if let Some(previous_phase) = phase.prev() {
@@ -2291,7 +2281,7 @@ impl<F: Field> ConstraintSystem<F> {
     ///
     /// # Panics
     ///
-    /// It panics if the given phase doesn't have advice column allocated.
+    /// If the given phase does not have advice column allocated.
     pub fn challenge_usable_after<P: Phase>(&mut self, phase: P) -> Challenge {
         let phase = phase.to_sealed();
         self.assert_phase_exists(
@@ -2324,12 +2314,8 @@ impl<F: Field> ConstraintSystem<F> {
 
     /// Return an iterator over the phases of the constraint system.
     pub fn phases(&self) -> impl Iterator<Item = sealed::Phase> {
-        let max_phase = self
-            .advice_column_phase
-            .iter()
-            .max()
-            .map(|phase| phase.0)
-            .unwrap_or_default();
+        let max_phase =
+            self.advice_column_phase.iter().max().map(|phase| phase.0).unwrap_or_default();
         (0..=max_phase).map(sealed::Phase)
     }
 
@@ -2424,10 +2410,7 @@ impl<F: Field> ConstraintSystem<F> {
 
     /// Returns phase of advice columns
     pub fn advice_column_phase(&self) -> Vec<u8> {
-        self.advice_column_phase
-            .iter()
-            .map(|phase| phase.0)
-            .collect()
+        self.advice_column_phase.iter().map(|phase| phase.0).collect()
     }
 
     /// Returns phase of challenges

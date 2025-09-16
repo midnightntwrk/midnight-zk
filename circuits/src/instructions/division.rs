@@ -144,8 +144,7 @@ where
         modulus: BigUint,
         input_bound: Option<BigUint>,
     ) -> Result<Assigned, Error> {
-        self.div_rem(layouter, input, modulus, input_bound)
-            .map(|(_, r)| r)
+        self.div_rem(layouter, input, modulus, input_bound).map(|(_, r)| r)
     }
 }
 

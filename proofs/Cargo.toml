@@ -42,14 +42,14 @@ rand_core = { workspace = true }
 tracing = { workspace = true }
 blake2b_simd = { workspace = true }
 rand_chacha = { workspace = true }
-serde = { version = "1", optional = true, features = ["derive"] }
-serde_derive = { version = "1", optional = true }
+serde = { workspace = true, optional = true }
+serde_derive = { workspace = true, optional = true }
 rayon = { workspace = true }
 
 # Developer tooling dependencies
 plotters = { version = "0.3.7", default-features = false, optional = true }
 tabbycat = { version = "0.1", features = ["attributes"], optional = true }
-num-bigint = "0.4.6"
+num-bigint = { workspace = true }
 
 # Prover benchmarks
 criterion = { version = "0.7", optional = true }
@@ -59,13 +59,16 @@ bench_macros = { path = "../bench-macros" }
 assert_matches = "1.5"
 criterion = "0.7"
 proptest = "1"
-serde_json = "1"
+serde_json = { workspace = true }
 midnight-circuits = {path = "../circuits" }
-sha2 = "0.10"
-rand = "0.8"
+sha2 = { workspace = true }
+rand = { workspace = true }
 
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
 getrandom = { version = "0.2", features = ["js"] }
+
+[target.'cfg(ci_build)'.dependencies]
+midnight-curves = { path = "../curves", features = ["portable"] }
 
 [features]
 default = ["bits", "committed-instances"]

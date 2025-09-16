@@ -315,11 +315,8 @@ impl Assembly {
     pub fn mapping(
         &self,
     ) -> impl Iterator<Item = impl IndexedParallelIterator<Item = (usize, usize)> + '_> {
-        (0..self.num_cols).map(move |i| {
-            (0..self.col_len)
-                .into_par_iter()
-                .map(move |j| self.mapping_at_idx(i, j))
-        })
+        (0..self.num_cols)
+            .map(move |i| (0..self.col_len).into_par_iter().map(move |j| self.mapping_at_idx(i, j)))
     }
 }
 
@@ -360,18 +357,13 @@ pub(crate) fn build_pk<F: WithSmallOrderMulGroup<3>>(
     let mut permutations = vec![domain.empty_lagrange(); p.columns.len()];
     {
         parallelize(&mut permutations, |o, start| {
-            o.par_iter_mut()
-                .enumerate()
-                .for_each(|(x, permutation_poly)| {
-                    let i = start + x;
-                    permutation_poly
-                        .par_iter_mut()
-                        .enumerate()
-                        .for_each(|(j, p)| {
-                            let (permuted_i, permuted_j) = mapping(i, j);
-                            *p = deltaomega[permuted_i][permuted_j];
-                        })
+            o.par_iter_mut().enumerate().for_each(|(x, permutation_poly)| {
+                let i = start + x;
+                permutation_poly.par_iter_mut().enumerate().for_each(|(j, p)| {
+                    let (permuted_i, permuted_j) = mapping(i, j);
+                    *p = deltaomega[permuted_i][permuted_j];
                 })
+            })
         });
     }
 

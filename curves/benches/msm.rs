@@ -110,10 +110,7 @@ fn setup<C: CurveAffine>() -> (Vec<C>, Vec<Vec<C::ScalarExt>>) {
     assert!(max_k < 64);
 
     let bases = generate_curvepoints::<C>(max_k);
-    let coeffs: Vec<_> = BITS
-        .iter()
-        .map(|b| generate_coefficients(max_k, *b))
-        .collect();
+    let coeffs: Vec<_> = BITS.iter().map(|b| generate_coefficients(max_k, *b)).collect();
 
     (bases, coeffs)
 }
@@ -138,7 +135,6 @@ fn msm_blst(c: &mut Criterion) {
         }
     }
 
-    #[cfg(feature = "h2c_compare")]
     // Halo2Curves version.
     for (b_index, b) in BITS.iter().enumerate() {
         for k in MULTICORE_RANGE {

@@ -75,9 +75,7 @@ impl<E: Engine + Debug> ParamsKZG<E> {
         for _ in k..E::Fr::S {
             root = root.square();
         }
-        let n_inv = E::Fr::from(n)
-            .invert()
-            .expect("inversion should be ok for n = 1<<k");
+        let n_inv = E::Fr::from(n).invert().expect("inversion should be ok for n = 1<<k");
         let multiplier = (s.pow_vartime([n]) - E::Fr::ONE) * n_inv;
         parallelize(&mut g_lagrange, |g, start| {
             for (idx, g) in g.iter_mut().enumerate() {

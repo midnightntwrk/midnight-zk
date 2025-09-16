@@ -65,11 +65,7 @@ impl From<(Column, Option<&HashMap<Column, String>>)> for DebugColumn {
         DebugColumn {
             column_type: info.0.column_type,
             index: info.0.index,
-            annotation: info
-                .1
-                .and_then(|map| map.get(&info.0))
-                .cloned()
-                .unwrap_or_default(),
+            annotation: info.1.and_then(|map| map.get(&info.0)).cloned().unwrap_or_default(),
         }
     }
 }
@@ -255,9 +251,7 @@ impl Region {
     /// - There's no entry on the annotation map corresponding to the metadata
     ///   provided.
     pub(crate) fn get_column_annotation(&self, metadata: ColumnMetadata) -> Option<String> {
-        self.column_annotations
-            .as_ref()
-            .and_then(|map| map.get(&metadata).cloned())
+        self.column_annotations.as_ref().and_then(|map| map.get(&metadata).cloned())
     }
 }
 

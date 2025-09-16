@@ -265,8 +265,7 @@ fn find_subsequence<T>(seq: &[T], subseq: &[T]) -> Option<usize>
 where
     for<'a> &'a [T]: PartialEq,
 {
-    seq.windows(subseq.len())
-        .position(|window| window == subseq)
+    seq.windows(subseq.len()).position(|window| window == subseq)
 }
 
 fn main() {

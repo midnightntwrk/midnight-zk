@@ -47,13 +47,10 @@ pub fn construct_intermediate_sets<F: Field + Hash + Ord, Q: Query<F>>(
     // while also creating new commitment data.
     for query in queries {
         let num_points = point_index_map.len();
-        let point_idx = point_index_map
-            .entry(query.get_point())
-            .or_insert(num_points);
+        let point_idx = point_index_map.entry(query.get_point()).or_insert(num_points);
 
-        if let Some(pos) = commitment_map
-            .iter()
-            .position(|comm| comm.commitment == query.get_commitment())
+        if let Some(pos) =
+            commitment_map.iter().position(|comm| comm.commitment == query.get_commitment())
         {
             if commitment_map[pos].point_indices.contains(point_idx) {
                 return Err(Error::DuplicatedQuery);
@@ -110,10 +107,7 @@ pub fn construct_intermediate_sets<F: Field + Hash + Ord, Q: Query<F>>(
         let point_index_set: Vec<usize> = point_index_set.iter().cloned().collect();
 
         // The offset of the point_index in the point_index_set
-        let point_index_in_set = point_index_set
-            .iter()
-            .position(|i| i == point_index)
-            .unwrap();
+        let point_index_in_set = point_index_set.iter().position(|i| i == point_index).unwrap();
 
         for commitment_data in commitment_map.iter_mut() {
             if query.get_commitment() == commitment_data.commitment {

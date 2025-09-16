@@ -769,9 +769,9 @@ impl<F: PrimeField> Sha256Chip<F> {
             |mut region| {
                 self.config().q_maj.enable(&mut region, 1)?;
 
-                (sprdd_a.0).copy_advice(|| "~A", &mut region, adv_cols[5], 0)?;
-                (sprdd_b.0).copy_advice(|| "~B", &mut region, adv_cols[6], 0)?;
-                (sprdd_c.0).copy_advice(|| "~C", &mut region, adv_cols[5], 1)?;
+                sprdd_a.0.copy_advice(|| "~A", &mut region, adv_cols[5], 0)?;
+                sprdd_b.0.copy_advice(|| "~B", &mut region, adv_cols[6], 0)?;
+                sprdd_c.0.copy_advice(|| "~C", &mut region, adv_cols[5], 1)?;
 
                 let val_of_sprdd_forms: Value<[u64; 3]> = Value::from_iter([
                     sprdd_a.0.value().copied().map(fe_to_u64),
@@ -858,7 +858,7 @@ impl<F: PrimeField> Sha256Chip<F> {
         let sprdd_nE_val: Value<F> = sprdd_nE_val.map(u64_to_fe);
 
         let mask_evn_64: AssignedNative<F> =
-            (self.native_gadget).assign_fixed(layouter, F::from(MASK_EVN_64))?;
+            self.native_gadget.assign_fixed(layouter, F::from(MASK_EVN_64))?;
 
         layouter.assign_region(
             || "Ch(E, F, G)",
@@ -866,11 +866,11 @@ impl<F: PrimeField> Sha256Chip<F> {
                 self.config().q_half_ch.enable(&mut region, 1)?;
                 self.config().q_half_ch.enable(&mut region, 4)?;
 
-                (sprdd_E.0).copy_advice(|| "~E", &mut region, adv_cols[5], 0)?;
-                (sprdd_E.0).copy_advice(|| "~E", &mut region, adv_cols[4], 4)?;
+                sprdd_E.0.copy_advice(|| "~E", &mut region, adv_cols[5], 0)?;
+                sprdd_E.0.copy_advice(|| "~E", &mut region, adv_cols[4], 4)?;
 
-                (sprdd_F.0).copy_advice(|| "~F", &mut region, adv_cols[6], 0)?;
-                (sprdd_G.0).copy_advice(|| "~G", &mut region, adv_cols[6], 3)?;
+                sprdd_F.0.copy_advice(|| "~F", &mut region, adv_cols[6], 0)?;
+                sprdd_G.0.copy_advice(|| "~G", &mut region, adv_cols[6], 3)?;
 
                 let sprdd_nE = region.assign_advice(|| "~(¬E)", adv_cols[5], 3, || sprdd_nE_val)?;
                 sprdd_nE.copy_advice(|| "~(¬E)", &mut region, adv_cols[5], 4)?;
@@ -878,10 +878,10 @@ impl<F: PrimeField> Sha256Chip<F> {
                 mask_evn_64.copy_advice(|| "MASK_EVN_64", &mut region, adv_cols[6], 4)?;
 
                 let odd_EF = self.assign_sprdd_11_11_10(&mut region, EpF_val, Parity::Odd, 0)?;
-                (odd_EF.0).copy_advice(|| "Odd_EF", &mut region, adv_cols[4], 1)?;
+                odd_EF.0.copy_advice(|| "Odd_EF", &mut region, adv_cols[4], 1)?;
 
                 let odd_nEG = self.assign_sprdd_11_11_10(&mut region, nEpG_val, Parity::Odd, 3)?;
-                (odd_nEG.0).copy_advice(|| "Odd_nEG", &mut region, adv_cols[5], 1)?;
+                odd_nEG.0.copy_advice(|| "Odd_nEG", &mut region, adv_cols[5], 1)?;
 
                 let ret_val = odd_EF.0.value().copied() + odd_nEG.0.value().copied();
                 region
@@ -942,10 +942,10 @@ impl<F: PrimeField> Sha256Chip<F> {
                 self.config().q_Sigma_0.enable(&mut region, 1)?;
 
                 // Copy and assign the input.
-                (a.spreaded_limb_10.0).copy_advice(|| "~A.10", &mut region, adv_cols[5], 0)?;
-                (a.spreaded_limb_09.0).copy_advice(|| "~A.09", &mut region, adv_cols[6], 0)?;
-                (a.spreaded_limb_11.0).copy_advice(|| "~A.11", &mut region, adv_cols[5], 1)?;
-                (a.spreaded_limb_02.0).copy_advice(|| "~A.02", &mut region, adv_cols[6], 1)?;
+                a.spreaded_limb_10.0.copy_advice(|| "~A.10", &mut region, adv_cols[5], 0)?;
+                a.spreaded_limb_09.0.copy_advice(|| "~A.09", &mut region, adv_cols[6], 0)?;
+                a.spreaded_limb_11.0.copy_advice(|| "~A.11", &mut region, adv_cols[5], 1)?;
+                a.spreaded_limb_02.0.copy_advice(|| "~A.02", &mut region, adv_cols[6], 1)?;
 
                 // Compute the spreaded Σ₀(A) off-circuit, assign the 11-11-10 limbs
                 // of its even and odd bits into the circuit, enable the q_11_11_10 selector
@@ -1020,11 +1020,11 @@ impl<F: PrimeField> Sha256Chip<F> {
                 self.config().q_Sigma_1.enable(&mut region, 1)?;
 
                 // Copy and assign the input.
-                (e.spreaded_limb_07.0).copy_advice(|| "~E.07", &mut region, adv_cols[5], 0)?;
-                (e.spreaded_limb_12.0).copy_advice(|| "~E.12", &mut region, adv_cols[6], 0)?;
-                (e.spreaded_limb_02.0).copy_advice(|| "~E.02", &mut region, adv_cols[5], 1)?;
-                (e.spreaded_limb_05.0).copy_advice(|| "~E.05", &mut region, adv_cols[6], 1)?;
-                (e.spreaded_limb_06.0).copy_advice(|| "~E.06", &mut region, adv_cols[5], 2)?;
+                e.spreaded_limb_07.0.copy_advice(|| "~E.07", &mut region, adv_cols[5], 0)?;
+                e.spreaded_limb_12.0.copy_advice(|| "~E.12", &mut region, adv_cols[6], 0)?;
+                e.spreaded_limb_02.0.copy_advice(|| "~E.02", &mut region, adv_cols[5], 1)?;
+                e.spreaded_limb_05.0.copy_advice(|| "~E.05", &mut region, adv_cols[6], 1)?;
+                e.spreaded_limb_06.0.copy_advice(|| "~E.06", &mut region, adv_cols[5], 2)?;
 
                 // Compute the spreaded Σ₁(E) off-circuit, assign the 11-11-10 limbs
                 // of its even and odd bits into the circuit, enable the q_11_11_10 selector
@@ -1099,14 +1099,14 @@ impl<F: PrimeField> Sha256Chip<F> {
             |mut region| {
                 self.config().q_sigma_0.enable(&mut region, 1)?;
 
-                (w.spreaded_w_12.0).copy_advice(|| "~W.12", &mut region, adv_cols[5], 0)?;
-                (w.spreaded_w_1a.0).copy_advice(|| "~W.1a", &mut region, adv_cols[6], 0)?;
-                (w.spreaded_w_1b.0).copy_advice(|| "~W.1b", &mut region, adv_cols[4], 1)?;
-                (w.spreaded_w_1c.0).copy_advice(|| "~W.1c", &mut region, adv_cols[5], 1)?;
-                (w.spreaded_w_07.0).copy_advice(|| "~W.07", &mut region, adv_cols[6], 1)?;
-                (w.spreaded_w_3a.0).copy_advice(|| "~W.3a", &mut region, adv_cols[4], 2)?;
-                (w.spreaded_w_04.0).copy_advice(|| "~W.04", &mut region, adv_cols[5], 2)?;
-                (w.spreaded_w_3b.0).copy_advice(|| "~W.3b", &mut region, adv_cols[6], 2)?;
+                w.spreaded_w_12.0.copy_advice(|| "~W.12", &mut region, adv_cols[5], 0)?;
+                w.spreaded_w_1a.0.copy_advice(|| "~W.1a", &mut region, adv_cols[6], 0)?;
+                w.spreaded_w_1b.0.copy_advice(|| "~W.1b", &mut region, adv_cols[4], 1)?;
+                w.spreaded_w_1c.0.copy_advice(|| "~W.1c", &mut region, adv_cols[5], 1)?;
+                w.spreaded_w_07.0.copy_advice(|| "~W.07", &mut region, adv_cols[6], 1)?;
+                w.spreaded_w_3a.0.copy_advice(|| "~W.3a", &mut region, adv_cols[4], 2)?;
+                w.spreaded_w_04.0.copy_advice(|| "~W.04", &mut region, adv_cols[5], 2)?;
+                w.spreaded_w_3b.0.copy_advice(|| "~W.3b", &mut region, adv_cols[6], 2)?;
 
                 let val_of_sprdd_limbs: Value<[u64; 8]> = Value::from_iter([
                     w.spreaded_w_12.0.value().copied().map(fe_to_u64),
@@ -1180,14 +1180,14 @@ impl<F: PrimeField> Sha256Chip<F> {
             |mut region| {
                 self.config().q_sigma_1.enable(&mut region, 1)?;
 
-                (w.spreaded_w_12.0).copy_advice(|| "~W.12", &mut region, adv_cols[5], 0)?;
-                (w.spreaded_w_1a.0).copy_advice(|| "~W.1a", &mut region, adv_cols[6], 0)?;
-                (w.spreaded_w_1b.0).copy_advice(|| "~W.1b", &mut region, adv_cols[4], 1)?;
-                (w.spreaded_w_1c.0).copy_advice(|| "~W.1c", &mut region, adv_cols[5], 1)?;
-                (w.spreaded_w_07.0).copy_advice(|| "~W.07", &mut region, adv_cols[6], 1)?;
-                (w.spreaded_w_3a.0).copy_advice(|| "~W.3a", &mut region, adv_cols[4], 2)?;
-                (w.spreaded_w_04.0).copy_advice(|| "~W.04", &mut region, adv_cols[5], 2)?;
-                (w.spreaded_w_3b.0).copy_advice(|| "~W.3b", &mut region, adv_cols[6], 2)?;
+                w.spreaded_w_12.0.copy_advice(|| "~W.12", &mut region, adv_cols[5], 0)?;
+                w.spreaded_w_1a.0.copy_advice(|| "~W.1a", &mut region, adv_cols[6], 0)?;
+                w.spreaded_w_1b.0.copy_advice(|| "~W.1b", &mut region, adv_cols[4], 1)?;
+                w.spreaded_w_1c.0.copy_advice(|| "~W.1c", &mut region, adv_cols[5], 1)?;
+                w.spreaded_w_07.0.copy_advice(|| "~W.07", &mut region, adv_cols[6], 1)?;
+                w.spreaded_w_3a.0.copy_advice(|| "~W.3a", &mut region, adv_cols[4], 2)?;
+                w.spreaded_w_04.0.copy_advice(|| "~W.04", &mut region, adv_cols[5], 2)?;
+                w.spreaded_w_3b.0.copy_advice(|| "~W.3b", &mut region, adv_cols[6], 2)?;
 
                 let val_of_sprdd_limbs: Value<[u64; 8]> = Value::from_iter([
                     w.spreaded_w_12.0.value().copied().map(fe_to_u64),
@@ -1249,13 +1249,11 @@ impl<F: PrimeField> Sha256Chip<F> {
 
         let (evn_val, odd_val) = value.map(get_even_and_odd_bits).unzip();
 
-        let [evn_11a, evn_11b, evn_10] = evn_val
-            .map(|v| u32_in_be_limbs(v, [11, 11, 10]))
-            .transpose_array();
+        let [evn_11a, evn_11b, evn_10] =
+            evn_val.map(|v| u32_in_be_limbs(v, [11, 11, 10])).transpose_array();
 
-        let [odd_11a, odd_11b, odd_10] = odd_val
-            .map(|v| u32_in_be_limbs(v, [11, 11, 10]))
-            .transpose_array();
+        let [odd_11a, odd_11b, odd_10] =
+            odd_val.map(|v| u32_in_be_limbs(v, [11, 11, 10])).transpose_array();
 
         let idx = match even_or_odd {
             Parity::Evn => 0,
@@ -1331,10 +1329,8 @@ impl<F: PrimeField> Sha256Chip<F> {
                 self.config().q_10_9_11_2.enable(&mut region, 1)?;
 
                 let a_plain = self.assign_add_mod_2_32(&mut region, summands, &zero)?;
-                let a_sprdd_val = (a_plain.0.value().copied())
-                    .map(fe_to_u32)
-                    .map(spread)
-                    .map(u64_to_fe);
+                let a_sprdd_val =
+                    a_plain.0.value().copied().map(fe_to_u32).map(spread).map(u64_to_fe);
                 let a_sprdd = region
                     .assign_advice(|| "~A", self.config().advice_cols[4], 1, || a_sprdd_val)
                     .map(AssignedSpreaded)?;
@@ -1411,10 +1407,8 @@ impl<F: PrimeField> Sha256Chip<F> {
                 self.config().q_7_12_2_5_6.enable(&mut region, 1)?;
 
                 let e_plain = self.assign_add_mod_2_32(&mut region, summands, &zero)?;
-                let e_sprdd_val = (e_plain.0.value().copied())
-                    .map(fe_to_u32)
-                    .map(spread)
-                    .map(u64_to_fe);
+                let e_sprdd_val =
+                    (e_plain.0.value().copied()).map(fe_to_u32).map(spread).map(u64_to_fe);
                 let e_sprdd = region
                     .assign_advice(|| "~E", self.config().advice_cols[4], 1, || e_sprdd_val)
                     .map(AssignedSpreaded)?;
@@ -1537,10 +1531,9 @@ impl<F: PrimeField> Sha256Chip<F> {
     /// If `lookup_idx = 0`, the lookup on columns (T0, A0, A1) will be used.
     /// If `lookup_idx = 1`, the lookup on columns (T1, A2, A3) will be used.
     ///
-    /// # Unsatisfiable
+    /// # Unsatisfiable Circuit
     ///
-    /// If the given value is not in the range [0, 2^L), the circuit will become
-    /// unsatisfiable.
+    /// If the given value is not in the range [0, 2^L).
     fn assign_plain_and_spreaded<const L: usize>(
         &self,
         region: &mut Region<'_, F>,
@@ -1620,9 +1613,7 @@ impl<F: PrimeField> Sha256Chip<F> {
         summands[6].0.copy_advice(|| "S6", region, adv_cols[6], 2)?;
         let _carry: AssignedPlainSpreaded<F, 3> =
             self.assign_plain_and_spreaded(region, carry_val, 2, 1)?;
-        region
-            .assign_advice(|| "sum", adv_cols[4], 0, || sum_val)
-            .map(AssignedPlain)
+        region.assign_advice(|| "sum", adv_cols[4], 0, || sum_val).map(AssignedPlain)
     }
 }
 

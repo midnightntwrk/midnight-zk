@@ -63,8 +63,7 @@ impl<F: PrimeField, const M: usize, T: Vectorizable, const A: usize> InnerValue
             let end_pad = (A - (len % A)) % A;
             (M - len - end_pad, M - end_pad)
         });
-        data.zip(idxs)
-            .map(|(data, idxs)| data[idxs.0..idxs.1].to_vec())
+        data.zip(idxs).map(|(data, idxs)| data[idxs.0..idxs.1].to_vec())
     }
 }
 

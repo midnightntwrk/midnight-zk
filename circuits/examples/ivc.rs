@@ -101,9 +101,7 @@ fn configure_ivc_circuit(
     let poseidon_config = PoseidonChip::configure(
         meta,
         &(
-            advice_columns[..NB_POSEIDON_ADVICE_COLS]
-                .try_into()
-                .unwrap(),
+            advice_columns[..NB_POSEIDON_ADVICE_COLS].try_into().unwrap(),
             fixed_columns[..NB_POSEIDON_FIXED_COLS].try_into().unwrap(),
         ),
     );
@@ -279,10 +277,7 @@ fn main() {
         Msm::new(
             &[C::default()],
             &[F::ONE],
-            &fixed_base_names
-                .iter()
-                .map(|name| (name.clone(), F::ZERO))
-                .collect(),
+            &fixed_base_names.iter().map(|name| (name.clone(), F::ZERO)).collect(),
         ),
     );
 

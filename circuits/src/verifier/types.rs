@@ -103,7 +103,7 @@ pub trait SelfEmulation: Clone + Debug {
     ///
     /// # Panics
     ///
-    /// If `scalars.len() != bases.len()`.
+    /// If `|scalars| != |bases|`.
     fn msm(
         layouter: &mut impl Layouter<Self::F>,
         curve_chip: &Self::CurveChip,

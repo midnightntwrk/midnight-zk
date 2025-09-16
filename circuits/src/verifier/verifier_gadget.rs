@@ -91,8 +91,7 @@ impl<S: SelfEmulation> PublicInputInstructions<S::F, AssignedVk<S>> for Verifier
         layouter: &mut impl Layouter<S::F>,
         assigned_vk: &AssignedVk<S>,
     ) -> Result<Vec<AssignedNative<S::F>>, Error> {
-        self.scalar_chip
-            .as_public_input(layouter, &assigned_vk.transcript_repr)
+        self.scalar_chip.as_public_input(layouter, &assigned_vk.transcript_repr)
     }
 
     fn constrain_as_public_input(
@@ -126,8 +125,8 @@ impl<S: SelfEmulation> PublicInputInstructions<S::F, AssignedAccumulator<S>> for
         assigned: &AssignedAccumulator<S>,
     ) -> Result<Vec<AssignedNative<S::F>>, Error> {
         Ok([
-            (assigned.lhs).in_circuit_as_public_input(layouter, &self.curve_chip)?,
-            (assigned.rhs).in_circuit_as_public_input(layouter, &self.curve_chip)?,
+            assigned.lhs.in_circuit_as_public_input(layouter, &self.curve_chip)?,
+            assigned.rhs.in_circuit_as_public_input(layouter, &self.curve_chip)?,
         ]
         .concat())
     }
@@ -185,9 +184,8 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         cs: &ConstraintSystem<S::F>,
         transcript_repr_value: Value<S::F>,
     ) -> Result<AssignedVk<S>, Error> {
-        let transcript_repr: AssignedNative<S::F> = self
-            .scalar_chip
-            .assign_as_public_input(layouter, transcript_repr_value)?;
+        let transcript_repr: AssignedNative<S::F> =
+            self.scalar_chip.assign_as_public_input(layouter, transcript_repr_value)?;
 
         // We expect a finalized cs with no selectors, i.e. whose selectors have been
         // converted into fixed columns.
@@ -247,9 +245,9 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             .try_for_each(|(_, com)| transcript.common_point(layouter, com))?;
 
         for instance in assigned_instances {
-            let n = (self.scalar_chip).assign_fixed(layouter, (instance.len() as u64).into())?;
+            let n = self.scalar_chip.assign_fixed(layouter, (instance.len() as u64).into())?;
             transcript.common_scalar(layouter, &n)?;
-            (instance.iter()).try_for_each(|pi| transcript.common_scalar(layouter, pi))?;
+            instance.iter().try_for_each(|pi| transcript.common_scalar(layouter, pi))?;
         }
 
         // Assert that we only have one phase.
@@ -365,11 +363,8 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             let min_rotation = instance_queries.iter().map(|(_, rot)| rot.0).min().unwrap();
             let max_rotation = instance_queries.iter().map(|(_, rot)| rot.0).max().unwrap();
 
-            let max_instance_len = assigned_instances
-                .iter()
-                .map(|instance| instance.len())
-                .max()
-                .unwrap_or(0);
+            let max_instance_len =
+                assigned_instances.iter().map(|instance| instance.len()).max().unwrap_or(0);
 
             let l_i_s = evaluate_lagrange_polynomials(
                 layouter,
@@ -552,61 +547,57 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             }
         };
 
-        let queries =
-            iter::empty()
-                .chain(cs.instance_queries().iter().enumerate().filter_map(
-                    |(query_index, &(column, rot))| {
-                        if column.index() < nb_committed_instances {
-                            Some(VerifierQuery::<S>::new_fixed(
-                                &one,
-                                get_point(&rot),
-                                assigned_committed_instances[column.index()].0,
-                                &instance_evals[query_index],
-                            ))
-                        } else {
-                            None
-                        }
-                    },
-                ))
-                .chain(cs.advice_queries().iter().enumerate().map(
-                    |(query_index, &(column, rot))| {
-                        VerifierQuery::<S>::new(
+        let queries = iter::empty()
+            .chain(cs.instance_queries().iter().enumerate().filter_map(
+                |(query_index, &(column, rot))| {
+                    if column.index() < nb_committed_instances {
+                        Some(VerifierQuery::<S>::new_fixed(
                             &one,
                             get_point(&rot),
-                            &advice_commitments[column.index()],
-                            &advice_evals[query_index],
-                        )
-                    },
-                ))
-                .chain((permutations_evaluated).queries(&one, &x, &x_next, &x_last))
-                .chain(
-                    (lookups_evaluated.iter())
-                        .flat_map(|lookup| lookup.queries(&one, &x, &x_next, &x_prev)),
-                )
-                .chain((trashcans_evaluated.iter()).flat_map(|trash| trash.queries(&one, &x)))
-                .chain(
-                    cs.fixed_queries()
-                        .iter()
-                        .enumerate()
-                        .map(|(query_index, &(col, rot))| {
-                            VerifierQuery::new_fixed(
-                                &one,
-                                get_point(&rot),
-                                &assigned_vk.fixed_commitment_name(col.index()),
-                                &fixed_evals[query_index],
-                            )
-                        }),
-                )
-                .chain(
-                    permutations_common.queries(
-                        &(0..cs.permutation().columns.len())
-                            .map(|i| assigned_vk.perm_commitment_name(i))
-                            .collect::<Vec<_>>(),
+                            assigned_committed_instances[column.index()].0,
+                            &instance_evals[query_index],
+                        ))
+                    } else {
+                        None
+                    }
+                },
+            ))
+            .chain(
+                cs.advice_queries().iter().enumerate().map(|(query_index, &(column, rot))| {
+                    VerifierQuery::<S>::new(
                         &one,
-                        &x,
-                    ),
-                )
-                .chain(vanishing.queries(&one, &x));
+                        get_point(&rot),
+                        &advice_commitments[column.index()],
+                        &advice_evals[query_index],
+                    )
+                }),
+            )
+            .chain((permutations_evaluated).queries(&one, &x, &x_next, &x_last))
+            .chain(
+                (lookups_evaluated.iter())
+                    .flat_map(|lookup| lookup.queries(&one, &x, &x_next, &x_prev)),
+            )
+            .chain(trashcans_evaluated.iter().flat_map(|trash| trash.queries(&one, &x)))
+            .chain(
+                cs.fixed_queries().iter().enumerate().map(|(query_index, &(col, rot))| {
+                    VerifierQuery::new_fixed(
+                        &one,
+                        get_point(&rot),
+                        &assigned_vk.fixed_commitment_name(col.index()),
+                        &fixed_evals[query_index],
+                    )
+                }),
+            )
+            .chain(
+                permutations_common.queries(
+                    &(0..cs.permutation().columns.len())
+                        .map(|i| assigned_vk.perm_commitment_name(i))
+                        .collect::<Vec<_>>(),
+                    &one,
+                    &x,
+                ),
+            )
+            .chain(vanishing.queries(&one, &x));
 
         // We are now convinced the circuit is satisfied so long as the
         // polynomial commitments open to the correct values, which is true as long
@@ -818,9 +809,7 @@ pub(crate) mod tests {
             let poseidon_config = PoseidonChip::configure(
                 meta,
                 &(
-                    advice_columns[..NB_POSEIDON_ADVICE_COLS]
-                        .try_into()
-                        .unwrap(),
+                    advice_columns[..NB_POSEIDON_ADVICE_COLS].try_into().unwrap(),
                     fixed_columns[..NB_POSEIDON_FIXED_COLS].try_into().unwrap(),
                 ),
             );

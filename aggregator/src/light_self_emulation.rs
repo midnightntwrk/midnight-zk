@@ -85,12 +85,7 @@ impl<C: CircuitCurve> FakeCurveChip<C> {
     pub fn finalize(&self) -> Result<(), Error> {
         // Let's panic instead of returning an error, which gives a more descriptive
         // message of this subtle issue.
-        if self
-            .public_points
-            .borrow()
-            .iter()
-            .any(|p| !*p.public.borrow())
-        {
+        if self.public_points.borrow().iter().any(|p| !*p.public.borrow()) {
             panic!("Not all assigned `FakePoint`s were made public")
         }
         Ok(())

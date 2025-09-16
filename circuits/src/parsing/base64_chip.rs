@@ -259,14 +259,11 @@ impl<F: PrimeField> Base64Chip<F> {
             .iter()
             .map(|char| {
                 let is_hyphen = ng.is_equal_to_fixed(layouter, char, b'-')?;
-                let char = self
-                    .native_gadget
-                    .select(layouter, &is_hyphen, &plus, char)?;
+                let char = self.native_gadget.select(layouter, &is_hyphen, &plus, char)?;
 
                 let is_underscore = ng.is_equal_to_fixed(layouter, &char, b'_')?;
 
-                self.native_gadget
-                    .select(layouter, &is_underscore, &slash, &char)
+                self.native_gadget.select(layouter, &is_underscore, &slash, &char)
             })
             .collect::<Result<Vec<_>, _>>()
     }
@@ -325,13 +322,9 @@ impl<F: PrimeField> Base64Chip<F> {
             (F::from(1u64 << 12), b64_input[0].clone()),
             (F::ONE, b64_input[1].clone()),
         ];
-        let total = self
-            .native_gadget
-            .linear_combination(layouter, terms.as_slice(), F::ZERO)?;
+        let total = self.native_gadget.linear_combination(layouter, terms.as_slice(), F::ZERO)?;
 
-        let bytes = self
-            .native_gadget
-            .assigned_to_be_bytes(layouter, &total, Some(3))?;
+        let bytes = self.native_gadget.assigned_to_be_bytes(layouter, &total, Some(3))?;
 
         Ok(bytes.try_into().unwrap())
     }
@@ -571,9 +564,8 @@ mod tests {
                 meta,
                 &[committed_instance_column, instance_column],
             );
-            let sr = &ng_config.native_config.value_cols[..NB_BASE64_ADVICE_COLS]
-                .try_into()
-                .unwrap();
+            let sr =
+                &ng_config.native_config.value_cols[..NB_BASE64_ADVICE_COLS].try_into().unwrap();
             let b64_config = Base64Chip::configure(meta, sr);
 
             (ng_config, b64_config)

@@ -124,10 +124,8 @@ impl<S: SelfEmulation> Accumulator<S> {
     /// Accumulates several accumulators together. The resulting acc will
     /// satisfy the invariant iff all the accumulators individually do.
     pub fn accumulate(accs: &[Self]) -> Self {
-        let hash_input = accs
-            .iter()
-            .flat_map(AssignedAccumulator::as_public_input)
-            .collect::<Vec<_>>();
+        let hash_input =
+            accs.iter().flat_map(AssignedAccumulator::as_public_input).collect::<Vec<_>>();
 
         let r = <S::SpongeChip as HashCPU<S::F, S::F>>::hash(&hash_input);
         let rs = (0..accs.len()).map(|i| r.pow([i as u64]));
@@ -161,10 +159,9 @@ impl<S: SelfEmulation> Accumulator<S> {
     ///
     /// # Panics
     ///    
-    /// If some of the base names exist as a key in
-    /// `self.rhs.fixed_base_scalars`.
+    /// If some base names exist as a key in `self.rhs.fixed_base_scalars`.
     ///
-    /// If some of the provided fixed bases does not appear in `self.rhs.bases`
+    /// If some of the provided fixed bases do not appear in `self.rhs.bases`
     /// with the exact required multiplicity.
     pub fn extract_fixed_bases(&mut self, fixed_bases: &BTreeMap<String, S::C>) {
         self.rhs.extract_fixed_bases(fixed_bases);
@@ -324,12 +321,8 @@ impl<S: SelfEmulation> AssignedAccumulator<S> {
 
         let mut acc = accs[0].clone();
         for (other, ri) in accs.iter().zip(rs).skip(1) {
-            acc.lhs = acc
-                .lhs
-                .accumulate_with_r(layouter, scalar_chip, &other.lhs, &ri)?;
-            acc.rhs = acc
-                .rhs
-                .accumulate_with_r(layouter, scalar_chip, &other.rhs, &ri)?;
+            acc.lhs = acc.lhs.accumulate_with_r(layouter, scalar_chip, &other.lhs, &ri)?;
+            acc.rhs = acc.rhs.accumulate_with_r(layouter, scalar_chip, &other.rhs, &ri)?;
         }
 
         Ok(acc)

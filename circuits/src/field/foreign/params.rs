@@ -121,11 +121,8 @@ where
     assert_eq!(double_base_powers.len(), (nb_limbs * nb_limbs) as usize);
 
     let expected_powers = (0..nb_limbs).map(|i| BI::pow(&base, i).rem(m));
-    let expected_double_powers = (0..nb_limbs).flat_map(|i| {
-        (0..nb_limbs)
-            .map(|j| BI::pow(&base, i + j).rem(m))
-            .collect::<Vec<_>>()
-    });
+    let expected_double_powers = (0..nb_limbs)
+        .flat_map(|i| (0..nb_limbs).map(|j| BI::pow(&base, i + j).rem(m)).collect::<Vec<_>>());
 
     // Check that the powers in ModAP are congruent to the expected powers modulo m.
     base_powers

@@ -90,8 +90,7 @@ pub fn fe_to_bigint<F: PrimeField>(value: &F) -> BI {
 ///
 /// # Panics
 ///
-/// If `nb_bits` is given but this value is smaller than the minimum number of
-/// bits necessary to represent the given element.
+/// If `value` does not fit in `nb_bits` bits when such argument is provided.
 pub fn fe_to_le_bits<F: PrimeField>(value: &F, nb_bits: Option<usize>) -> Vec<bool> {
     let big = fe_to_big(*value);
     let mut bits: Vec<bool> = (0..big.bits()).map(|i| big.bit(i)).collect();
@@ -106,14 +105,9 @@ pub fn fe_to_le_bits<F: PrimeField>(value: &F, nb_bits: Option<usize>) -> Vec<bo
 ///
 /// # Panics
 ///
-/// Panics if the bitstring is longer than `F::NUM_BITS`.
+/// If `|bits| > F::NUM_BITS`.
 pub fn le_bits_to_field_elem<F: PrimeField>(bits: &[bool]) -> F {
-    assert!(
-        bits.len() as u32 <= F::NUM_BITS,
-        "{} > {}",
-        bits.len(),
-        F::NUM_BITS
-    );
+    assert!(bits.len() as u32 <= F::NUM_BITS);
 
     let mut repr = F::from(0).to_repr();
     let view = repr.as_mut();

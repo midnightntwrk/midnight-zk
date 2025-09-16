@@ -26,7 +26,7 @@ pub trait BinaryInstructions<F: PrimeField> {
     ///
     /// # Panics
     ///
-    /// If `bits.len() == 0`.
+    /// If `bits` is empty.
     ///
     /// ```
     /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
@@ -53,7 +53,7 @@ pub trait BinaryInstructions<F: PrimeField> {
     ///
     /// # Panics
     ///
-    /// If `bits.len() == 0`.
+    /// If `bits` is empty.
     ///
     /// ```
     /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
@@ -74,7 +74,7 @@ pub trait BinaryInstructions<F: PrimeField> {
     ///
     /// # Panics
     ///
-    /// If `bits.len() == 0`.
+    /// If `bits` is empty.
     ///
     /// ```
     /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {

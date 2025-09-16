@@ -159,9 +159,7 @@ impl<const NB_PROOFS: usize> Circuit<F> for AggregatorCircuit<NB_PROOFS> {
         let poseidon_config = PoseidonChip::configure(
             meta,
             &(
-                advice_columns[..NB_POSEIDON_ADVICE_COLS]
-                    .try_into()
-                    .unwrap(),
+                advice_columns[..NB_POSEIDON_ADVICE_COLS].try_into().unwrap(),
                 fixed_columns[..NB_POSEIDON_FIXED_COLS].try_into().unwrap(),
             ),
         );
@@ -375,13 +373,13 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
 
         // Add the LHS of acc to the transcript.
         transcript.write(&(acc.lhs().bases().len() as u32))?;
-        (acc.lhs().bases().iter()).try_for_each(|p| transcript.write(p))?;
-        (acc.lhs().scalars().iter()).try_for_each(|s| transcript.write(s))?;
+        acc.lhs().bases().iter().try_for_each(|p| transcript.write(p))?;
+        acc.lhs().scalars().iter().try_for_each(|s| transcript.write(s))?;
         assert!(acc.lhs().fixed_base_scalars().is_empty());
 
         // Add the RHS of the acc to the transcript (with scalars in committed form).
         transcript.write(&(acc.rhs().bases().len() as u32))?;
-        (acc.rhs().bases().iter()).try_for_each(|p| transcript.write(p))?;
+        acc.rhs().bases().iter().try_for_each(|p| transcript.write(p))?;
         transcript.write(&acc_rhs_scalars_committed)?;
         transcript.write(&acc_rhs_evaluated)?;
 
@@ -441,9 +439,7 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
         // Read the RHS of the acc from the transcript (with scalars in committed form).
         let acc_rhs_bases = {
             let n: u32 = transcript.read()?;
-            (0..n)
-                .map(|_| transcript.read())
-                .collect::<Result<Vec<C>, io::Error>>()?
+            (0..n).map(|_| transcript.read()).collect::<Result<Vec<C>, io::Error>>()?
         };
         let acc_rhs_scalars_committed: C = transcript.read()?;
         let acc_rhs_evaluated: C = transcript.read()?;

@@ -253,10 +253,7 @@ where
             let ys = y.bigint_limbs();
             let zs = z.bigint_limbs();
 
-            let xzs = xs
-                .clone()
-                .zip(zs.clone())
-                .map(|(xs, zs)| pair_wise_prod(&xs, &zs));
+            let xzs = xs.clone().zip(zs.clone()).map(|(xs, zs)| pair_wise_prod(&xs, &zs));
             let y2s = ys.clone().map(|ys| pair_wise_prod(&ys, &ys));
 
             let (k_min, u_max) = on_curve_config.u_bounds.clone();
@@ -270,28 +267,23 @@ where
             let u = expr.map(|e| compute_u(m, &e, (&k_min, &u_max), cond.value()));
 
             let vs_values =
-                moduli
-                    .iter()
-                    .zip(on_curve_config.vs_bounds.iter())
-                    .map(|(mj, vj_bounds)| {
-                        let bs_mj = bs.iter().map(|b| b.rem(mj)).collect::<Vec<_>>();
-                        let bs2_mj = bs2.iter().map(|b| b.rem(mj)).collect::<Vec<_>>();
-                        let (lj_min, vj_max) = vj_bounds.clone();
+                moduli.iter().zip(on_curve_config.vs_bounds.iter()).map(|(mj, vj_bounds)| {
+                    let bs_mj = bs.iter().map(|b| b.rem(mj)).collect::<Vec<_>>();
+                    let bs2_mj = bs2.iter().map(|b| b.rem(mj)).collect::<Vec<_>>();
+                    let (lj_min, vj_max) = vj_bounds.clone();
 
-                        // 2 * sum_y_mj + sum_y2_mj
-                        //  - (sum_xz_mj + sum_z_mj + (a+1) * sum_x_mj + b)
-                        //  - u * (m % mj) - (k_min * m) % mj = (vj + lj_min) * mj
-                        let expr_mj = ys
-                            .clone()
-                            .map(|v| BI::from(2) * sum_bigints(&bs_mj, &v) - &b)
-                            + y2s.clone().map(|v| sum_bigints(&bs2_mj, &v))
-                            - xzs.clone().map(|v| sum_bigints(&bs2_mj, &v))
-                            - zs.clone().map(|v| sum_bigints(&bs_mj, &v))
-                            - xs.clone().map(|v| sum_bigints(&bs_mj, &v));
-                        expr_mj.zip(u.clone()).map(|(e, u)| {
-                            compute_vj(m, mj, &e, &u, &k_min, (&lj_min, &vj_max), cond.value())
-                        })
-                    });
+                    // 2 * sum_y_mj + sum_y2_mj
+                    //  - (sum_xz_mj + sum_z_mj + (a+1) * sum_x_mj + b)
+                    //  - u * (m % mj) - (k_min * m) % mj = (vj + lj_min) * mj
+                    let expr_mj = ys.clone().map(|v| BI::from(2) * sum_bigints(&bs_mj, &v) - &b)
+                        + y2s.clone().map(|v| sum_bigints(&bs2_mj, &v))
+                        - xzs.clone().map(|v| sum_bigints(&bs2_mj, &v))
+                        - zs.clone().map(|v| sum_bigints(&bs_mj, &v))
+                        - xs.clone().map(|v| sum_bigints(&bs_mj, &v));
+                    expr_mj.zip(u.clone()).map(|(e, u)| {
+                        compute_vj(m, mj, &e, &u, &k_min, (&lj_min, &vj_max), cond.value())
+                    })
+                });
 
             on_curve_config.q_on_curve.enable(&mut region, offset)?;
 
@@ -341,15 +333,9 @@ where
             let u_range_check = (u_cell, u_max);
 
             // Every vj_cell will be range-checked in [0, vj_max)
-            let vs_max = on_curve_config
-                .vs_bounds
-                .clone()
-                .into_iter()
-                .map(|(_, vj_max)| vj_max);
-            let vs_range_checks = vs_cells
-                .into_iter()
-                .zip(vs_max.collect::<Vec<_>>())
-                .collect::<Vec<_>>();
+            let vs_max = on_curve_config.vs_bounds.clone().into_iter().map(|(_, vj_max)| vj_max);
+            let vs_range_checks =
+                vs_cells.into_iter().zip(vs_max.collect::<Vec<_>>()).collect::<Vec<_>>();
 
             // We return an iterator over values that need to be range-checked
             Ok([u_range_check]

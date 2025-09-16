@@ -150,8 +150,7 @@ impl<F: Field, C: Circuit<F>> Circuit<F> for TracingCircuit<'_, F, C> {
 
     fn synthesize(&self, config: Self::Config, layouter: impl Layouter<F>) -> Result<(), Error> {
         let _span = debug_span!("synthesize").entered();
-        self.inner_ref()
-            .synthesize(config, TracingLayouter::new(layouter))
+        self.inner_ref().synthesize(config, TracingLayouter::new(layouter))
     }
 }
 

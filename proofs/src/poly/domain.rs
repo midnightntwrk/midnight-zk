@@ -412,9 +412,7 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
         if rotation.0 >= 0 {
             point *= &self.get_omega().pow_vartime([rotation.0 as u64]);
         } else {
-            point *= &self
-                .get_omega_inv()
-                .pow_vartime([(rotation.0 as i64).unsigned_abs()]);
+            point *= &self.get_omega_inv().pow_vartime([(rotation.0 as i64).unsigned_abs()]);
         }
         point
     }

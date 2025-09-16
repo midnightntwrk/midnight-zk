@@ -40,10 +40,9 @@ where
     /// Bitwise conjunction of the given assigned elements, interpreted as
     /// binary bit-strings of length `n`.
     ///
-    /// # Panics
+    /// # Unsatisfiable Circuit
     ///
-    /// If any of the given assigned elements cannot be decomposed in `n` bits,
-    /// the circuit will become unsatisfiable.
+    /// If any of the given assigned elements cannot be decomposed in `n` bits.
     ///
     /// ```
     /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
@@ -85,10 +84,9 @@ where
     /// Bitwise disjunction of the given assigned elements, interpreted as
     /// binary bit-strings of length `n`.
     ///
-    /// # Panics
+    /// # Unsatisfiable Circuit
     ///
-    /// If any of the given assigned elements cannot be decomposed in `n` bits,
-    /// the circuit will become unsatisfiable.
+    /// If any of the given assigned elements cannot be decomposed in `n` bits.
     ///
     /// ```
     /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
@@ -120,10 +118,9 @@ where
     /// Bitwise exclusive-or of the given assigned elements, interpreted as
     /// binary bit-strings of length `n`.
     ///
-    /// # Panics
+    /// # Unsatisfiable Circuit
     ///
-    /// If any of the given assigned elements cannot be decomposed in `n` bits,
-    /// the circuit will become unsatisfiable.
+    /// If any of the given assigned elements cannot be decomposed in `n` bits.
     ///
     /// ```
     /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
@@ -155,10 +152,9 @@ where
     /// Bitwise negation of the given assigned element, interpreted as a
     /// binary bit-string of length `n`.
     ///
-    /// # Panics
+    /// # Unsatisfiable Circuit
     ///
-    /// If the given assigned element cannot be decomposed in `n` bits, the
-    /// circuit will become unsatisfiable.
+    /// If the given assigned element cannot be decomposed in `n` bits.
     ///
     /// ```
     /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {

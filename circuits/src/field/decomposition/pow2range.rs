@@ -267,9 +267,7 @@ mod tests {
         }
 
         fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
-            let columns = (0..NR_COLS)
-                .map(|_| meta.advice_column())
-                .collect::<Vec<_>>();
+            let columns = (0..NR_COLS).map(|_| meta.advice_column()).collect::<Vec<_>>();
             Pow2RangeChip::configure(meta, &columns)
         }
 

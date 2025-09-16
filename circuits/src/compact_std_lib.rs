@@ -111,7 +111,7 @@ const ZKSTD_VERSION: u32 = 1;
 
 /// Architecture of the standard library. Specifies what chips need to be
 /// configured.
-#[derive(Clone, Copy, Debug, Encode, Decode)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Encode, Decode)]
 pub struct ZkStdLibArch {
     /// Enable the Jubjub chip?
     pub jubjub: bool,
@@ -175,6 +175,45 @@ impl ZkStdLibArch {
                 format!("Unsupported ZKStd version: {}", version),
             )),
         }
+    }
+
+    /// Reads the ZkStdArchitecture from a buffer where a MidnightVK was
+    /// serialized. This enables the reader to know the architecture without
+    /// the need of deserializing the full verifying key.
+    pub fn read_from_serialized_vk<R: io::Read>(reader: &mut R) -> io::Result<Self> {
+        // The current serialization of the verifying key places the architecture at
+        // the beginning.
+        Self::read(reader)
+    }
+
+    /// Returns a tuple `(points_in_proof, points_in_vk, points_in_final_msm)`
+    /// where:
+    ///
+    /// * `points_in_proof`: total number of EC points deserialized when reading
+    ///   a proof for this relation.
+    /// * `points_in_vk`: total number of EC points deserialized when reading
+    ///   the verifying key.
+    /// * `points_in_final_msm`: number of EC points involved in the final MSM
+    ///   operation during verification.
+    pub fn nb_points(&self) -> (usize, usize, usize) {
+        let mut cs = ConstraintSystem::default();
+        let _config = ZkStdLib::configure(&mut cs, *self);
+
+        let nb_perm_chunks =
+            (cs.permutation().columns.len().saturating_sub(1) / cs.degree().saturating_sub(2)) + 1;
+
+        let points_in_proof = cs.num_advice_columns() +
+            cs.lookups().len() * 3 +
+            nb_perm_chunks +
+            cs.degree() + // chunks of the vanishing
+            2; // points in multiopen argument
+
+        let points_in_vk =
+            cs.num_fixed_columns() + cs.num_selectors() + cs.permutation().columns.len();
+
+        let points_in_final_msm = points_in_proof + points_in_vk + 1; // + 1 comes from the the generator in the final check
+
+        (points_in_proof, points_in_vk, points_in_final_msm)
     }
 }
 
@@ -260,7 +299,7 @@ impl ZkStdLib {
         let parser_gadget = ParserGadget::new(&native_gadget);
         let vector_gadget = VectorGadget::new(&native_gadget);
         let automaton_chip =
-            (config.automaton_config.as_ref()).map(|c| AutomatonChip::new(c, &native_gadget));
+            config.automaton_config.as_ref().map(|c| AutomatonChip::new(c, &native_gadget));
 
         Self {
             native_gadget,
@@ -348,12 +387,8 @@ impl ZkStdLib {
         .max()
         .unwrap_or(0);
 
-        let advice_columns = (0..nb_advice_cols)
-            .map(|_| meta.advice_column())
-            .collect::<Vec<_>>();
-        let fixed_columns = (0..nb_fixed_cols)
-            .map(|_| meta.fixed_column())
-            .collect::<Vec<_>>();
+        let advice_columns = (0..nb_advice_cols).map(|_| meta.advice_column()).collect::<Vec<_>>();
+        let fixed_columns = (0..nb_fixed_cols).map(|_| meta.fixed_column()).collect::<Vec<_>>();
         let committed_instance_column = meta.instance_column();
         let instance_column = meta.instance_column();
 
@@ -395,9 +430,7 @@ impl ZkStdLib {
             true => Some(PoseidonChip::configure(
                 meta,
                 &(
-                    advice_columns[..NB_POSEIDON_ADVICE_COLS]
-                        .try_into()
-                        .unwrap(),
+                    advice_columns[..NB_POSEIDON_ADVICE_COLS].try_into().unwrap(),
                     fixed_columns[..NB_POSEIDON_FIXED_COLS].try_into().unwrap(),
                 ),
             )),
@@ -471,9 +504,7 @@ impl ZkStdLib {
 impl ZkStdLib {
     /// Native EccChip.
     pub fn jubjub(&self) -> &EccChip<C> {
-        self.jubjub_chip
-            .as_ref()
-            .expect("ZkStdLibArch must enable jubjub")
+        self.jubjub_chip.as_ref().expect("ZkStdLibArch must enable jubjub")
     }
 
     /// Gadget for performing in-circuit big-unsigned integer operations.
@@ -549,8 +580,7 @@ impl ZkStdLib {
         layouter: &mut impl Layouter<F>,
         input: &AssignedBit<F>,
     ) -> Result<(), Error> {
-        self.native_gadget
-            .assert_equal_to_fixed(layouter, input, true)
+        self.native_gadget.assert_equal_to_fixed(layouter, input, true)
     }
 
     /// Assert that a given assigned bit is false
@@ -559,8 +589,7 @@ impl ZkStdLib {
         layouter: &mut impl Layouter<F>,
         input: &AssignedBit<F>,
     ) -> Result<(), Error> {
-        self.native_gadget
-            .assert_equal_to_fixed(layouter, input, false)
+        self.native_gadget.assert_equal_to_fixed(layouter, input, false)
     }
 
     /// Returns `1` iff `x < y`.
@@ -575,10 +604,9 @@ impl ZkStdLib {
     /// # });
     /// ```
     ///
-    /// # Panics
+    /// # Unsatisfiable Circuit
     ///
-    /// Both `x` and `y` are asserted to be in the range `[0, 2^n)`, if this
-    /// condition is violated, the circuit becomes unsatisfiable.
+    /// If `x` or `y` are not in the range `[0, 2^n)`.
     ///
     /// ```should_panic
     /// # midnight_circuits::run_test_std_lib!(chip, layouter, 13, {
@@ -597,14 +625,9 @@ impl ZkStdLib {
         y: &AssignedNative<F>,
         n: u32,
     ) -> Result<AssignedBit<F>, Error> {
-        let bounded_x = self
-            .native_gadget
-            .bounded_of_element(layouter, n as usize, x)?;
-        let bounded_y = self
-            .native_gadget
-            .bounded_of_element(layouter, n as usize, y)?;
-        self.native_gadget
-            .lower_than(layouter, &bounded_x, &bounded_y)
+        let bounded_x = self.native_gadget.bounded_of_element(layouter, n as usize, x)?;
+        let bounded_y = self.native_gadget.bounded_of_element(layouter, n as usize, y)?;
+        self.native_gadget.lower_than(layouter, &bounded_x, &bounded_y)
     }
 
     /// Poseidon hash from a slice of native valure into a native value.
@@ -744,8 +767,7 @@ where
         layouter: &mut impl Layouter<F>,
         assigned: &T,
     ) -> Result<(), Error> {
-        self.native_gadget
-            .constrain_as_public_input(layouter, assigned)
+        self.native_gadget.constrain_as_public_input(layouter, assigned)
     }
 
     fn assign_as_public_input(
@@ -768,8 +790,7 @@ where
         layouter: &mut impl Layouter<F>,
         assigned: &T,
     ) -> Result<(), Error> {
-        self.native_gadget
-            .constrain_as_committed_public_input(layouter, assigned)
+        self.native_gadget.constrain_as_committed_public_input(layouter, assigned)
     }
 }
 
@@ -792,8 +813,7 @@ where
         x: &T,
         constant: T::Element,
     ) -> Result<(), Error> {
-        self.native_gadget
-            .assert_equal_to_fixed(layouter, x, constant)
+        self.native_gadget.assert_equal_to_fixed(layouter, x, constant)
     }
 
     fn assert_not_equal_to_fixed(
@@ -802,8 +822,7 @@ where
         x: &T,
         constant: T::Element,
     ) -> Result<(), Error> {
-        self.native_gadget
-            .assert_not_equal_to_fixed(layouter, x, constant)
+        self.native_gadget.assert_not_equal_to_fixed(layouter, x, constant)
     }
 }
 
@@ -874,8 +893,7 @@ impl DecompositionInstructions<F, AssignedNative<F>> for ZkStdLib {
         nb_bits: Option<usize>,
         enforce_canonical: bool,
     ) -> Result<Vec<AssignedBit<F>>, Error> {
-        self.native_gadget
-            .assigned_to_le_bits(layouter, x, nb_bits, enforce_canonical)
+        self.native_gadget.assigned_to_le_bits(layouter, x, nb_bits, enforce_canonical)
     }
 
     fn assigned_to_le_bytes(
@@ -884,8 +902,7 @@ impl DecompositionInstructions<F, AssignedNative<F>> for ZkStdLib {
         x: &AssignedNative<F>,
         nb_bytes: Option<usize>,
     ) -> Result<Vec<AssignedByte<F>>, Error> {
-        self.native_gadget
-            .assigned_to_le_bytes(layouter, x, nb_bytes)
+        self.native_gadget.assigned_to_le_bytes(layouter, x, nb_bytes)
     }
 
     fn assigned_to_le_chunks(
@@ -915,8 +932,7 @@ impl ArithInstructions<F, AssignedNative<F>> for ZkStdLib {
         terms: &[(F, AssignedNative<F>)],
         constant: F,
     ) -> Result<AssignedNative<F>, Error> {
-        self.native_gadget
-            .linear_combination(layouter, terms, constant)
+        self.native_gadget.linear_combination(layouter, terms, constant)
     }
 
     fn mul(
@@ -1006,8 +1022,7 @@ impl RangeCheckInstructions<F, AssignedNative<F>> for ZkStdLib {
         value: Value<F>,
         bound: &BigUint,
     ) -> Result<AssignedNative<F>, Error> {
-        self.native_gadget
-            .assign_lower_than_fixed(layouter, value, bound)
+        self.native_gadget.assign_lower_than_fixed(layouter, value, bound)
     }
 
     fn assert_lower_than_fixed(
@@ -1016,8 +1031,7 @@ impl RangeCheckInstructions<F, AssignedNative<F>> for ZkStdLib {
         x: &AssignedNative<F>,
         bound: &BigUint,
     ) -> Result<(), Error> {
-        self.native_gadget
-            .assert_lower_than_fixed(layouter, x, bound)
+        self.native_gadget.assert_lower_than_fixed(layouter, x, bound)
     }
 }
 
@@ -1104,8 +1118,7 @@ where
         value: Value<Vec<<T>::Element>>,
         filler: Option<<T>::Element>,
     ) -> Result<AssignedVector<F, T, M, A>, Error> {
-        self.vector_gadget
-            .assign_with_filler(layouter, value, filler)
+        self.vector_gadget.assign_with_filler(layouter, value, filler)
     }
 }
 
@@ -1322,10 +1335,7 @@ impl<Rel: Relation> MidnightPK<Rel> {
 ///     // be process by the prover/verifier. The order here must be consistent with
 ///     // the order in which public inputs are constrained/assigned in [circuit].
 ///     fn format_instance(instance: &Self::Instance) -> Vec<F> {
-///         instance
-///             .iter()
-///             .flat_map(AssignedByte::<F>::as_public_input)
-///             .collect()
+///         instance.iter().flat_map(AssignedByte::<F>::as_public_input).collect()
 ///     }
 ///
 ///     // Define the logic of the NP-relation being proved.
@@ -1338,9 +1348,7 @@ impl<Rel: Relation> MidnightPK<Rel> {
 ///     ) -> Result<(), Error> {
 ///         let assigned_input = std_lib.assign_many(layouter, &witness.transpose_array())?;
 ///         let output = std_lib.sha256(layouter, &assigned_input)?;
-///         output
-///             .iter()
-///             .try_for_each(|b| std_lib.constrain_as_public_input(layouter, b))
+///         output.iter().try_for_each(|b| std_lib.constrain_as_public_input(layouter, b))
 ///     }
 ///
 ///     fn write_relation<W: std::io::Write>(&self, _writer: &mut W) -> std::io::Result<()> {
@@ -1424,36 +1432,6 @@ pub trait Relation: Clone {
 
     /// Reads a relation from a buffer.
     fn read_relation<R: io::Read>(reader: &mut R) -> io::Result<Self>;
-
-    /// Returns a tuple `(points_in_proof, points_in_vk, points_in_final_msm)`
-    /// where:
-    ///
-    /// * `points_in_proof`: total number of EC points deserialized when reading
-    ///   a proof for this relation.
-    /// * `points_in_vk`: total number of EC points deserialized when reading
-    ///   the verifying key.
-    /// * `points_in_final_msm`: number of EC points involved in the final MSM
-    ///   operation during verification.
-    fn nb_points(&self) -> (usize, usize, usize) {
-        let mut cs = ConstraintSystem::default();
-        let _config = ZkStdLib::configure(&mut cs, self.used_chips());
-
-        let nb_perm_chunks =
-            (cs.permutation().columns.len().saturating_sub(1) / cs.degree().saturating_sub(2)) + 1;
-
-        let points_in_proof = cs.num_advice_columns() +
-            cs.lookups().len() * 3 +
-            nb_perm_chunks +
-            cs.degree() + // chunks of the vanishing
-            2; // points in multiopen argument
-
-        let points_in_vk =
-            cs.num_fixed_columns() + cs.num_selectors() + cs.permutation().columns.len();
-
-        let points_in_final_msm = points_in_proof + points_in_vk + 1; // + 1 comes from the the generator in the final check
-
-        (points_in_proof, points_in_vk, points_in_final_msm)
-    }
 }
 
 impl<R: Relation> Circuit<F> for MidnightCircuit<'_, R> {
@@ -1714,9 +1692,7 @@ where
         acc_guard.add_msm(guard);
     }
     // TODO: Have richer error types
-    acc_guard
-        .verify(params_verifier)
-        .map_err(|_| Error::Opening)
+    acc_guard.verify(params_verifier).map_err(|_| Error::Opening)
 }
 
 /// Cost model of the given relation.

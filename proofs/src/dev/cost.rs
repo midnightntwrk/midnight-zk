@@ -291,19 +291,10 @@ impl<G: PrimeGroup, ConcreteCircuit: Circuit<G::Scalar>> CircuitCost<G, Concrete
         // Figure out how many point sets we have due to queried cells.
         let mut column_queries: HashMap<Column<Any>, HashSet<i32>> = HashMap::new();
         for (c, r) in iter::empty()
-            .chain(
-                cs.advice_queries
-                    .iter()
-                    .map(|(c, r)| (Column::<Any>::from(*c), *r)),
-            )
+            .chain(cs.advice_queries.iter().map(|(c, r)| (Column::<Any>::from(*c), *r)))
             .chain(cs.instance_queries.iter().map(|(c, r)| ((*c).into(), *r)))
             .chain(cs.fixed_queries.iter().map(|(c, r)| ((*c).into(), *r)))
-            .chain(
-                cs.permutation
-                    .get_columns()
-                    .into_iter()
-                    .map(|c| (c, Rotation::cur())),
-            )
+            .chain(cs.permutation.get_columns().into_iter().map(|c| (c, Rotation::cur())))
         {
             column_queries.entry(c).or_default().insert(r.0);
         }

@@ -301,10 +301,7 @@ impl fmt::Display for CircuitGates {
         writeln!(
             f,
             "Total custom constraint polynomials: {}",
-            self.gates
-                .iter()
-                .map(|gate| gate.constraints.len())
-                .sum::<usize>()
+            self.gates.iter().map(|gate| gate.constraints.len()).sum::<usize>()
         )?;
         writeln!(f, "Total negations: {}", self.total_negations)?;
         writeln!(f, "Total additions: {}", self.total_additions)?;

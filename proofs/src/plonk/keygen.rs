@@ -150,8 +150,7 @@ impl<F: Field> Assignment<F> for Assembly<F> {
             return Err(Error::not_enough_rows_available(self.k));
         }
 
-        self.permutation
-            .copy(left_column, left_row, right_column, right_row)
+        self.permutation.copy(left_column, left_row, right_column, right_row)
     }
 
     fn fill_from_row(
@@ -164,10 +163,7 @@ impl<F: Field> Assignment<F> for Assembly<F> {
             return Err(Error::not_enough_rows_available(self.k));
         }
 
-        let col = self
-            .fixed
-            .get_mut(column.index())
-            .ok_or(Error::BoundsFailure)?;
+        let col = self.fixed.get_mut(column.index()).ok_or(Error::BoundsFailure)?;
 
         let filler = to.assign()?;
         for row in self.usable_rows.clone().skip(from_row) {
@@ -317,20 +313,11 @@ where
     // not need them, and `keygen_pk` regenerates `cs` from scratch anyways.
     let selectors = std::mem::take(&mut assembly.selectors);
     let (cs, selector_polys) = cs.directly_convert_selectors_to_fixed(selectors);
-    fixed.extend(
-        selector_polys
-            .into_iter()
-            .map(|poly| domain.lagrange_from_vec(poly)),
-    );
+    fixed.extend(selector_polys.into_iter().map(|poly| domain.lagrange_from_vec(poly)));
 
-    let permutation_vk = assembly
-        .permutation
-        .build_vk(params, &domain, &cs.permutation);
+    let permutation_vk = assembly.permutation.build_vk(params, &domain, &cs.permutation);
 
-    let fixed_commitments = fixed
-        .iter()
-        .map(|poly| CS::commit_lagrange(params, poly))
-        .collect();
+    let fixed_commitments = fixed.iter().map(|poly| CS::commit_lagrange(params, poly)).collect();
 
     Ok(VerifyingKey::from_parts(
         domain,
@@ -378,25 +365,17 @@ where
 
     let mut fixed = batch_invert_rational(assembly.fixed);
     let (cs, selector_polys) = cs.directly_convert_selectors_to_fixed(assembly.selectors);
-    fixed.extend(
-        selector_polys
-            .into_iter()
-            .map(|poly| vk.domain.lagrange_from_vec(poly)),
-    );
+    fixed.extend(selector_polys.into_iter().map(|poly| vk.domain.lagrange_from_vec(poly)));
 
-    let fixed_polys: Vec<_> = fixed
-        .par_iter()
-        .map(|poly| vk.domain.lagrange_to_coeff(poly.clone()))
-        .collect();
+    let fixed_polys: Vec<_> =
+        fixed.par_iter().map(|poly| vk.domain.lagrange_to_coeff(poly.clone())).collect();
 
     let fixed_cosets = fixed_polys
         .par_iter()
         .map(|poly| vk.domain.coeff_to_extended(poly.clone()))
         .collect();
 
-    let permutation_pk = assembly
-        .permutation
-        .build_pk::<F>(&vk.domain, &cs.permutation);
+    let permutation_pk = assembly.permutation.build_pk::<F>(&vk.domain, &cs.permutation);
 
     let [l0, l_last, l_active_row] = compute_lagrange_polys(&vk, &cs);
     // Compute the optimized evaluation data structure

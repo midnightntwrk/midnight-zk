@@ -7,6 +7,7 @@ This repository implements the proof system used in **Midnight**, along with too
 - `curves`: Implementation of elliptic curves used in midnight, concretely BLS12-381 and JubJub
 - `proof-system`: Plonk proof system using KZG commitments
 - `circuits`: Tooling for constructing ZK circuits
+- `aggregator`: Toolkit for proof aggregation of midnight-proofs.
 
 ## Acknowledgments
 

@@ -73,10 +73,7 @@ pub fn bi_to_limbs(nb_limbs: u32, base: &BI, value: &BI) -> Vec<BI> {
 /// Returns the (positive) BigInt represented by the given `limbs`, parsing them
 /// in the given `base`, in little-endian.
 pub fn bi_from_limbs(base: &BI, limbs: &[BI]) -> BI {
-    limbs
-        .iter()
-        .rev()
-        .fold(BI::zero(), |acc, limb| acc * base + limb)
+    limbs.iter().rev().fold(BI::zero(), |acc, limb| acc * base + limb)
 }
 
 /// Breaks the given `value` into `nb_limbs` limbs representing the value in the
@@ -102,20 +99,13 @@ pub fn big_to_limbs(nb_limbs: u32, base: &BigUint, value: &BigUint) -> Vec<BigUi
 /// Returns the BigUint represented by the given `limbs`, parsing them
 /// in the given `base`, in little-endian.
 pub fn big_from_limbs(base: &BigUint, limbs: &[BigUint]) -> BigUint {
-    limbs
-        .iter()
-        .rev()
-        .fold(BigUint::zero(), |acc, limb| acc * base + limb)
+    limbs.iter().rev().fold(BigUint::zero(), |acc, limb| acc * base + limb)
 }
 
 /// Sum the given `coeffs` pair-wise multiplied by the given `values`.
 pub fn sum_bigints(coeffs: &[BI], values: &[BI]) -> BI {
     debug_assert!(coeffs.len() == values.len());
-    values
-        .iter()
-        .zip(coeffs.iter())
-        .map(|(v, b)| b * v)
-        .sum::<BI>()
+    values.iter().zip(coeffs.iter()).map(|(v, b)| b * v).sum::<BI>()
 }
 
 /// Same as [sum_bigints], but adds `Expressions<F>`.
@@ -131,11 +121,7 @@ pub fn sum_exprs<F: PrimeField>(coeffs: &[BI], exprs: &[Expression<F>]) -> Expre
 /// On input `v`, `w`, returns `z : Vec<T>` with `z_i = v_i * w_i` for all `i`.
 pub fn pair_wise_prod<T: Mul<Output = T> + Clone>(v: &[T], w: &[T]) -> Vec<T> {
     v.iter()
-        .flat_map(|vi| {
-            w.iter()
-                .map(|wj| vi.clone() * wj.clone())
-                .collect::<Vec<_>>()
-        })
+        .flat_map(|vi| w.iter().map(|wj| vi.clone() * wj.clone()).collect::<Vec<_>>())
         .collect::<Vec<_>>()
 }
 
@@ -146,10 +132,7 @@ pub fn get_advice_vec<F: PrimeField>(
     columns: &[Column<Advice>],
     rotation: Rotation,
 ) -> Vec<Expression<F>> {
-    columns
-        .iter()
-        .map(|&col| meta.query_advice(col, rotation))
-        .collect::<Vec<_>>()
+    columns.iter().map(|&col| meta.query_advice(col, rotation)).collect::<Vec<_>>()
 }
 
 /// Checks that the FieldEmulationParams are sound for implementing an emulated

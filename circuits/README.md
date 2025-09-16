@@ -17,19 +17,50 @@ Midnight Circuits provides several tools to facilitate circuit development with 
 4. Bit/Byte decomposition tools and range-checks.
 5. SHA-256.
 6. Set (non-)membership.
+7. BigUInt.
+8. Variable length vectors (see explanation below).
+9. Finite-state automata parsing.
+10. In-circuit verification of Plonk proofs (a.k.a. recursion)
 
 We aim to expose these functionalities via traits, which can be found in `[src/instructions]`.
 
+### Variable length vectors
+We provide support for variable-length vectors in-circuit, even when the exact size of the vector is unknown 
+at compilation time. Each variable-length vector is parameterized with a `MAX_LENGTH` attribute, which 
+specifies the maximum allowed size.
+
+The cost of using these structures in-circuit is proportional to the `MAX_LENGTH`, while the computed result 
+is guaranteed to correspond to the operation applied to the actual vector values. For example, operations 
+such as hashing or parsing are performed over the full vector of length `MAX_LENGTH`, and the final result 
+is conditionally selected to reflect the operation applied only to the actual elements of the vector.
+
+
 ## ZkStdLib
 
-Midnight Circuits includes the `ZkStdLib`, which encapsulates the functionality required by Midnight. This library has a fixed configuration, meaning you cannot choose the number of columns, lookups, or gates. If you require this flexibility, you should build a circuit without using `ZkStdLib`.
+Midnight Circuits includes the `ZkStdLib`, which encapsulates the functionality required by Midnight. 
+The architecture of `ZkStdLib` is configurable via the following structure:
 
-The motivations for a fixed configuration are:
+```text
+pub struct ZkStdLibArch {
+    pub jubjub: bool,
+    pub poseidon: bool,
+    pub sha256: bool,
+    pub secp256k1: bool,
+    pub bls12_381: bool,
+    pub base64: bool,
+    pub nr_pow2range_cols: u8,
+    pub automaton: bool,
+}
+```
 
-1. Simplified reasoning for recursion.
-2. The verifier can perform pre-parsing of circuits since they all have the same structure.
+which can be defined via the `Relation` trait with the `used_chips` function. The default 
+architecture activates only `JubJub`, `Poseidon` and `sha256`, and uses a single column for
+`pow2range` chip. The maximum number of columns accepted for the `pow2range` chip is currently
+at 4.
 
-`ZkStdLib` also serves as an abstraction layer, allowing developers to focus on circuit logic rather than the configuration and chip creation. Developers only need to implement the `Relation` trait, avoiding the boilerplate of Halo2's `Circuit`. For example, to prove knowledge of a SHA preimage:
+`ZkStdLib` also serves as an abstraction layer, allowing developers to focus on circuit logic 
+rather than the configuration and chip creation. Developers only need to implement the `Relation` 
+trait, avoiding the boilerplate of Halo2's `Circuit`. For example, to prove knowledge of a SHA preimage:
 
 ```rust
 use midnight_circuits::{
@@ -84,6 +115,19 @@ impl Relation for ShaPreImageCircuit {
         output
             .iter()
             .try_for_each(|b| std_lib.constrain_as_public_input(layouter, b))
+    }
+    
+    fn used_chips(&self) -> ZkStdLibArch {
+        ZkStdLibArch {
+            jubjub: false,
+            poseidon: false,
+            sha256: true,
+            secp256k1: false,
+            bls12_381: false,
+            base64: false,
+            nr_pow2range_cols: 1,
+            automaton: false,
+        }
     }
 
     fn write_relation<W: std::io::Write>(&self, _writer: &mut W) -> std::io::Result<()> {

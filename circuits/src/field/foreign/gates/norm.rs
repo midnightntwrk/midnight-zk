@@ -221,12 +221,9 @@ where
             let max_limb_bound = P::max_limb_bound();
 
             let shift = max_limb_bound.clone();
-            let xs_shifted = x.bigint_limbs().map(|limbs| {
-                limbs
-                    .iter()
-                    .map(|xi| shift.clone() + xi)
-                    .collect::<Vec<_>>()
-            });
+            let xs_shifted = x
+                .bigint_limbs()
+                .map(|limbs| limbs.iter().map(|xi| shift.clone() + xi).collect::<Vec<_>>());
             // Convert to BigInt in order to normalize, then back to limbs
             let shifts = vec![max_limb_bound; nb_limbs as usize];
             let sum_shifted_x = xs_shifted.clone().map(|v| sum_bigints(&base_powers, &v));
@@ -313,15 +310,10 @@ where
             let u_range_check = (u_cell, u_max);
 
             // Every vj_cell will be range-checked in [0, vj_max)
-            let vs_max = norm_config
-                .vs_bounds
-                .clone()
-                .into_iter()
-                .map(|(_, vj_max)| vj_max.clone());
-            let vs_range_checks = vs_cells
-                .into_iter()
-                .zip(vs_max.collect::<Vec<_>>())
-                .collect::<Vec<_>>();
+            let vs_max =
+                norm_config.vs_bounds.clone().into_iter().map(|(_, vj_max)| vj_max.clone());
+            let vs_range_checks =
+                vs_cells.into_iter().zip(vs_max.collect::<Vec<_>>()).collect::<Vec<_>>();
 
             // Assert all range-checks
             Ok((

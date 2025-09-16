@@ -45,9 +45,7 @@ impl<C: CurveAffine> Group<C::Scalar> for WrapperPoint<C> {
 fn read_points() -> std::io::Result<(Vec<WrapperPoint<G1Affine>>, Vec<WrapperPoint<G2Affine>>)> {
     let srs_dir = std::env::var("SRS_DIR").unwrap_or("./examples/assets".into());
 
-    let mut fd = OpenOptions::new()
-        .read(true)
-        .open(format!("{srs_dir}/phase1radix2m19"))?;
+    let mut fd = OpenOptions::new().read(true).open(format!("{srs_dir}/phase1radix2m19"))?;
 
     let mut header = [0u8; G1_SIZE + G1_SIZE + G2_SIZE];
     fd.read_exact(&mut header[..])?;
@@ -96,16 +94,8 @@ fn main() -> std::io::Result<()> {
         EvaluationDomain::from_coeffs(g2s.clone()).expect("Failed to generate Evaluation domain");
     eval_domain_2.fft(worker);
 
-    let g1 = eval_domain_1
-        .into_coeffs()
-        .into_iter()
-        .map(|p| p.0.into())
-        .collect::<Vec<_>>();
-    let g2 = eval_domain_2
-        .into_coeffs()
-        .into_iter()
-        .map(|p| p.0.into())
-        .collect::<Vec<_>>();
+    let g1 = eval_domain_1.into_coeffs().into_iter().map(|p| p.0.into()).collect::<Vec<_>>();
+    let g2 = eval_domain_2.into_coeffs().into_iter().map(|p| p.0.into()).collect::<Vec<_>>();
 
     let g1s = g1s.into_iter().map(|p| p.0.into()).collect::<Vec<_>>();
 
@@ -119,8 +109,7 @@ fn main() -> std::io::Result<()> {
     let mut file =
         File::create(format!("{srs_dir}/bls_filecoin_2p19")).expect("Failed to create file");
 
-    file.write_all(&buf[..])
-        .expect("Failed to write Params to file");
+    file.write_all(&buf[..]).expect("Failed to write Params to file");
 
     Ok(())
 }

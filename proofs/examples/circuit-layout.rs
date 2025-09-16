@@ -255,9 +255,7 @@ impl<F: Field> Circuit<F> for MyCircuit<F> {
                     })?;
                     let (a1, b1, _) = cs.raw_add(&mut region, || {
                         let fin = a_squared + a;
-                        a.zip(a_squared)
-                            .zip(fin)
-                            .map(|((a, a_squared), fin)| (a, a_squared, fin))
+                        a.zip(a_squared).zip(fin).map(|((a, a_squared), fin)| (a, a_squared, fin))
                     })?;
                     cs.copy(&mut region, a0, a1)?;
                     cs.copy(&mut region, b1, c0)
@@ -288,9 +286,7 @@ fn main() {
     use plotters::prelude::*;
     let root = BitMapBackend::new("layout.png", (1024, 768)).into_drawing_area();
     root.fill(&WHITE).unwrap();
-    let root = root
-        .titled("Example Circuit Layout", ("sans-serif", 60))
-        .unwrap();
+    let root = root.titled("Example Circuit Layout", ("sans-serif", 60)).unwrap();
 
     midnight_proofs::dev::CircuitLayout::default()
         // You can optionally render only a section of the circuit.

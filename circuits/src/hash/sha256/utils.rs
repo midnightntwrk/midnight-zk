@@ -80,7 +80,7 @@ pub fn gen_spread_table<F: PrimeField>() -> impl Iterator<Item = (F, F, F)> {
 ///
 /// If A, B, C are not in clean spreaded form.
 pub fn spreaded_maj(spreaded_forms: [u64; 3]) -> u64 {
-    (spreaded_forms.into_iter()).for_each(assert_in_valid_spreaded_form);
+    spreaded_forms.into_iter().for_each(assert_in_valid_spreaded_form);
 
     let [sA, sB, sC] = spreaded_forms;
 
@@ -96,7 +96,7 @@ pub fn spreaded_maj(spreaded_forms: [u64; 3]) -> u64 {
 ///
 /// If the limbs are not in clean spreaded form.
 pub fn spreaded_Sigma_0(spreaded_limbs: [u64; 4]) -> u64 {
-    (spreaded_limbs.into_iter()).for_each(assert_in_valid_spreaded_form);
+    spreaded_limbs.into_iter().for_each(assert_in_valid_spreaded_form);
 
     let [sA_10, sA_09, sA_11, sA_02] = spreaded_limbs;
 
@@ -114,7 +114,7 @@ pub fn spreaded_Sigma_0(spreaded_limbs: [u64; 4]) -> u64 {
 ///
 /// If the limbs are not in clean spreaded form.
 pub fn spreaded_Sigma_1(spreaded_limbs: [u64; 5]) -> u64 {
-    (spreaded_limbs.into_iter()).for_each(assert_in_valid_spreaded_form);
+    spreaded_limbs.into_iter().for_each(assert_in_valid_spreaded_form);
 
     let [sE_07, sE_12, sE_02, sE_05, sE_06] = spreaded_limbs;
 
@@ -132,7 +132,7 @@ pub fn spreaded_Sigma_1(spreaded_limbs: [u64; 5]) -> u64 {
 ///
 /// If the limbs are not in clean spreaded form.
 pub fn spreaded_sigma_0(spreaded_limbs: [u64; 8]) -> u64 {
-    (spreaded_limbs.into_iter()).for_each(assert_in_valid_spreaded_form);
+    spreaded_limbs.into_iter().for_each(assert_in_valid_spreaded_form);
 
     let [sW_12, sW_1a, sW_1b, sW_1c, sW_07, sW_3a, sW_04, sW_3b] = spreaded_limbs;
 
@@ -157,7 +157,7 @@ pub fn spreaded_sigma_0(spreaded_limbs: [u64; 8]) -> u64 {
 ///
 /// If the limbs are not in clean spreaded form.
 pub fn spreaded_sigma_1(spreaded_limbs: [u64; 8]) -> u64 {
-    (spreaded_limbs.into_iter()).for_each(assert_in_valid_spreaded_form);
+    spreaded_limbs.into_iter().for_each(assert_in_valid_spreaded_form);
 
     let [sW_12, sW_1a, sW_1b, sW_1c, sW_07, sW_3a, sW_04, sW_3b] = spreaded_limbs;
 
@@ -177,9 +177,7 @@ pub fn spreaded_sigma_1(spreaded_limbs: [u64; 8]) -> u64 {
 
 /// Returns sum_i 4^(exponents\[i\]) * terms\[i\].
 fn pow4_ip<const N: usize>(exponents: [u8; N], terms: [u64; N]) -> u64 {
-    (exponents.iter().zip(terms.iter()))
-        .map(|(e, t)| (1 << (2 * e)) * t)
-        .sum()
+    exponents.iter().zip(terms.iter()).map(|(e, t)| (1 << (2 * e)) * t).sum()
 }
 
 /// Returns sum_i 2^(exponents\[i\]) * terms\[i\].

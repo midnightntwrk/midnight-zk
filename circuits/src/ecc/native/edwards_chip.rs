@@ -450,9 +450,7 @@ impl<C: EdwardsCurve> EccChip<C> {
         region.assign_advice(|| "xs", config.advice_cols[5], offset, || xs_val)?;
         region.assign_advice(|| "ys", config.advice_cols[6], offset, || ys_val)?;
 
-        let s_val = xs_val
-            .zip(ys_val)
-            .map(|(xs, ys)| C::from_xy(xs, ys).unwrap());
+        let s_val = xs_val.zip(ys_val).map(|(xs, ys)| C::from_xy(xs, ys).unwrap());
         let r_val = s_val.map(|s| s + s);
 
         let xr_val = r_val.map(|r: C| r.coordinates().expect("non-id").0);
@@ -496,15 +494,15 @@ impl<C: EdwardsCurve> EccChip<C> {
         layouter.assign_region(
             || "assign mul",
             |mut region: Region<'_, C::Base>| {
-                (id_point.x).copy_advice(|| "id.x", &mut region, config.advice_cols[0], 0)?;
-                (id_point.y).copy_advice(|| "id.y", &mut region, config.advice_cols[1], 0)?;
+                id_point.x.copy_advice(|| "id.x", &mut region, config.advice_cols[0], 0)?;
+                id_point.y.copy_advice(|| "id.y", &mut region, config.advice_cols[1], 0)?;
 
                 let mut acc = id_point.clone();
 
                 for (i, bit) in scalar_be_bits.iter().enumerate() {
-                    (base.x).copy_advice(|| "base.x", &mut region, config.advice_cols[2], i)?;
-                    (base.y).copy_advice(|| "base.y", &mut region, config.advice_cols[3], i)?;
-                    (bit.0).copy_advice(|| "b cond_add", &mut region, config.advice_cols[4], i)?;
+                    base.x.copy_advice(|| "base.x", &mut region, config.advice_cols[2], i)?;
+                    base.y.copy_advice(|| "base.y", &mut region, config.advice_cols[3], i)?;
+                    bit.0.copy_advice(|| "b cond_add", &mut region, config.advice_cols[4], i)?;
 
                     if i < scalar_be_bits.len() - 1 {
                         acc = self.assign_add_then_double(
@@ -606,11 +604,9 @@ impl<C: EdwardsCurve> EccInstructions<C::Base, C> for EccChip<C> {
             .map(|(scalar, point)| self.mul(layouter, scalar, point))
             .collect::<Result<Vec<Self::Point>, Error>>()?;
 
-        scaled_points[1..]
-            .iter()
-            .try_fold(scaled_points[0].clone(), |acc, e| {
-                self.add(layouter, &acc, e)
-            })
+        scaled_points[1..].iter().try_fold(scaled_points[0].clone(), |acc, e| {
+            self.add(layouter, &acc, e)
+        })
     }
 
     fn mul_by_constant(
@@ -718,9 +714,7 @@ impl<C: EdwardsCurve> AssignmentInstructions<C::Base, ScalarVar<C>> for EccChip<
         let bits = value
             .map(|s| fe_to_le_bits(&s, Some(C::Scalar::NUM_BITS as usize)))
             .transpose_vec(<C::Scalar as PrimeField>::NUM_BITS as usize);
-        self.native_gadget
-            .assign_many(layouter, &bits)
-            .map(ScalarVar)
+        self.native_gadget.assign_many(layouter, &bits).map(ScalarVar)
     }
 
     fn assign_fixed(
@@ -752,8 +746,7 @@ impl<C: EdwardsCurve> AssertionInstructions<C::Base, AssignedNativePoint<C>> for
         q: &AssignedNativePoint<C>,
     ) -> Result<(), Error> {
         let is_eq = self.is_equal(layouter, p, q)?;
-        self.native_gadget
-            .assert_equal_to_fixed(layouter, &is_eq, false)
+        self.native_gadget.assert_equal_to_fixed(layouter, &is_eq, false)
     }
 
     fn assert_equal_to_fixed(
@@ -763,8 +756,7 @@ impl<C: EdwardsCurve> AssertionInstructions<C::Base, AssignedNativePoint<C>> for
         constant: C::CryptographicGroup,
     ) -> Result<(), Error> {
         let (cx, cy) = constant.into().coordinates().expect("non-id");
-        self.native_gadget
-            .assert_equal_to_fixed(layouter, &p.x, cx)?;
+        self.native_gadget.assert_equal_to_fixed(layouter, &p.x, cx)?;
         self.native_gadget.assert_equal_to_fixed(layouter, &p.y, cy)
     }
 
@@ -775,8 +767,7 @@ impl<C: EdwardsCurve> AssertionInstructions<C::Base, AssignedNativePoint<C>> for
         constant: C::CryptographicGroup,
     ) -> Result<(), Error> {
         let is_eq = self.is_equal_to_fixed(layouter, p, constant)?;
-        self.native_gadget
-            .assert_equal_to_fixed(layouter, &is_eq, false)
+        self.native_gadget.assert_equal_to_fixed(layouter, &is_eq, false)
     }
 }
 
@@ -971,8 +962,7 @@ impl<C: EdwardsCurve> ConversionInstructions<C::Base, AssignedNative<C::Base>, S
         x: &AssignedNative<C::Base>,
     ) -> Result<ScalarVar<C>, Error> {
         Ok(ScalarVar(
-            self.native_gadget
-                .assigned_to_le_bits(layouter, x, None, true)?,
+            self.native_gadget.assigned_to_le_bits(layouter, x, None, true)?,
         ))
     }
 }

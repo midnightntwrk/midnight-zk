@@ -224,10 +224,8 @@ where
     // Obtain challenge for keeping all separate gates linearly independent
     let y: F = transcript.squeeze_challenge();
 
-    let (instance_polys, instance_values) = instance
-        .into_iter()
-        .map(|i| (i.instance_polys, i.instance_values))
-        .unzip();
+    let (instance_polys, instance_values) =
+        instance.into_iter().map(|i| (i.instance_polys, i.instance_values)).unzip();
 
     let advice_polys = bench_and_run!(_group; ; own advice ; "Advice to coeff";
         |advice: Vec<AdviceSingle<F, LagrangeCoeff>>| advice
@@ -601,10 +599,8 @@ where
                 }
             }
 
-            let advice_commitments: Vec<_> = advice_values
-                .iter()
-                .map(|poly| CS::commit_lagrange(params, poly))
-                .collect();
+            let advice_commitments: Vec<_> =
+                advice_values.iter().map(|poly| CS::commit_lagrange(params, poly)).collect();
 
             for commitment in &advice_commitments {
                 transcript.write(commitment)?;
@@ -672,14 +668,8 @@ fn compute_h_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F
     pk.ev.evaluate_h::<ExtendedLagrangeCoeff>(
         &pk.vk.domain,
         &pk.vk.cs,
-        &advice_cosets
-            .iter()
-            .map(|a| a.as_slice())
-            .collect::<Vec<_>>(),
-        &instance_cosets
-            .iter()
-            .map(|i| i.as_slice())
-            .collect::<Vec<_>>(),
+        &advice_cosets.iter().map(|a| a.as_slice()).collect::<Vec<_>>(),
+        &instance_cosets.iter().map(|i| i.as_slice()).collect::<Vec<_>>(),
         &pk.fixed_cosets,
         challenges,
         *y,
@@ -781,25 +771,18 @@ fn compute_queries<'a, F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentSch
             move |((((instance, advice), permutation), lookups), trash)| {
                 iter::empty()
                     .chain(
-                        pk.vk
-                            .cs
-                            .instance_queries
-                            .iter()
-                            .take(nb_committed_instances)
-                            .map(move |&(column, at)| ProverQuery {
+                        pk.vk.cs.instance_queries.iter().take(nb_committed_instances).map(
+                            move |&(column, at)| ProverQuery {
                                 point: domain.rotate_omega(x, at),
                                 poly: &instance[column.index()],
-                            }),
+                            },
+                        ),
                     )
                     .chain(
-                        pk.vk
-                            .cs
-                            .advice_queries
-                            .iter()
-                            .map(move |&(column, at)| ProverQuery {
-                                point: domain.rotate_omega(x, at),
-                                poly: &advice[column.index()],
-                            }),
+                        pk.vk.cs.advice_queries.iter().map(move |&(column, at)| ProverQuery {
+                            point: domain.rotate_omega(x, at),
+                            poly: &advice[column.index()],
+                        }),
                     )
                     .chain(permutation.open(pk, x))
                     .chain(lookups.iter().flat_map(move |p| p.open(pk, x)))
@@ -807,14 +790,10 @@ fn compute_queries<'a, F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentSch
             },
         )
         .chain(
-            pk.vk
-                .cs
-                .fixed_queries
-                .iter()
-                .map(move |&(column, at)| ProverQuery {
-                    point: domain.rotate_omega(x, at),
-                    poly: &pk.fixed_polys[column.index()],
-                }),
+            pk.vk.cs.fixed_queries.iter().map(move |&(column, at)| ProverQuery {
+                point: domain.rotate_omega(x, at),
+                poly: &pk.fixed_polys[column.index()],
+            }),
         )
         .chain(pk.permutation.open(x))
         // We query the h(X) polynomial at x

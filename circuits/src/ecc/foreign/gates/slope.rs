@@ -268,9 +268,7 @@ where
     // In case `cond` was `0`, it will remain `0`.
     let mut cond_as_assigned_value = cond.clone().into();
     if negate_q {
-        cond_as_assigned_value = base_chip
-            .native_gadget
-            .neg(layouter, &cond_as_assigned_value)?;
+        cond_as_assigned_value = base_chip.native_gadget.neg(layouter, &cond_as_assigned_value)?;
     };
 
     let mut range_checks = layouter.assign_region(
@@ -284,14 +282,8 @@ where
             let qys = qy.bigint_limbs();
             let lambdas = lambda.bigint_limbs();
 
-            let lpxs = lambdas
-                .clone()
-                .zip(pxs.clone())
-                .map(|(ls, pxs)| pair_wise_prod(&ls, &pxs));
-            let lqxs = lambdas
-                .clone()
-                .zip(qxs.clone())
-                .map(|(ls, qxs)| pair_wise_prod(&ls, &qxs));
+            let lpxs = lambdas.clone().zip(pxs.clone()).map(|(ls, pxs)| pair_wise_prod(&ls, &pxs));
+            let lqxs = lambdas.clone().zip(qxs.clone()).map(|(ls, qxs)| pair_wise_prod(&ls, &qxs));
 
             let (k_min, u_max) = slope_config.u_bounds.clone();
 
@@ -314,31 +306,28 @@ where
             let u = expr.map(|e| compute_u(m, &e, (&k_min, &u_max), cond.value()));
 
             let vs_values =
-                moduli
-                    .iter()
-                    .zip(slope_config.vs_bounds.iter())
-                    .map(|(mj, vj_bounds)| {
-                        let bs_mj = bs.iter().map(|b| b.rem(mj)).collect::<Vec<_>>();
-                        let bs2_mj = bs2.iter().map(|b| b.rem(mj)).collect::<Vec<_>>();
-                        let (lj_min, vj_max) = vj_bounds.clone();
+                moduli.iter().zip(slope_config.vs_bounds.iter()).map(|(mj, vj_bounds)| {
+                    let bs_mj = bs.iter().map(|b| b.rem(mj)).collect::<Vec<_>>();
+                    let bs2_mj = bs2.iter().map(|b| b.rem(mj)).collect::<Vec<_>>();
+                    let (lj_min, vj_max) = vj_bounds.clone();
 
-                        // sign - 1 + sign * sum_qy_mj - sum_py_mj
-                        //  - sum_qx_mj + sum_px_mj - sum_lqx_mj + sum_lpx_mj
-                        //  - u * (m % mj) - (k_min * m) % mj = (vj + lj_min) * mj
-                        let expr_mj = sign.clone()
-                            + sign
-                                .clone()
-                                .zip(qys.clone())
-                                .map(|(s, qys)| s * sum_bigints(&bs_mj, &qys) - BI::one())
-                            - pys.clone().map(|v| sum_bigints(&bs_mj, &v))
-                            - qxs.clone().map(|v| sum_bigints(&bs_mj, &v))
-                            + pxs.clone().map(|v| sum_bigints(&bs_mj, &v))
-                            - lqxs.clone().map(|v| sum_bigints(&bs2_mj, &v))
-                            + lpxs.clone().map(|v| sum_bigints(&bs2_mj, &v));
-                        expr_mj.zip(u.clone()).map(|(e, u)| {
-                            compute_vj(m, mj, &e, &u, &k_min, (&lj_min, &vj_max), cond.value())
-                        })
-                    });
+                    // sign - 1 + sign * sum_qy_mj - sum_py_mj
+                    //  - sum_qx_mj + sum_px_mj - sum_lqx_mj + sum_lpx_mj
+                    //  - u * (m % mj) - (k_min * m) % mj = (vj + lj_min) * mj
+                    let expr_mj = sign.clone()
+                        + sign
+                            .clone()
+                            .zip(qys.clone())
+                            .map(|(s, qys)| s * sum_bigints(&bs_mj, &qys) - BI::one())
+                        - pys.clone().map(|v| sum_bigints(&bs_mj, &v))
+                        - qxs.clone().map(|v| sum_bigints(&bs_mj, &v))
+                        + pxs.clone().map(|v| sum_bigints(&bs_mj, &v))
+                        - lqxs.clone().map(|v| sum_bigints(&bs2_mj, &v))
+                        + lpxs.clone().map(|v| sum_bigints(&bs2_mj, &v));
+                    expr_mj.zip(u.clone()).map(|(e, u)| {
+                        compute_vj(m, mj, &e, &u, &k_min, (&lj_min, &vj_max), cond.value())
+                    })
+                });
 
             let px_limbs = px.limb_values();
             let qx_limbs = qx.limb_values();
@@ -401,20 +390,12 @@ where
             let u_range_check = (u_cell, u_max);
 
             // Every vj_cell will be range-checked in [0, vj_max)
-            let vs_max = slope_config
-                .vs_bounds
-                .clone()
-                .into_iter()
-                .map(|(_, vj_max)| vj_max);
-            let vs_range_checks = vs_cells
-                .into_iter()
-                .zip(vs_max.collect::<Vec<_>>())
-                .collect::<Vec<_>>();
+            let vs_max = slope_config.vs_bounds.clone().into_iter().map(|(_, vj_max)| vj_max);
+            let vs_range_checks =
+                vs_cells.into_iter().zip(vs_max.collect::<Vec<_>>()).collect::<Vec<_>>();
 
             // Assert all range-checks
-            Ok([u_range_check]
-                .into_iter()
-                .chain(vs_range_checks.into_iter()))
+            Ok([u_range_check].into_iter().chain(vs_range_checks.into_iter()))
         },
     )?;
 
