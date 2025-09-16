@@ -1,5 +1,5 @@
 CircuitModel {
-    k: 14,
+    k: 13,
     rows: 4905,
     table_rows: 8282,
     max_deg: 5,

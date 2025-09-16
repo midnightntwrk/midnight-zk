@@ -348,14 +348,10 @@ fn from_circuit_to_cost_model_options<F: Ord + Field + FromUniformBytes<64>, C: 
         (rows_count, table_rows_count, compressed_rows_count)
     };
 
-    let min_k = [
-        rows_count + cs.blinding_factors(),
-        table_rows_count + cs.blinding_factors(),
-        nb_instances,
-    ]
-    .into_iter()
-    .max()
-    .unwrap();
+    let min_k = [compressed_rows_count + cs.blinding_factors(), nb_instances]
+        .into_iter()
+        .max()
+        .unwrap();
     if min_k == nb_instances {
         println!("WARNING: The dominant factor in your circuit's size is the number of public inputs, which causes the verifier to perform linear work.");
     }
