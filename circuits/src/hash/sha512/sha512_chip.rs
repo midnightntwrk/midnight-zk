@@ -15,8 +15,8 @@ use crate::{
     field::{decomposition::chip::P2RDecompositionChip, NativeChip, NativeGadget},
     hash::sha512::{
         types::{
-            AssignedMessageWord, AssignedPlain, AssignedPlainSpreaded, AssignedSpreaded, LimbsOfA,
-            LimbsOfE,
+            AssignedMessageWord, AssignedPlain, AssignedPlainSpreaded, AssignedSpreaded,
+            CompressionState, LimbsOfA, LimbsOfE,
         },
         utils::{
             expr_pow2_ip, expr_pow4_ip, gen_spread_table, get_even_and_odd_bits, negate_spreaded,
@@ -713,6 +713,32 @@ impl<F: PrimeField> ComposableChip<F> for Sha512Chip<F> {
 }
 
 impl<F: PrimeField> Sha512Chip<F> {
+    /// In-circuit SHA512 computation, the protagonist of this chip.
+    pub(super) fn sha512(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        input_bytes: &[AssignedByte<F>],
+    ) -> Result<[AssignedPlain<F, 64>; 8], Error> {
+        let mut state = CompressionState::<F>::fixed(layouter, &self.native_gadget, IV)?;
+
+        for block_bytes in self.pad(layouter, input_bytes)?.chunks(128) {
+            let block = self.block_from_bytes(layouter, block_bytes)?;
+            let message_blocks = self.message_schedule(layouter, &block)?;
+            let mut compression_state = state.clone();
+            for i in 0..80 {
+                compression_state = self.compression_round(
+                    layouter,
+                    &compression_state,
+                    ROUND_CONSTANTS[i],
+                    &message_blocks[i],
+                )?;
+            }
+            state = state.add(self, layouter, &compression_state)?;
+        }
+
+        Ok(state.plain())
+    }
+
     /// Pads the input byte array to be a multiple of 128 bytes (1024 bits).
     fn pad(
         &self,
@@ -794,6 +820,62 @@ impl<F: PrimeField> Sha512Chip<F> {
         }
 
         Ok(message_words.map(|w| w.combined_plain))
+    }
+
+    /// A compression round. This is called 80 times per block.
+    pub(super) fn compression_round(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        state: &CompressionState<F>,
+        round_k: u64,
+        round_w: &AssignedPlain<F, 64>,
+    ) -> Result<CompressionState<F>, Error> {
+        let round_k = AssignedPlain::<F, 64>::fixed(layouter, &self.native_gadget, round_k)?;
+
+        let Sigma_0_of_a = self.Sigma_0(layouter, &state.a)?;
+        let Maj_of_a_b_c = self.maj(
+            layouter,
+            &state.a.combined.spreaded,
+            &state.b.spreaded,
+            &state.c.spreaded,
+        )?;
+        let Sigma_1_of_e = self.Sigma_1(layouter, &state.e)?;
+        let Ch_of_e_f_g = self.ch(
+            layouter,
+            &state.e.combined.spreaded,
+            &state.f.spreaded,
+            &state.g.spreaded,
+        )?;
+
+        let next_a_summands = [
+            state.h.clone(),
+            Sigma_1_of_e.clone(),
+            Ch_of_e_f_g.clone(),
+            round_k.clone(),
+            round_w.clone(),
+            Sigma_0_of_a,
+            Maj_of_a_b_c,
+        ];
+
+        let next_e_summands = [
+            state.d.clone(),
+            state.h.clone(),
+            Sigma_1_of_e,
+            Ch_of_e_f_g,
+            round_k.clone(),
+            round_w.clone(),
+        ];
+
+        Ok(CompressionState {
+            a: self.prepare_A(layouter, &next_a_summands)?,
+            b: state.a.combined.clone(),
+            c: state.b.clone(),
+            d: state.c.plain.clone(),
+            e: self.prepare_E(layouter, &next_e_summands)?,
+            f: state.e.combined.clone(),
+            g: state.f.clone(),
+            h: state.g.plain.clone(),
+        })
     }
 
     /// Computes Maj(A, B, C).
