@@ -127,11 +127,14 @@ fn vk_serde_test(architecture: ZkStdLibArch, write_format: SerdeFormat, read_for
     println!("VK buffer length after write: {}", buffer.len());
 
     let mut cursor = std::io::Cursor::new(buffer.clone());
+    let serialised_architecture = ZkStdLibArch::read_from_serialized_vk(&mut cursor.clone()).unwrap();
+
     let vk2 = MidnightVK::read(&mut cursor, read_format).unwrap();
 
     let mut buffer2 = Vec::new();
     vk2.write(&mut buffer2, write_format).unwrap();
 
+    assert_eq!(serialised_architecture, architecture);
     assert_eq!(buffer, buffer2);
 }
 

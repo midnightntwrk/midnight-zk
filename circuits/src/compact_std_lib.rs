@@ -111,7 +111,7 @@ const ZKSTD_VERSION: u32 = 1;
 
 /// Architecture of the standard library. Specifies what chips need to be
 /// configured.
-#[derive(Clone, Copy, Debug, Encode, Decode)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Encode, Decode)]
 pub struct ZkStdLibArch {
     /// Enable the Jubjub chip?
     pub jubjub: bool,
@@ -175,6 +175,45 @@ impl ZkStdLibArch {
                 format!("Unsupported ZKStd version: {}", version),
             )),
         }
+    }
+
+    /// Reads the ZkStdArchitecture from a buffer where a MidnightVK was
+    /// serialized. This enables the reader to know the architecture without
+    /// the need of deserializing the full verifying key.
+    pub fn read_from_serialized_vk<R: io::Read>(reader: &mut R) -> io::Result<Self> {
+        // The current serialization of the verifying key places the architecture at
+        // the beginning.
+        Self::read(reader)
+    }
+
+    /// Returns a tuple `(points_in_proof, points_in_vk, points_in_final_msm)`
+    /// where:
+    ///
+    /// * `points_in_proof`: total number of EC points deserialized when reading
+    ///   a proof for this relation.
+    /// * `points_in_vk`: total number of EC points deserialized when reading
+    ///   the verifying key.
+    /// * `points_in_final_msm`: number of EC points involved in the final MSM
+    ///   operation during verification.
+    pub fn nb_points(&self) -> (usize, usize, usize) {
+        let mut cs = ConstraintSystem::default();
+        let _config = ZkStdLib::configure(&mut cs, *self);
+
+        let nb_perm_chunks =
+            (cs.permutation().columns.len().saturating_sub(1) / cs.degree().saturating_sub(2)) + 1;
+
+        let points_in_proof = cs.num_advice_columns() +
+            cs.lookups().len() * 3 +
+            nb_perm_chunks +
+            cs.degree() + // chunks of the vanishing
+            2; // points in multiopen argument
+
+        let points_in_vk =
+            cs.num_fixed_columns() + cs.num_selectors() + cs.permutation().columns.len();
+
+        let points_in_final_msm = points_in_proof + points_in_vk + 1; // + 1 comes from the the generator in the final check
+
+        (points_in_proof, points_in_vk, points_in_final_msm)
     }
 }
 
@@ -1393,36 +1432,6 @@ pub trait Relation: Clone {
 
     /// Reads a relation from a buffer.
     fn read_relation<R: io::Read>(reader: &mut R) -> io::Result<Self>;
-
-    /// Returns a tuple `(points_in_proof, points_in_vk, points_in_final_msm)`
-    /// where:
-    ///
-    /// * `points_in_proof`: total number of EC points deserialized when reading
-    ///   a proof for this relation.
-    /// * `points_in_vk`: total number of EC points deserialized when reading
-    ///   the verifying key.
-    /// * `points_in_final_msm`: number of EC points involved in the final MSM
-    ///   operation during verification.
-    fn nb_points(&self) -> (usize, usize, usize) {
-        let mut cs = ConstraintSystem::default();
-        let _config = ZkStdLib::configure(&mut cs, self.used_chips());
-
-        let nb_perm_chunks =
-            (cs.permutation().columns.len().saturating_sub(1) / cs.degree().saturating_sub(2)) + 1;
-
-        let points_in_proof = cs.num_advice_columns() +
-            cs.lookups().len() * 3 +
-            nb_perm_chunks +
-            cs.degree() + // chunks of the vanishing
-            2; // points in multiopen argument
-
-        let points_in_vk =
-            cs.num_fixed_columns() + cs.num_selectors() + cs.permutation().columns.len();
-
-        let points_in_final_msm = points_in_proof + points_in_vk + 1; // + 1 comes from the the generator in the final check
-
-        (points_in_proof, points_in_vk, points_in_final_msm)
-    }
 }
 
 impl<R: Relation> Circuit<F> for MidnightCircuit<'_, R> {
