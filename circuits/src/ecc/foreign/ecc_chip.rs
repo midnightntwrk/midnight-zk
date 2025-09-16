@@ -183,10 +183,7 @@ where
     B: FieldEmulationParams<F, C::Base>,
 {
     fn as_public_input(p: &C::CryptographicGroup) -> Vec<F> {
-        let (x, y) = (*p)
-            .into()
-            .coordinates()
-            .unwrap_or((C::Base::ZERO, C::Base::ZERO));
+        let (x, y) = (*p).into().coordinates().unwrap_or((C::Base::ZERO, C::Base::ZERO));
         // From y we only keep one limb, since it is enough to resolve the +- ambiguity.
         let mut pis = [
             AssignedField::<F, C::Base, B>::as_public_input(&x).as_slice(),
@@ -461,8 +458,7 @@ where
         // field set use the same (canonical) value for coordinates x and y.
         // Otherwise the circuit becomes unsatisfiable, so a malicious prover does not
         // gain anything from violating this assumption.
-        self.native_gadget
-            .assert_equal(layouter, &p.is_id, &q.is_id)?;
+        self.native_gadget.assert_equal(layouter, &p.is_id, &q.is_id)?;
         self.base_field_chip().assert_equal(layouter, &p.x, &q.x)?;
         self.base_field_chip().assert_equal(layouter, &p.y, &q.y)
     }
@@ -474,8 +470,7 @@ where
         q: &AssignedForeignPoint<F, C, B>,
     ) -> Result<(), Error> {
         let equal = self.is_equal(layouter, p, q)?;
-        self.native_gadget
-            .assert_equal_to_fixed(layouter, &equal, false)
+        self.native_gadget.assert_equal_to_fixed(layouter, &equal, false)
     }
 
     fn assert_equal_to_fixed(
@@ -485,16 +480,12 @@ where
         constant: C::CryptographicGroup,
     ) -> Result<(), Error> {
         if constant.is_identity().into() {
-            self.native_gadget
-                .assert_equal_to_fixed(layouter, &p.is_id, true)
+            self.native_gadget.assert_equal_to_fixed(layouter, &p.is_id, true)
         } else {
             let coordinates = constant.into().coordinates().expect("Valid point");
-            self.base_field_chip()
-                .assert_equal_to_fixed(layouter, &p.x, coordinates.0)?;
-            self.base_field_chip()
-                .assert_equal_to_fixed(layouter, &p.y, coordinates.1)?;
-            self.native_gadget
-                .assert_equal_to_fixed(layouter, &p.is_id, false)
+            self.base_field_chip().assert_equal_to_fixed(layouter, &p.x, coordinates.0)?;
+            self.base_field_chip().assert_equal_to_fixed(layouter, &p.y, coordinates.1)?;
+            self.native_gadget.assert_equal_to_fixed(layouter, &p.is_id, false)
         }
     }
 
@@ -505,12 +496,10 @@ where
         constant: C::CryptographicGroup,
     ) -> Result<(), Error> {
         if constant.is_identity().into() {
-            self.native_gadget
-                .assert_equal_to_fixed(layouter, &p.is_id, false)
+            self.native_gadget.assert_equal_to_fixed(layouter, &p.is_id, false)
         } else {
             let equal = self.is_equal_to_fixed(layouter, p, constant)?;
-            self.native_gadget
-                .assert_equal_to_fixed(layouter, &equal, false)
+            self.native_gadget.assert_equal_to_fixed(layouter, &equal, false)
         }
     }
 }
@@ -538,15 +527,12 @@ where
             let eq_x = self.base_field_chip().is_equal(layouter, &p.x, &q.x)?;
             let eq_y = self.base_field_chip().is_equal(layouter, &p.y, &q.y)?;
             let eq_x_and_y = self.native_gadget.and(layouter, &[eq_x, eq_y])?;
-            let both_are_id = self
-                .native_gadget
-                .and(layouter, &[p.is_id.clone(), q.is_id.clone()])?;
-            self.native_gadget
-                .or(layouter, &[eq_x_and_y, both_are_id])?
+            let both_are_id =
+                self.native_gadget.and(layouter, &[p.is_id.clone(), q.is_id.clone()])?;
+            self.native_gadget.or(layouter, &[eq_x_and_y, both_are_id])?
         };
         let eq_id_flag = self.native_gadget.is_equal(layouter, &p.is_id, &q.is_id)?;
-        self.native_gadget
-            .and(layouter, &[eq_id_flag, eq_coordinates])
+        self.native_gadget.and(layouter, &[eq_id_flag, eq_coordinates])
     }
 
     fn is_equal_to_fixed(
@@ -559,12 +545,8 @@ where
             Ok(p.is_id.clone())
         } else {
             let coordinates = constant.into().coordinates().expect("Valid point");
-            let eq_x = self
-                .base_field_chip()
-                .is_equal_to_fixed(layouter, &p.x, coordinates.0)?;
-            let eq_y = self
-                .base_field_chip()
-                .is_equal_to_fixed(layouter, &p.y, coordinates.1)?;
+            let eq_x = self.base_field_chip().is_equal_to_fixed(layouter, &p.x, coordinates.0)?;
+            let eq_y = self.base_field_chip().is_equal_to_fixed(layouter, &p.y, coordinates.1)?;
             let p_is_not_id = self.native_gadget.not(layouter, &p.is_id)?;
             self.native_gadget.and(layouter, &[eq_x, eq_y, p_is_not_id])
         }
@@ -608,9 +590,7 @@ where
         p: &AssignedForeignPoint<F, C, B>,
         q: &AssignedForeignPoint<F, C, B>,
     ) -> Result<AssignedForeignPoint<F, C, B>, Error> {
-        let is_id = self
-            .native_gadget
-            .select(layouter, cond, &p.is_id, &q.is_id)?;
+        let is_id = self.native_gadget.select(layouter, cond, &p.is_id, &q.is_id)?;
         let x = self.base_field_chip().select(layouter, cond, &p.x, &q.x)?;
         let y = self.base_field_chip().select(layouter, cond, &p.y, &q.y)?;
 
@@ -672,18 +652,13 @@ where
 
         // p = -q  =>  r = id.
         // (The following constraint also encodes <=, which is fine.)
-        let p_eq_nq = self
-            .native_gadget
-            .and(layouter, &[px_eq_qx.clone(), py_eq_neg_qy])?;
-        self.native_gadget
-            .assert_equal(layouter, &p_eq_nq, &r.is_id)?;
+        let p_eq_nq = self.native_gadget.and(layouter, &[px_eq_qx.clone(), py_eq_neg_qy])?;
+        self.native_gadget.assert_equal(layouter, &p_eq_nq, &r.is_id)?;
 
         // If p = q (and we are not in an id case), we double.
         // The following call satisfies the preconditions of [assert_double],
         // since we have set cond = 0 when p or r are the identity.
-        let cond = self
-            .native_gadget
-            .and(layouter, &[px_eq_qx, py_eq_qy, none_is_id.clone()])?;
+        let cond = self.native_gadget.and(layouter, &[px_eq_qx, py_eq_qy, none_is_id.clone()])?;
         self.assert_double(layouter, p, &r, &cond)?;
 
         // If p != q (and we are not in an id case), we enforce the standard
@@ -705,8 +680,7 @@ where
         let r = self.assign_point_unchecked(layouter, r_curve)?;
 
         // (There are no points of order 2 by assumption.)
-        self.native_gadget
-            .assert_equal(layouter, &p.is_id, &r.is_id)?;
+        self.native_gadget.assert_equal(layouter, &p.is_id, &r.is_id)?;
 
         // If `p` is not the identity, make sure the double relation is satisfied.
         // Note that the following call to [assert_double] satisfies the required
@@ -756,9 +730,7 @@ where
 
         // If some of the scalars is known to be 1, remove it (with its base) from the
         // list and simply add it at the end.
-        let one: S::Scalar = self
-            .scalar_field_chip
-            .assign_fixed(layouter, C::Scalar::ONE)?;
+        let one: S::Scalar = self.scalar_field_chip.assign_fixed(layouter, C::Scalar::ONE)?;
         let mut bases_without_coeff = vec![];
         let mut filtered_scalars = vec![];
         let mut filtered_bases = vec![];
@@ -868,9 +840,7 @@ where
         }
         let res = self.windowed_msm::<WS>(layouter, &decomposed_scalars, &bases)?;
 
-        bases_without_coeff
-            .iter()
-            .try_fold(res, |acc, b| self.add(layouter, &acc, b))
+        bases_without_coeff.iter().try_fold(res, |acc, b| self.add(layouter, &acc, b))
     }
 
     fn mul_by_constant(
@@ -1090,19 +1060,13 @@ where
             if C::CryptographicGroup::is_identity(&p).into() {
                 (C::Base::ZERO, C::Base::ZERO, true)
             } else {
-                let coordinates = p
-                    .into()
-                    .coordinates()
-                    .expect("assign_point_unchecked: invalid point given");
+                let coordinates =
+                    p.into().coordinates().expect("assign_point_unchecked: invalid point given");
                 (coordinates.0, coordinates.1, false)
             }
         });
-        let x = self
-            .base_field_chip()
-            .assign(layouter, values.map(|v| v.0))?;
-        let y = self
-            .base_field_chip()
-            .assign(layouter, values.map(|v| v.1))?;
+        let x = self.base_field_chip().assign(layouter, values.map(|v| v.0))?;
+        let y = self.base_field_chip().assign(layouter, values.map(|v| v.1))?;
         let is_id = self.native_gadget.assign(layouter, values.map(|v| v.2))?;
         let p = AssignedForeignPoint::<F, C, B> {
             point: p,
@@ -1143,8 +1107,7 @@ where
         let r = self.assign_point_unchecked(layouter, r_curve)?;
 
         // Assert that r is not the identity.
-        self.native_gadget
-            .assert_equal(layouter, &p.is_id, &r.is_id)?;
+        self.native_gadget.assert_equal(layouter, &p.is_id, &r.is_id)?;
 
         // The preconditions of [incomplete_add] (and the previous assertion
         // that r != id) guarantee that the following call satisfies all the
@@ -1247,8 +1210,11 @@ where
     /// # Unsatisfiable Circuit
     ///
     /// If `p = -q`.
-    /// The official prover will also experiment a runtime error when trying to
-    /// invert (q.x - p.x) in that case.
+    ///
+    /// # Panics
+    ///
+    /// If `p.x = q.x` (the official prover panics, but do not assume this is
+    /// enforced with constraints.)
     fn assert_add(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -1470,8 +1436,11 @@ where
     ///
     /// If the preconditions are met but the value of `selector` is not in the
     /// range [0, |point_table|).
-    /// In debug mode, the official prover will also get a runtime error in that
-    /// case, or if |point_table| exceeds 2^32.
+    ///
+    /// # Panics
+    ///
+    /// In debug mode, if |point_table| exceeds 2^32 or the value of `selector`
+    /// is not in the range [0, |point_table|).
     fn multi_select(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -1541,9 +1510,7 @@ where
         assert!((n as u128) < (1 << (F::NUM_BITS / 2)));
 
         // Assert that the table points are not the identity.
-        table
-            .iter()
-            .try_for_each(|point| self.assert_non_zero(layouter, point))?;
+        table.iter().try_for_each(|point| self.assert_non_zero(layouter, point))?;
 
         // Load the table with a fresh tag, and increase the tag for the next use.
         // This associates index i from 0 to k-1 to the i-th table entry.
@@ -1576,10 +1543,7 @@ where
         let assigned_selected_idxs = selected_idxs
             .clone()
             .iter()
-            .map(|i_value| {
-                self.native_gadget
-                    .assign(layouter, i_value.map(|i| F::from(i as u64)))
-            })
+            .map(|i_value| self.native_gadget.assign(layouter, i_value.map(|i| F::from(i as u64))))
             .collect::<Result<Vec<AssignedNative<F>>, Error>>()?;
 
         // Introduce constraints that guarantee that all the assigned indices are
@@ -1597,8 +1561,7 @@ where
                     &[(F::ONE, next_idx.clone()), (-F::ONE, idx.clone())],
                     -F::ONE,
                 )?;
-                self.native_gadget
-                    .assert_lower_than_fixed(layouter, &diff_minus_one, &l)
+                self.native_gadget.assert_lower_than_fixed(layouter, &diff_minus_one, &l)
             })?;
 
         // Witness the selected points while asserting they are on the table.
@@ -1786,8 +1749,7 @@ where
 
         // Assert that none of the bases is the identity point
         for p in bases.iter() {
-            self.native_gadget
-                .assert_equal_to_fixed(layouter, &p.is_id, false)?
+            self.native_gadget.assert_equal_to_fixed(layouter, &p.is_id, false)?
         }
 
         // Pad all the sequences of chunks to have the same length.
@@ -1971,9 +1933,7 @@ where
         let zeta_base = C::BASE_ZETA;
         let zeta_scalar = C::SCALAR_ZETA;
 
-        let decomposed = scalar
-            .value()
-            .map(|x| glv_scalar_decomposition(&x, &zeta_scalar));
+        let decomposed = scalar.value().map(|x| glv_scalar_decomposition(&x, &zeta_scalar));
         let s1_value = decomposed.map(|((s1, _), _)| s1);
         let x1_value = decomposed.map(|((_, x1), _)| x1);
         let s2_value = decomposed.map(|(_, (s2, _))| s2);
@@ -1999,9 +1959,7 @@ where
         )?;
         self.scalar_field_chip.assert_equal(layouter, &x, scalar)?;
 
-        let zeta_x = self
-            .base_field_chip
-            .mul_by_constant(layouter, &base.x, zeta_base)?;
+        let zeta_x = self.base_field_chip.mul_by_constant(layouter, &base.x, zeta_base)?;
         let zeta_p = AssignedForeignPoint::<F, C, B> {
             point: base.point.map(|p| {
                 if p.is_identity().into() {
@@ -2077,9 +2035,7 @@ where
         let scalar_field_config =
             <S as FromScratch<F>>::configure_from_scratch(meta, instance_columns);
         let nb_advice_cols = nb_foreign_ecc_chip_columns::<F, C, B, S>();
-        let advice_columns = (0..nb_advice_cols)
-            .map(|_| meta.advice_column())
-            .collect::<Vec<_>>();
+        let advice_columns = (0..nb_advice_cols).map(|_| meta.advice_column()).collect::<Vec<_>>();
         let base_field_config = FieldChip::<F, C::Base, B, N>::configure(meta, &advice_columns);
         let ff_ecc_config =
             ForeignEccChip::<F, C, B, S, N>::configure(meta, &base_field_config, &advice_columns);
