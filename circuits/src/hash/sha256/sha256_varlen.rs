@@ -292,7 +292,7 @@ impl<F: PrimeField> VarLenSha256Gadget<F> {
 
         assert!(block_iter.next().is_none());
 
-        let final_block: &[_; 64] = (block.try_into()).unwrap();
+        let final_block: &[_; 64] = block.try_into().unwrap();
 
         // Padding
         let padding_data = self.compute_padding(

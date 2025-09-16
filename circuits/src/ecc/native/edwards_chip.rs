@@ -494,15 +494,15 @@ impl<C: EdwardsCurve> EccChip<C> {
         layouter.assign_region(
             || "assign mul",
             |mut region: Region<'_, C::Base>| {
-                (id_point.x).copy_advice(|| "id.x", &mut region, config.advice_cols[0], 0)?;
-                (id_point.y).copy_advice(|| "id.y", &mut region, config.advice_cols[1], 0)?;
+                id_point.x.copy_advice(|| "id.x", &mut region, config.advice_cols[0], 0)?;
+                id_point.y.copy_advice(|| "id.y", &mut region, config.advice_cols[1], 0)?;
 
                 let mut acc = id_point.clone();
 
                 for (i, bit) in scalar_be_bits.iter().enumerate() {
-                    (base.x).copy_advice(|| "base.x", &mut region, config.advice_cols[2], i)?;
-                    (base.y).copy_advice(|| "base.y", &mut region, config.advice_cols[3], i)?;
-                    (bit.0).copy_advice(|| "b cond_add", &mut region, config.advice_cols[4], i)?;
+                    base.x.copy_advice(|| "base.x", &mut region, config.advice_cols[2], i)?;
+                    base.y.copy_advice(|| "base.y", &mut region, config.advice_cols[3], i)?;
+                    bit.0.copy_advice(|| "b cond_add", &mut region, config.advice_cols[4], i)?;
 
                     if i < scalar_be_bits.len() - 1 {
                         acc = self.assign_add_then_double(

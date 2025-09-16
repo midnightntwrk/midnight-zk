@@ -56,8 +56,9 @@ where
     ) -> Result<AssignedNative<F>, Error> {
         // Digits in ascii are represented by the values in [48, 57].
         // So substracting 48 gives the represented value.
-        let val = (self.native_gadget).add_constant(layouter, &byte.into(), -F::from(48u64))?;
-        (self.native_gadget).assert_lower_than_fixed(layouter, &val, &BigUint::from(10u64))?;
+        let val = self.native_gadget.add_constant(layouter, &byte.into(), -F::from(48u64))?;
+        self.native_gadget
+            .assert_lower_than_fixed(layouter, &val, &BigUint::from(10u64))?;
         Ok(val)
     }
 

@@ -373,13 +373,13 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
 
         // Add the LHS of acc to the transcript.
         transcript.write(&(acc.lhs().bases().len() as u32))?;
-        (acc.lhs().bases().iter()).try_for_each(|p| transcript.write(p))?;
-        (acc.lhs().scalars().iter()).try_for_each(|s| transcript.write(s))?;
+        acc.lhs().bases().iter().try_for_each(|p| transcript.write(p))?;
+        acc.lhs().scalars().iter().try_for_each(|s| transcript.write(s))?;
         assert!(acc.lhs().fixed_base_scalars().is_empty());
 
         // Add the RHS of the acc to the transcript (with scalars in committed form).
         transcript.write(&(acc.rhs().bases().len() as u32))?;
-        (acc.rhs().bases().iter()).try_for_each(|p| transcript.write(p))?;
+        acc.rhs().bases().iter().try_for_each(|p| transcript.write(p))?;
         transcript.write(&acc_rhs_scalars_committed)?;
         transcript.write(&acc_rhs_evaluated)?;
 

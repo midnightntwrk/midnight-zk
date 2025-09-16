@@ -333,7 +333,7 @@ where
     ) -> Result<Vec<AssignedNative<F>>, Error> {
         // From y we only keep one limb, since it is enough to resolve the +- ambiguity.
         let mut pis = [
-            (self.base_field_chip.as_public_input(layouter, &p.x)?).as_slice(),
+            self.base_field_chip.as_public_input(layouter, &p.x)?.as_slice(),
             &self.base_field_chip.as_public_input(layouter, &p.y)?[..1],
         ]
         .concat();

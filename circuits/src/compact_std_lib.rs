@@ -260,7 +260,7 @@ impl ZkStdLib {
         let parser_gadget = ParserGadget::new(&native_gadget);
         let vector_gadget = VectorGadget::new(&native_gadget);
         let automaton_chip =
-            (config.automaton_config.as_ref()).map(|c| AutomatonChip::new(c, &native_gadget));
+            config.automaton_config.as_ref().map(|c| AutomatonChip::new(c, &native_gadget));
 
         Self {
             native_gadget,

@@ -522,14 +522,14 @@ impl<F: PrimeField> NativeChip<F> {
             .zip(self.config.value_cols)
             .try_for_each(|(x, col)| self.copy_in_row(region, x, &col, *offset))?;
 
-        (constants.iter()).zip(self.config.coeff_cols).try_for_each(|(c, col)| {
+        constants.iter().zip(self.config.coeff_cols).try_for_each(|(c, col)| {
             region.assign_fixed(|| "add_consts", col, *offset, || Value::known(*c))?;
             Ok::<(), Error>(())
         })?;
 
         *offset += 1;
 
-        let res_values = (variables.iter()).zip(constants).map(|(x, c)| x.value().map(|x| *x + *c));
+        let res_values = variables.iter().zip(constants).map(|(x, c)| x.value().map(|x| *x + *c));
 
         res_values
             .zip(self.config.value_cols)
@@ -1225,8 +1225,8 @@ where
         //  * If x != y, (ii) implies res = 0; (i) can be relaxed with aux = (x - y)^-1.
 
         let value_cols = &self.config.value_cols;
-        let res_val = (x.value().zip(y.value())).map(|(x, y)| F::from((x == y) as u64));
-        let aux_val = (x.value().zip(y.value())).map(|(x, y)| (*x - *y).invert().unwrap_or(F::ONE));
+        let res_val = x.value().zip(y.value()).map(|(x, y)| F::from((x == y) as u64));
+        let aux_val = x.value().zip(y.value()).map(|(x, y)| (*x - *y).invert().unwrap_or(F::ONE));
 
         // (i) enforced as res + aux * x - aux * y - 1 = 0.
         let res = layouter.assign_region(

@@ -335,7 +335,7 @@ impl<F: PoseidonField> PoseidonChip<F> {
         self.assign_constants_full(region, round_index, *offset)?;
 
         // Assign the hints (inputs cubed).
-        for (x, col) in (inputs.iter()).zip(self.config.register_cols[WIDTH..(2 * WIDTH)].iter()) {
+        for (x, col) in inputs.iter().zip(self.config.register_cols[WIDTH..(2 * WIDTH)].iter()) {
             region.assign_advice(
                 || "full round hint",
                 *col,

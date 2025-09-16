@@ -77,7 +77,7 @@ impl Relation for ZSwapOutputCircuit {
 
     fn format_instance(instance: &Self::Instance) -> Vec<F> {
         let mut pi: Vec<F> =
-            (instance.0.iter()).flat_map(AssignedByte::<F>::as_public_input).collect();
+            instance.0.iter().flat_map(AssignedByte::<F>::as_public_input).collect();
         pi.extend(AssignedNativePoint::<Jubjub>::as_public_input(&instance.1));
         pi
     }

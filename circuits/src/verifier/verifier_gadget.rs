@@ -125,8 +125,8 @@ impl<S: SelfEmulation> PublicInputInstructions<S::F, AssignedAccumulator<S>> for
         assigned: &AssignedAccumulator<S>,
     ) -> Result<Vec<AssignedNative<S::F>>, Error> {
         Ok([
-            (assigned.lhs).in_circuit_as_public_input(layouter, &self.curve_chip)?,
-            (assigned.rhs).in_circuit_as_public_input(layouter, &self.curve_chip)?,
+            assigned.lhs.in_circuit_as_public_input(layouter, &self.curve_chip)?,
+            assigned.rhs.in_circuit_as_public_input(layouter, &self.curve_chip)?,
         ]
         .concat())
     }
@@ -245,9 +245,9 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             .try_for_each(|(_, com)| transcript.common_point(layouter, com))?;
 
         for instance in assigned_instances {
-            let n = (self.scalar_chip).assign_fixed(layouter, (instance.len() as u64).into())?;
+            let n = self.scalar_chip.assign_fixed(layouter, (instance.len() as u64).into())?;
             transcript.common_scalar(layouter, &n)?;
-            (instance.iter()).try_for_each(|pi| transcript.common_scalar(layouter, pi))?;
+            instance.iter().try_for_each(|pi| transcript.common_scalar(layouter, pi))?;
         }
 
         // Assert that we only have one phase.
@@ -577,7 +577,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                 (lookups_evaluated.iter())
                     .flat_map(|lookup| lookup.queries(&one, &x, &x_next, &x_prev)),
             )
-            .chain((trashcans_evaluated.iter()).flat_map(|trash| trash.queries(&one, &x)))
+            .chain(trashcans_evaluated.iter().flat_map(|trash| trash.queries(&one, &x)))
             .chain(
                 cs.fixed_queries().iter().enumerate().map(|(query_index, &(col, rot))| {
                     VerifierQuery::new_fixed(

@@ -1466,7 +1466,7 @@ where
         x: &AssignedByte<F>,
         y: &AssignedByte<F>,
     ) -> Result<AssignedByte<F>, Error> {
-        let byte = (self.native_chip).select(layouter, bit, &x.into(), &y.into())?;
+        let byte = self.native_chip.select(layouter, bit, &x.into(), &y.into())?;
         self.convert_unsafe(layouter, &byte)
     }
 }

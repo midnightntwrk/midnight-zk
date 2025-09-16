@@ -202,7 +202,7 @@ impl<S: SelfEmulation> Msm<S> {
     /// the exact required multiplicity.
     pub fn extract_fixed_bases(&mut self, fixed_bases: &BTreeMap<String, S::C>) {
         assert!(
-            (fixed_bases.keys()).all(|name| !self.fixed_base_scalars.contains_key(name)),
+            fixed_bases.keys().all(|name| !self.fixed_base_scalars.contains_key(name)),
             "fixed_bases should not contain keys (names) that appear in self.fixed_base_scalars"
         );
 

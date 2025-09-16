@@ -52,7 +52,7 @@ impl<F: PrimeField> HashInstructions<F, AssignedByte<F>, [AssignedByte<F>; 32]> 
 
         // We convert each `AssignedPlain<32>` returned by `self.sha256` into 4 bytes.
         for word in self.sha256(layouter, inputs)? {
-            let bytes = (self.native_gadget).assigned_to_be_bytes(layouter, &word.0, Some(4))?;
+            let bytes = self.native_gadget.assigned_to_be_bytes(layouter, &word.0, Some(4))?;
             output_bytes.extend(bytes)
         }
 
@@ -82,7 +82,7 @@ impl<F: PrimeField, const MAX_LEN: usize>
         // bytes.
         for word in self.sha256_varlen(layouter, inputs)? {
             let bytes =
-                (self.sha256chip.native_gadget).assigned_to_be_bytes(layouter, &word.0, Some(4))?;
+                self.sha256chip.native_gadget.assigned_to_be_bytes(layouter, &word.0, Some(4))?;
             output_bytes.extend(bytes)
         }
 

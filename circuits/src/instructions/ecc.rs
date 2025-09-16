@@ -481,10 +481,7 @@ pub(crate) mod tests {
         let scalars = (0..n)
             .map(|_| (C::Scalar::random(&mut rng), C::Scalar::NUM_BITS as usize))
             .collect::<Vec<_>>();
-        let expected = inputs
-            .clone()
-            .into_iter()
-            .zip(scalars.clone().iter())
+        let expected = (inputs.clone().into_iter().zip(scalars.clone().iter()))
             .fold(C::CryptographicGroup::identity(), |acc, (base, scalar)| {
                 acc + (base * scalar.0)
             });
@@ -533,10 +530,7 @@ pub(crate) mod tests {
             (r, C::Scalar::NUM_BITS as usize),
         ]
         .to_vec();
-        let expected = inputs
-            .clone()
-            .into_iter()
-            .zip(scalars.clone().iter())
+        let expected = (inputs.clone().into_iter().zip(scalars.clone().iter()))
             .fold(C::CryptographicGroup::identity(), |acc, (base, scalar)| {
                 acc + (base * scalar.0)
             });
