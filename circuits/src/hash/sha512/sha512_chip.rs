@@ -1899,3 +1899,69 @@ impl<F: PrimeField> CompressionState<F> {
         })
     }
 }
+
+#[cfg(any(test, feature = "testing"))]
+use midnight_proofs::plonk::Instance;
+
+#[cfg(any(test, feature = "testing"))]
+use crate::{field::decomposition::chip::P2RDecompositionConfig, testing_utils::FromScratch};
+
+#[cfg(any(test, feature = "testing"))]
+impl<F: PrimeField> FromScratch<F> for Sha512Chip<F> {
+    type Config = (Sha512Config, P2RDecompositionConfig);
+
+    fn new_from_scratch(config: &Self::Config) -> Self {
+        Self {
+            config: config.0.clone(),
+            native_gadget: NativeGadget::new_from_scratch(&config.1),
+        }
+    }
+
+    fn configure_from_scratch(
+        meta: &mut ConstraintSystem<F>,
+        instance_columns: &[Column<Instance>; 2],
+    ) -> Self::Config {
+        use std::cmp::max;
+
+        use crate::field::{
+            decomposition::pow2range::Pow2RangeChip,
+            native::{NB_ARITH_COLS, NB_ARITH_FIXED_COLS},
+        };
+
+        let advice_columns = (0..max(NB_ARITH_COLS, NB_SHA512_ADVICE_COLS))
+            .map(|_| meta.advice_column())
+            .collect::<Vec<_>>();
+
+        let fixed_columns = (0..max(NB_ARITH_FIXED_COLS, NB_SHA512_FIXED_COLS))
+            .map(|_| meta.fixed_column())
+            .collect::<Vec<_>>();
+
+        let native_config = NativeChip::configure(
+            meta,
+            &(
+                advice_columns[..NB_ARITH_COLS].try_into().unwrap(),
+                fixed_columns[..NB_ARITH_FIXED_COLS].try_into().unwrap(),
+                *instance_columns,
+            ),
+        );
+
+        let pow2range_config = Pow2RangeChip::configure(meta, &advice_columns[1..=4]);
+        let core_decomposition_config =
+            P2RDecompositionChip::configure(meta, &(native_config, pow2range_config));
+
+        let sha512_config = Sha512Chip::configure(
+            meta,
+            &(
+                advice_columns[..NB_SHA512_ADVICE_COLS].try_into().unwrap(),
+                fixed_columns[..NB_SHA512_FIXED_COLS].try_into().unwrap(),
+            ),
+        );
+
+        (sha512_config, core_decomposition_config)
+    }
+
+    fn load_from_scratch(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
+        self.native_gadget.load_from_scratch(layouter)?;
+        self.load(layouter)
+    }
+}
