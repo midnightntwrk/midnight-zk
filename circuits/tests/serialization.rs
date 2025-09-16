@@ -25,6 +25,7 @@ use midnight_proofs::{
     plonk::Error,
     utils::SerdeFormat,
 };
+use serial_test::serial;
 
 type F = midnight_curves::Fq;
 
@@ -125,6 +126,8 @@ fn vk_serde_test(architecture: ZkStdLibArch, write_format: SerdeFormat, read_for
     vk.write(&mut buffer, write_format).unwrap();
 
     println!("VK buffer length after write: {}", buffer.len());
+    println!("usize length: {:?}", std::mem::size_of::<usize>());
+
 
     let mut cursor = std::io::Cursor::new(buffer.clone());
     let serialised_architecture =
@@ -140,6 +143,7 @@ fn vk_serde_test(architecture: ZkStdLibArch, write_format: SerdeFormat, read_for
 }
 
 #[test]
+#[serial]
 fn vk_write_then_read_processed() {
     for arch in ARCHITECTURES {
         vk_serde_test(arch, SerdeFormat::Processed, SerdeFormat::Processed);
@@ -147,6 +151,7 @@ fn vk_write_then_read_processed() {
 }
 
 #[test]
+#[serial]
 fn vk_write_then_read_raw() {
     for arch in ARCHITECTURES {
         vk_serde_test(arch, SerdeFormat::RawBytes, SerdeFormat::RawBytes);

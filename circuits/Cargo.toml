@@ -44,6 +44,7 @@ serde_json = { workspace = true }
 itertools = "0.14"
 dhat = "0.3"
 bellman = "0.14.0"
+serial_test = "3.2.0"
 
 [target.'cfg(ci_build)'.dependencies]
 midnight-curves = { path = "../curves", features = ["portable"] }
