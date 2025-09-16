@@ -32,52 +32,12 @@ pub struct ProtogalaxyVerifierOneShot<
 impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: usize>
     ProtogalaxyVerifierOneShot<F, CS, K>
 {
-    /// Initialise the Protogalaxy verifier given an initial instance
-    // TODO: We can probably start with no instance at all.
-    pub fn init<T>(
-        vk: &VerifyingKey<F, CS>,
-        // Unlike the prover, the verifier gets their instances in two arguments:
-        // committed and normal (non-committed). Note that the total number of
-        // instance columns is expected to be the sum of committed instances and
-        // normal instances for every proof. (Committed instances go first, that is,
-        // the first instance columns are devoted to committed instances.)
-        #[cfg(feature = "committed-instances")] committed_instances: &[&[CS::Commitment]],
-        instances: &[&[&[F]]],
-        transcript: &mut T,
-    ) -> Result<Self, Error>
-    where
-        T: Transcript,
-        CS: PolynomialCommitmentScheme<F>,
-        CS::Commitment: Hashable<T::Hash>,
-        F: WithSmallOrderMulGroup<3>
-            + Sampleable<T::Hash>
-            + Hashable<T::Hash>
-            + Ord
-            + FromUniformBytes<64>,
-    {
-        let folded_trace = parse_trace(
-            vk,
-            #[cfg(feature = "committed-instances")]
-            committed_instances,
-            instances,
-            transcript,
-        )?
-        .into_folding_trace(vk.fixed_commitments());
-
-        Ok(Self {
-            verifier_folding_trace: folded_trace,
-            error_term: F::ZERO,
-            beta: F::ONE,
-        })
-    }
-
     /// Fold the given traces. Concretely, the verifier receives [Transcript]s
     /// from [K] proofs, parses them to extract the [VerifierTrace], and
     /// folds them following the protogalaxy protocol.
     /// TODO: We assume that nr of proofs is a power of 2.
     /// TODO: PCS not verified
     pub fn fold<T>(
-        mut self,
         vk: &VerifyingKey<F, CS>,
         #[cfg(feature = "committed-instances")] committed_instances: &[&[CS::Commitment]],
         instances: &[&[&[F]]],
@@ -102,6 +62,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
 
         // TODO: Is this sufficient to check H-consistency? I'm not 'checking' anything,
         // but I'm computing the challenges myself - I believe that is enough.
+        // David: yes, i think so too
         let traces = instances
             .into_iter()
             .map(|instance| {
@@ -117,23 +78,30 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
             })
             .collect::<Result<Vec<_>, Error>>()?;
 
-        self.beta = transcript.squeeze_challenge();
+        let beta = transcript.squeeze_challenge();
 
         let _poly_k: CS::Commitment = transcript.read()?;
         let gamma: F = transcript.squeeze_challenge();
         let k_at_gamma: F = transcript.read()?;
-        let z_in_gamma = gamma.pow_vartime([dk_domain.n]) - F::ONE;
+        let z_in_gamma: F = gamma.pow_vartime([dk_domain.n]) - F::ONE;
 
-        self.error_term = z_in_gamma * k_at_gamma;
-        let traces = std::iter::once(&self.verifier_folding_trace)
-            .chain(traces.iter())
-            .collect::<Vec<_>>();
+        let error_term: F = z_in_gamma * k_at_gamma;
 
+        let traces = traces
+        .iter()
+        .collect::<Vec<_>>();
+
+        println!("Number of traces - verifier: {:?}", traces.len());
         assert!(traces.len().is_power_of_two());
-        self.verifier_folding_trace = fold_traces(&dk_domain, &traces, &gamma);
+        let verifier_folding_trace = fold_traces(&dk_domain, &traces, &gamma);
 
         // TODO: need to verify the polynomial commitment openings
-        Ok(self)
+        // David: Why? I think we are fine without it
+        Ok(Self {
+            verifier_folding_trace: verifier_folding_trace,
+            error_term: error_term,
+            beta: beta,
+        })
     }
 
     /// This function verifies that a folde trace satisfies the relaxed

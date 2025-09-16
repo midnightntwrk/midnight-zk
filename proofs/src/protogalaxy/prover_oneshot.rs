@@ -34,62 +34,11 @@ struct ProtogalaxyProverOneShot<F: PrimeField, CS: PolynomialCommitmentScheme<F>
 }
 
 impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: usize> ProtogalaxyProverOneShot<F, CS, K> {
-    /// Initialise a Protogalaxy prover from a provided trace. Beta powers are
-    /// initialised to `1`, while the error term is initialised as `0`.
-    pub fn init<C, T>(
-        params: &CS::Parameters,
-        pk: ProvingKey<F, CS>,
-        circuit: C,
-        #[cfg(feature = "committed-instances")] nb_committed_instances: usize,
-        instance: &[&[F]],
-        mut rng: impl CryptoRng + RngCore,
-        transcript: &mut T,
-    ) -> Result<Self, Error>
-    where
-        C: Circuit<F>,
-        T: Transcript,
-        CS: PolynomialCommitmentScheme<F>,
-        CS::Commitment: Hashable<T::Hash>,
-        F: WithSmallOrderMulGroup<3>
-            + Sampleable<T::Hash>
-            + Hashable<T::Hash>
-            + Ord
-            + FromUniformBytes<64>,
-    {
-        let folded_trace = compute_trace(
-            params,
-            &pk,
-            &[circuit],
-            #[cfg(feature = "committed-instances")]
-            nb_committed_instances,
-            &[instance],
-            &mut rng,
-            transcript,
-        )?
-        .into_folding_trace(pk.vk.get_domain(), pk.fixed_values.clone());
-
-        let folding_pk = FoldingPk::from(pk);
-        let beta = F::ONE;
-        // let mut delta: F = transcript.squeeze_challenge();
-        // let beta_powers = F::ONE;
-        let error_term = F::ZERO;
-
-        Ok(Self {
-            folding_pk,
-            folded_trace,
-            error: error_term,
-            error_vec: vec![F::ZERO; 1 << K], // TODO change
-            beta,
-            _commitment_scheme: Default::default(),
-        })
-    }
-
     /// Fold
     /// TODO: We assume that circuits.len() + 1 is a power of 2.
     pub fn fold<C, T>(
-        mut self,
         params: &CS::Parameters,
-        pk: &ProvingKey<F, CS>,
+        pk: ProvingKey<F, CS>,
         circuits: Vec<C>,
         #[cfg(feature = "committed-instances")] nb_committed_instances: usize,
         instances: &[&[&[F]]],
@@ -108,18 +57,22 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
             + FromUniformBytes<64>,
     {
         assert_eq!(circuits.len(), instances.len());
-
+        
+        let degree = pk.vk.cs().degree() as u32;
+        println!("Degree: {:?}", degree);
+        
         let now = Instant::now();
         // TODO: Bunch of optimisations here. We could compute the trace for all
         // circuits at the same time. But the goal eventually is to fold
         // different circuits at a time.
+
         let traces = circuits
             .into_iter()
             .zip(instances.iter())
             .map(|(c, instance)| {
                 let trace = compute_trace(
                     params,
-                    pk,
+                    &pk,
                     &[c],
                     #[cfg(feature = "committed-instances")]
                     nb_committed_instances,
@@ -132,36 +85,38 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
             .collect::<Result<Vec<_>, Error>>()?;
         println!("Compute traces: {:?}", now.elapsed());
 
-        let now = Instant::now();
+        let beta = transcript.squeeze_challenge();
 
-        self.beta = transcript.squeeze_challenge();
+        // TODO initialize folded_trace
 
         // We include the evaluation of the committed f at alpha
         // We'll need to prove that f at zero is the error term
 
-        let beta_coeffs = vec![self.beta.clone(); 1 << K];
+        let beta_coeffs = vec![beta; 1 << K];
 
         let time = Instant::now();
-        let traces = std::iter::once(&self.folded_trace)
-            .chain(traces.iter())
-            .collect::<Vec<_>>();
+
+        let traces = traces
+        .iter()
+        .collect::<Vec<_>>();
 
         // TODO: we should no longer need this
+        println!("Number of traces: {:?}", traces.len());
+
         assert!(traces.len().is_power_of_two());
 
         // We now perform folding of the traces
-        let degree = pk.vk.cs().degree() as u32;
-        println!("Degree: {:?}", degree);
-
         // We must increase the degree, since we need to count y as a variable.
         // Computing the real degree seems hard.
         // TODO: look at this - does degree + 2 work?
         let dk_domain = EvaluationDomain::new(degree + 3, traces.len().trailing_zeros());
 
+        let folding_pk = FoldingPk::from(pk);
+
         let lifted_trace = batch_traces(&dk_domain, &traces);
         let lift_trace_time = time.elapsed().as_millis();
 
-        let poly_g = compute_poly_g(&self.folding_pk, &beta_coeffs, &lifted_trace);
+        let poly_g = compute_poly_g(&folding_pk, &beta_coeffs, &lifted_trace);
         let poly_g_time = time.elapsed().as_millis() - lift_trace_time;
 
         let poly_k = dk_domain.divide_by_vanishing_poly(poly_g.clone());
@@ -189,16 +144,23 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         assert_eq!(g_in_gamma, k_in_gamma * z_in_gamma);
 
         // Update error term
-        self.error = g_in_gamma;
-        self.error_vec = vec![F::ZERO; 1 << K]; // TODO change
-        self.folded_trace = fold_traces(&dk_domain, &traces, &gamma);
+        let folded_trace = fold_traces(&dk_domain, &traces, &gamma);
         let rest_time = time.elapsed().as_millis() - poly_g_time - lift_trace_time;
 
         println!("    Lift trace time      : {:?}ms", lift_trace_time);
         println!("    Poly G time          : {:?}ms", poly_g_time);
         println!("    Rest time            : {:?}ms", rest_time);
 
-        Ok(self)
+        Ok(Self {
+            folding_pk,
+            folded_trace,
+            error: g_in_gamma,
+            error_vec: vec![F::ZERO; 1 << K],
+            beta,
+            _commitment_scheme: Default::default(),
+        }
+        
+        )
     }
 
 
@@ -571,28 +533,15 @@ mod tests {
 
         // Fold proofs. We first initialise folding with the first circuit
         let folding = Instant::now();
-        let now = Instant::now();
         let mut transcript = CircuitTranscript::init();
-        let protogalaxy = ProtogalaxyProverOneShot::<_, _, K>::init(
-            &params,
-            pk.clone(),
-            circuits[0],
-            #[cfg(feature = "committed-instances")]
-            0,
-            &[],
-            &mut rng,
-            &mut transcript,
-        )
-        .expect("Failed to initialise folder");
 
-        let protogalaxy = protogalaxy
-            .fold(
+        let protogalaxy = ProtogalaxyProverOneShot::<_, _, K> ::fold(
                 &params,
-                &pk,
-                circuits[1..].to_vec(),
+                pk.clone(),
+                circuits[0..].to_vec(),
                 #[cfg(feature = "committed-instances")]
                 0,
-                &[&[], &[], &[]],
+                &[&[], &[], &[], &[]],
                 &mut rng,
                 &mut transcript,
             )
@@ -604,21 +553,11 @@ mod tests {
         let mut transcript = CircuitTranscript::init_from_bytes(&transcript.finalize());
 
         // Now we begin verification
-        let protogalaxy_verifier = ProtogalaxyVerifierOneShot::<_, _, K>::init(
-            &vk,
-            #[cfg(feature = "committed-instances")]
-            &[&[]],
-            &[&[]],
-            &mut transcript,
-        )
-        .expect("Failed - unexpected");
-
-        protogalaxy_verifier
-            .fold(
+        let protogalaxy_verifier = ProtogalaxyVerifierOneShot::<_, _, K>::fold(
                 &vk,
                 #[cfg(feature = "committed-instances")]
                 &[&[]],
-                &[&[], &[], &[]],
+                &[&[], &[], &[],&[]],
                 &mut transcript,
             )
             .expect("Failed to fold instances by the verifier")
@@ -633,7 +572,7 @@ mod tests {
                 &protogalaxy.folding_pk.permutation_pk_cosets,
             )
             .expect("Folding finalizer failed");
-
+        
         println!("Folding was a success");
     }
 }
