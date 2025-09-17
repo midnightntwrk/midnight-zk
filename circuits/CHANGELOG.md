@@ -33,6 +33,7 @@ verification keys break backwards compatibility.
 * Reduce degree of foreign/ecc_chip lookup from 6 to 5 [#91](https://github.com/midnightntwrk/midnight-zk/pull/91)
 * Optimisation of Automaton configuration and serialisation of the parsing library [#73](https://github.com/midnightntwrk/midnight-zk/pull/73)
 * Rebase to new cost-model with improved K computation [#104](https://github.com/midnightntwrk/midnight-zk/pull/104)
+* Explicitly used Apache license for crate [#107](https://github.com/midnightntwrk/midnight-zk/pull/107)
 
 ### Removed
 
