@@ -308,7 +308,7 @@ pub(crate) fn cost_model_options<F: Ord + Field + FromUniformBytes<64>, C: Circu
         let mut table_rows_count = 0;
         for region in prover.regions {
             // If `region.rows == None`, then that region has no rows.
-            if let Some((start, end)) = region.rows {
+            if let Some((_start, end)) = region.rows {
                 // Note that `end` is the index of the last column, so when
                 // counting rows this last column needs to be counted via `end +
                 // 1`.
@@ -318,9 +318,10 @@ pub(crate) fn cost_model_options<F: Ord + Field + FromUniformBytes<64>, C: Circu
                 // around `Column<Fixed>`]). All of a table region's rows are
                 // counted towards `table_rows_count.`
                 if region.columns.iter().all(|c| *c.column_type() == Fixed) {
-                    table_rows_count += (end + 1) - start;
+                    table_rows_count = std::cmp::max(table_rows_count, end + 1);
+                } else {
+                    rows_count = std::cmp::max(rows_count, end + 1);
                 }
-                rows_count = std::cmp::max(rows_count, end + 1);
             }
         }
         (table_rows_count, rows_count)
