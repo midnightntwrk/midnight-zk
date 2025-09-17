@@ -11,16 +11,13 @@ use rayon::{iter::{
 }, vec};
 
 use crate::{
-    plonk::{compute_trace, traces::FoldingProverTrace, Circuit, Error, ProvingKey},
-    poly::{
+    dev::InstanceValue, plonk::{compute_trace, traces::FoldingProverTrace, Circuit, Error, ProvingKey}, poly::{
         commitment::PolynomialCommitmentScheme, Coeff, EvaluationDomain, ExtendedLagrangeCoeff,
         LagrangeCoeff, Polynomial, PolynomialRepresentation,
-    },
-    protogalaxy::{
+    }, protogalaxy::{
         utils::{batch_traces, linear_combination, pow_vec, LiftedFoldingTrace},
         FoldingPk,
-    },
-    utils::arithmetic::eval_polynomial,
+    }, utils::arithmetic::eval_polynomial
 };
 
 /// This prover can perform a 2**K - 1 to one folding
@@ -29,7 +26,7 @@ struct ProtogalaxyProverOneShot<F: PrimeField, CS: PolynomialCommitmentScheme<F>
     folded_trace: FoldingProverTrace<F>,
     error: F,
     error_vec: Vec<F>,
-    beta: F,
+    beta_pg: F,
     _commitment_scheme: PhantomData<CS>,
 }
 
@@ -85,7 +82,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
             .collect::<Result<Vec<_>, Error>>()?;
         println!("Compute traces: {:?}", now.elapsed());
 
-        let beta = transcript.squeeze_challenge();
+        let beta_pg = transcript.squeeze_challenge();
 
         // TODO initialize folded_trace
 
@@ -115,7 +112,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         let lift_trace_time = time.elapsed().as_millis();
 
         let (poly_g,
-            error_vec) = compute_poly_g(&folding_pk, &beta, &lifted_trace);
+            poly_g_unbatched) = compute_poly_g(&folding_pk, &beta_pg, &lifted_trace);
         let poly_g_time = time.elapsed().as_millis() - lift_trace_time;
 
         let poly_k = dk_domain.divide_by_vanishing_poly(poly_g.clone());
@@ -144,6 +141,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
 
         println!("PK domain size: {:?}", folding_pk.domain.n);
         assert_eq!(folding_pk.domain.n, 1 << K);
+        let error_vec = vec![F::ZERO; folding_pk.domain.n.try_into().unwrap()];
 
         // Update error term
         let folded_trace = fold_traces(&dk_domain, &traces, &gamma);
@@ -159,7 +157,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
             folded_trace,
             error: g_in_gamma,
             error_vec: error_vec,
-            beta,
+            beta_pg,
             _commitment_scheme: Default::default(),
         }
         
@@ -260,15 +258,16 @@ use crate::transcript::{Hashable, Sampleable, Transcript};
 /// values computed above.
 fn compute_poly_g<F: PrimeField + WithSmallOrderMulGroup<3>>(
     pk: &FoldingPk<F>,
-    pow_challenge: &F,
+    beta_pg: &F,
     lifted_folding_trace: &LiftedFoldingTrace<F>,
 ) -> (Polynomial<F, ExtendedLagrangeCoeff>,
-        Vec<F>) {
+        Vec<Vec<F>>) {
     // TODO: Output the vector of errors too.
     // In the future, we'll output simply a commitment to it, but
     // perhaps at an upper level function.
     let mut g_poly = vec![F::ZERO; lifted_folding_trace.len()];
-    for (j, instance) in g_poly.iter_mut().enumerate() {
+    let mut g_poly_unbatched = vec![vec![F::ZERO; pk.domain.n.try_into().unwrap()]; lifted_folding_trace.len()];
+    for (j, instance) in g_poly_unbatched.iter_mut().enumerate() {
         let FoldingProverTrace {
             fixed_polys,
             advice_polys,
@@ -308,10 +307,11 @@ fn compute_poly_g<F: PrimeField + WithSmallOrderMulGroup<3>>(
             &pk.permutation_pk_cosets,
         );
 
-        *instance = witness_poly
-            .values
+        *instance = witness_poly.values;
+
+        g_poly[j] = instance
             .into_par_iter()
-            .map(|witness| witness * pow_challenge)
+            .map(|witness| *witness * beta_pg)
             .reduce(|| F::ZERO, |a, b| a + b);
     }
 
@@ -320,7 +320,7 @@ fn compute_poly_g<F: PrimeField + WithSmallOrderMulGroup<3>>(
             values: g_poly,
             _marker: Default::default(),
         },
-        vec![F::ZERO; lifted_folding_trace.len()],
+        g_poly_unbatched,
     )
 
 
