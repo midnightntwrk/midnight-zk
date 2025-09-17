@@ -167,6 +167,8 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
             .chain(traces.iter())
             .collect::<Vec<_>>();
 
+        println!("Number of traces: {:?}", traces.len());
+
         assert!(traces.len().is_power_of_two());
 
         // We now perform folding of the traces
