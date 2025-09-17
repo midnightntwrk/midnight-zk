@@ -64,8 +64,8 @@ pub fn fe_to_u64<F: PrimeField>(fe: F) -> u64 {
 pub fn fe_to_u128<F: PrimeField>(fe: F) -> u128 {
     let u64_digits = fe_to_big(fe).to_u64_digits();
     assert!(u64_digits.len() <= 2);
-    (u64_digits.get(1).cloned().unwrap_or(0) as u128) << 64
-        | (u64_digits.get(0).cloned().unwrap_or(0) as u128)
+    ((u64_digits.get(1).cloned().unwrap_or(0) as u128) << 64)
+        | (u64_digits.first().cloned().unwrap_or(0) as u128)
 }
 
 pub fn u32_to_fe<F: PrimeField>(x: u32) -> F {

@@ -71,6 +71,6 @@ mod tests {
             [AssignedByte<Scalar>; 64],
             Sha512Chip<Scalar>,
             NativeGadget<Scalar, _, _>,
-        >(true, "SHA512", 17);
+        >(true, "SHA512", 16);
     }
 }

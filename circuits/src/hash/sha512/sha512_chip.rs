@@ -1,4 +1,41 @@
-//! SHA-512 Chip
+//! This file implements a chip providing support for in-circuit evaluation of
+//! the SHA512 hash function.
+//!
+//! Throughout the file, we use the notation from NIST FIPS PUB 180-4:
+//! <https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf> (Section 6.2).
+//!
+//! This implementation uses the amazing trick of a plain-spreaded table,
+//! devised by the Zcash team (to the best of our knowledge):
+//! See <https://zcash.github.io/halo2/design/gadgets/sha256/table16.html>.
+//!
+//! In a nutshell, the "spreaded" form of a u64 is the u128 resulting from
+//! inserting a zero between all its bits. For example, the spreaded version
+//! of 13 = 0b1101 is 0b01010001 = 81.
+//!                     ^ ^ ^ ^
+//! We denote the spreaded form of a value X: u64 by ~X: u128.
+//!
+//! The spreaded form can be used to enforce bit-wise operations very
+//! efficiently, essentially with a single native field addition (which can be
+//! seen as an integer addition since values are guaranteed to not wrap-around
+//! the native modulus).
+//!
+//! For example, the bit-wise XOR of two values X and Y is encoded in the
+//! even bits of ~X + ~Y (and the odd bits encode their bit-wise AND).
+//! Thus, for X, Y in [0, 2^64), Z = X ⊕ Y can be enforced as
+//! ~Z + 2 * ~W = ~X + ~Y and Z, W in [0, 2^64); where W is an auxiliary
+//! variable. The consistency between X, Y, Z, W and ~X, ~Y, ~Z, ~W (and, by the
+//! way, their range condition) be enforced with a lookup table.
+//!
+//! In this chip we use a lookup table with 3 columns of the form (n, X, ~X)
+//! which guarantees that ~X is the spreaded form of X and that X has n-bits,
+//! i.e. X in [0, 2^n).
+//!
+//! Our 64-bit values are represented in limbs of at most 13 bits. This allows
+//! us to have a small table with (only) values in [1, 2, 3, 4, 5, 6, 10, 11,
+//! 12, 13].
+//!
+//! We have 2 parallel lookups, which allow us to call such plain-spreaded table
+//! twice per row; on columns named (T0, A0, A1) and (T1, A2, A3).
 
 use ff::PrimeField;
 use midnight_proofs::{
@@ -930,9 +967,9 @@ impl<F: PrimeField> Sha512Chip<F> {
             |mut region| {
                 self.config().q_maj.enable(&mut region, 1)?;
 
-                (sprdd_a.0).copy_advice(|| "~A", &mut region, adv_cols[5], 0)?;
-                (sprdd_b.0).copy_advice(|| "~B", &mut region, adv_cols[6], 0)?;
-                (sprdd_c.0).copy_advice(|| "~C", &mut region, adv_cols[5], 1)?;
+                sprdd_a.0.copy_advice(|| "~A", &mut region, adv_cols[5], 0)?;
+                sprdd_b.0.copy_advice(|| "~B", &mut region, adv_cols[6], 0)?;
+                sprdd_c.0.copy_advice(|| "~C", &mut region, adv_cols[5], 1)?;
 
                 let val_of_sprdd_forms: Value<[u128; 3]> = Value::from_iter([
                     sprdd_a.0.value().copied().map(fe_to_u128),
@@ -1031,11 +1068,11 @@ impl<F: PrimeField> Sha512Chip<F> {
                 self.config().q_half_ch.enable(&mut region, 1)?;
                 self.config().q_half_ch.enable(&mut region, 6)?;
 
-                (sprdd_E.0).copy_advice(|| "~E", &mut region, adv_cols[5], 0)?;
-                (sprdd_E.0).copy_advice(|| "~E", &mut region, adv_cols[4], 6)?;
+                sprdd_E.0.copy_advice(|| "~E", &mut region, adv_cols[5], 0)?;
+                sprdd_E.0.copy_advice(|| "~E", &mut region, adv_cols[4], 6)?;
 
-                (sprdd_F.0).copy_advice(|| "~F", &mut region, adv_cols[6], 0)?;
-                (sprdd_G.0).copy_advice(|| "~G", &mut region, adv_cols[6], 5)?;
+                sprdd_F.0.copy_advice(|| "~F", &mut region, adv_cols[6], 0)?;
+                sprdd_G.0.copy_advice(|| "~G", &mut region, adv_cols[6], 5)?;
 
                 let sprdd_nE = region.assign_advice(|| "~(¬E)", adv_cols[5], 5, || sprdd_nE_val)?;
                 sprdd_nE.copy_advice(|| "~(¬E)", &mut region, adv_cols[5], 6)?;
@@ -1044,11 +1081,11 @@ impl<F: PrimeField> Sha512Chip<F> {
 
                 let odd_EF =
                     self.assign_sprdd_13_13_13_13_12(&mut region, EpF_val, Parity::Odd, 0)?;
-                (odd_EF.0).copy_advice(|| "Odd_EF", &mut region, adv_cols[4], 1)?;
+                odd_EF.0.copy_advice(|| "Odd_EF", &mut region, adv_cols[4], 1)?;
 
                 let odd_nEG =
                     self.assign_sprdd_13_13_13_13_12(&mut region, nEpG_val, Parity::Odd, 5)?;
-                (odd_nEG.0).copy_advice(|| "Odd_nEG", &mut region, adv_cols[5], 1)?;
+                odd_nEG.0.copy_advice(|| "Odd_nEG", &mut region, adv_cols[5], 1)?;
 
                 let ret_val = odd_EF.0.value().copied() + odd_nEG.0.value().copied();
                 region
@@ -1111,13 +1148,13 @@ impl<F: PrimeField> Sha512Chip<F> {
                 self.config().q_Sigma_0.enable(&mut region, 1)?;
 
                 // Copy and assign the input.
-                (a.spreaded_limb_13a.0).copy_advice(|| "~A.13a", &mut region, adv_cols[5], 0)?;
-                (a.spreaded_limb_12.0).copy_advice(|| "~A.12", &mut region, adv_cols[6], 0)?;
-                (a.spreaded_limb_05.0).copy_advice(|| "~A.05", &mut region, adv_cols[5], 1)?;
-                (a.spreaded_limb_06.0).copy_advice(|| "~A.06", &mut region, adv_cols[6], 1)?;
-                (a.spreaded_limb_13b.0).copy_advice(|| "~A.13b", &mut region, adv_cols[5], 2)?;
-                (a.spreaded_limb_13c.0).copy_advice(|| "~A.13c", &mut region, adv_cols[6], 2)?;
-                (a.spreaded_limb_02.0).copy_advice(|| "~A.02", &mut region, adv_cols[5], 3)?;
+                a.spreaded_limb_13a.0.copy_advice(|| "~A.13a", &mut region, adv_cols[5], 0)?;
+                a.spreaded_limb_12.0.copy_advice(|| "~A.12", &mut region, adv_cols[6], 0)?;
+                a.spreaded_limb_05.0.copy_advice(|| "~A.05", &mut region, adv_cols[5], 1)?;
+                a.spreaded_limb_06.0.copy_advice(|| "~A.06", &mut region, adv_cols[6], 1)?;
+                a.spreaded_limb_13b.0.copy_advice(|| "~A.13b", &mut region, adv_cols[5], 2)?;
+                a.spreaded_limb_13c.0.copy_advice(|| "~A.13c", &mut region, adv_cols[6], 2)?;
+                a.spreaded_limb_02.0.copy_advice(|| "~A.02", &mut region, adv_cols[5], 3)?;
 
                 // Compute the spreaded Σ₀(A) off-circuit, assign the 13-13-13-13-12 limbs
                 // of its even and odd bits into the circuit, enable the q_13_13_13_13_12
@@ -1197,13 +1234,13 @@ impl<F: PrimeField> Sha512Chip<F> {
                 self.config().q_Sigma_1.enable(&mut region, 1)?;
 
                 // Copy and assign the input.
-                (e.spreaded_limb_13a.0).copy_advice(|| "~E.13a", &mut region, adv_cols[5], 0)?;
-                (e.spreaded_limb_10a.0).copy_advice(|| "~E.10a", &mut region, adv_cols[6], 0)?;
-                (e.spreaded_limb_13b.0).copy_advice(|| "~E.13b", &mut region, adv_cols[5], 1)?;
-                (e.spreaded_limb_10b.0).copy_advice(|| "~E.10b", &mut region, adv_cols[6], 1)?;
-                (e.spreaded_limb_04.0).copy_advice(|| "~E.04", &mut region, adv_cols[5], 2)?;
-                (e.spreaded_limb_13c.0).copy_advice(|| "~E.13c", &mut region, adv_cols[6], 2)?;
-                (e.spreaded_limb_01.0).copy_advice(|| "~E.01", &mut region, adv_cols[5], 3)?;
+                e.spreaded_limb_13a.0.copy_advice(|| "~E.13a", &mut region, adv_cols[5], 0)?;
+                e.spreaded_limb_10a.0.copy_advice(|| "~E.10a", &mut region, adv_cols[6], 0)?;
+                e.spreaded_limb_13b.0.copy_advice(|| "~E.13b", &mut region, adv_cols[5], 1)?;
+                e.spreaded_limb_10b.0.copy_advice(|| "~E.10b", &mut region, adv_cols[6], 1)?;
+                e.spreaded_limb_04.0.copy_advice(|| "~E.04", &mut region, adv_cols[5], 2)?;
+                e.spreaded_limb_13c.0.copy_advice(|| "~E.13c", &mut region, adv_cols[6], 2)?;
+                e.spreaded_limb_01.0.copy_advice(|| "~E.01", &mut region, adv_cols[5], 3)?;
 
                 // Compute the spreaded Σ₁(E) off-circuit, assign the 13-13-13-13-12 limbs
                 // of its even and odd bits into the circuit, enable the q_13_13_13_13_12
@@ -1286,16 +1323,16 @@ impl<F: PrimeField> Sha512Chip<F> {
                 self.config().q_sigma_0.enable(&mut region, 1)?;
 
                 // Copy and assign the input.
-                (w.spreaded_w_03a.0).copy_advice(|| "~W.03a", &mut region, adv_cols[5], 0)?;
-                (w.spreaded_w_13a.0).copy_advice(|| "~W.13a", &mut region, adv_cols[6], 0)?;
-                (w.spreaded_w_13b.0).copy_advice(|| "~W.13b", &mut region, adv_cols[5], 1)?;
-                (w.spreaded_w_13c.0).copy_advice(|| "~W.13c", &mut region, adv_cols[6], 1)?;
-                (w.spreaded_w_03b.0).copy_advice(|| "~W.03b", &mut region, adv_cols[5], 2)?;
-                (w.spreaded_w_11.0).copy_advice(|| "~W.11", &mut region, adv_cols[6], 2)?;
-                (w.spreaded_w_01a.0).copy_advice(|| "~W.01a", &mut region, adv_cols[5], 3)?;
-                (w.spreaded_w_01b.0).copy_advice(|| "~W.01b", &mut region, adv_cols[6], 3)?;
-                (w.spreaded_w_05.0).copy_advice(|| "~W.05", &mut region, adv_cols[5], 4)?;
-                (w.spreaded_w_01c.0).copy_advice(|| "~W.01c", &mut region, adv_cols[6], 4)?;
+                w.spreaded_w_03a.0.copy_advice(|| "~W.03a", &mut region, adv_cols[5], 0)?;
+                w.spreaded_w_13a.0.copy_advice(|| "~W.13a", &mut region, adv_cols[6], 0)?;
+                w.spreaded_w_13b.0.copy_advice(|| "~W.13b", &mut region, adv_cols[5], 1)?;
+                w.spreaded_w_13c.0.copy_advice(|| "~W.13c", &mut region, adv_cols[6], 1)?;
+                w.spreaded_w_03b.0.copy_advice(|| "~W.03b", &mut region, adv_cols[5], 2)?;
+                w.spreaded_w_11.0.copy_advice(|| "~W.11", &mut region, adv_cols[6], 2)?;
+                w.spreaded_w_01a.0.copy_advice(|| "~W.01a", &mut region, adv_cols[5], 3)?;
+                w.spreaded_w_01b.0.copy_advice(|| "~W.01b", &mut region, adv_cols[6], 3)?;
+                w.spreaded_w_05.0.copy_advice(|| "~W.05", &mut region, adv_cols[5], 4)?;
+                w.spreaded_w_01c.0.copy_advice(|| "~W.01c", &mut region, adv_cols[6], 4)?;
 
                 // Compute the spreaded σ₀(W) off-circuit, assign the 13-13-13-13-12 limbs
                 // of its even and odd bits into the circuit, enable the q_13_13_13_13_12
@@ -1381,16 +1418,16 @@ impl<F: PrimeField> Sha512Chip<F> {
                 self.config().q_sigma_1.enable(&mut region, 1)?;
 
                 // Copy and assign the input.
-                (w.spreaded_w_03a.0).copy_advice(|| "~W.03a", &mut region, adv_cols[5], 0)?;
-                (w.spreaded_w_13a.0).copy_advice(|| "~W.13a", &mut region, adv_cols[6], 0)?;
-                (w.spreaded_w_13b.0).copy_advice(|| "~W.13b", &mut region, adv_cols[5], 1)?;
-                (w.spreaded_w_13c.0).copy_advice(|| "~W.13c", &mut region, adv_cols[6], 1)?;
-                (w.spreaded_w_03b.0).copy_advice(|| "~W.03b", &mut region, adv_cols[5], 2)?;
-                (w.spreaded_w_11.0).copy_advice(|| "~W.11", &mut region, adv_cols[6], 2)?;
-                (w.spreaded_w_01a.0).copy_advice(|| "~W.01a", &mut region, adv_cols[5], 3)?;
-                (w.spreaded_w_01b.0).copy_advice(|| "~W.01b", &mut region, adv_cols[6], 3)?;
-                (w.spreaded_w_05.0).copy_advice(|| "~W.05", &mut region, adv_cols[5], 4)?;
-                (w.spreaded_w_01c.0).copy_advice(|| "~W.01c", &mut region, adv_cols[6], 4)?;
+                w.spreaded_w_03a.0.copy_advice(|| "~W.03a", &mut region, adv_cols[5], 0)?;
+                w.spreaded_w_13a.0.copy_advice(|| "~W.13a", &mut region, adv_cols[6], 0)?;
+                w.spreaded_w_13b.0.copy_advice(|| "~W.13b", &mut region, adv_cols[5], 1)?;
+                w.spreaded_w_13c.0.copy_advice(|| "~W.13c", &mut region, adv_cols[6], 1)?;
+                w.spreaded_w_03b.0.copy_advice(|| "~W.03b", &mut region, adv_cols[5], 2)?;
+                w.spreaded_w_11.0.copy_advice(|| "~W.11", &mut region, adv_cols[6], 2)?;
+                w.spreaded_w_01a.0.copy_advice(|| "~W.01a", &mut region, adv_cols[5], 3)?;
+                w.spreaded_w_01b.0.copy_advice(|| "~W.01b", &mut region, adv_cols[6], 3)?;
+                w.spreaded_w_05.0.copy_advice(|| "~W.05", &mut region, adv_cols[5], 4)?;
+                w.spreaded_w_01c.0.copy_advice(|| "~W.01c", &mut region, adv_cols[6], 4)?;
 
                 // Compute the spreaded σ₁(W) off-circuit, assign the 13-13-13-13-12 limbs
                 // of its even and odd bits into the circuit, enable the q_13_13_13_13_12
@@ -1550,15 +1587,17 @@ impl<F: PrimeField> Sha512Chip<F> {
 
                 let a_plain = self.assign_add_mod_2_64(&mut region, summands, &zero)?;
                 let a_sprdd_val =
-                    (a_plain.0.value().copied()).map(fe_to_u64).map(spread).map(u128_to_fe);
+                    a_plain.0.value().copied().map(fe_to_u64).map(spread).map(u128_to_fe);
                 let a_sprdd = region
                     .assign_advice(|| "~A", self.config().advice_cols[4], 1, || a_sprdd_val)
                     .map(AssignedSpreaded)?;
 
-                let [val_13a, val_12, val_05, val_06, val_13b, val_13c, val_02] =
-                    (a_plain.0.value().copied())
-                        .map(|a| u64_in_be_limbs(fe_to_u64(a), [13, 12, 5, 6, 13, 13, 2]))
-                        .transpose_array();
+                let [val_13a, val_12, val_05, val_06, val_13b, val_13c, val_02] = a_plain
+                    .0
+                    .value()
+                    .copied()
+                    .map(|a| u64_in_be_limbs(fe_to_u64(a), [13, 12, 5, 6, 13, 13, 2]))
+                    .transpose_array();
 
                 let limb_13a = self.assign_plain_and_spreaded(&mut region, val_13a, 0, 0)?;
                 let limb_12 = self.assign_plain_and_spreaded(&mut region, val_12, 0, 1)?;
@@ -1638,15 +1677,17 @@ impl<F: PrimeField> Sha512Chip<F> {
 
                 let e_plain = self.assign_add_mod_2_64(&mut region, summands, &zero)?;
                 let e_sprdd_val =
-                    (e_plain.0.value().copied()).map(fe_to_u64).map(spread).map(u128_to_fe);
+                    e_plain.0.value().copied().map(fe_to_u64).map(spread).map(u128_to_fe);
                 let e_sprdd = region
                     .assign_advice(|| "~E", self.config().advice_cols[4], 1, || e_sprdd_val)
                     .map(AssignedSpreaded)?;
 
-                let [val_13a, val_10a, val_13b, val_10b, val_04, val_13c, val_01] =
-                    (e_plain.0.value().copied())
-                        .map(|e| u64_in_be_limbs(fe_to_u64(e), [13, 10, 13, 10, 4, 13, 1]))
-                        .transpose_array();
+                let [val_13a, val_10a, val_13b, val_10b, val_04, val_13c, val_01] = e_plain
+                    .0
+                    .value()
+                    .copied()
+                    .map(|e| u64_in_be_limbs(fe_to_u64(e), [13, 10, 13, 10, 4, 13, 1]))
+                    .transpose_array();
 
                 let limb_13a = self.assign_plain_and_spreaded(&mut region, val_13a, 0, 0)?;
                 let limb_10a = self.assign_plain_and_spreaded(&mut region, val_10a, 0, 1)?;
@@ -1726,7 +1767,7 @@ impl<F: PrimeField> Sha512Chip<F> {
                 let w_i_plain = self.assign_add_mod_2_64(&mut region, summands, &zero)?;
 
                 let [val_03a, val_13a, val_13b, val_13c, val_03b, val_11, val_01a, val_01b, val_05, val_01c] =
-                    (w_i_plain.0.value().copied())
+                    w_i_plain.0.value().copied()
                         .map(|w| u64_in_be_limbs(fe_to_u64(w), [3, 13, 13, 13, 3, 11, 1, 1, 5, 1]))
                         .transpose_array();
                 let limb_03a = self.assign_plain_and_spreaded(&mut region, val_03a, 0, 0)?;
