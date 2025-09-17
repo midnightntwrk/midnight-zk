@@ -312,10 +312,8 @@ mod tests {
 
         if cost_model {
             circuit_to_json(
-                k,
                 "Poseidon",
                 format!("VarHash with max length {MAX_LEN}").as_str(),
-                0,
                 circuit,
             );
         }

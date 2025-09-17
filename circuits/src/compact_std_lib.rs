@@ -1360,7 +1360,7 @@ impl<Rel: Relation> MidnightPK<Rel> {
 ///     }
 /// }
 ///
-/// const K: u32 = 13;
+/// const K: u32 = 14;
 /// let mut srs = filecoin_srs(K);
 ///
 /// let relation = ShaPreImageCircuit;
@@ -1698,5 +1698,5 @@ where
 /// Cost model of the given relation.
 pub fn cost_model<R: Relation>(relation: &R) -> CircuitModel {
     let circuit = MidnightCircuit::from_relation(relation);
-    from_circuit_to_circuit_model::<_, _, 48, 32>(None, &circuit, 0)
+    from_circuit_to_circuit_model::<_, _, 48, 32>(&circuit)
 }

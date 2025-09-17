@@ -219,7 +219,7 @@ pub(crate) mod tests {
         MockProver::run(k, &circuit, vec![vec![], vec![]]).unwrap().assert_satisfied();
 
         if cost_model {
-            circuit_to_json(k, chip_name, "sponge", 0, circuit);
+            circuit_to_json(chip_name, "sponge", circuit);
         }
     }
 }

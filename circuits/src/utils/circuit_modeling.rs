@@ -38,20 +38,14 @@ use serde_json::{json, Map, Value};
 /// Does nothing on Windows since goldenfiles do not work due to different line
 /// endings.
 #[cfg(not(target_os = "windows"))]
-pub fn circuit_to_json<F>(
-    k: u32,
-    chip_name: &str,
-    op_name: &str,
-    nb_public_inputs: usize,
-    circuit: impl Circuit<F>,
-) where
+pub fn circuit_to_json<F>(chip_name: &str, op_name: &str, circuit: impl Circuit<F>)
+where
     F: FromUniformBytes<64> + Ord,
 {
     // Store model only when tests are run in BLS12-381 (i.e. when the
     // native scalar is BLS's scalar
     if F::MODULUS == Fq::MODULUS {
-        let model =
-            from_circuit_to_circuit_model::<F, _, 48, 32>(Some(k), &circuit, nb_public_inputs);
+        let model = from_circuit_to_circuit_model::<F, _, 48, 32>(&circuit);
         update_json(chip_name, op_name, model).expect("csv generation failed");
     }
 }
@@ -59,7 +53,7 @@ pub fn circuit_to_json<F>(
 #[cfg(target_os = "windows")]
 /// Does nothing on Windows since goldenfiles do not work due to different line
 /// endings.
-pub fn circuit_to_json<F>(k: u32, name: &str, public: &[&[F]], circuit: impl Circuit<F> + Clone)
+pub fn circuit_to_json<F>(chip_name: &str, op_name: &str, circuit: impl Circuit<F>)
 where
     F: FromUniformBytes<64> + Ord,
 {

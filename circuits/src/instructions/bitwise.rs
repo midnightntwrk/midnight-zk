@@ -297,7 +297,7 @@ pub(crate) mod tests {
         }
 
         if cost_model {
-            circuit_to_json(log2_nb_rows, circuit_name, op_name, 0, circuit);
+            circuit_to_json(circuit_name, op_name, circuit);
         }
     }
 
