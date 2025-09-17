@@ -25,14 +25,7 @@
 //!   description in memory and does not need to reproduce it everytime it
 //!   receives a new proof.
 
-use std::{
-    cell::RefCell,
-    cmp::{max, min},
-    convert::TryInto,
-    fmt::Debug,
-    io,
-    rc::Rc,
-};
+use std::{cell::RefCell, cmp::max, convert::TryInto, fmt::Debug, io, rc::Rc};
 
 #[cfg(feature = "bench-internal")]
 use bench_macros::inner_bench;
@@ -71,9 +64,7 @@ use crate::{
             pow2range::Pow2RangeChip,
         },
         foreign::{
-            nb_field_chip_columns,
-            params::{FieldEmulationParams, MultiEmulationParams as MEP},
-            FieldChip, FieldChipConfig,
+            nb_field_chip_columns, params::MultiEmulationParams as MEP, FieldChip, FieldChipConfig,
         },
         native::{NB_ARITH_COLS, NB_ARITH_FIXED_COLS},
         NativeChip, NativeConfig, NativeGadget,
@@ -220,7 +211,6 @@ impl ZkStdLibArch {
 #[derive(Debug, Clone)]
 /// Configured chips for [ZkStdLib].
 pub struct ZkStdLibConfig {
-    architecture: ZkStdLibArch,
     native_config: NativeConfig,
     core_decomposition_config: P2RDecompositionConfig,
     jubjub_config: Option<EccConfig>,
@@ -486,7 +476,6 @@ impl ZkStdLib {
         meta.enable_constant(constants_column);
 
         ZkStdLibConfig {
-            architecture: arch,
             native_config,
             core_decomposition_config,
             jubjub_config,
@@ -1117,6 +1106,7 @@ where
 #[derive(Clone, Debug)]
 pub struct MidnightCircuit<'a, R: Relation> {
     relation: &'a R,
+    max_bit_len: u8,
     instance: Value<R::Instance>,
     witness: Value<R::Witness>,
     nb_public_inputs: Rc<RefCell<Option<usize>>>,
@@ -1125,21 +1115,63 @@ pub struct MidnightCircuit<'a, R: Relation> {
 impl<'a, R: Relation> MidnightCircuit<'a, R> {
     /// A MidnightCircuit with unknown instance-witness for the given relation.
     pub fn from_relation(relation: &'a R) -> Self {
-        MidnightCircuit {
-            relation,
-            instance: Value::unknown(),
-            witness: Value::unknown(),
-            nb_public_inputs: Rc::new(RefCell::new(None)),
-        }
+        MidnightCircuit::new(relation, Value::unknown(), Value::unknown(), None)
     }
 
-    /// Create a new MidnightCircuit from a known instance-witness for the given
-    /// relation.
-    pub fn new(relation: &'a R, instance: R::Instance, witness: R::Witness) -> Self {
+    /// Creates a new MidnightCircuit for the given relation. If not provided,
+    /// this function selects the optimal max_bit_len for the pow2range table.
+    pub fn new(
+        relation: &'a R,
+        instance: Value<R::Instance>,
+        witness: Value<R::Witness>,
+        max_bit_len_opt: Option<u8>,
+    ) -> Self {
+        if let Some(max_bit_len) = max_bit_len_opt {
+            return MidnightCircuit {
+                relation,
+                max_bit_len,
+                instance,
+                witness,
+                nb_public_inputs: Rc::new(RefCell::new(None)),
+            };
+        }
+
+        let model_with_max_bit_len = |max_bit_len: u8| -> CircuitModel {
+            circuit_model::<_, 48, 32>(&MidnightCircuit {
+                relation,
+                max_bit_len,
+                instance: Value::unknown(),
+                witness: Value::unknown(),
+                nb_public_inputs: Rc::new(RefCell::new(None)),
+            })
+        };
+
+        let mut best_k = u32::MAX;
+        let mut best_max_bit_len = 8;
+        let mut max_bit_len = max_bit_len_opt.unwrap_or(8);
+
+        // Loop for finding the optimal `max_bit_len`.
+        loop {
+            let model = model_with_max_bit_len(max_bit_len);
+
+            if model.k < best_k {
+                best_k = model.k;
+                best_max_bit_len = max_bit_len;
+            }
+
+            // Stop when the table becomes the bottleneck.
+            if model.rows < (1 << (max_bit_len + 1)) || max_bit_len >= 24 {
+                break;
+            }
+
+            max_bit_len += 1;
+        }
+
         MidnightCircuit {
             relation,
-            instance: Value::known(instance),
-            witness: Value::known(witness),
+            max_bit_len: best_max_bit_len,
+            instance,
+            witness,
             nb_public_inputs: Rc::new(RefCell::new(None)),
         }
     }
@@ -1154,6 +1186,7 @@ impl<'a, R: Relation> MidnightCircuit<'a, R> {
 #[derive(Clone, Debug)]
 pub struct MidnightVK {
     architecture: ZkStdLibArch,
+    max_bit_len: u8,
     nb_public_inputs: usize,
     vk: VerifyingKey<midnight_curves::Fq, KZGCommitmentScheme<midnight_curves::Bls12>>,
 }
@@ -1169,6 +1202,8 @@ impl MidnightVK {
     /// but it is not recommended.
     pub fn write<W: io::Write>(&self, writer: &mut W, format: SerdeFormat) -> io::Result<()> {
         self.architecture.write(writer)?;
+
+        writer.write_all(&[self.max_bit_len])?;
 
         writer.write_all(&(self.nb_public_inputs as u32).to_le_bytes())?;
 
@@ -1186,6 +1221,10 @@ impl MidnightVK {
     pub fn read<R: io::Read>(reader: &mut R, format: SerdeFormat) -> io::Result<Self> {
         let architecture = ZkStdLibArch::read(reader)?;
 
+        let mut byte = [0u8; 1];
+        reader.read_exact(&mut byte)?;
+        let max_bit_len = byte[0];
+
         let mut bytes = [0u8; 4];
         reader.read_exact(&mut bytes)?;
         let nb_public_inputs = u32::from_le_bytes(bytes) as usize;
@@ -1197,6 +1236,7 @@ impl MidnightVK {
 
         Ok(MidnightVK {
             architecture,
+            max_bit_len,
             nb_public_inputs,
             vk,
         })
@@ -1218,6 +1258,7 @@ impl MidnightVK {
 /// A proving key of a Midnight circuit.
 #[derive(Clone, Debug)]
 pub struct MidnightPK<R: Relation> {
+    max_bit_len: u8,
     k: u8,
     relation: R,
     pk: ProvingKey<midnight_curves::Fq, KZGCommitmentScheme<midnight_curves::Bls12>>,
@@ -1233,6 +1274,7 @@ impl<Rel: Relation> MidnightPK<Rel> {
     /// Using `RawBytesUnchecked` will have the same effect as `RawBytes`,
     /// but it is not recommended.
     pub fn write<W: io::Write>(&self, writer: &mut W, format: SerdeFormat) -> io::Result<()> {
+        writer.write_all(&[self.max_bit_len])?;
         writer.write_all(&[self.k])?;
 
         Rel::write_relation(&self.relation, writer)?;
@@ -1250,6 +1292,10 @@ impl<Rel: Relation> MidnightPK<Rel> {
     /// Use `RawBytesUnchecked` only if you trust the party who wrote the key.
     pub fn read<R: io::Read>(reader: &mut R, format: SerdeFormat) -> io::Result<Self> {
         let mut byte = [0u8; 1];
+
+        reader.read_exact(&mut byte)?;
+        let max_bit_len = byte[0];
+
         reader.read_exact(&mut byte)?;
         let k = byte[0];
 
@@ -1258,10 +1304,21 @@ impl<Rel: Relation> MidnightPK<Rel> {
         let pk = ProvingKey::read::<R, MidnightCircuit<Rel>>(
             reader,
             format,
-            MidnightCircuit::from_relation(&relation).params(),
+            MidnightCircuit::new(
+                &relation,
+                Value::unknown(),
+                Value::unknown(),
+                Some(max_bit_len),
+            )
+            .params(),
         )?;
 
-        Ok(MidnightPK { k, relation, pk })
+        Ok(MidnightPK {
+            max_bit_len,
+            k,
+            relation,
+            pk,
+        })
     }
 
     /// The size of the domain associated to this proving key.
@@ -1453,34 +1510,7 @@ impl<R: Relation> Circuit<F> for MidnightCircuit<'_, R> {
         config: Self::Config,
         mut layouter: impl Layouter<F>,
     ) -> Result<(), Error> {
-        let secp256k1_rc_limb_size = max(
-            <MEP as FieldEmulationParams<F, secp256k1::Fp>>::RC_LIMB_SIZE,
-            <MEP as FieldEmulationParams<F, secp256k1::Fq>>::RC_LIMB_SIZE,
-        ) as usize;
-
-        let bls12_381_rc_limb_size =
-            <MEP as FieldEmulationParams<F, midnight_curves::Fp>>::RC_LIMB_SIZE as usize;
-
-        // We could do better and select the max bit length based on whether the chips
-        // are used (not just enabled), but that would require a first mock call to
-        // self.relation.circuit.
-        let max_bit_len = [
-            10,
-            secp256k1_rc_limb_size * (config.architecture.secp256k1 as usize),
-            bls12_381_rc_limb_size * (config.architecture.bls12_381 as usize),
-            // The following chips do not use the pow2range table, but have their own table and
-            // impose a lower bound on the circuit size. We want the pow2range table to be as large
-            // as possible without affecting the circuit size.
-            12 * (config.architecture.sha256 as usize), // ~2^13 table -> K = 13
-            12 * (config.architecture.base64 as usize), // 2^12 table + unusable rows -> K = 13
-            12 * (config.architecture.automaton as usize), // ~2^13 table (currently) -> K = 13
-        ]
-        .into_iter()
-        .max()
-        .unwrap();
-
-        // We limit max_bit_len by 15 (K = 16) to avoid huge circuits.
-        let zk_std_lib = ZkStdLib::new(&config, min(15, max_bit_len));
+        let zk_std_lib = ZkStdLib::new(&config, self.max_bit_len as usize);
 
         self.relation.circuit(
             &zk_std_lib,
@@ -1547,6 +1577,7 @@ pub fn setup_vk<R: Relation>(
 
     MidnightVK {
         architecture: relation.used_chips(),
+        max_bit_len: circuit.max_bit_len,
         nb_public_inputs,
         vk,
     }
@@ -1554,9 +1585,15 @@ pub fn setup_vk<R: Relation>(
 
 /// Generates a proving key for a `MidnightCircuit<R>` circuit.
 pub fn setup_pk<R: Relation>(relation: &R, vk: &MidnightVK) -> MidnightPK<R> {
-    let circuit = MidnightCircuit::from_relation(relation);
+    let circuit = MidnightCircuit::new(
+        relation,
+        Value::unknown(),
+        Value::unknown(),
+        Some(vk.max_bit_len),
+    );
     let pk = BlstPLONK::<MidnightCircuit<R>>::setup_pk(&circuit, &vk.vk);
     MidnightPK {
+        max_bit_len: vk.max_bit_len,
         k: vk.vk.get_domain().k() as u8,
         relation: relation.clone(),
         pk,
@@ -1580,7 +1617,12 @@ where
 {
     let pi = R::format_instance(instance);
     let com_inst = R::format_committed_instances(&witness);
-    let circuit = MidnightCircuit::new(relation, instance.clone(), witness);
+    let circuit = MidnightCircuit::new(
+        relation,
+        Value::known(instance.clone()),
+        Value::known(witness),
+        Some(pk.max_bit_len),
+    );
     BlstPLONK::<MidnightCircuit<R>>::prove::<H>(
         params,
         &pk.pk,
