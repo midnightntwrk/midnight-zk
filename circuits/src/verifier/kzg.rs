@@ -102,7 +102,7 @@ where
             commitment_map.iter().position(|comm| comm.commitment == query.get_commitment())
         {
             if commitment_map[pos].point_indices.contains(point_idx) {
-                return Err(Error::Synthesis);
+                return Err(Error::Synthesis("repeated query".into()));
             }
             commitment_map[pos].point_indices.push(*point_idx);
         } else {
