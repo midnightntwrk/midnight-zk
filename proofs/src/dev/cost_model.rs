@@ -2,33 +2,32 @@
 //! estimates the verification cost, as well as resulting proof size.
 
 use std::{
+    cell::RefCell,
+    cmp::max,
     collections::{HashMap, HashSet},
     iter,
     num::ParseIntError,
-    ops::Range,
     str::FromStr,
 };
 
-use blake2b_simd::blake2b;
 use ff::{Field, FromUniformBytes};
 use serde::Deserialize;
 use serde_derive::Serialize;
 
-use super::{CellValue, Region};
+use super::Region;
 use crate::{
     circuit,
     circuit::Value,
     plonk::{
-        k_from_circuit, permutation, sealed, sealed::SealedPhase, Advice, Any, Any::Fixed,
-        Assignment, Challenge, Circuit, Column, ConstraintSystem, Error, FirstPhase, FloorPlanner,
-        Instance, Phase, Selector,
+        sealed, sealed::SealedPhase, Advice, Any, Any::Fixed, Assignment, Challenge, Circuit,
+        Column, ConstraintSystem, Error, FirstPhase, FloorPlanner, Instance, Phase, Selector,
     },
     utils::rational::Rational,
 };
 
 /// Options to build a circuit specification to measure the cost model of.
 #[derive(Debug)]
-struct CostOptions {
+pub(crate) struct CostOptions {
     /// An advice column with the given rotations. May be repeated.
     advice: Vec<Poly>,
 
@@ -50,7 +49,7 @@ struct CostOptions {
 
     /// 2^K bound on the number of rows, accounting for ZK, PIs and Lookup
     /// tables.
-    min_k: usize,
+    pub(crate) min_k: usize,
 
     /// Rows count, not including table rows and not accounting for compression
     /// (where multiple regions can use the same rows).
@@ -60,10 +59,6 @@ struct CostOptions {
     /// can use the same rows), but not much if any compression can happen with
     /// table rows anyway.
     table_rows_count: usize,
-
-    /// Compressed rows count, accounting for compression (where multiple
-    /// regions can use the same rows).
-    compressed_rows_count: usize,
 }
 
 /// Structure holding polynomial related data for benchmarks
@@ -154,9 +149,6 @@ pub struct CircuitModel {
     pub point_sets: usize,
     /// Size of the proof for the circuit
     pub size: usize,
-    /// Compressed rows count, accounting for compression (where multiple
-    /// regions can use the same rows).
-    pub compressed_rows_count: usize,
 }
 
 impl CostOptions {
@@ -245,7 +237,6 @@ impl CostOptions {
             column_queries,
             point_sets,
             size,
-            compressed_rows_count: self.compressed_rows_count,
         }
     }
 }
@@ -257,28 +248,22 @@ pub fn from_circuit_to_circuit_model<
     const COMM: usize,
     const SCALAR: usize,
 >(
-    k: Option<u32>,
     circuit: &C,
-    nb_instances: usize,
 ) -> CircuitModel {
-    let options = from_circuit_to_cost_model_options(k, circuit, nb_instances);
+    let options = from_circuit_to_cost_model_options(circuit);
     options.into_circuit_model::<COMM, SCALAR>()
 }
 
 /// Given a circuit, this function returns [CostOptions]. If no upper bound for
 /// `k` is provided, we iterate until a valid `k` is found (this might delay the
 /// computation).
-fn from_circuit_to_cost_model_options<F: Ord + Field + FromUniformBytes<64>, C: Circuit<F>>(
-    k_upper_bound: Option<u32>,
+pub(crate) fn from_circuit_to_cost_model_options<
+    F: Ord + Field + FromUniformBytes<64>,
+    C: Circuit<F>,
+>(
     circuit: &C,
-    nb_instances: usize,
 ) -> CostOptions {
-    let prover = if let Some(k) = k_upper_bound {
-        DevAssembly::run(k, circuit).unwrap()
-    } else {
-        let k = k_from_circuit(circuit);
-        DevAssembly::run(k, circuit).unwrap()
-    };
+    let prover = DevAssembly::run(circuit).unwrap();
 
     let cs = prover.cs;
 
@@ -322,10 +307,9 @@ fn from_circuit_to_cost_model_options<F: Ord + Field + FromUniformBytes<64>, C: 
 
     // Note that this computation does't assume that `regions` is already in
     // order of increasing row indices.
-    let (rows_count, table_rows_count, compressed_rows_count) = {
+    let (table_rows_count, rows_count) = {
         let mut rows_count = 0;
         let mut table_rows_count = 0;
-        let mut compressed_rows_count = 0;
         for region in prover.regions {
             // If `region.rows == None`, then that region has no rows.
             if let Some((start, end)) = region.rows {
@@ -339,23 +323,24 @@ fn from_circuit_to_cost_model_options<F: Ord + Field + FromUniformBytes<64>, C: 
                 // counted towards `table_rows_count.`
                 if region.columns.iter().all(|c| *c.column_type() == Fixed) {
                     table_rows_count += (end + 1) - start;
-                } else {
-                    rows_count += (end + 1) - start;
                 }
-                compressed_rows_count = std::cmp::max(compressed_rows_count, end + 1);
+                rows_count = std::cmp::max(rows_count, end + 1);
             }
         }
-        (rows_count, table_rows_count, compressed_rows_count)
+        (table_rows_count, rows_count)
     };
 
+    let nb_instances = prover.instance_rows.take();
     let min_k = [
         rows_count + cs.blinding_factors(),
         table_rows_count + cs.blinding_factors(),
         nb_instances,
+        cs.minimum_rows(),
     ]
     .into_iter()
     .max()
     .unwrap();
+
     if min_k == nb_instances {
         println!("WARNING: The dominant factor in your circuit's size is the number of public inputs, which causes the verifier to perform linear work.");
     }
@@ -367,106 +352,42 @@ fn from_circuit_to_cost_model_options<F: Ord + Field + FromUniformBytes<64>, C: 
         max_degree: cs.degree(),
         lookup,
         permutation,
-        min_k: (min_k - 1).next_power_of_two().ilog2() as usize,
+        min_k: min_k.next_power_of_two().ilog2() as usize,
         rows_count,
         table_rows_count,
-        compressed_rows_count,
     }
 }
 
+// DevAssembly is only used to compute the cost model, meaning that we only care
+// about the number of assignments and not the assignments themselves.
+// Therefore, we only keep track of the number of rows, the regions and the
+// phases, and ignore we values of the trace.
 struct DevAssembly<F: Field> {
-    k: u32,
     cs: ConstraintSystem<F>,
-
+    instance_rows: RefCell<usize>,
     /// The regions in the circuit.
     regions: Vec<Region>,
-    /// The current region being assigned to. Will be `None` after the circuit
-    /// has been synthesized.
     current_region: Option<Region>,
-
-    // The fixed cells in the circuit, arranged as [column][row].
-    fixed: Vec<Vec<CellValue<F>>>,
-    // The advice cells in the circuit, arranged as [column][row].
-    _advice: Vec<Vec<CellValue<F>>>,
-
-    selectors: Vec<Vec<bool>>,
-
-    _challenges: Vec<F>,
-
-    permutation: permutation::keygen::Assembly,
-
-    // A range of available rows for assignment and copies.
-    usable_rows: Range<usize>,
-
     current_phase: sealed::Phase,
 }
 
 impl<F: FromUniformBytes<64> + Ord> DevAssembly<F> {
     /// Runs a synthetic keygen-and-prove operation on the given circuit,
     /// collecting data about the constraints and their assignments.
-    pub fn run<ConcreteCircuit: Circuit<F>>(
-        k: u32,
-        circuit: &ConcreteCircuit,
-    ) -> Result<Self, Error> {
-        let n = 1 << k;
-
+    pub fn run<ConcreteCircuit: Circuit<F>>(circuit: &ConcreteCircuit) -> Result<Self, Error> {
         let mut cs = ConstraintSystem::default();
         #[cfg(feature = "circuit-params")]
         let config = ConcreteCircuit::configure_with_params(&mut cs, circuit.params());
         #[cfg(not(feature = "circuit-params"))]
         let config = ConcreteCircuit::configure(&mut cs);
         let cs = cs;
-
-        assert!(
-            n >= cs.minimum_rows(),
-            "n={}, minimum_rows={}, k={}",
-            n,
-            cs.minimum_rows(),
-            k,
-        );
-
-        // Fixed columns contain no blinding factors.
-        let fixed = vec![vec![CellValue::Unassigned; n]; cs.num_fixed_columns];
-        let selectors = vec![vec![false; n]; cs.num_selectors];
-        // Advice columns contain blinding factors.
-        let blinding_factors = cs.blinding_factors();
-        let usable_rows = n - (blinding_factors + 1);
-        let _advice = vec![
-            {
-                let mut column = vec![CellValue::Unassigned; n];
-                // Poison unusable rows.
-                for (i, cell) in column.iter_mut().enumerate().skip(usable_rows) {
-                    *cell = CellValue::Poison(i);
-                }
-                column
-            };
-            cs.num_advice_columns
-        ];
-        let permutation = permutation::keygen::Assembly::new(n, &cs.permutation);
         let constants = cs.constants.clone();
 
-        // Use hash chain to derive deterministic challenges for testing
-        let _challenges = {
-            let mut hash: [u8; 64] = blake2b(b"CostModel").as_bytes().try_into().unwrap();
-            iter::repeat_with(|| {
-                hash = blake2b(&hash).as_bytes().try_into().unwrap();
-                F::from_uniform_bytes(&hash)
-            })
-            .take(cs.num_challenges)
-            .collect()
-        };
-
         let mut prover = DevAssembly {
-            k,
             cs,
+            instance_rows: RefCell::new(0),
             regions: vec![],
             current_region: None,
-            fixed,
-            _advice,
-            selectors,
-            _challenges,
-            permutation,
-            usable_rows: 0..usable_rows,
             current_phase: FirstPhase.to_sealed(),
         };
 
@@ -480,16 +401,9 @@ impl<F: FromUniformBytes<64> + Ord> DevAssembly<F> {
             )?;
         }
 
-        let (cs, selector_polys) =
-            prover.cs.directly_convert_selectors_to_fixed(prover.selectors.clone());
+        let selectors = vec![vec![]; prover.cs.num_selectors];
+        let (cs, _selector_polys) = prover.cs.directly_convert_selectors_to_fixed(selectors);
         prover.cs = cs;
-        prover.fixed.extend(selector_polys.into_iter().map(|poly| {
-            let mut v = vec![CellValue::Unassigned; n];
-            for (v, p) in v.iter_mut().zip(&poly[..]) {
-                *v = CellValue::Assigned(*p);
-            }
-            v
-        }));
 
         Ok(prover)
     }
@@ -543,10 +457,6 @@ impl<F: Field> Assignment<F> for DevAssembly<F> {
         A: FnOnce() -> AR,
         AR: Into<String>,
     {
-        if !self.usable_rows.contains(&row) {
-            return Err(Error::not_enough_rows_available(self.k));
-        }
-
         // Track that this selector was enabled. We require that all selectors are
         // enabled inside some region (i.e. no floating selectors).
         self.current_region
@@ -557,17 +467,11 @@ impl<F: Field> Assignment<F> for DevAssembly<F> {
             .or_default()
             .push(row);
 
-        self.selectors[selector.0][row] = true;
-
         Ok(())
     }
 
     fn query_instance(&self, _column: Column<Instance>, row: usize) -> Result<Value<F>, Error> {
-        if !self.usable_rows.contains(&row) {
-            return Err(Error::not_enough_rows_available(self.k));
-        }
-
-        // There is no instance in this context.
+        *self.instance_rows.borrow_mut() = max(row + 1, self.instance_rows.take());
         Ok(Value::unknown())
     }
 
@@ -585,14 +489,6 @@ impl<F: Field> Assignment<F> for DevAssembly<F> {
         AR: Into<String>,
     {
         if self.in_phase(FirstPhase) {
-            assert!(
-                self.usable_rows.contains(&row),
-                "row={}, usable_rows={:?}, k={}",
-                row,
-                self.usable_rows,
-                self.k,
-            );
-
             if let Some(region) = self.current_region.as_mut() {
                 region.update_extent(column.into(), row);
                 region
@@ -611,7 +507,7 @@ impl<F: Field> Assignment<F> for DevAssembly<F> {
         _: A,
         column: Column<crate::plonk::Fixed>,
         row: usize,
-        to: V,
+        _to: V,
     ) -> Result<(), Error>
     where
         V: FnOnce() -> circuit::Value<VR>,
@@ -623,14 +519,6 @@ impl<F: Field> Assignment<F> for DevAssembly<F> {
             return Ok(());
         }
 
-        assert!(
-            self.usable_rows.contains(&row),
-            "row={}, usable_rows={:?}, k={}",
-            row,
-            self.usable_rows,
-            self.k,
-        );
-
         if let Some(region) = self.current_region.as_mut() {
             region.update_extent(column.into(), row);
             region
@@ -640,60 +528,25 @@ impl<F: Field> Assignment<F> for DevAssembly<F> {
                 .or_default();
         }
 
-        *self
-            .fixed
-            .get_mut(column.index())
-            .and_then(|v| v.get_mut(row))
-            .expect("bounds failure") = CellValue::Assigned(to().into_field().evaluate().assign()?);
-
         Ok(())
     }
 
     fn copy(
         &mut self,
-        left_column: Column<Any>,
-        left_row: usize,
-        right_column: Column<Any>,
-        right_row: usize,
+        _left_column: Column<Any>,
+        _left_row: usize,
+        _right_column: Column<Any>,
+        _right_row: usize,
     ) -> Result<(), crate::plonk::Error> {
-        if !self.in_phase(FirstPhase) {
-            return Ok(());
-        }
-
-        assert!(
-            self.usable_rows.contains(&left_row) && self.usable_rows.contains(&right_row),
-            "left_row={}, right_row={}, usable_rows={:?}, k={}",
-            left_row,
-            right_row,
-            self.usable_rows,
-            self.k,
-        );
-
-        self.permutation.copy(left_column, left_row, right_column, right_row)
+        Ok(())
     }
 
     fn fill_from_row(
         &mut self,
-        col: Column<crate::plonk::Fixed>,
-        from_row: usize,
-        to: circuit::Value<Rational<F>>,
+        _col: Column<crate::plonk::Fixed>,
+        _from_row: usize,
+        _to: circuit::Value<Rational<F>>,
     ) -> Result<(), Error> {
-        if !self.in_phase(FirstPhase) {
-            return Ok(());
-        }
-
-        assert!(
-            self.usable_rows.contains(&from_row),
-            "row={}, usable_rows={:?}, k={}",
-            from_row,
-            self.usable_rows,
-            self.k,
-        );
-
-        for row in self.usable_rows.clone().skip(from_row) {
-            self.assign_fixed(|| "", col, row, || to)?;
-        }
-
         Ok(())
     }
 
@@ -861,6 +714,7 @@ mod tests {
                     let a = region.assign_advice(|| "", config.a, 2, || Value::known(Fq::ONE))?;
                     a.copy_advice(|| "", &mut region, config.b, 3)?;
                     a.copy_advice(|| "", &mut region, config.c, 4)?;
+                    region.assign_advice(|| "", config.a, 5, || Value::known(Fq::ZERO))?;
                     Ok(())
                 },
             )
@@ -894,8 +748,7 @@ mod tests {
         )
         .expect("proof generation should not fail");
 
-        let circuit_model =
-            from_circuit_to_circuit_model::<_, _, 48, 32>(Some(k), &circuit, instances[0].len());
+        let circuit_model = from_circuit_to_circuit_model::<_, _, 48, 32>(&circuit);
 
         let proof = transcript.finalize();
 

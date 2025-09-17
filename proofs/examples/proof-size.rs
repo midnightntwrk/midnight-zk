@@ -80,12 +80,10 @@ impl Circuit<Fp> for TestCircuit {
     }
 }
 
-const K: u32 = 11;
-
 fn main() {
     let circuit = TestCircuit {};
 
-    let model = from_circuit_to_circuit_model::<_, _, 32, 32>(Some(K), &circuit, 10);
+    let model = from_circuit_to_circuit_model::<_, _, 32, 32>(&circuit);
     println!(
         "Cost of circuit with 8 bit lookup table: \n{}",
         serde_json::to_string_pretty(&model).unwrap()
