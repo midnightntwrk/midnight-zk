@@ -49,7 +49,7 @@ impl<V> Value<V> {
     ///
     /// Returns `Error::Synthesis` if this is [`Value::unknown()`].
     pub(crate) fn assign(self) -> Result<V, Error> {
-        self.inner.ok_or(Error::Synthesis)
+        self.inner.ok_or(Error::Synthesis("witness not provided".into()))
     }
 
     /// Converts from `&Value<V>` to `Value<&V>`.
@@ -91,7 +91,7 @@ impl<V> Value<V> {
     /// to enforce circuit constraints with this method!
     pub fn error_if_known_and<F: FnOnce(&V) -> bool>(&self, f: F) -> Result<(), Error> {
         match self.inner.as_ref() {
-            Some(value) if f(value) => Err(Error::Synthesis),
+            Some(value) if f(value) => Err(Error::Synthesis("error_if_known_and".into())),
             _ => Ok(()),
         }
     }
