@@ -136,12 +136,18 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
 
         transcript.write(&k_in_gamma)?;
 
+        let error_terms = compute_error_terms(&folding_pk, &dk_domain, &poly_g_unbatched, &gamma);
+
         assert_ne!(g_in_gamma, F::ZERO);
         assert_eq!(g_in_gamma, k_in_gamma * z_in_gamma);
 
         println!("PK domain size: {:?}", folding_pk.domain.n);
         assert_eq!(folding_pk.domain.n, 1 << K);
-        let error_vec = vec![F::ZERO; folding_pk.domain.n.try_into().unwrap()];
+
+        // Compare error term vector with error term
+
+        let error_sum: F = error_terms.par_iter().copied().reduce(|| F::ZERO, |a, b| a + b) * beta_pg;
+        assert_eq!(error_sum, g_in_gamma);
 
         // Update error term
         let folded_trace = fold_traces(&dk_domain, &traces, &gamma);
@@ -156,7 +162,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
             folding_pk,
             folded_trace,
             error: g_in_gamma,
-            error_vec: error_vec,
+            error_vec: error_terms,
             beta_pg,
             _commitment_scheme: Default::default(),
         }
@@ -324,6 +330,30 @@ fn compute_poly_g<F: PrimeField + WithSmallOrderMulGroup<3>>(
     )
 
 
+}
+
+/// Computes the error terms t_i = f_i(w(\gamma)) where w(X) = ∑_{j ∈ [k]} Lⱼ(X)·ωⱼ
+/// is the polynomial that interpolates the witnesses.
+fn compute_error_terms<F: PrimeField + WithSmallOrderMulGroup<3>>(
+    pk: &FoldingPk<F>,
+    dk_domain: &EvaluationDomain<F>,
+    poly_g_unbatched: &Vec<Vec<F>>,
+    gamma_pg: &F,
+) -> Vec<F> {
+    let mut error_vec = vec![F::ZERO; pk.domain.n.try_into().unwrap()];
+    for j in 0..pk.domain.n.try_into().unwrap() {
+        // Collect the j-th value from each instance (row) to form the polynomial in Lagrange basis
+        let poly_evals: Vec<F> = poly_g_unbatched.iter().map(|row| row[j]).collect();
+        // Convert to coefficient basis
+        let coeff_poly = dk_domain.extended_to_coeff(
+            Polynomial {
+                values: poly_evals,
+                _marker: PhantomData,
+        });
+        // Evaluate at gamma_pg
+        error_vec[j] = eval_polynomial(&coeff_poly, *gamma_pg);
+    }
+    error_vec
 }
 
 /// Function to fold traces over an evaluation `\gamma`
