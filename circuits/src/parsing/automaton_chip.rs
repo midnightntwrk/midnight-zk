@@ -729,10 +729,8 @@ mod test {
 
         if cost_model {
             circuit_to_json::<midnight_curves::Fq>(
-                k,
                 "Automaton",
                 &format!("parsing perf (input length = {})", circuit.input.len()),
-                0,
                 circuit.clone(),
             );
         }

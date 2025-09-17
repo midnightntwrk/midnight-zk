@@ -10,5 +10,4 @@ CircuitModel {
     column_queries: 60,
     point_sets: 5,
     size: 5008,
-    compressed_rows_count: 62745,
 }

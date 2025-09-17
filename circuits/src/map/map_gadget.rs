@@ -428,7 +428,7 @@ mod test {
             }
 
             if cost_model {
-                circuit_to_json::<F>(k, "Map gadget", &format!("{:?}", mode), pi.len(), circuit);
+                circuit_to_json::<F>("Map gadget", &format!("{:?}", mode), circuit);
             }
         });
     }

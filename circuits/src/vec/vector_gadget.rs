@@ -587,10 +587,8 @@ mod tests {
 
         if cost_model {
             circuit_to_json(
-                k,
                 "Vector equality",
                 format!("Vector equality check with M={M}").as_str(),
-                0,
                 circuit,
             );
         }
@@ -612,10 +610,8 @@ mod tests {
 
         if cost_model {
             circuit_to_json(
-                k,
                 "Vector limits check",
                 format!("Vector limit check with M={M}").as_str(),
-                0,
                 circuit,
             );
         }
@@ -637,10 +633,8 @@ mod tests {
 
         if cost_model {
             circuit_to_json(
-                k,
                 "Vector padding flags.",
                 format!("Vector padding flags with M={M}").as_str(),
-                0,
                 circuit,
             );
         }
@@ -667,10 +661,8 @@ mod tests {
 
         if cost_model {
             circuit_to_json(
-                k,
                 "Vector trim beginning.",
                 format!("Vector trim_beginning with M={M}").as_str(),
-                0,
                 circuit,
             );
         }

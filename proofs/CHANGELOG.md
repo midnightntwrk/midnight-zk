@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Feature to run internal benchmarks [#93](https://github.com/midnightntwrk/midnight-zk/pull/93)
 ### Changed
 * API for defining custom constraints was unified [#53](https://github.com/midnightntwrk/midnight-zk/pull/53)
+* New cost-model with improved K computation [#104](https://github.com/midnightntwrk/midnight-zk/pull/104)
 ### Removed
 
 ## 0.4.0

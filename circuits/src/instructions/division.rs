@@ -234,8 +234,6 @@ pub(crate) mod tests {
             _marker: PhantomData,
         };
 
-        let k = 10;
-
         let log2_nb_rows = 10;
         let public_inputs = vec![vec![], vec![]];
         match MockProver::run(log2_nb_rows, &circuit, public_inputs) {
@@ -247,7 +245,7 @@ pub(crate) mod tests {
         }
 
         if cost_model {
-            circuit_to_json(k, chip_name, "div_rem", 0, circuit);
+            circuit_to_json(chip_name, "div_rem", circuit);
         }
     }
 

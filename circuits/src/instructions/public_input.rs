@@ -222,7 +222,7 @@ pub(crate) mod tests {
         }
 
         if cost_model {
-            circuit_to_json(log2_nb_rows, chip_name, "public_inputs", pi.len(), circuit);
+            circuit_to_json(chip_name, "public_inputs", circuit);
         }
     }
 

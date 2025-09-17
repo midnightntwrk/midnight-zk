@@ -1,6 +1,6 @@
 #![allow(clippy::int_plus_one)]
 
-use std::{marker::PhantomData, ops::Range};
+use std::ops::Range;
 
 use ff::{Field, FromUniformBytes, WithSmallOrderMulGroup};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
@@ -15,6 +15,7 @@ use super::{
 };
 use crate::{
     circuit::Value,
+    dev::cost_model::cost_model_options,
     poly::{
         batch_invert_rational,
         commitment::{Params, PolynomialCommitmentScheme},
@@ -200,45 +201,7 @@ impl<F: Field> Assignment<F> for Assembly<F> {
 
 /// Compute the minimal `k` to compute a circuit.
 pub fn k_from_circuit<F: Ord + Field + FromUniformBytes<64>, C: Circuit<F>>(circuit: &C) -> u32 {
-    (1..25)
-        .find(|k| {
-            let n = 2usize.pow(*k);
-
-            let mut cs = ConstraintSystem::default();
-            #[cfg(feature = "circuit-params")]
-            let config = C::configure_with_params(&mut cs, circuit.params());
-            #[cfg(not(feature = "circuit-params"))]
-            let config = C::configure(&mut cs);
-            let cs = cs;
-
-            if n < cs.minimum_rows() {
-                return false;
-            }
-
-            let zero_poly = Polynomial {
-                values: vec![F::ZERO.into(); n],
-                _marker: PhantomData,
-            };
-
-            let mut assembly = Assembly {
-                k: *k,
-                fixed: vec![zero_poly; cs.num_fixed_columns],
-                permutation: permutation::Assembly::new(n, &cs.permutation),
-                selectors: vec![vec![false; n]; cs.num_selectors],
-                usable_rows: 0..n - (cs.blinding_factors() + 1),
-                _marker: std::marker::PhantomData,
-            };
-
-            // Synthesize the circuit to obtain URS
-            C::FloorPlanner::synthesize(
-                &mut assembly,
-                circuit,
-                config.clone(),
-                cs.constants.clone(),
-            )
-            .is_ok()
-        })
-        .expect("A circuit which can be implemented with at most 2^24 rows.")
+    cost_model_options(circuit).min_k as u32
 }
 
 /// Generates a `VerifyingKey` from a `Circuit` instance.
