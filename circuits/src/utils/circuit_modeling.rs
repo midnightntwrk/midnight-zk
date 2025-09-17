@@ -22,7 +22,7 @@ use ff::{FromUniformBytes, PrimeField};
 use goldenfile::Mint;
 use midnight_curves::Fq;
 use midnight_proofs::{
-    dev::cost_model::{from_circuit_to_circuit_model, CircuitModel},
+    dev::cost_model::{circuit_model, CircuitModel},
     plonk::Circuit,
 };
 use serde_json::{json, Map, Value};
@@ -45,7 +45,7 @@ where
     // Store model only when tests are run in BLS12-381 (i.e. when the
     // native scalar is BLS's scalar
     if F::MODULUS == Fq::MODULUS {
-        let model = from_circuit_to_circuit_model::<F, _, 48, 32>(&circuit);
+        let model = circuit_model::<F, 48, 32>(&circuit);
         update_json(chip_name, op_name, model).expect("csv generation failed");
     }
 }

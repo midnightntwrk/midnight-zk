@@ -1,7 +1,7 @@
 use halo2curves::pasta::Fp;
 use midnight_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
-    dev::cost_model::from_circuit_to_circuit_model,
+    dev::cost_model::circuit_model,
     plonk::{Advice, Circuit, Column, ConstraintSystem, Error, Expression, Selector, TableColumn},
     poly::Rotation,
 };
@@ -83,7 +83,7 @@ impl Circuit<Fp> for TestCircuit {
 fn main() {
     let circuit = TestCircuit {};
 
-    let model = from_circuit_to_circuit_model::<_, _, 32, 32>(&circuit);
+    let model = circuit_model::<_, 32, 32>(&circuit);
     println!(
         "Cost of circuit with 8 bit lookup table: \n{}",
         serde_json::to_string_pretty(&model).unwrap()

@@ -15,7 +15,7 @@ use super::{
 };
 use crate::{
     circuit::Value,
-    dev::cost_model::from_circuit_to_cost_model_options,
+    dev::cost_model::cost_model_options,
     poly::{
         batch_invert_rational,
         commitment::{Params, PolynomialCommitmentScheme},
@@ -201,7 +201,7 @@ impl<F: Field> Assignment<F> for Assembly<F> {
 
 /// Compute the minimal `k` to compute a circuit.
 pub fn k_from_circuit<F: Ord + Field + FromUniformBytes<64>, C: Circuit<F>>(circuit: &C) -> u32 {
-    from_circuit_to_cost_model_options(circuit).min_k as u32
+    cost_model_options(circuit).min_k as u32
 }
 
 /// Generates a `VerifyingKey` from a `Circuit` instance.

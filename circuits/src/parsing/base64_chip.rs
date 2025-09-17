@@ -529,7 +529,7 @@ mod tests {
                 _ => (),
             }
 
-            debug_assert_eq!((input.len() + 3) / 4 * 3, padded_out.len());
+            debug_assert_eq!(input.len().div_ceil(4) * 3, padded_out.len());
             Self {
                 input: input.to_vec(),
                 output: padded_out,

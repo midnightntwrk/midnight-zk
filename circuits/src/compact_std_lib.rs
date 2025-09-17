@@ -43,7 +43,7 @@ use halo2curves::secp256k1::{self, Secp256k1};
 use midnight_curves::{G1Affine, G1Projective};
 use midnight_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
-    dev::cost_model::{from_circuit_to_circuit_model, CircuitModel},
+    dev::cost_model::{circuit_model, CircuitModel},
     plonk::{k_from_circuit, prepare, Circuit, ConstraintSystem, Error, ProvingKey, VerifyingKey},
     poly::{
         commitment::{Guard, Params},
@@ -1698,5 +1698,5 @@ where
 /// Cost model of the given relation.
 pub fn cost_model<R: Relation>(relation: &R) -> CircuitModel {
     let circuit = MidnightCircuit::from_relation(relation);
-    from_circuit_to_circuit_model::<_, _, 48, 32>(&circuit)
+    circuit_model::<_, 48, 32>(&circuit)
 }

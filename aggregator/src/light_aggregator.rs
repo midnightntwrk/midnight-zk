@@ -248,7 +248,7 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
 
         // TODO: Remove, we are hardcoding BLS constants here.
         dbg!(
-            midnight_proofs::dev::cost_model::from_circuit_to_circuit_model::<_, _, 48, 32>(
+            midnight_proofs::dev::cost_model::circuit_model::<_, 48, 32>(
                 &default_aggregator_circuit,
             )
         );

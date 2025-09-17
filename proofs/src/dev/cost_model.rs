@@ -242,25 +242,21 @@ impl CostOptions {
 }
 
 /// Given a Plonk circuit, this function returns a [CircuitModel]
-pub fn from_circuit_to_circuit_model<
+pub fn circuit_model<
     F: Ord + Field + FromUniformBytes<64>,
-    C: Circuit<F>,
     const COMM: usize,
     const SCALAR: usize,
 >(
-    circuit: &C,
+    circuit: &impl Circuit<F>,
 ) -> CircuitModel {
-    let options = from_circuit_to_cost_model_options(circuit);
+    let options = cost_model_options(circuit);
     options.into_circuit_model::<COMM, SCALAR>()
 }
 
 /// Given a circuit, this function returns [CostOptions]. If no upper bound for
 /// `k` is provided, we iterate until a valid `k` is found (this might delay the
 /// computation).
-pub(crate) fn from_circuit_to_cost_model_options<
-    F: Ord + Field + FromUniformBytes<64>,
-    C: Circuit<F>,
->(
+pub(crate) fn cost_model_options<F: Ord + Field + FromUniformBytes<64>, C: Circuit<F>>(
     circuit: &C,
 ) -> CostOptions {
     let prover = DevAssembly::run(circuit).unwrap();
@@ -748,10 +744,8 @@ mod tests {
         )
         .expect("proof generation should not fail");
 
-        let circuit_model = from_circuit_to_circuit_model::<_, _, 48, 32>(&circuit);
-
         let proof = transcript.finalize();
 
-        assert_eq!(circuit_model.size, proof.len());
+        assert_eq!(circuit_model::<_, 48, 32>(&circuit).size, proof.len());
     }
 }
