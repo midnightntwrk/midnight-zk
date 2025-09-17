@@ -295,8 +295,8 @@ pub(crate) mod tests {
         let mut test =
             |inputs: (&Assigned::Element, &Assigned::Element), cond: bool, must_pass: bool| {
                 run::<F, Assigned, ControlFlowChip>(
-                    &inputs.0,
-                    &inputs.1,
+                    inputs.0,
+                    inputs.1,
                     cond,
                     &Assigned::Element::default(),
                     None,
