@@ -33,6 +33,7 @@ verification keys break backwards compatibility.
 * Reduce degree of foreign/ecc_chip lookup from 6 to 5 [#91](https://github.com/midnightntwrk/midnight-zk/pull/91)
 * Optimize `cond_swap` via an extra arith identity [#103](https://github.com/midnightntwrk/midnight-zk/pull/103)
 * Optimisation of Automaton configuration and serialisation of the parsing library [#73](https://github.com/midnightntwrk/midnight-zk/pull/73)
+* Rename `ScalarVar` -> `AssignedScalarOfNativeCurve` [#105](https://github.com/midnightntwrk/midnight-zk/pull/105)
 
 
 ### Removed

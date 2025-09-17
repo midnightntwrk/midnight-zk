@@ -5,7 +5,7 @@ use ff::Field;
 use group::Group;
 use midnight_circuits::{
     compact_std_lib::{self, Relation, ZkStdLib, ZkStdLibArch},
-    ecc::{curves::CircuitCurve, native::ScalarVar},
+    ecc::{curves::CircuitCurve, native::AssignedScalarOfNativeCurve},
     instructions::{
         AssignmentInstructions, ConversionInstructions, EccInstructions, PublicInputInstructions,
     },
@@ -44,7 +44,7 @@ impl Relation for EccExample {
 
         // We can also assign a scalar from an assigned native element.
         let native_value = std_lib.assign(layouter, Value::known(F::default()))?;
-        let scalar_from_native: ScalarVar<Jubjub> =
+        let scalar_from_native: AssignedScalarOfNativeCurve<Jubjub> =
             std_lib.jubjub().convert(layouter, &native_value)?;
 
         // Now we witness a point and create one with H2C.

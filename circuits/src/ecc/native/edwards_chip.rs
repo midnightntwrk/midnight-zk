@@ -106,9 +106,9 @@ impl<C: EdwardsCurve> InnerConstants for AssignedNativePoint<C> {
 
 /// Scalars are represented as a vector of assigned bits in little endian.
 #[derive(Clone, Debug)]
-pub struct ScalarVar<C: CircuitCurve>(Vec<AssignedBit<C::Base>>);
+pub struct AssignedScalarOfNativeCurve<C: CircuitCurve>(Vec<AssignedBit<C::Base>>);
 
-impl<C: CircuitCurve> InnerValue for ScalarVar<C> {
+impl<C: CircuitCurve> InnerValue for AssignedScalarOfNativeCurve<C> {
     type Element = C::Scalar;
 
     fn value(&self) -> Value<Self::Element> {
@@ -118,7 +118,7 @@ impl<C: CircuitCurve> InnerValue for ScalarVar<C> {
     }
 }
 
-impl<C: EdwardsCurve> Instantiable<C::Base> for ScalarVar<C> {
+impl<C: EdwardsCurve> Instantiable<C::Base> for AssignedScalarOfNativeCurve<C> {
     fn as_public_input(element: &C::Scalar) -> Vec<C::Base> {
         // We aggregate the bits while they fit in a single `C::Base` value.
         let nb_bits_per_batch = C::Base::NUM_BITS as usize - 1;
@@ -129,7 +129,7 @@ impl<C: EdwardsCurve> Instantiable<C::Base> for ScalarVar<C> {
     }
 }
 
-impl<C: EdwardsCurve> InnerConstants for ScalarVar<C> {
+impl<C: EdwardsCurve> InnerConstants for AssignedScalarOfNativeCurve<C> {
     fn inner_zero() -> C::Scalar {
         C::Scalar::ZERO
     }
@@ -139,7 +139,7 @@ impl<C: EdwardsCurve> InnerConstants for ScalarVar<C> {
 }
 
 #[cfg(any(test, feature = "testing"))]
-impl<C: EdwardsCurve> Sampleable for ScalarVar<C> {
+impl<C: EdwardsCurve> Sampleable for AssignedScalarOfNativeCurve<C> {
     fn sample_inner(rng: impl RngCore) -> C::Scalar {
         C::Scalar::random(rng)
     }
@@ -478,7 +478,7 @@ impl<C: EdwardsCurve> EccChip<C> {
     pub fn mul(
         &self,
         layouter: &mut impl Layouter<C::Base>,
-        scalar: &ScalarVar<C>,
+        scalar: &AssignedScalarOfNativeCurve<C>,
         base: &AssignedNativePoint<C>,
     ) -> Result<AssignedNativePoint<C>, Error> {
         let config = &self.config();
@@ -548,7 +548,7 @@ impl<C: EdwardsCurve> EccChip<C> {
 impl<C: EdwardsCurve> EccInstructions<C::Base, C> for EccChip<C> {
     type Point = AssignedNativePoint<C>;
     type Coordinate = AssignedNative<C::Base>;
-    type Scalar = ScalarVar<C>;
+    type Scalar = AssignedScalarOfNativeCurve<C>;
 
     fn add(
         &self,
@@ -705,26 +705,28 @@ impl<C: EdwardsCurve> AssignmentInstructions<C::Base, AssignedNativePoint<C>> fo
     }
 }
 
-impl<C: EdwardsCurve> AssignmentInstructions<C::Base, ScalarVar<C>> for EccChip<C> {
+impl<C: EdwardsCurve> AssignmentInstructions<C::Base, AssignedScalarOfNativeCurve<C>>
+    for EccChip<C>
+{
     fn assign(
         &self,
         layouter: &mut impl Layouter<C::Base>,
         value: Value<C::Scalar>,
-    ) -> Result<ScalarVar<C>, Error> {
+    ) -> Result<AssignedScalarOfNativeCurve<C>, Error> {
         let bits = value
             .map(|s| fe_to_le_bits(&s, Some(C::Scalar::NUM_BITS as usize)))
             .transpose_vec(<C::Scalar as PrimeField>::NUM_BITS as usize);
-        self.native_gadget.assign_many(layouter, &bits).map(ScalarVar)
+        self.native_gadget.assign_many(layouter, &bits).map(AssignedScalarOfNativeCurve)
     }
 
     fn assign_fixed(
         &self,
         layouter: &mut impl Layouter<C::Base>,
         constant: C::Scalar,
-    ) -> Result<ScalarVar<C>, Error> {
+    ) -> Result<AssignedScalarOfNativeCurve<C>, Error> {
         self.native_gadget
             .assign_many_fixed(layouter, &fe_to_le_bits(&constant, None))
-            .map(ScalarVar)
+            .map(AssignedScalarOfNativeCurve)
     }
 }
 
@@ -803,11 +805,13 @@ impl<C: EdwardsCurve> PublicInputInstructions<C::Base, AssignedNativePoint<C>> f
     }
 }
 
-impl<C: EdwardsCurve> PublicInputInstructions<C::Base, ScalarVar<C>> for EccChip<C> {
+impl<C: EdwardsCurve> PublicInputInstructions<C::Base, AssignedScalarOfNativeCurve<C>>
+    for EccChip<C>
+{
     fn as_public_input(
         &self,
         layouter: &mut impl Layouter<C::Base>,
-        assigned: &ScalarVar<C>,
+        assigned: &AssignedScalarOfNativeCurve<C>,
     ) -> Result<Vec<AssignedNative<C::Base>>, Error> {
         // We aggregate the bits while they fit in a single `AssignedNative`.
         let nb_bits_per_batch = C::Base::NUM_BITS as usize - 1;
@@ -821,7 +825,7 @@ impl<C: EdwardsCurve> PublicInputInstructions<C::Base, ScalarVar<C>> for EccChip
     fn constrain_as_public_input(
         &self,
         layouter: &mut impl Layouter<C::Base>,
-        assigned: &ScalarVar<C>,
+        assigned: &AssignedScalarOfNativeCurve<C>,
     ) -> Result<(), Error> {
         self.as_public_input(layouter, assigned)?
             .iter()
@@ -832,8 +836,8 @@ impl<C: EdwardsCurve> PublicInputInstructions<C::Base, ScalarVar<C>> for EccChip
         &self,
         layouter: &mut impl Layouter<C::Base>,
         value: Value<C::Scalar>,
-    ) -> Result<ScalarVar<C>, Error> {
-        let assigned: ScalarVar<C> = self.assign(layouter, value)?;
+    ) -> Result<AssignedScalarOfNativeCurve<C>, Error> {
+        let assigned: AssignedScalarOfNativeCurve<C> = self.assign(layouter, value)?;
         self.constrain_as_public_input(layouter, &assigned)?;
         Ok(assigned)
     }
@@ -928,7 +932,7 @@ impl<C: EdwardsCurve> EccChip<C> {
         &self,
         layouter: &mut impl Layouter<C::Base>,
         bytes: &[AssignedByte<C::Base>],
-    ) -> Result<ScalarVar<C>, Error> {
+    ) -> Result<AssignedScalarOfNativeCurve<C>, Error> {
         let mut bits = Vec::with_capacity(bytes.len() * 8);
         for byte in bytes {
             let byte_as_f: AssignedNative<C::Base> = self.native_gadget.convert(layouter, byte)?;
@@ -939,20 +943,18 @@ impl<C: EdwardsCurve> EccChip<C> {
                 true,
             )?)
         }
-        Ok(ScalarVar(bits))
+        Ok(AssignedScalarOfNativeCurve(bits))
     }
 }
 
 /// This conversion should not exist for Base -> Scalar. It is a tech debt. We
 /// should fix this as soon as compact supports types (other than assigned
 /// native) <https://github.com/midnightntwrk/midnight-circuits/issues/433>
-impl<C: EdwardsCurve> ConversionInstructions<C::Base, AssignedNative<C::Base>, ScalarVar<C>>
+impl<C: EdwardsCurve>
+    ConversionInstructions<C::Base, AssignedNative<C::Base>, AssignedScalarOfNativeCurve<C>>
     for EccChip<C>
 {
-    fn convert_value(
-        &self,
-        _x: &<AssignedNative<C::Base> as InnerValue>::Element,
-    ) -> Option<<ScalarVar<C> as InnerValue>::Element> {
+    fn convert_value(&self, _x: &C::Base) -> Option<C::Scalar> {
         unimplemented!("The caller should decide how to convert the value off-circuit, i.e., what to do with overflows.");
     }
 
@@ -960,8 +962,8 @@ impl<C: EdwardsCurve> ConversionInstructions<C::Base, AssignedNative<C::Base>, S
         &self,
         layouter: &mut impl Layouter<C::Base>,
         x: &AssignedNative<C::Base>,
-    ) -> Result<ScalarVar<C>, Error> {
-        Ok(ScalarVar(
+    ) -> Result<AssignedScalarOfNativeCurve<C>, Error> {
+        Ok(AssignedScalarOfNativeCurve(
             self.native_gadget.assigned_to_le_bits(layouter, x, None, true)?,
         ))
     }
@@ -1001,7 +1003,7 @@ mod tests {
     fn test_scalarvar_public_inputs() {
         public_input::tests::test_public_inputs::<
             JubjubBase,
-            ScalarVar<JubjubExtended>,
+            AssignedScalarOfNativeCurve<JubjubExtended>,
             EccChip<JubjubExtended>,
         >("public_inputs_scalar_var");
     }
