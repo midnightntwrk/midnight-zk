@@ -56,6 +56,8 @@ verification keys break backwards compatibility.
 * Rebase to new cost-model with improved K computation [#104](https://github.com/midnightntwrk/midnight-zk/pull/104)
 * Explicitly used Apache license for crate [#107](https://github.com/midnightntwrk/midnight-zk/pull/107)
 * Compute optimal `max_bit_len` in `compact_std_lib` [#106](https://github.com/midnightntwrk/midnight-zk/pull/106)
+* Rename `ScalarVar` -> `AssignedScalarOfNativeCurve` [#120](https://github.com/midnightntwrk/midnight-zk/pull/120)
+
 
 ### Removed
 

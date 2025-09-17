@@ -954,10 +954,7 @@ impl<C: EdwardsCurve>
     ConversionInstructions<C::Base, AssignedNative<C::Base>, AssignedScalarOfNativeCurve<C>>
     for EccChip<C>
 {
-    fn convert_value(
-        &self,
-        _x: &<AssignedNative<C::Base> as InnerValue>::Element,
-    ) -> Option<<AssignedScalarOfNativeCurve<C> as InnerValue>::Element> {
+    fn convert_value(&self, _x: &C::Base) -> Option<C::Scalar> {
         unimplemented!("The caller should decide how to convert the value off-circuit, i.e., what to do with overflows.");
     }
 
