@@ -188,6 +188,7 @@ impl Relation for BitcoinThresholdECDSA {
             jubjub: false,
             poseidon: false,
             sha256: false,
+            sha512: false,
             secp256k1: true,
             bls12_381: false,
             base64: false,
