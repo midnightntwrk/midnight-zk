@@ -32,6 +32,7 @@ verification keys break backwards compatibility.
 * Load only necessary bit_lens in pow2range_chip [#90](https://github.com/midnightntwrk/midnight-zk/pull/90)
 * Reduce degree of foreign/ecc_chip lookup from 6 to 5 [#91](https://github.com/midnightntwrk/midnight-zk/pull/91)
 * Optimisation of Automaton configuration and serialisation of the parsing library [#73](https://github.com/midnightntwrk/midnight-zk/pull/73)
+* Rebase to new cost-model with improved K computation [#104](https://github.com/midnightntwrk/midnight-zk/pull/104)
 
 ### Removed
 

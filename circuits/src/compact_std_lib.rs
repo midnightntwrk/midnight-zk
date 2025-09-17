@@ -1360,7 +1360,7 @@ impl<Rel: Relation> MidnightPK<Rel> {
 ///     }
 /// }
 ///
-/// const K: u32 = 14;
+/// const K: u32 = 13;
 /// let mut srs = filecoin_srs(K);
 ///
 /// let relation = ShaPreImageCircuit;
