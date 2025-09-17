@@ -92,8 +92,6 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         // We include the evaluation of the committed f at alpha
         // We'll need to prove that f at zero is the error term
 
-        let beta_coeffs = vec![beta; 1 << K];
-
         let time = Instant::now();
 
         let traces = traces
@@ -116,7 +114,8 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         let lifted_trace = batch_traces(&dk_domain, &traces);
         let lift_trace_time = time.elapsed().as_millis();
 
-        let poly_g = compute_poly_g(&folding_pk, &beta_coeffs, &lifted_trace);
+        let (poly_g,
+            error_vec) = compute_poly_g(&folding_pk, &beta, &lifted_trace);
         let poly_g_time = time.elapsed().as_millis() - lift_trace_time;
 
         let poly_k = dk_domain.divide_by_vanishing_poly(poly_g.clone());
@@ -143,6 +142,9 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         assert_ne!(g_in_gamma, F::ZERO);
         assert_eq!(g_in_gamma, k_in_gamma * z_in_gamma);
 
+        println!("PK domain size: {:?}", folding_pk.domain.n);
+        assert_eq!(folding_pk.domain.n, 1 << K);
+
         // Update error term
         let folded_trace = fold_traces(&dk_domain, &traces, &gamma);
         let rest_time = time.elapsed().as_millis() - poly_g_time - lift_trace_time;
@@ -151,11 +153,12 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         println!("    Poly G time          : {:?}ms", poly_g_time);
         println!("    Rest time            : {:?}ms", rest_time);
 
+
         Ok(Self {
             folding_pk,
             folded_trace,
             error: g_in_gamma,
-            error_vec: vec![F::ZERO; 1 << K],
+            error_vec: error_vec,
             beta,
             _commitment_scheme: Default::default(),
         }
@@ -257,9 +260,13 @@ use crate::transcript::{Hashable, Sampleable, Transcript};
 /// values computed above.
 fn compute_poly_g<F: PrimeField + WithSmallOrderMulGroup<3>>(
     pk: &FoldingPk<F>,
-    beta_coeffs: &Vec<F>,
+    pow_challenge: &F,
     lifted_folding_trace: &LiftedFoldingTrace<F>,
-) -> Polynomial<F, ExtendedLagrangeCoeff> {
+) -> (Polynomial<F, ExtendedLagrangeCoeff>,
+        Vec<F>) {
+    // TODO: Output the vector of errors too.
+    // In the future, we'll output simply a commitment to it, but
+    // perhaps at an upper level function.
     let mut g_poly = vec![F::ZERO; lifted_folding_trace.len()];
     for (j, instance) in g_poly.iter_mut().enumerate() {
         let FoldingProverTrace {
@@ -304,15 +311,19 @@ fn compute_poly_g<F: PrimeField + WithSmallOrderMulGroup<3>>(
         *instance = witness_poly
             .values
             .into_par_iter()
-            .zip(beta_coeffs.par_iter())
-            .map(|(witness, beta_coeffs)| witness * beta_coeffs)
+            .map(|witness| witness * pow_challenge)
             .reduce(|| F::ZERO, |a, b| a + b);
     }
 
-    Polynomial {
-        values: g_poly,
-        _marker: Default::default(),
-    }
+    (
+        Polynomial {
+            values: g_poly,
+            _marker: Default::default(),
+        },
+        vec![F::ZERO; lifted_folding_trace.len()],
+    )
+
+
 }
 
 /// Function to fold traces over an evaluation `\gamma`
@@ -324,6 +335,7 @@ fn fold_traces<F: PrimeField + WithSmallOrderMulGroup<3>>(
     let lagrange_polys = (0..traces.len())
         .map(|i| {
             // For the moment we only support batching of traces of dimension one.
+            // David: what does this mean?
             assert_eq!(traces[i].advice_polys.len(), 1);
             let mut l = dk_domain.empty_lagrange();
             l[i] = F::ONE;
