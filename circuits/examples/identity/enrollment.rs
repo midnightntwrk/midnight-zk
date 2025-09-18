@@ -2,20 +2,22 @@
 
 use std::{io::Write, time::Instant};
 
+use ff::Field;
 use halo2curves::secp256k1::Secp256k1;
 use midnight_circuits::{
     compact_std_lib::{self, Relation, ZkStdLib, ZkStdLibArch},
     field::foreign::{params::MultiEmulationParams, AssignedField},
     instructions::{
-        public_input::CommittedInstanceInstructions, ArithInstructions, AssertionInstructions,
-        AssignmentInstructions, Base64Instructions, DecompositionInstructions, EccInstructions,
-        PublicInputInstructions,
+        base64::Base64VarInstructions, public_input::CommittedInstanceInstructions,
+        ArithInstructions, AssertionInstructions, AssignmentInstructions, Base64Instructions,
+        DecompositionInstructions, EccInstructions, PublicInputInstructions, VectorInstructions,
     },
     testing_utils::{
         ecdsa::{ECDSASig, FromBase64, PublicKey},
         plonk_api::filecoin_srs,
     },
     types::{AssignedByte, AssignedForeignPoint, Instantiable},
+    vec::AssignedVector,
 };
 use midnight_curves::G1Affine;
 use midnight_proofs::{
@@ -40,6 +42,13 @@ const PUB_KEY: &[u8] =
 const HEADER_LEN: usize = 38;
 const PAYLOAD_LEN: usize = 2463;
 
+// Max length of the credential as a base64 blob.
+const MAX_LEN: usize = 4096;
+// Max length of the credential after decoding.
+const DECODED_LEN: usize = MAX_LEN / 4 * 3;
+// Alignment of the vector after decoding.
+const DECODED_ALIGN: usize = 64 / 4 * 3;
+
 // Issuer Public Key.
 type PK = Secp256k1;
 // Credential payload.
@@ -60,10 +69,19 @@ impl Relation for CredentialEnrollment {
     }
 
     fn format_committed_instances(witness: &Self::Witness) -> Vec<F> {
-        let json_b64 = &witness.0[HEADER_LEN + 1..PAYLOAD_LEN];
-        let json = base64::decode_config(json_b64, base64::STANDARD_NO_PAD)
-            .expect("Valid base64 encoded JSON.");
-        json.iter().map(|byte| F::from(*byte as u64)).collect()
+        panic!();
+        let json_bytes: Vec<F> = {
+            let json_b64 = &witness.0[HEADER_LEN + 1..PAYLOAD_LEN];
+            let json = base64::decode_config(json_b64, base64::STANDARD_NO_PAD)
+                .expect("Valid base64 encoded JSON.");
+            json.iter().map(|byte| F::from(*byte as u64)).collect()
+        };
+
+        use midnight_circuits::vec::get_lims;
+        let mut buffer = [F::ZERO; DECODED_LEN]; // This 0 is ASCII_ZERO.
+        buffer[get_lims::<DECODED_LEN, DECODED_ALIGN>(json_bytes.len())]
+            .copy_from_slice(json_bytes.as_slice());
+        buffer.to_vec()
     }
 
     fn circuit(
@@ -79,23 +97,25 @@ impl Relation for CredentialEnrollment {
         // Assign the PK as public input.
         let pk = secp256k1_curve.assign_as_public_input(layouter, instance)?;
 
-        let (payload, sig) = witness.unzip();
+        let (payload, sig) = witness
+            .map(|(payload, sig)| (payload.to_vec(), sig))
+            .unzip();
 
         // Assign payload.
-        let payload = std_lib.assign_many(layouter, &payload.transpose_array())?;
+        let payload: AssignedVector<_, _, MAX_LEN, 64> = std_lib.assign(layouter, payload)?;
 
         // Verify credential signature.
-        Self::verify_ecdsa(std_lib, layouter, pk, &payload, sig)?;
+        Self::verify_ecdsa_varlen(std_lib, layouter, pk, &payload, sig)?;
+
+        // Trim header from payload
+        let payload = std_lib.trim_beginning(layouter, &payload, HEADER_LEN + 1)?;
 
         // Decode Base64 JSON.
+        let payload = b64_chip.base64_from_vec(layouter, &payload)?;
         let json_bytes =
-            b64_chip.decode_base64(layouter, &payload[HEADER_LEN + 1..PAYLOAD_LEN], false)?;
+            b64_chip.var_decode_base64::<DECODED_LEN, DECODED_ALIGN>(layouter, &payload)?;
 
-        for byte in json_bytes.iter() {
-            std_lib.constrain_as_committed_public_input(layouter, byte)?;
-        }
-
-        Ok(())
+        std_lib.constrain_as_committed_public_input(layouter, &json_bytes)
     }
 
     fn used_chips(&self) -> ZkStdLibArch {
@@ -138,22 +158,44 @@ impl CredentialEnrollment {
     }
 
     /// Verifies the secp256k1 ECDSA signature of the given message.
-    fn verify_ecdsa(
+    fn verify_ecdsa_varlen<const M: usize>(
+        std_lib: &ZkStdLib,
+        layouter: &mut impl Layouter<F>,
+        pk: AssignedForeignPoint<F, Secp256k1, MultiEmulationParams>,
+        message: &AssignedVector<F, AssignedByte<F>, M, 64>,
+        sig: Value<ECDSASig>,
+    ) -> Result<(), Error> {
+        // Assign the message and hash it.
+        let hash_bytes = std_lib.sha256_varlen::<M>(layouter, message)?;
+        Self::verify_ecdsa_with_hash(std_lib, layouter, pk, &hash_bytes, sig)
+    }
+
+    /// Verifies the secp256k1 ECDSA signature of the given message.
+    fn _verify_ecdsa(
         std_lib: &ZkStdLib,
         layouter: &mut impl Layouter<F>,
         pk: AssignedForeignPoint<F, Secp256k1, MultiEmulationParams>,
         message: &[AssignedByte<F>],
         sig: Value<ECDSASig>,
     ) -> Result<(), Error> {
+        // Assign the message and hash it.
+        let hash_bytes = std_lib.sha256(layouter, message)?;
+        Self::verify_ecdsa_with_hash(std_lib, layouter, pk, &hash_bytes, sig)
+    }
+
+    /// Verifies the secp256k1 ECDSA signature of the given message.
+    fn verify_ecdsa_with_hash(
+        std_lib: &ZkStdLib,
+        layouter: &mut impl Layouter<F>,
+        pk: AssignedForeignPoint<F, Secp256k1, MultiEmulationParams>,
+        hash_bytes: &[AssignedByte<F>],
+        sig: Value<ECDSASig>,
+    ) -> Result<(), Error> {
         let secp256k1_curve = std_lib.secp256k1_curve();
         let secp256k1_scalar = std_lib.secp256k1_scalar();
         let secp256k1_base = secp256k1_curve.base_field_chip();
 
-        // Assign the message and hash it.
-        let msg_hash: AssignedField<_, _, _> = {
-            let hash_bytes = std_lib.sha256(layouter, message)?;
-            secp256k1_scalar.assigned_from_be_bytes(layouter, &hash_bytes)?
-        };
+        let msg_hash = secp256k1_scalar.assigned_from_be_bytes(layouter, hash_bytes)?;
 
         // Assign the signature.
         let r_value = sig.map(|sig| sig.get_r());
@@ -177,7 +219,7 @@ impl CredentialEnrollment {
 }
 
 fn main() {
-    const K: u32 = 17;
+    const K: u32 = 18;
     let srs = filecoin_srs(K);
     let credential_blob = read_credential::<4096>(CRED_PATH).expect("Path to credential file.");
 

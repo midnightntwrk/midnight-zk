@@ -18,7 +18,7 @@ use midnight_proofs::circuit::Value;
 
 use crate::{
     field::AssignedNative,
-    types::{AssignedByte, InnerValue},
+    types::{AssignedByte, InnerValue, Instantiable},
     utils::util::fe_to_big,
 };
 
@@ -65,6 +65,17 @@ impl<F: PrimeField, const M: usize, T: Vectorizable, const A: usize> InnerValue
         });
         data.zip(idxs)
             .map(|(data, idxs)| data[idxs.0..idxs.1].to_vec())
+    }
+}
+
+impl<F: PrimeField, const M: usize, T: Vectorizable, const A: usize> Instantiable<F>
+    for AssignedVector<F, T, M, A>
+where
+    T: Instantiable<F>,
+{
+    fn as_public_input(_element: &<Self as InnerValue>::Element) -> Vec<F> {
+        unimplemented!("Dont use this as a public input! :)")
+        // element.iter().flat_map(T::as_public_input).collect()
     }
 }
 

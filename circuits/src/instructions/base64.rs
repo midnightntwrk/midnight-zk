@@ -96,6 +96,9 @@ pub trait Base64VarInstructions<F: PrimeField, const M: usize, const A: usize>:
     ) -> Result<Base64Vec<F, M, A>, Error>;
 
     /// Returns a Base64Vec from an AssignedVector.
+    /// The filler values are substitued with ALT_PAD. This guarantees
+    /// that the whole buffer can be decoded correctly and that the filler values
+    /// of the output vector will be ASCII_ZERO.
     fn base64_from_vec(
         &self,
         layouter: &mut impl Layouter<F>,

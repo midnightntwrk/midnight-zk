@@ -24,11 +24,12 @@ use crate::{
         NativeGadget,
     },
     instructions::{
-        division::DivisionInstructions, vector::VectorInstructions, ArithInstructions,
-        AssertionInstructions, AssignmentInstructions, BinaryInstructions, ComparisonInstructions,
+        division::DivisionInstructions, public_input::CommittedInstanceInstructions,
+        vector::VectorInstructions, ArithInstructions, AssertionInstructions,
+        AssignmentInstructions, BinaryInstructions, ComparisonInstructions,
         ControlFlowInstructions, EqualityInstructions, RangeCheckInstructions,
     },
-    types::{AssignedBit, AssignedVector, InnerValue, Vectorizable},
+    types::{AssignedBit, AssignedVector, InnerValue, Instantiable, Vectorizable},
     vec::get_lims,
 };
 
@@ -388,6 +389,27 @@ where
         let is_equal = self.is_equal_to_fixed(layouter, x, constant)?;
         self.native_gadget
             .assert_equal_to_fixed(layouter, &is_equal, false)
+    }
+}
+
+impl<F, T, const M: usize, const A: usize>
+    CommittedInstanceInstructions<F, AssignedVector<F, T, M, A>> for VectorGadget<F>
+where
+    F: PrimeField,
+    T: Instantiable<F> + Vectorizable,
+    NG<F>: CommittedInstanceInstructions<F, T>,
+{
+    // **NOTE**: The whole buffer is committed as PI, including the filler values.
+    fn constrain_as_committed_public_input(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        assigned: &AssignedVector<F, T, M, A>,
+    ) -> Result<(), Error> {
+        for byte in &assigned.buffer {
+            self.native_gadget
+                .constrain_as_committed_public_input(layouter, &byte)?
+        }
+        Ok(())
     }
 }
 

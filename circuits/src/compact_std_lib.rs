@@ -80,9 +80,12 @@ use crate::{
     },
     hash::{
         poseidon::{PoseidonChip, PoseidonConfig, NB_POSEIDON_ADVICE_COLS, NB_POSEIDON_FIXED_COLS},
-        sha256::{Sha256Chip, Sha256Config, NB_SHA256_ADVICE_COLS, NB_SHA256_FIXED_COLS},
+        sha256::{
+            Sha256Chip, Sha256Config, VarLenSha256Gadget, NB_SHA256_ADVICE_COLS,
+            NB_SHA256_FIXED_COLS,
+        },
     },
-    instructions::{public_input::CommittedInstanceInstructions, *},
+    instructions::{hash::VarHashInstructions, public_input::CommittedInstanceInstructions, *},
     map::map_gadget::MapGadget,
     parsing::{
         self,
@@ -202,6 +205,7 @@ pub struct ZkStdLib {
     core_decomposition_chip: P2RDecompositionChip<F>,
     jubjub_chip: Option<EccChip<C>>,
     sha256_chip: Option<Sha256Chip<F>>,
+    sha256_varlen_gadget: Option<VarLenSha256Gadget<F>>,
     poseidon_gadget: Option<PoseidonChip<F>>,
     htc_gadget: Option<HashToCurveGadget<F, C, AssignedNative<F>, PoseidonChip<F>, EccChip<C>>>,
     map_gadget: Option<MapGadget<F, NG, PoseidonChip<F>>>,
@@ -235,6 +239,10 @@ impl ZkStdLib {
             .map(|jubjub_config| EccChip::new(jubjub_config, &native_gadget));
         let sha256_chip = (config.sha256_config.as_ref())
             .map(|sha256_config| Sha256Chip::new(sha256_config, &native_gadget));
+
+        let sha256_varlen_gadget =
+            (sha256_chip.as_ref()).map(|sha256_chip| VarLenSha256Gadget::new(sha256_chip));
+
         let poseidon_gadget = (config.poseidon_config.as_ref())
             .map(|poseidon_config| PoseidonChip::new(poseidon_config, &native_chip));
         let htc_gadget = (jubjub_chip.as_ref())
@@ -267,6 +275,7 @@ impl ZkStdLib {
             core_decomposition_chip,
             jubjub_chip,
             sha256_chip,
+            sha256_varlen_gadget,
             poseidon_gadget,
             map_gadget,
             htc_gadget,
@@ -671,6 +680,23 @@ impl ZkStdLib {
             .expect("ZkStdLibArch must enable sha256")
             .hash(layouter, input)
     }
+
+    /// Sha256 with variable-length input.
+    /// Takes as input an `AssignedVector` of up to M bytes, and returns the
+    /// assigned input/output in bytes.
+    /// We assume the field uses little endian encoding.
+    /// TODO: Code example
+    pub fn sha256_varlen<const M: usize>(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        input: &AssignedVector<F, AssignedByte<F>, M, 64>, // F -> decompose_bytes -> hash
+    ) -> Result<[AssignedByte<F>; 32], Error> {
+        *self.used_sha.borrow_mut() = true;
+        self.sha256_varlen_gadget
+            .as_ref()
+            .expect("ZkStdLibArch must enable sha256")
+            .varhash(layouter, input)
+    }
 }
 
 impl Bls12381Chip {
@@ -725,6 +751,80 @@ where
     }
 }
 
+impl<T, const M: usize, const A: usize> AssignmentInstructions<F, AssignedVector<F, T, M, A>>
+    for ZkStdLib
+where
+    T: Vectorizable,
+    T::Element: Copy,
+    VectorGadget<F>: AssignmentInstructions<F, AssignedVector<F, T, M, A>>,
+{
+    fn assign(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        value: Value<<AssignedVector<F, T, M, A> as InnerValue>::Element>,
+    ) -> Result<AssignedVector<F, T, M, A>, Error> {
+        self.vector_gadget.assign(layouter, value)
+    }
+
+    fn assign_fixed(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        _constant: <AssignedVector<F, T, M, A> as InnerValue>::Element,
+    ) -> Result<AssignedVector<F, T, M, A>, Error> {
+        self.vector_gadget.assign_fixed(layouter, _constant)
+    }
+}
+
+// impl<T, const M: usize, const A: usize> VectorInstructions<F, T, M, A> for ZkStdLib
+// where
+//     T: Vectorizable,
+//     T::Element: Copy,
+//     VectorGadget<F>: VectorInstructions<F, T, M, A>,
+// {
+//     fn resize<const L: usize>(
+//         &self,
+//         layouter: &mut impl Layouter<F>,
+//         input: AssignedVector<F, T, M, A>,
+//     ) -> Result<AssignedVector<F, T, L, A>, Error> {
+//         self.vector_gadget.resize(layouter, input)
+//     }
+
+//     fn assign_with_filler(
+//         &self,
+//         layouter: &mut impl Layouter<F>,
+//         value: Value<Vec<<T>::Element>>,
+//         filler: Option<<T>::Element>,
+//     ) -> Result<AssignedVector<F, T, M, A>, Error> {
+//         self.vector_gadget
+//             .assign_with_filler(layouter, value, filler)
+//     }
+
+//     fn trim_beginning(
+//         &self,
+//         layouter: &mut impl Layouter<F>,
+//         input: &AssignedVector<F, T, M, A>,
+//         n_elems: usize,
+//     ) -> Result<AssignedVector<F, T, M, A>, Error> {
+//         self.vector_gadget.trim_beginning(layouter, input, n_elems)
+//     }
+
+//     fn padding_flag(
+//         &self,
+//         layouter: &mut impl Layouter<F>,
+//         input: &AssignedVector<F, T, M, A>,
+//     ) -> Result<[AssignedBit<F>; M], Error> {
+//         self.vector_gadget.padding_flag(layouter, input)
+//     }
+
+//     fn get_limits(
+//         &self,
+//         layouter: &mut impl Layouter<F>,
+//         input: &AssignedVector<F, T, M, A>,
+//     ) -> Result<(AssignedNative<F>, AssignedNative<F>), Error> {
+//         self.get_limits(layouter, input)
+//     }
+// }
+
 impl<T> PublicInputInstructions<F, T> for ZkStdLib
 where
     T: Instantiable<F>,
@@ -769,6 +869,23 @@ where
         assigned: &T,
     ) -> Result<(), Error> {
         self.native_gadget
+            .constrain_as_committed_public_input(layouter, assigned)
+    }
+}
+
+impl<T, const M: usize, const A: usize> CommittedInstanceInstructions<F, AssignedVector<F, T, M, A>>
+    for ZkStdLib
+where
+    F: PrimeField,
+    T: Instantiable<F> + Vectorizable,
+    VectorGadget<F>: CommittedInstanceInstructions<F, AssignedVector<F, T, M, A>>,
+{
+    fn constrain_as_committed_public_input(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        assigned: &AssignedVector<F, T, M, A>,
+    ) -> Result<(), Error> {
+        self.vector_gadget
             .constrain_as_committed_public_input(layouter, assigned)
     }
 }
