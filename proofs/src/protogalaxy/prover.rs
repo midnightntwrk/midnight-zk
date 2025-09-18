@@ -450,9 +450,7 @@ mod tests {
         protogalaxy::{prover::ProtogalaxyProver, verifier::ProtogalaxyVerifier},
         transcript::{CircuitTranscript, Transcript},
     };
-    use crate::plonk::{Constraints, create_proof};
-    use crate::poly::commitment::TOTAL_PCS_TIME;
-    use crate::poly::TOTAL_FFT_TIME;
+    use crate::plonk::Constraints;
 
     #[derive(Clone, Copy)]
     struct TestCircuit {

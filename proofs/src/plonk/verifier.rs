@@ -401,21 +401,23 @@ where
                             x,
                         ))
                         .chain(lookups.iter().zip(vk.cs.lookups.iter()).flat_map(
-                            let theta = theta.clone();
-                            move |(p, argument)| {
-                                p.expressions(
-                                    l_0,
-                                    l_last,
-                                    l_blind,
-                                    argument,
-                                    theta,
-                                    beta,
-                                    gamma,
-                                    advice_evals,
-                                    fixed_evals,
-                                    instance_evals,
-                                    challenges,
-                                )
+                            {
+                                let theta = theta.clone();
+                                move |(p, argument)| {
+                                    p.expressions(
+                                        l_0,
+                                        l_last,
+                                        l_blind,
+                                        argument,
+                                        &theta,
+                                        beta,
+                                        gamma,
+                                        advice_evals,
+                                        fixed_evals,
+                                        instance_evals,
+                                        challenges,
+                                    )
+                                }
                             },
                         ))
                         .chain(trash.iter().zip(vk.cs.trashcans.iter()).flat_map(

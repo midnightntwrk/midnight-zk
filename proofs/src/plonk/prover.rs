@@ -161,7 +161,7 @@ where
                         pk,
                         params,
                         domain,
-                        theta,
+                        &theta,
                         &advice.advice_polys,
                         &pk.fixed_values,
                         &instance.instance_values,
@@ -202,7 +202,7 @@ where
         })
         .collect::<Result<Vec<_>, _>>())?;
 
-    let lookups: Vec<Vec<lookup::prover::Committed<F>>> = bench_and_run!(_group;
+    let lookups: Vec<Vec<lookup::prover::CommittedLagrange<F>>> = bench_and_run!(_group;
         ref transcript;  own lookups; "Construct and commit lookup product polynomials";
         |t: &mut T, lookups: Vec<Vec<lookup::prover::Permuted<F>>>| lookups
         .into_iter()
@@ -279,19 +279,8 @@ where
     let (instance_polys, instance_values) =
         instance.into_iter().map(|i| (i.instance_polys, i.instance_values)).unzip();
 
-    let advice_polys = bench_and_run!(_group; ; own advice ; "Advice to coeff";
-        |advice: Vec<AdviceSingle<F, LagrangeCoeff>>| advice
-        .into_iter()
-            .map(|a| {
-                a.advice_polys
-                    .into_iter()
-                    .map(|p| domain.lagrange_to_coeff(p))
-                    .collect::<Vec<_>>()
-            })
-            .collect::<Vec<_>>());
-
     Ok(ProverTrace {
-        advice_polys,
+        advice_polys: advice.into_iter().map(|a| a.advice_polys).collect(),
         instance_polys,
         instance_values,
         vanishing,
@@ -355,6 +344,16 @@ where
 
     let x: F = transcript.squeeze_challenge();
 
+    let advice_polys = bench_and_run!(_group; ; own advice_polys ; "Advice to coeff";
+        |advice: Vec<Vec<Polynomial<F, LagrangeCoeff>>>| advice
+        .into_iter()
+            .map(|a| {
+                a.into_iter()
+                    .map(|p| domain.lagrange_to_coeff(p))
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>());
+
     bench_and_run!(_group; ref transcript; ; "Write evals to transcript";
         |t| write_evals_to_transcript(
         pk,
@@ -385,7 +384,7 @@ where
 
     // Evaluate the lookups, if any, at omega^i x.
     let lookups: Vec<Vec<lookup::prover::Evaluated<F>>> = bench_and_run!(_group; ref transcript; own lookups; "Evaluate lookups";
-        |t: &mut T, lookups: Vec<Vec<lookup::prover::Committed<F>>>| lookups
+        |t: &mut T, lookups: Vec<Vec<lookup::prover::CommittedLagrange<F>>>| lookups
         .into_iter()
         .map(|lookups| -> Result<Vec<_>, _> {
             lookups
@@ -702,7 +701,10 @@ fn compute_h_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F
         .map(|advice_polys| {
             advice_polys
                 .iter()
-                .map(|poly| pk.vk.get_domain().coeff_to_extended(poly.clone()))
+                .map(|poly| {
+                    let poly = pk.vk.get_domain().lagrange_to_coeff(poly.clone());
+                    pk.vk.get_domain().coeff_to_extended(poly)
+                })
                 .collect()
         })
         .collect();

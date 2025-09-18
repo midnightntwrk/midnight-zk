@@ -7,6 +7,7 @@ use crate::{
     plonk::{lookup, permutation, trash, vanishing},
     poly::{commitment::PolynomialCommitmentScheme, Coeff, LagrangeCoeff, Polynomial},
 };
+use crate::plonk::lookup::verifier::PermutationCommitments;
 
 /// Prover's trace of a set of proofs. This type guarantees that the size of the
 /// outer vector of its fields has the same size.
