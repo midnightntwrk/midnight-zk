@@ -1148,10 +1148,9 @@ impl<'a, R: Relation> MidnightCircuit<'a, R> {
 
         let mut best_k = u32::MAX;
         let mut best_max_bit_len = 8;
-        let mut max_bit_len = max_bit_len_opt.unwrap_or(8);
 
         // Loop for finding the optimal `max_bit_len`.
-        loop {
+        for max_bit_len in 8..25 {
             let model = model_with_max_bit_len(max_bit_len);
 
             if model.k < best_k {
@@ -1160,11 +1159,9 @@ impl<'a, R: Relation> MidnightCircuit<'a, R> {
             }
 
             // Stop when the table becomes the bottleneck.
-            if model.rows < (1 << (max_bit_len + 1)) || max_bit_len >= 24 {
+            if model.rows < (1 << (max_bit_len + 1)) {
                 break;
             }
-
-            max_bit_len += 1;
         }
 
         MidnightCircuit {
