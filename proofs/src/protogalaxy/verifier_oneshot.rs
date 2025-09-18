@@ -15,7 +15,8 @@ use crate::{
     transcript::{Hashable, Sampleable, Transcript},
     utils::arithmetic::eval_polynomial,
 };
-use crate::protogalaxy::utils::{linear_combination, pow_vec};
+use crate::protogalaxy::utils::{linear_combination};
+use crate::protogalaxy::prover_oneshot::{eval_lagrange_on_beta};
 
 /// This verifier can perform a 2**K - 1 to one folding
 #[derive(Debug)]
@@ -165,7 +166,10 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
             permutation_pk_cosets,
         );
 
-        let beta_coeffs = vec![self.beta.clone(); 1 << K];      
+        // let beta_coeffs: Vec<F> = vec![self.beta.clone(); 1 << K]; 
+        let omega = vk.get_domain().get_omega(); // generator of multiplicative subgroup
+        let beta_coeffs: Vec<F> = eval_lagrange_on_beta(&omega, vk.get_domain().n.try_into().unwrap(), &self.beta);
+
         let expected_result = witness_poly
             .values
             .into_par_iter()

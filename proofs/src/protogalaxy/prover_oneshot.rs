@@ -15,7 +15,7 @@ use crate::{
         commitment::PolynomialCommitmentScheme, Coeff, EvaluationDomain, ExtendedLagrangeCoeff,
         LagrangeCoeff, Polynomial, PolynomialRepresentation,
     }, protogalaxy::{
-        utils::{batch_traces, linear_combination, pow_vec, LiftedFoldingTrace},
+        utils::{batch_traces, linear_combination, LiftedFoldingTrace},
         FoldingPk,
     }, utils::arithmetic::eval_polynomial
 };
@@ -57,6 +57,11 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         
         let degree = pk.vk.cs().degree() as u32;
         println!("Degree: {:?}", degree);
+
+
+        let pk_domain_size: usize = pk.vk.get_domain().n.clone().try_into().unwrap();
+        println!("PK domain size: {:?}", pk_domain_size);
+        assert_eq!(pk_domain_size, 1 << K);
         
         let now = Instant::now();
         // TODO: Bunch of optimisations here. We could compute the trace for all
@@ -111,9 +116,14 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         let lifted_trace = batch_traces(&dk_domain, &traces);
         let lift_trace_time = time.elapsed().as_millis();
 
+        // Compute evaluations of lagrange polynomials on beta_pg
+        let omega = folding_pk.domain.get_omega(); // generator of multiplicative subgroup
+        let lagrange_on_beta: Vec<F> = eval_lagrange_on_beta(&omega, pk_domain_size, &beta_pg);
+        let lagrange_beta_time = time.elapsed().as_millis() - lift_trace_time;
+
         let (poly_g,
-            poly_g_unbatched) = compute_poly_g(&folding_pk, &beta_pg, &lifted_trace);
-        let poly_g_time = time.elapsed().as_millis() - lift_trace_time;
+            poly_g_unbatched) = compute_poly_g(&folding_pk, pk_domain_size, &lagrange_on_beta, &lifted_trace);
+        let poly_g_time = time.elapsed().as_millis() - lift_trace_time - lagrange_beta_time;
 
         let poly_k = dk_domain.divide_by_vanishing_poly(poly_g.clone());
         let poly_k_coeff = Polynomial {
@@ -136,24 +146,26 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
 
         transcript.write(&k_in_gamma)?;
 
-        let error_terms = compute_error_terms(&folding_pk, &dk_domain, &poly_g_unbatched, &gamma);
+        let error_terms = compute_error_terms(pk_domain_size, &dk_domain, &poly_g_unbatched, &gamma);
 
         assert_ne!(g_in_gamma, F::ZERO);
         assert_eq!(g_in_gamma, k_in_gamma * z_in_gamma);
 
-        println!("PK domain size: {:?}", folding_pk.domain.n);
-        assert_eq!(folding_pk.domain.n, 1 << K);
-
         // Compare error term vector with error term
 
-        let error_sum: F = error_terms.par_iter().copied().reduce(|| F::ZERO, |a, b| a + b) * beta_pg;
+        let error_sum: F = error_terms
+            .par_iter()
+            .zip(lagrange_on_beta.par_iter())
+            .map(|(&error, &coeff)| error * coeff)
+            .reduce(|| F::ZERO, |a, b| a + b);
         assert_eq!(error_sum, g_in_gamma);
 
         // Update error term
         let folded_trace = fold_traces(&dk_domain, &traces, &gamma);
-        let rest_time = time.elapsed().as_millis() - poly_g_time - lift_trace_time;
+        let rest_time = time.elapsed().as_millis() - poly_g_time - lift_trace_time - lagrange_beta_time;
 
         println!("    Lift trace time      : {:?}ms", lift_trace_time);
+        println!("    Lagrange polynomials on beta      : {:?}ms", lagrange_beta_time);
         println!("    Poly G time          : {:?}ms", poly_g_time);
         println!("    Rest time            : {:?}ms", rest_time);
 
@@ -264,7 +276,8 @@ use crate::transcript::{Hashable, Sampleable, Transcript};
 /// values computed above.
 fn compute_poly_g<F: PrimeField + WithSmallOrderMulGroup<3>>(
     pk: &FoldingPk<F>,
-    beta_pg: &F,
+    pk_domain_size: usize,
+    beta_coeffs: &Vec<F>,
     lifted_folding_trace: &LiftedFoldingTrace<F>,
 ) -> (Polynomial<F, ExtendedLagrangeCoeff>,
         Vec<Vec<F>>) {
@@ -272,7 +285,7 @@ fn compute_poly_g<F: PrimeField + WithSmallOrderMulGroup<3>>(
     // In the future, we'll output simply a commitment to it, but
     // perhaps at an upper level function.
     let mut g_poly = vec![F::ZERO; lifted_folding_trace.len()];
-    let mut g_poly_unbatched = vec![vec![F::ZERO; pk.domain.n.try_into().unwrap()]; lifted_folding_trace.len()];
+    let mut g_poly_unbatched = vec![vec![F::ZERO; pk_domain_size]; lifted_folding_trace.len()];
     for (j, instance) in g_poly_unbatched.iter_mut().enumerate() {
         let FoldingProverTrace {
             fixed_polys,
@@ -317,7 +330,8 @@ fn compute_poly_g<F: PrimeField + WithSmallOrderMulGroup<3>>(
 
         g_poly[j] = instance
             .into_par_iter()
-            .map(|witness| *witness * beta_pg)
+            .zip(beta_coeffs.par_iter())
+            .map(|(witness, beta_coef)| *witness * beta_coef)
             .reduce(|| F::ZERO, |a, b| a + b);
     }
 
@@ -335,25 +349,60 @@ fn compute_poly_g<F: PrimeField + WithSmallOrderMulGroup<3>>(
 /// Computes the error terms t_i = f_i(w(\gamma)) where w(X) = ∑_{j ∈ [k]} Lⱼ(X)·ωⱼ
 /// is the polynomial that interpolates the witnesses.
 fn compute_error_terms<F: PrimeField + WithSmallOrderMulGroup<3>>(
-    pk: &FoldingPk<F>,
+    pk_domain_size: usize,
     dk_domain: &EvaluationDomain<F>,
-    poly_g_unbatched: &Vec<Vec<F>>,
+    poly_g_unbatched: &[Vec<F>], // use slice instead of &Vec
     gamma_pg: &F,
 ) -> Vec<F> {
-    let mut error_vec = vec![F::ZERO; pk.domain.n.try_into().unwrap()];
-    for j in 0..pk.domain.n.try_into().unwrap() {
-        // Collect the j-th value from each instance (row) to form the polynomial in Lagrange basis
-        let poly_evals: Vec<F> = poly_g_unbatched.iter().map(|row| row[j]).collect();
-        // Convert to coefficient basis
-        let coeff_poly = dk_domain.extended_to_coeff(
-            Polynomial {
+    let n_rows = poly_g_unbatched.len();
+
+    // Parallel over columns j
+    (0..pk_domain_size)
+        .into_par_iter()
+        .map(|j| {
+            // Allocate buffer once per iteration
+            let mut poly_evals = Vec::with_capacity(n_rows);
+            for row in poly_g_unbatched {
+                poly_evals.push(row[j]);
+            }
+
+            // Convert to coefficient basis
+            let coeff_poly = dk_domain.extended_to_coeff(Polynomial {
                 values: poly_evals,
                 _marker: PhantomData,
-        });
-        // Evaluate at gamma_pg
-        error_vec[j] = eval_polynomial(&coeff_poly, *gamma_pg);
+            });
+
+            // Evaluate at gamma_pg
+            eval_polynomial(&coeff_poly, *gamma_pg)
+        })
+        .collect::<Vec<F>>() // collect the results into a Vec<F>
+}
+
+/// Computes the lagrange polynomials for a domain with root omega.
+/// Then, it evaluates them at 'beta', obtaining a vector of coefficients.
+/// TODO: review
+pub fn eval_lagrange_on_beta<F: PrimeField + WithSmallOrderMulGroup<3>>(
+    omega: &F,
+    pk_domain_size: usize,
+    beta: &F,
+) -> Vec<F> {
+    let n_fe = F::from(pk_domain_size as u64);
+
+    // Z(beta) = beta^n - 1
+    let z_beta = beta.pow([pk_domain_size as u64]) - F::ONE;
+
+    let mut result = Vec::with_capacity(pk_domain_size);
+    let mut omega_j = F::ONE;
+
+    for _ in 0..pk_domain_size {
+        // denominator = (beta - omega^j) * (n * omega^j)
+        let denom = (*beta - omega_j) * (n_fe * omega_j);
+        let denom_inv = denom.invert().expect("nonzero denominator");
+        result.push(z_beta * denom_inv);
+        omega_j *= omega;
     }
-    error_vec
+
+    result
 }
 
 /// Function to fold traces over an evaluation `\gamma`
