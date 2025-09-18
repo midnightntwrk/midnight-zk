@@ -49,7 +49,7 @@ pub(crate) struct CostOptions {
 
     /// 2^K bound on the number of rows, accounting for ZK, PIs and Lookup
     /// tables.
-    pub(crate) min_k: usize,
+    pub(crate) min_k: u32,
 
     /// Rows count, not including table rows and not accounting for compression
     /// (where multiple regions can use the same rows).
@@ -126,7 +126,7 @@ impl Permutation {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct CircuitModel {
     /// Power-of-2 bound on the number of rows in the circuit.
-    pub k: usize,
+    pub k: u32,
     /// Number of rows in the circuit (not including table rows).
     pub rows: usize,
     /// Number of table rows in the circuit.
@@ -349,7 +349,7 @@ pub(crate) fn cost_model_options<F: Ord + Field + FromUniformBytes<64>, C: Circu
         max_degree: cs.degree(),
         lookup,
         permutation,
-        min_k: min_circuit_size.next_power_of_two().ilog2() as usize,
+        min_k: min_circuit_size.next_power_of_two().ilog2(),
         rows_count,
         table_rows_count,
     }
