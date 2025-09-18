@@ -25,19 +25,24 @@
 //  (sum_i coeff[i] * value[i])
 //    + q_next * value[0](omega) +
 //    + mul_ab * value[0] * value[1] +
-//    + mul_cd * value[2] * value[3] +
+//    + mul_ac * value[0] * value[2] +
 //    + constant
 //  }
 //  = 0
 //
-// Here, `coeffs`, `q_next`, `mul_ab`, `mul_cd`, `constant` are stored in fixed
+// Here, `coeffs`, `q_next`, `mul_ab`, `mul_ac`, `constant` are stored in fixed
 // columns, whereas `values` are stored in advice columns.
 //
-// Also, an utilitary gate for parallel affine relation is defined for
+// We also have the following identity, designed for speeding up
+// operations like conditional swaps.
+//
+//  q_12_minus_34 * (value[1] + value[2] - value[3] - value[4] = 0)
+//
+// Finally, an utilitary gate for parallel affine relation is defined for
 // performing parallel additions (by constant) x[omega] = x + c in one row.
 // The formal identities read as:
 //
-// q_par_add * { value[i] + coeff[i] - value[i](omega) } = 0
+//  q_par_add * { value[i] + coeff[i] - value[i](omega) } = 0
 //
 // for all i = 0..NB_PARALLEL_ADD_COLS.
 
@@ -95,16 +100,18 @@ const NB_PARALLEL_ADD_COLS: usize = 3;
 /// Config defines fixed and witness columns of the main gate
 #[derive(Clone, Debug)]
 pub struct NativeConfig {
-    pub(crate) q_arith: Selector,
-    pub(crate) q_par_add: Selector,
+    q_arith: Selector,
+    q_12_minus_34: Selector,
+    q_par_add: Selector,
     pub(crate) value_cols: [Column<Advice>; NB_ARITH_COLS],
-    pub(crate) coeff_cols: [Column<Fixed>; NB_ARITH_COLS],
-    pub(crate) q_next_col: Column<Fixed>,
-    pub(crate) mul_ab_col: Column<Fixed>,
-    pub(crate) mul_cd_col: Column<Fixed>,
-    pub(crate) constant_col: Column<Fixed>,
-    pub(crate) committed_instance_col: Column<Instance>,
-    pub(crate) instance_col: Column<Instance>,
+    coeff_cols: [Column<Fixed>; NB_ARITH_COLS],
+    q_next_col: Column<Fixed>,
+    mul_ab_col: Column<Fixed>,
+    mul_ac_col: Column<Fixed>,
+    constant_col: Column<Fixed>,
+    fixed_values_col: Column<Fixed>,
+    committed_instance_col: Column<Instance>,
+    instance_col: Column<Instance>,
 }
 
 /// Chip for Native operations
@@ -164,12 +171,16 @@ impl<F: PrimeField> ComposableChip<F> for NativeChip<F> {
         let instance_col = shared_res.2[1];
 
         let q_arith = meta.selector();
+        let q_12_minus_34 = meta.selector();
         let q_par_add = meta.selector();
         let coeff_cols: [Column<Fixed>; NB_ARITH_COLS] = fixed_columns[4..].try_into().unwrap();
         let q_next_col = fixed_columns[0];
         let mul_ab_col = fixed_columns[1];
-        let mul_cd_col = fixed_columns[2];
+        let mul_ac_col = fixed_columns[2];
         let constant_col = fixed_columns[3];
+
+        let fixed_values_col = meta.fixed_column();
+        meta.enable_equality(fixed_values_col);
 
         for col in value_columns.iter() {
             meta.enable_equality(*col);
@@ -192,7 +203,7 @@ impl<F: PrimeField> ComposableChip<F> for NativeChip<F> {
 
             let q_next_coeff = meta.query_fixed(q_next_col, Rotation::cur());
             let mul_ab_coeff = meta.query_fixed(mul_ab_col, Rotation::cur());
-            let mul_cd_coeff = meta.query_fixed(mul_cd_col, Rotation::cur());
+            let mul_ac_coeff = meta.query_fixed(mul_ac_col, Rotation::cur());
             let constant = meta.query_fixed(constant_col, Rotation::cur());
 
             let id = values
@@ -201,9 +212,18 @@ impl<F: PrimeField> ComposableChip<F> for NativeChip<F> {
                 .fold(constant, |acc, (value, coeff)| acc + coeff * value)
                 + q_next_coeff * next_value
                 + mul_ab_coeff * &values[0] * &values[1]
-                + mul_cd_coeff * &values[2] * &values[3];
+                + mul_ac_coeff * &values[0] * &values[2];
 
             Constraints::with_selector(q_arith, vec![id])
+        });
+
+        meta.create_gate("12_minus_34", |meta| {
+            let v1 = meta.query_advice(value_columns[1], Rotation::cur());
+            let v2 = meta.query_advice(value_columns[2], Rotation::cur());
+            let v3 = meta.query_advice(value_columns[3], Rotation::cur());
+            let v4 = meta.query_advice(value_columns[4], Rotation::cur());
+
+            Constraints::with_selector(q_12_minus_34, vec![v1 + v2 - v3 - v4])
         });
 
         meta.create_gate("parallel_add_gate", |meta| {
@@ -222,13 +242,15 @@ impl<F: PrimeField> ComposableChip<F> for NativeChip<F> {
 
         NativeConfig {
             q_arith,
+            q_12_minus_34,
             q_par_add,
             value_cols: *value_columns,
             coeff_cols,
             q_next_col,
             mul_ab_col,
-            mul_cd_col,
+            mul_ac_col,
             constant_col,
+            fixed_values_col,
             committed_instance_col,
             instance_col,
         }
@@ -276,8 +298,8 @@ impl<F: PrimeField> NativeChip<F> {
             || Value::known(mul_coeffs.0),
         )?;
         region.assign_fixed(
-            || "arith mul_cd",
-            self.config.mul_cd_col,
+            || "arith mul_ac",
+            self.config.mul_ac_col,
             offset,
             || Value::known(mul_coeffs.1),
         )?;
@@ -313,16 +335,12 @@ impl<F: PrimeField> NativeChip<F> {
     fn add_and_double_mul(
         &self,
         layouter: &mut impl Layouter<F>,
-        a_and_x: (F, &AssignedNative<F>),
-        b_and_y: (F, &AssignedNative<F>),
-        c_and_z: (F, &AssignedNative<F>),
+        (a, x): (F, &AssignedNative<F>),
+        (b, y): (F, &AssignedNative<F>),
+        (c, z): (F, &AssignedNative<F>),
         k: F,
-        m1_and_m2: (F, F),
+        (m1, m2): (F, F),
     ) -> Result<AssignedNative<F>, Error> {
-        let (a, x) = a_and_x;
-        let (b, y) = b_and_y;
-        let (c, z) = c_and_z;
-        let (m1, m2) = m1_and_m2;
         let res_value = x
             .value()
             .zip(y.value())
@@ -334,7 +352,6 @@ impl<F: PrimeField> NativeChip<F> {
                 self.copy_in_row(&mut region, x, &self.config.value_cols[0], 0)?;
                 self.copy_in_row(&mut region, y, &self.config.value_cols[1], 0)?;
                 self.copy_in_row(&mut region, z, &self.config.value_cols[2], 0)?;
-                self.copy_in_row(&mut region, x, &self.config.value_cols[3], 0)?;
                 let res =
                     region.assign_advice(|| "res", self.config.value_cols[4], 0, || res_value)?;
                 let mut coeffs = [F::ZERO; NB_ARITH_COLS];
@@ -565,33 +582,26 @@ where
             return Ok(assigned.clone());
         };
 
-        layouter.assign_region(
+        let x = layouter.assign_region(
             || "Assign fixed",
             |mut region| {
-                // Enforce x - constant = 0.
-                let x = region.assign_advice(
-                    || "x",
-                    self.config.value_cols[0],
+                let mut x = region.assign_fixed(
+                    || "fixed",
+                    self.config.fixed_values_col,
                     0,
                     || Value::known(constant),
                 )?;
-                let mut coeffs = [F::ZERO; NB_ARITH_COLS];
-                coeffs[0] = F::ONE; // coeff of x
-                self.custom(
-                    &mut region,
-                    &coeffs,
-                    F::ZERO,
-                    (F::ZERO, F::ZERO),
-                    -constant,
-                    0,
-                )?;
-
-                // Save the assigned constant in the cache.
-                self.cached_fixed.borrow_mut().insert(constant_big.clone(), x.clone());
-
+                // This is hacky but necessary because we are treating a fixed cell as an
+                // assigned one. Fixed cells do not get properly filled until the end.
+                x.update_value(constant)?;
                 Ok(x)
             },
-        )
+        )?;
+
+        // Save the assigned constant in the cache.
+        self.cached_fixed.borrow_mut().insert(constant_big.clone(), x.clone());
+
+        Ok(x)
     }
 
     // This is more efficient than the blanket implementation.
@@ -732,11 +742,11 @@ where
         layouter: &mut impl Layouter<F>,
         value: Value<bool>,
     ) -> Result<AssignedBit<F>, Error> {
-        // We can skip the in-circuit boolean assertion as this condition will be
-        // enforced through the public inputs bind anyway.
-        let bit_val = value.map(|b| if b { F::ONE } else { F::ZERO });
-        let assigned_native = self.assign_as_public_input(layouter, bit_val)?;
-        self.convert_unsafe(layouter, &assigned_native)
+        // We could skip the in-circuit boolean assertion as this condition will be
+        // enforced through the public inputs bind anyway. But this takes 1 row anyway.
+        let assigned = self.assign(layouter, value)?;
+        self.constrain_as_public_input(layouter, &assigned)?;
+        Ok(assigned)
     }
 }
 
@@ -766,13 +776,12 @@ where
             || "Assert not equal",
             |mut region| {
                 // We enforce (x - y) * r = 1, for a fresh r.
-                // Encoded as x * r - y * r - 1 = 0
+                // Encoded as r * x - r * y - 1 = 0
                 let r_value = (x.value().copied() - y.value().copied())
                     .map(|v| v.invert().unwrap_or(F::ZERO));
-                self.copy_in_row(&mut region, x, &self.config.value_cols[0], 0)?;
-                let r = region.assign_advice(|| "r", self.config.value_cols[1], 0, || r_value)?;
+                region.assign_advice(|| "r", self.config.value_cols[0], 0, || r_value)?;
+                self.copy_in_row(&mut region, x, &self.config.value_cols[1], 0)?;
                 self.copy_in_row(&mut region, y, &self.config.value_cols[2], 0)?;
-                self.copy_in_row(&mut region, &r, &self.config.value_cols[3], 0)?;
                 let coeffs = [F::ZERO; NB_ARITH_COLS];
                 self.custom(&mut region, &coeffs, F::ZERO, (F::ONE, -F::ONE), -F::ONE, 0)?;
                 Ok(())
@@ -967,13 +976,13 @@ where
     fn add_and_mul(
         &self,
         layouter: &mut impl Layouter<F>,
-        a_and_x: (F, &AssignedNative<F>),
-        b_and_y: (F, &AssignedNative<F>),
-        c_and_z: (F, &AssignedNative<F>),
+        (a, x): (F, &AssignedNative<F>),
+        (b, y): (F, &AssignedNative<F>),
+        (c, z): (F, &AssignedNative<F>),
         k: F,
         m: F,
     ) -> Result<AssignedNative<F>, Error> {
-        self.add_and_double_mul(layouter, a_and_x, b_and_y, c_and_z, k, (m, F::ZERO))
+        self.add_and_double_mul(layouter, (a, x), (b, y), (c, z), k, (m, F::ZERO))
     }
 
     fn add_constants(
@@ -1232,10 +1241,9 @@ where
         let res = layouter.assign_region(
             || "is_equal (i)",
             |mut region| {
-                let aux = region.assign_advice(|| "aux", value_cols[0], 0, || aux_val)?;
+                region.assign_advice(|| "aux", value_cols[0], 0, || aux_val)?;
                 self.copy_in_row(&mut region, x, &value_cols[1], 0)?;
-                self.copy_in_row(&mut region, &aux, &value_cols[2], 0)?;
-                self.copy_in_row(&mut region, y, &value_cols[3], 0)?;
+                self.copy_in_row(&mut region, y, &value_cols[2], 0)?;
                 let res = region.assign_advice(|| "res", value_cols[4], 0, || res_val)?;
                 let mut coeffs = [F::ZERO; NB_ARITH_COLS];
                 coeffs[4] = F::ONE; // coeff of res
@@ -1359,6 +1367,44 @@ where
             (F::ONE, -F::ONE),
         )
     }
+
+    fn cond_swap(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        cond: &AssignedBit<F>,
+        x: &AssignedNative<F>,
+        y: &AssignedNative<F>,
+    ) -> Result<(AssignedNative<F>, AssignedNative<F>), Error> {
+        // Instead of performing 2 selects (which requires 2 rows), we
+        // can do the second select in the same row with the q_12_minus_34
+        // identity. The idea is that the sum of the inputs of a conditional
+        // swap is the same as the sum of the outputs.
+
+        let val2 = (x.value().zip(y.value()).zip(cond.value()))
+            .map(|((x, y), b)| if b { x } else { y })
+            .copied();
+        let val1 = x.value().copied() + y.value().copied() - val2;
+
+        // We enforce the following equations in 1 row:
+        //   0*bit + 0*x + 1*y + 0 + bit*x - bit*y - snd = 0
+        //   x + y - fst - snd = 0
+        layouter.assign_region(
+            || "cond swap",
+            |mut region| {
+                self.copy_in_row(&mut region, &cond.0, &self.config.value_cols[0], 0)?;
+                self.copy_in_row(&mut region, x, &self.config.value_cols[1], 0)?;
+                self.copy_in_row(&mut region, y, &self.config.value_cols[2], 0)?;
+                let fst = region.assign_advice(|| "fst", self.config.value_cols[3], 0, || val1)?;
+                let snd = region.assign_advice(|| "snd", self.config.value_cols[4], 0, || val2)?;
+                let mut coeffs = [F::ZERO; NB_ARITH_COLS];
+                coeffs[2] = F::ONE; // coeff of y
+                coeffs[4] = -F::ONE; // coeff of snd
+                self.custom(&mut region, &coeffs, F::ZERO, (F::ONE, -F::ONE), F::ZERO, 0)?;
+                self.config.q_12_minus_34.enable(&mut region, 0)?;
+                Ok((fst, snd))
+            },
+        )
+    }
 }
 
 impl<F> ControlFlowInstructions<F, AssignedBit<F>> for NativeChip<F>
@@ -1372,8 +1418,18 @@ where
         x: &AssignedBit<F>,
         y: &AssignedBit<F>,
     ) -> Result<AssignedBit<F>, Error> {
-        let bit = self.select(layouter, cond, &x.0, &y.0)?;
-        Ok(AssignedBit(bit))
+        self.select(layouter, cond, &x.0, &y.0).map(AssignedBit)
+    }
+
+    fn cond_swap(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        cond: &AssignedBit<F>,
+        x: &AssignedBit<F>,
+        y: &AssignedBit<F>,
+    ) -> Result<(AssignedBit<F>, AssignedBit<F>), Error> {
+        self.cond_swap(layouter, cond, &x.0, &y.0)
+            .map(|(fst, snd)| (AssignedBit(fst), AssignedBit(snd)))
     }
 }
 
@@ -1516,6 +1572,7 @@ mod tests {
 
     test!(control_flow, test_select);
     test!(control_flow, test_cond_assert_equal);
+    test!(control_flow, test_cond_swap);
 
     test!(canonicity, test_canonical);
     test!(canonicity, test_le_bits_lower_and_geq);

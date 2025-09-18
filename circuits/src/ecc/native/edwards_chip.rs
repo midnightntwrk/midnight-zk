@@ -1013,6 +1013,7 @@ mod tests {
 
     test!(control_flow, test_select);
     test!(control_flow, test_cond_assert_equal);
+    test!(control_flow, test_cond_swap);
 
     macro_rules! ecc_tests {
         ($op:ident) => {

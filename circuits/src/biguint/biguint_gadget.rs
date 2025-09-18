@@ -839,6 +839,7 @@ mod tests {
 
     test!(control_flow, test_select);
     test!(control_flow, test_cond_assert_equal);
+    test!(control_flow, test_cond_swap);
 
     #[derive(Clone, Debug)]
     enum Operation {

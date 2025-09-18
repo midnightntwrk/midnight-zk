@@ -328,17 +328,17 @@ pub(crate) fn cost_model_options<F: Ord + Field + FromUniformBytes<64>, C: Circu
     };
 
     let nb_instances = prover.instance_rows.take();
-    let min_k = [
+    let min_circuit_size = [
         rows_count + cs.blinding_factors(),
         table_rows_count + cs.blinding_factors(),
         nb_instances,
-        cs.minimum_rows(),
+        cs.minimum_rows() + 1,
     ]
     .into_iter()
     .max()
     .unwrap();
 
-    if min_k == nb_instances {
+    if min_circuit_size == nb_instances {
         println!("WARNING: The dominant factor in your circuit's size is the number of public inputs, which causes the verifier to perform linear work.");
     }
 
@@ -349,7 +349,7 @@ pub(crate) fn cost_model_options<F: Ord + Field + FromUniformBytes<64>, C: Circu
         max_degree: cs.degree(),
         lookup,
         permutation,
-        min_k: min_k.next_power_of_two().ilog2() as usize,
+        min_k: min_circuit_size.next_power_of_two().ilog2() as usize,
         rows_count,
         table_rows_count,
     }
