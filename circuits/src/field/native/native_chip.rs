@@ -593,7 +593,7 @@ where
                 )?;
                 // This is hacky but necessary because we are treating a fixed cell as an
                 // assigned one. Fixed cells do not get properly filled until the end.
-                x.update_value(Value::known(constant));
+                x.update_value(constant)?;
                 Ok(x)
             },
         )?;

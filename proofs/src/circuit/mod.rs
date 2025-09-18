@@ -107,11 +107,15 @@ pub struct AssignedCell<V, F: Field> {
     _marker: PhantomData<F>,
 }
 
-impl<V, F: Field> AssignedCell<V, F> {
-    /// Update the value of an `AssignedCell`. Use with caution and only if you
-    /// know what you are doing.
-    pub fn update_value(&mut self, v: Value<V>) {
-        self.value = v;
+impl<V: Eq, F: Field> AssignedCell<V, F> {
+    /// Update the value of an `AssignedCell`.
+    ///
+    /// Returns an error if the cell had a value which is different from the one
+    /// we are trying to set.
+    pub fn update_value(&mut self, v: V) -> Result<(), Error> {
+        self.value.error_if_known_and(|other| v != *other)?;
+        self.value = Value::known(v);
+        Ok(())
     }
 }
 
