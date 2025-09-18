@@ -139,11 +139,9 @@ where
         })
         .max()
         .unwrap_or(1);
-    println!("Numbers of thetas: {nb_theta}");
 
-
-    let theta: F = transcript.squeeze_challenge();
-    let theta: Vec<F> = vec![theta; nb_theta];
+    // let theta: F = transcript.squeeze_challenge();
+    let theta: Vec<F> = (0..nb_theta).map(|_| transcript.squeeze_challenge()).collect();
 
     let lookups: Vec<Vec<lookup::prover::Permuted<F>>> = bench_and_run!(
         _group; ref transcript; ; "Construct and commit permuted columns";
@@ -218,7 +216,7 @@ where
     // Trash argument
     let trash_challenge: F = transcript.squeeze_challenge();
 
-    let trashcans: Vec<Vec<trash::prover::Committed<F>>> = bench_and_run!(_group;
+    let trashcans: Vec<Vec<trash::prover::CommittedLagrange<F>>> = bench_and_run!(_group;
         ref transcript ; ; "Construct trash argument";
         |t: &mut T| instance
         .iter()
@@ -259,22 +257,24 @@ where
         .gates
         .iter()
         .for_each(|g| nb_y += g.polynomials().len());
-    println!("Number of gates: {nb_y}");
 
     // We need two for the permutation argument (1 for the first, 1 for the last),
     // sets.len() - 1 for linking each column, and sets.len() for the product rule
     nb_y += 2;
-    nb_y += permutations[0].sets.len() - 1;
-    nb_y += permutations[0].sets.len();
-
-    println!("Plus permutations; {nb_y}");
+    if !permutations[0].sets.is_empty() {
+        nb_y += permutations[0].sets.len() - 1;
+        nb_y += permutations[0].sets.len();
+    }
 
     // We need five for each lookup argument
     nb_y += lookups[0].len() * 5;
-    println!("Plus lookups; {nb_y}");
 
-    let y: F = transcript.squeeze_challenge();
-    let y: Vec<F> = vec![y; nb_y];
+    // We need one per trash argument
+    nb_y += trashcans[0].len();
+
+    // let y: F = transcript.squeeze_challenge();
+    // let y: Vec<F> = vec![y; nb_y];
+    let y: Vec<F> = (0..nb_y).map(|_| transcript.squeeze_challenge()).collect();
 
     let (instance_polys, instance_values) =
         instance.into_iter().map(|i| (i.instance_polys, i.instance_values)).unzip();
@@ -400,7 +400,7 @@ where
         .map(|trash| -> Result<Vec<_>, _> {
             trash
                 .into_iter()
-                .map(|p| p.evaluate(x, transcript))
+                .map(|p| p.evaluate(domain, x, transcript))
                 .collect::<Result<Vec<_>, _>>()
         })
         .collect::<Result<Vec<_>, _>>()?;

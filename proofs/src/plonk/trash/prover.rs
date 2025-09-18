@@ -19,6 +19,11 @@ pub(crate) struct Committed<F: PrimeField> {
     pub(crate) trash_poly: Polynomial<F, Coeff>,
 }
 
+#[derive(Clone, Debug)]
+pub(crate) struct CommittedLagrange<F: PrimeField> {
+    pub(crate) trash_poly: Polynomial<F, LagrangeCoeff>,
+}
+
 pub(crate) struct Evaluated<F: PrimeField>(Committed<F>);
 
 impl<F: WithSmallOrderMulGroup<3> + Ord> Argument<F> {
@@ -33,7 +38,7 @@ impl<F: WithSmallOrderMulGroup<3> + Ord> Argument<F> {
         instance_values: &'a [Polynomial<F, LagrangeCoeff>],
         challenges: &'a [F],
         transcript: &mut T,
-    ) -> Result<Committed<F>, Error>
+    ) -> Result<CommittedLagrange<F>, Error>
     where
         F: FromUniformBytes<64>,
         CS: PolynomialCommitmentScheme<F>,
@@ -59,17 +64,17 @@ impl<F: WithSmallOrderMulGroup<3> + Ord> Argument<F> {
             });
 
         let trash_commitment = CS::commit_lagrange(params, &compressed_expression);
-        let trash_poly = domain.lagrange_to_coeff(compressed_expression);
+        // let trash_poly = domain.lagrange_to_coeff(compressed_expression);
 
         // Hash permuted input commitment
         transcript.write(&trash_commitment)?;
 
-        Ok(Committed { trash_poly })
+        Ok(CommittedLagrange { trash_poly: compressed_expression })
     }
 }
 
-impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
-    pub(crate) fn evaluate<T>(self, x: F, transcript: &mut T) -> Result<Evaluated<F>, Error>
+impl<F: WithSmallOrderMulGroup<3>> CommittedLagrange<F> {
+    pub(crate) fn evaluate<T>(self, evaluation_domain: &EvaluationDomain<F>, x: F, transcript: &mut T) -> Result<Evaluated<F>, Error>
     where
         F: Hashable<T::Hash>,
         T: Transcript,
@@ -77,7 +82,10 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
         let trash_eval = eval_polynomial(&self.trash_poly, x);
         transcript.write(&trash_eval)?;
 
-        Ok(Evaluated(self))
+        let self_coeff = evaluation_domain.lagrange_to_coeff(self.trash_poly);
+
+
+        Ok(Evaluated(Committed{ trash_poly: self_coeff}))
     }
 }
 

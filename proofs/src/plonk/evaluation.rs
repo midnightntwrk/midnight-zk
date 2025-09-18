@@ -207,78 +207,68 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
         // Custom gates
         // y'th power index
         let mut y_index = 0;
-        let polys: Vec<&Expression<F>> = cs.gates.iter().flat_map(|g| g.polynomials().iter().map(|p| p).collect::<Vec<_>>()).collect();
-        let polys_len = polys.len();
-        for poly in &polys[polys_len - 2..] {
-            let expr = ev.custom_gates.add_expression(poly);
-            let scaled_expr = ev.custom_gates
-                .add_calculation(Calculation::Mul(expr, ValueSource::Y(y_index)));
-            ev.custom_gates.add_calculation(Calculation::Add(ValueSource::PreviousValue(), scaled_expr));
+
+        let mut sum = ValueSource::PreviousValue();
+        for gate in cs.gates.iter() {
+            for poly in gate.polynomials().iter() {
+                let expr = ev.custom_gates.add_expression(poly);
+                let prod = ev.custom_gates.add_calculation(Calculation::Mul(ValueSource::Y(y_index), expr));
+                sum = ev.custom_gates.add_calculation(Calculation::Add(sum, prod));
+                y_index += 1;
+            }
         }
-        // for gate in cs.gates.iter() {
-        //     for poly in gate.polynomials().iter() {
-        //         // println!("polynomial prover: {:?}", poly);
-        //         let expr = ev.custom_gates.add_expression(poly);
-        //         // let scaled_expr = ev.custom_gates
-        //         //     .add_calculation(Calculation::Mul(expr, ValueSource::Y(y_index)));
-        //         ev.custom_gates.add_calculation(Calculation::Add(ValueSource::PreviousValue(), expr));
-        //         // ev.custom_gates.add_calculation(Calculation::Store(expr));
-        //         y_index += 1;
-        //     }
-        // }
 
-        // // Lookups
-        // for lookup in cs.lookups.iter() {
-        //     let mut graph = GraphEvaluator::default();
-        //
-        //     let mut evaluate_lc = |expressions: &Vec<Expression<_>>| {
-        //        expressions
-        //             .iter()
-        //             .enumerate()
-        //             .fold(ValueSource::Constant(0), |acc, (index, expr)| {
-        //                 let expr = graph.add_expression(expr);
-        //                 let expr = graph
-        //                     .add_calculation(Calculation::Mul(expr, ValueSource::Theta(index)));
-        //                 graph.add_calculation(Calculation::Add(expr, acc))
-        //             })
-        //     };
-        //
-        //     // Input coset
-        //     let compressed_input_coset = evaluate_lc(&lookup.input_expressions);
-        //     // table coset
-        //     let compressed_table_coset = evaluate_lc(&lookup.table_expressions);
-        //     // z(\omega X) (a'(X) + \beta) (s'(X) + \gamma)
-        //     let right_gamma = graph.add_calculation(Calculation::Add(
-        //         compressed_table_coset,
-        //         ValueSource::Gamma(),
-        //     ));
-        //     let lc = graph.add_calculation(Calculation::Add(
-        //         compressed_input_coset,
-        //         ValueSource::Beta(),
-        //     ));
-        //     graph.add_calculation(Calculation::Mul(lc, right_gamma));
-        //
-        //     ev.lookups.push(graph);
-        // }
+        // Lookups
+        for lookup in cs.lookups.iter() {
+            let mut graph = GraphEvaluator::default();
 
-        // // Trashcans
-        // for trash in cs.trashcans.iter() {
-        //     let mut graph = GraphEvaluator::default();
-        //
-        //     let parts = trash
-        //         .constraint_expressions()
-        //         .iter()
-        //         .map(|expr| graph.add_expression(expr))
-        //         .collect();
-        //
-        //     graph.add_calculation(Calculation::Horner(
-        //         ValueSource::Constant(0),
-        //         parts,
-        //         ValueSource::TrashChallenge(),
-        //     ));
-        //
-        //     ev.trashcans.push(graph);
-        // }
+            let mut evaluate_lc = |expressions: &Vec<Expression<_>>| {
+               expressions
+                    .iter()
+                    .enumerate()
+                    .fold(ValueSource::Constant(0), |acc, (index, expr)| {
+                        let expr = graph.add_expression(expr);
+                        let expr = graph
+                            .add_calculation(Calculation::Mul(expr, ValueSource::Theta(index)));
+                        graph.add_calculation(Calculation::Add(expr, acc))
+                    })
+            };
+
+            // Input coset
+            let compressed_input_coset = evaluate_lc(&lookup.input_expressions);
+            // table coset
+            let compressed_table_coset = evaluate_lc(&lookup.table_expressions);
+            // z(\omega X) (a'(X) + \beta) (s'(X) + \gamma)
+            let right_gamma = graph.add_calculation(Calculation::Add(
+                compressed_table_coset,
+                ValueSource::Gamma(),
+            ));
+            let lc = graph.add_calculation(Calculation::Add(
+                compressed_input_coset,
+                ValueSource::Beta(),
+            ));
+            graph.add_calculation(Calculation::Mul(lc, right_gamma));
+
+            ev.lookups.push(graph);
+        }
+
+        // Trashcans
+        for trash in cs.trashcans.iter() {
+            let mut graph = GraphEvaluator::default();
+
+            trash
+                .constraint_expressions()
+                .iter()
+                .enumerate()
+                .fold(ValueSource::Constant(0), |acc, (index, expr)| {
+                    let expr = graph.add_expression(expr);
+                    let expr = graph
+                        .add_calculation(Calculation::Mul(expr, ValueSource::TrashChallenge()));
+                    graph.add_calculation(Calculation::Add(expr, acc))
+                });
+
+            ev.trashcans.push(graph);
+        }
 
         ev
     }
@@ -299,7 +289,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
         theta: &[F],
         trash_challenge: F,
         lookups: &[Vec<lookup::prover::CommittedLagrange<F>>],
-        trashcans: &[Vec<trash::prover::Committed<F>>],
+        trashcans: &[Vec<trash::prover::CommittedLagrange<F>>],
         permutations: &[permutation::prover::Committed<F>],
         l0: &Polynomial<F, B>,
         l_last: &Polynomial<F, B>,
@@ -355,222 +345,229 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                 }
             });
 
-            // // Permutations
-            // // Beginning index of permutations y'th challenge
-            // let mut y_permutation_start = 0;
-            //
-            // // // We need one challenge per polynomial, per gate.
-            // // cs.gates
-            // //     .iter()
-            // //     .for_each(|g| y_permutation_start += g.polynomials().len());
-            // // println!("y_permutation start: {y_permutation_start}");
-            //
-            // let sets = &permutation.sets;
-            // if !sets.is_empty() {
-            //     let blinding_factors = cs.blinding_factors();
-            //     let last_rotation = Rotation(-((blinding_factors + 1) as i32));
-            //     let chunk_len = cs.degree() - 2;
-            //     let delta_start = beta * &B::g_coset(domain);
-            //
-            //     let permutation_product_cosets: Vec<Polynomial<F, B>> = sets
-            //         .iter()
-            //         .map(|set| B::lagrange_to_self(domain, set.permutation_product_poly.clone()))
-            //         .collect();
-            //
-            //     let first_set_permutation_product_coset =
-            //         permutation_product_cosets.first().unwrap();
-            //     let last_set_permutation_product_coset = permutation_product_cosets.last().unwrap();
-            //
-            //     // Permutation constraints
-            //     parallelize(&mut values, |values, start| {
-            //         let mut beta_term = omega.pow_vartime([start as u64, 0, 0, 0]);
-            //         for (i, value) in values.iter_mut().enumerate() {
-            //             let idx = start + i;
-            //             let r_next = get_rotation_idx(idx, 1, rot_scale, isize);
-            //             let r_last = get_rotation_idx(idx, last_rotation.0, rot_scale, isize);
-            //
-            //             // Enforce only for the first set.
-            //             // l_0(X) * (1 - z_0(X)) = 0
-            //             *value = *value
-            //                 + ((one - first_set_permutation_product_coset[idx]) * l0[idx]) * y[y_permutation_start];
-            //             // Enforce only for the last set.
-            //             // l_last(X) * (z_l(X)^2 - z_l(X)) = 0
-            //             *value = *value
-            //                 + ((last_set_permutation_product_coset[idx]
-            //                     * last_set_permutation_product_coset[idx]
-            //                     - last_set_permutation_product_coset[idx])
-            //                     * l_last[idx]) * y[y_permutation_start + 1];
-            //             // Except for the first set, enforce.
-            //             // l_0(X) * (z_i(X) - z_{i-1}(\omega^(last) X)) = 0
-            //             for set_idx in 1..sets.len() {
-            //                 *value = *value
-            //                     + ((permutation_product_cosets[set_idx][idx]
-            //                         - permutation_product_cosets[set_idx - 1][r_last])
-            //                         * l0[idx]) * y[y_permutation_start + 1 + set_idx];
-            //             }
-            //             // And for all the sets we enforce:
-            //             // (1 - (l_last(X) + l_blind(X))) * (
-            //             //   z_i(\omega X) \prod_j (p(X) + \beta s_j(X) + \gamma)
-            //             // - z_i(X) \prod_j (p(X) + \delta^j \beta X + \gamma)
-            //             // )
-            //             let mut current_delta = delta_start * beta_term;
-            //             for (((y_index, permutation_product_coset), columns), cosets) in
-            //                 permutation_product_cosets
-            //                     .iter()
-            //                     .enumerate()
-            //                     .zip(p.columns.chunks(chunk_len))
-            //                     .zip(permutation_pk_cosets.chunks(chunk_len))
-            //             {
-            //                 let mut left = permutation_product_coset[r_next];
-            //                 for (values, permutation) in columns
-            //                     .iter()
-            //                     .map(|&column| match column.column_type() {
-            //                         Any::Advice(_) => &advice[column.index()],
-            //                         Any::Fixed => &fixed[column.index()],
-            //                         Any::Instance => &instance[column.index()],
-            //                     })
-            //                     .zip(cosets.iter())
-            //                 {
-            //                     left *= values[idx] + beta * permutation[idx] + gamma;
-            //                 }
-            //
-            //                 let mut right = permutation_product_coset[idx];
-            //                 for values in columns.iter().map(|&column| match column.column_type() {
-            //                     Any::Advice(_) => &advice[column.index()],
-            //                     Any::Fixed => &fixed[column.index()],
-            //                     Any::Instance => &instance[column.index()],
-            //                 }) {
-            //                     right *= values[idx] + current_delta + gamma;
-            //                     current_delta *= &F::DELTA;
-            //                 }
-            //
-            //                 *value = *value
-            //                     + ((left - right) * l_active_row[idx])
-            //                     * y[y_permutation_start + permutation.sets.len() + 1 + y_index];
-            //             }
-            //             beta_term *= &omega;
-            //         }
-            //     });
-            // }
-            //
-            // let y_lookup_start = y_permutation_start + 2 * permutations[0].sets.len() + 1;
-            // println!("y_lookup_start: {y_lookup_start}");
-            // // Lookups
-            // for (n, lookup) in lookups.iter().enumerate() {
-            //     // Polynomials required for this lookup.
-            //     // Calculated here so these only have to be kept in memory for the short time
-            //     // they are actually needed.
-            //     let product_coset = B::lagrange_to_self(domain, lookup.product_poly.clone());
-            //     let permuted_input_coset =
-            //         B::lagrange_to_self(domain, lookup.permuted_input_poly.clone());
-            //     let permuted_table_coset =
-            //         B::lagrange_to_self(domain, lookup.permuted_table_poly.clone());
-            //
-            //     // Lookup constraints
-            //     parallelize(&mut values, |values, start| {
-            //         let lookup_evaluator = &self.lookups[n];
-            //         let mut eval_data = lookup_evaluator.instance();
-            //         for (i, value) in values.iter_mut().enumerate() {
-            //             let idx = start + i;
-            //
-            //             let table_value = lookup_evaluator.evaluate(
-            //                 &mut eval_data,
-            //                 fixed,
-            //                 advice,
-            //                 instance,
-            //                 challenges,
-            //                 &beta,
-            //                 &gamma,
-            //                 &theta,
-            //                 &y,
-            //                 &F::ZERO,
-            //                 idx,
-            //                 rot_scale,
-            //                 isize,
-            //             );
-            //
-            //             let r_next = get_rotation_idx(idx, 1, rot_scale, isize);
-            //             let r_prev = get_rotation_idx(idx, -1, rot_scale, isize);
-            //
-            //             let a_minus_s = permuted_input_coset[idx] - permuted_table_coset[idx];
-            //             // l_0(X) * (1 - z(X)) = 0
-            //             *value = *value
-            //                 + ((one - product_coset[idx]) * l0[idx]) * y[y_lookup_start + n * 5];
-            //             // l_last(X) * (z(X)^2 - z(X)) = 0
-            //             *value = *value
-            //                 + ((product_coset[idx] * product_coset[idx] - product_coset[idx])
-            //                     * l_last[idx]) * y[y_lookup_start + n * 5 + 1];
-            //             // (1 - (l_last(X) + l_blind(X))) * (
-            //             //   z(\omega X) (a'(X) + \beta) (s'(X) + \gamma)
-            //             //   - z(X) (\theta^{m-1} a_0(X) + ... + a_{m-1}(X) + \beta) (\theta^{m-1}
-            //             //     s_0(X) + ... + s_{m-1}(X) + \gamma)
-            //             // ) = 0
-            //             *value = *value
-            //                 + ((product_coset[r_next]
-            //                     * (permuted_input_coset[idx] + beta)
-            //                     * (permuted_table_coset[idx] + gamma)
-            //                     - product_coset[idx] * table_value)
-            //                     * l_active_row[idx]) * y[y_lookup_start + n * 5 + 2];
-            //             // Check that the first values in the permuted input expression and permuted
-            //             // fixed expression are the same.
-            //             // l_0(X) * (a'(X) - s'(X)) = 0
-            //             *value = *value + (a_minus_s * l0[idx]) * y[y_lookup_start + n * 5 + 3];
-            //             // Check that each value in the permuted lookup input expression is either
-            //             // equal to the value above it, or the value at the same index in the
-            //             // permuted table expression.
-            //             // (1 - (l_last + l_blind)) * (a′(X) − s′(X))⋅(a′(X) − a′(\omega^{-1} X)) =
-            //             // 0
-            //             *value = *value
-            //                 + (a_minus_s
-            //                     * (permuted_input_coset[idx] - permuted_input_coset[r_prev])
-            //                     * l_active_row[idx]) * y[y_lookup_start + n * 5 + 4];
-            //         }
-            //     });
-            //     println!("Last: {:?}", y_lookup_start + n * 5 + 4);
-            // }
+            // Permutations
+            // Beginning index of permutations y'th challenge
+            let mut idx_y = 0;
 
-            // // Trashcans
-            // for (n, trash) in trashcans.iter().enumerate() {
-            //     // Polynomials required for this trash argument.
-            //     // Calculated here so these only have to be kept in memory for the short time
-            //     // they are actually needed.
-            //     let trash_poly = B::coeff_to_self(domain, trash.trash_poly.clone());
-            //
-            //     // Trash argument constraints.
-            //     parallelize(&mut values, |values, start| {
-            //         let trash_evaluator = &self.trashcans[n];
-            //         let argument = &cs.trashcans[n];
-            //         let mut eval_data = trash_evaluator.instance();
-            //         for (i, value) in values.iter_mut().enumerate() {
-            //             let idx = start + i;
-            //
-            //             let compressed_expression = trash_evaluator.evaluate(
-            //                 &mut eval_data,
-            //                 fixed,
-            //                 advice,
-            //                 instance,
-            //                 challenges,
-            //                 &beta,
-            //                 &gamma,
-            //                 &theta,
-            //                 &trash_challenge,
-            //                 &y,
-            //                 &F::ZERO,
-            //                 idx,
-            //                 rot_scale,
-            //                 isize,
-            //             );
-            //
-            //             let q = match argument.selector() {
-            //                 Expression::Fixed(query) => fixed[query.index().unwrap()][idx],
-            //                 _ => unreachable!(),
-            //             };
-            //
-            //             // compressed_expressions - (1 - q) * trash
-            //             *value = *value * y + (compressed_expression - (one - q) * trash_poly[idx]);
-            //         }
-            //     });
-            // }
+            // We need one challenge per polynomial, per gate.
+            cs.gates
+                .iter()
+                .for_each(|g| idx_y += g.polynomials().len());
+
+            let sets = &permutation.sets;
+            if !sets.is_empty() {
+                let blinding_factors = cs.blinding_factors();
+                let last_rotation = Rotation(-((blinding_factors + 1) as i32));
+                let chunk_len = cs.degree() - 2;
+                let delta_start = beta * &B::g_coset(domain);
+
+                let permutation_product_cosets: Vec<Polynomial<F, B>> = sets
+                    .iter()
+                    .map(|set| B::lagrange_to_self(domain, set.permutation_product_poly.clone()))
+                    .collect();
+
+                let first_set_permutation_product_coset =
+                    permutation_product_cosets.first().unwrap();
+                let last_set_permutation_product_coset = permutation_product_cosets.last().unwrap();
+
+                // Permutation constraints
+                parallelize(&mut values, |values, start| {
+                    let mut beta_term = omega.pow_vartime([start as u64, 0, 0, 0]);
+                    for (i, value) in values.iter_mut().enumerate() {
+                        let idx = start + i;
+                        let r_next = get_rotation_idx(idx, 1, rot_scale, isize);
+                        let r_last = get_rotation_idx(idx, last_rotation.0, rot_scale, isize);
+
+                        // Enforce only for the first set.
+                        // l_0(X) * (1 - z_0(X)) = 0
+                        *value = *value
+                            + ((one - first_set_permutation_product_coset[idx]) * l0[idx]) * y[idx_y];
+                        // Enforce only for the last set.
+                        // l_last(X) * (z_l(X)^2 - z_l(X)) = 0
+                        *value = *value
+                            + ((last_set_permutation_product_coset[idx]
+                                * last_set_permutation_product_coset[idx]
+                                - last_set_permutation_product_coset[idx])
+                                * l_last[idx]) * y[idx_y + 1];
+                        // Except for the first set, enforce.
+                        // l_0(X) * (z_i(X) - z_{i-1}(\omega^(last) X)) = 0
+                        for set_idx in 1..sets.len() {
+                            *value = *value
+                                + ((permutation_product_cosets[set_idx][idx]
+                                    - permutation_product_cosets[set_idx - 1][r_last])
+                                    * l0[idx]) * y[idx_y + 1 + set_idx];
+                        }
+                        // And for all the sets we enforce:
+                        // (1 - (l_last(X) + l_blind(X))) * (
+                        //   z_i(\omega X) \prod_j (p(X) + \beta s_j(X) + \gamma)
+                        // - z_i(X) \prod_j (p(X) + \delta^j \beta X + \gamma)
+                        // )
+                        let mut current_delta = delta_start * beta_term;
+                        for (((y_index, permutation_product_coset), columns), cosets) in
+                            permutation_product_cosets
+                                .iter()
+                                .enumerate()
+                                .zip(p.columns.chunks(chunk_len))
+                                .zip(permutation_pk_cosets.chunks(chunk_len))
+                        {
+                            let mut left = permutation_product_coset[r_next];
+                            for (values, permutation) in columns
+                                .iter()
+                                .map(|&column| match column.column_type() {
+                                    Any::Advice(_) => &advice[column.index()],
+                                    Any::Fixed => &fixed[column.index()],
+                                    Any::Instance => &instance[column.index()],
+                                })
+                                .zip(cosets.iter())
+                            {
+                                left *= values[idx] + beta * permutation[idx] + gamma;
+                            }
+
+                            let mut right = permutation_product_coset[idx];
+                            for values in columns.iter().map(|&column| match column.column_type() {
+                                Any::Advice(_) => &advice[column.index()],
+                                Any::Fixed => &fixed[column.index()],
+                                Any::Instance => &instance[column.index()],
+                            }) {
+                                right *= values[idx] + current_delta + gamma;
+                                current_delta *= &F::DELTA;
+                            }
+
+                            *value = *value
+                                + ((left - right) * l_active_row[idx])
+                                * y[idx_y + 1 + sets.len() + y_index];
+                        }
+                        beta_term *= &omega;
+                    }
+                });
+            }
+
+            // We need two for the permutation argument (1 for the first, 1 for the last),
+            // sets.len() - 1 for linking each column, and sets.len() for the product rule
+            idx_y += 2;
+            if !permutations[0].sets.is_empty() {
+                idx_y += permutations[0].sets.len() - 1;
+                idx_y += permutations[0].sets.len();
+            }
+
+            // Lookups
+            for (n, lookup) in lookups.iter().enumerate() {
+                // Polynomials required for this lookup.
+                // Calculated here so these only have to be kept in memory for the short time
+                // they are actually needed.
+                let product_coset = B::lagrange_to_self(domain, lookup.product_poly.clone());
+                let permuted_input_coset =
+                    B::lagrange_to_self(domain, lookup.permuted_input_poly.clone());
+                let permuted_table_coset =
+                    B::lagrange_to_self(domain, lookup.permuted_table_poly.clone());
+
+                // Lookup constraints
+                parallelize(&mut values, |values, start| {
+                    let lookup_evaluator = &self.lookups[n];
+                    let mut eval_data = lookup_evaluator.instance();
+                    for (i, value) in values.iter_mut().enumerate() {
+                        let idx = start + i;
+
+                        let table_value = lookup_evaluator.evaluate(
+                            &mut eval_data,
+                            fixed,
+                            advice,
+                            instance,
+                            challenges,
+                            &beta,
+                            &gamma,
+                            &trash_challenge,
+                            &theta,
+                            &y,
+                            &F::ZERO,
+                            idx,
+                            rot_scale,
+                            isize,
+                        );
+
+                        let r_next = get_rotation_idx(idx, 1, rot_scale, isize);
+                        let r_prev = get_rotation_idx(idx, -1, rot_scale, isize);
+
+                        let a_minus_s = permuted_input_coset[idx] - permuted_table_coset[idx];
+                        // l_0(X) * (1 - z(X)) = 0
+                        *value = *value
+                            + ((one - product_coset[idx]) * l0[idx]) * y[idx_y];
+                        // l_last(X) * (z(X)^2 - z(X)) = 0
+                        *value = *value
+                            + ((product_coset[idx] * product_coset[idx] - product_coset[idx])
+                                * l_last[idx]) * y[idx_y + 1];
+                        // (1 - (l_last(X) + l_blind(X))) * (
+                        //   z(\omega X) (a'(X) + \beta) (s'(X) + \gamma)
+                        //   - z(X) (\theta^{m-1} a_0(X) + ... + a_{m-1}(X) + \beta) (\theta^{m-1}
+                        //     s_0(X) + ... + s_{m-1}(X) + \gamma)
+                        // ) = 0
+                        *value = *value
+                            + ((product_coset[r_next]
+                                * (permuted_input_coset[idx] + beta)
+                                * (permuted_table_coset[idx] + gamma)
+                                - product_coset[idx] * table_value)
+                                * l_active_row[idx]) * y[idx_y + 2];
+                        // Check that the first values in the permuted input expression and permuted
+                        // fixed expression are the same.
+                        // l_0(X) * (a'(X) - s'(X)) = 0
+                        *value = *value + (a_minus_s * l0[idx]) * y[idx_y + 3];
+                        // Check that each value in the permuted lookup input expression is either
+                        // equal to the value above it, or the value at the same index in the
+                        // permuted table expression.
+                        // (1 - (l_last + l_blind)) * (a′(X) − s′(X))⋅(a′(X) − a′(\omega^{-1} X)) =
+                        // 0
+                        *value = *value
+                            + (a_minus_s
+                                * (permuted_input_coset[idx] - permuted_input_coset[r_prev])
+                                * l_active_row[idx]) * y[idx_y + 4];
+                    }
+                });
+                idx_y += 5
+            }
+
+            // Trashcans
+            for (n, trash) in trashcans.iter().enumerate() {
+                // Polynomials required for this trash argument.
+                // Calculated here so these only have to be kept in memory for the short time
+                // they are actually needed.
+                let trash_poly = B::lagrange_to_self(domain, trash.trash_poly.clone());
+
+                // Trash argument constraints.
+                parallelize(&mut values, |values, start| {
+                    let trash_evaluator = &self.trashcans[n];
+                    let argument = &cs.trashcans[n];
+                    let mut eval_data = trash_evaluator.instance();
+                    for (i, value) in values.iter_mut().enumerate() {
+                        let idx = start + i;
+
+                        let compressed_expression = trash_evaluator.evaluate(
+                            &mut eval_data,
+                            fixed,
+                            advice,
+                            instance,
+                            challenges,
+                            &beta,
+                            &gamma,
+                            &trash_challenge,
+                            &theta,
+                            &y,
+                            &F::ZERO,
+                            idx,
+                            rot_scale,
+                            isize,
+                        );
+
+                        let q = match argument.selector() {
+                            Expression::Fixed(query) => fixed[query.index().unwrap()][idx],
+                            _ => unreachable!(),
+                        };
+
+                        // compressed_expressions - (1 - q) * trash
+                        *value = *value + (compressed_expression - (one - q) * trash_poly[idx]) * y[idx_y];
+                    }
+                });
+                idx_y += 1;
+            }
         }
         values
     }

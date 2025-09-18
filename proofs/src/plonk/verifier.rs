@@ -119,8 +119,8 @@ where
         .unwrap_or(1);
 
 
-    let theta: F = transcript.squeeze_challenge();
-    let theta: Vec<F> = vec![theta; nb_theta];
+    // let theta: F = transcript.squeeze_challenge();
+    let theta: Vec<F> = (0..nb_theta).map(|_| transcript.squeeze_challenge()).collect();
 
     let lookups_permuted = (0..num_proofs)
         .map(|_| -> Result<Vec<_>, _> {
@@ -195,8 +195,10 @@ where
     // We need five for each lookup argument
     nb_y += lookups_committed[0].len() * 5;
 
-    let y: F = transcript.squeeze_challenge();
-    let y: Vec<F> = vec![y; nb_y];
+
+    // let y: F = transcript.squeeze_challenge();
+    // let y: Vec<F> = vec![y; nb_y];
+    let y: Vec<F> = (0..nb_y).map(|_| transcript.squeeze_challenge()).collect();
 
     Ok(VerifierTrace {
         advice_commitments,
@@ -264,7 +266,6 @@ where
     // satisfied with high probability.
     let x: F = transcript.squeeze_challenge();
     let xn = x.pow_vartime([vk.n()]);
-    println!("X(verifier): {:?}", x);
 
     let instance_evals = {
         let (min_rotation, max_rotation) =
@@ -535,14 +536,14 @@ where
         committed_instances,
         instances,
         transcript,
-    )?;
+    ).unwrap();
 
-    verify_algebraic_constraints(
+    Ok(verify_algebraic_constraints(
         vk,
         trace,
         #[cfg(feature = "committed-instances")]
         committed_instances,
         instances,
         transcript,
-    )
+    ).unwrap())
 }

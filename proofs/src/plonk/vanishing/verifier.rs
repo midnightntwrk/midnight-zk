@@ -91,17 +91,13 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> PartiallyEvaluated<F, CS>
         y: Vec<F>,
         xn: F,
     ) -> Evaluated<F, CS> {
-        let expressions = expressions.collect::<Vec<_>>();
-        let polys_len = expressions.len();
-        // let expected_h_eval = expressions[expressions.len() - 1] * y[y.len() - 1];
-        println!("Y from verifier: ");
-        let expected_h_eval = expressions[polys_len - 2..]
-            .into_iter()
-            .zip(y[polys_len - 2..].iter())
-            .fold(F::ZERO, |h_eval, (v, y)| h_eval + *y * v);
-        let expected_h_eval = expected_h_eval * ((xn - F::ONE).invert().unwrap());
+        let a = expressions.collect::<Vec<_>>();
 
-        println!("Expected h eval: {expected_h_eval:?}");
+        let expected_h_eval = a
+            .into_iter()
+            .zip(y.iter())
+            .fold(F::ZERO, |h_eval, (v, y)| h_eval + *y *v);
+        let expected_h_eval = expected_h_eval * ((xn - F::ONE).invert().unwrap());
 
         Evaluated {
             h_commitments: self.h_commitments,

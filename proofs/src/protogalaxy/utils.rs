@@ -166,7 +166,7 @@ impl<F: PrimeField> FoldingProverTrace<F> {
 
         let mut trashcans = Vec::with_capacity(num_trashcans);
         for _ in 0..num_trashcans {
-            trashcans.push(trash::prover::Committed { trash_poly: Polynomial::init(domain_size) })
+            trashcans.push(trash::prover::CommittedLagrange { trash_poly: Polynomial::init(domain_size) })
         }
 
         let mut permutation_sets = Vec::with_capacity(num_permutation_sets);

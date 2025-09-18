@@ -93,14 +93,11 @@ fn main() {
     .expect("Proof generation should not fail");
     println!("Proof generation time: {:?}", now.elapsed());
 
-    assert!(
-        compact_std_lib::verify::<ShaPreImageCircuit, blake2b_simd::State>(
-            &srs.verifier_params(),
-            &vk,
-            &instance,
-            None,
-            &proof
-        )
-        .is_ok()
-    )
+    compact_std_lib::verify::<ShaPreImageCircuit, blake2b_simd::State>(
+        &srs.verifier_params(),
+        &vk,
+        &instance,
+        None,
+        &proof
+    ).unwrap();
 }

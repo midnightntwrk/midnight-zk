@@ -147,7 +147,6 @@ impl<F: WithSmallOrderMulGroup<3>> Constructed<F> {
             .reduce(|acc, eval| acc * xn + eval)
             .expect("H pieces should not be empty");
 
-        println!("H poly eval: {:?}", eval_polynomial(&h_poly, x));
         let random_eval = eval_polynomial(&self.committed.random_poly, x);
         transcript.write(&random_eval)?;
 

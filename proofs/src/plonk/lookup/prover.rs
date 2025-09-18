@@ -88,7 +88,6 @@ impl<F: WithSmallOrderMulGroup<3> + Ord + Hash> Argument<F> {
     {
         // Closure to get values of expressions and compress them
         let compress_expressions = |expressions: &[Expression<F>]| {
-            println!("Size expressions: {:?}. Size theta: {:?}", expressions.len(), theta.len());
             let compressed_expression = expressions
                 .iter()
                 .map(|expression| {

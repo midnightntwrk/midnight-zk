@@ -120,7 +120,6 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
                 * &(self.permuted_table_eval + &gamma);
 
             let compress_expressions = |expressions: &[Expression<F>]| {
-                println!("Size of expressions (verifier): {:?}, size theta {:?}", expressions.len(), theta.len());
                 expressions
                     .iter()
                     .map(|expression| {

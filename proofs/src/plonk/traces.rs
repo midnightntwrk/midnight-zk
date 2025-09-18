@@ -19,7 +19,7 @@ pub struct ProverTrace<F: PrimeField> {
     // This field will be useful for split accumulation
     pub(crate) instance_values: Vec<Vec<Polynomial<F, LagrangeCoeff>>>,
     pub(crate) vanishing: vanishing::prover::Committed<F>,
-    pub(crate) trashcans: Vec<Vec<trash::prover::Committed<F>>>,
+    pub(crate) trashcans: Vec<Vec<trash::prover::CommittedLagrange<F>>>,
     pub(crate) lookups: Vec<Vec<lookup::prover::CommittedLagrange<F>>>,
     pub(crate) permutations: Vec<permutation::prover::Committed<F>>,
     pub(crate) challenges: Vec<F>,
@@ -60,7 +60,7 @@ pub struct FoldingProverTrace<F: PrimeField> {
     pub(crate) vanishing: vanishing::prover::Committed<F>,
     pub(crate) lookups: Vec<Vec<lookup::prover::CommittedLagrange<F>>>,
     pub(crate) permutations: Vec<permutation::prover::Committed<F>>,
-    pub(crate) trashcans: Vec<Vec<trash::prover::Committed<F>>>,
+    pub(crate) trashcans: Vec<Vec<trash::prover::CommittedLagrange<F>>>,
     pub(crate) challenges: Vec<F>,
     pub(crate) beta: F,
     pub(crate) gamma: F,
@@ -193,7 +193,7 @@ impl<F: WithSmallOrderMulGroup<3>> FoldingProverTrace<F> {
             };
 
             let committed_trashcans = self.trashcans[i].iter().map(|t| trash::verifier::Committed {
-                trash_commitment: PCS::commit(params, &t.trash_poly),
+                trash_commitment: PCS::commit_lagrange(params, &t.trash_poly),
             }).collect::<Vec<_>>();
 
             advice_commitments.push(committed_advice);
