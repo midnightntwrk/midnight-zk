@@ -2,6 +2,7 @@
 name = "bench_macros"
 version = "0.1.0"
 edition = "2024"
+license-file.workspace = true
 
 [dependencies]
 quote      = "1.0"
