@@ -3,6 +3,8 @@ resolver = "2"
 
 members = ["proofs", "curves", "circuits", "aggregator", "bench-macros"]
 
+package = { license-file = "LICENSE" }
+
 [workspace.dependencies]
 ff = "0.13"
 group = "0.13"
