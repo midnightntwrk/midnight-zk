@@ -1,6 +1,6 @@
 [package]
 name = "midnight-proofs"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2021"
 rust-version = "1.76.0"
 description = """
@@ -37,7 +37,7 @@ backtrace = { version = "0.3", optional = true }
 ff = { workspace = true }
 group = { workspace = true }
 halo2curves = { workspace = true }
-midnight-curves = { path = "../curves", version = "0.1.0" }
+midnight-curves = { path = "../curves", version = "0.1.1" }
 rand_core = { workspace = true }
 tracing = { workspace = true }
 blake2b_simd = { workspace = true }

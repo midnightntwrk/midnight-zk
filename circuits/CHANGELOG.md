@@ -12,6 +12,13 @@ verification keys break backwards compatibility.
 
 ## [Unreleased]
 ### Added
+
+### Changed
+
+### Removed
+
+## [5.0.0] - 19-09-2025 
+### Added
 * Add CommittedInstanceInstructions [#63](https://github.com/midnightntwrk/midnight-zk/pull/63)
 * Add goldenfiles with examples cost-model [#89](https://github.com/midnightntwrk/midnight-zk/pull/89)
 * New SHA256 chip [#39](https://github.com/midnightntwrk/midnight-zk/pull/39)
