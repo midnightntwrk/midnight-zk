@@ -1,7 +1,7 @@
 [package]
 name = "midnight-curves"
 description = "Implementation of BLS12 381 and Jubjub curves."
-version = "0.1.0"
+version = "0.1.1"
 authors = ["dignifiedquire <me@dignifiedquire.com>", "Midnight team"]
 edition = "2018"
 license = "MIT/Apache-2.0"
