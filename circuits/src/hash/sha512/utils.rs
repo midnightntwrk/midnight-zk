@@ -308,13 +308,8 @@ mod tests {
     fn test_gen_spread_table() {
         let table: Vec<_> = gen_spread_table::<F>().collect();
         let mut rng = rand::thread_rng();
-        let to_fe = |(tag, plain, spreaded)| {
-            (
-                F::from(tag as u64),
-                F::from(plain as u64),
-                u128_to_fe(spreaded),
-            )
-        };
+        let to_fe =
+            |(tag, plain, spreaded)| (F::from(tag as u64), F::from(plain), u128_to_fe(spreaded));
 
         assert!(table.contains(&to_fe((0, 0, 0))));
         for _ in 0..10 {

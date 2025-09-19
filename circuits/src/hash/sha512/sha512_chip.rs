@@ -759,7 +759,7 @@ impl<F: PrimeField> Sha512Chip<F> {
         let mut state = CompressionState::<F>::fixed(layouter, &self.native_gadget, IV)?;
 
         for block_bytes in self.pad(layouter, input_bytes)?.chunks(128) {
-            let block = self.block_from_bytes(layouter, block_bytes)?;
+            let block = self.block_from_bytes(layouter, block_bytes.try_into().unwrap())?;
             let message_blocks = self.message_schedule(layouter, &block)?;
             let mut compression_state = state.clone();
             for i in 0..80 {
@@ -798,17 +798,11 @@ impl<F: PrimeField> Sha512Chip<F> {
     /// Given a byte array of exactly 128 bytes, this function converts it into
     /// a block of 16 `AssignedPlain` values, each (64 bits) value
     /// representing 8 bytes in big-endian.
-    ///
-    /// # Panics
-    ///
-    /// If it does not receive exactly 128 bytes.
     pub(super) fn block_from_bytes(
         &self,
         layouter: &mut impl Layouter<F>,
-        bytes: &[AssignedByte<F>],
+        bytes: &[AssignedByte<F>; 128],
     ) -> Result<[AssignedPlain<F, 64>; 16], Error> {
-        assert_eq!(bytes.len(), 128);
-
         Ok(bytes
             .chunks(8)
             .map(|word_bytes| {
