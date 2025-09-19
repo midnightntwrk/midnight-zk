@@ -93,7 +93,7 @@
       "max_deg": "5",
       "permutations": "15",
       "point_sets": "5",
-      "rows": "17692",
+      "rows": "17691",
       "table_rows": "7933"
     }
   },
@@ -2020,7 +2020,7 @@
       "max_deg": "5",
       "permutations": "8",
       "point_sets": "4",
-      "rows": "4",
+      "rows": "3",
       "table_rows": "257"
     },
     "bxor": {
@@ -2075,7 +2075,7 @@
       "max_deg": "5",
       "permutations": "8",
       "point_sets": "4",
-      "rows": "17",
+      "rows": "15",
       "table_rows": "257"
     },
     "geq_fixed": {
@@ -2086,7 +2086,7 @@
       "max_deg": "5",
       "permutations": "8",
       "point_sets": "4",
-      "rows": "15",
+      "rows": "13",
       "table_rows": "257"
     },
     "greater": {
@@ -2097,7 +2097,7 @@
       "max_deg": "5",
       "permutations": "8",
       "point_sets": "4",
-      "rows": "20",
+      "rows": "18",
       "table_rows": "257"
     },
     "greater_fixed": {
@@ -2108,7 +2108,7 @@
       "max_deg": "5",
       "permutations": "8",
       "point_sets": "4",
-      "rows": "15",
+      "rows": "13",
       "table_rows": "257"
     },
     "leq": {
@@ -2119,7 +2119,7 @@
       "max_deg": "5",
       "permutations": "8",
       "point_sets": "4",
-      "rows": "19",
+      "rows": "17",
       "table_rows": "257"
     },
     "leq_fixed": {
@@ -2130,7 +2130,7 @@
       "max_deg": "5",
       "permutations": "8",
       "point_sets": "4",
-      "rows": "14",
+      "rows": "12",
       "table_rows": "257"
     },
     "lower": {
@@ -2141,7 +2141,7 @@
       "max_deg": "5",
       "permutations": "8",
       "point_sets": "4",
-      "rows": "16",
+      "rows": "14",
       "table_rows": "257"
     },
     "lower_fixed": {
@@ -2152,7 +2152,7 @@
       "max_deg": "5",
       "permutations": "8",
       "point_sets": "4",
-      "rows": "14",
+      "rows": "12",
       "table_rows": "257"
     },
     "sgn0": {

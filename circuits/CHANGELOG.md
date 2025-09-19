@@ -26,6 +26,7 @@ verification keys break backwards compatibility.
 * Add Schnorr signature example [#55](https://github.com/midnightntwrk/midnight-zk/pull/55)
 * Feature to run internal benchmarks [#93](https://github.com/midnightntwrk/midnight-zk/pull/93)
 * Add function to return number of points involved in a proof [#102](https://github.com/midnightntwrk/midnight-zk/pull/102)
+* Cache of range-checked cells in native_gadget [#109](https://github.com/midnightntwrk/midnight-zk/pull/109)
 
 ### Changed
 * Refactored crate to prepare for edition 2024.
@@ -41,8 +42,8 @@ verification keys break backwards compatibility.
 * Optimize `cond_swap` via an extra arith identity [#103](https://github.com/midnightntwrk/midnight-zk/pull/103)
 * Optimisation of Automaton configuration and serialisation of the parsing library [#73](https://github.com/midnightntwrk/midnight-zk/pull/73)
 * Rebase to new cost-model with improved K computation [#104](https://github.com/midnightntwrk/midnight-zk/pull/104)
+* Explicitly used Apache license for crate [#107](https://github.com/midnightntwrk/midnight-zk/pull/107)
 * Compute optimal `max_bit_len` in `compact_std_lib` [#106](https://github.com/midnightntwrk/midnight-zk/pull/106)
-
 
 ### Removed
 

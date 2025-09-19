@@ -14,7 +14,7 @@
 //! A gadget that implement all basic basic operations in the native field, i.e.
 //! basic field operations, decompositions and comparisons
 
-use std::marker::PhantomData;
+use std::{cell::RefCell, cmp::min, collections::HashMap, marker::PhantomData, rc::Rc};
 
 use ff::PrimeField;
 use midnight_proofs::{
@@ -72,6 +72,7 @@ where
 {
     core_decomposition_chip: CoreDecomposition,
     pub(crate) native_chip: NativeArith,
+    constrained_cells: Rc<RefCell<HashMap<AssignedNative<F>, BigUint>>>,
     _marker: PhantomData<F>,
 }
 
@@ -86,8 +87,18 @@ where
         Self {
             core_decomposition_chip,
             native_chip,
+            constrained_cells: Rc::new(RefCell::new(HashMap::new())),
             _marker: PhantomData,
         }
+    }
+
+    /// Updates the (strict) upper-bound of the given assigned cell to the
+    /// minimum between its current bound and the given `bound`.
+    fn update_bound(&self, x: &AssignedNative<F>, bound: BigUint) {
+        let mut map = self.constrained_cells.borrow_mut();
+        map.entry(x.clone())
+            .and_modify(|v| *v = min(v.clone(), bound.clone()))
+            .or_insert(bound);
     }
 }
 
@@ -261,6 +272,13 @@ where
         x: &AssignedNative<F>,
         bound: &BigUint,
     ) -> Result<(), Error> {
+        if let Some(current_bound) = self.constrained_cells.borrow().get(x) {
+            if current_bound <= bound {
+                return Ok(());
+            }
+        }
+        self.update_bound(x, bound.clone());
+
         // compute largest k such that 2^k <= bound
         let k = (bound.bits() - 1) as usize;
         let two_pow_k = BigUint::from(1u8) << k; // 2^k
@@ -319,14 +337,8 @@ where
             Self::MAX_BOUND_IN_BITS,
         );
 
-        let assigned_bounded = {
-            let assigned_element = self.assign(layouter, x.value().copied())?;
-            self.core_decomposition_chip
-                .assert_less_than_pow2(layouter, &assigned_element, n)?;
-            AssignedBounded::to_assigned_bounded_unsafe(&assigned_element, n as u32)
-        };
-        self.assert_equal(layouter, x, &assigned_bounded.value)?;
-        Ok(assigned_bounded)
+        self.assert_lower_than_fixed(layouter, x, &(BigUint::from(1u32) << n))?;
+        Ok(AssignedBounded::to_assigned_bounded_unsafe(x, n as u32))
     }
 
     fn element_of_bounded(
@@ -345,6 +357,12 @@ where
         x: &AssignedBounded<F>,
         y: F,
     ) -> Result<AssignedBit<F>, Error> {
+        if let Some(current_bound) = self.constrained_cells.borrow().get(&x.value) {
+            if *current_bound <= fe_to_big(y) {
+                return self.assign_fixed(layouter, true);
+            }
+        }
+
         let x_as_bint = x.value.value().map(|&x| fe_to_big(x));
         let y_as_bint = fe_to_big(y);
 
@@ -743,6 +761,12 @@ where
         layouter: &mut impl Layouter<F>,
         x: &AssignedNative<F>,
     ) -> Result<AssignedByte<F>, Error> {
+        if let Some(current_bound) = self.constrained_cells.borrow().get(x) {
+            if *current_bound <= BigUint::from(256u32) {
+                return self.convert_unsafe(layouter, x);
+            }
+        }
+        self.update_bound(x, BigUint::from(256u32));
         let b_value = x.value().map(|x| {
             <Self as ConversionInstructions<_, _, AssignedByte<F>>>::convert_value(self, x)
                 .unwrap_or(0u8)
@@ -771,6 +795,7 @@ where
         _layouter: &mut impl Layouter<F>,
         byte: &AssignedByte<F>,
     ) -> Result<AssignedNative<F>, Error> {
+        self.update_bound(&byte.0, BigUint::from(256u32));
         Ok(byte.0.clone())
     }
 }
@@ -1108,6 +1133,16 @@ where
         x: &AssignedNative<F>,
         y: &AssignedNative<F>,
     ) -> Result<(), Error> {
+        let x_bound_opt = self.constrained_cells.borrow().get(x).cloned();
+        if let Some(x_bound) = x_bound_opt {
+            self.update_bound(y, x_bound.clone());
+        }
+
+        let y_bound_opt = self.constrained_cells.borrow().get(y).cloned();
+        if let Some(y_bound) = y_bound_opt {
+            self.update_bound(x, y_bound.clone());
+        }
+
         self.native_chip.assert_equal(layouter, x, y)
     }
 
@@ -1265,7 +1300,8 @@ where
     F: PrimeField,
     CoreDecomposition: CoreDecompositionInstructions<F>,
     NativeArith: ArithInstructions<F, AssignedNative<F>>
-        + ConversionInstructions<F, AssignedNative<F>, AssignedBit<F>>,
+        + ConversionInstructions<F, AssignedNative<F>, AssignedBit<F>>
+        + UnsafeConversionInstructions<F, AssignedNative<F>, AssignedBit<F>>,
 {
     fn convert_value(&self, x: &F) -> Option<bool> {
         self.native_chip.convert_value(x)
@@ -1276,6 +1312,12 @@ where
         layouter: &mut impl Layouter<F>,
         x: &AssignedNative<F>,
     ) -> Result<AssignedBit<F>, Error> {
+        if let Some(current_bound) = self.constrained_cells.borrow().get(x) {
+            if *current_bound <= BigUint::from(2u32) {
+                return self.native_chip.convert_unsafe(layouter, x);
+            }
+        }
+        self.update_bound(x, BigUint::from(2u32));
         self.native_chip.convert(layouter, x)
     }
 }
@@ -1298,7 +1340,9 @@ where
         layouter: &mut impl Layouter<F>,
         x: &AssignedBit<F>,
     ) -> Result<AssignedNative<F>, Error> {
-        self.native_chip.convert(layouter, x)
+        let x = self.native_chip.convert(layouter, x)?;
+        self.update_bound(&x, BigUint::from(2u32));
+        Ok(x)
     }
 }
 
