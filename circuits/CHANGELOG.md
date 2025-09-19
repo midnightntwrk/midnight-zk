@@ -12,6 +12,7 @@ verification keys break backwards compatibility.
 
 ## [Unreleased]
 ### Added
+* SHA512 chip [#96](https://github.com/midnightntwrk/midnight-zk/pull/96)
 
 ### Changed
 
