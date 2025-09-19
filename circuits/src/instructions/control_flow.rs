@@ -101,6 +101,7 @@ pub(crate) mod tests {
     enum Operation {
         Select,
         CondAssertEqual,
+        CondSwap,
     }
 
     #[derive(Clone, Debug)]
@@ -112,6 +113,7 @@ pub(crate) mod tests {
         y: Assigned::Element,
         cond: bool,
         expected: Assigned::Element,
+        expected_extra: Option<Assigned::Element>,
         operation: Operation,
         _marker: PhantomData<(F, Assigned, ControlFlowChip)>,
     }
@@ -177,6 +179,15 @@ pub(crate) mod tests {
                     chip.assert_equal_to_fixed(&mut layouter, &res, self.expected.clone())
                 }
                 Operation::CondAssertEqual => chip.cond_assert_equal(&mut layouter, &cond, &x, &y),
+                Operation::CondSwap => {
+                    let (fst, snd) = chip.cond_swap(&mut layouter, &cond, &x, &y)?;
+                    chip.assert_equal_to_fixed(&mut layouter, &fst, self.expected.clone())?;
+                    chip.assert_equal_to_fixed(
+                        &mut layouter,
+                        &snd,
+                        self.expected_extra.clone().unwrap(),
+                    )
+                }
             }?;
 
             chip.load_from_scratch(&mut layouter)
@@ -189,6 +200,7 @@ pub(crate) mod tests {
         y: &Assigned::Element,
         cond: bool,
         expected: &Assigned::Element,
+        expected_extra: Option<&Assigned::Element>,
         operation: Operation,
         must_pass: bool,
         cost_model: bool,
@@ -208,6 +220,7 @@ pub(crate) mod tests {
             y: y.clone(),
             cond,
             expected: expected.clone(),
+            expected_extra: expected_extra.cloned(),
             operation,
             _marker: PhantomData,
         };
@@ -240,50 +253,28 @@ pub(crate) mod tests {
         let mut rng = ChaCha8Rng::seed_from_u64(0xc0ffee);
         let x = Assigned::sample_inner(&mut rng);
         let y = Assigned::sample_inner(&mut rng);
-        run::<F, Assigned, ControlFlowChip>(
-            &x,
-            &y,
-            true,
-            &x,
-            Operation::Select,
-            true,
-            true,
-            name,
-            "select",
-        );
-        run::<F, Assigned, ControlFlowChip>(
-            &x,
-            &y,
-            false,
-            &y,
-            Operation::Select,
-            true,
-            false,
-            "",
-            "",
-        );
-        run::<F, Assigned, ControlFlowChip>(
-            &x,
-            &y,
-            true,
-            &y,
-            Operation::Select,
-            false,
-            false,
-            "",
-            "",
-        );
-        run::<F, Assigned, ControlFlowChip>(
-            &x,
-            &y,
-            false,
-            &x,
-            Operation::Select,
-            false,
-            false,
-            "",
-            "",
-        );
+
+        let mut cost_model = true;
+        let mut test = |cond: bool, output: &Assigned::Element, must_pass: bool| {
+            run::<F, Assigned, ControlFlowChip>(
+                &x,
+                &y,
+                cond,
+                output,
+                None,
+                Operation::Select,
+                must_pass,
+                cost_model,
+                name,
+                "select",
+            );
+            cost_model = false;
+        };
+
+        test(true, &x, true);
+        test(false, &y, true);
+        test(true, &y, false);
+        test(false, &x, false);
     }
 
     pub fn test_cond_assert_equal<F, Assigned, ControlFlowChip>(name: &str)
@@ -299,50 +290,69 @@ pub(crate) mod tests {
         let mut rng = ChaCha8Rng::seed_from_u64(0xc0ffee);
         let x = Assigned::sample_inner(&mut rng);
         let y = Assigned::sample_inner(&mut rng);
-        let none = Assigned::Element::default();
-        run::<F, Assigned, ControlFlowChip>(
-            &x,
-            &x,
-            true,
-            &none,
-            Operation::CondAssertEqual,
-            true,
-            true,
-            name,
-            "cond_assert_equal",
-        );
-        run::<F, Assigned, ControlFlowChip>(
-            &x,
-            &x,
-            false,
-            &none,
-            Operation::CondAssertEqual,
-            true,
-            false,
-            "",
-            "",
-        );
-        run::<F, Assigned, ControlFlowChip>(
-            &x,
-            &y,
-            false,
-            &none,
-            Operation::CondAssertEqual,
-            true,
-            false,
-            "",
-            "",
-        );
-        run::<F, Assigned, ControlFlowChip>(
-            &x,
-            &y,
-            true,
-            &none,
-            Operation::CondAssertEqual,
-            false,
-            false,
-            "",
-            "",
-        );
+
+        let mut cost_model = true;
+        let mut test =
+            |inputs: (&Assigned::Element, &Assigned::Element), cond: bool, must_pass: bool| {
+                run::<F, Assigned, ControlFlowChip>(
+                    inputs.0,
+                    inputs.1,
+                    cond,
+                    &Assigned::Element::default(),
+                    None,
+                    Operation::CondAssertEqual,
+                    must_pass,
+                    cost_model,
+                    name,
+                    "cond_assert_equal",
+                );
+                cost_model = false;
+            };
+
+        test((&x, &x), true, true);
+        test((&x, &y), true, false);
+        test((&x, &x), false, true);
+        test((&x, &y), false, true);
+    }
+
+    pub fn test_cond_swap<F, Assigned, ControlFlowChip>(name: &str)
+    where
+        F: PrimeField + FromUniformBytes<64> + Ord,
+        Assigned: InnerValue + Sampleable,
+        Assigned::Element: Default,
+        ControlFlowChip: ControlFlowInstructions<F, Assigned>
+            + AssignmentInstructions<F, Assigned>
+            + AssertionInstructions<F, Assigned>
+            + FromScratch<F>,
+    {
+        let mut rng = ChaCha8Rng::seed_from_u64(0xc0ffee);
+        let x = Assigned::sample_inner(&mut rng);
+        let y = Assigned::sample_inner(&mut rng);
+
+        let mut cost_model = true;
+        let mut test =
+            |cond: bool, outputs: (&Assigned::Element, &Assigned::Element), must_pass: bool| {
+                run::<F, Assigned, ControlFlowChip>(
+                    &x,
+                    &y,
+                    cond,
+                    outputs.0,
+                    Some(outputs.1),
+                    Operation::CondSwap,
+                    must_pass,
+                    cost_model,
+                    name,
+                    "cond_swap",
+                );
+                cost_model = false;
+            };
+
+        test(true, (&y, &x), true);
+        test(false, (&x, &y), true);
+        test(true, (&x, &y), false);
+        test(false, (&y, &x), false);
+
+        test(true, (&x, &x), false);
+        test(true, (&y, &y), false);
     }
 }

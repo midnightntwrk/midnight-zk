@@ -31,9 +31,11 @@ verification keys break backwards compatibility.
 * Clarified the default directory to download SRS [#95](https://github.com/midnightntwrk/midnight-zk/pull/95)
 * Load only necessary bit_lens in pow2range_chip [#90](https://github.com/midnightntwrk/midnight-zk/pull/90)
 * Reduce degree of foreign/ecc_chip lookup from 6 to 5 [#91](https://github.com/midnightntwrk/midnight-zk/pull/91)
+* Optimize `cond_swap` via an extra arith identity [#103](https://github.com/midnightntwrk/midnight-zk/pull/103)
 * Optimisation of Automaton configuration and serialisation of the parsing library [#73](https://github.com/midnightntwrk/midnight-zk/pull/73)
 * Rebase to new cost-model with improved K computation [#104](https://github.com/midnightntwrk/midnight-zk/pull/104)
 * Explicitly used Apache license for crate [#107](https://github.com/midnightntwrk/midnight-zk/pull/107)
+* Compute optimal `max_bit_len` in `compact_std_lib` [#106](https://github.com/midnightntwrk/midnight-zk/pull/106)
 
 ### Removed
 

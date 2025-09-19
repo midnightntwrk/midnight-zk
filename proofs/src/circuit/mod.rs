@@ -107,6 +107,18 @@ pub struct AssignedCell<V, F: Field> {
     _marker: PhantomData<F>,
 }
 
+impl<V: Eq, F: Field> AssignedCell<V, F> {
+    /// Update the value of an `AssignedCell`.
+    ///
+    /// Returns an error if the cell had a value which is different from the one
+    /// we are trying to set.
+    pub fn update_value(&mut self, v: V) -> Result<(), Error> {
+        self.value.error_if_known_and(|other| v != *other)?;
+        self.value = Value::known(v);
+        Ok(())
+    }
+}
+
 impl<V, F: Field> PartialEq for AssignedCell<V, F> {
     fn eq(&self, other: &Self) -> bool {
         self.cell == other.cell

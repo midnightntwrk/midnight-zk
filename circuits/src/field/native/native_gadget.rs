@@ -1428,6 +1428,16 @@ where
     ) -> Result<AssignedNative<F>, Error> {
         self.native_chip.select(layouter, bit, x, y)
     }
+
+    fn cond_swap(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        cond: &AssignedBit<F>,
+        x: &AssignedNative<F>,
+        y: &AssignedNative<F>,
+    ) -> Result<(AssignedNative<F>, AssignedNative<F>), Error> {
+        self.native_chip.cond_swap(layouter, cond, x, y)
+    }
 }
 
 // Inherit Bit ControlFlow Instructions.
@@ -1447,6 +1457,16 @@ where
         y: &AssignedBit<F>,
     ) -> Result<AssignedBit<F>, Error> {
         self.native_chip.select(layouter, bit, x, y)
+    }
+
+    fn cond_swap(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        bit: &AssignedBit<F>,
+        x: &AssignedBit<F>,
+        y: &AssignedBit<F>,
+    ) -> Result<(AssignedBit<F>, AssignedBit<F>), Error> {
+        self.native_chip.cond_swap(layouter, bit, x, y)
     }
 }
 
@@ -1468,6 +1488,19 @@ where
     ) -> Result<AssignedByte<F>, Error> {
         let byte = self.native_chip.select(layouter, bit, &x.into(), &y.into())?;
         self.convert_unsafe(layouter, &byte)
+    }
+
+    fn cond_swap(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        cond: &AssignedBit<F>,
+        x: &AssignedByte<F>,
+        y: &AssignedByte<F>,
+    ) -> Result<(AssignedByte<F>, AssignedByte<F>), Error> {
+        let (fst, snd) = (self.native_chip).cond_swap(layouter, cond, &x.into(), &y.into())?;
+        let fst = self.convert_unsafe(layouter, &fst)?;
+        let snd = self.convert_unsafe(layouter, &snd)?;
+        Ok((fst, snd))
     }
 }
 
