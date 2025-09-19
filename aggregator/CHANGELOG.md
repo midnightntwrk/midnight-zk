@@ -6,7 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://book.async.rs/overview/stability-guarantees.html).
 
 ## [Unreleased]
+### Added
+### Changed
+### Removed
 
+
+[0.1.1] 
 ### Added
 * Missing load of native_chip and poseidon (although they were not necessary) [#90](https://github.com/midnightntwrk/midnight-zk/pull/90)
 
