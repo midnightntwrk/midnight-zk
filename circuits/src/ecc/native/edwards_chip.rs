@@ -49,8 +49,10 @@ pub const NB_EDWARDS_COLS: usize = 9;
 /// identity represented as (0, 1).
 #[derive(Clone, Debug)]
 pub struct AssignedNativePoint<C: CircuitCurve> {
-    x: AssignedNative<C::Base>,
-    y: AssignedNative<C::Base>,
+    /// Made public for extraction to Picus.
+    pub x: AssignedNative<C::Base>,
+    /// Made public for extraction to Picus.
+    pub y: AssignedNative<C::Base>,
 }
 
 impl<C: CircuitCurve> InnerValue for AssignedNativePoint<C> {
@@ -106,7 +108,7 @@ impl<C: EdwardsCurve> InnerConstants for AssignedNativePoint<C> {
 
 /// Scalars are represented as a vector of assigned bits in little endian.
 #[derive(Clone, Debug)]
-pub struct ScalarVar<C: CircuitCurve>(Vec<AssignedBit<C::Base>>);
+pub struct ScalarVar<C: CircuitCurve>(pub Vec<AssignedBit<C::Base>>);
 
 impl<C: CircuitCurve> InnerValue for ScalarVar<C> {
     type Element = C::Scalar;

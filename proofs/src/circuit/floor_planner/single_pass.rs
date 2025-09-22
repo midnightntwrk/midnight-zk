@@ -215,6 +215,21 @@ impl<'a, F: Field, CS: Assignment<F> + 'a + SyncDeps> Layouter<F>
     fn pop_namespace(&mut self, gadget_name: Option<String>) {
         self.cs.pop_namespace(gadget_name)
     }
+
+    #[cfg(feature = "region-groups")]
+    fn push_group<N, NR, K>(&mut self, name: N, key: K)
+    where
+        NR: Into<String>,
+        N: FnOnce() -> NR,
+        K: crate::circuit::groups::GroupKey,
+    {
+        self.cs.enter_group(name, key)
+    }
+
+    #[cfg(feature = "region-groups")]
+    fn pop_group(&mut self, meta: crate::circuit::groups::RegionsGroup) {
+        self.cs.exit_group(meta)
+    }
 }
 
 struct SingleChipLayouterRegion<'r, 'a, F: Field, CS: Assignment<F> + 'a> {
