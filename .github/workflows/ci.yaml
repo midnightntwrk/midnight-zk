@@ -1,6 +1,8 @@
 name: CI checks
 
 on:
+  schedule:
+    - cron: '*/10 * * * *'
   pull_request:
   push:
     branches:
@@ -57,9 +59,9 @@ jobs:
           path: circuits/examples/assets/bls_filecoin_2p19
           key: fixed-srs-cache
 
-      - name: Run test 100 times serially
+      - name: Run test 1000 times serially
         run: |
-          for i in {1..100}; do
+          for i in {1..1000}; do
             cargo test --release vk_write_then_read_processed -- --test-threads=1 --nocapture
           done
 
