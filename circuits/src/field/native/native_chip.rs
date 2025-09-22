@@ -1047,7 +1047,7 @@ impl<F: PrimeField> Instantiable<F> for AssignedBit<F> {
 /// on assigned bits. It prevents the user from creating an `AssignedBit`
 /// without using the designated entry points, which guarantee (with
 /// constraints) that the assigned value is indeed 0 or 1.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, picus::DecomposeInCells)]
 #[must_use]
 pub struct AssignedBit<F: PrimeField>(pub(crate) AssignedNative<F>);
 

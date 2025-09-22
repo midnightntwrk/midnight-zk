@@ -47,7 +47,7 @@ pub const NB_EDWARDS_COLS: usize = 9;
 
 /// A twisted Edwards curve point represented in affine (x, y) coordinates, the
 /// identity represented as (0, 1).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, picus::DecomposeInCells)]
 pub struct AssignedNativePoint<C: CircuitCurve> {
     /// Made public for extraction to Picus.
     pub x: AssignedNative<C::Base>,
@@ -107,7 +107,7 @@ impl<C: EdwardsCurve> InnerConstants for AssignedNativePoint<C> {
 }
 
 /// Scalars are represented as a vector of assigned bits in little endian.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, picus::DecomposeInCells)]
 pub struct ScalarVar<C: CircuitCurve>(pub Vec<AssignedBit<C::Base>>);
 
 impl<C: CircuitCurve> InnerValue for ScalarVar<C> {
@@ -477,11 +477,12 @@ impl<C: EdwardsCurve> EccChip<C> {
     }
 
     /// Given the scalar in little-endian, double and add for each bit.
+    #[picus::group]
     pub fn mul(
         &self,
         layouter: &mut impl Layouter<C::Base>,
-        scalar: &ScalarVar<C>,
-        base: &AssignedNativePoint<C>,
+        #[input] scalar: &ScalarVar<C>,
+        #[input] base: &AssignedNativePoint<C>,
     ) -> Result<AssignedNativePoint<C>, Error> {
         let config = &self.config();
 
@@ -552,11 +553,12 @@ impl<C: EdwardsCurve> EccInstructions<C::Base, C> for EccChip<C> {
     type Coordinate = AssignedNative<C::Base>;
     type Scalar = ScalarVar<C>;
 
+    #[picus::group]
     fn add(
         &self,
         layouter: &mut impl Layouter<C::Base>,
-        p: &Self::Point,
-        q: &Self::Point,
+        #[input] p: &Self::Point,
+        #[input] q: &Self::Point,
     ) -> Result<Self::Point, Error> {
         let config = self.config();
         let b: AssignedBit<C::Base> = self.native_gadget.assign_fixed(layouter, true)?;
@@ -594,11 +596,12 @@ impl<C: EdwardsCurve> EccInstructions<C::Base, C> for EccChip<C> {
         })
     }
 
+    #[picus::group]
     fn msm(
         &self,
         layouter: &mut impl Layouter<C::Base>,
-        scalars: &[Self::Scalar],
-        bases: &[Self::Point],
+        #[input] scalars: &[Self::Scalar],
+        #[input] bases: &[Self::Point],
     ) -> Result<Self::Point, Error> {
         let scaled_points = scalars
             .iter()
@@ -611,11 +614,12 @@ impl<C: EdwardsCurve> EccInstructions<C::Base, C> for EccChip<C> {
         })
     }
 
+    #[picus::group]
     fn mul_by_constant(
         &self,
         layouter: &mut impl Layouter<C::Base>,
         scalar: C::Scalar,
-        base: &Self::Point,
+        #[input] base: &Self::Point,
     ) -> Result<Self::Point, Error> {
         if scalar == C::Scalar::ZERO {
             return self.assign_fixed(layouter, C::CryptographicGroup::identity());

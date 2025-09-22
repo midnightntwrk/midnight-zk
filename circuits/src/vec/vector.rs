@@ -38,10 +38,14 @@ use crate::{
 #[derive(Clone, Debug)]
 pub struct AssignedVector<F: PrimeField, T: Vectorizable, const M: usize, const A: usize> {
     /// Padded payload of the vector.
-    pub(crate) buffer: [T; M],
+    ///
+    /// Made public for extraction.
+    pub buffer: [T; M],
 
     /// Effective length of the vector.
-    pub(crate) len: AssignedNative<F>,
+    ///
+    /// Made public for extraction.
+    pub len: AssignedNative<F>,
 }
 
 /// Returns the range where the data should be placed in the buffer.

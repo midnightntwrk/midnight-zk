@@ -87,7 +87,7 @@ impl GroupKey for SourceLocKey {}
 #[derive(Debug, Clone)]
 pub struct RegionsGroup {
     cells: Vec<Cell>,
-    annotations: HashMap<Cell, CellRole>,
+    annotations: HashMap<Cell, RoleAnnotation>,
     /// Shared with the Layouter for tracking if annotating is enabled or not.
     enabled: Rc<RefCell<bool>>,
 }
@@ -133,11 +133,19 @@ impl RegionsGroup {
         if !*self.enabled.borrow() {
             return Ok(());
         }
-        if self.annotations.contains_key(&cell) {
-            return Err(Error::Synthesis);
+        let entry = self.annotations.entry(cell);
+        if matches!(entry, std::collections::hash_map::Entry::Vacant(_)) {
+            self.cells.push(cell);
         }
-        self.cells.push(cell);
-        self.annotations.insert(cell, role);
+        entry.or_default().annotate(role);
+        //if self.annotations.contains_key(&cell) {
+        //    return Err(Error::Transcript(std::io::Error::other(format!(
+        //        "Failed to annotate cell {cell:?} with role {role:?}. Has role {:?}",
+        //        self.annotations.get(&cell)
+        //    ))));
+        //}
+        //self.cells.push(cell);
+        //self.annotations.insert(cell, role);
         Ok(())
     }
 
@@ -329,6 +337,60 @@ pub enum CellRole {
     Internal,
 }
 
+/// Records the annotations of a cell.
+#[derive(Copy, Clone, Debug, Default)]
+enum RoleAnnotation {
+    #[default]
+    Empty,
+    Input,
+    Output,
+    InputOutput,
+    Internal,
+}
+
+impl RoleAnnotation {
+    /// Annotates a role, updating internally based on the existing roles and the given one.
+    ///
+    /// Follows these rules for updating:
+    /// - `{}, R -> {R}`: If its empty just adds the role.
+    /// - `{IN}, OUT -> {IN, OUT}`: If it's an input and is annotated as an output, combine them.
+    /// - `{OUT}, IN -> {IN, OUT}`: If it's an output and is annotated as an input, combine them.
+    /// - `{R*}, INT -> {INT}`: Annotating as internal overrides preexisting roles.
+    /// - `{INT}, R -> {R}`: If it's annotated as internal overrides it with the new role.
+    fn annotate(&mut self, role: CellRole) {
+        match (*self, role) {
+            (RoleAnnotation::Empty | RoleAnnotation::Internal, r) => *self = r.into(),
+            (RoleAnnotation::Input, CellRole::Input) => {}
+            (RoleAnnotation::Input, CellRole::Output) => *self = RoleAnnotation::InputOutput,
+            (RoleAnnotation::Output, CellRole::Output) => {}
+            (RoleAnnotation::Output, CellRole::Input) => *self = RoleAnnotation::InputOutput,
+            (RoleAnnotation::InputOutput, CellRole::Input | CellRole::Output) => {}
+            (_, CellRole::Internal) => *self = RoleAnnotation::Internal,
+        }
+    }
+}
+
+impl From<CellRole> for RoleAnnotation {
+    fn from(value: CellRole) -> Self {
+        match value {
+            CellRole::Input => RoleAnnotation::Input,
+            CellRole::Output => RoleAnnotation::Output,
+            CellRole::Internal => RoleAnnotation::Internal,
+        }
+    }
+}
+
+impl PartialEq<CellRole> for RoleAnnotation {
+    fn eq(&self, other: &CellRole) -> bool {
+        match (self, other) {
+            (RoleAnnotation::Input | RoleAnnotation::InputOutput, CellRole::Input) => true,
+            (RoleAnnotation::Output | RoleAnnotation::InputOutput, CellRole::Output) => true,
+            (RoleAnnotation::Internal, CellRole::Internal) => true,
+            _ => false,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     //! This test verify that the layouters forward properly the information about groups to an
@@ -377,6 +439,8 @@ mod tests {
 
                     type FloorPlanner = $planner;
 
+                    type Params = ();
+
                     fn without_witnesses(&self) -> Self {
                         Self::default()
                     }
@@ -411,16 +475,10 @@ mod tests {
                 .unwrap();
                 let top_level = mock.top_level();
                 {
-                    let top_level: String = top_level
-                        .to_string()
-                        .chars()
-                        .filter(|c| !c.is_whitespace())
-                        .collect();
-                    let expected: String = $expected
-                        .to_string()
-                        .chars()
-                        .filter(|c| !c.is_whitespace())
-                        .collect();
+                    let top_level: String =
+                        top_level.to_string().chars().filter(|c| !c.is_whitespace()).collect();
+                    let expected: String =
+                        $expected.to_string().chars().filter(|c| !c.is_whitespace()).collect();
                     assert_eq!(top_level, expected);
                 }
                 ($checks)(&top_level);
@@ -715,6 +773,38 @@ mod tests {
         }
     );
 
+    circuit_test!(
+        cell_annotated_input_and_output,
+        SimpleFloorPlanner,
+        |config, layouter| {
+            let x = config.advices[0];
+            let y = config.advices[1];
+            let z = config.advices[2];
+            layouter.group(
+                || "g",
+                default_group_key!(),
+                |layouter, group| {
+                    layouter.assign_region(
+                        || "r",
+                        |mut region| {
+                            let x = region.assign_advice(|| "x", x, 0, || Value::<F>::unknown())?;
+                            let y = region.assign_advice(|| "y", y, 0, || Value::<F>::unknown())?;
+                            let z = region.assign_advice(|| "z", z, 0, || Value::<F>::unknown())?;
+                            group.annotate_inputs([x.cell(), y.cell()])?;
+                            group.annotate_outputs([y.cell(), z.cell()])?;
+                            Ok(())
+                        },
+                    )
+                },
+            )
+        },
+        r"(top-level (groups 
+            (g
+                (inputs [R0[A0, 0], R0[A1, 0]])
+                (outputs [R0[A1, 0], R0[A2, 0]])
+            )))"
+    );
+
     // Supporting type for the tests
 
     #[derive(Clone, PartialEq, Eq, Debug)]
@@ -809,8 +899,7 @@ mod tests {
 
     impl Ord for CellDisplay {
         fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-            self.partial_cmp(other)
-                .expect("partial_cmp implementation is a total order")
+            self.partial_cmp(other).expect("partial_cmp implementation is a total order")
         }
     }
 

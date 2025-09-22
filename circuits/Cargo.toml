@@ -18,8 +18,11 @@ midnight-proofs = { path = "../proofs", version = "0.5.0", default-features = fa
     "cost-estimator",
     "circuit-params",
     "committed-instances",
+    "region-groups"
 ] }
 bench_macros = { path = "../bench-macros"}
+llzk-halo2-support = { path = "../support/" }
+picus = { path = "../picus-macros" }
 
 serde = { workspace = true, optional = true }
 serde_derive = { workspace = true, optional = true }
