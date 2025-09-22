@@ -28,9 +28,12 @@ use midnight_proofs::{
     utils::SerdeFormat,
 };
 use serial_test::serial;
+use midnight_curves::Bls12;
 use midnight_proofs::plonk::{ConstraintSystem, permutation};
+use midnight_proofs::poly::commitment::PolynomialCommitmentScheme;
 use midnight_proofs::poly::EvaluationDomain;
 use midnight_proofs::poly::kzg::KZGCommitmentScheme;
+use midnight_proofs::utils::helpers::ProcessedSerdeObject;
 
 type F = midnight_curves::Fq;
 
@@ -140,11 +143,11 @@ fn vk_serde_test(architecture: ZkStdLibArch, write_format: SerdeFormat, read_for
     println!("Read 4 bytes. Cursor position: {:?}", cursor.position());
 
     let mut byte = [0u8; 1];
-    step_cursor.read_exact(&mut byte)?;
+    step_cursor.read_exact(&mut byte).unwrap();
     let max_bit_len = byte[0];
 
     let mut bytes = [0u8; 4];
-    step_cursor.read_exact(&mut bytes)?;
+    step_cursor.read_exact(&mut bytes).unwrap();
     let nb_public_inputs = u32::from_le_bytes(bytes) as usize;
 
     let mut cs = ConstraintSystem::default();
@@ -153,28 +156,28 @@ fn vk_serde_test(architecture: ZkStdLibArch, write_format: SerdeFormat, read_for
     println!("Read 5 bytes. Cursor position: {:?}", cursor.position());
 
     let mut version_byte = [0u8; 1];
-    step_cursor.read_exact(&mut version_byte)?;
+    step_cursor.read_exact(&mut version_byte).unwrap();
 
     let mut k = [0u8; 1];
-    step_cursor.read_exact(&mut k)?;
+    step_cursor.read_exact(&mut k).unwrap();
     let k = u8::from_le_bytes(k);
 
     let mut num_fixed_columns = [0u8; 4];
-    step_cursor.read_exact(&mut num_fixed_columns)?;
+    step_cursor.read_exact(&mut num_fixed_columns).unwrap();
     let num_fixed_columns = u32::from_le_bytes(num_fixed_columns);
 
     println!("Read 6 bytes. Cursor position: {:?}", cursor.position());
 
     let fixed_commitments: Vec<_> = (0..num_fixed_columns)
-        .map(|_| KZGCommitmentScheme::Commitment::read(&mut step_cursor, read_format))
-        .collect::<Result<_, _>>()?;
+        .map(|_| <KZGCommitmentScheme<Bls12> as PolynomialCommitmentScheme<F>>::Commitment::read(&mut step_cursor, read_format))
+        .collect::<Result<_, _>>().unwrap();
 
     println!("Read fixed_commitments ({num_fixed_columns} x 48) bytes. Cursor position: {:?}", cursor.position());
 
     let permutation_len = cs.permutation().columns.len();
     let commitments = (0..permutation_len)
-        .map(|_| KZGCommitmentScheme::Commitment::read(&mut step_cursor, read_format))
-        .collect::<Result<Vec<_>, _>>()?;
+        .map(|_| <KZGCommitmentScheme<Bls12> as PolynomialCommitmentScheme<F>>::Commitment::read(&mut step_cursor, read_format))
+        .collect::<Result<Vec<_>, _>>().unwrap();
 
     println!("Read permutation_commitments ({permutation_len} x 48 bytes). Cursor position: {:?}", cursor.position());
 
