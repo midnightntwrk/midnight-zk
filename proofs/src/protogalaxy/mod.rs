@@ -22,17 +22,26 @@ pub mod verifier;
 /// circuit.
 #[derive(Clone, Debug)]
 pub struct FoldingPk<F: PrimeField> {
-    domain: EvaluationDomain<F>,
-    cs: ConstraintSystem<F>,
-    l0: Polynomial<F, LagrangeCoeff>,
-    l_last: Polynomial<F, LagrangeCoeff>,
-    l_active_row: Polynomial<F, LagrangeCoeff>,
+    /// TODO
+    pub domain: EvaluationDomain<F>,
+    /// TODO
+    pub cs: ConstraintSystem<F>,
+    /// TODO
+    pub l0: Polynomial<F, LagrangeCoeff>,
+    /// TODO
+    pub l_last: Polynomial<F, LagrangeCoeff>,
+    /// TODO
+    pub l_active_row: Polynomial<F, LagrangeCoeff>,
     // The following three were grouped in a type called permutation::ProverKey.
     // We prefix them here to avoid creating a new type.
-    permutation_pk_permutations: Vec<Polynomial<F, LagrangeCoeff>>,
-    permutation_pk_polys: Vec<Polynomial<F, Coeff>>,
-    permutation_pk_cosets: Vec<Polynomial<F, LagrangeCoeff>>,
-    ev: Evaluator<F>,
+    /// TODO
+    pub permutation_pk_permutations: Vec<Polynomial<F, LagrangeCoeff>>,
+    /// TODO
+    pub permutation_pk_polys: Vec<Polynomial<F, Coeff>>,
+    /// TODO
+    pub permutation_pk_cosets: Vec<Polynomial<F, LagrangeCoeff>>,
+    /// TODO
+    pub ev: Evaluator<F>,
 }
 
 impl<F: PrimeField + WithSmallOrderMulGroup<3>> FoldingPk<F> {

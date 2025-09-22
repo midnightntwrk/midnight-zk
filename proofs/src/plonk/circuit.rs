@@ -2338,6 +2338,27 @@ impl<F: Field> ConstraintSystem<F> {
         .unwrap_or(1)
     }
 
+    /// Compute the degree of the constraint system (the maximum degree of all
+    /// constraints) for folding, where the challenges count as variables.
+    pub fn folding_degree(&self) -> usize {
+        let degree = [
+            Some(self.permutation.required_degree()),
+            self.lookups.iter().map(|l| l.required_degree() + 2).max(), // + 2 due to the lookup challenge
+            self.trashcans.iter().map(|l| l.required_degree()).max(),
+            self.gates
+                .iter()
+                .flat_map(|gate| gate.polynomials().iter().map(|poly| poly.degree()))
+                .max(),
+            self.minimum_degree,
+        ]
+            .iter()
+            .filter_map(|&d| d)
+            .max()
+            .unwrap_or(1);
+
+        degree + 1 // + 1 due to the aggregation challenge used in every identity.
+    }
+
     /// Compute the number of blinding factors necessary to perfectly blind
     /// each of the prover's witness polynomials.
     pub fn blinding_factors(&self) -> usize {

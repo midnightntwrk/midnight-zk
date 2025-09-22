@@ -31,11 +31,16 @@ use crate::{
 /// This prover can perform a 2**K - 1 to one folding
 #[derive(Debug)]
 pub struct ProtogalaxyProver<F: PrimeField, CS: PolynomialCommitmentScheme<F>, const K: usize> {
-    folding_pk: FoldingPk<F>,
-    folded_trace: FoldingProverTrace<F>,
-    error: F,
-    beta: [F; K],
-    _commitment_scheme: PhantomData<CS>,
+    /// TODO
+    pub folding_pk: FoldingPk<F>,
+    /// TODO
+    pub folded_trace: FoldingProverTrace<F>,
+    /// TODO
+    pub error: F,
+    /// TODO
+    pub beta: [F; K],
+    /// TODO
+    pub _commitment_scheme: PhantomData<CS>,
 }
 
 impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: usize>
@@ -64,6 +69,9 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
             + Ord
             + FromUniformBytes<64>,
     {
+        *TOTAL_PCS_TIME.lock().unwrap() = Duration::ZERO;
+        *TOTAL_FFT_TIME.lock().unwrap() = Duration::ZERO;
+
         let folded_trace = compute_trace(
             params,
             &pk,
@@ -79,6 +87,11 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         let folding_pk = FoldingPk::from(pk);
         let beta_powers = [F::ONE; K];
         let error_term = F::ZERO;
+
+        println!("Time with PCS: {:?}", TOTAL_PCS_TIME);
+        println!("Time with FFTs: {:?}", TOTAL_FFT_TIME);
+        *TOTAL_PCS_TIME.lock().unwrap() = Duration::ZERO;
+        *TOTAL_FFT_TIME.lock().unwrap() = Duration::ZERO;
 
         Ok(Self {
             folding_pk,
@@ -188,12 +201,14 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         assert!(traces.len().is_power_of_two());
 
         // We now perform folding of the traces
+        let folding_degree = pk.vk.cs().folding_degree() as u32;
         let degree = pk.vk.cs().degree() as u32;
         println!("Degree: {:?}", degree);
+        println!("Folding degree: {:?}", folding_degree);
 
         // We must increase the degree, since we need to count y as a variable.
         // Computing the real degree seems hard.
-        let dk_domain = EvaluationDomain::new(degree + 2, traces.len().trailing_zeros());
+        let dk_domain = EvaluationDomain::new(folding_degree, traces.len().trailing_zeros());
 
         let poly_g = self.compute_poly_g(&dk_domain, &beta_star, &traces);
 
@@ -596,7 +611,7 @@ mod tests {
         // Normal proofs. We first generate normal proofs to test performance
         let normal_proving = Instant::now();
         for circuit in circuits.iter() {
-            let mut transcript = CircuitTranscript::init();
+            let mut transcript = CircuitTranscript::<PoseidonState<BlsScalar>>::init();
             create_proof(
                 &params,
                 &pk,
@@ -622,7 +637,7 @@ mod tests {
         // Fold proofs. We first initialise folding with the first circuit
         let folding = Instant::now();
         let now = Instant::now();
-        let mut transcript = CircuitTranscript::init();
+        let mut transcript = CircuitTranscript::<PoseidonState<BlsScalar>>::init();
         let protogalaxy = ProtogalaxyProver::<_, _, K>::init(
             &params,
             pk.clone(),
