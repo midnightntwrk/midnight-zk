@@ -166,20 +166,20 @@ fn vk_serde_test(architecture: ZkStdLibArch, write_format: SerdeFormat, read_for
     step_cursor.read_exact(&mut num_fixed_columns).unwrap();
     let num_fixed_columns = u32::from_le_bytes(num_fixed_columns);
 
-    println!("Read 6 bytes. Cursor position: {:?}", cursor.position());
+    println!("Read 6 bytes. Cursor position: {:?}", step_cursor.position());
 
     let fixed_commitments: Vec<_> = (0..num_fixed_columns)
         .map(|_| <KZGCommitmentScheme<Bls12> as PolynomialCommitmentScheme<F>>::Commitment::read(&mut step_cursor, read_format))
         .collect::<Result<_, _>>().unwrap();
 
-    println!("Read fixed_commitments ({num_fixed_columns} x 48) bytes. Cursor position: {:?}", cursor.position());
+    println!("Read fixed_commitments ({num_fixed_columns} x 48) bytes. Cursor position: {:?}", step_cursor.position());
 
     let permutation_len = cs.permutation().columns.len();
     let commitments = (0..permutation_len)
         .map(|_| <KZGCommitmentScheme<Bls12> as PolynomialCommitmentScheme<F>>::Commitment::read(&mut step_cursor, read_format))
         .collect::<Result<Vec<_>, _>>().unwrap();
 
-    println!("Read permutation_commitments ({permutation_len} x 48 bytes). Cursor position: {:?}", cursor.position());
+    println!("Read permutation_commitments ({permutation_len} x 48 bytes). Cursor position: {:?}", step_cursor.position());
 
 
     println!("Step by step worked worked");
