@@ -1,8 +1,9 @@
 use std::{
     collections::{BTreeSet, HashMap, HashSet},
+    hash::Hash,
     iter,
     ops::RangeTo,
-    time::Instant,
+    time::Duration,
 };
 
 use ff::{Field, FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
@@ -20,10 +21,13 @@ use super::{
 use crate::poly::EvaluationDomain;
 use crate::{
     circuit::Value,
+    dev::util::bench,
     plonk::traces::ProverTrace,
     poly::{
-        batch_invert_rational, commitment::PolynomialCommitmentScheme, Coeff,
-        ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial, PolynomialRepresentation, ProverQuery,
+        batch_invert_rational,
+        commitment::{PolynomialCommitmentScheme, TOTAL_PCS_TIME},
+        Coeff, ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial, PolynomialRepresentation,
+        ProverQuery, TOTAL_FFT_TIME,
     },
     transcript::{Hashable, Sampleable, Transcript},
     utils::{arithmetic::eval_polynomial, rational::Rational},
@@ -76,6 +80,7 @@ where
     F: WithSmallOrderMulGroup<3>
         + Sampleable<T::Hash>
         + Hashable<T::Hash>
+        + Hash
         + Ord
         + FromUniformBytes<64>,
 {
@@ -83,7 +88,6 @@ where
     let nb_committed_instances: usize = 0;
 
     if circuits.len() != instances.len() {
-        println!("Is it here now?");
         return Err(Error::InvalidInstances);
     }
 
@@ -105,11 +109,16 @@ where
     pk.vk.hash_into(transcript)?;
 
     let domain = &pk.vk.domain;
-    let mut meta = ConstraintSystem::default();
-    #[cfg(feature = "circuit-params")]
-    let config = ConcreteCircuit::configure_with_params(&mut meta, circuits[0].params());
-    #[cfg(not(feature = "circuit-params"))]
-    let config = ConcreteCircuit::configure(&mut meta);
+    let config = bench("Configure circuit", || {
+        let mut meta = ConstraintSystem::default();
+        #[cfg(feature = "circuit-params")]
+        return Ok::<_, Error>(ConcreteCircuit::configure_with_params(
+            &mut meta,
+            circuits[0].params(),
+        ));
+        #[cfg(not(feature = "circuit-params"))]
+        return Ok::<_, Error>(ConcreteCircuit::configure(&mut meta));
+    })?;
 
     // Selector optimizations cannot be applied here; use the ConstraintSystem
     // from the verification key.
@@ -120,53 +129,55 @@ where
         pub instance_polys: Vec<Polynomial<F, Coeff>>,
     }
 
-    let instance: Vec<InstanceSingle<F>> = instances
-        .iter()
-        .map(|instance| -> Result<InstanceSingle<F>, Error> {
-            let instance_values = instance
-                .iter()
-                .enumerate()
-                .map(|(i, values)| {
-                    // Committed instances go first.
-                    let is_committed_instance = i < nb_committed_instances;
-                    let mut poly = domain.empty_lagrange();
-                    assert_eq!(poly.len(), domain.n as usize);
-                    if values.len() > (poly.len() - (meta.blinding_factors() + 1)) {
-                        return Err(Error::InstanceTooLarge);
-                    }
-                    if !is_committed_instance {
-                        transcript.common(&F::from_u128(values.len() as u128))?;
-                    }
-
-                    for (poly_eval, value) in poly.iter_mut().zip(values.iter()) {
-                        if !is_committed_instance {
-                            transcript.common(value)?;
+    let instance: Vec<InstanceSingle<F>> = bench("Manage instances", || {
+        instances
+            .iter()
+            .map(|instance| -> Result<InstanceSingle<F>, Error> {
+                let instance_values = instance
+                    .iter()
+                    .enumerate()
+                    .map(|(i, values)| {
+                        // Committed instances go first.
+                        let is_committed_instance = i < nb_committed_instances;
+                        let mut poly = domain.empty_lagrange();
+                        assert_eq!(poly.len(), domain.n as usize);
+                        if values.len() > (poly.len() - (meta.blinding_factors() + 1)) {
+                            return Err(Error::InstanceTooLarge);
                         }
-                        *poly_eval = *value;
-                    }
+                        if !is_committed_instance {
+                            transcript.common(&F::from_u128(values.len() as u128))?;
+                        }
 
-                    if is_committed_instance {
-                        transcript.common(&CS::commit_lagrange(params, &poly))?;
-                    }
+                        for (poly_eval, value) in poly.iter_mut().zip(values.iter()) {
+                            if !is_committed_instance {
+                                transcript.common(value)?;
+                            }
+                            *poly_eval = *value;
+                        }
 
-                    Ok(poly)
+                        if is_committed_instance {
+                            transcript.common(&CS::commit_lagrange(params, &poly))?;
+                        }
+
+                        Ok(poly)
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+
+                let instance_polys: Vec<_> = instance_values
+                    .iter()
+                    .map(|poly| {
+                        let lagrange_vec = domain.lagrange_from_vec(poly.to_vec());
+                        domain.lagrange_to_coeff(lagrange_vec)
+                    })
+                    .collect();
+
+                Ok(InstanceSingle {
+                    instance_values,
+                    instance_polys,
                 })
-                .collect::<Result<Vec<_>, _>>()?;
-
-            let instance_polys: Vec<_> = instance_values
-                .iter()
-                .map(|poly| {
-                    let lagrange_vec = domain.lagrange_from_vec(poly.to_vec());
-                    domain.lagrange_to_coeff(lagrange_vec)
-                })
-                .collect();
-
-            Ok(InstanceSingle {
-                instance_values,
-                instance_polys,
             })
-        })
-        .collect::<Result<Vec<_>, _>>()?;
+            .collect::<Result<Vec<_>, _>>()
+    })?;
 
     #[derive(Clone)]
     struct AdviceSingle<F: PrimeField, B: PolynomialRepresentation> {
@@ -318,142 +329,171 @@ where
         }
     }
 
-    let (advice, challenges) = {
-        let mut advice = vec![
-            AdviceSingle::<F, LagrangeCoeff> {
-                advice_polys: vec![domain.empty_lagrange(); meta.num_advice_columns],
-            };
-            instances.len()
-        ];
-        let mut challenges = HashMap::<usize, F>::with_capacity(meta.num_challenges);
-
-        let unusable_rows_start = domain.n as usize - (meta.blinding_factors() + 1);
-        for current_phase in pk.vk.cs.phases() {
-            let column_indices = meta
-                .advice_column_phase
-                .iter()
-                .enumerate()
-                .filter_map(|(column_index, phase)| {
-                    if current_phase == *phase {
-                        Some(column_index)
-                    } else {
-                        None
-                    }
-                })
-                .collect::<BTreeSet<_>>();
-
-            for ((circuit, advice), instances) in
-                circuits.iter().zip(advice.iter_mut()).zip(instances)
-            {
-                let mut witness = WitnessCollection {
-                    k: domain.k(),
-                    current_phase,
-                    advice: vec![domain.empty_lagrange_rational(); meta.num_advice_columns],
-                    unblinded_advice: HashSet::from_iter(meta.unblinded_advice_columns.clone()),
-                    instances,
-                    challenges: &challenges,
-                    // The prover will not be allowed to assign values to advice
-                    // cells that exist within inactive rows, which include some
-                    // number of blinding factors and an extra row for use in the
-                    // permutation argument.
-                    usable_rows: ..unusable_rows_start,
-                    _marker: std::marker::PhantomData,
+    let (advice, challenges) = bench("Manage advices and challenges", || {
+        {
+            let mut advice = vec![
+                AdviceSingle::<F, LagrangeCoeff> {
+                    advice_polys: vec![domain.empty_lagrange(); meta.num_advice_columns],
                 };
+                instances.len()
+            ];
+            let mut challenges = HashMap::<usize, F>::with_capacity(meta.num_challenges);
 
-                // Synthesize the circuit to obtain the witness and other information.
-                ConcreteCircuit::FloorPlanner::synthesize(
-                    &mut witness,
-                    circuit,
-                    config.clone(),
-                    meta.constants.clone(),
-                )?;
-
-                let mut advice_values = batch_invert_rational::<F>(
-                    witness
-                        .advice
-                        .into_iter()
-                        .enumerate()
-                        .filter_map(|(column_index, advice)| {
-                            if column_indices.contains(&column_index) {
-                                Some(advice)
-                            } else {
-                                None
-                            }
-                        })
-                        .collect(),
-                );
-
-                for (column_index, advice_values) in column_indices.iter().zip(&mut advice_values) {
-                    if !witness.unblinded_advice.contains(column_index) {
-                        for cell in &mut advice_values[unusable_rows_start..] {
-                            *cell = F::random(&mut rng);
+            let unusable_rows_start = domain.n as usize - (meta.blinding_factors() + 1);
+            for current_phase in pk.vk.cs.phases() {
+                let column_indices = meta
+                    .advice_column_phase
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(column_index, phase)| {
+                        if current_phase == *phase {
+                            Some(column_index)
+                        } else {
+                            None
                         }
-                    } else {
-                        #[cfg(feature = "sanity-checks")]
-                        for cell in &advice_values[unusable_rows_start..] {
-                            assert_eq!(*cell, F::ZERO);
+                    })
+                    .collect::<BTreeSet<_>>();
+
+                for ((circuit, advice), instances) in
+                    circuits.iter().zip(advice.iter_mut()).zip(instances)
+                {
+                    let mut witness = WitnessCollection {
+                        k: domain.k(),
+                        current_phase,
+                        advice: vec![domain.empty_lagrange_rational(); meta.num_advice_columns],
+                        unblinded_advice: HashSet::from_iter(meta.unblinded_advice_columns.clone()),
+                        instances,
+                        challenges: &challenges,
+                        // The prover will not be allowed to assign values to advice
+                        // cells that exist within inactive rows, which include some
+                        // number of blinding factors and an extra row for use in the
+                        // permutation argument.
+                        usable_rows: ..unusable_rows_start,
+                        _marker: std::marker::PhantomData,
+                    };
+
+                    // Synthesize the circuit to obtain the witness and other information.
+                    ConcreteCircuit::FloorPlanner::synthesize(
+                        &mut witness,
+                        circuit,
+                        config.clone(),
+                        meta.constants.clone(),
+                    )?;
+
+                    let mut advice_values = batch_invert_rational::<F>(
+                        witness
+                            .advice
+                            .into_iter()
+                            .enumerate()
+                            .filter_map(|(column_index, advice)| {
+                                if column_indices.contains(&column_index) {
+                                    Some(advice)
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect(),
+                    );
+
+                    for (column_index, advice_values) in
+                        column_indices.iter().zip(&mut advice_values)
+                    {
+                        if !witness.unblinded_advice.contains(column_index) {
+                            for cell in &mut advice_values[unusable_rows_start..] {
+                                *cell = F::random(&mut rng);
+                            }
+                        } else {
+                            #[cfg(feature = "sanity-checks")]
+                            for cell in &advice_values[unusable_rows_start..] {
+                                assert_eq!(*cell, F::ZERO);
+                            }
                         }
                     }
+
+                    bench("Commit to advices", || {
+                        let advice_commitments: Vec<_> = advice_values
+                            .iter()
+                            .map(|poly| CS::commit_lagrange(params, poly))
+                            .collect();
+
+                        for commitment in &advice_commitments {
+                            transcript.write(commitment)?;
+                        }
+                        for (column_index, advice_values) in
+                            column_indices.iter().zip(advice_values)
+                        {
+                            advice.advice_polys[*column_index] = advice_values;
+                        }
+                        Ok::<_, Error>(())
+                    })?
                 }
 
-                let advice_commitments: Vec<_> = advice_values
-                    .iter()
-                    .map(|poly| CS::commit_lagrange(params, poly))
-                    .collect();
-
-                for commitment in &advice_commitments {
-                    transcript.write(commitment)?;
-                }
-                for (column_index, advice_values) in column_indices.iter().zip(advice_values) {
-                    advice.advice_polys[*column_index] = advice_values;
+                for (index, phase) in meta.challenge_phase.iter().enumerate() {
+                    if current_phase == *phase {
+                        let existing = challenges.insert(index, transcript.squeeze_challenge());
+                        assert!(existing.is_none());
+                    }
                 }
             }
 
-            for (index, phase) in meta.challenge_phase.iter().enumerate() {
-                if current_phase == *phase {
-                    let existing = challenges.insert(index, transcript.squeeze_challenge());
-                    assert!(existing.is_none());
-                }
-            }
+            assert_eq!(challenges.len(), meta.num_challenges);
+            let challenges = (0..meta.num_challenges)
+                .map(|index| challenges.remove(&index).unwrap())
+                .collect::<Vec<_>>();
+
+            Ok::<_, Error>((advice, challenges))
         }
-
-        assert_eq!(challenges.len(), meta.num_challenges);
-        let challenges = (0..meta.num_challenges)
-            .map(|index| challenges.remove(&index).unwrap())
-            .collect::<Vec<_>>();
-
-        (advice, challenges)
-    };
+    })?;
 
     // Sample theta challenge for keeping lookup columns linearly independent
-    let theta: F = transcript.squeeze_challenge();
-
-    let lookups: Vec<Vec<lookup::prover::Permuted<F>>> = instance
+    // We also need to get as many theta as we would use powers, to avoid increasing
+    // the degree of the identity. We need max of lookup.input_expressions =
+    // lookup.table_expressions len Do check that they are equal
+    let nb_theta = pk
+        .vk
+        .cs
+        .lookups
         .iter()
-        .zip(advice.iter())
-        .map(|(instance, advice)| -> Result<Vec<_>, Error> {
-            // Construct and commit to permuted values for each lookup
-            pk.vk
-                .cs
-                .lookups
-                .iter()
-                .map(|lookup| {
-                    lookup.commit_permuted(
-                        pk,
-                        params,
-                        domain,
-                        theta,
-                        &advice.advice_polys,
-                        &pk.fixed_values,
-                        &instance.instance_values,
-                        &challenges,
-                        &mut rng,
-                        transcript,
-                    )
-                })
-                .collect()
+        .map(|l| {
+            assert_eq!(l.input_expressions.len(), l.table_expressions.len());
+            l.input_expressions.len()
         })
-        .collect::<Result<Vec<_>, _>>()?;
+        .max()
+        .unwrap_or(1);
+    println!("Numbers of thetas: {nb_theta}");
+
+
+    let theta: F = transcript.squeeze_challenge();
+    let theta: Vec<F> = vec![theta; nb_theta];
+
+    let lookups: Vec<Vec<lookup::prover::Permuted<F>>> = bench("Prepare lookup", || {
+        instance
+            .iter()
+            .zip(advice.iter())
+            .map(|(instance, advice)| -> Result<Vec<_>, Error> {
+                // Construct and commit to permuted values for each lookup
+                pk.vk
+                    .cs
+                    .lookups
+                    .iter()
+                    .map(|lookup| {
+                        lookup.commit_permuted(
+                            pk,
+                            params,
+                            domain,
+                            &theta,
+                            &advice.advice_polys,
+                            &pk.fixed_values,
+                            &instance.instance_values,
+                            &challenges,
+                            &mut rng,
+                            transcript,
+                        )
+                    })
+                    .collect()
+            })
+            .collect::<Result<Vec<_>, _>>()
+    })?;
 
     // Sample beta challenge
     let beta: F = transcript.squeeze_challenge();
@@ -462,41 +502,71 @@ where
     let gamma: F = transcript.squeeze_challenge();
 
     // Commit to permutations.
-    let permutations: Vec<permutation::prover::Committed<F>> = instance
-        .iter()
-        .zip(advice.iter())
-        .map(|(instance, advice)| {
-            pk.vk.cs.permutation.commit(
-                params,
-                pk,
-                &pk.permutation,
-                &advice.advice_polys,
-                &pk.fixed_values,
-                &instance.instance_values,
-                beta,
-                gamma,
-                &mut rng,
-                transcript,
-            )
-        })
-        .collect::<Result<Vec<_>, _>>()?;
+    let permutations: Vec<permutation::prover::Committed<F>> = bench("Permutations", || {
+        instance
+            .iter()
+            .zip(advice.iter())
+            .map(|(instance, advice)| {
+                pk.vk.cs.permutation.commit(
+                    params,
+                    pk,
+                    &pk.permutation,
+                    &advice.advice_polys,
+                    &pk.fixed_values,
+                    &instance.instance_values,
+                    beta,
+                    gamma,
+                    &mut rng,
+                    transcript,
+                )
+            })
+            .collect::<Result<Vec<_>, _>>()
+    })?;
 
-    let lookups: Vec<Vec<lookup::prover::Committed<F>>> = lookups
-        .into_iter()
-        .map(|lookups| -> Result<Vec<_>, _> {
-            // Construct and commit to products for each lookup
-            lookups
-                .into_iter()
-                .map(|lookup| lookup.commit_product(pk, params, beta, gamma, &mut rng, transcript))
-                .collect::<Result<Vec<_>, _>>()
-        })
-        .collect::<Result<Vec<_>, _>>()?;
+    let lookups: Vec<Vec<lookup::prover::CommittedLagrange<F>>> = bench("Lookup product", || {
+        lookups
+            .into_iter()
+            .map(|lookups| -> Result<Vec<_>, _> {
+                // Construct and commit to products for each lookup
+                lookups
+                    .into_iter()
+                    .map(|lookup| {
+                        lookup.commit_product(pk, params, beta, gamma, &mut rng, transcript)
+                    })
+                    .collect::<Result<Vec<_>, _>>()
+            })
+            .collect::<Result<Vec<_>, _>>()
+    })?;
 
     // Commit to the vanishing argument's random polynomial for blinding h(x_3)
     let vanishing = vanishing::Argument::<F, CS>::commit(params, domain, &mut rng, transcript)?;
 
-    // Obtain challenge for keeping all separate gates linearly independent
+    // To avoid increasing the degree in folding, we need to sample one commit for
+    // each expression that we batch (instead of using powers).
+    let mut nb_y = 0;
+
+    // We need one challenge per polynomial, per gate.
+    pk.vk
+        .cs
+        .gates
+        .iter()
+        .for_each(|g| nb_y += g.polynomials().len());
+    println!("Number of gates: {nb_y}");
+
+    // We need two for the permutation argument (1 for the first, 1 for the last),
+    // sets.len() - 1 for linking each column, and sets.len() for the product rule
+    nb_y += 2;
+    nb_y += permutations[0].sets.len() - 1;
+    nb_y += permutations[0].sets.len();
+
+    println!("Plus permutations; {nb_y}");
+
+    // We need five for each lookup argument
+    nb_y += lookups[0].len() * 5;
+    println!("Plus lookups; {nb_y}");
+
     let y: F = transcript.squeeze_challenge();
+    let y: Vec<F> = vec![y; nb_y];
 
     let (instance_polys, instance_values) = instance
         .into_iter()
@@ -504,15 +574,7 @@ where
         .unzip();
 
     Ok(ProverTrace {
-        advice_polys: advice
-            .into_iter()
-            .map(|a| {
-                a.advice_polys
-                    .into_iter()
-                    .map(|p| domain.lagrange_to_coeff(p))
-                    .collect()
-            })
-            .collect(),
+        advice_polys: advice.into_iter().map(|a| a.advice_polys).collect(),
         instance_polys,
         instance_values,
         vanishing,
@@ -546,6 +608,7 @@ where
     F: WithSmallOrderMulGroup<3>
         + Sampleable<T::Hash>
         + Hashable<T::Hash>
+        + Hash
         + Ord
         + FromUniformBytes<64>,
 {
@@ -569,15 +632,22 @@ where
         ..
     } = trace;
 
+    let advice_polys: Vec<Vec<Polynomial<F, Coeff>>> = advice_polys
+        .into_iter()
+        .map(|a| {
+            a.into_iter()
+                .map(|poly| domain.lagrange_to_coeff(poly))
+                .collect()
+        })
+        .collect();
+
     // Calculate the advice and instance cosets
     let advice_cosets: Vec<Vec<Polynomial<F, ExtendedLagrangeCoeff>>> = advice_polys
         .iter()
         .map(|advice_polys| {
             advice_polys
                 .iter()
-                .map(|poly| {
-                    domain.coeff_to_extended(poly.clone())
-                })
+                .map(|poly| domain.coeff_to_extended(poly.clone()))
                 .collect()
         })
         .collect();
@@ -605,10 +675,10 @@ where
             .collect::<Vec<_>>(),
         &pk.fixed_cosets,
         &challenges,
-        y,
+        &y,
         beta,
         gamma,
-        theta,
+        &theta,
         &lookups,
         &permutations,
         &pk.l0,
@@ -622,6 +692,7 @@ where
         vanishing.construct::<CS, T>(params, pk.get_vk().get_domain(), h_poly, transcript)?;
 
     let x: F = transcript.squeeze_challenge();
+    println!("X: {:?}", x);
 
     // Compute and hash evals for the polynomials of the committed instances of
     // each circuit
@@ -717,7 +788,7 @@ where
                         }),
                 )
                 .chain(permutation.open(pk, x))
-                .chain(lookups.iter().flat_map(move |p| p.open(pk, x)))
+                // .chain(lookups.iter().flat_map(move |p| p.open(pk, x)))
         })
         .chain(
             pk.vk
@@ -731,7 +802,8 @@ where
         )
         .chain(pk.permutation.open(x))
         // We query the h(X) polynomial at x
-        .chain(vanishing.open(x));
+        .chain(vanishing.open(x))
+    ;
 
     CS::multi_open(params, queries, transcript).map_err(|_| Error::ConstraintSystemFailure)
 }
@@ -759,9 +831,12 @@ where
     F: WithSmallOrderMulGroup<3>
         + Sampleable<T::Hash>
         + Hashable<T::Hash>
+        + Hash
         + Ord
         + FromUniformBytes<64>,
 {
+    *TOTAL_PCS_TIME.lock().unwrap() = Duration::ZERO;
+    *TOTAL_FFT_TIME.lock().unwrap() = Duration::ZERO;
     let trace = compute_trace(
         params,
         pk,
@@ -772,14 +847,18 @@ where
         rng,
         transcript,
     )?;
-    finalise_proof(
+    let res = finalise_proof(
         params,
         pk,
         #[cfg(feature = "committed-instances")]
         nb_committed_instances,
         trace,
         transcript,
-    )
+    );
+
+    println!("Time with PCS: {:?}", TOTAL_PCS_TIME.lock().unwrap());
+    println!("Time with FFTs: {:?}", TOTAL_FFT_TIME.lock().unwrap());
+    res
 }
 
 #[test]

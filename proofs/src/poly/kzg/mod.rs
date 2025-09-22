@@ -17,7 +17,7 @@ pub mod msm;
 pub mod params;
 mod utils;
 
-use std::fmt::Debug;
+use std::{fmt::Debug, time::Instant};
 
 use ff::Field;
 use group::{prime::PrimeCurveAffine, Curve, Group};
@@ -28,7 +28,7 @@ use rand_core::OsRng;
 use crate::utils::arithmetic::{truncate, truncated_powers};
 use crate::{
     poly::{
-        commitment::{Params, PolynomialCommitmentScheme},
+        commitment::{Params, PolynomialCommitmentScheme, TOTAL_PCS_TIME},
         kzg::{
             msm::{DualMSM, MSMKZG},
             params::{ParamsKZG, ParamsVerifierKZG},
@@ -75,19 +75,32 @@ where
         params: &Self::Parameters,
         polynomial: &Polynomial<E::Fr, Coeff>,
     ) -> Self::Commitment {
+        #[cfg(feature = "bench-internals")]
+        let start = Instant::now();
+
         let mut scalars = Vec::with_capacity(polynomial.len());
         scalars.extend(polynomial.iter());
         let mut bases = vec![<E::G1 as Curve>::AffineRepr::identity(); params.g.len()];
         <E::G1 as Curve>::batch_normalize(&params.g, bases.as_mut_slice());
         let size = scalars.len();
         assert!(bases.len() >= size);
-        msm_best(&scalars, &bases[0..size])
+        let res = msm_best(&scalars, &bases[0..size]);
+
+        #[cfg(feature = "bench-internals")]
+        {
+            let elapsed = start.elapsed();
+            *TOTAL_PCS_TIME.lock().unwrap() += elapsed;
+        }
+        res
     }
 
     fn commit_lagrange(
         params: &Self::Parameters,
         poly: &Polynomial<E::Fr, LagrangeCoeff>,
     ) -> E::G1 {
+        #[cfg(feature = "bench-internals")]
+        let start = Instant::now();
+
         let mut scalars = Vec::with_capacity(poly.len());
         scalars.extend(poly.iter());
         let size = scalars.len();
@@ -96,7 +109,14 @@ where
         <E::G1 as Curve>::batch_normalize(&params.g_lagrange, bases.as_mut_slice());
         assert!(bases.len() >= size);
 
-        msm_best(&scalars, &bases[0..size])
+        let res = msm_best(&scalars, &bases[0..size]);
+
+        #[cfg(feature = "bench-internals")]
+        {
+            let elapsed = start.elapsed();
+            *TOTAL_PCS_TIME.lock().unwrap() += elapsed;
+        }
+        res
     }
 
     fn multi_open<'com, T: Transcript>(
@@ -156,6 +176,7 @@ where
         transcript.write(&f_com).map_err(|_| Error::OpeningError)?;
 
         let x3: E::Fr = transcript.squeeze_challenge();
+        println!("X3 prover: {:?}", x3);
         #[cfg(feature = "truncated-challenges")]
         let x3 = truncate(x3);
 
@@ -166,6 +187,7 @@ where
         }
 
         let x4: E::Fr = transcript.squeeze_challenge();
+        println!("X4 (prover): {x4:?}");
 
         let final_poly = {
             let mut polys = q_polys;
@@ -258,6 +280,7 @@ where
         // Sample a challenge x_3 for checking that f(X) was committed to
         // correctly.
         let x3: E::Fr = transcript.squeeze_challenge();
+        println!("X3: {:?}", x3);
         #[cfg(feature = "truncated-challenges")]
         let x3 = truncate(x3);
 
@@ -285,6 +308,7 @@ where
             });
 
         let x4: E::Fr = transcript.squeeze_challenge();
+        println!("X4 (verifier): {x4:?}");
 
         let final_com = {
             let mut coms = q_coms;
@@ -316,6 +340,7 @@ where
         };
 
         let pi: E::G1 = transcript.read().map_err(|_| Error::SamplingError)?;
+        println!("Apprently passed reading the proof");
 
         let mut pi_msm = MSMKZG::<E>::init();
         pi_msm.append_term(E::Fr::ONE, pi);

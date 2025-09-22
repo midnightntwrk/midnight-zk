@@ -160,3 +160,16 @@ pub(super) fn cell_values<'a, F: Field>(
     );
     cell_values.into_iter().collect()
 }
+
+#[cfg(feature = "bench-internals")]
+pub fn bench<T, E, F: FnOnce() -> Result<T, E>>(label: &str, f: F) -> Result<T, E> {
+    let start = std::time::Instant::now();
+    let result = f();
+    println!("{:<40}:{:?}", label, start.elapsed());
+    result
+}
+
+#[cfg(not(feature = "bench-internals"))]
+pub fn bench<T, E, F: FnOnce() -> Result<T, E>>(_label: &str, f: F) -> Result<T, E> {
+    f()
+}

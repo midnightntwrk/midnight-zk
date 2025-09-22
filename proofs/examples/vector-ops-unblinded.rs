@@ -1,3 +1,4 @@
+use std::hash::Hash;
 /// Here we construct two circuits one for adding two vectors and one for
 /// multiplying and we check that their transcripts have the same inputs
 /// by way of the unblinded inputs.
@@ -507,6 +508,7 @@ where
     E::Fr: WithSmallOrderMulGroup<3>
         + FromUniformBytes<64>
         + Sampleable<State>
+        + Hash
         + Hashable<State>
         + Ord,
 {

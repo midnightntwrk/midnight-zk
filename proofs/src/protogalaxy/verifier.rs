@@ -1,6 +1,6 @@
 //! TODO
 
-use ff::{FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
+use ff::{FromUniformBytes, WithSmallOrderMulGroup};
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
@@ -12,10 +12,10 @@ use crate::{
         Error, Evaluator, VerifyingKey,
     },
     poly::{commitment::PolynomialCommitmentScheme, EvaluationDomain, LagrangeCoeff, Polynomial},
+    protogalaxy::utils::{linear_combination, pow_vec},
     transcript::{Hashable, Sampleable, Transcript},
     utils::arithmetic::eval_polynomial,
 };
-use crate::protogalaxy::utils::{linear_combination, pow_vec};
 
 /// This verifier can perform a 2**K - 1 to one folding
 #[derive(Debug)]
@@ -103,7 +103,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         // TODO: Is this sufficient to check H-consistency? I'm not 'checking' anything,
         // but I'm computing the challenges myself - I believe that is enough.
         let traces = instances
-            .into_iter()
+            .iter()
             .map(|instance| {
                 let trace = parse_trace(
                     vk,
@@ -124,7 +124,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
             res
         });
 
-        let _committed_f: CS::Commitment = transcript.read()?;
+        // let _committed_f: CS::Commitment = transcript.read()?;
         let alpha: F = transcript.squeeze_challenge();
         let eval_commited_f: F = transcript.read()?;
 
@@ -164,6 +164,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
     /// This function verifies that a folde trace satisfies the relaxed
     /// relation.
     // TODO: need to verify that the commitment is correct as well.
+    #[allow(clippy::too_many_arguments)]
     pub fn is_sat(
         &self,
         params: &CS::Parameters,
@@ -177,12 +178,12 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
     ) -> Result<(), Error> {
         // First we check that the committed folded witness corresponds to the folded
         // instance
-        let committed_folded_witness = folded_witness.commit(params, vk.get_domain());
+        let committed_folded_witness = folded_witness.commit(params);
 
         assert_eq!(committed_folded_witness, self.verifier_folding_trace);
 
-        // Next, we evaluate the f_i function over the folded trace, to see it corresponds
-        // with the computed error.
+        // Next, we evaluate the f_i function over the folded trace, to see it
+        // corresponds with the computed error.
         let FoldingProverTrace {
             fixed_polys,
             advice_polys,
@@ -200,20 +201,17 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         let witness_poly = evaluator.evaluate_h::<LagrangeCoeff>(
             vk.get_domain(),
             vk.cs(),
-            &advice_polys
-                .iter()
-                .map(Vec::as_slice)
-                .collect::<Vec<_>>(),
+            &advice_polys.iter().map(Vec::as_slice).collect::<Vec<_>>(),
             &instance_values
                 .iter()
                 .map(|i| i.as_slice())
                 .collect::<Vec<_>>(),
             &fixed_polys,
             &challenges,
-            y,
+            &y,
             beta,
             gamma,
-            theta,
+            &theta,
             &lookups,
             &permutation,
             l0,
@@ -231,7 +229,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
             .reduce(|| F::ZERO, |a, b| a + b);
 
         if expected_result == self.error_term {
-            return Ok(());
+            Ok(())
         } else {
             Err(Error::Opening)
         }
@@ -259,8 +257,12 @@ fn fold_traces<F: WithSmallOrderMulGroup<3>, PCS: PolynomialCommitmentScheme<F>>
         traces[0].fixed_commitments.len(),
         traces[0].advice_commitments[0].len(),
         traces[0].lookups[0].len(),
-        traces[0].permutations[0].permutation_product_commitments.len(),
+        traces[0].permutations[0]
+            .permutation_product_commitments
+            .len(),
         traces[0].challenges.len(),
+        traces[0].theta.len(),
+        traces[0].y.len(),
     );
     let lagranges_in_gamma = lagrange_polys
         .iter()

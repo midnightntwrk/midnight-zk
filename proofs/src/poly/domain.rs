@@ -1,7 +1,11 @@
 //! Contains utilities for performing polynomial arithmetic over an evaluation
 //! domain that is of a suitable size for the application.
 
-use std::marker::PhantomData;
+use std::{
+    marker::PhantomData,
+    sync::Mutex,
+    time::{Duration, Instant},
+};
 
 use ff::WithSmallOrderMulGroup;
 use group::ff::{BatchInvert, Field};
@@ -9,6 +13,8 @@ use halo2curves::fft::best_fft;
 
 use super::{Coeff, ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial, Rotation};
 use crate::utils::{arithmetic::parallelize, rational::Rational};
+
+pub(crate) static TOTAL_FFT_TIME: Mutex<Duration> = Mutex::new(Duration::ZERO);
 
 /// This structure contains precomputed constants and other details needed for
 /// performing operations on an evaluation domain of size $2^k$ and an extended
@@ -224,8 +230,16 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
     pub fn lagrange_to_coeff(&self, mut a: Polynomial<F, LagrangeCoeff>) -> Polynomial<F, Coeff> {
         assert_eq!(a.values.len(), 1 << self.k);
 
+        #[cfg(feature = "bench-internals")]
+        let start = Instant::now();
         // Perform inverse FFT to obtain the polynomial in coefficient form
         Self::ifft(&mut a.values, self.omega_inv, self.k, self.ifft_divisor);
+
+        #[cfg(feature = "bench-internals")]
+        {
+            let elapsed = start.elapsed();
+            *TOTAL_FFT_TIME.lock().unwrap() += elapsed;
+        }
 
         Polynomial {
             values: a.values,
@@ -238,7 +252,15 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
     pub fn coeff_to_lagrange(&self, mut a: Polynomial<F, Coeff>) -> Polynomial<F, LagrangeCoeff> {
         assert_eq!(a.values.len(), 1 << self.k);
 
+        #[cfg(feature = "bench-internals")]
+        let start = Instant::now();
+
         best_fft(&mut a.values, self.omega, self.k);
+        #[cfg(feature = "bench-internals")]
+        {
+            let elapsed = start.elapsed();
+            *TOTAL_FFT_TIME.lock().unwrap() += elapsed;
+        }
 
         Polynomial {
             values: a.values,
@@ -256,7 +278,17 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
 
         self.distribute_powers_zeta(&mut a.values, true);
         a.values.resize(self.extended_len(), F::ZERO);
+
+        #[cfg(feature = "bench-internals")]
+        let start = Instant::now();
+
         best_fft(&mut a.values, self.extended_omega, self.extended_k);
+
+        #[cfg(feature = "bench-internals")]
+        {
+            let elapsed = start.elapsed();
+            *TOTAL_FFT_TIME.lock().unwrap() += elapsed;
+        }
 
         Polynomial {
             values: a.values,
@@ -272,6 +304,8 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
     pub fn extended_to_coeff(&self, mut a: Polynomial<F, ExtendedLagrangeCoeff>) -> Vec<F> {
         assert_eq!(a.values.len(), self.extended_len());
 
+        #[cfg(feature = "bench-internals")]
+        let start = Instant::now();
         // Inverse FFT
         Self::ifft(
             &mut a.values,
@@ -279,6 +313,12 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
             self.extended_k,
             self.extended_ifft_divisor,
         );
+
+        #[cfg(feature = "bench-internals")]
+        {
+            let elapsed = start.elapsed();
+            *TOTAL_FFT_TIME.lock().unwrap() += elapsed;
+        }
 
         // Distribute powers to move from coset; opposite from the
         // transformation we performed earlier.
@@ -298,6 +338,9 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
     ) -> Polynomial<F, LagrangeCoeff> {
         assert_eq!(a.values.len(), self.extended_len());
 
+        #[cfg(feature = "bench-internals")]
+        let start = Instant::now();
+
         Self::ifft(
             &mut a.values,
             self.extended_omega_inv,
@@ -310,6 +353,11 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
 
         best_fft(&mut a.values, self.omega, self.k);
 
+        #[cfg(feature = "bench-internals")]
+        {
+            let elapsed = start.elapsed();
+            *TOTAL_FFT_TIME.lock().unwrap() += elapsed;
+        }
         Polynomial {
             values: a.values,
             _marker: PhantomData,
