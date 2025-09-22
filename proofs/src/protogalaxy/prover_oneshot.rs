@@ -32,7 +32,7 @@ struct ProtogalaxyProverOneShot<F: PrimeField, CS: PolynomialCommitmentScheme<F>
 
 impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: usize> ProtogalaxyProverOneShot<F, CS, K> {
     /// Fold
-    /// TODO: We assume that circuits.len() + 1 is a power of 2.
+    /// We assume that circuits.len() is a power of 2.
     pub fn fold<C, T>(
         params: &CS::Parameters,
         pk: ProvingKey<F, CS>,
