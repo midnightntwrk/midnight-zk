@@ -17,7 +17,7 @@ pub mod msm;
 pub mod params;
 mod utils;
 
-use std::{fmt::Debug, time::Instant, hash::Hash};
+use std::{fmt::Debug, hash::Hash, time::Instant};
 
 use ff::Field;
 use group::Group;

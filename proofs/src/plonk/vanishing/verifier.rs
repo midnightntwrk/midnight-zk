@@ -93,10 +93,8 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> PartiallyEvaluated<F, CS>
     ) -> Evaluated<F, CS> {
         let a = expressions.collect::<Vec<_>>();
 
-        let expected_h_eval = a
-            .into_iter()
-            .zip(y.iter())
-            .fold(F::ZERO, |h_eval, (v, y)| h_eval + *y *v);
+        let expected_h_eval =
+            a.into_iter().zip(y.iter()).fold(F::ZERO, |h_eval, (v, y)| h_eval + *y * v);
         let expected_h_eval = expected_h_eval * ((xn - F::ONE).invert().unwrap());
 
         Evaluated {

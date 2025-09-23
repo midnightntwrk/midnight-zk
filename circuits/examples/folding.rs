@@ -1,23 +1,21 @@
 use std::time::Instant;
+
 use group::Group;
-use rand::{Rng, RngCore, SeedableRng};
-use rand::rngs::OsRng;
+use midnight_circuits::{
+    compact_std_lib,
+    compact_std_lib::{MidnightCircuit, Relation, ZkStdLib, ZkStdLibArch},
+    hash::poseidon::PoseidonState,
+    instructions::AssignmentInstructions,
+    testing_utils::plonk_api::filecoin_srs,
+};
+use midnight_proofs::{
+    circuit::{Layouter, Value},
+    plonk::Error,
+    protogalaxy::{prover::ProtogalaxyProver, verifier::ProtogalaxyVerifier},
+    transcript::{CircuitTranscript, Transcript},
+};
+use rand::{rngs::OsRng, Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
-use sha2::Digest;
-use midnight_circuits::compact_std_lib;
-use midnight_circuits::compact_std_lib::{MidnightCircuit, Relation, ZkStdLib, ZkStdLibArch};
-use midnight_circuits::hash::poseidon::PoseidonState;
-use midnight_circuits::instructions::{AssignmentInstructions, PublicInputInstructions};
-use midnight_circuits::testing_utils::plonk_api::filecoin_srs;
-use midnight_circuits::types::{AssignedByte, Instantiable};
-use midnight_curves::Bls12;
-use midnight_proofs::circuit::{Layouter, Value};
-use midnight_proofs::plonk::{Error, keygen_pk, keygen_vk_with_k, create_proof};
-use midnight_proofs::poly::kzg::KZGCommitmentScheme;
-use midnight_proofs::poly::kzg::params::ParamsKZG;
-use midnight_proofs::protogalaxy::prover::ProtogalaxyProver;
-use midnight_proofs::protogalaxy::verifier::ProtogalaxyVerifier;
-use midnight_proofs::transcript::{CircuitTranscript, Transcript};
 
 type F = midnight_curves::Fq;
 type C = midnight_curves::G1Projective;
@@ -30,7 +28,7 @@ impl Relation for ShaPreImageCircuit {
 
     type Witness = [u8; 24]; // 192 = 24 * 8
 
-    fn format_instance(instance: &Self::Instance) -> Vec<F> {
+    fn format_instance(_instance: &Self::Instance) -> Vec<F> {
         vec![]
     }
 
@@ -43,8 +41,9 @@ impl Relation for ShaPreImageCircuit {
     ) -> Result<(), Error> {
         let witness_bytes = witness.transpose_array();
         let assigned_input = std_lib.assign_many(layouter, &witness_bytes)?;
-        let output = std_lib.sha256(layouter, &assigned_input)?;
-        // output.iter().try_for_each(|b| std_lib.constrain_as_public_input(layouter, b))
+        let _output = std_lib.sha256(layouter, &assigned_input)?;
+        // output.iter().try_for_each(|b| std_lib.constrain_as_public_input(layouter,
+        // b))
         Ok(())
     }
 
@@ -82,7 +81,8 @@ fn main() {
 
     // Sample a random preimage as the witness.
     let mut rng = ChaCha8Rng::from_entropy();
-    let witness: [[u8; 24]; NB_FOLDED] = core::array::from_fn(|_| core::array::from_fn(|_| rng.gen()));
+    let witness: [[u8; 24]; NB_FOLDED] =
+        core::array::from_fn(|_| core::array::from_fn(|_| rng.gen()));
 
     let mut formatted_instances = Vec::with_capacity(NB_FOLDED);
     let mut formatted_committed_instance = Vec::with_capacity(NB_FOLDED);
@@ -93,12 +93,17 @@ fn main() {
     let normal_proving = Instant::now();
     for witness in witness.iter() {
         compact_std_lib::prove::<ShaPreImageCircuit, blake2b_simd::State>(
-            &srs, &pk, &relation, &(), witness.clone(), OsRng,
+            &srs,
+            &pk,
+            &relation,
+            &(),
+            *witness,
+            OsRng,
         )
-            .expect("Proof generation should not fail");
-        circuits.push(MidnightCircuit::new(&relation, (), witness.clone()));
+        .expect("Proof generation should not fail");
+        circuits.push(MidnightCircuit::new(&relation, (), *witness));
         formatted_instances.push(ShaPreImageCircuit::format_instance(&()));
-        formatted_committed_instance.push(ShaPreImageCircuit::format_committed_instances(&witness));
+        formatted_committed_instance.push(ShaPreImageCircuit::format_committed_instances(witness));
     }
     println!(
         "Time to generate {} proofs: {:?}",
@@ -119,9 +124,8 @@ fn main() {
         &mut rng,
         &mut transcript,
     )
-        .expect("Failed to initialise folder");
+    .expect("Failed to initialise folder");
     println!("Time to initialise: {:?}", now.elapsed());
-
 
     let protogalaxy = protogalaxy
         .fold(
@@ -129,7 +133,11 @@ fn main() {
             pk.pk(),
             circuits[1..].to_vec(),
             1,
-            &[&[&formatted_committed_instance[1], &formatted_instances[1]], &[&formatted_committed_instance[2], &formatted_instances[2]], &[&formatted_committed_instance[3], &formatted_instances[3]]],
+            &[
+                &[&formatted_committed_instance[1], &formatted_instances[1]],
+                &[&formatted_committed_instance[2], &formatted_instances[2]],
+                &[&formatted_committed_instance[3], &formatted_instances[3]],
+            ],
             &mut rng,
             &mut transcript,
         )
@@ -138,7 +146,8 @@ fn main() {
     let folding_time = folding.elapsed().as_millis();
     println!("Time for folding: {:?}ms", folding_time);
 
-    let mut transcript = CircuitTranscript::<PoseidonState<F>>::init_from_bytes(&transcript.finalize());
+    let mut transcript =
+        CircuitTranscript::<PoseidonState<F>>::init_from_bytes(&transcript.finalize());
 
     // Now we begin verification
     let protogalaxy_verifier = ProtogalaxyVerifier::<_, _, { K as usize }>::init(
@@ -147,13 +156,17 @@ fn main() {
         &[&[&formatted_instances[0]]],
         &mut transcript,
     )
-        .expect("Failed - unexpected");
+    .expect("Failed - unexpected");
 
     protogalaxy_verifier
         .fold(
             vk.vk(),
             &[&[C::identity()]],
-            &[&[&formatted_instances[1]], &[&formatted_instances[2]], &[&formatted_instances[3]]],
+            &[
+                &[&formatted_instances[1]],
+                &[&formatted_instances[2]],
+                &[&formatted_instances[3]],
+            ],
             &mut transcript,
         )
         .expect("Failed to fold instances by the verifier")

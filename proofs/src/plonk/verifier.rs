@@ -118,7 +118,6 @@ where
         .max()
         .unwrap_or(1);
 
-
     // let theta: F = transcript.squeeze_challenge();
     let theta: Vec<F> = (0..nb_theta).map(|_| transcript.squeeze_challenge()).collect();
 
@@ -176,25 +175,16 @@ where
     let mut nb_y = 0;
 
     // We need one challenge per polynomial, per gate.
-    vk.cs
-        .gates
-        .iter()
-        .for_each(|g| nb_y += g.polynomials().len());
+    vk.cs.gates.iter().for_each(|g| nb_y += g.polynomials().len());
 
     // We need two for the permutation argument (1 for the first, 1 for the last),
     // sets.len() - 1 for linking each column, and sets.len() for the product rule
     nb_y += 2;
-    nb_y += permutations_committed[0]
-        .permutation_product_commitments
-        .len()
-        - 1;
-    nb_y += permutations_committed[0]
-        .permutation_product_commitments
-        .len();
+    nb_y += permutations_committed[0].permutation_product_commitments.len() - 1;
+    nb_y += permutations_committed[0].permutation_product_commitments.len();
 
     // We need five for each lookup argument
     nb_y += lookups_committed[0].len() * 5;
-
 
     // let y: F = transcript.squeeze_challenge();
     // let y: Vec<F> = vec![y; nb_y];
@@ -401,26 +391,24 @@ where
                             gamma,
                             x,
                         ))
-                        .chain(lookups.iter().zip(vk.cs.lookups.iter()).flat_map(
-                            {
-                                let theta = theta.clone();
-                                move |(p, argument)| {
-                                    p.expressions(
-                                        l_0,
-                                        l_last,
-                                        l_blind,
-                                        argument,
-                                        &theta,
-                                        beta,
-                                        gamma,
-                                        advice_evals,
-                                        fixed_evals,
-                                        instance_evals,
-                                        challenges,
-                                    )
-                                }
-                            },
-                        ))
+                        .chain(lookups.iter().zip(vk.cs.lookups.iter()).flat_map({
+                            let theta = theta.clone();
+                            move |(p, argument)| {
+                                p.expressions(
+                                    l_0,
+                                    l_last,
+                                    l_blind,
+                                    argument,
+                                    &theta,
+                                    beta,
+                                    gamma,
+                                    advice_evals,
+                                    fixed_evals,
+                                    instance_evals,
+                                    challenges,
+                                )
+                            }
+                        }))
                         .chain(trash.iter().zip(vk.cs.trashcans.iter()).flat_map(
                             move |(p, argument)| {
                                 p.expressions(
@@ -495,7 +483,7 @@ where
                 )
             }),
         )
-    // TODO: NOTE TO SELF VERIFICATION IS FAILING. RUBBER DUCKING WOULD BE USEFUL
+        // TODO: NOTE TO SELF VERIFICATION IS FAILING. RUBBER DUCKING WOULD BE USEFUL
         .chain(permutations_common.queries(&vk.permutation, x))
         .chain(vanishing.queries(x, vk.n()))
         .collect::<Vec<_>>();
@@ -536,7 +524,8 @@ where
         committed_instances,
         instances,
         transcript,
-    ).unwrap();
+    )
+    .unwrap();
 
     Ok(verify_algebraic_constraints(
         vk,
@@ -545,5 +534,6 @@ where
         committed_instances,
         instances,
         transcript,
-    ).unwrap())
+    )
+    .unwrap())
 }

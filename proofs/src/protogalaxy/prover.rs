@@ -12,6 +12,7 @@ use rand_core::{CryptoRng, RngCore};
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
+
 use crate::{
     plonk::{compute_trace, traces::FoldingProverTrace, Circuit, Error, ProvingKey},
     poly::{
@@ -193,9 +194,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
             .try_into()
             .unwrap();
 
-        let traces = std::iter::once(&self.folded_trace)
-            .chain(traces.iter())
-            .collect::<Vec<_>>();
+        let traces = std::iter::once(&self.folded_trace).chain(traces.iter()).collect::<Vec<_>>();
 
         println!("Number of traces: {:?}", traces.len());
 
@@ -268,10 +267,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
             &folding_pk.domain,
             &folding_pk.cs,
             &advice_polys.iter().map(Vec::as_slice).collect::<Vec<_>>(),
-            &instance_values
-                .iter()
-                .map(|i| i.as_slice())
-                .collect::<Vec<_>>(),
+            &instance_values.iter().map(|i| i.as_slice()).collect::<Vec<_>>(),
             fixed_polys,
             challenges,
             y,
@@ -451,13 +447,12 @@ mod tests {
     use midnight_curves::{Bls12, Fq};
     use rand_chacha::ChaCha8Rng;
     use rand_core::{RngCore, SeedableRng};
-    use midnight_circuits::hash::poseidon::PoseidonState;
 
     use crate::{
         circuit::{Layouter, SimpleFloorPlanner, Value},
         plonk::{
             create_proof, keygen_pk, keygen_vk_with_k, Advice, Circuit, Column, ConstraintSystem,
-            Error, Expression, Selector, TableColumn,
+            Constraints, Error, Expression, Selector, TableColumn,
         },
         poly::{
             commitment::TOTAL_PCS_TIME,
@@ -467,7 +462,6 @@ mod tests {
         protogalaxy::{prover::ProtogalaxyProver, verifier::ProtogalaxyVerifier},
         transcript::{CircuitTranscript, Transcript},
     };
-    use crate::plonk::Constraints;
 
     #[derive(Clone, Copy)]
     struct TestCircuit {
@@ -596,10 +590,7 @@ mod tests {
                     .unwrap()
             })
             .collect::<Vec<_>>();
-        let circuits = witnesses
-            .into_iter()
-            .map(TestCircuit::from)
-            .collect::<Vec<_>>();
+        let circuits = witnesses.into_iter().map(TestCircuit::from).collect::<Vec<_>>();
 
         let vk =
             keygen_vk_with_k::<_, KZGCommitmentScheme<Bls12>, _>(&params, &circuits[0], K as u32)

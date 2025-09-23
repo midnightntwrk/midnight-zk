@@ -1,24 +1,25 @@
 //! TODO
 #![allow(dead_code)]
 
-use std::{iter, marker::PhantomData, time::Instant};
-use std::hash::Hash;
+use std::{hash::Hash, marker::PhantomData, time::Instant};
 
 use ff::{FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
-use rand_chacha::ChaCha8Rng;
-use rand_core::{CryptoRng, RngCore, SeedableRng};
-use rayon::{iter::{
+use rand_core::{CryptoRng, RngCore};
+use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
-}, vec};
+};
 
 use crate::{
-    dev::InstanceValue, plonk::{compute_trace, traces::FoldingProverTrace, Circuit, Error, ProvingKey}, poly::{
-        commitment::PolynomialCommitmentScheme, Coeff, EvaluationDomain, ExtendedLagrangeCoeff,
-        LagrangeCoeff, Polynomial, PolynomialRepresentation,
-    }, protogalaxy::{
+    plonk::{compute_trace, traces::FoldingProverTrace, Circuit, Error, ProvingKey},
+    poly::{
+        commitment::PolynomialCommitmentScheme, EvaluationDomain, ExtendedLagrangeCoeff,
+        LagrangeCoeff, Polynomial,
+    },
+    protogalaxy::{
         utils::{batch_traces, linear_combination, LiftedFoldingTrace},
         FoldingPk,
-    }, utils::arithmetic::eval_polynomial
+    },
+    utils::arithmetic::eval_polynomial,
 };
 
 /// This prover can perform a 2**K - 1 to one folding
@@ -31,7 +32,9 @@ struct ProtogalaxyProverOneShot<F: PrimeField, CS: PolynomialCommitmentScheme<F>
     _commitment_scheme: PhantomData<CS>,
 }
 
-impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: usize> ProtogalaxyProverOneShot<F, CS, K> {
+impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: usize>
+    ProtogalaxyProverOneShot<F, CS, K>
+{
     /// Fold
     /// We assume that circuits.len() is a power of 2.
     pub fn fold<C, T>(
@@ -56,15 +59,14 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
             + FromUniformBytes<64>,
     {
         assert_eq!(circuits.len(), instances.len());
-        
+
         let degree = pk.vk.cs().degree() as u32;
         println!("Degree: {:?}", degree);
 
-
-        let pk_domain_size: usize = pk.vk.get_domain().n.clone().try_into().unwrap();
+        let pk_domain_size: usize = pk.vk.get_domain().n as usize;
         println!("PK domain size: {:?}", pk_domain_size);
         assert_eq!(pk_domain_size, 1 << K);
-        
+
         let now = Instant::now();
         // TODO: Bunch of optimisations here. We could compute the trace for all
         // circuits at the same time. But the goal eventually is to fold
@@ -98,9 +100,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
 
         let time = Instant::now();
 
-        let traces = traces
-        .iter()
-        .collect::<Vec<_>>();
+        let traces = traces.iter().collect::<Vec<_>>();
 
         // TODO: we should no longer need this
         println!("Number of traces: {:?}", traces.len());
@@ -123,8 +123,12 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         let lagrange_on_beta: Vec<F> = eval_lagrange_on_beta(&omega, pk_domain_size, &beta_pg);
         let lagrange_beta_time = time.elapsed().as_millis() - lift_trace_time;
 
-        let (poly_g,
-            poly_g_unbatched) = compute_poly_g(&folding_pk, pk_domain_size, &lagrange_on_beta, &lifted_trace);
+        let (poly_g, poly_g_unbatched) = compute_poly_g(
+            &folding_pk,
+            pk_domain_size,
+            &lagrange_on_beta,
+            &lifted_trace,
+        );
         let poly_g_time = time.elapsed().as_millis() - lift_trace_time - lagrange_beta_time;
 
         let poly_k = dk_domain.divide_by_vanishing_poly(poly_g.clone());
@@ -148,7 +152,8 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
 
         transcript.write(&k_in_gamma)?;
 
-        let error_terms = compute_error_terms(pk_domain_size, &dk_domain, &poly_g_unbatched, &gamma);
+        let error_terms =
+            compute_error_terms(pk_domain_size, &dk_domain, &poly_g_unbatched, &gamma);
 
         assert_ne!(g_in_gamma, F::ZERO);
         assert_eq!(g_in_gamma, k_in_gamma * z_in_gamma);
@@ -164,13 +169,16 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
 
         // Update error term
         let folded_trace = fold_traces(&dk_domain, &traces, &gamma);
-        let rest_time = time.elapsed().as_millis() - poly_g_time - lift_trace_time - lagrange_beta_time;
+        let rest_time =
+            time.elapsed().as_millis() - poly_g_time - lift_trace_time - lagrange_beta_time;
 
         println!("    Lift trace time      : {:?}ms", lift_trace_time);
-        println!("    Lagrange polynomials on beta      : {:?}ms", lagrange_beta_time);
+        println!(
+            "    Lagrange polynomials on beta      : {:?}ms",
+            lagrange_beta_time
+        );
         println!("    Poly G time          : {:?}ms", poly_g_time);
         println!("    Rest time            : {:?}ms", rest_time);
-
 
         Ok(Self {
             folding_pk,
@@ -179,13 +187,13 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
             error_vec: error_terms,
             beta_pg,
             _commitment_scheme: Default::default(),
-        }
-        
-        )
+        })
     }
 
-
-    fn compute_h(folding_pk: &FoldingPk<F>, folded_trace: &FoldingProverTrace<F>) -> Polynomial<F, LagrangeCoeff> {
+    fn compute_h(
+        folding_pk: &FoldingPk<F>,
+        folded_trace: &FoldingProverTrace<F>,
+    ) -> Polynomial<F, LagrangeCoeff> {
         let FoldingProverTrace {
             fixed_polys,
             advice_polys,
@@ -205,24 +213,18 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         folding_pk.ev.evaluate_h::<LagrangeCoeff>(
             &folding_pk.domain,
             &folding_pk.cs,
-            &advice_polys
-                .iter()
-                .map(Vec::as_slice)
-                .collect::<Vec<_>>(),
-            &instance_values
-                .iter()
-                .map(|i| i.as_slice())
-                .collect::<Vec<_>>(),
-            &fixed_polys,
-            &challenges,
-            &y,
+            &advice_polys.iter().map(Vec::as_slice).collect::<Vec<_>>(),
+            &instance_values.iter().map(|i| i.as_slice()).collect::<Vec<_>>(),
+            fixed_polys,
+            challenges,
+            y,
             *beta,
             *gamma,
-            &theta,
+            theta,
             *trash_challenge,
-            &lookups,
-            &trashcans,
-            &permutations,
+            lookups,
+            trashcans,
+            permutations,
             &folding_pk.l0,
             &folding_pk.l_last,
             &folding_pk.l_active_row,
@@ -230,7 +232,6 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         )
     }
 }
-
 
 use crate::transcript::{Hashable, Sampleable, Transcript};
 
@@ -285,8 +286,7 @@ fn compute_poly_g<F: PrimeField + WithSmallOrderMulGroup<3>>(
     pk_domain_size: usize,
     beta_coeffs: &Vec<F>,
     lifted_folding_trace: &LiftedFoldingTrace<F>,
-) -> (Polynomial<F, ExtendedLagrangeCoeff>,
-        Vec<Vec<F>>) {
+) -> (Polynomial<F, ExtendedLagrangeCoeff>, Vec<Vec<F>>) {
     // TODO: Output the vector of errors too.
     // In the future, we'll output simply a commitment to it, but
     // perhaps at an upper level function.
@@ -312,14 +312,8 @@ fn compute_poly_g<F: PrimeField + WithSmallOrderMulGroup<3>>(
         let witness_poly = pk.ev.evaluate_h::<LagrangeCoeff>(
             &pk.domain,
             &pk.cs,
-            &advice_polys
-                .iter()
-                .map(Vec::as_slice)
-                .collect::<Vec<_>>(),
-            &instance_values
-                .iter()
-                .map(|i| i.as_slice())
-                .collect::<Vec<_>>(),
+            &advice_polys.iter().map(Vec::as_slice).collect::<Vec<_>>(),
+            &instance_values.iter().map(|i| i.as_slice()).collect::<Vec<_>>(),
             fixed_polys,
             challenges,
             y,
@@ -352,12 +346,10 @@ fn compute_poly_g<F: PrimeField + WithSmallOrderMulGroup<3>>(
         },
         g_poly_unbatched,
     )
-
-
 }
 
-/// Computes the error terms t_i = f_i(w(\gamma)) where w(X) = ∑_{j ∈ [k]} Lⱼ(X)·ωⱼ
-/// is the polynomial that interpolates the witnesses.
+/// Computes the error terms t_i = f_i(w(\gamma)) where w(X) = ∑_{j ∈ [k]}
+/// Lⱼ(X)·ωⱼ is the polynomial that interpolates the witnesses.
 fn compute_error_terms<F: PrimeField + WithSmallOrderMulGroup<3>>(
     pk_domain_size: usize,
     dk_domain: &EvaluationDomain<F>,
@@ -467,17 +459,18 @@ mod tests {
     use crate::{
         circuit::{Layouter, SimpleFloorPlanner, Value},
         plonk::{
-            keygen_pk, keygen_vk_with_k, Advice, Circuit, Column, ConstraintSystem, Error,
-            Expression, Selector, TableColumn,
+            create_proof, keygen_pk, keygen_vk_with_k, Advice, Circuit, Column, ConstraintSystem,
+            Constraints, Error, Expression, Selector, TableColumn,
         },
         poly::{
             kzg::{params::ParamsKZG, KZGCommitmentScheme},
             Rotation,
         },
-        protogalaxy::{prover_oneshot::ProtogalaxyProverOneShot, verifier_oneshot::ProtogalaxyVerifierOneShot},
+        protogalaxy::{
+            prover_oneshot::ProtogalaxyProverOneShot, verifier_oneshot::ProtogalaxyVerifierOneShot,
+        },
         transcript::{CircuitTranscript, Transcript},
     };
-    use crate::plonk::{Constraints, create_proof};
 
     #[derive(Clone, Copy)]
     struct TestCircuit {
@@ -606,10 +599,7 @@ mod tests {
                     .unwrap()
             })
             .collect::<Vec<_>>();
-        let circuits = witnesses
-            .into_iter()
-            .map(TestCircuit::from)
-            .collect::<Vec<_>>();
+        let circuits = witnesses.into_iter().map(TestCircuit::from).collect::<Vec<_>>();
 
         let vk =
             keygen_vk_with_k::<_, KZGCommitmentScheme<Bls12>, _>(&params, &circuits[0], K as u32)
@@ -624,31 +614,36 @@ mod tests {
             create_proof(
                 &params,
                 &pk,
-                &[circuit.clone()],
+                &[*circuit],
                 #[cfg(feature = "committed-instances")]
                 0,
                 &[&[]],
                 &mut rng,
                 &mut transcript,
-            ).expect("Failed to produce a proof");
+            )
+            .expect("Failed to produce a proof");
         }
-        println!("Time to generate {} proofs: {:?}", circuits.len(), normal_proving.elapsed());
+        println!(
+            "Time to generate {} proofs: {:?}",
+            circuits.len(),
+            normal_proving.elapsed()
+        );
 
         // Fold proofs. We first initialise folding with the first circuit
         let folding = Instant::now();
         let mut transcript = CircuitTranscript::init();
 
-        let protogalaxy = ProtogalaxyProverOneShot::<_, _, K> ::fold(
-                &params,
-                pk.clone(),
-                circuits[0..].to_vec(),
-                #[cfg(feature = "committed-instances")]
-                0,
-                &[&[], &[], &[], &[]],
-                &mut rng,
-                &mut transcript,
-            )
-            .expect("Failed to fold many instances");
+        let protogalaxy = ProtogalaxyProverOneShot::<_, _, K>::fold(
+            &params,
+            pk.clone(),
+            circuits[0..].to_vec(),
+            #[cfg(feature = "committed-instances")]
+            0,
+            &[&[], &[], &[], &[]],
+            &mut rng,
+            &mut transcript,
+        )
+        .expect("Failed to fold many instances");
 
         let folding_time = folding.elapsed().as_millis();
         println!("Time for folding: {:?}ms", folding_time);
@@ -656,26 +651,26 @@ mod tests {
         let mut transcript = CircuitTranscript::init_from_bytes(&transcript.finalize());
 
         // Now we begin verification
-        let protogalaxy_verifier = ProtogalaxyVerifierOneShot::<_, _, K>::fold(
-                &vk,
-                #[cfg(feature = "committed-instances")]
-                &[&[]],
-                &[&[], &[], &[], &[]],
-                &mut transcript,
-            )
-            .expect("Failed to fold instances by the verifier")
-            .is_sat(
-                &params,
-                &vk,
-                &pk.ev,
-                protogalaxy.folded_trace,
-                &protogalaxy.folding_pk.l0,
-                &protogalaxy.folding_pk.l_last,
-                &protogalaxy.folding_pk.l_active_row,
-                &protogalaxy.folding_pk.permutation_pk_cosets,
-            )
-            .expect("Folding finalizer failed");
-        
+        ProtogalaxyVerifierOneShot::<_, _, K>::fold(
+            &vk,
+            #[cfg(feature = "committed-instances")]
+            &[&[]],
+            &[&[], &[], &[], &[]],
+            &mut transcript,
+        )
+        .expect("Failed to fold instances by the verifier")
+        .is_sat(
+            &params,
+            &vk,
+            &pk.ev,
+            protogalaxy.folded_trace,
+            &protogalaxy.folding_pk.l0,
+            &protogalaxy.folding_pk.l_last,
+            &protogalaxy.folding_pk.l_active_row,
+            &protogalaxy.folding_pk.permutation_pk_cosets,
+        )
+        .expect("Folding finalizer failed");
+
         println!("Folding was a success");
     }
 }

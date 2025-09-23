@@ -98,6 +98,7 @@ fn main() {
         &vk,
         &instance,
         None,
-        &proof
-    ).unwrap();
+        &proof,
+    )
+    .unwrap();
 }

@@ -204,10 +204,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
             vk.get_domain(),
             vk.cs(),
             &advice_polys.iter().map(Vec::as_slice).collect::<Vec<_>>(),
-            &instance_values
-                .iter()
-                .map(|i| i.as_slice())
-                .collect::<Vec<_>>(),
+            &instance_values.iter().map(|i| i.as_slice()).collect::<Vec<_>>(),
             &fixed_polys,
             &challenges,
             &y,

@@ -2343,7 +2343,8 @@ impl<F: Field> ConstraintSystem<F> {
     pub fn folding_degree(&self) -> usize {
         let degree = [
             Some(self.permutation.required_degree()),
-            self.lookups.iter().map(|l| l.required_degree() + 2).max(), // + 2 due to the lookup challenge
+            self.lookups.iter().map(|l| l.required_degree() + 2).max(), /* + 2 due to the lookup
+                                                                         *   challenge */
             self.trashcans.iter().map(|l| l.required_degree()).max(),
             self.gates
                 .iter()
@@ -2351,12 +2352,13 @@ impl<F: Field> ConstraintSystem<F> {
                 .max(),
             self.minimum_degree,
         ]
-            .iter()
-            .filter_map(|&d| d)
-            .max()
-            .unwrap_or(1);
+        .iter()
+        .filter_map(|&d| d)
+        .max()
+        .unwrap_or(1);
 
-        degree + 1 // + 1 due to the aggregation challenge used in every identity.
+        degree + 1 // + 1 due to the aggregation challenge used in every
+                   //   identity.
     }
 
     /// Compute the number of blinding factors necessary to perfectly blind

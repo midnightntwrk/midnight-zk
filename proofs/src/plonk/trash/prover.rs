@@ -69,12 +69,19 @@ impl<F: WithSmallOrderMulGroup<3> + Ord> Argument<F> {
         // Hash permuted input commitment
         transcript.write(&trash_commitment)?;
 
-        Ok(CommittedLagrange { trash_poly: compressed_expression })
+        Ok(CommittedLagrange {
+            trash_poly: compressed_expression,
+        })
     }
 }
 
 impl<F: WithSmallOrderMulGroup<3>> CommittedLagrange<F> {
-    pub(crate) fn evaluate<T>(self, evaluation_domain: &EvaluationDomain<F>, x: F, transcript: &mut T) -> Result<Evaluated<F>, Error>
+    pub(crate) fn evaluate<T>(
+        self,
+        evaluation_domain: &EvaluationDomain<F>,
+        x: F,
+        transcript: &mut T,
+    ) -> Result<Evaluated<F>, Error>
     where
         F: Hashable<T::Hash>,
         T: Transcript,
@@ -84,8 +91,9 @@ impl<F: WithSmallOrderMulGroup<3>> CommittedLagrange<F> {
 
         let self_coeff = evaluation_domain.lagrange_to_coeff(self.trash_poly);
 
-
-        Ok(Evaluated(Committed{ trash_poly: self_coeff}))
+        Ok(Evaluated(Committed {
+            trash_poly: self_coeff,
+        }))
     }
 }
 

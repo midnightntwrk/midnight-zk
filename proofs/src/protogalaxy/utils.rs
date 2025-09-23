@@ -11,11 +11,10 @@ use crate::{
         lookup::verifier::PermutationCommitments,
         permutation,
         traces::{FoldingProverTrace, VerifierFoldingTrace},
-        vanishing,
+        trash, vanishing,
     },
     poly::{commitment::PolynomialCommitmentScheme, EvaluationDomain, Polynomial},
 };
-use crate::plonk::trash;
 
 /// Given a vector v, computes a vector of length 2^|v| whose i-th element
 /// is the product of {v_j : bin(i)_j = 1}. Where bin(i)_j is the
@@ -131,10 +130,8 @@ pub fn batch_traces<F: PrimeField + WithSmallOrderMulGroup<3>>(
     (0..dk_domain.extended_len())
         .map(|i| {
             let buffer = FoldingProverTrace::with_same_dimensions(traces[0]);
-            let coordinate_i_lagrange = lagrange_polys
-                .iter()
-                .map(|poly| poly.values[i])
-                .collect::<Vec<_>>();
+            let coordinate_i_lagrange =
+                lagrange_polys.iter().map(|poly| poly.values[i]).collect::<Vec<_>>();
 
             linear_combination(buffer, traces, &coordinate_i_lagrange)
         })
@@ -143,6 +140,7 @@ pub fn batch_traces<F: PrimeField + WithSmallOrderMulGroup<3>>(
 
 impl<F: PrimeField> FoldingProverTrace<F> {
     /// Initialise a folding prover trace.
+    #[allow(clippy::too_many_arguments)]
     pub fn init(
         domain_size: usize,
         num_fixed_polys: usize,
@@ -166,7 +164,9 @@ impl<F: PrimeField> FoldingProverTrace<F> {
 
         let mut trashcans = Vec::with_capacity(num_trashcans);
         for _ in 0..num_trashcans {
-            trashcans.push(trash::prover::CommittedLagrange { trash_poly: Polynomial::init(domain_size) })
+            trashcans.push(trash::prover::CommittedLagrange {
+                trash_poly: Polynomial::init(domain_size),
+            })
         }
 
         let mut permutation_sets = Vec::with_capacity(num_permutation_sets);
@@ -281,18 +281,12 @@ impl<F: PrimeField> Add<&FoldingProverTrace<F>> for FoldingProverTrace<F> {
 
         self.beta += rhs.beta;
         self.gamma += rhs.gamma;
-        self.theta
-            .par_iter_mut()
-            .zip(rhs.theta.par_iter())
-            .for_each(|(lhs, rhs)| {
-                *lhs += *rhs;
-            });
-        self.y
-            .par_iter_mut()
-            .zip(rhs.y.par_iter())
-            .for_each(|(lhs, rhs)| {
-                *lhs += *rhs;
-            });
+        self.theta.par_iter_mut().zip(rhs.theta.par_iter()).for_each(|(lhs, rhs)| {
+            *lhs += *rhs;
+        });
+        self.y.par_iter_mut().zip(rhs.y.par_iter()).for_each(|(lhs, rhs)| {
+            *lhs += *rhs;
+        });
 
         self
     }
@@ -343,6 +337,7 @@ impl<F: PrimeField> Mul<F> for FoldingProverTrace<F> {
 
 impl<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> VerifierFoldingTrace<F, PCS> {
     /// Initialise an empty verifier folding trace
+    #[allow(clippy::too_many_arguments)]
     pub fn init(
         num_fixed_polys: usize,
         num_advice_polys: usize,
@@ -365,7 +360,9 @@ impl<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> VerifierFoldingTrace<F, 
         }
         let mut trashcans = Vec::with_capacity(num_trashcans);
         for _ in 0..num_trashcans {
-            trashcans.push(trash::verifier::Committed { trash_commitment: PCS::Commitment::default() })
+            trashcans.push(trash::verifier::Committed {
+                trash_commitment: PCS::Commitment::default(),
+            })
         }
         VerifierFoldingTrace {
             advice_commitments: vec![vec![PCS::Commitment::default(); num_advice_polys]],
@@ -444,17 +441,11 @@ impl<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> Add<&VerifierFoldingTrac
                         lhs.product_commitment.clone() + rhs.product_commitment.clone();
                 });
 
-            (self.permutations[i]
-                .permutation_product_commitments
-                .par_iter_mut())
-            .zip(
-                rhs.permutations[i]
-                    .permutation_product_commitments
-                    .par_iter(),
-            )
-            .for_each(|(lhs, rhs)| {
-                *lhs = lhs.clone() + rhs.clone();
-            });
+            (self.permutations[i].permutation_product_commitments.par_iter_mut())
+                .zip(rhs.permutations[i].permutation_product_commitments.par_iter())
+                .for_each(|(lhs, rhs)| {
+                    *lhs = lhs.clone() + rhs.clone();
+                });
         });
 
         self.challenges
@@ -467,19 +458,13 @@ impl<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> Add<&VerifierFoldingTrac
         self.beta += rhs.beta;
         self.gamma += rhs.gamma;
 
-        self.theta
-            .par_iter_mut()
-            .zip(rhs.theta.par_iter())
-            .for_each(|(lhs, rhs)| {
-                *lhs += *rhs;
-            });
+        self.theta.par_iter_mut().zip(rhs.theta.par_iter()).for_each(|(lhs, rhs)| {
+            *lhs += *rhs;
+        });
 
-        self.y
-            .par_iter_mut()
-            .zip(rhs.y.par_iter())
-            .for_each(|(lhs, rhs)| {
-                *lhs += *rhs;
-            });
+        self.y.par_iter_mut().zip(rhs.y.par_iter()).for_each(|(lhs, rhs)| {
+            *lhs += *rhs;
+        });
 
         self
     }

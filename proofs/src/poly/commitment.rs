@@ -1,7 +1,6 @@
 //! Trait for a commitment scheme
 use core::ops::{Add, Mul};
-use std::{fmt::Debug, sync::Mutex, time::Duration};
-use std::hash::Hash;
+use std::{fmt::Debug, hash::Hash, sync::Mutex, time::Duration};
 
 use ff::{FromUniformBytes, PrimeField};
 

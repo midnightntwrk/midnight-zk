@@ -270,7 +270,6 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluated<F> {
         pk: &'a plonk::ProvingKey<F, CS>,
         x: F,
     ) -> impl Iterator<Item = ProverQuery<'a, F>> + Clone {
-        let domain = pk.vk.get_domain();
         let blinding_factors = pk.vk.cs.blinding_factors();
         let x_next = pk.vk.domain.rotate_omega(x, Rotation::next());
         let x_last = pk.vk.domain.rotate_omega(x, Rotation(-((blinding_factors + 1) as i32)));

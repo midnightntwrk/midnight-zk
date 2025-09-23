@@ -15,11 +15,10 @@ use crate::{
 };
 
 pub mod prover;
+pub mod prover_oneshot;
 pub(crate) mod utils;
 pub mod verifier;
-pub mod prover_oneshot;
 pub mod verifier_oneshot;
-
 
 /// Protogalaxy proving key. For the moment we support folding only for the same
 /// circuit.

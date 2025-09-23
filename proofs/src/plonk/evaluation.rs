@@ -212,7 +212,9 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
         for gate in cs.gates.iter() {
             for poly in gate.polynomials().iter() {
                 let expr = ev.custom_gates.add_expression(poly);
-                let prod = ev.custom_gates.add_calculation(Calculation::Mul(ValueSource::Y(y_index), expr));
+                let prod = ev
+                    .custom_gates
+                    .add_calculation(Calculation::Mul(ValueSource::Y(y_index), expr));
                 sum = ev.custom_gates.add_calculation(Calculation::Add(sum, prod));
                 y_index += 1;
             }
@@ -223,15 +225,15 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
             let mut graph = GraphEvaluator::default();
 
             let mut evaluate_lc = |expressions: &Vec<Expression<_>>| {
-               expressions
-                    .iter()
-                    .enumerate()
-                    .fold(ValueSource::Constant(0), |acc, (index, expr)| {
+                expressions.iter().enumerate().fold(
+                    ValueSource::Constant(0),
+                    |acc, (index, expr)| {
                         let expr = graph.add_expression(expr);
                         let expr = graph
                             .add_calculation(Calculation::Mul(expr, ValueSource::Theta(index)));
                         graph.add_calculation(Calculation::Add(expr, acc))
-                    })
+                    },
+                )
             };
 
             // Input coset
@@ -260,7 +262,8 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                 .constraint_expressions()
                 .iter()
                 .enumerate()
-                .fold(ValueSource::Constant(0), |acc, (index, expr)| {
+                // TODO: generalise trash argument
+                .fold(ValueSource::Constant(0), |acc, (_index, expr)| {
                     let expr = graph.add_expression(expr);
                     let expr = graph
                         .add_calculation(Calculation::Mul(expr, ValueSource::TrashChallenge()));
@@ -350,9 +353,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
             let mut idx_y = 0;
 
             // We need one challenge per polynomial, per gate.
-            cs.gates
-                .iter()
-                .for_each(|g| idx_y += g.polynomials().len());
+            cs.gates.iter().for_each(|g| idx_y += g.polynomials().len());
 
             let sets = &permutation.sets;
             if !sets.is_empty() {
@@ -380,22 +381,22 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
 
                         // Enforce only for the first set.
                         // l_0(X) * (1 - z_0(X)) = 0
-                        *value = *value
-                            + ((one - first_set_permutation_product_coset[idx]) * l0[idx]) * y[idx_y];
+                        *value +=
+                            ((one - first_set_permutation_product_coset[idx]) * l0[idx]) * y[idx_y];
                         // Enforce only for the last set.
                         // l_last(X) * (z_l(X)^2 - z_l(X)) = 0
-                        *value = *value
-                            + ((last_set_permutation_product_coset[idx]
-                                * last_set_permutation_product_coset[idx]
-                                - last_set_permutation_product_coset[idx])
-                                * l_last[idx]) * y[idx_y + 1];
+                        *value += ((last_set_permutation_product_coset[idx]
+                            * last_set_permutation_product_coset[idx]
+                            - last_set_permutation_product_coset[idx])
+                            * l_last[idx])
+                            * y[idx_y + 1];
                         // Except for the first set, enforce.
                         // l_0(X) * (z_i(X) - z_{i-1}(\omega^(last) X)) = 0
                         for set_idx in 1..sets.len() {
-                            *value = *value
-                                + ((permutation_product_cosets[set_idx][idx]
-                                    - permutation_product_cosets[set_idx - 1][r_last])
-                                    * l0[idx]) * y[idx_y + 1 + set_idx];
+                            *value += ((permutation_product_cosets[set_idx][idx]
+                                - permutation_product_cosets[set_idx - 1][r_last])
+                                * l0[idx])
+                                * y[idx_y + 1 + set_idx];
                         }
                         // And for all the sets we enforce:
                         // (1 - (l_last(X) + l_blind(X))) * (
@@ -433,8 +434,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                                 current_delta *= &F::DELTA;
                             }
 
-                            *value = *value
-                                + ((left - right) * l_active_row[idx])
+                            *value += ((left - right) * l_active_row[idx])
                                 * y[idx_y + 1 + sets.len() + y_index];
                         }
                         beta_term *= &omega;
@@ -477,8 +477,8 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                             &beta,
                             &gamma,
                             &trash_challenge,
-                            &theta,
-                            &y,
+                            theta,
+                            y,
                             &F::ZERO,
                             idx,
                             rot_scale,
@@ -490,36 +490,35 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
 
                         let a_minus_s = permuted_input_coset[idx] - permuted_table_coset[idx];
                         // l_0(X) * (1 - z(X)) = 0
-                        *value = *value
-                            + ((one - product_coset[idx]) * l0[idx]) * y[idx_y];
+                        *value += ((one - product_coset[idx]) * l0[idx]) * y[idx_y];
                         // l_last(X) * (z(X)^2 - z(X)) = 0
-                        *value = *value
-                            + ((product_coset[idx] * product_coset[idx] - product_coset[idx])
-                                * l_last[idx]) * y[idx_y + 1];
+                        *value += ((product_coset[idx] * product_coset[idx] - product_coset[idx])
+                            * l_last[idx])
+                            * y[idx_y + 1];
                         // (1 - (l_last(X) + l_blind(X))) * (
                         //   z(\omega X) (a'(X) + \beta) (s'(X) + \gamma)
                         //   - z(X) (\theta^{m-1} a_0(X) + ... + a_{m-1}(X) + \beta) (\theta^{m-1}
                         //     s_0(X) + ... + s_{m-1}(X) + \gamma)
                         // ) = 0
-                        *value = *value
-                            + ((product_coset[r_next]
-                                * (permuted_input_coset[idx] + beta)
-                                * (permuted_table_coset[idx] + gamma)
-                                - product_coset[idx] * table_value)
-                                * l_active_row[idx]) * y[idx_y + 2];
+                        *value += ((product_coset[r_next]
+                            * (permuted_input_coset[idx] + beta)
+                            * (permuted_table_coset[idx] + gamma)
+                            - product_coset[idx] * table_value)
+                            * l_active_row[idx])
+                            * y[idx_y + 2];
                         // Check that the first values in the permuted input expression and permuted
                         // fixed expression are the same.
                         // l_0(X) * (a'(X) - s'(X)) = 0
-                        *value = *value + (a_minus_s * l0[idx]) * y[idx_y + 3];
+                        *value += (a_minus_s * l0[idx]) * y[idx_y + 3];
                         // Check that each value in the permuted lookup input expression is either
                         // equal to the value above it, or the value at the same index in the
                         // permuted table expression.
                         // (1 - (l_last + l_blind)) * (a′(X) − s′(X))⋅(a′(X) − a′(\omega^{-1} X)) =
                         // 0
-                        *value = *value
-                            + (a_minus_s
-                                * (permuted_input_coset[idx] - permuted_input_coset[r_prev])
-                                * l_active_row[idx]) * y[idx_y + 4];
+                        *value += (a_minus_s
+                            * (permuted_input_coset[idx] - permuted_input_coset[r_prev])
+                            * l_active_row[idx])
+                            * y[idx_y + 4];
                     }
                 });
                 idx_y += 5
@@ -549,8 +548,8 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                             &beta,
                             &gamma,
                             &trash_challenge,
-                            &theta,
-                            &y,
+                            theta,
+                            y,
                             &F::ZERO,
                             idx,
                             rot_scale,
@@ -563,7 +562,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                         };
 
                         // compressed_expressions - (1 - q) * trash
-                        *value = *value + (compressed_expression - (one - q) * trash_poly[idx]) * y[idx_y];
+                        *value += (compressed_expression - (one - q) * trash_poly[idx]) * y[idx_y];
                     }
                 });
                 idx_y += 1;

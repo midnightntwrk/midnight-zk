@@ -3,7 +3,6 @@ use std::{
     hash::Hash,
     iter,
     ops::RangeTo,
-    time::Duration,
 };
 
 #[cfg(feature = "bench-internal")]
@@ -25,12 +24,9 @@ use crate::{
     bench_and_run,
     circuit::Value,
     plonk::{traces::ProverTrace, trash},
-    dev::util::bench,
     poly::{
-        batch_invert_rational,
-        commitment::{PolynomialCommitmentScheme, TOTAL_PCS_TIME},
-        Coeff, ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial, PolynomialRepresentation,
-        ProverQuery, TOTAL_FFT_TIME,
+        batch_invert_rational, commitment::PolynomialCommitmentScheme, Coeff,
+        ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial, PolynomialRepresentation, ProverQuery,
     },
     transcript::{Hashable, Sampleable, Transcript},
     utils::{arithmetic::eval_polynomial, rational::Rational},
@@ -252,11 +248,7 @@ where
     let mut nb_y = 0;
 
     // We need one challenge per polynomial, per gate.
-    pk.vk
-        .cs
-        .gates
-        .iter()
-        .for_each(|g| nb_y += g.polynomials().len());
+    pk.vk.cs.gates.iter().for_each(|g| nb_y += g.polynomials().len());
 
     // We need two for the permutation argument (1 for the first, 1 for the last),
     // sets.len() - 1 for linking each column, and sets.len() for the product rule

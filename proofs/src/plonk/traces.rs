@@ -4,10 +4,9 @@
 use ff::{PrimeField, WithSmallOrderMulGroup};
 
 use crate::{
-    plonk::{lookup, permutation, trash, vanishing},
+    plonk::{lookup, lookup::verifier::PermutationCommitments, permutation, trash, vanishing},
     poly::{commitment::PolynomialCommitmentScheme, Coeff, LagrangeCoeff, Polynomial},
 };
-use crate::plonk::lookup::verifier::PermutationCommitments;
 
 /// Prover's trace of a set of proofs. This type guarantees that the size of the
 /// outer vector of its fields has the same size.
@@ -192,9 +191,12 @@ impl<F: WithSmallOrderMulGroup<3>> FoldingProverTrace<F> {
                     .collect::<Vec<_>>(),
             };
 
-            let committed_trashcans = self.trashcans[i].iter().map(|t| trash::verifier::Committed {
-                trash_commitment: PCS::commit_lagrange(params, &t.trash_poly),
-            }).collect::<Vec<_>>();
+            let committed_trashcans = self.trashcans[i]
+                .iter()
+                .map(|t| trash::verifier::Committed {
+                    trash_commitment: PCS::commit_lagrange(params, &t.trash_poly),
+                })
+                .collect::<Vec<_>>();
 
             advice_commitments.push(committed_advice);
             lookups.push(committed_lookups);
@@ -249,13 +251,12 @@ impl<F: WithSmallOrderMulGroup<3>, PCS: PolynomialCommitmentScheme<F>> PartialEq
 {
     fn eq(&self, other: &Self) -> bool {
         assert!(
-            self.advice_commitments
-                .iter()
-                .zip(other.advice_commitments.iter())
-                .all(|(lhs, rhs)| {
+            self.advice_commitments.iter().zip(other.advice_commitments.iter()).all(
+                |(lhs, rhs)| {
                     assert_eq!(lhs.len(), rhs.len());
                     lhs.iter().zip(rhs.iter()).all(|(a, b)| a == b)
-                }),
+                }
+            ),
             "advice"
         );
         assert!(
@@ -270,29 +271,23 @@ impl<F: WithSmallOrderMulGroup<3>, PCS: PolynomialCommitmentScheme<F>> PartialEq
             "vanishing"
         );
         assert!(
-            self.lookups
-                .iter()
-                .zip(other.lookups.iter())
-                .all(|(lhs, rhs)| {
-                    lhs.iter().zip(rhs.iter()).all(|(a, b)| {
-                        a.permuted.permuted_input_commitment == b.permuted.permuted_input_commitment
-                            && a.permuted.permuted_table_commitment
-                                == b.permuted.permuted_table_commitment
-                            && a.product_commitment == b.product_commitment
-                    })
-                }),
+            self.lookups.iter().zip(other.lookups.iter()).all(|(lhs, rhs)| {
+                lhs.iter().zip(rhs.iter()).all(|(a, b)| {
+                    a.permuted.permuted_input_commitment == b.permuted.permuted_input_commitment
+                        && a.permuted.permuted_table_commitment
+                            == b.permuted.permuted_table_commitment
+                        && a.product_commitment == b.product_commitment
+                })
+            }),
             "lookups"
         );
         assert!(
-            self.permutations
-                .iter()
-                .zip(other.permutations.iter())
-                .all(|(lhs, rhs)| {
-                    lhs.permutation_product_commitments
-                        .iter()
-                        .zip(rhs.permutation_product_commitments.iter())
-                        .all(|(a, b)| a == b)
-                }),
+            self.permutations.iter().zip(other.permutations.iter()).all(|(lhs, rhs)| {
+                lhs.permutation_product_commitments
+                    .iter()
+                    .zip(rhs.permutation_product_commitments.iter())
+                    .all(|(a, b)| a == b)
+            }),
             "permutations"
         );
         self.challenges == other.challenges

@@ -1,6 +1,6 @@
 //! TODO
 
-use ff::{FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
+use ff::{FromUniformBytes, WithSmallOrderMulGroup};
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
@@ -12,11 +12,10 @@ use crate::{
         Error, Evaluator, VerifyingKey,
     },
     poly::{commitment::PolynomialCommitmentScheme, EvaluationDomain, LagrangeCoeff, Polynomial},
+    protogalaxy::{prover_oneshot::eval_lagrange_on_beta, utils::linear_combination},
     transcript::{Hashable, Sampleable, Transcript},
     utils::arithmetic::eval_polynomial,
 };
-use crate::protogalaxy::utils::{linear_combination};
-use crate::protogalaxy::prover_oneshot::{eval_lagrange_on_beta};
 
 /// This verifier can perform a 2**K - 1 to one folding
 #[derive(Debug)]
@@ -65,7 +64,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         // but I'm computing the challenges myself - I believe that is enough.
         // David: yes, i think so too
         let traces = instances
-            .into_iter()
+            .iter()
             .map(|instance| {
                 let trace = parse_trace(
                     vk,
@@ -88,9 +87,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
 
         let error_term: F = z_in_gamma * k_at_gamma;
 
-        let traces = traces
-        .iter()
-        .collect::<Vec<_>>();
+        let traces = traces.iter().collect::<Vec<_>>();
 
         println!("Number of traces - verifier: {:?}", traces.len());
         assert!(traces.len().is_power_of_two());
@@ -99,15 +96,16 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         // TODO: need to verify the polynomial commitment openings
         // David: Why? I think we are fine without it
         Ok(Self {
-            verifier_folding_trace: verifier_folding_trace,
-            error_term: error_term,
-            beta: beta,
+            verifier_folding_trace,
+            error_term,
+            beta,
         })
     }
 
     /// This function verifies that a folde trace satisfies the relaxed
     /// relation.
     // TODO: need to verify that the commitment is correct as well.
+    #[allow(clippy::too_many_arguments)]
     pub fn is_sat(
         &self,
         params: &CS::Parameters,
@@ -125,8 +123,8 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
 
         assert_eq!(committed_folded_witness, self.verifier_folding_trace);
 
-        // Next, we evaluate the f_i function over the folded trace, to see it corresponds
-        // with the computed error.
+        // Next, we evaluate the f_i function over the folded trace, to see it
+        // corresponds with the computed error.
         let FoldingProverTrace {
             fixed_polys,
             advice_polys,
@@ -146,14 +144,8 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         let witness_poly = evaluator.evaluate_h::<LagrangeCoeff>(
             vk.get_domain(),
             vk.cs(),
-            &advice_polys
-                .iter()
-                .map(Vec::as_slice)
-                .collect::<Vec<_>>(),
-            &instance_values
-                .iter()
-                .map(|i| i.as_slice())
-                .collect::<Vec<_>>(),
+            &advice_polys.iter().map(Vec::as_slice).collect::<Vec<_>>(),
+            &instance_values.iter().map(|i| i.as_slice()).collect::<Vec<_>>(),
             &fixed_polys,
             &challenges,
             &y,
@@ -170,9 +162,10 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
             permutation_pk_cosets,
         );
 
-        // let beta_coeffs: Vec<F> = vec![self.beta.clone(); 1 << K]; 
+        // let beta_coeffs: Vec<F> = vec![self.beta.clone(); 1 << K];
         let omega = vk.get_domain().get_omega(); // generator of multiplicative subgroup
-        let beta_coeffs: Vec<F> = eval_lagrange_on_beta(&omega, vk.get_domain().n.try_into().unwrap(), &self.beta);
+        let beta_coeffs: Vec<F> =
+            eval_lagrange_on_beta(&omega, vk.get_domain().n.try_into().unwrap(), &self.beta);
 
         let expected_result = witness_poly
             .values
@@ -182,7 +175,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
             .reduce(|| F::ZERO, |a, b| a + b);
 
         if expected_result == self.error_term {
-            return Ok(());
+            Ok(())
         } else {
             Err(Error::Opening)
         }
