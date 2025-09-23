@@ -12,7 +12,6 @@ use rand_core::{CryptoRng, RngCore};
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
-
 use crate::{
     plonk::{compute_trace, traces::FoldingProverTrace, Circuit, Error, ProvingKey},
     poly::{
@@ -452,6 +451,7 @@ mod tests {
     use midnight_curves::{Bls12, Fq};
     use rand_chacha::ChaCha8Rng;
     use rand_core::{RngCore, SeedableRng};
+    use midnight_circuits::hash::poseidon::PoseidonState;
 
     use crate::{
         circuit::{Layouter, SimpleFloorPlanner, Value},
@@ -613,7 +613,7 @@ mod tests {
         // Normal proofs. We first generate normal proofs to test performance
         let normal_proving = Instant::now();
         for circuit in circuits.iter() {
-            let mut transcript = CircuitTranscript::<PoseidonState<BlsScalar>>::init();
+            let mut transcript = CircuitTranscript::init();
             create_proof(
                 &params,
                 &pk,
@@ -639,7 +639,7 @@ mod tests {
         // Fold proofs. We first initialise folding with the first circuit
         let folding = Instant::now();
         let now = Instant::now();
-        let mut transcript = CircuitTranscript::<PoseidonState<BlsScalar>>::init();
+        let mut transcript = CircuitTranscript::init();
         let protogalaxy = ProtogalaxyProver::<_, _, K>::init(
             &params,
             pk.clone(),

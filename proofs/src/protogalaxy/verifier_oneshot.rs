@@ -121,7 +121,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
     ) -> Result<(), Error> {
         // First we check that the committed folded witness corresponds to the folded
         // instance
-        let committed_folded_witness = folded_witness.commit(params, vk.get_domain());
+        let committed_folded_witness = folded_witness.commit(params);
 
         assert_eq!(committed_folded_witness, self.verifier_folding_trace);
 
@@ -133,10 +133,12 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
             instance_values,
             lookups,
             permutations: permutation,
+            trashcans,
             challenges,
             beta,
             gamma,
             theta,
+            trash_challenge,
             y,
             ..
         } = folded_witness;
@@ -154,11 +156,13 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
                 .collect::<Vec<_>>(),
             &fixed_polys,
             &challenges,
-            y,
+            &y,
             beta,
             gamma,
-            theta,
+            &theta,
+            trash_challenge,
             &lookups,
+            &trashcans,
             &permutation,
             l0,
             l_last,
@@ -206,8 +210,11 @@ fn fold_traces<F: WithSmallOrderMulGroup<3>, PCS: PolynomialCommitmentScheme<F>>
         traces[0].fixed_commitments.len(),
         traces[0].advice_commitments[0].len(),
         traces[0].lookups[0].len(),
+        traces[0].trashcans[0].len(),
         traces[0].permutations[0].permutation_product_commitments.len(),
         traces[0].challenges.len(),
+        traces[0].theta.len(),
+        traces[0].y.len(),
     );
     let lagranges_in_gamma = lagrange_polys
         .iter()

@@ -2,6 +2,7 @@
 #![allow(dead_code)]
 
 use std::{iter, marker::PhantomData, time::Instant};
+use std::hash::Hash;
 
 use ff::{FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
 use rand_chacha::ChaCha8Rng;
@@ -50,6 +51,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         F: WithSmallOrderMulGroup<3>
             + Sampleable<T::Hash>
             + Hashable<T::Hash>
+            + Hash
             + Ord
             + FromUniformBytes<64>,
     {
@@ -82,7 +84,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
                     &mut rng,
                     transcript,
                 )?;
-                Ok(trace.into_folding_trace(pk.vk.get_domain(), pk.fixed_values.clone()))
+                Ok(trace.into_folding_trace(pk.fixed_values.clone()))
             })
             .collect::<Result<Vec<_>, Error>>()?;
         println!("Compute traces: {:?}", now.elapsed());
@@ -190,10 +192,12 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
             instance_values,
             lookups,
             permutations,
+            trashcans,
             challenges,
             beta,
             gamma,
             theta,
+            trash_challenge,
             y,
             ..
         } = folded_trace;
@@ -211,11 +215,13 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
                 .collect::<Vec<_>>(),
             &fixed_polys,
             &challenges,
-            *y,
+            &y,
             *beta,
             *gamma,
-            *theta,
+            &theta,
+            *trash_challenge,
             &lookups,
+            &trashcans,
             &permutations,
             &folding_pk.l0,
             &folding_pk.l_last,
@@ -293,10 +299,12 @@ fn compute_poly_g<F: PrimeField + WithSmallOrderMulGroup<3>>(
             instance_values,
             lookups,
             permutations: permutation,
+            trashcans,
             challenges,
             beta,
             gamma,
             theta,
+            trash_challenge,
             y,
             ..
         } = &lifted_folding_trace[j];
@@ -314,11 +322,13 @@ fn compute_poly_g<F: PrimeField + WithSmallOrderMulGroup<3>>(
                 .collect::<Vec<_>>(),
             fixed_polys,
             challenges,
-            *y,
+            y,
             *beta,
             *gamma,
-            *theta,
+            theta,
+            *trash_challenge,
             lookups,
+            trashcans,
             permutation,
             &pk.l0,
             &pk.l_last,
@@ -431,8 +441,11 @@ fn fold_traces<F: PrimeField + WithSmallOrderMulGroup<3>>(
         traces[0].advice_polys[0].len(),
         traces[0].instance_polys[0].len(),
         traces[0].lookups[0].len(),
+        traces[0].trashcans[0].len(),
         traces[0].permutations[0].sets.len(),
         traces[0].challenges.len(),
+        traces[0].theta.len(),
+        traces[0].y.len(),
     );
     let lagranges_in_gamma = lagrange_polys
         .iter()
@@ -464,7 +477,7 @@ mod tests {
         protogalaxy::{prover_oneshot::ProtogalaxyProverOneShot, verifier_oneshot::ProtogalaxyVerifierOneShot},
         transcript::{CircuitTranscript, Transcript},
     };
-    use crate::plonk::create_proof;
+    use crate::plonk::{Constraints, create_proof};
 
     #[derive(Clone, Copy)]
     struct TestCircuit {
@@ -516,8 +529,7 @@ mod tests {
                 let a = meta.query_advice(config.a, Rotation::cur());
                 let b = meta.query_advice(config.b, Rotation::cur());
                 let c = meta.query_advice(config.c, Rotation::cur());
-                let q = meta.query_selector(config.mul_selector);
-                vec![q * (a * b - c)]
+                Constraints::with_selector(config.mul_selector, vec![a * b - c])
             });
 
             meta.lookup("lookup", |meta| {
