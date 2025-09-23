@@ -10,8 +10,10 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 ### Changed
 ### Removed
 
+[0.1.2]
+Update dependencies only.
 
-[0.1.1] 
+[0.1.1]
 ### Added
 * Missing load of native_chip and poseidon (although they were not necessary) [#90](https://github.com/midnightntwrk/midnight-zk/pull/90)
 

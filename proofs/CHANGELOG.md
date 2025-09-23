@@ -12,9 +12,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## 0.5.1
+### Added
+
+### Changed
+* Fix computation of min_k (due to an extra unusable row we were not accounting for) [#114](https://github.com/midnightntwrk/midnight-zk/pull/114)
+
+### Removed
+
 ## 0.5.0
 ### Added
-* Implement `From<u64>` for Expression[#39](https://github.com/midnightntwrk/midnight-zk/pull/39)
+* Implement `From<u64>` for Expression [#39](https://github.com/midnightntwrk/midnight-zk/pull/39)
 * Feature to run internal benchmarks [#93](https://github.com/midnightntwrk/midnight-zk/pull/93)
 
 ### Changed

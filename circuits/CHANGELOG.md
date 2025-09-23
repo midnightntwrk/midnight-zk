@@ -17,6 +17,14 @@ verification keys break backwards compatibility.
 
 ### Removed
 
+## [5.0.1] - 19-09-2025
+### Added
+
+### Changed
+* Rerun goldenfiles after fix on min_k [#114](https://github.com/midnightntwrk/midnight-zk/pull/114)
+
+### Removed
+
 ## [5.0.0] - 19-09-2025 
 ### Added
 * Add CommittedInstanceInstructions [#63](https://github.com/midnightntwrk/midnight-zk/pull/63)

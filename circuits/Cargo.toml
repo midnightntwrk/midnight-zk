@@ -1,6 +1,6 @@
 [package]
 name = "midnight-circuits"
-version = "5.0.0"
+version = "5.0.1"
 edition = "2021"
 license-file.workspace = true
 
@@ -13,18 +13,18 @@ rustc-hash = "2"
 halo2curves = { workspace = true }
 blake2b_simd = { workspace = true }
 midnight-curves = { path = "../curves", version = "0.1.1" }
-midnight-proofs = { path = "../proofs", version = "0.5.0", default-features = false, features = [
+midnight-proofs = { path = "../proofs", version = "0.5.1", default-features = false, features = [
     "bits",
     "cost-estimator",
     "circuit-params",
     "committed-instances",
 ] }
-bench_macros = { path = "../bench-macros"}
+bench_macros = { path = "../bench-macros" }
 
 serde = { workspace = true, optional = true }
 serde_derive = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
-sha2 = { workspace = true}
+sha2 = { workspace = true }
 rand = { workspace = true }
 
 num-bigint = { version = "0.4" }
