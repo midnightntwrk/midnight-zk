@@ -127,6 +127,7 @@ impl<F: WithSmallOrderMulGroup<3>> ProverTrace<F> {
             trash_challenge,
             ..
         } = trace;
+
         Self {
             advice_polys,
             instance_polys,

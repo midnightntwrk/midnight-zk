@@ -24,7 +24,7 @@ pub struct ProtogalaxyVerifierOneShot<
     CS: PolynomialCommitmentScheme<F>,
     const K: usize,
 > {
-    verifier_folding_trace: VerifierFoldingTrace<F, CS>,
+    pub(crate) verifier_folding_trace: VerifierFoldingTrace<F, CS>,
     error_term: F,
     beta: F,
 }

@@ -54,7 +54,7 @@ use crate::poly::commitment::PolynomialCommitmentScheme;
 #[derive(Clone, Debug)]
 pub struct VerifyingKey<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
     domain: EvaluationDomain<F>,
-    fixed_commitments: Vec<CS::Commitment>,
+    pub(crate) fixed_commitments: Vec<CS::Commitment>,
     permutation: permutation::VerifyingKey<F, CS>,
     pub(crate) cs: ConstraintSystem<F>,
     /// Cached maximum degree of `cs` (which doesn't change after construction).

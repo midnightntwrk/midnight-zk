@@ -449,6 +449,7 @@ fn fold_traces<F: PrimeField + WithSmallOrderMulGroup<3>>(
 
 #[cfg(test)]
 mod tests {
+    use std::marker::PhantomData;
     use std::time::Instant;
 
     use ff::Field;
@@ -471,6 +472,9 @@ mod tests {
         },
         transcript::{CircuitTranscript, Transcript},
     };
+    use crate::plonk::traces::ProverTrace;
+    use crate::plonk::verify_algebraic_constraints;
+    use crate::poly::{LagrangeCoeff, Polynomial};
 
     #[derive(Clone, Copy)]
     struct TestCircuit {
@@ -576,9 +580,9 @@ mod tests {
             Ok(())
         }
     }
-
+    use crate::poly::commitment::{Guard, PolynomialCommitmentScheme};
     #[test]
-    fn folding_test() {
+    fn folding_test_oneshot() {
         const K: usize = 14;
         let k = 4; // number of folding instances
 
@@ -648,28 +652,62 @@ mod tests {
         let folding_time = folding.elapsed().as_millis();
         println!("Time for folding: {:?}ms", folding_time);
 
+        use crate::plonk::finalise_proof;
+        let error_lagrange: Polynomial<Fq, LagrangeCoeff> = Polynomial {values: protogalaxy.error_vec, _marker: PhantomData };
+        let committed_error = KZGCommitmentScheme::commit_lagrange(&params, &error_lagrange);
+
+        // Now we need to create the final proof and verify that the opening of the
+        // instance column evaluates at `e` in beta.
+        let folded_trace = ProverTrace::from_folding_trace(protogalaxy.folded_trace.clone());
+        // The PK needs to update the fixed values, as these are now folded
+        let fixed_values = protogalaxy.folded_trace.fixed_polys.clone();
+        let fixed_polys = fixed_values
+            .iter()
+            .cloned()
+            .map(|p| vk.get_domain().lagrange_to_coeff(p))
+            .collect::<Vec<_>>();
+        let fixed_cosets = fixed_polys
+            .iter()
+            .cloned()
+            .map(|p| vk.get_domain().coeff_to_extended(p))
+            .collect::<Vec<_>>();
+        let mut pk_final_proof = pk.clone();
+        pk_final_proof.fixed_polys = fixed_polys;
+        pk_final_proof.fixed_values = fixed_values;
+        pk_final_proof.fixed_cosets = fixed_cosets;
+
+        finalise_proof(&params, &pk_final_proof, 0, folded_trace, &mut transcript).unwrap();
+
+
         let mut transcript = CircuitTranscript::init_from_bytes(&transcript.finalize());
 
         // Now we begin verification
-        ProtogalaxyVerifierOneShot::<_, _, K>::fold(
+        let proto_verifier = ProtogalaxyVerifierOneShot::<_, _, K>::fold(
             &vk,
             #[cfg(feature = "committed-instances")]
             &[&[]],
             &[&[], &[], &[], &[]],
             &mut transcript,
         )
-        .expect("Failed to fold instances by the verifier")
-        .is_sat(
-            &params,
-            &vk,
-            &pk.ev,
-            protogalaxy.folded_trace,
-            &protogalaxy.folding_pk.l0,
-            &protogalaxy.folding_pk.l_last,
-            &protogalaxy.folding_pk.l_active_row,
-            &protogalaxy.folding_pk.permutation_pk_cosets,
-        )
-        .expect("Folding finalizer failed");
+            .expect("Failed to fold instances by the verifier");
+            // .is_sat(
+            //     &params,
+            //     &vk,
+            //     &pk.ev,
+            //     protogalaxy.folded_trace,
+            //     &protogalaxy.folding_pk.l0,
+            //     &protogalaxy.folding_pk.l_last,
+            //     &protogalaxy.folding_pk.l_active_row,
+            //     &protogalaxy.folding_pk.permutation_pk_cosets,
+            // )
+            // .expect("Folding finalizer failed");
+
+        let mut final_vk = vk.clone();
+        final_vk.fixed_commitments = proto_verifier.verifier_folding_trace.fixed_commitments.clone();
+        // At this point we should be able to verify the final part of the last proof
+        // todo: we need to
+        let guard = verify_algebraic_constraints(&vk, proto_verifier.verifier_folding_trace.into(), &[&[-committed_error]], &[&[&[]]], &mut transcript).expect("Verifier failed");
+        guard.verify(&params.verifier_params()).expect("Failed to verify last proof");
 
         println!("Folding was a success");
     }
