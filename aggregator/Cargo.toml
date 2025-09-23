@@ -1,6 +1,6 @@
 [package]
 name = "midnight-aggregator"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 rust-version = "1.76.0"
 description = "Toolkit for proof aggregation of midnight-proofs"
@@ -17,18 +17,18 @@ group = { workspace = true }
 ff = { workspace = true }
 halo2curves = { workspace = true }
 midnight-curves = { path = "../curves", version = "0.1.1" }
-midnight-proofs = { path = "../proofs", version = "0.5.0", default-features = false, features = [
+midnight-proofs = { path = "../proofs", version = "0.5.1", default-features = false, features = [
     "bits",
     "cost-estimator",
     "circuit-params",
     "committed-instances",
 ] }
-midnight-circuits = { path = "../circuits", default-features = false, features = [
+midnight-circuits = { path = "../circuits", version = "5.0.1", default-features = false, features = [
     "testing",
 ] }
 
 rand = { workspace = true }
-blake2b_simd = {  workspace = true }
+blake2b_simd = { workspace = true }
 sha2 = { workspace = true }
 
 [dev-dependencies]

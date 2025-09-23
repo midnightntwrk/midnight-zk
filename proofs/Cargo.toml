@@ -1,6 +1,6 @@
 [package]
 name = "midnight-proofs"
-version = "0.5.0"
+version = "0.5.1"
 edition = "2021"
 rust-version = "1.76.0"
 description = """
@@ -60,7 +60,7 @@ assert_matches = "1.5"
 criterion = "0.7"
 proptest = "1"
 serde_json = { workspace = true }
-midnight-circuits = {path = "../circuits" }
+midnight-circuits = { path = "../circuits" }
 sha2 = { workspace = true }
 rand = { workspace = true }
 
