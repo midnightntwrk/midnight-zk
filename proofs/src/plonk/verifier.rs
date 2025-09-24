@@ -5,10 +5,31 @@ use ff::{FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
 use super::{Error, VerifyingKey};
 use crate::{
     plonk::traces::VerifierTrace,
-    poly::{commitment::PolynomialCommitmentScheme, Rotation, VerifierQuery},
+    poly::{commitment::PolynomialCommitmentScheme, VerifierQuery},
     transcript::{read_n, Hashable, Sampleable, Transcript},
     utils::arithmetic::compute_inner_product,
 };
+/// Struct for lin poly
+#[derive(Debug)]
+pub struct LinearizedCommitment<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
+    /// Evaluation point
+    pub x: F,
+    /// Holding scalars of lin poly for MSM
+    pub scalars: Vec<F>,
+    /// Holding curve points of lin poly for MSM
+    pub points: Vec<Option<CS::Commitment>>,
+}
+
+impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> LinearizedCommitment<F, CS> {
+    /// Initialize empty lin poly
+    pub fn init() -> Self {
+        LinearizedCommitment {
+            x: F::ZERO,
+            scalars: vec![],
+            points: vec![],
+        }
+    }
+}
 
 /// Given a plonk proof, this function parses it to extract the verifying trace.
 /// This function computes all Fiat-Shamir challenges, with the exception of
@@ -269,14 +290,13 @@ where
 
     // Read evals of all advice polys from transcript
     let advice_evals = (0..num_proofs)
-        .map(|_| -> Result<Vec<_>, _> { read_n(transcript, vk.cs.advice_queries.len()) })
+        .map(|_| -> Result<Vec<F>, _> { read_n(transcript, vk.cs.advice_queries.len()) })
         .collect::<Result<Vec<_>, _>>()?;
 
-    // Read all evals of fixed columns from transcript (transcript doesn't contains evals
-    // corresponding to simple selectors)
-    // Read only `num_filtered_queries` evals from the transcript (i.e., `num_fixed_columns`` - `num_simple_selectors` evals)
+    // Read `num_filtered_queries` evals from the transcript, i.e., `num_fixed_columns` -
+    // `num_simple_selectors` evals and fill up the "missing" places with 1
+    // (transcript doesn't contain evals corresponding to simple selectors)
     let mut fixed_evals = read_n(transcript, vk.cs.num_filtered_queries)?;
-
     for (idx, (col, _)) in vk.cs.fixed_queries().iter().enumerate() {
         if vk.cs.indices_simple_selectors.contains(&col.index()) {
             fixed_evals.insert(idx, F::ONE)
@@ -310,13 +330,16 @@ where
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    fn construct_linearization_commitment<F: PrimeField, CS: PolynomialCommitmentScheme<F>>(
+    fn prepare_linearized_commitment<
+        F: PrimeField + ff::WithSmallOrderMulGroup<3> + ff::FromUniformBytes<64>,
+        CS: PolynomialCommitmentScheme<F>,
+    >(
         vk: &VerifyingKey<F, CS>,
         expressions: Vec<(Option<usize>, F)>,
         y: F,
-        xn: F,
+        x: F,
         h_limb_commitments: &[CS::Commitment],
-    ) -> CS::Commitment {
+    ) -> LinearizedCommitment<F, CS> {
         // Construct commitment of the linearization polynomial
         // (which will be checked that it opens to 0 at x):
         //
@@ -324,37 +347,57 @@ where
         //        - (h_0 + x^n*h_1 + x^{2n}*h_2 + ... + x^{l*n}*h_l) * (x^n-1),
         //
         // where:
-        // * S_i are the commitments to fixed columns corresponding to simple selectors
-        // * id_i are the partially evaluated individual identities,
-        // * h_j are the limbs of the quotient polynomial.
+        // * id_i is a (partially or fully) evaluated identity,
+        // * S_i is, either,
+        //      - (i)  a commitment to a fixed column corresponding a simple selector, or,
+        //      - (ii) the 1 element (because the corresponding identity id_i has been fully evaluated)
+        // * h_j are commitments to the limbs of the quotient polynomial.
 
-        let g1 = CS::get_generator().unwrap();
+        let t = std::time::Instant::now();
+        let xn = x.pow([vk.n()]);
 
-        // Construct commitment to linearized identities: LHS above
-        let mut acc = g1.clone() * F::ZERO;
-        for (idx, e) in expressions {
-            let value = match idx {
-                Some(column_index) => vk.fixed_commitments[column_index].clone() * e,
-                None => g1.clone() * e,
-            };
-            acc = acc * y + value;
+        let mut xn_powers = Vec::new();
+        let mut xn_pow = F::ONE;
+        for _ in 0..h_limb_commitments.len() {
+            xn_powers.push(-xn_pow * (xn - F::ONE));
+            xn_pow *= xn;
+        }
+        let mut y_powers = Vec::new();
+        let mut y_pow = F::ONE;
+        for _ in 0..expressions.len() {
+            y_powers.push(y_pow);
+            y_pow *= y;
+        }
+        y_powers.reverse();
+
+        let h_limb_commitments: Vec<_> =
+            h_limb_commitments.iter().map(|l| Some(l.clone())).collect();
+
+        let mut identities_scalars = Vec::new();
+        let mut identities_points = Vec::new();
+        for (i, (idx, e)) in expressions.clone().into_iter().enumerate() {
+            let point = idx.map(|column_index| vk.fixed_commitments[column_index].clone());
+            identities_points.push(point);
+            identities_scalars.push(y_powers[i] * e);
         }
 
-        // Construct commitment to linearized h polynomial: RHS above
-        // h_0 + x^n*h_1 + x^{2n}*h_2 + ... + x^{ln}*h_k,
-        // where h_i are commitments to the limbs of the quotient polynomial
-        let mut linearized_h = g1.clone() * F::ZERO;
-        for (i, piece) in h_limb_commitments.iter().enumerate() {
-            linearized_h = linearized_h + piece.clone() * xn.pow([i as u64]);
-        }
-        linearized_h = linearized_h * (xn - F::ONE);
+        identities_points.extend(h_limb_commitments);
+        identities_scalars.extend(xn_powers);
 
-        acc - linearized_h
+        let lin_com: LinearizedCommitment<F, CS> = LinearizedCommitment {
+            x,
+            scalars: identities_scalars,
+            points: identities_points,
+        };
+        println!(
+            "Struct built in {:?} μs",
+            format_args!("{:.1}", t.elapsed().as_micros())
+        );
+        lin_com
     }
 
-    // Partially evaluate batched identities (without fixed columns
-    // corresponding to simple selectors)
-    let xn = x.pow([vk.n()]);
+    // Partially evaluate batched identities (without fixed columns corresponding
+    // to simple selectors)
     let nr_blinding_factors = vk.cs.nr_blinding_factors();
     let l_evals = vk
         .domain
@@ -458,16 +501,11 @@ where
         }
     }
 
-    let t = std::time::Instant::now();
-    let linearization_commitment =
-        construct_linearization_commitment(vk, evaluated_expressions, y, xn, &h_limb_commitments);
-    println!(
-        "Linearization commitment built in {:?} ms",
-        format_args!("{:.1}", t.elapsed().as_secs_f32() * 1000.0)
-    );
+    let lin_com =
+        prepare_linearized_commitment(vk, evaluated_expressions, y, x, &h_limb_commitments);
 
-    // Collect queries that are checked in multi-open argument: queries corresponding
-    // to simple-selectors need not be checked
+    // Collect queries that are checked in the multi-open argument
+    // NB: Queries corresponding to simple-selectors need not be checked
     let queries = committed_instances
         .iter()
         .zip(instance_evals.iter())
@@ -520,26 +558,24 @@ where
                 .fixed_queries
                 .iter()
                 .enumerate()
-                // TODO: filter out queries for fixed columns corresponding to
-                // simple selectors
+                // Filter out queries for fixed columns corresponding to simple selectors
                 .filter(|(_, (col, _))| !vk.cs.indices_simple_selectors.contains(&col.index()))
                 .map(|(query_index, &(column, at))| {
                     VerifierQuery::new(
                         vk.domain.rotate_omega(x, at),
-                        // fixed_commitments is sorted per column_index
+                        // `fixed_commitments` is sorted per column_index
                         &vk.fixed_commitments[column.index()],
                         // `fixed_evals` is indexed according to `fixed_queries`
                         fixed_evals[query_index],
                     )
                 }),
         )
-        .chain(permutations_common.queries(&vk.permutation, x))
-        // TODO: add query for linearization poly
-        .chain(iter::once(VerifierQuery::new(
-            vk.domain.rotate_omega(x, Rotation::cur()),
-            &linearization_commitment,
-            F::ZERO,
-        )))
+        .chain(permutations_common.queries(&vk.permutation, x));
+
+    // Compute commitment to linearization poly via MSM and check that it opens to 0 at x
+    let lin_com = CS::build_linearized_commitment(Some(lin_com));
+    let queries = queries
+        .chain(iter::once(VerifierQuery::new(x, &lin_com, F::ZERO)))
         .collect::<Vec<_>>();
 
     // We are now convinced the circuit is satisfied so long as the

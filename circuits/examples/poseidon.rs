@@ -74,11 +74,17 @@ fn main() {
     let witness: [F; 3] = core::array::from_fn(|_| F::random(&mut rng));
     let instance = <PoseidonChip<F> as HashCPU<F, F>>::hash(&witness);
 
+    let t = std::time::Instant::now();
     let proof = compact_std_lib::prove::<PoseidonExample, blake2b_simd::State>(
         &srs, &pk, &relation, &instance, witness, OsRng,
     )
     .expect("Proof generation should not fail");
+    println!(
+        "Proof built in {:?} ms",
+        format_args!("{:.1}", t.elapsed().as_secs_f32() * 1000.0)
+    );
 
+    let t = std::time::Instant::now();
     assert!(
         compact_std_lib::verify::<PoseidonExample, blake2b_simd::State>(
             &srs.verifier_params(),
@@ -88,5 +94,9 @@ fn main() {
             &proof
         )
         .is_ok()
-    )
+    );
+    println!(
+        "Proof verified in {:?} ms",
+        format_args!("{:.1}", t.elapsed().as_secs_f32() * 1000.0)
+    );
 }

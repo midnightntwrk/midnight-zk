@@ -697,7 +697,7 @@ where
         Ok(h_pieces)
     }
 
-    // Construct the quotient polynomial h(X)=nu(X)/(X^n-1), split it into limbs of size n,
+    // Construct the quotient polynomial h(X) = nu(X)/(X^n-1), split it into limbs of size n,
     // commit to each limb separately, and write limb commitments to the transcript
     let quotient_limbs =
         construct_h_poly::<F, CS, T>(params, pk.get_vk().get_domain(), nu_poly, transcript)?;
@@ -705,11 +705,13 @@ where
     // Sample evaluation challenge x
     let x: F = transcript.squeeze_challenge();
 
-    let mut instance_evals_combined = Vec::new(); // Done
-    let mut advice_evals_combined = Vec::new(); // Done
+    // For constructing the linearization poly, collect all evaluations
+    // except those from simple selectors
+    let mut instance_evals_combined = Vec::new();
+    let mut advice_evals_combined = Vec::new();
     let mut permutation_evals_combined = Vec::new();
-    let mut lookup_evals_combined = Vec::new(); // Done
-    let mut trashcan_evals_combined = Vec::new(); // Done
+    let mut lookup_evals_combined = Vec::new();
+    let mut trashcan_evals_combined = Vec::new();
 
     // Compute and hash evals for the polynomials of the committed instances of
     // each circuit
@@ -749,15 +751,16 @@ where
     }
 
     // Compute and hash evaluations of fixed columns (shared across all circuit instances)
-    // `fixed_evals` is indexed according to `fixed_queries` (which is NOT indexed
+    //
+    // Filter out fixed evals corresponding to simple selectors
+    // NB: `fixed_evals` is indexed according to `fixed_queries` (which is NOT indexed
     // per column index, but in the order in which queries were added)
     let fixed_evals: Vec<F> = meta
         .fixed_queries
         .iter()
         .map(|&(column, at)| {
             if meta.indices_simple_selectors.contains(&column.index()) {
-                // fixed columns corresponding to simple selectors don't need to be evaluated;
-                // return 1 for partial evaluations
+                // Fixed columns corresponding to simple selectors don't need to be evaluated
                 F::ONE
             } else {
                 eval_polynomial(&pk.fixed_polys[column.index()], domain.rotate_omega(x, at))
@@ -765,10 +768,8 @@ where
         })
         .collect();
 
-    // Write only fixed evals corresponding to *non-simple* selectors
-    // to the transcript
+    // Write only fixed evals corresponding to *non-simple* selectors to the transcript
     for (idx, (col, _)) in meta.fixed_queries.iter().enumerate() {
-        // if true {
         if !meta.indices_simple_selectors.contains(&col.index()) {
             transcript.write(&fixed_evals[idx])?;
         }
@@ -1034,7 +1035,7 @@ where
                 .cs
                 .fixed_queries
                 .iter()
-                // TODO: filter out fixed queries for simple selectors
+                // Filter out fixed queries for simple selectors
                 .filter(|(col, _)| !pk.vk.cs.indices_simple_selectors.contains(&col.index()))
                 .map(|&(column, at)| ProverQuery {
                     point: domain.rotate_omega(x, at),
@@ -1042,7 +1043,7 @@ where
                 }),
         )
         .chain(pk.permutation.open(x))
-        // TODO: check if this lin poly is being evaluated or not (possibly not: multi open batches all polys)
+        // Add prover query of linearization poly at x
         .chain(iter::once(ProverQuery {
             point: domain.rotate_omega(x, Rotation::cur()),
             poly: &linearization_poly,

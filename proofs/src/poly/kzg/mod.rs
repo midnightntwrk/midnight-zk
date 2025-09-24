@@ -63,11 +63,6 @@ where
     type Commitment = E::G1;
     type VerificationGuard = DualMSM<E>;
 
-    // TODO: remove after debugging
-    fn get_generator() -> Option<Self::Commitment> {
-        Some(E::G1::generator())
-    }
-
     fn gen_params(k: u32) -> Self::Parameters {
         ParamsKZG::unsafe_setup(k, OsRng)
     }
@@ -192,6 +187,32 @@ where
         transcript.write(&pi).map_err(|_| Error::OpeningError)
     }
 
+    fn build_linearized_commitment(
+        lin_poly: Option<crate::plonk::LinearizedCommitment<E::Fr, Self>>,
+    ) -> <crate::poly::kzg::KZGCommitmentScheme<E> as crate::poly::commitment::PolynomialCommitmentScheme<E::Fr>>::Commitment{
+        let t = std::time::Instant::now();
+        let lin_poly = lin_poly.unwrap();
+        let mut bases = Vec::new();
+        for com in lin_poly.points {
+            let b = match com {
+                Some(com) => com,
+                None => E::G1::generator(),
+            };
+            bases.push(b);
+        }
+        let mut msm = MSMKZG::<E>::init();
+        msm.scalars = lin_poly.scalars;
+        msm.bases = bases;
+
+        let l = msm.eval();
+        println!(
+            "MSM built in {:?} ms",
+            format_args!("{:.1}", t.elapsed().as_secs_f32() * 1000.0)
+        );
+
+        l
+    }
+
     fn multi_prepare<'com, T: Transcript>(
         verifier_query: &[VerifierQuery<'com, E::Fr, KZGCommitmentScheme<E>>],
         transcript: &mut T,
@@ -314,13 +335,13 @@ where
         let mut pi_msm = MSMKZG::<E>::init();
         pi_msm.append_term(E::Fr::ONE, pi);
 
-        // Scale zπ -vG
+        // Scale zπ - vG
         let scaled_pi = MSMKZG {
             scalars: vec![x3, v],
             bases: vec![pi, -E::G1::generator()],
         };
 
-        // (π, C − vG + zπ)
+        // (π, C + zπ - vG)
         let mut msm_accumulator = DualMSM {
             left: pi_msm,
             right: final_com,
