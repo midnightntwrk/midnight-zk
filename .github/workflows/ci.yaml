@@ -62,7 +62,7 @@ jobs:
       - name: Run test 1000 times serially
         run: |
           for i in {1..1000}; do
-            cargo test --release vk_write_then_read_processed -- --test-threads=1 --nocapture
+            cargo test --release -- --test-threads=1 --nocapture
           done
 
 #  test-vk-consistency:
