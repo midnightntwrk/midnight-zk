@@ -35,13 +35,20 @@ use super::{
 };
 use crate::parsing::serialization::Serialize;
 
+/// Assumed padding for elements of the standard parsing library for
+/// variable length vectors. All parsers of the standard library ignore the
+/// presence of (an arbitrary number of occurrences of) this byte at the
+/// beginning and the end of inputs.
+pub const PAD: u8 = b' ';
+
 /// Folder where the serialized automata for the standard library will be
 /// stored.
 #[cfg(test)]
 const AUTOMATON_CACHE: &str = "src/parsing/automaton_cache";
 
 /// Explicit names (and documentation) for indexing the various parsing
-/// specifications hard-coded in the standard library.
+/// specifications hard-coded in the standard library. All of them are
+/// unaffected by appending blank characters before or after the parsed input.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum StdLibParser {
     /// # Description and sources
@@ -134,9 +141,16 @@ type ParsingLibrary = FxHashMap<StdLibParser, Automaton>;
 /// components. When serialization is disabled, the automaton will be computed
 /// using the second argument.
 fn spec_library_data() -> LibraryData {
+    // All parsers of the standard library are defined in a way that blank
+    // characters are ignored at the beginning and the end of parsed inputs. As a
+    // consequence, this makes padded elements also ignored (which is required
+    // for variable-length parsing), provided they are blank characters. This is
+    // what is asserted below.
+    assert!(b" \t\n".contains(&PAD));
+
     &[(
         StdLibParser::Jwt,
-        &spec_jwt as &'static dyn Fn() -> Regex,
+        &spec_jwt as &dyn Fn() -> Regex,
         include_bytes!("automaton_cache/Jwt") as &'static [u8],
     )]
 }
@@ -177,6 +191,7 @@ fn spec_jwt() -> Regex {
     let collec = |opening: &str, items: Vec<Regex>, closing: &str| -> Regex {
         Regex::spaced_separated_cat(items, ",".into())
             .spaced_delimited(opening.into(), closing.into())
+            .spaced_delimited(Regex::blanks(), Regex::blanks())
     };
 
     // A JSON list of strings.
@@ -567,7 +582,7 @@ mod tests {
     }
 }"#;
 
-    const MINIMAL_JWT: &str = r#"{
+    const MINIMAL_JWT: &str = r#" {
     "iss" : "",
     "sub" : "",
     "nbf" : 0,
@@ -597,5 +612,5 @@ mod tests {
           "statusListCredential" : ""
        }
     }
-}"#;
+} "#;
 }

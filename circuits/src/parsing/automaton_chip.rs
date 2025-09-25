@@ -55,9 +55,10 @@ use {
 use super::automaton::{Automaton, ALPHABET_MAX_SIZE};
 use crate::{
     field::{decomposition::chip::P2RDecompositionChip, AssignedNative, NativeChip, NativeGadget},
-    instructions::AssignmentInstructions,
+    instructions::{AssignmentInstructions, ControlFlowInstructions, VectorInstructions},
     types::AssignedByte,
     utils::ComposableChip,
+    vec::{vector_gadget::VectorGadget, AssignedVector},
 };
 
 /// Number of columns for the automata chip.
@@ -141,6 +142,7 @@ where
 #[derive(Clone, Debug)]
 pub struct AutomatonConfig<LibIndex, F> {
     automata: FxHashMap<LibIndex, NativeAutomaton<F>>,
+    pad: Option<u8>,
     q_automaton: Selector,
     state_col: Column<Advice>,
     letter_col: Column<Advice>,
@@ -159,6 +161,7 @@ where
 {
     config: AutomatonConfig<LibIndex, F>,
     native_gadget: NG<F>,
+    vector_gadget: VectorGadget<F>,
 }
 
 impl<LibIndex, F> Chip<F> for AutomatonChip<LibIndex, F>
@@ -183,15 +186,21 @@ where
 {
     type InstructionDeps = NG<F>;
 
+    // Shared resources are the automata advice columns, the indexed automaton
+    // library, and the padding for variable-length parsing. If the padding is set
+    // to `None`, calling `varlen_parse` on the configured chip will cause the code
+    // to panic.
     type SharedResources = (
         [Column<Advice>; NB_AUTOMATA_COLS],
         FxHashMap<LibIndex, Automaton>,
+        Option<u8>,
     );
 
     fn new(config: &AutomatonConfig<LibIndex, F>, deps: &Self::InstructionDeps) -> Self {
         Self {
             config: config.clone(),
             native_gadget: deps.clone(),
+            vector_gadget: VectorGadget::new(deps),
         }
     }
 
@@ -201,7 +210,7 @@ where
     ) -> AutomatonConfig<LibIndex, F> {
         let q_automaton = meta.complex_selector();
 
-        let (advice_cols, automata) = shared_res;
+        let (advice_cols, automata, pad) = shared_res;
         let state_col = advice_cols[0];
         let letter_col = advice_cols[1];
         let output_col = advice_cols[2];
@@ -231,6 +240,7 @@ where
 
         AutomatonConfig {
             automata,
+            pad: *pad,
             q_automaton,
             state_col,
             letter_col,
@@ -457,6 +467,33 @@ where
             },
         )
     }
+
+    /// Analogue of `parse` for vectors of variable length (parametrised by max
+    /// length `M` and chunk size `A`). Uses `self.config.pad` for the
+    /// vector padding (panics if it is `None`).
+    pub fn parse_varlen<const M: usize, const A: usize>(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        automaton_index: &LibIndex,
+        input: &AssignedVector<F, AssignedByte<F>, M, A>,
+    ) -> Result<Vec<AssignedNative<F>>, Error> {
+        let ng = &self.native_gadget;
+        let vg = &self.vector_gadget;
+        let filler = ng.assign_fixed(
+            layouter,
+            self.config
+                .pad
+                .expect("cannot use variable-length parsing for parsers not recognising padding"),
+        )?;
+        let flags = vg.padding_flag(layouter, input)?;
+        let result = input
+            .buffer
+            .iter()
+            .zip(flags.iter())
+            .map(|(elem, is_padding)| ng.select(layouter, is_padding, &filler, elem))
+            .collect::<Result<Vec<_>, Error>>()?;
+        self.parse(layouter, automaton_index, &result)
+    }
 }
 
 #[cfg(test)]
@@ -562,6 +599,7 @@ where
             &(
                 advice_cols[..NB_AUTOMATA_COLS].try_into().unwrap(),
                 automata,
+                None, // For tests, no padding is used for simplicity.
             ),
         );
 

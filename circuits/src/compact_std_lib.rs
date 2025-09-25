@@ -466,6 +466,7 @@ impl ZkStdLib {
                 &(
                     advice_columns[..NB_AUTOMATA_COLS].try_into().unwrap(),
                     parsing::spec_library(),
+                    Some(parsing::PAD),
                 ),
             )),
             false => None,
