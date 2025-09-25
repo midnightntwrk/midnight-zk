@@ -302,6 +302,10 @@ pub fn finalise_proof<'a, F, CS: PolynomialCommitmentScheme<F>, T: Transcript>(
     // instances that the verifier receives in committed form.
     #[cfg(feature = "committed-instances")] nb_committed_instances: usize,
     trace: ProverTrace<F>,
+    // The prover can correct the plonk identity. This is used in Protogalaxy.
+    // TODO: I don't like it here. An alternative is to call all functions from
+    // finalise_proof directly in the folding prover.
+    correction: (Polynomial<F, Coeff>, F),
     transcript: &mut T,
 ) -> Result<(), Error>
 where
@@ -332,7 +336,7 @@ where
 
     // Construct the vanishing argument's h(X) commitments
     let vanishing = bench_and_run!(_group; ref transcript; own h_poly, own vanishing; "Construct vanishing commitments";
-        |t, h, vanishing: vanishing::prover::Committed<F>| vanishing.construct::<CS, T>(params, domain, h, t))?;
+        |t, h, vanishing: vanishing::prover::Committed<F>| vanishing.construct::<CS, T>(params, domain, h, correction.0.clone(), t))?;
 
     let x: F = transcript.squeeze_challenge();
 
@@ -352,6 +356,7 @@ where
         nb_committed_instances,
         &instance_polys,
         &advice_polys,
+        &correction.0,
         x,
         t,
     ))?;
@@ -397,7 +402,7 @@ where
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    let queries = bench_and_run!(_group; ; ; "Compute queries"; || compute_queries(
+    let mut queries = bench_and_run!(_group; ; ; "Compute queries"; || compute_queries(
         pk,
         nb_committed_instances,
         &instance_polys,
@@ -406,8 +411,14 @@ where
         &lookups,
         &trashcans,
         &vanishing,
+        &correction.0,
         x,
     ));
+
+    queries.push(ProverQuery {
+        point: correction.1,
+        poly: &correction.0,
+    });
 
     bench_and_run!(_group; ref transcript; ; "Multi open argument"; |t|
         CS::multi_open(params, &queries, t).map_err(|_| Error::ConstraintSystemFailure)
@@ -460,6 +471,7 @@ where
         #[cfg(feature = "committed-instances")]
         nb_committed_instances,
         trace,
+        (Polynomial::init(pk.vk.get_domain().n as usize), F::ZERO),
         transcript,
         #[cfg(feature = "bench-internal")]
         _group,
@@ -738,6 +750,7 @@ fn write_evals_to_transcript<F, CS, T>(
     nb_committed_instances: usize,
     instance_polys: &[Vec<Polynomial<F, Coeff>>],
     advice_polys: &[Vec<Polynomial<F, Coeff>>],
+    correction: &Polynomial<F, Coeff>,
     x: F,
     transcript: &mut T,
 ) -> Result<(), Error>
@@ -791,6 +804,10 @@ where
         transcript.write(eval)?;
     }
 
+    // Hash the evaluation of the correction polynomial
+    let correction_eval = eval_polynomial(correction, x);
+    transcript.write(&correction_eval)?;
+
     Ok(())
 }
 
@@ -804,6 +821,7 @@ fn compute_queries<'a, F: WithSmallOrderMulGroup<3> + Hash, CS: PolynomialCommit
     lookups: &'a [Vec<lookup::prover::Evaluated<F>>],
     trashcans: &'a [Vec<trash::prover::Evaluated<F>>],
     vanishing: &'a vanishing::prover::Evaluated<F>,
+    correcting: &'a Polynomial<F, Coeff>,
     x: F,
 ) -> Vec<ProverQuery<'a, F>> {
     let domain = pk.vk.get_domain();
@@ -844,6 +862,10 @@ fn compute_queries<'a, F: WithSmallOrderMulGroup<3> + Hash, CS: PolynomialCommit
         .chain(pk.permutation.open(x))
         // We query the h(X) polynomial at x
         .chain(vanishing.open(x))
+        .chain(iter::once(ProverQuery {
+            point: x,
+            poly: correcting,
+        }))
         .collect::<Vec<_>>()
 }
 

@@ -270,7 +270,7 @@ where
         let x3 = truncate(x3);
 
         let mut q_evals_on_x3 = Vec::<E::Fr>::with_capacity(q_eval_sets.len());
-        for _ in 0..q_eval_sets.len() {
+        for _ in &q_eval_sets {
             q_evals_on_x3.push(transcript.read().map_err(|_| Error::SamplingError)?);
         }
 

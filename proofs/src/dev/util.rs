@@ -162,10 +162,11 @@ pub(super) fn cell_values<'a, F: Field>(
 }
 
 #[cfg(feature = "bench-internals")]
+#[allow(unused_variables)]
 pub fn bench<T, E, F: FnOnce() -> Result<T, E>>(label: &str, f: F) -> Result<T, E> {
     let start = std::time::Instant::now();
     let result = f();
-    println!("{:<40}:{:?}", label, start.elapsed());
+    // println!("{:<40}:{:?}", label, start.elapsed());
     result
 }
 

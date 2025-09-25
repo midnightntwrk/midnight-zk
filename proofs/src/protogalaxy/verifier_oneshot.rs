@@ -25,8 +25,8 @@ pub struct ProtogalaxyVerifierOneShot<
     const K: usize,
 > {
     pub(crate) verifier_folding_trace: VerifierFoldingTrace<F, CS>,
-    error_term: F,
-    beta: F,
+    pub(crate) error_term: F,
+    pub(crate) beta: F,
 }
 
 impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: usize>
@@ -39,7 +39,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
     /// TODO: PCS not verified
     pub fn fold<T>(
         vk: &VerifyingKey<F, CS>,
-        #[cfg(feature = "committed-instances")] committed_instances: &[&[CS::Commitment]],
+        committed_instances: &[&[CS::Commitment]],
         instances: &[&[&[F]]],
         transcript: &mut T,
     ) -> Result<Self, Error>
@@ -65,14 +65,9 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         // David: yes, i think so too
         let traces = instances
             .iter()
-            .map(|instance| {
-                let trace = parse_trace(
-                    vk,
-                    #[cfg(feature = "committed-instances")]
-                    committed_instances,
-                    &[instance],
-                    transcript,
-                )?;
+            .zip(committed_instances)
+            .map(|(instance, committed_instance)| {
+                let trace = parse_trace(vk, &[committed_instance], &[instance], transcript)?;
 
                 Ok(trace.into_folding_trace(vk.fixed_commitments()))
             })
@@ -164,8 +159,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
 
         // let beta_coeffs: Vec<F> = vec![self.beta.clone(); 1 << K];
         let omega = vk.get_domain().get_omega(); // generator of multiplicative subgroup
-        let beta_coeffs: Vec<F> =
-            eval_lagrange_on_beta(&omega, vk.get_domain().n.try_into().unwrap(), &self.beta);
+        let beta_coeffs: Vec<F> = eval_lagrange_on_beta(&omega, vk.get_domain(), &self.beta);
 
         let expected_result = witness_poly
             .values

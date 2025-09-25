@@ -243,10 +243,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         Ok(self)
     }
 
-    fn compute_h(
-        folding_pk: &FoldingPk<F>,
-        folded_trace: &FoldingProverTrace<F>,
-    ) -> Polynomial<F, LagrangeCoeff> {
+    fn compute_h(&self, folded_trace: &FoldingProverTrace<F>) -> Polynomial<F, LagrangeCoeff> {
         let FoldingProverTrace {
             fixed_polys,
             advice_polys,
@@ -263,9 +260,9 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
             ..
         } = folded_trace;
 
-        folding_pk.ev.evaluate_h::<LagrangeCoeff>(
-            &folding_pk.domain,
-            &folding_pk.cs,
+        self.folding_pk.ev.evaluate_h::<LagrangeCoeff>(
+            &self.folding_pk.domain,
+            &self.folding_pk.cs,
             &advice_polys.iter().map(Vec::as_slice).collect::<Vec<_>>(),
             &instance_values.iter().map(|i| i.as_slice()).collect::<Vec<_>>(),
             fixed_polys,
@@ -278,15 +275,15 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
             lookups,
             trashcans,
             permutations,
-            &folding_pk.l0,
-            &folding_pk.l_last,
-            &folding_pk.l_active_row,
-            &folding_pk.permutation_pk_cosets,
+            &self.folding_pk.l0,
+            &self.folding_pk.l_last,
+            &self.folding_pk.l_active_row,
+            &self.folding_pk.permutation_pk_cosets,
         )
     }
 
     fn compute_error(&self, folded_trace: &FoldingProverTrace<F>, beta_pows: &[F; K]) -> F {
-        let witness_poly = Self::compute_h(&self.folding_pk, folded_trace);
+        let witness_poly = self.compute_h(folded_trace);
         let beta_powers = pow_vec(beta_pows);
 
         witness_poly
@@ -322,7 +319,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
             })
             .collect::<Vec<_>>();
 
-        let witness_poly = Self::compute_h(&self.folding_pk, &self.folded_trace);
+        let witness_poly = self.compute_h(&self.folded_trace);
         let res = witness_poly
             .values
             .into_iter()

@@ -8,7 +8,8 @@ use std::{
     iter::Product,
     marker::PhantomData,
     ops::{
-        Add, AddAssign, Deref, DerefMut, Index, IndexMut, Mul, MulAssign, RangeFrom, RangeFull, Sub,
+        Add, AddAssign, Deref, DerefMut, Index, IndexMut, Mul, MulAssign, Neg, RangeFrom,
+        RangeFull, Sub,
     },
 };
 
@@ -179,6 +180,18 @@ impl<F: PrimeField, B> Polynomial<F, B> {
     pub fn init(num_coeffs: usize) -> Self {
         Polynomial {
             values: vec![F::ZERO; num_coeffs],
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<F: PrimeField, B> Neg for Polynomial<F, B> {
+    type Output = Polynomial<F, B>;
+
+    fn neg(self) -> Self::Output {
+        let negated_vec = self.values.into_iter().map(|coeff| -coeff).collect::<Vec<_>>();
+        Self {
+            values: negated_vec,
             _marker: PhantomData,
         }
     }

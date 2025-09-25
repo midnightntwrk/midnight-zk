@@ -348,12 +348,12 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                 }
             });
 
-            // Permutations
             // Beginning index of permutations y'th challenge
             let mut idx_y = 0;
-
             // We need one challenge per polynomial, per gate.
             cs.gates.iter().for_each(|g| idx_y += g.polynomials().len());
+
+            // Permutations
 
             let sets = &permutation.sets;
             if !sets.is_empty() {
