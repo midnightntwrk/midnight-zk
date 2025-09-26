@@ -128,7 +128,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
 
         // let g_in_gamma = eval_polynomial(&poly_to_eval_coeff, gamma);
         let k_in_gamma = eval_polynomial(&poly_k_coeff.values, gamma);
-        let z_in_gamma = gamma.pow_vartime([dk_domain.n]) - F::ONE;
+        // let z_in_gamma = gamma.pow_vartime([dk_domain.n]) - F::ONE;
 
         transcript.write(&k_in_gamma)?;
 
@@ -140,11 +140,11 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
 
         // Compare error term vector with error term
 
-        let error_sum: F = error_terms
-            .par_iter()
-            .zip(lagrange_on_beta.par_iter())
-            .map(|(&error, &coeff)| error * coeff)
-            .reduce(|| F::ZERO, |a, b| a + b);
+        // let error_sum: F = error_terms
+        //     .par_iter()
+        //     .zip(lagrange_on_beta.par_iter())
+        //     .map(|(&error, &coeff)| error * coeff)
+        //     .reduce(|| F::ZERO, |a, b| a + b);
         // assert_eq!(error_sum, g_in_gamma);
 
         // Update error term
@@ -696,7 +696,7 @@ mod tests {
 
     #[test]
     fn folding_test_oneshot() {
-        const K: usize = 9;
+        const K: usize = 15;
         let k = 4; // number of folding instances
 
         let rng = ChaCha8Rng::from_seed([0u8; 32]);
