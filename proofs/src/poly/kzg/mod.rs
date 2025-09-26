@@ -190,7 +190,6 @@ where
     fn build_linearized_commitment(
         lin_poly: Option<crate::plonk::LinearizedCommitment<E::Fr, Self>>,
     ) -> <crate::poly::kzg::KZGCommitmentScheme<E> as crate::poly::commitment::PolynomialCommitmentScheme<E::Fr>>::Commitment{
-        let t = std::time::Instant::now();
         let lin_poly = lin_poly.unwrap();
         let mut bases = Vec::new();
         for com in lin_poly.points {
@@ -204,13 +203,7 @@ where
         msm.scalars = lin_poly.scalars;
         msm.bases = bases;
 
-        let l = msm.eval();
-        println!(
-            "MSM built in {:?} ms",
-            format_args!("{:.1}", t.elapsed().as_secs_f32() * 1000.0)
-        );
-
-        l
+        msm.eval()
     }
 
     fn multi_prepare<'com, T: Transcript>(

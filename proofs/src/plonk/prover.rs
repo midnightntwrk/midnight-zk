@@ -7,6 +7,9 @@ use std::{
 
 use ff::{Field, FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
 use rand_core::{CryptoRng, RngCore};
+use rayon::iter::{
+    IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
+};
 
 use super::{
     circuit::{
@@ -850,50 +853,100 @@ where
         //
 
         // Construct linearized identities: LHS above
-        // Initialize accumulator with zero polynomial
-        let mut acc = vec![F::ZERO; pk.vk.domain.n as usize];
-        for (column_idx, partial_eval) in evaluated_expressions {
-            let poly = match column_idx {
-                Some(column_index) => {
-                    // Multiply fixed column corresponding to simple selector with partial evaluation of gate
-                    // Note: `fixed_polys` of proving key are polynomials in coefficient form
-                    let mut fixed_poly = pk.fixed_polys[column_index].clone();
-                    for coeff in fixed_poly.values.iter_mut() {
-                        *coeff *= partial_eval;
-                    }
-                    fixed_poly.values
-                }
-                None => {
-                    // Return constant poly with constant term equal to fully evaluated gate
-                    let mut constant_poly = vec![F::ZERO; pk.vk.domain.n as usize];
-                    constant_poly[0] = partial_eval;
-                    constant_poly
-                }
-            };
-            // Multiply current state of accumulator
-            // with batching challenge and add new poly
-            for (ac, pc) in acc.iter_mut().zip(poly) {
-                *ac = *ac * y + pc;
+        // 1. Prepare powers of the batching challenge y
+        let t = std::time::Instant::now();
+        let mut y_powers = Vec::new();
+        let mut y_pow = F::ONE;
+        for _ in 0..evaluated_expressions.len() {
+            y_powers.push(y_pow);
+            y_pow *= y;
+        }
+        y_powers.reverse();
+
+        // 2. Sum up all fully evaluated identities with their corresponding batching factor
+        let mut fully_evaluated = F::ZERO;
+        for (idx, (opt, eval)) in &mut evaluated_expressions.iter().enumerate() {
+            if opt.is_none() {
+                fully_evaluated += *eval * y_powers[idx];
             }
         }
-        let vanishing_eval = xn - F::ONE;
+        // TODO: parallelize!
+        let indices: Vec<usize> = (0..evaluated_expressions.len()).collect();
+        // 3. Multiply fixed columns with corresp. partial evaluation and batching factor; sum up the results
+        let mut lin_poly = evaluated_expressions
+            .par_iter()
+            .zip(&indices)
+            .filter_map(|((column_idx, eval), idx)| {
+                if column_idx.is_some() {
+                    // Multiply fixed column corresponding to simple selector with partial evaluation of gate
+                    // Note: `fixed_polys` of proving key are polynomials in coefficient form
+                    let c = y_powers[*idx] * eval;
+                    let new_coeffs: Vec<F> = pk.fixed_polys[column_idx.unwrap()]
+                        .values
+                        .iter()
+                        .map(|coeff| c * coeff)
+                        .collect();
+                    Some(new_coeffs)
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<Vec<F>>>()
+            .into_par_iter()
+            .reduce(
+                || vec![F::ZERO; pk.vk.domain.n as usize],
+                |a, b| {
+                    a.iter()
+                        .zip(b.iter())
+                        .map(|(a, b)| *a + b)
+                        .collect::<Vec<F>>()
+                },
+            );
+
+        // 4. Add fully evaluated identities to the constant term
+        lin_poly[0] += fully_evaluated;
+        println!(
+            "Identities summed up in {:?} μs",
+            format_args!("{:.1}", t.elapsed().as_micros())
+        );
+
         // Construct linearized numerator poly: RHS above
         // (h_0(X) + x^n*h_1(X) + x^{2n}*h_2(X) + ... + x^{ln}*h_k(X)) * (x^n-1),
         // where h_i are commitments to the limbs of the quotient polynomial
+        let t = std::time::Instant::now();
+        let vanishing_eval = xn - F::ONE;
+        let mut xn_powers = Vec::new();
+        let mut xn_pow = F::ONE;
+        for _ in 0..quotient_limbs.len() {
+            xn_powers.push(xn_pow * vanishing_eval);
+            xn_pow *= xn;
+        }
         let mut linearized_h = vec![F::ZERO; pk.vk.domain.n as usize];
         for (i, piece) in quotient_limbs.into_iter().enumerate() {
             for (curr_coeff, new_coeff) in linearized_h.iter_mut().zip(piece.values) {
-                *curr_coeff += (new_coeff * xn.pow([i as u64])) * vanishing_eval;
+                *curr_coeff += new_coeff * xn_powers[i];
             }
         }
-        for (lhs_coeff, rhs_coeff) in acc.iter_mut().zip(linearized_h) {
+        println!(
+            "Linearized numerator built in {:?} μs",
+            format_args!("{:.1}", t.elapsed().as_micros())
+        );
+
+        for (lhs_coeff, rhs_coeff) in lin_poly.iter_mut().zip(linearized_h) {
             *lhs_coeff -= rhs_coeff;
         }
+
         let linearization_poly = Polynomial {
-            values: acc,
+            values: lin_poly,
             _marker: std::marker::PhantomData::<Coeff>,
         };
+        // TODO: remove after debugging
+        let t = std::time::Instant::now();
         assert_eq!(eval_polynomial(&linearization_poly, x), F::ZERO);
+        println!(
+            "Linearized poly evaluated in {:?} μs",
+            format_args!("{:.1}", t.elapsed().as_micros())
+        );
         linearization_poly
     }
 

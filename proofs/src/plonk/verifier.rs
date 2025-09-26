@@ -353,7 +353,6 @@ where
         //      - (ii) the 1 element (because the corresponding identity id_i has been fully evaluated)
         // * h_j are commitments to the limbs of the quotient polynomial.
 
-        let t = std::time::Instant::now();
         let xn = x.pow([vk.n()]);
 
         let mut xn_powers = Vec::new();
@@ -384,16 +383,11 @@ where
         identities_points.extend(h_limb_commitments);
         identities_scalars.extend(xn_powers);
 
-        let lin_com: LinearizedCommitment<F, CS> = LinearizedCommitment {
+        LinearizedCommitment {
             x,
             scalars: identities_scalars,
             points: identities_points,
-        };
-        println!(
-            "Struct built in {:?} μs",
-            format_args!("{:.1}", t.elapsed().as_micros())
-        );
-        lin_com
+        }
     }
 
     // Partially evaluate batched identities (without fixed columns corresponding
