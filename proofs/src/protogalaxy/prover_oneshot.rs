@@ -106,8 +106,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         let folding_pk = FoldingPk::from(pk.clone());
 
         // Compute evaluations of lagrange polynomials on beta_pg
-        let omega = folding_pk.domain.get_omega(); // generator of multiplicative subgroup
-        let lagrange_on_beta: Vec<F> = eval_lagrange_on_beta(&omega, pk.vk.get_domain(), &beta_pg);
+        let lagrange_on_beta: Vec<F> = eval_lagrange_on_beta(pk.vk.get_domain(), &beta_pg);
         let lagrange_beta_time = time.elapsed().as_millis();
 
         let (poly_g, poly_g_unbatched) =
@@ -466,43 +465,39 @@ fn compute_error_terms<F: PrimeField + WithSmallOrderMulGroup<3>>(
         .collect::<Vec<F>>() // collect the results into a Vec<F>
 }
 
-/// Computes the lagrange polynomials for a domain with root omega.
+/// Computes the lagrange polynomials for a domain (with root omega)
 /// Then, it evaluates them at 'beta', obtaining a vector of coefficients.
-/// TODO: review
+/// It uses the formula: L_i(beta) = Z(beta) * omega^i / (n * (beta - omega^i))
+/// We decompose it into a fixed part [Z(beta) / n] and a variable part [omega^i / (beta - omega^i)]
 pub fn eval_lagrange_on_beta<F: PrimeField + WithSmallOrderMulGroup<3>>(
-    _omega: &F,
     domain: &EvaluationDomain<F>,
     beta: &F,
 ) -> Vec<F> {
-    // let n_fe = F::from(pk_domain_size as u64);
-    //
-    // // Z(beta) = beta^n - 1
-    // let z_beta = beta.pow([pk_domain_size as u64]) - F::ONE;
-    //
-    // let mut result = Vec::with_capacity(pk_domain_size);
-    // let mut omega_j = F::ONE;
-    //
-    // for _ in 0..pk_domain_size {
-    //     // denominator = (beta - omega^j) * (n * omega^j)
-    //     let denom = (*beta - omega_j) * (n_fe * omega_j);
-    //     let denom_inv = denom.invert().expect("nonzero denominator");
-    //     result.push(z_beta * denom_inv);
-    //     omega_j *= omega;
-    // }
-    //
-    // result
     let pk_domain_size = domain.n as usize;
-    let mut result = Vec::with_capacity(pk_domain_size);
-    for i in 0..pk_domain_size {
-        let mut l_i = Polynomial::<F, LagrangeCoeff>::init(pk_domain_size);
-        l_i.values[i] = F::ONE;
+    let omega: F = domain.get_omega(); // generator of multiplicative subgroup
 
-        let l_coeff = domain.lagrange_to_coeff(l_i);
-        result.push(eval_polynomial(&l_coeff, *beta));
+    let n_fe = F::from(pk_domain_size as u64);
+    
+    // fixed_term = Z(beta) / n = (beta^n - 1) / n
+    let fixed_term = (beta.pow([pk_domain_size as u64]) - F::ONE) * n_fe.invert().unwrap();
+
+    // Calculate all the omega powers and store them in a vector
+    // TODO: parallelize? We could start from powers omega^0, omega^m, omega^2m, ...
+    // Where for a domain of size n, m = n / #threads
+    let mut omegas: Vec<F> = Vec::with_capacity(pk_domain_size);
+    omegas.push(F::ONE);
+    for _ in 0..(pk_domain_size - 1) {
+        omegas.push(*omegas.last().unwrap() * omega);
     }
 
+    let result = omegas.into_par_iter()
+        .map(|omega_i| {
+            fixed_term * omega_i * (*beta - omega_i).invert().unwrap()
+        })
+        .collect();
     result
 }
+
 
 #[cfg(test)]
 mod tests {
@@ -524,9 +519,11 @@ mod tests {
             Rotation,
         },
         protogalaxy::{
-            prover_oneshot::ProtogalaxyProverOneShot, verifier_oneshot::ProtogalaxyVerifierOneShot,
+            prover_oneshot::{ProtogalaxyProverOneShot, eval_lagrange_on_beta}, 
+            verifier_oneshot::ProtogalaxyVerifierOneShot,
         },
         transcript::{CircuitTranscript, Transcript},
+        utils::arithmetic::eval_polynomial,
     };
 
     #[derive(Clone, Copy)]
@@ -642,6 +639,60 @@ mod tests {
         }
     }
     use crate::poly::commitment::Guard;
+
+    #[test]
+    fn lagrange_poly_test() {
+
+        const K: usize = 9;
+        let k = 1; // number of folding instances
+
+        let rng = ChaCha8Rng::from_seed([0u8; 32]);
+        let params: ParamsKZG<Bls12> = ParamsKZG::unsafe_setup(K as u32, rng);
+
+        let mut rng = ChaCha8Rng::from_seed([0u8; 32]);
+        let mut rand_bytes = [0u8; 1 << 8];
+        rng.fill_bytes(&mut rand_bytes);
+
+        let witnesses = (0..k)
+            .map(|_| {
+                rand_bytes
+                    .into_iter()
+                    .map(|byte| Value::known(Fq::from((byte as u64) + 1)))
+                    .collect::<Vec<_>>()
+                    .try_into()
+                    .unwrap()
+            })
+            .collect::<Vec<_>>();
+        let circuits = witnesses.into_iter().map(TestCircuit::from).collect::<Vec<_>>();
+
+        let vk =
+            keygen_vk_with_k::<_, KZGCommitmentScheme<Bls12>, _>(&params, &circuits[0], K as u32)
+                .expect("keygen_vk should not fail");
+
+        let pk_domain_size = 1 << K;
+
+        let beta = Fq::from(rand::random::<u64>());
+
+        let lagrange_on_beta = eval_lagrange_on_beta(&vk.get_domain(), &beta);
+
+        // Now we compute the same values using lagrange polynomials
+        let mut lagrange_polys = Vec::with_capacity(pk_domain_size);
+        for i in 0..pk_domain_size {
+            let mut l_i = vk.get_domain().empty_lagrange();
+            l_i[i] = Fq::ONE;
+
+            let l_coeff = vk.get_domain().lagrange_to_coeff(l_i);
+            lagrange_polys.push(l_coeff);
+        }
+
+            let pk_domain_size = vk.get_domain().n as usize;
+
+        for i in 0..pk_domain_size {
+            let eval = eval_polynomial(&lagrange_polys[i], beta);
+            assert_eq!(eval, lagrange_on_beta[i]);
+        }
+    }
+
 
     #[test]
     fn folding_test_oneshot() {
