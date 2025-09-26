@@ -434,8 +434,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         );
 
         // let beta_coeffs: Vec<F> = vec![self.beta.clone(); 1 << K];
-        let omega = vk.get_domain().get_omega(); // generator of multiplicative subgroup
-        let beta_coeffs: Vec<F> = eval_lagrange_on_beta(&omega, vk.get_domain(), &self.beta);
+        let beta_coeffs: Vec<F> = eval_lagrange_on_beta(vk.get_domain(), &self.beta);
 
         let expected_result = witness_poly
             .values
