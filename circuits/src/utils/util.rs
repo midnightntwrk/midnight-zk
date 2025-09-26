@@ -68,12 +68,30 @@ pub fn u64_to_fe<F: PrimeField>(x: u64) -> F {
     F::from(x)
 }
 
-pub fn bigint_to_fe<F: PrimeField>(value: &BI) -> F {
-    let f = F::from_str_vartime(&BI::to_string(&value.abs())).unwrap();
-    if value.is_negative() {
-        F::neg(f)
+fn from_u64_le_digits<F: PrimeField>(digits: &[u64]) -> F {
+    if digits.is_empty() {
+        return F::ZERO;
+    }
+
+    let mut acc = F::from(*digits.last().unwrap());
+    for digit in digits.iter().rev().skip(1) {
+        for _ in 0..64 {
+            acc = acc.double();
+        }
+        acc += F::from(*digit)
+    }
+    acc
+}
+
+pub fn bigint_to_fe<F: PrimeField>(value: &BI) -> F where
+{
+    let (sign, u64_chunks) = value.to_u64_digits();
+    let res = from_u64_le_digits::<F>(&u64_chunks);
+
+    if sign == Sign::Minus {
+        -res
     } else {
-        f
+        res
     }
 }
 
