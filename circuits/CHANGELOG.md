@@ -14,6 +14,7 @@ verification keys break backwards compatibility.
 ### Added
 
 ### Changed
+* Optimize `bigint_to_fe` [#115](https://github.com/midnightntwrk/midnight-zk/pull/115)
 
 ### Removed
 
