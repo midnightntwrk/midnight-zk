@@ -34,15 +34,15 @@ fn plonk_api() {
         a: Column<Advice>,
         b: Column<Advice>,
         c: Column<Advice>,
-        d: Column<Advice>,
-        e: Column<Advice>,
+        // d: Column<Advice>,
+        // e: Column<Advice>,
 
         sa: Column<Fixed>,
         sb: Column<Fixed>,
         sc: Column<Fixed>,
         sm: Column<Fixed>,
-        sp: Column<Fixed>,
-        sl: TableColumn,
+        // sp: Column<Fixed>,
+        // sl: TableColumn,
     }
 
     #[allow(clippy::type_complexity)]
@@ -62,20 +62,21 @@ fn plonk_api() {
         where
             F: FnMut() -> Value<(Rational<FF>, Rational<FF>, Rational<FF>)>;
         fn copy(&self, layouter: &mut impl Layouter<FF>, a: Cell, b: Cell) -> Result<(), Error>;
-        fn public_input<F>(&self, layouter: &mut impl Layouter<FF>, f: F) -> Result<Cell, Error>
-        where
-            F: FnMut() -> Value<FF>;
-        fn lookup_table(
-            &self,
-            layouter: &mut impl Layouter<FF>,
-            values: &[FF],
-        ) -> Result<(), Error>;
+        // fn public_input<F>(&self, layouter: &mut impl Layouter<FF>, f: F) -> Result<Cell, Error>
+        // where
+        //     F: FnMut() -> Value<FF>;
+        // fn lookup_table(
+        //     &self,
+        //     layouter: &mut impl Layouter<FF>,
+        //     values: &[FF],
+        // ) -> Result<(), Error>;
     }
 
     #[derive(Clone)]
     struct MyCircuit<F: Field> {
         a: Value<F>,
-        lookup_table: Vec<F>,
+        k: u32,
+        // lookup_table: Vec<F>,
     }
 
     struct StandardPlonk<F: Field> {
@@ -114,24 +115,24 @@ fn plonk_api() {
                             value.unwrap().map(|v| v.0)
                         },
                     )?;
-                    region.assign_advice(
-                        || "lhs^4",
-                        self.config.d,
-                        0,
-                        || value.unwrap().map(|v| v.0).square().square(),
-                    )?;
+                    // region.assign_advice(
+                    //     || "lhs^4",
+                    //     self.config.d,
+                    //     0,
+                    //     || value.unwrap().map(|v| v.0).square().square(),
+                    // )?;
                     let rhs = region.assign_advice(
                         || "rhs",
                         self.config.b,
                         0,
                         || value.unwrap().map(|v| v.1),
                     )?;
-                    region.assign_advice(
-                        || "rhs^4",
-                        self.config.e,
-                        0,
-                        || value.unwrap().map(|v| v.1).square().square(),
-                    )?;
+                    // region.assign_advice(
+                    //     || "rhs^4",
+                    //     self.config.e,
+                    //     0,
+                    //     || value.unwrap().map(|v| v.1).square().square(),
+                    // )?;
                     let out = region.assign_advice(
                         || "out",
                         self.config.c,
@@ -168,24 +169,24 @@ fn plonk_api() {
                             value.unwrap().map(|v| v.0)
                         },
                     )?;
-                    region.assign_advice(
-                        || "lhs^4",
-                        self.config.d,
-                        0,
-                        || value.unwrap().map(|v| v.0).square().square(),
-                    )?;
+                    // region.assign_advice(
+                    //     || "lhs^4",
+                    //     self.config.d,
+                    //     0,
+                    //     || value.unwrap().map(|v| v.0).square().square(),
+                    // )?;
                     let rhs = region.assign_advice(
                         || "rhs",
                         self.config.b,
                         0,
                         || value.unwrap().map(|v| v.1),
                     )?;
-                    region.assign_advice(
-                        || "rhs^4",
-                        self.config.e,
-                        0,
-                        || value.unwrap().map(|v| v.1).square().square(),
-                    )?;
+                    // region.assign_advice(
+                    //     || "rhs^4",
+                    //     self.config.e,
+                    //     0,
+                    //     || value.unwrap().map(|v| v.1).square().square(),
+                    // )?;
                     let out = region.assign_advice(
                         || "out",
                         self.config.c,
@@ -215,51 +216,50 @@ fn plonk_api() {
             layouter.assign_region(
                 || "copy",
                 |mut region| {
-                    region.constrain_equal(left, right)?;
                     region.constrain_equal(left, right)
                 },
             )
         }
-        fn public_input<F>(&self, layouter: &mut impl Layouter<FF>, mut f: F) -> Result<Cell, Error>
-        where
-            F: FnMut() -> Value<FF>,
-        {
-            layouter.assign_region(
-                || "public_input",
-                |mut region| {
-                    let value = region.assign_advice(|| "value", self.config.a, 0, &mut f)?;
-                    region.assign_fixed(
-                        || "public",
-                        self.config.sp,
-                        0,
-                        || Value::known(FF::ONE),
-                    )?;
-
-                    Ok(value.cell())
-                },
-            )
-        }
-        fn lookup_table(
-            &self,
-            layouter: &mut impl Layouter<FF>,
-            values: &[FF],
-        ) -> Result<(), Error> {
-            layouter.assign_table(
-                || "",
-                |mut table| {
-                    for (index, &value) in values.iter().enumerate() {
-                        table.assign_cell(
-                            || "table col",
-                            self.config.sl,
-                            index,
-                            || Value::known(value),
-                        )?;
-                    }
-                    Ok(())
-                },
-            )?;
-            Ok(())
-        }
+        // fn public_input<F>(&self, layouter: &mut impl Layouter<FF>, mut f: F) -> Result<Cell, Error>
+        // where
+        //     F: FnMut() -> Value<FF>,
+        // {
+        //     layouter.assign_region(
+        //         || "public_input",
+        //         |mut region| {
+        //             let value = region.assign_advice(|| "value", self.config.a, 0, &mut f)?;
+        //             region.assign_fixed(
+        //                 || "public",
+        //                 self.config.sp,
+        //                 0,
+        //                 || Value::known(FF::ONE),
+        //             )?;
+        //
+        //             Ok(value.cell())
+        //         },
+        //     )
+        // }
+        // fn lookup_table(
+        //     &self,
+        //     layouter: &mut impl Layouter<FF>,
+        //     values: &[FF],
+        // ) -> Result<(), Error> {
+        //     layouter.assign_table(
+        //         || "",
+        //         |mut table| {
+        //             for (index, &value) in values.iter().enumerate() {
+        //                 table.assign_cell(
+        //                     || "table col",
+        //                     self.config.sl,
+        //                     index,
+        //                     || Value::known(value),
+        //                 )?;
+        //             }
+        //             Ok(())
+        //         },
+        //     )?;
+        //     Ok(())
+        // }
     }
 
     impl<F: Field> Circuit<F> for MyCircuit<F> {
@@ -271,18 +271,19 @@ fn plonk_api() {
         fn without_witnesses(&self) -> Self {
             Self {
                 a: Value::unknown(),
-                lookup_table: self.lookup_table.clone(),
+                k: self.k,
+                // lookup_table: self.lookup_table.clone(),
             }
         }
 
         fn configure(meta: &mut ConstraintSystem<F>) -> PlonkConfig {
-            let e = meta.advice_column();
+            // let e = meta.advice_column();
             let a = meta.advice_column();
             let b = meta.advice_column();
-            let sf = meta.fixed_column();
+            // let sf = meta.fixed_column();
             let c = meta.advice_column();
-            let d = meta.advice_column();
-            let p = meta.instance_column();
+            // let d = meta.advice_column();
+            // let p = meta.instance_column();
 
             meta.enable_equality(a);
             meta.enable_equality(b);
@@ -292,8 +293,8 @@ fn plonk_api() {
             let sa = meta.fixed_column();
             let sb = meta.fixed_column();
             let sc = meta.fixed_column();
-            let sp = meta.fixed_column();
-            let sl = meta.lookup_table_column();
+            // let sp = meta.fixed_column();
+            // let sl = meta.lookup_table_column();
 
             /*
              *   A         B      ...  sl
@@ -311,16 +312,16 @@ fn plonk_api() {
              * ]
              */
 
-            meta.lookup("lookup", |meta| {
-                let a_ = meta.query_any(a, Rotation::cur());
-                vec![(a_, sl)]
-            });
+            // meta.lookup("lookup", |meta| {
+            //     let a_ = meta.query_any(a, Rotation::cur());
+            //     vec![(a_, sl)]
+            // });
 
             meta.create_gate("Combined add-mult", |meta| {
-                let d = meta.query_advice(d, Rotation::next());
+                // let d = meta.query_advice(d, Rotation::next());
                 let a = meta.query_advice(a, Rotation::cur());
-                let sf = meta.query_fixed(sf, Rotation::cur());
-                let e = meta.query_advice(e, Rotation::prev());
+                // let sf = meta.query_fixed(sf, Rotation::cur());
+                // let e = meta.query_advice(e, Rotation::prev());
                 let b = meta.query_advice(b, Rotation::cur());
                 let c = meta.query_advice(c, Rotation::cur());
 
@@ -329,40 +330,40 @@ fn plonk_api() {
                 let sc = meta.query_fixed(sc, Rotation::cur());
                 let sm = meta.query_fixed(sm, Rotation::cur());
                 Constraints::without_selector(vec![
-                    &a * sa + &b * sb + a * b * sm - (c * sc) + sf * (d * e),
+                    &a * sa + &b * sb + a * b * sm - (c * sc), // + sf * (d * e),
                 ])
             });
 
-            meta.create_gate("Public input", |meta| {
-                let a = meta.query_advice(a, Rotation::cur());
-                let p = meta.query_instance(p, Rotation::cur());
-                let sp = meta.query_fixed(sp, Rotation::cur());
+            // meta.create_gate("Public input", |meta| {
+            //     let a = meta.query_advice(a, Rotation::cur());
+            //     let p = meta.query_instance(p, Rotation::cur());
+            //     let sp = meta.query_fixed(sp, Rotation::cur());
+            //
+            //     Constraints::without_selector(vec![sp * (a - p)])
+            // });
 
-                Constraints::without_selector(vec![sp * (a - p)])
-            });
-
-            meta.enable_equality(sf);
-            meta.enable_equality(e);
-            meta.enable_equality(d);
-            meta.enable_equality(p);
-            meta.enable_equality(sm);
-            meta.enable_equality(sa);
-            meta.enable_equality(sb);
-            meta.enable_equality(sc);
-            meta.enable_equality(sp);
+            // meta.enable_equality(sf);
+            // meta.enable_equality(e);
+            // meta.enable_equality(d);
+            // meta.enable_equality(p);
+            // meta.enable_equality(sm);
+            // meta.enable_equality(sa);
+            // meta.enable_equality(sb);
+            // meta.enable_equality(sc);
+            // meta.enable_equality(sp);
 
             PlonkConfig {
                 a,
                 b,
                 c,
-                d,
-                e,
+                // d,
+                // e,
                 sa,
                 sb,
                 sc,
                 sm,
-                sp,
-                sl,
+                // sp,
+                // sl,
             }
         }
 
@@ -373,7 +374,7 @@ fn plonk_api() {
         ) -> Result<(), Error> {
             let cs = StandardPlonk::new(config);
 
-            let _ = cs.public_input(&mut layouter, || Value::known(F::ONE + F::ONE))?;
+            // let _ = cs.public_input(&mut layouter, || Value::known(F::ONE + F::ONE))?;
 
             for _ in 0..10 {
                 let a: Value<Rational<_>> = self.a.into();
@@ -390,7 +391,7 @@ fn plonk_api() {
                 cs.copy(&mut layouter, b1, c0)?;
             }
 
-            cs.lookup_table(&mut layouter, &self.lookup_table)?;
+            // cs.lookup_table(&mut layouter, &self.lookup_table)?;
 
             Ok(())
         }
@@ -444,7 +445,7 @@ fn plonk_api() {
         let (_, _, lookup_table) = common!(F);
         let empty_circuit: MyCircuit<F> = MyCircuit {
             a: Value::unknown(),
-            lookup_table,
+            k: K,
         };
 
         // Initialize the proving key
@@ -477,7 +478,8 @@ fn plonk_api() {
 
         let circuit: MyCircuit<F> = MyCircuit {
             a: Value::known(a),
-            lookup_table,
+            k: K,
+            // lookup_table,
         };
 
         let mut transcript = T::init();
@@ -485,17 +487,17 @@ fn plonk_api() {
         create_plonk_proof::<F, Scheme, _, _>(
             params,
             pk,
-            &[circuit.clone(), circuit.clone()],
+            &[circuit.clone()],//, circuit.clone()],
             #[cfg(feature = "committed-instances")]
             0,
-            &[&[&[instance]], &[&[instance]]],
+            &[&[]],//, &[]],
             rng,
             &mut transcript,
         )
         .expect("proof generation should not fail");
 
         // Check this circuit is satisfied.
-        let prover = match MockProver::run(K, &circuit, vec![vec![instance]]) {
+        let prover = match MockProver::run(K, &circuit, vec![]) {
             Ok(prover) => prover,
             Err(e) => panic!("{e:?}"),
         };
@@ -526,8 +528,8 @@ fn plonk_api() {
         let verifier = prepare_plonk_proof(
             vk,
             #[cfg(feature = "committed-instances")]
-            &[&[], &[]],
-            &[&[&pubinputs[..]], &[&pubinputs[..]]],
+            &[&[]],//, &[]],
+            &[&[]],//, &[]],
             &mut transcript,
         )
         .unwrap();
@@ -538,7 +540,7 @@ fn plonk_api() {
     use halo2curves::bn256::{Bn256, Fr};
 
     type Scheme = KZGCommitmentScheme<Bn256>;
-    bad_keys!(Fr, Scheme);
+    // bad_keys!(Fr, Scheme);
 
     let rng = OsRng;
     let mut params = ParamsKZG::<Bn256>::unsafe_setup(K, rng);
