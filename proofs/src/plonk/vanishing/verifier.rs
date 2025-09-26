@@ -48,7 +48,7 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> Argument<F, CS> {
 }
 
 impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Committed<F, CS> {
-    pub(in crate::plonk) fn read_commitments_after_y<T: Transcript>(
+    pub(crate) fn read_commitments_after_y<T: Transcript>(
         self,
         vk: &VerifyingKey<F, CS>,
         transcript: &mut T,
@@ -67,7 +67,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Committed<
 }
 
 impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Constructed<F, CS> {
-    pub(in crate::plonk) fn evaluate_after_x<T: Transcript>(
+    pub(crate) fn evaluate_after_x<T: Transcript>(
         self,
         transcript: &mut T,
     ) -> Result<PartiallyEvaluated<F, CS>, Error>
@@ -85,7 +85,29 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Constructe
 }
 
 impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> PartiallyEvaluated<F, CS> {
-    pub(in crate::plonk) fn verify(
+    pub(crate) fn verify(
+        self,
+        expressions: impl Iterator<Item = F>,
+        y: Vec<F>,
+        xn: F,
+    ) -> Evaluated<F, CS> {
+        let a = expressions.collect::<Vec<_>>();
+
+        let expected_h_eval =
+            a.into_iter().zip(y.iter()).fold(F::ZERO, |h_eval, (v, y)| h_eval + *y * v);
+        let expected_h_eval = expected_h_eval * ((xn - F::ONE).invert().unwrap());
+
+        Evaluated {
+            h_commitments: self.h_commitments,
+            random_poly_commitment: self.random_poly_commitment,
+            expected_h_eval,
+            random_eval: self.random_eval,
+        }
+    }
+}
+
+impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> PartiallyEvaluated<F, CS> {
+    pub(crate) fn verify_corrected(
         self,
         expressions: impl Iterator<Item = F>,
         y: Vec<F>,
@@ -109,7 +131,7 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> PartiallyEvaluated<F, CS>
 }
 
 impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> Evaluated<F, CS> {
-    pub(in crate::plonk) fn queries(
+    pub(crate) fn queries(
         &self,
         x: F,
         n: u64,

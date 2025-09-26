@@ -84,7 +84,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Argument<F
 }
 
 impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
-    pub(crate) fn _construct_old<CS: PolynomialCommitmentScheme<F>, T: Transcript>(
+    pub(crate) fn construct<CS: PolynomialCommitmentScheme<F>, T: Transcript>(
         self,
         params: &CS::Parameters,
         domain: &EvaluationDomain<F>,
@@ -97,54 +97,6 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
     {
         // Divide by t(X) = X^{params.n} - 1.
         let h_poly = domain.divide_by_vanishing_poly(h_poly);
-
-        // Obtain final h(X) polynomial
-        let mut h_poly = domain.extended_to_coeff(h_poly);
-
-        // Truncate it to match the size of the quotient polynomial; the
-        // evaluation domain might be slightly larger than necessary because
-        // it always lies on a power-of-two boundary.
-        h_poly.truncate(domain.n as usize * domain.get_quotient_poly_degree());
-
-        // Split h(X) up into pieces
-        let h_pieces = h_poly
-            .chunks_exact(domain.n as usize)
-            .map(|v| domain.coeff_from_vec(v.to_vec()))
-            .collect::<Vec<_>>();
-        drop(h_poly);
-
-        // Compute commitments to each h(X) piece
-        let h_commitments: Vec<_> =
-            h_pieces.iter().map(|h_piece| CS::commit(params, h_piece)).collect();
-
-        // Hash each h(X) piece
-        for c in h_commitments {
-            transcript.write(&c)?;
-        }
-
-        Ok(Constructed {
-            h_pieces,
-            committed: self,
-        })
-    }
-}
-
-impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
-    pub(crate) fn construct<CS: PolynomialCommitmentScheme<F>, T: Transcript>(
-        self,
-        params: &CS::Parameters,
-        domain: &EvaluationDomain<F>,
-        h_poly: Polynomial<F, ExtendedLagrangeCoeff>,
-        correction: Polynomial<F, Coeff>,
-        transcript: &mut T,
-    ) -> Result<Constructed<F>, Error>
-    where
-        CS::Commitment: Hashable<T::Hash>,
-        F: Hashable<T::Hash>,
-    {
-        let correction = domain.coeff_to_extended(correction);
-        // Divide by t(X) = X^{params.n} - 1.
-        let h_poly = domain.divide_by_vanishing_poly(h_poly - &correction);
 
         // Obtain final h(X) polynomial
         let mut h_poly = domain.extended_to_coeff(h_poly);

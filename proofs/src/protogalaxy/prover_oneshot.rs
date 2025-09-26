@@ -10,10 +10,14 @@ use rayon::iter::{
 };
 
 use crate::{
-    plonk::{compute_trace, traces::FoldingProverTrace, Circuit, Error, ProvingKey},
+    plonk::{
+        compute_queries, compute_trace,
+        traces::{FoldingProverTrace, ProverTrace},
+        trash, write_evals_to_transcript, Circuit, Error, ProvingKey,
+    },
     poly::{
         commitment::PolynomialCommitmentScheme, EvaluationDomain, ExtendedLagrangeCoeff,
-        LagrangeCoeff, Polynomial,
+        LagrangeCoeff, Polynomial, ProverQuery,
     },
     protogalaxy::{
         utils::{batch_traces, linear_combination},
@@ -22,14 +26,12 @@ use crate::{
     utils::arithmetic::eval_polynomial,
 };
 
-/// This prover can perform a 2**K - 1 to one folding
-struct ProtogalaxyProverOneShot<F: PrimeField, CS: PolynomialCommitmentScheme<F>, const K: usize> {
-    folding_pk: FoldingPk<F>,
-    folded_trace: FoldingProverTrace<F>,
-    error: F,
-    error_vec: Vec<F>,
-    beta_pg: F,
-    _commitment_scheme: PhantomData<CS>,
+struct ProtogalaxyProverOneShot<
+    F: WithSmallOrderMulGroup<3>,
+    CS: PolynomialCommitmentScheme<F>,
+    const K: usize,
+> {
+    _phantom_data: PhantomData<(F, CS)>,
 }
 
 impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: usize>
@@ -45,7 +47,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         instances: &[&[&[F]]],
         mut rng: impl CryptoRng + RngCore,
         transcript: &mut T,
-    ) -> Result<Self, Error>
+    ) -> Result<(), Error>
     where
         C: Circuit<F>,
         T: Transcript,
@@ -157,14 +159,135 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         println!("    Poly G time          : {:?}ms", poly_g_time);
         println!("    Rest time            : {:?}ms", rest_time);
 
-        Ok(Self {
-            folding_pk,
-            folded_trace,
-            error: g_in_gamma,
-            error_vec: error_terms,
-            beta_pg,
-            _commitment_scheme: Default::default(),
-        })
+        // Now we need to generate the last proof.
+        let error_lagrange: Polynomial<F, LagrangeCoeff> = Polynomial {
+            values: error_terms.clone(),
+            _marker: PhantomData,
+        };
+        let error_coeff = pk.vk.get_domain().lagrange_to_coeff(error_lagrange.clone());
+        let committed_error = CS::commit_lagrange(params, &error_lagrange);
+
+        transcript.write(&committed_error)?;
+
+        // Now we need to create the final proof and verify that the opening of the
+        // instance column evaluates at `e` in beta.
+        // The PK needs to update the fixed values, as these are now folded
+        let fixed_values = folded_trace.fixed_polys.clone();
+        let fixed_polys = fixed_values
+            .iter()
+            .cloned()
+            .map(|p| pk.vk.get_domain().lagrange_to_coeff(p))
+            .collect::<Vec<_>>();
+        let fixed_cosets = fixed_polys
+            .iter()
+            .cloned()
+            .map(|p| pk.vk.get_domain().coeff_to_extended(p))
+            .collect::<Vec<_>>();
+
+        // We need to update the fixed polynomials from the proving key.
+        let mut pk_final_proof = pk.clone();
+        pk_final_proof.fixed_polys = fixed_polys;
+        pk_final_proof.fixed_values = fixed_values;
+        pk_final_proof.fixed_cosets = fixed_cosets;
+
+        let folded_trace = ProverTrace::from_folding_trace(folded_trace.clone());
+
+        // Now we need to finalise the proof. We do not use the finalise_proof function
+        // as we need to 'correct' the plonk identity, with the error term from
+        // protogalaxy.
+
+        let domain = pk.get_vk().get_domain();
+        let h_poly = crate::plonk::compute_h_poly(&pk_final_proof, &folded_trace);
+
+        let ProverTrace {
+            advice_polys,
+            instance_polys,
+            lookups,
+            trashcans,
+            permutations,
+            vanishing,
+            ..
+        } = folded_trace;
+
+        // When constructing the vanishing polynomial, we need to correct the identity.
+        let correction = domain.coeff_to_extended(error_coeff.clone());
+        let h = h_poly - &correction;
+        let vanishing = vanishing.construct::<CS, T>(params, domain, h, transcript)?;
+
+        let x: F = transcript.squeeze_challenge();
+
+        let advice_polys = advice_polys
+            .into_iter()
+            .map(|a| a.into_iter().map(|p| domain.lagrange_to_coeff(p)).collect::<Vec<_>>())
+            .collect::<Vec<_>>();
+
+        write_evals_to_transcript(
+            &pk_final_proof,
+            nb_committed_instances,
+            &instance_polys,
+            &advice_polys,
+            x,
+            transcript,
+        )?;
+
+        // We also add the evaluation of the correction polynomial
+        let correction_eval = eval_polynomial(&error_coeff, x);
+        transcript.write(&correction_eval)?;
+
+        let vanishing = vanishing.evaluate(x, domain, transcript)?;
+        pk_final_proof.permutation.evaluate(x, transcript)?;
+
+        let permutations = permutations
+            .into_iter()
+            .map(|permutation| -> Result<_, _> {
+                permutation.evaluate(&pk_final_proof, x, transcript)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let lookups = lookups
+            .into_iter()
+            .map(|lookups| -> Result<Vec<_>, _> {
+                lookups
+                    .into_iter()
+                    .map(|p| p.evaluate(&pk_final_proof, x, transcript))
+                    .collect::<Result<Vec<_>, _>>()
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let trashcans: Vec<Vec<trash::prover::Evaluated<F>>> = trashcans
+            .into_iter()
+            .map(|trash| -> Result<Vec<_>, _> {
+                trash
+                    .into_iter()
+                    .map(|p| p.evaluate(domain, x, transcript))
+                    .collect::<Result<Vec<_>, _>>()
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let mut queries = compute_queries(
+            &pk_final_proof,
+            nb_committed_instances,
+            &instance_polys,
+            &advice_polys,
+            &permutations,
+            &lookups,
+            &trashcans,
+            &vanishing,
+            x,
+        );
+
+        // We push the query of the error polynomial in X and in Beta
+        queries.push(ProverQuery {
+            point: x,
+            poly: &error_coeff,
+        });
+
+        queries.push(ProverQuery {
+            point: beta_pg,
+            poly: &error_coeff,
+        });
+
+        CS::multi_open(params, &queries, transcript).map_err(|_| Error::ConstraintSystemFailure)
     }
 
     fn compute_h(
@@ -383,7 +506,7 @@ pub fn eval_lagrange_on_beta<F: PrimeField + WithSmallOrderMulGroup<3>>(
 
 #[cfg(test)]
 mod tests {
-    use std::{marker::PhantomData, time::Instant};
+    use std::time::Instant;
 
     use ff::Field;
     use midnight_curves::{Bls12, Fq};
@@ -393,13 +516,12 @@ mod tests {
     use crate::{
         circuit::{Layouter, SimpleFloorPlanner, Value},
         plonk::{
-            create_proof, keygen_pk, keygen_vk_with_k, prepare, traces::ProverTrace,
-            verify_algebraic_constraints, Advice, Circuit, Column, ConstraintSystem, Constraints,
-            Error, Expression, Selector, TableColumn,
+            create_proof, keygen_pk, keygen_vk_with_k, prepare, Advice, Circuit, Column,
+            ConstraintSystem, Constraints, Error, Expression, Selector, TableColumn,
         },
         poly::{
             kzg::{params::ParamsKZG, KZGCommitmentScheme},
-            Coeff, LagrangeCoeff, Polynomial, Rotation,
+            Rotation,
         },
         protogalaxy::{
             prover_oneshot::ProtogalaxyProverOneShot, verifier_oneshot::ProtogalaxyVerifierOneShot,
@@ -519,7 +641,7 @@ mod tests {
             Ok(())
         }
     }
-    use crate::poly::commitment::{Guard, PolynomialCommitmentScheme};
+    use crate::poly::commitment::Guard;
 
     #[test]
     fn folding_test_oneshot() {
@@ -583,7 +705,7 @@ mod tests {
         let folding = Instant::now();
         let mut transcript = CircuitTranscript::init();
 
-        let protogalaxy = ProtogalaxyProverOneShot::<_, _, K>::fold(
+        ProtogalaxyProverOneShot::<_, _, K>::fold(
             &params,
             pk.clone(),
             circuits,
@@ -593,89 +715,19 @@ mod tests {
             &mut transcript,
         )
         .expect("Failed to fold many instances");
-
-        let folding_time = folding.elapsed().as_millis();
-        println!("Time for folding: {:?}ms", folding_time);
-
-        use crate::plonk::finalise_proof;
-        let error_lagrange: Polynomial<Fq, LagrangeCoeff> = Polynomial {
-            values: protogalaxy.error_vec,
-            _marker: PhantomData,
-        };
-        let error_coeff: Polynomial<Fq, Coeff> =
-            pk.vk.get_domain().lagrange_to_coeff(error_lagrange.clone());
-        let committed_error = KZGCommitmentScheme::commit_lagrange(&params, &error_lagrange);
-
-        // Now we need to create the final proof and verify that the opening of the
-        // instance column evaluates at `e` in beta.
-        // The PK needs to update the fixed values, as these are now folded
-        let folded_trace = ProverTrace::from_folding_trace(protogalaxy.folded_trace.clone());
-        let fixed_values = protogalaxy.folded_trace.fixed_polys.clone();
-        let fixed_polys = fixed_values
-            .iter()
-            .cloned()
-            .map(|p| vk.get_domain().lagrange_to_coeff(p))
-            .collect::<Vec<_>>();
-        let fixed_cosets = fixed_polys
-            .iter()
-            .cloned()
-            .map(|p| vk.get_domain().coeff_to_extended(p))
-            .collect::<Vec<_>>();
-
-        // Update keys
-        let mut final_vk = vk.clone();
-        final_vk.fixed_commitments = fixed_polys
-            .iter()
-            .map(|poly| KZGCommitmentScheme::commit(&params, &poly))
-            .collect::<Vec<_>>();
-
-        let mut pk_final_proof = pk.clone();
-        pk_final_proof.vk = final_vk.clone();
-        pk_final_proof.fixed_polys = fixed_polys;
-        pk_final_proof.fixed_values = fixed_values;
-        pk_final_proof.fixed_cosets = fixed_cosets;
-
-        finalise_proof(
-            &params,
-            &pk_final_proof,
-            1,
-            folded_trace,
-            (error_coeff.clone(), protogalaxy.beta_pg),
-            &mut transcript,
-        )
-        .unwrap();
+        println!("Time to fold: {:?}", folding.elapsed());
 
         let mut transcript = CircuitTranscript::init_from_bytes(&transcript.finalize());
-
         // Now we begin verification
-        let proto_verifier = ProtogalaxyVerifierOneShot::<_, _, K>::fold(
+        ProtogalaxyVerifierOneShot::<_, _, K>::fold(
             &vk,
             &[&[], &[], &[], &[]],
             &[&[], &[], &[], &[]],
             &mut transcript,
         )
-        .expect("Failed to fold instances by the verifier");
-
-        assert_eq!(
-            final_vk.fixed_commitments,
-            proto_verifier.verifier_folding_trace.fixed_commitments
-        );
-
-        // At this point we should be able to verify the final part of the last proof
-        let guard = verify_algebraic_constraints(
-            &vk,
-            proto_verifier.verifier_folding_trace.into(),
-            &[&[]],
-            &[&[&[]]],
-            &(
-                committed_error,
-                proto_verifier.beta,
-                proto_verifier.error_term,
-            ),
-            &mut transcript,
-        )
-        .expect("Verifier failed");
-        guard.verify(&params.verifier_params()).expect("Failed to verify last proof");
+        .expect("Failed to fold instances by the verifier")
+        .verify(&params.verifier_params())
+        .expect("Verification failed");
 
         println!("Folding was a success");
     }

@@ -219,7 +219,6 @@ pub fn verify_algebraic_constraints<F, CS: PolynomialCommitmentScheme<F>, T: Tra
     // the first instance columns are devoted to committed instances.)
     #[cfg(feature = "committed-instances")] committed_instances: &[&[CS::Commitment]],
     instances: &[&[&[F]]],
-    correction: &(CS::Commitment, F, F),
     transcript: &mut T,
 ) -> Result<CS::VerificationGuard, Error>
 where
@@ -306,7 +305,6 @@ where
         .collect::<Result<Vec<Vec<F>>, _>>()?;
 
     let fixed_evals: Vec<F> = read_n(transcript, vk.cs.fixed_queries.len())?;
-    let correction_eval: F = transcript.read()?;
     let vanishing = vanishing.evaluate_after_x(transcript)?;
 
     let permutations_common = vk.permutation.evaluate(transcript)?;
@@ -425,7 +423,7 @@ where
                 },
             );
 
-        vanishing.verify(expressions, y, correction_eval, xn)
+        vanishing.verify(expressions, y, xn)
     };
 
     let queries = committed_instances
@@ -486,16 +484,6 @@ where
         )
         .chain(permutations_common.queries(&vk.permutation, x))
         .chain(vanishing.queries(x, vk.n()))
-        .chain(iter::once(VerifierQuery::new(
-            x,
-            &correction.0,
-            correction_eval,
-        )))
-        .chain(iter::once(VerifierQuery::new(
-            correction.1,
-            &correction.0,
-            correction.2,
-        )))
         .collect::<Vec<_>>();
 
     // We are now convinced the circuit is satisfied so long as the
@@ -534,18 +522,14 @@ where
         committed_instances,
         instances,
         transcript,
-    )
-    .unwrap();
+    )?;
 
-    Ok(verify_algebraic_constraints(
+    verify_algebraic_constraints(
         vk,
         trace,
         #[cfg(feature = "committed-instances")]
         committed_instances,
         instances,
-        // TODO: is this always the identity?
-        &(CS::Commitment::default(), F::ZERO, F::ZERO),
         transcript,
     )
-    .unwrap())
 }

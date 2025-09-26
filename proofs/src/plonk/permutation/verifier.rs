@@ -57,7 +57,7 @@ impl Argument {
 }
 
 impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> VerifyingKey<F, CS> {
-    pub(in crate::plonk) fn evaluate<T: Transcript>(
+    pub(crate) fn evaluate<T: Transcript>(
         &self,
         transcript: &mut T,
     ) -> Result<CommonEvaluated<F>, Error>
@@ -110,7 +110,7 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> Committed<F, CS> {
 
 impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<F, CS> {
     #[allow(clippy::too_many_arguments)]
-    pub(in crate::plonk) fn expressions<'a>(
+    pub(crate) fn expressions<'a>(
         &'a self,
         vk: &'a plonk::VerifyingKey<F, CS>,
         p: &'a Argument,
@@ -211,7 +211,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
             )
     }
 
-    pub(in crate::plonk) fn queries<'r>(
+    pub(crate) fn queries<'r>(
         &'r self,
         vk: &'r plonk::VerifyingKey<F, CS>,
         x: F,
@@ -247,7 +247,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
 }
 
 impl<F: PrimeField> CommonEvaluated<F> {
-    pub(in crate::plonk) fn queries<'r, CS: PolynomialCommitmentScheme<F>>(
+    pub(crate) fn queries<'r, CS: PolynomialCommitmentScheme<F>>(
         &'r self,
         vkey: &'r VerifyingKey<F, CS>,
         x: F,

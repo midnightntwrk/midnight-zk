@@ -95,7 +95,7 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> Committed<F, CS> {
 
 impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<F, CS> {
     #[allow(clippy::too_many_arguments)]
-    pub(in crate::plonk) fn expressions<'a>(
+    pub(crate) fn expressions<'a>(
         &'a self,
         l_0: F,
         l_last: F,
@@ -175,7 +175,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
             ))
     }
 
-    pub(in crate::plonk) fn queries(
+    pub(crate) fn queries(
         &self,
         vk: &VerifyingKey<F, CS>,
         x: F,
