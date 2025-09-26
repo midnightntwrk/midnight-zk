@@ -60,7 +60,7 @@ impl<F: WithSmallOrderMulGroup<3> + Ord> Argument<F> {
                 ))
             })
             .fold(domain.empty_lagrange(), |acc, expression| {
-                acc * trash_challenge + &expression
+                acc + expression * trash_challenge
             });
 
         let trash_commitment = CS::commit_lagrange(params, &compressed_expression);
@@ -86,10 +86,10 @@ impl<F: WithSmallOrderMulGroup<3>> CommittedLagrange<F> {
         F: Hashable<T::Hash>,
         T: Transcript,
     {
-        let trash_eval = eval_polynomial(&self.trash_poly, x);
-        transcript.write(&trash_eval)?;
-
         let self_coeff = evaluation_domain.lagrange_to_coeff(self.trash_poly);
+
+        let trash_eval = eval_polynomial(&self_coeff, x);
+        transcript.write(&trash_eval)?;
 
         Ok(Evaluated(Committed {
             trash_poly: self_coeff,

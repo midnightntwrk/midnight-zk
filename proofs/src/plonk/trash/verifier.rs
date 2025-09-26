@@ -74,7 +74,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
 
         let compressed_expressions = (argument.constraint_expressions.iter())
             .map(evaluate_expression)
-            .fold(F::ZERO, |acc, eval| acc * &trash_challenge + &eval);
+            .fold(F::ZERO, |acc, eval| acc + eval * &trash_challenge);
 
         let q = evaluate_expression(argument.selector());
         vec![compressed_expressions - (F::ONE - q) * self.trash_eval].into_iter()

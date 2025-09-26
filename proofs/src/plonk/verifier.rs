@@ -185,6 +185,9 @@ where
     // We need five for each lookup argument
     nb_y += lookups_committed[0].len() * 5;
 
+    // We need one challenge per trashcan
+    nb_y += trashcans_committed[0].len();
+
     // let y: F = transcript.squeeze_challenge();
     // let y: Vec<F> = vec![y; nb_y];
     let y: Vec<F> = (0..nb_y).map(|_| transcript.squeeze_challenge()).collect();
