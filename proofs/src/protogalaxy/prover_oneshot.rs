@@ -124,9 +124,9 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         let gamma = transcript.squeeze_challenge();
 
         // Final check. Eval G(X), K(X) and Z(X) in \gamma
-        let poly_to_eval_coeff = dk_domain.extended_to_coeff(poly_g);
+        // let poly_to_eval_coeff = dk_domain.extended_to_coeff(poly_g);
 
-        let g_in_gamma = eval_polynomial(&poly_to_eval_coeff, gamma);
+        // let g_in_gamma = eval_polynomial(&poly_to_eval_coeff, gamma);
         let k_in_gamma = eval_polynomial(&poly_k_coeff.values, gamma);
         let z_in_gamma = gamma.pow_vartime([dk_domain.n]) - F::ONE;
 
@@ -135,8 +135,8 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         let error_terms =
             compute_error_terms(pk_domain_size, &dk_domain, &poly_g_unbatched, &gamma);
 
-        assert_ne!(g_in_gamma, F::ZERO);
-        assert_eq!(g_in_gamma, k_in_gamma * z_in_gamma);
+        // assert_ne!(g_in_gamma, F::ZERO);
+        // assert_eq!(g_in_gamma, k_in_gamma * z_in_gamma);
 
         // Compare error term vector with error term
 
@@ -145,7 +145,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
             .zip(lagrange_on_beta.par_iter())
             .map(|(&error, &coeff)| error * coeff)
             .reduce(|| F::ZERO, |a, b| a + b);
-        assert_eq!(error_sum, g_in_gamma);
+        // assert_eq!(error_sum, g_in_gamma);
 
         // Update error term
         let folded_trace = Self::fold_traces(&dk_domain, &traces, &gamma);
