@@ -93,6 +93,7 @@ impl Relation for NativeGadgetExample {
             jubjub: false,
             poseidon: false,
             sha256: false,
+            sha512: false,
             secp256k1: false,
             bls12_381: false,
             base64: false,
