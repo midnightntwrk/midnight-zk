@@ -46,7 +46,7 @@ impl<F: PrimeField> HashInstructions<F, AssignedByte<F>, [AssignedByte<F>; 64]> 
 
         // We convert each `AssignedPlain<64>` returned by `self.sha512` into 8 bytes.
         for word in self.sha512(layouter, inputs)? {
-            let bytes = (self.native_gadget).assigned_to_be_bytes(layouter, &word.0, Some(8))?;
+            let bytes = self.native_gadget.assigned_to_be_bytes(layouter, &word.0, Some(8))?;
             output_bytes.extend(bytes)
         }
 

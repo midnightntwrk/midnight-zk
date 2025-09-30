@@ -333,32 +333,17 @@ impl ZkStdLib {
         let nb_advice_cols = [
             NB_ARITH_COLS,
             arch.nr_pow2range_cols as usize,
-            if arch.jubjub { NB_EDWARDS_COLS } else { 0 },
-            if arch.poseidon {
-                NB_POSEIDON_ADVICE_COLS
-            } else {
-                0
-            },
-            if arch.sha256 {
-                NB_SHA256_ADVICE_COLS
-            } else {
-                0
-            },
-            if arch.sha512 {
-                NB_SHA512_ADVICE_COLS
-            } else {
-                0
-            },
-            if arch.secp256k1 {
-                max(
+            arch.jubjub as usize * NB_EDWARDS_COLS,
+            arch.poseidon as usize * NB_POSEIDON_ADVICE_COLS,
+            arch.sha256 as usize * NB_SHA256_ADVICE_COLS,
+            arch.sha512 as usize * NB_SHA512_ADVICE_COLS,
+            arch.secp256k1 as usize
+                * max(
                     nb_field_chip_columns::<F, secp256k1::Fq, MEP>(),
                     nb_foreign_ecc_chip_columns::<F, Secp256k1, MEP, secp256k1::Fq>(),
-                )
-            } else {
-                0
-            },
-            if arch.bls12_381 {
-                max(
+                ),
+            arch.bls12_381 as usize
+                * max(
                     nb_field_chip_columns::<F, midnight_curves::Fp, MEP>(),
                     nb_foreign_ecc_chip_columns::<
                         F,
@@ -366,15 +351,8 @@ impl ZkStdLib {
                         MEP,
                         midnight_curves::Fp,
                     >(),
-                )
-            } else {
-                0
-            },
-            if arch.base64 {
-                NB_BASE64_ADVICE_COLS
-            } else {
-                0
-            },
+                ),
+            arch.base64 as usize * NB_BASE64_ADVICE_COLS,
             NB_AUTOMATA_COLS,
         ]
         .into_iter()
@@ -383,13 +361,9 @@ impl ZkStdLib {
 
         let nb_fixed_cols = [
             NB_ARITH_FIXED_COLS,
-            if arch.poseidon {
-                NB_POSEIDON_FIXED_COLS
-            } else {
-                0
-            },
-            if arch.sha256 { NB_SHA256_FIXED_COLS } else { 0 },
-            if arch.sha512 { NB_SHA512_FIXED_COLS } else { 0 },
+            arch.poseidon as usize * NB_POSEIDON_FIXED_COLS,
+            arch.sha256 as usize * NB_SHA256_FIXED_COLS,
+            arch.sha512 as usize * NB_SHA512_FIXED_COLS,
         ]
         .into_iter()
         .max()
@@ -415,90 +389,69 @@ impl ZkStdLib {
         let core_decomposition_config =
             P2RDecompositionChip::configure(meta, &(native_config.clone(), pow2range_config));
 
-        let jubjub_config = match arch.jubjub {
-            true => Some(EccChip::<C>::configure(
-                meta,
-                &advice_columns[..NB_EDWARDS_COLS].try_into().unwrap(),
-            )),
-            false => None,
-        };
+        let jubjub_config = arch.jubjub.then(|| {
+            EccChip::<C>::configure(meta, &advice_columns[..NB_EDWARDS_COLS].try_into().unwrap())
+        });
 
-        let sha256_config = match arch.sha256 {
-            true => Some(Sha256Chip::configure(
+        let sha256_config = arch.sha256.then(|| {
+            Sha256Chip::configure(
                 meta,
                 &(
                     advice_columns[..NB_SHA256_ADVICE_COLS].try_into().unwrap(),
                     fixed_columns[..NB_SHA256_FIXED_COLS].try_into().unwrap(),
                 ),
-            )),
-            _ => None,
-        };
+            )
+        });
 
-        let sha512_config = match arch.sha512 {
-            true => Some(Sha512Chip::configure(
+        let sha512_config = arch.sha512.then(|| {
+            Sha512Chip::configure(
                 meta,
                 &(
                     advice_columns[..NB_SHA512_ADVICE_COLS].try_into().unwrap(),
                     fixed_columns[..NB_SHA512_FIXED_COLS].try_into().unwrap(),
                 ),
-            )),
-            _ => None,
-        };
+            )
+        });
 
-        let poseidon_config = match arch.poseidon {
-            true => Some(PoseidonChip::configure(
+        let poseidon_config = arch.poseidon.then(|| {
+            PoseidonChip::configure(
                 meta,
                 &(
                     advice_columns[..NB_POSEIDON_ADVICE_COLS].try_into().unwrap(),
                     fixed_columns[..NB_POSEIDON_FIXED_COLS].try_into().unwrap(),
                 ),
-            )),
-            false => None,
-        };
+            )
+        });
 
-        let secp256k1_scalar_config = match arch.secp256k1 {
-            true => Some(Secp256k1ScalarChip::configure(meta, &advice_columns)),
-            false => None,
-        };
+        let secp256k1_scalar_config =
+            arch.secp256k1.then(|| Secp256k1ScalarChip::configure(meta, &advice_columns));
 
-        let secp256k1_config = match arch.secp256k1 {
-            true => {
-                let base_config = Secp256k1BaseChip::configure(meta, &advice_columns);
-                Some(Secp256k1Chip::configure(
-                    meta,
-                    &base_config,
-                    &advice_columns,
-                ))
-            }
-            false => None,
-        };
+        let secp256k1_config = arch.secp256k1.then(|| {
+            let base_config = Secp256k1BaseChip::configure(meta, &advice_columns);
+            Secp256k1Chip::configure(meta, &base_config, &advice_columns)
+        });
 
-        let bls12_381_config = match arch.bls12_381 {
-            true => {
-                let base_config = Bls12381BaseChip::configure(meta, &advice_columns);
-                Some(Bls12381Chip::configure(meta, &base_config, &advice_columns))
-            }
-            false => None,
-        };
+        let bls12_381_config = arch.bls12_381.then(|| {
+            let base_config = Bls12381BaseChip::configure(meta, &advice_columns);
+            Bls12381Chip::configure(meta, &base_config, &advice_columns)
+        });
 
-        let base64_config = match arch.base64 {
-            true => Some(Base64Chip::configure(
+        let base64_config = arch.base64.then(|| {
+            Base64Chip::configure(
                 meta,
                 advice_columns[..NB_BASE64_ADVICE_COLS].try_into().unwrap(),
-            )),
-            false => None,
-        };
+            )
+        });
 
-        let automaton_config = match arch.automaton {
-            true => Some(AutomatonChip::configure(
+        let automaton_config = arch.automaton.then(|| {
+            AutomatonChip::configure(
                 meta,
                 &(
                     advice_columns[..NB_AUTOMATA_COLS].try_into().unwrap(),
                     parsing::spec_library(),
                 ),
-            )),
-            false => None,
-        };
+            )
+        });
 
         // FIXME: Some chips need this, should we unify the treatment of constants?
         let constants_column = meta.fixed_column();

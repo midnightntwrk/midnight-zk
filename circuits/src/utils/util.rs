@@ -77,9 +77,7 @@ pub fn u64_to_fe<F: PrimeField>(x: u64) -> F {
 }
 
 pub fn u128_to_fe<F: PrimeField>(x: u128) -> F {
-    let lo = (x & ((1u128 << 64) - 1)) as u64;
-    let hi = (x >> 64) as u64;
-    F::from(lo) + F::from(hi) * F::from(1u64 << 63) * F::from(2) // avoid overflow in F::from(1u64 << 64)
+    F::from_u128(x)
 }
 
 fn from_u64_le_digits<F: PrimeField>(digits: &[u64]) -> F {
