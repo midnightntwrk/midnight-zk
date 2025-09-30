@@ -620,7 +620,7 @@ impl<F: PrimeField> ComposableChip<F> for Sha512Chip<F> {
             Constraints::with_selector(
                 q_3_13x3_3_11_1_1_5_1,
                 vec![
-                    ("12_1x3_7_3_4_3 decomposition ", plain_id),
+                    ("q_3_13x3_3_11_1_1_5_1 decomposition ", plain_id),
                     ("W.1a 1-bit check", w_01a_check),
                     ("W.1b 1-bit check", w_01b_check),
                     ("W.1c 1-bit check", w_01c_check),
@@ -651,8 +651,10 @@ impl<F: PrimeField> ComposableChip<F> for Sha512Chip<F> {
         Sha512Config {
             advice_cols,
             fixed_cols,
+
             q_lookup,
             table,
+
             q_maj,
             q_half_ch,
             q_Sigma_0,
@@ -660,6 +662,7 @@ impl<F: PrimeField> ComposableChip<F> for Sha512Chip<F> {
             q_sigma_0,
             q_sigma_1,
             q_13x4_12,
+
             q_13_12_5_6_13_13_2,
             q_13_10_13_10_4_13_1,
             q_3_13x3_3_11_1_1_5_1,
@@ -735,8 +738,8 @@ impl<F: PrimeField> Sha512Chip<F> {
     }
 
     /// Given a byte array of exactly 128 bytes, this function converts it into
-    /// a block of 16 `AssignedPlain` values, each (64 bits) value
-    /// representing 8 bytes in big-endian.
+    /// a block of 16 `AssignedPlain` values, each (64 bits) value representing
+    /// 8 bytes in big-endian.
     pub(super) fn block_from_bytes(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -865,7 +868,7 @@ impl<F: PrimeField> Sha512Chip<F> {
         position i, iff at least two out of three are 1, the sum A_i + B_i + C_i will
         overflow, leaving a carry bit of 1 (the result of majority for that bit).
 
-        Maj which can be encoded by
+        Maj can be encoded by
 
         1) applying the plain-spreaded lookup on 13x4-12 limbs of Evn and Odd:
              Evn: (Evn.13a, Evn.13b, Evn.13c, Evn.13d, Evn.12)
@@ -1671,7 +1674,8 @@ impl<F: PrimeField> Sha512Chip<F> {
         custom gate with selector q_3_13x3_3_11_1_1_5_1:
 
           W.i =   2^61 * W.03a + 2^48 * W.13a + 2^35 * W.13b + 2^22 * W.13c
-                + 2^19 * W.03b + 2^8  * W.11  + 2^7  * W.01a + 2^6  * W.01b + 2^1 * W.05 + W.01c
+                + 2^19 * W.03b + 2^8  * W.11  + 2^7  * W.01a + 2^6  * W.01b
+                + 2^1 * W.05 + W.01c
 
           W.01a * (W.01a - 1) = 0
           W.01b * (W.01b - 1) = 0
