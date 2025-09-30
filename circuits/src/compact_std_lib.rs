@@ -453,10 +453,6 @@ impl ZkStdLib {
             )
         });
 
-        // FIXME: Some chips need this, should we unify the treatment of constants?
-        let constants_column = meta.fixed_column();
-        meta.enable_constant(constants_column);
-
         ZkStdLibConfig {
             native_config,
             core_decomposition_config,
