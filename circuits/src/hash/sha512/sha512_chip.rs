@@ -181,11 +181,14 @@ impl<F: PrimeField> ComposableChip<F> for Sha512Chip<F> {
         meta: &mut ConstraintSystem<F>,
         shared_res: &Self::SharedResources,
     ) -> Sha512Config {
-        let advice_cols = shared_res.0;
         let fixed_cols = shared_res.1;
 
+        // Columns A0 and A2 do not need to be copy-enabled.
+        // We have the convention that chips enable copy in a prefix of their shared
+        // advice columns. Thus we let A0 and A2 be the last two columns of the given
+        // shared resources.
+        let advice_cols = [6, 0, 7, 1, 2, 3, 4, 5].map(|i| shared_res.0[i]);
         for (i, column) in advice_cols.iter().enumerate() {
-            // A0 and A2 are not involved in the copy-constraint.
             if i != 0 && i != 2 {
                 meta.enable_equality(*column);
             }

@@ -87,11 +87,11 @@
   "SHA512": {
     "hash": {
       "advice_columns": "13",
-      "column_queries": "104",
-      "fixed_columns": "66",
+      "column_queries": "103",
+      "fixed_columns": "64",
       "lookups": "10",
       "max_deg": "5",
-      "permutations": "17",
+      "permutations": "15",
       "point_sets": "7",
       "rows": "36800",
       "table_rows": "15487"
