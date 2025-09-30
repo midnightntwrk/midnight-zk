@@ -105,7 +105,7 @@ const IV: [u64; 8] = [
     0x510e527fade682d1, 0x9b05688c2b3e6c1f, 0x1f83d9abfb41bd6b, 0x5be0cd19137e2179,
 ];
 
-/// Tag for the even and odd 13-13-13-13-12 decompositions.
+/// Tag for the even and odd 13x4-12 decompositions.
 enum Parity {
     Evn,
     Odd,
@@ -135,7 +135,7 @@ pub struct Sha512Config {
     q_sigma_0: Selector,
     q_sigma_1: Selector,
 
-    q_13_13_13_13_12: Selector,
+    q_13x4_12: Selector,
     q_13_12_5_6_13_13_2: Selector,
     q_13_10_13_10_4_13_1: Selector,
     q_3_13x3_3_11_1_1_5_1: Selector,
@@ -205,7 +205,7 @@ impl<F: PrimeField> ComposableChip<F> for Sha512Chip<F> {
         let q_sigma_0 = meta.selector();
         let q_sigma_1 = meta.selector();
 
-        let q_13_13_13_13_12 = meta.selector();
+        let q_13x4_12 = meta.selector();
         let q_13_12_5_6_13_13_2 = meta.selector();
         let q_13_10_13_10_4_13_1 = meta.selector();
         let q_3_13x3_3_11_1_1_5_1 = meta.selector();
@@ -498,8 +498,8 @@ impl<F: PrimeField> ComposableChip<F> for Sha512Chip<F> {
             Constraints::with_selector(q_sigma_1, vec![("sigma_1", id)])
         });
 
-        meta.create_gate("13-13-13-13-12 decomposition", |meta| {
-            // See function `assign_sprdd_13_13_13_13_12` for a description of the following
+        meta.create_gate("13x4-12 decomposition", |meta| {
+            // See function `assign_sprdd_13x4_12` for a description of the following
             // layout.
             let p13a = meta.query_advice(advice_cols[0], Rotation(-1));
             let p13b = meta.query_advice(advice_cols[0], Rotation(0));
@@ -510,7 +510,7 @@ impl<F: PrimeField> ComposableChip<F> for Sha512Chip<F> {
 
             let id = expr_pow2_ip([51, 38, 25, 12, 0], [&p13a, &p13b, &p13c, &p13d, &p12]) - output;
 
-            Constraints::with_selector(q_13_13_13_13_12, vec![("13-13-13-13-12 decomposition", id)])
+            Constraints::with_selector(q_13x4_12, vec![("13x4-12 decomposition", id)])
         });
 
         meta.create_gate("13-12-5-6-13-13-2 decomposition", |meta| {
@@ -656,7 +656,7 @@ impl<F: PrimeField> ComposableChip<F> for Sha512Chip<F> {
             q_Sigma_1,
             q_sigma_0,
             q_sigma_1,
-            q_13_13_13_13_12,
+            q_13x4_12,
             q_13_12_5_6_13_13_2,
             q_13_10_13_10_4_13_1,
             q_3_13x3_3_11_1_1_5_1,
@@ -864,11 +864,11 @@ impl<F: PrimeField> Sha512Chip<F> {
 
         Maj which can be encoded by
 
-        1) applying the plain-spreaded lookup on 13-13-13-13-12 limbs of Evn and Odd:
+        1) applying the plain-spreaded lookup on 13x4-12 limbs of Evn and Odd:
              Evn: (Evn.13a, Evn.13b, Evn.13c, Evn.13d, Evn.12)
              Odd: (Odd.13a, Odd.13b, Odd.13c, Odd.13d, Odd.12)
 
-        2) asserting the 13-13-13-13-12 decomposition identity for Odd:
+        2) asserting the 13x4-12 decomposition identity for Odd:
               2^51 * Odd.13a + 2^38 * Odd.13b + 2^25 * Odd.13c + 2^12 * Odd.13d + Odd.12
             = Odd
 
@@ -908,7 +908,7 @@ impl<F: PrimeField> Sha512Chip<F> {
                 ])
                 .map(|sprdd_forms: Vec<u128>| sprdd_forms.try_into().unwrap());
 
-                self.assign_sprdd_13_13_13_13_12(
+                self.assign_sprdd_13x4_12(
                     &mut region,
                     val_of_sprdd_forms.map(spreaded_maj),
                     Parity::Odd,
@@ -932,7 +932,7 @@ impl<F: PrimeField> Sha512Chip<F> {
 
         which can be achieved by
 
-        1) applying the plain-spreaded lookup on 13-13-13-13-12 limbs of Evn and Odd,
+        1) applying the plain-spreaded lookup on 13x4-12 limbs of Evn and Odd,
            for both (~E + ~F) and (~(¬E) + ~G):
              Evn_EF: (Evn_EF.13a, Evn_EF.13b, Evn_EF.13c, Evn_EF.13d, Evn_EF.12)
              Odd_EF: (Odd_EF.13a, Odd_EF.13b, Odd_EF.13c, Odd_EF.13d, Odd_EF.12)
@@ -940,7 +940,7 @@ impl<F: PrimeField> Sha512Chip<F> {
              Evn_nEG: (Evn_nEG.13a, Evn_nEG.13b, Evn_nEG.13c, Evn_nEG.13d, Evn_nEG.12)
              Odd_nEG: (Odd_nEG.13a, Odd_nEG.13b, Odd_nEG.13c, Odd_nEG.13d, Odd_nEG.12)
 
-        2) asserting the 13-13-13-13-12 decomposition identity for Odd_EF and Odd_nEG:
+        2) asserting the 13x4-12 decomposition identity for Odd_EF and Odd_nEG:
               2^51 * Odd_EF.13a + 2^38 * Odd_EF.13b + 2^25 * Odd_EF.13c + 2^12 * Odd_EF.13d + Odd_EF.12
             = Odd_EF
 
@@ -1009,12 +1009,10 @@ impl<F: PrimeField> Sha512Chip<F> {
 
                 mask_evn_128.copy_advice(|| "MASK_EVN_128", &mut region, adv_cols[6], 6)?;
 
-                let odd_EF =
-                    self.assign_sprdd_13_13_13_13_12(&mut region, EpF_val, Parity::Odd, 0)?;
+                let odd_EF = self.assign_sprdd_13x4_12(&mut region, EpF_val, Parity::Odd, 0)?;
                 odd_EF.0.copy_advice(|| "Odd_EF", &mut region, adv_cols[4], 1)?;
 
-                let odd_nEG =
-                    self.assign_sprdd_13_13_13_13_12(&mut region, nEpG_val, Parity::Odd, 5)?;
+                let odd_nEG = self.assign_sprdd_13x4_12(&mut region, nEpG_val, Parity::Odd, 5)?;
                 odd_nEG.0.copy_advice(|| "Odd_nEG", &mut region, adv_cols[5], 1)?;
 
                 let ret_val = odd_EF.0.value().copied() + odd_nEG.0.value().copied();
@@ -1042,11 +1040,11 @@ impl<F: PrimeField> Sha512Chip<F> {
 
         which can be achieved by
 
-        1) applying the plain-spreaded lookup on 13-13-13-13-12 limbs of Evn and Odd:
+        1) applying the plain-spreaded lookup on 13x4-12 limbs of Evn and Odd:
              Evn: (Evn.13a, Evn.13b, Evn.13c, Evn.13d, Evn.12)
              Odd: (Odd.13a, Odd.13b, Odd.13c, Odd.13d, Odd.12)
 
-        2) asserting the 13-13-13-13-12 decomposition identity for Evn:
+        2) asserting the 13x4-12 decomposition identity for Evn:
               2^51 * Evn.13a + 2^38 * Evn.13b + 2^25 * Evn.13c + 2^12 * Evn.13d + Evn.12
             = Evn
 
@@ -1086,8 +1084,8 @@ impl<F: PrimeField> Sha512Chip<F> {
                 a.spreaded_limb_13c.0.copy_advice(|| "~A.13c", &mut region, adv_cols[6], 2)?;
                 a.spreaded_limb_02.0.copy_advice(|| "~A.02", &mut region, adv_cols[5], 3)?;
 
-                // Compute the spreaded Σ₀(A) off-circuit, assign the 13-13-13-13-12 limbs
-                // of its even and odd bits into the circuit, enable the q_13_13_13_13_12
+                // Compute the spreaded Σ₀(A) off-circuit, assign the 13x4-12 limbs
+                // of its even and odd bits into the circuit, enable the q_13x4_12
                 // selector for the even part and q_lookup selector for the
                 // related rows, return the assigned 64 even bits.
                 let val_of_sprdd_limbs: Value<[u128; 7]> = Value::from_iter([
@@ -1101,7 +1099,7 @@ impl<F: PrimeField> Sha512Chip<F> {
                 ])
                 .map(|limbs: Vec<u128>| limbs.try_into().unwrap());
 
-                self.assign_sprdd_13_13_13_13_12(
+                self.assign_sprdd_13x4_12(
                     &mut region,
                     val_of_sprdd_limbs.map(spreaded_Sigma_0),
                     Parity::Evn,
@@ -1128,11 +1126,11 @@ impl<F: PrimeField> Sha512Chip<F> {
 
         which can be achieved by
 
-        1) applying the plain-spreaded lookup on 13-13-13-13-12 limbs of Evn and Odd:
+        1) applying the plain-spreaded lookup on 13x4-12 limbs of Evn and Odd:
              Evn: (Evn.13a, Evn.13b, Evn.13c, Evn.13d, Evn.12)
              Odd: (Odd.13a, Odd.13b, Odd.13c, Odd.13d, Odd.12)
 
-        2) asserting the 13-13-13-13-12 decomposition identity for Evn:
+        2) asserting the 13x4-12 decomposition identity for Evn:
               2^51 * Evn.13a + 2^38 * Evn.13b + 2^25 * Evn.13c + 2^12 * Evn.13d + Evn.12
             = Evn
 
@@ -1172,8 +1170,8 @@ impl<F: PrimeField> Sha512Chip<F> {
                 e.spreaded_limb_13c.0.copy_advice(|| "~E.13c", &mut region, adv_cols[6], 2)?;
                 e.spreaded_limb_01.0.copy_advice(|| "~E.01", &mut region, adv_cols[5], 3)?;
 
-                // Compute the spreaded Σ₁(E) off-circuit, assign the 13-13-13-13-12 limbs
-                // of its even and odd bits into the circuit, enable the q_13_13_13_13_12
+                // Compute the spreaded Σ₁(E) off-circuit, assign the 13x4-12 limbs
+                // of its even and odd bits into the circuit, enable the q_13x4_12
                 // selector for the even part and q_lookup selector for the
                 // related rows, return the assigned 64 even bits.
                 let val_of_sprdd_limbs: Value<[u128; 7]> = Value::from_iter([
@@ -1187,7 +1185,7 @@ impl<F: PrimeField> Sha512Chip<F> {
                 ])
                 .map(|limbs: Vec<u128>| limbs.try_into().unwrap());
 
-                self.assign_sprdd_13_13_13_13_12(
+                self.assign_sprdd_13x4_12(
                     &mut region,
                     val_of_sprdd_limbs.map(spreaded_Sigma_1),
                     Parity::Evn,
@@ -1214,11 +1212,11 @@ impl<F: PrimeField> Sha512Chip<F> {
 
         which can be achieved by
 
-        1) applying the plain-spreaded lookup on 13-13-13-13-12 limbs of Evn and Odd:
+        1) applying the plain-spreaded lookup on 13x4-12 limbs of Evn and Odd:
              Evn: (Evn.13a, Evn.13b, Evn.13c, Evn.13d, Evn.12)
              Odd: (Odd.13a, Odd.13b, Odd.13c, Odd.13d, Odd.12)
 
-        2) asserting the 13-13-13-13-12 decomposition identity for Evn:
+        2) asserting the 13x4-12 decomposition identity for Evn:
               2^51 * Evn.13a + 2^38 * Evn.13b + 2^25 * Evn.13c + 2^12 * Evn.13d + Evn.12
             = Evn
 
@@ -1264,8 +1262,8 @@ impl<F: PrimeField> Sha512Chip<F> {
                 w.spreaded_w_05.0.copy_advice(|| "~W.05", &mut region, adv_cols[5], 4)?;
                 w.spreaded_w_01c.0.copy_advice(|| "~W.01c", &mut region, adv_cols[6], 4)?;
 
-                // Compute the spreaded σ₀(W) off-circuit, assign the 13-13-13-13-12 limbs
-                // of its even and odd bits into the circuit, enable the q_13_13_13_13_12
+                // Compute the spreaded σ₀(W) off-circuit, assign the 13x4-12 limbs
+                // of its even and odd bits into the circuit, enable the q_13x4_12
                 // selector for the even part and q_lookup selector for the
                 // related rows, return the assigned 64 even bits.
                 let val_of_sprdd_limbs: Value<[u128; 10]> = Value::from_iter([
@@ -1282,7 +1280,7 @@ impl<F: PrimeField> Sha512Chip<F> {
                 ])
                 .map(|limbs: Vec<u128>| limbs.try_into().unwrap());
 
-                self.assign_sprdd_13_13_13_13_12(
+                self.assign_sprdd_13x4_12(
                     &mut region,
                     val_of_sprdd_limbs.map(spreaded_sigma_0),
                     Parity::Evn,
@@ -1309,11 +1307,11 @@ impl<F: PrimeField> Sha512Chip<F> {
 
         which can be achieved by
 
-        1) applying the plain-spreaded lookup on 13-13-13-13-12 limbs of Evn and Odd:
+        1) applying the plain-spreaded lookup on 13x4-12 limbs of Evn and Odd:
              Evn: (Evn.13a, Evn.13b, Evn.13c, Evn.13d, Evn.12)
              Odd: (Odd.13a, Odd.13b, Odd.13c, Odd.13d, Odd.12)
 
-        2) asserting the 13-13-13-13-12 decomposition identity for Evn:
+        2) asserting the 13x4-12 decomposition identity for Evn:
               2^51 * Evn.13a + 2^38 * Evn.13b + 2^25 * Evn.13c + 2^12 * Evn.13d + Evn.12
             = Evn
 
@@ -1359,8 +1357,8 @@ impl<F: PrimeField> Sha512Chip<F> {
                 w.spreaded_w_05.0.copy_advice(|| "~W.05", &mut region, adv_cols[5], 4)?;
                 w.spreaded_w_01c.0.copy_advice(|| "~W.01c", &mut region, adv_cols[6], 4)?;
 
-                // Compute the spreaded σ₁(W) off-circuit, assign the 13-13-13-13-12 limbs
-                // of its even and odd bits into the circuit, enable the q_13_13_13_13_12
+                // Compute the spreaded σ₁(W) off-circuit, assign the 13x4-12 limbs
+                // of its even and odd bits into the circuit, enable the q_13x4_12
                 // selector for the even part and q_lookup selector for the
                 // related rows, return the assigned 64 even bits.
                 let val_of_sprdd_limbs: Value<[u128; 10]> = Value::from_iter([
@@ -1377,7 +1375,7 @@ impl<F: PrimeField> Sha512Chip<F> {
                 ])
                 .map(|limbs: Vec<u128>| limbs.try_into().unwrap());
 
-                self.assign_sprdd_13_13_13_13_12(
+                self.assign_sprdd_13x4_12(
                     &mut region,
                     val_of_sprdd_limbs.map(spreaded_sigma_1),
                     Parity::Evn,
@@ -1397,7 +1395,7 @@ impl<F: PrimeField> Sha512Chip<F> {
     ///  | T0 |    A0   |    A1    | T1 |    A2   |    A3    |  A4 |
     ///  |----|---------|----------|----|---------|----------|-----|
     ///  | 13 | Evn.13a | ~Evn.13a | 13 | Odd.13a | ~Odd.13a | Evn |
-    ///  | 13 | Evn.13b | ~Evn.13b | 13 | Odd.13b | ~Odd.13b |     | <- q_13_13_13_13_12
+    ///  | 13 | Evn.13b | ~Evn.13b | 13 | Odd.13b | ~Odd.13b |     | <- q_13x4_12
     ///  | 13 | Evn.13c | ~Evn.13c | 13 | Odd.13c | ~Odd.13c |     |
     ///  | 13 | Evn.13d | ~Evn.13d | 13 | Odd.13d | ~Odd.13d |     |
     ///  | 12 | Evn.12  | ~Evn.12  | 12 | Odd.12  | ~Odd.12  |     |
@@ -1409,7 +1407,7 @@ impl<F: PrimeField> Sha512Chip<F> {
     ///  | T0 |    A0   |    A1    | T1 |    A2   |    A3    |  A4 |
     ///  |----|---------|----------|----|---------|----------|-----|
     ///  | 13 | Odd.13a | ~Odd.13a | 13 | Evn.13a | ~Evn.13a | Odd |
-    ///  | 13 | Odd.13b | ~Odd.13b | 13 | Evn.13b | ~Evn.13b |     | <- q_13_13_13_13_12
+    ///  | 13 | Odd.13b | ~Odd.13b | 13 | Evn.13b | ~Evn.13b |     | <- q_13x4_12
     ///  | 13 | Odd.13c | ~Odd.13c | 13 | Evn.13c | ~Evn.13c |     |
     ///  | 13 | Odd.13d | ~Odd.13d | 13 | Evn.13d | ~Evn.13d |     |
     ///  | 12 | Odd.12  | ~Odd.12  | 12 | Evn.12  | ~Evn.12  |     |
@@ -1418,14 +1416,14 @@ impl<F: PrimeField> Sha512Chip<F> {
     ///
     /// This function guarantees that the returned value is consistent with
     /// the values in the filled lookup table.
-    fn assign_sprdd_13_13_13_13_12(
+    fn assign_sprdd_13x4_12(
         &self,
         region: &mut Region<'_, F>,
         value: Value<u128>,
         even_or_odd: Parity,
         offset: usize,
     ) -> Result<AssignedPlain<F, 64>, Error> {
-        self.config().q_13_13_13_13_12.enable(region, offset + 1)?;
+        self.config().q_13x4_12.enable(region, offset + 1)?;
 
         let (evn_val, odd_val) = value.map(get_even_and_odd_bits).unzip();
 
