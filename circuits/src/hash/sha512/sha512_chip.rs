@@ -75,98 +75,34 @@ pub const NB_SHA512_ADVICE_COLS: usize = 8;
 /// Number of fixed columns used by the identities of the SHA512 chip.
 pub const NB_SHA512_FIXED_COLS: usize = 2;
 
+#[rustfmt::skip]
 const ROUND_CONSTANTS: [u64; 80] = [
-    0x428a2f98d728ae22,
-    0x7137449123ef65cd,
-    0xb5c0fbcfec4d3b2f,
-    0xe9b5dba58189dbbc,
-    0x3956c25bf348b538,
-    0x59f111f1b605d019,
-    0x923f82a4af194f9b,
-    0xab1c5ed5da6d8118,
-    0xd807aa98a3030242,
-    0x12835b0145706fbe,
-    0x243185be4ee4b28c,
-    0x550c7dc3d5ffb4e2,
-    0x72be5d74f27b896f,
-    0x80deb1fe3b1696b1,
-    0x9bdc06a725c71235,
-    0xc19bf174cf692694,
-    0xe49b69c19ef14ad2,
-    0xefbe4786384f25e3,
-    0x0fc19dc68b8cd5b5,
-    0x240ca1cc77ac9c65,
-    0x2de92c6f592b0275,
-    0x4a7484aa6ea6e483,
-    0x5cb0a9dcbd41fbd4,
-    0x76f988da831153b5,
-    0x983e5152ee66dfab,
-    0xa831c66d2db43210,
-    0xb00327c898fb213f,
-    0xbf597fc7beef0ee4,
-    0xc6e00bf33da88fc2,
-    0xd5a79147930aa725,
-    0x06ca6351e003826f,
-    0x142929670a0e6e70,
-    0x27b70a8546d22ffc,
-    0x2e1b21385c26c926,
-    0x4d2c6dfc5ac42aed,
-    0x53380d139d95b3df,
-    0x650a73548baf63de,
-    0x766a0abb3c77b2a8,
-    0x81c2c92e47edaee6,
-    0x92722c851482353b,
-    0xa2bfe8a14cf10364,
-    0xa81a664bbc423001,
-    0xc24b8b70d0f89791,
-    0xc76c51a30654be30,
-    0xd192e819d6ef5218,
-    0xd69906245565a910,
-    0xf40e35855771202a,
-    0x106aa07032bbd1b8,
-    0x19a4c116b8d2d0c8,
-    0x1e376c085141ab53,
-    0x2748774cdf8eeb99,
-    0x34b0bcb5e19b48a8,
-    0x391c0cb3c5c95a63,
-    0x4ed8aa4ae3418acb,
-    0x5b9cca4f7763e373,
-    0x682e6ff3d6b2b8a3,
-    0x748f82ee5defb2fc,
-    0x78a5636f43172f60,
-    0x84c87814a1f0ab72,
-    0x8cc702081a6439ec,
-    0x90befffa23631e28,
-    0xa4506cebde82bde9,
-    0xbef9a3f7b2c67915,
-    0xc67178f2e372532b,
-    0xca273eceea26619c,
-    0xd186b8c721c0c207,
-    0xeada7dd6cde0eb1e,
-    0xf57d4f7fee6ed178,
-    0x06f067aa72176fba,
-    0x0a637dc5a2c898a6,
-    0x113f9804bef90dae,
-    0x1b710b35131c471b,
-    0x28db77f523047d84,
-    0x32caab7b40c72493,
-    0x3c9ebe0a15c9bebc,
-    0x431d67c49c100d4c,
-    0x4cc5d4becb3e42b6,
-    0x597f299cfc657e2a,
-    0x5fcb6fab3ad6faec,
-    0x6c44198c4a475817,
+    0x428a2f98d728ae22, 0x7137449123ef65cd, 0xb5c0fbcfec4d3b2f, 0xe9b5dba58189dbbc,
+    0x3956c25bf348b538, 0x59f111f1b605d019, 0x923f82a4af194f9b, 0xab1c5ed5da6d8118,
+    0xd807aa98a3030242, 0x12835b0145706fbe, 0x243185be4ee4b28c, 0x550c7dc3d5ffb4e2,
+    0x72be5d74f27b896f, 0x80deb1fe3b1696b1, 0x9bdc06a725c71235, 0xc19bf174cf692694,
+    0xe49b69c19ef14ad2, 0xefbe4786384f25e3, 0x0fc19dc68b8cd5b5, 0x240ca1cc77ac9c65,
+    0x2de92c6f592b0275, 0x4a7484aa6ea6e483, 0x5cb0a9dcbd41fbd4, 0x76f988da831153b5,
+    0x983e5152ee66dfab, 0xa831c66d2db43210, 0xb00327c898fb213f, 0xbf597fc7beef0ee4,
+    0xc6e00bf33da88fc2, 0xd5a79147930aa725, 0x06ca6351e003826f, 0x142929670a0e6e70,
+    0x27b70a8546d22ffc, 0x2e1b21385c26c926, 0x4d2c6dfc5ac42aed, 0x53380d139d95b3df,
+    0x650a73548baf63de, 0x766a0abb3c77b2a8, 0x81c2c92e47edaee6, 0x92722c851482353b,
+    0xa2bfe8a14cf10364, 0xa81a664bbc423001, 0xc24b8b70d0f89791, 0xc76c51a30654be30,
+    0xd192e819d6ef5218, 0xd69906245565a910, 0xf40e35855771202a, 0x106aa07032bbd1b8,
+    0x19a4c116b8d2d0c8, 0x1e376c085141ab53, 0x2748774cdf8eeb99, 0x34b0bcb5e19b48a8,
+    0x391c0cb3c5c95a63, 0x4ed8aa4ae3418acb, 0x5b9cca4f7763e373, 0x682e6ff3d6b2b8a3,
+    0x748f82ee5defb2fc, 0x78a5636f43172f60, 0x84c87814a1f0ab72, 0x8cc702081a6439ec,
+    0x90befffa23631e28, 0xa4506cebde82bde9, 0xbef9a3f7b2c67915, 0xc67178f2e372532b,
+    0xca273eceea26619c, 0xd186b8c721c0c207, 0xeada7dd6cde0eb1e, 0xf57d4f7fee6ed178,
+    0x06f067aa72176fba, 0x0a637dc5a2c898a6, 0x113f9804bef90dae, 0x1b710b35131c471b,
+    0x28db77f523047d84, 0x32caab7b40c72493, 0x3c9ebe0a15c9bebc, 0x431d67c49c100d4c,
+    0x4cc5d4becb3e42b6, 0x597f299cfc657e2a, 0x5fcb6fab3ad6faec, 0x6c44198c4a475817,
 ];
 
+#[rustfmt::skip]
 const IV: [u64; 8] = [
-    0x6a09e667f3bcc908,
-    0xbb67ae8584caa73b,
-    0x3c6ef372fe94f82b,
-    0xa54ff53a5f1d36f1,
-    0x510e527fade682d1,
-    0x9b05688c2b3e6c1f,
-    0x1f83d9abfb41bd6b,
-    0x5be0cd19137e2179,
+    0x6a09e667f3bcc908, 0xbb67ae8584caa73b, 0x3c6ef372fe94f82b, 0xa54ff53a5f1d36f1,
+    0x510e527fade682d1, 0x9b05688c2b3e6c1f, 0x1f83d9abfb41bd6b, 0x5be0cd19137e2179,
 ];
 
 /// Tag for the even and odd 13-13-13-13-12 decompositions.
@@ -202,7 +138,7 @@ pub struct Sha512Config {
     q_13_13_13_13_12: Selector,
     q_13_12_5_6_13_13_2: Selector,
     q_13_10_13_10_4_13_1: Selector,
-    q_3_3x13_3_11_1_1_5_1: Selector,
+    q_3_13x3_3_11_1_1_5_1: Selector,
     q_add_mod_2_64: Selector,
 }
 
@@ -272,7 +208,7 @@ impl<F: PrimeField> ComposableChip<F> for Sha512Chip<F> {
         let q_13_13_13_13_12 = meta.selector();
         let q_13_12_5_6_13_13_2 = meta.selector();
         let q_13_10_13_10_4_13_1 = meta.selector();
-        let q_3_3x13_3_11_1_1_5_1 = meta.selector();
+        let q_3_13x3_3_11_1_1_5_1 = meta.selector();
         let q_add_mod_2_64 = meta.selector();
 
         (0..2).for_each(|idx| {
@@ -651,7 +587,7 @@ impl<F: PrimeField> ComposableChip<F> for Sha512Chip<F> {
             )
         });
 
-        meta.create_gate("3-3x13-3-11-1-1-5-1 decomposition", |meta| {
+        meta.create_gate("3-13x3-3-11-1-1-5-1 decomposition", |meta| {
             // See function `prepare_message_word` for a description of the following
             // layout.
             let w03a = meta.query_advice(advice_cols[0], Rotation(-1));
@@ -679,7 +615,7 @@ impl<F: PrimeField> ComposableChip<F> for Sha512Chip<F> {
             let w_01c_check = w01c.clone() * (w01c - Expression::from(1));
 
             Constraints::with_selector(
-                q_3_3x13_3_11_1_1_5_1,
+                q_3_13x3_3_11_1_1_5_1,
                 vec![
                     ("12_1x3_7_3_4_3 decomposition ", plain_id),
                     ("W.1a 1-bit check", w_01a_check),
@@ -723,7 +659,7 @@ impl<F: PrimeField> ComposableChip<F> for Sha512Chip<F> {
             q_13_13_13_13_12,
             q_13_12_5_6_13_13_2,
             q_13_10_13_10_4_13_1,
-            q_3_3x13_3_11_1_1_5_1,
+            q_3_13x3_3_11_1_1_5_1,
             q_add_mod_2_64,
         }
     }
@@ -828,14 +764,14 @@ impl<F: PrimeField> Sha512Chip<F> {
             core::array::from_fn(|_| message_word.clone());
 
         // The first 16 message words are got by decomposing the block words
-        // into 3_3x13_3_11_1_1_5_1 limbs directly.
+        // into 3_13x3_3_11_1_1_5_1 limbs directly.
         for word_idx in 1..16 {
             message_words[word_idx] =
                 self.prepare_message_word(layouter, &[block[word_idx].clone()])?;
         }
         // The remaining 64 message words are computed using the recurrence relation
         // W.i = W.(i-16) + W.(i-7) + σ₀(W.(i-15)) + σ₁(W.(i-2))
-        // and decomposing into 3_3x13_3_11_1_1_5_1 limbs.
+        // and decomposing into 3_13x3_3_11_1_1_5_1 limbs.
         for word_idx in 16..80 {
             let sigma0_w_i_minus_15 = &self.sigma_0(layouter, &message_words[word_idx - 15])?;
             let sigma1_w_i_minus_2 = &self.sigma_1(layouter, &message_words[word_idx - 2])?;
@@ -1726,12 +1662,12 @@ impl<F: PrimeField> Sha512Chip<F> {
         | T0 |    A0    |     A1    | T1 |    A2    |     A3    |    A4   |  A5  |  A6  |  A.7  |
         |----|----------|-----------|----|----------|-----------|---------|------|------|-------|
         | 03 |   W.03a  |  ~W.03a   | 13 |   W.13a  |  ~W.13a   |  W.i    |  S0  |  S1  | W.01a |
-        | 13 |   W.13b  |  ~W.13b   | 13 |   W.13c  |  ~W.13c   |         |  S2  |  S3  | W.01b | <- q_3_3x13_3_11_1_1_5_1
+        | 13 |   W.13b  |  ~W.13b   | 13 |   W.13c  |  ~W.13c   |         |  S2  |  S3  | W.01b | <- q_3_13x3_3_11_1_1_5_1
         | 03 |   W.03b  |  ~W.03b   | 11 |   W.11   |  ~W.11    |   S4    |  S5  |  S6  | W.01c |
         | 05 |   W.05   |  ~W.05    | 03 |   carry  |  ~carry   |         |      |      |       |
 
         Apart from the lookups, the following identities are checked via a
-        custom gate with selector q_3_3x13_3_11_1_1_5_1:
+        custom gate with selector q_3_13x3_3_11_1_1_5_1:
 
           W.i =   2^61 * W.03a + 2^48 * W.13a + 2^35 * W.13b + 2^22 * W.13c
                 + 2^19 * W.03b + 2^8  * W.11  + 2^7  * W.01a + 2^6  * W.01b + 2^1 * W.05 + W.01c
@@ -1756,7 +1692,7 @@ impl<F: PrimeField> Sha512Chip<F> {
         layouter.assign_region(
             || "prepare message word",
             |mut region| {
-                self.config().q_3_3x13_3_11_1_1_5_1.enable(&mut region, 1)?;
+                self.config().q_3_13x3_3_11_1_1_5_1.enable(&mut region, 1)?;
 
                 let w_i_plain = self.assign_add_mod_2_64(&mut region, summands, &zero)?;
 
