@@ -72,6 +72,7 @@ use crate::{
     hash::{
         poseidon::{PoseidonChip, PoseidonConfig, NB_POSEIDON_ADVICE_COLS, NB_POSEIDON_FIXED_COLS},
         sha256::{Sha256Chip, Sha256Config, NB_SHA256_ADVICE_COLS, NB_SHA256_FIXED_COLS},
+        sha512::{Sha512Chip, Sha512Config, NB_SHA512_ADVICE_COLS, NB_SHA512_FIXED_COLS},
     },
     instructions::{public_input::CommittedInstanceInstructions, *},
     map::map_gadget::MapGadget,
@@ -113,6 +114,9 @@ pub struct ZkStdLibArch {
     /// Enable the SHA256 chip?
     pub sha256: bool,
 
+    /// Enable the SHA512 chip?
+    pub sha512: bool,
+
     /// Enable the Secp256k1 chip?
     pub secp256k1: bool,
 
@@ -135,6 +139,7 @@ impl Default for ZkStdLibArch {
             jubjub: true,
             poseidon: true,
             sha256: true,
+            sha512: false,
             secp256k1: false,
             bls12_381: false,
             base64: false,
@@ -215,6 +220,7 @@ pub struct ZkStdLibConfig {
     core_decomposition_config: P2RDecompositionConfig,
     jubjub_config: Option<EccConfig>,
     sha256_config: Option<Sha256Config>,
+    sha512_config: Option<Sha512Config>,
     poseidon_config: Option<PoseidonConfig<midnight_curves::Fq>>,
     secp256k1_scalar_config: Option<FieldChipConfig>,
     secp256k1_config: Option<ForeignEccConfig<Secp256k1>>,
@@ -231,6 +237,7 @@ pub struct ZkStdLib {
     core_decomposition_chip: P2RDecompositionChip<F>,
     jubjub_chip: Option<EccChip<C>>,
     sha256_chip: Option<Sha256Chip<F>>,
+    sha512_chip: Option<Sha512Chip<F>>,
     poseidon_gadget: Option<PoseidonChip<F>>,
     htc_gadget: Option<HashToCurveGadget<F, C, AssignedNative<F>, PoseidonChip<F>, EccChip<C>>>,
     map_gadget: Option<MapGadget<F, NG, PoseidonChip<F>>>,
@@ -245,7 +252,8 @@ pub struct ZkStdLib {
 
     // Flags that indicate if certain chips have been used. This way we can load the tables only
     // when necessary (thus reducing the min_k in some cases).
-    used_sha: Rc<RefCell<bool>>,
+    used_sha256: Rc<RefCell<bool>>,
+    used_sha512: Rc<RefCell<bool>>,
     used_secp256k1_scalar: Rc<RefCell<bool>>,
     used_secp256k1_curve: Rc<RefCell<bool>>,
     used_bls12_381_curve: Rc<RefCell<bool>>,
@@ -264,6 +272,8 @@ impl ZkStdLib {
             .map(|jubjub_config| EccChip::new(jubjub_config, &native_gadget));
         let sha256_chip = (config.sha256_config.as_ref())
             .map(|sha256_config| Sha256Chip::new(sha256_config, &native_gadget));
+        let sha512_chip = (config.sha512_config.as_ref())
+            .map(|sha512_config| Sha512Chip::new(sha512_config, &native_gadget));
         let poseidon_gadget = (config.poseidon_config.as_ref())
             .map(|poseidon_config| PoseidonChip::new(poseidon_config, &native_chip));
         let htc_gadget = (jubjub_chip.as_ref())
@@ -296,6 +306,7 @@ impl ZkStdLib {
             core_decomposition_chip,
             jubjub_chip,
             sha256_chip,
+            sha512_chip,
             poseidon_gadget,
             map_gadget,
             htc_gadget,
@@ -307,7 +318,8 @@ impl ZkStdLib {
             parser_gadget,
             vector_gadget,
             automaton_chip,
-            used_sha: Rc::new(RefCell::new(false)),
+            used_sha256: Rc::new(RefCell::new(false)),
+            used_sha512: Rc::new(RefCell::new(false)),
             used_secp256k1_scalar: Rc::new(RefCell::new(false)),
             used_secp256k1_curve: Rc::new(RefCell::new(false)),
             used_bls12_381_curve: Rc::new(RefCell::new(false)),
@@ -321,27 +333,17 @@ impl ZkStdLib {
         let nb_advice_cols = [
             NB_ARITH_COLS,
             arch.nr_pow2range_cols as usize,
-            if arch.jubjub { NB_EDWARDS_COLS } else { 0 },
-            if arch.poseidon {
-                NB_POSEIDON_ADVICE_COLS
-            } else {
-                0
-            },
-            if arch.sha256 {
-                NB_SHA256_ADVICE_COLS
-            } else {
-                0
-            },
-            if arch.secp256k1 {
-                max(
+            arch.jubjub as usize * NB_EDWARDS_COLS,
+            arch.poseidon as usize * NB_POSEIDON_ADVICE_COLS,
+            arch.sha256 as usize * NB_SHA256_ADVICE_COLS,
+            arch.sha512 as usize * NB_SHA512_ADVICE_COLS,
+            arch.secp256k1 as usize
+                * max(
                     nb_field_chip_columns::<F, secp256k1::Fq, MEP>(),
                     nb_foreign_ecc_chip_columns::<F, Secp256k1, MEP, secp256k1::Fq>(),
-                )
-            } else {
-                0
-            },
-            if arch.bls12_381 {
-                max(
+                ),
+            arch.bls12_381 as usize
+                * max(
                     nb_field_chip_columns::<F, midnight_curves::Fp, MEP>(),
                     nb_foreign_ecc_chip_columns::<
                         F,
@@ -349,15 +351,8 @@ impl ZkStdLib {
                         MEP,
                         midnight_curves::Fp,
                     >(),
-                )
-            } else {
-                0
-            },
-            if arch.base64 {
-                NB_BASE64_ADVICE_COLS
-            } else {
-                0
-            },
+                ),
+            arch.base64 as usize * NB_BASE64_ADVICE_COLS,
             NB_AUTOMATA_COLS,
         ]
         .into_iter()
@@ -366,12 +361,9 @@ impl ZkStdLib {
 
         let nb_fixed_cols = [
             NB_ARITH_FIXED_COLS,
-            if arch.poseidon {
-                NB_POSEIDON_FIXED_COLS
-            } else {
-                0
-            },
-            if arch.sha256 { NB_SHA256_FIXED_COLS } else { 0 },
+            arch.poseidon as usize * NB_POSEIDON_FIXED_COLS,
+            arch.sha256 as usize * NB_SHA256_FIXED_COLS,
+            arch.sha512 as usize * NB_SHA512_FIXED_COLS,
         ]
         .into_iter()
         .max()
@@ -397,89 +389,76 @@ impl ZkStdLib {
         let core_decomposition_config =
             P2RDecompositionChip::configure(meta, &(native_config.clone(), pow2range_config));
 
-        let jubjub_config = match arch.jubjub {
-            true => Some(EccChip::<C>::configure(
-                meta,
-                &advice_columns[..NB_EDWARDS_COLS].try_into().unwrap(),
-            )),
-            false => None,
-        };
+        let jubjub_config = arch.jubjub.then(|| {
+            EccChip::<C>::configure(meta, &advice_columns[..NB_EDWARDS_COLS].try_into().unwrap())
+        });
 
-        let sha256_config = match arch.sha256 {
-            true => Some(Sha256Chip::configure(
+        let sha256_config = arch.sha256.then(|| {
+            Sha256Chip::configure(
                 meta,
                 &(
                     advice_columns[..NB_SHA256_ADVICE_COLS].try_into().unwrap(),
                     fixed_columns[..NB_SHA256_FIXED_COLS].try_into().unwrap(),
                 ),
-            )),
-            _ => None,
-        };
+            )
+        });
 
-        let poseidon_config = match arch.poseidon {
-            true => Some(PoseidonChip::configure(
+        let sha512_config = arch.sha512.then(|| {
+            Sha512Chip::configure(
+                meta,
+                &(
+                    advice_columns[..NB_SHA512_ADVICE_COLS].try_into().unwrap(),
+                    fixed_columns[..NB_SHA512_FIXED_COLS].try_into().unwrap(),
+                ),
+            )
+        });
+
+        let poseidon_config = arch.poseidon.then(|| {
+            PoseidonChip::configure(
                 meta,
                 &(
                     advice_columns[..NB_POSEIDON_ADVICE_COLS].try_into().unwrap(),
                     fixed_columns[..NB_POSEIDON_FIXED_COLS].try_into().unwrap(),
                 ),
-            )),
-            false => None,
-        };
+            )
+        });
 
-        let secp256k1_scalar_config = match arch.secp256k1 {
-            true => Some(Secp256k1ScalarChip::configure(meta, &advice_columns)),
-            false => None,
-        };
+        let secp256k1_scalar_config =
+            arch.secp256k1.then(|| Secp256k1ScalarChip::configure(meta, &advice_columns));
 
-        let secp256k1_config = match arch.secp256k1 {
-            true => {
-                let base_config = Secp256k1BaseChip::configure(meta, &advice_columns);
-                Some(Secp256k1Chip::configure(
-                    meta,
-                    &base_config,
-                    &advice_columns,
-                ))
-            }
-            false => None,
-        };
+        let secp256k1_config = arch.secp256k1.then(|| {
+            let base_config = Secp256k1BaseChip::configure(meta, &advice_columns);
+            Secp256k1Chip::configure(meta, &base_config, &advice_columns)
+        });
 
-        let bls12_381_config = match arch.bls12_381 {
-            true => {
-                let base_config = Bls12381BaseChip::configure(meta, &advice_columns);
-                Some(Bls12381Chip::configure(meta, &base_config, &advice_columns))
-            }
-            false => None,
-        };
+        let bls12_381_config = arch.bls12_381.then(|| {
+            let base_config = Bls12381BaseChip::configure(meta, &advice_columns);
+            Bls12381Chip::configure(meta, &base_config, &advice_columns)
+        });
 
-        let base64_config = match arch.base64 {
-            true => Some(Base64Chip::configure(
+        let base64_config = arch.base64.then(|| {
+            Base64Chip::configure(
                 meta,
                 advice_columns[..NB_BASE64_ADVICE_COLS].try_into().unwrap(),
-            )),
-            false => None,
-        };
+            )
+        });
 
-        let automaton_config = match arch.automaton {
-            true => Some(AutomatonChip::configure(
+        let automaton_config = arch.automaton.then(|| {
+            AutomatonChip::configure(
                 meta,
                 &(
                     advice_columns[..NB_AUTOMATA_COLS].try_into().unwrap(),
                     parsing::spec_library(),
                 ),
-            )),
-            false => None,
-        };
-
-        // FIXME: Some chips need this, should we unify the treatment of constants?
-        let constants_column = meta.fixed_column();
-        meta.enable_constant(constants_column);
+            )
+        });
 
         ZkStdLibConfig {
             native_config,
             core_decomposition_config,
             jubjub_config,
             sha256_config,
+            sha512_config,
             poseidon_config,
             secp256k1_scalar_config,
             secp256k1_config,
@@ -677,10 +656,23 @@ impl ZkStdLib {
         layouter: &mut impl Layouter<F>,
         input: &[AssignedByte<F>], // F -> decompose_bytes -> hash
     ) -> Result<[AssignedByte<F>; 32], Error> {
-        *self.used_sha.borrow_mut() = true;
+        *self.used_sha256.borrow_mut() = true;
         self.sha256_chip
             .as_ref()
             .expect("ZkStdLibArch must enable sha256")
+            .hash(layouter, input)
+    }
+
+    /// Sha512.
+    pub fn sha512(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        input: &[AssignedByte<F>], // F -> decompose_bytes -> hash
+    ) -> Result<[AssignedByte<F>; 64], Error> {
+        *self.used_sha512.borrow_mut() = true;
+        self.sha512_chip
+            .as_ref()
+            .expect("ZkStdLibArch must enable sha512")
             .hash(layouter, input)
     }
 }
@@ -1528,8 +1520,14 @@ impl<R: Relation> Circuit<F> for MidnightCircuit<'_, R> {
         zk_std_lib.core_decomposition_chip.load(&mut layouter)?;
 
         if let Some(sha256_chip) = zk_std_lib.sha256_chip {
-            if *zk_std_lib.used_sha.borrow() {
+            if *zk_std_lib.used_sha256.borrow() {
                 sha256_chip.load(&mut layouter)?;
+            }
+        }
+
+        if let Some(sha512_chip) = zk_std_lib.sha512_chip {
+            if *zk_std_lib.used_sha512.borrow() {
+                sha512_chip.load(&mut layouter)?;
             }
         }
 
