@@ -187,23 +187,8 @@ where
         transcript.write(&pi).map_err(|_| Error::OpeningError)
     }
 
-    fn build_linearized_commitment(
-        lin_poly: Option<crate::plonk::LinearizedCommitment<E::Fr, Self>>,
-    ) -> <crate::poly::kzg::KZGCommitmentScheme<E> as crate::poly::commitment::PolynomialCommitmentScheme<E::Fr>>::Commitment{
-        let lin_poly = lin_poly.unwrap();
-        let mut bases = Vec::new();
-        for com in lin_poly.points {
-            let b = match com {
-                Some(com) => com,
-                None => E::G1::generator(),
-            };
-            bases.push(b);
-        }
-        let mut msm = MSMKZG::<E>::init();
-        msm.scalars = lin_poly.scalars;
-        msm.bases = bases;
-
-        msm.eval()
+    fn get_generator() -> Self::Commitment {
+        E::G1::generator()
     }
 
     fn multi_prepare<'com, T: Transcript>(

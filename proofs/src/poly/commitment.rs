@@ -1,6 +1,6 @@
 //! Trait for a commitment scheme
 use core::ops::{Add, Mul};
-use std::{fmt::Debug, hash::Hash, ops::Sub};
+use std::{fmt::Debug, hash::Hash};
 
 use ff::{FromUniformBytes, PrimeField};
 
@@ -29,12 +29,13 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
         + Send
         + Sync
         + Add<Output = Self::Commitment>
-        // TODO: consider removing after debugging
-        + Sub<Output = Self::Commitment>
         + Mul<F, Output = Self::Commitment>;
 
     /// Verification guard. Allows for batch verification
     type VerificationGuard: Guard<F, Self>;
+
+    /// In case of KZG commitments, get the generator of G1
+    fn get_generator() -> Self::Commitment;
 
     /// Generates the parameters of the polynomial commitment scheme
     fn gen_params(k: u32) -> Self::Parameters;
@@ -61,12 +62,6 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
     where
         F: Sampleable<T::Hash> + Hash + Ord + Hashable<T::Hash>,
         Self::Commitment: Hashable<T::Hash>;
-
-    // TODO: how to best handle construction of linearization commitment?
-    /// Construct commitment to linearization poly via MSM
-    fn build_linearized_commitment(
-        lin_poly: Option<crate::plonk::LinearizedCommitment<F, Self>>,
-    ) -> Self::Commitment;
 
     /// Verify an multi-opening proof for a given set of [VerifierQuery]'s.
     /// The function fails if the transcript has trailing bytes.

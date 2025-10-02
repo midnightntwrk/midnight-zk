@@ -20,7 +20,6 @@ use super::{
     lookup, permutation, Error, ProvingKey,
 };
 
-#[cfg(feature = "committed-instances")]
 use crate::poly::EvaluationDomain;
 use crate::{
     circuit::Value,
@@ -852,12 +851,13 @@ where
         // * h_j(X) are the limbs of the quotient polynomial.
         //
 
-        // Construct linearized identities: LHS above
+        // Construct linearized identities
         // 1. Prepare powers of the batching challenge y
+        let nr_identities = evaluated_expressions.len();
         let t = std::time::Instant::now();
-        let mut y_powers = Vec::new();
+        let mut y_powers = Vec::with_capacity(nr_identities);
         let mut y_pow = F::ONE;
-        for _ in 0..evaluated_expressions.len() {
+        for _ in 0..nr_identities {
             y_powers.push(y_pow);
             y_pow *= y;
         }
@@ -870,9 +870,9 @@ where
                 fully_evaluated += *eval * y_powers[idx];
             }
         }
-        // TODO: parallelize!
-        let indices: Vec<usize> = (0..evaluated_expressions.len()).collect();
+
         // 3. Multiply fixed columns with corresp. partial evaluation and batching factor; sum up the results
+        let indices: Vec<usize> = (0..evaluated_expressions.len()).collect();
         let mut lin_poly = evaluated_expressions
             .par_iter()
             .zip(&indices)
@@ -910,14 +910,15 @@ where
             format_args!("{:.1}", t.elapsed().as_micros())
         );
 
-        // Construct linearized numerator poly: RHS above
+        // Construct linearized numerator poly
         // (h_0(X) + x^n*h_1(X) + x^{2n}*h_2(X) + ... + x^{ln}*h_k(X)) * (x^n-1),
         // where h_i are commitments to the limbs of the quotient polynomial
         let t = std::time::Instant::now();
+        let nr_limbs = quotient_limbs.len();
         let vanishing_eval = xn - F::ONE;
-        let mut xn_powers = Vec::new();
+        let mut xn_powers = Vec::with_capacity(nr_limbs);
         let mut xn_pow = F::ONE;
-        for _ in 0..quotient_limbs.len() {
+        for _ in 0..nr_limbs {
             xn_powers.push(xn_pow * vanishing_eval);
             xn_pow *= xn;
         }
@@ -940,13 +941,8 @@ where
             values: lin_poly,
             _marker: std::marker::PhantomData::<Coeff>,
         };
-        // TODO: remove after debugging
-        let t = std::time::Instant::now();
         assert_eq!(eval_polynomial(&linearization_poly, x), F::ZERO);
-        println!(
-            "Linearized poly evaluated in {:?} μs",
-            format_args!("{:.1}", t.elapsed().as_micros())
-        );
+
         linearization_poly
     }
 
@@ -1042,13 +1038,8 @@ where
         }
     }
 
-    let t = std::time::Instant::now();
     let linearization_poly =
         construct_linearization_poly(evaluated_expressions, pk, y, x, xn, quotient_limbs);
-    println!(
-        "Linearization poly built in {:?} ms",
-        format_args!("{:.1}", t.elapsed().as_secs_f32() * 1000.0)
-    );
 
     let queries = instance_polys
         .iter()

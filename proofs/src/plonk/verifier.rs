@@ -9,27 +9,6 @@ use crate::{
     transcript::{read_n, Hashable, Sampleable, Transcript},
     utils::arithmetic::compute_inner_product,
 };
-/// Struct for lin poly
-#[derive(Debug)]
-pub struct LinearizedCommitment<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
-    /// Evaluation point
-    pub x: F,
-    /// Holding scalars of lin poly for MSM
-    pub scalars: Vec<F>,
-    /// Holding curve points of lin poly for MSM
-    pub points: Vec<Option<CS::Commitment>>,
-}
-
-impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> LinearizedCommitment<F, CS> {
-    /// Initialize empty lin poly
-    pub fn init() -> Self {
-        LinearizedCommitment {
-            x: F::ZERO,
-            scalars: vec![],
-            points: vec![],
-        }
-    }
-}
 
 /// Given a plonk proof, this function parses it to extract the verifying trace.
 /// This function computes all Fiat-Shamir challenges, with the exception of
@@ -330,38 +309,42 @@ where
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    fn prepare_linearized_commitment<
+    fn prepare_linearization_commitment<
+        'com,
         F: PrimeField + ff::WithSmallOrderMulGroup<3> + ff::FromUniformBytes<64>,
         CS: PolynomialCommitmentScheme<F>,
     >(
-        vk: &VerifyingKey<F, CS>,
+        vk: &'com VerifyingKey<F, CS>,
         expressions: Vec<(Option<usize>, F)>,
         y: F,
-        x: F,
-        h_limb_commitments: &[CS::Commitment],
-    ) -> LinearizedCommitment<F, CS> {
-        // Construct commitment of the linearization polynomial
-        // (which will be checked that it opens to 0 at x):
+        xn: F,
+        h_limb_commitments: &'com [CS::Commitment],
+        generator: &'com CS::Commitment,
+    ) -> (Vec<&'com CS::Commitment>, Vec<F>) {
+        // Construct the commitment to the linearization polynomial
+        // (which will be checked that it opens to 0 at x in the multi-open argument):
         //
-        //  S_1*id_1(x) + y*S_2*id_2(x) + y^2*S_3*id_3(x) + ... + y^{k-1}*S_k*id_k(x)
+        //  S_0*id_0(x) + y*S_1*id_1(x) + y^2*S_2*id_2(x) + ... + y^m*S_m*id_m(x)
         //        - (h_0 + x^n*h_1 + x^{2n}*h_2 + ... + x^{l*n}*h_l) * (x^n-1),
         //
         // where:
-        // * id_i is a (partially or fully) evaluated identity,
-        // * S_i is, either,
-        //      - (i)  a commitment to a fixed column corresponding a simple selector, or,
-        //      - (ii) the 1 element (because the corresponding identity id_i has been fully evaluated)
-        // * h_j are commitments to the limbs of the quotient polynomial.
+        // * y^i is a power of the batching challenge y,
+        // * id_j(x) is the result of (partially or fully) evaluating the identity id_j at x (i.e., a scalar),
+        // * S_j is, either,
+        //      - (i)  the commitment to a fixed column corresponding to a simple selector, or,
+        //      - (ii) the zero commitment (because the corresponding identity id_i has been fully evaluated
+        //             and thus the resulting scalar is part of the constant term of the linearization poly)
+        // * h_k are commitments to the limbs of the quotient polynomial.
 
-        let xn = x.pow([vk.n()]);
-
-        let mut xn_powers = Vec::new();
+        let mut xn_powers = Vec::with_capacity(h_limb_commitments.len());
         let mut xn_pow = F::ONE;
         for _ in 0..h_limb_commitments.len() {
             xn_powers.push(-xn_pow * (xn - F::ONE));
             xn_pow *= xn;
         }
-        let mut y_powers = Vec::new();
+
+        let nr_identities = expressions.len();
+        let mut y_powers = Vec::with_capacity(nr_identities);
         let mut y_pow = F::ONE;
         for _ in 0..expressions.len() {
             y_powers.push(y_pow);
@@ -369,25 +352,22 @@ where
         }
         y_powers.reverse();
 
-        let h_limb_commitments: Vec<_> =
-            h_limb_commitments.iter().map(|l| Some(l.clone())).collect();
-
-        let mut identities_scalars = Vec::new();
-        let mut identities_points = Vec::new();
+        let mut identities_scalars = Vec::with_capacity(nr_identities);
+        let mut identities_points = Vec::with_capacity(nr_identities);
         for (i, (idx, e)) in expressions.clone().into_iter().enumerate() {
-            let point = idx.map(|column_index| vk.fixed_commitments[column_index].clone());
-            identities_points.push(point);
+            match idx.map(|column_index| &vk.fixed_commitments[column_index]) {
+                Some(com) => identities_points.push(com),
+                None => identities_points.push(generator),
+            }
             identities_scalars.push(y_powers[i] * e);
         }
 
-        identities_points.extend(h_limb_commitments);
+        for l in h_limb_commitments {
+            identities_points.push(l);
+        }
         identities_scalars.extend(xn_powers);
 
-        LinearizedCommitment {
-            x,
-            scalars: identities_scalars,
-            points: identities_points,
-        }
+        (identities_points, identities_scalars)
     }
 
     // Partially evaluate batched identities (without fixed columns corresponding
@@ -495,8 +475,20 @@ where
         }
     }
 
-    let lin_com =
-        prepare_linearized_commitment(vk, evaluated_expressions, y, x, &h_limb_commitments);
+    // All fully evaluated identities (i.e., identities without simple selectors) are part
+    // of the constant term of the linearization poly, and thus need to be multiplied with
+    // the zero commitment
+    let g1 = CS::get_generator();
+
+    // Prepare linearization commitment for MSM
+    let lin_com = prepare_linearization_commitment(
+        vk,
+        evaluated_expressions,
+        y,
+        xn,
+        &h_limb_commitments,
+        &g1,
+    );
 
     // Collect queries that are checked in the multi-open argument
     // NB: Queries corresponding to simple-selectors need not be checked
@@ -564,12 +556,13 @@ where
                     )
                 }),
         )
-        .chain(permutations_common.queries(&vk.permutation, x));
-
-    // Compute commitment to linearization poly via MSM and check that it opens to 0 at x
-    let lin_com = CS::build_linearized_commitment(Some(lin_com));
-    let queries = queries
-        .chain(iter::once(VerifierQuery::new(x, &lin_com, F::ZERO)))
+        .chain(permutations_common.queries(&vk.permutation, x))
+        .chain(iter::once(VerifierQuery::new_linear(
+            x,
+            lin_com.0,
+            lin_com.1,
+            F::ZERO,
+        )))
         .collect::<Vec<_>>();
 
     // We are now convinced the circuit is satisfied so long as the

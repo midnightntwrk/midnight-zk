@@ -72,9 +72,18 @@ impl<'com, F: PrimeField> Query<F> for ProverQuery<'com, F> {
 /// case, the `Chopped` representation of the commitment includes commitments
 /// to all the pieces [A_i(X)] as well as the piece-degree `n`.
 /// (Note that the pieces are stored in little-endian.)
+///
+/// Moreover, the commitment to the linearization polynomial is a linear
+/// combination of (partially or fully) evaluated identities (i.e., scalars) and
+/// commitments to fixed columns (representing simple selectors). In case of full
+/// evaluations, the corresponding commitment is just the zero commitment
+/// (representing the constant term of a polynomial). This linear combination is
+/// represented in the form two vectors: one vectors holds the commitments,
+/// the other one holds the scalars.
 pub enum CommitmentReference<'com, F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
     OnePiece(&'com CS::Commitment),
     Chopped(Vec<&'com CS::Commitment>, u64),
+    Linear(Vec<&'com CS::Commitment>, Vec<F>),
 }
 
 impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> PartialEq
@@ -102,6 +111,10 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> PartialEq
 
                 self_n == other_n
             }
+            (
+                CommitmentReference::Linear(self_points, self_scalars),
+                CommitmentReference::Linear(other_points, other_scalars),
+            ) => (self_points == other_points) && (self_scalars == other_scalars),
             _ => false,
         }
     }
@@ -121,8 +134,9 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> CommitmentReference<'_, F
     ///
     /// # Panics
     ///
-    /// If the commitment is in "one piece" and an evaluation point is provided.
+    /// If the commitment is "one piece" or "linear" and an evaluation point is provided.
     /// If the commitment is "chopped" and no evaluation point is provided.
+    /// If the commitment is "linear" and the nr of points differs from the nr of scalars.
     pub(crate) fn as_terms(&self, eval_point_opt: Option<F>) -> Vec<(F, CS::Commitment)> {
         match self.clone() {
             CommitmentReference::OnePiece(com) => {
@@ -139,6 +153,16 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> CommitmentReference<'_, F
                 for &part in parts.iter() {
                     terms.push((scalar, part.clone()));
                     scalar *= xn;
+                }
+                terms
+            }
+            CommitmentReference::Linear(points, scalars) => {
+                assert!(eval_point_opt.is_none());
+                assert_eq!(points.len(), scalars.len());
+
+                let mut terms = Vec::with_capacity(points.len());
+                for (&p, s) in points.iter().zip(scalars.iter()) {
+                    terms.push((*s, p.clone()));
                 }
                 terms
             }
@@ -171,6 +195,20 @@ where
         }
     }
 
+    /// Create a new verifier query based on a commitment
+    pub fn new_linear(
+        point: F,
+        points: Vec<&'com CS::Commitment>,
+        scalars: Vec<F>,
+        eval: F,
+    ) -> Self {
+        VerifierQuery {
+            point,
+            commitment: CommitmentReference::Linear(points, scalars),
+            eval,
+        }
+    }
+
     /// Create a new verifier query based on a commitment made of pieces
     pub fn from_parts(point: F, parts: &[&'com CS::Commitment], eval: F, n: u64) -> Self {
         VerifierQuery {
@@ -195,5 +233,47 @@ impl<'com, F: PrimeField, CS: PolynomialCommitmentScheme<F>> Query<F>
     }
     fn get_commitment(&self) -> Self::Commitment {
         self.commitment.clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use ff::PrimeField;
+
+    use crate::poly::{
+        commitment::PolynomialCommitmentScheme, kzg::KZGCommitmentScheme,
+        query::CommitmentReference,
+    };
+
+    fn run_eq_test<F: PrimeField, CS: PolynomialCommitmentScheme<F>>() {
+        let scalars = vec![F::ZERO; 10];
+        let point = CS::get_generator();
+        let points = vec![&point; 10];
+        let cr1: CommitmentReference<'_, F, CS> =
+            CommitmentReference::Linear(points.clone(), scalars.clone());
+        let cr2: CommitmentReference<'_, F, CS> =
+            CommitmentReference::Linear(points, scalars.clone());
+
+        assert_eq!(cr1, cr2);
+
+        let points = vec![&point; 11];
+        let cr2: CommitmentReference<'_, F, CS> =
+            CommitmentReference::Linear(points, scalars.clone());
+
+        assert_ne!(cr1, cr2);
+
+        let point2 = point.clone() + point.clone();
+        let points2 = vec![&point2; 10];
+        let cr2: CommitmentReference<'_, F, CS> = CommitmentReference::Linear(points2, scalars);
+
+        assert_ne!(cr1, cr2);
+    }
+
+    #[test]
+    fn eq_test() {
+        run_eq_test::<
+            halo2curves::bls12381::Fr,
+            KZGCommitmentScheme<halo2curves::bls12381::Bls12381>,
+        >();
     }
 }
