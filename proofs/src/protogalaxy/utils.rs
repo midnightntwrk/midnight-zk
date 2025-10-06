@@ -251,11 +251,17 @@ impl<F: PrimeField> Add<&FoldingProverTrace<F>> for FoldingProverTrace<F> {
                     *lhs += rhs;
                 });
 
-            (self.instance_polys[i].par_iter_mut())
+            self.instance_polys[i].par_iter_mut()
                 .zip(rhs.instance_polys[i].par_iter())
                 .for_each(|(lhs, rhs)| {
                     *lhs += rhs;
                 });
+            self.instance_values[i].par_iter_mut()
+                .zip(rhs.instance_values[i].par_iter())
+                .for_each(|(lhs, rhs)| {
+                    *lhs += rhs;
+                });
+
             self.lookups[i]
                 .par_iter_mut()
                 .zip(rhs.lookups[i].par_iter())
@@ -308,6 +314,9 @@ impl<F: PrimeField> Mul<F> for FoldingProverTrace<F> {
             self.instance_polys[i].par_iter_mut().for_each(|p| {
                 *p *= scalar;
             });
+            self.instance_values[i].par_iter_mut().for_each(|p| {
+                *p *= scalar;
+            });
             self.lookups[i].par_iter_mut().for_each(|lhs| {
                 lhs.permuted_input_poly *= scalar;
                 lhs.permuted_table_poly *= scalar;
@@ -342,6 +351,7 @@ impl<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> VerifierFoldingTrace<F, 
     pub fn init(
         num_fixed_polys: usize,
         num_advice_polys: usize,
+        num_instances: usize,
         num_lookups: usize,
         num_trashcans: usize,
         num_permutation_sets: usize,
@@ -367,6 +377,8 @@ impl<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> VerifierFoldingTrace<F, 
         }
         VerifierFoldingTrace {
             advice_commitments: vec![vec![PCS::Commitment::default(); num_advice_polys]],
+            instance_commitments: vec![vec![PCS::Commitment::default()]],
+            instance_polys: vec![vec![vec![F::ZERO; num_instances]]],
             fixed_commitments: vec![PCS::Commitment::default(); num_fixed_polys],
             vanishing: vanishing::verifier::Committed {
                 random_poly_commitment: PCS::Commitment::default(),
@@ -428,6 +440,19 @@ impl<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> Add<&VerifierFoldingTrac
                     *lhs = lhs.clone() + rhs.clone();
                 });
 
+            self.instance_commitments[i]
+                .par_iter_mut()
+                .zip(rhs.instance_commitments[i].par_iter())
+                .for_each(|(lhs, rhs)| {
+                    *lhs = lhs.clone() + rhs.clone();
+                });
+            self.instance_polys[i]
+                .par_iter_mut()
+                .zip(rhs.instance_polys[i].par_iter())
+                .for_each(|(lhs, rhs)| {
+                    lhs.par_iter_mut().zip(rhs.par_iter()).for_each(|(lhs,rhs)| *lhs += rhs);
+                });
+
             self.lookups[i]
                 .par_iter_mut()
                 .zip(rhs.lookups[i].par_iter())
@@ -484,6 +509,16 @@ impl<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> Mul<F> for VerifierFoldi
             self.advice_commitments[i].par_iter_mut().for_each(|p| {
                 *p = p.clone() * scalar;
             });
+            self.instance_commitments[i]
+                .par_iter_mut()
+                .for_each(|p| {
+                    *p = p.clone() * scalar;
+                });
+            self.instance_polys[i]
+                .par_iter_mut()
+                .for_each(|p| {
+                    p.par_iter_mut().for_each(|val| *val *= scalar);
+                });
             self.lookups[i].par_iter_mut().for_each(|lhs| {
                 lhs.permuted.permuted_input_commitment =
                     lhs.permuted.permuted_input_commitment.clone() * scalar;

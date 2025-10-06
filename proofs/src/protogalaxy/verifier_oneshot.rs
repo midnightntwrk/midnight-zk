@@ -62,9 +62,11 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         // We must increase the degree, since we need to count y as a variable.
         // TODO: We'll use independent challenges, instead of powers of y.
         let dk_domain = EvaluationDomain::new(
-            vk.cs().degree() as u32 + 3,
+            vk.cs().folding_degree() as u32,
             instances.len().trailing_zeros(),
         );
+
+        assert_eq!(instances.len(), committed_instances.len());
 
         // TODO: Is this sufficient to check H-consistency? I'm not 'checking' anything,
         // but I'm computing the challenges myself - I believe that is enough.
@@ -93,9 +95,10 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         println!("Number of traces - verifier: {:?}", traces.len());
         assert!(traces.len().is_power_of_two());
 
-        let nb_committed_instances = committed_instances[0].len();
         let VerifierFoldingTrace {
             advice_commitments,
+            instance_commitments,
+            instance_polys,
             fixed_commitments,
             vanishing,
             lookups,
@@ -108,6 +111,13 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
             theta,
             y,
         } = fold_traces(&dk_domain, &traces, &gamma);
+
+        let instances = instance_polys.iter().map(|a| a.iter().map(|b| b.as_slice()).collect::<Vec<_>>()).collect::<Vec<_>>();
+        let instances = instances.iter().map(|a| a.as_slice()).collect::<Vec<_>>();
+
+        let committed_instances = instance_commitments.iter().map(|a| a.as_slice()).collect::<Vec<_>>();
+
+        let nb_committed_instances = instance_commitments[0].len();
 
         let mut final_vk = vk.clone();
         final_vk.fixed_commitments = fixed_commitments.clone();
@@ -382,6 +392,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
     pub fn is_sat(
         &self,
         params: &CS::Parameters,
+        nb_committed_instances: usize,
         vk: &VerifyingKey<F, CS>,
         evaluator: &Evaluator<F>,
         folded_witness: FoldingProverTrace<F>,
@@ -392,7 +403,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
     ) -> Result<(), Error> {
         // First we check that the committed folded witness corresponds to the folded
         // instance
-        let committed_folded_witness = folded_witness.commit(params);
+        let committed_folded_witness = folded_witness.commit(params, nb_committed_instances);
 
         assert_eq!(committed_folded_witness, self.verifier_folding_trace);
 
@@ -473,6 +484,7 @@ fn fold_traces<F: WithSmallOrderMulGroup<3>, PCS: PolynomialCommitmentScheme<F>>
     let buffer = VerifierFoldingTrace::init(
         traces[0].fixed_commitments.len(),
         traces[0].advice_commitments[0].len(),
+        traces[0].instance_polys[0][0].len(), // TODO: this is an ugly hack
         traces[0].lookups[0].len(),
         traces[0].trashcans[0].len(),
         traces[0].permutations[0].permutation_product_commitments.len(),

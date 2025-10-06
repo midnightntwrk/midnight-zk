@@ -34,6 +34,8 @@ pub struct ProverTrace<F: PrimeField> {
 #[derive(Debug)]
 pub struct VerifierTrace<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> {
     pub(crate) advice_commitments: Vec<Vec<PCS::Commitment>>,
+    pub(crate) instance_commitments: Vec<Vec<PCS::Commitment>>,
+    pub(crate) instance_polys: Vec<Vec<Vec<F>>>,
     pub(crate) vanishing: vanishing::verifier::Committed<F, PCS>,
     pub(crate) lookups: Vec<Vec<lookup::verifier::Committed<F, PCS>>>,
     pub(crate) trashcans: Vec<Vec<trash::verifier::Committed<F, PCS>>>,
@@ -152,6 +154,7 @@ impl<F: WithSmallOrderMulGroup<3>> FoldingProverTrace<F> {
     pub fn commit<PCS: PolynomialCommitmentScheme<F>>(
         &self,
         params: &PCS::Parameters,
+        nb_committed_instances: usize,
     ) -> VerifierFoldingTrace<F, PCS> {
         let nb_proofs = self.advice_polys.len();
         // We currently only support one proof at a time - though we'll make this
@@ -159,11 +162,17 @@ impl<F: WithSmallOrderMulGroup<3>> FoldingProverTrace<F> {
         assert_eq!(nb_proofs, 1);
 
         let mut advice_commitments = Vec::with_capacity(nb_proofs);
+        let mut instance_commitments = Vec::with_capacity(nb_proofs);
+        let mut instance_polys = Vec::with_capacity(nb_proofs);
         let mut lookups = Vec::with_capacity(nb_proofs);
         let mut permutations = Vec::with_capacity(nb_proofs);
         let mut trashcans = Vec::with_capacity(nb_proofs);
 
         for i in 0..nb_proofs {
+            let instance_commitment = self.instance_polys[i][..nb_committed_instances].to_vec();
+            instance_polys.push(self.instance_polys[i][nb_committed_instances..].iter().map(|p| p.values.clone()).collect::<Vec<_>>());
+
+            instance_commitments.push(instance_commitment.iter().map(|p| PCS::commit(params, p)).collect::<Vec<_>>());
             let committed_advice = self.advice_polys[i]
                 .iter()
                 .map(|p| PCS::commit_lagrange(params, p))
@@ -207,6 +216,8 @@ impl<F: WithSmallOrderMulGroup<3>> FoldingProverTrace<F> {
 
         VerifierFoldingTrace {
             advice_commitments,
+            instance_commitments,
+            instance_polys,
             fixed_commitments: self
                 .fixed_polys
                 .iter()
@@ -234,6 +245,8 @@ impl<F: WithSmallOrderMulGroup<3>> FoldingProverTrace<F> {
 #[derive(Debug)]
 pub struct VerifierFoldingTrace<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> {
     pub(crate) advice_commitments: Vec<Vec<PCS::Commitment>>,
+    pub(crate) instance_commitments: Vec<Vec<PCS::Commitment>>,
+    pub(crate) instance_polys: Vec<Vec<Vec<F>>>,
     pub(crate) fixed_commitments: Vec<PCS::Commitment>,
     pub(crate) vanishing: vanishing::verifier::Committed<F, PCS>,
     pub(crate) lookups: Vec<Vec<lookup::verifier::Committed<F, PCS>>>,
@@ -309,6 +322,8 @@ impl<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> VerifierTrace<F, PCS> {
     ) -> VerifierFoldingTrace<F, PCS> {
         let VerifierTrace {
             advice_commitments,
+            instance_commitments,
+            instance_polys,
             vanishing,
             lookups,
             permutations,
@@ -322,6 +337,8 @@ impl<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> VerifierTrace<F, PCS> {
         } = self;
         VerifierFoldingTrace {
             advice_commitments,
+            instance_commitments,
+            instance_polys,
             fixed_commitments: fixed_commitments.to_owned(),
             vanishing,
             lookups,
@@ -343,6 +360,8 @@ impl<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> From<VerifierFoldingTrac
     fn from(value: VerifierFoldingTrace<F, PCS>) -> Self {
         let VerifierFoldingTrace {
             advice_commitments,
+            instance_commitments,
+            instance_polys,
             vanishing,
             lookups,
             permutations,
@@ -357,6 +376,8 @@ impl<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> From<VerifierFoldingTrac
         } = value;
         Self {
             advice_commitments,
+            instance_commitments,
+            instance_polys,
             vanishing,
             lookups,
             trashcans,

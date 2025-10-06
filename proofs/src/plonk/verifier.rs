@@ -192,8 +192,14 @@ where
     // let y: Vec<F> = vec![y; nb_y];
     let y: Vec<Vec<F>> = (0..num_proofs).map(|_| (0..nb_y).map(|_| transcript.squeeze_challenge()).collect::<Vec<_>>()).collect::<Vec<_>>();
 
+    // Collect instances
+    let instance_commitments = committed_instances.iter().map(|a| a.to_vec()).collect::<Vec<_>>();
+    let instance_polys = instances.iter().map(|a| a.iter().map(|b| b.to_vec()).collect::<Vec<_>>()).collect::<Vec<_>>();
+
     Ok(VerifierTrace {
         advice_commitments,
+        instance_commitments,
+        instance_polys,
         vanishing,
         lookups: lookups_committed,
         trashcans: trashcans_committed,
@@ -250,6 +256,7 @@ where
         theta,
         trash_challenge,
         y,
+        ..
     } = trace;
 
     let vanishing = vanishing.read_commitments_after_y(vk, transcript)?;

@@ -26,7 +26,9 @@ use crate::{
     utils::arithmetic::eval_polynomial,
 };
 
-struct ProtogalaxyProverOneShot<
+#[derive(Debug)]
+/// TODO
+pub struct ProtogalaxyProverOneShot<
     F: WithSmallOrderMulGroup<3>,
     CS: PolynomialCommitmentScheme<F>,
     const K: usize,

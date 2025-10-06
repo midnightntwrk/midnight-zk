@@ -11,11 +11,13 @@ use midnight_circuits::{
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
-    protogalaxy::{prover::ProtogalaxyProver, verifier::ProtogalaxyVerifier},
     transcript::{CircuitTranscript, Transcript},
 };
 use rand::{rngs::OsRng, Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
+use midnight_proofs::poly::commitment::Guard;
+use midnight_proofs::protogalaxy::prover_oneshot::ProtogalaxyProverOneShot;
+use midnight_proofs::protogalaxy::verifier_oneshot::ProtogalaxyVerifierOneShot;
 
 type F = midnight_curves::Fq;
 type C = midnight_curves::G1Projective;
@@ -85,13 +87,13 @@ fn main() {
         core::array::from_fn(|_| core::array::from_fn(|_| rng.gen()));
 
     let mut formatted_instances = Vec::with_capacity(NB_FOLDED);
-    let mut formatted_committed_instance = Vec::with_capacity(NB_FOLDED);
+    let mut formatted_committed_instance: Vec<_> = Vec::with_capacity(NB_FOLDED);
     let mut circuits = Vec::with_capacity(NB_FOLDED);
 
     let mut rng = ChaCha8Rng::from_seed([0u8; 32]);
     // Normal proofs. We first generate normal proofs to test performance
     let normal_proving = Instant::now();
-    for witness in witness.iter() {
+    for (idx, witness) in witness.iter().enumerate() {
         compact_std_lib::prove::<ShaPreImageCircuit, blake2b_simd::State>(
             &srs,
             &pk,
@@ -102,9 +104,15 @@ fn main() {
         )
         .expect("Proof generation should not fail");
         circuits.push(MidnightCircuit::new(&relation, (), *witness));
-        formatted_instances.push(ShaPreImageCircuit::format_instance(&()));
-        formatted_committed_instance.push(ShaPreImageCircuit::format_committed_instances(witness));
+        formatted_instances.push(vec![ShaPreImageCircuit::format_instance(&())]);
+        formatted_committed_instance.push(vec![ShaPreImageCircuit::format_committed_instances(witness)]);
+        formatted_committed_instance[idx].push(ShaPreImageCircuit::format_instance(&()));
     }
+    let formatted_instances = formatted_instances.iter().map(|a| a.iter().map(|b| b.as_slice()).collect::<Vec<_>>()).collect::<Vec<_>>();
+    let formatted_instances = formatted_instances.iter().map(|a| a.as_slice()).collect::<Vec<_>>();
+
+    let formatted_committed_instance = formatted_committed_instance.iter().map(|a| a.iter().map(|b| b.as_slice()).collect::<Vec<_>>()).collect::<Vec<_>>();
+    let formatted_committed_instance = formatted_committed_instance.iter().map(|a| a.as_slice()).collect::<Vec<_>>();
     println!(
         "Time to generate {} proofs: {:?}",
         NB_FOLDED,
@@ -112,75 +120,35 @@ fn main() {
     );
 
     // Fold proofs. We first initialise folding with the first circuit
-    let folding = Instant::now();
     let now = Instant::now();
     let mut transcript = CircuitTranscript::<PoseidonState<F>>::init();
-    let protogalaxy = ProtogalaxyProver::<_, _, { K as usize }>::init(
+    ProtogalaxyProverOneShot::<_, _, { K as usize }>::fold(
         &srs,
         pk.pk().clone(),
-        circuits[0].clone(),
+        circuits,
         1,
-        &[&formatted_committed_instance[0], &formatted_instances[0]],
+        &formatted_committed_instance,
         &mut rng,
         &mut transcript,
     )
     .expect("Failed to initialise folder");
-    println!("Time to initialise: {:?}", now.elapsed());
 
-    let protogalaxy = protogalaxy
-        .fold(
-            &srs,
-            pk.pk(),
-            circuits[1..].to_vec(),
-            1,
-            &[
-                &[&formatted_committed_instance[1], &formatted_instances[1]],
-                &[&formatted_committed_instance[2], &formatted_instances[2]],
-                &[&formatted_committed_instance[3], &formatted_instances[3]],
-            ],
-            &mut rng,
-            &mut transcript,
-        )
-        .expect("Failed to fold many instances");
-
-    let folding_time = folding.elapsed().as_millis();
+    let folding_time = now.elapsed().as_millis();
     println!("Time for folding: {:?}ms", folding_time);
 
     let mut transcript =
         CircuitTranscript::<PoseidonState<F>>::init_from_bytes(&transcript.finalize());
 
     // Now we begin verification
-    let protogalaxy_verifier = ProtogalaxyVerifier::<_, _, { K as usize }>::init(
+    ProtogalaxyVerifierOneShot::<_, _, { K as usize }>::fold(
         vk.vk(),
-        &[&[C::identity()]],
-        &[&[&formatted_instances[0]]],
+        [[C::identity()].as_slice(); NB_FOLDED].as_slice(),
+        &formatted_instances,
         &mut transcript,
     )
-    .expect("Failed - unexpected");
-
-    protogalaxy_verifier
-        .fold(
-            vk.vk(),
-            &[&[C::identity()]],
-            &[
-                &[&formatted_instances[1]],
-                &[&formatted_instances[2]],
-                &[&formatted_instances[3]],
-            ],
-            &mut transcript,
-        )
-        .expect("Failed to fold instances by the verifier")
-        .is_sat(
-            &srs,
-            vk.vk(),
-            &pk.pk().ev.clone(),
-            protogalaxy.folded_trace,
-            &protogalaxy.folding_pk.l0,
-            &protogalaxy.folding_pk.l_last,
-            &protogalaxy.folding_pk.l_active_row,
-            &protogalaxy.folding_pk.permutation_pk_cosets,
-        )
-        .expect("Folding finalizer failed");
+    .expect("Failed - unexpected")
+        .verify(&srs.verifier_params())
+        .expect("Verification failed");
 
     println!("Folding was a success");
 }
