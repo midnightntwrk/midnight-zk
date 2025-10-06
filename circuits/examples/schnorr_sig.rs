@@ -7,7 +7,7 @@ use ff::Field;
 use group::Group;
 use midnight_circuits::{
     compact_std_lib::{self, Relation, ZkStdLib, ZkStdLibArch},
-    ecc::native::ScalarVar,
+    ecc::native::AssignedScalarOfNativeCurve,
     hash::poseidon::PoseidonChip,
     instructions::{
         hash::HashCPU, AssertionInstructions, AssignmentInstructions, DecompositionInstructions,
@@ -117,7 +117,8 @@ impl Relation for SchnorrExample {
 
         // Assign witness values.
         let (sig_s_val, sig_e_bytes_val) = witness.map(|sig| (sig.s, sig.e_bytes)).unzip();
-        let sig_s: ScalarVar<Jubjub> = std_lib.jubjub().assign(layouter, sig_s_val)?;
+        let sig_s: AssignedScalarOfNativeCurve<Jubjub> =
+            std_lib.jubjub().assign(layouter, sig_s_val)?;
         let sig_e_bytes = std_lib.assign_many(layouter, &sig_e_bytes_val.transpose_array())?;
 
         let generator: AssignedNativePoint<Jubjub> =
