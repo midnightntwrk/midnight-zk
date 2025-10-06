@@ -286,7 +286,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
         instance: &[&[Polynomial<F, B>]],
         fixed: &[Polynomial<F, B>],
         challenges: &[F],
-        y: &[F],
+        y: &[Vec<F>],
         beta: F,
         gamma: F,
         theta: &[F],
@@ -311,12 +311,13 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
 
         // Core expression evaluations
         let num_threads = rayon::current_num_threads();
-        for ((((advice, instance), lookups), trashcans), permutation) in advice
+        for (((((advice, instance), lookups), trashcans), permutation), y) in advice
             .iter()
             .zip(instance.iter())
             .zip(lookups.iter())
             .zip(trashcans.iter())
             .zip(permutations.iter())
+            .zip(y.iter())
         {
             // Custom gates
             rayon::scope(|scope| {

@@ -87,6 +87,8 @@ where
     #[cfg(not(feature = "committed-instances"))]
     let nb_committed_instances: usize = 0;
 
+    let number_proofs = circuits.len();
+
     if circuits.len() != instances.len() {
         return Err(Error::InvalidInstances);
     }
@@ -266,7 +268,7 @@ where
 
     // let y: F = transcript.squeeze_challenge();
     // let y: Vec<F> = vec![y; nb_y];
-    let y: Vec<F> = (0..nb_y).map(|_| transcript.squeeze_challenge()).collect();
+    let y: Vec<Vec<F>> = (0..number_proofs).map(|_| (0..nb_y).map(|_| transcript.squeeze_challenge()).collect::<Vec<_>>()).collect::<Vec<_>>();
 
     let (instance_polys, instance_values) =
         instance.into_iter().map(|i| (i.instance_polys, i.instance_values)).unzip();

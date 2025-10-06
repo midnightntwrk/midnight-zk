@@ -262,7 +262,7 @@ fn fold_traces<F: WithSmallOrderMulGroup<3>, PCS: PolynomialCommitmentScheme<F>>
         traces[0].permutations[0].permutation_product_commitments.len(),
         traces[0].challenges.len(),
         traces[0].theta.len(),
-        traces[0].y.len(),
+        traces[0].y[0].len(),
     );
     let lagranges_in_gamma = lagrange_polys
         .iter()

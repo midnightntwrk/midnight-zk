@@ -193,7 +193,7 @@ impl<F: PrimeField> FoldingProverTrace<F> {
             gamma: F::ZERO,
             trash_challenge: F::ZERO,
             theta: vec![F::ZERO; num_theta],
-            y: vec![F::ZERO; num_y],
+            y: vec![vec![F::ZERO; num_y]],
         }
     }
 
@@ -211,7 +211,7 @@ impl<F: PrimeField> FoldingProverTrace<F> {
             trace.permutations[0].sets.len(),
             trace.challenges.len(),
             trace.theta.len(),
-            trace.y.len(),
+            trace.y[0].len(),
         )
     }
 }
@@ -270,6 +270,10 @@ impl<F: PrimeField> Add<&FoldingProverTrace<F>> for FoldingProverTrace<F> {
                 .for_each(|(lhs, rhs)| {
                     lhs.permutation_product_poly += &rhs.permutation_product_poly;
                 });
+
+            self.y[i].par_iter_mut().zip(rhs.y[i].par_iter()).for_each(|(lhs, rhs)| {
+                *lhs += *rhs;
+            });
         });
 
         self.challenges
@@ -282,9 +286,6 @@ impl<F: PrimeField> Add<&FoldingProverTrace<F>> for FoldingProverTrace<F> {
         self.beta += rhs.beta;
         self.gamma += rhs.gamma;
         self.theta.par_iter_mut().zip(rhs.theta.par_iter()).for_each(|(lhs, rhs)| {
-            *lhs += *rhs;
-        });
-        self.y.par_iter_mut().zip(rhs.y.par_iter()).for_each(|(lhs, rhs)| {
             *lhs += *rhs;
         });
 
@@ -315,6 +316,10 @@ impl<F: PrimeField> Mul<F> for FoldingProverTrace<F> {
             self.permutations[i].sets.par_iter_mut().for_each(|lhs| {
                 lhs.permutation_product_poly *= scalar;
             });
+
+            self.y[i].par_iter_mut().for_each(|p| {
+                *p *= scalar;
+            });
         });
 
         self.challenges.par_iter_mut().for_each(|p| {
@@ -324,10 +329,6 @@ impl<F: PrimeField> Mul<F> for FoldingProverTrace<F> {
         self.gamma *= scalar;
 
         self.theta.par_iter_mut().for_each(|p| {
-            *p *= scalar;
-        });
-
-        self.y.par_iter_mut().for_each(|p| {
             *p *= scalar;
         });
 
@@ -383,7 +384,7 @@ impl<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> VerifierFoldingTrace<F, 
             gamma: F::ZERO,
             trash_challenge: F::ZERO,
             theta: vec![F::ZERO; num_theta],
-            y: vec![F::ZERO; num_y],
+            y: vec![vec![F::ZERO; num_y]],
         }
     }
 }
@@ -446,6 +447,11 @@ impl<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> Add<&VerifierFoldingTrac
                 .for_each(|(lhs, rhs)| {
                     *lhs = lhs.clone() + rhs.clone();
                 });
+
+
+            self.y[i].par_iter_mut().zip(rhs.y[i].par_iter()).for_each(|(lhs, rhs)| {
+                *lhs += *rhs;
+            });
         });
 
         self.challenges
@@ -459,10 +465,6 @@ impl<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> Add<&VerifierFoldingTrac
         self.gamma += rhs.gamma;
 
         self.theta.par_iter_mut().zip(rhs.theta.par_iter()).for_each(|(lhs, rhs)| {
-            *lhs += *rhs;
-        });
-
-        self.y.par_iter_mut().zip(rhs.y.par_iter()).for_each(|(lhs, rhs)| {
             *lhs += *rhs;
         });
 
@@ -495,6 +497,11 @@ impl<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> Mul<F> for VerifierFoldi
                 .for_each(|lhs| {
                     *lhs = lhs.clone() * scalar;
                 });
+
+
+            self.y[i].par_iter_mut().for_each(|p| {
+                *p *= scalar;
+            });
         });
 
         self.challenges.par_iter_mut().for_each(|p| {
@@ -504,10 +511,6 @@ impl<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> Mul<F> for VerifierFoldi
         self.gamma *= scalar;
 
         self.theta.par_iter_mut().for_each(|p| {
-            *p *= scalar;
-        });
-
-        self.y.par_iter_mut().for_each(|p| {
             *p *= scalar;
         });
 

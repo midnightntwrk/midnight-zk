@@ -25,7 +25,7 @@ pub struct ProverTrace<F: PrimeField> {
     pub(crate) beta: F,
     pub(crate) gamma: F,
     pub(crate) theta: Vec<F>,
-    pub(crate) y: Vec<F>,
+    pub(crate) y: Vec<Vec<F>>,
     pub(crate) trash_challenge: F,
 }
 
@@ -43,7 +43,7 @@ pub struct VerifierTrace<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> {
     pub(crate) gamma: F,
     pub(crate) trash_challenge: F,
     pub(crate) theta: Vec<F>,
-    pub(crate) y: Vec<F>,
+    pub(crate) y: Vec<Vec<F>>,
 }
 
 /// Trace of a set of proofs folded with folding. This type guarantees that the
@@ -65,7 +65,7 @@ pub struct FoldingProverTrace<F: PrimeField> {
     pub(crate) gamma: F,
     pub(crate) trash_challenge: F,
     pub(crate) theta: Vec<F>,
-    pub(crate) y: Vec<F>,
+    pub(crate) y: Vec<Vec<F>>,
 }
 
 impl<F: WithSmallOrderMulGroup<3>> ProverTrace<F> {
@@ -244,7 +244,7 @@ pub struct VerifierFoldingTrace<F: PrimeField, PCS: PolynomialCommitmentScheme<F
     pub(crate) gamma: F,
     pub(crate) trash_challenge: F,
     pub(crate) theta: Vec<F>,
-    pub(crate) y: Vec<F>,
+    pub(crate) y: Vec<Vec<F>>,
 }
 
 impl<F: WithSmallOrderMulGroup<3>, PCS: PolynomialCommitmentScheme<F>> PartialEq

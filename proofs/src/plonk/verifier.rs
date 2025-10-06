@@ -190,7 +190,7 @@ where
 
     // let y: F = transcript.squeeze_challenge();
     // let y: Vec<F> = vec![y; nb_y];
-    let y: Vec<F> = (0..nb_y).map(|_| transcript.squeeze_challenge()).collect();
+    let y: Vec<Vec<F>> = (0..num_proofs).map(|_| (0..nb_y).map(|_| transcript.squeeze_challenge()).collect::<Vec<_>>()).collect::<Vec<_>>();
 
     Ok(VerifierTrace {
         advice_commitments,
@@ -426,7 +426,9 @@ where
                 },
             );
 
-        vanishing.verify(expressions, y, xn)
+        let flattened_y = y.into_iter().flatten().collect::<Vec<_>>();
+
+        vanishing.verify(expressions, flattened_y, xn)
     };
 
     let queries = committed_instances

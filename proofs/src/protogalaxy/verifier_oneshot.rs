@@ -292,7 +292,9 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
                     },
                 );
 
-            vanishing.verify_corrected(expressions, y, correction_eval, xn)
+            assert_eq!(y.len(), 1);
+            // let flattened_y = y.into_iter().flatten().collect::<Vec<_>>();
+            vanishing.verify_corrected(expressions, y[0].clone(), correction_eval, xn)
         };
 
         let queries = committed_instances
@@ -476,7 +478,7 @@ fn fold_traces<F: WithSmallOrderMulGroup<3>, PCS: PolynomialCommitmentScheme<F>>
         traces[0].permutations[0].permutation_product_commitments.len(),
         traces[0].challenges.len(),
         traces[0].theta.len(),
-        traces[0].y.len(),
+        traces[0].y[0].len(),
     );
     let lagranges_in_gamma = lagrange_polys
         .iter()
