@@ -104,6 +104,18 @@ impl<V> Value<V> {
         }
     }
 
+    /// Maps a `Value<V>` to `Value<W>` by applying a function to the contained
+    /// value (that returns Result).
+    pub fn map_with_result<W, Error, F: FnOnce(V) -> Result<W, Error>>(
+        self,
+        f: F,
+    ) -> Result<Value<W>, Error> {
+        match self.inner {
+            Some(v) => f(v).map(|y| Value::known(y)),
+            None => Ok(Value::unknown()),
+        }
+    }
+
     /// Returns [`Value::unknown()`] if the value is [`Value::unknown()`],
     /// otherwise calls `f` with the wrapped value and returns the result.
     pub fn and_then<W, F: FnOnce(V) -> Value<W>>(self, f: F) -> Value<W> {
