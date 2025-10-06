@@ -4,7 +4,7 @@
 use ff::PrimeField;
 
 use crate::{
-    plonk::{lookup, permutation, trash, vanishing},
+    plonk::{lookup, permutation, trash},
     poly::{commitment::PolynomialCommitmentScheme, Coeff, LagrangeCoeff, Polynomial},
 };
 
