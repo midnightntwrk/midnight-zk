@@ -1,10 +1,14 @@
-use std::{hash::Hash, iter};
+use std::{
+    collections::BTreeMap,
+    hash::Hash,
+    iter::{self},
+};
 
-use ff::{FromUniformBytes, WithSmallOrderMulGroup};
+use ff::{FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
 
-use super::{vanishing, Error, VerifyingKey};
+use super::{Error, VerifyingKey};
 use crate::{
-    plonk::traces::VerifierTrace,
+    plonk::{permutation, traces::VerifierTrace},
     poly::{commitment::PolynomialCommitmentScheme, VerifierQuery},
     transcript::{read_n, Hashable, Sampleable, Transcript},
     utils::arithmetic::compute_inner_product,
@@ -111,10 +115,10 @@ where
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    // Sample beta challenge for permutation argument
+    // Sample beta challenge for permutation and lookup argument
     let beta: F = transcript.squeeze_challenge();
 
-    // Sample gamma challenge for permutation argument
+    // Sample gamma challenge for permutation and lookup argument
     let gamma: F = transcript.squeeze_challenge();
 
     // Permutation argument: Read commitments to limbs of product polynomial from the transcript
@@ -147,14 +151,11 @@ where
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    let vanishing = vanishing::Argument::read_commitments_before_y(transcript)?;
-
-    // Sample challenge y, for batching independent identities
+    // Sample identity batching challenge y, for batching all independent identities
     let y: F = transcript.squeeze_challenge();
 
     Ok(VerifierTrace {
         advice_commitments,
-        vanishing,
         lookups: lookup_product_commitments,
         trashcans: trashcan_commitments,
         permutations: permutation_product_commitments,
@@ -165,6 +166,73 @@ where
         trash_challenge,
         y,
     })
+}
+
+/// Construct the commitment to the linearization polynomial
+/// (which will be checked that it opens to 0 at x in the multi-open argument):
+///
+///  S_0*id_0(x) + y*S_1*id_1(x) + y^2*S_2*id_2(x) + ... + y^m*S_m*id_m(x)
+///        - (h_0 + x^n*h_1 + x^{2n}*h_2 + ... + x^{l*n}*h_l) * (x^n-1),
+///
+/// where:
+/// * y^i is a power of the batching challenge y,
+/// * id_j(x) is the result of (partially or fully) evaluating the identity id_j
+///   at x (i.e., a scalar),
+/// * S_j is, either,
+///      - (i)  the commitment to a fixed column corresponding to a simple
+///        selector, or,
+///      - (ii) the zero commitment (because the corresponding identity id_i has
+///        been fully evaluated and thus the resulting scalar is part of the
+///        constant term of the linearization poly)
+/// * h_k are commitments to the limbs of the quotient polynomial.
+fn prep_linearization_commitment<
+    'com,
+    F: PrimeField + ff::WithSmallOrderMulGroup<3> + ff::FromUniformBytes<64> + std::cmp::Ord,
+    CS: PolynomialCommitmentScheme<F>,
+>(
+    vk: &'com VerifyingKey<F, CS>,
+    expressions: Vec<(Option<usize>, F)>,
+    y: F,
+    xn: F,
+    h_limb_commitments: &'com [CS::Commitment],
+    generator: &'com CS::Commitment,
+) -> (Vec<&'com CS::Commitment>, Vec<F>) {
+    let nr_identities = expressions.len();
+    let mut identities_points = Vec::with_capacity(nr_identities);
+    identities_points.extend(h_limb_commitments);
+
+    let mut identities_scalars = Vec::with_capacity(h_limb_commitments.len());
+    let mut xn_pow = F::ONE;
+    let vanishing_val = xn - F::ONE;
+    for _ in 0..h_limb_commitments.len() {
+        identities_scalars.push(-xn_pow * vanishing_val);
+        xn_pow *= xn;
+    }
+
+    let mut y_powers = Vec::with_capacity(nr_identities);
+    let mut y_pow = F::ONE;
+    for _ in 0..expressions.len() {
+        y_powers.push(y_pow);
+        y_pow *= y;
+    }
+    y_powers.reverse();
+
+    let mut grouped_points: BTreeMap<Option<usize>, Vec<F>> = BTreeMap::new();
+    expressions.iter().enumerate().for_each(|(idx, (col_idx, eval))| {
+        grouped_points.entry(*col_idx).or_default().push(y_powers[idx] * eval);
+    });
+
+    grouped_points
+        .into_iter()
+        .map(|(col_idx, evals)| (col_idx, evals.iter().sum::<F>()))
+        .for_each(|(col_idx, eval)| {
+            match col_idx {
+                Some(col_idx) => identities_points.push(&vk.fixed_commitments[col_idx]),
+                None => identities_points.push(generator),
+            }
+            identities_scalars.push(eval);
+        });
+    (identities_points, identities_scalars)
 }
 
 /// Given a VerifierTrace, this function computes the opening challenge, x,
@@ -200,7 +268,6 @@ where
 
     let VerifierTrace {
         advice_commitments,
-        vanishing,
         lookups,
         trashcans,
         permutations,
@@ -212,9 +279,8 @@ where
         y,
     } = trace;
 
-    // Read commitments to the limbs of the quotient polynomial
-    // h(X) = nu(X) / (X^n-1) from the transcript
-    let vanishing = vanishing.read_commitments_after_y(vk, transcript)?;
+    // Read commitments to limbs of the quotient polynomial h(X) = nu(X)/(X^n-1) from the transcript
+    let limb_commitments = read_n(transcript, vk.domain.get_quotient_poly_degree())?;
 
     // Sample evaluation challenge x
     let x: F = transcript.squeeze_challenge();
@@ -265,12 +331,20 @@ where
     };
 
     // Read evals of all advice polys from transcript
-    let advice_evals = (0..num_proofs)
-        .map(|_| -> Result<Vec<_>, _> { read_n(transcript, vk.cs.advice_queries.len()) })
+    let advice_evals: Vec<Vec<F>> = (0..num_proofs)
+        .map(|_| read_n(transcript, vk.cs.advice_queries.len()))
         .collect::<Result<Vec<_>, _>>()?;
 
-    let fixed_evals = read_n(transcript, vk.cs.fixed_queries.len())?;
-    let vanishing = vanishing.evaluate_after_x(transcript)?;
+    // Read `num_evaluated_fixed_queries` evals from the transcript, i.e.,
+    // `num_fixed_columns` - `num_simple_selectors` evals and fill up the
+    // "missing" places with 1 (the transcript doesn't contain evals corresp.
+    // to simple selectors)
+    let mut fixed_evals = read_n(transcript, vk.cs.num_evaluated_fixed_queries)?;
+    for (idx, (col, _)) in vk.cs.fixed_queries().iter().enumerate() {
+        if vk.cs.indices_simple_selectors.contains(&col.index()) {
+            fixed_evals.insert(idx, F::ONE)
+        }
+    }
 
     let permutations_common = vk.permutation.evaluate(transcript)?;
 
@@ -299,97 +373,118 @@ where
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    // This check ensures the circuit is satisfied so long as the polynomial
-    // commitments open to the correct values.
-    let vanishing = {
-        let blinding_factors = vk.cs.nr_blinding_factors();
-        let l_evals = vk.domain.l_i_range(x, xn, (-((blinding_factors + 1) as i32))..=0);
-        assert_eq!(l_evals.len(), 2 + blinding_factors);
-        let l_last = l_evals[0];
-        let l_blind: F =
-            l_evals[1..(1 + blinding_factors)].iter().fold(F::ZERO, |acc, eval| acc + eval);
-        let l_0 = l_evals[1 + blinding_factors];
+    // Partially evaluate batched identities
+    // (without fixed columns corresponding to simple selectors)
+    let nr_blinding_factors = vk.cs.nr_blinding_factors();
+    let l_evals = vk.domain.l_i_range(x, xn, (-((nr_blinding_factors + 1) as i32))..=0);
+    assert_eq!(l_evals.len(), 2 + nr_blinding_factors);
+    let l_last = l_evals[0];
+    let l_blind: F = l_evals[1..(1 + nr_blinding_factors)]
+        .iter()
+        .fold(F::ZERO, |acc, eval| acc + eval);
+    let l_0 = l_evals[1 + nr_blinding_factors];
 
-        // Compute the expected value of h(x)
-        let expressions = advice_evals
+    let mut expressions = Vec::new();
+
+    for ((((advice_evals, instance_evals), permutation_evals), lookup_evals), trashcan_evals) in
+        advice_evals
             .iter()
             .zip(instance_evals.iter())
             .zip(permutation_evals.iter())
             .zip(lookup_evals.iter())
             .zip(trashcan_evals.iter())
-            .flat_map(
-                |((((advice_evals, instance_evals), permutation), lookups), trash)| {
-                    let challenges = &challenges;
-                    let fixed_evals = &fixed_evals;
-                    iter::empty()
-                        // Evaluate the circuit using the custom gates provided
-                        .chain(vk.cs.gates.iter().flat_map(move |gate| {
-                            gate.polynomials().iter().map(move |poly| {
-                                poly.evaluate(
-                                    &|scalar| scalar,
-                                    &|_| {
-                                        panic!("virtual selectors are removed during optimization")
-                                    },
-                                    &|query| fixed_evals[query.index.unwrap()],
-                                    &|query| advice_evals[query.index.unwrap()],
-                                    &|query| instance_evals[query.index.unwrap()],
-                                    &|challenge| challenges[challenge.index()],
-                                    &|a| -a,
-                                    &|a, b| a + &b,
-                                    &|a, b| a * &b,
-                                    &|a, scalar| a * &scalar,
-                                )
-                            })
-                        }))
-                        .chain(permutation.expressions(
-                            vk,
-                            &vk.cs.permutation,
-                            &permutations_common,
-                            advice_evals,
-                            fixed_evals,
-                            instance_evals,
-                            l_0,
-                            l_last,
-                            l_blind,
-                            beta,
-                            gamma,
-                            x,
-                        ))
-                        .chain(lookups.iter().zip(vk.cs.lookups.iter()).flat_map(
-                            move |(p, argument)| {
-                                p.expressions(
-                                    l_0,
-                                    l_last,
-                                    l_blind,
-                                    argument,
-                                    theta,
-                                    beta,
-                                    gamma,
-                                    advice_evals,
-                                    fixed_evals,
-                                    instance_evals,
-                                    challenges,
-                                )
-                            },
-                        ))
-                        .chain(trash.iter().zip(vk.cs.trashcans.iter()).flat_map(
-                            move |(p, argument)| {
-                                p.expressions(
-                                    argument,
-                                    trash_challenge,
-                                    advice_evals,
-                                    fixed_evals,
-                                    instance_evals,
-                                    challenges,
-                                )
-                            },
-                        ))
-                },
-            );
+    {
+        let challenges = &challenges;
+        let fixed_evals = &fixed_evals;
 
-        vanishing.verify(expressions, y, xn)
-    };
+        // (Partially) evaluate polys from (custom) gates
+        for (idx, e) in vk.cs.gates.iter().flat_map(move |gate| {
+            gate.polynomials().iter().map(move |poly| {
+                let evaluation = poly.evaluate(
+                    &|scalar| scalar,
+                    &|_| panic!("virtual selectors are removed during optimization"),
+                    &|query| fixed_evals[query.index().unwrap()],
+                    &|query| advice_evals[query.index.unwrap()],
+                    &|query| instance_evals[query.index.unwrap()],
+                    &|challenge| challenges[challenge.index()],
+                    &|a| -a,
+                    &|a, b| a + &b,
+                    &|a, b| a * &b,
+                    &|a, scalar| a * &scalar,
+                );
+                (gate.simple_selector_index(), evaluation)
+            })
+        }) {
+            expressions.push((idx, e))
+        }
 
+        // Evaluate polys from permutation argument
+        for e in permutation::expressions(
+            &permutation_evals.sets,
+            vk,
+            &vk.cs.permutation,
+            &permutations_common,
+            advice_evals,
+            fixed_evals,
+            instance_evals,
+            l_0,
+            l_last,
+            l_blind,
+            beta,
+            gamma,
+            x,
+        ) {
+            expressions.push((None, e))
+        }
+
+        // Evaluate polys from lookup argument
+        for e in lookup_evals.iter().zip(vk.cs.lookups.iter()).flat_map(move |(p, argument)| {
+            p.evaluated.expressions(
+                l_0,
+                l_last,
+                l_blind,
+                argument,
+                theta,
+                beta,
+                gamma,
+                advice_evals,
+                fixed_evals,
+                instance_evals,
+                challenges,
+            )
+        }) {
+            expressions.push((None, e))
+        }
+
+        // Evaluate polys from trashcan argument
+        for e in trashcan_evals
+            .iter()
+            .zip(vk.cs.trashcans.iter())
+            .flat_map(move |(p, argument)| {
+                p.evaluated.expressions(
+                    argument,
+                    trash_challenge,
+                    advice_evals,
+                    fixed_evals,
+                    instance_evals,
+                    challenges,
+                )
+            })
+        {
+            expressions.push((None, e))
+        }
+    }
+
+    // All fully evaluated identities (i.e., identities without simple selectors) are part
+    // of the constant term of the linearization poly, and thus need to be multiplied with
+    // the zero commitment
+    let g1 = CS::constant_commitment();
+
+    // Prepare linearization commitment for MSM
+    let lin_com = prep_linearization_commitment(vk, expressions, y, xn, &limb_commitments, &g1);
+
+    // Collect queries that are checked in the multi-open argument
+    // NB: Queries corresponding to simple-selectors need not be checked
     let queries = committed_instances
         .iter()
         .zip(instance_evals.iter())
@@ -438,20 +533,34 @@ where
             },
         )
         .chain(
-            vk.cs.fixed_queries.iter().enumerate().map(|(query_index, &(column, at))| {
-                VerifierQuery::new(
-                    vk.domain.rotate_omega(x, at),
-                    &vk.fixed_commitments[column.index()],
-                    fixed_evals[query_index],
-                )
-            }),
+            vk.cs
+                .fixed_queries
+                .iter()
+                .enumerate()
+                // Filter out queries for fixed columns corresponding to simple selectors
+                .filter(|(_, (col, _))| !vk.cs.indices_simple_selectors.contains(&col.index()))
+                .map(|(query_index, &(column, at))| {
+                    VerifierQuery::new(
+                        vk.domain.rotate_omega(x, at),
+                        // `fixed_commitments` is sorted per column_index
+                        &vk.fixed_commitments[column.index()],
+                        // `fixed_evals` is indexed according to `fixed_queries`
+                        fixed_evals[query_index],
+                    )
+                }),
         )
         .chain(permutations_common.queries(&vk.permutation, x))
-        .chain(vanishing.queries(x, vk.n()))
+        .chain(iter::once(VerifierQuery::new_linear(
+            x,
+            lin_com.0,
+            lin_com.1,
+            F::ZERO,
+        )))
         .collect::<Vec<_>>();
 
     // We are now convinced the circuit is satisfied so long as the
-    // polynomial commitments open to the correct values.
+    // polynomial commitments open to the correct values, which is
+    // true as long as the multi-open argument correctly verifies
     CS::multi_prepare(&queries, transcript).map_err(|_| Error::Opening)
 }
 
