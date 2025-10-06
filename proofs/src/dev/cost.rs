@@ -326,6 +326,7 @@ impl<G: PrimeGroup, ConcreteCircuit: Circuit<G::Scalar>> CircuitCost<G, Concrete
             advice_columns: cs.num_advice_columns,
             instance_queries: cs.instance_queries.len(),
             advice_queries: cs.advice_queries.len(),
+            // TODO: consider using num_evaluated_fixed_queries here
             fixed_queries: cs.fixed_queries.len(),
             lookups: cs.lookups.len(),
             permutation_cols,

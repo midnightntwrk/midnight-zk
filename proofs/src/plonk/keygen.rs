@@ -83,7 +83,7 @@ impl<F: Field> Assignment<F> for Assembly<F> {
             return Err(Error::not_enough_rows_available(self.k));
         }
 
-        self.selectors[selector.0][row] = true;
+        self.selectors[selector.index()][row] = true;
 
         Ok(())
     }
