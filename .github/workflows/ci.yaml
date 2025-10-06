@@ -62,7 +62,11 @@ jobs:
       - uses: ./.github/actions/cargo-test
         with:
           package: midnight-circuits
-          args: --release
+          args: --release -- --skip serialization
+      - uses: ./.github/actions/cargo-test
+        with:
+          package: midnight-circuits
+          args: --release --test serialization -- --test-threads=1
 
   test-vk-consistency:
     needs: download-srs
