@@ -32,7 +32,6 @@ pub(crate) mod lookup;
 pub mod permutation;
 pub(crate) mod traces;
 pub(crate) mod trash;
-pub(crate) mod vanishing;
 
 mod prover;
 mod verifier;
