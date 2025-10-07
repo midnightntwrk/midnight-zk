@@ -97,11 +97,11 @@ impl Relation for ShaPreImageCircuit {
     // We must specify how the instance is converted into raw field elements to
     // be process by the prover/verifier. The order here must be consistent with
     // the order in which public inputs are constrained/assigned in [circuit].
-    fn format_instance(instance: &Self::Instance) -> Vec<F> {
-        instance
+    fn format_instance(instance: &Self::Instance) -> Result<Vec<F>, Error>  {
+        Ok(instance
             .iter()
             .flat_map(AssignedByte::<F>::as_public_input)
-            .collect()
+            .collect())
     }
 
     // Define the logic of the NP-relation being proved.

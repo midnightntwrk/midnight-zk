@@ -39,14 +39,14 @@ impl Relation for RSASignatureCircuit {
 
     type Witness = Signature;
 
-    fn format_instance((pk, msg): &Self::Instance) -> Vec<F> {
-        [
+    fn format_instance((pk, msg): &Self::Instance) -> Result<Vec<F>, Error> {
+        Ok([
             AssignedBigUint::<F>::as_public_input(pk, NB_BITS),
             AssignedBigUint::<F>::as_public_input(msg, NB_BITS),
         ]
         .into_iter()
         .flatten()
-        .collect()
+        .collect())
     }
 
     fn circuit(

@@ -29,8 +29,8 @@ impl Relation for EccExample {
 
     type Witness = JubjubScalar;
 
-    fn format_instance(instance: &Self::Instance) -> Vec<F> {
-        AssignedNativePoint::<Jubjub>::as_public_input(instance)
+    fn format_instance(instance: &Self::Instance) -> Result<Vec<F>, Error> {
+        Ok(AssignedNativePoint::<Jubjub>::as_public_input(instance))
     }
 
     fn circuit(
@@ -113,7 +113,7 @@ fn main() {
         .expect("Proof generation should not fail");
 
         vks.push(vk.clone());
-        pis.push(EccExample::format_instance(&instance));
+        pis.push(EccExample::format_instance(&instance).unwrap());
         proofs.push(proof);
     }
 

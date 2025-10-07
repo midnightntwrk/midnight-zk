@@ -24,8 +24,8 @@ impl Relation for PoseidonExample {
 
     type Witness = [F; 3];
 
-    fn format_instance(instance: &Self::Instance) -> Vec<F> {
-        vec![*instance]
+    fn format_instance(instance: &Self::Instance) -> Result<Vec<F>, Error> {
+        Ok(vec![*instance])
     }
 
     fn circuit(
