@@ -66,8 +66,8 @@ impl Relation for RSASignatureCircuit {
         let message = biguint.assign_biguint(layouter, instance.map(|(_, msg)| msg), NB_BITS)?;
         let signature = biguint.assign_biguint(layouter, witness, NB_BITS)?;
 
-        biguint.constrain_as_public_input::<NB_BITS>(layouter, &public_key)?;
-        biguint.constrain_as_public_input::<NB_BITS>(layouter, &message)?;
+        biguint.constrain_as_public_input(layouter, &public_key, NB_BITS)?;
+        biguint.constrain_as_public_input(layouter, &message, NB_BITS)?;
 
         let expected_msg = biguint.mod_exp(layouter, &signature, E, &public_key)?;
 
