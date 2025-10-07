@@ -88,8 +88,8 @@ impl<F: PrimeField> InnerConstants for AssignedBigUint<F> {
 impl<F: PrimeField> AssignedBigUint<F> {
     /// This function is the off-circuit analog of
     /// [crate::biguint::biguint_gadget::BigUintGadget::constrain_as_public_input].
-    pub fn as_public_input<const NB_BITS: u32>(element: &BigUint) -> Vec<F> {
-        biguint_to_limbs(element, Some(NB_BITS.div_ceil(LOG2_BASE)))
+    pub fn as_public_input(element: &BigUint, nb_bits: u32) -> Vec<F> {
+        biguint_to_limbs(element, Some(nb_bits.div_ceil(LOG2_BASE)))
     }
 }
 

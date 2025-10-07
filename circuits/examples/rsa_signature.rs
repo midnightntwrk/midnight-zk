@@ -41,8 +41,8 @@ impl Relation for RSASignatureCircuit {
 
     fn format_instance((pk, msg): &Self::Instance) -> Vec<F> {
         [
-            AssignedBigUint::<F>::as_public_input::<NB_BITS>(pk),
-            AssignedBigUint::<F>::as_public_input::<NB_BITS>(msg),
+            AssignedBigUint::<F>::as_public_input(pk, NB_BITS),
+            AssignedBigUint::<F>::as_public_input(msg, NB_BITS),
         ]
         .into_iter()
         .flatten()
