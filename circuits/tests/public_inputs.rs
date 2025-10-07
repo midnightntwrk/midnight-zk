@@ -46,8 +46,8 @@ impl Relation for PIsCircuit {
 
     type Witness = Vec<F>;
 
-    fn format_instance(x: &Self::Instance) -> Vec<F> {
-        x.clone()
+    fn format_instance(x: &Self::Instance) -> Result<Vec<F>, Error> {
+        Ok(x.clone())
     }
 
     fn circuit(

@@ -93,12 +93,12 @@ impl Relation for SchnorrExample {
     type Instance = (SchnorrPK, Message);
     type Witness = SchnorrSignature;
 
-    fn format_instance((pk, msg): &Self::Instance) -> Vec<F> {
-        [
+    fn format_instance((pk, msg): &Self::Instance) -> Result<Vec<F>, Error> {
+        Ok([
             AssignedNativePoint::<Jubjub>::as_public_input(pk),
             vec![*msg],
         ]
-        .concat()
+        .concat())
     }
 
     fn circuit(
@@ -198,7 +198,7 @@ fn main() {
         )
         .expect("Proof generation should not fail");
 
-        let instance = SchnorrExample::format_instance(&instance);
+        let instance = SchnorrExample::format_instance(&instance).unwrap();
 
         vks.push(vk.clone());
         instances.push(instance);

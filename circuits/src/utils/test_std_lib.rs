@@ -46,8 +46,8 @@ macro_rules! run_test_std_lib {
 
             type Instance = ();
 
-            fn format_instance(_instance: &Self::Instance) -> Vec<F> {
-                vec![]
+            fn format_instance(_instance: &Self::Instance) -> Result<Vec<F>, Error> {
+                Ok(vec![])
             }
 
             fn circuit(

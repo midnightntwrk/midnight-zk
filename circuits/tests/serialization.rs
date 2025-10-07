@@ -39,8 +39,8 @@ impl Relation for DummyCircuit {
 
     type Witness = F;
 
-    fn format_instance(x: &Self::Instance) -> Vec<F> {
-        vec![*x]
+    fn format_instance(x: &Self::Instance) -> Result<Vec<F>, Error> {
+        Ok(vec![*x])
     }
 
     fn circuit(
