@@ -271,7 +271,7 @@
       "permutations": "9",
       "point_sets": "4",
       "rows": "32",
-      "table_rows": "12"
+      "table_rows": "13"
     },
     "is_zero": {
       "advice_columns": "5",
@@ -282,7 +282,7 @@
       "permutations": "9",
       "point_sets": "4",
       "rows": "32",
-      "table_rows": "12"
+      "table_rows": "13"
     },
     "select": {
       "advice_columns": "5",
@@ -493,7 +493,7 @@
       "permutations": "17",
       "point_sets": "4",
       "rows": "11",
-      "table_rows": "5"
+      "table_rows": "6"
     },
     "linear_comb": {
       "advice_columns": "13",
@@ -803,7 +803,7 @@
       "permutations": "17",
       "point_sets": "4",
       "rows": "11",
-      "table_rows": "5"
+      "table_rows": "6"
     },
     "linear_comb": {
       "advice_columns": "13",
@@ -1568,7 +1568,7 @@
       "permutations": "9",
       "point_sets": "3",
       "rows": "2",
-      "table_rows": "1"
+      "table_rows": "2"
     },
     "is_equal_to_fixed": {
       "advice_columns": "5",
@@ -1579,7 +1579,7 @@
       "permutations": "9",
       "point_sets": "3",
       "rows": "2",
-      "table_rows": "1"
+      "table_rows": "2"
     },
     "is_zero": {
       "advice_columns": "5",
@@ -1590,7 +1590,7 @@
       "permutations": "9",
       "point_sets": "3",
       "rows": "2",
-      "table_rows": "1"
+      "table_rows": "2"
     },
     "linear_comb": {
       "advice_columns": "5",
@@ -1889,7 +1889,7 @@
       "permutations": "16",
       "point_sets": "4",
       "rows": "5",
-      "table_rows": "3"
+      "table_rows": "4"
     },
     "is_equal_to_fixed": {
       "advice_columns": "14",
@@ -1900,7 +1900,7 @@
       "permutations": "16",
       "point_sets": "4",
       "rows": "5",
-      "table_rows": "3"
+      "table_rows": "4"
     },
     "is_zero": {
       "advice_columns": "14",
@@ -1911,7 +1911,7 @@
       "permutations": "16",
       "point_sets": "4",
       "rows": "5",
-      "table_rows": "3"
+      "table_rows": "4"
     },
     "msm_3": {
       "advice_columns": "14",
