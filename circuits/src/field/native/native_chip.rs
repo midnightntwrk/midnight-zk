@@ -1253,7 +1253,7 @@ where
         )?;
 
         // (ii) enforced as res * x - res * y = 0.
-        self.add_and_double_mul(
+        let must_be_zero = self.add_and_double_mul(
             layouter,
             (F::ZERO, &res),
             (F::ZERO, x),
@@ -1261,6 +1261,7 @@ where
             F::ZERO,
             (F::ONE, -F::ONE),
         )?;
+        self.assert_zero(layouter, &must_be_zero)?;
 
         // The two equations we have enforced guarantee the bit-ness of `res`.
         Ok(AssignedBit(res))
@@ -1297,7 +1298,7 @@ where
         )?;
 
         // (ii) enforced as -c * res + res * x = 0.
-        self.add_and_mul(
+        let must_be_zero = self.add_and_mul(
             layouter,
             (-c, &res),
             (F::ZERO, x),
@@ -1305,6 +1306,7 @@ where
             F::ZERO,
             F::ONE,
         )?;
+        self.assert_zero(layouter, &must_be_zero)?;
 
         // The two equations we have enforced guarantee the bit-ness of `res`.
         Ok(AssignedBit(res))
