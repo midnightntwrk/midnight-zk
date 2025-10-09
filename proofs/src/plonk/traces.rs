@@ -17,7 +17,6 @@ pub struct ProverTrace<F: PrimeField> {
     #[allow(dead_code)]
     // This field will be useful for split accumulation
     pub(crate) instance_values: Vec<Vec<Polynomial<F, LagrangeCoeff>>>,
-    pub(crate) vanishing: vanishing::prover::Committed<F>,
     pub(crate) lookups: Vec<Vec<lookup::prover::Committed<F>>>,
     pub(crate) trashcans: Vec<Vec<trash::prover::Committed<F>>>,
     pub(crate) permutations: Vec<permutation::prover::Committed<F>>,
