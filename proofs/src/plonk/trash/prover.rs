@@ -2,7 +2,7 @@ use ff::{FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
 
 use super::{super::Error, Argument};
 use crate::{
-    plonk::evaluation::evaluate,
+    plonk::{evaluation::evaluate, Expression},
     poly::{
         commitment::PolynomialCommitmentScheme, Coeff, EvaluationDomain, LagrangeCoeff, Polynomial,
         ProverQuery,
@@ -18,6 +18,10 @@ pub(crate) struct Committed<F: PrimeField> {
 }
 
 pub(crate) struct Evaluated<F: PrimeField>(Committed<F>);
+
+pub(crate) struct PartiallyEvaluated<F: PrimeField> {
+    pub(crate) trash_eval: F,
+}
 
 impl<F: WithSmallOrderMulGroup<3> + Ord> Argument<F> {
     #[allow(clippy::too_many_arguments)]
@@ -66,13 +70,53 @@ impl<F: WithSmallOrderMulGroup<3> + Ord> Argument<F> {
     }
 }
 
+impl<F: WithSmallOrderMulGroup<3>> PartiallyEvaluated<F> {
+    pub(crate) fn expressions<'a>(
+        &'a self,
+        argument: &'a Argument<F>,
+        trash_challenge: F,
+        advice_evals: &[F],
+        fixed_evals: &[F],
+        instance_evals: &[F],
+        challenges: &[F],
+    ) -> impl Iterator<Item = F> + 'a {
+        let evaluate_expression = |expr: &Expression<F>| {
+            expr.evaluate(
+                &|scalar| scalar,
+                &|_| panic!("virtual selectors are removed during optimization"),
+                &|query| fixed_evals[query.index.unwrap()],
+                &|query| advice_evals[query.index.unwrap()],
+                &|query| instance_evals[query.index.unwrap()],
+                &|challenge| challenges[challenge.index()],
+                &|a| -a,
+                &|a, b| a + &b,
+                &|a, b| a * &b,
+                &|a, scalar| a * &scalar,
+            )
+        };
+
+        let compressed_expressions = (argument.constraint_expressions.iter())
+            .map(evaluate_expression)
+            .fold(F::ZERO, |acc, eval| acc * &trash_challenge + &eval);
+
+        let q = evaluate_expression(argument.selector());
+        vec![compressed_expressions - (F::ONE - q) * self.trash_eval].into_iter()
+    }
+}
+
 impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
-    pub(crate) fn evaluate<T>(self, x: F, transcript: &mut T) -> Result<Evaluated<F>, Error>
+    pub(crate) fn evaluate<T>(
+        self,
+        x: F,
+        transcript: &mut T,
+        trashcan_evals: &mut Vec<PartiallyEvaluated<F>>,
+    ) -> Result<Evaluated<F>, Error>
     where
         F: Hashable<T::Hash>,
         T: Transcript,
     {
         let trash_eval = eval_polynomial(&self.trash_poly, x);
+        trashcan_evals.push(PartiallyEvaluated { trash_eval });
         transcript.write(&trash_eval)?;
 
         Ok(Evaluated(self))
