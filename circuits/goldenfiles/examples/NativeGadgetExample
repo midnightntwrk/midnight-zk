@@ -5,10 +5,10 @@ CircuitModel {
     nb_unusable_rows: 6,
     max_deg: 5,
     advice_columns: 5,
-    fixed_columns: 25,
+    fixed_columns: 24,
     lookups: 1,
     permutations: 8,
-    column_queries: 34,
+    column_queries: 33,
     point_sets: 4,
-    size: 2496,
+    size: 2400,
 }

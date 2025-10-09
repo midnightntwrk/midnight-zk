@@ -1,14 +1,14 @@
 CircuitModel {
     k: 11,
-    rows: 1694,
+    rows: 1700,
     table_rows: 259,
     nb_unusable_rows: 7,
     max_deg: 5,
     advice_columns: 9,
-    fixed_columns: 32,
+    fixed_columns: 31,
     lookups: 1,
     permutations: 10,
-    column_queries: 44,
+    column_queries: 43,
     point_sets: 4,
-    size: 3184,
+    size: 3152,
 }
