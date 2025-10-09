@@ -9,7 +9,7 @@ use super::{
     Argument,
 };
 use crate::{
-    plonk::evaluation::evaluate,
+    plonk::{evaluation::evaluate, lookup},
     poly::{
         commitment::PolynomialCommitmentScheme, Coeff, EvaluationDomain, LagrangeCoeff, Polynomial,
         ProverQuery, Rotation,
@@ -301,6 +301,7 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
         pk: &ProvingKey<F, CS>,
         x: F,
         transcript: &mut T,
+        lookup_evals: &mut Vec<lookup::Evaluated<F>>,
     ) -> Result<Evaluated<F>, Error>
     where
         F: Hashable<T::Hash>,
@@ -314,6 +315,15 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
         let permuted_input_eval = eval_polynomial(&self.permuted_input_poly, x);
         let permuted_input_inv_eval = eval_polynomial(&self.permuted_input_poly, x_inv);
         let permuted_table_eval = eval_polynomial(&self.permuted_table_poly, x);
+
+        let pe = lookup::Evaluated {
+            product_eval,
+            product_next_eval,
+            permuted_input_eval,
+            permuted_input_inv_eval,
+            permuted_table_eval,
+        };
+        lookup_evals.push(pe);
 
         // Hash each advice evaluation
         for eval in iter::empty()
