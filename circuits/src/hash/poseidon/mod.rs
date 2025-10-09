@@ -12,7 +12,9 @@
 // limitations under the License.
 
 //! Implementation in-circuit of the Poseidon sponge functions, with the
-//! partial-round skip optimisation.
+//! partial-round skip optimisation. This implementation also adds an initial
+//! matrix layer at the beginning of Poseidon's permutation, as suggested in
+//! [this paper](https://eprint.iacr.org/2023/323.pdf) to mitigate some algebraic attacks.
 
 // The idea of round skips is that unlike full rounds, Poseidon's partial
 // rounds are "almost linear", in that only one column of the input is altered

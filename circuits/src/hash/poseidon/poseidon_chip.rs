@@ -416,6 +416,26 @@ impl<F: PoseidonField> PoseidonChip<F> {
             })
     }
 
+    /// Performs all operations of the Poseidon's permutation that precede the
+    /// fery first S-Box. Namely, this ,ultiplies the inputs by the MDS matrix,
+    /// and adds the first round constants.
+    fn inital_linear_layer(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        inputs: &AssignedRegister<F>,
+    ) -> Result<AssignedRegister<F>, Error> {
+        let mut res = Vec::new();
+        for i in 0..WIDTH {
+            let terms = F::MDS[i].iter().copied().zip(inputs.iter().cloned()).collect::<Vec<_>>();
+            res.push(self.native_chip.linear_combination(
+                layouter,
+                &terms,
+                F::ROUND_CONSTANTS[0][i],
+            )?)
+        }
+        Ok(res.try_into().unwrap())
+    }
+
     /// A combination of the different circuit gates to produce the full
     /// Poseidon permutation (`NB_FULL_ROUNDS` full rounds, separated in the
     /// middle by `NB_PARTIAL_ROUNDS` partial rounds, possibly with
@@ -425,31 +445,22 @@ impl<F: PoseidonField> PoseidonChip<F> {
         layouter: &mut impl Layouter<F>,
         inputs: &AssignedRegister<F>,
     ) -> Result<AssignedRegister<F>, Error> {
+        // Performing the initial linear operations before the very first S-Box.
+        let inputs = self.inital_linear_layer(layouter, inputs)?;
+        // Main loop of the permutation, performed in a single region.
         layouter.assign_region(
             || "permutation layout",
             |mut region| {
                 let mut offset: usize = 0;
 
-                let mut state: AssignedRegister<F> = self
-                    .native_chip
-                    .add_constants_in_region(
-                        &mut region,
-                        inputs,
-                        &F::ROUND_CONSTANTS[0],
-                        &mut offset,
-                    )?
+                // Copying the result of `initial_linear_layer` in the region.
+                let mut state: AssignedRegister<F> = (inputs.iter().zip(self.config.register_cols))
+                    .map(|(input, col)| {
+                        input.copy_advice(|| "copy clean state", &mut region, col, offset)
+                    })
+                    .collect::<Result<Vec<_>, Error>>()?
                     .try_into()
                     .unwrap();
-
-                // The first full round assumes that `add_constants_in_region` above assigns
-                // `state` in the same columns as Poseidon in the region. This is checked by the
-                // below assertion.
-                assert!(
-                    state.iter().zip(self.config.register_cols).all(|(acell, col)| {
-                        let col1: Column<Advice> = acell.cell().column.try_into().unwrap();
-                        col1 == col
-                    })
-                );
 
                 for round_index in 0..NB_FULL_ROUNDS / 2 {
                     self.full_round(&mut region, &mut state, round_index, &mut offset)?;

@@ -105,9 +105,7 @@ pub fn permutation_cpu<F: PoseidonField>(pre_computed: &PreComputedRoundCPU<F>, 
     let nb_main_partial_rounds = NB_PARTIAL_ROUNDS / (1 + nb_skips);
     let remainder_partial_rounds = NB_PARTIAL_ROUNDS % (1 + nb_skips);
 
-    for (x, k0) in state.iter_mut().zip(F::ROUND_CONSTANTS[0]) {
-        *x += k0;
-    }
+    linear_layer(state, &F::ROUND_CONSTANTS[0]);
     (0..NB_FULL_ROUNDS / 2).for_each(|round_index| full_round_cpu(round_index, state));
     (0..nb_main_partial_rounds)
         .for_each(|round_batch_index| partial_round_cpu(pre_computed, round_batch_index, state));
@@ -268,9 +266,7 @@ mod tests {
     // A version of Poseidon's permutation, without round skips. Has been tested
     // against the previous version of Poseidon (replaced since Merge request #521).
     fn permutation_cpu_raw<F: PoseidonField>(state: &mut [F]) {
-        for (x, k0) in state.iter_mut().zip(F::ROUND_CONSTANTS[0]) {
-            *x += k0;
-        }
+        linear_layer(state, &F::ROUND_CONSTANTS[0]);
         for round_index in 0..NB_FULL_ROUNDS / 2 {
             full_round_cpu(round_index, state);
         }
