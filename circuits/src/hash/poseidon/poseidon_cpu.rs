@@ -43,32 +43,34 @@ pub struct PoseidonState<F: PoseidonField> {
     input_len: Option<usize>,
 }
 
-// Applies the MDS matrix to a state and adds the round constants. All arguments
-// have length `WIDTH`. To save the addition cost, the implementation is done by
-// mutating the `constants` slice, and eventually copying it into `state`.
-fn linear_layer<F: PoseidonField>(state: &mut [F], constants: &mut [F]) {
+/// Applies the MDS matrix to a state and adds the round constants. All
+/// arguments have length `WIDTH`. To save the addition cost, the implementation
+/// is done by mutating the `constants` slice, and eventually copying it into
+/// `state`.
+fn linear_layer<F: PoseidonField>(state: &mut [F], constants: &[F; WIDTH]) {
+    let mut new_state = *constants;
     #[allow(clippy::needless_range_loop)]
     for i in 0..WIDTH {
         for j in 0..WIDTH {
-            constants[i] += F::MDS[i][j] * state[j];
+            new_state[i] += F::MDS[i][j] * state[j];
         }
     }
-    state.copy_from_slice(constants);
+    state.copy_from_slice(&new_state);
 }
 
 /// A cpu version of the full round of Poseidon's permutation. Operates by
 /// mutating the `state` argument (length `WIDTH`).
 pub(crate) fn full_round_cpu<F: PoseidonField>(round_index: usize, state: &mut [F]) {
     state.iter_mut().for_each(|x| *x = x.square().square() * *x);
-    let mut new_state = if round_index == NB_FULL_ROUNDS + NB_PARTIAL_ROUNDS - 1 {
+    let new_state = if round_index == NB_FULL_ROUNDS + NB_PARTIAL_ROUNDS - 1 {
         [F::ZERO; WIDTH]
     } else {
         F::ROUND_CONSTANTS[round_index + 1]
     };
-    linear_layer(state, &mut new_state);
+    linear_layer(state, &new_state);
 }
 
-// A cpu version of Poseidon with `1 + NB_SKIPS_CIRCUIT` partial rounds.
+/// A cpu version of Poseidon with `1 + NB_SKIPS_CIRCUIT` partial rounds.
 fn partial_round_cpu<F: PoseidonField>(
     pre_computed: &PreComputedRoundCPU<F>,
     round_batch_index: usize,
@@ -92,11 +94,10 @@ pub(crate) fn partial_round_cpu_for_circuits<F: PoseidonField>(
         .eval::<NB_SKIPS_CIRCUIT>(&pre_computed.round_constants[round_batch_index], state)
 }
 
-// Alternative partial round version, without any skips.
+/// Alternative partial round version, without any skips.
 fn partial_round_cpu_raw<F: PoseidonField>(round: usize, state: &mut [F]) {
     state[WIDTH - 1] *= state[WIDTH - 1].square().square();
-    let mut new_state = F::ROUND_CONSTANTS[round + 1];
-    linear_layer(state, &mut new_state)
+    linear_layer(state, &F::ROUND_CONSTANTS[round + 1])
 }
 
 /// A cpu version of the full Poseidon's permutation with partial-round skips.
@@ -263,8 +264,9 @@ mod tests {
     use super::*;
     use crate::hash::poseidon::permutation_cpu;
 
-    // A version of Poseidon's permutation, without round skips. Has been tested
-    // against the previous version of Poseidon (replaced since Merge request #521).
+    /// A version of Poseidon's permutation, without round skips. Has been
+    /// tested against the previous version of Poseidon (replaced since
+    /// Merge request #521).
     fn permutation_cpu_raw<F: PoseidonField>(state: &mut [F]) {
         linear_layer(state, &F::ROUND_CONSTANTS[0]);
         for round_index in 0..NB_FULL_ROUNDS / 2 {
@@ -277,8 +279,9 @@ mod tests {
             full_round_cpu(round_index, state);
         }
     }
-    // Tests the performances of the cpu version of Poseidon. In debug mode, also
-    // tests the consistency between the version with and without round skips.
+    /// Tests the performances of the cpu version of Poseidon. In debug mode,
+    /// also tests the consistency between the version with and without
+    /// round skips.
     fn consistency_cpu<F: PoseidonField + ff::FromUniformBytes<64>>(nb_samples: usize) {
         println!(
             ">> Testing the consistency between the two cpu implementations of the permutation ({NB_SKIPS_CPU} round skips VS no round skips)."

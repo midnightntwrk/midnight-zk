@@ -37,14 +37,6 @@
 // operations like conditional swaps.
 //
 //  q_12_minus_34 * (value[1] + value[2] - value[3] - value[4] = 0)
-//
-// Finally, an utilitary gate for parallel affine relation is defined for
-// performing parallel additions (by constant) x[omega] = x + c in one row.
-// The formal identities read as:
-//
-//  q_par_add * { value[i] + coeff[i] - value[i](omega) } = 0
-//
-// for all i = 0..NB_PARALLEL_ADD_COLS.
 
 use std::{
     cell::RefCell,
@@ -89,20 +81,11 @@ pub const NB_ARITH_COLS: usize = 5;
 /// Number of fixed columns used by the identity of the native chip.
 pub const NB_ARITH_FIXED_COLS: usize = NB_ARITH_COLS + 4;
 
-/// Number of additions (by constant) that can be performed in
-/// parallel in 1 row. This number should not exceed [NB_ARITH_COLS].
-///
-/// The Poseidon chip requires this number to match the Poseidon
-/// register width. Have that into consideration before modifying
-/// this number.
-const NB_PARALLEL_ADD_COLS: usize = 3;
-
 /// Config defines fixed and witness columns of the main gate
 #[derive(Clone, Debug)]
 pub struct NativeConfig {
     q_arith: Selector,
     q_12_minus_34: Selector,
-    q_par_add: Selector,
     pub(crate) value_cols: [Column<Advice>; NB_ARITH_COLS],
     coeff_cols: [Column<Fixed>; NB_ARITH_COLS],
     q_next_col: Column<Fixed>,
@@ -172,7 +155,6 @@ impl<F: PrimeField> ComposableChip<F> for NativeChip<F> {
 
         let q_arith = meta.selector();
         let q_12_minus_34 = meta.selector();
-        let q_par_add = meta.selector();
         let coeff_cols: [Column<Fixed>; NB_ARITH_COLS] = fixed_columns[4..].try_into().unwrap();
         let q_next_col = fixed_columns[0];
         let mul_ab_col = fixed_columns[1];
@@ -226,24 +208,9 @@ impl<F: PrimeField> ComposableChip<F> for NativeChip<F> {
             Constraints::with_selector(q_12_minus_34, vec![v1 + v2 - v3 - v4])
         });
 
-        meta.create_gate("parallel_add_gate", |meta| {
-            let ids = (value_columns[0..NB_PARALLEL_ADD_COLS].iter())
-                .zip(coeff_cols[0..NB_PARALLEL_ADD_COLS].iter())
-                .map(|(val_col, const_col)| {
-                    let val = meta.query_advice(*val_col, Rotation::cur());
-                    let res = meta.query_advice(*val_col, Rotation::next());
-                    let c = meta.query_fixed(*const_col, Rotation::cur());
-                    val + c - res
-                })
-                .collect::<Vec<_>>();
-
-            Constraints::with_selector(q_par_add, ids)
-        });
-
         NativeConfig {
             q_arith,
             q_12_minus_34,
-            q_par_add,
             value_cols: *value_columns,
             coeff_cols,
             q_next_col,
@@ -520,38 +487,6 @@ impl<F: PrimeField> NativeChip<F> {
     /// constrained so far by this chip.
     pub(crate) fn nb_public_inputs(&self) -> usize {
         *self.instance_offset.borrow()
-    }
-}
-
-impl<F: PrimeField> NativeChip<F> {
-    /// Performs parallel additions of `variables` and `constants` in one row,
-    /// and increments the offset.
-    pub(crate) fn add_constants_in_region(
-        &self,
-        region: &mut Region<'_, F>,
-        variables: &[AssignedNative<F>; NB_PARALLEL_ADD_COLS],
-        constants: &[F; NB_PARALLEL_ADD_COLS],
-        offset: &mut usize,
-    ) -> Result<Vec<AssignedNative<F>>, Error> {
-        self.config.q_par_add.enable(region, *offset)?;
-
-        (variables.iter())
-            .zip(self.config.value_cols)
-            .try_for_each(|(x, col)| self.copy_in_row(region, x, &col, *offset))?;
-
-        constants.iter().zip(self.config.coeff_cols).try_for_each(|(c, col)| {
-            region.assign_fixed(|| "add_consts", col, *offset, || Value::known(*c))?;
-            Ok::<(), Error>(())
-        })?;
-
-        *offset += 1;
-
-        let res_values = variables.iter().zip(constants).map(|(x, c)| x.value().map(|x| *x + *c));
-
-        res_values
-            .zip(self.config.value_cols)
-            .map(|(val, col)| region.assign_advice(|| "add_consts", col, *offset, || val))
-            .collect::<Result<Vec<_>, Error>>()
     }
 }
 
@@ -983,57 +918,6 @@ where
         m: F,
     ) -> Result<AssignedNative<F>, Error> {
         self.add_and_double_mul(layouter, (a, x), (b, y), (c, z), k, (m, F::ZERO))
-    }
-
-    fn add_constants(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        xs: &[AssignedNative<F>],
-        constants: &[F],
-    ) -> Result<Vec<AssignedNative<F>>, Error> {
-        assert_eq!(xs.len(), constants.len());
-
-        let pairs = (xs.iter().zip(constants.iter()))
-            .filter(|&(_, &c)| c != F::ZERO)
-            .collect::<Vec<_>>();
-
-        let mut non_trivial_outputs = Vec::with_capacity(pairs.len());
-
-        let mut chunks = pairs.chunks_exact(NB_PARALLEL_ADD_COLS);
-        for chunk in chunks.by_ref() {
-            let outputs = layouter.assign_region(
-                || "add_constants",
-                |mut region| {
-                    let values = chunk.iter().map(|(x, _)| (*x).clone()).collect::<Vec<_>>();
-                    let consts = chunk.iter().map(|(_, c)| **c).collect::<Vec<_>>();
-                    self.add_constants_in_region(
-                        &mut region,
-                        &values.try_into().unwrap(),
-                        &consts.try_into().unwrap(),
-                        &mut 0,
-                    )
-                },
-            )?;
-            non_trivial_outputs.extend(outputs);
-        }
-
-        // Proecss a final chunk of length < NB_PARALLEL_ADD_COLS, "manually".
-        for (x, c) in chunks.remainder() {
-            non_trivial_outputs.push(self.add_constant(layouter, x, **c)?);
-        }
-
-        let mut outputs = Vec::with_capacity(xs.len());
-        let mut j = 0;
-        for i in 0..xs.len() {
-            if constants[i] != F::ZERO {
-                outputs.push(non_trivial_outputs[j].clone());
-                j += 1;
-            } else {
-                outputs.push(xs[i].clone())
-            }
-        }
-
-        Ok(outputs)
     }
 }
 
