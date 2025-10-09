@@ -31,7 +31,7 @@ pub struct EvaluationDomain<F: Field> {
     pub(crate) g_coset: F,
     g_coset_inv: F,
     quotient_poly_degree: u64,
-    ifft_divisor: F,
+    pub(crate) ifft_divisor: F,
     extended_ifft_divisor: F,
     t_evaluations: Vec<F>,
     barycentric_weight: F,
@@ -223,6 +223,13 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
         }
     }
 
+    /// Back and forth FFT
+    pub fn back_and_forth_fft(&self, values: &mut [F]) {
+        Self::ifft(&mut values[..self.n as usize], self.get_omega_inv(), self.k(), self.ifft_divisor);
+        self.distribute_powers_zeta(&mut values[..self.n as usize], true);
+        best_fft(values, self.get_extended_omega(), self.extended_k());
+    }
+
     /// This takes us from an n-length vector into the coefficient form.
     ///
     /// This function will panic if the provided vector does not have the
@@ -394,7 +401,7 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
     ///
     /// `into_coset` should be set to `true` when moving into the coset,
     /// and `false` when moving out. This toggles the choice of `zeta`.
-    fn distribute_powers_zeta(&self, a: &mut [F], into_coset: bool) {
+    pub(crate) fn distribute_powers_zeta(&self, a: &mut [F], into_coset: bool) {
         let coset_powers = if into_coset {
             [self.g_coset, self.g_coset_inv]
         } else {
@@ -412,7 +419,7 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
         });
     }
 
-    fn ifft(a: &mut [F], omega_inv: F, log_n: u32, divisor: F) {
+    pub(crate) fn ifft(a: &mut [F], omega_inv: F, log_n: u32, divisor: F) {
         best_fft(a, omega_inv, log_n);
         parallelize(a, |a, _| {
             for a in a {

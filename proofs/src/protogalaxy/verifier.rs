@@ -1,4 +1,6 @@
-//! TODO
+//! TODO: We have a lot of duplicated code here. We can simplify this.
+
+use std::{hash::Hash, iter};
 
 use ff::{FromUniformBytes, WithSmallOrderMulGroup};
 use rayon::iter::{
@@ -11,78 +13,41 @@ use crate::{
         traces::{FoldingProverTrace, VerifierFoldingTrace},
         Error, Evaluator, VerifyingKey,
     },
-    poly::{commitment::PolynomialCommitmentScheme, EvaluationDomain, LagrangeCoeff, Polynomial},
-    protogalaxy::utils::{linear_combination, pow_vec},
-    transcript::{Hashable, Sampleable, Transcript},
-    utils::arithmetic::eval_polynomial,
+    poly::{
+        commitment::PolynomialCommitmentScheme, EvaluationDomain, LagrangeCoeff, Polynomial,
+        VerifierQuery,
+    },
+    protogalaxy::{prover::eval_lagrange_on_beta, utils::linear_combination},
+    transcript::{read_n, Hashable, Sampleable, Transcript},
+    utils::arithmetic::{compute_inner_product, eval_polynomial},
 };
 
 /// This verifier can perform a 2**K - 1 to one folding
 #[derive(Debug)]
-pub struct ProtogalaxyVerifier<
+pub struct ProtogalaxyVerifierOneShot<
     F: WithSmallOrderMulGroup<3>,
     CS: PolynomialCommitmentScheme<F>,
     const K: usize,
 > {
-    verifier_folding_trace: VerifierFoldingTrace<F, CS>,
-    error_term: F,
-    beta_powers: [F; K],
+    pub(crate) verifier_folding_trace: VerifierFoldingTrace<F, CS>,
+    pub(crate) error_term: F,
+    pub(crate) beta: F,
 }
 
 impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: usize>
-    ProtogalaxyVerifier<F, CS, K>
+    ProtogalaxyVerifierOneShot<F, CS, K>
 {
-    /// Initialise the Protogalaxy verifier given an initial instance
-    // TODO: We can probably start with no instance at all.
-    pub fn init<T>(
-        vk: &VerifyingKey<F, CS>,
-        // Unlike the prover, the verifier gets their instances in two arguments:
-        // committed and normal (non-committed). Note that the total number of
-        // instance columns is expected to be the sum of committed instances and
-        // normal instances for every proof. (Committed instances go first, that is,
-        // the first instance columns are devoted to committed instances.)
-        #[cfg(feature = "committed-instances")] committed_instances: &[&[CS::Commitment]],
-        instances: &[&[&[F]]],
-        transcript: &mut T,
-    ) -> Result<Self, Error>
-    where
-        T: Transcript,
-        CS: PolynomialCommitmentScheme<F>,
-        CS::Commitment: Hashable<T::Hash>,
-        F: WithSmallOrderMulGroup<3>
-            + Sampleable<T::Hash>
-            + Hashable<T::Hash>
-            + Ord
-            + FromUniformBytes<64>,
-    {
-        let folded_trace = parse_trace(
-            vk,
-            #[cfg(feature = "committed-instances")]
-            committed_instances,
-            instances,
-            transcript,
-        )?
-        .into_folding_trace(vk.fixed_commitments());
-
-        Ok(Self {
-            verifier_folding_trace: folded_trace,
-            error_term: F::ZERO,
-            beta_powers: [F::ONE; K],
-        })
-    }
-
     /// Fold the given traces. Concretely, the verifier receives [Transcript]s
     /// from [K] proofs, parses them to extract the [VerifierTrace], and
     /// folds them following the protogalaxy protocol.
     /// TODO: We assume that nr of proofs is a power of 2.
     /// TODO: PCS not verified
     pub fn fold<T>(
-        mut self,
         vk: &VerifyingKey<F, CS>,
-        #[cfg(feature = "committed-instances")] committed_instances: &[&[CS::Commitment]],
+        committed_instances: &[&[CS::Commitment]],
         instances: &[&[&[F]]],
         transcript: &mut T,
-    ) -> Result<Self, Error>
+    ) -> Result<CS::VerificationGuard, Error>
     where
         T: Transcript,
         CS: PolynomialCommitmentScheme<F>,
@@ -90,75 +55,334 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         F: WithSmallOrderMulGroup<3>
             + Sampleable<T::Hash>
             + Hashable<T::Hash>
+            + Hash
             + Ord
             + FromUniformBytes<64>,
     {
         // We must increase the degree, since we need to count y as a variable.
         // TODO: We'll use independent challenges, instead of powers of y.
         let dk_domain = EvaluationDomain::new(
-            vk.cs().degree() as u32 + 3,
-            (instances.len() + 1).trailing_zeros(),
+            vk.cs().folding_degree() as u32,
+            instances.len().trailing_zeros(),
         );
+
+        assert_eq!(instances.len(), committed_instances.len());
 
         // TODO: Is this sufficient to check H-consistency? I'm not 'checking' anything,
         // but I'm computing the challenges myself - I believe that is enough.
+        // David: yes, i think so too
         let traces = instances
             .iter()
-            .map(|instance| {
-                let trace = parse_trace(
-                    vk,
-                    #[cfg(feature = "committed-instances")]
-                    committed_instances,
-                    &[instance],
-                    transcript,
-                )?;
+            .zip(committed_instances)
+            .map(|(instance, committed_instance)| {
+                let trace = parse_trace(vk, &[committed_instance], &[instance], transcript)?;
 
                 Ok(trace.into_folding_trace(vk.fixed_commitments()))
             })
             .collect::<Result<Vec<_>, Error>>()?;
 
-        let mut delta = transcript.squeeze_challenge();
-        let delta_powers: [F; K] = std::array::from_fn(|_| {
-            let res = delta;
-            delta = delta * delta;
-            res
-        });
-
-        // let _committed_f: CS::Commitment = transcript.read()?;
-        let alpha: F = transcript.squeeze_challenge();
-        let eval_commited_f: F = transcript.read()?;
-
-        let f_at_alpha = self.error_term + eval_commited_f;
-
-        self.beta_powers = self
-            .beta_powers
-            .iter()
-            .zip(delta_powers.iter())
-            .map(|(beta, delta)| *beta + alpha * delta)
-            .collect::<Vec<_>>()
-            .try_into()
-            .unwrap();
+        let beta_pg: F = transcript.squeeze_challenge();
 
         let _poly_k: CS::Commitment = transcript.read()?;
         let gamma: F = transcript.squeeze_challenge();
         let k_at_gamma: F = transcript.read()?;
-        let z_in_gamma = gamma.pow_vartime([dk_domain.n]) - F::ONE;
+        let z_in_gamma: F = gamma.pow_vartime([dk_domain.n]) - F::ONE;
 
-        let mut l0 = dk_domain.empty_lagrange();
-        l0[0] = F::ONE;
-        let l0_coeff = dk_domain.lagrange_to_coeff(l0);
-        let l0_at_gamma = eval_polynomial(&l0_coeff, gamma);
+        let error_term: F = z_in_gamma * k_at_gamma;
 
-        self.error_term = f_at_alpha * l0_at_gamma + z_in_gamma * k_at_gamma;
-        let traces = std::iter::once(&self.verifier_folding_trace)
-            .chain(traces.iter())
+        let traces = traces.iter().collect::<Vec<_>>();
+
+        println!("Number of traces - verifier: {:?}", traces.len());
+        assert!(traces.len().is_power_of_two());
+
+        let VerifierFoldingTrace {
+            advice_commitments,
+            instance_commitments,
+            instance_polys,
+            fixed_commitments,
+            vanishing,
+            lookups,
+            permutations,
+            trashcans,
+            challenges,
+            beta,
+            gamma,
+            trash_challenge,
+            theta,
+            y,
+        } = fold_traces(&dk_domain, &traces, &gamma);
+
+        let instances = instance_polys.iter().map(|a| a.iter().map(|b| b.as_slice()).collect::<Vec<_>>()).collect::<Vec<_>>();
+        let instances = instances.iter().map(|a| a.as_slice()).collect::<Vec<_>>();
+
+        let committed_instances = instance_commitments.iter().map(|a| a.as_slice()).collect::<Vec<_>>();
+
+        let nb_committed_instances = instance_commitments[0].len();
+
+        let mut final_vk = vk.clone();
+        final_vk.fixed_commitments = fixed_commitments.clone();
+
+        let committed_error = transcript.read::<CS::Commitment>()?;
+
+        // For the final verification we are verifying a single proof
+        let num_proofs = 1;
+        let vanishing = vanishing.read_commitments_after_y(vk, transcript)?;
+
+        // Sample x challenge, which is used to ensure the circuit is
+        // satisfied with high probability.
+        let x: F = transcript.squeeze_challenge();
+        let xn = x.pow_vartime([vk.n()]);
+
+        let instance_evals = {
+            let (min_rotation, max_rotation) =
+                vk.cs.instance_queries.iter().fold((0, 0), |(min, max), (_, rotation)| {
+                    if rotation.0 < min {
+                        (rotation.0, max)
+                    } else if rotation.0 > max {
+                        (min, rotation.0)
+                    } else {
+                        (min, max)
+                    }
+                });
+            let max_instance_len = instances
+                .iter()
+                .flat_map(|instance| instance.iter().map(|instance| instance.len()))
+                .max_by(Ord::cmp)
+                .unwrap_or_default();
+            let l_i_s = &vk.get_domain().l_i_range(
+                x,
+                xn,
+                -max_rotation..max_instance_len as i32 + min_rotation.abs(),
+            );
+            instances
+                .iter()
+                .map(|instances| {
+                    vk.cs
+                        .instance_queries
+                        .iter()
+                        .map(|(column, rotation)| {
+                            if column.index() < nb_committed_instances {
+                                transcript.read()
+                            } else {
+                                let instances = instances[column.index() - nb_committed_instances];
+                                let offset = (max_rotation - rotation.0) as usize;
+                                Ok(compute_inner_product(
+                                    instances,
+                                    &l_i_s[offset..offset + instances.len()],
+                                ))
+                            }
+                        })
+                        .collect::<Result<Vec<_>, _>>()
+                })
+                .collect::<Result<Vec<_>, _>>()?
+        };
+
+        let advice_evals = (0..num_proofs)
+            .map(|_| -> Result<Vec<F>, _> { read_n(transcript, vk.cs.advice_queries.len()) })
+            .collect::<Result<Vec<Vec<F>>, _>>()?;
+        let fixed_evals: Vec<F> = read_n(transcript, vk.cs.fixed_queries.len())?;
+        let correction_eval: F = transcript.read()?;
+        let vanishing = vanishing.evaluate_after_x(transcript)?;
+
+        let permutations_common = vk.permutation.evaluate(transcript)?;
+
+        let permutations_evaluated = permutations
+            .into_iter()
+            .map(|permutation| permutation.evaluate(transcript))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let lookups_evaluated = lookups
+            .into_iter()
+            .map(|lookups| -> Result<Vec<_>, _> {
+                lookups
+                    .into_iter()
+                    .map(|lookup| lookup.evaluate(transcript))
+                    .collect::<Result<Vec<_>, _>>()
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let trashcans_evaluated = trashcans
+            .into_iter()
+            .map(|trashcans| -> Result<Vec<_>, _> {
+                trashcans
+                    .into_iter()
+                    .map(|trash| trash.evaluate(transcript))
+                    .collect::<Result<Vec<_>, _>>()
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // This check ensures the circuit is satisfied so long as the polynomial
+        // commitments open to the correct values.
+        let vanishing = {
+            let blinding_factors = vk.cs.blinding_factors();
+            let l_evals = vk.get_domain().l_i_range(x, xn, (-((blinding_factors + 1) as i32))..=0);
+            assert_eq!(l_evals.len(), 2 + blinding_factors);
+            let l_last = l_evals[0];
+            let l_blind: F =
+                l_evals[1..(1 + blinding_factors)].iter().fold(F::ZERO, |acc, eval| acc + eval);
+            let l_0 = l_evals[1 + blinding_factors];
+
+            // Compute the expected value of h(x)
+            let expressions = advice_evals
+                .iter()
+                .zip(instance_evals.iter())
+                .zip(permutations_evaluated.iter())
+                .zip(lookups_evaluated.iter())
+                .zip(trashcans_evaluated.iter())
+                .flat_map(
+                    |((((advice_evals, instance_evals), permutation), lookups), trash)| {
+                        let challenges = &challenges;
+                        let fixed_evals = &fixed_evals;
+                        iter::empty()
+                            // Evaluate the circuit using the custom gates provided
+                            .chain(vk.cs.gates.iter().flat_map(move |gate| {
+                                gate.polynomials().iter().map(move |poly| {
+                                    poly.evaluate(
+                                        &|scalar| scalar,
+                                        &|_| {
+                                            panic!(
+                                                "virtual selectors are removed during optimization"
+                                            )
+                                        },
+                                        &|query| fixed_evals[query.index.unwrap()],
+                                        &|query| advice_evals[query.index.unwrap()],
+                                        &|query| instance_evals[query.index.unwrap()],
+                                        &|challenge| challenges[challenge.index()],
+                                        &|a| -a,
+                                        &|a, b| a + &b,
+                                        &|a, b| a * &b,
+                                        &|a, scalar| a * &scalar,
+                                    )
+                                })
+                            }))
+                            .chain(permutation.expressions(
+                                vk,
+                                &vk.cs.permutation,
+                                &permutations_common,
+                                advice_evals,
+                                fixed_evals,
+                                instance_evals,
+                                l_0,
+                                l_last,
+                                l_blind,
+                                beta,
+                                gamma,
+                                x,
+                            ))
+                            .chain(lookups.iter().zip(vk.cs.lookups.iter()).flat_map({
+                                let theta = theta.clone();
+                                move |(p, argument)| {
+                                    p.expressions(
+                                        l_0,
+                                        l_last,
+                                        l_blind,
+                                        argument,
+                                        &theta,
+                                        beta,
+                                        gamma,
+                                        advice_evals,
+                                        fixed_evals,
+                                        instance_evals,
+                                        challenges,
+                                    )
+                                }
+                            }))
+                            .chain(trash.iter().zip(vk.cs.trashcans.iter()).flat_map(
+                                move |(p, argument)| {
+                                    p.expressions(
+                                        argument,
+                                        trash_challenge,
+                                        advice_evals,
+                                        fixed_evals,
+                                        instance_evals,
+                                        challenges,
+                                    )
+                                },
+                            ))
+                    },
+                );
+
+            assert_eq!(y.len(), 1);
+            // let flattened_y = y.into_iter().flatten().collect::<Vec<_>>();
+            vanishing.verify_corrected(expressions, y[0].clone(), correction_eval, xn)
+        };
+
+        let queries = committed_instances
+            .iter()
+            .zip(instance_evals.iter())
+            .zip(advice_commitments.iter())
+            .zip(advice_evals.iter())
+            .zip(permutations_evaluated.iter())
+            .zip(lookups_evaluated.iter())
+            .zip(trashcans_evaluated.iter())
+            .flat_map(
+                |(
+                    (
+                        (
+                            (
+                                ((committed_instances, instance_evals), advice_commitments),
+                                advice_evals,
+                            ),
+                            permutation,
+                        ),
+                        lookups,
+                    ),
+                    trash,
+                )| {
+                    iter::empty()
+                        .chain(vk.cs.instance_queries.iter().enumerate().filter_map(
+                            move |(query_index, &(column, at))| {
+                                if column.index() < nb_committed_instances {
+                                    Some(VerifierQuery::new(
+                                        vk.get_domain().rotate_omega(x, at),
+                                        &committed_instances[column.index()],
+                                        instance_evals[query_index],
+                                    ))
+                                } else {
+                                    None
+                                }
+                            },
+                        ))
+                        .chain(vk.cs.advice_queries.iter().enumerate().map(
+                            move |(query_index, &(column, at))| {
+                                VerifierQuery::new(
+                                    vk.get_domain().rotate_omega(x, at),
+                                    &advice_commitments[column.index()],
+                                    advice_evals[query_index],
+                                )
+                            },
+                        ))
+                        .chain(permutation.queries(vk, x))
+                        .chain(lookups.iter().flat_map(move |p| p.queries(vk, x)))
+                        .chain(trash.iter().flat_map(move |p| p.queries(x)))
+                },
+            )
+            .chain(
+                vk.cs.fixed_queries.iter().enumerate().map(|(query_index, &(column, at))| {
+                    VerifierQuery::new(
+                        vk.get_domain().rotate_omega(x, at),
+                        &vk.fixed_commitments[column.index()],
+                        fixed_evals[query_index],
+                    )
+                }),
+            )
+            .chain(permutations_common.queries(&vk.permutation, x))
+            .chain(vanishing.queries(x, vk.n()))
+            .chain(iter::once(VerifierQuery::new(
+                x,
+                &committed_error,
+                correction_eval,
+            )))
+            .chain(iter::once(VerifierQuery::new(
+                beta_pg,
+                &committed_error,
+                error_term,
+            )))
             .collect::<Vec<_>>();
 
-        assert!(traces.len().is_power_of_two());
-        self.verifier_folding_trace = fold_traces(&dk_domain, &traces, &gamma);
-
-        // TODO: need to verify the polynomial commitment openings
-        Ok(self)
+        // We are now convinced the circuit is satisfied so long as the
+        // polynomial commitments open to the correct values.
+        CS::multi_prepare(&queries, transcript).map_err(|_| Error::Opening)
     }
 
     /// This function verifies that a folde trace satisfies the relaxed
@@ -196,8 +420,8 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
             beta,
             gamma,
             theta,
-            y,
             trash_challenge,
+            y,
             ..
         } = folded_witness;
 
@@ -222,12 +446,14 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
             permutation_pk_cosets,
         );
 
-        let beta_powers = pow_vec(&self.beta_powers);
+        // let beta_coeffs: Vec<F> = vec![self.beta.clone(); 1 << K];
+        let beta_coeffs: Vec<F> = eval_lagrange_on_beta(vk.get_domain(), &self.beta);
+
         let expected_result = witness_poly
             .values
             .into_par_iter()
-            .zip(beta_powers.par_iter())
-            .map(|(witness, beta_pow)| witness * beta_pow)
+            .zip(beta_coeffs.par_iter())
+            .map(|(witness, beta_coeffs)| witness * beta_coeffs)
             .reduce(|| F::ZERO, |a, b| a + b);
 
         if expected_result == self.error_term {
@@ -255,17 +481,7 @@ fn fold_traces<F: WithSmallOrderMulGroup<3>, PCS: PolynomialCommitmentScheme<F>>
         .map(|p| dk_domain.lagrange_to_coeff(p))
         .collect::<Vec<_>>();
 
-    let buffer = VerifierFoldingTrace::init(
-        traces[0].fixed_commitments.len(),
-        traces[0].advice_commitments[0].len(),
-        traces[0].instance_polys[0][0].len(), // todo: this is a hack. Do properly.
-        traces[0].lookups[0].len(),
-        traces[0].trashcans[0].len(),
-        traces[0].permutations[0].permutation_product_commitments.len(),
-        traces[0].challenges.len(),
-        traces[0].theta.len(),
-        traces[0].y[0].len(),
-    );
+    let buffer = VerifierFoldingTrace::with_same_dimensions(traces[0]);
     let lagranges_in_gamma = lagrange_polys
         .iter()
         .map(|poly| eval_polynomial(poly, *gamma))

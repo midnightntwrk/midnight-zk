@@ -367,11 +367,7 @@ impl<F: Field, B: PolynomialRepresentation> Add<Polynomial<F, B>> for Polynomial
     type Output = Polynomial<F, B>;
 
     fn add(mut self, rhs: Polynomial<F, B>) -> Polynomial<F, B> {
-        parallelize(&mut self.values, |lhs, start| {
-            for (lhs, rhs) in lhs.iter_mut().zip(rhs.values[start..].iter()) {
-                *lhs += *rhs;
-            }
-        });
+        self += &rhs;
 
         self
     }

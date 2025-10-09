@@ -11,13 +11,12 @@ use midnight_circuits::{
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
+    poly::commitment::Guard,
+    protogalaxy::{prover::ProtogalaxyProver, verifier::ProtogalaxyVerifierOneShot},
     transcript::{CircuitTranscript, Transcript},
 };
 use rand::{rngs::OsRng, Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
-use midnight_proofs::poly::commitment::Guard;
-use midnight_proofs::protogalaxy::prover_oneshot::ProtogalaxyProverOneShot;
-use midnight_proofs::protogalaxy::verifier_oneshot::ProtogalaxyVerifierOneShot;
 
 type F = midnight_curves::Fq;
 type C = midnight_curves::G1Projective;
@@ -43,6 +42,21 @@ impl Relation for ShaPreImageCircuit {
     ) -> Result<(), Error> {
         let witness_bytes = witness.transpose_array();
         let assigned_input = std_lib.assign_many(layouter, &witness_bytes)?;
+        let _output = std_lib.sha256(layouter, &assigned_input)?;
+        let _output = std_lib.sha256(layouter, &assigned_input)?;
+        let _output = std_lib.sha256(layouter, &assigned_input)?;
+        let _output = std_lib.sha256(layouter, &assigned_input)?;
+        let _output = std_lib.sha256(layouter, &assigned_input)?;
+        let _output = std_lib.sha256(layouter, &assigned_input)?;
+        let _output = std_lib.sha256(layouter, &assigned_input)?;
+        let _output = std_lib.sha256(layouter, &assigned_input)?;
+        let _output = std_lib.sha256(layouter, &assigned_input)?;
+        let _output = std_lib.sha256(layouter, &assigned_input)?;
+        let _output = std_lib.sha256(layouter, &assigned_input)?;
+        let _output = std_lib.sha256(layouter, &assigned_input)?;
+        let _output = std_lib.sha256(layouter, &assigned_input)?;
+        let _output = std_lib.sha256(layouter, &assigned_input)?;
+        let _output = std_lib.sha256(layouter, &assigned_input)?;
         let _output = std_lib.sha256(layouter, &assigned_input)?;
         // output.iter().try_for_each(|b| std_lib.constrain_as_public_input(layouter,
         // b))
@@ -72,9 +86,9 @@ impl Relation for ShaPreImageCircuit {
 }
 
 fn main() {
-    const NB_FOLDED: usize = 4; // number of folding instances
+    const NB_FOLDED: usize = 8; // number of folding instances
 
-    const K: u32 = 13;
+    const K: u32 = 15;
     let srs = filecoin_srs(K);
 
     let relation = ShaPreImageCircuit;
@@ -94,7 +108,7 @@ fn main() {
     // Normal proofs. We first generate normal proofs to test performance
     let normal_proving = Instant::now();
     for (idx, witness) in witness.iter().enumerate() {
-        compact_std_lib::prove::<ShaPreImageCircuit, blake2b_simd::State>(
+        let normal_proof = compact_std_lib::prove::<ShaPreImageCircuit, blake2b_simd::State>(
             &srs,
             &pk,
             &relation,
@@ -103,16 +117,26 @@ fn main() {
             OsRng,
         )
         .expect("Proof generation should not fail");
+        println!("Proof size: {:?}", normal_proof.len());
         circuits.push(MidnightCircuit::new(&relation, (), *witness));
         formatted_instances.push(vec![ShaPreImageCircuit::format_instance(&())]);
-        formatted_committed_instance.push(vec![ShaPreImageCircuit::format_committed_instances(witness)]);
+        formatted_committed_instance.push(vec![ShaPreImageCircuit::format_committed_instances(
+            witness,
+        )]);
         formatted_committed_instance[idx].push(ShaPreImageCircuit::format_instance(&()));
     }
-    let formatted_instances = formatted_instances.iter().map(|a| a.iter().map(|b| b.as_slice()).collect::<Vec<_>>()).collect::<Vec<_>>();
+    let formatted_instances = formatted_instances
+        .iter()
+        .map(|a| a.iter().map(|b| b.as_slice()).collect::<Vec<_>>())
+        .collect::<Vec<_>>();
     let formatted_instances = formatted_instances.iter().map(|a| a.as_slice()).collect::<Vec<_>>();
 
-    let formatted_committed_instance = formatted_committed_instance.iter().map(|a| a.iter().map(|b| b.as_slice()).collect::<Vec<_>>()).collect::<Vec<_>>();
-    let formatted_committed_instance = formatted_committed_instance.iter().map(|a| a.as_slice()).collect::<Vec<_>>();
+    let formatted_committed_instance = formatted_committed_instance
+        .iter()
+        .map(|a| a.iter().map(|b| b.as_slice()).collect::<Vec<_>>())
+        .collect::<Vec<_>>();
+    let formatted_committed_instance =
+        formatted_committed_instance.iter().map(|a| a.as_slice()).collect::<Vec<_>>();
     println!(
         "Time to generate {} proofs: {:?}",
         NB_FOLDED,
@@ -122,7 +146,7 @@ fn main() {
     // Fold proofs. We first initialise folding with the first circuit
     let now = Instant::now();
     let mut transcript = CircuitTranscript::<PoseidonState<F>>::init();
-    ProtogalaxyProverOneShot::<_, _, { K as usize }>::fold(
+    ProtogalaxyProver::<_, _, { K as usize }>::fold(
         &srs,
         pk.pk().clone(),
         circuits,
@@ -135,9 +159,10 @@ fn main() {
 
     let folding_time = now.elapsed().as_millis();
     println!("Time for folding: {:?}ms", folding_time);
+    let proof = transcript.finalize();
+    println!("Protogalaxy proof size: {:?}", proof.len());
 
-    let mut transcript =
-        CircuitTranscript::<PoseidonState<F>>::init_from_bytes(&transcript.finalize());
+    let mut transcript = CircuitTranscript::<PoseidonState<F>>::init_from_bytes(&proof);
 
     // Now we begin verification
     ProtogalaxyVerifierOneShot::<_, _, { K as usize }>::fold(
@@ -147,8 +172,8 @@ fn main() {
         &mut transcript,
     )
     .expect("Failed - unexpected")
-        .verify(&srs.verifier_params())
-        .expect("Verification failed");
+    .verify(&srs.verifier_params())
+    .expect("Verification failed");
 
     println!("Folding was a success");
 }

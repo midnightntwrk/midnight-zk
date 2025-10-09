@@ -15,35 +15,24 @@ use crate::{
 };
 
 pub mod prover;
-pub mod prover_oneshot;
 pub(crate) mod utils;
 pub mod verifier;
-pub mod verifier_oneshot;
 
 /// Protogalaxy proving key. For the moment we support folding only for the same
 /// circuit.
 #[derive(Clone, Debug)]
 pub struct FoldingPk<F: PrimeField> {
-    /// TODO
-    pub domain: EvaluationDomain<F>,
-    /// TODO
-    pub cs: ConstraintSystem<F>,
-    /// TODO
-    pub l0: Polynomial<F, LagrangeCoeff>,
-    /// TODO
-    pub l_last: Polynomial<F, LagrangeCoeff>,
-    /// TODO
-    pub l_active_row: Polynomial<F, LagrangeCoeff>,
+    pub(crate) domain: EvaluationDomain<F>,
+    pub(crate) cs: ConstraintSystem<F>,
+    pub(crate) l0: Polynomial<F, LagrangeCoeff>,
+    pub(crate) l_last: Polynomial<F, LagrangeCoeff>,
+    pub(crate) l_active_row: Polynomial<F, LagrangeCoeff>,
     // The following three were grouped in a type called permutation::ProverKey.
     // We prefix them here to avoid creating a new type.
-    /// TODO
-    pub permutation_pk_permutations: Vec<Polynomial<F, LagrangeCoeff>>,
-    /// TODO
-    pub permutation_pk_polys: Vec<Polynomial<F, Coeff>>,
-    /// TODO
-    pub permutation_pk_cosets: Vec<Polynomial<F, LagrangeCoeff>>,
-    /// TODO
-    pub ev: Evaluator<F>,
+    pub(crate) permutation_pk_permutations: Vec<Polynomial<F, LagrangeCoeff>>,
+    pub(crate) permutation_pk_polys: Vec<Polynomial<F, Coeff>>,
+    pub(crate) permutation_pk_cosets: Vec<Polynomial<F, LagrangeCoeff>>,
+    pub(crate) ev: Evaluator<F>,
 }
 
 impl<F: PrimeField + WithSmallOrderMulGroup<3>> FoldingPk<F> {
