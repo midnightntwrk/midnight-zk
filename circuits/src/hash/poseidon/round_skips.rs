@@ -47,8 +47,8 @@ type RoundContantsCircuit<F> =
 /// only used in precomputations.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct RoundVarId<F> {
-    var_coeffs: [F; WIDTH + NB_SKIPS_MAX], // Length WIDTH + number of round skips.
-    const_coeffs: [F; WIDTH * (1 + NB_SKIPS_MAX)], // Length 1 + number of round skips.
+    var_coeffs: [F; WIDTH + NB_SKIPS_MAX],
+    const_coeffs: [F; WIDTH * (1 + NB_SKIPS_MAX)],
 }
 
 /// A set of linear combinations representing a set of polynomial identities

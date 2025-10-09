@@ -17,6 +17,7 @@ verification keys break backwards compatibility.
 ### Changed
 * Optimize `bigint_to_fe` [#115](https://github.com/midnightntwrk/midnight-zk/pull/115)
 * Fix `is_equal` and `is_equal_to_fixed` in `native_chip` [#117](https://github.com/midnightntwrk/midnight-zk/pull/117)
+* Adding an additional matrix layer at the beginning of Poseidon for security reasons as advised in Poseidon2's paper [#118](https://github.com/midnightntwrk/midnight-zk/pull/118)
 
 ### Removed
 
