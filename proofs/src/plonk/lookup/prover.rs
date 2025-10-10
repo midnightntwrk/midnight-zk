@@ -166,7 +166,7 @@ impl<F: WithSmallOrderMulGroup<3>> Permuted<F> {
         F: WithSmallOrderMulGroup<3> + FromUniformBytes<64>,
         CS::Commitment: Hashable<T::Hash>,
     {
-        let blinding_factors = pk.vk.cs.blinding_factors();
+        let nr_blinding_factors = pk.vk.cs.nr_blinding_factors();
         // Goal is to compute the products of fractions
         //
         // Numerator: (\theta^{m-1} a_0(\omega^i) + \theta^{m-2} a_1(\omega^i) + ... +
@@ -235,9 +235,9 @@ impl<F: WithSmallOrderMulGroup<3>> Permuted<F> {
             })
             // Take all rows including the "last" row which should
             // be a boolean (and ideally 1, else soundness is broken)
-            .take(pk.vk.n() as usize - blinding_factors)
+            .take(pk.vk.n() as usize - nr_blinding_factors)
             // Chain random blinding factors.
-            .chain((0..blinding_factors).map(|_| F::random(&mut rng)))
+            .chain((0..nr_blinding_factors).map(|_| F::random(&mut rng)))
             .collect::<Vec<_>>();
         assert_eq!(z.len(), pk.vk.n() as usize);
         let z = pk.vk.domain.lagrange_from_vec(z);
@@ -387,8 +387,8 @@ fn permute_expression_pair<F, CS: PolynomialCommitmentScheme<F>, R: RngCore>(
 where
     F: WithSmallOrderMulGroup<3> + Hash + Ord + FromUniformBytes<64>,
 {
-    let blinding_factors = pk.vk.cs.blinding_factors();
-    let usable_rows = pk.vk.n() as usize - (blinding_factors + 1);
+    let nr_blinding_factors = pk.vk.cs.nr_blinding_factors();
+    let usable_rows = pk.vk.n() as usize - (nr_blinding_factors + 1);
 
     let mut permuted_input_expression: Vec<F> = input_expression.to_vec();
     permuted_input_expression.truncate(usable_rows);
@@ -435,8 +435,8 @@ where
     }
     assert!(repeated_input_rows.is_empty());
 
-    permuted_input_expression.extend((0..(blinding_factors + 1)).map(|_| F::random(&mut rng)));
-    permuted_table_coeffs.extend((0..(blinding_factors + 1)).map(|_| F::random(&mut rng)));
+    permuted_input_expression.extend((0..(nr_blinding_factors + 1)).map(|_| F::random(&mut rng)));
+    permuted_table_coeffs.extend((0..(nr_blinding_factors + 1)).map(|_| F::random(&mut rng)));
     assert_eq!(permuted_input_expression.len(), pk.vk.n() as usize);
     assert_eq!(permuted_table_coeffs.len(), pk.vk.n() as usize);
 
