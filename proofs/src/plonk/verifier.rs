@@ -44,7 +44,8 @@ where
         }
     }
 
-    // Check that number of instances matches the expected number of instance columns
+    // Check that number of instances matches the expected number of instance
+    // columns
     for (committed_instances, instances) in committed_instances.iter().zip(instances.iter()) {
         if committed_instances.len() + instances.len() != vk.cs.num_instance_columns {
             return Err(Error::InvalidInstances);
@@ -100,7 +101,8 @@ where
     // Sample theta challenge for batching independent lookup columns
     let theta: F = transcript.squeeze_challenge();
 
-    // Lookup argument: Read commitments to permuted input and table columns from the transcript
+    // Lookup argument: Read commitments to permuted input and table columns from
+    // the transcript
     let lookup_permuted_commitments = (0..num_proofs)
         .map(|_| -> Result<Vec<_>, _> {
             vk.cs
@@ -117,7 +119,8 @@ where
     // Sample gamma challenge for permutation and lookup argument
     let gamma: F = transcript.squeeze_challenge();
 
-    // Permutation argument: Read commitments to limbs of product polynomial from the transcript
+    // Permutation argument: Read commitments to limbs of product polynomial from
+    // the transcript
     let permutation_product_commitments = (0..num_proofs)
         .map(|_| vk.cs.permutation.read_product_commitments(vk, transcript))
         .collect::<Result<Vec<_>, _>>()?;
@@ -275,7 +278,8 @@ where
         y,
     } = trace;
 
-    // Read commitments to limbs of the quotient polynomial h(X) = nu(X)/(X^n-1) from the transcript
+    // Read commitments to limbs of the quotient polynomial h(X) = nu(X)/(X^n-1)
+    // from the transcript
     let limb_commitments = read_n(transcript, vk.domain.get_quotient_poly_degree())?;
 
     // Sample evaluation challenge x
@@ -335,7 +339,7 @@ where
     // `num_fixed_columns` - `num_simple_selectors` evals and fill up the
     // "missing" places with 1 (the transcript doesn't contain evals corresp.
     // to simple selectors)
-    let mut fixed_evals = read_n(transcript, vk.cs.num_evaluated_fixed_queries)?;
+    let mut fixed_evals = read_n(transcript, vk.cs.num_evaluated_fixed_queries())?;
     for (idx, (col, _)) in vk.cs.fixed_queries().iter().enumerate() {
         if vk.cs.indices_simple_selectors.contains(&col.index()) {
             fixed_evals.insert(idx, F::ONE)
@@ -470,9 +474,9 @@ where
         }
     }
 
-    // All fully evaluated identities (i.e., identities without simple selectors) are part
-    // of the constant term of the linearization poly, and thus need to be multiplied with
-    // the zero commitment
+    // All fully evaluated identities (i.e., identities without simple selectors)
+    // are part of the constant term of the linearization poly, and thus need to
+    // be multiplied with the constant commitment
     let g1 = CS::constant_commitment();
 
     // Prepare linearization commitment for MSM
