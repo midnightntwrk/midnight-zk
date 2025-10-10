@@ -34,6 +34,11 @@ pub trait CircuitCurve: Curve + Default {
     /// Cofactor of the curve.
     const COFACTOR: u128 = 1;
 
+    /// How many bits are needed to represent an element of the scalar field of
+    /// the curve subgroup. This is the log2 rounded up of the curve order
+    /// divided by the cofactor.
+    const NUM_BITS_SUBGROUP: u32 = Self::Scalar::NUM_BITS - log2_floor(Self::COFACTOR);
+
     /// Returns the coordinates.
     fn coordinates(&self) -> Option<(Self::Base, Self::Base)>;
 
@@ -81,6 +86,7 @@ impl CircuitCurve for JubjubExtended {
     type Base = BlsScalar;
     type CryptographicGroup = JubjubSubgroup;
     const COFACTOR: u128 = 8;
+    const NUM_BITS_SUBGROUP: u32 = 252;
 
     fn coordinates(&self) -> Option<(Self::Base, Self::Base)> {
         Some((self.to_affine().get_u(), self.to_affine().get_v()))
@@ -215,6 +221,8 @@ use halo2curves::pasta::{
     vesta::{Affine as VestaAffine, Point as Vesta},
     Fp as VestaScalar, Fq as VestaBase,
 };
+
+use crate::utils::util::log2_floor;
 
 impl CircuitCurve for Vesta {
     type Base = VestaBase;
