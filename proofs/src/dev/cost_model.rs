@@ -575,6 +575,17 @@ impl<F: Field> Assignment<F> for DevAssembly<F> {
     }
 }
 
+/// This function makes a dummy pass on the synthesize function associated to
+/// the given circuit. This could be useful for checking that the circuit is
+/// well-formed and
+pub fn dummy_synthesize_run<F, C>(circuit: &C) -> Result<(), Error>
+where
+    F: Ord + Field + FromUniformBytes<64>,
+    C: Circuit<F>,
+{
+    DevAssembly::run(circuit).map(|_| ())
+}
+
 #[cfg(test)]
 mod tests {
     use blake2b_simd::State;
