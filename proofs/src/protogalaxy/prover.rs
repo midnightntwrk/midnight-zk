@@ -6,8 +6,8 @@ use std::{hash::Hash, marker::PhantomData, time::Instant};
 use std::ops::{Deref, DerefMut};
 
 use ff::{FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
-use rand_core::{CryptoRng, RngCore};
-use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, IntoParallelRefMutIterator, ParallelIterator};
+use rand_core::{CryptoRng, OsRng, RngCore};
+use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, IntoParallelRefMutIterator, ParallelIterator};
 
 use crate::{
     plonk::{
@@ -143,11 +143,16 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         let second_part_of_proof = Instant::now();
         // Now we need to generate the last proof.
         let error_lagrange: Polynomial<F, LagrangeCoeff> = Polynomial {
-            values: error_terms.clone(),
+            values: error_terms,
             _marker: PhantomData,
         };
-        let error_coeff = pk.vk.get_domain().lagrange_to_coeff(error_lagrange.clone());
         let committed_error = CS::commit_lagrange(params, &error_lagrange);
+
+        println!("Second part of proof");
+
+        println!("    Commit error lagrange: {:?}", second_part_of_proof.elapsed().as_millis());
+        let error_coeff = pk.vk.get_domain().lagrange_to_coeff(error_lagrange);
+        println!("    Error to coeff: {:?}", second_part_of_proof.elapsed().as_millis());
 
         transcript.write(&committed_error)?;
 
@@ -171,8 +176,10 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         pk_final_proof.fixed_polys = fixed_polys;
         pk_final_proof.fixed_values = fixed_values;
         pk_final_proof.fixed_cosets = fixed_cosets;
+        println!("    Fix PK: {:?}", second_part_of_proof.elapsed().as_millis());
 
-        let folded_trace = ProverTrace::from_folding_trace(folded_trace.clone());
+        let folded_trace = ProverTrace::from_folding_trace(folded_trace);
+        println!("    Reconstruct final trace: {:?}", second_part_of_proof.elapsed().as_millis());
 
         // Now we need to finalise the proof. We do not use the finalise_proof function
         // as we need to 'correct' the plonk identity, with the error term from
@@ -180,6 +187,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
 
         let domain = pk.get_vk().get_domain();
         let h_poly = crate::plonk::compute_h_poly(&pk_final_proof, &folded_trace);
+        println!("    Final H: {:?}", second_part_of_proof.elapsed().as_millis());
 
         let ProverTrace {
             advice_polys,
@@ -195,6 +203,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         let correction = domain.coeff_to_extended(error_coeff.clone());
         let h = h_poly - &correction;
         let vanishing = vanishing.construct::<CS, T>(params, domain, h, transcript)?;
+        println!("    Vanishing: {:?}", second_part_of_proof.elapsed().as_millis());
 
         let x: F = transcript.squeeze_challenge();
 
@@ -246,6 +255,8 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
             })
             .collect::<Result<Vec<_>, _>>()?;
 
+        println!("    Evals to transcript: {:?}", second_part_of_proof.elapsed().as_millis());
+
         let mut queries = compute_queries(
             &pk_final_proof,
             nb_committed_instances,
@@ -269,9 +280,11 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
             poly: &error_coeff,
         });
 
+        println!("    Compute queries: {:?}", second_part_of_proof.elapsed().as_millis());
+
         let res = CS::multi_open(params, &queries, transcript).map_err(|_| Error::ConstraintSystemFailure);
 
-        println!("Second part of proof: {:?}", second_part_of_proof.elapsed().as_millis());
+        println!("    Multi open: {:?}", second_part_of_proof.elapsed().as_millis());
         res
     }
 
@@ -357,8 +370,10 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
 
         let now = Instant::now();
 
-        let transposed_trace = (0..domain.extended_len()).into_par_iter().map(|_| FoldingProverTrace::with_same_dimensions(traces[0])).collect::<Vec<_>>();
+        let transposed_trace = (0..domain.extended_len()).into_par_iter().map(|_| FoldingProverTrace::unsafe_with_same_dimensions(&traces[0])).collect::<Vec<_>>();
 
+        println!("Initialise transposed trace: {:?}", now.elapsed());
+        let now = Instant::now();
         /// A no-op "lock" that just wraps a type for API compatibility.
         /// It implements `Sync` unsafely, asserting that the user ensures thread safety.
         pub struct NullLock<T>(pub T);
@@ -393,21 +408,22 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         println!("Initialise transposed trace: {:?}", now.elapsed());
         let now = Instant::now();
 
+        let extended_len = domain.extended_len();
 
         #[allow(clippy::needless_range_loop)]
         (0..big_domain_size)
             .into_par_iter()
             .map(|_| (
-                vec![vec![F::ZERO; domain.extended_len()]; len_fixed],
-                vec![vec![F::ZERO; domain.extended_len()]; len_advice],
-                vec![vec![F::ZERO; domain.extended_len()]; len_instance],
-                vec![vec![F::ZERO; domain.extended_len()]; len_instance],
-                vec![vec![F::ZERO; domain.extended_len()]; len_lookups],
-                vec![vec![F::ZERO; domain.extended_len()]; len_lookups],
-                vec![vec![F::ZERO; domain.extended_len()]; len_lookups],
-                vec![vec![F::ZERO; domain.extended_len()]; len_permutation_sets],
-                vec![vec![F::ZERO; domain.extended_len()]; len_trash_cans],
-                vec![F::ZERO; domain.extended_len()],
+                vec![F::ZERO; extended_len * len_fixed],
+                vec![F::ZERO; extended_len * len_advice],
+                vec![F::ZERO; extended_len * len_instance],
+                vec![F::ZERO; extended_len * len_instance],
+                vec![F::ZERO; extended_len * len_lookups],
+                vec![F::ZERO; extended_len * len_lookups],
+                vec![F::ZERO; extended_len * len_lookups],
+                vec![F::ZERO; extended_len * len_permutation_sets],
+                vec![F::ZERO; extended_len * len_trash_cans],
+                vec![F::ZERO; extended_len],
             ))
             .enumerate()
             .for_each(|
@@ -416,91 +432,69 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
             )
         | {
             for j in 0..len_fixed {
-                fixed[j][..k].iter_mut().enumerate().for_each(|(idx, val)| *val = traces[idx].fixed_polys[j][i]);
-                domain.back_and_forth_fft(&mut fixed[j]);
+                fixed[j * extended_len..j * extended_len + k].iter_mut().enumerate().for_each(|(idx, val)| *val = traces[idx].fixed_polys[j][i]);
+                domain.back_and_forth_fft(&mut fixed[j * extended_len..(j + 1) * extended_len]);
             }
 
-            for j in 0..len_advice {
-                advice[j][..k].iter_mut().enumerate().for_each(|(idx, val)| *val = traces[idx].advice_polys[0][j][i]);
-                domain.back_and_forth_fft(&mut advice[j]);
-            }
+                for j in 0..len_advice {
+                    advice[j * extended_len..j * extended_len + k].iter_mut().enumerate().for_each(|(idx, val)| *val = traces[idx].advice_polys[0][j][i]);
+                    domain.back_and_forth_fft(&mut advice[j * extended_len..(j + 1) * extended_len]);
+                }
 
-            // TODO: We only need to keep one for folding
-            for j in 0..len_instance {
-                instance_val[j][..k].iter_mut().enumerate().for_each(|(idx, val)| *val = traces[idx].instance_values[0][j][i]);
-                domain.back_and_forth_fft(&mut instance_val[j]);
+                // TODO: We only need to keep one for folding
+                for j in 0..len_instance {
+                    instance_val[j * extended_len..j * extended_len + k].iter_mut().enumerate().for_each(|(idx, val)| *val = traces[idx].instance_values[0][j][i]);
+                    domain.back_and_forth_fft(&mut instance_val[j * extended_len..(j + 1) * extended_len]);
 
-                instance_polys[j][..k].iter_mut().enumerate().for_each(|(idx, val)| *val = traces[idx].instance_polys[0][j][i]);
-                domain.back_and_forth_fft(&mut instance_polys[j]);
-            }
+                    instance_polys[j * extended_len..j * extended_len + k].iter_mut().enumerate().for_each(|(idx, val)| *val = traces[idx].instance_polys[0][j][i]);
+                    domain.back_and_forth_fft(&mut instance_polys[j * extended_len..(j + 1) * extended_len]);
+                }
 
-            for j in 0..len_lookups {
-                // Permuted input poly
-                permuted_in[j][..k].iter_mut().enumerate().for_each(|(idx, val)| *val = traces[idx].lookups[0][j].permuted_input_poly[i]);
-                domain.back_and_forth_fft(&mut permuted_in[j]);
+                for j in 0..len_lookups {
+                    // Permuted input poly
+                    permuted_in[j * extended_len..j * extended_len + k].iter_mut().enumerate().for_each(|(idx, val)| *val = traces[idx].lookups[0][j].permuted_input_poly[i]);
+                    domain.back_and_forth_fft(&mut permuted_in[j * extended_len..(j + 1) * extended_len]);
 
-                // Product poly
-                product_poly[j][..k].iter_mut().enumerate().for_each(|(idx, val)| *val = traces[idx].lookups[0][j].product_poly[i]);
-                domain.back_and_forth_fft(&mut product_poly[j]);
+                    // Product poly
+                    product_poly[j * extended_len..j * extended_len + k].iter_mut().enumerate().for_each(|(idx, val)| *val = traces[idx].lookups[0][j].product_poly[i]);
+                    domain.back_and_forth_fft(&mut product_poly[j * extended_len..(j + 1) * extended_len]);
 
-                // Permuted table poly
-                permuted_table[j][..k].iter_mut().enumerate().for_each(|(idx, val)| *val = traces[idx].lookups[0][j].permuted_table_poly[i]);
-                domain.back_and_forth_fft(&mut permuted_table[j]);
-            }
+                    // Permuted table poly
+                    permuted_table[j * extended_len..j * extended_len + k].iter_mut().enumerate().for_each(|(idx, val)| *val = traces[idx].lookups[0][j].permuted_table_poly[i]);
+                    domain.back_and_forth_fft(&mut permuted_table[j * extended_len..(j + 1) * extended_len]);
+                }
 
-            for j in 0..len_permutation_sets {
-                permutation[j][..k].iter_mut().enumerate().for_each(|(idx, val)| *val = traces[idx].permutations[0].sets[j].permutation_product_poly[i]);
-                domain.back_and_forth_fft(&mut permutation[j]);
-            }
+                for j in 0..len_permutation_sets {
+                    permutation[j * extended_len..j * extended_len + k].iter_mut().enumerate().for_each(|(idx, val)| *val = traces[idx].permutations[0].sets[j].permutation_product_poly[i]);
+                    domain.back_and_forth_fft(&mut permutation[j * extended_len..(j + 1) * extended_len]);
+                }
 
-            for j in 0..len_trash_cans {
-                trash[j][..k].iter_mut().enumerate().for_each(|(idx, val)| *val = traces[idx].trashcans[0][j].trash_poly[i]);
-                domain.back_and_forth_fft(&mut trash[j]);
-            }
+                for j in 0..len_trash_cans {
+                    trash[j * extended_len..j * extended_len + k].iter_mut().enumerate().for_each(|(idx, val)| *val = traces[idx].trashcans[0][j].trash_poly[i]);
+                    domain.back_and_forth_fft(&mut trash[j * extended_len..]);
+                }
 
-            // Vanishing
-            vanishing[..k].iter_mut().enumerate().for_each(|(idx, val)| *val = traces[idx].vanishing.random_poly[i]);
-            domain.back_and_forth_fft(&mut vanishing);
-
-                // (fixed, advice, instance_val, instance_polys, permuted_in, product_poly, permuted_table, permutation, trash, vanishing)
+                // Vanishing
+                vanishing[..k].iter_mut().enumerate().for_each(|(idx, val)| *val = traces[idx].vanishing.random_poly[i]);
+                domain.back_and_forth_fft(&mut vanishing);
 
                 let mut transposed_trace = buffer.lock();
 
-
                 for new_i in 0..domain.extended_len() {
-                    transposed_trace[new_i].fixed_polys.iter_mut().enumerate().for_each(|(j, fixed_poly)| fixed_poly[i] = fixed[j][new_i]);
-                    transposed_trace[new_i].advice_polys[0].iter_mut().enumerate().for_each(|(j, advice_poly)| advice_poly[i] = advice[j][new_i]);
-                    transposed_trace[new_i].instance_values[0].iter_mut().enumerate().for_each(|(j, instance_value)| instance_value[i] = instance_val[j][new_i]);
-                    transposed_trace[new_i].instance_polys[0].iter_mut().enumerate().for_each(|(j, instance_poly)| instance_poly[i] = instance_polys[j][new_i]);
-                    transposed_trace[new_i].lookups[0].iter_mut().enumerate().for_each(|(j, lookup)| lookup.permuted_input_poly[i] = permuted_in[j][new_i]);
-                    transposed_trace[new_i].lookups[0].iter_mut().enumerate().for_each(|(j, lookup)| lookup.product_poly[i] = product_poly[j][new_i]);
-                    transposed_trace[new_i].lookups[0].iter_mut().enumerate().for_each(|(j, lookup)| lookup.permuted_table_poly[i] = permuted_table[j][new_i]);
-                    transposed_trace[new_i].permutations[0].sets.iter_mut().enumerate().for_each(|(j, perm_set)| perm_set.permutation_product_poly[i] = permutation[j][new_i]);
-                    transposed_trace[new_i].trashcans[0].iter_mut().enumerate().for_each(|(j, trash_can)| trash_can.trash_poly[i] = trash[j][new_i]);
+                    transposed_trace[new_i].fixed_polys.iter_mut().enumerate().for_each(|(j, fixed_poly)| fixed_poly[i] = fixed[j * extended_len + new_i]);
+                    transposed_trace[new_i].advice_polys[0].iter_mut().enumerate().for_each(|(j, advice_poly)| advice_poly[i] = advice[j * extended_len + new_i]);
+                    transposed_trace[new_i].instance_values[0].iter_mut().enumerate().for_each(|(j, instance_value)| instance_value[i] = instance_val[j * extended_len + new_i]);
+                    transposed_trace[new_i].instance_polys[0].iter_mut().enumerate().for_each(|(j, instance_poly)| instance_poly[i] = instance_polys[j * extended_len + new_i]);
+                    transposed_trace[new_i].lookups[0].iter_mut().enumerate().for_each(|(j, lookup)| lookup.permuted_input_poly[i] = permuted_in[j * extended_len + new_i]);
+                    transposed_trace[new_i].lookups[0].iter_mut().enumerate().for_each(|(j, lookup)| lookup.product_poly[i] = product_poly[j * extended_len + new_i]);
+                    transposed_trace[new_i].lookups[0].iter_mut().enumerate().for_each(|(j, lookup)| lookup.permuted_table_poly[i] = permuted_table[j * extended_len + new_i]);
+                    transposed_trace[new_i].permutations[0].sets.iter_mut().enumerate().for_each(|(j, perm_set)| perm_set.permutation_product_poly[i] = permutation[j * extended_len + new_i]);
+                    transposed_trace[new_i].trashcans[0].iter_mut().enumerate().for_each(|(j, trash_can)| trash_can.trash_poly[i] = trash[j * extended_len + new_i]);
 
                     transposed_trace[new_i].vanishing.random_poly[i] = vanishing[new_i];
                 }
         });
-            // .collect::<Vec<_>>();
 
-        // for new_i in 0..domain.extended_len() {
-        //     foo.par_iter().enumerate().for_each(|(old_i, row)| {
-        //         let mut transposed_trace = buffer.lock();
-        //
-        //         transposed_trace[new_i].fixed_polys.iter_mut().enumerate().for_each(|(j, fixed_poly)| fixed_poly[old_i] = row.0[j][new_i]);
-        //         transposed_trace[new_i].advice_polys[0].iter_mut().enumerate().for_each(|(j, advice_poly)| advice_poly[old_i] = row.1[j][new_i]);
-        //         transposed_trace[new_i].instance_values[0].iter_mut().enumerate().for_each(|(j, instance_value)| instance_value[old_i] = row.2[j][new_i]);
-        //         transposed_trace[new_i].instance_polys[0].iter_mut().enumerate().for_each(|(j, instance_poly)| instance_poly[old_i] = row.3[j][new_i]);
-        //         transposed_trace[new_i].lookups[0].iter_mut().enumerate().for_each(|(j, lookup)| lookup.permuted_input_poly[old_i] = row.4[j][new_i]);
-        //         transposed_trace[new_i].lookups[0].iter_mut().enumerate().for_each(|(j, lookup)| lookup.product_poly[old_i] = row.5[j][new_i]);
-        //         transposed_trace[new_i].lookups[0].iter_mut().enumerate().for_each(|(j, lookup)| lookup.permuted_table_poly[old_i] = row.6[j][new_i]);
-        //         transposed_trace[new_i].permutations[0].sets.iter_mut().enumerate().for_each(|(j, perm_set)| perm_set.permutation_product_poly[old_i] = row.7[j][new_i]);
-        //         transposed_trace[new_i].trashcans[0].iter_mut().enumerate().for_each(|(j, trash_can)| trash_can.trash_poly[old_i] = row.8[j][new_i]);
-        //
-        //         transposed_trace[new_i].vanishing.random_poly[old_i] = row.9[new_i];
-        //     });
-        // }
-        // drop(foo);
         println!("Fill in big_trace: {:?}", now.elapsed());
         let now = Instant::now();
 
@@ -604,6 +598,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
     /// batched values computed above.
     /// This returns the aggregated polynomial G, as well as the vector of
     /// errors.
+    #[allow(unsafe_code)]
     fn compute_poly_g(
         folding_pk: &FoldingPk<F>,
         domain: &EvaluationDomain<F>,
@@ -616,8 +611,13 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
 
         // In the future, we'll output simply a commitment to it, but
         // perhaps at an upper level function.
-        let mut g_poly_unbatched =
-            vec![vec![F::ZERO; folding_pk.domain.n as usize]; lifted_folding_trace.len()];
+        let mut g_poly_unbatched = (0..lifted_folding_trace.len()).map(|_| {
+            let mut values = Vec::<F>::with_capacity(folding_pk.domain.n as usize);
+            unsafe {
+                values.set_len(folding_pk.domain.n as usize);
+            }
+            values
+        }).collect::<Vec<Vec<F>>>();
         let g_poly = g_poly_unbatched
             .par_iter_mut()
             .enumerate()
@@ -626,11 +626,10 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
                 *g_poly = witness_poly.values;
 
                 g_poly
-                    .iter()
-                    .zip(beta_coeffs.iter())
-                    .map(|(witness, beta_coef)| *witness * beta_coef)
-                    .reduce(|a, b| a + b)
-                    .unwrap()
+                    .par_iter()
+                    .enumerate()
+                    .map(|(idx, witness)| *witness * beta_coeffs[idx])
+                    .reduce(|| F::ZERO, |a, b| a + b)
             })
             .collect();
 
@@ -661,7 +660,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
             .map(|p| dk_domain.lagrange_to_coeff(p))
             .collect::<Vec<_>>();
 
-        let buffer = FoldingProverTrace::with_same_dimensions(traces[0]);
+        let buffer = FoldingProverTrace::unsafe_with_same_dimensions(&traces[0]);
         let lagranges_in_gamma = lagrange_polys
             .iter()
             .map(|poly| eval_polynomial(poly, *gamma))
@@ -671,7 +670,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
     }
 }
 
-use crate::transcript::{Hashable, Sampleable, Transcript};
+use crate::transcript::{CircuitTranscript, Hashable, Sampleable, Transcript};
 
 /// Computes the error terms t_i = f_i(w(\gamma)) where w(X) = ∑_{j ∈ [k]}
 /// Lⱼ(X)·ωⱼ is the polynomial that interpolates the witnesses.

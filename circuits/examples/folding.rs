@@ -18,6 +18,9 @@ use midnight_proofs::{
 use rand::{rngs::OsRng, Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 
+// #[global_allocator]
+// static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+
 type F = midnight_curves::Fq;
 type C = midnight_curves::G1Projective;
 

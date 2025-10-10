@@ -163,6 +163,54 @@ pub fn batch_traces<F: PrimeField + WithSmallOrderMulGroup<3>>(
 impl<F: PrimeField> FoldingProverTrace<F> {
     /// Initialises a `FoldingProverTrace` with the same dimensions as the given
     /// trace.
+    #[allow(unsafe_code)]
+    pub(crate) fn unsafe_with_same_dimensions(trace: &Self) -> Self {
+        let trace_domain_size = trace.fixed_polys[0].num_coeffs();
+
+        let lookups = (0..trace.lookups[0].len()).map(|_|{
+            lookup::prover::CommittedLagrange {
+                permuted_input_poly: Polynomial::unsafe_init(trace_domain_size),
+                permuted_table_poly: Polynomial::unsafe_init(trace_domain_size),
+                product_poly: Polynomial::unsafe_init(trace_domain_size),
+            }
+        }).collect();
+
+        let trashcans = (0..trace.trashcans[0].len()).map(|_| {
+            trash::prover::CommittedLagrange {
+                trash_poly: Polynomial::unsafe_init(trace_domain_size),
+            }
+        }).collect();
+
+        let mut permutation_sets = (0..trace.permutations[0].sets.len()).map(|_| {
+            permutation::prover::CommittedSet {
+                permutation_product_poly: Polynomial::unsafe_init(trace_domain_size),
+            }
+        }).collect();
+
+        FoldingProverTrace {
+            fixed_polys: (0..trace.fixed_polys.len()).map(|_| Polynomial::unsafe_init(trace_domain_size)).collect(),
+            advice_polys: vec![(0..trace.advice_polys[0].len()).map(|_| Polynomial::unsafe_init(trace_domain_size)).collect()],
+            instance_polys: vec![(0..trace.instance_polys[0].len()).map(|_| Polynomial::unsafe_init(trace_domain_size)).collect()],
+            instance_values: vec![(0..trace.instance_values[0].len()).map(|_| Polynomial::unsafe_init(trace_domain_size)).collect()],
+            vanishing: vanishing::prover::Committed {
+                random_poly: Polynomial::unsafe_init(trace_domain_size),
+            },
+            lookups: vec![lookups],
+            permutations: vec![permutation::prover::Committed {
+                sets: permutation_sets,
+            }],
+            trashcans: vec![trashcans],
+            challenges: vec![F::ZERO; trace.challenges.len()],
+            beta: F::ZERO,
+            gamma: F::ZERO,
+            trash_challenge: F::ZERO,
+            theta: vec![F::ZERO; trace.theta.len()],
+            y: vec![vec![F::ZERO; trace.y[0].len()]],
+        }
+    }
+
+    /// Initialises a `FoldingProverTrace` with the same dimensions as the given
+    /// trace.
     pub(crate) fn with_same_dimensions(trace: &Self) -> Self {
         let trace_domain_size = trace.fixed_polys[0].num_coeffs();
         let mut lookups = Vec::with_capacity(trace.lookups[0].len());

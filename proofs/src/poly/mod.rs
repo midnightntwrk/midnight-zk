@@ -183,6 +183,21 @@ impl<F: PrimeField, B> Polynomial<F, B> {
             _marker: PhantomData,
         }
     }
+
+    /// Allocates memory without filling. This is only safe if you immediately
+    /// fill in the values (i.e., you don't need the zeroes).
+    #[allow(unsafe_code)]
+    pub fn unsafe_init(num_coeffs: usize) -> Self {
+        let mut values = Vec::<F>::with_capacity(num_coeffs);
+        unsafe {
+            values.set_len(num_coeffs);
+        }
+
+        Polynomial {
+            values,
+            _marker: PhantomData
+        }
+    }
 }
 
 impl<F: PrimeField, B> Neg for Polynomial<F, B> {
