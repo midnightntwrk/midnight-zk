@@ -36,6 +36,11 @@ pub fn qnr<F: PrimeField>() -> F {
     F::MULTIPLICATIVE_GENERATOR
 }
 
+/// Logarithm in base 2, rounded down.
+pub const fn log2_floor(x: u128) -> u32 {
+    127 - x.leading_zeros()
+}
+
 pub fn big_to_fe<F: PrimeField>(e: BigUint) -> F {
     let modulus = modulus::<F>();
     let e = e % modulus;

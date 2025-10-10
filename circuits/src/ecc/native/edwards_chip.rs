@@ -122,7 +122,7 @@ impl<C: EdwardsCurve> Instantiable<C::Base> for AssignedScalarOfNativeCurve<C> {
     fn as_public_input(element: &C::Scalar) -> Vec<C::Base> {
         // We aggregate the bits while they fit in a single `C::Base` value.
         let nb_bits_per_batch = C::Base::NUM_BITS as usize - 1;
-        fe_to_le_bits(element, Some(C::Base::NUM_BITS as usize))
+        fe_to_le_bits(element, Some(C::NUM_BITS_SUBGROUP as usize))
             .chunks(nb_bits_per_batch)
             .map(le_bits_to_field_elem)
             .collect()
