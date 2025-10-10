@@ -1,23 +1,21 @@
 //! TODO: We have a lot of duplicated code here. We can simplify this.
 
 use std::{hash::Hash, iter};
+use std::marker::PhantomData;
 
 use ff::{FromUniformBytes, WithSmallOrderMulGroup};
-use rayon::iter::{
-    IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
-};
 
 use crate::{
     plonk::{
         parse_trace,
-        traces::{FoldingProverTrace, VerifierFoldingTrace},
-        Error, Evaluator, VerifyingKey,
+        traces::{VerifierFoldingTrace},
+        Error, VerifyingKey,
     },
     poly::{
-        commitment::PolynomialCommitmentScheme, EvaluationDomain, LagrangeCoeff, Polynomial,
+        commitment::PolynomialCommitmentScheme, EvaluationDomain,
         VerifierQuery,
     },
-    protogalaxy::{prover::eval_lagrange_on_beta, utils::linear_combination},
+    protogalaxy::{utils::linear_combination},
     transcript::{read_n, Hashable, Sampleable, Transcript},
     utils::arithmetic::{compute_inner_product, eval_polynomial},
 };
@@ -29,9 +27,7 @@ pub struct ProtogalaxyVerifierOneShot<
     CS: PolynomialCommitmentScheme<F>,
     const K: usize,
 > {
-    pub(crate) verifier_folding_trace: VerifierFoldingTrace<F, CS>,
-    pub(crate) error_term: F,
-    pub(crate) beta: F,
+    _marker: (PhantomData<F>, PhantomData<CS>),
 }
 
 impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: usize>
@@ -385,83 +381,83 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         CS::multi_prepare(&queries, transcript).map_err(|_| Error::Opening)
     }
 
-    /// This function verifies that a folde trace satisfies the relaxed
-    /// relation.
-    // TODO: need to verify that the commitment is correct as well.
-    #[allow(clippy::too_many_arguments)]
-    pub fn is_sat(
-        &self,
-        params: &CS::Parameters,
-        nb_committed_instances: usize,
-        vk: &VerifyingKey<F, CS>,
-        evaluator: &Evaluator<F>,
-        folded_witness: FoldingProverTrace<F>,
-        l0: &Polynomial<F, LagrangeCoeff>,
-        l_last: &Polynomial<F, LagrangeCoeff>,
-        l_active_row: &Polynomial<F, LagrangeCoeff>,
-        permutation_pk_cosets: &[Polynomial<F, LagrangeCoeff>],
-    ) -> Result<(), Error> {
-        // First we check that the committed folded witness corresponds to the folded
-        // instance
-        let committed_folded_witness = folded_witness.commit(params, nb_committed_instances);
-
-        assert_eq!(committed_folded_witness, self.verifier_folding_trace);
-
-        // Next, we evaluate the f_i function over the folded trace, to see it
-        // corresponds with the computed error.
-        let FoldingProverTrace {
-            fixed_polys,
-            advice_polys,
-            instance_values,
-            lookups,
-            permutations: permutation,
-            trashcans,
-            challenges,
-            beta,
-            gamma,
-            theta,
-            trash_challenge,
-            y,
-            ..
-        } = folded_witness;
-
-        let witness_poly = evaluator.evaluate_h::<LagrangeCoeff>(
-            vk.get_domain(),
-            vk.cs(),
-            &advice_polys.iter().map(Vec::as_slice).collect::<Vec<_>>(),
-            &instance_values.iter().map(|i| i.as_slice()).collect::<Vec<_>>(),
-            &fixed_polys,
-            &challenges,
-            &y,
-            beta,
-            gamma,
-            &theta,
-            trash_challenge,
-            &lookups,
-            &trashcans,
-            &permutation,
-            l0,
-            l_last,
-            l_active_row,
-            permutation_pk_cosets,
-        );
-
-        // let beta_coeffs: Vec<F> = vec![self.beta.clone(); 1 << K];
-        let beta_coeffs: Vec<F> = eval_lagrange_on_beta(vk.get_domain(), &self.beta);
-
-        let expected_result = witness_poly
-            .values
-            .into_par_iter()
-            .zip(beta_coeffs.par_iter())
-            .map(|(witness, beta_coeffs)| witness * beta_coeffs)
-            .reduce(|| F::ZERO, |a, b| a + b);
-
-        if expected_result == self.error_term {
-            Ok(())
-        } else {
-            Err(Error::Opening)
-        }
-    }
+    // /// This function verifies that a folde trace satisfies the relaxed
+    // /// relation.
+    // // TODO: need to verify that the commitment is correct as well.
+    // #[allow(clippy::too_many_arguments)]
+    // pub fn is_sat(
+    //     &self,
+    //     params: &CS::Parameters,
+    //     nb_committed_instances: usize,
+    //     vk: &VerifyingKey<F, CS>,
+    //     evaluator: &Evaluator<F>,
+    //     folded_witness: FoldingProverTrace<F>,
+    //     l0: &Polynomial<F, LagrangeCoeff>,
+    //     l_last: &Polynomial<F, LagrangeCoeff>,
+    //     l_active_row: &Polynomial<F, LagrangeCoeff>,
+    //     permutation_pk_cosets: &[Polynomial<F, LagrangeCoeff>],
+    // ) -> Result<(), Error> {
+    //     // First we check that the committed folded witness corresponds to the folded
+    //     // instance
+    //     let committed_folded_witness = folded_witness.commit(params, nb_committed_instances);
+    //
+    //     assert_eq!(committed_folded_witness, self.verifier_folding_trace);
+    //
+    //     // Next, we evaluate the f_i function over the folded trace, to see it
+    //     // corresponds with the computed error.
+    //     let FoldingProverTrace {
+    //         fixed_polys,
+    //         advice_polys,
+    //         instance_values,
+    //         lookups,
+    //         permutations: permutation,
+    //         trashcans,
+    //         challenges,
+    //         beta,
+    //         gamma,
+    //         theta,
+    //         trash_challenge,
+    //         y,
+    //         ..
+    //     } = folded_witness;
+    //
+    //     let witness_poly = evaluator.evaluate_h::<LagrangeCoeff>(
+    //         vk.get_domain(),
+    //         vk.cs(),
+    //         &advice_polys.iter().map(Vec::as_slice).collect::<Vec<_>>(),
+    //         &instance_values.iter().map(|i| i.as_slice()).collect::<Vec<_>>(),
+    //         &fixed_polys,
+    //         &challenges,
+    //         &y,
+    //         beta,
+    //         gamma,
+    //         &theta,
+    //         trash_challenge,
+    //         &lookups,
+    //         &trashcans,
+    //         &permutation,
+    //         l0,
+    //         l_last,
+    //         l_active_row,
+    //         permutation_pk_cosets,
+    //     );
+    //
+    //     // let beta_coeffs: Vec<F> = vec![self.beta.clone(); 1 << K];
+    //     let beta_coeffs: Vec<F> = eval_lagrange_on_beta(vk.get_domain(), &self.beta);
+    //
+    //     let expected_result = witness_poly
+    //         .values
+    //         .into_par_iter()
+    //         .zip(beta_coeffs.par_iter())
+    //         .map(|(witness, beta_coeffs)| witness * beta_coeffs)
+    //         .reduce(|| F::ZERO, |a, b| a + b);
+    //
+    //     if expected_result == self.error_term {
+    //         Ok(())
+    //     } else {
+    //         Err(Error::Opening)
+    //     }
+    // }
 }
 
 /// Function to fold traces over an evaluation `\gamma`

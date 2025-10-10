@@ -270,12 +270,11 @@ where
     // let y: Vec<F> = vec![y; nb_y];
     let y: Vec<Vec<F>> = (0..number_proofs).map(|_| (0..nb_y).map(|_| transcript.squeeze_challenge()).collect::<Vec<_>>()).collect::<Vec<_>>();
 
-    let (instance_polys, instance_values) =
-        instance.into_iter().map(|i| (i.instance_polys, i.instance_values)).unzip();
+    let instance_values =
+        instance.into_iter().map(|i| i.instance_values).collect();
 
     Ok(ProverTrace {
         advice_polys: advice.into_iter().map(|a| a.advice_polys).collect(),
-        instance_polys,
         instance_values,
         vanishing,
         lookups,
@@ -320,11 +319,10 @@ where
 
     let domain = pk.get_vk().get_domain();
 
-    let h_poly = bench_and_run!(_group; ; ;"Compute H poly"; || compute_h_poly(pk, &trace));
+    let (h_poly, instance_polys) = bench_and_run!(_group; ; ;"Compute H poly"; || compute_h_poly(pk, &trace));
 
     let ProverTrace {
         advice_polys,
-        instance_polys,
         lookups,
         trashcans,
         permutations,
@@ -519,17 +517,8 @@ where
                 })
                 .collect::<Result<Vec<_>, _>>()?;
 
-            let instance_polys: Vec<_> = instance_values
-                .iter()
-                .map(|poly| {
-                    let lagrange_vec = pk.vk.domain.lagrange_from_vec(poly.to_vec());
-                    pk.vk.domain.lagrange_to_coeff(lagrange_vec)
-                })
-                .collect();
-
             Ok(InstanceSingle {
                 instance_values,
-                instance_polys,
             })
         })
         .collect::<Result<Vec<_>, _>>()
@@ -674,10 +663,10 @@ where
 pub(crate) fn compute_h_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>>(
     pk: &ProvingKey<F, CS>,
     trace: &ProverTrace<F>,
-) -> Polynomial<F, ExtendedLagrangeCoeff> {
+) -> (Polynomial<F, ExtendedLagrangeCoeff>, Vec<Vec<Polynomial<F, Coeff>>>) {
     let ProverTrace {
         advice_polys,
-        instance_polys,
+        instance_values,
         lookups,
         trashcans,
         permutations,
@@ -702,6 +691,14 @@ pub(crate) fn compute_h_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitm
                 .collect()
         })
         .collect();
+
+    let instance_polys: Vec<_> = instance_values
+        .iter()
+        .map(|vec_poly| {
+            vec_poly.iter().map(|poly| pk.vk.domain.lagrange_to_coeff(poly.clone())).collect::<Vec<_>>()
+        })
+        .collect();
+
     let instance_cosets: Vec<Vec<Polynomial<F, ExtendedLagrangeCoeff>>> = instance_polys
         .iter()
         .map(|instance_polys| {
@@ -713,25 +710,28 @@ pub(crate) fn compute_h_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitm
         .collect();
 
     // Evaluate the h(X) polynomial
-    pk.ev.evaluate_h::<ExtendedLagrangeCoeff>(
-        &pk.vk.domain,
-        &pk.vk.cs,
-        &advice_cosets.iter().map(|a| a.as_slice()).collect::<Vec<_>>(),
-        &instance_cosets.iter().map(|i| i.as_slice()).collect::<Vec<_>>(),
-        &pk.fixed_cosets,
-        challenges,
-        y,
-        *beta,
-        *gamma,
-        theta,
-        *trash_challenge,
-        lookups,
-        trashcans,
-        permutations,
-        &pk.l0,
-        &pk.l_last,
-        &pk.l_active_row,
-        &pk.permutation.cosets,
+    (
+        pk.ev.evaluate_h::<ExtendedLagrangeCoeff>(
+            &pk.vk.domain,
+            &pk.vk.cs,
+            &advice_cosets.iter().map(|a| a.as_slice()).collect::<Vec<_>>(),
+            &instance_cosets.iter().map(|i| i.as_slice()).collect::<Vec<_>>(),
+            &pk.fixed_cosets,
+            challenges,
+            y,
+            *beta,
+            *gamma,
+            theta,
+            *trash_challenge,
+            lookups,
+            trashcans,
+            permutations,
+            &pk.l0,
+            &pk.l_last,
+            &pk.l_active_row,
+            &pk.permutation.cosets,
+        ),
+        instance_polys
     )
 }
 
@@ -855,7 +855,6 @@ pub(crate) fn compute_queries<
 
 struct InstanceSingle<F: PrimeField> {
     pub instance_values: Vec<Polynomial<F, LagrangeCoeff>>,
-    pub instance_polys: Vec<Polynomial<F, Coeff>>,
 }
 
 #[derive(Clone)]

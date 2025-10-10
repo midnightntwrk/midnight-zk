@@ -119,7 +119,7 @@ pub fn batch_traces<F: PrimeField + WithSmallOrderMulGroup<3>>(
     let lagrange_polys = (0..traces.len())
         .map(|i| {
             // For the moment we only support batching of traces of dimension one.
-            assert_eq!(traces[i].advice_polys.len(), 1);
+            assert_eq!(traces[i].advice_values.len(), 1);
             let mut l = dk_domain.empty_lagrange();
             l[i] = F::ONE;
             l
@@ -165,7 +165,7 @@ impl<F: PrimeField> FoldingProverTrace<F> {
     /// trace.
     #[allow(unsafe_code)]
     pub(crate) fn unsafe_with_same_dimensions(trace: &Self) -> Self {
-        let trace_domain_size = trace.fixed_polys[0].num_coeffs();
+        let trace_domain_size = trace.fixed_values[0].num_coeffs();
 
         let lookups = (0..trace.lookups[0].len()).map(|_|{
             lookup::prover::CommittedLagrange {
@@ -181,16 +181,15 @@ impl<F: PrimeField> FoldingProverTrace<F> {
             }
         }).collect();
 
-        let mut permutation_sets = (0..trace.permutations[0].sets.len()).map(|_| {
+        let permutation_sets = (0..trace.permutations[0].sets.len()).map(|_| {
             permutation::prover::CommittedSet {
                 permutation_product_poly: Polynomial::unsafe_init(trace_domain_size),
             }
         }).collect();
 
         FoldingProverTrace {
-            fixed_polys: (0..trace.fixed_polys.len()).map(|_| Polynomial::unsafe_init(trace_domain_size)).collect(),
-            advice_polys: vec![(0..trace.advice_polys[0].len()).map(|_| Polynomial::unsafe_init(trace_domain_size)).collect()],
-            instance_polys: vec![(0..trace.instance_polys[0].len()).map(|_| Polynomial::unsafe_init(trace_domain_size)).collect()],
+            fixed_values: (0..trace.fixed_values.len()).map(|_| Polynomial::unsafe_init(trace_domain_size)).collect(),
+            advice_values: vec![(0..trace.advice_values[0].len()).map(|_| Polynomial::unsafe_init(trace_domain_size)).collect()],
             instance_values: vec![(0..trace.instance_values[0].len()).map(|_| Polynomial::unsafe_init(trace_domain_size)).collect()],
             vanishing: vanishing::prover::Committed {
                 random_poly: Polynomial::unsafe_init(trace_domain_size),
@@ -212,7 +211,7 @@ impl<F: PrimeField> FoldingProverTrace<F> {
     /// Initialises a `FoldingProverTrace` with the same dimensions as the given
     /// trace.
     pub(crate) fn with_same_dimensions(trace: &Self) -> Self {
-        let trace_domain_size = trace.fixed_polys[0].num_coeffs();
+        let trace_domain_size = trace.fixed_values[0].num_coeffs();
         let mut lookups = Vec::with_capacity(trace.lookups[0].len());
         for _ in 0..trace.lookups[0].len() {
             lookups.push(lookup::prover::CommittedLagrange {
@@ -236,9 +235,8 @@ impl<F: PrimeField> FoldingProverTrace<F> {
             });
         }
         FoldingProverTrace {
-            fixed_polys: vec![Polynomial::init(trace_domain_size); trace.fixed_polys.len()],
-            advice_polys: vec![vec![Polynomial::init(trace_domain_size); trace.advice_polys[0].len()]],
-            instance_polys: vec![vec![Polynomial::init(trace_domain_size); trace.instance_polys[0].len()]],
+            fixed_values: vec![Polynomial::init(trace_domain_size); trace.fixed_values.len()],
+            advice_values: vec![vec![Polynomial::init(trace_domain_size); trace.advice_values[0].len()]],
             instance_values: vec![vec![Polynomial::init(trace_domain_size); trace.instance_values[0].len()]],
             vanishing: vanishing::prover::Committed {
                 random_poly: Polynomial::init(trace_domain_size),
@@ -265,12 +263,11 @@ impl<F: PrimeField> Add<&FoldingProverTrace<F>> for FoldingProverTrace<F> {
     fn add(self, rhs: &FoldingProverTrace<F>) -> Self {
         // Verifying a single outer vector is enough, as the type guarantees
         // the rest
-        assert_eq!(self.advice_polys.len(), rhs.advice_polys.len());
+        assert_eq!(self.advice_values.len(), rhs.advice_values.len());
 
         let FoldingProverTrace {
-            mut fixed_polys,
-            mut advice_polys,
-            mut instance_polys,
+            fixed_values: mut fixed_polys,
+            advice_values: mut advice_polys,
             mut instance_values,
             mut vanishing,
             mut lookups,
@@ -285,23 +282,18 @@ impl<F: PrimeField> Add<&FoldingProverTrace<F>> for FoldingProverTrace<F> {
         } = self;
 
         parallelize(&mut fixed_polys, |lhs, start| {
-            for (lhs, rhs) in lhs.iter_mut().zip(rhs.fixed_polys[start..].iter()) {
+            for (lhs, rhs) in lhs.iter_mut().zip(rhs.fixed_values[start..].iter()) {
                 *lhs += rhs;
             }
         });
 
         (0..advice_polys.len()).for_each(|i| {
             parallelize(&mut advice_polys[i], |lhs, start| {
-                for (lhs, rhs) in lhs.iter_mut().zip(rhs.advice_polys[i][start..].iter()) {
+                for (lhs, rhs) in lhs.iter_mut().zip(rhs.advice_values[i][start..].iter()) {
                     *lhs += rhs;
                 }
             });
 
-            parallelize(&mut instance_polys[i], |lhs, start| {
-                for (lhs, rhs) in lhs.iter_mut().zip(rhs.instance_polys[i][start..].iter()) {
-                    *lhs += rhs;
-                }
-            });
             parallelize(&mut instance_values[i], |lhs, start| {
                 for (lhs, rhs) in lhs.iter_mut().zip(rhs.instance_values[i][start..].iter()) {
                     *lhs += rhs;
@@ -350,9 +342,8 @@ impl<F: PrimeField> Add<&FoldingProverTrace<F>> for FoldingProverTrace<F> {
         trash_challenge += rhs.trash_challenge;
 
         FoldingProverTrace {
-            fixed_polys,
-            advice_polys,
-            instance_polys,
+            fixed_values: fixed_polys,
+            advice_values: advice_polys,
             instance_values,
             vanishing,
             lookups,
@@ -373,9 +364,8 @@ impl<F: PrimeField> Mul<F> for FoldingProverTrace<F> {
 
     fn mul(self, scalar: F) -> Self {
         let FoldingProverTrace {
-            mut fixed_polys,
-            mut advice_polys,
-            mut instance_polys,
+            fixed_values: mut fixed_polys,
+            advice_values: mut advice_polys,
             mut instance_values,
             mut vanishing,
             mut lookups,
@@ -395,9 +385,6 @@ impl<F: PrimeField> Mul<F> for FoldingProverTrace<F> {
 
         (0..advice_polys.len()).for_each(|i| {
             advice_polys[i].par_iter_mut().for_each(|p| {
-                *p *= scalar;
-            });
-            instance_polys[i].par_iter_mut().for_each(|p| {
                 *p *= scalar;
             });
             instance_values[i].par_iter_mut().for_each(|p| {
@@ -434,9 +421,8 @@ impl<F: PrimeField> Mul<F> for FoldingProverTrace<F> {
         trash_challenge *= scalar;
 
         Self {
-            fixed_polys,
-            advice_polys,
-            instance_polys,
+            fixed_values: fixed_polys,
+            advice_values: advice_polys,
             instance_values,
             vanishing,
             lookups,

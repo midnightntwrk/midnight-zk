@@ -110,6 +110,8 @@ fn main() {
     let mut rng = ChaCha8Rng::from_seed([0u8; 32]);
     // Normal proofs. We first generate normal proofs to test performance
     let normal_proving = Instant::now();
+
+    let mut proof_size = 0;
     for (idx, witness) in witness.iter().enumerate() {
         let normal_proof = compact_std_lib::prove::<ShaPreImageCircuit, blake2b_simd::State>(
             &srs,
@@ -120,7 +122,7 @@ fn main() {
             OsRng,
         )
         .expect("Proof generation should not fail");
-        println!("Proof size: {:?}", normal_proof.len());
+        proof_size += normal_proof.len();
         circuits.push(MidnightCircuit::new(&relation, (), *witness));
         formatted_instances.push(vec![ShaPreImageCircuit::format_instance(&())]);
         formatted_committed_instance.push(vec![ShaPreImageCircuit::format_committed_instances(
@@ -140,11 +142,7 @@ fn main() {
         .collect::<Vec<_>>();
     let formatted_committed_instance =
         formatted_committed_instance.iter().map(|a| a.as_slice()).collect::<Vec<_>>();
-    println!(
-        "Time to generate {} proofs: {:?}",
-        NB_FOLDED,
-        normal_proving.elapsed()
-    );
+    let normal_proving_time = normal_proving.elapsed();
 
     // Fold proofs. We first initialise folding with the first circuit
     let now = Instant::now();
@@ -161,9 +159,15 @@ fn main() {
     .expect("Failed to initialise folder");
 
     let folding_time = now.elapsed().as_millis();
-    println!("Time for folding: {:?}ms", folding_time);
+    println!("Time for folding: {:?} ms", folding_time);
+    println!(
+        "Time to generate {} proofs: {:?} ms",
+        NB_FOLDED,
+        normal_proving_time.as_millis()
+    );
     let proof = transcript.finalize();
-    println!("Protogalaxy proof size: {:?}", proof.len());
+    println!("Protogalaxy proof size: {:?} B", proof.len());
+    println!("Size of {NB_FOLDED} proofs: {proof_size}B");
 
     let mut transcript = CircuitTranscript::<PoseidonState<F>>::init_from_bytes(&proof);
 

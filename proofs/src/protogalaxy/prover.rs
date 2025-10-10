@@ -6,7 +6,7 @@ use std::{hash::Hash, marker::PhantomData, time::Instant};
 use std::ops::{Deref, DerefMut};
 
 use ff::{FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
-use rand_core::{CryptoRng, OsRng, RngCore};
+use rand_core::{CryptoRng, RngCore};
 use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, IntoParallelRefMutIterator, ParallelIterator};
 
 use crate::{
@@ -43,7 +43,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
     /// Fold circuits for the same relation. We assume that circuits.len() is a power of 2.
     pub fn fold<C, T>(
         params: &CS::Parameters,
-        pk: ProvingKey<F, CS>,
+        mut pk: ProvingKey<F, CS>,
         circuits: Vec<C>,
         nb_committed_instances: usize,
         instances: &[&[&[F]]],
@@ -128,19 +128,20 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
 
         let error_terms =
             compute_error_terms(pk_domain_size, &dk_domain, &poly_g_unbatched, &gamma);
+        let error_terms_time = time.elapsed().as_millis() - k_poly - poly_g_time - lagrange_beta_time - folding_pk_time;
 
         // Update error term
         let folded_trace = Self::fold_traces(&dk_domain, &traces, &gamma);
-        let rest_time = time.elapsed().as_millis() - k_poly - poly_g_time - lagrange_beta_time - folding_pk_time;
+        let rest_time = time.elapsed().as_millis() - k_poly - poly_g_time - lagrange_beta_time - folding_pk_time - error_terms_time;
 
         println!("    Lagrange polynomials on beta      : {:?}ms",
             lagrange_beta_time
         );
         println!("    Poly G time                       : {:?}ms", poly_g_time);
         println!("    Divide vanishing                  : {:?}ms", k_poly);
+        println!("    Error terms time                  : {:?}ms", error_terms_time);
         println!("    Compute error and fold traces     : {:?}ms", rest_time);
 
-        let second_part_of_proof = Instant::now();
         // Now we need to generate the last proof.
         let error_lagrange: Polynomial<F, LagrangeCoeff> = Polynomial {
             values: error_terms,
@@ -148,50 +149,39 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         };
         let committed_error = CS::commit_lagrange(params, &error_lagrange);
 
-        println!("Second part of proof");
-
-        println!("    Commit error lagrange: {:?}", second_part_of_proof.elapsed().as_millis());
         let error_coeff = pk.vk.get_domain().lagrange_to_coeff(error_lagrange);
-        println!("    Error to coeff: {:?}", second_part_of_proof.elapsed().as_millis());
 
         transcript.write(&committed_error)?;
 
         // Now we need to create the final proof and verify that the opening of the
         // instance column evaluates at `e` in beta.
         // The PK needs to update the fixed values, as these are now folded
-        let fixed_values = folded_trace.fixed_polys.clone();
-        let fixed_polys = fixed_values
-            .iter()
-            .cloned()
-            .map(|p| pk.vk.get_domain().lagrange_to_coeff(p))
-            .collect::<Vec<_>>();
+        let fixed_values = folded_trace.fixed_values.clone();
+        let fixed_polys: Vec<_> =
+            fixed_values.par_iter().map(|poly| pk.vk.get_domain().lagrange_to_coeff(poly.clone())).collect();
+
         let fixed_cosets = fixed_polys
-            .iter()
-            .cloned()
-            .map(|p| pk.vk.get_domain().coeff_to_extended(p))
-            .collect::<Vec<_>>();
+            .par_iter()
+            .map(|poly| pk.vk.get_domain().coeff_to_extended(poly.clone()))
+            .collect();
 
         // We need to update the fixed polynomials from the proving key.
-        let mut pk_final_proof = pk.clone();
-        pk_final_proof.fixed_polys = fixed_polys;
-        pk_final_proof.fixed_values = fixed_values;
-        pk_final_proof.fixed_cosets = fixed_cosets;
-        println!("    Fix PK: {:?}", second_part_of_proof.elapsed().as_millis());
+        pk.fixed_polys = fixed_polys;
+        pk.fixed_values = fixed_values;
+        pk.fixed_cosets = fixed_cosets;
 
         let folded_trace = ProverTrace::from_folding_trace(folded_trace);
-        println!("    Reconstruct final trace: {:?}", second_part_of_proof.elapsed().as_millis());
 
         // Now we need to finalise the proof. We do not use the finalise_proof function
         // as we need to 'correct' the plonk identity, with the error term from
         // protogalaxy.
 
         let domain = pk.get_vk().get_domain();
-        let h_poly = crate::plonk::compute_h_poly(&pk_final_proof, &folded_trace);
-        println!("    Final H: {:?}", second_part_of_proof.elapsed().as_millis());
+        // TODO: ugly to return instance polys, but like that we do it only once
+        let (h_poly, instance_polys) = crate::plonk::compute_h_poly(&pk, &folded_trace);
 
         let ProverTrace {
             advice_polys,
-            instance_polys,
             lookups,
             trashcans,
             permutations,
@@ -203,7 +193,6 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         let correction = domain.coeff_to_extended(error_coeff.clone());
         let h = h_poly - &correction;
         let vanishing = vanishing.construct::<CS, T>(params, domain, h, transcript)?;
-        println!("    Vanishing: {:?}", second_part_of_proof.elapsed().as_millis());
 
         let x: F = transcript.squeeze_challenge();
 
@@ -213,7 +202,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
             .collect::<Vec<_>>();
 
         write_evals_to_transcript(
-            &pk_final_proof,
+            &pk,
             nb_committed_instances,
             &instance_polys,
             &advice_polys,
@@ -226,12 +215,12 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         transcript.write(&correction_eval)?;
 
         let vanishing = vanishing.evaluate(x, domain, transcript)?;
-        pk_final_proof.permutation.evaluate(x, transcript)?;
+        pk.permutation.evaluate(x, transcript)?;
 
         let permutations = permutations
             .into_iter()
             .map(|permutation| -> Result<_, _> {
-                permutation.evaluate(&pk_final_proof, x, transcript)
+                permutation.evaluate(&pk, x, transcript)
             })
             .collect::<Result<Vec<_>, _>>()?;
 
@@ -240,7 +229,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
             .map(|lookups| -> Result<Vec<_>, _> {
                 lookups
                     .into_iter()
-                    .map(|p| p.evaluate(&pk_final_proof, x, transcript))
+                    .map(|p| p.evaluate(&pk, x, transcript))
                     .collect::<Result<Vec<_>, _>>()
             })
             .collect::<Result<Vec<_>, _>>()?;
@@ -255,10 +244,8 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        println!("    Evals to transcript: {:?}", second_part_of_proof.elapsed().as_millis());
-
         let mut queries = compute_queries(
-            &pk_final_proof,
+            &pk,
             nb_committed_instances,
             &instance_polys,
             &advice_polys,
@@ -280,12 +267,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
             poly: &error_coeff,
         });
 
-        println!("    Compute queries: {:?}", second_part_of_proof.elapsed().as_millis());
-
-        let res = CS::multi_open(params, &queries, transcript).map_err(|_| Error::ConstraintSystemFailure);
-
-        println!("    Multi open: {:?}", second_part_of_proof.elapsed().as_millis());
-        res
+        CS::multi_open(params, &queries, transcript).map_err(|_| Error::ConstraintSystemFailure)
     }
 
     fn compute_h(
@@ -293,8 +275,8 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         folded_trace: &FoldingProverTrace<F>,
     ) -> Polynomial<F, LagrangeCoeff> {
         let FoldingProverTrace {
-            fixed_polys,
-            advice_polys,
+            fixed_values: fixed_polys,
+            advice_values: advice_polys,
             instance_values,
             lookups,
             permutations,
@@ -356,10 +338,10 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
         let k = traces.len();
 
         // TODO: if we handle different circuits, we'll need to be more generic here.
-        let big_domain_size  = traces[0].fixed_polys[0].len();
-        let len_fixed = traces[0].fixed_polys.len();
-        let len_advice = traces[0].advice_polys[0].len();
-        let len_instance = traces[0].instance_polys[0].len();
+        let big_domain_size  = traces[0].fixed_values[0].len();
+        let len_fixed = traces[0].fixed_values.len();
+        let len_advice = traces[0].advice_values[0].len();
+        let len_instance = traces[0].instance_values[0].len();
         let len_lookups = traces[0].lookups[0].len();
         let len_permutation_sets = traces[0].permutations[0].sets.len();
         let len_trash_cans = traces[0].trashcans[0].len();
@@ -417,7 +399,6 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
                 vec![F::ZERO; extended_len * len_fixed],
                 vec![F::ZERO; extended_len * len_advice],
                 vec![F::ZERO; extended_len * len_instance],
-                vec![F::ZERO; extended_len * len_instance],
                 vec![F::ZERO; extended_len * len_lookups],
                 vec![F::ZERO; extended_len * len_lookups],
                 vec![F::ZERO; extended_len * len_lookups],
@@ -428,16 +409,16 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
             .enumerate()
             .for_each(|
             (i,
-                (mut fixed, mut advice, mut instance_val, mut instance_polys, mut permuted_in, mut product_poly, mut permuted_table, mut permutation, mut trash, mut vanishing)
+                (mut fixed, mut advice, mut instance_val, mut permuted_in, mut product_poly, mut permuted_table, mut permutation, mut trash, mut vanishing)
             )
         | {
             for j in 0..len_fixed {
-                fixed[j * extended_len..j * extended_len + k].iter_mut().enumerate().for_each(|(idx, val)| *val = traces[idx].fixed_polys[j][i]);
+                fixed[j * extended_len..j * extended_len + k].iter_mut().enumerate().for_each(|(idx, val)| *val = traces[idx].fixed_values[j][i]);
                 domain.back_and_forth_fft(&mut fixed[j * extended_len..(j + 1) * extended_len]);
             }
 
                 for j in 0..len_advice {
-                    advice[j * extended_len..j * extended_len + k].iter_mut().enumerate().for_each(|(idx, val)| *val = traces[idx].advice_polys[0][j][i]);
+                    advice[j * extended_len..j * extended_len + k].iter_mut().enumerate().for_each(|(idx, val)| *val = traces[idx].advice_values[0][j][i]);
                     domain.back_and_forth_fft(&mut advice[j * extended_len..(j + 1) * extended_len]);
                 }
 
@@ -445,9 +426,6 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
                 for j in 0..len_instance {
                     instance_val[j * extended_len..j * extended_len + k].iter_mut().enumerate().for_each(|(idx, val)| *val = traces[idx].instance_values[0][j][i]);
                     domain.back_and_forth_fft(&mut instance_val[j * extended_len..(j + 1) * extended_len]);
-
-                    instance_polys[j * extended_len..j * extended_len + k].iter_mut().enumerate().for_each(|(idx, val)| *val = traces[idx].instance_polys[0][j][i]);
-                    domain.back_and_forth_fft(&mut instance_polys[j * extended_len..(j + 1) * extended_len]);
                 }
 
                 for j in 0..len_lookups {
@@ -481,10 +459,9 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
                 let mut transposed_trace = buffer.lock();
 
                 for new_i in 0..domain.extended_len() {
-                    transposed_trace[new_i].fixed_polys.iter_mut().enumerate().for_each(|(j, fixed_poly)| fixed_poly[i] = fixed[j * extended_len + new_i]);
-                    transposed_trace[new_i].advice_polys[0].iter_mut().enumerate().for_each(|(j, advice_poly)| advice_poly[i] = advice[j * extended_len + new_i]);
+                    transposed_trace[new_i].fixed_values.iter_mut().enumerate().for_each(|(j, fixed_poly)| fixed_poly[i] = fixed[j * extended_len + new_i]);
+                    transposed_trace[new_i].advice_values[0].iter_mut().enumerate().for_each(|(j, advice_poly)| advice_poly[i] = advice[j * extended_len + new_i]);
                     transposed_trace[new_i].instance_values[0].iter_mut().enumerate().for_each(|(j, instance_value)| instance_value[i] = instance_val[j * extended_len + new_i]);
-                    transposed_trace[new_i].instance_polys[0].iter_mut().enumerate().for_each(|(j, instance_poly)| instance_poly[i] = instance_polys[j * extended_len + new_i]);
                     transposed_trace[new_i].lookups[0].iter_mut().enumerate().for_each(|(j, lookup)| lookup.permuted_input_poly[i] = permuted_in[j * extended_len + new_i]);
                     transposed_trace[new_i].lookups[0].iter_mut().enumerate().for_each(|(j, lookup)| lookup.product_poly[i] = product_poly[j * extended_len + new_i]);
                     transposed_trace[new_i].lookups[0].iter_mut().enumerate().for_each(|(j, lookup)| lookup.permuted_table_poly[i] = permuted_table[j * extended_len + new_i]);
@@ -652,7 +629,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
             .map(|i| {
                 // For the moment we only support batching of traces of dimension one.
                 // David: what does this mean?
-                assert_eq!(traces[i].advice_polys.len(), 1);
+                assert_eq!(traces[i].advice_values.len(), 1);
                 let mut l = dk_domain.empty_lagrange();
                 l[i] = F::ONE;
                 l
@@ -670,7 +647,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const K: u
     }
 }
 
-use crate::transcript::{CircuitTranscript, Hashable, Sampleable, Transcript};
+use crate::transcript::{Hashable, Sampleable, Transcript};
 
 /// Computes the error terms t_i = f_i(w(\gamma)) where w(X) = ∑_{j ∈ [k]}
 /// Lⱼ(X)·ωⱼ is the polynomial that interpolates the witnesses.
@@ -681,25 +658,34 @@ fn compute_error_terms<F: PrimeField + WithSmallOrderMulGroup<3>>(
     gamma_pg: &F,
 ) -> Vec<F> {
     let n_rows = poly_g_unbatched.len();
+    let powers: Vec<F> = {
+        let mut pows = Vec::with_capacity(n_rows);
+        let mut pow = F::ONE;
+        for _ in 0..n_rows {
+            pows.push(pow);
+            pow *= *gamma_pg;
+        }
+        pows
+    };
 
     // Parallel over columns j
     (0..pk_domain_size)
         .into_par_iter()
         .map(|j| {
             // Allocate buffer once per iteration
-            let mut poly_evals = Vec::with_capacity(n_rows);
-            for row in poly_g_unbatched {
-                poly_evals.push(row[j]);
+            let mut poly_evals = Polynomial::unsafe_init(n_rows);
+            for (i, row) in poly_g_unbatched.iter().enumerate() {
+                poly_evals.values[i] = row[j];
             }
 
             // Convert to coefficient basis
-            let coeff_poly = dk_domain.extended_to_coeff(Polynomial {
-                values: poly_evals,
-                _marker: PhantomData,
-            });
+            let coeff_poly = dk_domain.extended_to_coeff(poly_evals);
 
             // Evaluate at gamma_pg
-            eval_polynomial(&coeff_poly, *gamma_pg)
+            coeff_poly.iter()
+                .zip(powers.iter())
+                .map(|(&c, &p)| c * p)
+                .sum()
         })
         .collect::<Vec<F>>() // collect the results into a Vec<F>
 }

@@ -62,7 +62,7 @@ impl<F: PrimeField + WithSmallOrderMulGroup<3>> FoldingPk<F> {
                 domain.coeff_to_extended(tmp)
             };
 
-        let fixed_values = folded_trace.fixed_polys.clone();
+        let fixed_values = folded_trace.fixed_values.clone();
         let fixed_polys = fixed_values
             .iter()
             .cloned()
