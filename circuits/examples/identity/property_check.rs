@@ -157,6 +157,7 @@ impl Relation for CredentialProperty {
             jubjub: false,
             poseidon: false,
             sha256: true,
+            sha512: false,
             secp256k1: true,
             bls12_381: false,
             base64: true,
@@ -256,7 +257,7 @@ impl CredentialProperty {
 }
 
 fn main() {
-    const K: u32 = 16;
+    const K: u32 = 15;
     let srs = filecoin_srs(K);
     let credential_blob = read_credential::<4096>(CRED_PATH).expect("Path to credential file.");
 

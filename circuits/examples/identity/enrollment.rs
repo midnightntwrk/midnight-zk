@@ -103,6 +103,7 @@ impl Relation for CredentialEnrollment {
             jubjub: false,
             poseidon: false,
             sha256: true,
+            sha512: false,
             secp256k1: true,
             bls12_381: false,
             base64: true,
