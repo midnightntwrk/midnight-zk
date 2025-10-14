@@ -28,7 +28,7 @@ verification keys break backwards compatibility.
 
 ### Removed
 
-## [5.0.0] - 19-09-2025 
+## [5.0.0] - 19-09-2025
 ### Added
 * Add CommittedInstanceInstructions [#63](https://github.com/midnightntwrk/midnight-zk/pull/63)
 * Add goldenfiles with examples cost-model [#89](https://github.com/midnightntwrk/midnight-zk/pull/89)
@@ -38,6 +38,7 @@ verification keys break backwards compatibility.
 * Feature to run internal benchmarks [#93](https://github.com/midnightntwrk/midnight-zk/pull/93)
 * Add function to return number of points involved in a proof [#102](https://github.com/midnightntwrk/midnight-zk/pull/102)
 * Cache of range-checked cells in native_gadget [#109](https://github.com/midnightntwrk/midnight-zk/pull/109)
+* Add crendential enrollment proof [#81](https://github.com/midnightntwrk/midnight-zk/pull/81)
 
 ### Changed
 * Refactored crate to prepare for edition 2024.

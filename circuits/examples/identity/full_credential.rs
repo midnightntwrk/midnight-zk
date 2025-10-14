@@ -1,6 +1,7 @@
-//! Example of verifying the validity of an ECDSA signed Atala identity JSON.
+//! Full example of a proof of validity and attributed in a ECDSA signed
+//! credential.
 
-use std::time::Instant;
+use std::{io::Write, time::Instant};
 
 use halo2curves::secp256k1::{Fq as secp256k1Scalar, Secp256k1};
 use midnight_circuits::{
@@ -13,7 +14,7 @@ use midnight_circuits::{
     },
     parsing::{DateFormat, Separator},
     testing_utils::{
-        ecdsa::{ECDSASig, Ecdsa, FromBase64, PublicKey},
+        ecdsa::{ECDSASig, FromBase64, PublicKey},
         plonk_api::filecoin_srs,
     },
     types::{AssignedByte, AssignedForeignPoint, InnerValue, Instantiable},
@@ -24,12 +25,13 @@ use midnight_proofs::{
 };
 use num_bigint::BigUint;
 use rand::rngs::OsRng;
-use sha2::Digest;
+use utils::{read_credential, split_blob, verify_credential_sig};
 
+#[path = "./utils.rs"]
+mod utils;
 type F = midnight_curves::Fq;
 
-// This blob encodes a credential in JWT format.
-const BLOB: &[u8] = b"eyJ0eXAiOiJKV1QiLCJhbGciOiJFUzI1NksifQ.eyJpc3MiOiJkaWQ6cHJpc206OTU0ZTU5ZWE0YzIxMmY0YjRiZTg2ODhiZDNmZTYzZGQ3MDc5ZDIxOGVmNjI4MjIwNWE3MDEzMWY4N2YyODg3YyIsInN1YiI6ImRpZDpwcmlzbTo3M2JiNTE2ZmU4OGJlZWM1YjNiOGQyODNlYWVjNTk2NGQxYzEzY2Q1NGVmOGYxNzg0MjE3ZjRmZTQyNjg4NjI2OkN0UUJDdEVCRWtnS0ZHMTVMV0YxZEdndGEyVjVMVzFwWkc1cFoyaDBFQVJLTGdvSmMyVmpjREkxTm1zeEVpRUNTMGtqM3lkU2VGODZMVTlCcEh1Vm50TUZOOFNDS2NIeWNpMXRYRmJSVzhNU093b0hiV0Z6ZEdWeU1CQUJTaTRLQ1hObFkzQXlOVFpyTVJJaEFpbVdEZ2dORHN3QUlKV0tiZXhrZkR4VjBQRWE1OHRjVmNTMWRrMnBoa0RqR2tnS0RtRm5aVzUwTFdKaGMyVXRkWEpzRWhCTWFXNXJaV1JTWlhOdmRYSmpaVll4R2lSb2RIUndPaTh2TVRreUxqRTJPQzR4TGpnMk9qZ3pNREF2WTJ4dmRXUXRZV2RsYm5RIiwibmJmIjoxNzQwNDgyMTc1LCJleHAiOjE3NDA0ODU3NzUsInZjIjp7ImNyZWRlbnRpYWxTY2hlbWEiOlt7ImlkIjoiaHR0cDpcL1wvMTkyLjE2OC4xLjg2Ojg0MDBcL2Nsb3VkLWFnZW50XC9zY2hlbWEtcmVnaXN0cnlcL3NjaGVtYXNcLzJmY2ZlZWFlLTk1MzItMzg2OS1hZDg5LWNkZjUwNjBjM2EzYyIsInR5cGUiOiJDcmVkZW50aWFsU2NoZW1hMjAyMiJ9XSwiY3JlZGVudGlhbFN1YmplY3QiOnsibmF0aW9uYWxJZCI6IjEyMzQ1IiwiZmFtaWx5TmFtZSI6IldvbmRlcmxhbmQiLCJnaXZlbk5hbWUiOiJBbGljZSIsInB1YmxpY0tleUp3ayI6eyJrdHkiOiJFQyIsImNydiI6InNlY3AyNTZrMSIsIngiOiJTMGtqM3lkU2VGODZMVTlCcEh1Vm50TUZOOFNDS2NIeWNpMXRYRmJSVzhNIiwieSI6ImR1eDhoLVFjSUEzYVpHOUNTUElsdER3VnZPa2Ywa2ZKUkpMSDdLMUtTbFEifSwiaWQiOiJkaWQ6cHJpc206NzNiYjUxNmZlODhiZWVjNWIzYjhkMjgzZWFlYzU5NjRkMWMxM2NkNTRlZjhmMTc4NDIxN2Y0ZmU0MjY4ODYyNjpDdFFCQ3RFQkVrZ0tGRzE1TFdGMWRHZ3RhMlY1TFcxcFpHNXBaMmgwRUFSS0xnb0pjMlZqY0RJMU5tc3hFaUVDUzBrajN5ZFNlRjg2TFU5QnBIdVZudE1GTjhTQ0tjSHljaTF0WEZiUlc4TVNPd29IYldGemRHVnlNQkFCU2k0S0NYTmxZM0F5TlRack1SSWhBaW1XRGdnTkRzd0FJSldLYmV4a2ZEeFYwUEVhNTh0Y1ZjUzFkazJwaGtEakdrZ0tEbUZuWlc1MExXSmhjMlV0ZFhKc0VoQk1hVzVyWldSU1pYTnZkWEpqWlZZeEdpUm9kSFJ3T2k4dk1Ua3lMakUyT0M0eExqZzJPamd6TURBdlkyeHZkV1F0WVdkbGJuUSIsImJpcnRoRGF0ZSI6IjIwMDAtMTEtMTMifSwidHlwZSI6WyJWZXJpZmlhYmxlQ3JlZGVudGlhbCJdLCJAY29udGV4dCI6WyJodHRwczpcL1wvd3d3LnczLm9yZ1wvMjAxOFwvY3JlZGVudGlhbHNcL3YxIl0sImlzc3VlciI6eyJpZCI6ImRpZDpwcmlzbTo5NTRlNTllYTRjMjEyZjRiNGJlODY4OGJkM2ZlNjNkZDcwNzlkMjE4ZWY2MjgyMjA1YTcwMTMxZjg3ZjI4ODdjIiwidHlwZSI6IlByb2ZpbGUifSwiY3JlZGVudGlhbFN0YXR1cyI6eyJzdGF0dXNQdXJwb3NlIjoiUmV2b2NhdGlvbiIsInN0YXR1c0xpc3RJbmRleCI6MywiaWQiOiJodHRwOlwvXC8xOTIuMTY4LjEuODY6ODQwMFwvY2xvdWQtYWdlbnRcL2NyZWRlbnRpYWwtc3RhdHVzXC8yMDU0ZTJlYS1mMTkxLTQ2NDAtODZkZC02ZGRlNmIyZjc3ZjcjMyIsInR5cGUiOiJTdGF0dXNMaXN0MjAyMUVudHJ5Iiwic3RhdHVzTGlzdENyZWRlbnRpYWwiOiJodHRwOlwvXC8xOTIuMTY4LjEuODY6ODQwMFwvY2xvdWQtYWdlbnRcL2NyZWRlbnRpYWwtc3RhdHVzXC8yMDU0ZTJlYS1mMTkxLTQ2NDAtODZkZC02ZGRlNmIyZjc3ZjcifX19.WT3rH0dikzIy00nauqXJHep1xY9ToezY2i0HJJS-5LU2ykBDYv3xzzeruckIRjDmuO7XAco5S9n4KjQp_ivbpg";
+const CRED_PATH: &str = "./examples/identity/credentials/2k-credential";
 
 // Public Key of the issuer, signer of the credential.
 const PUB_KEY: &[u8] =
@@ -54,9 +56,9 @@ type Payload = [u8; PAYLOAD_LEN];
 type SK = secp256k1Scalar;
 
 #[derive(Clone, Default)]
-pub struct AtalaJsonECDSA;
+pub struct FullCredential;
 
-impl Relation for AtalaJsonECDSA {
+impl Relation for FullCredential {
     type Instance = PK;
     type Witness = (Payload, ECDSASig, SK);
 
@@ -149,11 +151,11 @@ impl Relation for AtalaJsonECDSA {
     }
 
     fn read_relation<R: std::io::Read>(_reader: &mut R) -> std::io::Result<Self> {
-        Ok(AtalaJsonECDSA)
+        Ok(FullCredential)
     }
 }
 
-impl AtalaJsonECDSA {
+impl FullCredential {
     /// Verifies the secp256k1 ECDSA signature of the given message.
     fn verify_ecdsa(
         std_lib: &ZkStdLib,
@@ -272,36 +274,38 @@ where
 fn main() {
     const K: u32 = 17;
     let srs = filecoin_srs(K);
+    let credential_blob = read_credential::<4096>(CRED_PATH).expect("Path to credential file.");
 
-    let relation = AtalaJsonECDSA;
+    let relation = FullCredential;
 
     let start = |msg: &str| -> Instant {
-        println!("{msg}");
+        print!("{msg}");
+        let _ = std::io::stdout().flush();
         Instant::now()
     };
 
     let setup = start("Setting up the vk/pk");
     let vk = compact_std_lib::setup_vk(&srs, &relation);
     let pk = compact_std_lib::setup_pk(&relation, &vk);
-    println!("... done ({:?})", setup.elapsed());
+    println!("... done\n{:?}", setup.elapsed());
 
     // Build the instance and witness to be proven.
     let wit = start("Computing instance and witnesses");
     let instance = PublicKey::from_base64(PUB_KEY).expect("Base64 encoded PK");
-    let witness = AtalaJsonECDSA::witness_from_blob(BLOB);
+    let witness = FullCredential::witness_from_blob(credential_blob.as_slice());
     let witness = (witness.0, witness.1, HOLDER_SK);
     println!("... done ({:?})", wit.elapsed());
 
     let p = start("Proof generation");
-    let proof = compact_std_lib::prove::<AtalaJsonECDSA, blake2b_simd::State>(
+    let proof = compact_std_lib::prove::<FullCredential, blake2b_simd::State>(
         &srs, &pk, &relation, &instance, witness, OsRng,
     )
-    .expect("Proof generation should not fail");
-    println!("... done ({:?})", p.elapsed());
+    .expect("Proof generation should not fail.");
+    println!("... done\n{:?}", p.elapsed());
 
     let v = start("Proof verification");
     assert!(
-        compact_std_lib::verify::<AtalaJsonECDSA, blake2b_simd::State>(
+        compact_std_lib::verify::<FullCredential, blake2b_simd::State>(
             &srs.verifier_params(),
             &vk,
             &instance,
@@ -310,14 +314,12 @@ fn main() {
         )
         .is_ok()
     );
-    println!("... done ({:?})", v.elapsed())
+    println!("... done\n{:?}", v.elapsed())
 }
 
-// Helper functions for base64 encoded credentials.
-// -----------------------------------------------
-impl AtalaJsonECDSA {
-    // Creates an AtalaJsonECDSA witness from:
-    // 1. A JWT encoded Atala credential.
+impl FullCredential {
+    // Creates an witness from:
+    // 1. A JWT encoded credential.
     // 2. The corresponding base64 encoded ECDSA public key.
     fn witness_from_blob(blob: &[u8]) -> (Payload, ECDSASig) {
         let (payload, signature_bytes) = split_blob(blob);
@@ -331,41 +333,4 @@ impl AtalaJsonECDSA {
             signature,
         )
     }
-}
-
-/// Splits a JWT blob in its 3 parts:
-///  * header
-///  * body
-///  * signature
-///
-/// The signature is computed over payload := (header || body).
-/// Returns the payload and the signature.
-/// For reference: <https://auth0.com/docs/secure/tokens/json-web-tokens/json-web-token-structure>
-fn split_blob(blob: &[u8]) -> (Vec<u8>, Vec<u8>) {
-    let mut parts = blob.split(|char| *char as char == '.');
-
-    let header = parts.next().unwrap();
-    let body = parts.next().unwrap();
-    let signature = parts.next().unwrap();
-
-    assert!(parts.next().is_none());
-
-    let payload = [header, b".", body].concat();
-    let signature = signature.to_vec();
-
-    (payload, signature)
-}
-
-/// Verifies the signature of a credential (out of circuit).
-/// The public key, message (or payload) and signature are expected in base64
-/// encoding.
-fn verify_credential_sig(pk_base64: &[u8], msg: &[u8], sig_base64: &[u8]) -> bool {
-    let pk_affine = Secp256k1::from_base64(pk_base64).unwrap();
-    let sig = ECDSASig::from_base64(sig_base64).unwrap();
-
-    let mut msg_hash_bytes: [u8; 32] = sha2::Sha256::digest(msg).into();
-    msg_hash_bytes.reverse(); // BE to LE
-    let msg_scalar = secp256k1Scalar::from_bytes(&msg_hash_bytes).unwrap();
-
-    Ecdsa::verify(&pk_affine, &msg_scalar, &sig)
 }
