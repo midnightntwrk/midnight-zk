@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use midnight_circuits::{biguint, types};
+use midnight_circuits::types;
 use midnight_curves::JubjubExtended;
 
 use crate::{
@@ -13,7 +13,7 @@ pub type F = midnight_curves::Fq;
 pub type AssignedBit = types::AssignedBit<F>;
 pub type AssignedByte = types::AssignedByte<F>;
 pub type AssignedNative = types::AssignedNative<F>;
-pub type AssignedBigUint = biguint::AssignedBigUint<F>;
+pub type AssignedBigUint = types::AssignedBigUint<F>;
 pub type AssignedJubjubPoint = types::AssignedNativePoint<JubjubExtended>;
 pub type AssignedJubjubScalar = types::AssignedScalarOfNativeCurve<JubjubExtended>;
 
@@ -29,7 +29,10 @@ pub fn insert_many<T: Clone>(
     values: &[T],
 ) -> Result<(), Error> {
     assert_eq!(names.len(), values.len());
-    (names.iter().zip(values.iter())).try_for_each(|(name, value)| insert(map, name, value))
+    names
+        .iter()
+        .zip(values.iter())
+        .try_for_each(|(name, value)| insert(map, name, value))
 }
 
 pub fn get_t(

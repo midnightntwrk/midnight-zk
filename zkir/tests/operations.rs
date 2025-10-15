@@ -144,7 +144,7 @@ fn build_instructions(
     raw_instructions
         .iter()
         .map(|(op, inputs, outputs)| Instruction {
-            operation: op.clone(),
+            operation: *op,
             inputs: inputs.iter().map(|s| s.to_string()).collect(),
             outputs: outputs.iter().map(|s| s.to_string()).collect(),
         })
@@ -156,11 +156,11 @@ fn build_instructions(
 fn test_static_pass(
     raw_instructions: &[(Operation, Vec<&'static str>, Vec<&'static str>)],
     expected_error: Option<Error>,
-) -> () {
+) {
     let instructions = build_instructions(raw_instructions);
     assert_eq!(
         ZkirRelation::from_instructions(&instructions).map(|_| ()),
-        expected_error.map(|e| Err(e)).unwrap_or(Ok(()))
+        expected_error.map(Err).unwrap_or(Ok(()))
     );
 }
 
@@ -169,7 +169,7 @@ fn test_static_pass(
 fn test_without_witness(
     raw_instructions: &[(Operation, Vec<&'static str>, Vec<&'static str>)],
     expected_error: Option<Error>,
-) -> () {
+) {
     let instructions = build_instructions(raw_instructions);
     let relation = ZkirRelation::from_instructions(&instructions).unwrap();
     let circuit = MidnightCircuit::new(&relation, Value::unknown(), Value::unknown(), Some(8));
@@ -190,7 +190,7 @@ fn test_with_witness(
     witness: HashMap<&'static str, IrValue>,
     expected_public_inputs: Vec<(IrValue, IrType)>,
     expected_error: Option<Error>,
-) -> () {
+) {
     let instructions = build_instructions(raw_instructions);
     let relation = ZkirRelation::from_instructions(&instructions).unwrap();
 
@@ -205,7 +205,7 @@ fn test_with_witness(
     // Assert that the off-circuit pass produces the expected result.
     assert_eq!(
         pi_result.clone().map(|_| ()),
-        expected_error.clone().map(|e| Err(e)).unwrap_or(Ok(()))
+        expected_error.clone().map(Err).unwrap_or(Ok(()))
     );
 
     if let Ok(pi) = pi_result {

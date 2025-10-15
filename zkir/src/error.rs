@@ -32,7 +32,7 @@ pub enum Error {
 
     /// The former type was expected, whereas the latter was given.
     ///
-    /// This error can ocurr if an operation is called on the wrong type.
+    /// This error can occur if an operation is called on the wrong type.
     /// For example "select" expects a [crate::types::IrValue::Bool] as its
     /// first argument. This error will be triggered if any other variant of
     /// [crate::types::IrValue] is provided instead.
@@ -40,7 +40,7 @@ pub enum Error {
 
     /// The given operation is not supported on the given type.
     ///
-    /// This error occur, for example, when trying to add too Boolean values,
+    /// This error occurs, for example, when trying to add two Boolean values,
     /// since addition is not supported on this type.
     Unsupported(Operation, IrType),
 

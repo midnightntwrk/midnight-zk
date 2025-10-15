@@ -17,6 +17,7 @@ verification keys break backwards compatibility.
 ### Changed
 * Optimize `bigint_to_fe` [#115](https://github.com/midnightntwrk/midnight-zk/pull/115)
 * Fix `is_equal` and `is_equal_to_fixed` in `native_chip` [#117](https://github.com/midnightntwrk/midnight-zk/pull/117)
+* Rename `ScalarVar` => `AssignedScalarOfNativeCurve` [#120](https://github.com/midnightntwrk/midnight-zk/pull/120)
 
 ### Removed
 
@@ -197,7 +198,7 @@ verification keys break backwards compatibility.
 * Commit "assets" directory via .gitignore [#465](https://github.com/midnightntwrk/midnight-circuits/pull/465)
 * ecc/mul_by_constant [#469](https://github.com/midnightntwrk/midnight-circuits/pull/469)
 * Secp256k1 to compact_std_lib [#475](https://github.com/midnightntwrk/midnight-circuits/pull/475)
-* Implement PublicInputInstructions for AssignedScalarOfNativeCurve [#477](https://github.com/midnightntwrk/midnight-circuits/pull/477)
+* Implement PublicInputInstructions for ScalarVar [#477](https://github.com/midnightntwrk/midnight-circuits/pull/477)
 * Generic tests for PublicInputInstructions [#481](https://github.com/midnightntwrk/midnight-circuits/pull/481)
 
 ### Changed

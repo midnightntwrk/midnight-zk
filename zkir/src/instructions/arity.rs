@@ -25,7 +25,7 @@ impl Operation {
         use Arity::*;
         use Operation::*;
         match self {
-            Load(_) => Fixed(0),
+            Load(_) => Fixed(0), // `Load` takes witnesess, not actual inputs
             Publish => Some,
         }
     }
@@ -35,7 +35,7 @@ impl Operation {
         use Operation::*;
         match self {
             Load(_) => Some,
-            Publish => Fixed(0),
+            Publish => Fixed(0), // `Publish` increases the `instances`, but does not return outputs
         }
     }
 }
