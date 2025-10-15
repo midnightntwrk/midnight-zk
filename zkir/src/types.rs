@@ -50,11 +50,11 @@ pub enum IrValue {
     /// Jubjub point.
     JubjubPoint(JubjubSubgroup),
 
-    /// Jubjub scalara field value.
+    /// Jubjub scalar field value.
     JubjubScalar(JubjubScalar),
 }
 
-/// In-circuit IR value, it is a placeholder for an [IrValue] a circuit
+/// In-circuit IR value, it is a placeholder for an [IrValue], a circuit
 /// variable that does not necessarily carry actual data.
 /// (It will carry data during the proving process, but not during the circuit
 /// compilation.)
@@ -66,15 +66,6 @@ pub enum CircuitValue {
     BigUint(AssignedBigUint),
     JubjubPoint(AssignedJubjubPoint),
     JubjubScalar(AssignedJubjubScalar),
-}
-
-impl IrType {
-    pub(crate) fn matches(self, t: IrType) -> bool {
-        match (self, t) {
-            (IrType::BigUint(n), IrType::BigUint(m)) => n <= m,
-            _ => self == t,
-        }
-    }
 }
 
 impl IrValue {
@@ -90,11 +81,17 @@ impl IrValue {
     }
 
     pub(crate) fn check_type(&self, t: IrType) -> Result<(), Error> {
-        if self.get_type().matches(t) {
-            Ok(())
-        } else {
-            Err(Error::ExpectingType(t, self.get_type()))
+        if self.get_type() == t {
+            return Ok(());
         }
+
+        if let (IrValue::BigUint(big), IrType::BigUint(n)) = (self, t) {
+            if big.bits() as u32 <= n {
+                return Ok(());
+            }
+        }
+
+        Err(Error::ExpectingType(t, self.get_type()))
     }
 }
 

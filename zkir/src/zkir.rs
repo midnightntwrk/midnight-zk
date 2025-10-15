@@ -51,6 +51,9 @@ impl ZkirRelation {
     /// Returns a vector of raw PLONK public inputs (paired with their types),
     /// which are automatically computed from the witness seed via an
     /// off-circuit execution of the underlying ZKIR program.
+    ///
+    /// The public input types are automatically derived via a dummy in-circuit
+    /// run if necessary.
     pub fn public_inputs(
         &self,
         witness: HashMap<&'static str, IrValue>,
@@ -133,15 +136,15 @@ impl Relation for ZkirRelation {
     fn write_relation<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
         bincode::encode_into_std_write(self.program.clone(), writer, bincode::config::standard())
             .map(|_nb_bytes_written| ())
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+            .map_err(io::Error::other)
     }
 
     fn read_relation<R: io::Read>(reader: &mut R) -> io::Result<Self> {
         let program = bincode::decode_from_std_read(reader, bincode::config::standard())
             .map(|(program, _bytes_read): (Program, usize)| program)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+            .map_err(io::Error::other)?;
 
         Self::from_instructions(&program.instructions)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("{e:?}")))
+            .map_err(|e| io::Error::other(format!("{e:?}")))
     }
 }

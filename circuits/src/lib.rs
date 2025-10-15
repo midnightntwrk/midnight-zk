@@ -51,6 +51,7 @@ pub mod testing_utils {
 /// for treating with them generically.
 pub mod types {
     pub use crate::{
+        biguint::AssignedBigUint,
         ecc::{
             foreign::AssignedForeignPoint,
             native::{AssignedNativePoint, AssignedScalarOfNativeCurve},
