@@ -37,7 +37,7 @@ impl CircuitValue {
     }
 }
 
-/// Constraints the given in-circuit IR values as public inputs.
+/// Constrains the given in-circuit IR values as public inputs.
 /// This operation increases the public input vector, which will now expect an
 /// extra value of the same type as `input`.
 ///
