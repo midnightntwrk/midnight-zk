@@ -27,6 +27,7 @@ impl Operation {
         match self {
             Load(_) => Fixed(0), // `Load` takes witnesess, not actual inputs
             Publish => Some,
+            Add => Fixed(2),
         }
     }
 
@@ -35,7 +36,8 @@ impl Operation {
         use Operation::*;
         match self {
             Load(_) => Some,
-            Publish => Fixed(0), // `Publish` increases the `instances`, but does not return outputs
+            Publish => Fixed(0), // `Publish` increases the `instances` but does not return outputs
+            Add => Fixed(1),
         }
     }
 }

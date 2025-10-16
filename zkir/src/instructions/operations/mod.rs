@@ -34,10 +34,25 @@ pub enum Operation {
     /// Inputs of different types can be published together in a single
     /// `Publish` operation.
     Publish,
+
+    /// Adds the given inputs, returns their sum.
+    /// This function fails if the inputs types are not the same or if they are
+    /// not supported.
+    ///
+    /// Inputs:  2
+    /// Outputs: 1
+    ///
+    /// Supported on types:
+    ///  - `Native`
+    ///  - `BigUint`
+    ///  - `JubjubPoint`
+    Add,
 }
 
+mod add;
 mod load;
 mod publish;
 
+pub use add::*;
 pub use load::*;
 pub use publish::*;

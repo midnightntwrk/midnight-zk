@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
     instructions::{
-        operations::{load_offcircuit, Operation::*},
+        operations::{add_offcircuit, load_offcircuit, Operation::*},
         Instruction,
     },
     types::IrValue,
@@ -53,6 +53,7 @@ impl Parser {
                 inps.into_iter().for_each(|v| self.public_inputs.push(v));
                 vec![]
             }
+            Add => vec![add_offcircuit(&inps[0], &inps[1])?],
         };
 
         insert_many(&mut self.memory, &instruction.outputs, &outputs)

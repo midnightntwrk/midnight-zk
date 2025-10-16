@@ -13,6 +13,8 @@ use midnight_zkir::{
     Operation::{self, *},
     ZkirRelation,
 };
+use num_bigint::BigUint;
+use num_traits::Num;
 use rand_chacha::rand_core::OsRng;
 
 type F = midnight_curves::Fq;
@@ -138,6 +140,45 @@ fn test_publish() {
     );
 }
 
+#[test]
+fn test_add() {
+    // An add instruction should have 2 inputs and 1 output.
+    test_static_pass(
+        &[(Add, vec!["x"], vec!["z"])],
+        Some(Error::InvalidArity(Add)),
+    );
+
+    test_static_pass(
+        &[(Add, vec!["x", "y"], vec![])],
+        Some(Error::InvalidArity(Add)),
+    );
+
+    test_static_pass(&[(Add, vec!["x", "y"], vec!["z"])], None);
+
+    // Unsupported addition on JubjubScalars.
+    test_without_witness(
+        &[
+            (Load(IrType::JubjubScalar), vec![], vec!["x"]),
+            (Add, vec!["x", "x"], vec!["z"]),
+        ],
+        Some(Error::Unsupported(Operation::Add, IrType::JubjubScalar)),
+    );
+
+    // A successful execution.
+    test_with_witness(
+        &[
+            (Load(IrType::BigUint(1024)), vec![], vec!["x"]),
+            (Add, vec!["x", "x"], vec!["z"]),
+        ],
+        HashMap::from_iter([(
+            "x",
+            biguint_from_hex("fffffffffffffffffffffffffffffffffffffffffffffffff").into(),
+        )]),
+        vec![],
+        None,
+    );
+}
+
 fn build_instructions(
     raw_instructions: &[(Operation, Vec<&'static str>, Vec<&'static str>)],
 ) -> Vec<Instruction> {
@@ -228,4 +269,8 @@ fn test_with_witness(
             .map(|e| Err(Into::<plonk::Error>::into(e).to_string()))
             .unwrap_or(Ok(()))
     )
+}
+
+fn biguint_from_hex(hex_str: &str) -> BigUint {
+    BigUint::from_str_radix(hex_str, 16).unwrap()
 }
