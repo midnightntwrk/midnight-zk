@@ -31,7 +31,10 @@ mod utils;
 
 type F = midnight_curves::Fq;
 
-const CRED_PATH: &str = "./examples/identity/credentials/2k-credential";
+const CRED_PATH: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/examples/identity/credentials/2k-credential"
+);
 
 // Public Key of the issuer, signer of the credential.
 const PUB_KEY: &[u8] =
