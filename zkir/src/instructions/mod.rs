@@ -9,9 +9,9 @@ pub mod operations;
 /// and a series of inputs and outputs (in the form of value names).
 ///
 /// Some operations have a specific fixed arity, see [arity::Arity].
-/// The number of inputs and outputs must coincide with those of the
-/// operation. We perform run-time arity checks when reading programs
-/// (list of instructions).
+/// The number of inputs and outputs must coincide with the input and output
+/// arity of the operation. We perform run-time arity checks when reading
+/// programs (list of instructions).
 pub struct Instruction {
     /// The operation performed by this instruction.
     #[serde(rename = "op")]
