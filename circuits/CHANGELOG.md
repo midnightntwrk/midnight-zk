@@ -17,6 +17,7 @@ verification keys break backwards compatibility.
 ### Changed
 * Optimize `bigint_to_fe` [#115](https://github.com/midnightntwrk/midnight-zk/pull/115)
 * Fix `is_equal` and `is_equal_to_fixed` in `native_chip` [#117](https://github.com/midnightntwrk/midnight-zk/pull/117)
+* Rename `ScalarVar` => `AssignedScalarOfNativeCurve` [#120](https://github.com/midnightntwrk/midnight-zk/pull/120)
 
 ### Removed
 
@@ -56,6 +57,8 @@ verification keys break backwards compatibility.
 * Rebase to new cost-model with improved K computation [#104](https://github.com/midnightntwrk/midnight-zk/pull/104)
 * Explicitly used Apache license for crate [#107](https://github.com/midnightntwrk/midnight-zk/pull/107)
 * Compute optimal `max_bit_len` in `compact_std_lib` [#106](https://github.com/midnightntwrk/midnight-zk/pull/106)
+* Rename `ScalarVar` -> `AssignedScalarOfNativeCurve` [#120](https://github.com/midnightntwrk/midnight-zk/pull/120)
+
 
 ### Removed
 

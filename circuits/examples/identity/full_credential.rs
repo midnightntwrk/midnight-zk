@@ -65,8 +65,8 @@ impl Relation for FullCredential {
     type Instance = PK;
     type Witness = (Payload, ECDSASig, SK);
 
-    fn format_instance(instance: &Self::Instance) -> Vec<F> {
-        AssignedForeignPoint::<F, Secp256k1, MultiEmulationParams>::as_public_input(instance)
+    fn format_instance(instance: &Self::Instance) -> Result<Vec<F>, Error> {
+        Ok(AssignedForeignPoint::<F, Secp256k1, MultiEmulationParams>::as_public_input(instance))
     }
 
     fn circuit(

@@ -327,7 +327,9 @@ where
     F: FnMut(T, T) -> Result<T, Error>,
 {
     let mut iterator = iter.into_iter();
-    let first = iterator.next().ok_or(Error::Synthesis)?;
+    let first = iterator.next().ok_or(Error::Synthesis(
+        "try_reduced: iterator must not be empty".into(),
+    ))?;
     iterator.try_fold(first, f)
 }
 

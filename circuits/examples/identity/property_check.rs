@@ -76,8 +76,8 @@ impl Relation for CredentialProperty {
     type Instance = ();
     type Witness = (Payload, SK);
 
-    fn format_instance(_instance: &Self::Instance) -> Vec<F> {
-        vec![]
+    fn format_instance(_instance: &Self::Instance) -> Result<Vec<F>, Error> {
+        Ok(vec![])
     }
 
     fn format_committed_instances(witness: &Self::Witness) -> Vec<F> {

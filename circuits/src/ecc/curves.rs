@@ -34,6 +34,11 @@ pub trait CircuitCurve: Curve + Default {
     /// Cofactor of the curve.
     const COFACTOR: u128 = 1;
 
+    /// How many bits are needed to represent an element of the scalar field of
+    /// the curve subgroup. This is the log2 rounded up of the curve order
+    /// divided by the cofactor.
+    const NUM_BITS_SUBGROUP: u32;
+
     /// Returns the coordinates.
     fn coordinates(&self) -> Option<(Self::Base, Self::Base)>;
 
@@ -81,6 +86,7 @@ impl CircuitCurve for JubjubExtended {
     type Base = BlsScalar;
     type CryptographicGroup = JubjubSubgroup;
     const COFACTOR: u128 = 8;
+    const NUM_BITS_SUBGROUP: u32 = 252;
 
     fn coordinates(&self) -> Option<(Self::Base, Self::Base)> {
         Some((self.to_affine().get_u(), self.to_affine().get_v()))
@@ -134,6 +140,8 @@ impl CircuitCurve for Secp256k1 {
     type Base = Fp;
     type CryptographicGroup = Secp256k1;
 
+    const NUM_BITS_SUBGROUP: u32 = 256;
+
     fn coordinates(&self) -> Option<(Self::Base, Self::Base)> {
         Some((self.to_affine().x, self.to_affine().y))
     }
@@ -163,6 +171,8 @@ impl CircuitCurve for G1Projective {
     type Base = BlsBase;
     type CryptographicGroup = G1Projective;
 
+    const NUM_BITS_SUBGROUP: u32 = 255;
+
     fn coordinates(&self) -> Option<(Self::Base, Self::Base)> {
         Some((self.to_affine().x(), self.to_affine().y()))
     }
@@ -188,6 +198,8 @@ impl WeierstrassCurve for G1Projective {
 impl CircuitCurve for bn256::G1 {
     type Base = bn256::Fq;
     type CryptographicGroup = bn256::G1;
+
+    const NUM_BITS_SUBGROUP: u32 = 254;
 
     fn coordinates(&self) -> Option<(Self::Base, Self::Base)> {
         Some((self.to_affine().x, self.to_affine().y))
@@ -219,6 +231,8 @@ use halo2curves::pasta::{
 impl CircuitCurve for Vesta {
     type Base = VestaBase;
     type CryptographicGroup = Vesta;
+
+    const NUM_BITS_SUBGROUP: u32 = 255;
 
     fn coordinates(&self) -> Option<(Self::Base, Self::Base)> {
         let coordinates = self.to_affine().coordinates().into_option()?;
