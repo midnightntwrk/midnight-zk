@@ -10,22 +10,22 @@ use crate::{
 };
 
 #[derive(Debug)]
-pub struct Committed<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
+pub(crate) struct Committed<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
     permutation_product_commitments: Vec<CS::Commitment>,
 }
 
-pub struct EvaluatedSet<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
+pub(crate) struct EvaluatedSet<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
     permutation_product_commitment: CS::Commitment,
     permutation_product_eval: F,
     permutation_product_next_eval: F,
     permutation_product_last_eval: Option<F>,
 }
 
-pub struct CommonEvaluated<F: PrimeField> {
-    permutation_evals: Vec<F>,
+pub(crate) struct CommonEvaluated<F: PrimeField> {
+    pub(in crate::plonk) permutation_evals: Vec<F>,
 }
 
-pub struct Evaluated<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
+pub(crate) struct Evaluated<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
     sets: Vec<EvaluatedSet<F, CS>>,
 }
 
@@ -216,9 +216,9 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
         vk: &'r plonk::VerifyingKey<F, CS>,
         x: F,
     ) -> impl Iterator<Item = VerifierQuery<'r, F, CS>> + Clone + 'r {
-        let blinding_factors = vk.cs.blinding_factors();
+        let nr_blinding_factors = vk.cs.nr_blinding_factors();
         let x_next = vk.domain.rotate_omega(x, Rotation::next());
-        let x_last = vk.domain.rotate_omega(x, Rotation(-((blinding_factors + 1) as i32)));
+        let x_last = vk.domain.rotate_omega(x, Rotation(-((nr_blinding_factors + 1) as i32)));
 
         iter::empty()
             .chain(self.sets.iter().flat_map(move |set| {

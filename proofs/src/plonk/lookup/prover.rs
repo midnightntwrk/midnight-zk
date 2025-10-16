@@ -41,6 +41,96 @@ pub(crate) struct Evaluated<F: PrimeField> {
     constructed: Committed<F>,
 }
 
+pub(crate) struct PartiallyEvaluated<F: PrimeField> {
+    product_eval: F,
+    product_next_eval: F,
+    permuted_input_eval: F,
+    permuted_input_inv_eval: F,
+    permuted_table_eval: F,
+}
+
+impl<F: WithSmallOrderMulGroup<3>> PartiallyEvaluated<F> {
+    #[allow(clippy::too_many_arguments)]
+    pub(in crate::plonk) fn expressions<'a>(
+        &'a self,
+        l_0: F,
+        l_last: F,
+        l_blind: F,
+        argument: &'a Argument<F>,
+        theta: F,
+        beta: F,
+        gamma: F,
+        advice_evals: &[F],
+        fixed_evals: &[F],
+        instance_evals: &[F],
+        challenges: &[F],
+    ) -> impl Iterator<Item = F> + 'a {
+        let active_rows = F::ONE - (l_last + l_blind);
+
+        let product_expression = || {
+            // z(\omega X) (a'(X) + \beta) (s'(X) + \gamma)
+            // - z(X) (\theta^{m-1} a_0(X) + ... + a_{m-1}(X) + \beta) (\theta^{m-1} s_0(X)
+            //   + ... + s_{m-1}(X) + \gamma)
+            let left = self.product_next_eval
+                * &(self.permuted_input_eval + &beta)
+                * &(self.permuted_table_eval + &gamma);
+
+            let compress_expressions = |expressions: &[Expression<F>]| {
+                expressions
+                    .iter()
+                    .map(|expression| {
+                        expression.evaluate(
+                            &|scalar| scalar,
+                            &|_| panic!("virtual selectors are removed during optimization"),
+                            &|query| fixed_evals[query.index.unwrap()],
+                            &|query| advice_evals[query.index.unwrap()],
+                            &|query| instance_evals[query.index.unwrap()],
+                            &|challenge| challenges[challenge.index()],
+                            &|a| -a,
+                            &|a, b| a + &b,
+                            &|a, b| a * &b,
+                            &|a, scalar| a * &scalar,
+                        )
+                    })
+                    .fold(F::ZERO, |acc, eval| acc * &theta + &eval)
+            };
+            let right = self.product_eval
+                * &(compress_expressions(&argument.input_expressions) + &beta)
+                * &(compress_expressions(&argument.table_expressions) + &gamma);
+
+            (left - &right) * &active_rows
+        };
+
+        std::iter::empty()
+            .chain(
+                // l_0(X) * (1 - z(X)) = 0
+                Some(l_0 * &(F::ONE - &self.product_eval)),
+            )
+            .chain(
+                // l_last(X) * (z(X)^2 - z(X)) = 0
+                Some(l_last * &(self.product_eval.square() - &self.product_eval)),
+            )
+            .chain(
+                // (1 - (l_last(X) + l_blind(X))) * (
+                //   z(\omega X) (a'(X) + \beta) (s'(X) + \gamma)
+                //   - z(X) (\theta^{m-1} a_0(X) + ... + a_{m-1}(X) + \beta) (\theta^{m-1} s_0(X) +
+                //     ... + s_{m-1}(X) + \gamma)
+                // ) = 0
+                Some(product_expression()),
+            )
+            .chain(Some(
+                // l_0(X) * (a'(X) - s'(X)) = 0
+                l_0 * &(self.permuted_input_eval - &self.permuted_table_eval),
+            ))
+            .chain(Some(
+                // (1 - (l_last(X) + l_blind(X))) * (a′(X) − s′(X))⋅(a′(X) − a′(\omega^{-1} X)) = 0
+                (self.permuted_input_eval - &self.permuted_table_eval)
+                    * &(self.permuted_input_eval - &self.permuted_input_inv_eval)
+                    * &active_rows,
+            ))
+    }
+}
+
 impl<F: WithSmallOrderMulGroup<3> + Ord + Hash> Argument<F> {
     /// Given a Lookup with input expressions [A_0, A_1, ..., A_{m-1}] and table
     /// expressions [S_0, S_1, ..., S_{m-1}], this method
@@ -166,7 +256,7 @@ impl<F: WithSmallOrderMulGroup<3>> Permuted<F> {
         F: WithSmallOrderMulGroup<3> + FromUniformBytes<64>,
         CS::Commitment: Hashable<T::Hash>,
     {
-        let blinding_factors = pk.vk.cs.blinding_factors();
+        let nr_blinding_factors = pk.vk.cs.nr_blinding_factors();
         // Goal is to compute the products of fractions
         //
         // Numerator: (\theta^{m-1} a_0(\omega^i) + \theta^{m-2} a_1(\omega^i) + ... +
@@ -235,9 +325,9 @@ impl<F: WithSmallOrderMulGroup<3>> Permuted<F> {
             })
             // Take all rows including the "last" row which should
             // be a boolean (and ideally 1, else soundness is broken)
-            .take(pk.vk.n() as usize - blinding_factors)
+            .take(pk.vk.n() as usize - nr_blinding_factors)
             // Chain random blinding factors.
-            .chain((0..blinding_factors).map(|_| F::random(&mut rng)))
+            .chain((0..nr_blinding_factors).map(|_| F::random(&mut rng)))
             .collect::<Vec<_>>();
         assert_eq!(z.len(), pk.vk.n() as usize);
         let z = pk.vk.domain.lagrange_from_vec(z);
@@ -301,6 +391,7 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
         pk: &ProvingKey<F, CS>,
         x: F,
         transcript: &mut T,
+        lookup_evals: &mut Vec<PartiallyEvaluated<F>>,
     ) -> Result<Evaluated<F>, Error>
     where
         F: Hashable<T::Hash>,
@@ -314,6 +405,15 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
         let permuted_input_eval = eval_polynomial(&self.permuted_input_poly, x);
         let permuted_input_inv_eval = eval_polynomial(&self.permuted_input_poly, x_inv);
         let permuted_table_eval = eval_polynomial(&self.permuted_table_poly, x);
+
+        let pe = PartiallyEvaluated {
+            product_eval,
+            product_next_eval,
+            permuted_input_eval,
+            permuted_input_inv_eval,
+            permuted_table_eval,
+        };
+        lookup_evals.push(pe);
 
         // Hash each advice evaluation
         for eval in iter::empty()
@@ -387,8 +487,8 @@ fn permute_expression_pair<F, CS: PolynomialCommitmentScheme<F>, R: RngCore>(
 where
     F: WithSmallOrderMulGroup<3> + Hash + Ord + FromUniformBytes<64>,
 {
-    let blinding_factors = pk.vk.cs.blinding_factors();
-    let usable_rows = pk.vk.n() as usize - (blinding_factors + 1);
+    let nr_blinding_factors = pk.vk.cs.nr_blinding_factors();
+    let usable_rows = pk.vk.n() as usize - (nr_blinding_factors + 1);
 
     let mut permuted_input_expression: Vec<F> = input_expression.to_vec();
     permuted_input_expression.truncate(usable_rows);
@@ -435,8 +535,8 @@ where
     }
     assert!(repeated_input_rows.is_empty());
 
-    permuted_input_expression.extend((0..(blinding_factors + 1)).map(|_| F::random(&mut rng)));
-    permuted_table_coeffs.extend((0..(blinding_factors + 1)).map(|_| F::random(&mut rng)));
+    permuted_input_expression.extend((0..(nr_blinding_factors + 1)).map(|_| F::random(&mut rng)));
+    permuted_table_coeffs.extend((0..(nr_blinding_factors + 1)).map(|_| F::random(&mut rng)));
     assert_eq!(permuted_input_expression.len(), pk.vk.n() as usize);
     assert_eq!(permuted_table_coeffs.len(), pk.vk.n() as usize);
 

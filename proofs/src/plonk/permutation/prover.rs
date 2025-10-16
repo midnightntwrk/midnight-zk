@@ -6,7 +6,7 @@ use rand_core::RngCore;
 
 use super::{super::circuit::Any, Argument, ProvingKey};
 use crate::{
-    plonk::{self, Error},
+    plonk::{self, permutation::verifier::CommonEvaluated, Error},
     poly::{
         commitment::PolynomialCommitmentScheme, Coeff, LagrangeCoeff, Polynomial, ProverQuery,
         Rotation,
@@ -62,7 +62,7 @@ impl Argument {
         // 3 circuit for the permutation argument.
         assert!(pk.vk.cs_degree >= 3);
         let chunk_len = pk.vk.cs_degree - 2;
-        let blinding_factors = pk.vk.cs.blinding_factors();
+        let nr_blinding_factors = pk.vk.cs.nr_blinding_factors();
 
         // Each column gets its own delta power.
         let mut deltaomega = F::ONE;
@@ -148,11 +148,11 @@ impl Argument {
             }
             let mut z = domain.lagrange_from_vec(z);
             // Set blinding factors
-            for z in &mut z[domain.n as usize - blinding_factors..] {
+            for z in &mut z[domain.n as usize - nr_blinding_factors..] {
                 *z = F::random(&mut rng);
             }
             // Set new last_z
-            last_z = z[domain.n as usize - (blinding_factors + 1)];
+            last_z = z[domain.n as usize - (nr_blinding_factors + 1)];
 
             let permutation_product_commitment = CS::commit_lagrange(params, &z);
             let permutation_product_poly = domain.lagrange_to_coeff(z);
@@ -174,17 +174,34 @@ impl<F: PrimeField> super::ProvingKey<F> {
         self.polys.iter().map(move |poly| ProverQuery { point: x, poly })
     }
 
-    pub(crate) fn evaluate<T: Transcript>(&self, x: F, transcript: &mut T) -> Result<(), Error>
+    pub(crate) fn evaluate<T: Transcript>(
+        &self,
+        x: F,
+        transcript: &mut T,
+    ) -> Result<CommonEvaluated<F>, Error>
     where
         F: Hashable<T::Hash>,
     {
+        let mut permutation_evals = Vec::new();
         // Hash permutation evals
         for eval in self.polys.iter().map(|poly| eval_polynomial(poly, x)) {
+            permutation_evals.push(eval);
             transcript.write(&eval)?;
         }
 
-        Ok(())
+        Ok(CommonEvaluated { permutation_evals })
     }
+}
+
+pub(crate) struct PartiallyEvaluated<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
+    sets: Vec<PartiallyEvaluatedSet<F, CS>>,
+}
+
+pub(crate) struct PartiallyEvaluatedSet<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
+    permutation_product_eval: F,
+    permutation_product_next_eval: F,
+    permutation_product_last_eval: Option<F>,
+    phantom: std::marker::PhantomData<CS>,
 }
 
 impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
@@ -193,14 +210,16 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
         pk: &plonk::ProvingKey<F, CS>,
         x: F,
         transcript: &mut T,
+        permutation_evals: &mut Vec<PartiallyEvaluated<F, CS>>,
     ) -> Result<Evaluated<F>, Error>
     where
         F: Hashable<T::Hash>,
     {
         let domain = &pk.vk.domain;
-        let blinding_factors = pk.vk.cs.blinding_factors();
+        let nr_blinding_factors = pk.vk.cs.nr_blinding_factors();
 
         {
+            let mut partial_sets = vec![];
             let mut sets = self.sets.iter();
 
             while let Some(set) = sets.next() {
@@ -219,21 +238,136 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
                     transcript.write(eval)?;
                 }
 
+                let mut outer_permutation_product_last_eval: Option<F> = None;
+
                 // If we have any remaining sets to process, evaluate this set at omega^u
                 // so we can constrain the last value of its running product to equal the
                 // first value of the next set's running product, chaining them together.
                 if sets.len() > 0 {
                     let permutation_product_last_eval = eval_polynomial(
                         &set.permutation_product_poly,
-                        domain.rotate_omega(x, Rotation(-((blinding_factors + 1) as i32))),
+                        domain.rotate_omega(x, Rotation(-((nr_blinding_factors + 1) as i32))),
                     );
-
+                    outer_permutation_product_last_eval = Some(permutation_product_last_eval);
                     transcript.write(&permutation_product_last_eval)?;
                 }
+
+                partial_sets.push(PartiallyEvaluatedSet {
+                    permutation_product_eval,
+                    permutation_product_next_eval,
+                    permutation_product_last_eval: outer_permutation_product_last_eval,
+                    phantom: std::marker::PhantomData::<CS>,
+                });
             }
+
+            permutation_evals.push(PartiallyEvaluated { sets: partial_sets })
         }
 
         Ok(Evaluated { constructed: self })
+    }
+}
+
+impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> PartiallyEvaluated<F, CS> {
+    #[allow(clippy::too_many_arguments)]
+    pub(in crate::plonk) fn expressions<'a>(
+        &'a self,
+        vk: &'a plonk::VerifyingKey<F, CS>,
+        p: &'a Argument,
+        common: &'a CommonEvaluated<F>,
+        advice_evals: &'a [F],
+        fixed_evals: &'a [F],
+        instance_evals: &'a [F],
+        l_0: F,
+        l_last: F,
+        l_blind: F,
+        beta: F,
+        gamma: F,
+        x: F,
+    ) -> impl Iterator<Item = F> + 'a {
+        let chunk_len = vk.cs_degree - 2;
+        iter::empty()
+            // Enforce only for the first set.
+            // l_0(X) * (1 - z_0(X)) = 0
+            .chain(
+                self.sets
+                    .first()
+                    .map(|first_set| l_0 * &(F::ONE - &first_set.permutation_product_eval)),
+            )
+            // Enforce only for the last set.
+            // l_last(X) * (z_l(X)^2 - z_l(X)) = 0
+            .chain(self.sets.last().map(|last_set| {
+                (last_set.permutation_product_eval.square() - &last_set.permutation_product_eval)
+                    * &l_last
+            }))
+            // Except for the first set, enforce.
+            // l_0(X) * (z_i(X) - z_{i-1}(\omega^(last) X)) = 0
+            .chain(
+                self.sets
+                    .iter()
+                    .skip(1)
+                    .zip(self.sets.iter())
+                    .map(|(set, last_set)| {
+                        (
+                            set.permutation_product_eval,
+                            last_set.permutation_product_last_eval.unwrap(),
+                        )
+                    })
+                    .map(move |(set, prev_last)| (set - &prev_last) * &l_0),
+            )
+            // And for all the sets we enforce:
+            // (1 - (l_last(X) + l_blind(X))) * (
+            //   z_i(\omega X) \prod (p(X) + \beta s_i(X) + \gamma)
+            // - z_i(X) \prod (p(X) + \delta^i \beta X + \gamma)
+            // )
+            .chain(
+                self.sets
+                    .iter()
+                    .zip(p.columns.chunks(chunk_len))
+                    .zip(common.permutation_evals.chunks(chunk_len))
+                    .enumerate()
+                    .map(move |(chunk_index, ((set, columns), permutation_evals))| {
+                        let mut left = set.permutation_product_next_eval;
+                        for (eval, permutation_eval) in columns
+                            .iter()
+                            .map(|&column| match column.column_type() {
+                                Any::Advice(_) => {
+                                    advice_evals[vk.cs.get_any_query_index(column, Rotation::cur())]
+                                }
+                                Any::Fixed => {
+                                    fixed_evals[vk.cs.get_any_query_index(column, Rotation::cur())]
+                                }
+                                Any::Instance => {
+                                    instance_evals
+                                        [vk.cs.get_any_query_index(column, Rotation::cur())]
+                                }
+                            })
+                            .zip(permutation_evals.iter())
+                        {
+                            left *= &(eval + &(beta * permutation_eval) + &gamma);
+                        }
+
+                        let mut right = set.permutation_product_eval;
+                        let mut current_delta = (beta * &x)
+                            * &(<F as PrimeField>::DELTA
+                                .pow_vartime([(chunk_index * chunk_len) as u64]));
+                        for eval in columns.iter().map(|&column| match column.column_type() {
+                            Any::Advice(_) => {
+                                advice_evals[vk.cs.get_any_query_index(column, Rotation::cur())]
+                            }
+                            Any::Fixed => {
+                                fixed_evals[vk.cs.get_any_query_index(column, Rotation::cur())]
+                            }
+                            Any::Instance => {
+                                instance_evals[vk.cs.get_any_query_index(column, Rotation::cur())]
+                            }
+                        }) {
+                            right *= &(eval + &current_delta + &gamma);
+                            current_delta *= &F::DELTA;
+                        }
+
+                        (left - &right) * (F::ONE - &(l_last + &l_blind))
+                    }),
+            )
     }
 }
 
@@ -243,9 +377,9 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluated<F> {
         pk: &'a plonk::ProvingKey<F, CS>,
         x: F,
     ) -> impl Iterator<Item = ProverQuery<'a, F>> + Clone {
-        let blinding_factors = pk.vk.cs.blinding_factors();
+        let nr_blinding_factors = pk.vk.cs.nr_blinding_factors();
         let x_next = pk.vk.domain.rotate_omega(x, Rotation::next());
-        let x_last = pk.vk.domain.rotate_omega(x, Rotation(-((blinding_factors + 1) as i32)));
+        let x_last = pk.vk.domain.rotate_omega(x, Rotation(-((nr_blinding_factors + 1) as i32)));
 
         iter::empty()
             .chain(self.constructed.sets.iter().flat_map(move |set| {
