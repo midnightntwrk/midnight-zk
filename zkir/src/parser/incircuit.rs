@@ -5,7 +5,9 @@ use midnight_proofs::circuit::{Layouter, Value};
 
 use crate::{
     instructions::{
-        operations::{add_incircuit, load_incircuit, publish_incircuit, Operation::*},
+        operations::{
+            add_incircuit, assert_equal_incircuit, load_incircuit, publish_incircuit, Operation::*,
+        },
         Instruction,
     },
     types::{CircuitValue, IrType, IrValue},
@@ -61,6 +63,10 @@ impl Parser {
                     self.public_input_types.push(v.get_type());
                     publish_incircuit(std_lib, layouter, v)
                 })?;
+                vec![]
+            }
+            AssertEqual => {
+                assert_equal_incircuit(std_lib, layouter, &inps[0], &inps[1])?;
                 vec![]
             }
             Add => vec![add_incircuit(std_lib, layouter, &inps[0], &inps[1])?],

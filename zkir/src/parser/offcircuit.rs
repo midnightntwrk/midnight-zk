@@ -53,6 +53,15 @@ impl Parser {
                 inps.into_iter().for_each(|v| self.public_inputs.push(v));
                 vec![]
             }
+            AssertEqual => {
+                if inps[0] != inps[1] {
+                    return Err(Error::Other(format!(
+                        "assertion violated: {:?} == {:?}",
+                        inps[0], inps[1]
+                    )));
+                }
+                vec![]
+            }
             Add => vec![add_offcircuit(&inps[0], &inps[1])?],
         };
 

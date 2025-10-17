@@ -179,6 +179,55 @@ fn test_add() {
     );
 }
 
+#[test]
+fn test_assert_equal() {
+    // Equality assertions expect 2 inputs and no outputs.
+    test_static_pass(
+        &[(AssertEqual, vec!["x", "y"], vec!["z"])],
+        Some(Error::InvalidArity(AssertEqual)),
+    );
+
+    test_static_pass(
+        &[(AssertEqual, vec!["x", "y", "z"], vec![])],
+        Some(Error::InvalidArity(AssertEqual)),
+    );
+
+    test_static_pass(&[(AssertEqual, vec!["x", "y"], vec![])], None);
+
+    // Unsupported equality assertion on JubjubScalars.
+    test_without_witness(
+        &[
+            (Load(IrType::JubjubScalar), vec![], vec!["x"]),
+            (AssertEqual, vec!["x", "x"], vec![]),
+        ],
+        Some(Error::Unsupported(
+            Operation::AssertEqual,
+            IrType::JubjubScalar,
+        )),
+    );
+
+    // Compared values must be of the same type.
+    test_without_witness(
+        &[
+            (Load(IrType::JubjubPoint), vec![], vec!["p"]),
+            (Load(IrType::Native), vec![], vec!["x"]),
+            (AssertEqual, vec!["p", "x"], vec![]),
+        ],
+        Some(Error::ExpectingType(IrType::JubjubPoint, IrType::Native)),
+    );
+
+    // A successful execution.
+    test_with_witness(
+        &[
+            (Load(IrType::BigUint(1024)), vec![], vec!["x"]),
+            (AssertEqual, vec!["x", "x"], vec![]),
+        ],
+        HashMap::from_iter([("x", biguint_from_hex("deadbeef").into())]),
+        vec![],
+        None,
+    );
+}
+
 fn build_instructions(
     raw_instructions: &[(Operation, Vec<&'static str>, Vec<&'static str>)],
 ) -> Vec<Instruction> {
