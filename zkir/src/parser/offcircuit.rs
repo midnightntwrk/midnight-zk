@@ -36,7 +36,7 @@ impl Parser {
             .iter()
             .map(|name| match self.memory.get(name).cloned() {
                 Some(v) => Ok(v),
-                None => Err(Error::NotFound(name.clone())),
+                None => name.as_str().try_into(),
             })
             .collect::<Result<Vec<IrValue>, Error>>()?;
 

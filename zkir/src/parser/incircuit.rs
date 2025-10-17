@@ -11,7 +11,7 @@ use crate::{
         Instruction,
     },
     types::{CircuitValue, IrType, IrValue},
-    utils::{get_t, insert_many, F},
+    utils::{constants::assign_constant, get_t, insert_many, F},
     Error,
 };
 
@@ -45,7 +45,7 @@ impl Parser {
             .iter()
             .map(|name| match self.memory.get(name).cloned() {
                 Some(v) => Ok(v),
-                None => Err(Error::NotFound(name.clone())),
+                None => assign_constant(std_lib, layouter, name),
             })
             .collect::<Result<Vec<CircuitValue>, Error>>()?;
 

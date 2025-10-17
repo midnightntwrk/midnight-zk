@@ -17,6 +17,8 @@ pub type AssignedBigUint = types::AssignedBigUint<F>;
 pub type AssignedJubjubPoint = types::AssignedNativePoint<JubjubExtended>;
 pub type AssignedJubjubScalar = types::AssignedScalarOfNativeCurve<JubjubExtended>;
 
+pub mod constants;
+
 pub fn insert<T: Clone>(map: &mut HashMap<String, T>, name: &str, value: &T) -> Result<(), Error> {
     map.insert(name.to_owned(), value.clone())
         .map_or(Ok(()), |_| Err(Error::DuplicatedName(name.to_string())))

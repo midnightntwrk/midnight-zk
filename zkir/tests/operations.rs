@@ -101,7 +101,7 @@ fn test_publish() {
     // Published inputs must exist.
     test_without_witness(
         &[(Publish, vec!["x"], vec![])],
-        Some(Error::NotFound("x".to_string())),
+        Some(Error::ParsingError(IrType::Bool, "x".to_string())),
     );
     test_without_witness(
         &[

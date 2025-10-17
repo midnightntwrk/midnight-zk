@@ -18,7 +18,8 @@ fn main() {
             { "op": {"load": { "Bytes" : 2 }}, "outputs": ["bytes"] },
             { "op": {"load": { "BigUint": 1024 }}, "outputs": ["N"] },
             { "op": "publish", "inputs": ["v0", "v1", "N"] },
-            { "op": "add", "inputs": ["v0", "v1"], "outputs": ["z"] }
+            { "op": "add", "inputs": ["v0", "v1"], "outputs": ["z"] },
+            { "op": "assert_equal", "inputs": ["z", "Native:-0x01"] }
         ]
     }
     "#;
