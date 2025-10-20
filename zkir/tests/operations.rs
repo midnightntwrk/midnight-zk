@@ -299,6 +299,45 @@ fn test_add() {
 }
 
 #[test]
+fn test_sub() {
+    // A sub instruction should have 2 inputs and 1 output.
+    test_static_pass(
+        &[(Sub, vec!["x"], vec!["z"])],
+        Some(Error::InvalidArity(Sub)),
+    );
+
+    test_static_pass(
+        &[(Sub, vec!["x", "y"], vec![])],
+        Some(Error::InvalidArity(Sub)),
+    );
+
+    test_static_pass(&[(Sub, vec!["x", "y"], vec!["z"])], None);
+
+    // Unsupported subtraction on JubjubScalars.
+    test_without_witness(
+        &[
+            (Load(IrType::JubjubScalar), vec![], vec!["x"]),
+            (Sub, vec!["x", "x"], vec!["z"]),
+        ],
+        Some(Error::Unsupported(
+            Operation::Sub,
+            vec![IrType::JubjubScalar, IrType::JubjubScalar],
+        )),
+    );
+
+    // A successful execution.
+    test_with_witness(
+        &[
+            (Load(IrType::BigUint(1024)), vec![], vec!["x"]),
+            (Sub, vec!["x", "x"], vec!["z"]),
+        ],
+        HashMap::from_iter([("x", biguint_from_hex("deadbeef").into())]),
+        vec![],
+        None,
+    );
+}
+
+#[test]
 fn test_mul() {
     // A mul instruction should have 2 inputs and 1 output.
     test_static_pass(

@@ -64,6 +64,23 @@ pub enum Operation {
     ///  - `JubjubPoint`
     Add,
 
+    /// Subtracts the given inputs, returns their difference.
+    /// This function fails if the inputs types are not the same or if they are
+    /// not supported.
+    ///
+    /// Inputs:  2
+    /// Outputs: 1
+    ///
+    /// Supported on types:
+    ///  - `Native`
+    ///  - `BigUint`
+    ///  - `JubjubPoint`
+    ///
+    /// In the case of `BigUint`, trying to subtract a bigger value from a
+    /// smaller one will result in an unsatisfiable circuit.
+    /// (Or in a run-time error in an off-circuit execution.)
+    Sub,
+
     /// Multiplies the given inputs, returns their product.
     /// The input types do not need to be the same, we list below the supported
     /// combinations of input types.
@@ -84,6 +101,7 @@ mod is_equal;
 mod load;
 mod mul;
 mod publish;
+mod sub;
 
 pub use add::*;
 pub use assert_equal::*;
@@ -91,3 +109,4 @@ pub use is_equal::*;
 pub use load::*;
 pub use mul::*;
 pub use publish::*;
+pub use sub::*;
