@@ -143,48 +143,6 @@ fn test_publish() {
 }
 
 #[test]
-fn test_add() {
-    // An add instruction should have 2 inputs and 1 output.
-    test_static_pass(
-        &[(Add, vec!["x"], vec!["z"])],
-        Some(Error::InvalidArity(Add)),
-    );
-
-    test_static_pass(
-        &[(Add, vec!["x", "y"], vec![])],
-        Some(Error::InvalidArity(Add)),
-    );
-
-    test_static_pass(&[(Add, vec!["x", "y"], vec!["z"])], None);
-
-    // Unsupported addition on JubjubScalars.
-    test_without_witness(
-        &[
-            (Load(IrType::JubjubScalar), vec![], vec!["x"]),
-            (Add, vec!["x", "x"], vec!["z"]),
-        ],
-        Some(Error::Unsupported(
-            Operation::Add,
-            vec![IrType::JubjubScalar, IrType::JubjubScalar],
-        )),
-    );
-
-    // A successful execution.
-    test_with_witness(
-        &[
-            (Load(IrType::BigUint(1024)), vec![], vec!["x"]),
-            (Add, vec!["x", "x"], vec!["z"]),
-        ],
-        HashMap::from_iter([(
-            "x",
-            biguint_from_hex("fffffffffffffffffffffffffffffffffffffffffffffffff").into(),
-        )]),
-        vec![],
-        None,
-    );
-}
-
-#[test]
 fn test_assert_equal() {
     // Equality assertions expect 2 inputs and no outputs.
     test_static_pass(
@@ -293,6 +251,48 @@ fn test_is_equal() {
             (AssertEqual, vec!["b", "1"], vec![]),
         ],
         HashMap::from_iter([("v", vec![42u8, 255u8].into())]),
+        vec![],
+        None,
+    );
+}
+
+#[test]
+fn test_add() {
+    // An add instruction should have 2 inputs and 1 output.
+    test_static_pass(
+        &[(Add, vec!["x"], vec!["z"])],
+        Some(Error::InvalidArity(Add)),
+    );
+
+    test_static_pass(
+        &[(Add, vec!["x", "y"], vec![])],
+        Some(Error::InvalidArity(Add)),
+    );
+
+    test_static_pass(&[(Add, vec!["x", "y"], vec!["z"])], None);
+
+    // Unsupported addition on JubjubScalars.
+    test_without_witness(
+        &[
+            (Load(IrType::JubjubScalar), vec![], vec!["x"]),
+            (Add, vec!["x", "x"], vec!["z"]),
+        ],
+        Some(Error::Unsupported(
+            Operation::Add,
+            vec![IrType::JubjubScalar, IrType::JubjubScalar],
+        )),
+    );
+
+    // A successful execution.
+    test_with_witness(
+        &[
+            (Load(IrType::BigUint(1024)), vec![], vec!["x"]),
+            (Add, vec!["x", "x"], vec!["z"]),
+        ],
+        HashMap::from_iter([(
+            "x",
+            biguint_from_hex("fffffffffffffffffffffffffffffffffffffffffffffffff").into(),
+        )]),
         vec![],
         None,
     );
