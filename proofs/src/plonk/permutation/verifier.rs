@@ -22,7 +22,7 @@ pub struct EvaluatedSet<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
 }
 
 pub struct CommonEvaluated<F: PrimeField> {
-    permutation_evals: Vec<F>,
+    pub(crate) permutation_evals: Vec<F>,
 }
 
 pub struct Evaluated<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {

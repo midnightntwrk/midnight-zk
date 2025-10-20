@@ -9,6 +9,7 @@ use blake2b_simd::Params as Blake2bParams;
 use group::ff::FromUniformBytes;
 
 use crate::{
+    plonk::permutation::verifier::CommonEvaluated,
     poly::{
         Coeff, EvaluationDomain, ExtendedLagrangeCoeff, LagrangeCoeff, PinnedEvaluationDomain,
         Polynomial,
@@ -459,4 +460,128 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> VerifyingKey<F, CS> {
     pub fn get_domain(&self) -> &EvaluationDomain<F> {
         &self.domain
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn partially_evaluate_identities<'a, F, CS>(
+    fixed_evals: &'a [F],
+    instance_evals_combined: impl Iterator<Item = &'a Vec<F>> + 'a,
+    advice_evals_combined: impl Iterator<Item = &'a Vec<F>> + 'a,
+    permutation_evals_combined: impl Iterator<Item = &'a Vec<permutation::EvaluatedSet<F>>> + 'a,
+    lookup_evals_combined: impl Iterator<Item = &'a Vec<lookup::Evaluated<F>>> + 'a,
+    trashcan_evals_combined: impl Iterator<Item = &'a Vec<trash::Evaluated<F>>> + 'a,
+    permutations_common: &'a CommonEvaluated<F>,
+    x: F,
+    xn: F,
+    beta: F,
+    gamma: F,
+    theta: F,
+    trash_challenge: F,
+    vk: &'a VerifyingKey<F, CS>,
+    challenges: &'a [F],
+) -> impl Iterator<Item = (Option<usize>, F)> + 'a
+where
+    F: WithSmallOrderMulGroup<3> + FromUniformBytes<64>,
+    CS: PolynomialCommitmentScheme<F>,
+{
+    let nr_blinding_factors = vk.cs.nr_blinding_factors();
+    let l_evals = vk.domain.l_i_range(x, xn, (-((nr_blinding_factors + 1) as i32))..=0);
+    assert_eq!(l_evals.len(), 2 + nr_blinding_factors);
+    let l_last = l_evals[0];
+    let l_blind: F = l_evals[1..(1 + nr_blinding_factors)]
+        .iter()
+        .fold(F::ZERO, |acc, eval| acc + eval);
+    let l_0 = l_evals[1 + nr_blinding_factors];
+
+    advice_evals_combined
+        .zip(instance_evals_combined)
+        .zip(permutation_evals_combined)
+        .zip(lookup_evals_combined)
+        .zip(trashcan_evals_combined)
+        .flat_map(
+            move |(
+                (((advice_evals, instance_evals), permutation_evals), lookup_evals),
+                trashcan_evals,
+            )| {
+                // (Partially) evaluate polys from (custom) gates
+                vk.cs
+                    .gates
+                    .iter()
+                    .flat_map(move |gate| {
+                        gate.polynomials().iter().map(move |poly| {
+                            let evaluation = poly.evaluate(
+                                &|scalar| scalar,
+                                &|_| panic!("virtual selectors are removed during optimization"),
+                                &|query| fixed_evals[query.index().unwrap()],
+                                &|query| advice_evals[query.index.unwrap()],
+                                &|query| instance_evals[query.index.unwrap()],
+                                &|challenge| challenges[challenge.index()],
+                                &|a| -a,
+                                &|a, b| a + &b,
+                                &|a, b| a * &b,
+                                &|a, scalar| a * &scalar,
+                            );
+                            (gate.simple_selector_index(), evaluation)
+                        })
+                    })
+                    // Evaluate polys from permutation argument
+                    .chain(
+                        permutation::expressions(
+                            permutation_evals,
+                            vk,
+                            &vk.cs.permutation,
+                            permutations_common,
+                            advice_evals,
+                            fixed_evals,
+                            instance_evals,
+                            l_0,
+                            l_last,
+                            l_blind,
+                            beta,
+                            gamma,
+                            x,
+                        )
+                        .map(|e| (None, e)),
+                    )
+                    // Evaluate polys from lookup argument
+                    .chain(
+                        lookup_evals
+                            .iter()
+                            .zip(vk.cs.lookups.iter())
+                            .flat_map(move |(eval, argument)| {
+                                eval.expressions(
+                                    l_0,
+                                    l_last,
+                                    l_blind,
+                                    argument,
+                                    theta,
+                                    beta,
+                                    gamma,
+                                    advice_evals,
+                                    fixed_evals,
+                                    instance_evals,
+                                    challenges,
+                                )
+                            })
+                            .map(|e| (None, e)),
+                    )
+                    // Evaluate polys from trashcan
+                    .chain(
+                        trashcan_evals
+                            .iter()
+                            .zip(vk.cs.trashcans.iter())
+                            .flat_map(move |(eval, argument)| {
+                                eval.expressions(
+                                    argument,
+                                    trash_challenge,
+                                    advice_evals,
+                                    fixed_evals,
+                                    instance_evals,
+                                    challenges,
+                                )
+                            })
+                            .map(|e| (None, e)),
+                    )
+            },
+        )
 }
