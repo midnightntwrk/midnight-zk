@@ -28,6 +28,7 @@ impl Operation {
             Load(_) => Fixed(0), // `Load` takes witnesess, not actual inputs
             Publish => Some,
             AssertEqual => Fixed(2),
+            IsEqual => Fixed(2),
             Add => Fixed(2),
         }
     }
@@ -39,6 +40,7 @@ impl Operation {
             Load(_) => Some,
             Publish => Fixed(0), // `Publish` increases the `instances` but does not return outputs
             AssertEqual => Fixed(0),
+            IsEqual => Fixed(1),
             Add => Fixed(1),
         }
     }

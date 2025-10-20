@@ -43,6 +43,14 @@ pub enum Operation {
     /// Supported on all types except: `JubjubScalar`.
     AssertEqual,
 
+    /// Returns a `Bool` indicating whether the given inputs are equal.
+    ///
+    /// Inputs:  2
+    /// Outputs: 1
+    ///
+    /// Supported on all types except: `JubjubScalar`.
+    IsEqual,
+
     /// Adds the given inputs, returns their sum.
     /// This function fails if the inputs types are not the same or if they are
     /// not supported.
@@ -59,10 +67,12 @@ pub enum Operation {
 
 mod add;
 mod assert_equal;
+mod is_equal;
 mod load;
 mod publish;
 
 pub use add::*;
 pub use assert_equal::*;
+pub use is_equal::*;
 pub use load::*;
 pub use publish::*;

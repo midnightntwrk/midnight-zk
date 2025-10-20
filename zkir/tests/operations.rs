@@ -237,6 +237,53 @@ fn test_assert_equal() {
     );
 }
 
+#[test]
+fn test_is_equal() {
+    // Equality comparisons expect 2 inputs and 1 output.
+    test_static_pass(
+        &[(IsEqual, vec!["x", "y"], vec![])],
+        Some(Error::InvalidArity(IsEqual)),
+    );
+
+    test_static_pass(
+        &[(IsEqual, vec!["x", "y", "z"], vec!["r"])],
+        Some(Error::InvalidArity(IsEqual)),
+    );
+
+    test_static_pass(&[(IsEqual, vec!["x", "y"], vec!["r"])], None);
+
+    // Unsupported equality comparison on JubjubScalars.
+    test_without_witness(
+        &[
+            (Load(IrType::JubjubScalar), vec![], vec!["s"]),
+            (IsEqual, vec!["s", "s"], vec!["b"]),
+        ],
+        Some(Error::Unsupported(Operation::IsEqual, IrType::JubjubScalar)),
+    );
+
+    // Compared values must be of the same type.
+    test_without_witness(
+        &[
+            (Load(IrType::Bytes(2)), vec![], vec!["v"]),
+            (Load(IrType::Bytes(3)), vec![], vec!["w"]),
+            (IsEqual, vec!["v", "w"], vec!["b"]),
+        ],
+        Some(Error::ExpectingType(IrType::Bytes(2), IrType::Bytes(3))),
+    );
+
+    // A successful execution.
+    test_with_witness(
+        &[
+            (Load(IrType::Bytes(2)), vec![], vec!["v"]),
+            (IsEqual, vec!["v", "v"], vec!["b"]),
+            (AssertEqual, vec!["b", "1"], vec![]),
+        ],
+        HashMap::from_iter([("v", vec![42u8, 255u8].into())]),
+        vec![],
+        None,
+    );
+}
+
 fn build_instructions(
     raw_instructions: &[(Operation, Vec<&'static str>, Vec<&'static str>)],
 ) -> Vec<Instruction> {

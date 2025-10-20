@@ -62,6 +62,7 @@ impl Parser {
                 }
                 vec![]
             }
+            IsEqual => vec![IrValue::Bool(inps[0] == inps[1])],
             Add => vec![add_offcircuit(&inps[0], &inps[1])?],
         };
 
