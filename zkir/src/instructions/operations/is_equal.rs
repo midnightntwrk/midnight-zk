@@ -23,10 +23,6 @@ pub fn is_equal_incircuit(
     x: &CircuitValue,
     y: &CircuitValue,
 ) -> Result<CircuitValue, Error> {
-    if x.get_type() != y.get_type() {
-        return Err(Error::ExpectingType(x.get_type(), y.get_type()));
-    };
-
     use CircuitValue::*;
     let b = match (x, y) {
         (Bool(a), Bool(b)) => std_lib.is_equal(layouter, a, b)?,
@@ -44,7 +40,12 @@ pub fn is_equal_incircuit(
 
         (JubjubPoint(p), JubjubPoint(q)) => std_lib.jubjub().is_equal(layouter, p, q)?,
 
-        _ => return Err(Error::Unsupported(Operation::IsEqual, x.get_type())),
+        _ => {
+            return Err(Error::Unsupported(
+                Operation::IsEqual,
+                vec![x.get_type(), y.get_type()],
+            ))
+        }
     };
 
     Ok(Bool(b))

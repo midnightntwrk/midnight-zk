@@ -30,6 +30,7 @@ impl Operation {
             AssertEqual => Fixed(2),
             IsEqual => Fixed(2),
             Add => Fixed(2),
+            Mul => Fixed(2),
         }
     }
 
@@ -42,6 +43,7 @@ impl Operation {
             AssertEqual => Fixed(0),
             IsEqual => Fixed(1),
             Add => Fixed(1),
+            Mul => Fixed(1),
         }
     }
 }

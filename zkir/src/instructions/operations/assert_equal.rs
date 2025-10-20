@@ -35,10 +35,12 @@ pub fn assert_equal_incircuit(
 
         (JubjubPoint(p), JubjubPoint(q)) => std_lib.jubjub().assert_equal(layouter, p, q)?,
 
-        _ if x.get_type() == y.get_type() => {
-            return Err(Error::Unsupported(Operation::AssertEqual, x.get_type()))
+        _ => {
+            return Err(Error::Unsupported(
+                Operation::AssertEqual,
+                vec![x.get_type(), y.get_type()],
+            ))
         }
-        _ => return Err(Error::ExpectingType(x.get_type(), y.get_type())),
     }
 
     Ok(())

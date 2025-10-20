@@ -63,16 +63,31 @@ pub enum Operation {
     ///  - `BigUint`
     ///  - `JubjubPoint`
     Add,
+
+    /// Multiplies the given inputs, returns their product.
+    /// The input types do not need to be the same, we list below the supported
+    /// combinations of input types.
+    ///
+    /// Inputs:  2
+    /// Outputs: 1
+    ///
+    /// Supported on types:
+    ///  - `Native x Native -> Native`
+    ///  - `BigUint x BigUint -> BigUint`
+    ///  - `JubjubScalar x JubjubPoint -> JubjubPoint`
+    Mul,
 }
 
 mod add;
 mod assert_equal;
 mod is_equal;
 mod load;
+mod mul;
 mod publish;
 
 pub use add::*;
 pub use assert_equal::*;
 pub use is_equal::*;
 pub use load::*;
+pub use mul::*;
 pub use publish::*;

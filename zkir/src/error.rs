@@ -38,11 +38,11 @@ pub enum Error {
     /// [crate::types::IrValue] is provided instead.
     ExpectingType(IrType, IrType),
 
-    /// The given operation is not supported on the given type.
+    /// The given operation is not supported on the given types.
     ///
     /// This error occurs, for example, when trying to add two Boolean values,
     /// since addition is not supported on this type.
-    Unsupported(Operation, IrType),
+    Unsupported(Operation, Vec<IrType>),
 
     /// Any other error not covered by the above cases, with a descriptive
     /// message.

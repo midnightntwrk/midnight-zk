@@ -20,16 +20,17 @@ use crate::{
 ///
 /// # Errors
 ///
-/// This function results in an error if the two inputs are not of the same type
-/// or if their type does not support addition.
+/// This function results in an error if the input types are not supported.
 pub fn add_offcircuit(x: &IrValue, y: &IrValue) -> Result<IrValue, Error> {
     use IrValue::*;
     match (x, y) {
         (Native(a), Native(b)) => Ok(Native(a + b)),
         (BigUint(a), BigUint(b)) => Ok(BigUint(a + b)),
         (JubjubPoint(p), JubjubPoint(q)) => Ok(JubjubPoint(p + q)),
-        _ if x.get_type() == y.get_type() => Err(Error::Unsupported(Operation::Add, x.get_type())),
-        _ => Err(Error::ExpectingType(x.get_type(), y.get_type())),
+        _ => Err(Error::Unsupported(
+            Operation::Add,
+            vec![x.get_type(), y.get_type()],
+        )),
     }
 }
 
@@ -41,8 +42,7 @@ pub fn add_offcircuit(x: &IrValue, y: &IrValue) -> Result<IrValue, Error> {
 ///
 /// # Errors
 ///
-/// This function results in an error if the two inputs are not of the same type
-/// or if their type does not support addition.
+/// This function results in an error if the input types are not supported.
 pub fn add_incircuit(
     std_lib: &ZkStdLib,
     layouter: &mut impl Layouter<F>,
@@ -63,8 +63,10 @@ pub fn add_incircuit(
             let r = std_lib.jubjub().add(layouter, p, q)?;
             Ok(JubjubPoint(r))
         }
-        _ if x.get_type() == y.get_type() => Err(Error::Unsupported(Operation::Add, x.get_type())),
-        _ => Err(Error::ExpectingType(x.get_type(), y.get_type())),
+        _ => Err(Error::Unsupported(
+            Operation::Add,
+            vec![x.get_type(), y.get_type()],
+        )),
     }
 }
 
@@ -101,12 +103,18 @@ mod tests {
 
         assert_eq!(
             add_offcircuit(&JubjubScalar(r), &JubjubScalar(r)),
-            Err(Error::Unsupported(Operation::Add, IrType::JubjubScalar))
+            Err(Error::Unsupported(
+                Operation::Add,
+                vec![IrType::JubjubScalar, IrType::JubjubScalar]
+            ))
         );
 
         assert_eq!(
             add_offcircuit(&Native(x), &Bool(true)),
-            Err(Error::ExpectingType(IrType::Native, IrType::Bool))
+            Err(Error::Unsupported(
+                Operation::Add,
+                vec![IrType::Native, IrType::Bool]
+            ))
         );
     }
 }

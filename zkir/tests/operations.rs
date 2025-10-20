@@ -1,10 +1,12 @@
 use std::collections::HashMap;
 
 use blake2b_simd::State as Blake2b;
+use group::Group;
 use midnight_circuits::{
     compact_std_lib::{self, MidnightCircuit},
     halo2curves::ff::Field,
 };
+use midnight_curves::{Fr as JubjubFr, JubjubSubgroup};
 use midnight_proofs::{
     circuit::Value, dev::cost_model::dummy_synthesize_run, plonk, poly::kzg::params::ParamsKZG,
 };
@@ -161,7 +163,10 @@ fn test_add() {
             (Load(IrType::JubjubScalar), vec![], vec!["x"]),
             (Add, vec!["x", "x"], vec!["z"]),
         ],
-        Some(Error::Unsupported(Operation::Add, IrType::JubjubScalar)),
+        Some(Error::Unsupported(
+            Operation::Add,
+            vec![IrType::JubjubScalar, IrType::JubjubScalar],
+        )),
     );
 
     // A successful execution.
@@ -202,7 +207,7 @@ fn test_assert_equal() {
         ],
         Some(Error::Unsupported(
             Operation::AssertEqual,
-            IrType::JubjubScalar,
+            vec![IrType::JubjubScalar, IrType::JubjubScalar],
         )),
     );
 
@@ -213,7 +218,10 @@ fn test_assert_equal() {
             (Load(IrType::Native), vec![], vec!["x"]),
             (AssertEqual, vec!["p", "x"], vec![]),
         ],
-        Some(Error::ExpectingType(IrType::JubjubPoint, IrType::Native)),
+        Some(Error::Unsupported(
+            Operation::AssertEqual,
+            vec![IrType::JubjubPoint, IrType::Native],
+        )),
     );
 
     test_without_witness(
@@ -258,7 +266,10 @@ fn test_is_equal() {
             (Load(IrType::JubjubScalar), vec![], vec!["s"]),
             (IsEqual, vec!["s", "s"], vec!["b"]),
         ],
-        Some(Error::Unsupported(Operation::IsEqual, IrType::JubjubScalar)),
+        Some(Error::Unsupported(
+            Operation::IsEqual,
+            vec![IrType::JubjubScalar, IrType::JubjubScalar],
+        )),
     );
 
     // Compared values must be of the same type.
@@ -268,7 +279,10 @@ fn test_is_equal() {
             (Load(IrType::Bytes(3)), vec![], vec!["w"]),
             (IsEqual, vec!["v", "w"], vec!["b"]),
         ],
-        Some(Error::ExpectingType(IrType::Bytes(2), IrType::Bytes(3))),
+        Some(Error::Unsupported(
+            Operation::IsEqual,
+            vec![IrType::Bytes(2), IrType::Bytes(3)],
+        )),
     );
 
     // A successful execution.
@@ -279,6 +293,49 @@ fn test_is_equal() {
             (AssertEqual, vec!["b", "1"], vec![]),
         ],
         HashMap::from_iter([("v", vec![42u8, 255u8].into())]),
+        vec![],
+        None,
+    );
+}
+
+#[test]
+fn test_mul() {
+    // A mul instruction should have 2 inputs and 1 output.
+    test_static_pass(
+        &[(Mul, vec!["x"], vec!["z"])],
+        Some(Error::InvalidArity(Mul)),
+    );
+
+    test_static_pass(
+        &[(Mul, vec!["x", "y"], vec![])],
+        Some(Error::InvalidArity(Mul)),
+    );
+
+    test_static_pass(&[(Mul, vec!["x", "y"], vec!["z"])], None);
+
+    // Unsupported multiplication on JubjubScalars.
+    test_without_witness(
+        &[
+            (Load(IrType::JubjubScalar), vec![], vec!["x"]),
+            (Mul, vec!["x", "x"], vec!["z"]),
+        ],
+        Some(Error::Unsupported(
+            Operation::Mul,
+            vec![IrType::JubjubScalar, IrType::JubjubScalar],
+        )),
+    );
+
+    // A successful execution.
+    test_with_witness(
+        &[
+            (Load(IrType::JubjubPoint), vec![], vec!["p"]),
+            (Load(IrType::JubjubScalar), vec![], vec!["s"]),
+            (Mul, vec!["s", "p"], vec!["q"]),
+        ],
+        HashMap::from_iter([
+            ("p", JubjubSubgroup::random(OsRng).into()),
+            ("s", JubjubFr::random(OsRng).into()),
+        ]),
         vec![],
         None,
     );
