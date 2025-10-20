@@ -32,6 +32,7 @@ impl Operation {
             Add => Fixed(2),
             Sub => Fixed(2),
             Mul => Fixed(2),
+            Neg => Fixed(1),
         }
     }
 
@@ -46,6 +47,7 @@ impl Operation {
             Add => Fixed(1),
             Sub => Fixed(1),
             Mul => Fixed(1),
+            Neg => Fixed(1),
         }
     }
 }

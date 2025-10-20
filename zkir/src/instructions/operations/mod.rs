@@ -93,6 +93,18 @@ pub enum Operation {
     ///  - `BigUint x BigUint -> BigUint`
     ///  - `JubjubScalar x JubjubPoint -> JubjubPoint`
     Mul,
+
+    /// Negates the given input, returns its additive inverse.
+    /// This function fails if the inputs types are not the same or if they are
+    /// not supported.
+    ///
+    /// Inputs:  1
+    /// Outputs: 1
+    ///
+    /// Supported on types:
+    ///  - `Native`
+    ///  - `JubjubPoint`
+    Neg,
 }
 
 mod add;
@@ -100,6 +112,7 @@ mod assert_equal;
 mod is_equal;
 mod load;
 mod mul;
+mod neg;
 mod publish;
 mod sub;
 
@@ -108,5 +121,6 @@ pub use assert_equal::*;
 pub use is_equal::*;
 pub use load::*;
 pub use mul::*;
+pub use neg::*;
 pub use publish::*;
 pub use sub::*;

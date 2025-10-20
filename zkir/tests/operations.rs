@@ -380,6 +380,39 @@ fn test_mul() {
     );
 }
 
+#[test]
+fn test_neg() {
+    // A neg instruction should have 1 inputs and 1 output.
+    test_static_pass(&[(Neg, vec![], vec!["z"])], Some(Error::InvalidArity(Neg)));
+    test_static_pass(&[(Neg, vec!["x"], vec![])], Some(Error::InvalidArity(Neg)));
+    test_static_pass(&[(Neg, vec!["x"], vec!["z"])], None);
+
+    // Unsupported negation on JubjubScalars.
+    test_without_witness(
+        &[
+            (Load(IrType::JubjubScalar), vec![], vec!["x"]),
+            (Neg, vec!["x"], vec!["z"]),
+        ],
+        Some(Error::Unsupported(
+            Operation::Neg,
+            vec![IrType::JubjubScalar],
+        )),
+    );
+
+    // A successful execution.
+    let p: IrValue = JubjubSubgroup::random(OsRng).into();
+    test_with_witness(
+        &[
+            (Load(IrType::JubjubPoint), vec![], vec!["p"]),
+            (Neg, vec!["p"], vec!["q"]),
+            (Publish, vec!["q"], vec![]),
+        ],
+        HashMap::from_iter([("p", p.clone())]),
+        vec![(-p, IrType::JubjubPoint)],
+        None,
+    );
+}
+
 fn build_instructions(
     raw_instructions: &[(Operation, Vec<&'static str>, Vec<&'static str>)],
 ) -> Vec<Instruction> {

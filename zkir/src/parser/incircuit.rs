@@ -7,7 +7,7 @@ use crate::{
     instructions::{
         operations::{
             add_incircuit, assert_equal_incircuit, is_equal_incircuit, load_incircuit,
-            mul_incircuit, publish_incircuit, sub_incircuit, Operation::*,
+            mul_incircuit, neg_incircuit, publish_incircuit, sub_incircuit, Operation::*,
         },
         Instruction,
     },
@@ -74,6 +74,7 @@ impl Parser {
             Add => vec![add_incircuit(std_lib, layouter, &inps[0], &inps[1])?],
             Sub => vec![sub_incircuit(std_lib, layouter, &inps[0], &inps[1])?],
             Mul => vec![mul_incircuit(std_lib, layouter, &inps[0], &inps[1])?],
+            Neg => vec![neg_incircuit(std_lib, layouter, &inps[0])?],
         };
 
         insert_many(&mut self.memory, &instruction.outputs, &outputs)
