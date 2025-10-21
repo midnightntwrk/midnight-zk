@@ -12,7 +12,7 @@
 // limitations under the License.
 
 //! Module that implements foreign field EC arithmetic
-pub mod ecc_chip;
 pub(crate) mod gates;
+pub mod weierstrass_chip;
 
-pub use ecc_chip::*;
+pub use weierstrass_chip::*;
