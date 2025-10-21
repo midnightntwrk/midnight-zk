@@ -10,7 +10,7 @@ use group::Group;
 use midnight_circuits::{
     ecc::{
         curves::CircuitCurve,
-        foreign::{nb_foreign_ecc_chip_columns, ForeignEccChip, ForeignEccConfig},
+        foreign::{nb_foreign_ecc_chip_columns, ForeignWeierstrassEccChip, ForeignWeierstrassEccConfig},
     },
     field::{
         decomposition::{
@@ -71,7 +71,7 @@ fn configure_ivc_circuit(
 ) -> (
     NativeConfig,
     P2RDecompositionConfig,
-    ForeignEccConfig<C>,
+    ForeignWeierstrassEccConfig<C>,
     PoseidonConfig<F>,
 ) {
     let nb_advice_cols = nb_foreign_ecc_chip_columns::<F, C, C, NG>();
@@ -97,7 +97,7 @@ fn configure_ivc_circuit(
 
     let base_config = FieldChip::<F, CBase, C, NG>::configure(meta, &advice_columns);
     let curve_config =
-        ForeignEccChip::<F, C, C, NG, NG>::configure(meta, &base_config, &advice_columns);
+        ForeignWeierstrassEccChip::<F, C, C, NG, NG>::configure(meta, &base_config, &advice_columns);
 
     let poseidon_config = PoseidonChip::configure(
         meta,
@@ -119,7 +119,7 @@ impl Circuit<F> for IvcCircuit {
     type Config = (
         NativeConfig,
         P2RDecompositionConfig,
-        ForeignEccConfig<C>,
+        ForeignWeierstrassEccConfig<C>,
         PoseidonConfig<F>,
     );
     type FloorPlanner = SimpleFloorPlanner;
@@ -141,7 +141,7 @@ impl Circuit<F> for IvcCircuit {
         let native_chip = <NativeChip<F> as ComposableChip<F>>::new(&config.0, &());
         let core_decomp_chip = P2RDecompositionChip::new(&config.1, &(K as usize - 1));
         let scalar_chip = NativeGadget::new(core_decomp_chip.clone(), native_chip.clone());
-        let curve_chip = { ForeignEccChip::new(&config.2, &scalar_chip, &scalar_chip) };
+        let curve_chip = { ForeignWeierstrassEccChip::new(&config.2, &scalar_chip, &scalar_chip) };
         let poseidon_chip = PoseidonChip::new(&config.3, &native_chip);
 
         let verifier_chip = VerifierGadget::new(&curve_chip, &scalar_chip, &poseidon_chip);
