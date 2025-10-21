@@ -146,3 +146,15 @@ impl_enum_from_try_from!(IrValue {
     JubjubPoint => JubjubSubgroup,
     JubjubScalar => JubjubScalar,
 });
+
+// Derives implementations, for every basic type T:
+//  - From<T> for CircuitValue
+//  - TryFrom<CircuitValue> for T
+impl_enum_from_try_from!(CircuitValue {
+  Bool => AssignedBit,
+    Bytes => Vec<AssignedByte>,
+    Native => AssignedNative,
+    BigUint => AssignedBigUint,
+    JubjubPoint => AssignedJubjubPoint,
+    JubjubScalar => AssignedJubjubScalar,
+});

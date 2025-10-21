@@ -413,6 +413,55 @@ fn test_neg() {
     );
 }
 
+#[test]
+fn test_inner_product() {
+    // An inner_product should take an even number of inputs > 0 and 1 output.
+    test_static_pass(
+        &[(InnerProduct, vec!["x"], vec!["z"])],
+        Some(Error::InvalidArity(InnerProduct)),
+    );
+
+    test_static_pass(
+        &[(InnerProduct, vec!["x", "y"], vec![])],
+        Some(Error::InvalidArity(InnerProduct)),
+    );
+
+    test_static_pass(&[(InnerProduct, vec!["x", "y"], vec!["z"])], None);
+
+    // Unsupported IP on mixed types.
+    test_without_witness(
+        &[
+            (Load(IrType::Native), vec![], vec!["x"]),
+            (Load(IrType::BigUint(10)), vec![], vec!["n"]),
+            (InnerProduct, vec!["x", "n"], vec!["z"]),
+        ],
+        Some(Error::Unsupported(
+            Operation::InnerProduct,
+            vec![IrType::Native, IrType::BigUint(10)],
+        )),
+    );
+
+    // A successful execution.
+    let [p, q] = core::array::from_fn(|_| JubjubSubgroup::random(OsRng));
+    let [r, s] = core::array::from_fn(|_| JubjubFr::random(OsRng));
+    test_with_witness(
+        &[
+            (Load(IrType::JubjubPoint), vec![], vec!["p", "q"]),
+            (Load(IrType::JubjubScalar), vec![], vec!["r", "s"]),
+            (InnerProduct, vec!["r", "s", "p", "q"], vec!["result"]),
+            (Publish, vec!["result"], vec![]),
+        ],
+        HashMap::from_iter([
+            ("p", p.into()),
+            ("q", q.into()),
+            ("r", r.into()),
+            ("s", s.into()),
+        ]),
+        vec![((p * r + q * s).into(), IrType::JubjubPoint)],
+        None,
+    );
+}
+
 fn build_instructions(
     raw_instructions: &[(Operation, Vec<&'static str>, Vec<&'static str>)],
 ) -> Vec<Instruction> {
