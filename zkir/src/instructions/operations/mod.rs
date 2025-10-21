@@ -123,9 +123,19 @@ pub enum Operation {
     ///    `BigUint`         `BigUint`         `BigUint`
     ///    `JubjubScalar`s   `JubjubPoint`s    `JubjubPoint`
     InnerProduct,
+
+    /// Returns the affine coordinates of the given EC point.
+    ///
+    /// Inputs:  1
+    /// Outputs: 2
+    ///
+    /// Supported on types:
+    ///  - `JubjubPoint` -> `(Native, Native)`
+    AffineCoordinates,
 }
 
 mod add;
+mod affine_coordinates;
 mod assert_equal;
 mod inner_product;
 mod is_equal;
@@ -136,6 +146,7 @@ mod publish;
 mod sub;
 
 pub use add::*;
+pub use affine_coordinates::*;
 pub use assert_equal::*;
 pub use inner_product::*;
 pub use is_equal::*;

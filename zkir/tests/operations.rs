@@ -472,6 +472,54 @@ fn test_inner_product() {
     );
 }
 
+#[test]
+fn test_affine_coordinates() {
+    // Affine-coordinates needs 1 inputs and 2 outputs.
+    test_static_pass(
+        &[(AffineCoordinates, vec!["P"], vec!["Px"])],
+        Some(Error::InvalidArity(AffineCoordinates)),
+    );
+
+    test_static_pass(
+        &[(AffineCoordinates, vec!["P", "Q"], vec!["Px", "Py"])],
+        Some(Error::InvalidArity(AffineCoordinates)),
+    );
+
+    test_static_pass(&[(AffineCoordinates, vec!["P"], vec!["Px", "Py"])], None);
+
+    // Unsupported on non EC point types.
+    test_without_witness(
+        &[
+            (Load(IrType::Native), vec![], vec!["P"]),
+            (AffineCoordinates, vec!["P"], vec!["x", "y"]),
+        ],
+        Some(Error::Unsupported(
+            Operation::AffineCoordinates,
+            vec![IrType::Native],
+        )),
+    );
+
+    // A successful execution.
+    let p = JubjubSubgroup::random(OsRng);
+    let d = "Native:0x2a9318e74bfa2b48f5fd9207e6bd7fd4292d7f6d37579d2601065fd6d6343eb1";
+    test_with_witness(
+        &[
+            (Load(IrType::JubjubPoint), vec![], vec!["p"]),
+            (AffineCoordinates, vec!["p"], vec!["x", "y"]),
+            (Mul, vec!["x", "x"], vec!["x2"]),
+            (Mul, vec!["y", "y"], vec!["y2"]),
+            (Sub, vec!["y2", "x2"], vec!["lhs"]),
+            (Mul, vec!["x2", "y2"], vec!["x2y2"]),
+            (Mul, vec![d, "x2y2"], vec!["prod"]),
+            (Add, vec!["prod", "Native:0x01"], vec!["rhs"]),
+            (AssertEqual, vec!["lhs", "rhs"], vec![]),
+        ],
+        HashMap::from_iter([("p", p.into())]),
+        vec![],
+        None,
+    );
+}
+
 fn build_instructions(
     raw_instructions: &[(Operation, Vec<&'static str>, Vec<&'static str>)],
 ) -> Vec<Instruction> {

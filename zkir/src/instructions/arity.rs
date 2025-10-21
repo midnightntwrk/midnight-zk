@@ -36,6 +36,7 @@ impl Operation {
             Mul => Fixed(2),
             Neg => Fixed(1),
             InnerProduct => SomeEven,
+            AffineCoordinates => Fixed(1),
         }
     }
 
@@ -52,6 +53,7 @@ impl Operation {
             Mul => Fixed(1),
             Neg => Fixed(1),
             InnerProduct => Fixed(1),
+            AffineCoordinates => Fixed(2),
         }
     }
 }

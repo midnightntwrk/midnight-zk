@@ -6,9 +6,9 @@ use midnight_proofs::circuit::{Layouter, Value};
 use crate::{
     instructions::{
         operations::{
-            add_incircuit, assert_equal_incircuit, inner_product_incircuit, is_equal_incircuit,
-            load_incircuit, mul_incircuit, neg_incircuit, publish_incircuit, sub_incircuit,
-            Operation::*,
+            add_incircuit, affine_coordinates_incircuit, assert_equal_incircuit,
+            inner_product_incircuit, is_equal_incircuit, load_incircuit, mul_incircuit,
+            neg_incircuit, publish_incircuit, sub_incircuit, Operation::*,
         },
         Instruction,
     },
@@ -82,6 +82,10 @@ impl Parser {
                 &inps[..inps.len() / 2],
                 &inps[inps.len() / 2..],
             )?],
+            AffineCoordinates => {
+                let (x, y) = affine_coordinates_incircuit(std_lib, layouter, &inps[0])?;
+                vec![x, y]
+            }
         };
 
         insert_many(&mut self.memory, &instruction.outputs, &outputs)
