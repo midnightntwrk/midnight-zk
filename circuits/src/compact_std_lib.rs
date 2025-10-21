@@ -54,7 +54,9 @@ use rand::{CryptoRng, RngCore};
 use crate::{
     biguint::biguint_gadget::BigUintGadget,
     ecc::{
-        foreign::{nb_foreign_ecc_chip_columns, ForeignEccChip, ForeignEccConfig},
+        foreign::{
+            nb_foreign_ecc_chip_columns, ForeignWeierstrassEccChip, ForeignWeierstrassEccConfig,
+        },
         hash_to_curve::HashToCurveGadget,
         native::{EccChip, EccConfig, NB_EDWARDS_COLS},
     },
@@ -95,9 +97,9 @@ type F = midnight_curves::Fq;
 type NG = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
 type Secp256k1BaseChip = FieldChip<F, secp256k1::Fp, MEP, NG>;
 type Secp256k1ScalarChip = FieldChip<F, secp256k1::Fq, MEP, NG>;
-type Secp256k1Chip = ForeignEccChip<F, Secp256k1, MEP, Secp256k1ScalarChip, NG>;
+type Secp256k1Chip = ForeignWeierstrassEccChip<F, Secp256k1, MEP, Secp256k1ScalarChip, NG>;
 type Bls12381BaseChip = FieldChip<F, midnight_curves::Fp, MEP, NG>;
-type Bls12381Chip = ForeignEccChip<F, midnight_curves::G1Projective, MEP, NG, NG>;
+type Bls12381Chip = ForeignWeierstrassEccChip<F, midnight_curves::G1Projective, MEP, NG, NG>;
 
 const ZKSTD_VERSION: u32 = 1;
 
@@ -223,8 +225,8 @@ pub struct ZkStdLibConfig {
     sha512_config: Option<Sha512Config>,
     poseidon_config: Option<PoseidonConfig<midnight_curves::Fq>>,
     secp256k1_scalar_config: Option<FieldChipConfig>,
-    secp256k1_config: Option<ForeignEccConfig<Secp256k1>>,
-    bls12_381_config: Option<ForeignEccConfig<midnight_curves::G1Projective>>,
+    secp256k1_config: Option<ForeignWeierstrassEccConfig<Secp256k1>>,
+    bls12_381_config: Option<ForeignWeierstrassEccConfig<midnight_curves::G1Projective>>,
     base64_config: Option<Base64Config>,
     automaton_config: Option<AutomatonConfig<StdLibParser, midnight_curves::Fq>>,
 }
@@ -288,10 +290,11 @@ impl ZkStdLib {
         let secp256k1_curve_chip = (config.secp256k1_config.as_ref())
             .zip(secp256k1_scalar_chip.as_ref())
             .map(|(curve_config, scalar_chip)| {
-                ForeignEccChip::new(curve_config, &native_gadget, scalar_chip)
+                ForeignWeierstrassEccChip::new(curve_config, &native_gadget, scalar_chip)
             });
-        let bls12_381_curve_chip = (config.bls12_381_config.as_ref())
-            .map(|curve_config| ForeignEccChip::new(curve_config, &native_gadget, &native_gadget));
+        let bls12_381_curve_chip = (config.bls12_381_config.as_ref()).map(|curve_config| {
+            ForeignWeierstrassEccChip::new(curve_config, &native_gadget, &native_gadget)
+        });
 
         let base64_chip = (config.base64_config.as_ref())
             .map(|base64_config| Base64Chip::new(base64_config, &native_gadget));

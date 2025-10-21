@@ -36,7 +36,7 @@ use crate::instructions::NativeInstructions;
 use crate::{
     ecc::{
         curves::{CircuitCurve, WeierstrassCurve},
-        foreign::ForeignEccChip,
+        foreign::ForeignWeierstrassEccChip,
     },
     field::{decomposition::chip::P2RDecompositionChip, AssignedNative, NativeChip, NativeGadget},
     hash::poseidon::{PoseidonChip, PoseidonState},
@@ -132,7 +132,7 @@ impl SelfEmulation for BlstrsEmulation {
     type Hash = PoseidonState<Self::F>;
 
     type ScalarChip = NativeGadget<Self::F, P2RDecompositionChip<Self::F>, NativeChip<Self::F>>;
-    type CurveChip = ForeignEccChip<Self::F, Self::C, Self::C, Self::ScalarChip, Self::ScalarChip>;
+    type CurveChip = ForeignWeierstrassEccChip<Self::F, Self::C, Self::C, Self::ScalarChip, Self::ScalarChip>;
     type SpongeChip = PoseidonChip<Self::F>;
 
     type G1Affine = midnight_curves::G1Affine;
