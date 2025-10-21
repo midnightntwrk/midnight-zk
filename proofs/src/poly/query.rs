@@ -75,11 +75,11 @@ impl<'com, F: PrimeField> Query<F> for ProverQuery<'com, F> {
 ///
 /// Moreover, the commitment to the linearization polynomial is a linear
 /// combination of (partially or fully) evaluated identities (i.e., scalars) and
-/// commitments to fixed columns (representing simple selectors). In case of full
-/// evaluations, the corresponding commitment is just the zero commitment
-/// (representing the constant term of a polynomial). This linear combination is
-/// represented in the form two vectors: one vectors holds the commitments,
-/// the other one holds the scalars.
+/// commitments to fixed columns (representing simple selectors). In case of
+/// full evaluations, the corresponding commitment is just the constant
+/// commitment (representing the constant term of a polynomial). This linear
+/// combination is represented in the form two vectors: one vectors holds the
+/// commitments, the other one holds the scalars.
 pub enum CommitmentReference<'com, F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
     OnePiece(&'com CS::Commitment),
     Chopped(Vec<&'com CS::Commitment>, u64),
@@ -134,9 +134,11 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> CommitmentReference<'_, F
     ///
     /// # Panics
     ///
-    /// If the commitment is "one piece" or "linear" and an evaluation point is provided.
+    /// If the commitment is "one piece" or "linear" and an evaluation point is
+    /// provided.
     /// If the commitment is "chopped" and no evaluation point is provided.
-    /// If the commitment is "linear" and the nr of points differs from the nr of scalars.
+    /// If the commitment is "linear" and the nr of points differs from the
+    /// nr of scalars.
     pub(crate) fn as_terms(&self, eval_point_opt: Option<F>) -> Vec<(F, CS::Commitment)> {
         match self.clone() {
             CommitmentReference::OnePiece(com) => {
