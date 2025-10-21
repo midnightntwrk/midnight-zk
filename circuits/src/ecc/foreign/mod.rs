@@ -12,6 +12,7 @@
 // limitations under the License.
 
 //! Module that implements foreign field EC arithmetic
+pub mod edwards_chip;
 pub(crate) mod gates;
 pub mod weierstrass_chip;
 

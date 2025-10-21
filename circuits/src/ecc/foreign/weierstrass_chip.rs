@@ -11,7 +11,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Elliptic curve operations over foreign fields.
+//! Elliptic curve (in Weierstrass form) operations over foreign fields.
 //! This module supports curves of the form y^2 = x^3 + b (i.e. with a = 0).
 //!
 //! We require that the emulated elliptic curve do not have low-order points.
@@ -68,7 +68,7 @@ use crate::{
     utils::util::{big_to_fe, bigint_to_fe, fe_to_big, fe_to_le_bits, glv_scalar_decomposition},
 };
 
-/// Foreign ECC configuration.
+/// Foreign Weierstrass ECC configuration.
 #[derive(Clone, Debug)]
 pub struct ForeignWeierstrassEccConfig<C>
 where
@@ -100,7 +100,7 @@ where
     B::NB_LIMBS as usize + max(B::NB_LIMBS as usize, 2 + B::moduli().len()) + 1
 }
 
-/// ['ECChip'] to perform foreign EC operations.
+/// ['ECChip'] to perform foreign Weierstrass EC operations.
 #[derive(Clone, Debug)]
 pub struct ForeignWeierstrassEccChip<F, C, B, S, N>
 where
