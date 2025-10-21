@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use crate::{
     instructions::{
         operations::{
-            add_offcircuit, inner_product_offcircuit, load_offcircuit, mul_offcircuit,
-            neg_offcircuit, sub_offcircuit, Operation::*,
+            add_offcircuit, affine_coordinates_offcircuit, inner_product_offcircuit,
+            load_offcircuit, mul_offcircuit, neg_offcircuit, sub_offcircuit, Operation::*,
         },
         Instruction,
     },
@@ -74,6 +74,10 @@ impl Parser {
                 &inps[..inps.len() / 2],
                 &inps[inps.len() / 2..],
             )?],
+            AffineCoordinates => {
+                let (x, y) = affine_coordinates_offcircuit(&inps[0])?;
+                vec![x, y]
+            }
         };
 
         insert_many(&mut self.memory, &instruction.outputs, &outputs)
