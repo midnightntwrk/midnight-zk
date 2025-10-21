@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 ### Changed
+* Address feedback from ZK Sec audit 3 [#125](https://github.com/midnightntwrk/midnight-zk/pull/125)
 
 ### Removed
 
