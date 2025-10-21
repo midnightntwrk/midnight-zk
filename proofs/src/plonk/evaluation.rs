@@ -279,7 +279,8 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
         ev
     }
 
-    /// Evaluate numerator polynomial `nu(X)` of quotient polynomial `h(X) = nu(X) / (X^n-1)`
+    /// Evaluate numerator polynomial `nu(X)` of the quotient polynomial
+    /// `h(X) = nu(X) / (X^n-1)`
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn evaluate_numerator<B: PolynomialRepresentation>(
         &self,

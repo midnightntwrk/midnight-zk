@@ -19,13 +19,12 @@ use super::{
     },
     lookup, permutation, Error, ProvingKey,
 };
-use crate::poly::EvaluationDomain;
 use crate::{
     bench_and_run,
     circuit::Value,
     plonk::{self, permutation::verifier::CommonEvaluated, traces::ProverTrace, trash},
     poly::{
-        batch_invert_rational, commitment::PolynomialCommitmentScheme, Coeff,
+        batch_invert_rational, commitment::PolynomialCommitmentScheme, Coeff, EvaluationDomain,
         ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial, PolynomialRepresentation, ProverQuery,
         Rotation,
     },
@@ -52,9 +51,9 @@ where
     // Obtain final quotient polynomial h(X) in coefficient form
     let mut h_poly = domain.extended_to_coeff(h_poly);
 
-    // Truncate coefficient vector of h(X) to match the size of the quotient polynomial;
-    // the evaluation domain might be slightly larger than necessary because it always lies
-    // on a power-of-two boundary
+    // Truncate coefficient vector of h(X) to match the size of the quotient
+    // polynomial; the evaluation domain might be slightly larger than necessary
+    // because it always lies on a power-of-two boundary
     h_poly.truncate(domain.n as usize * domain.get_quotient_poly_degree());
 
     // Split h(X) up into pieces h_i(X) of size n (i.e., deg(h_i)<=n-1);
@@ -406,8 +405,8 @@ where
     let nu_poly =
         bench_and_run!(_group; ; ;"Compute Numerator poly"; || compute_nu_poly(pk, &trace));
 
-    // Construct the quotient polynomial h(X) = nu(X)/(X^n-1), split it into limbs of size n,
-    // commit to each limb separately, and write limb commitments to the transcript
+    // Construct the quotient polynomial h(X) = nu(X)/(X^n-1), split it into limbs
+    // of size n, and commit to each limb separately
     let quotient_limbs =
         construct_h_poly::<F, CS, T>(params, pk.get_vk().get_domain(), nu_poly, transcript)?;
 
@@ -967,8 +966,9 @@ fn compute_nu_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<
         })
         .collect();
 
-    // Evaluate the numerator polynomial nu(X) of the quotient polynomial h(X) = nu(X) / (X^n-1):
-    // nu(X) is a random linear combination of all independent identities
+    // Evaluate the numerator polynomial nu(X) of the quotient polynomial
+    // h(X) = nu(X) / (X^n-1): nu(X) is a random linear combination of all
+    // independent identities
     pk.ev.evaluate_numerator::<ExtendedLagrangeCoeff>(
         &pk.vk.domain,
         &pk.vk.cs,
@@ -1049,11 +1049,12 @@ where
         }
     }
 
-    // Compute and hash evaluations of fixed columns (shared across all circuit instances)
+    // Compute and hash evaluations of fixed columns (shared across all
+    // circuit instances)
     //
     // Filter out fixed evals corresponding to simple selectors
-    // NB: `fixed_evals` is indexed according to `fixed_queries` (which is NOT indexed
-    // per column index, but in the order in which queries were added)
+    // NB: `fixed_evals` is indexed according to `fixed_queries` (which is NOT
+    // indexed per column index, but in the order in which queries were added)
     let fixed_evals: Vec<F> = meta
         .fixed_queries
         .iter()
@@ -1067,7 +1068,7 @@ where
         })
         .collect();
 
-    // Write only fixed evals corresponding to *non-simple* selectors to the transcript
+    // Write only fixed evals corresp. to *non-simple* selectors to the transcript
     for (idx, (col, _)) in meta.fixed_queries.iter().enumerate() {
         if !meta.indices_simple_selectors.contains(&col.index()) {
             transcript.write(&fixed_evals[idx])?;
