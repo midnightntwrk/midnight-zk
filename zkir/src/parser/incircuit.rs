@@ -5,11 +5,13 @@ use midnight_proofs::circuit::{Layouter, Value};
 
 use crate::{
     instructions::{
-        operations::{load_incircuit, publish_incircuit, Operation::*},
+        operations::{
+            add_incircuit, assert_equal_incircuit, load_incircuit, publish_incircuit, Operation::*,
+        },
         Instruction,
     },
     types::{CircuitValue, IrType, IrValue},
-    utils::{get_t, insert_many, F},
+    utils::{constants::assign_constant, get_t, insert_many, F},
     Error,
 };
 
@@ -43,7 +45,7 @@ impl Parser {
             .iter()
             .map(|name| match self.memory.get(name).cloned() {
                 Some(v) => Ok(v),
-                None => Err(Error::NotFound(name.clone())),
+                None => assign_constant(std_lib, layouter, name),
             })
             .collect::<Result<Vec<CircuitValue>, Error>>()?;
 
@@ -63,6 +65,11 @@ impl Parser {
                 })?;
                 vec![]
             }
+            AssertEqual => {
+                assert_equal_incircuit(std_lib, layouter, &inps[0], &inps[1])?;
+                vec![]
+            }
+            Add => vec![add_incircuit(std_lib, layouter, &inps[0], &inps[1])?],
         };
 
         insert_many(&mut self.memory, &instruction.outputs, &outputs)

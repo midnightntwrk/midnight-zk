@@ -13,6 +13,8 @@ use midnight_zkir::{
     Operation::{self, *},
     ZkirRelation,
 };
+use num_bigint::BigUint;
+use num_traits::Num;
 use rand_chacha::rand_core::OsRng;
 
 type F = midnight_curves::Fq;
@@ -99,7 +101,7 @@ fn test_publish() {
     // Published inputs must exist.
     test_without_witness(
         &[(Publish, vec!["x"], vec![])],
-        Some(Error::NotFound("x".to_string())),
+        Some(Error::ParsingError(IrType::Bool, "x".to_string())),
     );
     test_without_witness(
         &[
@@ -134,6 +136,103 @@ fn test_publish() {
             (false.into(), IrType::Bool),
             (true.into(), IrType::Bool),
         ],
+        None,
+    );
+}
+
+#[test]
+fn test_add() {
+    // An add instruction should have 2 inputs and 1 output.
+    test_static_pass(
+        &[(Add, vec!["x"], vec!["z"])],
+        Some(Error::InvalidArity(Add)),
+    );
+
+    test_static_pass(
+        &[(Add, vec!["x", "y"], vec![])],
+        Some(Error::InvalidArity(Add)),
+    );
+
+    test_static_pass(&[(Add, vec!["x", "y"], vec!["z"])], None);
+
+    // Unsupported addition on JubjubScalars.
+    test_without_witness(
+        &[
+            (Load(IrType::JubjubScalar), vec![], vec!["x"]),
+            (Add, vec!["x", "x"], vec!["z"]),
+        ],
+        Some(Error::Unsupported(Operation::Add, IrType::JubjubScalar)),
+    );
+
+    // A successful execution.
+    test_with_witness(
+        &[
+            (Load(IrType::BigUint(1024)), vec![], vec!["x"]),
+            (Add, vec!["x", "x"], vec!["z"]),
+        ],
+        HashMap::from_iter([(
+            "x",
+            biguint_from_hex("fffffffffffffffffffffffffffffffffffffffffffffffff").into(),
+        )]),
+        vec![],
+        None,
+    );
+}
+
+#[test]
+fn test_assert_equal() {
+    // Equality assertions expect 2 inputs and no outputs.
+    test_static_pass(
+        &[(AssertEqual, vec!["x", "y"], vec!["z"])],
+        Some(Error::InvalidArity(AssertEqual)),
+    );
+
+    test_static_pass(
+        &[(AssertEqual, vec!["x", "y", "z"], vec![])],
+        Some(Error::InvalidArity(AssertEqual)),
+    );
+
+    test_static_pass(&[(AssertEqual, vec!["x", "y"], vec![])], None);
+
+    // Unsupported equality assertion on JubjubScalars.
+    test_without_witness(
+        &[
+            (Load(IrType::JubjubScalar), vec![], vec!["x"]),
+            (AssertEqual, vec!["x", "x"], vec![]),
+        ],
+        Some(Error::Unsupported(
+            Operation::AssertEqual,
+            IrType::JubjubScalar,
+        )),
+    );
+
+    // Compared values must be of the same type.
+    test_without_witness(
+        &[
+            (Load(IrType::JubjubPoint), vec![], vec!["p"]),
+            (Load(IrType::Native), vec![], vec!["x"]),
+            (AssertEqual, vec!["p", "x"], vec![]),
+        ],
+        Some(Error::ExpectingType(IrType::JubjubPoint, IrType::Native)),
+    );
+
+    test_without_witness(
+        &[
+            (Load(IrType::Bytes(2)), vec![], vec!["v"]),
+            (Load(IrType::Bytes(3)), vec![], vec!["w"]),
+            (AssertEqual, vec!["v", "w"], vec![]),
+        ],
+        Some(Error::ExpectingType(IrType::Bytes(2), IrType::Bytes(3))),
+    );
+
+    // A successful execution.
+    test_with_witness(
+        &[
+            (Load(IrType::BigUint(1024)), vec![], vec!["x"]),
+            (AssertEqual, vec!["x", "x"], vec![]),
+        ],
+        HashMap::from_iter([("x", biguint_from_hex("deadbeef").into())]),
+        vec![],
         None,
     );
 }
@@ -228,4 +327,8 @@ fn test_with_witness(
             .map(|e| Err(Into::<plonk::Error>::into(e).to_string()))
             .unwrap_or(Ok(()))
     )
+}
+
+fn biguint_from_hex(hex_str: &str) -> BigUint {
+    BigUint::from_str_radix(hex_str, 16).unwrap()
 }

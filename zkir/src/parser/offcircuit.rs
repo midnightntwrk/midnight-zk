@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
     instructions::{
-        operations::{load_offcircuit, Operation::*},
+        operations::{add_offcircuit, load_offcircuit, Operation::*},
         Instruction,
     },
     types::IrValue,
@@ -36,7 +36,7 @@ impl Parser {
             .iter()
             .map(|name| match self.memory.get(name).cloned() {
                 Some(v) => Ok(v),
-                None => Err(Error::NotFound(name.clone())),
+                None => name.as_str().try_into(),
             })
             .collect::<Result<Vec<IrValue>, Error>>()?;
 
@@ -53,6 +53,16 @@ impl Parser {
                 inps.into_iter().for_each(|v| self.public_inputs.push(v));
                 vec![]
             }
+            AssertEqual => {
+                if inps[0] != inps[1] {
+                    return Err(Error::Other(format!(
+                        "assertion violated: {:?} == {:?}",
+                        inps[0], inps[1]
+                    )));
+                }
+                vec![]
+            }
+            Add => vec![add_offcircuit(&inps[0], &inps[1])?],
         };
 
         insert_many(&mut self.memory, &instruction.outputs, &outputs)
