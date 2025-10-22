@@ -1363,9 +1363,37 @@ where
         x: &AssignedNative<F>,
         c: F,
     ) -> Result<AssignedBit<F>, Error> {
-        // TODO: optimize
-        let b = self.is_equal_to_fixed(layouter, x, c)?;
-        self.not(layouter, &b)
+        // We enforce (i) (x - c) * aux = res
+        // and       (ii) (x - c) * (1 - res) = 0.
+        //  * If  x = c, (i)  implies res = 0; (ii) becomes trivial.
+        //  * If x != c, (ii) implies res = 1; (i) can be relaxed with aux = (x - c)^-1.
+
+        let value_cols = &self.config.value_cols;
+        let res_val = x.value().map(|x| F::from((*x != c) as u64));
+        let aux_val = x.value().map(|x| (*x - c).invert().unwrap_or(F::ONE));
+
+        // (i) enforced as - c * aux + aux * x - res = 0.
+        let res = layouter.assign_region(
+            || "is_not_equal (i)",
+            |mut region| {
+                region.assign_advice(|| "aux", value_cols[0], 0, || aux_val)?;
+                self.copy_in_row(&mut region, x, &value_cols[1], 0)?;
+                let res = region.assign_advice(|| "res", value_cols[4], 0, || res_val)?;
+                let mut coeffs = [F::ZERO; NB_ARITH_COLS];
+                coeffs[0] = -c; // coeff of aux
+                coeffs[4] = -F::ONE; // coeff of res
+                self.custom(&mut region, &coeffs, F::ZERO, (F::ONE, F::ZERO), F::ZERO, 0)?;
+                Ok(res)
+            },
+        )?;
+
+        // (ii) enforced as x - c + c * res - res * x = 0.
+        let must_be_zero =
+            self.add_and_mul(layouter, (c, &res), (F::ONE, x), (F::ZERO, x), -c, -F::ONE)?;
+        self.assert_zero(layouter, &must_be_zero)?;
+
+        // The two equations we have enforced guarantee the bit-ness of `res`.
+        Ok(AssignedBit(res))
     }
 }
 

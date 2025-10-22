@@ -1710,7 +1710,7 @@
       "max_deg": "4",
       "permutations": "9",
       "point_sets": "3",
-      "rows": "3",
+      "rows": "2",
       "table_rows": "2"
     },
     "is_zero": {
@@ -2053,7 +2053,7 @@
       "max_deg": "5",
       "permutations": "16",
       "point_sets": "4",
-      "rows": "7",
+      "rows": "5",
       "table_rows": "3"
     },
     "is_zero": {
