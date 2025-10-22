@@ -616,6 +616,17 @@
       "rows": "4",
       "table_rows": "8"
     },
+    "sgn0": {
+      "advice_columns": "18",
+      "column_queries": "92",
+      "fixed_columns": "58",
+      "lookups": "8",
+      "max_deg": "5",
+      "permutations": "22",
+      "point_sets": "4",
+      "rows": "335",
+      "table_rows": "451"
+    },
     "sub": {
       "advice_columns": "13",
       "column_queries": "56",
@@ -947,6 +958,17 @@
       "point_sets": "4",
       "rows": "4",
       "table_rows": "8"
+    },
+    "sgn0": {
+      "advice_columns": "18",
+      "column_queries": "92",
+      "fixed_columns": "58",
+      "lookups": "8",
+      "max_deg": "5",
+      "permutations": "22",
+      "point_sets": "4",
+      "rows": "335",
+      "table_rows": "451"
     },
     "sub": {
       "advice_columns": "13",

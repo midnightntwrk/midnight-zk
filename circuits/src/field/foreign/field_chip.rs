@@ -1803,4 +1803,5 @@ mod tests {
 
     test!(decomposition, test_bit_decomposition);
     test!(decomposition, test_byte_decomposition);
+    test!(decomposition, test_sgn0);
 }
