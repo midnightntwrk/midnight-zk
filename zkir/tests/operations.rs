@@ -216,6 +216,15 @@ fn test_assert_equal() {
         Some(Error::ExpectingType(IrType::JubjubPoint, IrType::Native)),
     );
 
+    test_without_witness(
+        &[
+            (Load(IrType::Bytes(2)), vec![], vec!["v"]),
+            (Load(IrType::Bytes(3)), vec![], vec!["w"]),
+            (AssertEqual, vec!["v", "w"], vec![]),
+        ],
+        Some(Error::ExpectingType(IrType::Bytes(2), IrType::Bytes(3))),
+    );
+
     // A successful execution.
     test_with_witness(
         &[

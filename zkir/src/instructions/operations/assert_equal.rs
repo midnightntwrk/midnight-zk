@@ -25,7 +25,7 @@ pub fn assert_equal_incircuit(
     match (x, y) {
         (Bool(a), Bool(b)) => std_lib.assert_equal(layouter, a, b)?,
 
-        (Bytes(v), Bytes(w)) => {
+        (Bytes(v), Bytes(w)) if v.len() == w.len() => {
             (v.iter().zip(w)).try_for_each(|(vi, wi)| std_lib.assert_equal(layouter, vi, wi))?
         }
 

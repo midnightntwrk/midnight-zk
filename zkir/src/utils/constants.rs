@@ -18,7 +18,7 @@
 //!  - A string prefixed by "Jubjub:" is parsed as an [IrType::JubjubPoint]. The
 //!    payload that follows this prefix is expected to be a hexadecimal string of
 //!    exactly 32 bytes, following the repr_J encoding as defined in [Zcash specification
-//!    5.4.9.3 - JubJub](https://zips.z.cash/protocol/protocol.pdf#jubjub).//!
+//!    5.4.9.3 - JubJub](https://zips.z.cash/protocol/protocol.pdf#jubjub).
 //!    Additionally, the following strings are allowed:
 //!      - "Jubjub:GENERATOR", for the official generator of the Jubjub subgroup
 //!      - "Jubjub:IDENTITY", for the identity point of the Jubjub curve
