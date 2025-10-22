@@ -855,6 +855,17 @@ impl<C: EdwardsCurve> EqualityInstructions<C::Base, AssignedNativePoint<C>> for 
         self.native_gadget.and(layouter, &[eq_x, eq_y])
     }
 
+    fn is_not_equal(
+        &self,
+        layouter: &mut impl Layouter<C::Base>,
+        p: &AssignedNativePoint<C>,
+        q: &AssignedNativePoint<C>,
+    ) -> Result<AssignedBit<C::Base>, Error> {
+        let not_eq_x = self.native_gadget.is_not_equal(layouter, &p.x, &q.x)?;
+        let not_eq_y = self.native_gadget.is_not_equal(layouter, &p.y, &q.y)?;
+        self.native_gadget.or(layouter, &[not_eq_x, not_eq_y])
+    }
+
     fn is_equal_to_fixed(
         &self,
         layouter: &mut impl Layouter<C::Base>,
@@ -865,6 +876,18 @@ impl<C: EdwardsCurve> EqualityInstructions<C::Base, AssignedNativePoint<C>> for 
         let eq_x = self.native_gadget.is_equal_to_fixed(layouter, &p.x, cx)?;
         let eq_y = self.native_gadget.is_equal_to_fixed(layouter, &p.y, cy)?;
         self.native_gadget.and(layouter, &[eq_x, eq_y])
+    }
+
+    fn is_not_equal_to_fixed(
+        &self,
+        layouter: &mut impl Layouter<C::Base>,
+        p: &AssignedNativePoint<C>,
+        constant: C::CryptographicGroup,
+    ) -> Result<AssignedBit<C::Base>, Error> {
+        let (cx, cy) = constant.into().coordinates().expect("non-id");
+        let not_eq_x = self.native_gadget.is_not_equal_to_fixed(layouter, &p.x, cx)?;
+        let not_eq_y = self.native_gadget.is_not_equal_to_fixed(layouter, &p.y, cy)?;
+        self.native_gadget.or(layouter, &[not_eq_x, not_eq_y])
     }
 }
 

@@ -1267,6 +1267,17 @@ where
         Ok(AssignedBit(res))
     }
 
+    fn is_not_equal(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &AssignedNative<F>,
+        y: &AssignedNative<F>,
+    ) -> Result<AssignedBit<F>, Error> {
+        // TODO: optimize
+        let b = self.is_equal(layouter, x, y)?;
+        self.not(layouter, &b)
+    }
+
     fn is_equal_to_fixed(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -1311,6 +1322,17 @@ where
         // The two equations we have enforced guarantee the bit-ness of `res`.
         Ok(AssignedBit(res))
     }
+
+    fn is_not_equal_to_fixed(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &AssignedNative<F>,
+        c: F,
+    ) -> Result<AssignedBit<F>, Error> {
+        // TODO: optimize
+        let b = self.is_equal_to_fixed(layouter, x, c)?;
+        self.not(layouter, &b)
+    }
 }
 
 impl<F> EqualityInstructions<F, AssignedBit<F>> for NativeChip<F>
@@ -1335,6 +1357,24 @@ where
         .map(AssignedBit)
     }
 
+    fn is_not_equal(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        a: &AssignedBit<F>,
+        b: &AssignedBit<F>,
+    ) -> Result<AssignedBit<F>, Error> {
+        // a + b - 2ab
+        self.add_and_mul(
+            layouter,
+            (F::ONE, &a.0),
+            (F::ONE, &b.0),
+            (F::ZERO, &a.0),
+            F::ZERO,
+            -F::from(2),
+        )
+        .map(AssignedBit)
+    }
+
     fn is_equal_to_fixed(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -1343,6 +1383,16 @@ where
     ) -> Result<AssignedBit<F>, Error> {
         let assigned_constant = self.assign_fixed(layouter, constant)?;
         self.is_equal(layouter, b, &assigned_constant)
+    }
+
+    fn is_not_equal_to_fixed(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        b: &AssignedBit<F>,
+        constant: bool,
+    ) -> Result<AssignedBit<F>, Error> {
+        let assigned_constant = self.assign_fixed(layouter, constant)?;
+        self.is_not_equal(layouter, b, &assigned_constant)
     }
 }
 

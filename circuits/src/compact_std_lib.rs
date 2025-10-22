@@ -821,6 +821,15 @@ where
         self.native_gadget.is_equal(layouter, x, y)
     }
 
+    fn is_not_equal(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &T,
+        y: &T,
+    ) -> Result<AssignedBit<F>, Error> {
+        self.native_gadget.is_not_equal(layouter, x, y)
+    }
+
     fn is_equal_to_fixed(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -828,6 +837,15 @@ where
         constant: T::Element,
     ) -> Result<AssignedBit<F>, Error> {
         self.native_gadget.is_equal_to_fixed(layouter, x, constant)
+    }
+
+    fn is_not_equal_to_fixed(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &T,
+        constant: T::Element,
+    ) -> Result<AssignedBit<F>, Error> {
+        self.native_gadget.is_not_equal_to_fixed(layouter, x, constant)
     }
 }
 
