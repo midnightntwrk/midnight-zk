@@ -22,7 +22,7 @@
       "permutations": "14",
       "point_sets": "4",
       "rows": "2838",
-      "table_rows": "3"
+      "table_rows": "387"
     },
     "Insert": {
       "advice_columns": "13",
@@ -33,7 +33,7 @@
       "permutations": "14",
       "point_sets": "4",
       "rows": "5676",
-      "table_rows": "3"
+      "table_rows": "387"
     }
   },
   "Poseidon": {
