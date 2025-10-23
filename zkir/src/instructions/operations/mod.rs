@@ -132,12 +132,25 @@ pub enum Operation {
     /// Supported on types:
     ///  - `JubjubPoint` -> `(Native, Native)`
     AffineCoordinates,
+
+    /// Converts the given IrValue into Bytes(n), where n is the usize carried
+    /// by this operation.
+    ///
+    /// Inputs:  1
+    /// Outputs: 1
+    ///
+    /// Supported on IrValues `x` of type:
+    ///  - `Native` for any `n`   - imposes a range-check, 0 <= x < 2^(8N)
+    ///  - `BigUint` for any `n`  - imposes a range-check, 0 <= x < 2^(8N)
+    ///  - `JubjubPoint` for `n = 32`
+    IntoBytes(usize),
 }
 
 mod add;
 mod affine_coordinates;
 mod assert_equal;
 mod inner_product;
+mod into_bytes;
 mod is_equal;
 mod load;
 mod mul;
@@ -149,6 +162,7 @@ pub use add::*;
 pub use affine_coordinates::*;
 pub use assert_equal::*;
 pub use inner_product::*;
+pub use into_bytes::*;
 pub use is_equal::*;
 pub use load::*;
 pub use mul::*;

@@ -37,6 +37,7 @@ impl Operation {
             Neg => Fixed(1),
             InnerProduct => SomeEven,
             AffineCoordinates => Fixed(1),
+            IntoBytes(_) => Fixed(1),
         }
     }
 
@@ -54,6 +55,7 @@ impl Operation {
             Neg => Fixed(1),
             InnerProduct => Fixed(1),
             AffineCoordinates => Fixed(2),
+            IntoBytes(_) => Fixed(1),
         }
     }
 }
