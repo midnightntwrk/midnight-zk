@@ -520,6 +520,78 @@ fn test_affine_coordinates() {
     );
 }
 
+#[test]
+fn test_into_bytes() {
+    // IntoBytes expects 1 input and 1 output.
+    test_static_pass(
+        &[(IntoBytes(32), vec!["x"], vec!["bytes", "foo"])],
+        Some(Error::InvalidArity(IntoBytes(32))),
+    );
+
+    test_static_pass(
+        &[(IntoBytes(32), vec!["x", "y"], vec!["bytes"])],
+        Some(Error::InvalidArity(IntoBytes(32))),
+    );
+
+    test_static_pass(&[(IntoBytes(32), vec!["x"], vec!["bytes"])], None);
+
+    // Unsupported cases.
+    test_without_witness(
+        &[
+            (Load(IrType::Bool), vec![], vec!["b"]),
+            (IntoBytes(1), vec!["b"], vec!["w"]),
+        ],
+        Some(Error::Unsupported(
+            Operation::IntoBytes(1),
+            vec![IrType::Bool],
+        )),
+    );
+
+    test_without_witness(
+        &[
+            (Load(IrType::Bytes(10)), vec![], vec!["v"]),
+            (IntoBytes(10), vec!["v"], vec!["w"]),
+        ],
+        Some(Error::Unsupported(
+            Operation::IntoBytes(10),
+            vec![IrType::Bytes(10)],
+        )),
+    );
+
+    test_without_witness(
+        &[
+            (Load(IrType::JubjubPoint), vec![], vec!["p"]),
+            (IntoBytes(31), vec!["p"], vec!["bytes"]),
+        ],
+        Some(Error::Unsupported(
+            Operation::IntoBytes(31),
+            vec![IrType::JubjubPoint],
+        )),
+    );
+
+    test_without_witness(
+        &[
+            (Load(IrType::JubjubScalar), vec![], vec!["s"]),
+            (IntoBytes(32), vec!["s"], vec!["bytes"]),
+        ],
+        Some(Error::Unsupported(
+            Operation::IntoBytes(32),
+            vec![IrType::JubjubScalar],
+        )),
+    );
+
+    // A successful execution.
+    test_with_witness(
+        &[
+            (Load(IrType::BigUint(16)), vec![], vec!["n"]),
+            (IntoBytes(1), vec!["n"], vec!["n_bytes"]),
+        ],
+        HashMap::from_iter([("n", BigUint::from(255u64).into())]),
+        vec![],
+        None,
+    );
+}
+
 fn build_instructions(
     raw_instructions: &[(Operation, Vec<&'static str>, Vec<&'static str>)],
 ) -> Vec<Instruction> {

@@ -78,6 +78,7 @@ impl Parser {
                 let (x, y) = affine_coordinates_offcircuit(&inps[0])?;
                 vec![x, y]
             }
+            IntoBytes(n) => vec![inps[0].clone().into_bytes(n)?],
         };
 
         insert_many(&mut self.memory, &instruction.outputs, &outputs)
