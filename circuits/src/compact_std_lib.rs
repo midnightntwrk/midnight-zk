@@ -685,6 +685,73 @@ impl ZkStdLib {
     }
 }
 
+#[cfg(feature = "extraction")]
+pub mod extraction {
+    //! Extraction specific logic related to the stdlib.
+
+    use extractor_support::{
+        circuit::{configuration::AutoConfigure, CircuitInitialization},
+        error::PlonkError,
+    };
+    use midnight_proofs::{circuit::Layouter, plonk::ConstraintSystem};
+
+    use crate::utils::ComposableChip as _;
+
+    use super::F;
+
+    impl AutoConfigure for super::ZkStdLibArch {
+        fn configure<F: ff::PrimeField>(_: &mut ConstraintSystem<F>) -> Self {
+            Self::default()
+        }
+    }
+
+    impl CircuitInitialization<F> for super::ZkStdLib {
+        type Config = super::ZkStdLibConfig;
+
+        type Args = usize;
+
+        type ConfigCols = super::ZkStdLibArch;
+
+        fn new_chip(config: &Self::Config, args: Self::Args) -> Self {
+            Self::new(config, args)
+        }
+
+        fn configure_circuit(
+            meta: &mut ConstraintSystem<F>,
+            arch: &Self::ConfigCols,
+        ) -> Self::Config {
+            Self::configure(meta, *arch)
+        }
+
+        fn load_chip(
+            &self,
+            layouter: &mut impl Layouter<F>,
+            _: &Self::Config,
+        ) -> Result<(), PlonkError> {
+            self.core_decomposition_chip.load(layouter)?;
+
+            if let Some(sha256_chip) = &self.sha256_chip {
+                if *self.used_sha.borrow() {
+                    sha256_chip.load(layouter)?;
+                }
+            }
+
+            if let Some(b64_chip) = &self.base64_chip {
+                if *self.used_base64.borrow() {
+                    b64_chip.load(layouter)?;
+                }
+            }
+
+            if let Some(automaton_chip) = &self.automaton_chip {
+                if *self.used_automaton.borrow() {
+                    automaton_chip.load(layouter)?;
+                }
+            }
+            Ok(())
+        }
+    }
+}
+
 impl Bls12381Chip {
     /// Asserts that the given point belongs to the BLS subgroup.
     pub fn assert_in_bls12_381_subgroup(

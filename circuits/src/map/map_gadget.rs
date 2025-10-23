@@ -253,6 +253,33 @@ where
     }
 }
 
+#[cfg(feature = "extraction")]
+pub mod extraction {
+    //! Extraction specific logic related to the map gadget.
+
+    use ff::PrimeField;
+
+    use crate::{
+        field::AssignedNative,
+        instructions::{HashInstructions, NativeInstructions},
+        testing_utils::FromScratch,
+    };
+
+    extractor_support::circuit_initialization_from_scratch!(super::MapGadget<F, N, H>, F, N, H
+      where
+        N: NativeInstructions<F> + FromScratch<F>,
+        H: HashInstructions<F, AssignedNative<F>, AssignedNative<F>> + FromScratch<F>
+    );
+
+    impl<F, N, H> extractor_support::circuit::NoChipArgs for super::MapGadget<F, N, H>
+    where
+        F: PrimeField,
+        N: NativeInstructions<F> + FromScratch<F>,
+        H: HashInstructions<F, AssignedNative<F>, AssignedNative<F>> + FromScratch<F>,
+    {
+    }
+}
+
 #[cfg(test)]
 mod test {
     use std::marker::PhantomData;

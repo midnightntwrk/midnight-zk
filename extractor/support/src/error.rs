@@ -5,7 +5,7 @@ use std::{num::ParseIntError, str::ParseBoolError};
 use num_bigint::{BigInt, ParseBigIntError, TryFromBigIntError};
 use thiserror::Error;
 
-use crate::fields::Blstrs;
+use crate::fields::{Blstrs, MidnightFp, Secp256k1Fp};
 
 /// Error type.
 #[derive(Error, Debug)]
@@ -37,6 +37,12 @@ pub enum Error {
     /// Error when a constant point is not in the elliptic curve
     #[error("Point ({0}, {1}) is not in the curve")]
     PointNotInCurve(Blstrs, Blstrs),
+    /// Error when a constant point is not in the elliptic curve (3D version)
+    #[error("Point ({0}, {1}, {2}) is not in the curve")]
+    Point3NotInCurve(MidnightFp, MidnightFp, MidnightFp),
+    /// Error when a constant point is not in the elliptic curve (3D version)
+    #[error("Point ({0:?}, {1:?}, {2:?}) is not in the curve")]
+    Point3NotInCurveSecp256k1(Secp256k1Fp, Secp256k1Fp, Secp256k1Fp),
     /// Int cast error.
     #[error(transparent)]
     IntCast(#[from] std::num::TryFromIntError),
@@ -44,8 +50,10 @@ pub enum Error {
     #[error(transparent)]
     BigIntCast(#[from] TryFromBigIntError<BigInt>),
     /// Error when an encountered an unexpected number of elements.
-    #[error("Was expected {expected} elements but got {actual}")]
+    #[error("{header}Was expecting {expected} elements but got {actual}")]
     UnexpectedElements {
+        /// Context header for the error
+        header: &'static str,
         /// The expected number of elements.
         expected: usize,
         /// The number of elements.

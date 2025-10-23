@@ -483,6 +483,55 @@ impl<F: PrimeField> ComposableChip<F> for Base64Chip<F> {
     }
 }
 
+#[cfg(feature = "extraction")]
+pub mod extraction {
+    //! Extraction specific logic related to the base64 chip.
+
+    use crate::types::ComposableChip;
+    use extractor_support::{circuit::CircuitInitialization, error::PlonkError};
+    use ff::PrimeField;
+    use midnight_proofs::{
+        circuit::Layouter,
+        plonk::{Advice, Column, ConstraintSystem},
+    };
+
+    use super::{Base64Chip, Base64Config, NG};
+
+    impl<F: PrimeField> CircuitInitialization<F> for Base64Chip<F> {
+        type Config = (Base64Config, <NG<F> as CircuitInitialization<F>>::Config);
+
+        type Args = ();
+
+        type ConfigCols = (
+            [Column<Advice>; super::NB_BASE64_ADVICE_COLS],
+            <NG<F> as CircuitInitialization<F>>::ConfigCols,
+        );
+
+        fn new_chip((base64, ng): &Self::Config, _: Self::Args) -> Self {
+            let ng = NG::<F>::new_chip(ng, ());
+            Self::new(base64, &ng)
+        }
+
+        fn configure_circuit(
+            meta: &mut ConstraintSystem<F>,
+            (base64, ng): &Self::ConfigCols,
+        ) -> Self::Config {
+            (
+                Self::configure(meta, base64),
+                NG::configure_circuit(meta, ng),
+            )
+        }
+
+        fn load_chip(
+            &self,
+            layouter: &mut impl Layouter<F>,
+            _: &Self::Config,
+        ) -> Result<(), PlonkError> {
+            self.load(layouter)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::marker::PhantomData;

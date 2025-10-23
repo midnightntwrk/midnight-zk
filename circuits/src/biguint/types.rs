@@ -159,3 +159,185 @@ pub(crate) fn biguint_to_limbs<F: PrimeField>(value: &BigUint, nb_limbs: Option<
         .map(big_to_fe::<F>)
         .collect()
 }
+
+#[cfg(feature = "extraction")]
+pub mod extraction {
+    //! Extraction specific logic related to the biguint gadget.
+    use std::borrow::Borrow;
+    use std::ops::Rem as _;
+
+    use super::{AssignedBigUint, LOG2_BASE};
+    use crate::types::AssignedNative;
+    use extractor_support::cell_to_expr;
+    use extractor_support::cells::ctx::{ICtx, OCtx};
+    use extractor_support::cells::load::LoadFromCells;
+    use extractor_support::cells::store::StoreIntoCells;
+    use extractor_support::cells::CellReprSize;
+    use extractor_support::circuit::injected::InjectedIR;
+    use extractor_support::error::Error;
+    use extractor_support::ir::stmt::IRStmt;
+    use extractor_support::ir::CmpOp;
+    use ff::PrimeField;
+    use midnight_proofs::circuit::Layouter;
+    use midnight_proofs::plonk::Expression;
+
+    const fn num_limbs(bits: usize) -> usize {
+        let c: usize = bits / LOG2_BASE as usize;
+        if bits % LOG2_BASE as usize != 0 {
+            c + 1
+        } else {
+            c
+        }
+    }
+
+    /// Represents a big unsigned integer of up to `BITS` bits loaded from cells.
+    #[derive(Debug)]
+    pub struct LoadedBigUint<F: PrimeField, const BITS: usize>(AssignedBigUint<F>);
+
+    impl<F, const BITS: usize> CellReprSize for LoadedBigUint<F, BITS>
+    where
+        F: PrimeField,
+    {
+        const SIZE: usize = num_limbs(BITS) * AssignedNative::<F>::SIZE;
+    }
+
+    impl<F: PrimeField, const BITS: usize> Borrow<AssignedBigUint<F>> for LoadedBigUint<F, BITS> {
+        fn borrow(&self) -> &AssignedBigUint<F> {
+            &self.0
+        }
+    }
+
+    impl<F: PrimeField, const BITS: usize> From<LoadedBigUint<F, BITS>> for AssignedBigUint<F> {
+        fn from(value: LoadedBigUint<F, BITS>) -> Self {
+            value.0
+        }
+    }
+
+    impl<F: PrimeField, const BITS: usize> TryFrom<AssignedBigUint<F>> for LoadedBigUint<F, BITS> {
+        type Error = Error;
+
+        fn try_from(value: AssignedBigUint<F>) -> Result<Self, Self::Error> {
+            let n_limbs = value.limbs.len();
+            if n_limbs > num_limbs(BITS) {
+                return Err(Error::UnexpectedElements {
+                    header: "While wrapping big uint into a loaded bit uint",
+                    expected: n_limbs,
+                    actual: num_limbs(BITS),
+                });
+            }
+            Ok(Self(value))
+        }
+    }
+
+    fn emit_limb_bound_constraints<F: PrimeField>(
+        biguint: &AssignedBigUint<F>,
+        injected_ir: &mut InjectedIR<F>,
+    ) -> Result<(), Error> {
+        let n_limbs = biguint.limb_size_bounds.len();
+        assert_eq!(n_limbs, biguint.limbs.len());
+        let lhs = biguint.limbs[..n_limbs - 1].iter().map(|c| (c.cell(), cell_to_expr(c)));
+        let rhs = biguint.limb_size_bounds[..n_limbs - 1]
+            .iter()
+            .copied()
+            .map(|b| F::from(b as u64))
+            .map(Expression::Constant);
+        std::iter::zip(lhs, rhs)
+            .map(|((cell, lhs), rhs)| {
+                lhs.map(|lhs| {
+                    (
+                        cell.region_index,
+                        IRStmt::constraint(
+                            CmpOp::Lt,
+                            (cell.row_offset, lhs),
+                            (cell.row_offset, rhs),
+                        ),
+                    )
+                })
+            })
+            .chain(
+                std::iter::zip(biguint.limbs.last(), biguint.limb_size_bounds.last()).map(
+                    |(limb, bound)| {
+                        let cell = limb.cell();
+                        let lhs = cell_to_expr(limb)?;
+                        let op = if *bound < LOG2_BASE {
+                            CmpOp::Le
+                        } else {
+                            CmpOp::Lt
+                        };
+                        let rhs = Expression::Constant(F::from(*bound as u64));
+                        Ok((
+                            cell.region_index,
+                            IRStmt::constraint(op, (cell.row_offset, lhs), (cell.row_offset, rhs)),
+                        ))
+                    },
+                ),
+            )
+            .try_for_each(|stmt| {
+                let (index, stmt) = stmt?;
+                injected_ir.entry(index).or_default().push(stmt);
+                Ok(())
+            })
+    }
+
+    impl<F: PrimeField, C, const BITS: usize> LoadFromCells<F, C> for LoadedBigUint<F, BITS> {
+        fn load(
+            ctx: &mut ICtx,
+            chip: &C,
+            layouter: &mut impl Layouter<F>,
+            injected_ir: &mut InjectedIR<F>,
+        ) -> Result<Self, Error> {
+            assert_eq!(
+                AssignedNative::<F>::SIZE,
+                1,
+                "AssignedNative needs to occupy only one cell"
+            );
+            let n_limbs = num_limbs(BITS);
+            let limbs =
+                std::iter::repeat_with(|| AssignedNative::load(ctx, chip, layouter, injected_ir))
+                    .take(n_limbs)
+                    .collect::<Result<Vec<_>, _>>()?;
+            let mut limb_size_bounds = vec![LOG2_BASE; n_limbs];
+            let n_bits = std::cmp::max(BITS, 1) as u32;
+            *limb_size_bounds.last_mut().unwrap() = (n_bits - 1).rem(LOG2_BASE) + 1; // msl bound
+            let be = AssignedBigUint {
+                limbs,
+                limb_size_bounds,
+            };
+            emit_limb_bound_constraints(&be, injected_ir)?;
+
+            Ok(LoadedBigUint(be))
+        }
+    }
+
+    impl<F: PrimeField, C, const BITS: usize> StoreIntoCells<F, C> for LoadedBigUint<F, BITS> {
+        fn store(
+            self,
+            ctx: &mut OCtx,
+            chip: &C,
+            layouter: &mut impl Layouter<F>,
+            injected_ir: &mut InjectedIR<F>,
+        ) -> Result<(), Error> {
+            let n_limbs = self.0.limbs.len();
+            assert_eq!(
+                n_limbs,
+                self.0.limb_size_bounds.len(),
+                "Inconsistent lengths between bounds and lengths"
+            );
+
+            if n_limbs > num_limbs(BITS) {
+                return Err(Error::UnexpectedElements {
+                    header: "While storing big uint",
+                    expected: n_limbs,
+                    actual: num_limbs(BITS),
+                });
+            }
+
+            emit_limb_bound_constraints(&self.0, injected_ir)?;
+
+            self.0
+                .limbs
+                .into_iter()
+                .try_for_each(|limb| limb.store(ctx, chip, layouter, injected_ir))
+        }
+    }
+}

@@ -224,11 +224,11 @@ pub mod extraction {
         },
         circuit::injected::InjectedIR,
         error::Error,
-        ir::{stmt::IRStmt, CmpOp},
+        ir::{stmt::IRStmt, CmpOp}, sbig_to_fe,
     };
     use ff::PrimeField;
     use midnight_proofs::{circuit::Layouter, plonk::Expression};
-    use num_bigint::BigUint;
+    use num_bigint::{ BigUint};
     use num_traits::One as _;
 
     use crate::{field::{foreign::params::FieldEmulationParams, AssignedNative}, instructions::NativeInstructions};
@@ -300,14 +300,17 @@ pub mod extraction {
             for (val, (lb, ub)) in std::iter::zip(self.limb_values(), self.limb_bounds) {
                 let row = val.cell().row_offset;
                 let expr = cell_to_expr(&val)?;
-                let lb = Expression::Constant(big_to_fe::<F>(lb.try_into()?));
-                let ub = Expression::Constant(big_to_fe::<F>(ub.try_into()?));
                 let region = injected_ir.entry(val.cell().region_index).or_default();
+                
+
+                let lb = Expression::Constant(sbig_to_fe::<F>(lb));
                 region.push(IRStmt::constraint(
-                    CmpOp::Ge,
+                    CmpOp::Le,
                     (row, lb),
                     (row, expr.clone()),
                 ));
+                
+                let ub = Expression::Constant(sbig_to_fe::<F>(ub));
                 region.push(IRStmt::constraint(CmpOp::Le, (row, expr), (row, ub)));
                 val.store(ctx, chip, layouter, injected_ir)?;
             }

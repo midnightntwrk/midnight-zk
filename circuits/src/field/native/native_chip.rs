@@ -1072,7 +1072,7 @@ impl<F: PrimeField> From<AssignedBit<F>> for AssignedNative<F> {
 }
 
 #[cfg(feature = "extraction")]
-pub mod extraction {
+pub mod chip_extraction {
     //! Extraction specific logic related to the native chip.
 
     use super::AssignedBit;

@@ -155,7 +155,7 @@ impl<F: PrimeField> Sampleable for AssignedByte<F> {
 }
 
 #[cfg(feature = "extraction")]
-pub mod extraction {
+pub mod gadget_extraction {
     //! Extraction specific logic related to the native gadget.
 
     use extractor_support::{

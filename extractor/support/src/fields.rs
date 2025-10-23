@@ -8,24 +8,37 @@ use crate::{
     fe_to_big,
 };
 use ff::PrimeField as _;
-use midnight_proofs::{circuit::Layouter, halo2curves::group::cofactor::CofactorGroup};
+use midnight_proofs::circuit::Layouter;
 
 pub use midnight_curves::Fp as MidnightFp;
 pub use midnight_curves::Fq as Blstrs;
 pub use midnight_curves::Fr as JubjubFr;
+pub use midnight_curves::G1Projective as G1;
 pub use midnight_curves::JubjubExtended as Jubjub;
 pub use midnight_curves::JubjubSubgroup;
+pub use midnight_proofs::halo2curves::secp256k1::Fp as Secp256k1Fp;
+pub use midnight_proofs::halo2curves::secp256k1::Fq as Secp256k1Fq;
+pub use midnight_proofs::halo2curves::secp256k1::Secp256k1;
 
-impl<C> LoadFromCells<Self, C> for Blstrs {
-    fn load(
-        ctx: &mut ICtx,
-        _chip: &C,
-        _layouter: &mut impl Layouter<Self>,
-        _injected_ir: &mut InjectedIR<Self>,
-    ) -> Result<Self, Error> {
-        ctx.field_constant()
-    }
+macro_rules! load_impl {
+    ($t:ty) => {
+        impl<C> LoadFromCells<Blstrs, C> for $t {
+            fn load(
+                ctx: &mut ICtx,
+                _chip: &C,
+                _layouter: &mut impl Layouter<Blstrs>,
+                _injected_ir: &mut InjectedIR<Blstrs>,
+            ) -> Result<Self, Error> {
+                ctx.field_constant()
+            }
+        }
+    };
 }
+
+load_impl!(Blstrs);
+load_impl!(MidnightFp);
+load_impl!(Secp256k1Fp);
+load_impl!(Secp256k1Fq);
 
 impl<C> LoadFromCells<Blstrs, C> for JubjubFr {
     fn load(

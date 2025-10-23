@@ -150,6 +150,41 @@ where
     }
 }
 
+#[cfg(feature = "extraction")]
+pub mod extraction {
+    //! Extraction specific logic related to the hash-to-curve gadget.
+
+    use ff::PrimeField;
+
+    use crate::{
+        ecc::{
+            curves::CircuitCurve,
+            hash_to_curve::{MapToCurveCPU, MapToCurveInstructions},
+        },
+        instructions::{EccInstructions, SpongeInstructions},
+        testing_utils::FromScratch,
+        types::InnerValue,
+    };
+
+    extractor_support::circuit_initialization_from_scratch!(super::HashToCurveGadget<F, C, I, H, E>, F, C, I, H, E
+      where
+        C: CircuitCurve + MapToCurveCPU<C>,
+        I: InnerValue,
+        H: SpongeInstructions<F, I, E::Coordinate> + FromScratch<F>,
+        E: EccInstructions<F, C> + MapToCurveInstructions<F, C> + FromScratch<F>
+    );
+    impl<F, C, I, H, E> extractor_support::circuit::NoChipArgs
+        for super::HashToCurveGadget<F, C, I, H, E>
+    where
+        F: PrimeField,
+        C: CircuitCurve + MapToCurveCPU<C>,
+        I: InnerValue,
+        H: SpongeInstructions<F, I, E::Coordinate> + FromScratch<F>,
+        E: EccInstructions<F, C> + MapToCurveInstructions<F, C> + FromScratch<F>,
+    {
+    }
+}
+
 #[cfg(test)]
 mod tests {
 

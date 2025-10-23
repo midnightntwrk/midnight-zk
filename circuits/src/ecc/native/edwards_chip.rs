@@ -165,7 +165,10 @@ pub mod extraction {
     use crate::{
         ecc::curves::{CircuitCurve, EdwardsCurve},
         field::AssignedNative,
-        instructions::{ConversionInstructions, EccInstructions, PublicInputInstructions},
+        instructions::{
+            ConversionInstructions, DecompositionInstructions, EccInstructions,
+            PublicInputInstructions,
+        },
     };
 
     use super::{AssignedNativePoint, ScalarVar};
@@ -233,11 +236,37 @@ pub mod extraction {
             let v = chip.as_public_input(layouter, &self)?;
             if v.len() != 2 {
                 return Err(Error::UnexpectedElements {
+                    header: "While storing a native point",
                     expected: 2,
                     actual: v.len(),
                 });
             }
             v.into_iter().try_for_each(|n| n.store(ctx, chip, layouter, injected_ir))
+        }
+    }
+
+    impl<CV, C> StoreIntoCells<CV::Base, C> for ScalarVar<CV>
+    where
+        CV: CircuitCurve,
+        C: DecompositionInstructions<CV::Base, AssignedNative<CV::Base>>,
+    {
+        fn store(
+            self,
+            ctx: &mut OCtx,
+            chip: &C,
+            layouter: &mut impl Layouter<CV::Base>,
+            injected_ir: &mut InjectedIR<CV::Base>,
+        ) -> Result<(), Error> {
+            if self.0.len() > CV::Base::NUM_BITS as usize {
+                return Err(Error::UnexpectedElements {
+                    header: "while storing a ScalarVar",
+                    expected: CV::Base::NUM_BITS as usize,
+                    actual: self.0.len(),
+                });
+            }
+
+            chip.assigned_from_le_bits(layouter, &self.0)?
+                .store(ctx, chip, layouter, injected_ir)
         }
     }
 

@@ -2047,6 +2047,107 @@ where
     }
 }
 
+#[cfg(feature = "extraction")]
+pub mod extraction {
+    //! Extraction specific logic related to the foreign ecc chip.
+    use extractor_support::cells::ctx::ICtx;
+    use extractor_support::cells::load::LoadFromCells;
+    use extractor_support::cells::store::StoreIntoCells;
+    use extractor_support::cells::CellReprSize;
+    use extractor_support::circuit::injected::InjectedIR;
+    use extractor_support::error::Error;
+    use ff::PrimeField;
+    use midnight_proofs::circuit::Layouter;
+    use midnight_proofs::circuit::Value;
+
+    use super::AssignedForeignPoint;
+    use super::ForeignEccChip;
+    use crate::types::AssignedBit;
+    use crate::types::AssignedField;
+    use crate::{
+        ecc::curves::WeierstrassCurve,
+        field::foreign::params::FieldEmulationParams,
+        instructions::{NativeInstructions, ScalarFieldInstructions},
+        types::InnerValue,
+    };
+
+    impl<F, C, B> CellReprSize for AssignedForeignPoint<F, C, B>
+    where
+        F: PrimeField,
+        C: WeierstrassCurve,
+        B: FieldEmulationParams<F, C::Base>,
+    {
+        const SIZE: usize = <AssignedBit<F> as CellReprSize>::SIZE
+            + <AssignedField<F, C::Base, B> as CellReprSize>::SIZE * 2;
+    }
+
+    // This loading and storing implementation is probably naive and it may need some extra IR to
+    // properly handle the the `is_id` flag.
+
+    impl<F, C, B, Chip> LoadFromCells<F, Chip> for AssignedForeignPoint<F, C, B>
+    where
+        F: PrimeField,
+        C: WeierstrassCurve,
+        B: FieldEmulationParams<F, C::Base>,
+    {
+        fn load(
+            ctx: &mut ICtx,
+            chip: &Chip,
+            layouter: &mut impl Layouter<F>,
+            injected_ir: &mut InjectedIR<F>,
+        ) -> Result<Self, Error> {
+            let is_id = AssignedBit::<F>::load(ctx, chip, layouter, injected_ir)?;
+            let x = AssignedField::<F, C::Base, B>::load(ctx, chip, layouter, injected_ir)?;
+            let y = AssignedField::<F, C::Base, B>::load(ctx, chip, layouter, injected_ir)?;
+            Ok(Self {
+                point: Value::unknown(),
+                is_id,
+                x,
+                y,
+            })
+        }
+    }
+
+    impl<F, C, B, Chip> StoreIntoCells<F, Chip> for AssignedForeignPoint<F, C, B>
+    where
+        F: PrimeField,
+        C: WeierstrassCurve,
+        B: FieldEmulationParams<F, C::Base>,
+    {
+        fn store(
+            self,
+            ctx: &mut extractor_support::cells::ctx::OCtx,
+            chip: &Chip,
+            layouter: &mut impl Layouter<F>,
+            injected_ir: &mut InjectedIR<F>,
+        ) -> Result<(), Error> {
+            self.is_id.store(ctx, chip, layouter, injected_ir)?;
+            self.x.store(ctx, chip, layouter, injected_ir)?;
+            self.y.store(ctx, chip, layouter, injected_ir)
+        }
+    }
+
+    extractor_support::circuit_initialization_from_scratch!(
+        ForeignEccChip<F, C, M, S, N>, 
+        F, C, M, S, N
+        where 
+            C: WeierstrassCurve, 
+            M: FieldEmulationParams<F,C::Base>,
+            S: ScalarFieldInstructions<F>,
+            S::Scalar: InnerValue<Element = C::Scalar>,
+            N: NativeInstructions<F>);
+    impl<F, C, M, S, N> extractor_support::circuit::NoChipArgs for ForeignEccChip<F, C, M, S, N>
+    where
+        F: PrimeField,
+        C: WeierstrassCurve,
+        M: FieldEmulationParams<F, C::Base>,
+        S: ScalarFieldInstructions<F>,
+        S::Scalar: InnerValue<Element = C::Scalar>,
+        N: NativeInstructions<F>,
+    {
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use group::Group;

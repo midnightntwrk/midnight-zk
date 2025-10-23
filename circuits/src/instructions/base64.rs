@@ -82,6 +82,54 @@ impl<F: PrimeField, const M: usize, const A: usize> From<Base64Vec<F, M, A>>
     }
 }
 
+#[cfg(feature = "extraction")]
+pub mod extraction {
+    //! Extraction specific logic related to the base64 vector.
+
+    use crate::{types::AssignedByte, vec::AssignedVector};
+
+    use super::Base64Vec;
+    use extractor_support::{
+        cells::{
+            ctx::{ICtx, OCtx},
+            load::LoadFromCells,
+            store::StoreIntoCells,
+            CellReprSize,
+        },
+        circuit::injected::InjectedIR,
+        error::Error,
+    };
+    use ff::PrimeField;
+    use midnight_proofs::circuit::Layouter;
+
+    impl<F: PrimeField, const M: usize, const A: usize> CellReprSize for Base64Vec<F, M, A> {
+        const SIZE: usize = <AssignedVector<F, AssignedByte<F>, M, A> as CellReprSize>::SIZE;
+    }
+
+    impl<F: PrimeField, C, const M: usize, const A: usize> LoadFromCells<F, C> for Base64Vec<F, M, A> {
+        fn load(
+            ctx: &mut ICtx,
+            chip: &C,
+            layouter: &mut impl Layouter<F>,
+            injected_ir: &mut InjectedIR<F>,
+        ) -> Result<Self, Error> {
+            AssignedVector::<F, AssignedByte<F>, M, A>::load(ctx, chip, layouter, injected_ir)
+                .map(Self)
+        }
+    }
+    impl<F: PrimeField, C, const M: usize, const A: usize> StoreIntoCells<F, C> for Base64Vec<F, M, A> {
+        fn store(
+            self,
+            ctx: &mut OCtx,
+            chip: &C,
+            layouter: &mut impl Layouter<F>,
+            injected_ir: &mut InjectedIR<F>,
+        ) -> Result<(), Error> {
+            self.0.store(ctx, chip, layouter, injected_ir)
+        }
+    }
+}
+
 /// Equivalent to Base64Instructions for variable-length inputs.
 pub trait Base64VarInstructions<F: PrimeField, const M: usize, const A: usize>:
     Base64Instructions<F>

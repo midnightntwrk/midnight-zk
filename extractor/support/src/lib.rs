@@ -12,8 +12,8 @@ use midnight_proofs::{
     plonk::Expression,
     poly::Rotation,
 };
-use num_bigint::BigUint;
-use num_traits::Num as _;
+use num_bigint::{BigInt, BigUint};
+use num_traits::{Num as _, Signed as _};
 
 use crate::error::Error;
 
@@ -41,14 +41,28 @@ pub fn parse_field<F: PrimeField>(s: &str) -> Result<F, Error> {
         .fold(Ok(F::ZERO), |acc, c| Ok(acc? * ten + c?))
 }
 
+/// Returns the modulus of the field as a [`BigUint`].
 fn modulus<F: PrimeField>() -> BigUint {
     BigUint::from_str_radix(&F::MODULUS[2..], 16).unwrap()
+}
+
+/// Returns the modulus of the field as a [`BigInt`].
+fn modulus_signed<F: PrimeField>() -> BigInt {
+    BigInt::from_str_radix(&F::MODULUS[2..], 16).unwrap()
 }
 
 /// Converts a big unsigned integer into a prime field element.
 pub fn big_to_fe<F: PrimeField>(e: BigUint) -> F {
     let modulus = modulus::<F>();
     let e = e % modulus;
+    F::from_str_vartime(&e.to_str_radix(10)[..]).unwrap()
+}
+
+/// Converts a big signed integer into a prime field element.
+/// If the value is negative it wraps around the field's modulus.
+pub fn sbig_to_fe<F: PrimeField>(mut e: BigInt) -> F {
+    let modulus = modulus_signed::<F>();
+    e = (e % modulus).abs();
     F::from_str_vartime(&e.to_str_radix(10)[..]).unwrap()
 }
 

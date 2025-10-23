@@ -340,3 +340,11 @@ impl<F: PrimeField> FromScratch<F> for VarLenSha256Gadget<F> {
         self.sha256chip.load_from_scratch(layouter)
     }
 }
+
+#[cfg(feature = "extraction")]
+pub mod extraction {
+    //! Extraction specific logic related to the sha256 varlen gadget.
+
+    extractor_support::circuit_initialization_from_scratch!(super::VarLenSha256Gadget<F>, F);
+    impl<F: ff::PrimeField> extractor_support::circuit::NoChipArgs for super::VarLenSha256Gadget<F> {}
+}

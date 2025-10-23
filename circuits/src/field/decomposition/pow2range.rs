@@ -237,6 +237,53 @@ impl<F: PrimeField> Pow2RangeChip<F> {
     }
 }
 
+#[cfg(feature = "extraction")]
+pub mod extraction {
+    //! Extraction specific logic related to the p2r chip.
+
+    use extractor_support::circuit::{ChipArgs, CircuitInitialization};
+    use ff::PrimeField;
+    use midnight_proofs::{
+        circuit::Layouter,
+        plonk::{Advice, Column, ConstraintSystem, Error},
+    };
+
+    use crate::field::decomposition::pow2range::Pow2RangeConfig;
+
+    use super::Pow2RangeChip;
+
+    impl<F: PrimeField> CircuitInitialization<F> for Pow2RangeChip<F> {
+        type Config = Pow2RangeConfig;
+
+        type Args = usize;
+
+        type ConfigCols = [Column<Advice>; 4];
+
+        fn new_chip(config: &Self::Config, args: Self::Args) -> Self {
+            Self::new(config, args)
+        }
+
+        fn configure_circuit(
+            meta: &mut ConstraintSystem<F>,
+            columns: &Self::ConfigCols,
+        ) -> Self::Config {
+            Self::configure(meta, columns)
+        }
+
+        fn load_chip(
+            &self,
+            layouter: &mut impl Layouter<F>,
+            _config: &Self::Config,
+        ) -> Result<(), Error> {
+            self.load_table(layouter)
+        }
+    }
+
+    impl<F: PrimeField> ChipArgs<F> for Pow2RangeChip<F> {
+        type Args = usize;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::marker::PhantomData;
