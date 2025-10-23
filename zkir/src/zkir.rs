@@ -114,14 +114,15 @@ impl Relation for ZkirRelation {
         let operations: Vec<_> =
             self.program.instructions.iter().map(|instr| instr.operation).collect();
 
-        let loads_types = |target_types: &[IrType]| -> bool {
-            operations
-                .iter()
-                .any(|op| matches!(op, Load(val_t) if target_types.contains(val_t)))
+        let involves_types = |target_types: &[IrType]| -> bool {
+            operations.iter().any(|op| match op {
+                Load(t) | FromBytes(t) => target_types.contains(t),
+                _ => false,
+            })
         };
 
         ZkStdLibArch {
-            jubjub: loads_types(&[IrType::JubjubPoint, IrType::JubjubScalar]),
+            jubjub: involves_types(&[IrType::JubjubPoint, IrType::JubjubScalar]),
             poseidon: false,
             sha256: false,
             sha512: false,
