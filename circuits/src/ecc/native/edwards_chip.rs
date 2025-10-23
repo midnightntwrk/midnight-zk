@@ -49,10 +49,8 @@ pub const NB_EDWARDS_COLS: usize = 9;
 /// identity represented as (0, 1).
 #[derive(Clone, Debug, picus::DecomposeInCells)]
 pub struct AssignedNativePoint<C: CircuitCurve> {
-    /// Made public for extraction to Picus.
-    pub x: AssignedNative<C::Base>,
-    /// Made public for extraction to Picus.
-    pub y: AssignedNative<C::Base>,
+    x: AssignedNative<C::Base>,
+    y: AssignedNative<C::Base>,
 }
 
 impl<C: CircuitCurve> InnerValue for AssignedNativePoint<C> {
@@ -145,6 +143,106 @@ impl<C: EdwardsCurve> Sampleable for ScalarVar<C> {
     fn sample_inner(rng: impl RngCore) -> C::Scalar {
         C::Scalar::random(rng)
     }
+}
+
+#[cfg(feature = "extraction")]
+pub mod extraction {
+    //! Extraction specific logic related to the native ecc chip.
+
+    use extractor_support::{
+        cells::{
+            ctx::{ICtx, OCtx},
+            load::LoadFromCells,
+            store::StoreIntoCells,
+            CellReprSize,
+        },
+        circuit::injected::InjectedIR,
+        error::Error,
+    };
+    use ff::PrimeField;
+    use midnight_proofs::circuit::Layouter;
+
+    use crate::{
+        ecc::curves::{CircuitCurve, EdwardsCurve},
+        field::AssignedNative,
+        instructions::{ConversionInstructions, EccInstructions, PublicInputInstructions},
+    };
+
+    use super::{AssignedNativePoint, ScalarVar};
+
+    impl<CV> CellReprSize for AssignedNativePoint<CV>
+    where
+        CV: CircuitCurve,
+    {
+        const SIZE: usize = <AssignedNative<CV::Base> as CellReprSize>::SIZE * 2;
+    }
+
+    impl<CV: CircuitCurve> CellReprSize for ScalarVar<CV> {
+        const SIZE: usize = <AssignedNative<CV::Base> as CellReprSize>::SIZE;
+    }
+
+    impl<F, CV, C> LoadFromCells<F, C> for AssignedNativePoint<CV>
+    where
+        F: PrimeField,
+        CV: CircuitCurve<Base = F>,
+        C: EccInstructions<F, CV, Point = AssignedNativePoint<CV>, Coordinate = AssignedNative<F>>,
+    {
+        fn load(
+            ctx: &mut ICtx,
+            chip: &C,
+            layouter: &mut impl Layouter<F>,
+            injected_ir: &mut InjectedIR<F>,
+        ) -> Result<Self, Error> {
+            let x = AssignedNative::<F>::load(ctx, chip, layouter, injected_ir)?;
+            let y = AssignedNative::<F>::load(ctx, chip, layouter, injected_ir)?;
+            Ok(chip.point_from_coordinates(layouter, &x, &y)?.into())
+        }
+    }
+
+    impl<F, S, CV, C> LoadFromCells<F, C> for ScalarVar<CV>
+    where
+        F: PrimeField,
+        S: PrimeField,
+        CV: CircuitCurve<Base = F, Scalar = S>,
+        C: EccInstructions<F, CV, Point = AssignedNativePoint<CV>, Coordinate = AssignedNative<F>>
+            + ConversionInstructions<F, AssignedNative<F>, ScalarVar<CV>>,
+    {
+        fn load(
+            ctx: &mut ICtx,
+            chip: &C,
+            layouter: &mut impl Layouter<F>,
+            injected_ir: &mut InjectedIR<F>,
+        ) -> Result<Self, Error> {
+            let cell = AssignedNative::load(ctx, chip, layouter, injected_ir)?;
+            Ok(chip.convert(layouter, &cell)?)
+        }
+    }
+
+    impl<CV, C> StoreIntoCells<CV::Base, C> for AssignedNativePoint<CV>
+    where
+        CV: CircuitCurve,
+        C: PublicInputInstructions<CV::Base, AssignedNativePoint<CV>>,
+    {
+        fn store(
+            self,
+            ctx: &mut OCtx,
+            chip: &C,
+            layouter: &mut impl Layouter<CV::Base>,
+            injected_ir: &mut InjectedIR<CV::Base>,
+        ) -> Result<(), Error> {
+            let v = chip.as_public_input(layouter, &self)?;
+            if v.len() != 2 {
+                return Err(Error::UnexpectedElements {
+                    expected: 2,
+                    actual: v.len(),
+                });
+            }
+            v.into_iter().try_for_each(|n| n.store(ctx, chip, layouter, injected_ir))
+        }
+    }
+
+    extractor_support::circuit_initialization_from_scratch!(super::EccChip<C>, F, C where C: EdwardsCurve + CircuitCurve<Base=F>);
+    impl<C: EdwardsCurve> extractor_support::circuit::NoChipArgs for super::EccChip<C> {}
 }
 
 /// [`EccConfig`], which uses [`NB_EDWARDS_COLS`] advice columns.

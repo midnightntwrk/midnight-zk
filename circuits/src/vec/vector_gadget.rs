@@ -411,6 +411,13 @@ impl<F: PrimeField> FromScratch<F> for VectorGadget<F> {
     }
 }
 
+#[cfg(feature = "extraction")]
+pub mod extraction {
+    //! Extraction specific logic related to the vector gadget.
+    extractor_support::circuit_initialization_from_scratch!(super::VectorGadget<F>, F);
+    impl<F: ff::PrimeField> extractor_support::circuit::NoChipArgs for super::VectorGadget<F> {}
+}
+
 #[cfg(test)]
 mod tests {
     use ff::{Field, FromUniformBytes, PrimeField};

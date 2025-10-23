@@ -605,6 +605,15 @@ impl<F: PoseidonField> FromScratch<F> for PoseidonChip<F> {
     }
 }
 
+#[cfg(feature = "extraction")]
+pub mod extraction {
+    //! Extraction specific logic related to the poseidon chip.
+    use crate::hash::poseidon::{constants::PoseidonField, PoseidonChip};
+
+    extractor_support::circuit_initialization_from_scratch!(PoseidonChip<F>, F where F: PoseidonField);
+    impl<F: PoseidonField> extractor_support::circuit::NoChipArgs for PoseidonChip<F> {}
+}
+
 #[cfg(test)]
 mod tests {
     use midnight_proofs::{circuit::SimpleFloorPlanner, dev::MockProver, plonk::Circuit};

@@ -48,6 +48,74 @@ pub struct P2RDecompositionConfig {
     pub(crate) pow2range_config: Pow2RangeConfig,
 }
 
+#[cfg(feature = "extraction")]
+pub mod extraction {
+    //! Extraction specific logic related to the p2r decomposition chip.
+    use super::{P2RDecompositionChip, P2RDecompositionConfig};
+    use crate::field::native::{NB_ARITH_COLS, NB_ARITH_FIXED_COLS};
+    use crate::field::{NativeChip, NativeConfig};
+    use crate::types::ComposableChip;
+    use crate::{
+        field::decomposition::pow2range::{Pow2RangeChip, Pow2RangeConfig},
+        midnight_proofs::{
+            circuit::Layouter,
+            plonk::{ConstraintSystem, Error},
+        },
+    };
+    use group::ff::PrimeField;
+
+    use extractor_support::circuit::configuration::AutoConfigure;
+    use extractor_support::circuit::CircuitInitialization;
+
+    /// Helper struct for configuring the p2r chip.
+    #[derive(Clone, Debug)]
+    pub struct ExtractionCfg {
+        native: NativeConfig,
+        p2r: Pow2RangeConfig,
+    }
+
+    impl AutoConfigure for ExtractionCfg {
+        fn configure<F: PrimeField>(meta: &mut ConstraintSystem<F>) -> Self {
+            let instance_columns = core::array::from_fn(|_| meta.instance_column());
+            let advice_columns: [_; NB_ARITH_COLS] = core::array::from_fn(|_| meta.advice_column());
+            let fixed_columns: [_; NB_ARITH_FIXED_COLS] =
+                core::array::from_fn(|_| meta.fixed_column());
+
+            let native =
+                NativeChip::configure(meta, &(advice_columns, fixed_columns, instance_columns));
+            let p2r = Pow2RangeChip::configure(meta, &advice_columns[1..=4]);
+            Self { native, p2r }
+        }
+    }
+
+    impl<F: PrimeField> CircuitInitialization<F> for P2RDecompositionChip<F> {
+        type Config = P2RDecompositionConfig;
+
+        type Args = usize;
+
+        type ConfigCols = ExtractionCfg;
+
+        fn new_chip(config: &Self::Config, args: Self::Args) -> Self {
+            P2RDecompositionChip::new(config, &args)
+        }
+
+        fn configure_circuit(
+            meta: &mut ConstraintSystem<F>,
+            columns: &Self::ConfigCols,
+        ) -> Self::Config {
+            P2RDecompositionChip::configure(meta, &(columns.native.clone(), columns.p2r.clone()))
+        }
+
+        fn load_chip(
+            &self,
+            layouter: &mut impl Layouter<F>,
+            _config: &Self::Config,
+        ) -> Result<(), Error> {
+            self.load(layouter)
+        }
+    }
+}
+
 impl P2RDecompositionConfig {
     /// Creates the config from the configs of a native and a pow2range chips.
     ///

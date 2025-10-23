@@ -1071,6 +1071,80 @@ impl<F: PrimeField> From<AssignedBit<F>> for AssignedNative<F> {
     }
 }
 
+#[cfg(feature = "extraction")]
+pub mod extraction {
+    //! Extraction specific logic related to the native chip.
+
+    use super::AssignedBit;
+    use crate::types::AssignedNative;
+    use extractor_support::{
+        cell_to_expr,
+        cells::{
+            ctx::{ICtx, OCtx},
+            load::LoadFromCells,
+            store::StoreIntoCells,
+            CellReprSize,
+        },
+        circuit::injected::InjectedIR,
+        error::Error,
+        ir::{stmt::IRStmt, CmpOp},
+    };
+    use ff::PrimeField;
+    use midnight_proofs::{circuit::Layouter, plonk::Expression};
+
+    impl<F: PrimeField> CellReprSize for AssignedBit<F> {
+        const SIZE: usize = <AssignedNative<F> as CellReprSize>::SIZE;
+    }
+
+    fn emit_constraint<F: PrimeField>(
+        cell: &AssignedNative<F>,
+        injected_ir: &mut InjectedIR<F>,
+    ) -> Result<(), Error> {
+        let x = cell_to_expr(cell)?;
+        let lhs = x.clone() * (x - Expression::Constant(F::ONE));
+        let rhs = Expression::Constant(F::ZERO);
+        let stmt = IRStmt::constraint(
+            CmpOp::Eq,
+            (cell.cell().row_offset, lhs),
+            (cell.cell().row_offset, rhs),
+        );
+        injected_ir.entry(cell.cell().region_index).or_default().push(stmt);
+        Ok(())
+    }
+
+    impl<F, C> LoadFromCells<F, C> for AssignedBit<F>
+    where
+        F: PrimeField,
+    {
+        fn load(
+            ctx: &mut ICtx,
+            chip: &C,
+            layouter: &mut impl Layouter<F>,
+            injected_ir: &mut InjectedIR<F>,
+        ) -> Result<Self, Error> {
+            let cell = AssignedNative::<F>::load(ctx, chip, layouter, injected_ir)?;
+            emit_constraint(&cell, injected_ir)?;
+            Ok(Self(cell))
+        }
+    }
+
+    impl<F: PrimeField, C> StoreIntoCells<F, C> for AssignedBit<F> {
+        fn store(
+            self,
+            ctx: &mut OCtx,
+            _chip: &C,
+            layouter: &mut impl Layouter<F>,
+            injected_ir: &mut InjectedIR<F>,
+        ) -> Result<(), Error> {
+            emit_constraint(&self.0, injected_ir)?;
+            ctx.assign_next(self.0, layouter)
+        }
+    }
+
+    extractor_support::circuit_initialization_from_scratch!(super::NativeChip<F>, F);
+    impl<F: PrimeField> extractor_support::circuit::NoChipArgs for super::NativeChip<F> {}
+}
+
 impl<F> ConversionInstructions<F, AssignedNative<F>, AssignedBit<F>> for NativeChip<F>
 where
     F: PrimeField,

@@ -22,7 +22,8 @@ midnight-proofs = { path = "../proofs", version = "0.5.0", default-features = fa
 ] }
 bench_macros = { path = "../bench-macros"}
 llzk-halo2-support = { path = "../support/" }
-picus = { path = "../picus-macros" }
+picus = { path = "../picus-macros", package = "picus-macros" }
+extractor-support = { path = "../extractor/support/", optional = true }
 
 serde = { workspace = true, optional = true }
 serde_derive = { workspace = true, optional = true }
@@ -66,6 +67,8 @@ truncated-challenges = ["midnight-proofs/truncated-challenges"]
 # _group: &mut BenchmarkGroup<WallTime>, and return granular benchmarks
 # of the prover for that concrete circuit.
 bench-internal = ["criterion", "midnight-proofs/bench-internal"]
+
+extraction = ["extractor-support", "testing"]
 
 [[example]]
 name = "json_verification"

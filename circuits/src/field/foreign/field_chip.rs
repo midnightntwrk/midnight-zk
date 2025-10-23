@@ -188,10 +188,7 @@ where
     /// claimed bounds, it is the responsibility of the caller to make sure
     /// that was asserted elsewhere.
     /// DO NOT use this function unless you know what you are doing.
-    ///
-    /// Dani: Made public for the extractor, which constraints the limbs similarly to how
-    /// [`AssignmentInstructions::assign`] does it.
-    pub fn from_limbs_unsafe(limb_values: Vec<AssignedNative<F>>) -> Self {
+    pub(crate) fn from_limbs_unsafe(limb_values: Vec<AssignedNative<F>>) -> Self {
         debug_assert!(limb_values.len() as u32 == P::NB_LIMBS);
         Self {
             limb_values,
@@ -210,6 +207,119 @@ where
 {
     fn sample_inner(rng: impl RngCore) -> K {
         K::random(rng)
+    }
+}
+
+#[cfg(feature = "extraction")]
+pub mod extraction {
+    //! Extraction specific logic related to the foreign field chip.
+
+    use extractor_support::{
+        big_to_fe, cell_to_expr,
+        cells::{
+            ctx::{ICtx, OCtx},
+            load::LoadFromCells,
+            store::StoreIntoCells,
+            CellReprSize,
+        },
+        circuit::injected::InjectedIR,
+        error::Error,
+        ir::{stmt::IRStmt, CmpOp},
+    };
+    use ff::PrimeField;
+    use midnight_proofs::{circuit::Layouter, plonk::Expression};
+    use num_bigint::BigUint;
+    use num_traits::One as _;
+
+    use crate::{field::{foreign::params::FieldEmulationParams, AssignedNative}, instructions::NativeInstructions};
+
+    use super::AssignedField;
+
+    impl<F, K, P> CellReprSize for AssignedField<F, K, P>
+    where
+        F: PrimeField,
+        K: PrimeField,
+        P: FieldEmulationParams<F, K>,
+    {
+        const SIZE: usize = P::NB_LIMBS as usize * <AssignedNative<F> as CellReprSize>::SIZE;
+    }
+
+    impl<C, F, K, P> LoadFromCells<F, C> for AssignedField<F, K, P>
+    where
+        F: PrimeField,
+        K: PrimeField,
+        P: FieldEmulationParams<F, K>,
+    {
+        fn load(
+            ctx: &mut ICtx,
+            chip: &C,
+            layouter: &mut impl Layouter<F>,
+            injected_ir: &mut InjectedIR<F>,
+        ) -> Result<Self, Error> {
+            // The input for an field is a set of native cells that represents properly
+            // constructed limbs.
+            let cells = (0..P::NB_LIMBS)
+                .map(|_| AssignedNative::<F>::load(ctx, chip, layouter, injected_ir))
+                .collect::<Result<Vec<_>, _>>()?;
+
+            let bounds = super::well_formed_log2_bounds::<F, K, P>()
+                .into_iter()
+                .map(|log2_bound| BigUint::one() << log2_bound)
+                .map(big_to_fe::<F>);
+            // Range-check the cells in the range [0, base)
+            for (cell, log2bound) in cells.iter().zip(bounds) {
+                let lhs = cell_to_expr(cell)?;
+                let rhs = Expression::Constant(log2bound);
+                injected_ir
+                    .entry(cell.cell().region_index)
+                    .or_default()
+                    .push(IRStmt::constraint(
+                        CmpOp::Lt,
+                        (cell.cell().row_offset, lhs),
+                        (cell.cell().row_offset, rhs),
+                    ));
+            }
+
+            Ok(AssignedField::from_limbs_unsafe(cells))
+        }
+    }
+
+    impl<C, F, K, P> StoreIntoCells<F, C> for AssignedField<F, K, P>
+    where
+        F: PrimeField,
+        K: PrimeField,
+        P: FieldEmulationParams<F, K>,
+    {
+        fn store(
+            self,
+            ctx: &mut OCtx,
+            chip: &C,
+            layouter: &mut impl Layouter<F>,
+            injected_ir: &mut InjectedIR<F>,
+        ) -> Result<(), Error> {
+            for (val, (lb, ub)) in std::iter::zip(self.limb_values(), self.limb_bounds) {
+                let row = val.cell().row_offset;
+                let expr = cell_to_expr(&val)?;
+                let lb = Expression::Constant(big_to_fe::<F>(lb.try_into()?));
+                let ub = Expression::Constant(big_to_fe::<F>(ub.try_into()?));
+                let region = injected_ir.entry(val.cell().region_index).or_default();
+                region.push(IRStmt::constraint(
+                    CmpOp::Ge,
+                    (row, lb),
+                    (row, expr.clone()),
+                ));
+                region.push(IRStmt::constraint(CmpOp::Le, (row, expr), (row, ub)));
+                val.store(ctx, chip, layouter, injected_ir)?;
+            }
+            Ok(())
+        }
+    }
+
+    extractor_support::circuit_initialization_from_scratch!(super::FieldChip<F, K, P, N>, F, K, P, N 
+    where K: PrimeField, N: NativeInstructions<F>, P: FieldEmulationParams<F, K>);
+    impl<F: PrimeField, K: PrimeField, N: NativeInstructions<F>, P: FieldEmulationParams<F, K>>
+        extractor_support::circuit::NoChipArgs for super::FieldChip<F, K, P, N>
+    {
     }
 }
 
