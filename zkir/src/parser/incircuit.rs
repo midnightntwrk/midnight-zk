@@ -7,8 +7,9 @@ use crate::{
     instructions::{
         operations::{
             add_incircuit, affine_coordinates_incircuit, assert_equal_incircuit,
-            inner_product_incircuit, into_bytes_incircuit, is_equal_incircuit, load_incircuit,
-            mul_incircuit, neg_incircuit, publish_incircuit, sub_incircuit, Operation::*,
+            from_bytes_incircuit, inner_product_incircuit, into_bytes_incircuit,
+            is_equal_incircuit, load_incircuit, mul_incircuit, neg_incircuit, publish_incircuit,
+            sub_incircuit, Operation::*,
         },
         Instruction,
     },
@@ -87,6 +88,7 @@ impl Parser {
                 vec![x, y]
             }
             IntoBytes(n) => vec![into_bytes_incircuit(std_lib, layouter, &inps[0], n)?],
+            FromBytes(t) => vec![from_bytes_incircuit(std_lib, layouter, t, &inps[0])?],
         };
 
         insert_many(&mut self.memory, &instruction.outputs, &outputs)

@@ -592,6 +592,99 @@ fn test_into_bytes() {
     );
 }
 
+#[test]
+fn test_from_bytes() {
+    // FromBytes expects 1 input and 1 output.
+    test_static_pass(
+        &[(FromBytes(IrType::Native), vec!["bytes"], vec!["x", "y"])],
+        Some(Error::InvalidArity(FromBytes(IrType::Native))),
+    );
+
+    test_static_pass(
+        &[(FromBytes(IrType::Bool), vec!["bytes"], vec![])],
+        Some(Error::InvalidArity(FromBytes(IrType::Bool))),
+    );
+
+    test_static_pass(
+        &[(FromBytes(IrType::BigUint(1024)), vec!["bytes"], vec!["N"])],
+        None,
+    );
+
+    // Unsupported cases.
+    test_without_witness(
+        &[
+            (Load(IrType::Bytes(1)), vec![], vec!["bytes"]),
+            (FromBytes(IrType::Bool), vec!["bytes"], vec!["b"]),
+        ],
+        Some(Error::Unsupported(
+            Operation::FromBytes(IrType::Bool),
+            vec![IrType::Bytes(1)],
+        )),
+    );
+
+    // JubjubPoint expects 32 bytes.
+    test_without_witness(
+        &[
+            (Load(IrType::Bytes(33)), vec![], vec!["bytes"]),
+            (FromBytes(IrType::JubjubPoint), vec!["bytes"], vec!["p"]),
+        ],
+        Some(Error::Unsupported(
+            Operation::FromBytes(IrType::JubjubPoint),
+            vec![IrType::Bytes(33)],
+        )),
+    );
+
+    // A successful execution.
+    test_with_witness(
+        &[
+            (Load(IrType::Bytes(4)), vec![], vec!["bytes"]),
+            (FromBytes(IrType::BigUint(32)), vec!["bytes"], vec!["N"]),
+        ],
+        HashMap::from_iter([("bytes", vec![0xFF, 0xFF, 0xFF, 0xFF].into())]),
+        vec![],
+        None,
+    );
+}
+
+#[test]
+fn test_bytes_conversion_round_trip() {
+    [
+        (IrType::Native, F::random(OsRng).into(), 32),
+        (IrType::BigUint(64), biguint_from_hex("abcd1357").into(), 8),
+        (
+            IrType::JubjubPoint,
+            JubjubSubgroup::random(OsRng).into(),
+            32,
+        ),
+    ]
+    .into_iter()
+    .for_each(|(t, x, n): (IrType, IrValue, usize)| {
+        test_with_witness(
+            &[
+                (Load(t), vec![], vec!["x"]),
+                (IntoBytes(n), vec!["x"], vec!["bytes"]),
+                (FromBytes(t), vec!["bytes"], vec!["x'"]),
+                (AssertEqual, vec!["x", "x'"], vec![]),
+            ],
+            HashMap::from_iter([("x", x.clone())]),
+            vec![],
+            None,
+        );
+
+        test_with_witness(
+            &[
+                (Load(IrType::Bytes(n)), vec![], vec!["bytes"]),
+                (FromBytes(t), vec!["bytes"], vec!["x"]),
+                (IntoBytes(n), vec!["x"], vec!["bytes'"]),
+                (AssertEqual, vec!["bytes", "bytes'"], vec![]),
+            ],
+            HashMap::from_iter([("bytes", IrValue::into_bytes(x, n).unwrap())]),
+            vec![],
+            None,
+        )
+    });
+}
+
 fn build_instructions(
     raw_instructions: &[(Operation, Vec<&'static str>, Vec<&'static str>)],
 ) -> Vec<Instruction> {

@@ -79,6 +79,16 @@ impl Parser {
                 vec![x, y]
             }
             IntoBytes(n) => vec![inps[0].clone().into_bytes(n)?],
+            FromBytes(t) => {
+                if let IrValue::Bytes(v) = &inps[0] {
+                    vec![IrValue::from_bytes(t, v)?]
+                } else {
+                    return Err(Error::Other(format!(
+                        "expecting Bytes(n), got {:?}",
+                        inps[0].get_type()
+                    )));
+                }
+            }
         };
 
         insert_many(&mut self.memory, &instruction.outputs, &outputs)

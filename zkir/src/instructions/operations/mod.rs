@@ -144,11 +144,24 @@ pub enum Operation {
     ///  - `BigUint` for any `n`  - imposes a range-check, 0 <= x < 2^(8N)
     ///  - `JubjubPoint` for `n = 32`
     IntoBytes(usize),
+
+    /// Reconstructs an IrValue of the indicated type from the given bytes.
+    ///
+    /// Inputs:  1
+    /// Outputs: 1
+    ///
+    /// `FromBytes(t)` is supported for types t:
+    ///  - `Native`
+    ///  - `BigUint`
+    ///  - `JubjubPoint` (requires exactly 32 bytes)
+    ///  - `JubjubScalar`
+    FromBytes(IrType),
 }
 
 mod add;
 mod affine_coordinates;
 mod assert_equal;
+mod from_bytes;
 mod inner_product;
 mod into_bytes;
 mod is_equal;
@@ -161,6 +174,7 @@ mod sub;
 pub use add::*;
 pub use affine_coordinates::*;
 pub use assert_equal::*;
+pub use from_bytes::*;
 pub use inner_product::*;
 pub use into_bytes::*;
 pub use is_equal::*;
