@@ -23,6 +23,9 @@ mod g2;
 mod gt;
 mod pairing;
 
+#[cfg(target_arch = "wasm32")]
+pub mod wasm_msm;
+
 mod jubjub;
 
 pub use fp::Fp;

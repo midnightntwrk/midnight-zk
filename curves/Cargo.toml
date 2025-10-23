@@ -12,6 +12,9 @@ readme = "README.md"
 [package.metadata.docs.rs]
 rustdoc-args = [ "--html-in-header", "katex-header.html" ]
 
+[lib]
+crate-type = ["cdylib", "rlib"]
+
 [dependencies]
 blst = { version = "0.3.15", default-features = true }
 pairing_lib = { version = "0.23", package = "pairing" }
@@ -19,6 +22,8 @@ subtle = "2.6"
 bitvec = "1.0.1"
 byte-slice-cast = "1.2.3"
 num-bigint = "0.4.6"
+wasm-bindgen = "0.2"
+js-sys = "0.3"
 
 serde = { workspace = true, optional = true }
 rand_core = { workspace = true }

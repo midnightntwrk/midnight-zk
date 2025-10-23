@@ -18,6 +18,8 @@ use halo2curves::serde::SerdeObject;
 use rand_core::RngCore;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 
+use wasm_bindgen::prelude::*;
+
 /// Represents an element of the scalar field Fq of the BLS12-381 elliptic
 /// curve construction.
 ///
@@ -25,6 +27,7 @@ use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 /// little-endian `u64` limbs.
 #[derive(Default, Clone, Copy)]
 #[repr(transparent)]
+#[wasm_bindgen]
 pub struct Fq(pub(crate) blst_fr);
 
 // GENERATOR = 7 (multiplicative generator of r-1 order, that is also quadratic
@@ -848,6 +851,26 @@ impl Fq {
     #[inline]
     pub fn square_assign(&mut self) {
         unsafe { blst_fr_sqr(&mut self.0, &self.0) };
+    }
+}
+
+#[wasm_bindgen]
+impl Fq {
+    /// Deserialize from a Uint8Array (little-endian format)
+    #[wasm_bindgen(js_name = fromBytesLE)]
+    pub fn from_bytes_js(bytes: &[u8]) -> Result<Fq, JsValue> {
+        let mut buffer = [0u8; 32];
+        buffer[..].copy_from_slice(bytes);
+        match Fq::from_bytes_le(&buffer).into() {
+            Some(elem) => Ok(elem),
+            None => Err(JsValue::from_str("Invalid Fq bytes")),
+        }
+    }
+
+    /// Serialize to a Uint8Array (little-endian format)
+    #[wasm_bindgen(js_name = toBytesLE)]
+    pub fn to_bytes_js(&self) -> Vec<u8> {
+        self.to_bytes_le().to_vec()
     }
 }
 
