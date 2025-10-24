@@ -26,8 +26,10 @@ use crate::{
 /// A multiscalar multiplication in the polynomial commitment scheme
 #[derive(Clone, Default, Debug)]
 pub struct MSMKZG<E: Engine> {
-    pub(crate) scalars: Vec<E::Fr>,
-    pub(crate) bases: Vec<E::G1>,
+    ///
+    pub scalars: Vec<E::Fr>,
+    ///
+    pub bases: Vec<E::G1>,
 }
 
 impl<E: Engine> MSMKZG<E> {
@@ -128,8 +130,10 @@ pub fn msm_specific<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C::Curve]) ->
 /// Two channel MSM accumulator
 #[derive(Debug, Clone)]
 pub struct DualMSM<E: Engine> {
-    pub(crate) left: MSMKZG<E>,
-    pub(crate) right: MSMKZG<E>,
+    ///
+    pub left: MSMKZG<E>,
+    ///
+    pub right: MSMKZG<E>,
 }
 
 /// A [DualMSM] split into left and right vectors of `(Scalar, Point)` tuples

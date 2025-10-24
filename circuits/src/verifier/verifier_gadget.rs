@@ -187,15 +187,16 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         let transcript_repr: AssignedNative<S::F> =
             self.scalar_chip.assign_as_public_input(layouter, transcript_repr_value)?;
 
+        // TODO: is this really necessary?
         // We expect a finalized cs with no selectors, i.e. whose selectors have been
         // converted into fixed columns.
-        let selectors = vec![vec![false]; cs.num_selectors()];
-        let (processed_cs, _) = cs.clone().directly_convert_selectors_to_fixed(selectors);
+        // let selectors = vec![vec![false]; cs.num_selectors()];
+        // let (processed_cs, _) = cs.clone().directly_convert_selectors_to_fixed(selectors);
 
         let assigned_vk = AssignedVk {
             vk_name: vk_name.to_string(),
             domain: domain.clone(),
-            cs: processed_cs,
+            cs: cs.clone(),
             transcript_repr,
         };
 
@@ -333,7 +334,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         y: AssignedCell<<S as SelfEmulation>::F, <S as SelfEmulation>::F>,
         xn: AssignedCell<<S as SelfEmulation>::F, <S as SelfEmulation>::F>,
         h_limb_commitments: &'com [<S as SelfEmulation>::AssignedPoint],
-        _generator: &'com <S as SelfEmulation>::AssignedPoint,
+        generator: &'com <S as SelfEmulation>::AssignedPoint,
     ) -> Result<AssignedMsm<S>, Error> {
         // Construct the commitment to the linearization polynomial
         // (which will be checked that it opens to 0 at x in the multi-open argument):
@@ -389,7 +390,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                         &AssignedMsm::from_fixed_term(&scaled_eval, &com),
                     )?;
                 }
-                None => acc_msm.add_term(&scaled_eval, _generator),
+                None => acc_msm.add_term(&scaled_eval, generator),
             }
         }
 
@@ -488,15 +489,15 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         // `num_fixed_columns` - `num_simple_selectors` evals and fill up the
         // "missing" places with 1 (the transcript doesn't contain evals corresp.
         // to simple selectors)
+        let one: AssignedCell<<S as SelfEmulation>::F, <S as SelfEmulation>::F> =
+            self.scalar_chip.assign(layouter, Value::known(S::F::ONE))?;
+
         let mut fixed_evals = (0..cs.num_evaluated_fixed_queries())
             .map(|_| transcript.read_scalar(layouter))
             .collect::<Result<Vec<_>, _>>()?;
         for (idx, (col, _)) in assigned_vk.cs.fixed_queries().iter().enumerate() {
             if assigned_vk.cs.indices_simple_selectors().contains(&col.index()) {
-                fixed_evals.insert(
-                    idx,
-                    self.scalar_chip.assign(layouter, Value::known(S::F::ONE))?,
-                )
+                fixed_evals.insert(idx, one.clone())
             }
         }
 
@@ -555,7 +556,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         }
 
         // Evaluate polys from permutation argument
-        let evaluated_perm_ids = permutation_expressions(
+        permutation_expressions(
             layouter,
             &self.scalar_chip,
             cs,
@@ -570,14 +571,12 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             &beta,
             &gamma,
             &x,
-        )?;
-        for perm_id in evaluated_perm_ids {
-            expressions.push((None, perm_id));
-        }
+        )?
+        .into_iter()
+        .for_each(|perm_id| expressions.push((None, perm_id)));
 
         // Evaluate polys from lookup argument
-        let evaluated_lookup_ids = cs
-            .lookups()
+        cs.lookups()
             .iter()
             .enumerate()
             .map(|(index, _)| {
@@ -599,14 +598,12 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                 )
             })
             .collect::<Result<Vec<Vec<_>>, Error>>()?
-            .concat();
-        for lookup_id in evaluated_lookup_ids {
-            expressions.push((None, lookup_id));
-        }
+            .concat()
+            .into_iter()
+            .for_each(|lookup_id| expressions.push((None, lookup_id)));
 
         // Evaluate polys from trashcan argument
-        let evaluated_trashcan_ids = cs
-            .trashcans()
+        cs.trashcans()
             .iter()
             .enumerate()
             .map(|(index, _)| {
@@ -623,20 +620,17 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                 )
             })
             .collect::<Result<Vec<Vec<_>>, Error>>()?
-            .concat();
-        for trash_id in evaluated_trashcan_ids {
-            expressions.push((None, trash_id));
-        }
+            .concat()
+            .into_iter()
+            .for_each(|trash_id| expressions.push((None, trash_id)));
 
         // All fully evaluated identities (i.e., identities without simple selectors)
         // are part of the constant term of the linearization poly, and thus need to
         // be multiplied with the constant commitment (i.e, the generator of G_1)
-        let gen = S::C::generator();
-        let assigned_gen = self.curve_chip.assign(layouter, Value::known(gen))?;
-        let zero = self.scalar_chip.assign(layouter, Value::known(S::F::ZERO))?;
+        let assigned_gen = self.curve_chip.assign(layouter, Value::known(S::C::generator()))?;
 
         // Prepare linearization commitment for MSM
-        let linearization_poly = Self::prep_linearization_commitment(
+        let linearization_com = Self::prep_linearization_commitment(
             layouter,
             &self.scalar_chip,
             assigned_vk,
@@ -722,8 +716,8 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             )
             .chain(iter::once(VerifierQuery::new_from_msm(
                 &x,
-                &linearization_poly,
-                &zero,
+                &linearization_com,
+                &self.scalar_chip.assign(layouter, Value::known(S::F::ZERO))?,
             )));
 
         // We are now convinced the circuit is satisfied so long as the

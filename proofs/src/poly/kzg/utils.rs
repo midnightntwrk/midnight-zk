@@ -44,7 +44,7 @@ pub fn construct_intermediate_sets<F: Field + Hash + Ord, Q: Query<F>>(
     let mut point_index_map = HashMap::new();
 
     // Iterate over all of the queries, computing the ordering of the points
-    // while also creating new commitment data.
+    // while also creating new commitment data.f
     for query in queries {
         let num_points = point_index_map.len();
         let point_idx = point_index_map.entry(query.get_point()).or_insert(num_points);

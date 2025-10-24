@@ -137,7 +137,7 @@ impl<S: SelfEmulation> Msm<S> {
     }
 
     /// Evaluates the MSM with the provided fixed_bases.
-    /// I.e. it computes `<scalars, bases> + <fixed_bases, fixed_base_scalars>`.
+    /// I.e. it computes `<scalars, bases> + <fixed_base_scalars, fixed_bases>`.
     ///
     /// # Panics
     ///

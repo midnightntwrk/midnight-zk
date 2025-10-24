@@ -174,7 +174,7 @@ impl<F: PrimeField> ProvingKey<F> {
             + polynomial_slice_byte_length(&self.cosets)
     }
 }
-
+#[derive(Debug)]
 pub(crate) struct EvaluatedSet<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
     pub permutation_product_eval: F,
     pub permutation_product_next_eval: F,

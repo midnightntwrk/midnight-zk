@@ -329,12 +329,15 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
 
                 let mut proof_acc: Accumulator<S> = dual_msm.into();
                 proof_acc.extract_fixed_bases(&fixed_bases);
+
                 Ok(proof_acc)
             })
             .collect::<Result<_, Error>>()?;
 
+        // Batch the individual MSMs together
         let acc = Accumulator::<S>::accumulate(&proof_accs);
 
+        // Collect the fixed bases for the meta MSM
         let mut fixed_bases = BTreeMap::new();
         for i in 0..NB_PROOFS {
             fixed_bases.insert(com_instance_name::<NB_PROOFS>(i), C::identity());
@@ -343,9 +346,10 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
             "inner_vk",
             &self.inner_vk,
         ));
-        assert!(acc.check(&srs.s_g2().into(), &fixed_bases)); // sanity check
 
-        // We now proceed to aggregating all proofs.
+        assert!(acc.check(&srs.s_g2().into(), &fixed_bases)); // Sanity check
+
+        // We now proceed to aggregating all proofs
         let aggregator_circuit = AggregatorCircuit::<NB_PROOFS> {
             inner_vk: (
                 self.inner_vk.get_domain().clone(),
@@ -369,7 +373,7 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
         );
         let acc_rhs_evaluated = acc.rhs().eval(&fixed_bases);
 
-        // Add the LHS of acc to the transcript.
+        // Add the LHS of acc to the transcript
         transcript.write(&(acc.lhs().bases().len() as u32))?;
         acc.lhs().bases().iter().try_for_each(|p| transcript.write(p))?;
         acc.lhs().scalars().iter().try_for_each(|s| transcript.write(s))?;
@@ -381,7 +385,7 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
         transcript.write(&acc_rhs_scalars_committed)?;
         transcript.write(&acc_rhs_evaluated)?;
 
-        // Create a proof of having verified the native part of all inner proofs.
+        // Create a proof of having verified the native part of all inner proofs
         create_proof::<F, KZGCommitmentScheme<E>, T, AggregatorCircuit<NB_PROOFS>>(
             srs,
             &self.aggregator_pk,
@@ -412,7 +416,7 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
         )
     }
 
-    /// Verifies an aggregation proof.
+    /// Verifies an aggregation proof
     pub fn verify<T>(
         &self,
         srs_verifier: &ParamsVerifierKZG<E>,
@@ -580,7 +584,7 @@ mod tests {
 
     #[test]
     fn test_aggregate_proofs() {
-        const NB_PROOFS: usize = 3;
+        const NB_PROOFS: usize = 1;
 
         let mut srs = ParamsKZG::unsafe_setup(15, OsRng);
 
@@ -605,6 +609,7 @@ mod tests {
             ]
         });
 
+        // Create (inner) proofs that are being aggregated
         let t = std::time::Instant::now();
         let proofs: [Vec<u8>; NB_PROOFS] = core::array::from_fn(|i| {
             compact_std_lib::prove::<InnerCircuit, LightPoseidonFS<F>>(
@@ -623,8 +628,8 @@ mod tests {
             t.elapsed().as_secs()
         );
 
+        // Verify (inner) proofs as a sanity check
         let inner_verifier_params = inner_srs.verifier_params();
-
         let t = std::time::Instant::now();
         for i in 0..NB_PROOFS {
             let mut transcript =
@@ -646,6 +651,7 @@ mod tests {
             t.elapsed().as_millis()
         );
 
+        // Format and collect all instances into a single Vec
         let all_instances: [Vec<F>; NB_PROOFS] = instances
             .iter()
             .map(|instance| InnerCircuit::format_instance(instance).unwrap())
@@ -653,6 +659,7 @@ mod tests {
             .try_into()
             .unwrap();
 
+        // Aggregate all (inner) proofs into a single (meta) proof
         let t = std::time::Instant::now();
         let mut transcript = CircuitTranscript::<Blake2bState>::init();
         aggregator

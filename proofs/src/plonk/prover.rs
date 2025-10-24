@@ -125,13 +125,6 @@ fn construct_linearization_poly<'a, F: PrimeField, CS: PolynomialCommitmentSchem
             },
         );
 
-    // Construct linearized numerator poly:
-    //
-    // (h_0(X) + x^n*h_1(X) + x^{2n}*h_2(X) + ... + x^{ln}*h_k(X)) * (x^n-1),
-    //
-    // where
-    // * x is the evaluation challenge
-    // * h_i are commitments to the limbs of the quotient polynomial
     let nr_limbs = quotient_limbs.len();
     let vanishing_eval = xn - F::ONE;
     let mut xn_powers = Vec::with_capacity(nr_limbs);
@@ -140,6 +133,7 @@ fn construct_linearization_poly<'a, F: PrimeField, CS: PolynomialCommitmentSchem
         xn_powers.push(xn_pow * vanishing_eval);
         xn_pow *= xn;
     }
+
     let linearized_h: Polynomial<F, Coeff> = quotient_limbs
         .par_iter()
         .enumerate()
@@ -229,6 +223,7 @@ where
 
     let domain = &pk.vk.domain;
 
+    // Collect one InstanceSingle per proof
     let instance = bench_and_run!(_group; ref transcript ; ; "Compute instances"; |t|
         compute_instances(params, pk, instances, nb_committed_instances, t)
     )?;
@@ -429,6 +424,7 @@ where
     let mut lookup_evals_combined = Vec::new();
     let mut trashcan_evals_combined = Vec::new();
 
+    // Sample evaluation challenge x
     let x: F = transcript.squeeze_challenge();
 
     let combined_evals = bench_and_run!(_group; ref transcript; ; "Write evals to transcript";
@@ -745,6 +741,7 @@ where
     instances
         .iter()
         .map(|instance| -> Result<InstanceSingle<F>, Error> {
+            // Construct poly for current instance in evaluation form
             let instance_values = instance
                 .iter()
                 .enumerate()
@@ -775,6 +772,7 @@ where
                 })
                 .collect::<Result<Vec<_>, _>>()?;
 
+            // Construct poly for current instance in coefficient form
             let instance_polys: Vec<_> = instance_values
                 .iter()
                 .map(|poly| {
@@ -788,7 +786,7 @@ where
                 instance_polys,
             })
         })
-        .collect::<Result<Vec<_>, _>>()
+        .collect::<Result<Vec<InstanceSingle<F>>, _>>()
 }
 
 #[allow(clippy::type_complexity)]
@@ -1015,18 +1013,18 @@ where
     // Compute and hash evals for the polynomials of the committed instances of
     // each circuit
     for instance in instance_polys.iter() {
-        let mut instance_evals = Vec::new();
         // Evaluate polynomials at omega^i x
-        for &(column, at) in meta.instance_queries.iter() {
-            if column.index() < nb_committed_instances {
+        let instance_evals: Vec<F> = meta
+            .instance_queries
+            .iter()
+            .map(|&(column, at)| {
                 let eval = eval_polynomial(&instance[column.index()], domain.rotate_omega(x, at));
-                instance_evals.push(eval);
-                transcript.write(&eval)?;
-            } else {
-                let eval = eval_polynomial(&instance[column.index()], domain.rotate_omega(x, at));
-                instance_evals.push(eval);
-            }
-        }
+                if column.index() < nb_committed_instances {
+                    transcript.write(&eval)?;
+                }
+                Ok::<F, Error>(eval)
+            })
+            .collect::<Result<Vec<F>, Error>>()?;
         instance_evals_combined.push(instance_evals);
     }
 
@@ -1049,31 +1047,25 @@ where
         }
     }
 
-    // Compute and hash evaluations of fixed columns (shared across all
-    // circuit instances)
+    // Compute evals of fixed columns (shared across all circuit instances)
+    // corresp. to *non-simple* selectors and hash them into the transcript
     //
-    // Filter out fixed evals corresponding to simple selectors
     // NB: `fixed_evals` is indexed according to `fixed_queries` (which is NOT
     // indexed per column index, but in the order in which queries were added)
-    let fixed_evals: Vec<F> = meta
-        .fixed_queries
-        .iter()
-        .map(|&(column, at)| {
-            if meta.indices_simple_selectors.contains(&column.index()) {
-                // Fixed columns corresponding to simple selectors don't need to be evaluated
-                F::ONE
-            } else {
-                eval_polynomial(&pk.fixed_polys[column.index()], domain.rotate_omega(x, at))
-            }
-        })
-        .collect();
-
-    // Write only fixed evals corresp. to *non-simple* selectors to the transcript
-    for (idx, (col, _)) in meta.fixed_queries.iter().enumerate() {
-        if !meta.indices_simple_selectors.contains(&col.index()) {
-            transcript.write(&fixed_evals[idx])?;
-        }
+    let mut fixed_evals: Vec<F> = Vec::with_capacity(meta.fixed_queries.len());
+    for &(column, at) in meta.fixed_queries.iter() {
+        let col_idx = column.index();
+        let eval: Result<F, Error> = if meta.indices_simple_selectors.contains(&col_idx) {
+            // Fixed columns corresponding to simple selectors don't need to be evaluated
+            Ok(F::ONE)
+        } else {
+            let eval = eval_polynomial(&pk.fixed_polys[col_idx], domain.rotate_omega(x, at));
+            transcript.write(&eval)?;
+            Ok(eval)
+        };
+        fixed_evals.push(eval?);
     }
+
     Ok(CombinedEvals {
         fixed_evals,
         instance_evals_combined,

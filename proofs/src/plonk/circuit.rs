@@ -2119,7 +2119,6 @@ impl<'com, F: Field> ConstraintSystem<F> {
         assert_eq!(selectors.len(), self.num_selectors);
 
         let nr_fixed_columns = self.num_fixed_columns();
-        let mut num_filtered_queries: usize = nr_fixed_columns;
         let (polys, selector_replacements): (Vec<_>, Vec<_>) = selectors
             .into_iter()
             .enumerate()
@@ -2129,8 +2128,6 @@ impl<'com, F: Field> ConstraintSystem<F> {
                 let column = self.fixed_column();
                 if self.selector_flags[idx] {
                     self.indices_simple_selectors.push(column.index());
-                } else {
-                    num_filtered_queries += 1;
                 }
                 let rotation = Rotation::cur();
                 let expr = Expression::Fixed(FixedQuery {
@@ -2144,7 +2141,8 @@ impl<'com, F: Field> ConstraintSystem<F> {
 
         self.replace_selectors_with_fixed(&selector_replacements);
         self.num_selectors = 0;
-        self.num_evaluated_fixed_queries = num_filtered_queries;
+        self.num_evaluated_fixed_queries =
+            self.num_fixed_columns() - self.indices_simple_selectors().len();
 
         // Adjust indices of (multiplicative) simple selectors: after converting
         // selectors to fixed columns, `selector_index` should now track the
