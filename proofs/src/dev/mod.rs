@@ -635,11 +635,11 @@ impl<F: FromUniformBytes<64> + Ord> MockProver<F> {
             .into_iter()
             .map(|instance| {
                 assert!(
-                    instance.len() <= n - (cs.blinding_factors() + 1),
+                    instance.len() <= n - (cs.nr_blinding_factors() + 1),
                     "instance.len={}, n={}, cs.blinding_factors={}",
                     instance.len(),
                     n,
-                    cs.blinding_factors()
+                    cs.nr_blinding_factors()
                 );
 
                 let mut instance_values = vec![InstanceValue::Padding; n];
@@ -655,8 +655,8 @@ impl<F: FromUniformBytes<64> + Ord> MockProver<F> {
         let fixed = vec![vec![CellValue::Unassigned; n]; cs.num_fixed_columns];
         let selectors = vec![vec![false; n]; cs.num_selectors];
         // Advice columns contain blinding factors.
-        let blinding_factors = cs.blinding_factors();
-        let usable_rows = n - (blinding_factors + 1);
+        let nr_blinding_factors = cs.nr_blinding_factors();
+        let usable_rows = n - (nr_blinding_factors + 1);
         let advice = vec![
             {
                 let mut column = vec![CellValue::Unassigned; n];
@@ -857,7 +857,7 @@ impl<F: FromUniformBytes<64> + Ord> MockProver<F> {
         // Check that all gates are satisfied for all rows.
         let gate_errors = self.cs.gates.iter().enumerate().flat_map(|(gate_index, gate)| {
             let blinding_rows =
-                (self.n as usize - (self.cs.blinding_factors() + 1))..(self.n as usize);
+                (self.n as usize - (self.cs.nr_blinding_factors() + 1))..(self.n as usize);
             (gate_row_ids.clone().into_par_iter().chain(blinding_rows.into_par_iter()))
                 .flat_map(move |row| {
                     let row = row as i32 + n;

@@ -6,7 +6,11 @@ use rand_core::RngCore;
 
 use super::{super::circuit::Any, Argument, ProvingKey};
 use crate::{
-    plonk::{self, Error},
+    plonk::{
+        self,
+        permutation::{self, verifier::CommonEvaluated},
+        Error,
+    },
     poly::{
         commitment::PolynomialCommitmentScheme, Coeff, LagrangeCoeff, Polynomial, ProverQuery,
         Rotation,
@@ -62,7 +66,7 @@ impl Argument {
         // 3 circuit for the permutation argument.
         assert!(pk.vk.cs_degree >= 3);
         let chunk_len = pk.vk.cs_degree - 2;
-        let blinding_factors = pk.vk.cs.blinding_factors();
+        let nr_blinding_factors = pk.vk.cs.nr_blinding_factors();
 
         // Each column gets its own delta power.
         let mut deltaomega = F::ONE;
@@ -148,11 +152,11 @@ impl Argument {
             }
             let mut z = domain.lagrange_from_vec(z);
             // Set blinding factors
-            for z in &mut z[domain.n as usize - blinding_factors..] {
+            for z in &mut z[domain.n as usize - nr_blinding_factors..] {
                 *z = F::random(&mut rng);
             }
             // Set new last_z
-            last_z = z[domain.n as usize - (blinding_factors + 1)];
+            last_z = z[domain.n as usize - (nr_blinding_factors + 1)];
 
             let permutation_product_commitment = CS::commit_lagrange(params, &z);
             let permutation_product_poly = domain.lagrange_to_coeff(z);
@@ -174,17 +178,27 @@ impl<F: PrimeField> super::ProvingKey<F> {
         self.polys.iter().map(move |poly| ProverQuery { point: x, poly })
     }
 
-    pub(crate) fn evaluate<T: Transcript>(&self, x: F, transcript: &mut T) -> Result<(), Error>
+    pub(crate) fn evaluate<T: Transcript>(
+        &self,
+        x: F,
+        transcript: &mut T,
+    ) -> Result<CommonEvaluated<F>, Error>
     where
         F: Hashable<T::Hash>,
     {
+        let mut permutation_evals = Vec::new();
         // Hash permutation evals
         for eval in self.polys.iter().map(|poly| eval_polynomial(poly, x)) {
+            permutation_evals.push(eval);
             transcript.write(&eval)?;
         }
 
-        Ok(())
+        Ok(CommonEvaluated { permutation_evals })
     }
+}
+
+pub(crate) struct EvaluatedSets<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
+    pub(in crate::plonk) sets: Vec<permutation::EvaluatedSet<F, CS>>,
 }
 
 impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
@@ -193,17 +207,19 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
         pk: &plonk::ProvingKey<F, CS>,
         x: F,
         transcript: &mut T,
+        permutation_evals: &mut Vec<EvaluatedSets<F, CS>>,
     ) -> Result<Evaluated<F>, Error>
     where
         F: Hashable<T::Hash>,
     {
         let domain = &pk.vk.domain;
-        let blinding_factors = pk.vk.cs.blinding_factors();
+        let nr_blinding_factors = pk.vk.cs.nr_blinding_factors();
 
         {
-            let mut sets = self.sets.iter();
+            let mut sets = vec![];
+            let mut committed_sets = self.sets.iter();
 
-            while let Some(set) = sets.next() {
+            while let Some(set) = committed_sets.next() {
                 let permutation_product_eval = eval_polynomial(&set.permutation_product_poly, x);
 
                 let permutation_product_next_eval = eval_polynomial(
@@ -219,18 +235,29 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
                     transcript.write(eval)?;
                 }
 
+                let mut permutation_product_last_eval: Option<F> = None;
+
                 // If we have any remaining sets to process, evaluate this set at omega^u
                 // so we can constrain the last value of its running product to equal the
                 // first value of the next set's running product, chaining them together.
-                if sets.len() > 0 {
-                    let permutation_product_last_eval = eval_polynomial(
+                if committed_sets.len() > 0 {
+                    let perm_product_last_eval = eval_polynomial(
                         &set.permutation_product_poly,
-                        domain.rotate_omega(x, Rotation(-((blinding_factors + 1) as i32))),
+                        domain.rotate_omega(x, Rotation(-((nr_blinding_factors + 1) as i32))),
                     );
-
-                    transcript.write(&permutation_product_last_eval)?;
+                    permutation_product_last_eval = Some(perm_product_last_eval);
+                    transcript.write(&perm_product_last_eval)?;
                 }
+
+                sets.push(permutation::EvaluatedSet {
+                    permutation_product_eval,
+                    permutation_product_next_eval,
+                    permutation_product_last_eval,
+                    _marker: std::marker::PhantomData,
+                });
             }
+
+            permutation_evals.push(EvaluatedSets { sets })
         }
 
         Ok(Evaluated { constructed: self })
@@ -243,9 +270,9 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluated<F> {
         pk: &'a plonk::ProvingKey<F, CS>,
         x: F,
     ) -> impl Iterator<Item = ProverQuery<'a, F>> + Clone {
-        let blinding_factors = pk.vk.cs.blinding_factors();
+        let nr_blinding_factors = pk.vk.cs.nr_blinding_factors();
         let x_next = pk.vk.domain.rotate_omega(x, Rotation::next());
-        let x_last = pk.vk.domain.rotate_omega(x, Rotation(-((blinding_factors + 1) as i32)));
+        let x_last = pk.vk.domain.rotate_omega(x, Rotation(-((nr_blinding_factors + 1) as i32)));
 
         iter::empty()
             .chain(self.constructed.sets.iter().flat_map(move |set| {

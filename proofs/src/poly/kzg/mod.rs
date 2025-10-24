@@ -63,6 +63,10 @@ where
     type Commitment = E::G1;
     type VerificationGuard = DualMSM<E>;
 
+    fn constant_commitment() -> Self::Commitment {
+        E::G1::generator()
+    }
+
     fn gen_params(k: u32) -> Self::Parameters {
         ParamsKZG::unsafe_setup(k, OsRng)
     }
@@ -306,13 +310,13 @@ where
         let mut pi_msm = MSMKZG::<E>::init();
         pi_msm.append_term(E::Fr::ONE, pi);
 
-        // Scale zπ -vG
+        // Scale zπ - vG
         let scaled_pi = MSMKZG {
             scalars: vec![x3, v],
             bases: vec![pi, -E::G1::generator()],
         };
 
-        // (π, C − vG + zπ)
+        // (π, C + zπ - vG)
         let mut msm_accumulator = DualMSM {
             left: pi_msm,
             right: final_com,

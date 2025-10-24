@@ -2,7 +2,7 @@ use ff::{FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
 
 use super::{super::Error, Argument};
 use crate::{
-    plonk::evaluation::evaluate,
+    plonk::{evaluation::evaluate, trash},
     poly::{
         commitment::PolynomialCommitmentScheme, Coeff, EvaluationDomain, LagrangeCoeff, Polynomial,
         ProverQuery,
@@ -67,12 +67,18 @@ impl<F: WithSmallOrderMulGroup<3> + Ord> Argument<F> {
 }
 
 impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
-    pub(crate) fn evaluate<T>(self, x: F, transcript: &mut T) -> Result<Evaluated<F>, Error>
+    pub(crate) fn evaluate<T>(
+        self,
+        x: F,
+        transcript: &mut T,
+        trashcan_evals: &mut Vec<trash::Evaluated<F>>,
+    ) -> Result<Evaluated<F>, Error>
     where
         F: Hashable<T::Hash>,
         T: Transcript,
     {
         let trash_eval = eval_polynomial(&self.trash_poly, x);
+        trashcan_evals.push(trash::Evaluated { trash_eval });
         transcript.write(&trash_eval)?;
 
         Ok(Evaluated(self))
