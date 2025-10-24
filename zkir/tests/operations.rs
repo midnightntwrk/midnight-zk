@@ -164,7 +164,7 @@ fn test_assert_equal() {
             (AssertEqual, vec!["x", "x"], vec![]),
         ],
         Some(Error::Unsupported(
-            Operation::AssertEqual,
+            AssertEqual,
             vec![IrType::JubjubScalar, IrType::JubjubScalar],
         )),
     );
@@ -177,7 +177,7 @@ fn test_assert_equal() {
             (AssertEqual, vec!["p", "x"], vec![]),
         ],
         Some(Error::Unsupported(
-            Operation::AssertEqual,
+            AssertEqual,
             vec![IrType::JubjubPoint, IrType::Native],
         )),
     );
@@ -188,7 +188,10 @@ fn test_assert_equal() {
             (Load(IrType::Bytes(3)), vec![], vec!["w"]),
             (AssertEqual, vec!["v", "w"], vec![]),
         ],
-        Some(Error::ExpectingType(IrType::Bytes(2), IrType::Bytes(3))),
+        Some(Error::Unsupported(
+            AssertEqual,
+            vec![IrType::Bytes(2), IrType::Bytes(3)],
+        )),
     );
 
     // A successful execution.
@@ -225,7 +228,7 @@ fn test_is_equal() {
             (IsEqual, vec!["s", "s"], vec!["b"]),
         ],
         Some(Error::Unsupported(
-            Operation::IsEqual,
+            IsEqual,
             vec![IrType::JubjubScalar, IrType::JubjubScalar],
         )),
     );
@@ -238,7 +241,7 @@ fn test_is_equal() {
             (IsEqual, vec!["v", "w"], vec!["b"]),
         ],
         Some(Error::Unsupported(
-            Operation::IsEqual,
+            IsEqual,
             vec![IrType::Bytes(2), IrType::Bytes(3)],
         )),
     );
@@ -278,7 +281,7 @@ fn test_add() {
             (Add, vec!["x", "x"], vec!["z"]),
         ],
         Some(Error::Unsupported(
-            Operation::Add,
+            Add,
             vec![IrType::JubjubScalar, IrType::JubjubScalar],
         )),
     );
@@ -320,7 +323,7 @@ fn test_sub() {
             (Sub, vec!["x", "x"], vec!["z"]),
         ],
         Some(Error::Unsupported(
-            Operation::Sub,
+            Sub,
             vec![IrType::JubjubScalar, IrType::JubjubScalar],
         )),
     );
@@ -359,7 +362,7 @@ fn test_mul() {
             (Mul, vec!["x", "x"], vec!["z"]),
         ],
         Some(Error::Unsupported(
-            Operation::Mul,
+            Mul,
             vec![IrType::JubjubScalar, IrType::JubjubScalar],
         )),
     );
@@ -393,10 +396,7 @@ fn test_neg() {
             (Load(IrType::JubjubScalar), vec![], vec!["x"]),
             (Neg, vec!["x"], vec!["z"]),
         ],
-        Some(Error::Unsupported(
-            Operation::Neg,
-            vec![IrType::JubjubScalar],
-        )),
+        Some(Error::Unsupported(Neg, vec![IrType::JubjubScalar])),
     );
 
     // A successful execution.
@@ -436,9 +436,21 @@ fn test_inner_product() {
             (InnerProduct, vec!["x", "n"], vec!["z"]),
         ],
         Some(Error::Unsupported(
-            Operation::InnerProduct,
+            InnerProduct,
             vec![IrType::Native, IrType::BigUint(10)],
         )),
+    );
+
+    // Incompatible types.
+    test_without_witness(
+        &[
+            (Load(IrType::JubjubPoint), vec![], vec!["s", "p", "q"]),
+            (Load(IrType::JubjubScalar), vec![], vec!["r"]),
+            (InnerProduct, vec!["r", "s", "p", "q"], vec!["result"]),
+        ],
+        Some(Error::Other(format!(
+            "cannot convert JubjubPoint to \"JubjubScalar\"",
+        ))),
     );
 
     // A successful execution.
