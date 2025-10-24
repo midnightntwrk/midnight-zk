@@ -181,6 +181,16 @@ where
         self.native_gadget.and(layouter, &xi_eq_yi_bits)
     }
 
+    fn is_not_equal(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &AssignedBigUint<F>,
+        y: &AssignedBigUint<F>,
+    ) -> Result<AssignedBit<F>, Error> {
+        let b = self.is_equal(layouter, x, y)?;
+        self.native_gadget.not(layouter, &b)
+    }
+
     fn is_equal_to_fixed(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -204,6 +214,16 @@ where
             .collect::<Result<Vec<_>, Error>>()?;
 
         self.native_gadget.and(layouter, &xi_eq_yi_bits)
+    }
+
+    fn is_not_equal_to_fixed(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &AssignedBigUint<F>,
+        constant: BigUint,
+    ) -> Result<AssignedBit<F>, Error> {
+        let b = self.is_equal_to_fixed(layouter, x, constant)?;
+        self.native_gadget.not(layouter, &b)
     }
 }
 
