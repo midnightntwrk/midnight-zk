@@ -884,11 +884,12 @@ where
         enforce_canonical: bool,
     ) -> Result<Vec<AssignedBit<F>>, Error> {
         let nb_bits = nb_bits.unwrap_or(F::NUM_BITS as usize);
-        if nb_bits > F::NUM_BITS as usize {
-            panic!(
-                "assigned_to_le_bits: why do you need the output to have more bits than necessary?"
-            );
-        }
+
+        assert!(
+            nb_bits <= F::NUM_BITS as usize,
+            "assigned_to_le_bits: why do you need the output to have more bits than necessary?"
+        );
+
         let limbs = self
             .core_decomposition_chip
             .decompose_fixed_limb_size(layouter, x, nb_bits, 1)?;
@@ -896,8 +897,7 @@ where
             .iter()
             .map(|x| self.native_chip.convert_unsafe(layouter, x))
             .collect::<Result<Vec<_>, Error>>()?;
-        if enforce_canonical && nb_bits >= F::NUM_BITS as usize {
-            assert!(nb_bits == F::NUM_BITS as usize);
+        if enforce_canonical && nb_bits == F::NUM_BITS as usize {
             debug_assert_eq!(modulus::<F>().bits(), F::NUM_BITS as u64);
             // To enforce canonicity, we leverage the fact that `F::NUM_BITS` is tight:
             // field elements have at most 2 representations as bitstrings of length
