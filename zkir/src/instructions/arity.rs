@@ -9,6 +9,7 @@ use crate::{
 pub enum Arity {
     Fixed(usize),
     Some,
+    SomeEven,
 }
 
 impl fmt::Display for Arity {
@@ -16,6 +17,7 @@ impl fmt::Display for Arity {
         match self {
             Arity::Fixed(n) => write!(f, "{n}"),
             Arity::Some => write!(f, "some"),
+            Arity::SomeEven => write!(f, "even"),
         }
     }
 }
@@ -28,7 +30,12 @@ impl Operation {
             Load(_) => Fixed(0), // `Load` takes witnesess, not actual inputs
             Publish => Some,
             AssertEqual => Fixed(2),
+            IsEqual => Fixed(2),
             Add => Fixed(2),
+            Sub => Fixed(2),
+            Mul => Fixed(2),
+            Neg => Fixed(1),
+            InnerProduct => SomeEven,
         }
     }
 
@@ -39,7 +46,12 @@ impl Operation {
             Load(_) => Some,
             Publish => Fixed(0), // `Publish` increases the `instances` but does not return outputs
             AssertEqual => Fixed(0),
+            IsEqual => Fixed(1),
             Add => Fixed(1),
+            Sub => Fixed(1),
+            Mul => Fixed(1),
+            Neg => Fixed(1),
+            InnerProduct => Fixed(1),
         }
     }
 }
@@ -49,6 +61,7 @@ impl Arity {
         match self {
             Arity::Fixed(n) if n != len => Err(Error::InvalidArity(*op)),
             Arity::Some if len == 0 => Err(Error::InvalidArity(*op)),
+            Arity::SomeEven if len % 2 != 0 || len == 0 => Err(Error::InvalidArity(*op)),
             _ => Ok(()),
         }
     }

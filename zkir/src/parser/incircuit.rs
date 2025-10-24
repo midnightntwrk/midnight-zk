@@ -6,7 +6,9 @@ use midnight_proofs::circuit::{Layouter, Value};
 use crate::{
     instructions::{
         operations::{
-            add_incircuit, assert_equal_incircuit, load_incircuit, publish_incircuit, Operation::*,
+            add_incircuit, assert_equal_incircuit, inner_product_incircuit, is_equal_incircuit,
+            load_incircuit, mul_incircuit, neg_incircuit, publish_incircuit, sub_incircuit,
+            Operation::*,
         },
         Instruction,
     },
@@ -69,7 +71,17 @@ impl Parser {
                 assert_equal_incircuit(std_lib, layouter, &inps[0], &inps[1])?;
                 vec![]
             }
+            IsEqual => vec![is_equal_incircuit(std_lib, layouter, &inps[0], &inps[1])?],
             Add => vec![add_incircuit(std_lib, layouter, &inps[0], &inps[1])?],
+            Sub => vec![sub_incircuit(std_lib, layouter, &inps[0], &inps[1])?],
+            Mul => vec![mul_incircuit(std_lib, layouter, &inps[0], &inps[1])?],
+            Neg => vec![neg_incircuit(std_lib, layouter, &inps[0])?],
+            InnerProduct => vec![inner_product_incircuit(
+                std_lib,
+                layouter,
+                &inps[..inps.len() / 2],
+                &inps[inps.len() / 2..],
+            )?],
         };
 
         insert_many(&mut self.memory, &instruction.outputs, &outputs)

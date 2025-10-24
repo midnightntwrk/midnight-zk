@@ -2,7 +2,10 @@ use std::collections::HashMap;
 
 use crate::{
     instructions::{
-        operations::{add_offcircuit, load_offcircuit, Operation::*},
+        operations::{
+            add_offcircuit, inner_product_offcircuit, load_offcircuit, mul_offcircuit,
+            neg_offcircuit, sub_offcircuit, Operation::*,
+        },
         Instruction,
     },
     types::IrValue,
@@ -62,7 +65,15 @@ impl Parser {
                 }
                 vec![]
             }
+            IsEqual => vec![IrValue::Bool(inps[0] == inps[1])],
             Add => vec![add_offcircuit(&inps[0], &inps[1])?],
+            Sub => vec![sub_offcircuit(&inps[0], &inps[1])?],
+            Mul => vec![mul_offcircuit(&inps[0], &inps[1])?],
+            Neg => vec![neg_offcircuit(&inps[0])?],
+            InnerProduct => vec![inner_product_offcircuit(
+                &inps[..inps.len() / 2],
+                &inps[inps.len() / 2..],
+            )?],
         };
 
         insert_many(&mut self.memory, &instruction.outputs, &outputs)

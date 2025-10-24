@@ -1,4 +1,4 @@
-use std::ops::Add;
+use std::ops::Sub;
 
 use midnight_circuits::{
     compact_std_lib::ZkStdLib,
@@ -12,8 +12,8 @@ use crate::{
     Error, Operation,
 };
 
-/// Adds off-circuit the given inputs.
-/// Addition is supported on:
+/// Subtracts off-circuit the given inputs.
+/// Subtraction is supported on:
 ///   - `Native`
 ///   - `BigUint`
 ///   - `JubjubPoint`
@@ -21,21 +21,30 @@ use crate::{
 /// # Errors
 ///
 /// This function results in an error if the input types are not supported.
-pub fn add_offcircuit(x: &IrValue, y: &IrValue) -> Result<IrValue, Error> {
+///
+/// Subtracting a larger `BigUint` from a smaller one results in an underflow
+/// error.
+pub fn sub_offcircuit(x: &IrValue, y: &IrValue) -> Result<IrValue, Error> {
     use IrValue::*;
     match (x, y) {
-        (Native(a), Native(b)) => Ok(Native(a + b)),
-        (BigUint(a), BigUint(b)) => Ok(BigUint(a + b)),
-        (JubjubPoint(p), JubjubPoint(q)) => Ok(JubjubPoint(p + q)),
+        (Native(a), Native(b)) => Ok(Native(a - b)),
+        (BigUint(a), BigUint(b)) => {
+            if a >= b {
+                Ok(BigUint(a - b))
+            } else {
+                Err(Error::Other(format!("underflow subtracting {b} from {a}")))
+            }
+        }
+        (JubjubPoint(p), JubjubPoint(q)) => Ok(JubjubPoint(p - q)),
         _ => Err(Error::Unsupported(
-            Operation::Add,
+            Operation::Sub,
             vec![x.get_type(), y.get_type()],
         )),
     }
 }
 
-/// Adds in-circuit the given inputs.
-/// Addition is supported on:
+/// Subtracts in-circuit the given inputs.
+/// Subtracts is supported on:
 ///   - `Native`
 ///   - `BigUint`
 ///   - `JubjubPoint`
@@ -43,7 +52,7 @@ pub fn add_offcircuit(x: &IrValue, y: &IrValue) -> Result<IrValue, Error> {
 /// # Errors
 ///
 /// This function results in an error if the input types are not supported.
-pub fn add_incircuit(
+pub fn sub_incircuit(
     std_lib: &ZkStdLib,
     layouter: &mut impl Layouter<F>,
     x: &CircuitValue,
@@ -52,29 +61,30 @@ pub fn add_incircuit(
     use CircuitValue::*;
     match (x, y) {
         (Native(a), Native(b)) => {
-            let r = std_lib.add(layouter, a, b)?;
+            let r = std_lib.sub(layouter, a, b)?;
             Ok(Native(r))
         }
         (BigUint(a), BigUint(b)) => {
-            let r = std_lib.biguint().add(layouter, a, b)?;
+            let r = std_lib.biguint().sub(layouter, a, b)?;
             Ok(BigUint(r))
         }
         (JubjubPoint(p), JubjubPoint(q)) => {
-            let r = std_lib.jubjub().add(layouter, p, q)?;
+            let neg_q = std_lib.jubjub().negate(layouter, q)?;
+            let r = std_lib.jubjub().add(layouter, p, &neg_q)?;
             Ok(JubjubPoint(r))
         }
         _ => Err(Error::Unsupported(
-            Operation::Add,
+            Operation::Sub,
             vec![x.get_type(), y.get_type()],
         )),
     }
 }
 
-impl Add for IrValue {
+impl Sub for IrValue {
     type Output = Self;
 
-    fn add(self, rhs: Self) -> Self {
-        add_offcircuit(&self, &rhs).unwrap()
+    fn sub(self, rhs: Self) -> Self {
+        sub_offcircuit(&self, &rhs).unwrap()
     }
 }
 
@@ -89,7 +99,7 @@ mod tests {
     use crate::IrType;
 
     #[test]
-    fn test_add() {
+    fn test_sub() {
         use IrValue::*;
         let big = |x: u64| -> IrValue { num_bigint::BigUint::from(x).into() };
 
@@ -97,24 +107,22 @@ mod tests {
         let [p, q] = core::array::from_fn(|_| JubjubSubgroup::random(OsRng));
         let r = JubjubFr::random(OsRng);
 
-        assert_eq!(Native(x) + Native(y), Native(x + y));
-        assert_eq!(big(123) + big(321), big(444));
-        assert_eq!(JubjubPoint(p) + JubjubPoint(q), JubjubPoint(p + q));
+        assert_eq!(Native(x) - Native(y), Native(x - y));
+        assert_eq!(big(321) - big(123), big(198));
+        assert_eq!(big(15) - big(15), big(0));
+        assert_eq!(JubjubPoint(p) - JubjubPoint(q), JubjubPoint(p - q));
 
         assert_eq!(
-            add_offcircuit(&JubjubScalar(r), &JubjubScalar(r)),
+            sub_offcircuit(&JubjubScalar(r), &JubjubScalar(r)),
             Err(Error::Unsupported(
-                Operation::Add,
+                Operation::Sub,
                 vec![IrType::JubjubScalar, IrType::JubjubScalar]
             ))
         );
 
         assert_eq!(
-            add_offcircuit(&Native(x), &Bool(true)),
-            Err(Error::Unsupported(
-                Operation::Add,
-                vec![IrType::Native, IrType::Bool]
-            ))
+            sub_offcircuit(&big(5), &big(6)),
+            Err(Error::Other("underflow subtracting 6 from 5".into()))
         );
     }
 }

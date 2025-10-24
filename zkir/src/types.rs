@@ -127,7 +127,7 @@ macro_rules! impl_enum_from_try_from {
                 fn try_from(value: $enum) -> Result<Self, Self::Error> {
                     match &value {
                         $enum::$variant(inner) => Ok(inner.clone()),
-                        other => Err(Error::ExpectingType(value.get_type(), other.get_type())),
+                        other => Err(Error::Other(format!("cannot convert {:?} to {:?}", other.get_type(), stringify!($variant)))),
                     }
                 }
             }
@@ -145,4 +145,16 @@ impl_enum_from_try_from!(IrValue {
     BigUint => BigUint,
     JubjubPoint => JubjubSubgroup,
     JubjubScalar => JubjubScalar,
+});
+
+// Derives implementations, for every basic type T:
+//  - From<T> for CircuitValue
+//  - TryFrom<CircuitValue> for T
+impl_enum_from_try_from!(CircuitValue {
+    Bool => AssignedBit,
+    Bytes => Vec<AssignedByte>,
+    Native => AssignedNative,
+    BigUint => AssignedBigUint,
+    JubjubPoint => AssignedJubjubPoint,
+    JubjubScalar => AssignedJubjubScalar,
 });

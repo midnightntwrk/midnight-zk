@@ -1,10 +1,12 @@
 use std::collections::HashMap;
 
 use blake2b_simd::State as Blake2b;
+use group::Group;
 use midnight_circuits::{
     compact_std_lib::{self, MidnightCircuit},
     halo2curves::ff::Field,
 };
+use midnight_curves::{Fr as JubjubFr, JubjubSubgroup};
 use midnight_proofs::{
     circuit::Value, dev::cost_model::dummy_synthesize_run, plonk, poly::kzg::params::ParamsKZG,
 };
@@ -141,45 +143,6 @@ fn test_publish() {
 }
 
 #[test]
-fn test_add() {
-    // An add instruction should have 2 inputs and 1 output.
-    test_static_pass(
-        &[(Add, vec!["x"], vec!["z"])],
-        Some(Error::InvalidArity(Add)),
-    );
-
-    test_static_pass(
-        &[(Add, vec!["x", "y"], vec![])],
-        Some(Error::InvalidArity(Add)),
-    );
-
-    test_static_pass(&[(Add, vec!["x", "y"], vec!["z"])], None);
-
-    // Unsupported addition on JubjubScalars.
-    test_without_witness(
-        &[
-            (Load(IrType::JubjubScalar), vec![], vec!["x"]),
-            (Add, vec!["x", "x"], vec!["z"]),
-        ],
-        Some(Error::Unsupported(Operation::Add, IrType::JubjubScalar)),
-    );
-
-    // A successful execution.
-    test_with_witness(
-        &[
-            (Load(IrType::BigUint(1024)), vec![], vec!["x"]),
-            (Add, vec!["x", "x"], vec!["z"]),
-        ],
-        HashMap::from_iter([(
-            "x",
-            biguint_from_hex("fffffffffffffffffffffffffffffffffffffffffffffffff").into(),
-        )]),
-        vec![],
-        None,
-    );
-}
-
-#[test]
 fn test_assert_equal() {
     // Equality assertions expect 2 inputs and no outputs.
     test_static_pass(
@@ -201,8 +164,8 @@ fn test_assert_equal() {
             (AssertEqual, vec!["x", "x"], vec![]),
         ],
         Some(Error::Unsupported(
-            Operation::AssertEqual,
-            IrType::JubjubScalar,
+            AssertEqual,
+            vec![IrType::JubjubScalar, IrType::JubjubScalar],
         )),
     );
 
@@ -213,7 +176,10 @@ fn test_assert_equal() {
             (Load(IrType::Native), vec![], vec!["x"]),
             (AssertEqual, vec!["p", "x"], vec![]),
         ],
-        Some(Error::ExpectingType(IrType::JubjubPoint, IrType::Native)),
+        Some(Error::Unsupported(
+            AssertEqual,
+            vec![IrType::JubjubPoint, IrType::Native],
+        )),
     );
 
     test_without_witness(
@@ -222,7 +188,10 @@ fn test_assert_equal() {
             (Load(IrType::Bytes(3)), vec![], vec!["w"]),
             (AssertEqual, vec!["v", "w"], vec![]),
         ],
-        Some(Error::ExpectingType(IrType::Bytes(2), IrType::Bytes(3))),
+        Some(Error::Unsupported(
+            AssertEqual,
+            vec![IrType::Bytes(2), IrType::Bytes(3)],
+        )),
     );
 
     // A successful execution.
@@ -233,6 +202,274 @@ fn test_assert_equal() {
         ],
         HashMap::from_iter([("x", biguint_from_hex("deadbeef").into())]),
         vec![],
+        None,
+    );
+}
+
+#[test]
+fn test_is_equal() {
+    // Equality comparisons expect 2 inputs and 1 output.
+    test_static_pass(
+        &[(IsEqual, vec!["x", "y"], vec![])],
+        Some(Error::InvalidArity(IsEqual)),
+    );
+
+    test_static_pass(
+        &[(IsEqual, vec!["x", "y", "z"], vec!["r"])],
+        Some(Error::InvalidArity(IsEqual)),
+    );
+
+    test_static_pass(&[(IsEqual, vec!["x", "y"], vec!["r"])], None);
+
+    // Unsupported equality comparison on JubjubScalars.
+    test_without_witness(
+        &[
+            (Load(IrType::JubjubScalar), vec![], vec!["s"]),
+            (IsEqual, vec!["s", "s"], vec!["b"]),
+        ],
+        Some(Error::Unsupported(
+            IsEqual,
+            vec![IrType::JubjubScalar, IrType::JubjubScalar],
+        )),
+    );
+
+    // Compared values must be of the same type.
+    test_without_witness(
+        &[
+            (Load(IrType::Bytes(2)), vec![], vec!["v"]),
+            (Load(IrType::Bytes(3)), vec![], vec!["w"]),
+            (IsEqual, vec!["v", "w"], vec!["b"]),
+        ],
+        Some(Error::Unsupported(
+            IsEqual,
+            vec![IrType::Bytes(2), IrType::Bytes(3)],
+        )),
+    );
+
+    // A successful execution.
+    test_with_witness(
+        &[
+            (Load(IrType::Bytes(2)), vec![], vec!["v"]),
+            (IsEqual, vec!["v", "v"], vec!["b"]),
+            (AssertEqual, vec!["b", "1"], vec![]),
+        ],
+        HashMap::from_iter([("v", vec![42u8, 255u8].into())]),
+        vec![],
+        None,
+    );
+}
+
+#[test]
+fn test_add() {
+    // An add instruction should have 2 inputs and 1 output.
+    test_static_pass(
+        &[(Add, vec!["x"], vec!["z"])],
+        Some(Error::InvalidArity(Add)),
+    );
+
+    test_static_pass(
+        &[(Add, vec!["x", "y"], vec![])],
+        Some(Error::InvalidArity(Add)),
+    );
+
+    test_static_pass(&[(Add, vec!["x", "y"], vec!["z"])], None);
+
+    // Unsupported addition on JubjubScalars.
+    test_without_witness(
+        &[
+            (Load(IrType::JubjubScalar), vec![], vec!["x"]),
+            (Add, vec!["x", "x"], vec!["z"]),
+        ],
+        Some(Error::Unsupported(
+            Add,
+            vec![IrType::JubjubScalar, IrType::JubjubScalar],
+        )),
+    );
+
+    // A successful execution.
+    test_with_witness(
+        &[
+            (Load(IrType::BigUint(1024)), vec![], vec!["x"]),
+            (Add, vec!["x", "x"], vec!["z"]),
+        ],
+        HashMap::from_iter([(
+            "x",
+            biguint_from_hex("fffffffffffffffffffffffffffffffffffffffffffffffff").into(),
+        )]),
+        vec![],
+        None,
+    );
+}
+
+#[test]
+fn test_sub() {
+    // A sub instruction should have 2 inputs and 1 output.
+    test_static_pass(
+        &[(Sub, vec!["x"], vec!["z"])],
+        Some(Error::InvalidArity(Sub)),
+    );
+
+    test_static_pass(
+        &[(Sub, vec!["x", "y"], vec![])],
+        Some(Error::InvalidArity(Sub)),
+    );
+
+    test_static_pass(&[(Sub, vec!["x", "y"], vec!["z"])], None);
+
+    // Unsupported subtraction on JubjubScalars.
+    test_without_witness(
+        &[
+            (Load(IrType::JubjubScalar), vec![], vec!["x"]),
+            (Sub, vec!["x", "x"], vec!["z"]),
+        ],
+        Some(Error::Unsupported(
+            Sub,
+            vec![IrType::JubjubScalar, IrType::JubjubScalar],
+        )),
+    );
+
+    // A successful execution.
+    test_with_witness(
+        &[
+            (Load(IrType::BigUint(1024)), vec![], vec!["x"]),
+            (Sub, vec!["x", "x"], vec!["z"]),
+        ],
+        HashMap::from_iter([("x", biguint_from_hex("deadbeef").into())]),
+        vec![],
+        None,
+    );
+}
+
+#[test]
+fn test_mul() {
+    // A mul instruction should have 2 inputs and 1 output.
+    test_static_pass(
+        &[(Mul, vec!["x"], vec!["z"])],
+        Some(Error::InvalidArity(Mul)),
+    );
+
+    test_static_pass(
+        &[(Mul, vec!["x", "y"], vec![])],
+        Some(Error::InvalidArity(Mul)),
+    );
+
+    test_static_pass(&[(Mul, vec!["x", "y"], vec!["z"])], None);
+
+    // Unsupported multiplication on JubjubScalars.
+    test_without_witness(
+        &[
+            (Load(IrType::JubjubScalar), vec![], vec!["x"]),
+            (Mul, vec!["x", "x"], vec!["z"]),
+        ],
+        Some(Error::Unsupported(
+            Mul,
+            vec![IrType::JubjubScalar, IrType::JubjubScalar],
+        )),
+    );
+
+    // A successful execution.
+    test_with_witness(
+        &[
+            (Load(IrType::JubjubPoint), vec![], vec!["p"]),
+            (Load(IrType::JubjubScalar), vec![], vec!["s"]),
+            (Mul, vec!["s", "p"], vec!["q"]),
+        ],
+        HashMap::from_iter([
+            ("p", JubjubSubgroup::random(OsRng).into()),
+            ("s", JubjubFr::random(OsRng).into()),
+        ]),
+        vec![],
+        None,
+    );
+}
+
+#[test]
+fn test_neg() {
+    // A neg instruction should have 1 inputs and 1 output.
+    test_static_pass(&[(Neg, vec![], vec!["z"])], Some(Error::InvalidArity(Neg)));
+    test_static_pass(&[(Neg, vec!["x"], vec![])], Some(Error::InvalidArity(Neg)));
+    test_static_pass(&[(Neg, vec!["x"], vec!["z"])], None);
+
+    // Unsupported negation on JubjubScalars.
+    test_without_witness(
+        &[
+            (Load(IrType::JubjubScalar), vec![], vec!["x"]),
+            (Neg, vec!["x"], vec!["z"]),
+        ],
+        Some(Error::Unsupported(Neg, vec![IrType::JubjubScalar])),
+    );
+
+    // A successful execution.
+    let p: IrValue = JubjubSubgroup::random(OsRng).into();
+    test_with_witness(
+        &[
+            (Load(IrType::JubjubPoint), vec![], vec!["p"]),
+            (Neg, vec!["p"], vec!["q"]),
+            (Publish, vec!["q"], vec![]),
+        ],
+        HashMap::from_iter([("p", p.clone())]),
+        vec![(-p, IrType::JubjubPoint)],
+        None,
+    );
+}
+
+#[test]
+fn test_inner_product() {
+    // An inner_product should take an even number of inputs > 0 and 1 output.
+    test_static_pass(
+        &[(InnerProduct, vec!["x"], vec!["z"])],
+        Some(Error::InvalidArity(InnerProduct)),
+    );
+
+    test_static_pass(
+        &[(InnerProduct, vec!["x", "y"], vec![])],
+        Some(Error::InvalidArity(InnerProduct)),
+    );
+
+    test_static_pass(&[(InnerProduct, vec!["x", "y"], vec!["z"])], None);
+
+    // Unsupported IP on mixed types.
+    test_without_witness(
+        &[
+            (Load(IrType::Native), vec![], vec!["x"]),
+            (Load(IrType::BigUint(10)), vec![], vec!["n"]),
+            (InnerProduct, vec!["x", "n"], vec!["z"]),
+        ],
+        Some(Error::Unsupported(
+            InnerProduct,
+            vec![IrType::Native, IrType::BigUint(10)],
+        )),
+    );
+
+    // Incompatible types.
+    test_without_witness(
+        &[
+            (Load(IrType::JubjubPoint), vec![], vec!["s", "p", "q"]),
+            (Load(IrType::JubjubScalar), vec![], vec!["r"]),
+            (InnerProduct, vec!["r", "s", "p", "q"], vec!["result"]),
+        ],
+        Some(Error::Other(format!(
+            "cannot convert JubjubPoint to \"JubjubScalar\"",
+        ))),
+    );
+
+    // A successful execution.
+    let [p, q] = core::array::from_fn(|_| JubjubSubgroup::random(OsRng));
+    let [r, s] = core::array::from_fn(|_| JubjubFr::random(OsRng));
+    test_with_witness(
+        &[
+            (Load(IrType::JubjubPoint), vec![], vec!["p", "q"]),
+            (Load(IrType::JubjubScalar), vec![], vec!["r", "s"]),
+            (InnerProduct, vec!["r", "s", "p", "q"], vec!["result"]),
+            (Publish, vec!["result"], vec![]),
+        ],
+        HashMap::from_iter([
+            ("p", p.into()),
+            ("q", q.into()),
+            ("r", r.into()),
+            ("s", s.into()),
+        ]),
+        vec![((p * r + q * s).into(), IrType::JubjubPoint)],
         None,
     );
 }
