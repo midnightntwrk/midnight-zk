@@ -423,12 +423,15 @@ where
     // Sample evaluation challenge x
     let x: F = transcript.squeeze_challenge();
 
-    let mut combined_evals = bench_and_run!(_group; ref transcript; ; "Write evals to transcript";
+    let mut combined_evals = CombinedEvals::empty();
+
+    bench_and_run!(_group; ref transcript; ; "Write evals to transcript";
         |t| write_evals_to_transcript(
         pk,
         nb_committed_instances,
         &instance_polys,
         &advice_polys,
+        &mut combined_evals,
         x,
         t,
     ))?;
@@ -982,9 +985,10 @@ fn write_evals_to_transcript<F, CS, T>(
     nb_committed_instances: usize,
     instance_polys: &[Vec<Polynomial<F, Coeff>>],
     advice_polys: &[Vec<Polynomial<F, Coeff>>],
+    combined_evals: &mut CombinedEvals<F, CS>,
     x: F,
     transcript: &mut T,
-) -> Result<CombinedEvals<F, CS>, Error>
+) -> Result<(), Error>
 where
     F: WithSmallOrderMulGroup<3> + Hashable<T::Hash>,
     CS: PolynomialCommitmentScheme<F>,
@@ -992,9 +996,6 @@ where
 {
     let domain = &pk.vk.domain;
     let meta = &pk.vk.cs;
-
-    let mut instance_evals_combined = Vec::new();
-    let mut advice_evals_combined = Vec::new();
 
     // Compute and hash evals for the polynomials of the committed instances of
     // each circuit
@@ -1012,7 +1013,7 @@ where
             })
             .collect::<Result<Vec<F>, Error>>()?;
 
-        instance_evals_combined.push(instance_evals);
+        combined_evals.instance_evals_combined.push(instance_evals);
     }
 
     // Compute and hash advice evals for each circuit instance
@@ -1028,7 +1029,7 @@ where
             })
             .collect::<Result<Vec<F>, Error>>()?;
 
-        advice_evals_combined.push(advice_evals);
+        combined_evals.advice_evals_combined.push(advice_evals);
     }
 
     // Compute evals of fixed columns (shared across all circuit instances)
@@ -1052,15 +1053,9 @@ where
             eval
         })
         .collect::<Result<Vec<F>, Error>>()?;
+    combined_evals.fixed_evals = fixed_evals;
 
-    Ok(CombinedEvals {
-        fixed_evals,
-        instance_evals_combined,
-        advice_evals_combined,
-        permutation_evals_combined: vec![],
-        lookup_evals_combined: vec![],
-        trashcan_evals_combined: vec![],
-    })
+    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1132,6 +1127,19 @@ pub(crate) struct CombinedEvals<F: PrimeField, CS: PolynomialCommitmentScheme<F>
     pub(crate) permutation_evals_combined: Vec<permutation::prover::EvaluatedSets<F, CS>>,
     lookup_evals_combined: Vec<Vec<lookup::Evaluated<F>>>,
     trashcan_evals_combined: Vec<Vec<trash::Evaluated<F>>>,
+}
+
+impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> CombinedEvals<F, CS> {
+    fn empty() -> Self {
+        CombinedEvals {
+            fixed_evals: vec![],
+            instance_evals_combined: vec![],
+            advice_evals_combined: vec![],
+            permutation_evals_combined: vec![],
+            lookup_evals_combined: vec![],
+            trashcan_evals_combined: vec![],
+        }
+    }
 }
 
 struct InstanceSingle<F: PrimeField> {
