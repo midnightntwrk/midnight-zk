@@ -15,7 +15,6 @@ use super::{
 };
 use crate::{
     circuit::Value,
-    dev::cost_model::cost_model_options,
     poly::{
         batch_invert_rational,
         commitment::{Params, PolynomialCommitmentScheme},
@@ -23,6 +22,9 @@ use crate::{
     },
     utils::{arithmetic::parallelize, rational::Rational},
 };
+
+#[cfg(feature = "cost-estimator")]
+use crate::dev::cost_model::cost_model_options;
 
 pub(crate) fn create_domain<F, ConcreteCircuit>(
     k: u32,
@@ -200,6 +202,7 @@ impl<F: Field> Assignment<F> for Assembly<F> {
 }
 
 /// Compute the minimal `k` to compute a circuit.
+#[cfg(feature = "cost-estimator")]
 pub fn k_from_circuit<F: Ord + Field + FromUniformBytes<64>, C: Circuit<F>>(circuit: &C) -> u32 {
     cost_model_options(circuit).min_k as u32
 }
@@ -280,7 +283,8 @@ where
 
     let permutation_vk = assembly.permutation.build_vk(params, &domain, &cs.permutation);
 
-    let fixed_commitments = fixed.iter().map(|poly| CS::commit_lagrange(params, poly)).collect();
+    let fixed_commitments =
+        fixed.par_iter().map(|poly| CS::commit_lagrange(params, poly)).collect();
 
     Ok(VerifyingKey::from_parts(
         domain,

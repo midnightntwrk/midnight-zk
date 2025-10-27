@@ -41,6 +41,14 @@ pub fn init_panic_hook() {
     console_error_panic_hook::set_once();
 }
 
+/// Initialize the rayon thread pool for parallel proof generation
+/// This must be called before any proof generation when using Web Workers
+/// Returns a promise that resolves when the thread pool is ready
+#[wasm_bindgen]
+pub fn init_thread_pool(num_threads: usize) -> js_sys::Promise {
+    wasm_bindgen_rayon::init_thread_pool(num_threads)
+}
+
 /// Example relation for Poseidon hash circuit benchmarking
 #[derive(Clone, Default, Debug)]
 pub struct PoseidonExample;

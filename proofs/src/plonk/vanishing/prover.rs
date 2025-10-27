@@ -15,6 +15,7 @@ use crate::{
     transcript::{Hashable, Transcript},
     utils::arithmetic::{eval_polynomial, parallelize},
 };
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 #[cfg_attr(feature = "bench-internal", derive(Clone))]
 #[derive(Debug)]
@@ -114,7 +115,7 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
 
         // Compute commitments to each h(X) piece
         let h_commitments: Vec<_> =
-            h_pieces.iter().map(|h_piece| CS::commit(params, h_piece)).collect();
+            h_pieces.par_iter().map(|h_piece| CS::commit(params, h_piece)).collect();
 
         // Hash each h(X) piece
         for c in h_commitments {

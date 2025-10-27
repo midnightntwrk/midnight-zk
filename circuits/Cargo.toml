@@ -57,6 +57,7 @@ midnight-curves = { path = "../curves", features = ["portable"] }
 
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
 getrandom = { version = "0.2", features = ["js"] }
+wasm-bindgen-rayon = "1.2"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
