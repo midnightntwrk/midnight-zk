@@ -224,10 +224,11 @@ where
     let domain = &pk.vk.domain;
 
     // Collect one InstanceSingle per proof
-    let instance = bench_and_run!(_group; ref transcript ; ; "Compute instances"; |t|
-        compute_instances(params, pk, instances, nb_committed_instances, t)
+    let instance = bench_and_run!(_group; ref transcript ; ; "Compute instance polys"; |t|
+        compute_instance_polys(params, pk, instances, nb_committed_instances, t)
     )?;
 
+    // Collect one AdviceSingle per proof
     let (advice, challenges) = bench_and_run!(_group; ref transcript; ; "Parse advices"; |t|
         parse_advices(params, pk, circuits, instances, t, &mut rng)
     )?;
@@ -307,7 +308,7 @@ where
         })
         .collect::<Result<Vec<_>, _>>())?;
 
-    // Challenge for trash argument
+    // Sample challenge for trash argument
     let trash_challenge: F = transcript.squeeze_challenge();
 
     let trashcans: Vec<Vec<trash::prover::Committed<F>>> = bench_and_run!(_group;
@@ -711,7 +712,7 @@ where
     )
 }
 
-fn compute_instances<F, CS, T>(
+fn compute_instance_polys<F, CS, T>(
     params: &CS::Parameters,
     pk: &ProvingKey<F, CS>,
     instances: &[&[&[F]]],
