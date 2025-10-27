@@ -26,10 +26,8 @@ use crate::{
 /// A multiscalar multiplication in the polynomial commitment scheme
 #[derive(Clone, Default, Debug)]
 pub struct MSMKZG<E: Engine> {
-    ///
-    pub scalars: Vec<E::Fr>,
-    ///
-    pub bases: Vec<E::G1>,
+    pub(crate) scalars: Vec<E::Fr>,
+    pub(crate) bases: Vec<E::G1>,
 }
 
 impl<E: Engine> MSMKZG<E> {
