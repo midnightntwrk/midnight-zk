@@ -398,7 +398,7 @@ where
     let nb_committed_instances: usize = 0;
 
     let nu_poly =
-        bench_and_run!(_group; ; ;"Compute Numerator poly"; || compute_nu_poly(pk, &trace));
+        bench_and_run!(_group; ; ;"Compute numerator poly"; || compute_nu_poly(pk, &trace));
 
     // Construct the quotient polynomial h(X) = nu(X)/(X^n-1), split it into limbs
     // of size n, and commit to each limb separately
