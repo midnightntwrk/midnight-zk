@@ -9,7 +9,7 @@ use crate::{
     plonk::{
         self,
         permutation::{self, verifier::CommonEvaluated},
-        Error,
+        CombinedEvals, Error,
     },
     poly::{
         commitment::PolynomialCommitmentScheme, Coeff, LagrangeCoeff, Polynomial, ProverQuery,
@@ -207,7 +207,7 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
         pk: &plonk::ProvingKey<F, CS>,
         x: F,
         transcript: &mut T,
-        permutation_evals: &mut Vec<EvaluatedSets<F, CS>>,
+        combined_evals: &mut CombinedEvals<F, CS>,
     ) -> Result<Evaluated<F>, Error>
     where
         F: Hashable<T::Hash>,
@@ -257,7 +257,7 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
                 });
             }
 
-            permutation_evals.push(EvaluatedSets { sets })
+            combined_evals.permutation_evals_combined.push(EvaluatedSets { sets })
         }
 
         Ok(Evaluated { constructed: self })

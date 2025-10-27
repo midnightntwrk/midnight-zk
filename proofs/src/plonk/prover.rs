@@ -420,14 +420,10 @@ where
         ..
     } = trace;
 
-    let mut permutation_evals_combined = Vec::new();
-    let mut lookup_evals_combined = Vec::new();
-    let mut trashcan_evals_combined = Vec::new();
-
     // Sample evaluation challenge x
     let x: F = transcript.squeeze_challenge();
 
-    let combined_evals = bench_and_run!(_group; ref transcript; ; "Write evals to transcript";
+    let mut combined_evals = bench_and_run!(_group; ref transcript; ; "Write evals to transcript";
         |t| write_evals_to_transcript(
         pk,
         nb_committed_instances,
@@ -436,12 +432,6 @@ where
         x,
         t,
     ))?;
-
-    let CombinedEvals {
-        fixed_evals,
-        instance_evals_combined,
-        advice_evals_combined,
-    } = combined_evals;
 
     // Evaluate common permutation data
     let permutations_common = bench_and_run!(_group; ref transcript; ; "Evaluate permutation data"; |t|
@@ -452,7 +442,7 @@ where
     let permutations = permutations
         .into_iter()
         .map(|permutation| -> Result<_, _> {
-            permutation.evaluate(pk, x, transcript, &mut permutation_evals_combined)
+            permutation.evaluate(pk, x, transcript, &mut combined_evals)
         })
         .collect::<Result<Vec<_>, _>>()?;
 
@@ -465,7 +455,7 @@ where
                 .into_iter()
                 .map(|p| p.evaluate(pk, x, transcript, &mut lookup_evals))
                 .collect::<Result<Vec<_>, _>>();
-            lookup_evals_combined.push(lookup_evals);
+            combined_evals.lookup_evals_combined.push(lookup_evals);
             c
         })
         .collect::<Result<Vec<_>, _>>()?;
@@ -479,7 +469,7 @@ where
                 .into_iter()
                 .map(|p| p.evaluate(x, transcript, &mut trashcan_evals))
                 .collect::<Result<Vec<_>, _>>();
-            trashcan_evals_combined.push(trashcan_evals);
+            combined_evals.trashcan_evals_combined.push(trashcan_evals);
             t
         })
         .collect::<Result<Vec<_>, _>>()?;
@@ -495,11 +485,7 @@ where
         .fold(F::ZERO, |acc, eval| acc + eval);
     let l_0 = l_evals[1 + nr_blinding_factors];
     let expressions = partially_evaluate_identities(
-        &instance_evals_combined,
-        &advice_evals_combined,
-        &permutation_evals_combined,
-        &lookup_evals_combined,
-        &trashcan_evals_combined,
+        &combined_evals,
         &permutations_common,
         x,
         beta,
@@ -508,7 +494,6 @@ where
         trash_challenge,
         pk,
         &challenges,
-        &fixed_evals,
         l_0,
         l_last,
         l_blind,
@@ -546,14 +531,9 @@ where
     )
 }
 
-#[allow(clippy::just_underscores_and_digits)]
 #[allow(clippy::too_many_arguments)]
 fn partially_evaluate_identities<'a, F, CS: PolynomialCommitmentScheme<F>>(
-    instance_evals_combined: &'a [Vec<F>],
-    advice_evals_combined: &'a [Vec<F>],
-    permutation_evals_combined: &'a [permutation::prover::EvaluatedSets<F, CS>],
-    lookup_evals_combined: &'a [Vec<lookup::Evaluated<F>>],
-    trashcan_evals_combined: &'a [Vec<trash::Evaluated<F>>],
+    combined_evals: &'a CombinedEvals<F, CS>,
     permutations_common: &'a CommonEvaluated<F>,
     x: F,
     beta: F,
@@ -562,7 +542,6 @@ fn partially_evaluate_identities<'a, F, CS: PolynomialCommitmentScheme<F>>(
     trash_challenge: F,
     pk: &'a ProvingKey<F, CS>,
     challenges: &'a [F],
-    fixed_evals: &'a [F],
     l_0: F,
     l_last: F,
     l_blind: F,
@@ -570,6 +549,15 @@ fn partially_evaluate_identities<'a, F, CS: PolynomialCommitmentScheme<F>>(
 where
     F: WithSmallOrderMulGroup<3> + FromUniformBytes<64>,
 {
+    let CombinedEvals {
+        fixed_evals,
+        instance_evals_combined,
+        advice_evals_combined,
+        permutation_evals_combined,
+        lookup_evals_combined,
+        trashcan_evals_combined,
+    } = combined_evals;
+
     // TODO: consider par_iter here
     advice_evals_combined
         .iter()
@@ -996,7 +984,7 @@ fn write_evals_to_transcript<F, CS, T>(
     advice_polys: &[Vec<Polynomial<F, Coeff>>],
     x: F,
     transcript: &mut T,
-) -> Result<CombinedEvals<F>, Error>
+) -> Result<CombinedEvals<F, CS>, Error>
 where
     F: WithSmallOrderMulGroup<3> + Hashable<T::Hash>,
     CS: PolynomialCommitmentScheme<F>,
@@ -1005,8 +993,6 @@ where
     let domain = &pk.vk.domain;
     let meta = &pk.vk.cs;
 
-    // For constructing the linearization poly, collect all evaluations
-    // except those from simple selectors (for all provided proofs)
     let mut instance_evals_combined = Vec::new();
     let mut advice_evals_combined = Vec::new();
 
@@ -1025,6 +1011,7 @@ where
                 Ok::<F, Error>(eval)
             })
             .collect::<Result<Vec<F>, Error>>()?;
+
         instance_evals_combined.push(instance_evals);
     }
 
@@ -1035,16 +1022,13 @@ where
             .advice_queries
             .iter()
             .map(|&(column, at)| {
-                eval_polynomial(&advice[column.index()], domain.rotate_omega(x, at))
+                let eval = eval_polynomial(&advice[column.index()], domain.rotate_omega(x, at));
+                transcript.write(&eval)?;
+                Ok(eval)
             })
-            .collect();
+            .collect::<Result<Vec<F>, Error>>()?;
 
-        advice_evals_combined.push(advice_evals.clone());
-
-        // Hash each advice column evaluation
-        for eval in advice_evals.iter() {
-            transcript.write(eval)?;
-        }
+        advice_evals_combined.push(advice_evals);
     }
 
     // Compute evals of fixed columns (shared across all circuit instances)
@@ -1052,24 +1036,30 @@ where
     //
     // NB: `fixed_evals` is indexed according to `fixed_queries` (which is NOT
     // indexed per column index, but in the order in which queries were added)
-    let mut fixed_evals: Vec<F> = Vec::with_capacity(meta.fixed_queries.len());
-    for &(column, at) in meta.fixed_queries.iter() {
-        let col_idx = column.index();
-        let eval: Result<F, Error> = if meta.indices_simple_selectors.contains(&col_idx) {
-            // Fixed columns corresponding to simple selectors don't need to be evaluated
-            Ok(F::ONE)
-        } else {
-            let eval = eval_polynomial(&pk.fixed_polys[col_idx], domain.rotate_omega(x, at));
-            transcript.write(&eval)?;
-            Ok(eval)
-        };
-        fixed_evals.push(eval?);
-    }
+    let fixed_evals = meta
+        .fixed_queries
+        .iter()
+        .map(|&(column, at)| {
+            let col_idx = column.index();
+            let eval: Result<F, Error> = if meta.indices_simple_selectors.contains(&col_idx) {
+                // Fixed columns corresponding to simple selectors don't need to be evaluated
+                Ok(F::ONE)
+            } else {
+                let eval = eval_polynomial(&pk.fixed_polys[col_idx], domain.rotate_omega(x, at));
+                transcript.write(&eval)?;
+                Ok(eval)
+            };
+            eval
+        })
+        .collect::<Result<Vec<F>, Error>>()?;
 
     Ok(CombinedEvals {
         fixed_evals,
         instance_evals_combined,
         advice_evals_combined,
+        permutation_evals_combined: vec![],
+        lookup_evals_combined: vec![],
+        trashcan_evals_combined: vec![],
     })
 }
 
@@ -1135,10 +1125,13 @@ fn compute_queries<'a, F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentSch
         .collect()
 }
 
-struct CombinedEvals<F: PrimeField> {
+pub(crate) struct CombinedEvals<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
     fixed_evals: Vec<F>,
     instance_evals_combined: Vec<Vec<F>>,
     advice_evals_combined: Vec<Vec<F>>,
+    pub(crate) permutation_evals_combined: Vec<permutation::prover::EvaluatedSets<F, CS>>,
+    lookup_evals_combined: Vec<Vec<lookup::Evaluated<F>>>,
+    trashcan_evals_combined: Vec<Vec<trash::Evaluated<F>>>,
 }
 
 struct InstanceSingle<F: PrimeField> {
