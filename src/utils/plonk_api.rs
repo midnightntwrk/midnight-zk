@@ -1,0 +1,258 @@
+//! Interface used for running real tests.
+
+#[cfg(test)]
+use std::time::Instant;
+use std::{
+    env,
+    fs::File,
+    io::{BufReader, Read, Write},
+    marker::PhantomData,
+    path::Path,
+};
+
+use blstrs::Bls12;
+use halo2_proofs::{
+    plonk::{
+        create_proof, keygen_pk, keygen_vk, prepare, Circuit, Error, ProvingKey, VerifyingKey,
+    },
+    poly::{
+        commitment::Guard,
+        kzg::{
+            params::{ParamsKZG, ParamsVerifierKZG},
+            KZGCommitmentScheme,
+        },
+    },
+    transcript::{CircuitTranscript, Transcript},
+    utils::SerdeFormat,
+};
+use halo2curves::bn256;
+use rand::{CryptoRng, RngCore};
+use sha2::Digest;
+
+use crate::compact_std_lib::MidnightVK;
+
+macro_rules! plonk_api {
+    ($name:ident, $engine:ty, $native:ty, $curve:ty) => {
+        /// A struct providing all the basic functions of the PLONK proving system.
+        #[derive(Debug)]
+        pub struct $name<Relation> {
+            _marker: PhantomData<Relation>,
+        }
+
+        impl<Relation> $name<Relation>
+        where
+            Relation: Circuit<$native> + Clone,
+        {
+            /// PLONK VK setup for the given circuit. Downsizes the parameters to match
+            /// the size of the circuit.
+            pub fn setup_vk(
+                params: &ParamsKZG<$engine>,
+                circuit: &Relation,
+            ) -> VerifyingKey<$native, KZGCommitmentScheme<$engine>> {
+                #[cfg(test)]
+                let start = Instant::now();
+                let vk = keygen_vk(params, circuit).expect("keygen_vk should not fail");
+                #[cfg(test)]
+                println!("Generated vk in {} ms", start.elapsed().as_millis());
+
+                vk
+            }
+
+            /// PLONK PK setup for the given circuit.
+            pub fn setup_pk(
+                circuit: &Relation,
+                vk: &VerifyingKey<$native, KZGCommitmentScheme<$engine>>,
+            ) -> ProvingKey<$native, KZGCommitmentScheme<$engine>> {
+                #[cfg(test)]
+                let start = Instant::now();
+                let pk = keygen_pk(vk.clone(), circuit).expect("keygen_pk should not fail");
+                #[cfg(test)]
+                println!("Generated pk in {} ms", start.elapsed().as_millis());
+
+                pk
+            }
+
+            /// PLONK proving algorithm.
+            pub fn prove(
+                params: &ParamsKZG<$engine>,
+                pk: &ProvingKey<$native, KZGCommitmentScheme<$engine>>,
+                circuit: &Relation,
+                pi: &[&[$native]],
+                rng: impl RngCore + CryptoRng,
+            ) -> Result<Vec<u8>, Error> {
+                #[cfg(test)]
+                let start = Instant::now();
+                let proof = {
+                    let mut transcript = CircuitTranscript::init();
+                    create_proof::<
+                        $native,
+                        KZGCommitmentScheme<$engine>,
+                        CircuitTranscript<blake2b_simd::State>,
+                        Relation,
+                    >(params, pk, &[circuit.clone()], &[pi], rng, &mut transcript)?;
+                    transcript.finalize()
+                };
+
+                #[cfg(test)]
+                {
+                    println!("Generated proof in {:?} ms", start.elapsed().as_millis());
+                    println!("Proof size: {:?} bytes.", proof.len())
+                };
+
+                Ok(proof)
+            }
+
+            /// PLONK verification algorithm.
+            pub fn verify(
+                params_verifier: &ParamsVerifierKZG<$engine>,
+                vk: &VerifyingKey<$native, KZGCommitmentScheme<$engine>>,
+                pi: &[&[$native]],
+                proof: &[u8],
+            ) -> Result<(), Error> {
+                let mut transcript = CircuitTranscript::init_from_bytes(proof);
+
+                #[cfg(test)]
+                let start = Instant::now();
+                let res = prepare::<
+                    $native,
+                    KZGCommitmentScheme<$engine>,
+                    CircuitTranscript<blake2b_simd::State>,
+                >(vk, &[pi], &mut transcript)?;
+                let res = res.verify(params_verifier);
+                #[cfg(test)]
+                println!("Proof verified in {:?} us", start.elapsed().as_micros());
+                res.map_err(|_| Error::Opening)
+            }
+        }
+    };
+}
+
+plonk_api!(BnPLONK, bn256::Bn256, bn256::Fr, bn256::G1Affine);
+
+plonk_api!(
+    BlsPLONK,
+    halo2curves::bls12381::Bls12381,
+    halo2curves::bls12381::Fr,
+    halo2curves::bls12381::G1Affine
+);
+
+plonk_api!(BlstPLONK, blstrs::Bls12, blstrs::Scalar, blstrs::G1Affine);
+
+/// Check that the VK is the same as the stored VK for Logic. This function
+/// panics if:
+///
+/// 1. The VK does not exist. In this case we are adding new functionality to
+///    midnight_lib, and should change the ChangeLog accordingly. To create the
+///    VK, re-run the example with CHANGE_VK=MINOR`.
+///
+/// 2. The VK exists but is different. In this case we are introducing a
+///    breaking change to midnight_lib, and should change the ChangeLog
+///    accordingly. To update the VK, re-run the example with
+///    CHANGE_VK=BREAKING.
+pub fn check_vk<Relation: Circuit<blstrs::Scalar>>(vk: &MidnightVK) {
+    // Read fixed VK hash
+    let vk_name = format!(
+        "./tests/static_vks/{}Vk",
+        std::any::type_name::<Relation>()
+            .split("::")
+            .last()
+            .unwrap()
+            .split('>')
+            .next()
+            .unwrap(),
+    );
+
+    let mut vk_buffer: Vec<u8> = Vec::new();
+    vk.write(&mut vk_buffer, SerdeFormat::RawBytes).unwrap();
+    let vk_hash: [u8; 32] = sha2::Sha256::digest(&vk_buffer).into();
+
+    let vk_path = Path::new(&vk_name);
+    let error_msg = "The VK does not exist. This means that you are adding new functionality to midnight_lib. Make sure to update the CHANGELOG. To create the vk, re-run the example with env var CHANGE_VK=MINOR";
+    if File::open(vk_path).is_err() {
+        match std::env::var("CHANGE_VK") {
+            Ok(value) => {
+                if value == "MINOR" {
+                    let mut file = File::create(vk_path).expect("Failed to create file");
+                    file.write_all(&vk_hash)
+                        .expect("Failed to write transcript hash to file");
+                } else {
+                    panic!("{}", error_msg)
+                }
+            }
+            _ => panic!("{}", error_msg),
+        }
+    }
+
+    let mut vk_fs = File::open(vk_path).expect("couldn't load proof parameters");
+    let mut read_vk_hash = Vec::new();
+    vk_fs
+        .read_to_end(&mut read_vk_hash)
+        .expect("Failed to read VK hash");
+    let read_vk_hash: [u8; 32] = read_vk_hash
+        .try_into()
+        .expect("The serialized VK is expected to contain 32 bytes");
+
+    let error_msg = "The VK does not match. This means that you are changing functionality from midnight_lib. Make sure to update the CHANGELOG with breaking changes. To create the vk, re-run the example with env var CHANGE_VK=BREAKING";
+    if vk_hash != read_vk_hash {
+        match std::env::var("CHANGE_VK") {
+            Ok(var) => {
+                if var == "BREAKING" {
+                    let mut file = File::create(vk_path).expect("Failed to create file");
+                    file.write_all(&vk_hash)
+                        .expect("Failed to write transcript hash to file");
+                } else {
+                    panic!("{}", error_msg)
+                }
+            }
+            _ => panic!("{}", error_msg),
+        }
+    }
+}
+
+/// Use filecoin's SRS (over BLS12-381)
+pub fn filecoin_srs(k: u32) -> ParamsKZG<Bls12> {
+    assert!(k <= 19, "We don't have an SRS for circuits of size {k}");
+
+    let srs_dir = env::var("SRS_DIR").unwrap_or("./examples/assets".into());
+
+    let srs_path = format!("{srs_dir}/bls_filecoin_2p{k:?}");
+    let mut fetching_path = srs_path.clone();
+
+    if !Path::new(fetching_path.as_str()).exists() {
+        println!("Entered here");
+        fetching_path = format!("{srs_dir}/bls_filecoin_2p19")
+    }
+
+    let params_fs = File::open(Path::new(&fetching_path))
+        .unwrap_or_else(|_| panic!("\nIt seems you have not downloaded and/or parsed the SRS from filecoin. Either download it with:
+
+            * `curl -L -o {srs_dir}/bls_filecoin_2p19 https://midnight-s3-fileshare-dev-eu-west-1.s3.eu-west-1.amazonaws.com/bls_filecoin_2p19`
+
+or, if you don't trust the source, download it from IPFS and parse it (this might take a couple of minutes):
+
+            * Download the SRS `curl -L -o {srs_dir}/phase1radix2m19 https://trusted-setup.filecoin.io/phase1/phase1radix2m19`
+            * Run the binary to parse it `cargo run --example parse_filecoin_srs --release`
+        \n"));
+
+    let mut params: ParamsKZG<Bls12> = ParamsKZG::read_custom::<_>(
+        &mut BufReader::new(params_fs),
+        SerdeFormat::RawBytesUnchecked,
+    )
+    .expect("Failed to read params");
+
+    if fetching_path != srs_path {
+        params.downsize(k);
+
+        let mut buf = Vec::new();
+
+        params
+            .write_custom(&mut buf, SerdeFormat::RawBytesUnchecked)
+            .expect("Failed to write params");
+        let mut file = File::create(srs_path).expect("Failed to create file");
+
+        file.write_all(&buf[..])
+            .expect("Failed to write params to file");
+    }
+
+    params
+}
