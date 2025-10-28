@@ -33,6 +33,9 @@ pub mod parsing;
 pub mod vec;
 pub mod verifier;
 
+#[cfg(target_arch = "wasm32")]
+pub mod wasm;
+
 // Re-exporting modules for convenience and usability.
 pub use halo2curves;
 pub use midnight_proofs;

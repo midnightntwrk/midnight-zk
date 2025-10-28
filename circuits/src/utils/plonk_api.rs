@@ -271,6 +271,7 @@ pub fn update_circuit_goldenfiles<R: Relation>(relation: &R) {
 }
 
 /// Use filecoin's SRS (over BLS12-381)
+#[cfg(not(target_arch = "wasm32"))]
 pub fn filecoin_srs(k: u32) -> ParamsKZG<Bls12> {
     assert!(k <= 19, "We don't have an SRS for circuits of size {k}");
 

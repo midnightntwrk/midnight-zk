@@ -18,6 +18,7 @@ use group::{
 use halo2curves::{serde::SerdeObject, Coordinates, CurveAffine, CurveExt};
 use rand_core::RngCore;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
+use wasm_bindgen::prelude::*;
 
 use crate::{
     fp::{Fp, ZETA_BASE},
@@ -28,6 +29,7 @@ use crate::{
 /// space. It is ideal to keep elements in this representation to reduce memory
 /// usage and improve performance through the use of mixed curve model
 /// arithmetic.
+#[wasm_bindgen]
 #[derive(Copy, Clone)]
 #[repr(transparent)]
 pub struct G1Affine(pub(crate) blst_p1_affine);
@@ -47,6 +49,14 @@ pub const B: Fp = Fp(blst_fp {
         0x09d645513d83de7e,
     ],
 });
+
+#[wasm_bindgen]
+impl G1Affine {
+    #[wasm_bindgen]
+    pub fn generator() -> G1Affine {
+        <G1Affine as PrimeCurveAffine>::generator()
+    }
+}
 
 impl fmt::Debug for G1Affine {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -458,12 +468,45 @@ impl SerdeObject for G1Affine {
     }
 }
 
+#[wasm_bindgen]
+impl G1Affine {
+    /// Deserialize from a Uint8Array (uncompressed format, 96 bytes)
+    #[wasm_bindgen(js_name = fromBytes)]
+    pub fn from_bytes_js(bytes: &[u8]) -> Result<G1Affine, JsValue> {
+        let mut buffer = [0u8; 96];
+        buffer[..].copy_from_slice(bytes);
+        match G1Affine::from_uncompressed(&buffer).into() {
+            Some(point) => Ok(point),
+            None => Err(JsValue::from_str("Invalid G1Affine bytes")),
+        }
+    }
+
+    /// Serialize to a Uint8Array (uncompressed format, 96 bytes)
+    #[wasm_bindgen(js_name = toBytes)]
+    pub fn to_bytes_js(&self) -> Vec<u8> {
+        self.to_uncompressed().to_vec()
+    }
+}
+
 /// This is an element of $\mathbb{G}_1$ represented in the projective
 /// coordinate space.
+#[wasm_bindgen]
 #[derive(Copy, Clone)]
 #[repr(transparent)]
 pub struct G1Projective(pub(crate) blst_p1);
 
+#[wasm_bindgen]
+impl G1Projective {
+    pub fn to_string(&self) -> String {
+        format!("G1Projective({:#?})", self.0)
+    }
+
+    /// Serialize to a Uint8Array (compressed format, 48 bytes)
+    #[wasm_bindgen(js_name = toBytes)]
+    pub fn to_bytes_js(&self) -> Vec<u8> {
+        self.to_compressed().to_vec()
+    }
+}
 impl fmt::Debug for G1Projective {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("G1Projective")
@@ -626,6 +669,7 @@ impl G1Projective {
         } else {
             scalars.len()
         };
+
         let points =
             unsafe { std::slice::from_raw_parts(points.as_ptr() as *const blst_p1, points.len()) };
 

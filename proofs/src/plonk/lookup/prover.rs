@@ -17,6 +17,7 @@ use crate::{
     transcript::{Hashable, Transcript},
     utils::arithmetic::{eval_polynomial, parallelize},
 };
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 #[cfg_attr(feature = "bench-internal", derive(Clone))]
 #[derive(Debug)]
@@ -309,11 +310,25 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
         let x_inv = domain.rotate_omega(x, Rotation::prev());
         let x_next = domain.rotate_omega(x, Rotation::next());
 
-        let product_eval = eval_polynomial(&self.product_poly, x);
-        let product_next_eval = eval_polynomial(&self.product_poly, x_next);
-        let permuted_input_eval = eval_polynomial(&self.permuted_input_poly, x);
-        let permuted_input_inv_eval = eval_polynomial(&self.permuted_input_poly, x_inv);
-        let permuted_table_eval = eval_polynomial(&self.permuted_table_poly, x);
+        // Evaluate all lookup polynomials
+        let polys_and_points = [
+            (&self.product_poly, x),
+            (&self.product_poly, x_next),
+            (&self.permuted_input_poly, x),
+            (&self.permuted_input_poly, x_inv),
+            (&self.permuted_table_poly, x),
+        ];
+
+        let evals: Vec<F> = polys_and_points
+            .par_iter()
+            .map(|(poly, point)| eval_polynomial(poly, *point))
+            .collect();
+
+        let product_eval = evals[0];
+        let product_next_eval = evals[1];
+        let permuted_input_eval = evals[2];
+        let permuted_input_inv_eval = evals[3];
+        let permuted_table_eval = evals[4];
 
         // Hash each advice evaluation
         for eval in iter::empty()

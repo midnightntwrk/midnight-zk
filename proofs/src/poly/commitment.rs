@@ -92,7 +92,7 @@ pub trait Guard<F: PrimeField, CS: PolynomialCommitmentScheme<F>>: Sized {
 }
 
 /// Interface for PCS params
-pub trait Params {
+pub trait Params: Send + Sync {
     /// Returns the max size of polynomials that these parameters can commit to
     fn max_k(&self) -> u32;
 
