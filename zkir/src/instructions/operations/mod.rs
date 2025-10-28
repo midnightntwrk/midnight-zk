@@ -156,6 +156,16 @@ pub enum Operation {
     ///  - `JubjubPoint` (requires exactly 32 bytes)
     ///  - `JubjubScalar`
     FromBytes(IrType),
+
+    /// Computes the Poseidon hash function on the given inputs, which must be
+    /// of type `Native`.
+    ///
+    /// Inputs:  >= 1 (variadic)
+    /// Outputs: 1
+    ///
+    /// See `midnight-zk/circuits/src/hash/poseidon/constants/blstrs` for more
+    /// details about this version of Poseidon.
+    Poseidon,
 }
 
 mod add;
@@ -168,6 +178,7 @@ mod is_equal;
 mod load;
 mod mul;
 mod neg;
+mod poseidon;
 mod publish;
 mod sub;
 
@@ -181,5 +192,6 @@ pub use is_equal::*;
 pub use load::*;
 pub use mul::*;
 pub use neg::*;
+pub use poseidon::*;
 pub use publish::*;
 pub use sub::*;

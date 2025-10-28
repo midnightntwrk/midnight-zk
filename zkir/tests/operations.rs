@@ -42,7 +42,8 @@ fn test_load() {
     // Arity validation: Load requires zero inputs.
     assert_invalid_arity(load_bool, vec!["inp"], vec!["out"]);
 
-    // Name uniqueness: Duplicate output names within the same instruction are rejected.
+    // Name uniqueness: Duplicate output names within the same instruction are
+    // rejected.
     test_without_witness(
         &[(load_bool, vec![], vec!["out", "out"])],
         Some(Error::DuplicatedName("out".to_string())),
@@ -50,7 +51,10 @@ fn test_load() {
 
     // Name uniqueness: Variable names must be unique across all instructions.
     test_without_witness(
-        &[(load_bool, vec![], vec!["out"]), (load_bool, vec![], vec!["out"])],
+        &[
+            (load_bool, vec![], vec!["out"]),
+            (load_bool, vec![], vec!["out"]),
+        ],
         Some(Error::DuplicatedName("out".to_string())),
     );
 
@@ -97,14 +101,20 @@ fn test_publish() {
         Some(Error::ParsingError(IrType::Bool, "x".to_string())),
     );
     test_without_witness(
-        &[(Load(IrType::Native), vec![], vec!["x"]), (Publish, vec!["x"], vec![])],
+        &[
+            (Load(IrType::Native), vec![], vec!["x"]),
+            (Publish, vec!["x"], vec![]),
+        ],
         None,
     );
 
     // Success case: Publishing a native field element as public input.
     let neg_one = -F::ONE;
     test_with_witness(
-        &[(Load(IrType::Native), vec![], vec!["x"]), (Publish, vec!["x"], vec![])],
+        &[
+            (Load(IrType::Native), vec![], vec!["x"]),
+            (Publish, vec!["x"], vec![]),
+        ],
         witness!("x" => neg_one),
         vec![(neg_one.into(), IrType::Native)],
         None,
@@ -190,7 +200,10 @@ fn test_is_equal() {
     assert_unsupported(
         IsEqual,
         vec![IrType::JubjubScalar, IrType::JubjubScalar],
-        &[(Load(IrType::JubjubScalar), vec![], vec!["s"]), (IsEqual, vec!["s", "s"], vec!["b"])],
+        &[
+            (Load(IrType::JubjubScalar), vec![], vec!["s"]),
+            (IsEqual, vec!["s", "s"], vec!["b"]),
+        ],
     );
 
     // Type compatibility: Both values must have the same type.
@@ -228,12 +241,18 @@ fn test_add() {
     assert_unsupported(
         Add,
         vec![IrType::JubjubScalar, IrType::JubjubScalar],
-        &[(Load(IrType::JubjubScalar), vec![], vec!["x"]), (Add, vec!["x", "x"], vec!["z"])],
+        &[
+            (Load(IrType::JubjubScalar), vec![], vec!["x"]),
+            (Add, vec!["x", "x"], vec!["z"]),
+        ],
     );
 
     // Success case: Adding large BigUint values.
     test_with_witness(
-        &[(Load(IrType::BigUint(1024)), vec![], vec!["x"]), (Add, vec!["x", "x"], vec!["z"])],
+        &[
+            (Load(IrType::BigUint(1024)), vec![], vec!["x"]),
+            (Add, vec!["x", "x"], vec!["z"]),
+        ],
         witness!("x" => biguint_from_hex("fffffffffffffffffffffffffffffffffffffffffffffffff")),
         vec![],
         None,
@@ -251,12 +270,18 @@ fn test_sub() {
     assert_unsupported(
         Sub,
         vec![IrType::JubjubScalar, IrType::JubjubScalar],
-        &[(Load(IrType::JubjubScalar), vec![], vec!["x"]), (Sub, vec!["x", "x"], vec!["z"])],
+        &[
+            (Load(IrType::JubjubScalar), vec![], vec!["x"]),
+            (Sub, vec!["x", "x"], vec!["z"]),
+        ],
     );
 
     // Success case: Subtracting BigUint values (x - x = 0).
     test_with_witness(
-        &[(Load(IrType::BigUint(1024)), vec![], vec!["x"]), (Sub, vec!["x", "x"], vec!["z"])],
+        &[
+            (Load(IrType::BigUint(1024)), vec![], vec!["x"]),
+            (Sub, vec!["x", "x"], vec!["z"]),
+        ],
         witness!("x" => biguint_from_hex("deadbeef")),
         vec![],
         None,
@@ -274,7 +299,10 @@ fn test_mul() {
     assert_unsupported(
         Mul,
         vec![IrType::JubjubScalar, IrType::JubjubScalar],
-        &[(Load(IrType::JubjubScalar), vec![], vec!["x"]), (Mul, vec!["x", "x"], vec!["z"])],
+        &[
+            (Load(IrType::JubjubScalar), vec![], vec!["x"]),
+            (Mul, vec!["x", "x"], vec!["z"]),
+        ],
     );
 
     // Success case: Scalar multiplication of a Jubjub point.
@@ -302,7 +330,10 @@ fn test_neg() {
     assert_unsupported(
         Neg,
         vec![IrType::JubjubScalar],
-        &[(Load(IrType::JubjubScalar), vec![], vec!["x"]), (Neg, vec!["x"], vec!["z"])],
+        &[
+            (Load(IrType::JubjubScalar), vec![], vec!["x"]),
+            (Neg, vec!["x"], vec!["z"]),
+        ],
     );
 
     // Success case: Negating a JubjubPoint and publishing the result.
@@ -321,12 +352,14 @@ fn test_neg() {
 
 #[test]
 fn test_inner_product() {
-    // Arity validation: InnerProduct requires an even, positive number of inputs and 1 output.
+    // Arity validation: InnerProduct requires an even, positive number of inputs
+    // and 1 output.
     assert_invalid_arity(InnerProduct, vec!["x"], vec!["z"]);
     assert_invalid_arity(InnerProduct, vec!["x", "y"], vec![]);
     test_static_pass(&[(InnerProduct, vec!["x", "y"], vec!["z"])], None);
 
-    // Type compatibility: All inputs must be compatible for inner product computation.
+    // Type compatibility: All inputs must be compatible for inner product
+    // computation.
     assert_unsupported(
         InnerProduct,
         vec![IrType::Native, IrType::BigUint(10)],
@@ -344,7 +377,9 @@ fn test_inner_product() {
             (Load(IrType::JubjubScalar), vec![], vec!["r"]),
             (InnerProduct, vec!["r", "s", "p", "q"], vec!["result"]),
         ],
-        Some(Error::Other("cannot convert JubjubPoint to \"JubjubScalar\"".to_string())),
+        Some(Error::Other(
+            "cannot convert JubjubPoint to \"JubjubScalar\"".to_string(),
+        )),
     );
 
     // Success case: Computing scalar-point inner product (MSM).
@@ -375,12 +410,16 @@ fn test_affine_coordinates() {
     assert_unsupported(
         AffineCoordinates,
         vec![IrType::Native],
-        &[(Load(IrType::Native), vec![], vec!["P"]), (AffineCoordinates, vec!["P"], vec!["x", "y"])],
+        &[
+            (Load(IrType::Native), vec![], vec!["P"]),
+            (AffineCoordinates, vec!["P"], vec!["x", "y"]),
+        ],
     );
 
-    // Success case: Extracting coordinates and verifying the Edwards curve equation.
-    // Edwards curve equation: y^2 - x^2 = 1 + d*x^2*y^2
-    const EDWARDS_D: &str = "Native:0x2a9318e74bfa2b48f5fd9207e6bd7fd4292d7f6d37579d2601065fd6d6343eb1";
+    // Success case: Extracting coordinates and verifying the Edwards curve
+    // equation. Edwards curve equation: y^2 - x^2 = 1 + d*x^2*y^2
+    const EDWARDS_D: &str =
+        "Native:0x2a9318e74bfa2b48f5fd9207e6bd7fd4292d7f6d37579d2601065fd6d6343eb1";
     let p = JubjubSubgroup::random(OsRng);
     test_with_witness(
         &[
@@ -411,33 +450,48 @@ fn test_into_bytes() {
     assert_unsupported(
         IntoBytes(1),
         vec![IrType::Bool],
-        &[(Load(IrType::Bool), vec![], vec!["b"]), (IntoBytes(1), vec!["b"], vec!["w"])],
+        &[
+            (Load(IrType::Bool), vec![], vec!["b"]),
+            (IntoBytes(1), vec!["b"], vec!["w"]),
+        ],
     );
 
     // Type support: Byte vectors cannot be converted to bytes (already bytes).
     assert_unsupported(
         IntoBytes(10),
         vec![IrType::Bytes(10)],
-        &[(Load(IrType::Bytes(10)), vec![], vec!["v"]), (IntoBytes(10), vec!["v"], vec!["w"])],
+        &[
+            (Load(IrType::Bytes(10)), vec![], vec!["v"]),
+            (IntoBytes(10), vec!["v"], vec!["w"]),
+        ],
     );
 
     // Length validation: JubjubPoint requires exactly 32 bytes, not 31.
     assert_unsupported(
         IntoBytes(31),
         vec![IrType::JubjubPoint],
-        &[(Load(IrType::JubjubPoint), vec![], vec!["p"]), (IntoBytes(31), vec!["p"], vec!["bytes"])],
+        &[
+            (Load(IrType::JubjubPoint), vec![], vec!["p"]),
+            (IntoBytes(31), vec!["p"], vec!["bytes"]),
+        ],
     );
 
     // Type support: JubjubScalar cannot be converted to bytes.
     assert_unsupported(
         IntoBytes(32),
         vec![IrType::JubjubScalar],
-        &[(Load(IrType::JubjubScalar), vec![], vec!["s"]), (IntoBytes(32), vec!["s"], vec!["bytes"])],
+        &[
+            (Load(IrType::JubjubScalar), vec![], vec!["s"]),
+            (IntoBytes(32), vec!["s"], vec!["bytes"]),
+        ],
     );
 
     // Success case: Converting a small BigUint to a single byte.
     test_with_witness(
-        &[(Load(IrType::BigUint(16)), vec![], vec!["n"]), (IntoBytes(1), vec!["n"], vec!["n_bytes"])],
+        &[
+            (Load(IrType::BigUint(16)), vec![], vec!["n"]),
+            (IntoBytes(1), vec!["n"], vec!["n_bytes"]),
+        ],
         witness!("n" => BigUint::from(255u64)),
         vec![],
         None,
@@ -449,7 +503,10 @@ fn test_from_bytes() {
     // Arity validation: FromBytes requires exactly 1 input and 1 output.
     assert_invalid_arity(FromBytes(IrType::Native), vec!["bytes"], vec!["x", "y"]);
     assert_invalid_arity(FromBytes(IrType::Bool), vec!["bytes"], vec![]);
-    test_static_pass(&[(FromBytes(IrType::BigUint(1024)), vec!["bytes"], vec!["N"])], None);
+    test_static_pass(
+        &[(FromBytes(IrType::BigUint(1024)), vec!["bytes"], vec!["N"])],
+        None,
+    );
 
     // Type support: Bytes cannot be parsed as Booleans.
     assert_unsupported(
@@ -485,8 +542,8 @@ fn test_from_bytes() {
 
 #[test]
 fn test_bytes_conversion_round_trip() {
-    // Test round-trip conversions: value -> bytes -> value and bytes -> value -> bytes
-    // This ensures IntoBytes and FromBytes are consistent inverses.
+    // Test round-trip conversions: value -> bytes -> value and bytes -> value ->
+    // bytes This ensures IntoBytes and FromBytes are consistent inverses.
     [
         (IrType::Native, F::random(OsRng).into(), 32),
         (IrType::BigUint(64), biguint_from_hex("abcd1357").into(), 8),
@@ -526,6 +583,36 @@ fn test_bytes_conversion_round_trip() {
     });
 }
 
+#[test]
+fn test_poseidon() {
+    // Arity validation: Poseidon requires some inputs and 1 output.
+    assert_invalid_arity(Poseidon, vec!["x"], vec!["h1", "h2"]);
+    assert_invalid_arity(Poseidon, vec![], vec!["h"]);
+    test_static_pass(&[(Poseidon, vec!["x", "y"], vec!["h"])], None);
+
+    // Type support: Poseidon expects Natives.
+    test_without_witness(
+        &[
+            (Load(IrType::Bytes(10)), vec![], vec!["bytes"]),
+            (Poseidon, vec!["bytes"], vec!["h"]),
+        ],
+        Some(Error::Other(
+            "cannot convert Bytes(10) to \"Native\"".into(),
+        )),
+    );
+
+    // Success case: hashing 3 inputs.
+    test_with_witness(
+        &[
+            (Load(IrType::Native), vec![], vec!["x", "y", "z"]),
+            (Poseidon, vec!["x", "y", "z"], vec!["h"]),
+        ],
+        witness!("x" => F::random(OsRng), "y" => F::random(OsRng), "z" => F::random(OsRng)),
+        vec![],
+        None,
+    );
+}
+
 /// Converts raw instruction tuples into structured `Instruction` objects.
 fn build_instructions(
     raw_instructions: &[(Operation, Vec<&'static str>, Vec<&'static str>)],
@@ -547,7 +634,8 @@ fn build_instructions(
 /// - Type system constraints
 /// - Instruction format correctness
 ///
-/// Use this when testing properties that can be validated before witness assignment.
+/// Use this when testing properties that can be validated before witness
+/// assignment.
 fn test_static_pass(
     raw_instructions: &[(Operation, Vec<&'static str>, Vec<&'static str>)],
     expected_error: Option<Error>,
@@ -561,13 +649,14 @@ fn test_static_pass(
 
 /// Tests circuit structure without concrete witness values.
 ///
-/// This function validates the circuit synthesis with unknown witness values, checking:
+/// This function validates the circuit synthesis with unknown witness values,
+/// checking:
 /// - Variable name uniqueness and scoping
 /// - Type compatibility between operations
 /// - Circuit structure consistency
 ///
-/// Use this when testing properties that depend on the circuit structure but not on
-/// specific witness values.
+/// Use this when testing properties that depend on the circuit structure but
+/// not on specific witness values.
 fn test_without_witness(
     raw_instructions: &[(Operation, Vec<&'static str>, Vec<&'static str>)],
     expected_error: Option<Error>,
@@ -583,15 +672,16 @@ fn test_without_witness(
     );
 }
 
-/// Tests full end-to-end proof generation and verification with concrete witness values.
+/// Tests full end-to-end proof generation and verification with concrete
+/// witness values.
 ///
 /// This function performs a complete proof lifecycle:
 /// 1. Off-circuit computation to derive public inputs
 /// 2. Circuit synthesis with concrete witness values
 /// 3. Proof generation using KZG commitment scheme
 ///
-/// Use this for comprehensive testing that validates both off-circuit and in-circuit
-/// behavior, including constraint satisfaction and proof soundness.
+/// Use this for comprehensive testing that validates both off-circuit and
+/// in-circuit behavior, including constraint satisfaction and proof soundness.
 ///
 /// # Parameters
 /// - `raw_instructions`: The ZKIR program to test

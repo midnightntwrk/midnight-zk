@@ -4,7 +4,8 @@ use crate::{
     instructions::{
         operations::{
             add_offcircuit, affine_coordinates_offcircuit, inner_product_offcircuit,
-            load_offcircuit, mul_offcircuit, neg_offcircuit, sub_offcircuit, Operation::*,
+            load_offcircuit, mul_offcircuit, neg_offcircuit, poseidon_offcircuit, sub_offcircuit,
+            Operation::*,
         },
         Instruction,
     },
@@ -89,6 +90,7 @@ impl Parser {
                     )));
                 }
             }
+            Poseidon => vec![poseidon_offcircuit(&inps)?],
         };
 
         insert_many(&mut self.memory, &instruction.outputs, &outputs)
