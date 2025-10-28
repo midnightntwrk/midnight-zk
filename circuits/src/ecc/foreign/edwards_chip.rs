@@ -30,13 +30,16 @@ use {crate::testing_utils::Sampleable, rand::RngCore};
 
 use crate::{
     ecc::curves::{CircuitCurve, EdwardsCurve},
-    field::foreign::{
-        field_chip::{FieldChip, FieldChipConfig},
-        params::FieldEmulationParams,
+    field::{
+        foreign::{
+            field_chip::{FieldChip, FieldChipConfig},
+            params::FieldEmulationParams,
+        },
+        AssignedNative,
     },
     instructions::{
-        ArithInstructions, AssignmentInstructions, NativeInstructions, ScalarFieldInstructions,
-        ZeroInstructions,
+        ArithInstructions, AssignmentInstructions, NativeInstructions, PublicInputInstructions,
+        ScalarFieldInstructions, ZeroInstructions,
     },
     types::{AssignedBit, AssignedField, InnerConstants, InnerValue, Instantiable},
 };
@@ -218,20 +221,16 @@ where
         layouter: &mut impl Layouter<F>,
         value: Value<C::CryptographicGroup>,
     ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
-        // Recreate the curve equation using the self.base_field_chip.
+        // Recreate twisted edwards curve equation over foreign
+        // field Fq with x,y in Fq emulated over
         //
-        // Twisted edwards curve equation over foreign field Fq with x,y \in Fq:
+        // a*x^2 + y^2 - 1 - d*x^2 *y^2 = 0
         //
-        // a*x^2 + y^2 - 1 + d*x^2 *y^2 = 0
-        //
-        // a = 0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffec
-        // d = 0x52036cee2b6ffe738cc740797779e89800700a4d4141d8ab75eb4dca135978a3
-        // q = 0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed
-        //
-        // Emulated over Fr, the BLS12-381 scalar field.
-        let valx = value.map(|v| v.into().coordinates().expect("curve-point").0);
+        let base_chip = self.base_field_chip();
 
-        let valy = value.map(|v| v.into().coordinates().expect("curve-point").1);
+        let valx = value.map(|v| v.into().coordinates().expect("assign: valid curve point").0);
+
+        let valy = value.map(|v| v.into().coordinates().expect("assign: valid curve point").1);
 
         let x: AssignedField<F, <C as CircuitCurve>::Base, B> =
             self.base_field_chip().assign(layouter, valx)?;
@@ -241,24 +240,21 @@ where
             self.base_field_chip.assign(layouter, valy)?;
         // let y = self.base_field_chip().normalize(layouter, &y)?;
 
-        let x_x = self.base_field_chip().mul(layouter, &x, &x, None)?;
+        let x_x = base_chip.mul(layouter, &x, &x, None)?;
         // let x_x = self.base_field_chip().normalize(layouter, &x_x)?;
 
-        let y_y = self.base_field_chip().mul(layouter, &y, &y, None)?;
+        let y_y = base_chip.mul(layouter, &y, &y, None)?;
         // let y_y = self.base_field_chip().normalize(layouter, &y_y)?;
 
-        // TODO: multiply x_x_y_y with d
-        let d_x_x_y_y = self.base_field_chip().mul(layouter, &x_x, &y_y, None)?;
-
-        let one: AssignedField<F, <C as CircuitCurve>::Base, B> =
-            self.base_field_chip().assign_fixed(layouter, <C as CircuitCurve>::Base::ONE)?;
-
-        // TODO: multiply x_x with constant a
-        let id = self.base_field_chip().add(layouter, &x_x, &y_y)?;
-        let id = self.base_field_chip().sub(layouter, &id, &one)?;
-        let id = self.base_field_chip().add(layouter, &id, &one)?;
-
-        let id = self.base_field_chip().sub(layouter, &id, &d_x_x_y_y)?;
+        // Computes a*x^2 + y^2 - 1 - d*x^2*y^2
+        let id = base_chip.add_and_mul(
+            layouter,
+            (C::A, &x_x),
+            (C::Base::ONE, &y_y),
+            (C::Base::ZERO, &x_x),
+            -C::Base::ONE,
+            -C::D,
+        )?;
 
         self.base_field_chip().assert_zero(layouter, &id)?;
 
@@ -276,60 +272,62 @@ where
             let coordinates = constant
                 .into()
                 .coordinates()
-                .expect("assign_fixed_point_unchecked: invalid point given");
+                .expect("assign fixed unchecked: valid curve point");
             (coordinates.0, coordinates.1)
         };
         let x = self.base_field_chip().assign_fixed(layouter, x)?;
         let y = self.base_field_chip().assign_fixed(layouter, y)?;
-        let p = AssignedForeignEdwardsPoint::<F, C, B> {
+
+        Ok(AssignedForeignEdwardsPoint::<F, C, B> {
             point: Value::known(constant),
             x,
             y,
-        };
-        Ok(p)
+        })
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use group::Group;
-    use midnight_curves::{Fq as BlsScalar, G1Projective as BlsG1};
-
-    use super::*;
-    use crate::{
-        field::{
-            decomposition::chip::P2RDecompositionChip, foreign::params::MultiEmulationParams,
-            NativeChip, NativeGadget,
-        },
-        instructions::{assertions, control_flow, ecc, equality, public_input, zero},
-    };
-
-    type Native<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
-
-    type EmulatedField<F, C> = FieldChip<F, <C as Group>::Scalar, MultiEmulationParams, Native<F>>;
-
-    macro_rules! test_generic {
-        ($mod:ident, $op:ident, $native:ty, $curve:ty, $scalar_field:ty, $name:expr) => {
-            $mod::tests::$op::<
-                $native,
-                AssignedForeignEdwardsPoint<$native, $curve, MultiEmulationParams>,
-                ForeignEdwardsEccChip<
-                    $native,
-                    $curve,
-                    MultiEmulationParams,
-                    $scalar_field,
-                    Native<$native>,
-                >,
-            >($name);
-        };
+impl<F, C, B, S, N> PublicInputInstructions<F, AssignedForeignEdwardsPoint<F, C, B>>
+    for ForeignEdwardsEccChip<F, C, B, S, N>
+where
+    F: PrimeField,
+    C: EdwardsCurve,
+    B: FieldEmulationParams<F, C::Base>,
+    S: ScalarFieldInstructions<F>,
+    S::Scalar: InnerValue<Element = C::Scalar>,
+    N: NativeInstructions<F> + PublicInputInstructions<F, AssignedBit<F>>,
+{
+    fn as_public_input(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        p: &AssignedForeignEdwardsPoint<F, C, B>,
+    ) -> Result<Vec<AssignedNative<F>>, Error> {
+        Ok([
+            self.base_field_chip.as_public_input(layouter, &p.x)?.as_slice(),
+            self.base_field_chip.as_public_input(layouter, &p.y)?.as_slice(),
+        ]
+        .concat())
     }
 
-    macro_rules! test {
-        ($mod:ident, $op:ident) => {
-            #[test]
-            fn $op() {
-                test_generic!($mod, $op, BlsScalar, Secp256k1, EmulatedField<BlsScalar, Secp256k1>, "foreign_ecc_ed25519");
-            }
-        };
+    fn constrain_as_public_input(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        assigned: &AssignedForeignEdwardsPoint<F, C, B>,
+    ) -> Result<(), Error> {
+        self.as_public_input(layouter, assigned)?
+            .iter()
+            .try_for_each(|c| self.native_gadget.constrain_as_public_input(layouter, c))
+    }
+
+    fn assign_as_public_input(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        value: Value<C::CryptographicGroup>,
+    ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
+        // Given our optimized way of constraining a point as public input, we
+        // cannot optimize the direct assignment as PI. We just compose `assign`
+        // with `constrain_as_public_input`.
+        let point = self.assign(layouter, value)?;
+        self.constrain_as_public_input(layouter, &point)?;
+        Ok(point)
     }
 }
