@@ -1,0 +1,110 @@
+use std::fmt::Debug;
+
+use ff::PrimeField;
+use halo2_proofs::circuit::{AssignedCell, Cell, Value};
+#[cfg(any(test, feature = "testing"))]
+use rand::RngCore;
+
+use crate::types::AssignedNative;
+
+/// Trait for dealing with public inputs. `Instantiable` is implemented on
+/// off-circuit types to determine the way these types are transformed into
+/// vectors of native values.
+/// Analogous functions exists for constraining public inputs in-circuit in
+/// the [crate::instructions::PublicInputInstructions] trait.
+pub trait Instantiable<F: PrimeField>: InnerValue {
+    /// This function is the off-circuit analog of
+    /// [crate::instructions::PublicInputInstructions::as_public_input].
+    fn as_public_input(element: &<Self as InnerValue>::Element) -> Vec<F>;
+}
+
+/// Trait for accessing the value inside assigned circuit elements.
+pub trait InnerValue: Clone + Debug {
+    /// Represents the unassigned type corresponding to the [InnerValue]
+    type Element: Clone + Debug;
+
+    /// Returns the value of the assigned element.
+    fn value(&self) -> Value<Self::Element>;
+}
+
+/// Trait for accessing constant values of the inner value type of an assigned
+/// element.
+pub trait InnerConstants: InnerValue {
+    /// The zero of Self::Element (additive identity).
+    fn inner_zero() -> Self::Element;
+
+    /// The unit of Self::Element (multiplicative identity and/or additive
+    /// generator).
+    fn inner_one() -> Self::Element;
+}
+
+impl<F: PrimeField> Instantiable<F> for AssignedNative<F> {
+    fn as_public_input(element: &F) -> Vec<F> {
+        vec![*element]
+    }
+}
+
+impl<F: PrimeField> InnerValue for AssignedNative<F> {
+    type Element = F;
+    #[must_use]
+    fn value(&self) -> Value<F> {
+        self.value().cloned()
+    }
+}
+
+impl<F: PrimeField> InnerConstants for AssignedNative<F> {
+    fn inner_zero() -> F {
+        F::ZERO
+    }
+
+    fn inner_one() -> F {
+        F::ONE
+    }
+}
+
+#[cfg(any(test, feature = "testing"))]
+/// A trait for types that can be inverted. This should only
+/// be used for testing.
+pub trait Invertible {
+    /// Returns the multiplicative inverse of the given value.
+    ///
+    /// # Panics
+    ///
+    /// If the given value does not have an inverse.
+    fn invert(&self) -> Self;
+}
+
+#[cfg(any(test, feature = "testing"))]
+impl<F: PrimeField> Invertible for F {
+    fn invert(&self) -> F {
+        self.invert().unwrap()
+    }
+}
+
+#[cfg(any(test, feature = "testing"))]
+/// A trait for types that can be sampled at random. This should only
+/// be used for testing.
+pub trait Sampleable: InnerValue {
+    /// Returns a random inner element, given a random number generator.
+    fn sample_inner(rng: impl RngCore) -> Self::Element;
+}
+
+#[cfg(any(test, feature = "testing"))]
+impl<F: PrimeField> Sampleable for AssignedNative<F> {
+    fn sample_inner(rng: impl RngCore) -> F {
+        F::random(rng)
+    }
+}
+
+/// Trait for a variable in the circuit. This trait allows us to design circuit
+/// over variables that implement `From` for assigned cell.
+pub trait Var<F: PrimeField>: InnerValue + From<AssignedCell<F, F>> {
+    /// The cell at which this variable was allocated.
+    fn cell(&self) -> Cell;
+}
+
+impl<F: PrimeField> Var<F> for AssignedCell<F, F> {
+    fn cell(&self) -> Cell {
+        self.cell()
+    }
+}

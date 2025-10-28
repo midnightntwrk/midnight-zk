@@ -1,0 +1,416 @@
+//! Poseidon hash implementation
+
+pub(crate) mod p128pow5t3;
+
+use std::{convert::TryInto, fmt, iter, marker::PhantomData};
+
+use ff::PrimeField;
+use halo2_proofs::arithmetic::Field;
+
+/// The type used to hold permutation state.
+pub type State<F, const T: usize> = [F; T];
+
+/// The type used to hold sponge rate.
+pub(crate) type SpongeRate<F, const RATE: usize> = [Option<F>; RATE];
+
+/// The type used to hold the MDS matrix and its inverse.
+pub type Mds<F, const T: usize> = [[F; T]; T];
+
+/// A specification for a Poseidon permutation.
+pub trait Spec<F: Field, const T: usize, const RATE: usize>: fmt::Debug {
+    /// The number of full rounds for this specification.
+    ///
+    /// This must be an even number.
+    fn full_rounds() -> usize;
+
+    /// The number of partial rounds for this specification.
+    fn partial_rounds() -> usize;
+
+    /// The S-box for this specification.
+    fn sbox(val: F) -> F {
+        let val_sqr = val.square();
+
+        val_sqr.square() * val
+    }
+
+    /// Generates `(round_constants, mds, mds^-1)` corresponding to this
+    /// specification.
+    fn constants() -> (Vec<[F; T]>, Mds<F, T>, Mds<F, T>);
+}
+
+/// Runs the Poseidon permutation on the given state.
+pub fn permute<F: Field, S: Spec<F, T, RATE>, const T: usize, const RATE: usize>(
+    state: &mut State<F, T>,
+    mds: &Mds<F, T>,
+    round_constants: &[[F; T]],
+) {
+    let r_f = S::full_rounds() / 2;
+    let r_p = S::partial_rounds();
+
+    let apply_mds = |state: &mut State<F, T>| {
+        let mut new_state = [F::ZERO; T];
+        // Matrix multiplication
+        #[allow(clippy::needless_range_loop)]
+        for i in 0..T {
+            for j in 0..T {
+                new_state[i] += mds[i][j] * state[j];
+            }
+        }
+        *state = new_state;
+    };
+
+    let full_round = |state: &mut State<F, T>, rcs: &[F; T]| {
+        for (word, rc) in state.iter_mut().zip(rcs.iter()) {
+            *word = S::sbox(*word + rc);
+        }
+        apply_mds(state);
+    };
+
+    let part_round = |state: &mut State<F, T>, rcs: &[F; T]| {
+        for (word, rc) in state.iter_mut().zip(rcs.iter()) {
+            *word += rc;
+        }
+        // In a partial round, the S-box is only applied to the first state word.
+        state[0] = S::sbox(state[0]);
+        apply_mds(state);
+    };
+
+    iter::empty()
+        .chain(iter::repeat(&full_round as &dyn Fn(&mut State<F, T>, &[F; T])).take(r_f))
+        .chain(iter::repeat(&part_round as &dyn Fn(&mut State<F, T>, &[F; T])).take(r_p))
+        .chain(iter::repeat(&full_round as &dyn Fn(&mut State<F, T>, &[F; T])).take(r_f))
+        .zip(round_constants.iter())
+        .fold(state, |state, (round, rcs)| {
+            round(state, rcs);
+            state
+        });
+}
+
+fn poseidon_sponge<F: Field, S: Spec<F, T, RATE>, const T: usize, const RATE: usize>(
+    state: &mut State<F, T>,
+    input: Option<&Absorbing<F, RATE>>,
+    mds_matrix: &Mds<F, T>,
+    round_constants: &[[F; T]],
+) -> Squeezing<F, RATE> {
+    if let Some(Absorbing(input)) = input {
+        // `Iterator::zip` short-circuits when one iterator completes, so this will only
+        // mutate the rate portion of the state.
+        for (word, value) in state.iter_mut().zip(input.iter()) {
+            *word += value.expect("poseidon_sponge is called with a padded input");
+        }
+    }
+
+    permute::<F, S, T, RATE>(state, mds_matrix, round_constants);
+
+    let mut output = [None; RATE];
+    for (word, value) in output.iter_mut().zip(state.iter()) {
+        *word = Some(*value);
+    }
+    Squeezing(output)
+}
+
+mod private {
+    pub trait SealedSpongeMode {}
+    impl<F, const RATE: usize> SealedSpongeMode for super::Absorbing<F, RATE> {}
+    impl<F, const RATE: usize> SealedSpongeMode for super::Squeezing<F, RATE> {}
+}
+
+/// The state of the `Sponge`.
+pub trait SpongeMode: private::SealedSpongeMode {}
+
+/// The absorbing state of the `Sponge`.
+#[derive(Debug, Clone)]
+pub struct Absorbing<F, const RATE: usize>(pub SpongeRate<F, RATE>);
+
+/// The squeezing state of the `Sponge`.
+#[derive(Debug)]
+pub struct Squeezing<F, const RATE: usize>(pub SpongeRate<F, RATE>);
+
+impl<F, const RATE: usize> SpongeMode for Absorbing<F, RATE> {}
+impl<F, const RATE: usize> SpongeMode for Squeezing<F, RATE> {}
+
+impl<F: fmt::Debug, const RATE: usize> Absorbing<F, RATE> {
+    /// Initialize the state with `val`.
+    pub fn init_with(val: F) -> Self {
+        Self(
+            iter::once(Some(val))
+                .chain((1..RATE).map(|_| None))
+                .collect::<Vec<_>>()
+                .try_into()
+                .unwrap(),
+        )
+    }
+}
+
+#[derive(Clone, Debug)]
+/// A Poseidon sponge.
+pub struct Sponge<F: Field, S: Spec<F, T, RATE>, M: SpongeMode, const T: usize, const RATE: usize> {
+    mode: M,
+    state: State<F, T>,
+    mds_matrix: Mds<F, T>,
+    round_constants: Vec<[F; T]>,
+    _marker: PhantomData<S>,
+}
+
+impl<F: Field, S: Spec<F, T, RATE>, const T: usize, const RATE: usize>
+    Sponge<F, S, Absorbing<F, RATE>, T, RATE>
+{
+    /// Constructs a new sponge for the given Poseidon specification.
+    pub fn new(initial_capacity_element: F) -> Self {
+        let (round_constants, mds_matrix, _) = S::constants();
+
+        let mode = Absorbing([None; RATE]);
+        let mut state = [F::ZERO; T];
+        state[RATE] = initial_capacity_element;
+
+        Sponge {
+            mode,
+            state,
+            mds_matrix,
+            round_constants,
+            _marker: PhantomData,
+        }
+    }
+
+    /// Absorbs an element into the sponge.
+    pub fn absorb(&mut self, value: F) {
+        for entry in self.mode.0.iter_mut() {
+            if entry.is_none() {
+                *entry = Some(value);
+                return;
+            }
+        }
+
+        // We've already absorbed as many elements as we can
+        let _ = poseidon_sponge::<F, S, T, RATE>(
+            &mut self.state,
+            Some(&self.mode),
+            &self.mds_matrix,
+            &self.round_constants,
+        );
+        self.mode = Absorbing::init_with(value);
+    }
+
+    /// Transitions the sponge into its squeezing state.
+    pub fn finish_absorbing(mut self) -> Sponge<F, S, Squeezing<F, RATE>, T, RATE> {
+        let mode = poseidon_sponge::<F, S, T, RATE>(
+            &mut self.state,
+            Some(&self.mode),
+            &self.mds_matrix,
+            &self.round_constants,
+        );
+
+        Sponge {
+            mode,
+            state: self.state,
+            mds_matrix: self.mds_matrix,
+            round_constants: self.round_constants,
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<F: Field, S: Spec<F, T, RATE>, const T: usize, const RATE: usize>
+    Sponge<F, S, Squeezing<F, RATE>, T, RATE>
+{
+    /// Squeezes an element from the sponge.
+    pub fn squeeze(&mut self) -> F {
+        loop {
+            for entry in self.mode.0.iter_mut() {
+                if let Some(e) = entry.take() {
+                    return e;
+                }
+            }
+
+            // We've already squeezed out all available elements
+            self.mode = poseidon_sponge::<F, S, T, RATE>(
+                &mut self.state,
+                None,
+                &self.mds_matrix,
+                &self.round_constants,
+            );
+        }
+    }
+}
+
+/// A domain in which a Poseidon hash function is being used.
+pub trait Domain<F: Field, const RATE: usize>: std::fmt::Debug + Clone {
+    /// Iterator that outputs padding field elements.
+    type Padding: IntoIterator<Item = F>;
+
+    /// The name of this domain, for debug formatting purposes.
+    fn name(&self) -> String;
+
+    /// The initial capacity element, encoding this domain.
+    fn initial_capacity_element(&self) -> F;
+
+    /// Returns the padding to be appended to the input.
+    fn padding(&self, input_len: usize) -> Self::Padding;
+}
+
+/// A Poseidon hash function used with constant input length.
+///
+/// Domain specified in [ePrint 2019/458 section 4.2](https://eprint.iacr.org/2019/458.pdf).
+#[derive(Clone, Copy, Debug)]
+pub struct ConstantLength(pub usize);
+
+impl<F: PrimeField, const RATE: usize> Domain<F, RATE> for ConstantLength {
+    type Padding = iter::Take<iter::Repeat<F>>;
+
+    fn name(&self) -> String {
+        format!("ConstantLength({})", self.0)
+    }
+
+    fn initial_capacity_element(&self) -> F {
+        // Capacity value is $length \cdot 2^64 + (o-1)$ where o is the output length.
+        // We hard-code an output length of 1.
+        F::from_u128((self.0 as u128) << 64)
+    }
+
+    fn padding(&self, input_len: usize) -> Self::Padding {
+        assert_eq!(input_len, self.0);
+        // For constant-input-length hashing, we pad the input with zeroes to a multiple
+        // of RATE. On its own this would not be sponge-compliant padding, but the
+        // Poseidon authors encode the constant length into the capacity element,
+        // ensuring that inputs of different lengths do not share the same
+        // permutation.
+        let k = (self.0 + RATE - 1) / RATE;
+        iter::repeat(F::ZERO).take(k * RATE - self.0)
+    }
+}
+
+#[derive(Clone)]
+/// A Poseidon hash function, built around a sponge.
+pub struct Poseidon<
+    F: Field,
+    S: Spec<F, T, RATE>,
+    D: Domain<F, RATE>,
+    const T: usize,
+    const RATE: usize,
+> {
+    sponge: Sponge<F, S, Absorbing<F, RATE>, T, RATE>,
+    domain: D,
+}
+
+impl<F: Field, S: Spec<F, T, RATE>, D: Domain<F, RATE>, const T: usize, const RATE: usize>
+    fmt::Debug for Poseidon<F, S, D, T, RATE>
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Hash")
+            .field("width", &T)
+            .field("rate", &RATE)
+            .field("R_F", &S::full_rounds())
+            .field("R_P", &S::partial_rounds())
+            .field("domain", &self.domain.name())
+            .finish()
+    }
+}
+
+impl<F: Field, S: Spec<F, T, RATE>, D: Domain<F, RATE>, const T: usize, const RATE: usize>
+    Poseidon<F, S, D, T, RATE>
+{
+    /// Initializes a new hasher.
+    pub fn init(domain: D) -> Self {
+        Poseidon {
+            sponge: Sponge::new(domain.initial_capacity_element()),
+            domain,
+        }
+    }
+}
+
+impl<F: PrimeField, S: Spec<F, T, RATE>, const T: usize, const RATE: usize>
+    Poseidon<F, S, ConstantLength, T, RATE>
+{
+    /// Hashes the given input.
+    pub fn hash(mut self, message: &[F]) -> F {
+        for value in message
+            .iter()
+            .cloned()
+            .chain(<ConstantLength as Domain<F, RATE>>::padding(
+                &self.domain,
+                message.len(),
+            ))
+        {
+            self.sponge.absorb(value);
+        }
+        self.sponge.finish_absorbing().squeeze()
+    }
+}
+
+/// A Poseidon hash function used with variable input length.
+/// The initial capacity element is set to zero, and therefore the
+/// padding needs guarantee that different sized inputs do not
+/// share the same permutation.
+#[derive(Clone, Copy, Debug)]
+pub struct VariableLength;
+
+impl<F: PrimeField, const RATE: usize> Domain<F, RATE> for VariableLength {
+    type Padding = Vec<F>;
+
+    fn name(&self) -> String {
+        "VariableLength".to_string()
+    }
+
+    fn initial_capacity_element(&self) -> F {
+        F::from_u128(1 << 64)
+    }
+
+    fn padding(&self, input_len: usize) -> Self::Padding {
+        // we have to account for the '1' that is always padded
+        let input_len = input_len + 1;
+        // For variable-input-length hashing, we pad the input with a one, and then
+        // with zeroes to a multiple of RATE.
+        let k = (input_len + RATE - 1) / RATE;
+
+        let mut padding = vec![F::ONE];
+        for _ in 0..(k * RATE - input_len) {
+            padding.push(F::ZERO);
+        }
+
+        padding
+    }
+}
+
+impl<F: PrimeField, S: Spec<F, T, RATE>, const T: usize, const RATE: usize>
+    Poseidon<F, S, VariableLength, T, RATE>
+{
+    /// Hashes the given input.
+    pub fn hash(mut self, message: Vec<F>) -> F {
+        assert_ne!(message.len(), 0);
+        for value in message.clone().into_iter() {
+            self.sponge.absorb(value);
+        }
+
+        for pad in
+            <VariableLength as Domain<F, RATE>>::padding(&self.domain, message.len()).into_iter()
+        {
+            self.sponge.absorb(pad);
+        }
+
+        self.sponge.finish_absorbing().squeeze()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use ff::PrimeField;
+    use halo2curves::pasta::pallas;
+
+    use super::{super::P128Pow5T3 as OrchardNullifier, permute, ConstantLength, Poseidon, Spec};
+
+    #[test]
+    fn orchard_spec_equivalence() {
+        let message = [pallas::Base::from(6), pallas::Base::from(42)];
+
+        let (round_constants, mds, _) = OrchardNullifier::constants();
+
+        let hasher = Poseidon::<_, OrchardNullifier, _, 3, 2>::init(ConstantLength(2));
+        let result = hasher.hash(&message);
+
+        // The result should be equivalent to just directly applying the permutation and
+        // taking the first state element as the output.
+        let mut state = [message[0], message[1], pallas::Base::from_u128(2 << 64)];
+        permute::<_, OrchardNullifier, 3, 2>(&mut state, &mds, &round_constants);
+        assert_eq!(state[0], result);
+    }
+}
