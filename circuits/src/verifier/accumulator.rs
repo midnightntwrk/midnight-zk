@@ -68,8 +68,10 @@ pub struct Accumulator<S: SelfEmulation> {
 /// Type for in-circuit accumulators (in-circuit analog of `Accumulator`).
 #[derive(Clone, Debug)]
 pub struct AssignedAccumulator<C: SelfEmulation> {
-    pub(crate) lhs: AssignedMsm<C>,
-    pub(crate) rhs: AssignedMsm<C>,
+    /// TODO
+    pub lhs: AssignedMsm<C>,
+    /// TODO
+    pub rhs: AssignedMsm<C>,
 }
 
 impl<S: SelfEmulation> From<DualMSM<S::Engine>> for Accumulator<S> {
@@ -121,8 +123,9 @@ impl<S: SelfEmulation> Accumulator<S> {
         self.rhs.collapse();
     }
 
-    /// Batches several accumulators together. With high confidence, the resulting
-    /// acc will satisfy the invariant iff all the accumulators individually do.
+    /// Batches several accumulators together. With high confidence, the
+    /// resulting acc will satisfy the invariant iff all the accumulators
+    /// individually do.
     pub fn accumulate(accs: &[Self]) -> Self {
         let hash_input =
             accs.iter().flat_map(AssignedAccumulator::as_public_input).collect::<Vec<_>>();

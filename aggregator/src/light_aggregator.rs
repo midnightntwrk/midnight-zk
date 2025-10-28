@@ -56,12 +56,13 @@ use midnight_circuits::{
         PoseidonChip, PoseidonConfig, NB_POSEIDON_ADVICE_COLS, NB_POSEIDON_FIXED_COLS,
     },
     instructions::{AssignmentInstructions, PublicInputInstructions},
-    types::{ComposableChip, InnerValue, Instantiable},
+    types::{ComposableChip, Instantiable},
     verifier::{
         Accumulator, AssignedAccumulator, AssignedMsm, AssignedVk, Msm, SelfEmulation,
         VerifierGadget,
     },
 };
+use midnight_curves::G1Projective;
 use midnight_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
     plonk::{
@@ -215,7 +216,9 @@ impl<const NB_PROOFS: usize> Circuit<F> for AggregatorCircuit<NB_PROOFS> {
             &sponge_chip,
             &proof_accs,
         )?;
-        dbg!(&acc);
+        for b in acc.rhs.bases.iter() {
+            dbg!(b);
+        }
 
         verifier_chip.constrain_acc_as_public_input_with_committed_scalars(&mut layouter, &acc)?;
 
@@ -348,7 +351,22 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
             &self.inner_vk,
         ));
 
-        // dbg!(&acc.lhs().eval(&fixed_bases).to_input());
+        for b in acc.rhs().bases {
+            dbg!(Hashable::<LightPoseidonFS::<midnight_curves::Fq>>::to_input(&b));
+        }
+
+        dbg!(
+            Hashable::<LightPoseidonFS::<midnight_curves::Fq>>::to_input(&G1Projective::identity())
+        );
+        dbg!(
+            Hashable::<LightPoseidonFS::<midnight_curves::Fq>>::to_input(&G1Projective::generator())
+        );
+        dbg!(
+            Hashable::<LightPoseidonFS::<midnight_curves::Fq>>::to_input(
+                &(-G1Projective::generator())
+            )
+        );
+
         assert!(acc.check(&srs.s_g2().into(), &fixed_bases)); // Sanity check
 
         // We now proceed to aggregating all proofs

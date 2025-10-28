@@ -48,7 +48,8 @@ use crate::{
 /// (`scalars` and `bases` are guaranteed to have the same length.)
 #[derive(Clone, Debug)]
 pub struct Msm<S: SelfEmulation> {
-    bases: Vec<S::C>,
+    /// TODO
+    pub bases: Vec<S::C>,
     scalars: Vec<S::F>,
     fixed_base_scalars: BTreeMap<String, S::F>,
 }
@@ -58,7 +59,8 @@ pub struct Msm<S: SelfEmulation> {
 /// This is the in-circuit analog of `Msm<C>`.
 #[derive(Clone, Debug)]
 pub struct AssignedMsm<S: SelfEmulation> {
-    bases: Vec<S::AssignedPoint>,
+    /// TODO
+    pub bases: Vec<S::AssignedPoint>,
     scalars: Vec<AssignedBoundedScalar<S::F>>,
     fixed_base_scalars: BTreeMap<String, AssignedBoundedScalar<S::F>>,
 }
