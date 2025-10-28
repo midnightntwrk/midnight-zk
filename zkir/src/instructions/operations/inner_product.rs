@@ -97,7 +97,7 @@ mod tests {
     use crate::IrType;
 
     #[test]
-    fn test_inner_productl() {
+    fn test_inner_product() {
         use IrValue::*;
         let big = |x: u64| -> IrValue { num_bigint::BigUint::from(x).into() };
 
