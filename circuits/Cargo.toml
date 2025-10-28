@@ -19,7 +19,6 @@ midnight-proofs = { path = "../proofs", version = "0.5.1", default-features = fa
     "circuit-params",
     "committed-instances",
 ] }
-bench_macros = { path = "../bench-macros" }
 
 serde = { workspace = true, optional = true }
 serde_derive = { workspace = true, optional = true }
@@ -37,6 +36,7 @@ bincode = "2.0"
 criterion = { version = "0.7", optional = true }
 
 [dev-dependencies]
+bench_macros = { path = "../bench-macros" }
 criterion = "0.7"
 rand_chacha = "0.3.1"
 goldenfile = "=1.8.0"

@@ -53,9 +53,9 @@ num-bigint = { workspace = true }
 
 # Prover benchmarks
 criterion = { version = "0.7", optional = true }
-bench_macros = { path = "../bench-macros" }
 
 [dev-dependencies]
+bench_macros = { path = "../bench-macros" }
 assert_matches = "1.5"
 criterion = "0.7"
 proptest = "1"
