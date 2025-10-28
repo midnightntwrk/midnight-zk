@@ -581,6 +581,36 @@ fn test_bytes_conversion_round_trip() {
     });
 }
 
+#[test]
+fn test_poseidon() {
+    // Arity validation: Poseidon requires some inputs and 1 output.
+    assert_invalid_arity(Poseidon, vec!["x"], vec!["h1", "h2"]);
+    assert_invalid_arity(Poseidon, vec![], vec!["h"]);
+    test_static_pass(&[(Poseidon, vec!["x", "y"], vec!["h"])], None);
+
+    // Type support: Poseidon expects Natives.
+    test_without_witness(
+        &[
+            (Load(IrType::Bytes(10)), vec![], vec!["bytes"]),
+            (Poseidon, vec!["bytes"], vec!["h"]),
+        ],
+        Some(Error::Other(
+            "cannot convert Bytes(10) to \"Native\"".into(),
+        )),
+    );
+
+    // Success case: hashing 3 inputs.
+    test_with_witness(
+        &[
+            (Load(IrType::Native), vec![], vec!["x", "y", "z"]),
+            (Poseidon, vec!["x", "y", "z"], vec!["h"]),
+        ],
+        witness!("x" => F::random(OsRng), "y" => F::random(OsRng), "z" => F::random(OsRng)),
+        vec![],
+        None,
+    );
+}
+
 /// Converts raw instruction tuples into structured `Instruction` objects.
 fn build_instructions(
     raw_instructions: &[(Operation, Vec<&'static str>, Vec<&'static str>)],

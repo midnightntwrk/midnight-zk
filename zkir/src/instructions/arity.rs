@@ -39,6 +39,7 @@ impl Operation {
             AffineCoordinates => Fixed(1),
             IntoBytes(_) => Fixed(1),
             FromBytes(_) => Fixed(1),
+            Poseidon => Some,
         }
     }
 
@@ -58,6 +59,7 @@ impl Operation {
             AffineCoordinates => Fixed(2),
             IntoBytes(_) => Fixed(1),
             FromBytes(_) => Fixed(1),
+            Poseidon => Fixed(1),
         }
     }
 }
