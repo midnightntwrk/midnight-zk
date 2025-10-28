@@ -19,6 +19,7 @@ verification keys break backwards compatibility.
 * Optimize `bigint_to_fe` [#115](https://github.com/midnightntwrk/midnight-zk/pull/115)
 * Fix `is_equal` and `is_equal_to_fixed` in `native_chip` [#117](https://github.com/midnightntwrk/midnight-zk/pull/117)
 * Rename `ScalarVar` => `AssignedScalarOfNativeCurve` [#120](https://github.com/midnightntwrk/midnight-zk/pull/120)
+* Made bench_macros and criterion dev dependencies [#134](https://github.com/midnightntwrk/midnight-zk/pull/134)
 
 ### Removed
 
