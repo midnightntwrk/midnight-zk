@@ -16,7 +16,7 @@ macro_rules! bench_and_run {
     $name: literal ;
     $call:expr
     ) => {{
-        #[cfg(feature = "bench-internal")]
+        #[cfg(all(test, feature = "bench-internal"))]
         {
             $group.bench_function($name, |b| {
                 b.iter_batched(
@@ -39,7 +39,7 @@ macro_rules! bench_and_run {
     $name: literal ;
     $call:expr
     ) => {{
-        #[cfg(feature = "bench-internal")]
+        #[cfg(all(test, feature = "bench-internal"))]
         {
             $group.bench_function($name, |b| {
                 b.iter_batched(

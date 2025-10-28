@@ -27,7 +27,7 @@
 
 use std::{cell::RefCell, cmp::max, convert::TryInto, fmt::Debug, io, rc::Rc};
 
-#[cfg(feature = "bench-internal")]
+#[cfg(all(test, feature = "bench-internal"))]
 use bench_macros::inner_bench;
 use bincode::{config::standard, Decode, Encode};
 use ff::{Field, PrimeField};
@@ -1613,7 +1613,7 @@ pub fn setup_pk<R: Relation>(relation: &R, vk: &MidnightVK) -> MidnightPK<R> {
     }
 }
 
-#[cfg_attr(feature = "bench-internal", inner_bench)]
+#[cfg_attr(all(test, feature = "bench-internal"), inner_bench)]
 /// Produces a proof of relation `R` for the given instance (using the given
 /// proving key and witness).
 pub fn prove<R: Relation, H: TranscriptHash>(
@@ -1643,7 +1643,7 @@ where
         1,
         &[com_inst.as_slice(), &pi],
         rng,
-        #[cfg(feature = "bench-internal")]
+        #[cfg(all(test, feature = "bench-internal"))]
         _group,
     )
 }

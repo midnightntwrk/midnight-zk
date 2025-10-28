@@ -5,7 +5,7 @@ use std::{
     ops::RangeTo,
 };
 
-#[cfg(feature = "bench-internal")]
+#[cfg(all(test, feature = "bench-internal"))]
 use bench_macros::inner_bench;
 use ff::{Field, FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
 use rand_core::{CryptoRng, RngCore};
@@ -51,7 +51,7 @@ where
     CS::commit_lagrange(params, &poly)
 }
 
-#[cfg_attr(feature = "bench-internal", inner_bench)]
+#[cfg_attr(all(test, feature = "bench-internal"), inner_bench)]
 /// This computes a proof trace for the provided `circuits` when given the
 /// public parameters `params` and the proving key [`ProvingKey`] that was
 /// generated previously for the same circuit. The provided `instances`
@@ -255,7 +255,7 @@ where
     })
 }
 
-#[cfg_attr(feature = "bench-internal", inner_bench)]
+#[cfg_attr(all(test, feature = "bench-internal"), inner_bench)]
 /// This takes the computed trace of a set of witnesses and creates a proof
 /// for the provided `circuit` when given the public
 /// parameters `params` and the proving key [`ProvingKey`] that was
@@ -371,7 +371,7 @@ where
     )
 }
 
-#[cfg_attr(feature = "bench-internal", inner_bench)]
+#[cfg_attr(all(test, feature = "bench-internal"), inner_bench)]
 /// This creates a proof for the provided `circuit` when given the public
 /// parameters `params` and the proving key [`ProvingKey`] that was
 /// generated previously for the same circuit. The provided `instances`
@@ -408,7 +408,7 @@ where
         instances,
         rng,
         transcript,
-        #[cfg(feature = "bench-internal")]
+        #[cfg(all(test, feature = "bench-internal"))]
         _group,
     )?;
     finalise_proof(
@@ -418,7 +418,7 @@ where
         nb_committed_instances,
         trace,
         transcript,
-        #[cfg(feature = "bench-internal")]
+        #[cfg(all(test, feature = "bench-internal"))]
         _group,
     )
 }

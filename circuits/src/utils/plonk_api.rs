@@ -23,7 +23,7 @@ use std::{
     path::Path,
 };
 
-#[cfg(feature = "bench-internal")]
+#[cfg(all(test, feature = "bench-internal"))]
 use bench_macros::inner_bench;
 use halo2curves::bn256;
 use midnight_curves::Bls12;
@@ -90,7 +90,7 @@ macro_rules! plonk_api {
                 pk
             }
 
-            #[cfg_attr(feature = "bench-internal", inner_bench)]
+            #[cfg_attr(all(test, feature = "bench-internal"), inner_bench)]
             /// PLONK proving algorithm.
             pub fn prove<H>(
                 params: &ParamsKZG<$engine>,
@@ -122,7 +122,7 @@ macro_rules! plonk_api {
                         &[pi],
                         rng,
                         &mut transcript,
-                        #[cfg(feature = "bench-internal")]
+                        #[cfg(all(test, feature = "bench-internal"))]
                         _group,
                     )?;
                     transcript.finalize()
