@@ -19,62 +19,63 @@ use rand_chacha::rand_core::OsRng;
 
 type F = midnight_curves::Fq;
 
+/// Macro to simplify witness HashMap construction
+macro_rules! witness {
+    ($($key:expr => $value:expr),* $(,)?) => {
+        HashMap::from_iter([$(($key, $value.into())),*])
+    };
+}
+
 #[test]
 fn test_load() {
-    // A load instruction with no outputs should return an Error::InvalidArity.
-    test_static_pass(
-        &[(Load(IrType::Bool), vec![], vec![])],
-        Some(Error::InvalidArity(Load(IrType::Bool))),
-    );
+    let load_bool = Load(IrType::Bool);
 
-    // With at least one output, everything should be fine.
-    test_static_pass(&[(Load(IrType::Bool), vec![], vec!["out"])], None);
-    test_static_pass(&[(Load(IrType::Bool), vec![], vec!["out1", "out2"])], None);
+    // Arity validation: Load requires at least one output.
+    assert_invalid_arity(load_bool, vec![], vec![]);
 
-    // But it should take no inputs.
-    test_static_pass(
-        &[(Load(IrType::Bool), vec!["inp"], vec!["out"])],
-        Some(Error::InvalidArity(Load(IrType::Bool))),
-    );
+    // Valid arity: One or more outputs is accepted.
+    test_static_pass(&[(load_bool, vec![], vec!["out"])], None);
+    test_static_pass(&[(load_bool, vec![], vec!["out1", "out2"])], None);
 
-    // Names should be unique, loading "out" twice will result in an
-    // Error::DuplicatedName.
+    // Arity validation: Load requires zero inputs.
+    assert_invalid_arity(load_bool, vec!["inp"], vec!["out"]);
+
+    // Name uniqueness: Duplicate output names within the same instruction are
+    // rejected.
     test_without_witness(
-        &[(Load(IrType::Bool), vec![], vec!["out", "out"])],
+        &[(load_bool, vec![], vec!["out", "out"])],
         Some(Error::DuplicatedName("out".to_string())),
     );
 
-    // Using the same name even if in two different instructions should fail.
+    // Name uniqueness: Variable names must be unique across all instructions.
     test_without_witness(
         &[
-            (Load(IrType::Bool), vec![], vec!["out"]),
-            (Load(IrType::Bool), vec![], vec!["out"]),
+            (load_bool, vec![], vec!["out"]),
+            (load_bool, vec![], vec!["out"]),
         ],
         Some(Error::DuplicatedName("out".to_string())),
     );
 
-    // If the value for the loaded variable is not provided in the witness, we
-    // should get a NotFound error.
+    // Witness validation: Missing witness values produce NotFound errors.
     test_with_witness(
-        &[(Load(IrType::Bool), vec![], vec!["out"])],
-        HashMap::from_iter([("outt", true.into())]),
+        &[(load_bool, vec![], vec!["out"])],
+        witness!("outt" => true),
         vec![],
         Some(Error::NotFound("out".to_string())),
     );
 
-    // If "out" is in the witness, but with an incorrect type, we should get an
-    // Error::ExpectingType.
+    // Type checking: Witness values must match the declared type.
     test_with_witness(
-        &[(Load(IrType::Bool), vec![], vec!["out"])],
-        HashMap::from_iter([("out", F::ONE.into())]),
+        &[(load_bool, vec![], vec!["out"])],
+        witness!("out" => F::ONE),
         vec![],
         Some(Error::ExpectingType(IrType::Bool, IrType::Native)),
     );
 
-    // If "out" is provided in the witness and it has the correct type, we are good.
+    // Success case: Load with correct witness value and type.
     test_with_witness(
-        &[(Load(IrType::Bool), vec![], vec!["out"])],
-        HashMap::from_iter([("out", true.into())]),
+        &[(load_bool, vec![], vec!["out"])],
+        witness!("out" => true),
         vec![],
         None,
     );
@@ -82,23 +83,17 @@ fn test_load() {
 
 #[test]
 fn test_publish() {
-    // A publish instruction with no inputs should return an Error::InvalidArity.
-    test_static_pass(
-        &[(Publish, vec![], vec![])],
-        Some(Error::InvalidArity(Publish)),
-    );
+    // Arity validation: Publish requires at least one input.
+    assert_invalid_arity(Publish, vec![], vec![]);
 
-    // A publish instruction with outputs should return an Error::InvalidArity.
-    test_static_pass(
-        &[(Publish, vec!["inp"], vec!["out"])],
-        Some(Error::InvalidArity(Publish)),
-    );
+    // Arity validation: Publish must have zero outputs.
+    assert_invalid_arity(Publish, vec!["inp"], vec!["out"]);
 
-    // With at least one input and not outputs, everything should be fine.
+    // Valid arity: One or more inputs with no outputs.
     test_static_pass(&[(Publish, vec!["inp"], vec![])], None);
     test_static_pass(&[(Publish, vec!["inp1", "inp2"], vec![])], None);
 
-    // Published inputs must exist.
+    // Variable resolution: Published variables must be defined.
     test_without_witness(
         &[(Publish, vec!["x"], vec![])],
         Some(Error::ParsingError(IrType::Bool, "x".to_string())),
@@ -111,25 +106,26 @@ fn test_publish() {
         None,
     );
 
-    // A successful execution.
+    // Success case: Publishing a native field element as public input.
+    let neg_one = -F::ONE;
     test_with_witness(
         &[
             (Load(IrType::Native), vec![], vec!["x"]),
             (Publish, vec!["x"], vec![]),
         ],
-        HashMap::from_iter([("x", (-F::ONE).into())]),
-        vec![((-F::ONE).into(), IrType::Native)],
+        witness!("x" => neg_one),
+        vec![(neg_one.into(), IrType::Native)],
         None,
     );
 
-    // We can also publish the same value several times.
+    // Multiple publications: The same value can be published multiple times.
     test_with_witness(
         &[
             (Load(IrType::Bool), vec![], vec!["a", "b"]),
             (Publish, vec!["b", "b", "a"], vec![]),
             (Publish, vec!["b"], vec![]),
         ],
-        HashMap::from_iter([("a", false.into()), ("b", true.into())]),
+        witness!("a" => false, "b" => true),
         vec![
             (true.into(), IrType::Bool),
             (true.into(), IrType::Bool),
@@ -142,63 +138,50 @@ fn test_publish() {
 
 #[test]
 fn test_assert_equal() {
-    // Equality assertions expect 2 inputs and no outputs.
-    test_static_pass(
-        &[(AssertEqual, vec!["x", "y"], vec!["z"])],
-        Some(Error::InvalidArity(AssertEqual)),
-    );
-
-    test_static_pass(
-        &[(AssertEqual, vec!["x", "y", "z"], vec![])],
-        Some(Error::InvalidArity(AssertEqual)),
-    );
-
+    // Arity validation: AssertEqual requires exactly 2 inputs and 0 outputs.
+    assert_invalid_arity(AssertEqual, vec!["x", "y"], vec!["z"]);
+    assert_invalid_arity(AssertEqual, vec!["x", "y", "z"], vec![]);
     test_static_pass(&[(AssertEqual, vec!["x", "y"], vec![])], None);
 
-    // Unsupported equality assertion on JubjubScalars.
-    test_without_witness(
+    // Type support: JubjubScalars do not support equality assertions.
+    assert_unsupported(
+        AssertEqual,
+        vec![IrType::JubjubScalar, IrType::JubjubScalar],
         &[
             (Load(IrType::JubjubScalar), vec![], vec!["x"]),
             (AssertEqual, vec!["x", "x"], vec![]),
         ],
-        Some(Error::Unsupported(
-            AssertEqual,
-            vec![IrType::JubjubScalar, IrType::JubjubScalar],
-        )),
     );
 
-    // Compared values must be of the same type.
-    test_without_witness(
+    // Type compatibility: Both values must have the same type.
+    assert_unsupported(
+        AssertEqual,
+        vec![IrType::JubjubPoint, IrType::Native],
         &[
             (Load(IrType::JubjubPoint), vec![], vec!["p"]),
             (Load(IrType::Native), vec![], vec!["x"]),
             (AssertEqual, vec!["p", "x"], vec![]),
         ],
-        Some(Error::Unsupported(
-            AssertEqual,
-            vec![IrType::JubjubPoint, IrType::Native],
-        )),
     );
 
-    test_without_witness(
+    // Type compatibility: Byte vectors must have the same length.
+    assert_unsupported(
+        AssertEqual,
+        vec![IrType::Bytes(2), IrType::Bytes(3)],
         &[
             (Load(IrType::Bytes(2)), vec![], vec!["v"]),
             (Load(IrType::Bytes(3)), vec![], vec!["w"]),
             (AssertEqual, vec!["v", "w"], vec![]),
         ],
-        Some(Error::Unsupported(
-            AssertEqual,
-            vec![IrType::Bytes(2), IrType::Bytes(3)],
-        )),
     );
 
-    // A successful execution.
+    // Success case: Asserting equality of BigUint values.
     test_with_witness(
         &[
             (Load(IrType::BigUint(1024)), vec![], vec!["x"]),
             (AssertEqual, vec!["x", "x"], vec![]),
         ],
-        HashMap::from_iter([("x", biguint_from_hex("deadbeef").into())]),
+        witness!("x" => biguint_from_hex("deadbeef")),
         vec![],
         None,
     );
@@ -206,52 +189,40 @@ fn test_assert_equal() {
 
 #[test]
 fn test_is_equal() {
-    // Equality comparisons expect 2 inputs and 1 output.
-    test_static_pass(
-        &[(IsEqual, vec!["x", "y"], vec![])],
-        Some(Error::InvalidArity(IsEqual)),
-    );
-
-    test_static_pass(
-        &[(IsEqual, vec!["x", "y", "z"], vec!["r"])],
-        Some(Error::InvalidArity(IsEqual)),
-    );
-
+    // Arity validation: IsEqual requires exactly 2 inputs and 1 output.
+    assert_invalid_arity(IsEqual, vec!["x", "y"], vec![]);
+    assert_invalid_arity(IsEqual, vec!["x", "y", "z"], vec!["r"]);
     test_static_pass(&[(IsEqual, vec!["x", "y"], vec!["r"])], None);
 
-    // Unsupported equality comparison on JubjubScalars.
-    test_without_witness(
+    // Type support: JubjubScalars do not support equality comparisons.
+    assert_unsupported(
+        IsEqual,
+        vec![IrType::JubjubScalar, IrType::JubjubScalar],
         &[
             (Load(IrType::JubjubScalar), vec![], vec!["s"]),
             (IsEqual, vec!["s", "s"], vec!["b"]),
         ],
-        Some(Error::Unsupported(
-            IsEqual,
-            vec![IrType::JubjubScalar, IrType::JubjubScalar],
-        )),
     );
 
-    // Compared values must be of the same type.
-    test_without_witness(
+    // Type compatibility: Both values must have the same type.
+    assert_unsupported(
+        IsEqual,
+        vec![IrType::Bytes(2), IrType::Bytes(3)],
         &[
             (Load(IrType::Bytes(2)), vec![], vec!["v"]),
             (Load(IrType::Bytes(3)), vec![], vec!["w"]),
             (IsEqual, vec!["v", "w"], vec!["b"]),
         ],
-        Some(Error::Unsupported(
-            IsEqual,
-            vec![IrType::Bytes(2), IrType::Bytes(3)],
-        )),
     );
 
-    // A successful execution.
+    // Success case: Comparing byte vectors and asserting the result is true.
     test_with_witness(
         &[
             (Load(IrType::Bytes(2)), vec![], vec!["v"]),
             (IsEqual, vec!["v", "v"], vec!["b"]),
             (AssertEqual, vec!["b", "1"], vec![]),
         ],
-        HashMap::from_iter([("v", vec![42u8, 255u8].into())]),
+        witness!("v" => vec![42u8, 255u8]),
         vec![],
         None,
     );
@@ -259,41 +230,28 @@ fn test_is_equal() {
 
 #[test]
 fn test_add() {
-    // An add instruction should have 2 inputs and 1 output.
-    test_static_pass(
-        &[(Add, vec!["x"], vec!["z"])],
-        Some(Error::InvalidArity(Add)),
-    );
-
-    test_static_pass(
-        &[(Add, vec!["x", "y"], vec![])],
-        Some(Error::InvalidArity(Add)),
-    );
-
+    // Arity validation: Add requires exactly 2 inputs and 1 output.
+    assert_invalid_arity(Add, vec!["x"], vec!["z"]);
+    assert_invalid_arity(Add, vec!["x", "y"], vec![]);
     test_static_pass(&[(Add, vec!["x", "y"], vec!["z"])], None);
 
-    // Unsupported addition on JubjubScalars.
-    test_without_witness(
+    // Type support: JubjubScalars do not support addition.
+    assert_unsupported(
+        Add,
+        vec![IrType::JubjubScalar, IrType::JubjubScalar],
         &[
             (Load(IrType::JubjubScalar), vec![], vec!["x"]),
             (Add, vec!["x", "x"], vec!["z"]),
         ],
-        Some(Error::Unsupported(
-            Add,
-            vec![IrType::JubjubScalar, IrType::JubjubScalar],
-        )),
     );
 
-    // A successful execution.
+    // Success case: Adding large BigUint values.
     test_with_witness(
         &[
             (Load(IrType::BigUint(1024)), vec![], vec!["x"]),
             (Add, vec!["x", "x"], vec!["z"]),
         ],
-        HashMap::from_iter([(
-            "x",
-            biguint_from_hex("fffffffffffffffffffffffffffffffffffffffffffffffff").into(),
-        )]),
+        witness!("x" => biguint_from_hex("fffffffffffffffffffffffffffffffffffffffffffffffff")),
         vec![],
         None,
     );
@@ -301,38 +259,28 @@ fn test_add() {
 
 #[test]
 fn test_sub() {
-    // A sub instruction should have 2 inputs and 1 output.
-    test_static_pass(
-        &[(Sub, vec!["x"], vec!["z"])],
-        Some(Error::InvalidArity(Sub)),
-    );
-
-    test_static_pass(
-        &[(Sub, vec!["x", "y"], vec![])],
-        Some(Error::InvalidArity(Sub)),
-    );
-
+    // Arity validation: Sub requires exactly 2 inputs and 1 output.
+    assert_invalid_arity(Sub, vec!["x"], vec!["z"]);
+    assert_invalid_arity(Sub, vec!["x", "y"], vec![]);
     test_static_pass(&[(Sub, vec!["x", "y"], vec!["z"])], None);
 
-    // Unsupported subtraction on JubjubScalars.
-    test_without_witness(
+    // Type support: JubjubScalars do not support subtraction.
+    assert_unsupported(
+        Sub,
+        vec![IrType::JubjubScalar, IrType::JubjubScalar],
         &[
             (Load(IrType::JubjubScalar), vec![], vec!["x"]),
             (Sub, vec!["x", "x"], vec!["z"]),
         ],
-        Some(Error::Unsupported(
-            Sub,
-            vec![IrType::JubjubScalar, IrType::JubjubScalar],
-        )),
     );
 
-    // A successful execution.
+    // Success case: Subtracting BigUint values (x - x = 0).
     test_with_witness(
         &[
             (Load(IrType::BigUint(1024)), vec![], vec!["x"]),
             (Sub, vec!["x", "x"], vec!["z"]),
         ],
-        HashMap::from_iter([("x", biguint_from_hex("deadbeef").into())]),
+        witness!("x" => biguint_from_hex("deadbeef")),
         vec![],
         None,
     );
@@ -340,42 +288,30 @@ fn test_sub() {
 
 #[test]
 fn test_mul() {
-    // A mul instruction should have 2 inputs and 1 output.
-    test_static_pass(
-        &[(Mul, vec!["x"], vec!["z"])],
-        Some(Error::InvalidArity(Mul)),
-    );
-
-    test_static_pass(
-        &[(Mul, vec!["x", "y"], vec![])],
-        Some(Error::InvalidArity(Mul)),
-    );
-
+    // Arity validation: Mul requires exactly 2 inputs and 1 output.
+    assert_invalid_arity(Mul, vec!["x"], vec!["z"]);
+    assert_invalid_arity(Mul, vec!["x", "y"], vec![]);
     test_static_pass(&[(Mul, vec!["x", "y"], vec!["z"])], None);
 
-    // Unsupported multiplication on JubjubScalars.
-    test_without_witness(
+    // Type support: JubjubScalar-JubjubScalar multiplication is not supported.
+    assert_unsupported(
+        Mul,
+        vec![IrType::JubjubScalar, IrType::JubjubScalar],
         &[
             (Load(IrType::JubjubScalar), vec![], vec!["x"]),
             (Mul, vec!["x", "x"], vec!["z"]),
         ],
-        Some(Error::Unsupported(
-            Mul,
-            vec![IrType::JubjubScalar, IrType::JubjubScalar],
-        )),
     );
 
-    // A successful execution.
+    // Success case: Scalar multiplication of a Jubjub point.
+    let (p, s) = (JubjubSubgroup::random(OsRng), JubjubFr::random(OsRng));
     test_with_witness(
         &[
             (Load(IrType::JubjubPoint), vec![], vec!["p"]),
             (Load(IrType::JubjubScalar), vec![], vec!["s"]),
             (Mul, vec!["s", "p"], vec!["q"]),
         ],
-        HashMap::from_iter([
-            ("p", JubjubSubgroup::random(OsRng).into()),
-            ("s", JubjubFr::random(OsRng).into()),
-        ]),
+        witness!("p" => p, "s" => s),
         vec![],
         None,
     );
@@ -383,21 +319,22 @@ fn test_mul() {
 
 #[test]
 fn test_neg() {
-    // A neg instruction should have 1 inputs and 1 output.
-    test_static_pass(&[(Neg, vec![], vec!["z"])], Some(Error::InvalidArity(Neg)));
-    test_static_pass(&[(Neg, vec!["x"], vec![])], Some(Error::InvalidArity(Neg)));
+    // Arity validation: Neg requires exactly 1 input and 1 output.
+    assert_invalid_arity(Neg, vec![], vec!["z"]);
+    assert_invalid_arity(Neg, vec!["x"], vec![]);
     test_static_pass(&[(Neg, vec!["x"], vec!["z"])], None);
 
-    // Unsupported negation on JubjubScalars.
-    test_without_witness(
+    // Type support: Negation is not supported for JubjubScalars.
+    assert_unsupported(
+        Neg,
+        vec![IrType::JubjubScalar],
         &[
             (Load(IrType::JubjubScalar), vec![], vec!["x"]),
             (Neg, vec!["x"], vec!["z"]),
         ],
-        Some(Error::Unsupported(Neg, vec![IrType::JubjubScalar])),
     );
 
-    // A successful execution.
+    // Success case: Negating a JubjubPoint and publishing the result.
     let p: IrValue = JubjubSubgroup::random(OsRng).into();
     test_with_witness(
         &[
@@ -405,7 +342,7 @@ fn test_neg() {
             (Neg, vec!["p"], vec!["q"]),
             (Publish, vec!["q"], vec![]),
         ],
-        HashMap::from_iter([("p", p.clone())]),
+        witness!("p" => p.clone()),
         vec![(-p, IrType::JubjubPoint)],
         None,
     );
@@ -413,33 +350,25 @@ fn test_neg() {
 
 #[test]
 fn test_inner_product() {
-    // An inner_product should take an even number of inputs > 0 and 1 output.
-    test_static_pass(
-        &[(InnerProduct, vec!["x"], vec!["z"])],
-        Some(Error::InvalidArity(InnerProduct)),
-    );
-
-    test_static_pass(
-        &[(InnerProduct, vec!["x", "y"], vec![])],
-        Some(Error::InvalidArity(InnerProduct)),
-    );
-
+    // Arity validation: InnerProduct requires an even, positive number of inputs
+    // and 1 output.
+    assert_invalid_arity(InnerProduct, vec!["x"], vec!["z"]);
+    assert_invalid_arity(InnerProduct, vec!["x", "y"], vec![]);
     test_static_pass(&[(InnerProduct, vec!["x", "y"], vec!["z"])], None);
 
-    // Unsupported IP on mixed types.
-    test_without_witness(
+    // Type compatibility: All inputs must be compatible for inner product
+    // computation.
+    assert_unsupported(
+        InnerProduct,
+        vec![IrType::Native, IrType::BigUint(10)],
         &[
             (Load(IrType::Native), vec![], vec!["x"]),
             (Load(IrType::BigUint(10)), vec![], vec!["n"]),
             (InnerProduct, vec!["x", "n"], vec!["z"]),
         ],
-        Some(Error::Unsupported(
-            InnerProduct,
-            vec![IrType::Native, IrType::BigUint(10)],
-        )),
     );
 
-    // Incompatible types.
+    // Type mismatch: Scalars and points must be properly paired.
     test_without_witness(
         &[
             (Load(IrType::JubjubPoint), vec![], vec!["s", "p", "q"]),
@@ -451,9 +380,10 @@ fn test_inner_product() {
         )),
     );
 
-    // A successful execution.
+    // Success case: Computing scalar-point inner product (MSM).
     let [p, q] = core::array::from_fn(|_| JubjubSubgroup::random(OsRng));
     let [r, s] = core::array::from_fn(|_| JubjubFr::random(OsRng));
+    let result = p * r + q * s;
     test_with_witness(
         &[
             (Load(IrType::JubjubPoint), vec![], vec!["p", "q"]),
@@ -461,47 +391,34 @@ fn test_inner_product() {
             (InnerProduct, vec!["r", "s", "p", "q"], vec!["result"]),
             (Publish, vec!["result"], vec![]),
         ],
-        HashMap::from_iter([
-            ("p", p.into()),
-            ("q", q.into()),
-            ("r", r.into()),
-            ("s", s.into()),
-        ]),
-        vec![((p * r + q * s).into(), IrType::JubjubPoint)],
+        witness!("p" => p, "q" => q, "r" => r, "s" => s),
+        vec![(result.into(), IrType::JubjubPoint)],
         None,
     );
 }
 
 #[test]
 fn test_affine_coordinates() {
-    // Affine-coordinates needs 1 inputs and 2 outputs.
-    test_static_pass(
-        &[(AffineCoordinates, vec!["P"], vec!["Px"])],
-        Some(Error::InvalidArity(AffineCoordinates)),
-    );
-
-    test_static_pass(
-        &[(AffineCoordinates, vec!["P", "Q"], vec!["Px", "Py"])],
-        Some(Error::InvalidArity(AffineCoordinates)),
-    );
-
+    // Arity validation: AffineCoordinates requires 1 input and 2 outputs (x, y).
+    assert_invalid_arity(AffineCoordinates, vec!["P"], vec!["Px"]);
+    assert_invalid_arity(AffineCoordinates, vec!["P", "Q"], vec!["Px", "Py"]);
     test_static_pass(&[(AffineCoordinates, vec!["P"], vec!["Px", "Py"])], None);
 
-    // Unsupported on non EC point types.
-    test_without_witness(
+    // Type support: Only elliptic curve points support coordinate extraction.
+    assert_unsupported(
+        AffineCoordinates,
+        vec![IrType::Native],
         &[
             (Load(IrType::Native), vec![], vec!["P"]),
             (AffineCoordinates, vec!["P"], vec!["x", "y"]),
         ],
-        Some(Error::Unsupported(
-            Operation::AffineCoordinates,
-            vec![IrType::Native],
-        )),
     );
 
-    // A successful execution.
+    // Success case: Extracting coordinates and verifying the Edwards curve
+    // equation. Edwards curve equation: y^2 - x^2 = 1 + d*x^2*y^2
+    const EDWARDS_D: &str =
+        "Native:0x2a9318e74bfa2b48f5fd9207e6bd7fd4292d7f6d37579d2601065fd6d6343eb1";
     let p = JubjubSubgroup::random(OsRng);
-    let d = "Native:0x2a9318e74bfa2b48f5fd9207e6bd7fd4292d7f6d37579d2601065fd6d6343eb1";
     test_with_witness(
         &[
             (Load(IrType::JubjubPoint), vec![], vec!["p"]),
@@ -510,11 +427,11 @@ fn test_affine_coordinates() {
             (Mul, vec!["y", "y"], vec!["y2"]),
             (Sub, vec!["y2", "x2"], vec!["lhs"]),
             (Mul, vec!["x2", "y2"], vec!["x2y2"]),
-            (Mul, vec![d, "x2y2"], vec!["prod"]),
+            (Mul, vec![EDWARDS_D, "x2y2"], vec!["prod"]),
             (Add, vec!["prod", "Native:0x01"], vec!["rhs"]),
             (AssertEqual, vec!["lhs", "rhs"], vec![]),
         ],
-        HashMap::from_iter([("p", p.into())]),
+        witness!("p" => p),
         vec![],
         None,
     );
@@ -522,71 +439,58 @@ fn test_affine_coordinates() {
 
 #[test]
 fn test_into_bytes() {
-    // IntoBytes expects 1 input and 1 output.
-    test_static_pass(
-        &[(IntoBytes(32), vec!["x"], vec!["bytes", "foo"])],
-        Some(Error::InvalidArity(IntoBytes(32))),
-    );
-
-    test_static_pass(
-        &[(IntoBytes(32), vec!["x", "y"], vec!["bytes"])],
-        Some(Error::InvalidArity(IntoBytes(32))),
-    );
-
+    // Arity validation: IntoBytes requires exactly 1 input and 1 output.
+    assert_invalid_arity(IntoBytes(32), vec!["x"], vec!["bytes", "foo"]);
+    assert_invalid_arity(IntoBytes(32), vec!["x", "y"], vec!["bytes"]);
     test_static_pass(&[(IntoBytes(32), vec!["x"], vec!["bytes"])], None);
 
-    // Unsupported cases.
-    test_without_witness(
+    // Type support: Booleans cannot be converted to bytes.
+    assert_unsupported(
+        IntoBytes(1),
+        vec![IrType::Bool],
         &[
             (Load(IrType::Bool), vec![], vec!["b"]),
             (IntoBytes(1), vec!["b"], vec!["w"]),
         ],
-        Some(Error::Unsupported(
-            Operation::IntoBytes(1),
-            vec![IrType::Bool],
-        )),
     );
 
-    test_without_witness(
+    // Type support: Byte vectors cannot be converted to bytes (already bytes).
+    assert_unsupported(
+        IntoBytes(10),
+        vec![IrType::Bytes(10)],
         &[
             (Load(IrType::Bytes(10)), vec![], vec!["v"]),
             (IntoBytes(10), vec!["v"], vec!["w"]),
         ],
-        Some(Error::Unsupported(
-            Operation::IntoBytes(10),
-            vec![IrType::Bytes(10)],
-        )),
     );
 
-    test_without_witness(
+    // Length validation: JubjubPoint requires exactly 32 bytes, not 31.
+    assert_unsupported(
+        IntoBytes(31),
+        vec![IrType::JubjubPoint],
         &[
             (Load(IrType::JubjubPoint), vec![], vec!["p"]),
             (IntoBytes(31), vec!["p"], vec!["bytes"]),
         ],
-        Some(Error::Unsupported(
-            Operation::IntoBytes(31),
-            vec![IrType::JubjubPoint],
-        )),
     );
 
-    test_without_witness(
+    // Type support: JubjubScalar cannot be converted to bytes.
+    assert_unsupported(
+        IntoBytes(32),
+        vec![IrType::JubjubScalar],
         &[
             (Load(IrType::JubjubScalar), vec![], vec!["s"]),
             (IntoBytes(32), vec!["s"], vec!["bytes"]),
         ],
-        Some(Error::Unsupported(
-            Operation::IntoBytes(32),
-            vec![IrType::JubjubScalar],
-        )),
     );
 
-    // A successful execution.
+    // Success case: Converting a small BigUint to a single byte.
     test_with_witness(
         &[
             (Load(IrType::BigUint(16)), vec![], vec!["n"]),
             (IntoBytes(1), vec!["n"], vec!["n_bytes"]),
         ],
-        HashMap::from_iter([("n", BigUint::from(255u64).into())]),
+        witness!("n" => BigUint::from(255u64)),
         vec![],
         None,
     );
@@ -594,53 +498,41 @@ fn test_into_bytes() {
 
 #[test]
 fn test_from_bytes() {
-    // FromBytes expects 1 input and 1 output.
-    test_static_pass(
-        &[(FromBytes(IrType::Native), vec!["bytes"], vec!["x", "y"])],
-        Some(Error::InvalidArity(FromBytes(IrType::Native))),
-    );
-
-    test_static_pass(
-        &[(FromBytes(IrType::Bool), vec!["bytes"], vec![])],
-        Some(Error::InvalidArity(FromBytes(IrType::Bool))),
-    );
-
+    // Arity validation: FromBytes requires exactly 1 input and 1 output.
+    assert_invalid_arity(FromBytes(IrType::Native), vec!["bytes"], vec!["x", "y"]);
+    assert_invalid_arity(FromBytes(IrType::Bool), vec!["bytes"], vec![]);
     test_static_pass(
         &[(FromBytes(IrType::BigUint(1024)), vec!["bytes"], vec!["N"])],
         None,
     );
 
-    // Unsupported cases.
-    test_without_witness(
+    // Type support: Bytes cannot be parsed as Booleans.
+    assert_unsupported(
+        FromBytes(IrType::Bool),
+        vec![IrType::Bytes(1)],
         &[
             (Load(IrType::Bytes(1)), vec![], vec!["bytes"]),
             (FromBytes(IrType::Bool), vec!["bytes"], vec!["b"]),
         ],
-        Some(Error::Unsupported(
-            Operation::FromBytes(IrType::Bool),
-            vec![IrType::Bytes(1)],
-        )),
     );
 
-    // JubjubPoint expects 32 bytes.
-    test_without_witness(
+    // Length validation: JubjubPoint requires exactly 32 bytes, not 33.
+    assert_unsupported(
+        FromBytes(IrType::JubjubPoint),
+        vec![IrType::Bytes(33)],
         &[
             (Load(IrType::Bytes(33)), vec![], vec!["bytes"]),
             (FromBytes(IrType::JubjubPoint), vec!["bytes"], vec!["p"]),
         ],
-        Some(Error::Unsupported(
-            Operation::FromBytes(IrType::JubjubPoint),
-            vec![IrType::Bytes(33)],
-        )),
     );
 
-    // A successful execution.
+    // Success case: Parsing 4 bytes as a BigUint.
     test_with_witness(
         &[
             (Load(IrType::Bytes(4)), vec![], vec!["bytes"]),
             (FromBytes(IrType::BigUint(32)), vec!["bytes"], vec!["N"]),
         ],
-        HashMap::from_iter([("bytes", vec![0xFF, 0xFF, 0xFF, 0xFF].into())]),
+        witness!("bytes" => vec![0xFFu8, 0xFFu8, 0xFFu8, 0xFFu8]),
         vec![],
         None,
     );
@@ -648,6 +540,8 @@ fn test_from_bytes() {
 
 #[test]
 fn test_bytes_conversion_round_trip() {
+    // Test round-trip conversions: value -> bytes -> value and bytes -> value ->
+    // bytes This ensures IntoBytes and FromBytes are consistent inverses.
     [
         (IrType::Native, F::random(OsRng).into(), 32),
         (IrType::BigUint(64), biguint_from_hex("abcd1357").into(), 8),
@@ -659,6 +553,7 @@ fn test_bytes_conversion_round_trip() {
     ]
     .into_iter()
     .for_each(|(t, x, n): (IrType, IrValue, usize)| {
+        // Forward: value -> bytes -> value (should recover original value)
         test_with_witness(
             &[
                 (Load(t), vec![], vec!["x"]),
@@ -671,6 +566,7 @@ fn test_bytes_conversion_round_trip() {
             None,
         );
 
+        // Backward: bytes -> value -> bytes (should recover original bytes)
         test_with_witness(
             &[
                 (Load(IrType::Bytes(n)), vec![], vec!["bytes"]),
@@ -685,6 +581,7 @@ fn test_bytes_conversion_round_trip() {
     });
 }
 
+/// Converts raw instruction tuples into structured `Instruction` objects.
 fn build_instructions(
     raw_instructions: &[(Operation, Vec<&'static str>, Vec<&'static str>)],
 ) -> Vec<Instruction> {
@@ -698,8 +595,15 @@ fn build_instructions(
         .collect()
 }
 
-/// Util function for testing static conditions of a ZKIR program (e.g. arity
-/// mismatches) without actually "executing" the program.
+/// Tests static validation of ZKIR programs without witness values.
+///
+/// This function validates compile-time properties such as:
+/// - Operation arity (correct number of inputs/outputs)
+/// - Type system constraints
+/// - Instruction format correctness
+///
+/// Use this when testing properties that can be validated before witness
+/// assignment.
 fn test_static_pass(
     raw_instructions: &[(Operation, Vec<&'static str>, Vec<&'static str>)],
     expected_error: Option<Error>,
@@ -711,8 +615,16 @@ fn test_static_pass(
     );
 }
 
-/// Util function for testing the execution of a ZKIR program with a certain
-/// witness and no public inputs.
+/// Tests circuit structure without concrete witness values.
+///
+/// This function validates the circuit synthesis with unknown witness values,
+/// checking:
+/// - Variable name uniqueness and scoping
+/// - Type compatibility between operations
+/// - Circuit structure consistency
+///
+/// Use this when testing properties that depend on the circuit structure but
+/// not on specific witness values.
 fn test_without_witness(
     raw_instructions: &[(Operation, Vec<&'static str>, Vec<&'static str>)],
     expected_error: Option<Error>,
@@ -728,10 +640,22 @@ fn test_without_witness(
     );
 }
 
-/// Util function for testing the execution of a ZKIR program with a certain
-/// witness. We provide the expected vector of public inputs, and assert
-/// that it coincides with the derived public inputs from the off-circuit
-/// execution (when `expected_error = None`).
+/// Tests full end-to-end proof generation and verification with concrete
+/// witness values.
+///
+/// This function performs a complete proof lifecycle:
+/// 1. Off-circuit computation to derive public inputs
+/// 2. Circuit synthesis with concrete witness values
+/// 3. Proof generation using KZG commitment scheme
+///
+/// Use this for comprehensive testing that validates both off-circuit and
+/// in-circuit behavior, including constraint satisfaction and proof soundness.
+///
+/// # Parameters
+/// - `raw_instructions`: The ZKIR program to test
+/// - `witness`: Private input values for the circuit
+/// - `expected_public_inputs`: Expected public outputs with their types
+/// - `expected_error`: Expected error, or `None` if the test should succeed
 fn test_with_witness(
     raw_instructions: &[(Operation, Vec<&'static str>, Vec<&'static str>)],
     witness: HashMap<&'static str, IrValue>,
@@ -777,6 +701,21 @@ fn test_with_witness(
     )
 }
 
+/// Helper to create a BigUint from a hex string
 fn biguint_from_hex(hex_str: &str) -> BigUint {
     BigUint::from_str_radix(hex_str, 16).unwrap()
+}
+
+/// Helper to test that an operation requires a specific arity
+fn assert_invalid_arity(op: Operation, inputs: Vec<&'static str>, outputs: Vec<&'static str>) {
+    test_static_pass(&[(op, inputs, outputs)], Some(Error::InvalidArity(op)));
+}
+
+/// Helper to test that an operation is unsupported for given types
+fn assert_unsupported(
+    op: Operation,
+    input_types: Vec<IrType>,
+    setup: &[(Operation, Vec<&'static str>, Vec<&'static str>)],
+) {
+    test_without_witness(setup, Some(Error::Unsupported(op, input_types)));
 }
