@@ -56,7 +56,7 @@ use midnight_circuits::{
         PoseidonChip, PoseidonConfig, NB_POSEIDON_ADVICE_COLS, NB_POSEIDON_FIXED_COLS,
     },
     instructions::{AssignmentInstructions, PublicInputInstructions},
-    types::{ComposableChip, Instantiable},
+    types::{ComposableChip, InnerValue, Instantiable},
     verifier::{
         Accumulator, AssignedAccumulator, AssignedMsm, AssignedVk, Msm, SelfEmulation,
         VerifierGadget,
@@ -215,6 +215,7 @@ impl<const NB_PROOFS: usize> Circuit<F> for AggregatorCircuit<NB_PROOFS> {
             &sponge_chip,
             &proof_accs,
         )?;
+        dbg!(&acc);
 
         verifier_chip.constrain_acc_as_public_input_with_committed_scalars(&mut layouter, &acc)?;
 
@@ -347,6 +348,7 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
             &self.inner_vk,
         ));
 
+        // dbg!(&acc.lhs().eval(&fixed_bases).to_input());
         assert!(acc.check(&srs.s_g2().into(), &fixed_bases)); // Sanity check
 
         // We now proceed to aggregating all proofs
