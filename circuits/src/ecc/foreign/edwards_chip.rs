@@ -228,23 +228,15 @@ where
         //
         let base_chip = self.base_field_chip();
 
-        let valx = value.map(|v| v.into().coordinates().expect("assign: valid curve point").0);
+        let (valx, valy) = value
+            .map(|v| v.into().coordinates().expect("assign: valid curve point"))
+            .unzip();
 
-        let valy = value.map(|v| v.into().coordinates().expect("assign: valid curve point").1);
-
-        let x: AssignedField<F, <C as CircuitCurve>::Base, B> =
-            self.base_field_chip().assign(layouter, valx)?;
-        // let x = self.base_field_chip().normalize(layouter, &x)?;
-
-        let y: AssignedField<F, <C as CircuitCurve>::Base, B> =
-            self.base_field_chip.assign(layouter, valy)?;
-        // let y = self.base_field_chip().normalize(layouter, &y)?;
+        let x: AssignedField<F, <C as CircuitCurve>::Base, B> = base_chip.assign(layouter, valx)?;
+        let y: AssignedField<F, <C as CircuitCurve>::Base, B> = base_chip.assign(layouter, valy)?;
 
         let x_x = base_chip.mul(layouter, &x, &x, None)?;
-        // let x_x = self.base_field_chip().normalize(layouter, &x_x)?;
-
         let y_y = base_chip.mul(layouter, &y, &y, None)?;
-        // let y_y = self.base_field_chip().normalize(layouter, &y_y)?;
 
         // Computes a*x^2 + y^2 - 1 - d*x^2*y^2
         let id = base_chip.add_and_mul(
@@ -256,7 +248,10 @@ where
             -C::D,
         )?;
 
-        self.base_field_chip().assert_zero(layouter, &id)?;
+        base_chip.assert_zero(layouter, &id)?;
+
+        // Add subgroup check
+        // TODO
 
         Ok(AssignedForeignEdwardsPoint { point: value, x, y })
     }
@@ -266,14 +261,11 @@ where
         layouter: &mut impl Layouter<F>,
         constant: C::CryptographicGroup,
     ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
-        let (x, y) = if C::CryptographicGroup::is_identity(&constant).into() {
-            (C::Base::ZERO, C::Base::ZERO)
-        } else {
-            let coordinates = constant
+        let (x, y) = {
+            constant
                 .into()
                 .coordinates()
-                .expect("assign fixed unchecked: valid curve point");
-            (coordinates.0, coordinates.1)
+                .expect("assign fixed unchecked: valid curve point")
         };
         let x = self.base_field_chip().assign_fixed(layouter, x)?;
         let y = self.base_field_chip().assign_fixed(layouter, y)?;
@@ -329,5 +321,69 @@ where
         let point = self.assign(layouter, value)?;
         self.constrain_as_public_input(layouter, &point)?;
         Ok(point)
+    }
+}
+
+impl<F, C, B, S, N> ForeignEdwardsEccChip<F, C, B, S, N>
+where
+    F: PrimeField,
+    C: EdwardsCurve,
+    B: FieldEmulationParams<F, C::Base>,
+    S: ScalarFieldInstructions<F>,
+    S::Scalar: InnerValue<Element = C::Scalar>,
+    N: NativeInstructions<F> + PublicInputInstructions<F, AssignedBit<F>>,
+{
+    fn add(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        p: &AssignedForeignEdwardsPoint<F, C, B>,
+        q: &AssignedForeignEdwardsPoint<F, C, B>,
+    ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
+        // Addition law on twisted edwards curve:
+        //      P    +    Q
+        // = (Px,Py) + (Qx,Qy)
+        // = ( (Px*Qy + Py*Qx)/(1+d*Px*Py*Qx*Qy) ,
+        //              (Py*Qy - a*Px*Qx)/(1-d*Px*Py*Qx*Qy) )
+        // = (Rx, Ry) = R
+        let base_chip = self.base_field_chip();
+        let px_py = base_chip.mul(layouter, &p.x, &p.y, None)?;
+        let qx_qy = base_chip.mul(layouter, &q.x, &q.y, None)?;
+        let py_qy = base_chip.mul(layouter, &p.y, &q.y, None)?;
+        let px_qx = base_chip.mul(layouter, &p.x, &q.x, None)?;
+        let a_px_qx = base_chip.mul_by_constant(layouter, &px_qx, C::A)?;
+        let d_px_py_qx_qy = base_chip.mul(layouter, &px_py, &qx_qy, Some(C::D))?;
+        let neg_d_px_py_qx_qy = base_chip.neg(layouter, &d_px_py_qx_qy)?;
+
+        let px_qy = base_chip.mul(layouter, &p.x, &q.y, None)?;
+        let py_qx = base_chip.mul(layouter, &p.y, &q.x, None)?;
+
+        // Rx coordinate
+        let num1 = base_chip.add(layouter, &px_qy, &py_qx)?;
+        let den1 = base_chip.add_constant(layouter, &d_px_py_qx_qy, C::Base::ONE)?;
+        let rx = base_chip.div(layouter, &num1, &den1)?;
+
+        // Ry coordinate
+        let num2 = base_chip.sub(layouter, &py_qy, &a_px_qx)?;
+        let den2 = base_chip.add_constant(layouter, &neg_d_px_py_qx_qy, C::Base::ONE)?;
+        let ry = base_chip.div(layouter, &num2, &den2)?;
+
+        let point = rx
+            .value()
+            .zip(ry.value())
+            .map(|(x, y)| C::from_xy(x, y).expect("valid coordinates").into_subgroup());
+
+        Ok(AssignedForeignEdwardsPoint {
+            point,
+            x: rx,
+            y: ry,
+        })
+    }
+
+    fn double(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        p: &AssignedForeignEdwardsPoint<F, C, B>,
+    ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
+        self.add(layouter, p, p)
     }
 }
