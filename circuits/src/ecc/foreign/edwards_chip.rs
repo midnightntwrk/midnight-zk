@@ -21,13 +21,17 @@ use std::{
 
 use ff::{Field, PrimeField};
 use group::Group;
+#[cfg(any(test, feature = "testing"))]
+use midnight_proofs::plonk::{Column, Instance};
 use midnight_proofs::{
     circuit::{Chip, Layouter, Value},
-    plonk::Error,
+    plonk::{ConstraintSystem, Error},
 };
 #[cfg(any(test, feature = "testing"))]
 use {crate::testing_utils::Sampleable, rand::RngCore};
 
+#[cfg(any(test, feature = "testing"))]
+use crate::testing_utils::FromScratch;
 use crate::{
     ecc::curves::{CircuitCurve, EdwardsCurve},
     field::{
@@ -38,8 +42,9 @@ use crate::{
         AssignedNative,
     },
     instructions::{
-        ArithInstructions, AssignmentInstructions, NativeInstructions, PublicInputInstructions,
-        ScalarFieldInstructions, ZeroInstructions,
+        ArithInstructions, AssertionInstructions, AssignmentInstructions,
+        DecompositionInstructions, EccInstructions, EqualityInstructions, NativeInstructions,
+        PublicInputInstructions, ScalarFieldInstructions, ZeroInstructions,
     },
     types::{AssignedBit, AssignedField, InnerConstants, InnerValue, Instantiable},
 };
@@ -80,9 +85,40 @@ where
     S::Scalar: InnerValue<Element = C::Scalar>,
     N: NativeInstructions<F>,
 {
-    /// The emulated base field chip of this foreign ECC chip
+    /// Creates new foreign Edwards ECC chip from its building blocks.
+    pub fn new(
+        config: &ForeignEdwardsEccConfig<C>,
+        native_gadget: &N,
+        scalar_field_chip: &S,
+    ) -> Self {
+        let base_field_chip = FieldChip::new(&config.base_field_config, native_gadget);
+        Self {
+            config: config.clone(),
+            native_gadget: native_gadget.clone(),
+            base_field_chip,
+            scalar_field_chip: scalar_field_chip.clone(),
+        }
+    }
+
+    /// Configures the foreign Edwards ECC chip.
+    pub fn configure(
+        _meta: &mut ConstraintSystem<F>,
+        base_field_config: &FieldChipConfig,
+    ) -> ForeignEdwardsEccConfig<C> {
+        ForeignEdwardsEccConfig {
+            base_field_config: base_field_config.clone(),
+            _marker: PhantomData,
+        }
+    }
+
+    /// The emulated base field chip of this foreign Edwards ECC chip.
     pub fn base_field_chip(&self) -> &FieldChip<F, C::Base, B, N> {
         &self.base_field_chip
+    }
+
+    /// A chip with instructions for the scalar field of this ECC chip.
+    pub fn scalar_field_chip(&self) -> &S {
+        &self.scalar_field_chip
     }
 }
 
@@ -324,21 +360,141 @@ where
     }
 }
 
-impl<F, C, B, S, N> ForeignEdwardsEccChip<F, C, B, S, N>
+/// Inherit assignment instructions for [AssignedField], from the
+/// `scalar_field_chip`.
+impl<F, C, B, S, SP, N> AssignmentInstructions<F, AssignedField<F, C::Scalar, SP>>
+    for ForeignEdwardsEccChip<F, C, B, S, N>
+where
+    F: PrimeField,
+    C: EdwardsCurve,
+    B: FieldEmulationParams<F, C::Base>,
+    S: ScalarFieldInstructions<F, Scalar = AssignedField<F, C::Scalar, SP>>,
+    S::Scalar: InnerValue<Element = C::Scalar>,
+    SP: FieldEmulationParams<F, C::Scalar>,
+    N: NativeInstructions<F>,
+{
+    fn assign(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        value: Value<<S::Scalar as InnerValue>::Element>,
+    ) -> Result<S::Scalar, Error> {
+        self.scalar_field_chip().assign(layouter, value)
+    }
+
+    fn assign_fixed(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        constant: <S::Scalar as InnerValue>::Element,
+    ) -> Result<S::Scalar, Error> {
+        self.scalar_field_chip().assign_fixed(layouter, constant)
+    }
+}
+
+impl<F, C, B, S, N> AssertionInstructions<F, AssignedForeignEdwardsPoint<F, C, B>>
+    for ForeignEdwardsEccChip<F, C, B, S, N>
 where
     F: PrimeField,
     C: EdwardsCurve,
     B: FieldEmulationParams<F, C::Base>,
     S: ScalarFieldInstructions<F>,
     S::Scalar: InnerValue<Element = C::Scalar>,
-    N: NativeInstructions<F> + PublicInputInstructions<F, AssignedBit<F>>,
+    N: NativeInstructions<F>,
 {
-    fn add(
+    fn assert_equal(
         &self,
         layouter: &mut impl Layouter<F>,
         p: &AssignedForeignEdwardsPoint<F, C, B>,
         q: &AssignedForeignEdwardsPoint<F, C, B>,
-    ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
+    ) -> Result<(), Error> {
+        self.base_field_chip().assert_equal(layouter, &p.x, &q.x)?;
+        self.base_field_chip().assert_equal(layouter, &p.y, &q.y)
+    }
+
+    fn assert_not_equal(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        p: &AssignedForeignEdwardsPoint<F, C, B>,
+        q: &AssignedForeignEdwardsPoint<F, C, B>,
+    ) -> Result<(), Error> {
+        let p_eq_q = self.is_equal(layouter, p, q)?;
+        self.native_gadget.assert_equal_to_fixed(layouter, &p_eq_q, false)
+    }
+
+    fn assert_equal_to_fixed(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        p: &AssignedForeignEdwardsPoint<F, C, B>,
+        constant: <AssignedForeignEdwardsPoint<F, C, B> as InnerValue>::Element,
+    ) -> Result<(), Error> {
+        let coordinates = constant.into().coordinates().expect("Valid point");
+        self.base_field_chip().assert_equal_to_fixed(layouter, &p.x, coordinates.0)?;
+        self.base_field_chip().assert_equal_to_fixed(layouter, &p.y, coordinates.1)
+    }
+
+    fn assert_not_equal_to_fixed(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        p: &AssignedForeignEdwardsPoint<F, C, B>,
+        constant: <AssignedForeignEdwardsPoint<F, C, B> as InnerValue>::Element,
+    ) -> Result<(), Error> {
+        let p_eq_constant = self.is_equal_to_fixed(layouter, p, constant)?;
+        self.native_gadget.assert_equal_to_fixed(layouter, &p_eq_constant, false)
+    }
+}
+
+impl<F, C, B, S, N> EqualityInstructions<F, AssignedForeignEdwardsPoint<F, C, B>>
+    for ForeignEdwardsEccChip<F, C, B, S, N>
+where
+    F: PrimeField,
+    C: EdwardsCurve,
+    B: FieldEmulationParams<F, C::Base>,
+    S: ScalarFieldInstructions<F>,
+    S::Scalar: InnerValue<Element = C::Scalar>,
+    N: NativeInstructions<F>,
+{
+    fn is_equal(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        p: &AssignedForeignEdwardsPoint<F, C, B>,
+        q: &AssignedForeignEdwardsPoint<F, C, B>,
+    ) -> Result<AssignedBit<F>, Error> {
+        let eq_x = self.base_field_chip().is_equal(layouter, &p.x, &q.x)?;
+        let eq_y = self.base_field_chip().is_equal(layouter, &p.y, &q.y)?;
+        self.native_gadget.and(layouter, &[eq_x, eq_y])
+    }
+
+    fn is_equal_to_fixed(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        p: &AssignedForeignEdwardsPoint<F, C, B>,
+        constant: <AssignedForeignEdwardsPoint<F, C, B> as InnerValue>::Element,
+    ) -> Result<AssignedBit<F>, Error> {
+        let coordinates = constant.into().coordinates().expect("Valid point");
+        let eq_x = self.base_field_chip().is_equal_to_fixed(layouter, &p.x, coordinates.0)?;
+        let eq_y = self.base_field_chip().is_equal_to_fixed(layouter, &p.y, coordinates.1)?;
+        self.native_gadget.and(layouter, &[eq_x, eq_y])
+    }
+}
+
+impl<F, C, B, S, N> EccInstructions<F, C> for ForeignEdwardsEccChip<F, C, B, S, N>
+where
+    F: PrimeField,
+    C: EdwardsCurve,
+    B: FieldEmulationParams<F, C::Base>,
+    S: ScalarFieldInstructions<F>,
+    S::Scalar: InnerValue<Element = C::Scalar>,
+    N: NativeInstructions<F>,
+{
+    type Point = AssignedForeignEdwardsPoint<F, C, B>;
+    type Coordinate = AssignedField<F, C::Base, B>;
+    type Scalar = S::Scalar;
+
+    fn add(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        p: &Self::Point,
+        q: &Self::Point,
+    ) -> Result<Self::Point, Error> {
         // Addition law on twisted edwards curve:
         //      P    +    Q
         // = (Px,Py) + (Qx,Qy)
@@ -386,4 +542,206 @@ where
     ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
         self.add(layouter, p, p)
     }
+
+    fn negate(
+        &self,
+        _layouter: &mut impl Layouter<F>,
+        _p: &Self::Point,
+    ) -> Result<Self::Point, Error> {
+        todo!()
+    }
+
+    fn msm(
+        &self,
+        _layouter: &mut impl Layouter<F>,
+        _scalars: &[Self::Scalar],
+        _bases: &[Self::Point],
+    ) -> Result<Self::Point, Error> {
+        todo!()
+    }
+
+    fn mul_by_constant(
+        &self,
+        _layouter: &mut impl Layouter<F>,
+        _scalar: <C>::Scalar,
+        _base: &Self::Point,
+    ) -> Result<Self::Point, Error> {
+        todo!()
+    }
+
+    fn point_from_coordinates(
+        &self,
+        _layouter: &mut impl Layouter<F>,
+        _x: &Self::Coordinate,
+        _y: &Self::Coordinate,
+    ) -> Result<Self::Point, Error> {
+        todo!()
+    }
+
+    fn x_coordinate(&self, _point: &Self::Point) -> Self::Coordinate {
+        todo!()
+    }
+
+    fn y_coordinate(&self, _point: &Self::Point) -> Self::Coordinate {
+        todo!()
+    }
+
+    fn base_field(&self) -> &impl DecompositionInstructions<F, Self::Coordinate> {
+        self.base_field_chip()
+    }
+}
+
+#[derive(Clone, Debug)]
+#[cfg(any(test, feature = "testing"))]
+/// Configuration used to implement `FromScratch` for the ForeignEcc chip. This
+/// should only be used for testing.
+pub struct ForeignEccTestConfig<F, C, S, N>
+where
+    F: PrimeField,
+    C: EdwardsCurve,
+    S: ScalarFieldInstructions<F> + FromScratch<F>,
+    S::Scalar: InnerValue<Element = C::Scalar>,
+    N: NativeInstructions<F> + FromScratch<F>,
+{
+    native_gadget_config: <N as FromScratch<F>>::Config,
+    scalar_field_config: <S as FromScratch<F>>::Config,
+    ff_ecc_config: ForeignEdwardsEccConfig<C>,
+}
+
+#[cfg(any(test, feature = "testing"))]
+impl<F, C, B, S, N> FromScratch<F> for ForeignEdwardsEccChip<F, C, B, S, N>
+where
+    F: PrimeField,
+    C: EdwardsCurve,
+    B: FieldEmulationParams<F, C::Base>,
+    S: ScalarFieldInstructions<F> + FromScratch<F>,
+    S::Scalar: InnerValue<Element = C::Scalar>,
+    N: NativeInstructions<F> + FromScratch<F>,
+{
+    type Config = ForeignEccTestConfig<F, C, S, N>;
+
+    fn new_from_scratch(config: &Self::Config) -> Self {
+        let native_gadget = <N as FromScratch<F>>::new_from_scratch(&config.native_gadget_config);
+        let scalar_field_chip =
+            <S as FromScratch<F>>::new_from_scratch(&config.scalar_field_config);
+        ForeignEdwardsEccChip::new(&config.ff_ecc_config, &native_gadget, &scalar_field_chip)
+    }
+
+    fn load_from_scratch(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
+        self.native_gadget.load_from_scratch(layouter)?;
+        self.scalar_field_chip.load_from_scratch(layouter)
+    }
+
+    fn configure_from_scratch(
+        meta: &mut ConstraintSystem<F>,
+        instance_columns: &[Column<Instance>; 2],
+    ) -> ForeignEccTestConfig<F, C, S, N> {
+        use crate::field::foreign::nb_field_chip_columns;
+
+        let native_gadget_config =
+            <N as FromScratch<F>>::configure_from_scratch(meta, instance_columns);
+        let scalar_field_config =
+            <S as FromScratch<F>>::configure_from_scratch(meta, instance_columns);
+        let nb_advice_cols = nb_field_chip_columns::<F, C::Base, B>();
+        let advice_columns = (0..nb_advice_cols).map(|_| meta.advice_column()).collect::<Vec<_>>();
+        let base_field_config = FieldChip::<F, C::Base, B, N>::configure(meta, &advice_columns);
+        let ff_ecc_config =
+            ForeignEdwardsEccChip::<F, C, B, S, N>::configure(meta, &base_field_config);
+        ForeignEccTestConfig {
+            native_gadget_config,
+            scalar_field_config,
+            ff_ecc_config,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use group::Group;
+    use midnight_curves::{Fq as BlsScalar, JubjubExtended};
+
+    use super::*;
+    use crate::{
+        field::{
+            decomposition::chip::P2RDecompositionChip, foreign::params::MultiEmulationParams,
+            NativeChip, NativeGadget,
+        },
+        instructions::{assertions, ecc, equality, public_input},
+    };
+
+    type Native<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
+
+    type EmulatedField<F, C> = FieldChip<F, <C as Group>::Scalar, MultiEmulationParams, Native<F>>;
+
+    macro_rules! test_generic {
+        ($mod:ident, $op:ident, $native:ty, $curve:ty, $scalar_field:ty,
+    $name:expr) => {
+            $mod::tests::$op::<
+                $native,
+                AssignedForeignEdwardsPoint<$native, $curve, MultiEmulationParams>,
+                ForeignEdwardsEccChip<
+                    $native,
+                    $curve,
+                    MultiEmulationParams,
+                    $scalar_field,
+                    Native<$native>,
+                >,
+            >($name);
+        };
+    }
+
+    macro_rules! test {
+        ($mod:ident, $op:ident) => {
+            #[test]
+            fn $op() {
+                test_generic!($mod, $op, BlsScalar, JubjubExtended, EmulatedField<BlsScalar, JubjubExtended>, "emulated_jubjub");
+            }
+        };
+    }
+
+    test!(assertions, test_assertions);
+
+    test!(public_input, test_public_inputs);
+
+    test!(equality, test_is_equal);
+
+    // test!(zero, test_zero_assertions);
+    // test!(zero, test_is_zero);
+
+    // test!(control_flow, test_select);
+    // test!(control_flow, test_cond_assert_equal);
+    // test!(control_flow, test_cond_swap);
+
+    macro_rules! ecc_test {
+        ($op:ident, $native:ty, $curve:ty, $scalar_field:ty, $name:expr) => {
+            ecc::tests::$op::<
+                $native,
+                $curve,
+                ForeignEdwardsEccChip<
+                    $native,
+                    $curve,
+                    MultiEmulationParams,
+                    $scalar_field,
+                    Native<$native>,
+                >,
+            >($name);
+        };
+    }
+
+    macro_rules! ecc_tests {
+         ($op:ident) => {
+             #[test]
+             fn $op() {
+                 ecc_test!($op, BlsScalar, JubjubExtended, EmulatedField<BlsScalar, JubjubExtended>, "emulated_jubjub");
+             }
+         };
+     }
+
+    ecc_tests!(test_add);
+    ecc_tests!(test_double);
+    // ecc_tests!(test_negate);
+    // ecc_tests!(test_msm);
+    // ecc_tests!(test_msm_by_bounded_scalars);
+    // ecc_tests!(test_mul_by_constant);
+    // ecc_tests!(test_coordinates);
 }
