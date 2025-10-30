@@ -522,6 +522,7 @@ where
 
     /// Returns a vector of assigned bytes representing the given assigned big
     /// unsigned integer little-endian.
+    #[allow(clippy::assertions_on_constants)]
     pub fn to_le_bytes(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -570,6 +571,7 @@ where
 
     /// Returns the assigned big unsigned integer represented by the given
     /// vector of assigned bytes, by interpreting it in little-endian.
+    #[allow(clippy::assertions_on_constants)]
     pub fn from_le_bytes(
         &self,
         layouter: &mut impl Layouter<F>,

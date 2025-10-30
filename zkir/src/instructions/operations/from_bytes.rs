@@ -37,7 +37,7 @@ impl IrValue {
             JubjubPoint if bytes.len() == 32 => {
                 JubjubSubgroup::from_bytes(&bytes.try_into().unwrap())
                     .into_option()
-                    .map(|p| IrValue::JubjubPoint(p))
+                    .map(IrValue::JubjubPoint)
                     .ok_or(Error::Other(format!(
                         "cannot convert {bytes:?} to JubjubPoint"
                     )))
