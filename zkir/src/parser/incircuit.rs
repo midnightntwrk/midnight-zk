@@ -49,7 +49,8 @@ impl Parser {
             .iter()
             .map(|name| match self.memory.get(name).cloned() {
                 Some(v) => Ok(v),
-                None => assign_constant(std_lib, layouter, name),
+                None => assign_constant(std_lib, layouter, name)
+                    .map_err(|_| Error::NotFound(name.clone())),
             })
             .collect::<Result<Vec<CircuitValue>, Error>>()?;
 
