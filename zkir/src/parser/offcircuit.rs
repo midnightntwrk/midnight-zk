@@ -67,6 +67,15 @@ impl Parser {
                 }
                 vec![]
             }
+            AssertNotEqual => {
+                if inps[0] == inps[1] {
+                    return Err(Error::Other(format!(
+                        "assertion violated: {:?} != {:?}",
+                        inps[0], inps[1]
+                    )));
+                }
+                vec![]
+            }
             IsEqual => vec![IrValue::Bool(inps[0] == inps[1])],
             Add => vec![add_offcircuit(&inps[0], &inps[1])?],
             Sub => vec![sub_offcircuit(&inps[0], &inps[1])?],
