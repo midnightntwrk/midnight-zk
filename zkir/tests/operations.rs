@@ -644,6 +644,41 @@ fn test_poseidon() {
     );
 }
 
+#[test]
+fn test_sha256() {
+    // Arity validation: SHA-256 requires 1 input and 1 output.
+    assert_invalid_arity(Sha256, vec!["x"], vec!["h1", "h2"]);
+    assert_invalid_arity(Sha256, vec![], vec!["h"]);
+    test_static_pass(&[(Sha256, vec!["x"], vec!["h"])], None);
+
+    // Type support: SHA-256 expects Bytes.
+    test_without_witness(
+        &[
+            (Load(IrType::Bytes(10)), vec![], vec!["bytes"]),
+            (Sha256, vec!["bytes"], vec!["h"]),
+        ],
+        None,
+    );
+    test_without_witness(
+        &[
+            (Load(IrType::Bool), vec![], vec!["b"]),
+            (Sha256, vec!["b"], vec!["h"]),
+        ],
+        Some(Error::Other("cannot convert Bool to \"Bytes\"".into())),
+    );
+
+    // Success case: hashing 1024 bytes.
+    test_with_witness(
+        &[
+            (Load(IrType::Bytes(1024)), vec![], vec!["preimage"]),
+            (Sha256, vec!["preimage"], vec!["h"]),
+        ],
+        witness!("preimage" => vec![0u8; 1024]),
+        vec![],
+        None,
+    );
+}
+
 /// Converts raw instruction tuples into structured `Instruction` objects.
 fn build_instructions(
     raw_instructions: &[(Operation, Vec<&'static str>, Vec<&'static str>)],
