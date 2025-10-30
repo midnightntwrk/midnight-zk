@@ -41,6 +41,7 @@ impl Operation {
             IntoBytes(_) => Fixed(1),
             FromBytes(_) => Fixed(1),
             Poseidon => Some,
+            Sha256 => Fixed(1),
         }
     }
 
@@ -62,6 +63,7 @@ impl Operation {
             IntoBytes(_) => Fixed(1),
             FromBytes(_) => Fixed(1),
             Poseidon => Fixed(1),
+            Sha256 => Fixed(1),
         }
     }
 }

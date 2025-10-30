@@ -178,6 +178,13 @@ pub enum Operation {
     /// See `midnight-zk/circuits/src/hash/poseidon/constants/blstrs` for more
     /// details about this version of Poseidon.
     Poseidon,
+
+    /// Computes the SHA-256 hash function on the given input, which must be of
+    /// type `Bytes(n)` for some n. Returns an element of type `Bytes(32)`.
+    ///
+    /// Inputs:  1
+    /// Outputs: 1
+    Sha256,
 }
 
 mod add;
@@ -193,6 +200,7 @@ mod mul;
 mod neg;
 mod poseidon;
 mod publish;
+mod sha256;
 mod sub;
 
 pub use add::*;
@@ -208,4 +216,5 @@ pub use mul::*;
 pub use neg::*;
 pub use poseidon::*;
 pub use publish::*;
+pub use sha256::*;
 pub use sub::*;

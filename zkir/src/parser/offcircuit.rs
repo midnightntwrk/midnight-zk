@@ -5,7 +5,7 @@ use crate::{
         operations::{
             add_offcircuit, affine_coordinates_offcircuit, inner_product_offcircuit,
             load_offcircuit, mod_exp_offcircuit, mul_offcircuit, neg_offcircuit,
-            poseidon_offcircuit, sub_offcircuit, Operation::*,
+            poseidon_offcircuit, sha256_offcircuit, sub_offcircuit, Operation::*,
         },
         Instruction,
     },
@@ -92,6 +92,7 @@ impl Parser {
                 }
             }
             Poseidon => vec![poseidon_offcircuit(&inps)?],
+            Sha256 => vec![sha256_offcircuit(&inps[0])?],
         };
 
         insert_many(&mut self.memory, &instruction.outputs, &outputs)
