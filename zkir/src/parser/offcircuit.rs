@@ -4,8 +4,8 @@ use crate::{
     instructions::{
         operations::{
             add_offcircuit, affine_coordinates_offcircuit, inner_product_offcircuit,
-            load_offcircuit, mul_offcircuit, neg_offcircuit, poseidon_offcircuit, sub_offcircuit,
-            Operation::*,
+            load_offcircuit, mod_exp_offcircuit, mul_offcircuit, neg_offcircuit,
+            poseidon_offcircuit, sub_offcircuit, Operation::*,
         },
         Instruction,
     },
@@ -71,6 +71,7 @@ impl Parser {
             Sub => vec![sub_offcircuit(&inps[0], &inps[1])?],
             Mul => vec![mul_offcircuit(&inps[0], &inps[1])?],
             Neg => vec![neg_offcircuit(&inps[0])?],
+            ModExp(n) => vec![mod_exp_offcircuit(&inps[0], n, &inps[1])?],
             InnerProduct => vec![inner_product_offcircuit(
                 &inps[..inps.len() / 2],
                 &inps[inps.len() / 2..],

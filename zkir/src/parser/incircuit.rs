@@ -8,8 +8,8 @@ use crate::{
         operations::{
             add_incircuit, affine_coordinates_incircuit, assert_equal_incircuit,
             from_bytes_incircuit, inner_product_incircuit, into_bytes_incircuit,
-            is_equal_incircuit, load_incircuit, mul_incircuit, neg_incircuit, poseidon_incircuit,
-            publish_incircuit, sub_incircuit, Operation::*,
+            is_equal_incircuit, load_incircuit, mod_exp_incircuit, mul_incircuit, neg_incircuit,
+            poseidon_incircuit, publish_incircuit, sub_incircuit, Operation::*,
         },
         Instruction,
     },
@@ -77,6 +77,7 @@ impl Parser {
             Sub => vec![sub_incircuit(std_lib, layouter, &inps[0], &inps[1])?],
             Mul => vec![mul_incircuit(std_lib, layouter, &inps[0], &inps[1])?],
             Neg => vec![neg_incircuit(std_lib, layouter, &inps[0])?],
+            ModExp(n) => vec![mod_exp_incircuit(std_lib, layouter, &inps[0], n, &inps[1])?],
             InnerProduct => vec![inner_product_incircuit(
                 std_lib,
                 layouter,
