@@ -125,7 +125,7 @@ impl Relation for ZkirRelation {
             jubjub: involves_types(&[IrType::JubjubPoint, IrType::JubjubScalar]),
             poseidon: operations.iter().any(|op| matches!(op, Poseidon)),
             sha256: operations.iter().any(|op| matches!(op, Sha256)),
-            sha512: false,
+            sha512: operations.iter().any(|op| matches!(op, Sha512)),
             secp256k1: false,
             bls12_381: false,
             nr_pow2range_cols: 4,

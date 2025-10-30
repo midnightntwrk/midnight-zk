@@ -185,6 +185,13 @@ pub enum Operation {
     /// Inputs:  1
     /// Outputs: 1
     Sha256,
+
+    /// Computes the SHA-512 hash function on the given input, which must be of
+    /// type `Bytes(n)` for some n. Returns an element of type `Bytes(64)`.
+    ///
+    /// Inputs:  1
+    /// Outputs: 1
+    Sha512,
 }
 
 mod add;
@@ -201,6 +208,7 @@ mod neg;
 mod poseidon;
 mod publish;
 mod sha256;
+mod sha512;
 mod sub;
 
 pub use add::*;
@@ -217,4 +225,5 @@ pub use neg::*;
 pub use poseidon::*;
 pub use publish::*;
 pub use sha256::*;
+pub use sha512::*;
 pub use sub::*;
