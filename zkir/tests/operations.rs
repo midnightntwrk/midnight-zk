@@ -349,6 +349,39 @@ fn test_neg() {
 }
 
 #[test]
+fn test_mod_exp() {
+    // Arity validation: ModExp(n) requires exactly 2 input and 1 output.
+    assert_invalid_arity(ModExp(65537), vec![], vec!["out"]);
+    assert_invalid_arity(ModExp(65537), vec!["x"], vec!["out"]);
+    test_static_pass(&[(ModExp(65537), vec!["x", "m"], vec!["out"])], None);
+
+    // Type support: ModExp(n) is not supported for Natives.
+    assert_unsupported(
+        ModExp(123),
+        vec![IrType::Native, IrType::Native],
+        &[
+            (Load(IrType::Native), vec![], vec!["x", "m"]),
+            (ModExp(123), vec!["x", "m"], vec!["z"]),
+        ],
+    );
+
+    // Success case. Modular exponentiation of BigUint values.
+    test_with_witness(
+        &[
+            (Load(IrType::BigUint(1024)), vec![], vec!["x", "m"]),
+            (ModExp(65537), vec!["x", "m"], vec!["out"]),
+            (Publish, vec!["out"], vec![]),
+        ],
+        witness!("x" => biguint_from_hex("deadbeef") , "m" => biguint_from_hex("7a0b1e3ae205a1c7")),
+        vec![(
+            biguint_from_hex("1423d96999521749").into(),
+            IrType::BigUint(1024),
+        )],
+        None,
+    );
+}
+
+#[test]
 fn test_inner_product() {
     // Arity validation: InnerProduct requires an even, positive number of inputs
     // and 1 output.

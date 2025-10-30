@@ -106,6 +106,18 @@ pub enum Operation {
     ///  - `JubjubPoint`
     Neg,
 
+    /// Modular exponentiation (by a constant). Given, x and m as inputs,
+    /// ModExp(n) returns x^n % m.
+    /// This function fails if the inputs types are not the same or if they are
+    /// not supported.
+    ///
+    /// Inputs:  2
+    /// Outputs: 1
+    ///
+    /// Supported on types:
+    /// - `BigUint`
+    ModExp(u64),
+
     /// Computes the inner-product between the first half of inputs and the
     /// second half. Concretely, given 2n inputs, this instruction returns
     /// $\sum_{i = 0}^{n-1} inputs\[i\] * inputs\[n + i\]$.
@@ -176,6 +188,7 @@ mod inner_product;
 mod into_bytes;
 mod is_equal;
 mod load;
+mod mod_exp;
 mod mul;
 mod neg;
 mod poseidon;
@@ -190,6 +203,7 @@ pub use inner_product::*;
 pub use into_bytes::*;
 pub use is_equal::*;
 pub use load::*;
+pub use mod_exp::*;
 pub use mul::*;
 pub use neg::*;
 pub use poseidon::*;
