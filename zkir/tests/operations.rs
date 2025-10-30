@@ -679,6 +679,43 @@ fn test_sha256() {
     );
 }
 
+#[test]
+fn test_sha512() {
+    // Arity validation: SHA-512 requires 1 input and 1 output.
+    assert_invalid_arity(Sha512, vec!["x"], vec!["h1", "h2"]);
+    assert_invalid_arity(Sha512, vec![], vec!["h"]);
+    test_static_pass(&[(Sha512, vec!["x"], vec!["h"])], None);
+
+    // Type support: SHA-512 expects Bytes.
+    test_without_witness(
+        &[
+            (Load(IrType::Bytes(10)), vec![], vec!["bytes"]),
+            (Sha512, vec!["bytes"], vec!["h"]),
+        ],
+        None,
+    );
+    test_without_witness(
+        &[
+            (Load(IrType::JubjubPoint), vec![], vec!["b"]),
+            (Sha512, vec!["b"], vec!["h"]),
+        ],
+        Some(Error::Other(
+            "cannot convert JubjubPoint to \"Bytes\"".into(),
+        )),
+    );
+
+    // Success case: hashing 1024 bytes.
+    test_with_witness(
+        &[
+            (Load(IrType::Bytes(1024)), vec![], vec!["preimage"]),
+            (Sha512, vec!["preimage"], vec!["h"]),
+        ],
+        witness!("preimage" => vec![255u8; 1024]),
+        vec![],
+        None,
+    );
+}
+
 /// Converts raw instruction tuples into structured `Instruction` objects.
 fn build_instructions(
     raw_instructions: &[(Operation, Vec<&'static str>, Vec<&'static str>)],
