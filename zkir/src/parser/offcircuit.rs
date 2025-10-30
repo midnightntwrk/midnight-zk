@@ -41,7 +41,7 @@ impl Parser {
             .iter()
             .map(|name| match self.memory.get(name).cloned() {
                 Some(v) => Ok(v),
-                None => name.as_str().try_into(),
+                None => name.as_str().try_into().map_err(|_| Error::NotFound(name.clone())),
             })
             .collect::<Result<Vec<IrValue>, Error>>()?;
 
