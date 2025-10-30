@@ -387,6 +387,7 @@ impl ZkStdLib {
                     >(),
                 ),
             arch.base64 as usize * NB_BASE64_ADVICE_COLS,
+            arch.automaton as usize * NB_AUTOMATA_COLS,
             arch.keccak as usize * PACKED_ADVICE_COLS,
             arch.blake2b as usize * NB_BLAKE2B_ADVICE_COLS,
         ]
@@ -656,7 +657,7 @@ impl ZkStdLib {
         self.native_gadget.lower_than(layouter, &bounded_x, &bounded_y)
     }
 
-    /// Poseidon hash from a slice of native valure into a native value.
+    /// Poseidon hash from a slice of native values into a native value.
     ///
     /// ```
     /// # midnight_circuits::run_test_std_lib!(chip, layouter, 13, {
