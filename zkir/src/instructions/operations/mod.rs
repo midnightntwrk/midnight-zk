@@ -43,6 +43,14 @@ pub enum Operation {
     /// Supported on all types except: `JubjubScalar`.
     AssertEqual,
 
+    /// Constrains the given inputs to be different.
+    ///
+    /// Inputs:  2
+    /// Outputs: 0
+    ///
+    /// Supported on all types except: `JubjubScalar`.
+    AssertNotEqual,
+
     /// Returns a `Bool` indicating whether the given inputs are equal.
     ///
     /// Inputs:  2
@@ -197,6 +205,7 @@ pub enum Operation {
 mod add;
 mod affine_coordinates;
 mod assert_equal;
+mod assert_not_equal;
 mod from_bytes;
 mod inner_product;
 mod into_bytes;
@@ -214,6 +223,7 @@ mod sub;
 pub use add::*;
 pub use affine_coordinates::*;
 pub use assert_equal::*;
+pub use assert_not_equal::*;
 pub use from_bytes::*;
 pub use inner_product::*;
 pub use into_bytes::*;

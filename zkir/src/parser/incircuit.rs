@@ -7,10 +7,10 @@ use crate::{
     instructions::{
         operations::{
             add_incircuit, affine_coordinates_incircuit, assert_equal_incircuit,
-            from_bytes_incircuit, inner_product_incircuit, into_bytes_incircuit,
-            is_equal_incircuit, load_incircuit, mod_exp_incircuit, mul_incircuit, neg_incircuit,
-            poseidon_incircuit, publish_incircuit, sha256_incircuit, sha512_incircuit,
-            sub_incircuit, Operation::*,
+            assert_not_equal_incircuit, from_bytes_incircuit, inner_product_incircuit,
+            into_bytes_incircuit, is_equal_incircuit, load_incircuit, mod_exp_incircuit,
+            mul_incircuit, neg_incircuit, poseidon_incircuit, publish_incircuit, sha256_incircuit,
+            sha512_incircuit, sub_incircuit, Operation::*,
         },
         Instruction,
     },
@@ -71,6 +71,10 @@ impl Parser {
             }
             AssertEqual => {
                 assert_equal_incircuit(std_lib, layouter, &inps[0], &inps[1])?;
+                vec![]
+            }
+            AssertNotEqual => {
+                assert_not_equal_incircuit(std_lib, layouter, &inps[0], &inps[1])?;
                 vec![]
             }
             IsEqual => vec![is_equal_incircuit(std_lib, layouter, &inps[0], &inps[1])?],

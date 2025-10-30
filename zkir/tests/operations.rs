@@ -188,6 +188,68 @@ fn test_assert_equal() {
 }
 
 #[test]
+fn test_assert_not_equal() {
+    // Arity validation: AssertNotEqual requires exactly 2 inputs and 0 outputs.
+    assert_invalid_arity(AssertNotEqual, vec!["x", "y"], vec!["z"]);
+    assert_invalid_arity(AssertNotEqual, vec!["x", "y", "z"], vec![]);
+    test_static_pass(&[(AssertNotEqual, vec!["x", "y"], vec![])], None);
+
+    // Type support: JubjubScalars do not support inequality assertions.
+    assert_unsupported(
+        AssertNotEqual,
+        vec![IrType::JubjubScalar, IrType::JubjubScalar],
+        &[
+            (Load(IrType::JubjubScalar), vec![], vec!["x"]),
+            (AssertNotEqual, vec!["x", "x"], vec![]),
+        ],
+    );
+
+    // Type compatibility: Both values must have the same type.
+    assert_unsupported(
+        AssertNotEqual,
+        vec![IrType::JubjubPoint, IrType::Native],
+        &[
+            (Load(IrType::JubjubPoint), vec![], vec!["p"]),
+            (Load(IrType::Native), vec![], vec!["x"]),
+            (AssertNotEqual, vec!["p", "x"], vec![]),
+        ],
+    );
+
+    // Type compatibility: Byte vectors must have the same length.
+    assert_unsupported(
+        AssertNotEqual,
+        vec![IrType::Bytes(2), IrType::Bytes(3)],
+        &[
+            (Load(IrType::Bytes(2)), vec![], vec!["v"]),
+            (Load(IrType::Bytes(3)), vec![], vec!["w"]),
+            (AssertNotEqual, vec!["v", "w"], vec![]),
+        ],
+    );
+
+    // Success case: Asserting inequality of Bytes(2).
+    test_with_witness(
+        &[
+            (Load(IrType::Bytes(2)), vec![], vec!["v", "w"]),
+            (AssertNotEqual, vec!["v", "w"], vec![]),
+        ],
+        witness!("v" => vec![255, 0], "w" => vec![255, 1]),
+        vec![],
+        None,
+    );
+
+    // Success case: Asserting equality of BigUint values.
+    test_with_witness(
+        &[
+            (Load(IrType::BigUint(1024)), vec![], vec!["x", "y"]),
+            (AssertNotEqual, vec!["x", "y"], vec![]),
+        ],
+        witness!("x" => biguint_from_hex("deadbeef"),   "y" => biguint_from_hex("cafebabe")),
+        vec![],
+        None,
+    );
+}
+
+#[test]
 fn test_is_equal() {
     // Arity validation: IsEqual requires exactly 2 inputs and 1 output.
     assert_invalid_arity(IsEqual, vec!["x", "y"], vec![]);
