@@ -106,7 +106,7 @@ impl<C: EdwardsCurve> InnerConstants for AssignedNativePoint<C> {
 
 /// Scalars are represented as a vector of assigned bits in little endian.
 #[derive(Clone, Debug, picus::DecomposeInCells)]
-pub struct ScalarVar<C: CircuitCurve>(pub Vec<AssignedBit<C::Base>>);
+pub struct ScalarVar<C: CircuitCurve>(Vec<AssignedBit<C::Base>>);
 
 impl<C: CircuitCurve> InnerValue for ScalarVar<C> {
     type Element = C::Scalar;
