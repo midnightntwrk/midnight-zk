@@ -2069,25 +2069,20 @@ where
 #[cfg(feature = "extraction")]
 pub mod extraction {
     //! Extraction specific logic related to the foreign ecc chip.
-    use extractor_support::cells::ctx::ICtx;
-    use extractor_support::cells::load::LoadFromCells;
-    use extractor_support::cells::store::StoreIntoCells;
-    use extractor_support::cells::CellReprSize;
-    use extractor_support::circuit::injected::InjectedIR;
-    use extractor_support::error::Error;
+    use extractor_support::{
+        cells::{ctx::ICtx, load::LoadFromCells, store::StoreIntoCells, CellReprSize},
+        circuit::injected::InjectedIR,
+        error::Error,
+    };
     use ff::PrimeField;
-    use midnight_proofs::circuit::Layouter;
-    use midnight_proofs::circuit::Value;
+    use midnight_proofs::circuit::{Layouter, Value};
 
-    use super::AssignedForeignPoint;
-    use super::ForeignEccChip;
-    use crate::types::AssignedBit;
-    use crate::types::AssignedField;
+    use super::{AssignedForeignPoint, ForeignEccChip};
     use crate::{
         ecc::curves::WeierstrassCurve,
         field::foreign::params::FieldEmulationParams,
         instructions::{NativeInstructions, ScalarFieldInstructions},
-        types::InnerValue,
+        types::{AssignedBit, AssignedField, InnerValue},
     };
 
     impl<F, C, B> CellReprSize for AssignedForeignPoint<F, C, B>
@@ -2100,8 +2095,8 @@ pub mod extraction {
             + <AssignedField<F, C::Base, B> as CellReprSize>::SIZE * 2;
     }
 
-    // This loading and storing implementation is probably naive and it may need some extra IR to
-    // properly handle the the `is_id` flag.
+    // This loading and storing implementation is probably naive and it may need
+    // some extra IR to properly handle the the `is_id` flag.
 
     impl<F, C, B, Chip> LoadFromCells<F, Chip> for AssignedForeignPoint<F, C, B>
     where

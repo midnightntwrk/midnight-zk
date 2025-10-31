@@ -746,7 +746,8 @@ pub trait Assignment<F: Field> {
 
     /// Creates a new group and enters into it.
     ///
-    /// Not intended for downstream consumption; use [`Layouter::group`] instead.
+    /// Not intended for downstream consumption; use [`Layouter::group`]
+    /// instead.
     ///
     /// [`Layouter::group`]: crate::circuit::Layouter#method.group
     #[cfg(feature = "region-groups")]
@@ -761,7 +762,8 @@ pub trait Assignment<F: Field> {
 
     /// Exits the current group.
     ///
-    /// Not intended for downstream consumption; use [`Layouter::group`] instead.
+    /// Not intended for downstream consumption; use [`Layouter::group`]
+    /// instead.
     ///
     /// [`Layouter::group`]: crate::circuit::Layouter#method.group
     #[cfg(feature = "region-groups")]

@@ -163,23 +163,25 @@ pub(crate) fn biguint_to_limbs<F: PrimeField>(value: &BigUint, nb_limbs: Option<
 #[cfg(feature = "extraction")]
 pub mod extraction {
     //! Extraction specific logic related to the biguint gadget.
-    use std::borrow::Borrow;
-    use std::ops::Rem as _;
+    use std::{borrow::Borrow, ops::Rem as _};
+
+    use extractor_support::{
+        cell_to_expr,
+        cells::{
+            ctx::{ICtx, OCtx},
+            load::LoadFromCells,
+            store::StoreIntoCells,
+            CellReprSize,
+        },
+        circuit::injected::InjectedIR,
+        error::Error,
+        ir::{stmt::IRStmt, CmpOp},
+    };
+    use ff::PrimeField;
+    use midnight_proofs::{circuit::Layouter, plonk::Expression};
 
     use super::{AssignedBigUint, LOG2_BASE};
     use crate::types::AssignedNative;
-    use extractor_support::cell_to_expr;
-    use extractor_support::cells::ctx::{ICtx, OCtx};
-    use extractor_support::cells::load::LoadFromCells;
-    use extractor_support::cells::store::StoreIntoCells;
-    use extractor_support::cells::CellReprSize;
-    use extractor_support::circuit::injected::InjectedIR;
-    use extractor_support::error::Error;
-    use extractor_support::ir::stmt::IRStmt;
-    use extractor_support::ir::CmpOp;
-    use ff::PrimeField;
-    use midnight_proofs::circuit::Layouter;
-    use midnight_proofs::plonk::Expression;
 
     const fn num_limbs(bits: usize) -> usize {
         let c: usize = bits / LOG2_BASE as usize;
@@ -190,7 +192,8 @@ pub mod extraction {
         }
     }
 
-    /// Represents a big unsigned integer of up to `BITS` bits loaded from cells.
+    /// Represents a big unsigned integer of up to `BITS` bits loaded from
+    /// cells.
     #[derive(Debug)]
     pub struct LoadedBigUint<F: PrimeField, const BITS: usize>(AssignedBigUint<F>);
 

@@ -546,7 +546,8 @@ pub trait Layouter<F: Field> {
 
     /// Creates a new group and enters into it.
     ///
-    /// Not intended for downstream consumption; use [`Layouter::group`] instead.
+    /// Not intended for downstream consumption; use [`Layouter::group`]
+    /// instead.
     #[cfg(feature = "region-groups")]
     fn push_group<N, NR, K>(&mut self, name: N, key: K)
     where
@@ -556,24 +557,30 @@ pub trait Layouter<F: Field> {
 
     /// Exits out of the group.
     ///
-    /// Not intended for downstream consumption; use [`Layouter::group`] instead.
+    /// Not intended for downstream consumption; use [`Layouter::group`]
+    /// instead.
     #[cfg(feature = "region-groups")]
     fn pop_group(&mut self, meta: groups::RegionsGroup);
 
     /// Groups a set of regions together.
     ///
-    /// Inside the closure the chip can use [`groups::GroupLayouter`] to define the regions that are part of the group
-    /// and [`groups::RegionsGroup`] to add annotations to the group. See the documentation of that
-    /// struct for more details about what can be annotated. These annotations are intended for
-    /// upstream consumers and may have additional requirements the annotations must meet.
+    /// Inside the closure the chip can use [`groups::GroupLayouter`] to define
+    /// the regions that are part of the group and [`groups::RegionsGroup`]
+    /// to add annotations to the group. See the documentation of that
+    /// struct for more details about what can be annotated. These annotations
+    /// are intended for upstream consumers and may have additional
+    /// requirements the annotations must meet.
     ///
-    /// Expects an implementation of [`groups::GroupKey`] with a key that uniquely identifies the
-    /// group. The [`crate::default_group_key!`] macro offers an implementation based on the source
-    /// code location where the group was created, which should be enough for most cases. If you
-    /// have additional requirements for uniquely identifing your groups you can add your own
-    /// implementation of [`groups::GroupKey`] and use that instead.
+    /// Expects an implementation of [`groups::GroupKey`] with a key that
+    /// uniquely identifies the group. The [`crate::default_group_key!`]
+    /// macro offers an implementation based on the source code location
+    /// where the group was created, which should be enough for most cases. If
+    /// you have additional requirements for uniquely identifing your groups
+    /// you can add your own implementation of [`groups::GroupKey`] and use
+    /// that instead.
     ///
-    /// This key is intended for upstream consumers that need to know what groups are equivalent.
+    /// This key is intended for upstream consumers that need to know what
+    /// groups are equivalent.
     ///
     /// # Example
     ///
@@ -602,7 +609,7 @@ pub trait Layouter<F: Field> {
     ///         group.annotate_output(o.cell());
     ///         Ok(o)
     ///     });
-    ///}
+    /// }
     /// ```
     #[cfg(feature = "region-groups")]
     fn group<A, AR, N, NR, K>(&mut self, name: N, key: K, mut assignment: A) -> Result<AR, Error>

@@ -608,21 +608,27 @@ impl<F: PoseidonField> FromScratch<F> for PoseidonChip<F> {
 #[cfg(feature = "extraction")]
 pub mod extraction {
     //! Extraction specific logic related to the poseidon chip.
-    use crate::hash::poseidon::{constants::PoseidonField, PoseidonChip};
-
-    use crate::field::AssignedNative;
-
-    use super::{AssignedPoseidonState, WIDTH};
-    use extractor_support::cells::ctx::{ICtx, OCtx};
-    use extractor_support::cells::load::LoadFromCells;
-    use extractor_support::cells::store::StoreIntoCells;
-    use extractor_support::cells::CellReprSize;
-    use extractor_support::circuit::injected::InjectedIR;
-    use extractor_support::error::Error;
+    use extractor_support::{
+        cells::{
+            ctx::{ICtx, OCtx},
+            load::LoadFromCells,
+            store::StoreIntoCells,
+            CellReprSize,
+        },
+        circuit::injected::InjectedIR,
+        error::Error,
+    };
     use ff::PrimeField;
     use midnight_proofs::circuit::Layouter;
 
-    /// Represents an [`AssignedPoseidonState`] loaded from the inputs or stored into outputs.
+    use super::{AssignedPoseidonState, WIDTH};
+    use crate::{
+        field::AssignedNative,
+        hash::poseidon::{constants::PoseidonField, PoseidonChip},
+    };
+
+    /// Represents an [`AssignedPoseidonState`] loaded from the inputs or stored
+    /// into outputs.
     #[derive(Debug)]
     pub struct LoadedPoseidonState<F: PrimeField, const QUEUE: usize>(AssignedPoseidonState<F>);
 

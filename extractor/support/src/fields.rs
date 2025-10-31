@@ -1,5 +1,15 @@
 //! Re-exports of the field types used by the extractor.
 
+use ff::PrimeField as _;
+pub use midnight_curves::{
+    Fp as MidnightFp, Fq as Blstrs, Fr as JubjubFr, G1Projective as G1, JubjubExtended as Jubjub,
+    JubjubSubgroup,
+};
+use midnight_proofs::circuit::Layouter;
+pub use midnight_proofs::halo2curves::secp256k1::{
+    Fp as Secp256k1Fp, Fq as Secp256k1Fq, Secp256k1,
+};
+
 use crate::{
     big_to_fe,
     cells::{ctx::ICtx, load::LoadFromCells},
@@ -7,18 +17,6 @@ use crate::{
     error::Error,
     fe_to_big,
 };
-use ff::PrimeField as _;
-use midnight_proofs::circuit::Layouter;
-
-pub use midnight_curves::Fp as MidnightFp;
-pub use midnight_curves::Fq as Blstrs;
-pub use midnight_curves::Fr as JubjubFr;
-pub use midnight_curves::G1Projective as G1;
-pub use midnight_curves::JubjubExtended as Jubjub;
-pub use midnight_curves::JubjubSubgroup;
-pub use midnight_proofs::halo2curves::secp256k1::Fp as Secp256k1Fp;
-pub use midnight_proofs::halo2curves::secp256k1::Fq as Secp256k1Fq;
-pub use midnight_proofs::halo2curves::secp256k1::Secp256k1;
 
 macro_rules! load_impl {
     ($t:ty) => {

@@ -1,6 +1,6 @@
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{spanned::Spanned as _, Data, DeriveInput, Fields};
+use syn::{Data, DeriveInput, Fields, spanned::Spanned as _};
 
 pub fn derive_decompose_in_cells_impl(input: DeriveInput) -> TokenStream {
     let name = input.ident;

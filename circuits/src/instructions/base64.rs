@@ -86,9 +86,6 @@ impl<F: PrimeField, const M: usize, const A: usize> From<Base64Vec<F, M, A>>
 pub mod extraction {
     //! Extraction specific logic related to the base64 vector.
 
-    use crate::{types::AssignedByte, vec::AssignedVector};
-
-    use super::Base64Vec;
     use extractor_support::{
         cells::{
             ctx::{ICtx, OCtx},
@@ -101,6 +98,9 @@ pub mod extraction {
     };
     use ff::PrimeField;
     use midnight_proofs::circuit::Layouter;
+
+    use super::Base64Vec;
+    use crate::{types::AssignedByte, vec::AssignedVector};
 
     impl<F: PrimeField, const M: usize, const A: usize> CellReprSize for Base64Vec<F, M, A> {
         const SIZE: usize = <AssignedVector<F, AssignedByte<F>, M, A> as CellReprSize>::SIZE;

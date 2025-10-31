@@ -162,6 +162,7 @@ pub mod extraction {
     use ff::PrimeField;
     use midnight_proofs::circuit::Layouter;
 
+    use super::{AssignedNativePoint, AssignedScalarOfNativeCurve};
     use crate::{
         ecc::curves::{CircuitCurve, EdwardsCurve},
         field::AssignedNative,
@@ -170,8 +171,6 @@ pub mod extraction {
             PublicInputInstructions,
         },
     };
-
-    use super::{AssignedNativePoint, AssignedScalarOfNativeCurve};
 
     impl<CV> CellReprSize for AssignedNativePoint<CV>
     where

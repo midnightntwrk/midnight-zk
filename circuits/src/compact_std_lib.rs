@@ -687,9 +687,8 @@ pub mod extraction {
     };
     use midnight_proofs::{circuit::Layouter, plonk::ConstraintSystem};
 
-    use crate::utils::ComposableChip as _;
-
     use super::F;
+    use crate::utils::ComposableChip as _;
 
     impl AutoConfigure for super::ZkStdLibArch {
         fn configure<F: ff::PrimeField>(_: &mut ConstraintSystem<F>) -> Self {

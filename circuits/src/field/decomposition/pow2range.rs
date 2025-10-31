@@ -248,9 +248,8 @@ pub mod extraction {
         plonk::{Advice, Column, ConstraintSystem, Error},
     };
 
-    use crate::field::decomposition::pow2range::Pow2RangeConfig;
-
     use super::Pow2RangeChip;
+    use crate::field::decomposition::pow2range::Pow2RangeConfig;
 
     impl<F: PrimeField> CircuitInitialization<F> for Pow2RangeChip<F> {
         type Config = Pow2RangeConfig;

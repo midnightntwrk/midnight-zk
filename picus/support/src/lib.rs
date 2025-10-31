@@ -1,21 +1,24 @@
 //! Support traits for the `picus::group` macro.
 //!
-//! Includes some implementations of the [`DecomposeInCells`] trait for standard types but is not exhaustive. The
-//! implemented types cover the needs of the circuits crate.
+//! Includes some implementations of the [`DecomposeInCells`] trait for standard
+//! types but is not exhaustive. The implemented types cover the needs of the
+//! circuits crate.
 //!
-//! If other external types are required their implementation should be added to this crate.
+//! If other external types are required their implementation should be added to
+//! this crate.
 
 #![deny(rustdoc::broken_intra_doc_links)]
 #![deny(missing_debug_implementations)]
 #![deny(missing_docs)]
 
 use midnight_proofs::{
-    circuit::{groups::RegionsGroup, AssignedCell, Cell},
+    circuit::{AssignedCell, Cell, groups::RegionsGroup},
     halo2curves::ff::Field,
     plonk::Error,
 };
 
-/// Implementations of this trait represent complex types that aggregate a collection of [`AssignedCell`] values.
+/// Implementations of this trait represent complex types that aggregate a
+/// collection of [`AssignedCell`] values.
 pub trait DecomposeInCells {
     /// Returns an iterator of [`Cell`] instances.
     fn cells(&self) -> impl IntoIterator<Item = Cell>;

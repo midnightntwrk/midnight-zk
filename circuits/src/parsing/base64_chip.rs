@@ -487,7 +487,6 @@ impl<F: PrimeField> ComposableChip<F> for Base64Chip<F> {
 pub mod extraction {
     //! Extraction specific logic related to the base64 chip.
 
-    use crate::types::ComposableChip;
     use extractor_support::{circuit::CircuitInitialization, error::PlonkError};
     use ff::PrimeField;
     use midnight_proofs::{
@@ -496,6 +495,7 @@ pub mod extraction {
     };
 
     use super::{Base64Chip, Base64Config, NG};
+    use crate::types::ComposableChip;
 
     impl<F: PrimeField> CircuitInitialization<F> for Base64Chip<F> {
         type Config = (Base64Config, <NG<F> as CircuitInitialization<F>>::Config);

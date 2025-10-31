@@ -1,13 +1,14 @@
 //! Supporting types for loading and storing from cells.
 
+use std::{
+    ops::{Deref, DerefMut},
+    str::FromStr,
+};
+
 use ff::{Field, PrimeField};
 use midnight_proofs::{
     circuit::{AssignedCell, Layouter},
     plonk::{Advice, Any, Column, ColumnType, Instance},
-};
-use std::{
-    ops::{Deref, DerefMut},
-    str::FromStr,
 };
 
 use crate::{error::Error, parse_field};
@@ -47,8 +48,9 @@ impl<C: ColumnType> From<(Column<C>, usize)> for Cell<C> {
     }
 }
 
-/// A description for an input. Comprises an instance cell that represents the actual input and an
-/// advice cell that is used for integrating better with regions.
+/// A description for an input. Comprises an instance cell that represents the
+/// actual input and an advice cell that is used for integrating better with
+/// regions.
 #[derive(Debug)]
 pub struct InputDescr {
     cell: Cell<Any>,
@@ -104,8 +106,8 @@ impl From<OutputDescr> for InputDescr {
     }
 }
 
-/// A description for an output. Comprises an instance cell acting as the output and a support
-/// advice cell.
+/// A description for an output. Comprises an instance cell acting as the output
+/// and a support advice cell.
 #[derive(Debug)]
 pub struct OutputDescr {
     cell: Cell<Instance>,

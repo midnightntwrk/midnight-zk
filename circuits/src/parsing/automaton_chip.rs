@@ -528,6 +528,7 @@ pub mod extraction {
         plonk::{Column, ConstraintSystem, Instance},
     };
 
+    use super::{AutomatonChip, AutomatonConfig, NB_AUTOMATA_COLS};
     use crate::{
         field::{
             decomposition::{
@@ -540,8 +541,6 @@ pub mod extraction {
         parsing::{spec_library, StdLibParser},
         utils::ComposableChip,
     };
-
-    use super::{AutomatonChip, AutomatonConfig, NB_AUTOMATA_COLS};
 
     impl<F> extractor_support::circuit::CircuitInitialization<F> for AutomatonChip<StdLibParser, F>
     where

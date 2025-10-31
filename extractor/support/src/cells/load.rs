@@ -7,7 +7,7 @@ use midnight_proofs::circuit::{AssignedCell, Layouter};
 use num_bigint::BigUint;
 
 use crate::{
-    cells::{ctx::ICtx, CellReprSize},
+    cells::{CellReprSize, ctx::ICtx},
     circuit::injected::InjectedIR,
     error::Error,
 };

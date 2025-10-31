@@ -1,7 +1,7 @@
 //! Macros for supporting extraction.
 
-/// Implements [`crate::circuit::CircuitInitialization`] for the given type based on its
-/// FromScratch implementation.
+/// Implements [`crate::circuit::CircuitInitialization`] for the given type
+/// based on its FromScratch implementation.
 #[macro_export]
 macro_rules! circuit_initialization_from_scratch {
     ($C:ty, $F:ident $(, $other:ident)* $(where $($conds:tt)+ )?) => {

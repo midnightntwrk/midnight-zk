@@ -4,9 +4,8 @@
 #![deny(missing_debug_implementations)]
 #![deny(missing_docs)]
 
-use halo2_llzk_frontend::ir::{stmt::IRStmt, CmpOp};
-
 use ff::PrimeField;
+use halo2_llzk_frontend::ir::{CmpOp, stmt::IRStmt};
 use midnight_proofs::{
     circuit::{AssignedCell, Cell, RegionIndex},
     plonk::Expression,
@@ -71,8 +70,8 @@ pub fn fe_to_big<F: PrimeField>(fe: F) -> BigUint {
     BigUint::from_bytes_le(fe.to_repr().as_ref())
 }
 
-/// Creates an [`Expression`] that queries the given cell relative to the beginning of the cell's
-/// region.
+/// Creates an [`Expression`] that queries the given cell relative to the
+/// beginning of the cell's region.
 pub fn cell_to_expr<F: PrimeField>(x: &AssignedCell<F, F>) -> Result<Expression<F>, Error> {
     cell_to_expr_inner(x.cell())
 }
@@ -81,7 +80,8 @@ fn cell_to_expr_inner<F: PrimeField>(c: Cell) -> Result<Expression<F>, Error> {
     Ok(c.column.query_cell::<F>(Rotation(c.row_offset.try_into()?)))
 }
 
-/// Convenience method for creating a less-than constraint between a cell and a constant.
+/// Convenience method for creating a less-than constraint between a cell and a
+/// constant.
 pub fn injectable_less_than<F: PrimeField>(
     cell: Cell,
     constant: F,

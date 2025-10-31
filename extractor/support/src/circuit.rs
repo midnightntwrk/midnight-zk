@@ -11,7 +11,8 @@ pub mod injected;
 /// Super trait for extracting IO from an abstract circuit.
 ///
 /// Allows obtaining the associated types information for
-/// both [`AbstractCircuit`] and [`AbstractUnitCircuit`] without having a dependency on either type.
+/// both [`AbstractCircuit`] and [`AbstractUnitCircuit`] without having a
+/// dependency on either type.
 pub trait AbstractCircuitIO<F: PrimeField> {
     /// Type that implements the main logic.
     type Chip: CircuitInitialization<F>;
@@ -23,8 +24,9 @@ pub trait AbstractCircuitIO<F: PrimeField> {
 
 /// Trait for configuring the arguments of a chip.
 ///
-/// If the chip has no arguments the type should be `()`. In that case the type can implement
-/// [`NoChipArgs`] which will automatically implement this trait with that type.
+/// If the chip has no arguments the type should be `()`. In that case the type
+/// can implement [`NoChipArgs`] which will automatically implement this trait
+/// with that type.
 pub trait ChipArgs<F: PrimeField> {
     /// Type of the arguments taken by the chip.
     type Args: Default;
@@ -49,7 +51,8 @@ where
 }
 
 /// Adaptor trait for linking chips that implement
-/// [`midnight::testing_utils::FromScratch`] or [`midnight::types::ComposableChip`].
+/// [`midnight::testing_utils::FromScratch`] or
+/// [`midnight::types::ComposableChip`].
 pub trait CircuitInitialization<F: PrimeField> {
     /// Configuration of the circuit.
     type Config: Clone + std::fmt::Debug;

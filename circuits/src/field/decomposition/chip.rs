@@ -51,21 +51,22 @@ pub struct P2RDecompositionConfig {
 #[cfg(feature = "extraction")]
 pub mod extraction {
     //! Extraction specific logic related to the p2r decomposition chip.
+    use extractor_support::circuit::{configuration::AutoConfigure, CircuitInitialization};
+    use group::ff::PrimeField;
+
     use super::{P2RDecompositionChip, P2RDecompositionConfig};
-    use crate::field::native::{NB_ARITH_COLS, NB_ARITH_FIXED_COLS};
-    use crate::field::{NativeChip, NativeConfig};
-    use crate::types::ComposableChip;
     use crate::{
-        field::decomposition::pow2range::{Pow2RangeChip, Pow2RangeConfig},
+        field::{
+            decomposition::pow2range::{Pow2RangeChip, Pow2RangeConfig},
+            native::{NB_ARITH_COLS, NB_ARITH_FIXED_COLS},
+            NativeChip, NativeConfig,
+        },
         midnight_proofs::{
             circuit::Layouter,
             plonk::{ConstraintSystem, Error},
         },
+        types::ComposableChip,
     };
-    use group::ff::PrimeField;
-
-    use extractor_support::circuit::configuration::AutoConfigure;
-    use extractor_support::circuit::CircuitInitialization;
 
     /// Helper struct for configuring the p2r chip.
     #[derive(Clone, Debug)]

@@ -224,16 +224,19 @@ pub mod extraction {
         },
         circuit::injected::InjectedIR,
         error::Error,
-        ir::{stmt::IRStmt, CmpOp}, sbig_to_fe,
+        ir::{stmt::IRStmt, CmpOp},
+        sbig_to_fe,
     };
     use ff::PrimeField;
     use midnight_proofs::{circuit::Layouter, plonk::Expression};
-    use num_bigint::{ BigUint};
+    use num_bigint::BigUint;
     use num_traits::One as _;
 
-    use crate::{field::{foreign::params::FieldEmulationParams, AssignedNative}, instructions::NativeInstructions};
-
     use super::AssignedField;
+    use crate::{
+        field::{foreign::params::FieldEmulationParams, AssignedNative},
+        instructions::NativeInstructions,
+    };
 
     impl<F, K, P> CellReprSize for AssignedField<F, K, P>
     where
@@ -301,7 +304,6 @@ pub mod extraction {
                 let row = val.cell().row_offset;
                 let expr = cell_to_expr(&val)?;
                 let region = injected_ir.entry(val.cell().region_index).or_default();
-                
 
                 let lb = Expression::Constant(sbig_to_fe::<F>(lb));
                 region.push(IRStmt::constraint(
@@ -309,7 +311,7 @@ pub mod extraction {
                     (row, lb),
                     (row, expr.clone()),
                 ));
-                
+
                 let ub = Expression::Constant(sbig_to_fe::<F>(ub));
                 region.push(IRStmt::constraint(CmpOp::Le, (row, expr), (row, ub)));
                 val.store(ctx, chip, layouter, injected_ir)?;

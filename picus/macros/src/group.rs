@@ -1,6 +1,6 @@
 use proc_macro2::{Span, TokenStream};
 use quote::{format_ident, quote};
-use syn::{spanned::Spanned, Attribute, FnArg, Ident, ItemFn, Pat, PatType};
+use syn::{Attribute, FnArg, Ident, ItemFn, Pat, PatType, spanned::Spanned};
 
 const INPUT_ATTR: &str = "input";
 const OUTPUT_ATTR: &str = "output";
@@ -38,8 +38,8 @@ pub fn group_impl(input_fn: ItemFn) -> syn::Result<TokenStream> {
 
 type AnnotatedPat<'a> = (ArgAttributes, &'a PatType);
 
-/// Searches arguments that were annotated and splits them between `#[layouter]` annotations and
-/// the others.
+/// Searches arguments that were annotated and splits them between `#[layouter]`
+/// annotations and the others.
 fn locate_attributes<'a>(
     input_fn: &'a ItemFn,
 ) -> syn::Result<(Vec<AnnotatedPat<'a>>, Vec<AnnotatedPat<'a>>)> {
@@ -53,10 +53,12 @@ fn locate_attributes<'a>(
         .partition(|(attr, _)| matches!(attr, ArgAttributes::Layouter)))
 }
 
-/// Searches the binding name in the list of arguments annotated with `#[layouter]`.
+/// Searches the binding name in the list of arguments annotated with
+/// `#[layouter]`.
 ///
 /// If the list is empty the [`Ident`] defaults to `layouter`.
-/// Fails if the list has more than one element or the annotated argument is not an identifier.
+/// Fails if the list has more than one element or the annotated argument is not
+/// an identifier.
 fn select_layouter(layouter: &[AnnotatedPat], span: Span) -> syn::Result<Ident> {
     Ok(match layouter {
         [] => format_ident!("layouter"),

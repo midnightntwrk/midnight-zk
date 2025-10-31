@@ -104,9 +104,8 @@ pub mod extraction {
         plonk::{Any, Column, ColumnType, Expression},
     };
 
-    use crate::{field::AssignedNative, types::AssignedByte, vec::get_lims};
-
     use super::{AssignedVector, Vectorizable};
+    use crate::{field::AssignedNative, types::AssignedByte, vec::get_lims};
 
     impl<F: PrimeField, T: Vectorizable + CellReprSize, const M: usize, const A: usize> CellReprSize
         for AssignedVector<F, T, M, A>

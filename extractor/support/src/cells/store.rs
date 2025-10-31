@@ -4,7 +4,7 @@ use ff::{Field, PrimeField};
 use midnight_proofs::circuit::{AssignedCell, Layouter};
 
 use crate::{
-    cells::{ctx::OCtx, CellReprSize},
+    cells::{CellReprSize, ctx::OCtx},
     circuit::injected::InjectedIR,
     error::Error,
 };

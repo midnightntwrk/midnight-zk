@@ -216,10 +216,10 @@ impl<F: PoseidonField, const MAX_LEN: usize>
 pub mod extraction {
     //! Extraction specific logic related to the poseidon varlen gadget.
 
-    use super::{VarLenPoseidonGadget, NG};
     use extractor_support::circuit::CircuitInitialization as CI;
     use midnight_proofs::plonk::{Column, Instance};
 
+    use super::{VarLenPoseidonGadget, NG};
     use crate::hash::poseidon::{constants::PoseidonField, PoseidonChip as PC};
 
     impl<F: PoseidonField> CI<F> for VarLenPoseidonGadget<F> {

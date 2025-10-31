@@ -173,9 +173,11 @@ pub mod gadget_extraction {
     use ff::PrimeField;
     use midnight_proofs::{circuit::Layouter, plonk::Expression};
 
-    use crate::{field::{decomposition::instructions::CoreDecompositionInstructions, AssignedNative}, instructions::ArithInstructions};
-
     use super::AssignedByte;
+    use crate::{
+        field::{decomposition::instructions::CoreDecompositionInstructions, AssignedNative},
+        instructions::ArithInstructions,
+    };
 
     impl<F: PrimeField> CellReprSize for AssignedByte<F> {
         const SIZE: usize = <AssignedNative<F> as CellReprSize>::SIZE;

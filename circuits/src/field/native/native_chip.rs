@@ -1075,8 +1075,6 @@ impl<F: PrimeField> From<AssignedBit<F>> for AssignedNative<F> {
 pub mod chip_extraction {
     //! Extraction specific logic related to the native chip.
 
-    use super::AssignedBit;
-    use crate::types::AssignedNative;
     use extractor_support::{
         cell_to_expr,
         cells::{
@@ -1091,6 +1089,9 @@ pub mod chip_extraction {
     };
     use ff::PrimeField;
     use midnight_proofs::{circuit::Layouter, plonk::Expression};
+
+    use super::AssignedBit;
+    use crate::types::AssignedNative;
 
     impl<F: PrimeField> CellReprSize for AssignedBit<F> {
         const SIZE: usize = <AssignedNative<F> as CellReprSize>::SIZE;

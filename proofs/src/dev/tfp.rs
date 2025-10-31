@@ -239,8 +239,7 @@ impl<F: Field, L: Layouter<F>> Layouter<F> for TracingLayouter<F, L> {
         K: crate::circuit::groups::GroupKey,
     {
         let name = name().into();
-        self.namespace_spans
-            .push(debug_span!("group", name).entered());
+        self.namespace_spans.push(debug_span!("group", name).entered());
         self.layouter.push_group(|| name, key);
     }
 

@@ -8,17 +8,19 @@ use std::{
     rc::Rc,
 };
 
+use ff::Field;
+
 use crate::{
     circuit::{Cell, Layouter},
     plonk::Error,
 };
-use ff::Field;
 
 /// Marker trait that defines a key that uniquelly identifying a group.
 ///
 /// The uniqueness comes from [`std::hash::Hash`].
 ///
-/// For most cases the [`DefaultKey`] is enough, but you can define your own if necessary.
+/// For most cases the [`DefaultKey`] is enough, but you can define your own if
+/// necessary.
 pub trait GroupKey: Copy + std::hash::Hash + std::fmt::Debug + Sized {}
 
 /// Type erased group key.
@@ -101,7 +103,8 @@ impl RegionsGroup {
         }
     }
 
-    /// Returns a list of cells of the given role in the order of their annotation.
+    /// Returns a list of cells of the given role in the order of their
+    /// annotation.
     fn cells_of_role(&self, role: CellRole) -> impl Iterator<Item = Cell> + '_ {
         self.cells.iter().filter_map(move |cell| {
             if self.annotations[cell] == role {
@@ -112,12 +115,14 @@ impl RegionsGroup {
         })
     }
 
-    /// Returns a list of [`Cell`] annotated as [`CellRole::Input`] in the order of annotation.
+    /// Returns a list of [`Cell`] annotated as [`CellRole::Input`] in the order
+    /// of annotation.
     pub fn inputs(&self) -> impl Iterator<Item = Cell> + '_ {
         self.cells_of_role(CellRole::Input)
     }
 
-    /// Returns a list of [`Cell`] annotated as [`CellRole::Output`] in the order of annotation.
+    /// Returns a list of [`Cell`] annotated as [`CellRole::Output`] in the
+    /// order of annotation.
     pub fn outputs(&self) -> impl Iterator<Item = Cell> + '_ {
         self.cells_of_role(CellRole::Output)
     }
@@ -125,9 +130,10 @@ impl RegionsGroup {
     /// Annotates a [`Cell`] with a [`CellRole`].
     ///
     /// Any cell can be annotated, even cells from regions outside the group.
-    /// Upstream consumers of these annotations may require that cells from outside that are
-    /// annotated with a role must have transitive copy constrains to at least one
-    /// cell from the regions of the group. This requirement is not enforced by this type.
+    /// Upstream consumers of these annotations may require that cells from
+    /// outside that are annotated with a role must have transitive copy
+    /// constrains to at least one cell from the regions of the group. This
+    /// requirement is not enforced by this type.
     #[inline]
     pub fn annotate_cell(&mut self, cell: Cell, role: CellRole) -> Result<(), Error> {
         if !*self.enabled.borrow() {
@@ -151,8 +157,8 @@ impl RegionsGroup {
 
     /// Annotates a [`Cell`] with a [`CellRole::Input`].
     ///
-    /// See the documentation in [`RegionsGroup::annotate_cell`] for requirements annotated cells must
-    /// meet.
+    /// See the documentation in [`RegionsGroup::annotate_cell`] for
+    /// requirements annotated cells must meet.
     #[inline]
     pub fn annotate_input(&mut self, cell: Cell) -> Result<(), Error> {
         self.annotate_cell(cell, CellRole::Input)
@@ -160,8 +166,8 @@ impl RegionsGroup {
 
     /// Annotates a [`Cell`] with a [`CellRole::Output`].
     ///
-    /// See the documentation in [`RegionsGroup::annotate_cell`] for requirements annotated cells must
-    /// meet.
+    /// See the documentation in [`RegionsGroup::annotate_cell`] for
+    /// requirements annotated cells must meet.
     /// cell from the regions of the group.
     #[inline]
     pub fn annotate_output(&mut self, cell: Cell) -> Result<(), Error> {
@@ -170,8 +176,8 @@ impl RegionsGroup {
 
     /// Annotates a list of [`Cell`] with a [`CellRole::Input`].
     ///
-    /// See the documentation in [`RegionsGroup::annotate_cell`] for requirements annotated cells must
-    /// meet.
+    /// See the documentation in [`RegionsGroup::annotate_cell`] for
+    /// requirements annotated cells must meet.
     #[inline]
     pub fn annotate_inputs(&mut self, cells: impl IntoIterator<Item = Cell>) -> Result<(), Error> {
         for cell in cells {
@@ -182,8 +188,8 @@ impl RegionsGroup {
 
     /// Annotates a list of [`Cell`] with a [`CellRole::Output`].
     ///
-    /// See the documentation in [`RegionsGroup::annotate_cell`] for requirements annotated cells must
-    /// meet.
+    /// See the documentation in [`RegionsGroup::annotate_cell`] for
+    /// requirements annotated cells must meet.
     /// cell from the regions of the group.
     #[inline]
     pub fn annotate_outputs(&mut self, cells: impl IntoIterator<Item = Cell>) -> Result<(), Error> {
@@ -349,14 +355,19 @@ enum RoleAnnotation {
 }
 
 impl RoleAnnotation {
-    /// Annotates a role, updating internally based on the existing roles and the given one.
+    /// Annotates a role, updating internally based on the existing roles and
+    /// the given one.
     ///
     /// Follows these rules for updating:
     /// - `{}, R -> {R}`: If its empty just adds the role.
-    /// - `{IN}, OUT -> {IN, OUT}`: If it's an input and is annotated as an output, combine them.
-    /// - `{OUT}, IN -> {IN, OUT}`: If it's an output and is annotated as an input, combine them.
-    /// - `{R*}, INT -> {INT}`: Annotating as internal overrides preexisting roles.
-    /// - `{INT}, R -> {R}`: If it's annotated as internal overrides it with the new role.
+    /// - `{IN}, OUT -> {IN, OUT}`: If it's an input and is annotated as an
+    ///   output, combine them.
+    /// - `{OUT}, IN -> {IN, OUT}`: If it's an output and is annotated as an
+    ///   input, combine them.
+    /// - `{R*}, INT -> {INT}`: Annotating as internal overrides preexisting
+    ///   roles.
+    /// - `{INT}, R -> {R}`: If it's annotated as internal overrides it with the
+    ///   new role.
     fn annotate(&mut self, role: CellRole) {
         match (*self, role) {
             (RoleAnnotation::Empty | RoleAnnotation::Internal, r) => *self = r.into(),
@@ -393,12 +404,11 @@ impl PartialEq<CellRole> for RoleAnnotation {
 
 #[cfg(test)]
 mod tests {
-    //! This test verify that the layouters forward properly the information about groups to an
-    //! assignment.
-
-    use crate::plonk::{Advice, Any, Assignment, Column, Fixed, Instance};
+    //! This test verify that the layouters forward properly the information
+    //! about groups to an assignment.
 
     use super::*;
+    use crate::plonk::{Advice, Any, Assignment, Column, Fixed, Instance};
 
     #[derive(Clone)]
     struct TestConfig {
@@ -409,9 +419,10 @@ mod tests {
         fixed: Column<Fixed>,
     }
 
-    /// Helper macro for writing tests that run a sample circuit and computes a specification of
-    /// the groups in created in it. Accepts a text representation of the specification that is
-    /// compared against the produced result and, optionally, a closure that accepts a reference to
+    /// Helper macro for writing tests that run a sample circuit and computes a
+    /// specification of the groups in created in it. Accepts a text
+    /// representation of the specification that is compared against the
+    /// produced result and, optionally, a closure that accepts a reference to
     /// a [`MockGroup`] to do additional assertions.
     macro_rules! circuit_test {
         ($name:ident, $planner:ident, |$config:ident, $layouter:ident| $body:expr, $expected:expr, $checks:expr) => {

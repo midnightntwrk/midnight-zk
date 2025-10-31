@@ -3,7 +3,8 @@
 use ff::PrimeField;
 use midnight_proofs::plonk::{Advice, Column, ConstraintSystem, Fixed, Instance, TableColumn};
 
-/// Helper trait that enables composing types that can handle circuit configuration.
+/// Helper trait that enables composing types that can handle circuit
+/// configuration.
 pub trait AutoConfigure<Output = Self> {
     /// Creates an instance of self using the constraint system.
     fn configure<F: PrimeField>(meta: &mut ConstraintSystem<F>) -> Output;
