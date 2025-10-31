@@ -279,9 +279,10 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
         ev
     }
 
-    /// Evaluate h poly
+    /// Evaluate numerator polynomial `nu(X)` of the quotient polynomial
+    /// `h(X) = nu(X) / (X^n-1)`
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn evaluate_h<B: PolynomialRepresentation>(
+    pub(crate) fn evaluate_numerator<B: PolynomialRepresentation>(
         &self,
         domain: &EvaluationDomain<F>,
         cs: &ConstraintSystem<F>,
@@ -321,7 +322,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
             .zip(trashcans.iter())
             .zip(permutations.iter())
         {
-            // Custom gates
+            // Evaluate polys from custom gates
             rayon::scope(|scope| {
                 let chunk_size = size.div_ceil(num_threads);
                 for (thread_idx, values) in values.chunks_mut(chunk_size).enumerate() {
@@ -351,11 +352,11 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                 }
             });
 
-            // Permutations
+            // Evaluate polys from permutation argument
             let sets = &permutation.sets;
             if !sets.is_empty() {
-                let blinding_factors = cs.blinding_factors();
-                let last_rotation = Rotation(-((blinding_factors + 1) as i32));
+                let nr_blinding_factors = cs.nr_blinding_factors();
+                let last_rotation = Rotation(-((nr_blinding_factors + 1) as i32));
                 let chunk_len = cs.degree() - 2;
                 let delta_start = beta * &B::g_coset(domain);
 
@@ -439,7 +440,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                 });
             }
 
-            // Lookups
+            // Evaluate polys from lookup argument
             for (n, lookup) in lookups.iter().enumerate() {
                 // Polynomials required for this lookup.
                 // Calculated here so these only have to be kept in memory for the short time
@@ -512,7 +513,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                 });
             }
 
-            // Trashcans
+            // Evaluate polys from trashcans
             for (n, trash) in trashcans.iter().enumerate() {
                 // Polynomials required for this trash argument.
                 // Calculated here so these only have to be kept in memory for the short time

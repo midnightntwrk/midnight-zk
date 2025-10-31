@@ -58,7 +58,8 @@ pub struct Msm<S: SelfEmulation> {
 /// This is the in-circuit analog of `Msm<C>`.
 #[derive(Clone, Debug)]
 pub struct AssignedMsm<S: SelfEmulation> {
-    bases: Vec<S::AssignedPoint>,
+    ///
+    pub bases: Vec<S::AssignedPoint>,
     scalars: Vec<AssignedBoundedScalar<S::F>>,
     fixed_base_scalars: BTreeMap<String, AssignedBoundedScalar<S::F>>,
 }
@@ -137,7 +138,7 @@ impl<S: SelfEmulation> Msm<S> {
     }
 
     /// Evaluates the MSM with the provided fixed_bases.
-    /// I.e. it computes `<scalars, bases> + <fixed_bases, fixed_base_scalars>`.
+    /// I.e. it computes `<scalars, bases> + <fixed_base_scalars, fixed_bases>`.
     ///
     /// # Panics
     ///

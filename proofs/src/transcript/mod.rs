@@ -2,7 +2,10 @@
 //! transcripts.
 mod implementors;
 
-use std::io::{self, Cursor, Read, Write};
+use std::{
+    fmt::Debug,
+    io::{self, Cursor, Read, Write},
+};
 
 /// Prefix to a prover's message soliciting a challenge
 const BLAKE2B_PREFIX_CHALLENGE: u8 = 0;
@@ -13,7 +16,7 @@ const BLAKE2B_PREFIX_COMMON: u8 = 1;
 /// Hash function that can be used for transcript
 pub trait TranscriptHash: Clone {
     /// Input type of the hash function
-    type Input;
+    type Input: Debug;
     /// Output type of the hash function
     type Output;
 
