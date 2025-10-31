@@ -1,0 +1,21 @@
+[package]
+name = "extractor-support"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+thiserror= "2"
+ff = "0.13"
+num-bigint = "0.4"
+num-traits = "0.2"
+midnight-curves = {path = "../../curves/"}
+midnight-proofs = { path = "../../proofs", version = "0.5.0", default-features = false, features = [
+    "bits",
+    "cost-estimator",
+    "circuit-params",
+    "committed-instances",
+    "region-groups"
+] }
+halo2-llzk-frontend = {workspace =true}
+log = "0.4"
+

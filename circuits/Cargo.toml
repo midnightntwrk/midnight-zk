@@ -18,8 +18,12 @@ midnight-proofs = { path = "../proofs", version = "0.5.1", default-features = fa
     "cost-estimator",
     "circuit-params",
     "committed-instances",
+    "region-groups"
 ] }
-bench_macros = { path = "../bench-macros" }
+bench_macros = { path = "../bench-macros"}
+picus-macros-support = { path = "../picus/support/" }
+picus = { path = "../picus/macros", package = "picus-macros" }
+extractor-support = { path = "../extractor/support/", optional = true }
 
 serde = { workspace = true, optional = true }
 serde_derive = { workspace = true, optional = true }
@@ -51,7 +55,7 @@ serial_test = "3.2.0"
 midnight-curves = { path = "../curves", features = ["portable"] }
 
 [features]
-default = []
+default = ["extraction"]
 # Feature that exposes some testing functionality, such as load from scratch or instantiable
 testing = ["num-bigint/rand"]
 heap_profiling = []
@@ -63,6 +67,8 @@ truncated-challenges = ["midnight-proofs/truncated-challenges"]
 # _group: &mut BenchmarkGroup<WallTime>, and return granular benchmarks
 # of the prover for that concrete circuit.
 bench-internal = ["criterion", "midnight-proofs/bench-internal"]
+
+extraction = ["extractor-support", "testing"]
 
 [[example]]
 name = "cred_full"

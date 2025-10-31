@@ -10,17 +10,17 @@ use crate::{
 
 /// An assigned value in plain (non-spreaded) form, guaranteed to be in the
 /// range [0, 2^L).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, picus::DecomposeInCells)]
 pub(super) struct AssignedPlain<F: PrimeField, const L: usize>(pub AssignedNative<F>);
 
 /// An assigned value in spreaded form, it is guaranteed to be the spreaded form
 /// of a value in the range [0, 2^L).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, picus::DecomposeInCells)]
 pub(super) struct AssignedSpreaded<F: PrimeField, const L: usize>(pub AssignedNative<F>);
 
 /// A pair of assigned plain-spreaded values guaranteed to be consistent.
 /// The plain value is also guaranteed to be in the range [0, 2^L).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, picus::DecomposeInCells)]
 pub(super) struct AssignedPlainSpreaded<F: PrimeField, const L: usize> {
     pub(super) plain: AssignedPlain<F, L>,
     pub(super) spreaded: AssignedSpreaded<F, L>,
@@ -29,7 +29,7 @@ pub(super) struct AssignedPlainSpreaded<F: PrimeField, const L: usize> {
 /// The assigned spreaded values of 10-9-11-2 limbs (in big-endian) for the
 /// register A of 32 bits. Input type of Σ₀(A).
 /// The limb sizes are chosen to make the rotations required for Σ₀ efficient.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, picus::DecomposeInCells)]
 pub(super) struct LimbsOfA<F: PrimeField> {
     pub(super) combined: AssignedPlainSpreaded<F, 32>,
     pub(super) spreaded_limb_10: AssignedSpreaded<F, 10>,
@@ -41,7 +41,7 @@ pub(super) struct LimbsOfA<F: PrimeField> {
 /// The assigned spreaded values of 7-12-2-5-6 limbs (in big-endian) for the
 /// register E of 32 bits. Input type of Σ₁(E).
 /// The limb sizes are chosen to make the rotations required for Σ₁ efficient.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, picus::DecomposeInCells)]
 pub(super) struct LimbsOfE<F: PrimeField> {
     pub(super) combined: AssignedPlainSpreaded<F, 32>,
     pub(super) spreaded_limb_07: AssignedSpreaded<F, 7>,
@@ -55,7 +55,7 @@ pub(super) struct LimbsOfE<F: PrimeField> {
 /// word W of 32 bits. Input type of σ₀(W) and σ₁(W).
 /// The limb sizes are chosen to make the rotations required for σ₀ and σ₁
 /// efficient.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, picus::DecomposeInCells)]
 pub(super) struct AssignedMessageWord<F: PrimeField> {
     pub(super) combined_plain: AssignedPlain<F, 32>,
     pub(super) spreaded_w_12: AssignedSpreaded<F, 12>,
@@ -70,7 +70,7 @@ pub(super) struct AssignedMessageWord<F: PrimeField> {
 
 /// The assigned values of the state vector (A, B, C, D, E, F, G, H).
 /// They are provided and updated in each compression round.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, picus::DecomposeInCells)]
 pub(super) struct CompressionState<F: PrimeField> {
     pub(super) a: LimbsOfA<F>,
     pub(super) b: AssignedPlainSpreaded<F, 32>,
