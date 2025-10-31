@@ -39,9 +39,9 @@ pub struct VerifierTrace<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> {
     pub(crate) trashcans: Vec<Vec<trash::verifier::Committed<F, PCS>>>,
     pub(crate) permutations: Vec<permutation::verifier::Committed<F, PCS>>,
     pub(crate) challenges: Vec<F>,
-    pub(crate) beta: F,
-    pub(crate) gamma: F,
-    pub(crate) theta: F,
+    pub(crate) beta: F,  // Challenge for permutation argument
+    pub(crate) gamma: F, // Challenge for permutation argument
+    pub(crate) theta: F, // Challenge for batching lookup columns
     pub(crate) trash_challenge: F,
-    pub(crate) y: F,
+    pub(crate) y: F, // Challenge for batching identities
 }

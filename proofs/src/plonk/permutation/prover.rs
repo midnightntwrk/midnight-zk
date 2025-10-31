@@ -62,7 +62,7 @@ impl Argument {
         // 3 circuit for the permutation argument.
         assert!(pk.vk.cs_degree >= 3);
         let chunk_len = pk.vk.cs_degree - 2;
-        let blinding_factors = pk.vk.cs.blinding_factors();
+        let nr_blinding_factors = pk.vk.cs.nr_blinding_factors();
 
         // Each column gets its own delta power.
         let mut deltaomega = F::ONE;
@@ -148,11 +148,11 @@ impl Argument {
             }
             let mut z = domain.lagrange_from_vec(z);
             // Set blinding factors
-            for z in &mut z[domain.n as usize - blinding_factors..] {
+            for z in &mut z[domain.n as usize - nr_blinding_factors..] {
                 *z = F::random(&mut rng);
             }
             // Set new last_z
-            last_z = z[domain.n as usize - (blinding_factors + 1)];
+            last_z = z[domain.n as usize - (nr_blinding_factors + 1)];
 
             let permutation_product_commitment = CS::commit_lagrange(params, &z);
             let permutation_product_poly = domain.lagrange_to_coeff(z);
@@ -198,7 +198,7 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
         F: Hashable<T::Hash>,
     {
         let domain = &pk.vk.domain;
-        let blinding_factors = pk.vk.cs.blinding_factors();
+        let nr_blinding_factors = pk.vk.cs.nr_blinding_factors();
 
         {
             let mut sets = self.sets.iter();
@@ -225,7 +225,7 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
                 if sets.len() > 0 {
                     let permutation_product_last_eval = eval_polynomial(
                         &set.permutation_product_poly,
-                        domain.rotate_omega(x, Rotation(-((blinding_factors + 1) as i32))),
+                        domain.rotate_omega(x, Rotation(-((nr_blinding_factors + 1) as i32))),
                     );
 
                     transcript.write(&permutation_product_last_eval)?;
@@ -243,9 +243,9 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluated<F> {
         pk: &'a plonk::ProvingKey<F, CS>,
         x: F,
     ) -> impl Iterator<Item = ProverQuery<'a, F>> + Clone {
-        let blinding_factors = pk.vk.cs.blinding_factors();
+        let nr_blinding_factors = pk.vk.cs.nr_blinding_factors();
         let x_next = pk.vk.domain.rotate_omega(x, Rotation::next());
-        let x_last = pk.vk.domain.rotate_omega(x, Rotation(-((blinding_factors + 1) as i32)));
+        let x_last = pk.vk.domain.rotate_omega(x, Rotation(-((nr_blinding_factors + 1) as i32)));
 
         iter::empty()
             .chain(self.constructed.sets.iter().flat_map(move |set| {

@@ -94,7 +94,7 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
         CS::Commitment: Hashable<T::Hash>,
         F: Hashable<T::Hash>,
     {
-        // Divide by t(X) = X^{params.n} - 1.
+        // Divide by the vanishing polynomial t(X) = X^n - 1.
         let h_poly = domain.divide_by_vanishing_poly(h_poly);
 
         // Obtain final h(X) polynomial
@@ -105,18 +105,18 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
         // it always lies on a power-of-two boundary.
         h_poly.truncate(domain.n as usize * domain.get_quotient_poly_degree());
 
-        // Split h(X) up into pieces
+        // Split h(X) up into limbs
         let h_pieces = h_poly
             .chunks_exact(domain.n as usize)
             .map(|v| domain.coeff_from_vec(v.to_vec()))
             .collect::<Vec<_>>();
         drop(h_poly);
 
-        // Compute commitments to each h(X) piece
+        // Compute commitments to h(X) limbs
         let h_commitments: Vec<_> =
             h_pieces.iter().map(|h_piece| CS::commit(params, h_piece)).collect();
 
-        // Hash each h(X) piece
+        // Write each limb commitment to the transcript
         for c in h_commitments {
             transcript.write(&c)?;
         }

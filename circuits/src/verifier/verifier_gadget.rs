@@ -422,20 +422,24 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         // This check ensures the circuit is satisfied so long as the polynomial
         // commitments open to the correct values.
         let vanishing = {
-            let blinding_factors = cs.blinding_factors();
+            let nr_blinding_factors = cs.nr_blinding_factors();
 
             let l_evals = evaluate_lagrange_polynomials(
                 layouter,
                 &self.scalar_chip,
                 1 << k,
                 assigned_vk.domain.get_omega(),
-                (-((blinding_factors + 1) as i32))..1,
+                (-((nr_blinding_factors + 1) as i32))..1,
                 &x,
             )?;
-            assert_eq!(l_evals.len(), 2 + blinding_factors);
+            assert_eq!(l_evals.len(), 2 + nr_blinding_factors);
             let l_last = l_evals[0].clone();
-            let l_blind = sum::<S::F>(layouter, &self.scalar_chip, &l_evals[1..=blinding_factors])?;
-            let l_0 = l_evals[1 + blinding_factors].clone();
+            let l_blind = sum::<S::F>(
+                layouter,
+                &self.scalar_chip,
+                &l_evals[1..=nr_blinding_factors],
+            )?;
+            let l_0 = l_evals[1 + nr_blinding_factors].clone();
 
             // Compute the expected value of h(x)
             let expressions = {
@@ -532,7 +536,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         let one = AssignedBoundedScalar::<S::F>::one(layouter, &self.scalar_chip)?;
         let omega = assigned_vk.domain.get_omega();
         let omega_inv = omega.invert().unwrap();
-        let omega_last = omega_inv.pow([cs.blinding_factors() as u64 + 1]);
+        let omega_last = omega_inv.pow([cs.nr_blinding_factors() as u64 + 1]);
         let x_next = self.scalar_chip.mul_by_constant(layouter, &x, omega)?;
         let x_prev = self.scalar_chip.mul_by_constant(layouter, &x, omega_inv)?;
         let x_last = self.scalar_chip.mul_by_constant(layouter, &x, omega_last)?;
