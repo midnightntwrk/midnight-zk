@@ -723,7 +723,7 @@ pub mod extraction {
             self.core_decomposition_chip.load(layouter)?;
 
             if let Some(sha256_chip) = &self.sha256_chip {
-                if *self.used_sha.borrow() {
+                if *self.used_sha256.borrow() {
                     sha256_chip.load(layouter)?;
                 }
             }

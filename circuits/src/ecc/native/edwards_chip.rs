@@ -108,7 +108,6 @@ impl<C: EdwardsCurve> InnerConstants for AssignedNativePoint<C> {
 #[derive(Clone, Debug, picus::DecomposeInCells)]
 pub struct AssignedScalarOfNativeCurve<C: CircuitCurve>(Vec<AssignedBit<C::Base>>);
 
-
 impl<C: CircuitCurve> InnerValue for AssignedScalarOfNativeCurve<C> {
     type Element = C::Scalar;
 
@@ -172,7 +171,7 @@ pub mod extraction {
         },
     };
 
-    use super::{AssignedNativePoint, ScalarVar};
+    use super::{AssignedNativePoint, AssignedScalarOfNativeCurve};
 
     impl<CV> CellReprSize for AssignedNativePoint<CV>
     where
@@ -181,7 +180,7 @@ pub mod extraction {
         const SIZE: usize = <AssignedNative<CV::Base> as CellReprSize>::SIZE * 2;
     }
 
-    impl<CV: CircuitCurve> CellReprSize for ScalarVar<CV> {
+    impl<CV: CircuitCurve> CellReprSize for AssignedScalarOfNativeCurve<CV> {
         const SIZE: usize = <AssignedNative<CV::Base> as CellReprSize>::SIZE;
     }
 
@@ -203,13 +202,13 @@ pub mod extraction {
         }
     }
 
-    impl<F, S, CV, C> LoadFromCells<F, C> for ScalarVar<CV>
+    impl<F, S, CV, C> LoadFromCells<F, C> for AssignedScalarOfNativeCurve<CV>
     where
         F: PrimeField,
         S: PrimeField,
         CV: CircuitCurve<Base = F, Scalar = S>,
         C: EccInstructions<F, CV, Point = AssignedNativePoint<CV>, Coordinate = AssignedNative<F>>
-            + ConversionInstructions<F, AssignedNative<F>, ScalarVar<CV>>,
+            + ConversionInstructions<F, AssignedNative<F>, AssignedScalarOfNativeCurve<CV>>,
     {
         fn load(
             ctx: &mut ICtx,
@@ -246,7 +245,7 @@ pub mod extraction {
         }
     }
 
-    impl<CV, C> StoreIntoCells<CV::Base, C> for ScalarVar<CV>
+    impl<CV, C> StoreIntoCells<CV::Base, C> for AssignedScalarOfNativeCurve<CV>
     where
         CV: CircuitCurve,
         C: DecompositionInstructions<CV::Base, AssignedNative<CV::Base>>,
