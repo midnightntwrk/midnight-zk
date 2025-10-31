@@ -514,7 +514,6 @@ where
     S::Scalar: InnerValue<Element = C::Scalar>,
     N: NativeInstructions<F>,
 {
-    /// Returns `1` if the given points are equal and `0` otherwise.
     fn is_equal(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -535,6 +534,16 @@ where
         self.native_gadget.and(layouter, &[eq_id_flag, eq_coordinates])
     }
 
+    fn is_not_equal(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &AssignedForeignPoint<F, C, B>,
+        y: &AssignedForeignPoint<F, C, B>,
+    ) -> Result<AssignedBit<F>, Error> {
+        let b = self.is_equal(layouter, x, y)?;
+        self.native_gadget.not(layouter, &b)
+    }
+
     fn is_equal_to_fixed(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -550,6 +559,16 @@ where
             let p_is_not_id = self.native_gadget.not(layouter, &p.is_id)?;
             self.native_gadget.and(layouter, &[eq_x, eq_y, p_is_not_id])
         }
+    }
+
+    fn is_not_equal_to_fixed(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &AssignedForeignPoint<F, C, B>,
+        constant: C::CryptographicGroup,
+    ) -> Result<AssignedBit<F>, Error> {
+        let b = self.is_equal_to_fixed(layouter, x, constant)?;
+        self.native_gadget.not(layouter, &b)
     }
 }
 

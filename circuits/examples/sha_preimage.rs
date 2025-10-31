@@ -32,8 +32,8 @@ impl Relation for ShaPreImageCircuit {
 
     type Witness = [u8; 24]; // 192 = 24 * 8
 
-    fn format_instance(instance: &Self::Instance) -> Vec<F> {
-        instance.iter().flat_map(AssignedByte::<F>::as_public_input).collect()
+    fn format_instance(instance: &Self::Instance) -> Result<Vec<F>, Error> {
+        Ok(instance.iter().flat_map(AssignedByte::<F>::as_public_input).collect())
     }
 
     fn circuit(
@@ -54,6 +54,7 @@ impl Relation for ShaPreImageCircuit {
             jubjub: false,
             poseidon: false,
             sha256: true,
+            sha512: false,
             secp256k1: false,
             bls12_381: false,
             base64: false,

@@ -223,8 +223,8 @@ impl Relation for HybridMtExample {
 
     type Witness = MerklePath<F>;
 
-    fn format_instance(instance: &Self::Instance) -> Vec<F> {
-        vec![*instance]
+    fn format_instance(instance: &Self::Instance) -> Result<Vec<F>, Error> {
+        Ok(vec![*instance])
     }
 
     fn circuit(
@@ -332,6 +332,7 @@ impl Relation for HybridMtExample {
             jubjub: false,
             poseidon: true,
             sha256: true,
+            sha512: false,
             secp256k1: false,
             bls12_381: false,
             base64: false,

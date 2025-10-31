@@ -298,6 +298,16 @@ where
         ng.and(layouter, &[val_checks.as_slice(), &[len_check]].concat())
     }
 
+    fn is_not_equal(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &AssignedVector<F, T, M, A>,
+        y: &AssignedVector<F, T, M, A>,
+    ) -> Result<AssignedBit<F>, Error> {
+        let b = self.is_equal(layouter, x, y)?;
+        self.native_gadget.not(layouter, &b)
+    }
+
     fn is_equal_to_fixed(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -317,6 +327,16 @@ where
         element_checks.push(eq_len);
 
         ng.and(layouter, &element_checks)
+    }
+
+    fn is_not_equal_to_fixed(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &AssignedVector<F, T, M, A>,
+        constant: Vec<T::Element>,
+    ) -> Result<AssignedBit<F>, Error> {
+        let b = self.is_equal_to_fixed(layouter, x, constant)?;
+        self.native_gadget.not(layouter, &b)
     }
 }
 

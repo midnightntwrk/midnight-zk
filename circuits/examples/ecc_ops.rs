@@ -5,7 +5,7 @@ use ff::Field;
 use group::Group;
 use midnight_circuits::{
     compact_std_lib::{self, Relation, ZkStdLib, ZkStdLibArch},
-    ecc::{curves::CircuitCurve, native::ScalarVar},
+    ecc::{curves::CircuitCurve, native::AssignedScalarOfNativeCurve},
     instructions::{
         AssignmentInstructions, ConversionInstructions, EccInstructions, PublicInputInstructions,
     },
@@ -29,8 +29,8 @@ impl Relation for EccExample {
 
     type Witness = JubjubScalar;
 
-    fn format_instance(instance: &Self::Instance) -> Vec<F> {
-        AssignedNativePoint::<Jubjub>::as_public_input(instance)
+    fn format_instance(instance: &Self::Instance) -> Result<Vec<F>, Error> {
+        Ok(AssignedNativePoint::<Jubjub>::as_public_input(instance))
     }
 
     fn circuit(
@@ -44,7 +44,7 @@ impl Relation for EccExample {
 
         // We can also assign a scalar from an assigned native element.
         let native_value = std_lib.assign(layouter, Value::known(F::default()))?;
-        let scalar_from_native: ScalarVar<Jubjub> =
+        let scalar_from_native: AssignedScalarOfNativeCurve<Jubjub> =
             std_lib.jubjub().convert(layouter, &native_value)?;
 
         // Now we witness a point and create one with H2C.
@@ -71,6 +71,7 @@ impl Relation for EccExample {
             jubjub: true,
             poseidon: true,
             sha256: false,
+            sha512: false,
             secp256k1: false,
             bls12_381: false,
             base64: false,
@@ -112,7 +113,7 @@ fn main() {
         .expect("Proof generation should not fail");
 
         vks.push(vk.clone());
-        pis.push(EccExample::format_instance(&instance));
+        pis.push(EccExample::format_instance(&instance).unwrap());
         proofs.push(proof);
     }
 

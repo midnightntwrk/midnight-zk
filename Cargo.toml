@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 
-members = ["proofs", "curves", "circuits", "aggregator", "bench-macros", "picus/support", "picus/macros", "extractor/support"]
+members = ["proofs", "curves", "circuits", "aggregator", "zkir", "bench-macros", "picus/support", "picus/macros", "extractor/support"]
 
 package = { license-file = "LICENSE" }
 
@@ -15,7 +15,7 @@ tracing = "0.1"
 blake2b_simd = "1"                                            # MSRV 1.66.0
 rand_chacha = "0.3"
 rayon = "1.10"
-serde = { version = "1.0", features = ["derive"]}
+serde = { version = "1.0", features = ["derive"] }
 serde_derive = { version = "1" }
 serde_json = { version = "1" }
 num-bigint = { version = "0.4" }

@@ -22,7 +22,7 @@
       "permutations": "14",
       "point_sets": "4",
       "rows": "2838",
-      "table_rows": "3"
+      "table_rows": "387"
     },
     "Insert": {
       "advice_columns": "13",
@@ -33,7 +33,7 @@
       "permutations": "14",
       "point_sets": "4",
       "rows": "5676",
-      "table_rows": "3"
+      "table_rows": "387"
     }
   },
   "Poseidon": {
@@ -82,6 +82,19 @@
       "point_sets": "5",
       "rows": "18720",
       "table_rows": "7933"
+    }
+  },
+  "SHA512": {
+    "hash": {
+      "advice_columns": "13",
+      "column_queries": "103",
+      "fixed_columns": "64",
+      "lookups": "10",
+      "max_deg": "5",
+      "permutations": "15",
+      "point_sets": "7",
+      "rows": "36800",
+      "table_rows": "15487"
     }
   },
   "VarSHA256": {
@@ -258,7 +271,29 @@
       "permutations": "9",
       "point_sets": "4",
       "rows": "32",
-      "table_rows": "12"
+      "table_rows": "13"
+    },
+    "is_not_equal": {
+      "advice_columns": "5",
+      "column_queries": "44",
+      "fixed_columns": "27",
+      "lookups": "4",
+      "max_deg": "5",
+      "permutations": "9",
+      "point_sets": "4",
+      "rows": "33",
+      "table_rows": "13"
+    },
+    "is_not_equal_to_fixed": {
+      "advice_columns": "5",
+      "column_queries": "44",
+      "fixed_columns": "27",
+      "lookups": "4",
+      "max_deg": "5",
+      "permutations": "9",
+      "point_sets": "4",
+      "rows": "33",
+      "table_rows": "13"
     },
     "is_zero": {
       "advice_columns": "5",
@@ -269,7 +304,7 @@
       "permutations": "9",
       "point_sets": "4",
       "rows": "32",
-      "table_rows": "12"
+      "table_rows": "13"
     },
     "select": {
       "advice_columns": "5",
@@ -471,6 +506,28 @@
       "rows": "28",
       "table_rows": "449"
     },
+    "is_not_equal": {
+      "advice_columns": "13",
+      "column_queries": "57",
+      "fixed_columns": "37",
+      "lookups": "4",
+      "max_deg": "5",
+      "permutations": "17",
+      "point_sets": "4",
+      "rows": "30",
+      "table_rows": "449"
+    },
+    "is_not_equal_to_fixed": {
+      "advice_columns": "13",
+      "column_queries": "57",
+      "fixed_columns": "37",
+      "lookups": "4",
+      "max_deg": "5",
+      "permutations": "17",
+      "point_sets": "4",
+      "rows": "29",
+      "table_rows": "449"
+    },
     "is_zero": {
       "advice_columns": "13",
       "column_queries": "57",
@@ -480,7 +537,7 @@
       "permutations": "17",
       "point_sets": "4",
       "rows": "11",
-      "table_rows": "5"
+      "table_rows": "6"
     },
     "linear_comb": {
       "advice_columns": "13",
@@ -558,6 +615,17 @@
       "point_sets": "4",
       "rows": "4",
       "table_rows": "8"
+    },
+    "sgn0": {
+      "advice_columns": "18",
+      "column_queries": "92",
+      "fixed_columns": "58",
+      "lookups": "8",
+      "max_deg": "5",
+      "permutations": "22",
+      "point_sets": "4",
+      "rows": "335",
+      "table_rows": "451"
     },
     "sub": {
       "advice_columns": "13",
@@ -781,6 +849,28 @@
       "rows": "28",
       "table_rows": "449"
     },
+    "is_not_equal": {
+      "advice_columns": "13",
+      "column_queries": "57",
+      "fixed_columns": "37",
+      "lookups": "4",
+      "max_deg": "5",
+      "permutations": "17",
+      "point_sets": "4",
+      "rows": "30",
+      "table_rows": "449"
+    },
+    "is_not_equal_to_fixed": {
+      "advice_columns": "13",
+      "column_queries": "57",
+      "fixed_columns": "37",
+      "lookups": "4",
+      "max_deg": "5",
+      "permutations": "17",
+      "point_sets": "4",
+      "rows": "29",
+      "table_rows": "449"
+    },
     "is_zero": {
       "advice_columns": "13",
       "column_queries": "57",
@@ -790,7 +880,7 @@
       "permutations": "17",
       "point_sets": "4",
       "rows": "11",
-      "table_rows": "5"
+      "table_rows": "6"
     },
     "linear_comb": {
       "advice_columns": "13",
@@ -868,6 +958,17 @@
       "point_sets": "4",
       "rows": "4",
       "table_rows": "8"
+    },
+    "sgn0": {
+      "advice_columns": "18",
+      "column_queries": "92",
+      "fixed_columns": "58",
+      "lookups": "8",
+      "max_deg": "5",
+      "permutations": "22",
+      "point_sets": "4",
+      "rows": "335",
+      "table_rows": "451"
     },
     "sub": {
       "advice_columns": "13",
@@ -1045,6 +1146,28 @@
       "permutations": "30",
       "point_sets": "5",
       "rows": "99",
+      "table_rows": "417"
+    },
+    "is_not_equal": {
+      "advice_columns": "25",
+      "column_queries": "111",
+      "fixed_columns": "73",
+      "lookups": "9",
+      "max_deg": "5",
+      "permutations": "30",
+      "point_sets": "5",
+      "rows": "106",
+      "table_rows": "417"
+    },
+    "is_not_equal_to_fixed": {
+      "advice_columns": "25",
+      "column_queries": "111",
+      "fixed_columns": "73",
+      "lookups": "9",
+      "max_deg": "5",
+      "permutations": "30",
+      "point_sets": "5",
+      "rows": "100",
       "table_rows": "417"
     },
     "is_zero": {
@@ -1267,6 +1390,28 @@
       "permutations": "32",
       "point_sets": "5",
       "rows": "59",
+      "table_rows": "449"
+    },
+    "is_not_equal": {
+      "advice_columns": "27",
+      "column_queries": "116",
+      "fixed_columns": "77",
+      "lookups": "9",
+      "max_deg": "5",
+      "permutations": "32",
+      "point_sets": "5",
+      "rows": "64",
+      "table_rows": "449"
+    },
+    "is_not_equal_to_fixed": {
+      "advice_columns": "27",
+      "column_queries": "116",
+      "fixed_columns": "77",
+      "lookups": "9",
+      "max_deg": "5",
+      "permutations": "32",
+      "point_sets": "5",
+      "rows": "60",
       "table_rows": "449"
     },
     "is_zero": {
@@ -1555,7 +1700,7 @@
       "permutations": "9",
       "point_sets": "3",
       "rows": "2",
-      "table_rows": "1"
+      "table_rows": "2"
     },
     "is_equal_to_fixed": {
       "advice_columns": "5",
@@ -1566,7 +1711,29 @@
       "permutations": "9",
       "point_sets": "3",
       "rows": "2",
-      "table_rows": "1"
+      "table_rows": "2"
+    },
+    "is_not_equal": {
+      "advice_columns": "5",
+      "column_queries": "29",
+      "fixed_columns": "23",
+      "lookups": "0",
+      "max_deg": "4",
+      "permutations": "9",
+      "point_sets": "3",
+      "rows": "2",
+      "table_rows": "2"
+    },
+    "is_not_equal_to_fixed": {
+      "advice_columns": "5",
+      "column_queries": "29",
+      "fixed_columns": "23",
+      "lookups": "0",
+      "max_deg": "4",
+      "permutations": "9",
+      "point_sets": "3",
+      "rows": "2",
+      "table_rows": "2"
     },
     "is_zero": {
       "advice_columns": "5",
@@ -1577,7 +1744,7 @@
       "permutations": "9",
       "point_sets": "3",
       "rows": "2",
-      "table_rows": "1"
+      "table_rows": "2"
     },
     "linear_comb": {
       "advice_columns": "5",
@@ -1876,9 +2043,31 @@
       "permutations": "16",
       "point_sets": "4",
       "rows": "5",
-      "table_rows": "3"
+      "table_rows": "4"
     },
     "is_equal_to_fixed": {
+      "advice_columns": "14",
+      "column_queries": "59",
+      "fixed_columns": "37",
+      "lookups": "4",
+      "max_deg": "5",
+      "permutations": "16",
+      "point_sets": "4",
+      "rows": "5",
+      "table_rows": "4"
+    },
+    "is_not_equal": {
+      "advice_columns": "14",
+      "column_queries": "59",
+      "fixed_columns": "37",
+      "lookups": "4",
+      "max_deg": "5",
+      "permutations": "16",
+      "point_sets": "4",
+      "rows": "5",
+      "table_rows": "3"
+    },
+    "is_not_equal_to_fixed": {
       "advice_columns": "14",
       "column_queries": "59",
       "fixed_columns": "37",
@@ -1898,7 +2087,7 @@
       "permutations": "16",
       "point_sets": "4",
       "rows": "5",
-      "table_rows": "3"
+      "table_rows": "4"
     },
     "msm_3": {
       "advice_columns": "14",

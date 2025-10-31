@@ -60,6 +60,14 @@ pub fn fe_to_u64<F: PrimeField>(fe: F) -> u64 {
     u64_digits.first().cloned().unwrap_or(0)
 }
 
+/// Panics if the conversion is not possible.
+pub fn fe_to_u128<F: PrimeField>(fe: F) -> u128 {
+    let u64_digits = fe_to_big(fe).to_u64_digits();
+    assert!(u64_digits.len() <= 2);
+    ((u64_digits.get(1).cloned().unwrap_or(0) as u128) << 64)
+        | (u64_digits.first().cloned().unwrap_or(0) as u128)
+}
+
 pub fn u32_to_fe<F: PrimeField>(x: u32) -> F {
     F::from(x as u64)
 }
@@ -68,12 +76,34 @@ pub fn u64_to_fe<F: PrimeField>(x: u64) -> F {
     F::from(x)
 }
 
-pub fn bigint_to_fe<F: PrimeField>(value: &BI) -> F {
-    let f = F::from_str_vartime(&BI::to_string(&value.abs())).unwrap();
-    if value.is_negative() {
-        F::neg(f)
+pub fn u128_to_fe<F: PrimeField>(x: u128) -> F {
+    F::from_u128(x)
+}
+
+fn from_u64_le_digits<F: PrimeField>(digits: &[u64]) -> F {
+    if digits.is_empty() {
+        return F::ZERO;
+    }
+
+    let mut acc = F::from(*digits.last().unwrap());
+    for digit in digits.iter().rev().skip(1) {
+        for _ in 0..64 {
+            acc = acc.double();
+        }
+        acc += F::from(*digit)
+    }
+    acc
+}
+
+pub fn bigint_to_fe<F: PrimeField>(value: &BI) -> F where
+{
+    let (sign, u64_chunks) = value.to_u64_digits();
+    let res = from_u64_le_digits::<F>(&u64_chunks);
+
+    if sign == Sign::Minus {
+        -res
     } else {
-        f
+        res
     }
 }
 

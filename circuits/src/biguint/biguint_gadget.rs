@@ -181,6 +181,16 @@ where
         self.native_gadget.and(layouter, &xi_eq_yi_bits)
     }
 
+    fn is_not_equal(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &AssignedBigUint<F>,
+        y: &AssignedBigUint<F>,
+    ) -> Result<AssignedBit<F>, Error> {
+        let b = self.is_equal(layouter, x, y)?;
+        self.native_gadget.not(layouter, &b)
+    }
+
     fn is_equal_to_fixed(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -204,6 +214,16 @@ where
             .collect::<Result<Vec<_>, Error>>()?;
 
         self.native_gadget.and(layouter, &xi_eq_yi_bits)
+    }
+
+    fn is_not_equal_to_fixed(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &AssignedBigUint<F>,
+        constant: BigUint,
+    ) -> Result<AssignedBit<F>, Error> {
+        let b = self.is_equal_to_fixed(layouter, x, constant)?;
+        self.native_gadget.not(layouter, &b)
     }
 }
 
@@ -297,17 +317,23 @@ where
     ///
     /// # Panics
     ///
-    /// If the provided bound `NB_BITS` does not coincide with the bound that
+    /// If the provided bound `nb_bits` does not coincide with the bound that
     /// can be derived from the given `AssignedBigUint`. This is to make sure
     /// that the user knows tight bounds for the BigUint they are constraining,
     /// and that they will create the off-circuit public inputs correctly (using
-    /// the same bounds) via `AssignedBigUint::as_public_input<NB_BITS>(...)`.
-    pub fn constrain_as_public_input<const NB_BITS: u32>(
+    /// the same bounds) via `AssignedBigUint::as_public_input(..., nb_bits)`.
+    pub fn constrain_as_public_input(
         &self,
         layouter: &mut impl Layouter<F>,
         assigned: &AssignedBigUint<F>,
+        nb_bits: u32,
     ) -> Result<(), Error> {
-        assert_eq!(NB_BITS, assigned.nb_bits());
+        if nb_bits != assigned.nb_bits() {
+            return Err(Error::Synthesis(format!(
+                "constrain_as_public_input: {nb_bits} != {} (the derived `nb_bits` bound)",
+                assigned.nb_bits()
+            )));
+        }
         self.normalize(layouter, assigned)?
             .limbs
             .iter()

@@ -103,7 +103,7 @@ mod tests {
     };
 
     #[test]
-    fn test_sha_hash() {
+    fn test_sha256_hash() {
         test_hash::<
             Scalar,
             AssignedByte<Scalar>,
@@ -114,7 +114,7 @@ mod tests {
     }
 
     #[test]
-    fn test_sha_varhash() {
+    fn test_sha256_varhash() {
         fn test_wrapper<const M: usize>(input_size: usize, k: u32, cost_model: bool) {
             test_varhash::<
                 Scalar,

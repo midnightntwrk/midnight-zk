@@ -51,6 +51,14 @@ where
         y: &Assigned,
     ) -> Result<AssignedBit<F>, Error>;
 
+    /// Returns `0` if the elements are equal, returns `1` otherwise.
+    fn is_not_equal(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &Assigned,
+        y: &Assigned,
+    ) -> Result<AssignedBit<F>, Error>;
+
     /// Returns `1` iff the given element equals the given constant.
     ///
     /// ```
@@ -65,6 +73,14 @@ where
     /// # });
     /// ```
     fn is_equal_to_fixed(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &Assigned,
+        constant: Assigned::Element,
+    ) -> Result<AssignedBit<F>, Error>;
+
+    /// Returns `1` iff the given element is not equal to the given constant.
+    fn is_not_equal_to_fixed(
         &self,
         layouter: &mut impl Layouter<F>,
         x: &Assigned,
@@ -96,7 +112,9 @@ pub(crate) mod tests {
     #[derive(Clone, Debug)]
     enum Operation {
         Equal,
+        NotEqual,
         EqToFixed,
+        NotEqToFixed,
     }
 
     #[derive(Clone, Debug)]
@@ -149,8 +167,12 @@ pub(crate) mod tests {
             let y = chip.assign_fixed(&mut layouter, self.y.clone())?;
             let res = match self.operation {
                 Operation::Equal => chip.is_equal(&mut layouter, &x, &y)?,
+                Operation::NotEqual => chip.is_not_equal(&mut layouter, &x, &y)?,
                 Operation::EqToFixed => {
                     chip.is_equal_to_fixed(&mut layouter, &x, self.y.clone())?
+                }
+                Operation::NotEqToFixed => {
+                    chip.is_not_equal_to_fixed(&mut layouter, &x, self.y.clone())?
                 }
             };
             let res_as_value: AssignedNative<F> = res.into();
@@ -244,12 +266,32 @@ pub(crate) mod tests {
             run::<F, Assigned, EqualityChip>(
                 x,
                 y,
+                !*equal,
+                Operation::NotEqual,
+                true,
+                cost_model,
+                name,
+                "is_not_equal",
+            );
+            run::<F, Assigned, EqualityChip>(
+                x,
+                y,
                 *equal,
                 Operation::EqToFixed,
                 true,
                 cost_model,
                 name,
                 "is_equal_to_fixed",
+            );
+            run::<F, Assigned, EqualityChip>(
+                x,
+                y,
+                !*equal,
+                Operation::NotEqToFixed,
+                true,
+                cost_model,
+                name,
+                "is_not_equal_to_fixed",
             );
             cost_model = false;
             run::<F, Assigned, EqualityChip>(x, y, !equal, Operation::Equal, false, false, "", "");

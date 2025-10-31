@@ -1,0 +1,40 @@
+[package]
+name = "midnight-zkir"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.76.0"
+description = "Toolkit for parsing ZKIR circuits"
+license = "MIT OR Apache-2.0"
+categories = ["cryptography"]
+keywords = ["halo", "proofs", "zkp", "zkSNARKs"]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs", "--html-in-header", "katex-header.html"]
+
+[dependencies]
+group = { workspace = true }
+ff = { workspace = true }
+
+midnight-curves = { path = "../curves", version = "0.1.0" }
+midnight-proofs = { path = "../proofs", version = "0.5.1", default-features = false, features = [
+    "bits",
+    "cost-estimator",
+    "circuit-params",
+    "committed-instances",
+] }
+midnight-circuits = { path = "../circuits", default-features = false, features = [
+    "testing",
+] }
+
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+bincode = "2.0.1"
+
+num-bigint = "0.4.6"
+num-traits = "0.2"
+const-hex = "^1.14.0"
+
+[dev-dependencies]
+rand_chacha = { workspace = true }
+blake2b_simd = { workspace = true }

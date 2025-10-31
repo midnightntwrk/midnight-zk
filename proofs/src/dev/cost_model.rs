@@ -59,6 +59,10 @@ pub(crate) struct CostOptions {
     /// can use the same rows), but not much if any compression can happen with
     /// table rows anyway.
     table_rows_count: usize,
+
+    /// Number of rows that are devoted to blinding factors and cannot be used
+    /// for "computing".
+    nb_unusable_rows: usize,
 }
 
 /// Structure holding polynomial related data for benchmarks
@@ -131,6 +135,9 @@ pub struct CircuitModel {
     pub rows: usize,
     /// Number of table rows in the circuit.
     pub table_rows: usize,
+    /// Number of rows that are devoted to blinding factors and cannot be used
+    /// for "computing".
+    pub nb_unusable_rows: usize,
     /// Maximum degree of the circuit.
     pub max_deg: usize,
     /// Number of advice columns.
@@ -228,6 +235,7 @@ impl CostOptions {
             k: self.min_k,
             rows: self.rows_count,
             table_rows: self.table_rows_count,
+            nb_unusable_rows: self.nb_unusable_rows,
             max_deg: self.max_degree,
             advice_columns: self.advice.len(),
             // Note that we have one fixed commitment per column in the permutation argument
@@ -327,10 +335,12 @@ pub(crate) fn cost_model_options<F: Ord + Field + FromUniformBytes<64>, C: Circu
         (table_rows_count, rows_count)
     };
 
+    let nb_unusable_rows = cs.blinding_factors() + 1;
+
     let nb_instances = prover.instance_rows.take();
     let min_circuit_size = [
-        rows_count + cs.blinding_factors(),
-        table_rows_count + cs.blinding_factors(),
+        rows_count + nb_unusable_rows,
+        table_rows_count + nb_unusable_rows,
         nb_instances,
         cs.minimum_rows() + 1,
     ]
@@ -352,6 +362,7 @@ pub(crate) fn cost_model_options<F: Ord + Field + FromUniformBytes<64>, C: Circu
         min_k: min_circuit_size.next_power_of_two().ilog2(),
         rows_count,
         table_rows_count,
+        nb_unusable_rows,
     }
 }
 
@@ -562,6 +573,17 @@ impl<F: Field> Assignment<F> for DevAssembly<F> {
     fn pop_namespace(&mut self, _: Option<String>) {
         // Do nothing; we don't care about namespaces in this context.
     }
+}
+
+/// This function makes a dummy pass on the synthesize function associated to
+/// the given circuit. This could be useful for checking that the circuit is
+/// well-formed.
+pub fn dummy_synthesize_run<F, C>(circuit: &C) -> Result<(), Error>
+where
+    F: Ord + Field + FromUniformBytes<64>,
+    C: Circuit<F>,
+{
+    DevAssembly::run(circuit).map(|_| ())
 }
 
 #[cfg(test)]

@@ -563,7 +563,7 @@ impl<F: PrimeField> Sha256Chip<F> {
         let mut state = CompressionState::<F>::fixed(layouter, &self.native_gadget, IV)?;
 
         for block_bytes in self.pad(layouter, input_bytes)?.chunks(64) {
-            let block = self.block_from_bytes(layouter, block_bytes)?;
+            let block = self.block_from_bytes(layouter, block_bytes.try_into().unwrap())?;
             let message_blocks = self.message_schedule(layouter, &block)?;
             let mut compression_state = state.clone();
             for i in 0..64 {
@@ -580,7 +580,7 @@ impl<F: PrimeField> Sha256Chip<F> {
         Ok(state.plain())
     }
 
-    /// Pads the input byte array to be a multiple of 64 bytes.
+    /// Pads the input byte array to be a multiple of 64 bytes (512 bits).
     fn pad(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -602,17 +602,11 @@ impl<F: PrimeField> Sha256Chip<F> {
     /// Given a byte array of exactly 64 bytes, this function converts it into a
     /// block of 16 `AssignedPlain` values, each (32 bits) value representing 4
     /// bytes in big-endian.
-    ///
-    /// # Panics
-    ///
-    /// If it does not receive exactly 64 bytes.
     pub(super) fn block_from_bytes(
         &self,
         layouter: &mut impl Layouter<F>,
-        bytes: &[AssignedByte<F>],
+        bytes: &[AssignedByte<F>; 64],
     ) -> Result<[AssignedPlain<F, 32>; 16], Error> {
-        assert_eq!(bytes.len(), 64);
-
         Ok(bytes
             .chunks(4)
             .map(|word_bytes| {
@@ -739,7 +733,7 @@ impl<F: PrimeField> Sha256Chip<F> {
         position i, iff at least two out of three are 1, the sum A_i + B_i + C_i will
         overflow, leaving a carry bit of 1 (the result of majority for that bit).
 
-        Maj which can be encoded by
+        Maj can be encoded by
 
         1) applying the plain-spreaded lookup on 11-11-10 limbs of Evn and Odd:
              Evn: (Evn.11a, Evn.11b, Evn.10)

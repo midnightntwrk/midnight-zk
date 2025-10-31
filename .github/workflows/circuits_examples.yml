@@ -20,7 +20,9 @@ jobs:
           - poseidon
           - sha_preimage
           - native_gadget
-          - json_verification
+          - cred_full
+          - cred_enrollment
+          - cred_property
 
     steps:
       - name: Add github.com credentials to netrc

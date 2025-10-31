@@ -43,8 +43,8 @@ impl Relation for MembershipExample {
     // and the map.
     type Witness = (F, Set, Map);
 
-    fn format_instance(instance: &Self::Instance) -> Vec<F> {
-        vec![instance.0, instance.1]
+    fn format_instance(instance: &Self::Instance) -> Result<Vec<F>, Error> {
+        Ok(vec![instance.0, instance.1])
     }
 
     fn circuit(
@@ -89,6 +89,7 @@ impl Relation for MembershipExample {
             jubjub: false,
             poseidon: true,
             sha256: false,
+            sha512: false,
             secp256k1: false,
             bls12_381: false,
             base64: false,

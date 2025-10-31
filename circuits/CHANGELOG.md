@@ -12,12 +12,26 @@ verification keys break backwards compatibility.
 
 ## [Unreleased]
 ### Added
+* SHA512 chip [#96](https://github.com/midnightntwrk/midnight-zk/pull/96)
+* Introduce `is_not_equal` and `is_not_equal_to_fixed` [#130](https://github.com/midnightntwrk/midnight-zk/pull/130)
 
 ### Changed
+* Optimize `bigint_to_fe` [#115](https://github.com/midnightntwrk/midnight-zk/pull/115)
+* Fix `is_equal` and `is_equal_to_fixed` in `native_chip` [#117](https://github.com/midnightntwrk/midnight-zk/pull/117)
+* Rename `ScalarVar` => `AssignedScalarOfNativeCurve` [#120](https://github.com/midnightntwrk/midnight-zk/pull/120)
+* Optimize `assigned_to_le_bits` in `NativeGadget` [#131](https://github.com/midnightntwrk/midnight-zk/pull/131)
 
 ### Removed
 
-## [5.0.0] - 19-09-2025 
+## [5.0.1] - 19-09-2025
+### Added
+
+### Changed
+* Rerun goldenfiles after fix on min_k [#114](https://github.com/midnightntwrk/midnight-zk/pull/114)
+
+### Removed
+
+## [5.0.0] - 19-09-2025
 ### Added
 * Add CommittedInstanceInstructions [#63](https://github.com/midnightntwrk/midnight-zk/pull/63)
 * Add goldenfiles with examples cost-model [#89](https://github.com/midnightntwrk/midnight-zk/pull/89)
@@ -27,6 +41,7 @@ verification keys break backwards compatibility.
 * Feature to run internal benchmarks [#93](https://github.com/midnightntwrk/midnight-zk/pull/93)
 * Add function to return number of points involved in a proof [#102](https://github.com/midnightntwrk/midnight-zk/pull/102)
 * Cache of range-checked cells in native_gadget [#109](https://github.com/midnightntwrk/midnight-zk/pull/109)
+* Add crendential enrollment proof [#81](https://github.com/midnightntwrk/midnight-zk/pull/81)
 
 ### Changed
 * Refactored crate to prepare for edition 2024.
@@ -44,6 +59,8 @@ verification keys break backwards compatibility.
 * Rebase to new cost-model with improved K computation [#104](https://github.com/midnightntwrk/midnight-zk/pull/104)
 * Explicitly used Apache license for crate [#107](https://github.com/midnightntwrk/midnight-zk/pull/107)
 * Compute optimal `max_bit_len` in `compact_std_lib` [#106](https://github.com/midnightntwrk/midnight-zk/pull/106)
+* Rename `ScalarVar` -> `AssignedScalarOfNativeCurve` [#120](https://github.com/midnightntwrk/midnight-zk/pull/120)
+
 
 ### Removed
 

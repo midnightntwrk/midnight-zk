@@ -8,7 +8,7 @@ use super::{Any, Column, TableColumn};
 pub enum Error {
     /// This is an error that can occur during synthesis of the circuit, for
     /// example, when the witness is not present.
-    Synthesis,
+    Synthesis(String),
     /// The provided instances do not match the circuit parameters.
     InvalidInstances,
     /// The constraint system is not satisfied.
@@ -58,7 +58,7 @@ impl Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Error::Synthesis => write!(f, "General synthesis error"),
+            Error::Synthesis(msg) => write!(f, "Synthesis error: {msg}"),
             Error::InvalidInstances => write!(f, "Provided instances do not match the circuit"),
             Error::ConstraintSystemFailure => write!(f, "The constraint system is not satisfied"),
             Error::BoundsFailure => write!(f, "An out-of-bounds index was passed to the backend"),

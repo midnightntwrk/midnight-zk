@@ -16,11 +16,12 @@ Midnight Circuits provides several tools to facilitate circuit development with 
 3. Native and non-native hash-to-curve functionality.
 4. Bit/Byte decomposition tools and range-checks.
 5. SHA-256.
-6. Set (non-)membership.
-7. BigUInt.
-8. Variable length vectors (see explanation below).
-9. Finite-state automata parsing.
-10. In-circuit verification of Plonk proofs (a.k.a. recursion)
+6. SHA-512.
+7. Set (non-)membership.
+8. BigUInt.
+9. Variable length vectors (see explanation below).
+10. Finite-state automata parsing.
+11. In-circuit verification of Plonk proofs (a.k.a. recursion)
 
 We aim to expose these functionalities via traits, which can be found in `[src/instructions]`.
 
@@ -45,6 +46,7 @@ pub struct ZkStdLibArch {
     pub jubjub: bool,
     pub poseidon: bool,
     pub sha256: bool,
+    pub sha512: bool,
     pub secp256k1: bool,
     pub bls12_381: bool,
     pub base64: bool,
@@ -95,11 +97,11 @@ impl Relation for ShaPreImageCircuit {
     // We must specify how the instance is converted into raw field elements to
     // be process by the prover/verifier. The order here must be consistent with
     // the order in which public inputs are constrained/assigned in [circuit].
-    fn format_instance(instance: &Self::Instance) -> Vec<F> {
-        instance
+    fn format_instance(instance: &Self::Instance) -> Result<Vec<F>, Error>  {
+        Ok(instance
             .iter()
             .flat_map(AssignedByte::<F>::as_public_input)
-            .collect()
+            .collect())
     }
 
     // Define the logic of the NP-relation being proved.
@@ -122,6 +124,7 @@ impl Relation for ShaPreImageCircuit {
             jubjub: false,
             poseidon: false,
             sha256: true,
+            sha512: false,
             secp256k1: false,
             bls12_381: false,
             base64: false,

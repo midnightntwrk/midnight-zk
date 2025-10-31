@@ -26,8 +26,8 @@ impl Relation for NativeGadgetExample {
 
     type Witness = (F, F);
 
-    fn format_instance(instance: &Self::Instance) -> Vec<F> {
-        vec![*instance]
+    fn format_instance(instance: &Self::Instance) -> Result<Vec<F>, Error> {
+        Ok(vec![*instance])
     }
 
     fn circuit(
@@ -93,6 +93,7 @@ impl Relation for NativeGadgetExample {
             jubjub: false,
             poseidon: false,
             sha256: false,
+            sha512: false,
             secp256k1: false,
             bls12_381: false,
             base64: false,

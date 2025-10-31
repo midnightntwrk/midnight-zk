@@ -44,8 +44,8 @@ impl Relation for BitcoinSigExample {
 
     type Witness = Signature;
 
-    fn format_instance((pk, msg_bytes): &Self::Instance) -> Vec<F> {
-        [
+    fn format_instance((pk, msg_bytes): &Self::Instance) -> Result<Vec<F>, Error> {
+        Ok([
             AssignedForeignPoint::<F, Secp256k1, MultiEmulationParams>::as_public_input(pk),
             msg_bytes
                 .iter()
@@ -54,7 +54,7 @@ impl Relation for BitcoinSigExample {
         ]
         .into_iter()
         .flatten()
-        .collect()
+        .collect())
     }
 
     fn circuit(
@@ -141,6 +141,7 @@ impl Relation for BitcoinSigExample {
             jubjub: false,
             poseidon: false,
             sha256: true,
+            sha512: false,
             secp256k1: true,
             bls12_381: false,
             base64: false,

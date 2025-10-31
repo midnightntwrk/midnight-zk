@@ -75,11 +75,11 @@ impl Relation for ZSwapOutputCircuit {
 
     type Witness = (PK, CoinInfo, JubjubScalar);
 
-    fn format_instance(instance: &Self::Instance) -> Vec<F> {
+    fn format_instance(instance: &Self::Instance) -> Result<Vec<F>, Error> {
         let mut pi: Vec<F> =
             instance.0.iter().flat_map(AssignedByte::<F>::as_public_input).collect();
         pi.extend(AssignedNativePoint::<Jubjub>::as_public_input(&instance.1));
-        pi
+        Ok(pi)
     }
 
     fn circuit(
