@@ -21,8 +21,8 @@ midnight-proofs = { path = "../proofs", version = "0.5.0", default-features = fa
     "region-groups"
 ] }
 bench_macros = { path = "../bench-macros"}
-llzk-halo2-support = { path = "../support/" }
-picus = { path = "../picus-macros", package = "picus-macros" }
+picus-macros-support = { path = "../picus/support/" }
+picus = { path = "../picus/macros", package = "picus-macros" }
 extractor-support = { path = "../extractor/support/", optional = true }
 
 serde = { workspace = true, optional = true }
