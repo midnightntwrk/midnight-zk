@@ -58,7 +58,7 @@ fn locate_attributes<'a>(
 /// If the list is empty the [`Ident`] defaults to `layouter`.
 /// Fails if the list has more than one element or the annotated argument is not an identifier.
 fn select_layouter(layouter: &[AnnotatedPat], span: Span) -> syn::Result<Ident> {
-    Ok(match &layouter[..] {
+    Ok(match layouter {
         [] => format_ident!("layouter"),
         [(_, pat)] => match &*pat.pat {
             Pat::Ident(ident) => ident.ident.clone(),
@@ -130,9 +130,7 @@ impl ArgAttributes {
 
     fn from_attr(attr: &Attribute) -> Option<Self> {
         // These attributes must be a path with a single segment (i.e. #[input]).
-        let Some(ident) = attr.path().get_ident() else {
-            return None;
-        };
+        let ident = attr.path().get_ident()?;
         if ident == INPUT_ATTR {
             return Some(ArgAttributes::Input);
         }
