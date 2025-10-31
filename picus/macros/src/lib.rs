@@ -1,9 +1,40 @@
-use proc_macro::TokenStream;
-use quote::quote;
-use syn::{parse_macro_input, spanned::Spanned as _, Data, DeriveInput, Fields, ItemFn};
+//! Convenience macros for declaring a group out of a function declaration.
 
+#![deny(rustdoc::broken_intra_doc_links)]
+#![deny(missing_debug_implementations)]
+#![deny(missing_docs)]
+
+use proc_macro::TokenStream;
+use syn::{parse_macro_input, DeriveInput, ItemFn};
+
+mod decompose;
 mod group;
 
+/// Creates a group annotation around the body of a function.
+///
+/// Functions annotated this way must have an argument that implements the layouter trait.
+/// By default an argument named `layouter` is considered to be that argument since that's the
+/// convention. If the argument has a different name it must be annotated with `#[layouter]` such
+/// that the macro can locate it.
+///
+/// The inputs and outputs of the gruop are derived from the arguments of the function and its
+/// return value. The return value of the function is always annotated as an output and arguments
+/// can be annotated with `#[input]` and/or `#[output]` to signify the kind of IO they represent.
+///
+/// Any type that is treated as IO of the group must implement the `DecomposeInCells` trait since
+/// the macro will rely on that trait for making the annotations.
+///
+/// # Example
+///
+/// ```no_run
+/// #[picus::group]
+/// fn foo(&self, layouter: &mut impl Layouter<F>, inputs: #[input] &[AssignedNative<F>]) ->
+/// Result<AssignedNative<F>, Error> {
+///     // The body of this function is now wrapped in a call to `layouter.group()`.
+///     inputs.iter().try_fold(F::ZERO, |acc, i| self.bar(layouter, i, acc))
+///     // The return value is annotated as an output and gets forwarded untouched.
+/// }
+/// ```
 #[proc_macro_attribute]
 pub fn group(_: TokenStream, item: TokenStream) -> TokenStream {
     match group::group_impl(parse_macro_input!(item as ItemFn)) {
@@ -13,119 +44,11 @@ pub fn group(_: TokenStream, item: TokenStream) -> TokenStream {
     .into()
 }
 
+/// Derive macro for the `DecomposeInCells` trait.
+///
+/// Requires that every inner element implements the trait and only structs are currently
+/// supported.
 #[proc_macro_derive(DecomposeInCells)]
 pub fn derive_decompose_in_cells(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
-    let name = input.ident;
-    let generics = input.generics;
-
-    // Split generics into (impl generics) (ty generics) (where clause)
-    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-    let body = match &input.data {
-        Data::Struct(data) => match &data.fields {
-            Fields::Named(fields) => {
-                let field_calls = fields.named.iter().map(|f| {
-                    let fname = &f.ident;
-                    quote! { .chain(self.#fname.cells()) }
-                });
-                quote! {
-                    fn cells(&self) -> impl IntoIterator<Item = midnight_proofs::circuit::Cell> {
-                        std::iter::empty() #(#field_calls)*
-                    }
-                }
-            }
-            Fields::Unnamed(fields) => {
-                let idx = (0..fields.unnamed.len()).map(syn::Index::from);
-                let field_calls = idx.map(|i| quote! { .chain(self.#i.cells()) });
-                quote! {
-                    fn cells(&self) -> impl IntoIterator<Item = midnight_proofs::circuit::Cell> {
-                        std::iter::empty() #(#field_calls)*
-                    }
-                }
-            }
-            Fields::Unit => {
-                quote! {
-                    fn cells(&self) -> impl IntoIterator<Item = midnight_proofs::circuit::Cell> {
-                        std::iter::empty()
-                    }
-                }
-            }
-        },
-        Data::Enum(data) => {
-            let variants = data.variants.iter().map(|v| {
-                let vname = &v.ident;
-                match &v.fields {
-                    Fields::Named(fields) => {
-                        let fnames: Vec<_> =
-                            fields.named.iter().map(|f| f.ident.as_ref().unwrap()).collect();
-                        let chains = fnames.iter().map(|f| quote! { .chain(#f.cells()) });
-                        quote! {
-                            Self::#vname { #( #fnames ),* } => {
-                                std::iter::empty() #(#chains)*
-                            }
-                        }
-                    }
-                    Fields::Unnamed(fields) => {
-                        let vars: Vec<_> = (0..fields.unnamed.len())
-                            .map(|i| syn::Ident::new(&format!("f{i}"), v.span()))
-                            .collect();
-                        let chains = vars.iter().map(|v| quote! { .chain(#v.cells()) });
-                        quote! {
-                            Self::#vname( #( #vars ),* ) => {
-                                std::iter::empty() #(#chains)*
-                            }
-                        }
-                    }
-                    Fields::Unit => {
-                        quote! {
-                            Self::#vname => std::iter::empty(),
-                        }
-                    }
-                }
-            });
-
-            quote! {
-                fn cells(&self) -> impl IntoIterator<Item = midnight_proofs::circuit::Cell> {
-                    match self {
-                        #(#variants),*
-                    }
-                }
-            }
-        }
-        Data::Union(_) => {
-            unimplemented!("Unions are not supported")
-        }
-    };
-
-    // Collect field types for where bounds
-    let mut bounds = Vec::new();
-    match &input.data {
-        Data::Struct(data) => {
-            for field in data.fields.iter() {
-                let ty = &field.ty;
-                bounds.push(quote! { #ty: picus_macros_support::DecomposeInCells });
-            }
-        }
-        Data::Enum(data) => {
-            for variant in &data.variants {
-                for field in &variant.fields {
-                    let ty = &field.ty;
-                    bounds.push(quote! { #ty: picus_macros_support::DecomposeInCells });
-                }
-            }
-        }
-        Data::Union(_) => {}
-    }
-
-    let expanded = quote! {
-        impl #impl_generics picus_macros_support::DecomposeInCells for #name #ty_generics
-        where
-            #(#bounds,)*
-            #where_clause
-        {
-            #body
-        }
-    };
-
-    TokenStream::from(expanded)
+    decompose::derive_decompose_in_cells_impl(parse_macro_input!(input as DeriveInput)).into()
 }
