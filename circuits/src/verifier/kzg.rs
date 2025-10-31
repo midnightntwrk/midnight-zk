@@ -223,7 +223,7 @@ impl<S: SelfEmulation> VerifierQuery<S> {
         }
     }
 
-    /// Create a verifier query on a commitment (respresented as an MSM).
+    /// Create a verifier query on a commitment (represented as an MSM).
     pub(crate) fn new_from_msm(
         point: &AssignedNative<S::F>,
         commitment: &AssignedMsm<S>,
@@ -354,6 +354,7 @@ where
     let f_com = transcript_gadget.read_point(layouter)?;
 
     let x3 = transcript_gadget.squeeze_challenge(layouter)?;
+
     #[cfg(feature = "truncated-challenges")]
     let x3 = truncate::<S::F>(layouter, scalar_chip, &x3)?;
     #[cfg(not(feature = "truncated-challenges"))]
@@ -389,6 +390,7 @@ where
         })?;
 
     let x4 = transcript_gadget.squeeze_challenge(layouter)?;
+
     let truncated_x4_powers =
         truncated_powers::<S::F>(layouter, scalar_chip, &x4, q_coms.len() + 1)?;
 

@@ -16,7 +16,7 @@ const BLAKE2B_PREFIX_COMMON: u8 = 1;
 /// Hash function that can be used for transcript
 pub trait TranscriptHash: Clone {
     /// Input type of the hash function
-    type Input;
+    type Input: Debug;
     /// Output type of the hash function
     type Output;
 
