@@ -3,8 +3,9 @@
 use std::{
     cell::RefCell,
     collections::HashMap,
-    hash::{DefaultHasher, Hasher as _},
+    hash::{DefaultHasher, Hash, Hasher as _},
     marker::PhantomData,
+    ops::Deref,
     rc::Rc,
 };
 
@@ -21,7 +22,7 @@ use crate::{
 ///
 /// For most cases the [`DefaultKey`] is enough, but you can define your own if
 /// necessary.
-pub trait GroupKey: Copy + std::hash::Hash + std::fmt::Debug + Sized {}
+pub trait GroupKey: Copy + Hash + std::fmt::Debug + Sized {}
 
 /// Type erased group key.
 ///
@@ -37,8 +38,18 @@ where
 {
     fn from(value: K) -> Self {
         let mut h = DefaultHasher::new();
+        // Salt the hash with the type's name
+        std::any::type_name_of_val(&value).hash(&mut h);
         value.hash(&mut h);
         Self(h.finish())
+    }
+}
+
+impl Deref for GroupKeyInstance {
+    type Target = u64;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
