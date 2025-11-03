@@ -15,6 +15,7 @@
 
 mod base64_chip;
 mod data_types;
+mod native_automaton;
 mod parser_gadget;
 mod specs;
 
@@ -34,5 +35,6 @@ mod table;
 
 pub use base64_chip::*;
 pub use data_types::{DateFormat, Separator};
+pub use native_automaton::NativeAutomaton;
 pub use parser_gadget::*;
 pub use specs::{spec_library, StdLibParser};
