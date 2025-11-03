@@ -9,10 +9,6 @@ pub mod configuration;
 pub mod injected;
 
 /// Super trait for extracting IO from an abstract circuit.
-///
-/// Allows obtaining the associated types information for
-/// both [`AbstractCircuit`] and [`AbstractUnitCircuit`] without having a
-/// dependency on either type.
 pub trait AbstractCircuitIO<F: PrimeField> {
     /// Type that implements the main logic.
     type Chip: CircuitInitialization<F>;
@@ -50,9 +46,7 @@ where
     type Args = ();
 }
 
-/// Adaptor trait for linking chips that implement
-/// [`midnight::testing_utils::FromScratch`] or
-/// [`midnight::types::ComposableChip`].
+/// Adaptor trait for integrating chips with the extractor.
 pub trait CircuitInitialization<F: PrimeField> {
     /// Configuration of the circuit.
     type Config: Clone + std::fmt::Debug;

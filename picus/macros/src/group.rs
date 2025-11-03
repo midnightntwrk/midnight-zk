@@ -1,6 +1,6 @@
 use proc_macro2::{Span, TokenStream};
 use quote::{format_ident, quote};
-use syn::{Attribute, FnArg, Ident, ItemFn, Pat, PatType, spanned::Spanned};
+use syn::{spanned::Spanned, Attribute, FnArg, Ident, ItemFn, Pat, PatType};
 
 const INPUT_ATTR: &str = "input";
 const OUTPUT_ATTR: &str = "output";
@@ -56,7 +56,7 @@ fn locate_attributes<'a>(
 /// Searches the binding name in the list of arguments annotated with
 /// `#[layouter]`.
 ///
-/// If the list is empty the [`Ident`] defaults to `layouter`.
+/// If the list is empty the [`struct@Ident`] defaults to `layouter`.
 /// Fails if the list has more than one element or the annotated argument is not
 /// an identifier.
 fn select_layouter(layouter: &[AnnotatedPat], span: Span) -> syn::Result<Ident> {

@@ -160,7 +160,7 @@ impl OutputDescr {
     }
 }
 
-/// Context type for the [`LoadFromCells`] and [`StoreIntoCells`] traits.
+/// Context type for the [`LoadFromCells`](super::load::LoadFromCells) and [`StoreIntoCells`](super::store::StoreIntoCells) traits.
 pub struct IOCtx<'io, IO> {
     io: Box<dyn Iterator<Item = IO> + 'io>,
 }
@@ -183,7 +183,7 @@ impl<IO> std::fmt::Debug for IOCtx<'_, IO> {
     }
 }
 
-/// Context type for the [`LoadFromCells`] trait.
+/// Context type for the [`LoadFromCells`](super::load::LoadFromCells) trait.
 pub struct ICtx<'i, 's> {
     inner: IOCtx<'i, InputDescr>,
     constants: Box<dyn Iterator<Item = &'s str> + 's>,
@@ -261,7 +261,7 @@ impl std::fmt::Debug for ICtx<'_, '_> {
     }
 }
 
-/// Context type for the [`StoreIntoCells`] trait.
+/// Context type for the [`StoreIntoCells`](super::store::StoreIntoCells) trait.
 #[derive(Debug)]
 pub struct OCtx<'o> {
     inner: IOCtx<'o, OutputDescr>,
