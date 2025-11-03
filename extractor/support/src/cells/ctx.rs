@@ -160,7 +160,8 @@ impl OutputDescr {
     }
 }
 
-/// Context type for the [`LoadFromCells`](super::load::LoadFromCells) and [`StoreIntoCells`](super::store::StoreIntoCells) traits.
+/// Context type for the [`LoadFromCells`](super::load::LoadFromCells) and
+/// [`StoreIntoCells`](super::store::StoreIntoCells) traits.
 pub struct IOCtx<'io, IO> {
     io: Box<dyn Iterator<Item = IO> + 'io>,
 }

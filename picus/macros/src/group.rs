@@ -1,6 +1,6 @@
 use proc_macro2::{Span, TokenStream};
 use quote::{format_ident, quote};
-use syn::{spanned::Spanned, Attribute, FnArg, Ident, ItemFn, Pat, PatType};
+use syn::{Attribute, FnArg, Ident, ItemFn, Pat, PatType, spanned::Spanned};
 
 const INPUT_ATTR: &str = "input";
 const OUTPUT_ATTR: &str = "output";
