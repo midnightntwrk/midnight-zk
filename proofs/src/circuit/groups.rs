@@ -404,12 +404,16 @@ impl From<CellRole> for RoleAnnotation {
 
 impl PartialEq<CellRole> for RoleAnnotation {
     fn eq(&self, other: &CellRole) -> bool {
-        match (self, other) {
-            (RoleAnnotation::Input | RoleAnnotation::InputOutput, CellRole::Input) => true,
-            (RoleAnnotation::Output | RoleAnnotation::InputOutput, CellRole::Output) => true,
-            (RoleAnnotation::Internal, CellRole::Internal) => true,
-            _ => false,
-        }
+        matches!(
+            (self, other),
+            (
+                RoleAnnotation::Input | RoleAnnotation::InputOutput,
+                CellRole::Input
+            ) | (
+                RoleAnnotation::Output | RoleAnnotation::InputOutput,
+                CellRole::Output
+            ) | (RoleAnnotation::Internal, CellRole::Internal)
+        )
     }
 }
 

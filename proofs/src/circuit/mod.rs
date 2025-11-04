@@ -602,8 +602,8 @@ pub trait Layouter<F: Field> {
     ///         // Annotate the role of the input cells
     ///         group.annotate_inputs([x.cell(), y.cell(), z.cell()]);
     ///
-    /// 	      let tmp = self.sum(layouter, x, y)?;
-    /// 	      let o = self.sum(layouter, &tmp, z)?;
+    ///         let tmp = self.sum(layouter, x, y)?;
+    ///         let o = self.sum(layouter, &tmp, z)?;
     ///
     ///         // Assign the output role to the result cell.
     ///         group.annotate_output(o.cell());

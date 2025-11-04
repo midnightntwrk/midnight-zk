@@ -40,9 +40,9 @@ type AnnotatedPat<'a> = (ArgAttributes, &'a PatType);
 
 /// Searches arguments that were annotated and splits them between `#[layouter]`
 /// annotations and the others.
-fn locate_attributes<'a>(
-    input_fn: &'a ItemFn,
-) -> syn::Result<(Vec<AnnotatedPat<'a>>, Vec<AnnotatedPat<'a>>)> {
+fn locate_attributes(
+    input_fn: &ItemFn,
+) -> syn::Result<(Vec<AnnotatedPat<'_>>, Vec<AnnotatedPat<'_>>)> {
     Ok(input_fn
         .sig
         .inputs
