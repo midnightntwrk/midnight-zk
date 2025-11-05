@@ -537,8 +537,8 @@ mod tests {
 
         type Witness = [F; 2];
 
-        fn format_instance(instance: &Self::Instance) -> Vec<F> {
-            instance.to_vec()
+        fn format_instance(instance: &Self::Instance) -> Result<Vec<F>, Error> {
+            Ok(instance.to_vec())
         }
 
         fn circuit(
@@ -633,7 +633,7 @@ mod tests {
                 prepare::<F, KZGCommitmentScheme<E>, CircuitTranscript<LightPoseidonFS<F>>>(
                     inner_vk.vk(),
                     &[&[C::identity()]],
-                    &[&[&InnerCircuit::format_instance(&instances[i])]],
+                    &[&[&InnerCircuit::format_instance(&instances[i]).unwrap()]],
                     &mut transcript,
                 )
                 .unwrap();
@@ -648,7 +648,7 @@ mod tests {
 
         let all_instances: [Vec<F>; NB_PROOFS] = instances
             .iter()
-            .map(InnerCircuit::format_instance)
+            .map(|instance| InnerCircuit::format_instance(instance).unwrap())
             .collect::<Vec<_>>()
             .try_into()
             .unwrap();

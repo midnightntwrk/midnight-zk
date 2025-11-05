@@ -669,6 +669,17 @@ where
         self.native_chip.is_equal(layouter, &x1, &x2)
     }
 
+    fn is_not_equal(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        byte1: &AssignedByte<F>,
+        byte2: &AssignedByte<F>,
+    ) -> Result<AssignedBit<F>, Error> {
+        let x1: AssignedNative<F> = self.convert(layouter, byte1)?;
+        let x2: AssignedNative<F> = self.convert(layouter, byte2)?;
+        self.native_chip.is_not_equal(layouter, &x1, &x2)
+    }
+
     fn is_equal_to_fixed(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -677,6 +688,16 @@ where
     ) -> Result<AssignedBit<F>, Error> {
         let x: AssignedNative<F> = self.convert(layouter, byte)?;
         self.native_chip.is_equal_to_fixed(layouter, &x, F::from(constant as u64))
+    }
+
+    fn is_not_equal_to_fixed(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        byte: &AssignedByte<F>,
+        constant: u8,
+    ) -> Result<AssignedBit<F>, Error> {
+        let x: AssignedNative<F> = self.convert(layouter, byte)?;
+        self.native_chip.is_not_equal_to_fixed(layouter, &x, F::from(constant as u64))
     }
 }
 
@@ -863,11 +884,12 @@ where
         enforce_canonical: bool,
     ) -> Result<Vec<AssignedBit<F>>, Error> {
         let nb_bits = nb_bits.unwrap_or(F::NUM_BITS as usize);
-        if nb_bits > F::NUM_BITS as usize {
-            panic!(
-                "assigned_to_le_bits: why do you need the output to have more bits than necessary?"
-            );
-        }
+
+        assert!(
+            nb_bits <= F::NUM_BITS as usize,
+            "assigned_to_le_bits: why do you need the output to have more bits than necessary?"
+        );
+
         let limbs = self
             .core_decomposition_chip
             .decompose_fixed_limb_size(layouter, x, nb_bits, 1)?;
@@ -875,9 +897,17 @@ where
             .iter()
             .map(|x| self.native_chip.convert_unsafe(layouter, x))
             .collect::<Result<Vec<_>, Error>>()?;
-        if enforce_canonical && nb_bits >= F::NUM_BITS as usize {
-            let canonical = self.is_canonical(layouter, &bits)?;
-            self.assert_equal_to_fixed(layouter, &canonical, true)?;
+        if enforce_canonical && nb_bits == F::NUM_BITS as usize {
+            debug_assert_eq!(modulus::<F>().bits(), F::NUM_BITS as u64);
+            // To enforce canonicity, we leverage the fact that `F::NUM_BITS` is tight:
+            // field elements have at most 2 representations as bitstrings of length
+            // `F::NUM_BITS`, and when 2 representations exist, they differ in the LSB
+            // (since the modulus is a large prime, which is odd).
+            // Thus, we can enforce canonicity by checking that the least significant bit of
+            // our output matches `sgn0(x)`.
+            // NB: `self.sgn0` is significantly more efficient than `self.is_canonical`.
+            let b0 = self.sgn0(layouter, x)?;
+            self.assert_equal(layouter, &bits[0], &b0)?;
         }
         Ok(bits)
     }
@@ -1405,6 +1435,15 @@ where
         self.native_chip.is_equal(layouter, x, y)
     }
 
+    fn is_not_equal(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &AssignedNative<F>,
+        y: &AssignedNative<F>,
+    ) -> Result<AssignedBit<F>, Error> {
+        self.native_chip.is_not_equal(layouter, x, y)
+    }
+
     fn is_equal_to_fixed(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -1412,6 +1451,15 @@ where
         constant: F,
     ) -> Result<AssignedBit<F>, Error> {
         self.native_chip.is_equal_to_fixed(layouter, x, constant)
+    }
+
+    fn is_not_equal_to_fixed(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &AssignedNative<F>,
+        constant: F,
+    ) -> Result<AssignedBit<F>, Error> {
+        self.native_chip.is_not_equal_to_fixed(layouter, x, constant)
     }
 }
 
@@ -1432,6 +1480,15 @@ where
         self.native_chip.is_equal(layouter, x, y)
     }
 
+    fn is_not_equal(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &AssignedBit<F>,
+        y: &AssignedBit<F>,
+    ) -> Result<AssignedBit<F>, Error> {
+        self.native_chip.is_not_equal(layouter, x, y)
+    }
+
     fn is_equal_to_fixed(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -1439,6 +1496,15 @@ where
         constant: bool,
     ) -> Result<AssignedBit<F>, Error> {
         self.native_chip.is_equal_to_fixed(layouter, x, constant)
+    }
+
+    fn is_not_equal_to_fixed(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &AssignedBit<F>,
+        constant: bool,
+    ) -> Result<AssignedBit<F>, Error> {
+        self.native_chip.is_not_equal_to_fixed(layouter, x, constant)
     }
 }
 

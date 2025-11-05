@@ -821,6 +821,15 @@ where
         self.native_gadget.is_equal(layouter, x, y)
     }
 
+    fn is_not_equal(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &T,
+        y: &T,
+    ) -> Result<AssignedBit<F>, Error> {
+        self.native_gadget.is_not_equal(layouter, x, y)
+    }
+
     fn is_equal_to_fixed(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -828,6 +837,15 @@ where
         constant: T::Element,
     ) -> Result<AssignedBit<F>, Error> {
         self.native_gadget.is_equal_to_fixed(layouter, x, constant)
+    }
+
+    fn is_not_equal_to_fixed(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &T,
+        constant: T::Element,
+    ) -> Result<AssignedBit<F>, Error> {
+        self.native_gadget.is_not_equal_to_fixed(layouter, x, constant)
     }
 }
 
@@ -1370,8 +1388,8 @@ impl<Rel: Relation> MidnightPK<Rel> {
 ///     // We must specify how the instance is converted into raw field elements to
 ///     // be process by the prover/verifier. The order here must be consistent with
 ///     // the order in which public inputs are constrained/assigned in [circuit].
-///     fn format_instance(instance: &Self::Instance) -> Vec<F> {
-///         instance.iter().flat_map(AssignedByte::<F>::as_public_input).collect()
+///     fn format_instance(instance: &Self::Instance) -> Result<Vec<F>, Error> {
+///         Ok(instance.iter().flat_map(AssignedByte::<F>::as_public_input).collect())
 ///     }
 ///
 ///     // Define the logic of the NP-relation being proved.
@@ -1433,7 +1451,7 @@ pub trait Relation: Clone {
 
     /// Produces a vector of field elements in PLONK format representing the
     /// given [Self::Instance].
-    fn format_instance(instance: &Self::Instance) -> Vec<F>;
+    fn format_instance(instance: &Self::Instance) -> Result<Vec<F>, Error>;
 
     /// Produces a vector of field elements in PLONK format representing the
     /// data inside the committed instance.
@@ -1610,7 +1628,7 @@ where
     G1Projective: Hashable<H>,
     F: Hashable<H> + Sampleable<H>,
 {
-    let pi = R::format_instance(instance);
+    let pi = R::format_instance(instance)?;
     let com_inst = R::format_committed_instances(&witness);
     let circuit = MidnightCircuit::new(
         relation,
@@ -1643,7 +1661,7 @@ where
     G1Projective: Hashable<H>,
     F: Hashable<H> + Sampleable<H>,
 {
-    let pi = R::format_instance(instance);
+    let pi = R::format_instance(instance)?;
     let committed_pi = committed_instance.unwrap_or(G1Affine::identity());
     if pi.len() != vk.nb_public_inputs {
         return Err(Error::InvalidInstances);

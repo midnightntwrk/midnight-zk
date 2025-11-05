@@ -45,8 +45,8 @@ impl Relation for BitcoinThresholdECDSA {
 
     type Witness = [(PK, ECDSASig); T];
 
-    fn format_instance((msg_hash, pks): &Self::Instance) -> Vec<F> {
-        [
+    fn format_instance((msg_hash, pks): &Self::Instance) -> Result<Vec<F>, Error> {
+        Ok([
             AssignedField::<F, secp256k1Scalar, MEP>::as_public_input(msg_hash),
             pks.iter()
                 .flat_map(AssignedForeignPoint::<F, Secp256k1, MEP>::as_public_input)
@@ -54,7 +54,7 @@ impl Relation for BitcoinThresholdECDSA {
         ]
         .into_iter()
         .flatten()
-        .collect()
+        .collect())
     }
 
     fn circuit(

@@ -39,14 +39,14 @@ impl Relation for RSASignatureCircuit {
 
     type Witness = Signature;
 
-    fn format_instance((pk, msg): &Self::Instance) -> Vec<F> {
-        [
-            AssignedBigUint::<F>::as_public_input::<NB_BITS>(pk),
-            AssignedBigUint::<F>::as_public_input::<NB_BITS>(msg),
+    fn format_instance((pk, msg): &Self::Instance) -> Result<Vec<F>, Error> {
+        Ok([
+            AssignedBigUint::<F>::as_public_input(pk, NB_BITS),
+            AssignedBigUint::<F>::as_public_input(msg, NB_BITS),
         ]
         .into_iter()
         .flatten()
-        .collect()
+        .collect())
     }
 
     fn circuit(
@@ -66,8 +66,8 @@ impl Relation for RSASignatureCircuit {
         let message = biguint.assign_biguint(layouter, instance.map(|(_, msg)| msg), NB_BITS)?;
         let signature = biguint.assign_biguint(layouter, witness, NB_BITS)?;
 
-        biguint.constrain_as_public_input::<NB_BITS>(layouter, &public_key)?;
-        biguint.constrain_as_public_input::<NB_BITS>(layouter, &message)?;
+        biguint.constrain_as_public_input(layouter, &public_key, NB_BITS)?;
+        biguint.constrain_as_public_input(layouter, &message, NB_BITS)?;
 
         let expected_msg = biguint.mod_exp(layouter, &signature, E, &public_key)?;
 

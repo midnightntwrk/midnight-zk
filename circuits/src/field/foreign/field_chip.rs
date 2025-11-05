@@ -605,6 +605,16 @@ where
         self.is_zero(layouter, &diff)
     }
 
+    fn is_not_equal(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &AssignedField<F, K, P>,
+        y: &AssignedField<F, K, P>,
+    ) -> Result<AssignedBit<F>, Error> {
+        let b = self.is_equal(layouter, x, y)?;
+        self.native_gadget.not(layouter, &b)
+    }
+
     fn is_equal_to_fixed(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -613,6 +623,16 @@ where
     ) -> Result<AssignedBit<F>, Error> {
         let diff = self.add_constant(layouter, x, -constant)?;
         self.is_zero(layouter, &diff)
+    }
+
+    fn is_not_equal_to_fixed(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &AssignedField<F, K, P>,
+        constant: <AssignedField<F, K, P> as InnerValue>::Element,
+    ) -> Result<AssignedBit<F>, Error> {
+        let b = self.is_equal_to_fixed(layouter, x, constant)?;
+        self.native_gadget.not(layouter, &b)
     }
 }
 
@@ -1782,4 +1802,5 @@ mod tests {
 
     test!(decomposition, test_bit_decomposition);
     test!(decomposition, test_byte_decomposition);
+    test!(decomposition, test_sgn0);
 }
