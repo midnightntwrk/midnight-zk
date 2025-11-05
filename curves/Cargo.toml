@@ -24,15 +24,16 @@ serde = { workspace = true, optional = true }
 rand_core = { workspace = true }
 ff = { workspace = true }
 group = { workspace = true, features = ["tests"]  }
-halo2curves = { workspace = true }
+rayon = "1.10"
 
 
 [dev-dependencies]
-rayon = "1.10"
 rand_xorshift = "0.3.0"
+rand = "0.8"
 serde_json = "1.0.143"
 hex = "0.4.3"
 criterion = { version = "0.7", features = ["html_reports"] }
+ark-std = "0.4"
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
 getrandom = { version = "0.2", features = ["js"] }
 
