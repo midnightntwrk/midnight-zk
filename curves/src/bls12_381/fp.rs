@@ -10,11 +10,11 @@ use std::{convert::TryInto, ops::Deref};
 
 use blst::*;
 use ff::{Field, PrimeField, PrimeFieldBits, WithSmallOrderMulGroup};
-use halo2curves::serde::SerdeObject;
 use rand_core::RngCore;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 
-use crate::fp2::Fp2;
+use super::fp2::Fp2;
+use crate::serde_traits::SerdeObject;
 
 // Little-endian non-Montgomery form.
 const MODULUS: [u64; NUM_LIMBS] = [
@@ -717,7 +717,7 @@ impl Fp {
             let off = i * 8;
             *limb = u64::from_le_bytes(bytes[off..off + 8].try_into().unwrap());
         });
-        halo2curves::ff_ext::jacobi::jacobi::<7>(&res, &MODULUS)
+        crate::ff_ext::jacobi::jacobi::<7>(&res, &MODULUS)
     }
 
     #[inline]
@@ -804,7 +804,7 @@ const GENERATOR: Fp = Fp(blst_fp {
     ],
 });
 
-impl halo2curves::ff_ext::Legendre for Fp {
+impl crate::ff_ext::Legendre for Fp {
     #[inline(always)]
     fn legendre(&self) -> i64 {
         self.jacobi()
