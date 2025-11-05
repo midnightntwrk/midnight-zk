@@ -8,11 +8,11 @@ use core::{
 
 use blst::*;
 use ff::Field;
-use halo2curves::serde::SerdeObject;
 use rand_core::RngCore;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 
-use crate::fp::{Fp, FROBENIUS_COEFF_FP2_C1};
+use super::fp::{Fp, FROBENIUS_COEFF_FP2_C1};
+use crate::serde_traits::SerdeObject;
 
 #[derive(Copy, Clone)]
 #[repr(transparent)]
@@ -315,7 +315,7 @@ impl ff::WithSmallOrderMulGroup<3> for Fp2 {
     const ZETA: Self = Fp2::new(Fp::ZETA, Fp::ZERO);
 }
 
-impl halo2curves::ff_ext::Legendre for Fp2 {
+impl crate::ff_ext::Legendre for Fp2 {
     fn legendre(&self) -> i64 {
         self.norm().legendre()
     }
