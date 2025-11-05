@@ -13,6 +13,12 @@ compile_error!("blstrs is only supported on little endian architectures");
 #[macro_use]
 mod arithmetic;
 
+mod curve;
+pub mod fft;
+pub mod ff_ext;
+pub mod msm;
+pub mod serde_traits;
+
 mod fp;
 mod fp12;
 mod fp2;
@@ -25,6 +31,7 @@ mod pairing;
 
 mod jubjub;
 
+pub use curve::{Coordinates, CurveAffine, CurveExt};
 pub use fp::Fp;
 pub use fq::Fq;
 pub use g1::{G1Affine, G1Projective, A, B};
