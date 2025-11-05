@@ -771,12 +771,16 @@ fn compute_queries<'a, F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentSch
             move |((((instance, advice), permutation), lookups), trash)| {
                 iter::empty()
                     .chain(
-                        pk.vk.cs.instance_queries.iter().take(nb_committed_instances).map(
-                            move |&(column, at)| ProverQuery {
-                                point: domain.rotate_omega(x, at),
-                                poly: &instance[column.index()],
-                            },
-                        ),
+                        pk.vk.cs.instance_queries.iter().filter_map(move |&(column, at)| {
+                            if column.index() < nb_committed_instances {
+                                Some(ProverQuery {
+                                    point: domain.rotate_omega(x, at),
+                                    poly: &instance[column.index()],
+                                })
+                            } else {
+                                None
+                            }
+                        }),
                     )
                     .chain(
                         pk.vk.cs.advice_queries.iter().map(move |&(column, at)| ProverQuery {

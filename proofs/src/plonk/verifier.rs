@@ -37,6 +37,10 @@ where
     #[cfg(not(feature = "committed-instances"))]
     let committed_instances: Vec<Vec<CS::Commitment>> = vec![vec![]; instances.len()];
 
+    if committed_instances.is_empty() {
+        return Err(Error::InvalidInstances);
+    }
+
     let nb_committed_instances = committed_instances[0].len();
     for committed_instances in committed_instances.iter() {
         if committed_instances.len() != nb_committed_instances {
@@ -196,6 +200,11 @@ where
 {
     #[cfg(not(feature = "committed-instances"))]
     let committed_instances: Vec<Vec<CS::Commitment>> = vec![vec![]; instances.len()];
+
+    if committed_instances.is_empty() {
+        return Err(Error::InvalidInstances);
+    }
+
     let nb_committed_instances = committed_instances[0].len();
     let num_proofs = instances.len();
 

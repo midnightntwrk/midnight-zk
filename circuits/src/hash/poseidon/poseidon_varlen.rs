@@ -200,6 +200,10 @@ impl<F: PoseidonField, const MAX_LEN: usize>
 
         // Modify last chunk with the appropriate padding if necessary.
         let chunk = self.pad_last_chunk(layouter, chunk, len, &offset)?;
+        let updating = {
+            let b = ng.is_equal_to_fixed(layouter, &rounded_len, F::from(RATE as u64))?;
+            ng.xor(layouter, &[b, updating])?
+        };
         register = self.cond_update(layouter, &register, &chunk, &updating)?;
 
         // Add an extra chunk in case the padding requires it (if offset = 0).
