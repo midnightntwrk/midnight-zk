@@ -13,15 +13,31 @@ compile_error!("blstrs is only supported on little endian architectures");
 #[macro_use]
 mod arithmetic;
 
+#[macro_use]
+mod derive;
+
 mod curve;
 pub mod fft;
 pub mod ff_ext;
+pub mod hash_to_curve;
 pub mod msm;
+pub mod serde;
 pub mod serde_traits;
 
+// Production curves (always available)
 pub mod bls12_381;
 mod jubjub;
+pub mod secp256k1;
 
+// Development/testing curves (feature-gated)
+// TODO: Re-enable after porting
+// #[cfg(any(test, feature = "dev-curves"))]
+// pub mod bn254;
+
+// #[cfg(any(test, feature = "dev-curves"))]
+// pub mod pasta;
+
+// Re-exports for production curves
 pub use bls12_381::{Bls12, Fp, Fq, G1Affine, G1Projective, G2Affine, G2Prepared, G2Projective, Gt, A, B};
 pub use bls12_381::{MillerLoopResult, PairingG1G2, PairingG2G1, pairing, unique_messages};
 pub use curve::{Coordinates, CurveAffine, CurveExt};

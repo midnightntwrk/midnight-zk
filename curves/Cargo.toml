@@ -21,10 +21,19 @@ byte-slice-cast = "1.2.3"
 num-bigint = "0.4.6"
 
 serde = { workspace = true, optional = true }
+serde_arrays = { version = "0.2.0", optional = true }
 rand_core = { workspace = true }
 ff = { workspace = true }
 group = { workspace = true, features = ["tests"]  }
 rayon = "1.10"
+paste = "1.0"
+lazy_static = "1.4"
+hex = { version = "0.4.3", optional = true, features = ["serde"] }
+
+# For secp256k1 implementation
+halo2derive = "0.2.0"
+sha2 = "0.10"
+digest = "0.10"
 
 
 [dev-dependencies]
@@ -38,9 +47,15 @@ ark-std = "0.4"
 getrandom = { version = "0.2", features = ["js"] }
 
 [features]
-default = ["serde"]
+default = ["serde", "std", "bits"]
+std = []
+bits = []
+serde = ["dep:serde", "dep:serde_arrays", "dep:hex"]
 portable = ["blst/portable"]
 __private_bench = []
+# Development curves for testing (Pasta, BN254)
+# Production curves (BLS12-381, Jubjub, Secp256k1) are always available
+dev-curves = []
 
 [[bench]]
 name = "field_arith"
