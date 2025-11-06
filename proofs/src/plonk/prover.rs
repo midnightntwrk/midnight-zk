@@ -31,6 +31,7 @@ use crate::{
     transcript::{Hashable, Sampleable, Transcript},
     utils::{arithmetic::eval_polynomial, rational::Rational},
 };
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 #[cfg(feature = "committed-instances")]
 /// Commit to a vector of raw instances. This function can be used to prepare
@@ -600,7 +601,7 @@ where
             }
 
             let advice_commitments: Vec<_> =
-                advice_values.iter().map(|poly| CS::commit_lagrange(params, poly)).collect();
+                advice_values.par_iter().map(|poly| CS::commit_lagrange(params, poly)).collect();
 
             for commitment in &advice_commitments {
                 transcript.write(commitment)?;
@@ -719,7 +720,7 @@ where
         // Evaluate polynomials at omega^i x
         let advice_evals: Vec<_> = meta
             .advice_queries
-            .iter()
+            .par_iter()
             .map(|&(column, at)| {
                 eval_polynomial(&advice[column.index()], domain.rotate_omega(x, at))
             })
@@ -734,7 +735,7 @@ where
     // Compute and hash fixed evals (shared across all circuit instances)
     let fixed_evals: Vec<_> = meta
         .fixed_queries
-        .iter()
+        .par_iter()
         .map(|&(column, at)| {
             eval_polynomial(&pk.fixed_polys[column.index()], domain.rotate_omega(x, at))
         })

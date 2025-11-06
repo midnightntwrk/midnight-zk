@@ -14,6 +14,7 @@ use crate::{
     transcript::{Hashable, Transcript},
     utils::arithmetic::{eval_polynomial, parallelize},
 };
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 #[cfg_attr(feature = "bench-internal", derive(Clone))]
 #[derive(Debug)]
@@ -179,8 +180,9 @@ impl<F: PrimeField> super::ProvingKey<F> {
         F: Hashable<T::Hash>,
     {
         // Hash permutation evals
-        for eval in self.polys.iter().map(|poly| eval_polynomial(poly, x)) {
-            transcript.write(&eval)?;
+        let evals: Vec<_> = self.polys.par_iter().map(|poly| eval_polynomial(poly, x)).collect();
+        for eval in evals.iter() {
+            transcript.write(eval)?;
         }
 
         Ok(())
