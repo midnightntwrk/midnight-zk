@@ -1,5 +1,6 @@
 //! Field extension traits and utilities.
 
+pub mod inverse;
 pub mod jacobi;
 
 use subtle::{Choice, ConstantTimeEq};
@@ -44,4 +45,16 @@ pub trait ExtField: ff::Field {
 
     /// Apply the Frobenius endomorphism.
     fn frobenius_map(&mut self, power: usize);
+}
+
+#[macro_export]
+macro_rules! extend_field_legendre {
+    ($field:ident ) => {
+        impl $crate::ff_ext::Legendre for $field {
+            #[inline(always)]
+            fn legendre(&self) -> i64 {
+                self.jacobi()
+            }
+        }
+    };
 }
