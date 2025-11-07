@@ -653,7 +653,7 @@ impl<V> Value<V> {
     /// If you have a `Value<F: Field>`, convert it to `Value<Rational<F>>`
     /// first:
     /// ```
-    /// # use halo2curves::pasta::pallas::Base as F;
+    /// # use midnight_curves::pasta::pallas::Base as F;
     /// use midnight_proofs::{circuit::Value, utils::rational::Rational};
     ///
     /// let v = Value::known(F::from(2));

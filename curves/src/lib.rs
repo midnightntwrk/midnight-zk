@@ -17,8 +17,8 @@ mod arithmetic;
 mod derive;
 
 mod curve;
-pub mod fft;
 pub mod ff_ext;
+pub mod fft;
 pub mod hash_to_curve;
 pub mod msm;
 pub mod serde;
@@ -38,10 +38,15 @@ pub mod secp256k1;
 // pub mod pasta;
 
 // Re-exports for production curves
-pub use bls12_381::{Bls12, Fp, Fq, G1Affine, G1Projective, G2Affine, G2Prepared, G2Projective, Gt, A, B};
-pub use bls12_381::{MillerLoopResult, PairingG1G2, PairingG2G1, pairing, unique_messages};
+pub use bls12_381::{unique_messages, MillerLoopResult, PairingG1G2, PairingG2G1};
+pub use bls12_381::{
+    Bls12, Fp, Fq, G1Affine, G1Projective, G2Affine, G2Prepared, G2Projective, Gt, A, B,
+};
 pub use curve::{Coordinates, CurveAffine, CurveExt};
 pub use jubjub::*;
+
+// Re-export pairing library for compatibility with halo2 ecosystem
+pub use pairing_lib as pairing;
 
 #[cfg(feature = "serde")]
 mod serde_impl;

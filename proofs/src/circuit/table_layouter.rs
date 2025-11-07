@@ -154,7 +154,7 @@ pub(crate) fn compute_table_lengths<F: Debug>(
 
 #[cfg(test)]
 mod tests {
-    use halo2curves::pasta::Fp;
+    use midnight_curves::pasta::Fp;
 
     use super::*;
     use crate::{

@@ -2,7 +2,7 @@ use std::{fmt::Debug, io};
 
 use ff::{Field, PrimeField};
 use group::{prime::PrimeCurveAffine, Curve, Group};
-use halo2curves::pairing::{Engine, MultiMillerLoop};
+use midnight_curves::pairing::{Engine, MultiMillerLoop};
 use rand_core::RngCore;
 
 use crate::{
@@ -293,7 +293,7 @@ mod test {
     fn test_commit_lagrange() {
         const K: u32 = 6;
 
-        use halo2curves::bn256::{Bn256, Fr};
+        use midnight_curves::bn256::{Bn256, Fr};
 
         use crate::poly::EvaluationDomain;
 
@@ -318,7 +318,7 @@ mod test {
     fn test_parameter_serialisation_roundtrip() {
         const K: u32 = 4;
 
-        use crate::halo2curves::bn256::Bn256;
+        use midnight_curves::bn256::Bn256;
 
         let params0: ParamsKZG<Bn256> = ParamsKZG::unsafe_setup(K, OsRng);
         let mut data = vec![];

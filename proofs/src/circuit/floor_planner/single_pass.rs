@@ -373,7 +373,7 @@ impl<'a, F: Field, CS: Assignment<F> + 'a + SyncDeps> RegionLayouter<F>
 
 #[cfg(test)]
 mod tests {
-    use halo2curves::pasta::vesta;
+    use midnight_curves::pasta::vesta;
 
     use super::SimpleFloorPlanner;
     use crate::{

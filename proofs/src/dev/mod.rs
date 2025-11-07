@@ -175,7 +175,7 @@ impl<F: Field> Mul<F> for Value<F> {
 ///
 /// ```
 /// use ff::PrimeField;
-/// use halo2curves::pasta::Fp;
+/// use midnight_curves::pasta::Fp;
 /// use midnight_proofs::{
 ///     circuit::{Layouter, SimpleFloorPlanner, Value},
 ///     dev::{FailureLocation, MockProver, VerifyFailure},
@@ -1258,7 +1258,7 @@ impl<F: FromUniformBytes<64> + Ord> MockProver<F> {
 
 #[cfg(test)]
 mod tests {
-    use halo2curves::pasta::Fp;
+    use midnight_curves::pasta::Fp;
 
     use super::{FailureLocation, MockProver, VerifyFailure};
     use crate::{

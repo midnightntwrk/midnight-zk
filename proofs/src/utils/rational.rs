@@ -367,7 +367,7 @@ impl<F: Field> Rational<F> {
 
 #[cfg(test)]
 mod tests {
-    use halo2curves::pasta::Fp;
+    use midnight_curves::pasta::Fp;
 
     use super::Rational;
     // We use (numerator, denominator) in the comments below to denote a rational.
@@ -450,7 +450,7 @@ mod proptests {
     };
 
     use group::ff::Field;
-    use halo2curves::pasta::Fp;
+    use midnight_curves::pasta::Fp;
     use proptest::{collection::vec, prelude::*, sample::select};
 
     use crate::utils::rational::Rational;
