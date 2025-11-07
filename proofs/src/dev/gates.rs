@@ -29,7 +29,7 @@ struct Gate {
 ///
 /// ```
 /// use ff::Field;
-/// use halo2curves::pasta::pallas;
+/// use midnight_curves::pasta::pallas;
 /// use midnight_proofs::{
 ///     circuit::{Layouter, SimpleFloorPlanner},
 ///     dev::CircuitGates,

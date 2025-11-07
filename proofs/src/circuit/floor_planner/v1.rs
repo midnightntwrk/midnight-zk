@@ -495,7 +495,7 @@ impl<F: Field, CS: Assignment<F> + SyncDeps> RegionLayouter<F> for V1Region<'_, 
 
 #[cfg(test)]
 mod tests {
-    use halo2curves::pasta::vesta;
+    use midnight_curves::pasta::vesta;
 
     use crate::{
         dev::MockProver,

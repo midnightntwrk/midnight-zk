@@ -9,7 +9,7 @@
 
 use std::marker::PhantomData;
 
-use halo2curves::pairing::Engine;
+use midnight_curves::pairing::Engine;
 
 /// Multiscalar multiplication engines
 pub mod msm;
@@ -21,7 +21,7 @@ use std::{fmt::Debug, hash::Hash};
 
 use ff::Field;
 use group::Group;
-use halo2curves::pairing::MultiMillerLoop;
+use midnight_curves::pairing::MultiMillerLoop;
 use rand_core::OsRng;
 
 #[cfg(feature = "truncated-challenges")]
@@ -329,7 +329,7 @@ mod tests {
 
     use blake2b_simd::State as Blake2bState;
     use ff::WithSmallOrderMulGroup;
-    use halo2curves::{pairing::MultiMillerLoop, serde::SerdeObject, CurveAffine, CurveExt};
+    use midnight_curves::{pairing::MultiMillerLoop, serde::SerdeObject, CurveAffine, CurveExt};
     use rand_core::OsRng;
 
     use crate::{
@@ -348,7 +348,7 @@ mod tests {
 
     #[test]
     fn test_roundtrip_gwc() {
-        use halo2curves::bn256::Bn256;
+        use midnight_curves::bn256::Bn256;
 
         const K: u32 = 4;
 
