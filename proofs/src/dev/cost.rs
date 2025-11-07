@@ -519,7 +519,7 @@ impl<G: PrimeGroup> From<ProofSize<G>> for usize {
 
 #[cfg(test)]
 mod tests {
-    use halo2curves::pasta::{Eq, Fp};
+    use midnight_curves::pasta::{Eq, Fp};
 
     use super::*;
     use crate::circuit::SimpleFloorPlanner;

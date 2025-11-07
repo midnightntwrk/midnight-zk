@@ -9,7 +9,6 @@
 #![deny(unsafe_code)]
 
 pub mod circuit;
-pub use halo2curves;
 pub mod plonk;
 pub mod poly;
 pub mod transcript;

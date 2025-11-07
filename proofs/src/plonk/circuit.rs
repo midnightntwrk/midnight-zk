@@ -409,7 +409,7 @@ impl TryFrom<Column<Any>> for Column<Instance> {
 /// Selectors can be used to conditionally enable (portions of) gates:
 /// ```
 /// use midnight_proofs::poly::Rotation;
-/// # use halo2curves::pasta::Fp;
+/// # use midnight_curves::pasta::Fp;
 /// # use midnight_proofs::plonk::{Constraints, ConstraintSystem};
 ///
 /// # let mut meta = ConstraintSystem::<Fp>::default();
@@ -1537,7 +1537,7 @@ enum SelectorType {
 /// A set of polynomial constraints with a common selector.
 ///
 /// ```
-/// use halo2curves::pasta::Fp;
+/// use midnight_curves::pasta::Fp;
 /// use midnight_proofs::{
 ///     plonk::{Constraints, Expression},
 ///     poly::Rotation,
@@ -2564,7 +2564,7 @@ impl<'a, F: Field> VirtualCells<'a, F> {
 
 #[cfg(test)]
 mod tests {
-    use halo2curves::bn256::Fr;
+    use midnight_curves::bn256::Fr;
 
     use super::Expression;
 
