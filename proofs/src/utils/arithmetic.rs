@@ -12,8 +12,8 @@ use group::{
     prime::{PrimeCurve, PrimeCurveAffine},
     GroupOpsOwned, ScalarMulOwned,
 };
-use halo2curves::{fft::best_fft, pairing::MultiMillerLoop};
-pub use halo2curves::{CurveAffine, CurveExt};
+use midnight_curves::{fft::best_fft, pairing::MultiMillerLoop};
+pub use midnight_curves::{CurveAffine, CurveExt};
 
 /// This represents an element of a group with basic operations that can be
 /// performed. This allows an FFT implementation (for example) to operate
@@ -341,7 +341,7 @@ pub trait MSM<C: PrimeCurveAffine>: Clone + Debug + Send + Sized + Sync {
 use rand_core::OsRng;
 
 #[cfg(test)]
-use crate::halo2curves::pasta::Fp;
+use midnight_curves::pasta::Fp;
 use crate::poly::kzg::msm::MSMKZG;
 
 #[test]

@@ -16,7 +16,7 @@ pub(crate) mod verifier;
 use std::io;
 
 use ff::{PrimeField, WithSmallOrderMulGroup};
-use halo2curves::serde::SerdeObject;
+use midnight_curves::serde::SerdeObject;
 pub use keygen::Assembly;
 
 use crate::{
