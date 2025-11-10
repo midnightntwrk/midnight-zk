@@ -1,7 +1,9 @@
 //! Field extension traits and utilities.
 
+pub mod cubic;
 pub mod inverse;
 pub mod jacobi;
+pub mod quadratic;
 
 use subtle::{Choice, ConstantTimeEq};
 
