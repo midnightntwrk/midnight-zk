@@ -5,7 +5,7 @@ use std::marker::PhantomData;
 
 use criterion::{BenchmarkId, Criterion};
 use ff::{Field, PrimeField};
-use halo2curves::pasta::pallas;
+use midnight_curves::Fp;
 use midnight_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
     dev::MockProver,
@@ -94,7 +94,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     }
 
     fn prover(k: u32) {
-        let circuit = MyCircuit::<pallas::Base> {
+        let circuit = MyCircuit::<Fp> {
             _marker: PhantomData,
         };
         let prover = MockProver::run(k, &circuit, vec![]).unwrap();

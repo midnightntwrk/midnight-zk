@@ -3,7 +3,7 @@
 //! using Bitcoin's C library https://github.com/bitcoin-core/secp256k1.
 
 use group::GroupEncoding;
-use halo2curves::secp256k1::{Fp as secp256k1Base, Fq as secp256k1Scalar, Secp256k1};
+use midnight_curves::secp256k1::{Fp as secp256k1Base, Fq as secp256k1Scalar, Secp256k1};
 use midnight_circuits::{
     compact_std_lib::{self, Relation, ZkStdLib, ZkStdLibArch},
     field::foreign::params::MultiEmulationParams,

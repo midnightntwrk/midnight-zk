@@ -241,7 +241,7 @@ macro_rules! field_testing_suite {
     ($field: ident, "quadratic_residue") => {
         #[test]
         fn test_quadratic_residue() {
-            use crate::ff_ext::Legendre;
+            use $crate::ff_ext::Legendre;
             use ff::Field;
             use rand_core::SeedableRng;
             use rand_xorshift::XorShiftRng;
@@ -283,7 +283,7 @@ macro_rules! field_testing_suite {
     ($field: ident, "serdeobject") => {
         #[test]
         fn test_serdeobject() {
-            use crate::serde_traits::SerdeObject;
+            use $crate::serde_traits::SerdeObject;
             let mut rng = XorShiftRng::from_seed([
                 0x59, 0x62, 0xbe, 0x5d, 0x76, 0x3d, 0x31, 0x8d, 0x17, 0xdb, 0x37, 0x32, 0x54, 0x06,
                 0xbc, 0xe5,
@@ -336,7 +336,7 @@ macro_rules! field_testing_suite {
     ($field: ident, "sqrt") => {
         #[test]
         fn test_h2c_sqrt() {
-            use crate::ff_ext::Legendre;
+            use $crate::ff_ext::Legendre;
             use ff::PrimeField;
             use rand::rngs::OsRng;
 

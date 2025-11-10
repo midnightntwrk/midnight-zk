@@ -409,10 +409,10 @@ impl TryFrom<Column<Any>> for Column<Instance> {
 /// Selectors can be used to conditionally enable (portions of) gates:
 /// ```
 /// use midnight_proofs::poly::Rotation;
-/// # use midnight_curves::pasta::Fp;
+/// # use midnight_curves::Fq as Scalar;
 /// # use midnight_proofs::plonk::{Constraints, ConstraintSystem};
 ///
-/// # let mut meta = ConstraintSystem::<Fp>::default();
+/// # let mut meta = ConstraintSystem::<Scalar>::default();
 /// let a = meta.advice_column();
 /// let b = meta.advice_column();
 /// let s = meta.selector();
@@ -1537,14 +1537,15 @@ enum SelectorType {
 /// A set of polynomial constraints with a common selector.
 ///
 /// ```
-/// use midnight_curves::pasta::Fp;
+/// use ff::Field;
+/// use midnight_curves::Fq as Scalar;
 /// use midnight_proofs::{
 ///     plonk::{Constraints, Expression},
 ///     poly::Rotation,
 /// };
 /// # use midnight_proofs::plonk::ConstraintSystem;
 ///
-/// # let mut meta = ConstraintSystem::<Fp>::default();
+/// # let mut meta = ConstraintSystem::<Scalar>::default();
 /// let a = meta.advice_column();
 /// let b = meta.advice_column();
 /// let c = meta.advice_column();
@@ -1556,7 +1557,7 @@ enum SelectorType {
 ///     let b = meta.query_advice(b, Rotation::cur());
 ///     let c = meta.query_advice(c, Rotation::cur());
 ///
-///     let one_minus_a = Expression::Constant(Fp::one()) - a.clone();
+///     let one_minus_a = Expression::Constant(Scalar::ONE) - a.clone();
 ///
 ///     Constraints::with_selector(
 ///         s_ternary,
