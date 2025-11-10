@@ -3,6 +3,7 @@ use std::iter::{self, ExactSizeIterator};
 use ff::{PrimeField, WithSmallOrderMulGroup};
 use group::ff::BatchInvert;
 use rand_core::RngCore;
+use rayon::{iter::ParallelIterator, slice::ParallelSliceMut};
 
 use super::{super::circuit::Any, Argument, ProvingKey};
 use crate::{
@@ -93,12 +94,12 @@ impl Argument {
                     Any::Instance => instance,
                 };
                 parallelize(&mut modified_values, |modified_values, start| {
-                    for ((modified_values, value), permuted_value) in modified_values
+                    for ((modified_value, value), permuted_value) in modified_values
                         .iter_mut()
                         .zip(values[column.index()][start..].iter())
                         .zip(permuted_column_values[start..].iter())
                     {
-                        *modified_values *= &(beta * permuted_value + &gamma + value);
+                        *modified_value *= &(beta * permuted_value + &gamma + value);
                     }
                 });
             }
@@ -117,18 +118,18 @@ impl Argument {
                 };
                 parallelize(&mut modified_values, |modified_values, start| {
                     let mut deltaomega = deltaomega * &omega.pow_vartime([start as u64, 0, 0, 0]);
-                    for (modified_values, value) in
+                    for (modified_value, value) in
                         modified_values.iter_mut().zip(values[column.index()][start..].iter())
                     {
                         // Multiply by p_j(\omega^i) + \delta^j \omega^i \beta
-                        *modified_values *= &(deltaomega * &beta + &gamma + value);
+                        *modified_value *= &(deltaomega * &beta + &gamma + value);
                         deltaomega *= &omega;
                     }
                 });
                 deltaomega *= &F::DELTA;
             }
 
-            // The modified_values vector is a vector of products of fractions
+            // The modified_values vector is a vector of fractions
             // of the form
             //
             // (p_j(\omega^i) + \delta^j \omega^i \beta + \gamma) /
@@ -138,14 +139,39 @@ impl Argument {
             // the permutation
 
             // Compute the evaluations of the permutation product polynomial
-            // over our domain, starting with z[0] = 1
-            let mut z = vec![last_z];
-            for row in 1..(domain.n as usize) {
-                let mut tmp = z[row - 1];
+            // over our domain, starting with aux[0] = 1
 
-                tmp *= &modified_values[row - 1];
-                z.push(tmp);
+            // We will use a parallel prefix product algorithm here:
+            // https://en.wikipedia.org/wiki/Prefix_sum
+
+            let mut aux = Vec::with_capacity(domain.n as usize);
+            aux.push(last_z);
+            aux.extend_from_slice(&modified_values[..domain.n as usize - 1]);
+            // Up-sweep phase: build partial products
+            let mut step = 2; // We suppose n is at least 2 which is certainly true
+            for _ in 1..=domain.k() {
+                aux.par_chunks_mut(step).for_each(|chunk| {
+                    chunk[step - 1] *= chunk[step / 2 - 1];
+                });
+                step *= 2;
             }
+            // Store the total product and reset last element
+            let total = aux[domain.n as usize - 1];
+            aux[domain.n as usize - 1] = F::ONE;
+            // Down-sweep phase: propagate products
+            step = domain.n as usize;
+            for _ in 0..=domain.k() - 1 {
+                aux.par_chunks_mut(step).for_each(|chunk| {
+                    let temp = chunk[step / 2 - 1];
+                    chunk[step / 2 - 1] = chunk[step - 1];
+                    chunk[step - 1] *= temp;
+                });
+                step /= 2;
+            }
+
+            let mut z = aux[1..].to_vec();
+            z.push(total);
+
             let mut z = domain.lagrange_from_vec(z);
             // Set blinding factors
             for z in &mut z[domain.n as usize - blinding_factors..] {
