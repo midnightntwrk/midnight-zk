@@ -166,6 +166,39 @@ pub fn parallelize<T: Send, F: Fn(&mut [T], usize) + Send + Sync + Clone>(v: &mu
     });
 }
 
+/// Computes the running products of the input vector, whose length must be
+/// enforced to be 2^k prior to calling.
+pub fn parallelize_running_prod<F: PrimeField>(v: &mut [F], k: usize) -> Vec<F> {
+    // We are using a parallel prefix product algorithm, see:
+    // https://en.wikipedia.org/wiki/Prefix_sum
+    let n = 1 << k;
+    // We suppose n is at least 2 which is certainly true in our use cases
+    let mut step = 2; 
+    for _ in 1..=k {
+        v.par_chunks_mut(step).for_each(|chunk| {
+            chunk[step - 1] *= chunk[step / 2 - 1];
+        });
+        step *= 2;
+    }
+   
+    let total = v[n - 1];
+    v[n - 1] = F::ONE;
+   
+    step = n;
+    for _ in 0..=k - 1 {
+        v.par_chunks_mut(step).for_each(|chunk| {
+            let temp = chunk[step / 2 - 1];
+            chunk[step / 2 - 1] = chunk[step - 1];
+            chunk[step - 1] *= temp;
+        });
+        step /= 2;
+    }
+
+    let mut z = v[1..].to_vec();
+    z.push(total);
+    z
+}
+
 /// Returns coefficients of an n - 1 degree polynomial given a set of n points
 /// and their evaluations. This function will panic if two values in `points`
 /// are the same.
@@ -339,6 +372,7 @@ pub trait MSM<C: PrimeCurveAffine>: Clone + Debug + Send + Sized + Sync {
 
 #[cfg(test)]
 use rand_core::OsRng;
+use rayon::{iter::ParallelIterator, slice::ParallelSliceMut};
 
 #[cfg(test)]
 use crate::halo2curves::pasta::Fp;
@@ -362,4 +396,37 @@ fn test_lagrange_interpolate() {
             assert_eq!(eval_polynomial(&poly, *point), *eval);
         }
     }
+}
+
+#[test]
+fn test_parallelize_running_prod() {
+    let rng = OsRng;
+    let k = 16;
+    let n = 1 << k;
+    let mut v = (0..n).map(|_| Fp::random(rng)).collect::<Vec<_>>();
+    let w = v.clone();
+
+    let start = std::time::Instant::now();
+    let par_result = parallelize_running_prod(&mut v, k);
+    let par_time = start.elapsed();
+
+    let start = std::time::Instant::now();
+    let mut seq_result: Vec<Fp> = Vec::with_capacity(n);
+    seq_result.push(w[0]);
+    for row in 1..n {
+        let mut tmp = seq_result[row - 1];
+        tmp *= w[row];
+        seq_result.push(tmp);
+    }
+    let seq_time = start.elapsed();
+
+    println!("Sequential time: {:?}", seq_time);
+    println!("Parallel time: {:?}", par_time);
+    println!(
+        "Speedup: {:.2}x",
+        seq_time.as_secs_f64() / par_time.as_secs_f64()
+    );
+
+    let matches = par_result.iter().zip(seq_result.iter()).all(|(a, b)| a == b);
+    println!("Results match: {}", matches);
 }
