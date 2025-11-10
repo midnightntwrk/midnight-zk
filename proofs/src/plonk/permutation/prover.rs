@@ -3,7 +3,6 @@ use std::iter::{self, ExactSizeIterator};
 use ff::{PrimeField, WithSmallOrderMulGroup};
 use group::ff::BatchInvert;
 use rand_core::RngCore;
-use rayon::{iter::ParallelIterator, slice::ParallelSliceMut};
 
 use super::{super::circuit::Any, Argument, ProvingKey};
 use crate::{
@@ -13,7 +12,7 @@ use crate::{
         Rotation,
     },
     transcript::{Hashable, Transcript},
-    utils::arithmetic::{eval_polynomial, parallelize},
+    utils::arithmetic::{eval_polynomial, parallelize, parallelize_running_prod},
 };
 
 #[cfg_attr(feature = "bench-internal", derive(Clone))]
@@ -140,37 +139,11 @@ impl Argument {
 
             // Compute the evaluations of the permutation product polynomial
             // over our domain, starting with aux[0] = 1
-
-            // We will use a parallel prefix product algorithm here:
-            // https://en.wikipedia.org/wiki/Prefix_sum
-
             let mut aux = Vec::with_capacity(domain.n as usize);
             aux.push(last_z);
             aux.extend_from_slice(&modified_values[..domain.n as usize - 1]);
-            // Up-sweep phase: build partial products
-            let mut step = 2; // We suppose n is at least 2 which is certainly true
-            for _ in 1..=domain.k() {
-                aux.par_chunks_mut(step).for_each(|chunk| {
-                    chunk[step - 1] *= chunk[step / 2 - 1];
-                });
-                step *= 2;
-            }
-            // Store the total product and reset last element
-            let total = aux[domain.n as usize - 1];
-            aux[domain.n as usize - 1] = F::ONE;
-            // Down-sweep phase: propagate products
-            step = domain.n as usize;
-            for _ in 0..=domain.k() - 1 {
-                aux.par_chunks_mut(step).for_each(|chunk| {
-                    let temp = chunk[step / 2 - 1];
-                    chunk[step / 2 - 1] = chunk[step - 1];
-                    chunk[step - 1] *= temp;
-                });
-                step /= 2;
-            }
 
-            let mut z = aux[1..].to_vec();
-            z.push(total);
+            let z = parallelize_running_prod(&mut aux, domain.k() as usize);
 
             let mut z = domain.lagrange_from_vec(z);
             // Set blinding factors

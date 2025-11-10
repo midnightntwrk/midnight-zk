@@ -84,7 +84,7 @@ fn main() {
     let mut rng = ChaCha8Rng::from_entropy();
     let witness: [u8; 24] = core::array::from_fn(|_| rng.gen());
     let instance = sha2::Sha256::digest(witness).into();
-    let start = std::time::Instant::now();
+
     let proof = compact_std_lib::prove::<ShaPreImageCircuit, blake2b_simd::State>(
         &srs, &pk, &relation, &instance, witness, OsRng,
     )
@@ -99,7 +99,5 @@ fn main() {
             &proof
         )
         .is_ok()
-    );
-    let end = start.elapsed();
-    println!("Proof generation took {:?}", end);
+    )
 }

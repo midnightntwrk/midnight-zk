@@ -173,17 +173,17 @@ pub fn parallelize_running_prod<F: PrimeField>(v: &mut [F], k: usize) -> Vec<F> 
     // https://en.wikipedia.org/wiki/Prefix_sum
     let n = 1 << k;
     // We suppose n is at least 2 which is certainly true in our use cases
-    let mut step = 2; 
+    let mut step = 2;
     for _ in 1..=k {
         v.par_chunks_mut(step).for_each(|chunk| {
             chunk[step - 1] *= chunk[step / 2 - 1];
         });
         step *= 2;
     }
-   
+
     let total = v[n - 1];
     v[n - 1] = F::ONE;
-   
+
     step = n;
     for _ in 0..=k - 1 {
         v.par_chunks_mut(step).for_each(|chunk| {
