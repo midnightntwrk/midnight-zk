@@ -94,7 +94,7 @@ pub fn assign_constant(
     }
 }
 
-fn parse_bool(str: &str) -> Result<bool, Error> {
+pub fn parse_bool(str: &str) -> Result<bool, Error> {
     match str {
         "0" => Ok(false),
         "1" => Ok(true),
@@ -102,11 +102,11 @@ fn parse_bool(str: &str) -> Result<bool, Error> {
     }
 }
 
-fn parse_bytes(str: &str) -> Result<Vec<u8>, Error> {
+pub fn parse_bytes(str: &str) -> Result<Vec<u8>, Error> {
     const_hex::decode(str).map_err(|e| Error::Other(format!("{e:?}")))
 }
 
-fn parse_native(str: &str) -> Result<F, Error> {
+pub fn parse_native(str: &str) -> Result<F, Error> {
     let mut repr = str.as_bytes();
     let is_negative = !repr.is_empty() && repr[0] == b'-';
     if is_negative {
@@ -127,12 +127,12 @@ fn parse_native(str: &str) -> Result<F, Error> {
     Ok(if is_negative { -x } else { x })
 }
 
-fn parse_biguint(str: &str) -> Result<BigUint, Error> {
+pub fn parse_biguint(str: &str) -> Result<BigUint, Error> {
     let str = str.strip_prefix("0x").unwrap_or(str);
     BigUint::from_str_radix(str, 16).map_err(|e| Error::Other(format!("{e:?}")))
 }
 
-fn parse_jubjub_point(str: &str) -> Result<JubjubSubgroup, Error> {
+pub fn parse_jubjub_point(str: &str) -> Result<JubjubSubgroup, Error> {
     match str {
         "GENERATOR" => Ok(JubjubSubgroup::generator()),
         "IDENTITY" => Ok(JubjubSubgroup::identity()),
@@ -149,7 +149,7 @@ fn parse_jubjub_point(str: &str) -> Result<JubjubSubgroup, Error> {
     }
 }
 
-fn parse_jubjub_scalar(str: &str) -> Result<JubjubScalar, Error> {
+pub fn parse_jubjub_scalar(str: &str) -> Result<JubjubScalar, Error> {
     let mut bytes = const_hex::decode(str)
         .map_err(|_| Error::ParsingError(IrType::JubjubScalar, str.to_string()))?;
 

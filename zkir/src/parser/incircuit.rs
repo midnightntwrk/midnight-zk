@@ -6,9 +6,11 @@ use midnight_proofs::circuit::{Layouter, Value};
 use crate::{
     instructions::{
         operations::{
-            add_incircuit, assert_equal_incircuit, inner_product_incircuit, is_equal_incircuit,
-            load_incircuit, mul_incircuit, neg_incircuit, publish_incircuit, sub_incircuit,
-            Operation::*,
+            add_incircuit, affine_coordinates_incircuit, assert_equal_incircuit,
+            assert_not_equal_incircuit, from_bytes_incircuit, inner_product_incircuit,
+            into_bytes_incircuit, is_equal_incircuit, load_incircuit, mod_exp_incircuit,
+            mul_incircuit, neg_incircuit, poseidon_incircuit, publish_incircuit, sha256_incircuit,
+            sha512_incircuit, sub_incircuit, Operation::*,
         },
         Instruction,
     },
@@ -47,7 +49,8 @@ impl Parser {
             .iter()
             .map(|name| match self.memory.get(name).cloned() {
                 Some(v) => Ok(v),
-                None => assign_constant(std_lib, layouter, name),
+                None => assign_constant(std_lib, layouter, name)
+                    .map_err(|_| Error::NotFound(name.clone())),
             })
             .collect::<Result<Vec<CircuitValue>, Error>>()?;
 
@@ -71,17 +74,31 @@ impl Parser {
                 assert_equal_incircuit(std_lib, layouter, &inps[0], &inps[1])?;
                 vec![]
             }
+            AssertNotEqual => {
+                assert_not_equal_incircuit(std_lib, layouter, &inps[0], &inps[1])?;
+                vec![]
+            }
             IsEqual => vec![is_equal_incircuit(std_lib, layouter, &inps[0], &inps[1])?],
             Add => vec![add_incircuit(std_lib, layouter, &inps[0], &inps[1])?],
             Sub => vec![sub_incircuit(std_lib, layouter, &inps[0], &inps[1])?],
             Mul => vec![mul_incircuit(std_lib, layouter, &inps[0], &inps[1])?],
             Neg => vec![neg_incircuit(std_lib, layouter, &inps[0])?],
+            ModExp(n) => vec![mod_exp_incircuit(std_lib, layouter, &inps[0], n, &inps[1])?],
             InnerProduct => vec![inner_product_incircuit(
                 std_lib,
                 layouter,
                 &inps[..inps.len() / 2],
                 &inps[inps.len() / 2..],
             )?],
+            AffineCoordinates => {
+                let (x, y) = affine_coordinates_incircuit(std_lib, layouter, &inps[0])?;
+                vec![x, y]
+            }
+            IntoBytes(n) => vec![into_bytes_incircuit(std_lib, layouter, &inps[0], n)?],
+            FromBytes(t) => vec![from_bytes_incircuit(std_lib, layouter, t, &inps[0])?],
+            Poseidon => vec![poseidon_incircuit(std_lib, layouter, &inps)?],
+            Sha256 => vec![sha256_incircuit(std_lib, layouter, &inps[0])?],
+            Sha512 => vec![sha512_incircuit(std_lib, layouter, &inps[0])?],
         };
 
         insert_many(&mut self.memory, &instruction.outputs, &outputs)
