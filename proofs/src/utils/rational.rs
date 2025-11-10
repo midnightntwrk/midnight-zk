@@ -367,7 +367,8 @@ impl<F: Field> Rational<F> {
 
 #[cfg(test)]
 mod tests {
-    use midnight_curves::pasta::Fp;
+    use ff::Field;
+    use midnight_curves::Fq as Scalar;
 
     use super::Rational;
     // We use (numerator, denominator) in the comments below to denote a rational.
@@ -375,8 +376,8 @@ mod tests {
     fn add_trivial_to_inv0_rational() {
         // a = 2
         // b = (1,0)
-        let a = Rational::Trivial(Fp::from(2));
-        let b = Rational::Rational(Fp::one(), Fp::zero());
+        let a = Rational::Trivial(Scalar::from(2));
+        let b = Rational::Rational(Scalar::ONE, Scalar::ZERO);
 
         // 2 + (1,0) = 2 + 0 = 2
         // This fails if addition is implemented using normal rules for rationals.
@@ -388,8 +389,8 @@ mod tests {
     fn add_rational_to_inv0_rational() {
         // a = (1,2)
         // b = (1,0)
-        let a = Rational::Rational(Fp::one(), Fp::from(2));
-        let b = Rational::Rational(Fp::one(), Fp::zero());
+        let a = Rational::Rational(Scalar::ONE, Scalar::from(2));
+        let b = Rational::Rational(Scalar::ONE, Scalar::ZERO);
 
         // (1,2) + (1,0) = (1,2) + 0 = (1,2)
         // This fails if addition is implemented using normal rules for rationals.
@@ -401,8 +402,8 @@ mod tests {
     fn sub_trivial_from_inv0_rational() {
         // a = 2
         // b = (1,0)
-        let a = Rational::Trivial(Fp::from(2));
-        let b = Rational::Rational(Fp::one(), Fp::zero());
+        let a = Rational::Trivial(Scalar::from(2));
+        let b = Rational::Rational(Scalar::ONE, Scalar::ZERO);
 
         // (1,0) - 2 = 0 - 2 = -2
         // This fails if subtraction is implemented using normal rules for rationals.
@@ -416,8 +417,8 @@ mod tests {
     fn sub_rational_from_inv0_rational() {
         // a = (1,2)
         // b = (1,0)
-        let a = Rational::Rational(Fp::one(), Fp::from(2));
-        let b = Rational::Rational(Fp::one(), Fp::zero());
+        let a = Rational::Rational(Scalar::ONE, Scalar::from(2));
+        let b = Rational::Rational(Scalar::ONE, Scalar::ZERO);
 
         // (1,0) - (1,2) = 0 - (1,2) = -(1,2)
         // This fails if subtraction is implemented using normal rules for rationals.
@@ -431,14 +432,14 @@ mod tests {
     fn mul_rational_by_inv0_rational() {
         // a = (1,2)
         // b = (1,0)
-        let a = Rational::Rational(Fp::one(), Fp::from(2));
-        let b = Rational::Rational(Fp::one(), Fp::zero());
+        let a = Rational::Rational(Scalar::ONE, Scalar::from(2));
+        let b = Rational::Rational(Scalar::ONE, Scalar::ZERO);
 
         // (1,2) * (1,0) = (1,2) * 0 = 0
-        assert_eq!((a * b).evaluate(), Fp::zero());
+        assert_eq!((a * b).evaluate(), Scalar::ZERO);
 
         // (1,0) * (1,2) = 0 * (1,2) = 0
-        assert_eq!((b * a).evaluate(), Fp::zero());
+        assert_eq!((b * a).evaluate(), Scalar::ZERO);
     }
 }
 
@@ -450,7 +451,7 @@ mod proptests {
     };
 
     use group::ff::Field;
-    use midnight_curves::pasta::Fp;
+    use midnight_curves::Fq as Scalar;
     use proptest::{collection::vec, prelude::*, sample::select};
 
     use crate::utils::rational::Rational;
@@ -562,13 +563,13 @@ mod proptests {
 
     prop_compose! {
         /// Use narrow that can be easily reduced.
-        fn arb_element()(val in any::<u64>()) -> Fp {
-            Fp::from(val)
+        fn arb_element()(val in any::<u64>()) -> Scalar{
+            Scalar::from(val)
         }
     }
 
     prop_compose! {
-        fn arb_trivial()(element in arb_element()) -> Rational<Fp> {
+        fn arb_trivial()(element in arb_element()) -> Rational<Scalar> {
             Rational::Trivial(element)
         }
     }
@@ -578,10 +579,10 @@ mod proptests {
         fn arb_rational()(
             numerator in arb_element(),
             denominator in prop_oneof![
-                1 => Just(Fp::zero()),
+                1 => Just(Scalar::ZERO),
                 2 => arb_element(),
             ],
-        ) -> Rational<Fp> {
+        ) -> Rational<Scalar> {
             Rational::Rational(numerator, denominator)
         }
     }
@@ -614,7 +615,7 @@ mod proptests {
                 // - we can apply every binary operator pairwise sequentially.
                 cmp::max(usize::from(num_unary > 0), num_binary + 1)),
             operations in arb_operators(num_unary, num_binary).prop_shuffle(),
-        ) -> (Vec<Rational<Fp>>, Vec<Operator>) {
+        ) -> (Vec<Rational<Scalar>>, Vec<Operator>) {
             (values, operations)
         }
     }

@@ -20,28 +20,8 @@ crate::impl_binops_multiplicative!(Fr, Fr);
 crate::field_bits!(Fr);
 crate::serialize_deserialize_primefield!(Fr);
 
-#[cfg(feature = "bn256-table")]
-pub use table::FR_TABLE;
-#[cfg(not(feature = "bn256-table"))]
 crate::impl_from_u64!(Fr);
-#[cfg(feature = "bn256-table")]
-impl From<u64> for Fr {
-    fn from(val: u64) -> Fr {
-        if val < 65536 {
-            FR_TABLE[val as usize]
-        } else {
-            Self([val, 0, 0, 0]) * Fr::R2
-        }
-    }
-}
 crate::impl_from_bool!(Fr);
-
-#[cfg(feature = "bn256-table")]
-#[rustfmt::skip]
-mod table;
-#[cfg(feature = "bn256-table")]
-#[cfg(test)]
-mod table_tests;
 
 #[cfg(test)]
 mod test {

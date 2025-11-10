@@ -8,7 +8,7 @@ use std::marker::PhantomData;
 
 use blake2b_simd::State;
 use ff::{FromUniformBytes, WithSmallOrderMulGroup};
-use halo2curves::{
+use midnight_curves::{
     pairing::{Engine, MultiMillerLoop},
     serde::SerdeObject,
     CurveAffine, CurveExt,
@@ -568,7 +568,7 @@ where
 }
 
 fn main() {
-    use halo2curves::bn256::Fr;
+    use midnight_curves::Fq as Scalar;
     const N: usize = 10;
     // ANCHOR: test-circuit
     // The number of rows in our circuit cannot exceed 2^k. Since our example
@@ -576,10 +576,10 @@ fn main() {
     let k = 7;
 
     // Prepare the inputs to the circuit!
-    let a: [Fr; N] = std::array::from_fn(|i| Fr::from(i as u64));
-    let b: [Fr; N] = std::array::from_fn(|i| Fr::from(2 * i as u64));
-    let c_mul: Vec<Fr> = a.iter().zip(b).map(|(&a, b)| a * b).collect();
-    let c_add: Vec<Fr> = a.iter().zip(b).map(|(&a, b)| a + b).collect();
+    let a: [Scalar; N] = std::array::from_fn(|i| Scalar::from(i as u64));
+    let b: [Scalar; N] = std::array::from_fn(|i| Scalar::from(2 * i as u64));
+    let c_mul: Vec<Scalar> = a.iter().zip(b).map(|(&a, b)| a * b).collect();
+    let c_add: Vec<Scalar> = a.iter().zip(b).map(|(&a, b)| a + b).collect();
 
     // Instantiate the mul circuit with the inputs.
     let mul_circuit = MulCircuit {
@@ -595,10 +595,10 @@ fn main() {
 
     // the commitments will be the first columns of the proof transcript so we can
     // compare them easily
-    let proof_1 = test_prover::<halo2curves::bn256::Bn256>(k, mul_circuit, true, c_mul);
+    let proof_1 = test_prover::<midnight_curves::bls12_381::Bls12>(k, mul_circuit, true, c_mul);
     // the commitments will be the first columns of the proof transcript so we can
     // compare them easily
-    let proof_2 = test_prover::<halo2curves::bn256::Bn256>(k, add_circuit, true, c_add);
+    let proof_2 = test_prover::<midnight_curves::bls12_381::Bls12>(k, add_circuit, true, c_add);
 
     // the commitments will be the first columns of the proof transcript so we can
     // compare them easily here we compare the first 10 bytes of the commitments

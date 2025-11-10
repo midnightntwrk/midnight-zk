@@ -500,7 +500,7 @@ pub struct PinnedEvaluationDomain<'a, F: Field> {
 
 #[test]
 fn test_rotate() {
-    use midnight_curves::pasta::pallas::Scalar;
+    use midnight_curves::Fq as Scalar;
     use rand_core::OsRng;
 
     use crate::utils::arithmetic::eval_polynomial;

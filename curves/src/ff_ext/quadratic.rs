@@ -165,11 +165,11 @@ pub trait QuadExtFieldArith {
     }
 }
 
-#[cfg(feature = "derive_serde")]
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-#[cfg_attr(feature = "derive_serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct QuadExtField<F: ff::Field> {
     pub(crate) c0: F,
     pub(crate) c1: F,

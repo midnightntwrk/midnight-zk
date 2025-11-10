@@ -15,11 +15,12 @@
 
 use ff::PrimeField;
 use group::{Curve, Group};
-use halo2curves::{
-    bn256,
+use midnight_curves::{
     secp256k1::{Secp256k1, Secp256k1Affine},
     CurveAffine,
 };
+#[cfg(feature = "dev-curves")]
+use midnight_curves::bn256;
 use midnight_curves::{Fq as BlsScalar, JubjubAffine, JubjubExtended, JubjubSubgroup};
 
 /// An elliptic curve whose points can be represented in terms of its base
@@ -135,7 +136,7 @@ impl EdwardsCurve for JubjubExtended {
 }
 
 // Implementation for Secp256k1.
-use halo2curves::secp256k1::{Fp, Fq};
+use midnight_curves::secp256k1::{Fp, Fq};
 impl CircuitCurve for Secp256k1 {
     type Base = Fp;
     type CryptographicGroup = Secp256k1;
@@ -195,6 +196,7 @@ impl WeierstrassCurve for G1Projective {
 }
 
 // Implementation for BN254.
+#[cfg(feature = "dev-curves")]
 impl CircuitCurve for bn256::G1 {
     type Base = bn256::Fq;
     type CryptographicGroup = bn256::G1;
@@ -214,6 +216,7 @@ impl CircuitCurve for bn256::G1 {
     }
 }
 
+#[cfg(feature = "dev-curves")]
 impl WeierstrassCurve for bn256::G1 {
     const A: Self::Base = bn256::Fq::from_raw([0, 0, 0, 0]);
     const B: Self::Base = bn256::Fq::from_raw([3, 0, 0, 0]);
@@ -222,36 +225,3 @@ impl WeierstrassCurve for bn256::G1 {
     const SCALAR_ZETA: Self::Scalar = <bn256::Fr as ff::WithSmallOrderMulGroup<3>>::ZETA;
 }
 
-// Implementation for Vesta.
-use halo2curves::pasta::{
-    vesta::{Affine as VestaAffine, Point as Vesta},
-    Fp as VestaScalar, Fq as VestaBase,
-};
-
-impl CircuitCurve for Vesta {
-    type Base = VestaBase;
-    type CryptographicGroup = Vesta;
-
-    const NUM_BITS_SUBGROUP: u32 = 255;
-
-    fn coordinates(&self) -> Option<(Self::Base, Self::Base)> {
-        let coordinates = self.to_affine().coordinates().into_option()?;
-        Some((*coordinates.x(), *coordinates.y()))
-    }
-
-    fn from_xy(x: Self::Base, y: Self::Base) -> Option<Self> {
-        <VestaAffine as CurveAffine>::from_xy(x, y).into_option().map(|p| p.into())
-    }
-
-    fn into_subgroup(self) -> Self::CryptographicGroup {
-        self
-    }
-}
-
-impl WeierstrassCurve for Vesta {
-    const A: Self::Base = VestaBase::from_raw([0, 0, 0, 0]);
-    const B: Self::Base = VestaBase::from_raw([5, 0, 0, 0]);
-
-    const BASE_ZETA: Self::Base = <VestaBase as ff::WithSmallOrderMulGroup<3>>::ZETA;
-    const SCALAR_ZETA: Self::Scalar = <VestaScalar as ff::WithSmallOrderMulGroup<3>>::ZETA;
-}

@@ -55,7 +55,7 @@ pub(crate) fn expand_message<D: Digest + BlockSizeUser>(
     let mut b_i = h.finalize();
 
     let output_size = <D as Digest>::output_size();
-    let ell = (out_len + output_size - 1) / output_size;
+    let ell = out_len.div_ceil(output_size);
     let mut out = vec![0u8; out_len];
 
     for i in 1..ell {

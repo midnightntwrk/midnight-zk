@@ -305,7 +305,8 @@ impl<F: Field> Circuit<F> for MyCircuit<F> {
 // ANCHOR_END: circuit
 
 fn main() {
-    use halo2curves::pasta::Fp;
+    use ff::Field;
+    use midnight_curves::Fq as Scalar;
     use midnight_proofs::dev::MockProver;
 
     // ANCHOR: test-circuit
@@ -314,9 +315,9 @@ fn main() {
     let k = 4;
 
     // Prepare the private and public inputs to the circuit!
-    let constant = Fp::from(7);
-    let a = Fp::from(2);
-    let b = Fp::from(3);
+    let constant = Scalar::from(7);
+    let a = Scalar::from(2);
+    let b = Scalar::from(3);
     let c = constant * a.square() * b.square();
 
     // Instantiate the circuit with the private inputs.
@@ -335,7 +336,7 @@ fn main() {
     assert_eq!(prover.verify(), Ok(()));
 
     // If we try some other public input, the proof will fail!
-    public_inputs[0] += Fp::one();
+    public_inputs[0] += Scalar::ONE;
     let prover = MockProver::run(k, &circuit, vec![public_inputs]).unwrap();
     assert!(prover.verify().is_err());
     // ANCHOR_END: test-circuit

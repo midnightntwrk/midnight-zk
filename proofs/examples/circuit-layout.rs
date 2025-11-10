@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 
 use ff::Field;
-use halo2curves::pasta::Fp;
+use midnight_curves::Fq as Scalar;
 use midnight_proofs::{
     circuit::{Cell, Layouter, Region, SimpleFloorPlanner, Value},
     plonk::{Advice, Circuit, Column, ConstraintSystem, Constraints, Error, Fixed, TableColumn},
@@ -273,10 +273,10 @@ impl<F: Field> Circuit<F> for MyCircuit<F> {
 fn main() {
     // Prepare the circuit you want to render.
     // You don't need to include any witness variables.
-    let a = Fp::random(OsRng);
-    let instance = Fp::one() + Fp::one();
-    let lookup_table = vec![instance, a, a, Fp::zero()];
-    let circuit: MyCircuit<Fp> = MyCircuit {
+    let a = Scalar::random(OsRng);
+    let instance = Scalar::ONE + Scalar::ONE;
+    let lookup_table = vec![instance, a, a, Scalar::ZERO];
+    let circuit: MyCircuit<Scalar> = MyCircuit {
         a: Value::unknown(),
         lookup_table,
     };
