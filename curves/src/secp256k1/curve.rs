@@ -306,7 +306,7 @@ mod tests {
                 "QUUX-V01-CS02-with-",
                 hash_to_curve_suite(b"secp256k1_XMD:SHA-256_SSWU_RO_"),
             );
-            let point = hash_fn(*msg).to_affine();
+            let point = hash_fn(msg).to_affine();
             let coords = point.coordinates().unwrap();
 
             let mut expected_x_bytes = hex::decode(expected_x_hex).unwrap();

@@ -1,4 +1,4 @@
-use halo2curves::pasta::Fp;
+use midnight_curves::Fq as Scalar;
 use midnight_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
     dev::cost_model::circuit_model,
@@ -17,7 +17,7 @@ struct MyConfig {
     advice: Column<Advice>,
 }
 
-impl Circuit<Fp> for TestCircuit {
+impl Circuit<Scalar> for TestCircuit {
     type Config = MyConfig;
     type FloorPlanner = SimpleFloorPlanner;
     #[cfg(feature = "circuit-params")]
@@ -27,7 +27,7 @@ impl Circuit<Fp> for TestCircuit {
         Self {}
     }
 
-    fn configure(meta: &mut ConstraintSystem<Fp>) -> MyConfig {
+    fn configure(meta: &mut ConstraintSystem<Scalar>) -> MyConfig {
         let config = MyConfig {
             selector: meta.complex_selector(),
             table: meta.lookup_table_column(),
@@ -44,7 +44,11 @@ impl Circuit<Fp> for TestCircuit {
         config
     }
 
-    fn synthesize(&self, config: MyConfig, mut layouter: impl Layouter<Fp>) -> Result<(), Error> {
+    fn synthesize(
+        &self,
+        config: MyConfig,
+        mut layouter: impl Layouter<Scalar>,
+    ) -> Result<(), Error> {
         layouter.assign_table(
             || "8-bit table",
             |mut table| {
@@ -53,7 +57,7 @@ impl Circuit<Fp> for TestCircuit {
                         || format!("row {row}"),
                         config.table,
                         row as usize,
-                        || Value::known(Fp::from(row + 1)),
+                        || Value::known(Scalar::from(row + 1)),
                     )?;
                 }
 
@@ -70,7 +74,7 @@ impl Circuit<Fp> for TestCircuit {
                         || format!("offset {offset}"),
                         config.advice,
                         offset as usize,
-                        || Value::known(Fp::from((offset % 256) + 1)),
+                        || Value::known(Scalar::from((offset % 256) + 1)),
                     )?;
                 }
 

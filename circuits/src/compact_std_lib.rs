@@ -30,7 +30,7 @@ use std::{cell::RefCell, cmp::max, convert::TryInto, fmt::Debug, io, rc::Rc};
 use bincode::{config::standard, Decode, Encode};
 use ff::{Field, PrimeField};
 use group::{prime::PrimeCurveAffine, Group};
-use halo2curves::secp256k1::{self, Secp256k1};
+use midnight_curves::secp256k1::{self, Secp256k1};
 use midnight_curves::{G1Affine, G1Projective};
 use midnight_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},

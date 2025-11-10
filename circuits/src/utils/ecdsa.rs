@@ -15,7 +15,7 @@
 use base64::DecodeError;
 use ff::Field;
 use group::{Curve, GroupEncoding, UncompressedEncoding};
-use halo2curves::secp256k1::{
+use midnight_curves::secp256k1::{
     Fp as secp256k1Base, Fq as secp256k1Scalar, Secp256k1, Secp256k1Affine,
 };
 use rand::RngCore;

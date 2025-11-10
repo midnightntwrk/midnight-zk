@@ -22,7 +22,7 @@ macro_rules! run_test_native_gadget {
             plonk::{Circuit, ConstraintSystem},
         };
         use midnight_proofs::plonk::Error;
-        use halo2curves::pasta::Fp;
+        use midnight_curves::pasta::Fp;
         use midnight_circuits::{
             types::{AssignedBit, AssignedByte, AssignedNative, ComposableChip},
             instructions::*,

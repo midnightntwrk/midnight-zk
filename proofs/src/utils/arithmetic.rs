@@ -341,15 +341,15 @@ pub trait MSM<C: PrimeCurveAffine>: Clone + Debug + Send + Sized + Sync {
 use rand_core::OsRng;
 
 #[cfg(test)]
-use midnight_curves::pasta::Fp;
+use midnight_curves::Fq as Scalar;
 use crate::poly::kzg::msm::MSMKZG;
 
 #[test]
 fn test_lagrange_interpolate() {
     let rng = OsRng;
 
-    let points = (0..5).map(|_| Fp::random(rng)).collect::<Vec<_>>();
-    let evals = (0..5).map(|_| Fp::random(rng)).collect::<Vec<_>>();
+    let points = (0..5).map(|_| Scalar::random(rng)).collect::<Vec<_>>();
+    let evals = (0..5).map(|_| Scalar::random(rng)).collect::<Vec<_>>();
 
     for coeffs in 0..5 {
         let points = &points[0..coeffs];

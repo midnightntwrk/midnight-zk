@@ -495,7 +495,8 @@ impl<F: Field, CS: Assignment<F> + SyncDeps> RegionLayouter<F> for V1Region<'_, 
 
 #[cfg(test)]
 mod tests {
-    use midnight_curves::pasta::vesta;
+    use ff::Field;
+    use midnight_curves::Fq;
 
     use crate::{
         dev::MockProver,
@@ -506,7 +507,7 @@ mod tests {
     fn not_enough_columns_for_constants() {
         struct MyCircuit {}
 
-        impl Circuit<vesta::Scalar> for MyCircuit {
+        impl Circuit<Fq> for MyCircuit {
             type Config = Column<Advice>;
             type FloorPlanner = super::V1;
             #[cfg(feature = "circuit-params")]
@@ -516,14 +517,14 @@ mod tests {
                 MyCircuit {}
             }
 
-            fn configure(meta: &mut crate::plonk::ConstraintSystem<vesta::Scalar>) -> Self::Config {
+            fn configure(meta: &mut crate::plonk::ConstraintSystem<Fq>) -> Self::Config {
                 meta.advice_column()
             }
 
             fn synthesize(
                 &self,
                 config: Self::Config,
-                mut layouter: impl crate::circuit::Layouter<vesta::Scalar>,
+                mut layouter: impl crate::circuit::Layouter<Fq>,
             ) -> Result<(), crate::plonk::Error> {
                 layouter.assign_region(
                     || "assign constant",
@@ -532,7 +533,7 @@ mod tests {
                             || "one",
                             config,
                             0,
-                            vesta::Scalar::one(),
+                            Fq::ONE,
                         )
                     },
                 )?;

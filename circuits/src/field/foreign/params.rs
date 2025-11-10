@@ -19,10 +19,12 @@
 use std::{fmt::Debug, ops::Rem};
 
 use ff::PrimeField;
-use halo2curves::{
-    bls12381, bn256,
-    pasta::{pallas, vesta},
-    secp256k1,
+use midnight_curves::{
+    bls12_381, secp256k1,
+};
+#[cfg(feature = "dev-curves")]
+use midnight_curves::{
+    bn256,
 };
 use num_bigint::{BigInt, BigInt as BI, ToBigInt};
 use num_traits::{One, Signed};
@@ -161,76 +163,16 @@ where
 
 /*
 ====================================================
-Emulated: Vesta's Scalar field (Pallas' Base field)
-
-Native fields supported:
- - Vesta's Base field
- - Vesta's Scalar field (dummy emulation)
-====================================================
-*/
-
-/// Vesta's Base field over Vesta's Scalar field.
-impl FieldEmulationParams<vesta::Scalar, vesta::Base> for MultiEmulationParams {
-    const LOG2_BASE: u32 = 51;
-    const NB_LIMBS: u32 = 5;
-    fn moduli() -> Vec<BigInt> {
-        vec![BigInt::from(2).pow(124)]
-    }
-    const RC_LIMB_SIZE: u32 = 14;
-}
-
-/// Vesta's Scalar field over Vesta's Scalar field.
-impl FieldEmulationParams<vesta::Scalar, vesta::Scalar> for MultiEmulationParams {
-    const LOG2_BASE: u32 = 51;
-
-    const NB_LIMBS: u32 = 5;
-
-    fn moduli() -> Vec<BigInt> {
-        vec![BigInt::from(2).pow(124)]
-    }
-
-    const RC_LIMB_SIZE: u32 = 14;
-}
-
-/*
-====================================================
 Emulated: Secp256k1's Base field
 
 Native fields supported:
- - Vesta's Scalar field
- - Pallas' Scalar field
  - BN254's Scalar field
- - BLS12-381's Scalar field (halo2curves & blstrs)
+ - BLS12-381's Scalar field
 ====================================================
 */
 
-/// Secp256k1's Base field over Vesta's Scalar field.
-impl FieldEmulationParams<vesta::Scalar, secp256k1::Fp> for MultiEmulationParams {
-    const LOG2_BASE: u32 = 86;
-    const NB_LIMBS: u32 = 3;
-    fn moduli() -> Vec<BigInt> {
-        vec![
-            BigInt::from(2).pow(86),
-            BigInt::from(2).pow(86) - BigInt::from(1),
-        ]
-    }
-    const RC_LIMB_SIZE: u32 = 16;
-}
-
-/// Secp256k1's Base field over Pallas' Scalar field.
-impl FieldEmulationParams<pallas::Scalar, secp256k1::Fp> for MultiEmulationParams {
-    const LOG2_BASE: u32 = 86;
-    const NB_LIMBS: u32 = 3;
-    fn moduli() -> Vec<BigInt> {
-        vec![
-            BigInt::from(2).pow(86),
-            BigInt::from(2).pow(86) - BigInt::from(1),
-        ]
-    }
-    const RC_LIMB_SIZE: u32 = 16;
-}
-
 /// Secp256k1's Base field over BN254's Scalar field.
+#[cfg(feature = "dev-curves")]
 impl FieldEmulationParams<bn256::Fr, secp256k1::Fp> for MultiEmulationParams {
     const LOG2_BASE: u32 = 64;
     const NB_LIMBS: u32 = 4;
@@ -241,7 +183,7 @@ impl FieldEmulationParams<bn256::Fr, secp256k1::Fp> for MultiEmulationParams {
 }
 
 /// Secp256k1's Base field over BLS12-381's Scalar field.
-impl FieldEmulationParams<bls12381::Fr, secp256k1::Fp> for MultiEmulationParams {
+impl FieldEmulationParams<bls12_381::Fp, secp256k1::Fp> for MultiEmulationParams {
     const LOG2_BASE: u32 = 52;
     const NB_LIMBS: u32 = 5;
     fn moduli() -> Vec<BigInt> {
@@ -265,40 +207,13 @@ impl FieldEmulationParams<midnight_curves::Fq, secp256k1::Fp> for MultiEmulation
 Emulated: Secp256k1's Scalar field
 
 Native fields supported:
- - Vesta's Scalar field
- - Pallas' Scalar field
  - BN254's Scalar field
  - BLS12-381's Scalar field (halo2curves & blstrs)
 ====================================================
 */
 
-/// Secp256k1's Scalar field over Vesta's Scalar field.
-impl FieldEmulationParams<vesta::Scalar, secp256k1::Fq> for MultiEmulationParams {
-    const LOG2_BASE: u32 = 86;
-    const NB_LIMBS: u32 = 3;
-    fn moduli() -> Vec<BigInt> {
-        vec![
-            BigInt::from(2).pow(82),
-            BigInt::from(2).pow(82) - BigInt::from(52),
-        ]
-    }
-    const RC_LIMB_SIZE: u32 = 15;
-}
-
-/// Secp256k1's Scalar field over Pallas' Scalar field.
-impl FieldEmulationParams<pallas::Scalar, secp256k1::Fq> for MultiEmulationParams {
-    const LOG2_BASE: u32 = 86;
-    const NB_LIMBS: u32 = 3;
-    fn moduli() -> Vec<BigInt> {
-        vec![
-            BigInt::from(2).pow(82),
-            BigInt::from(2).pow(82) - BigInt::from(52),
-        ]
-    }
-    const RC_LIMB_SIZE: u32 = 15;
-}
-
 /// Secp256k1's Scalar field over BN254's Scalar field.
+#[cfg(feature = "dev-curves")]
 impl FieldEmulationParams<bn256::Fr, secp256k1::Fq> for MultiEmulationParams {
     const LOG2_BASE: u32 = 52;
     const NB_LIMBS: u32 = 5;
@@ -309,7 +224,7 @@ impl FieldEmulationParams<bn256::Fr, secp256k1::Fq> for MultiEmulationParams {
 }
 
 /// Secp256k1's Scalar field over BLS12-381's Scalar field.
-impl FieldEmulationParams<bls12381::Fr, secp256k1::Fq> for MultiEmulationParams {
+impl FieldEmulationParams<bls12_381::Fp, secp256k1::Fq> for MultiEmulationParams {
     const LOG2_BASE: u32 = 52;
     const NB_LIMBS: u32 = 5;
     fn moduli() -> Vec<BigInt> {
@@ -341,7 +256,7 @@ Native fields supported:
 */
 
 /// BLS12-381's Base field over BLS12-381's Scalar field.
-impl FieldEmulationParams<bls12381::Fr, bls12381::Fq> for MultiEmulationParams {
+impl FieldEmulationParams<bls12_381::Fp, bls12_381::Fp> for MultiEmulationParams {
     const LOG2_BASE: u32 = 56;
     const NB_LIMBS: u32 = 7;
     fn moduli() -> Vec<BigInt> {
@@ -377,7 +292,8 @@ Native fields supported:
 */
 
 /// BN254's Base field over BLS12-381's Scalar field.
-impl FieldEmulationParams<bls12381::Fq, bn256::Fq> for MultiEmulationParams {
+#[cfg(feature = "dev-curves")]
+impl FieldEmulationParams<bls12_381::Fp, bn256::Fq> for MultiEmulationParams {
     const LOG2_BASE: u32 = 52;
     const NB_LIMBS: u32 = 5;
     fn moduli() -> Vec<BigInt> {
@@ -387,6 +303,7 @@ impl FieldEmulationParams<bls12381::Fq, bn256::Fq> for MultiEmulationParams {
 }
 
 /// BN254's Base field over BLS12-381's Scalar field.
+#[cfg(feature = "dev-curves")]
 impl FieldEmulationParams<midnight_curves::Fq, bn256::Fq> for MultiEmulationParams {
     const LOG2_BASE: u32 = 52;
     const NB_LIMBS: u32 = 5;
@@ -397,6 +314,7 @@ impl FieldEmulationParams<midnight_curves::Fq, bn256::Fq> for MultiEmulationPara
 }
 
 /// BN254's Base field over BN254's Scalar field.
+#[cfg(feature = "dev-curves")]
 impl FieldEmulationParams<bn256::Fr, bn256::Fq> for MultiEmulationParams {
     const LOG2_BASE: u32 = 52;
     const NB_LIMBS: u32 = 5;

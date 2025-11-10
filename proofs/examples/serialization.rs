@@ -5,7 +5,7 @@ use std::{
 
 use blake2b_simd::State;
 use ff::Field;
-use halo2curves::bn256::{Bn256, Fr};
+use midnight_curves::{Bls12, Fq as Scalar};
 use midnight_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
     plonk::{
@@ -37,7 +37,7 @@ struct StandardPlonkConfig {
 }
 
 impl StandardPlonkConfig {
-    fn configure(meta: &mut ConstraintSystem<Fr>) -> Self {
+    fn configure(meta: &mut ConstraintSystem<Scalar>) -> Self {
         let [a, b, c] = [(); 3].map(|_| meta.advice_column());
         let [q_a, q_b, q_c, q_ab, constant] = [(); 5].map(|_| meta.fixed_column());
         let instance = meta.instance_column();
@@ -73,9 +73,9 @@ impl StandardPlonkConfig {
 }
 
 #[derive(Clone, Default)]
-struct StandardPlonk(Fr);
+struct StandardPlonk(Scalar);
 
-impl Circuit<Fr> for StandardPlonk {
+impl Circuit<Scalar> for StandardPlonk {
     type Config = StandardPlonkConfig;
     type FloorPlanner = SimpleFloorPlanner;
     #[cfg(feature = "circuit-params")]
@@ -85,22 +85,22 @@ impl Circuit<Fr> for StandardPlonk {
         Self::default()
     }
 
-    fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config {
+    fn configure(meta: &mut ConstraintSystem<Scalar>) -> Self::Config {
         StandardPlonkConfig::configure(meta)
     }
 
     fn synthesize(
         &self,
         config: Self::Config,
-        mut layouter: impl Layouter<Fr>,
+        mut layouter: impl Layouter<Scalar>,
     ) -> Result<(), Error> {
         layouter.assign_region(
             || "",
             |mut region| {
                 region.assign_advice(|| "", config.a, 0, || Value::known(self.0))?;
-                region.assign_fixed(|| "", config.q_a, 0, || Value::known(-Fr::one()))?;
+                region.assign_fixed(|| "", config.q_a, 0, || Value::known(-Scalar::ONE))?;
 
-                region.assign_advice(|| "", config.a, 1, || Value::known(-Fr::from(5u64)))?;
+                region.assign_advice(|| "", config.a, 1, || Value::known(-Scalar::from(5u64)))?;
                 for (idx, column) in (1..).zip([
                     config.q_a,
                     config.q_b,
@@ -108,10 +108,15 @@ impl Circuit<Fr> for StandardPlonk {
                     config.q_ab,
                     config.constant,
                 ]) {
-                    region.assign_fixed(|| "", column, 1, || Value::known(Fr::from(idx as u64)))?;
+                    region.assign_fixed(
+                        || "",
+                        column,
+                        1,
+                        || Value::known(Scalar::from(idx as u64)),
+                    )?;
                 }
 
-                let a = region.assign_advice(|| "", config.a, 2, || Value::known(Fr::one()))?;
+                let a = region.assign_advice(|| "", config.a, 2, || Value::known(Scalar::ONE))?;
                 a.copy_advice(|| "", &mut region, config.b, 3)?;
                 a.copy_advice(|| "", &mut region, config.c, 4)?;
                 Ok(())
@@ -122,9 +127,9 @@ impl Circuit<Fr> for StandardPlonk {
 
 fn main() {
     let k = 4;
-    let circuit = StandardPlonk(Fr::random(OsRng));
-    let params = ParamsKZG::<Bn256>::unsafe_setup(k, OsRng);
-    let vk = keygen_vk_with_k::<_, KZGCommitmentScheme<Bn256>, _>(&params, &circuit, k)
+    let circuit = StandardPlonk(Scalar::random(OsRng));
+    let params = ParamsKZG::<Bls12>::unsafe_setup(k, OsRng);
+    let vk = keygen_vk_with_k::<_, KZGCommitmentScheme<Bls12>, _>(&params, &circuit, k)
         .expect("vk should not fail");
     let pk = keygen_pk(vk, &circuit).expect("pk should not fail");
 
@@ -136,7 +141,7 @@ fn main() {
     let f = File::open("serialization-test.pk").unwrap();
     let mut reader = BufReader::new(f);
     #[allow(clippy::unit_arg)]
-    let pk = ProvingKey::<Fr, KZGCommitmentScheme<Bn256>>::read::<_, StandardPlonk>(
+    let pk = ProvingKey::<Scalar, KZGCommitmentScheme<Bls12>>::read::<_, StandardPlonk>(
         &mut reader,
         SerdeFormat::RawBytes,
         #[cfg(feature = "circuit-params")]
@@ -146,10 +151,10 @@ fn main() {
 
     std::fs::remove_file("serialization-test.pk").unwrap();
 
-    let instances: &[&[Fr]] = &[&[circuit.0]];
+    let instances: &[&[Scalar]] = &[&[circuit.0]];
     let mut transcript = CircuitTranscript::<State>::init();
 
-    create_proof::<Fr, KZGCommitmentScheme<Bn256>, _, _>(
+    create_proof::<Scalar, KZGCommitmentScheme<Bls12>, _, _>(
         &params,
         &pk,
         &[circuit],
@@ -165,7 +170,7 @@ fn main() {
 
     let mut transcript = CircuitTranscript::<State>::init_from_bytes(&proof[..]);
 
-    assert!(prepare::<Fr, KZGCommitmentScheme<Bn256>, _>(
+    assert!(prepare::<Scalar, KZGCommitmentScheme<Bls12>, _>(
         pk.get_vk(),
         #[cfg(feature = "committed-instances")]
         &[&[]],

@@ -1,7 +1,6 @@
 use std::{
     convert::TryInto,
     fmt::Debug,
-    io::{self, Read, Write},
 };
 
 #[cfg(feature = "serde")]
@@ -25,7 +24,7 @@ impl<const T: usize> From<[u8; T]> for Repr<T> {
     }
 }
 
-impl<'a, const T: usize> From<&'a [u8]> for Repr<T> {
+impl<const T: usize> From<&[u8]> for Repr<T> {
     fn from(bytes: &[u8]) -> Self {
         Self(bytes.try_into().unwrap())
     }
@@ -149,6 +148,7 @@ pub mod endian {
     }
 }
 
+#[allow(dead_code)]
 pub(crate) enum CompressedFlagConfig {
     // NOTE: if needed we can add fields for bit positions
 
@@ -268,6 +268,7 @@ where
         Self::pos_idetity().map(|pos| Flag::get(pos, self.flag_byte()))
     }
 
+    #[allow(dead_code)]
     fn set_flags(&mut self, c: &C) {
         self.set_identity(c);
         self.set_sign(c);

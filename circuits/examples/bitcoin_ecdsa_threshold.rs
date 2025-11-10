@@ -2,8 +2,8 @@
 //! public message.
 
 use ff::Field;
-use halo2curves::{
-    group::Curve,
+use group::Curve;
+use midnight_curves::{
     secp256k1::{Fq as secp256k1Scalar, Secp256k1},
 };
 use midnight_circuits::{

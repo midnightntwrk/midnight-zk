@@ -3,7 +3,7 @@
 
 use std::{io::Write, time::Instant};
 
-use halo2curves::secp256k1::{Fq as secp256k1Scalar, Secp256k1};
+use midnight_curves::secp256k1::{Fq as secp256k1Scalar, Secp256k1};
 use midnight_circuits::{
     compact_std_lib::{self, Relation, ZkStdLib, ZkStdLibArch},
     field::foreign::{params::MultiEmulationParams, AssignedField},

@@ -19,7 +19,7 @@
 use std::collections::{btree_map::Entry, BTreeMap};
 
 use ff::Field;
-use halo2curves::msm::msm_best;
+use midnight_curves::msm::msm_best;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
