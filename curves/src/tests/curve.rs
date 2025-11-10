@@ -308,7 +308,7 @@ macro_rules! curve_testing_suite {
             }
         }
 
-        #[cfg(feature = "derive_serde")]
+        #[cfg(feature = "serde")]
         macro_rules! random_serde_test {
             ($c: ident) => {
                 for _ in 0..100 {
@@ -369,7 +369,7 @@ macro_rules! curve_testing_suite {
         fn test_serialization() {
             $(
                 random_serialization_test!($curve);
-                #[cfg(feature = "derive_serde")]
+                #[cfg(feature = "serde")]
                 random_serde_test!($curve);
             )*
         }
@@ -413,50 +413,6 @@ macro_rules! curve_testing_suite {
                 }
 
             )*
-        }
-    };
-
-    ($($curve: ident),*, "endo_consistency") => {
-        #[test]
-        fn test_endo_consistency() {
-            use rand_core::OsRng;
-            $(
-                let g = $curve::generator();
-                assert_eq!(g * <$curve as CurveExt>::ScalarExt::ZETA, g.endo());
-
-                for _ in 0..100 {
-                    let g = $curve::random(OsRng);
-                    assert_eq!(g * <$curve as CurveExt>::ScalarExt::ZETA, g.endo());
-                }
-            )*
-        }
-    };
-
-    ($curve: ident, "endo" $(, $z_other_raw: expr)*) => {
-        #[test]
-        fn test_endo() {
-            use rand_core::OsRng;
-
-            let z_impl = <$curve as CurveExt>::ScalarExt::ZETA;
-            assert_eq!(z_impl * z_impl + z_impl, -<$curve as CurveExt>::ScalarExt::ONE);
-            $(
-                let z_other = <$curve as CurveExt>::ScalarExt::from_raw($z_other_raw as [u64; 4]);
-                assert_eq!(z_other * z_other + z_other, -<$curve as CurveExt>::ScalarExt::ONE);
-            )*
-
-            for _ in 0..100000 {
-                let k = <$curve as CurveExt>::ScalarExt::random(OsRng);
-                let (k1, k1_neg, k2, k2_neg) = $curve::decompose_scalar(&k);
-                if k1_neg & k2_neg {
-                    assert_eq!(k, -<$curve as CurveExt>::ScalarExt::from_u128(k1) + <$curve as CurveExt>::ScalarExt::ZETA * <$curve as CurveExt>::ScalarExt::from_u128(k2))
-                } else if k1_neg {
-                    assert_eq!(k, -<$curve as CurveExt>::ScalarExt::from_u128(k1) - <$curve as CurveExt>::ScalarExt::ZETA * <$curve as CurveExt>::ScalarExt::from_u128(k2))
-                } else if k2_neg {
-                    assert_eq!(k, <$curve as CurveExt>::ScalarExt::from_u128(k1) + <$curve as CurveExt>::ScalarExt::ZETA * <$curve as CurveExt>::ScalarExt::from_u128(k2))
-                } else {
-                    assert_eq!(k, <$curve as CurveExt>::ScalarExt::from_u128(k1) - <$curve as CurveExt>::ScalarExt::ZETA * <$curve as CurveExt>::ScalarExt::from_u128(k2))
-                }
-            }
         }
     };
 

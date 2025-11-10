@@ -1,12 +1,6 @@
-use crate::arithmetic::mul_512;
-use crate::arithmetic::sbb;
-use crate::arithmetic::CurveEndo;
-use crate::arithmetic::EndoParameters;
 use crate::bn256::Fq;
 use crate::bn256::Fq2;
 use crate::bn256::Fr;
-use crate::endo;
-use ff::WithSmallOrderMulGroup;
 use ff::{Field, PrimeField};
 use group::Curve;
 use group::{cofactor::CofactorGroup, prime::PrimeCurveAffine, Group, GroupEncoding};
@@ -15,11 +9,7 @@ use crate::{
     impl_binops_multiplicative_mixed, new_curve_impl,
 };
 use crate::{Coordinates, CurveAffine, CurveExt};
-use core::cmp;
 use core::fmt::Debug;
-use core::iter::Sum;
-use core::ops::{Add, Mul, Neg, Sub};
-use rand_core::RngCore;
 use std::convert::TryInto;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 
@@ -129,21 +119,6 @@ const G2_GENERATOR_Y: Fq2 = Fq2 {
         0x090689d0585ff075,
     ]),
 };
-
-// Generated using https://github.com/ConsenSys/gnark-crypto/blob/master/ecc/utils.go
-// with `bn256::Fr::ZETA`
-// See https://github.com/demining/Endomorphism-Secp256k1/blob/main/README.md
-// to have more details about the endomorphism.
-const ENDO_PARAMS_BN: EndoParameters = EndoParameters {
-    // round(b2/n)
-    gamma1: [0xd91d232ec7e0b3d7, 0x2, 0, 0],
-    // round(-b1/n)
-    gamma2: [0x5398fd0300ff6565, 0x4ccef014a773d2d2, 0x02, 0],
-    b1: [0x89d3256894d213e3, 0, 0, 0],
-    b2: [0x0be4e1541221250b, 0x6f4d8248eeb859fd, 0, 0],
-};
-
-endo!(G1, Fr, ENDO_PARAMS_BN);
 
 impl group::cofactor::CofactorGroup for G1 {
     type Subgroup = G1;
@@ -285,19 +260,6 @@ mod test {
 
     crate::curve_testing_suite!(G2, "clear_cofactor");
     crate::curve_testing_suite!(G1, G2);
-    crate::curve_testing_suite!(G1, "endo_consistency");
-    crate::curve_testing_suite!(
-        G1,
-        "endo",
-        // Optional `z_other` param. `z_other` is 3-roots of unity, similar to `ZETA`.
-        // Reference: https://github.com/privacy-scaling-explorations/halo2curves/blob/main/src/bn256/fr.rs#L145-L151
-        [
-            0x8b17ea66b99c90dd,
-            0x5bfc41088d8daaa7,
-            0xb3c4d79d41a91758,
-            0x00,
-        ]
-    );
 
     crate::curve_testing_suite!(
         G1,

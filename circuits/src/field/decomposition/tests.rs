@@ -12,7 +12,8 @@
 // limitations under the License.
 
 use ff::{Field, PrimeField};
-use halo2curves::pasta::Fp;
+// Modify
+use midnight_curves::Fq as Fp;
 use midnight_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
     dev::MockProver,
@@ -63,7 +64,7 @@ fn test_decompose_variable_in_cpu() {
     let reconstructed = limbs
         .iter()
         .zip(coefficients.iter())
-        .fold(Fp::zero(), |acc, (limb, c)| acc + limb * c);
+        .fold(Fp::ZERO, |acc, (limb, c)| acc + limb * c);
 
     assert_eq!(x, reconstructed);
 }
