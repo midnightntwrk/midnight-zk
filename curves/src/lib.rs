@@ -30,12 +30,8 @@ mod jubjub;
 pub mod secp256k1;
 
 // Development/testing curves (feature-gated)
-// TODO: Re-enable after porting
-// #[cfg(any(test, feature = "dev-curves"))]
-// pub mod bn254;
-
-// #[cfg(any(test, feature = "dev-curves"))]
-// pub mod pasta;
+#[cfg(any(test, feature = "dev-curves"))]
+pub mod bn256;
 
 // Re-exports for production curves
 pub use bls12_381::{unique_messages, MillerLoopResult, PairingG1G2, PairingG2G1};
