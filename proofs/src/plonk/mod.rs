@@ -28,6 +28,7 @@ mod circuit;
 mod error;
 pub(crate) mod evaluation;
 mod keygen;
+pub(crate) mod linearization;
 pub(crate) mod lookup;
 pub mod permutation;
 pub(crate) mod traces;
