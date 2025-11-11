@@ -16,6 +16,7 @@ verification keys break backwards compatibility.
 * Introduce `is_not_equal` and `is_not_equal_to_fixed` [#130](https://github.com/midnightntwrk/midnight-zk/pull/130)
 
 ### Changed
+* Linearize prover and verifier, and reduce proof size [#119](https://github.com/midnightntwrk/midnight-zk/pull/119)
 * Optimize `bigint_to_fe` [#115](https://github.com/midnightntwrk/midnight-zk/pull/115)
 * Fix `is_equal` and `is_equal_to_fixed` in `native_chip` [#117](https://github.com/midnightntwrk/midnight-zk/pull/117)
 * Address feedback from ZK Sec audit 3 [#125](https://github.com/midnightntwrk/midnight-zk/pull/125)

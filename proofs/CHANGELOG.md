@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 ### Changed
+* Linearize prover and verifier, and reduce proof size [#119](https://github.com/midnightntwrk/midnight-zk/pull/119)
 * Fix computation of min_k (due to an extra unusable row we were not accounting for) [#114](https://github.com/midnightntwrk/midnight-zk/pull/114)
 
 ### Removed

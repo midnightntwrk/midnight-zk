@@ -2,7 +2,10 @@
 //! transcripts.
 mod implementors;
 
-use std::io::{self, Cursor, Read, Write};
+use std::{
+    fmt::Debug,
+    io::{self, Cursor, Read, Write},
+};
 
 /// Prefix to a prover's message soliciting a challenge
 const BLAKE2B_PREFIX_CHALLENGE: u8 = 0;
