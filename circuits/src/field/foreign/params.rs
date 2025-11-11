@@ -208,7 +208,7 @@ Emulated: Secp256k1's Scalar field
 
 Native fields supported:
  - BN254's Scalar field
- - BLS12-381's Scalar field (halo2curves & blstrs)
+ - BLS12-381's Scalar field
 ====================================================
 */
 
@@ -251,7 +251,7 @@ impl FieldEmulationParams<midnight_curves::Fq, secp256k1::Fq> for MultiEmulation
 Emulated: BLS12-381's Base field
 
 Native fields supported:
- - BLS12-381's Scalar field (halo2curves & blstrs)
+ - BLS12-381's Scalar field
 ====================================================
 */
 
@@ -286,7 +286,7 @@ impl FieldEmulationParams<midnight_curves::Fq, midnight_curves::Fp> for MultiEmu
 Emulated: BN254's Base field
 
 Native fields supported:
- - BLS12-381's Scalar field (halo2curves & blstrs)
+ - BLS12-381's Scalar field
  - BN254's Scalar field
 ====================================================
 */

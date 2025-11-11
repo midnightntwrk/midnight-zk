@@ -22,7 +22,7 @@ macro_rules! run_test_native_gadget {
             plonk::{Circuit, ConstraintSystem},
         };
         use midnight_proofs::plonk::Error;
-        use midnight_curves::pasta::Fp;
+        use midnight_curves::Fq as Scalar;
         use midnight_circuits::{
             types::{AssignedBit, AssignedByte, AssignedNative, ComposableChip},
             instructions::*,
@@ -89,7 +89,7 @@ macro_rules! run_test_native_gadget {
         }
 
         assert_eq!(
-            MockProver::<Fp>::run(10, &(TestCircuit::<4> {}), vec![vec![], vec![]])
+            MockProver::<Scalar>::run(10, &(TestCircuit::<4> {}), vec![vec![], vec![]])
                 .unwrap()
                 .verify(),
             Ok(())
