@@ -5,7 +5,7 @@ use std::marker::PhantomData;
 
 use criterion::{BenchmarkId, Criterion};
 use group::ff::Field;
-use halo2curves::{bn256, bn256::Bn256};
+use midnight_curves::{Bls12, Fq as Scalar};
 use midnight_proofs::{
     circuit::{Cell, Layouter, SimpleFloorPlanner, Value},
     plonk::*,
@@ -255,11 +255,11 @@ fn criterion_benchmark(c: &mut Criterion) {
     fn keygen(
         k: u32,
     ) -> (
-        ParamsKZG<bn256::Bn256>,
-        ProvingKey<bn256::Fr, KZGCommitmentScheme<bn256::Bn256>>,
+        ParamsKZG<Bls12>,
+        ProvingKey<Scalar, KZGCommitmentScheme<Bls12>>,
     ) {
-        let params: ParamsKZG<Bn256> = ParamsKZG::unsafe_setup(k, OsRng);
-        let empty_circuit: MyCircuit<bn256::Fr> = MyCircuit {
+        let params: ParamsKZG<Bls12> = ParamsKZG::unsafe_setup(k, OsRng);
+        let empty_circuit: MyCircuit<Scalar> = MyCircuit {
             a: Value::unknown(),
             k,
         };
@@ -270,19 +270,19 @@ fn criterion_benchmark(c: &mut Criterion) {
 
     fn prover(
         k: u32,
-        params: &ParamsKZG<bn256::Bn256>,
-        pk: &ProvingKey<bn256::Fr, KZGCommitmentScheme<bn256::Bn256>>,
+        params: &ParamsKZG<Bls12>,
+        pk: &ProvingKey<Scalar, KZGCommitmentScheme<Bls12>>,
     ) -> Vec<u8> {
         let rng = OsRng;
 
-        let circuit: MyCircuit<bn256::Fr> = MyCircuit {
-            a: Value::known(bn256::Fr::random(rng)),
+        let circuit: MyCircuit<Scalar> = MyCircuit {
+            a: Value::known(Scalar::random(rng)),
             k,
         };
 
         let mut transcript = CircuitTranscript::init();
 
-        create_proof::<bn256::Fr, KZGCommitmentScheme<bn256::Bn256>, _, _>(
+        create_proof::<Scalar, KZGCommitmentScheme<Bls12>, _, _>(
             params,
             pk,
             &[circuit],
@@ -297,12 +297,12 @@ fn criterion_benchmark(c: &mut Criterion) {
     }
 
     fn verifier(
-        params: &ParamsVerifierKZG<bn256::Bn256>,
-        vk: &VerifyingKey<bn256::Fr, KZGCommitmentScheme<bn256::Bn256>>,
+        params: &ParamsVerifierKZG<Bls12>,
+        vk: &VerifyingKey<Scalar, KZGCommitmentScheme<Bls12>>,
         proof: &[u8],
     ) {
         let mut transcript = CircuitTranscript::init_from_bytes(proof);
-        assert!(prepare::<bn256::Fr, KZGCommitmentScheme<bn256::Bn256>, _>(
+        assert!(prepare::<Scalar, KZGCommitmentScheme<Bls12>, _>(
             vk,
             #[cfg(feature = "committed-instances")]
             &[&[]],

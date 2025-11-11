@@ -2565,19 +2565,19 @@ impl<'a, F: Field> VirtualCells<'a, F> {
 
 #[cfg(test)]
 mod tests {
-    use midnight_curves::bn256::Fr;
+    use midnight_curves::Fq as Scalar;
 
     use super::Expression;
 
     #[test]
     fn iter_sum() {
-        let exprs: Vec<Expression<Fr>> = vec![
+        let exprs: Vec<Expression<Scalar>> = vec![
             Expression::from(1),
             Expression::from(2),
             Expression::from(3),
         ];
-        let happened: Expression<Fr> = exprs.into_iter().sum();
-        let expected: Expression<Fr> = Expression::Sum(
+        let happened: Expression<Scalar> = exprs.into_iter().sum();
+        let expected: Expression<Scalar> = Expression::Sum(
             Box::new(Expression::Sum(
                 Box::new(Expression::from(1)),
                 Box::new(Expression::from(2)),
@@ -2590,13 +2590,13 @@ mod tests {
 
     #[test]
     fn iter_product() {
-        let exprs: Vec<Expression<Fr>> = vec![
+        let exprs: Vec<Expression<Scalar>> = vec![
             Expression::from(2),
             Expression::from(3),
             Expression::from(6),
         ];
-        let happened: Expression<Fr> = exprs.into_iter().product();
-        let expected: Expression<Fr> = Expression::Product(
+        let happened: Expression<Scalar> = exprs.into_iter().product();
+        let expected: Expression<Scalar> = Expression::Product(
             Box::new(Expression::Product(
                 Box::new(Expression::from(2)),
                 Box::new(Expression::from(3)),
