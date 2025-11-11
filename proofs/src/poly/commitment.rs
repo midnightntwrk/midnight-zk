@@ -31,13 +31,13 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
         + Add<Output = Self::Commitment>
         + Mul<F, Output = Self::Commitment>;
 
-    /// Verification guard. Allows for batch verification
+    /// Verification guard. Allows for batch verification.
     type VerificationGuard: Guard<F, Self>;
 
-    /// Generates the parameters of the polynomial commitment scheme
+    /// Generates the parameters of the polynomial commitment scheme.
     fn gen_params(k: u32) -> Self::Parameters;
 
-    /// Extract the `VerifierParameters` from `Parameters`
+    /// Extract the `VerifierParameters` from `Parameters`.
     fn get_verifier_params(params: &Self::Parameters) -> Self::VerifierParameters;
 
     /// Commit to a polynomial in coefficient form

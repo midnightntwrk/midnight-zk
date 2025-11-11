@@ -106,17 +106,20 @@ where
 
     let domain = &pk.vk.domain;
 
-    let instance = bench_and_run!(_group; ref transcript ; ; "Compute instances"; |t|
-        compute_instances(params, pk, instances, nb_committed_instances, t)
+    // Collect one InstanceSingle per proof
+    let instance = bench_and_run!(_group; ref transcript ; ; "Compute instance polys"; |t|
+        compute_instance_polys(params, pk, instances, nb_committed_instances, t)
     )?;
 
+    // Collect one AdviceSingle per proof
     let (advice, challenges) = bench_and_run!(_group; ref transcript; ; "Parse advices"; |t|
         parse_advices(params, pk, circuits, instances, t, &mut rng)
     )?;
 
-    // Sample theta challenge for keeping lookup columns linearly independent
+    // Sample theta challenge for batching independent lookup columns
     let theta: F = transcript.squeeze_challenge();
 
+    // Lookup argument: Construct and commit to permuted advice and table columns
     let lookups: Vec<Vec<lookup::prover::Permuted<F>>> = bench_and_run!(
         _group; ref transcript; ; "Construct and commit permuted columns";
         |t: &mut T|  instance
@@ -146,13 +149,13 @@ where
         })
         .collect::<Result<Vec<_>, _>>())?;
 
-    // Sample beta challenge
+    // Sample beta challenge for permutation argument
     let beta: F = transcript.squeeze_challenge();
 
-    // Sample gamma challenge
+    // Sample gamma challenge for permutation argument
     let gamma: F = transcript.squeeze_challenge();
 
-    // Commit to permutations.
+    // Permutation argument: Construct and commit to limbs of product polynomial
     let permutations: Vec<permutation::prover::Committed<F>> = bench_and_run!(
         _group; ref transcript; ; "Commit permutation functions";
         |t: &mut T|  instance
@@ -174,6 +177,7 @@ where
         })
         .collect::<Result<Vec<_>, _>>())?;
 
+    // Lookup argument: Construct and commit to product polynomial
     let lookups: Vec<Vec<lookup::prover::Committed<F>>> = bench_and_run!(_group;
         ref transcript;  own lookups; "Construct and commit lookup product polynomials";
         |t: &mut T, lookups: Vec<Vec<lookup::prover::Permuted<F>>>| lookups
@@ -187,7 +191,7 @@ where
         })
         .collect::<Result<Vec<_>, _>>())?;
 
-    // Trash argument
+    // Sample challenge for trash argument
     let trash_challenge: F = transcript.squeeze_challenge();
 
     let trashcans: Vec<Vec<trash::prover::Committed<F>>> = bench_and_run!(_group;
@@ -221,7 +225,7 @@ where
         ref transcript; ; "Commit vanishing random poly";
         |t| vanishing::Argument::<F, CS>::commit(params, domain, &mut rng, t))?;
 
-    // Obtain challenge for keeping all separate gates linearly independent
+    // Sample challenge y, for batching independent identities
     let y: F = transcript.squeeze_challenge();
 
     let (instance_polys, instance_values) =
@@ -285,7 +289,8 @@ where
 
     let domain = pk.get_vk().get_domain();
 
-    let h_poly = bench_and_run!(_group; ; ;"Compute H poly"; || compute_h_poly(pk, &trace));
+    let nu_poly =
+        bench_and_run!(_group; ; ;"Compute numerator poly"; || compute_nu_poly(pk, &trace));
 
     let ProverTrace {
         advice_polys,
@@ -297,8 +302,9 @@ where
         ..
     } = trace;
 
-    // Construct the vanishing argument's h(X) commitments
-    let vanishing = bench_and_run!(_group; ref transcript; own h_poly, own vanishing; "Construct vanishing commitments";
+    // Compute the quotient polynomial h(X) = nu(X) / (X^n -1), split it into limbs, commit to each limb
+    // separately, and write limb commitments to the transcript
+    let vanishing = bench_and_run!(_group; ref transcript; own nu_poly, own vanishing; "Construct vanishing commitments";
         |t, h, vanishing: vanishing::prover::Committed<F>| vanishing.construct::<CS, T>(params, domain, h, t))?;
 
     let x: F = transcript.squeeze_challenge();
@@ -423,7 +429,7 @@ where
     )
 }
 
-fn compute_instances<F, CS, T>(
+fn compute_instance_polys<F, CS, T>(
     params: &CS::Parameters,
     pk: &ProvingKey<F, CS>,
     instances: &[&[&[F]]],
@@ -452,7 +458,7 @@ where
                     let is_committed_instance = i < nb_committed_instances;
                     let mut poly = pk.vk.domain.empty_lagrange();
                     assert_eq!(poly.len(), pk.vk.domain.n as usize);
-                    if values.len() > (poly.len() - (pk.vk.cs.blinding_factors() + 1)) {
+                    if values.len() > (poly.len() - (pk.vk.cs.nr_blinding_factors() + 1)) {
                         return Err(Error::InstanceTooLarge);
                     }
                     if !is_committed_instance {
@@ -531,7 +537,7 @@ where
     ];
     let mut challenges = HashMap::<usize, F>::with_capacity(meta.num_challenges);
 
-    let unusable_rows_start = domain.n as usize - (meta.blinding_factors() + 1);
+    let unusable_rows_start = domain.n as usize - (meta.nr_blinding_factors() + 1);
     for current_phase in pk.vk.cs.phases() {
         let column_indices = meta
             .advice_column_phase
@@ -626,7 +632,7 @@ where
     Ok((advice, challenges))
 }
 
-fn compute_h_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>>(
+fn compute_nu_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>>(
     pk: &ProvingKey<F, CS>,
     trace: &ProverTrace<F>,
 ) -> Polynomial<F, ExtendedLagrangeCoeff> {
@@ -664,8 +670,9 @@ fn compute_h_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F
         })
         .collect();
 
-    // Evaluate the h(X) polynomial
-    pk.ev.evaluate_h::<ExtendedLagrangeCoeff>(
+    // Evaluate the numerator polynomial nu(X) of the quotient polynomial h(X) = nu(X) / (X^n-1):
+    // nu(X) is a random linear combination of all independent identities
+    pk.ev.evaluate_numerator::<ExtendedLagrangeCoeff>(
         &pk.vk.domain,
         &pk.vk.cs,
         &advice_cosets.iter().map(|a| a.as_slice()).collect::<Vec<_>>(),

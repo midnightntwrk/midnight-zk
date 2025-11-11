@@ -317,7 +317,7 @@ impl<G: PrimeGroup, ConcreteCircuit: Circuit<G::Scalar>> CircuitCost<G, Concrete
         let permutation_cols = cs.permutation.get_columns().len();
         if permutation_cols > max_deg - 2 {
             // permutation_product_poly for chaining chunks.
-            point_sets.insert(vec![-((cs.blinding_factors() + 1) as i32), 0, 1]);
+            point_sets.insert(vec![-((cs.nr_blinding_factors() + 1) as i32), 0, 1]);
         }
 
         CircuitCost {

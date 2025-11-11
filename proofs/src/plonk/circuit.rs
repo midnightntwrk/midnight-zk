@@ -2340,7 +2340,7 @@ impl<F: Field> ConstraintSystem<F> {
 
     /// Compute the number of blinding factors necessary to perfectly blind
     /// each of the prover's witness polynomials.
-    pub fn blinding_factors(&self) -> usize {
+    pub fn nr_blinding_factors(&self) -> usize {
         // All of the prover's advice columns are evaluated at no more than
         let factors = *self.num_advice_queries.iter().max().unwrap_or(&1);
         // distinct points during gate checks.
@@ -2378,7 +2378,7 @@ impl<F: Field> ConstraintSystem<F> {
     /// Returns the minimum necessary rows that need to exist in order to
     /// account for e.g. blinding factors.
     pub fn minimum_rows(&self) -> usize {
-        self.blinding_factors() // m blinding factors
+        self.nr_blinding_factors() // m blinding factors
             + 1 // for l_{-(m + 1)} (l_last)
             + 1 // for l_0 (just for extra breathing room for the permutation
                 // argument, to essentially force a separation in the

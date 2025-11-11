@@ -48,7 +48,8 @@ where
         }
     }
 
-    // Check that instances matches the expected number of instance columns
+    // Check that number of instances matches the expected number of instance
+    // columns
     for (committed_instances, instances) in committed_instances.iter().zip(instances.iter()) {
         if committed_instances.len() + instances.len() != vk.cs.num_instance_columns {
             return Err(Error::InvalidInstances);
@@ -75,8 +76,7 @@ where
         }
     }
 
-    // Hash the prover's advice commitments into the transcript and squeeze
-    // challenges
+    // Read commitments to advice columns from the transcript and squeeze challenges
     let (advice_commitments, challenges) = {
         let mut advice_commitments =
             vec![vec![CS::Commitment::default(); vk.cs.num_advice_columns]; num_proofs];
@@ -102,12 +102,13 @@ where
         (advice_commitments, challenges)
     };
 
-    // Sample theta challenge for keeping lookup columns linearly independent
+    // Sample theta challenge for batching independent lookup columns
     let theta: F = transcript.squeeze_challenge();
 
-    let lookups_permuted = (0..num_proofs)
+    // Lookup argument: Read commitments to permuted input and table columns from
+    // the transcript
+    let lookup_permuted_commitments = (0..num_proofs)
         .map(|_| -> Result<Vec<_>, _> {
-            // Hash each lookup permuted commitment
             vk.cs
                 .lookups
                 .iter()
@@ -116,23 +117,22 @@ where
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    // Sample beta challenge
+    // Sample beta challenge for permutation argument
     let beta: F = transcript.squeeze_challenge();
 
-    // Sample gamma challenge
+    // Sample gamma challenge for permutation argument
     let gamma: F = transcript.squeeze_challenge();
 
-    let permutations_committed = (0..num_proofs)
-        .map(|_| {
-            // Hash each permutation product commitment
-            vk.cs.permutation.read_product_commitments(vk, transcript)
-        })
+    // Permutation argument: Read commitments to limbs of product polynomial from
+    // the transcript
+    let permutation_product_commitments = (0..num_proofs)
+        .map(|_| vk.cs.permutation.read_product_commitments(vk, transcript))
         .collect::<Result<Vec<_>, _>>()?;
 
-    let lookups_committed = lookups_permuted
+    // Lookup argument: Read commitments to product polynomial from the transcript
+    let lookup_product_commitments = lookup_permuted_commitments
         .into_iter()
         .map(|lookups| {
-            // Hash each lookup product commitment
             lookups
                 .into_iter()
                 .map(|lookup| lookup.read_product_commitment(transcript))
@@ -140,9 +140,11 @@ where
         })
         .collect::<Result<Vec<_>, _>>()?;
 
+    // Sample trash challenge
     let trash_challenge: F = transcript.squeeze_challenge();
 
-    let trashcans_committed = (0..num_proofs)
+    // Read commitments to trashcans from the transcript
+    let trashcan_commitments = (0..num_proofs)
         .map(|_| -> Result<Vec<_>, _> {
             vk.cs
                 .trashcans
@@ -154,15 +156,15 @@ where
 
     let vanishing = vanishing::Argument::read_commitments_before_y(transcript)?;
 
-    // Sample y challenge, which keeps the gates linearly independent.
+    // Sample challenge y, for batching independent identities
     let y: F = transcript.squeeze_challenge();
 
     Ok(VerifierTrace {
         advice_commitments,
         vanishing,
-        lookups: lookups_committed,
-        trashcans: trashcans_committed,
-        permutations: permutations_committed,
+        lookups: lookup_product_commitments,
+        trashcans: trashcan_commitments,
+        permutations: permutation_product_commitments,
         challenges,
         beta,
         gamma,
@@ -222,10 +224,11 @@ where
         y,
     } = trace;
 
+    // Read commitments to the limbs of the quotient polynomial
+    // h(X) = nu(X) / (X^n-1) from the transcript
     let vanishing = vanishing.read_commitments_after_y(vk, transcript)?;
 
-    // Sample x challenge, which is used to ensure the circuit is
-    // satisfied with high probability.
+    // Sample evaluation challenge x
     let x: F = transcript.squeeze_challenge();
     let xn = x.pow_vartime([vk.n()]);
 
@@ -273,6 +276,7 @@ where
             .collect::<Result<Vec<_>, _>>()?
     };
 
+    // Read evals of all advice polys from transcript
     let advice_evals = (0..num_proofs)
         .map(|_| -> Result<Vec<_>, _> { read_n(transcript, vk.cs.advice_queries.len()) })
         .collect::<Result<Vec<_>, _>>()?;
@@ -282,12 +286,12 @@ where
 
     let permutations_common = vk.permutation.evaluate(transcript)?;
 
-    let permutations_evaluated = permutations
+    let permutation_evals = permutations
         .into_iter()
         .map(|permutation| permutation.evaluate(transcript))
         .collect::<Result<Vec<_>, _>>()?;
 
-    let lookups_evaluated = lookups
+    let lookup_evals = lookups
         .into_iter()
         .map(|lookups| -> Result<Vec<_>, _> {
             lookups
@@ -297,7 +301,7 @@ where
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    let trashcans_evaluated = trashcans
+    let trashcan_evals = trashcans
         .into_iter()
         .map(|trashcans| -> Result<Vec<_>, _> {
             trashcans
@@ -310,7 +314,7 @@ where
     // This check ensures the circuit is satisfied so long as the polynomial
     // commitments open to the correct values.
     let vanishing = {
-        let blinding_factors = vk.cs.blinding_factors();
+        let blinding_factors = vk.cs.nr_blinding_factors();
         let l_evals = vk.domain.l_i_range(x, xn, (-((blinding_factors + 1) as i32))..=0);
         assert_eq!(l_evals.len(), 2 + blinding_factors);
         let l_last = l_evals[0];
@@ -322,9 +326,9 @@ where
         let expressions = advice_evals
             .iter()
             .zip(instance_evals.iter())
-            .zip(permutations_evaluated.iter())
-            .zip(lookups_evaluated.iter())
-            .zip(trashcans_evaluated.iter())
+            .zip(permutation_evals.iter())
+            .zip(lookup_evals.iter())
+            .zip(trashcan_evals.iter())
             .flat_map(
                 |((((advice_evals, instance_evals), permutation), lookups), trash)| {
                     let challenges = &challenges;
@@ -403,9 +407,9 @@ where
         .zip(instance_evals.iter())
         .zip(advice_commitments.iter())
         .zip(advice_evals.iter())
-        .zip(permutations_evaluated.iter())
-        .zip(lookups_evaluated.iter())
-        .zip(trashcans_evaluated.iter())
+        .zip(permutation_evals.iter())
+        .zip(lookup_evals.iter())
+        .zip(trashcan_evals.iter())
         .flat_map(
             |(
                 (

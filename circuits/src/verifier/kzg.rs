@@ -223,7 +223,7 @@ impl<S: SelfEmulation> VerifierQuery<S> {
         }
     }
 
-    /// Create a verifier query on a commitment (respresented as an MSM).
+    /// Create a verifier query on a commitment (represented as an MSM).
     pub(crate) fn new_from_msm(
         point: &AssignedNative<S::F>,
         commitment: &AssignedMsm<S>,

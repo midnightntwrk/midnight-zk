@@ -306,7 +306,7 @@ pub(crate) fn cost_model_options<F: Ord + Field + FromUniformBytes<64>, C: Circu
     let permutation = Permutation {
         chunk_len: cs.degree() - 2,
         columns: cs.permutation().get_columns().len(),
-        u: -((cs.blinding_factors() + 1) as isize),
+        u: -((cs.nr_blinding_factors() + 1) as isize),
     };
 
     // Note that this computation does't assume that `regions` is already in
@@ -335,7 +335,7 @@ pub(crate) fn cost_model_options<F: Ord + Field + FromUniformBytes<64>, C: Circu
         (table_rows_count, rows_count)
     };
 
-    let nb_unusable_rows = cs.blinding_factors() + 1;
+    let nb_unusable_rows = cs.nr_blinding_factors() + 1;
 
     let nb_instances = prover.instance_rows.take();
     let min_circuit_size = [
