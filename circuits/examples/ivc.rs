@@ -256,11 +256,12 @@ fn main() {
     let pk = keygen_pk(vk.clone(), &default_ivc_circuit).unwrap();
     println!("Computed vk and pk in {:?} s", start.elapsed());
 
+    let (mut perm, fixed) = midnight_circuits::verifier::fixed_bases::<S>("self_vk", &vk);
+    perm.insert(String::from("com_instance"), C::identity());
+
     let mut fixed_bases = BTreeMap::new();
-    fixed_bases.insert(String::from("com_instance"), C::identity());
-    fixed_bases.extend(midnight_circuits::verifier::fixed_bases::<S>(
-        "self_vk", &vk,
-    ));
+    fixed_bases.extend(perm.clone());
+    fixed_bases.extend(fixed);
     let fixed_base_names = fixed_bases.keys().cloned().collect::<Vec<_>>();
 
     // This trivial accumulator must have a single base and scalar of F::ONE, and
@@ -342,8 +343,9 @@ fn main() {
 
             assert!(dual_msm.clone().check(&srs.verifier_params()));
 
+            let fixed_base_indices = dual_msm.right.fixed_base_indices();
             let mut proof_acc: Accumulator<S> = dual_msm.into();
-            proof_acc.extract_fixed_bases(&fixed_bases);
+            proof_acc.extract_fixed_bases("self_vk", &perm, fixed_base_indices);
             proof_acc.collapse();
             proof_acc
         };

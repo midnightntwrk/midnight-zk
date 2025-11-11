@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 * Rebase to new `circuits/` [#120](https://github.com/midnightntwrk/midnight-zk/pull/120)
 * Rebase to new `circuits/` with `sha512` [#96](https://github.com/midnightntwrk/midnight-zk/pull/96)
 ### Changed
+* Integrate with linearization [#119](https://github.com/midnightntwrk/midnight-zk/pull/119)
 ### Removed
 
 [0.1.2]

@@ -127,13 +127,14 @@ impl<S: SelfEmulation> Accumulator<S> {
         let hash_input =
             accs.iter().flat_map(AssignedAccumulator::as_public_input).collect::<Vec<_>>();
 
+        // Sample a random batching challenge, for batching the individual MSMs
         let r = <S::SpongeChip as HashCPU<S::F, S::F>>::hash(&hash_input);
-        let rs = (0..accs.len()).map(|i| r.pow([i as u64]));
+        let r_powers = std::iter::successors(Some(S::F::ONE), |&prev| Some(prev * r));
         #[cfg(feature = "truncated-challenges")]
         let rs = rs.map(truncate_off_circuit).collect::<Vec<_>>();
 
         let mut acc = accs[0].clone();
-        for (other, ri) in accs.iter().zip(rs).skip(1) {
+        for (other, ri) in accs.iter().zip(r_powers).skip(1) {
             acc.lhs = acc.lhs.accumulate_with_r(&other.lhs, ri);
             acc.rhs = acc.rhs.accumulate_with_r(&other.rhs, ri);
         }
@@ -163,8 +164,13 @@ impl<S: SelfEmulation> Accumulator<S> {
     ///
     /// If some of the provided fixed bases do not appear in `self.rhs.bases`
     /// with the exact required multiplicity.
-    pub fn extract_fixed_bases(&mut self, fixed_bases: &BTreeMap<String, S::C>) {
-        self.rhs.extract_fixed_bases(fixed_bases);
+    pub fn extract_fixed_bases(
+        &mut self,
+        prefix: &str,
+        fixed_bases: &BTreeMap<String, S::C>,
+        indices: Vec<Option<usize>>,
+    ) {
+        self.rhs.extract_fixed_bases(prefix, fixed_bases, indices);
     }
 }
 
@@ -198,15 +204,15 @@ impl<S: SelfEmulation> AssignedAccumulator<S> {
     /// The committed instance part corresponds to the MSM (fixed and non-fixed)
     /// scalars of the accumulator RHS.
     pub fn as_public_input_with_committed_scalars(acc: &Accumulator<S>) -> (Vec<S::F>, Vec<S::F>) {
-        let (rhs_scalars, rhs_committed_scalars) =
+        let (rhs_bases, rhs_scalars) =
             AssignedMsm::as_public_input_with_committed_scalars(&acc.rhs);
 
-        let normal_instance = [AssignedMsm::as_public_input(&acc.lhs), rhs_scalars]
+        let rhs_bases_and_lhs = [AssignedMsm::as_public_input(&acc.lhs), rhs_bases]
             .into_iter()
             .flatten()
             .collect();
 
-        (normal_instance, rhs_committed_scalars)
+        (rhs_bases_and_lhs, rhs_scalars)
     }
 }
 

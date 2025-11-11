@@ -207,10 +207,8 @@ impl CostOptions {
             + comp_bytes(0, 1) * self.permutation.columns;
 
         // Vanishing argument:
-        // - COMM bytes for random poly
         // - (max_deg - 1) COMM bytes for the pieces
-        // - SCALAR bytes for random piece eval
-        let vanishing = comp_bytes(self.max_degree, 1);
+        let vanishing = comp_bytes(self.max_degree - 1, 0);
 
         // Multiopening argument:
         // - COMM bytes for f_commitment
@@ -229,7 +227,7 @@ impl CostOptions {
             nr_rotations.extend(poly.rotations.clone());
         }
 
-        let size = plonk + vanishing + multiopen;
+        let size = plonk + multiopen + vanishing;
 
         CircuitModel {
             k: self.min_k,
@@ -275,7 +273,9 @@ pub(crate) fn cost_model_options<F: Ord + Field + FromUniformBytes<64>, C: Circu
         // init the fixed polynomials with no rotations
         let mut fixed = vec![Poly { rotations: vec![] }; cs.num_fixed_columns()];
         for (col, rot) in cs.fixed_queries() {
-            fixed[col.index()].rotations.push(rot.0 as isize);
+            if !cs.indices_simple_selectors.contains(&col.index()) {
+                fixed[col.index()].rotations.push(rot.0 as isize);
+            }
         }
         fixed
     };
@@ -306,7 +306,7 @@ pub(crate) fn cost_model_options<F: Ord + Field + FromUniformBytes<64>, C: Circu
     let permutation = Permutation {
         chunk_len: cs.degree() - 2,
         columns: cs.permutation().get_columns().len(),
-        u: -((cs.blinding_factors() + 1) as isize),
+        u: -((cs.nr_blinding_factors() + 1) as isize),
     };
 
     // Note that this computation does't assume that `regions` is already in
@@ -335,7 +335,7 @@ pub(crate) fn cost_model_options<F: Ord + Field + FromUniformBytes<64>, C: Circu
         (table_rows_count, rows_count)
     };
 
-    let nb_unusable_rows = cs.blinding_factors() + 1;
+    let nb_unusable_rows = cs.nr_blinding_factors() + 1;
 
     let nb_instances = prover.instance_rows.take();
     let min_circuit_size = [

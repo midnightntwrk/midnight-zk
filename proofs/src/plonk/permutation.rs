@@ -2,7 +2,8 @@
 
 use super::circuit::{Any, Column};
 use crate::{
-    poly::{Coeff, ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial},
+    plonk::{self, permutation::verifier::CommonEvaluated},
+    poly::{Coeff, ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial, Rotation},
     utils::{
         helpers::{polynomial_slice_byte_length, read_polynomial_vec, write_polynomial_slice},
         SerdeFormat,
@@ -13,7 +14,7 @@ pub(crate) mod keygen;
 pub(crate) mod prover;
 pub(crate) mod verifier;
 
-use std::io;
+use std::{io, iter};
 
 use ff::{PrimeField, WithSmallOrderMulGroup};
 use halo2curves::serde::SerdeObject;
@@ -172,4 +173,108 @@ impl<F: PrimeField> ProvingKey<F> {
             + polynomial_slice_byte_length(&self.polys)
             + polynomial_slice_byte_length(&self.cosets)
     }
+}
+#[derive(Debug)]
+pub(crate) struct EvaluatedSet<F: PrimeField> {
+    pub permutation_product_eval: F,
+    pub permutation_product_next_eval: F,
+    pub permutation_product_last_eval: Option<F>,
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(in crate::plonk) fn expressions<'a, F: PrimeField, CS: PolynomialCommitmentScheme<F>>(
+    sets: &'a [EvaluatedSet<F>],
+    vk: &'a plonk::VerifyingKey<F, CS>,
+    p: &'a Argument,
+    common: &'a CommonEvaluated<F>,
+    advice_evals: &'a [F],
+    fixed_evals: &'a [F],
+    instance_evals: &'a [F],
+    l_0: F,
+    l_last: F,
+    l_blind: F,
+    beta: F,
+    gamma: F,
+    x: F,
+) -> impl Iterator<Item = F> + 'a {
+    let chunk_len = vk.cs_degree - 2;
+    iter::empty()
+        // Enforce only for the first set.
+        // l_0(X) * (1 - z_0(X)) = 0
+        .chain(
+            sets.first()
+                .map(|first_set| l_0 * &(F::ONE - &first_set.permutation_product_eval)),
+        )
+        // Enforce only for the last set.
+        // l_last(X) * (z_l(X)^2 - z_l(X)) = 0
+        .chain(sets.last().map(|last_set| {
+            (last_set.permutation_product_eval.square() - &last_set.permutation_product_eval)
+                * &l_last
+        }))
+        // Except for the first set, enforce.
+        // l_0(X) * (z_i(X) - z_{i-1}(\omega^(last) X)) = 0
+        .chain(
+            sets.iter()
+                .skip(1)
+                .zip(sets.iter())
+                .map(|(set, last_set)| {
+                    (
+                        set.permutation_product_eval,
+                        last_set.permutation_product_last_eval.unwrap(),
+                    )
+                })
+                .map(move |(set, prev_last)| (set - &prev_last) * &l_0),
+        )
+        // And for all the sets we enforce:
+        // (1 - (l_last(X) + l_blind(X))) * (
+        //   z_i(\omega X) \prod (p(X) + \beta s_i(X) + \gamma)
+        // - z_i(X) \prod (p(X) + \delta^i \beta X + \gamma)
+        // )
+        .chain(
+            sets.iter()
+                .zip(p.columns.chunks(chunk_len))
+                .zip(common.permutation_evals.chunks(chunk_len))
+                .enumerate()
+                .map(move |(chunk_index, ((set, columns), permutation_evals))| {
+                    let mut left = set.permutation_product_next_eval;
+                    for (eval, permutation_eval) in columns
+                        .iter()
+                        .map(|&column| match column.column_type() {
+                            Any::Advice(_) => {
+                                advice_evals[vk.cs.get_any_query_index(column, Rotation::cur())]
+                            }
+                            Any::Fixed => {
+                                fixed_evals[vk.cs.get_any_query_index(column, Rotation::cur())]
+                            }
+                            Any::Instance => {
+                                instance_evals[vk.cs.get_any_query_index(column, Rotation::cur())]
+                            }
+                        })
+                        .zip(permutation_evals.iter())
+                    {
+                        left *= &(eval + &(beta * permutation_eval) + &gamma);
+                    }
+
+                    let mut right = set.permutation_product_eval;
+                    let mut current_delta = (beta * &x)
+                        * &(<F as PrimeField>::DELTA
+                            .pow_vartime([(chunk_index * chunk_len) as u64]));
+                    for eval in columns.iter().map(|&column| match column.column_type() {
+                        Any::Advice(_) => {
+                            advice_evals[vk.cs.get_any_query_index(column, Rotation::cur())]
+                        }
+                        Any::Fixed => {
+                            fixed_evals[vk.cs.get_any_query_index(column, Rotation::cur())]
+                        }
+                        Any::Instance => {
+                            instance_evals[vk.cs.get_any_query_index(column, Rotation::cur())]
+                        }
+                    }) {
+                        right *= &(eval + &current_delta + &gamma);
+                        current_delta *= &F::DELTA;
+                    }
+
+                    (left - &right) * (F::ONE - &(l_last + &l_blind))
+                }),
+        )
 }
