@@ -200,40 +200,55 @@ impl<S: SelfEmulation> Msm<S> {
     ///
     /// If some of the provided fixed bases do not appear in `self.bases` with
     /// the exact required multiplicity.
-    pub fn extract_fixed_bases(&mut self, fixed_bases: &BTreeMap<String, S::C>) {
+    pub fn extract_fixed_bases(
+        &mut self,
+        prefix: &str,
+        fixed_bases: &BTreeMap<String, S::C>,
+        indices: Vec<Option<usize>>,
+    ) {
         assert!(
             fixed_bases.keys().all(|name| !self.fixed_base_scalars.contains_key(name)),
             "fixed_bases should not contain keys (names) that appear in self.fixed_base_scalars"
         );
+        assert_eq!(self.bases.len(), indices.len());
 
-        let n = self.bases.len();
+        let mut removal_indices = Vec::with_capacity(indices.len() + fixed_bases.len());
 
+        // Extract scalars w.r.t. permutation bases, committed instances,
+        // and the generator
         for (name, fixed_base) in fixed_bases.iter() {
-            let mut found = false;
-            for i in 0..n {
-                if i >= self.bases.len() {
-                    break;
+            match self.bases.iter().position(|base| *base == *fixed_base) {
+                None => {
+                    panic!(
+                        "{fixed_base:?} not found in self.bases (with the required multiplicity)"
+                    )
                 }
-                if &self.bases[i] == fixed_base {
-                    found = true;
-                    self.fixed_base_scalars.insert(name.clone(), self.scalars[i]);
-                    self.bases.remove(i);
-                    self.scalars.remove(i);
-                    break;
+                Some(idx) => {
+                    self.fixed_base_scalars.insert(name.clone(), self.scalars[idx]);
+                    removal_indices.push(idx);
                 }
-            }
-            if !found {
-                panic!("{fixed_base:?} not found in self.bases (with the required multiplicity)");
             }
         }
 
-        // Do another search to make sure that the fixed bases do not appear
-        // anymore, thus they had the exact required multiplicity.
-        for fixed_base in fixed_bases.values() {
-            if self.bases.iter().any(|base| base == fixed_base) {
-                panic!("{fixed_base:?} appears in self.bases more times than expected");
-            }
-        }
+        // Extract scalars w.r.t to fixed bases
+        removal_indices.extend(indices.iter().enumerate().filter_map(|(removal_idx, idx)| {
+            idx.map(|inner_idx| {
+                let name = crate::verifier::fixed_commitment_name(prefix, indices.len(), inner_idx);
+                self.fixed_base_scalars.insert(name, self.scalars[removal_idx]);
+                removal_idx
+            })
+        }));
+
+        let (b, s) = self
+            .bases()
+            .iter()
+            .zip(self.scalars().iter())
+            .enumerate()
+            .filter_map(|(idx, (&b, s))| (!removal_indices.contains(&idx)).then_some((b, s)))
+            .unzip::<S::C, &S::F, Vec<S::C>, Vec<S::F>>();
+
+        self.bases = b;
+        self.scalars = s;
     }
 }
 

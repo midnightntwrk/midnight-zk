@@ -104,12 +104,12 @@ fn commitment_name(prefix: String, nb_commitments: usize, i: usize) -> String {
 }
 
 /// Canonical name for the i-th verifying-key fixed commitment.
-fn fixed_commitment_name(prefix: &str, nb_fixed_commitments: usize, i: usize) -> String {
+pub fn fixed_commitment_name(prefix: &str, nb_fixed_commitments: usize, i: usize) -> String {
     commitment_name(String::from(prefix) + "_fixed_com", nb_fixed_commitments, i)
 }
 
 /// Canonical name for the i-th verifying-key permutation commitment.
-fn perm_commitment_name(prefix: &str, nb_perm_commitments: usize, i: usize) -> String {
+pub fn perm_commitment_name(prefix: &str, nb_perm_commitments: usize, i: usize) -> String {
     commitment_name(String::from(prefix) + "_perm_com", nb_perm_commitments, i)
 }
 
@@ -132,14 +132,21 @@ impl<S: SelfEmulation> AssignedVk<S> {
 pub fn fixed_bases<S: SelfEmulation>(
     vk_name: &str,
     vk: &VerifyingKey<S>,
-) -> BTreeMap<String, S::C> {
+) -> (BTreeMap<String, S::C>, BTreeMap<String, S::C>) {
+    let mut fixed_perm_bases = BTreeMap::new();
     let mut fixed_bases = BTreeMap::new();
-
-    fixed_bases.insert(String::from("~G"), -S::C::generator());
 
     let fixed_commitments = vk.fixed_commitments();
     let perm_commitments = vk.permutation().commitments();
 
+    fixed_perm_bases.insert(String::from("~G"), -S::C::generator());
+
+    for (i, com) in perm_commitments.iter().enumerate() {
+        fixed_perm_bases.insert(
+            perm_commitment_name(vk_name, perm_commitments.len(), i),
+            *com,
+        );
+    }
     for (i, com) in fixed_commitments.iter().enumerate() {
         fixed_bases.insert(
             fixed_commitment_name(vk_name, fixed_commitments.len(), i),
@@ -147,14 +154,7 @@ pub fn fixed_bases<S: SelfEmulation>(
         );
     }
 
-    for (i, com) in perm_commitments.iter().enumerate() {
-        fixed_bases.insert(
-            perm_commitment_name(vk_name, perm_commitments.len(), i),
-            *com,
-        );
-    }
-
-    fixed_bases
+    (fixed_perm_bases, fixed_bases)
 }
 
 /// The names of the fixed bases of a verifying key. This function is designed

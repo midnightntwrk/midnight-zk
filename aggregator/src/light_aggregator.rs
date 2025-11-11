@@ -262,6 +262,7 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
                 + cs.num_instance_columns()
                 + cs.permutation().get_columns().len()
                 + 3 * cs.lookups().len()
+                + cs.indices_simple_selectors().len()
         };
 
         let aggregator_vk = keygen_vk(srs, &default_aggregator_circuit)?;
@@ -304,7 +305,7 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
         let proof_accs: Vec<Accumulator<S>> = (proofs.iter())
             .zip(instances.iter())
             .enumerate()
-            .map(|(i, (proof, proof_instances))| {
+            .map(|(idx, (proof, proof_instances))| {
                 let mut inner_transcript =
                     CircuitTranscript::<LightPoseidonFS<F>>::init_from_bytes(proof);
                 let dual_msm = plonk::prepare::<
@@ -321,14 +322,17 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
                 assert!(dual_msm.clone().check(&srs.verifier_params()));
 
                 let mut fixed_bases = BTreeMap::new();
-                fixed_bases.insert(com_instance_name::<NB_PROOFS>(i), C::identity());
-                fixed_bases.extend(midnight_circuits::verifier::fixed_bases::<S>(
-                    "inner_vk",
-                    &self.inner_vk,
-                ));
+                fixed_bases.insert(com_instance_name::<NB_PROOFS>(idx), C::identity());
+
+                let (perm, _) =
+                    midnight_circuits::verifier::fixed_bases::<S>("inner_vk", &self.inner_vk);
+                fixed_bases.extend(perm);
+
+                let fixed_base_scalars = dual_msm.right.fixed_base_indices();
 
                 let mut proof_acc: Accumulator<S> = dual_msm.into();
-                proof_acc.extract_fixed_bases(&fixed_bases);
+                proof_acc.extract_fixed_bases("inner_vk", &fixed_bases, fixed_base_scalars);
+
                 Ok(proof_acc)
             })
             .collect::<Result<_, Error>>()?;
@@ -341,13 +345,14 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
         for i in 0..NB_PROOFS {
             fixed_bases.insert(com_instance_name::<NB_PROOFS>(i), C::identity());
         }
-        fixed_bases.extend(midnight_circuits::verifier::fixed_bases::<S>(
-            "inner_vk",
-            &self.inner_vk,
-        ));
-        assert!(acc.check(&srs.s_g2().into(), &fixed_bases)); // sanity check
+        let (perm, fixed) =
+            midnight_circuits::verifier::fixed_bases::<S>("inner_vk", &self.inner_vk);
+        fixed_bases.extend(perm);
+        fixed_bases.extend(fixed);
 
-        // We now proceed to aggregating all proofs.
+        assert!(acc.check(&srs.s_g2().into(), &fixed_bases)); // Sanity check
+
+        // We now proceed to aggregating all proofs
         let aggregator_circuit = AggregatorCircuit::<NB_PROOFS> {
             inner_vk: (
                 self.inner_vk.get_domain().clone(),
@@ -473,10 +478,11 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
             for i in 0..NB_PROOFS {
                 fixed_bases.insert(com_instance_name::<NB_PROOFS>(i), C::identity());
             }
-            fixed_bases.extend(midnight_circuits::verifier::fixed_bases::<S>(
-                "inner_vk",
-                &self.inner_vk,
-            ));
+            let (perm, fixed) =
+                midnight_circuits::verifier::fixed_bases::<S>("inner_vk", &self.inner_vk);
+            fixed_bases.extend(perm);
+            fixed_bases.extend(fixed);
+
             fixed_bases
         };
 
