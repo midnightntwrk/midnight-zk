@@ -1619,6 +1619,8 @@ pub struct Gate<F: Field> {
     name: String,
     constraint_names: Vec<String>,
     polys: Vec<Expression<F>>,
+    // Track indices of fixed columns corresponding to multiplicative simple selectors
+    simple_selector_index: Option<usize>,
     /// We track queried selectors separately from other cells, so that we can
     /// use them to trigger debug checks on gates.
     queried_selectors: Vec<Selector>,
@@ -1641,6 +1643,17 @@ impl<F: Field> Gate<F> {
         &self.polys
     }
 
+    /// If gate selector is (multiplicative and) simple, returns index of
+    /// fixed column corresponding to this selector. Otherwise, returns None.
+    pub fn simple_selector_index(&self) -> Option<usize> {
+        self.simple_selector_index
+    }
+
+    // Set simple selector index of this gate
+    pub(crate) fn set_simple_selector_index(&mut self, idx: usize) {
+        self.simple_selector_index = Some(idx);
+    }
+
     pub(crate) fn queried_selectors(&self) -> &[Selector] {
         &self.queried_selectors
     }
@@ -1658,6 +1671,13 @@ pub struct ConstraintSystem<F: Field> {
     pub(crate) num_advice_columns: usize,
     pub(crate) num_instance_columns: usize,
     pub(crate) num_selectors: usize,
+    // Marks simple selectors: True if selector is simple, False otherwise
+    pub(crate) selector_flags: Vec<bool>,
+    // Tracks the column index of fixed columns corresponding to simple selectors
+    pub(crate) indices_simple_selectors: Vec<usize>,
+    // The nr of fixed evals that are part of the transcript
+    // (i.e., nr of fixed columns - nr of simple, multiplicative selectors)
+    pub(crate) num_evaluated_fixed_queries: usize,
     pub(crate) num_challenges: usize,
 
     /// Contains the index of each advice column that is left unblinded.
@@ -1789,6 +1809,9 @@ impl<F: Field> Default for ConstraintSystem<F> {
             num_advice_columns: 0,
             num_instance_columns: 0,
             num_selectors: 0,
+            selector_flags: vec![],
+            indices_simple_selectors: vec![],
+            num_evaluated_fixed_queries: 0,
             num_challenges: 0,
             unblinded_advice_columns: Vec::new(),
             advice_column_phase: Vec::new(),
@@ -1808,7 +1831,17 @@ impl<F: Field> Default for ConstraintSystem<F> {
     }
 }
 
-impl<F: Field> ConstraintSystem<F> {
+impl<'com, F: Field> ConstraintSystem<F> {
+    /// Returns the indices of fixed columns corresponding to simple selectors
+    pub fn indices_simple_selectors(&'com self) -> &'com Vec<usize> {
+        &self.indices_simple_selectors
+    }
+
+    /// Returns the indices of fixed columns corresponding to simple selectors
+    pub fn num_evaluated_fixed_queries(&self) -> usize {
+        self.num_evaluated_fixed_queries
+    }
+
     /// Obtain a pinned version of this constraint system; a structure with the
     /// minimal parameters needed to determine the rest of the constraint
     /// system.
@@ -2040,6 +2073,19 @@ impl<F: Field> ConstraintSystem<F> {
             "Gates must contain at least one constraint."
         );
 
+        // Only keep track of selector indices of multiplic., simple selectors
+        let simple_selector_index = match constraints.selector {
+            SelectorType::Multiplicative(s) => {
+                if s.is_simple() {
+                    Some(s.index())
+                } else {
+                    None
+                }
+            }
+            SelectorType::Additive(_) => None,
+            SelectorType::None => None,
+        };
+
         let (constraint_names, polys): (_, Vec<_>) = cells
             .apply_selector_to_constraints(constraints)
             .into_iter()
@@ -2056,6 +2102,7 @@ impl<F: Field> ConstraintSystem<F> {
             name: name.into(),
             constraint_names,
             polys,
+            simple_selector_index,
             queried_selectors,
             queried_cells,
         });
@@ -2071,12 +2118,17 @@ impl<F: Field> ConstraintSystem<F> {
         // counted for this constraint system.
         assert_eq!(selectors.len(), self.num_selectors);
 
+        let nr_fixed_columns = self.num_fixed_columns();
         let (polys, selector_replacements): (Vec<_>, Vec<_>) = selectors
             .into_iter()
-            .map(|selector| {
+            .enumerate()
+            .map(|(idx, selector)| {
                 let poly =
                     selector.iter().map(|b| if *b { F::ONE } else { F::ZERO }).collect::<Vec<_>>();
                 let column = self.fixed_column();
+                if self.selector_flags[idx] {
+                    self.indices_simple_selectors.push(column.index());
+                }
                 let rotation = Rotation::cur();
                 let expr = Expression::Fixed(FixedQuery {
                     index: Some(self.query_fixed_index(column, rotation)),
@@ -2089,6 +2141,17 @@ impl<F: Field> ConstraintSystem<F> {
 
         self.replace_selectors_with_fixed(&selector_replacements);
         self.num_selectors = 0;
+        self.num_evaluated_fixed_queries =
+            self.num_fixed_columns() - self.indices_simple_selectors().len();
+
+        // Adjust indices of (multiplicative) simple selectors: after converting
+        // selectors to fixed columns, `selector_index` should now track the
+        // index of the corresponding fixed column
+        for gate in self.gates.iter_mut() {
+            if let Some(sel_idx) = gate.simple_selector_index() {
+                gate.set_simple_selector_index(sel_idx + nr_fixed_columns)
+            }
+        }
 
         (self, polys)
     }
@@ -2150,6 +2213,7 @@ impl<F: Field> ConstraintSystem<F> {
     pub fn selector(&mut self) -> Selector {
         let index = self.num_selectors;
         self.num_selectors += 1;
+        self.selector_flags.push(true);
         Selector(index, true)
     }
 
@@ -2158,6 +2222,7 @@ impl<F: Field> ConstraintSystem<F> {
     pub fn complex_selector(&mut self) -> Selector {
         let index = self.num_selectors;
         self.num_selectors += 1;
+        self.selector_flags.push(false);
         Selector(index, false)
     }
 
