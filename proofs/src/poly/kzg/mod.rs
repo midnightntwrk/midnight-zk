@@ -348,18 +348,18 @@ mod tests {
 
     #[test]
     fn test_roundtrip_gwc() {
-        use midnight_curves::bn256::Bn256;
+        use midnight_curves::Bls12;
 
         const K: u32 = 4;
 
-        let params: ParamsKZG<Bn256> = ParamsKZG::unsafe_setup(K, OsRng);
+        let params: ParamsKZG<Bls12> = ParamsKZG::unsafe_setup(K, OsRng);
 
         let proof = create_proof::<_, CircuitTranscript<Blake2bState>>(&params);
 
         let verifier_params = params.verifier_params();
-        verify::<Bn256, CircuitTranscript<Blake2bState>>(&verifier_params, &proof[..], false);
+        verify::<Bls12, CircuitTranscript<Blake2bState>>(&verifier_params, &proof[..], false);
 
-        verify::<Bn256, CircuitTranscript<Blake2bState>>(&verifier_params, &proof[..], true);
+        verify::<Bls12, CircuitTranscript<Blake2bState>>(&verifier_params, &proof[..], true);
     }
 
     fn verify<E, T>(verifier_params: &ParamsVerifierKZG<E>, proof: &[u8], should_fail: bool)
