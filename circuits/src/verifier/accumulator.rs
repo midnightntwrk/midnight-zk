@@ -127,6 +127,7 @@ impl<S: SelfEmulation> Accumulator<S> {
         let hash_input =
             accs.iter().flat_map(AssignedAccumulator::as_public_input).collect::<Vec<_>>();
 
+        // Sample a random batching challenge, for batching the individual MSMs
         let r = <S::SpongeChip as HashCPU<S::F, S::F>>::hash(&hash_input);
         let rs = (0..accs.len()).map(|i| r.pow([i as u64]));
         #[cfg(feature = "truncated-challenges")]
@@ -198,15 +199,15 @@ impl<S: SelfEmulation> AssignedAccumulator<S> {
     /// The committed instance part corresponds to the MSM (fixed and non-fixed)
     /// scalars of the accumulator RHS.
     pub fn as_public_input_with_committed_scalars(acc: &Accumulator<S>) -> (Vec<S::F>, Vec<S::F>) {
-        let (rhs_scalars, rhs_committed_scalars) =
+        let (rhs_bases, rhs_scalars) =
             AssignedMsm::as_public_input_with_committed_scalars(&acc.rhs);
 
-        let normal_instance = [AssignedMsm::as_public_input(&acc.lhs), rhs_scalars]
+        let rhs_bases_and_lhs = [AssignedMsm::as_public_input(&acc.lhs), rhs_bases]
             .into_iter()
             .flatten()
             .collect();
 
-        (normal_instance, rhs_committed_scalars)
+        (rhs_bases_and_lhs, rhs_scalars)
     }
 }
 

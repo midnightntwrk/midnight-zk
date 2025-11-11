@@ -113,7 +113,7 @@ impl<S: SelfEmulation> PublicInputInstructions<S::F, AssignedVk<S>> for Verifier
         unimplemented!(
             "We intend [assign_vk_as_public_input] to be the only entry point
             for assigned verifying keys. (Note that its signature is more complex
-            that this function's signature.)"
+            than this function's signature.)"
         )
     }
 }
@@ -231,7 +231,8 @@ impl<S: SelfEmulation> VerifierGadget<S> {
     ) -> Result<(super::traces::VerifierTrace<S>, TranscriptGadget<S>), Error> {
         let cs = &assigned_vk.cs;
 
-        // Check that instances matches the expected number of instance columns
+        // Check that number of instances matches the expected number of instance
+        // columns
         assert_eq!(
             cs.num_instance_columns(),
             assigned_committed_instances.len() + assigned_instances.len()
@@ -259,55 +260,60 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         // TODO: get rid of this assumption, we could support more than one phase.
         assert_eq!(cs.phases().count(), 1);
 
-        // Hash the prover's advice commitments into the transcript and squeeze
-        // challenges
+        // Read commitments to advice columns from the transcript and squeeze challenges
         let advice_commitments = (0..cs.num_advice_columns())
             .map(|_| transcript.read_point(layouter))
             .collect::<Result<Vec<_>, Error>>()?;
 
-        // Sample theta challenge for keeping lookup columns linearly independent
+        // Sample theta challenge for batching independent lookup columns
         let theta = transcript.squeeze_challenge(layouter)?;
 
-        let lookups_permuted = cs
+        // Lookup argument: Read commitments to permuted input and table columns from
+        // the transcript
+        let lookup_permuted_commitments = cs
             .lookups()
             .iter()
             .map(|_| lookup::read_permuted_commitments(layouter, &mut transcript))
             .collect::<Result<Vec<_>, Error>>()?;
 
+        // Sample beta challenge
         let beta = transcript.squeeze_challenge(layouter)?;
+
+        // Sample gamma challenge
         let gamma = transcript.squeeze_challenge(layouter)?;
 
-        let permutation_committed =
-            // Hash each permutation product commitment
+        // Permutation argument: Read commitments to limbs of product polynomial from
+        // the transcript
+        let permutation_product_commitments =
             permutation::read_product_commitments(layouter, &mut transcript, cs)?;
 
-        let lookups_committed = lookups_permuted
+        // Lookup argument: Read commitments to product polynomial from the transcript
+        let lookup_product_commitments = lookup_permuted_commitments
             .into_iter()
             .map(|lookup|
                 // Hash each lookup product commitment
                 lookup.read_product_commitment(layouter, &mut transcript))
             .collect::<Result<Vec<_>, _>>()?;
 
+        // Sample trash challenge
         let trash_challenge = transcript.squeeze_challenge(layouter)?;
 
+        // Read commitments to trashcans from the transcript
         let trashcans_committed = cs
             .trashcans()
             .iter()
             .map(|_| trash::read_committed(layouter, &mut transcript))
             .collect::<Result<Vec<_>, _>>()?;
 
-        let vanishing = vanishing::read_commitments_before_y(layouter, &mut transcript)?;
-
-        // Sample y challenge, which keeps the gates linearly independent
+        // Sample identity batching challenge y, for batching all independent identities
         let y = transcript.squeeze_challenge(layouter)?;
 
         Ok((
             super::traces::VerifierTrace {
                 advice_commitments,
-                vanishing,
-                lookups: lookups_committed,
+                lookups: lookup_product_commitments,
                 trashcans: trashcans_committed,
-                permutations: permutation_committed,
+                permutations: permutation_product_commitments,
                 beta,
                 gamma,
                 theta,
@@ -318,7 +324,6 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         ))
     }
 
-    // TODO: cleanup clippy
     #[allow(clippy::too_many_arguments)]
     #[allow(clippy::type_complexity)]
     fn compute_linearization_commitment<'com>(
@@ -435,9 +440,9 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             .map(|_| transcript.read_point(layouter))
             .collect::<Result<Vec<_>, Error>>()?;
 
-        // Sample x challenge, which is used to ensure the circuit is satisfied with
-        // high probability
+        // Sample evaluation challenge x
         let x = transcript.squeeze_challenge(layouter)?;
+
         let xn = ArithInstructions::pow(&self.scalar_chip, layouter, &x, 1 << k)?;
 
         let instance_evals = {
@@ -476,6 +481,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                 .collect::<Result<Vec<_>, Error>>()?
         };
 
+        // Read evals of all advice polys from transcript
         let advice_evals = (0..cs.advice_queries().len())
             .map(|_| transcript.read_scalar(layouter))
             .collect::<Result<Vec<_>, _>>()?;
@@ -498,20 +504,20 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         let permutations_common =
             evaluate_permutation_common(layouter, &mut transcript, cs.permutation().columns.len())?;
 
-        let permutations_evaluated = permutations.evaluate(layouter, &mut transcript)?;
+        let permutation_evals = permutations.evaluate(layouter, &mut transcript)?;
 
-        let lookups_evaluated = lookups
+        let lookup_evals = lookups
             .into_iter()
             .map(|lookup| lookup.evaluate(layouter, &mut transcript))
             .collect::<Result<Vec<_>, Error>>()?;
 
-        let trashcans_evaluated = trashcans
+        let trashcans_evals = trashcans
             .into_iter()
             .map(|trash| trash.evaluate(layouter, &mut transcript))
             .collect::<Result<Vec<_>, Error>>()?;
 
-        // Partially evaluate batched identities
-        // (without fixed columns corresponding to simple selectors)
+        // Partially evaluate batched identities (without fixed columns corresp.
+        // to simple selectors)
         let nr_blinding_factors = cs.nr_blinding_factors();
         let l_evals = evaluate_lagrange_polynomials(
             layouter,
@@ -530,8 +536,6 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         )?;
         let l_0 = l_evals[1 + nr_blinding_factors].clone();
 
-        // TODO: cleanup clippy
-        #[allow(clippy::type_complexity)]
         let mut expressions = Vec::new();
 
         // (Partially) evaluate polys from (custom) gates
@@ -709,9 +713,9 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                 &self.scalar_chip.assign(layouter, Value::known(S::F::ZERO))?,
             )));
 
-        // We are now convinced the circuit is satisfied so long as the
-        // polynomial commitments open to the correct values, which is true as long
-        // as the following accumulator passes the invariant.
+        // We are now convinced the circuit is satisfied as long as the
+        // polynomial commitments open to the correct values, which is true
+        // as long as the following accumulator passes the invariant
         let multiopen_check = kzg::multi_prepare::<_, S>(
             layouter,
             #[cfg(feature = "truncated-challenges")]

@@ -333,8 +333,10 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
             })
             .collect::<Result<_, Error>>()?;
 
+        // Batch the individual MSMs together
         let acc = Accumulator::<S>::accumulate(&proof_accs);
 
+        // Collect the fixed bases for the meta MSM
         let mut fixed_bases = BTreeMap::new();
         for i in 0..NB_PROOFS {
             fixed_bases.insert(com_instance_name::<NB_PROOFS>(i), C::identity());
@@ -356,20 +358,22 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
             proofs: proofs.clone().map(Value::known),
         };
 
-        let mut aggregator_instances = AssignedVk::<S>::as_public_input(&self.inner_vk);
-        (instances.iter()).for_each(|inner_instances| aggregator_instances.extend(inner_instances));
-        let (acc_normal_instances, acc_committed_instances) =
+        let mut agg_normal_instances = AssignedVk::<S>::as_public_input(&self.inner_vk);
+        (instances.iter()).for_each(|inner_instances| agg_normal_instances.extend(inner_instances));
+        let (acc_rest, acc_rhs_scalars) =
             AssignedAccumulator::as_public_input_with_committed_scalars(&acc);
-        aggregator_instances.extend(acc_normal_instances);
+        agg_normal_instances.extend(acc_rest);
 
-        let acc_rhs_scalars_committed = commit_to_instances::<F, KZGCommitmentScheme<E>>(
+        // Commit to the polynomial represented by the scalars of the acc's RHS
+        // in Lagrange form
+        let agg_committed_instances = commit_to_instances::<F, KZGCommitmentScheme<E>>(
             srs,
             self.aggregator_vk.get_domain(),
-            &acc_committed_instances,
+            &acc_rhs_scalars,
         );
         let acc_rhs_evaluated = acc.rhs().eval(&fixed_bases);
 
-        // Add the LHS of acc to the transcript.
+        // Add the LHS of acc to the transcript
         transcript.write(&(acc.lhs().bases().len() as u32))?;
         acc.lhs().bases().iter().try_for_each(|p| transcript.write(p))?;
         acc.lhs().scalars().iter().try_for_each(|s| transcript.write(s))?;
@@ -378,22 +382,22 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
         // Add the RHS of the acc to the transcript (with scalars in committed form).
         transcript.write(&(acc.rhs().bases().len() as u32))?;
         acc.rhs().bases().iter().try_for_each(|p| transcript.write(p))?;
-        transcript.write(&acc_rhs_scalars_committed)?;
+        transcript.write(&agg_committed_instances)?;
         transcript.write(&acc_rhs_evaluated)?;
 
-        // Create a proof of having verified the native part of all inner proofs.
+        // Create a proof of having verified the native part of all inner proofs
         create_proof::<F, KZGCommitmentScheme<E>, T, AggregatorCircuit<NB_PROOFS>>(
             srs,
             &self.aggregator_pk,
             &[aggregator_circuit],
             1,
-            &[&[&acc_committed_instances, &aggregator_instances]],
+            &[&[&acc_rhs_scalars, &agg_normal_instances]],
             &mut rng,
             transcript,
         )?;
 
         // Create the IPA proof
-        let mut scalars = acc_committed_instances.clone();
+        let mut scalars = acc_rhs_scalars.clone();
         let mut bases1 = [acc.rhs().bases(), fixed_bases.values().cloned().collect()].concat();
         let mut bases2 = self.lagrange_commitments[..bases1.len()].to_vec();
 
@@ -407,7 +411,7 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
             &bases1,
             &bases2,
             &acc_rhs_evaluated,
-            &acc_rhs_scalars_committed,
+            &agg_committed_instances,
             transcript,
         )
     }
@@ -605,6 +609,7 @@ mod tests {
             ]
         });
 
+        // Create (inner) proofs that are being aggregated
         let t = std::time::Instant::now();
         let proofs: [Vec<u8>; NB_PROOFS] = core::array::from_fn(|i| {
             compact_std_lib::prove::<InnerCircuit, LightPoseidonFS<F>>(
@@ -623,6 +628,7 @@ mod tests {
             t.elapsed().as_secs()
         );
 
+        // Verify (inner) proofs as a sanity check
         let inner_verifier_params = inner_srs.verifier_params();
 
         let t = std::time::Instant::now();
@@ -653,6 +659,7 @@ mod tests {
             .try_into()
             .unwrap();
 
+        // Aggregate all (inner) proofs into a single (meta) proof
         let t = std::time::Instant::now();
         let mut transcript = CircuitTranscript::<Blake2bState>::init();
         aggregator
