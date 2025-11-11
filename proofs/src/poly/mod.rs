@@ -393,11 +393,21 @@ impl<F: Field> Polynomial<F, LagrangeCoeff> {
 }
 
 impl<F: Field, B: PolynomialRepresentation> Mul<F> for Polynomial<F, B> {
-    type Output = Polynomial<F, B>;
+    type Output = Self;
 
-    fn mul(mut self, rhs: F) -> Polynomial<F, B> {
+    fn mul(mut self, rhs: F) -> Self {
         self.mul_assign(rhs);
         self
+    }
+}
+
+impl<F: Field, B: PolynomialRepresentation> Mul<F> for &Polynomial<F, B> {
+    type Output = Polynomial<F, B>;
+
+    fn mul(self, rhs: F) -> Polynomial<F, B> {
+        let mut res = self.clone();
+        res.mul_assign(rhs);
+        res
     }
 }
 
