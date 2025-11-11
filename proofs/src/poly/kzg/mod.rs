@@ -219,8 +219,10 @@ where
             } else {
                 None
             };
-            for (scalar, commitment) in com_data.commitment.as_terms(eval_point_opt) {
-                msm.append_term(scalar, commitment);
+            for (scalar, commitment, col_idx) in
+                com_data.commitment.as_terms(eval_point_opt, com_data.col_idx)
+            {
+                msm.append_term_with_col_idx(scalar, commitment, col_idx);
             }
             q_coms[com_data.set_index].push(msm);
             q_eval_sets[com_data.set_index].push(com_data.evals);
@@ -280,7 +282,7 @@ where
             let mut coms = q_coms;
             let mut f_com_as_msm = MSMKZG::init();
 
-            f_com_as_msm.append_term(E::Fr::ONE, f_com);
+            f_com_as_msm.append_term_with_col_idx(E::Fr::ONE, f_com, None);
             coms.push(f_com_as_msm);
 
             #[cfg(feature = "truncated-challenges")]
@@ -314,6 +316,7 @@ where
         let scaled_pi = MSMKZG {
             scalars: vec![x3, v],
             bases: vec![pi, -E::G1::generator()],
+            fixed_base_indices: vec![None, None],
         };
 
         // (π, C + zπ - vG)

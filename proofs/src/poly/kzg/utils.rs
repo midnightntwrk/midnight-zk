@@ -11,15 +11,17 @@ use crate::poly::{query::Query, Error};
 #[derive(Clone, Debug)]
 pub(super) struct CommitmentData<F, T: PartialEq> {
     pub(super) commitment: T,
+    pub(super) col_idx: Vec<Option<usize>>,
     pub(super) set_index: usize,
     pub(super) point_indices: Vec<usize>,
     pub(super) evals: Vec<F>,
 }
 
 impl<F, T: PartialEq> CommitmentData<F, T> {
-    fn new(commitment: T) -> Self {
+    fn new(commitment: T, col_idx: Vec<Option<usize>>) -> Self {
         CommitmentData {
             commitment,
+            col_idx,
             set_index: 0,
             point_indices: vec![],
             evals: vec![],
@@ -57,7 +59,7 @@ pub fn construct_intermediate_sets<F: Field + Hash + Ord, Q: Query<F>>(
             }
             commitment_map[pos].point_indices.push(*point_idx);
         } else {
-            let mut tmp = CommitmentData::new(query.get_commitment());
+            let mut tmp = CommitmentData::new(query.get_commitment(), query.get_col_idx());
             tmp.point_indices.push(*point_idx);
             commitment_map.push(tmp);
         }
@@ -76,7 +78,11 @@ pub fn construct_intermediate_sets<F: Field + Hash + Ord, Q: Query<F>>(
         let point_index_set: BTreeSet<_> = commitment_data.point_indices.iter().cloned().collect();
 
         // Push point_index_set to CommitmentData for the relevant commitment
-        commitment_set_map.push((commitment_data.commitment.clone(), point_index_set.clone()));
+        commitment_set_map.push((
+            commitment_data.commitment.clone(),
+            commitment_data.col_idx.clone(),
+            point_index_set.clone(),
+        ));
 
         let num_sets = point_idx_sets.len();
         point_idx_sets.entry(point_index_set).or_insert(num_sets);
@@ -96,8 +102,8 @@ pub fn construct_intermediate_sets<F: Field + Hash + Ord, Q: Query<F>>(
         // The point_index_set at which the commitment was queried
         let point_index_set = commitment_set_map
             .iter()
-            .find(|(c, _)| *c == query.get_commitment())
-            .map(|(_, s)| s)
+            .find(|(c, _, _)| *c == query.get_commitment())
+            .map(|(_, _, s)| s)
             .unwrap();
         assert!(!point_index_set.is_empty());
 
