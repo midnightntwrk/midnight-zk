@@ -1,11 +1,9 @@
 use std::collections::HashMap;
 
 use blake2b_simd::State as Blake2b;
+use ff::Field;
 use group::Group;
-use midnight_circuits::{
-    compact_std_lib::{self, MidnightCircuit},
-    halo2curves::ff::Field,
-};
+use midnight_circuits::compact_std_lib::{self, MidnightCircuit};
 use midnight_curves::{Fr as JubjubFr, JubjubSubgroup};
 use midnight_proofs::{
     circuit::Value, dev::cost_model::dummy_synthesize_run, plonk, poly::kzg::params::ParamsKZG,
