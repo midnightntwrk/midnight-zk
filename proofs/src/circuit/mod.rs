@@ -102,6 +102,13 @@ pub struct Cell {
     pub column: Column<Any>,
 }
 
+#[cfg(feature = "decompose-in-cells")]
+impl picus_macros_support::DecomposeIn<Self> for Cell {
+    fn cells(&self) -> impl IntoIterator<Item = Self> {
+        std::iter::once(*self)
+    }
+}
+
 /// An assigned cell.
 #[derive(Clone, Debug)]
 pub struct AssignedCell<V, F: Field> {
@@ -197,6 +204,13 @@ where
         region.constrain_equal(assigned_cell.cell(), self.cell())?;
 
         Ok(assigned_cell)
+    }
+}
+
+#[cfg(feature = "decompose-in-cells")]
+impl<V, F: Field> picus_macros_support::DecomposeIn<Cell> for AssignedCell<V, F> {
+    fn cells(&self) -> impl IntoIterator<Item = Cell> {
+        std::iter::once(self.cell())
     }
 }
 

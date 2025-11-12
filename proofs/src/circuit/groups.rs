@@ -155,14 +155,6 @@ impl RegionsGroup {
             self.cells.push(cell);
         }
         entry.or_default().annotate(role);
-        //if self.annotations.contains_key(&cell) {
-        //    return Err(Error::Transcript(std::io::Error::other(format!(
-        //        "Failed to annotate cell {cell:?} with role {role:?}. Has role {:?}",
-        //        self.annotations.get(&cell)
-        //    ))));
-        //}
-        //self.cells.push(cell);
-        //self.annotations.insert(cell, role);
         Ok(())
     }
 
@@ -179,7 +171,6 @@ impl RegionsGroup {
     ///
     /// See the documentation in [`RegionsGroup::annotate_cell`] for
     /// requirements annotated cells must meet.
-    /// cell from the regions of the group.
     #[inline]
     pub fn annotate_output(&mut self, cell: Cell) -> Result<(), Error> {
         self.annotate_cell(cell, CellRole::Output)
@@ -201,13 +192,38 @@ impl RegionsGroup {
     ///
     /// See the documentation in [`RegionsGroup::annotate_cell`] for
     /// requirements annotated cells must meet.
-    /// cell from the regions of the group.
     #[inline]
     pub fn annotate_outputs(&mut self, cells: impl IntoIterator<Item = Cell>) -> Result<(), Error> {
         for cell in cells {
             self.annotate_cell(cell, CellRole::Output)?;
         }
         Ok(())
+    }
+
+    /// Annotates the list of [`Cell`] that represent the given value with [`CellRole::Input`].
+    ///
+    /// See the documentation in [`RegionsGroup::annotate_cell`] for
+    /// requirements annotated cells must meet.
+    #[cfg(feature = "decompose-in-cells")]
+    #[inline]
+    pub fn annotate_as_input(
+        &mut self,
+        value: &impl picus_macros_support::DecomposeIn<Cell>,
+    ) -> Result<(), Error> {
+        self.annotate_inputs(value.cells())
+    }
+
+    /// Annotates the list of [`Cell`] that represent the given value with [`CellRole::Output`].
+    ///
+    /// See the documentation in [`RegionsGroup::annotate_cell`] for
+    /// requirements annotated cells must meet.
+    #[cfg(feature = "decompose-in-cells")]
+    #[inline]
+    pub fn annotate_as_output(
+        &mut self,
+        value: &impl picus_macros_support::DecomposeIn<Cell>,
+    ) -> Result<(), Error> {
+        self.annotate_outputs(value.cells())
     }
 }
 

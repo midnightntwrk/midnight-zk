@@ -18,11 +18,12 @@ midnight-proofs = { path = "../proofs", version = "0.5.1", default-features = fa
     "cost-estimator",
     "circuit-params",
     "committed-instances",
-    "region-groups"
+    "region-groups",
+    "decompose-in-cells"
 ] }
 bench_macros = { path = "../bench-macros"}
-picus-macros-support = { path = "../picus/support/" }
-picus = { path = "../picus/macros", package = "picus-macros" }
+picus-support = { version = "0.1.0",  package = "mdnt-groups-support" }
+picus = { version = "0.1.1",  package = "mdnt-support-macros", features = ["region-groups"] }
 extractor-support = { path = "../extractor/support/", optional = true }
 
 serde = { workspace = true, optional = true }
