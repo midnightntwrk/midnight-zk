@@ -406,7 +406,7 @@ where
 }
 
 /// Inherit assignment instructions for [AssignedField], from the
-/// `scalar_field_chip` when the emulated field field is the scalar field.
+/// `scalar_field_chip` when the emulated field is the scalar field.
 /// Mind the binding `S: ScalarFieldInstructions<F, Scalar = AssignedField<F,
 /// C::Scalar>>` of this implementation.
 impl<F, C, B, S, SP, N> AssignmentInstructions<F, AssignedField<F, C::Scalar, SP>>

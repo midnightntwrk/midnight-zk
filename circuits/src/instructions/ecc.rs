@@ -307,9 +307,9 @@ pub(crate) mod tests {
             _marker: PhantomData,
         };
         let log2_nb_rows = match operation {
-            Operation::Msm => 17,
-            Operation::MsmBounded => 16,
-            Operation::MulByConstant => 16,
+            Operation::Msm => 19,
+            Operation::MsmBounded => 17,
+            Operation::MulByConstant => 17,
             _ => 10,
         };
         let public_inputs = vec![vec![], vec![]];
