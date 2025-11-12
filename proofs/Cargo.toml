@@ -51,6 +51,9 @@ plotters = { version = "0.3.7", default-features = false, optional = true }
 tabbycat = { version = "0.1", features = ["attributes"], optional = true }
 num-bigint = { workspace = true }
 
+# Decompose in cells deps 
+picus-macros-support = { version = "0.1.0", optional = true, package = "mdnt-groups-support" }
+
 [dev-dependencies]
 assert_matches = "1.5"
 proptest = "1"
@@ -85,6 +88,8 @@ sanity-checks = []
 circuit-params = []
 cost-estimator = ["serde", "serde_derive"]
 derive_serde = ["halo2curves/derive_serde"]
+decompose-in-cells = ["picus-macros-support"]
+region-groups = []
 
 # This feature truncates challenges to half the size of the scalar field.
 truncated-challenges = []

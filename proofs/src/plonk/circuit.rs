@@ -743,6 +743,32 @@ pub trait Assignment<F: Field> {
     ///
     /// [`Layouter::namespace`]: crate::circuit::Layouter#method.namespace
     fn pop_namespace(&mut self, gadget_name: Option<String>);
+
+    /// Creates a new group and enters into it.
+    ///
+    /// Not intended for downstream consumption; use [`Layouter::group`]
+    /// instead.
+    ///
+    /// [`Layouter::group`]: crate::circuit::Layouter#method.group
+    #[cfg(feature = "region-groups")]
+    #[allow(unused_variables)]
+    fn enter_group<NR, N, K>(&mut self, name_fn: N, key: K)
+    where
+        NR: Into<String>,
+        N: FnOnce() -> NR,
+        K: crate::circuit::groups::GroupKey,
+    {
+    }
+
+    /// Exits the current group.
+    ///
+    /// Not intended for downstream consumption; use [`Layouter::group`]
+    /// instead.
+    ///
+    /// [`Layouter::group`]: crate::circuit::Layouter#method.group
+    #[cfg(feature = "region-groups")]
+    #[allow(unused_variables)]
+    fn exit_group(&mut self, meta: crate::circuit::groups::RegionsGroup) {}
 }
 
 /// A floor planning strategy for a circuit.
