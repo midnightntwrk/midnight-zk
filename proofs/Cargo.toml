@@ -51,21 +51,20 @@ plotters = { version = "0.3.7", default-features = false, optional = true }
 tabbycat = { version = "0.1", features = ["attributes"], optional = true }
 num-bigint = { workspace = true }
 
-# Prover benchmarks
-criterion = { version = "0.7", optional = true }
-bench_macros = { path = "../bench-macros" }
-
 # Decompose in cells deps 
 picus-macros-support = { version = "0.1.0", optional = true, package = "mdnt-groups-support" }
 
 [dev-dependencies]
 assert_matches = "1.5"
-criterion = "0.7"
 proptest = "1"
 serde_json = { workspace = true }
 midnight-circuits = { path = "../circuits" }
 sha2 = { workspace = true }
 rand = { workspace = true }
+
+# Prover benchmarks
+bench_macros = { path = "../bench-macros" }
+criterion = "0.7"
 
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
 getrandom = { version = "0.2", features = ["js"] }
@@ -108,7 +107,7 @@ committed-instances = []
 # the proof generation functions take an additional input,
 # _group: &mut BenchmarkGroup<WallTime>, and return granular benchmarks
 # of the prover for that concrete circuit.
-bench-internal = ["criterion", "midnight-circuits/bench-internal"]
+bench-internal = ["midnight-circuits/bench-internal"]
 
 [lib]
 bench = false

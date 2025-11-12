@@ -2394,7 +2394,11 @@ impl<F: Field> ConstraintSystem<F> {
 
         // Add an additional blinding factor as a slight defense against
         // off-by-one errors.
-        factors + 1
+        let factors = factors + 1;
+        if factors > i32::MAX as usize {
+            panic!("Number of blinding factors overflowed max expected value");
+        }
+        factors
     }
 
     /// Returns the minimum necessary rows that need to exist in order to

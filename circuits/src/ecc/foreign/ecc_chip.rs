@@ -184,10 +184,9 @@ where
 {
     fn as_public_input(p: &C::CryptographicGroup) -> Vec<F> {
         let (x, y) = (*p).into().coordinates().unwrap_or((C::Base::ZERO, C::Base::ZERO));
-        // From y we only keep one limb, since it is enough to resolve the +- ambiguity.
         let mut pis = [
             AssignedField::<F, C::Base, B>::as_public_input(&x).as_slice(),
-            &AssignedField::<F, C::Base, B>::as_public_input(&y)[..1],
+            AssignedField::<F, C::Base, B>::as_public_input(&y).as_slice(),
         ]
         .concat();
 
@@ -331,10 +330,9 @@ where
         layouter: &mut impl Layouter<F>,
         p: &AssignedForeignPoint<F, C, B>,
     ) -> Result<Vec<AssignedNative<F>>, Error> {
-        // From y we only keep one limb, since it is enough to resolve the +- ambiguity.
         let mut pis = [
             self.base_field_chip.as_public_input(layouter, &p.x)?.as_slice(),
-            &self.base_field_chip.as_public_input(layouter, &p.y)?[..1],
+            self.base_field_chip.as_public_input(layouter, &p.y)?.as_slice(),
         ]
         .concat();
 
