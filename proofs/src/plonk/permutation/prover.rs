@@ -12,7 +12,7 @@ use crate::{
         Rotation,
     },
     transcript::{Hashable, Transcript},
-    utils::arithmetic::{eval_polynomial, parallelize, parallelize_running_prod},
+    utils::arithmetic::{eval_polynomial, parallelize, parallelize_prefix_prod},
 };
 
 #[cfg_attr(feature = "bench-internal", derive(Clone))]
@@ -143,7 +143,7 @@ impl Argument {
             aux.push(last_z);
             aux.extend_from_slice(&modified_values[..domain.n as usize - 1]);
 
-            let z = parallelize_running_prod(&mut aux, domain.k() as usize);
+            let z = parallelize_prefix_prod(&mut aux, domain.k() as usize);
 
             let mut z = domain.lagrange_from_vec(z);
             // Set blinding factors

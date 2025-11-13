@@ -168,7 +168,7 @@ pub fn parallelize<T: Send, F: Fn(&mut [T], usize) + Send + Sync + Clone>(v: &mu
 
 /// Computes the running products of the input vector, whose length must be
 /// enforced to be 2^k prior to calling.
-pub fn parallelize_running_prod<F: PrimeField>(v: &mut [F], k: usize) -> Vec<F> {
+pub fn parallelize_prefix_prod<F: PrimeField>(v: &mut [F], k: usize) -> Vec<F> {
     // We are using a parallel prefix product algorithm, see:
     // https://en.wikipedia.org/wiki/Prefix_sum
     let n = 1 << k;
@@ -201,14 +201,17 @@ pub fn parallelize_running_prod<F: PrimeField>(v: &mut [F], k: usize) -> Vec<F> 
     z
 }
 
-
-fn parallel_prefix_prod<F: PrimeField>(v: &mut [F], k: usize) {
-    let log_chunk_size = 12;
-    let chunk_size = 1 << log_chunk_size; // 8K, tune for cache size
+fn parallelize_running_prod<F: PrimeField>(v: &mut [F], k: usize) {
+    let log_chunk_size = 12; // set by experiments, may be tuned further
     assert!(k >= log_chunk_size);
+    let chunk_size = 1 << log_chunk_size;
     let num_chunks = 1 << (k - log_chunk_size);
 
-    // --- Phase 1: local scan per chunk ---
+    // --- Phase 1 ---
+    // For each chunk [x_1, x_2, ..., x_m], [y_1, y_2, ..., y_m]...,
+    // computes [x_1, x_1*x_2, ..., x_1*x_2*...*x_m],
+    // [y_1, y_1*y_2, ..., y_1*y_2*...*y_m]..., and
+    // collect partial products [X = x_1*x_2*...*x_m, Y = y_1*y_2*...*y_m, ...]
     let partial_products: Vec<F> = v
         .par_chunks_mut(chunk_size)
         .map(|chunk| {
@@ -221,25 +224,27 @@ fn parallel_prefix_prod<F: PrimeField>(v: &mut [F], k: usize) {
             acc
         })
         .collect();
-    
-    // --- Phase 2: prefix scan over partial sums ---
+
+    // --- Phase 2 ---
+    // Computes running products [1, X, X*Y, ...] of partial products
+    // [1, X, Y, ...] to get the prefixes for each chunk
     let mut prefix = Vec::with_capacity(num_chunks);
-    prefix.push(F::ONE); 
+    prefix.push(F::ONE);
     let mut acc = F::ONE;
     for s in partial_products[..num_chunks - 1].iter() {
         acc *= *s;
         prefix.push(acc);
     }
-    print!("Partial products: {:?}\n", partial_products);
-    
-    // --- Phase 3: add offsets to each chunk ---
-    v.par_chunks_mut(chunk_size)
-        .zip(prefix.par_iter())
-        .for_each(|(chunk, offset)| {
-            for x in chunk.iter_mut() {
-                *x *= *offset;
-            }
-        });
+
+    // --- Phase 3 ---
+    // Multiplies each chunk by the corresponding prefix:
+    // [x_1, x_1*x_2, ..., x_1*x_2*...*x_m] * 1,
+    // [y_1, y_1*y_2, ..., y_1*y_2*...*y_m] * X ...
+    v.par_chunks_mut(chunk_size).zip(prefix.par_iter()).for_each(|(chunk, offset)| {
+        for x in chunk.iter_mut() {
+            *x *= *offset;
+        }
+    });
 }
 
 /// Returns coefficients of an n - 1 degree polynomial given a set of n points
@@ -415,7 +420,10 @@ pub trait MSM<C: PrimeCurveAffine>: Clone + Debug + Send + Sized + Sync {
 
 #[cfg(test)]
 use rand_core::OsRng;
-use rayon::{iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator}, slice::ParallelSliceMut};
+use rayon::{
+    iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator},
+    slice::ParallelSliceMut,
+};
 
 #[cfg(test)]
 use crate::halo2curves::pasta::Fp;
@@ -444,45 +452,58 @@ fn test_lagrange_interpolate() {
 #[test]
 fn test_parallelize_running_prod() {
     let rng = OsRng;
-    let k = 16;
-    let n = 1 << k;
-    let mut v = (0..n).map(|_| Fp::random(rng)).collect::<Vec<_>>();
-    let w = v.clone();
-    let mut u = v.clone();
+    for k in 13..=16 {
+        let n = 1 << k;
 
-    let start = std::time::Instant::now();
-    let par_result = parallelize_running_prod(&mut v, k);
-    let par_time = start.elapsed();
+        let seq_input = (0..n).map(|_| Fp::random(rng)).collect::<Vec<_>>();
+        let start = std::time::Instant::now();
+        let mut seq_result: Vec<Fp> = Vec::with_capacity(n);
+        seq_result.push(seq_input[0]);
+        for row in 1..n {
+            let mut tmp = seq_result[row - 1];
+            tmp *= seq_input[row];
+            seq_result.push(tmp);
+        }
+        let seq_time = start.elapsed();
 
-    let start = std::time::Instant::now();
-    let mut seq_result: Vec<Fp> = Vec::with_capacity(n);
-    seq_result.push(w[0]);
-    for row in 1..n {
-        let mut tmp = seq_result[row - 1];
-        tmp *= w[row];
-        seq_result.push(tmp);
+        let mut pref_input = seq_input.clone();
+        let start = std::time::Instant::now();
+        let pref_result = parallelize_prefix_prod(&mut pref_input, k);
+        let pref_time = start.elapsed();
+
+        let mut par_result = seq_input.clone();
+        let start = std::time::Instant::now();
+        parallelize_running_prod(&mut par_result, k);
+        let par_time = start.elapsed();
+
+        let matches = seq_result
+            .iter()
+            .zip(pref_result.iter())
+            .zip(par_result.iter())
+            .all(|((a, b), c)| a == b && b == c);
+        assert!(matches);
+
+        println!("------------------------------------------------------------------------");
+        println!("k = {}", k);
+        println!(
+            "Sequential time:                                          {:?}",
+            seq_time
+        );
+        println!(
+            "Parallel prefix product time:                             {:?}",
+            pref_time
+        );
+        println!(
+            "Parallel running product time:                            {:?}",
+            par_time
+        );
+        println!(
+            "Speedup for parallel prefix product:                      {:.2}x",
+            seq_time.as_secs_f64() / pref_time.as_secs_f64()
+        );
+        println!(
+            "Speedup for parallel running product:                     {:.2}x",
+            seq_time.as_secs_f64() / par_time.as_secs_f64()
+        );
     }
-    let seq_time = start.elapsed();
-
-    let start = std::time::Instant::now();
-    parallel_prefix_prod(&mut u, k);
-    let par2_time = start.elapsed();
-    
-    let matches = par_result.iter().zip(seq_result.iter()).all(|(a, b)| a == b);
-    assert!(matches);
-
-    let matches2 = par_result.iter().zip(u.iter()).all(|(a, b)| a == b);
-    assert!(matches2);
-
-    println!("Sequential time: {:?}", seq_time);
-    println!("Parallel time: {:?}", par_time);
-    println!("Parallel2 time: {:?}", par2_time);
-    println!(
-        "Speedup: {:.2}x",
-        seq_time.as_secs_f64() / par_time.as_secs_f64()
-    );
-    println!(
-        "Speedup2: {:.2}x",
-        seq_time.as_secs_f64() / par2_time.as_secs_f64()
-    );
 }
