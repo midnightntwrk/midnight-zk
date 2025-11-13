@@ -167,45 +167,10 @@ pub fn parallelize<T: Send, F: Fn(&mut [T], usize) + Send + Sync + Clone>(v: &mu
 }
 
 /// Computes the running products of the input vector, whose length must be
-/// enforced to be 2^k prior to calling.
-pub fn parallelize_prefix_prod<F: PrimeField>(v: &mut [F], k: usize) -> Vec<F> {
-    // We are using a parallel prefix product algorithm, see:
-    // https://en.wikipedia.org/wiki/Prefix_sum
-    let n = 1 << k;
-    // We suppose n is at least 2 which is certainly true in our use cases
-    for i in 1..=k {
-        let step = 1 << i;
-        let left = (1 << (i - 1)) - 1;
-        let right = step - 1;
-        v.par_chunks_mut(step).for_each(|chunk| {
-            chunk[right] *= chunk[left];
-        });
-    }
-
-    let total = v[n - 1];
-    v[n - 1] = F::ONE;
-
-    for i in 0..=k - 1 {
-        let step = 1 << (k - i);
-        let left = (1 << (k - i - 1)) - 1;
-        let right = step - 1;
-        v.par_chunks_mut(step).for_each(|chunk| {
-            let temp = chunk[left];
-            chunk[left] = chunk[right];
-            chunk[right] *= temp;
-        });
-    }
-
-    let mut z = v[1..].to_vec();
-    z.push(total);
-    z
-}
-
-fn parallelize_running_prod<F: PrimeField>(v: &mut [F], k: usize) {
-    let log_chunk_size = 12; // set by experiments, may be tuned further
-    assert!(k >= log_chunk_size);
-    let chunk_size = 1 << log_chunk_size;
-    let num_chunks = 1 << (k - log_chunk_size);
+/// enforced to be n prior to calling.
+pub fn parallelize_running_prod<F: PrimeField>(v: &mut [F], n: usize) {
+    let num_chunks = 64;
+    let chunk_size = (n - 1) / num_chunks + 1;
 
     // --- Phase 1 ---
     // For each chunk [x_1, x_2, ..., x_m], [y_1, y_2, ..., y_m]...,
@@ -240,9 +205,9 @@ fn parallelize_running_prod<F: PrimeField>(v: &mut [F], k: usize) {
     // Multiplies each chunk by the corresponding prefix:
     // [x_1, x_1*x_2, ..., x_1*x_2*...*x_m] * 1,
     // [y_1, y_1*y_2, ..., y_1*y_2*...*y_m] * X ...
-    v.par_chunks_mut(chunk_size).zip(prefix.par_iter()).for_each(|(chunk, offset)| {
+    v.par_chunks_mut(chunk_size).enumerate().for_each(|(idx, chunk)| {
         for x in chunk.iter_mut() {
-            *x *= *offset;
+            *x *= prefix[idx];
         }
     });
 }
@@ -421,7 +386,7 @@ pub trait MSM<C: PrimeCurveAffine>: Clone + Debug + Send + Sized + Sync {
 #[cfg(test)]
 use rand_core::OsRng;
 use rayon::{
-    iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator},
+    iter::{IndexedParallelIterator, ParallelIterator},
     slice::ParallelSliceMut,
 };
 
@@ -451,12 +416,11 @@ fn test_lagrange_interpolate() {
 
 #[test]
 fn test_parallelize_running_prod() {
-    let rng = OsRng;
+    use rand_core::SeedableRng;
+    let mut rng = rand_chacha::ChaCha8Rng::from_seed([0; 32]);
     for k in 13..=16 {
         let n = 1 << k;
-
-        let seq_input = (0..n).map(|_| Fp::random(rng)).collect::<Vec<_>>();
-        let start = std::time::Instant::now();
+        let seq_input = (0..n).map(|_| Fp::random(&mut rng)).collect::<Vec<_>>();
         let mut seq_result: Vec<Fp> = Vec::with_capacity(n);
         seq_result.push(seq_input[0]);
         for row in 1..n {
@@ -464,46 +428,10 @@ fn test_parallelize_running_prod() {
             tmp *= seq_input[row];
             seq_result.push(tmp);
         }
-        let seq_time = start.elapsed();
-
-        let mut pref_input = seq_input.clone();
-        let start = std::time::Instant::now();
-        let pref_result = parallelize_prefix_prod(&mut pref_input, k);
-        let pref_time = start.elapsed();
-
         let mut par_result = seq_input.clone();
-        let start = std::time::Instant::now();
-        parallelize_running_prod(&mut par_result, k);
-        let par_time = start.elapsed();
-
-        let matches = seq_result
-            .iter()
-            .zip(pref_result.iter())
-            .zip(par_result.iter())
-            .all(|((a, b), c)| a == b && b == c);
+        parallelize_running_prod(&mut par_result, n);
+        // Verify correctness
+        let matches = seq_result.iter().zip(par_result.iter()).all(|(a, b)| a == b);
         assert!(matches);
-
-        println!("------------------------------------------------------------------------");
-        println!("k = {}", k);
-        println!(
-            "Sequential time:                                          {:?}",
-            seq_time
-        );
-        println!(
-            "Parallel prefix product time:                             {:?}",
-            pref_time
-        );
-        println!(
-            "Parallel running product time:                            {:?}",
-            par_time
-        );
-        println!(
-            "Speedup for parallel prefix product:                      {:.2}x",
-            seq_time.as_secs_f64() / pref_time.as_secs_f64()
-        );
-        println!(
-            "Speedup for parallel running product:                     {:.2}x",
-            seq_time.as_secs_f64() / par_time.as_secs_f64()
-        );
     }
 }
