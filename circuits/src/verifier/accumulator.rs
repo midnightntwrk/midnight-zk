@@ -31,7 +31,7 @@ use std::collections::BTreeMap;
 
 use ff::Field;
 use group::prime::PrimeCurveAffine;
-use halo2curves::pairing::Engine;
+use midnight_curves::pairing::Engine;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,

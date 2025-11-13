@@ -519,7 +519,7 @@ impl<G: PrimeGroup> From<ProofSize<G>> for usize {
 
 #[cfg(test)]
 mod tests {
-    use halo2curves::pasta::{Eq, Fp};
+    use midnight_curves::{G1Projective as Eq, Fq as Scalar};
 
     use super::*;
     use crate::circuit::SimpleFloorPlanner;
@@ -529,7 +529,7 @@ mod tests {
         const K: u32 = 4;
 
         struct MyCircuit;
-        impl Circuit<Fp> for MyCircuit {
+        impl Circuit<Scalar> for MyCircuit {
             type Config = ();
             type FloorPlanner = SimpleFloorPlanner;
             #[cfg(feature = "circuit-params")]
@@ -539,12 +539,12 @@ mod tests {
                 Self
             }
 
-            fn configure(_meta: &mut ConstraintSystem<Fp>) -> Self::Config {}
+            fn configure(_meta: &mut ConstraintSystem<Scalar>) -> Self::Config {}
 
             fn synthesize(
                 &self,
                 _config: Self::Config,
-                _layouter: impl crate::circuit::Layouter<Fp>,
+                _layouter: impl crate::circuit::Layouter<Scalar>,
             ) -> Result<(), Error> {
                 Ok(())
             }

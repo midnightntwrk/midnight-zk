@@ -9,7 +9,7 @@ use bellman::{
     domain::{EvaluationDomain, Group},
     multicore::Worker,
 };
-use halo2curves::{serde::SerdeObject, CurveAffine};
+use midnight_curves::{serde::SerdeObject, CurveAffine};
 use midnight_curves::{Bls12, G1Affine, G2Affine};
 use midnight_proofs::{poly::kzg::params::ParamsKZG, utils::SerdeFormat};
 use rand::rngs::OsRng;

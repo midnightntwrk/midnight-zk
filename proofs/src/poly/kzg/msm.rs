@@ -2,7 +2,7 @@ use std::{any::TypeId, fmt::Debug};
 
 use ff::Field;
 use group::{Curve, Group};
-use halo2curves::{
+use midnight_curves::{
     msm::msm_best,
     pairing::{Engine, MillerLoopResult, MultiMillerLoop},
     CurveAffine,

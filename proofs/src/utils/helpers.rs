@@ -7,7 +7,7 @@ use std::{
 
 use ff::PrimeField;
 use group::{Curve, GroupEncoding};
-use halo2curves::serde::SerdeObject;
+use midnight_curves::serde::SerdeObject;
 
 use crate::poly::Polynomial;
 

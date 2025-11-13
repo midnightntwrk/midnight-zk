@@ -493,7 +493,8 @@ impl<F: Field> Circuit<F> for MyCircuit<F> {
 
 #[allow(clippy::many_single_char_names)]
 fn main() {
-    use halo2curves::pasta::Fp;
+    use ff::Field;
+    use midnight_curves::Fq as Scalar;
     use midnight_proofs::dev::MockProver;
     use rand_core::OsRng;
 
@@ -504,9 +505,9 @@ fn main() {
 
     // Prepare the private and public inputs to the circuit!
     let rng = OsRng;
-    let a = Fp::random(rng);
-    let b = Fp::random(rng);
-    let c = Fp::random(rng);
+    let a = Scalar::random(rng);
+    let b = Scalar::random(rng);
+    let c = Scalar::random(rng);
     let d = (a + b) * c;
 
     // Instantiate the circuit with the private inputs.
@@ -525,7 +526,7 @@ fn main() {
     assert_eq!(prover.verify(), Ok(()));
 
     // If we try some other public input, the proof will fail!
-    public_inputs[0] += Fp::one();
+    public_inputs[0] += Scalar::ONE;
     let prover = MockProver::run(k, &circuit, vec![public_inputs]).unwrap();
     assert!(prover.verify().is_err());
     // ANCHOR_END: test-circuit

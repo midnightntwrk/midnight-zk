@@ -36,9 +36,8 @@ harness = false
 backtrace = { version = "0.3", optional = true }
 ff = { workspace = true }
 group = { workspace = true }
-halo2curves = { workspace = true }
 midnight-curves = { path = "../curves", version = "0.1.1" }
-rand_core = { workspace = true }
+rand_core = { workspace = true, features = ["getrandom"] }
 tracing = { workspace = true }
 blake2b_simd = { workspace = true }
 rand_chacha = { workspace = true }
@@ -78,13 +77,14 @@ test-dev-graph = [
     "plotters/bitmap_encoder",
     "plotters/ttf",
 ]
-bits = ["halo2curves/bits"]
+bits = ["midnight-curves/bits"]
+dev-curves = ["midnight-curves/dev-curves"]
 gadget-traces = ["backtrace"]
 thread-safe-region = []
 sanity-checks = []
 circuit-params = []
 cost-estimator = ["serde", "serde_derive"]
-derive_serde = ["halo2curves/derive_serde"]
+derive_serde = ["midnight-curves/serde"]
 
 # This feature truncates challenges to half the size of the scalar field.
 truncated-challenges = []
