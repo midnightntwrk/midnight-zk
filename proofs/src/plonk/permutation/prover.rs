@@ -12,7 +12,7 @@ use crate::{
         Rotation,
     },
     transcript::{Hashable, Transcript},
-    utils::arithmetic::{eval_polynomial, parallelize},
+    utils::arithmetic::{eval_polynomial, parallelize, parallelize_running_prod},
 };
 
 #[cfg_attr(feature = "bench-internal", derive(Clone))]
@@ -93,12 +93,12 @@ impl Argument {
                     Any::Instance => instance,
                 };
                 parallelize(&mut modified_values, |modified_values, start| {
-                    for ((modified_values, value), permuted_value) in modified_values
+                    for ((modified_value, value), permuted_value) in modified_values
                         .iter_mut()
                         .zip(values[column.index()][start..].iter())
                         .zip(permuted_column_values[start..].iter())
                     {
-                        *modified_values *= &(beta * permuted_value + &gamma + value);
+                        *modified_value *= &(beta * permuted_value + &gamma + value);
                     }
                 });
             }
@@ -117,18 +117,18 @@ impl Argument {
                 };
                 parallelize(&mut modified_values, |modified_values, start| {
                     let mut deltaomega = deltaomega * &omega.pow_vartime([start as u64, 0, 0, 0]);
-                    for (modified_values, value) in
+                    for (modified_value, value) in
                         modified_values.iter_mut().zip(values[column.index()][start..].iter())
                     {
                         // Multiply by p_j(\omega^i) + \delta^j \omega^i \beta
-                        *modified_values *= &(deltaomega * &beta + &gamma + value);
+                        *modified_value *= &(deltaomega * &beta + &gamma + value);
                         deltaomega *= &omega;
                     }
                 });
                 deltaomega *= &F::DELTA;
             }
 
-            // The modified_values vector is a vector of products of fractions
+            // The modified_values vector is a vector of fractions
             // of the form
             //
             // (p_j(\omega^i) + \delta^j \omega^i \beta + \gamma) /
@@ -138,15 +138,14 @@ impl Argument {
             // the permutation
 
             // Compute the evaluations of the permutation product polynomial
-            // over our domain, starting with z[0] = 1
-            let mut z = vec![last_z];
-            for row in 1..(domain.n as usize) {
-                let mut tmp = z[row - 1];
+            // over our domain, starting with aux[0] = 1
+            let mut aux = Vec::with_capacity(domain.n as usize);
+            aux.push(last_z);
+            aux.extend_from_slice(&modified_values[..domain.n as usize - 1]);
 
-                tmp *= &modified_values[row - 1];
-                z.push(tmp);
-            }
-            let mut z = domain.lagrange_from_vec(z);
+            parallelize_running_prod(&mut aux, domain.n as usize);
+
+            let mut z = domain.lagrange_from_vec(aux);
             // Set blinding factors
             for z in &mut z[domain.n as usize - blinding_factors..] {
                 *z = F::random(&mut rng);

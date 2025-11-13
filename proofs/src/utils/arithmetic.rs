@@ -166,6 +166,52 @@ pub fn parallelize<T: Send, F: Fn(&mut [T], usize) + Send + Sync + Clone>(v: &mu
     });
 }
 
+/// Computes the running products of the input vector, whose length must be
+/// enforced to be n prior to calling.
+pub fn parallelize_running_prod<F: PrimeField>(v: &mut [F], n: usize) {
+    let num_chunks = 64;
+    let chunk_size = (n - 1) / num_chunks + 1;
+
+    // --- Phase 1 ---
+    // For each chunk [x_1, x_2, ..., x_m], [y_1, y_2, ..., y_m]...,
+    // computes [x_1, x_1*x_2, ..., x_1*x_2*...*x_m],
+    // [y_1, y_1*y_2, ..., y_1*y_2*...*y_m]..., and
+    // collect partial products [X = x_1*x_2*...*x_m, Y = y_1*y_2*...*y_m, ...]
+    let partial_products: Vec<F> = v
+        .par_chunks_mut(chunk_size)
+        .map(|chunk| {
+            let mut acc = F::ONE;
+            for x in chunk.iter_mut() {
+                let old = *x;
+                acc *= old;
+                *x = acc;
+            }
+            acc
+        })
+        .collect();
+
+    // --- Phase 2 ---
+    // Computes running products [1, X, X*Y, ...] of partial products
+    // [1, X, Y, ...] to get the prefixes for each chunk
+    let mut prefix = Vec::with_capacity(num_chunks);
+    prefix.push(F::ONE);
+    let mut acc = F::ONE;
+    for s in partial_products[..num_chunks - 1].iter() {
+        acc *= *s;
+        prefix.push(acc);
+    }
+
+    // --- Phase 3 ---
+    // Multiplies each chunk by the corresponding prefix:
+    // [x_1, x_1*x_2, ..., x_1*x_2*...*x_m] * 1,
+    // [y_1, y_1*y_2, ..., y_1*y_2*...*y_m] * X ...
+    v.par_chunks_mut(chunk_size).enumerate().for_each(|(idx, chunk)| {
+        for x in chunk.iter_mut() {
+            *x *= prefix[idx];
+        }
+    });
+}
+
 /// Returns coefficients of an n - 1 degree polynomial given a set of n points
 /// and their evaluations. This function will panic if two values in `points`
 /// are the same.
@@ -339,6 +385,10 @@ pub trait MSM<C: PrimeCurveAffine>: Clone + Debug + Send + Sized + Sync {
 
 #[cfg(test)]
 use rand_core::OsRng;
+use rayon::{
+    iter::{IndexedParallelIterator, ParallelIterator},
+    slice::ParallelSliceMut,
+};
 
 #[cfg(test)]
 use crate::halo2curves::pasta::Fp;
@@ -361,5 +411,27 @@ fn test_lagrange_interpolate() {
         for (point, eval) in points.iter().zip(evals) {
             assert_eq!(eval_polynomial(&poly, *point), *eval);
         }
+    }
+}
+
+#[test]
+fn test_parallelize_running_prod() {
+    use rand_core::SeedableRng;
+    let mut rng = rand_chacha::ChaCha8Rng::from_seed([0; 32]);
+    for k in 13..=16 {
+        let n = 1 << k;
+        let seq_input = (0..n).map(|_| Fp::random(&mut rng)).collect::<Vec<_>>();
+        let mut seq_result: Vec<Fp> = Vec::with_capacity(n);
+        seq_result.push(seq_input[0]);
+        for row in 1..n {
+            let mut tmp = seq_result[row - 1];
+            tmp *= seq_input[row];
+            seq_result.push(tmp);
+        }
+        let mut par_result = seq_input.clone();
+        parallelize_running_prod(&mut par_result, n);
+        // Verify correctness
+        let matches = seq_result.iter().zip(par_result.iter()).all(|(a, b)| a == b);
+        assert!(matches);
     }
 }

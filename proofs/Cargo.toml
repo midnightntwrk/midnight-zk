@@ -32,6 +32,10 @@ name = "zswap_output"
 required-features = ["bench-internal"]
 harness = false
 
+[[bench]]
+name = "par_running_prod"
+harness = false
+
 [dependencies]
 backtrace = { version = "0.3", optional = true }
 ff = { workspace = true }
