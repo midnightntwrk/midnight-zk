@@ -173,30 +173,73 @@ pub fn parallelize_running_prod<F: PrimeField>(v: &mut [F], k: usize) -> Vec<F> 
     // https://en.wikipedia.org/wiki/Prefix_sum
     let n = 1 << k;
     // We suppose n is at least 2 which is certainly true in our use cases
-    let mut step = 2;
-    for _ in 1..=k {
+    for i in 1..=k {
+        let step = 1 << i;
+        let left = (1 << (i - 1)) - 1;
+        let right = step - 1;
         v.par_chunks_mut(step).for_each(|chunk| {
-            chunk[step - 1] *= chunk[step / 2 - 1];
+            chunk[right] *= chunk[left];
         });
-        step *= 2;
     }
 
     let total = v[n - 1];
     v[n - 1] = F::ONE;
 
-    step = n;
-    for _ in 0..=k - 1 {
+    for i in 0..=k - 1 {
+        let step = 1 << (k - i);
+        let left = (1 << (k - i - 1)) - 1;
+        let right = step - 1;
         v.par_chunks_mut(step).for_each(|chunk| {
-            let temp = chunk[step / 2 - 1];
-            chunk[step / 2 - 1] = chunk[step - 1];
-            chunk[step - 1] *= temp;
+            let temp = chunk[left];
+            chunk[left] = chunk[right];
+            chunk[right] *= temp;
         });
-        step /= 2;
     }
 
     let mut z = v[1..].to_vec();
     z.push(total);
     z
+}
+
+
+fn parallel_prefix_prod<F: PrimeField>(v: &mut [F], k: usize) {
+    let log_chunk_size = 12;
+    let chunk_size = 1 << log_chunk_size; // 8K, tune for cache size
+    assert!(k >= log_chunk_size);
+    let num_chunks = 1 << (k - log_chunk_size);
+
+    // --- Phase 1: local scan per chunk ---
+    let partial_products: Vec<F> = v
+        .par_chunks_mut(chunk_size)
+        .map(|chunk| {
+            let mut acc = F::ONE;
+            for x in chunk.iter_mut() {
+                let old = *x;
+                acc *= old;
+                *x = acc;
+            }
+            acc
+        })
+        .collect();
+    
+    // --- Phase 2: prefix scan over partial sums ---
+    let mut prefix = Vec::with_capacity(num_chunks);
+    prefix.push(F::ONE); 
+    let mut acc = F::ONE;
+    for s in partial_products[..num_chunks - 1].iter() {
+        acc *= *s;
+        prefix.push(acc);
+    }
+    print!("Partial products: {:?}\n", partial_products);
+    
+    // --- Phase 3: add offsets to each chunk ---
+    v.par_chunks_mut(chunk_size)
+        .zip(prefix.par_iter())
+        .for_each(|(chunk, offset)| {
+            for x in chunk.iter_mut() {
+                *x *= *offset;
+            }
+        });
 }
 
 /// Returns coefficients of an n - 1 degree polynomial given a set of n points
@@ -372,7 +415,7 @@ pub trait MSM<C: PrimeCurveAffine>: Clone + Debug + Send + Sized + Sync {
 
 #[cfg(test)]
 use rand_core::OsRng;
-use rayon::{iter::ParallelIterator, slice::ParallelSliceMut};
+use rayon::{iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator}, slice::ParallelSliceMut};
 
 #[cfg(test)]
 use crate::halo2curves::pasta::Fp;
@@ -405,6 +448,7 @@ fn test_parallelize_running_prod() {
     let n = 1 << k;
     let mut v = (0..n).map(|_| Fp::random(rng)).collect::<Vec<_>>();
     let w = v.clone();
+    let mut u = v.clone();
 
     let start = std::time::Instant::now();
     let par_result = parallelize_running_prod(&mut v, k);
@@ -420,13 +464,25 @@ fn test_parallelize_running_prod() {
     }
     let seq_time = start.elapsed();
 
+    let start = std::time::Instant::now();
+    parallel_prefix_prod(&mut u, k);
+    let par2_time = start.elapsed();
+    
+    let matches = par_result.iter().zip(seq_result.iter()).all(|(a, b)| a == b);
+    assert!(matches);
+
+    let matches2 = par_result.iter().zip(u.iter()).all(|(a, b)| a == b);
+    assert!(matches2);
+
     println!("Sequential time: {:?}", seq_time);
     println!("Parallel time: {:?}", par_time);
+    println!("Parallel2 time: {:?}", par2_time);
     println!(
         "Speedup: {:.2}x",
         seq_time.as_secs_f64() / par_time.as_secs_f64()
     );
-
-    let matches = par_result.iter().zip(seq_result.iter()).all(|(a, b)| a == b);
-    println!("Results match: {}", matches);
+    println!(
+        "Speedup2: {:.2}x",
+        seq_time.as_secs_f64() / par2_time.as_secs_f64()
+    );
 }
