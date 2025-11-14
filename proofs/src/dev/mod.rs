@@ -33,10 +33,6 @@ mod util;
 mod failure;
 pub use failure::{FailureLocation, VerifyFailure};
 
-pub mod cost;
-pub use cost::CircuitCost;
-
-#[cfg(feature = "cost-estimator")]
 pub mod cost_model;
 
 mod gates;
