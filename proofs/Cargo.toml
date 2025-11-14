@@ -42,8 +42,8 @@ rand_core = { workspace = true }
 tracing = { workspace = true }
 blake2b_simd = { workspace = true }
 rand_chacha = { workspace = true }
-serde = { workspace = true, optional = true }
-serde_derive = { workspace = true, optional = true }
+serde = { workspace = true }
+serde_derive = { workspace = true }
 rayon = { workspace = true }
 
 # Developer tooling dependencies
@@ -83,7 +83,6 @@ gadget-traces = ["backtrace"]
 thread-safe-region = []
 sanity-checks = []
 circuit-params = []
-cost-estimator = ["serde", "serde_derive"]
 derive_serde = ["halo2curves/derive_serde"]
 
 # This feature truncates challenges to half the size of the scalar field.
@@ -113,4 +112,3 @@ required-features = ["test-dev-graph"]
 
 [[example]]
 name = "proof-size"
-required-features = ["cost-estimator"]

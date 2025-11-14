@@ -19,7 +19,6 @@ halo2curves = { workspace = true }
 midnight-curves = { path = "../curves", version = "0.1.1" }
 midnight-proofs = { path = "../proofs", version = "0.5.1", default-features = false, features = [
     "bits",
-    "cost-estimator",
     "circuit-params",
     "committed-instances",
 ] }
