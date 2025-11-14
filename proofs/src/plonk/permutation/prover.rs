@@ -108,8 +108,8 @@ impl Argument {
 
             // Iterate over each column again, this time finishing the computation
             // of the entire fraction by computing the numerators
+            let omega = domain.get_omega();
             for &column in columns.iter() {
-                let omega = domain.get_omega();
                 let values = match column.column_type() {
                     Any::Advice(_) => advice,
                     Any::Fixed => fixed,
@@ -139,11 +139,10 @@ impl Argument {
 
             // Compute the evaluations of the permutation product polynomial
             // over our domain, starting with z[0] = 1
-            let mut z = vec![last_z];
+            let mut z = Vec::with_capacity(domain.n as usize);
+            z.push(last_z);
             for row in 1..(domain.n as usize) {
-                let mut tmp = z[row - 1];
-
-                tmp *= &modified_values[row - 1];
+                let tmp = z[row - 1] * &modified_values[row - 1];
                 z.push(tmp);
             }
             let mut z = domain.lagrange_from_vec(z);

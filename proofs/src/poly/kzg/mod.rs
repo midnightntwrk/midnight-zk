@@ -75,26 +75,20 @@ where
         params: &Self::Parameters,
         polynomial: &Polynomial<E::Fr, Coeff>,
     ) -> Self::Commitment {
-        let mut scalars = Vec::<E::Fr>::with_capacity(polynomial.len());
-        scalars.extend(polynomial.iter());
-        let size = scalars.len();
-
+        let size = polynomial.values.len();
         assert!(params.g.len() >= size);
-
-        msm_specific::<E::G1Affine>(&scalars, &params.g[..size])
+        msm_specific::<E::G1Affine>(&polynomial.values, &params.g[..size])
     }
 
     fn commit_lagrange(
         params: &Self::Parameters,
         poly: &Polynomial<E::Fr, LagrangeCoeff>,
     ) -> E::G1 {
-        let mut scalars = Vec::with_capacity(poly.len());
-        scalars.extend(poly.iter());
-        let size = scalars.len();
+        let size = poly.values.len();
 
         assert!(params.g_lagrange.len() >= size);
 
-        msm_specific::<E::G1Affine>(&scalars, &params.g_lagrange[0..size])
+        msm_specific::<E::G1Affine>(&poly.values, &params.g_lagrange[0..size])
     }
 
     fn multi_open<T: Transcript>(
