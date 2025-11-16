@@ -567,6 +567,7 @@ where
         _bases: &[Self::Point],
     ) -> Result<Self::Point, Error> {
         // TODO do it via a simple double-and-add
+
         todo!()
     }
 
