@@ -225,9 +225,17 @@ fn sample_zswap_inputs() -> (Vec<F>, MidnightCircuit<'static, ZSwapOutputCircuit
     let witness = (zswap_pk, coin, rc);
     let instance = (coin_com, value_com);
 
-    let circuit = MidnightCircuit::new(&ZSwapOutputCircuit, instance, witness);
+    let circuit = MidnightCircuit::new(
+        &ZSwapOutputCircuit,
+        Value::known(instance),
+        Value::known(witness),
+        None,
+    );
 
-    (ZSwapOutputCircuit::format_instance(&instance), circuit)
+    (
+        ZSwapOutputCircuit::format_instance(&instance).unwrap(),
+        circuit,
+    )
 }
 
 fn bench_zswap_output(c: &mut Criterion) {

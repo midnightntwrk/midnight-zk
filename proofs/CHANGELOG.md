@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Made bench_macros and criterion dev dependencies [#134](https://github.com/midnightntwrk/midnight-zk/pull/134)
 
 ### Removed
+* Remove module `model` [#142](https://github.com/midnightntwrk/midnight-zk/pull/142) and feature `cost-estimator`
 
 ## 0.5.1
 ### Added
