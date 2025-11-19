@@ -161,22 +161,20 @@ pub mod gadget_extraction {
     use extractor_support::{
         cell_to_expr,
         cells::{
-            ctx::{ICtx, OCtx},
+            ctx::{ICtx, LayoutAdaptor, OCtx},
             load::LoadFromCells,
             store::StoreIntoCells,
             CellReprSize,
         },
-        circuit::injected::InjectedIR,
-        error::Error,
         ir::{stmt::IRStmt, CmpOp},
     };
     use ff::PrimeField;
-    use midnight_proofs::{circuit::Layouter, plonk::Expression};
+    use midnight_proofs::{plonk::{Error, Expression}, ExtractionSupport};
 
     use super::AssignedByte;
     use crate::{
         field::{decomposition::instructions::CoreDecompositionInstructions, AssignedNative},
-        instructions::ArithInstructions,
+        instructions::ArithInstructions, utils::extraction::IR,
     };
 
     impl<F: PrimeField> CellReprSize for AssignedByte<F> {
@@ -185,9 +183,9 @@ pub mod gadget_extraction {
 
     fn emit_constraint<F: PrimeField>(
         cell: &AssignedNative<F>,
-        injected_ir: &mut InjectedIR<F>,
+        injected_ir: &mut IR<F>,
     ) -> Result<(), Error> {
-        let lhs = cell_to_expr(cell)?;
+        let lhs = cell_to_expr!(cell, F)?;
         let rhs = Expression::Constant(F::from(256));
         injected_ir
             .entry(cell.cell().region_index)
@@ -200,15 +198,15 @@ pub mod gadget_extraction {
         Ok(())
     }
 
-    impl<F, C> LoadFromCells<F, C> for AssignedByte<F>
+    impl<F, C,L> LoadFromCells<F, C, ExtractionSupport,L> for AssignedByte<F>
     where
         F: PrimeField,
     {
         fn load(
-            ctx: &mut ICtx,
+            ctx: &mut ICtx<F, ExtractionSupport>,
             chip: &C,
-            layouter: &mut impl Layouter<F>,
-            injected_ir: &mut InjectedIR<F>,
+            layouter: &mut impl LayoutAdaptor<F, ExtractionSupport,Adaptee = L>,
+            injected_ir: &mut IR<F>,
         ) -> Result<Self, Error> {
             let cell = AssignedNative::<F>::load(ctx, chip, layouter, injected_ir)?;
             emit_constraint(&cell, injected_ir)?;
@@ -217,13 +215,13 @@ pub mod gadget_extraction {
         }
     }
 
-    impl<F: PrimeField, C> StoreIntoCells<F, C> for AssignedByte<F> {
+    impl<F: PrimeField, C,L> StoreIntoCells<F, C, ExtractionSupport,L> for AssignedByte<F> {
         fn store(
             self,
-            ctx: &mut OCtx,
+            ctx: &mut OCtx<F, ExtractionSupport>,
             _chip: &C,
-            layouter: &mut impl Layouter<F>,
-            injected_ir: &mut InjectedIR<F>,
+            layouter: &mut impl LayoutAdaptor<F, ExtractionSupport, Adaptee = L>,
+            injected_ir: &mut IR<F>,
         ) -> Result<(), Error> {
             emit_constraint(&self.0, injected_ir)?;
             ctx.assign_next(self.0, layouter)

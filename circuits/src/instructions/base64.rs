@@ -86,44 +86,44 @@ impl<F: PrimeField, const M: usize, const A: usize> From<Base64Vec<F, M, A>>
 pub mod extraction {
     //! Extraction specific logic related to the base64 vector.
 
-    use extractor_support::{
-        cells::{
-            ctx::{ICtx, OCtx},
-            load::LoadFromCells,
-            store::StoreIntoCells,
-            CellReprSize,
-        },
-        circuit::injected::InjectedIR,
-        error::Error,
+    use extractor_support::cells::{
+        ctx::{ICtx, LayoutAdaptor, OCtx},
+        load::LoadFromCells,
+        store::StoreIntoCells,
+        CellReprSize,
     };
     use ff::PrimeField;
-    use midnight_proofs::circuit::Layouter;
+    use midnight_proofs::{plonk::Error, ExtractionSupport};
 
     use super::Base64Vec;
-    use crate::{types::AssignedByte, vec::AssignedVector};
+    use crate::{types::AssignedByte, utils::extraction::IR, vec::AssignedVector};
 
     impl<F: PrimeField, const M: usize, const A: usize> CellReprSize for Base64Vec<F, M, A> {
         const SIZE: usize = <AssignedVector<F, AssignedByte<F>, M, A> as CellReprSize>::SIZE;
     }
 
-    impl<F: PrimeField, C, const M: usize, const A: usize> LoadFromCells<F, C> for Base64Vec<F, M, A> {
+    impl<F: PrimeField, C, const M: usize, const A: usize, L>
+        LoadFromCells<F, C, ExtractionSupport, L> for Base64Vec<F, M, A>
+    {
         fn load(
-            ctx: &mut ICtx,
+            ctx: &mut ICtx<F, ExtractionSupport>,
             chip: &C,
-            layouter: &mut impl Layouter<F>,
-            injected_ir: &mut InjectedIR<F>,
+            layouter: &mut impl LayoutAdaptor<F, ExtractionSupport, Adaptee = L>,
+            injected_ir: &mut IR<F>,
         ) -> Result<Self, Error> {
             AssignedVector::<F, AssignedByte<F>, M, A>::load(ctx, chip, layouter, injected_ir)
                 .map(Self)
         }
     }
-    impl<F: PrimeField, C, const M: usize, const A: usize> StoreIntoCells<F, C> for Base64Vec<F, M, A> {
+    impl<F: PrimeField, C, const M: usize, const A: usize, L>
+        StoreIntoCells<F, C, ExtractionSupport, L> for Base64Vec<F, M, A>
+    {
         fn store(
             self,
-            ctx: &mut OCtx,
+            ctx: &mut OCtx<F, ExtractionSupport>,
             chip: &C,
-            layouter: &mut impl Layouter<F>,
-            injected_ir: &mut InjectedIR<F>,
+            layouter: &mut impl LayoutAdaptor<F, ExtractionSupport, Adaptee = L>,
+            injected_ir: &mut IR<F>,
         ) -> Result<(), Error> {
             self.0.store(ctx, chip, layouter, injected_ir)
         }

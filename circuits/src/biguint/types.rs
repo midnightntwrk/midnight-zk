@@ -168,20 +168,21 @@ pub mod extraction {
     use extractor_support::{
         cell_to_expr,
         cells::{
-            ctx::{ICtx, OCtx},
+            ctx::{ICtx, LayoutAdaptor, OCtx},
             load::LoadFromCells,
             store::StoreIntoCells,
             CellReprSize,
         },
-        circuit::injected::InjectedIR,
-        error::Error,
         ir::{stmt::IRStmt, CmpOp},
     };
     use ff::PrimeField;
-    use midnight_proofs::{circuit::Layouter, plonk::Expression};
+    use midnight_proofs::{
+        plonk::{Error, Expression},
+        ExtractionSupport,
+    };
 
     use super::{AssignedBigUint, LOG2_BASE};
-    use crate::types::AssignedNative;
+    use crate::{types::AssignedNative, utils::extraction::IR};
 
     const fn num_limbs(bits: usize) -> usize {
         let c: usize = bits / LOG2_BASE as usize;
@@ -222,11 +223,12 @@ pub mod extraction {
         fn try_from(value: AssignedBigUint<F>) -> Result<Self, Self::Error> {
             let n_limbs = value.limbs.len();
             if n_limbs > num_limbs(BITS) {
-                return Err(Error::UnexpectedElements {
+                return Err(extractor_support::error::Error::UnexpectedElements {
                     header: "While wrapping big uint into a loaded bit uint",
                     expected: n_limbs,
                     actual: num_limbs(BITS),
-                });
+                }
+                .into());
             }
             Ok(Self(value))
         }
@@ -234,11 +236,11 @@ pub mod extraction {
 
     fn emit_limb_bound_constraints<F: PrimeField>(
         biguint: &AssignedBigUint<F>,
-        injected_ir: &mut InjectedIR<F>,
+        injected_ir: &mut IR<F>,
     ) -> Result<(), Error> {
         let n_limbs = biguint.limb_size_bounds.len();
         assert_eq!(n_limbs, biguint.limbs.len());
-        let lhs = biguint.limbs[..n_limbs - 1].iter().map(|c| (c.cell(), cell_to_expr(c)));
+        let lhs = biguint.limbs[..n_limbs - 1].iter().map(|c| (c.cell(), cell_to_expr!(c, F)));
         let rhs = biguint.limb_size_bounds[..n_limbs - 1]
             .iter()
             .copied()
@@ -261,7 +263,7 @@ pub mod extraction {
                 std::iter::zip(biguint.limbs.last(), biguint.limb_size_bounds.last()).map(
                     |(limb, bound)| {
                         let cell = limb.cell();
-                        let lhs = cell_to_expr(limb)?;
+                        let lhs = cell_to_expr!(limb, F)?;
                         let op = if *bound < LOG2_BASE {
                             CmpOp::Le
                         } else {
@@ -282,12 +284,14 @@ pub mod extraction {
             })
     }
 
-    impl<F: PrimeField, C, const BITS: usize> LoadFromCells<F, C> for LoadedBigUint<F, BITS> {
+    impl<F: PrimeField, C, const BITS: usize, L> LoadFromCells<F, C, ExtractionSupport, L>
+        for LoadedBigUint<F, BITS>
+    {
         fn load(
-            ctx: &mut ICtx,
+            ctx: &mut ICtx<F, ExtractionSupport>,
             chip: &C,
-            layouter: &mut impl Layouter<F>,
-            injected_ir: &mut InjectedIR<F>,
+            layouter: &mut impl LayoutAdaptor<F, ExtractionSupport, Adaptee = L>,
+            injected_ir: &mut IR<F>,
         ) -> Result<Self, Error> {
             assert_eq!(
                 AssignedNative::<F>::SIZE,
@@ -312,13 +316,15 @@ pub mod extraction {
         }
     }
 
-    impl<F: PrimeField, C, const BITS: usize> StoreIntoCells<F, C> for LoadedBigUint<F, BITS> {
+    impl<F: PrimeField, C, const BITS: usize, L> StoreIntoCells<F, C, ExtractionSupport, L>
+        for LoadedBigUint<F, BITS>
+    {
         fn store(
             self,
-            ctx: &mut OCtx,
+            ctx: &mut OCtx<F, ExtractionSupport>,
             chip: &C,
-            layouter: &mut impl Layouter<F>,
-            injected_ir: &mut InjectedIR<F>,
+            layouter: &mut impl LayoutAdaptor<F, ExtractionSupport, Adaptee = L>,
+            injected_ir: &mut IR<F>,
         ) -> Result<(), Error> {
             let n_limbs = self.0.limbs.len();
             assert_eq!(
@@ -328,11 +334,12 @@ pub mod extraction {
             );
 
             if n_limbs > num_limbs(BITS) {
-                return Err(Error::UnexpectedElements {
+                return Err(extractor_support::error::Error::UnexpectedElements {
                     header: "While storing big uint",
                     expected: n_limbs,
                     actual: num_limbs(BITS),
-                });
+                }
+                .into());
             }
 
             emit_limb_bound_constraints(&self.0, injected_ir)?;

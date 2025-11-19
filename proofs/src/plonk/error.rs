@@ -94,6 +94,22 @@ impl error::Error for Error {
     }
 }
 
+#[cfg(feature = "extraction")]
+impl From<Error> for extractor_support::error::Error {
+    fn from(value: Error) -> Self {
+        use std::sync::Arc;
+
+        Self::Plonk(Arc::new(value))
+    }
+}
+
+#[cfg(feature = "extraction")]
+impl From<extractor_support::error::Error> for Error {
+    fn from(value: extractor_support::error::Error) -> Self {
+        Self::Transcript(std::io::Error::other(value))
+    }
+}
+
 /// This is an error that could occur during table synthesis.
 #[derive(Debug)]
 pub enum TableError {

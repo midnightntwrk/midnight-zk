@@ -251,12 +251,16 @@ pub mod extraction {
     use super::Pow2RangeChip;
     use crate::field::decomposition::pow2range::Pow2RangeConfig;
 
-    impl<F: PrimeField> CircuitInitialization<F> for Pow2RangeChip<F> {
+    impl<F: PrimeField, L: Layouter<F>> CircuitInitialization<L> for Pow2RangeChip<F> {
         type Config = Pow2RangeConfig;
 
         type Args = usize;
 
         type ConfigCols = [Column<Advice>; 4];
+
+        type CS = ConstraintSystem<F>;
+
+        type Error = Error;
 
         fn new_chip(config: &Self::Config, args: Self::Args) -> Self {
             Self::new(config, args)
@@ -269,16 +273,12 @@ pub mod extraction {
             Self::configure(meta, columns)
         }
 
-        fn load_chip(
-            &self,
-            layouter: &mut impl Layouter<F>,
-            _config: &Self::Config,
-        ) -> Result<(), Error> {
+        fn load_chip(&self, layouter: &mut L, _config: &Self::Config) -> Result<(), Error> {
             self.load_table(layouter)
         }
     }
 
-    impl<F: PrimeField> ChipArgs<F> for Pow2RangeChip<F> {
+    impl<F: PrimeField> ChipArgs for Pow2RangeChip<F> {
         type Args = usize;
     }
 }

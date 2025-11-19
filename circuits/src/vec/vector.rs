@@ -89,23 +89,27 @@ pub mod extraction {
     use extractor_support::{
         cell_to_expr,
         cells::{
-            ctx::{ICtx, OCtx},
+            ctx::{ICtx, LayoutAdaptor, OCtx},
             load::LoadFromCells,
             store::StoreIntoCells,
             CellReprSize,
         },
-        circuit::injected::InjectedIR,
-        error::Error,
         ir::{expr::IRBexpr, stmt::IRStmt, CmpOp},
     };
     use ff::{Field, PrimeField};
     use midnight_proofs::{
-        circuit::{Cell, Layouter},
-        plonk::{Any, Column, ColumnType, Expression},
+        circuit::Cell,
+        plonk::{Any, Column, ColumnType, Error, Expression},
+        ExtractionSupport,
     };
 
     use super::{AssignedVector, Vectorizable};
-    use crate::{field::AssignedNative, types::AssignedByte, vec::get_lims};
+    use crate::{
+        field::AssignedNative,
+        types::AssignedByte,
+        utils::extraction::{cexpr, eq_expr_row, implies, IR},
+        vec::get_lims,
+    };
 
     impl<F: PrimeField, T: Vectorizable + CellReprSize, const M: usize, const A: usize> CellReprSize
         for AssignedVector<F, T, M, A>
@@ -116,21 +120,22 @@ pub mod extraction {
     impl<
             F: PrimeField,
             C,
-            T: Vectorizable + LoadFromCells<F, C>,
+            L,
+            T: Vectorizable + LoadFromCells<F, C, ExtractionSupport, L>,
             const M: usize,
             const A: usize,
-        > LoadFromCells<F, C> for AssignedVector<F, T, M, A>
+        > LoadFromCells<F, C, ExtractionSupport, L> for AssignedVector<F, T, M, A>
     {
         fn load(
-            ctx: &mut ICtx,
+            ctx: &mut ICtx<F, ExtractionSupport>,
             chip: &C,
-            layouter: &mut impl Layouter<F>,
-            injected_ir: &mut InjectedIR<F>,
+            layouter: &mut impl LayoutAdaptor<F, ExtractionSupport, Adaptee = L>,
+            injected_ir: &mut IR<F>,
         ) -> Result<Self, Error> {
             let buffer = <[T; M]>::load(ctx, chip, layouter, injected_ir)?;
             let len = AssignedNative::load(ctx, chip, layouter, injected_ir)?;
-            let lhs = cell_to_expr(&len)?;
-            let rhs = Expression::Constant(F::from(M.try_into().unwrap()));
+            let lhs = cell_to_expr!(&len, F)?;
+            let rhs = cexpr(u64::try_from(M).unwrap());
             let stmt = IRStmt::constraint(
                 CmpOp::Le,
                 (len.cell().row_offset, lhs),
@@ -147,7 +152,7 @@ pub mod extraction {
         len_expr: Expression<F>,
         buffer: &[(Cell, Expression<F>)],
         filler: F,
-        injected_ir: &mut InjectedIR<F>,
+        injected_ir: &mut IR<F>,
     ) {
         let len_row = len_cell.row_offset;
         let len_idx = len_cell.region_index;
@@ -157,18 +162,13 @@ pub mod extraction {
         for len in 0..=M {
             let lims = get_lims::<M, A>(len);
             let mut size_checks = vec![];
-            for len in 0..M {
+            for (len, (elt_cell, elt)) in buffer.iter().enumerate().take(M) {
                 if lims.contains(&len) {
                     continue;
                 }
-                let (elt_cell, elt) = &buffer[len];
                 assert_eq!(elt_cell.region_index, len_idx);
                 let elt_row = elt_cell.row_offset;
-                size_checks.push(IRBexpr::Cmp(
-                    CmpOp::Eq,
-                    (elt_row, elt.clone()),
-                    (elt_row, Expression::Constant(filler)),
-                ))
+                size_checks.push(eq_expr_row(elt_row, elt.clone(), cexpr(filler)))
             }
             if size_checks.is_empty() {
                 continue;
@@ -176,36 +176,35 @@ pub mod extraction {
             size_exprs.push(IRBexpr::And(size_checks));
 
             let lenf = F::from(len as u64);
-            len_exprs.push(IRBexpr::Cmp(
-                CmpOp::Eq,
-                (len_row, len_expr.clone()),
-                (len_row, Expression::Constant(lenf)),
-            ));
+            len_exprs.push(eq_expr_row(len_row, len_expr.clone(), cexpr(lenf)));
         }
         let expr = IRBexpr::Or(
             std::iter::zip(len_exprs, size_exprs)
-                .map(|(len, size)| IRBexpr::Implies(Box::new(len), Box::new(size)))
+                .map(|(len, size)| implies(len, size))
                 .collect(),
         );
         let stmt = IRStmt::assert(expr);
         injected_ir.entry(len_idx).or_default().push(stmt);
     }
 
-    fn try_col<F, C: ColumnType, E>(c: &AssignedNative<F>) -> Result<Column<C>, Error>
+    fn try_col<F, C: ColumnType, E>(
+        c: &AssignedNative<F>,
+    ) -> Result<Column<C>, extractor_support::error::Error>
     where
         Column<C>: TryFrom<Column<Any>, Error = E>,
-        Error: From<E>,
+        extractor_support::error::Error: From<E>,
         F: Field,
     {
         Ok(c.cell().column.try_into()?)
     }
 
+    /// Puts all the injected IR into the same region since that's a requirement of the frontend.
     fn assign_to_same_region<F: Field, I: Into<AssignedNative<F>> + Clone>(
         len: &AssignedNative<F>,
         buffer: &[I],
-        layouter: &mut impl Layouter<F>,
+        layouter: &mut impl LayoutAdaptor<F, ExtractionSupport>,
     ) -> Result<(AssignedNative<F>, Vec<AssignedNative<F>>), Error> {
-        Ok(layouter.assign_region(
+        layouter.region(
             || "filler constraint",
             |mut region| {
                 let len = len.copy_advice(|| "len", &mut region, try_col(len)?, 0)?;
@@ -220,27 +219,27 @@ pub mod extraction {
                     .collect::<Result<_, _>>()?;
                 Ok((len, buffer))
             },
-        )?)
+        )
     }
 
-    impl<F: PrimeField, C, const M: usize, const A: usize> StoreIntoCells<F, C>
-        for AssignedVector<F, AssignedNative<F>, M, A>
+    impl<F: PrimeField, C, L, const M: usize, const A: usize>
+        StoreIntoCells<F, C, ExtractionSupport, L> for AssignedVector<F, AssignedNative<F>, M, A>
     {
         fn store(
             self,
-            ctx: &mut OCtx,
+            ctx: &mut OCtx<F, ExtractionSupport>,
             chip: &C,
-            layouter: &mut impl Layouter<F>,
-            injected_ir: &mut InjectedIR<F>,
+            layouter: &mut impl LayoutAdaptor<F, ExtractionSupport, Adaptee = L>,
+            injected_ir: &mut IR<F>,
         ) -> Result<(), Error> {
             let (len, buffer) = assign_to_same_region(&self.len, &self.buffer, layouter)?;
             let buffer = buffer
                 .into_iter()
-                .map(|c| Ok((c.cell(), cell_to_expr(&c)?)))
+                .map(|c| Ok((c.cell(), cell_to_expr!(&c, F)?)))
                 .collect::<Result<Vec<_>, Error>>()?;
             emit_filler_constrain::<_, M, A>(
                 len.cell(),
-                cell_to_expr(&len)?,
+                cell_to_expr!(&len, F)?,
                 &buffer,
                 AssignedNative::FILLER,
                 injected_ir,
@@ -253,24 +252,24 @@ pub mod extraction {
         }
     }
 
-    impl<F: PrimeField, C, const M: usize, const A: usize> StoreIntoCells<F, C>
-        for AssignedVector<F, AssignedByte<F>, M, A>
+    impl<F: PrimeField, C, L, const M: usize, const A: usize>
+        StoreIntoCells<F, C, ExtractionSupport, L> for AssignedVector<F, AssignedByte<F>, M, A>
     {
         fn store(
             self,
-            ctx: &mut OCtx,
+            ctx: &mut OCtx<F, ExtractionSupport>,
             chip: &C,
-            layouter: &mut impl Layouter<F>,
-            injected_ir: &mut InjectedIR<F>,
+            layouter: &mut impl LayoutAdaptor<F, ExtractionSupport, Adaptee = L>,
+            injected_ir: &mut IR<F>,
         ) -> Result<(), Error> {
             let (len, buffer) = assign_to_same_region(&self.len, &self.buffer, layouter)?;
             let buffer = buffer
                 .into_iter()
-                .map(|c| Ok((c.cell(), cell_to_expr(&c)?)))
+                .map(|c| Ok((c.cell(), cell_to_expr!(&c, F)?)))
                 .collect::<Result<Vec<_>, Error>>()?;
             emit_filler_constrain::<F, M, A>(
                 len.cell(),
-                cell_to_expr(&len)?,
+                cell_to_expr!(&len, F)?,
                 &buffer,
                 F::from(AssignedByte::<F>::FILLER as u64),
                 injected_ir,

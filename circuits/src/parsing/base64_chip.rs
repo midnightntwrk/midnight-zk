@@ -484,31 +484,39 @@ impl<F: PrimeField> ComposableChip<F> for Base64Chip<F> {
 }
 
 #[cfg(feature = "extraction")]
-pub mod extraction {
+pub mod base64_extraction {
     //! Extraction specific logic related to the base64 chip.
 
-    use extractor_support::{circuit::CircuitInitialization, error::PlonkError};
+    use extractor_support::circuit::CircuitInitialization as CI;
     use ff::PrimeField;
     use midnight_proofs::{
         circuit::Layouter,
-        plonk::{Advice, Column, ConstraintSystem},
+        plonk::{Advice, Column, ConstraintSystem, Error},
     };
 
     use super::{Base64Chip, Base64Config, NG};
     use crate::types::ComposableChip;
 
-    impl<F: PrimeField> CircuitInitialization<F> for Base64Chip<F> {
-        type Config = (Base64Config, <NG<F> as CircuitInitialization<F>>::Config);
+    impl<F, L> CI<L> for Base64Chip<F>
+    where
+        F: PrimeField,
+        L: Layouter<F>,
+    {
+        type Config = (Base64Config, <NG<F> as CI<L>>::Config);
 
         type Args = ();
 
         type ConfigCols = (
             [Column<Advice>; super::NB_BASE64_ADVICE_COLS],
-            <NG<F> as CircuitInitialization<F>>::ConfigCols,
+            <NG<F> as CI<L>>::ConfigCols,
         );
 
+        type CS = ConstraintSystem<F>;
+
+        type Error = Error;
+
         fn new_chip((base64, ng): &Self::Config, _: Self::Args) -> Self {
-            let ng = NG::<F>::new_chip(ng, ());
+            let ng = <NG<F> as CI<L>>::new_chip(ng, ());
             Self::new(base64, &ng)
         }
 
@@ -518,15 +526,11 @@ pub mod extraction {
         ) -> Self::Config {
             (
                 Self::configure(meta, base64),
-                NG::configure_circuit(meta, ng),
+                <NG<F> as CI<L>>::configure_circuit(meta, ng),
             )
         }
 
-        fn load_chip(
-            &self,
-            layouter: &mut impl Layouter<F>,
-            _: &Self::Config,
-        ) -> Result<(), PlonkError> {
+        fn load_chip(&self, layouter: &mut L, _: &Self::Config) -> Result<(), Error> {
             self.load(layouter)
         }
     }

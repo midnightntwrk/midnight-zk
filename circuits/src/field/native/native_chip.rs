@@ -1078,20 +1078,21 @@ pub mod chip_extraction {
     use extractor_support::{
         cell_to_expr,
         cells::{
-            ctx::{ICtx, OCtx},
+            ctx::{ICtx, LayoutAdaptor, OCtx},
             load::LoadFromCells,
             store::StoreIntoCells,
             CellReprSize,
         },
-        circuit::injected::InjectedIR,
-        error::Error,
         ir::{stmt::IRStmt, CmpOp},
     };
     use ff::PrimeField;
-    use midnight_proofs::{circuit::Layouter, plonk::Expression};
+    use midnight_proofs::{
+        plonk::{Error, Expression},
+        ExtractionSupport,
+    };
 
     use super::AssignedBit;
-    use crate::types::AssignedNative;
+    use crate::{types::AssignedNative, utils::extraction::IR};
 
     impl<F: PrimeField> CellReprSize for AssignedBit<F> {
         const SIZE: usize = <AssignedNative<F> as CellReprSize>::SIZE;
@@ -1099,9 +1100,9 @@ pub mod chip_extraction {
 
     fn emit_constraint<F: PrimeField>(
         cell: &AssignedNative<F>,
-        injected_ir: &mut InjectedIR<F>,
+        injected_ir: &mut IR<F>,
     ) -> Result<(), Error> {
-        let x = cell_to_expr(cell)?;
+        let x = cell_to_expr!(cell, F)?;
         let lhs = x.clone() * (x - Expression::Constant(F::ONE));
         let rhs = Expression::Constant(F::ZERO);
         let stmt = IRStmt::constraint(
@@ -1113,15 +1114,15 @@ pub mod chip_extraction {
         Ok(())
     }
 
-    impl<F, C> LoadFromCells<F, C> for AssignedBit<F>
+    impl<F, C, L> LoadFromCells<F, C, ExtractionSupport, L> for AssignedBit<F>
     where
         F: PrimeField,
     {
         fn load(
-            ctx: &mut ICtx,
+            ctx: &mut ICtx<F, ExtractionSupport>,
             chip: &C,
-            layouter: &mut impl Layouter<F>,
-            injected_ir: &mut InjectedIR<F>,
+            layouter: &mut impl LayoutAdaptor<F, ExtractionSupport, Adaptee = L>,
+            injected_ir: &mut IR<F>,
         ) -> Result<Self, Error> {
             let cell = AssignedNative::<F>::load(ctx, chip, layouter, injected_ir)?;
             emit_constraint(&cell, injected_ir)?;
@@ -1129,13 +1130,13 @@ pub mod chip_extraction {
         }
     }
 
-    impl<F: PrimeField, C> StoreIntoCells<F, C> for AssignedBit<F> {
+    impl<F: PrimeField, C, L> StoreIntoCells<F, C, ExtractionSupport, L> for AssignedBit<F> {
         fn store(
             self,
-            ctx: &mut OCtx,
+            ctx: &mut OCtx<F, ExtractionSupport>,
             _chip: &C,
-            layouter: &mut impl Layouter<F>,
-            injected_ir: &mut InjectedIR<F>,
+            layouter: &mut impl LayoutAdaptor<F, ExtractionSupport, Adaptee = L>,
+            injected_ir: &mut IR<F>,
         ) -> Result<(), Error> {
             emit_constraint(&self.0, injected_ir)?;
             ctx.assign_next(self.0, layouter)

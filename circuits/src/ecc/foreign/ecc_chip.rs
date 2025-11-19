@@ -2069,13 +2069,14 @@ where
 #[cfg(feature = "extraction")]
 pub mod extraction {
     //! Extraction specific logic related to the foreign ecc chip.
-    use extractor_support::{
-        cells::{ctx::ICtx, load::LoadFromCells, store::StoreIntoCells, CellReprSize},
-        circuit::injected::InjectedIR,
-        error::Error,
+    use extractor_support::cells::{
+        ctx::{ICtx, LayoutAdaptor, OCtx},
+        load::LoadFromCells,
+        store::StoreIntoCells,
+        CellReprSize,
     };
     use ff::PrimeField;
-    use midnight_proofs::circuit::{Layouter, Value};
+    use midnight_proofs::{circuit::Value, plonk::Error, ExtractionSupport};
 
     use super::{AssignedForeignPoint, ForeignEccChip};
     use crate::{
@@ -2083,6 +2084,7 @@ pub mod extraction {
         field::foreign::params::FieldEmulationParams,
         instructions::{NativeInstructions, ScalarFieldInstructions},
         types::{AssignedBit, AssignedField, InnerValue},
+        utils::extraction::IR,
     };
 
     impl<F, C, B> CellReprSize for AssignedForeignPoint<F, C, B>
@@ -2098,17 +2100,18 @@ pub mod extraction {
     // This loading and storing implementation is probably naive and it may need
     // some extra IR to properly handle the the `is_id` flag.
 
-    impl<F, C, B, Chip> LoadFromCells<F, Chip> for AssignedForeignPoint<F, C, B>
+    impl<F, C, B, Chip, L> LoadFromCells<F, Chip, ExtractionSupport, L>
+        for AssignedForeignPoint<F, C, B>
     where
         F: PrimeField,
         C: WeierstrassCurve,
         B: FieldEmulationParams<F, C::Base>,
     {
         fn load(
-            ctx: &mut ICtx,
+            ctx: &mut ICtx<F, ExtractionSupport>,
             chip: &Chip,
-            layouter: &mut impl Layouter<F>,
-            injected_ir: &mut InjectedIR<F>,
+            layouter: &mut impl LayoutAdaptor<F, ExtractionSupport, Adaptee = L>,
+            injected_ir: &mut IR<F>,
         ) -> Result<Self, Error> {
             let is_id = AssignedBit::<F>::load(ctx, chip, layouter, injected_ir)?;
             let x = AssignedField::<F, C::Base, B>::load(ctx, chip, layouter, injected_ir)?;
@@ -2122,7 +2125,8 @@ pub mod extraction {
         }
     }
 
-    impl<F, C, B, Chip> StoreIntoCells<F, Chip> for AssignedForeignPoint<F, C, B>
+    impl<F, C, B, Chip, L> StoreIntoCells<F, Chip, ExtractionSupport, L>
+        for AssignedForeignPoint<F, C, B>
     where
         F: PrimeField,
         C: WeierstrassCurve,
@@ -2130,10 +2134,10 @@ pub mod extraction {
     {
         fn store(
             self,
-            ctx: &mut extractor_support::cells::ctx::OCtx,
+            ctx: &mut OCtx<F, ExtractionSupport>,
             chip: &Chip,
-            layouter: &mut impl Layouter<F>,
-            injected_ir: &mut InjectedIR<F>,
+            layouter: &mut impl LayoutAdaptor<F, ExtractionSupport, Adaptee = L>,
+            injected_ir: &mut IR<F>,
         ) -> Result<(), Error> {
             self.is_id.store(ctx, chip, layouter, injected_ir)?;
             self.x.store(ctx, chip, layouter, injected_ir)?;

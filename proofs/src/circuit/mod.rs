@@ -214,6 +214,56 @@ impl<V, F: Field> picus_macros_support::DecomposeIn<Cell> for AssignedCell<V, F>
     }
 }
 
+#[cfg(feature = "extraction")]
+impl<F: ff::PrimeField> extractor_support::cells::CellReprSize for AssignedCell<F, F> {
+    const SIZE: usize = 1;
+}
+
+#[cfg(feature = "extraction")]
+impl<F: ff::PrimeField, C, L>
+    extractor_support::cells::load::LoadFromCells<F, C, crate::ExtractionSupport, L>
+    for AssignedCell<F, F>
+{
+    fn load(
+        ctx: &mut extractor_support::cells::ctx::ICtx<F, crate::ExtractionSupport>,
+        _: &C,
+        layouter: &mut impl extractor_support::cells::ctx::LayoutAdaptor<
+            F,
+            crate::ExtractionSupport,
+            Adaptee = L,
+        >,
+        _: &mut extractor_support::circuit::injected::InjectedIR<
+            RegionIndex,
+            crate::plonk::Expression<F>,
+        >,
+    ) -> Result<Self, Error> {
+        ctx.assign_next(layouter)
+    }
+}
+
+#[cfg(feature = "extraction")]
+impl<F: ff::PrimeField, C, L>
+    extractor_support::cells::store::StoreIntoCells<F, C, crate::ExtractionSupport, L>
+    for AssignedCell<F, F>
+{
+    fn store(
+        self,
+        ctx: &mut extractor_support::cells::ctx::OCtx<F, crate::ExtractionSupport>,
+        _: &C,
+        layouter: &mut impl extractor_support::cells::ctx::LayoutAdaptor<
+            F,
+            crate::ExtractionSupport,
+            Adaptee = L,
+        >,
+        _: &mut extractor_support::circuit::injected::InjectedIR<
+            RegionIndex,
+            crate::plonk::Expression<F>,
+        >,
+    ) -> Result<(), Error> {
+        ctx.assign_next(self, layouter)
+    }
+}
+
 /// A region of the circuit in which a [`Chip`] can assign cells.
 ///
 /// Inside a region, the chip may freely use relative offsets; the [`Layouter`]
@@ -640,6 +690,114 @@ pub trait Layouter<F: Field> {
 
         let mut scope = groups::GroupScope::new(self.get_root());
         assignment(&mut scope.layouter, &mut scope.meta)
+    }
+}
+
+/// Wrapper over [`Layouter`] that implements [`LayoutAdaptor`](extractor_support::cells::ctx::LayoutAdaptor).
+#[cfg(feature = "extraction")]
+#[derive(Debug)]
+pub struct AdaptsLayouter<L> {
+    layouter: L,
+}
+
+#[cfg(feature = "extraction")]
+impl<L> AdaptsLayouter<L> {
+    /// Constructs a new wrapper.
+    pub fn new(layouter: L) -> Self {
+        Self { layouter }
+    }
+}
+
+#[cfg(feature = "extraction")]
+impl<F: Field, L: Layouter<F>>
+    extractor_support::cells::ctx::LayoutAdaptor<F, crate::ExtractionSupport>
+    for AdaptsLayouter<L>
+{
+    type Adaptee = L;
+
+    fn adaptee_ref(&self) -> &L {
+        &self.layouter
+    }
+
+    fn adaptee_ref_mut(&mut self) -> &mut L {
+        &mut self.layouter
+    }
+
+    fn constrain_instance(
+        &mut self,
+        cell: Cell,
+        instance_col: Column<Instance>,
+        instance_row: usize,
+    ) -> Result<(), Error> {
+        self.layouter.constrain_instance(cell, instance_col, instance_row)
+    }
+
+    fn constrain_advice_constant(
+        &mut self,
+        advice_col: Column<Advice>,
+        advice_row: usize,
+        constant: F,
+    ) -> Result<Cell, Error> {
+        Ok(self
+            .layouter
+            .assign_region(
+                || format!("Adv[{}, {advice_row}] == 0", advice_col.index()),
+                |mut region| {
+                    region.assign_advice_from_constant(
+                        || format!("Adv[{}, {advice_row}]", advice_col.index()),
+                        advice_col,
+                        advice_row,
+                        constant,
+                    )
+                },
+            )?
+            .cell())
+    }
+
+    fn assign_advice_from_instance(
+        &mut self,
+        advice_col: Column<Advice>,
+        advice_row: usize,
+        instance_col: Column<Instance>,
+        instance_row: usize,
+    ) -> Result<AssignedCell<F, F>, Error> {
+        self.layouter.assign_region(
+            || "ins",
+            |mut region| {
+                region.assign_advice_from_instance(
+                    || {
+                        format!(
+                            "Adv[{}, +{advice_row}] == Ins[{}, {instance_row}]",
+                            advice_col.index(),
+                            instance_col.index()
+                        )
+                    },
+                    instance_col,
+                    instance_row,
+                    advice_col,
+                    advice_row,
+                )
+            },
+        )
+    }
+
+    fn copy_advice(
+        &mut self,
+        ac: &AssignedCell<F, F>,
+        region: &mut Region<'_, F>,
+        advice_col: Column<Advice>,
+        advice_row: usize,
+    ) -> Result<AssignedCell<F, F>, Error> {
+        ac.copy_advice(|| "", region, advice_col, advice_row)
+    }
+
+    fn region<A, AR, N, NR>(&mut self, name: N, assignment: A) -> Result<AR, Error>
+    where
+        A: FnMut(Region<'_, F>) -> Result<AR, Error>,
+        N: Fn() -> NR,
+        NR: Into<String>,
+    {
+        self.layouter.assign_region(name, assignment)
     }
 }
 

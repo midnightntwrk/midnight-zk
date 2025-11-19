@@ -608,23 +608,20 @@ impl<F: PoseidonField> FromScratch<F> for PoseidonChip<F> {
 #[cfg(feature = "extraction")]
 pub mod extraction {
     //! Extraction specific logic related to the poseidon chip.
-    use extractor_support::{
-        cells::{
-            ctx::{ICtx, OCtx},
-            load::LoadFromCells,
-            store::StoreIntoCells,
-            CellReprSize,
-        },
-        circuit::injected::InjectedIR,
-        error::Error,
+    use extractor_support::cells::{
+        ctx::{ICtx, LayoutAdaptor, OCtx},
+        load::LoadFromCells,
+        store::StoreIntoCells,
+        CellReprSize,
     };
     use ff::PrimeField;
-    use midnight_proofs::circuit::Layouter;
+    use midnight_proofs::ExtractionSupport;
 
     use super::{AssignedPoseidonState, WIDTH};
     use crate::{
         field::AssignedNative,
         hash::poseidon::{constants::PoseidonField, PoseidonChip},
+        utils::extraction::IR,
     };
 
     /// Represents an [`AssignedPoseidonState`] loaded from the inputs or stored
@@ -643,11 +640,11 @@ pub mod extraction {
     impl<F: PrimeField, const QUEUE: usize> TryFrom<AssignedPoseidonState<F>>
         for LoadedPoseidonState<F, QUEUE>
     {
-        type Error = Error;
+        type Error = extractor_support::error::Error;
 
         fn try_from(value: AssignedPoseidonState<F>) -> Result<Self, Self::Error> {
             if value.queue.len() > QUEUE {
-                return Err(Error::UnexpectedElements {
+                return Err(extractor_support::error::Error::UnexpectedElements {
                     header: "while converting an assigned poseidon state into loaded",
                     expected: QUEUE,
                     actual: value.queue.len(),
@@ -662,13 +659,15 @@ pub mod extraction {
             + <[AssignedNative<F>; QUEUE] as CellReprSize>::SIZE;
     }
 
-    impl<F: PrimeField, const QUEUE: usize, C> LoadFromCells<F, C> for LoadedPoseidonState<F, QUEUE> {
+    impl<F: PrimeField, const QUEUE: usize, C, L> LoadFromCells<F, C, ExtractionSupport, L>
+        for LoadedPoseidonState<F, QUEUE>
+    {
         fn load(
-            ctx: &mut ICtx,
+            ctx: &mut ICtx<F, ExtractionSupport>,
             chip: &C,
-            layouter: &mut impl Layouter<F>,
-            injected_ir: &mut InjectedIR<F>,
-        ) -> Result<Self, Error> {
+            layouter: &mut impl LayoutAdaptor<F, ExtractionSupport, Adaptee = L>,
+            injected_ir: &mut IR<F>,
+        ) -> Result<Self, midnight_proofs::plonk::Error> {
             Ok(Self(AssignedPoseidonState {
                 register: <[AssignedNative<F>; WIDTH]>::load(ctx, chip, layouter, injected_ir)?,
                 queue: <[AssignedNative<F>; QUEUE]>::load(ctx, chip, layouter, injected_ir)
@@ -679,21 +678,24 @@ pub mod extraction {
         }
     }
 
-    impl<F: PrimeField, const QUEUE: usize, C> StoreIntoCells<F, C> for LoadedPoseidonState<F, QUEUE> {
+    impl<F: PrimeField, const QUEUE: usize, C, L> StoreIntoCells<F, C, ExtractionSupport, L>
+        for LoadedPoseidonState<F, QUEUE>
+    {
         fn store(
             self,
-            ctx: &mut OCtx,
+            ctx: &mut OCtx<F, ExtractionSupport>,
             chip: &C,
-            layouter: &mut impl Layouter<F>,
-            injected_ir: &mut InjectedIR<F>,
-        ) -> Result<(), Error> {
+            layouter: &mut impl LayoutAdaptor<F, ExtractionSupport, Adaptee = L>,
+            injected_ir: &mut IR<F>,
+        ) -> Result<(), midnight_proofs::plonk::Error> {
             let queue_len = self.0.queue.len();
             if queue_len > QUEUE {
-                return Err(Error::UnexpectedElements {
+                return Err(extractor_support::error::Error::UnexpectedElements {
                     header: "while storing a loaded poseidon state",
                     expected: QUEUE,
                     actual: queue_len,
-                });
+                }
+                .into());
             }
 
             self.0.register.store(ctx, chip, layouter, injected_ir)?;

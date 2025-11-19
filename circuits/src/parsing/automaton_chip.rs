@@ -521,11 +521,11 @@ impl Automaton {
 pub mod extraction {
     //! Extraction specific logic related to the automaton chip.
 
-    use extractor_support::error::PlonkError;
+    use extractor_support::circuit::CircuitInitialization;
     use ff::PrimeField;
     use midnight_proofs::{
         circuit::Layouter,
-        plonk::{Column, ConstraintSystem, Instance},
+        plonk::{Column, ConstraintSystem, Error, Instance},
     };
 
     use super::{AutomatonChip, AutomatonConfig, NB_AUTOMATA_COLS};
@@ -542,15 +542,20 @@ pub mod extraction {
         utils::ComposableChip,
     };
 
-    impl<F> extractor_support::circuit::CircuitInitialization<F> for AutomatonChip<StdLibParser, F>
+    impl<F, L> CircuitInitialization<L> for AutomatonChip<StdLibParser, F>
     where
         F: PrimeField + Ord,
+        L: Layouter<F>,
     {
         type Config = (P2RDecompositionConfig, AutomatonConfig<StdLibParser, F>);
 
         type Args = ();
 
         type ConfigCols = [Column<Instance>; 2];
+
+        type CS = ConstraintSystem<F>;
+
+        type Error = Error;
 
         fn new_chip(config: &Self::Config, _: Self::Args) -> Self {
             let max_bit_len = 8;
@@ -596,11 +601,7 @@ pub mod extraction {
             (native_gadget_config, automaton_config)
         }
 
-        fn load_chip(
-            &self,
-            layouter: &mut impl Layouter<F>,
-            config: &Self::Config,
-        ) -> Result<(), PlonkError> {
+        fn load_chip(&self, layouter: &mut L, config: &Self::Config) -> Result<(), Error> {
             self.native_gadget.load_chip(layouter, &config.0)?;
             self.load(layouter)
         }

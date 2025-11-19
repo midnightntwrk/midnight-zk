@@ -75,8 +75,8 @@ pub mod extraction {
         p2r: Pow2RangeConfig,
     }
 
-    impl AutoConfigure for ExtractionCfg {
-        fn configure<F: PrimeField>(meta: &mut ConstraintSystem<F>) -> Self {
+    impl<F: PrimeField> AutoConfigure<ConstraintSystem<F>> for ExtractionCfg {
+        fn configure(meta: &mut ConstraintSystem<F>) -> Self {
             let instance_columns = core::array::from_fn(|_| meta.instance_column());
             let advice_columns: [_; NB_ARITH_COLS] = core::array::from_fn(|_| meta.advice_column());
             let fixed_columns: [_; NB_ARITH_FIXED_COLS] =
@@ -89,12 +89,16 @@ pub mod extraction {
         }
     }
 
-    impl<F: PrimeField> CircuitInitialization<F> for P2RDecompositionChip<F> {
+    impl<F: PrimeField, L: Layouter<F>> CircuitInitialization<L> for P2RDecompositionChip<F> {
         type Config = P2RDecompositionConfig;
 
         type Args = usize;
 
         type ConfigCols = ExtractionCfg;
+
+        type CS = ConstraintSystem<F>;
+
+        type Error = Error;
 
         fn new_chip(config: &Self::Config, args: Self::Args) -> Self {
             P2RDecompositionChip::new(config, &args)
@@ -107,11 +111,7 @@ pub mod extraction {
             P2RDecompositionChip::configure(meta, &(columns.native.clone(), columns.p2r.clone()))
         }
 
-        fn load_chip(
-            &self,
-            layouter: &mut impl Layouter<F>,
-            _config: &Self::Config,
-        ) -> Result<(), Error> {
+        fn load_chip(&self, layouter: &mut L, _config: &Self::Config) -> Result<(), Error> {
             self.load(layouter)
         }
     }

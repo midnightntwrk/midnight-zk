@@ -681,27 +681,32 @@ impl ZkStdLib {
 pub mod extraction {
     //! Extraction specific logic related to the stdlib.
 
-    use extractor_support::{
-        circuit::{configuration::AutoConfigure, CircuitInitialization},
-        error::PlonkError,
+    use extractor_support::circuit::{configuration::AutoConfigure, CircuitInitialization};
+    use ff::PrimeField;
+    use midnight_proofs::{
+        circuit::Layouter,
+        plonk::{ConstraintSystem, Error},
     };
-    use midnight_proofs::{circuit::Layouter, plonk::ConstraintSystem};
 
     use super::F;
     use crate::utils::ComposableChip as _;
 
-    impl AutoConfigure for super::ZkStdLibArch {
-        fn configure<F: ff::PrimeField>(_: &mut ConstraintSystem<F>) -> Self {
+    impl<F: PrimeField> AutoConfigure<ConstraintSystem<F>> for super::ZkStdLibArch {
+        fn configure(_: &mut ConstraintSystem<F>) -> Self {
             Self::default()
         }
     }
 
-    impl CircuitInitialization<F> for super::ZkStdLib {
+    impl<L: Layouter<F>> CircuitInitialization<L> for super::ZkStdLib {
         type Config = super::ZkStdLibConfig;
 
         type Args = usize;
 
         type ConfigCols = super::ZkStdLibArch;
+
+        type CS = ConstraintSystem<F>;
+
+        type Error = Error;
 
         fn new_chip(config: &Self::Config, args: Self::Args) -> Self {
             Self::new(config, args)
@@ -714,11 +719,7 @@ pub mod extraction {
             Self::configure(meta, *arch)
         }
 
-        fn load_chip(
-            &self,
-            layouter: &mut impl Layouter<F>,
-            _: &Self::Config,
-        ) -> Result<(), PlonkError> {
+        fn load_chip(&self, layouter: &mut L, _: &Self::Config) -> Result<(), Error> {
             self.core_decomposition_chip.load(layouter)?;
 
             if let Some(sha256_chip) = &self.sha256_chip {

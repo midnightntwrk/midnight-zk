@@ -17,6 +17,8 @@
 pub(crate) mod circuit_modeling;
 mod composable;
 pub mod ecdsa;
+#[cfg(feature = "extraction")]
+pub mod extraction;
 pub mod plonk_api;
 mod test_native_gadget;
 mod test_std_lib;

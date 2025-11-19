@@ -217,25 +217,23 @@ pub mod extraction {
     use extractor_support::{
         big_to_fe, cell_to_expr,
         cells::{
-            ctx::{ICtx, OCtx},
+            ctx::{ICtx, LayoutAdaptor, OCtx},
             load::LoadFromCells,
             store::StoreIntoCells,
             CellReprSize,
         },
-        circuit::injected::InjectedIR,
-        error::Error,
         ir::{stmt::IRStmt, CmpOp},
         sbig_to_fe,
     };
     use ff::PrimeField;
-    use midnight_proofs::{circuit::Layouter, plonk::Expression};
+    use midnight_proofs::{plonk::{Error, Expression}, ExtractionSupport};
     use num_bigint::BigUint;
     use num_traits::One as _;
 
     use super::AssignedField;
     use crate::{
         field::{foreign::params::FieldEmulationParams, AssignedNative},
-        instructions::NativeInstructions,
+        instructions::NativeInstructions, utils::extraction::IR,
     };
 
     impl<F, K, P> CellReprSize for AssignedField<F, K, P>
@@ -247,17 +245,17 @@ pub mod extraction {
         const SIZE: usize = P::NB_LIMBS as usize * <AssignedNative<F> as CellReprSize>::SIZE;
     }
 
-    impl<C, F, K, P> LoadFromCells<F, C> for AssignedField<F, K, P>
+    impl<C, F, K, P, L> LoadFromCells<F, C, ExtractionSupport, L> for AssignedField<F, K, P>
     where
         F: PrimeField,
         K: PrimeField,
         P: FieldEmulationParams<F, K>,
     {
         fn load(
-            ctx: &mut ICtx,
+            ctx: &mut ICtx<F, ExtractionSupport>,
             chip: &C,
-            layouter: &mut impl Layouter<F>,
-            injected_ir: &mut InjectedIR<F>,
+            layouter: &mut impl LayoutAdaptor<F, ExtractionSupport, Adaptee = L>,
+            injected_ir: &mut IR<F>,
         ) -> Result<Self, Error> {
             // The input for an field is a set of native cells that represents properly
             // constructed limbs.
@@ -271,7 +269,7 @@ pub mod extraction {
                 .map(big_to_fe::<F>);
             // Range-check the cells in the range [0, base)
             for (cell, log2bound) in cells.iter().zip(bounds) {
-                let lhs = cell_to_expr(cell)?;
+                let lhs = cell_to_expr!(cell, F)?;
                 let rhs = Expression::Constant(log2bound);
                 injected_ir
                     .entry(cell.cell().region_index)
@@ -287,7 +285,7 @@ pub mod extraction {
         }
     }
 
-    impl<C, F, K, P> StoreIntoCells<F, C> for AssignedField<F, K, P>
+    impl<C, F, K, P, L> StoreIntoCells<F, C, ExtractionSupport, L> for AssignedField<F, K, P>
     where
         F: PrimeField,
         K: PrimeField,
@@ -295,14 +293,14 @@ pub mod extraction {
     {
         fn store(
             self,
-            ctx: &mut OCtx,
+            ctx: &mut OCtx<F, ExtractionSupport>,
             chip: &C,
-            layouter: &mut impl Layouter<F>,
-            injected_ir: &mut InjectedIR<F>,
+            layouter: &mut impl LayoutAdaptor<F, ExtractionSupport, Adaptee = L>,
+            injected_ir: &mut IR<F>,
         ) -> Result<(), Error> {
             for (val, (lb, ub)) in std::iter::zip(self.limb_values(), self.limb_bounds) {
                 let row = val.cell().row_offset;
-                let expr = cell_to_expr(&val)?;
+                let expr = cell_to_expr!(&val, F)?;
                 let region = injected_ir.entry(val.cell().region_index).or_default();
 
                 let lb = Expression::Constant(sbig_to_fe::<F>(lb));

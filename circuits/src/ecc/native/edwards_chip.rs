@@ -149,18 +149,14 @@ impl<C: EdwardsCurve> Sampleable for AssignedScalarOfNativeCurve<C> {
 pub mod extraction {
     //! Extraction specific logic related to the native ecc chip.
 
-    use extractor_support::{
-        cells::{
-            ctx::{ICtx, OCtx},
-            load::LoadFromCells,
-            store::StoreIntoCells,
-            CellReprSize,
-        },
-        circuit::injected::InjectedIR,
-        error::Error,
+    use extractor_support::cells::{
+        ctx::{ICtx, LayoutAdaptor, OCtx},
+        load::LoadFromCells,
+        store::StoreIntoCells,
+        CellReprSize,
     };
     use ff::PrimeField;
-    use midnight_proofs::circuit::Layouter;
+    use midnight_proofs::{circuit::Layouter, plonk::Error, ExtractionSupport};
 
     use super::{AssignedNativePoint, AssignedScalarOfNativeCurve};
     use crate::{
@@ -170,6 +166,7 @@ pub mod extraction {
             ConversionInstructions, DecompositionInstructions, EccInstructions,
             PublicInputInstructions,
         },
+        utils::extraction::IR,
     };
 
     impl<CV> CellReprSize for AssignedNativePoint<CV>
@@ -183,89 +180,99 @@ pub mod extraction {
         const SIZE: usize = <AssignedNative<CV::Base> as CellReprSize>::SIZE;
     }
 
-    impl<F, CV, C> LoadFromCells<F, C> for AssignedNativePoint<CV>
+    impl<F, CV, C, L> LoadFromCells<F, C, ExtractionSupport, L> for AssignedNativePoint<CV>
     where
         F: PrimeField,
         CV: CircuitCurve<Base = F>,
         C: EccInstructions<F, CV, Point = AssignedNativePoint<CV>, Coordinate = AssignedNative<F>>,
+        L: Layouter<F>,
     {
         fn load(
-            ctx: &mut ICtx,
+            ctx: &mut ICtx<F, ExtractionSupport>,
             chip: &C,
-            layouter: &mut impl Layouter<F>,
-            injected_ir: &mut InjectedIR<F>,
+            layouter: &mut impl LayoutAdaptor<F, ExtractionSupport, Adaptee = L>,
+            injected_ir: &mut IR<F>,
         ) -> Result<Self, Error> {
             let x = AssignedNative::<F>::load(ctx, chip, layouter, injected_ir)?;
             let y = AssignedNative::<F>::load(ctx, chip, layouter, injected_ir)?;
-            Ok(chip.point_from_coordinates(layouter, &x, &y)?.into())
+            chip.point_from_coordinates(layouter.adaptee_ref_mut(), &x, &y)
         }
     }
 
-    impl<F, S, CV, C> LoadFromCells<F, C> for AssignedScalarOfNativeCurve<CV>
+    impl<F, S, CV, C, L> LoadFromCells<F, C, ExtractionSupport, L> for AssignedScalarOfNativeCurve<CV>
     where
         F: PrimeField,
         S: PrimeField,
         CV: CircuitCurve<Base = F, Scalar = S>,
         C: EccInstructions<F, CV, Point = AssignedNativePoint<CV>, Coordinate = AssignedNative<F>>
             + ConversionInstructions<F, AssignedNative<F>, AssignedScalarOfNativeCurve<CV>>,
+        L: Layouter<F>,
     {
         fn load(
-            ctx: &mut ICtx,
+            ctx: &mut ICtx<F, ExtractionSupport>,
             chip: &C,
-            layouter: &mut impl Layouter<F>,
-            injected_ir: &mut InjectedIR<F>,
+            layouter: &mut impl LayoutAdaptor<F, ExtractionSupport, Adaptee = L>,
+            injected_ir: &mut IR<F>,
         ) -> Result<Self, Error> {
             let cell = AssignedNative::load(ctx, chip, layouter, injected_ir)?;
-            Ok(chip.convert(layouter, &cell)?)
+            chip.convert(layouter.adaptee_ref_mut(), &cell)
         }
     }
 
-    impl<CV, C> StoreIntoCells<CV::Base, C> for AssignedNativePoint<CV>
+    impl<CV, C, L> StoreIntoCells<CV::Base, C, ExtractionSupport, L> for AssignedNativePoint<CV>
     where
         CV: CircuitCurve,
         C: PublicInputInstructions<CV::Base, AssignedNativePoint<CV>>,
+        L: Layouter<CV::Base>,
     {
         fn store(
             self,
-            ctx: &mut OCtx,
+            ctx: &mut OCtx<CV::Base, ExtractionSupport>,
             chip: &C,
-            layouter: &mut impl Layouter<CV::Base>,
-            injected_ir: &mut InjectedIR<CV::Base>,
+            layouter: &mut impl LayoutAdaptor<CV::Base, ExtractionSupport, Adaptee = L>,
+            injected_ir: &mut IR<CV::Base>,
         ) -> Result<(), Error> {
-            let v = chip.as_public_input(layouter, &self)?;
+            let v = chip.as_public_input(layouter.adaptee_ref_mut(), &self)?;
             if v.len() != 2 {
-                return Err(Error::UnexpectedElements {
+                return Err(extractor_support::error::Error::UnexpectedElements {
                     header: "While storing a native point",
                     expected: 2,
                     actual: v.len(),
-                });
+                }
+                .into());
             }
             v.into_iter().try_for_each(|n| n.store(ctx, chip, layouter, injected_ir))
         }
     }
 
-    impl<CV, C> StoreIntoCells<CV::Base, C> for AssignedScalarOfNativeCurve<CV>
+    impl<CV, C, L> StoreIntoCells<CV::Base, C, ExtractionSupport, L> for AssignedScalarOfNativeCurve<CV>
     where
         CV: CircuitCurve,
         C: DecompositionInstructions<CV::Base, AssignedNative<CV::Base>>,
+        L: Layouter<CV::Base>,
     {
         fn store(
             self,
-            ctx: &mut OCtx,
+            ctx: &mut OCtx<CV::Base, ExtractionSupport>,
             chip: &C,
-            layouter: &mut impl Layouter<CV::Base>,
-            injected_ir: &mut InjectedIR<CV::Base>,
+            layouter: &mut impl LayoutAdaptor<CV::Base, ExtractionSupport, Adaptee = L>,
+            injected_ir: &mut IR<CV::Base>,
         ) -> Result<(), Error> {
             if self.0.len() > CV::Base::NUM_BITS as usize {
-                return Err(Error::UnexpectedElements {
+                return Err(extractor_support::error::Error::UnexpectedElements {
                     header: "while storing a ScalarVar",
                     expected: CV::Base::NUM_BITS as usize,
                     actual: self.0.len(),
-                });
+                }
+                .into());
             }
 
-            chip.assigned_from_le_bits(layouter, &self.0)?
-                .store(ctx, chip, layouter, injected_ir)
+            chip.assigned_from_le_bits(layouter.adaptee_ref_mut(), &self.0)?.store(
+                ctx,
+                chip,
+                layouter,
+                injected_ir,
+            )
         }
     }
 

@@ -97,6 +97,19 @@ impl<C: ColumnType> PartialOrd for Column<C> {
     }
 }
 
+#[cfg(feature = "extraction")]
+pub mod extraction {
+    //! Extraction support for column types.
+
+    use extractor_support::auto_conf_impl;
+    use extractor_support::circuit::configuration::AutoConfigure;
+
+    auto_conf_impl!(super::Column<super::Fixed>, fixed_column, crate);
+    auto_conf_impl!(super::Column<super::Instance>, instance_column, crate);
+    auto_conf_impl!(super::Column<super::Advice>, advice_column, crate);
+    auto_conf_impl!(super::TableColumn, lookup_table_column, crate);
+}
+
 pub(crate) mod sealed {
     /// Phase of advice column
     #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
