@@ -561,7 +561,7 @@ mod tests {
                                 || "in",
                                 config.advices[1],
                                 0,
-                                || Value::<F>::unknown(),
+                                Value::<F>::unknown,
                             )?;
                             group.annotate_input(input.cell())?;
                             region.assign_advice(
@@ -597,13 +597,13 @@ mod tests {
                         || "in0",
                         config.advices[1],
                         0,
-                        || Value::<F>::unknown(),
+                        Value::<F>::unknown,
                     )?;
                     let in1 = region.assign_advice(
                         || "in1",
                         config.advices[1],
                         1,
-                        || Value::<F>::unknown(),
+                        Value::<F>::unknown,
                     )?;
                     Ok([in0, in1])
                 },
@@ -664,13 +664,13 @@ mod tests {
                         || "in0",
                         config.advices[1],
                         0,
-                        || Value::<F>::unknown(),
+                        Value::<F>::unknown,
                     )?;
                     let in1 = region.assign_advice(
                         || "in1",
                         config.advices[1],
                         1,
-                        || Value::<F>::unknown(),
+                        Value::<F>::unknown,
                     )?;
                     Ok([in0, in1])
                 },
@@ -755,8 +755,8 @@ mod tests {
         },
         r"(top-level (groups (one) (one)))",
         |group: &MockGroup| {
-            assert!(group.key == None);
-            assert!(group.groups.len() == 2);
+            assert!(group.key.is_none());
+            assert_eq!(group.groups.len(), 2);
             let fst = &group.groups[0];
             let snd = &group.groups[1];
 
@@ -780,11 +780,9 @@ mod tests {
                         layouter.assign_region(
                             || "r",
                             |mut region| {
-                                let x =
-                                    region.assign_advice(|| "x", x, 0, || Value::<F>::unknown())?;
+                                let x = region.assign_advice(|| "x", x, 0, Value::<F>::unknown)?;
                                 group.annotate_input(x.cell())?;
-                                let y =
-                                    region.assign_advice(|| "y", y, 0, || Value::<F>::unknown())?;
+                                let y = region.assign_advice(|| "y", y, 0, Value::<F>::unknown)?;
                                 group.annotate_input(y.cell())?;
                                 let z =
                                     region.assign_advice(|| "z", z, 0, || x.value() * y.value())?;
@@ -807,8 +805,8 @@ mod tests {
                 (outputs [R1[A2, 0]])
             )))",
         |group: &MockGroup| {
-            assert!(group.key == None);
-            assert!(group.groups.len() == 2);
+            assert!(group.key.is_none());
+            assert_eq!(group.groups.len(), 2);
             let fst = &group.groups[0];
             let snd = &group.groups[1];
 
@@ -831,9 +829,9 @@ mod tests {
                     layouter.assign_region(
                         || "r",
                         |mut region| {
-                            let x = region.assign_advice(|| "x", x, 0, || Value::<F>::unknown())?;
-                            let y = region.assign_advice(|| "y", y, 0, || Value::<F>::unknown())?;
-                            let z = region.assign_advice(|| "z", z, 0, || Value::<F>::unknown())?;
+                            let x = region.assign_advice(|| "x", x, 0, Value::<F>::unknown)?;
+                            let y = region.assign_advice(|| "y", y, 0, Value::<F>::unknown)?;
+                            let z = region.assign_advice(|| "z", z, 0, Value::<F>::unknown)?;
                             group.annotate_inputs([x.cell(), y.cell()])?;
                             group.annotate_outputs([y.cell(), z.cell()])?;
                             Ok(())
@@ -910,12 +908,18 @@ mod tests {
 
     impl PartialOrd for CellDisplay {
         fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+            Some(self.cmp(other))
+        }
+    }
+
+    impl Ord for CellDisplay {
+        fn cmp(&self, other: &Self) -> std::cmp::Ordering {
             // Lexicographic order (region idx, col type, col idx, row offset)
-            match self.0.region_index.0.partial_cmp(&other.0.region_index.0) {
-                Some(ord) if ord != std::cmp::Ordering::Equal => {
-                    return Some(ord);
+            match self.0.region_index.0.cmp(&other.0.region_index.0) {
+                std::cmp::Ordering::Equal => {}
+                ord => {
+                    return ord;
                 }
-                _ => {}
             }
             // col type order: Instance, Advice, Fixed
             match (self.0.column.column_type(), other.0.column.column_type()) {
@@ -929,21 +933,15 @@ mod tests {
                 (Any::Instance, Any::Fixed) => Some(std::cmp::Ordering::Less),
                 (Any::Instance, Any::Instance) => None,
             }
-            .or_else(|| {
-                match self.0.column.index().partial_cmp(&other.0.column.index()) {
-                    Some(ord) if ord != std::cmp::Ordering::Equal => {
-                        return Some(ord);
+            .unwrap_or_else(|| {
+                match self.0.column.index().cmp(&other.0.column.index()) {
+                    std::cmp::Ordering::Equal => {}
+                    ord => {
+                        return ord;
                     }
-                    _ => {}
                 }
-                self.0.row_offset.partial_cmp(&other.0.row_offset)
+                self.0.row_offset.cmp(&other.0.row_offset)
             })
-        }
-    }
-
-    impl Ord for CellDisplay {
-        fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-            self.partial_cmp(other).expect("partial_cmp implementation is a total order")
         }
     }
 
