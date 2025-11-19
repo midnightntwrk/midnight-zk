@@ -1057,7 +1057,7 @@ where
         layouter: &mut impl Layouter<F>,
         x: &AssignedField<F, K, P>,
     ) -> Result<AssignedField<F, K, P>, Error> {
-        let one: AssignedField<F, K, P> = self.assign_fixed(layouter, K::ZERO)?;
+        let one: AssignedField<F, K, P> = self.assign_fixed(layouter, K::ONE)?;
 
         if x == &one {
             return Ok(one);
@@ -1065,7 +1065,6 @@ where
 
         // We do not need to assert that x != 0 because the equation enforced by
         // [assign_mul] will be 1 = z * x, which is unsatisfiable if x = 0.
-        let one = self.assign_fixed(layouter, K::ONE)?;
         self.assign_mul(layouter, &one, x, true)
     }
 

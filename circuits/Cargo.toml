@@ -15,13 +15,11 @@ blake2b_simd = { workspace = true }
 midnight-curves = { path = "../curves", version = "0.1.1" }
 midnight-proofs = { path = "../proofs", version = "0.5.1", default-features = false, features = [
     "bits",
-    "cost-estimator",
     "circuit-params",
     "committed-instances",
     "region-groups",
     "decompose-in-cells"
 ] }
-bench_macros = { path = "../bench-macros"}
 picus-support = { version = "0.1.0",  package = "mdnt-groups-support" }
 picus = { version = "0.1.1",  package = "mdnt-support-macros", features = ["region-groups"] }
 extractor-support = { git = "https://github.com/Veridise/midnight-extractor", package = "mdnt-support", optional = true }
@@ -39,10 +37,10 @@ subtle = "2.6"
 base64 = "0.13.1"
 lazy_static = "1.5.0"
 bincode = "2.0"
-criterion = { version = "0.7", optional = true }
 
 
 [dev-dependencies]
+bench_macros = { path = "../bench-macros" }
 criterion = "0.7"
 rand_chacha = "0.3.1"
 goldenfile = "=1.8.0"
@@ -68,7 +66,7 @@ truncated-challenges = ["midnight-proofs/truncated-challenges"]
 # the proof generation functions take an additional input,
 # _group: &mut BenchmarkGroup<WallTime>, and return granular benchmarks
 # of the prover for that concrete circuit.
-bench-internal = ["criterion", "midnight-proofs/bench-internal"]
+bench-internal = ["midnight-proofs/bench-internal"]
 
 extraction = ["extractor-support", "testing", "midnight-proofs/extraction"]
 
