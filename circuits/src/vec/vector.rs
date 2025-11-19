@@ -198,7 +198,8 @@ pub mod extraction {
         Ok(c.cell().column.try_into()?)
     }
 
-    /// Puts all the injected IR into the same region since that's a requirement of the frontend.
+    /// Puts all the injected IR into the same region since that's a requirement
+    /// of the frontend.
     fn assign_to_same_region<F: Field, I: Into<AssignedNative<F>> + Clone>(
         len: &AssignedNative<F>,
         buffer: &[I],

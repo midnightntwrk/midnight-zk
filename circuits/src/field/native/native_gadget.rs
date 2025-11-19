@@ -169,12 +169,16 @@ pub mod gadget_extraction {
         ir::{stmt::IRStmt, CmpOp},
     };
     use ff::PrimeField;
-    use midnight_proofs::{plonk::{Error, Expression}, ExtractionSupport};
+    use midnight_proofs::{
+        plonk::{Error, Expression},
+        ExtractionSupport,
+    };
 
     use super::AssignedByte;
     use crate::{
         field::{decomposition::instructions::CoreDecompositionInstructions, AssignedNative},
-        instructions::ArithInstructions, utils::extraction::IR,
+        instructions::ArithInstructions,
+        utils::extraction::IR,
     };
 
     impl<F: PrimeField> CellReprSize for AssignedByte<F> {
@@ -198,14 +202,14 @@ pub mod gadget_extraction {
         Ok(())
     }
 
-    impl<F, C,L> LoadFromCells<F, C, ExtractionSupport,L> for AssignedByte<F>
+    impl<F, C, L> LoadFromCells<F, C, ExtractionSupport, L> for AssignedByte<F>
     where
         F: PrimeField,
     {
         fn load(
             ctx: &mut ICtx<F, ExtractionSupport>,
             chip: &C,
-            layouter: &mut impl LayoutAdaptor<F, ExtractionSupport,Adaptee = L>,
+            layouter: &mut impl LayoutAdaptor<F, ExtractionSupport, Adaptee = L>,
             injected_ir: &mut IR<F>,
         ) -> Result<Self, Error> {
             let cell = AssignedNative::<F>::load(ctx, chip, layouter, injected_ir)?;
@@ -215,7 +219,7 @@ pub mod gadget_extraction {
         }
     }
 
-    impl<F: PrimeField, C,L> StoreIntoCells<F, C, ExtractionSupport,L> for AssignedByte<F> {
+    impl<F: PrimeField, C, L> StoreIntoCells<F, C, ExtractionSupport, L> for AssignedByte<F> {
         fn store(
             self,
             ctx: &mut OCtx<F, ExtractionSupport>,

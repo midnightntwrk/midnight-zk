@@ -693,7 +693,8 @@ pub trait Layouter<F: Field> {
     }
 }
 
-/// Wrapper over [`Layouter`] that implements [`LayoutAdaptor`](extractor_support::cells::ctx::LayoutAdaptor).
+/// Wrapper over [`Layouter`] that implements
+/// [`LayoutAdaptor`](extractor_support::cells::ctx::LayoutAdaptor).
 #[cfg(feature = "extraction")]
 #[derive(Debug)]
 pub struct AdaptsLayouter<L> {

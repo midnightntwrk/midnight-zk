@@ -200,7 +200,8 @@ impl RegionsGroup {
         Ok(())
     }
 
-    /// Annotates the list of [`Cell`] that represent the given value with [`CellRole::Input`].
+    /// Annotates the list of [`Cell`] that represent the given value with
+    /// [`CellRole::Input`].
     ///
     /// See the documentation in [`RegionsGroup::annotate_cell`] for
     /// requirements annotated cells must meet.
@@ -213,7 +214,8 @@ impl RegionsGroup {
         self.annotate_inputs(value.cells())
     }
 
-    /// Annotates the list of [`Cell`] that represent the given value with [`CellRole::Output`].
+    /// Annotates the list of [`Cell`] that represent the given value with
+    /// [`CellRole::Output`].
     ///
     /// See the documentation in [`RegionsGroup::annotate_cell`] for
     /// requirements annotated cells must meet.

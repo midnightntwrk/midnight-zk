@@ -226,14 +226,18 @@ pub mod extraction {
         sbig_to_fe,
     };
     use ff::PrimeField;
-    use midnight_proofs::{plonk::{Error, Expression}, ExtractionSupport};
+    use midnight_proofs::{
+        plonk::{Error, Expression},
+        ExtractionSupport,
+    };
     use num_bigint::BigUint;
     use num_traits::One as _;
 
     use super::AssignedField;
     use crate::{
         field::{foreign::params::FieldEmulationParams, AssignedNative},
-        instructions::NativeInstructions, utils::extraction::IR,
+        instructions::NativeInstructions,
+        utils::extraction::IR,
     };
 
     impl<F, K, P> CellReprSize for AssignedField<F, K, P>
