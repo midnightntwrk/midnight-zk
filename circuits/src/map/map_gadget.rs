@@ -46,6 +46,12 @@ where
 }
 
 #[derive(Clone, Debug)]
+#[cfg_attr(
+    feature = "extraction",
+    derive(picus::NoChipArgs, picus::InitFromScratch),
+    from_scratch(N),
+    from_scratch(H)
+)]
 /// Gadget for proving `insert` and `get` instructions in a map.
 pub struct MapGadget<F, N, H>
 where
@@ -250,33 +256,6 @@ where
     fn load_from_scratch(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
         self.native_gadget.load_from_scratch(layouter)?;
         self.hash_chip.load_from_scratch(layouter)
-    }
-}
-
-#[cfg(feature = "extraction")]
-pub mod extraction {
-    //! Extraction specific logic related to the map gadget.
-
-    use ff::PrimeField;
-
-    use crate::{
-        field::AssignedNative,
-        instructions::{HashInstructions, NativeInstructions},
-        testing_utils::FromScratch,
-    };
-
-    extractor_support::circuit_initialization_from_scratch!(super::MapGadget<F, N, H>, F, N, H
-      where
-        N: NativeInstructions<F> + FromScratch<F>,
-        H: HashInstructions<F, AssignedNative<F>, AssignedNative<F>> + FromScratch<F>
-    );
-
-    impl<F, N, H> extractor_support::circuit::NoChipArgs for super::MapGadget<F, N, H>
-    where
-        F: PrimeField,
-        N: NativeInstructions<F> + FromScratch<F>,
-        H: HashInstructions<F, AssignedNative<F>, AssignedNative<F>> + FromScratch<F>,
-    {
     }
 }
 

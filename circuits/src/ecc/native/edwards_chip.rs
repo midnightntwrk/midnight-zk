@@ -275,9 +275,6 @@ pub mod extraction {
             )
         }
     }
-
-    extractor_support::circuit_initialization_from_scratch!(super::EccChip<C>, F, C where C: EdwardsCurve + CircuitCurve<Base=F>);
-    impl<C: EdwardsCurve> extractor_support::circuit::NoChipArgs for super::EccChip<C> {}
 }
 
 /// [`EccConfig`], which uses [`NB_EDWARDS_COLS`] advice columns.
@@ -456,6 +453,11 @@ type NG<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
 /// A native  [`EccInstructions`] chip.
 /// Since the chip is native, it only supports the embedded curve Jubjub.
 #[derive(Clone, Debug)]
+#[cfg_attr(
+    feature = "extraction",
+    derive(picus::NoChipArgs, picus::InitFromScratch),
+    field(C::Base)
+)]
 pub struct EccChip<C: EdwardsCurve> {
     config: EccConfig,
     native_gadget: NG<C::Base>,

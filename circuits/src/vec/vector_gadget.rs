@@ -35,6 +35,10 @@ use crate::{
 type NG<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
 
 #[derive(Clone, Debug)]
+#[cfg_attr(
+    feature = "extraction",
+    derive(picus::NoChipArgs, picus::InitFromScratch)
+)]
 /// A gadget for vector operations of elements that are or fit within a native
 /// field element:
 pub struct VectorGadget<F: PrimeField> {
@@ -429,13 +433,6 @@ impl<F: PrimeField> FromScratch<F> for VectorGadget<F> {
     fn load_from_scratch(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
         self.native_gadget.load_from_scratch(layouter)
     }
-}
-
-#[cfg(feature = "extraction")]
-pub mod extraction {
-    //! Extraction specific logic related to the vector gadget.
-    extractor_support::circuit_initialization_from_scratch!(super::VectorGadget<F>, F);
-    impl<F: ff::PrimeField> extractor_support::circuit::NoChipArgs for super::VectorGadget<F> {}
 }
 
 #[cfg(test)]

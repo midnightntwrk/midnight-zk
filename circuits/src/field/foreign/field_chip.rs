@@ -321,13 +321,6 @@ pub mod extraction {
             Ok(())
         }
     }
-
-    extractor_support::circuit_initialization_from_scratch!(super::FieldChip<F, K, P, N>, F, K, P, N 
-    where K: PrimeField, N: NativeInstructions<F>, P: FieldEmulationParams<F, K>);
-    impl<F: PrimeField, K: PrimeField, N: NativeInstructions<F>, P: FieldEmulationParams<F, K>>
-        extractor_support::circuit::NoChipArgs for super::FieldChip<F, K, P, N>
-    {
-    }
 }
 
 /// Number of columns required by this chip.
@@ -388,6 +381,11 @@ pub struct FieldChipConfig {
 
 /// ['FieldChip'] for operations on field K emulated over native field F.
 #[derive(Clone, Debug)]
+#[cfg_attr(
+    feature = "extraction",
+    derive(picus::NoChipArgs, extractor_support::InitFromScratch),
+    from_scratch(N)
+)]
 pub struct FieldChip<F, K, P, N>
 where
     F: PrimeField,

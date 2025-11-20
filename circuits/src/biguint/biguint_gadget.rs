@@ -53,6 +53,10 @@ use crate::{
 };
 
 #[derive(Clone, Debug)]
+#[cfg_attr(
+    feature = "extraction",
+    derive(picus::NoChipArgs, picus::InitFromScratch)
+)]
 /// A gadget for emulating arithmetic over the integers.
 ///  - F: the native field,
 ///  - N: a set of in-circuit native instructions.
@@ -811,22 +815,6 @@ where
 
     fn load_from_scratch(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
         self.native_gadget.load_from_scratch(layouter)
-    }
-}
-
-#[cfg(feature = "extraction")]
-pub mod gadget_extraction {
-    //! Extraction specific logic related to the biguint gadget.
-
-    use super::BigUintGadget;
-    use crate::instructions::NativeInstructions;
-
-    extractor_support::circuit_initialization_from_scratch!(BigUintGadget<F,N>, F, N where N: NativeInstructions<F>);
-    impl<F, N> extractor_support::circuit::NoChipArgs for BigUintGadget<F, N>
-    where
-        F: ff::PrimeField,
-        N: NativeInstructions<F>,
-    {
     }
 }
 

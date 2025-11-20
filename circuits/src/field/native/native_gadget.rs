@@ -54,6 +54,10 @@ use crate::{
 };
 
 #[derive(Debug, Clone)]
+#[cfg_attr(
+    feature = "extraction",
+    derive(picus::NoChipArgs, picus::InitFromScratch)
+)]
 /// A gadget that implements all basic operations on the Native field:
 /// - Assignments
 /// - Assertions
@@ -230,18 +234,6 @@ pub mod gadget_extraction {
             emit_constraint(&self.0, injected_ir)?;
             ctx.assign_next(self.0, layouter)
         }
-    }
-
-    extractor_support::circuit_initialization_from_scratch!(super::NativeGadget<F,C,N>, F, C, N 
-    where 
-        C: CoreDecompositionInstructions<F>,
-        N: ArithInstructions<F, AssignedNative<F>>);
-    impl<F, C, N> extractor_support::circuit::NoChipArgs for super::NativeGadget<F, C, N>
-    where
-        F: PrimeField,
-        C: CoreDecompositionInstructions<F>,
-        N: ArithInstructions<F, AssignedNative<F>>,
-    {
     }
 }
 

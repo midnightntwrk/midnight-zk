@@ -153,6 +153,7 @@ pub struct AutomatonConfig<LibIndex, F> {
 
 /// Chip for Automaton parsing.
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "extraction", derive(picus::NoChipArgs))]
 pub struct AutomatonChip<LibIndex, F>
 where
     F: PrimeField,
@@ -606,8 +607,6 @@ pub mod extraction {
             self.load(layouter)
         }
     }
-
-    impl<F: PrimeField> extractor_support::circuit::NoChipArgs for AutomatonChip<StdLibParser, F> {}
 }
 
 #[cfg(test)]

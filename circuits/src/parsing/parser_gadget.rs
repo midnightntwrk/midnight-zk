@@ -24,6 +24,11 @@ use {
 
 use crate::{field::AssignedNative, instructions::NativeInstructions, types::AssignedByte};
 
+#[cfg_attr(
+    feature = "extraction",
+    derive(picus::InitFromScratch, picus::NoChipArgs),
+    from_scratch(N)
+)]
 #[derive(Clone, Debug)]
 /// A gadget for parsing json data. It is parametrized by:
 ///  - F: the native field,
@@ -197,26 +202,6 @@ where
 
     fn load_from_scratch(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
         self.native_gadget.load_from_scratch(layouter)
-    }
-}
-
-#[cfg(feature = "extraction")]
-pub mod extraction {
-    //! Extraction specific logic related to the parser gadget.
-
-    use ff::PrimeField;
-
-    use crate::{instructions::NativeInstructions, testing_utils::FromScratch};
-
-    extractor_support::circuit_initialization_from_scratch!(super::ParserGadget<F,N>, F, N 
-      where 
-        N: NativeInstructions<F>+ FromScratch<F>);
-
-    impl<F, N> extractor_support::circuit::NoChipArgs for super::ParserGadget<F, N>
-    where
-        F: PrimeField,
-        N: NativeInstructions<F> + FromScratch<F>,
-    {
     }
 }
 

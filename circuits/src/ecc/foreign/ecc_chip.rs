@@ -102,6 +102,10 @@ where
 
 /// ['ECChip'] to perform foreign EC operations.
 #[derive(Clone, Debug)]
+#[cfg_attr(
+    feature = "extraction",
+    derive(picus::NoChipArgs, picus::InitFromScratch)
+)]
 pub struct ForeignEccChip<F, C, B, S, N>
 where
     F: PrimeField,
@@ -2141,26 +2145,6 @@ pub mod extraction {
             self.x.store(ctx, chip, layouter, injected_ir)?;
             self.y.store(ctx, chip, layouter, injected_ir)
         }
-    }
-
-    extractor_support::circuit_initialization_from_scratch!(
-        ForeignEccChip<F, C, M, S, N>, 
-        F, C, M, S, N
-        where 
-            C: WeierstrassCurve, 
-            M: FieldEmulationParams<F,C::Base>,
-            S: ScalarFieldInstructions<F>,
-            S::Scalar: InnerValue<Element = C::Scalar>,
-            N: NativeInstructions<F>);
-    impl<F, C, M, S, N> extractor_support::circuit::NoChipArgs for ForeignEccChip<F, C, M, S, N>
-    where
-        F: PrimeField,
-        C: WeierstrassCurve,
-        M: FieldEmulationParams<F, C::Base>,
-        S: ScalarFieldInstructions<F>,
-        S::Scalar: InnerValue<Element = C::Scalar>,
-        N: NativeInstructions<F>,
-    {
     }
 }
 

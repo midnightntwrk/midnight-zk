@@ -21,8 +21,9 @@ midnight-proofs = { path = "../proofs", version = "0.5.1", default-features = fa
     "decompose-in-cells"
 ] }
 picus-support = { version = "0.1.0",  package = "mdnt-groups-support" }
-picus = { version = "0.1.1",  package = "mdnt-support-macros", features = ["region-groups"] }
-extractor-support = { git = "https://github.com/Veridise/midnight-extractor", package = "mdnt-support", optional = true }
+# picus = { version = "0.1.1",  package = "mdnt-support-macros", features = ["region-groups"] }
+picus = { git = "https://github.com/Veridise/midnight-extractor",  package = "mdnt-support-macros", features = ["region-groups"] }
+extractor-support = { git = "https://github.com/Veridise/midnight-extractor", package = "mdnt-support", optional = true, features = ["derive"] }
 
 serde = { workspace = true, optional = true }
 serde_derive = { workspace = true, optional = true }
@@ -55,7 +56,7 @@ serial_test = "3.2.0"
 midnight-curves = { path = "../curves", features = ["portable"] }
 
 [features]
-default = ["extraction"]
+default = []
 # Feature that exposes some testing functionality, such as load from scratch or instantiable
 testing = ["num-bigint/rand"]
 heap_profiling = []
@@ -68,7 +69,7 @@ truncated-challenges = ["midnight-proofs/truncated-challenges"]
 # of the prover for that concrete circuit.
 bench-internal = ["midnight-proofs/bench-internal"]
 
-extraction = ["extractor-support", "testing", "midnight-proofs/extraction"]
+extraction = ["extractor-support", "testing", "midnight-proofs/extraction", "picus/extractor-derive"]
 
 [[example]]
 name = "cred_full"

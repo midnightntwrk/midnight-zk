@@ -116,6 +116,10 @@ pub struct NativeConfig {
 
 /// Chip for Native operations
 #[derive(Clone, Debug)]
+#[cfg_attr(
+    feature = "extraction",
+    derive(picus::NoChipArgs, picus::InitFromScratch)
+)]
 pub struct NativeChip<F: PrimeField> {
     config: NativeConfig,
     cached_fixed: Rc<RefCell<HashMap<BigUint, AssignedNative<F>>>>,
@@ -1142,9 +1146,6 @@ pub mod chip_extraction {
             ctx.assign_next(self.0, layouter)
         }
     }
-
-    extractor_support::circuit_initialization_from_scratch!(super::NativeChip<F>, F);
-    impl<F: PrimeField> extractor_support::circuit::NoChipArgs for super::NativeChip<F> {}
 }
 
 impl<F> ConversionInstructions<F, AssignedNative<F>, AssignedBit<F>> for NativeChip<F>

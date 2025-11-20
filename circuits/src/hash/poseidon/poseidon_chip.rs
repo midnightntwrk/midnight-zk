@@ -93,6 +93,10 @@ pub struct PoseidonConfig<F: PoseidonField> {
 
 /// Chip for Poseidon operations.
 #[derive(Clone, Debug)]
+#[cfg_attr(
+    feature = "extraction",
+    derive(picus::NoChipArgs, picus::InitFromScratch)
+)]
 pub struct PoseidonChip<F: PoseidonField> {
     config: PoseidonConfig<F>,
     native_chip: NativeChip<F>,
@@ -708,9 +712,6 @@ pub mod extraction {
             Ok(())
         }
     }
-
-    extractor_support::circuit_initialization_from_scratch!(PoseidonChip<F>, F where F: PoseidonField);
-    impl<F: PoseidonField> extractor_support::circuit::NoChipArgs for PoseidonChip<F> {}
 }
 
 #[cfg(test)]

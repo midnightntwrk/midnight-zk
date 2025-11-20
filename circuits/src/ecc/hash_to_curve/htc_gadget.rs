@@ -32,6 +32,12 @@ use crate::{
 };
 
 #[derive(Clone, Debug)]
+#[cfg_attr(
+    feature = "extraction",
+    derive(picus::NoChipArgs, picus::InitFromScratch),
+    from_scratch(H),
+    from_scratch(E)
+)]
 /// A gadget for hashing into an elliptic curve. It is parametrized by:
 ///  - F: the native field,
 ///  - C: the elliptic curve,
@@ -147,41 +153,6 @@ where
     fn load_from_scratch(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
         self.sponge_chip.load_from_scratch(layouter)?;
         self.ecc_chip.load_from_scratch(layouter)
-    }
-}
-
-#[cfg(feature = "extraction")]
-pub mod extraction {
-    //! Extraction specific logic related to the hash-to-curve gadget.
-
-    use ff::PrimeField;
-
-    use crate::{
-        ecc::{
-            curves::CircuitCurve,
-            hash_to_curve::{MapToCurveCPU, MapToCurveInstructions},
-        },
-        instructions::{EccInstructions, SpongeInstructions},
-        testing_utils::FromScratch,
-        types::InnerValue,
-    };
-
-    extractor_support::circuit_initialization_from_scratch!(super::HashToCurveGadget<F, C, I, H, E>, F, C, I, H, E
-      where
-        C: CircuitCurve + MapToCurveCPU<C>,
-        I: InnerValue,
-        H: SpongeInstructions<F, I, E::Coordinate> + FromScratch<F>,
-        E: EccInstructions<F, C> + MapToCurveInstructions<F, C> + FromScratch<F>
-    );
-    impl<F, C, I, H, E> extractor_support::circuit::NoChipArgs
-        for super::HashToCurveGadget<F, C, I, H, E>
-    where
-        F: PrimeField,
-        C: CircuitCurve + MapToCurveCPU<C>,
-        I: InnerValue,
-        H: SpongeInstructions<F, I, E::Coordinate> + FromScratch<F>,
-        E: EccInstructions<F, C> + MapToCurveInstructions<F, C> + FromScratch<F>,
-    {
     }
 }
 

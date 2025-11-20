@@ -130,6 +130,10 @@ pub struct Sha256Config {
 
 /// Chip for SHA256.
 #[derive(Clone, Debug)]
+#[cfg_attr(
+    feature = "extraction",
+    derive(picus::NoChipArgs, picus::InitFromScratch)
+)]
 pub struct Sha256Chip<F: PrimeField> {
     config: Sha256Config,
     pub(super) native_gadget: NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>,
@@ -1719,13 +1723,4 @@ impl<F: PrimeField> FromScratch<F> for Sha256Chip<F> {
         self.native_gadget.load_from_scratch(layouter)?;
         self.load(layouter)
     }
-}
-
-#[cfg(feature = "extraction")]
-pub mod extraction {
-    //! Extraction specific logic related to the sha256 chip.
-
-    use ff::PrimeField;
-    extractor_support::circuit_initialization_from_scratch!(super::Sha256Chip<F>, F);
-    impl<F: PrimeField> extractor_support::circuit::NoChipArgs for super::Sha256Chip<F> {}
 }
