@@ -369,7 +369,7 @@ pub struct FieldChipConfig {
 #[derive(Clone, Debug)]
 #[cfg_attr(
     feature = "extraction",
-    derive(picus::NoChipArgs, extractor_support::InitFromScratch),
+    derive(picus::NoChipArgs, picus::InitFromScratch),
     from_scratch(N)
 )]
 pub struct FieldChip<F, K, P, N>

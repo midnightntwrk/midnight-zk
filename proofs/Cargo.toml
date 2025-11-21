@@ -52,7 +52,7 @@ tabbycat = { version = "0.1", features = ["attributes"], optional = true }
 num-bigint = { workspace = true }
 
 # Extraction dependencies 
-picus-macros-support = { version = "0.1.0", optional = true, package = "mdnt-groups-support" }
+picus-macros-support = { version = "0.2.0", optional = true, package = "mdnt-groups-support" }
 extractor-support = { git = "https://github.com/Veridise/midnight-extractor", package = "mdnt-support", optional = true }
 
 [dev-dependencies]

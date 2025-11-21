@@ -20,11 +20,10 @@ midnight-proofs = { path = "../proofs", version = "0.5.1", default-features = fa
     "region-groups",
     "decompose-in-cells"
 ] }
-picus-support = { version = "0.1.0",  package = "mdnt-groups-support" }
-# The two deps below don't have an up to date release in crates.io yet
-# picus = { version = "0.1.1",  package = "mdnt-support-macros", features = ["region-groups"] }
-picus = { git = "https://github.com/Veridise/midnight-extractor",  package = "mdnt-support-macros", features = ["region-groups"] }
-extractor-support = { git = "https://github.com/Veridise/midnight-extractor", package = "mdnt-support", optional = true, features = ["derive"] }
+picus-support = { version = "0.2.0",  package = "mdnt-groups-support" }
+picus = { version = "0.2.0",  package = "mdnt-support-macros", features = ["region-groups"] }
+# This dep below doesn't have a release in crates.io yet
+extractor-support = { git = "https://github.com/Veridise/midnight-extractor", package = "mdnt-support", optional = true }
 
 serde = { workspace = true, optional = true }
 serde_derive = { workspace = true, optional = true }
