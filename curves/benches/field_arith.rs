@@ -19,47 +19,6 @@ const SEED: [u8; 16] = [
     0x59, 0x62, 0xbe, 0x5d, 0x76, 0x3d, 0x31, 0x8d, 0x17, 0xdb, 0x37, 0x32, 0x54, 0x06, 0xbc, 0xe5,
 ];
 
-// TODO:
-// Benchmark fast serialization interface.
-
-// #[bench]
-// fn bench_fp_to_bytes_le(b: &mut ::test::Bencher) {
-//     const SAMPLES: usize = 1000;
-
-//     let mut rng = XorShiftRng::from_seed([
-//         0x59, 0x62, 0xbe, 0x5d, 0x76, 0x3d, 0x31, 0x8d, 0x17, 0xdb, 0x37,
-// 0x32, 0x54, 0x06, 0xbc,         0xe5,
-//     ]);
-
-//     let v: Vec<Fp> = (0..SAMPLES).map(|_| Fp::random(&mut rng)).collect();
-
-//     let mut count = 0;
-//     b.iter(|| {
-//         count = (count + 1) % SAMPLES;
-//         v[count].to_bytes_le()
-//     });
-// }
-
-// #[bench]
-// fn bench_fp_from_bytes_le(b: &mut ::test::Bencher) {
-//     const SAMPLES: usize = 1000;
-
-//     let mut rng = XorShiftRng::from_seed([
-//         0x59, 0x62, 0xbe, 0x5d, 0x76, 0x3d, 0x31, 0x8d, 0x17, 0xdb, 0x37,
-// 0x32, 0x54, 0x06, 0xbc,         0xe5,
-//     ]);
-
-//     let v: Vec<[u8; 48]> = (0..SAMPLES)
-//         .map(|_| Fp::random(&mut rng).to_bytes_le())
-//         .collect();
-
-//     let mut count = 0;
-//     b.iter(|| {
-//         count = (count + 1) % SAMPLES;
-//         Fp::from_bytes_le(&v[count])
-//     });
-// }
-
 fn bench_field_arithmetic<F: Field>(c: &mut Criterion, name: &'static str) {
     let mut rng = XorShiftRng::from_seed(SEED);
 
@@ -124,15 +83,15 @@ fn bench_field_arithmetic<F: Field>(c: &mut Criterion, name: &'static str) {
 }
 
 fn bench_bls_base_field(c: &mut Criterion) {
-    bench_field_arithmetic::<Fp>(c, "Base field.")
+    bench_field_arithmetic::<Fp>(c, "base-field")
 }
 
 fn bench_bls_scalar_field(c: &mut Criterion) {
-    bench_field_arithmetic::<Fq>(c, "Scalar field.")
+    bench_field_arithmetic::<Fq>(c, "scalar-field")
 }
 
 // fn bench_bls_fp2(c: &mut Criterion) {
-//     bench_field_arithmetic::<Fp2>(c, "Quadratic extension field (Fp2).")
+//     bench_field_arithmetic::<Fp2>(c, "Fp2")
 // }
 
 criterion_group!(
