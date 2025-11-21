@@ -56,7 +56,7 @@ serial_test = "3.2.0"
 midnight-curves = { path = "../curves", features = ["portable"] }
 
 [features]
-default = ["extraction"]
+default = []
 # Feature that exposes some testing functionality, such as load from scratch or instantiable
 testing = ["num-bigint/rand"]
 heap_profiling = []
