@@ -222,7 +222,7 @@ pub mod extraction {
             store::StoreIntoCells,
             CellReprSize,
         },
-        ir::{stmt::IRStmt, CmpOp},
+        ir::stmt::IRStmt,
         sbig_to_fe,
     };
     use ff::PrimeField;
@@ -236,8 +236,7 @@ pub mod extraction {
     use super::AssignedField;
     use crate::{
         field::{foreign::params::FieldEmulationParams, AssignedNative},
-        instructions::NativeInstructions,
-        utils::extraction::IR,
+        utils::extraction::{IRExt as _, IR},
     };
 
     impl<F, K, P> CellReprSize for AssignedField<F, K, P>
@@ -263,9 +262,8 @@ pub mod extraction {
         ) -> Result<Self, Error> {
             // The input for an field is a set of native cells that represents properly
             // constructed limbs.
-            let cells = (0..P::NB_LIMBS)
-                .map(|_| AssignedNative::<F>::load(ctx, chip, layouter, injected_ir))
-                .collect::<Result<Vec<_>, _>>()?;
+            let cells =
+                AssignedNative::load_many(P::NB_LIMBS as usize, ctx, chip, layouter, injected_ir)?;
 
             let bounds = super::well_formed_log2_bounds::<F, K, P>()
                 .into_iter()
@@ -275,14 +273,7 @@ pub mod extraction {
             for (cell, log2bound) in cells.iter().zip(bounds) {
                 let lhs = cell_to_expr!(cell, F)?;
                 let rhs = Expression::Constant(log2bound);
-                injected_ir
-                    .entry(cell.cell().region_index)
-                    .or_default()
-                    .push(IRStmt::constraint(
-                        CmpOp::Lt,
-                        (cell.cell().row_offset, lhs),
-                        (cell.cell().row_offset, rhs),
-                    ));
+                injected_ir.inject_in_cell(cell.cell(), IRStmt::lt(lhs, rhs));
             }
 
             Ok(AssignedField::from_limbs_unsafe(cells))
@@ -303,19 +294,14 @@ pub mod extraction {
             injected_ir: &mut IR<F>,
         ) -> Result<(), Error> {
             for (val, (lb, ub)) in std::iter::zip(self.limb_values(), self.limb_bounds) {
-                let row = val.cell().row_offset;
                 let expr = cell_to_expr!(&val, F)?;
-                let region = injected_ir.entry(val.cell().region_index).or_default();
 
                 let lb = Expression::Constant(sbig_to_fe::<F>(lb));
-                region.push(IRStmt::constraint(
-                    CmpOp::Le,
-                    (row, lb),
-                    (row, expr.clone()),
-                ));
-
                 let ub = Expression::Constant(sbig_to_fe::<F>(ub));
-                region.push(IRStmt::constraint(CmpOp::Le, (row, expr), (row, ub)));
+                injected_ir.inject_many_in_cell(
+                    val.cell(),
+                    [IRStmt::le(lb, expr.clone()), IRStmt::le(expr, ub)],
+                );
                 val.store(ctx, chip, layouter, injected_ir)?;
             }
             Ok(())

@@ -170,7 +170,7 @@ pub mod gadget_extraction {
             store::StoreIntoCells,
             CellReprSize,
         },
-        ir::{stmt::IRStmt, CmpOp},
+        ir::stmt::IRStmt,
     };
     use ff::PrimeField;
     use midnight_proofs::{
@@ -180,9 +180,8 @@ pub mod gadget_extraction {
 
     use super::AssignedByte;
     use crate::{
-        field::{decomposition::instructions::CoreDecompositionInstructions, AssignedNative},
-        instructions::ArithInstructions,
-        utils::extraction::IR,
+        field::AssignedNative,
+        utils::extraction::{IRExt as _, IR},
     };
 
     impl<F: PrimeField> CellReprSize for AssignedByte<F> {
@@ -194,15 +193,8 @@ pub mod gadget_extraction {
         injected_ir: &mut IR<F>,
     ) -> Result<(), Error> {
         let lhs = cell_to_expr!(cell, F)?;
-        let rhs = Expression::Constant(F::from(256));
-        injected_ir
-            .entry(cell.cell().region_index)
-            .or_default()
-            .push(IRStmt::constraint(
-                CmpOp::Lt,
-                (cell.cell().row_offset, lhs),
-                (cell.cell().row_offset, rhs),
-            ));
+        let rhs = Expression::from(256);
+        injected_ir.inject_in_cell(cell.cell(), IRStmt::lt(lhs, rhs));
         Ok(())
     }
 
@@ -216,7 +208,7 @@ pub mod gadget_extraction {
             layouter: &mut impl LayoutAdaptor<F, ExtractionSupport, Adaptee = L>,
             injected_ir: &mut IR<F>,
         ) -> Result<Self, Error> {
-            let cell = AssignedNative::<F>::load(ctx, chip, layouter, injected_ir)?;
+            let cell = ctx.load(chip, layouter, injected_ir)?;
             emit_constraint(&cell, injected_ir)?;
 
             Ok(Self(cell))

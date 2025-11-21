@@ -149,11 +149,14 @@ impl<C: EdwardsCurve> Sampleable for AssignedScalarOfNativeCurve<C> {
 pub mod extraction {
     //! Extraction specific logic related to the native ecc chip.
 
-    use extractor_support::cells::{
-        ctx::{ICtx, LayoutAdaptor, OCtx},
-        load::LoadFromCells,
-        store::StoreIntoCells,
-        CellReprSize,
+    use extractor_support::{
+        cells::{
+            ctx::{ICtx, LayoutAdaptor, OCtx},
+            load::LoadFromCells,
+            store::{StoreIntoCells, StoreIntoCellsDyn},
+            CellReprSize,
+        },
+        error::assert_expected_elements,
     };
     use ff::PrimeField;
     use midnight_proofs::{circuit::Layouter, plonk::Error, ExtractionSupport};
@@ -193,8 +196,8 @@ pub mod extraction {
             layouter: &mut impl LayoutAdaptor<F, ExtractionSupport, Adaptee = L>,
             injected_ir: &mut IR<F>,
         ) -> Result<Self, Error> {
-            let x = AssignedNative::<F>::load(ctx, chip, layouter, injected_ir)?;
-            let y = AssignedNative::<F>::load(ctx, chip, layouter, injected_ir)?;
+            let x = ctx.load(chip, layouter, injected_ir)?;
+            let y = ctx.load(chip, layouter, injected_ir)?;
             chip.point_from_coordinates(layouter.adaptee_ref_mut(), &x, &y)
         }
     }
@@ -214,7 +217,7 @@ pub mod extraction {
             layouter: &mut impl LayoutAdaptor<F, ExtractionSupport, Adaptee = L>,
             injected_ir: &mut IR<F>,
         ) -> Result<Self, Error> {
-            let cell = AssignedNative::load(ctx, chip, layouter, injected_ir)?;
+            let cell = ctx.load(chip, layouter, injected_ir)?;
             chip.convert(layouter.adaptee_ref_mut(), &cell)
         }
     }
@@ -233,15 +236,9 @@ pub mod extraction {
             injected_ir: &mut IR<CV::Base>,
         ) -> Result<(), Error> {
             let v = chip.as_public_input(layouter.adaptee_ref_mut(), &self)?;
-            if v.len() != 2 {
-                return Err(extractor_support::error::Error::UnexpectedElements {
-                    header: "While storing a native point",
-                    expected: 2,
-                    actual: v.len(),
-                }
-                .into());
-            }
-            v.into_iter().try_for_each(|n| n.store(ctx, chip, layouter, injected_ir))
+            assert_expected_elements("While storing a native point", 2, v.len(), |e, a| e == a)?;
+
+            v.store_dyn(ctx, chip, layouter, injected_ir)
         }
     }
 
@@ -258,14 +255,12 @@ pub mod extraction {
             layouter: &mut impl LayoutAdaptor<CV::Base, ExtractionSupport, Adaptee = L>,
             injected_ir: &mut IR<CV::Base>,
         ) -> Result<(), Error> {
-            if self.0.len() > CV::Base::NUM_BITS as usize {
-                return Err(extractor_support::error::Error::UnexpectedElements {
-                    header: "while storing a ScalarVar",
-                    expected: CV::Base::NUM_BITS as usize,
-                    actual: self.0.len(),
-                }
-                .into());
-            }
+            assert_expected_elements(
+                "while storing a ScalarVar",
+                CV::Base::NUM_BITS as usize,
+                self.0.len(),
+                |e, a| e >= a,
+            )?;
 
             chip.assigned_from_le_bits(layouter.adaptee_ref_mut(), &self.0)?.store(
                 ctx,

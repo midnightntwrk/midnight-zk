@@ -1,30 +1,46 @@
 //! Utils related to extraction
 
-use extractor_support::{
-    circuit::injected::InjectedIR,
-    ir::{expr::IRBexpr, CmpOp},
+use extractor_support::{circuit::injected::InjectedIR, ir::stmt::IRStmt};
+use midnight_proofs::{
+    circuit::{Cell, RegionIndex},
+    plonk::Expression,
 };
-use midnight_proofs::{circuit::RegionIndex, plonk::Expression};
+
+mod sealed {
+    pub trait Sealed {}
+}
 
 /// Short name for the injected IR map.
 pub type IR<F> = InjectedIR<RegionIndex, Expression<F>>;
 
-#[inline]
-pub fn eq_expr<T>(lhs: T, rhs: T) -> IRBexpr<T> {
-    IRBexpr::Cmp(CmpOp::Eq, lhs, rhs)
+impl<F> sealed::Sealed for IR<F> {}
+
+pub trait IRExt<F>: sealed::Sealed {
+    fn inject(&mut self, index: RegionIndex, stmt: IRStmt<(usize, Expression<F>)>);
+
+    fn inject_in_cell(&mut self, cell: Cell, stmt: IRStmt<Expression<F>>) {
+        self.inject(cell.region_index, stmt.with(cell.row_offset))
+    }
+
+    fn inject_many_in_cell(
+        &mut self,
+        cell: Cell,
+        stmts: impl IntoIterator<Item = IRStmt<Expression<F>>>,
+    );
 }
 
-#[inline]
-pub fn eq_expr_row<T>(row: usize, lhs: T, rhs: T) -> IRBexpr<(usize, T)> {
-    eq_expr((row, lhs), (row, rhs))
-}
+impl<F> IRExt<F> for IR<F> {
+    fn inject(&mut self, index: RegionIndex, stmt: IRStmt<(usize, Expression<F>)>) {
+        self.entry(index).or_default().push(stmt)
+    }
 
-#[inline]
-pub fn cexpr<F>(i: impl Into<F>) -> Expression<F> {
-    Expression::Constant(i.into())
-}
-
-#[inline]
-pub fn implies<T>(lhs: IRBexpr<T>, rhs: IRBexpr<T>) -> IRBexpr<T> {
-    IRBexpr::Implies(Box::new(lhs), Box::new(rhs))
+    fn inject_many_in_cell(
+        &mut self,
+        cell: Cell,
+        stmts: impl IntoIterator<Item = IRStmt<Expression<F>>>,
+    ) {
+        self.entry(cell.region_index)
+            .or_default()
+            .extend(stmts.into_iter().map(|stmt| stmt.with(cell.row_offset)))
+    }
 }

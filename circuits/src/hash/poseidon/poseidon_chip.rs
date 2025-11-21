@@ -612,21 +612,20 @@ impl<F: PoseidonField> FromScratch<F> for PoseidonChip<F> {
 #[cfg(feature = "extraction")]
 pub mod extraction {
     //! Extraction specific logic related to the poseidon chip.
-    use extractor_support::cells::{
-        ctx::{ICtx, LayoutAdaptor, OCtx},
-        load::LoadFromCells,
-        store::StoreIntoCells,
-        CellReprSize,
+    use extractor_support::{
+        cells::{
+            ctx::{ICtx, LayoutAdaptor, OCtx},
+            load::LoadFromCells,
+            store::{StoreIntoCells, StoreIntoCellsDyn},
+            CellReprSize,
+        },
+        error::assert_expected_elements,
     };
     use ff::PrimeField;
-    use midnight_proofs::ExtractionSupport;
+    use midnight_proofs::{plonk::Error, ExtractionSupport};
 
     use super::{AssignedPoseidonState, WIDTH};
-    use crate::{
-        field::AssignedNative,
-        hash::poseidon::{constants::PoseidonField, PoseidonChip},
-        utils::extraction::IR,
-    };
+    use crate::{field::AssignedNative, utils::extraction::IR};
 
     /// Represents an [`AssignedPoseidonState`] loaded from the inputs or stored
     /// into outputs.
@@ -647,13 +646,13 @@ pub mod extraction {
         type Error = extractor_support::error::Error;
 
         fn try_from(value: AssignedPoseidonState<F>) -> Result<Self, Self::Error> {
-            if value.queue.len() > QUEUE {
-                return Err(extractor_support::error::Error::UnexpectedElements {
-                    header: "while converting an assigned poseidon state into loaded",
-                    expected: QUEUE,
-                    actual: value.queue.len(),
-                });
-            }
+            assert_expected_elements(
+                "while converting an assigned poseidon state into loaded",
+                QUEUE,
+                value.queue.len(),
+                |e, a| a <= e,
+            )?;
+
             Ok(Self(value))
         }
     }
@@ -671,11 +670,10 @@ pub mod extraction {
             chip: &C,
             layouter: &mut impl LayoutAdaptor<F, ExtractionSupport, Adaptee = L>,
             injected_ir: &mut IR<F>,
-        ) -> Result<Self, midnight_proofs::plonk::Error> {
+        ) -> Result<Self, Error> {
             Ok(Self(AssignedPoseidonState {
-                register: <[AssignedNative<F>; WIDTH]>::load(ctx, chip, layouter, injected_ir)?,
-                queue: <[AssignedNative<F>; QUEUE]>::load(ctx, chip, layouter, injected_ir)
-                    .map(|a| a.to_vec())?,
+                register: ctx.load(chip, layouter, injected_ir)?,
+                queue: vec::<F, QUEUE>(ctx.load(chip, layouter, injected_ir)?),
                 squeeze_position: 0,
                 input_len: Some(QUEUE),
             }))
@@ -691,26 +689,29 @@ pub mod extraction {
             chip: &C,
             layouter: &mut impl LayoutAdaptor<F, ExtractionSupport, Adaptee = L>,
             injected_ir: &mut IR<F>,
-        ) -> Result<(), midnight_proofs::plonk::Error> {
+        ) -> Result<(), Error> {
             let queue_len = self.0.queue.len();
-            if queue_len > QUEUE {
-                return Err(extractor_support::error::Error::UnexpectedElements {
-                    header: "while storing a loaded poseidon state",
-                    expected: QUEUE,
-                    actual: queue_len,
-                }
-                .into());
-            }
+            assert_expected_elements(
+                "while storing a loaded poseidon state",
+                QUEUE,
+                queue_len,
+                |e, a| a <= e,
+            )?;
 
             self.0.register.store(ctx, chip, layouter, injected_ir)?;
-            for item in self.0.queue {
-                item.store(ctx, chip, layouter, injected_ir)?;
-            }
+            self.0.queue.store_dyn(ctx, chip, layouter, injected_ir)?;
+
             for _ in queue_len..QUEUE {
                 ctx.set_next_to_zero(layouter)?;
             }
             Ok(())
         }
+    }
+
+    fn vec<F: PrimeField, const QUEUE: usize>(
+        a: [AssignedNative<F>; QUEUE],
+    ) -> Vec<AssignedNative<F>> {
+        a.to_vec()
     }
 }
 

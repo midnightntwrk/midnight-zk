@@ -1087,7 +1087,7 @@ pub mod chip_extraction {
             store::StoreIntoCells,
             CellReprSize,
         },
-        ir::{stmt::IRStmt, CmpOp},
+        ir::stmt::IRStmt,
     };
     use ff::PrimeField;
     use midnight_proofs::{
@@ -1096,7 +1096,10 @@ pub mod chip_extraction {
     };
 
     use super::AssignedBit;
-    use crate::{types::AssignedNative, utils::extraction::IR};
+    use crate::{
+        types::AssignedNative,
+        utils::extraction::{IRExt as _, IR},
+    };
 
     impl<F: PrimeField> CellReprSize for AssignedBit<F> {
         const SIZE: usize = <AssignedNative<F> as CellReprSize>::SIZE;
@@ -1107,14 +1110,9 @@ pub mod chip_extraction {
         injected_ir: &mut IR<F>,
     ) -> Result<(), Error> {
         let x = cell_to_expr!(cell, F)?;
-        let lhs = x.clone() * (x - Expression::Constant(F::ONE));
-        let rhs = Expression::Constant(F::ZERO);
-        let stmt = IRStmt::constraint(
-            CmpOp::Eq,
-            (cell.cell().row_offset, lhs),
-            (cell.cell().row_offset, rhs),
-        );
-        injected_ir.entry(cell.cell().region_index).or_default().push(stmt);
+        let lhs = x.clone() * (x - Expression::from(1));
+        let rhs = Expression::from(0);
+        injected_ir.inject_in_cell(cell.cell(), IRStmt::eq(lhs, rhs));
         Ok(())
     }
 
@@ -1128,7 +1126,7 @@ pub mod chip_extraction {
             layouter: &mut impl LayoutAdaptor<F, ExtractionSupport, Adaptee = L>,
             injected_ir: &mut IR<F>,
         ) -> Result<Self, Error> {
-            let cell = AssignedNative::<F>::load(ctx, chip, layouter, injected_ir)?;
+            let cell = ctx.load(chip, layouter, injected_ir)?;
             emit_constraint(&cell, injected_ir)?;
             Ok(Self(cell))
         }

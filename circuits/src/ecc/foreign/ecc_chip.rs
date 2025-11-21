@@ -2080,7 +2080,7 @@ pub mod extraction {
     use ff::PrimeField;
     use midnight_proofs::{circuit::Value, plonk::Error, ExtractionSupport};
 
-    use super::{AssignedForeignPoint, ForeignEccChip};
+    use super::AssignedForeignPoint;
     use crate::{
         ecc::curves::WeierstrassCurve,
         field::foreign::params::FieldEmulationParams,
@@ -2115,14 +2115,11 @@ pub mod extraction {
             layouter: &mut impl LayoutAdaptor<F, ExtractionSupport, Adaptee = L>,
             injected_ir: &mut IR<F>,
         ) -> Result<Self, Error> {
-            let is_id = AssignedBit::<F>::load(ctx, chip, layouter, injected_ir)?;
-            let x = AssignedField::<F, C::Base, B>::load(ctx, chip, layouter, injected_ir)?;
-            let y = AssignedField::<F, C::Base, B>::load(ctx, chip, layouter, injected_ir)?;
             Ok(Self {
                 point: Value::unknown(),
-                is_id,
-                x,
-                y,
+                is_id: ctx.load(chip, layouter, injected_ir)?,
+                x: ctx.load(chip, layouter, injected_ir)?,
+                y: ctx.load(chip, layouter, injected_ir)?,
             })
         }
     }

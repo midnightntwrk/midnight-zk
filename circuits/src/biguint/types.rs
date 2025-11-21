@@ -170,19 +170,24 @@ pub mod extraction {
         cells::{
             ctx::{ICtx, LayoutAdaptor, OCtx},
             load::LoadFromCells,
-            store::StoreIntoCells,
+            store::{StoreIntoCells, StoreIntoCellsDyn},
             CellReprSize,
         },
-        ir::{stmt::IRStmt, CmpOp},
+        error::assert_expected_elements,
+        ir::stmt::IRStmt,
     };
     use ff::PrimeField;
     use midnight_proofs::{
+        circuit::Cell,
         plonk::{Error, Expression},
         ExtractionSupport,
     };
 
     use super::{AssignedBigUint, LOG2_BASE};
-    use crate::{types::AssignedNative, utils::extraction::IR};
+    use crate::{
+        types::AssignedNative,
+        utils::extraction::{IRExt as _, IR},
+    };
 
     const fn num_limbs(bits: usize) -> usize {
         let c: usize = bits / LOG2_BASE as usize;
@@ -222,16 +227,38 @@ pub mod extraction {
 
         fn try_from(value: AssignedBigUint<F>) -> Result<Self, Self::Error> {
             let n_limbs = value.limbs.len();
-            if n_limbs > num_limbs(BITS) {
-                return Err(extractor_support::error::Error::UnexpectedElements {
-                    header: "While wrapping big uint into a loaded bit uint",
-                    expected: n_limbs,
-                    actual: num_limbs(BITS),
-                }
-                .into());
-            }
+            assert_expected_elements(
+                "While wrapping big uint into a loaded bit uint",
+                n_limbs,
+                num_limbs(BITS),
+                |e, a| e <= a,
+            )?;
             Ok(Self(value))
         }
+    }
+
+    fn emit_regular_bound<F: PrimeField>(
+        (c, rhs): (&AssignedNative<F>, &u32),
+    ) -> Result<(Cell, IRStmt<Expression<F>>), Error> {
+        Ok((
+            c.cell(),
+            IRStmt::lt(cell_to_expr!(c, F)?, Expression::from(*rhs as u64)),
+        ))
+    }
+
+    fn emit_last_bound<F: PrimeField>(
+        (limb, bound): (&AssignedNative<F>, &u32),
+    ) -> Result<(Cell, IRStmt<Expression<F>>), Error> {
+        let cell = limb.cell();
+        let op = if *bound < LOG2_BASE {
+            IRStmt::le
+        } else {
+            IRStmt::lt
+        };
+        Ok((
+            cell,
+            op(cell_to_expr!(limb, F)?, Expression::from(*bound as u64)),
+        ))
     }
 
     fn emit_limb_bound_constraints<F: PrimeField>(
@@ -240,48 +267,17 @@ pub mod extraction {
     ) -> Result<(), Error> {
         let n_limbs = biguint.limb_size_bounds.len();
         assert_eq!(n_limbs, biguint.limbs.len());
-        let lhs = biguint.limbs[..n_limbs - 1].iter().map(|c| (c.cell(), cell_to_expr!(c, F)));
-        let rhs = biguint.limb_size_bounds[..n_limbs - 1]
-            .iter()
-            .copied()
-            .map(|b| F::from(b as u64))
-            .map(Expression::Constant);
-        std::iter::zip(lhs, rhs)
-            .map(|((cell, lhs), rhs)| {
-                lhs.map(|lhs| {
-                    (
-                        cell.region_index,
-                        IRStmt::constraint(
-                            CmpOp::Lt,
-                            (cell.row_offset, lhs),
-                            (cell.row_offset, rhs),
-                        ),
-                    )
-                })
-            })
-            .chain(
-                std::iter::zip(biguint.limbs.last(), biguint.limb_size_bounds.last()).map(
-                    |(limb, bound)| {
-                        let cell = limb.cell();
-                        let lhs = cell_to_expr!(limb, F)?;
-                        let op = if *bound < LOG2_BASE {
-                            CmpOp::Le
-                        } else {
-                            CmpOp::Lt
-                        };
-                        let rhs = Expression::Constant(F::from(*bound as u64));
-                        Ok((
-                            cell.region_index,
-                            IRStmt::constraint(op, (cell.row_offset, lhs), (cell.row_offset, rhs)),
-                        ))
-                    },
-                ),
-            )
-            .try_for_each(|stmt| {
-                let (index, stmt) = stmt?;
-                injected_ir.entry(index).or_default().push(stmt);
-                Ok(())
-            })
+        let lhs = &biguint.limbs[..n_limbs - 1];
+        let rhs = &biguint.limb_size_bounds[..n_limbs - 1];
+        let regulars = std::iter::zip(lhs, rhs).map(emit_regular_bound);
+        let last = std::iter::zip(biguint.limbs.last(), biguint.limb_size_bounds.last())
+            .map(emit_last_bound);
+
+        regulars.chain(last).try_for_each(|stmt| {
+            let (cell, stmt) = stmt?;
+            injected_ir.inject_in_cell(cell, stmt);
+            Ok(())
+        })
     }
 
     impl<F: PrimeField, C, const BITS: usize, L> LoadFromCells<F, C, ExtractionSupport, L>
@@ -299,10 +295,7 @@ pub mod extraction {
                 "AssignedNative needs to occupy only one cell"
             );
             let n_limbs = num_limbs(BITS);
-            let limbs =
-                std::iter::repeat_with(|| AssignedNative::load(ctx, chip, layouter, injected_ir))
-                    .take(n_limbs)
-                    .collect::<Result<Vec<_>, _>>()?;
+            let limbs = AssignedNative::load_many(n_limbs, ctx, chip, layouter, injected_ir)?;
             let mut limb_size_bounds = vec![LOG2_BASE; n_limbs];
             let n_bits = std::cmp::max(BITS, 1) as u32;
             *limb_size_bounds.last_mut().unwrap() = (n_bits - 1).rem(LOG2_BASE) + 1; // msl bound
@@ -333,21 +326,16 @@ pub mod extraction {
                 "Inconsistent lengths between bounds and lengths"
             );
 
-            if n_limbs > num_limbs(BITS) {
-                return Err(extractor_support::error::Error::UnexpectedElements {
-                    header: "While storing big uint",
-                    expected: n_limbs,
-                    actual: num_limbs(BITS),
-                }
-                .into());
-            }
+            assert_expected_elements(
+                "While storing big uint",
+                n_limbs,
+                num_limbs(BITS),
+                |e, a| e <= a,
+            )?;
 
             emit_limb_bound_constraints(&self.0, injected_ir)?;
 
-            self.0
-                .limbs
-                .into_iter()
-                .try_for_each(|limb| limb.store(ctx, chip, layouter, injected_ir))
+            self.0.limbs.store_dyn(ctx, chip, layouter, injected_ir)
         }
     }
 }

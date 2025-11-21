@@ -111,8 +111,7 @@ pub mod extraction {
             layouter: &mut impl LayoutAdaptor<F, ExtractionSupport, Adaptee = L>,
             injected_ir: &mut IR<F>,
         ) -> Result<Self, Error> {
-            AssignedVector::<F, AssignedByte<F>, M, A>::load(ctx, chip, layouter, injected_ir)
-                .map(Self)
+            ctx.load(chip, layouter, injected_ir).map(Self)
         }
     }
     impl<F: PrimeField, C, const M: usize, const A: usize, L>

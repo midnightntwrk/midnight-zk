@@ -86,6 +86,8 @@ impl<F: PrimeField> Vectorizable for AssignedByte<F> {
 pub mod extraction {
     //! Extraction specific logic related to the vector gadget.
 
+    use std::ops::Range;
+
     use extractor_support::{
         cell_to_expr,
         cells::{
@@ -94,7 +96,7 @@ pub mod extraction {
             store::StoreIntoCells,
             CellReprSize,
         },
-        ir::{expr::IRBexpr, stmt::IRStmt, CmpOp},
+        ir::{expr::IRBexpr, stmt::IRStmt},
     };
     use ff::{Field, PrimeField};
     use midnight_proofs::{
@@ -107,7 +109,7 @@ pub mod extraction {
     use crate::{
         field::AssignedNative,
         types::AssignedByte,
-        utils::extraction::{cexpr, eq_expr_row, implies, IR},
+        utils::extraction::{IRExt as _, IR},
         vec::get_lims,
     };
 
@@ -132,19 +134,41 @@ pub mod extraction {
             layouter: &mut impl LayoutAdaptor<F, ExtractionSupport, Adaptee = L>,
             injected_ir: &mut IR<F>,
         ) -> Result<Self, Error> {
-            let buffer = <[T; M]>::load(ctx, chip, layouter, injected_ir)?;
-            let len = AssignedNative::load(ctx, chip, layouter, injected_ir)?;
-            let lhs = cell_to_expr!(&len, F)?;
-            let rhs = cexpr(u64::try_from(M).unwrap());
-            let stmt = IRStmt::constraint(
-                CmpOp::Le,
-                (len.cell().row_offset, lhs),
-                (len.cell().row_offset, rhs),
+            let buffer = ctx.load(chip, layouter, injected_ir)?;
+            let len = ctx.load(chip, layouter, injected_ir)?;
+            let v = AssignedVector { buffer, len };
+            injected_ir.inject_in_cell(
+                v.len.cell(),
+                IRStmt::le(
+                    cell_to_expr!(&v.len, F)?,
+                    Expression::from(u64::try_from(M).unwrap()),
+                ),
             );
-            injected_ir.entry(len.cell().region_index).or_default().push(stmt);
 
-            Ok(AssignedVector { buffer, len })
+            Ok(v)
         }
+    }
+
+    fn emit_size_checks<F: PrimeField>(
+        buffer: &[(Cell, Expression<F>)],
+        lims: &Range<usize>,
+        m: usize,
+        filler: F,
+    ) -> Vec<IRBexpr<(usize, Expression<F>)>> {
+        buffer
+            .iter()
+            .enumerate()
+            .take(m)
+            .filter_map(|(len, (elt_cell, elt))| {
+                if lims.contains(&len) {
+                    return None;
+                }
+                Some(
+                    IRBexpr::eq(elt.clone(), Expression::Constant(filler))
+                        .with(elt_cell.row_offset),
+                )
+            })
+            .collect::<Vec<_>>()
     }
 
     fn emit_filler_constrain<F: PrimeField, const M: usize, const A: usize>(
@@ -154,37 +178,24 @@ pub mod extraction {
         filler: F,
         injected_ir: &mut IR<F>,
     ) {
-        let len_row = len_cell.row_offset;
-        let len_idx = len_cell.region_index;
-
-        let mut len_exprs = vec![];
-        let mut size_exprs = vec![];
-        for len in 0..=M {
-            let lims = get_lims::<M, A>(len);
-            let mut size_checks = vec![];
-            for (len, (elt_cell, elt)) in buffer.iter().enumerate().take(M) {
-                if lims.contains(&len) {
-                    continue;
-                }
-                assert_eq!(elt_cell.region_index, len_idx);
-                let elt_row = elt_cell.row_offset;
-                size_checks.push(eq_expr_row(elt_row, elt.clone(), cexpr(filler)))
-            }
-            if size_checks.is_empty() {
-                continue;
-            }
-            size_exprs.push(IRBexpr::And(size_checks));
-
-            let lenf = F::from(len as u64);
-            len_exprs.push(eq_expr_row(len_row, len_expr.clone(), cexpr(lenf)));
-        }
         let expr = IRBexpr::Or(
-            std::iter::zip(len_exprs, size_exprs)
-                .map(|(len, size)| implies(len, size))
+            (0..=M)
+                .filter_map(|len| {
+                    let lims = get_lims::<M, A>(len);
+                    let size_checks = emit_size_checks(buffer, &lims, M, filler);
+
+                    if size_checks.is_empty() {
+                        return None;
+                    }
+                    Some(IRBexpr::implies(
+                        IRBexpr::And(size_checks),
+                        IRBexpr::eq(len_expr.clone(), Expression::from(len as u64))
+                            .with(len_cell.row_offset),
+                    ))
+                })
                 .collect(),
         );
-        let stmt = IRStmt::assert(expr);
-        injected_ir.entry(len_idx).or_default().push(stmt);
+        injected_ir.inject(len_cell.region_index, IRStmt::assert(expr));
     }
 
     fn try_col<F, C: ColumnType, E>(
