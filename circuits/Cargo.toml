@@ -21,6 +21,7 @@ midnight-proofs = { path = "../proofs", version = "0.5.1", default-features = fa
     "decompose-in-cells"
 ] }
 picus-support = { version = "0.1.0",  package = "mdnt-groups-support" }
+# The two deps below don't have an up to date release in crates.io yet
 # picus = { version = "0.1.1",  package = "mdnt-support-macros", features = ["region-groups"] }
 picus = { git = "https://github.com/Veridise/midnight-extractor",  package = "mdnt-support-macros", features = ["region-groups"] }
 extractor-support = { git = "https://github.com/Veridise/midnight-extractor", package = "mdnt-support", optional = true, features = ["derive"] }
@@ -38,7 +39,6 @@ subtle = "2.6"
 base64 = "0.13.1"
 lazy_static = "1.5.0"
 bincode = "2.0"
-
 
 [dev-dependencies]
 bench_macros = { path = "../bench-macros" }
@@ -69,6 +69,7 @@ truncated-challenges = ["midnight-proofs/truncated-challenges"]
 # of the prover for that concrete circuit.
 bench-internal = ["midnight-proofs/bench-internal"]
 
+# Feature to enable support for the Picus & LLZK extraction.
 extraction = ["extractor-support", "testing", "midnight-proofs/extraction", "picus/extractor-derive"]
 
 [[example]]
