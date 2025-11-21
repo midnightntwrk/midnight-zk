@@ -188,9 +188,9 @@ pub mod extraction {
                         return None;
                     }
                     Some(IRBexpr::implies(
-                        IRBexpr::And(size_checks),
                         IRBexpr::eq(len_expr.clone(), Expression::from(len as u64))
                             .with(len_cell.row_offset),
+                        IRBexpr::And(size_checks),
                     ))
                 })
                 .collect(),
