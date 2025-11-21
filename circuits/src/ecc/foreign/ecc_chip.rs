@@ -2084,8 +2084,7 @@ pub mod extraction {
     use crate::{
         ecc::curves::WeierstrassCurve,
         field::foreign::params::FieldEmulationParams,
-        instructions::{NativeInstructions, ScalarFieldInstructions},
-        types::{AssignedBit, AssignedField, InnerValue},
+        types::{AssignedBit, AssignedField},
         utils::extraction::IR,
     };
 

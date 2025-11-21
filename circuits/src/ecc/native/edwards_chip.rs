@@ -156,14 +156,14 @@ pub mod extraction {
             store::{StoreIntoCells, StoreIntoCellsDyn},
             CellReprSize,
         },
-        error::assert_expected_elements,
+        expect_elements,
     };
     use ff::PrimeField;
     use midnight_proofs::{circuit::Layouter, plonk::Error, ExtractionSupport};
 
     use super::{AssignedNativePoint, AssignedScalarOfNativeCurve};
     use crate::{
-        ecc::curves::{CircuitCurve, EdwardsCurve},
+        ecc::curves::CircuitCurve,
         field::AssignedNative,
         instructions::{
             ConversionInstructions, DecompositionInstructions, EccInstructions,
@@ -236,7 +236,7 @@ pub mod extraction {
             injected_ir: &mut IR<CV::Base>,
         ) -> Result<(), Error> {
             let v = chip.as_public_input(layouter.adaptee_ref_mut(), &self)?;
-            assert_expected_elements("While storing a native point", 2, v.len(), |e, a| e == a)?;
+            expect_elements!((2 == v.len()), "While storing a native point");
 
             v.store_dyn(ctx, chip, layouter, injected_ir)
         }
@@ -255,12 +255,10 @@ pub mod extraction {
             layouter: &mut impl LayoutAdaptor<CV::Base, ExtractionSupport, Adaptee = L>,
             injected_ir: &mut IR<CV::Base>,
         ) -> Result<(), Error> {
-            assert_expected_elements(
-                "while storing a ScalarVar",
-                CV::Base::NUM_BITS as usize,
-                self.0.len(),
-                |e, a| e >= a,
-            )?;
+            expect_elements!(
+                (CV::Base::NUM_BITS as usize >= self.0.len()),
+                "while storing a ScalarVar"
+            );
 
             chip.assigned_from_le_bits(layouter.adaptee_ref_mut(), &self.0)?.store(
                 ctx,

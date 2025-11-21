@@ -173,7 +173,7 @@ pub mod extraction {
             store::{StoreIntoCells, StoreIntoCellsDyn},
             CellReprSize,
         },
-        error::assert_expected_elements,
+        expect_elements,
         ir::stmt::IRStmt,
     };
     use ff::PrimeField;
@@ -190,12 +190,7 @@ pub mod extraction {
     };
 
     const fn num_limbs(bits: usize) -> usize {
-        let c: usize = bits / LOG2_BASE as usize;
-        if bits % LOG2_BASE as usize != 0 {
-            c + 1
-        } else {
-            c
-        }
+        bits.div_ceil(LOG2_BASE as usize)
     }
 
     /// Represents a big unsigned integer of up to `BITS` bits loaded from
@@ -226,13 +221,10 @@ pub mod extraction {
         type Error = Error;
 
         fn try_from(value: AssignedBigUint<F>) -> Result<Self, Self::Error> {
-            let n_limbs = value.limbs.len();
-            assert_expected_elements(
-                "While wrapping big uint into a loaded bit uint",
-                n_limbs,
-                num_limbs(BITS),
-                |e, a| e <= a,
-            )?;
+            expect_elements!(
+                (value.limbs.len() <= num_limbs(BITS)),
+                "While wrapping big uint into a loaded bit uint"
+            );
             Ok(Self(value))
         }
     }
@@ -280,6 +272,13 @@ pub mod extraction {
         })
     }
 
+    fn limb_size_bounds(bits: usize) -> Vec<u32> {
+        let mut limb_size_bounds = vec![LOG2_BASE; num_limbs(bits)];
+        let n_bits = std::cmp::max(bits, 1) as u32;
+        *limb_size_bounds.last_mut().unwrap() = (n_bits - 1).rem(LOG2_BASE) + 1; // msl bound
+        limb_size_bounds
+    }
+
     impl<F: PrimeField, C, const BITS: usize, L> LoadFromCells<F, C, ExtractionSupport, L>
         for LoadedBigUint<F, BITS>
     {
@@ -294,14 +293,16 @@ pub mod extraction {
                 1,
                 "AssignedNative needs to occupy only one cell"
             );
-            let n_limbs = num_limbs(BITS);
-            let limbs = AssignedNative::load_many(n_limbs, ctx, chip, layouter, injected_ir)?;
-            let mut limb_size_bounds = vec![LOG2_BASE; n_limbs];
-            let n_bits = std::cmp::max(BITS, 1) as u32;
-            *limb_size_bounds.last_mut().unwrap() = (n_bits - 1).rem(LOG2_BASE) + 1; // msl bound
+
             let be = AssignedBigUint {
-                limbs,
-                limb_size_bounds,
+                limbs: AssignedNative::load_many(
+                    num_limbs(BITS),
+                    ctx,
+                    chip,
+                    layouter,
+                    injected_ir,
+                )?,
+                limb_size_bounds: limb_size_bounds(BITS),
             };
             emit_limb_bound_constraints(&be, injected_ir)?;
 
@@ -325,16 +326,8 @@ pub mod extraction {
                 self.0.limb_size_bounds.len(),
                 "Inconsistent lengths between bounds and lengths"
             );
-
-            assert_expected_elements(
-                "While storing big uint",
-                n_limbs,
-                num_limbs(BITS),
-                |e, a| e <= a,
-            )?;
-
+            expect_elements!((n_limbs <= num_limbs(BITS)), "While storing big uint");
             emit_limb_bound_constraints(&self.0, injected_ir)?;
-
             self.0.limbs.store_dyn(ctx, chip, layouter, injected_ir)
         }
     }

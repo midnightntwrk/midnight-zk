@@ -619,7 +619,7 @@ pub mod extraction {
             store::{StoreIntoCells, StoreIntoCellsDyn},
             CellReprSize,
         },
-        error::assert_expected_elements,
+        expect_elements,
     };
     use ff::PrimeField;
     use midnight_proofs::{plonk::Error, ExtractionSupport};
@@ -646,12 +646,10 @@ pub mod extraction {
         type Error = extractor_support::error::Error;
 
         fn try_from(value: AssignedPoseidonState<F>) -> Result<Self, Self::Error> {
-            assert_expected_elements(
-                "while converting an assigned poseidon state into loaded",
-                QUEUE,
-                value.queue.len(),
-                |e, a| a <= e,
-            )?;
+            expect_elements!(
+                (QUEUE >= value.queue.len()),
+                "while converting an assigned poseidon state into loaded"
+            );
 
             Ok(Self(value))
         }
@@ -691,12 +689,10 @@ pub mod extraction {
             injected_ir: &mut IR<F>,
         ) -> Result<(), Error> {
             let queue_len = self.0.queue.len();
-            assert_expected_elements(
-                "while storing a loaded poseidon state",
-                QUEUE,
-                queue_len,
-                |e, a| a <= e,
-            )?;
+            expect_elements!(
+                (QUEUE >= queue_len),
+                "while converting an assigned poseidon state into loaded"
+            );
 
             self.0.register.store(ctx, chip, layouter, injected_ir)?;
             self.0.queue.store_dyn(ctx, chip, layouter, injected_ir)?;
