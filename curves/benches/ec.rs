@@ -87,17 +87,17 @@ fn bench_curve_ops<G: CurveExt>(c: &mut Criterion, name: &'static str) {
     }
 }
 
-fn bench_g1_ops(c: &mut Criterion) {
-    bench_curve_ops::<G1Projective>(c, "G1")
+fn bench_bn256_g1_ops(c: &mut Criterion) {
+    bench_curve_ops::<G1Projective>(c, "Bn256-G1")
 }
 
-// fn bench_g2_ops(c: &mut Criterion) {
+// fn bench_bn256_g2_ops(c: &mut Criterion) {
 //     bench_curve_ops::<G2Projective>(c, "G2")
 // }
 
 criterion_group!(
     benches,
-    bench_g1_ops,
-    // bench_g2_ops
+    bench_bn256_g1_ops,
+    // bench_bn256_g2_ops
 );
 criterion_main!(benches);
