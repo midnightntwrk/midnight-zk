@@ -16,7 +16,7 @@ use crate::{
     plonk::Error,
 };
 
-/// Marker trait that defines a key that uniquelly identifying a group.
+/// Marker trait that defines a key that uniquelly identifies a group.
 ///
 /// The uniqueness comes from [`std::hash::Hash`].
 ///
@@ -453,7 +453,7 @@ mod tests {
     }
 
     /// Helper macro for writing tests that run a sample circuit and computes a
-    /// specification of the groups in created in it. Accepts a text
+    /// specification of the groups created in it. Accepts a text
     /// representation of the specification that is compared against the
     /// produced result and, optionally, a closure that accepts a reference to
     /// a [`MockGroup`] to do additional assertions.
