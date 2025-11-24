@@ -16,7 +16,7 @@ use super::{
         Advice, Any, Assignment, Challenge, Circuit, Column, ConstraintSystem, Fixed, FloorPlanner,
         Instance, Selector,
     },
-    lookup, permutation, vanishing, Error, ProvingKey,
+    logup, permutation, vanishing, Error, ProvingKey,
 };
 #[cfg(feature = "committed-instances")]
 use crate::poly::EvaluationDomain;
@@ -31,6 +31,7 @@ use crate::{
     transcript::{Hashable, Sampleable, Transcript},
     utils::{arithmetic::eval_polynomial, rational::Rational},
 };
+use crate::plonk::logup::BatchedArgument;
 
 #[cfg(feature = "committed-instances")]
 /// Commit to a vector of raw instances. This function can be used to prepare
@@ -117,35 +118,6 @@ where
     // Sample theta challenge for keeping lookup columns linearly independent
     let theta: F = transcript.squeeze_challenge();
 
-    let lookups: Vec<Vec<lookup::prover::Permuted<F>>> = bench_and_run!(
-        _group; ref transcript; ; "Construct and commit permuted columns";
-        |t: &mut T|  instance
-        .iter()
-        .zip(advice.iter())
-        .map(|(instance, advice)| -> Result<Vec<_>, Error> {
-            // Construct and commit to permuted values for each lookup
-            pk.vk
-                .cs
-                .lookups
-                .iter()
-                .map(|lookup| {
-                    lookup.commit_permuted(
-                        pk,
-                        params,
-                        domain,
-                        theta,
-                        &advice.advice_polys,
-                        &pk.fixed_values,
-                        &instance.instance_values,
-                        &challenges,
-                        &mut rng,
-                        &mut *t,
-                    )
-                })
-                .collect()
-        })
-        .collect::<Result<Vec<_>, _>>())?;
-
     // Sample beta challenge
     let beta: F = transcript.squeeze_challenge();
 
@@ -174,18 +146,33 @@ where
         })
         .collect::<Result<Vec<_>, _>>())?;
 
-    let lookups: Vec<Vec<lookup::prover::Committed<F>>> = bench_and_run!(_group;
-        ref transcript;  own lookups; "Construct and commit lookup product polynomials";
-        |t: &mut T, lookups: Vec<Vec<lookup::prover::Permuted<F>>>| lookups
-        .into_iter()
-        .map(|lookups| -> Result<Vec<_>, _> {
-            // Construct and commit to products for each lookup
-            lookups
-                .into_iter()
-                .map(|lookup| lookup.commit_product(pk, params, beta, gamma, &mut rng, &mut *t))
+    dbg!(&pk.vk
+        .cs
+        .lookups);
+
+    let lookups: Vec<Vec<logup::prover::Committed<F>>> = bench_and_run!(_group;
+        ref transcript;  ; "Construct and commit log derivative";
+        |t: &mut T|
+        instance
+        .iter()
+        .zip(advice.iter())
+        .map(|(instance, advice)| -> Result<Vec<_>, Error> {
+            pk.vk
+                .cs
+                .lookups
+                .iter()
+                .flat_map(BatchedArgument::split)
+                .map(|logup| {
+                    logup.commit_logderivative(pk, params, beta, theta,
+                        &advice.advice_polys,
+                        &pk.fixed_values,
+                        &instance.instance_values,
+                        &challenges,
+                        &mut *t,)
+                })
                 .collect::<Result<Vec<_>, _>>()
-        })
-        .collect::<Result<Vec<_>, _>>())?;
+        }).collect::<Result<Vec<_>, _>>()
+        )?;
 
     // Trash argument
     let trash_challenge: F = transcript.squeeze_challenge();
@@ -332,8 +319,8 @@ where
     )?;
 
     // Evaluate the lookups, if any, at omega^i x.
-    let lookups: Vec<Vec<lookup::prover::Evaluated<F>>> = bench_and_run!(_group; ref transcript; own lookups; "Evaluate lookups";
-        |t: &mut T, lookups: Vec<Vec<lookup::prover::Committed<F>>>| lookups
+    let lookups: Vec<Vec<logup::prover::Evaluated<F>>> = bench_and_run!(_group; ref transcript; own lookups; "Evaluate lookups";
+        |t: &mut T, lookups: Vec<Vec<logup::prover::Committed<F>>>| lookups
         .into_iter()
         .map(|lookups| -> Result<Vec<_>, _> {
             lookups
@@ -342,6 +329,8 @@ where
                 .collect::<Result<Vec<_>, _>>()
         })
         .collect::<Result<Vec<_>, _>>())?;
+
+    // Check here the identity with the evaluations.
 
     // Evaluate the trashcans, if any, at x.
     let trashcans: Vec<Vec<trash::prover::Evaluated<F>>> = trashcans
@@ -755,7 +744,7 @@ fn compute_queries<'a, F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentSch
     instance_polys: &'a [Vec<Polynomial<F, Coeff>>],
     advice_polys: &'a [Vec<Polynomial<F, Coeff>>],
     permutations: &'a [permutation::prover::Evaluated<F>],
-    lookups: &'a [Vec<lookup::prover::Evaluated<F>>],
+    lookups: &'a [Vec<logup::prover::Evaluated<F>>],
     trashcans: &'a [Vec<trash::prover::Evaluated<F>>],
     vanishing: &'a vanishing::prover::Evaluated<F>,
     x: F,

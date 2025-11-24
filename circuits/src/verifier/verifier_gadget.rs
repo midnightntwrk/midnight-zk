@@ -475,14 +475,15 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                 let evaluated_lookup_ids = cs
                     .lookups()
                     .iter()
+                    .flat_map(|lookup| lookup.split())
                     .enumerate()
-                    .map(|(index, _)| {
+                    .map(|(index, lookup)| {
                         lookup_expressions(
                             layouter,
                             &self.scalar_chip,
                             &lookups_evaluated[index],
-                            cs.lookups()[index].input_expressions(),
-                            cs.lookups()[index].table_expressions(),
+                            lookup.input_expressions(),
+                            lookup.table_expressions(),
                             &advice_evals,
                             &fixed_evals,
                             &instance_evals,

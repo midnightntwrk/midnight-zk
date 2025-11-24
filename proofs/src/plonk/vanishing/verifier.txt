@@ -1,0 +1,127 @@
+BatchedArgument {
+        input_expressions: [
+            [
+                Product(
+                    Fixed {
+                        query_index: 20,
+                        column_index: 20,
+                        rotation: Rotation(
+                            0,
+                        ),
+                    },
+                    Fixed {
+                        query_index: 6,
+                        column_index: 0,
+                        rotation: Rotation(
+                            0,
+                        ),
+                    },
+                ),
+                Product(
+                    Fixed {
+                        query_index: 20,
+                        column_index: 20,
+                        rotation: Rotation(
+                            0,
+                        ),
+                    },
+                    Advice {
+                        query_index: 9,
+                        column_index: 6,
+                        rotation: Rotation(
+                            0,
+                        ),
+                    },
+                ),
+                Product(
+                    Fixed {
+                        query_index: 20,
+                        column_index: 20,
+                        rotation: Rotation(
+                            0,
+                        ),
+                    },
+                    Advice {
+                        query_index: 0,
+                        column_index: 0,
+                        rotation: Rotation(
+                            0,
+                        ),
+                    },
+                ),
+            ],
+            [
+                Product(
+                    Fixed {
+                        query_index: 20,
+                        column_index: 20,
+                        rotation: Rotation(
+                            0,
+                        ),
+                    },
+                    Fixed {
+                        query_index: 7,
+                        column_index: 1,
+                        rotation: Rotation(
+                            0,
+                        ),
+                    },
+                ),
+                Product(
+                    Fixed {
+                        query_index: 20,
+                        column_index: 20,
+                        rotation: Rotation(
+                            0,
+                        ),
+                    },
+                    Advice {
+                        query_index: 10,
+                        column_index: 7,
+                        rotation: Rotation(
+                            0,
+                        ),
+                    },
+                ),
+                Product(
+                    Fixed {
+                        query_index: 20,
+                        column_index: 20,
+                        rotation: Rotation(
+                            0,
+                        ),
+                    },
+                    Advice {
+                        query_index: 1,
+                        column_index: 1,
+                        rotation: Rotation(
+                            0,
+                        ),
+                    },
+                ),
+            ],
+        ],
+        table_expressions: [
+            Fixed {
+                query_index: 13,
+                column_index: 13,
+                rotation: Rotation(
+                    0,
+                ),
+            },
+            Fixed {
+                query_index: 14,
+                column_index: 14,
+                rotation: Rotation(
+                    0,
+                ),
+            },
+            Fixed {
+                query_index: 15,
+                column_index: 15,
+                rotation: Rotation(
+                    0,
+                ),
+            },
+        ],
+    },

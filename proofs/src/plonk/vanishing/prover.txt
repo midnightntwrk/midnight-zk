@@ -1,0 +1,255 @@
+[proofs/src/plonk/prover.rs:149:5] &pk.vk.cs.lookups = [
+    BatchedArgument {
+        input_expressions: [
+            [
+                Fixed {
+                    query_index: 10,
+                    column_index: 10,
+                    rotation: Rotation(
+                        0,
+                    ),
+                },
+                Product(
+                    Fixed {
+                        query_index: 19,
+                        column_index: 19,
+                        rotation: Rotation(
+                            0,
+                        ),
+                    },
+                    Advice {
+                        query_index: 1,
+                        column_index: 1,
+                        rotation: Rotation(
+                            0,
+                        ),
+                    },
+                ),
+            ],
+        ],
+        table_expressions: [
+            Fixed {
+                query_index: 11,
+                column_index: 11,
+                rotation: Rotation(
+                    0,
+                ),
+            },
+            Fixed {
+                query_index: 12,
+                column_index: 12,
+                rotation: Rotation(
+                    0,
+                ),
+            },
+        ],
+    },
+
+]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// Lookups
+            #[allow(unsafe_code)]
+            for (n, lookup) in lookups.iter().enumerate() {
+                // Debugging:
+                // Let's see if the input_polynomials and multiplicites are valid in the eval domain
+                use rayon::iter::IndexedParallelIterator;
+                use rayon::iter::ParallelIterator;
+                let helper_lagrange = domain.coeff_to_lagrange(lookup.helper_poly.clone());
+                let input_polys = lookup.input_polynomials.iter().map(|poly| domain.coeff_to_lagrange(poly.clone())).collect::<Vec<_>>();
+
+                // let instance: &&[Polynomial<F, ExtendedLagrangeCoeff>] =
+                //     unsafe { transmute::<&&[Polynomial<F, B>], &&[Polynomial<F, ExtendedLagrangeCoeff>]>(instance) };
+                // let instance = instance.iter().map(|poly| {
+                //     let poly = domain.extended_to_coeff(poly.clone());
+                //     domain.coeff_to_lagrange(Polynomial {values: poly[..domain.n as usize].to_vec(), _marker: PhantomData})
+                // }).collect::<Vec<_>>();
+                //
+                // let advice: &&[Polynomial<F, ExtendedLagrangeCoeff>] =
+                //     unsafe { transmute::<&&[Polynomial<F, B>], &&[Polynomial<F, ExtendedLagrangeCoeff>]>(advice) };
+                // let advice = advice.iter().map(|poly| {
+                //     let poly = domain.extended_to_coeff(poly.clone());
+                //     domain.coeff_to_lagrange(Polynomial {values: poly[..domain.n as usize].to_vec(), _marker: PhantomData})
+                // }).collect::<Vec<_>>();
+                //
+                // let fixed: &[Polynomial<F, ExtendedLagrangeCoeff>] =
+                //     unsafe { transmute::<&[Polynomial<F, B>], &[Polynomial<F, ExtendedLagrangeCoeff>]>(fixed) };
+                // let fixed = fixed.iter().map(|poly| {
+                //     let poly = domain.extended_to_coeff(poly.clone());
+                //     domain.coeff_to_lagrange(Polynomial {values: poly[..domain.n as usize].to_vec(), _marker: PhantomData})
+                // }).collect::<Vec<_>>();
+                //
+                // // Lookup constraints
+                // parallelize(&mut testing_values, |values, start| {
+                //     let lookup_evaluator = &self.lookups[n];
+                //     let mut eval_data = lookup_evaluator.instance();
+                //     for (i, value) in values.iter_mut().enumerate() {
+                //         let idx = start + i;
+                //
+                //         let table_value = lookup_evaluator.evaluate(
+                //             &mut eval_data,
+                //             &fixed,
+                //             &advice,
+                //             &instance,
+                //             challenges,
+                //             &beta,
+                //             &theta,
+                //             &trash_challenge,
+                //             &y,
+                //             &F::ZERO,
+                //             idx,
+                //             rot_scale,
+                //             isize,
+                //         );
+                //
+                //         let nb_intermediates = eval_data.intermediates.len();
+                //         let sum_partial_products = eval_data.intermediates[nb_intermediates - 3];
+                //         let product = eval_data.intermediates[nb_intermediates - 2];
+                //         let table_value_test = eval_data.intermediates[nb_intermediates - 1];
+                //         assert_eq!(table_value, table_value_test);
+                //
+                //         let mut test_prod = F::ONE;
+                //         let partial_products: Vec<F> = (0..input_polys.len()).map(|i| {
+                //             test_prod *= input_polys[i][idx] + beta;
+                //
+                //             let mut acc = F::ONE;
+                //             for j in 0..input_polys.len() {
+                //                 if j != i {
+                //                     acc *= input_polys[j][idx] + beta;
+                //                 }
+                //             }
+                //             acc
+                //         }).collect();
+                //         let test_sum_partial_products: F = partial_products.iter().sum();
+                //         assert_eq!(sum_partial_products, test_sum_partial_products, "Failed at sum index {idx}");
+                //         assert_eq!(product, test_prod, "Failed at product index {idx}");
+                //         assert_eq!(helper_lagrange[idx] * product, sum_partial_products);
+                //     }});
+                //
+                // panic!("WE GOT HERE");
+
+                helper_lagrange.par_iter().enumerate().for_each(|(idx, helper_eval)| {
+                    let mut product = F::ONE;
+                    let partial_products: Vec<F> = (0..lookup.input_polynomials.len()).map(|i| {
+                        product *= input_polys[i][idx] + beta;
+
+                        let mut acc = F::ONE;
+                        for j in 0..input_polys.len() {
+                            if j != i {
+                                acc *= input_polys[j][idx] + beta;
+                            }
+                        }
+                        acc
+                    }).collect();
+                    let sum_partial_products: F = partial_products.iter().sum();
+
+                    assert_eq!(*helper_eval * product, sum_partial_products, "Failed in iteration {idx}");
+                });
+                println!("Check passed");
+                // Polynomials required for this lookup.
+                // Calculated here so these only have to be kept in memory for the short time
+                // they are actually needed.
+                let input_polys = lookup.input_polynomials.iter().map(|poly| B::coeff_to_self(domain, poly.clone())).collect::<Vec<_>>();
+                let multiplicities = B::coeff_to_self(domain, lookup.multiplicities.clone());
+                let helper_coset = B::coeff_to_self(domain, lookup.helper_poly.clone());
+                let aggregator_coset = B::coeff_to_self(domain, lookup.aggregator_poly.clone());
+
+                let mut testing_values = domain.empty_lagrange();
+                // Lookup constraints
+                parallelize(&mut testing_values, |values, start| {
+                    let lookup_evaluator = &self.lookups[n];
+                    let mut eval_data = lookup_evaluator.instance();
+                    for (i, value) in values.iter_mut().enumerate() {
+                        let idx = start + i;
+
+                        let table_value = lookup_evaluator.evaluate(
+                            &mut eval_data,
+                            fixed,
+                            advice,
+                            instance,
+                            challenges,
+                            &beta,
+                            &theta,
+                            &trash_challenge,
+                            &y,
+                            &F::ZERO,
+                            idx,
+                            rot_scale,
+                            isize,
+                        );
+
+                        let nb_intermediates = eval_data.intermediates.len();
+                        let sum_partial_products = eval_data.intermediates[nb_intermediates - 3];
+                        let product = eval_data.intermediates[nb_intermediates - 2];
+                        let table_value_test = eval_data.intermediates[nb_intermediates - 1];
+                        assert_eq!(table_value, table_value_test);
+
+                        let mut test_prod = F::ONE;
+                        let partial_products: Vec<F> = (0..input_polys.len()).map(|i| {
+                            test_prod *= input_polys[i][idx] + beta;
+
+                            let mut acc = F::ONE;
+                            for j in 0..input_polys.len() {
+                                if j != i {
+                                    acc *= input_polys[j][idx] + beta;
+                                }
+                            }
+                            acc
+                        }).collect();
+                        let test_sum_partial_products: F = partial_products.iter().sum();
+                        // assert_eq!(sum_partial_products, test_sum_partial_products, "Failed at sum index {idx}");
+                        // assert_eq!(product, test_prod, "Failed at product index {idx}");
+
+                        let r_next = get_rotation_idx(idx, 1, rot_scale, isize);
+
+                        // Helper polynomial constraint: h(X) * ∏_j(f_j(X) + β) = Σ_j ∏_{k≠j}(f_k(X) + β)
+                        // This ensures the helper polynomial has the correct structure for LogUp soundness.
+                        // Note: This must hold everywhere (as a polynomial identity), not just at active rows.
+                        //
+                        // helper_coset[idx] * product =? sum_partial_products <--- not necessarily true for
+                        // rows outside the lagrange basis.
+                        //
+                        // TODO: Construct a polynomial that only contains helper_constraint, and see if its
+                        // divisible by the vanishing.
+                        let helper_constraint = helper_coset[idx] * product - sum_partial_products;
+                        *value = helper_constraint;
+
+                        // // LogUp accumulator constraint: Z(ωX) * (S(X) + β) = (Z(X) + h(X)) * (S(X) + β) - m(X)
+                        // // Rearranging: Z(ωX) * (S(X) + β) - (Z(X) + h(X)) * (S(X) + β) + m(X) = 0
+                        // let accumulator_constraint = aggregator_coset[r_next] * table_value
+                        //     - (aggregator_coset[idx] + helper_coset[idx]) * table_value
+                        //     + multiplicities[idx];
+                        // *value = *value * y + accumulator_constraint * l_active_row[idx];
+                    }
+                });
+                let testing_coeff = domain.lagrange_to_coeff(testing_values);
+                let testing_extended = domain.coeff_to_extended(testing_coeff.clone());
+                let quotient = domain.divide_by_vanishing_poly(testing_extended);
+                let quotient_coeff = domain.extended_to_coeff(quotient);
+
+                assert_eq!(eval_polynomial(&testing_coeff, beta), eval_polynomial(&quotient_coeff, beta) * (beta.pow_vartime(&[domain.n]) - F::ONE), "MEEEEEEEH");
+            }

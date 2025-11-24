@@ -8,6 +8,7 @@ use std::{
     iter,
     num::ParseIntError,
     str::FromStr,
+    sync::Mutex,
 };
 
 use ff::{Field, FromUniformBytes};
@@ -337,7 +338,7 @@ pub(crate) fn cost_model_options<F: Ord + Field + FromUniformBytes<64>, C: Circu
 
     let nb_unusable_rows = cs.blinding_factors() + 1;
 
-    let nb_instances = prover.instance_rows.take();
+    let nb_instances = prover.instance_rows.into_inner().unwrap().take();
     let min_circuit_size = [
         rows_count + nb_unusable_rows,
         table_rows_count + nb_unusable_rows,
@@ -372,7 +373,7 @@ pub(crate) fn cost_model_options<F: Ord + Field + FromUniformBytes<64>, C: Circu
 // phases, and ignore we values of the trace.
 struct DevAssembly<F: Field> {
     cs: ConstraintSystem<F>,
-    instance_rows: RefCell<usize>,
+    instance_rows: Mutex<RefCell<usize>>,
     /// The regions in the circuit.
     regions: Vec<Region>,
     current_region: Option<Region>,
@@ -393,7 +394,7 @@ impl<F: FromUniformBytes<64> + Ord> DevAssembly<F> {
 
         let mut prover = DevAssembly {
             cs,
-            instance_rows: RefCell::new(0),
+            instance_rows: Mutex::new(RefCell::new(0)),
             regions: vec![],
             current_region: None,
             current_phase: FirstPhase.to_sealed(),
@@ -479,7 +480,8 @@ impl<F: Field> Assignment<F> for DevAssembly<F> {
     }
 
     fn query_instance(&self, _column: Column<Instance>, row: usize) -> Result<Value<F>, Error> {
-        *self.instance_rows.borrow_mut() = max(row + 1, self.instance_rows.take());
+        *self.instance_rows.lock().unwrap().borrow_mut() =
+            max(row + 1, self.instance_rows.lock().unwrap().take());
         Ok(Value::unknown())
     }
 
@@ -636,7 +638,7 @@ mod tests {
                 let selector = meta.query_selector(table_selector);
                 let not_selector = Expression::from(1) - selector.clone();
                 let advice = meta.query_advice(a, Rotation::cur());
-                vec![(selector * advice + not_selector, sl)]
+                vec![(vec![selector * advice + not_selector], sl)]
             });
 
             meta.create_gate(

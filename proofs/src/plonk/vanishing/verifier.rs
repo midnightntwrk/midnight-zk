@@ -91,8 +91,11 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> PartiallyEvaluated<F, CS>
         y: F,
         xn: F,
     ) -> Evaluated<F, CS> {
+        // Evaluate only the expression of helper, and in the prover compute the poly
+        // only of the helper.
         let expected_h_eval = expressions.fold(F::ZERO, |h_eval, v| h_eval * &y + &v);
         let expected_h_eval = expected_h_eval * ((xn - F::ONE).invert().unwrap());
+        println!("EVAL BY VERIFIER: {:?}", expected_h_eval);
 
         Evaluated {
             h_commitments: self.h_commitments,

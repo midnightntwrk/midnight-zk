@@ -7,7 +7,7 @@ use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use ff::Field;
 use group::Group;
 use midnight_circuits::{
-    compact_std_lib::{MidnightCircuit, Relation, ZkStdLib},
+    compact_std_lib::{MidnightCircuit, Relation, ZkStdLib, ZkStdLibArch},
     ecc::{hash_to_curve::HashToCurveGadget, native::EccChip},
     hash::poseidon::PoseidonChip,
     instructions::{
@@ -132,6 +132,20 @@ impl Relation for ZSwapOutputCircuit {
     fn read_relation<R: std::io::Read>(_reader: &mut R) -> std::io::Result<Self> {
         Ok(ZSwapOutputCircuit)
     }
+
+    fn used_chips(&self) -> ZkStdLibArch {
+        ZkStdLibArch {
+            jubjub: true,
+            poseidon: true,
+            sha256: true,
+            sha512: false,
+            secp256k1: false,
+            bls12_381: false,
+            base64: false,
+            nr_pow2range_cols: 1,
+            automaton: false,
+        }
+    }
 }
 
 fn assign_pk(
@@ -225,7 +239,12 @@ fn sample_zswap_inputs() -> (Vec<F>, MidnightCircuit<'static, ZSwapOutputCircuit
     let witness = (zswap_pk, coin, rc);
     let instance = (coin_com, value_com);
 
-    let circuit = MidnightCircuit::new(&ZSwapOutputCircuit, Value::known(instance), Value::known(witness), None);
+    let circuit = MidnightCircuit::new(
+        &ZSwapOutputCircuit,
+        Value::known(instance),
+        Value::known(witness),
+        None,
+    );
 
     (ZSwapOutputCircuit::format_instance(&instance).unwrap(), circuit)
 }
@@ -313,7 +332,7 @@ fn bench_zswap_output(c: &mut Criterion) {
 
 criterion_group!(
     name = benches;
-    config = Criterion::default().sample_size(200);
+    config = Criterion::default().sample_size(500);
     targets = bench_zswap_output
 );
 criterion_main!(benches);

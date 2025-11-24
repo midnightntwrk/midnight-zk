@@ -13,7 +13,7 @@ use std::{
 use ff::Field;
 use sealed::SealedPhase;
 
-use super::{lookup, permutation, trash, Error};
+use super::{logup, permutation, trash, Error};
 use crate::{
     circuit::{layouter::SyncDeps, Layouter, Region, Value},
     dev::metadata,
@@ -1684,7 +1684,7 @@ pub struct ConstraintSystem<F: Field> {
 
     // Vector of lookup arguments, where each corresponds to a sequence of
     // input expressions and a sequence of table expressions involved in the lookup.
-    pub(crate) lookups: Vec<lookup::Argument<F>>,
+    pub(crate) lookups: Vec<logup::BatchedArgument<F>>,
 
     // Vector of trash arguments. Each contains a selector and a sequence of expressions
     // that will all be enforced to be zero when the selector is enabled. This is done
@@ -1718,7 +1718,7 @@ pub struct PinnedConstraintSystem<'a, F: Field> {
     instance_queries: &'a Vec<(Column<Instance>, Rotation)>,
     fixed_queries: &'a Vec<(Column<Fixed>, Rotation)>,
     permutation: &'a permutation::Argument,
-    lookups: &'a Vec<lookup::Argument<F>>,
+    lookups: &'a Vec<logup::BatchedArgument<F>>,
     trashcans: &'a Vec<trash::Argument<F>>,
     constants: &'a Vec<Column<Fixed>>,
     minimum_degree: &'a Option<usize>,
@@ -1859,24 +1859,27 @@ impl<F: Field> ConstraintSystem<F> {
     pub fn lookup<S: AsRef<str>>(
         &mut self,
         name: S,
-        table_map: impl FnOnce(&mut VirtualCells<'_, F>) -> Vec<(Expression<F>, TableColumn)>,
+        table_map: impl FnOnce(&mut VirtualCells<'_, F>) -> Vec<(Vec<Expression<F>>, TableColumn)>,
     ) -> usize {
         let mut cells = VirtualCells::new(self);
         let table_map = table_map(&mut cells)
             .into_iter()
-            .map(|(mut input, table)| {
-                if input.contains_simple_selector() {
-                    panic!("expression containing simple selector supplied to lookup argument");
-                }
+            .map(|(mut inputs, table)| {
                 let mut table = cells.query_fixed(table.inner(), Rotation::cur());
-                input.query_cells(&mut cells);
+                for input in inputs.iter_mut() {
+                    if input.contains_simple_selector() {
+                        panic!("expression containing simple selector supplied to lookup argument");
+                    }
+
+                    input.query_cells(&mut cells);
+                }
                 table.query_cells(&mut cells);
-                (input, table)
+                (inputs, table)
             })
             .collect();
         let index = self.lookups.len();
 
-        self.lookups.push(lookup::Argument::new(name.as_ref(), table_map));
+        self.lookups.push(logup::BatchedArgument::new(name.as_ref(), table_map));
 
         index
     }
@@ -1888,26 +1891,29 @@ impl<F: Field> ConstraintSystem<F> {
     pub fn lookup_any<S: AsRef<str>>(
         &mut self,
         name: S,
-        table_map: impl FnOnce(&mut VirtualCells<'_, F>) -> Vec<(Expression<F>, Expression<F>)>,
+        table_map: impl FnOnce(&mut VirtualCells<'_, F>) -> Vec<(Vec<Expression<F>>, Expression<F>)>,
     ) -> usize {
         let mut cells = VirtualCells::new(self);
         let table_map = table_map(&mut cells)
             .into_iter()
-            .map(|(mut input, mut table)| {
-                if input.contains_simple_selector() {
-                    panic!("expression containing simple selector supplied to lookup argument");
+            .map(|(mut inputs, mut table)| {
+                for input in inputs.iter_mut() {
+                    if input.contains_simple_selector() {
+                        panic!("expression containing simple selector supplied to lookup argument");
+                    }
+
+                    input.query_cells(&mut cells);
                 }
                 if table.contains_simple_selector() {
                     panic!("expression containing simple selector supplied to lookup argument");
                 }
-                input.query_cells(&mut cells);
                 table.query_cells(&mut cells);
-                (input, table)
+                (inputs, table)
             })
             .collect();
         let index = self.lookups.len();
 
-        self.lookups.push(lookup::Argument::new(name.as_ref(), table_map));
+        self.lookups.push(logup::BatchedArgument::new(name.as_ref(), table_map));
 
         index
     }
@@ -2129,7 +2135,11 @@ impl<F: Field> ConstraintSystem<F> {
         // Substitute non-simple selectors for the real fixed columns in all
         // lookup expressions.
         for expr in self.lookups.iter_mut().flat_map(|lookup| {
-            lookup.input_expressions.iter_mut().chain(lookup.table_expressions.iter_mut())
+            lookup
+                .input_expressions
+                .iter_mut()
+                .flat_map(|input| input.iter_mut())
+                .chain(lookup.table_expressions.iter_mut())
         }) {
             replace_selectors(expr, selector_replacements, true);
         }
@@ -2453,7 +2463,7 @@ impl<F: Field> ConstraintSystem<F> {
     }
 
     /// Returns lookup arguments
-    pub fn lookups(&self) -> &Vec<lookup::Argument<F>> {
+    pub fn lookups(&self) -> &Vec<logup::BatchedArgument<F>> {
         &self.lookups
     }
 

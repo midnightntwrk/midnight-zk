@@ -17,6 +17,7 @@ use crate::{
     transcript::{Hashable, Transcript},
     utils::arithmetic::{eval_polynomial, parallelize},
 };
+use crate::plonk::log_derivative::prover::Compressed;
 
 #[cfg_attr(feature = "bench-internal", derive(Clone))]
 #[derive(Debug)]
@@ -79,6 +80,11 @@ impl<F: WithSmallOrderMulGroup<3> + Ord + Hash> Argument<F> {
         CS::Commitment: Hashable<T::Hash>,
     {
         // Closure to get values of expressions and compress them
+        // AGGR(X) = S(X) * A(X)
+        // match only in the evaluation domain.
+        //
+        // Verifier check:
+        // Verifier is expecting AGGR(\xi) = S(\xi) * A(\xi)
         let compress_expressions = |expressions: &[Expression<F>]| {
             let compressed_expression = expressions
                 .iter()
@@ -142,6 +148,60 @@ impl<F: WithSmallOrderMulGroup<3> + Ord + Hash> Argument<F> {
             compressed_table_expression,
             permuted_table_expression,
             permuted_table_poly,
+        })
+    }
+
+    /// Given a lookup with input expressions [A_0, A_1, ..., A_{m-1}] and table
+    /// expressions [S_0, S_1, ..., S_{m-1}], this method
+    /// - constructs A_compressed = \theta^{m-1} A_0 + theta^{m-2} A_1 + ... +
+    ///   \theta A_{m-2} + A_{m-1} and S_compressed = \theta^{m-1} S_0 +
+    ///   theta^{m-2} S_1 + ... + \theta S_{m-2} + S_{m-1},
+    /// - constructs `Compressed<C>`
+    ///
+    /// The `Compressed<C>` structure is used to update the lookup.
+    pub(crate) fn commit_compressed<
+        'a,
+        'params: 'a,
+        CS: PolynomialCommitmentScheme<F>,
+        R: RngCore,
+        T: Transcript,
+    >(
+        &self,
+        pk: &ProvingKey<F, CS>,
+        params: &'params CS::Parameters,
+        domain: &EvaluationDomain<F>,
+        theta: F,
+        advice_values: &'a [Polynomial<F, LagrangeCoeff>],
+        fixed_values: &'a [Polynomial<F, LagrangeCoeff>],
+        instance_values: &'a [Polynomial<F, LagrangeCoeff>],
+        challenges: &'a [F],
+        mut rng: R,
+        transcript: &mut T,
+    ) -> Result<Compressed<F>, Error> {
+        // Closure to get values of expressions and compress them
+        let compress_expressions = |expressions: &[Expression<F>]| {
+            let compressed_expression = expressions
+                .iter()
+                .map(|expression| {
+                    pk.vk.domain.lagrange_from_vec(evaluate(
+                        expression,
+                        domain.n as usize,
+                        1,
+                        fixed_values,
+                        advice_values,
+                        instance_values,
+                        challenges,
+                    ))
+                })
+                .fold(domain.empty_lagrange(), |acc, expression| {
+                    acc * theta + &expression
+                });
+            compressed_expression
+        };
+
+        Ok(super::super::log_derivative::prover::Compressed {
+            compressed_input_expression: compress_expressions(&self.input_expressions),
+            compressed_table_expression: compress_expressions(&self.table_expressions),
         })
     }
 }

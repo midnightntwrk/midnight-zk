@@ -31,7 +31,7 @@ pub mod hash;
 pub mod map;
 pub mod parsing;
 pub mod vec;
-pub mod verifier;
+// pub mod verifier;
 
 // Re-exporting modules for convenience and usability.
 pub use halo2curves;

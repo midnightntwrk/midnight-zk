@@ -32,7 +32,7 @@ pub(crate) fn lookup_expressions<S: SelfEmulation>(
     layouter: &mut impl Layouter<S::F>,
     scalar_chip: &S::ScalarChip,
     lookup_evals: &Evaluated<S>,
-    input_expressions: &[Expression<S::F>],
+    input_expressions: &[Vec<Expression<S::F>>],
     table_expressions: &[Expression<S::F>],
     advice_evals: &[AssignedNative<S::F>],
     fixed_evals: &[AssignedNative<S::F>],

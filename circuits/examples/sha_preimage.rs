@@ -99,5 +99,7 @@ fn main() {
             &proof
         )
         .is_ok()
-    )
+    );
+
+    println!("Proof passed");
 }

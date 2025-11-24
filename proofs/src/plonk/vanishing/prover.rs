@@ -2,7 +2,7 @@ use std::{collections::HashMap, iter};
 
 use ff::{PrimeField, WithSmallOrderMulGroup};
 use rand_chacha::ChaCha20Rng;
-use rand_core::{RngCore, SeedableRng};
+use rand_core::{OsRng, RngCore, SeedableRng};
 use rayon::current_num_threads;
 
 use super::Argument;
@@ -95,10 +95,17 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
         F: Hashable<T::Hash>,
     {
         // Divide by t(X) = X^{params.n} - 1.
+        let challenge = F::random(OsRng);
+        let before_division = domain.extended_to_coeff(h_poly.clone());
+        let lhs = eval_polynomial(&before_division, challenge);
+
         let h_poly = domain.divide_by_vanishing_poly(h_poly);
 
         // Obtain final h(X) polynomial
         let mut h_poly = domain.extended_to_coeff(h_poly);
+        let rhs = eval_polynomial(&h_poly, challenge) * (challenge.pow_vartime([domain.n]) - F::ONE);
+        assert_eq!(lhs, rhs, "Prover misconstructing");
+        println!("Prover properly constructed the polynomial");
 
         // Truncate it to match the size of the quotient polynomial; the
         // evaluation domain might be slightly larger than necessary because
@@ -158,6 +165,7 @@ impl<F: WithSmallOrderMulGroup<3>> Constructed<F> {
 
 impl<F: PrimeField> Evaluated<F> {
     pub(crate) fn open(&self, x: F) -> impl Iterator<Item = ProverQuery<'_, F>> + Clone {
+        println!("EVAL BY PROVER: {:?}", eval_polynomial(&self.h_poly, x));
         iter::empty()
             .chain(Some(ProverQuery {
                 point: x,
