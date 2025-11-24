@@ -149,6 +149,12 @@ pub mod extraction {
         }
     }
 
+    /// Creates IR checking that each cell in the vector that is padding is
+    /// equal to the filler.
+    ///
+    /// I.e. for a vector of size 5 where indices 0, 1, and 4 are padding then
+    /// emits the expressions: `(= buffer[0] 0), (= buffer[1] 0), (=
+    /// buffer[4] 0)`
     fn emit_size_checks<F: PrimeField>(
         buffer: &[(Cell, Expression<F>)],
         lims: &Range<usize>,
@@ -171,6 +177,23 @@ pub mod extraction {
             .collect::<Vec<_>>()
     }
 
+    /// Creates IR checking that for a given length of the vector, the padding
+    /// cells have the proper values.
+    ///
+    /// The checks on each padding value are emitted with [`emit_size_checks`].
+    /// This function emits the list of checks for each possible length and
+    /// creates an assertion with the following structure:
+    ///
+    /// ```text
+    /// (len = 0 -> (pad_0 = 0 /\ pad_1 = 0 /\ ... /\ pad_M = 0)) \/
+    /// (len = 1 -> (pad_0 = 0 /\ pad_1 = 0 /\ ... /\ pad_M = 0)) \/
+    /// ...                                                       \/
+    /// (len = M -> (pad_0 = 0 /\ pad_1 = 0 /\ ... /\ pad_M = 0))
+    /// ```
+    ///
+    /// Where `len` is the cell storing the secret length of the vector and
+    /// `pad_n` is the n-th padded cell according to [`emit_size_checks`]
+    /// and the limits computed by [`get_lims`].
     fn emit_filler_constrain<F: PrimeField, const M: usize, const A: usize>(
         len_cell: Cell,
         len_expr: Expression<F>,
