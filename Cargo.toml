@@ -23,9 +23,9 @@ sha2 = "0.10.9"
 sha3 = "0.10.8"
 
 # Extraction dependencies
-picus-support = { version = "0.2.0", package = "mdnt-groups-support" }
-picus = { version = "0.2.0", package = "mdnt-support-macros", features = ["region-groups"] }
-extractor-support = { version = "0.2.0", package = "mdnt-support" }
+picus-support = { version = "0.2", package = "mdnt-groups-support" }
+picus = { version = "0.2", package = "mdnt-support-macros", features = ["region-groups"] }
+extractor-support = { version = "0.2", package = "mdnt-support" }
 
 ## Benchmarks
 
