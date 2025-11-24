@@ -62,6 +62,9 @@ truncated-challenges = ["midnight-proofs/truncated-challenges"]
 # of the prover for that concrete circuit.
 bench-internal = ["midnight-proofs/bench-internal"]
 
+[lib]
+bench = false
+
 [[example]]
 name = "cred_full"
 path = "examples/identity/full_credential.rs"

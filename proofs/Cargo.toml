@@ -72,7 +72,6 @@ midnight-curves = { path = "../curves", features = ["portable"] }
 [features]
 default = ["bits", "committed-instances"]
 bits = ["halo2curves/bits"]
-sanity-checks = []
 circuit-params = []
 derive_serde = ["halo2curves/derive_serde"]
 
@@ -96,10 +95,3 @@ bench-internal = ["midnight-circuits/bench-internal"]
 
 [lib]
 bench = false
-
-[[example]]
-name = "circuit-layout"
-required-features = ["test-dev-graph"]
-
-[[example]]
-name = "proof-size"
