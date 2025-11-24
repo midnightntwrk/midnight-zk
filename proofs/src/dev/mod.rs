@@ -41,13 +41,6 @@ pub use gates::CircuitGates;
 mod tfp;
 pub use tfp::TracingFloorPlanner;
 
-#[cfg(feature = "dev-graph")]
-mod graph;
-
-#[cfg(feature = "dev-graph")]
-#[cfg_attr(docsrs, doc(cfg(feature = "dev-graph")))]
-pub use graph::{circuit_dot_graph, layout::CircuitLayout};
-
 use crate::{plonk::VirtualCell, poly::Rotation, utils::rational::Rational};
 
 #[derive(Debug)]
