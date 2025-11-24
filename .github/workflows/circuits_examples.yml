@@ -31,7 +31,7 @@ jobs:
           machine: github.com
           username: ${{ secrets.GH_USERNAME }}
           password: ${{ secrets.GH_PASSWORD }}
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
       - name: 'Install rust-toolchain.toml'
         run: rustup toolchain install
       - name: Restore Cargo Cache
