@@ -72,7 +72,6 @@ midnight-curves = { path = "../curves", features = ["portable"] }
 [features]
 default = ["bits", "committed-instances"]
 bits = ["halo2curves/bits"]
-thread-safe-region = []
 sanity-checks = []
 circuit-params = []
 derive_serde = ["halo2curves/derive_serde"]
