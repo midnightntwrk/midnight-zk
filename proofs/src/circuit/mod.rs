@@ -103,7 +103,7 @@ pub struct Cell {
 }
 
 #[cfg(feature = "decompose-in-cells")]
-impl picus_macros_support::DecomposeIn<Self> for Cell {
+impl picus_support::DecomposeIn<Self> for Cell {
     fn cells(&self) -> impl IntoIterator<Item = Self> {
         std::iter::once(*self)
     }
@@ -208,7 +208,7 @@ where
 }
 
 #[cfg(feature = "decompose-in-cells")]
-impl<V, F: Field> picus_macros_support::DecomposeIn<Cell> for AssignedCell<V, F> {
+impl<V, F: Field> picus_support::DecomposeIn<Cell> for AssignedCell<V, F> {
     fn cells(&self) -> impl IntoIterator<Item = Cell> {
         std::iter::once(self.cell())
     }

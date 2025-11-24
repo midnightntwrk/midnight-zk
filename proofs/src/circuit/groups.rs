@@ -209,7 +209,7 @@ impl RegionsGroup {
     #[inline]
     pub fn annotate_as_input(
         &mut self,
-        value: &impl picus_macros_support::DecomposeIn<Cell>,
+        value: &impl picus_support::DecomposeIn<Cell>,
     ) -> Result<(), Error> {
         self.annotate_inputs(value.cells())
     }
@@ -223,7 +223,7 @@ impl RegionsGroup {
     #[inline]
     pub fn annotate_as_output(
         &mut self,
-        value: &impl picus_macros_support::DecomposeIn<Cell>,
+        value: &impl picus_support::DecomposeIn<Cell>,
     ) -> Result<(), Error> {
         self.annotate_outputs(value.cells())
     }

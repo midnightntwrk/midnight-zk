@@ -52,8 +52,8 @@ tabbycat = { version = "0.1", features = ["attributes"], optional = true }
 num-bigint = { workspace = true }
 
 # Extraction dependencies 
-picus-macros-support = { version = "0.2.0", optional = true, package = "mdnt-groups-support" }
-extractor-support = { git = "https://github.com/Veridise/midnight-extractor", package = "mdnt-support", optional = true }
+picus-support = { workspace = true, optional = true }
+extractor-support = { workspace = true, optional = true }
 
 [dev-dependencies]
 assert_matches = "1.5"
@@ -88,7 +88,7 @@ thread-safe-region = []
 sanity-checks = []
 circuit-params = []
 derive_serde = ["halo2curves/derive_serde"]
-decompose-in-cells = ["picus-macros-support"]
+decompose-in-cells = ["picus-support"]
 extraction = ["extractor-support", "decompose-in-cells"]
 region-groups = []
 
