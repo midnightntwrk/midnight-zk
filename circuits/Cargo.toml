@@ -70,6 +70,9 @@ bench-internal = ["midnight-proofs/bench-internal"]
 # Feature to enable support for the Picus & LLZK extraction.
 extraction = ["extractor-support", "testing", "midnight-proofs/extraction", "picus/extractor-derive"]
 
+[lib]
+bench = false
+
 [[example]]
 name = "cred_full"
 path = "examples/identity/full_credential.rs"

@@ -24,7 +24,7 @@ use crate::{
 /// Also, if |v| != |w| or they are empty.
 pub fn inner_product_offcircuit(v: &[IrValue], w: &[IrValue]) -> Result<IrValue, Error> {
     if v.len() != w.len() || v.is_empty() {
-        return Err(Error::Other(format!("invalid length")));
+        return Err(Error::Other("invalid length".to_string()));
     }
 
     (v.iter().skip(1).zip(w.iter().skip(1)))
@@ -53,7 +53,7 @@ pub fn inner_product_incircuit(
     w: &[CircuitValue],
 ) -> Result<CircuitValue, Error> {
     if v.len() != w.len() || v.is_empty() {
-        return Err(Error::Other(format!("invalid length")));
+        return Err(Error::Other("invalid length".to_string()));
     }
 
     let v_type = v[0].get_type();
@@ -130,7 +130,7 @@ mod tests {
 
         assert_eq!(
             inner_product_offcircuit(&[], &[]),
-            Err(Error::Other(format!("invalid length")))
+            Err(Error::Other("invalid length".to_string()))
         );
     }
 }

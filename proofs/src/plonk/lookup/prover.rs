@@ -242,7 +242,7 @@ impl<F: WithSmallOrderMulGroup<3>> Permuted<F> {
         assert_eq!(z.len(), pk.vk.n() as usize);
         let z = pk.vk.domain.lagrange_from_vec(z);
 
-        #[cfg(feature = "sanity-checks")]
+        #[cfg(debug_assertions)]
         // This test works only with intermediate representations in this method.
         // It can be used for debugging purposes.
         {
@@ -440,7 +440,7 @@ where
     assert_eq!(permuted_input_expression.len(), pk.vk.n() as usize);
     assert_eq!(permuted_table_coeffs.len(), pk.vk.n() as usize);
 
-    #[cfg(feature = "sanity-checks")]
+    #[cfg(debug_assertions)]
     {
         let mut last = None;
         for (a, b) in permuted_input_expression

@@ -872,36 +872,3 @@ impl<'a, F: Field, L: Layouter<F> + 'a> Layouter<F> for NamespacedLayouter<'a, F
         self.0.pop_group(meta)
     }
 }
-
-impl<'a, F: Field, L: Layouter<F> + 'a> Drop for NamespacedLayouter<'a, F, L> {
-    fn drop(&mut self) {
-        let gadget_name = {
-            #[cfg(feature = "gadget-traces")]
-            {
-                let mut gadget_name = None;
-                let mut is_second_frame = false;
-                backtrace::trace(|frame| {
-                    if is_second_frame {
-                        // Resolve this instruction pointer to a symbol name.
-                        backtrace::resolve_frame(frame, |symbol| {
-                            gadget_name = symbol.name().map(|name| format!("{name:#}"));
-                        });
-
-                        // We are done!
-                        false
-                    } else {
-                        // We want the next frame.
-                        is_second_frame = true;
-                        true
-                    }
-                });
-                gadget_name
-            }
-
-            #[cfg(not(feature = "gadget-traces"))]
-            None
-        };
-
-        self.get_root().pop_namespace(gadget_name);
-    }
-}

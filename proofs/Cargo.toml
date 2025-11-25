@@ -75,17 +75,7 @@ midnight-curves = { path = "../curves", features = ["portable"] }
 
 [features]
 default = ["bits", "committed-instances"]
-dev-graph = ["plotters", "tabbycat"]
-test-dev-graph = [
-    "dev-graph",
-    "plotters/bitmap_backend",
-    "plotters/bitmap_encoder",
-    "plotters/ttf",
-]
 bits = ["halo2curves/bits"]
-gadget-traces = ["backtrace"]
-thread-safe-region = []
-sanity-checks = []
 circuit-params = []
 derive_serde = ["halo2curves/derive_serde"]
 decompose-in-cells = ["picus-support"]
@@ -112,10 +102,3 @@ bench-internal = ["midnight-circuits/bench-internal"]
 
 [lib]
 bench = false
-
-[[example]]
-name = "circuit-layout"
-required-features = ["test-dev-graph"]
-
-[[example]]
-name = "proof-size"

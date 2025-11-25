@@ -1,14 +1,6 @@
-#[cfg(feature = "thread-safe-region")]
-use std::collections::{BTreeSet, HashMap};
-
 use ff::WithSmallOrderMulGroup;
-use rayon::iter::IntoParallelRefMutIterator;
-#[cfg(not(feature = "thread-safe-region"))]
-use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
-#[cfg(feature = "thread-safe-region")]
-use {
-    ff::PrimeField,
-    rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator},
+use rayon::iter::{
+    IndexedParallelIterator, IntoParallelRefIterator, IntoParallelRefMutIterator, ParallelIterator,
 };
 
 use super::{Argument, ProvingKey, VerifyingKey};
@@ -21,7 +13,6 @@ use crate::{
     utils::arithmetic::parallelize,
 };
 
-#[cfg(not(feature = "thread-safe-region"))]
 /// Struct that accumulates all the necessary data in order to construct the
 /// permutation argument.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -36,7 +27,6 @@ pub struct Assembly {
     sizes: Vec<Vec<usize>>,
 }
 
-#[cfg(not(feature = "thread-safe-region"))]
 impl Assembly {
     pub(crate) fn new(n: usize, p: &Argument) -> Self {
         // Initialize the copy vector to keep track of copy constraints in all
@@ -142,181 +132,6 @@ impl Assembly {
         &self,
     ) -> impl Iterator<Item = impl IndexedParallelIterator<Item = (usize, usize)> + '_> {
         self.mapping.iter().map(|c| c.par_iter().copied())
-    }
-}
-
-#[cfg(feature = "thread-safe-region")]
-/// Struct that accumulates all the necessary data in order to construct the
-/// permutation argument.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Assembly {
-    /// Columns that participate on the copy permutation argument.
-    columns: Vec<Column<Any>>,
-    /// Mapping of the actual copies done.
-    cycles: Vec<Vec<(usize, usize)>>,
-    /// Mapping of the actual copies done.
-    ordered_cycles: Vec<BTreeSet<(usize, usize)>>,
-    /// Mapping of the actual copies done.
-    aux: HashMap<(usize, usize), usize>,
-    /// total length of a column
-    col_len: usize,
-    /// number of columns
-    num_cols: usize,
-}
-
-#[cfg(feature = "thread-safe-region")]
-impl Assembly {
-    pub(crate) fn new(n: usize, p: &Argument) -> Self {
-        Assembly {
-            columns: p.columns.clone(),
-            cycles: Vec::with_capacity(n),
-            ordered_cycles: Vec::with_capacity(n),
-            aux: HashMap::new(),
-            col_len: n,
-            num_cols: p.columns.len(),
-        }
-    }
-
-    pub(crate) fn copy(
-        &mut self,
-        left_column: Column<Any>,
-        left_row: usize,
-        right_column: Column<Any>,
-        right_row: usize,
-    ) -> Result<(), Error> {
-        let left_column = self
-            .columns
-            .iter()
-            .position(|c| c == &left_column)
-            .ok_or(Error::ColumnNotInPermutation(left_column))?;
-        let right_column = self
-            .columns
-            .iter()
-            .position(|c| c == &right_column)
-            .ok_or(Error::ColumnNotInPermutation(right_column))?;
-
-        // Check bounds
-        if left_row >= self.col_len || right_row >= self.col_len {
-            return Err(Error::BoundsFailure);
-        }
-
-        let left_cycle = self.aux.get(&(left_column, left_row));
-        let right_cycle = self.aux.get(&(right_column, right_row));
-
-        // extract cycle elements
-        let right_cycle_elems = match right_cycle {
-            Some(i) => {
-                let entry = self.cycles[*i].clone();
-                self.cycles[*i] = vec![];
-                entry
-            }
-            None => [(right_column, right_row)].into(),
-        };
-
-        assert!(right_cycle_elems.contains(&(right_column, right_row)));
-
-        // merge cycles
-        let cycle_idx = match left_cycle {
-            Some(i) => {
-                let entry = &mut self.cycles[*i];
-                entry.extend(right_cycle_elems.clone());
-                *i
-            }
-            // if they were singletons -- create a new cycle entry
-            None => {
-                let mut set: Vec<(usize, usize)> = right_cycle_elems.clone();
-                set.push((left_column, left_row));
-                self.cycles.push(set);
-                let cycle_idx = self.cycles.len() - 1;
-                self.aux.insert((left_column, left_row), cycle_idx);
-                cycle_idx
-            }
-        };
-
-        let index_updates = vec![cycle_idx; right_cycle_elems.len()].into_iter();
-        let updates = right_cycle_elems.into_iter().zip(index_updates);
-
-        self.aux.extend(updates);
-
-        Ok(())
-    }
-
-    /// Builds the ordered mapping of the cycles.
-    /// This will only get executed once.
-    pub fn build_ordered_mapping(&mut self) {
-        // will only get called once
-        if self.ordered_cycles.is_empty() && !self.cycles.is_empty() {
-            self.ordered_cycles = self
-                .cycles
-                .par_iter_mut()
-                .map(|col| {
-                    let mut set = BTreeSet::new();
-                    set.extend(col.clone());
-                    // free up memory
-                    *col = vec![];
-                    set
-                })
-                .collect();
-        }
-    }
-
-    fn mapping_at_idx(&self, col: usize, row: usize) -> (usize, usize) {
-        assert!(
-            !self.ordered_cycles.is_empty() || self.cycles.is_empty(),
-            "cycles have not been ordered"
-        );
-
-        if let Some(cycle_idx) = self.aux.get(&(col, row)) {
-            let cycle = &self.ordered_cycles[*cycle_idx];
-            let mut cycle_iter = cycle.range((
-                std::ops::Bound::Excluded((col, row)),
-                std::ops::Bound::Unbounded,
-            ));
-            // point to the next node in the cycle
-            match cycle_iter.next() {
-                Some((i, j)) => (*i, *j),
-                // wrap back around to the first element which SHOULD exist
-                None => *(cycle.iter().next().unwrap()),
-            }
-        // is a singleton
-        } else {
-            (col, row)
-        }
-    }
-
-    pub(crate) fn build_vk<
-        F: PrimeField + WithSmallOrderMulGroup<3>,
-        CS: PolynomialCommitmentScheme<F>,
-    >(
-        &mut self,
-        params: &CS::Parameters,
-        domain: &EvaluationDomain<F>,
-        p: &Argument,
-    ) -> VerifyingKey<F, CS> {
-        self.build_ordered_mapping();
-        build_vk(params, domain, p, |i, j| self.mapping_at_idx(i, j))
-    }
-
-    pub(crate) fn build_pk<F: PrimeField + WithSmallOrderMulGroup<3>>(
-        &mut self,
-        domain: &EvaluationDomain<F>,
-        p: &Argument,
-    ) -> ProvingKey<F> {
-        self.build_ordered_mapping();
-        build_pk(domain, p, |i, j| self.mapping_at_idx(i, j))
-    }
-
-    /// Returns columns that participate in the permutation argument.
-    pub fn columns(&self) -> &[Column<Any>] {
-        &self.columns
-    }
-
-    /// Returns mappings of the copies.
-    pub fn mapping(
-        &self,
-    ) -> impl Iterator<Item = impl IndexedParallelIterator<Item = (usize, usize)> + '_> {
-        (0..self.num_cols)
-            .map(move |i| (0..self.col_len).into_par_iter().map(move |j| self.mapping_at_idx(i, j)))
     }
 }
 
