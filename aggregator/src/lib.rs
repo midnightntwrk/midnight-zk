@@ -6,8 +6,8 @@
 
 // #[doc = include_str!("../README.md")]
 
-// When truncated-challenges is enabled, don't compile any of the aggregator code
-// as it's incompatible with this feature.
+// When truncated-challenges is enabled, don't compile any of the aggregator
+// code as it's incompatible with this feature.
 #[cfg(not(feature = "truncated-challenges"))]
 extern crate core;
 

@@ -1,6 +1,7 @@
 use ff::WithSmallOrderMulGroup;
-use rayon::iter::IntoParallelRefMutIterator;
-use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
+use rayon::iter::{
+    IndexedParallelIterator, IntoParallelRefIterator, IntoParallelRefMutIterator, ParallelIterator,
+};
 
 use super::{Argument, ProvingKey, VerifyingKey};
 use crate::{
