@@ -448,9 +448,9 @@ fn test_inner_product() {
             (Load(IrType::JubjubScalar), vec![], vec!["r"]),
             (InnerProduct, vec!["r", "s", "p", "q"], vec!["result"]),
         ],
-        Some(Error::Other(format!(
-            "cannot convert JubjubPoint to \"JubjubScalar\"",
-        ))),
+        Some(Error::Other(
+            "cannot convert JubjubPoint to \"JubjubScalar\"".to_string(),
+        )),
     );
 
     // A successful execution.

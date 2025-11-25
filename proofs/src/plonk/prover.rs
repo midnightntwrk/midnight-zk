@@ -592,7 +592,7 @@ where
                         *cell = F::random(&mut rng);
                     }
                 } else {
-                    #[cfg(feature = "sanity-checks")]
+                    #[cfg(debug_assertions)]
                     for cell in &advice_values[unusable_rows_start..] {
                         assert_eq!(*cell, F::ZERO);
                     }

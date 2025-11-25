@@ -11,19 +11,9 @@ use crate::{
     utils::rational::Rational,
 };
 
-/// Intermediate trait requirements for [`RegionLayouter`] when thread-safe
-/// regions are enabled.
-#[cfg(feature = "thread-safe-region")]
-pub trait SyncDeps: Send + Sync {}
-
-#[cfg(feature = "thread-safe-region")]
-impl<T: Send + Sync> SyncDeps for T {}
-
 /// Intermediate trait requirements for [`RegionLayouter`].
-#[cfg(not(feature = "thread-safe-region"))]
 pub trait SyncDeps {}
 
-#[cfg(not(feature = "thread-safe-region"))]
 impl<T> SyncDeps for T {}
 
 /// Helper trait for implementing a custom [`Layouter`].
