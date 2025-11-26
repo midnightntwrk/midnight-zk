@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 
-members = ["proofs", "curves", "circuits", "aggregator", "zkir", "bench-macros"]
+members = ["proofs", "curves", "circuits", "aggregator", "zkir"]
 
 package = { license-file = "LICENSE" }
 

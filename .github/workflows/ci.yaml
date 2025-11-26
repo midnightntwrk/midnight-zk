@@ -168,17 +168,9 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev
 
-      - name: Run Clippy on `blstrs`
+      - name: Run Clippy
         if: always()
-        run: cargo clippy -p midnight-curves --all-targets --all-features -- -Dwarnings
-
-      - name: Run Clippy on `proofs`
-        if: always()
-        run: cargo clippy -p midnight-proofs --all-targets -- -Dwarnings
-
-      - name: Run Clippy on `circuits`
-        if: always()
-        run: cargo clippy -p midnight-circuits --all-targets -- -Dwarnings
+        run: cargo clippy --all-targets --all-features -- -Dwarnings
 
       - name: Run Clippy on `aggregator`
         if: always()
