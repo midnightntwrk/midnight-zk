@@ -384,7 +384,7 @@ where
     )
 }
 
-fn compute_instances<F, CS, T>(
+pub(in super) fn compute_instances<F, CS, T>(
     params: &CS::Parameters,
     pk: &ProvingKey<F, CS>,
     instances: &[&[&[F]]],
@@ -452,7 +452,7 @@ where
 }
 
 #[allow(clippy::type_complexity)]
-fn parse_advices<F, CS, ConcreteCircuit, T>(
+pub(in super) fn parse_advices<F, CS, ConcreteCircuit, T>(
     params: &CS::Parameters,
     pk: &ProvingKey<F, CS>,
     circuits: &[ConcreteCircuit],
@@ -587,7 +587,7 @@ where
     Ok((advice, challenges))
 }
 
-fn compute_h_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>>(
+pub(in super) fn compute_h_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>>(
     pk: &ProvingKey<F, CS>,
     trace: &ProverTrace<F>,
 ) -> Polynomial<F, ExtendedLagrangeCoeff> {
@@ -648,7 +648,7 @@ fn compute_h_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F
     )
 }
 
-fn write_evals_to_transcript<F, CS, T>(
+pub(in super) fn write_evals_to_transcript<F, CS, T>(
     pk: &ProvingKey<F, CS>,
     nb_committed_instances: usize,
     instance_polys: &[Vec<Polynomial<F, Coeff>>],
@@ -710,7 +710,7 @@ where
 }
 
 #[allow(clippy::too_many_arguments)]
-fn compute_queries<'a, F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>>(
+pub(in super) fn compute_queries<'a, F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>>(
     pk: &'a ProvingKey<F, CS>,
     nb_committed_instances: usize,
     instance_polys: &'a [Vec<Polynomial<F, Coeff>>],
@@ -766,13 +766,13 @@ fn compute_queries<'a, F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentSch
         .collect::<Vec<_>>()
 }
 
-struct InstanceSingle<F: PrimeField> {
+pub(in super) struct InstanceSingle<F: PrimeField> {
     pub instance_values: Vec<Polynomial<F, LagrangeCoeff>>,
     pub instance_polys: Vec<Polynomial<F, Coeff>>,
 }
 
 #[derive(Clone)]
-struct AdviceSingle<F: PrimeField, B: PolynomialRepresentation> {
+pub(in super) struct AdviceSingle<F: PrimeField, B: PolynomialRepresentation> {
     pub advice_polys: Vec<Polynomial<F, B>>,
 }
 

@@ -20,7 +20,7 @@ use midnight_curves::{Bls12, Fr as JubjubScalar, JubjubExtended as Jubjub, Jubju
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::{
-        create_proof, keygen_pk, keygen_vk_with_k, parse_trace, verify_algebraic_constraints, Error,
+        keygen_pk, keygen_vk_with_k, parse_trace, verify_algebraic_constraints, Error,
     },
     poly::{
         commitment::Guard,
@@ -28,6 +28,8 @@ use midnight_proofs::{
     },
     transcript::{CircuitTranscript, Transcript},
 };
+
+use midnight_proofs::plonk::bench::prover::benchmark_create_proof;
 use rand::{rngs::OsRng, Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use sha2::Digest;
@@ -250,7 +252,7 @@ fn bench_zswap_output(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("ZSwap Prover");
     let mut transcript = CircuitTranscript::<blake2b_simd::State>::init();
-    create_proof(
+    benchmark_create_proof(
         &srs,
         &pk,
         &[circuit.clone()],
