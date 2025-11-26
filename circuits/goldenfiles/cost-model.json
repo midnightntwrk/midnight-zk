@@ -352,6 +352,61 @@
       "rows": "210",
       "table_rows": "417"
     },
+    "assert_non_zero": {
+      "advice_columns": "30",
+      "column_queries": "111",
+      "fixed_columns": "74",
+      "lookups": "8",
+      "max_deg": "5",
+      "permutations": "35",
+      "point_sets": "4",
+      "rows": "49",
+      "table_rows": "417"
+    },
+    "assert_zero": {
+      "advice_columns": "30",
+      "column_queries": "111",
+      "fixed_columns": "74",
+      "lookups": "8",
+      "max_deg": "5",
+      "permutations": "35",
+      "point_sets": "4",
+      "rows": "0",
+      "table_rows": "16"
+    },
+    "cond_assert_equal": {
+      "advice_columns": "30",
+      "column_queries": "111",
+      "fixed_columns": "74",
+      "lookups": "8",
+      "max_deg": "5",
+      "permutations": "35",
+      "point_sets": "4",
+      "rows": "10",
+      "table_rows": "10"
+    },
+    "cond_swap": {
+      "advice_columns": "30",
+      "column_queries": "111",
+      "fixed_columns": "74",
+      "lookups": "8",
+      "max_deg": "5",
+      "permutations": "35",
+      "point_sets": "4",
+      "rows": "20",
+      "table_rows": "20"
+    },
+    "coordinates": {
+      "advice_columns": "30",
+      "column_queries": "110",
+      "fixed_columns": "72",
+      "lookups": "8",
+      "max_deg": "5",
+      "permutations": "34",
+      "point_sets": "4",
+      "rows": "282",
+      "table_rows": "417"
+    },
     "double": {
       "advice_columns": "30",
       "column_queries": "110",
@@ -385,6 +440,28 @@
       "rows": "69",
       "table_rows": "417"
     },
+    "is_zero": {
+      "advice_columns": "30",
+      "column_queries": "111",
+      "fixed_columns": "74",
+      "lookups": "8",
+      "max_deg": "5",
+      "permutations": "35",
+      "point_sets": "4",
+      "rows": "49",
+      "table_rows": "417"
+    },
+    "mul_by_constant": {
+      "advice_columns": "30",
+      "column_queries": "110",
+      "fixed_columns": "72",
+      "lookups": "8",
+      "max_deg": "5",
+      "permutations": "34",
+      "point_sets": "4",
+      "rows": "116483",
+      "table_rows": "417"
+    },
     "neg": {
       "advice_columns": "30",
       "column_queries": "110",
@@ -406,6 +483,17 @@
       "point_sets": "4",
       "rows": "141",
       "table_rows": "417"
+    },
+    "select": {
+      "advice_columns": "30",
+      "column_queries": "111",
+      "fixed_columns": "74",
+      "lookups": "8",
+      "max_deg": "5",
+      "permutations": "35",
+      "point_sets": "4",
+      "rows": "10",
+      "table_rows": "20"
     }
   },
   "field_chip_secp_base": {

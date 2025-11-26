@@ -13,6 +13,7 @@
 
 //! TODO: Doc the chip.
 
+use core::panic;
 use std::{
     fmt::Debug,
     hash::{Hash, Hasher},
@@ -42,7 +43,7 @@ use crate::{
         AssignedNative,
     },
     instructions::{
-        ArithInstructions, AssertionInstructions, AssignmentInstructions,
+        ArithInstructions, AssertionInstructions, AssignmentInstructions, ControlFlowInstructions,
         DecompositionInstructions, EccInstructions, EqualityInstructions, NativeInstructions,
         PublicInputInstructions, ScalarFieldInstructions, ZeroInstructions,
     },
@@ -257,11 +258,6 @@ where
         layouter: &mut impl Layouter<F>,
         value: Value<C::CryptographicGroup>,
     ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
-        // Recreate twisted edwards curve equation over foreign
-        // field Fq with x,y in Fq emulated over
-        //
-        // a*x^2 + y^2 - 1 - d*x^2 *y^2 = 0
-        //
         let base_chip = self.base_field_chip();
 
         let (val_x, val_y) = value
@@ -276,7 +272,7 @@ where
         let x_x = base_chip.mul(layouter, &x, &x, None)?;
         let y_y = base_chip.mul(layouter, &y, &y, None)?;
 
-        // Computes a*x^2 + y^2 - 1 - d*x^2*y^2
+        // Compute a*x^2 + y^2 - 1 - d*x^2*y^2
         let id = base_chip.add_and_mul(
             layouter,
             (C::A, &x_x),
@@ -288,8 +284,7 @@ where
 
         base_chip.assert_zero(layouter, &id)?;
 
-        // Add subgroup check
-        // TODO
+        // TODO: Subgroup check?
 
         Ok(AssignedForeignEdwardsPoint { point: value, x, y })
     }
@@ -303,7 +298,7 @@ where
             constant
                 .into()
                 .coordinates()
-                .expect("assign fixed unchecked: valid curve point")
+                .expect("assign fixed unchecked: expected valid curve point")
         };
         let x = self.base_field_chip().assign_fixed(layouter, x)?;
         let y = self.base_field_chip().assign_fixed(layouter, y)?;
@@ -478,6 +473,60 @@ where
     }
 }
 
+impl<F, C, B, S, N> ZeroInstructions<F, AssignedForeignEdwardsPoint<F, C, B>>
+    for ForeignEdwardsEccChip<F, C, B, S, N>
+where
+    F: PrimeField,
+    C: EdwardsCurve,
+    B: FieldEmulationParams<F, C::Base>,
+    S: ScalarFieldInstructions<F>,
+    S::Scalar: InnerValue<Element = C::Scalar>,
+    N: NativeInstructions<F>,
+{
+    fn is_zero(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        p: &AssignedForeignEdwardsPoint<F, C, B>,
+    ) -> Result<AssignedBit<F>, Error> {
+        self.is_equal_to_fixed(layouter, p, C::CryptographicGroup::identity())
+    }
+}
+
+impl<F, C, B, S, N> ControlFlowInstructions<F, AssignedForeignEdwardsPoint<F, C, B>>
+    for ForeignEdwardsEccChip<F, C, B, S, N>
+where
+    F: PrimeField,
+    C: EdwardsCurve,
+    B: FieldEmulationParams<F, C::Base>,
+    S: ScalarFieldInstructions<F>,
+    S::Scalar: InnerValue<Element = C::Scalar>,
+    N: NativeInstructions<F>,
+{
+    /// Returns `p` if `cond = 1` and `q` otherwise.
+    fn select(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        cond: &AssignedBit<F>,
+        p: &AssignedForeignEdwardsPoint<F, C, B>,
+        q: &AssignedForeignEdwardsPoint<F, C, B>,
+    ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
+        let x = self.base_field_chip().select(layouter, cond, &p.x, &q.x)?;
+        let y = self.base_field_chip().select(layouter, cond, &p.y, &q.y)?;
+
+        // This is kind of hacky:
+        // When the value of the condition is unknown (during the setup phase)
+        // we select the first point, instead of passing an unknown value.
+        // In reality, this is equivalent, since in the setup phase the
+        // value of the points will be unknown as well.
+
+        // point = p if cond is unknown or 1, q if cond is known and 0
+        let a = cond.value().error_if_known_and(|&v| !v);
+        let point = if a.is_ok() { p.point } else { q.point };
+
+        Ok(AssignedForeignEdwardsPoint::<F, C, B> { point, x, y })
+    }
+}
+
 impl<F, C, B, S, N> EccInstructions<F, C> for ForeignEdwardsEccChip<F, C, B, S, N>
 where
     F: PrimeField,
@@ -562,22 +611,48 @@ where
 
     fn msm(
         &self,
-        _layouter: &mut impl Layouter<F>,
-        _scalars: &[Self::Scalar],
-        _bases: &[Self::Point],
+        layouter: &mut impl Layouter<F>,
+        scalars: &[Self::Scalar],
+        bases: &[Self::Point],
     ) -> Result<Self::Point, Error> {
-        // TODO do it via a simple double-and-add
+        let scalars = scalars
+            .iter()
+            .map(|s| (s.clone(), C::Scalar::NUM_BITS as usize))
+            .collect::<Vec<_>>();
+        self.msm_by_bounded_scalars(layouter, &scalars, bases)
+    }
+
+    fn msm_by_bounded_scalars(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        scalars: &[(S::Scalar, usize)],
+        bases: &[AssignedForeignEdwardsPoint<F, C, B>],
+    ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
+        // TODO: are inputs sanitized? I.e., lenghts match
+        if scalars.is_empty() || scalars.len() != bases.len() {
+            panic!("Expected a well-formed MSM.")
+        }
+        let max_bit_size = scalars.iter().map(|(_, bit_size)| bit_size).max().unwrap();
 
         todo!()
     }
 
     fn mul_by_constant(
         &self,
-        _layouter: &mut impl Layouter<F>,
-        _scalar: <C>::Scalar,
-        _base: &Self::Point,
+        layouter: &mut impl Layouter<F>,
+        scalar: C::Scalar,
+        base: &Self::Point,
     ) -> Result<Self::Point, Error> {
-        todo!()
+        let scalar_bits = crate::utils::util::fe_to_le_bits(&scalar, None);
+        let mut p = base.clone();
+        let mut res = self.assign_fixed(layouter, C::CryptographicGroup::identity())?;
+        for b in scalar_bits {
+            if b {
+                res = self.add(layouter, &res, &p)?;
+            }
+            p = self.double(layouter, &p)?;
+        }
+        Ok(res)
     }
 
     fn point_from_coordinates(
@@ -682,7 +757,7 @@ mod tests {
             decomposition::chip::P2RDecompositionChip, foreign::params::MultiEmulationParams,
             NativeChip, NativeGadget,
         },
-        instructions::{assertions, ecc, equality, public_input},
+        instructions::{assertions, control_flow, ecc, equality, public_input, zero},
     };
 
     type Native<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
@@ -721,14 +796,12 @@ mod tests {
 
     test!(equality, test_is_equal);
 
-    // TODO implement zeroInstuctions
-    // test!(zero, test_zero_assertions);
-    // test!(zero, test_is_zero);
+    test!(zero, test_zero_assertions);
+    test!(zero, test_is_zero);
 
-    // TODO implement ControlFlowINstruction
-    // test!(control_flow, test_select);
-    // test!(control_flow, test_cond_assert_equal);
-    // test!(control_flow, test_cond_swap);
+    test!(control_flow, test_select);
+    test!(control_flow, test_cond_assert_equal);
+    test!(control_flow, test_cond_swap);
 
     macro_rules! ecc_test {
         ($op:ident, $native:ty, $curve:ty, $scalar_field:ty, $name:expr) => {
@@ -760,6 +833,6 @@ mod tests {
     ecc_tests!(test_negate);
     // ecc_tests!(test_msm);
     // ecc_tests!(test_msm_by_bounded_scalars);
-    // ecc_tests!(test_mul_by_constant);
-    // ecc_tests!(test_coordinates);
+    ecc_tests!(test_mul_by_constant);
+    ecc_tests!(test_coordinates_edwards);
 }
