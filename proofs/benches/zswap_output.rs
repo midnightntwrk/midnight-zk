@@ -20,7 +20,8 @@ use midnight_curves::{Bls12, Fr as JubjubScalar, JubjubExtended as Jubjub, Jubju
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::{
-        keygen_pk, keygen_vk_with_k, parse_trace, verify_algebraic_constraints, Error,
+        bench::prover::benchmark_create_proof, keygen_pk, keygen_vk_with_k, parse_trace,
+        verify_algebraic_constraints, Error,
     },
     poly::{
         commitment::Guard,
@@ -28,8 +29,6 @@ use midnight_proofs::{
     },
     transcript::{CircuitTranscript, Transcript},
 };
-
-use midnight_proofs::plonk::bench::prover::benchmark_create_proof;
 use rand::{rngs::OsRng, Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use sha2::Digest;
