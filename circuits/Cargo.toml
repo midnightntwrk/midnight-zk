@@ -34,7 +34,6 @@ lazy_static = "1.5.0"
 bincode = "2.0"
 
 [dev-dependencies]
-bench_macros = { path = "../bench-macros" }
 criterion = "0.7"
 rand_chacha = "0.3.1"
 goldenfile = "=1.8.0"

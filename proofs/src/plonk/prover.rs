@@ -5,8 +5,6 @@ use std::{
     ops::RangeTo,
 };
 
-#[cfg(all(test, feature = "bench-internal"))]
-use bench_macros::inner_bench;
 use ff::{Field, FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
 use rand_core::{CryptoRng, RngCore};
 
@@ -21,7 +19,6 @@ use super::{
 #[cfg(feature = "committed-instances")]
 use crate::poly::EvaluationDomain;
 use crate::{
-    bench_and_run,
     circuit::Value,
     plonk::{traces::ProverTrace, trash},
     poly::{
@@ -51,7 +48,6 @@ where
     CS::commit_lagrange(params, &poly)
 }
 
-#[cfg_attr(all(test, feature = "bench-internal"), inner_bench)]
 /// This computes a proof trace for the provided `circuits` when given the
 /// public parameters `params` and the proving key [`ProvingKey`] that was
 /// generated previously for the same circuit. The provided `instances`

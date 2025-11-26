@@ -58,9 +58,6 @@ serde_json = { workspace = true }
 midnight-circuits = { path = "../circuits" }
 sha2 = { workspace = true }
 rand = { workspace = true }
-
-# Prover benchmarks
-bench_macros = { path = "../bench-macros" }
 criterion = "0.7"
 
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
