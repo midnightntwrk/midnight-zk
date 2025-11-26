@@ -95,7 +95,6 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> FlattenArgument<F> {
         let input_len = compressed_input_expression.len();
         println!("input len: {input_len}");
         let mut input_denoms = vec![F::ZERO; input_len * n];
-        println!("Meeeh: {:?}", (input_len * n - 1) / n);
 
         parallelize(&mut input_denoms, |input, start| {
             for (i, input) in input.iter_mut().enumerate() {
@@ -151,13 +150,12 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> FlattenArgument<F> {
         let compressed_input_coeff: Vec<_> = compressed_input_expression.iter()
             .map(|p| pk.vk.domain.lagrange_to_coeff(p.clone()))
             .collect();
-        let compressed_table_coeff = pk.vk.domain.lagrange_to_coeff(compressed_table_expression.clone());
 
         let multiplicities = pk.vk.domain.lagrange_to_coeff(multiplicities);
         let helper_poly = pk.vk.domain.lagrange_to_coeff(helper_poly);
         let aggregator_poly = pk.vk.domain.lagrange_to_coeff(aggregator_poly);
 
-        // Checks:
+        // // Checks:
         // Helper poly
         let challenge = pk.vk.domain.get_omega().pow_vartime([OsRng.next_u64()]); // we are only checking the first line, but well.
 
@@ -177,22 +175,22 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> FlattenArgument<F> {
         }).collect();
         let sum_partial_products: F = partial_products.iter().sum();
         let product: F = fs_evals.iter().product();
-
-        // Aggregator
-        let z_next_eval = eval_polynomial(&aggregator_poly, pk.vk.domain.get_omega() * challenge);
-        let z_eval = eval_polynomial(&aggregator_poly, challenge);
-
-        let table_eval = eval_polynomial(&compressed_table_coeff, challenge) + beta;
-        let multiplicites_eval = eval_polynomial(&multiplicities, challenge);
-
+        println!("fs_evals size {:?}", fs_evals.len());
         assert_eq!(helper_eval * product, sum_partial_products);
 
-        // Check LogUp accumulator constraint: Z(ωX) * (S(X) + β) = (Z(X) + h(X)) * (S(X) + β) - m(X)
-        // This simplifies to: Z(ωX) = Z(X) + h(X) - m(X)/(S(X) + β)
-        // Or equivalently: Z(ωX) * (S(X) + β) = Z(X) * (S(X) + β) + h(X) * (S(X) + β) - m(X)
-        assert_eq!(z_next_eval * table_eval, (z_eval + helper_eval) * table_eval - multiplicites_eval);
-
-        println!("THEY ARE EQUAL!");
+        // Aggregator
+        // let z_next_eval = eval_polynomial(&aggregator_poly, pk.vk.domain.get_omega() * challenge);
+        // let z_eval = eval_polynomial(&aggregator_poly, challenge);
+        //
+        // let table_eval = eval_polynomial(&compressed_table_coeff, challenge) + beta;
+        // let multiplicites_eval = eval_polynomial(&multiplicities, challenge);
+        //
+        // // Check LogUp accumulator constraint: Z(ωX) * (S(X) + β) = (Z(X) + h(X)) * (S(X) + β) - m(X)
+        // // This simplifies to: Z(ωX) = Z(X) + h(X) - m(X)/(S(X) + β)
+        // // Or equivalently: Z(ωX) * (S(X) + β) = Z(X) * (S(X) + β) + h(X) * (S(X) + β) - m(X)
+        // assert_eq!(z_next_eval * table_eval, (z_eval + helper_eval) * table_eval - multiplicites_eval);
+        //
+        // println!("THEY ARE EQUAL!");
 
         Ok(Committed {
             input_polynomials: compressed_input_coeff,

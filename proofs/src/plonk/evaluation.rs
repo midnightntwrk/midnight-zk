@@ -233,7 +233,10 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
             let compressed_inputs_cosets: Vec<_> = lookup.input_expressions()
                 .into_iter()
                 .map(|expressions| {
-                    let parts = expressions.iter().map(|expr| graph.add_expression(expr)).collect();
+                    let parts = expressions.iter().map(|expr| {
+                        println!("Degree expression: {:?}", expr.degree());
+                        graph.add_expression(expr)
+                    }).collect();
                     let compressed = graph.add_calculation(Calculation::Horner(
                         ValueSource::Constant(0),
                         parts,
@@ -258,20 +261,23 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
             println!("compressed_in_len: {:?}", compressed_inputs_cosets.len());
             let partial_products = (0..compressed_inputs_cosets.len()).map(|i| {
                 let mut acc = graph.add_calculation(Calculation::Store(ValueSource::Constant(1)));
+                println!("For one accumulator:");
                 for j in 0..compressed_inputs_cosets.len() {
                     if j != i {
+                        println!("hop");
                         acc = graph.add_calculation(Calculation::Mul(acc, compressed_inputs_cosets[j]));
                     }
                 }
                 acc
             }).collect::<Vec<_>>();
 
-            let mut sum_partial_products = graph.add_calculation(Calculation::Store(ValueSource::Constant(0)));
-            let mut product = graph.add_calculation(Calculation::Store(ValueSource::Constant(1)));
+            let mut sum_partial_products = graph.add_calculation(Calculation::Store(partial_products[0]));
+            let mut product = graph.add_calculation(Calculation::Store(compressed_inputs_cosets[0]));
             // Now we compute the product of the lookup columns, and sum of the lookup
             // columns. We'll use them later.
             assert_eq!(compressed_inputs_cosets.len(), partial_products.len());
-            for (calculation, partial_prod) in compressed_inputs_cosets.into_iter().zip(partial_products.into_iter()) {
+            for (calculation, partial_prod) in compressed_inputs_cosets.into_iter().zip(partial_products.into_iter()).skip(1) {
+                println!("Foo");
                 sum_partial_products = graph.add_calculation(Calculation::Add(sum_partial_products, partial_prod));
                 product = graph.add_calculation(Calculation::Mul(product, calculation));
             }
@@ -610,7 +616,6 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
 
                 println!("WE GOT HERE, and the first check is: {first_check}");
             }
-            panic!("OK, now it is very weird!");
 
             // Trashcans
             for (n, trash) in trashcans.iter().enumerate() {

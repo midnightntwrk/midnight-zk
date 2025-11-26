@@ -146,10 +146,6 @@ where
         })
         .collect::<Result<Vec<_>, _>>())?;
 
-    dbg!(&pk.vk
-        .cs
-        .lookups);
-
     let lookups: Vec<Vec<logup::prover::Committed<F>>> = bench_and_run!(_group;
         ref transcript;  ; "Construct and commit log derivative";
         |t: &mut T|

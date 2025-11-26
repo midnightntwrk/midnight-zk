@@ -2332,7 +2332,7 @@ impl<F: Field> ConstraintSystem<F> {
     /// Compute the degree of the constraint system (the maximum degree of all
     /// constraints).
     pub fn degree(&self) -> usize {
-        [
+        let degree = [
             Some(self.permutation.required_degree()),
             self.lookups.iter().map(|l| l.required_degree()).max(),
             self.trashcans.iter().map(|l| l.required_degree()).max(),
@@ -2345,7 +2345,10 @@ impl<F: Field> ConstraintSystem<F> {
         .iter()
         .filter_map(|&d| d)
         .max()
-        .unwrap_or(1)
+        .unwrap_or(1);
+        println!("Degree: {:?}", degree);
+        degree
+        // 8
     }
 
     /// Compute the number of blinding factors necessary to perfectly blind

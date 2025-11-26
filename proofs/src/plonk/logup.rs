@@ -1,3 +1,4 @@
+use std::cmp::max;
 use std::fmt::{self, Debug};
 
 use ff::Field;
@@ -46,9 +47,8 @@ impl<F: Field> Debug for FlattenArgument<F> {
 
 impl<F: Field> BatchedArgument<F> {
     pub(crate) fn required_degree(&self) -> usize {
-        // The minimum degree of logup is 3, and we can batch columns until we reach
-        // the degree of the CS
-        3
+        let degrees = self.input_expressions.iter().flat_map(|e| e.iter().map(|e| e.degree()));
+        max(3, degrees.max().unwrap_or(1) + 1)
     }
     /// Constructs a new logup argument.
     ///
