@@ -102,7 +102,8 @@ where
 
     let instance = compute_instances(params, pk, instances, nb_committed_instances, transcript)?;
 
-    let (advice, challenges) = parse_advices(params, pk, circuits, instances, transcript, &mut rng)?;
+    let (advice, challenges) =
+        parse_advices(params, pk, circuits, instances, transcript, &mut rng)?;
 
     // Sample theta challenge for keeping lookup columns linearly independent
     let theta: F = transcript.squeeze_challenge();
@@ -384,7 +385,7 @@ where
     )
 }
 
-pub(in super) fn compute_instances<F, CS, T>(
+pub(super) fn compute_instances<F, CS, T>(
     params: &CS::Parameters,
     pk: &ProvingKey<F, CS>,
     instances: &[&[&[F]]],
@@ -452,7 +453,7 @@ where
 }
 
 #[allow(clippy::type_complexity)]
-pub(in super) fn parse_advices<F, CS, ConcreteCircuit, T>(
+pub(super) fn parse_advices<F, CS, ConcreteCircuit, T>(
     params: &CS::Parameters,
     pk: &ProvingKey<F, CS>,
     circuits: &[ConcreteCircuit],
@@ -587,7 +588,7 @@ where
     Ok((advice, challenges))
 }
 
-pub(in super) fn compute_h_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>>(
+pub(super) fn compute_h_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>>(
     pk: &ProvingKey<F, CS>,
     trace: &ProverTrace<F>,
 ) -> Polynomial<F, ExtendedLagrangeCoeff> {
@@ -648,7 +649,7 @@ pub(in super) fn compute_h_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialComm
     )
 }
 
-pub(in super) fn write_evals_to_transcript<F, CS, T>(
+pub(super) fn write_evals_to_transcript<F, CS, T>(
     pk: &ProvingKey<F, CS>,
     nb_committed_instances: usize,
     instance_polys: &[Vec<Polynomial<F, Coeff>>],
@@ -710,7 +711,11 @@ where
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(in super) fn compute_queries<'a, F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>>(
+pub(super) fn compute_queries<
+    'a,
+    F: WithSmallOrderMulGroup<3>,
+    CS: PolynomialCommitmentScheme<F>,
+>(
     pk: &'a ProvingKey<F, CS>,
     nb_committed_instances: usize,
     instance_polys: &'a [Vec<Polynomial<F, Coeff>>],
@@ -766,13 +771,14 @@ pub(in super) fn compute_queries<'a, F: WithSmallOrderMulGroup<3>, CS: Polynomia
         .collect::<Vec<_>>()
 }
 
-pub(in super) struct InstanceSingle<F: PrimeField> {
+#[derive(Clone)]
+pub(super) struct InstanceSingle<F: PrimeField> {
     pub instance_values: Vec<Polynomial<F, LagrangeCoeff>>,
     pub instance_polys: Vec<Polynomial<F, Coeff>>,
 }
 
 #[derive(Clone)]
-pub(in super) struct AdviceSingle<F: PrimeField, B: PolynomialRepresentation> {
+pub(super) struct AdviceSingle<F: PrimeField, B: PolynomialRepresentation> {
     pub advice_polys: Vec<Polynomial<F, B>>,
 }
 

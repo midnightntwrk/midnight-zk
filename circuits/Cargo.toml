@@ -55,12 +55,6 @@ heap_profiling = []
 # Enable truncated challenges. This makes recursive proofs more efficient
 truncated-challenges = ["midnight-proofs/truncated-challenges"]
 
-# Feature to enable granular benchmarks in the prover. If enabled,
-# the proof generation functions take an additional input,
-# _group: &mut BenchmarkGroup<WallTime>, and return granular benchmarks
-# of the prover for that concrete circuit.
-bench-internal = ["midnight-proofs/bench-internal"]
-
 [lib]
 bench = false
 

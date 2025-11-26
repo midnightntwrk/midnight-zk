@@ -4,19 +4,22 @@ use std::hash::Hash;
 
 use criterion::BenchmarkGroup;
 use ff::{FromUniformBytes, WithSmallOrderMulGroup};
+use rand_core::{CryptoRng, RngCore};
 
 use crate::{
     plonk::{
         circuit::Circuit,
-        lookup, permutation, trash, vanishing,
-        prover::{compute_h_poly, compute_instances, compute_queries, parse_advices, write_evals_to_transcript},
+        lookup, permutation,
+        prover::{
+            compute_h_poly, compute_instances, compute_queries, parse_advices,
+            write_evals_to_transcript,
+        },
         traces::ProverTrace,
-        Error, ProvingKey,
+        trash, vanishing, Error, ProvingKey,
     },
     poly::commitment::PolynomialCommitmentScheme,
     transcript::{Hashable, Sampleable, Transcript},
 };
-use rand_core::{CryptoRng, RngCore};
 
 /// This computes a proof trace for the provided `circuits` when given the
 /// public parameters `params` and the proving key [`ProvingKey`] that was
@@ -26,6 +29,7 @@ use rand_core::{CryptoRng, RngCore};
 /// The trace can then be used to finalise proofs, or to fold them.
 ///
 /// Benchmarks individual internal steps using the provided `group`.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn compute_trace<
     F,
     CS: PolynomialCommitmentScheme<F>,
@@ -47,11 +51,11 @@ pub(crate) fn compute_trace<
 where
     CS::Commitment: Hashable<T::Hash>,
     F: WithSmallOrderMulGroup<3>
-    + Sampleable<T::Hash>
-    + Hashable<T::Hash>
-    + Hash
-    + Ord
-    + FromUniformBytes<64>,
+        + Sampleable<T::Hash>
+        + Hashable<T::Hash>
+        + Hash
+        + Ord
+        + FromUniformBytes<64>,
 {
     #[cfg(not(feature = "committed-instances"))]
     let nb_committed_instances: usize = 0;
@@ -108,12 +112,7 @@ where
                 || transcript.clone(),
                 |mut t| {
                     let _ = parse_advices::<F, CS, ConcreteCircuit, T>(
-                        params,
-                        pk,
-                        circuits,
-                        instances,
-                        &mut t,
-                        &mut rng,
+                        params, pk, circuits, instances, &mut t, &mut rng,
                     );
                 },
                 criterion::BatchSize::LargeInput,
@@ -253,7 +252,9 @@ where
                         .map(|lookups| -> Result<Vec<_>, _> {
                             lookups
                                 .into_iter()
-                                .map(|lookup| lookup.commit_product(pk, params, beta, gamma, &mut rng, &mut t))
+                                .map(|lookup| {
+                                    lookup.commit_product(pk, params, beta, gamma, &mut rng, &mut t)
+                                })
                                 .collect::<Result<Vec<_>, _>>()
                         })
                         .collect();
@@ -267,7 +268,9 @@ where
                 // Construct and commit to products for each lookup
                 lookups
                     .into_iter()
-                    .map(|lookup| lookup.commit_product(pk, params, beta, gamma, &mut rng, transcript))
+                    .map(|lookup| {
+                        lookup.commit_product(pk, params, beta, gamma, &mut rng, transcript)
+                    })
                     .collect::<Result<Vec<_>, _>>()
             })
             .collect::<Result<Vec<_>, _>>()?
@@ -399,11 +402,11 @@ pub(crate) fn finalise_proof<'a, F, CS: PolynomialCommitmentScheme<F>, T: Transc
 where
     CS::Commitment: Hashable<T::Hash>,
     F: WithSmallOrderMulGroup<3>
-    + Sampleable<T::Hash>
-    + Hashable<T::Hash>
-    + Hash
-    + Ord
-    + FromUniformBytes<64>,
+        + Sampleable<T::Hash>
+        + Hashable<T::Hash>
+        + Hash
+        + Ord
+        + FromUniformBytes<64>,
 {
     #[cfg(not(feature = "committed-instances"))]
     let nb_committed_instances: usize = 0;
@@ -569,6 +572,7 @@ where
 /// This function simply calls `compute_trace` and `finalise_proof` with the
 /// provided benchmark group, which causes those functions to benchmark their
 /// internal steps.
+#[allow(clippy::too_many_arguments)]
 pub fn benchmark_create_proof<
     F,
     CS: PolynomialCommitmentScheme<F>,
