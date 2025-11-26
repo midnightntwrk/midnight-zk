@@ -65,6 +65,13 @@ impl From<usize> for RegionIndex {
     }
 }
 
+#[cfg(feature = "extraction")]
+impl From<RegionIndex> for haloumi_core::table::RegionIndex {
+    fn from(idx: RegionIndex) -> Self {
+        Self::from(idx.0)
+    }
+}
+
 impl std::ops::Deref for RegionIndex {
     type Target = usize;
 
@@ -106,6 +113,17 @@ pub struct Cell {
 impl picus_support::DecomposeIn<Self> for Cell {
     fn cells(&self) -> impl IntoIterator<Item = Self> {
         std::iter::once(*self)
+    }
+}
+
+#[cfg(feature = "extraction")]
+impl From<Cell> for haloumi_core::table::Cell {
+    fn from(cell: Cell) -> Self {
+        Self {
+            region_index: cell.region_index.into(),
+            row_offset: cell.row_offset,
+            column: cell.column.into(),
+        }
     }
 }
 
@@ -690,115 +708,6 @@ pub trait Layouter<F: Field> {
 
         let mut scope = groups::GroupScope::new(self.get_root());
         assignment(&mut scope.layouter, &mut scope.meta)
-    }
-}
-
-/// Wrapper over [`Layouter`] that implements
-/// [`LayoutAdaptor`](extractor_support::cells::ctx::LayoutAdaptor).
-#[cfg(feature = "extraction")]
-#[derive(Debug)]
-pub struct AdaptsLayouter<L> {
-    layouter: L,
-}
-
-#[cfg(feature = "extraction")]
-impl<L> AdaptsLayouter<L> {
-    /// Constructs a new wrapper.
-    pub fn new(layouter: L) -> Self {
-        Self { layouter }
-    }
-}
-
-#[cfg(feature = "extraction")]
-impl<F: Field, L: Layouter<F>>
-    extractor_support::cells::ctx::LayoutAdaptor<F, crate::ExtractionSupport>
-    for AdaptsLayouter<L>
-{
-    type Adaptee = L;
-
-    fn adaptee_ref(&self) -> &L {
-        &self.layouter
-    }
-
-    fn adaptee_ref_mut(&mut self) -> &mut L {
-        &mut self.layouter
-    }
-
-    fn constrain_instance(
-        &mut self,
-        cell: Cell,
-        instance_col: Column<Instance>,
-        instance_row: usize,
-    ) -> Result<(), Error> {
-        self.layouter.constrain_instance(cell, instance_col, instance_row)
-    }
-
-    fn constrain_advice_constant(
-        &mut self,
-        advice_col: Column<Advice>,
-        advice_row: usize,
-        constant: F,
-    ) -> Result<Cell, Error> {
-        Ok(self
-            .layouter
-            .assign_region(
-                || format!("Adv[{}, {advice_row}] == 0", advice_col.index()),
-                |mut region| {
-                    region.assign_advice_from_constant(
-                        || format!("Adv[{}, {advice_row}]", advice_col.index()),
-                        advice_col,
-                        advice_row,
-                        constant,
-                    )
-                },
-            )?
-            .cell())
-    }
-
-    fn assign_advice_from_instance(
-        &mut self,
-        advice_col: Column<Advice>,
-        advice_row: usize,
-        instance_col: Column<Instance>,
-        instance_row: usize,
-    ) -> Result<AssignedCell<F, F>, Error> {
-        self.layouter.assign_region(
-            || "ins",
-            |mut region| {
-                region.assign_advice_from_instance(
-                    || {
-                        format!(
-                            "Adv[{}, +{advice_row}] == Ins[{}, {instance_row}]",
-                            advice_col.index(),
-                            instance_col.index()
-                        )
-                    },
-                    instance_col,
-                    instance_row,
-                    advice_col,
-                    advice_row,
-                )
-            },
-        )
-    }
-
-    fn copy_advice(
-        &mut self,
-        ac: &AssignedCell<F, F>,
-        region: &mut Region<'_, F>,
-        advice_col: Column<Advice>,
-        advice_row: usize,
-    ) -> Result<AssignedCell<F, F>, Error> {
-        ac.copy_advice(|| "", region, advice_col, advice_row)
-    }
-
-    fn region<A, AR, N, NR>(&mut self, name: N, assignment: A) -> Result<AR, Error>
-    where
-        A: FnMut(Region<'_, F>) -> Result<AR, Error>,
-        N: Fn() -> NR,
-        NR: Into<String>,
-    {
-        self.layouter.assign_region(name, assignment)
     }
 }
 

@@ -229,6 +229,17 @@ impl RegionsGroup {
     }
 }
 
+#[cfg(feature = "extraction")]
+impl haloumi_core::info_traits::GroupInfo for RegionsGroup {
+    fn inputs(&self) -> impl Iterator<Item = haloumi_core::table::Cell> + '_ {
+        self.inputs().map(Into::into)
+    }
+
+    fn outputs(&self) -> impl Iterator<Item = haloumi_core::table::Cell> + '_ {
+        self.outputs().map(Into::into)
+    }
+}
+
 /// Tracks regions and cell roles in a group.
 ///
 /// Implements [`Layouter`] and can be used as a drop-in replacement.

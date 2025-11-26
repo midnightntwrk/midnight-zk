@@ -102,11 +102,96 @@ pub mod extraction {
     //! Extraction support for column types.
 
     use extractor_support::{auto_conf_impl, circuit::configuration::AutoConfigure};
+    use haloumi_core::{
+        query::{Advice, Fixed, Instance},
+        table::{Any, Column, ColumnType},
+    };
 
-    auto_conf_impl!(super::Column<super::Fixed>, fixed_column, crate);
-    auto_conf_impl!(super::Column<super::Instance>, instance_column, crate);
-    auto_conf_impl!(super::Column<super::Advice>, advice_column, crate);
+    use super::{
+        Advice as MdntAdvice, Any as MdntAny, Column as MdntColumn, Fixed as MdntFixed,
+        Instance as MdntInstance,
+    };
+    use crate::plonk::ColumnType as MdntColumnType;
+
+    auto_conf_impl!(MdntColumn<MdntFixed>, fixed_column, crate);
+    auto_conf_impl!(MdntColumn<MdntInstance>, instance_column, crate);
+    auto_conf_impl!(MdntColumn<MdntAdvice>, advice_column, crate);
     auto_conf_impl!(super::TableColumn, lookup_table_column, crate);
+
+    impl<F: MdntColumnType + Into<T>, T: ColumnType> From<MdntColumn<F>> for Column<T> {
+        fn from(value: MdntColumn<F>) -> Self {
+            Self::new(value.index, value.column_type.into())
+        }
+    }
+
+    impl TryFrom<MdntColumn<MdntAny>> for Column<Instance> {
+        type Error = <MdntColumn<MdntInstance> as TryFrom<MdntColumn<MdntAny>>>::Error;
+
+        fn try_from(value: MdntColumn<MdntAny>) -> Result<Self, Self::Error> {
+            MdntColumn::<MdntInstance>::try_from(value).map(Into::into)
+        }
+    }
+
+    impl TryFrom<MdntColumn<MdntAny>> for Column<Advice> {
+        type Error = <MdntColumn<MdntAdvice> as TryFrom<MdntColumn<MdntAny>>>::Error;
+
+        fn try_from(value: MdntColumn<MdntAny>) -> Result<Self, Self::Error> {
+            MdntColumn::<MdntAdvice>::try_from(value).map(Into::into)
+        }
+    }
+
+    impl TryFrom<MdntColumn<MdntAny>> for Column<Fixed> {
+        type Error = <MdntColumn<MdntFixed> as TryFrom<MdntColumn<MdntAny>>>::Error;
+
+        fn try_from(value: MdntColumn<MdntAny>) -> Result<Self, Self::Error> {
+            MdntColumn::<MdntFixed>::try_from(value).map(Into::into)
+        }
+    }
+
+    impl From<MdntAny> for Any {
+        fn from(value: MdntAny) -> Self {
+            match value {
+                MdntAny::Advice(_) => Any::Advice,
+                MdntAny::Fixed => Any::Fixed,
+                MdntAny::Instance => Any::Instance,
+            }
+        }
+    }
+
+    impl From<MdntInstance> for Instance {
+        fn from(_: MdntInstance) -> Self {
+            Self
+        }
+    }
+
+    impl From<MdntInstance> for Any {
+        fn from(_: MdntInstance) -> Self {
+            Self::Instance
+        }
+    }
+
+    impl From<MdntAdvice> for Advice {
+        fn from(_: MdntAdvice) -> Self {
+            Self
+        }
+    }
+
+    impl From<MdntAdvice> for Any {
+        fn from(_: MdntAdvice) -> Self {
+            Self::Advice
+        }
+    }
+
+    impl From<MdntFixed> for Fixed {
+        fn from(_: MdntFixed) -> Self {
+            Self
+        }
+    }
+    impl From<MdntFixed> for Any {
+        fn from(_: MdntFixed) -> Self {
+            Self::Fixed
+        }
+    }
 }
 
 pub(crate) mod sealed {
@@ -498,6 +583,13 @@ impl Selector {
     }
 }
 
+#[cfg(feature = "extraction")]
+impl haloumi_core::info_traits::SelectorInfo for Selector {
+    fn id(&self) -> usize {
+        self.index()
+    }
+}
+
 /// Query of fixed column at a certain relative location
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct FixedQuery {
@@ -522,6 +614,26 @@ impl FixedQuery {
     /// Rotation of this query
     pub fn rotation(&self) -> Rotation {
         self.rotation
+    }
+}
+
+#[cfg(feature = "extraction")]
+impl haloumi_core::info_traits::QueryInfo for FixedQuery {
+    type Kind = haloumi_core::query::Fixed;
+
+    fn rotation(&self) -> haloumi_core::table::Rotation {
+        self.rotation.0
+    }
+
+    fn column_index(&self) -> usize {
+        self.column_index
+    }
+}
+
+#[cfg(feature = "extraction")]
+impl<F: Field> haloumi_core::info_traits::CreateQuery<Expression<F>> for FixedQuery {
+    fn query_expr(index: usize, at: haloumi_core::table::Rotation) -> Expression<F> {
+        Fixed.query_cell(index, Rotation(at))
     }
 }
 
@@ -555,6 +667,26 @@ impl AdviceQuery {
     }
 }
 
+#[cfg(feature = "extraction")]
+impl haloumi_core::info_traits::QueryInfo for AdviceQuery {
+    type Kind = haloumi_core::query::Advice;
+
+    fn rotation(&self) -> haloumi_core::table::Rotation {
+        self.rotation.0
+    }
+
+    fn column_index(&self) -> usize {
+        self.column_index
+    }
+}
+
+#[cfg(feature = "extraction")]
+impl<F: Field> haloumi_core::info_traits::CreateQuery<Expression<F>> for AdviceQuery {
+    fn query_expr(index: usize, at: haloumi_core::table::Rotation) -> Expression<F> {
+        Advice::default().query_cell(index, Rotation(at))
+    }
+}
+
 /// Query of instance column at a certain relative location
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct InstanceQuery {
@@ -575,6 +707,26 @@ impl InstanceQuery {
     /// Rotation of this query
     pub fn rotation(&self) -> Rotation {
         self.rotation
+    }
+}
+
+#[cfg(feature = "extraction")]
+impl haloumi_core::info_traits::QueryInfo for InstanceQuery {
+    type Kind = haloumi_core::query::Instance;
+
+    fn rotation(&self) -> haloumi_core::table::Rotation {
+        self.rotation.0
+    }
+
+    fn column_index(&self) -> usize {
+        self.column_index
+    }
+}
+
+#[cfg(feature = "extraction")]
+impl<F: Field> haloumi_core::info_traits::CreateQuery<Expression<F>> for InstanceQuery {
+    fn query_expr(index: usize, at: haloumi_core::table::Rotation) -> Expression<F> {
+        Instance.query_cell(index, Rotation(at))
     }
 }
 
@@ -630,6 +782,17 @@ impl Challenge {
     /// Return Expression
     pub fn expr<F: Field>(&self) -> Expression<F> {
         Expression::Challenge(*self)
+    }
+}
+
+#[cfg(feature = "extraction")]
+impl haloumi_core::info_traits::ChallengeInfo for Challenge {
+    fn index(&self) -> usize {
+        self.index
+    }
+
+    fn phase(&self) -> u8 {
+        self.phase()
     }
 }
 
@@ -1511,6 +1674,100 @@ impl<F: Field> Product<Self> for Expression<F> {
     }
 }
 
+#[cfg(feature = "extraction")]
+impl<F: Field> haloumi_core::expressions::ExpressionTypes for Expression<F> {
+    type Selector = Selector;
+    type FixedQuery = FixedQuery;
+    type AdviceQuery = AdviceQuery;
+    type InstanceQuery = InstanceQuery;
+    type Challenge = Challenge;
+}
+
+#[cfg(feature = "extraction")]
+impl<F: Field> haloumi_core::expressions::ExpressionInfo for Expression<F> {
+    fn as_negation(&self) -> Option<&Self> {
+        match self {
+            Expression::Negated(e) => Some(e.as_ref()),
+            _ => None,
+        }
+    }
+
+    fn as_fixed_query(&self) -> Option<&Self::FixedQuery> {
+        match self {
+            Expression::Fixed(q) => Some(q),
+            _ => None,
+        }
+    }
+}
+
+#[cfg(feature = "extraction")]
+impl<F: Field> haloumi_core::expressions::EvaluableExpr<F> for Expression<F> {
+    fn evaluate<E: haloumi_core::expressions::EvalExpression<F, Self>>(
+        &self,
+        evaluator: &E,
+    ) -> E::Output {
+        self.evaluate(
+            &|f| evaluator.constant(&f),
+            &|s| evaluator.selector(&s),
+            &|fq| evaluator.fixed(&fq),
+            &|aq| evaluator.advice(&aq),
+            &|iq| evaluator.instance(&iq),
+            &|c| evaluator.challenge(&c),
+            &|e| evaluator.negated(e),
+            &|lhs, rhs| evaluator.sum(lhs, rhs),
+            &|lhs, rhs| evaluator.product(lhs, rhs),
+            &|lhs, rhs| evaluator.scaled(lhs, &rhs),
+        )
+    }
+}
+
+#[cfg(feature = "extraction")]
+impl<F: Field> haloumi_core::expressions::ExprBuilder<F> for Expression<F> {
+    fn constant(f: F) -> Self {
+        Expression::Constant(f)
+    }
+
+    fn selector(
+        selector: <Expression<F> as haloumi_core::expressions::ExpressionTypes>::Selector,
+    ) -> Self {
+        Expression::Selector(selector)
+    }
+
+    fn fixed(fixed_query: Self::FixedQuery) -> Self {
+        Expression::Fixed(fixed_query)
+    }
+
+    fn advice(advice_query: Self::AdviceQuery) -> Self {
+        Expression::Advice(advice_query)
+    }
+
+    fn instance(instance_query: Self::InstanceQuery) -> Self {
+        Expression::Instance(instance_query)
+    }
+
+    fn challenge(
+        challenge: <Expression<F> as haloumi_core::expressions::ExpressionTypes>::Challenge,
+    ) -> Self {
+        Expression::Challenge(challenge)
+    }
+
+    fn negated(expr: Self) -> Self {
+        Expression::Negated(Box::new(expr))
+    }
+
+    fn sum(lhs: Self, rhs: Self) -> Self {
+        Expression::Sum(Box::new(lhs), Box::new(rhs))
+    }
+
+    fn product(lhs: Self, rhs: Self) -> Self {
+        Expression::Product(Box::new(lhs), Box::new(rhs))
+    }
+
+    fn scaled(lhs: Self, rhs: F) -> Self {
+        Expression::Scaled(Box::new(lhs), rhs)
+    }
+}
+
 /// A "virtual cell" is a PLONK cell that has been queried at a particular
 /// relative offset within a custom gate.
 #[derive(Clone, Debug)]
@@ -1688,6 +1945,17 @@ impl<F: Field> Gate<F> {
     }
 }
 
+#[cfg(feature = "extraction")]
+impl<F: Field> haloumi_core::info_traits::GateInfo<Expression<F>> for Gate<F> {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn polynomials(&self) -> &[Expression<F>] {
+        &self.polys
+    }
+}
+
 /// This is a description of the circuit environment, such as the gate, column
 /// and permutation arrangements.
 #[derive(Debug, Clone)]
@@ -1739,6 +2007,29 @@ pub struct ConstraintSystem<F: Field> {
     pub(crate) constants: Vec<Column<Fixed>>,
 
     pub(crate) minimum_degree: Option<usize>,
+}
+
+#[cfg(feature = "extraction")]
+impl<F: Field> haloumi_core::info_traits::ConstraintSystemInfo<F> for ConstraintSystem<F> {
+    type Polynomial = Expression<F>;
+
+    fn gates(&self) -> Vec<&dyn haloumi_core::info_traits::GateInfo<Self::Polynomial>> {
+        self.gates
+            .iter()
+            .map(|g| g as &dyn haloumi_core::info_traits::GateInfo<Self::Polynomial>)
+            .collect()
+    }
+
+    fn lookups<'cs>(&'cs self) -> Vec<haloumi_core::lookups::LookupData<'cs, Self::Polynomial>> {
+        self.lookups
+            .iter()
+            .map(|l| haloumi_core::lookups::LookupData {
+                name: l.name(),
+                arguments: &l.input_expressions,
+                table: &l.table_expressions,
+            })
+            .collect()
+    }
 }
 
 /// Represents the minimal parameters that determine a `ConstraintSystem`.
