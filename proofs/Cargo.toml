@@ -45,6 +45,7 @@ rand_chacha = { workspace = true }
 serde = { workspace = true }
 serde_derive = { workspace = true }
 rayon = { workspace = true }
+criterion = { version = "0.7", optional = true }
 
 # Developer tooling dependencies
 plotters = { version = "0.3.7", default-features = false, optional = true }
@@ -84,11 +85,8 @@ truncated-challenges = []
 # This feature is very powerful for proving statements on committed data.
 committed-instances = []
 
-# Feature to enable granular benchmarks in the prover. If enabled,
-# the proof generation functions take an additional input,
-# _group: &mut BenchmarkGroup<WallTime>, and return granular benchmarks
-# of the prover for that concrete circuit.
-bench-internal = ["midnight-circuits/bench-internal"]
+# Feature to expose internal prover types and benchmarking utilities.
+bench-internal = ["criterion"]
 
 [lib]
 bench = false
