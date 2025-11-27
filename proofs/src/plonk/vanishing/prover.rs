@@ -110,7 +110,11 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
         // Truncate it to match the size of the quotient polynomial; the
         // evaluation domain might be slightly larger than necessary because
         // it always lies on a power-of-two boundary.
+        // h_poly.truncate((domain.n as usize - 1) * domain.get_quotient_poly_degree());
+        // h_poly.truncate( (n - 1) * 4);
         h_poly.truncate(domain.n as usize * domain.get_quotient_poly_degree());
+
+        // h_poly, in coefficient form, is represented with 4 n values.
 
         // Split h(X) up into pieces
         let h_pieces = h_poly

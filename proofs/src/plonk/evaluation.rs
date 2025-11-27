@@ -557,6 +557,10 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
 
                 let first_check = eval_polynomial(&testing_coeff, beta) == eval_polynomial(&quotient_coeff, beta) * (beta.pow_vartime(&[domain.n]) - F::ONE);
 
+                println!("length of quotient: {:?}", quotient_coeff.len());
+                println!("quotient poly degree: {:?}", domain.get_quotient_poly_degree());
+                println!("last coefficients of quotient poly: {:?}", quotient_coeff[(domain.n - 1) as usize * domain.get_quotient_poly_degree()..].to_vec());
+
 
                 let instance: &&[Polynomial<F, ExtendedLagrangeCoeff>] =
                     unsafe { transmute::<&&[Polynomial<F, B>], &&[Polynomial<F, ExtendedLagrangeCoeff>]>(instance) };

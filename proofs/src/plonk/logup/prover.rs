@@ -103,6 +103,28 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> FlattenArgument<F> {
             }
         });
 
+        // input_denoms.iter_mut().batch_invert();
+        // let mut helper_poly = vec![F::ONE; n];
+        //
+        // parallelize(&mut helper_poly, |input, start| {
+        //     for (i, input) in input.iter_mut().enumerate() {
+        //         let i = i + start;
+        //         // let partial_products: Vec<F> = (0..input_len).map(|idx| {
+        //         //     let mut acc = F::ONE;
+        //         //     for j in 0..input_len {
+        //         //         if j != idx {
+        //         //             acc *= input_denoms[i + j * n];
+        //         //         }
+        //         //     }
+        //         //     acc
+        //         // }).collect();
+        //         // *input = partial_products.iter().sum();
+        //         for j in 0..input_len {
+        //             *input *= input_denoms[i + j * n];
+        //         }
+        //     }
+        // });
+
         input_denoms.iter_mut().batch_invert();
         let mut helper_poly = vec![F::ZERO; n];
 

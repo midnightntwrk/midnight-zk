@@ -35,7 +35,10 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
     /// This constructs a new evaluation domain object based on the provided
     /// values $j, k$.
     pub fn new(j: u32, k: u32) -> Self {
+        // j = 5
+        // quotient_polynomial_degree = (5 - 1) * (n - 1) - 1
         // quotient_poly_degree * params.n - 1 is the degree of the quotient polynomial
+        // (j - 1) * n - j
         let quotient_poly_degree = (j - 1) as u64;
 
         // n = 2^k

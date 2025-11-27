@@ -2347,8 +2347,8 @@ impl<F: Field> ConstraintSystem<F> {
         .max()
         .unwrap_or(1);
         println!("Degree: {:?}", degree);
-        degree
-        // 8
+        // degree
+        5
     }
 
     /// Compute the number of blinding factors necessary to perfectly blind
