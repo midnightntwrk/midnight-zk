@@ -10,7 +10,6 @@ use crate::{
     transcript::{Hashable, Sampleable, Transcript},
     utils::helpers::ProcessedSerdeObject,
 };
-#[cfg(feature = "cost-estimator")]
 use crate::plonk::k_from_circuit;
 
 /// Public interface for a additively homomorphic Polynomial Commitment Scheme
@@ -104,7 +103,6 @@ pub trait Params {
     /// Downsize the params to work with a circuit of unknown length. The
     /// function first computes the `k` of the provided circuit, and then
     /// downsizes the SRS.
-    #[cfg(feature = "cost-estimator")]
     fn downsize_from_circuit<
         F: PrimeField + Ord + FromUniformBytes<64>,
         ConcreCircuit: Circuit<F>,

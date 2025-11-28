@@ -22,7 +22,6 @@ use crate::{
     },
     utils::{arithmetic::parallelize, rational::Rational},
 };
-#[cfg(feature = "cost-estimator")]
 use crate::dev::cost_model::cost_model_options;
 
 pub(crate) fn create_domain<F, ConcreteCircuit>(
@@ -201,7 +200,6 @@ impl<F: Field> Assignment<F> for Assembly<F> {
 }
 
 /// Compute the minimal `k` to compute a circuit.
-#[cfg(feature = "cost-estimator")]
 pub fn k_from_circuit<F: Ord + Field + FromUniformBytes<64>, C: Circuit<F>>(circuit: &C) -> u32 {
     cost_model_options(circuit).min_k as u32
 }
@@ -211,7 +209,6 @@ pub fn k_from_circuit<F: Ord + Field + FromUniformBytes<64>, C: Circuit<F>>(circ
 /// Automatically determines the smallest `k` required for the given circuit
 /// and adjusts the received parameters to match the circuit's size.
 /// Use `keygen_vk_with_k` to specify a custom `k` value.
-#[cfg(feature = "cost-estimator")]
 pub fn keygen_vk<F, CS, ConcreteCircuit>(
     params: &CS::Parameters,
     circuit: &ConcreteCircuit,
