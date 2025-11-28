@@ -47,7 +47,7 @@ pub const NB_EDWARDS_COLS: usize = 9;
 
 /// A twisted Edwards curve point represented in affine (x, y) coordinates, the
 /// identity represented as (0, 1).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, picus::DecomposeInCells)]
 pub struct AssignedNativePoint<C: CircuitCurve> {
     x: AssignedNative<C::Base>,
     y: AssignedNative<C::Base>,
@@ -105,7 +105,7 @@ impl<C: EdwardsCurve> InnerConstants for AssignedNativePoint<C> {
 }
 
 /// Scalars are represented as a vector of assigned bits in little endian.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, picus::DecomposeInCells)]
 pub struct AssignedScalarOfNativeCurve<C: CircuitCurve>(Vec<AssignedBit<C::Base>>);
 
 impl<C: CircuitCurve> InnerValue for AssignedScalarOfNativeCurve<C> {
@@ -142,6 +142,131 @@ impl<C: EdwardsCurve> InnerConstants for AssignedScalarOfNativeCurve<C> {
 impl<C: EdwardsCurve> Sampleable for AssignedScalarOfNativeCurve<C> {
     fn sample_inner(rng: impl RngCore) -> C::Scalar {
         C::Scalar::random(rng)
+    }
+}
+
+#[cfg(feature = "extraction")]
+pub mod extraction {
+    //! Extraction specific logic related to the native ecc chip.
+
+    use extractor_support::{
+        cells::{
+            ctx::{ICtx, LayoutAdaptor, OCtx},
+            load::LoadFromCells,
+            store::{StoreIntoCells, StoreIntoCellsDyn},
+            CellReprSize,
+        },
+        expect_elements,
+    };
+    use ff::PrimeField;
+    use midnight_proofs::{circuit::Layouter, plonk::Error, ExtractionSupport};
+
+    use super::{AssignedNativePoint, AssignedScalarOfNativeCurve};
+    use crate::{
+        ecc::curves::CircuitCurve,
+        field::AssignedNative,
+        instructions::{
+            ConversionInstructions, DecompositionInstructions, EccInstructions,
+            PublicInputInstructions,
+        },
+        utils::extraction::IR,
+    };
+
+    impl<CV> CellReprSize for AssignedNativePoint<CV>
+    where
+        CV: CircuitCurve,
+    {
+        const SIZE: usize = <AssignedNative<CV::Base> as CellReprSize>::SIZE * 2;
+    }
+
+    impl<CV: CircuitCurve> CellReprSize for AssignedScalarOfNativeCurve<CV> {
+        const SIZE: usize = <AssignedNative<CV::Base> as CellReprSize>::SIZE;
+    }
+
+    impl<F, CV, C, L> LoadFromCells<F, C, ExtractionSupport, L> for AssignedNativePoint<CV>
+    where
+        F: PrimeField,
+        CV: CircuitCurve<Base = F>,
+        C: EccInstructions<F, CV, Point = AssignedNativePoint<CV>, Coordinate = AssignedNative<F>>,
+        L: Layouter<F>,
+    {
+        fn load(
+            ctx: &mut ICtx<F, ExtractionSupport>,
+            chip: &C,
+            layouter: &mut impl LayoutAdaptor<F, ExtractionSupport, Adaptee = L>,
+            injected_ir: &mut IR<F>,
+        ) -> Result<Self, Error> {
+            let x = ctx.load(chip, layouter, injected_ir)?;
+            let y = ctx.load(chip, layouter, injected_ir)?;
+            chip.point_from_coordinates(layouter.adaptee_ref_mut(), &x, &y)
+        }
+    }
+
+    impl<F, S, CV, C, L> LoadFromCells<F, C, ExtractionSupport, L> for AssignedScalarOfNativeCurve<CV>
+    where
+        F: PrimeField,
+        S: PrimeField,
+        CV: CircuitCurve<Base = F, Scalar = S>,
+        C: EccInstructions<F, CV, Point = AssignedNativePoint<CV>, Coordinate = AssignedNative<F>>
+            + ConversionInstructions<F, AssignedNative<F>, AssignedScalarOfNativeCurve<CV>>,
+        L: Layouter<F>,
+    {
+        fn load(
+            ctx: &mut ICtx<F, ExtractionSupport>,
+            chip: &C,
+            layouter: &mut impl LayoutAdaptor<F, ExtractionSupport, Adaptee = L>,
+            injected_ir: &mut IR<F>,
+        ) -> Result<Self, Error> {
+            let cell = ctx.load(chip, layouter, injected_ir)?;
+            chip.convert(layouter.adaptee_ref_mut(), &cell)
+        }
+    }
+
+    impl<CV, C, L> StoreIntoCells<CV::Base, C, ExtractionSupport, L> for AssignedNativePoint<CV>
+    where
+        CV: CircuitCurve,
+        C: PublicInputInstructions<CV::Base, AssignedNativePoint<CV>>,
+        L: Layouter<CV::Base>,
+    {
+        fn store(
+            self,
+            ctx: &mut OCtx<CV::Base, ExtractionSupport>,
+            chip: &C,
+            layouter: &mut impl LayoutAdaptor<CV::Base, ExtractionSupport, Adaptee = L>,
+            injected_ir: &mut IR<CV::Base>,
+        ) -> Result<(), Error> {
+            let v = chip.as_public_input(layouter.adaptee_ref_mut(), &self)?;
+            expect_elements!((2 == v.len()), "While storing a native point");
+
+            v.store_dyn(ctx, chip, layouter, injected_ir)
+        }
+    }
+
+    impl<CV, C, L> StoreIntoCells<CV::Base, C, ExtractionSupport, L> for AssignedScalarOfNativeCurve<CV>
+    where
+        CV: CircuitCurve,
+        C: DecompositionInstructions<CV::Base, AssignedNative<CV::Base>>,
+        L: Layouter<CV::Base>,
+    {
+        fn store(
+            self,
+            ctx: &mut OCtx<CV::Base, ExtractionSupport>,
+            chip: &C,
+            layouter: &mut impl LayoutAdaptor<CV::Base, ExtractionSupport, Adaptee = L>,
+            injected_ir: &mut IR<CV::Base>,
+        ) -> Result<(), Error> {
+            expect_elements!(
+                (CV::Base::NUM_BITS as usize >= self.0.len()),
+                "while storing a ScalarVar"
+            );
+
+            chip.assigned_from_le_bits(layouter.adaptee_ref_mut(), &self.0)?.store(
+                ctx,
+                chip,
+                layouter,
+                injected_ir,
+            )
+        }
     }
 }
 
@@ -321,6 +446,11 @@ type NG<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
 /// A native  [`EccInstructions`] chip.
 /// Since the chip is native, it only supports the embedded curve Jubjub.
 #[derive(Clone, Debug)]
+#[cfg_attr(
+    feature = "extraction",
+    derive(picus::NoChipArgs, picus::InitFromScratch),
+    field(C::Base)
+)]
 pub struct EccChip<C: EdwardsCurve> {
     config: EccConfig,
     native_gadget: NG<C::Base>,
@@ -475,11 +605,12 @@ impl<C: EdwardsCurve> EccChip<C> {
     }
 
     /// Given the scalar in little-endian, double and add for each bit.
+    #[picus::group]
     pub fn mul(
         &self,
         layouter: &mut impl Layouter<C::Base>,
-        scalar: &AssignedScalarOfNativeCurve<C>,
-        base: &AssignedNativePoint<C>,
+        #[input] scalar: &AssignedScalarOfNativeCurve<C>,
+        #[input] base: &AssignedNativePoint<C>,
     ) -> Result<AssignedNativePoint<C>, Error> {
         let config = &self.config();
 
@@ -550,11 +681,12 @@ impl<C: EdwardsCurve> EccInstructions<C::Base, C> for EccChip<C> {
     type Coordinate = AssignedNative<C::Base>;
     type Scalar = AssignedScalarOfNativeCurve<C>;
 
+    #[picus::group]
     fn add(
         &self,
         layouter: &mut impl Layouter<C::Base>,
-        p: &Self::Point,
-        q: &Self::Point,
+        #[input] p: &Self::Point,
+        #[input] q: &Self::Point,
     ) -> Result<Self::Point, Error> {
         let config = self.config();
         let b: AssignedBit<C::Base> = self.native_gadget.assign_fixed(layouter, true)?;
@@ -592,11 +724,12 @@ impl<C: EdwardsCurve> EccInstructions<C::Base, C> for EccChip<C> {
         })
     }
 
+    #[picus::group]
     fn msm(
         &self,
         layouter: &mut impl Layouter<C::Base>,
-        scalars: &[Self::Scalar],
-        bases: &[Self::Point],
+        #[input] scalars: &[Self::Scalar],
+        #[input] bases: &[Self::Point],
     ) -> Result<Self::Point, Error> {
         let scaled_points = scalars
             .iter()
@@ -609,11 +742,12 @@ impl<C: EdwardsCurve> EccInstructions<C::Base, C> for EccChip<C> {
         })
     }
 
+    #[picus::group]
     fn mul_by_constant(
         &self,
         layouter: &mut impl Layouter<C::Base>,
         scalar: C::Scalar,
-        base: &Self::Point,
+        #[input] base: &Self::Point,
     ) -> Result<Self::Point, Error> {
         if scalar == C::Scalar::ZERO {
             return self.assign_fixed(layouter, C::CryptographicGroup::identity());

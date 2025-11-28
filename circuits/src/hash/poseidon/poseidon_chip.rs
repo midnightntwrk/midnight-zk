@@ -93,6 +93,10 @@ pub struct PoseidonConfig<F: PoseidonField> {
 
 /// Chip for Poseidon operations.
 #[derive(Clone, Debug)]
+#[cfg_attr(
+    feature = "extraction",
+    derive(picus::NoChipArgs, picus::InitFromScratch)
+)]
 pub struct PoseidonChip<F: PoseidonField> {
     config: PoseidonConfig<F>,
     native_chip: NativeChip<F>,
@@ -602,6 +606,108 @@ impl<F: PoseidonField> FromScratch<F> for PoseidonChip<F> {
 
     fn load_from_scratch(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
         self.native_chip.load_from_scratch(layouter)
+    }
+}
+
+#[cfg(feature = "extraction")]
+pub mod extraction {
+    //! Extraction specific logic related to the poseidon chip.
+    use extractor_support::{
+        cells::{
+            ctx::{ICtx, LayoutAdaptor, OCtx},
+            load::LoadFromCells,
+            store::{StoreIntoCells, StoreIntoCellsDyn},
+            CellReprSize,
+        },
+        expect_elements,
+    };
+    use ff::PrimeField;
+    use midnight_proofs::{plonk::Error, ExtractionSupport};
+
+    use super::{AssignedPoseidonState, WIDTH};
+    use crate::{field::AssignedNative, utils::extraction::IR};
+
+    /// Represents an [`AssignedPoseidonState`] loaded from the inputs or stored
+    /// into outputs.
+    #[derive(Debug)]
+    pub struct LoadedPoseidonState<F: PrimeField, const QUEUE: usize>(AssignedPoseidonState<F>);
+
+    impl<F: PrimeField, const QUEUE: usize> From<LoadedPoseidonState<F, QUEUE>>
+        for AssignedPoseidonState<F>
+    {
+        fn from(value: LoadedPoseidonState<F, QUEUE>) -> Self {
+            value.0
+        }
+    }
+
+    impl<F: PrimeField, const QUEUE: usize> TryFrom<AssignedPoseidonState<F>>
+        for LoadedPoseidonState<F, QUEUE>
+    {
+        type Error = extractor_support::error::Error;
+
+        fn try_from(value: AssignedPoseidonState<F>) -> Result<Self, Self::Error> {
+            expect_elements!(
+                (QUEUE >= value.queue.len()),
+                "while converting an assigned poseidon state into loaded"
+            );
+
+            Ok(Self(value))
+        }
+    }
+
+    impl<F: PrimeField, const QUEUE: usize> CellReprSize for LoadedPoseidonState<F, QUEUE> {
+        const SIZE: usize = <[AssignedNative<F>; WIDTH] as CellReprSize>::SIZE
+            + <[AssignedNative<F>; QUEUE] as CellReprSize>::SIZE;
+    }
+
+    impl<F: PrimeField, const QUEUE: usize, C, L> LoadFromCells<F, C, ExtractionSupport, L>
+        for LoadedPoseidonState<F, QUEUE>
+    {
+        fn load(
+            ctx: &mut ICtx<F, ExtractionSupport>,
+            chip: &C,
+            layouter: &mut impl LayoutAdaptor<F, ExtractionSupport, Adaptee = L>,
+            injected_ir: &mut IR<F>,
+        ) -> Result<Self, Error> {
+            Ok(Self(AssignedPoseidonState {
+                register: ctx.load(chip, layouter, injected_ir)?,
+                queue: vec::<F, QUEUE>(ctx.load(chip, layouter, injected_ir)?),
+                squeeze_position: 0,
+                input_len: Some(QUEUE),
+            }))
+        }
+    }
+
+    impl<F: PrimeField, const QUEUE: usize, C, L> StoreIntoCells<F, C, ExtractionSupport, L>
+        for LoadedPoseidonState<F, QUEUE>
+    {
+        fn store(
+            self,
+            ctx: &mut OCtx<F, ExtractionSupport>,
+            chip: &C,
+            layouter: &mut impl LayoutAdaptor<F, ExtractionSupport, Adaptee = L>,
+            injected_ir: &mut IR<F>,
+        ) -> Result<(), Error> {
+            let queue_len = self.0.queue.len();
+            expect_elements!(
+                (QUEUE >= queue_len),
+                "while converting an assigned poseidon state into loaded"
+            );
+
+            self.0.register.store(ctx, chip, layouter, injected_ir)?;
+            self.0.queue.store_dyn(ctx, chip, layouter, injected_ir)?;
+
+            for _ in queue_len..QUEUE {
+                ctx.set_next_to_zero(layouter)?;
+            }
+            Ok(())
+        }
+    }
+
+    fn vec<F: PrimeField, const QUEUE: usize>(
+        a: [AssignedNative<F>; QUEUE],
+    ) -> Vec<AssignedNative<F>> {
+        a.to_vec()
     }
 }
 

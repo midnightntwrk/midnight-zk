@@ -14,6 +14,7 @@ verification keys break backwards compatibility.
 ### Added
 * SHA512 chip [#96](https://github.com/midnightntwrk/midnight-zk/pull/96)
 * Introduce `is_not_equal` and `is_not_equal_to_fixed` [#130](https://github.com/midnightntwrk/midnight-zk/pull/130)
+* Support for integrating with [midnight-extractor](https://github.com/Veridise/midnight-extractor) [#137](https://github.com/midnightntwrk/midnight-zk/pull/137)
 
 ### Changed
 * Optimize `bigint_to_fe` [#115](https://github.com/midnightntwrk/midnight-zk/pull/115)

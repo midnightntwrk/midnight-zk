@@ -102,6 +102,10 @@ where
 
 /// ['ECChip'] to perform foreign EC operations.
 #[derive(Clone, Debug)]
+#[cfg_attr(
+    feature = "extraction",
+    derive(picus::NoChipArgs, picus::InitFromScratch)
+)]
 pub struct ForeignEccChip<F, C, B, S, N>
 where
     F: PrimeField,
@@ -2060,6 +2064,82 @@ where
             native_gadget_config,
             scalar_field_config,
             ff_ecc_config,
+        }
+    }
+}
+
+#[cfg(feature = "extraction")]
+pub mod extraction {
+    //! Extraction specific logic related to the foreign ecc chip.
+    use extractor_support::cells::{
+        ctx::{ICtx, LayoutAdaptor, OCtx},
+        load::LoadFromCells,
+        store::StoreIntoCells,
+        CellReprSize,
+    };
+    use ff::PrimeField;
+    use midnight_proofs::{circuit::Value, plonk::Error, ExtractionSupport};
+
+    use super::AssignedForeignPoint;
+    use crate::{
+        ecc::curves::WeierstrassCurve,
+        field::foreign::params::FieldEmulationParams,
+        types::{AssignedBit, AssignedField},
+        utils::extraction::IR,
+    };
+
+    impl<F, C, B> CellReprSize for AssignedForeignPoint<F, C, B>
+    where
+        F: PrimeField,
+        C: WeierstrassCurve,
+        B: FieldEmulationParams<F, C::Base>,
+    {
+        const SIZE: usize = <AssignedBit<F> as CellReprSize>::SIZE
+            + <AssignedField<F, C::Base, B> as CellReprSize>::SIZE * 2;
+    }
+
+    // This loading and storing implementation is probably naive and it may need
+    // some extra IR to properly handle the the `is_id` flag.
+
+    impl<F, C, B, Chip, L> LoadFromCells<F, Chip, ExtractionSupport, L>
+        for AssignedForeignPoint<F, C, B>
+    where
+        F: PrimeField,
+        C: WeierstrassCurve,
+        B: FieldEmulationParams<F, C::Base>,
+    {
+        fn load(
+            ctx: &mut ICtx<F, ExtractionSupport>,
+            chip: &Chip,
+            layouter: &mut impl LayoutAdaptor<F, ExtractionSupport, Adaptee = L>,
+            injected_ir: &mut IR<F>,
+        ) -> Result<Self, Error> {
+            Ok(Self {
+                point: Value::unknown(),
+                is_id: ctx.load(chip, layouter, injected_ir)?,
+                x: ctx.load(chip, layouter, injected_ir)?,
+                y: ctx.load(chip, layouter, injected_ir)?,
+            })
+        }
+    }
+
+    impl<F, C, B, Chip, L> StoreIntoCells<F, Chip, ExtractionSupport, L>
+        for AssignedForeignPoint<F, C, B>
+    where
+        F: PrimeField,
+        C: WeierstrassCurve,
+        B: FieldEmulationParams<F, C::Base>,
+    {
+        fn store(
+            self,
+            ctx: &mut OCtx<F, ExtractionSupport>,
+            chip: &Chip,
+            layouter: &mut impl LayoutAdaptor<F, ExtractionSupport, Adaptee = L>,
+            injected_ir: &mut IR<F>,
+        ) -> Result<(), Error> {
+            self.is_id.store(ctx, chip, layouter, injected_ir)?;
+            self.x.store(ctx, chip, layouter, injected_ir)?;
+            self.y.store(ctx, chip, layouter, injected_ir)
         }
     }
 }

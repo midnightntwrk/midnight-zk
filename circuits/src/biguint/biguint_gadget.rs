@@ -53,6 +53,10 @@ use crate::{
 };
 
 #[derive(Clone, Debug)]
+#[cfg_attr(
+    feature = "extraction",
+    derive(picus::NoChipArgs, picus::InitFromScratch)
+)]
 /// A gadget for emulating arithmetic over the integers.
 ///  - F: the native field,
 ///  - N: a set of in-circuit native instructions.

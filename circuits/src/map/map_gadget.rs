@@ -46,6 +46,12 @@ where
 }
 
 #[derive(Clone, Debug)]
+#[cfg_attr(
+    feature = "extraction",
+    derive(picus::NoChipArgs, picus::InitFromScratch),
+    from_scratch(N),
+    from_scratch(H)
+)]
 /// Gadget for proving `insert` and `get` instructions in a map.
 pub struct MapGadget<F, N, H>
 where
