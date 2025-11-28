@@ -15,6 +15,7 @@ This project was originally built upon the foundations of several outstanding op
 
 - [`blstrs`](https://github.com/filecoin-project/blstrs) – by the Filecoin Project
 - [`jubjub`](https://github.com/zcash/jubjub) – by the Zcash Project
+- [`halo2curves`](https://github.com/privacy-scaling-explorations/halo2curves) v0.8.0 – by the Privacy Scaling Explorations (PSE) team
 - [`halo2`](https://github.com/privacy-scaling-explorations/halo2) v0.3.0 – by the Privacy Scaling Explorations (PSE) team, itself originally derived from the [Zcash Sapling proving system](https://github.com/zcash/halo2)
 
 We initially maintained the following components as forks:
