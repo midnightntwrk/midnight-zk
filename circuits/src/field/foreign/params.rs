@@ -19,13 +19,9 @@
 use std::{fmt::Debug, ops::Rem};
 
 use ff::PrimeField;
-use midnight_curves::{
-    bls12_381, secp256k1,
-};
 #[cfg(feature = "dev-curves")]
-use midnight_curves::{
-    bn256,
-};
+use midnight_curves::bn256;
+use midnight_curves::{bls12_381, secp256k1};
 use num_bigint::{BigInt, BigInt as BI, ToBigInt};
 use num_traits::{One, Signed};
 

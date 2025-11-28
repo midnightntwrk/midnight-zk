@@ -338,10 +338,10 @@ pub trait MSM<C: PrimeCurveAffine>: Clone + Debug + Send + Sized + Sync {
 }
 
 #[cfg(test)]
+use midnight_curves::Fq as Scalar;
+#[cfg(test)]
 use rand_core::OsRng;
 
-#[cfg(test)]
-use midnight_curves::Fq as Scalar;
 use crate::poly::kzg::msm::MSMKZG;
 
 #[test]

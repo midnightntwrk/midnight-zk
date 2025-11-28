@@ -1,10 +1,14 @@
-use super::fq::Fq;
-use ff::{Field, FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
-use crate::ff_ext::quadratic::{QuadExtField, QuadExtFieldArith, SQRT};
-use crate::ff_ext::{ExtField, Legendre};
 use core::convert::TryInto;
 use std::cmp::Ordering;
+
+use ff::{Field, FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
 use subtle::{Choice, CtOption};
+
+use super::fq::Fq;
+use crate::ff_ext::{
+    quadratic::{QuadExtField, QuadExtFieldArith, SQRT},
+    ExtField, Legendre,
+};
 
 crate::impl_binops_additive!(Fq2, Fq2);
 crate::impl_binops_multiplicative!(Fq2, Fq2);

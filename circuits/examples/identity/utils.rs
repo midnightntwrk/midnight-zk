@@ -1,7 +1,7 @@
 use std::{fs::OpenOptions, io::Read};
 
-use midnight_curves::secp256k1::{Fq as secp256k1Scalar, Secp256k1};
 use midnight_circuits::testing_utils::ecdsa::{ECDSASig, Ecdsa, FromBase64};
+use midnight_curves::secp256k1::{Fq as secp256k1Scalar, Secp256k1};
 use midnight_proofs::plonk::Error;
 use sha2::Digest;
 

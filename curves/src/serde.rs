@@ -1,7 +1,4 @@
-use std::{
-    convert::TryInto,
-    fmt::Debug,
-};
+use std::{convert::TryInto, fmt::Debug};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};

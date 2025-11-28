@@ -2,7 +2,6 @@
 
 use std::{io::Write, time::Instant};
 
-use midnight_curves::secp256k1::Secp256k1;
 use midnight_circuits::{
     compact_std_lib::{self, Relation, ZkStdLib, ZkStdLibArch},
     field::foreign::{params::MultiEmulationParams, AssignedField},
@@ -17,7 +16,7 @@ use midnight_circuits::{
     },
     types::{AssignedByte, AssignedForeignPoint, Instantiable},
 };
-use midnight_curves::G1Affine;
+use midnight_curves::{secp256k1::Secp256k1, G1Affine};
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::{commit_to_instances, Error},

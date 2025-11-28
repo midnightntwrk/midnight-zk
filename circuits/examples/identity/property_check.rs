@@ -3,7 +3,6 @@
 use std::time::Instant;
 
 use base64::{decode_config, STANDARD_NO_PAD};
-use midnight_curves::secp256k1::{Fq as secp256k1Scalar, Secp256k1};
 use midnight_circuits::{
     compact_std_lib::{self, Relation, ZkStdLib, ZkStdLibArch},
     field::foreign::{params::MultiEmulationParams, AssignedField},
@@ -18,7 +17,10 @@ use midnight_circuits::{
     },
     types::{AssignedByte, AssignedForeignPoint, AssignedNative},
 };
-use midnight_curves::G1Affine;
+use midnight_curves::{
+    secp256k1::{Fq as secp256k1Scalar, Secp256k1},
+    G1Affine,
+};
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::{commit_to_instances, Error},

@@ -15,13 +15,12 @@
 
 use ff::PrimeField;
 use group::{Curve, Group};
-use midnight_curves::{
-    secp256k1::{Secp256k1, Secp256k1Affine},
-    CurveAffine,
-};
 #[cfg(feature = "dev-curves")]
 use midnight_curves::bn256;
-use midnight_curves::{Fq as BlsScalar, JubjubAffine, JubjubExtended, JubjubSubgroup};
+use midnight_curves::{
+    secp256k1::{Secp256k1, Secp256k1Affine},
+    CurveAffine, Fq as BlsScalar, JubjubAffine, JubjubExtended, JubjubSubgroup,
+};
 
 /// An elliptic curve whose points can be represented in terms of its base
 /// field.
@@ -224,4 +223,3 @@ impl WeierstrassCurve for bn256::G1 {
     const BASE_ZETA: Self::Base = <bn256::Fq as ff::WithSmallOrderMulGroup<3>>::ZETA;
     const SCALAR_ZETA: Self::Scalar = <bn256::Fr as ff::WithSmallOrderMulGroup<3>>::ZETA;
 }
-

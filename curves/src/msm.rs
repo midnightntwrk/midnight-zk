@@ -1,5 +1,4 @@
-use std::convert::TryInto;
-use std::ops::Neg;
+use std::{convert::TryInto, ops::Neg};
 
 use ff::{Field, PrimeField};
 use group::Group;

@@ -128,15 +128,11 @@ macro_rules! test_pairing {
                 .collect::<Vec<_>>();
             let mut terms = terms.iter().map(|(a, b)| (a, b)).collect::<Vec<_>>();
             let gt = $engine::pairing(&g1, &g2);
-            let u0 = scalars
-                .iter()
-                .fold($target::identity(), |acc, (a, b)| acc + gt * a * b);
+            let u0 = scalars.iter().fold($target::identity(), |acc, (a, b)| acc + gt * a * b);
             let u1 = multi_miller_loop(&terms[..]).final_exponentiation();
             assert_eq!(u1, u0);
 
-            let last = scalars
-                .iter()
-                .fold($scalar::ZERO, |acc, (u0, u1)| acc + u0 * u1);
+            let last = scalars.iter().fold($scalar::ZERO, |acc, (u0, u1)| acc + u0 * u1);
             let negg1 = -g1;
             let accg2 = (g2 * last).into();
             terms.push((&negg1, &accg2));
