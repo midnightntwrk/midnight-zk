@@ -1,8 +1,6 @@
 #[macro_export]
 macro_rules! field_bits {
     ($field:ident) => {
-        #[cfg(feature = "bits")]
-        #[cfg_attr(docsrs, doc(cfg(feature = "bits")))]
         impl ff::PrimeFieldBits for $field {
             #[cfg(target_pointer_width = "64")]
             type ReprBits = [u64; Self::NUM_LIMBS];
