@@ -1,28 +1,29 @@
 //! BLS12-381 pairing-friendly elliptic curve implementation.
 
+mod bls_pairing;
 mod fp;
+mod fp12;
 mod fp2;
 mod fp6;
-mod fp12;
 mod fq;
 mod g1;
 mod g2;
 mod gt;
-mod pairing;
 
+pub use bls_pairing::*;
 pub use fp::Fp;
+pub use fp12::Fp12;
 pub use fp2::Fp2;
 pub use fp6::Fp6;
-pub use fp12::Fp12;
 pub use fq::Fq;
 pub use g1::{G1Affine, G1Projective, A, B};
 pub use g2::{G2Affine, G2Prepared, G2Projective};
 pub use gt::Gt;
-pub use pairing::*;
 
 use ff::Field;
 use group::prime::PrimeCurveAffine;
-use pairing_lib::{Engine, MultiMillerLoop};
+use pairing::Engine;
+use pairing::MultiMillerLoop;
 
 /// BLS12-381 pairing engine.
 #[derive(Debug, Copy, Clone)]

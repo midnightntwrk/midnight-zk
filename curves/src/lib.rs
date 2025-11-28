@@ -41,8 +41,8 @@ pub use bls12_381::{
 pub use curve::{Coordinates, CurveAffine, CurveExt};
 pub use jubjub::*;
 
-// Re-export pairing library for compatibility with halo2 ecosystem
-pub use pairing_lib as pairing;
+// // Re-export pairing library for compatibility with halo2 ecosystem
+pub use pairing;
 
 #[cfg(feature = "serde")]
 mod serde_impl;
