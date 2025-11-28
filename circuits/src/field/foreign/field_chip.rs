@@ -384,6 +384,20 @@ where
     _marker: PhantomData<(F, K, P, N)>,
 }
 
+#[cfg(feature = "extraction")]
+impl<F, K, P, N> FieldChip<F, K, P, N>
+where
+    F: PrimeField,
+    K: PrimeField,
+    P: FieldEmulationParams<F, K>,
+    N: NativeInstructions<F>,
+{
+    /// Returns a reference to the internal native gadget.
+    pub fn native_gadget(&self) -> &N {
+        &self.native_gadget
+    }
+}
+
 impl<F, K, P> AssignedField<F, K, P>
 where
     F: PrimeField,
