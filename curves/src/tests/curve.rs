@@ -497,8 +497,9 @@ macro_rules! curve_testing_suite {
     };
 }
 
-use crate::{CurveAffine, CurveExt};
 use group::Curve;
+
+use crate::{CurveAffine, CurveExt};
 
 pub(crate) struct TestH2C<C: CurveAffine> {
     msg: &'static [u8],

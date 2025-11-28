@@ -11,6 +11,7 @@ mod g2;
 mod gt;
 
 pub use bls_pairing::*;
+use ff::Field;
 pub use fp::Fp;
 pub use fp12::Fp12;
 pub use fp2::Fp2;
@@ -18,12 +19,9 @@ pub use fp6::Fp6;
 pub use fq::Fq;
 pub use g1::{G1Affine, G1Projective, A, B};
 pub use g2::{G2Affine, G2Prepared, G2Projective};
-pub use gt::Gt;
-
-use ff::Field;
 use group::prime::PrimeCurveAffine;
-use pairing::Engine;
-use pairing::MultiMillerLoop;
+pub use gt::Gt;
+use pairing::{Engine, MultiMillerLoop};
 
 /// BLS12-381 pairing engine.
 #[derive(Debug, Copy, Clone)]

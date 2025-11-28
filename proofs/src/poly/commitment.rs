@@ -5,12 +5,11 @@ use std::{fmt::Debug, hash::Hash};
 use ff::{FromUniformBytes, PrimeField};
 
 use crate::{
-    plonk::Circuit,
+    plonk::{k_from_circuit, Circuit},
     poly::{Coeff, Error, LagrangeCoeff, Polynomial, ProverQuery, VerifierQuery},
     transcript::{Hashable, Sampleable, Transcript},
     utils::helpers::ProcessedSerdeObject,
 };
-use crate::plonk::k_from_circuit;
 
 /// Public interface for a additively homomorphic Polynomial Commitment Scheme
 /// (PCS)

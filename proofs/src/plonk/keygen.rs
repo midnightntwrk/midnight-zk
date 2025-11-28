@@ -15,6 +15,7 @@ use super::{
 };
 use crate::{
     circuit::Value,
+    dev::cost_model::cost_model_options,
     poly::{
         batch_invert_rational,
         commitment::{Params, PolynomialCommitmentScheme},
@@ -22,7 +23,6 @@ use crate::{
     },
     utils::{arithmetic::parallelize, rational::Rational},
 };
-use crate::dev::cost_model::cost_model_options;
 
 pub(crate) fn create_domain<F, ConcreteCircuit>(
     k: u32,

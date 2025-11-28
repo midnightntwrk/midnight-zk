@@ -5,9 +5,8 @@ use group::{Curve, Group};
 use midnight_curves::{
     msm::msm_best,
     pairing::{Engine, MillerLoopResult, MultiMillerLoop},
-    CurveAffine,
+    CurveAffine, Fq, G1Projective,
 };
-use midnight_curves::{Fq, G1Projective};
 use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 
 use super::params::ParamsVerifierKZG;

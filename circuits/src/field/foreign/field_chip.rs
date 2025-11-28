@@ -1689,8 +1689,10 @@ where
 
 #[cfg(test)]
 mod tests {
-    use midnight_curves::secp256k1::{Fp as secp256k1Base, Fq as secp256k1Scalar};
-    use midnight_curves::Fq as BlsScalar;
+    use midnight_curves::{
+        secp256k1::{Fp as secp256k1Base, Fq as secp256k1Scalar},
+        Fq as BlsScalar,
+    };
 
     use super::*;
     use crate::{

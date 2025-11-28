@@ -272,7 +272,8 @@ impl<F: Field> Mul<F> for Value<F> {
 ///
 /// // If we provide a too-small K, we get a panic.
 /// use std::panic;
-/// let result = panic::catch_unwind(|| MockProver::<Scalar>::run(2, &circuit, vec![]).unwrap_err());
+/// let result =
+///     panic::catch_unwind(|| MockProver::<Scalar>::run(2, &circuit, vec![]).unwrap_err());
 /// assert_eq!(
 ///     result.unwrap_err().downcast_ref::<String>().unwrap(),
 ///     "n=4, minimum_rows=8, k=2"

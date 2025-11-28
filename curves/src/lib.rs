@@ -34,13 +34,12 @@ pub mod secp256k1;
 pub mod bn256;
 
 // Re-exports for production curves
-pub use bls12_381::{unique_messages, MillerLoopResult, PairingG1G2, PairingG2G1};
 pub use bls12_381::{
-    Bls12, Fp, Fq, G1Affine, G1Projective, G2Affine, G2Prepared, G2Projective, Gt, A, B,
+    unique_messages, Bls12, Fp, Fq, G1Affine, G1Projective, G2Affine, G2Prepared, G2Projective, Gt,
+    MillerLoopResult, PairingG1G2, PairingG2G1, A, B,
 };
 pub use curve::{Coordinates, CurveAffine, CurveExt};
 pub use jubjub::*;
-
 // // Re-export pairing library for compatibility with halo2 ecosystem
 pub use pairing;
 

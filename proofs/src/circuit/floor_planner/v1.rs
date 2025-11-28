@@ -528,14 +528,7 @@ mod tests {
             ) -> Result<(), crate::plonk::Error> {
                 layouter.assign_region(
                     || "assign constant",
-                    |mut region| {
-                        region.assign_advice_from_constant(
-                            || "one",
-                            config,
-                            0,
-                            Fq::ONE,
-                        )
-                    },
+                    |mut region| region.assign_advice_from_constant(|| "one", config, 0, Fq::ONE),
                 )?;
 
                 Ok(())

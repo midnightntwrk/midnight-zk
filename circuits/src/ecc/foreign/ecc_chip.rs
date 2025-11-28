@@ -2067,10 +2067,7 @@ where
 #[cfg(test)]
 mod tests {
     use group::Group;
-    use midnight_curves::{
-        secp256k1::Secp256k1,
-    };
-    use midnight_curves::{Fq as BlsScalar, G1Projective as BlsG1};
+    use midnight_curves::{secp256k1::Secp256k1, Fq as BlsScalar, G1Projective as BlsG1};
 
     use super::*;
     use crate::{

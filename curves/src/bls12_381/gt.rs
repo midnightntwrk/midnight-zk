@@ -327,7 +327,9 @@ mod tests {
     use rand_xorshift::XorShiftRng;
 
     use super::*;
-    use crate::bls12_381::{pairing, Bls12, G1Affine, G1Projective, G2Affine, G2Prepared, G2Projective};
+    use crate::bls12_381::{
+        pairing, Bls12, G1Affine, G1Projective, G2Affine, G2Prepared, G2Projective,
+    };
 
     #[test]
     fn test_gt_generator() {
@@ -339,7 +341,6 @@ mod tests {
 
     #[test]
     fn test_gt_bilinearity() {
-
         let a = Fq::from_u64s_le(&[1, 2, 3, 4]).unwrap().invert().unwrap().square();
         let b = Fq::from_u64s_le(&[5, 6, 7, 8]).unwrap().invert().unwrap().square();
         let c = a * b;

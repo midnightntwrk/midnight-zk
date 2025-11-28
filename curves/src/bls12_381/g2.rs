@@ -19,10 +19,9 @@ use group::{
     prime::{PrimeCurve, PrimeCurveAffine, PrimeGroup},
     Curve, Group, GroupEncoding, UncompressedEncoding, WnafGroup,
 };
+use pairing::{Engine, PairingCurveAffine};
 use rand_core::RngCore;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
-
-use pairing::{Engine, PairingCurveAffine};
 
 use super::{fp::Fp, fp2::Fp2, Bls12, Fq, G1Affine, Gt};
 use crate::{

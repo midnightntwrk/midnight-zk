@@ -287,8 +287,8 @@ fn approximate<const L: usize>(x: &LInt<L>, y: &LInt<L>) -> (u64, u64, bool) {
         h.0 |= x.0[i - 1] >> z;
         h.1 |= y.0[i - 1] >> z;
     }
-    let h = (h.0 & u64::MAX << 32, h.1 & u64::MAX << 32);
-    let l = (x.0[0] & u64::MAX >> 32, y.0[0] & u64::MAX >> 32);
+    let h = (h.0 & (u64::MAX << 32), h.1 & (u64::MAX << 32));
+    let l = (x.0[0] & (u64::MAX >> 32), y.0[0] & (u64::MAX >> 32));
     (h.0 | l.0, h.1 | l.1, false)
 }
 
@@ -306,10 +306,10 @@ fn jacobinary(mut n: u64, mut d: u64, mut t: u64) -> i64 {
                 t ^= n & d;
             }
             n = (n - d) >> 1;
-            t ^= d ^ d >> 1;
+            t ^= d ^ (d >> 1);
         } else {
             let z = n.trailing_zeros();
-            t ^= (d ^ d >> 1) & (z << 1) as u64;
+            t ^= (d ^ (d >> 1)) & (z << 1) as u64;
             n >>= z;
         }
     }
@@ -329,10 +329,8 @@ fn jacobinary(mut n: u64, mut d: u64, mut t: u64) -> i64 {
 /// described by M. Hamburg, and some original optimizations. Only these
 /// differences have been commented; the aforesaid Pornin's method and the used
 /// ideas of M. Hamburg were given here:
-/// - T. Pornin, "Optimized Binary GCD for Modular Inversion",
-/// <https://eprint.iacr.org/2020/972.pdf>
-/// - M. Hamburg, "Computing the Jacobi symbol using Bernstein-Yang",
-/// <https://eprint.iacr.org/2021/1271.pdf>
+/// - T. Pornin, "Optimized Binary GCD for Modular Inversion", <https://eprint.iacr.org/2020/972.pdf>
+/// - M. Hamburg, "Computing the Jacobi symbol using Bernstein-Yang", <https://eprint.iacr.org/2021/1271.pdf>
 pub fn jacobi<const L: usize>(n: &[u64], d: &[u64]) -> i64 {
     // Instead of the variable "j" taking the values from {-1, 1} and satisfying
     // at the end of the outer loop iteration the equation J = "j" * ("n" / |"d"|)
@@ -385,14 +383,14 @@ pub fn jacobi<const L: usize>(n: &[u64], d: &[u64]) -> i64 {
                 u = (u.0 - v.0, u.1 - v.1);
                 v = (v.0 << 1, v.1 << 1);
                 // The modified Jacobi symbol (2 / |y|) is -1, iff y mod 8 is {3, 5}
-                t ^= b ^ b >> 1;
+                t ^= b ^ (b >> 1);
                 i -= 1;
             } else {
                 // Performing the batch of sequential iterations, which divide "a" by 2
                 let z = i.min(a.trailing_zeros());
                 // The modified Jacobi symbol (2 / |y|) is -1, iff y mod 8 is {3, 5}. However,
                 // we do not need its value for a batch with an even number of divisions by 2
-                t ^= (b ^ b >> 1) & (z << 1) as u64;
+                t ^= (b ^ (b >> 1)) & (z << 1) as u64;
                 v = (v.0 << z, v.1 << z);
                 a >>= z;
                 i -= z;
