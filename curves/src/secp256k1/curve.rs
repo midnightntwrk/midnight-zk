@@ -1,12 +1,12 @@
-use crate::curve::{Coordinates, CurveAffine, CurveExt};
-use crate::serde::CompressedFlagConfig;
 use ff::{Field, PrimeField};
-use group::Curve;
-use group::{prime::PrimeCurveAffine, Group, GroupEncoding};
+use group::{prime::PrimeCurveAffine, Curve, Group, GroupEncoding};
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 
-use super::fp::Fp;
-use super::fq::Fq as Secp256k1Scalar;
+use super::{fp::Fp, fq::Fq as Secp256k1Scalar};
+use crate::{
+    curve::{Coordinates, CurveAffine, CurveExt},
+    serde::CompressedFlagConfig,
+};
 
 // Reference: https://neuromancer.sk/std/secg/secp256k1
 const SECP_GENERATOR_X: Fp = Fp::from_raw([
@@ -218,8 +218,9 @@ fn iso_map(x: Fp, y: Fp, z: Fp) -> Secp256k1 {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use ff::Field;
+
+    use super::*;
 
     #[test]
     fn test_curve_equation() {

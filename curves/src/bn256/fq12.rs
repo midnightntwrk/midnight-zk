@@ -1,6 +1,4 @@
-use super::fq::Fq;
-use super::fq2::Fq2;
-use super::fq6::Fq6;
+use super::{fq::Fq, fq2::Fq2, fq6::Fq6};
 use crate::ff_ext::{
     quadratic::{QuadExtField, QuadExtFieldArith, QuadSparseMul},
     ExtField,

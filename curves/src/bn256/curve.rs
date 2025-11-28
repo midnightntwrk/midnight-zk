@@ -1,17 +1,15 @@
-use crate::bn256::Fq;
-use crate::bn256::Fq2;
-use crate::bn256::Fr;
-use ff::{Field, PrimeField};
-use group::Curve;
-use group::{cofactor::CofactorGroup, prime::PrimeCurveAffine, Group, GroupEncoding};
-use crate::{
-    impl_binops_additive, impl_binops_additive_specify_output, impl_binops_multiplicative,
-    impl_binops_multiplicative_mixed, new_curve_impl,
-};
-use crate::{Coordinates, CurveAffine, CurveExt};
 use core::fmt::Debug;
 use std::convert::TryInto;
+
+use ff::{Field, PrimeField};
+use group::{cofactor::CofactorGroup, prime::PrimeCurveAffine, Curve, Group, GroupEncoding};
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
+
+use crate::{
+    bn256::{Fq, Fq2, Fr},
+    impl_binops_additive, impl_binops_additive_specify_output, impl_binops_multiplicative,
+    impl_binops_multiplicative_mixed, new_curve_impl, Coordinates, CurveAffine, CurveExt,
+};
 
 impl crate::serde::endian::EndianRepr for Fq2 {
     const ENDIAN: crate::serde::endian::Endian = Fq::ENDIAN;
@@ -253,10 +251,10 @@ impl G2 {
 
 #[cfg(test)]
 mod test {
-    use crate::tests::curve::TestH2C;
+    use group::UncompressedEncoding;
 
     use super::*;
-    use group::UncompressedEncoding;
+    use crate::tests::curve::TestH2C;
 
     crate::curve_testing_suite!(G2, "clear_cofactor");
     crate::curve_testing_suite!(G1, G2);

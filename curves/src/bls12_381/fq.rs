@@ -910,9 +910,8 @@ impl SerdeObject for Fq {
 
 #[cfg(test)]
 mod tests {
-    use crate::ff_ext::Legendre;
-
     use super::*;
+    use crate::ff_ext::Legendre;
 
     const LARGEST: Fq = Fq(blst::blst_fr {
         l: [
