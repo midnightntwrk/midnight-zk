@@ -111,9 +111,7 @@ fn batch_add<C: CurveAffine>(
         acc *= *z;
     }
 
-    acc = acc
-        .invert()
-        .expect("Some edge case has not been handled properly");
+    acc = acc.invert().expect("Some edge case has not been handled properly");
 
     for (
         (
@@ -313,9 +311,7 @@ impl<C: CurveAffine> Schedule<C> {
         if self.ptr != 0 {
             batch_add(self.ptr, &mut self.buckets, &self.set, bases);
             self.ptr = 0;
-            self.set
-                .iter_mut()
-                .for_each(|sch| *sch = SchedulePoint::default());
+            self.set.iter_mut().for_each(|sch| *sch = SchedulePoint::default());
         }
     }
 
@@ -354,12 +350,8 @@ pub fn msm_serial<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C], acc: &mut C
             *acc_limb |= *limb;
         }
     }
-    let max_byte_size = field_byte_size
-        - acc_or
-            .iter()
-            .rev()
-            .position(|v| *v != 0)
-            .unwrap_or(field_byte_size);
+    let max_byte_size =
+        field_byte_size - acc_or.iter().rev().position(|v| *v != 0).unwrap_or(field_byte_size);
     if max_byte_size == 0 {
         return;
     }
@@ -441,10 +433,8 @@ pub fn msm_parallel<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Cur
         rayon::scope(|scope| {
             let chunk = coeffs.len() / num_threads;
 
-            for ((coeffs, bases), acc) in coeffs
-                .chunks(chunk)
-                .zip(bases.chunks(chunk))
-                .zip(results.iter_mut())
+            for ((coeffs, bases), acc) in
+                coeffs.chunks(chunk).zip(bases.chunks(chunk)).zip(results.iter_mut())
             {
                 scope.spawn(move |_| {
                     msm_serial(coeffs, bases, acc);
@@ -538,7 +528,6 @@ pub fn msm_best<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
 mod test {
     use std::ops::Neg;
 
-    use ark_std::{end_timer, start_timer};
     use ff::{Field, PrimeField};
     use group::{Curve, Group};
     use rand_core::OsRng;
@@ -554,9 +543,8 @@ mod test {
             let u = scalar.to_repr();
             let n = Fr::NUM_BITS as usize / window + 1;
 
-            let table = (0..=1 << (window - 1))
-                .map(|i| point * Fr::from(i as u64))
-                .collect::<Vec<_>>();
+            let table =
+                (0..=1 << (window - 1)).map(|i| point * Fr::from(i as u64)).collect::<Vec<_>>();
 
             let mut acc = G1::identity();
             for i in (0..n).rev() {
@@ -614,13 +602,8 @@ mod test {
             let points = &points[..1 << k];
             let scalars = &scalars[..1 << k];
 
-            let t0 = start_timer!(|| format!("cyclone indep k={}", k));
             let e0 = super::msm_best(scalars, points);
-            end_timer!(t0);
-
-            let t1 = start_timer!(|| format!("older k={}", k));
             let e1 = super::msm_parallel(scalars, points);
-            end_timer!(t1);
             assert_eq!(e0, e1);
         }
     }
