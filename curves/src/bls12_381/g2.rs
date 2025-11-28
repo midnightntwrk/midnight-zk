@@ -22,7 +22,7 @@ use group::{
 use rand_core::RngCore;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 
-use pairing_lib::{Engine, PairingCurveAffine};
+use pairing::{Engine, PairingCurveAffine};
 
 use super::{fp::Fp, fp2::Fp2, Bls12, Fq, G1Affine, Gt};
 use crate::{

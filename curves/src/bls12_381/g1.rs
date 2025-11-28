@@ -22,7 +22,7 @@ use crate::{
     curve::{Coordinates, CurveAffine, CurveExt},
     serde_traits::SerdeObject,
 };
-use pairing_lib::{Engine, PairingCurveAffine};
+use pairing::{Engine, PairingCurveAffine};
 use super::{
     fp::{Fp, ZETA_BASE},
     Bls12, Fq, G2Affine, Gt,
