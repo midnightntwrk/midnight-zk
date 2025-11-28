@@ -12,7 +12,7 @@ use group::Group;
 use core::borrow::Borrow;
 use core::iter::Sum;
 use core::ops::{Add, Mul, Neg, Sub};
-use pairing_lib::{Engine, MillerLoopResult, MultiMillerLoop, PairingCurveAffine};
+use pairing::{Engine, MillerLoopResult, MultiMillerLoop, PairingCurveAffine};
 use rand_core::RngCore;
 use std::ops::MulAssign;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq};
@@ -212,7 +212,7 @@ mod test {
     use super::{multi_miller_loop, Fq12, G1Affine, G2Affine, Gt};
     use ff::Field;
     use group::{prime::PrimeCurveAffine, Curve, Group};
-    use pairing_lib::{Engine, MillerLoopResult, PairingCurveAffine};
+    use pairing::{Engine, MillerLoopResult, PairingCurveAffine};
     use rand_core::OsRng;
     crate::test_pairing!(Bn256, G1, G1Affine, G2, G2Affine, Fq12, Gt, Fr);
 }

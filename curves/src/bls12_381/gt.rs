@@ -322,7 +322,7 @@ impl Gt {
 #[cfg(test)]
 mod tests {
     use group::{prime::PrimeCurveAffine, Curve};
-    use pairing_lib::{Engine, MillerLoopResult, MultiMillerLoop};
+    use pairing::{Engine, MillerLoopResult, MultiMillerLoop};
     use rand_core::SeedableRng;
     use rand_xorshift::XorShiftRng;
 

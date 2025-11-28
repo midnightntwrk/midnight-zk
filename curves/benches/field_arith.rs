@@ -90,14 +90,5 @@ fn bench_bls_scalar_field(c: &mut Criterion) {
     bench_field_arithmetic::<Fq>(c, "scalar-field")
 }
 
-// fn bench_bls_fp2(c: &mut Criterion) {
-//     bench_field_arithmetic::<Fp2>(c, "Fp2")
-// }
-
-criterion_group!(
-    benches,
-    bench_bls_base_field,
-    bench_bls_scalar_field,
-    // bench_bls_fp2
-);
+criterion_group!(benches, bench_bls_base_field, bench_bls_scalar_field,);
 criterion_main!(benches);

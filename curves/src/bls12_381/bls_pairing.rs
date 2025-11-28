@@ -166,7 +166,7 @@ impl Default for MillerLoopResult {
     }
 }
 
-impl pairing_lib::MillerLoopResult for MillerLoopResult {
+impl pairing::MillerLoopResult for MillerLoopResult {
     type Gt = Gt;
 
     fn final_exponentiation(&self) -> Gt {
