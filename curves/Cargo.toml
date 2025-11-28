@@ -48,9 +48,8 @@ ark-std = "0.4"
 getrandom = { version = "0.2", features = ["js"] }
 
 [features]
-default = ["serde", "std", "bits"]
+default = ["serde", "std"]
 std = []
-bits = []
 serde = ["dep:serde", "dep:serde_arrays", "dep:hex"]
 portable = ["blst/portable"]
 __private_bench = []
