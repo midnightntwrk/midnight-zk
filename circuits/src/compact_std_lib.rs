@@ -252,6 +252,7 @@ pub struct ZkStdLib {
 
     // Flags that indicate if certain chips have been used. This way we can load the tables only
     // when necessary (thus reducing the min_k in some cases).
+    // Such a usage flag has to be added and updated correctly for each new chip using tables.
     used_sha256: Rc<RefCell<bool>>,
     used_sha512: Rc<RefCell<bool>>,
     used_secp256k1_scalar: Rc<RefCell<bool>>,
@@ -353,7 +354,7 @@ impl ZkStdLib {
                     >(),
                 ),
             arch.base64 as usize * NB_BASE64_ADVICE_COLS,
-            NB_AUTOMATA_COLS,
+            arch.automaton as usize * NB_AUTOMATA_COLS,
         ]
         .into_iter()
         .max()
@@ -598,7 +599,7 @@ impl ZkStdLib {
         self.native_gadget.lower_than(layouter, &bounded_x, &bounded_y)
     }
 
-    /// Poseidon hash from a slice of native valure into a native value.
+    /// Poseidon hash from a slice of native values into a native value.
     ///
     /// ```
     /// # midnight_circuits::run_test_std_lib!(chip, layouter, 13, {
