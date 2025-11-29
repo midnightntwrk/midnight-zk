@@ -19,6 +19,15 @@ midnight-proofs = { path = "../proofs", version = "0.5.1", default-features = fa
     "committed-instances",
 ] }
 
+# DO NOT MERGE BEFORE THIS IS ADDRESSED. 
+# For now, the build requires to have a local version of the *updated* keccak and blake2b. 
+# Replace this by the commented repos and the correct commit or tag, once the two repos are 
+# updated. Build fails with the current state of their repo.
+keccak = { path = "../../keccak_halo2", package = "sha3-circuit" }
+blake2b = { path = "../../blake2b_halo2", package = "blake2b_halo2" }
+# keccak = { git = "https://github.com/alexandroszacharakis8/sha3-circuit", rev = "27d17caf00fd77bc767890fd4bdd661b6d49f20c", package = "sha3-circuit" }
+# blake2b = { git = "https://github.com/eryxcoop/blake2b_halo2", rev = "f3269732175efb2684680a6eaa1de2dd25e6e589", package = "blake2b_halo2" }
+
 serde = { workspace = true, optional = true }
 serde_derive = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
@@ -32,6 +41,7 @@ subtle = "2.6"
 base64 = "0.13.1"
 lazy_static = "1.5.0"
 bincode = "2.0"
+hex = "0.4.3"
 
 [dev-dependencies]
 bench_macros = { path = "../bench-macros" }
@@ -44,6 +54,7 @@ itertools = "0.14"
 dhat = "0.3"
 bellman = "0.14.0"
 serial_test = "3.2.0"
+sha3 = "0.10.0"
 
 [target.'cfg(ci_build)'.dependencies]
 midnight-curves = { path = "../curves", features = ["portable"] }
