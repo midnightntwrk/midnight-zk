@@ -131,6 +131,8 @@ impl Relation for ZkirRelation {
             nr_pow2range_cols: 4,
             automaton: false,
             base64: false,
+            keccak: false,
+            blake2b: false,
         }
     }
 
