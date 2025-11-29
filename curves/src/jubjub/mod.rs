@@ -1,4 +1,3 @@
-mod arithmetic;
 mod curve;
 mod fr;
 

@@ -5,7 +5,8 @@
 
 use std::{collections::BTreeMap, time::Instant};
 
-use halo2curves::{ff::Field, group::Group};
+use ff::Field;
+use group::Group;
 use midnight_circuits::{
     ecc::{
         curves::CircuitCurve,

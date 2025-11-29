@@ -175,7 +175,7 @@ impl<F: Field> Mul<F> for Value<F> {
 ///
 /// ```
 /// use ff::PrimeField;
-/// use halo2curves::pasta::Fp;
+/// use midnight_curves::Fq as Scalar;
 /// use midnight_proofs::{
 ///     circuit::{Layouter, SimpleFloorPlanner, Value},
 ///     dev::{FailureLocation, MockProver, VerifyFailure},
@@ -253,7 +253,7 @@ impl<F: Field> Mul<F> for Value<F> {
 /// // This circuit has no public inputs.
 /// let instance = vec![];
 ///
-/// let prover = MockProver::<Fp>::run(K, &circuit, instance).unwrap();
+/// let prover = MockProver::<Scalar>::run(K, &circuit, instance).unwrap();
 /// assert_eq!(
 ///     prover.verify(),
 ///     Err(vec![VerifyFailure::ConstraintNotSatisfied {
@@ -272,7 +272,8 @@ impl<F: Field> Mul<F> for Value<F> {
 ///
 /// // If we provide a too-small K, we get a panic.
 /// use std::panic;
-/// let result = panic::catch_unwind(|| MockProver::<Fp>::run(2, &circuit, vec![]).unwrap_err());
+/// let result =
+///     panic::catch_unwind(|| MockProver::<Scalar>::run(2, &circuit, vec![]).unwrap_err());
 /// assert_eq!(
 ///     result.unwrap_err().downcast_ref::<String>().unwrap(),
 ///     "n=4, minimum_rows=8, k=2"
@@ -1258,7 +1259,8 @@ impl<F: FromUniformBytes<64> + Ord> MockProver<F> {
 
 #[cfg(test)]
 mod tests {
-    use halo2curves::pasta::Fp;
+    use ff::Field;
+    use midnight_curves::Fq as Scalar;
 
     use super::{FailureLocation, MockProver, VerifyFailure};
     use crate::{
@@ -1283,13 +1285,13 @@ mod tests {
 
         struct FaultyCircuit {}
 
-        impl Circuit<Fp> for FaultyCircuit {
+        impl Circuit<Scalar> for FaultyCircuit {
             type Config = FaultyCircuitConfig;
             type FloorPlanner = SimpleFloorPlanner;
             #[cfg(feature = "circuit-params")]
             type Params = ();
 
-            fn configure(meta: &mut ConstraintSystem<Fp>) -> Self::Config {
+            fn configure(meta: &mut ConstraintSystem<Scalar>) -> Self::Config {
                 let a = meta.advice_column();
                 let b = meta.advice_column();
                 let q = meta.selector();
@@ -1312,7 +1314,7 @@ mod tests {
             fn synthesize(
                 &self,
                 config: Self::Config,
-                mut layouter: impl Layouter<Fp>,
+                mut layouter: impl Layouter<Scalar>,
             ) -> Result<(), Error> {
                 layouter.assign_region(
                     || "Faulty synthesis",
@@ -1321,7 +1323,7 @@ mod tests {
                         config.q.enable(&mut region, 1)?;
 
                         // Assign a = 0.
-                        region.assign_advice(|| "a", config.a, 0, || Value::known(Fp::zero()))?;
+                        region.assign_advice(|| "a", config.a, 0, || Value::known(Scalar::ZERO))?;
 
                         // Name Column a
                         region.name_column(|| "This is annotated!", config.a);
@@ -1370,13 +1372,13 @@ mod tests {
 
         struct FaultyCircuit {}
 
-        impl Circuit<Fp> for FaultyCircuit {
+        impl Circuit<Scalar> for FaultyCircuit {
             type Config = FaultyCircuitConfig;
             type FloorPlanner = SimpleFloorPlanner;
             #[cfg(feature = "circuit-params")]
             type Params = ();
 
-            fn configure(meta: &mut ConstraintSystem<Fp>) -> Self::Config {
+            fn configure(meta: &mut ConstraintSystem<Scalar>) -> Self::Config {
                 let a = meta.advice_column();
                 let q = meta.complex_selector();
                 let table = meta.instance_column();
@@ -1421,7 +1423,7 @@ mod tests {
             fn synthesize(
                 &self,
                 config: Self::Config,
-                mut layouter: impl Layouter<Fp>,
+                mut layouter: impl Layouter<Scalar>,
             ) -> Result<(), Error> {
                 // No assignment needed for the table as is an Instance Column.
 
@@ -1448,13 +1450,13 @@ mod tests {
                             || "a = 2",
                             config.a,
                             0,
-                            || Value::known(Fp::from(2)),
+                            || Value::known(Scalar::from(2)),
                         )?;
                         region.assign_advice(
                             || "a = 6",
                             config.a,
                             1,
-                            || Value::known(Fp::from(6)),
+                            || Value::known(Scalar::from(6)),
                         )?;
 
                         Ok(())
@@ -1484,7 +1486,7 @@ mod tests {
                             || "a = 4",
                             config.a,
                             0,
-                            || Value::known(Fp::from(4)),
+                            || Value::known(Scalar::from(4)),
                         )?;
 
                         // BUG: Assign a = 5, which doesn't exist in the table!
@@ -1492,7 +1494,7 @@ mod tests {
                             || "a = 5",
                             config.a,
                             1,
-                            || Value::known(Fp::from(5)),
+                            || Value::known(Scalar::from(5)),
                         )?;
 
                         region.name_column(|| "Witness example", config.a);
@@ -1508,10 +1510,10 @@ mod tests {
             &FaultyCircuit {},
             // This is our "lookup table".
             vec![vec![
-                Fp::from(1u64),
-                Fp::from(2u64),
-                Fp::from(4u64),
-                Fp::from(6u64),
+                Scalar::from(1u64),
+                Scalar::from(2u64),
+                Scalar::from(4u64),
+                Scalar::from(6u64),
             ]],
         )
         .unwrap();
@@ -1541,13 +1543,13 @@ mod tests {
 
         struct FaultyCircuit {}
 
-        impl Circuit<Fp> for FaultyCircuit {
+        impl Circuit<Scalar> for FaultyCircuit {
             type Config = FaultyCircuitConfig;
             type FloorPlanner = SimpleFloorPlanner;
             #[cfg(feature = "circuit-params")]
             type Params = ();
 
-            fn configure(meta: &mut ConstraintSystem<Fp>) -> Self::Config {
+            fn configure(meta: &mut ConstraintSystem<Scalar>) -> Self::Config {
                 let a = meta.advice_column();
                 let q = meta.complex_selector();
                 let table = meta.lookup_table_column();
@@ -1574,7 +1576,7 @@ mod tests {
             fn synthesize(
                 &self,
                 config: Self::Config,
-                mut layouter: impl Layouter<Fp>,
+                mut layouter: impl Layouter<Scalar>,
             ) -> Result<(), Error> {
                 layouter.assign_table(
                     || "Doubling table",
@@ -1585,7 +1587,7 @@ mod tests {
                                     || format!("table[{}] = {}", i, 2 * i),
                                     config.table,
                                     i - 1,
-                                    || Value::known(Fp::from(2 * i as u64)),
+                                    || Value::known(Scalar::from(2 * i as u64)),
                                 )
                             })
                             .try_fold((), |_, res| res)
@@ -1604,13 +1606,13 @@ mod tests {
                             || "a = 2",
                             config.a,
                             0,
-                            || Value::known(Fp::from(2)),
+                            || Value::known(Scalar::from(2)),
                         )?;
                         region.assign_advice(
                             || "a = 6",
                             config.a,
                             1,
-                            || Value::known(Fp::from(6)),
+                            || Value::known(Scalar::from(6)),
                         )?;
 
                         Ok(())
@@ -1629,7 +1631,7 @@ mod tests {
                             || "a = 4",
                             config.a,
                             0,
-                            || Value::known(Fp::from(4)),
+                            || Value::known(Scalar::from(4)),
                         )?;
 
                         // BUG: Assign a = 5, which doesn't exist in the table!
@@ -1637,7 +1639,7 @@ mod tests {
                             || "a = 5",
                             config.a,
                             1,
-                            || Value::known(Fp::from(5)),
+                            || Value::known(Scalar::from(5)),
                         )?;
 
                         region.name_column(|| "Witness example", config.a);
@@ -1677,13 +1679,13 @@ mod tests {
 
         struct FaultyCircuit {}
 
-        impl Circuit<Fp> for FaultyCircuit {
+        impl Circuit<Scalar> for FaultyCircuit {
             type Config = FaultyCircuitConfig;
             type FloorPlanner = SimpleFloorPlanner;
             #[cfg(feature = "circuit-params")]
             type Params = ();
 
-            fn configure(meta: &mut ConstraintSystem<Fp>) -> Self::Config {
+            fn configure(meta: &mut ConstraintSystem<Scalar>) -> Self::Config {
                 let a = meta.advice_column();
                 let b = meta.advice_column();
                 let c = meta.advice_column();
@@ -1710,7 +1712,7 @@ mod tests {
             fn synthesize(
                 &self,
                 config: Self::Config,
-                mut layouter: impl Layouter<Fp>,
+                mut layouter: impl Layouter<Scalar>,
             ) -> Result<(), Error> {
                 layouter.assign_region(
                     || "Correct synthesis",
@@ -1719,24 +1721,24 @@ mod tests {
                         config.q.enable(&mut region, 0)?;
 
                         // Assign a = 1.
-                        region.assign_advice(|| "a", config.a, 0, || Value::known(Fp::one()))?;
+                        region.assign_advice(|| "a", config.a, 0, || Value::known(Scalar::ONE))?;
 
                         // Assign b = 1.
-                        region.assign_advice(|| "b", config.b, 0, || Value::known(Fp::one()))?;
+                        region.assign_advice(|| "b", config.b, 0, || Value::known(Scalar::ONE))?;
 
                         // Assign c = 5.
                         region.assign_advice(
                             || "c",
                             config.c,
                             0,
-                            || Value::known(Fp::from(5u64)),
+                            || Value::known(Scalar::from(5u64)),
                         )?;
                         // Assign d = 7.
                         region.assign_fixed(
                             || "d",
                             config.d,
                             0,
-                            || Value::known(Fp::from(7u64)),
+                            || Value::known(Scalar::from(7u64)),
                         )?;
                         Ok(())
                     },
@@ -1748,10 +1750,10 @@ mod tests {
                         config.q.enable(&mut region, 0)?;
 
                         // Assign a = 1.
-                        region.assign_advice(|| "a", config.a, 0, || Value::known(Fp::one()))?;
+                        region.assign_advice(|| "a", config.a, 0, || Value::known(Scalar::ONE))?;
 
                         // Assign b = 0.
-                        region.assign_advice(|| "b", config.b, 0, || Value::known(Fp::zero()))?;
+                        region.assign_advice(|| "b", config.b, 0, || Value::known(Scalar::ZERO))?;
 
                         // Name Column a
                         region.name_column(|| "This is Advice!", config.a);
@@ -1763,14 +1765,14 @@ mod tests {
                             || "c",
                             config.c,
                             0,
-                            || Value::known(Fp::from(5u64)),
+                            || Value::known(Scalar::from(5u64)),
                         )?;
                         // Assign d = 7.
                         region.assign_fixed(
                             || "d",
                             config.d,
                             0,
-                            || Value::known(Fp::from(7u64)),
+                            || Value::known(Scalar::from(7u64)),
                         )?;
 
                         // Name Column c

@@ -16,8 +16,8 @@ pub(crate) mod verifier;
 use std::io;
 
 use ff::{PrimeField, WithSmallOrderMulGroup};
-use halo2curves::serde::SerdeObject;
 pub use keygen::Assembly;
+use midnight_curves::serde::SerdeObject;
 
 use crate::{
     plonk::permutation::keygen::compute_polys_and_cosets,

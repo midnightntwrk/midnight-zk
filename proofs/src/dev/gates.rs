@@ -29,7 +29,7 @@ struct Gate {
 ///
 /// ```
 /// use ff::Field;
-/// use halo2curves::pasta::pallas;
+/// use midnight_curves::Fq;
 /// use midnight_proofs::{
 ///     circuit::{Layouter, SimpleFloorPlanner},
 ///     dev::CircuitGates,
@@ -78,9 +78,9 @@ struct Gate {
 /// }
 ///
 /// #[cfg(feature = "circuit-params")]
-/// let gates = CircuitGates::collect::<pallas::Base, MyCircuit>(());
+/// let gates = CircuitGates::collect::<Fq, MyCircuit>(());
 /// #[cfg(not(feature = "circuit-params"))]
-/// let gates = CircuitGates::collect::<pallas::Base, MyCircuit>();
+/// let gates = CircuitGates::collect::<Fq, MyCircuit>();
 /// assert_eq!(
 ///     format!("{}", gates),
 ///     r#####"R1CS constraint:

@@ -2,7 +2,7 @@ use core::ops::MulAssign;
 
 use ff::Field;
 use group::{prime::PrimeCurveAffine, Curve, Group};
-use pairing_lib::{Engine, MillerLoopResult, MultiMillerLoop, PairingCurveAffine};
+use pairing::{Engine, MillerLoopResult, MultiMillerLoop, PairingCurveAffine};
 use rand_core::SeedableRng;
 use rand_xorshift::XorShiftRng;
 

@@ -18,7 +18,7 @@ use std::fmt::Debug;
 
 use ff::{PrimeField, WithSmallOrderMulGroup};
 use group::{prime::PrimeCurveAffine, Curve};
-use halo2curves::{
+use midnight_curves::{
     pairing::{Engine, MultiMillerLoop},
     serde::SerdeObject,
     CurveAffine, CurveExt,

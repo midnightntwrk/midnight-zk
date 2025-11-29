@@ -15,8 +15,7 @@
 
 use ff::{Field, PrimeField};
 use group::cofactor::CofactorGroup;
-use halo2curves::ff_ext::Legendre;
-use midnight_curves::{JubjubExtended as Jubjub, JubjubSubgroup};
+use midnight_curves::{ff_ext::Legendre, JubjubExtended as Jubjub, JubjubSubgroup};
 use subtle::{ConditionallySelectable, ConstantTimeEq};
 
 // use crate::instructions::ecc::EdwardsCurve;

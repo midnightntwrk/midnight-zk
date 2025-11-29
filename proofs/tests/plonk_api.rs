@@ -6,7 +6,7 @@ use std::{hash::Hash, marker::PhantomData};
 use assert_matches::assert_matches;
 use blake2b_simd::State;
 use ff::{FromUniformBytes, WithSmallOrderMulGroup};
-use halo2curves::serde::SerdeObject;
+use midnight_curves::serde::SerdeObject;
 use midnight_proofs::{
     circuit::{Cell, Layouter, SimpleFloorPlanner, Value},
     dev::MockProver,
@@ -535,17 +535,17 @@ fn plonk_api() {
         assert!(verifier.verify(params_verifier).is_ok());
     }
 
-    use halo2curves::bn256::{Bn256, Fr};
+    use midnight_curves::{Bls12, Fq as Scalar};
 
-    type Scheme = KZGCommitmentScheme<Bn256>;
-    bad_keys!(Fr, Scheme);
+    type Scheme = KZGCommitmentScheme<Bls12>;
+    bad_keys!(Scalar, Scheme);
 
     let rng = OsRng;
-    let mut params = ParamsKZG::<Bn256>::unsafe_setup(K, rng);
+    let mut params = ParamsKZG::<Bls12>::unsafe_setup(K, rng);
 
-    let pk = keygen::<Fr, Scheme>(&mut params);
+    let pk = keygen::<Scalar, Scheme>(&mut params);
 
-    let proof = create_proof::<Fr, Scheme, CircuitTranscript<State>, _>(rng, &params, &pk);
+    let proof = create_proof::<Scalar, Scheme, CircuitTranscript<State>, _>(rng, &params, &pk);
 
     verify_proof::<_, _, CircuitTranscript<State>>(
         &params.verifier_params(),

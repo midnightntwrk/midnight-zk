@@ -14,9 +14,10 @@ use core::{
 use blst::*;
 use byte_slice_cast::AsByteSlice;
 use ff::{Field, FieldBits, PrimeField, PrimeFieldBits, WithSmallOrderMulGroup};
-use halo2curves::serde::SerdeObject;
 use rand_core::RngCore;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
+
+use crate::serde_traits::SerdeObject;
 
 /// Represents an element of the scalar field Fq of the BLS12-381 elliptic
 /// curve construction.
@@ -725,7 +726,7 @@ impl ff::FromUniformBytes<64> for Fq {
     }
 }
 
-impl halo2curves::ff_ext::Legendre for Fq {
+impl crate::ff_ext::Legendre for Fq {
     #[inline(always)]
     fn legendre(&self) -> i64 {
         self.jacobi()
@@ -797,7 +798,7 @@ impl Fq {
             let off = i * 8;
             *limb = u64::from_le_bytes(bytes[off..off + 8].try_into().unwrap());
         });
-        halo2curves::ff_ext::jacobi::jacobi::<5>(&res, &MODULUS)
+        crate::ff_ext::jacobi::jacobi::<5>(&res, &MODULUS)
     }
 
     pub fn char() -> <Self as PrimeField>::Repr {
@@ -909,9 +910,8 @@ impl SerdeObject for Fq {
 
 #[cfg(test)]
 mod tests {
-    use halo2curves::ff_ext::Legendre;
-
     use super::*;
+    use crate::ff_ext::Legendre;
 
     const LARGEST: Fq = Fq(blst::blst_fr {
         l: [
