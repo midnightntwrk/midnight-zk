@@ -149,6 +149,8 @@ impl Relation for SchnorrExample {
             poseidon: true,
             sha256: false,
             sha512: false,
+            keccak: false,
+            blake2b: false,
             secp256k1: false,
             bls12_381: false,
             base64: false,

@@ -55,6 +55,8 @@ impl Relation for ShaPreImageCircuit {
             poseidon: false,
             sha256: true,
             sha512: false,
+            keccak: false,
+            blake2b: false,
             secp256k1: false,
             bls12_381: false,
             base64: false,
