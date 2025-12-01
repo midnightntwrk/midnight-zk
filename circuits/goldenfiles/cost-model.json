@@ -451,6 +451,28 @@
       "rows": "49",
       "table_rows": "417"
     },
+    "msm_3": {
+      "advice_columns": "30",
+      "column_queries": "110",
+      "fixed_columns": "72",
+      "lookups": "8",
+      "max_deg": "5",
+      "permutations": "34",
+      "point_sets": "4",
+      "rows": "232233",
+      "table_rows": "483"
+    },
+    "msm_by_bounded_scalars_3": {
+      "advice_columns": "30",
+      "column_queries": "110",
+      "fixed_columns": "72",
+      "lookups": "8",
+      "max_deg": "5",
+      "permutations": "34",
+      "point_sets": "4",
+      "rows": "82417",
+      "table_rows": "483"
+    },
     "mul_by_constant": {
       "advice_columns": "30",
       "column_queries": "110",

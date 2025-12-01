@@ -101,7 +101,7 @@ const MODULUS_LIMBS_32: [u32; 2 * NUM_LIMBS] = [
 ];
 
 // The number of bits needed to represent the modulus.
-const MODULUS_BITS: u32 = 255;
+const MODULUS_BITS: u32 = 252;
 
 /// 2^-1
 const TWO_INV: Fr = Fr([

@@ -236,11 +236,15 @@ where
     // We want that m <= base^(nb_limbs - 1) * msl_bound < 2m,
     // therefore msl_bound must be the first power of 2 higher than or equal to
     // m / base^(nb_limbs - 1).
+    // dbg!(K::MODULUS);
     let m = &modulus::<K>().to_bigint().unwrap();
     let log2_msl_bound = m.bits() as u32 - (P::NB_LIMBS - 1) * P::LOG2_BASE;
+    // dbg!(&log2_msl_bound);
     let mut bounds = vec![log2_msl_bound];
     bounds.resize(P::NB_LIMBS as usize, P::LOG2_BASE);
-    bounds.into_iter().rev().collect::<Vec<_>>()
+    let b = bounds.into_iter().rev().collect::<Vec<_>>();
+    // dbg!(&b);
+    b
 }
 
 /// Foreign Field Chip configuration.
@@ -1099,6 +1103,8 @@ where
             x = self.make_canonical(layouter, &x)?;
         };
         let mut bits = vec![];
+        dbg!(K::NUM_BITS);
+        dbg!(K::MODULUS);
         x.limb_values
             .iter()
             .zip(well_formed_log2_bounds::<F, K, P>().iter())

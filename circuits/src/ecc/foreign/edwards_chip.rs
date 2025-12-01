@@ -68,7 +68,7 @@ where
     C: EdwardsCurve,
     B: FieldEmulationParams<F, C::Base>,
     S: ScalarFieldInstructions<F>,
-    S::Scalar: InnerValue<Element = C::Scalar>,
+    // S::Scalar: InnerValue<Element = C::Scalar>,
     N: NativeInstructions<F>,
 {
     config: ForeignEdwardsEccConfig<C>,
@@ -83,7 +83,7 @@ where
     C: EdwardsCurve,
     B: FieldEmulationParams<F, C::Base>,
     S: ScalarFieldInstructions<F>,
-    S::Scalar: InnerValue<Element = C::Scalar>,
+    // S::Scalar: InnerValue<Element = C::Scalar>,
     N: NativeInstructions<F>,
 {
     /// Creates new foreign Edwards ECC chip from its building blocks.
@@ -230,7 +230,7 @@ where
     C: EdwardsCurve,
     B: FieldEmulationParams<F, C::Base>,
     S: ScalarFieldInstructions<F>,
-    S::Scalar: InnerValue<Element = C::Scalar>,
+    // S::Scalar: InnerValue<Element = C::Scalar>,
     N: NativeInstructions<F>,
 {
     type Config = ForeignEdwardsEccConfig<C>;
@@ -250,7 +250,7 @@ where
     C: EdwardsCurve,
     B: FieldEmulationParams<F, C::Base>,
     S: ScalarFieldInstructions<F>,
-    S::Scalar: InnerValue<Element = C::Scalar>,
+    // S::Scalar: InnerValue<Element = C::Scalar>,
     N: NativeInstructions<F>,
 {
     fn assign(
@@ -318,7 +318,7 @@ where
     C: EdwardsCurve,
     B: FieldEmulationParams<F, C::Base>,
     S: ScalarFieldInstructions<F>,
-    S::Scalar: InnerValue<Element = C::Scalar>,
+    // S::Scalar: InnerValue<Element = C::Scalar>,
     N: NativeInstructions<F> + PublicInputInstructions<F, AssignedBit<F>>,
 {
     fn as_public_input(
@@ -366,7 +366,7 @@ where
     C: EdwardsCurve,
     B: FieldEmulationParams<F, C::Base>,
     S: ScalarFieldInstructions<F, Scalar = AssignedField<F, C::Scalar, SP>>,
-    S::Scalar: InnerValue<Element = C::Scalar>,
+    // S::Scalar: InnerValue<Element = C::Scalar>,
     SP: FieldEmulationParams<F, C::Scalar>,
     N: NativeInstructions<F>,
 {
@@ -394,7 +394,7 @@ where
     C: EdwardsCurve,
     B: FieldEmulationParams<F, C::Base>,
     S: ScalarFieldInstructions<F>,
-    S::Scalar: InnerValue<Element = C::Scalar>,
+    // S::Scalar: InnerValue<Element = C::Scalar>,
     N: NativeInstructions<F>,
 {
     fn assert_equal(
@@ -421,7 +421,7 @@ where
         &self,
         layouter: &mut impl Layouter<F>,
         p: &AssignedForeignEdwardsPoint<F, C, B>,
-        constant: <AssignedForeignEdwardsPoint<F, C, B> as InnerValue>::Element,
+        constant: C::CryptographicGroup,
     ) -> Result<(), Error> {
         let coordinates = constant.into().coordinates().expect("Valid point");
         self.base_field_chip().assert_equal_to_fixed(layouter, &p.x, coordinates.0)?;
@@ -432,7 +432,7 @@ where
         &self,
         layouter: &mut impl Layouter<F>,
         p: &AssignedForeignEdwardsPoint<F, C, B>,
-        constant: <AssignedForeignEdwardsPoint<F, C, B> as InnerValue>::Element,
+        constant: C::CryptographicGroup,
     ) -> Result<(), Error> {
         let p_eq_constant = self.is_equal_to_fixed(layouter, p, constant)?;
         self.native_gadget.assert_equal_to_fixed(layouter, &p_eq_constant, false)
@@ -446,7 +446,7 @@ where
     C: EdwardsCurve,
     B: FieldEmulationParams<F, C::Base>,
     S: ScalarFieldInstructions<F>,
-    S::Scalar: InnerValue<Element = C::Scalar>,
+    // S::Scalar: InnerValue<Element = C::Scalar>,
     N: NativeInstructions<F>,
 {
     fn is_equal(
@@ -480,7 +480,7 @@ where
     C: EdwardsCurve,
     B: FieldEmulationParams<F, C::Base>,
     S: ScalarFieldInstructions<F>,
-    S::Scalar: InnerValue<Element = C::Scalar>,
+    // S::Scalar: InnerValue<Element = C::Scalar>,
     N: NativeInstructions<F>,
 {
     fn is_zero(
@@ -499,7 +499,7 @@ where
     C: EdwardsCurve,
     B: FieldEmulationParams<F, C::Base>,
     S: ScalarFieldInstructions<F>,
-    S::Scalar: InnerValue<Element = C::Scalar>,
+    // S::Scalar: InnerValue<Element = C::Scalar>,
     N: NativeInstructions<F>,
 {
     /// Returns `p` if `cond = 1` and `q` otherwise.
@@ -617,8 +617,12 @@ where
     ) -> Result<Self::Point, Error> {
         let scalars = scalars
             .iter()
-            .map(|s| (s.clone(), C::Scalar::NUM_BITS as usize))
+            .map(|s| {
+                // dbg!(C::Scalar::NUM_BITS);
+                (s.clone(), C::Scalar::NUM_BITS as usize)
+            })
             .collect::<Vec<_>>();
+
         self.msm_by_bounded_scalars(layouter, &scalars, bases)
     }
 
@@ -628,13 +632,32 @@ where
         scalars: &[(S::Scalar, usize)],
         bases: &[AssignedForeignEdwardsPoint<F, C, B>],
     ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
-        // TODO: are inputs sanitized? I.e., lenghts match
+        dbg!(F::MODULUS);
+        // TODO: are inputs sanitized? E.g., do lenghts match?
+        // TODO: check for scalar = 0/1?
         if scalars.is_empty() || scalars.len() != bases.len() {
             panic!("Expected a well-formed MSM.")
         }
-        let max_bit_size = scalars.iter().map(|(_, bit_size)| bit_size).max().unwrap();
+        let mut res = self.assign_fixed(layouter, C::CryptographicGroup::identity())?;
+        for ((s, bit_size), b) in scalars.iter().zip(bases.iter()) {
+            let scalar_bits =
+                self.scalar_field_chip()
+                    .assigned_to_le_bits(layouter, s, Some(*bit_size), true)?;
+            let mut p = b.clone();
+            // let mut res = self.assign_fixed(layouter,
+            // C::CryptographicGroup::identity())?;
+            for b in scalar_bits {
+                let _: Value<std::result::Result<(), Error>> = b.value().map(|b| {
+                    if b {
+                        res = self.add(layouter, &res, &p)?
+                    }
+                    Ok(())
+                });
+                p = self.double(layouter, &p)?;
+            }
+        }
 
-        todo!()
+        Ok(res)
     }
 
     fn mul_by_constant(
@@ -643,6 +666,9 @@ where
         scalar: C::Scalar,
         base: &Self::Point,
     ) -> Result<Self::Point, Error> {
+        // TODO: can we safely assume that |scalar| < p? I.e., that the scalar doesn't
+        // overflow p?
+        // TODO: check for scalar = 0/1?
         let scalar_bits = crate::utils::util::fe_to_le_bits(&scalar, None);
         let mut p = base.clone();
         let mut res = self.assign_fixed(layouter, C::CryptographicGroup::identity())?;
@@ -831,8 +857,8 @@ mod tests {
     ecc_tests!(test_add);
     ecc_tests!(test_double);
     ecc_tests!(test_negate);
-    // ecc_tests!(test_msm);
-    // ecc_tests!(test_msm_by_bounded_scalars);
+    ecc_tests!(test_msm);
+    ecc_tests!(test_msm_by_bounded_scalars);
     ecc_tests!(test_mul_by_constant);
     ecc_tests!(test_coordinates_edwards);
 }
