@@ -202,6 +202,25 @@ impl<V: Clone, F: Field> AssignedCell<V, F>
 where
     for<'v> Rational<F>: From<&'v V>,
 {
+    /// Converts any `AssignedCell<V,F>` to an `AssignedNative<F>`, using
+    /// back-and-forth conversion to rationals. All specific information
+    /// specific to the structure of `V` is lost. Can be useful when interacting
+    /// with external circuits that produce `AssignedCell` types that
+    /// `midnight-circuits` cannot interact with.
+    pub fn convert_to_native(self) -> AssignedCell<F, F> {
+        AssignedCell {
+            value: self.value_field(),
+            cell: self.cell,
+            _marker: self._marker,
+        }
+        .evaluate()
+    }
+}
+
+impl<V: Clone, F: Field> AssignedCell<V, F>
+where
+    for<'v> Rational<F>: From<&'v V>,
+{
     /// Copies the value to a given advice cell and constrains them to be equal.
     ///
     /// Returns an error if either this cell or the given cell are in columns
