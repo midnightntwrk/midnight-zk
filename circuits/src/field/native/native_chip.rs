@@ -116,6 +116,10 @@ pub struct NativeConfig {
 
 /// Chip for Native operations
 #[derive(Clone, Debug)]
+#[cfg_attr(
+    feature = "extraction",
+    derive(picus::NoChipArgs, picus::InitFromScratch)
+)]
 pub struct NativeChip<F: PrimeField> {
     config: NativeConfig,
     cached_fixed: Rc<RefCell<HashMap<BigUint, AssignedNative<F>>>>,
@@ -1047,7 +1051,7 @@ impl<F: PrimeField> Instantiable<F> for AssignedBit<F> {
 /// on assigned bits. It prevents the user from creating an `AssignedBit`
 /// without using the designated entry points, which guarantee (with
 /// constraints) that the assigned value is indeed 0 or 1.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, picus::DecomposeInCells)]
 #[must_use]
 pub struct AssignedBit<F: PrimeField>(pub(crate) AssignedNative<F>);
 
@@ -1068,6 +1072,77 @@ impl<F: PrimeField> InnerValue for AssignedBit<F> {
 impl<F: PrimeField> From<AssignedBit<F>> for AssignedNative<F> {
     fn from(bit: AssignedBit<F>) -> Self {
         bit.0
+    }
+}
+
+#[cfg(feature = "extraction")]
+pub mod chip_extraction {
+    //! Extraction specific logic related to the native chip.
+
+    use extractor_support::{
+        cell_to_expr,
+        cells::{
+            ctx::{ICtx, LayoutAdaptor, OCtx},
+            load::LoadFromCells,
+            store::StoreIntoCells,
+            CellReprSize,
+        },
+        ir::stmt::IRStmt,
+    };
+    use ff::PrimeField;
+    use midnight_proofs::{
+        plonk::{Error, Expression},
+        ExtractionSupport,
+    };
+
+    use super::AssignedBit;
+    use crate::{
+        types::AssignedNative,
+        utils::extraction::{IRExt as _, IR},
+    };
+
+    impl<F: PrimeField> CellReprSize for AssignedBit<F> {
+        const SIZE: usize = <AssignedNative<F> as CellReprSize>::SIZE;
+    }
+
+    fn emit_constraint<F: PrimeField>(
+        cell: &AssignedNative<F>,
+        injected_ir: &mut IR<F>,
+    ) -> Result<(), Error> {
+        let x = cell_to_expr!(cell, F)?;
+        let lhs = x.clone() * (x - Expression::from(1));
+        let rhs = Expression::from(0);
+        injected_ir.inject_in_cell(cell.cell(), IRStmt::eq(lhs, rhs));
+        Ok(())
+    }
+
+    impl<F, C, L> LoadFromCells<F, C, ExtractionSupport, L> for AssignedBit<F>
+    where
+        F: PrimeField,
+    {
+        fn load(
+            ctx: &mut ICtx<F, ExtractionSupport>,
+            chip: &C,
+            layouter: &mut impl LayoutAdaptor<F, ExtractionSupport, Adaptee = L>,
+            injected_ir: &mut IR<F>,
+        ) -> Result<Self, Error> {
+            let cell = ctx.load(chip, layouter, injected_ir)?;
+            emit_constraint(&cell, injected_ir)?;
+            Ok(Self(cell))
+        }
+    }
+
+    impl<F: PrimeField, C, L> StoreIntoCells<F, C, ExtractionSupport, L> for AssignedBit<F> {
+        fn store(
+            self,
+            ctx: &mut OCtx<F, ExtractionSupport>,
+            _chip: &C,
+            layouter: &mut impl LayoutAdaptor<F, ExtractionSupport, Adaptee = L>,
+            injected_ir: &mut IR<F>,
+        ) -> Result<(), Error> {
+            emit_constraint(&self.0, injected_ir)?;
+            ctx.assign_next(self.0, layouter)
+        }
     }
 }
 

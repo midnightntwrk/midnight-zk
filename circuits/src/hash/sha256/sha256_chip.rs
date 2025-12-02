@@ -130,6 +130,10 @@ pub struct Sha256Config {
 
 /// Chip for SHA256.
 #[derive(Clone, Debug)]
+#[cfg_attr(
+    feature = "extraction",
+    derive(picus::NoChipArgs, picus::InitFromScratch)
+)]
 pub struct Sha256Chip<F: PrimeField> {
     config: Sha256Config,
     pub(super) native_gadget: NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>,
@@ -622,10 +626,11 @@ impl<F: PrimeField> Sha256Chip<F> {
     /// Takes a 512-bits block, represented with 16 `AssignedPlain<32>` words.
     /// Outputs the 64 `AssignedPlain<32>` words Wi from SHA256's message
     /// schedule.
+    #[picus::group]
     pub(super) fn message_schedule(
         &self,
         layouter: &mut impl Layouter<F>,
-        block: &[AssignedPlain<F, 32>; 16],
+        #[input] block: &[AssignedPlain<F, 32>; 16],
     ) -> Result<[AssignedPlain<F, 32>; 64], Error> {
         let message_word = self.prepare_message_word(layouter, &[block[0].clone()])?;
         let mut message_words: [AssignedMessageWord<F>; 64] =
@@ -658,12 +663,13 @@ impl<F: PrimeField> Sha256Chip<F> {
     }
 
     /// A compression round. This is called 64 times per block.
+    #[picus::group]
     pub(super) fn compression_round(
         &self,
         layouter: &mut impl Layouter<F>,
-        state: &CompressionState<F>,
+        #[input] state: &CompressionState<F>,
         round_k: u32,
-        round_w: &AssignedPlain<F, 32>,
+        #[input] round_w: &AssignedPlain<F, 32>,
     ) -> Result<CompressionState<F>, Error> {
         let round_k = AssignedPlain::<F, 32>::fixed(layouter, &self.native_gadget, round_k)?;
 
@@ -714,12 +720,13 @@ impl<F: PrimeField> Sha256Chip<F> {
     }
 
     /// Computes Maj(A, B, C).
+    #[picus::group]
     fn maj(
         &self,
         layouter: &mut impl Layouter<F>,
-        sprdd_a: &AssignedSpreaded<F, 32>,
-        sprdd_b: &AssignedSpreaded<F, 32>,
-        sprdd_c: &AssignedSpreaded<F, 32>,
+        #[input] sprdd_a: &AssignedSpreaded<F, 32>,
+        #[input] sprdd_b: &AssignedSpreaded<F, 32>,
+        #[input] sprdd_c: &AssignedSpreaded<F, 32>,
     ) -> Result<AssignedPlain<F, 32>, Error> {
         /*
         We need to compute:
@@ -785,12 +792,13 @@ impl<F: PrimeField> Sha256Chip<F> {
     }
 
     /// Computes Ch(E, F, G)
+    #[picus::group]
     fn ch(
         &self,
         layouter: &mut impl Layouter<F>,
-        sprdd_E: &AssignedSpreaded<F, 32>,
-        sprdd_F: &AssignedSpreaded<F, 32>,
-        sprdd_G: &AssignedSpreaded<F, 32>,
+        #[input] sprdd_E: &AssignedSpreaded<F, 32>,
+        #[input] sprdd_F: &AssignedSpreaded<F, 32>,
+        #[input] sprdd_G: &AssignedSpreaded<F, 32>,
     ) -> Result<AssignedPlain<F, 32>, Error> {
         /*
         We need to compute:
@@ -886,10 +894,11 @@ impl<F: PrimeField> Sha256Chip<F> {
     }
 
     /// Computes Σ₀(A).
+    #[picus::group]
     fn Sigma_0(
         &self,
         layouter: &mut impl Layouter<F>,
-        a: &LimbsOfA<F>,
+        #[input] a: &LimbsOfA<F>,
     ) -> Result<AssignedPlain<F, 32>, Error> {
         /*
         Given
@@ -964,10 +973,11 @@ impl<F: PrimeField> Sha256Chip<F> {
     }
 
     /// Computes Σ₁(E).
+    #[picus::group]
     fn Sigma_1(
         &self,
         layouter: &mut impl Layouter<F>,
-        e: &LimbsOfE<F>,
+        #[input] e: &LimbsOfE<F>,
     ) -> Result<AssignedPlain<F, 32>, Error> {
         /*
         Given
@@ -1044,10 +1054,11 @@ impl<F: PrimeField> Sha256Chip<F> {
     }
 
     /// Computes σ₀(W).
+    #[picus::group]
     fn sigma_0(
         &self,
         layouter: &mut impl Layouter<F>,
-        w: &AssignedMessageWord<F>,
+        #[input] w: &AssignedMessageWord<F>,
     ) -> Result<AssignedPlain<F, 32>, Error> {
         /*
         Given
@@ -1125,10 +1136,11 @@ impl<F: PrimeField> Sha256Chip<F> {
     }
 
     /// Computes σ₁(W).
+    #[picus::group]
     fn sigma_1(
         &self,
         layouter: &mut impl Layouter<F>,
-        w: &AssignedMessageWord<F>,
+        #[input] w: &AssignedMessageWord<F>,
     ) -> Result<AssignedPlain<F, 32>, Error> {
         /*
         Given
@@ -1280,10 +1292,11 @@ impl<F: PrimeField> Sha256Chip<F> {
     ///
     /// This function returns the plain and spreaded forms, as well as
     /// the spreaded limbs of A.
+    #[picus::group]
     fn prepare_A(
         &self,
         layouter: &mut impl Layouter<F>,
-        summands: &[AssignedPlain<F, 32>],
+        #[input] summands: &[AssignedPlain<F, 32>],
     ) -> Result<LimbsOfA<F>, Error> {
         /*
         Given assigned plain inputs S0, ..., S6 (if fewer inputs are given
@@ -1360,10 +1373,11 @@ impl<F: PrimeField> Sha256Chip<F> {
     ///
     /// This function returns the plain and spreaded forms, as well as
     /// the spreaded limbs of E.
+    #[picus::group]
     fn prepare_E(
         &self,
         layouter: &mut impl Layouter<F>,
-        summands: &[AssignedPlain<F, 32>],
+        #[input] summands: &[AssignedPlain<F, 32>],
     ) -> Result<LimbsOfE<F>, Error> {
         /*
         Given assigned plain inputs S0, ..., S6 (if fewer inputs are given
@@ -1435,10 +1449,11 @@ impl<F: PrimeField> Sha256Chip<F> {
     /// Given a slice of at most 7 `AssignedPlain` values, this function adds
     /// them modulo 2^32 and decomposes the result (named W_i) into (big-endian)
     /// limbs of bit sizes 12, 1, 1, 1, 7, 3, 4 and 3.
+    #[picus::group]
     fn prepare_message_word(
         &self,
         layouter: &mut impl Layouter<F>,
-        summands: &[AssignedPlain<F, 32>],
+        #[input] summands: &[AssignedPlain<F, 32>],
     ) -> Result<AssignedMessageWord<F>, Error> {
         /*
         Given assigned plain inputs S0, ..., S6 (if fewer inputs are given

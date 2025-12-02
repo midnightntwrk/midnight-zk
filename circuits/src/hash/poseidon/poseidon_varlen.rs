@@ -216,6 +216,54 @@ impl<F: PoseidonField, const MAX_LEN: usize>
     }
 }
 
+#[cfg(feature = "extraction")]
+pub mod extraction {
+    //! Extraction specific logic related to the poseidon varlen gadget.
+
+    use extractor_support::circuit::CircuitInitialization as CI;
+    use midnight_proofs::{
+        circuit::Layouter,
+        plonk::{Column, ConstraintSystem, Error, Instance},
+    };
+
+    use super::{VarLenPoseidonGadget, NG};
+    use crate::hash::poseidon::{constants::PoseidonField, PoseidonChip as PC};
+
+    impl<F: PoseidonField, L: Layouter<F>> CI<L> for VarLenPoseidonGadget<F> {
+        type Config = (<PC<F> as CI<L>>::Config, <NG<F> as CI<L>>::Config);
+
+        type Args = ();
+
+        type ConfigCols = [Column<Instance>; 2];
+
+        type CS = ConstraintSystem<F>;
+
+        type Error = Error;
+
+        fn new_chip((pc, ng): &Self::Config, _: Self::Args) -> Self {
+            Self::new(
+                &<PC<F> as CI<L>>::new_chip(pc, ()),
+                &<NG<F> as CI<L>>::new_chip(ng, ()),
+            )
+        }
+
+        fn configure_circuit(
+            meta: &mut ConstraintSystem<F>,
+            columns: &Self::ConfigCols,
+        ) -> Self::Config {
+            (
+                <PC<F> as CI<L>>::configure_circuit(meta, columns),
+                <NG<F> as CI<L>>::configure_circuit(meta, columns),
+            )
+        }
+
+        fn load_chip(&self, layouter: &mut L, (pc, ng): &Self::Config) -> Result<(), Error> {
+            self.poseidon_chip.load_chip(layouter, pc)?;
+            self.native_gadget.load_chip(layouter, ng)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use ff::Field;

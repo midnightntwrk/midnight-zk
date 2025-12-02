@@ -32,6 +32,12 @@ use crate::{
 };
 
 #[derive(Clone, Debug)]
+#[cfg_attr(
+    feature = "extraction",
+    derive(picus::NoChipArgs, picus::InitFromScratch),
+    from_scratch(H),
+    from_scratch(E)
+)]
 /// A gadget for hashing into an elliptic curve. It is parametrized by:
 ///  - F: the native field,
 ///  - C: the elliptic curve,

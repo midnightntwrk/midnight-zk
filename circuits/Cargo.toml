@@ -17,7 +17,12 @@ midnight-proofs = { path = "../proofs", version = "0.5.1", default-features = fa
     "bits",
     "circuit-params",
     "committed-instances",
+    "region-groups",
+    "decompose-in-cells"
 ] }
+picus-support = { workspace = true }
+picus = { workspace = true }
+extractor-support = { workspace = true, optional = true }
 
 serde = { workspace = true, optional = true }
 serde_derive = { workspace = true, optional = true }
@@ -61,6 +66,9 @@ truncated-challenges = ["midnight-proofs/truncated-challenges"]
 # _group: &mut BenchmarkGroup<WallTime>, and return granular benchmarks
 # of the prover for that concrete circuit.
 bench-internal = ["midnight-proofs/bench-internal"]
+
+# Feature to enable support for the Picus & LLZK extraction.
+extraction = ["extractor-support", "testing", "midnight-proofs/extraction", "picus/extractor-derive"]
 
 [lib]
 bench = false
