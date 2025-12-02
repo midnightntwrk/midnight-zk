@@ -256,7 +256,8 @@ pub mod extraction {
     fn emit_limb_bound_constraints<F: PrimeField>(
         biguint: &AssignedBigUint<F>,
         injected_ir: &mut IR<F>,
-    ) -> Result<(), Error> {
+        max_limbs: usize,
+    ) -> Result<usize, Error> {
         let n_limbs = biguint.limb_size_bounds.len();
         assert_eq!(n_limbs, biguint.limbs.len());
         let lhs = &biguint.limbs[..n_limbs - 1];
@@ -265,11 +266,11 @@ pub mod extraction {
         let last = std::iter::zip(biguint.limbs.last(), biguint.limb_size_bounds.last())
             .map(emit_last_bound);
 
-        regulars.chain(last).try_for_each(|stmt| {
+        for stmt in regulars.chain(last) {
             let (cell, stmt) = stmt?;
             injected_ir.inject_in_cell(cell, stmt);
-            Ok(())
-        })
+        }
+        Ok(max_limbs - n_limbs)
     }
 
     fn limb_size_bounds(bits: usize) -> Vec<u32> {
@@ -304,7 +305,8 @@ pub mod extraction {
                 )?,
                 limb_size_bounds: limb_size_bounds(BITS),
             };
-            emit_limb_bound_constraints(&be, injected_ir)?;
+            let trail = emit_limb_bound_constraints(&be, injected_ir, num_limbs(BITS))?;
+            assert_eq!(trail, 0);
 
             Ok(LoadedBigUint(be))
         }
@@ -327,8 +329,9 @@ pub mod extraction {
                 "Inconsistent lengths between bounds and lengths"
             );
             expect_elements!((n_limbs <= num_limbs(BITS)), "While storing big uint");
-            emit_limb_bound_constraints(&self.0, injected_ir)?;
-            self.0.limbs.store_dyn(ctx, chip, layouter, injected_ir)
+            let trail = emit_limb_bound_constraints(&self.0, injected_ir, num_limbs(BITS))?;
+            self.0.limbs.store_dyn(ctx, chip, layouter, injected_ir)?;
+            (0..trail).try_for_each(|_| ctx.set_next_to_zero(layouter))
         }
     }
 }
