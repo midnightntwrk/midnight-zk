@@ -15,13 +15,17 @@ use group::{
     prime::{PrimeCurve, PrimeCurveAffine, PrimeGroup},
     Curve, Group, GroupEncoding, UncompressedEncoding, WnafGroup,
 };
-use halo2curves::{serde::SerdeObject, Coordinates, CurveAffine, CurveExt};
+use pairing::{Engine, PairingCurveAffine};
 use rand_core::RngCore;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 
-use crate::{
+use super::{
     fp::{Fp, ZETA_BASE},
-    Bls12, Engine, Fq, G2Affine, Gt, PairingCurveAffine,
+    Bls12, Fq, G2Affine, Gt,
+};
+use crate::{
+    curve::{Coordinates, CurveAffine, CurveExt},
+    serde_traits::SerdeObject,
 };
 
 /// This is an element of $\mathbb{G}_1$ represented in the affine coordinate

@@ -32,8 +32,10 @@ use bench_macros::inner_bench;
 use bincode::{config::standard, Decode, Encode};
 use ff::{Field, PrimeField};
 use group::{prime::PrimeCurveAffine, Group};
-use halo2curves::secp256k1::{self, Secp256k1};
-use midnight_curves::{G1Affine, G1Projective};
+use midnight_curves::{
+    secp256k1::{self, Secp256k1},
+    G1Affine, G1Projective,
+};
 use midnight_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
     dev::cost_model::{circuit_model, CircuitModel},

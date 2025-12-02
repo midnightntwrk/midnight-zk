@@ -17,7 +17,7 @@ use std::time::SystemTime;
 use criterion::{BenchmarkId, Criterion};
 use ff::PrimeField;
 use group::Group;
-use halo2curves::CurveAffine;
+use midnight_curves::CurveAffine;
 use rand_core::{RngCore, SeedableRng};
 use rand_xorshift::XorShiftRng;
 use rayon::{
@@ -135,14 +135,14 @@ fn msm_blst(c: &mut Criterion) {
         }
     }
 
-    // Halo2Curves version.
+    // midnight-curves msm_best version.
     for (b_index, b) in BITS.iter().enumerate() {
         for k in MULTICORE_RANGE {
             let n: usize = 1 << k;
-            let id = format!("h2c_{b}b_{k}");
-            group.bench_function(BenchmarkId::new("halo2curves", id), |b| {
+            let id = format!("msm_best_{b}b_{k}");
+            group.bench_function(BenchmarkId::new("msm_best", id), |b| {
                 b.iter(|| {
-                    halo2curves::msm::msm_best(&coeffs[b_index][..n], &bases[..n]);
+                    midnight_curves::msm::msm_best(&coeffs[b_index][..n], &bases[..n]);
                 })
             });
         }

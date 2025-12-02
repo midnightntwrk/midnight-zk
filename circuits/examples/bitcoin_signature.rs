@@ -3,7 +3,6 @@
 //! using Bitcoin's C library https://github.com/bitcoin-core/secp256k1.
 
 use group::GroupEncoding;
-use halo2curves::secp256k1::{Fp as secp256k1Base, Fq as secp256k1Scalar, Secp256k1};
 use midnight_circuits::{
     compact_std_lib::{self, Relation, ZkStdLib, ZkStdLibArch},
     field::foreign::params::MultiEmulationParams,
@@ -14,6 +13,7 @@ use midnight_circuits::{
     testing_utils::plonk_api::filecoin_srs,
     types::{AssignedByte, AssignedForeignPoint, Instantiable},
 };
+use midnight_curves::secp256k1::{Fp as secp256k1Base, Fq as secp256k1Scalar, Secp256k1};
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,

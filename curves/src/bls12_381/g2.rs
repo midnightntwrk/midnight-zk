@@ -19,11 +19,15 @@ use group::{
     prime::{PrimeCurve, PrimeCurveAffine, PrimeGroup},
     Curve, Group, GroupEncoding, UncompressedEncoding, WnafGroup,
 };
-use halo2curves::{serde::SerdeObject, Coordinates, CurveAffine, CurveExt};
+use pairing::{Engine, PairingCurveAffine};
 use rand_core::RngCore;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 
-use crate::{fp::Fp, fp2::Fp2, Bls12, Engine, Fq, G1Affine, Gt, PairingCurveAffine};
+use super::{fp::Fp, fp2::Fp2, Bls12, Fq, G1Affine, Gt};
+use crate::{
+    curve::{Coordinates, CurveAffine, CurveExt},
+    serde_traits::SerdeObject,
+};
 
 /// This is an element of $\mathbb{G}_2$ represented in the affine coordinate
 /// space. It is ideal to keep elements in this representation to reduce memory
@@ -1091,7 +1095,6 @@ mod tests {
     use rand_xorshift::XorShiftRng;
 
     use super::*;
-    use crate::fp::Fp;
 
     #[test]
     fn curve_tests() {
