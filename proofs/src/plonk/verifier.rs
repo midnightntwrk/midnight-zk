@@ -105,17 +105,6 @@ where
     // Sample theta challenge for keeping lookup columns linearly independent
     let theta: F = transcript.squeeze_challenge();
 
-    let lookups_permuted = (0..num_proofs)
-        .map(|_| -> Result<Vec<_>, _> {
-            // Hash each lookup permuted commitment
-            vk.cs
-                .lookups
-                .iter()
-                .map(|argument| argument.read_permuted_commitments(transcript))
-                .collect::<Result<Vec<_>, _>>()
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-
     // Sample beta challenge
     let beta: F = transcript.squeeze_challenge();
 
@@ -129,13 +118,13 @@ where
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    let lookups_committed = lookups_permuted
-        .into_iter()
-        .map(|lookups| {
-            // Hash each lookup product commitment
-            lookups
-                .into_iter()
-                .map(|lookup| lookup.read_product_commitment(transcript))
+    let lookups_committed = (0..num_proofs)
+        .map(|_| -> Result<Vec<_>, _> {
+            // Hash each lookup permuted commitment
+            vk.cs
+                .lookups
+                .iter()
+                .map(|argument| argument.read_commitment(transcript))
                 .collect::<Result<Vec<_>, _>>()
         })
         .collect::<Result<Vec<_>, _>>()?;
@@ -317,6 +306,7 @@ where
         let l_blind: F =
             l_evals[1..(1 + blinding_factors)].iter().fold(F::ZERO, |acc, eval| acc + eval);
         let l_0 = l_evals[1 + blinding_factors];
+        let flattened_lookups = vk.cs.lookups.iter().flat_map(|l| l.split(vk.cs().degree())).collect::<Vec<_>>();
 
         // Compute the expected value of h(x)
         let expressions = advice_evals
@@ -363,16 +353,14 @@ where
                             gamma,
                             x,
                         ))
-                        .chain(lookups.iter().zip(vk.cs.lookups.iter()).flat_map(
+                        .chain(lookups.iter().zip(flattened_lookups.iter()).flat_map(
                             move |(p, argument)| {
                                 p.expressions(
-                                    l_0,
                                     l_last,
                                     l_blind,
                                     argument,
                                     theta,
                                     beta,
-                                    gamma,
                                     advice_evals,
                                     fixed_evals,
                                     instance_evals,
