@@ -3,6 +3,7 @@ use std::hash::Hash;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use super::automaton::Automaton;
+use crate::parsing::automaton::Marker;
 
 /// Serialization of a data type into a vector of bytes (little-endian
 /// convention).
@@ -58,6 +59,19 @@ impl Serialize for u8 {
         let res = buf[0];
         *buf = &buf[1..];
         Ok(res)
+    }
+}
+
+impl Serialize for Marker {
+    #[cfg(test)]
+    fn serialize(&self, buf: &mut Vec<u8>) {
+        buf.push(u8::from(*self))
+    }
+    fn deserialize(buf: &mut &[u8]) -> Result<Self, String> {
+        ensure_buf_len!(buf, 1, Self);
+        let res = buf[0];
+        *buf = &buf[1..];
+        Ok(res.into())
     }
 }
 

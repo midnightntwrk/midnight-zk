@@ -14,8 +14,92 @@ use std::{
 use ff::PrimeField;
 use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
 
-use crate::parsing::automaton::Automaton;
+use crate::parsing::automaton::{Automaton, Marker, ALPHABET_MAX_SIZE};
 
+/// Element that is used to pad incomplete sequences of parsed bytes. For
+/// example, if an automaton is reading an input of 10 bytes, 4 bytes at a time,
+/// the inputs will need to be padded by 2. The chosen value is done so that it
+/// is not a valid `u8`.
+const AUTOMATON_CHUNK_PADDING: usize = ALPHABET_MAX_SIZE;
+
+/// Transitions reading multiple bytes in a row.
+type ChunkedTransition = FxHashMap<usize, FxHashMap<Vec<Option<u8>>, (usize, Vec<Marker>)>>;
+
+#[derive(Debug, Clone)]
+/// An automaton one or more bytes at the same time.
+pub struct ChunkAutomaton {
+    /// How many bytes are read by automaton transition (1 is a regular
+    /// automaton).
+    pub chunk_size: u32,
+    /// Upper bound on the number of reachable states.
+    pub nb_states: usize,
+    /// The initial state of the automaton.
+    pub initial_state: usize,
+    /// The final states of the automaton.
+    pub final_states: FxHashSet<usize>,
+    /// Similar to the `transitions` field of `Automaton`, except that
+    /// `1 + chunk_size` bytes are read at once.
+    pub transitions: ChunkedTransition,
+}
+
+impl Automaton {
+    pub fn chunked(self, chunk_size: u32) -> ChunkAutomaton {
+        assert!(
+            chunk_size != 0,
+            "Automata have to read at least 1 byte at a time"
+        );
+        let mut transitions = (self.transitions.iter())
+            .map(|(source, successors)| {
+                let new_successors = (successors.iter())
+                    .map(|(byte, (target, marker))| (vec![Some(*byte)], (*target, vec![*marker])))
+                    .collect::<FxHashMap<_, _>>();
+                (*source, new_successors)
+            })
+            .collect::<FxHashMap<_, _>>();
+
+        for _ in 1..chunk_size {
+            let mut incremented_transitions: ChunkedTransition =
+                FxHashMap::with_capacity_and_hasher(transitions.capacity(), FxBuildHasher);
+            let mut increment = |source: usize,
+                                 bytes: &[Option<u8>],
+                                 new_byte: Option<u8>,
+                                 target: usize,
+                                 markers: &[Marker],
+                                 new_marker: Marker| {
+                let mut new_bytes = bytes.to_vec();
+                new_bytes.push(new_byte);
+                let mut new_markers = markers.to_vec();
+                new_markers.push(new_marker);
+                incremented_transitions
+                    .entry(source)
+                    .or_default()
+                    .insert(new_bytes, (target, new_markers));
+            };
+
+            for (source, successors) in &transitions {
+                for (bytes, (target, markers)) in successors {
+                    if self.final_states.contains(target) {
+                        increment(*source, bytes, None, *target, markers, Marker::from(0))
+                    }
+                    if let Some(next_steps) = self.transitions.get(target) {
+                        for (byte, (next, marker)) in next_steps {
+                            increment(*source, bytes, Some(*byte), *next, markers, *marker)
+                        }
+                    }
+                }
+            }
+            transitions = incremented_transitions;
+        }
+
+        ChunkAutomaton {
+            chunk_size,
+            nb_states: self.nb_states,
+            initial_state: self.initial_state,
+            final_states: self.final_states,
+            transitions,
+        }
+    }
+}
 
 /// A simple map from the automaton structure to handle field elements, and thus
 /// precompute all transition operations on the prover code.
@@ -32,24 +116,36 @@ pub struct NativeAutomaton<F> {
     pub transitions: BTreeMap<(F, F), (F, F)>,
 }
 
+impl<F: PrimeField> From<&ChunkAutomaton> for NativeAutomaton<F> {
+    fn from(automaton: &ChunkAutomaton) -> Self {
+        assert!(
+            automaton.chunk_size * u8::BITS <= F::CAPACITY,
+            "cannot store"
+        );
+        todo!()
+    }
+}
+
 impl<F> From<&Automaton> for NativeAutomaton<F>
 where
     F: PrimeField + Ord,
 {
     fn from(value: &Automaton) -> Self {
+        let mut transitions = BTreeMap::new();
+        for (&source, successors) in value.transitions.iter() {
+            for (&byte, &(target, marker)) in successors {
+                transitions.insert(
+                    (F::from(source as u64), F::from(byte as u64)),
+                    (F::from(target as u64), F::from(u8::from(marker) as u64)),
+                );
+            }
+        }
         NativeAutomaton {
             initial_state: F::from(value.initial_state as u64),
             final_states: (value.final_states.iter())
                 .map(|s| F::from(*s as u64))
                 .collect::<BTreeSet<_>>(),
-            transitions: (value.transitions.iter())
-                .map(|(&(s1, a), &(s2, marker))| {
-                    (
-                        (F::from(s1 as u64), F::from(a as u64)),
-                        (F::from(s2 as u64), F::from(marker as u64)),
-                    )
-                })
-                .collect::<BTreeMap<_, _>>(),
+            transitions,
         }
     }
 }

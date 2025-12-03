@@ -161,14 +161,20 @@ pub fn spec_library() -> ParsingLibrary {
 fn spec_jwt() -> Regex {
     // Content of a basic field (RFC 8259 JSON string), possibly marked if `marker`
     // is not 0.
-    let string = |marker: usize| -> Regex {
-        Regex::json_string().replace_markers(&|m| if m == 1 { Some(marker) } else { None })
+    let string = |marker: u8| -> Regex {
+        Regex::json_string().replace_markers(&|m| {
+            if u8::from(m) == 1 {
+                Some(marker.into())
+            } else {
+                None
+            }
+        })
     };
     // A json field, with possible white spaces.
     let field = |name: &str, content: Regex| -> Regex {
         Regex::spaced_cat([format!("\"{name}\"").into(), ":".into(), content])
     };
-    let string_field = |name: &str, marker: usize| -> Regex { field(name, string(marker)) };
+    let string_field = |name: &str, marker: u8| -> Regex { field(name, string(marker)) };
     let int_field = |name: &str| -> Regex { field(name, Regex::digit().non_empty_list()) };
 
     // A collection of regular expressions, delimited by `opening` and `closing`,
@@ -337,7 +343,11 @@ mod tests {
         spec_library_data,
         StdLibParser::{self, Jwt},
     };
-    use crate::parsing::{automaton::Automaton, spec_library, specs::check_serialization};
+    use crate::parsing::{
+        automaton::{Automaton, Marker},
+        spec_library,
+        specs::check_serialization,
+    };
 
     /// Sets up the serialised library (bootstraps it if empty serialisation
     /// data is found), and performs consistency checks or updates accordingly
@@ -356,6 +366,15 @@ mod tests {
                 *name,
                 start_local.elapsed()
             );
+            let nb_chunks = 3;
+            let chunked = automaton.clone().chunked(nb_chunks);
+            println!(
+                "inputs grouped by chunks of {}: {} transitions (VS {}, i.e., x{})",
+                nb_chunks,
+                chunked.transitions.len(),
+                automaton.transitions.len(),
+                chunked.transitions.len() / automaton.transitions.len(),
+            );
             lib.insert(*name, automaton);
         }
         println!(
@@ -371,7 +390,7 @@ mod tests {
     fn specs_one_test(
         spec_library: &FxHashMap<StdLibParser, Automaton>,
         spec: StdLibParser,
-        accepted: &[(&str, &[(usize, &str)])],
+        accepted: &[(&str, &[(u8, &str)])],
         rejected: &[&str],
     ) {
         let automaton = spec_library.get(&spec).unwrap();
@@ -394,7 +413,7 @@ mod tests {
             // Gathering outputs.
             let mut outputs = FxHashMap::with_capacity_and_hasher(2, FxBuildHasher);
             for (&o,&i) in output_automaton.iter().zip(s_bytes) {
-                if o != 0 {
+                if o != 0.into() {
                     outputs.entry(o).or_insert(vec![]).push(i);
                 }
             }
@@ -405,16 +424,16 @@ mod tests {
                 "input was unexpectedly rejected (automaton run ended up in the non-final state {} after {} transitions)", state, counter
             );
             if let Some(n) = outputs.iter().find(|&(i,_)|
-                expected_outputs.iter().all(|(j,_)| i != j)
+                expected_outputs.iter().all(|(j,_)| *i != Marker::from(*j))
             ){
                 panic!(
-                    "[test of spec {:?}, nb. {index}]: the input {s} is accepted as expected, but it has been marked with a {}, which is unexpected\nThe automaton reached the final state {} in {} transitions.",
-                    spec, n.0, state, counter
+                    "[test of spec {:?}, nb. {index}]: the input {s} is accepted as expected, but it has been marked with a {:?}, which is unexpected\nThe automaton reached the final state {} in {} transitions.",
+                    spec, n, state, counter
                 )
             }
             for (i,expected_output) in expected_outputs {
                 let expected_output_bytes = expected_output.as_bytes();
-                match outputs.get(i) {
+                match outputs.get(&Marker::from(*i)) {
                     None => panic!(
                         "[test of spec {:?}, nb. {index}]: the input {s} is accepted as expected, but it has no marker {i}, which is unexpected\nThe automaton reached the final state {} in {} transitions.",
                         spec, state, counter
@@ -456,13 +475,13 @@ mod tests {
                     // Gathering outputs.
                     let mut outputs = FxHashMap::with_capacity_and_hasher(2, FxBuildHasher);
                     for (&o,&i) in output.iter().zip(s_bytes) {
-                        if o != 0 {
+                        if o != 0.into() {
                             outputs.entry(o).or_insert(vec![]).push(i);
                         }
                     }
                     let mut outputs_str = String::new();
                     for (i,o) in outputs {
-                        outputs_str.push_str(&format!("  - {i}: {}\n", String::from_utf8_lossy(&o)))
+                        outputs_str.push_str(&format!("  - {:?}: {}\n", i, String::from_utf8_lossy(&o)))
                     }
                     panic!(
                         "input was unexpectedly accepted (reached final state {} after {} transitions). The outputs were:\n{}",
@@ -492,7 +511,7 @@ mod tests {
                 automaton.transitions.len()
             )
         }
-        let accepted0: Vec<(&str, &[(usize, &str)])> = vec![
+        let accepted0: Vec<(&str, &[(u8, &str)])> = vec![
             (
                 FULL_INPUT_JWT,
                 &[

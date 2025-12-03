@@ -25,6 +25,7 @@ use std::iter::once;
 use rustc_hash::{FxBuildHasher, FxHashSet};
 
 use super::automaton::{Automaton, Letter, RawAutomaton, ALPHABET_MAX_SIZE};
+use crate::parsing::automaton::Marker;
 
 /// A type for formal languages described as regular expressions.
 #[derive(Clone, Debug)]
@@ -76,18 +77,18 @@ where
     /// Some(m)`, and leave it unchanged if `f(b) == None`. Note in particular
     /// that `f(b) == Some(0)` removes the marker on `b`, which is different
     /// from `f(b) == None`.
-    fn mark(&self, f: &impl Fn(u8) -> Option<usize>) -> Self;
+    fn mark(&self, f: &impl Fn(u8) -> Option<Marker>) -> Self;
 
     /// Specific (more efficient) implementation of `RegexInstructions::mark`
     /// that marks a given slice of bytes with a fixed marker. Overwrites
     /// previous markers. Also note that choosing `marker` to be `0` means
     /// erasing any markers present on `bytes`.
-    fn mark_bytes(&self, bytes: impl IntoIterator<Item = u8>, marker: usize) -> Self;
+    fn mark_bytes(&self, bytes: impl IntoIterator<Item = u8>, marker: Marker) -> Self;
 
     /// Takes the markers of `self` and replace them accordingly to the `upd`
     /// function (`upd(m) == None` meaning that the marker `m` is left
     /// unchanged).
-    fn replace_markers(&self, upd: &impl Fn(usize) -> Option<usize>) -> Self;
+    fn replace_markers(&self, upd: &impl Fn(Marker) -> Option<Marker>) -> Self;
 
     /// A regular expression matching any single unmarked byte from a
     /// collection.
@@ -459,7 +460,7 @@ where
         let unicode_escape = Self::word("\\u").terminated(hex.repeat(4));
 
         let content = Self::union([unescaped_utf8_cps, simple_escape, unicode_escape]).list();
-        content.mark(&|_| Some(1)).delimited(Self::word("\""), Self::word("\""))
+        content.mark(&|_| Some(1.into())).delimited(Self::word("\""), Self::word("\""))
     }
 }
 
@@ -467,7 +468,7 @@ impl Regex {
     /// Checks if `self` contains a non-0 marker.
     fn contains_markers(&self) -> bool {
         match &self.content {
-            RegexInternal::Single(bytes) => bytes.iter().any(|b| b.marker != 0),
+            RegexInternal::Single(bytes) => bytes.iter().any(|b| u8::from(b.marker) != 0),
             RegexInternal::Concat(v) | RegexInternal::Union(v) | RegexInternal::Inter(v) => {
                 v.iter().any(|r| r.contains_markers())
             }
@@ -512,14 +513,14 @@ impl Regex {
 // efficiency purposes:
 // - non_empty_list
 impl RegexInstructions for Regex {
-    fn mark(&self, f: &impl Fn(u8) -> Option<usize>) -> Self {
+    fn mark(&self, f: &impl Fn(u8) -> Option<Marker>) -> Self {
         self.map(&|&letter| Letter {
             char: letter.char,
             marker: f(letter.char).unwrap_or(letter.marker),
         })
     }
 
-    fn mark_bytes(&self, bytes: impl IntoIterator<Item = u8>, marker: usize) -> Self {
+    fn mark_bytes(&self, bytes: impl IntoIterator<Item = u8>, marker: Marker) -> Self {
         let mut marker_update = [None; ALPHABET_MAX_SIZE];
         for b in bytes {
             marker_update[b as usize] = Some(marker)
@@ -527,7 +528,7 @@ impl RegexInstructions for Regex {
         self.mark(&|b| marker_update[b as usize])
     }
 
-    fn replace_markers(&self, upd: &impl Fn(usize) -> Option<usize>) -> Self {
+    fn replace_markers(&self, upd: &impl Fn(Marker) -> Option<Marker>) -> Self {
         self.map(&|&letter| Letter {
             char: letter.char,
             marker: upd(letter.marker).unwrap_or(letter.marker),
@@ -761,18 +762,16 @@ impl Regex {
 mod tests {
 
     use super::{Regex, RegexInstructions};
-    use crate::parsing::{automaton, regex::ALPHABET_MAX_SIZE};
+    use crate::parsing::{
+        automaton::{self},
+        regex::ALPHABET_MAX_SIZE,
+    };
 
     // Tests whether a given regular expression accepts or rejects two sets of
     // corresponding strings. Uses the sub-method used in the `automaton.rs` test
     // module.
-    fn regex_one_test(
-        index: usize,
-        regex: &Regex,
-        accepted: &[(&str, &[usize])],
-        rejected: &[&str],
-    ) {
-        let accepted: &[(&[u8], &[usize])] =
+    fn regex_one_test(index: usize, regex: &Regex, accepted: &[(&str, &[u8])], rejected: &[&str]) {
+        let accepted: &[(&[u8], &[u8])] =
             &accepted.iter().map(|(s, output)| (s.as_bytes(), *output)).collect::<Vec<_>>();
         let rejected: &[&[u8]] = &rejected.iter().map(|s| s.as_bytes()).collect::<Vec<_>>();
         automaton::tests::automaton_one_test(
@@ -797,7 +796,7 @@ mod tests {
             Regex::blanks_strict(),
         );
 
-        let accepted0: Vec<(&str, &[usize])> = vec![
+        let accepted0: Vec<(&str, &[u8])> = vec![
             ("hello test lmao!", &[0; 16]),
             ("hello    test    lmao!", &[0; 22]),
             ("hello \t\t test \n \t lmao!", &[0; 23]),
@@ -834,13 +833,13 @@ mod tests {
         )
         .mark(&|b| {
             if b.is_ascii_lowercase() {
-                Some(1)
+                Some(1.into())
             } else {
                 None
             }
         });
 
-        let accepted1: Vec<(&str, &[usize])> = vec![
+        let accepted1: Vec<(&str, &[u8])> = vec![
             (
                 "[ { hello hello hello } { test test test test } ]",
                 &[
@@ -895,9 +894,9 @@ mod tests {
         ];
 
         // A regex that accepts any string, and outputs its blank spaces with marker 1.
-        let regex2 = Regex::any_byte().mark_bytes(*b" \n\t", 1).list();
+        let regex2 = Regex::any_byte().mark_bytes(*b" \n\t", 1.into()).list();
 
-        let accepted2: Vec<(&str, &[usize])> = vec![
+        let accepted2: Vec<(&str, &[u8])> = vec![
             ("", &[]),
             (
                 "hello test lmao!",
@@ -945,14 +944,14 @@ mod tests {
         // marker (1,2,3 respectively).
         let regex3 = Regex::any_byte()
             .mark(&|b| match b {
-                b' ' => Some(1),
-                b'\n' => Some(2),
-                b'\t' => Some(3),
+                b' ' => Some(1.into()),
+                b'\n' => Some(2.into()),
+                b'\t' => Some(3.into()),
                 _ => None,
             })
             .list();
 
-        let accepted3: Vec<(&str, &[usize])> = vec![
+        let accepted3: Vec<(&str, &[u8])> = vec![
             ("", &[]),
             (
                 "hello test lmao!",
@@ -1000,7 +999,7 @@ mod tests {
         // the intersection, which permits to simply intersect regex0 with regex2.
         let regex4 = regex0.clone().and(regex3.clone());
 
-        let accepted4: Vec<(&str, &[usize])> = vec![
+        let accepted4: Vec<(&str, &[u8])> = vec![
             (
                 "hello test lmao!",
                 &[0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],

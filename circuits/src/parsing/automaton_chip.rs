@@ -216,12 +216,13 @@ where
 
                 // Main transitions.
                 for automaton in self.config.automata.iter() {
-                    for ((source, letter), (target,output_extr)) in automaton.1.transitions.iter() {
+                    for ((source,letter), (target,output_extr)) in automaton.1.transitions.iter() {
                             assert!(
                                 *source != F::ZERO && *target != F::ZERO ,
                                 "sanity check failed: the circuit requires that state 0 is not used, but the automaton generation failed to ensure it."
                             );
                             add_entry(*source, *letter, *target, *output_extr)?
+                        
                     }
                     // Dummy transitions to represent final states. Recall that letter are
                     // represented in-circuit by elements of `AssignedByte`, which are therefore
@@ -270,10 +271,7 @@ where
             *offset,
         )?;
         let target_opt_value = state.value().zip(letter.value()).map(|(state, letter)| {
-            self.config.automata[automaton_index]
-                .transitions
-                .get(&(*state, *letter))
-                .copied()
+            self.config.automata[automaton_index].transitions.get(&(*state, *letter))
         });
         target_opt_value.error_if_known_and(|o| o.is_none())?;
         let target_value = target_opt_value.map(|o| o.unwrap());
@@ -426,9 +424,9 @@ impl Automaton {
         let marker_regex = Regex::any_byte()
             .mark(&|b| {
                 if b == b'l' {
-                    Some(2)
+                    Some(2.into())
                 } else if !b"h\n\t ".contains(&b) {
-                    Some(1)
+                    Some(1.into())
                 } else {
                     None
                 }

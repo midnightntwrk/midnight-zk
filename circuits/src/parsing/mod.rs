@@ -35,6 +35,6 @@ mod table;
 
 pub use base64_chip::*;
 pub use data_types::{DateFormat, Separator};
-pub use native_automaton::NativeAutomaton;
+pub use native_automaton::{ChunkAutomaton, NativeAutomaton};
 pub use parser_gadget::*;
 pub use specs::{spec_library, StdLibParser};
