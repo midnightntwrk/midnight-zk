@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
+* Added a conversion to any AssignedCell to AssignedNative for external crates [#148](https://github.com/midnightntwrk/midnight-zk/pull/148)
 
 ### Changed
 * Address feedback from ZK Sec audit 3 [#125](https://github.com/midnightntwrk/midnight-zk/pull/125)
