@@ -342,6 +342,9 @@ where
 /// parameters `params` and the proving key [`ProvingKey`] that was
 /// generated previously for the same circuit. The provided `instances`
 /// are zero-padded internally.
+//
+// NOTE: Any change here must be mirrored in src/plonk/bench/prover.rs
+// to ensure the benchmarks remain aligned with the real prover.
 pub fn create_proof<
     F,
     CS: PolynomialCommitmentScheme<F>,
