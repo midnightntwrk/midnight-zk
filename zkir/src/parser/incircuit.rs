@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use midnight_circuits::compact_std_lib::ZkStdLib;
 use midnight_proofs::circuit::{Layouter, Value};
+use midnight_zk_stdlib::ZkStdLib;
 
 use crate::{
     instructions::{

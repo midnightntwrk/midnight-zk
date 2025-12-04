@@ -51,9 +51,8 @@ num-bigint = { workspace = true, features = ["rand"] }
 serde_json = { workspace = true }
 itertools = "0.14"
 dhat = "0.3"
-bellman = "0.14.0"
-serial_test = "3.2.0"
 sha3 = "0.10.0"
+midnight-zk-stdlib = { path = "../zk_stdlib", version = "0.1.0" }
 
 [target.'cfg(ci_build)'.dependencies]
 midnight-curves = { path = "../curves", features = ["portable"] }
@@ -68,18 +67,6 @@ truncated-challenges = ["midnight-proofs/truncated-challenges"]
 
 [lib]
 bench = false
-
-[[example]]
-name = "cred_full"
-path = "examples/identity/full_credential.rs"
-
-[[example]]
-name = "cred_enrollment"
-path = "examples/identity/enrollment.rs"
-
-[[example]]
-name = "cred_property"
-path = "examples/identity/property_check.rs"
 
 [[bench]]
 name = "poseidon_cpu"

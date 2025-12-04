@@ -1,7 +1,6 @@
-use midnight_circuits::{
-    compact_std_lib::ZkStdLib, instructions::PublicInputInstructions, types::Instantiable,
-};
+use midnight_circuits::{instructions::PublicInputInstructions, types::Instantiable};
 use midnight_proofs::circuit::Layouter;
+use midnight_zk_stdlib::ZkStdLib;
 
 use crate::{
     types::{CircuitValue, IrType, IrValue},

@@ -18,14 +18,14 @@ jobs:
         id: restore-srs
         uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684
         with:
-          path: circuits/examples/assets/bls_filecoin_2p19
+          path: zk_stdlib/examples/assets/bls_filecoin_2p19
           key: fixed-srs-cache
 
       - name: Download SRS if not cached
         if: steps.restore-srs.outputs.cache-hit != 'true'
         run: |
-          mkdir -p circuits/examples/assets
-          curl -L -o circuits/examples/assets/bls_filecoin_2p19 \
+          mkdir -p zk_stdlib/examples/assets
+          curl -L -o zk_stdlib/examples/assets/bls_filecoin_2p19 \
             https://midnight-s3-fileshare-dev-eu-west-1.s3.eu-west-1.amazonaws.com/bls_filecoin_2p19
 
   test-blstrs:
@@ -41,9 +41,26 @@ jobs:
           args: --release --all-features
 
   test-circuits:
-    needs: download-srs
     if: github.event.pull_request.draft == false
     name: Test circuits
+    runs-on: ubuntu-latest-16-core-x64
+
+    env:
+      RUST_BACKTRACE: full
+      RUSTFLAGS: --cfg ci_build
+
+    steps:
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3
+      - run: cargo tree -e features -p midnight-curves
+      - uses: ./.github/actions/cargo-test
+        with:
+          package: midnight-circuits
+          args: --release
+
+  test-zk-stdlib:
+    needs: download-srs
+    if: github.event.pull_request.draft == false
+    name: Test zk-stdlib
     runs-on: ubuntu-latest-16-core-x64
 
     env:
@@ -55,17 +72,16 @@ jobs:
       - name: Restore SRS from cache
         uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684
         with:
-          path: circuits/examples/assets/bls_filecoin_2p19
+          path: zk_stdlib/examples/assets/bls_filecoin_2p19
           key: fixed-srs-cache
 
-      - run: cargo tree -e features -p midnight-curves
       - uses: ./.github/actions/cargo-test
         with:
-          package: midnight-circuits
+          package: midnight-zk-stdlib
           args: --release -- --skip serialization
       - uses: ./.github/actions/cargo-test
         with:
-          package: midnight-circuits
+          package: midnight-zk-stdlib
           args: --release --test serialization -- --test-threads=1
 
   test-vk-consistency:
@@ -79,20 +95,20 @@ jobs:
       - name: Restore SRS from cache
         uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684
         with:
-          path: circuits/examples/assets/bls_filecoin_2p19
+          path: zk_stdlib/examples/assets/bls_filecoin_2p19
           key: fixed-srs-cache
 
       - uses: ./.github/actions/cargo-test
         with:
-          package: midnight-circuits
+          package: midnight-zk-stdlib
           args: --release -- --ignored
 
       - name: Check for changes in goldenfiles/examples.
         run: |
-          if ! git diff --quiet -- circuits/goldenfiles/examples; then
-            echo "Files in circuits/goldenfiles/examples have changed"
+          if ! git diff --quiet -- zk_stdlib/goldenfiles/examples; then
+            echo "Files in zk_stdlib/goldenfiles/examples have changed"
             echo "Run "cargo test --release -- --ignored" locally and commit the changes"
-            git diff -- circuits/goldenfiles/examples
+            git diff -- zk_stdlib/goldenfiles/examples
             exit 1
           else
             echo "No changes in goldenfiles/examples"

@@ -1,6 +1,7 @@
-use midnight_circuits::{compact_std_lib::ZkStdLib, instructions::AssignmentInstructions};
+use midnight_circuits::instructions::AssignmentInstructions;
 use midnight_curves::{Fr as JubjubScalar, JubjubSubgroup};
 use midnight_proofs::circuit::{Layouter, Value};
+use midnight_zk_stdlib::ZkStdLib;
 use num_bigint::BigUint;
 
 use crate::{

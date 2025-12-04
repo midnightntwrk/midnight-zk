@@ -1,7 +1,8 @@
 use std::ops::Mul;
 
-use midnight_circuits::{compact_std_lib::ZkStdLib, instructions::ArithInstructions};
+use midnight_circuits::instructions::ArithInstructions;
 use midnight_proofs::circuit::Layouter;
+use midnight_zk_stdlib::ZkStdLib;
 
 use crate::{
     types::{CircuitValue, IrValue},

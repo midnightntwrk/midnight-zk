@@ -1,12 +1,12 @@
 use std::{cell::RefCell, collections::HashMap, io, rc::Rc};
 
 use bincode::{Decode, Encode};
-use midnight_circuits::compact_std_lib::{MidnightCircuit, Relation, ZkStdLib, ZkStdLibArch};
 use midnight_proofs::{
     circuit::{Layouter, Value},
     dev::cost_model::dummy_synthesize_run,
     plonk,
 };
+use midnight_zk_stdlib::{MidnightCircuit, Relation, ZkStdLib, ZkStdLibArch};
 use serde::{Deserialize, Serialize};
 
 use crate::{
