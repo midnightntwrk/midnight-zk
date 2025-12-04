@@ -35,8 +35,8 @@ pub mod keccak;
 type NG<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
 
 /// Converts a slice of assigned cell to a slice of Midnight `AssignedByte<F>`.
-/// This function is unsafe in that it assumes is only sound if the initial
-/// sound has been properly range-checked.
+/// This function is unsafe in that it assumes that the values have
+/// been properly range-checked.
 fn unsafe_convert_to_bytes<V, F>(
     layouter: &mut impl Layouter<F>,
     native_gadget: &NG<F>,
@@ -48,7 +48,6 @@ where
     for<'v> Rational<F>: From<&'v V>,
 {
     (bytes.iter())
-        // The unsafe conversion is fine because we start from `b` which is a (Keccak) AssignedByte.
         .map(|b| native_gadget.convert_unsafe(layouter, &b.clone().convert_to_native()))
         .collect::<Result<Vec<AssignedByte<F>>, Error>>()
 }
