@@ -679,9 +679,9 @@ mod tests {
     }
 
     #[derive(Clone, Default)]
-    struct StandardPlonk(Fq);
+    struct StandardPlonk<const NB_PUBLIC_INPUTS: usize>(Fq);
 
-    impl Circuit<Fq> for StandardPlonk {
+    impl<const NB_PUBLIC_INPUTS: usize> Circuit<Fq> for StandardPlonk<NB_PUBLIC_INPUTS> {
         type Config = StandardPlonkConfig;
         type FloorPlanner = SimpleFloorPlanner;
         #[cfg(feature = "circuit-params")]
@@ -743,6 +743,18 @@ mod tests {
                     a.copy_advice(|| "", &mut region, config.b, 3)?;
                     a.copy_advice(|| "", &mut region, config.c, 4)?;
                     region.assign_advice(|| "", config.a, 5, || Value::known(Fq::ZERO))?;
+
+                    // Assign instances. We are just forcing the number of instances to be
+                    // determined by the variable `NB_PUBLIC_INPUTS`.
+                    for i in 0..NB_PUBLIC_INPUTS {
+                        let _ = region.assign_advice_from_instance(
+                            || "",
+                            config.instance,
+                            i,
+                            config.a,
+                            0,
+                        )?;
+                    }
                     Ok(())
                 },
             )
@@ -754,7 +766,7 @@ mod tests {
         let k = 9;
         let mut random_byte = [0u8; 1];
         OsRng::fill_bytes(&mut OsRng, &mut random_byte);
-        let circuit = StandardPlonk(Fq::from(random_byte[0] as u64));
+        let circuit = StandardPlonk::<1>(Fq::from(random_byte[0] as u64));
 
         let params = ParamsKZG::<Bls12>::unsafe_setup(k, OsRng);
         let vk = keygen_vk_with_k::<_, KZGCommitmentScheme<Bls12>, _>(&params, &circuit, k)
@@ -779,5 +791,29 @@ mod tests {
         let proof = transcript.finalize();
 
         assert_eq!(circuit_model::<_, 48, 32>(&circuit).size, proof.len());
+    }
+
+    #[test]
+    fn check_correct_computation_k() {
+        let mut random_byte = [0u8; 1];
+        OsRng::fill_bytes(&mut OsRng, &mut random_byte);
+
+        macro_rules! test_nb_pi {
+            ($($nb_pi:expr),*) => {
+                $(
+                    {
+                        const NB_PI: usize = $nb_pi;
+                        let circuit = StandardPlonk::<NB_PI>(Fq::from(random_byte[0] as u64));
+                        let cost_model = cost_model_options(&circuit);
+
+                        // nb of unusable rows for this circuit is 6.
+                        let pi_k = (NB_PI + 6).next_power_of_two().ilog2();
+                        assert_eq!(cost_model.min_k, max(9, pi_k));
+                    }
+                )*
+            };
+        }
+
+        test_nb_pi!(1, 10, 100, 1017, 1018, 1019, 1020);
     }
 }
