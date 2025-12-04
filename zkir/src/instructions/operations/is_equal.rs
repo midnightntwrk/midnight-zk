@@ -1,8 +1,6 @@
-use midnight_circuits::{
-    compact_std_lib::ZkStdLib,
-    instructions::{BinaryInstructions, EqualityInstructions},
-};
+use midnight_circuits::instructions::{BinaryInstructions, EqualityInstructions};
 use midnight_proofs::{circuit::Layouter, plonk};
+use midnight_zk_stdlib::ZkStdLib;
 
 use crate::{types::CircuitValue, utils::F, Error, Operation};
 

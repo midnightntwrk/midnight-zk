@@ -3,11 +3,11 @@ use std::collections::HashMap;
 use blake2b_simd::State as Blake2b;
 use ff::Field;
 use group::Group;
-use midnight_circuits::compact_std_lib::{self, MidnightCircuit};
 use midnight_curves::{Fr as JubjubFr, JubjubSubgroup};
 use midnight_proofs::{
     circuit::Value, dev::cost_model::dummy_synthesize_run, plonk, poly::kzg::params::ParamsKZG,
 };
+use midnight_zk_stdlib::MidnightCircuit;
 use midnight_zkir::{
     Error, Instruction, IrType, IrValue,
     Operation::{self, *},
@@ -865,8 +865,8 @@ fn test_with_witness(
     let k = MidnightCircuit::from_relation(&relation).min_k();
     let srs = ParamsKZG::unsafe_setup(k, OsRng);
 
-    let vk = compact_std_lib::setup_vk(&srs, &relation);
-    let pk = compact_std_lib::setup_pk(&relation, &vk);
+    let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
+    let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
 
     let pi_result = relation.public_inputs(witness.clone());
 
@@ -880,7 +880,7 @@ fn test_with_witness(
         assert_eq!(pi, expected_public_inputs);
     }
 
-    let proof_result = compact_std_lib::prove::<_, Blake2b>(
+    let proof_result = midnight_zk_stdlib::prove::<_, Blake2b>(
         &srs,
         &pk,
         &relation,

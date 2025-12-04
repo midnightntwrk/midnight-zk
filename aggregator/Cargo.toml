@@ -24,6 +24,7 @@ midnight-proofs = { git = "https://github.com/midnightntwrk/midnight-zk.git", ta
 midnight-circuits = { path = "../circuits", version = "5.0.1", default-features = false, features = [
     "testing",
 ] }
+midnight-zk-stdlib = { path = "../zk_stdlib", version = "0.1.0" }
 
 rand = { workspace = true }
 blake2b_simd = { workspace = true }

@@ -27,9 +27,11 @@ verification keys break backwards compatibility.
 * Optimize `assigned_to_le_bits` in `NativeGadget` [#131](https://github.com/midnightntwrk/midnight-zk/pull/131)
 * Bn256 curves emulation parameters feature-gated under "dev-curves" [#139](https://github.com/midnightntwrk/midnight-zk/pull/139)
 
+
 ### Removed
 * Halo2curves dependency [#139](https://github.com/midnightntwrk/midnight-zk/pull/139)
 * Pasta curves emulation parameters [#139](https://github.com/midnightntwrk/midnight-zk/pull/139)
+* Move `compact_std_lib` to a new crate [#155](https://github.com/midnightntwrk/midnight-zk/pull/155)*
 
 ## [5.0.1] - 19-09-2025
 ### Added

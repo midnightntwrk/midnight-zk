@@ -43,8 +43,6 @@ num-bigint = { workspace = true, features = ["rand"] }
 serde_json = { workspace = true }
 itertools = "0.14"
 dhat = "0.3"
-bellman = "0.14.0"
-serial_test = "3.2.0"
 sha3 = "0.10.0"
 blake2 = "0.10.6"
 
@@ -65,18 +63,6 @@ dev-curves = ["midnight-curves/dev-curves", "midnight-proofs/dev-curves"]
 
 [lib]
 bench = false
-
-[[example]]
-name = "cred_full"
-path = "examples/identity/full_credential.rs"
-
-[[example]]
-name = "cred_enrollment"
-path = "examples/identity/enrollment.rs"
-
-[[example]]
-name = "cred_property"
-path = "examples/identity/property_check.rs"
 
 [[bench]]
 name = "poseidon_cpu"

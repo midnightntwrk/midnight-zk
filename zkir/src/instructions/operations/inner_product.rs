@@ -1,5 +1,6 @@
-use midnight_circuits::{compact_std_lib::ZkStdLib, instructions::EccInstructions as _};
+use midnight_circuits::instructions::EccInstructions as _;
 use midnight_proofs::circuit::Layouter;
+use midnight_zk_stdlib::ZkStdLib;
 
 use crate::{
     instructions::operations::{add_incircuit, add_offcircuit, mul_incircuit, mul_offcircuit},
