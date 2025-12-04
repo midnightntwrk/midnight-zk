@@ -1,3 +1,5 @@
+//! Utility functions for SHA-256 circuit.
+
 use ff::PrimeField;
 use midnight_proofs::plonk::Expression;
 
@@ -24,7 +26,7 @@ fn compact_even(mut x: u64) -> u32 {
 
 /// Asserts x is in correct spreaded form, i.e. its little-endian binary
 /// representation has zeros in odd positions.
-fn assert_in_valid_spreaded_form(x: u64) {
+pub fn assert_in_valid_spreaded_form(x: u64) {
     assert_eq!(MASK_ODD_64 & x, 0, "Input must be in valid spreaded form")
 }
 
