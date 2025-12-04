@@ -46,6 +46,9 @@ pub fn hash<F: PrimeField>(
     let input = &input.iter().map(AssignedNative::from).collect::<Vec<_>>();
     let key = &key.iter().map(AssignedNative::from).collect::<Vec<_>>();
     let output = &chip.hash(layouter, input, key, output_size)?.map(AssignedCell::<Byte, F>::from);
+
+    // The unsafe conversion is fine because we start from `output` which is
+    // ranged-checked by Blake2b.
     Ok(unsafe_convert_to_bytes(layouter, native_gadget, output)?.try_into().unwrap())
 }
 
