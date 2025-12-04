@@ -24,7 +24,9 @@ verification keys break backwards compatibility.
 * Made bench_macros and criterion dev dependencies [#134](https://github.com/midnightntwrk/midnight-zk/pull/134)
 * Optimize `assigned_to_le_bits` in `NativeGadget` [#131](https://github.com/midnightntwrk/midnight-zk/pull/131)
 
+
 ### Removed
+* Move `compact_std_lib` to a new crate [#155](https://github.com/midnightntwrk/midnight-zk/pull/155)*
 
 ## [5.0.1] - 19-09-2025
 ### Added
