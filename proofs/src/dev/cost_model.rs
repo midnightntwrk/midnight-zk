@@ -170,9 +170,11 @@ impl CostOptions {
             .chain(self.lookup.iter().flat_map(|l| l.queries()))
             .chain(self.permutation.queries())
             .chain(iter::repeat("0".parse().unwrap()).take(self.max_degree - 1))
+            .filter(|p| !p.rotations.is_empty())
             .collect();
 
         let column_queries = queries.len();
+        queries.iter_mut().for_each(|p| p.rotations.sort());
         queries.sort_unstable();
         queries.dedup();
         let point_sets = queries.len();
@@ -478,7 +480,7 @@ impl<F: Field> Assignment<F> for DevAssembly<F> {
         Ok(())
     }
 
-    fn query_instance(&self, _column: Column<Instance>, row: usize) -> Result<Value<F>, Error> {
+    fn query_instance(&self, _column: Column<Instance>, _row: usize) -> Result<Value<F>, Error> {
         Ok(Value::unknown())
     }
 
