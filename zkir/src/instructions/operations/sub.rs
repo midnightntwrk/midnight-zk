@@ -1,10 +1,8 @@
 use std::ops::Sub;
 
-use midnight_circuits::{
-    compact_std_lib::ZkStdLib,
-    instructions::{ArithInstructions, EccInstructions},
-};
+use midnight_circuits::instructions::{ArithInstructions, EccInstructions};
 use midnight_proofs::circuit::Layouter;
+use midnight_zk_stdlib::ZkStdLib;
 
 use crate::{
     types::{CircuitValue, IrValue},

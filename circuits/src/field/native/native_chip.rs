@@ -515,7 +515,7 @@ impl<F: PrimeField> NativeChip<F> {
 
     /// The total number of public inputs (as raw scalars) that have been
     /// constrained so far by this chip.
-    pub(crate) fn nb_public_inputs(&self) -> usize {
+    pub fn nb_public_inputs(&self) -> usize {
         *self.instance_offset.borrow()
     }
 }

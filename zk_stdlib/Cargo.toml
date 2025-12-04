@@ -1,0 +1,77 @@
+[package]
+name = "midnight-zk-stdlib"
+version = "0.1.0"
+edition = "2021"
+license-file.workspace = true
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+group = { workspace = true }
+ff = { workspace = true }
+rustc-hash = "2"
+halo2curves = { workspace = true }
+blake2b_simd = { workspace = true }
+midnight-circuits = { path = "../circuits", version = "5.0.1" }
+midnight-curves = { path = "../curves", version = "0.1.1" }
+midnight-proofs = { path = "../proofs", version = "0.5.1", default-features = false, features = [
+    "bits",
+    "circuit-params",
+    "committed-instances",
+] }
+
+keccak = { git = "https://github.com/alexandroszacharakis8/sha3-circuit", branch = "irakoton@midnight-update", package = "sha3-circuit" }
+blake2b = { git = "https://github.com/irakoton/blake2b_halo2_integration", branch = "irakoton@midnight-update", package = "blake2b_halo2" }
+
+serde = { workspace = true, optional = true }
+serde_derive = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+sha2 = { workspace = true }
+rand = { workspace = true }
+
+num-bigint = { version = "0.4" }
+num-traits = "0.2"
+num-integer = "0.1"
+subtle = "2.6"
+base64 = "0.13.1"
+lazy_static = "1.5.0"
+bincode = "2.0"
+hex = "0.4.3"
+
+[dev-dependencies]
+criterion = "0.7"
+rand_chacha = "0.3.1"
+goldenfile = "=1.8.0"
+num-bigint = { workspace = true, features = ["rand"] }
+serde_json = { workspace = true }
+itertools = "0.14"
+dhat = "0.3"
+bellman = "0.14.0"
+serial_test = "3.2.0"
+sha3 = "0.10.0"
+
+[target.'cfg(ci_build)'.dependencies]
+midnight-curves = { path = "../curves", features = ["portable"] }
+
+[features]
+default = []
+# Feature that exposes some testing functionality, such as load from scratch or instantiable
+testing = ["num-bigint/rand"]
+heap_profiling = []
+# Enable truncated challenges. This makes recursive proofs more efficient
+truncated-challenges = ["midnight-proofs/truncated-challenges"]
+
+[lib]
+bench = false
+
+[[example]]
+name = "cred_full"
+path = "examples/identity/full_credential.rs"
+
+[[example]]
+name = "cred_enrollment"
+path = "examples/identity/enrollment.rs"
+
+[[example]]
+name = "cred_property"
+path = "examples/identity/property_check.rs"

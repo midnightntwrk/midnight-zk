@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 
 ## [Unreleased]
 ### Added
+* Rebase to new `zk_stdlib/` outside of `circuits/` [#155](https://github.com/midnightntwrk/midnight-zk/pull/155)
 * Rebase to new `circuits/` [#120](https://github.com/midnightntwrk/midnight-zk/pull/120)
 * Rebase to new `circuits/` with `sha512` [#96](https://github.com/midnightntwrk/midnight-zk/pull/96)
 * truncated_challenges feature to allow --all-features compilation [#146](https://github.com/midnightntwrk/midnight-zk/pull/146)

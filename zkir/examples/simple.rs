@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use blake2b_simd::State as Blake2b;
-use midnight_circuits::compact_std_lib::{self, MidnightCircuit};
 use midnight_proofs::poly::kzg::params::ParamsKZG;
+use midnight_zk_stdlib::MidnightCircuit;
 use midnight_zkir::{IrValue, ZkirRelation};
 use num_bigint::BigUint;
 use num_traits::Num;
@@ -35,10 +35,10 @@ fn main() {
     let k = MidnightCircuit::from_relation(&relation).min_k();
     let srs = ParamsKZG::unsafe_setup(k, OsRng);
 
-    dbg!(compact_std_lib::cost_model(&relation));
+    dbg!(midnight_zk_stdlib::cost_model(&relation));
 
-    let vk = compact_std_lib::setup_vk(&srs, &relation);
-    let pk = compact_std_lib::setup_pk(&relation, &vk);
+    let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
+    let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
 
     let witness = HashMap::from_iter([
         ("v0", F::from(1).into()),
@@ -52,10 +52,10 @@ fn main() {
     let instance = relation.public_inputs(witness.clone()).expect("off-circuit run failed");
 
     let proof =
-        compact_std_lib::prove::<_, Blake2b>(&srs, &pk, &relation, &instance, witness, OsRng)
+        midnight_zk_stdlib::prove::<_, Blake2b>(&srs, &pk, &relation, &instance, witness, OsRng)
             .expect("Proof generation should not fail");
 
-    assert!(compact_std_lib::verify::<ZkirRelation, Blake2b>(
+    assert!(midnight_zk_stdlib::verify::<ZkirRelation, Blake2b>(
         &srs.verifier_params(),
         &vk,
         &instance,

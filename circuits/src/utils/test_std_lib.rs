@@ -32,8 +32,8 @@ macro_rules! run_test_std_lib {
             },
             instructions::*,
             types::{AssignedBit, AssignedByte, AssignedNative},
-            compact_std_lib::{MidnightCircuit, Relation, ZkStdLib},
         };
+        use midnight_zk_stdlib::{MidnightCircuit, Relation, ZkStdLib};
 
         type F = midnight_curves::Fq;
 
