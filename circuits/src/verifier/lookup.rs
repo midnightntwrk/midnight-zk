@@ -11,10 +11,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! A module for in-circuit lookup arguments. It is the in-circuit analog
-//! of file proofs/src/plonk/lookup/verifier.rs.
+//! In-circuit lookup argument verification.
 //!
-//! The "expressions" part is dealt with in our `expressions/` directory.
+//! This is the in-circuit analog of `proofs/src/plonk/logup/verifier.rs`.
+//! The constraint expressions are implemented in `expressions/lookup.rs`.
 
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 
@@ -26,54 +26,38 @@ use crate::{
     },
 };
 
-#[derive(Clone, Debug)]
-pub(crate) struct PermutationCommitments<S: SelfEmulation> {
-    permuted_input_commitment: S::AssignedPoint,
-    permuted_table_commitment: S::AssignedPoint,
-}
-
+/// Commitments to the LogUp polynomials, read from the transcript.
 #[derive(Clone, Debug)]
 pub(crate) struct Committed<S: SelfEmulation> {
-    permuted: PermutationCommitments<S>,
-    product_commitment: S::AssignedPoint,
+    multiplicities: S::AssignedPoint,
+    helper_poly: S::AssignedPoint,
+    accumulator: S::AssignedPoint,
 }
 
+/// Commitments plus evaluations at challenge point.
 #[derive(Clone, Debug)]
 pub(crate) struct Evaluated<S: SelfEmulation> {
     committed: Committed<S>,
-    pub(crate) product_eval: AssignedNative<S::F>,
-    pub(crate) product_next_eval: AssignedNative<S::F>,
-    pub(crate) permuted_input_eval: AssignedNative<S::F>,
-    pub(crate) permuted_input_inv_eval: AssignedNative<S::F>,
-    pub(crate) permuted_table_eval: AssignedNative<S::F>,
+    pub(crate) multiplicities_eval: AssignedNative<S::F>,
+    pub(crate) helper_eval: AssignedNative<S::F>,
+    pub(crate) accumulator_eval: AssignedNative<S::F>,
+    pub(crate) accumulator_next_eval: AssignedNative<S::F>,
 }
 
-pub(crate) fn read_permuted_commitments<S: SelfEmulation>(
+/// Reads the prover's commitments from the transcript.
+pub(crate) fn read_commitment<S: SelfEmulation>(
     layouter: &mut impl Layouter<S::F>,
     transcript_gadget: &mut TranscriptGadget<S>,
-) -> Result<PermutationCommitments<S>, Error> {
-    let permuted_input_commitment = transcript_gadget.read_point(layouter)?;
-    let permuted_table_commitment = transcript_gadget.read_point(layouter)?;
+) -> Result<Committed<S>, Error> {
+    let multiplicities = transcript_gadget.read_point(layouter)?;
+    let helper_poly = transcript_gadget.read_point(layouter)?;
+    let accumulator = transcript_gadget.read_point(layouter)?;
 
-    Ok(PermutationCommitments {
-        permuted_input_commitment,
-        permuted_table_commitment,
+    Ok(Committed {
+        multiplicities,
+        helper_poly,
+        accumulator,
     })
-}
-
-impl<S: SelfEmulation> PermutationCommitments<S> {
-    pub(crate) fn read_product_commitment(
-        self,
-        layouter: &mut impl Layouter<S::F>,
-        transcript_gadget: &mut TranscriptGadget<S>,
-    ) -> Result<Committed<S>, Error> {
-        let product_commitment = transcript_gadget.read_point(layouter)?;
-
-        Ok(Committed {
-            permuted: self,
-            product_commitment,
-        })
-    }
 }
 
 impl<S: SelfEmulation> Committed<S> {
@@ -82,19 +66,17 @@ impl<S: SelfEmulation> Committed<S> {
         layouter: &mut impl Layouter<S::F>,
         transcript_gadget: &mut TranscriptGadget<S>,
     ) -> Result<Evaluated<S>, Error> {
-        let product_eval = transcript_gadget.read_scalar(layouter)?;
-        let product_next_eval = transcript_gadget.read_scalar(layouter)?;
-        let permuted_input_eval = transcript_gadget.read_scalar(layouter)?;
-        let permuted_input_inv_eval = transcript_gadget.read_scalar(layouter)?;
-        let permuted_table_eval = transcript_gadget.read_scalar(layouter)?;
+        let multiplicities_eval = transcript_gadget.read_scalar(layouter)?;
+        let helper_eval = transcript_gadget.read_scalar(layouter)?;
+        let accumulator_eval = transcript_gadget.read_scalar(layouter)?;
+        let accumulator_next_eval = transcript_gadget.read_scalar(layouter)?;
 
         Ok(Evaluated {
             committed: self,
-            product_eval,
-            product_next_eval,
-            permuted_input_eval,
-            permuted_input_inv_eval,
-            permuted_table_eval,
+            multiplicities_eval,
+            helper_eval,
+            accumulator_eval,
+            accumulator_next_eval,
         })
     }
 }
@@ -104,41 +86,26 @@ impl<S: SelfEmulation> Committed<S> {
 impl<S: SelfEmulation> Evaluated<S> {
     pub(crate) fn queries(
         &self,
+        zero: &AssignedNative<S::F>,       // 0
         one: &AssignedBoundedScalar<S::F>, // 1
         x: &AssignedNative<S::F>,          // evaluation point x
-        x_next: &AssignedNative<S::F>,     // x * \omega
-        x_prev: &AssignedNative<S::F>,     // x * \omega^(-1)
+        x_next: &AssignedNative<S::F>,     // ωx
     ) -> Vec<VerifierQuery<S>> {
         vec![
+            VerifierQuery::new(one, &one.scalar, &self.committed.accumulator, zero),
             VerifierQuery::new(
                 one,
                 x,
-                &self.committed.product_commitment,
-                &self.product_eval,
+                &self.committed.multiplicities,
+                &self.multiplicities_eval,
             ),
-            VerifierQuery::new(
-                one,
-                x,
-                &self.committed.permuted.permuted_input_commitment,
-                &self.permuted_input_eval,
-            ),
-            VerifierQuery::new(
-                one,
-                x,
-                &self.committed.permuted.permuted_table_commitment,
-                &self.permuted_table_eval,
-            ),
-            VerifierQuery::new(
-                one,
-                x_prev,
-                &self.committed.permuted.permuted_input_commitment,
-                &self.permuted_input_inv_eval,
-            ),
+            VerifierQuery::new(one, x, &self.committed.helper_poly, &self.helper_eval),
+            VerifierQuery::new(one, x, &self.committed.accumulator, &self.accumulator_eval),
             VerifierQuery::new(
                 one,
                 x_next,
-                &self.committed.product_commitment,
-                &self.product_next_eval,
+                &self.committed.accumulator,
+                &self.accumulator_next_eval,
             ),
         ]
     }

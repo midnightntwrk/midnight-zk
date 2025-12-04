@@ -290,12 +290,6 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         // Sample theta challenge for keeping lookup columns linearly independent
         let theta = transcript.squeeze_challenge(layouter)?;
 
-        let lookups_permuted = cs
-            .lookups()
-            .iter()
-            .map(|_| lookup::read_permuted_commitments(layouter, &mut transcript))
-            .collect::<Result<Vec<_>, Error>>()?;
-
         let beta = transcript.squeeze_challenge(layouter)?;
         let gamma = transcript.squeeze_challenge(layouter)?;
 
@@ -303,12 +297,11 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             // Hash each permutation product commitment
             permutation::read_product_commitments(layouter, &mut transcript, cs)?;
 
-        let lookups_committed = lookups_permuted
-            .into_iter()
-            .map(|lookup|
-                // Hash each lookup product commitment
-                lookup.read_product_commitment(layouter, &mut transcript))
-            .collect::<Result<Vec<_>, _>>()?;
+        let lookups_committed = cs
+            .lookups()
+            .iter()
+            .map(|_| lookup::read_commitment(layouter, &mut transcript))
+            .collect::<Result<Vec<_>, Error>>()?;
 
         let trash_challenge = transcript.squeeze_challenge(layouter)?;
 
@@ -462,6 +455,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             let l_last = l_evals[0].clone();
             let l_blind = sum::<S::F>(layouter, &self.scalar_chip, &l_evals[1..=blinding_factors])?;
             let l_0 = l_evals[1 + blinding_factors].clone();
+            let flattened_lookups = cs.lookups().iter().flat_map(|l| l.split(cs.degree())).collect::<Vec<_>>();
 
             // Compute the expected value of h(x)
             let expressions = {
@@ -498,29 +492,26 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                     &x,
                 )?;
 
-                let evaluated_lookup_ids = cs
-                    .lookups()
+                let evaluated_lookup_ids = lookups_evaluated
                     .iter()
-                    .enumerate()
-                    .map(|(index, _)| {
+                    .zip(flattened_lookups.iter())
+                    .map(|(p, argument)| {
                         lookup_expressions(
                             layouter,
                             &self.scalar_chip,
-                            &lookups_evaluated[index],
-                            cs.lookups()[index].input_expressions(),
-                            cs.lookups()[index].table_expressions(),
+                            p,
+                            argument.input_expressions(),
+                            argument.table_expressions(),
                             &advice_evals,
                             &fixed_evals,
                             &instance_evals,
-                            &l_0,
                             &l_last,
                             &l_blind,
                             &theta,
                             &beta,
-                            &gamma,
                         )
                     })
-                    .collect::<Result<Vec<Vec<_>>, Error>>()?
+                    .collect::<Result<Vec<_>, Error>>()?
                     .concat();
 
                 let evaluated_trashcan_ids = cs
@@ -564,6 +555,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             )
         }?;
 
+        let zero = self.scalar_chip.assign_fixed(layouter, S::F::ZERO)?;
         let one = AssignedBoundedScalar::<S::F>::one(layouter, &self.scalar_chip)?;
         let omega = assigned_vk.domain.get_omega();
         let omega_inv = omega.invert().unwrap();
@@ -610,7 +602,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             .chain((permutations_evaluated).queries(&one, &x, &x_next, &x_last))
             .chain(
                 (lookups_evaluated.iter())
-                    .flat_map(|lookup| lookup.queries(&one, &x, &x_next, &x_prev)),
+                    .flat_map(|lookup| lookup.queries(&zero, &one, &x, &x_next)),
             )
             .chain(trashcans_evaluated.iter().flat_map(|trash| trash.queries(&one, &x)))
             .chain(
