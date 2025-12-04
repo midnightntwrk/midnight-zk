@@ -341,7 +341,7 @@ pub(crate) fn cost_model_options<F: Ord + Field + FromUniformBytes<64>, C: Circu
     let min_circuit_size = [
         rows_count + nb_unusable_rows,
         table_rows_count + nb_unusable_rows,
-        nb_instances,
+        nb_instances + nb_unusable_rows,
         cs.minimum_rows() + 1,
     ]
     .into_iter()
@@ -479,7 +479,6 @@ impl<F: Field> Assignment<F> for DevAssembly<F> {
     }
 
     fn query_instance(&self, _column: Column<Instance>, row: usize) -> Result<Value<F>, Error> {
-        *self.instance_rows.borrow_mut() = max(row + 1, self.instance_rows.take());
         Ok(Value::unknown())
     }
 
@@ -541,11 +540,19 @@ impl<F: Field> Assignment<F> for DevAssembly<F> {
 
     fn copy(
         &mut self,
-        _left_column: Column<Any>,
-        _left_row: usize,
-        _right_column: Column<Any>,
-        _right_row: usize,
+        left_column: Column<Any>,
+        left_row: usize,
+        right_column: Column<Any>,
+        right_row: usize,
     ) -> Result<(), crate::plonk::Error> {
+        if let Any::Instance = left_column.column_type() {
+            *self.instance_rows.borrow_mut() = max(left_row + 1, self.instance_rows.take());
+        }
+
+        if let Any::Instance = right_column.column_type() {
+            *self.instance_rows.borrow_mut() = max(right_row + 1, self.instance_rows.take());
+        }
+
         Ok(())
     }
 
