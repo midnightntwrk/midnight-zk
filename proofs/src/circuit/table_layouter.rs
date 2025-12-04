@@ -191,7 +191,7 @@ mod tests {
 
                 meta.lookup("", |cells| {
                     let a = cells.query_advice(a, Rotation::cur());
-                    vec![(a, table)]
+                    vec![(vec![a], table)]
                 });
 
                 Self::Config { table }
@@ -250,7 +250,7 @@ mod tests {
 
                 meta.lookup("", |cells| {
                     let a = cells.query_advice(a, Rotation::cur());
-                    vec![(a, table)]
+                    vec![(vec![a], table)]
                 });
 
                 Self::Config { table }
@@ -315,7 +315,7 @@ mod tests {
 
                 meta.lookup("", |cells| {
                     let a = cells.query_advice(a, Rotation::cur());
-                    vec![(a, table)]
+                    vec![(vec![a], table)]
                 });
 
                 Self::Config { table }
@@ -381,7 +381,7 @@ mod tests {
                 meta.lookup("", |cells| {
                     let a = cells.query_advice(a, Rotation::cur());
 
-                    vec![(a.clone(), table.0), (a, table.1)]
+                    vec![(vec![a.clone()], table.0), (vec![a], table.1)]
                 });
 
                 Self::Config { table }
