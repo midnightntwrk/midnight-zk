@@ -222,10 +222,10 @@ where
             let target = meta.query_advice(state_col, Rotation::next());
             let output = meta.query_advice(output_col, Rotation::cur());
             vec![
-                (q.clone() * source, t_source),
-                (q.clone() * letter, t_letter),
-                (q.clone() * target, t_target),
-                (q * output, t_output),
+                (vec![q.clone() * source], t_source),
+                (vec![q.clone() * letter], t_letter),
+                (vec![q.clone() * target], t_target),
+                (vec![q * output], t_output),
             ]
         });
 

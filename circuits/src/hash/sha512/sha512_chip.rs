@@ -214,20 +214,30 @@ impl<F: CircuitField> ComposableChip<F> for Sha512Chip<F> {
         let q_3_13x3_3_11_1_1_5_1 = meta.selector();
         let q_add_mod_2_64 = meta.selector();
 
-        (0..2).for_each(|idx| {
-            meta.lookup("plain-spreaded lookup", |meta| {
-                let q_lookup = meta.query_selector(q_lookup);
+        meta.lookup("plain-spreaded lookup", |meta| {
+            let q_lookup = meta.query_selector(q_lookup);
 
-                let nbits = meta.query_fixed(fixed_cols[idx], Rotation(0));
-                let plain = meta.query_advice(advice_cols[2 * idx], Rotation(0));
-                let sprdd = meta.query_advice(advice_cols[2 * idx + 1], Rotation(0));
+            let nbits_0 = meta.query_fixed(fixed_cols[0], Rotation(0));
+            let nbits_1 = meta.query_fixed(fixed_cols[1], Rotation(0));
+            let plain_0 = meta.query_advice(advice_cols[0], Rotation(0));
+            let plain_1 = meta.query_advice(advice_cols[2], Rotation(0));
+            let sprdd_0 = meta.query_advice(advice_cols[1], Rotation(0));
+            let sprdd_1 = meta.query_advice(advice_cols[3], Rotation(0));
 
-                vec![
-                    (q_lookup.clone() * nbits, table.nbits_col),
-                    (q_lookup.clone() * plain, table.plain_col),
-                    (q_lookup * sprdd, table.sprdd_col),
-                ]
-            });
+            vec![
+                (
+                    vec![q_lookup.clone() * nbits_0, q_lookup.clone() * nbits_1],
+                    table.nbits_col,
+                ),
+                (
+                    vec![q_lookup.clone() * plain_0, q_lookup.clone() * plain_1],
+                    table.plain_col,
+                ),
+                (
+                    vec![q_lookup.clone() * sprdd_0, q_lookup.clone() * sprdd_1],
+                    table.sprdd_col,
+                ),
+            ]
         });
 
         meta.create_gate("Maj(A, B, C)", |meta| {

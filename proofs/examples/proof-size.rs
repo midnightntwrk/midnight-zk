@@ -38,7 +38,7 @@ impl Circuit<Scalar> for TestCircuit {
             let selector = meta.query_selector(config.selector);
             let not_selector = Expression::from(1) - selector.clone();
             let advice = meta.query_advice(config.advice, Rotation::cur());
-            vec![(selector * advice + not_selector, config.table)]
+            vec![(vec![selector * advice + not_selector], config.table)]
         });
 
         config

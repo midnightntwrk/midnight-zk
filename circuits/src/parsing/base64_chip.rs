@@ -452,10 +452,10 @@ impl<F: CircuitField> ComposableChip<F> for Base64Chip<F> {
 
             vec![
                 (
-                    s.clone() * characters + (Expression::from(1) - s.clone()) * default_char,
+                    vec![s.clone() * characters + (Expression::from(1) - s.clone()) * default_char],
                     t_char,
                 ),
-                (s.clone() * value, t_val),
+                (vec![s.clone() * value], t_val),
             ]
         });
         Base64Config {

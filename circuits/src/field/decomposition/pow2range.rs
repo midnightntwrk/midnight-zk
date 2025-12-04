@@ -193,14 +193,15 @@ impl<F: CircuitField> Pow2RangeChip<F> {
         let t_tag = meta.lookup_table_column();
         let t_val = meta.lookup_table_column();
 
-        for val_col in &val_cols {
-            meta.lookup("pow2range column check", |meta| {
-                let sel = meta.query_selector(q_pow2range);
-                let tag = meta.query_fixed(tag_col, Rotation::cur());
-                let val = meta.query_advice(*val_col, Rotation::cur());
-                vec![(tag, t_tag), (sel * val, t_val)]
-            });
-        }
+        meta.lookup("pow2range column check", |meta| {
+            let sel = meta.query_selector(q_pow2range);
+            let tags = vec![meta.query_fixed(tag_col, Rotation::cur()); val_cols.len()];
+            let vals = val_cols
+                .iter()
+                .map(|val_col| sel.clone() * meta.query_advice(*val_col, Rotation::cur()))
+                .collect();
+            vec![(tags, t_tag), (vals, t_val)]
+        });
 
         Pow2RangeConfig {
             q_pow2range,
