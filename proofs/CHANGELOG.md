@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Address feedback from ZK Sec audit 3 [#125](https://github.com/midnightntwrk/midnight-zk/pull/125)
 * Output type of `format_instances` is now wrapped in a `Result` [#120](https://github.com/midnightntwrk/midnight-zk/pull/120).
 * Made bench_macros and criterion dev dependencies [#134](https://github.com/midnightntwrk/midnight-zk/pull/134)
+* Cost model properly accounts for PIs and fix trash argument [#154](https://github.com/midnightntwrk/midnight-zk/pull/154) 
 
 ### Removed
 * Remove module `model` [#142](https://github.com/midnightntwrk/midnight-zk/pull/142) and feature `cost-estimator`
