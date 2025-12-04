@@ -58,6 +58,8 @@ pub fn digest<F: PrimeField>(
     // reflected in the verification process.
     assert!(input.len() == reassigned_input.len());
 
+    // The unsafe conversion is fine because we start from `digest` which is
+    // ranged-checked by Keccak.
     let digest = unsafe_convert_to_bytes(layouter, native_gadget, &digest)?;
     Ok(digest.try_into().unwrap())
 }

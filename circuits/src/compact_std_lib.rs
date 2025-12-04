@@ -410,7 +410,7 @@ impl ZkStdLib {
 
         let advice_columns = (0..nb_advice_cols).map(|_| meta.advice_column()).collect::<Vec<_>>();
         let fixed_columns = (0..nb_fixed_cols).map(|_| meta.fixed_column()).collect::<Vec<_>>();
-        let constant_column = meta.fixed_column();
+
         let committed_instance_column = meta.instance_column();
         let instance_column = meta.instance_column();
 
@@ -493,10 +493,12 @@ impl ZkStdLib {
             )
         });
 
+        let constant_column = (arch.keccak || arch.blake2b).then(|| meta.fixed_column());
+
         let keccak_config = arch.keccak.then(|| {
             PackedChip::configure(
                 meta,
-                constant_column,
+                constant_column.unwrap(),
                 advice_columns[..PACKED_ADVICE_COLS].try_into().unwrap(),
                 fixed_columns[..PACKED_FIXED_COLS].try_into().unwrap(),
             )
@@ -505,7 +507,7 @@ impl ZkStdLib {
         let blake2b_config = arch.blake2b.then(|| {
             Blake2bChip::configure(
                 meta,
-                constant_column,
+                constant_column.unwrap(),
                 advice_columns[0],
                 advice_columns[1..NB_BLAKE2B_ADVICE_COLS].try_into().unwrap(),
                 instance_column,
