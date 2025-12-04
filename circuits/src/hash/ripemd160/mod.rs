@@ -11,9 +11,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Implementations for in-circuit hashes
+//! Implementation in-circuit of the RIPEMD-160 hash function.
 
-pub mod poseidon;
-pub mod ripemd160;
-pub mod sha256;
-pub mod sha512;
+#![allow(non_snake_case)]
+mod utils;
