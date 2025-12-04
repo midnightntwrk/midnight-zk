@@ -805,27 +805,6 @@ impl ZkStdLib {
     }
 }
 
-impl Bls12381Chip {
-    /// Asserts that the given point belongs to the BLS subgroup.
-    pub fn assert_in_bls12_381_subgroup(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        p: &<Bls12381Chip as EccInstructions<F, G1Projective>>::Point,
-    ) -> Result<(), Error> {
-        // We exhibit a COFACTOR "root" (an element that, multiplied by the cofactor
-        // results in p). This is more efficient that powering `p` to the subgroup order
-        // and checking it results in the identity.
-        let cofactor = F::from_raw([0x8c00aaab0000aaab, 0x396c8c005555e156, 0, 0]);
-        let cofactor_root: <Bls12381Chip as EccInstructions<F, G1Projective>>::Point =
-            self.assign(layouter, p.value().map(|p| p * cofactor.invert().unwrap()))?;
-
-        let cofactor_root_times_cofactor =
-            self.mul_by_constant(layouter, cofactor, &cofactor_root)?;
-
-        self.assert_equal(layouter, p, &cofactor_root_times_cofactor)
-    }
-}
-
 impl<T> AssignmentInstructions<F, T> for ZkStdLib
 where
     T: InnerValue,
