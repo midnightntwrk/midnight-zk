@@ -29,6 +29,8 @@ use crate::{
     utils::{arithmetic::eval_polynomial, rational::Rational},
 };
 
+use rayon::prelude::*;
+
 #[cfg(feature = "committed-instances")]
 /// Commit to a vector of raw instances. This function can be used to prepare
 /// the committed instances that the verifier will be provided with when this
@@ -73,6 +75,7 @@ pub(crate) fn compute_trace<
 ) -> Result<ProverTrace<F>, Error>
 where
     CS::Commitment: Hashable<T::Hash>,
+    CS::Parameters: Sync,
     F: WithSmallOrderMulGroup<3>
         + Sampleable<T::Hash>
         + Hashable<T::Hash>
@@ -252,6 +255,7 @@ pub(crate) fn finalise_proof<'a, F, CS: PolynomialCommitmentScheme<F>, T: Transc
 ) -> Result<(), Error>
 where
     CS::Commitment: Hashable<T::Hash>,
+    CS::Parameters: Sync,
     F: WithSmallOrderMulGroup<3>
         + Sampleable<T::Hash>
         + Hashable<T::Hash>
@@ -262,9 +266,22 @@ where
     #[cfg(not(feature = "committed-instances"))]
     let nb_committed_instances: usize = 0;
 
+    #[cfg(feature = "trace-phases")]
+    let finalise_start = std::time::Instant::now();
+    #[cfg(feature = "trace-phases")]
+    eprintln!("{}" , "=".repeat(100));
+
     let domain = pk.get_vk().get_domain();
 
+    #[cfg(feature = "trace-phases")]
+    eprintln!("\n[QUOTIENT] Computing H(X) - the quotient polynomial");
+    #[cfg(feature = "trace-phases")]
+    eprintln!("   This aggregates ALL constraints (gates + permutations + lookups)");
+    #[cfg(feature = "trace-phases")]
+    let phase_start = std::time::Instant::now();
     let h_poly = compute_h_poly(pk, &trace);
+    #[cfg(feature = "trace-phases")]
+    eprintln!("[QUOTIENT] H(X) computed in {:?}", phase_start.elapsed());
 
     let ProverTrace {
         advice_polys,
@@ -277,10 +294,24 @@ where
     } = trace;
 
     // Construct the vanishing argument's h(X) commitments
+    #[cfg(feature = "trace-phases")]
+    eprintln!("\n[COMMIT] Constructing and committing to H(X) pieces");
+    #[cfg(feature = "trace-phases")]
+    let phase_start = std::time::Instant::now();
     let vanishing = vanishing.construct::<CS, T>(params, domain, h_poly, transcript)?;
+    #[cfg(feature = "trace-phases")]
+    eprintln!("[COMMIT] H(X) commitments done in {:?}", phase_start.elapsed());
 
+    #[cfg(feature = "trace-phases")]
+    eprintln!("\n[CHALLENGE] Sampling x for evaluation point");
     let x: F = transcript.squeeze_challenge();
+    #[cfg(feature = "trace-phases")]
+    eprintln!("[CHALLENGE] X sampled");
 
+    #[cfg(feature = "trace-phases")]
+    eprintln!("\n[EVALUATE] Evaluating all polynomials at challenge point x");
+    #[cfg(feature = "trace-phases")]
+    let phase_start = std::time::Instant::now();
     write_evals_to_transcript(
         pk,
         nb_committed_instances,
@@ -294,14 +325,26 @@ where
 
     // Evaluate common permutation data
     pk.permutation.evaluate(x, transcript)?;
+    #[cfg(feature = "trace-phases")]
+    eprintln!("[EVALUATE] Base polynomials evaluated in {:?}", phase_start.elapsed());
 
     // Evaluate the permutations, if any, at omega^i x.
+    #[cfg(feature = "trace-phases")]
+    eprintln!("\n[EVALUATE] Evaluating permutations");
+    #[cfg(feature = "trace-phases")]
+    let phase_start = std::time::Instant::now();
     let permutations: Vec<permutation::prover::Evaluated<F>> = permutations
         .into_iter()
         .map(|permutation| -> Result<_, _> { permutation.evaluate(pk, x, transcript) })
         .collect::<Result<Vec<_>, _>>()?;
+    #[cfg(feature = "trace-phases")]
+    eprintln!("[EVALUATE] Permutations evaluated in {:?}", phase_start.elapsed());
 
     // Evaluate the lookups, if any, at omega^i x.
+    #[cfg(feature = "trace-phases")]
+    eprintln!("\n[EVALUATE] Evaluating lookups");
+    #[cfg(feature = "trace-phases")]
+    let phase_start = std::time::Instant::now();
     let lookups: Vec<Vec<lookup::prover::Evaluated<F>>> = lookups
         .into_iter()
         .map(|lookups| -> Result<Vec<_>, _> {
@@ -311,6 +354,8 @@ where
                 .collect::<Result<Vec<_>, _>>()
         })
         .collect::<Result<Vec<_>, _>>()?;
+    #[cfg(feature = "trace-phases")]
+    eprintln!("[EVALUATE] Lookups evaluated in {:?}", phase_start.elapsed());
 
     // Evaluate the trashcans, if any, at x.
     let trashcans: Vec<Vec<trash::prover::Evaluated<F>>> = trashcans
@@ -323,6 +368,10 @@ where
         })
         .collect::<Result<Vec<_>, _>>()?;
 
+    #[cfg(feature = "trace-phases")]
+    eprintln!("\n[QUERIES] Computing opening queries");
+    #[cfg(feature = "trace-phases")]
+    let phase_start = std::time::Instant::now();
     let queries = compute_queries(
         pk,
         nb_committed_instances,
@@ -334,17 +383,30 @@ where
         &vanishing,
         x,
     );
+    #[cfg(feature = "trace-phases")]
+    eprintln!("[QUERIES] {} queries computed in {:?}", queries.len(), phase_start.elapsed());
 
-    CS::multi_open(params, &queries, transcript).map_err(|_| Error::ConstraintSystemFailure)
+    #[cfg(feature = "trace-phases")]
+    eprintln!("\n[MULTI-OPEN] Generating batched KZG opening proofs");
+    #[cfg(feature = "trace-phases")]
+    eprintln!("   This proves all {} evaluations are correct using batching", queries.len());
+    #[cfg(feature = "trace-phases")]
+    let phase_start = std::time::Instant::now();
+    let result = CS::multi_open(params, &queries, transcript).map_err(|_| Error::ConstraintSystemFailure);
+    #[cfg(feature = "trace-phases")]
+    eprintln!("[MULTI-OPEN] Opening proofs generated in {:?}", phase_start.elapsed());
+    
+    #[cfg(feature = "trace-phases")]
+    eprintln!("\n[FINALISE] Proof finalization completed in {:?}", finalise_start.elapsed());
+    #[cfg(feature = "trace-phases")]
+    eprintln!("{}", "=".repeat(100));
+    result
 }
 
 /// This creates a proof for the provided `circuit` when given the public
 /// parameters `params` and the proving key [`ProvingKey`] that was
 /// generated previously for the same circuit. The provided `instances`
 /// are zero-padded internally.
-//
-// NOTE: Any change here must be mirrored in src/plonk/bench/prover.rs
-// to ensure the benchmarks remain aligned with the real prover.
 pub fn create_proof<
     F,
     CS: PolynomialCommitmentScheme<F>,
@@ -361,6 +423,7 @@ pub fn create_proof<
 ) -> Result<(), Error>
 where
     CS::Commitment: Hashable<T::Hash>,
+    CS::Parameters: Sync,
     F: WithSmallOrderMulGroup<3>
         + Sampleable<T::Hash>
         + Hashable<T::Hash>
@@ -470,6 +533,7 @@ where
     ConcreteCircuit: Circuit<F>,
     T: Transcript,
     CS::Commitment: Hashable<T::Hash>,
+    CS::Parameters: Sync,
     F: WithSmallOrderMulGroup<3>
         + Sampleable<T::Hash>
         + Hashable<T::Hash>
@@ -564,9 +628,13 @@ where
                 }
             }
 
+            // Compute commitments to advice columns using parallel MSM with cached GPU bases
+            // Each column commits individually, but Rayon parallelizes across columns
+            // GPU optimization: Zero-copy MSM uses persistent cached bases
             let advice_commitments: Vec<_> =
-                advice_values.iter().map(|poly| CS::commit_lagrange(params, poly)).collect();
+                advice_values.par_iter().map(|poly| CS::commit_lagrange(params, poly)).collect();
 
+            // Write commitments to transcript (must be sequential for Fiat-Shamir)
             for commitment in &advice_commitments {
                 transcript.write(commitment)?;
             }
@@ -610,24 +678,65 @@ pub(super) fn compute_h_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitm
         ..
     } = &trace;
     // Calculate the advice and instance cosets
+    // Parallelize FFT operations for larger circuits (K>=12) where benefit > overhead
+    let use_parallel_fft = pk.vk.domain.k() >= 12;
+    
+    #[cfg(feature = "trace-fft")]
+    if use_parallel_fft {
+        eprintln!("   [FFT-PARALLEL] Computing advice cosets in parallel (K={})", pk.vk.domain.k());
+    }
+    #[cfg(feature = "trace-fft")]
+    let fft_start = std::time::Instant::now();
+    
     let advice_cosets: Vec<Vec<Polynomial<F, ExtendedLagrangeCoeff>>> = advice_polys
         .iter()
         .map(|advice_polys| {
-            advice_polys
-                .iter()
-                .map(|poly| pk.vk.get_domain().coeff_to_extended(poly.clone()))
-                .collect()
+            if use_parallel_fft {
+                // Parallel for K>=12: benefit outweighs overhead
+                advice_polys
+                    .par_iter()
+                    .map(|poly| pk.vk.get_domain().coeff_to_extended(poly.clone()))
+                    .collect()
+            } else {
+                // Sequential for K<12: avoid parallelization overhead
+                advice_polys
+                    .iter()
+                    .map(|poly| pk.vk.get_domain().coeff_to_extended(poly.clone()))
+                    .collect()
+            }
         })
         .collect();
+    
+    #[cfg(feature = "trace-fft")]
+    if use_parallel_fft {
+        eprintln!("[FFT-PARALLEL] Advice cosets completed in {:?}", fft_start.elapsed());
+    }
+    #[cfg(feature = "trace-fft")]
+    let fft_start = std::time::Instant::now();
+    
     let instance_cosets: Vec<Vec<Polynomial<F, ExtendedLagrangeCoeff>>> = instance_polys
         .iter()
         .map(|instance_polys| {
-            instance_polys
-                .iter()
-                .map(|poly| pk.vk.get_domain().coeff_to_extended(poly.clone()))
-                .collect()
+            if use_parallel_fft {
+                // Parallel for K>=12: benefit outweighs overhead
+                instance_polys
+                    .par_iter()
+                    .map(|poly| pk.vk.get_domain().coeff_to_extended(poly.clone()))
+                    .collect()
+            } else {
+                // Sequential for K<12: avoid parallelization overhead
+                instance_polys
+                    .iter()
+                    .map(|poly| pk.vk.get_domain().coeff_to_extended(poly.clone()))
+                    .collect()
+            }
         })
         .collect();
+    
+    #[cfg(feature = "trace-fft")]
+    if use_parallel_fft {
+        eprintln!("[FFT-PARALLEL] Instance cosets completed in {:?}", fft_start.elapsed());
+    }
 
     // Evaluate the h(X) polynomial
     pk.ev.evaluate_h::<ExtendedLagrangeCoeff>(

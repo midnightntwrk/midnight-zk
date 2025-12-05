@@ -20,10 +20,6 @@ name = "commit_zk"
 harness = false
 
 [[bench]]
-name = "plonk"
-harness = false
-
-[[bench]]
 name = "dev_lookup"
 harness = false
 
@@ -46,6 +42,12 @@ serde = { workspace = true }
 serde_derive = { workspace = true }
 rayon = { workspace = true }
 criterion = { version = "0.7", optional = true }
+
+# GPU acceleration dependencies (optional)
+icicle-runtime = { git = "https://github.com/ingonyama-zk/icicle.git", tag = "v4.0.0", optional = true }
+icicle-core = { git = "https://github.com/ingonyama-zk/icicle.git", tag = "v4.0.0", optional = true }
+icicle-bls12-381 = { git = "https://github.com/ingonyama-zk/icicle.git", tag = "v4.0.0", features = ["msm"], optional = true }
+once_cell = { version = "1.20", optional = true }
 
 # Developer tooling dependencies
 plotters = { version = "0.3.7", default-features = false, optional = true }
@@ -87,6 +89,19 @@ committed-instances = []
 
 # Feature to expose internal prover types and benchmarking utilities.
 bench-internal = ["criterion"]
+
+# Instrumentation features for performance analysis
+# These add detailed tracing to measure operation timing and throughput
+# Note: These should NOT be enabled in production builds due to performance overhead
+trace-msm = []        # Trace multi-scalar multiplication operations
+trace-fft = []        # Trace FFT/IFFT operations
+trace-phases = []     # Trace high-level prover phases
+trace-kzg = []        # Trace KZG commitment operations
+trace-all = ["trace-msm", "trace-fft", "trace-phases", "trace-kzg"]
+
+# GPU acceleration features
+gpu = ["icicle-runtime", "icicle-core", "icicle-bls12-381", "once_cell"]
+gpu-cuda = ["gpu"]    # Future: separate CUDA backend
 
 [lib]
 bench = false

@@ -6,10 +6,13 @@
 #![deny(rustdoc::broken_intra_doc_links)]
 #![deny(missing_debug_implementations)]
 #![deny(missing_docs)]
-#![deny(unsafe_code)]
+#![cfg_attr(not(feature = "gpu"), deny(unsafe_code))]
+#![cfg_attr(feature = "gpu", allow(unsafe_code))]
 
 pub mod circuit;
 pub use halo2curves;
+#[cfg(feature = "gpu")]
+pub mod gpu;
 pub mod plonk;
 pub mod poly;
 pub mod transcript;
