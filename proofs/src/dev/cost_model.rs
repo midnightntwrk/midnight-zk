@@ -170,9 +170,11 @@ impl CostOptions {
             .chain(self.lookup.iter().flat_map(|l| l.queries()))
             .chain(self.permutation.queries())
             .chain(iter::repeat("0".parse().unwrap()).take(self.max_degree - 1))
+            .filter(|p| !p.rotations.is_empty())
             .collect();
 
         let column_queries = queries.len();
+        queries.iter_mut().for_each(|p| p.rotations.sort());
         queries.sort_unstable();
         queries.dedup();
         let point_sets = queries.len();
@@ -341,7 +343,7 @@ pub(crate) fn cost_model_options<F: Ord + Field + FromUniformBytes<64>, C: Circu
     let min_circuit_size = [
         rows_count + nb_unusable_rows,
         table_rows_count + nb_unusable_rows,
-        nb_instances,
+        nb_instances + nb_unusable_rows,
         cs.minimum_rows() + 1,
     ]
     .into_iter()
@@ -478,8 +480,7 @@ impl<F: Field> Assignment<F> for DevAssembly<F> {
         Ok(())
     }
 
-    fn query_instance(&self, _column: Column<Instance>, row: usize) -> Result<Value<F>, Error> {
-        *self.instance_rows.borrow_mut() = max(row + 1, self.instance_rows.take());
+    fn query_instance(&self, _column: Column<Instance>, _row: usize) -> Result<Value<F>, Error> {
         Ok(Value::unknown())
     }
 
@@ -541,11 +542,19 @@ impl<F: Field> Assignment<F> for DevAssembly<F> {
 
     fn copy(
         &mut self,
-        _left_column: Column<Any>,
-        _left_row: usize,
-        _right_column: Column<Any>,
-        _right_row: usize,
+        left_column: Column<Any>,
+        left_row: usize,
+        right_column: Column<Any>,
+        right_row: usize,
     ) -> Result<(), crate::plonk::Error> {
+        if let Any::Instance = left_column.column_type() {
+            *self.instance_rows.borrow_mut() = max(left_row + 1, self.instance_rows.take());
+        }
+
+        if let Any::Instance = right_column.column_type() {
+            *self.instance_rows.borrow_mut() = max(right_row + 1, self.instance_rows.take());
+        }
+
         Ok(())
     }
 
@@ -626,6 +635,7 @@ mod tests {
             let [a, b, c] = std::array::from_fn(|_| meta.advice_column());
             let [q_a, q_b, q_c, q_ab, constant] = std::array::from_fn(|_| meta.fixed_column());
             let instance = meta.instance_column();
+            meta.enable_equality(instance);
 
             [a, b, c].map(|column| meta.enable_equality(column));
 
@@ -670,9 +680,9 @@ mod tests {
     }
 
     #[derive(Clone, Default)]
-    struct StandardPlonk(Fq);
+    struct StandardPlonk<const NB_PUBLIC_INPUTS: usize>(Fq);
 
-    impl Circuit<Fq> for StandardPlonk {
+    impl<const NB_PUBLIC_INPUTS: usize> Circuit<Fq> for StandardPlonk<NB_PUBLIC_INPUTS> {
         type Config = StandardPlonkConfig;
         type FloorPlanner = SimpleFloorPlanner;
         #[cfg(feature = "circuit-params")]
@@ -734,6 +744,18 @@ mod tests {
                     a.copy_advice(|| "", &mut region, config.b, 3)?;
                     a.copy_advice(|| "", &mut region, config.c, 4)?;
                     region.assign_advice(|| "", config.a, 5, || Value::known(Fq::ZERO))?;
+
+                    // Assign instances. We are just forcing the number of instances to be
+                    // determined by the variable `NB_PUBLIC_INPUTS`.
+                    for i in 0..NB_PUBLIC_INPUTS {
+                        let _ = region.assign_advice_from_instance(
+                            || "",
+                            config.instance,
+                            i,
+                            config.a,
+                            0,
+                        )?;
+                    }
                     Ok(())
                 },
             )
@@ -745,7 +767,7 @@ mod tests {
         let k = 9;
         let mut random_byte = [0u8; 1];
         OsRng::fill_bytes(&mut OsRng, &mut random_byte);
-        let circuit = StandardPlonk(Fq::from(random_byte[0] as u64));
+        let circuit = StandardPlonk::<1>(Fq::from(random_byte[0] as u64));
 
         let params = ParamsKZG::<Bls12>::unsafe_setup(k, OsRng);
         let vk = keygen_vk_with_k::<_, KZGCommitmentScheme<Bls12>, _>(&params, &circuit, k)
@@ -770,5 +792,29 @@ mod tests {
         let proof = transcript.finalize();
 
         assert_eq!(circuit_model::<_, 48, 32>(&circuit).size, proof.len());
+    }
+
+    #[test]
+    fn check_correct_computation_k() {
+        let mut random_byte = [0u8; 1];
+        OsRng::fill_bytes(&mut OsRng, &mut random_byte);
+
+        macro_rules! test_nb_pi {
+            ($($nb_pi:expr),*) => {
+                $(
+                    {
+                        const NB_PI: usize = $nb_pi;
+                        let circuit = StandardPlonk::<NB_PI>(Fq::from(random_byte[0] as u64));
+                        let cost_model = cost_model_options(&circuit);
+
+                        // nb of unusable rows for this circuit is 6.
+                        let pi_k = (NB_PI + 6).next_power_of_two().ilog2();
+                        assert_eq!(cost_model.min_k, max(9, pi_k));
+                    }
+                )*
+            };
+        }
+
+        test_nb_pi!(1, 10, 100, 1017, 1018, 1019, 1020);
     }
 }
