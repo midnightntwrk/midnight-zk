@@ -635,6 +635,7 @@ mod tests {
             let [a, b, c] = std::array::from_fn(|_| meta.advice_column());
             let [q_a, q_b, q_c, q_ab, constant] = std::array::from_fn(|_| meta.fixed_column());
             let instance = meta.instance_column();
+            meta.enable_equality(instance);
 
             [a, b, c].map(|column| meta.enable_equality(column));
 
