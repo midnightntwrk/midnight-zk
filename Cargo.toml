@@ -3,7 +3,7 @@ resolver = "2"
 
 members = ["proofs", "curves", "circuits", "aggregator", "zkir"]
 
-package = { license-file = "LICENSE" }
+package = { license = "Apache-2.0" }
 
 [workspace.dependencies]
 ff = "0.13"

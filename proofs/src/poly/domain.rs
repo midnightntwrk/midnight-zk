@@ -238,7 +238,13 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
     pub fn coeff_to_lagrange(&self, mut a: Polynomial<F, Coeff>) -> Polynomial<F, LagrangeCoeff> {
         assert_eq!(a.values.len(), 1 << self.k);
 
+        #[cfg(feature = "trace-fft")]
+        let start = std::time::Instant::now();
+        #[cfg(feature = "trace-fft")]
+        eprintln!("[FFT] coeff_to_lagrange: Starting FFT with {} elements (K={})", a.values.len(), self.k);
         best_fft(&mut a.values, self.omega, self.k);
+        #[cfg(feature = "trace-fft")]
+        eprintln!("[FFT] coeff_to_lagrange: Completed in {:?}", start.elapsed());
 
         Polynomial {
             values: a.values,
@@ -254,9 +260,17 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
     ) -> Polynomial<F, ExtendedLagrangeCoeff> {
         assert_eq!(a.values.len(), 1 << self.k);
 
+        #[cfg(feature = "trace-fft")]
+        let start = std::time::Instant::now();
+        #[cfg(feature = "trace-fft")]
+        eprintln!("[FFT] coeff_to_extended: Starting extended domain FFT");
+        #[cfg(feature = "trace-fft")]
+        eprintln!("   [FFT] Input size: {}, Extended size: {} (K={})", a.values.len(), self.extended_len(), self.extended_k);
         self.distribute_powers_zeta(&mut a.values, true);
         a.values.resize(self.extended_len(), F::ZERO);
         best_fft(&mut a.values, self.extended_omega, self.extended_k);
+        #[cfg(feature = "trace-fft")]
+        eprintln!("[FFT] coeff_to_extended: Completed in {:?}", start.elapsed());
 
         Polynomial {
             values: a.values,
@@ -272,6 +286,10 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
     pub fn extended_to_coeff(&self, mut a: Polynomial<F, ExtendedLagrangeCoeff>) -> Vec<F> {
         assert_eq!(a.values.len(), self.extended_len());
 
+        #[cfg(feature = "trace-fft")]
+        let start = std::time::Instant::now();
+        #[cfg(feature = "trace-fft")]
+        eprintln!("[IFFT] extended_to_coeff: Starting inverse FFT with {} elements", a.values.len());
         // Inverse FFT
         Self::ifft(
             &mut a.values,
@@ -279,6 +297,8 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
             self.extended_k,
             self.extended_ifft_divisor,
         );
+        #[cfg(feature = "trace-fft")]
+        eprintln!("[IFFT] extended_to_coeff: IFFT completed in {:?}", start.elapsed());
 
         // Distribute powers to move from coset; opposite from the
         // transformation we performed earlier.
@@ -305,10 +325,16 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
             self.extended_ifft_divisor,
         );
 
+        #[cfg(feature = "trace-fft")]
+        let fft_start = std::time::Instant::now();
+        #[cfg(feature = "trace-fft")]
+        eprintln!("[FFT] lagrange_to_coeff: Final FFT step");
         a.values.truncate(self.n as usize);
         self.distribute_powers_zeta(&mut a.values, false);
 
         best_fft(&mut a.values, self.omega, self.k);
+        #[cfg(feature = "trace-fft")]
+        eprintln!("[FFT] lagrange_to_coeff: Completed in {:?}", fft_start.elapsed());
 
         Polynomial {
             values: a.values,
@@ -365,13 +391,25 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
     }
 
     fn ifft(a: &mut [F], omega_inv: F, log_n: u32, divisor: F) {
+        #[cfg(feature = "trace-fft")]
+        let start = std::time::Instant::now();
+        #[cfg(feature = "trace-fft")]
+        eprintln!("   [IFFT] Running best_fft (inverse) on {} elements (log_n={})", a.len(), log_n);
         best_fft(a, omega_inv, log_n);
+        #[cfg(feature = "trace-fft")]
+        let fft_time = start.elapsed();
+        #[cfg(feature = "trace-fft")]
+        eprintln!("   [IFFT] FFT took {:?}", fft_time);
+        #[cfg(feature = "trace-fft")]
+        let div_start = std::time::Instant::now();
         parallelize(a, |a, _| {
             for a in a {
                 // Finish iFFT
                 *a *= &divisor;
             }
         });
+        #[cfg(feature = "trace-fft")]
+        eprintln!("   [IFFT] Division by {} took {:?}", a.len(), div_start.elapsed());
     }
 
     /// Get the size of the domain

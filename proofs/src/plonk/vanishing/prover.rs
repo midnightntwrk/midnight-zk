@@ -4,6 +4,7 @@ use ff::{PrimeField, WithSmallOrderMulGroup};
 use rand_chacha::ChaCha20Rng;
 use rand_core::{RngCore, SeedableRng};
 use rayon::current_num_threads;
+use rayon::prelude::*;
 
 use super::Argument;
 use crate::{
@@ -92,6 +93,7 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
     ) -> Result<Constructed<F>, Error>
     where
         CS::Commitment: Hashable<T::Hash>,
+        CS::Parameters: Sync,
         F: Hashable<T::Hash>,
     {
         // Divide by t(X) = X^{params.n} - 1.
@@ -112,11 +114,20 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
             .collect::<Vec<_>>();
         drop(h_poly);
 
-        // Compute commitments to each h(X) piece
+        // Compute commitments to each h(X) piece in parallel
+        // Safe because each commitment is independent
+        #[cfg(feature = "trace-msm")]
+        eprintln!("   [MSM-PARALLEL] Computing {} quotient (H(X)) commitments in parallel", h_pieces.len());
+        #[cfg(feature = "trace-msm")]
+        let parallel_start = std::time::Instant::now();
+        
         let h_commitments: Vec<_> =
-            h_pieces.iter().map(|h_piece| CS::commit(params, h_piece)).collect();
+            h_pieces.par_iter().map(|h_piece| CS::commit(params, h_piece)).collect();
+        
+        #[cfg(feature = "trace-msm")]
+        eprintln!("[MSM-PARALLEL] {} quotient commitments completed in {:?}", h_commitments.len(), parallel_start.elapsed());
 
-        // Hash each h(X) piece
+        // Hash each h(X) piece - must remain sequential for Fiat-Shamir
         for c in h_commitments {
             transcript.write(&c)?;
         }

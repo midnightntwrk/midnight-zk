@@ -3,6 +3,7 @@ use std::{collections::HashMap, hash::Hash, iter};
 use ff::{FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
 use group::ff::BatchInvert;
 use rand_core::{CryptoRng, RngCore};
+use rayon::prelude::*;
 
 use super::{
     super::{circuit::Expression, Error, ProvingKey},
@@ -77,6 +78,7 @@ impl<F: WithSmallOrderMulGroup<3> + Ord + Hash> Argument<F> {
     where
         F: FromUniformBytes<64>,
         CS::Commitment: Hashable<T::Hash>,
+        CS::Parameters: Sync,
     {
         // Closure to get values of expressions and compress them
         let compress_expressions = |expressions: &[Expression<F>]| {
@@ -121,13 +123,23 @@ impl<F: WithSmallOrderMulGroup<3> + Ord + Hash> Argument<F> {
             (poly, commitment)
         };
 
-        // Commit to permuted input expression
-        let (permuted_input_poly, permuted_input_commitment) =
-            commit_values(&permuted_input_expression);
-
-        // Commit to permuted table expression
-        let (permuted_table_poly, permuted_table_commitment) =
-            commit_values(&permuted_table_expression);
+        // Parallelize the two independent MSM operations for input and table commitments
+        // With GPU feature, each commit uses cached GPU bases automatically
+        #[cfg(feature = "trace-msm")]
+        eprintln!("   [MSM-PARALLEL] Computing 2 lookup permuted commitments (input+table) in parallel");
+        #[cfg(feature = "trace-msm")]
+        let parallel_start = std::time::Instant::now();
+        
+        let results: Vec<_> = [&permuted_input_expression, &permuted_table_expression]
+            .par_iter()
+            .map(|expr| commit_values(expr))
+            .collect();
+        
+        #[cfg(feature = "trace-msm")]
+        eprintln!("[MSM-PARALLEL] 2 lookup commitments completed in {:?}", parallel_start.elapsed());
+        
+        let (permuted_input_poly, permuted_input_commitment) = results[0].clone();
+        let (permuted_table_poly, permuted_table_commitment) = results[1].clone();
 
         // Hash permuted input commitment
         transcript.write(&permuted_input_commitment)?;
