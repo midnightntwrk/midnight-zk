@@ -12,6 +12,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## 0.5.2
+### Added
+
+### Changed
+* Cost model properly accounts for PIs and fix trash argument [#154](https://github.com/midnightntwrk/midnight-zk/pull/154)
+
+### Removed
+
 ## 0.5.1
 ### Added
 
