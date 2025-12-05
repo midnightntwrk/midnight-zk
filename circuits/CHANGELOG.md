@@ -17,6 +17,12 @@ verification keys break backwards compatibility.
 
 ### Removed
 
+## [5.0.2] - 05-06-2025
+### Added
+### Changed
+* Cost model properly accounts for PIs and fix trash argument [#154](https://github.com/midnightntwrk/midnight-zk/pull/154)
+
+### Removed
 ## [5.0.1] - 19-09-2025
 ### Added
 
