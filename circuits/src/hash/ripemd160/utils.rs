@@ -192,4 +192,42 @@ mod tests {
             assert_even_of_spreaded_type_one(vals);
         }
     }
+
+    #[test]
+    fn test_type_two() {
+        // Assert (A ∧ B) ∨ (¬A ∧ C) equals (A ∧ B) ⊕ (¬A ∧ C)
+        fn assert_type_two(vals: [u32; 3]) {
+            let [a, b, c] = vals;
+            // Compute (A ∧ B) ∨ (¬A ∧ C) with the built-in methods.
+            let ret = (a & b) | ((!a) & c);
+            // Compute (A ∧ B) ⊕ (¬A ∧ C) with the built-in methods.
+            let expected_ret = (a & b) ^ ((!a) & c);
+            assert_eq!(ret, expected_ret);
+        }
+
+        let mut rng = rand::thread_rng();
+        for _ in 0..10 {
+            let vals: [u32; 3] = [rng.gen(), rng.gen(), rng.gen()];
+            assert_type_two(vals);
+        }
+    }
+
+    #[test]
+    fn test_type_three() {
+        // Assert (A ∨ ¬B) ⊕ C equals (A ⊕ ¬B ⊕ C) ⊕ (A ∧ ¬B)
+        fn assert_type_three(vals: [u32; 3]) {
+            let [a, b, c] = vals;
+            // Compute (A ∨ ¬B) ⊕ C with the built-in methods.
+            let ret = (a | (!b)) ^ c;
+            // Compute (A ⊕ ¬B ⊕ C) ⊕ (A ∧ ¬B) with the built-in methods.
+            let expected_ret = (a ^ (!b) ^ c) ^ (a & (!b));
+            assert_eq!(ret, expected_ret);
+        }
+
+        let mut rng = rand::thread_rng();
+        for _ in 0..10 {
+            let vals: [u32; 3] = [rng.gen(), rng.gen(), rng.gen()];
+            assert_type_three(vals);
+        }
+    }
 }
