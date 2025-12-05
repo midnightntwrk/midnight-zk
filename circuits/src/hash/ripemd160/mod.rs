@@ -14,4 +14,5 @@
 //! Implementation in-circuit of the RIPEMD-160 hash function.
 
 #![allow(non_snake_case)]
+mod ripemd160_chip;
 mod utils;
