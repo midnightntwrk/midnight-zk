@@ -545,7 +545,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                         );
 
                         let q = match argument.selector() {
-                            Expression::Fixed(query) => fixed[query.index().unwrap()][idx],
+                            Expression::Fixed(query) => fixed[query.column_index()][idx],
                             _ => unreachable!(),
                         };
 
