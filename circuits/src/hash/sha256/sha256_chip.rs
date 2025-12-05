@@ -741,7 +741,7 @@ impl<F: PrimeField> Sha256Chip<F> {
             = Odd
 
         3) asserting the major identity regarding the spreaded values:
-              (4^21 * ~Evn.11a + 4^10 * ~Evn.11b + ~Evn.10)
+              (4^21 * ~Evn.11a + 4^10 * ~Evn.11b + ~Evn.10) +
           2 * (4^21 * ~Odd.11a + 4^10 * ~Odd.11b + ~Odd.10)
              = ~A + ~B + ~C
 
@@ -814,11 +814,11 @@ impl<F: PrimeField> Sha256Chip<F> {
             = Odd_nEG
 
         3) asserting the spreaded addition identity for (~E + ~F) and (~(¬E) + ~G):
-              (4^21 * ~Evn_EF.11a + 4^10 * ~Evn_EF.11b + ~Evn_EF.10)
+              (4^21 * ~Evn_EF.11a + 4^10 * ~Evn_EF.11b + ~Evn_EF.10) +
           2 * (4^21 * ~Odd_EF.11a + 4^10 * ~Odd_EF.11b + ~Odd_EF.10)
              = ~E + ~F
 
-              (4^21 * ~Evn_nEG.11a + 4^10 * ~Evn_nEG.11b + ~Evn_nEG.10)
+              (4^21 * ~Evn_nEG.11a + 4^10 * ~Evn_nEG.11b + ~Evn_nEG.10) +
           2 * (4^21 * ~Odd_nEG.11a + 4^10 * ~Odd_nEG.11b + ~Odd_nEG.10)
              = ~(¬E) + ~G
 
