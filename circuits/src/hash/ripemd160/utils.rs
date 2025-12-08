@@ -4,7 +4,7 @@ pub use crate::hash::sha256::utils::{get_even_and_odd_bits, spread};
 const WORD: usize = 32;
 const MAX_LIMB: usize = 11;
 const LAST_LIMB: usize = WORD % MAX_LIMB; // 10
-const NUM_LIMBS: usize = (WORD - 1) / MAX_LIMB + 2; // 4
+pub(super) const NUM_LIMBS: usize = (WORD - 1) / MAX_LIMB + 2; // 4
 
 /// Decomposes a 32-bit word into limbs so that the first k limbs
 /// represent the `rot` bits that will be left-rotated, and returns
@@ -12,7 +12,7 @@ const NUM_LIMBS: usize = (WORD - 1) / MAX_LIMB + 2; // 4
 ///
 /// # Panics
 ///
-/// If `rot` is not in the range (0, 22).
+/// If `rot` is not in the range (0, 16).
 pub(super) fn limb_lengths(rot: usize) -> ([usize; NUM_LIMBS], usize) {
     // Given the word size |W| = [`WORD`] and the maximum lookup bit
     // size: [`MAX_LIMB`], the following two equalities hold:
@@ -20,13 +20,13 @@ pub(super) fn limb_lengths(rot: usize) -> ([usize; NUM_LIMBS], usize) {
     // [`WORD`] = n * [`MAX_LIMB`] + [`LAST_LIMB`]
     // rot      = k * [`MAX_LIMB`] + a
     //
-    // As 0 < rot < 22 in our use case, we have that rot < n * [`MAX_LIMB`].
+    // As 0 < rot < 16 in our use case, we have that rot < n * [`MAX_LIMB`].
     // Therefore, by splitting the (k+1)-th limb into two parts of sizes
     // a and b = [`MAX_LIMB`] - a, we can represent the rot bits in the first
     // k+1 limbs:
     // w   = | F0 | F1 | .. |    Fk   | .. | Fn | L |
     //     = |<--      rot    -->| S2 | .. | Fn | L |
-    assert!(rot > 0 && rot < WORD - LAST_LIMB);
+    assert!(rot > 0 && rot < 16);
     let mut lengths = [MAX_LIMB; NUM_LIMBS];
     lengths[NUM_LIMBS - 1] = LAST_LIMB;
     let a = rot % MAX_LIMB;
@@ -107,7 +107,7 @@ mod tests {
     fn test_limb_lengths() {
         // For every rotation offset, the sum of limb lengths should equal [`WORD`],
         // and the sum of the first k lengths should equal the rotation offset.
-        for rot in 1..22 {
+        for rot in 1..16 {
             let (lengths, k) = limb_lengths(rot);
             let sum: usize = lengths.iter().sum();
             assert_eq!(
@@ -128,7 +128,7 @@ mod tests {
     fn test_decomposition_and_coeffs() {
         // For every rotation offset, decompose a random value into limbs and
         // reconstruct it using the derived coefficients and limb values.
-        for rot in 1..22 {
+        for rot in 1..16 {
             let (lengths, _) = limb_lengths(rot);
             let coeffs = limb_coeffs(&lengths);
             let mut rng = rand::thread_rng();
@@ -146,7 +146,7 @@ mod tests {
     fn test_left_rotations() {
         // For every rotation offset, verify that rotating the value left by that offset
         // matches the reconstruction from derived limbs and coefficients.
-        for rot in 1..22 {
+        for rot in 1..16 {
             let (mut lengths, k) = limb_lengths(rot);
             let mut rng = rand::thread_rng();
             let val: u32 = rng.gen();
