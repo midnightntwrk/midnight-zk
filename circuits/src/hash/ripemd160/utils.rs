@@ -101,7 +101,7 @@ pub fn spreaded_type_one(spreaded_forms: [u64; 3]) -> u64 {
 
 /// Generates the plain-spreaded lookup table. The limb lengths to be looked up
 /// cover the range [0, 11] for the rotation offsets used in RIPEMD-160.
-pub fn gen_spread_table<F: PrimeField>() -> impl Iterator<Item = (F, F, F)> {
+pub(super) fn gen_spread_table<F: PrimeField>() -> impl Iterator<Item = (F, F, F)> {
     (0..=11).flat_map(|len| {
         let tag = F::from(len as u64);
         (0..(1 << len)).map(move |i| (tag, F::from(i as u64), F::from(spread(i as u32))))
