@@ -1,3 +1,5 @@
+use ff::PrimeField;
+
 use crate::hash::sha256::utils::assert_in_valid_spreaded_form;
 pub use crate::hash::sha256::utils::{get_even_and_odd_bits, spread};
 
@@ -97,11 +99,22 @@ pub fn spreaded_type_one(spreaded_forms: [u64; 3]) -> u64 {
     sA + sB + sC
 }
 
+/// Generates the plain-spreaded lookup table. The limb lengths to be looked up
+/// cover the range [0, 11] for the rotation offsets used in RIPEMD-160.
+pub fn gen_spread_table<F: PrimeField>() -> impl Iterator<Item = (F, F, F)> {
+    (0..=11).flat_map(|len| {
+        let tag = F::from(len as u64);
+        (0..(1 << len)).map(move |i| (tag, F::from(i as u64), F::from(spread(i as u32))))
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use rand::Rng;
 
     use super::*;
+
+    type F = midnight_curves::Fq;
 
     #[test]
     fn test_limb_lengths() {
@@ -229,5 +242,42 @@ mod tests {
             let vals: [u32; 3] = [rng.gen(), rng.gen(), rng.gen()];
             assert_type_three(vals);
         }
+    }
+
+    #[test]
+    fn test_gen_spread_table() {
+        let table: Vec<_> = gen_spread_table::<F>().collect();
+        let mut rng = rand::thread_rng();
+        let to_fe = |(tag, plain, spreaded)| {
+            (
+                F::from(tag as u64),
+                F::from(plain as u64),
+                F::from(spreaded),
+            )
+        };
+
+        assert!(table.contains(&to_fe((0, 0, 0))));
+        for _ in 0..10 {
+            // Positive test: check that the table contains a valid triple of (tag, plain,
+            // spreaded) for a random tag in [0, 11].
+            let tag = rng.gen_range(0..=11);
+            let plain = rng.gen_range(0..(1 << tag));
+            let spreaded = spread(plain);
+            let triple = to_fe((tag, plain, spreaded));
+            assert!(table.contains(&triple));
+
+            // Negative test: check that the table does not contain a random triple of
+            // (tag, plain, spreaded).
+            let random_triple = to_fe((rng.gen(), rng.gen(), rng.gen()));
+            assert!(!table.contains(&random_triple));
+        }
+
+        // Negative test: check that the table does not contain a triple with a tag not
+        // in [`LOOKUP_LENGTHS`].
+        let tag = 12; // Not in LOOKUP_LENGTHS
+        let plain = rng.gen_range(0..(1 << tag));
+        let spreaded = spread(plain);
+        let triple = to_fe((tag, plain, spreaded));
+        assert!(!table.contains(&triple));
     }
 }
