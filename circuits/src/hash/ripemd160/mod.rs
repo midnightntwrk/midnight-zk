@@ -16,3 +16,4 @@
 #![allow(non_snake_case)]
 mod ripemd160_chip;
 mod utils;
+mod types;
