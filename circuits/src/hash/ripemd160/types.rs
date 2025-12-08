@@ -2,8 +2,8 @@ use ff::PrimeField;
 
 use crate::{field::AssignedNative, hash::ripemd160::utils::NUM_LIMBS};
 
-/// An assigned 32-bit word, represented by a field element for 4 bytes in little-endian
-/// order.
+/// An assigned 32-bit word, represented by a field element for 4 bytes in
+/// little-endian order.
 #[derive(Clone, Debug)]
 pub(super) struct AssignedWord<F: PrimeField>(pub AssignedNative<F>);
 
