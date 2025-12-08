@@ -23,10 +23,6 @@ use std::{
     path::Path,
 };
 
-#[cfg(all(test, feature = "bench-internal"))]
-use bench_macros::inner_bench;
-#[cfg(feature = "dev-curves")]
-use midnight_curves::bn256;
 use midnight_curves::Bls12;
 use midnight_proofs::{
     plonk::{
@@ -168,6 +164,8 @@ macro_rules! plonk_api {
     };
 }
 
+#[cfg(feature = "dev-curves")]
+use midnight_curves::bn256;
 #[cfg(feature = "dev-curves")]
 plonk_api!(BnPLONK, bn256::Bn256, bn256::Fr, bn256::G1Affine, bn256::G1);
 
