@@ -1,5 +1,143 @@
 //! Implementation in-circuit of the RIPEMD-160 hash function.
 
+use ff::PrimeField;
+use midnight_proofs::{
+    circuit::{Chip, Layouter, Value},
+    plonk::{Advice, Column, ConstraintSystem, Error, Fixed, Selector, TableColumn},
+    poly::Rotation,
+};
+
+use crate::{
+    field::{decomposition::chip::P2RDecompositionChip, NativeChip, NativeGadget},
+    hash::ripemd160::utils::gen_spread_table,
+    utils::ComposableChip,
+};
+
+/// Number of advice columns used by the identities of the RIPEMD160 chip.
+pub const NB_RIPEMD160_ADVICE_COLS: usize = 8;
+
+/// Number of fixed columns used by the identities of the RIPEMD160 chip.
+pub const NB_RIPEMD160_FIXED_COLS: usize = 2;
+
+/// Plain-Spreaded lookup table.
+#[derive(Clone, Debug)]
+struct SpreadTable {
+    nbits_col: TableColumn,
+    plain_col: TableColumn,
+    sprdd_col: TableColumn,
+}
+
+/// Configuration for the RIPEMD160 chip.
+#[derive(Clone, Debug)]
+pub struct RipeMD160Config {
+    advice_cols: [Column<Advice>; NB_RIPEMD160_ADVICE_COLS],
+    fixed_cols: [Column<Fixed>; NB_RIPEMD160_FIXED_COLS],
+    q_lookup: Selector,
+    table: SpreadTable,
+}
+
+/// Chip for RIPEMD160.
+#[derive(Clone, Debug)]
+pub struct RipeMD160Chip<F: PrimeField> {
+    config: RipeMD160Config,
+    pub(super) native_gadget: NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>,
+}
+
+impl<F: PrimeField> Chip<F> for RipeMD160Chip<F> {
+    type Config = RipeMD160Config;
+    type Loaded = ();
+
+    fn config(&self) -> &Self::Config {
+        &self.config
+    }
+
+    fn loaded(&self) -> &Self::Loaded {
+        &()
+    }
+}
+
+impl<F: PrimeField> ComposableChip<F> for RipeMD160Chip<F> {
+    type SharedResources = (
+        [Column<Advice>; NB_RIPEMD160_ADVICE_COLS],
+        [Column<Fixed>; NB_RIPEMD160_FIXED_COLS],
+    );
+
+    type InstructionDeps = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
+
+    fn new(config: &RipeMD160Config, native_gadget: &Self::InstructionDeps) -> Self {
+        Self {
+            config: config.clone(),
+            native_gadget: native_gadget.clone(),
+        }
+    }
+
+    fn configure(
+        meta: &mut ConstraintSystem<F>,
+        shared_res: &Self::SharedResources,
+    ) -> Self::Config {
+        let fixed_cols = shared_res.1;
+
+        // Columns A0, A1, A2 and A3 do not need to be copy-enabled.
+        // We have the convention that chips enable copy in a prefix of their shared
+        // advice columns. Thus we let them be the last four columns of the given
+        // shared resources.
+        let advice_cols = [4, 5, 6, 7, 0, 1, 2, 3].map(|i| shared_res.0[i]);
+        for column in advice_cols.iter().rev().take(4) {
+            meta.enable_equality(*column);
+        }
+
+        let q_lookup = meta.complex_selector();
+        let table = SpreadTable {
+            nbits_col: meta.lookup_table_column(),
+            plain_col: meta.lookup_table_column(),
+            sprdd_col: meta.lookup_table_column(),
+        };
+
+        (0..2).for_each(|idx| {
+            meta.lookup("plain-spreaded lookup", |meta| {
+                let q_lookup = meta.query_selector(q_lookup);
+
+                let nbits = meta.query_fixed(fixed_cols[idx], Rotation(0));
+                let plain = meta.query_advice(advice_cols[2 * idx], Rotation(0));
+                let sprdd = meta.query_advice(advice_cols[2 * idx + 1], Rotation(0));
+
+                vec![
+                    (q_lookup.clone() * nbits, table.nbits_col),
+                    (q_lookup.clone() * plain, table.plain_col),
+                    (q_lookup * sprdd, table.sprdd_col),
+                ]
+            });
+        });
+
+        RipeMD160Config {
+            advice_cols,
+            fixed_cols,
+            q_lookup,
+            table,
+        }
+    }
+
+    fn load(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
+        let SpreadTable {
+            nbits_col,
+            plain_col,
+            sprdd_col,
+        } = self.config().table;
+
+        layouter.assign_table(
+            || "spread table",
+            |mut table| {
+                for (index, triple) in gen_spread_table::<F>().enumerate() {
+                    table.assign_cell(|| "nbits", nbits_col, index, || Value::known(triple.0))?;
+                    table.assign_cell(|| "plain", plain_col, index, || Value::known(triple.1))?;
+                    table.assign_cell(|| "sprdd", sprdd_col, index, || Value::known(triple.2))?;
+                }
+                Ok(())
+            },
+        )
+    }
+}
+
 /*
     A ⊕ B ⊕ C
 
