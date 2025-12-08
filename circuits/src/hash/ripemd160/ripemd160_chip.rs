@@ -8,9 +8,7 @@ use midnight_proofs::{
 };
 
 use crate::{
-    field::{decomposition::chip::P2RDecompositionChip, NativeChip, NativeGadget},
-    hash::ripemd160::utils::gen_spread_table,
-    utils::ComposableChip,
+    field::{NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip}, hash::ripemd160::{types::AssignedWord, utils::gen_spread_table}, instructions::DecompositionInstructions, types::AssignedByte, utils::ComposableChip
 };
 
 /// Number of advice columns used by the identities of the RIPEMD160 chip.
@@ -135,6 +133,28 @@ impl<F: PrimeField> ComposableChip<F> for RipeMD160Chip<F> {
                 Ok(())
             },
         )
+    }
+}
+
+impl<F: PrimeField> RipeMD160Chip<F> {
+    /// Given a byte array of exactly 64 bytes, this function converts it into a
+    /// block of 16 `AssignedWord` values, each (32 bits) value representing 4
+    /// bytes in little-endian.
+    pub(super) fn block_from_bytes(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        bytes: &[AssignedByte<F>; 64],
+    ) -> Result<[AssignedWord<F>; 16], Error> {
+        Ok(bytes
+            .chunks(4)
+            .map(|word_bytes| {
+                self.native_gadget
+                    .assigned_from_le_bytes(layouter, word_bytes)
+                    .map(AssignedWord)
+            })
+            .collect::<Result<Vec<_>, Error>>()?
+            .try_into()
+            .unwrap())
     }
 }
 
