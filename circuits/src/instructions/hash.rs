@@ -199,7 +199,8 @@ pub(crate) mod tests {
         Input: Vectorizable,
         Output: InnerValue,
     {
-        input: Vec<Input::Element>, // TODO This should be Value<>
+        input: Value<Vec<Input::Element>>,
+        expected_output: Output::Element,
         _marker: PhantomData<(F, Output, VarHashChip)>,
     }
 
@@ -245,12 +246,10 @@ pub(crate) mod tests {
             let vg = VectorGadget::new(&ng);
 
             let assigned_input: AssignedVector<_, _, M, A> =
-                vg.assign(&mut layouter, Value::known(self.input.clone()))?;
-            let expected_output =
-                <VarHashChip as HashCPU<Input::Element, Output::Element>>::hash(&self.input);
+                vg.assign(&mut layouter, self.input.clone())?;
 
             let output = chip.varhash(&mut layouter, &assigned_input)?;
-            ng.assert_equal_to_fixed(&mut layouter, &output, expected_output)?;
+            ng.assert_equal_to_fixed(&mut layouter, &output, self.expected_output.clone())?;
 
             chip.load_from_scratch(&mut layouter)?;
             ng.load_from_scratch(&mut layouter)
@@ -274,9 +273,12 @@ pub(crate) mod tests {
         let mut rng = ChaCha8Rng::seed_from_u64(0xf007ba11);
 
         let input = (0..size).map(|_| Input::sample_inner(&mut rng)).collect::<Vec<_>>();
+        let expected_output =
+            <VarHashChip as HashCPU<Input::Element, Output::Element>>::hash(&input);
 
         let circuit = TestVarHashCircuit::<F, Input, Output, VarHashChip, M, A> {
-            input,
+            input: Value::known(input),
+            expected_output,
             _marker: PhantomData,
         };
 
