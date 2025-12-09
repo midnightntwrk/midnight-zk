@@ -22,7 +22,6 @@ use crate::{
     field::{decomposition::chip::P2RDecompositionChip, NativeChip, NativeGadget},
     hash::poseidon::{constants::WIDTH, PoseidonState},
     instructions::{
-        hash::{HashCPU, VarHashInstructions},
         ArithInstructions, AssignmentInstructions, BinaryInstructions, ControlFlowInstructions,
         DivisionInstructions, EqualityInstructions, RangeCheckInstructions, SpongeCPU,
         ZeroInstructions,
@@ -63,13 +62,6 @@ impl<F: PoseidonField> SpongeCPU<F, F> for VarLenPoseidonGadget<F> {
 
     fn squeeze(state: &mut Self::StateCPU) -> F {
         <PoseidonChip<F> as SpongeCPU<F, F>>::squeeze(state)
-    }
-}
-
-// Inherit HashCPU trait from PoseidonChip.
-impl<F: PoseidonField> HashCPU<F, F> for VarLenPoseidonGadget<F> {
-    fn hash(inputs: &[F]) -> F {
-        <PoseidonChip<F> as HashCPU<F, F>>::hash(inputs)
     }
 }
 
@@ -138,18 +130,13 @@ impl<F: PoseidonField> VarLenPoseidonGadget<F> {
 
         Ok(chunk)
     }
-}
 
-impl<F: PoseidonField, const MAX_LEN: usize>
-    VarHashInstructions<F, MAX_LEN, AssignedNative<F>, AssignedNative<F>, RATE>
-    for VarLenPoseidonGadget<F>
-{
     /// Hashes the variable-length vector inputs.
     ///
     /// # Panics
     ///
     /// If `MAX_LEN` is not a multiple of `RATE`.
-    fn varhash(
+    pub(crate) fn poseidon_varlen<const MAX_LEN: usize, const RATE: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
         input: &AssignedVector<F, AssignedNative<F>, MAX_LEN, RATE>,

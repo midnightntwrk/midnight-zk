@@ -97,7 +97,7 @@ mod poseidon_chip;
 /// Implementation of CPU versions of Poseidon's permutation and round function.
 /// The functions use two different numbers of round skips depending on whether
 /// they will be used for circuits (NB_SKIPS_CIRCUIT) or CPU (NB_SKIPS_CPU).
-pub mod poseidon_cpu;
+mod poseidon_cpu;
 
 mod poseidon_varlen;
 /// Basic structures and methods for performing partial-round skips in Poseidon.
@@ -108,6 +108,16 @@ pub use poseidon_chip::*;
 pub use poseidon_cpu::*;
 pub use poseidon_varlen::VarLenPoseidonGadget;
 
+use crate::{
+    instructions::{
+        hash::{HashCPU, HashInstructions, VarHashInstructions},
+        SpongeCPU, SpongeInstructions,
+    },
+    types::AssignedNative,
+    vec::AssignedVector,
+};
+use midnight_proofs::{circuit::Layouter, plonk::Error};
+
 /// Number of advice columns used by the Poseidon chip.
 pub const NB_POSEIDON_ADVICE_COLS: usize = if NB_SKIPS_CIRCUIT >= WIDTH {
     WIDTH + NB_SKIPS_CIRCUIT
@@ -117,3 +127,50 @@ pub const NB_POSEIDON_ADVICE_COLS: usize = if NB_SKIPS_CIRCUIT >= WIDTH {
 
 /// Number of fixed columns used by the Poseidon chip.
 pub const NB_POSEIDON_FIXED_COLS: usize = WIDTH + NB_SKIPS_CIRCUIT;
+
+impl<F: PoseidonField> HashCPU<F, F> for PoseidonChip<F> {
+    fn hash(inputs: &[F]) -> F {
+        let mut state = <Self as SpongeCPU<F, F>>::init(Some(inputs.len()));
+        <Self as SpongeCPU<F, F>>::absorb(&mut state, inputs);
+        <Self as SpongeCPU<F, F>>::squeeze(&mut state)
+    }
+}
+
+impl<F: PoseidonField> HashInstructions<F, AssignedNative<F>, AssignedNative<F>>
+    for PoseidonChip<F>
+{
+    fn hash(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        inputs: &[AssignedNative<F>],
+    ) -> Result<AssignedNative<F>, Error> {
+        let mut state = self.init(layouter, Some(inputs.len()))?;
+        self.absorb(layouter, &mut state, inputs)?;
+        self.squeeze(layouter, &mut state)
+    }
+}
+
+// Inherit HashCPU trait from PoseidonChip.
+impl<F: PoseidonField> HashCPU<F, F> for VarLenPoseidonGadget<F> {
+    fn hash(inputs: &[F]) -> F {
+        <PoseidonChip<F> as HashCPU<F, F>>::hash(inputs)
+    }
+}
+
+impl<F: PoseidonField, const MAX_LEN: usize, const RATE: usize>
+    VarHashInstructions<F, MAX_LEN, AssignedNative<F>, AssignedNative<F>, RATE>
+    for VarLenPoseidonGadget<F>
+{
+    /// Hashes the variable-length vector inputs.
+    ///
+    /// # Panics
+    ///
+    /// If `MAX_LEN` is not a multiple of `RATE`.
+    fn varhash(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        input: &AssignedVector<F, AssignedNative<F>, MAX_LEN, RATE>,
+    ) -> Result<AssignedNative<F>, Error> {
+        self.poseidon_varlen(layouter, input)
+    }
+}
