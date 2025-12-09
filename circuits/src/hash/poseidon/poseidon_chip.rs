@@ -36,9 +36,7 @@ use crate::field::{
 };
 use crate::{
     field::NativeChip,
-    instructions::{
-        ArithInstructions, AssignmentInstructions, HashInstructions, SpongeInstructions,
-    },
+    instructions::{ArithInstructions, AssignmentInstructions, SpongeInstructions},
     types::AssignedNative,
     utils::ComposableChip,
 };
@@ -544,20 +542,6 @@ impl<F: PoseidonField> SpongeInstructions<F, AssignedNative<F>, AssignedNative<F
         state.queue = Vec::new();
         state.squeeze_position = 1 % RATE;
         Ok(state.register[0].clone())
-    }
-}
-
-impl<F: PoseidonField> HashInstructions<F, AssignedNative<F>, AssignedNative<F>>
-    for PoseidonChip<F>
-{
-    fn hash(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        inputs: &[AssignedNative<F>],
-    ) -> Result<AssignedNative<F>, Error> {
-        let mut state = self.init(layouter, Some(inputs.len()))?;
-        self.absorb(layouter, &mut state, inputs)?;
-        self.squeeze(layouter, &mut state)
     }
 }
 
