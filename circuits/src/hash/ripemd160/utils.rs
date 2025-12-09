@@ -1,7 +1,9 @@
 use ff::PrimeField;
 
 use crate::hash::sha256::utils::assert_in_valid_spreaded_form;
-pub use crate::hash::sha256::utils::{get_even_and_odd_bits, spread};
+pub use crate::hash::sha256::utils::{
+    expr_pow2_ip, expr_pow4_ip, get_even_and_odd_bits, spread, u32_in_be_limbs,
+};
 
 const WORD: usize = 32;
 const MAX_LIMB: usize = 11;
@@ -60,7 +62,8 @@ pub(super) fn limb_coeffs(limb_lengths: &[usize; NUM_LIMBS]) -> [u32; NUM_LIMBS]
 }
 
 /// Decomposes a 32-bit word into its limb values based on the provided limb
-/// lengths in big-endian order.
+/// lengths in big-endian order. It is slightly different from
+/// [`u32_in_be_limbs`], especially when some limb lengths are zero.
 ///
 /// # Panics
 ///
@@ -82,13 +85,12 @@ pub(super) fn limb_values(value: u32, limb_lengths: &[usize; NUM_LIMBS]) -> [u32
     result
 }
 
-/// Computes off-circuit spreaded of the type one bitwise operation: A ⊕ B ⊕ C
-/// with A, B, C in spreaded forms.
+/// Computes off-circuit the sum of three spreaded values.
 ///
 /// # Panics
 ///
 /// If A, B, C are not in clean spreaded form.
-pub fn spreaded_type_one(spreaded_forms: [u64; 3]) -> u64 {
+pub fn spreaded_sum(spreaded_forms: [u64; 3]) -> u64 {
     spreaded_forms.into_iter().for_each(assert_in_valid_spreaded_form);
 
     let [sA, sB, sC] = spreaded_forms;
@@ -184,17 +186,17 @@ mod tests {
     }
 
     #[test]
-    fn test_spreaded_type_one() {
-        // Assert A ⊕ B ⊕ C equals the even bits of the output of [`spreaded_type_one`].
+    fn test_type_one() {
+        // Assert A ⊕ B ⊕ C equals the even bits of the output of [`spreaded_sum`].
         fn assert_even_of_spreaded_type_one(vals: [u32; 3]) {
             // Compute A ⊕ B ⊕ C with the built-in methods.
             let [a, b, c] = vals;
             let ret = a ^ b ^ c;
 
             // Compute A ⊕ B ⊕ C by the even bits of the value returned by
-            // [`spreaded_type_one`].
+            // [`spreaded_sum`].
             let spreaded_forms: [u64; 3] = vals.map(spread);
-            let (even, _odd) = get_even_and_odd_bits(spreaded_type_one(spreaded_forms));
+            let (even, _odd) = get_even_and_odd_bits(spreaded_sum(spreaded_forms));
 
             assert_eq!(ret, even as u32);
         }
