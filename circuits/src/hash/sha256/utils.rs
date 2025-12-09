@@ -183,7 +183,7 @@ fn pow4_ip<const N: usize>(exponents: [u8; N], terms: [u64; N]) -> u64 {
 }
 
 /// Returns sum_i 2^(exponents\[i\]) * terms\[i\].
-pub(crate) fn expr_pow2_ip<F: CircuitField, const N: usize>(
+pub fn expr_pow2_ip<F: PrimeField, const N: usize>(
     exponents: [u8; N],
     terms: [&Expression<F>; N],
 ) -> Expression<F> {
@@ -195,7 +195,7 @@ pub(crate) fn expr_pow2_ip<F: CircuitField, const N: usize>(
 }
 
 /// Returns sum_i 4^(exponents\[i\]) * terms\[i\].
-pub(crate) fn expr_pow4_ip<F: CircuitField, const N: usize>(
+pub fn expr_pow4_ip<F: PrimeField, const N: usize>(
     exponents: [u8; N],
     terms: [&Expression<F>; N],
 ) -> Expression<F> {
