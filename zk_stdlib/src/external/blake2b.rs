@@ -270,11 +270,17 @@ mod test {
         test_wrapper(BLAKE2B_BLOCK_SIZE, 17, false);
         test_wrapper(BLAKE2B_BLOCK_SIZE + 1, 17, false);
         test_wrapper(BLAKE2B_BLOCK_SIZE + 2, 17, false);
+
         test_wrapper(2 * BLAKE2B_BLOCK_SIZE - 2, 17, false);
         test_wrapper(2 * BLAKE2B_BLOCK_SIZE - 1, 17, false);
-        test_wrapper(2 * BLAKE2B_BLOCK_SIZE, 17, false);
+        // Test for cost model
+        test_wrapper(2 * BLAKE2B_BLOCK_SIZE, 17, true);
         test_wrapper(2 * BLAKE2B_BLOCK_SIZE + 1, 17, false);
         test_wrapper(2 * BLAKE2B_BLOCK_SIZE + 2, 17, false);
+
+        test_wrapper(0, 17, false);
+        test_wrapper(1, 17, false);
+        test_wrapper(2, 17, false);
     }
 
     #[test]
@@ -296,10 +302,16 @@ mod test {
         test_wrapper(BLAKE2B_BLOCK_SIZE, 17, false);
         test_wrapper(BLAKE2B_BLOCK_SIZE + 1, 17, false);
         test_wrapper(BLAKE2B_BLOCK_SIZE + 2, 17, false);
+
         test_wrapper(2 * BLAKE2B_BLOCK_SIZE - 2, 17, false);
         test_wrapper(2 * BLAKE2B_BLOCK_SIZE - 1, 17, false);
-        test_wrapper(2 * BLAKE2B_BLOCK_SIZE, 17, false);
+        // Test for cost model
+        test_wrapper(2 * BLAKE2B_BLOCK_SIZE, 17, true);
         test_wrapper(2 * BLAKE2B_BLOCK_SIZE + 1, 17, false);
         test_wrapper(2 * BLAKE2B_BLOCK_SIZE + 2, 17, false);
+
+        test_wrapper(0, 17, false);
+        test_wrapper(1, 17, false);
+        test_wrapper(2, 17, false);
     }
 }
