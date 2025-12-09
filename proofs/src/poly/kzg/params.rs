@@ -2,7 +2,7 @@ use std::{fmt::Debug, io};
 
 use ff::{Field, PrimeField};
 use group::{prime::PrimeCurveAffine, Curve, Group};
-use halo2curves::pairing::{Engine, MultiMillerLoop};
+use midnight_curves::pairing::{Engine, MultiMillerLoop};
 use rand_core::RngCore;
 
 use crate::{
@@ -293,17 +293,17 @@ mod test {
     fn test_commit_lagrange() {
         const K: u32 = 6;
 
-        use halo2curves::bn256::{Bn256, Fr};
+        use midnight_curves::{Bls12, Fq};
 
         use crate::poly::EvaluationDomain;
 
-        let params: ParamsKZG<Bn256> = ParamsKZG::unsafe_setup(K, OsRng);
+        let params: ParamsKZG<Bls12> = ParamsKZG::unsafe_setup(K, OsRng);
         let domain = EvaluationDomain::new(1, K);
 
         let mut a = domain.empty_lagrange();
 
         for (i, a) in a.iter_mut().enumerate() {
-            *a = Fr::from(i as u64);
+            *a = Fq::from(i as u64);
         }
 
         let b = domain.lagrange_to_coeff(a.clone());
@@ -318,13 +318,13 @@ mod test {
     fn test_parameter_serialisation_roundtrip() {
         const K: u32 = 4;
 
-        use crate::halo2curves::bn256::Bn256;
+        use midnight_curves::Bls12;
 
-        let params0: ParamsKZG<Bn256> = ParamsKZG::unsafe_setup(K, OsRng);
+        let params0: ParamsKZG<Bls12> = ParamsKZG::unsafe_setup(K, OsRng);
         let mut data = vec![];
         ParamsKZG::write_custom(&params0, &mut data, SerdeFormat::RawBytesUnchecked).unwrap();
         let params1 =
-            ParamsKZG::<Bn256>::read_custom::<_>(&mut &data[..], SerdeFormat::RawBytesUnchecked)
+            ParamsKZG::<Bls12>::read_custom::<_>(&mut &data[..], SerdeFormat::RawBytesUnchecked)
                 .unwrap();
 
         assert_eq!(params0.g.len(), params1.g.len());

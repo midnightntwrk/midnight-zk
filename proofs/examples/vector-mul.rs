@@ -277,7 +277,8 @@ impl<F: Field> Circuit<F> for MyCircuit<F> {
 // ANCHOR_END: circuit
 
 fn main() {
-    use halo2curves::pasta::Fp;
+    use ff::Field;
+    use midnight_curves::Fq as Scalar;
     use midnight_proofs::dev::MockProver;
 
     const N: usize = 20000;
@@ -287,9 +288,9 @@ fn main() {
     let k = 16;
 
     // Prepare the private and public inputs to the circuit!
-    let a = [Fp::from(2); N];
-    let b = [Fp::from(3); N];
-    let c: Vec<Fp> = a.iter().zip(b).map(|(&a, b)| a * b).collect();
+    let a = [Scalar::from(2); N];
+    let b = [Scalar::from(3); N];
+    let c: Vec<Scalar> = a.iter().zip(b).map(|(&a, b)| a * b).collect();
 
     // Instantiate the circuit with the private inputs.
     let circuit = MyCircuit {
@@ -309,7 +310,7 @@ fn main() {
 
     // If we try some other public input, the proof will fail!
     let start = std::time::Instant::now();
-    public_inputs[0] += Fp::one();
+    public_inputs[0] += Scalar::ONE;
     let prover = MockProver::run(k, &circuit, vec![public_inputs]).unwrap();
     assert!(prover.verify().is_err());
     println!("negative test took {:?}", start.elapsed());

@@ -7,9 +7,8 @@ use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
 };
 
-use crate::{
-    fp::Fp, fp12::Fp12, fp2::Fp2, fp6::Fp6, Fq, G1Affine, G1Projective, G2Affine, G2Projective, Gt,
-    MillerLoopResult,
+use crate::bls12_381::{
+    Fp, Fp12, Fp2, Fp6, Fq, G1Affine, G1Projective, G2Affine, G2Projective, Gt, MillerLoopResult,
 };
 
 const ERR_CODE: &str = "deserialized bytes don't encode a group element";

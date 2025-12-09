@@ -818,7 +818,6 @@ where
 mod tests {
 
     use ff::FromUniformBytes;
-    use halo2curves::pasta::{Fp as VestaScalar, Fq as PallasScalar};
     use midnight_curves::Fq as BlsScalar;
     use midnight_proofs::{
         circuit::SimpleFloorPlanner,
@@ -850,8 +849,6 @@ mod tests {
             #[test]
             fn $op() {
                 test_field!($mod, $op, BlsScalar, "biguint_gadget");
-                test_field!($mod, $op, PallasScalar, "");
-                test_field!($mod, $op, VestaScalar, "");
             }
         };
     }

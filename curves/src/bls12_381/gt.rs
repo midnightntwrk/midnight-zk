@@ -11,7 +11,7 @@ use group::Group;
 use rand_core::RngCore;
 use subtle::{Choice, ConstantTimeEq};
 
-use crate::{fp::Fp, fp12::Fp12, fp2::Fp2, fp6::Fp6, Fq};
+use super::{fp::Fp, fp12::Fp12, fp2::Fp2, fp6::Fp6, Fq};
 
 /// This is an element of $\mathbb{G}_T$, the target group of the pairing
 /// function. As with $\mathbb{G}_1$ and $\mathbb{G}_2$ this group has order
@@ -322,12 +322,14 @@ impl Gt {
 #[cfg(test)]
 mod tests {
     use group::{prime::PrimeCurveAffine, Curve};
-    use pairing_lib::{Engine, MillerLoopResult, MultiMillerLoop};
+    use pairing::{Engine, MillerLoopResult, MultiMillerLoop};
     use rand_core::SeedableRng;
     use rand_xorshift::XorShiftRng;
 
     use super::*;
-    use crate::{pairing, Bls12, G1Affine, G1Projective, G2Affine, G2Prepared, G2Projective};
+    use crate::bls12_381::{
+        pairing, Bls12, G1Affine, G1Projective, G2Affine, G2Prepared, G2Projective,
+    };
 
     #[test]
     fn test_gt_generator() {
@@ -339,8 +341,6 @@ mod tests {
 
     #[test]
     fn test_gt_bilinearity() {
-        use crate::Fq;
-
         let a = Fq::from_u64s_le(&[1, 2, 3, 4]).unwrap().invert().unwrap().square();
         let b = Fq::from_u64s_le(&[5, 6, 7, 8]).unwrap().invert().unwrap().square();
         let c = a * b;
@@ -442,7 +442,7 @@ mod tests {
         ]);
         let p = G1Projective::random(&mut rng).to_affine();
         let q = G2Projective::random(&mut rng).to_affine();
-        let a = crate::pairing(&p, &q);
+        let a = pairing(&p, &q);
         assert!(a.is_in_subgroup());
     }
 }

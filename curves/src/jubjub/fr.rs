@@ -190,8 +190,8 @@ impl<'b> Mul<&'b Fr> for &Fr {
     }
 }
 
-impl_binops_additive!(Fr);
-impl_binops_multiplicative!(Fr);
+impl_binops_additive!(Fr, Fr);
+impl_binops_multiplicative!(Fr, Fr);
 impl_sum!(Fr);
 impl_product!(Fr);
 

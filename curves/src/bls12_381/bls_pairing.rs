@@ -4,7 +4,7 @@ use blst::*;
 use ff::Field;
 use subtle::{Choice, ConditionallySelectable};
 
-use crate::{fp12::Fp12, G1Affine, G2Affine, Gt};
+use super::{fp12::Fp12, G1Affine, G2Affine, Gt};
 
 /// Execute a complete pairing operation `(p, q)`.
 pub fn pairing(p: &G1Affine, q: &G2Affine) -> Gt {
@@ -166,7 +166,7 @@ impl Default for MillerLoopResult {
     }
 }
 
-impl pairing_lib::MillerLoopResult for MillerLoopResult {
+impl pairing::MillerLoopResult for MillerLoopResult {
     type Gt = Gt;
 
     fn final_exponentiation(&self) -> Gt {

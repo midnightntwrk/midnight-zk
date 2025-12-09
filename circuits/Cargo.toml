@@ -10,11 +10,9 @@ license-file.workspace = true
 group = { workspace = true }
 ff = { workspace = true }
 rustc-hash = "2"
-halo2curves = { workspace = true }
 blake2b_simd = { workspace = true }
 midnight-curves = { path = "../curves", version = "0.1.1" }
 midnight-proofs = { path = "../proofs", version = "0.5.1", default-features = false, features = [
-    "bits",
     "circuit-params",
     "committed-instances",
 ] }
@@ -54,6 +52,8 @@ testing = ["num-bigint/rand"]
 heap_profiling = []
 # Enable truncated challenges. This makes recursive proofs more efficient
 truncated-challenges = ["midnight-proofs/truncated-challenges"]
+# Enable development curves (BN256, Pasta)
+dev-curves = ["midnight-curves/dev-curves", "midnight-proofs/dev-curves"]
 
 [lib]
 bench = false

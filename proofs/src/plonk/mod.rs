@@ -45,8 +45,8 @@ pub use circuit::*;
 pub use error::*;
 pub(crate) use evaluation::Evaluator;
 use ff::{PrimeField, WithSmallOrderMulGroup};
-use halo2curves::serde::SerdeObject;
 pub use keygen::*;
+use midnight_curves::serde::SerdeObject;
 pub use prover::*;
 pub use verifier::*;
 

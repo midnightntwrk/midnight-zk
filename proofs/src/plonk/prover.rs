@@ -925,13 +925,14 @@ impl<F: Field> Assignment<F> for WitnessCollection<'_, F> {
 }
 
 #[test]
+#[cfg(feature = "dev-curves")]
 fn test_create_proof() {
-    use halo2curves::bn256::{Bn256, Fr};
+    use midnight_curves::bn256::{Bn256, Fr};
     use rand_core::OsRng;
 
     use crate::{
         circuit::SimpleFloorPlanner,
-        plonk::{keygen_pk, keygen_vk},
+        plonk::{keygen_pk, keygen_vk_with_k},
         poly::kzg::{params::ParamsKZG, KZGCommitmentScheme},
         transcript::CircuitTranscript,
     };
@@ -960,8 +961,9 @@ fn test_create_proof() {
         }
     }
 
-    let params: ParamsKZG<Bn256> = ParamsKZG::unsafe_setup(4, OsRng);
-    let vk = keygen_vk(&params, &MyCircuit).expect("keygen_vk should not fail");
+    const K: u32 = 4;
+    let params: ParamsKZG<Bn256> = ParamsKZG::unsafe_setup(K, OsRng);
+    let vk = keygen_vk_with_k(&params, &MyCircuit, K).expect("keygen_vk should not fail");
     let pk = keygen_pk(vk, &MyCircuit).expect("keygen_pk should not fail");
     let mut transcript = CircuitTranscript::<_>::init();
 

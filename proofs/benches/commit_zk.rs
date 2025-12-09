@@ -4,7 +4,7 @@ use std::{collections::HashMap, iter};
 
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use group::ff::Field;
-use halo2curves::pasta::pallas::Scalar;
+use midnight_curves::Fq as Scalar;
 use midnight_proofs::utils::arithmetic::parallelize;
 use rand_chacha::{rand_core::RngCore, ChaCha20Rng};
 use rand_core::SeedableRng;
@@ -12,7 +12,7 @@ use rayon::current_num_threads;
 
 fn rand_poly_serial(mut rng: ChaCha20Rng, domain: usize) -> Vec<Scalar> {
     // Sample a random polynomial of degree n - 1
-    let mut random_poly = vec![Scalar::zero(); 1 << domain];
+    let mut random_poly = vec![Scalar::ZERO; 1 << domain];
     for coeff in random_poly.iter_mut() {
         *coeff = Scalar::random(&mut rng);
     }

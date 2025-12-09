@@ -154,7 +154,8 @@ pub(crate) fn compute_table_lengths<F: Debug>(
 
 #[cfg(test)]
 mod tests {
-    use halo2curves::pasta::Fp;
+    use ff::Field;
+    use midnight_curves::Fq as Scalar;
 
     use super::*;
     use crate::{
@@ -175,7 +176,7 @@ mod tests {
 
         struct FaultyCircuit;
 
-        impl Circuit<Fp> for FaultyCircuit {
+        impl Circuit<Scalar> for FaultyCircuit {
             type Config = FaultyCircuitConfig;
             type FloorPlanner = SimpleFloorPlanner;
             #[cfg(feature = "circuit-params")]
@@ -185,7 +186,7 @@ mod tests {
                 Self
             }
 
-            fn configure(meta: &mut ConstraintSystem<Fp>) -> Self::Config {
+            fn configure(meta: &mut ConstraintSystem<Scalar>) -> Self::Config {
                 let a = meta.advice_column();
                 let table = meta.lookup_table_column();
 
@@ -200,7 +201,7 @@ mod tests {
             fn synthesize(
                 &self,
                 config: Self::Config,
-                mut layouter: impl Layouter<Fp>,
+                mut layouter: impl Layouter<Scalar>,
             ) -> Result<(), Error> {
                 layouter.assign_table(
                     || "duplicate assignment",
@@ -209,7 +210,7 @@ mod tests {
                             || "default",
                             config.table,
                             1,
-                            || Value::known(Fp::zero()),
+                            || Value::known(Scalar::ZERO),
                         )
                     },
                 )
@@ -234,7 +235,7 @@ mod tests {
 
         struct FaultyCircuit;
 
-        impl Circuit<Fp> for FaultyCircuit {
+        impl Circuit<Scalar> for FaultyCircuit {
             type Config = FaultyCircuitConfig;
             type FloorPlanner = SimpleFloorPlanner;
             #[cfg(feature = "circuit-params")]
@@ -244,7 +245,7 @@ mod tests {
                 Self
             }
 
-            fn configure(meta: &mut ConstraintSystem<Fp>) -> Self::Config {
+            fn configure(meta: &mut ConstraintSystem<Scalar>) -> Self::Config {
                 let a = meta.advice_column();
                 let table = meta.lookup_table_column();
 
@@ -259,7 +260,7 @@ mod tests {
             fn synthesize(
                 &self,
                 config: Self::Config,
-                mut layouter: impl Layouter<Fp>,
+                mut layouter: impl Layouter<Scalar>,
             ) -> Result<(), Error> {
                 layouter.assign_table(
                     || "duplicate assignment",
@@ -268,13 +269,13 @@ mod tests {
                             || "default",
                             config.table,
                             0,
-                            || Value::known(Fp::zero()),
+                            || Value::known(Scalar::ZERO),
                         )?;
                         table.assign_cell(
                             || "duplicate",
                             config.table,
                             0,
-                            || Value::known(Fp::zero()),
+                            || Value::known(Scalar::ZERO),
                         )
                     },
                 )
@@ -284,7 +285,7 @@ mod tests {
         let prover = MockProver::run(K, &FaultyCircuit, vec![]);
         assert_eq!(
             format!("{}", prover.unwrap_err()),
-            "Attempted to overwrite default value Value { inner: Some(Trivial(0x0000000000000000000000000000000000000000000000000000000000000000)) } with Value { inner: Some(Trivial(0x0000000000000000000000000000000000000000000000000000000000000000)) } in TableColumn { inner: Column { index: 0, column_type: Fixed } }"
+            "Attempted to overwrite default value Value { inner: Some(Trivial(Fq(0x0000000000000000000000000000000000000000000000000000000000000000))) } with Value { inner: Some(Trivial(Fq(0x0000000000000000000000000000000000000000000000000000000000000000))) } in TableColumn { inner: Column { index: 0, column_type: Fixed } }"
         );
     }
 
@@ -299,7 +300,7 @@ mod tests {
 
         struct FaultyCircuit;
 
-        impl Circuit<Fp> for FaultyCircuit {
+        impl Circuit<Scalar> for FaultyCircuit {
             type Config = FaultyCircuitConfig;
             type FloorPlanner = SimpleFloorPlanner;
             #[cfg(feature = "circuit-params")]
@@ -309,7 +310,7 @@ mod tests {
                 Self
             }
 
-            fn configure(meta: &mut ConstraintSystem<Fp>) -> Self::Config {
+            fn configure(meta: &mut ConstraintSystem<Scalar>) -> Self::Config {
                 let a = meta.advice_column();
                 let table = meta.lookup_table_column();
 
@@ -324,7 +325,7 @@ mod tests {
             fn synthesize(
                 &self,
                 config: Self::Config,
-                mut layouter: impl Layouter<Fp>,
+                mut layouter: impl Layouter<Scalar>,
             ) -> Result<(), Error> {
                 layouter.assign_table(
                     || "first assignment",
@@ -333,7 +334,7 @@ mod tests {
                             || "default",
                             config.table,
                             0,
-                            || Value::known(Fp::zero()),
+                            || Value::known(Scalar::ZERO),
                         )
                     },
                 )?;
@@ -341,7 +342,12 @@ mod tests {
                 layouter.assign_table(
                     || "reuse",
                     |mut table| {
-                        table.assign_cell(|| "reuse", config.table, 1, || Value::known(Fp::zero()))
+                        table.assign_cell(
+                            || "reuse",
+                            config.table,
+                            1,
+                            || Value::known(Scalar::ZERO),
+                        )
                     },
                 )
             }
@@ -365,7 +371,7 @@ mod tests {
 
         struct FaultyCircuit;
 
-        impl Circuit<Fp> for FaultyCircuit {
+        impl Circuit<Scalar> for FaultyCircuit {
             type Config = FaultyCircuitConfig;
             type FloorPlanner = SimpleFloorPlanner;
             #[cfg(feature = "circuit-params")]
@@ -375,7 +381,7 @@ mod tests {
                 Self
             }
 
-            fn configure(meta: &mut ConstraintSystem<Fp>) -> Self::Config {
+            fn configure(meta: &mut ConstraintSystem<Scalar>) -> Self::Config {
                 let a = meta.advice_column();
                 let table = (meta.lookup_table_column(), meta.lookup_table_column());
                 meta.lookup("", |cells| {
@@ -390,15 +396,25 @@ mod tests {
             fn synthesize(
                 &self,
                 config: Self::Config,
-                mut layouter: impl Layouter<Fp>,
+                mut layouter: impl Layouter<Scalar>,
             ) -> Result<(), Error> {
                 layouter.assign_table(
                     || "table with uneven columns",
                     |mut table| {
-                        table.assign_cell(|| "", config.table.0, 0, || Value::known(Fp::zero()))?;
-                        table.assign_cell(|| "", config.table.0, 1, || Value::known(Fp::zero()))?;
+                        table.assign_cell(
+                            || "",
+                            config.table.0,
+                            0,
+                            || Value::known(Scalar::ZERO),
+                        )?;
+                        table.assign_cell(
+                            || "",
+                            config.table.0,
+                            1,
+                            || Value::known(Scalar::ZERO),
+                        )?;
 
-                        table.assign_cell(|| "", config.table.1, 0, || Value::known(Fp::zero()))
+                        table.assign_cell(|| "", config.table.1, 0, || Value::known(Scalar::ZERO))
                     },
                 )
             }

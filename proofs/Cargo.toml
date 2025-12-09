@@ -36,9 +36,8 @@ harness = false
 backtrace = { version = "0.3", optional = true }
 ff = { workspace = true }
 group = { workspace = true }
-halo2curves = { workspace = true }
 midnight-curves = { path = "../curves", version = "0.1.1" }
-rand_core = { workspace = true }
+rand_core = { workspace = true, features = ["getrandom"] }
 tracing = { workspace = true }
 blake2b_simd = { workspace = true }
 rand_chacha = { workspace = true }
@@ -68,10 +67,10 @@ getrandom = { version = "0.2", features = ["js"] }
 midnight-curves = { path = "../curves", features = ["portable"] }
 
 [features]
-default = ["bits", "committed-instances"]
-bits = ["halo2curves/bits"]
+default = ["committed-instances"]
 circuit-params = []
-derive_serde = ["halo2curves/derive_serde"]
+derive_serde = ["midnight-curves/serde"]
+dev-curves = ["midnight-curves/serde"]
 
 # This feature truncates challenges to half the size of the scalar field.
 truncated-challenges = []
