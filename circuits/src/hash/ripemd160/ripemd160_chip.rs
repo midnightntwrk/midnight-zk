@@ -2,13 +2,29 @@
 
 use ff::PrimeField;
 use midnight_proofs::{
-    circuit::{Chip, Layouter, Value},
-    plonk::{Advice, Column, ConstraintSystem, Error, Fixed, Selector, TableColumn},
+    circuit::{Chip, Layouter, Region, Value},
+    plonk::{
+        Advice, Column, ConstraintSystem, Constraints, Error, Expression, Fixed, Selector,
+        TableColumn,
+    },
     poly::Rotation,
 };
 
 use crate::{
-    field::{NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip}, hash::ripemd160::{types::AssignedWord, utils::gen_spread_table}, instructions::DecompositionInstructions, types::AssignedByte, utils::ComposableChip
+    field::{decomposition::chip::P2RDecompositionChip, NativeChip, NativeGadget},
+    hash::ripemd160::{
+        types::{AssignedSpreaded, AssignedWord},
+        utils::{
+            expr_pow2_ip, expr_pow4_ip, gen_spread_table, get_even_and_odd_bits, spread,
+            spreaded_sum, u32_in_be_limbs,
+        },
+    },
+    instructions::DecompositionInstructions,
+    types::AssignedByte,
+    utils::{
+        util::{fe_to_u64, u32_to_fe, u64_to_fe},
+        ComposableChip,
+    },
 };
 
 /// Number of advice columns used by the identities of the RIPEMD160 chip.
@@ -16,6 +32,13 @@ pub const NB_RIPEMD160_ADVICE_COLS: usize = 8;
 
 /// Number of fixed columns used by the identities of the RIPEMD160 chip.
 pub const NB_RIPEMD160_FIXED_COLS: usize = 2;
+
+/// Tag for the even and odd 11-11-10 decompositions.
+#[derive(Copy, Clone, Debug)]
+enum Parity {
+    Evn,
+    Odd,
+}
 
 /// Plain-Spreaded lookup table.
 #[derive(Clone, Debug)]
@@ -32,6 +55,9 @@ pub struct RipeMD160Config {
     fixed_cols: [Column<Fixed>; NB_RIPEMD160_FIXED_COLS],
     q_lookup: Selector,
     table: SpreadTable,
+    q_11_11_10: Selector,
+    q_spr_sum_evn: Selector,
+    q_spr_sum_odd: Selector,
 }
 
 /// Chip for RIPEMD160.
@@ -91,6 +117,10 @@ impl<F: PrimeField> ComposableChip<F> for RipeMD160Chip<F> {
             sprdd_col: meta.lookup_table_column(),
         };
 
+        let q_11_11_10 = meta.selector();
+        let q_spr_sum_evn = meta.selector();
+        let q_spr_sum_odd = meta.selector();
+
         (0..2).for_each(|idx| {
             meta.lookup("plain-spreaded lookup", |meta| {
                 let q_lookup = meta.query_selector(q_lookup);
@@ -107,11 +137,67 @@ impl<F: PrimeField> ComposableChip<F> for RipeMD160Chip<F> {
             });
         });
 
+        meta.create_gate("11-11-10 decomposition", |meta| {
+            // See function `assign_sprdd_sum` for a description of the following
+            // layout.
+            let p11a = meta.query_advice(advice_cols[0], Rotation(-1));
+            let p11b = meta.query_advice(advice_cols[0], Rotation(0));
+            let p_10 = meta.query_advice(advice_cols[0], Rotation(1));
+            let output = meta.query_advice(advice_cols[4], Rotation(-1));
+
+            let id = expr_pow2_ip([21, 10, 0], [&p11a, &p11b, &p_10]) - output;
+
+            Constraints::with_selector(q_11_11_10, vec![("11-11-10 decomposition", id)])
+        });
+
+        meta.create_gate("spreaded sum with even output", |meta| {
+            // See function `assign_sprdd_sum` for a description of the following
+            // layout.
+            let sA = meta.query_advice(advice_cols[5], Rotation(-1));
+            let sB = meta.query_advice(advice_cols[6], Rotation(-1));
+            let sC = meta.query_advice(advice_cols[7], Rotation(-1));
+            let s_evn_11a = meta.query_advice(advice_cols[1], Rotation(-1));
+            let s_evn_11b = meta.query_advice(advice_cols[1], Rotation(0));
+            let s_evn_010 = meta.query_advice(advice_cols[1], Rotation(1));
+            let s_odd_11a = meta.query_advice(advice_cols[3], Rotation(-1));
+            let s_odd_11b = meta.query_advice(advice_cols[3], Rotation(0));
+            let s_odd_010 = meta.query_advice(advice_cols[3], Rotation(1));
+
+            let s_evn = expr_pow4_ip([21, 10, 0], [&s_evn_11a, &s_evn_11b, &s_evn_010]);
+            let s_odd = expr_pow4_ip([21, 10, 0], [&s_odd_11a, &s_odd_11b, &s_odd_010]);
+            let id = (sA + sB + sC) - (s_evn + s_odd * Expression::Constant(F::from(2u64)));
+
+            Constraints::with_selector(q_spr_sum_evn, vec![("spreaded sum even", id)])
+        });
+
+        meta.create_gate("spreaded sum with odd output", |meta| {
+            // See function `assign_sprdd_sum` for a description of the following
+            // layout.
+            let sA = meta.query_advice(advice_cols[5], Rotation(-1));
+            let sB = meta.query_advice(advice_cols[6], Rotation(-1));
+            let sC = meta.query_advice(advice_cols[7], Rotation(-1));
+            let s_odd_11a = meta.query_advice(advice_cols[1], Rotation(-1));
+            let s_odd_11b = meta.query_advice(advice_cols[1], Rotation(0));
+            let s_odd_010 = meta.query_advice(advice_cols[1], Rotation(1));
+            let s_evn_11a = meta.query_advice(advice_cols[3], Rotation(-1));
+            let s_evn_11b = meta.query_advice(advice_cols[3], Rotation(0));
+            let s_evn_010 = meta.query_advice(advice_cols[3], Rotation(1));
+
+            let s_evn = expr_pow4_ip([21, 10, 0], [&s_evn_11a, &s_evn_11b, &s_evn_010]);
+            let s_odd = expr_pow4_ip([21, 10, 0], [&s_odd_11a, &s_odd_11b, &s_odd_010]);
+            let id = (sA + sB + sC) - (s_evn + s_odd * Expression::Constant(F::from(2u64)));
+
+            Constraints::with_selector(q_spr_sum_odd, vec![("spreaded sum odd", id)])
+        });
+
         RipeMD160Config {
             advice_cols,
             fixed_cols,
             q_lookup,
             table,
+            q_11_11_10,
+            q_spr_sum_evn,
+            q_spr_sum_odd,
         }
     }
 
@@ -139,7 +225,7 @@ impl<F: PrimeField> ComposableChip<F> for RipeMD160Chip<F> {
 impl<F: PrimeField> RipeMD160Chip<F> {
     /// Given a byte array of exactly 64 bytes, this function converts it into a
     /// block of 16 `AssignedWord` values, each (32 bits) value representing 4
-    /// bytes in little-endian.
+    /// bytes in *little-endian*.
     pub(super) fn block_from_bytes(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -156,141 +242,288 @@ impl<F: PrimeField> RipeMD160Chip<F> {
             .try_into()
             .unwrap())
     }
+
+    /// Given three assigned spreaded ~A, ~B, ~C, this function computes the
+    /// value of ~A + ~B + ~C, and fills a lookup table with the limbs of its
+    /// even and odd parts (or vice versa) and returns the former or the
+    /// latter, depending on the desired value `even_or_odd`.
+    fn assign_sprdd_sum(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        even_or_odd: Parity,
+        sprdd_a: &AssignedSpreaded<F, 32>,
+        sprdd_b: &AssignedSpreaded<F, 32>,
+        sprdd_c: &AssignedSpreaded<F, 32>,
+    ) -> Result<AssignedWord<F>, Error> {
+        /*
+        1) If `even_or_odd` = `Parity::Evn`, the circuit layout is as follows:
+
+        | T0 |    A0   |    A1    | T1 |    A2   |    A3    |  A4 |  A5 | A6 | A7 |
+        |----|---------|----------|----|---------|----------|-----|-----|----|----|
+        | 11 | Evn.11a | ~Evn.11a | 11 | Odd.11a | ~Odd.11a | Evn |  ~A | ~B | ~C |
+        | 11 | Evn.11b | ~Evn.11b | 11 | Odd.11b | ~Odd.11b |     |     |    |    | <- q_11_11_10, q_spr_sum_evn
+        | 10 | Evn.10  | ~Evn.10  | 10 | Odd.10  | ~Odd.10  |     |     |    |    |
+
+        with constraints enforcing:
+
+        1) applying the plain-spreaded lookup on 11-11-10 limbs of Evn and Odd:
+             Evn: (Evn.11a, Evn.11b, Evn.10)
+             Odd: (Odd.11a, Odd.11b, Odd.10)
+
+        2) asserting the 11-11-10 decomposition identity for Evn:
+              2^21 * Evn.11a + 2^10 * Evn.11b + Evn.10
+            = Evn
+
+        3) asserting the spr_sum_evn identity:
+              (4^21 * ~Evn.11a + 4^10 * ~Evn.11b + ~Evn.10) +
+          2 * (4^21 * ~Odd.11a + 4^10 * ~Odd.11b + ~Odd.10)
+             = ~A + ~B + ~C
+
+        and returns `Evn`.
+
+        2) If `even_or_odd` = `Parity::Odd`, the circuit layout is as follows:
+
+        | T0 |    A0   |    A1    | T1 |    A2   |    A3    |  A4 |  A5 | A6 | A7 |
+        |----|---------|----------|----|---------|----------|-----|-----|----|----|
+        | 11 | Odd.11a | ~Odd.11a | 11 | Evn.11a | ~Evn.11a | Odd |  ~A | ~B | ~C |
+        | 11 | Odd.11b | ~Odd.11b | 11 | Evn.11b | ~Evn.11b |     |     |    |    | <- q_11_11_10, q_spr_sum_odd
+        | 10 | Odd.10  | ~Odd.10  | 10 | Evn.10  | ~Evn.10  |     |     |    |    |
+
+        with constraints enforcing:
+
+        1) applying the plain-spreaded lookup on 11-11-10 limbs of Evn and Odd:
+             Odd: (Odd.11a, Odd.11b, Odd.10)
+             Evn: (Evn.11a, Evn.11b, Evn.10)
+
+        2) asserting the 11-11-10 decomposition identity for Odd:
+              2^21 * Odd.11a + 2^10 * Odd.11b + Odd.10
+            = Odd
+
+        3) asserting the spr_sum_odd identity:
+              (4^21 * ~Evn.11a + 4^10 * ~Evn.11b + ~Evn.10) +
+          2 * (4^21 * ~Odd.11a + 4^10 * ~Odd.11b + ~Odd.10)
+             = ~A + ~B + ~C
+
+        and returns `Odd`.
+        */
+        let adv_cols = self.config().advice_cols;
+
+        layouter.assign_region(
+            || "Assign spreaded sum",
+            |mut region| {
+                match even_or_odd {
+                    Parity::Evn => self.config().q_spr_sum_evn.enable(&mut region, 1)?,
+                    Parity::Odd => self.config().q_spr_sum_odd.enable(&mut region, 1)?,
+                };
+
+                sprdd_a.0.copy_advice(|| "~A", &mut region, adv_cols[5], 0)?;
+                sprdd_b.0.copy_advice(|| "~B", &mut region, adv_cols[6], 0)?;
+                sprdd_c.0.copy_advice(|| "~C", &mut region, adv_cols[7], 0)?;
+
+                let val_of_sprdd_forms: Value<[u64; 3]> = Value::from_iter([
+                    sprdd_a.0.value().copied().map(fe_to_u64),
+                    sprdd_b.0.value().copied().map(fe_to_u64),
+                    sprdd_c.0.value().copied().map(fe_to_u64),
+                ])
+                .map(|sprdd_forms: Vec<u64>| sprdd_forms.try_into().unwrap());
+
+                self.assign_sprdd_11_11_10(
+                    &mut region,
+                    val_of_sprdd_forms.map(spreaded_sum),
+                    even_or_odd,
+                    0,
+                )
+            },
+        )
+    }
+
+    fn assign_sprdd_11_11_10(
+        &self,
+        region: &mut Region<'_, F>,
+        value: Value<u64>,
+        even_or_odd: Parity,
+        offset: usize,
+    ) -> Result<AssignedWord<F>, Error> {
+        self.config().q_11_11_10.enable(region, offset + 1)?;
+
+        let (evn_val, odd_val) = value.map(get_even_and_odd_bits).unzip();
+
+        let [evn_11a, evn_11b, evn_10] =
+            evn_val.map(|v| u32_in_be_limbs(v, [11, 11, 10])).transpose_array();
+
+        let [odd_11a, odd_11b, odd_10] =
+            odd_val.map(|v| u32_in_be_limbs(v, [11, 11, 10])).transpose_array();
+
+        let idx = match even_or_odd {
+            Parity::Evn => 0,
+            Parity::Odd => 1,
+        };
+
+        self.assign_plain_and_spreaded::<11>(region, evn_11a, offset, idx)?;
+        self.assign_plain_and_spreaded::<11>(region, evn_11b, offset + 1, idx)?;
+        self.assign_plain_and_spreaded::<10>(region, evn_10, offset + 2, idx)?;
+
+        self.assign_plain_and_spreaded::<11>(region, odd_11a, offset, 1 - idx)?;
+        self.assign_plain_and_spreaded::<11>(region, odd_11b, offset + 1, 1 - idx)?;
+        self.assign_plain_and_spreaded::<10>(region, odd_10, offset + 2, 1 - idx)?;
+
+        let out_col = self.config().advice_cols[4];
+        match even_or_odd {
+            Parity::Evn => {
+                region.assign_advice(|| "Evn", out_col, offset, || evn_val.map(u32_to_fe))
+            }
+            Parity::Odd => {
+                region.assign_advice(|| "Odd", out_col, offset, || odd_val.map(u32_to_fe))
+            }
+        }
+        .map(AssignedWord)
+    }
+
+    /// Given a plain u32 value, supposedly in the range [0, 2^L), assigns it
+    /// in plain and spreaded form, returning an `AssignedPlainSpreaded<F, L>`.
+    ///
+    /// The assigned values are guaranteed to be well-formed and consistent
+    /// via a lookup check at the specified offset.
+    ///
+    /// Note that we have two parallel lookup arguments. The caller must
+    /// choose which of the two is used via the `lookup_idx`.
+    /// If `lookup_idx = 0`, the lookup on columns (T0, A0, A1) will be used.
+    /// If `lookup_idx = 1`, the lookup on columns (T1, A2, A3) will be used.
+    ///
+    /// # Unsatisfiable Circuit
+    ///
+    /// If the given value is not in the range [0, 2^L).
+    fn assign_plain_and_spreaded<const L: usize>(
+        &self,
+        region: &mut Region<'_, F>,
+        plain_val: Value<u32>,
+        offset: usize,
+        lookup_idx: usize,
+    ) -> Result<(), Error> {
+        self.config().q_lookup.enable(region, offset)?;
+
+        let nbits_col = self.config().fixed_cols[lookup_idx]; // 0 or 1
+        let plain_col = self.config().advice_cols[2 * lookup_idx]; // 0 or 2
+        let sprdd_col = self.config().advice_cols[2 * lookup_idx + 1]; // 1 or 3
+
+        let nbits_val = Value::known(F::from(L as u64));
+        let sprdd_val: Value<F> = plain_val.map(spread).map(u64_to_fe);
+        let plain_val: Value<F> = plain_val.map(u32_to_fe);
+
+        region.assign_fixed(|| "nbits", nbits_col, offset, || nbits_val)?;
+        region.assign_advice(|| "plain", plain_col, offset, || plain_val)?;
+        region.assign_advice(|| "sprdd", sprdd_col, offset, || sprdd_val)?;
+
+        Ok(())
+    }
 }
 
-/*
-    A ⊕ B ⊕ C
-
-    1) applying the plain-spreaded lookup on 11-11-10 limbs of Evn and Odd:
-             Evn: (Evn.11a, Evn.11b, Evn.10)
-             Odd: (Odd.11a, Odd.11b, Odd.10)
-
-    2) asserting the 11-11-10 decomposition identity for Evn:
-            2^21 * Evn.11a + 2^10 * Evn.11b + Evn.10
-        = Evn
-
-    3) asserting the spreaded addition identity regarding the spreaded values:
-            (4^21 * ~Evn.11a + 4^10 * ~Evn.11b + ~Evn.10) +
-        2 * (4^21 * ~Odd.11a + 4^10 * ~Odd.11b + ~Odd.10)
-            = ~A + ~B + ~C
-
-    The output is Evn.
-
-    | T0 |    A0   |     A1   | T1 |    A2   |    A3    |  A4 | A5 | A6 | A7 |
-    |----|---------|----------|----|---------|----------|-----|----|----|----|
-    | 11 | Evn.11a | ~Evn.11a | 11 | Odd.11a | ~Odd.11a | Evn | ~A | ~B | ~C |
-    | 11 | Evn.11b | ~Evn.11b | 11 | Odd.11b | ~Odd.11b |     |    |    |    | <- q_spr_add, q_11_11_10
-    | 10 | Evn.10  | ~Evn.10  | 10 | Odd.10  | ~Odd.10  |     |    |    |    |
-
-*/
-
-/*
-    A ⊕ B ⊕ 0
-
-    | T0 |    A0   |     A1   | T1 |    A2   |    A3    |  A4 | A5 | A6 | A7 |
-    |----|---------|----------|----|---------|----------|-----|----|----|----|
-    | 11 | Evn.11a | ~Evn.11a | 11 | Odd.11a | ~Odd.11a | Evn | ~A | ~B | ~0 |
-    | 11 | Evn.11b | ~Evn.11b | 11 | Odd.11b | ~Odd.11b |     |    |    |    | <- q_spr_add, q_11_11_10
-    | 10 | Evn.10  | ~Evn.10  | 10 | Odd.10  | ~Odd.10  |     |    |    |    |
-
-*/
-
-/*
-    prepare_spreaded(A): A ⊕ 0 ⊕ 0
-
-    | T0 |    A0   |     A1   | T1 |   A2   |   A3   |  A4 | A5 | A6 | A7 |
-    |----|---------|----------|----|--------|--------|-----|----|----|----|
-    | 11 | Evn.11a | ~Evn.11a | 11 |   0    |   ~0   |  A  | ~A | ~0 | ~0 |
-    | 11 | Evn.11a | ~Evn.11a | 11 |   0    |   ~0   |     |    |    |    | <- q_spr_add, q_11_11_10
-    | 10 | Evn.11a | ~Evn.11a | 10 |   0    |   ~0   |     |    |    |    |
-
-*/
-
-/*
-    (A ∧ B) ∨ (¬A ∧ C) = (A ∧ B) ⊕ (¬A ∧ C) = Ch(A, B, C)
-
-    1) applying the plain-spreaded lookup on 11-11-10 limbs of Evn and Odd,
-        for both (~A + ~B) and (~(¬A) + ~C):
-            Evn_AB: (Evn_AB.11a, Evn_AB.11b, Evn_AB.10)
-            Odd_AB: (Odd_AB.11a, Odd_AB.11b, Odd_AB.10)
-
-            Evn_nAC: (Evn_nAC.11a, Evn_nAC.11b, Evn_nAC.10)
-            Odd_nAC: (Odd_nAC.11a, Odd_nAC.11b, Odd_nAC.10)
-
-    2) asserting the 11-11-10 decomposition identity for Odd_AB and Odd_nAC:
-            2^21 * Odd_AB.11a + 2^10 * Odd_AB.11b + Odd_AB.10
-        = Odd_AB
-
-            2^21 * Odd_nAC.11a + 2^10 * Odd_nAC.11b + Odd_nAC.10
-        = Odd_nAC
-
-    3) asserting the spreaded addition identity for (~A + ~B) and (~(¬A) + ~C):
-            (4^21 * ~Evn_AB.11a + 4^10 * ~Evn_AB.11b + ~Evn_AB.10) +
-        2 * (4^21 * ~Odd_AB.11a + 4^10 * ~Odd_AB.11b + ~Odd_AB.10)
-            = ~A + ~B
-
-            (4^21 * ~Evn_nAC.11a + 4^10 * ~Evn_nAC.11b + ~Evn_nAC.10) +
-        2 * (4^21 * ~Odd_nAC.11a + 4^10 * ~Odd_nAC.11b + ~Odd_nAC.10)
-            = ~(¬A) + ~C
-
-    4) asserting the following two addition identities:
-                Ret = Odd_AB + Odd_nAC
-        MASK_EVN_64 = ~A + ~(¬A)
-
-    The output is Ret.
-
-    | T0 |      A0     |      A1      | T1 |      A2     |      A3      |    A4   |    A5   |      A6     | A7 |
-    |----|-------------|--------------|----|-------------|--------------|---------|---------|-------------|----|
-    | 11 |  Odd_AB.11a |  ~Odd_AB.11a | 11 |  Evn_AB.11a |  ~Evn_AB.11a | Odd_AB  |   ~A    |      ~B     | ~0 |
-    | 11 |  Odd_AB.11b |  ~Odd_AB.11b | 11 |  Evn_AB.11b |  ~Evn_AB.11b | Odd_AB  | Odd_nAC |     Ret     |    | <- q_spr_add, q_11_11_10, q_add
-    | 10 |  Odd_AB.10  |   ~Odd_AB.10 | 10 |  Evn_AB.10  |  ~Evn_AB.10  |         |         |             |    |
-    | 11 | Odd_nAC.11a | ~Odd_nAC.11a | 11 | Evn_nAC.11a | ~Evn_nAC.11a | Odd_nAC |  ~(¬A)  |      ~C     | ~0 |
-    | 11 | Odd_nAC.11b | ~Odd_nAC.11b | 11 | Evn_nAC.11b | ~Evn_nAC.11b |   ~A    |  ~(¬A)  | MASK_EVN_64 |    | <- q_spr_add, q_11_11_10, q_add
-    | 10 | Odd_nAC.10  |  ~Odd_nAC.10 | 10 | Evn_nAC.10  | ~Evn_nAC.10  |         |         |             |    |
-
-*/
-
-/*
-    A ∧ B
-
-    1) applying the plain-spreaded lookup on 11-11-10 limbs of Evn and Odd:
-             Evn: (Evn.11a, Evn.11b, Evn.10)
-             Odd: (Odd.11a, Odd.11b, Odd.10)
-
-    2) asserting the 11-11-10 decomposition identity for Odd:
-            2^21 * Odd.11a + 2^10 * Odd.11b + Odd.10
-        = Odd
-
-    3) asserting the spreaded addition identity regarding the spreaded values:
-            (4^21 * ~Evn.11a + 4^10 * ~Evn.11b + ~Evn.10) +
-        2 * (4^21 * ~Odd.11a + 4^10 * ~Odd.11b + ~Odd.10)
-            = ~A + ~B
-
-    The output is Odd.
-
-    | T0 |    A0   |     A1   | T1 |    A2   |    A3     |  A4 | A5 | A6 | A7 |
-    |----|---------|----------|----|---------|-----------|-----|----|----|----|
-    | 11 | Odd.11a | ~Odd.11a | 11 | Evn.11a | ~Evn.11a  | Odd | ~A | ~B | ~0 |
-    | 11 | Odd.11b | ~Odd.11b | 11 | Evn.11b | ~Evn.11b  |     |    |    |    | <- q_spr_add, q_11_11_10
-    | 10 | Odd.10  | ~Odd.10  | 10 | Evn.10  | ~Evn.10   |     |    |    |    |
-
-*/
-
-/*
-    rotate_left(A, s)
-
-    |  T0 |  A0  |  A1   |  T1 |   A2  |   A3   |   A4  | A5 | A6 | A7 |
-    |-----|------|-------|-----|-------|--------|-------|----|----|----|
-    | T.1 |  A.1 | ~A.1  | T.3 |  A.3  |  ~A.3  |   A   |    |    |    |
-    | T.2 |  A.2 | ~A.2  | T.4 |  A.4  |  ~A.4  | Rot(A)|    |    |    | <- q_rol
-
-*/
-
-/*
-    A ⊞ B ⊞ C ⊞ D
-
-    |  T0 |   A0  |   A1   |  T1 |   A2  |   A3   |   A4  | A5 | A6 | A7 |
-    |-----|-------|--------|-----|-------|--------|-------|----|----|----|
-    |  2  | carry | ~carry |  0  |   0   |   ~0   |   A   |  B |  C |  D | <- q_mod_add
-
-*/
+// A ⊕ B ⊕ C
+//
+//     1) applying the plain-spreaded lookup on 11-11-10 limbs of Evn and Odd:
+//        Evn: (Evn.11a, Evn.11b, Evn.10) Odd: (Odd.11a, Odd.11b, Odd.10)
+//
+//     2) asserting the 11-11-10 decomposition identity for Evn: 2^21 * Evn.11a
+//        + 2^10 * Evn.11b + Evn.10 = Evn
+//
+//     3) asserting the spreaded addition identity regarding the spreaded
+//        values: (4^21 * ~Evn.11a + 4^10 * ~Evn.11b + ~Evn.10) + 2 * (4^21 *
+//        ~Odd.11a + 4^10 * ~Odd.11b + ~Odd.10) = ~A + ~B + ~C
+//
+//     The output is Evn.
+//
+//     | T0 |    A0   |     A1   | T1 |    A2   |    A3    |  A4 | A5 | A6 | A7 |
+//     |----|---------|----------|----|---------|----------|-----|----|----|----|
+//     | 11 | Evn.11a | ~Evn.11a | 11 | Odd.11a | ~Odd.11a | Evn | ~A | ~B | ~C |
+//     | 11 | Evn.11b | ~Evn.11b | 11 | Odd.11b | ~Odd.11b |     |    |    |    | <- q_spr_add, q_11_11_10
+//     | 10 | Evn.10  | ~Evn.10  | 10 | Odd.10  | ~Odd.10  |     |    |    |    |
+//
+//
+//     A ⊕ B ⊕ 0
+//
+//     | T0 |    A0   |     A1   | T1 |    A2   |    A3    |  A4 | A5 | A6 | A7 |
+//     |----|---------|----------|----|---------|----------|-----|----|----|----|
+//     | 11 | Evn.11a | ~Evn.11a | 11 | Odd.11a | ~Odd.11a | Evn | ~A | ~B | ~0 |
+//     | 11 | Evn.11b | ~Evn.11b | 11 | Odd.11b | ~Odd.11b |     |    |    |    | <- q_spr_add, q_11_11_10
+//     | 10 | Evn.10  | ~Evn.10  | 10 | Odd.10  | ~Odd.10  |     |    |    |    |
+//
+//
+//     prepare_spreaded(A): A ⊕ 0 ⊕ 0
+//
+//     | T0 |    A0   |     A1   | T1 |   A2   |   A3   |  A4 | A5 | A6 | A7 |
+//     |----|---------|----------|----|--------|--------|-----|----|----|----|
+//     | 11 | Evn.11a | ~Evn.11a | 11 |   0    |   ~0   |  A  | ~A | ~0 | ~0 |
+//     | 11 | Evn.11a | ~Evn.11a | 11 |   0    |   ~0   |     |    |    |    | <- q_spr_add, q_11_11_10
+//     | 10 | Evn.11a | ~Evn.11a | 10 |   0    |   ~0   |     |    |    |    |
+//
+//
+//     (A ∧ B) ∨ (¬A ∧ C) = (A ∧ B) ⊕ (¬A ∧ C) = Ch(A, B, C)
+//
+//     1) applying the plain-spreaded lookup on 11-11-10 limbs of Evn and Odd,
+//        for both (~A + ~B) and (~(¬A) + ~C): Evn_AB: (Evn_AB.11a, Evn_AB.11b,
+//        Evn_AB.10) Odd_AB: (Odd_AB.11a, Odd_AB.11b, Odd_AB.10)
+//
+//             Evn_nAC: (Evn_nAC.11a, Evn_nAC.11b, Evn_nAC.10)
+//             Odd_nAC: (Odd_nAC.11a, Odd_nAC.11b, Odd_nAC.10)
+//
+//     2) asserting the 11-11-10 decomposition identity for Odd_AB and Odd_nAC:
+//        2^21 * Odd_AB.11a + 2^10 * Odd_AB.11b + Odd_AB.10 = Odd_AB
+//
+//             2^21 * Odd_nAC.11a + 2^10 * Odd_nAC.11b + Odd_nAC.10
+//         = Odd_nAC
+//
+//     3) asserting the spreaded addition identity for (~A + ~B) and (~(¬A) +
+//        ~C): (4^21 * ~Evn_AB.11a + 4^10 * ~Evn_AB.11b + ~Evn_AB.10) + 2 *
+//        (4^21 * ~Odd_AB.11a + 4^10 * ~Odd_AB.11b + ~Odd_AB.10) = ~A + ~B
+//
+//             (4^21 * ~Evn_nAC.11a + 4^10 * ~Evn_nAC.11b + ~Evn_nAC.10) +
+//         2 * (4^21 * ~Odd_nAC.11a + 4^10 * ~Odd_nAC.11b + ~Odd_nAC.10)
+//             = ~(¬A) + ~C
+//
+//     4) asserting the following two addition identities: Ret = Odd_AB +
+//        Odd_nAC MASK_EVN_64 = ~A + ~(¬A)
+//
+//     The output is Ret.
+//
+//     | T0 |      A0     |      A1      | T1 |      A2     |      A3      |    A4   |    A5   |      A6     | A7 |
+//     |----|-------------|--------------|----|-------------|--------------|---------|---------|-------------|----|
+//     | 11 |  Odd_AB.11a |  ~Odd_AB.11a | 11 |  Evn_AB.11a |  ~Evn_AB.11a | Odd_AB  |   ~A    |      ~B     | ~0 |
+//     | 11 |  Odd_AB.11b |  ~Odd_AB.11b | 11 |  Evn_AB.11b |  ~Evn_AB.11b | Odd_AB  | Odd_nAC |     Ret     |    | <- q_spr_add, q_11_11_10, q_add
+//     | 10 |  Odd_AB.10  |   ~Odd_AB.10 | 10 |  Evn_AB.10  |  ~Evn_AB.10  |         |         |             |    |
+//     | 11 | Odd_nAC.11a | ~Odd_nAC.11a | 11 | Evn_nAC.11a | ~Evn_nAC.11a | Odd_nAC |  ~(¬A)  |      ~C     | ~0 |
+//     | 11 | Odd_nAC.11b | ~Odd_nAC.11b | 11 | Evn_nAC.11b | ~Evn_nAC.11b |   ~A    |  ~(¬A)  | MASK_EVN_64 |    | <- q_spr_add, q_11_11_10, q_add
+//     | 10 | Odd_nAC.10  |  ~Odd_nAC.10 | 10 | Evn_nAC.10  | ~Evn_nAC.10  |         |         |             |    |
+//
+//
+//     A ∧ B
+//
+//     1) applying the plain-spreaded lookup on 11-11-10 limbs of Evn and Odd:
+//        Evn: (Evn.11a, Evn.11b, Evn.10) Odd: (Odd.11a, Odd.11b, Odd.10)
+//
+//     2) asserting the 11-11-10 decomposition identity for Odd: 2^21 * Odd.11a
+//        + 2^10 * Odd.11b + Odd.10 = Odd
+//
+//     3) asserting the spreaded addition identity regarding the spreaded
+//        values: (4^21 * ~Evn.11a + 4^10 * ~Evn.11b + ~Evn.10) + 2 * (4^21 *
+//        ~Odd.11a + 4^10 * ~Odd.11b + ~Odd.10) = ~A + ~B
+//
+//     The output is Odd.
+//
+//     | T0 |    A0   |     A1   | T1 |    A2   |    A3     |  A4 | A5 | A6 | A7 |
+//     |----|---------|----------|----|---------|-----------|-----|----|----|----|
+//     | 11 | Odd.11a | ~Odd.11a | 11 | Evn.11a | ~Evn.11a  | Odd | ~A | ~B | ~0 |
+//     | 11 | Odd.11b | ~Odd.11b | 11 | Evn.11b | ~Evn.11b  |     |    |    |    | <- q_spr_add, q_11_11_10
+//     | 10 | Odd.10  | ~Odd.10  | 10 | Evn.10  | ~Evn.10   |     |    |    |    |
+//
+//     rotate_left(A, s)
+//
+//     |  T0 |  A0  |  A1   |  T1 |   A2  |   A3   |   A4  | A5 | A6 | A7 |
+//     |-----|------|-------|-----|-------|--------|-------|----|----|----|
+//     | T.1 |  A.1 | ~A.1  | T.3 |  A.3  |  ~A.3  |   A   |    |    |    |
+//     | T.2 |  A.2 | ~A.2  | T.4 |  A.4  |  ~A.4  | Rot(A)|    |    |    | <- q_rol
+//
+//     A ⊞ B ⊞ C ⊞ D
+//
+//     |  T0 |   A0  |   A1   |  T1 |   A2  |   A3   |   A4  | A5 | A6 | A7 |
+//     |-----|-------|--------|-----|-------|--------|-------|----|----|----|
+//     |  2  | carry | ~carry |  0  |   0   |   ~0   |   A   |  B |  C |  D | <- q_mod_add
