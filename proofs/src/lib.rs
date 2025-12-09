@@ -30,7 +30,7 @@ impl<F: ff::Field> extractor_support::Halo2Types<F> for ExtractionSupport {
 
     type Cell = crate::circuit::Cell;
 
-    type AssignedCell = crate::circuit::AssignedCell<F, F>;
+    type AssignedCell<V> = crate::circuit::AssignedCell<V, F>;
 
     type Region<'a> = crate::circuit::Region<'a, F>;
 
@@ -39,4 +39,6 @@ impl<F: ff::Field> extractor_support::Halo2Types<F> for ExtractionSupport {
     type RegionIndex = crate::circuit::RegionIndex;
 
     type Expression = crate::plonk::Expression<F>;
+
+    type Rational = crate::utils::rational::Rational<F>;
 }

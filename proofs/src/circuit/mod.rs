@@ -252,14 +252,17 @@ impl<V, F: Field> picus_support::DecomposeIn<Cell> for AssignedCell<V, F> {
 }
 
 #[cfg(feature = "extraction")]
-impl<F: ff::PrimeField> extractor_support::cells::CellReprSize for AssignedCell<F, F> {
+impl<V, F: ff::PrimeField> extractor_support::cells::CellReprSize for AssignedCell<V, F> {
     const SIZE: usize = 1;
 }
 
 #[cfg(feature = "extraction")]
-impl<F: ff::PrimeField, C, L>
-    extractor_support::cells::load::LoadFromCells<F, C, crate::ExtractionSupport, L>
-    for AssignedCell<F, F>
+impl<V, F, C, L> extractor_support::cells::load::LoadFromCells<F, C, crate::ExtractionSupport, L>
+    for AssignedCell<V, F>
+where
+    F: ff::PrimeField,
+    V: Clone,
+    Rational<F>: for<'v> From<&'v V>,
 {
     fn load(
         ctx: &mut extractor_support::cells::ctx::ICtx<F, crate::ExtractionSupport>,
@@ -274,14 +277,14 @@ impl<F: ff::PrimeField, C, L>
             crate::plonk::Expression<F>,
         >,
     ) -> Result<Self, Error> {
-        ctx.assign_next(layouter)
+        ctx.assign_next::<V, Rational<F>>(layouter)
     }
 }
 
 #[cfg(feature = "extraction")]
-impl<F: ff::PrimeField, C, L>
+impl<V, F: ff::PrimeField, C, L>
     extractor_support::cells::store::StoreIntoCells<F, C, crate::ExtractionSupport, L>
-    for AssignedCell<F, F>
+    for AssignedCell<V, F>
 {
     fn store(
         self,
