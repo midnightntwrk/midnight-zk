@@ -104,6 +104,7 @@ mod poseidon_varlen;
 pub mod round_skips;
 
 use constants::{PoseidonField, WIDTH};
+use midnight_proofs::{circuit::Layouter, plonk::Error};
 pub use poseidon_chip::*;
 pub use poseidon_cpu::*;
 pub use poseidon_varlen::VarLenPoseidonGadget;
@@ -116,7 +117,6 @@ use crate::{
     types::AssignedNative,
     vec::AssignedVector,
 };
-use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 /// Number of advice columns used by the Poseidon chip.
 pub const NB_POSEIDON_ADVICE_COLS: usize = if NB_SKIPS_CIRCUIT >= WIDTH {
@@ -178,18 +178,32 @@ impl<F: PoseidonField, const MAX_LEN: usize>
 
 #[cfg(test)]
 mod tests {
-    use super::constants::RATE;
-    use super::PoseidonChip;
-    use crate::field::{AssignedNative, NativeChip};
-    use crate::hash::poseidon::VarLenPoseidonGadget;
-    use crate::instructions::hash::tests::{test_hash, test_varhash};
+    use super::{constants::RATE, PoseidonChip};
+    use crate::{
+        field::{AssignedNative, NativeChip},
+        hash::poseidon::VarLenPoseidonGadget,
+        instructions::hash::tests::{test_hash, test_varhash},
+    };
 
     type F = midnight_curves::Fq;
     #[test]
     fn test_poseidon_hash() {
-        test_hash::<F, AssignedNative<F>, AssignedNative<F>, PoseidonChip<F>, NativeChip<F>>(
-            true, "Poseidon", 10,
-        );
+        fn test_wrapper(input_size: usize, k: u32, cost_model: bool) {
+            test_hash::<F, AssignedNative<F>, AssignedNative<F>, PoseidonChip<F>, NativeChip<F>>(
+                cost_model, "Poseidon", input_size, k,
+            )
+        }
+        test_wrapper(32 * RATE, 10, true);
+
+        test_wrapper(RATE, 5, false);
+        test_wrapper(RATE - 1, 5, false);
+        test_wrapper(RATE - 2, 5, false);
+        test_wrapper(2 * RATE, 7, false);
+        test_wrapper(2 * RATE - 1, 7, false);
+        test_wrapper(2 * RATE + 1, 7, false);
+        test_wrapper(4 * RATE, 7, false);
+        test_wrapper(8 * RATE, 8, false);
+        test_wrapper(16 * RATE, 9, false);
     }
 
     #[test]
