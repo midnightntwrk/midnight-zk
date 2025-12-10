@@ -187,9 +187,22 @@ mod tests {
     type F = midnight_curves::Fq;
     #[test]
     fn test_poseidon_hash() {
-        test_hash::<F, AssignedNative<F>, AssignedNative<F>, PoseidonChip<F>, NativeChip<F>>(
-            true, "Poseidon", 10,
-        );
+        fn test_wrapper(input_size: usize, k: u32, cost_model: bool) {
+            test_hash::<F, AssignedNative<F>, AssignedNative<F>, PoseidonChip<F>, NativeChip<F>>(
+                cost_model, "Poseidon", input_size, k,
+            )
+        }
+        test_wrapper(256, 12, true);
+
+        test_wrapper(128, 12, false);
+        test_wrapper(127, 12, false);
+        test_wrapper(129, 12, false);
+
+        test_wrapper(512, 14, false);
+
+        test_wrapper(0, 10, false);
+        test_wrapper(1, 10, false);
+        test_wrapper(2, 10, false);
     }
 
     #[test]

@@ -65,7 +65,7 @@ pub(crate) mod tests {
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem},
     };
-    use rand::{Rng, SeedableRng};
+    use rand::SeedableRng;
     use rand_chacha::ChaCha12Rng;
 
     use super::*;
@@ -83,7 +83,8 @@ pub(crate) mod tests {
         Input: InnerValue,
         Output: InnerValue,
     {
-        inputs: Vec<Vec<Input::Element>>,
+        input: Vec<Value<Input::Element>>,
+        expected_output: Output::Element,
         _marker: PhantomData<(F, Output, HashChip, AssignChip)>,
     }
 
@@ -126,16 +127,14 @@ pub(crate) mod tests {
             let chip = HashChip::new_from_scratch(&config.0);
             let assign_chip = AssignChip::new_from_scratch(&config.1);
 
-            for input in self.inputs.iter() {
-                let vec_input =
-                    input.iter().map(|input| Value::known(input.clone())).collect::<Vec<_>>();
-                let inputs = assign_chip.assign_many(&mut layouter, &vec_input)?;
-                let expected_output =
-                    <HashChip as HashCPU<Input::Element, Output::Element>>::hash(input);
+            let inputs = assign_chip.assign_many(&mut layouter, &self.input)?;
 
-                let output = chip.hash(&mut layouter, &inputs)?;
-                assign_chip.assert_equal_to_fixed(&mut layouter, &output, expected_output)?;
-            }
+            let output = chip.hash(&mut layouter, &inputs)?;
+            assign_chip.assert_equal_to_fixed(
+                &mut layouter,
+                &output,
+                self.expected_output.clone(),
+            )?;
 
             chip.load_from_scratch(&mut layouter)?;
             assign_chip.load_from_scratch(&mut layouter)
@@ -145,6 +144,7 @@ pub(crate) mod tests {
     pub fn test_hash<F, Input, Output, HashChip, AssignChip>(
         cost_model: bool,
         chip_name: &str,
+        size: usize,
         k: u32,
     ) where
         F: PrimeField + ff::FromUniformBytes<64> + Ord,
@@ -157,13 +157,12 @@ pub(crate) mod tests {
         // Create a random number generator
         let mut rng = ChaCha12Rng::seed_from_u64(0xf007ba11);
 
-        let inputs = (0..10).map(|_| {
-            let random_size: usize = rng.gen_range(1..10);
-            (0..random_size).map(|_| Input::sample_inner(&mut rng)).collect::<Vec<_>>()
-        });
+        let input = (0..size).map(|_| Input::sample_inner(&mut rng)).collect::<Vec<_>>();
+        let expected_output = <HashChip as HashCPU<Input::Element, Output::Element>>::hash(&input);
 
         let circuit = TestCircuit::<F, Input, Output, HashChip, AssignChip> {
-            inputs: inputs.collect(),
+            input: input.into_iter().map(Value::known).collect(),
+            expected_output,
             _marker: PhantomData,
         };
 
