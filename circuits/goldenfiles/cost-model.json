@@ -97,6 +97,19 @@
       "table_rows": "15487"
     }
   },
+  "VarPoseidon": {
+    "hash": {
+      "advice_columns": "18",
+      "column_queries": "104",
+      "fixed_columns": "69",
+      "lookups": "8",
+      "max_deg": "5",
+      "permutations": "20",
+      "point_sets": "4",
+      "rows": "5120",
+      "table_rows": "267"
+    }
+  },
   "VarSHA256": {
     "hash": {
       "advice_columns": "13",
