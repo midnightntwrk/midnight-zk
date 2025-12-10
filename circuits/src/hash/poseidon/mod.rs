@@ -104,6 +104,7 @@ mod poseidon_varlen;
 pub mod round_skips;
 
 use constants::{PoseidonField, WIDTH};
+use midnight_proofs::{circuit::Layouter, plonk::Error};
 pub use poseidon_chip::*;
 pub use poseidon_cpu::*;
 pub use poseidon_varlen::VarLenPoseidonGadget;
@@ -116,7 +117,6 @@ use crate::{
     types::AssignedNative,
     vec::AssignedVector,
 };
-use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 /// Number of advice columns used by the Poseidon chip.
 pub const NB_POSEIDON_ADVICE_COLS: usize = if NB_SKIPS_CIRCUIT >= WIDTH {
@@ -178,11 +178,12 @@ impl<F: PoseidonField, const MAX_LEN: usize>
 
 #[cfg(test)]
 mod tests {
-    use super::constants::RATE;
-    use super::PoseidonChip;
-    use crate::field::{AssignedNative, NativeChip};
-    use crate::hash::poseidon::VarLenPoseidonGadget;
-    use crate::instructions::hash::tests::{test_hash, test_varhash};
+    use super::{constants::RATE, PoseidonChip};
+    use crate::{
+        field::{AssignedNative, NativeChip},
+        hash::poseidon::VarLenPoseidonGadget,
+        instructions::hash::tests::{test_hash, test_varhash},
+    };
 
     type F = midnight_curves::Fq;
     #[test]
