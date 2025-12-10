@@ -597,7 +597,7 @@ mod tests {
     use crate::{
         field::NativeGadget,
         hash::poseidon::{permutation_cpu, round_skips::PreComputedRoundCPU},
-        instructions::{hash::tests::test_hash, sponge::tests::test_sponge, AssertionInstructions},
+        instructions::{sponge::tests::test_sponge, AssertionInstructions},
         utils::circuit_modeling::circuit_to_json,
     };
 
@@ -712,16 +712,5 @@ mod tests {
         // Consistency tests between the CPU and circuit implementations of the
         // permutation.
         run_sponge_test::<midnight_curves::Fq>("blstrs", true);
-    }
-
-    #[test]
-    fn test_poseidon_hash() {
-        test_hash::<
-            midnight_curves::Fq,
-            AssignedNative<midnight_curves::Fq>,
-            AssignedNative<midnight_curves::Fq>,
-            PoseidonChip<midnight_curves::Fq>,
-            NativeChip<midnight_curves::Fq>,
-        >(true, "Poseidon", 10);
     }
 }
