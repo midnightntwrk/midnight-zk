@@ -157,7 +157,8 @@ impl<F: PoseidonField> HashCPU<F, F> for VarLenPoseidonGadget<F> {
     }
 }
 
-impl<F: PoseidonField, const MAX_LEN: usize, const RATE: usize>
+use super::poseidon::constants::RATE;
+impl<F: PoseidonField, const MAX_LEN: usize>
     VarHashInstructions<F, MAX_LEN, AssignedNative<F>, AssignedNative<F>, RATE>
     for VarLenPoseidonGadget<F>
 {
@@ -172,5 +173,44 @@ impl<F: PoseidonField, const MAX_LEN: usize, const RATE: usize>
         input: &AssignedVector<F, AssignedNative<F>, MAX_LEN, RATE>,
     ) -> Result<AssignedNative<F>, Error> {
         self.poseidon_varlen(layouter, input)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::constants::RATE;
+    use super::PoseidonChip;
+    use crate::field::{AssignedNative, NativeChip};
+    use crate::hash::poseidon::VarLenPoseidonGadget;
+    use crate::instructions::hash::tests::{test_hash, test_varhash};
+
+    type F = midnight_curves::Fq;
+    #[test]
+    fn test_poseidon_hash() {
+        test_hash::<F, AssignedNative<F>, AssignedNative<F>, PoseidonChip<F>, NativeChip<F>>(
+            true, "Poseidon", 10,
+        );
+    }
+
+    #[test]
+    fn test_poseidon_varhash() {
+        fn test_wrapper<const M: usize>(input_size: usize, k: u32, cost_model: bool) {
+            test_varhash::<F, AssignedNative<F>, AssignedNative<F>, VarLenPoseidonGadget<F>, M, RATE>(
+                cost_model,
+                "VarPoseidon",
+                input_size,
+                k,
+            )
+        }
+
+        test_wrapper::<512>(64, 14, true);
+        test_wrapper::<512>(63, 14, false);
+        test_wrapper::<256>(128, 12, false);
+        test_wrapper::<256>(127, 12, false);
+        test_wrapper::<256>(256, 12, false);
+
+        test_wrapper::<128>(0, 11, false);
+        test_wrapper::<128>(1, 11, false);
+        test_wrapper::<128>(2, 11, false);
     }
 }
