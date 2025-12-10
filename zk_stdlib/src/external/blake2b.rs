@@ -252,36 +252,37 @@ mod test {
     }
 
     #[test]
-    fn test_blake2b_preimage() {
+    fn test_blake2b_hash() {
+        fn test_wrapper(input_size: usize, k: u32, cost_model: bool) {
+            test_hash::<
+                Fq,
+                AssignedByte<Fq>,
+                [AssignedByte<Fq>; 64],
+                Blake2b512<Fq>,
+                NativeGadget<Fq, _, _>,
+            >(cost_model, "Blake2b_512", input_size, k);
+
+            test_hash::<
+                Fq,
+                AssignedByte<Fq>,
+                [AssignedByte<Fq>; 32],
+                Blake2b256<Fq>,
+                NativeGadget<Fq, _, _>,
+            >(cost_model, "Blake2b_256", input_size, k);
+        }
+
         const BLAKE2B_BLOCK_SIZE: usize = 128;
+        test_wrapper(2 * BLAKE2B_BLOCK_SIZE, 17, true);
 
-        let additional_sizes = [
-            BLAKE2B_BLOCK_SIZE - 2,
-            BLAKE2B_BLOCK_SIZE - 1,
-            BLAKE2B_BLOCK_SIZE,
-            BLAKE2B_BLOCK_SIZE + 1,
-            BLAKE2B_BLOCK_SIZE + 2,
-            2 * BLAKE2B_BLOCK_SIZE - 2,
-            2 * BLAKE2B_BLOCK_SIZE - 1,
-            2 * BLAKE2B_BLOCK_SIZE,
-            2 * BLAKE2B_BLOCK_SIZE + 1,
-            2 * BLAKE2B_BLOCK_SIZE + 2,
-        ];
+        test_wrapper(BLAKE2B_BLOCK_SIZE, 17, false);
+        test_wrapper(BLAKE2B_BLOCK_SIZE - 1, 17, false);
+        test_wrapper(BLAKE2B_BLOCK_SIZE - 2, 17, false);
+        test_wrapper(2 * BLAKE2B_BLOCK_SIZE - 1, 17, false);
+        test_wrapper(2 * BLAKE2B_BLOCK_SIZE + 1, 17, false);
+        test_wrapper(4 * BLAKE2B_BLOCK_SIZE, 17, false);
 
-        test_hash::<
-            Fq,
-            AssignedByte<Fq>,
-            [AssignedByte<Fq>; 64],
-            Blake2b512<Fq>,
-            NativeGadget<Fq, _, _>,
-        >(true, "Blake2b_512", &additional_sizes, 17);
-
-        test_hash::<
-            Fq,
-            AssignedByte<Fq>,
-            [AssignedByte<Fq>; 32],
-            Blake2b256<Fq>,
-            NativeGadget<Fq, _, _>,
-        >(true, "Blake2b_256", &additional_sizes, 17);
+        test_wrapper(0, 17, false);
+        test_wrapper(1, 17, false);
+        test_wrapper(2, 17, false);
     }
 }
