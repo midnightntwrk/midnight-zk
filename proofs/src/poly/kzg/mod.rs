@@ -78,7 +78,9 @@ where
         let mut scalars = Vec::<E::Fr>::with_capacity(polynomial.len());
         scalars.extend(polynomial.iter());
         let size = scalars.len();
+
         assert!(params.g.len() >= size);
+
         msm_specific::<E::G1Affine>(&scalars, &params.g[..size])
     }
 

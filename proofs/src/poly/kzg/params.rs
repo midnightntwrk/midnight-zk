@@ -43,8 +43,8 @@ impl<E: Engine + Debug> ParamsKZG<E> {
         }
 
         let n = 1 << new_k;
-        assert!(n < self.g_lagrange.len() as u32);
-        self.g.truncate(n as usize);
+        assert!(n < self.g_lagrange.len());
+        self.g.truncate(n);
         self.g_lagrange = g_to_lagrange(&self.g, new_k);
     }
 
