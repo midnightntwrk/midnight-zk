@@ -1,7 +1,10 @@
 use std::collections::HashMap;
 
+use ff::PrimeField;
 use midnight_circuits::types;
 use midnight_curves::JubjubExtended;
+use num_bigint::BigUint;
+use num_traits::Num;
 
 use crate::{
     types::{IrType, IrValue},
@@ -46,4 +49,14 @@ pub fn get_t(
         Some(x) => x.check_type(t).map(|()| x),
         None => Err(Error::NotFound(name.to_string())),
     }
+}
+
+pub fn modulus<F: PrimeField>() -> BigUint {
+    BigUint::from_str_radix(&F::MODULUS[2..], 16).unwrap()
+}
+
+pub fn big_to_fe<F: PrimeField>(e: BigUint) -> F {
+    let modulus = modulus::<F>();
+    let e = e % modulus;
+    F::from_str_vartime(&e.to_str_radix(10)[..]).unwrap()
 }

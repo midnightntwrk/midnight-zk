@@ -45,7 +45,7 @@ use crate::{
         AssertionInstructions, ControlFlowInstructions, EqualityInstructions, NativeInstructions,
         ZeroInstructions,
     },
-    types::{AssignedBit, AssignedNative},
+    types::{AssignedBit, AssignedByte, AssignedNative},
     utils::{
         types::InnerValue,
         util::{big_to_fe, fe_to_big},
@@ -520,6 +520,32 @@ where
         Ok(bits)
     }
 
+    /// Returns a vector of assigned bytes representing the given assigned big
+    /// unsigned integer little-endian.
+    #[allow(clippy::assertions_on_constants)]
+    pub fn to_le_bytes(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &AssignedBigUint<F>,
+    ) -> Result<Vec<AssignedByte<F>>, Error> {
+        assert!(x.is_normalized());
+        assert!(LOG2_BASE % 8 == 0);
+        let nb_bytes_per_limb = LOG2_BASE as usize / 8;
+
+        let bytes = x
+            .limbs
+            .iter()
+            .map(|limb| {
+                self.native_gadget.assigned_to_le_bytes(layouter, limb, Some(nb_bytes_per_limb))
+            })
+            .collect::<Result<Vec<_>, Error>>()?
+            .into_iter()
+            .flatten()
+            .collect();
+
+        Ok(bytes)
+    }
+
     /// Returns the assigned big unsigned integer represented by the given
     /// vector of assigned bits, by interpreting it in little-endian.
     pub fn from_le_bits(
@@ -535,6 +561,33 @@ where
         let limb_size_bounds = bits
             .chunks(LOG2_BASE as usize)
             .map(|chunk_bits| chunk_bits.len() as u32)
+            .collect();
+
+        Ok(AssignedBigUint {
+            limbs,
+            limb_size_bounds,
+        })
+    }
+
+    /// Returns the assigned big unsigned integer represented by the given
+    /// vector of assigned bytes, by interpreting it in little-endian.
+    #[allow(clippy::assertions_on_constants)]
+    pub fn from_le_bytes(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        bytes: &[AssignedByte<F>],
+    ) -> Result<AssignedBigUint<F>, Error> {
+        assert!(LOG2_BASE % 8 == 0);
+        let nb_bytes_per_limb = LOG2_BASE as usize / 8;
+
+        let limbs = bytes
+            .chunks(nb_bytes_per_limb)
+            .map(|chunk_bytes| self.native_gadget.assigned_from_le_bytes(layouter, chunk_bytes))
+            .collect::<Result<Vec<_>, Error>>()?;
+
+        let limb_size_bounds = bytes
+            .chunks(nb_bytes_per_limb)
+            .map(|chunk_bytes| 8 * chunk_bytes.len() as u32)
             .collect();
 
         Ok(AssignedBigUint {
@@ -873,6 +926,7 @@ mod tests {
         Rem,
         ModExp,
         Bits,
+        Bytes,
         Lower,
     }
 
@@ -928,6 +982,10 @@ mod tests {
                 Operation::Bits => {
                     let bits = biguint_gadget.to_le_bits(&mut layouter, &x)?;
                     biguint_gadget.from_le_bits(&mut layouter, &bits)?
+                }
+                Operation::Bytes => {
+                    let bytes = biguint_gadget.to_le_bytes(&mut layouter, &x)?;
+                    biguint_gadget.from_le_bytes(&mut layouter, &bytes)?
                 }
                 Operation::Lower => {
                     let b = biguint_gadget.lower_than(&mut layouter, &x, &y)?;
@@ -1070,6 +1128,20 @@ mod tests {
         }
         run::<F>(&zero, &BigUint::default(), &zero, Operation::Bits, true);
         run::<F>(&one, &BigUint::default(), &one, Operation::Bits, true);
+    }
+
+    #[test]
+    fn test_biguint_to_and_from_bytes() {
+        type F = midnight_curves::Fq;
+        let zero = BigUint::ZERO;
+        let one = BigUint::one();
+        for _ in 0..10 {
+            let x: BigUint = random_biguint(1024);
+            run::<F>(&x, &BigUint::default(), &x, Operation::Bytes, true);
+            run::<F>(&x, &BigUint::default(), &zero, Operation::Bytes, false);
+        }
+        run::<F>(&zero, &BigUint::default(), &zero, Operation::Bytes, true);
+        run::<F>(&one, &BigUint::default(), &one, Operation::Bytes, true);
     }
 
     #[test]
