@@ -506,10 +506,10 @@ impl TryFrom<Column<Any>> for Column<Instance> {
 /// Selectors can be used to conditionally enable (portions of) gates:
 /// ```
 /// use midnight_proofs::poly::Rotation;
-/// # use halo2curves::pasta::Fp;
+/// # use midnight_curves::Fq as Scalar;
 /// # use midnight_proofs::plonk::{Constraints, ConstraintSystem};
 ///
-/// # let mut meta = ConstraintSystem::<Fp>::default();
+/// # let mut meta = ConstraintSystem::<Scalar>::default();
 /// let a = meta.advice_column();
 /// let b = meta.advice_column();
 /// let s = meta.selector();
@@ -1832,14 +1832,15 @@ enum SelectorType {
 /// A set of polynomial constraints with a common selector.
 ///
 /// ```
-/// use halo2curves::pasta::Fp;
+/// use ff::Field;
+/// use midnight_curves::Fq as Scalar;
 /// use midnight_proofs::{
 ///     plonk::{Constraints, Expression},
 ///     poly::Rotation,
 /// };
 /// # use midnight_proofs::plonk::ConstraintSystem;
 ///
-/// # let mut meta = ConstraintSystem::<Fp>::default();
+/// # let mut meta = ConstraintSystem::<Scalar>::default();
 /// let a = meta.advice_column();
 /// let b = meta.advice_column();
 /// let c = meta.advice_column();
@@ -1851,7 +1852,7 @@ enum SelectorType {
 ///     let b = meta.query_advice(b, Rotation::cur());
 ///     let c = meta.query_advice(c, Rotation::cur());
 ///
-///     let one_minus_a = Expression::Constant(Fp::one()) - a.clone();
+///     let one_minus_a = Expression::Constant(Scalar::ONE) - a.clone();
 ///
 ///     Constraints::with_selector(
 ///         s_ternary,
@@ -2893,19 +2894,19 @@ impl<'a, F: Field> VirtualCells<'a, F> {
 
 #[cfg(test)]
 mod tests {
-    use halo2curves::bn256::Fr;
+    use midnight_curves::Fq as Scalar;
 
     use super::Expression;
 
     #[test]
     fn iter_sum() {
-        let exprs: Vec<Expression<Fr>> = vec![
+        let exprs: Vec<Expression<Scalar>> = vec![
             Expression::from(1),
             Expression::from(2),
             Expression::from(3),
         ];
-        let happened: Expression<Fr> = exprs.into_iter().sum();
-        let expected: Expression<Fr> = Expression::Sum(
+        let happened: Expression<Scalar> = exprs.into_iter().sum();
+        let expected: Expression<Scalar> = Expression::Sum(
             Box::new(Expression::Sum(
                 Box::new(Expression::from(1)),
                 Box::new(Expression::from(2)),
@@ -2918,13 +2919,13 @@ mod tests {
 
     #[test]
     fn iter_product() {
-        let exprs: Vec<Expression<Fr>> = vec![
+        let exprs: Vec<Expression<Scalar>> = vec![
             Expression::from(2),
             Expression::from(3),
             Expression::from(6),
         ];
-        let happened: Expression<Fr> = exprs.into_iter().product();
-        let expected: Expression<Fr> = Expression::Product(
+        let happened: Expression<Scalar> = exprs.into_iter().product();
+        let expected: Expression<Scalar> = Expression::Product(
             Box::new(Expression::Product(
                 Box::new(Expression::from(2)),
                 Box::new(Expression::from(3)),

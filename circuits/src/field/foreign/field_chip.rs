@@ -1807,11 +1807,10 @@ where
 
 #[cfg(test)]
 mod tests {
-    use halo2curves::{
-        pasta::{Fp as VestaScalar, Fq as PallasScalar},
+    use midnight_curves::{
         secp256k1::{Fp as secp256k1Base, Fq as secp256k1Scalar},
+        Fq as BlsScalar,
     };
-    use midnight_curves::Fq as BlsScalar;
 
     use super::*;
     use crate::{
@@ -1843,10 +1842,6 @@ mod tests {
         ($mod:ident, $op:ident) => {
             #[test]
             fn $op() {
-                test_generic!($mod, $op, PallasScalar, secp256k1Base, "");
-                test_generic!($mod, $op, PallasScalar, secp256k1Scalar, "");
-                test_generic!($mod, $op, VestaScalar, secp256k1Base, "");
-                test_generic!($mod, $op, VestaScalar, secp256k1Scalar, "");
                 test_generic!($mod, $op, BlsScalar, secp256k1Base, "field_chip_secp_base");
                 test_generic!(
                     $mod,
@@ -1902,10 +1897,6 @@ mod tests {
         ($mod:ident, $op:ident) => {
             #[test]
             fn $op() {
-                test_generic!($mod, $op, PallasScalar, secp256k1Base, "");
-                test_generic!($mod, $op, PallasScalar, secp256k1Scalar, "");
-                test_generic!($mod, $op, VestaScalar, secp256k1Base, "");
-                test_generic!($mod, $op, VestaScalar, secp256k1Scalar, "");
                 test_generic!($mod, $op, BlsScalar, secp256k1Base, "field_chip_secp_base");
                 test_generic!(
                     $mod,

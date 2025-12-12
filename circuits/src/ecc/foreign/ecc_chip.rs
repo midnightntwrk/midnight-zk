@@ -2147,11 +2147,7 @@ pub mod extraction {
 #[cfg(test)]
 mod tests {
     use group::Group;
-    use halo2curves::{
-        pasta::{vesta::Point as VestaCurve, Fp as VestaScalar, Fq as PallasScalar},
-        secp256k1::Secp256k1,
-    };
-    use midnight_curves::{Fq as BlsScalar, G1Projective as BlsG1};
+    use midnight_curves::{secp256k1::Secp256k1, Fq as BlsScalar, G1Projective as BlsG1};
 
     use super::*;
     use crate::{
@@ -2187,11 +2183,6 @@ mod tests {
             #[test]
             fn $op() {
                 test_generic!($mod, $op, BlsScalar, Secp256k1, EmulatedField<BlsScalar, Secp256k1>, "foreign_ecc_secp");
-                test_generic!($mod, $op, PallasScalar, Secp256k1, EmulatedField<PallasScalar, Secp256k1>, "");
-                test_generic!($mod, $op, VestaScalar, Secp256k1, EmulatedField<VestaScalar, Secp256k1>, "");
-
-                // a test of Vesta over itself, where the scalar field is native
-                test_generic!($mod, $op, VestaScalar, VestaCurve, Native<VestaScalar>, "foreign_ecc_vesta_over_vesta");
 
                 // a test of BLS over itself, where the scalar field is native
                 test_generic!($mod, $op, BlsScalar, BlsG1, Native<BlsScalar>, "foreign_ecc_bls_over_bls");
@@ -2233,11 +2224,6 @@ mod tests {
             #[test]
             fn $op() {
                 ecc_test!($op, BlsScalar, Secp256k1, EmulatedField<BlsScalar, Secp256k1>, "foreign_ecc_secp");
-                ecc_test!($op, PallasScalar, Secp256k1, EmulatedField<PallasScalar, Secp256k1>, "");
-                ecc_test!($op, VestaScalar, Secp256k1, EmulatedField<VestaScalar, Secp256k1>, "");
-
-                // a test of Vesta over itself, where the scalar field is native
-                ecc_test!($op, VestaScalar, VestaCurve, Native<VestaScalar>, "foreign_ecc_vesta_over_vesta");
 
                 // a test of BLS over itself, where the scalar field is native
                 ecc_test!($op, BlsScalar, BlsG1, Native<BlsScalar>, "foreign_ecc_bls_over_bls");

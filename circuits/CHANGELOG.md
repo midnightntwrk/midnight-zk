@@ -15,6 +15,7 @@ verification keys break backwards compatibility.
 * SHA512 chip [#96](https://github.com/midnightntwrk/midnight-zk/pull/96)
 * Introduce `is_not_equal` and `is_not_equal_to_fixed` [#130](https://github.com/midnightntwrk/midnight-zk/pull/130)
 * Support for integrating with [midnight-extractor](https://github.com/Veridise/midnight-extractor) [#137](https://github.com/midnightntwrk/midnight-zk/pull/137)
+* Add `to_bytes` and `from_bytes` for `BigUint` [#136](https://github.com/midnightntwrk/midnight-zk/pull/136)
 
 ### Changed
 * Optimize `bigint_to_fe` [#115](https://github.com/midnightntwrk/midnight-zk/pull/115)
@@ -88,7 +89,7 @@ verification keys break backwards compatibility.
 * Add Base64Vec intialization instruction + fix alignment bug [#20](https://github.com/midnightntwrk/midnight-zk/pull/20)
 * Add a deserialisation function that does not need to know the relation [#18](https://github.com/midnightntwrk/midnight-zk/pull/18/commits/973467fecd6c31c6b57d06c89dfa0c7dd00bef2b)
 * Add `trim_beginning` in `VectorInstructions` [#19](https://github.com/midnightntwrk/midnight-zk/pull/19)
-* Expose `VectorInstructions in `ZkstdLib` [#19](https://github.com/midnightntwrk/midnight-zk/pull/19)
+* Expose `VectorInstructions` in `ZkstdLib` [#19](https://github.com/midnightntwrk/midnight-zk/pull/19)
 * Extra functions in `verifier` for the light aggregator [#25](https://github.com/midnightntwrk/midnight-zk/pull/25)
 * Add `VectorGadget` [#28](https://github.com/midnightntwrk/midnight-zk/pull/28)
 * Adds input extraction feature to the automaton chip [#16](https://github.com/midnightntwrk/midnight-zk/pull/16)
@@ -233,12 +234,14 @@ verification keys break backwards compatibility.
 * Simplify Pow2Range configure [#479](https://github.com/midnightntwrk/midnight-circuits/pull/479)
 * Implement ControlFlowInstructions for AssignedByte [#493](https://github.com/midnightntwrk/midnight-circuits/pull/493)
 * Add Base64 Chip [#493](https://github.com/midnightntwrk/midnight-circuits/pull/493)
+* Bn256 curves emulation parameters feature-gated under "dev-curves" [#139](https://github.com/midnightntwrk/midnight-zk/pull/139)
 
 ### Removed
 * Existing ECC chip [#428](https://github.com/midnightntwrk/midnight-circuits/pull/428)
 * Existing Hash to curve [#428](https://github.com/midnightntwrk/midnight-circuits/pull/428)
 * Support for Pleris [#462](https://github.com/midnightntwrk/midnight-circuits/pull/462)
 * Batching of PI in FieldChip [#474](https://github.com/midnightntwrk/midnight-circuits/pull/474)
+* Pasta curves emulation parameters and halo2curves dependency [#139](https://github.com/midnightntwrk/midnight-zk/pull/139)
 
 ## [1.0.0] - 13-08-2024
 

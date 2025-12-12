@@ -23,9 +23,6 @@ use std::{
     path::Path,
 };
 
-#[cfg(all(test, feature = "bench-internal"))]
-use bench_macros::inner_bench;
-use halo2curves::bn256;
 use midnight_curves::Bls12;
 use midnight_proofs::{
     plonk::{
@@ -90,7 +87,6 @@ macro_rules! plonk_api {
                 pk
             }
 
-            #[cfg_attr(all(test, feature = "bench-internal"), inner_bench)]
             /// PLONK proving algorithm.
             pub fn prove<H>(
                 params: &ParamsKZG<$engine>,
@@ -122,8 +118,6 @@ macro_rules! plonk_api {
                         &[pi],
                         rng,
                         &mut transcript,
-                        #[cfg(all(test, feature = "bench-internal"))]
-                        _group,
                     )?;
                     transcript.finalize()
                 };
@@ -170,15 +164,10 @@ macro_rules! plonk_api {
     };
 }
 
+#[cfg(feature = "dev-curves")]
+use midnight_curves::bn256;
+#[cfg(feature = "dev-curves")]
 plonk_api!(BnPLONK, bn256::Bn256, bn256::Fr, bn256::G1Affine, bn256::G1);
-
-plonk_api!(
-    BlsPLONK,
-    halo2curves::bls12381::Bls12381,
-    halo2curves::bls12381::Fr,
-    halo2curves::bls12381::G1Affine,
-    halo2curves::bls12381::G1
-);
 
 plonk_api!(
     BlstPLONK,

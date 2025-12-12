@@ -34,7 +34,6 @@ pub mod vec;
 pub mod verifier;
 
 // Re-exporting modules for convenience and usability.
-pub use halo2curves;
 pub use midnight_proofs;
 
 /// Tools useful for testing

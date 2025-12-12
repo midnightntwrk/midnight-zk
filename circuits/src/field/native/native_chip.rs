@@ -1713,7 +1713,6 @@ impl<F: PrimeField> FromScratch<F> for NativeChip<F> {
 #[cfg(test)]
 mod tests {
     use ff::FromUniformBytes;
-    use halo2curves::pasta::{Fp as VestaScalar, Fq as PallasScalar};
     use midnight_curves::Fq as BlsScalar;
 
     use super::*;
@@ -1730,13 +1729,9 @@ mod tests {
         ($mod:ident, $op:ident) => {
             #[test]
             fn $op() {
-                $mod::tests::$op::<PallasScalar, AssignedNative<PallasScalar>, NativeChip<PallasScalar>>(
-                    "",
+                $mod::tests::$op::<BlsScalar, AssignedNative<BlsScalar>, NativeChip<BlsScalar>>(
+                    "native_chip",
                 );
-                $mod::tests::$op::<VestaScalar, AssignedNative<VestaScalar>, NativeChip<VestaScalar>>(
-                    "",
-                );
-                $mod::tests::$op::<BlsScalar, AssignedNative<BlsScalar>, NativeChip<BlsScalar>>("native_chip", );
             }
         };
     }
@@ -1770,8 +1765,6 @@ mod tests {
         ($mod:ident, $op:ident) => {
             #[test]
             fn $op() {
-                $mod::tests::$op::<PallasScalar, NativeChip<PallasScalar>>("");
-                $mod::tests::$op::<VestaScalar, NativeChip<VestaScalar>>("");
                 $mod::tests::$op::<BlsScalar, NativeChip<BlsScalar>>("native_chip");
             }
         };
@@ -1822,8 +1815,6 @@ mod tests {
 
     #[test]
     fn test_conversion_to_bit() {
-        test_generic_conversion_to_bit::<PallasScalar>("");
-        test_generic_conversion_to_bit::<VestaScalar>("");
         test_generic_conversion_to_bit::<BlsScalar>("native_chip")
     }
 
@@ -1867,8 +1858,6 @@ mod tests {
 
     #[test]
     fn test_conversion_from_bit() {
-        test_generic_conversion_from_bit::<PallasScalar>("");
-        test_generic_conversion_from_bit::<VestaScalar>("");
         test_generic_conversion_from_bit::<BlsScalar>("native_chip");
     }
 }

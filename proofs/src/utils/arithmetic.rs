@@ -12,8 +12,8 @@ use group::{
     prime::{PrimeCurve, PrimeCurveAffine},
     GroupOpsOwned, ScalarMulOwned,
 };
-use halo2curves::{fft::best_fft, pairing::MultiMillerLoop};
-pub use halo2curves::{CurveAffine, CurveExt};
+use midnight_curves::{fft::best_fft, pairing::MultiMillerLoop};
+pub use midnight_curves::{CurveAffine, CurveExt};
 
 /// This represents an element of a group with basic operations that can be
 /// performed. This allows an FFT implementation (for example) to operate
@@ -338,18 +338,18 @@ pub trait MSM<C: PrimeCurveAffine>: Clone + Debug + Send + Sized + Sync {
 }
 
 #[cfg(test)]
+use midnight_curves::Fq as Scalar;
+#[cfg(test)]
 use rand_core::OsRng;
 
-#[cfg(test)]
-use crate::halo2curves::pasta::Fp;
 use crate::poly::kzg::msm::MSMKZG;
 
 #[test]
 fn test_lagrange_interpolate() {
     let rng = OsRng;
 
-    let points = (0..5).map(|_| Fp::random(rng)).collect::<Vec<_>>();
-    let evals = (0..5).map(|_| Fp::random(rng)).collect::<Vec<_>>();
+    let points = (0..5).map(|_| Scalar::random(rng)).collect::<Vec<_>>();
+    let evals = (0..5).map(|_| Scalar::random(rng)).collect::<Vec<_>>();
 
     for coeffs in 0..5 {
         let points = &points[0..coeffs];

@@ -10,11 +10,9 @@ license-file.workspace = true
 group = { workspace = true }
 ff = { workspace = true }
 rustc-hash = "2"
-halo2curves = { workspace = true }
 blake2b_simd = { workspace = true }
 midnight-curves = { path = "../curves", version = "0.1.1" }
 midnight-proofs = { path = "../proofs", version = "0.5.1", default-features = false, features = [
-    "bits",
     "circuit-params",
     "committed-instances",
     "region-groups",
@@ -39,7 +37,6 @@ lazy_static = "1.5.0"
 bincode = "2.0"
 
 [dev-dependencies]
-bench_macros = { path = "../bench-macros" }
 criterion = "0.7"
 rand_chacha = "0.3.1"
 goldenfile = "=1.8.0"
@@ -60,12 +57,8 @@ testing = ["num-bigint/rand"]
 heap_profiling = []
 # Enable truncated challenges. This makes recursive proofs more efficient
 truncated-challenges = ["midnight-proofs/truncated-challenges"]
-
-# Feature to enable granular benchmarks in the prover. If enabled,
-# the proof generation functions take an additional input,
-# _group: &mut BenchmarkGroup<WallTime>, and return granular benchmarks
-# of the prover for that concrete circuit.
-bench-internal = ["midnight-proofs/bench-internal"]
+# Enable development curves (BN256, Pasta)
+dev-curves = ["midnight-curves/dev-curves", "midnight-proofs/dev-curves"]
 
 # Feature to enable support for the Picus & LLZK extraction.
 extraction = ["extractor-support", "testing", "midnight-proofs/extraction", "picus/extractor-derive"]

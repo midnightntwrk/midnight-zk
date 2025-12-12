@@ -287,7 +287,7 @@ pub mod extraction {
 mod tests {
     use std::marker::PhantomData;
 
-    use halo2curves::pasta::Fp;
+    use midnight_curves::Fq as Fp;
     use midnight_proofs::{
         circuit::{Layouter, SimpleFloorPlanner, Value},
         dev::MockProver,

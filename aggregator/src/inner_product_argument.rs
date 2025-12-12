@@ -18,7 +18,7 @@ use std::ops::{Add, Mul};
 
 use ff::Field;
 use group::prime::PrimeCurveAffine;
-use halo2curves::{msm::msm_best, CurveExt};
+use midnight_curves::{msm::msm_best, CurveExt};
 use midnight_proofs::{
     plonk::Error,
     transcript::{Hashable, Sampleable, Transcript},

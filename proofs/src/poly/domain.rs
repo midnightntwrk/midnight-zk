@@ -5,7 +5,7 @@ use std::marker::PhantomData;
 
 use ff::WithSmallOrderMulGroup;
 use group::ff::{BatchInvert, Field};
-use halo2curves::fft::best_fft;
+use midnight_curves::fft::best_fft;
 
 use super::{Coeff, ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial, Rotation};
 use crate::utils::{arithmetic::parallelize, rational::Rational};
@@ -500,7 +500,7 @@ pub struct PinnedEvaluationDomain<'a, F: Field> {
 
 #[test]
 fn test_rotate() {
-    use halo2curves::pasta::pallas::Scalar;
+    use midnight_curves::Fq as Scalar;
     use rand_core::OsRng;
 
     use crate::utils::arithmetic::eval_polynomial;

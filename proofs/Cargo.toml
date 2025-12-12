@@ -36,15 +36,15 @@ harness = false
 backtrace = { version = "0.3", optional = true }
 ff = { workspace = true }
 group = { workspace = true }
-halo2curves = { workspace = true }
 midnight-curves = { path = "../curves", version = "0.1.1" }
-rand_core = { workspace = true }
+rand_core = { workspace = true, features = ["getrandom"] }
 tracing = { workspace = true }
 blake2b_simd = { workspace = true }
 rand_chacha = { workspace = true }
 serde = { workspace = true }
 serde_derive = { workspace = true }
 rayon = { workspace = true }
+criterion = { version = "0.7", optional = true }
 
 # Developer tooling dependencies
 plotters = { version = "0.3.7", default-features = false, optional = true }
@@ -63,9 +63,6 @@ serde_json = { workspace = true }
 midnight-circuits = { path = "../circuits" }
 sha2 = { workspace = true }
 rand = { workspace = true }
-
-# Prover benchmarks
-bench_macros = { path = "../bench-macros" }
 criterion = "0.7"
 
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
@@ -75,13 +72,13 @@ getrandom = { version = "0.2", features = ["js"] }
 midnight-curves = { path = "../curves", features = ["portable"] }
 
 [features]
-default = ["bits", "committed-instances"]
-bits = ["halo2curves/bits"]
+default = ["committed-instances"]
 circuit-params = []
-derive_serde = ["halo2curves/derive_serde"]
 decompose-in-cells = ["picus-support"]
 extraction = ["extractor-support", "decompose-in-cells", "haloumi-core"]
 region-groups = []
+derive_serde = ["midnight-curves/serde"]
+dev-curves = ["midnight-curves/serde"]
 
 # This feature truncates challenges to half the size of the scalar field.
 truncated-challenges = []
@@ -95,11 +92,8 @@ truncated-challenges = []
 # This feature is very powerful for proving statements on committed data.
 committed-instances = []
 
-# Feature to enable granular benchmarks in the prover. If enabled,
-# the proof generation functions take an additional input,
-# _group: &mut BenchmarkGroup<WallTime>, and return granular benchmarks
-# of the prover for that concrete circuit.
-bench-internal = ["midnight-circuits/bench-internal"]
+# Feature to expose internal prover types and benchmarking utilities.
+bench-internal = ["criterion"]
 
 [lib]
 bench = false

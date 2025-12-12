@@ -30,12 +30,20 @@ impl Operation {
             Load(_) => Fixed(0), // `Load` takes witnesess, not actual inputs
             Publish => Some,
             AssertEqual => Fixed(2),
+            AssertNotEqual => Fixed(2),
             IsEqual => Fixed(2),
             Add => Fixed(2),
             Sub => Fixed(2),
             Mul => Fixed(2),
             Neg => Fixed(1),
+            ModExp(_) => Fixed(2),
             InnerProduct => SomeEven,
+            AffineCoordinates => Fixed(1),
+            IntoBytes(_) => Fixed(1),
+            FromBytes(_) => Fixed(1),
+            Poseidon => Some,
+            Sha256 => Fixed(1),
+            Sha512 => Fixed(1),
         }
     }
 
@@ -46,12 +54,20 @@ impl Operation {
             Load(_) => Some,
             Publish => Fixed(0), // `Publish` increases the `instances` but does not return outputs
             AssertEqual => Fixed(0),
+            AssertNotEqual => Fixed(0),
             IsEqual => Fixed(1),
             Add => Fixed(1),
             Sub => Fixed(1),
             Mul => Fixed(1),
             Neg => Fixed(1),
+            ModExp(_) => Fixed(1),
             InnerProduct => Fixed(1),
+            AffineCoordinates => Fixed(2),
+            IntoBytes(_) => Fixed(1),
+            FromBytes(_) => Fixed(1),
+            Poseidon => Fixed(1),
+            Sha256 => Fixed(1),
+            Sha512 => Fixed(1),
         }
     }
 }
