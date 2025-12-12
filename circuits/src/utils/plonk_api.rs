@@ -261,14 +261,16 @@ pub fn update_circuit_goldenfiles<R: Relation>(relation: &R) {
 
 /// Use filecoin's SRS (over BLS12-381)
 pub fn filecoin_srs(k: u32) -> ParamsKZG<Bls12> {
-    assert!(k <= 19, "We don't have an SRS for circuits of size {k}");
+    assert!(k <= 19, "We don't have an SRS for circuits of bit size {k}");
 
     let srs_dir = env::var("SRS_DIR").unwrap_or("./examples/assets".into());
 
     let srs_path = format!("{srs_dir}/bls_filecoin_2p{k:?}");
     let mut fetching_path = srs_path.clone();
 
-    if !Path::new(fetching_path.as_str()).exists() {
+    let downsize = !Path::new(fetching_path.as_str()).exists();
+
+    if downsize {
         fetching_path = format!("{srs_dir}/bls_filecoin_2p19")
     }
 
@@ -283,13 +285,13 @@ or, if you don't trust the source, download it from IPFS and parse it (this migh
             * Run the binary to parse it `cargo run --example parse_filecoin_srs --release`
         \n"));
 
-    let mut params: ParamsKZG<Bls12> = ParamsKZG::read_custom::<_>(
+    let mut params = ParamsKZG::read_custom::<_>(
         &mut BufReader::new(params_fs),
         SerdeFormat::RawBytesUnchecked,
     )
     .expect("Failed to read params");
 
-    if fetching_path != srs_path {
+    if downsize {
         params.downsize(k);
 
         let mut buf = Vec::new();

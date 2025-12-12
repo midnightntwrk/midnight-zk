@@ -2,7 +2,7 @@ use std::{collections::HashMap, iter};
 
 use ff::{PrimeField, WithSmallOrderMulGroup};
 use rand_chacha::ChaCha20Rng;
-use rand_core::{RngCore, SeedableRng};
+use rand_core::{OsRng, RngCore, SeedableRng};
 use rayon::current_num_threads;
 
 use super::Argument;
@@ -100,17 +100,23 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
         // Obtain final h(X) polynomial
         let mut h_poly = domain.extended_to_coeff(h_poly);
 
-        // Truncate it to match the size of the quotient polynomial; the
-        // evaluation domain might be slightly larger than necessary because
-        // it always lies on a power-of-two boundary.
-        h_poly.truncate(domain.n as usize * domain.get_quotient_poly_degree());
+        // Let n := size of evaluation domain
+        // Let d := degree of constraint system
+        // Hence, the degree of the quotient poly is: d*(n-1) - n = (d-1)*(n-1) - 1,
+        // and a domain of size (d-1)*(n-1) suffices to correctly represent it
+        h_poly.truncate((domain.n - 1) as usize * domain.get_quotient_poly_degree());
 
         // Split h(X) up into pieces
-        let h_pieces = h_poly
-            .chunks_exact(domain.n as usize)
-            .map(|v| domain.coeff_from_vec(v.to_vec()))
+        let mut h_pieces = h_poly
+            .chunks_exact((domain.n - 1) as usize)
+            .map(|v| v.to_vec())
             .collect::<Vec<_>>();
         drop(h_poly);
+
+        blind_quotient_limbs(&mut h_pieces);
+
+        let h_pieces: Vec<_> =
+            h_pieces.into_iter().map(|h_piece| domain.coeff_from_vec(h_piece)).collect();
 
         // Compute commitments to each h(X) piece
         let h_commitments: Vec<_> =
@@ -128,6 +134,19 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
     }
 }
 
+fn blind_quotient_limbs<F: PrimeField>(quotient_limbs: &mut [Vec<F>]) {
+    let nr_limbs = quotient_limbs.len();
+    assert!(nr_limbs >= 2);
+
+    for i in 1..nr_limbs {
+        let t = F::random(OsRng);
+        quotient_limbs[i - 1].push(t);
+        quotient_limbs[i][0] -= t;
+    }
+
+    quotient_limbs[nr_limbs - 1].push(F::ZERO);
+}
+
 impl<F: WithSmallOrderMulGroup<3>> Constructed<F> {
     pub(crate) fn evaluate<T: Transcript>(
         self,
@@ -138,12 +157,12 @@ impl<F: WithSmallOrderMulGroup<3>> Constructed<F> {
     where
         F: Hashable<T::Hash>,
     {
-        let xn: F = x.pow_vartime([domain.n]);
+        let splitting_factor: F = x.pow_vartime([domain.n - 1]);
         let h_poly = self
             .h_pieces
             .into_iter()
             .rev()
-            .reduce(|acc, eval| acc * xn + eval)
+            .reduce(|acc, eval| acc * splitting_factor + eval)
             .expect("H pieces should not be empty");
 
         let random_eval = eval_polynomial(&self.committed.random_poly, x);

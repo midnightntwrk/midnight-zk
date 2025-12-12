@@ -356,7 +356,6 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         // Sample x challenge, which is used to ensure the circuit is satisfied with
         // high probability
         let x = transcript.squeeze_challenge(layouter)?;
-        let xn = ArithInstructions::pow(&self.scalar_chip, layouter, &x, 1 << k)?;
 
         let instance_evals = {
             let instance_queries = cs.instance_queries();
@@ -525,8 +524,17 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                     .chain(evaluated_trashcan_ids)
                     .collect::<Vec<_>>()
             };
-
-            vanishing.verify(layouter, &self.scalar_chip, &expressions, &y, &xn)
+            let splitting_factor =
+                ArithInstructions::pow(&self.scalar_chip, layouter, &x, (1 << k) - 1)?;
+            let xn = self.scalar_chip.mul(layouter, &x, &splitting_factor, None)?;
+            vanishing.verify(
+                layouter,
+                &self.scalar_chip,
+                &expressions,
+                &y,
+                &xn,
+                &splitting_factor,
+            )
         }?;
 
         let one = AssignedBoundedScalar::<S::F>::one(layouter, &self.scalar_chip)?;
