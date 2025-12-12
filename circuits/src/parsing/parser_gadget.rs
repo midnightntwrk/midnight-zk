@@ -24,6 +24,11 @@ use {
 
 use crate::{field::AssignedNative, instructions::NativeInstructions, types::AssignedByte};
 
+#[cfg_attr(
+    feature = "extraction",
+    derive(picus::InitFromScratch, picus::NoChipArgs),
+    from_scratch(N)
+)]
 #[derive(Clone, Debug)]
 /// A gadget for parsing json data. It is parametrized by:
 ///  - F: the native field,

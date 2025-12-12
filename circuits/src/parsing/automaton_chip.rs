@@ -153,6 +153,7 @@ pub struct AutomatonConfig<LibIndex, F> {
 
 /// Chip for Automaton parsing.
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "extraction", derive(picus::NoChipArgs))]
 pub struct AutomatonChip<LibIndex, F>
 where
     F: PrimeField,
@@ -514,6 +515,97 @@ impl Automaton {
         let sentence = Regex::separated_cat([holy, hell, marks], Regex::blanks_strict());
         let regex = sentence.and(marker_regex);
         regex.to_automaton()
+    }
+}
+
+#[cfg(feature = "extraction")]
+pub mod extraction {
+    //! Extraction specific logic related to the automaton chip.
+
+    use extractor_support::circuit::CircuitInitialization;
+    use ff::PrimeField;
+    use midnight_proofs::{
+        circuit::Layouter,
+        plonk::{Column, ConstraintSystem, Error, Instance},
+    };
+
+    use super::{AutomatonChip, AutomatonConfig, NB_AUTOMATA_COLS};
+    use crate::{
+        field::{
+            decomposition::{
+                chip::{P2RDecompositionChip, P2RDecompositionConfig},
+                pow2range::Pow2RangeChip,
+            },
+            native::NB_ARITH_COLS,
+            NativeChip,
+        },
+        parsing::{spec_library, StdLibParser},
+        utils::ComposableChip,
+    };
+
+    impl<F, L> CircuitInitialization<L> for AutomatonChip<StdLibParser, F>
+    where
+        F: PrimeField + Ord,
+        L: Layouter<F>,
+    {
+        type Config = (P2RDecompositionConfig, AutomatonConfig<StdLibParser, F>);
+
+        type Args = ();
+
+        type ConfigCols = [Column<Instance>; 2];
+
+        type CS = ConstraintSystem<F>;
+
+        type Error = Error;
+
+        fn new_chip(config: &Self::Config, _: Self::Args) -> Self {
+            let max_bit_len = 8;
+            let native_chip = NativeChip::new(&config.0.native_config, &());
+            let core_decomposition_chip = P2RDecompositionChip::new(&config.0, &max_bit_len);
+            let native_gadget = super::NG::<F>::new(core_decomposition_chip, native_chip);
+            <AutomatonChip<StdLibParser, F> as ComposableChip<F>>::new(&config.1, &native_gadget)
+        }
+
+        fn configure_circuit(
+            meta: &mut ConstraintSystem<F>,
+            instance_columns: &Self::ConfigCols,
+        ) -> Self::Config {
+            let nb_advice_cols = std::cmp::max(NB_AUTOMATA_COLS, NB_ARITH_COLS);
+            let advice_cols = (0..nb_advice_cols).map(|_| meta.advice_column()).collect::<Vec<_>>();
+            let fixed_cols =
+                (0..NB_ARITH_COLS + 4).map(|_| meta.fixed_column()).collect::<Vec<_>>();
+
+            let native_config = NativeChip::configure(
+                meta,
+                &(
+                    advice_cols[..NB_ARITH_COLS].try_into().unwrap(),
+                    fixed_cols[..NB_ARITH_COLS + 4].try_into().unwrap(),
+                    *instance_columns,
+                ),
+            );
+
+            let automaton_config = AutomatonChip::configure(
+                meta,
+                &(
+                    advice_cols[..NB_AUTOMATA_COLS].try_into().unwrap(),
+                    spec_library(),
+                ),
+            );
+
+            let pow2range_config = Pow2RangeChip::configure(meta, &advice_cols[1..=4]);
+
+            let native_gadget_config = P2RDecompositionConfig {
+                native_config,
+                pow2range_config,
+            };
+
+            (native_gadget_config, automaton_config)
+        }
+
+        fn load_chip(&self, layouter: &mut L, config: &Self::Config) -> Result<(), Error> {
+            self.native_gadget.load_chip(layouter, &config.0)?;
+            self.load(layouter)
+        }
     }
 }
 

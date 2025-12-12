@@ -230,6 +230,23 @@ impl<F: Field, L: Layouter<F>> Layouter<F> for TracingLayouter<F, L> {
         self.layouter.pop_namespace(gadget_name);
         self.namespace_spans.pop();
     }
+
+    #[cfg(feature = "region-groups")]
+    fn push_group<N, NR, K>(&mut self, name: N, key: K)
+    where
+        NR: Into<String>,
+        N: FnOnce() -> NR,
+        K: crate::circuit::groups::GroupKey,
+    {
+        let name = name().into();
+        self.namespace_spans.push(debug_span!("group", name).entered());
+        self.layouter.push_group(|| name, key);
+    }
+
+    #[cfg(feature = "region-groups")]
+    fn pop_group(&mut self, meta: crate::circuit::groups::RegionsGroup) {
+        self.layouter.pop_group(meta)
+    }
 }
 
 fn debug_value_and_return_cell<F: Field, V: fmt::Debug>(value: AssignedCell<V, F>) -> Cell {

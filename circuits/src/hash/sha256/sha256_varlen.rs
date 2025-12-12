@@ -35,6 +35,10 @@ use crate::{
 
 /// Gadget for SHA256 with variable-length input.
 #[derive(Clone, Debug)]
+#[cfg_attr(
+    feature = "extraction",
+    derive(picus::NoChipArgs, picus::InitFromScratch)
+)]
 pub struct VarLenSha256Gadget<F: PrimeField> {
     pub(super) sha256chip: Sha256Chip<F>,
 }

@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
+* Support for integrating with [midnight-extractor](https://github.com/Veridise/midnight-extractor) [#137](https://github.com/midnightntwrk/midnight-zk/pull/137)
+* Support for grouping regions together during circuit synthesis [#137](https://github.com/midnightntwrk/midnight-zk/pull/137)
 * Added a conversion to any AssignedCell to AssignedNative for external crates [#148](https://github.com/midnightntwrk/midnight-zk/pull/148)
 
 ### Changed

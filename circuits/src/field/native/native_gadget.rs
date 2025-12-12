@@ -54,6 +54,10 @@ use crate::{
 };
 
 #[derive(Debug, Clone)]
+#[cfg_attr(
+    feature = "extraction",
+    derive(picus::NoChipArgs, picus::InitFromScratch)
+)]
 /// A gadget that implements all basic operations on the Native field:
 /// - Assignments
 /// - Assertions
@@ -151,6 +155,77 @@ impl<F: PrimeField> From<AssignedBit<F>> for AssignedByte<F> {
 impl<F: PrimeField> Sampleable for AssignedByte<F> {
     fn sample_inner(mut rng: impl RngCore) -> Self::Element {
         rng.r#gen()
+    }
+}
+
+#[cfg(feature = "extraction")]
+pub mod gadget_extraction {
+    //! Extraction specific logic related to the native gadget.
+
+    use extractor_support::{
+        cell_to_expr,
+        cells::{
+            ctx::{ICtx, LayoutAdaptor, OCtx},
+            load::LoadFromCells,
+            store::StoreIntoCells,
+            CellReprSize,
+        },
+        ir::stmt::IRStmt,
+    };
+    use ff::PrimeField;
+    use midnight_proofs::{
+        plonk::{Error, Expression},
+        ExtractionSupport,
+    };
+
+    use super::AssignedByte;
+    use crate::{
+        field::AssignedNative,
+        utils::extraction::{IRExt as _, IR},
+    };
+
+    impl<F: PrimeField> CellReprSize for AssignedByte<F> {
+        const SIZE: usize = <AssignedNative<F> as CellReprSize>::SIZE;
+    }
+
+    fn emit_constraint<F: PrimeField>(
+        cell: &AssignedNative<F>,
+        injected_ir: &mut IR<F>,
+    ) -> Result<(), Error> {
+        let lhs = cell_to_expr!(cell, F)?;
+        let rhs = Expression::from(256);
+        injected_ir.inject_in_cell(cell.cell(), IRStmt::lt(lhs, rhs));
+        Ok(())
+    }
+
+    impl<F, C, L> LoadFromCells<F, C, ExtractionSupport, L> for AssignedByte<F>
+    where
+        F: PrimeField,
+    {
+        fn load(
+            ctx: &mut ICtx<F, ExtractionSupport>,
+            chip: &C,
+            layouter: &mut impl LayoutAdaptor<F, ExtractionSupport, Adaptee = L>,
+            injected_ir: &mut IR<F>,
+        ) -> Result<Self, Error> {
+            let cell = ctx.load(chip, layouter, injected_ir)?;
+            emit_constraint(&cell, injected_ir)?;
+
+            Ok(Self(cell))
+        }
+    }
+
+    impl<F: PrimeField, C, L> StoreIntoCells<F, C, ExtractionSupport, L> for AssignedByte<F> {
+        fn store(
+            self,
+            ctx: &mut OCtx<F, ExtractionSupport>,
+            _chip: &C,
+            layouter: &mut impl LayoutAdaptor<F, ExtractionSupport, Adaptee = L>,
+            injected_ir: &mut IR<F>,
+        ) -> Result<(), Error> {
+            emit_constraint(&self.0, injected_ir)?;
+            ctx.assign_next(self.0, layouter)
+        }
     }
 }
 

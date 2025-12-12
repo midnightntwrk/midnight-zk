@@ -227,6 +227,21 @@ impl<F: Field, CS: Assignment<F> + SyncDeps> Layouter<F> for V1Pass<'_, '_, F, C
             pass.plan.cs.pop_namespace(gadget_name);
         }
     }
+
+    #[cfg(feature = "region-groups")]
+    fn push_group<N, NR, K>(&mut self, _name: N, _key: K)
+    where
+        NR: Into<String>,
+        N: FnOnce() -> NR,
+        K: crate::circuit::groups::GroupKey,
+    {
+        todo!("V1 floor planner doesn't support groups yet")
+    }
+
+    #[cfg(feature = "region-groups")]
+    fn pop_group(&mut self, _meta: crate::circuit::groups::RegionsGroup) {
+        todo!("V1 floor planner doesn't support groups yet")
+    }
 }
 
 /// Measures the circuit.

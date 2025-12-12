@@ -210,6 +210,105 @@ where
     }
 }
 
+#[cfg(feature = "extraction")]
+pub mod extraction {
+    //! Extraction specific logic related to the foreign field chip.
+
+    use extractor_support::{
+        big_to_fe, cell_to_expr,
+        cells::{
+            ctx::{ICtx, LayoutAdaptor, OCtx},
+            load::LoadFromCells,
+            store::StoreIntoCells,
+            CellReprSize,
+        },
+        ir::stmt::IRStmt,
+        sbig_to_fe,
+    };
+    use ff::PrimeField;
+    use midnight_proofs::{
+        plonk::{Error, Expression},
+        ExtractionSupport,
+    };
+    use num_bigint::BigUint;
+    use num_traits::One as _;
+
+    use super::AssignedField;
+    use crate::{
+        field::{foreign::params::FieldEmulationParams, AssignedNative},
+        utils::extraction::{IRExt as _, IR},
+    };
+
+    impl<F, K, P> CellReprSize for AssignedField<F, K, P>
+    where
+        F: PrimeField,
+        K: PrimeField,
+        P: FieldEmulationParams<F, K>,
+    {
+        const SIZE: usize = P::NB_LIMBS as usize * <AssignedNative<F> as CellReprSize>::SIZE;
+    }
+
+    impl<C, F, K, P, L> LoadFromCells<F, C, ExtractionSupport, L> for AssignedField<F, K, P>
+    where
+        F: PrimeField,
+        K: PrimeField,
+        P: FieldEmulationParams<F, K>,
+    {
+        fn load(
+            ctx: &mut ICtx<F, ExtractionSupport>,
+            chip: &C,
+            layouter: &mut impl LayoutAdaptor<F, ExtractionSupport, Adaptee = L>,
+            injected_ir: &mut IR<F>,
+        ) -> Result<Self, Error> {
+            // The input for an field is a set of native cells that represents properly
+            // constructed limbs.
+            let cells =
+                AssignedNative::load_many(P::NB_LIMBS as usize, ctx, chip, layouter, injected_ir)?;
+
+            let bounds = super::well_formed_log2_bounds::<F, K, P>()
+                .into_iter()
+                .map(|log2_bound| BigUint::one() << log2_bound)
+                .map(big_to_fe::<F>);
+            // Range-check the cells in the range [0, base)
+            for (cell, log2bound) in cells.iter().zip(bounds) {
+                let lhs = cell_to_expr!(cell, F)?;
+                let rhs = Expression::Constant(log2bound);
+                injected_ir.inject_in_cell(cell.cell(), IRStmt::lt(lhs, rhs));
+            }
+
+            Ok(AssignedField::from_limbs_unsafe(cells))
+        }
+    }
+
+    impl<C, F, K, P, L> StoreIntoCells<F, C, ExtractionSupport, L> for AssignedField<F, K, P>
+    where
+        F: PrimeField,
+        K: PrimeField,
+        P: FieldEmulationParams<F, K>,
+    {
+        fn store(
+            self,
+            ctx: &mut OCtx<F, ExtractionSupport>,
+            chip: &C,
+            layouter: &mut impl LayoutAdaptor<F, ExtractionSupport, Adaptee = L>,
+            injected_ir: &mut IR<F>,
+        ) -> Result<(), Error> {
+            for (val, (lb, ub)) in std::iter::zip(self.limb_values(), self.limb_bounds) {
+                let expr = cell_to_expr!(&val, F)?;
+
+                let lb = Expression::Constant(sbig_to_fe::<F>(lb));
+                let ub = Expression::Constant(sbig_to_fe::<F>(ub));
+                injected_ir.inject_many_in_cell(
+                    val.cell(),
+                    [IRStmt::le(lb, expr.clone()), IRStmt::le(expr, ub)],
+                );
+                val.store(ctx, chip, layouter, injected_ir)?;
+            }
+            Ok(())
+        }
+    }
+}
+
 /// Number of columns required by this chip.
 pub fn nb_field_chip_columns<F, K, P>() -> usize
 where
@@ -268,6 +367,11 @@ pub struct FieldChipConfig {
 
 /// ['FieldChip'] for operations on field K emulated over native field F.
 #[derive(Clone, Debug)]
+#[cfg_attr(
+    feature = "extraction",
+    derive(picus::NoChipArgs, picus::InitFromScratch),
+    from_scratch(N)
+)]
 pub struct FieldChip<F, K, P, N>
 where
     F: PrimeField,
@@ -278,6 +382,20 @@ where
     config: FieldChipConfig,
     pub(crate) native_gadget: N,
     _marker: PhantomData<(F, K, P, N)>,
+}
+
+#[cfg(feature = "extraction")]
+impl<F, K, P, N> FieldChip<F, K, P, N>
+where
+    F: PrimeField,
+    K: PrimeField,
+    P: FieldEmulationParams<F, K>,
+    N: NativeInstructions<F>,
+{
+    /// Returns a reference to the internal native gadget.
+    pub fn native_gadget(&self) -> &N {
+        &self.native_gadget
+    }
 }
 
 impl<F, K, P> AssignedField<F, K, P>
