@@ -65,12 +65,26 @@ mod tests {
 
     #[test]
     fn test_sha512_hash() {
-        test_hash::<
-            Scalar,
-            AssignedByte<Scalar>,
-            [AssignedByte<Scalar>; 64],
-            Sha512Chip<Scalar>,
-            NativeGadget<Scalar, _, _>,
-        >(true, "SHA512", 16);
+        fn test_wrapper(input_size: usize, k: u32, cost_model: bool) {
+            test_hash::<
+                Scalar,
+                AssignedByte<Scalar>,
+                [AssignedByte<Scalar>; 64],
+                Sha512Chip<Scalar>,
+                NativeGadget<Scalar, _, _>,
+            >(cost_model, "SHA512", input_size, k)
+        }
+
+        test_wrapper(256, 16, true);
+
+        test_wrapper(128, 15, false);
+        test_wrapper(127, 15, false);
+        test_wrapper(129, 15, false);
+
+        test_wrapper(512, 16, false);
+
+        test_wrapper(0, 14, false);
+        test_wrapper(1, 14, false);
+        test_wrapper(2, 14, false);
     }
 }

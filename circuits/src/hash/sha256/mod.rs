@@ -104,13 +104,27 @@ mod tests {
 
     #[test]
     fn test_sha256_hash() {
-        test_hash::<
-            Scalar,
-            AssignedByte<Scalar>,
-            [AssignedByte<Scalar>; 32],
-            Sha256Chip<Scalar>,
-            NativeGadget<Scalar, _, _>,
-        >(true, "SHA256", 15);
+        fn test_wrapper(input_size: usize, k: u32, cost_model: bool) {
+            test_hash::<
+                Scalar,
+                AssignedByte<Scalar>,
+                [AssignedByte<Scalar>; 32],
+                Sha256Chip<Scalar>,
+                NativeGadget<Scalar, _, _>,
+            >(cost_model, "SHA256", input_size, k)
+        }
+
+        test_wrapper(256, 14, true);
+
+        test_wrapper(128, 13, false);
+        test_wrapper(127, 13, false);
+        test_wrapper(129, 13, false);
+
+        test_wrapper(512, 15, false);
+
+        test_wrapper(0, 13, false);
+        test_wrapper(1, 13, false);
+        test_wrapper(2, 13, false);
     }
 
     #[test]

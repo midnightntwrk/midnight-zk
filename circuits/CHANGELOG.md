@@ -23,6 +23,8 @@ verification keys break backwards compatibility.
 * Rename `ScalarVar` => `AssignedScalarOfNativeCurve` [#120](https://github.com/midnightntwrk/midnight-zk/pull/120)
 * Made bench_macros and criterion dev dependencies [#134](https://github.com/midnightntwrk/midnight-zk/pull/134)
 * Optimize `assigned_to_le_bits` in `NativeGadget` [#131](https://github.com/midnightntwrk/midnight-zk/pull/131)
+* Adapt Poseidon variable length hash to agree with its CPU version [#162](https://github.com/midnightntwrk/midnight-zk/pull/162)
+* Refactor `hash` and `varhash` tests [#162](https://github.com/midnightntwrk/midnight-zk/pull/162)
 
 ### Removed
 
