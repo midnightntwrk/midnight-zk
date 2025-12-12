@@ -303,6 +303,48 @@ impl<F: PrimeField> RipeMD160Chip<F> {
         Ok(sprdd_word)
     }
 
+    /// Given two assigned spreaded ~X and ~Y, this function computes their
+    /// bitwise AND, returning X & Y as an assigned word.
+    fn and(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        sprdd_x: &AssignedSpreaded<F, 32>,
+        sprdd_y: &AssignedSpreaded<F, 32>,
+    ) -> Result<AssignedWord<F>, Error> {
+        // X & Y can be computed as the odd part of ~X + ~Y.
+        let assigned_zero =
+            self.native_gadget.assign_fixed(layouter, F::ZERO).map(AssignedSpreaded)?;
+        self.assign_sprdd_sum(layouter, Parity::Odd, sprdd_x, sprdd_y, &assigned_zero)
+    }
+
+    /// Given two assigned spreaded ~X and ~Y, this function computes their
+    /// bitwise XOR, returning X ⊕ Y as an assigned word.
+    fn xor(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        sprdd_x: &AssignedSpreaded<F, 32>,
+        sprdd_y: &AssignedSpreaded<F, 32>,
+    ) -> Result<AssignedWord<F>, Error> {
+        // X ⊕ Y can be computed as the even part of ~X + ~Y.
+        let assigned_zero =
+            self.native_gadget.assign_fixed(layouter, F::ZERO).map(AssignedSpreaded)?;
+        self.assign_sprdd_sum(layouter, Parity::Evn, sprdd_x, sprdd_y, &assigned_zero)
+    }
+
+    /// Given three assigned spreaded ~X, ~Y, ~Z, this function computes the
+    /// value of f(X, Y, Z) = X ⊕ Y ⊕ Z, defined as type one function in
+    /// RIPEMD160.
+    fn f_type_one(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        sprdd_x: &AssignedSpreaded<F, 32>,
+        sprdd_y: &AssignedSpreaded<F, 32>,
+        sprdd_z: &AssignedSpreaded<F, 32>,
+    ) -> Result<AssignedWord<F>, Error> {
+        // f(X, Y, Z) = X ⊕ Y ⊕ Z can be computed as the even part of ~X + ~Y + ~Z.
+        self.assign_sprdd_sum(layouter, Parity::Evn, sprdd_x, sprdd_y, sprdd_z)
+    }
+
     /// Given three assigned spreaded ~A, ~B, ~C, this function computes the
     /// value of ~A + ~B + ~C, and fills a lookup table with the limbs of its
     /// even and odd parts (or vice versa) and returns the former or the
@@ -482,45 +524,6 @@ impl<F: PrimeField> RipeMD160Chip<F> {
     }
 }
 
-// A ⊕ B ⊕ C
-//
-//     1) applying the plain-spreaded lookup on 11-11-10 limbs of Evn and Odd:
-//        Evn: (Evn.11a, Evn.11b, Evn.10) Odd: (Odd.11a, Odd.11b, Odd.10)
-//
-//     2) asserting the 11-11-10 decomposition identity for Evn: 2^21 * Evn.11a
-//        + 2^10 * Evn.11b + Evn.10 = Evn
-//
-//     3) asserting the spreaded addition identity regarding the spreaded
-//        values: (4^21 * ~Evn.11a + 4^10 * ~Evn.11b + ~Evn.10) + 2 * (4^21 *
-//        ~Odd.11a + 4^10 * ~Odd.11b + ~Odd.10) = ~A + ~B + ~C
-//
-//     The output is Evn.
-//
-//     | T0 |    A0   |     A1   | T1 |    A2   |    A3    |  A4 | A5 | A6 | A7 |
-//     |----|---------|----------|----|---------|----------|-----|----|----|----|
-//     | 11 | Evn.11a | ~Evn.11a | 11 | Odd.11a | ~Odd.11a | Evn | ~A | ~B | ~C |
-//     | 11 | Evn.11b | ~Evn.11b | 11 | Odd.11b | ~Odd.11b |     |    |    |    | <- q_spr_add, q_11_11_10
-//     | 10 | Evn.10  | ~Evn.10  | 10 | Odd.10  | ~Odd.10  |     |    |    |    |
-//
-//
-//     A ⊕ B ⊕ 0
-//
-//     | T0 |    A0   |     A1   | T1 |    A2   |    A3    |  A4 | A5 | A6 | A7 |
-//     |----|---------|----------|----|---------|----------|-----|----|----|----|
-//     | 11 | Evn.11a | ~Evn.11a | 11 | Odd.11a | ~Odd.11a | Evn | ~A | ~B | ~0 |
-//     | 11 | Evn.11b | ~Evn.11b | 11 | Odd.11b | ~Odd.11b |     |    |    |    | <- q_spr_add, q_11_11_10
-//     | 10 | Evn.10  | ~Evn.10  | 10 | Odd.10  | ~Odd.10  |     |    |    |    |
-//
-//
-//     prepare_spreaded(A): A ⊕ 0 ⊕ 0
-//
-//     | T0 |    A0   |     A1   | T1 |   A2   |   A3   |  A4 | A5 | A6 | A7 |
-//     |----|---------|----------|----|--------|--------|-----|----|----|----|
-//     | 11 | Evn.11a | ~Evn.11a | 11 |   0    |   ~0   |  A  | ~A | ~0 | ~0 |
-//     | 11 | Evn.11a | ~Evn.11a | 11 |   0    |   ~0   |     |    |    |    | <- q_spr_add, q_11_11_10
-//     | 10 | Evn.11a | ~Evn.11a | 10 |   0    |   ~0   |     |    |    |    |
-//
-//
 //     (A ∧ B) ∨ (¬A ∧ C) = (A ∧ B) ⊕ (¬A ∧ C) = Ch(A, B, C)
 //
 //     1) applying the plain-spreaded lookup on 11-11-10 limbs of Evn and Odd,
@@ -668,26 +671,39 @@ mod tests {
             native_gadget.load_from_scratch(&mut layouter)?;
             ripemd160_chip.load(&mut layouter)?;
 
-            let inputs: Vec<AssignedNative<F>> =
+            let assigned_inputs: Vec<AssignedNative<F>> =
                 ripemd160_chip.native_gadget.assign_many_fixed(&mut layouter, &self.inputs)?;
 
-            let assigned_inputs: Vec<AssignedWord<F>> =
-                inputs.into_iter().map(AssignedWord).collect();
+            let assigned_words: Vec<AssignedWord<F>> =
+                assigned_inputs.into_iter().map(AssignedWord).collect();
 
-            // Iterate over inputs and apply the spread operation
-            for (assigned_input, &input) in assigned_inputs.iter().zip(self.inputs.iter()) {
-                let res = ripemd160_chip.prepare_spreaded(&mut layouter, assigned_input)?;
-                res.0
-                    .value()
-                    .assert_if_known(|res| **res == u64_to_fe(spread(fe_to_u32(input))))
-            }
+            let assigned_sprdd_words: Vec<AssignedSpreaded<F, 32>> = assigned_words
+                .iter()
+                .map(|word| ripemd160_chip.prepare_spreaded(&mut layouter, word))
+                .collect::<Result<Vec<_>, _>>()?;
+
+            let [sprdd_a, sprdd_b, sprdd_c, sprdd_d, sprdd_e]: [AssignedSpreaded<F, 32>; 5] =
+                assigned_sprdd_words.try_into().unwrap();
+
+            let assigned_and = ripemd160_chip.and(&mut layouter, &sprdd_d, &sprdd_e)?;
+            let expected_and = fe_to_u32(self.inputs[3]) & fe_to_u32(self.inputs[4]);
+            assigned_and.0.value().assert_if_known(|res| **res == u32_to_fe(expected_and));
+
+            let assigned_xor = ripemd160_chip.xor(&mut layouter, &sprdd_d, &sprdd_e)?;
+            let expected_xor = fe_to_u32(self.inputs[3]) ^ fe_to_u32(self.inputs[4]);
+            assigned_xor.0.value().assert_if_known(|res| **res == u32_to_fe(expected_xor));
+
+            let res1 = ripemd160_chip.f_type_one(&mut layouter, &sprdd_a, &sprdd_b, &sprdd_c)?;
+            let expected_res1 =
+                fe_to_u32(self.inputs[0]) ^ fe_to_u32(self.inputs[1]) ^ fe_to_u32(self.inputs[2]);
+            res1.0.value().assert_if_known(|res| **res == u32_to_fe(expected_res1));
 
             Ok(())
         }
     }
 
     #[test]
-    fn test_prepare_spreaded() {
+    fn test_circuit() {
         let circuit = TestCircuit {
             inputs: [
                 F::from(0u64),
