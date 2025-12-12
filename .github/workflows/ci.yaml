@@ -123,6 +123,16 @@ jobs:
           package: midnight-aggregator
           args: --release --all-features
 
+  test-zkir:
+    if: github.event.pull_request.draft == false
+    name: Test ZKIR
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3
+      - uses: ./.github/actions/cargo-test
+        with:
+          package: midnight-zkir
+          args: --release --all-features
 
   doc-links:
     if: github.event.pull_request.draft == false
