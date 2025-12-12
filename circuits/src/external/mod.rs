@@ -23,9 +23,12 @@ use midnight_proofs::{
 };
 
 use crate::{
-    field::{decomposition::chip::P2RDecompositionChip, NativeChip, NativeGadget},
-    instructions::{ConversionInstructions, UnsafeConversionInstructions},
-    types::{AssignedByte, InnerValue},
+    field::{decomposition::chip::P2RDecompositionChip, AssignedNative, NativeChip, NativeGadget},
+    instructions::{
+        AssertionInstructions, AssignmentInstructions, ConversionInstructions,
+        UnsafeConversionInstructions,
+    },
+    types::AssignedByte,
 };
 
 pub mod blake2b;
@@ -33,6 +36,24 @@ pub mod keccak;
 
 /// Native gadget shortcut.
 type NG<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
+
+/// Converts a slice of assigned cell to a slice of Midnight `AssignedByte<F>`.
+/// This function is unsafe in that it assumes that the values have
+/// been properly range-checked.
+fn unsafe_convert_to_bytes<V, F>(
+    layouter: &mut impl Layouter<F>,
+    native_gadget: &NG<F>,
+    bytes: &[AssignedCell<V, F>],
+) -> Result<Vec<AssignedByte<F>>, Error>
+where
+    F: ff::PrimeField,
+    V: Clone,
+    for<'v> Rational<F>: From<&'v V>,
+{
+    (bytes.iter())
+        .map(|b| native_gadget.convert_unsafe(layouter, &b.clone().convert_to_native()))
+        .collect()
+}
 
 /// Converts a slice of assigned cell to a slice of Midnight `AssignedByte<F>`.
 /// This function is re-range checks the cells. Although redundant, it ensures
@@ -45,10 +66,31 @@ fn convert_to_bytes<V, F>(
 ) -> Result<Vec<AssignedByte<F>>, Error>
 where
     F: ff::PrimeField,
-    V: Clone + Into<u8>,
+    V: Clone,
     for<'v> Rational<F>: From<&'v V>,
 {
-    (bytes.iter())
-        .map(|b| native_gadget.convert(layouter, &b.clone().convert_to_native()))
-        .collect::<Result<Vec<AssignedByte<F>>, Error>>()
+    let bytes_as_native: &[AssignedNative<F>] =
+        &bytes.iter().map(|b| b.convert_to_native()).collect::<Vec<_>>();
+
+    // Instead of using `native_gadget.convert` on each individual cell, we extract
+    // their value, reassign them in a batched way using `assign_many` (more
+    // efficient), and assert equality with the original vector.
+    let extracted_bytes = bytes_as_native
+        .iter()
+        .map(|b| {
+            b.value().map(|b| {
+                <NG<F> as ConversionInstructions<_, _, AssignedByte<F>>>::convert_value(
+                    native_gadget,
+                    b,
+                )
+                .expect("there is visibly a soundness issue in the range checks of an external implementation (found a byte overflowing 2^8).")
+            })
+        })
+        .collect::<Vec<_>>();
+    let reassigned_bytes: Vec<AssignedByte<F>> =
+        native_gadget.assign_many(layouter, &extracted_bytes)?;
+    for (x, y) in reassigned_bytes.iter().zip(bytes_as_native.iter()) {
+        native_gadget.assert_equal(layouter, &AssignedNative::<F>::from(x), y)?;
+    }
+    Ok(reassigned_bytes)
 }

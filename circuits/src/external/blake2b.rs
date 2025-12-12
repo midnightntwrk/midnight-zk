@@ -29,7 +29,7 @@ use midnight_proofs::{
 #[cfg(test)]
 use crate::testing_utils::FromScratch;
 use crate::{
-    external::{unsafe_convert_to_bytes, NG},
+    external::{convert_to_bytes, NG},
     field::AssignedNative,
     types::AssignedByte,
 };
@@ -50,7 +50,7 @@ pub fn hash<F: PrimeField>(
 
     // The unsafe conversion is fine because we start from `output` which is
     // ranged-checked by Blake2b.
-    Ok(unsafe_convert_to_bytes(layouter, native_gadget, output)?.try_into().unwrap())
+    Ok(convert_to_bytes(layouter, native_gadget, output)?.try_into().unwrap())
 }
 
 #[cfg(test)]
@@ -97,7 +97,7 @@ mod test {
     };
 
     use crate::{
-        external::unsafe_convert_to_bytes,
+        external::convert_to_bytes,
         field::{decomposition::chip::P2RDecompositionConfig, NativeGadget},
         instructions::{AssignmentInstructions, PublicInputInstructions},
         testing_utils::FromScratch,
@@ -139,9 +139,9 @@ mod test {
 
             // Assigning the input.
             let preimage = native_gadget.assign_many(&mut layouter, &self.preimage)?;
-            let preimage = unsafe_convert_to_bytes(&mut layouter, &native_gadget, &preimage)?;
+            let preimage = convert_to_bytes(&mut layouter, &native_gadget, &preimage)?;
             let key = native_gadget.assign_many(&mut layouter, &self.key)?;
-            let key = unsafe_convert_to_bytes(&mut layouter, &native_gadget, &key)?;
+            let key = convert_to_bytes(&mut layouter, &native_gadget, &key)?;
 
             // Computing the digest.
             let output = super::hash(

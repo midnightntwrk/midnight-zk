@@ -179,7 +179,7 @@ where
     /// specific to the structure of `V` is lost. Can be useful when interacting
     /// with external circuits that produce `AssignedCell` types that
     /// `midnight-circuits` cannot interact with.
-    pub fn convert_to_native(self) -> AssignedCell<F, F> {
+    pub fn convert_to_native(&self) -> AssignedCell<F, F> {
         AssignedCell {
             value: self.value_field(),
             cell: self.cell,

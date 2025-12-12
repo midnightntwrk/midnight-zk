@@ -27,7 +27,7 @@ use midnight_proofs::{
 #[cfg(test)]
 use crate::testing_utils::FromScratch;
 use crate::{
-    external::{unsafe_convert_to_bytes, NG},
+    external::{convert_to_bytes, unsafe_convert_to_bytes, NG},
     instructions::AssertionInstructions,
     types::{AssignedByte, InnerValue},
 };
@@ -49,18 +49,18 @@ pub fn digest<F: PrimeField>(
     let (reassigned_input, digest) = chip.digest(layouter, &raw_input)?;
 
     // Rebuilding the broken link between the re-assigned input and the original
-    // one. The unsafe conversion is sound since we are processing Keccak bytes.
+    // one. The unsafe conversion is sound since we are asserting equality below
+    // with `input` which is range-checked.
     let reassigned_input = unsafe_convert_to_bytes(layouter, native_gadget, &reassigned_input)?;
     for (original_byte, reassigned_byte) in input.iter().zip(reassigned_input.iter()) {
         native_gadget.assert_equal(layouter, original_byte, reassigned_byte)?
     }
-    // This check should not be necessary to put in-circuit, as it should be
-    // reflected in the verification process.
-    assert!(input.len() == reassigned_input.len());
+    // Sanity check.
+    assert_eq!(input.len(), reassigned_input.len());
 
-    // The unsafe conversion is fine because we start from `digest` which is
-    // ranged-checked by Keccak.
-    let digest = unsafe_convert_to_bytes(layouter, native_gadget, &digest)?;
+    // We use a safe conversion to catch potential soundness issues in the
+    // range-checks of the external implementation.
+    let digest = convert_to_bytes(layouter, native_gadget, &digest)?;
     Ok(digest.try_into().unwrap())
 }
 
