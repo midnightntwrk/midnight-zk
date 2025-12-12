@@ -106,6 +106,8 @@ impl Relation for CredentialEnrollment {
             poseidon: false,
             sha256: true,
             sha512: false,
+            keccak: false,
+            blake2b: false,
             secp256k1: true,
             bls12_381: false,
             base64: true,

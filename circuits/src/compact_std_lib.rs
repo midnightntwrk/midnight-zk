@@ -28,11 +28,19 @@
 use std::{cell::RefCell, cmp::max, convert::TryInto, fmt::Debug, io, rc::Rc};
 
 use bincode::{config::standard, Decode, Encode};
+use blake2b::blake2b::{
+    blake2b_chip::{Blake2bChip, Blake2bConfig},
+    NB_BLAKE2B_ADVICE_COLS,
+};
 use ff::{Field, PrimeField};
 use group::{prime::PrimeCurveAffine, Group};
+use keccak::{
+    packed_chip::{PackedChip, PackedConfig, PACKED_ADVICE_COLS, PACKED_FIXED_COLS},
+    sha3_256_gadget::Keccak256,
+};
 use midnight_curves::{
     secp256k1::{self, Secp256k1},
-    G1Affine, G1Projective,
+    Fq, G1Affine, G1Projective,
 };
 use midnight_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
@@ -58,6 +66,7 @@ use crate::{
         hash_to_curve::HashToCurveGadget,
         native::{EccChip, EccConfig, NB_EDWARDS_COLS},
     },
+    external::{self, keccak::KeccakChip},
     field::{
         decomposition::{
             chip::{P2RDecompositionChip, P2RDecompositionConfig},
@@ -117,6 +126,12 @@ pub struct ZkStdLibArch {
     /// Enable the SHA512 chip?
     pub sha512: bool,
 
+    /// Enable the Keccak chip?
+    pub keccak: bool,
+
+    /// Enable the Blake2b chip?
+    pub blake2b: bool,
+
     /// Enable the Secp256k1 chip?
     pub secp256k1: bool,
 
@@ -140,6 +155,8 @@ impl Default for ZkStdLibArch {
             poseidon: true,
             sha256: true,
             sha512: false,
+            keccak: false,
+            blake2b: false,
             secp256k1: false,
             bls12_381: false,
             base64: false,
@@ -227,12 +244,17 @@ pub struct ZkStdLibConfig {
     bls12_381_config: Option<ForeignEccConfig<midnight_curves::G1Projective>>,
     base64_config: Option<Base64Config>,
     automaton_config: Option<AutomatonConfig<StdLibParser, midnight_curves::Fq>>,
+
+    // Configuration of external libraries.
+    keccak_config: Option<PackedConfig>,
+    blake2b_config: Option<Blake2bConfig>,
 }
 
 /// The `ZkStdLib` exposes all tools that are used in circuit generation.
 #[derive(Clone, Debug)]
 #[allow(clippy::type_complexity)]
 pub struct ZkStdLib {
+    // Internal chips and gadgets.
     native_gadget: NG,
     core_decomposition_chip: P2RDecompositionChip<F>,
     jubjub_chip: Option<EccChip<C>>,
@@ -250,8 +272,13 @@ pub struct ZkStdLib {
     vector_gadget: VectorGadget<F>,
     automaton_chip: Option<AutomatonChip<StdLibParser, F>>,
 
+    // Third-party chips.
+    keccak_chip: Option<KeccakChip<F>>,
+    blake2b_chip: Option<Blake2bChip<F>>,
+
     // Flags that indicate if certain chips have been used. This way we can load the tables only
     // when necessary (thus reducing the min_k in some cases).
+    // Such a usage flag has to be added and updated correctly for each new chip using tables.
     used_sha256: Rc<RefCell<bool>>,
     used_sha512: Rc<RefCell<bool>>,
     used_secp256k1_scalar: Rc<RefCell<bool>>,
@@ -259,6 +286,8 @@ pub struct ZkStdLib {
     used_bls12_381_curve: Rc<RefCell<bool>>,
     used_base64: Rc<RefCell<bool>>,
     used_automaton: Rc<RefCell<bool>>,
+    used_keccak: Rc<RefCell<bool>>,
+    used_blake2b: Rc<RefCell<bool>>,
 }
 
 impl ZkStdLib {
@@ -300,6 +329,8 @@ impl ZkStdLib {
         let vector_gadget = VectorGadget::new(&native_gadget);
         let automaton_chip =
             config.automaton_config.as_ref().map(|c| AutomatonChip::new(c, &native_gadget));
+        let keccak_chip = config.keccak_config.as_ref().map(PackedChip::new).map(Keccak256::new);
+        let blake2b_chip = config.blake2b_config.as_ref().map(Blake2bChip::new);
 
         Self {
             native_gadget,
@@ -318,6 +349,8 @@ impl ZkStdLib {
             parser_gadget,
             vector_gadget,
             automaton_chip,
+            keccak_chip,
+            blake2b_chip,
             used_sha256: Rc::new(RefCell::new(false)),
             used_sha512: Rc::new(RefCell::new(false)),
             used_secp256k1_scalar: Rc::new(RefCell::new(false)),
@@ -325,6 +358,8 @@ impl ZkStdLib {
             used_bls12_381_curve: Rc::new(RefCell::new(false)),
             used_base64: Rc::new(RefCell::new(false)),
             used_automaton: Rc::new(RefCell::new(false)),
+            used_keccak: Rc::new(RefCell::new(false)),
+            used_blake2b: Rc::new(RefCell::new(false)),
         }
     }
 
@@ -353,7 +388,9 @@ impl ZkStdLib {
                     >(),
                 ),
             arch.base64 as usize * NB_BASE64_ADVICE_COLS,
-            NB_AUTOMATA_COLS,
+            arch.automaton as usize * NB_AUTOMATA_COLS,
+            arch.keccak as usize * PACKED_ADVICE_COLS,
+            arch.blake2b as usize * NB_BLAKE2B_ADVICE_COLS,
         ]
         .into_iter()
         .max()
@@ -364,6 +401,7 @@ impl ZkStdLib {
             arch.poseidon as usize * NB_POSEIDON_FIXED_COLS,
             arch.sha256 as usize * NB_SHA256_FIXED_COLS,
             arch.sha512 as usize * NB_SHA512_FIXED_COLS,
+            arch.keccak as usize * PACKED_FIXED_COLS,
         ]
         .into_iter()
         .max()
@@ -371,6 +409,7 @@ impl ZkStdLib {
 
         let advice_columns = (0..nb_advice_cols).map(|_| meta.advice_column()).collect::<Vec<_>>();
         let fixed_columns = (0..nb_fixed_cols).map(|_| meta.fixed_column()).collect::<Vec<_>>();
+
         let committed_instance_column = meta.instance_column();
         let instance_column = meta.instance_column();
 
@@ -453,6 +492,27 @@ impl ZkStdLib {
             )
         });
 
+        let constant_column = (arch.keccak || arch.blake2b).then(|| meta.fixed_column());
+
+        let keccak_config = arch.keccak.then(|| {
+            PackedChip::configure(
+                meta,
+                constant_column.unwrap(),
+                advice_columns[..PACKED_ADVICE_COLS].try_into().unwrap(),
+                fixed_columns[..PACKED_FIXED_COLS].try_into().unwrap(),
+            )
+        });
+
+        let blake2b_config = arch.blake2b.then(|| {
+            Blake2bChip::configure(
+                meta,
+                constant_column.unwrap(),
+                advice_columns[0],
+                advice_columns[1..NB_BLAKE2B_ADVICE_COLS].try_into().unwrap(),
+                instance_column,
+            )
+        });
+
         ZkStdLibConfig {
             native_config,
             core_decomposition_config,
@@ -465,6 +525,8 @@ impl ZkStdLib {
             bls12_381_config,
             base64_config,
             automaton_config,
+            keccak_config,
+            blake2b_config,
         }
     }
 }
@@ -598,7 +660,7 @@ impl ZkStdLib {
         self.native_gadget.lower_than(layouter, &bounded_x, &bounded_y)
     }
 
-    /// Poseidon hash from a slice of native valure into a native value.
+    /// Poseidon hash from a slice of native values into a native value.
     ///
     /// ```
     /// # midnight_circuits::run_test_std_lib!(chip, layouter, 13, {
@@ -674,6 +736,30 @@ impl ZkStdLib {
             .as_ref()
             .expect("ZkStdLibArch must enable sha512")
             .hash(layouter, input)
+    }
+
+    /// Keccak hash.
+    pub fn keccak(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        input: &[AssignedByte<F>],
+    ) -> Result<[AssignedByte<Fq>; 32], Error> {
+        *self.used_keccak.borrow_mut() = true;
+        let keccak = self.keccak_chip.as_ref().expect("ZkStdLibArch must enable keccak");
+        external::keccak::digest(keccak, &self.native_gadget, layouter, input)
+    }
+
+    /// Blake2b hash.
+    pub fn blake2b(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        input: &[AssignedByte<F>],
+        key: &[AssignedByte<F>],
+        output_size: usize,
+    ) -> Result<[AssignedByte<F>; 64], Error> {
+        *self.used_blake2b.borrow_mut() = true;
+        let chip = self.blake2b_chip.as_ref().expect("ZkStdLibArch must enable blake2b");
+        external::blake2b::hash(chip, &self.native_gadget, layouter, input, key, output_size)
     }
 }
 
@@ -1558,6 +1644,18 @@ impl<R: Relation> Circuit<F> for MidnightCircuit<'_, R> {
         if let Some(automaton_chip) = zk_std_lib.automaton_chip {
             if *zk_std_lib.used_automaton.borrow() {
                 automaton_chip.load(&mut layouter)?;
+            }
+        }
+
+        if let Some(keccak_chip) = zk_std_lib.keccak_chip {
+            if *zk_std_lib.used_keccak.borrow() {
+                keccak_chip.chip.load_table(&mut layouter)?;
+            }
+        }
+
+        if let Some(blake2b_chip) = zk_std_lib.blake2b_chip {
+            if *zk_std_lib.used_blake2b.borrow() {
+                blake2b_chip.load(&mut layouter)?;
             }
         }
 
