@@ -10,26 +10,28 @@ const MAX_LIMB: usize = 11;
 const LAST_LIMB: usize = WORD % MAX_LIMB; // 10
 pub(super) const NUM_LIMBS: usize = (WORD - 1) / MAX_LIMB + 2; // 4
 
-/// Decomposes a 32-bit word into limbs so that the first k limbs
-/// represent the `rot` bits that will be left-rotated, and returns
+/// Decomposes a 32-bit word (in big-endian) into limbs so that the first k
+/// limbs represent the `rot` bits that will be left-rotated, and returns
 /// the lengths of each limb along with k.
 ///
 /// # Panics
 ///
 /// If `rot` is not in the range (0, 16).
 pub(super) fn limb_lengths(rot: usize) -> ([usize; NUM_LIMBS], usize) {
-    // Given the word size |W| = [`WORD`] and the maximum lookup bit
-    // size: [`MAX_LIMB`], the following two equalities hold:
-    //
-    // [`WORD`] = n * [`MAX_LIMB`] + [`LAST_LIMB`]
-    // rot      = k * [`MAX_LIMB`] + a
-    //
-    // As 0 < rot < 16 in our use case, we have that rot < n * [`MAX_LIMB`].
-    // Therefore, by splitting the (k+1)-th limb into two parts of sizes
-    // a and b = [`MAX_LIMB`] - a, we can represent the rot bits in the first
-    // k+1 limbs:
-    // w   = | F0 | F1 | .. |    Fk   | .. | Fn | L |
-    //     = |<--      rot    -->| S2 | .. | Fn | L |
+    /*
+     Given the word size |W| = [`WORD`] and the maximum lookup bit
+     size: [`MAX_LIMB`], the following two equalities hold:
+
+     [`WORD`] = n * [`MAX_LIMB`] + [`LAST_LIMB`]
+     rot      = k * [`MAX_LIMB`] + a
+
+     As 0 < rot < 16 in our use case, we have that rot < n * [`MAX_LIMB`].
+     Therefore, by splitting the (k+1)-th limb into two parts of sizes
+     a and b = [`MAX_LIMB`] - a, we can represent the rot bits in the first
+     k+1 limbs:
+     w   = | F0 | F1 | .. |    Fk   | .. | Fn | L |
+         = |<--      rot    -->| S2 | .. | Fn | L |
+    */
     assert!(rot > 0 && rot < 16);
     let mut lengths = [MAX_LIMB; NUM_LIMBS];
     lengths[NUM_LIMBS - 1] = LAST_LIMB;
@@ -43,33 +45,43 @@ pub(super) fn limb_lengths(rot: usize) -> ([usize; NUM_LIMBS], usize) {
     (lengths, k)
 }
 
-/// Computes the coefficients for each limb based on their lengths for a 32-bit
-/// word in big-endian order.
-///
-/// # Panics
-///
-/// If the sum of limb lengths does not equal [`WORD`].
-pub(super) fn limb_coeffs(limb_lengths: &[usize; NUM_LIMBS]) -> [u32; NUM_LIMBS] {
-    assert!(limb_lengths.iter().sum::<usize>() == WORD);
-    let mut coeffs = [0u32; NUM_LIMBS];
-    let mut acc = 1u32;
-    for (i, size) in limb_lengths.iter().rev().enumerate() {
-        coeffs[i] = acc;
-        acc = acc.wrapping_shl(*size as u32);
-    }
-    coeffs.reverse();
-    coeffs
+/// Given the left rotation offset `rot`, computes the two sets of
+/// coefficients for reconstructing the original word and the left-rotated
+/// word from the limb values.
+pub(super) fn limb_coeffs(rot: usize) -> ([u32; NUM_LIMBS], [u32; NUM_LIMBS]) {
+    /*
+    Based on the limb lengths and k for the rotation offset:
+      w = | F0 | F1 | .. |    Fk   | .. | Fn | L |
+    computes the coefficients [c0, c1, .., c_n+1] such that:
+      w = c0*F0 + c1*F1 + .. + c_n+1*L
+    and the coefficients [c0', c1', .., c_n+1'] such that:
+      rot_w = c0'*F0 + c1'*F1 + .. + c_n+1'*L
+    where rot_w is w left-rotated by `rot` bits.
+    */
+    let compute_coeffs = |lengths: &[usize; NUM_LIMBS]| {
+        let mut acc = 1u32;
+        let mut res = [0u32; NUM_LIMBS];
+        for (i, &len) in lengths.iter().rev().enumerate() {
+            res[i] = acc;
+            acc = acc.wrapping_shl(len as u32);
+        }
+        res.reverse();
+        res
+    };
+
+    let (mut limb_lengths, k) = limb_lengths(rot);
+    let coeffs = compute_coeffs(&limb_lengths);
+    limb_lengths.rotate_left(k);
+    let mut coeffs_rot = compute_coeffs(&limb_lengths);
+    coeffs_rot.rotate_right(k);
+    (coeffs, coeffs_rot)
 }
 
 /// Decomposes a 32-bit word into its limb values based on the provided limb
 /// lengths in big-endian order. It is slightly different from
 /// [`u32_in_be_limbs`], especially when some limb lengths are zero.
-///
-/// # Panics
-///
-/// If the sum of limb lengths does not equal [`WORD`].
-pub(super) fn limb_values(value: u32, limb_lengths: &[usize; NUM_LIMBS]) -> [u32; NUM_LIMBS] {
-    assert_eq!(limb_lengths.iter().sum::<usize>(), WORD);
+pub(super) fn limb_values(value: u32, rot: usize) -> [u32; NUM_LIMBS] {
+    let (limb_lengths, _) = limb_lengths(rot);
 
     let mut result = [0u32; NUM_LIMBS];
     let mut shift = WORD;
@@ -144,41 +156,22 @@ mod tests {
         // For every rotation offset, decompose a random value into limbs and
         // reconstruct it using the derived coefficients and limb values.
         for rot in 1..16 {
-            let (lengths, _) = limb_lengths(rot);
-            let coeffs = limb_coeffs(&lengths);
             let mut rng = rand::thread_rng();
             let val: u32 = rng.gen();
-            let limbs = limb_values(val, &lengths);
-            let expected_val =
-                limbs.iter().zip(coeffs.iter()).fold(0u32, |acc, (&limb, &coeff)| {
-                    acc.wrapping_add(limb.wrapping_mul(coeff))
-                });
-            assert_eq!(val, expected_val, "Failed reconstruction for rot={}", rot);
-        }
-    }
+            let (coeffs, coeffs_rot) = limb_coeffs(rot);
+            let limbs = limb_values(val, rot);
 
-    #[test]
-    fn test_left_rotations() {
-        // For every rotation offset, verify that rotating the value left by that offset
-        // matches the reconstruction from derived limbs and coefficients.
-        for rot in 1..16 {
-            let (mut lengths, k) = limb_lengths(rot);
-            let mut rng = rand::thread_rng();
-            let val: u32 = rng.gen();
-            let mut limbs = limb_values(val, &lengths);
-            // Rotate the lengths and compute coefficients accordingly
-            lengths.rotate_left(k);
-            let coeffs = limb_coeffs(&lengths);
-            // Rotate the limbs
-            limbs.rotate_left(k);
-            // Reconstruct the rotated value from rotated limbs and coefficients
-            let expected_rot_val =
-                limbs.iter().zip(coeffs.iter()).fold(0u32, |acc, (&limb, &coeff)| {
-                    acc.wrapping_add(limb.wrapping_mul(coeff))
-                });
+            let res = limbs.iter().zip(coeffs.iter()).fold(0u32, |acc, (&limb, &coeff)| {
+                acc.wrapping_add(limb.wrapping_mul(coeff))
+            });
+            assert_eq!(val, res, "Failed reconstruction for rot={}", rot);
+
             let rot_val = val.rotate_left(rot as u32);
+            let rot_res = limbs.iter().zip(coeffs_rot.iter()).fold(0u32, |acc, (&limb, &coeff)| {
+                acc.wrapping_add(limb.wrapping_mul(coeff))
+            });
             assert_eq!(
-                rot_val, expected_rot_val,
+                rot_val, rot_res,
                 "Failed rotation reconstruction for rot={}",
                 rot
             );
