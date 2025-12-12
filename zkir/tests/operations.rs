@@ -96,7 +96,7 @@ fn test_publish() {
     // Variable resolution: Published variables must be defined.
     test_without_witness(
         &[(Publish, vec!["x"], vec![])],
-        Some(Error::ParsingError(IrType::Bool, "x".to_string())),
+        Some(Error::NotFound("x".to_string())),
     );
     test_without_witness(
         &[
