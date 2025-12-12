@@ -40,6 +40,15 @@ pub struct VarLenSha256Gadget<F: PrimeField> {
 }
 
 impl<F: PrimeField> VarLenSha256Gadget<F> {
+    /// Creates a new chip from the dependencies.
+    pub fn new(sha256_chip: &Sha256Chip<F>) -> VarLenSha256Gadget<F> {
+        VarLenSha256Gadget {
+            sha256chip: sha256_chip.clone(),
+        }
+    }
+}
+
+impl<F: PrimeField> VarLenSha256Gadget<F> {
     fn ng(&self) -> &NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>> {
         &self.sha256chip.native_gadget
     }
