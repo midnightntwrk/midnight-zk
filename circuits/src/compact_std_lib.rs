@@ -37,7 +37,6 @@ use group::{prime::PrimeCurveAffine, Group};
 use keccak::{
     packed_chip::{PackedChip, PackedConfig, PACKED_ADVICE_COLS, PACKED_FIXED_COLS},
     sha3_256_gadget::Keccak256,
-    KECCAK_SQUEEZE_BYTES,
 };
 use midnight_curves::{
     secp256k1::{self, Secp256k1},
@@ -744,7 +743,7 @@ impl ZkStdLib {
         &self,
         layouter: &mut impl Layouter<F>,
         input: &[AssignedByte<F>],
-    ) -> Result<[AssignedByte<Fq>; KECCAK_SQUEEZE_BYTES], Error> {
+    ) -> Result<[AssignedByte<Fq>; 32], Error> {
         *self.used_keccak.borrow_mut() = true;
         let keccak = self.keccak_chip.as_ref().expect("ZkStdLibArch must enable keccak");
         external::keccak::digest(keccak, &self.native_gadget, layouter, input)

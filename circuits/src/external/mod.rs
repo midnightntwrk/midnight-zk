@@ -24,8 +24,8 @@ use midnight_proofs::{
 
 use crate::{
     field::{decomposition::chip::P2RDecompositionChip, NativeChip, NativeGadget},
-    instructions::UnsafeConversionInstructions,
-    types::AssignedByte,
+    instructions::{ConversionInstructions, UnsafeConversionInstructions},
+    types::{AssignedByte, InnerValue},
 };
 
 pub mod blake2b;
@@ -35,19 +35,20 @@ pub mod keccak;
 type NG<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
 
 /// Converts a slice of assigned cell to a slice of Midnight `AssignedByte<F>`.
-/// This function is unsafe in that it assumes that the values have
-/// been properly range-checked.
-fn unsafe_convert_to_bytes<V, F>(
+/// This function is re-range checks the cells. Although redundant, it ensures
+/// that a potential soundness issue in the external chip does not propagade to
+/// our library.
+fn convert_to_bytes<V, F>(
     layouter: &mut impl Layouter<F>,
     native_gadget: &NG<F>,
     bytes: &[AssignedCell<V, F>],
 ) -> Result<Vec<AssignedByte<F>>, Error>
 where
     F: ff::PrimeField,
-    V: Clone,
+    V: Clone + Into<u8>,
     for<'v> Rational<F>: From<&'v V>,
 {
     (bytes.iter())
-        .map(|b| native_gadget.convert_unsafe(layouter, &b.clone().convert_to_native()))
+        .map(|b| native_gadget.convert(layouter, &b.clone().convert_to_native()))
         .collect::<Result<Vec<AssignedByte<F>>, Error>>()
 }

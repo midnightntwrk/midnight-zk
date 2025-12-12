@@ -34,7 +34,8 @@ use crate::{
     types::AssignedByte,
 };
 
-/// Blake2b hash.
+/// A front-end to the external implementation of Blake2b, managing the
+/// conversion between types.
 pub fn hash<F: PrimeField>(
     chip: &Blake2bChip<F>,
     native_gadget: &NG<F>,
