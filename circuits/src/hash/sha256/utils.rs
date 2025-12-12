@@ -1,3 +1,5 @@
+//! Utility functions for SHA-256 circuit.
+
 use ff::PrimeField;
 use midnight_proofs::plonk::Expression;
 
@@ -24,7 +26,7 @@ fn compact_even(mut x: u64) -> u32 {
 
 /// Asserts x is in correct spreaded form, i.e. its little-endian binary
 /// representation has zeros in odd positions.
-fn assert_in_valid_spreaded_form(x: u64) {
+pub fn assert_in_valid_spreaded_form(x: u64) {
     assert_eq!(MASK_ODD_64 & x, 0, "Input must be in valid spreaded form")
 }
 
@@ -181,7 +183,7 @@ fn pow4_ip<const N: usize>(exponents: [u8; N], terms: [u64; N]) -> u64 {
 }
 
 /// Returns sum_i 2^(exponents\[i\]) * terms\[i\].
-pub(crate) fn expr_pow2_ip<F: PrimeField, const N: usize>(
+pub fn expr_pow2_ip<F: PrimeField, const N: usize>(
     exponents: [u8; N],
     terms: [&Expression<F>; N],
 ) -> Expression<F> {
@@ -193,7 +195,7 @@ pub(crate) fn expr_pow2_ip<F: PrimeField, const N: usize>(
 }
 
 /// Returns sum_i 4^(exponents\[i\]) * terms\[i\].
-pub(crate) fn expr_pow4_ip<F: PrimeField, const N: usize>(
+pub fn expr_pow4_ip<F: PrimeField, const N: usize>(
     exponents: [u8; N],
     terms: [&Expression<F>; N],
 ) -> Expression<F> {
