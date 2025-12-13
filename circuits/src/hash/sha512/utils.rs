@@ -300,7 +300,7 @@ mod tests {
         let value: u64 = rng.gen();
         let limb_lengths = [1; 64];
         let result = u64_in_be_limbs(value, limb_lengths);
-        let expected: [u64; 64] = core::array::from_fn(|i| ((value >> (63 - i)) & 1));
+        let expected: [u64; 64] = core::array::from_fn(|i| (value >> (63 - i)) & 1);
         assert_eq!(result, expected);
     }
 
