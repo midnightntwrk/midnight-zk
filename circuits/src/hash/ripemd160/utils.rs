@@ -152,7 +152,7 @@ mod tests {
     }
 
     #[test]
-    fn test_decomposition_and_coeffs() {
+    fn test_decomposition_and_rotation() {
         // For every rotation offset, decompose a random value into limbs and
         // reconstruct it using the derived coefficients and limb values.
         for rot in 1..16 {
