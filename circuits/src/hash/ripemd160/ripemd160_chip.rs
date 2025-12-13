@@ -15,8 +15,8 @@ use crate::{
     hash::ripemd160::{
         types::{AssignedSpreaded, AssignedWord},
         utils::{
-            expr_pow2_ip, expr_pow4_ip, gen_spread_table, get_even_and_odd_bits, spread,
-            spreaded_sum, u32_in_be_limbs,
+            expr_pow2_ip, expr_pow4_ip, gen_spread_table, get_even_and_odd_bits, limb_coeffs,
+            limb_lengths, limb_values, spread, spreaded_sum, u32_in_be_limbs,
         },
     },
     instructions::{AssignmentInstructions, DecompositionInstructions, EqualityInstructions},
@@ -31,7 +31,7 @@ use crate::{
 pub const NB_RIPEMD160_ADVICE_COLS: usize = 8;
 
 /// Number of fixed columns used by the identities of the RIPEMD160 chip.
-pub const NB_RIPEMD160_FIXED_COLS: usize = 2;
+pub const NB_RIPEMD160_FIXED_COLS: usize = 6;
 
 /// Tag for the even and odd 11-11-10 decompositions.
 #[derive(Copy, Clone, Debug)]
@@ -58,6 +58,7 @@ pub struct RipeMD160Config {
     q_11_11_10: Selector,
     q_spr_sum_evn: Selector,
     q_spr_sum_odd: Selector,
+    q_left_rot: Selector,
 }
 
 /// Chip for RIPEMD160.
@@ -120,6 +121,7 @@ impl<F: PrimeField> ComposableChip<F> for RipeMD160Chip<F> {
         let q_11_11_10 = meta.selector();
         let q_spr_sum_evn = meta.selector();
         let q_spr_sum_odd = meta.selector();
+        let q_left_rot = meta.selector();
 
         (0..2).for_each(|idx| {
             meta.lookup("plain-spreaded lookup", |meta| {
@@ -190,6 +192,45 @@ impl<F: PrimeField> ComposableChip<F> for RipeMD160Chip<F> {
             Constraints::with_selector(q_spr_sum_odd, vec![("spreaded sum odd", id)])
         });
 
+        meta.create_gate("left rotation", |meta| {
+            // See function `left_rotate` for a description of the following layout.
+            let limb_a = meta.query_advice(advice_cols[0], Rotation(-1));
+            let limb_b = meta.query_advice(advice_cols[2], Rotation(-1));
+            let limb_c = meta.query_advice(advice_cols[0], Rotation(0));
+            let limb_d = meta.query_advice(advice_cols[2], Rotation(0));
+            let w = meta.query_advice(advice_cols[4], Rotation(-1));
+            let rot_w = meta.query_advice(advice_cols[4], Rotation(0));
+
+            let coef_a = meta.query_fixed(fixed_cols[2], Rotation(-1));
+            let coef_b = meta.query_fixed(fixed_cols[3], Rotation(-1));
+            let coef_c = meta.query_fixed(fixed_cols[2], Rotation(0));
+            let coef_d = meta.query_fixed(fixed_cols[3], Rotation(0));
+
+            let coef_a_rot = meta.query_fixed(fixed_cols[4], Rotation(-1));
+            let coef_b_rot = meta.query_fixed(fixed_cols[5], Rotation(-1));
+            let coef_c_rot = meta.query_fixed(fixed_cols[4], Rotation(0));
+            let coef_d_rot = meta.query_fixed(fixed_cols[5], Rotation(0));
+
+            let id_word = coef_a * limb_a.clone()
+                + coef_b * limb_b.clone()
+                + coef_c * limb_c.clone()
+                + coef_d * limb_d.clone()
+                - w;
+            let id_rot = coef_a_rot * limb_a
+                + coef_b_rot * limb_b
+                + coef_c_rot * limb_c
+                + coef_d_rot * limb_d
+                - rot_w;
+
+            Constraints::with_selector(
+                q_left_rot,
+                vec![
+                    ("decomposition of word", id_word),
+                    ("decomposition of rotated word", id_rot),
+                ],
+            )
+        });
+
         RipeMD160Config {
             advice_cols,
             fixed_cols,
@@ -198,6 +239,7 @@ impl<F: PrimeField> ComposableChip<F> for RipeMD160Chip<F> {
             q_11_11_10,
             q_spr_sum_evn,
             q_spr_sum_odd,
+            q_left_rot,
         }
     }
 
@@ -343,6 +385,68 @@ impl<F: PrimeField> RipeMD160Chip<F> {
     ) -> Result<AssignedWord<F>, Error> {
         // f(X, Y, Z) = X ⊕ Y ⊕ Z can be computed as the even part of ~X + ~Y + ~Z.
         self.assign_sprdd_sum(layouter, Parity::Evn, sprdd_x, sprdd_y, sprdd_z)
+    }
+
+    /// Given an assigned word A and a left rotation amount `rot`, this function
+    /// computes the left rotation of A by `rot` bits, returning Rot(A) as an
+    /// assigned word.
+    fn left_rotate(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        word: &AssignedWord<F>,
+        rot: usize,
+    ) -> Result<AssignedWord<F>, Error> {
+        /*
+         Computing the left rotation Rol(A, rot) fills the circuit layout as follows:
+
+        |  T0 |   A0  |   A1  |  T1 |   A2  |   A3  |   A4  |   T2    |   T3    |      T4     |      T5     |
+        |-----|-------|-------|-----|-------|-------|-------|---------|---------|-------------|-------------|
+        | t_a |  l_a  | ~l_a  | t_b |  l_b  | ~l_b  |   A   | coeff_a | coeff_b | coeff_a_rot | coeff_a_rot | <- q_lookup
+        | t_c |  l_c  | ~l_c  | t_d |  l_d  | ~l_d  | Rot(A)| coeff_c | coeff_d | coeff_a_rot | coeff_a_rot | <- q_lookup, q_left_rot
+
+        with constraints of:
+
+        1) applying the plain-spreaded lookup on limbs:
+            (t_a, l_a, ~l_a), (t_b, l_b, ~l_b),
+            (t_c, l_c, ~l_c), (t_d, l_d, ~l_d),
+           to guarantee the limb values l_i are in the range [0, 2^t_i), the spreaded
+           limb values ~l_i have to be filled as well although they are not used in the constraint
+
+         2) asserting the decomposition identity of A:
+               coeff_a * l_a + coeff_b * l_b + coeff_c * l_c + coeff_d * l_d
+             = A
+
+         3) asserting the decomposition identity of Rot(A):
+               coeff_a_rot * l_a + coeff_b_rot * l_b + coeff_c_rot * l_c + coeff_d_rot * l_d
+             = Rot(A)
+        */
+        let word_val = word.0.value().map(|&w| fe_to_u32(w));
+        let rot_val = word_val.map(|w| w.rotate_left(rot as u32)).map(u32_to_fe);
+
+        layouter.assign_region(
+            || "Assign left rotation",
+            |mut region| {
+                self.config().q_lookup.enable(&mut region, 0)?;
+                self.config().q_lookup.enable(&mut region, 1)?;
+                self.config().q_left_rot.enable(&mut region, 1)?;
+
+                word.0
+                    .copy_advice(|| "Word", &mut region, self.config().advice_cols[4], 0)
+                    .map(AssignedWord)?;
+                let rotated_word = region
+                    .assign_advice(
+                        || "Rotated word",
+                        self.config().advice_cols[4],
+                        1,
+                        || rot_val,
+                    )
+                    .map(AssignedWord)?;
+
+                self.assign_left_rotation(&mut region, word_val, rot, 0)?;
+
+                Ok(rotated_word)
+            },
+        )
     }
 
     /// Given three assigned spreaded ~A, ~B, ~C, this function computes the
@@ -522,6 +626,73 @@ impl<F: PrimeField> RipeMD160Chip<F> {
 
         Ok(())
     }
+
+    /// Given a u32 value representing a word and the rotation amount, computes
+    /// and assigns its limb values, coefficients and rotated coefficients
+    /// in the circuit.
+    fn assign_left_rotation(
+        // Note that the limb lengths are not known at compile time, so we
+        // cannot use `assign_plain_and_spreaded`, as const generics here are
+        // not applicable.
+        &self,
+        region: &mut Region<'_, F>,
+        value: Value<u32>,
+        rot: usize,
+        offset: usize,
+    ) -> Result<(), Error> {
+        let limb_values: [Value<u32>; 4] = value.map(|v| limb_values(v, rot)).transpose_array();
+        let sprdd_values: [Value<F>; 4] =
+            limb_values.map(|limb| limb.map(spread)).map(|val| val.map(u64_to_fe));
+        let limb_values: [Value<F>; 4] = limb_values.map(|limb| limb.map(u32_to_fe));
+
+        let (coeffs, coeffs_rot) = limb_coeffs(rot);
+        let coeffs: [Value<F>; 4] = coeffs.map(u32_to_fe).map(Value::known);
+        let coeffs_rot: [Value<F>; 4] = coeffs_rot.map(u32_to_fe).map(Value::known);
+
+        let (limb_lengths, _) = limb_lengths(rot);
+        let limb_lengths: [Value<F>; 4] = limb_lengths.map(|l| F::from(l as u64)).map(Value::known);
+
+        let adv_cols = self.config().advice_cols;
+        let fixed_cols = self.config().fixed_cols;
+
+        region.assign_fixed(|| "tag a", fixed_cols[0], offset, || limb_lengths[0])?;
+        region.assign_advice(|| "limb a", adv_cols[0], offset, || limb_values[0])?;
+        region.assign_advice(|| "~ limb a", adv_cols[1], offset, || sprdd_values[0])?;
+
+        region.assign_fixed(|| "tag b", fixed_cols[1], offset, || limb_lengths[1])?;
+        region.assign_advice(|| "limb b", adv_cols[2], offset, || limb_values[1])?;
+        region.assign_advice(|| "~ limb b", adv_cols[3], offset, || sprdd_values[1])?;
+
+        region.assign_fixed(|| "tag c", fixed_cols[0], offset + 1, || limb_lengths[2])?;
+        region.assign_advice(|| "limb c", adv_cols[0], offset + 1, || limb_values[2])?;
+        region.assign_advice(|| "~ limb c", adv_cols[1], offset + 1, || sprdd_values[2])?;
+
+        region.assign_fixed(|| "tag d", fixed_cols[1], offset + 1, || limb_lengths[3])?;
+        region.assign_advice(|| "limb d", adv_cols[2], offset + 1, || limb_values[3])?;
+        region.assign_advice(|| "~ limb d", adv_cols[3], offset + 1, || sprdd_values[3])?;
+
+        region.assign_fixed(|| "coeff a", fixed_cols[2], offset, || coeffs[0])?;
+        region.assign_fixed(|| "coeff b", fixed_cols[3], offset, || coeffs[1])?;
+        region.assign_fixed(|| "coeff c", fixed_cols[2], offset + 1, || coeffs[2])?;
+        region.assign_fixed(|| "coeff d", fixed_cols[3], offset + 1, || coeffs[3])?;
+
+        region.assign_fixed(|| "rot coeff a", fixed_cols[4], offset, || coeffs_rot[0])?;
+        region.assign_fixed(|| "rot coeff b", fixed_cols[5], offset, || coeffs_rot[1])?;
+        region.assign_fixed(
+            || "rot coeff c",
+            fixed_cols[4],
+            offset + 1,
+            || coeffs_rot[2],
+        )?;
+        region.assign_fixed(
+            || "rot coeff d",
+            fixed_cols[5],
+            offset + 1,
+            || coeffs_rot[3],
+        )?;
+
+        Ok(())
+    }
 }
 
 //     (A ∧ B) ∨ (¬A ∧ C) = (A ∧ B) ⊕ (¬A ∧ C) = Ch(A, B, C)
@@ -560,34 +731,6 @@ impl<F: PrimeField> RipeMD160Chip<F> {
 //     | 11 | Odd_nAC.11a | ~Odd_nAC.11a | 11 | Evn_nAC.11a | ~Evn_nAC.11a | Odd_nAC |  ~(¬A)  |      ~C     | ~0 |
 //     | 11 | Odd_nAC.11b | ~Odd_nAC.11b | 11 | Evn_nAC.11b | ~Evn_nAC.11b |   ~A    |  ~(¬A)  | MASK_EVN_64 |    | <- q_spr_add, q_11_11_10, q_add
 //     | 10 | Odd_nAC.10  |  ~Odd_nAC.10 | 10 | Evn_nAC.10  | ~Evn_nAC.10  |         |         |             |    |
-//
-//
-//     A ∧ B
-//
-//     1) applying the plain-spreaded lookup on 11-11-10 limbs of Evn and Odd:
-//        Evn: (Evn.11a, Evn.11b, Evn.10) Odd: (Odd.11a, Odd.11b, Odd.10)
-//
-//     2) asserting the 11-11-10 decomposition identity for Odd: 2^21 * Odd.11a
-//        + 2^10 * Odd.11b + Odd.10 = Odd
-//
-//     3) asserting the spreaded addition identity regarding the spreaded
-//        values: (4^21 * ~Evn.11a + 4^10 * ~Evn.11b + ~Evn.10) + 2 * (4^21 *
-//        ~Odd.11a + 4^10 * ~Odd.11b + ~Odd.10) = ~A + ~B
-//
-//     The output is Odd.
-//
-//     | T0 |    A0   |     A1   | T1 |    A2   |    A3     |  A4 | A5 | A6 | A7 |
-//     |----|---------|----------|----|---------|-----------|-----|----|----|----|
-//     | 11 | Odd.11a | ~Odd.11a | 11 | Evn.11a | ~Evn.11a  | Odd | ~A | ~B | ~0 |
-//     | 11 | Odd.11b | ~Odd.11b | 11 | Evn.11b | ~Evn.11b  |     |    |    |    | <- q_spr_add, q_11_11_10
-//     | 10 | Odd.10  | ~Odd.10  | 10 | Evn.10  | ~Evn.10   |     |    |    |    |
-//
-//     rotate_left(A, s)
-//
-//     |  T0 |  A0  |  A1   |  T1 |   A2  |   A3   |   A4  | A5 | A6 | A7 |
-//     |-----|------|-------|-----|-------|--------|-------|----|----|----|
-//     | T.1 |  A.1 | ~A.1  | T.3 |  A.3  |  ~A.3  |   A   |    |    |    |
-//     | T.2 |  A.2 | ~A.2  | T.4 |  A.4  |  ~A.4  | Rot(A)|    |    |    | <- q_rol
 //
 //     A ⊞ B ⊞ C ⊞ D
 //
@@ -692,6 +835,10 @@ mod tests {
             let assigned_xor = ripemd160_chip.xor(&mut layouter, &sprdd_d, &sprdd_e)?;
             let expected_xor = fe_to_u32(self.inputs[3]) ^ fe_to_u32(self.inputs[4]);
             assigned_xor.0.value().assert_if_known(|res| **res == u32_to_fe(expected_xor));
+
+            let assigned_rot = ripemd160_chip.left_rotate(&mut layouter, &assigned_words[3], 5)?;
+            let expected_rot = fe_to_u32(self.inputs[3]).rotate_left(5);
+            assigned_rot.0.value().assert_if_known(|res| **res == u32_to_fe(expected_rot));
 
             let res1 = ripemd160_chip.f_type_one(&mut layouter, &sprdd_a, &sprdd_b, &sprdd_c)?;
             let expected_res1 =
