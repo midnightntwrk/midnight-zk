@@ -16,10 +16,11 @@ use crate::{
         types::{AssignedSpreaded, AssignedWord},
         utils::{
             expr_pow2_ip, expr_pow4_ip, gen_spread_table, get_even_and_odd_bits, limb_coeffs,
-            limb_lengths, limb_values, spread, spreaded_sum, u32_in_be_limbs,
+            limb_lengths, limb_values, negate_spreaded, spread, spreaded_sum, u32_in_be_limbs,
+            MASK_EVN_64,
         },
     },
-    instructions::{AssignmentInstructions, DecompositionInstructions, EqualityInstructions},
+    instructions::{DecompositionInstructions, EqualityInstructions},
     types::AssignedByte,
     utils::{
         util::{fe_to_u32, fe_to_u64, u32_to_fe, u64_to_fe},
@@ -31,7 +32,7 @@ use crate::{
 pub const NB_RIPEMD160_ADVICE_COLS: usize = 8;
 
 /// Number of fixed columns used by the identities of the RIPEMD160 chip.
-pub const NB_RIPEMD160_FIXED_COLS: usize = 6;
+pub const NB_RIPEMD160_FIXED_COLS: usize = 7;
 
 /// Tag for the even and odd 11-11-10 decompositions.
 #[derive(Copy, Clone, Debug)]
@@ -59,6 +60,7 @@ pub struct RipeMD160Config {
     q_spr_sum_evn: Selector,
     q_spr_sum_odd: Selector,
     q_left_rot: Selector,
+    q_add: Selector,
 }
 
 /// Chip for RIPEMD160.
@@ -101,6 +103,9 @@ impl<F: PrimeField> ComposableChip<F> for RipeMD160Chip<F> {
         shared_res: &Self::SharedResources,
     ) -> Self::Config {
         let fixed_cols = shared_res.1;
+        // The last fixed column is used for the constants of 0 which will be assigned
+        // in the advice columns.
+        meta.enable_constant(fixed_cols[NB_RIPEMD160_FIXED_COLS - 1]);
 
         // Columns A0, A1, A2 and A3 do not need to be copy-enabled.
         // We have the convention that chips enable copy in a prefix of their shared
@@ -122,6 +127,7 @@ impl<F: PrimeField> ComposableChip<F> for RipeMD160Chip<F> {
         let q_spr_sum_evn = meta.selector();
         let q_spr_sum_odd = meta.selector();
         let q_left_rot = meta.selector();
+        let q_add = meta.selector();
 
         (0..2).for_each(|idx| {
             meta.lookup("plain-spreaded lookup", |meta| {
@@ -231,6 +237,16 @@ impl<F: PrimeField> ComposableChip<F> for RipeMD160Chip<F> {
             )
         });
 
+        meta.create_gate("addition", |meta| {
+            let a = meta.query_advice(advice_cols[4], Rotation(0));
+            let b = meta.query_advice(advice_cols[5], Rotation(0));
+            let c = meta.query_advice(advice_cols[6], Rotation(0));
+
+            let id = a + b - c;
+
+            Constraints::with_selector(q_add, vec![("addition", id)])
+        });
+
         RipeMD160Config {
             advice_cols,
             fixed_cols,
@@ -240,6 +256,7 @@ impl<F: PrimeField> ComposableChip<F> for RipeMD160Chip<F> {
             q_spr_sum_evn,
             q_spr_sum_odd,
             q_left_rot,
+            q_add,
         }
     }
 
@@ -285,27 +302,27 @@ impl<F: PrimeField> RipeMD160Chip<F> {
             .unwrap())
     }
 
-    /// Given an assigned word A, this function prepares its spreaded form.
+    /// Given an assigned word X, this function prepares its spreaded form.
     fn prepare_spreaded(
         &self,
         layouter: &mut impl Layouter<F>,
         word: &AssignedWord<F>,
     ) -> Result<AssignedSpreaded<F, 32>, Error> {
         /*
-         Given assigned word A, we first compute its spreaded form ~A, and then
-         apply [`assign_sprdd_sum`] to the assigned values of ~A, ~0, ~0 as follows:
+         Given assigned word X, we first compute its spreaded form ~X, and then
+         apply [`assign_sprdd_11_11_10`] to the value of ~X as follows:
 
         | T0 |    A0   |     A1   | T1 |   A2   |   A3   |  A4 | A5 | A6 | A7 |
         |----|---------|----------|----|--------|--------|-----|----|----|----|
-        | 11 | Evn.11a | ~Evn.11a | 11 |   0    |   ~0   | Evn | ~A | ~0 | ~0 |
-        | 11 | Evn.11a | ~Evn.11a | 11 |   0    |   ~0   |     |    |    |    | <- q_spr_add, q_11_11_10
+        | 11 | Evn.11a | ~Evn.11a | 11 |   0    |   ~0   | Evn | ~X | ~0 | ~0 |
+        | 11 | Evn.11a | ~Evn.11a | 11 |   0    |   ~0   |     |    |    |    | <- q_spr_sum_evn, q_11_11_10
         | 10 | Evn.11a | ~Evn.11a | 10 |   0    |   ~0   |     |    |    |    |
 
         with constraints of:
 
-          1) applying the plain-spreaded lookup on 11-11-10 limbs of Evn and Odd:
+         1) applying the plain-spreaded lookup on 11-11-10 limbs of Evn and Odd:
               Evn: (Evn.11a, Evn.11b, Evn.10)
-              Odd: (Odd.11a, Odd.11b, Odd.10)
+              Odd: (0, 0, 0)
 
          2) asserting the 11-11-10 decomposition identity for Evn:
                2^21 * Evn.11a + 2^10 * Evn.11b + Evn.10
@@ -314,63 +331,149 @@ impl<F: PrimeField> RipeMD160Chip<F> {
          3) asserting the spr_sum_evn identity:
                (4^21 * ~Evn.11a + 4^10 * ~Evn.11b + ~Evn.10) +
            2 * (4^21 * ~0       + 4^10 * ~0       + ~0     )
-              = ~A + ~0 + ~0
+              = ~X + ~0 + ~0
 
          4) asserting that:
-                 Evn = A
-         */
-        let sprdd_val = word.0.value().map(|&w| spread(fe_to_u32(w))).map(u64_to_fe);
+                 Evn = X
+        */
+        let adv_cols = self.config().advice_cols;
+        let sprdd_val = word.0.value().map(|&w| spread(fe_to_u32(w)));
 
-        let v: Vec<AssignedSpreaded<F, 32>> = self
-            .native_gadget
-            .assign_many(
-                layouter,
-                &[sprdd_val, Value::known(F::ZERO), Value::known(F::ZERO)],
-            )?
-            .into_iter()
-            .map(AssignedSpreaded)
-            .collect();
-        let [sprdd_word, sprdd_zero_a, sprdd_zero_b]: [AssignedSpreaded<F, 32>; 3] =
-            v.try_into().unwrap();
+        let (res, sprdd_word) = layouter.assign_region(
+            || "Assign prepare_spreaded",
+            |mut region| {
+                self.config().q_spr_sum_evn.enable(&mut region, 1)?;
 
-        let even = self.assign_sprdd_sum(
-            layouter,
-            Parity::Evn,
-            &sprdd_word,
-            &sprdd_zero_a,
-            &sprdd_zero_b,
+                let sprdd_word = region
+                    .assign_advice(|| "sprdd_word", adv_cols[5], 0, || sprdd_val.map(u64_to_fe))
+                    .map(AssignedSpreaded)?;
+                region.assign_advice_from_constant(|| "sprdd_ZERO", adv_cols[6], 0, F::ZERO)?;
+                region.assign_advice_from_constant(|| "sprdd_ZERO", adv_cols[7], 0, F::ZERO)?;
+
+                let res = self.assign_sprdd_11_11_10(&mut region, sprdd_val, Parity::Evn, 0)?;
+
+                Ok((res, sprdd_word))
+            },
         )?;
 
-        let _ = self.native_gadget.is_equal(layouter, &word.0, &even.0)?;
+        let _ = self.native_gadget.is_equal(layouter, &word.0, &res.0)?;
         Ok(sprdd_word)
     }
 
-    /// Given two assigned spreaded ~X and ~Y, this function computes their
-    /// bitwise AND, returning X & Y as an assigned word.
+    /// Given two assigned spreaded ~X and ~Y, this function returns X ∧ Y
+    /// the bitwise AND as an assigned word.
     fn and(
         &self,
         layouter: &mut impl Layouter<F>,
-        sprdd_x: &AssignedSpreaded<F, 32>,
-        sprdd_y: &AssignedSpreaded<F, 32>,
+        sprdd_X: &AssignedSpreaded<F, 32>,
+        sprdd_Y: &AssignedSpreaded<F, 32>,
     ) -> Result<AssignedWord<F>, Error> {
-        // X & Y can be computed as the odd part of ~X + ~Y.
-        let assigned_zero =
-            self.native_gadget.assign_fixed(layouter, F::ZERO).map(AssignedSpreaded)?;
-        self.assign_sprdd_sum(layouter, Parity::Odd, sprdd_x, sprdd_y, &assigned_zero)
+        /*
+        X ∧ Y can be computed as the odd part of ~X + ~Y + ~0. We apply [`assign_sprdd_11_11_10`]
+        to the value of ~X + ~Y + ~0 as follows:
+
+        | T0 |    A0   |    A1    | T1 |    A2   |    A3    |  A4 |  A5 | A6 | A7 |
+        |----|---------|----------|----|---------|----------|-----|-----|----|----|
+        | 11 | Odd.11a | ~Odd.11a | 11 | Evn.11a | ~Evn.11a | Odd |  ~X | ~Y | ~0 |
+        | 11 | Odd.11b | ~Odd.11b | 11 | Evn.11b | ~Evn.11b |     |     |    |    | <- q_11_11_10, q_spr_sum_odd
+        | 10 | Odd.10  | ~Odd.10  | 10 | Evn.10  | ~Evn.10  |     |     |    |    |
+
+        with constraints of:
+
+        1) applying the plain-spreaded lookup on 11-11-10 limbs of Evn and Odd:
+             Odd: (Odd.11a, Odd.11b, Odd.10)
+             Evn: (Evn.11a, Evn.11b, Evn.10)
+
+        2) asserting the 11-11-10 decomposition identity for Odd:
+              2^21 * Odd.11a + 2^10 * Odd.11b + Odd.10
+            = Odd
+
+        3) asserting the spr_sum_odd identity:
+              (4^21 * ~Evn.11a + 4^10 * ~Evn.11b + ~Evn.10) +
+          2 * (4^21 * ~Odd.11a + 4^10 * ~Odd.11b + ~Odd.10)
+             = ~X + ~Y + ~0
+
+        and returns `Odd`
+        */
+        let adv_cols = self.config().advice_cols;
+        let val_of_sprdd_forms: Value<[u64; 3]> = Value::from_iter([
+            sprdd_X.0.value().copied().map(fe_to_u64),
+            sprdd_Y.0.value().copied().map(fe_to_u64),
+            Value::known(0u64),
+        ])
+        .map(|sprdd_forms: Vec<u64>| sprdd_forms.try_into().unwrap());
+        let val_of_sum = val_of_sprdd_forms.map(|vals| spreaded_sum(vals));
+
+        layouter.assign_region(
+            || "Assign AND",
+            |mut region| {
+                self.config().q_spr_sum_odd.enable(&mut region, 1)?;
+
+                sprdd_X.0.copy_advice(|| "sprdd_X", &mut region, adv_cols[5], 0)?;
+                sprdd_Y.0.copy_advice(|| "sprdd_Y", &mut region, adv_cols[6], 0)?;
+                region.assign_advice_from_constant(|| "sprdd_ZERO", adv_cols[7], 0, F::ZERO)?;
+
+                self.assign_sprdd_11_11_10(&mut region, val_of_sum, Parity::Odd, 0)
+            },
+        )
     }
 
-    /// Given two assigned spreaded ~X and ~Y, this function computes their
-    /// bitwise XOR, returning X ⊕ Y as an assigned word.
+    /// Given two assigned spreaded ~X and ~Y, this function returns X ⊕ Y
+    /// the bitwise XOR as an assigned word.
     fn xor(
         &self,
         layouter: &mut impl Layouter<F>,
-        sprdd_x: &AssignedSpreaded<F, 32>,
-        sprdd_y: &AssignedSpreaded<F, 32>,
+        sprdd_X: &AssignedSpreaded<F, 32>,
+        sprdd_Y: &AssignedSpreaded<F, 32>,
     ) -> Result<AssignedWord<F>, Error> {
-        // X ⊕ Y can be computed as the even part of ~X + ~Y.
-        let assigned_zero =
-            self.native_gadget.assign_fixed(layouter, F::ZERO).map(AssignedSpreaded)?;
-        self.assign_sprdd_sum(layouter, Parity::Evn, sprdd_x, sprdd_y, &assigned_zero)
+        /*
+        X ⊕ Y can be computed as the even part of ~X + ~Y + ~0. We apply [`assign_sprdd_11_11_10`]
+        to the value of ~X + ~Y + ~0 as follows:
+
+        | T0 |    A0   |    A1    | T1 |    A2   |    A3    |  A4 |  A5 | A6 | A7 |
+        |----|---------|----------|----|---------|----------|-----|-----|----|----|
+        | 11 | Evn.11a | ~Evn.11a | 11 | Odd.11a | ~Odd.11a | Evn |  ~X | ~Y | ~0 |
+        | 11 | Evn.11b | ~Evn.11b | 11 | Odd.11b | ~Odd.11b |     |     |    |    | <- q_11_11_10, q_spr_sum_evn
+        | 10 | Evn.10  | ~Evn.10  | 10 | Odd.10  | ~Odd.10  |     |     |    |    |
+
+        with constraints of:
+
+        1) applying the plain-spreaded lookup on 11-11-10 limbs of Evn and Odd:
+             Evn: (Evn.11a, Evn.11b, Evn.10)
+             Odd: (Odd.11a, Odd.11b, Odd.10)
+
+        2) asserting the 11-11-10 decomposition identity for Evn:
+              2^21 * Evn.11a + 2^10 * Evn.11b + Evn.10
+            = Evn
+
+        3) asserting the spr_sum_evn identity:
+              (4^21 * ~Evn.11a + 4^10 * ~Evn.11b + ~Evn.10) +
+          2 * (4^21 * ~Odd.11a + 4^10 * ~Odd.11b + ~Odd.10)
+             = ~A + ~B + ~C
+
+        and returns `Evn`.
+        */
+        let adv_cols = self.config().advice_cols;
+        let val_of_sprdd_forms: Value<[u64; 3]> = Value::from_iter([
+            sprdd_X.0.value().copied().map(fe_to_u64),
+            sprdd_Y.0.value().copied().map(fe_to_u64),
+            Value::known(0u64),
+        ])
+        .map(|sprdd_forms: Vec<u64>| sprdd_forms.try_into().unwrap());
+        let val_of_sum = val_of_sprdd_forms.map(|vals| spreaded_sum(vals));
+
+        layouter.assign_region(
+            || "Assign XOR",
+            |mut region| {
+                self.config().q_spr_sum_evn.enable(&mut region, 1)?;
+
+                sprdd_X.0.copy_advice(|| "sprdd_X", &mut region, adv_cols[5], 0)?;
+                sprdd_Y.0.copy_advice(|| "sprdd_Y", &mut region, adv_cols[6], 0)?;
+                region.assign_advice_from_constant(|| "spreaded ZERO", adv_cols[7], 0, F::ZERO)?;
+
+                self.assign_sprdd_11_11_10(&mut region, val_of_sum, Parity::Evn, 0)
+            },
+        )
     }
 
     /// Given three assigned spreaded ~X, ~Y, ~Z, this function computes the
@@ -379,16 +482,167 @@ impl<F: PrimeField> RipeMD160Chip<F> {
     fn f_type_one(
         &self,
         layouter: &mut impl Layouter<F>,
-        sprdd_x: &AssignedSpreaded<F, 32>,
-        sprdd_y: &AssignedSpreaded<F, 32>,
-        sprdd_z: &AssignedSpreaded<F, 32>,
+        sprdd_X: &AssignedSpreaded<F, 32>,
+        sprdd_Y: &AssignedSpreaded<F, 32>,
+        sprdd_Z: &AssignedSpreaded<F, 32>,
     ) -> Result<AssignedWord<F>, Error> {
-        // f(X, Y, Z) = X ⊕ Y ⊕ Z can be computed as the even part of ~X + ~Y + ~Z.
-        self.assign_sprdd_sum(layouter, Parity::Evn, sprdd_x, sprdd_y, sprdd_z)
+        /*
+        f(X, Y, Z) = X ⊕ Y ⊕ Z can be computed as the even part of ~X + ~Y + ~Z. We apply
+        [`assign_sprdd_11_11_10`] to the value of ~X + ~Y + ~Z as follows:
+
+        | T0 |    A0   |    A1    | T1 |    A2   |    A3    |  A4 |  A5 | A6 | A7 |
+        |----|---------|----------|----|---------|----------|-----|-----|----|----|
+        | 11 | Evn.11a | ~Evn.11a | 11 | Odd.11a | ~Odd.11a | Evn |  ~X | ~Y | ~Z |
+        | 11 | Evn.11b | ~Evn.11b | 11 | Odd.11b | ~Odd.11b |     |     |    |    | <- q_11_11_10, q_spr_sum_evn
+        | 10 | Evn.10  | ~Evn.10  | 10 | Odd.10  | ~Odd.10  |     |     |    |    |
+
+        with constraints of:
+
+        1) applying the plain-spreaded lookup on 11-11-10 limbs of Evn and Odd:
+             Evn: (Evn.11a, Evn.11b, Evn.10)
+             Odd: (Odd.11a, Odd.11b, Odd.10)
+
+        2) asserting the 11-11-10 decomposition identity for Evn:
+              2^21 * Evn.11a + 2^10 * Evn.11b + Evn.10
+            = Evn
+
+        3) asserting the spr_sum_evn identity:
+              (4^21 * ~Evn.11a + 4^10 * ~Evn.11b + ~Evn.10) +
+          2 * (4^21 * ~Odd.11a + 4^10 * ~Odd.11b + ~Odd.10)
+             = ~X + ~Y + ~Z
+
+        and returns `Evn`.
+        */
+        let adv_cols = self.config().advice_cols;
+        let val_of_sprdd_forms: Value<[u64; 3]> = Value::from_iter([
+            sprdd_X.0.value().copied().map(fe_to_u64),
+            sprdd_Y.0.value().copied().map(fe_to_u64),
+            sprdd_Z.0.value().copied().map(fe_to_u64),
+        ])
+        .map(|sprdd_forms: Vec<u64>| sprdd_forms.try_into().unwrap());
+        let val_of_sum = val_of_sprdd_forms.map(|vals| spreaded_sum(vals));
+
+        layouter.assign_region(
+            || "Assign f_type_one",
+            |mut region| {
+                self.config().q_spr_sum_evn.enable(&mut region, 1)?;
+
+                sprdd_X.0.copy_advice(|| "sprdd_X", &mut region, adv_cols[5], 0)?;
+                sprdd_Y.0.copy_advice(|| "sprdd_Y", &mut region, adv_cols[6], 0)?;
+                sprdd_Z.0.copy_advice(|| "sprdd_Z", &mut region, adv_cols[7], 0)?;
+
+                self.assign_sprdd_11_11_10(&mut region, val_of_sum, Parity::Evn, 0)
+            },
+        )
     }
 
-    /// Given an assigned word A and a left rotation amount `rot`, this function
-    /// computes the left rotation of A by `rot` bits, returning Rot(A) as an
+    /// Given three assigned spreaded ~X, ~Y, ~Z, this function computes the
+    /// value of f(X, Y, Z) = (X ∧ Y) ∨ (¬X ∧ Z), defined as type two function in
+    /// RIPEMD160.
+    fn f_type_two(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        sprdd_X: &AssignedSpreaded<F, 32>,
+        sprdd_Y: &AssignedSpreaded<F, 32>,
+        sprdd_Z: &AssignedSpreaded<F, 32>,
+    ) -> Result<AssignedWord<F>, Error> {
+        /*
+         f(X, Y, Z) = (X ∧ Y) ∨ (¬X ∧ Z) = (X ∧ Y) ⊕ (¬X ∧ Z)
+         Therefore, f(X, Y, Z) is exactly Ch(X, Y, Z) from SHA256, and we apply the same
+         technique used in SHA256 chip to compute it, except that we fill A7 with ~0 constant
+         to satisfy the spr_sum_odd constraint:
+
+         | T0 |      A0     |      A1      | T1 |      A2     |      A3      |    A4   |    A5   |      A6     | A7 |
+         |----|-------------|--------------|----|-------------|--------------|---------|---------|-------------|----|
+         | 11 |  Odd_XY.11a |  ~Odd_XY.11a | 11 |  Evn_XY.11a |  ~Evn_XY.11a | Odd_XY  |   ~X    |      ~Y     | ~0 |
+         | 11 |  Odd_XY.11b |  ~Odd_XY.11b | 11 |  Evn_XY.11b |  ~Evn_XY.11b | Odd_XY  | Odd_nXZ |     Ret     |    | <- q_spr_sum_odd, q_11_11_10, q_add
+         | 10 |  Odd_XY.10  |   ~Odd_XY.10 | 10 |  Evn_XY.10  |  ~Evn_XY.10  |         |         |             |    |
+         | 11 | Odd_nXZ.11a | ~Odd_nXZ.11a | 11 | Evn_nXZ.11a | ~Evn_nXZ.11a | Odd_nXZ |  ~(¬X)  |      ~Z     | ~0 |
+         | 11 | Odd_nXZ.11b | ~Odd_nXZ.11b | 11 | Evn_nXZ.11b | ~Evn_nXZ.11b |   ~X    |  ~(¬X)  | MASK_EVN_64 |    | <- q_spr_sum_odd, q_11_11_10, q_add
+         | 10 | Odd_nXZ.10  |  ~Odd_nXZ.10 | 10 | Evn_nXZ.10  | ~Evn_nXZ.10  |         |         |             |    |
+
+        with constraints of:
+
+        1) applying the plain-spreaded lookup on 11-11-10 limbs of Evn and Odd,
+           for both (~X + ~Y) and (~(¬X) + ~Z): 
+             Evn_XY: (Evn_XY.11a, Evn_XY.11b, Evn_XY.10) 
+             Odd_XY: (Odd_XY.11a, Odd_XY.11b, Odd_XY.10)
+             Evn_nXZ: (Evn_nXZ.11a, Evn_nXZ.11b, Evn_nXZ.10)
+             Odd_nXZ: (Odd_nXZ.11a, Odd_nXZ.11b, Odd_nXZ.10)
+        2) asserting the 11-11-10 decomposition identity for Odd_XY and Odd_nXZ:
+             2^21 * Odd_XY.11a + 2^10 * Odd_XY.11b + Odd_XY.10 
+            = Odd_XY
+             2^21 * Odd_nXZ.11a + 2^10 * Odd_nXZ.11b + Odd_nXZ.10
+            = Odd_nXZ
+
+        3) asserting the sprdd_sum_odd identity for (~X + ~Y + ~0) and (~(¬X) + ~Z + ~0): 
+             (4^21 * ~Evn_XY.11a + 4^10 * ~Evn_XY.11b + ~Evn_XY.10) + 2 *
+             (4^21 * ~Odd_XY.11a + 4^10 * ~Odd_XY.11b + ~Odd_XY.10) 
+            = ~X + ~Y + ~0
+
+             (4^21 * ~Evn_nXZ.11a + 4^10 * ~Evn_nXZ.11b + ~Evn_nXZ.10) +
+         2 * (4^21 * ~Odd_nXZ.11a + 4^10 * ~Odd_nXZ.11b + ~Odd_nXZ.10)
+            = ~(¬X) + ~Z + ~0
+        4) asserting the addition identities: 
+            Ret         = Odd_XY + Odd_nXZ 
+            MASK_EVN_64 = ~X + ~(¬X)
+
+        The output is Ret.
+        */
+        let adv_cols = self.config().advice_cols;
+
+        let sprdd_X_val = sprdd_X.0.value().copied().map(fe_to_u64);
+        let sprdd_Y_val = sprdd_Y.0.value().copied().map(fe_to_u64);
+        let sprdd_Z_val = sprdd_Z.0.value().copied().map(fe_to_u64);
+        let sprdd_nX_val = sprdd_X_val.map(negate_spreaded);
+
+        let XplusY_val = sprdd_X_val + sprdd_Y_val;
+        let nXplusZ_val = sprdd_nX_val + sprdd_Z_val;
+        let sprdd_nX_val: Value<F> = sprdd_nX_val.map(u64_to_fe);
+
+        layouter.assign_region(
+            || "Assign f_type_two",
+            |mut region| {
+                self.config().q_spr_sum_odd.enable(&mut region, 1)?;
+                self.config().q_add.enable(&mut region, 1)?;
+                self.config().q_spr_sum_odd.enable(&mut region, 4)?;
+                self.config().q_add.enable(&mut region, 4)?;
+
+                region.assign_advice_from_constant(|| "sprdd_ZERO", adv_cols[7], 0, F::ZERO)?;
+                region.assign_advice_from_constant(|| "sprdd_ZERO", adv_cols[7], 3, F::ZERO)?;
+
+                sprdd_X.0.copy_advice(|| "sprdd_X", &mut region, adv_cols[5], 0)?;
+                sprdd_X.0.copy_advice(|| "sprdd_X", &mut region, adv_cols[4], 4)?;
+
+                sprdd_Y.0.copy_advice(|| "sprdd_Y", &mut region, adv_cols[6], 0)?;
+                sprdd_Z.0.copy_advice(|| "sprdd_Z", &mut region, adv_cols[6], 3)?;
+
+                let sprdd_nX =
+                    region.assign_advice(|| "sprdd_nX", adv_cols[5], 3, || sprdd_nX_val)?;
+                sprdd_nX.copy_advice(|| "sprdd_nX", &mut region, adv_cols[5], 4)?;
+
+                region.assign_advice_from_constant(
+                    || "MASK_EVN_64",
+                    adv_cols[6],
+                    4,
+                    F::from(MASK_EVN_64),
+                )?;
+
+                let odd_XY = self.assign_sprdd_11_11_10(&mut region, XplusY_val, Parity::Odd, 0)?;
+                odd_XY.0.copy_advice(|| "Odd_XY", &mut region, adv_cols[4], 1)?;
+
+                let odd_nXZ =
+                    self.assign_sprdd_11_11_10(&mut region, nXplusZ_val, Parity::Odd, 3)?;
+                odd_nXZ.0.copy_advice(|| "Odd_nXZ", &mut region, adv_cols[5], 1)?;
+
+                let ret_val = odd_XY.0.value().copied() + odd_nXZ.0.value().copied();
+                region.assign_advice(|| "Ret", adv_cols[6], 1, || ret_val).map(AssignedWord)
+            },
+        )
+    }
+
+    /// Given an assigned word X and a left rotation amount `rot`, this function
+    /// computes the left rotation of X by `rot` bits, returning Rot(X) as an
     /// assigned word.
     fn left_rotate(
         &self,
@@ -397,12 +651,12 @@ impl<F: PrimeField> RipeMD160Chip<F> {
         rot: usize,
     ) -> Result<AssignedWord<F>, Error> {
         /*
-         Computing the left rotation Rol(A, rot) fills the circuit layout as follows:
+         Computing the left rotation Rol(X, rot) fills the circuit layout as follows:
 
         |  T0 |   A0  |   A1  |  T1 |   A2  |   A3  |   A4  |   T2    |   T3    |      T4     |      T5     |
         |-----|-------|-------|-----|-------|-------|-------|---------|---------|-------------|-------------|
-        | t_a |  l_a  | ~l_a  | t_b |  l_b  | ~l_b  |   A   | coeff_a | coeff_b | coeff_a_rot | coeff_a_rot | <- q_lookup
-        | t_c |  l_c  | ~l_c  | t_d |  l_d  | ~l_d  | Rot(A)| coeff_c | coeff_d | coeff_a_rot | coeff_a_rot | <- q_lookup, q_left_rot
+        | t_a |  l_a  | ~l_a  | t_b |  l_b  | ~l_b  |   X   | coeff_a | coeff_b | coeff_a_rot | coeff_a_rot | <- q_lookup
+        | t_c |  l_c  | ~l_c  | t_d |  l_d  | ~l_d  | Rot(X)| coeff_c | coeff_d | coeff_a_rot | coeff_a_rot | <- q_lookup, q_left_rot
 
         with constraints of:
 
@@ -414,11 +668,11 @@ impl<F: PrimeField> RipeMD160Chip<F> {
 
          2) asserting the decomposition identity of A:
                coeff_a * l_a + coeff_b * l_b + coeff_c * l_c + coeff_d * l_d
-             = A
+             = X
 
-         3) asserting the decomposition identity of Rot(A):
+         3) asserting the decomposition identity of Rot(X):
                coeff_a_rot * l_a + coeff_b_rot * l_b + coeff_c_rot * l_c + coeff_d_rot * l_d
-             = Rot(A)
+             = Rot(X)
         */
         let word_val = word.0.value().map(|&w| fe_to_u32(w));
         let rot_val = word_val.map(|w| w.rotate_left(rot as u32)).map(u32_to_fe);
@@ -445,100 +699,6 @@ impl<F: PrimeField> RipeMD160Chip<F> {
                 self.assign_left_rotation(&mut region, word_val, rot, 0)?;
 
                 Ok(rotated_word)
-            },
-        )
-    }
-
-    /// Given three assigned spreaded ~A, ~B, ~C, this function computes the
-    /// value of ~A + ~B + ~C, and fills a lookup table with the limbs of its
-    /// even and odd parts (or vice versa) and returns the former or the
-    /// latter, depending on the desired value `even_or_odd`.
-    fn assign_sprdd_sum(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        even_or_odd: Parity,
-        sprdd_a: &AssignedSpreaded<F, 32>,
-        sprdd_b: &AssignedSpreaded<F, 32>,
-        sprdd_c: &AssignedSpreaded<F, 32>,
-    ) -> Result<AssignedWord<F>, Error> {
-        /*
-        1) If `even_or_odd` = `Parity::Evn`, the circuit layout is as follows:
-
-        | T0 |    A0   |    A1    | T1 |    A2   |    A3    |  A4 |  A5 | A6 | A7 |
-        |----|---------|----------|----|---------|----------|-----|-----|----|----|
-        | 11 | Evn.11a | ~Evn.11a | 11 | Odd.11a | ~Odd.11a | Evn |  ~A | ~B | ~C |
-        | 11 | Evn.11b | ~Evn.11b | 11 | Odd.11b | ~Odd.11b |     |     |    |    | <- q_11_11_10, q_spr_sum_evn
-        | 10 | Evn.10  | ~Evn.10  | 10 | Odd.10  | ~Odd.10  |     |     |    |    |
-
-        with constraints of:
-
-        1) applying the plain-spreaded lookup on 11-11-10 limbs of Evn and Odd:
-             Evn: (Evn.11a, Evn.11b, Evn.10)
-             Odd: (Odd.11a, Odd.11b, Odd.10)
-
-        2) asserting the 11-11-10 decomposition identity for Evn:
-              2^21 * Evn.11a + 2^10 * Evn.11b + Evn.10
-            = Evn
-
-        3) asserting the spr_sum_evn identity:
-              (4^21 * ~Evn.11a + 4^10 * ~Evn.11b + ~Evn.10) +
-          2 * (4^21 * ~Odd.11a + 4^10 * ~Odd.11b + ~Odd.10)
-             = ~A + ~B + ~C
-
-        and returns `Evn`.
-
-        2) If `even_or_odd` = `Parity::Odd`, the circuit layout is as follows:
-
-        | T0 |    A0   |    A1    | T1 |    A2   |    A3    |  A4 |  A5 | A6 | A7 |
-        |----|---------|----------|----|---------|----------|-----|-----|----|----|
-        | 11 | Odd.11a | ~Odd.11a | 11 | Evn.11a | ~Evn.11a | Odd |  ~A | ~B | ~C |
-        | 11 | Odd.11b | ~Odd.11b | 11 | Evn.11b | ~Evn.11b |     |     |    |    | <- q_11_11_10, q_spr_sum_odd
-        | 10 | Odd.10  | ~Odd.10  | 10 | Evn.10  | ~Evn.10  |     |     |    |    |
-
-        with constraints of:
-
-        1) applying the plain-spreaded lookup on 11-11-10 limbs of Evn and Odd:
-             Odd: (Odd.11a, Odd.11b, Odd.10)
-             Evn: (Evn.11a, Evn.11b, Evn.10)
-
-        2) asserting the 11-11-10 decomposition identity for Odd:
-              2^21 * Odd.11a + 2^10 * Odd.11b + Odd.10
-            = Odd
-
-        3) asserting the spr_sum_odd identity:
-              (4^21 * ~Evn.11a + 4^10 * ~Evn.11b + ~Evn.10) +
-          2 * (4^21 * ~Odd.11a + 4^10 * ~Odd.11b + ~Odd.10)
-             = ~A + ~B + ~C
-
-        and returns `Odd`.
-        */
-        let adv_cols = self.config().advice_cols;
-
-        layouter.assign_region(
-            || "Assign spreaded sum",
-            |mut region| {
-                match even_or_odd {
-                    Parity::Evn => self.config().q_spr_sum_evn.enable(&mut region, 1)?,
-                    Parity::Odd => self.config().q_spr_sum_odd.enable(&mut region, 1)?,
-                };
-
-                sprdd_a.0.copy_advice(|| "~A", &mut region, adv_cols[5], 0)?;
-                sprdd_b.0.copy_advice(|| "~B", &mut region, adv_cols[6], 0)?;
-                sprdd_c.0.copy_advice(|| "~C", &mut region, adv_cols[7], 0)?;
-
-                let val_of_sprdd_forms: Value<[u64; 3]> = Value::from_iter([
-                    sprdd_a.0.value().copied().map(fe_to_u64),
-                    sprdd_b.0.value().copied().map(fe_to_u64),
-                    sprdd_c.0.value().copied().map(fe_to_u64),
-                ])
-                .map(|sprdd_forms: Vec<u64>| sprdd_forms.try_into().unwrap());
-
-                self.assign_sprdd_11_11_10(
-                    &mut region,
-                    val_of_sprdd_forms.map(spreaded_sum),
-                    even_or_odd,
-                    0,
-                )
             },
         )
     }
@@ -631,9 +791,8 @@ impl<F: PrimeField> RipeMD160Chip<F> {
     /// and assigns its limb values, coefficients and rotated coefficients
     /// in the circuit.
     fn assign_left_rotation(
-        // Note that the limb lengths are not known at compile time, so we
-        // cannot use `assign_plain_and_spreaded`, as const generics here are
-        // not applicable.
+        // Note that the limb lengths are not known at compile time, so const generics are
+        // not applicable and then we cannot use `assign_plain_and_spreaded`.
         &self,
         region: &mut Region<'_, F>,
         value: Value<u32>,
@@ -695,43 +854,6 @@ impl<F: PrimeField> RipeMD160Chip<F> {
     }
 }
 
-//     (A ∧ B) ∨ (¬A ∧ C) = (A ∧ B) ⊕ (¬A ∧ C) = Ch(A, B, C)
-//
-//     1) applying the plain-spreaded lookup on 11-11-10 limbs of Evn and Odd,
-//        for both (~A + ~B) and (~(¬A) + ~C): Evn_AB: (Evn_AB.11a, Evn_AB.11b,
-//        Evn_AB.10) Odd_AB: (Odd_AB.11a, Odd_AB.11b, Odd_AB.10)
-//
-//             Evn_nAC: (Evn_nAC.11a, Evn_nAC.11b, Evn_nAC.10)
-//             Odd_nAC: (Odd_nAC.11a, Odd_nAC.11b, Odd_nAC.10)
-//
-//     2) asserting the 11-11-10 decomposition identity for Odd_AB and Odd_nAC:
-//        2^21 * Odd_AB.11a + 2^10 * Odd_AB.11b + Odd_AB.10 = Odd_AB
-//
-//             2^21 * Odd_nAC.11a + 2^10 * Odd_nAC.11b + Odd_nAC.10
-//         = Odd_nAC
-//
-//     3) asserting the spreaded addition identity for (~A + ~B) and (~(¬A) +
-//        ~C): (4^21 * ~Evn_AB.11a + 4^10 * ~Evn_AB.11b + ~Evn_AB.10) + 2 *
-//        (4^21 * ~Odd_AB.11a + 4^10 * ~Odd_AB.11b + ~Odd_AB.10) = ~A + ~B
-//
-//             (4^21 * ~Evn_nAC.11a + 4^10 * ~Evn_nAC.11b + ~Evn_nAC.10) +
-//         2 * (4^21 * ~Odd_nAC.11a + 4^10 * ~Odd_nAC.11b + ~Odd_nAC.10)
-//             = ~(¬A) + ~C
-//
-//     4) asserting the following two addition identities: Ret = Odd_AB +
-//        Odd_nAC MASK_EVN_64 = ~A + ~(¬A)
-//
-//     The output is Ret.
-//
-//     | T0 |      A0     |      A1      | T1 |      A2     |      A3      |    A4   |    A5   |      A6     | A7 |
-//     |----|-------------|--------------|----|-------------|--------------|---------|---------|-------------|----|
-//     | 11 |  Odd_AB.11a |  ~Odd_AB.11a | 11 |  Evn_AB.11a |  ~Evn_AB.11a | Odd_AB  |   ~A    |      ~B     | ~0 |
-//     | 11 |  Odd_AB.11b |  ~Odd_AB.11b | 11 |  Evn_AB.11b |  ~Evn_AB.11b | Odd_AB  | Odd_nAC |     Ret     |    | <- q_spr_add, q_11_11_10, q_add
-//     | 10 |  Odd_AB.10  |   ~Odd_AB.10 | 10 |  Evn_AB.10  |  ~Evn_AB.10  |         |         |             |    |
-//     | 11 | Odd_nAC.11a | ~Odd_nAC.11a | 11 | Evn_nAC.11a | ~Evn_nAC.11a | Odd_nAC |  ~(¬A)  |      ~C     | ~0 |
-//     | 11 | Odd_nAC.11b | ~Odd_nAC.11b | 11 | Evn_nAC.11b | ~Evn_nAC.11b |   ~A    |  ~(¬A)  | MASK_EVN_64 |    | <- q_spr_add, q_11_11_10, q_add
-//     | 10 | Odd_nAC.10  |  ~Odd_nAC.10 | 10 | Evn_nAC.10  | ~Evn_nAC.10  |         |         |             |    |
-//
 //     A ⊞ B ⊞ C ⊞ D
 //
 //     |  T0 |   A0  |   A1   |  T1 |   A2  |   A3   |   A4  | A5 | A6 | A7 |
@@ -752,6 +874,7 @@ mod tests {
             native::{NB_ARITH_COLS, NB_ARITH_FIXED_COLS},
             AssignedNative,
         },
+        instructions::AssignmentInstructions,
         testing_utils::FromScratch,
     };
 
@@ -844,6 +967,11 @@ mod tests {
             let expected_res1 =
                 fe_to_u32(self.inputs[0]) ^ fe_to_u32(self.inputs[1]) ^ fe_to_u32(self.inputs[2]);
             res1.0.value().assert_if_known(|res| **res == u32_to_fe(expected_res1));
+
+            let res2 = ripemd160_chip.f_type_two(&mut layouter, &sprdd_b, &sprdd_c, &sprdd_d)?;
+            let expected_res2 = (fe_to_u32(self.inputs[1]) & fe_to_u32(self.inputs[2]))
+                | (!fe_to_u32(self.inputs[1]) & fe_to_u32(self.inputs[3]));
+            res2.0.value().assert_if_known(|res| **res == u32_to_fe(expected_res2));
 
             Ok(())
         }

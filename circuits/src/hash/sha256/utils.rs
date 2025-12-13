@@ -1,9 +1,9 @@
 use ff::PrimeField;
 use midnight_proofs::plonk::Expression;
 
-use crate::CircuitField;
+/// Mask for selecting even bits in u64 (little-endian representation).
+pub const MASK_EVN_64: u64 = 0x5555_5555_5555_5555; // 010101...01 (even positions in u64)
 
-pub(super) const MASK_EVN_64: u64 = 0x5555_5555_5555_5555; // 010101...01 (even positions in u64)
 pub(super) const MASK_ODD_64: u64 = 0xAAAA_AAAA_AAAA_AAAA; // 101010...10 (odd positions in u64)
 
 const LOOKUP_LENGTHS: [u32; 10] = [2, 3, 4, 5, 6, 7, 9, 10, 11, 12]; // supported lookup bit lengths
