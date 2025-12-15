@@ -537,8 +537,8 @@ impl<F: PrimeField> RipeMD160Chip<F> {
     }
 
     /// Given three assigned spreaded ~X, ~Y, ~Z, this function computes the
-    /// value of f(X, Y, Z) = (X ∧ Y) ∨ (¬X ∧ Z), defined as type two function in
-    /// RIPEMD160.
+    /// value of f(X, Y, Z) = (X ∧ Y) ∨ (¬X ∧ Z), defined as type two function
+    /// in RIPEMD160.
     fn f_type_two(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -564,27 +564,27 @@ impl<F: PrimeField> RipeMD160Chip<F> {
         with constraints of:
 
         1) applying the plain-spreaded lookup on 11-11-10 limbs of Evn and Odd,
-           for both (~X + ~Y) and (~(¬X) + ~Z): 
-             Evn_XY: (Evn_XY.11a, Evn_XY.11b, Evn_XY.10) 
+           for both (~X + ~Y) and (~(¬X) + ~Z):
+             Evn_XY: (Evn_XY.11a, Evn_XY.11b, Evn_XY.10)
              Odd_XY: (Odd_XY.11a, Odd_XY.11b, Odd_XY.10)
              Evn_nXZ: (Evn_nXZ.11a, Evn_nXZ.11b, Evn_nXZ.10)
              Odd_nXZ: (Odd_nXZ.11a, Odd_nXZ.11b, Odd_nXZ.10)
         2) asserting the 11-11-10 decomposition identity for Odd_XY and Odd_nXZ:
-             2^21 * Odd_XY.11a + 2^10 * Odd_XY.11b + Odd_XY.10 
+             2^21 * Odd_XY.11a + 2^10 * Odd_XY.11b + Odd_XY.10
             = Odd_XY
              2^21 * Odd_nXZ.11a + 2^10 * Odd_nXZ.11b + Odd_nXZ.10
             = Odd_nXZ
 
-        3) asserting the sprdd_sum_odd identity for (~X + ~Y + ~0) and (~(¬X) + ~Z + ~0): 
+        3) asserting the sprdd_sum_odd identity for (~X + ~Y + ~0) and (~(¬X) + ~Z + ~0):
              (4^21 * ~Evn_XY.11a + 4^10 * ~Evn_XY.11b + ~Evn_XY.10) + 2 *
-             (4^21 * ~Odd_XY.11a + 4^10 * ~Odd_XY.11b + ~Odd_XY.10) 
+             (4^21 * ~Odd_XY.11a + 4^10 * ~Odd_XY.11b + ~Odd_XY.10)
             = ~X + ~Y + ~0
 
              (4^21 * ~Evn_nXZ.11a + 4^10 * ~Evn_nXZ.11b + ~Evn_nXZ.10) +
          2 * (4^21 * ~Odd_nXZ.11a + 4^10 * ~Odd_nXZ.11b + ~Odd_nXZ.10)
             = ~(¬X) + ~Z + ~0
-        4) asserting the addition identities: 
-            Ret         = Odd_XY + Odd_nXZ 
+        4) asserting the addition identities:
+            Ret         = Odd_XY + Odd_nXZ
             MASK_EVN_64 = ~X + ~(¬X)
 
         The output is Ret.
@@ -639,6 +639,52 @@ impl<F: PrimeField> RipeMD160Chip<F> {
                 region.assign_advice(|| "Ret", adv_cols[6], 1, || ret_val).map(AssignedWord)
             },
         )
+    }
+
+    /// Given three assigned spreaded ~X, ~Y, ~Z, this function computes the
+    /// value of f(X, Y, Z) = (X ∨ ¬Y) ⊕ Z, defined as type three function in
+    /// RIPEMD160.
+    fn f_type_three(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        sprdd_X: &AssignedSpreaded<F, 32>,
+        sprdd_Y: &AssignedSpreaded<F, 32>,
+        sprdd_Z: &AssignedSpreaded<F, 32>,
+    ) -> Result<AssignedWord<F>, Error> {
+        /*
+        f(X, Y, Z) = (X ∨ ¬Y) ⊕ Z = (X ⊕ ¬Y ⊕ Z) ⊕ (X ∧ ¬Y)
+        Therefore, we first compute and witness ~nY using addition identity; then compute temp1 = X ⊕ ¬Y ⊕ Z
+        using `f_type_one`, and prepare its spreaded form ~temp1; then we compute temp2 = X ∧ ¬Y
+        using `and`, prepare its spreaded form ~temp2; finally, we compute f(X, Y, Z) = temp1 ⊕ temp2 using `xor`.
+        */
+        let adv_cols = self.config().advice_cols;
+        let sprdd_Y_val = sprdd_Y.0.value().copied().map(fe_to_u64);
+        let sprdd_nY_val = sprdd_Y_val.map(negate_spreaded).map(u64_to_fe);
+
+        let sprdd_nY = layouter.assign_region(
+            || "Assign sprdd_nY",
+            |mut region| {
+                self.config.q_add.enable(&mut region, 0)?;
+
+                sprdd_Y.0.copy_advice(|| "sprdd_Y", &mut region, adv_cols[4], 0)?;
+                region.assign_advice_from_constant(
+                    || "MASK_EVN_64",
+                    adv_cols[6],
+                    0,
+                    F::from(MASK_EVN_64),
+                )?;
+                region
+                    .assign_advice(|| "sprdd_nY", adv_cols[5], 0, || sprdd_nY_val)
+                    .map(AssignedSpreaded)
+            },
+        )?;
+
+        let temp1 = self.f_type_one(layouter, sprdd_X, &sprdd_nY, sprdd_Z)?;
+        let sprdd_temp1 = self.prepare_spreaded(layouter, &temp1)?;
+        let temp2 = self.and(layouter, sprdd_X, &sprdd_nY)?;
+        let sprdd_temp2 = self.prepare_spreaded(layouter, &temp2)?;
+
+        self.xor(layouter, &sprdd_temp1, &sprdd_temp2)
     }
 
     /// Given an assigned word X and a left rotation amount `rot`, this function
@@ -972,6 +1018,11 @@ mod tests {
             let expected_res2 = (fe_to_u32(self.inputs[1]) & fe_to_u32(self.inputs[2]))
                 | (!fe_to_u32(self.inputs[1]) & fe_to_u32(self.inputs[3]));
             res2.0.value().assert_if_known(|res| **res == u32_to_fe(expected_res2));
+
+            let res3 = ripemd160_chip.f_type_three(&mut layouter, &sprdd_c, &sprdd_d, &sprdd_e)?;
+            let expected_res3 = (fe_to_u32(self.inputs[2]) | !fe_to_u32(self.inputs[3]))
+                ^ fe_to_u32(self.inputs[4]);
+            res3.0.value().assert_if_known(|res| **res == u32_to_fe(expected_res3));
 
             Ok(())
         }
