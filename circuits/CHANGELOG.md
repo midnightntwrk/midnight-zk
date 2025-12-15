@@ -15,6 +15,7 @@ verification keys break backwards compatibility.
 * SHA512 chip [#96](https://github.com/midnightntwrk/midnight-zk/pull/96)
 * Introduce `is_not_equal` and `is_not_equal_to_fixed` [#130](https://github.com/midnightntwrk/midnight-zk/pull/130)
 * Add `to_bytes` and `from_bytes` for `BigUint` [#136](https://github.com/midnightntwrk/midnight-zk/pull/136)
+* Blind limbs of quotient polynomial and ensure ZK [#161](https://github.com/midnightntwrk/midnight-zk/pull/161)
 
 ### Changed
 * Optimize `bigint_to_fe` [#115](https://github.com/midnightntwrk/midnight-zk/pull/115)
