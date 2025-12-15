@@ -36,7 +36,7 @@ harness = false
 backtrace = { version = "0.3", optional = true }
 ff = { workspace = true }
 group = { workspace = true }
-midnight-curves = { path = "../curves", version = "0.1.1" }
+midnight-curves = { path = "../curves", version = "0.2.0" }
 rand_core = { workspace = true, features = ["getrandom"] }
 tracing = { workspace = true }
 blake2b_simd = { workspace = true }

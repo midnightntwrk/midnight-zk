@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 * truncated_challenges feature to allow --all-features compilation [#146](https://github.com/midnightntwrk/midnight-zk/pull/146)
 ### Changed
 ### Removed
+* Halo2curves dependency [#139](https://github.com/midnightntwrk/midnight-zk/pull/139)
 
 [0.1.2]
 Update dependencies only.
@@ -32,4 +33,3 @@ Update dependencies only.
 
 ### Removed
 * Add a turned-off automaton configuration due to the automaton chip being exposed in std_lib [#30](https://github.com/midnightntwrk/midnight-zk/pull/30)
-* Halo2curves dependency [#139](https://github.com/midnightntwrk/midnight-zk/pull/139)
