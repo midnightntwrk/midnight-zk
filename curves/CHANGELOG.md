@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 ### Changed
 
 ### Removed
+* Removed halo2curves dependency [#139](https://github.com/midnightntwrk/midnight-zk/pull/139)
 
 ## 0.1.1
 ### Added
@@ -24,7 +25,6 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 * Address Clippy warnings [#91](https://github.com/midnightntwrk/midnight-zk/pull/91)
 ### Removed
 * Some dbg prints [#59](https://github.com/midnightntwrk/midnight-zk/pull/59)
-* Halo2curves dependency [#139](https://github.com/midnightntwrk/midnight-zk/pull/139)
 
 ## 0.1.0
 Initial release

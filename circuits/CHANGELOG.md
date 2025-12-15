@@ -24,8 +24,11 @@ verification keys break backwards compatibility.
 * Rename `ScalarVar` => `AssignedScalarOfNativeCurve` [#120](https://github.com/midnightntwrk/midnight-zk/pull/120)
 * Made bench_macros and criterion dev dependencies [#134](https://github.com/midnightntwrk/midnight-zk/pull/134)
 * Optimize `assigned_to_le_bits` in `NativeGadget` [#131](https://github.com/midnightntwrk/midnight-zk/pull/131)
+* Bn256 curves emulation parameters feature-gated under "dev-curves" [#139](https://github.com/midnightntwrk/midnight-zk/pull/139)
 
 ### Removed
+* Halo2curves dependency [#139](https://github.com/midnightntwrk/midnight-zk/pull/139)
+* Pasta curves emulation parameters [#139](https://github.com/midnightntwrk/midnight-zk/pull/139)
 
 ## [5.0.1] - 19-09-2025
 ### Added
@@ -234,14 +237,12 @@ verification keys break backwards compatibility.
 * Simplify Pow2Range configure [#479](https://github.com/midnightntwrk/midnight-circuits/pull/479)
 * Implement ControlFlowInstructions for AssignedByte [#493](https://github.com/midnightntwrk/midnight-circuits/pull/493)
 * Add Base64 Chip [#493](https://github.com/midnightntwrk/midnight-circuits/pull/493)
-* Bn256 curves emulation parameters feature-gated under "dev-curves" [#139](https://github.com/midnightntwrk/midnight-zk/pull/139)
 
 ### Removed
 * Existing ECC chip [#428](https://github.com/midnightntwrk/midnight-circuits/pull/428)
 * Existing Hash to curve [#428](https://github.com/midnightntwrk/midnight-circuits/pull/428)
 * Support for Pleris [#462](https://github.com/midnightntwrk/midnight-circuits/pull/462)
 * Batching of PI in FieldChip [#474](https://github.com/midnightntwrk/midnight-circuits/pull/474)
-* Pasta curves emulation parameters and halo2curves dependency [#139](https://github.com/midnightntwrk/midnight-zk/pull/139)
 
 ## [1.0.0] - 13-08-2024
 
