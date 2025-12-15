@@ -132,13 +132,13 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> CommitmentReference<'_, F
             CommitmentReference::Chopped(parts, n) => {
                 let x = eval_point_opt
                     .expect("an evaluation point is required when the commitment is chopped");
-                let xn = x.pow([n]);
+                let splitting_factor = x.pow([n - 1]);
 
                 let mut terms = Vec::with_capacity(parts.len());
                 let mut scalar = F::ONE;
                 for &part in parts.iter() {
                     terms.push((scalar, part.clone()));
-                    scalar *= xn;
+                    scalar *= splitting_factor;
                 }
                 terms
             }

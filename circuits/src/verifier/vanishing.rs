@@ -108,6 +108,7 @@ impl<S: SelfEmulation> PartiallyEvaluated<S> {
         expressions: &[AssignedNative<S::F>],
         y: &AssignedNative<S::F>,
         xn: &AssignedNative<S::F>,
+        splitting_factor: &AssignedNative<S::F>,
     ) -> Result<Evaluated<S>, Error> {
         let expected_h_eval = {
             let num = try_reduce(expressions.iter().cloned(), |h_eval, v| {
@@ -118,13 +119,13 @@ impl<S: SelfEmulation> PartiallyEvaluated<S> {
             scalar_chip.div(layouter, &num, &den)?
         };
 
-        let xn = AssignedBoundedScalar::new(xn, None);
-        let mut acc_xn = AssignedBoundedScalar::one(layouter, scalar_chip)?;
+        let splitting_factor = AssignedBoundedScalar::new(splitting_factor, None);
+        let mut acc = AssignedBoundedScalar::one(layouter, scalar_chip)?;
 
-        let mut h_commitment = AssignedMsm::from_term(&acc_xn, &self.h_commitments[0]);
+        let mut h_commitment = AssignedMsm::from_term(&acc, &self.h_commitments[0]);
         for h_com in self.h_commitments.iter().skip(1) {
-            acc_xn = mul_bounded_scalars(layouter, scalar_chip, &acc_xn, &xn)?;
-            h_commitment.add_term(&acc_xn, h_com);
+            acc = mul_bounded_scalars(layouter, scalar_chip, &acc, &splitting_factor)?;
+            h_commitment.add_term(&acc, h_com);
         }
 
         Ok(Evaluated {
