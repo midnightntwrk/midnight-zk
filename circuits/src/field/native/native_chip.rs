@@ -51,7 +51,6 @@ use std::{
     cmp::min,
     collections::HashMap,
     hash::{Hash, Hasher},
-    marker::PhantomData,
     ops::Neg,
     rc::Rc,
 };
@@ -121,7 +120,6 @@ pub struct NativeChip<F: PrimeField> {
     cached_fixed: Rc<RefCell<HashMap<BigUint, AssignedNative<F>>>>,
     committed_instance_offset: Rc<RefCell<usize>>,
     instance_offset: Rc<RefCell<usize>>,
-    _marker: PhantomData<F>,
 }
 
 impl<F: PrimeField> Chip<F> for NativeChip<F> {
@@ -152,7 +150,6 @@ impl<F: PrimeField> ComposableChip<F> for NativeChip<F> {
             cached_fixed: Default::default(),
             instance_offset: Rc::new(RefCell::new(0)),
             committed_instance_offset: Rc::new(RefCell::new(0)),
-            _marker: PhantomData,
         }
     }
 
