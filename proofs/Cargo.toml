@@ -1,6 +1,6 @@
 [package]
 name = "midnight-proofs"
-version = "0.5.1"
+version = "0.6.0"
 edition = "2021"
 rust-version = "1.76.0"
 description = """
@@ -36,7 +36,7 @@ harness = false
 backtrace = { version = "0.3", optional = true }
 ff = { workspace = true }
 group = { workspace = true }
-midnight-curves = { path = "../curves", version = "0.2.0" }
+midnight-curves = { git = "https://github.com/midnightntwrk/midnight-zk.git", tag = "midnight-curves-v0.2.0" }
 rand_core = { workspace = true, features = ["getrandom"] }
 tracing = { workspace = true }
 blake2b_simd = { workspace = true }
@@ -64,7 +64,7 @@ criterion = "0.7"
 getrandom = { version = "0.2", features = ["js"] }
 
 [target.'cfg(ci_build)'.dependencies]
-midnight-curves = { path = "../curves", features = ["portable"] }
+midnight-curves = { git = "https://github.com/midnightntwrk/midnight-zk.git", tag = "midnight-curves-v0.2.0", features = ["portable"] }
 
 [features]
 default = ["committed-instances"]
