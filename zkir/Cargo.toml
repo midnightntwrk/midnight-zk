@@ -16,7 +16,7 @@ rustdoc-args = ["--cfg", "docsrs", "--html-in-header", "katex-header.html"]
 group = { workspace = true }
 ff = { workspace = true }
 
-midnight-curves = { path = "../curves", version = "0.1.0" }
+midnight-curves = { path = "../curves", version = "0.2.0" }
 midnight-proofs = { path = "../proofs", version = "0.5.1", default-features = false, features = [
     "circuit-params",
     "committed-instances",
