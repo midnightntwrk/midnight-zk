@@ -11,6 +11,13 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 ### Changed
 
 ### Removed
+
+## 0.2.0
+### Added
+
+### Changed
+
+### Removed
 * Removed halo2curves dependency [#139](https://github.com/midnightntwrk/midnight-zk/pull/139)
 
 ## 0.1.1
