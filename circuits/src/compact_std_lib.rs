@@ -118,9 +118,10 @@ pub struct ZkStdLibArch {
     pub poseidon: bool,
 
     /// Enable the SHA256 chip?
-    pub sha256: bool,
+    pub sha2_256: bool,
 
     /// Enable the SHA512 chip?
+    pub sha2_512: bool,
 
     /// Enable the Keccak chip? (third-party implementation)
     ///
@@ -160,6 +161,8 @@ impl Default for ZkStdLibArch {
         ZkStdLibArch {
             jubjub: true,
             poseidon: true,
+            sha2_256: true,
+            sha2_512: false,
             sha3_256: false,
             keccak_256: false,
             blake2b: false,
@@ -242,8 +245,8 @@ pub struct ZkStdLibConfig {
     native_config: NativeConfig,
     core_decomposition_config: P2RDecompositionConfig,
     jubjub_config: Option<EccConfig>,
-    sha256_config: Option<Sha256Config>,
-    sha512_config: Option<Sha512Config>,
+    sha2_256_config: Option<Sha256Config>,
+    sha2_512_config: Option<Sha512Config>,
     poseidon_config: Option<PoseidonConfig<midnight_curves::Fq>>,
     secp256k1_scalar_config: Option<FieldChipConfig>,
     secp256k1_config: Option<ForeignEccConfig<Secp256k1>>,
@@ -264,8 +267,8 @@ pub struct ZkStdLib {
     native_gadget: NG,
     core_decomposition_chip: P2RDecompositionChip<F>,
     jubjub_chip: Option<EccChip<C>>,
-    sha256_chip: Option<Sha256Chip<F>>,
-    sha512_chip: Option<Sha512Chip<F>>,
+    sha2_256_chip: Option<Sha256Chip<F>>,
+    sha2_512_chip: Option<Sha512Chip<F>>,
     poseidon_gadget: Option<PoseidonChip<F>>,
     htc_gadget: Option<HashToCurveGadget<F, C, AssignedNative<F>, PoseidonChip<F>, EccChip<C>>>,
     map_gadget: Option<MapGadget<F, NG, PoseidonChip<F>>>,
@@ -285,8 +288,8 @@ pub struct ZkStdLib {
     // Flags that indicate if certain chips have been used. This way we can load the tables only
     // when necessary (thus reducing the min_k in some cases).
     // Such a usage flag has to be added and updated correctly for each new chip using tables.
-    used_sha256: Rc<RefCell<bool>>,
-    used_sha512: Rc<RefCell<bool>>,
+    used_sha2_256: Rc<RefCell<bool>>,
+    used_sha2_512: Rc<RefCell<bool>>,
     used_secp256k1_scalar: Rc<RefCell<bool>>,
     used_secp256k1_curve: Rc<RefCell<bool>>,
     used_bls12_381_curve: Rc<RefCell<bool>>,
@@ -305,9 +308,9 @@ impl ZkStdLib {
         let native_gadget = NativeGadget::new(core_decomposition_chip.clone(), native_chip.clone());
         let jubjub_chip = (config.jubjub_config.as_ref())
             .map(|jubjub_config| EccChip::new(jubjub_config, &native_gadget));
-        let sha256_chip = (config.sha256_config.as_ref())
+        let sha2_256_chip = (config.sha2_256_config.as_ref())
             .map(|sha256_config| Sha256Chip::new(sha256_config, &native_gadget));
-        let sha512_chip = (config.sha512_config.as_ref())
+        let sha2_512_chip = (config.sha2_512_config.as_ref())
             .map(|sha512_config| Sha512Chip::new(sha512_config, &native_gadget));
         let poseidon_gadget = (config.poseidon_config.as_ref())
             .map(|poseidon_config| PoseidonChip::new(poseidon_config, &native_chip));
@@ -348,8 +351,8 @@ impl ZkStdLib {
             native_gadget,
             core_decomposition_chip,
             jubjub_chip,
-            sha256_chip,
-            sha512_chip,
+            sha2_256_chip,
+            sha2_512_chip,
             poseidon_gadget,
             map_gadget,
             htc_gadget,
@@ -363,6 +366,8 @@ impl ZkStdLib {
             automaton_chip,
             keccak_sha3_chip,
             blake2b_chip,
+            used_sha2_256: Rc::new(RefCell::new(false)),
+            used_sha2_512: Rc::new(RefCell::new(false)),
             used_secp256k1_scalar: Rc::new(RefCell::new(false)),
             used_secp256k1_curve: Rc::new(RefCell::new(false)),
             used_bls12_381_curve: Rc::new(RefCell::new(false)),
@@ -380,8 +385,8 @@ impl ZkStdLib {
             arch.nr_pow2range_cols as usize,
             arch.jubjub as usize * NB_EDWARDS_COLS,
             arch.poseidon as usize * NB_POSEIDON_ADVICE_COLS,
-            arch.sha256 as usize * NB_SHA256_ADVICE_COLS,
-            arch.sha512 as usize * NB_SHA512_ADVICE_COLS,
+            arch.sha2_256 as usize * NB_SHA256_ADVICE_COLS,
+            arch.sha2_512 as usize * NB_SHA512_ADVICE_COLS,
             arch.secp256k1 as usize
                 * max(
                     nb_field_chip_columns::<F, secp256k1::Fq, MEP>(),
@@ -409,6 +414,8 @@ impl ZkStdLib {
         let nb_fixed_cols = [
             NB_ARITH_FIXED_COLS,
             arch.poseidon as usize * NB_POSEIDON_FIXED_COLS,
+            arch.sha2_256 as usize * NB_SHA256_FIXED_COLS,
+            arch.sha2_512 as usize * NB_SHA512_FIXED_COLS,
             (arch.keccak_256 || arch.sha3_256) as usize * PACKED_FIXED_COLS,
         ]
         .into_iter()
@@ -439,7 +446,7 @@ impl ZkStdLib {
             EccChip::<C>::configure(meta, &advice_columns[..NB_EDWARDS_COLS].try_into().unwrap())
         });
 
-        let sha256_config = arch.sha256.then(|| {
+        let sha2_256_config = arch.sha2_256.then(|| {
             Sha256Chip::configure(
                 meta,
                 &(
@@ -449,7 +456,7 @@ impl ZkStdLib {
             )
         });
 
-        let sha512_config = arch.sha512.then(|| {
+        let sha2_512_config = arch.sha2_512.then(|| {
             Sha512Chip::configure(
                 meta,
                 &(
@@ -524,8 +531,8 @@ impl ZkStdLib {
             native_config,
             core_decomposition_config,
             jubjub_config,
-            sha256_config,
-            sha512_config,
+            sha2_256_config,
+            sha2_512_config,
             poseidon_config,
             secp256k1_scalar_config,
             secp256k1_config,
@@ -701,7 +708,7 @@ impl ZkStdLib {
             .hash_to_curve(layouter, inputs)
     }
 
-    /// Sha256.
+    /// Sha2_256.
     /// Takes as input a slice of assigned bytes and returns the assigned
     /// input/output in bytes.
     /// We assume the field uses little endian encoding.
@@ -717,29 +724,29 @@ impl ZkStdLib {
     ///     ],
     /// )?;
     ///
-    /// let _hash = chip.sha256(layouter, &input)?;
+    /// let _hash = chip.sha2_256(layouter, &input)?;
     /// # });
     /// ```
-    pub fn sha256(
+    pub fn sha2_256(
         &self,
         layouter: &mut impl Layouter<F>,
         input: &[AssignedByte<F>], // F -> decompose_bytes -> hash
     ) -> Result<[AssignedByte<F>; 32], Error> {
-        *self.used_sha256.borrow_mut() = true;
-        self.sha256_chip
+        *self.used_sha2_256.borrow_mut() = true;
+        self.sha2_256_chip
             .as_ref()
             .expect("ZkStdLibArch must enable sha256")
             .hash(layouter, input)
     }
 
-    /// Sha512.
-    pub fn sha512(
+    /// Sha2_512 hash.
+    pub fn sha2_512(
         &self,
         layouter: &mut impl Layouter<F>,
         input: &[AssignedByte<F>], // F -> decompose_bytes -> hash
     ) -> Result<[AssignedByte<F>; 64], Error> {
-        *self.used_sha512.borrow_mut() = true;
-        self.sha512_chip
+        *self.used_sha2_512.borrow_mut() = true;
+        self.sha2_512_chip
             .as_ref()
             .expect("ZkStdLibArch must enable sha512")
             .hash(layouter, input)
@@ -1522,7 +1529,7 @@ impl<Rel: Relation> MidnightPK<Rel> {
 ///         witness: Value<Self::Witness>,
 ///     ) -> Result<(), Error> {
 ///         let assigned_input = std_lib.assign_many(layouter, &witness.transpose_array())?;
-///         let output = std_lib.sha256(layouter, &assigned_input)?;
+///         let output = std_lib.sha2_256(layouter, &assigned_input)?;
 ///         output.iter().try_for_each(|b| std_lib.constrain_as_public_input(layouter, b))
 ///     }
 ///
@@ -1658,14 +1665,14 @@ impl<R: Relation> Circuit<F> for MidnightCircuit<'_, R> {
         // were actually used.
         zk_std_lib.core_decomposition_chip.load(&mut layouter)?;
 
-        if let Some(sha256_chip) = zk_std_lib.sha256_chip {
-            if *zk_std_lib.used_sha256.borrow() {
+        if let Some(sha256_chip) = zk_std_lib.sha2_256_chip {
+            if *zk_std_lib.used_sha2_256.borrow() {
                 sha256_chip.load(&mut layouter)?;
             }
         }
 
-        if let Some(sha512_chip) = zk_std_lib.sha512_chip {
-            if *zk_std_lib.used_sha512.borrow() {
+        if let Some(sha512_chip) = zk_std_lib.sha2_512_chip {
+            if *zk_std_lib.used_sha2_512.borrow() {
                 sha512_chip.load(&mut layouter)?;
             }
         }
