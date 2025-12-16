@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 * Rebase to new `circuits/` [#120](https://github.com/midnightntwrk/midnight-zk/pull/120)
 * Rebase to new `circuits/` with `sha512` [#96](https://github.com/midnightntwrk/midnight-zk/pull/96)
 * truncated_challenges feature to allow --all-features compilation [#146](https://github.com/midnightntwrk/midnight-zk/pull/146)
+* Rebase to new `circuits/` with `keccak` and `blake2b` [#135](https://github.com/midnightntwrk/midnight-zk/pull/135)
 ### Changed
 ### Removed
 * Halo2curves dependency [#139](https://github.com/midnightntwrk/midnight-zk/pull/139)
