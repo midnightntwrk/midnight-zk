@@ -164,7 +164,7 @@ impl Circuit<F> for IvcCircuit {
 
         // Witness a proof and an accumulator that ensure the validity of `prev_state`.
         let prev_acc = {
-            let mut fixed_base_names = vec![String::from("com_instance")];
+            let mut fixed_base_names = vec![];
             fixed_base_names.extend(verifier::fixed_base_names::<S>(
                 self_vk_name,
                 self_cs.num_fixed_columns() + self_cs.num_selectors(),
@@ -198,7 +198,7 @@ impl Circuit<F> for IvcCircuit {
         let mut proof_acc = verifier_chip.prepare(
             &mut layouter,
             &assigned_self_vk,
-            &[("com_instance", id_point)],
+            &[id_point],
             &[&assigned_pi],
             self.prev_proof.clone(),
         )?;
@@ -257,11 +257,7 @@ fn main() {
     let pk = keygen_pk(vk.clone(), &default_ivc_circuit).unwrap();
     println!("Computed vk and pk in {:?} s", start.elapsed());
 
-    let mut fixed_bases = BTreeMap::new();
-    fixed_bases.insert(String::from("com_instance"), C::identity());
-    fixed_bases.extend(midnight_circuits::verifier::fixed_bases::<S>(
-        "self_vk", &vk,
-    ));
+    let fixed_bases = midnight_circuits::verifier::fixed_bases::<S>("self_vk", &vk);
     let fixed_base_names = fixed_bases.keys().cloned().collect::<Vec<_>>();
 
     // This trivial accumulator must have a single base and scalar of F::ONE, and
@@ -344,7 +340,7 @@ fn main() {
             assert!(dual_msm.clone().check(&srs.verifier_params()));
 
             let mut proof_acc: Accumulator<S> = dual_msm.into();
-            proof_acc.extract_fixed_bases(&fixed_bases);
+            proof_acc.extract_fixed_bases(&fixed_bases, 1);
             proof_acc.collapse();
             proof_acc
         };

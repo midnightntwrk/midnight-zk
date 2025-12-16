@@ -185,6 +185,10 @@ impl<S: SelfEmulation> Msm<S> {
     /// scalar is moved to `self.fixed_bases_scalars` with the base name as
     /// key.
     ///
+    /// The first `num_preserved` bases (and their corresponding scalars) are
+    /// not affected by this operation. They are skipped from the analysis and
+    /// preserved even if they appear in `fixed_bases`.
+    ///
     /// The resulting MSM is equivalent to the original one.
     /// Note that this function mutates self.
     ///
@@ -200,7 +204,11 @@ impl<S: SelfEmulation> Msm<S> {
     ///
     /// If some of the provided fixed bases do not appear in `self.bases` with
     /// the exact required multiplicity.
-    pub fn extract_fixed_bases(&mut self, fixed_bases: &BTreeMap<String, S::C>) {
+    pub fn extract_fixed_bases(
+        &mut self,
+        fixed_bases: &BTreeMap<String, S::C>,
+        num_preserved: usize,
+    ) {
         assert!(
             fixed_bases.keys().all(|name| !self.fixed_base_scalars.contains_key(name)),
             "fixed_bases should not contain keys (names) that appear in self.fixed_base_scalars"
@@ -210,7 +218,7 @@ impl<S: SelfEmulation> Msm<S> {
 
         for (name, fixed_base) in fixed_bases.iter() {
             let mut found = false;
-            for i in 0..n {
+            for i in num_preserved..n {
                 if i >= self.bases.len() {
                     break;
                 }
@@ -230,7 +238,7 @@ impl<S: SelfEmulation> Msm<S> {
         // Do another search to make sure that the fixed bases do not appear
         // anymore, thus they had the exact required multiplicity.
         for fixed_base in fixed_bases.values() {
-            if self.bases.iter().any(|base| base == fixed_base) {
+            if self.bases.iter().skip(num_preserved).any(|base| base == fixed_base) {
                 panic!("{fixed_base:?} appears in self.bases more times than expected");
             }
         }

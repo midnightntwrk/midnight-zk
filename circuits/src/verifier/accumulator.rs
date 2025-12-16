@@ -146,6 +146,10 @@ impl<S: SelfEmulation> Accumulator<S> {
     /// corresponding scalar is moved to `self.rhs.fixed_base_scalars` with the
     /// base name as key.
     ///
+    /// The first `num_preserved` bases (and their corresponding scalars) are
+    /// not affected by this operation. They are skipped from the analysis and
+    /// preserved even if they appear in `fixed_bases`.
+    ///
     /// The resulting Accumulator is equivalent to the original one.
     /// Note that this function mutates self.
     ///
@@ -163,8 +167,12 @@ impl<S: SelfEmulation> Accumulator<S> {
     ///
     /// If some of the provided fixed bases do not appear in `self.rhs.bases`
     /// with the exact required multiplicity.
-    pub fn extract_fixed_bases(&mut self, fixed_bases: &BTreeMap<String, S::C>) {
-        self.rhs.extract_fixed_bases(fixed_bases);
+    pub fn extract_fixed_bases(
+        &mut self,
+        fixed_bases: &BTreeMap<String, S::C>,
+        num_preserved: usize,
+    ) {
+        self.rhs.extract_fixed_bases(fixed_bases, num_preserved);
     }
 }
 
