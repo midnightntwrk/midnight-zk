@@ -32,7 +32,7 @@ pub fn sha512_incircuit(
     input: &CircuitValue,
 ) -> Result<CircuitValue, Error> {
     let bytes: Vec<AssignedByte> = input.clone().try_into()?;
-    let h = std_lib.sha512(layouter, &bytes)?;
+    let h = std_lib.sha2_512(layouter, &bytes)?;
     Ok(CircuitValue::Bytes(h.to_vec()))
 }
 

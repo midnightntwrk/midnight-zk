@@ -95,7 +95,7 @@ impl Relation for ZSwapOutputCircuit {
         let domain_sep = assign_fixed_domain_sep(std_lib, layouter, "mdn:cc")?;
 
         let coin_com = {
-            std_lib.sha256(
+            std_lib.sha2_256(
                 layouter,
                 &[
                     coin.color_bytes.to_vec(),

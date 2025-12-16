@@ -139,8 +139,11 @@ impl Relation for FullCredential {
         ZkStdLibArch {
             jubjub: false,
             poseidon: false,
-            sha256: true,
-            sha512: false,
+            sha2_256: true,
+            sha2_512: false,
+            sha3_256: false,
+            keccak_256: false,
+            blake2b: false,
             secp256k1: true,
             bls12_381: false,
             base64: true,
@@ -173,7 +176,7 @@ impl FullCredential {
 
         // Assign the message and hash it.
         let msg_hash: AssignedField<_, _, _> = {
-            let hash_bytes = std_lib.sha256(layouter, message)?;
+            let hash_bytes = std_lib.sha2_256(layouter, message)?;
             secp256k1_scalar.assigned_from_be_bytes(layouter, &hash_bytes)?
         };
 

@@ -247,7 +247,7 @@ impl Relation for HybridMtExample {
 
         // Compute the sha256 hash of the input words.
         // This is guaranteed to correspond to u32 words so no rangechek is needed.
-        let output = std_lib.sha256(layouter, &assigned_input_bytes)?;
+        let output = std_lib.sha2_256(layouter, &assigned_input_bytes)?;
 
         // Convert the bytes to words.
         let output_words = output
@@ -331,8 +331,11 @@ impl Relation for HybridMtExample {
         ZkStdLibArch {
             jubjub: false,
             poseidon: true,
-            sha256: true,
-            sha512: false,
+            sha2_256: true,
+            sha2_512: false,
+            sha3_256: false,
+            keccak_256: false,
+            blake2b: false,
             secp256k1: false,
             bls12_381: false,
             base64: false,
