@@ -28,11 +28,16 @@
 use std::{cell::RefCell, cmp::max, convert::TryInto, fmt::Debug, io, rc::Rc};
 
 use bincode::{config::standard, Decode, Encode};
+use blake2b::blake2b::{
+    blake2b_chip::{Blake2bChip, Blake2bConfig},
+    NB_BLAKE2B_ADVICE_COLS,
+};
 use ff::{Field, PrimeField};
 use group::{prime::PrimeCurveAffine, Group};
+use keccak_sha3::packed_chip::{PackedChip, PackedConfig, PACKED_ADVICE_COLS, PACKED_FIXED_COLS};
 use midnight_curves::{
     secp256k1::{self, Secp256k1},
-    G1Affine, G1Projective,
+    Fq, G1Affine, G1Projective,
 };
 use midnight_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
@@ -58,6 +63,7 @@ use crate::{
         hash_to_curve::HashToCurveGadget,
         native::{EccChip, EccConfig, NB_EDWARDS_COLS},
     },
+    external::{blake2b::Blake2bWrapper, keccak_sha3::KeccakSha3Wrapper},
     field::{
         decomposition::{
             chip::{P2RDecompositionChip, P2RDecompositionConfig},
@@ -115,7 +121,23 @@ pub struct ZkStdLibArch {
     pub sha256: bool,
 
     /// Enable the SHA512 chip?
-    pub sha512: bool,
+
+    /// Enable the Keccak chip? (third-party implementation)
+    ///
+    /// Note: is configured using the same columns and tables as sha3_256,
+    /// meaning enabling either of the two, or both, requires the same
+    /// configuration resources.
+    pub keccak_256: bool,
+
+    /// Enable the Sha3 chip? (third-party implementation)
+    ///
+    /// Note: is configured using the same columns and tables as keccak_256,
+    /// meaning enabling either of the two, or both, requires the same
+    /// configuration resources.
+    pub sha3_256: bool,
+
+    /// Enable the Blake2b chip? (third-party implementation)
+    pub blake2b: bool,
 
     /// Enable the Secp256k1 chip?
     pub secp256k1: bool,
@@ -138,8 +160,9 @@ impl Default for ZkStdLibArch {
         ZkStdLibArch {
             jubjub: true,
             poseidon: true,
-            sha256: true,
-            sha512: false,
+            sha3_256: false,
+            keccak_256: false,
+            blake2b: false,
             secp256k1: false,
             bls12_381: false,
             base64: false,
@@ -227,12 +250,17 @@ pub struct ZkStdLibConfig {
     bls12_381_config: Option<ForeignEccConfig<midnight_curves::G1Projective>>,
     base64_config: Option<Base64Config>,
     automaton_config: Option<AutomatonConfig<StdLibParser, midnight_curves::Fq>>,
+
+    // Configuration of external libraries.
+    keccak_sha3_config: Option<PackedConfig>,
+    blake2b_config: Option<Blake2bConfig>,
 }
 
 /// The `ZkStdLib` exposes all tools that are used in circuit generation.
 #[derive(Clone, Debug)]
 #[allow(clippy::type_complexity)]
 pub struct ZkStdLib {
+    // Internal chips and gadgets.
     native_gadget: NG,
     core_decomposition_chip: P2RDecompositionChip<F>,
     jubjub_chip: Option<EccChip<C>>,
@@ -250,6 +278,10 @@ pub struct ZkStdLib {
     vector_gadget: VectorGadget<F>,
     automaton_chip: Option<AutomatonChip<StdLibParser, F>>,
 
+    // Third-party chips.
+    keccak_sha3_chip: Option<KeccakSha3Wrapper<F>>,
+    blake2b_chip: Option<Blake2bWrapper<F>>,
+
     // Flags that indicate if certain chips have been used. This way we can load the tables only
     // when necessary (thus reducing the min_k in some cases).
     // Such a usage flag has to be added and updated correctly for each new chip using tables.
@@ -260,6 +292,8 @@ pub struct ZkStdLib {
     used_bls12_381_curve: Rc<RefCell<bool>>,
     used_base64: Rc<RefCell<bool>>,
     used_automaton: Rc<RefCell<bool>>,
+    used_keccak_or_sha3: Rc<RefCell<bool>>,
+    used_blake2b: Rc<RefCell<bool>>,
 }
 
 impl ZkStdLib {
@@ -301,6 +335,14 @@ impl ZkStdLib {
         let vector_gadget = VectorGadget::new(&native_gadget);
         let automaton_chip =
             config.automaton_config.as_ref().map(|c| AutomatonChip::new(c, &native_gadget));
+        let keccak_sha3_chip = config
+            .keccak_sha3_config
+            .as_ref()
+            .map(|sha3_config| KeccakSha3Wrapper::new(sha3_config, &native_gadget));
+        let blake2b_chip = config
+            .blake2b_config
+            .as_ref()
+            .map(|blake2b_config| Blake2bWrapper::new(blake2b_config, &native_gadget));
 
         Self {
             native_gadget,
@@ -319,13 +361,15 @@ impl ZkStdLib {
             parser_gadget,
             vector_gadget,
             automaton_chip,
-            used_sha256: Rc::new(RefCell::new(false)),
-            used_sha512: Rc::new(RefCell::new(false)),
+            keccak_sha3_chip,
+            blake2b_chip,
             used_secp256k1_scalar: Rc::new(RefCell::new(false)),
             used_secp256k1_curve: Rc::new(RefCell::new(false)),
             used_bls12_381_curve: Rc::new(RefCell::new(false)),
             used_base64: Rc::new(RefCell::new(false)),
             used_automaton: Rc::new(RefCell::new(false)),
+            used_keccak_or_sha3: Rc::new(RefCell::new(false)),
+            used_blake2b: Rc::new(RefCell::new(false)),
         }
     }
 
@@ -355,6 +399,8 @@ impl ZkStdLib {
                 ),
             arch.base64 as usize * NB_BASE64_ADVICE_COLS,
             arch.automaton as usize * NB_AUTOMATA_COLS,
+            (arch.keccak_256 || arch.sha3_256) as usize * PACKED_ADVICE_COLS,
+            arch.blake2b as usize * NB_BLAKE2B_ADVICE_COLS,
         ]
         .into_iter()
         .max()
@@ -363,8 +409,7 @@ impl ZkStdLib {
         let nb_fixed_cols = [
             NB_ARITH_FIXED_COLS,
             arch.poseidon as usize * NB_POSEIDON_FIXED_COLS,
-            arch.sha256 as usize * NB_SHA256_FIXED_COLS,
-            arch.sha512 as usize * NB_SHA512_FIXED_COLS,
+            (arch.keccak_256 || arch.sha3_256) as usize * PACKED_FIXED_COLS,
         ]
         .into_iter()
         .max()
@@ -454,6 +499,27 @@ impl ZkStdLib {
             )
         });
 
+        let constant_column =
+            (arch.keccak_256 || arch.sha3_256 || arch.blake2b).then(|| meta.fixed_column());
+
+        let keccak_sha3_config = (arch.keccak_256 || arch.sha3_256).then(|| {
+            PackedChip::configure(
+                meta,
+                constant_column.unwrap(),
+                advice_columns[..PACKED_ADVICE_COLS].try_into().unwrap(),
+                fixed_columns[..PACKED_FIXED_COLS].try_into().unwrap(),
+            )
+        });
+
+        let blake2b_config = arch.blake2b.then(|| {
+            Blake2bChip::configure(
+                meta,
+                constant_column.unwrap(),
+                advice_columns[0],
+                advice_columns[1..NB_BLAKE2B_ADVICE_COLS].try_into().unwrap(),
+            )
+        });
+
         ZkStdLibConfig {
             native_config,
             core_decomposition_config,
@@ -466,6 +532,8 @@ impl ZkStdLib {
             bls12_381_config,
             base64_config,
             automaton_config,
+            keccak_sha3_config,
+            blake2b_config,
         }
     }
 }
@@ -675,6 +743,58 @@ impl ZkStdLib {
             .as_ref()
             .expect("ZkStdLibArch must enable sha512")
             .hash(layouter, input)
+    }
+
+    /// Sha3_256 hash (third-party implementation).
+    pub fn sha3_256(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        input: &[AssignedByte<F>],
+    ) -> Result<[AssignedByte<Fq>; 32], Error> {
+        *self.used_keccak_or_sha3.borrow_mut() = true;
+        let chip = self
+            .keccak_sha3_chip
+            .as_ref()
+            .expect("ZkStdLibArch must enable sha3 (or keccak)");
+        chip.sha3_256_digest(layouter, input)
+    }
+
+    /// keccak_256 hash (third-party implementation).
+    pub fn keccak_256(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        input: &[AssignedByte<F>],
+    ) -> Result<[AssignedByte<Fq>; 32], Error> {
+        *self.used_keccak_or_sha3.borrow_mut() = true;
+        let chip = self
+            .keccak_sha3_chip
+            .as_ref()
+            .expect("ZkStdLibArch must enable keccak (or sha3)");
+        chip.keccak_256_digest(layouter, input)
+    }
+
+    /// Blake2b hash with a 256-bit output, unkeyed (third-party
+    /// implementation).
+    pub fn blake2b_256(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        input: &[AssignedByte<F>],
+    ) -> Result<[AssignedByte<F>; 32], Error> {
+        *self.used_blake2b.borrow_mut() = true;
+        let chip = self.blake2b_chip.as_ref().expect("ZkStdLibArch must enable blake2b");
+        chip.blake2b_256_digest(layouter, input)
+    }
+
+    /// Blake2b hash with a 512-bit output, unkeyed (third-party
+    /// implementation).
+    pub fn blake2b_512(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        input: &[AssignedByte<F>],
+    ) -> Result<[AssignedByte<F>; 64], Error> {
+        *self.used_blake2b.borrow_mut() = true;
+        let chip = self.blake2b_chip.as_ref().expect("ZkStdLibArch must enable blake2b");
+        chip.blake2b_512_digest(layouter, input)
     }
 }
 
@@ -1559,6 +1679,18 @@ impl<R: Relation> Circuit<F> for MidnightCircuit<'_, R> {
         if let Some(automaton_chip) = zk_std_lib.automaton_chip {
             if *zk_std_lib.used_automaton.borrow() {
                 automaton_chip.load(&mut layouter)?;
+            }
+        }
+
+        if let Some(keccak_sha3_chip) = zk_std_lib.keccak_sha3_chip {
+            if *zk_std_lib.used_keccak_or_sha3.borrow() {
+                keccak_sha3_chip.load(&mut layouter)?;
+            }
+        }
+
+        if let Some(blake2b_chip) = zk_std_lib.blake2b_chip {
+            if *zk_std_lib.used_blake2b.borrow() {
+                blake2b_chip.load(&mut layouter)?;
             }
         }
 

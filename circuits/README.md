@@ -45,8 +45,9 @@ The architecture of `ZkStdLib` is configurable via the following structure:
 pub struct ZkStdLibArch {
     pub jubjub: bool,
     pub poseidon: bool,
-    pub sha256: bool,
-    pub sha512: bool,
+    pub sha3_256: bool,
+    pub keccak_256: bool,
+    pub blake2b: bool,
     pub secp256k1: bool,
     pub bls12_381: bool,
     pub base64: bool,
@@ -123,8 +124,9 @@ impl Relation for ShaPreImageCircuit {
         ZkStdLibArch {
             jubjub: false,
             poseidon: false,
-            sha256: true,
-            sha512: false,
+            sha3_256: false,
+            keccak_256: false,
+            blake2b: false,
             secp256k1: false,
             bls12_381: false,
             base64: false,
