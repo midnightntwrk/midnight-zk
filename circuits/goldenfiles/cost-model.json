@@ -12,6 +12,45 @@
       "table_rows": "315"
     }
   },
+  "Blake2b_256": {
+    "hash": {
+      "advice_columns": "19",
+      "column_queries": "150",
+      "fixed_columns": "69",
+      "lookups": "24",
+      "max_deg": "5",
+      "permutations": "24",
+      "point_sets": "6",
+      "rows": "2469",
+      "table_rows": "65536"
+    }
+  },
+  "Blake2b_512": {
+    "hash": {
+      "advice_columns": "19",
+      "column_queries": "150",
+      "fixed_columns": "69",
+      "lookups": "24",
+      "max_deg": "5",
+      "permutations": "24",
+      "point_sets": "6",
+      "rows": "2469",
+      "table_rows": "65536"
+    }
+  },
+  "Keccak_256": {
+    "hash": {
+      "advice_columns": "20",
+      "column_queries": "141",
+      "fixed_columns": "76",
+      "lookups": "18",
+      "max_deg": "5",
+      "permutations": "23",
+      "point_sets": "5",
+      "rows": "4190",
+      "table_rows": "12287"
+    }
+  },
   "Map gadget": {
     "Get": {
       "advice_columns": "13",
@@ -95,6 +134,19 @@
       "point_sets": "7",
       "rows": "3680",
       "table_rows": "15487"
+    }
+  },
+  "Sha3_256": {
+    "hash": {
+      "advice_columns": "20",
+      "column_queries": "141",
+      "fixed_columns": "76",
+      "lookups": "18",
+      "max_deg": "5",
+      "permutations": "23",
+      "point_sets": "5",
+      "rows": "4190",
+      "table_rows": "12287"
     }
   },
   "VarSHA256": {

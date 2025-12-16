@@ -143,3 +143,171 @@ impl<F: PrimeField> KeccakSha3Wrapper<F> {
         self.digest(false, layouter, input)
     }
 }
+
+#[cfg(test)]
+impl<F: PrimeField> FromScratch<F> for KeccakSha3Wrapper<F> {
+    type Config = (PackedConfig, P2RDecompositionConfig);
+
+    fn new_from_scratch(config: &Self::Config) -> Self {
+        let native_gadget = NG::new_from_scratch(&config.1);
+        KeccakSha3Wrapper::new(&config.0, &native_gadget)
+    }
+
+    fn configure_from_scratch(
+        meta: &mut ConstraintSystem<F>,
+        instance_columns: &[Column<Instance>; 2],
+    ) -> Self::Config {
+        let advice_cols = (0..PACKED_ADVICE_COLS).map(|_| meta.advice_column()).collect::<Vec<_>>();
+        let fixed_cols = (0..PACKED_FIXED_COLS).map(|_| meta.fixed_column()).collect::<Vec<_>>();
+        let constant_column = meta.fixed_column();
+
+        let native_config = NG::configure_from_scratch(meta, instance_columns);
+        let sha_config = KeccakSha3Wrapper::configure(
+            meta,
+            &(
+                constant_column,
+                advice_cols[..PACKED_ADVICE_COLS].try_into().unwrap(),
+                fixed_cols[..PACKED_FIXED_COLS].try_into().unwrap(),
+            ),
+        );
+        (sha_config, native_config)
+    }
+
+    fn load_from_scratch(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
+        self.load(layouter)?;
+        NG::load_from_scratch(&self.native_gadget, layouter)
+    }
+}
+
+// Some preimage tests against an external library.
+#[cfg(test)]
+mod test {
+    use ff::PrimeField;
+    use midnight_curves::Fq;
+    use midnight_proofs::{
+        circuit::Layouter,
+        plonk::{Column, ConstraintSystem, Error, Instance},
+    };
+    use sha3::{Digest, Keccak256 as KeccakCpu, Sha3_256 as Sha3Cpu};
+
+    use crate::{
+        external::keccak_sha3::KeccakSha3Wrapper,
+        field::NativeGadget,
+        instructions::{
+            hash::{tests::test_hash, HashCPU},
+            HashInstructions,
+        },
+        testing_utils::FromScratch,
+        types::AssignedByte,
+    };
+
+    // A wrapper for testing Blake with 512 bits.
+    #[derive(Debug, Clone)]
+    struct Keccak256<F: PrimeField>(KeccakSha3Wrapper<F>);
+
+    // A wrapper for testing Blake with 256 bits.
+    #[derive(Debug, Clone)]
+    struct Sha3_256<F: PrimeField>(KeccakSha3Wrapper<F>);
+
+    impl<F: PrimeField> HashCPU<u8, [u8; 32]> for Keccak256<F> {
+        fn hash(input: &[u8]) -> [u8; 32] {
+            let mut hasher = KeccakCpu::new();
+            hasher.update(input);
+            hasher.finalize().into()
+        }
+    }
+
+    impl<F: PrimeField> HashCPU<u8, [u8; 32]> for Sha3_256<F> {
+        fn hash(inputs: &[u8]) -> [u8; 32] {
+            let mut hasher = Sha3Cpu::new();
+            hasher.update(inputs);
+            hasher.finalize().into()
+        }
+    }
+
+    impl<F: PrimeField> HashInstructions<F, AssignedByte<F>, [AssignedByte<F>; 32]> for Keccak256<F> {
+        fn hash(
+            &self,
+            layouter: &mut impl Layouter<F>,
+            inputs: &[AssignedByte<F>],
+        ) -> Result<[AssignedByte<F>; 32], Error> {
+            self.0.keccak_256_digest(layouter, inputs)
+        }
+    }
+
+    impl<F: PrimeField> HashInstructions<F, AssignedByte<F>, [AssignedByte<F>; 32]> for Sha3_256<F> {
+        fn hash(
+            &self,
+            layouter: &mut impl Layouter<F>,
+            inputs: &[AssignedByte<F>],
+        ) -> Result<[AssignedByte<F>; 32], Error> {
+            self.0.sha3_256_digest(layouter, inputs)
+        }
+    }
+
+    impl<F: PrimeField> FromScratch<F> for Keccak256<F> {
+        type Config = <KeccakSha3Wrapper<F> as FromScratch<F>>::Config;
+        fn new_from_scratch(config: &Self::Config) -> Self {
+            Keccak256(KeccakSha3Wrapper::new_from_scratch(config))
+        }
+        fn configure_from_scratch(
+            meta: &mut ConstraintSystem<F>,
+            instance_columns: &[Column<Instance>; 2],
+        ) -> Self::Config {
+            KeccakSha3Wrapper::configure_from_scratch(meta, instance_columns)
+        }
+        fn load_from_scratch(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
+            KeccakSha3Wrapper::load_from_scratch(&self.0, layouter)
+        }
+    }
+
+    impl<F: PrimeField> FromScratch<F> for Sha3_256<F> {
+        type Config = <KeccakSha3Wrapper<F> as FromScratch<F>>::Config;
+        fn new_from_scratch(config: &Self::Config) -> Self {
+            Sha3_256(KeccakSha3Wrapper::new_from_scratch(config))
+        }
+        fn configure_from_scratch(
+            meta: &mut ConstraintSystem<F>,
+            instance_columns: &[Column<Instance>; 2],
+        ) -> Self::Config {
+            KeccakSha3Wrapper::configure_from_scratch(meta, instance_columns)
+        }
+        fn load_from_scratch(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
+            KeccakSha3Wrapper::load_from_scratch(&self.0, layouter)
+        }
+    }
+
+    #[test]
+    fn test_keccak_sha3_preimage() {
+        const BLAKE2B_BLOCK_SIZE: usize = 128;
+
+        let additional_sizes = [
+            BLAKE2B_BLOCK_SIZE - 2,
+            BLAKE2B_BLOCK_SIZE - 1,
+            BLAKE2B_BLOCK_SIZE,
+            BLAKE2B_BLOCK_SIZE + 1,
+            BLAKE2B_BLOCK_SIZE + 2,
+            2 * BLAKE2B_BLOCK_SIZE - 2,
+            2 * BLAKE2B_BLOCK_SIZE - 1,
+            2 * BLAKE2B_BLOCK_SIZE,
+            2 * BLAKE2B_BLOCK_SIZE + 1,
+            2 * BLAKE2B_BLOCK_SIZE + 2,
+        ];
+
+        test_hash::<
+            Fq,
+            AssignedByte<Fq>,
+            [AssignedByte<Fq>; 32],
+            Keccak256<Fq>,
+            NativeGadget<Fq, _, _>,
+        >(true, "Keccak_256", &additional_sizes, 14);
+
+        test_hash::<
+            Fq,
+            AssignedByte<Fq>,
+            [AssignedByte<Fq>; 32],
+            Sha3_256<Fq>,
+            NativeGadget<Fq, _, _>,
+        >(true, "Sha3_256", &additional_sizes, 14);
+    }
+}
