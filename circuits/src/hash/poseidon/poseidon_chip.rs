@@ -732,12 +732,20 @@ mod tests {
 
     #[test]
     fn test_poseidon_hash() {
+        let additional_sizes = [
+            RATE - 1,
+            RATE,
+            RATE + 1,
+            3 * RATE - 1,
+            3 * RATE,
+            3 * RATE + 1,
+        ];
         test_hash::<
             midnight_curves::Fq,
             AssignedNative<midnight_curves::Fq>,
             AssignedNative<midnight_curves::Fq>,
             PoseidonChip<midnight_curves::Fq>,
             NativeChip<midnight_curves::Fq>,
-        >(true, "Poseidon", 10);
+        >(true, "Poseidon", &additional_sizes, 7);
     }
 }

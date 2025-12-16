@@ -45,8 +45,8 @@
       "max_deg": "5",
       "permutations": "14",
       "point_sets": "3",
-      "rows": "568",
-      "table_rows": "10"
+      "rows": "110",
+      "table_rows": "2"
     },
     "one_permutation": {
       "advice_columns": "8",
@@ -80,7 +80,7 @@
       "max_deg": "5",
       "permutations": "15",
       "point_sets": "5",
-      "rows": "18720",
+      "rows": "1872",
       "table_rows": "7933"
     }
   },
@@ -93,7 +93,7 @@
       "max_deg": "5",
       "permutations": "15",
       "point_sets": "7",
-      "rows": "36800",
+      "rows": "3680",
       "table_rows": "15487"
     }
   },
