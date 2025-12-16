@@ -109,9 +109,9 @@ pub(crate) fn lookup_expressions<S: SelfEmulation>(
     let id_1 = {
         scalar_chip.add_and_mul(
             layouter,
-            (-S::F::ONE, &sum),
             (S::F::ZERO, &lookup_evals.helper_eval),
             (S::F::ZERO, &product),
+            (-S::F::ONE, &sum),
             S::F::ZERO,
             S::F::ONE,
         )?

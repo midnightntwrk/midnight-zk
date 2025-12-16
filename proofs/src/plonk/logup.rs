@@ -222,8 +222,10 @@ impl<F: Field> BatchedArgument<F> {
     /// inputs, ensuring the helper constraint degree stays within `cs_degree`.
     pub fn split(&self, cs_degree: usize) -> Vec<FlattenArgument<F>> {
         assert_eq!(self.input_expressions[0].len(), self.table_expressions.len());
+        let nb_lookups = self.nb_parallel_lookups(cs_degree);
+        let chunk_size = (self.input_expressions.len() + nb_lookups - 1) / nb_lookups;
         self.input_expressions
-            .chunks(self.nb_parallel_lookups(cs_degree))
+            .chunks(chunk_size)
             .enumerate()
             .map(|(idx, chunk)| {
                 FlattenArgument {

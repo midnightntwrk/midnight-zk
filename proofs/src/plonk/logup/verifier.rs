@@ -19,7 +19,7 @@ use ff::{PrimeField, WithSmallOrderMulGroup};
 
 use crate::{
     plonk::{
-        logup::{BatchedArgument, FlattenArgument},
+        logup::FlattenArgument,
         Error, VerifyingKey,
     },
     poly::{commitment::PolynomialCommitmentScheme, Rotation, VerifierQuery},

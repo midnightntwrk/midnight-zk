@@ -300,6 +300,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         let lookups_committed = cs
             .lookups()
             .iter()
+            .flat_map(|l| l.split(assigned_vk.cs.degree()))
             .map(|_| lookup::read_commitment(layouter, &mut transcript))
             .collect::<Result<Vec<_>, Error>>()?;
 
