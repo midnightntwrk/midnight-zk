@@ -124,6 +124,7 @@ where
             vk.cs
                 .lookups
                 .iter()
+                .flat_map(|l| l.split(vk.cs().degree()))
                 .map(|argument| argument.read_commitment(transcript))
                 .collect::<Result<Vec<_>, _>>()
         })

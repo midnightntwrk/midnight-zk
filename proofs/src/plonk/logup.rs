@@ -65,8 +65,6 @@ impl<F: Field> BatchedArgument<F> {
             .max()
             .unwrap_or(1);
 
-        let foo = (max_degree - 1) / lookup_degree;
-        println!("Max degree - 1 / lookup degree: {:?}", foo);
         // The dominating factor of the lookup argument is:
         // h(X) * ∏_j(f_j(X) + β) = Σ_j ∏_{k≠j}(f_k(X) + β)
         // which has degree: 1 + lookup_degree * nb_parallel_lookups
@@ -82,9 +80,6 @@ impl<F: Field> BatchedArgument<F> {
             .flat_map(|exprs| exprs.iter().map(|expr| expr.degree()))
             .max()
             .unwrap_or(1);
-
-        println!("parallel: {:?}", self.nb_parallel_lookups(cs_degree));
-        println!("What the hell? {:?}", self.nb_parallel_lookups(cs_degree) * lookup_degree + 1);
 
         self.nb_parallel_lookups(cs_degree) * lookup_degree + 1
     }
@@ -122,8 +117,10 @@ impl<F: Field> BatchedArgument<F> {
     /// Splits the batched argument into values with the correct size
     pub fn split(&self, cs_degree: usize) -> Vec<FlattenArgument<F>> {
         assert_eq!(self.input_expressions[0].len(), self.table_expressions.len());
+        let nb_lookups = self.nb_parallel_lookups(cs_degree);
+        let chunk_size = (self.input_expressions.len() + nb_lookups - 1) / nb_lookups;
         self.input_expressions
-            .chunks(self.nb_parallel_lookups(cs_degree))
+            .chunks(chunk_size)
             .enumerate()
             .map(|(idx, chunk)| {
                 FlattenArgument {

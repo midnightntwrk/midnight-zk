@@ -2353,7 +2353,6 @@ impl<F: Field> ConstraintSystem<F> {
             lookup.degree_batched_argument(degree_without_lookup)
         }).max().unwrap_or(degree_without_lookup);
 
-        println!("lookup argument: {:?}", degree);
         *[degree_without_lookup, degree].iter().max().unwrap()
     }
 

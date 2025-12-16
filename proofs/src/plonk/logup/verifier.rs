@@ -4,7 +4,7 @@ use ff::{PrimeField, WithSmallOrderMulGroup};
 
 use crate::{
     plonk::{
-        logup::{BatchedArgument, FlattenArgument},
+        logup::FlattenArgument,
         Error, VerifyingKey,
     },
     poly::{commitment::PolynomialCommitmentScheme, Rotation, VerifierQuery},
@@ -26,7 +26,7 @@ pub struct Evaluated<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
     accumulator_next_eval: F,
 }
 
-impl<F: WithSmallOrderMulGroup<3>> BatchedArgument<F> {
+impl<F: WithSmallOrderMulGroup<3>> FlattenArgument<F> {
     pub(in crate::plonk) fn read_commitment<T: Transcript, CS: PolynomialCommitmentScheme<F>>(
         &self,
         transcript: &mut T,
