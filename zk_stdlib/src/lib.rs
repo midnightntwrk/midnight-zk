@@ -153,19 +153,19 @@ pub struct ZkStdLibArch {
     /// Enable base64 chip?
     pub base64: bool,
 
-    /// Number of parallel lookups for range checks.
-    pub nr_pow2range_cols: u8,
-
     /// Enable automaton?
     pub automaton: bool,
+
+    /// Number of parallel lookups for range checks.
+    pub nr_pow2range_cols: u8,
 }
 
 impl Default for ZkStdLibArch {
     fn default() -> Self {
         ZkStdLibArch {
-            jubjub: true,
-            poseidon: true,
-            sha2_256: true,
+            jubjub: false,
+            poseidon: false,
+            sha2_256: false,
             sha2_512: false,
             sha3_256: false,
             keccak_256: false,
@@ -173,8 +173,8 @@ impl Default for ZkStdLibArch {
             secp256k1: false,
             bls12_381: false,
             base64: false,
-            nr_pow2range_cols: 1,
             automaton: false,
+            nr_pow2range_cols: 1,
         }
     }
 }
@@ -1517,18 +1517,8 @@ impl<Rel: Relation> MidnightPK<Rel> {
 ///
 ///     fn used_chips(&self) -> ZkStdLibArch {
 ///         ZkStdLibArch {
-///             jubjub: false,
-///             poseidon: false,
 ///             sha2_256: true,
-///             sha2_512: false,
-///             sha3_256: false,
-///             keccak_256: false,
-///             blake2b: false,
-///             secp256k1: false,
-///             bls12_381: false,
-///             base64: false,
-///             nr_pow2range_cols: 1,
-///             automaton: false,
+///             ..ZkStdLibArch::default()
 ///         }
 ///     }
 ///
@@ -1600,10 +1590,7 @@ pub trait Relation: Clone {
     /// enabled even if it is not used (possibly to share the same architecture
     /// with other circuits).
     ///
-    /// The blanket implementation enables:
-    ///  - jubjub
-    ///  - poseidon
-    ///  - sha256
+    /// The blanket implementation enables none of them.
     fn used_chips(&self) -> ZkStdLibArch {
         ZkStdLibArch::default()
     }

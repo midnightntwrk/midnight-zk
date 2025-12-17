@@ -10,7 +10,7 @@ use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
-use midnight_zk_stdlib::{utils::plonk_api::filecoin_srs, Relation, ZkStdLib, ZkStdLibArch};
+use midnight_zk_stdlib::{utils::plonk_api::filecoin_srs, Relation, ZkStdLib};
 use rand::rngs::OsRng;
 
 type F = midnight_curves::Fq;
@@ -83,23 +83,6 @@ impl Relation for NativeGadgetExample {
         std_lib.cond_assert_equal(layouter, &bit, &new_y, &y)?;
 
         std_lib.constrain_as_public_input(layouter, &nand_result)
-    }
-
-    fn used_chips(&self) -> ZkStdLibArch {
-        ZkStdLibArch {
-            jubjub: false,
-            poseidon: false,
-            sha2_256: false,
-            sha2_512: false,
-            sha3_256: false,
-            keccak_256: false,
-            blake2b: false,
-            secp256k1: false,
-            bls12_381: false,
-            base64: false,
-            nr_pow2range_cols: 1,
-            automaton: false,
-        }
     }
 
     fn write_relation<W: std::io::Write>(&self, _writer: &mut W) -> std::io::Result<()> {

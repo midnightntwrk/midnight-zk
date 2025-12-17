@@ -559,15 +559,8 @@ mod tests {
                 jubjub: true,
                 poseidon: true,
                 sha2_256: true,
-                sha2_512: false,
-                sha3_256: false,
-                keccak_256: false,
-                blake2b: false,
-                secp256k1: false,
-                bls12_381: false,
-                base64: false,
                 nr_pow2range_cols: 4,
-                automaton: false,
+                ..ZkStdLibArch::default()
             }
         }
 

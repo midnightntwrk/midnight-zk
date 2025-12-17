@@ -24,8 +24,8 @@ pub struct ZkStdLibArch {
     pub secp256k1: bool,
     pub bls12_381: bool,
     pub base64: bool,
-    pub nr_pow2range_cols: u8,
     pub automaton: bool,
+    pub nr_pow2range_cols: u8,
 }
 ```
 
@@ -89,18 +89,8 @@ impl Relation for ShaPreImageCircuit {
 
     fn used_chips(&self) -> ZkStdLibArch {
         ZkStdLibArch {
-            jubjub: false,
-            poseidon: false,
             sha2_256: true,
-            sha2_512: false,
-            sha3_256: true,
-            keccak_256: false,
-            blake2b: false,
-            secp256k1: false,
-            bls12_381: false,
-            base64: false,
-            nr_pow2range_cols: 1,
-            automaton: false,
+            ..ZkStdLibArch::default()
         }
     }
 

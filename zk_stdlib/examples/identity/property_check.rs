@@ -156,18 +156,12 @@ impl Relation for CredentialProperty {
 
     fn used_chips(&self) -> ZkStdLibArch {
         ZkStdLibArch {
-            jubjub: false,
-            poseidon: false,
             sha2_256: true,
-            sha2_512: false,
-            sha3_256: false,
-            keccak_256: false,
-            blake2b: false,
             secp256k1: true,
-            bls12_381: false,
             base64: true,
-            nr_pow2range_cols: 3,
             automaton: true,
+            nr_pow2range_cols: 3,
+            ..ZkStdLibArch::default()
         }
     }
 
