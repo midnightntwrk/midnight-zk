@@ -27,8 +27,8 @@ sha3 = "0.10.8"
 # (but different) copy of their midnight-proofs dependency. The below version enforces that they 
 # both get use the local crate.
 [patch."https://github.com/midnightntwrk/midnight-zk"]
-midnight-proofs = { path = "proofs" }
-midnight-curves = { path = "curves" }
+midnight-proofs = { path = "proofs", version = "0.6.0" }
+midnight-curves = { path = "curves", version = "0.2.0" }
 
 ## Benchmarks
 
