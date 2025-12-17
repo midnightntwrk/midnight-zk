@@ -560,7 +560,7 @@ mod tests {
                 poseidon: true,
                 sha2_256: true,
                 sha2_512: false,
-                sha3_256: true,
+                sha3_256: false,
                 keccak_256: false,
                 blake2b: false,
                 secp256k1: false,

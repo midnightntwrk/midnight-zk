@@ -1519,9 +1519,10 @@ impl<Rel: Relation> MidnightPK<Rel> {
 ///         ZkStdLibArch {
 ///             jubjub: false,
 ///             poseidon: false,
-///             sha256: true,
-///             sha512: false,
-///             keccak: false,
+///             sha2_256: true,
+///             sha2_512: false,
+///             sha3_256: false,
+///             keccak_256: false,
 ///             blake2b: false,
 ///             secp256k1: false,
 ///             bls12_381: false,

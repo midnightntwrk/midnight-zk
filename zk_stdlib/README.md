@@ -16,9 +16,10 @@ The architecture of `ZkStdLib` is configurable via the following structure:
 pub struct ZkStdLibArch {
     pub jubjub: bool,
     pub poseidon: bool,
-    pub sha256: bool,
-    pub sha512: bool,
-    pub keccak: bool,
+    pub sha2_256: bool,
+    pub sha2_512: bool,
+    pub sha3_256: bool,
+    pub keccak_256: bool,
     pub blake2b: bool,
     pub secp256k1: bool,
     pub bls12_381: bool,
@@ -80,7 +81,7 @@ impl Relation for ShaPreImageCircuit {
         witness: Value<Self::Witness>,
     ) -> Result<(), Error> {
         let assigned_input = std_lib.assign_many(layouter, &witness.transpose_array())?;
-        let output = std_lib.sha256(layouter, &assigned_input)?;
+        let output = std_lib.sha2_256(layouter, &assigned_input)?;
         output
             .iter()
             .try_for_each(|b| std_lib.constrain_as_public_input(layouter, b))
@@ -90,9 +91,10 @@ impl Relation for ShaPreImageCircuit {
         ZkStdLibArch {
             jubjub: false,
             poseidon: false,
-            sha256: true,
-            sha512: false,
-            keccak: false,
+            sha2_256: true,
+            sha2_512: false,
+            sha3_256: true,
+            keccak_256: false,
             blake2b: false,
             secp256k1: false,
             bls12_381: false,
