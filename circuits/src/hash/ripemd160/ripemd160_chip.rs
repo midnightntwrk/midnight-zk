@@ -9,6 +9,7 @@ use midnight_proofs::{
     },
     poly::Rotation,
 };
+use num_integer::Integer;
 
 use crate::{
     field::{decomposition::chip::P2RDecompositionChip, NativeChip, NativeGadget},
@@ -61,6 +62,7 @@ pub struct RipeMD160Config {
     q_spr_sum_odd: Selector,
     q_left_rot: Selector,
     q_add: Selector,
+    q_mod_add: Selector,
 }
 
 /// Chip for RIPEMD160.
@@ -128,6 +130,7 @@ impl<F: PrimeField> ComposableChip<F> for RipeMD160Chip<F> {
         let q_spr_sum_odd = meta.selector();
         let q_left_rot = meta.selector();
         let q_add = meta.selector();
+        let q_mod_add = meta.selector();
 
         (0..2).for_each(|idx| {
             meta.lookup("plain-spreaded lookup", |meta| {
@@ -247,6 +250,31 @@ impl<F: PrimeField> ComposableChip<F> for RipeMD160Chip<F> {
             Constraints::with_selector(q_add, vec![("addition", id)])
         });
 
+        meta.create_gate("addition mod 2^32", |meta| {
+            let a = meta.query_advice(advice_cols[4], Rotation(0));
+            let b = meta.query_advice(advice_cols[5], Rotation(0));
+            let c = meta.query_advice(advice_cols[6], Rotation(0));
+            let d = meta.query_advice(advice_cols[7], Rotation(0));
+
+            let carry = meta.query_advice(advice_cols[0], Rotation(0));
+            let res = meta.query_advice(advice_cols[2], Rotation(0));
+
+            let id =
+                a + b + c + d - res - carry.clone() * Expression::Constant(F::from(1u64 << 32));
+            let mut range_three = Expression::Constant(F::from(1u64));
+            for i in 0..=3 {
+                range_three = range_three * (carry.clone() - Expression::Constant(F::from(i)));
+            }
+
+            Constraints::with_selector(
+                q_mod_add,
+                vec![
+                    ("addition mod 2^32", id),
+                    ("carry within three", range_three),
+                ],
+            )
+        });
+
         RipeMD160Config {
             advice_cols,
             fixed_cols,
@@ -257,6 +285,7 @@ impl<F: PrimeField> ComposableChip<F> for RipeMD160Chip<F> {
             q_spr_sum_odd,
             q_left_rot,
             q_add,
+            q_mod_add,
         }
     }
 
@@ -749,6 +778,58 @@ impl<F: PrimeField> RipeMD160Chip<F> {
         )
     }
 
+    /// Given a list of up to four assigned words, this function computes their
+    /// addition modulo 2^32, returning the result as an assigned word.
+    fn add_mod_2_32(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        summands: &[AssignedWord<F>],
+        zero: &AssignedWord<F>,
+    ) -> Result<AssignedWord<F>, Error> {
+        /*
+        Computing the mod 2^32 addition: A ⊞ B ⊞ C ⊞ D fills the circuit layout as follows:
+
+        |  T0 |   A0  |   A1   |  T1 |   A2  |  A3  | A4 | A5 | A6 | A7 |
+        |-----|-------|--------|-----|-------|------|----|----|----|----|
+        |     | carry |        |     |  res  |      | A  |  B |  C |  D | <- q_mod_add
+
+        with constraints of:
+        1) asserting the mod 2^32 addition identity:
+               A + B + C + D = carry * 2^32 + res
+        2) range check of `carry` in [0, 3] to make sure the above identity 
+        not wrap-around, although it is not tight when number of summands < 4:
+               carry * (carry - 1) * (carry - 2) * (carry - 3) = 0
+        */
+        assert!(summands.len() <= 4, "At most 4 summands are supported");
+
+        let adv_cols = self.config().advice_cols;
+
+        let mut summands = summands.to_vec();
+        summands.resize(4, zero.clone());
+
+        let (carry_val, res_val): (Value<u32>, Value<F>) =
+            Value::<Vec<F>>::from_iter(summands.iter().map(|s| s.0.value().copied()))
+                .map(|v| v.into_iter().map(fe_to_u64).sum::<u64>())
+                .map(|s| s.div_rem(&(1u64 << 32)))
+                .map(|(carry, rem)| (carry as u32, u64_to_fe(rem)))
+                .unzip();
+        let carry_val: Value<F> = carry_val.map(u32_to_fe);
+
+        layouter.assign_region(
+            || "Assign add_mod_2_32",
+            |mut region| {
+                self.config().q_mod_add.enable(&mut region, 0)?;
+
+                summands[0].0.copy_advice(|| "S0", &mut region, adv_cols[4], 0)?;
+                summands[1].0.copy_advice(|| "S1", &mut region, adv_cols[5], 0)?;
+                summands[2].0.copy_advice(|| "S2", &mut region, adv_cols[6], 0)?;
+                summands[3].0.copy_advice(|| "S3", &mut region, adv_cols[7], 0)?;
+                region.assign_advice(|| "carry", adv_cols[0], 0, || carry_val)?;
+                region.assign_advice(|| "res", adv_cols[2], 0, || res_val).map(AssignedWord)
+            },
+        )
+    }
+
     /// Given a u64 value representing a spreaded value, this function
     /// decomposes it into 11-11-10 limbs for both its even and odd bits,
     /// depending on `even_or_odd` it assigns them in the circuit, and returns
@@ -904,7 +985,7 @@ impl<F: PrimeField> RipeMD160Chip<F> {
 //
 //     |  T0 |   A0  |   A1   |  T1 |   A2  |   A3   |   A4  | A5 | A6 | A7 |
 //     |-----|-------|--------|-----|-------|--------|-------|----|----|----|
-//     |  2  | carry | ~carry |  0  |   0   |   ~0   |   A   |  B |  C |  D | <- q_mod_add
+//     |     | carry |        |     |  res  |        |   A   |  B |  C |  D | <- q_mod_add
 
 #[cfg(test)]
 mod tests {
@@ -1008,6 +1089,23 @@ mod tests {
             let assigned_rot = ripemd160_chip.left_rotate(&mut layouter, &assigned_words[3], 5)?;
             let expected_rot = fe_to_u32(self.inputs[3]).rotate_left(5);
             assigned_rot.0.value().assert_if_known(|res| **res == u32_to_fe(expected_rot));
+
+            let assigned_add_mod = ripemd160_chip.add_mod_2_32(
+                &mut layouter,
+                &[
+                    assigned_words[1].clone(),
+                    assigned_words[2].clone(),
+                    assigned_words[3].clone(),
+                ],
+                &assigned_words[0], // intialized to zero in the test function
+            )?;
+            let expected_add_mod =
+                (fe_to_u64(self.inputs[1]) + fe_to_u64(self.inputs[2]) + fe_to_u64(self.inputs[3]))
+                    % (1u64 << 32);
+            assigned_add_mod
+                .0
+                .value()
+                .assert_if_known(|res| **res == u32_to_fe(expected_add_mod as u32));
 
             let res1 = ripemd160_chip.f_type_one(&mut layouter, &sprdd_a, &sprdd_b, &sprdd_c)?;
             let expected_res1 =
