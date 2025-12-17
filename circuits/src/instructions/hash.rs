@@ -66,7 +66,7 @@ pub(crate) mod tests {
         plonk::{Circuit, ConstraintSystem},
     };
     use rand::{Rng, SeedableRng};
-    use rand_chacha::ChaCha12Rng;
+    use rand_chacha::{ChaCha12Rng, ChaCha8Rng};
 
     use super::*;
     use crate::{
@@ -83,7 +83,7 @@ pub(crate) mod tests {
         Input: InnerValue,
         Output: InnerValue,
     {
-        inputs: Vec<Vec<Input::Element>>,
+        input: Vec<Input::Element>,
         _marker: PhantomData<(F, Output, HashChip, AssignChip)>,
     }
 
@@ -126,25 +126,32 @@ pub(crate) mod tests {
             let chip = HashChip::new_from_scratch(&config.0);
             let assign_chip = AssignChip::new_from_scratch(&config.1);
 
-            for input in self.inputs.iter() {
-                let vec_input =
-                    input.iter().map(|input| Value::known(input.clone())).collect::<Vec<_>>();
-                let inputs = assign_chip.assign_many(&mut layouter, &vec_input)?;
-                let expected_output =
-                    <HashChip as HashCPU<Input::Element, Output::Element>>::hash(input);
+            let vec_input =
+                self.input.iter().map(|input| Value::known(input.clone())).collect::<Vec<_>>();
+            let assigned_input = assign_chip.assign_many(&mut layouter, &vec_input)?;
+            let expected_output =
+                <HashChip as HashCPU<Input::Element, Output::Element>>::hash(&self.input);
 
-                let output = chip.hash(&mut layouter, &inputs)?;
-                assign_chip.assert_equal_to_fixed(&mut layouter, &output, expected_output)?;
-            }
+            let output = chip.hash(&mut layouter, &assigned_input)?;
+            assign_chip.assert_equal_to_fixed(&mut layouter, &output, expected_output)?;
 
             chip.load_from_scratch(&mut layouter)?;
             assign_chip.load_from_scratch(&mut layouter)
         }
     }
 
+    /// Generic tests for hash functions. The arguments allow in particular to
+    /// tune the input/sample size for the test, so that corner cases specific
+    /// to the tested hash can be tested. In addition to the custom input sizes,
+    /// are always included: a random input of size 10 (for the cost model), 0
+    /// and 1, and 10 inputs from random sizes in 1..10.
+    ///
+    /// Note: the pseudo-randomness seed used in the tests in chosen
+    /// non-deterministically.
     pub fn test_hash<F, Input, Output, HashChip, AssignChip>(
         cost_model: bool,
         chip_name: &str,
+        additional_input_sizes: &[usize],
         k: u32,
     ) where
         F: PrimeField + ff::FromUniformBytes<64> + Ord,
@@ -154,23 +161,33 @@ pub(crate) mod tests {
         AssignChip:
             AssignmentInstructions<F, Input> + AssertionInstructions<F, Output> + FromScratch<F>,
     {
-        // Create a random number generator
-        let mut rng = ChaCha12Rng::seed_from_u64(0xf007ba11);
+        // Create a random number generator.
+        let mut rng = ChaCha8Rng::from_entropy();
 
-        let inputs = (0..10).map(|_| {
-            let random_size: usize = rng.gen_range(1..10);
-            (0..random_size).map(|_| Input::sample_inner(&mut rng)).collect::<Vec<_>>()
-        });
+        let input_sizes = ([10, 0, 1].iter().copied())
+            .chain((0..10).map(|_| rng.gen_range(1..10)))
+            .chain(additional_input_sizes.iter().copied())
+            .collect::<Vec<_>>();
+        let inputs = (input_sizes.iter())
+            .map(|&size| (0..size).map(|_| Input::sample_inner(&mut rng)).collect::<Vec<_>>());
 
-        let circuit = TestCircuit::<F, Input, Output, HashChip, AssignChip> {
-            inputs: inputs.collect(),
-            _marker: PhantomData,
-        };
-
-        MockProver::run(k, &circuit, vec![vec![], vec![]]).unwrap().assert_satisfied();
-
-        if cost_model {
-            circuit_to_json(chip_name, "hash", circuit);
+        let mut cost_model = cost_model;
+        for input in inputs {
+            println!(
+                "> [{}] Preimage test circuit:\n\t- input = {:?}",
+                chip_name, input
+            );
+            let circuit = TestCircuit::<F, Input, Output, HashChip, AssignChip> {
+                input,
+                _marker: PhantomData,
+            };
+            MockProver::run(k, &circuit, vec![vec![], vec![]]).unwrap().assert_satisfied();
+            println!("\n... test passed!\n");
+            if cost_model {
+                circuit_to_json(chip_name, "hash", circuit);
+            }
+            // The cost model, if any, is only on the first input.
+            cost_model = false;
         }
     }
 

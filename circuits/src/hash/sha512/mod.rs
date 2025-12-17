@@ -65,12 +65,25 @@ mod tests {
 
     #[test]
     fn test_sha512_hash() {
+        const SHA512_BLOCK_SIZE: usize = 128;
+        let additional_sizes = [
+            SHA512_BLOCK_SIZE - 2,
+            SHA512_BLOCK_SIZE - 1,
+            SHA512_BLOCK_SIZE,
+            SHA512_BLOCK_SIZE + 1,
+            SHA512_BLOCK_SIZE + 2,
+            2 * SHA512_BLOCK_SIZE - 2,
+            2 * SHA512_BLOCK_SIZE - 1,
+            2 * SHA512_BLOCK_SIZE,
+            2 * SHA512_BLOCK_SIZE + 1,
+            2 * SHA512_BLOCK_SIZE + 2,
+        ];
         test_hash::<
             Scalar,
             AssignedByte<Scalar>,
             [AssignedByte<Scalar>; 64],
             Sha512Chip<Scalar>,
             NativeGadget<Scalar, _, _>,
-        >(true, "SHA512", 16);
+        >(true, "SHA512", &additional_sizes, 14);
     }
 }

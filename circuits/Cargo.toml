@@ -12,10 +12,13 @@ ff = { workspace = true }
 rustc-hash = "2"
 blake2b_simd = { workspace = true }
 midnight-curves = { git = "https://github.com/midnightntwrk/midnight-zk.git", tag = "midnight-curves-v0.2.0" }
-midnight-proofs = { path = "../proofs", version = "0.6.0", default-features = false, features = [
+midnight-proofs = { git = "https://github.com/midnightntwrk/midnight-zk.git", tag = "midnight-proofs-v0.6.0", default-features = false, features = [
     "circuit-params",
     "committed-instances",
 ] }
+
+keccak_sha3 = { git = "https://github.com/alexandroszacharakis8/sha3-circuit", rev = "e38afe2", package = "sha3-circuit" }
+blake2b = { git = "https://github.com/eryxcoop/blake2b_halo2", rev = "c3e590f", package = "blake2b_halo2" }
 
 serde = { workspace = true, optional = true }
 serde_derive = { workspace = true, optional = true }
@@ -30,6 +33,7 @@ subtle = "2.6"
 base64 = "0.13.1"
 lazy_static = "1.5.0"
 bincode = "2.0"
+hex = "0.4.3"
 
 [dev-dependencies]
 criterion = "0.7"
@@ -41,9 +45,13 @@ itertools = "0.14"
 dhat = "0.3"
 bellman = "0.14.0"
 serial_test = "3.2.0"
+sha3 = "0.10.0"
+blake2 = "0.10.6"
 
 [target.'cfg(ci_build)'.dependencies]
-midnight-curves = { git = "https://github.com/midnightntwrk/midnight-zk.git", tag = "midnight-curves-v0.2.0", features = ["portable"] }
+midnight-curves = { git = "https://github.com/midnightntwrk/midnight-zk.git", tag = "midnight-curves-v0.2.0", features = [
+    "portable",
+] }
 
 [features]
 default = []

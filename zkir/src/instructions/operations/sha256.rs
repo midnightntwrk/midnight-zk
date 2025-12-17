@@ -32,7 +32,7 @@ pub fn sha256_incircuit(
     input: &CircuitValue,
 ) -> Result<CircuitValue, Error> {
     let bytes: Vec<AssignedByte> = input.clone().try_into()?;
-    let h = std_lib.sha256(layouter, &bytes)?;
+    let h = std_lib.sha2_256(layouter, &bytes)?;
     Ok(CircuitValue::Bytes(h.to_vec()))
 }
 

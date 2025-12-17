@@ -104,13 +104,26 @@ mod tests {
 
     #[test]
     fn test_sha256_hash() {
+        const SHA256_BLOCK_SIZE: usize = 64;
+        let additional_sizes = [
+            SHA256_BLOCK_SIZE - 2,
+            SHA256_BLOCK_SIZE - 1,
+            SHA256_BLOCK_SIZE,
+            SHA256_BLOCK_SIZE + 1,
+            SHA256_BLOCK_SIZE + 2,
+            2 * SHA256_BLOCK_SIZE - 2,
+            2 * SHA256_BLOCK_SIZE - 1,
+            2 * SHA256_BLOCK_SIZE,
+            2 * SHA256_BLOCK_SIZE + 1,
+            2 * SHA256_BLOCK_SIZE + 2,
+        ];
         test_hash::<
             Scalar,
             AssignedByte<Scalar>,
             [AssignedByte<Scalar>; 32],
             Sha256Chip<Scalar>,
             NativeGadget<Scalar, _, _>,
-        >(true, "SHA256", 15);
+        >(true, "SHA256", &additional_sizes, 13);
     }
 
     #[test]

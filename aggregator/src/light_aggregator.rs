@@ -559,8 +559,11 @@ mod tests {
             ZkStdLibArch {
                 jubjub: true,
                 poseidon: true,
-                sha256: true,
-                sha512: false,
+                sha2_256: true,
+                sha2_512: false,
+                sha3_256: true,
+                keccak_256: false,
+                blake2b: false,
                 secp256k1: false,
                 bls12_381: false,
                 base64: false,

@@ -102,7 +102,7 @@ impl Relation for BitcoinSigExample {
             .chain(msg_bytes)
             .collect::<Vec<_>>();
 
-        let mut sha_output = std_lib.sha256(layouter, &sha_input)?;
+        let mut sha_output = std_lib.sha2_256(layouter, &sha_input)?;
 
         // Bitcoin represents scalars in big-endian.
         sha_output.reverse();
@@ -140,8 +140,11 @@ impl Relation for BitcoinSigExample {
         ZkStdLibArch {
             jubjub: false,
             poseidon: false,
-            sha256: true,
-            sha512: false,
+            sha2_256: true,
+            sha2_512: false,
+            sha3_256: false,
+            keccak_256: false,
+            blake2b: false,
             secp256k1: true,
             bls12_381: false,
             base64: false,
