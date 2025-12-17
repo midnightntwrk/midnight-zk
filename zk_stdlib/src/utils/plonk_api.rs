@@ -161,11 +161,6 @@ macro_rules! plonk_api {
     };
 }
 
-#[cfg(feature = "dev-curves")]
-use midnight_curves::bn256;
-#[cfg(feature = "dev-curves")]
-plonk_api!(BnPLONK, bn256::Bn256, bn256::Fr, bn256::G1Affine, bn256::G1);
-
 plonk_api!(
     BlstPLONK,
     midnight_curves::Bls12,

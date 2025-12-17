@@ -2,14 +2,12 @@ use group::{
     ff::{Field, PrimeField},
     GroupEncoding,
 };
-use midnight_circuits::{
-    compact_std_lib::ZkStdLib,
-    instructions::{
-        ArithInstructions, AssertionInstructions, AssignmentInstructions, ConversionInstructions,
-        DecompositionInstructions, EccInstructions,
-    },
+use midnight_circuits::instructions::{
+    ArithInstructions, AssertionInstructions, AssignmentInstructions, ConversionInstructions,
+    DecompositionInstructions, EccInstructions,
 };
 use midnight_proofs::circuit::Layouter;
+use midnight_zk_stdlib::ZkStdLib;
 
 use crate::{
     types::{CircuitValue, IrValue},

@@ -38,10 +38,6 @@ use blake2b::blake2b::{
 use ff::PrimeField;
 use group::{prime::PrimeCurveAffine, Group};
 use keccak_sha3::packed_chip::{PackedChip, PackedConfig, PACKED_ADVICE_COLS, PACKED_FIXED_COLS};
-use midnight_curves::{
-    secp256k1::{self, Secp256k1},
-    Fq, G1Affine, G1Projective,
-};
 use midnight_circuits::{
     biguint::biguint_gadget::BigUintGadget,
     ecc::{
@@ -79,7 +75,10 @@ use midnight_circuits::{
     },
     vec::{vector_gadget::VectorGadget, AssignedVector, Vectorizable},
 };
-use midnight_curves::{Fq, G1Affine, G1Projective};
+use midnight_curves::{
+    secp256k1::{self, Secp256k1},
+    Fq, G1Affine, G1Projective,
+};
 use midnight_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
     dev::cost_model::{circuit_model, CircuitModel},

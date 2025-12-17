@@ -6,13 +6,10 @@ use std::collections::HashMap;
 use blake2b_simd::State as Blake2b;
 use ff::Field;
 use group::Group;
-use midnight_circuits::{
-    compact_std_lib::{self, MidnightCircuit},
-    hash::poseidon::PoseidonChip,
-    instructions::hash::HashCPU,
-};
+use midnight_circuits::{hash::poseidon::PoseidonChip, instructions::hash::HashCPU};
 use midnight_curves::{Fr as JubjubScalar, JubjubAffine, JubjubExtended as Jubjub, JubjubSubgroup};
 use midnight_proofs::poly::kzg::params::ParamsKZG;
+use midnight_zk_stdlib::{self, MidnightCircuit};
 use midnight_zkir::ZkirRelation;
 use rand_chacha::{
     rand_core::{OsRng, RngCore, SeedableRng},
@@ -53,7 +50,7 @@ fn main() {
 
     let relation = ZkirRelation::read(ir_raw).expect("valid IR");
 
-    dbg!(compact_std_lib::cost_model(&relation));
+    dbg!(midnight_zk_stdlib::cost_model(&relation));
 
     let mut rng = ChaCha8Rng::seed_from_u64(0xf001ba11);
 
@@ -72,14 +69,14 @@ fn main() {
     let k = MidnightCircuit::from_relation(&relation).min_k();
     let srs = ParamsKZG::unsafe_setup(k, OsRng);
 
-    let vk = compact_std_lib::setup_vk(&srs, &relation);
-    let pk = compact_std_lib::setup_pk(&relation, &vk);
+    let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
+    let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
 
     let proof =
-        compact_std_lib::prove::<_, Blake2b>(&srs, &pk, &relation, &instance, witness, OsRng)
+        midnight_zk_stdlib::prove::<_, Blake2b>(&srs, &pk, &relation, &instance, witness, OsRng)
             .expect("Proof generation should not fail");
 
-    assert!(compact_std_lib::verify::<ZkirRelation, Blake2b>(
+    assert!(midnight_zk_stdlib::verify::<ZkirRelation, Blake2b>(
         &srs.verifier_params(),
         &vk,
         &instance,

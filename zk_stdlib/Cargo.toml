@@ -13,15 +13,14 @@ rustc-hash = "2"
 halo2curves = { workspace = true }
 blake2b_simd = { workspace = true }
 midnight-circuits = { path = "../circuits", version = "5.0.1" }
-midnight-curves = { path = "../curves", version = "0.1.1" }
-midnight-proofs = { path = "../proofs", version = "0.5.1", default-features = false, features = [
-    "bits",
+midnight-curves = { git = "https://github.com/midnightntwrk/midnight-zk.git", tag = "midnight-curves-v0.2.0" }
+midnight-proofs = { git = "https://github.com/midnightntwrk/midnight-zk.git", tag = "midnight-proofs-v0.6.0", default-features = false, features = [
     "circuit-params",
     "committed-instances",
 ] }
 
-keccak = { git = "https://github.com/alexandroszacharakis8/sha3-circuit", branch = "irakoton@midnight-update", package = "sha3-circuit" }
-blake2b = { git = "https://github.com/irakoton/blake2b_halo2_integration", branch = "irakoton@midnight-update", package = "blake2b_halo2" }
+keccak_sha3 = { git = "https://github.com/alexandroszacharakis8/sha3-circuit", rev = "e38afe2", package = "sha3-circuit" }
+blake2b = { git = "https://github.com/eryxcoop/blake2b_halo2", rev = "c3e590f", package = "blake2b_halo2" }
 
 serde = { workspace = true, optional = true }
 serde_derive = { workspace = true, optional = true }
@@ -51,7 +50,7 @@ serial_test = "3.2.0"
 sha3 = "0.10.0"
 
 [target.'cfg(ci_build)'.dependencies]
-midnight-curves = { path = "../curves", features = ["portable"] }
+midnight-curves = { git = "https://github.com/midnightntwrk/midnight-zk.git", tag = "midnight-curves-v0.2.0" , features = ["portable"] }
 
 [features]
 default = []
