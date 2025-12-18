@@ -20,7 +20,6 @@
 #[doc = include_str!("../README.md")]
 extern crate core;
 
-pub mod compact_std_lib;
 pub mod instructions;
 mod utils;
 
@@ -39,7 +38,7 @@ pub use midnight_proofs;
 
 /// Tools useful for testing
 pub mod testing_utils {
-    pub use crate::utils::{ecdsa, plonk_api};
+    pub use crate::utils::ecdsa;
     #[cfg(any(test, feature = "testing"))]
     pub use crate::utils::{
         types::{Invertible, Sampleable},

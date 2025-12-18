@@ -29,11 +29,10 @@
 //!    integer, which must be smaller than the Jubjub scalar field order.
 
 use group::{Group, GroupEncoding};
-use midnight_circuits::{
-    compact_std_lib::ZkStdLib, ecc::curves::CircuitCurve, instructions::AssignmentInstructions,
-};
+use midnight_circuits::{ecc::curves::CircuitCurve, instructions::AssignmentInstructions};
 use midnight_curves::{Fr as JubjubScalar, JubjubExtended, JubjubSubgroup};
 use midnight_proofs::circuit::Layouter;
+use midnight_zk_stdlib::ZkStdLib;
 use num_bigint::BigUint;
 use num_traits::Num;
 

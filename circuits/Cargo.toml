@@ -10,7 +10,6 @@ license-file.workspace = true
 group = { workspace = true }
 ff = { workspace = true }
 rustc-hash = "2"
-blake2b_simd = { workspace = true }
 midnight-curves = { git = "https://github.com/midnightntwrk/midnight-zk.git", tag = "midnight-curves-v0.2.0" }
 midnight-proofs = { git = "https://github.com/midnightntwrk/midnight-zk.git", tag = "midnight-proofs-v0.6.0", default-features = false, features = [
     "circuit-params",
@@ -21,7 +20,6 @@ keccak_sha3 = { git = "https://github.com/alexandroszacharakis8/sha3-circuit", r
 blake2b = { git = "https://github.com/eryxcoop/blake2b_halo2", rev = "c3e590f", package = "blake2b_halo2" }
 
 serde = { workspace = true, optional = true }
-serde_derive = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 sha2 = { workspace = true }
 rand = { workspace = true }
@@ -32,8 +30,6 @@ num-integer = "0.1"
 subtle = "2.6"
 base64 = "0.13.1"
 lazy_static = "1.5.0"
-bincode = "2.0"
-hex = "0.4.3"
 
 [dev-dependencies]
 criterion = "0.7"
@@ -43,8 +39,6 @@ num-bigint = { workspace = true, features = ["rand"] }
 serde_json = { workspace = true }
 itertools = "0.14"
 dhat = "0.3"
-bellman = "0.14.0"
-serial_test = "3.2.0"
 sha3 = "0.10.0"
 blake2 = "0.10.6"
 
@@ -65,18 +59,6 @@ dev-curves = ["midnight-curves/dev-curves", "midnight-proofs/dev-curves"]
 
 [lib]
 bench = false
-
-[[example]]
-name = "cred_full"
-path = "examples/identity/full_credential.rs"
-
-[[example]]
-name = "cred_enrollment"
-path = "examples/identity/enrollment.rs"
-
-[[example]]
-name = "cred_property"
-path = "examples/identity/property_check.rs"
 
 [[bench]]
 name = "poseidon_cpu"

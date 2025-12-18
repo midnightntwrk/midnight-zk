@@ -71,7 +71,8 @@ where
     NativeArith: ArithInstructions<F, AssignedNative<F>>,
 {
     core_decomposition_chip: CoreDecomposition,
-    pub(crate) native_chip: NativeArith,
+    /// The underlying native field arithmetic chip.
+    pub native_chip: NativeArith,
     constrained_cells: Rc<RefCell<HashMap<AssignedNative<F>, BigUint>>>,
     _marker: PhantomData<F>,
 }

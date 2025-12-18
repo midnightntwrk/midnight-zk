@@ -4,8 +4,8 @@
 use std::collections::HashMap;
 
 use blake2b_simd::State as Blake2b;
-use midnight_circuits::compact_std_lib::{self, MidnightCircuit};
 use midnight_proofs::poly::kzg::params::ParamsKZG;
+use midnight_zk_stdlib::{self, MidnightCircuit};
 use midnight_zkir::{IrValue, ZkirRelation};
 use num_bigint::BigUint;
 use num_traits::Num;
@@ -33,13 +33,13 @@ fn main() {
 
     let relation = ZkirRelation::read(ir_raw).expect("valid IR");
 
-    dbg!(compact_std_lib::cost_model(&relation));
+    dbg!(midnight_zk_stdlib::cost_model(&relation));
 
     let k = MidnightCircuit::from_relation(&relation).min_k();
     let srs = ParamsKZG::unsafe_setup(k, OsRng);
 
-    let vk = compact_std_lib::setup_vk(&srs, &relation);
-    let pk = compact_std_lib::setup_pk(&relation, &vk);
+    let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
+    let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
 
     let witness = HashMap::from_iter([
         ("N", big("61472e8be1e6b3cd6919b0266abedc9bfedb0103682c6e728ccb9c4a043221e7e8f2c286bddb309576187e29856932fbdd926e469f4fe8691d7ca56e7c4d78c95323f08d174905db64ef0f766dd6de98310eec07045a94343475e78a9bd55c2d8ce1c54b23263750ecbd69e011f126a918522b6612ef6b30803b52d94b27dff030ef31325e89b2c0c1cd301ffacb2412ceddf03e574fb6b0b92851c0f60b3b466550df9ebc3760e5618c0ae04989f6b6706029a05838f9baefe51a28062bc5ac72afcff415ad055e888048f5082306db4a8885a1cc19a0950d2b88e85ff948b2ba86cbcc94f4a3412b64ed8180202ad82745132a8f3d38f4045bb4ac8d7d275")),
@@ -50,10 +50,10 @@ fn main() {
     let instance = relation.public_inputs(witness.clone()).expect("off-circuit run failed");
 
     let proof =
-        compact_std_lib::prove::<_, Blake2b>(&srs, &pk, &relation, &instance, witness, OsRng)
+        midnight_zk_stdlib::prove::<_, Blake2b>(&srs, &pk, &relation, &instance, witness, OsRng)
             .expect("Proof generation should not fail");
 
-    assert!(compact_std_lib::verify::<ZkirRelation, Blake2b>(
+    assert!(midnight_zk_stdlib::verify::<ZkirRelation, Blake2b>(
         &srs.verifier_params(),
         &vk,
         &instance,

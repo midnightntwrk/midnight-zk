@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 
-members = ["proofs", "curves", "circuits", "aggregator", "zkir"]
+members = ["proofs", "curves", "circuits", "aggregator", "zkir", "zk_stdlib"]
 
 package = { license-file = "LICENSE" }
 
@@ -29,6 +29,7 @@ sha3 = "0.10.8"
 [patch."https://github.com/midnightntwrk/midnight-zk"]
 midnight-proofs = { path = "proofs" }
 midnight-curves = { path = "curves" }
+midnight-circuits = { path = "circuits" }
 
 ## Benchmarks
 

@@ -8,7 +8,7 @@ pub mod operations;
 /// A ZKIR instruction is parametrized by a ZKIR operation
 /// and a series of inputs and outputs (in the form of value names).
 ///
-/// Some operations have a specific fixed arity, see [arity::Arity].
+/// Some operations have a specific fixed arity.
 /// The number of inputs and outputs must coincide with the input and output
 /// arity of the operation. We perform run-time arity checks when reading
 /// programs (list of instructions).

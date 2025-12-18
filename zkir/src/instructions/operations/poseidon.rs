@@ -1,7 +1,6 @@
-use midnight_circuits::{
-    compact_std_lib::ZkStdLib, hash::poseidon::PoseidonChip, instructions::hash::HashCPU,
-};
+use midnight_circuits::{hash::poseidon::PoseidonChip, instructions::hash::HashCPU};
 use midnight_proofs::circuit::Layouter;
+use midnight_zk_stdlib::ZkStdLib;
 
 use crate::{types::CircuitValue, utils::F, Error, IrValue};
 

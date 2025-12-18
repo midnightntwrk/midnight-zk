@@ -1,6 +1,7 @@
-use midnight_circuits::{compact_std_lib::ZkStdLib, instructions::EccInstructions};
+use midnight_circuits::instructions::EccInstructions;
 use midnight_curves::{JubjubAffine, JubjubExtended};
 use midnight_proofs::circuit::Layouter;
+use midnight_zk_stdlib::ZkStdLib;
 
 use crate::{types::CircuitValue, utils::F, Error, IrValue, Operation};
 

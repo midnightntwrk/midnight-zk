@@ -1,5 +1,6 @@
-use midnight_circuits::{compact_std_lib::ZkStdLib, instructions::AssertionInstructions};
+use midnight_circuits::instructions::AssertionInstructions;
 use midnight_proofs::circuit::Layouter;
+use midnight_zk_stdlib::ZkStdLib;
 
 use crate::{
     instructions::operations::is_equal_incircuit,

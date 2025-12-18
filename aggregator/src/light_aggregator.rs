@@ -519,11 +519,10 @@ mod tests {
     use ff::Field;
     use group::Group;
     use midnight_circuits::{
-        compact_std_lib,
-        compact_std_lib::{Relation, ZkStdLib, ZkStdLibArch},
         hash::poseidon::PoseidonChip,
         instructions::{hash::HashCPU, AssignmentInstructions},
     };
+    use midnight_zk_stdlib::{Relation, ZkStdLib, ZkStdLibArch};
     use rand::{rngs::OsRng, SeedableRng};
     use rand_chacha::ChaCha8Rng;
 
@@ -560,15 +559,8 @@ mod tests {
                 jubjub: true,
                 poseidon: true,
                 sha2_256: true,
-                sha2_512: false,
-                sha3_256: true,
-                keccak_256: false,
-                blake2b: false,
-                secp256k1: false,
-                bls12_381: false,
-                base64: false,
                 nr_pow2range_cols: 4,
-                automaton: false,
+                ..ZkStdLibArch::default()
             }
         }
 
@@ -589,9 +581,9 @@ mod tests {
 
         let mut inner_srs = srs.clone();
 
-        compact_std_lib::downsize_srs_for_relation(&mut inner_srs, &InnerCircuit);
-        let inner_vk = compact_std_lib::setup_vk(&inner_srs, &InnerCircuit);
-        let inner_pk = compact_std_lib::setup_pk(&InnerCircuit, &inner_vk);
+        midnight_zk_stdlib::downsize_srs_for_relation(&mut inner_srs, &InnerCircuit);
+        let inner_vk = midnight_zk_stdlib::setup_vk(&inner_srs, &InnerCircuit);
+        let inner_pk = midnight_zk_stdlib::setup_pk(&InnerCircuit, &inner_vk);
 
         let aggregator = LightAggregator::<NB_PROOFS>::init(&mut srs, inner_vk.vk())
             .expect("Failed to init the aggregator");
@@ -610,7 +602,7 @@ mod tests {
 
         let t = std::time::Instant::now();
         let proofs: [Vec<u8>; NB_PROOFS] = core::array::from_fn(|i| {
-            compact_std_lib::prove::<InnerCircuit, LightPoseidonFS<F>>(
+            midnight_zk_stdlib::prove::<InnerCircuit, LightPoseidonFS<F>>(
                 &inner_srs,
                 &inner_pk,
                 &InnerCircuit,

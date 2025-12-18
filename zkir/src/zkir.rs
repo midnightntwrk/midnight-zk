@@ -1,12 +1,12 @@
 use std::{cell::RefCell, collections::HashMap, io, rc::Rc};
 
 use bincode::{Decode, Encode};
-use midnight_circuits::compact_std_lib::{MidnightCircuit, Relation, ZkStdLib, ZkStdLibArch};
 use midnight_proofs::{
     circuit::{Layouter, Value},
     dev::cost_model::dummy_synthesize_run,
     plonk,
 };
+use midnight_zk_stdlib::{MidnightCircuit, Relation, ZkStdLib, ZkStdLibArch};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -131,9 +131,9 @@ impl Relation for ZkirRelation {
             blake2b: false,
             secp256k1: false,
             bls12_381: false,
-            nr_pow2range_cols: 4,
             automaton: false,
             base64: false,
+            nr_pow2range_cols: 4,
         }
     }
 

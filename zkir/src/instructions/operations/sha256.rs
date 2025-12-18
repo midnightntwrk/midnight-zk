@@ -1,5 +1,5 @@
-use midnight_circuits::compact_std_lib::ZkStdLib;
 use midnight_proofs::circuit::Layouter;
+use midnight_zk_stdlib::ZkStdLib;
 use sha2::Digest;
 
 use crate::{

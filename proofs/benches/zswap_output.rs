@@ -7,7 +7,6 @@ use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use ff::Field;
 use group::Group;
 use midnight_circuits::{
-    compact_std_lib::{MidnightCircuit, Relation, ZkStdLib},
     ecc::{hash_to_curve::HashToCurveGadget, native::EccChip},
     hash::poseidon::PoseidonChip,
     instructions::{
@@ -29,6 +28,7 @@ use midnight_proofs::{
     },
     transcript::{CircuitTranscript, Transcript},
 };
+use midnight_zk_stdlib::{MidnightCircuit, Relation, ZkStdLib};
 use rand::{rngs::OsRng, Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use sha2::Digest;

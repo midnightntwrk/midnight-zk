@@ -33,7 +33,6 @@ required-features = ["bench-internal"]
 harness = false
 
 [dependencies]
-backtrace = { version = "0.3", optional = true }
 ff = { workspace = true }
 group = { workspace = true }
 midnight-curves = { git = "https://github.com/midnightntwrk/midnight-zk.git", tag = "midnight-curves-v0.2.0" }
@@ -47,7 +46,6 @@ rayon = { workspace = true }
 criterion = { version = "0.7", optional = true }
 
 # Developer tooling dependencies
-plotters = { version = "0.3.7", default-features = false, optional = true }
 tabbycat = { version = "0.1", features = ["attributes"], optional = true }
 num-bigint = { workspace = true }
 
@@ -56,6 +54,7 @@ assert_matches = "1.5"
 proptest = "1"
 serde_json = { workspace = true }
 midnight-circuits = { path = "../circuits" }
+midnight-zk-stdlib = { path = "../zk_stdlib" }
 sha2 = { workspace = true }
 rand = { workspace = true }
 criterion = "0.7"
@@ -64,7 +63,9 @@ criterion = "0.7"
 getrandom = { version = "0.2", features = ["js"] }
 
 [target.'cfg(ci_build)'.dependencies]
-midnight-curves = { git = "https://github.com/midnightntwrk/midnight-zk.git", tag = "midnight-curves-v0.2.0", features = ["portable"] }
+midnight-curves = { git = "https://github.com/midnightntwrk/midnight-zk.git", tag = "midnight-curves-v0.2.0", features = [
+  "portable",
+] }
 
 [features]
 default = ["committed-instances"]

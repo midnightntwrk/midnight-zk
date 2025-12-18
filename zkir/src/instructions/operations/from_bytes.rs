@@ -1,9 +1,8 @@
 use group::GroupEncoding;
-use midnight_circuits::{
-    compact_std_lib::ZkStdLib, instructions::DecompositionInstructions, types::InnerValue,
-};
+use midnight_circuits::{instructions::DecompositionInstructions, types::InnerValue};
 use midnight_curves::{Fr as JubjubFr, JubjubSubgroup};
 use midnight_proofs::circuit::{Layouter, Value};
+use midnight_zk_stdlib::ZkStdLib;
 
 use crate::{
     instructions::operations::{assert_equal_incircuit, into_bytes_incircuit, load_incircuit},
