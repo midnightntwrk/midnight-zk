@@ -59,13 +59,13 @@ pub struct Pow2RangeConfig {
 //    |   N   |    1    |
 //    |  ...  |   ...   |
 //    |   N   | 2^N - 1 |
-/// There exist [crate::compact_std_lib::ZkStdLibArch::nr_pow2range_cols]
-/// columns designated for the lookup. If the lookup is enabled, the values in
-/// those columns will be asserted to be in the range [0, 2^tag), where tag is
-/// the value of the tag column at the relevant offset. Note that if the lookup
-/// is enabled, all lookup columns are range-checked in the same range. It is
-/// not possible to range-check only some of them. However, different rows may
-/// assert different ranges (specified by the tag).
+/// There exist as many columns as inputted in the config designated for the
+/// lookup. If the lookup is enabled, the values in those columns will be
+/// asserted to be in the range [0, 2^tag), where tag is the value of the tag
+/// column at the relevant offset. Note that if the lookup is enabled, all
+/// lookup columns are range-checked in the same range. It is not possible to
+/// range-check only some of them. However, different rows may assert different
+/// ranges (specified by the tag).
 ///
 /// Note: The table will include only the tag values that are actually used in
 /// the circuit! This allows us to have smaller tables when possible.
@@ -177,8 +177,8 @@ impl<F: PrimeField> Pow2RangeChip<F> {
     ///
     /// # Panics
     ///
-    /// If the number of provided columns is smaller than
-    /// [crate::compact_std_lib::ZkStdLibArch::nr_pow2range_cols].
+    /// If the number of provided columns is greater or equal than
+    /// `NB_ARITH_COLS`.
     pub fn configure(
         meta: &mut ConstraintSystem<F>,
         columns: &[Column<Advice>],

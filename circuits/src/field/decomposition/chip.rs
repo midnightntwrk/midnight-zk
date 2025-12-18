@@ -40,9 +40,7 @@ use crate::{
 
 #[derive(Clone, Debug)]
 /// A decomposition config consists of a NativeConfig and a Pow2RangeConfig. It
-/// assumes that the chips share the
-/// [crate::compact_std_lib::ZkStdLibArch::nr_pow2range_cols] lookup enabled
-/// columns.
+/// assumes that the chips share the lookup enabled columns.
 pub struct P2RDecompositionConfig {
     pub(crate) native_config: NativeConfig,
     pub(crate) pow2range_config: Pow2RangeConfig,

@@ -3,8 +3,7 @@
 The Midnight ZK Standard Library (`midnight-zk-stdlib`) provides a high-level abstraction for building zero-knowledge circuits using the [Midnight Circuits](../circuits) library and the [Halo2](../proofs)
 proving system.
 
-> [!WARNING]
-> This library has not been audited. Use it at your own risk.
+> **WARNING**: This library has not been audited. Use it at your own risk.
 
 ## Overview
 
