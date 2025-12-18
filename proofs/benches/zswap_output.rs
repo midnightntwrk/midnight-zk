@@ -15,7 +15,6 @@ use midnight_circuits::{
     },
     types::{AssignedBit, AssignedByte, AssignedNative, AssignedNativePoint, Instantiable},
 };
-use midnight_zk_stdlib::{MidnightCircuit, Relation, ZkStdLib};
 use midnight_curves::{Bls12, Fr as JubjubScalar, JubjubExtended as Jubjub, JubjubSubgroup};
 use midnight_proofs::{
     circuit::{Layouter, Value},
@@ -29,6 +28,7 @@ use midnight_proofs::{
     },
     transcript::{CircuitTranscript, Transcript},
 };
+use midnight_zk_stdlib::{MidnightCircuit, Relation, ZkStdLib};
 use rand::{rngs::OsRng, Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use sha2::Digest;
