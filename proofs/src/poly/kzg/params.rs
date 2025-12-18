@@ -100,7 +100,6 @@ impl<E: Engine + Debug> ParamsKZG<E> {
     /// Initializes parameters for the curve through existing parameters
     /// k, g, g_lagrange (optional), g2, s_g2
     pub fn from_parts(
-        &self,
         k: u32,
         g: Vec<E::G1>,
         g_lagrange: Option<Vec<E::G1>>,
