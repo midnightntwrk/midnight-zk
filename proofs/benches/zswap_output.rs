@@ -28,7 +28,7 @@ use midnight_proofs::{
     },
     transcript::{CircuitTranscript, Transcript},
 };
-use midnight_zk_stdlib::{MidnightCircuit, Relation, ZkStdLib};
+use midnight_zk_stdlib::{MidnightCircuit, Relation, ZkStdLib, ZkStdLibArch};
 use rand::{rngs::OsRng, Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use sha2::Digest;
@@ -132,6 +132,15 @@ impl Relation for ZSwapOutputCircuit {
 
     fn read_relation<R: std::io::Read>(_reader: &mut R) -> std::io::Result<Self> {
         Ok(ZSwapOutputCircuit)
+    }
+
+    fn used_chips(&self) -> ZkStdLibArch {
+        ZkStdLibArch {
+            jubjub: true,
+            sha2_256: true,
+            poseidon: true,
+            ..ZkStdLibArch::default()
+        }
     }
 }
 
