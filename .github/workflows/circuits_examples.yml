@@ -45,9 +45,9 @@ jobs:
             ${{ runner.os }}-cargo-
 
       - name: Create directory
-        run: mkdir -p ./zk_stdlib/examples/assets
+        run: mkdir -p ./examples/assets
       - name: Download SRS
-        run: curl -L -o ./zk_stdlib/examples/assets/bls_filecoin_2p19 https://midnight-s3-fileshare-dev-eu-west-1.s3.eu-west-1.amazonaws.com/bls_filecoin_2p19
+        run: curl -L -o ./examples/assets/bls_filecoin_2p19 https://midnight-s3-fileshare-dev-eu-west-1.s3.eu-west-1.amazonaws.com/bls_filecoin_2p19
 
       - name: Run example ${{ matrix.example }}
         run: cargo run --release -p midnight-zk-stdlib --example ${{ matrix.example }}
