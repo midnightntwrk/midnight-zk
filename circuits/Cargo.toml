@@ -10,8 +10,8 @@ license-file.workspace = true
 group = { workspace = true }
 ff = { workspace = true }
 rustc-hash = "2"
-midnight-curves = { git = "https://github.com/midnightntwrk/midnight-zk.git", tag = "midnight-curves-v0.2.0" }
-midnight-proofs = { git = "https://github.com/midnightntwrk/midnight-zk.git", tag = "midnight-proofs-v0.6.0", default-features = false, features = [
+midnight-curves = { path = "../curves", version = "0.2.0" }
+midnight-proofs = { path = "../proofs", version = "0.6.0", default-features = false, features = [
     "circuit-params",
     "committed-instances",
 ] }
@@ -43,7 +43,7 @@ sha3 = "0.10.0"
 blake2 = "0.10.6"
 
 [target.'cfg(ci_build)'.dependencies]
-midnight-curves = { git = "https://github.com/midnightntwrk/midnight-zk.git", tag = "midnight-curves-v0.2.0", features = [
+midnight-curves = { path = "../curves", version = "0.2.0", features = [
     "portable",
 ] }
 
