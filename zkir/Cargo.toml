@@ -16,15 +16,15 @@ rustdoc-args = ["--cfg", "docsrs", "--html-in-header", "katex-header.html"]
 group = { workspace = true }
 ff = { workspace = true }
 
-midnight-curves = { git = "https://github.com/midnightntwrk/midnight-zk.git", tag = "midnight-curves-v0.2.0" }
-midnight-proofs = { git = "https://github.com/midnightntwrk/midnight-zk.git", tag = "midnight-proofs-v0.6.0", default-features = false, features = [
+midnight-curves = { path = "../curves", version = "0.2.0" }
+midnight-proofs = { path = "../proofs", version = "0.7.0", default-features = false, features = [
     "circuit-params",
     "committed-instances",
 ] }
-midnight-circuits = { path = "../circuits", version = "5.0.1", default-features = false, features = [
+midnight-circuits = { path = "../circuits", version = "6.0.0", default-features = false, features = [
     "testing",
 ] }
-midnight-zk-stdlib = { path = "../zk_stdlib", version = "0.1.0" }
+midnight-zk-stdlib = { path = "../zk_stdlib", version = "1.0.0" }
 
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

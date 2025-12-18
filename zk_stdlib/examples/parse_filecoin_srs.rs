@@ -11,7 +11,6 @@ use bellman::{
 };
 use midnight_curves::{serde::SerdeObject, Bls12, CurveAffine, G1Affine, G2Affine};
 use midnight_proofs::{poly::kzg::params::ParamsKZG, utils::SerdeFormat};
-use rand::rngs::OsRng;
 
 const G1_SIZE: usize = 96;
 const G2_SIZE: usize = 192;
@@ -98,8 +97,7 @@ fn main() -> std::io::Result<()> {
 
     let g1s = g1s.into_iter().map(|p| p.0.into()).collect::<Vec<_>>();
 
-    let params = ParamsKZG::<Bls12>::unsafe_setup(K as u32, OsRng);
-    let params = params.from_parts(K as u32, g1, Some(g1s), g2[0], g2[1]);
+    let params = ParamsKZG::<Bls12>::from_parts(K as u32, g1, Some(g1s), g2[0], g2[1]);
     let mut buf = Vec::new();
 
     params

@@ -13,6 +13,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [0.7.0]
+### Added
+* changed `sha256` name in benches to account for the change of naming convention in `circuits` [#135](https://github.com/midnightntwrk/midnight-zk/pull/135)
+
+### Changed
+* Interface of `ParamsKZG::from_parts` 
+
+### Removed
+
 ## 0.6.0
 ### Added
 * Added a conversion to any AssignedCell to AssignedNative for external crates [#148](https://github.com/midnightntwrk/midnight-zk/pull/148)
