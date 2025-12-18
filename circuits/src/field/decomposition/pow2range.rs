@@ -177,7 +177,7 @@ impl<F: PrimeField> Pow2RangeChip<F> {
     ///
     /// # Panics
     ///
-    /// If the number of provided columns is greater or equal than
+    /// If the number of provided columns is greater than or equal to
     /// `NB_ARITH_COLS`.
     pub fn configure(
         meta: &mut ConstraintSystem<F>,
