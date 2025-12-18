@@ -29,6 +29,7 @@ sha3 = "0.10.8"
 [patch."https://github.com/midnightntwrk/midnight-zk"]
 midnight-proofs = { path = "proofs" }
 midnight-curves = { path = "curves" }
+midnight-circuits = { path = "circuits" }
 
 ## Benchmarks
 

@@ -50,7 +50,9 @@ serial_test = "3.2.0"
 sha3 = "0.10.0"
 
 [target.'cfg(ci_build)'.dependencies]
-midnight-curves = { git = "https://github.com/midnightntwrk/midnight-zk.git", tag = "midnight-curves-v0.2.0" , features = ["portable"] }
+midnight-curves = { git = "https://github.com/midnightntwrk/midnight-zk.git", tag = "midnight-curves-v0.2.0", features = [
+    "portable",
+] }
 
 [features]
 default = []
@@ -58,7 +60,10 @@ default = []
 testing = ["num-bigint/rand"]
 heap_profiling = []
 # Enable truncated challenges. This makes recursive proofs more efficient
-truncated-challenges = ["midnight-proofs/truncated-challenges", "midnight-circuits/truncated-challenges"]
+truncated-challenges = [
+    "midnight-proofs/truncated-challenges",
+    "midnight-circuits/truncated-challenges",
+]
 
 [lib]
 bench = false

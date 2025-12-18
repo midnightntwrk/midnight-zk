@@ -65,7 +65,9 @@ criterion = "0.7"
 getrandom = { version = "0.2", features = ["js"] }
 
 [target.'cfg(ci_build)'.dependencies]
-midnight-curves = { git = "https://github.com/midnightntwrk/midnight-zk.git", tag = "midnight-curves-v0.2.0", features = ["portable"] }
+midnight-curves = { git = "https://github.com/midnightntwrk/midnight-zk.git", tag = "midnight-curves-v0.2.0", features = [
+  "portable",
+] }
 
 [features]
 default = ["committed-instances"]
