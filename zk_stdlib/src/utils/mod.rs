@@ -13,4 +13,6 @@
 
 //! Utilities and helper functions for zk-stdlib.
 
+mod test_stdlib;
+
 pub mod plonk_api;

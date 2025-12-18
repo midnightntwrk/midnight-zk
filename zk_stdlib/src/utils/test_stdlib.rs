@@ -13,7 +13,7 @@
 
 #[doc(hidden)]
 #[macro_export]
-macro_rules! run_test_std_lib {
+macro_rules! run_test_stdlib {
     ($chip:ident, $layouter:ident, $k:expr, $circuit_body:block) => {
         use ff::{FromUniformBytes, PrimeField};
         use midnight_proofs::{
@@ -33,7 +33,7 @@ macro_rules! run_test_std_lib {
             instructions::*,
             types::{AssignedBit, AssignedByte, AssignedNative},
         };
-        use midnight_zk_stdlib::{MidnightCircuit, Relation, ZkStdLib};
+        use midnight_zk_stdlib::{MidnightCircuit, Relation, ZkStdLib, ZkStdLibArch};
 
         type F = midnight_curves::Fq;
 
@@ -61,6 +61,14 @@ macro_rules! run_test_std_lib {
                 $circuit_body
 
                 Ok(())
+            }
+
+            fn used_chips(&self) -> ZkStdLibArch {
+                ZkStdLibArch {
+                    poseidon: true,
+                    sha2_256: true,
+                    ..ZkStdLibArch::default()
+                }
             }
 
             fn write_relation<W: std::io::Write>(&self, _writer: &mut W) -> std::io::Result<()> {

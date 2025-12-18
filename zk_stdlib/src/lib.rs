@@ -618,7 +618,7 @@ impl ZkStdLib {
     /// Assert that a given assigned bit is true.
     ///
     /// ```
-    /// # midnight_circuits::run_test_std_lib!(chip, layouter, 13, {
+    /// # midnight_zk_stdlib::run_test_stdlib!(chip, layouter, 13, {
     /// let input: AssignedBit<F> = chip.assign_fixed(layouter, true)?;
     /// chip.assert_true(layouter, &input)?;
     /// # });
@@ -643,7 +643,7 @@ impl ZkStdLib {
     /// Returns `1` iff `x < y`.
     ///
     /// ```
-    /// # midnight_circuits::run_test_std_lib!(chip, layouter, 13, {
+    /// # midnight_zk_stdlib::run_test_stdlib!(chip, layouter, 13, {
     /// let x: AssignedNative<F> = chip.assign_fixed(layouter, F::from(127))?;
     /// let y: AssignedNative<F> = chip.assign_fixed(layouter, F::from(212))?;
     /// let condition = chip.lower_than(layouter, &x, &y, 8)?;
@@ -657,7 +657,7 @@ impl ZkStdLib {
     /// If `x` or `y` are not in the range `[0, 2^n)`.
     ///
     /// ```should_panic
-    /// # midnight_circuits::run_test_std_lib!(chip, layouter, 13, {
+    /// # midnight_zk_stdlib::run_test_stdlib!(chip, layouter, 13, {
     /// let x: AssignedNative<F> = chip.assign_fixed(layouter, F::from(127))?;
     /// let y: AssignedNative<F> = chip.assign_fixed(layouter, F::from(212))?;
     /// let _condition = chip.lower_than(layouter, &x, &y, 7)?;
@@ -681,7 +681,7 @@ impl ZkStdLib {
     /// Poseidon hash from a slice of native values into a native value.
     ///
     /// ```
-    /// # midnight_circuits::run_test_std_lib!(chip, layouter, 13, {
+    /// # midnight_zk_stdlib::run_test_stdlib!(chip, layouter, 13, {
     /// let x: AssignedNative<F> = chip.assign_fixed(layouter, F::from(127))?;
     /// let y: AssignedNative<F> = chip.assign_fixed(layouter, F::from(212))?;
     ///
@@ -717,7 +717,7 @@ impl ZkStdLib {
     /// input/output in bytes.
     /// We assume the field uses little endian encoding.
     /// ```
-    /// # midnight_circuits::run_test_std_lib!(chip, layouter, 13, {
+    /// # midnight_zk_stdlib::run_test_stdlib!(chip, layouter, 13, {
     /// let input = chip.assign_many(
     ///     layouter,
     ///     &[

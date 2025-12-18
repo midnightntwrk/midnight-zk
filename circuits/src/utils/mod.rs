@@ -18,7 +18,6 @@ pub(crate) mod circuit_modeling;
 mod composable;
 pub mod ecdsa;
 mod test_native_gadget;
-mod test_std_lib;
 pub mod types;
 pub mod util;
 
