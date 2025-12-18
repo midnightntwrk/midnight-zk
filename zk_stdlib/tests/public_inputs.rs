@@ -29,7 +29,7 @@ use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
-use midnight_zk_stdlib::{utils::plonk_api::filecoin_srs, Relation, ZkStdLib};
+use midnight_zk_stdlib::{utils::plonk_api::filecoin_srs, Relation, ZkStdLib, ZkStdLibArch};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 
@@ -103,6 +103,13 @@ impl Relation for PIsCircuit {
         Ok(PIsCircuit {
             nb_public_inputs: u32::from_le_bytes(bytes),
         })
+    }
+
+    fn used_chips(&self) -> ZkStdLibArch {
+        ZkStdLibArch {
+            poseidon: true,
+            ..ZkStdLibArch::default()
+        }
     }
 }
 
