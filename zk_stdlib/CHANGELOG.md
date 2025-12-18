@@ -12,6 +12,13 @@ verification keys break backwards compatibility.
 
 ## [Unreleased]
 ### Added
+
+### Changed
+
+### Removed
+
+## 1.0.0 
+### Added
 - Initial release of zk_stdlib extracted from circuits crate
 
 ### Changed
