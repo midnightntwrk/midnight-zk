@@ -12,7 +12,7 @@ ff = { workspace = true }
 blake2b_simd = { workspace = true }
 midnight-circuits = { path = "../circuits", version = "6.0.0" }
 midnight-curves = { path = "../curves", version = "0.2.0" }
-midnight-proofs = { path = "../proofs", version = "0.6.0", default-features = false, features = [
+midnight-proofs = { path = "../proofs", version = "0.7.0", default-features = false, features = [
     "circuit-params",
     "committed-instances",
 ] }

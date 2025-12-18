@@ -17,7 +17,7 @@ group = { workspace = true }
 ff = { workspace = true }
 
 midnight-curves = { path = "../curves", version = "0.2.0" }
-midnight-proofs = { path = "../proofs", version = "0.6.0", default-features = false, features = [
+midnight-proofs = { path = "../proofs", version = "0.7.0", default-features = false, features = [
     "circuit-params",
     "committed-instances",
 ] }
