@@ -1,0 +1,22 @@
+name: Publish midnight-curves to crates.io
+
+on:
+  push:
+    tags: ['midnight-curves-v*']  # Triggers when pushing tags like midnight-curves-v0.2.0
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: release  # Optional: for enhanced security
+    permissions:
+      id-token: write  # Required for OIDC token exchange
+
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+      - uses: rust-lang/crates-io-auth-action@v1
+        id: auth
+
+      - run: cargo publish
+        working-directory: curves
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
