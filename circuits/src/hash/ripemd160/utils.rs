@@ -6,10 +6,10 @@ pub use crate::hash::sha256::utils::{
     MASK_EVN_64,
 };
 
-const WORD: usize = 32;
-const MAX_LIMB: usize = 11;
-const LAST_LIMB: usize = WORD % MAX_LIMB; // 10
-pub(super) const NUM_LIMBS: usize = (WORD - 1) / MAX_LIMB + 2; // 4
+const WORD: u8 = 32;
+const MAX_LIMB: u8 = 11;
+const LAST_LIMB: u8 = WORD % MAX_LIMB; // 10
+pub(super) const NUM_LIMBS: usize = ((WORD - 1) / MAX_LIMB + 2) as usize; // 4
 
 /// Decomposes a 32-bit word (in big-endian) into limbs so that the first k
 /// limbs represent the `rot` bits that will be left-rotated, and returns
@@ -18,7 +18,7 @@ pub(super) const NUM_LIMBS: usize = (WORD - 1) / MAX_LIMB + 2; // 4
 /// # Panics
 ///
 /// If `rot` is not in the range (0, 16).
-pub(super) fn limb_lengths(rot: usize) -> ([usize; NUM_LIMBS], usize) {
+pub(super) fn limb_lengths(rot: u8) -> ([u8; NUM_LIMBS], usize) {
     /*
      Given the word size |W| = [`WORD`] and the maximum lookup bit
      size: [`MAX_LIMB`], the following two equalities hold:
@@ -40,7 +40,7 @@ pub(super) fn limb_lengths(rot: usize) -> ([usize; NUM_LIMBS], usize) {
     let b = MAX_LIMB - a;
     // When a == 0, the limb Fk will be split into | 0 | MAX_LIMB |,
     // thus the value of k should always be incremented by 1.
-    let k = rot / MAX_LIMB + 1;
+    let k = (rot / MAX_LIMB + 1) as usize;
     lengths[k - 1] = a;
     lengths[k] = b;
     (lengths, k)
@@ -49,7 +49,7 @@ pub(super) fn limb_lengths(rot: usize) -> ([usize; NUM_LIMBS], usize) {
 /// Given the left rotation offset `rot`, computes the two sets of
 /// coefficients for reconstructing the original word and the left-rotated
 /// word from the limb values.
-pub(super) fn limb_coeffs(rot: usize) -> ([u32; NUM_LIMBS], [u32; NUM_LIMBS]) {
+pub(super) fn limb_coeffs(rot: u8) -> ([u32; NUM_LIMBS], [u32; NUM_LIMBS]) {
     /*
     Based on the limb lengths and k for the rotation offset:
       w = | F0 | F1 | .. |    Fk   | .. | Fn | L |
@@ -59,7 +59,7 @@ pub(super) fn limb_coeffs(rot: usize) -> ([u32; NUM_LIMBS], [u32; NUM_LIMBS]) {
       rot_w = c0'*F0 + c1'*F1 + .. + c_n+1'*L
     where rot_w is w left-rotated by `rot` bits.
     */
-    let compute_coeffs = |lengths: &[usize; NUM_LIMBS]| {
+    let compute_coeffs = |lengths: &[u8; NUM_LIMBS]| {
         let mut acc = 1u32;
         let mut res = [0u32; NUM_LIMBS];
         for (i, &len) in lengths.iter().rev().enumerate() {
@@ -81,7 +81,7 @@ pub(super) fn limb_coeffs(rot: usize) -> ([u32; NUM_LIMBS], [u32; NUM_LIMBS]) {
 /// Decomposes a 32-bit word into its limb values based on the provided limb
 /// lengths in big-endian order. It is slightly different from
 /// [`u32_in_be_limbs`], especially when some limb lengths are zero.
-pub(super) fn limb_values(value: u32, rot: usize) -> [u32; NUM_LIMBS] {
+pub(super) fn limb_values(value: u32, rot: u8) -> [u32; NUM_LIMBS] {
     let (limb_lengths, _) = limb_lengths(rot);
 
     let mut result = [0u32; NUM_LIMBS];
@@ -137,13 +137,13 @@ mod tests {
         // and the sum of the first k lengths should equal the rotation offset.
         for rot in 1..16 {
             let (lengths, k) = limb_lengths(rot);
-            let sum: usize = lengths.iter().sum();
+            let sum: u8 = lengths.iter().sum();
             assert_eq!(
                 sum, WORD,
                 "Sum of lengths does not equal WORD={} for rot={}",
                 WORD, rot
             );
-            let expected_rot = lengths.iter().take(k).sum::<usize>();
+            let expected_rot = lengths.iter().take(k).sum::<u8>();
             assert_eq!(
                 expected_rot, rot,
                 "Sum of the first k = {} lengths does not equal rot={}",
