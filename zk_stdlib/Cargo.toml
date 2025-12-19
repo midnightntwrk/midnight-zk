@@ -3,6 +3,7 @@ name = "midnight-zk-stdlib"
 version = "1.0.0"
 edition = "2021"
 license-file.workspace = true
+description = "Standard library of circuits and utilities for Midnight zero-knowledge proofs"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
