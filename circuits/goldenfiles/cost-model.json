@@ -113,9 +113,9 @@
   "SHA256": {
     "hash": {
       "advice_columns": "13",
-      "column_queries": "88",
+      "column_queries": "91",
       "fixed_columns": "64",
-      "lookups": "5",
+      "lookups": "6",
       "max_deg": "5",
       "permutations": "15",
       "point_sets": "5",
@@ -126,9 +126,9 @@
   "SHA512": {
     "hash": {
       "advice_columns": "13",
-      "column_queries": "88",
+      "column_queries": "91",
       "fixed_columns": "64",
-      "lookups": "5",
+      "lookups": "6",
       "max_deg": "5",
       "permutations": "15",
       "point_sets": "7",
@@ -152,9 +152,9 @@
   "VarSHA256": {
     "hash": {
       "advice_columns": "13",
-      "column_queries": "88",
+      "column_queries": "91",
       "fixed_columns": "64",
-      "lookups": "5",
+      "lookups": "6",
       "max_deg": "5",
       "permutations": "15",
       "point_sets": "5",

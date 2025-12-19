@@ -40,6 +40,7 @@ use midnight_proofs::{
 };
 use midnight_zk_stdlib::utils::plonk_api::filecoin_srs;
 use rand::rngs::OsRng;
+use midnight_proofs::dev::cost_model::circuit_model;
 
 type S = BlstrsEmulation;
 
@@ -303,6 +304,8 @@ fn main() {
             prev_proof: Value::known(prev_proof.clone()),
             prev_acc: Value::known(prev_acc.clone()),
         };
+
+        println!("Circuit model: {:?}", circuit_model::<_, 48, 32>(&circuit));
 
         let mut public_inputs = AssignedVk::<S>::as_public_input(&vk);
         public_inputs.extend(AssignedNative::<F>::as_public_input(&state));
