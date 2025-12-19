@@ -10,7 +10,7 @@ license-file.workspace = true
 group = { workspace = true }
 ff = { workspace = true }
 blake2b_simd = { workspace = true }
-midnight-circuits = { path = "../circuits", version = "6.0.0" }
+midnight-circuits = { version = "6.0.0" }
 midnight-curves = { version = "0.2.0" }
 midnight-proofs = { version = "0.7.0", default-features = false, features = [
     "circuit-params",
