@@ -10,14 +10,14 @@ license-file.workspace = true
 group = { workspace = true }
 ff = { workspace = true }
 rustc-hash = "2"
-midnight-curves = { path = "../curves", version = "0.2.0" }
-midnight-proofs = { path = "../proofs", version = "0.7.0", default-features = false, features = [
+midnight-curves = "0.2.0"
+midnight-proofs = { version = "0.7.0", default-features = false, features = [
     "circuit-params",
     "committed-instances",
 ] }
 
-keccak_sha3 = { git = "https://github.com/alexandroszacharakis8/sha3-circuit", rev = "e38afe2", package = "sha3-circuit" }
-blake2b = { git = "https://github.com/eryxcoop/blake2b_halo2", rev = "c3e590f", package = "blake2b_halo2" }
+keccak_sha3 = { package = "sha3-circuit", version = "0.1.0" }
+blake2b = { package = "blake2b_halo2", version = "0.1.0" }
 
 serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
@@ -43,7 +43,7 @@ sha3 = "0.10.0"
 blake2 = "0.10.6"
 
 [target.'cfg(ci_build)'.dependencies]
-midnight-curves = { path = "../curves", version = "0.2.0", features = [
+midnight-curves = { version = "0.2.0", features = [
     "portable",
 ] }
 
