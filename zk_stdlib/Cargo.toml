@@ -3,6 +3,7 @@ name = "midnight-zk-stdlib"
 version = "1.0.0"
 edition = "2021"
 license-file.workspace = true
+description = "Standard library of circuits and utilities for Midnight zero-knowledge proofs"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -10,7 +11,7 @@ license-file.workspace = true
 group = { workspace = true }
 ff = { workspace = true }
 blake2b_simd = { workspace = true }
-midnight-circuits = { path = "../circuits", version = "6.0.0" }
+midnight-circuits = { version = "6.0.0" }
 midnight-curves = { version = "0.2.0" }
 midnight-proofs = { version = "0.7.0", default-features = false, features = [
     "circuit-params",
