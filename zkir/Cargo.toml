@@ -28,7 +28,7 @@ midnight-zk-stdlib = { path = "../zk_stdlib", version = "1.0.0" }
 
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-bincode = "2.0.1"
+bincode = "3.0.0"
 
 num-bigint = "0.4.6"
 num-traits = "0.2"
