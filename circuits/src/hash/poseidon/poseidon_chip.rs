@@ -36,9 +36,7 @@ use crate::field::{
 };
 use crate::{
     field::NativeChip,
-    instructions::{
-        ArithInstructions, AssignmentInstructions, HashInstructions, SpongeInstructions,
-    },
+    instructions::{ArithInstructions, AssignmentInstructions, SpongeInstructions},
     types::AssignedNative,
     utils::ComposableChip,
 };
@@ -547,20 +545,6 @@ impl<F: PoseidonField> SpongeInstructions<F, AssignedNative<F>, AssignedNative<F
     }
 }
 
-impl<F: PoseidonField> HashInstructions<F, AssignedNative<F>, AssignedNative<F>>
-    for PoseidonChip<F>
-{
-    fn hash(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        inputs: &[AssignedNative<F>],
-    ) -> Result<AssignedNative<F>, Error> {
-        let mut state = self.init(layouter, Some(inputs.len()))?;
-        self.absorb(layouter, &mut state, inputs)?;
-        self.squeeze(layouter, &mut state)
-    }
-}
-
 #[cfg(any(test, feature = "testing"))]
 impl<F: PoseidonField> FromScratch<F> for PoseidonChip<F> {
     type Config = (NativeConfig, PoseidonConfig<F>);
@@ -613,7 +597,7 @@ mod tests {
     use crate::{
         field::NativeGadget,
         hash::poseidon::{permutation_cpu, round_skips::PreComputedRoundCPU},
-        instructions::{hash::tests::test_hash, sponge::tests::test_sponge, AssertionInstructions},
+        instructions::{sponge::tests::test_sponge, AssertionInstructions},
         utils::circuit_modeling::circuit_to_json,
     };
 
@@ -728,24 +712,5 @@ mod tests {
         // Consistency tests between the CPU and circuit implementations of the
         // permutation.
         run_sponge_test::<midnight_curves::Fq>("blstrs", true);
-    }
-
-    #[test]
-    fn test_poseidon_hash() {
-        let additional_sizes = [
-            RATE - 1,
-            RATE,
-            RATE + 1,
-            3 * RATE - 1,
-            3 * RATE,
-            3 * RATE + 1,
-        ];
-        test_hash::<
-            midnight_curves::Fq,
-            AssignedNative<midnight_curves::Fq>,
-            AssignedNative<midnight_curves::Fq>,
-            PoseidonChip<midnight_curves::Fq>,
-            NativeChip<midnight_curves::Fq>,
-        >(true, "Poseidon", &additional_sizes, 7);
     }
 }
