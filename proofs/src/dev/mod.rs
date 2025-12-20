@@ -946,8 +946,8 @@ impl<F: FromUniformBytes<64> + Ord> MockProver<F> {
         let mut cached_table_identifier = Vec::new();
         // Check that all lookups exist in their respective tables.
         let lookup_errors =
-            self.cs.lookups.iter().enumerate().flat_map(|(lookup_index, lookup)| {
-                assert!(lookup.table_expressions.len() == lookup.input_expressions.len());
+            self.cs.lookups.iter().flat_map(|l| l.split(self.cs.degree())).enumerate().flat_map(|(lookup_index, lookup)| {
+                assert_eq!(lookup.table_expressions.len(), lookup.input_expressions[0].len());
                 assert!(self.usable_rows.end > 0);
 
                 // We optimize on the basis that the table might have been filled so that the
@@ -992,46 +992,64 @@ impl<F: FromUniformBytes<64> + Ord> MockProver<F> {
                 }
                 let table = &cached_table;
 
-                let mut inputs: Vec<(Vec<_>, usize)> = lookup_input_row_ids
-                    .clone()
-                    .into_par_iter()
-                    .filter_map(|input_row| {
-                        let t = lookup
-                            .input_expressions
-                            .iter()
-                            .map(move |c| load(c, input_row))
-                            .collect();
+                let parallel_inputs: Vec<Vec<(Vec<_>, usize)>> =
+                    lookup
+                        .input_expressions
+                        .iter()
+                        .map(|input_expressions| {
+                            let mut inputs: Vec<(Vec<_>, usize)> = lookup_input_row_ids
+                                .clone()
+                                .into_par_iter()
+                                .filter_map(|input_row| {
+                                    let t =
+                                        input_expressions.iter().map(move |c| load(c, input_row))
+                                        .collect();
 
-                        if t != fill_row {
-                            // Also keep track of the original input row, since we're going to
-                            // sort.
-                            Some((t, input_row))
-                        } else {
-                            None
-                        }
-                    })
-                    .collect();
-                inputs.par_sort_unstable();
+                                    if t != fill_row {
+                                        // Also keep track of the original input row, since we're going to
+                                        // sort.
+                                        Some((t, input_row))
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .collect();
+                            inputs.par_sort_unstable();
+                            inputs
+                        })
+                        .collect::<Vec<_>>();
 
-                inputs
-                    .par_iter()
-                    .filter_map(move |(input, input_row)| {
-                        if table.binary_search(input).is_err() {
-                            Some(VerifyFailure::Lookup {
-                                name: lookup.name.clone(),
-                                lookup_index,
-                                location: FailureLocation::find_expressions(
-                                    &self.cs,
-                                    &self.regions,
-                                    *input_row,
-                                    lookup.input_expressions.iter(),
-                                ),
-                            })
-                        } else {
-                            None
-                        }
-                    })
-                    .collect::<Vec<_>>()
+                {
+                    let lookup_name = lookup.name.clone();
+                    let lookup_input_exprs = lookup.input_expressions.clone();
+                    parallel_inputs
+                        .iter()
+                        .enumerate()
+                        .flat_map(move |(column_index, input_expression)| {
+                            let lookup_name = lookup_name.clone();
+                            let lookup_input_exprs = lookup_input_exprs.clone();
+                            input_expression.par_iter()
+                                .filter_map(move |(input, input_row)| {
+                                    if table.binary_search(input).is_err() {
+                                        Some(VerifyFailure::Lookup {
+                                            name: lookup_name.clone(),
+                                            lookup_index,
+                                            column_index,
+                                            location: FailureLocation::find_expressions(
+                                                &self.cs,
+                                                &self.regions,
+                                                *input_row,
+                                                lookup_input_exprs[column_index].iter(),
+                                            ),
+                                        })
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .collect::<Vec<_>>()
+                        })
+                        .collect::<Vec<_>>()
+                }
             });
 
         let mapping = self.permutation.mapping();
@@ -1401,10 +1419,10 @@ mod tests {
                     let default = Expression::from(2);
                     vec![
                         (
-                            q.clone() * a.clone() + not_q.clone() * default.clone(),
+                            vec![q.clone() * a.clone() + not_q.clone() * default.clone()],
                             table,
                         ),
-                        (q * a + not_q * default, advice_table),
+                        (vec![q * a + not_q * default], advice_table),
                     ]
                 });
 
@@ -1520,8 +1538,9 @@ mod tests {
         assert_eq!(
             prover.verify(),
             Err(vec![VerifyFailure::Lookup {
-                name: "lookup".to_string(),
+                name: "lookup-0".to_string(),
                 lookup_index: 0,
+                column_index: 0,
                 location: FailureLocation::InRegion {
                     region: (1, "Faulty synthesis").into(),
                     offset: 1,
@@ -1563,7 +1582,7 @@ mod tests {
                     // When q is not enabled, lookup the default value instead.
                     let not_q = Expression::from(1) - q.clone();
                     let default = Expression::from(2);
-                    vec![(q * a + not_q * default, table)]
+                    vec![(vec![q * a + not_q * default], table)]
                 });
 
                 FaultyCircuitConfig { a, q, table }
@@ -1654,8 +1673,9 @@ mod tests {
         assert_eq!(
             prover.verify(),
             Err(vec![VerifyFailure::Lookup {
-                name: "lookup".to_string(),
+                name: "lookup-0".to_string(),
                 lookup_index: 0,
+                column_index: 0,
                 location: FailureLocation::InRegion {
                     region: (2, "Faulty synthesis").into(),
                     offset: 1,
