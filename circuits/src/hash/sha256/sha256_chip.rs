@@ -665,6 +665,8 @@ impl<F: CircuitField> Sha256Chip<F> {
         round_k: u32,
         round_w: &AssignedPlain<F, 32>,
     ) -> Result<CompressionState<F>, Error> {
+        // TODO: optimize by reusing assigned constants to save the assignment for each
+        // round.
         let round_k = AssignedPlain::<F, 32>::fixed(layouter, &self.native_gadget, round_k)?;
 
         let Sigma_0_of_a = self.Sigma_0(layouter, &state.a)?;
