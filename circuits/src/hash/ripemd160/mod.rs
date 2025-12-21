@@ -17,3 +17,74 @@
 mod ripemd160_chip;
 mod types;
 mod utils;
+
+use ff::PrimeField;
+use midnight_proofs::{circuit::Layouter, plonk::Error};
+use ripemd::{Digest, Ripemd160};
+
+use crate::{
+    hash::ripemd160::ripemd160_chip::RipeMD160Chip,
+    instructions::{hash::HashCPU, DecompositionInstructions, HashInstructions},
+    types::AssignedByte,
+};
+
+impl<F: PrimeField> HashCPU<u8, [u8; 20]> for RipeMD160Chip<F> {
+    fn hash(inputs: &[u8]) -> [u8; 20] {
+        let output = ripemd::Ripemd160::digest(inputs);
+        output.into_iter().collect::<Vec<_>>().try_into().unwrap()
+    }
+}
+
+impl<F: PrimeField> HashInstructions<F, AssignedByte<F>, [AssignedByte<F>; 20]>
+    for RipeMD160Chip<F>
+{
+    fn hash(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        inputs: &[AssignedByte<F>],
+    ) -> Result<[AssignedByte<F>; 20], Error> {
+        let mut output_bytes = Vec::with_capacity(20);
+
+        // We convert each `AssignedWord` returned by `self.ripemd160` into 4 bytes.
+        for word in self.ripemd160(layouter, inputs)? {
+            let bytes = self.native_gadget.assigned_to_le_bytes(layouter, &word.0, Some(4))?;
+            output_bytes.extend(bytes)
+        }
+
+        Ok(output_bytes.try_into().unwrap())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use midnight_curves::Fq as Scalar;
+
+    use crate::{
+        field::NativeGadget, hash::ripemd160::RipeMD160Chip, instructions::hash::tests::test_hash,
+        types::AssignedByte,
+    };
+
+    #[test]
+    fn test_ripemd160_hash() {
+        const RIPEMD160_BLOCK_SIZE: usize = 64;
+        let additional_sizes = [
+            RIPEMD160_BLOCK_SIZE - 2,
+            RIPEMD160_BLOCK_SIZE - 1,
+            RIPEMD160_BLOCK_SIZE,
+            RIPEMD160_BLOCK_SIZE + 1,
+            RIPEMD160_BLOCK_SIZE + 2,
+            2 * RIPEMD160_BLOCK_SIZE - 2,
+            2 * RIPEMD160_BLOCK_SIZE - 1,
+            2 * RIPEMD160_BLOCK_SIZE,
+            2 * RIPEMD160_BLOCK_SIZE + 1,
+            2 * RIPEMD160_BLOCK_SIZE + 2,
+        ];
+        test_hash::<
+            Scalar,
+            AssignedByte<Scalar>,
+            [AssignedByte<Scalar>; 20],
+            RipeMD160Chip<Scalar>,
+            NativeGadget<Scalar, _, _>,
+        >(true, "RIPEMD160", &additional_sizes, 13);
+    }
+}
