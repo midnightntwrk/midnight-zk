@@ -71,6 +71,19 @@
       "table_rows": "7"
     }
   },
+  "RIPEMD160": {
+    "hash": {
+      "advice_columns": "13",
+      "column_queries": "99",
+      "fixed_columns": "61",
+      "lookups": "10",
+      "max_deg": "5",
+      "permutations": "17",
+      "point_sets": "5",
+      "rows": "5146",
+      "table_rows": "4095"
+    }
+  },
   "SHA256": {
     "hash": {
       "advice_columns": "13",

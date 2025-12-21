@@ -9,7 +9,7 @@ pub(super) const MASK_ODD_64: u64 = 0xAAAA_AAAA_AAAA_AAAA; // 101010...10 (odd p
 const LOOKUP_LENGTHS: [u32; 10] = [2, 3, 4, 5, 6, 7, 9, 10, 11, 12]; // supported lookup bit lengths
 
 /// Returns the even and odd bits of little-endian binary representation of u64.
-pub fn get_even_and_odd_bits(value: u64) -> (u32, u32) {
+pub(crate) fn get_even_and_odd_bits(value: u64) -> (u32, u32) {
     (compact_even(value), compact_even(value >> 1))
 }
 
@@ -26,13 +26,13 @@ fn compact_even(mut x: u64) -> u32 {
 
 /// Asserts x is in correct spreaded form, i.e. its little-endian binary
 /// representation has zeros in odd positions.
-pub fn assert_in_valid_spreaded_form(x: u64) {
+pub(crate) fn assert_in_valid_spreaded_form(x: u64) {
     assert_eq!(MASK_ODD_64 & x, 0, "Input must be in valid spreaded form")
 }
 
 /// Spreads the input value, which is by definition inserting a zero between all
 /// its bits: [bn, ..., b1, b0] ->  [0, bn,..., 0, b1, 0, b0].
-pub fn spread(x: u32) -> u64 {
+pub(crate) fn spread(x: u32) -> u64 {
     (0..32).fold(0u64, |acc, i| acc | (((x as u64 >> i) & 1) << (2 * i)))
 }
 
@@ -41,7 +41,7 @@ pub fn spread(x: u32) -> u64 {
 /// # Panics
 ///
 /// If the input is not in clean spreaded form.
-pub fn negate_spreaded(x: u64) -> u64 {
+pub(crate) fn negate_spreaded(x: u64) -> u64 {
     assert_in_valid_spreaded_form(x);
     x ^ MASK_EVN_64
 }
@@ -52,7 +52,7 @@ pub fn negate_spreaded(x: u64) -> u64 {
 ///
 /// If sum(limb_lengths) != 32.
 /// If any given limb length equals 0.
-pub fn u32_in_be_limbs<const N: usize>(value: u32, limb_lengths: [usize; N]) -> [u32; N] {
+pub(crate) fn u32_in_be_limbs<const N: usize>(value: u32, limb_lengths: [usize; N]) -> [u32; N] {
     assert_eq!(limb_lengths.iter().sum::<usize>(), 32);
 
     let mut result = [0u32; N];
@@ -68,7 +68,7 @@ pub fn u32_in_be_limbs<const N: usize>(value: u32, limb_lengths: [usize; N]) -> 
 }
 
 /// Generates the plain-spreaded lookup table.
-pub fn gen_spread_table<F: CircuitField>() -> impl Iterator<Item = (F, F, F)> {
+pub(super) fn gen_spread_table<F: PrimeField>() -> impl Iterator<Item = (F, F, F)> {
     std::iter::once((F::ZERO, F::ZERO, F::ZERO)) // base case (disabled lookup)
         .chain(LOOKUP_LENGTHS.into_iter().flat_map(|len| {
             let tag = F::from(len as u64);
@@ -81,7 +81,7 @@ pub fn gen_spread_table<F: CircuitField>() -> impl Iterator<Item = (F, F, F)> {
 /// # Panics
 ///
 /// If A, B, C are not in clean spreaded form.
-pub fn spreaded_maj(spreaded_forms: [u64; 3]) -> u64 {
+pub(super) fn spreaded_maj(spreaded_forms: [u64; 3]) -> u64 {
     spreaded_forms.into_iter().for_each(assert_in_valid_spreaded_form);
 
     let [sA, sB, sC] = spreaded_forms;
@@ -97,7 +97,7 @@ pub fn spreaded_maj(spreaded_forms: [u64; 3]) -> u64 {
 /// # Panics
 ///
 /// If the limbs are not in clean spreaded form.
-pub fn spreaded_Sigma_0(spreaded_limbs: [u64; 4]) -> u64 {
+pub(super) fn spreaded_Sigma_0(spreaded_limbs: [u64; 4]) -> u64 {
     spreaded_limbs.into_iter().for_each(assert_in_valid_spreaded_form);
 
     let [sA_10, sA_09, sA_11, sA_02] = spreaded_limbs;
@@ -115,7 +115,7 @@ pub fn spreaded_Sigma_0(spreaded_limbs: [u64; 4]) -> u64 {
 /// # Panics
 ///
 /// If the limbs are not in clean spreaded form.
-pub fn spreaded_Sigma_1(spreaded_limbs: [u64; 5]) -> u64 {
+pub(super) fn spreaded_Sigma_1(spreaded_limbs: [u64; 5]) -> u64 {
     spreaded_limbs.into_iter().for_each(assert_in_valid_spreaded_form);
 
     let [sE_07, sE_12, sE_02, sE_05, sE_06] = spreaded_limbs;
@@ -133,7 +133,7 @@ pub fn spreaded_Sigma_1(spreaded_limbs: [u64; 5]) -> u64 {
 /// # Panics
 ///
 /// If the limbs are not in clean spreaded form.
-pub fn spreaded_sigma_0(spreaded_limbs: [u64; 8]) -> u64 {
+pub(super) fn spreaded_sigma_0(spreaded_limbs: [u64; 8]) -> u64 {
     spreaded_limbs.into_iter().for_each(assert_in_valid_spreaded_form);
 
     let [sW_12, sW_1a, sW_1b, sW_1c, sW_07, sW_3a, sW_04, sW_3b] = spreaded_limbs;
@@ -158,7 +158,7 @@ pub fn spreaded_sigma_0(spreaded_limbs: [u64; 8]) -> u64 {
 /// # Panics
 ///
 /// If the limbs are not in clean spreaded form.
-pub fn spreaded_sigma_1(spreaded_limbs: [u64; 8]) -> u64 {
+pub(super) fn spreaded_sigma_1(spreaded_limbs: [u64; 8]) -> u64 {
     spreaded_limbs.into_iter().for_each(assert_in_valid_spreaded_form);
 
     let [sW_12, sW_1a, sW_1b, sW_1c, sW_07, sW_3a, sW_04, sW_3b] = spreaded_limbs;
@@ -183,7 +183,7 @@ fn pow4_ip<const N: usize>(exponents: [u8; N], terms: [u64; N]) -> u64 {
 }
 
 /// Returns sum_i 2^(exponents\[i\]) * terms\[i\].
-pub fn expr_pow2_ip<F: PrimeField, const N: usize>(
+pub(crate) fn expr_pow2_ip<F: PrimeField, const N: usize>(
     exponents: [u8; N],
     terms: [&Expression<F>; N],
 ) -> Expression<F> {
@@ -195,7 +195,7 @@ pub fn expr_pow2_ip<F: PrimeField, const N: usize>(
 }
 
 /// Returns sum_i 4^(exponents\[i\]) * terms\[i\].
-pub fn expr_pow4_ip<F: PrimeField, const N: usize>(
+pub(crate) fn expr_pow4_ip<F: PrimeField, const N: usize>(
     exponents: [u8; N],
     terms: [&Expression<F>; N],
 ) -> Expression<F> {

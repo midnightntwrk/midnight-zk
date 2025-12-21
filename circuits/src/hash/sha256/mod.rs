@@ -18,7 +18,7 @@
 mod sha256_chip;
 mod sha256_varlen;
 mod types;
-pub mod utils;
+pub(crate) mod utils;
 
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 use sha2::Digest;
