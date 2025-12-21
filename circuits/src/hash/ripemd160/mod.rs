@@ -20,10 +20,12 @@ mod utils;
 
 use ff::PrimeField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
-use ripemd::{Digest, Ripemd160};
+use ripemd::Digest;
+pub use ripemd160_chip::{
+    RipeMD160Chip, RipeMD160Config, NB_RIPEMD160_ADVICE_COLS, NB_RIPEMD160_FIXED_COLS,
+};
 
 use crate::{
-    hash::ripemd160::ripemd160_chip::RipeMD160Chip,
     instructions::{hash::HashCPU, DecompositionInstructions, HashInstructions},
     types::AssignedByte,
 };
@@ -85,6 +87,6 @@ mod tests {
             [AssignedByte<Scalar>; 20],
             RipeMD160Chip<Scalar>,
             NativeGadget<Scalar, _, _>,
-        >(true, "RIPEMD160", &additional_sizes, 13);
+        >(true, "RIPEMD160", &additional_sizes, 14);
     }
 }
