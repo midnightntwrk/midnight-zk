@@ -354,11 +354,11 @@ impl<F: PrimeField> ComposableChip<F> for RipeMD160Chip<F> {
 }
 
 impl<F: PrimeField> RipeMD160Chip<F> {
-    fn ripemd160(
+    pub(super) fn ripemd160(
         &self,
         layouter: &mut impl Layouter<F>,
         input_bytes: &[AssignedByte<F>],
-    ) -> Result<State<F>, Error> {
+    ) -> Result<[AssignedWord<F>; 5], Error> {
         let round_consts: [AssignedWord<F>; 5] = [
             AssignedWord::fixed(layouter, &self.native_gadget, K[0])?,
             AssignedWord::fixed(layouter, &self.native_gadget, K[1])?,
@@ -392,7 +392,7 @@ impl<F: PrimeField> RipeMD160Chip<F> {
             )?;
         }
 
-        Ok(state)
+        Ok(state.words())
     }
 
     /// Pads the input byte array to be a multiple of 64 bytes (512 bits), where
@@ -1254,6 +1254,72 @@ impl<F: PrimeField> RipeMD160Chip<F> {
     }
 }
 
+#[cfg(any(test, feature = "testing"))]
+use midnight_proofs::plonk::Instance;
+
+#[cfg(any(test, feature = "testing"))]
+use crate::{field::decomposition::chip::P2RDecompositionConfig, testing_utils::FromScratch};
+
+#[cfg(any(test, feature = "testing"))]
+impl<F: PrimeField> FromScratch<F> for RipeMD160Chip<F> {
+    type Config = (RipeMD160Config, P2RDecompositionConfig);
+
+    fn new_from_scratch(config: &Self::Config) -> Self {
+        Self {
+            config: config.0.clone(),
+            native_gadget: NativeGadget::new_from_scratch(&config.1),
+        }
+    }
+
+    fn configure_from_scratch(
+        meta: &mut ConstraintSystem<F>,
+        instance_columns: &[Column<Instance>; 2],
+    ) -> Self::Config {
+        use std::cmp::max;
+
+        use crate::field::{
+            decomposition::pow2range::Pow2RangeChip,
+            native::{NB_ARITH_COLS, NB_ARITH_FIXED_COLS},
+        };
+
+        let advice_columns = (0..max(NB_ARITH_COLS, NB_RIPEMD160_ADVICE_COLS))
+            .map(|_| meta.advice_column())
+            .collect::<Vec<_>>();
+
+        let fixed_columns = (0..max(NB_ARITH_FIXED_COLS, NB_RIPEMD160_FIXED_COLS))
+            .map(|_| meta.fixed_column())
+            .collect::<Vec<_>>();
+
+        let native_config = NativeChip::configure(
+            meta,
+            &(
+                advice_columns[..NB_ARITH_COLS].try_into().unwrap(),
+                fixed_columns[..NB_ARITH_FIXED_COLS].try_into().unwrap(),
+                *instance_columns,
+            ),
+        );
+
+        let pow2range_config = Pow2RangeChip::configure(meta, &advice_columns[1..=4]);
+        let core_decomposition_config =
+            P2RDecompositionChip::configure(meta, &(native_config, pow2range_config));
+
+        let ripemd160_config = RipeMD160Chip::configure(
+            meta,
+            &(
+                advice_columns[..NB_RIPEMD160_ADVICE_COLS].try_into().unwrap(),
+                fixed_columns[..NB_RIPEMD160_FIXED_COLS].try_into().unwrap(),
+            ),
+        );
+
+        (ripemd160_config, core_decomposition_config)
+    }
+
+    fn load_from_scratch(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
+        self.native_gadget.load_from_scratch(layouter)?;
+        self.load(layouter)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use core::cmp::max;
@@ -1406,7 +1472,7 @@ mod tests {
             let ripemd160_output =
                 ripemd160_chip.ripemd160(&mut layouter, &assigned_input_bytes)?;
 
-            let State { h0, h1, h2, h3, h4 } = ripemd160_output;
+            let [h0, h1, h2, h3, h4] = ripemd160_output;
             let ripemd160_output = [h0, h1, h2, h3, h4];
             for (computed, expected) in ripemd160_output.iter().zip(assigned_output.iter()) {
                 print!(
@@ -1434,7 +1500,7 @@ mod tests {
             let ripemd160_output_long =
                 ripemd160_chip.ripemd160(&mut layouter, &assigned_input_bytes_long)?;
 
-            let State { h0, h1, h2, h3, h4 } = ripemd160_output_long;
+            let [h0, h1, h2, h3, h4] = ripemd160_output_long;
             let ripemd160_output_long = [h0, h1, h2, h3, h4];
             for (computed, expected) in
                 ripemd160_output_long.iter().zip(assigned_output_long.iter())

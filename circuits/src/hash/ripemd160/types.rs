@@ -65,4 +65,8 @@ impl<F: PrimeField> State<F> {
             .unwrap();
         Ok(assigned_words.into())
     }
+
+    pub(super) fn words(self) -> [AssignedWord<F>; 5] {
+        [self.h0, self.h1, self.h2, self.h3, self.h4]
+    }
 }
