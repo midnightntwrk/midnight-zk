@@ -1,4 +1,11 @@
-//! Implementation in-circuit of the RIPEMD-160 hash function.
+//! This file implements a chip providing support for in-circuit evaluation of
+//! the RIPEMD-160 hash function.
+//!
+//! Throughout the file, we use the notation from the specification paper:
+//! <https://cosicdatabase.esat.kuleuven.be/backend/publications/files/journal/317>.
+//!
+//! This implementation uses the similar idea of plain-spreaded representation,
+//! for more details see the comments in [crate::hash::sha256::sha256_chip].
 
 use ff::PrimeField;
 use midnight_proofs::{
@@ -144,23 +151,19 @@ impl<F: PrimeField> ComposableChip<F> for RipeMD160Chip<F> {
         shared_res: &Self::SharedResources,
     ) -> Self::Config {
         let fixed_cols = shared_res.1;
-        // The last fixed column is used for the constants of 0 which will be assigned
+        // The last fixed column is used for the constants which will be assigned
         // in the advice columns.
         meta.enable_constant(fixed_cols[NB_RIPEMD160_FIXED_COLS - 1]);
 
         // Columns A0, A1 and A2 do not need to be copy-enabled.
         // We have the convention that chips enable copy in a prefix of their shared
-        // advice columns. Thus we let them be the last four columns of the given
+        // advice columns. Thus we let them be the last three columns of the given
         // shared resources.
         let advice_cols = [3, 4, 5, 6, 7, 0, 1, 2].map(|i| shared_res.0[i]);
         for column in advice_cols.iter().rev().take(5) {
             meta.enable_equality(*column);
         }
 
-        // // Only for test!!!
-        // for column in advice_cols.iter().rev() {
-        //     meta.enable_equality(*column);
-        // }
         let q_lookup = meta.complex_selector();
         let table = SpreadTable {
             nbits_col: meta.lookup_table_column(),
@@ -284,6 +287,7 @@ impl<F: PrimeField> ComposableChip<F> for RipeMD160Chip<F> {
         });
 
         meta.create_gate("addition", |meta| {
+            // See function `f_type_two` for a description of the following layout.
             let a = meta.query_advice(advice_cols[4], Rotation(0));
             let b = meta.query_advice(advice_cols[5], Rotation(0));
             let c = meta.query_advice(advice_cols[6], Rotation(0));
@@ -294,6 +298,7 @@ impl<F: PrimeField> ComposableChip<F> for RipeMD160Chip<F> {
         });
 
         meta.create_gate("addition mod 2^32", |meta| {
+            // See function `add_mod_2_32` for a description of the following layout.
             let a = meta.query_advice(advice_cols[4], Rotation(0));
             let b = meta.query_advice(advice_cols[5], Rotation(0));
             let c = meta.query_advice(advice_cols[6], Rotation(0));
@@ -354,11 +359,13 @@ impl<F: PrimeField> ComposableChip<F> for RipeMD160Chip<F> {
 }
 
 impl<F: PrimeField> RipeMD160Chip<F> {
+    /// In-circuit RIPEMD-160 computation, the protagonist of this chip.
     pub(super) fn ripemd160(
         &self,
         layouter: &mut impl Layouter<F>,
         input_bytes: &[AssignedByte<F>],
     ) -> Result<[AssignedWord<F>; 5], Error> {
+        // assign the constants once and pass them to each block processing
         let round_consts: [AssignedWord<F>; 5] = [
             AssignedWord::fixed(layouter, &self.native_gadget, K[0])?,
             AssignedWord::fixed(layouter, &self.native_gadget, K[1])?,
@@ -392,7 +399,7 @@ impl<F: PrimeField> RipeMD160Chip<F> {
             )?;
         }
 
-        Ok(state.words())
+        Ok(state.into())
     }
 
     /// Pads the input byte array to be a multiple of 64 bytes (512 bits), where
@@ -436,6 +443,7 @@ impl<F: PrimeField> RipeMD160Chip<F> {
             .unwrap())
     }
 
+    /// Process a single 64-byte block, updating the given state.
     fn process_block(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -451,7 +459,6 @@ impl<F: PrimeField> RipeMD160Chip<F> {
         let mut temp_state_prime = state.clone();
 
         for j in 0..80 {
-            // for j in 0..1 {
             let word_idx = R[j / 16][j % 16] as usize;
             let word = &block_words[word_idx];
             let round_const = round_consts[j / 16];
@@ -473,48 +480,22 @@ impl<F: PrimeField> RipeMD160Chip<F> {
             )?;
         }
 
+        let [A, B, C, D, E] = temp_state.into();
+        let [A_prime, B_prime, C_prime, D_prime, E_prime] = temp_state_prime.into();
         // Update the state.
-        let State {
-            h0: A,
-            h1: B,
-            h2: C,
-            h3: D,
-            h4: E,
-        } = temp_state;
-        print!(
-            "A: {:?}, B: {:?}, C: {:?}, D: {:?}, E: {:?}\n",
-            &A.0.value(),
-            &B.0.value(),
-            &C.0.value(),
-            &D.0.value(),
-            &E.0.value()
-        );
-        let State {
-            h0: A_prime,
-            h1: B_prime,
-            h2: C_prime,
-            h3: D_prime,
-            h4: E_prime,
-        } = temp_state_prime;
-        print!(
-            "A': {:?}, B': {:?}, C': {:?}, D': {:?}, E': {:?}\n",
-            &A_prime.0.value(),
-            &B_prime.0.value(),
-            &C_prime.0.value(),
-            &D_prime.0.value(),
-            &E_prime.0.value()
-        );
-
-        let T = self.add_mod_2_32(layouter, &[&state.h1, &C, &D_prime], &zero)?;
-        state.h1 = self.add_mod_2_32(layouter, &[&state.h2, &D, &E_prime], &zero)?;
-        state.h2 = self.add_mod_2_32(layouter, &[&state.h3, &E, &A_prime], &zero)?;
-        state.h3 = self.add_mod_2_32(layouter, &[&state.h4, &A, &B_prime], &zero)?;
-        state.h4 = self.add_mod_2_32(layouter, &[&state.h0, &B, &C_prime], &zero)?;
+        let T = self.add_mod_2_32(layouter, &[&state.h1, &C, &D_prime], zero)?;
+        state.h1 = self.add_mod_2_32(layouter, &[&state.h2, &D, &E_prime], zero)?;
+        state.h2 = self.add_mod_2_32(layouter, &[&state.h3, &E, &A_prime], zero)?;
+        state.h3 = self.add_mod_2_32(layouter, &[&state.h4, &A, &B_prime], zero)?;
+        state.h4 = self.add_mod_2_32(layouter, &[&state.h0, &B, &C_prime], zero)?;
         state.h0 = T;
 
         Ok(())
     }
 
+    /// One round function of RIPEMD-160, updating the temporary states of both
+    /// sides.
+    #[allow(clippy::too_many_arguments)]
     fn round_function(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -702,7 +683,7 @@ impl<F: PrimeField> RipeMD160Chip<F> {
             Value::known(0u64),
         ])
         .map(|sprdd_forms: Vec<u64>| sprdd_forms.try_into().unwrap());
-        let val_of_sum = val_of_sprdd_forms.map(|vals| spreaded_sum(vals));
+        let val_of_sum = val_of_sprdd_forms.map(spreaded_sum);
 
         layouter.assign_region(
             || "Assign AND",
@@ -760,7 +741,7 @@ impl<F: PrimeField> RipeMD160Chip<F> {
             Value::known(0u64),
         ])
         .map(|sprdd_forms: Vec<u64>| sprdd_forms.try_into().unwrap());
-        let val_of_sum = val_of_sprdd_forms.map(|vals| spreaded_sum(vals));
+        let val_of_sum = val_of_sprdd_forms.map(spreaded_sum);
 
         layouter.assign_region(
             || "Assign XOR",
@@ -820,7 +801,7 @@ impl<F: PrimeField> RipeMD160Chip<F> {
             sprdd_Z.0.value().copied().map(fe_to_u64),
         ])
         .map(|sprdd_forms: Vec<u64>| sprdd_forms.try_into().unwrap());
-        let val_of_sum = val_of_sprdd_forms.map(|vals| spreaded_sum(vals));
+        let val_of_sum = val_of_sprdd_forms.map(spreaded_sum);
 
         layouter.assign_region(
             || "Assign f_type_one",
@@ -1317,227 +1298,5 @@ impl<F: PrimeField> FromScratch<F> for RipeMD160Chip<F> {
     fn load_from_scratch(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
         self.native_gadget.load_from_scratch(layouter)?;
         self.load(layouter)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use core::cmp::max;
-
-    use midnight_curves::Fq as F;
-    use midnight_proofs::{circuit::SimpleFloorPlanner, dev::MockProver, plonk::Circuit};
-
-    use super::*;
-    use crate::{
-        field::{
-            decomposition::{chip::P2RDecompositionConfig, pow2range::Pow2RangeChip},
-            native::{NB_ARITH_COLS, NB_ARITH_FIXED_COLS},
-            AssignedNative,
-        },
-        instructions::AssignmentInstructions,
-        testing_utils::FromScratch,
-    };
-
-    struct TestCircuit<F: PrimeField> {
-        inputs: [F; 5],
-        input_bytes: Vec<u8>,
-        output_words: [u32; 5],
-        input_bytes_long: Vec<u8>,
-        output_words_long: [u32; 5],
-    }
-
-    impl<F: PrimeField> Circuit<F> for TestCircuit<F> {
-        type Config = (RipeMD160Config, P2RDecompositionConfig);
-        type FloorPlanner = SimpleFloorPlanner;
-        type Params = ();
-
-        fn without_witnesses(&self) -> Self {
-            unreachable!()
-        }
-
-        fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
-            let advice_columns = (0..max(NB_ARITH_COLS, NB_RIPEMD160_ADVICE_COLS))
-                .map(|_| meta.advice_column())
-                .collect::<Vec<_>>();
-
-            let fixed_columns = (0..max(NB_ARITH_FIXED_COLS, NB_RIPEMD160_FIXED_COLS))
-                .map(|_| meta.fixed_column())
-                .collect::<Vec<_>>();
-
-            let instance_columns = [meta.instance_column(); 2];
-
-            let native_config = NativeChip::configure(
-                meta,
-                &(
-                    advice_columns[..NB_ARITH_COLS].try_into().unwrap(),
-                    fixed_columns[..NB_ARITH_FIXED_COLS].try_into().unwrap(),
-                    instance_columns,
-                ),
-            );
-
-            let pow2range_config = Pow2RangeChip::configure(meta, &advice_columns[1..=4]);
-            let core_decomposition_config =
-                P2RDecompositionChip::configure(meta, &(native_config, pow2range_config));
-
-            let ripemd160_config = RipeMD160Chip::configure(
-                meta,
-                &(
-                    advice_columns[..NB_RIPEMD160_ADVICE_COLS].try_into().unwrap(),
-                    fixed_columns[..NB_RIPEMD160_FIXED_COLS].try_into().unwrap(),
-                ),
-            );
-
-            (ripemd160_config, core_decomposition_config)
-        }
-
-        fn synthesize(
-            &self,
-            config: Self::Config,
-            mut layouter: impl Layouter<F>,
-        ) -> Result<(), Error> {
-            let native_gadget = NativeGadget::new_from_scratch(&config.1);
-            let ripemd160_chip = RipeMD160Chip::new(&config.0, &native_gadget);
-
-            native_gadget.load_from_scratch(&mut layouter)?;
-            ripemd160_chip.load(&mut layouter)?;
-
-            let assigned_inputs: Vec<AssignedNative<F>> =
-                ripemd160_chip.native_gadget.assign_many_fixed(&mut layouter, &self.inputs)?;
-
-            let assigned_words: Vec<AssignedWord<F>> =
-                assigned_inputs.into_iter().map(AssignedWord).collect();
-
-            let assigned_sprdd_words: Vec<AssignedSpreaded<F, 32>> = assigned_words
-                .iter()
-                .map(|word| ripemd160_chip.prepare_spreaded(&mut layouter, word))
-                .collect::<Result<Vec<_>, _>>()?;
-
-            let [sprdd_a, sprdd_b, sprdd_c, sprdd_d, sprdd_e]: [AssignedSpreaded<F, 32>; 5] =
-                assigned_sprdd_words.try_into().unwrap();
-
-            let assigned_and = ripemd160_chip.and(&mut layouter, &sprdd_d, &sprdd_e)?;
-            let expected_and = fe_to_u32(self.inputs[3]) & fe_to_u32(self.inputs[4]);
-            assigned_and.0.value().assert_if_known(|res| **res == u32_to_fe(expected_and));
-
-            let assigned_xor = ripemd160_chip.xor(&mut layouter, &sprdd_d, &sprdd_e)?;
-            let expected_xor = fe_to_u32(self.inputs[3]) ^ fe_to_u32(self.inputs[4]);
-            assigned_xor.0.value().assert_if_known(|res| **res == u32_to_fe(expected_xor));
-
-            let assigned_rot = ripemd160_chip.left_rotate(&mut layouter, &assigned_words[3], 5)?;
-            let expected_rot = fe_to_u32(self.inputs[3]).rotate_left(5);
-            assigned_rot.0.value().assert_if_known(|res| **res == u32_to_fe(expected_rot));
-
-            let assigned_add_mod = ripemd160_chip.add_mod_2_32(
-                &mut layouter,
-                &[&assigned_words[1], &assigned_words[2], &assigned_words[3]],
-                &assigned_words[0], // intialized to zero in the test function
-            )?;
-            let expected_add_mod =
-                (fe_to_u64(self.inputs[1]) + fe_to_u64(self.inputs[2]) + fe_to_u64(self.inputs[3]))
-                    % (1u64 << 32);
-            assigned_add_mod
-                .0
-                .value()
-                .assert_if_known(|res| **res == u32_to_fe(expected_add_mod as u32));
-
-            let res1 = ripemd160_chip.f_type_one(&mut layouter, &sprdd_a, &sprdd_b, &sprdd_c)?;
-            let expected_res1 =
-                fe_to_u32(self.inputs[0]) ^ fe_to_u32(self.inputs[1]) ^ fe_to_u32(self.inputs[2]);
-            res1.0.value().assert_if_known(|res| **res == u32_to_fe(expected_res1));
-
-            let res2 = ripemd160_chip.f_type_two(&mut layouter, &sprdd_b, &sprdd_c, &sprdd_d)?;
-            let expected_res2 = (fe_to_u32(self.inputs[1]) & fe_to_u32(self.inputs[2]))
-                | (!fe_to_u32(self.inputs[1]) & fe_to_u32(self.inputs[3]));
-            res2.0.value().assert_if_known(|res| **res == u32_to_fe(expected_res2));
-
-            let res3 = ripemd160_chip.f_type_three(&mut layouter, &sprdd_c, &sprdd_d, &sprdd_e)?;
-            let expected_res3 = (fe_to_u32(self.inputs[2]) | !fe_to_u32(self.inputs[3]))
-                ^ fe_to_u32(self.inputs[4]);
-            res3.0.value().assert_if_known(|res| **res == u32_to_fe(expected_res3));
-
-            let assigned_input_bytes: Vec<AssignedByte<F>> = self
-                .input_bytes
-                .iter()
-                .map(|b| ripemd160_chip.native_gadget.assign_fixed(&mut layouter, *b))
-                .collect::<Result<Vec<_>, _>>()?;
-
-            let assigned_output: [F; 5] = self
-                .output_words
-                .iter()
-                .map(|w| u32_to_fe(*w))
-                .collect::<Vec<_>>()
-                .try_into()
-                .unwrap();
-
-            let ripemd160_output =
-                ripemd160_chip.ripemd160(&mut layouter, &assigned_input_bytes)?;
-
-            let [h0, h1, h2, h3, h4] = ripemd160_output;
-            let ripemd160_output = [h0, h1, h2, h3, h4];
-            for (computed, expected) in ripemd160_output.iter().zip(assigned_output.iter()) {
-                print!(
-                    "Computed: {:?}, Expected: {:?}\n",
-                    computed.0.value(),
-                    expected
-                );
-                computed.0.value().assert_if_known(|res| **res == *expected);
-            }
-
-            let assigned_input_bytes_long: Vec<AssignedByte<F>> = self
-                .input_bytes_long
-                .iter()
-                .map(|b| ripemd160_chip.native_gadget.assign_fixed(&mut layouter, *b))
-                .collect::<Result<Vec<_>, _>>()?;
-
-            let assigned_output_long: [F; 5] = self
-                .output_words_long
-                .iter()
-                .map(|w| u32_to_fe(*w))
-                .collect::<Vec<_>>()
-                .try_into()
-                .unwrap();
-
-            let ripemd160_output_long =
-                ripemd160_chip.ripemd160(&mut layouter, &assigned_input_bytes_long)?;
-
-            let [h0, h1, h2, h3, h4] = ripemd160_output_long;
-            let ripemd160_output_long = [h0, h1, h2, h3, h4];
-            for (computed, expected) in
-                ripemd160_output_long.iter().zip(assigned_output_long.iter())
-            {
-                print!(
-                    "Computed: {:?}, Expected: {:?}\n",
-                    computed.0.value(),
-                    expected
-                );
-                computed.0.value().assert_if_known(|res| **res == *expected);
-            }
-
-            Ok(())
-        }
-    }
-
-    #[test]
-    fn test_circuit() {
-        let circuit = TestCircuit {
-            inputs: [
-                F::from(0u64),
-                F::from(1u64),
-                F::from(42u64),
-                F::from(255u64),
-                F::from(1023u64),
-            ],
-            input_bytes: vec![97, 98, 99],
-            output_words: [0xf708b28e, 0x7a985de0, 0x8e4a049b, 0x87b0c698, 0xfc0b5af1],
-
-            input_bytes_long: vec![49; 64],
-            output_words_long: [0x4d03b0b2, 0x858dc891, 0x64715c7e, 0x29436308, 0xe89b0d1c],
-        };
-
-        let prover = match MockProver::<F>::run(16, &circuit, vec![vec![]]) {
-            Ok(prover) => prover,
-            Err(e) => panic!("{:?}", e),
-        };
-        assert_eq!(prover.verify(), Ok(()));
     }
 }

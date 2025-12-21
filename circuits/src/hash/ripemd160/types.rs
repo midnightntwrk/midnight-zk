@@ -50,6 +50,12 @@ impl<F: PrimeField> TryFrom<Vec<AssignedWord<F>>> for State<F> {
     }
 }
 
+impl<F: PrimeField> Into<[AssignedWord<F>; 5]> for State<F> {
+    fn into(self) -> [AssignedWord<F>; 5] {
+        [self.h0, self.h1, self.h2, self.h3, self.h4]
+    }
+}
+
 impl<F: PrimeField> State<F> {
     pub(super) fn fixed(
         layouter: &mut impl Layouter<F>,
@@ -64,9 +70,5 @@ impl<F: PrimeField> State<F> {
             .try_into()
             .unwrap();
         Ok(assigned_words.into())
-    }
-
-    pub(super) fn words(self) -> [AssignedWord<F>; 5] {
-        [self.h0, self.h1, self.h2, self.h3, self.h4]
     }
 }

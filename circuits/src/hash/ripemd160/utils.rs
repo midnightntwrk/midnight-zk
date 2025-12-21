@@ -1,7 +1,7 @@
 use ff::PrimeField;
 
 use crate::hash::sha256::utils::assert_in_valid_spreaded_form;
-pub use crate::hash::sha256::utils::{
+pub(crate) use crate::hash::sha256::utils::{
     expr_pow2_ip, expr_pow4_ip, get_even_and_odd_bits, negate_spreaded, spread, u32_in_be_limbs,
     MASK_EVN_64,
 };
