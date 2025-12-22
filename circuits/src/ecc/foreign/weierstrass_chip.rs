@@ -2018,7 +2018,7 @@ use crate::field::{
 
 type F = midnight_curves::Fq;
 type NG = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
-type Bls12381Chip = ForeignEccChip<F, midnight_curves::G1Projective, MEP, NG, NG>;
+type Bls12381Chip = ForeignWeierstrassEccChip<F, midnight_curves::G1Projective, MEP, NG, NG>;
 
 impl Bls12381Chip {
     /// Asserts that the given point belongs to the BLS subgroup.
