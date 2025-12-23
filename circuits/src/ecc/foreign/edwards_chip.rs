@@ -557,6 +557,17 @@ where
         q: &Self::Point,
     ) -> Result<Self::Point, Error> {
         // Addition law on twisted edwards curve:
+        //  P + Q = R iff
+        //
+        // Rx = (Px * Qy +     Py * Qx) / (1 + d * Px * Py * Qx * Qy)
+        // Ry = (Py * Qy - a * Px * Qx) / (1 - d * Px * Py * Qx * Qy)
+        //
+        // iff (modulo dens are non-zero, which is true for p, q that satisfy
+        //      the curve equation)
+        //
+        // Rx * (1 + d * Px * Py * Qx * Qy) = (Px * Qy +     Py * Qx)
+        // Ry * (1 - d * Px * Py * Qx * Qy) = (Py * Qy - a * Px * Qx)
+
         //      P    +    Q
         // = (Px,Py) + (Qx,Qy)
         // = ( (Px*Qy + Py*Qx)/(1+d*Px*Py*Qx*Qy) ,
@@ -564,12 +575,10 @@ where
         // = (Rx, Ry) = R
 
         let base_chip = self.base_field_chip();
-        let px_py = base_chip.mul(layouter, &p.x, &p.y, None)?;
-        let qx_qy = base_chip.mul(layouter, &q.x, &q.y, None)?;
-        let py_qy = base_chip.mul(layouter, &p.y, &q.y, None)?;
-        let px_qx = base_chip.mul(layouter, &p.x, &q.x, None)?;
+        let px_qx = base_chip.mul(layouter, &p.x, &q.x, None)?; // YES
+        let py_qy = base_chip.mul(layouter, &p.y, &q.y, None)?; // YES
         let a_px_qx = base_chip.mul_by_constant(layouter, &px_qx, C::A)?;
-        let d_px_py_qx_qy = base_chip.mul(layouter, &px_py, &qx_qy, Some(C::D))?;
+        let d_px_py_qx_qy = base_chip.mul(layouter, &px_qx, &py_qy, Some(C::D))?; // YES
         let neg_d_px_py_qx_qy = base_chip.neg(layouter, &d_px_py_qx_qy)?;
 
         let px_qy = base_chip.mul(layouter, &p.x, &q.y, None)?;
@@ -643,20 +652,17 @@ where
             panic!("Nr of scalars and points should be the same.")
         }
 
-        let mut res = self.assign_fixed(layouter, C::CryptographicGroup::identity())?;
+        let identity = self.assign_fixed(layouter, C::CryptographicGroup::identity())?;
+        let mut res = identity.clone();
 
         for ((s, bit_size), b) in scalars.iter().zip(bases.iter()) {
             let scalar_bits =
                 self.scalar_field_chip()
                     .assigned_to_le_bits(layouter, s, Some(*bit_size), true)?;
             let mut p = b.clone();
-            for b in scalar_bits {
-                let _: Value<std::result::Result<(), Error>> = b.value().map(|b| {
-                    if b {
-                        res = self.add(layouter, &res, &p)?
-                    }
-                    Ok(())
-                });
+            for b in scalar_bits.iter() {
+                let addend = self.select(layouter, b, &p, &identity)?;
+                res = self.add(layouter, &res, &addend)?;
                 p = self.double(layouter, &p)?;
             }
         }

@@ -379,7 +379,7 @@
       "max_deg": "5",
       "permutations": "34",
       "point_sets": "4",
-      "rows": "448",
+      "rows": "412",
       "table_rows": "417"
     },
     "assert_eq": {
@@ -489,7 +489,7 @@
       "max_deg": "5",
       "permutations": "34",
       "point_sets": "4",
-      "rows": "448",
+      "rows": "412",
       "table_rows": "417"
     },
     "is_equal": {
@@ -577,7 +577,7 @@
       "max_deg": "5",
       "permutations": "34",
       "point_sets": "4",
-      "rows": "116483",
+      "rows": "102857",
       "table_rows": "417"
     },
     "neg": {
