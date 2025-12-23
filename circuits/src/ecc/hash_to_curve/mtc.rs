@@ -77,8 +77,9 @@ where
             &montgomery_y,
         )?;
 
-        let point = self.point_from_coordinates(layouter, &edwards_x, &edwards_y)?;
-        self.mul_by_constant(layouter, C::Scalar::from_u128(C::COFACTOR), &point)
+        // Assigns a point without subgroup check, then clear the cofactor.
+        let point = self.point_from_coordinates_unsafe(layouter, &edwards_x, &edwards_y)?;
+        self.clear_cofactor(layouter, &point)
     }
 }
 
