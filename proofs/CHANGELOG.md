@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 ### Added
 * changed `sha256` name in benches to account for the change of naming convention in `circuits` [#135](https://github.com/midnightntwrk/midnight-zk/pull/135)
+* Expose the "powers of s" of KZG params [#176](https://github.com/midnightntwrk/midnight-zk/pull/176)
 
 ### Changed
 

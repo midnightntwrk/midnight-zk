@@ -117,6 +117,13 @@ impl<E: Engine + Debug> ParamsKZG<E> {
         }
     }
 
+    /// Returns the "powers of s" of these KZG params, that is,
+    /// [G1, s * G1, s^2 * G1, ..., s^(n-1) * G1], where s is the underlying
+    /// secret, and n is the domain size.
+    pub fn powers_of_s(&self) -> &[E::G1] {
+        &self.g
+    }
+
     /// Returns the committed lagrange polynomials of these KZG params.
     pub fn g_lagrange(&self) -> &[E::G1] {
         &self.g_lagrange
