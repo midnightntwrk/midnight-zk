@@ -24,7 +24,7 @@ use super::{
 };
 use crate::{
     field::foreign::params::MultiEmulationParams as MEP,
-    instructions::{hash::HashCPU, SpongeCPU},
+    instructions::SpongeCPU,
     types::{AssignedForeignPoint, Instantiable},
 };
 
@@ -246,14 +246,6 @@ impl Hashable<PoseidonState<midnight_curves::Fq>> for midnight_curves::Fq {
 impl Sampleable<PoseidonState<midnight_curves::Fq>> for midnight_curves::Fq {
     fn sample(out: midnight_curves::Fq) -> Self {
         out
-    }
-}
-
-impl<F: PoseidonField> HashCPU<F, F> for PoseidonChip<F> {
-    fn hash(inputs: &[F]) -> F {
-        let mut state = <Self as SpongeCPU<F, F>>::init(Some(inputs.len()));
-        <Self as SpongeCPU<F, F>>::absorb(&mut state, inputs);
-        <Self as SpongeCPU<F, F>>::squeeze(&mut state)
     }
 }
 
