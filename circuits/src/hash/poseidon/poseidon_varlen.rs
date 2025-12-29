@@ -94,10 +94,10 @@ impl<F: PoseidonField> VarLenPoseidonGadget<F> {
         Ok(result)
     }
 
-    /// Format the last chunk of data so it is zeroed after the effictive payload.
-    /// Given chunk = [x1, x2, ..., xn], with n = RATE, returns [x1, ...,
-    /// x_{offset-1}, 0, ..., 0]. If offset = 0, the chunk is returned
-    /// intact.
+    /// Format the last chunk of data so it is zeroed after the effective
+    /// payload. Given chunk = [x1, x2, ..., xn], with n = RATE, returns
+    /// [x1, ..., x_{offset-1}, 0, ..., 0]. If offset = 0, the chunk is
+    /// returned intact.
     fn constrain_last_chunk(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -181,10 +181,9 @@ impl<F: PoseidonField> VarLenPoseidonGadget<F> {
 use midnight_proofs::plonk::{Column, ConstraintSystem, Instance};
 
 #[cfg(any(test, feature = "testing"))]
-use crate::testing_utils::FromScratch;
-
-#[cfg(any(test, feature = "testing"))]
 use crate::field::decomposition::chip::P2RDecompositionConfig;
+#[cfg(any(test, feature = "testing"))]
+use crate::testing_utils::FromScratch;
 
 #[cfg(any(test, feature = "testing"))]
 impl<F: PoseidonField> FromScratch<F> for VarLenPoseidonGadget<F> {
