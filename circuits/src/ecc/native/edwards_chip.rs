@@ -48,12 +48,13 @@ pub const NB_EDWARDS_COLS: usize = 9;
 /// A twisted Edwards curve point represented in affine (x, y) coordinates, the
 /// identity represented as (0, 1).
 /// The represented point may or may not lie in the prime order subgroup. If
-/// `in_subgroup` is true, then the point is guaranteed to be in the primer order
-/// subgroup.
+/// `in_subgroup` is true, then the point is guaranteed to be in the primer
+/// order subgroup.
 /// Since in most use cases we want to ensure the point is in the subgroup,
-/// the implementation of `InnerValue` and `AssignmentInstructions` require subgroup
-/// membership. To use arbitrary points of the curve there are equivalent functions
-/// that explicitly state the abscence of this subgroup membership check.
+/// the implementation of `InnerValue` and `AssignmentInstructions` require
+/// subgroup membership. To use arbitrary points of the curve there are
+/// equivalent functions that explicitly state the abscence of this subgroup
+/// membership check.
 // NOTE: Do we want to expose the use of the chip for general curve arithmetic?
 // Or do we want to keep that functionality private?
 #[derive(Clone, Debug)]
@@ -77,7 +78,8 @@ impl<C: CircuitCurve> InnerValue for AssignedNativePoint<C> {
 
 impl<C: CircuitCurve> AssignedNativePoint<C> {
     /// Return the value of the assigned point, possibly not in the subgroup.
-    /// If the point is known to be in the subgroup, consider using `value()` instead.
+    /// If the point is known to be in the subgroup, consider using `value()`
+    /// instead.
     fn curve_value(&self) -> Value<C> {
         self.x
             .value()
@@ -548,14 +550,15 @@ impl<C: EdwardsCurve> EccChip<C> {
 }
 
 impl<C: EdwardsCurve> EccChip<C> {
-    /// Multiplies by the cofactor, ensuring the result lies in the prime order subgroup.
+    /// Multiplies by the cofactor, ensuring the result lies in the prime order
+    /// subgroup.
     pub fn clear_cofactor(
         &self,
         layouter: &mut impl Layouter<C::Base>,
         point: &AssignedNativePoint<C>,
     ) -> Result<AssignedNativePoint<C>, Error> {
         assert!(!point.in_subgroup, "The point is already in the subgroup.");
-        let r = self.mul_by_constant(layouter, C::Scalar::from_u128(C::COFACTOR), &point)?;
+        let r = self.mul_by_constant(layouter, C::Scalar::from_u128(C::COFACTOR), point)?;
         Ok(AssignedNativePoint {
             x: r.x,
             y: r.y,
@@ -563,8 +566,8 @@ impl<C: EdwardsCurve> EccChip<C> {
         })
     }
 
-    /// Assigns a point given its affine coordinates, checking the curve equation
-    /// and *not* checking subgroup membership.
+    /// Assigns a point given its affine coordinates, checking the curve
+    /// equation and *not* checking subgroup membership.
     pub(crate) fn point_from_coordinates_unsafe(
         &self,
         layouter: &mut impl Layouter<C::Base>,
@@ -849,7 +852,8 @@ impl<C: EdwardsCurve> PublicInputInstructions<C::Base, AssignedNativePoint<C>> f
         let (x, y) = p.map(|p| p.into().coordinates().expect("non-id")).unzip();
         let x = self.native_gadget.assign_as_public_input(layouter, x)?;
         let y = self.native_gadget.assign_as_public_input(layouter, y)?;
-        // Since the input value is C::CryptographicGroup we can skip the subgroup check.
+        // Since the input value is C::CryptographicGroup we can skip the subgroup
+        // check.
         Ok(AssignedNativePoint {
             x,
             y,
