@@ -122,7 +122,9 @@ where
 
     /// Creates an assigned point from a pair of coordinates, asserting that
     /// they satisfy the curve equation.
-    /// (The identity cannot be constructed through this function.)
+    /// If the curve has non-prime order, the point is guaranteed to be in the
+    /// prime order subgroup. (The identity cannot be constructed through
+    /// this function.)
     fn point_from_coordinates(
         &self,
         layouter: &mut impl Layouter<F>,

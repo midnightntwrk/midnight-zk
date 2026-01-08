@@ -48,15 +48,13 @@ pub const NB_EDWARDS_COLS: usize = 9;
 /// A twisted Edwards curve point represented in affine (x, y) coordinates, the
 /// identity represented as (0, 1).
 /// The represented point may or may not lie in the prime order subgroup. If
-/// `in_subgroup` is true, then the point is guaranteed to be in the primer
-/// order subgroup.
+/// `in_subgroup` is true, then the point has been constrained to be in the
+/// prime order subgroup.
 /// Since in most use cases we want to ensure the point is in the subgroup,
 /// the implementation of `InnerValue` and `AssignmentInstructions` require
 /// subgroup membership. To use arbitrary points of the curve there are
-/// equivalent functions that explicitly state the abscence of this subgroup
+/// equivalent functions that explicitly state the absence of this subgroup
 /// membership check.
-// NOTE: Do we want to expose the use of the chip for general curve arithmetic?
-// Or do we want to keep that functionality private?
 #[derive(Clone, Debug)]
 pub struct AssignedNativePoint<C: CircuitCurve> {
     x: AssignedNative<C::Base>,
@@ -72,7 +70,7 @@ impl<C: CircuitCurve> InnerValue for AssignedNativePoint<C> {
         self.x
             .value()
             .zip(self.y.value())
-            .map(|(x, y)| C::from_xy(*x, *y).expect("non-id").into_subgroup())
+            .map(|(x, y)| C::from_xy(*x, *y).expect("Valid coordinates.").into_subgroup())
     }
 }
 
@@ -91,7 +89,7 @@ impl<C: CircuitCurve> AssignedNativePoint<C> {
 impl<C: CircuitCurve> Instantiable<C::Base> for AssignedNativePoint<C> {
     fn as_public_input(p: &C::CryptographicGroup) -> Vec<C::Base> {
         let point: C = (*p).into();
-        let coordinates = point.coordinates().expect("non-id");
+        let coordinates = point.coordinates().unwrap();
         vec![coordinates.0, coordinates.1]
     }
 }
@@ -417,8 +415,8 @@ impl<C: EdwardsCurve> EccChip<C> {
         let xr = region.assign_advice(|| "xr", config.advice_cols[5], offset, || xr_val)?;
         let yr = region.assign_advice(|| "yr", config.advice_cols[6], offset, || yr_val)?;
 
-        let (xq, yq) = q_val.map(|q| q.coordinates().expect("non-id")).unzip();
-        let (xs, ys) = s_val.map(|s| s.coordinates().expect("non-id")).unzip();
+        let (xq, yq) = q_val.map(|q| q.coordinates().unwrap()).unzip();
+        let (xs, ys) = s_val.map(|s| s.coordinates().unwrap()).unzip();
         let prod_val = xq * yq * xs * ys;
         region.assign_advice(|| "xq_yq_xs_ys", config.advice_cols[8], offset, || prod_val)?;
 
@@ -465,8 +463,8 @@ impl<C: EdwardsCurve> EccChip<C> {
         let s_val = xs_val.zip(ys_val).map(|(xs, ys)| C::from_xy(xs, ys).unwrap());
         let r_val = s_val.map(|s| s + s);
 
-        let xr_val = r_val.map(|r: C| r.coordinates().expect("non-id").0);
-        let yr_val = r_val.map(|r: C| r.coordinates().expect("non-id").1);
+        let xr_val = r_val.map(|r: C| r.coordinates().unwrap().0);
+        let yr_val = r_val.map(|r: C| r.coordinates().unwrap().1);
 
         let xr = region.assign_advice(|| "xr", config.advice_cols[0], offset + 1, || xr_val)?;
         let yr = region.assign_advice(|| "yr", config.advice_cols[1], offset + 1, || yr_val)?;
@@ -478,8 +476,8 @@ impl<C: EdwardsCurve> EccChip<C> {
             || xs_val * xs_val,
         )?;
 
-        let (xp, yp) = p_val.map(|c| c.coordinates().expect("non-id")).unzip();
-        let (xq, yq) = q_val.map(|c| c.coordinates().expect("non-id")).unzip();
+        let (xp, yp) = p_val.map(|c| c.coordinates().unwrap()).unzip();
+        let (xq, yq) = q_val.map(|c| c.coordinates().unwrap()).unzip();
         let prod_val = xp * yp * xq * yq;
         region.assign_advice(|| "xp_yp_xq_yq", config.advice_cols[8], offset, || prod_val)?;
 
@@ -503,7 +501,6 @@ impl<C: EdwardsCurve> EccChip<C> {
         let scalar_be_bits = &mut scalar.0.clone();
         scalar_be_bits.reverse();
 
-        // let base_val = base.curve_value();
         let id_point: AssignedNativePoint<C> =
             self.assign_fixed(layouter, C::CryptographicGroup::identity())?;
 
@@ -539,7 +536,7 @@ impl<C: EdwardsCurve> EccChip<C> {
         p.zip(q)
             .zip(b)
             .map(|((p, q), b)| if b { p + q } else { p })
-            .map(|r| r.coordinates().expect("non-id"))
+            .map(|r| r.coordinates().unwrap())
             .unzip()
     }
 
@@ -718,8 +715,8 @@ impl<C: EdwardsCurve> AssignmentInstructions<C::Base, AssignedNativePoint<C>> fo
         let cofactor = C::Scalar::from_u128(C::COFACTOR);
         let (x_val, y_val) = value
             .map(|p| {
-                let p = p * cofactor.invert().expect("cofactor should not be 0");
-                p.into().coordinates().expect("non-id")
+                let p = p * cofactor.invert().expect("Cofactor should not be 0");
+                p.into().coordinates().unwrap()
             })
             .unzip();
 
@@ -732,12 +729,12 @@ impl<C: EdwardsCurve> AssignmentInstructions<C::Base, AssignedNativePoint<C>> fo
                 Ok(AssignedNativePoint {
                     x,
                     y,
-                    in_subgroup: true,
+                    in_subgroup: false,
                 })
             },
         )?;
 
-        self.mul_by_constant(layouter, cofactor, &cf_root)
+        self.clear_cofactor(layouter, &cf_root)
     }
 
     fn assign_fixed(
@@ -745,7 +742,7 @@ impl<C: EdwardsCurve> AssignmentInstructions<C::Base, AssignedNativePoint<C>> fo
         layouter: &mut impl Layouter<C::Base>,
         constant: C::CryptographicGroup,
     ) -> Result<AssignedNativePoint<C>, Error> {
-        let coords = constant.into().coordinates().expect("non-id");
+        let coords = constant.into().coordinates().unwrap();
         let x = self.native_gadget.assign_fixed(layouter, coords.0)?;
         let y = self.native_gadget.assign_fixed(layouter, coords.1)?;
         Ok(AssignedNativePoint {
@@ -808,7 +805,7 @@ impl<C: EdwardsCurve> AssertionInstructions<C::Base, AssignedNativePoint<C>> for
         p: &AssignedNativePoint<C>,
         constant: C::CryptographicGroup,
     ) -> Result<(), Error> {
-        let (cx, cy) = constant.into().coordinates().expect("non-id");
+        let (cx, cy) = constant.into().coordinates().unwrap();
         self.native_gadget.assert_equal_to_fixed(layouter, &p.x, cx)?;
         self.native_gadget.assert_equal_to_fixed(layouter, &p.y, cy)
     }
@@ -849,7 +846,7 @@ impl<C: EdwardsCurve> PublicInputInstructions<C::Base, AssignedNativePoint<C>> f
         p: Value<C::CryptographicGroup>,
     ) -> Result<AssignedNativePoint<C>, Error> {
         // We can skip the curve equation check in this case.
-        let (x, y) = p.map(|p| p.into().coordinates().expect("non-id")).unzip();
+        let (x, y) = p.map(|p| p.into().coordinates().unwrap()).unzip();
         let x = self.native_gadget.assign_as_public_input(layouter, x)?;
         let y = self.native_gadget.assign_as_public_input(layouter, y)?;
         // Since the input value is C::CryptographicGroup we can skip the subgroup
@@ -929,7 +926,7 @@ impl<C: EdwardsCurve> EqualityInstructions<C::Base, AssignedNativePoint<C>> for 
         p: &AssignedNativePoint<C>,
         constant: C::CryptographicGroup,
     ) -> Result<AssignedBit<C::Base>, Error> {
-        let (cx, cy) = constant.into().coordinates().expect("non-id");
+        let (cx, cy) = constant.into().coordinates().unwrap();
         let eq_x = self.native_gadget.is_equal_to_fixed(layouter, &p.x, cx)?;
         let eq_y = self.native_gadget.is_equal_to_fixed(layouter, &p.y, cy)?;
         self.native_gadget.and(layouter, &[eq_x, eq_y])
@@ -941,7 +938,7 @@ impl<C: EdwardsCurve> EqualityInstructions<C::Base, AssignedNativePoint<C>> for 
         p: &AssignedNativePoint<C>,
         constant: C::CryptographicGroup,
     ) -> Result<AssignedBit<C::Base>, Error> {
-        let (cx, cy) = constant.into().coordinates().expect("non-id");
+        let (cx, cy) = constant.into().coordinates().unwrap();
         let not_eq_x = self.native_gadget.is_not_equal_to_fixed(layouter, &p.x, cx)?;
         let not_eq_y = self.native_gadget.is_not_equal_to_fixed(layouter, &p.y, cy)?;
         self.native_gadget.or(layouter, &[not_eq_x, not_eq_y])

@@ -77,7 +77,7 @@ where
             &montgomery_y,
         )?;
 
-        // Assigns a point without subgroup check, then clear the cofactor.
+        // Assign a point without subgroup check, then clear the cofactor.
         let point = self.point_from_coordinates_unsafe(layouter, &edwards_x, &edwards_y)?;
         self.clear_cofactor(layouter, &point)
     }
