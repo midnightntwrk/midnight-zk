@@ -14,6 +14,7 @@ verification keys break backwards compatibility.
 ### Added
 
 ### Changed
+* Add explicit subgroup membership guarantees for `AssignedNativePoint` [#175](https://github.com/midnightntwrk/midnight-zk/pull/175)
 
 ### Removed
 
