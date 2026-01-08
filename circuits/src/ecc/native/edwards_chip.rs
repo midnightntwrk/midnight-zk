@@ -503,7 +503,6 @@ impl<C: EdwardsCurve> EccChip<C> {
         let scalar_be_bits = &mut scalar.0.clone();
         scalar_be_bits.reverse();
 
-        // let base_val = base.curve_value();
         let id_point: AssignedNativePoint<C> =
             self.assign_fixed(layouter, C::CryptographicGroup::identity())?;
 
