@@ -16,6 +16,7 @@ verification keys break backwards compatibility.
 ### Changed
 
 ### Removed
+* Move external implementations to zk-stdlib [#178](https://github.com/midnightntwrk/midnight-zk/pull/178) 
 
 ## [6.0.0] - 18-12-2025
 ### Added

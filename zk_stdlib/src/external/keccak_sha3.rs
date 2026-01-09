@@ -19,20 +19,22 @@ use keccak_sha3::{
     sha3_256_gadget::{Keccak256, Sha3_256},
 };
 #[cfg(test)]
+use midnight_circuits::{
+    field::decomposition::chip::P2RDecompositionConfig, testing_utils::FromScratch,
+};
+use midnight_circuits::{
+    instructions::AssertionInstructions,
+    types::{AssignedByte, InnerValue},
+    ComposableChip,
+};
+#[cfg(test)]
 use midnight_proofs::plonk::Instance;
 use midnight_proofs::{
     circuit::{Chip, Layouter, Value},
     plonk::{Advice, Column, ConstraintSystem, Error, Fixed},
 };
 
-use crate::{
-    external::{convert_to_bytes, unsafe_convert_to_bytes, NG},
-    instructions::AssertionInstructions,
-    types::{AssignedByte, InnerValue},
-    utils::ComposableChip,
-};
-#[cfg(test)]
-use crate::{field::decomposition::chip::P2RDecompositionConfig, testing_utils::FromScratch};
+use crate::external::{convert_to_bytes, unsafe_convert_to_bytes, NG};
 
 /// The chip for the external implementation of keccak and sha3.
 ///
@@ -183,6 +185,12 @@ impl<F: PrimeField> FromScratch<F> for KeccakSha3Wrapper<F> {
 #[cfg(test)]
 mod test {
     use ff::PrimeField;
+    use midnight_circuits::{
+        field::NativeGadget,
+        instructions::{hash::HashCPU, HashInstructions},
+        testing_utils::{test_hash, FromScratch},
+        types::AssignedByte,
+    };
     use midnight_curves::Fq;
     use midnight_proofs::{
         circuit::Layouter,
@@ -190,16 +198,7 @@ mod test {
     };
     use sha3::{Digest, Keccak256 as KeccakCpu, Sha3_256 as Sha3Cpu};
 
-    use crate::{
-        external::keccak_sha3::KeccakSha3Wrapper,
-        field::NativeGadget,
-        instructions::{
-            hash::{tests::test_hash, HashCPU},
-            HashInstructions,
-        },
-        testing_utils::FromScratch,
-        types::AssignedByte,
-    };
+    use crate::external::keccak_sha3::KeccakSha3Wrapper;
 
     // A wrapper for testing Blake with 512 bits.
     #[derive(Debug, Clone)]
