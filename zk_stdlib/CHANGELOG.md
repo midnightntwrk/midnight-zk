@@ -16,6 +16,7 @@ verification keys break backwards compatibility.
 ### Changed
 
 ### Removed
+* Move Blake2b and SHA3-256/Keccak256 implementations to zk-stdlib [#178](https://github.com/midnightntwrk/midnight-zk/pull/178)
 
 ## 1.0.0 
 ### Added
