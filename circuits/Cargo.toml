@@ -17,9 +17,6 @@ midnight-proofs = { version = "0.7.0", default-features = false, features = [
     "committed-instances",
 ] }
 
-keccak_sha3 = { package = "sha3-circuit", version = "0.1.0" }
-blake2b = { package = "blake2b_halo2", version = "0.1.0" }
-
 serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 sha2 = { workspace = true }
@@ -40,8 +37,6 @@ num-bigint = { workspace = true, features = ["rand"] }
 serde_json = { workspace = true }
 itertools = "0.14"
 dhat = "0.3"
-sha3 = "0.10.0"
-blake2 = "0.10.6"
 
 [target.'cfg(ci_build)'.dependencies]
 midnight-curves = { version = "0.2.0", features = [

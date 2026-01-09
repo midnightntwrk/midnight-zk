@@ -22,20 +22,18 @@ use blake2b::{
 };
 use ff::PrimeField;
 #[cfg(test)]
+use midnight_circuits::{
+    field::decomposition::chip::P2RDecompositionConfig, testing_utils::FromScratch,
+};
+use midnight_circuits::{field::AssignedNative, types::AssignedByte, ComposableChip};
+#[cfg(test)]
 use midnight_proofs::plonk::Instance;
 use midnight_proofs::{
     circuit::{AssignedCell, Chip, Layouter},
     plonk::{Advice, Column, ConstraintSystem, Error, Fixed},
 };
 
-use crate::{
-    external::{convert_to_bytes, NG},
-    field::AssignedNative,
-    types::AssignedByte,
-    utils::ComposableChip,
-};
-#[cfg(test)]
-use crate::{field::decomposition::chip::P2RDecompositionConfig, testing_utils::FromScratch};
+use crate::external::{convert_to_bytes, NG};
 
 /// The chip for the external implementation of blake2b.
 #[derive(Clone, Debug)]
@@ -159,6 +157,12 @@ impl<F: PrimeField> FromScratch<F> for Blake2bWrapper<F> {
 mod test {
     use blake2::Blake2b;
     use ff::PrimeField;
+    use midnight_circuits::{
+        field::NativeGadget,
+        instructions::{hash::HashCPU, HashInstructions},
+        testing_utils::{test_hash, FromScratch},
+        types::AssignedByte,
+    };
     use midnight_curves::Fq;
     use midnight_proofs::{
         circuit::Layouter,
@@ -169,16 +173,7 @@ mod test {
         Digest,
     };
 
-    use crate::{
-        external::blake2b::Blake2bWrapper,
-        field::NativeGadget,
-        instructions::{
-            hash::{tests::test_hash, HashCPU},
-            HashInstructions,
-        },
-        testing_utils::FromScratch,
-        types::AssignedByte,
-    };
+    use crate::external::blake2b::Blake2bWrapper;
 
     // A wrapper for testing Blake with 512 bits.
     #[derive(Debug, Clone)]
