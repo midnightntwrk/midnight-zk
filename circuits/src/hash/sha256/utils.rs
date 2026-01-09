@@ -1,7 +1,11 @@
+//! Utility functions for SHA-256 circuit.
+
 use ff::PrimeField;
 use midnight_proofs::plonk::Expression;
 
-pub(super) const MASK_EVN_64: u64 = 0x5555_5555_5555_5555; // 010101...01 (even positions in u64)
+/// Mask for selecting even bits in u64 (little-endian representation).
+pub const MASK_EVN_64: u64 = 0x5555_5555_5555_5555; // 010101...01 (even positions in u64)
+
 pub(super) const MASK_ODD_64: u64 = 0xAAAA_AAAA_AAAA_AAAA; // 101010...10 (odd positions in u64)
 
 const LOOKUP_LENGTHS: [u32; 10] = [2, 3, 4, 5, 6, 7, 9, 10, 11, 12]; // supported lookup bit lengths
@@ -24,7 +28,7 @@ fn compact_even(mut x: u64) -> u32 {
 
 /// Asserts x is in correct spreaded form, i.e. its little-endian binary
 /// representation has zeros in odd positions.
-fn assert_in_valid_spreaded_form(x: u64) {
+pub fn assert_in_valid_spreaded_form(x: u64) {
     assert_eq!(MASK_ODD_64 & x, 0, "Input must be in valid spreaded form")
 }
 
@@ -181,7 +185,7 @@ fn pow4_ip<const N: usize>(exponents: [u8; N], terms: [u64; N]) -> u64 {
 }
 
 /// Returns sum_i 2^(exponents\[i\]) * terms\[i\].
-pub(crate) fn expr_pow2_ip<F: PrimeField, const N: usize>(
+pub fn expr_pow2_ip<F: PrimeField, const N: usize>(
     exponents: [u8; N],
     terms: [&Expression<F>; N],
 ) -> Expression<F> {
@@ -193,7 +197,7 @@ pub(crate) fn expr_pow2_ip<F: PrimeField, const N: usize>(
 }
 
 /// Returns sum_i 4^(exponents\[i\]) * terms\[i\].
-pub(crate) fn expr_pow4_ip<F: PrimeField, const N: usize>(
+pub fn expr_pow4_ip<F: PrimeField, const N: usize>(
     exponents: [u8; N],
     terms: [&Expression<F>; N],
 ) -> Expression<F> {
@@ -261,7 +265,7 @@ mod tests {
         let value: u32 = rng.gen();
         let limb_lengths = [1; 32];
         let result = u32_in_be_limbs(value, limb_lengths);
-        let expected: [u32; 32] = core::array::from_fn(|i| ((value >> (31 - i)) & 1));
+        let expected: [u32; 32] = core::array::from_fn(|i| (value >> (31 - i)) & 1);
         assert_eq!(result, expected);
     }
 
