@@ -13,7 +13,7 @@
 
 //! Utilities for testing and benchmarking
 
-#[cfg(test)]
+#[cfg(any(test, feature = "testing"))]
 pub(crate) mod circuit_modeling;
 mod composable;
 pub mod ecdsa;
