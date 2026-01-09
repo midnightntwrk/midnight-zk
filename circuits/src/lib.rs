@@ -25,7 +25,6 @@ mod utils;
 
 pub mod biguint;
 pub mod ecc;
-pub mod external;
 pub mod field;
 pub mod hash;
 pub mod map;
