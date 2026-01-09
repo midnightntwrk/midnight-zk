@@ -56,7 +56,7 @@ where
     ) -> Result<Output, Error>;
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "testing"))]
 pub(crate) mod tests {
     use std::{fmt::Debug, marker::PhantomData};
 
@@ -66,7 +66,7 @@ pub(crate) mod tests {
         plonk::{Circuit, ConstraintSystem},
     };
     use rand::{Rng, SeedableRng};
-    use rand_chacha::{ChaCha12Rng, ChaCha8Rng};
+    use rand_chacha::ChaCha8Rng;
 
     use super::*;
     use crate::{
@@ -257,6 +257,7 @@ pub(crate) mod tests {
         }
     }
 
+    #[cfg(test)]
     pub fn test_varhash<F, Input, Output, VarHashChip, const M: usize, const A: usize>(
         cost_model: bool,
         chip_name: &str,
@@ -270,7 +271,7 @@ pub(crate) mod tests {
         VectorGadget<F>: AssignmentInstructions<F, AssignedVector<F, Input, M, A>>,
         NG<F>: AssignmentInstructions<F, Input> + AssertionInstructions<F, Output>,
     {
-        let mut rng = ChaCha12Rng::seed_from_u64(0xf007ba11);
+        let mut rng = ChaCha8Rng::seed_from_u64(0xf007ba11);
 
         let input = (0..size).map(|_| Input::sample_inner(&mut rng)).collect::<Vec<_>>();
 

@@ -35,13 +35,19 @@ pub mod verifier;
 // Re-exporting modules for convenience and usability.
 pub use midnight_proofs;
 
+// Useful for importing external circuits
+pub use crate::utils::ComposableChip;
+
 /// Tools useful for testing
 pub mod testing_utils {
     pub use crate::utils::ecdsa;
     #[cfg(any(test, feature = "testing"))]
-    pub use crate::utils::{
-        types::{Invertible, Sampleable},
-        util::FromScratch,
+    pub use crate::{
+        instructions::hash::tests::test_hash,
+        utils::{
+            types::{Invertible, Sampleable},
+            util::FromScratch,
+        },
     };
 }
 
