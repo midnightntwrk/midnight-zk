@@ -3,7 +3,12 @@ use std::hash::Hash;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use super::automaton::Automaton;
-use crate::parsing::automaton::Marker;
+use crate::parsing::{
+    automaton::Marker,
+    native_automaton::{
+        AutomatonByte, ChunkAutomaton, AUTOMATON_CHUNK_PADDING, AUTOMATON_FINAL_PADDING,
+    },
+};
 
 /// Serialization of a data type into a vector of bytes (little-endian
 /// convention).
@@ -72,6 +77,20 @@ impl Serialize for Marker {
         let res = buf[0];
         *buf = &buf[1..];
         Ok(res.into())
+    }
+}
+
+impl Serialize for u16 {
+    #[cfg(test)]
+    fn serialize(&self, buf: &mut Vec<u8>) {
+        buf.extend(&self.to_le_bytes())
+    }
+    fn deserialize(buf: &mut &[u8]) -> Result<Self, String> {
+        const U16_BYTES: usize = u16::BITS as usize / 8;
+        ensure_buf_len!(buf, U16_BYTES, Self);
+        let res = Self::from_le_bytes(buf[..U16_BYTES].try_into().unwrap());
+        *buf = &buf[U16_BYTES..];
+        Ok(res)
     }
 }
 
@@ -208,6 +227,20 @@ where
     }
 }
 
+impl<T, const N: usize> Serialize for [T; N]
+where
+    T: Serialize + Clone + std::fmt::Debug,
+{
+    #[cfg(test)]
+    fn serialize(&self, buf: &mut Vec<u8>) {
+        self.to_vec().serialize(buf)
+    }
+    fn deserialize(buf: &mut &[u8]) -> Result<Self, String> {
+        let v = Vec::<T>::deserialize(buf)?;
+        Ok(v.try_into().unwrap())
+    }
+}
+
 impl<T> Serialize for FxHashSet<T>
 where
     T: Serialize + Copy + Hash + Ord,
@@ -222,6 +255,29 @@ where
     fn deserialize(buf: &mut &[u8]) -> Result<Self, String> {
         let v = Vec::<T>::deserialize(buf)?;
         Ok(FxHashSet::from_iter(v))
+    }
+}
+
+impl Serialize for AutomatonByte {
+    #[cfg(test)]
+    fn serialize(&self, buf: &mut Vec<u8>) {
+        match self {
+            AutomatonByte::Byte(b) => (*b as u16).serialize(buf),
+            AutomatonByte::ChunkPadding => (AUTOMATON_CHUNK_PADDING as u16).serialize(buf),
+            AutomatonByte::FinalPadding => (AUTOMATON_FINAL_PADDING as u16).serialize(buf),
+        }
+    }
+    fn deserialize(buf: &mut &[u8]) -> Result<Self, String> {
+        let res = u16::deserialize(buf)?;
+        if res == AUTOMATON_FINAL_PADDING as u16 {
+            Ok(AutomatonByte::FinalPadding)
+        } else if res == AUTOMATON_CHUNK_PADDING as u16 {
+            Ok(AutomatonByte::ChunkPadding)
+        } else if res <= u8::MAX as u16 {
+            Ok(AutomatonByte::Byte(res as u8))
+        } else {
+            Err(format!("unexpected AutomatonByte {}", res))
+        }
     }
 }
 
@@ -272,6 +328,14 @@ macro_rules! impl_serialize_for_struct {
 
 impl_serialize_for_struct!(Automaton {
     nb_states,
+    initial_state,
+    final_states,
+    transitions
+});
+
+impl_serialize_for_struct!(ChunkAutomaton {
+    nb_states,
+    chunk_size,
     initial_state,
     final_states,
     transitions
@@ -343,20 +407,5 @@ mod tests {
             FxHashMap::from_iter(test_vector_pairs.clone()),
             "FxHashMap<usize,u8>",
         );
-    }
-
-    #[test]
-    fn test_serialization_regex_instructions() {
-        // Implement a test for the serialization of regexinstructions.
-        // 1. fetch the result from all deserialization (force recompute if they
-        //    don't exist)
-        // 2. recompute all fetched instructions (skip if done at the previous
-        //    step)
-        // 3. compare the recomputed data with the fetched data for all of them
-        // 4. All serialized instructions should be tested so that running this
-        //    test ensures that all required instructions are serialized
-        // 5. [TODO] the serialization should force the determinisation, to save
-        //    computation. Probably done by modifying
-        //    `to_raw_automaton_serialized`
     }
 }

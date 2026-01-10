@@ -66,7 +66,7 @@ use midnight_circuits::{
     map::map_gadget::MapGadget,
     parsing::{
         self,
-        automaton_chip::{AutomatonChip, AutomatonConfig, NB_AUTOMATA_COLS},
+        automaton_chip::{AutomatonChip, AutomatonConfig, NB_AUTOMATON_COLS},
         Base64Chip, Base64Config, ParserGadget, StdLibParser, NB_BASE64_ADVICE_COLS,
     },
     types::{
@@ -407,7 +407,7 @@ impl ZkStdLib {
                     >(),
                 ),
             arch.base64 as usize * NB_BASE64_ADVICE_COLS,
-            arch.automaton as usize * NB_AUTOMATA_COLS,
+            arch.automaton as usize * NB_AUTOMATON_COLS,
             (arch.keccak_256 || arch.sha3_256) as usize * PACKED_ADVICE_COLS,
             arch.blake2b as usize * NB_BLAKE2B_ADVICE_COLS,
         ]
@@ -504,7 +504,7 @@ impl ZkStdLib {
             AutomatonChip::configure(
                 meta,
                 &(
-                    advice_columns[..NB_AUTOMATA_COLS].try_into().unwrap(),
+                    advice_columns[..NB_AUTOMATON_COLS].try_into().unwrap(),
                     parsing::spec_library(),
                 ),
             )

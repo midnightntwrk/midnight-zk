@@ -31,6 +31,7 @@ num-integer = "0.1"
 subtle = "2.6"
 base64 = "0.13.1"
 lazy_static = "1.5.0"
+itertools = "0.14"
 
 [dev-dependencies]
 criterion = "0.7"
@@ -44,9 +45,7 @@ sha3 = "0.10.0"
 blake2 = "0.10.6"
 
 [target.'cfg(ci_build)'.dependencies]
-midnight-curves = { version = "0.2.0", features = [
-    "portable",
-] }
+midnight-curves = { version = "0.2.0", features = ["portable"] }
 
 [features]
 default = []
