@@ -34,6 +34,7 @@
 use std::{fmt::Debug, hash::Hash};
 
 use ff::PrimeField;
+use itertools::Itertools;
 use midnight_proofs::{
     circuit::{Chip, Layouter, Region, Value},
     plonk::{Advice, Column, ConstraintSystem, Error, Selector, TableColumn},
@@ -48,17 +49,23 @@ use {
     crate::testing_utils::FromScratch, midnight_proofs::plonk::Instance,
 };
 
-use super::automaton::{Automaton, ALPHABET_MAX_SIZE};
+#[cfg(test)]
+use super::automaton::Automaton;
 use crate::{
     field::{decomposition::chip::P2RDecompositionChip, AssignedNative, NativeChip, NativeGadget},
     instructions::AssignmentInstructions,
-    parsing::NativeAutomaton,
+    parsing::{
+        native_automaton::{ChunkAutomaton, AUTOMATON_FINAL_PADDING},
+        NativeAutomaton, AUTOMATON_CHUNK_SIZE,
+    },
     types::AssignedByte,
     utils::ComposableChip,
 };
 
-/// Number of columns for the automata chip.
-pub const NB_AUTOMATA_COLS: usize = 3;
+/// Number of advice columns for the automata chip. One column is for the state,
+/// and each of the following `AUTOMATON_CHUNK_SIZE` pairs counts one input
+/// column and one output column.
+pub const NB_AUTOMATON_COLS: usize = 1 + 2 * AUTOMATON_CHUNK_SIZE;
 
 // Native gadget functions.
 type NG<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
@@ -68,13 +75,8 @@ type NG<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
 pub struct AutomatonConfig<LibIndex, F> {
     automata: FxHashMap<LibIndex, NativeAutomaton<F>>,
     q_automaton: Selector,
-    state_col: Column<Advice>,
-    letter_col: Column<Advice>,
-    output_col: Column<Advice>,
-    t_source: TableColumn,
-    t_letter: TableColumn,
-    t_target: TableColumn,
-    t_output: TableColumn,
+    advice_cols: [Column<Advice>; NB_AUTOMATON_COLS],
+    table_cols: [TableColumn; NB_AUTOMATON_COLS + 1],
 }
 
 /// Chip for Automaton parsing.
@@ -110,8 +112,8 @@ where
     type InstructionDeps = NG<F>;
 
     type SharedResources = (
-        [Column<Advice>; NB_AUTOMATA_COLS],
-        FxHashMap<LibIndex, Automaton>,
+        [Column<Advice>; NB_AUTOMATON_COLS],
+        FxHashMap<LibIndex, ChunkAutomaton>,
     );
 
     fn new(config: &AutomatonConfig<LibIndex, F>, deps: &Self::InstructionDeps) -> Self {
@@ -128,13 +130,8 @@ where
         let q_automaton = meta.complex_selector();
 
         let (advice_cols, automata) = shared_res;
-        let state_col = advice_cols[0];
-        let letter_col = advice_cols[1];
-        let output_col = advice_cols[2];
-        let t_source = meta.lookup_table_column();
-        let t_letter = meta.lookup_table_column();
-        let t_target = meta.lookup_table_column();
-        let t_output = meta.lookup_table_column();
+        let table_cols: [TableColumn; NB_AUTOMATON_COLS + 1] =
+            core::array::from_fn(|_| meta.lookup_table_column());
 
         // The fixed automaton of the configuration. Its set of states is offset by 1 to
         // ensure that 0 is not a reachable state (required due to how the table lookup
@@ -143,28 +140,20 @@ where
 
         meta.lookup("automaton transition check", |meta| {
             let q = meta.query_selector(q_automaton);
-            let source = meta.query_advice(state_col, Rotation::cur());
-            let letter = meta.query_advice(letter_col, Rotation::cur());
-            let target = meta.query_advice(state_col, Rotation::next());
-            let output = meta.query_advice(output_col, Rotation::cur());
-            vec![
-                (q.clone() * source, t_source),
-                (q.clone() * letter, t_letter),
-                (q.clone() * target, t_target),
-                (q * output, t_output),
-            ]
+            let advice_next = std::iter::once(meta.query_advice(advice_cols[0], Rotation::next()));
+            let advice_cur = advice_cols.iter().map(|&col| meta.query_advice(col, Rotation::cur()));
+            advice_cur
+                .chain(advice_next)
+                .zip(table_cols)
+                .map(|(advice, table_col)| (q.clone() * advice, table_col))
+                .collect::<Vec<_>>()
         });
 
         AutomatonConfig {
             automata,
             q_automaton,
-            state_col,
-            letter_col,
-            output_col,
-            t_source,
-            t_letter,
-            t_target,
-            t_output,
+            advice_cols: *advice_cols,
+            table_cols,
         }
     }
 
@@ -182,53 +171,56 @@ where
             |mut table| {
                 let mut offset = 0;
                 let mut add_entry =
-                    |source: F, letter: F, target: F, marker:F| -> Result<(), Error> {
+                    |source: F, letter: [F; AUTOMATON_CHUNK_SIZE], target: F, marker:[F; AUTOMATON_CHUNK_SIZE]| -> Result<(), Error> {
                         table.assign_cell(
                             || "t_source",
-                            self.config.t_source,
+                            self.config.table_cols[0],
                             offset,
                             || Value::known(source),
                         )?;
-                        table.assign_cell(
-                            || "t_letter",
-                            self.config.t_letter,
-                            offset,
-                            || Value::known(letter),
-                        )?;
+                        for i in 0..AUTOMATON_CHUNK_SIZE {
+                            table.assign_cell(
+                                || format!("t_letter_{}", i),
+                                self.config.table_cols[1+2*i],
+                                offset,
+                                || Value::known(letter[i]),
+                            )?;
+                            table.assign_cell(
+                                || format!("t_output_{}", i),
+                                self.config.table_cols[2+2*i],
+                                offset,
+                                || Value::known(marker[i]),
+                            )?;
+                        }
                         table.assign_cell(
                             || "t_target",
-                            self.config.t_target,
+                            self.config.table_cols[NB_AUTOMATON_COLS],
                             offset,
                             || Value::known(target),
-                        )?;
-                        table.assign_cell(
-                            || "t_output",
-                            self.config.t_output,
-                            offset,
-                            || Value::known(marker),
                         )?;
                         offset += 1;
                         Ok(())
                     };
 
                 // Dummy transition for empty rows.
-                add_entry(F::ZERO, F::ZERO, F::ZERO, F::ZERO)?;
+                add_entry(F::ZERO, [F::ZERO; AUTOMATON_CHUNK_SIZE], F::ZERO, [F::ZERO; AUTOMATON_CHUNK_SIZE])?;
 
                 // Main transitions.
                 for automaton in self.config.automata.iter() {
-                    for ((source,letter), (target,output_extr)) in automaton.1.transitions.iter() {
+                    for (source, next) in automaton.1.transitions.iter() {
+                        for (letters, (target, markers)) in next {
                             assert!(
                                 *source != F::ZERO && *target != F::ZERO ,
                                 "sanity check failed: the circuit requires that state 0 is not used, but the automaton generation failed to ensure it."
                             );
-                            add_entry(*source, *letter, *target, *output_extr)?
-                        
+                            add_entry(*source, *letters, *target, *markers)?
+                        }
                     }
                     // Dummy transitions to represent final states. Recall that letter are
                     // represented in-circuit by elements of `AssignedByte`, which are therefore
                     // range-checked to be lower than `REGEX_ALPHABET_MAX_SIZE`.
                     for state in automaton.1.final_states.iter() {
-                        add_entry(*state, F::from(ALPHABET_MAX_SIZE as u64), F::ZERO, F::ZERO)?
+                        add_entry(*state, [F::from(AUTOMATON_FINAL_PADDING as u64); AUTOMATON_CHUNK_SIZE], F::ZERO, [F::ZERO; AUTOMATON_CHUNK_SIZE])?
                     }
                 }
                 Ok(())
@@ -255,39 +247,48 @@ where
         region: &mut Region<'_, F>,
         automaton_index: &LibIndex,
         state: &mut AssignedNative<F>,
-        letter: &AssignedByte<F>,
+        letters: &[AssignedNative<F>; AUTOMATON_CHUNK_SIZE],
         markers: &mut Vec<AssignedNative<F>>,
         offset: &mut usize,
     ) -> Result<(), Error> {
         self.config.q_automaton.enable(region, *offset)?;
+        let automaton = &self.config.automata[automaton_index];
 
-        // Casting the letter as a regular `AssignedNative` to enable some methods.
-        let letter: AssignedNative<F> = letter.into();
+        let letters_value = letters
+            .iter()
+            .map(|a| a.value().copied())
+            .collect::<Value<Vec<_>>>()
+            .map(|v| <[F; AUTOMATON_CHUNK_SIZE]>::try_from(v).unwrap());
 
-        letter.copy_advice(
-            || "copying letter for parsing",
-            region,
-            self.config.letter_col,
-            *offset,
-        )?;
-        let target_opt_value = state.value().zip(letter.value()).map(|(state, letter)| {
-            self.config.automata[automaton_index].transitions.get(&(*state, *letter))
+        let target_opt_value = state.value().zip(letters_value).map(|(state, letters)| {
+            automaton.transitions.get(state).and_then(|succ| succ.get(&letters)).copied()
         });
+
         target_opt_value.error_if_known_and(|o| o.is_none())?;
         let target_value = target_opt_value.map(|o| o.unwrap());
         let next_state_value = target_value.map(|t| t.0);
-        let next_output_value = target_value.map(|t| t.1);
-        let output = region.assign_advice(
-            || "parsing output boolean",
-            self.config.output_col,
-            *offset,
-            || next_output_value,
-        )?;
-        markers.push(output);
+        let outputs_value = target_value.map(|t| t.1).transpose_array();
+
+        for i in 0..AUTOMATON_CHUNK_SIZE {
+            letters[i].copy_advice(
+                || format!("copying letter #{} for parsing", i),
+                region,
+                self.config.advice_cols[1 + 2 * i],
+                *offset,
+            )?;
+            let output = region.assign_advice(
+                || format!("parsing output #{}", i),
+                self.config.advice_cols[2 + 2 * i],
+                *offset,
+                || outputs_value[i],
+            )?;
+            markers.push(output)
+        }
+
         *offset += 1;
         *state = region.assign_advice(
             || "parsing next state",
-            self.config.state_col,
+            self.config.advice_cols[0],
             *offset,
             || next_state_value,
         )?;
@@ -303,31 +304,54 @@ where
     fn assert_final_state(
         &self,
         region: &mut Region<'_, F>,
-        invalid_letter: AssignedNative<F>,
-        invalid_state: AssignedNative<F>,
+        final_padding: AssignedNative<F>,
+        sink_state: AssignedNative<F>,
         offset: &mut usize,
     ) -> Result<(), Error> {
         self.config.q_automaton.enable(region, *offset)?;
-        invalid_letter.copy_advice(
-            || (format!("dummy invalid letter ({})", ALPHABET_MAX_SIZE)),
-            region,
-            self.config.letter_col,
-            *offset,
-        )?;
-        invalid_state.copy_advice(
-            || "dummy output boolean (0)",
-            region,
-            self.config.output_col,
-            *offset,
-        )?;
+        for i in 0..AUTOMATON_CHUNK_SIZE {
+            final_padding.copy_advice(
+                || format!("dummy invalid letter #{} ({})", i, AUTOMATON_FINAL_PADDING),
+                region,
+                self.config.advice_cols[1 + 2 * i],
+                *offset,
+            )?;
+            sink_state.copy_advice(
+                || format!("dummy output boolean #{} (0)", i),
+                region,
+                self.config.advice_cols[2 + 2 * i],
+                *offset,
+            )?;
+        }
         *offset += 1;
-        invalid_state.copy_advice(
+        sink_state.copy_advice(
             || "dummy target state (0)",
             region,
-            self.config.state_col,
+            self.config.advice_cols[0],
             *offset,
         )?;
         Ok(())
+    }
+
+    /// Transforms a sequence of `AssignedByte` into a sequence of
+    /// `AssignedNative` that is ready for parsing (i.e., it chunks the input
+    /// and adds the padding bytes necessary to fit the table format).
+    fn preprocess_parsing_input(
+        &self,
+        input: &[AssignedByte<F>],
+        final_padding: &AssignedNative<F>,
+    ) -> Result<Vec<[AssignedNative<F>; AUTOMATON_CHUNK_SIZE]>, Error> {
+        Ok(
+            (input.iter().map(AssignedNative::from).chunks(AUTOMATON_CHUNK_SIZE))
+                .into_iter()
+                .map(|c| {
+                    c.pad_using(AUTOMATON_CHUNK_SIZE, |_| final_padding.clone())
+                        .collect::<Vec<_>>()
+                        .try_into()
+                        .unwrap()
+                })
+                .collect::<Vec<_>>(),
+        )
     }
 
     /// Verifies that an input, taken under the form of a slice of
@@ -342,14 +366,24 @@ where
         automaton_index: &LibIndex,
         input: &[AssignedByte<F>],
     ) -> Result<Vec<AssignedNative<F>>, Error> {
+        // Assigned initial state of the automaton.
         let init_state: AssignedNative<F> = self.native_gadget.assign_fixed(
             layouter,
             self.config.automata[automaton_index].initial_state,
         )?;
-        let invalid_letter: AssignedNative<F> =
-            self.native_gadget.assign_fixed(layouter, F::from(ALPHABET_MAX_SIZE as u64))?;
-        let invalid_state: AssignedNative<F> =
+        // Padding used to check that a state is final.
+        let final_padding: AssignedNative<F> = self
+            .native_gadget
+            .assign_fixed(layouter, F::from(AUTOMATON_FINAL_PADDING as u64))?;
+        // Default state in which all successful parsing ends up in after the
+        // final-state check. This state cannot be used by any automaton as a regular
+        // state.
+        let sink_state: AssignedNative<F> =
             self.native_gadget.assign_fixed(layouter, F::from(0))?;
+
+        // Preprocessed input with adequate padding.
+        let input_chunked = self.preprocess_parsing_input(input, &final_padding)?;
+
         layouter.assign_region(
             || "parsing layout",
             |mut region| {
@@ -358,26 +392,28 @@ where
                 let mut state = init_state.copy_advice(
                     || "initial state",
                     &mut region,
-                    self.config.state_col,
+                    self.config.advice_cols[0],
                     offset,
                 )?;
-                input.iter().try_for_each(|letter| {
+                input_chunked.iter().try_for_each(|letters| {
                     self.apply_one_transition(
                         &mut region,
                         automaton_index,
                         &mut state,
-                        letter,
+                        letters,
                         &mut markers,
                         &mut offset,
                     )
                 })?;
                 self.assert_final_state(
                     &mut region,
-                    invalid_letter.clone(),
-                    invalid_state.clone(),
+                    final_padding.clone(),
+                    sink_state.clone(),
                     &mut offset,
                 )?;
-                Ok(markers)
+                // Only keeping `input.len()` elements is to filter out markers related to
+                // final-state padding.
+                Ok(markers[..input.len()].to_vec())
             },
         )
     }
@@ -460,16 +496,20 @@ where
         meta: &mut ConstraintSystem<F>,
         instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
-        let nb_advice_cols = std::cmp::max(NB_AUTOMATA_COLS, NB_ARITH_COLS);
+        let nb_advice_cols = std::cmp::max(NB_AUTOMATON_COLS, NB_ARITH_COLS);
         let advice_cols = (0..nb_advice_cols).map(|_| meta.advice_column()).collect::<Vec<_>>();
         let fixed_cols = (0..NB_ARITH_COLS + 4).map(|_| meta.fixed_column()).collect::<Vec<_>>();
         let automata = FxHashMap::from_iter(
             [
-                Automaton::hard_coded_example0(),
-                Automaton::hard_coded_example1(),
+                (Automaton::hard_coded_example0().chunked()),
+                (Automaton::hard_coded_example1().chunked()),
             ]
             .into_iter()
             .enumerate(),
+        );
+        println!(
+            ">> test automaton configured. Total size of the transition table: {}",
+            automata.values().map(|a| a.transitions.len()).reduce(|a, b| a + b).unwrap()
         );
 
         let native_config = NativeChip::configure(
@@ -484,7 +524,7 @@ where
         let automaton_config = AutomatonChip::configure(
             meta,
             &(
-                advice_cols[..NB_AUTOMATA_COLS].try_into().unwrap(),
+                advice_cols[..NB_AUTOMATON_COLS].try_into().unwrap(),
                 automata,
             ),
         );
@@ -520,6 +560,7 @@ mod test {
     use crate::{
         field::AssignedNative,
         instructions::{AssertionInstructions, AssignmentInstructions},
+        parsing::AUTOMATON_CHUNK_SIZE,
         testing_utils::FromScratch,
         types::AssignedByte,
         utils::circuit_modeling::circuit_to_json,
@@ -586,10 +627,11 @@ mod test {
 
             // automaton_chip.parse(&mut layouter, self.automaton_index, &bytes)?;
 
-            println!(">> [test] About to parse an automaton with index {}, which contains {} transitions, and {} final states.",
+            println!(">> [test] About to parse an automaton with index {}, which contains {} transitions, and {} final states. Inputs will be divided in chunks of size {}",
                 self.automaton_index,
                 automaton_chip.config.automata[&self.automaton_index].transitions.len(),
-                automaton_chip.config.automata[&self.automaton_index].final_states.len()
+                automaton_chip.config.automata[&self.automaton_index].final_states.len(),
+                AUTOMATON_CHUNK_SIZE
             );
             let parsed_output =
                 automaton_chip.parse(&mut layouter, &self.automaton_index, &input)?;
@@ -660,7 +702,7 @@ mod test {
         }
     }
 
-    // A test to check the validity of the circuit.
+    /// A test to check the validity of the circuit.
     fn basic_test(
         test_index: usize,
         input: &str,
@@ -679,7 +721,7 @@ mod test {
         )
     }
 
-    // A test for inputs that do not match the tested regex.
+    /// A test for inputs that do not match the tested regex.
     fn basic_fail_test(test_index: usize, input: &str, automaton_index: usize) {
         basic_test(
             test_index,
@@ -690,7 +732,7 @@ mod test {
         )
     }
 
-    // A test to record the performances of the circuit in the golden files.
+    /// A test to record the performances of the circuit in the golden files.
     fn perf_test(test_index: usize, input: &str, automaton_index: usize, k: u32) {
         println!(
             "\n>> Performance test (automaton {automaton_index}), input size {}:",

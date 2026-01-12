@@ -25,6 +25,27 @@ mod automaton;
 /// A module containing the definitions of the automata that will be loaded in
 /// the standard library.
 pub mod automaton_chip;
+
+/// Number of bytes that are read at each automaton transition.
+///
+/// The default value is 1, and already exhibits gut performances. Choosing a
+/// value greater than 1 (in practice: 2) may severly increase the size of the
+/// lookup table representing the automaton. Typical examples stay in the domain
+/// of k=10~12 when `AUTOMATON_CHUNK_SIZE` is 1, but may typically require k=17
+/// when `AUTOMATON_CHUNK_SIZE` is 2. The advantage is that the number of
+/// circuit rows needed to parse an input is cut by a multiplicative factor of
+/// `AUTOMATON_CHUNK_SIZE`.
+///
+/// Increasing this value is only meaningful for forks of this repository only
+/// managing examples where:
+/// 1. The main function `parsing::automaton_chip::parse` needs to be called
+///    many times; and
+/// 2. All automata involved in `parsing::specs` induce a moderate increase of
+///    `k` when increasing `AUTOMATON_CHUNK_SIZE`. The deciding factor is the
+///    number of substrings of length `AUTOMATON_CHUNK_SIZE` that may appear in
+///    a word accepted by the automaton.
+const AUTOMATON_CHUNK_SIZE: usize = 1;
+
 /// A module to specify languages as regular expressions and convert them into
 /// finite automata.
 pub mod regex;
@@ -35,6 +56,6 @@ mod table;
 
 pub use base64_chip::*;
 pub use data_types::{DateFormat, Separator};
-pub use native_automaton::{ChunkAutomaton, NativeAutomaton};
+pub use native_automaton::NativeAutomaton;
 pub use parser_gadget::*;
 pub use specs::{spec_library, StdLibParser};

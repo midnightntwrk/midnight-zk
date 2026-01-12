@@ -29,14 +29,10 @@ use std::{fs, path::Path};
 
 use rustc_hash::FxHashMap;
 
-use super::{
-    automaton::Automaton,
-    regex::{Regex, RegexInstructions},
-};
-use crate::parsing::serialization::Serialize;
+use super::regex::{Regex, RegexInstructions};
+use crate::parsing::{native_automaton::ChunkAutomaton, serialization::Serialize};
 
-/// Folder where the serialized automata for the standard library will be
-/// stored.
+/// Location of the serialized automata for the standard library.
 #[cfg(test)]
 const AUTOMATON_CACHE: &str = "src/parsing/automaton_cache";
 
@@ -123,11 +119,12 @@ impl StdLibParser {
 
 /// The raw entry of the parsing library. Contains the different parser names
 /// (`StdLibParser`), the functions used to generate the corresponding `Regex`
-/// (functions typically named `spec_*`), and the serialization bytes.
+/// (functions typically named `spec_*`), the chunk size (= number of bytes the
+/// automaton will read in one row), and the serialization bytes.
 type LibraryData = &'static [(StdLibParser, &'static dyn Fn() -> Regex, &'static [u8])];
 
 /// A library of parsing automata, computed or deserialised.
-type ParsingLibrary = FxHashMap<StdLibParser, Automaton>;
+type ParsingLibrary = FxHashMap<StdLibParser, ChunkAutomaton>;
 
 /// The basic, non computed data of the parsing library. When serialization is
 /// enabled, the automata will be deserialized in `spec_library` from the third
@@ -152,7 +149,7 @@ pub fn spec_library() -> ParsingLibrary {
                     "Empty serialisation data for {:?}. The bootstrapping of the serialisation process has not been conducted. (see documentation of `midnight_circuits::parsing::specs`)",
                     *name
                 );
-                (*name, Automaton::deserialize_unwrap(serialization))
+                (*name, ChunkAutomaton::deserialize_unwrap(serialization))
             })
             .collect::<FxHashMap<_, _>>()
 }
@@ -289,8 +286,7 @@ fn spec_jwt() -> Regex {
 #[cfg(test)]
 /// Re-serialises the data in `checks`, and:
 ///
-/// 1. If some non-empty serialisation file exists and
-///    `AUTOMATON_BREAKING_CHANGE` is set to false, panics if the serialized
+/// 1. If some non-empty serialisation file exists, panics if the serialized
 ///    data is inconsistent.
 /// 2. If some empty serialisation file exists, writes the serialised data
 ///    inside.
@@ -344,14 +340,12 @@ mod tests {
         StdLibParser::{self, Jwt},
     };
     use crate::parsing::{
-        automaton::{Automaton, Marker},
-        spec_library,
+        automaton::Marker, native_automaton::ChunkAutomaton, spec_library,
         specs::check_serialization,
     };
 
     /// Sets up the serialised library (bootstraps it if empty serialisation
-    /// data is found), and performs consistency checks or updates accordingly
-    /// to the value of `AUTOMATON_BREAKING_CHANGE`.
+    /// data is found), and performs consistency checks.
     fn configure_serialisation() {
         let lib_data = spec_library_data();
 
@@ -360,20 +354,11 @@ mod tests {
         let start = Instant::now();
         for (name, spec, _) in lib_data {
             let start_local = Instant::now();
-            let automaton = spec().to_automaton();
+            let automaton = spec().to_automaton().chunked();
             println!(
                 "-> Generated {:?} automaton in {:?}",
                 *name,
                 start_local.elapsed()
-            );
-            let nb_chunks = 3;
-            let chunked = automaton.clone().chunked(nb_chunks);
-            println!(
-                "inputs grouped by chunks of {}: {} transitions (VS {}, i.e., x{})",
-                nb_chunks,
-                chunked.transitions.len(),
-                automaton.transitions.len(),
-                chunked.transitions.len() / automaton.transitions.len(),
             );
             lib.insert(*name, automaton);
         }
@@ -388,7 +373,7 @@ mod tests {
     /// corresponding strings. For accepted strings, checks the list of outputs
     /// for each markers.
     fn specs_one_test(
-        spec_library: &FxHashMap<StdLibParser, Automaton>,
+        spec_library: &FxHashMap<StdLibParser, ChunkAutomaton>,
         spec: StdLibParser,
         accepted: &[(&str, &[(u8, &str)])],
         rejected: &[&str],
