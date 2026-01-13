@@ -240,14 +240,11 @@ pub struct Fp(#[doc(hidden)] pub [u64; 4usize]);
 impl ::core::clone::Clone for Fp {
     #[inline]
     fn clone(&self) -> Fp {
-        let _: ::core::clone::AssertParamIsClone<[u64; 4usize]>;
         *self
     }
 }
 #[automatically_derived]
 impl ::core::marker::Copy for Fp {}
-#[automatically_derived]
-impl ::core::marker::StructuralPartialEq for Fp {}
 #[automatically_derived]
 impl ::core::cmp::PartialEq for Fp {
     #[inline]
@@ -256,13 +253,7 @@ impl ::core::cmp::PartialEq for Fp {
     }
 }
 #[automatically_derived]
-impl ::core::cmp::Eq for Fp {
-    #[inline]
-    #[doc(hidden)]
-    fn assert_receiver_is_total_eq(&self) -> () {
-        let _: ::core::cmp::AssertParamIsEq<[u64; 4usize]>;
-    }
-}
+impl ::core::cmp::Eq for Fp {}
 #[automatically_derived]
 impl ::core::hash::Hash for Fp {
     #[inline]
@@ -432,7 +423,7 @@ impl Fp {
         let borrow = tmp
             .into_iter()
             .zip(HALF_MODULUS.into_iter())
-            .fold(0, |borrow, (t, m)| crate::arithmetic::sbb(t, m, borrow).1);
+            .fold(0, |borrow, (t, m)| crate::arithmetic::sbb(*t, *m, borrow).1);
         !Choice::from((borrow as u8) & 1)
     }
 }
@@ -473,7 +464,7 @@ impl ff::Field for Fp {
         }
     }
     fn sqrt(&self) -> subtle::CtOption<Self> {
-        ::core::panicking::panic("not implemented");
+        unimplemented!();
     }
     fn sqrt_ratio(num: &Self, div: &Self) -> (Choice, Self) {
         ff::helpers::sqrt_ratio_generic(num, div)
@@ -517,7 +508,8 @@ impl ff::PrimeField for Fp {
         Self::R2
             * Self(
                 [v as u64, (v >> 64) as u64]
-                    .into_iter()
+                    .iter()
+                    .copied()
                     .chain(core::iter::repeat(0))
                     .take(Self::NUM_LIMBS)
                     .collect::<Vec<_>>()
@@ -546,21 +538,7 @@ impl ff::PrimeField for Fp {
 }
 impl crate::serde::SerdeObject for Fp {
     fn from_raw_bytes_unchecked(bytes: &[u8]) -> Self {
-        if true {
-            match (&bytes.len(), &32usize) {
-                (left_val, right_val) => {
-                    if !(*left_val == *right_val) {
-                        let kind = ::core::panicking::AssertKind::Eq;
-                        ::core::panicking::assert_failed(
-                            kind,
-                            &*left_val,
-                            &*right_val,
-                            ::core::option::Option::None,
-                        );
-                    }
-                }
-            };
-        }
+        assert_eq!(bytes.len(), 32usize);
         let inner = (0..4usize)
             .map(|off| u64::from_le_bytes(bytes[off * 8..(off + 1) * 8].try_into().unwrap()))
             .collect::<Vec<_>>();
