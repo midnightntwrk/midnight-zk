@@ -1,7 +1,7 @@
 use core::convert::TryInto;
 use rand_core::RngCore;
-use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 
+use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 impl Fp {
     #[inline(always)]
     pub const fn add(&self, rhs: &Self) -> Self {
@@ -100,25 +100,25 @@ impl Fp {
     #[inline(always)]
     pub(crate) const fn montgomery_reduce(r: &[u64; 8usize]) -> Self {
         use crate::arithmetic::{adc, mac, sbb};
-        let k = r[0].wrapping_mul(9708812670373448219u64);
+        let k = r[0].wrapping_mul(0x86bca1af286bca1bu64);
         let (_, carry) = mac(r[0usize], k, Self::MODULUS_LIMBS[0usize], 0);
         let (r_1, carry) = mac(r[1usize], k, Self::MODULUS_LIMBS[1usize], carry);
         let (r_2, carry) = mac(r[2usize], k, Self::MODULUS_LIMBS[2usize], carry);
         let (r_3, carry) = mac(r[3usize], k, Self::MODULUS_LIMBS[3usize], carry);
         let (r_4, carry2) = adc(r[4usize], 0, carry);
-        let k = r_1.wrapping_mul(9708812670373448219u64);
+        let k = r_1.wrapping_mul(0x86bca1af286bca1bu64);
         let (_, carry) = mac(r_1, k, Self::MODULUS_LIMBS[0usize], 0);
         let (r_2, carry) = mac(r_2, k, Self::MODULUS_LIMBS[1usize], carry);
         let (r_3, carry) = mac(r_3, k, Self::MODULUS_LIMBS[2usize], carry);
         let (r_4, carry) = mac(r_4, k, Self::MODULUS_LIMBS[3usize], carry);
         let (r_5, carry2) = adc(r[5usize], carry2, carry);
-        let k = r_2.wrapping_mul(9708812670373448219u64);
+        let k = r_2.wrapping_mul(0x86bca1af286bca1bu64);
         let (_, carry) = mac(r_2, k, Self::MODULUS_LIMBS[0usize], 0);
         let (r_3, carry) = mac(r_3, k, Self::MODULUS_LIMBS[1usize], carry);
         let (r_4, carry) = mac(r_4, k, Self::MODULUS_LIMBS[2usize], carry);
         let (r_5, carry) = mac(r_5, k, Self::MODULUS_LIMBS[3usize], carry);
         let (r_6, carry2) = adc(r[6usize], carry2, carry);
-        let k = r_3.wrapping_mul(9708812670373448219u64);
+        let k = r_3.wrapping_mul(0x86bca1af286bca1bu64);
         let (_, carry) = mac(r_3, k, Self::MODULUS_LIMBS[0usize], 0);
         let (r_4, carry) = mac(r_4, k, Self::MODULUS_LIMBS[1usize], carry);
         let (r_5, carry) = mac(r_5, k, Self::MODULUS_LIMBS[2usize], carry);
@@ -138,22 +138,22 @@ impl Fp {
     #[inline(always)]
     pub(crate) const fn from_mont(&self) -> [u64; 4usize] {
         use crate::arithmetic::{adc, mac, sbb};
-        let k = self.0[0].wrapping_mul(9708812670373448219u64);
+        let k = self.0[0].wrapping_mul(0x86bca1af286bca1bu64);
         let (_, r_0) = mac(self.0[0usize], k, Self::MODULUS_LIMBS[0usize], 0);
         let (r_1, r_0) = mac(self.0[1usize], k, Self::MODULUS_LIMBS[1usize], r_0);
         let (r_2, r_0) = mac(self.0[2usize], k, Self::MODULUS_LIMBS[2usize], r_0);
         let (r_3, r_0) = mac(self.0[3usize], k, Self::MODULUS_LIMBS[3usize], r_0);
-        let k = r_1.wrapping_mul(9708812670373448219u64);
+        let k = r_1.wrapping_mul(0x86bca1af286bca1bu64);
         let (_, r_1) = mac(r_1, k, Self::MODULUS_LIMBS[0usize], 0);
         let (r_2, r_1) = mac(r_2, k, Self::MODULUS_LIMBS[1usize], r_1);
         let (r_3, r_1) = mac(r_3, k, Self::MODULUS_LIMBS[2usize], r_1);
         let (r_0, r_1) = mac(r_0, k, Self::MODULUS_LIMBS[3usize], r_1);
-        let k = r_2.wrapping_mul(9708812670373448219u64);
+        let k = r_2.wrapping_mul(0x86bca1af286bca1bu64);
         let (_, r_2) = mac(r_2, k, Self::MODULUS_LIMBS[0usize], 0);
         let (r_3, r_2) = mac(r_3, k, Self::MODULUS_LIMBS[1usize], r_2);
         let (r_0, r_2) = mac(r_0, k, Self::MODULUS_LIMBS[2usize], r_2);
         let (r_1, r_2) = mac(r_1, k, Self::MODULUS_LIMBS[3usize], r_2);
-        let k = r_3.wrapping_mul(9708812670373448219u64);
+        let k = r_3.wrapping_mul(0x86bca1af286bca1bu64);
         let (_, r_3) = mac(r_3, k, Self::MODULUS_LIMBS[0usize], 0);
         let (r_0, r_3) = mac(r_0, k, Self::MODULUS_LIMBS[1usize], r_3);
         let (r_1, r_3) = mac(r_1, k, Self::MODULUS_LIMBS[2usize], r_3);
@@ -199,25 +199,25 @@ impl Fp {
     #[inline(always)]
     pub(crate) const fn montgomery_reduce_const(r: &[u64; 8usize]) -> Self {
         use crate::arithmetic::{adc, mac, sbb};
-        let k = r[0].wrapping_mul(9708812670373448219u64);
+        let k = r[0].wrapping_mul(0x86bca1af286bca1bu64);
         let (_, carry) = mac(r[0usize], k, Self::MODULUS_LIMBS[0usize], 0);
         let (r_1, carry) = mac(r[1usize], k, Self::MODULUS_LIMBS[1usize], carry);
         let (r_2, carry) = mac(r[2usize], k, Self::MODULUS_LIMBS[2usize], carry);
         let (r_3, carry) = mac(r[3usize], k, Self::MODULUS_LIMBS[3usize], carry);
         let (r_4, carry2) = adc(r[4usize], 0, carry);
-        let k = r_1.wrapping_mul(9708812670373448219u64);
+        let k = r_1.wrapping_mul(0x86bca1af286bca1bu64);
         let (_, carry) = mac(r_1, k, Self::MODULUS_LIMBS[0usize], 0);
         let (r_2, carry) = mac(r_2, k, Self::MODULUS_LIMBS[1usize], carry);
         let (r_3, carry) = mac(r_3, k, Self::MODULUS_LIMBS[2usize], carry);
         let (r_4, carry) = mac(r_4, k, Self::MODULUS_LIMBS[3usize], carry);
         let (r_5, carry2) = adc(r[5usize], carry2, carry);
-        let k = r_2.wrapping_mul(9708812670373448219u64);
+        let k = r_2.wrapping_mul(0x86bca1af286bca1bu64);
         let (_, carry) = mac(r_2, k, Self::MODULUS_LIMBS[0usize], 0);
         let (r_3, carry) = mac(r_3, k, Self::MODULUS_LIMBS[1usize], carry);
         let (r_4, carry) = mac(r_4, k, Self::MODULUS_LIMBS[2usize], carry);
         let (r_5, carry) = mac(r_5, k, Self::MODULUS_LIMBS[3usize], carry);
         let (r_6, carry2) = adc(r[6usize], carry2, carry);
-        let k = r_3.wrapping_mul(9708812670373448219u64);
+        let k = r_3.wrapping_mul(0x86bca1af286bca1bu64);
         let (_, carry) = mac(r_3, k, Self::MODULUS_LIMBS[0usize], 0);
         let (r_4, carry) = mac(r_4, k, Self::MODULUS_LIMBS[1usize], carry);
         let (r_5, carry) = mac(r_5, k, Self::MODULUS_LIMBS[2usize], carry);
@@ -240,11 +240,14 @@ pub struct Fp(#[doc(hidden)] pub [u64; 4usize]);
 impl ::core::clone::Clone for Fp {
     #[inline]
     fn clone(&self) -> Fp {
+        let _: ::core::clone::AssertParamIsClone<[u64; 4usize]>;
         *self
     }
 }
 #[automatically_derived]
 impl ::core::marker::Copy for Fp {}
+#[automatically_derived]
+impl ::core::marker::StructuralPartialEq for Fp {}
 #[automatically_derived]
 impl ::core::cmp::PartialEq for Fp {
     #[inline]
@@ -253,7 +256,13 @@ impl ::core::cmp::PartialEq for Fp {
     }
 }
 #[automatically_derived]
-impl ::core::cmp::Eq for Fp {}
+impl ::core::cmp::Eq for Fp {
+    #[inline]
+    #[doc(hidden)]
+    fn assert_receiver_is_total_eq(&self) -> () {
+        let _: ::core::cmp::AssertParamIsEq<[u64; 4usize]>;
+    }
+}
 #[automatically_derived]
 impl ::core::hash::Hash for Fp {
     #[inline]
@@ -338,24 +347,24 @@ impl Fp {
     pub const SIZE: usize = 4usize * 8;
     pub const NUM_LIMBS: usize = 4usize;
     pub(crate) const MODULUS_LIMBS: [u64; Self::NUM_LIMBS] = [
-        18446744073709551597u64,
-        18446744073709551615u64,
-        18446744073709551615u64,
-        18446744073709551615u64,
+        0xffffffffffffffedu64,
+        0xffffffffffffffffu64,
+        0xffffffffffffffffu64,
+        0x7fffffffffffffffu64,
     ];
     pub(crate) const MODULUS_LIMBS_32: [u32; Self::NUM_LIMBS * 2] = [
-        4294967277u32,
-        4294967295u32,
-        4294967295u32,
-        4294967295u32,
-        4294967295u32,
-        4294967295u32,
-        4294967295u32,
-        4294967295u32,
+        0xffffffedu32,
+        0xffffffffu32,
+        0xffffffffu32,
+        0xffffffffu32,
+        0xffffffffu32,
+        0xffffffffu32,
+        0xffffffffu32,
+        0x7fffffffu32,
     ];
-    const R: Self = Self([19u64, 0u64, 0u64, 0u64]);
-    const R2: Self = Self([361u64, 0u64, 0u64, 0u64]);
-    const R3: Self = Self([6859u64, 0u64, 0u64, 0u64]);
+    const R: Self = Self([38u64, 0u64, 0u64, 0u64]);
+    const R2: Self = Self([0x5a4u64, 0u64, 0u64, 0u64]);
+    const R3: Self = Self([0xd658u64, 0u64, 0u64, 0u64]);
     /// Returns zero, the additive identity.
     #[inline(always)]
     pub const fn zero() -> Fp {
@@ -396,10 +405,10 @@ impl Fp {
         crate::ff_ext::jacobi::jacobi::<5usize>(
             &self.0,
             &[
-                18446744073709551597u64,
-                18446744073709551615u64,
-                18446744073709551615u64,
-                18446744073709551615u64,
+                0xffffffffffffffedu64,
+                0xffffffffffffffffu64,
+                0xffffffffffffffffu64,
+                0x7fffffffffffffffu64,
             ],
         )
     }
@@ -414,16 +423,16 @@ impl Fp {
     /// larger than its negation.
     pub fn lexicographically_largest(&self) -> Choice {
         const HALF_MODULUS: [u64; 4usize] = [
-            18446744073709551606u64,
-            18446744073709551615u64,
-            18446744073709551615u64,
-            9223372036854775807u64,
+            0xfffffffffffffff6u64,
+            0xffffffffffffffffu64,
+            0xffffffffffffffffu64,
+            0x3fffffffffffffffu64,
         ];
         let tmp = self.from_mont();
         let borrow = tmp
-            .iter()
-            .zip(HALF_MODULUS.iter())
-            .fold(0, |borrow, (t, m)| crate::arithmetic::sbb(*t, *m, borrow).1);
+            .into_iter()
+            .zip(HALF_MODULUS.into_iter())
+            .fold(0, |borrow, (t, m)| crate::arithmetic::sbb(t, m, borrow).1);
         !Choice::from((borrow as u8) & 1)
     }
 }
@@ -436,10 +445,12 @@ impl ff::Field for Fp {
         <Fp as ff::FromUniformBytes<{ Fp::SIZE * 2 }>>::from_uniform_bytes(&wide)
     }
     #[inline(always)]
+    #[must_use]
     fn double(&self) -> Self {
         self.double()
     }
     #[inline(always)]
+    #[must_use]
     fn square(&self) -> Self {
         self.square()
     }
@@ -448,12 +459,12 @@ impl ff::Field for Fp {
         const BYINVERTOR: crate::ff_ext::inverse::BYInverter<6usize> =
             crate::ff_ext::inverse::BYInverter::<6usize>::new(
                 &[
-                    18446744073709551597u64,
-                    18446744073709551615u64,
-                    18446744073709551615u64,
-                    18446744073709551615u64,
+                    0xffffffffffffffedu64,
+                    0xffffffffffffffffu64,
+                    0xffffffffffffffffu64,
+                    0x7fffffffffffffffu64,
                 ],
-                &[361u64, 0u64, 0u64, 0u64],
+                &[0x5a4u64, 0u64, 0u64, 0u64],
             );
         if let Some(inverse) = BYINVERTOR.invert::<{ Self::NUM_LIMBS }>(&self.0) {
             subtle::CtOption::new(Self(inverse), subtle::Choice::from(1))
@@ -462,7 +473,7 @@ impl ff::Field for Fp {
         }
     }
     fn sqrt(&self) -> subtle::CtOption<Self> {
-        panic!("not implemented");
+        ::core::panicking::panic("not implemented");
     }
     fn sqrt_ratio(num: &Self, div: &Self) -> (Choice, Self) {
         ff::helpers::sqrt_ratio_generic(num, div)
@@ -481,37 +492,38 @@ impl<'a> From<&'a Fp> for crate::serde::Repr<{ Fp::SIZE }> {
     }
 }
 impl ff::PrimeField for Fp {
-    const NUM_BITS: u32 = 256u32;
-    const CAPACITY: u32 = 256u32 - 1;
-    const TWO_INV: Self = Self([
-        7444465171802213905u64,
-        8938587983385191397u64,
-        16502324200923288628u64,
-        4317787185005063841u64,
-    ]);
-    const MULTIPLICATIVE_GENERATOR: Self = Self([38u64, 0u64, 0u64, 0u64]);
+    const NUM_BITS: u32 = 255u32;
+    const CAPACITY: u32 = 255u32 - 1;
+    const TWO_INV: Self = Self([19u64, 0u64, 0u64, 0u64]);
+    const MULTIPLICATIVE_GENERATOR: Self = Self([76u64, 0u64, 0u64, 0u64]);
     const S: u32 = 2u32;
     const ROOT_OF_UNITY: Self = Self([
-        11509591633293059158u64,
-        8716947078699447859u64,
-        5419872930474550763u64,
-        2346920571886282567u64,
+        0x3b5807d4fe2bdb04u64,
+        0x3f590fdb51be9edu64,
+        0x6d6e16bf336202d1u64,
+        0x75776b0bd6c71ba8u64,
     ]);
     const ROOT_OF_UNITY_INV: Self = Self([
-        15549255515587436669u64,
-        11596391619009908987u64,
-        8505003924796416633u64,
-        13134666729782424472u64,
+        0xc4a7f82b01d424e9u64,
+        0xfc0a6f024ae41612u64,
+        0x9291e940cc9dfd2eu64,
+        0xa8894f42938e457u64,
     ]);
-    const DELTA: Self = Self([304u64, 0u64, 0u64, 0u64]);
+    const DELTA: Self = Self([608u64, 0u64, 0u64, 0u64]);
     const MODULUS: &'static str =
-        "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed";
+        "0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed";
     type Repr = crate::serde::Repr<{ Fp::SIZE }>;
     fn from_u128(v: u128) -> Self {
-        let mut limbs = [0u64; 4];
-        limbs[0] = v as u64;
-        limbs[1] = (v >> 64) as u64;
-        Self::R2 * Self(limbs)
+        Self::R2
+            * Self(
+                [v as u64, (v >> 64) as u64]
+                    .into_iter()
+                    .chain(core::iter::repeat(0))
+                    .take(Self::NUM_LIMBS)
+                    .collect::<Vec<_>>()
+                    .try_into()
+                    .unwrap(),
+            )
     }
     fn from_repr(repr: Self::Repr) -> subtle::CtOption<Self> {
         let mut el = Fp::default();
@@ -522,6 +534,7 @@ impl ff::PrimeField for Fp {
         )
     }
     fn to_repr(&self) -> Self::Repr {
+        use crate::serde::endian::Endian;
         let el = self.from_mont();
         let mut res = [0; 32usize];
         crate::serde::endian::Endian::LE.to_bytes(&mut res, &el);
@@ -533,7 +546,21 @@ impl ff::PrimeField for Fp {
 }
 impl crate::serde::SerdeObject for Fp {
     fn from_raw_bytes_unchecked(bytes: &[u8]) -> Self {
-        assert_eq!(bytes.len(), 32usize);
+        if true {
+            match (&bytes.len(), &32usize) {
+                (left_val, right_val) => {
+                    if !(*left_val == *right_val) {
+                        let kind = ::core::panicking::AssertKind::Eq;
+                        ::core::panicking::assert_failed(
+                            kind,
+                            &*left_val,
+                            &*right_val,
+                            ::core::option::Option::None,
+                        );
+                    }
+                }
+            };
+        }
         let inner = (0..4usize)
             .map(|off| u64::from_le_bytes(bytes[off * 8..(off + 1) * 8].try_into().unwrap()))
             .collect::<Vec<_>>();
@@ -625,224 +652,26 @@ impl ff::FromUniformBytes<64usize> for Fp {
 }
 impl ff::WithSmallOrderMulGroup<3> for Fp {
     const ZETA: Self = Self([
-        6287877203167225173u64,
-        11949584387797497373u64,
-        3562717594913860950u64,
-        2257113996185601592u64,
+        0x50042761e7b20780u64,
+        0xdff5c6f9aea649f9u64,
+        0x4a1118654ba1a419u64,
+        0x5443a41d4b0d18feu64,
     ]);
 }
-impl crate::ff_ext::Legendre for Fp {
-    #[inline(always)]
-    fn legendre(&self) -> i64 {
-        self.jacobi()
-    }
-}
-impl ::core::ops::Neg for Fp {
-    type Output = Fp;
-    #[inline]
-    fn neg(self) -> Fp {
-        -&self
-    }
-}
-impl<'a> ::core::ops::Neg for &'a Fp {
-    type Output = Fp;
-    #[inline]
-    fn neg(self) -> Fp {
-        self.neg()
-    }
-}
-impl<'a, 'b> ::core::ops::Sub<&'b Fp> for &'a Fp {
-    type Output = Fp;
-    #[inline]
-    fn sub(self, rhs: &'b Fp) -> Fp {
-        self.sub(rhs)
-    }
-}
-impl<'a, 'b> ::core::ops::Add<&'b Fp> for &'a Fp {
-    type Output = Fp;
-    #[inline]
-    fn add(self, rhs: &'b Fp) -> Fp {
-        self.add(rhs)
-    }
-}
-impl<'a, 'b> ::core::ops::Mul<&'b Fp> for &'a Fp {
-    type Output = Fp;
-    #[inline]
-    fn mul(self, rhs: &'b Fp) -> Fp {
-        self.mul(rhs)
-    }
-}
-impl<'b> ::core::ops::Add<&'b Fp> for Fp {
-    type Output = Fp;
-    #[inline]
-    fn add(self, rhs: &'b Fp) -> Fp {
-        &self + rhs
-    }
-}
-impl<'a> ::core::ops::Add<Fp> for &'a Fp {
-    type Output = Fp;
-    #[inline]
-    fn add(self, rhs: Fp) -> Fp {
-        self + &rhs
-    }
-}
-impl ::core::ops::Add<Fp> for Fp {
-    type Output = Fp;
-    #[inline]
-    fn add(self, rhs: Fp) -> Fp {
-        &self + &rhs
-    }
-}
-impl<'b> ::core::ops::Sub<&'b Fp> for Fp {
-    type Output = Fp;
-    #[inline]
-    fn sub(self, rhs: &'b Fp) -> Fp {
-        &self - rhs
-    }
-}
-impl<'a> ::core::ops::Sub<Fp> for &'a Fp {
-    type Output = Fp;
-    #[inline]
-    fn sub(self, rhs: Fp) -> Fp {
-        self - &rhs
-    }
-}
-impl ::core::ops::Sub<Fp> for Fp {
-    type Output = Fp;
-    #[inline]
-    fn sub(self, rhs: Fp) -> Fp {
-        &self - &rhs
-    }
-}
-impl ::core::ops::SubAssign<Fp> for Fp {
-    #[inline]
-    fn sub_assign(&mut self, rhs: Fp) {
-        *self = &*self - &rhs;
-    }
-}
-impl ::core::ops::AddAssign<Fp> for Fp {
-    #[inline]
-    fn add_assign(&mut self, rhs: Fp) {
-        *self = &*self + &rhs;
-    }
-}
-impl<'b> ::core::ops::SubAssign<&'b Fp> for Fp {
-    #[inline]
-    fn sub_assign(&mut self, rhs: &'b Fp) {
-        *self = &*self - rhs;
-    }
-}
-impl<'b> ::core::ops::AddAssign<&'b Fp> for Fp {
-    #[inline]
-    fn add_assign(&mut self, rhs: &'b Fp) {
-        *self = &*self + rhs;
-    }
-}
-impl<'b> ::core::ops::Mul<&'b Fp> for Fp {
-    type Output = Fp;
-    #[inline]
-    fn mul(self, rhs: &'b Fp) -> Fp {
-        &self * rhs
-    }
-}
-impl<'a> ::core::ops::Mul<Fp> for &'a Fp {
-    type Output = Fp;
-    #[inline]
-    fn mul(self, rhs: Fp) -> Fp {
-        self * &rhs
-    }
-}
-impl ::core::ops::Mul<Fp> for Fp {
-    type Output = Fp;
-    #[inline]
-    fn mul(self, rhs: Fp) -> Fp {
-        &self * &rhs
-    }
-}
-impl ::core::ops::MulAssign<Fp> for Fp {
-    #[inline]
-    fn mul_assign(&mut self, rhs: Fp) {
-        *self = &*self * &rhs;
-    }
-}
-impl<'b> ::core::ops::MulAssign<&'b Fp> for Fp {
-    #[inline]
-    fn mul_assign(&mut self, rhs: &'b Fp) {
-        *self = &*self * rhs;
-    }
-}
-impl ff::PrimeFieldBits for Fp {
-    type ReprBits = [u64; Self::NUM_LIMBS];
-    fn to_le_bits(&self) -> ff::FieldBits<Self::ReprBits> {
-        use ff::PrimeField;
-        let bytes: [u8; Self::SIZE] = self.to_repr().into();
-        const STEP: usize = 8;
-        let limbs = (0..Self::NUM_LIMBS * 8 / STEP)
-            .map(|off| {
-                let limb =
-                    u64::from_le_bytes(bytes[off * STEP..(off + 1) * STEP].try_into().unwrap());
-                limb
-            })
-            .collect::<Vec<u64>>();
-        ff::FieldBits::new(limbs.try_into().unwrap())
-    }
-    fn char_le_bits() -> ff::FieldBits<Self::ReprBits> {
-        let bits = ff::FieldBits::new(Self::MODULUS_LIMBS);
-        bits
-    }
-}
-impl<'de> ::serde::Deserialize<'de> for Fp {
-    fn deserialize<D: ::serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        use serde::de::Error as _;
-        let bytes = if deserializer.is_human_readable() {
-            hex::serde::deserialize(deserializer)?
-        } else {
-            ::serde_arrays::deserialize::<_, u8, { Fp::SIZE }>(deserializer)?
-        };
-        use ff::PrimeField;
-        Option::from(Self::from_repr(bytes.into())).ok_or_else(|| {
-            D::Error::custom("deserialized bytes don't encode a valid field element")
-        })
-    }
-}
-impl ::serde::Serialize for Fp {
-    fn serialize<S: ::serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        use ff::PrimeField;
-        if serializer.is_human_readable() {
-            hex::serde::serialize(self.to_repr().as_ref(), serializer)
-        } else {
-            let bytes: [u8; Fp::SIZE] = self.to_repr().into();
-            ::serde_arrays::serialize(&bytes, serializer)
-        }
-    }
-}
-impl From<u64> for Fp {
-    fn from(val: u64) -> Fp {
-        let limbs = std::iter::once(val)
-            .chain(std::iter::repeat(0))
-            .take(Self::NUM_LIMBS)
-            .collect::<Vec<_>>()
-            .try_into()
-            .unwrap();
-        Fp(limbs) * Self::R2
-    }
-}
-impl From<bool> for Fp {
-    fn from(val: bool) -> Fp {
-        let limbs = std::iter::once(u64::from(val))
-            .chain(std::iter::repeat(0))
-            .take(Self::NUM_LIMBS)
-            .collect::<Vec<_>>()
-            .try_into()
-            .unwrap();
-        Fp(limbs) * Self::R2
-    }
-}
+
+crate::extend_field_legendre!(Fp);
+crate::impl_binops_calls!(Fp);
+crate::impl_binops_additive!(Fp, Fp);
+crate::impl_binops_multiplicative!(Fp, Fp);
+crate::field_bits!(Fp);
+crate::serialize_deserialize_primefield!(Fp);
+crate::impl_from_u64!(Fp);
+crate::impl_from_bool!(Fp);
 
 #[cfg(test)]
 mod test {
-    // use super::*;
-    // crate::field_testing_suite!(Fp, "field_arithmetic");
+    use super::*;
+    crate::field_testing_suite!(Fp, "field_arithmetic");
     // crate::field_testing_suite!(Fp, "conversion");
     // crate::field_testing_suite!(Fp, "serdeobject");
     // crate::field_testing_suite!(Fp, "quadratic_residue");
