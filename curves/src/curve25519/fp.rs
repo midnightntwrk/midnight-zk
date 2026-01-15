@@ -1,24 +1,49 @@
+//! Curve25519 Base Field Arithmetic
+//!
+//! This module implements the base field Fp for Curve25519, where
+//! p = 2^255 - 19.
+//!
+//! # Representation
+//!
+//! Field elements are represented in Montgomery form using 4 limbs of 64-bit
+//! unsigned integers (256 bits total) in little-endian order.
+//!
+//! For a field element `a`, we store `aR mod p` where R = 2^256.
+//! This allows efficient modular multiplication using Montgomery reduction.
+//!
+//! # References
+//!
+//! - [Curve25519 Paper](https://cr.yp.to/ecdh/curve25519-20060209.pdf)
+
 use core::convert::TryInto;
 use rand_core::RngCore;
 
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
+
+/// A field element represented as 4 limbs (256 bits)
+type Limbs = [u64; 4];
+
+/// Extended limbs used during multiplication (512 bits)
+type ExtendedLimbs = [u64; 8];
+
+const R_INV: u64 = 0x86bca1af286bca1bu64;
 impl Fp {
     #[inline(always)]
     pub const fn add(&self, rhs: &Self) -> Self {
         use crate::arithmetic::{adc, sbb};
-        let (d_0, carry) = adc(self.0[0usize], rhs.0[0usize], 0);
-        let (d_1, carry) = adc(self.0[1usize], rhs.0[1usize], carry);
-        let (d_2, carry) = adc(self.0[2usize], rhs.0[2usize], carry);
-        let (d_3, carry) = adc(self.0[3usize], rhs.0[3usize], carry);
-        let (d_0, borrow) = sbb(d_0, Self::MODULUS_LIMBS[0usize], 0);
-        let (d_1, borrow) = sbb(d_1, Self::MODULUS_LIMBS[1usize], borrow);
-        let (d_2, borrow) = sbb(d_2, Self::MODULUS_LIMBS[2usize], borrow);
-        let (d_3, borrow) = sbb(d_3, Self::MODULUS_LIMBS[3usize], borrow);
+        let (d_0, carry) = adc(self.0[0], rhs.0[0], 0);
+        let (d_1, carry) = adc(self.0[1], rhs.0[1], carry);
+        let (d_2, carry) = adc(self.0[2], rhs.0[2], carry);
+        let (d_3, carry) = adc(self.0[3], rhs.0[3], carry);
+        let (d_0, borrow) = sbb(d_0, Self::MODULUS_LIMBS[0], 0);
+        let (d_1, borrow) = sbb(d_1, Self::MODULUS_LIMBS[1], borrow);
+        let (d_2, borrow) = sbb(d_2, Self::MODULUS_LIMBS[2], borrow);
+        let (d_3, borrow) = sbb(d_3, Self::MODULUS_LIMBS[3], borrow);
         let (_, borrow) = sbb(carry, 0, borrow);
-        let (d_0, carry) = adc(d_0, Self::MODULUS_LIMBS[0usize] & borrow, 0);
-        let (d_1, carry) = adc(d_1, Self::MODULUS_LIMBS[1usize] & borrow, carry);
-        let (d_2, carry) = adc(d_2, Self::MODULUS_LIMBS[2usize] & borrow, carry);
-        let (d_3, _) = adc(d_3, Self::MODULUS_LIMBS[3usize] & borrow, carry);
+        let (d_0, carry) = adc(d_0, Self::MODULUS_LIMBS[0] & borrow, 0);
+        let (d_1, carry) = adc(d_1, Self::MODULUS_LIMBS[1] & borrow, carry);
+        let (d_2, carry) = adc(d_2, Self::MODULUS_LIMBS[2] & borrow, carry);
+        let (d_3, _) = adc(d_3, Self::MODULUS_LIMBS[3] & borrow, carry);
         Fp([d_0, d_1, d_2, d_3])
     }
     #[inline]
@@ -28,58 +53,56 @@ impl Fp {
     #[inline(always)]
     pub const fn sub(&self, rhs: &Self) -> Self {
         use crate::arithmetic::{adc, sbb};
-        let (d_0, borrow) = sbb(self.0[0usize], rhs.0[0usize], 0);
-        let (d_1, borrow) = sbb(self.0[1usize], rhs.0[1usize], borrow);
-        let (d_2, borrow) = sbb(self.0[2usize], rhs.0[2usize], borrow);
-        let (d_3, borrow) = sbb(self.0[3usize], rhs.0[3usize], borrow);
-        let (d_0, carry) = adc(d_0, Self::MODULUS_LIMBS[0usize] & borrow, 0);
-        let (d_1, carry) = adc(d_1, Self::MODULUS_LIMBS[1usize] & borrow, carry);
-        let (d_2, carry) = adc(d_2, Self::MODULUS_LIMBS[2usize] & borrow, carry);
-        let (d_3, _) = adc(d_3, Self::MODULUS_LIMBS[3usize] & borrow, carry);
+        let (d_0, borrow) = sbb(self.0[0], rhs.0[0], 0);
+        let (d_1, borrow) = sbb(self.0[1], rhs.0[1], borrow);
+        let (d_2, borrow) = sbb(self.0[2], rhs.0[2], borrow);
+        let (d_3, borrow) = sbb(self.0[3], rhs.0[3], borrow);
+        let (d_0, carry) = adc(d_0, Self::MODULUS_LIMBS[0] & borrow, 0);
+        let (d_1, carry) = adc(d_1, Self::MODULUS_LIMBS[1] & borrow, carry);
+        let (d_2, carry) = adc(d_2, Self::MODULUS_LIMBS[2] & borrow, carry);
+        let (d_3, _) = adc(d_3, Self::MODULUS_LIMBS[3] & borrow, carry);
         Fp([d_0, d_1, d_2, d_3])
     }
     #[inline(always)]
     pub const fn neg(&self) -> Self {
         use crate::arithmetic::sbb;
-        let (d_0, borrow) = sbb(Self::MODULUS_LIMBS[0usize], self.0[0usize], 0);
-        let (d_1, borrow) = sbb(Self::MODULUS_LIMBS[1usize], self.0[1usize], borrow);
-        let (d_2, borrow) = sbb(Self::MODULUS_LIMBS[2usize], self.0[2usize], borrow);
-        let (d_3, _) = sbb(Self::MODULUS_LIMBS[3usize], self.0[3usize], borrow);
-        let mask = (((self.0[0usize] | self.0[1usize] | self.0[2usize] | self.0[3usize]) == 0)
-            as u64)
-            .wrapping_sub(1);
+        let (d_0, borrow) = sbb(Self::MODULUS_LIMBS[0], self.0[0], 0);
+        let (d_1, borrow) = sbb(Self::MODULUS_LIMBS[1], self.0[1], borrow);
+        let (d_2, borrow) = sbb(Self::MODULUS_LIMBS[2], self.0[2], borrow);
+        let (d_3, _) = sbb(Self::MODULUS_LIMBS[3], self.0[3], borrow);
+        let mask = (((self.0[0] | self.0[1] | self.0[2] | self.0[3]) == 0) as u64).wrapping_sub(1);
         Fp([d_0 & mask, d_1 & mask, d_2 & mask, d_3 & mask])
     }
     #[inline(always)]
     pub const fn mul(&self, rhs: &Self) -> Self {
         use crate::arithmetic::mac;
-        let (r_0, carry) = mac(0, self.0[0usize], rhs.0[0usize], 0);
-        let (r_1, carry) = mac(0, self.0[0usize], rhs.0[1usize], carry);
-        let (r_2, carry) = mac(0, self.0[0usize], rhs.0[2usize], carry);
-        let (r_3, r_4) = mac(0, self.0[0usize], rhs.0[3usize], carry);
-        let (r_1, carry) = mac(r_1, self.0[1usize], rhs.0[0usize], 0);
-        let (r_2, carry) = mac(r_2, self.0[1usize], rhs.0[1usize], carry);
-        let (r_3, carry) = mac(r_3, self.0[1usize], rhs.0[2usize], carry);
-        let (r_4, r_5) = mac(r_4, self.0[1usize], rhs.0[3usize], carry);
-        let (r_2, carry) = mac(r_2, self.0[2usize], rhs.0[0usize], 0);
-        let (r_3, carry) = mac(r_3, self.0[2usize], rhs.0[1usize], carry);
-        let (r_4, carry) = mac(r_4, self.0[2usize], rhs.0[2usize], carry);
-        let (r_5, r_6) = mac(r_5, self.0[2usize], rhs.0[3usize], carry);
-        let (r_3, carry) = mac(r_3, self.0[3usize], rhs.0[0usize], 0);
-        let (r_4, carry) = mac(r_4, self.0[3usize], rhs.0[1usize], carry);
-        let (r_5, carry) = mac(r_5, self.0[3usize], rhs.0[2usize], carry);
-        let (r_6, r_7) = mac(r_6, self.0[3usize], rhs.0[3usize], carry);
+        let (r_0, carry) = mac(0, self.0[0], rhs.0[0], 0);
+        let (r_1, carry) = mac(0, self.0[0], rhs.0[1], carry);
+        let (r_2, carry) = mac(0, self.0[0], rhs.0[2], carry);
+        let (r_3, r_4) = mac(0, self.0[0], rhs.0[3], carry);
+        let (r_1, carry) = mac(r_1, self.0[1], rhs.0[0], 0);
+        let (r_2, carry) = mac(r_2, self.0[1], rhs.0[1], carry);
+        let (r_3, carry) = mac(r_3, self.0[1], rhs.0[2], carry);
+        let (r_4, r_5) = mac(r_4, self.0[1], rhs.0[3], carry);
+        let (r_2, carry) = mac(r_2, self.0[2], rhs.0[0], 0);
+        let (r_3, carry) = mac(r_3, self.0[2], rhs.0[1], carry);
+        let (r_4, carry) = mac(r_4, self.0[2], rhs.0[2], carry);
+        let (r_5, r_6) = mac(r_5, self.0[2], rhs.0[3], carry);
+        let (r_3, carry) = mac(r_3, self.0[3], rhs.0[0], 0);
+        let (r_4, carry) = mac(r_4, self.0[3], rhs.0[1], carry);
+        let (r_5, carry) = mac(r_5, self.0[3], rhs.0[2], carry);
+        let (r_6, r_7) = mac(r_6, self.0[3], rhs.0[3], carry);
         Fp::montgomery_reduce(&[r_0, r_1, r_2, r_3, r_4, r_5, r_6, r_7])
     }
     #[inline(always)]
     pub const fn square(&self) -> Self {
         use crate::arithmetic::{adc, mac};
-        let (r_1, carry) = mac(0, self.0[0usize], self.0[1usize], 0);
-        let (r_2, carry) = mac(0, self.0[0usize], self.0[2usize], carry);
-        let (r_3, r_4) = mac(0, self.0[0usize], self.0[3usize], carry);
-        let (r_3, carry) = mac(r_3, self.0[1usize], self.0[2usize], 0);
-        let (r_4, r_5) = mac(r_4, self.0[1usize], self.0[3usize], carry);
-        let (r_5, r_6) = mac(r_5, self.0[2usize], self.0[3usize], 0);
+        let (r_1, carry) = mac(0, self.0[0], self.0[1], 0);
+        let (r_2, carry) = mac(0, self.0[0], self.0[2], carry);
+        let (r_3, r_4) = mac(0, self.0[0], self.0[3], carry);
+        let (r_3, carry) = mac(r_3, self.0[1], self.0[2], 0);
+        let (r_4, r_5) = mac(r_4, self.0[1], self.0[3], carry);
+        let (r_5, r_6) = mac(r_5, self.0[2], self.0[3], 0);
         let r_7 = r_6 >> 63;
         let r_6 = (r_6 << 1) | (r_5 >> 63);
         let r_5 = (r_5 << 1) | (r_4 >> 63);
@@ -87,77 +110,77 @@ impl Fp {
         let r_3 = (r_3 << 1) | (r_2 >> 63);
         let r_2 = (r_2 << 1) | (r_1 >> 63);
         let r_1 = r_1 << 1;
-        let (r_0, carry) = mac(0, self.0[0usize], self.0[0usize], 0);
+        let (r_0, carry) = mac(0, self.0[0], self.0[0], 0);
         let (r_1, carry) = adc(0, r_1, carry);
-        let (r_2, carry) = mac(r_2, self.0[1usize], self.0[1usize], carry);
+        let (r_2, carry) = mac(r_2, self.0[1], self.0[1], carry);
         let (r_3, carry) = adc(0, r_3, carry);
-        let (r_4, carry) = mac(r_4, self.0[2usize], self.0[2usize], carry);
+        let (r_4, carry) = mac(r_4, self.0[2], self.0[2], carry);
         let (r_5, carry) = adc(0, r_5, carry);
-        let (r_6, carry) = mac(r_6, self.0[3usize], self.0[3usize], carry);
+        let (r_6, carry) = mac(r_6, self.0[3], self.0[3], carry);
         let (r_7, _) = adc(0, r_7, carry);
         Fp::montgomery_reduce(&[r_0, r_1, r_2, r_3, r_4, r_5, r_6, r_7])
     }
     #[inline(always)]
-    pub(crate) const fn montgomery_reduce(r: &[u64; 8usize]) -> Self {
+    pub(crate) const fn montgomery_reduce(r: &ExtendedLimbs) -> Self {
         use crate::arithmetic::{adc, mac, sbb};
-        let k = r[0].wrapping_mul(0x86bca1af286bca1bu64);
-        let (_, carry) = mac(r[0usize], k, Self::MODULUS_LIMBS[0usize], 0);
-        let (r_1, carry) = mac(r[1usize], k, Self::MODULUS_LIMBS[1usize], carry);
-        let (r_2, carry) = mac(r[2usize], k, Self::MODULUS_LIMBS[2usize], carry);
-        let (r_3, carry) = mac(r[3usize], k, Self::MODULUS_LIMBS[3usize], carry);
-        let (r_4, carry2) = adc(r[4usize], 0, carry);
-        let k = r_1.wrapping_mul(0x86bca1af286bca1bu64);
-        let (_, carry) = mac(r_1, k, Self::MODULUS_LIMBS[0usize], 0);
-        let (r_2, carry) = mac(r_2, k, Self::MODULUS_LIMBS[1usize], carry);
-        let (r_3, carry) = mac(r_3, k, Self::MODULUS_LIMBS[2usize], carry);
-        let (r_4, carry) = mac(r_4, k, Self::MODULUS_LIMBS[3usize], carry);
-        let (r_5, carry2) = adc(r[5usize], carry2, carry);
-        let k = r_2.wrapping_mul(0x86bca1af286bca1bu64);
-        let (_, carry) = mac(r_2, k, Self::MODULUS_LIMBS[0usize], 0);
-        let (r_3, carry) = mac(r_3, k, Self::MODULUS_LIMBS[1usize], carry);
-        let (r_4, carry) = mac(r_4, k, Self::MODULUS_LIMBS[2usize], carry);
-        let (r_5, carry) = mac(r_5, k, Self::MODULUS_LIMBS[3usize], carry);
-        let (r_6, carry2) = adc(r[6usize], carry2, carry);
-        let k = r_3.wrapping_mul(0x86bca1af286bca1bu64);
-        let (_, carry) = mac(r_3, k, Self::MODULUS_LIMBS[0usize], 0);
-        let (r_4, carry) = mac(r_4, k, Self::MODULUS_LIMBS[1usize], carry);
-        let (r_5, carry) = mac(r_5, k, Self::MODULUS_LIMBS[2usize], carry);
-        let (r_6, carry) = mac(r_6, k, Self::MODULUS_LIMBS[3usize], carry);
-        let (r_7, carry2) = adc(r[7usize], carry2, carry);
-        let (d_0, borrow) = sbb(r_4, Self::MODULUS_LIMBS[0usize], 0);
-        let (d_1, borrow) = sbb(r_5, Self::MODULUS_LIMBS[1usize], borrow);
-        let (d_2, borrow) = sbb(r_6, Self::MODULUS_LIMBS[2usize], borrow);
-        let (d_3, borrow) = sbb(r_7, Self::MODULUS_LIMBS[3usize], borrow);
+        let k = r[0].wrapping_mul(R_INV);
+        let (_, carry) = mac(r[0], k, Self::MODULUS_LIMBS[0], 0);
+        let (r_1, carry) = mac(r[1], k, Self::MODULUS_LIMBS[1], carry);
+        let (r_2, carry) = mac(r[2], k, Self::MODULUS_LIMBS[2], carry);
+        let (r_3, carry) = mac(r[3], k, Self::MODULUS_LIMBS[3], carry);
+        let (r_4, carry2) = adc(r[4], 0, carry);
+        let k = r_1.wrapping_mul(R_INV);
+        let (_, carry) = mac(r_1, k, Self::MODULUS_LIMBS[0], 0);
+        let (r_2, carry) = mac(r_2, k, Self::MODULUS_LIMBS[1], carry);
+        let (r_3, carry) = mac(r_3, k, Self::MODULUS_LIMBS[2], carry);
+        let (r_4, carry) = mac(r_4, k, Self::MODULUS_LIMBS[3], carry);
+        let (r_5, carry2) = adc(r[5], carry2, carry);
+        let k = r_2.wrapping_mul(R_INV);
+        let (_, carry) = mac(r_2, k, Self::MODULUS_LIMBS[0], 0);
+        let (r_3, carry) = mac(r_3, k, Self::MODULUS_LIMBS[1], carry);
+        let (r_4, carry) = mac(r_4, k, Self::MODULUS_LIMBS[2], carry);
+        let (r_5, carry) = mac(r_5, k, Self::MODULUS_LIMBS[3], carry);
+        let (r_6, carry2) = adc(r[6], carry2, carry);
+        let k = r_3.wrapping_mul(R_INV);
+        let (_, carry) = mac(r_3, k, Self::MODULUS_LIMBS[0], 0);
+        let (r_4, carry) = mac(r_4, k, Self::MODULUS_LIMBS[1], carry);
+        let (r_5, carry) = mac(r_5, k, Self::MODULUS_LIMBS[2], carry);
+        let (r_6, carry) = mac(r_6, k, Self::MODULUS_LIMBS[3], carry);
+        let (r_7, carry2) = adc(r[7], carry2, carry);
+        let (d_0, borrow) = sbb(r_4, Self::MODULUS_LIMBS[0], 0);
+        let (d_1, borrow) = sbb(r_5, Self::MODULUS_LIMBS[1], borrow);
+        let (d_2, borrow) = sbb(r_6, Self::MODULUS_LIMBS[2], borrow);
+        let (d_3, borrow) = sbb(r_7, Self::MODULUS_LIMBS[3], borrow);
         let (_, borrow) = sbb(carry2, 0, borrow);
-        let (d_0, carry) = adc(d_0, Self::MODULUS_LIMBS[0usize] & borrow, 0);
-        let (d_1, carry) = adc(d_1, Self::MODULUS_LIMBS[1usize] & borrow, carry);
-        let (d_2, carry) = adc(d_2, Self::MODULUS_LIMBS[2usize] & borrow, carry);
-        let (d_3, _) = adc(d_3, Self::MODULUS_LIMBS[3usize] & borrow, carry);
+        let (d_0, carry) = adc(d_0, Self::MODULUS_LIMBS[0] & borrow, 0);
+        let (d_1, carry) = adc(d_1, Self::MODULUS_LIMBS[1] & borrow, carry);
+        let (d_2, carry) = adc(d_2, Self::MODULUS_LIMBS[2] & borrow, carry);
+        let (d_3, _) = adc(d_3, Self::MODULUS_LIMBS[3] & borrow, carry);
         Fp([d_0, d_1, d_2, d_3])
     }
     #[inline(always)]
-    pub(crate) const fn from_mont(&self) -> [u64; 4usize] {
+    pub(crate) const fn from_mont(&self) -> [u64; 4] {
         use crate::arithmetic::mac;
-        let k = self.0[0].wrapping_mul(0x86bca1af286bca1bu64);
-        let (_, r_0) = mac(self.0[0usize], k, Self::MODULUS_LIMBS[0usize], 0);
-        let (r_1, r_0) = mac(self.0[1usize], k, Self::MODULUS_LIMBS[1usize], r_0);
-        let (r_2, r_0) = mac(self.0[2usize], k, Self::MODULUS_LIMBS[2usize], r_0);
-        let (r_3, r_0) = mac(self.0[3usize], k, Self::MODULUS_LIMBS[3usize], r_0);
-        let k = r_1.wrapping_mul(0x86bca1af286bca1bu64);
-        let (_, r_1) = mac(r_1, k, Self::MODULUS_LIMBS[0usize], 0);
-        let (r_2, r_1) = mac(r_2, k, Self::MODULUS_LIMBS[1usize], r_1);
-        let (r_3, r_1) = mac(r_3, k, Self::MODULUS_LIMBS[2usize], r_1);
-        let (r_0, r_1) = mac(r_0, k, Self::MODULUS_LIMBS[3usize], r_1);
-        let k = r_2.wrapping_mul(0x86bca1af286bca1bu64);
-        let (_, r_2) = mac(r_2, k, Self::MODULUS_LIMBS[0usize], 0);
-        let (r_3, r_2) = mac(r_3, k, Self::MODULUS_LIMBS[1usize], r_2);
-        let (r_0, r_2) = mac(r_0, k, Self::MODULUS_LIMBS[2usize], r_2);
-        let (r_1, r_2) = mac(r_1, k, Self::MODULUS_LIMBS[3usize], r_2);
-        let k = r_3.wrapping_mul(0x86bca1af286bca1bu64);
-        let (_, r_3) = mac(r_3, k, Self::MODULUS_LIMBS[0usize], 0);
-        let (r_0, r_3) = mac(r_0, k, Self::MODULUS_LIMBS[1usize], r_3);
-        let (r_1, r_3) = mac(r_1, k, Self::MODULUS_LIMBS[2usize], r_3);
-        let (r_2, r_3) = mac(r_2, k, Self::MODULUS_LIMBS[3usize], r_3);
+        let k = self.0[0].wrapping_mul(R_INV);
+        let (_, r_0) = mac(self.0[0], k, Self::MODULUS_LIMBS[0], 0);
+        let (r_1, r_0) = mac(self.0[1], k, Self::MODULUS_LIMBS[1], r_0);
+        let (r_2, r_0) = mac(self.0[2], k, Self::MODULUS_LIMBS[2], r_0);
+        let (r_3, r_0) = mac(self.0[3], k, Self::MODULUS_LIMBS[3], r_0);
+        let k = r_1.wrapping_mul(R_INV);
+        let (_, r_1) = mac(r_1, k, Self::MODULUS_LIMBS[0], 0);
+        let (r_2, r_1) = mac(r_2, k, Self::MODULUS_LIMBS[1], r_1);
+        let (r_3, r_1) = mac(r_3, k, Self::MODULUS_LIMBS[2], r_1);
+        let (r_0, r_1) = mac(r_0, k, Self::MODULUS_LIMBS[3], r_1);
+        let k = r_2.wrapping_mul(R_INV);
+        let (_, r_2) = mac(r_2, k, Self::MODULUS_LIMBS[0], 0);
+        let (r_3, r_2) = mac(r_3, k, Self::MODULUS_LIMBS[1], r_2);
+        let (r_0, r_2) = mac(r_0, k, Self::MODULUS_LIMBS[2], r_2);
+        let (r_1, r_2) = mac(r_1, k, Self::MODULUS_LIMBS[3], r_2);
+        let k = r_3.wrapping_mul(R_INV);
+        let (_, r_3) = mac(r_3, k, Self::MODULUS_LIMBS[0], 0);
+        let (r_0, r_3) = mac(r_0, k, Self::MODULUS_LIMBS[1], r_3);
+        let (r_1, r_3) = mac(r_1, k, Self::MODULUS_LIMBS[2], r_3);
+        let (r_2, r_3) = mac(r_2, k, Self::MODULUS_LIMBS[3], r_3);
         Fp([r_0, r_1, r_2, r_3]).sub(&Fp(Self::MODULUS_LIMBS)).0
     }
 }
@@ -166,77 +189,44 @@ impl Fp {
     #[allow(dead_code)]
     pub(crate) const fn sub_const(&self, rhs: &Self) -> Self {
         use crate::arithmetic::{adc, sbb};
-        let (d_0, borrow) = sbb(self.0[0usize], rhs.0[0usize], 0);
-        let (d_1, borrow) = sbb(self.0[1usize], rhs.0[1usize], borrow);
-        let (d_2, borrow) = sbb(self.0[2usize], rhs.0[2usize], borrow);
-        let (d_3, borrow) = sbb(self.0[3usize], rhs.0[3usize], borrow);
-        let (d_0, carry) = adc(d_0, Self::MODULUS_LIMBS[0usize] & borrow, 0);
-        let (d_1, carry) = adc(d_1, Self::MODULUS_LIMBS[1usize] & borrow, carry);
-        let (d_2, carry) = adc(d_2, Self::MODULUS_LIMBS[2usize] & borrow, carry);
-        let (d_3, _) = adc(d_3, Self::MODULUS_LIMBS[3usize] & borrow, carry);
+        let (d_0, borrow) = sbb(self.0[0], rhs.0[0], 0);
+        let (d_1, borrow) = sbb(self.0[1], rhs.0[1], borrow);
+        let (d_2, borrow) = sbb(self.0[2], rhs.0[2], borrow);
+        let (d_3, borrow) = sbb(self.0[3], rhs.0[3], borrow);
+        let (d_0, carry) = adc(d_0, Self::MODULUS_LIMBS[0] & borrow, 0);
+        let (d_1, carry) = adc(d_1, Self::MODULUS_LIMBS[1] & borrow, carry);
+        let (d_2, carry) = adc(d_2, Self::MODULUS_LIMBS[2] & borrow, carry);
+        let (d_3, _) = adc(d_3, Self::MODULUS_LIMBS[3] & borrow, carry);
         Fp([d_0, d_1, d_2, d_3])
     }
     #[inline(always)]
     pub(crate) const fn mul_const(&self, rhs: &Self) -> Self {
         use crate::arithmetic::mac;
-        let (r_0, carry) = mac(0, self.0[0usize], rhs.0[0usize], 0);
-        let (r_1, carry) = mac(0, self.0[0usize], rhs.0[1usize], carry);
-        let (r_2, carry) = mac(0, self.0[0usize], rhs.0[2usize], carry);
-        let (r_3, r_4) = mac(0, self.0[0usize], rhs.0[3usize], carry);
-        let (r_1, carry) = mac(r_1, self.0[1usize], rhs.0[0usize], 0);
-        let (r_2, carry) = mac(r_2, self.0[1usize], rhs.0[1usize], carry);
-        let (r_3, carry) = mac(r_3, self.0[1usize], rhs.0[2usize], carry);
-        let (r_4, r_5) = mac(r_4, self.0[1usize], rhs.0[3usize], carry);
-        let (r_2, carry) = mac(r_2, self.0[2usize], rhs.0[0usize], 0);
-        let (r_3, carry) = mac(r_3, self.0[2usize], rhs.0[1usize], carry);
-        let (r_4, carry) = mac(r_4, self.0[2usize], rhs.0[2usize], carry);
-        let (r_5, r_6) = mac(r_5, self.0[2usize], rhs.0[3usize], carry);
-        let (r_3, carry) = mac(r_3, self.0[3usize], rhs.0[0usize], 0);
-        let (r_4, carry) = mac(r_4, self.0[3usize], rhs.0[1usize], carry);
-        let (r_5, carry) = mac(r_5, self.0[3usize], rhs.0[2usize], carry);
-        let (r_6, r_7) = mac(r_6, self.0[3usize], rhs.0[3usize], carry);
+        let (r_0, carry) = mac(0, self.0[0], rhs.0[0], 0);
+        let (r_1, carry) = mac(0, self.0[0], rhs.0[1], carry);
+        let (r_2, carry) = mac(0, self.0[0], rhs.0[2], carry);
+        let (r_3, r_4) = mac(0, self.0[0], rhs.0[3], carry);
+        let (r_1, carry) = mac(r_1, self.0[1], rhs.0[0], 0);
+        let (r_2, carry) = mac(r_2, self.0[1], rhs.0[1], carry);
+        let (r_3, carry) = mac(r_3, self.0[1], rhs.0[2], carry);
+        let (r_4, r_5) = mac(r_4, self.0[1], rhs.0[3], carry);
+        let (r_2, carry) = mac(r_2, self.0[2], rhs.0[0], 0);
+        let (r_3, carry) = mac(r_3, self.0[2], rhs.0[1], carry);
+        let (r_4, carry) = mac(r_4, self.0[2], rhs.0[2], carry);
+        let (r_5, r_6) = mac(r_5, self.0[2], rhs.0[3], carry);
+        let (r_3, carry) = mac(r_3, self.0[3], rhs.0[0], 0);
+        let (r_4, carry) = mac(r_4, self.0[3], rhs.0[1], carry);
+        let (r_5, carry) = mac(r_5, self.0[3], rhs.0[2], carry);
+        let (r_6, r_7) = mac(r_6, self.0[3], rhs.0[3], carry);
         Fp::montgomery_reduce_const(&[r_0, r_1, r_2, r_3, r_4, r_5, r_6, r_7])
     }
     #[inline(always)]
-    pub(crate) const fn montgomery_reduce_const(r: &[u64; 8usize]) -> Self {
-        use crate::arithmetic::{adc, mac, sbb};
-        let k = r[0].wrapping_mul(0x86bca1af286bca1bu64);
-        let (_, carry) = mac(r[0usize], k, Self::MODULUS_LIMBS[0usize], 0);
-        let (r_1, carry) = mac(r[1usize], k, Self::MODULUS_LIMBS[1usize], carry);
-        let (r_2, carry) = mac(r[2usize], k, Self::MODULUS_LIMBS[2usize], carry);
-        let (r_3, carry) = mac(r[3usize], k, Self::MODULUS_LIMBS[3usize], carry);
-        let (r_4, carry2) = adc(r[4usize], 0, carry);
-        let k = r_1.wrapping_mul(0x86bca1af286bca1bu64);
-        let (_, carry) = mac(r_1, k, Self::MODULUS_LIMBS[0usize], 0);
-        let (r_2, carry) = mac(r_2, k, Self::MODULUS_LIMBS[1usize], carry);
-        let (r_3, carry) = mac(r_3, k, Self::MODULUS_LIMBS[2usize], carry);
-        let (r_4, carry) = mac(r_4, k, Self::MODULUS_LIMBS[3usize], carry);
-        let (r_5, carry2) = adc(r[5usize], carry2, carry);
-        let k = r_2.wrapping_mul(0x86bca1af286bca1bu64);
-        let (_, carry) = mac(r_2, k, Self::MODULUS_LIMBS[0usize], 0);
-        let (r_3, carry) = mac(r_3, k, Self::MODULUS_LIMBS[1usize], carry);
-        let (r_4, carry) = mac(r_4, k, Self::MODULUS_LIMBS[2usize], carry);
-        let (r_5, carry) = mac(r_5, k, Self::MODULUS_LIMBS[3usize], carry);
-        let (r_6, carry2) = adc(r[6usize], carry2, carry);
-        let k = r_3.wrapping_mul(0x86bca1af286bca1bu64);
-        let (_, carry) = mac(r_3, k, Self::MODULUS_LIMBS[0usize], 0);
-        let (r_4, carry) = mac(r_4, k, Self::MODULUS_LIMBS[1usize], carry);
-        let (r_5, carry) = mac(r_5, k, Self::MODULUS_LIMBS[2usize], carry);
-        let (r_6, carry) = mac(r_6, k, Self::MODULUS_LIMBS[3usize], carry);
-        let (r_7, carry2) = adc(r[7usize], carry2, carry);
-        let (d_0, borrow) = sbb(r_4, Self::MODULUS_LIMBS[0usize], 0);
-        let (d_1, borrow) = sbb(r_5, Self::MODULUS_LIMBS[1usize], borrow);
-        let (d_2, borrow) = sbb(r_6, Self::MODULUS_LIMBS[2usize], borrow);
-        let (d_3, borrow) = sbb(r_7, Self::MODULUS_LIMBS[3usize], borrow);
-        let (_, borrow) = sbb(carry2, 0, borrow);
-        let (d_0, carry) = adc(d_0, Self::MODULUS_LIMBS[0usize] & borrow, 0);
-        let (d_1, carry) = adc(d_1, Self::MODULUS_LIMBS[1usize] & borrow, carry);
-        let (d_2, carry) = adc(d_2, Self::MODULUS_LIMBS[2usize] & borrow, carry);
-        let (d_3, _) = adc(d_3, Self::MODULUS_LIMBS[3usize] & borrow, carry);
-        Fp([d_0, d_1, d_2, d_3])
+    pub(crate) const fn montgomery_reduce_const(r: &ExtendedLimbs) -> Self {
+        // Delegate to the primary implementation
+        Self::montgomery_reduce(r)
     }
 }
-pub struct Fp(#[doc(hidden)] pub [u64; 4usize]);
+pub struct Fp(#[doc(hidden)] pub Limbs);
 #[automatically_derived]
 impl ::core::clone::Clone for Fp {
     #[inline]
@@ -336,28 +326,23 @@ impl crate::serde::endian::EndianRepr for Fp {
     }
 }
 impl Fp {
-    pub const SIZE: usize = 4usize * 8;
-    pub const NUM_LIMBS: usize = 4usize;
+    pub const SIZE: usize = 4 * 8;
+    pub const NUM_LIMBS: usize = 4;
     pub(crate) const MODULUS_LIMBS: [u64; Self::NUM_LIMBS] = [
-        0xffffffffffffffedu64,
-        0xffffffffffffffffu64,
-        0xffffffffffffffffu64,
-        0x7fffffffffffffffu64,
+        0xffffffffffffffed,
+        0xffffffffffffffff,
+        0xffffffffffffffff,
+        0x7fffffffffffffff,
     ];
     #[allow(dead_code)]
     pub(crate) const MODULUS_LIMBS_32: [u32; Self::NUM_LIMBS * 2] = [
-        0xffffffedu32,
-        0xffffffffu32,
-        0xffffffffu32,
-        0xffffffffu32,
-        0xffffffffu32,
-        0xffffffffu32,
-        0xffffffffu32,
-        0x7fffffffu32,
+        0xffffffed, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff,
+        0x7fffffff,
     ];
-    const R: Self = Self([38u64, 0u64, 0u64, 0u64]);
-    const R2: Self = Self([0x5a4u64, 0u64, 0u64, 0u64]);
-    const R3: Self = Self([0xd658u64, 0u64, 0u64, 0u64]);
+    const R: Self = Self([0x26, 0, 0, 0]);
+    const R2: Self = Self([0x5a4, 0, 0, 0]);
+    const R3: Self = Self([0xd658, 0, 0, 0]);
+
     /// Returns zero, the additive identity.
     #[inline(always)]
     pub const fn zero() -> Fp {
@@ -395,13 +380,13 @@ impl Fp {
     }
     #[inline(always)]
     fn jacobi(&self) -> i64 {
-        crate::ff_ext::jacobi::jacobi::<5usize>(
+        crate::ff_ext::jacobi::jacobi::<5>(
             &self.0,
             &[
-                0xffffffffffffffedu64,
-                0xffffffffffffffffu64,
-                0xffffffffffffffffu64,
-                0x7fffffffffffffffu64,
+                0xffffffffffffffed,
+                0xffffffffffffffff,
+                0xffffffffffffffff,
+                0x7fffffffffffffff,
             ],
         )
     }
@@ -415,11 +400,11 @@ impl Fp {
     /// Returns whether or not this element is strictly lexicographically
     /// larger than its negation.
     pub fn lexicographically_largest(&self) -> Choice {
-        const HALF_MODULUS: [u64; 4usize] = [
-            0xfffffffffffffff6u64,
-            0xffffffffffffffffu64,
-            0xffffffffffffffffu64,
-            0x3fffffffffffffffu64,
+        const HALF_MODULUS: [u64; 4] = [
+            0xfffffffffffffff6,
+            0xffffffffffffffff,
+            0xffffffffffffffff,
+            0x3fffffffffffffff,
         ];
         let tmp = self.from_mont();
         let borrow = tmp
@@ -447,15 +432,15 @@ impl ff::Field for Fp {
     }
     #[inline(always)]
     fn invert(&self) -> CtOption<Self> {
-        const BYINVERTOR: crate::ff_ext::inverse::BYInverter<6usize> =
-            crate::ff_ext::inverse::BYInverter::<6usize>::new(
+        const BYINVERTOR: crate::ff_ext::inverse::BYInverter<6> =
+            crate::ff_ext::inverse::BYInverter::<6>::new(
                 &[
-                    0xffffffffffffffedu64,
-                    0xffffffffffffffffu64,
-                    0xffffffffffffffffu64,
-                    0x7fffffffffffffffu64,
+                    0xffffffffffffffed,
+                    0xffffffffffffffff,
+                    0xffffffffffffffff,
+                    0x7fffffffffffffff,
                 ],
-                &[0x5a4u64, 0u64, 0u64, 0u64],
+                &[0x5a4, 0, 0, 0],
             );
         if let Some(inverse) = BYINVERTOR.invert::<{ Self::NUM_LIMBS }>(&self.0) {
             subtle::CtOption::new(Self(inverse), subtle::Choice::from(1))
@@ -483,24 +468,24 @@ impl<'a> From<&'a Fp> for crate::serde::Repr<{ Fp::SIZE }> {
     }
 }
 impl ff::PrimeField for Fp {
-    const NUM_BITS: u32 = 255u32;
-    const CAPACITY: u32 = 255u32 - 1;
-    const TWO_INV: Self = Self([19u64, 0u64, 0u64, 0u64]);
-    const MULTIPLICATIVE_GENERATOR: Self = Self([76u64, 0u64, 0u64, 0u64]);
+    const NUM_BITS: u32 = 255;
+    const CAPACITY: u32 = 255 - 1;
+    const TWO_INV: Self = Self([0x13, 0, 0, 0]);
+    const MULTIPLICATIVE_GENERATOR: Self = Self([0x4c, 0, 0, 0]);
     const S: u32 = 2u32;
     const ROOT_OF_UNITY: Self = Self([
-        0x3b5807d4fe2bdb04u64,
-        0x3f590fdb51be9edu64,
-        0x6d6e16bf336202d1u64,
-        0x75776b0bd6c71ba8u64,
+        0x3b5807d4fe2bdb04,
+        0x3f590fdb51be9ed,
+        0x6d6e16bf336202d1,
+        0x75776b0bd6c71ba8,
     ]);
     const ROOT_OF_UNITY_INV: Self = Self([
-        0xc4a7f82b01d424e9u64,
-        0xfc0a6f024ae41612u64,
-        0x9291e940cc9dfd2eu64,
-        0xa8894f42938e457u64,
+        0xc4a7f82b01d424e9,
+        0xfc0a6f024ae41612,
+        0x9291e940cc9dfd2e,
+        0xa8894f42938e457,
     ]);
-    const DELTA: Self = Self([608u64, 0u64, 0u64, 0u64]);
+    const DELTA: Self = Self([0x260, 0, 0, 0]);
     const MODULUS: &'static str =
         "0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed";
     type Repr = crate::serde::Repr<{ Fp::SIZE }>;
@@ -527,7 +512,7 @@ impl ff::PrimeField for Fp {
     }
     fn to_repr(&self) -> Self::Repr {
         let el = self.from_mont();
-        let mut res = [0; 32usize];
+        let mut res = [0; 32];
         crate::serde::endian::Endian::LE.to_bytes(&mut res, &el);
         res.into()
     }
@@ -537,28 +522,28 @@ impl ff::PrimeField for Fp {
 }
 impl crate::serde::SerdeObject for Fp {
     fn from_raw_bytes_unchecked(bytes: &[u8]) -> Self {
-        assert_eq!(bytes.len(), 32usize);
-        let inner = (0..4usize)
+        assert_eq!(bytes.len(), 32);
+        let inner = (0..4)
             .map(|off| u64::from_le_bytes(bytes[off * 8..(off + 1) * 8].try_into().unwrap()))
             .collect::<Vec<_>>();
         Self(inner.try_into().unwrap())
     }
     fn from_raw_bytes(bytes: &[u8]) -> Option<Self> {
-        if bytes.len() != 32usize {
+        if bytes.len() != 32 {
             return None;
         }
         let elt = Self::from_raw_bytes_unchecked(bytes);
         Self::is_less_than_modulus(&elt.0).then(|| elt)
     }
     fn to_raw_bytes(&self) -> Vec<u8> {
-        let mut res = Vec::with_capacity(4usize * 4);
+        let mut res = Vec::with_capacity(4 * 4);
         for limb in self.0.iter() {
             res.extend_from_slice(&limb.to_le_bytes());
         }
         res
     }
     fn read_raw_unchecked<R: std::io::Read>(reader: &mut R) -> Self {
-        let inner = [(); 4usize].map(|_| {
+        let inner = [(); 4].map(|_| {
             let mut buf = [0; 8];
             reader.read_exact(&mut buf).unwrap();
             u64::from_le_bytes(buf)
@@ -566,7 +551,7 @@ impl crate::serde::SerdeObject for Fp {
         Self(inner)
     }
     fn read_raw<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let mut inner = [0u64; 4usize];
+        let mut inner = [0u64; 4];
         for limb in inner.iter_mut() {
             let mut buf = [0; 8];
             reader.read_exact(&mut buf)?;
@@ -587,10 +572,10 @@ impl crate::serde::SerdeObject for Fp {
         Ok(())
     }
 }
-impl ff::FromUniformBytes<48usize> for Fp {
-    fn from_uniform_bytes(bytes: &[u8; 48usize]) -> Self {
+impl ff::FromUniformBytes<48> for Fp {
+    fn from_uniform_bytes(bytes: &[u8; 48]) -> Self {
         let mut wide = [0u8; Self::SIZE * 2];
-        wide[..48usize].copy_from_slice(bytes);
+        wide[..48].copy_from_slice(bytes);
         let (a0, a1) = wide.split_at(Self::SIZE);
         let a0: [u64; Self::NUM_LIMBS] = (0..Self::NUM_LIMBS)
             .map(|off| u64::from_le_bytes(a0[off * 8..(off + 1) * 8].try_into().unwrap()))
@@ -607,10 +592,10 @@ impl ff::FromUniformBytes<48usize> for Fp {
         a0.mul_const(&Self::R2) + a1.mul_const(&Self::R3)
     }
 }
-impl ff::FromUniformBytes<64usize> for Fp {
-    fn from_uniform_bytes(bytes: &[u8; 64usize]) -> Self {
+impl ff::FromUniformBytes<64> for Fp {
+    fn from_uniform_bytes(bytes: &[u8; 64]) -> Self {
         let mut wide = [0u8; Self::SIZE * 2];
-        wide[..64usize].copy_from_slice(bytes);
+        wide[..64].copy_from_slice(bytes);
         let (a0, a1) = wide.split_at(Self::SIZE);
         let a0: [u64; Self::NUM_LIMBS] = (0..Self::NUM_LIMBS)
             .map(|off| u64::from_le_bytes(a0[off * 8..(off + 1) * 8].try_into().unwrap()))
@@ -629,10 +614,10 @@ impl ff::FromUniformBytes<64usize> for Fp {
 }
 impl ff::WithSmallOrderMulGroup<3> for Fp {
     const ZETA: Self = Self([
-        0x50042761e7b20780u64,
-        0xdff5c6f9aea649f9u64,
-        0x4a1118654ba1a419u64,
-        0x5443a41d4b0d18feu64,
+        0x50042761e7b20780,
+        0xdff5c6f9aea649f9,
+        0x4a1118654ba1a419,
+        0x5443a41d4b0d18fe,
     ]);
 }
 
