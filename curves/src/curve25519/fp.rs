@@ -40,7 +40,7 @@ impl Fp {
     }
     #[inline(always)]
     pub const fn neg(&self) -> Self {
-        use crate::arithmetic::{adc, sbb};
+        use crate::arithmetic::sbb;
         let (d_0, borrow) = sbb(Self::MODULUS_LIMBS[0usize], self.0[0usize], 0);
         let (d_1, borrow) = sbb(Self::MODULUS_LIMBS[1usize], self.0[1usize], borrow);
         let (d_2, borrow) = sbb(Self::MODULUS_LIMBS[2usize], self.0[2usize], borrow);
@@ -52,7 +52,7 @@ impl Fp {
     }
     #[inline(always)]
     pub const fn mul(&self, rhs: &Self) -> Self {
-        use crate::arithmetic::{adc, mac, sbb};
+        use crate::arithmetic::mac;
         let (r_0, carry) = mac(0, self.0[0usize], rhs.0[0usize], 0);
         let (r_1, carry) = mac(0, self.0[0usize], rhs.0[1usize], carry);
         let (r_2, carry) = mac(0, self.0[0usize], rhs.0[2usize], carry);
@@ -73,7 +73,7 @@ impl Fp {
     }
     #[inline(always)]
     pub const fn square(&self) -> Self {
-        use crate::arithmetic::{adc, mac, sbb};
+        use crate::arithmetic::{adc, mac};
         let (r_1, carry) = mac(0, self.0[0usize], self.0[1usize], 0);
         let (r_2, carry) = mac(0, self.0[0usize], self.0[2usize], carry);
         let (r_3, r_4) = mac(0, self.0[0usize], self.0[3usize], carry);
@@ -86,7 +86,7 @@ impl Fp {
         let r_4 = (r_4 << 1) | (r_3 >> 63);
         let r_3 = (r_3 << 1) | (r_2 >> 63);
         let r_2 = (r_2 << 1) | (r_1 >> 63);
-        let r_1 = (r_1 << 1);
+        let r_1 = r_1 << 1;
         let (r_0, carry) = mac(0, self.0[0usize], self.0[0usize], 0);
         let (r_1, carry) = adc(0, r_1, carry);
         let (r_2, carry) = mac(r_2, self.0[1usize], self.0[1usize], carry);
@@ -137,7 +137,7 @@ impl Fp {
     }
     #[inline(always)]
     pub(crate) const fn from_mont(&self) -> [u64; 4usize] {
-        use crate::arithmetic::{adc, mac, sbb};
+        use crate::arithmetic::mac;
         let k = self.0[0].wrapping_mul(0x86bca1af286bca1bu64);
         let (_, r_0) = mac(self.0[0usize], k, Self::MODULUS_LIMBS[0usize], 0);
         let (r_1, r_0) = mac(self.0[1usize], k, Self::MODULUS_LIMBS[1usize], r_0);
@@ -163,6 +163,7 @@ impl Fp {
 }
 impl Fp {
     #[inline(always)]
+    #[allow(dead_code)]
     pub(crate) const fn sub_const(&self, rhs: &Self) -> Self {
         use crate::arithmetic::{adc, sbb};
         let (d_0, borrow) = sbb(self.0[0usize], rhs.0[0usize], 0);
@@ -177,7 +178,7 @@ impl Fp {
     }
     #[inline(always)]
     pub(crate) const fn mul_const(&self, rhs: &Self) -> Self {
-        use crate::arithmetic::{adc, mac, sbb};
+        use crate::arithmetic::mac;
         let (r_0, carry) = mac(0, self.0[0usize], rhs.0[0usize], 0);
         let (r_1, carry) = mac(0, self.0[0usize], rhs.0[1usize], carry);
         let (r_2, carry) = mac(0, self.0[0usize], rhs.0[2usize], carry);
@@ -343,6 +344,7 @@ impl Fp {
         0xffffffffffffffffu64,
         0x7fffffffffffffffu64,
     ];
+    #[allow(dead_code)]
     pub(crate) const MODULUS_LIMBS_32: [u32; Self::NUM_LIMBS * 2] = [
         0xffffffedu32,
         0xffffffffu32,
@@ -421,8 +423,8 @@ impl Fp {
         ];
         let tmp = self.from_mont();
         let borrow = tmp
-            .into_iter()
-            .zip(HALF_MODULUS.into_iter())
+            .iter()
+            .zip(HALF_MODULUS.iter())
             .fold(0, |borrow, (t, m)| crate::arithmetic::sbb(*t, *m, borrow).1);
         !Choice::from((borrow as u8) & 1)
     }
@@ -436,12 +438,10 @@ impl ff::Field for Fp {
         <Fp as ff::FromUniformBytes<{ Fp::SIZE * 2 }>>::from_uniform_bytes(&wide)
     }
     #[inline(always)]
-    #[must_use]
     fn double(&self) -> Self {
         self.double()
     }
     #[inline(always)]
-    #[must_use]
     fn square(&self) -> Self {
         self.square()
     }
@@ -526,7 +526,6 @@ impl ff::PrimeField for Fp {
         )
     }
     fn to_repr(&self) -> Self::Repr {
-        use crate::serde::endian::Endian;
         let el = self.from_mont();
         let mut res = [0; 32usize];
         crate::serde::endian::Endian::LE.to_bytes(&mut res, &el);
@@ -650,12 +649,12 @@ crate::impl_from_bool!(Fp);
 mod test {
     use super::*;
     crate::field_testing_suite!(Fp, "field_arithmetic");
-    // crate::field_testing_suite!(Fp, "conversion");
-    // crate::field_testing_suite!(Fp, "serdeobject");
-    // crate::field_testing_suite!(Fp, "quadratic_residue");
-    // crate::field_testing_suite!(Fp, "bits");
-    // crate::field_testing_suite!(Fp, "constants");
+    crate::field_testing_suite!(Fp, "conversion");
+    crate::field_testing_suite!(Fp, "serdeobject");
+    crate::field_testing_suite!(Fp, "quadratic_residue");
+    crate::field_testing_suite!(Fp, "bits");
+    crate::field_testing_suite!(Fp, "constants");
     // crate::field_testing_suite!(Fp, "sqrt");
-    // crate::field_testing_suite!(Fp, "zeta");
-    // crate::field_testing_suite!(Fp, "from_uniform_bytes", 48, 64);
+    crate::field_testing_suite!(Fp, "zeta");
+    crate::field_testing_suite!(Fp, "from_uniform_bytes", 48, 64);
 }
