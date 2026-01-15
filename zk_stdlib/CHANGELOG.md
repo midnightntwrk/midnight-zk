@@ -12,6 +12,7 @@ verification keys break backwards compatibility.
 
 ## [Unreleased]
 ### Added
+* Added an example verifying an ethereum signature [#177](https://github.com/midnightntwrk/midnight-zk/pull/177)
 
 ### Changed
 * Change nr of bits to represent JubJub scalar field modulus from 255 -> 252 [#179](https://github.com/midnightntwrk/midnight-zk/pull/179)
