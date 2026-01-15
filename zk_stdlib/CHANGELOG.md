@@ -17,6 +17,7 @@ verification keys break backwards compatibility.
 ### Changed
 * Change nr of bits to represent JubJub scalar field modulus from 255 -> 252 [#179](https://github.com/midnightntwrk/midnight-zk/pull/179)
 * Adapt external hash test to hash instructions interface [#162](https://github.com/midnightntwrk/midnight-zk/pull/162)
+* Update vks after adding the parser for biometric passports [#180](https://github.com/midnightntwrk/midnight-zk/pull/180)
 
 ### Removed
 * Move Blake2b and SHA3-256/Keccak256 implementations to zk-stdlib [#178](https://github.com/midnightntwrk/midnight-zk/pull/178)
