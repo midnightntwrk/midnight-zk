@@ -10,5 +10,5 @@ CircuitModel {
     permutations: 9,
     column_queries: 60,
     point_sets: 5,
-    size: 4368,
+    size: 4272,
 }

@@ -183,14 +183,14 @@ impl CostOptions {
 
         // PLONK:
         // - COMM bytes (commitment) per advice column
-        // - 3 * COMM bytes per lookup
+        // - 3 * COMM bytes per lookup chunk
         // - COMM bytes per ((self.permutation.columns - 1) / (self.max_degree - 2)) + 1
         // - 3 * SCALAR bytes per ((self.permutation.columns - 1) / (self.max_degree -
         //   2)) + 1
         // - SCALAR bytes per advice per query
         // - SCALAR bytes per fixed per query <- missing
         // - SCALAR bytes per permutation column
-        // - 5 * SCALAR bytes per lookup argument
+        // - 4 * SCALAR bytes per lookup chunk
         let nb_perm_chunks =
             (self.permutation.columns.saturating_sub(1) / self.max_degree.saturating_sub(2)) + 1;
         let plonk = comp_bytes(1, 0) * self.advice.len()
@@ -204,7 +204,7 @@ impl CostOptions {
                 .iter()
                 .map(|polys| comp_bytes(0, polys.rotations.len()))
                 .sum::<usize>()
-            + comp_bytes(3, 5) * self.lookup.len()
+            + comp_bytes(3, 4) * self.lookup.len()
             + (comp_bytes(1, 3) * nb_perm_chunks).saturating_sub(comp_bytes(0, 1)) // we don't need the permutation_product_last_eval of the last chunk
             + comp_bytes(0, 1) * self.permutation.columns;
 
@@ -303,7 +303,9 @@ pub(crate) fn cost_model_options<F: Ord + Field + FromUniformBytes<64>, C: Circu
         instance
     };
 
-    let lookup = { cs.lookups().iter().map(|_| Lookup).collect::<Vec<_>>() };
+    let lookup = { cs.lookups().iter().flat_map(|l| {
+        l.split(cs.degree())
+    }).map(|_| Lookup).collect::<Vec<_>>() };
 
     let permutation = Permutation {
         chunk_len: cs.degree() - 2,
@@ -646,7 +648,7 @@ mod tests {
                 let selector = meta.query_selector(table_selector);
                 let not_selector = Expression::from(1) - selector.clone();
                 let advice = meta.query_advice(a, Rotation::cur());
-                vec![(selector * advice + not_selector, sl)]
+                vec![(vec![selector * advice + not_selector], sl)]
             });
 
             meta.create_gate(
