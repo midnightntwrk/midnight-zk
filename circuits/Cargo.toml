@@ -23,6 +23,7 @@ blake2b = { package = "blake2b_halo2", version = "0.1.0" }
 serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 sha2 = { workspace = true }
+ripemd = { workspace = true }
 rand = { workspace = true }
 
 num-bigint = { version = "0.4" }
