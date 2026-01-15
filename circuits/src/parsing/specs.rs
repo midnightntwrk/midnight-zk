@@ -621,13 +621,26 @@ mod tests {
         println!(">> Now configuring the spec library for tests... (using the serialised data)");
         let start = Instant::now();
         let spec_library = spec_library();
-        println!(">> Configuration completed in {:?}", start.elapsed());
+        println!(
+            ">> Configuration completed in {:?}. Automaton breakdown:",
+            start.elapsed()
+        );
+        let mut total = 0;
         for (name, automaton) in &spec_library {
             println!(
-                "  - {:?} automaton: {} states, {} transitions",
+                "  - {:?}: {} states, {} transitions",
                 name,
                 automaton.nb_states,
                 automaton.transitions.len()
+            );
+            total += automaton.transitions.len() + automaton.final_states.len()
+        }
+        println!(
+            ">> Total nb of lookup rows in the chip: {} ≤ 2^{}",
+            total,
+            total.next_power_of_two().trailing_zeros()
+        );
+
         // Tests the `Jwt` spec correctness.
         const FULL_INPUT_JWT: &str = include_str!("specs_examples/jwt/full.txt");
         const MINIMAL_JWT: &str = include_str!("specs_examples/jwt/minimal.txt");
