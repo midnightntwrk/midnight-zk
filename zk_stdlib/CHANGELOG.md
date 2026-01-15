@@ -15,6 +15,7 @@ verification keys break backwards compatibility.
 
 ### Changed
 * Change nr of bits to represent JubJub scalar field modulus from 255 -> 252 [#179](https://github.com/midnightntwrk/midnight-zk/pull/179)
+* Update vks after adding the parser for biometric passports [#180](https://github.com/midnightntwrk/midnight-zk/pull/180)
 
 ### Removed
 
