@@ -1,9 +1,9 @@
 //! Curve25519 circuit integration.
 //!
-//! This module provides a lightweight wrapper around curve25519_dalek's EdwardsPoint
+//! This module provides a wrapper around curve25519_dalek's EdwardsPoint
 //! to implement the traits required for circuit usage.
-// Currently, this is necessary because group::Curve is a requirement for CircuitCurve
-// and this trait cannot be implemented for the foreign EdwardsPoint.
+//! Currently, this is necessary because group::Curve is a requirement for CircuitCurve
+//! and this trait cannot be implemented for the foreign EdwardsPoint.
 
 use super::Scalar;
 use core::iter::Sum;

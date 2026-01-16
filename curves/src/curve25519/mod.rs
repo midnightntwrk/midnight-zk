@@ -14,5 +14,3 @@ pub use fp::Fp;
 
 pub use curve25519_dalek::edwards::CompressedEdwardsY;
 pub use curve25519_dalek::Scalar;
-
-use curve25519_dalek::edwards::*;

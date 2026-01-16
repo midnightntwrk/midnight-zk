@@ -11,6 +11,12 @@
 //! For a field element `a`, we store `aR mod p` where R = 2^256.
 //! This allows efficient modular multiplication using Montgomery reduction.
 //!
+//! This implementation is necessary until the base field is exposed in
+//! the curve25519_dalek:
+//! [PR](https://github.com/dalek-cryptography/curve25519-dalek/pull/816)
+//! The internal curve operations use their own base field represenation.
+//! This is only used to represent the point values for the circuits.
+//!
 //! # References
 //!
 //! - [Curve25519 Paper](https://cr.yp.to/ecdh/curve25519-20060209.pdf)
@@ -26,6 +32,10 @@ type Limbs = [u64; 4];
 /// Extended limbs used during multiplication (512 bits)
 type ExtendedLimbs = [u64; 8];
 
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+pub struct Fp(#[doc(hidden)] pub Limbs);
+
+// R^(-1) mod p.
 const R_INV: u64 = 0x86bca1af286bca1bu64;
 impl Fp {
     #[inline(always)]
@@ -120,6 +130,7 @@ impl Fp {
         let (r_7, _) = adc(0, r_7, carry);
         Fp::montgomery_reduce(&[r_0, r_1, r_2, r_3, r_4, r_5, r_6, r_7])
     }
+
     #[inline(always)]
     pub(crate) const fn montgomery_reduce(r: &ExtendedLimbs) -> Self {
         use crate::arithmetic::{adc, mac, sbb};
@@ -218,47 +229,10 @@ impl Fp {
         let (r_4, carry) = mac(r_4, self.0[3], rhs.0[1], carry);
         let (r_5, carry) = mac(r_5, self.0[3], rhs.0[2], carry);
         let (r_6, r_7) = mac(r_6, self.0[3], rhs.0[3], carry);
-        Fp::montgomery_reduce_const(&[r_0, r_1, r_2, r_3, r_4, r_5, r_6, r_7])
-    }
-    #[inline(always)]
-    pub(crate) const fn montgomery_reduce_const(r: &ExtendedLimbs) -> Self {
-        // Delegate to the primary implementation
-        Self::montgomery_reduce(r)
+        Fp::montgomery_reduce(&[r_0, r_1, r_2, r_3, r_4, r_5, r_6, r_7])
     }
 }
-pub struct Fp(#[doc(hidden)] pub Limbs);
-#[automatically_derived]
-impl ::core::clone::Clone for Fp {
-    #[inline]
-    fn clone(&self) -> Fp {
-        *self
-    }
-}
-#[automatically_derived]
-impl ::core::marker::Copy for Fp {}
-#[automatically_derived]
-impl ::core::cmp::PartialEq for Fp {
-    #[inline]
-    fn eq(&self, other: &Fp) -> bool {
-        self.0 == other.0
-    }
-}
-#[automatically_derived]
-impl ::core::cmp::Eq for Fp {}
-#[automatically_derived]
-impl ::core::hash::Hash for Fp {
-    #[inline]
-    fn hash<__H: ::core::hash::Hasher>(&self, state: &mut __H) -> () {
-        ::core::hash::Hash::hash(&self.0, state)
-    }
-}
-#[automatically_derived]
-impl ::core::default::Default for Fp {
-    #[inline]
-    fn default() -> Fp {
-        Fp(::core::default::Default::default())
-    }
-}
+
 impl core::fmt::Debug for Fp {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         use ff::PrimeField;
