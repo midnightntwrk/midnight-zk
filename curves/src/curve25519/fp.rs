@@ -359,7 +359,7 @@ impl Fp {
         let el = self.from_mont();
         let mut res = [0; Self::SIZE];
         Fp::ENDIAN.to_bytes(&mut res, &el);
-        res.into()
+        res
     }
     #[inline(always)]
     fn jacobi(&self) -> i64 {
@@ -443,7 +443,7 @@ impl ff::Field for Fp {
             0xffffffffffffffff,
             0x0fffffffffffffff,
         ];
-        let a1 = self.pow_vartime(&EXP);
+        let a1 = self.pow_vartime(EXP);
         let a0 = (a1.square() * self).square();
 
         let valid = a0.ct_eq(&-Self::ONE);
@@ -536,7 +536,7 @@ impl crate::serde::SerdeObject for Fp {
             return None;
         }
         let elt = Self::from_raw_bytes_unchecked(bytes);
-        Self::is_less_than_modulus(&elt.0).then(|| elt)
+        Self::is_less_than_modulus(&elt.0).then_some(elt)
     }
     fn to_raw_bytes(&self) -> Vec<u8> {
         let mut res = Vec::with_capacity(4 * 4);
@@ -561,7 +561,7 @@ impl crate::serde::SerdeObject for Fp {
             *limb = u64::from_le_bytes(buf);
         }
         let elt = Self(inner);
-        Self::is_less_than_modulus(&elt.0).then(|| elt).ok_or_else(|| {
+        Self::is_less_than_modulus(&elt.0).then_some(elt).ok_or_else(|| {
             std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 "input number is not less than field modulus",

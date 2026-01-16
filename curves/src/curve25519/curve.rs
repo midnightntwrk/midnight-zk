@@ -18,7 +18,7 @@ use subtle::{Choice, ConditionallySelectable, ConstantTimeEq};
 use super::Scalar;
 
 /// EdwardsPoint wrapper for circuit integration.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct Curve25519(pub EdwardsPoint);
 
 impl PartialEq for Curve25519 {
@@ -41,12 +41,6 @@ impl ConditionallySelectable for Curve25519 {
     }
 }
 
-impl Default for Curve25519 {
-    fn default() -> Self {
-        Curve25519(EdwardsPoint::default())
-    }
-}
-
 // Arithmetic operations
 impl Add for Curve25519 {
     type Output = Self;
@@ -62,14 +56,14 @@ impl<'a> Add<&'a Curve25519> for Curve25519 {
     }
 }
 
-impl<'a> Add<Curve25519> for &'a Curve25519 {
+impl Add<Curve25519> for &Curve25519 {
     type Output = Curve25519;
     fn add(self, rhs: Curve25519) -> Curve25519 {
         Curve25519(self.0 + rhs.0)
     }
 }
 
-impl<'a, 'b> Add<&'a Curve25519> for &'b Curve25519 {
+impl<'a> Add<&'a Curve25519> for &Curve25519 {
     type Output = Curve25519;
     fn add(self, rhs: &'a Curve25519) -> Curve25519 {
         Curve25519(self.0 + rhs.0)
@@ -97,7 +91,7 @@ impl Neg for Curve25519 {
     }
 }
 
-impl<'a> Neg for &'a Curve25519 {
+impl Neg for &Curve25519 {
     type Output = Curve25519;
     fn neg(self) -> Curve25519 {
         Curve25519(-self.0)
