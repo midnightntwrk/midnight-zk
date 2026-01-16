@@ -162,7 +162,8 @@ impl CircuitCurve for Curve25519 {
         use ff::Field;
 
         // d = -(121665/121666) for Curve25519
-        // In reduced form: d = 37095705934669439343138083508754565189542113879843219016388785533085940283555
+        // In reduced form: d =
+        // 37095705934669439343138083508754565189542113879843219016388785533085940283555
         let d = Curve25519Base::from_raw([
             0x52036cee2b6ffe73,
             0x8cc740797779e898,
@@ -312,8 +313,9 @@ impl WeierstrassCurve for bn256::G1 {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use ff::Field;
+
+    use super::*;
 
     #[test]
     fn test_curve25519_circuit_curve() {
@@ -338,9 +340,8 @@ mod tests {
         assert_eq!(iy, Curve25519Base::ONE);
 
         // Test from_xy with identity coordinates
-        let identity_reconstructed =
-            Curve25519::from_xy(Curve25519Base::ZERO, Curve25519Base::ONE)
-                .expect("Failed to reconstruct identity");
+        let identity_reconstructed = Curve25519::from_xy(Curve25519Base::ZERO, Curve25519Base::ONE)
+            .expect("Failed to reconstruct identity");
         assert_eq!(identity, identity_reconstructed);
     }
 

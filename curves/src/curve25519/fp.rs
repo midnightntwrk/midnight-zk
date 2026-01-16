@@ -22,8 +22,8 @@
 //! - [Curve25519 Paper](https://cr.yp.to/ecdh/curve25519-20060209.pdf)
 
 use core::convert::TryInto;
-use rand_core::RngCore;
 
+use rand_core::RngCore;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 
 /// A field element represented as 4 limbs (256 bits)

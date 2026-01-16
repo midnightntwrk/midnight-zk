@@ -9,8 +9,7 @@ mod fp;
 
 // pub use curve::{Curve25519, Curve25519Affine};
 pub use curve::Curve25519;
-pub use fp::Fp;
 // pub use fq::{Fq, Scalar};
-
 pub use curve25519_dalek::edwards::CompressedEdwardsY;
 pub use curve25519_dalek::Scalar;
+pub use fp::Fp;

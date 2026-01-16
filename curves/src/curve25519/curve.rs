@@ -2,15 +2,20 @@
 //!
 //! This module provides a wrapper around curve25519_dalek's EdwardsPoint
 //! to implement the traits required for circuit usage.
-//! Currently, this is necessary because group::Curve is a requirement for CircuitCurve
-//! and this trait cannot be implemented for the foreign EdwardsPoint.
+//! Currently, this is necessary because group::Curve is a requirement for
+//! CircuitCurve and this trait cannot be implemented for the foreign
+//! EdwardsPoint.
 
-use super::Scalar;
-use core::iter::Sum;
-use core::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
+use core::{
+    iter::Sum,
+    ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign},
+};
+
 use curve25519_dalek::{edwards::CompressedEdwardsY, EdwardsPoint};
 use group::{Curve as GroupCurve, Group, GroupEncoding};
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq};
+
+use super::Scalar;
 
 /// EdwardsPoint wrapper for circuit integration.
 #[derive(Copy, Clone, Debug)]
@@ -337,8 +342,9 @@ impl GroupEncoding for Curve25519Affine {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use group::Group;
+
+    use super::*;
 
     #[test]
     fn test_identity() {
