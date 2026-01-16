@@ -18,6 +18,7 @@ use group::{Curve, Group};
 #[cfg(feature = "dev-curves")]
 use midnight_curves::bn256;
 use midnight_curves::{
+    curve25519::Curve25519,
     secp256k1::{Secp256k1, Secp256k1Affine},
     CurveAffine, Fq as BlsScalar, JubjubAffine, JubjubExtended, JubjubSubgroup,
 };
@@ -134,6 +135,91 @@ impl EdwardsCurve for JubjubExtended {
     ]);
 }
 
+// Implementation for Curve25519.
+use midnight_curves::curve25519::Fp as Curve25519Base;
+
+impl CircuitCurve for Curve25519 {
+    type Base = Curve25519Base;
+    type CryptographicGroup = Curve25519;
+    const COFACTOR: u128 = 8;
+    const NUM_BITS_SUBGROUP: u32 = 252;
+
+    fn coordinates(&self) -> Option<(Self::Base, Self::Base)> {
+        // Extract coordinates through compressed representation
+        // CompressedEdwardsY format: bytes 0-31 contain y coordinate,
+        // with bit 255 (high bit of byte 31) as x sign bit
+        let compressed = self.0.compress();
+        let bytes = compressed.to_bytes();
+
+        // Extract y coordinate (clearing the sign bit)
+        let mut y_bytes = bytes;
+        y_bytes[31] &= 0x7f; // Clear high bit
+        let y = Curve25519Base::from_bytes(&y_bytes).into_option()?;
+
+        // Solve curve equation for x: -x^2 + y^2 = 1 + d*x^2*y^2
+        // Rearranging: x^2 * (d*y^2 + 1) = y^2 - 1
+        //              x^2 = (y^2 - 1) / (d*y^2 + 1)
+        use ff::Field;
+
+        // d = -(121665/121666) for Curve25519
+        // In reduced form: d = 37095705934669439343138083508754565189542113879843219016388785533085940283555
+        let d = Curve25519Base::from_raw([
+            0x52036cee2b6ffe73,
+            0x8cc740797779e898,
+            0x0000000000000000,
+            0x0000000000000000,
+        ]);
+
+        let y_squared = y.square();
+        let numerator = y_squared - Curve25519Base::ONE;
+        let denominator = d * y_squared + Curve25519Base::ONE;
+
+        let x_squared = numerator * denominator.invert().into_option()?;
+        let mut x = x_squared.sqrt().into_option()?;
+
+        // Use sign bit to determine which root
+        let x_sign = (bytes[31] >> 7) & 1;
+        if (x.to_bytes()[0] & 1) != x_sign {
+            x = -x;
+        }
+
+        Some((x, y))
+    }
+
+    fn from_xy(x: Self::Base, y: Self::Base) -> Option<Self> {
+        // Similar to JubjubExtended - encode as compressed bytes
+        let mut bytes = y.to_bytes();
+        let x_sign = x.to_bytes()[0] & 1;
+        bytes[31] |= x_sign << 7;
+
+        use group::GroupEncoding;
+        Curve25519::from_bytes(&bytes).into_option()
+    }
+
+    fn into_subgroup(self) -> Self::CryptographicGroup {
+        // Multiply by cofactor to get into prime-order subgroup
+        Curve25519(self.0.mul_by_cofactor())
+    }
+}
+
+impl EdwardsCurve for Curve25519 {
+    // A = -1 for Curve25519
+    const A: Self::Base = Curve25519Base::from_raw([
+        0xffffffffffffffec,
+        0xffffffffffffffff,
+        0xffffffffffffffff,
+        0x7fffffffffffffff,
+    ]);
+
+    // D = -(121665/121666) for Curve25519
+    const D: Self::Base = Curve25519Base::from_raw([
+        0x52036cee2b6ffe73,
+        0x8cc740797779e898,
+        0x0000000000000000,
+        0x0000000000000000,
+    ]);
+}
+
 // Implementation for Secp256k1.
 use midnight_curves::secp256k1::{Fp, Fq};
 impl CircuitCurve for Secp256k1 {
@@ -222,4 +308,69 @@ impl WeierstrassCurve for bn256::G1 {
 
     const BASE_ZETA: Self::Base = <bn256::Fq as ff::WithSmallOrderMulGroup<3>>::ZETA;
     const SCALAR_ZETA: Self::Scalar = <bn256::Fr as ff::WithSmallOrderMulGroup<3>>::ZETA;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ff::Field;
+
+    #[test]
+    fn test_curve25519_circuit_curve() {
+        // Test generator point coordinates extraction
+        let gen = Curve25519::generator();
+        let (x, y) = gen.coordinates().expect("Failed to extract coordinates");
+
+        // Test from_xy reconstruction
+        let reconstructed = Curve25519::from_xy(x, y).expect("Failed to reconstruct point");
+
+        // Verify coordinates match
+        let (x2, y2) = reconstructed.coordinates().expect("Failed to extract coordinates again");
+        assert_eq!(x, x2);
+        assert_eq!(y, y2);
+
+        // Test identity point
+        let identity = Curve25519::identity();
+        let (ix, iy) = identity.coordinates().expect("Failed to extract identity coordinates");
+
+        // For Edwards curves, identity is (0, 1)
+        assert_eq!(ix, Curve25519Base::ZERO);
+        assert_eq!(iy, Curve25519Base::ONE);
+
+        // Test from_xy with identity coordinates
+        let identity_reconstructed =
+            Curve25519::from_xy(Curve25519Base::ZERO, Curve25519Base::ONE)
+                .expect("Failed to reconstruct identity");
+        assert_eq!(identity, identity_reconstructed);
+    }
+
+    #[test]
+    fn test_curve25519_edwards_constants() {
+        // Verify Edwards curve constants are set correctly
+        // A = -1 for Curve25519
+        assert_eq!(<Curve25519 as EdwardsCurve>::A, -Curve25519Base::ONE);
+
+        // D = -(121665/121666) for Curve25519
+        // Just verify it's non-zero
+        assert!(<Curve25519 as EdwardsCurve>::D != Curve25519Base::ZERO);
+    }
+
+    #[test]
+    fn test_curve25519_cofactor() {
+        // Test into_subgroup multiplies by cofactor
+        let gen = Curve25519::generator();
+        let subgroup_point = gen.into_subgroup();
+
+        // The subgroup point should be 8 times the generator
+        let eight = Curve25519::generator()
+            + Curve25519::generator()
+            + Curve25519::generator()
+            + Curve25519::generator()
+            + Curve25519::generator()
+            + Curve25519::generator()
+            + Curve25519::generator()
+            + Curve25519::generator();
+
+        assert_eq!(subgroup_point, eight);
+    }
 }
