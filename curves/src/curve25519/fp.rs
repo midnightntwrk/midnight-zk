@@ -343,6 +343,15 @@ impl Fp {
     const R2: Self = Self([0x5a4, 0, 0, 0]);
     const R3: Self = Self([0xd658, 0, 0, 0]);
 
+    /// Precomputed value: 2^((p-5)/8) mod p
+    /// Used in sqrt() algorithm for p ≡ 5 (mod 8)
+    const T_SQRT: Self = Self([
+        0x4a0ea0b0c4c4e80a,
+        0xad2fe478c4ee1b27,
+        0xd1b3eabd1a6a0f97,
+        0x2b8324804fc1df0b,
+    ]);
+
     /// Returns zero, the additive identity.
     #[inline(always)]
     pub const fn zero() -> Fp {
@@ -414,9 +423,13 @@ impl Fp {
         !Choice::from((borrow as u8) & 1)
     }
 }
+
+// // T constant for square root algorithm.
+
 impl ff::Field for Fp {
     const ZERO: Self = Self::zero();
     const ONE: Self = Self::one();
+
     fn random(mut rng: impl RngCore) -> Self {
         let mut wide = [0u8; Self::SIZE * 2];
         rng.fill_bytes(&mut wide);
@@ -448,8 +461,27 @@ impl ff::Field for Fp {
             subtle::CtOption::new(Self::zero(), subtle::Choice::from(0))
         }
     }
+
     fn sqrt(&self) -> subtle::CtOption<Self> {
-        unimplemented!();
+        // Algorithm 3 https://eprint.iacr.org/2012/685.pdf
+        // for p = 5 mod 8
+        const EXP: [u64; 4] = [
+            0xfffffffffffffffd,
+            0xffffffffffffffff,
+            0xffffffffffffffff,
+            0x0fffffffffffffff,
+        ];
+
+        let a1 = self.pow_vartime(&EXP);
+        let a0 = (a1.square() * self).square();
+
+        let valid = a0.ct_eq(&-Self::ONE);
+
+        let b = Self::T_SQRT * a1;
+        let ab = b * self;
+        let i = (ab * b).double();
+        let x = ab * (i - Self::ONE);
+        CtOption::new(x, !valid)
     }
     fn sqrt_ratio(num: &Self, div: &Self) -> (Choice, Self) {
         ff::helpers::sqrt_ratio_generic(num, div)
@@ -639,7 +671,7 @@ mod test {
     crate::field_testing_suite!(Fp, "quadratic_residue");
     crate::field_testing_suite!(Fp, "bits");
     crate::field_testing_suite!(Fp, "constants");
-    // crate::field_testing_suite!(Fp, "sqrt");
+    crate::field_testing_suite!(Fp, "sqrt");
     crate::field_testing_suite!(Fp, "zeta");
     crate::field_testing_suite!(Fp, "from_uniform_bytes", 48, 64);
 }
