@@ -345,11 +345,11 @@ impl Fp {
 
     /// Precomputed value: 2^((p-5)/8) mod p
     /// Used in sqrt() algorithm for p ≡ 5 (mod 8)
-    const T_SQRT: Self = Self([
-        0x4a0ea0b0c4c4e80a,
-        0xad2fe478c4ee1b27,
-        0xd1b3eabd1a6a0f97,
-        0x2b8324804fc1df0b,
+    const T_SQRT: Self = Self::from_raw([
+        0x62770d93a507504f,
+        0x97a18c035697f23c,
+        0x95a6804c9efdebd3,
+        0x55c1924027e0ef85,
     ]);
 
     /// Returns zero, the additive identity.
@@ -424,8 +424,6 @@ impl Fp {
     }
 }
 
-// // T constant for square root algorithm.
-
 impl ff::Field for Fp {
     const ZERO: Self = Self::zero();
     const ONE: Self = Self::one();
@@ -471,7 +469,6 @@ impl ff::Field for Fp {
             0xffffffffffffffff,
             0x0fffffffffffffff,
         ];
-
         let a1 = self.pow_vartime(&EXP);
         let a0 = (a1.square() * self).square();
 
