@@ -11,7 +11,7 @@ description = "Standard library of circuits and utilities for Midnight zero-know
 group = { workspace = true }
 ff = { workspace = true }
 blake2b_simd = { workspace = true }
-midnight-circuits = { version = "6.0.0" }
+midnight-circuits = { version = "6.0.0", features = ["testing"] }
 midnight-curves = { version = "0.2.0" }
 midnight-proofs = { version = "0.7.0", default-features = false, features = [
     "circuit-params",
@@ -41,6 +41,7 @@ dhat = "0.3"
 bellman = "0.14.0"
 serial_test = "3.2.0"
 sha3 = "0.10.0"
+blake2 = "0.10.6"
 
 [target.'cfg(ci_build)'.dependencies]
 midnight-curves = { version = "0.2.0", features = [
