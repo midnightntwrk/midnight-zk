@@ -16,19 +16,18 @@
 //! `midnight-proofs`, but not `midnight-circuits`. For their return type to
 //! match that of `midnight-circuits`, unsafe type conversions are performed.
 
-use midnight_proofs::{
-    circuit::{AssignedCell, Layouter},
-    plonk::Error,
-    utils::rational::Rational,
-};
-
-use crate::{
+use midnight_circuits::{
     field::{decomposition::chip::P2RDecompositionChip, AssignedNative, NativeChip, NativeGadget},
     instructions::{
         AssertionInstructions, AssignmentInstructions, ConversionInstructions,
         UnsafeConversionInstructions,
     },
     types::AssignedByte,
+};
+use midnight_proofs::{
+    circuit::{AssignedCell, Layouter},
+    plonk::Error,
+    utils::rational::Rational,
 };
 
 pub mod blake2b;
