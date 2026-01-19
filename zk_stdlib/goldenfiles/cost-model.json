@@ -2,9 +2,9 @@
   "Blake2b_256": {
     "hash": {
       "advice_columns": "19",
-      "column_queries": "150",
+      "column_queries": "120",
       "fixed_columns": "69",
-      "lookups": "24",
+      "lookups": "14",
       "max_deg": "5",
       "permutations": "24",
       "point_sets": "6",
@@ -15,9 +15,9 @@
   "Blake2b_512": {
     "hash": {
       "advice_columns": "19",
-      "column_queries": "150",
+      "column_queries": "120",
       "fixed_columns": "69",
-      "lookups": "24",
+      "lookups": "14",
       "max_deg": "5",
       "permutations": "24",
       "point_sets": "6",
@@ -28,9 +28,9 @@
   "Keccak_256": {
     "hash": {
       "advice_columns": "20",
-      "column_queries": "141",
+      "column_queries": "120",
       "fixed_columns": "76",
-      "lookups": "18",
+      "lookups": "11",
       "max_deg": "5",
       "permutations": "23",
       "point_sets": "5",
@@ -41,9 +41,9 @@
   "Sha3_256": {
     "hash": {
       "advice_columns": "20",
-      "column_queries": "141",
+      "column_queries": "120",
       "fixed_columns": "76",
-      "lookups": "18",
+      "lookups": "11",
       "max_deg": "5",
       "permutations": "23",
       "point_sets": "5",

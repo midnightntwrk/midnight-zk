@@ -945,9 +945,17 @@ impl<F: FromUniformBytes<64> + Ord> MockProver<F> {
         let mut cached_table = Vec::new();
         let mut cached_table_identifier = Vec::new();
         // Check that all lookups exist in their respective tables.
-        let lookup_errors =
-            self.cs.lookups.iter().flat_map(|l| l.split(self.cs.degree())).enumerate().flat_map(|(lookup_index, lookup)| {
-                assert_eq!(lookup.table_expressions.len(), lookup.input_expressions[0].len());
+        let lookup_errors = self
+            .cs
+            .lookups
+            .iter()
+            .flat_map(|l| l.split(self.cs.degree()))
+            .enumerate()
+            .flat_map(|(lookup_index, lookup)| {
+                assert_eq!(
+                    lookup.table_expressions.len(),
+                    lookup.input_expressions[0].len()
+                );
                 assert!(self.usable_rows.end > 0);
 
                 // We optimize on the basis that the table might have been filled so that the
@@ -992,32 +1000,32 @@ impl<F: FromUniformBytes<64> + Ord> MockProver<F> {
                 }
                 let table = &cached_table;
 
-                let parallel_inputs: Vec<Vec<(Vec<_>, usize)>> =
-                    lookup
-                        .input_expressions
-                        .iter()
-                        .map(|input_expressions| {
-                            let mut inputs: Vec<(Vec<_>, usize)> = lookup_input_row_ids
-                                .clone()
-                                .into_par_iter()
-                                .filter_map(|input_row| {
-                                    let t =
-                                        input_expressions.iter().map(move |c| load(c, input_row))
-                                        .collect();
+                let parallel_inputs: Vec<Vec<(Vec<_>, usize)>> = lookup
+                    .input_expressions
+                    .iter()
+                    .map(|input_expressions| {
+                        let mut inputs: Vec<(Vec<_>, usize)> = lookup_input_row_ids
+                            .clone()
+                            .into_par_iter()
+                            .filter_map(|input_row| {
+                                let t = input_expressions
+                                    .iter()
+                                    .map(move |c| load(c, input_row))
+                                    .collect();
 
-                                    if t != fill_row {
-                                        // Also keep track of the original input row, since we're going to
-                                        // sort.
-                                        Some((t, input_row))
-                                    } else {
-                                        None
-                                    }
-                                })
-                                .collect();
-                            inputs.par_sort_unstable();
-                            inputs
-                        })
-                        .collect::<Vec<_>>();
+                                if t != fill_row {
+                                    // Also keep track of the original input row, since we're going
+                                    // to sort.
+                                    Some((t, input_row))
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect();
+                        inputs.par_sort_unstable();
+                        inputs
+                    })
+                    .collect::<Vec<_>>();
 
                 {
                     let lookup_name = lookup.name.clone();
@@ -1028,7 +1036,8 @@ impl<F: FromUniformBytes<64> + Ord> MockProver<F> {
                         .flat_map(move |(column_index, input_expression)| {
                             let lookup_name = lookup_name.clone();
                             let lookup_input_exprs = lookup_input_exprs.clone();
-                            input_expression.par_iter()
+                            input_expression
+                                .par_iter()
                                 .filter_map(move |(input, input_row)| {
                                     if table.binary_search(input).is_err() {
                                         Some(VerifyFailure::Lookup {

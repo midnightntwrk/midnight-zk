@@ -194,12 +194,17 @@ where
                                 .iter()
                                 .flat_map(|l| l.split(pk.get_vk().cs().degree()))
                                 .map(|logup| {
-                                    logup.commit_logderivative(pk, params, beta, theta,
-                                                               &advice.advice_polys,
-                                                               &pk.fixed_values,
-                                                               &instance.instance_values,
-                                                               &challenges,
-                                                               &mut t)
+                                    logup.commit_logderivative(
+                                        pk,
+                                        params,
+                                        beta,
+                                        theta,
+                                        &advice.advice_polys,
+                                        &pk.fixed_values,
+                                        &instance.instance_values,
+                                        &challenges,
+                                        &mut t,
+                                    )
                                 })
                                 .collect::<Result<Vec<_>, _>>()
                         })
@@ -218,15 +223,21 @@ where
                     .iter()
                     .flat_map(|l| l.split(pk.get_vk().cs().degree()))
                     .map(|logup| {
-                        logup.commit_logderivative(pk, params, beta, theta,
-                                                   &advice.advice_polys,
-                                                   &pk.fixed_values,
-                                                   &instance.instance_values,
-                                                   &challenges,
-                                                   transcript)
+                        logup.commit_logderivative(
+                            pk,
+                            params,
+                            beta,
+                            theta,
+                            &advice.advice_polys,
+                            &pk.fixed_values,
+                            &instance.instance_values,
+                            &challenges,
+                            transcript,
+                        )
                     })
                     .collect::<Result<Vec<_>, _>>()
-            }).collect::<Result<Vec<_>, _>>()?
+            })
+            .collect::<Result<Vec<_>, _>>()?
     };
 
     // Trash argument

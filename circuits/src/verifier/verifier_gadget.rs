@@ -456,7 +456,8 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             let l_last = l_evals[0].clone();
             let l_blind = sum::<S::F>(layouter, &self.scalar_chip, &l_evals[1..=blinding_factors])?;
             let l_0 = l_evals[1 + blinding_factors].clone();
-            let flattened_lookups = cs.lookups().iter().flat_map(|l| l.split(cs.degree())).collect::<Vec<_>>();
+            let flattened_lookups =
+                cs.lookups().iter().flat_map(|l| l.split(cs.degree())).collect::<Vec<_>>();
 
             // Compute the expected value of h(x)
             let expressions = {

@@ -14,7 +14,8 @@
 //! Prover implementation for the LogUp lookup argument.
 //!
 //! Constructs and commits to three polynomials:
-//! - **Multiplicities `m(X)`**: Counts how many times each table entry is looked up
+//! - **Multiplicities `m(X)`**: Counts how many times each table entry is
+//!   looked up
 //! - **Helper `h(X)`**: Aggregates `Σⱼ 1/(fⱼ(X) + β)` at each row
 //! - **Accumulator `Z(X)`**: Running sum of log-derivative differences
 
@@ -23,15 +24,14 @@ use std::{hash::Hash, iter};
 use ff::{BatchInvert, FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
 
 use crate::{
-    plonk::{evaluation::evaluate, Error, Expression, ProvingKey},
+    plonk::{evaluation::evaluate, logup::FlattenArgument, Error, Expression, ProvingKey},
     poly::{
-        commitment::PolynomialCommitmentScheme, Coeff, LagrangeCoeff, Polynomial,
-        ProverQuery, Rotation,
+        commitment::PolynomialCommitmentScheme, Coeff, LagrangeCoeff, Polynomial, ProverQuery,
+        Rotation,
     },
     transcript::{Hashable, Transcript},
     utils::arithmetic::{eval_polynomial, parallelize},
 };
-use crate::plonk::logup::FlattenArgument;
 
 /// Committed LogUp polynomials in coefficient form.
 #[cfg_attr(feature = "bench-internal", derive(Clone))]
@@ -53,6 +53,7 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> FlattenArgument<F> {
     /// Compresses input expressions via θ-batching, computes multiplicities and
     /// the helper polynomial using batch inversion, builds the running sum
     /// accumulator, and commits all three to the transcript.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn commit_logderivative<'a, CS: PolynomialCommitmentScheme<F>, T: Transcript>(
         self,
         pk: &ProvingKey<F, CS>,
@@ -71,30 +72,38 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> FlattenArgument<F> {
     {
         let domain = pk.vk.get_domain();
         let n = domain.n as usize;
-        let eval_expressions = |expressions: &[Expression<F>]| -> Vec<Polynomial<F, LagrangeCoeff>> {
-            expressions.iter().map(|expression| {
-                pk.vk.domain.lagrange_from_vec(evaluate(
-                    expression,
-                    n,
-                    1,
-                    fixed_values,
-                    advice_values,
-                    instance_values,
-                    challenges,
-                ))
-            }).collect()
-        };
+        let eval_expressions =
+            |expressions: &[Expression<F>]| -> Vec<Polynomial<F, LagrangeCoeff>> {
+                expressions
+                    .iter()
+                    .map(|expression| {
+                        pk.vk.domain.lagrange_from_vec(evaluate(
+                            expression,
+                            n,
+                            1,
+                            fixed_values,
+                            advice_values,
+                            instance_values,
+                            challenges,
+                        ))
+                    })
+                    .collect()
+            };
 
         // Closure to get values of expressions and compress them
         let compress_expressions = |expressions: &[Expression<F>]| {
-            let compressed_expression = eval_expressions(expressions).iter()
+            let compressed_expression = eval_expressions(expressions)
+                .iter()
                 .fold(domain.empty_lagrange(), |acc, expression| {
                     acc * theta + expression
                 });
             compressed_expression
         };
 
-        let compressed_input_expression = self.input_expressions.iter().map(|chunk| compress_expressions(chunk))
+        let compressed_input_expression = self
+            .input_expressions
+            .iter()
+            .map(|chunk| compress_expressions(chunk))
             .collect::<Vec<_>>();
         let compressed_table_expression = compress_expressions(&self.table_expressions);
 
@@ -172,7 +181,7 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> FlattenArgument<F> {
         let multiplicities = pk.vk.domain.lagrange_to_coeff(multiplicities);
         let helper_poly = pk.vk.domain.lagrange_to_coeff(helper_poly);
         let aggregator_poly = pk.vk.domain.lagrange_to_coeff(aggregator_poly);
-        
+
         Ok(Committed {
             multiplicities,
             helper_poly,
@@ -182,7 +191,8 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> FlattenArgument<F> {
 }
 
 impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
-    /// Evaluates `m(x)`, `h(x)`, `Z(x)`, and `Z(ωx)`, writing them to the transcript.
+    /// Evaluates `m(x)`, `h(x)`, `Z(x)`, and `Z(ωx)`, writing them to the
+    /// transcript.
     pub(crate) fn evaluate<T: Transcript, CS: PolynomialCommitmentScheme<F>>(
         self,
         pk: &ProvingKey<F, CS>,

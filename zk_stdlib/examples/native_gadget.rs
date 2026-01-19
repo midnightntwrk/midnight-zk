@@ -10,7 +10,7 @@ use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
-use midnight_zk_stdlib::{utils::plonk_api::filecoin_srs, Relation, ZkStdLib};
+use midnight_zk_stdlib::{utils::plonk_api::filecoin_srs, Relation, ZkStdLib, ZkStdLibArch};
 use rand::rngs::OsRng;
 
 type F = midnight_curves::Fq;
@@ -89,13 +89,16 @@ impl Relation for NativeGadgetExample {
         ZkStdLibArch {
             jubjub: false,
             poseidon: false,
-            sha256: false,
-            sha512: false,
+            sha2_256: false,
+            sha2_512: false,
+            keccak_256: false,
+            sha3_256: false,
             secp256k1: false,
             bls12_381: false,
             base64: false,
             nr_pow2range_cols: 3,
             automaton: false,
+            blake2b: false,
         }
     }
 
