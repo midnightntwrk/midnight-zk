@@ -225,12 +225,11 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
             let mut graph = GraphEvaluator::default();
 
             // Each input expression gets compressed with θ and shifted by β
-            let compressed_inputs_cosets: Vec<_> = lookup.input_expressions()
-                .into_iter()
+            let compressed_inputs_cosets: Vec<_> = lookup
+                .input_expressions()
+                .iter()
                 .map(|expressions| {
-                    let parts = expressions.iter().map(|expr| {
-                        graph.add_expression(expr)
-                    }).collect();
+                    let parts = expressions.iter().map(|expr| graph.add_expression(expr)).collect();
                     let compressed = graph.add_calculation(Calculation::Horner(
                         ValueSource::Constant(0),
                         parts,
@@ -252,21 +251,29 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                 ValueSource::Theta(),
             ));
 
-            let partial_products = (0..compressed_inputs_cosets.len()).map(|i| {
-                let mut acc = graph.add_calculation(Calculation::Store(ValueSource::Constant(1)));
-                for j in 0..compressed_inputs_cosets.len() {
-                    if j != i {
-                        acc = graph.add_calculation(Calculation::Mul(acc, compressed_inputs_cosets[j]));
+            let partial_products = (0..compressed_inputs_cosets.len())
+                .map(|i| {
+                    let mut acc =
+                        graph.add_calculation(Calculation::Store(ValueSource::Constant(1)));
+                    for (j, coset) in compressed_inputs_cosets.iter().enumerate() {
+                        if j != i {
+                            acc = graph.add_calculation(Calculation::Mul(acc, *coset));
+                        }
                     }
-                }
-                acc
-            }).collect::<Vec<_>>();
+                    acc
+                })
+                .collect::<Vec<_>>();
 
-            let mut sum_partial_products = graph.add_calculation(Calculation::Store(partial_products[0]));
-            let mut product = graph.add_calculation(Calculation::Store(compressed_inputs_cosets[0]));
+            let mut sum_partial_products =
+                graph.add_calculation(Calculation::Store(partial_products[0]));
+            let mut product =
+                graph.add_calculation(Calculation::Store(compressed_inputs_cosets[0]));
             // Compute ∏ⱼ(fⱼ + β) and Σⱼ ∏_{k≠j}(fₖ + β)
-            for (calculation, partial_prod) in compressed_inputs_cosets.into_iter().zip(partial_products.into_iter()).skip(1) {
-                sum_partial_products = graph.add_calculation(Calculation::Add(sum_partial_products, partial_prod));
+            for (calculation, partial_prod) in
+                compressed_inputs_cosets.into_iter().zip(partial_products.into_iter()).skip(1)
+            {
+                sum_partial_products =
+                    graph.add_calculation(Calculation::Add(sum_partial_products, partial_prod));
                 product = graph.add_calculation(Calculation::Mul(product, calculation));
             }
 
@@ -280,12 +287,16 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
             // * sum is at -3
             // * product is at -2
             // * table is at -1
-            // We perform a runtime check to ensure that the different computations in the expected
-            // position.
+            // We perform a runtime check to ensure that the different computations in the
+            // expected position.
             let nr_calculations = graph.calculations.len();
             match sum_partial_products {
                 ValueSource::Intermediate(idx) => {
-                    assert_eq!(idx, nr_calculations - 3, "sum_partial_products not at expected position");
+                    assert_eq!(
+                        idx,
+                        nr_calculations - 3,
+                        "sum_partial_products not at expected position"
+                    );
                 }
                 _ => panic!("Sum should be an intermediate!"),
             }
@@ -532,8 +543,13 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                         // Helper constraint: h(X) · ∏ⱼ(fⱼ(X) + β) = Σⱼ ∏_{k≠j}(fₖ(X) + β)
                         *value = *value * y + helper_coset[idx] * product - sum_partial_products;
 
-                        // Accumulator constraint: Z(ωX)·(t(X) + β) = (Z(X) + h(X))·(t(X) + β) - m(X)
-                        *value = *value * y + l_active_row[idx] * (aggregator_coset[r_next] * table_value - (aggregator_coset[idx] + helper_coset[idx]) * table_value + multiplicities_coset[idx]);
+                        // Accumulator constraint: Z(ωX)·(t(X) + β) = (Z(X) + h(X))·(t(X) + β) -
+                        // m(X)
+                        *value = *value * y
+                            + l_active_row[idx]
+                                * (aggregator_coset[r_next] * table_value
+                                    - (aggregator_coset[idx] + helper_coset[idx]) * table_value
+                                    + multiplicities_coset[idx]);
                     }
                 });
             }

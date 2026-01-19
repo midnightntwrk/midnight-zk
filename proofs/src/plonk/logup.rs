@@ -18,41 +18,45 @@
 //! provides an efficient way to prove that a set of values is contained
 //! within a predefined table.
 //!
-//! The original LogUp protocol operates over multilinear polynomials and uses the sum-check
-//! protocol. Our implementation adapts this to the univariate setting used in PLONK,
-//! replacing sum-check with a running sum accumulator approach.
+//! The original LogUp protocol operates over multilinear polynomials and uses
+//! the sum-check protocol. Our implementation adapts this to the univariate
+//! setting used in PLONK, replacing sum-check with a running sum accumulator
+//! approach.
 //!
 //! ## The Core Idea
 //!
-//! Given lookup values `f₁, ..., fₖ` and a table `T = {t₁, ..., tₙ}`, the key insight is:
+//! Given lookup values `f₁, ..., fₖ` and a table `T = {t₁, ..., tₙ}`, the key
+//! insight is:
 //!
 //! ```text
 //! If every fⱼ ∈ T, then:  Σⱼ 1/(fⱼ + β) = Σᵢ mᵢ/(tᵢ + β)
 //! ```
 //!
-//! where `mᵢ` is the multiplicity of `tᵢ` (how many times it appears among the `fⱼ`s) and
-//! `β` is a random challenge. This identity follows from partial fraction decomposition.
+//! where `mᵢ` is the multiplicity of `tᵢ` (how many times it appears among the
+//! `fⱼ`s) and `β` is a random challenge. This identity follows from partial
+//! fraction decomposition.
 //!
 //! ## Running Sum Formulation
 //!
-//! Rather than checking the sum equality directly (which would require sum-check in the
-//! multilinear setting), we encode the constraint as a running sum over the evaluation
-//! domain. We introduce:
+//! Rather than checking the sum equality directly (which would require
+//! sum-check in the multilinear setting), we encode the constraint as a running
+//! sum over the evaluation domain. We introduce:
 //!
 //! - **Helper polynomial** `h(X)`: Encodes `Σⱼ 1/(fⱼ(X) + β)` at each row
 //! - **Multiplicities** `m(X)`: Counts how many times each table entry is used
-//! - **Accumulator** `Z(X)`: Running sum that accumulates the log-derivative differences
+//! - **Accumulator** `Z(X)`: Running sum that accumulates the log-derivative
+//!   differences
 //!
 //! The accumulator satisfies:
 //! ```text
 //! Z(ω·X) - Z(X) = h(X) - m(X)/(t(X) + β)
 //! ```
 //!
-//! With boundary condition `Z(1) = 0`. If the lookup is valid, the accumulator returns to
-//! zero after a full cycle, which we verify by checking `Z(ωⁿ) = 0`.
+//! With boundary condition `Z(1) = 0`. If the lookup is valid, the accumulator
+//! returns to zero after a full cycle, which we verify by checking `Z(ωⁿ) = 0`.
 //!
-//! The running sum is enforced in the constraint system via the following identity:
-//! ```text
+//! The running sum is enforced in the constraint system via the following
+//! identity: ```text
 //! Z(ω·X)·(t(X) + β) = (Z(X) + h(X))·(t(X) + β) - m(X)
 //! ```
 //!
@@ -60,13 +64,15 @@
 //!
 //! The LogUp argument handles two orthogonal dimensions:
 //!
-//! - **Lookup width**: The width of the lookup table we are looking up. For example, checking
-//!   `(a, b, c) ∈ (t_1, t_2, t_3)` has width 3. These columns are compressed via θ-batching:
-//!   `compressed = a + θ·b + θ²·c`, reducing a width-w lookup to a single field element.
+//! - **Lookup width**: The width of the lookup table we are looking up. For
+//!   example, checking `(a, b, c) ∈ (t_1, t_2, t_3)` has width 3. These columns
+//!   are compressed via θ-batching: `compressed = a + θ·b + θ²·c`, reducing a
+//!   width-w lookup to a single field element.
 //!
-//! - **Parallel lookups**: The number of independent lookups per row. For instance, if
-//!   each row performs 8 range checks against the same table, that's 8 parallel lookups.
-//!   Each contributes a term `1/(fⱼ(X) + β)` to the helper polynomial.
+//! - **Parallel lookups**: The number of independent lookups per row. For
+//!   instance, if each row performs 8 range checks against the same table,
+//!   that's 8 parallel lookups. Each contributes a term `1/(fⱼ(X) + β)` to the
+//!   helper polynomial.
 //!
 //! The helper polynomial aggregates all parallel lookups at each row:
 //! ```text
@@ -78,9 +84,9 @@
 //! h(X) · ∏ⱼ(fⱼ(X) + β) = Σⱼ ∏_{k≠j}(fₖ(X) + β)
 //! ```
 //!
-//! This has degree `1 + lookup_degree × num_parallel_lookups`, which limits how many
-//! parallel lookups can be batched into a single argument before exceeding the
-//! constraint system's degree bound.
+//! This has degree `1 + lookup_degree × num_parallel_lookups`, which limits how
+//! many parallel lookups can be batched into a single argument before exceeding
+//! the constraint system's degree bound.
 
 use std::fmt::{self, Debug};
 
@@ -91,22 +97,24 @@ use super::circuit::Expression;
 pub(crate) mod prover;
 pub(crate) mod verifier;
 
-/// A `BatchedArgument` collects all lookups that query the same table. For multi-column
-/// lookups (e.g., checking `(a, b) ∈ (t_1, t_2)`), columns are compressed using a random
-/// challenge `θ` into a single value.
+/// A `BatchedArgument` collects all lookups that query the same table. For
+/// multi-column lookups (e.g., checking `(a, b) ∈ (t_1, t_2)`), columns are
+/// compressed using a random challenge `θ` into a single value.
 ///
 /// # Layout
 ///
 /// After construction, `input_expressions` is organized as
 /// `[parallel_lookups][lookup_width]`:
 /// - The outer dimension indexes each parallel lookup
-/// - The inner dimension indexes columns within a single lookup (for θ-compression)
+/// - The inner dimension indexes columns within a single lookup (for
+///   θ-compression)
 ///
 /// # Splitting
 ///
-/// The helper polynomial constraint has degree `1 + lookup_degree × num_parallel_lookups`.
-/// When this exceeds the constraint system's degree bound, [`Self::split`] partitions
-/// the argument into multiple [`FlattenArgument`]s, each respecting the degree limit.
+/// The helper polynomial constraint has degree `1 + lookup_degree ×
+/// num_parallel_lookups`. When this exceeds the constraint system's degree
+/// bound, [`Self::split`] partitions the argument into multiple
+/// [`FlattenArgument`]s, each respecting the degree limit.
 #[derive(Clone)]
 pub struct BatchedArgument<F: Field> {
     pub(crate) name: String,
@@ -125,9 +133,9 @@ impl<F: Field> Debug for BatchedArgument<F> {
 
 /// A lookup argument with a bounded number of parallel lookups.
 ///
-/// Produced by [`BatchedArgument::split`], each `FlattenArgument` contains few enough
-/// parallel lookups that the helper polynomial constraint stays within the constraint
-/// system's degree bound.
+/// Produced by [`BatchedArgument::split`], each `FlattenArgument` contains few
+/// enough parallel lookups that the helper polynomial constraint stays within
+/// the constraint system's degree bound.
 #[derive(Clone)]
 pub struct FlattenArgument<F: Field> {
     pub(crate) name: String,
@@ -146,11 +154,12 @@ impl<F: Field> Debug for FlattenArgument<F> {
 }
 
 impl<F: Field> BatchedArgument<F> {
-    /// Computes how many parallel lookups fit within the constraint system degree.
+    /// Computes how many parallel lookups fit within the constraint system
+    /// degree.
     ///
     /// The helper constraint `h(X) · ∏ⱼ(fⱼ(X) + β) = Σⱼ ∏_{k≠j}(fₖ(X) + β)` has
-    /// degree `1 + lookup_degree × num_parallel_lookups`. This method returns the
-    /// maximum number of parallel lookups before exceeding `cs_degree`.
+    /// degree `1 + lookup_degree × num_parallel_lookups`. This method returns
+    /// the maximum number of parallel lookups before exceeding `cs_degree`.
     pub(crate) fn nb_parallel_lookups(&self, cs_degree: usize) -> usize {
         // Check if cs_degree is already one above a power of two, otherwise compute it.
         let max_degree = if (cs_degree - 1).is_power_of_two() {
@@ -196,17 +205,22 @@ impl<F: Field> BatchedArgument<F> {
         let (input_expressions, table_expressions): (Vec<Vec<Expression<F>>>, Vec<Expression<F>>) =
             table_map.into_iter().unzip();
 
-        // The input expressions are a 2D array, where the first dimension represents the width
-        // of the lookup, while the second represents the size of the parallel lookup (how many
-        // columns are we looking up in a single table). The \theta batching happens over the
-        // first dimension. Therefore, we transpose the array so that it is easier to handle later.
+        // The input expressions are a 2D array, where the first dimension represents
+        // the width of the lookup, while the second represents the size of the
+        // parallel lookup (how many columns are we looking up in a single
+        // table). The \theta batching happens over the first dimension.
+        // Therefore, we transpose the array so that it is easier to handle later.
         let lookup_width = input_expressions.len();
         let nb_parallel_lookups = input_expressions[0].len();
-        let mut transposed_input_expressions = vec![vec![Expression::Constant(F::ZERO); lookup_width]; nb_parallel_lookups];
+        let mut transposed_input_expressions =
+            vec![vec![Expression::Constant(F::ZERO); lookup_width]; nb_parallel_lookups];
 
         input_expressions.into_iter().enumerate().for_each(|(i, width)| {
             assert_eq!(width.len(), nb_parallel_lookups);
-            width.into_iter().enumerate().for_each(|(j, parallel)| transposed_input_expressions[j][i] = parallel)
+            width
+                .into_iter()
+                .enumerate()
+                .for_each(|(j, parallel)| transposed_input_expressions[j][i] = parallel)
         });
 
         BatchedArgument {
@@ -216,23 +230,28 @@ impl<F: Field> BatchedArgument<F> {
         }
     }
 
-    /// Splits this argument into [`FlattenArgument`]s that respect the degree bound.
+    /// Splits this argument into [`FlattenArgument`]s that respect the degree
+    /// bound.
     ///
-    /// Each resulting `FlattenArgument` contains at most [`Self::nb_parallel_lookups`]
-    /// inputs, ensuring the helper constraint degree stays within `cs_degree`.
+    /// Each resulting `FlattenArgument` contains at most
+    /// [`Self::nb_parallel_lookups`] inputs, ensuring the helper constraint
+    /// degree stays within `cs_degree`.
     pub fn split(&self, cs_degree: usize) -> Vec<FlattenArgument<F>> {
-        assert_eq!(self.input_expressions[0].len(), self.table_expressions.len());
+        assert_eq!(
+            self.input_expressions[0].len(),
+            self.table_expressions.len()
+        );
         let nb_lookups = self.nb_parallel_lookups(cs_degree);
-        let chunk_size = (self.input_expressions.len() + nb_lookups - 1) / nb_lookups;
+        let chunk_size = self.input_expressions.len().div_ceil(nb_lookups);
         self.input_expressions
             .chunks(chunk_size)
             .enumerate()
-            .map(|(idx, chunk)| {
-                FlattenArgument {
-                    name: format!("{}-{}", self.name, idx),
-                    input_expressions: chunk.to_vec(),
-                    table_expressions: self.table_expressions.clone(),
-                }}).collect()
+            .map(|(idx, chunk)| FlattenArgument {
+                name: format!("{}-{}", self.name, idx),
+                input_expressions: chunk.to_vec(),
+                table_expressions: self.table_expressions.clone(),
+            })
+            .collect()
     }
 }
 

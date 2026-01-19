@@ -1855,8 +1855,8 @@ impl<F: Field> ConstraintSystem<F> {
 
     /// Add a lookup argument for some input expressions and table columns.
     ///
-    /// `table_map` returns a vector of maps between input expressions and the table
-    /// columns they need to match.
+    /// `table_map` returns a vector of maps between input expressions and the
+    /// table columns they need to match.
     pub fn lookup<S: AsRef<str>>(
         &mut self,
         name: S,
@@ -1887,8 +1887,8 @@ impl<F: Field> ConstraintSystem<F> {
 
     /// Add a lookup argument for some input expressions and table expressions.
     ///
-    /// `table_map` returns a vector of maps between input expressions and the table
-    /// expressions they need to match.
+    /// `table_map` returns a vector of maps between input expressions and the
+    /// table expressions they need to match.
     pub fn lookup_any<S: AsRef<str>>(
         &mut self,
         name: S,
@@ -2349,9 +2349,12 @@ impl<F: Field> ConstraintSystem<F> {
 
         // Logup may increase the degree as long as it does not go to the next
         // power of two.
-        let degree = self.lookups.iter().map(|lookup| {
-            lookup.degree_batched_argument(degree_without_lookup)
-        }).max().unwrap_or(degree_without_lookup);
+        let degree = self
+            .lookups
+            .iter()
+            .map(|lookup| lookup.degree_batched_argument(degree_without_lookup))
+            .max()
+            .unwrap_or(degree_without_lookup);
 
         *[degree_without_lookup, degree].iter().max().unwrap()
     }

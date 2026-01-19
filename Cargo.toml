@@ -31,6 +31,11 @@ midnight-proofs = { path = "proofs" }
 midnight-curves = { path = "curves" }
 midnight-circuits = { path = "circuits" }
 
+[patch."https://github.com/midnightntwrk/midnight-zk"]
+midnight-proofs = { path = "proofs" }
+midnight-curves = { path = "curves" }
+midnight-circuits = { path = "circuits" }
+
 ## Benchmarks
 
 [profile.bench]
