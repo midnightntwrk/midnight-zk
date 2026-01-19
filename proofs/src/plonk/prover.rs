@@ -134,8 +134,7 @@ where
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    let lookups: Vec<Vec<logup::prover::Committed<F>>> =
-        instance
+    let lookups: Vec<Vec<logup::prover::Committed<F>>> = instance
         .iter()
         .zip(advice.iter())
         .map(|(instance, advice)| -> Result<Vec<_>, Error> {
@@ -145,15 +144,21 @@ where
                 .iter()
                 .flat_map(|l| l.split(pk.get_vk().cs().degree()))
                 .map(|logup| {
-                    logup.commit_logderivative(pk, params, beta, theta,
+                    logup.commit_logderivative(
+                        pk,
+                        params,
+                        beta,
+                        theta,
                         &advice.advice_polys,
                         &pk.fixed_values,
                         &instance.instance_values,
                         &challenges,
-                        transcript)
+                        transcript,
+                    )
                 })
                 .collect::<Result<Vec<_>, _>>()
-        }).collect::<Result<Vec<_>, _>>()?;
+        })
+        .collect::<Result<Vec<_>, _>>()?;
 
     // Trash argument
     let trash_challenge: F = transcript.squeeze_challenge();

@@ -303,9 +303,13 @@ pub(crate) fn cost_model_options<F: Ord + Field + FromUniformBytes<64>, C: Circu
         instance
     };
 
-    let lookup = { cs.lookups().iter().flat_map(|l| {
-        l.split(cs.degree())
-    }).map(|_| Lookup).collect::<Vec<_>>() };
+    let lookup = {
+        cs.lookups()
+            .iter()
+            .flat_map(|l| l.split(cs.degree()))
+            .map(|_| Lookup)
+            .collect::<Vec<_>>()
+    };
 
     let permutation = Permutation {
         chunk_len: cs.degree() - 2,

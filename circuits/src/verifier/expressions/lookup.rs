@@ -81,9 +81,9 @@ pub(crate) fn lookup_expressions<S: SelfEmulation>(
     let partial_products: Vec<AssignedNative<S::F>> = (0..compressed_inputs_with_beta.len())
         .map(|i| {
             let mut acc = scalar_chip.assign_fixed(layouter, S::F::ONE)?;
-            for j in 0..compressed_inputs_with_beta.len() {
+            for (j, input) in compressed_inputs_with_beta.iter().enumerate() {
                 if j != i {
-                    acc = scalar_chip.mul(layouter, &acc, &compressed_inputs_with_beta[j], None)?;
+                    acc = scalar_chip.mul(layouter, &acc, input, None)?;
                 }
             }
             Ok::<_, Error>(acc)
@@ -91,7 +91,8 @@ pub(crate) fn lookup_expressions<S: SelfEmulation>(
         .collect::<Result<Vec<_>, _>>()?;
 
     // Helper constraint: h(x) · ∏ⱼ(fⱼ(x) + β) = Σⱼ ∏_{k≠j}(fₖ(x) + β)
-    // This must hold everywhere (as a polynomial identity), not just at active rows.
+    // This must hold everywhere (as a polynomial identity), not just at active
+    // rows.
     let product: AssignedNative<S::F> = {
         let mut iter = compressed_inputs_with_beta.into_iter();
         let first = iter.next().expect("compressed_inputs_with_beta should not be empty");
