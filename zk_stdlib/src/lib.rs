@@ -26,6 +26,7 @@
 //!   description in memory and does not need to reproduce it everytime it
 //!   receives a new proof.
 
+mod external;
 pub mod utils;
 
 use std::{cell::RefCell, cmp::max, convert::TryInto, fmt::Debug, io, rc::Rc};
@@ -45,7 +46,6 @@ use midnight_circuits::{
         hash_to_curve::HashToCurveGadget,
         native::{EccChip, EccConfig, NB_EDWARDS_COLS},
     },
-    external::{blake2b::Blake2bWrapper, keccak_sha3::KeccakSha3Wrapper},
     field::{
         decomposition::{
             chip::{P2RDecompositionChip, P2RDecompositionConfig},
@@ -96,7 +96,10 @@ use midnight_proofs::{
 use num_bigint::BigUint;
 use rand::{CryptoRng, RngCore};
 
-use crate::utils::plonk_api::BlstPLONK;
+use crate::{
+    external::{blake2b::Blake2bWrapper, keccak_sha3::KeccakSha3Wrapper},
+    utils::plonk_api::BlstPLONK,
+};
 
 type C = midnight_curves::JubjubExtended;
 type F = midnight_curves::Fq;
