@@ -1,6 +1,5 @@
 //! Example of proving knowledge of a Ethereum signature (for a public message
-//! and public key) using midnight's ZK std lib. The test vectors were generated
-//! using Ethereum's C library https://github.com/bitcoin-core/secp256k1.
+//! and public key) using midnight's ZK std lib.
 
 use group::GroupEncoding;
 use midnight_circuits::{
@@ -112,11 +111,11 @@ impl Relation for EthereumSigExample {
         //  1. It should not be the identity.
         secp256k1_curve.assert_non_zero(layouter, &r_point)?;
 
-        // 2. r_point.x should be equal to the r that was hashed.
+        // 2. r_point.x should be equal to r.
         let r_point_x = secp256k1_curve.x_coordinate(&r_point);
-        let r_point_x_bits =
-            secp256k1_base.assigned_to_le_bits(layouter, &r_point_x, None, true)?;
-        let r_point_x_scalar = secp256k1_scalar.assigned_from_le_bits(layouter, &r_point_x_bits)?;
+        let r_point_x_bits = secp256k1_base.assigned_to_le_bytes(layouter, &r_point_x, None)?;
+        let r_point_x_scalar =
+            secp256k1_scalar.assigned_from_le_bytes(layouter, &r_point_x_bits)?;
         secp256k1_scalar.assert_equal(layouter, &r_point_x_scalar, &r)
     }
 
