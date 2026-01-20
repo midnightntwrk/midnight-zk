@@ -75,10 +75,10 @@
     "hash": {
       "advice_columns": "13",
       "column_queries": "99",
-      "fixed_columns": "61",
+      "fixed_columns": "60",
       "lookups": "10",
       "max_deg": "5",
-      "permutations": "17",
+      "permutations": "16",
       "point_sets": "5",
       "rows": "5146",
       "table_rows": "4095"
