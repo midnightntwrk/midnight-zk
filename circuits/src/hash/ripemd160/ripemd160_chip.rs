@@ -1,11 +1,11 @@
 //! This file implements a chip providing support for in-circuit evaluation of
-//! the RIPEMD-160 hash function.
+//! the RIPEMD160 hash function.
 //!
 //! Throughout the file, we use the notation from the specification paper:
 //! <https://cosicdatabase.esat.kuleuven.be/backend/publications/files/journal/317>.
 //!
-//! This implementation uses the similar idea of plain-spreaded representation,
-//! for more details see the comments in [crate::hash::sha256::sha256_chip].
+//! This implementation applies the same idea of plain-spreaded representation as SHA256 chip does.
+//! For more details, see the comments in [crate::hash::sha256::sha256_chip].
 
 use ff::PrimeField;
 use midnight_proofs::{
@@ -19,30 +19,27 @@ use midnight_proofs::{
 use num_integer::Integer;
 
 use crate::{
-    field::{decomposition::chip::P2RDecompositionChip, NativeChip, NativeGadget},
+    field::{AssignedNative, NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip},
     hash::ripemd160::{
         types::{AssignedSpreaded, AssignedWord, State},
         utils::{
-            expr_pow2_ip, expr_pow4_ip, gen_spread_table, get_even_and_odd_bits, limb_coeffs,
-            limb_lengths, limb_values, negate_spreaded, spread, spreaded_sum, u32_in_be_limbs,
-            MASK_EVN_64,
+            MASK_EVN_64, expr_pow2_ip, expr_pow4_ip, gen_spread_table, get_even_and_odd_bits, limb_coeffs, limb_lengths, limb_values, negate_spreaded, spread, spreaded_sum, u32_in_be_limbs
         },
     },
     instructions::{AssignmentInstructions, DecompositionInstructions, EqualityInstructions},
     types::AssignedByte,
     utils::{
-        util::{fe_to_u32, fe_to_u64, u32_to_fe, u64_to_fe},
-        ComposableChip,
+        ComposableChip, util::{fe_to_u32, fe_to_u64, u32_to_fe, u64_to_fe}
     },
 };
 
-/// Number of advice columns used by the identities of the RIPEMD160 chip.
+/// Number of advice columns used by the identities of the RIPEMD160 chip
 pub const NB_RIPEMD160_ADVICE_COLS: usize = 8;
 
-/// Number of fixed columns used by the identities of the RIPEMD160 chip.
-pub const NB_RIPEMD160_FIXED_COLS: usize = 7;
+/// Number of fixed columns used by the identities of the RIPEMD160 chip
+pub const NB_RIPEMD160_FIXED_COLS: usize = 6;
 
-/// Constants K and K' (added constants per round)
+/// Round constants K (left) and K' (right)
 pub const K: [u32; 5] = [0x00000000, 0x5A827999, 0x6ED9EBA1, 0x8F1BBCDC, 0xA953FD4E];
 pub const K_PRIME: [u32; 5] = [0x50A28BE6, 0x5C4DD124, 0x6D703EF3, 0x7A6D76E9, 0x00000000];
 
@@ -81,14 +78,14 @@ pub const S_PRIME: [[u8; 16]; 5] = [
     [8, 5, 12, 9, 12, 5, 14, 6, 8, 13, 6, 5, 15, 13, 11, 11],
 ];
 
-/// Tag for the even and odd 11-11-10 decompositions.
+/// Tag for the even and odd 11-11-10 decompositions
 #[derive(Copy, Clone, Debug)]
 enum Parity {
     Evn,
     Odd,
 }
 
-/// Plain-Spreaded lookup table.
+/// Plain-Spreaded lookup table
 #[derive(Clone, Debug)]
 struct SpreadTable {
     nbits_col: TableColumn,
@@ -96,7 +93,7 @@ struct SpreadTable {
     sprdd_col: TableColumn,
 }
 
-/// Configuration for the RIPEMD160 chip.
+/// Configuration for the RIPEMD160 chip
 #[derive(Clone, Debug)]
 pub struct RipeMD160Config {
     advice_cols: [Column<Advice>; NB_RIPEMD160_ADVICE_COLS],
@@ -111,7 +108,7 @@ pub struct RipeMD160Config {
     q_mod_add: Selector,
 }
 
-/// Chip for RIPEMD160.
+/// Chip for RIPEMD160
 #[derive(Clone, Debug)]
 pub struct RipeMD160Chip<F: PrimeField> {
     config: RipeMD160Config,
@@ -151,10 +148,6 @@ impl<F: PrimeField> ComposableChip<F> for RipeMD160Chip<F> {
         shared_res: &Self::SharedResources,
     ) -> Self::Config {
         let fixed_cols = shared_res.1;
-        // The last fixed column is used for the constants which will be assigned
-        // in the advice columns.
-        meta.enable_constant(fixed_cols[NB_RIPEMD160_FIXED_COLS - 1]);
-
         // Columns A0, A1 and A2 do not need to be copy-enabled.
         // We have the convention that chips enable copy in a prefix of their shared
         // advice columns. Thus we let them be the last three columns of the given
@@ -365,7 +358,7 @@ impl<F: PrimeField> RipeMD160Chip<F> {
         layouter: &mut impl Layouter<F>,
         input_bytes: &[AssignedByte<F>],
     ) -> Result<[AssignedWord<F>; 5], Error> {
-        // assign the constants once and pass them to each block processing
+        // assign the constants into the circuit for later copy-constraints.
         let round_consts: [AssignedWord<F>; 5] = [
             AssignedWord::fixed(layouter, &self.native_gadget, K[0])?,
             AssignedWord::fixed(layouter, &self.native_gadget, K[1])?,
@@ -380,7 +373,7 @@ impl<F: PrimeField> RipeMD160Chip<F> {
             AssignedWord::fixed(layouter, &self.native_gadget, K_PRIME[3])?,
             AssignedWord::fixed(layouter, &self.native_gadget, K_PRIME[4])?,
         ];
-
+        // zero constant will be assigned in multiple places as part of the corresponding constraints.
         let zero = AssignedWord::fixed(layouter, &self.native_gadget, 0u32)?;
 
         let mut state = State::fixed(layouter, &self.native_gadget, IV)?;
@@ -421,26 +414,6 @@ impl<F: PrimeField> RipeMD160Chip<F> {
         }
 
         Ok(padded)
-    }
-
-    /// Given a byte array of exactly 64 bytes, this function converts it into a
-    /// block of 16 `AssignedWord` values, each (32 bits) value representing 4
-    /// bytes in *little-endian*.
-    pub(super) fn block_from_bytes(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        bytes: &[AssignedByte<F>; 64],
-    ) -> Result<[AssignedWord<F>; 16], Error> {
-        Ok(bytes
-            .chunks(4)
-            .map(|word_bytes| {
-                self.native_gadget
-                    .assigned_from_le_bytes(layouter, word_bytes)
-                    .map(AssignedWord)
-            })
-            .collect::<Result<Vec<_>, Error>>()?
-            .try_into()
-            .unwrap())
     }
 
     /// Process a single 64-byte block, updating the given state.
@@ -493,6 +466,26 @@ impl<F: PrimeField> RipeMD160Chip<F> {
         Ok(())
     }
 
+    /// Given a byte array of exactly 64 bytes, this function converts it into a
+    /// block of 16 `AssignedWord` values, each (32 bits) value representing 4
+    /// bytes in *little-endian*.
+    pub(super) fn block_from_bytes(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        bytes: &[AssignedByte<F>; 64],
+    ) -> Result<[AssignedWord<F>; 16], Error> {
+        Ok(bytes
+            .chunks(4)
+            .map(|word_bytes| {
+                self.native_gadget
+                    .assigned_from_le_bytes(layouter, word_bytes)
+                    .map(AssignedWord)
+            })
+            .collect::<Result<Vec<_>, Error>>()?
+            .try_into()
+            .unwrap())
+    }
+
     /// One round function of RIPEMD-160, updating the temporary states of both
     /// sides.
     #[allow(clippy::too_many_arguments)]
@@ -508,7 +501,7 @@ impl<F: PrimeField> RipeMD160Chip<F> {
         round_const_prime: &AssignedWord<F>,
         zero: &AssignedWord<F>,
     ) -> Result<(), Error> {
-        // TODO: optimize the parallelism of the two sides.
+        // TODO: optimize using the parallelism of the two sides.
         let State {
             h0: ref mut A,
             h1: ref mut B,
@@ -527,7 +520,7 @@ impl<F: PrimeField> RipeMD160Chip<F> {
         let rot = S[idx / 16][idx % 16];
         let rot_prime = S_PRIME[idx / 16][idx % 16];
 
-        let temp = self.f(layouter, idx, B, C, D)?;
+        let temp = self.f(layouter, idx, B, C, D, zero)?;
         let temp = self.add_mod_2_32(layouter, &[A, &temp, word, round_const], zero)?;
         let temp = self.left_rotate(layouter, &temp, rot)?;
         let T = self.add_mod_2_32(layouter, &[&temp, E], zero)?;
@@ -537,7 +530,7 @@ impl<F: PrimeField> RipeMD160Chip<F> {
         *C = B.clone();
         *B = T;
 
-        let temp_prime = self.f(layouter, 79 - idx, B_prime, C_prime, D_prime)?;
+        let temp_prime = self.f(layouter, 79 - idx, B_prime, C_prime, D_prime, zero)?;
         let temp_prime = self.add_mod_2_32(
             layouter,
             &[A_prime, &temp_prime, word_prime, round_const_prime],
@@ -561,24 +554,28 @@ impl<F: PrimeField> RipeMD160Chip<F> {
         X: &AssignedWord<F>,
         Y: &AssignedWord<F>,
         Z: &AssignedWord<F>,
+        zero: &AssignedWord<F>,
     ) -> Result<AssignedWord<F>, Error> {
         let [sprdd_X, sprdd_Y, sprdd_Z] = [
-            self.prepare_spreaded(layouter, X)?,
-            self.prepare_spreaded(layouter, Y)?,
-            self.prepare_spreaded(layouter, Z)?,
+            self.prepare_spreaded(layouter, X, zero)?,
+            self.prepare_spreaded(layouter, Y, zero)?,
+            self.prepare_spreaded(layouter, Z, zero)?,
         ];
+
+        let mask_evn_64: AssignedNative<F> =
+            self.native_gadget.assign_fixed(layouter, F::from(MASK_EVN_64))?;
 
         match idx {
             // f(X, Y, Z) = X ⊕ Y ⊕ Z
             0..=15 => self.f_type_one(layouter, &sprdd_X, &sprdd_Y, &sprdd_Z),
             // f(X, Y, Z) = (X ∧ Y) ∨ (¬X ∧ Z)
-            16..=31 => self.f_type_two(layouter, &sprdd_X, &sprdd_Y, &sprdd_Z),
+            16..=31 => self.f_type_two(layouter, &sprdd_X, &sprdd_Y, &sprdd_Z, zero, &mask_evn_64),
             // f(X, Y, Z) = (X ∨ ¬Y) ⊕ Z
-            32..=47 => self.f_type_three(layouter, &sprdd_X, &sprdd_Y, &sprdd_Z),
+            32..=47 => self.f_type_three(layouter, &sprdd_X, &sprdd_Y, &sprdd_Z, zero, &mask_evn_64),
             // f(X, Y, Z) = (X ∧ Z) ∨ (Y ∧ ¬Z)
-            48..=63 => self.f_type_two(layouter, &sprdd_Z, &sprdd_X, &sprdd_Y),
+            48..=63 => self.f_type_two(layouter, &sprdd_Z, &sprdd_X, &sprdd_Y, zero, &mask_evn_64),
             // f(X, Y, Z) = X ⊕ (Y ∨ ¬Z)
-            64..=79 => self.f_type_three(layouter, &sprdd_Y, &sprdd_Z, &sprdd_X),
+            64..=79 => self.f_type_three(layouter, &sprdd_Y, &sprdd_Z, &sprdd_X, zero, &mask_evn_64),
             _ => unreachable!("Function index out of range"),
         }
     }
@@ -588,6 +585,7 @@ impl<F: PrimeField> RipeMD160Chip<F> {
         &self,
         layouter: &mut impl Layouter<F>,
         word: &AssignedWord<F>,
+        zero: &AssignedWord<F>,
     ) -> Result<AssignedSpreaded<F, 32>, Error> {
         /*
         Given assigned word X, we first compute its spreaded form ~X, and then
@@ -628,8 +626,10 @@ impl<F: PrimeField> RipeMD160Chip<F> {
                 let sprdd_word = region
                     .assign_advice(|| "sprdd_word", adv_cols[5], 0, || sprdd_val.map(u64_to_fe))
                     .map(AssignedSpreaded)?;
-                region.assign_advice_from_constant(|| "sprdd_ZERO", adv_cols[6], 0, F::ZERO)?;
-                region.assign_advice_from_constant(|| "sprdd_ZERO", adv_cols[7], 0, F::ZERO)?;
+                // region.assign_advice_from_constant(|| "sprdd_ZERO", adv_cols[6], 0, F::ZERO)?;
+                // region.assign_advice_from_constant(|| "sprdd_ZERO", adv_cols[7], 0, F::ZERO)?;
+                zero.0.copy_advice(|| "sprdd_ZERO", &mut region, adv_cols[6], 0)?;
+                zero.0.copy_advice(|| "sprdd_ZERO", &mut region, adv_cols[7], 0)?;
 
                 let res = self.assign_sprdd_11_11_10(&mut region, sprdd_val, Parity::Evn, 0)?;
 
@@ -648,6 +648,7 @@ impl<F: PrimeField> RipeMD160Chip<F> {
         layouter: &mut impl Layouter<F>,
         sprdd_X: &AssignedSpreaded<F, 32>,
         sprdd_Y: &AssignedSpreaded<F, 32>,
+        zero: &AssignedWord<F>,
     ) -> Result<AssignedWord<F>, Error> {
         /*
         X ∧ Y can be computed as the odd part of ~X + ~Y + ~0. We apply [`assign_sprdd_11_11_10`]
@@ -692,7 +693,8 @@ impl<F: PrimeField> RipeMD160Chip<F> {
 
                 sprdd_X.0.copy_advice(|| "sprdd_X", &mut region, adv_cols[5], 0)?;
                 sprdd_Y.0.copy_advice(|| "sprdd_Y", &mut region, adv_cols[6], 0)?;
-                region.assign_advice_from_constant(|| "sprdd_ZERO", adv_cols[7], 0, F::ZERO)?;
+                // region.assign_advice_from_constant(|| "sprdd_ZERO", adv_cols[7], 0, F::ZERO)?;
+                zero.0.copy_advice(|| "sprdd_ZERO", &mut region, adv_cols[7], 0)?;
 
                 self.assign_sprdd_11_11_10(&mut region, val_of_sum, Parity::Odd, 0)
             },
@@ -706,6 +708,7 @@ impl<F: PrimeField> RipeMD160Chip<F> {
         layouter: &mut impl Layouter<F>,
         sprdd_X: &AssignedSpreaded<F, 32>,
         sprdd_Y: &AssignedSpreaded<F, 32>,
+        zero: &AssignedWord<F>,
     ) -> Result<AssignedWord<F>, Error> {
         /*
         X ⊕ Y can be computed as the even part of ~X + ~Y + ~0. We apply [`assign_sprdd_11_11_10`]
@@ -750,7 +753,8 @@ impl<F: PrimeField> RipeMD160Chip<F> {
 
                 sprdd_X.0.copy_advice(|| "sprdd_X", &mut region, adv_cols[5], 0)?;
                 sprdd_Y.0.copy_advice(|| "sprdd_Y", &mut region, adv_cols[6], 0)?;
-                region.assign_advice_from_constant(|| "spreaded ZERO", adv_cols[7], 0, F::ZERO)?;
+                // region.assign_advice_from_constant(|| "spreaded ZERO", adv_cols[7], 0, F::ZERO)?;
+                zero.0.copy_advice(|| "sprdd_ZERO", &mut region, adv_cols[7], 0)?;
 
                 self.assign_sprdd_11_11_10(&mut region, val_of_sum, Parity::Evn, 0)
             },
@@ -826,6 +830,8 @@ impl<F: PrimeField> RipeMD160Chip<F> {
         sprdd_X: &AssignedSpreaded<F, 32>,
         sprdd_Y: &AssignedSpreaded<F, 32>,
         sprdd_Z: &AssignedSpreaded<F, 32>,
+        zero: &AssignedWord<F>,
+        mask_evn_64: &AssignedNative<F>,
     ) -> Result<AssignedWord<F>, Error> {
         /*
         f(X, Y, Z) = (X ∧ Y) ∨ (¬X ∧ Z) = (X ∧ Y) ⊕ (¬X ∧ Z)
@@ -889,8 +895,10 @@ impl<F: PrimeField> RipeMD160Chip<F> {
                 self.config().q_spr_sum_odd.enable(&mut region, 4)?;
                 self.config().q_add.enable(&mut region, 4)?;
 
-                region.assign_advice_from_constant(|| "sprdd_ZERO", adv_cols[7], 0, F::ZERO)?;
-                region.assign_advice_from_constant(|| "sprdd_ZERO", adv_cols[7], 3, F::ZERO)?;
+                // region.assign_advice_from_constant(|| "sprdd_ZERO", adv_cols[7], 0, F::ZERO)?;
+                // region.assign_advice_from_constant(|| "sprdd_ZERO", adv_cols[7], 3, F::ZERO)?;
+                zero.0.copy_advice(|| "sprdd_ZERO", &mut region, adv_cols[7], 0)?;
+                zero.0.copy_advice(|| "sprdd_ZERO", &mut region, adv_cols[7], 3)?;
 
                 sprdd_X.0.copy_advice(|| "sprdd_X", &mut region, adv_cols[5], 0)?;
                 sprdd_X.0.copy_advice(|| "sprdd_X", &mut region, adv_cols[4], 4)?;
@@ -902,12 +910,14 @@ impl<F: PrimeField> RipeMD160Chip<F> {
                     region.assign_advice(|| "sprdd_nX", adv_cols[5], 3, || sprdd_nX_val)?;
                 sprdd_nX.copy_advice(|| "sprdd_nX", &mut region, adv_cols[5], 4)?;
 
-                region.assign_advice_from_constant(
-                    || "MASK_EVN_64",
-                    adv_cols[6],
-                    4,
-                    F::from(MASK_EVN_64),
-                )?;
+                // region.assign_advice_from_constant(
+                //     || "MASK_EVN_64",
+                //     adv_cols[6],
+                //     4,
+                //     F::from(MASK_EVN_64),
+                // )?;
+
+                mask_evn_64.copy_advice(|| "MASK_EVN_64", &mut region, adv_cols[6], 4)?;
 
                 let odd_XY = self.assign_sprdd_11_11_10(&mut region, XplusY_val, Parity::Odd, 0)?;
                 odd_XY.0.copy_advice(|| "Odd_XY", &mut region, adv_cols[4], 1)?;
@@ -931,6 +941,8 @@ impl<F: PrimeField> RipeMD160Chip<F> {
         sprdd_X: &AssignedSpreaded<F, 32>,
         sprdd_Y: &AssignedSpreaded<F, 32>,
         sprdd_Z: &AssignedSpreaded<F, 32>,
+        zero: &AssignedWord<F>,
+        mask_evn_64: &AssignedNative<F>,
     ) -> Result<AssignedWord<F>, Error> {
         /*
         f(X, Y, Z) = (X ∨ ¬Y) ⊕ Z = (X ⊕ ¬Y ⊕ Z) ⊕ (X ∧ ¬Y)
@@ -948,12 +960,13 @@ impl<F: PrimeField> RipeMD160Chip<F> {
                 self.config.q_add.enable(&mut region, 0)?;
 
                 sprdd_Y.0.copy_advice(|| "sprdd_Y", &mut region, adv_cols[4], 0)?;
-                region.assign_advice_from_constant(
-                    || "MASK_EVN_64",
-                    adv_cols[6],
-                    0,
-                    F::from(MASK_EVN_64),
-                )?;
+                // region.assign_advice_from_constant(
+                //     || "MASK_EVN_64",
+                //     adv_cols[6],
+                //     0,
+                //     F::from(MASK_EVN_64),
+                // )?;
+                mask_evn_64.copy_advice(|| "MASK_EVN_64", &mut region, adv_cols[6], 0)?;
                 region
                     .assign_advice(|| "sprdd_nY", adv_cols[5], 0, || sprdd_nY_val)
                     .map(AssignedSpreaded)
@@ -961,11 +974,11 @@ impl<F: PrimeField> RipeMD160Chip<F> {
         )?;
 
         let temp1 = self.f_type_one(layouter, sprdd_X, &sprdd_nY, sprdd_Z)?;
-        let sprdd_temp1 = self.prepare_spreaded(layouter, &temp1)?;
-        let temp2 = self.and(layouter, sprdd_X, &sprdd_nY)?;
-        let sprdd_temp2 = self.prepare_spreaded(layouter, &temp2)?;
+        let sprdd_temp1 = self.prepare_spreaded(layouter, &temp1, zero)?;
+        let temp2 = self.and(layouter, sprdd_X, &sprdd_nY, zero)?;
+        let sprdd_temp2 = self.prepare_spreaded(layouter, &temp2, zero)?;
 
-        self.xor(layouter, &sprdd_temp1, &sprdd_temp2)
+        self.xor(layouter, &sprdd_temp1, &sprdd_temp2, zero)
     }
 
     /// Given an assigned word X and a left rotation amount `rot`, this function
