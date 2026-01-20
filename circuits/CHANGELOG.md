@@ -15,6 +15,7 @@ verification keys break backwards compatibility.
 
 ### Changed
 * Change nr of bits to represent JubJub scalar field modulus from 255 -> 252 [#179](https://github.com/midnightntwrk/midnight-zk/pull/179)
+* Bumped midnight-proofs version to support logup [#153](https://github.com/midnightntwrk/midnight-zk/pull/153)
 
 ### Removed
 * Move external implementations to zk-stdlib [#178](https://github.com/midnightntwrk/midnight-zk/pull/178) 

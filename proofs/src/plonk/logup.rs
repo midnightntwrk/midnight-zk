@@ -60,7 +60,7 @@
 //! ```text
 //! Z(ω·X)·(t(X) + β) = (Z(X) + h(X))·(t(X) + β) - m(X)
 //! ```
-//! 
+//!
 //! ## Lookup Width vs Parallel Lookups
 //!
 //! The LogUp argument handles two orthogonal dimensions:
@@ -79,12 +79,12 @@
 //! ```text
 //! h(X) = Σⱼ 1/(fⱼ(X) + β)
 //! ```
-//! 
+//!
 //! The constraint that enforces correctness of `h(X)` is:
 //! ```text
 //! h(X) · ∏ⱼ(fⱼ(X) + β) = Σⱼ ∏_{k≠j}(fₖ(X) + β)
 //! ```
-//! 
+//!
 //! This has degree `1 + lookup_degree × num_parallel_lookups`, which limits how
 //! many parallel lookups can be batched into a single argument before exceeding
 //! the constraint system's degree bound.
