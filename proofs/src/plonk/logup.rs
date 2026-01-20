@@ -56,7 +56,8 @@
 //! returns to zero after a full cycle, which we verify by checking `Z(ωⁿ) = 0`.
 //!
 //! The running sum is enforced in the constraint system via the following
-//! identity: ```text
+//! identity:
+//! ```text
 //! Z(ω·X)·(t(X) + β) = (Z(X) + h(X))·(t(X) + β) - m(X)
 //! ```
 //!

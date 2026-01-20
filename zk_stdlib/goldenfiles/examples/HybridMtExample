@@ -6,9 +6,9 @@ CircuitModel {
     max_deg: 5,
     advice_columns: 8,
     fixed_columns: 43,
-    lookups: 2,
+    lookups: 3,
     permutations: 9,
-    column_queries: 57,
+    column_queries: 60,
     point_sets: 5,
-    size: 4000,
+    size: 4272,
 }
