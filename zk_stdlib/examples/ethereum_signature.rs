@@ -31,7 +31,7 @@ type Signature = (secp256k1Scalar, secp256k1Scalar);
 // messages (EIP-191 protocol with a fixed input size assumption).
 const PREFIX: &[u8] = b"\x19Ethereum Signed Message:\n32";
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct EthereumSigExample;
 
 impl Relation for EthereumSigExample {

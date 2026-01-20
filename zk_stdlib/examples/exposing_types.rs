@@ -7,6 +7,7 @@
 pub mod bitcoin_ecdsa_threshold;
 pub mod bitcoin_signature;
 pub mod ecc_ops;
+pub mod ethereum_signature;
 pub mod hybrid_mt;
 pub mod identity;
 pub mod membership;
