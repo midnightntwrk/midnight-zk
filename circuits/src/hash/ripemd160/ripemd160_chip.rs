@@ -4,8 +4,9 @@
 //! Throughout the file, we use the notation from the specification paper:
 //! <https://cosicdatabase.esat.kuleuven.be/backend/publications/files/journal/317>.
 //!
-//! This implementation applies the same idea of plain-spreaded representation as SHA256 chip does.
-//! For more details, see the comments in [crate::hash::sha256::sha256_chip].
+//! This implementation applies the same idea of plain-spreaded representation
+//! as SHA256 chip does. For more details, see the comments in
+//! [crate::hash::sha256::sha256_chip].
 
 use ff::PrimeField;
 use midnight_proofs::{
@@ -19,17 +20,20 @@ use midnight_proofs::{
 use num_integer::Integer;
 
 use crate::{
-    field::{AssignedNative, NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip},
+    field::{decomposition::chip::P2RDecompositionChip, AssignedNative, NativeChip, NativeGadget},
     hash::ripemd160::{
         types::{AssignedSpreaded, AssignedWord, State},
         utils::{
-            MASK_EVN_64, expr_pow2_ip, expr_pow4_ip, gen_spread_table, get_even_and_odd_bits, limb_coeffs, limb_lengths, limb_values, negate_spreaded, spread, spreaded_sum, u32_in_be_limbs
+            expr_pow2_ip, expr_pow4_ip, gen_spread_table, get_even_and_odd_bits, limb_coeffs,
+            limb_lengths, limb_values, negate_spreaded, spread, spreaded_sum, u32_in_be_limbs,
+            MASK_EVN_64,
         },
     },
     instructions::{AssignmentInstructions, DecompositionInstructions, EqualityInstructions},
     types::AssignedByte,
     utils::{
-        ComposableChip, util::{fe_to_u32, fe_to_u64, u32_to_fe, u64_to_fe}
+        util::{fe_to_u32, fe_to_u64, u32_to_fe, u64_to_fe},
+        ComposableChip,
     },
 };
 
@@ -373,7 +377,8 @@ impl<F: PrimeField> RipeMD160Chip<F> {
             AssignedWord::fixed(layouter, &self.native_gadget, K_PRIME[3])?,
             AssignedWord::fixed(layouter, &self.native_gadget, K_PRIME[4])?,
         ];
-        // zero constant will be assigned in multiple places as part of the corresponding constraints.
+        // the constant of zero will be assigned in multiple places as part of the
+        // corresponding constraints.
         let zero = AssignedWord::fixed(layouter, &self.native_gadget, 0u32)?;
 
         let mut state = State::fixed(layouter, &self.native_gadget, IV)?;
@@ -501,7 +506,6 @@ impl<F: PrimeField> RipeMD160Chip<F> {
         round_const_prime: &AssignedWord<F>,
         zero: &AssignedWord<F>,
     ) -> Result<(), Error> {
-        // TODO: optimize using the parallelism of the two sides.
         let State {
             h0: ref mut A,
             h1: ref mut B,
@@ -571,11 +575,15 @@ impl<F: PrimeField> RipeMD160Chip<F> {
             // f(X, Y, Z) = (X ∧ Y) ∨ (¬X ∧ Z)
             16..=31 => self.f_type_two(layouter, &sprdd_X, &sprdd_Y, &sprdd_Z, zero, &mask_evn_64),
             // f(X, Y, Z) = (X ∨ ¬Y) ⊕ Z
-            32..=47 => self.f_type_three(layouter, &sprdd_X, &sprdd_Y, &sprdd_Z, zero, &mask_evn_64),
+            32..=47 => {
+                self.f_type_three(layouter, &sprdd_X, &sprdd_Y, &sprdd_Z, zero, &mask_evn_64)
+            }
             // f(X, Y, Z) = (X ∧ Z) ∨ (Y ∧ ¬Z)
             48..=63 => self.f_type_two(layouter, &sprdd_Z, &sprdd_X, &sprdd_Y, zero, &mask_evn_64),
             // f(X, Y, Z) = X ⊕ (Y ∨ ¬Z)
-            64..=79 => self.f_type_three(layouter, &sprdd_Y, &sprdd_Z, &sprdd_X, zero, &mask_evn_64),
+            64..=79 => {
+                self.f_type_three(layouter, &sprdd_Y, &sprdd_Z, &sprdd_X, zero, &mask_evn_64)
+            }
             _ => unreachable!("Function index out of range"),
         }
     }
@@ -626,8 +634,6 @@ impl<F: PrimeField> RipeMD160Chip<F> {
                 let sprdd_word = region
                     .assign_advice(|| "sprdd_word", adv_cols[5], 0, || sprdd_val.map(u64_to_fe))
                     .map(AssignedSpreaded)?;
-                // region.assign_advice_from_constant(|| "sprdd_ZERO", adv_cols[6], 0, F::ZERO)?;
-                // region.assign_advice_from_constant(|| "sprdd_ZERO", adv_cols[7], 0, F::ZERO)?;
                 zero.0.copy_advice(|| "sprdd_ZERO", &mut region, adv_cols[6], 0)?;
                 zero.0.copy_advice(|| "sprdd_ZERO", &mut region, adv_cols[7], 0)?;
 
@@ -693,7 +699,6 @@ impl<F: PrimeField> RipeMD160Chip<F> {
 
                 sprdd_X.0.copy_advice(|| "sprdd_X", &mut region, adv_cols[5], 0)?;
                 sprdd_Y.0.copy_advice(|| "sprdd_Y", &mut region, adv_cols[6], 0)?;
-                // region.assign_advice_from_constant(|| "sprdd_ZERO", adv_cols[7], 0, F::ZERO)?;
                 zero.0.copy_advice(|| "sprdd_ZERO", &mut region, adv_cols[7], 0)?;
 
                 self.assign_sprdd_11_11_10(&mut region, val_of_sum, Parity::Odd, 0)
@@ -753,7 +758,6 @@ impl<F: PrimeField> RipeMD160Chip<F> {
 
                 sprdd_X.0.copy_advice(|| "sprdd_X", &mut region, adv_cols[5], 0)?;
                 sprdd_Y.0.copy_advice(|| "sprdd_Y", &mut region, adv_cols[6], 0)?;
-                // region.assign_advice_from_constant(|| "spreaded ZERO", adv_cols[7], 0, F::ZERO)?;
                 zero.0.copy_advice(|| "sprdd_ZERO", &mut region, adv_cols[7], 0)?;
 
                 self.assign_sprdd_11_11_10(&mut region, val_of_sum, Parity::Evn, 0)
@@ -895,8 +899,6 @@ impl<F: PrimeField> RipeMD160Chip<F> {
                 self.config().q_spr_sum_odd.enable(&mut region, 4)?;
                 self.config().q_add.enable(&mut region, 4)?;
 
-                // region.assign_advice_from_constant(|| "sprdd_ZERO", adv_cols[7], 0, F::ZERO)?;
-                // region.assign_advice_from_constant(|| "sprdd_ZERO", adv_cols[7], 3, F::ZERO)?;
                 zero.0.copy_advice(|| "sprdd_ZERO", &mut region, adv_cols[7], 0)?;
                 zero.0.copy_advice(|| "sprdd_ZERO", &mut region, adv_cols[7], 3)?;
 
@@ -909,13 +911,6 @@ impl<F: PrimeField> RipeMD160Chip<F> {
                 let sprdd_nX =
                     region.assign_advice(|| "sprdd_nX", adv_cols[5], 3, || sprdd_nX_val)?;
                 sprdd_nX.copy_advice(|| "sprdd_nX", &mut region, adv_cols[5], 4)?;
-
-                // region.assign_advice_from_constant(
-                //     || "MASK_EVN_64",
-                //     adv_cols[6],
-                //     4,
-                //     F::from(MASK_EVN_64),
-                // )?;
 
                 mask_evn_64.copy_advice(|| "MASK_EVN_64", &mut region, adv_cols[6], 4)?;
 
@@ -960,12 +955,6 @@ impl<F: PrimeField> RipeMD160Chip<F> {
                 self.config.q_add.enable(&mut region, 0)?;
 
                 sprdd_Y.0.copy_advice(|| "sprdd_Y", &mut region, adv_cols[4], 0)?;
-                // region.assign_advice_from_constant(
-                //     || "MASK_EVN_64",
-                //     adv_cols[6],
-                //     0,
-                //     F::from(MASK_EVN_64),
-                // )?;
                 mask_evn_64.copy_advice(|| "MASK_EVN_64", &mut region, adv_cols[6], 0)?;
                 region
                     .assign_advice(|| "sprdd_nY", adv_cols[5], 0, || sprdd_nY_val)
@@ -1006,7 +995,7 @@ impl<F: PrimeField> RipeMD160Chip<F> {
            to guarantee the limb values l_i are in the range [0, 2^t_i), the spreaded
            limb values ~l_i have to be filled as well although they are not used in the constraint
 
-         2) asserting the decomposition identity of A:
+         2) asserting the decomposition identity of X:
                coeff_a * l_a + coeff_b * l_b + coeff_c * l_c + coeff_d * l_d
              = X
 
