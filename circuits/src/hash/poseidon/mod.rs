@@ -97,16 +97,26 @@ mod poseidon_chip;
 /// Implementation of CPU versions of Poseidon's permutation and round function.
 /// The functions use two different numbers of round skips depending on whether
 /// they will be used for circuits (NB_SKIPS_CIRCUIT) or CPU (NB_SKIPS_CPU).
-pub mod poseidon_cpu;
+mod poseidon_cpu;
 
 mod poseidon_varlen;
 /// Basic structures and methods for performing partial-round skips in Poseidon.
 pub mod round_skips;
 
 use constants::{PoseidonField, WIDTH};
+use midnight_proofs::{circuit::Layouter, plonk::Error};
 pub use poseidon_chip::*;
 pub use poseidon_cpu::*;
 pub use poseidon_varlen::VarLenPoseidonGadget;
+
+use crate::{
+    instructions::{
+        hash::{HashCPU, HashInstructions, VarHashInstructions},
+        SpongeCPU, SpongeInstructions,
+    },
+    types::AssignedNative,
+    vec::AssignedVector,
+};
 
 /// Number of advice columns used by the Poseidon chip.
 pub const NB_POSEIDON_ADVICE_COLS: usize = if NB_SKIPS_CIRCUIT >= WIDTH {
@@ -117,3 +127,104 @@ pub const NB_POSEIDON_ADVICE_COLS: usize = if NB_SKIPS_CIRCUIT >= WIDTH {
 
 /// Number of fixed columns used by the Poseidon chip.
 pub const NB_POSEIDON_FIXED_COLS: usize = WIDTH + NB_SKIPS_CIRCUIT;
+
+impl<F: PoseidonField> HashCPU<F, F> for PoseidonChip<F> {
+    fn hash(inputs: &[F]) -> F {
+        let mut state = <Self as SpongeCPU<F, F>>::init(Some(inputs.len()));
+        <Self as SpongeCPU<F, F>>::absorb(&mut state, inputs);
+        <Self as SpongeCPU<F, F>>::squeeze(&mut state)
+    }
+}
+
+impl<F: PoseidonField> HashInstructions<F, AssignedNative<F>, AssignedNative<F>>
+    for PoseidonChip<F>
+{
+    fn hash(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        inputs: &[AssignedNative<F>],
+    ) -> Result<AssignedNative<F>, Error> {
+        let mut state = self.init(layouter, Some(inputs.len()))?;
+        self.absorb(layouter, &mut state, inputs)?;
+        self.squeeze(layouter, &mut state)
+    }
+}
+
+// Inherit HashCPU trait from PoseidonChip.
+impl<F: PoseidonField> HashCPU<F, F> for VarLenPoseidonGadget<F> {
+    fn hash(inputs: &[F]) -> F {
+        <PoseidonChip<F> as HashCPU<F, F>>::hash(inputs)
+    }
+}
+
+use super::poseidon::constants::RATE;
+impl<F: PoseidonField, const MAX_LEN: usize>
+    VarHashInstructions<F, MAX_LEN, AssignedNative<F>, AssignedNative<F>, RATE>
+    for VarLenPoseidonGadget<F>
+{
+    /// Hashes the variable-length vector inputs.
+    ///
+    /// # Panics
+    ///
+    /// If `MAX_LEN` is not a multiple of `RATE`.
+    fn varhash(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        input: &AssignedVector<F, AssignedNative<F>, MAX_LEN, RATE>,
+    ) -> Result<AssignedNative<F>, Error> {
+        self.poseidon_varlen(layouter, input)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{constants::RATE, PoseidonChip};
+    use crate::{
+        field::{AssignedNative, NativeChip},
+        hash::poseidon::VarLenPoseidonGadget,
+        instructions::hash::tests::{test_hash, test_varhash},
+    };
+
+    type F = midnight_curves::Fq;
+    #[test]
+    fn test_poseidon_hash() {
+        fn test_wrapper(input_size: usize, k: u32, cost_model: bool) {
+            test_hash::<F, AssignedNative<F>, AssignedNative<F>, PoseidonChip<F>, NativeChip<F>>(
+                cost_model, "Poseidon", input_size, k,
+            )
+        }
+        test_wrapper(32 * RATE, 10, true);
+
+        test_wrapper(RATE, 5, false);
+        test_wrapper(RATE - 1, 5, false);
+        test_wrapper(RATE - 2, 5, false);
+        test_wrapper(2 * RATE, 7, false);
+        test_wrapper(2 * RATE - 1, 7, false);
+        test_wrapper(2 * RATE + 1, 7, false);
+        test_wrapper(4 * RATE, 7, false);
+        test_wrapper(8 * RATE, 8, false);
+        test_wrapper(16 * RATE, 9, false);
+    }
+
+    #[test]
+    fn test_poseidon_varhash() {
+        fn test_wrapper<const M: usize>(input_size: usize, k: u32, cost_model: bool) {
+            test_varhash::<F, AssignedNative<F>, AssignedNative<F>, VarLenPoseidonGadget<F>, M, RATE>(
+                cost_model,
+                "VarPoseidon",
+                input_size,
+                k,
+            )
+        }
+
+        test_wrapper::<512>(64, 14, true);
+        test_wrapper::<512>(63, 14, false);
+        test_wrapper::<256>(128, 12, false);
+        test_wrapper::<256>(127, 12, false);
+        test_wrapper::<256>(256, 12, false);
+
+        test_wrapper::<128>(0, 11, false);
+        test_wrapper::<128>(1, 11, false);
+        test_wrapper::<128>(2, 11, false);
+    }
+}

@@ -12,6 +12,45 @@
       "table_rows": "315"
     }
   },
+  "Blake2b_256": {
+    "hash": {
+      "advice_columns": "19",
+      "column_queries": "150",
+      "fixed_columns": "69",
+      "lookups": "24",
+      "max_deg": "5",
+      "permutations": "24",
+      "point_sets": "6",
+      "rows": "4934",
+      "table_rows": "65536"
+    }
+  },
+  "Blake2b_512": {
+    "hash": {
+      "advice_columns": "19",
+      "column_queries": "150",
+      "fixed_columns": "69",
+      "lookups": "24",
+      "max_deg": "5",
+      "permutations": "24",
+      "point_sets": "6",
+      "rows": "4934",
+      "table_rows": "65536"
+    }
+  },
+  "Keccak_256": {
+    "hash": {
+      "advice_columns": "20",
+      "column_queries": "141",
+      "fixed_columns": "76",
+      "lookups": "18",
+      "max_deg": "5",
+      "permutations": "23",
+      "point_sets": "5",
+      "rows": "12538",
+      "table_rows": "12287"
+    }
+  },
   "Map gadget": {
     "Get": {
       "advice_columns": "13",
@@ -45,7 +84,7 @@
       "max_deg": "5",
       "permutations": "14",
       "point_sets": "3",
-      "rows": "110",
+      "rows": "704",
       "table_rows": "2"
     },
     "one_permutation": {
@@ -80,7 +119,7 @@
       "max_deg": "5",
       "permutations": "15",
       "point_sets": "5",
-      "rows": "1872",
+      "rows": "5600",
       "table_rows": "7933"
     }
   },
@@ -93,8 +132,34 @@
       "max_deg": "5",
       "permutations": "15",
       "point_sets": "7",
-      "rows": "3680",
+      "rows": "11008",
       "table_rows": "15487"
+    }
+  },
+  "Sha3_256": {
+    "hash": {
+      "advice_columns": "20",
+      "column_queries": "141",
+      "fixed_columns": "76",
+      "lookups": "18",
+      "max_deg": "5",
+      "permutations": "23",
+      "point_sets": "5",
+      "rows": "12538",
+      "table_rows": "12287"
+    }
+  },
+  "VarPoseidon": {
+    "hash": {
+      "advice_columns": "18",
+      "column_queries": "104",
+      "fixed_columns": "69",
+      "lookups": "8",
+      "max_deg": "5",
+      "permutations": "20",
+      "point_sets": "4",
+      "rows": "5120",
+      "table_rows": "267"
     }
   },
   "VarSHA256": {

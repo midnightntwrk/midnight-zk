@@ -277,36 +277,52 @@ mod test {
     }
 
     #[test]
-    fn test_keccak_sha3_preimage() {
-        const BLAKE2B_BLOCK_SIZE: usize = 128;
+    fn test_keccak_preimage() {
+        fn test_wrapper(input_size: usize, k: u32, cost_model: bool) {
+            test_hash::<
+                Fq,
+                AssignedByte<Fq>,
+                [AssignedByte<Fq>; 32],
+                Keccak256<Fq>,
+                NativeGadget<Fq, _, _>,
+            >(cost_model, "Keccak_256", input_size, k);
+        }
+        const KECCAK_BLOCK_SIZE: usize = 128;
 
-        let additional_sizes = [
-            BLAKE2B_BLOCK_SIZE - 2,
-            BLAKE2B_BLOCK_SIZE - 1,
-            BLAKE2B_BLOCK_SIZE,
-            BLAKE2B_BLOCK_SIZE + 1,
-            BLAKE2B_BLOCK_SIZE + 2,
-            2 * BLAKE2B_BLOCK_SIZE - 2,
-            2 * BLAKE2B_BLOCK_SIZE - 1,
-            2 * BLAKE2B_BLOCK_SIZE,
-            2 * BLAKE2B_BLOCK_SIZE + 1,
-            2 * BLAKE2B_BLOCK_SIZE + 2,
-        ];
+        test_wrapper(KECCAK_BLOCK_SIZE - 2, 17, false);
+        test_wrapper(KECCAK_BLOCK_SIZE - 1, 17, false);
+        test_wrapper(KECCAK_BLOCK_SIZE, 17, false);
+        test_wrapper(KECCAK_BLOCK_SIZE + 1, 17, false);
+        test_wrapper(KECCAK_BLOCK_SIZE + 2, 17, false);
+        test_wrapper(2 * KECCAK_BLOCK_SIZE - 2, 17, false);
+        test_wrapper(2 * KECCAK_BLOCK_SIZE - 1, 17, false);
+        test_wrapper(2 * KECCAK_BLOCK_SIZE, 17, false);
+        test_wrapper(2 * KECCAK_BLOCK_SIZE + 1, 17, false);
+        test_wrapper(2 * KECCAK_BLOCK_SIZE + 2, 17, false);
+    }
 
-        test_hash::<
-            Fq,
-            AssignedByte<Fq>,
-            [AssignedByte<Fq>; 32],
-            Keccak256<Fq>,
-            NativeGadget<Fq, _, _>,
-        >(true, "Keccak_256", &additional_sizes, 14);
+    #[test]
+    fn test_sha3_preimage() {
+        fn test_wrapper(input_size: usize, k: u32, cost_model: bool) {
+            test_hash::<
+                Fq,
+                AssignedByte<Fq>,
+                [AssignedByte<Fq>; 32],
+                Sha3_256<Fq>,
+                NativeGadget<Fq, _, _>,
+            >(cost_model, "Sha3_256", input_size, k);
+        }
+        const SHA3_BLOCK_SIZE: usize = 128;
 
-        test_hash::<
-            Fq,
-            AssignedByte<Fq>,
-            [AssignedByte<Fq>; 32],
-            Sha3_256<Fq>,
-            NativeGadget<Fq, _, _>,
-        >(true, "Sha3_256", &additional_sizes, 14);
+        test_wrapper(SHA3_BLOCK_SIZE - 2, 17, false);
+        test_wrapper(SHA3_BLOCK_SIZE - 1, 17, false);
+        test_wrapper(SHA3_BLOCK_SIZE, 17, false);
+        test_wrapper(SHA3_BLOCK_SIZE + 1, 17, false);
+        test_wrapper(SHA3_BLOCK_SIZE + 2, 17, false);
+        test_wrapper(2 * SHA3_BLOCK_SIZE - 2, 17, false);
+        test_wrapper(2 * SHA3_BLOCK_SIZE - 1, 17, false);
+        test_wrapper(2 * SHA3_BLOCK_SIZE, 17, false);
+        test_wrapper(2 * SHA3_BLOCK_SIZE + 1, 17, false);
+        test_wrapper(2 * SHA3_BLOCK_SIZE + 2, 17, false);
     }
 }
