@@ -12,14 +12,16 @@ verification keys break backwards compatibility.
 
 ## [Unreleased]
 ### Added
+* Added an example verifying an ethereum signature [#177](https://github.com/midnightntwrk/midnight-zk/pull/177)
 
 ### Changed
 * Change nr of bits to represent JubJub scalar field modulus from 255 -> 252 [#179](https://github.com/midnightntwrk/midnight-zk/pull/179)
+* Adapt external hash test to hash instructions interface [#162](https://github.com/midnightntwrk/midnight-zk/pull/162)
 
 ### Removed
 * Move Blake2b and SHA3-256/Keccak256 implementations to zk-stdlib [#178](https://github.com/midnightntwrk/midnight-zk/pull/178)
 
-## 1.0.0 
+## 1.0.0
 ### Added
 - Initial release of zk_stdlib extracted from circuits crate
 

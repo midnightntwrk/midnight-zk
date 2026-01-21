@@ -35,7 +35,7 @@ const TAG_PREIMAGE: [u8; 17] = [
     0x65,
 ];
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct BitcoinSigExample;
 
 impl Relation for BitcoinSigExample {

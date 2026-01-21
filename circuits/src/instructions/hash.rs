@@ -65,8 +65,8 @@ pub(crate) mod tests {
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem},
     };
-    use rand::{Rng, SeedableRng};
-    use rand_chacha::ChaCha8Rng;
+    use rand::SeedableRng;
+    use rand_chacha::ChaCha12Rng;
 
     use super::*;
     use crate::{
@@ -83,7 +83,8 @@ pub(crate) mod tests {
         Input: InnerValue,
         Output: InnerValue,
     {
-        input: Vec<Input::Element>,
+        input: Vec<Value<Input::Element>>,
+        expected_output: Output::Element,
         _marker: PhantomData<(F, Output, HashChip, AssignChip)>,
     }
 
@@ -126,14 +127,14 @@ pub(crate) mod tests {
             let chip = HashChip::new_from_scratch(&config.0);
             let assign_chip = AssignChip::new_from_scratch(&config.1);
 
-            let vec_input =
-                self.input.iter().map(|input| Value::known(input.clone())).collect::<Vec<_>>();
-            let assigned_input = assign_chip.assign_many(&mut layouter, &vec_input)?;
-            let expected_output =
-                <HashChip as HashCPU<Input::Element, Output::Element>>::hash(&self.input);
+            let inputs = assign_chip.assign_many(&mut layouter, &self.input)?;
 
-            let output = chip.hash(&mut layouter, &assigned_input)?;
-            assign_chip.assert_equal_to_fixed(&mut layouter, &output, expected_output)?;
+            let output = chip.hash(&mut layouter, &inputs)?;
+            assign_chip.assert_equal_to_fixed(
+                &mut layouter,
+                &output,
+                self.expected_output.clone(),
+            )?;
 
             chip.load_from_scratch(&mut layouter)?;
             assign_chip.load_from_scratch(&mut layouter)
@@ -151,7 +152,7 @@ pub(crate) mod tests {
     pub fn test_hash<F, Input, Output, HashChip, AssignChip>(
         cost_model: bool,
         chip_name: &str,
-        additional_input_sizes: &[usize],
+        size: usize,
         k: u32,
     ) where
         F: PrimeField + ff::FromUniformBytes<64> + Ord,
@@ -161,33 +162,27 @@ pub(crate) mod tests {
         AssignChip:
             AssignmentInstructions<F, Input> + AssertionInstructions<F, Output> + FromScratch<F>,
     {
-        // Create a random number generator.
-        let mut rng = ChaCha8Rng::from_entropy();
+        let mut rng = ChaCha12Rng::seed_from_u64(0xf007ba11);
 
-        let input_sizes = ([10, 0, 1].iter().copied())
-            .chain((0..10).map(|_| rng.gen_range(1..10)))
-            .chain(additional_input_sizes.iter().copied())
-            .collect::<Vec<_>>();
-        let inputs = (input_sizes.iter())
-            .map(|&size| (0..size).map(|_| Input::sample_inner(&mut rng)).collect::<Vec<_>>());
+        let input = (0..size).map(|_| Input::sample_inner(&mut rng)).collect::<Vec<_>>();
+        let expected_output = <HashChip as HashCPU<Input::Element, Output::Element>>::hash(&input);
 
-        let mut cost_model = cost_model;
-        for input in inputs {
-            println!(
-                "> [{}] Preimage test circuit:\n\t- input = {:?}",
-                chip_name, input
-            );
-            let circuit = TestCircuit::<F, Input, Output, HashChip, AssignChip> {
-                input,
-                _marker: PhantomData,
-            };
-            MockProver::run(k, &circuit, vec![vec![], vec![]]).unwrap().assert_satisfied();
-            println!("\n... test passed!\n");
-            if cost_model {
-                circuit_to_json(chip_name, "hash", circuit);
-            }
-            // The cost model, if any, is only on the first input.
-            cost_model = false;
+        println!(
+            "[{}] Preimage circuit test on input {:?}",
+            chip_name,
+            input.clone()
+        );
+        let circuit = TestCircuit::<F, Input, Output, HashChip, AssignChip> {
+            input: input.into_iter().map(Value::known).collect(),
+            expected_output,
+            _marker: PhantomData,
+        };
+
+        MockProver::run(k, &circuit, vec![vec![], vec![]]).unwrap().assert_satisfied();
+        println!("\n... succeeded!\n");
+
+        if cost_model {
+            circuit_to_json(chip_name, "hash", circuit);
         }
     }
 
@@ -199,7 +194,8 @@ pub(crate) mod tests {
         Input: Vectorizable,
         Output: InnerValue,
     {
-        input: Vec<Input::Element>, // TODO This should be Value<>
+        input: Value<Vec<Input::Element>>,
+        expected_output: Output::Element,
         _marker: PhantomData<(F, Output, VarHashChip)>,
     }
 
@@ -245,12 +241,10 @@ pub(crate) mod tests {
             let vg = VectorGadget::new(&ng);
 
             let assigned_input: AssignedVector<_, _, M, A> =
-                vg.assign(&mut layouter, Value::known(self.input.clone()))?;
-            let expected_output =
-                <VarHashChip as HashCPU<Input::Element, Output::Element>>::hash(&self.input);
+                vg.assign(&mut layouter, self.input.clone())?;
 
             let output = chip.varhash(&mut layouter, &assigned_input)?;
-            ng.assert_equal_to_fixed(&mut layouter, &output, expected_output)?;
+            ng.assert_equal_to_fixed(&mut layouter, &output, self.expected_output.clone())?;
 
             chip.load_from_scratch(&mut layouter)?;
             ng.load_from_scratch(&mut layouter)
@@ -271,12 +265,15 @@ pub(crate) mod tests {
         VectorGadget<F>: AssignmentInstructions<F, AssignedVector<F, Input, M, A>>,
         NG<F>: AssignmentInstructions<F, Input> + AssertionInstructions<F, Output>,
     {
-        let mut rng = ChaCha8Rng::seed_from_u64(0xf007ba11);
+        let mut rng = ChaCha12Rng::seed_from_u64(0xf007ba11);
 
         let input = (0..size).map(|_| Input::sample_inner(&mut rng)).collect::<Vec<_>>();
+        let expected_output =
+            <VarHashChip as HashCPU<Input::Element, Output::Element>>::hash(&input);
 
         let circuit = TestVarHashCircuit::<F, Input, Output, VarHashChip, M, A> {
-            input,
+            input: Value::known(input),
+            expected_output,
             _marker: PhantomData,
         };
 

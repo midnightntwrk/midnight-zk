@@ -24,7 +24,9 @@ mod exposing_types;
 
 use exposing_types::{
     bitcoin_ecdsa_threshold::BitcoinThresholdECDSA,
+    bitcoin_signature::BitcoinSigExample,
     ecc_ops::EccExample,
+    ethereum_signature::EthereumSigExample,
     hybrid_mt::HybridMtExample,
     identity::{
         enrollment::CredentialEnrollment, full_credential::FullCredential,
@@ -61,6 +63,8 @@ macro_rules! generate_tests {
 generate_tests!(
     check_vk_ecc: EccExample,
     check_vk_bitcoin: BitcoinThresholdECDSA,
+    check_vk_ethereum_sig: EthereumSigExample,
+    check_vk_bitcoin_sig: BitcoinSigExample,
     check_vk_rsa: RSASignatureCircuit,
     check_vk_poseidon: PoseidonExample,
     check_vk_native: NativeGadgetExample,

@@ -15,9 +15,11 @@ verification keys break backwards compatibility.
 
 ### Changed
 * Change nr of bits to represent JubJub scalar field modulus from 255 -> 252 [#179](https://github.com/midnightntwrk/midnight-zk/pull/179)
+* Adapt Poseidon variable length hash to agree with its CPU version [#162](https://github.com/midnightntwrk/midnight-zk/pull/162)
+* Refactor `hash` and `varhash` tests [#162](https://github.com/midnightntwrk/midnight-zk/pull/162)
 
 ### Removed
-* Move external implementations to zk-stdlib [#178](https://github.com/midnightntwrk/midnight-zk/pull/178) 
+* Move external implementations to zk-stdlib [#178](https://github.com/midnightntwrk/midnight-zk/pull/178)
 
 ## [6.0.0] - 18-12-2025
 ### Added
@@ -35,7 +37,6 @@ verification keys break backwards compatibility.
 * Made bench_macros and criterion dev dependencies [#134](https://github.com/midnightntwrk/midnight-zk/pull/134)
 * Optimize `assigned_to_le_bits` in `NativeGadget` [#131](https://github.com/midnightntwrk/midnight-zk/pull/131)
 * Bn256 curves emulation parameters feature-gated under "dev-curves" [#139](https://github.com/midnightntwrk/midnight-zk/pull/139)
-
 
 ### Removed
 * Halo2curves dependency [#139](https://github.com/midnightntwrk/midnight-zk/pull/139)

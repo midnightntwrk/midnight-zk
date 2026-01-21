@@ -29,6 +29,7 @@ num-bigint = { version = "0.4" }
 num-traits = "0.2"
 base64 = "0.13.1"
 bincode = "2.0"
+hex-literal = "1.1"
 
 [dev-dependencies]
 criterion = "0.7"
@@ -44,9 +45,7 @@ sha3 = "0.10.0"
 blake2 = "0.10.6"
 
 [target.'cfg(ci_build)'.dependencies]
-midnight-curves = { version = "0.2.0", features = [
-    "portable",
-] }
+midnight-curves = { version = "0.2.0", features = ["portable"] }
 
 [features]
 default = []

@@ -65,25 +65,30 @@ mod tests {
 
     #[test]
     fn test_sha512_hash() {
+        fn test_wrapper(input_size: usize, k: u32, cost_model: bool) {
+            test_hash::<
+                Scalar,
+                AssignedByte<Scalar>,
+                [AssignedByte<Scalar>; 64],
+                Sha512Chip<Scalar>,
+                NativeGadget<Scalar, _, _>,
+            >(cost_model, "SHA512", input_size, k)
+        }
+
         const SHA512_BLOCK_SIZE: usize = 128;
-        let additional_sizes = [
-            SHA512_BLOCK_SIZE - 2,
-            SHA512_BLOCK_SIZE - 1,
-            SHA512_BLOCK_SIZE,
-            SHA512_BLOCK_SIZE + 1,
-            SHA512_BLOCK_SIZE + 2,
-            2 * SHA512_BLOCK_SIZE - 2,
-            2 * SHA512_BLOCK_SIZE - 1,
-            2 * SHA512_BLOCK_SIZE,
-            2 * SHA512_BLOCK_SIZE + 1,
-            2 * SHA512_BLOCK_SIZE + 2,
-        ];
-        test_hash::<
-            Scalar,
-            AssignedByte<Scalar>,
-            [AssignedByte<Scalar>; 64],
-            Sha512Chip<Scalar>,
-            NativeGadget<Scalar, _, _>,
-        >(true, "SHA512", &additional_sizes, 14);
+        const SHA512_EDGE_PADDING: usize = 111;
+        test_wrapper(2 * SHA512_BLOCK_SIZE, 16, true);
+
+        test_wrapper(SHA512_BLOCK_SIZE, 15, false);
+        test_wrapper(SHA512_BLOCK_SIZE - 1, 15, false);
+        test_wrapper(SHA512_BLOCK_SIZE - 2, 15, false);
+        test_wrapper(4 * SHA512_BLOCK_SIZE, 16, false);
+
+        test_wrapper(SHA512_EDGE_PADDING, 14, false);
+        test_wrapper(SHA512_EDGE_PADDING - 1, 14, false);
+
+        test_wrapper(0, 14, false);
+        test_wrapper(1, 14, false);
+        test_wrapper(2, 14, false);
     }
 }
