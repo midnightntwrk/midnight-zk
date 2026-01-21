@@ -302,7 +302,7 @@ mod test {
         test_wrapper(2 * SHA3_256_RATE + 1, 16, false);
         test_wrapper(2 * SHA3_256_RATE + 2, 16, false);
 
-        test_wrapper(4 * SHA3_256_RATE, 16, true);
+        test_wrapper(4 * SHA3_256_RATE, 16, false);
 
         test_wrapper(0, 14, false);
         test_wrapper(1, 14, false);
@@ -335,7 +335,7 @@ mod test {
         test_wrapper(2 * SHA3_256_RATE + 1, 16, false);
         test_wrapper(2 * SHA3_256_RATE + 2, 16, false);
 
-        test_wrapper(4 * SHA3_256_RATE, 16, true);
+        test_wrapper(4 * SHA3_256_RATE, 16, false);
 
         test_wrapper(0, 14, false);
         test_wrapper(1, 14, false);
