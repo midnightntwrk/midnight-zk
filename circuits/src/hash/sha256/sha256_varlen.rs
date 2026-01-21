@@ -49,6 +49,29 @@ impl<F: PrimeField> VarLenSha256Gadget<F> {
     }
 }
 
+/// A quick macro for creating groups inlined. I'll move it somewhere else after I know works well.
+macro_rules! inlined_group {
+    ($name:expr, $layouter:ident, $meta:ident, $body:expr) => {
+        $layouter.group(
+            || $name,
+            midnight_proofs::default_group_key!(),
+            |$layouter, $meta| {
+                let result = { $body }?;
+                $meta.annotate_as_output(&result)?;
+                Ok(result)
+            },
+        )
+    };
+}
+
+macro_rules! input {
+    ($input:expr, $meta:ident) => {{
+        let _i = $input;
+        $meta.annotate_as_input(&_i)?;
+        _i
+    }};
+}
+
 impl<F> VarLenSha256Gadget<F>
 where
     F: PrimeField,
@@ -58,17 +81,23 @@ where
     // needed. Otherwise, the final block length is in (0, 64]. Due to the
     // allowing of value 64, the returned `AssignedBounded` has bound 2^7.
     // An extra block is needed if final_block_len >= (64 - 8).
+    #[picus::group]
     fn final_block_len<const M: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
-        len: &AssignedNative<F>, // Total input length in bytes.
+        #[input] len: &AssignedNative<F>, // Total input length in bytes.
     ) -> Result<(AssignedBounded<F>, AssignedBit<F>), Error> {
         let ng = &self.ng();
 
         // Final block length in [0, 64].
         let final_block_len = {
             // Final block length in [0, 64).
-            let fb_len = ng.rem(layouter, len, 64u64.into(), Some(M.into()))?;
+            let fb_len = inlined_group!(
+                "ng rem",
+                layouter,
+                group,
+                ng.rem(layouter, input!(len, group), 64u64.into(), Some(M.into()))
+            )?;
 
             // The final block is full if len % 64 = 0; and the input length is not 0.
             let full_final_block = {
@@ -96,12 +125,13 @@ where
     // Inserts `elem` in position `idx` of `array`.
     // Idx values outside [0, L) are allowed but, in thta case, the array will
     // remain unchanged.
+    #[picus::group]
     fn insert_in_array<const L: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
-        idx: &AssignedNative<F>,
-        array: &mut [AssignedByte<F>; L],
-        elem: AssignedByte<F>,
+        #[input] idx: &AssignedNative<F>,
+        #[output] array: &mut [AssignedByte<F>; L],
+        #[input] elem: AssignedByte<F>,
     ) -> Result<(), Error> {
         let ng = self.ng();
         for (i, item) in array.iter_mut().enumerate() {
@@ -116,12 +146,13 @@ where
     // chunk.
     // If `len` >= L, the output will be equal to `chunk_1`. If `len` = 0,
     // the output will be equal to `chunk_2`.
+    #[picus::group]
     fn merge_chunks<const L: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
-        chunk_1: &[AssignedByte<F>; L],
-        chunk_2: &[AssignedByte<F>; L],
-        len: &AssignedNative<F>,
+        #[input] chunk_1: &[AssignedByte<F>; L],
+        #[input] chunk_2: &[AssignedByte<F>; L],
+        #[input] len: &AssignedNative<F>,
     ) -> Result<[AssignedByte<F>; L], Error> {
         let ng = &self.ng();
         let mut first_chunk: AssignedBit<F> = ng.assign_fixed(layouter, true)?;
@@ -139,13 +170,14 @@ where
     }
 
     // Computes the last 2 blocks of padding.
+    #[picus::group]
     fn compute_padding(
         &self,
         layouter: &mut impl Layouter<F>,
-        input_len: &AssignedNative<F>,        // in bytes
-        final_chunk_len: &AssignedBounded<F>, // in bytes
-        final_chunk: &[AssignedByte<F>; 64],
-        extra_block: &AssignedBit<F>,
+        #[input] input_len: &AssignedNative<F>, // in bytes
+        #[input] final_chunk_len: &AssignedBounded<F>, // in bytes
+        #[input] final_chunk: &[AssignedByte<F>; 64],
+        #[input] extra_block: &AssignedBit<F>,
     ) -> Result<[AssignedByte<F>; 2 * 64], Error> {
         let ng = self.ng();
         let zero: AssignedByte<F> = ng.assign_fixed(layouter, 0u8)?;
@@ -212,11 +244,12 @@ where
 
 impl<F: PrimeField> VarLenSha256Gadget<F> {
     // Updates the `state` with `block`.
+    #[picus::group]
     fn update_state(
         &self,
         layouter: &mut impl Layouter<F>,
-        state: &CompressionState<F>,
-        block: &[AssignedByte<F>; 64],
+        #[input] state: &CompressionState<F>,
+        #[input] block: &[AssignedByte<F>; 64],
     ) -> Result<CompressionState<F>, Error> {
         let sha256 = &self.sha256chip;
         let block = sha256.block_from_bytes(layouter, block)?;
@@ -235,12 +268,13 @@ impl<F: PrimeField> VarLenSha256Gadget<F> {
 
     // Updates the `state` with `block` if `update` is true.
     // Otherwise returns the input state unchanged.
+    #[picus::group]
     fn conditional_update_state(
         &self,
         layouter: &mut impl Layouter<F>,
-        state: &CompressionState<F>,
-        block: &[AssignedByte<F>; 64],
-        update: &AssignedBit<F>,
+        #[input] state: &CompressionState<F>,
+        #[input] block: &[AssignedByte<F>; 64],
+        #[input] update: &AssignedBit<F>,
     ) -> Result<CompressionState<F>, Error> {
         let new_state = self.update_state(layouter, state, block)?;
 
@@ -250,10 +284,11 @@ impl<F: PrimeField> VarLenSha256Gadget<F> {
 
     /// In-circuit variable input-length SHA256 computation, the protagonist of
     /// this chip.
+    #[picus::group]
     pub(super) fn sha256_varlen<const M: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
-        inputs: &AssignedVector<F, AssignedByte<F>, M, 64>,
+        #[input] inputs: &AssignedVector<F, AssignedByte<F>, M, 64>,
     ) -> Result<[AssignedPlain<F, 32>; 8], Error> {
         let ng = self.ng();
 

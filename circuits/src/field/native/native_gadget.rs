@@ -118,6 +118,7 @@ impl<F: PrimeField> Instantiable<F> for AssignedByte<F> {
 /// constraints) that the assigned value is indeed in the range [0, 256).
 #[derive(Clone, Debug)]
 #[must_use]
+#[cfg_attr(feature = "extraction", derive(picus::DecomposeInCells))]
 pub struct AssignedByte<F: PrimeField>(AssignedNative<F>);
 
 impl<F: PrimeField> InnerValue for AssignedByte<F> {
@@ -271,6 +272,7 @@ impl<F: PrimeField> BoundedElement<F> {
 /// designated entry points, which guarantee (with constraints) that the
 /// assigned value is in the desired range, `[0, 2^bound)`.
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "extraction", derive(picus::DecomposeInCells))]
 pub struct AssignedBounded<F: PrimeField> {
     value: AssignedNative<F>,
     bound: u32,
