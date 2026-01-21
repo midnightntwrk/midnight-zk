@@ -386,9 +386,9 @@ impl<C: EdwardsCurve> ComposableChip<C::Base> for EccChip<C> {
 
 impl<C: EdwardsCurve> EccChip<C> {
     /// Given points Q, S and bit `b`, computes R = Q + b * S.
-    /// This function requires the inputs to be already assigned in the current row.
-    /// The result R will be asigned by this function in the same row, following
-    /// the layout:
+    /// This function requires the inputs to be already assigned in the current
+    /// row. The result R will be asigned by this function in the same row,
+    /// following the layout:
     ///
     ///
     /// ```text
@@ -428,9 +428,9 @@ impl<C: EdwardsCurve> EccChip<C> {
     }
 
     /// Given points P, Q and bit `b`, computes R = 2 * (P + b * Q).
-    /// This function requires the inputs to be already assigned in the current row.
-    /// The result R will be asigned by this function in the next row, following
-    /// the layout:
+    /// This function requires the inputs to be already assigned in the current
+    /// row. The result R will be asigned by this function in the next row,
+    /// following the layout:
     ///
     ///
     /// ```text
