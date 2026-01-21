@@ -201,23 +201,19 @@ pub mod extraction {
         filler: F,
         injected_ir: &mut IR<F>,
     ) {
-        let expr = IRBexpr::Or(
-            (0..=M)
-                .filter_map(|len| {
-                    let lims = get_lims::<M, A>(len);
-                    let size_checks = emit_size_checks(buffer, &lims, M, filler);
+        let expr = IRBexpr::or_many((0..=M).filter_map(|len| {
+            let lims = get_lims::<M, A>(len);
+            let size_checks = emit_size_checks(buffer, &lims, M, filler);
 
-                    if size_checks.is_empty() {
-                        return None;
-                    }
-                    Some(IRBexpr::implies(
-                        IRBexpr::eq(len_expr.clone(), Expression::from(len as u64))
-                            .with(len_cell.row_offset),
-                        IRBexpr::And(size_checks),
-                    ))
-                })
-                .collect(),
-        );
+            if size_checks.is_empty() {
+                return None;
+            }
+            Some(IRBexpr::implies(
+                IRBexpr::eq(len_expr.clone(), Expression::from(len as u64))
+                    .with(len_cell.row_offset),
+                IRBexpr::and_many(size_checks),
+            ))
+        }));
         injected_ir.inject(len_cell.region_index, IRStmt::assert(expr));
     }
 
