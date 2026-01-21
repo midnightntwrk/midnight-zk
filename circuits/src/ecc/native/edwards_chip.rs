@@ -845,12 +845,13 @@ impl<C: EdwardsCurve> PublicInputInstructions<C::Base, AssignedNativePoint<C>> f
         layouter: &mut impl Layouter<C::Base>,
         p: Value<C::CryptographicGroup>,
     ) -> Result<AssignedNativePoint<C>, Error> {
-        // We can skip the curve equation check in this case.
         let (x, y) = p.map(|p| p.into().coordinates().unwrap()).unzip();
         let x = self.native_gadget.assign_as_public_input(layouter, x)?;
         let y = self.native_gadget.assign_as_public_input(layouter, y)?;
-        // Since the input value is C::CryptographicGroup we can skip the subgroup
-        // check.
+
+        // Since the input value will be constrained to be equal to a PI,
+        // the verifier will check the validity of the point out-of-circuit,
+        // so the checks can be skipped.
         Ok(AssignedNativePoint {
             x,
             y,
