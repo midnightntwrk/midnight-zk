@@ -243,9 +243,8 @@ impl<F: Field> BatchedArgument<F> {
             self.table_expressions.len()
         );
         let nb_lookups = self.nb_parallel_lookups(cs_degree);
-        let chunk_size = self.input_expressions.len().div_ceil(nb_lookups);
         self.input_expressions
-            .chunks(chunk_size)
+            .chunks(nb_lookups)
             .enumerate()
             .map(|(idx, chunk)| FlattenArgument {
                 name: format!("{}-{}", self.name, idx),
