@@ -385,19 +385,19 @@ impl<C: EdwardsCurve> ComposableChip<C::Base> for EccChip<C> {
 }
 
 impl<C: EdwardsCurve> EccChip<C> {
-    /// Given `Q`, `S`, and bit `b`, supposedly already assigned in the
-    /// current row, this function assigns `R` in the same row and
-    /// enforces that `R = Q + b * S`.
-    //
-    // We use the following layout.
-    //
-    // ```text
-    //    0      1      2      3       4     5      6      7         8
-    // ----------------------------------------------------------------------
-    // |  xq  |  yq  |  xs  |  ys  |   b   | xr  |  yr  |     | xq_yq_xs_ys |
-    // ----------------------------------------------------------------------
-    // ```
-    fn assign_cond_add(
+    /// Given points Q, S and bit `b`, computes R = Q + b * S.
+    /// This function requires the inputs to be already assigned in the current row.
+    /// The result R will be asigned by this function in the same row, following
+    /// the layout:
+    ///
+    ///
+    /// ```text
+    ///    0      1      2      3       4     5      6      7         8
+    /// ----------------------------------------------------------------------
+    /// |  xq  |  yq  |  xs  |  ys  |   b   | xr  |  yr  |     | xq_yq_xs_ys |
+    /// ----------------------------------------------------------------------
+    /// ```
+    fn cond_add(
         &self,
         region: &mut Region<C::Base>,
         offset: usize,
@@ -427,19 +427,19 @@ impl<C: EdwardsCurve> EccChip<C> {
         })
     }
 
-    /// Given `P`, `Q`, and bit `b`, supposedly already assigned in the
-    /// current row, this function assigns `R` in the next row and
-    /// enforces that `R = 2 * (P + b * Q)`.
-    //
-    // We use the following layout.
-    //
-    // ```text
-    // ------------------------------------------------------------------------
-    // |  xp  |  yp  |  xq  |  yq  |  b   |  xs  |  ys  | xs_xs | xp_yp_xq_yq |
-    // |  xr  |  yr  |      |      |      |      |      |       |             |
-    // ------------------------------------------------------------------------
-    // ```
-    fn assign_add_then_double(
+    /// Given points P, Q and bit `b`, computes R = 2 * (P + b * Q).
+    /// This function requires the inputs to be already assigned in the current row.
+    /// The result R will be asigned by this function in the next row, following
+    /// the layout:
+    ///
+    ///
+    /// ```text
+    /// ------------------------------------------------------------------------
+    /// |  xp  |  yp  |  xq  |  yq  |  b   |  xs  |  ys  | xs_xs | xp_yp_xq_yq |
+    /// |  xr  |  yr  |      |      |      |      |      |       |             |
+    /// ------------------------------------------------------------------------
+    /// ```
+    fn add_then_double(
         &self,
         region: &mut Region<C::Base>,
         offset: usize,
@@ -518,11 +518,11 @@ impl<C: EdwardsCurve> EccChip<C> {
                     bit.0.copy_advice(|| "b cond_add", &mut region, config.advice_cols[4], i)?;
 
                     if i < scalar_be_bits.len() - 1 {
-                        acc = self.assign_add_then_double(&mut region, i, &acc, base, bit)?;
+                        acc = self.add_then_double(&mut region, i, &acc, base, bit)?;
                     }
                     // In the last iteration, add but do not double.
                     else {
-                        acc = self.assign_cond_add(&mut region, i, &acc, base, bit)?;
+                        acc = self.cond_add(&mut region, i, &acc, base, bit)?;
                     }
                 }
 
@@ -610,7 +610,7 @@ impl<C: EdwardsCurve> EccInstructions<C::Base, C> for EccChip<C> {
                 q.y.copy_advice(|| "qy", &mut region, config.advice_cols[3], 0)?;
                 b.0.copy_advice(|| "b", &mut region, config.advice_cols[4], 0)?;
 
-                self.assign_cond_add(&mut region, 0, p, q, &b)
+                self.cond_add(&mut region, 0, p, q, &b)
             },
         )
     }
