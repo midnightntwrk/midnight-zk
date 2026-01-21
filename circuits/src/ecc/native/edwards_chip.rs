@@ -549,12 +549,14 @@ impl<C: EdwardsCurve> EccChip<C> {
 impl<C: EdwardsCurve> EccChip<C> {
     /// Multiplies by the cofactor, ensuring the result lies in the prime order
     /// subgroup.
-    pub fn clear_cofactor(
+    pub(crate) fn clear_cofactor(
         &self,
         layouter: &mut impl Layouter<C::Base>,
         point: &AssignedNativePoint<C>,
     ) -> Result<AssignedNativePoint<C>, Error> {
-        assert!(!point.in_subgroup, "The point is already in the subgroup.");
+        if point.in_subgroup {
+            return Err(Error::Synthesis("clear_cofactor() should not be called in a point that is already guaranteed to be in the prime-order subgroup.".to_owned()));
+        }
         let r = self.mul_by_constant(layouter, C::Scalar::from_u128(C::COFACTOR), point)?;
         Ok(AssignedNativePoint {
             x: r.x,
