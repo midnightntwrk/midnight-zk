@@ -72,6 +72,12 @@ macro_rules! input {
     }};
 }
 
+macro_rules! output {
+    ($output:expr, $meta:ident) => {{
+        $meta.annotate_as_output(&$output)?;
+    }};
+}
+
 impl<F> VarLenSha256Gadget<F>
 where
     F: PrimeField,
@@ -100,25 +106,35 @@ where
             )?;
 
             // The final block is full if len % 64 = 0; and the input length is not 0.
-            let full_final_block = {
-                let len_is_zero = ng.is_zero(layouter, len)?;
-                let fb_is_zero = ng.is_zero(layouter, &fb_len)?;
-                ng.xor(layouter, &[len_is_zero, fb_is_zero])?
-            };
+            let full_final_block = inlined_group!("full_final_block", layouter, group, {
+                let len_is_zero = ng.is_zero(layouter, input!(len, group))?;
+                let fb_is_zero = ng.is_zero(layouter, input!(&fb_len, group))?;
+                ng.xor(layouter, &[len_is_zero, fb_is_zero])
+            })?;
 
-            let max_block_len = ng.assign_fixed(layouter, F::from(64u64))?;
-            ng.select(layouter, &full_final_block, &max_block_len, &fb_len)?
+            inlined_group!("select_final_block_len", layouter, group, {
+                let max_block_len = ng.assign_fixed(layouter, F::from(64u64))?;
+                ng.select(
+                    layouter,
+                    input!(&full_final_block, group),
+                    &max_block_len,
+                    input!(&fb_len, group),
+                )
+            })?
         };
 
-        // Limit on the final block length: If exceeded, an extra block will be needed.
-        let len_lim: u64 = 56;
+        inlined_group!("final_block_len_epilogue", layouter, group, {
+            // Limit on the final block length: If exceeded, an extra block will be needed.
+            let len_lim: u64 = 56;
 
-        // Need to use 7 since we use the range (0, 64], instead of [0, 64);
-        let final_block_len = ng.bounded_of_element(layouter, 7, &final_block_len)?;
-        let not_extra = ng.lower_than_fixed(layouter, &final_block_len, F::from(len_lim))?;
-        let extra = ng.not(layouter, &not_extra)?;
+            // Need to use 7 since we use the range (0, 64], instead of [0, 64);
+            let final_block_len =
+                ng.bounded_of_element(layouter, 7, input!(&final_block_len, group))?;
+            let not_extra = ng.lower_than_fixed(layouter, &final_block_len, F::from(len_lim))?;
+            let extra = ng.not(layouter, &not_extra)?;
 
-        Ok((final_block_len, extra))
+            Ok::<_, Error>((final_block_len, extra))
+        })
     }
 
     // TODO Maybe move this somewhere else (VectorGadget? )
@@ -161,9 +177,14 @@ where
             .zip(chunk_2.iter())
             .enumerate()
             .map(|(i, (a, b))| {
-                let switch = ng.is_equal_to_fixed(layouter, len, F::from(i as u64))?;
-                first_chunk = ng.xor(layouter, &[first_chunk.clone(), switch])?;
-                ng.select(layouter, &first_chunk, a, b)
+                inlined_group!(format!("merge chunk {i}"), layouter, group, {
+                    let switch =
+                        ng.is_equal_to_fixed(layouter, input!(len, group), F::from(i as u64))?;
+                    first_chunk =
+                        ng.xor(layouter, &[input!(first_chunk.clone(), group), switch])?;
+                    output!(first_chunk, group);
+                    ng.select(layouter, &first_chunk, input!(a, group), input!(b, group))
+                })
             })
             .collect::<Result<Vec<_>, Error>>()?;
         Ok(result.try_into().expect("Chunks of equal length."))
@@ -263,7 +284,9 @@ impl<F: PrimeField> VarLenSha256Gadget<F> {
                 &message_blocks[i],
             )?;
         }
-        state.add(sha256, layouter, &compression_state)
+        inlined_group!("state add", layouter, group, {
+            state.add(sha256, layouter, input!(&compression_state, group))
+        })
     }
 
     // Updates the `state` with `block` if `update` is true.
@@ -296,13 +319,13 @@ impl<F: PrimeField> VarLenSha256Gadget<F> {
         let (final_block_len, extra_block) = self.final_block_len::<M>(layouter, &inputs.len)?;
 
         // Length of the input rounded up to the chunk size.
-        let rounded_len = {
-            let fc_len = ng.element_of_bounded(layouter, &final_block_len)?;
+        let rounded_len = inlined_group!("rounded len", layouter, group, {
+            let fc_len = ng.element_of_bounded(layouter, input!(&final_block_len, group))?;
             let is_zero = ng.is_zero(layouter, &fc_len)?;
-            let len_round = ng.sub(layouter, &inputs.len, &fc_len)?;
+            let len_round = ng.sub(layouter, input!(&inputs.len, group), &fc_len)?;
             let len_round_extra = ng.add_constant(layouter, &len_round, F::from(64u64))?;
             ng.select(layouter, &is_zero, &len_round, &len_round_extra)
-        }?;
+        })?;
 
         // Variable that signals the start of effective data in the input buffer
         // and activates the update mechanism in the hash internal state.
@@ -316,17 +339,32 @@ impl<F: PrimeField> VarLenSha256Gadget<F> {
 
         // Conditional update loop. Stops 1 chunk before the end.
         for i in 0..(M / 64) - 1 {
-            // Have we arrived to the start of the input to be hashed.
-            let b = ng.is_equal_to_fixed(layouter, &rounded_len, F::from((M - (i * 64)) as u64))?;
+            inlined_group!(format!("conditional update loop {i}"), layouter, group, {
+                // Have we arrived to the start of the input to be hashed.
+                let b = ng.is_equal_to_fixed(
+                    layouter,
+                    input!(&rounded_len, group),
+                    F::from((M - (i * 64)) as u64),
+                )?;
 
-            // Switch on the updating variable if we got to the start.
-            updating = ng.xor(layouter, &[b, updating])?;
+                // Switch on the updating variable if we got to the start.
+                updating = ng.xor(layouter, &[b, input!(updating.clone(), group)])?;
+                output!(updating, group);
 
-            // Compute the (potential) new state.
-            let block_array = block.try_into().unwrap();
-            state = self.conditional_update_state(layouter, &state, block_array, &updating)?;
+                // Compute the (potential) new state.
+                let block_array = input!(block, group).try_into().unwrap();
+                state = self.conditional_update_state(
+                    layouter,
+                    input!(&state, group),
+                    block_array,
+                    &updating,
+                )?;
+                output!(state, group);
 
-            block = block_iter.next().expect("One more block.");
+                block = block_iter.next().expect("One more block.");
+                output!(block, group);
+                Ok::<_, Error>(())
+            })?;
         }
 
         assert!(block_iter.next().is_none());
