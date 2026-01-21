@@ -1860,6 +1860,7 @@ impl<F: Field> ConstraintSystem<F> {
     pub fn lookup<S: AsRef<str>>(
         &mut self,
         name: S,
+        selector: Selector,
         table_map: impl FnOnce(&mut VirtualCells<'_, F>) -> Vec<(Vec<Expression<F>>, TableColumn)>,
     ) -> usize {
         let mut cells = VirtualCells::new(self);
@@ -1880,7 +1881,7 @@ impl<F: Field> ConstraintSystem<F> {
             .collect();
         let index = self.lookups.len();
 
-        self.lookups.push(logup::BatchedArgument::new(name.as_ref(), table_map));
+        self.lookups.push(logup::BatchedArgument::new(name.as_ref(), selector, table_map));
 
         index
     }

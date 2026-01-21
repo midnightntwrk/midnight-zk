@@ -120,7 +120,7 @@ pub(crate) fn lookup_expressions<S: SelfEmulation>(
 
     // Accumulator constraint: Z(ωx)·(t(x) + β) = (Z(x) + h(x))·(t(x) + β) - m(x)
     let id_2 = {
-        let left = {
+        let left = {]
             scalar_chip.mul(
                 layouter,
                 &lookup_evals.accumulator_next_eval,

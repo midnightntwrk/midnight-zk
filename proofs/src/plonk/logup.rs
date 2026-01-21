@@ -92,6 +92,7 @@
 use std::fmt::{self, Debug};
 
 use ff::Field;
+use crate::plonk::Selector;
 
 use super::circuit::Expression;
 
@@ -120,6 +121,7 @@ pub(crate) mod verifier;
 #[derive(Clone)]
 pub struct BatchedArgument<F: Field> {
     pub(crate) name: String,
+    pub(crate) selector: Selector,
     pub(crate) input_expressions: Vec<Vec<Expression<F>>>,
     pub(crate) table_expressions: Vec<Expression<F>>,
 }
@@ -127,6 +129,7 @@ pub struct BatchedArgument<F: Field> {
 impl<F: Field> Debug for BatchedArgument<F> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("BatchedArgument")
+            .field("selector", &self.selector)
             .field("input_expressions", &self.input_expressions)
             .field("table_expressions", &self.table_expressions)
             .finish()
@@ -141,6 +144,7 @@ impl<F: Field> Debug for BatchedArgument<F> {
 #[derive(Clone)]
 pub struct FlattenArgument<F: Field> {
     pub(crate) name: String,
+    pub(crate) selector: Selector,
     pub(crate) input_expressions: Vec<Vec<Expression<F>>>,
     pub(crate) table_expressions: Vec<Expression<F>>,
 }
@@ -149,6 +153,7 @@ impl<F: Field> Debug for FlattenArgument<F> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("FlattenArgument")
             .field("name", &self.name)
+            .field("selector", &self.selector)
             .field("input_expressions", &self.input_expressions)
             .field("table_expressions", &self.table_expressions)
             .finish()
@@ -202,6 +207,7 @@ impl<F: Field> BatchedArgument<F> {
     /// `table_map` is a sequence of `(input, table)` tuples.
     pub fn new<S: AsRef<str>>(
         name: S,
+        selector: Selector,
         table_map: Vec<(Vec<Expression<F>>, Expression<F>)>,
     ) -> Self {
         let (input_expressions, table_expressions): (Vec<Vec<Expression<F>>>, Vec<Expression<F>>) =
@@ -227,6 +233,7 @@ impl<F: Field> BatchedArgument<F> {
 
         BatchedArgument {
             name: name.as_ref().to_string(),
+            selector,
             input_expressions: transposed_input_expressions,
             table_expressions,
         }
@@ -248,6 +255,7 @@ impl<F: Field> BatchedArgument<F> {
             .chunks(nb_lookups)
             .enumerate()
             .map(|(idx, chunk)| FlattenArgument {
+                selector: self.selector,
                 name: format!("{}-{}", self.name, idx),
                 input_expressions: chunk.to_vec(),
                 table_expressions: self.table_expressions.clone(),
