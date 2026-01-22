@@ -80,7 +80,7 @@
       "max_deg": "5",
       "permutations": "15",
       "point_sets": "5",
-      "rows": "5600",
+      "rows": "9328",
       "table_rows": "7933"
     }
   },
@@ -119,7 +119,7 @@
       "max_deg": "5",
       "permutations": "15",
       "point_sets": "5",
-      "rows": "17691",
+      "rows": "10131",
       "table_rows": "7933"
     }
   },
