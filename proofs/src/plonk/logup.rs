@@ -92,9 +92,9 @@
 use std::fmt::{self, Debug};
 
 use ff::Field;
-use crate::plonk::Selector;
 
 use super::circuit::Expression;
+use crate::plonk::Selector;
 
 pub(crate) mod prover;
 pub(crate) mod verifier;
@@ -121,7 +121,7 @@ pub(crate) mod verifier;
 #[derive(Clone)]
 pub struct BatchedArgument<F: Field> {
     pub(crate) name: String,
-    pub(crate) selector: Selector,
+    pub(crate) selector: Option<Expression<F>>,
     pub(crate) input_expressions: Vec<Vec<Expression<F>>>,
     pub(crate) table_expressions: Vec<Expression<F>>,
 }
@@ -144,7 +144,7 @@ impl<F: Field> Debug for BatchedArgument<F> {
 #[derive(Clone)]
 pub struct FlattenArgument<F: Field> {
     pub(crate) name: String,
-    pub(crate) selector: Selector,
+    pub(crate) selector: Option<Expression<F>>,
     pub(crate) input_expressions: Vec<Vec<Expression<F>>>,
     pub(crate) table_expressions: Vec<Expression<F>>,
 }
@@ -207,7 +207,7 @@ impl<F: Field> BatchedArgument<F> {
     /// `table_map` is a sequence of `(input, table)` tuples.
     pub fn new<S: AsRef<str>>(
         name: S,
-        selector: Selector,
+        selector: Option<Selector>,
         table_map: Vec<(Vec<Expression<F>>, Expression<F>)>,
     ) -> Self {
         let (input_expressions, table_expressions): (Vec<Vec<Expression<F>>>, Vec<Expression<F>>) =
@@ -233,7 +233,7 @@ impl<F: Field> BatchedArgument<F> {
 
         BatchedArgument {
             name: name.as_ref().to_string(),
-            selector,
+            selector: selector.map(Expression::Selector),
             input_expressions: transposed_input_expressions,
             table_expressions,
         }
@@ -255,7 +255,7 @@ impl<F: Field> BatchedArgument<F> {
             .chunks(nb_lookups)
             .enumerate()
             .map(|(idx, chunk)| FlattenArgument {
-                selector: self.selector,
+                selector: self.selector.clone(),
                 name: format!("{}-{}", self.name, idx),
                 input_expressions: chunk.to_vec(),
                 table_expressions: self.table_expressions.clone(),

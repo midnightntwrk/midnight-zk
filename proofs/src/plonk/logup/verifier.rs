@@ -169,11 +169,15 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
         // LogUp accumulator constraint: Z(ωx)·(t(x) + β) = (Z(x) + h(x))·(t(x) + β) -
         // m(x) Rearranging: Z(ωx)·(t(x) + β) - (Z(x) + h(x))·(t(x) + β) + m(x)
         // = 0
+        let selector = if let Some(ref selector_expr) = argument.selector {
+            evaluate_expressions(&[selector_expr.clone()])
+        } else { vec![F::ONE] };
+
         let accumulator_constraint = || {
             let diff = self.accumulator_next_eval * (compressed_table + beta)
                 - (self.accumulator_eval + self.helper_eval) * (compressed_table + beta)
                 + self.multiplicities_eval;
-            diff * active_rows
+            diff * active_rows * selector[0]
         };
 
         std::iter::empty()

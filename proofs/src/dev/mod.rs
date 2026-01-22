@@ -971,6 +971,12 @@ impl<F: FromUniformBytes<64> + Ord> MockProver<F> {
                     .map(move |c| load(c, self.usable_rows.end - 1))
                     .collect();
 
+                let selector = if let Some(selector) = lookup.selector {
+                    selector
+                } else {
+                    Expression::Constant(F::ONE)
+                };
+
                 let table_identifier =
                     lookup.table_expressions.iter().map(Expression::identifier).collect::<Vec<_>>();
                 if table_identifier != cached_table_identifier {
@@ -1008,6 +1014,13 @@ impl<F: FromUniformBytes<64> + Ord> MockProver<F> {
                             .clone()
                             .into_par_iter()
                             .filter_map(|input_row| {
+                                let selector_val = load(&selector, input_row);
+
+                                // Skip rows where selector is 0
+                                if selector_val == Value::Real(F::ZERO) {
+                                    return None;
+                                }
+
                                 let t = input_expressions
                                     .iter()
                                     .map(move |c| load(c, input_row))

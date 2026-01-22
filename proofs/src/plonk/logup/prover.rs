@@ -20,6 +20,7 @@
 //! - **Accumulator `Z(X)`**: Running sum of log-derivative differences
 
 use std::{hash::Hash, iter};
+use std::marker::PhantomData;
 
 use ff::{BatchInvert, FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
 
@@ -145,10 +146,17 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> FlattenArgument<F> {
         });
 
         let mut logderivative_poly = vec![F::ZERO; n];
+        let selector = if let Some(ref selector_expr) = self.selector {
+            eval_expressions(&[selector_expr.clone()])
+        } else {
+            vec![Polynomial { values: vec![F::ONE; n], _marker: PhantomData::<LagrangeCoeff> }]
+        };
+
         parallelize(&mut logderivative_poly, |poly, start| {
             for (i, coeff) in poly.iter_mut().enumerate() {
                 let i = i + start;
-                *coeff = helper_poly[i] - multiplicities[i] * table_denoms[i];
+                // We multiply by the selector to build the logderivative_poly
+                *coeff = selector[0][i] * (helper_poly[i] - multiplicities[i] * table_denoms[i]);
             }
         });
 

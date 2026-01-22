@@ -194,12 +194,11 @@ impl<F: PrimeField> Pow2RangeChip<F> {
         let t_tag = meta.lookup_table_column();
         let t_val = meta.lookup_table_column();
 
-        meta.lookup("pow2range column check", |meta| {
-            let sel = meta.query_selector(q_pow2range);
+        meta.lookup("pow2range column check", Some(q_pow2range), |meta| {
             let tags = vec![meta.query_fixed(tag_col, Rotation::cur()); val_cols.len()];
             let vals = val_cols
                 .iter()
-                .map(|val_col| sel.clone() * meta.query_advice(*val_col, Rotation::cur()))
+                .map(|val_col| meta.query_advice(*val_col, Rotation::cur()))
                 .collect();
             vec![(tags, t_tag), (vals, t_val)]
         });

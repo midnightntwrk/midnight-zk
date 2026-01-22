@@ -283,6 +283,13 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                 ValueSource::Beta(),
             ));
 
+            // Add selector
+            let selector = if let Some(ref selector_expr) = lookup.selector {
+                graph.add_expression(selector_expr)
+            } else {
+                graph.add_constant(&F::ONE)
+            };
+
             // Now we have the order in the calculations as follows:
             // * sum is at -3
             // * product is at -2
@@ -294,7 +301,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                 ValueSource::Intermediate(idx) => {
                     assert_eq!(
                         idx,
-                        nr_calculations - 3,
+                        nr_calculations - 4,
                         "sum_partial_products not at expected position"
                     );
                 }
@@ -303,16 +310,23 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
 
             match product {
                 ValueSource::Intermediate(idx) => {
-                    assert_eq!(idx, nr_calculations - 2, "product not at expected position");
+                    assert_eq!(idx, nr_calculations - 3, "product not at expected position");
                 }
                 _ => panic!("Product should be an intermediate!"),
             }
 
             match table {
                 ValueSource::Intermediate(idx) => {
-                    assert_eq!(idx, nr_calculations - 1, "table not at expected position");
+                    assert_eq!(idx, nr_calculations - 2, "table not at expected position");
                 }
                 _ => panic!("Table should be an intermediate!"),
+            }
+
+            match selector {
+                ValueSource::Intermediate(idx) => {
+                    assert_eq!(idx, nr_calculations - 1, "selector not at expected position");
+                }
+                _ => panic!("Selector should be an intermediate!"),
             }
 
             ev.lookups.push(graph);
@@ -515,7 +529,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                     for (i, value) in values.iter_mut().enumerate() {
                         let idx = start + i;
 
-                        let table_value = lookup_evaluator.evaluate(
+                        let test_selector = lookup_evaluator.evaluate(
                             &mut eval_data,
                             fixed,
                             advice,
@@ -535,10 +549,11 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
 
                         // We extract the different computation from the evaluation vector.
                         let nb_intermediates = eval_data.intermediates.len();
-                        let sum_partial_products = eval_data.intermediates[nb_intermediates - 3];
-                        let product = eval_data.intermediates[nb_intermediates - 2];
-                        let table_value_test = eval_data.intermediates[nb_intermediates - 1];
-                        assert_eq!(table_value, table_value_test);
+                        let sum_partial_products = eval_data.intermediates[nb_intermediates - 4];
+                        let product = eval_data.intermediates[nb_intermediates - 3];
+                        let table_value = eval_data.intermediates[nb_intermediates - 2];
+                        let selector = eval_data.intermediates[nb_intermediates - 1];
+                        assert_eq!(test_selector, selector);
 
                         // Helper constraint: h(X) · ∏ⱼ(fⱼ(X) + β) = Σⱼ ∏_{k≠j}(fₖ(X) + β)
                         *value = *value * y + helper_coset[idx] * product - sum_partial_products;
@@ -546,7 +561,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                         // Accumulator constraint: Z(ωX)·(t(X) + β) = (Z(X) + h(X))·(t(X) + β) -
                         // m(X)
                         *value = *value * y
-                            + l_active_row[idx]
+                            + l_active_row[idx] * selector
                                 * (aggregator_coset[r_next] * table_value
                                     - (aggregator_coset[idx] + helper_coset[idx]) * table_value
                                     + multiplicities_coset[idx]);

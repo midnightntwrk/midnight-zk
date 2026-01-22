@@ -200,8 +200,7 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
         let q_12_1x3_7_3_4_3 = meta.selector();
         let q_add_mod_2_32 = meta.selector();
 
-        meta.lookup("plain-spreaded lookup", |meta| {
-            let q_lookup = meta.query_selector(q_lookup);
+        meta.lookup("plain-spreaded lookup", Some(q_lookup), |meta| {
             let nbits_0 = meta.query_fixed(fixed_cols[0], Rotation(0));
             let nbits_1 = meta.query_fixed(fixed_cols[1], Rotation(0));
             let plain_0 = meta.query_advice(advice_cols[0], Rotation(0));
@@ -211,15 +210,15 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
 
             vec![
                 (
-                    vec![q_lookup.clone() * nbits_0, q_lookup.clone() * nbits_1],
+                    vec![nbits_0, nbits_1],
                     table.nbits_col,
                 ),
                 (
-                    vec![q_lookup.clone() * plain_0, q_lookup.clone() * plain_1],
+                    vec![plain_0, plain_1],
                     table.plain_col,
                 ),
                 (
-                    vec![q_lookup.clone() * sprdd_0, q_lookup.clone() * sprdd_1],
+                    vec![sprdd_0, sprdd_1],
                     table.sprdd_col,
                 ),
             ]

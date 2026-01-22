@@ -1860,7 +1860,7 @@ impl<F: Field> ConstraintSystem<F> {
     pub fn lookup<S: AsRef<str>>(
         &mut self,
         name: S,
-        selector: Selector,
+        selector: Option<Selector>,
         table_map: impl FnOnce(&mut VirtualCells<'_, F>) -> Vec<(Vec<Expression<F>>, TableColumn)>,
     ) -> usize {
         let mut cells = VirtualCells::new(self);
@@ -1893,6 +1893,7 @@ impl<F: Field> ConstraintSystem<F> {
     pub fn lookup_any<S: AsRef<str>>(
         &mut self,
         name: S,
+        selector: Option<Selector>,
         table_map: impl FnOnce(&mut VirtualCells<'_, F>) -> Vec<(Vec<Expression<F>>, Expression<F>)>,
     ) -> usize {
         let mut cells = VirtualCells::new(self);
@@ -1915,7 +1916,7 @@ impl<F: Field> ConstraintSystem<F> {
             .collect();
         let index = self.lookups.len();
 
-        self.lookups.push(logup::BatchedArgument::new(name.as_ref(), table_map));
+        self.lookups.push(logup::BatchedArgument::new(name.as_ref(), selector, table_map));
 
         index
     }
@@ -2144,6 +2145,13 @@ impl<F: Field> ConstraintSystem<F> {
                 .chain(lookup.table_expressions.iter_mut())
         }) {
             replace_selectors(expr, selector_replacements, true);
+        }
+
+        // Substitute selectors in the lookup selector fields.
+        for lookup in self.lookups.iter_mut() {
+            if let Some(ref mut sel_expr) = lookup.selector {
+                replace_selectors(sel_expr, selector_replacements, true);
+            }
         }
 
         // Substitute selectors in all trash arguments.

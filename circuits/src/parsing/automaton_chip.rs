@@ -215,17 +215,16 @@ where
         // is filled).
         let automata = NativeAutomaton::<F>::from_collection(automata);
 
-        meta.lookup("automaton transition check", |meta| {
-            let q = meta.query_selector(q_automaton);
+        meta.lookup("automaton transition check", Some(q_automaton), |meta| {
             let source = meta.query_advice(state_col, Rotation::cur());
             let letter = meta.query_advice(letter_col, Rotation::cur());
             let target = meta.query_advice(state_col, Rotation::next());
             let output = meta.query_advice(output_col, Rotation::cur());
             vec![
-                (vec![q.clone() * source], t_source),
-                (vec![q.clone() * letter], t_letter),
-                (vec![q.clone() * target], t_target),
-                (vec![q * output], t_output),
+                (vec![source], t_source),
+                (vec![letter], t_letter),
+                (vec![target], t_target),
+                (vec![output], t_output),
             ]
         });
 
