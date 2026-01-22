@@ -44,6 +44,7 @@ rand_chacha = { workspace = true }
 serde = { workspace = true }
 serde_derive = { workspace = true }
 rayon = { workspace = true }
+halo2curves = "0.6"
 criterion = { version = "0.7", optional = true }
 
 # Developer tooling dependencies
