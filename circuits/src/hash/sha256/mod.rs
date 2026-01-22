@@ -18,7 +18,7 @@
 mod sha256_chip;
 mod sha256_varlen;
 mod types;
-mod utils;
+pub(crate) mod utils;
 
 use ff::PrimeField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};

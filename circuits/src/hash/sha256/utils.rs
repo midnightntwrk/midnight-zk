@@ -1,13 +1,13 @@
 use ff::PrimeField;
 use midnight_proofs::plonk::Expression;
 
-pub(super) const MASK_EVN_64: u64 = 0x5555_5555_5555_5555; // 010101...01 (even positions in u64)
+pub(crate) const MASK_EVN_64: u64 = 0x5555_5555_5555_5555; // 010101...01 (even positions in u64)
 pub(super) const MASK_ODD_64: u64 = 0xAAAA_AAAA_AAAA_AAAA; // 101010...10 (odd positions in u64)
 
 const LOOKUP_LENGTHS: [u32; 10] = [2, 3, 4, 5, 6, 7, 9, 10, 11, 12]; // supported lookup bit lengths
 
 /// Returns the even and odd bits of little-endian binary representation of u64.
-pub fn get_even_and_odd_bits(value: u64) -> (u32, u32) {
+pub(crate) fn get_even_and_odd_bits(value: u64) -> (u32, u32) {
     (compact_even(value), compact_even(value >> 1))
 }
 
@@ -24,13 +24,13 @@ fn compact_even(mut x: u64) -> u32 {
 
 /// Asserts x is in correct spreaded form, i.e. its little-endian binary
 /// representation has zeros in odd positions.
-fn assert_in_valid_spreaded_form(x: u64) {
+pub(crate) fn assert_in_valid_spreaded_form(x: u64) {
     assert_eq!(MASK_ODD_64 & x, 0, "Input must be in valid spreaded form")
 }
 
 /// Spreads the input value, which is by definition inserting a zero between all
 /// its bits: [bn, ..., b1, b0] ->  [0, bn,..., 0, b1, 0, b0].
-pub fn spread(x: u32) -> u64 {
+pub(crate) fn spread(x: u32) -> u64 {
     (0..32).fold(0u64, |acc, i| acc | (((x as u64 >> i) & 1) << (2 * i)))
 }
 
@@ -39,7 +39,7 @@ pub fn spread(x: u32) -> u64 {
 /// # Panics
 ///
 /// If the input is not in clean spreaded form.
-pub fn negate_spreaded(x: u64) -> u64 {
+pub(crate) fn negate_spreaded(x: u64) -> u64 {
     assert_in_valid_spreaded_form(x);
     x ^ MASK_EVN_64
 }
@@ -50,7 +50,7 @@ pub fn negate_spreaded(x: u64) -> u64 {
 ///
 /// If sum(limb_lengths) != 32.
 /// If any given limb length equals 0.
-pub fn u32_in_be_limbs<const N: usize>(value: u32, limb_lengths: [usize; N]) -> [u32; N] {
+pub(crate) fn u32_in_be_limbs<const N: usize>(value: u32, limb_lengths: [usize; N]) -> [u32; N] {
     assert_eq!(limb_lengths.iter().sum::<usize>(), 32);
 
     let mut result = [0u32; N];
