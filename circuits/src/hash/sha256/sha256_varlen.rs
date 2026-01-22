@@ -307,7 +307,7 @@ impl<F: PrimeField> VarLenSha256Gadget<F> {
             )?;
         }
         inlined_group!("state add", layouter, group, {
-            state.add(sha256, layouter, input!(&compression_state, group))
+            input!(state, group).add(sha256, layouter, input!(&compression_state, group))
         })
     }
 
