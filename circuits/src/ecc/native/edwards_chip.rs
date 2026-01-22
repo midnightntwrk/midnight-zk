@@ -47,37 +47,37 @@ pub const NB_EDWARDS_COLS: usize = 9;
 
 /// A twisted Edwards curve point represented in affine (x, y) coordinates, the
 /// identity represented as (0, 1).
+/// The represented point may or may not lie in the prime order subgroup. If
+/// `in_subgroup` is true, then the point has been constrained to be in the
+/// prime order subgroup.
+/// Since in most use cases we want to ensure the point is in the subgroup,
+/// the implementation of `InnerValue` and `AssignmentInstructions` require
+/// subgroup membership. To use arbitrary points of the curve there are
+/// equivalent functions that explicitly state the absence of this subgroup
+/// membership check.
 #[derive(Clone, Debug)]
 pub struct AssignedNativePoint<C: CircuitCurve> {
     x: AssignedNative<C::Base>,
     y: AssignedNative<C::Base>,
+    in_subgroup: bool,
 }
 
 impl<C: CircuitCurve> InnerValue for AssignedNativePoint<C> {
     type Element = C::CryptographicGroup;
 
     fn value(&self) -> Value<Self::Element> {
+        assert!(self.in_subgroup);
         self.x
             .value()
             .zip(self.y.value())
-            .map(|(x, y)| C::from_xy(*x, *y).expect("non-id").into_subgroup())
+            .map(|(x, y)| C::from_xy(*x, *y).expect("Valid coordinates.").into_subgroup())
     }
 }
 
 impl<C: CircuitCurve> AssignedNativePoint<C> {
-    // To ensure type safety, we expect all assigned values to belong to the
-    // subgroup. However, for Multi-Table Commitment (MTC), we may be working with
-    // points on the full curve rather than strictly within the subgroup.
-    //
-    // As a result, we cannot generically treat the inner type of the curve using
-    // the `InnerValue` trait, as this trait assumes subgroup membership by directly
-    // unwrapping the `into_subgroup` function.
-    //
-    // Certain internal functions, such as `assign_double_add` and
-    // `assign_cond_add`, operate on points that may lie on the full curve (not
-    // only the subgroup). To handle these cases safely, we use this auxiliary
-    // closure to avoid unintentional assumptions about subgroup membership.
-    /// Return the value of the assigned point
+    /// Return the value of the assigned point, possibly not in the subgroup.
+    /// If the point is known to be in the subgroup, consider using `value()`
+    /// instead.
     fn curve_value(&self) -> Value<C> {
         self.x
             .value()
@@ -89,7 +89,7 @@ impl<C: CircuitCurve> AssignedNativePoint<C> {
 impl<C: CircuitCurve> Instantiable<C::Base> for AssignedNativePoint<C> {
     fn as_public_input(p: &C::CryptographicGroup) -> Vec<C::Base> {
         let point: C = (*p).into();
-        let coordinates = point.coordinates().expect("non-id");
+        let coordinates = point.coordinates().unwrap();
         vec![coordinates.0, coordinates.1]
     }
 }
@@ -158,7 +158,7 @@ impl EccConfig {
     /// Enforce `Q = 2 * P`, using columns:
     ///
     /// ```text
-    ///    0      1      2      3       4      5      6       7      8     
+    ///    0      1      2      3       4      5      6       7      8
     /// ------------------------------------------------------------------
     /// |      |      |      |      |      |  xp  |  yp  | xp_xp |       |
     /// |  xq  |  yq  |      |      |      |      |      |       |       |
@@ -385,67 +385,77 @@ impl<C: EdwardsCurve> ComposableChip<C::Base> for EccChip<C> {
 }
 
 impl<C: EdwardsCurve> EccChip<C> {
-    /// Given `Q`, `S`, and bit `b`, supposedly already assigned in the
-    /// current row, this function assigns `R` in the same row and
-    /// enforces that `R = Q + b * S`.
-    //
-    // We use the following layout.
-    //
-    // ```text
-    //    0      1      2      3       4     5      6      7         8
-    // ----------------------------------------------------------------------
-    // |  xq  |  yq  |  xs  |  ys  |   b   | xr  |  yr  |     | xq_yq_xs_ys |
-    // ----------------------------------------------------------------------
-    // ```
-    fn assign_cond_add(
+    /// Given points Q, S and bit `b`, computes R = Q + b * S.
+    /// This function requires the inputs to be already assigned in the current
+    /// row. The result R will be asigned by this function in the same row,
+    /// following the layout:
+    ///
+    ///
+    /// ```text
+    ///    0      1      2      3       4     5      6      7         8
+    /// ----------------------------------------------------------------------
+    /// |  xq  |  yq  |  xs  |  ys  |   b   | xr  |  yr  |     | xq_yq_xs_ys |
+    /// ----------------------------------------------------------------------
+    /// ```
+    fn cond_add(
         &self,
         region: &mut Region<C::Base>,
         offset: usize,
-        q: Value<C>,
-        s: Value<C>,
-        b: Value<bool>,
+        q: &AssignedNativePoint<C>,
+        s: &AssignedNativePoint<C>,
+        b: &AssignedBit<C::Base>,
     ) -> Result<AssignedNativePoint<C>, Error> {
         let config = self.config();
         config.q_cond_add.enable(region, offset)?;
 
-        let (xr_val, yr_val) = Self::p_plus_b_q(q, s, b);
+        let (q_val, s_val) = (q.curve_value(), s.curve_value());
+        let in_subgroup = q.in_subgroup && s.in_subgroup;
+
+        let (xr_val, yr_val) = Self::p_plus_b_q(q_val, s_val, b.value());
         let xr = region.assign_advice(|| "xr", config.advice_cols[5], offset, || xr_val)?;
         let yr = region.assign_advice(|| "yr", config.advice_cols[6], offset, || yr_val)?;
 
-        let (xq, yq) = q.map(|q| q.coordinates().expect("non-id")).unzip();
-        let (xs, ys) = s.map(|s| s.coordinates().expect("non-id")).unzip();
+        let (xq, yq) = q_val.map(|q| q.coordinates().unwrap()).unzip();
+        let (xs, ys) = s_val.map(|s| s.coordinates().unwrap()).unzip();
         let prod_val = xq * yq * xs * ys;
         region.assign_advice(|| "xq_yq_xs_ys", config.advice_cols[8], offset, || prod_val)?;
 
-        Ok(AssignedNativePoint { x: xr, y: yr })
+        Ok(AssignedNativePoint {
+            x: xr,
+            y: yr,
+            in_subgroup,
+        })
     }
 
-    /// Given `P`, `Q`, and bit `b`, supposedly already assigned in the
-    /// current row, this function assigns `R` in the next row and
-    /// enforces that `R = 2 * (P + b * Q)`.
-    //
-    // We use the following layout.
-    //
-    // ```text
-    // ------------------------------------------------------------------------
-    // |  xp  |  yp  |  xq  |  yq  |  b   |  xs  |  ys  | xs_xs | xp_yp_xq_yq |
-    // |  xr  |  yr  |      |      |      |      |      |       |             |
-    // ------------------------------------------------------------------------
-    // ```
-    fn assign_add_then_double(
+    /// Given points P, Q and bit `b`, computes R = 2 * (P + b * Q).
+    /// This function requires the inputs to be already assigned in the current
+    /// row. The result R will be asigned by this function in the next row,
+    /// following the layout:
+    ///
+    ///
+    /// ```text
+    /// ------------------------------------------------------------------------
+    /// |  xp  |  yp  |  xq  |  yq  |  b   |  xs  |  ys  | xs_xs | xp_yp_xq_yq |
+    /// |  xr  |  yr  |      |      |      |      |      |       |             |
+    /// ------------------------------------------------------------------------
+    /// ```
+    fn add_then_double(
         &self,
         region: &mut Region<C::Base>,
         offset: usize,
-        p_val: Value<C>,
-        q_val: Value<C>,
-        b_val: Value<bool>,
+        p: &AssignedNativePoint<C>,
+        q: &AssignedNativePoint<C>,
+        b: &AssignedBit<C::Base>,
     ) -> Result<AssignedNativePoint<C>, Error> {
         let config = self.config();
 
         config.q_cond_add.enable(region, offset)?;
         config.q_double.enable(region, offset)?;
 
-        let (xs_val, ys_val) = Self::p_plus_b_q(p_val, q_val, b_val);
+        let (q_val, p_val) = (q.curve_value(), p.curve_value());
+        let in_subgroup = q.in_subgroup && p.in_subgroup;
+
+        let (xs_val, ys_val) = Self::p_plus_b_q(p_val, q_val, b.value());
 
         region.assign_advice(|| "xs", config.advice_cols[5], offset, || xs_val)?;
         region.assign_advice(|| "ys", config.advice_cols[6], offset, || ys_val)?;
@@ -453,8 +463,8 @@ impl<C: EdwardsCurve> EccChip<C> {
         let s_val = xs_val.zip(ys_val).map(|(xs, ys)| C::from_xy(xs, ys).unwrap());
         let r_val = s_val.map(|s| s + s);
 
-        let xr_val = r_val.map(|r: C| r.coordinates().expect("non-id").0);
-        let yr_val = r_val.map(|r: C| r.coordinates().expect("non-id").1);
+        let xr_val = r_val.map(|r: C| r.coordinates().unwrap().0);
+        let yr_val = r_val.map(|r: C| r.coordinates().unwrap().1);
 
         let xr = region.assign_advice(|| "xr", config.advice_cols[0], offset + 1, || xr_val)?;
         let yr = region.assign_advice(|| "yr", config.advice_cols[1], offset + 1, || yr_val)?;
@@ -466,12 +476,16 @@ impl<C: EdwardsCurve> EccChip<C> {
             || xs_val * xs_val,
         )?;
 
-        let (xp, yp) = p_val.map(|c| c.coordinates().expect("non-id")).unzip();
-        let (xq, yq) = q_val.map(|c| c.coordinates().expect("non-id")).unzip();
+        let (xp, yp) = p_val.map(|c| c.coordinates().unwrap()).unzip();
+        let (xq, yq) = q_val.map(|c| c.coordinates().unwrap()).unzip();
         let prod_val = xp * yp * xq * yq;
         region.assign_advice(|| "xp_yp_xq_yq", config.advice_cols[8], offset, || prod_val)?;
 
-        Ok(AssignedNativePoint { x: xr, y: yr })
+        Ok(AssignedNativePoint {
+            x: xr,
+            y: yr,
+            in_subgroup,
+        })
     }
 
     /// Given the scalar in little-endian, double and add for each bit.
@@ -487,7 +501,6 @@ impl<C: EdwardsCurve> EccChip<C> {
         let scalar_be_bits = &mut scalar.0.clone();
         scalar_be_bits.reverse();
 
-        let base_val = base.curve_value();
         let id_point: AssignedNativePoint<C> =
             self.assign_fixed(layouter, C::CryptographicGroup::identity())?;
 
@@ -505,23 +518,11 @@ impl<C: EdwardsCurve> EccChip<C> {
                     bit.0.copy_advice(|| "b cond_add", &mut region, config.advice_cols[4], i)?;
 
                     if i < scalar_be_bits.len() - 1 {
-                        acc = self.assign_add_then_double(
-                            &mut region,
-                            i,
-                            acc.curve_value(),
-                            base_val,
-                            bit.value(),
-                        )?;
+                        acc = self.add_then_double(&mut region, i, &acc, base, bit)?;
                     }
                     // In the last iteration, add but do not double.
                     else {
-                        acc = self.assign_cond_add(
-                            &mut region,
-                            i,
-                            acc.curve_value(),
-                            base_val,
-                            bit.value(),
-                        )?;
+                        acc = self.cond_add(&mut region, i, &acc, base, bit)?;
                     }
                 }
 
@@ -535,13 +536,56 @@ impl<C: EdwardsCurve> EccChip<C> {
         p.zip(q)
             .zip(b)
             .map(|((p, q), b)| if b { p + q } else { p })
-            .map(|r| r.coordinates().expect("non-id"))
+            .map(|r| r.coordinates().unwrap())
             .unzip()
     }
 
     /// The native gadget carried by this chip.
     pub fn native_gadget(&self) -> &impl NativeInstructions<C::Base> {
         &self.native_gadget
+    }
+}
+
+impl<C: EdwardsCurve> EccChip<C> {
+    /// Multiplies by the cofactor, ensuring the result lies in the prime order
+    /// subgroup.
+    pub(crate) fn clear_cofactor(
+        &self,
+        layouter: &mut impl Layouter<C::Base>,
+        point: &AssignedNativePoint<C>,
+    ) -> Result<AssignedNativePoint<C>, Error> {
+        if point.in_subgroup {
+            return Err(Error::Synthesis("clear_cofactor() should not be called in a point that is already guaranteed to be in the prime-order subgroup.".to_owned()));
+        }
+        let r = self.mul_by_constant(layouter, C::Scalar::from_u128(C::COFACTOR), point)?;
+        Ok(AssignedNativePoint {
+            x: r.x,
+            y: r.y,
+            in_subgroup: true,
+        })
+    }
+
+    /// Assigns a point given its affine coordinates, checking the curve
+    /// equation and *not* checking subgroup membership.
+    pub(crate) fn point_from_coordinates_unsafe(
+        &self,
+        layouter: &mut impl Layouter<C::Base>,
+        x: &AssignedNative<C::Base>,
+        y: &AssignedNative<C::Base>,
+    ) -> Result<AssignedNativePoint<C>, Error> {
+        layouter.assign_region(
+            || "assign new point",
+            |mut region: Region<'_, C::Base>| {
+                x.copy_advice(|| "x", &mut region, self.config.advice_cols[0], 0)?;
+                y.copy_advice(|| "y", &mut region, self.config.advice_cols[1], 0)?;
+                self.config.q_mem.enable(&mut region, 0)
+            },
+        )?;
+        Ok(AssignedNativePoint {
+            x: x.clone(),
+            y: y.clone(),
+            in_subgroup: false,
+        })
     }
 }
 
@@ -568,7 +612,7 @@ impl<C: EdwardsCurve> EccInstructions<C::Base, C> for EccChip<C> {
                 q.y.copy_advice(|| "qy", &mut region, config.advice_cols[3], 0)?;
                 b.0.copy_advice(|| "b", &mut region, config.advice_cols[4], 0)?;
 
-                self.assign_cond_add(&mut region, 0, p.curve_value(), q.curve_value(), b.value())
+                self.cond_add(&mut region, 0, p, q, &b)
             },
         )
     }
@@ -589,6 +633,7 @@ impl<C: EdwardsCurve> EccInstructions<C::Base, C> for EccChip<C> {
         Ok(AssignedNativePoint {
             x: self.native_gadget.neg(layouter, &p.x)?,
             y: p.y.clone(),
+            in_subgroup: p.in_subgroup,
         })
     }
 
@@ -633,18 +678,15 @@ impl<C: EdwardsCurve> EccInstructions<C::Base, C> for EccChip<C> {
         x: &Self::Coordinate,
         y: &Self::Coordinate,
     ) -> Result<Self::Point, Error> {
-        layouter.assign_region(
-            || "assign new point",
-            |mut region: Region<'_, C::Base>| {
-                x.copy_advice(|| "x", &mut region, self.config.advice_cols[0], 0)?;
-                y.copy_advice(|| "y", &mut region, self.config.advice_cols[1], 0)?;
-                self.config.q_mem.enable(&mut region, 0)
-            },
-        )?;
-        Ok(AssignedNativePoint {
-            x: x.clone(),
-            y: y.clone(),
-        })
+        let point_val = x.value().zip(y.value()).map(|(x, y)| {
+            C::from_xy(*x, *y)
+                .expect("Affine coordinates must satisfy Jubjub equation.")
+                .into_subgroup()
+        });
+        let point: Self::Point = self.assign(layouter, point_val)?;
+        self.native_gadget.assert_equal(layouter, x, &point.x)?;
+        self.native_gadget.assert_equal(layouter, y, &point.y)?;
+        Ok(point)
     }
 
     fn x_coordinate(&self, point: &Self::Point) -> Self::Coordinate {
@@ -675,8 +717,8 @@ impl<C: EdwardsCurve> AssignmentInstructions<C::Base, AssignedNativePoint<C>> fo
         let cofactor = C::Scalar::from_u128(C::COFACTOR);
         let (x_val, y_val) = value
             .map(|p| {
-                let p = p * cofactor.invert().expect("cofactor should not be 0");
-                p.into().coordinates().expect("non-id")
+                let p = p * cofactor.invert().expect("Cofactor should not be 0");
+                p.into().coordinates().unwrap()
             })
             .unzip();
 
@@ -686,11 +728,15 @@ impl<C: EdwardsCurve> AssignmentInstructions<C::Base, AssignedNativePoint<C>> fo
                 config.q_mem.enable(&mut region, 0)?;
                 let x = region.assign_advice(|| "x", config.advice_cols[0], 0, || x_val)?;
                 let y = region.assign_advice(|| "y", config.advice_cols[1], 0, || y_val)?;
-                Ok(AssignedNativePoint { x, y })
+                Ok(AssignedNativePoint {
+                    x,
+                    y,
+                    in_subgroup: false,
+                })
             },
         )?;
 
-        self.mul_by_constant(layouter, cofactor, &cf_root)
+        self.clear_cofactor(layouter, &cf_root)
     }
 
     fn assign_fixed(
@@ -698,10 +744,14 @@ impl<C: EdwardsCurve> AssignmentInstructions<C::Base, AssignedNativePoint<C>> fo
         layouter: &mut impl Layouter<C::Base>,
         constant: C::CryptographicGroup,
     ) -> Result<AssignedNativePoint<C>, Error> {
-        let coords = constant.into().coordinates().expect("non-id");
+        let coords = constant.into().coordinates().unwrap();
         let x = self.native_gadget.assign_fixed(layouter, coords.0)?;
         let y = self.native_gadget.assign_fixed(layouter, coords.1)?;
-        Ok(AssignedNativePoint { x, y })
+        Ok(AssignedNativePoint {
+            x,
+            y,
+            in_subgroup: true,
+        })
     }
 }
 
@@ -757,7 +807,7 @@ impl<C: EdwardsCurve> AssertionInstructions<C::Base, AssignedNativePoint<C>> for
         p: &AssignedNativePoint<C>,
         constant: C::CryptographicGroup,
     ) -> Result<(), Error> {
-        let (cx, cy) = constant.into().coordinates().expect("non-id");
+        let (cx, cy) = constant.into().coordinates().unwrap();
         self.native_gadget.assert_equal_to_fixed(layouter, &p.x, cx)?;
         self.native_gadget.assert_equal_to_fixed(layouter, &p.y, cy)
     }
@@ -797,11 +847,18 @@ impl<C: EdwardsCurve> PublicInputInstructions<C::Base, AssignedNativePoint<C>> f
         layouter: &mut impl Layouter<C::Base>,
         p: Value<C::CryptographicGroup>,
     ) -> Result<AssignedNativePoint<C>, Error> {
-        // We can skip the curve equation check in this case.
-        let (x, y) = p.map(|p| p.into().coordinates().expect("non-id")).unzip();
+        let (x, y) = p.map(|p| p.into().coordinates().unwrap()).unzip();
         let x = self.native_gadget.assign_as_public_input(layouter, x)?;
         let y = self.native_gadget.assign_as_public_input(layouter, y)?;
-        Ok(AssignedNativePoint { x, y })
+
+        // Since the input value will be constrained to be equal to a PI,
+        // the verifier will check the validity of the point out-of-circuit,
+        // so the checks can be skipped.
+        Ok(AssignedNativePoint {
+            x,
+            y,
+            in_subgroup: true,
+        })
     }
 }
 
@@ -872,7 +929,7 @@ impl<C: EdwardsCurve> EqualityInstructions<C::Base, AssignedNativePoint<C>> for 
         p: &AssignedNativePoint<C>,
         constant: C::CryptographicGroup,
     ) -> Result<AssignedBit<C::Base>, Error> {
-        let (cx, cy) = constant.into().coordinates().expect("non-id");
+        let (cx, cy) = constant.into().coordinates().unwrap();
         let eq_x = self.native_gadget.is_equal_to_fixed(layouter, &p.x, cx)?;
         let eq_y = self.native_gadget.is_equal_to_fixed(layouter, &p.y, cy)?;
         self.native_gadget.and(layouter, &[eq_x, eq_y])
@@ -884,7 +941,7 @@ impl<C: EdwardsCurve> EqualityInstructions<C::Base, AssignedNativePoint<C>> for 
         p: &AssignedNativePoint<C>,
         constant: C::CryptographicGroup,
     ) -> Result<AssignedBit<C::Base>, Error> {
-        let (cx, cy) = constant.into().coordinates().expect("non-id");
+        let (cx, cy) = constant.into().coordinates().unwrap();
         let not_eq_x = self.native_gadget.is_not_equal_to_fixed(layouter, &p.x, cx)?;
         let not_eq_y = self.native_gadget.is_not_equal_to_fixed(layouter, &p.y, cy)?;
         self.native_gadget.or(layouter, &[not_eq_x, not_eq_y])
@@ -903,7 +960,8 @@ impl<C: EdwardsCurve> ControlFlowInstructions<C::Base, AssignedNativePoint<C>> f
     ) -> Result<AssignedNativePoint<C>, Error> {
         let x = self.native_gadget.select(layouter, cond, &a.x, &b.x)?;
         let y = self.native_gadget.select(layouter, cond, &a.y, &b.y)?;
-        Ok(AssignedNativePoint { x, y })
+        let in_subgroup = a.in_subgroup && b.in_subgroup;
+        Ok(AssignedNativePoint { x, y, in_subgroup })
     }
 }
 

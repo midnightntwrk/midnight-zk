@@ -17,6 +17,7 @@ verification keys break backwards compatibility.
 * Change nr of bits to represent JubJub scalar field modulus from 255 -> 252 [#179](https://github.com/midnightntwrk/midnight-zk/pull/179)
 * Adapt Poseidon variable length hash to agree with its CPU version [#162](https://github.com/midnightntwrk/midnight-zk/pull/162)
 * Refactor `hash` and `varhash` tests [#162](https://github.com/midnightntwrk/midnight-zk/pull/162)
+* Add explicit subgroup membership guarantees for `AssignedNativePoint` [#175](https://github.com/midnightntwrk/midnight-zk/pull/175)
 
 ### Removed
 * Move external implementations to zk-stdlib [#178](https://github.com/midnightntwrk/midnight-zk/pull/178)
