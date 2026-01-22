@@ -221,10 +221,8 @@ impl<S: SelfEmulation> AssignedAccumulator<S> {
         layouter: &mut impl Layouter<S::F>,
         curve_chip: &S::CurveChip,
         scalar_chip: &S::ScalarChip,
-        lhs_len: usize,
-        rhs_len: usize,
-        lhs_fixed_base_names: &[String],
-        rhs_fixed_base_names: &[String],
+        lhs_base_names: &[Option<String>],
+        rhs_base_names: &[Option<String>],
         acc_val: Value<Accumulator<S>>,
     ) -> Result<Self, Error> {
         let (acc_lhs_val, acc_rhs_val) = acc_val.map(|acc| (acc.lhs, acc.rhs)).unzip();
@@ -233,16 +231,14 @@ impl<S: SelfEmulation> AssignedAccumulator<S> {
                 layouter,
                 curve_chip,
                 scalar_chip,
-                lhs_len,
-                lhs_fixed_base_names,
+                lhs_base_names,
                 acc_lhs_val,
             )?,
             AssignedMsm::<S>::assign(
                 layouter,
                 curve_chip,
                 scalar_chip,
-                rhs_len,
-                rhs_fixed_base_names,
+                rhs_base_names,
                 acc_rhs_val,
             )?,
         ))

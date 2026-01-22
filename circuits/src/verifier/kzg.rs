@@ -278,7 +278,7 @@ fn msm_inner_product<S: SelfEmulation>(
     let mut msms = msms.to_vec();
     for (msm, s) in msms.iter_mut().zip(scalars) {
         msm.scale(layouter, scalar_chip, s)?;
-        res.add_msm(layouter, scalar_chip, msm)?;
+        res.add_msm(msm);
     }
     Ok(res)
 }
@@ -436,8 +436,8 @@ where
     let right = {
         let mut right = final_com; // C
         let minus_v_gen = AssignedMsm::from_fixed_term(&v, "~G");
-        right.add_msm(layouter, scalar_chip, &minus_v_gen)?; // -vG
-        right.add_msm(layouter, scalar_chip, &scaled_pi)?; // zπ
+        right.add_msm(&minus_v_gen); // -vG
+        right.add_msm(&scaled_pi); // zπ
         right
     };
 

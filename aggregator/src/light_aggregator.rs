@@ -58,7 +58,7 @@ use midnight_circuits::{
     instructions::{AssignmentInstructions, PublicInputInstructions},
     types::{ComposableChip, Instantiable},
     verifier::{
-        Accumulator, AssignedAccumulator, AssignedMsm, AssignedVk, Msm, SelfEmulation,
+        Accumulator, AssignedAccumulator, AssignedMsm, AssignedVk, Base as MsmBase, Msm, SelfEmulation,
         VerifierGadget,
     },
 };
@@ -370,14 +370,27 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
         let acc_rhs_evaluated = acc.rhs().eval(&fixed_bases);
 
         // Add the LHS of acc to the transcript.
+        // All bases should be variable at this point
+        assert!(acc.lhs().bases().iter().all(|b| matches!(b, MsmBase::Variable(_))));
         transcript.write(&(acc.lhs().bases().len() as u32))?;
-        acc.lhs().bases().iter().try_for_each(|p| transcript.write(p))?;
+        acc.lhs().bases().iter().try_for_each(|base| {
+            match base {
+                MsmBase::Variable(p) => transcript.write(p),
+                _ => unreachable!(),
+            }
+        })?;
         acc.lhs().scalars().iter().try_for_each(|s| transcript.write(s))?;
-        assert!(acc.lhs().fixed_base_scalars().is_empty());
 
         // Add the RHS of the acc to the transcript (with scalars in committed form).
-        transcript.write(&(acc.rhs().bases().len() as u32))?;
-        acc.rhs().bases().iter().try_for_each(|p| transcript.write(p))?;
+        let rhs_num_bases = acc.rhs().bases().iter().filter(|b| matches!(b, MsmBase::Variable(_))).count();
+        transcript.write(&(rhs_num_bases as u32))?;
+        acc.rhs().bases().iter().try_for_each(|base| {
+            if let MsmBase::Variable(p) = base {
+                transcript.write(p)
+            } else {
+                Ok(())
+            }
+        })?;
         transcript.write(&acc_rhs_scalars_committed)?;
         transcript.write(&acc_rhs_evaluated)?;
 
@@ -394,7 +407,15 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
 
         // Create the IPA proof
         let mut scalars = acc_committed_instances.clone();
-        let mut bases1 = [acc.rhs().bases(), fixed_bases.values().cloned().collect()].concat();
+        let mut bases1: Vec<C> = acc
+            .rhs()
+            .bases()
+            .iter()
+            .map(|base| match base {
+                MsmBase::Variable(b) => *b,
+                MsmBase::Fixed(name) => *fixed_bases.get(name).expect("Fixed base not found"),
+            })
+            .collect();
         let mut bases2 = self.lagrange_commitments[..bases1.len()].to_vec();
 
         let k = bases1.len().next_power_of_two();
@@ -431,7 +452,8 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
             let lhs_bases: Result<Vec<C>, io::Error> = (0..n).map(|_| transcript.read()).collect();
             let lhs_scalars: Result<Vec<F>, io::Error> =
                 (0..n).map(|_| transcript.read()).collect();
-            Msm::new(&lhs_bases?, &lhs_scalars?, &BTreeMap::new())
+            let wrapped_bases: Vec<_> = lhs_bases?.iter().map(|&b| MsmBase::Variable(b)).collect();
+            Msm::new(&wrapped_bases, &lhs_scalars?)
         };
 
         // Read the RHS of the acc from the transcript (with scalars in committed form).
