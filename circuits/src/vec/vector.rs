@@ -35,8 +35,7 @@ use crate::{
 /// the payload will always be 0 mod A, so that the payload begins aligned in A
 /// sized chunks. The padding at the end of the payload will be have a size in
 /// [0, A) such that | front_pad | + | payload | + | back_pad | = M.
-#[derive(Clone, Debug)]
-#[cfg_attr(feature = "extraction", derive(picus::DecomposeInCells))]
+#[derive(Clone, Debug, picus::DecomposeInCells)]
 pub struct AssignedVector<F: PrimeField, T: Vectorizable, const M: usize, const A: usize> {
     /// Padded payload of the vector.
     pub(crate) buffer: [T; M],

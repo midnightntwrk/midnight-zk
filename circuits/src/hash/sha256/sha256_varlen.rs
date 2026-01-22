@@ -50,6 +50,7 @@ impl<F: PrimeField> VarLenSha256Gadget<F> {
 }
 
 /// A quick macro for creating groups inlined. I'll move it somewhere else after I know works well.
+#[cfg(feature = "extraction")]
 macro_rules! inlined_group {
     ($name:expr, $layouter:ident, $meta:ident, $body:expr) => {
         $layouter.group(
@@ -64,6 +65,14 @@ macro_rules! inlined_group {
     };
 }
 
+#[cfg(not(feature = "extraction"))]
+macro_rules! inlined_group {
+    ($name: expr, $layouter:ident,$meta:ident, $body: expr) => {
+        $body
+    };
+}
+
+#[cfg(feature = "extraction")]
 macro_rules! input {
     ($input:expr, $meta:ident) => {{
         let _i = $input;
@@ -72,10 +81,23 @@ macro_rules! input {
     }};
 }
 
+#[cfg(not(feature = "extraction"))]
+macro_rules! input {
+    ($input:expr, $meta:ident) => {
+        $input
+    };
+}
+
+#[cfg(feature = "extraction")]
 macro_rules! output {
     ($output:expr, $meta:ident) => {{
         $meta.annotate_as_output(&$output)?;
     }};
+}
+
+#[cfg(not(feature = "extraction"))]
+macro_rules! output {
+    ($output:expr, $meta:ident) => {{}};
 }
 
 impl<F> VarLenSha256Gadget<F>
