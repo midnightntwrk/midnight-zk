@@ -288,6 +288,8 @@ mod test {
             >(cost_model, "Keccak_256", input_size, k);
         }
         const SHA3_256_RATE: usize = 136;
+        // Cost model update with input size = 256
+        test_wrapper(256, 14, true);
 
         test_wrapper(SHA3_256_RATE - 2, 14, false);
         test_wrapper(SHA3_256_RATE - 1, 14, false);
@@ -297,8 +299,7 @@ mod test {
 
         test_wrapper(2 * SHA3_256_RATE - 2, 16, false);
         test_wrapper(2 * SHA3_256_RATE - 1, 16, false);
-        // Test for cost model
-        test_wrapper(2 * SHA3_256_RATE, 16, true);
+        test_wrapper(2 * SHA3_256_RATE, 16, false);
         test_wrapper(2 * SHA3_256_RATE + 1, 16, false);
         test_wrapper(2 * SHA3_256_RATE + 2, 16, false);
 
@@ -322,6 +323,9 @@ mod test {
         }
         const SHA3_256_RATE: usize = 136;
 
+        // Cost model update with input size = 256
+        test_wrapper(256, 15, true);
+
         test_wrapper(SHA3_256_RATE - 2, 14, false);
         test_wrapper(SHA3_256_RATE - 1, 14, false);
         test_wrapper(SHA3_256_RATE, 14, false);
@@ -330,8 +334,8 @@ mod test {
 
         test_wrapper(2 * SHA3_256_RATE - 2, 16, false);
         test_wrapper(2 * SHA3_256_RATE - 1, 16, false);
-        // Test for cost model
-        test_wrapper(2 * SHA3_256_RATE, 16, true);
+
+        test_wrapper(2 * SHA3_256_RATE, 16, false);
         test_wrapper(2 * SHA3_256_RATE + 1, 16, false);
         test_wrapper(2 * SHA3_256_RATE + 2, 16, false);
 

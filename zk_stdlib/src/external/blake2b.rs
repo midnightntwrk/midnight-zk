@@ -273,7 +273,8 @@ mod test {
 
         test_wrapper(2 * BLAKE2B_BLOCK_SIZE - 2, 17, false);
         test_wrapper(2 * BLAKE2B_BLOCK_SIZE - 1, 17, false);
-        // Test for cost model
+
+        // Cost model update with input size = 256
         test_wrapper(2 * BLAKE2B_BLOCK_SIZE, 17, true);
         test_wrapper(2 * BLAKE2B_BLOCK_SIZE + 1, 17, false);
         test_wrapper(2 * BLAKE2B_BLOCK_SIZE + 2, 17, false);
@@ -305,7 +306,8 @@ mod test {
 
         test_wrapper(2 * BLAKE2B_BLOCK_SIZE - 2, 17, false);
         test_wrapper(2 * BLAKE2B_BLOCK_SIZE - 1, 17, false);
-        // Test for cost model
+
+        // Cost model update with input size = 256
         test_wrapper(2 * BLAKE2B_BLOCK_SIZE, 17, true);
         test_wrapper(2 * BLAKE2B_BLOCK_SIZE + 1, 17, false);
         test_wrapper(2 * BLAKE2B_BLOCK_SIZE + 2, 17, false);
