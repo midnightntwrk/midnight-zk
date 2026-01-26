@@ -37,6 +37,8 @@
 //! We have 2 parallel lookups, which allow us to call such plain-spreaded table
 //! twice per row; on columns named (T0, A0, A1) and (T1, A2, A3).
 
+use std::array::from_fn;
+use extractor_support::circuit::CircuitInitialization;
 use ff::PrimeField;
 use midnight_proofs::{
     circuit::{Chip, Layouter, Region, Value},
@@ -68,6 +70,41 @@ use crate::{
         ComposableChip,
     },
 };
+
+// type NG<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
+//
+// impl<F: PrimeField, L: Layouter<F>> CircuitInitialization<L> for Sha512Chip<F> {
+//     type Config = (Sha512Config, <NG<F> as CircuitInitialization<L>>::Config);
+//     type Args = ();
+//     type ConfigCols = (
+//         [Column<Advice>; NB_SHA512_ADVICE_COLS],
+//         [Column<Fixed>; NB_ARITH_FIXED_COLS],
+//     );
+//     type CS = ConstraintSystem<F>;
+//     type Error = Error;
+//
+//     fn new_chip((config, ng_config): &Self::Config, _args: Self::Args) -> Self {
+//         Self::new(&config, &<NG::<F> as CircuitInitialization<L>>::new_chip(ng_config, ()))
+//     }
+//
+//     fn configure_circuit(meta: &mut Self::CS, columns: &Self::ConfigCols) -> Self::Config {
+//         let instance: [Column<Instance>; 2] = from_fn(|_| meta.instance_column());
+//         let native_chip_config = NativeChip::configure(meta, &(
+//             columns.0[..NB_ARITH_COLS].try_into().unwrap(),
+//             columns.1,
+//             instance
+//         ));
+//         let pow2_config = Pow2RangeChip::configure(meta, &columns.0[1..=4]);
+//         (
+//             Self::configure(meta,&(columns.0, columns.1[..NB_SHA512_FIXED_COLS].try_into().unwrap())),
+//             P2RDecompositionConfig::new(&native_chip_config, &pow2_config))
+//     }
+//
+//     fn load_chip(&self, layouter: &mut L, (_, ng_config): &Self::Config) -> Result<(), Self::Error> {
+//         self.load(layouter)?;
+//         self.native_gadget.load_chip(layouter, ng_config)
+//     }
+// }
 
 /// Number of advice columns used by the identities of the SHA512 chip.
 pub const NB_SHA512_ADVICE_COLS: usize = 8;
@@ -144,6 +181,10 @@ pub struct Sha512Config {
 
 /// Chip for SHA512.
 #[derive(Clone, Debug)]
+#[cfg_attr(
+    feature = "extraction",
+    derive(picus::NoChipArgs, picus::InitFromScratch)
+)]
 pub struct Sha512Chip<F: PrimeField> {
     config: Sha512Config,
     pub(super) native_gadget: NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>,
@@ -1873,6 +1914,8 @@ use midnight_proofs::plonk::Instance;
 
 #[cfg(any(test, feature = "testing"))]
 use crate::{field::decomposition::chip::P2RDecompositionConfig, testing_utils::FromScratch};
+use crate::field::decomposition::pow2range::Pow2RangeChip;
+use crate::field::native::{NB_ARITH_COLS, NB_ARITH_FIXED_COLS};
 
 #[cfg(any(test, feature = "testing"))]
 impl<F: PrimeField> FromScratch<F> for Sha512Chip<F> {
