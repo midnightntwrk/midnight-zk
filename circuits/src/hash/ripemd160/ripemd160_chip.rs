@@ -114,6 +114,10 @@ pub struct RipeMD160Config {
 
 /// Chip for RIPEMD160
 #[derive(Clone, Debug)]
+#[cfg_attr(
+    feature = "extraction",
+    derive(picus::NoChipArgs, picus::InitFromScratch)
+)]
 pub struct RipeMD160Chip<F: PrimeField> {
     config: RipeMD160Config,
     pub(super) native_gadget: NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>,
@@ -422,14 +426,15 @@ impl<F: PrimeField> RipeMD160Chip<F> {
     }
 
     /// Process a single 64-byte block, updating the given state.
+    #[picus::group]
     fn process_block(
         &self,
         layouter: &mut impl Layouter<F>,
-        state: &mut State<F>,
-        block_bytes: &[AssignedByte<F>; 64],
-        round_consts: [&AssignedWord<F>; 5],
-        round_consts_prime: [&AssignedWord<F>; 5],
-        zero: &AssignedWord<F>,
+        #[input] state: &mut State<F>,
+        #[input] block_bytes: &[AssignedByte<F>; 64],
+        #[input] round_consts: [&AssignedWord<F>; 5],
+        #[input] round_consts_prime: [&AssignedWord<F>; 5],
+        #[input] zero: &AssignedWord<F>,
     ) -> Result<(), Error> {
         let block_words = self.block_from_bytes(layouter, block_bytes)?;
 
@@ -493,18 +498,19 @@ impl<F: PrimeField> RipeMD160Chip<F> {
 
     /// One round function of RIPEMD-160, updating the temporary states of both
     /// sides.
+    #[picus::group]
     #[allow(clippy::too_many_arguments)]
     fn round_function(
         &self,
         layouter: &mut impl Layouter<F>,
         idx: usize,
-        temp_state: &mut State<F>,
-        temp_state_prime: &mut State<F>,
-        word: &AssignedWord<F>,
-        word_prime: &AssignedWord<F>,
-        round_const: &AssignedWord<F>,
-        round_const_prime: &AssignedWord<F>,
-        zero: &AssignedWord<F>,
+        #[input] temp_state: &mut State<F>,
+        #[input] temp_state_prime: &mut State<F>,
+        #[input] word: &AssignedWord<F>,
+        #[input] word_prime: &AssignedWord<F>,
+        #[input] round_const: &AssignedWord<F>,
+        #[input] round_const_prime: &AssignedWord<F>,
+        #[input] zero: &AssignedWord<F>,
     ) -> Result<(), Error> {
         let State {
             h0: ref mut A,
@@ -589,11 +595,12 @@ impl<F: PrimeField> RipeMD160Chip<F> {
     }
 
     /// Given an assigned word X, this function prepares its spreaded form.
+    #[picus::group]
     fn prepare_spreaded(
         &self,
         layouter: &mut impl Layouter<F>,
-        word: &AssignedWord<F>,
-        zero: &AssignedWord<F>,
+        #[input] word: &AssignedWord<F>,
+        #[input] zero: &AssignedWord<F>,
     ) -> Result<AssignedSpreaded<F, 32>, Error> {
         /*
         Given assigned word X, we first compute its spreaded form ~X, and then
@@ -649,12 +656,13 @@ impl<F: PrimeField> RipeMD160Chip<F> {
 
     /// Given two assigned spreaded ~X and ~Y, this function returns X ∧ Y
     /// the bitwise AND as an assigned word.
+    #[picus::group]
     fn and(
         &self,
         layouter: &mut impl Layouter<F>,
-        sprdd_X: &AssignedSpreaded<F, 32>,
-        sprdd_Y: &AssignedSpreaded<F, 32>,
-        zero: &AssignedWord<F>,
+        #[input] sprdd_X: &AssignedSpreaded<F, 32>,
+        #[input] sprdd_Y: &AssignedSpreaded<F, 32>,
+        #[input] zero: &AssignedWord<F>,
     ) -> Result<AssignedWord<F>, Error> {
         /*
         X ∧ Y can be computed as the odd part of ~X + ~Y + ~0. We apply [`assign_sprdd_11_11_10`]
@@ -708,12 +716,13 @@ impl<F: PrimeField> RipeMD160Chip<F> {
 
     /// Given two assigned spreaded ~X and ~Y, this function returns X ⊕ Y
     /// the bitwise XOR as an assigned word.
+    #[picus::group]
     fn xor(
         &self,
         layouter: &mut impl Layouter<F>,
-        sprdd_X: &AssignedSpreaded<F, 32>,
-        sprdd_Y: &AssignedSpreaded<F, 32>,
-        zero: &AssignedWord<F>,
+        #[input] sprdd_X: &AssignedSpreaded<F, 32>,
+        #[input] sprdd_Y: &AssignedSpreaded<F, 32>,
+        #[input] zero: &AssignedWord<F>,
     ) -> Result<AssignedWord<F>, Error> {
         /*
         X ⊕ Y can be computed as the even part of ~X + ~Y + ~0. We apply [`assign_sprdd_11_11_10`]
@@ -768,12 +777,13 @@ impl<F: PrimeField> RipeMD160Chip<F> {
     /// Given three assigned spreaded ~X, ~Y, ~Z, this function computes the
     /// value of f(X, Y, Z) = X ⊕ Y ⊕ Z, defined as type one function in
     /// RIPEMD160.
+    #[picus::group]
     fn f_type_one(
         &self,
         layouter: &mut impl Layouter<F>,
-        sprdd_X: &AssignedSpreaded<F, 32>,
-        sprdd_Y: &AssignedSpreaded<F, 32>,
-        sprdd_Z: &AssignedSpreaded<F, 32>,
+        #[input] sprdd_X: &AssignedSpreaded<F, 32>,
+        #[input] sprdd_Y: &AssignedSpreaded<F, 32>,
+        #[input] sprdd_Z: &AssignedSpreaded<F, 32>,
     ) -> Result<AssignedWord<F>, Error> {
         /*
         f(X, Y, Z) = X ⊕ Y ⊕ Z can be computed as the even part of ~X + ~Y + ~Z. We apply
@@ -828,14 +838,15 @@ impl<F: PrimeField> RipeMD160Chip<F> {
     /// Given three assigned spreaded ~X, ~Y, ~Z, this function computes the
     /// value of f(X, Y, Z) = (X ∧ Y) ∨ (¬X ∧ Z), defined as type two function
     /// in RIPEMD160.
+    #[picus::group]
     fn f_type_two(
         &self,
         layouter: &mut impl Layouter<F>,
-        sprdd_X: &AssignedSpreaded<F, 32>,
-        sprdd_Y: &AssignedSpreaded<F, 32>,
-        sprdd_Z: &AssignedSpreaded<F, 32>,
-        zero: &AssignedWord<F>,
-        mask_evn_64: &AssignedNative<F>,
+        #[input] #[input] sprdd_X: &AssignedSpreaded<F, 32>,
+        #[input] #[input] sprdd_Y: &AssignedSpreaded<F, 32>,
+        #[input] #[input] sprdd_Z: &AssignedSpreaded<F, 32>,
+        #[input] #[input] zero: &AssignedWord<F>,
+        #[input] #[input] mask_evn_64: &AssignedNative<F>,
     ) -> Result<AssignedWord<F>, Error> {
         /*
         f(X, Y, Z) = (X ∧ Y) ∨ (¬X ∧ Z) = (X ∧ Y) ⊕ (¬X ∧ Z)
@@ -930,14 +941,15 @@ impl<F: PrimeField> RipeMD160Chip<F> {
     /// Given three assigned spreaded ~X, ~Y, ~Z, this function computes the
     /// value of f(X, Y, Z) = (X ∨ ¬Y) ⊕ Z, defined as type three function in
     /// RIPEMD160.
+    #[picus::group]
     fn f_type_three(
         &self,
         layouter: &mut impl Layouter<F>,
-        sprdd_X: &AssignedSpreaded<F, 32>,
-        sprdd_Y: &AssignedSpreaded<F, 32>,
-        sprdd_Z: &AssignedSpreaded<F, 32>,
-        zero: &AssignedWord<F>,
-        mask_evn_64: &AssignedNative<F>,
+        #[input] sprdd_X: &AssignedSpreaded<F, 32>,
+        #[input] sprdd_Y: &AssignedSpreaded<F, 32>,
+        #[input] sprdd_Z: &AssignedSpreaded<F, 32>,
+        #[input] zero: &AssignedWord<F>,
+        #[input] mask_evn_64: &AssignedNative<F>,
     ) -> Result<AssignedWord<F>, Error> {
         /*
         f(X, Y, Z) = (X ∨ ¬Y) ⊕ Z = (X ⊕ ¬Y ⊕ Z) ⊕ (X ∧ ¬Y)
@@ -973,10 +985,11 @@ impl<F: PrimeField> RipeMD160Chip<F> {
     /// Given an assigned word X and a left rotation amount `rot`, this function
     /// computes the left rotation of X by `rot` bits, returning Rot(X) as an
     /// assigned word.
+    #[picus::group]
     fn left_rotate(
         &self,
         layouter: &mut impl Layouter<F>,
-        word: &AssignedWord<F>,
+        #[input] word: &AssignedWord<F>,
         rot: u8,
     ) -> Result<AssignedWord<F>, Error> {
         /*
@@ -1034,11 +1047,12 @@ impl<F: PrimeField> RipeMD160Chip<F> {
 
     /// Given a list of up to four assigned words, this function computes their
     /// addition modulo 2^32, returning the result as an assigned word.
+    #[picus::group]
     fn add_mod_2_32(
         &self,
         layouter: &mut impl Layouter<F>,
-        summands: &[&AssignedWord<F>],
-        zero: &AssignedWord<F>,
+        #[input] summands: &[&AssignedWord<F>],
+        #[input] zero: &AssignedWord<F>,
     ) -> Result<AssignedWord<F>, Error> {
         /*
         Computing the mod 2^32 addition: A ⊞ B ⊞ C ⊞ D fills the circuit layout as follows:
