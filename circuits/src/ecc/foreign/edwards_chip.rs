@@ -39,9 +39,13 @@ use {crate::testing_utils::Sampleable, rand::RngCore};
 #[cfg(any(test, feature = "testing"))]
 use crate::testing_utils::FromScratch;
 use crate::{
-    ecc::curves::{CircuitCurve, EdwardsCurve},
+    ecc::{
+        curves::EdwardsCurve,
+        foreign::gates::coord::{self, CoordConfig},
+    },
     field::{
         foreign::{
+            self,
             field_chip::{FieldChip, FieldChipConfig},
             params::FieldEmulationParams,
         },
@@ -62,6 +66,7 @@ where
     C: EdwardsCurve,
 {
     base_field_config: FieldChipConfig,
+    x_coord_config: CoordConfig<C>,
     _marker: PhantomData<C>,
 }
 
@@ -109,8 +114,11 @@ where
         _meta: &mut ConstraintSystem<F>,
         base_field_config: &FieldChipConfig,
     ) -> ForeignEdwardsEccConfig<C> {
+        let x_coord_config = CoordConfig::<C>::configure::<F, B>(_meta, base_field_config);
+
         ForeignEdwardsEccConfig {
             base_field_config: base_field_config.clone(),
+            x_coord_config,
             _marker: PhantomData,
         }
     }
@@ -245,6 +253,56 @@ where
     }
 }
 
+impl<F, C, B, S, N> ForeignEdwardsEccChip<F, C, B, S, N>
+where
+    F: PrimeField,
+    C: EdwardsCurve,
+    B: FieldEmulationParams<F, C::Base>,
+    S: ScalarFieldInstructions<F>,
+    N: NativeInstructions<F>,
+{
+    /// Converts an Edwards curve point to AssignedForeignEdwardsPoint.
+    /// The point is not asserted (with constraints) to be on the curve.
+    fn assign_point_unchecked(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        value: Value<C::CryptographicGroup>,
+    ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
+        let (val_x, val_y) = value
+            .map(|v| v.into().coordinates().expect("assign: valid curve point"))
+            .unzip();
+        let x = self.base_field_chip().assign(layouter, val_x)?;
+        let y = self.base_field_chip().assign(layouter, val_y)?;
+        let p = AssignedForeignEdwardsPoint::<F, C, B> { point: value, x, y };
+
+        Ok(p)
+    }
+
+    fn assert_on_curve(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &AssignedField<F, C::Base, B>,
+        y: &AssignedField<F, C::Base, B>,
+    ) -> Result<(), Error> {
+        let base_chip = self.base_field_chip();
+
+        // Compute x^2, y^2 and a*x^2 + y^2 - 1 - d*x^2*y^2
+        let x_x = base_chip.mul(layouter, x, x, None)?;
+        let y_y = base_chip.mul(layouter, y, y, None)?;
+        let id = base_chip.add_and_mul(
+            layouter,
+            (C::A, &x_x),
+            (C::Base::ONE, &y_y),
+            (C::Base::ZERO, &x_x),
+            -C::Base::ONE,
+            -C::D,
+        )?;
+
+        // Assert a*x^2 + y^2 - 1 - d*x^2*y^2 = 0
+        base_chip.assert_zero(layouter, &id)
+    }
+}
+
 impl<F, C, B, S, N> AssignmentInstructions<F, AssignedForeignEdwardsPoint<F, C, B>>
     for ForeignEdwardsEccChip<F, C, B, S, N>
 where
@@ -259,36 +317,11 @@ where
         layouter: &mut impl Layouter<F>,
         value: Value<C::CryptographicGroup>,
     ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
-        let base_chip = self.base_field_chip();
+        let point = self.assign_point_unchecked(layouter, value)?;
 
-        let (val_x, val_y) = value
-            .map(|v| v.into().coordinates().expect("assign: valid curve point"))
-            .unzip();
+        self.assert_on_curve(layouter, &point.x, &point.y)?;
 
-        let x: AssignedField<F, <C as CircuitCurve>::Base, B> =
-            base_chip.assign(layouter, val_x)?;
-        let y: AssignedField<F, <C as CircuitCurve>::Base, B> =
-            base_chip.assign(layouter, val_y)?;
-
-        let x_x = base_chip.mul(layouter, &x, &x, None)?;
-        let y_y = base_chip.mul(layouter, &y, &y, None)?;
-
-        // Compute a*x^2 + y^2 - 1 - d*x^2*y^2
-        let id = base_chip.add_and_mul(
-            layouter,
-            (C::A, &x_x),
-            (C::Base::ONE, &y_y),
-            (C::Base::ZERO, &x_x),
-            -C::Base::ONE,
-            -C::D,
-        )?;
-
-        base_chip.assert_zero(layouter, &id)?;
-
-        // TODO: Implement subgroup check
-        // via mul by constant with cofactor of 8
-
-        Ok(AssignedForeignEdwardsPoint { point: value, x, y })
+        Ok(point)
     }
 
     fn assign_fixed(
@@ -476,8 +509,8 @@ where
         x: &AssignedForeignEdwardsPoint<F, C, B>,
         y: &AssignedForeignEdwardsPoint<F, C, B>,
     ) -> Result<AssignedBit<F>, Error> {
-        // TODO: implement with new traits after rebase
-        todo!()
+        let b = self.is_equal(layouter, x, y)?;
+        self.native_gadget.not(layouter, &b)
     }
 
     fn is_not_equal_to_fixed(
@@ -486,8 +519,8 @@ where
         x: &AssignedForeignEdwardsPoint<F, C, B>,
         constant: <AssignedForeignEdwardsPoint<F, C, B> as InnerValue>::Element,
     ) -> Result<AssignedBit<F>, Error> {
-        // TODO: implement with new traits after rebase
-        todo!()
+        let b = self.is_equal_to_fixed(layouter, x, constant)?;
+        self.native_gadget.not(layouter, &b)
     }
 }
 
@@ -556,44 +589,59 @@ where
         p: &Self::Point,
         q: &Self::Point,
     ) -> Result<Self::Point, Error> {
-        // Addition law on twisted edwards curve:
-        //      P    +    Q
-        // = (Px,Py) + (Qx,Qy)
-        // = ( (Px*Qy + Py*Qx)/(1+d*Px*Py*Qx*Qy) ,
-        //              (Py*Qy - a*Px*Qx)/(1-d*Px*Py*Qx*Qy) )
-        // = (Rx, Ry) = R
+        // Complete addition law on twisted edwards curve:
+        // P + Q = R
+        // <=>
+        // (Px, Py) + (Qx, Qy) = (Rx, Ry)
+        // <=>
+        // Rx = (Px * Qy +     Py * Qx) / (1 + d * Px * Py * Qx * Qy)
+        // Ry = (Py * Qy - a * Px * Qx) / (1 - d * Px * Py * Qx * Qy)
+        // <=> (denominators are non-zero)
+        // Rx * (1 + d * Px * Py * Qx * Qy) = (Px * Qy +     Py * Qx)
+        // Ry * (1 - d * Px * Py * Qx * Qy) = (Py * Qy - a * Px * Qx)
 
         let base_chip = self.base_field_chip();
-        let px_py = base_chip.mul(layouter, &p.x, &p.y, None)?;
-        let qx_qy = base_chip.mul(layouter, &q.x, &q.y, None)?;
-        let py_qy = base_chip.mul(layouter, &p.y, &q.y, None)?;
-        let px_qx = base_chip.mul(layouter, &p.x, &q.x, None)?;
-        let a_px_qx = base_chip.mul_by_constant(layouter, &px_qx, C::A)?;
-        let d_px_py_qx_qy = base_chip.mul(layouter, &px_py, &qx_qy, Some(C::D))?;
-        let neg_d_px_py_qx_qy = base_chip.neg(layouter, &d_px_py_qx_qy)?;
+
+        let r_value = p.value().zip(q.value()).map(|(p, q)| p + q);
+        let r = self.assign_point_unchecked(layouter, r_value)?;
 
         let px_qy = base_chip.mul(layouter, &p.x, &q.y, None)?;
         let py_qx = base_chip.mul(layouter, &p.y, &q.x, None)?;
+        let py_qy = base_chip.mul(layouter, &p.y, &q.y, None)?;
+        let px_qx = base_chip.mul(layouter, &p.x, &q.x, None)?;
+        let a_px_qx = base_chip.mul_by_constant(layouter, &px_qx, C::A)?;
+        let neg_a_px_qx = base_chip.neg(layouter, &a_px_qx)?;
+        let d_px_py_qx_qy = base_chip.mul(layouter, &px_qx, &py_qy, Some(C::D))?;
+        let neg_d_px_py_qx_qy = base_chip.neg(layouter, &d_px_py_qx_qy)?;
 
-        // Rx coordinate
-        let num = base_chip.add(layouter, &px_qy, &py_qx)?;
-        let den = base_chip.add_constant(layouter, &d_px_py_qx_qy, C::Base::ONE)?;
-        let rx = base_chip.div(layouter, &num, &den)?;
+        // Constraint for Rx coordinate
+        // Rx * (1 + d * Px * Py * Qx * Qy) = (Px * Qy + Py * Qx)
+        coord::assert_coord(
+            layouter,
+            &r.x,
+            &px_qy,
+            &py_qx,
+            &d_px_py_qx_qy,
+            base_chip,
+            &self.config.x_coord_config,
+        )?;
 
-        // Ry coordinate
-        let num = base_chip.sub(layouter, &py_qy, &a_px_qx)?;
-        let den = base_chip.add_constant(layouter, &neg_d_px_py_qx_qy, C::Base::ONE)?;
-        let ry = base_chip.div(layouter, &num, &den)?;
-
-        let point = rx
-            .value()
-            .zip(ry.value())
-            .map(|(x, y)| C::from_xy(x, y).expect("valid coordinates").into_subgroup());
+        // Constraint for Ry coordinate
+        // Ry * (1 - d * Px * Py * Qx * Qy) = (Py * Qy - a * Px * Qx)
+        coord::assert_coord(
+            layouter,
+            &r.y,
+            &py_qy,
+            &neg_a_px_qx,
+            &neg_d_px_py_qx_qy,
+            base_chip,
+            &self.config.x_coord_config,
+        )?;
 
         Ok(AssignedForeignEdwardsPoint {
-            point,
-            x: rx,
-            y: ry,
+            point: r_value,
+            x: r.x,
+            y: r.y,
         })
     }
 
@@ -643,20 +691,17 @@ where
             panic!("Nr of scalars and points should be the same.")
         }
 
-        let mut res = self.assign_fixed(layouter, C::CryptographicGroup::identity())?;
+        let identity = self.assign_fixed(layouter, C::CryptographicGroup::identity())?;
+        let mut res = identity.clone();
 
         for ((s, bit_size), b) in scalars.iter().zip(bases.iter()) {
             let scalar_bits =
                 self.scalar_field_chip()
                     .assigned_to_le_bits(layouter, s, Some(*bit_size), true)?;
             let mut p = b.clone();
-            for b in scalar_bits {
-                let _: Value<std::result::Result<(), Error>> = b.value().map(|b| {
-                    if b {
-                        res = self.add(layouter, &res, &p)?
-                    }
-                    Ok(())
-                });
+            for b in scalar_bits.iter() {
+                let addend = self.select(layouter, b, &p, &identity)?;
+                res = self.add(layouter, &res, &addend)?;
                 p = self.double(layouter, &p)?;
             }
         }
@@ -668,13 +713,14 @@ where
         &self,
         layouter: &mut impl Layouter<F>,
         scalar: C::Scalar,
-        base: &Self::Point,
-    ) -> Result<Self::Point, Error> {
+        base: &AssignedForeignEdwardsPoint<F, C, B>,
+    ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
         if scalar == C::Scalar::ZERO {
             return self.assign_fixed(layouter, C::CryptographicGroup::identity());
         } else if scalar == C::Scalar::ONE {
             return Ok(base.clone());
         }
+
         let scalar_bits = crate::utils::util::fe_to_le_bits(&scalar, None);
         let mut p = base.clone();
         let mut res = self.assign_fixed(layouter, C::CryptographicGroup::identity())?;
@@ -684,21 +730,28 @@ where
             }
             p = self.double(layouter, &p)?;
         }
+
         Ok(res)
     }
 
     fn point_from_coordinates(
         &self,
         layouter: &mut impl Layouter<F>,
-        x: &Self::Coordinate,
-        y: &Self::Coordinate,
+        x: &AssignedField<F, C::Base, B>,
+        y: &AssignedField<F, C::Base, B>,
     ) -> Result<Self::Point, Error> {
+        self.assert_on_curve(layouter, x, y)?;
+
         let point = x
             .value()
             .zip(y.value())
             .map(|(x, y)| C::from_xy(x, y).expect("valid coordinates").into_subgroup());
 
-        self.assign(layouter, point)
+        Ok(AssignedForeignEdwardsPoint::<F, C, B> {
+            point,
+            x: x.clone(),
+            y: y.clone(),
+        })
     }
 
     fn x_coordinate(&self, point: &Self::Point) -> Self::Coordinate {
@@ -716,8 +769,8 @@ where
 
 #[derive(Clone, Debug)]
 #[cfg(any(test, feature = "testing"))]
-/// Configuration used to implement `FromScratch` for the ForeignEcc chip. This
-/// should only be used for testing.
+/// Configuration used to implement `FromScratch` for the
+/// `ForeignEdwardsEccChip` chip. This should only be used for testing.
 pub struct ForeignEccTestConfig<F, C, S, N>
 where
     F: PrimeField,
@@ -778,10 +831,53 @@ where
     }
 }
 
+/// Implement subgroup membership checks for emulated JubJub
+/// over the scalar field of BLS12-381.
+use midnight_curves::{Fr, JubjubExtended};
+
+use crate::field::{decomposition::chip::P2RDecompositionChip, NativeChip, NativeGadget};
+
+type F = midnight_curves::BlsScalar;
+type EP = foreign::params::MultiEmulationParams;
+type NG = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
+type EF = FieldChip<F, <JubjubExtended as Group>::Scalar, EP, NG>;
+type JubJubChip = ForeignEdwardsEccChip<F, JubjubExtended, EP, EF, NG>;
+
+impl JubJubChip {
+    /// Asserts that the given point belongs to the JubJub subgroup.
+    pub fn assert_in_jubjub_subgroup(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        p: &<JubJubChip as EccInstructions<F, JubjubExtended>>::Point,
+    ) -> Result<(), Error> {
+        // Let
+        //    * r be the order of the prime-order JubJub subgroup,
+        //    * h be the cofactor of this subgroup.
+        //
+        // To check that a point p is in the prime-order JubJub subgroup,
+        // we exhibit a cofactor-rth root of p. We do the following:
+        //    1. Compute inv := h^{-1} mod r.
+        //    2. Check that h * (inv * p) = p.
+        // If the equality in 2. holds, then inv * p is the cofactor-th root of p.
+        //
+        // Note: step 1. is possible, since gcd(h,r) = 1.
+
+        // The prime-order JubJub sugroup has a cofactor of 8
+        // See: https://std.neuromancer.sk/other/JubJub
+        let cofactor = Fr::from_raw([0x08, 0, 0, 0]);
+
+        let q: <JubJubChip as EccInstructions<F, JubjubExtended>>::Point =
+            self.assign(layouter, p.value().map(|p| p * cofactor.invert().unwrap()))?;
+
+        let cofactor_times_q = self.mul_by_constant(layouter, cofactor, &q)?;
+        self.assert_equal(layouter, p, &cofactor_times_q)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use group::Group;
-    use midnight_curves::{Fq as BlsScalar, JubjubExtended};
+    use midnight_curves::{BlsScalar, JubjubExtended};
 
     use super::*;
     use crate::{

@@ -1119,8 +1119,6 @@ where
             x = self.make_canonical(layouter, &x)?;
         };
         let mut bits = vec![];
-        dbg!(K::NUM_BITS);
-        dbg!(K::MODULUS);
         x.limb_values
             .iter()
             .zip(well_formed_log2_bounds::<F, K, P>().iter())
