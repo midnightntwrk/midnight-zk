@@ -12,7 +12,7 @@ jobs:
     outputs:
       srs-cache-hit: ${{ steps.cache-srs.outputs.cache-hit }}
     steps:
-      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
       - name: Restore SRS from cache
         id: restore-srs
@@ -34,7 +34,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
       - uses: ./.github/actions/cargo-test
         with:
           package: midnight-curves
@@ -50,7 +50,7 @@ jobs:
       RUSTFLAGS: --cfg ci_build
 
     steps:
-      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
       - run: cargo tree -e features -p midnight-curves
       - uses: ./.github/actions/cargo-test
         with:
@@ -68,7 +68,7 @@ jobs:
       RUSTFLAGS: --cfg ci_build
 
     steps:
-      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
       - name: Restore SRS from cache
         uses: actions/cache@9255dc7a253b0ccc959486e2bca901246202afeb
         with:
@@ -91,7 +91,7 @@ jobs:
     runs-on: ubuntu-latest-16-core-x64
 
     steps:
-      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
       - name: Restore SRS from cache
         uses: actions/cache@9255dc7a253b0ccc959486e2bca901246202afeb
         with:
@@ -122,7 +122,7 @@ jobs:
       - name: Install libfontconfig1-dev
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev
-      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
       - uses: ./.github/actions/cargo-test
         with:
           package: midnight-proofs
@@ -133,7 +133,7 @@ jobs:
     name: Test Aggregator
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
       - uses: ./.github/actions/cargo-test
         with:
           package: midnight-aggregator
@@ -144,7 +144,7 @@ jobs:
     name: Test ZKIR
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
       - uses: ./.github/actions/cargo-test
         with:
           package: midnight-zkir
@@ -156,7 +156,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
       - name: 'Install rust-toolchain.toml'
         run: rustup toolchain install
       - name: cargo fetch
@@ -173,7 +173,7 @@ jobs:
     timeout-minutes: 30
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
       - uses: dtolnay/rust-toolchain@nightly
       - run: rustup component add rustfmt --toolchain nightly
       - run: cargo +nightly fmt --all -- --check
@@ -185,7 +185,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
       - name: 'Install rust-toolchain.toml'
         run: rustup toolchain install
 
