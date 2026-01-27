@@ -426,15 +426,14 @@ impl<F: PrimeField> RipeMD160Chip<F> {
     }
 
     /// Process a single 64-byte block, updating the given state.
-    #[picus::group]
     fn process_block(
         &self,
         layouter: &mut impl Layouter<F>,
-        #[input] state: &mut State<F>,
-        #[input] block_bytes: &[AssignedByte<F>; 64],
-        #[input] round_consts: [&AssignedWord<F>; 5],
-        #[input] round_consts_prime: [&AssignedWord<F>; 5],
-        #[input] zero: &AssignedWord<F>,
+        state: &mut State<F>,
+        block_bytes: &[AssignedByte<F>; 64],
+        round_consts: [&AssignedWord<F>; 5],
+        round_consts_prime: [&AssignedWord<F>; 5],
+        zero: &AssignedWord<F>,
     ) -> Result<(), Error> {
         let block_words = self.block_from_bytes(layouter, block_bytes)?;
 
@@ -498,19 +497,18 @@ impl<F: PrimeField> RipeMD160Chip<F> {
 
     /// One round function of RIPEMD-160, updating the temporary states of both
     /// sides.
-    #[picus::group]
     #[allow(clippy::too_many_arguments)]
     fn round_function(
         &self,
         layouter: &mut impl Layouter<F>,
         idx: usize,
-        #[input] temp_state: &mut State<F>,
-        #[input] temp_state_prime: &mut State<F>,
-        #[input] word: &AssignedWord<F>,
-        #[input] word_prime: &AssignedWord<F>,
-        #[input] round_const: &AssignedWord<F>,
-        #[input] round_const_prime: &AssignedWord<F>,
-        #[input] zero: &AssignedWord<F>,
+        temp_state: &mut State<F>,
+        temp_state_prime: &mut State<F>,
+        word: &AssignedWord<F>,
+        word_prime: &AssignedWord<F>,
+        round_const: &AssignedWord<F>,
+        round_const_prime: &AssignedWord<F>,
+        zero: &AssignedWord<F>,
     ) -> Result<(), Error> {
         let State {
             h0: ref mut A,
