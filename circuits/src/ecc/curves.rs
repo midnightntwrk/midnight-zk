@@ -61,16 +61,13 @@ pub trait WeierstrassCurve: CircuitCurve {
     // Note:
     // There are 2 choices for each cubic root,
     // but they must agree!
-    // SCALAR_ZETA * (x, y) = ( BASE_ZETA * x, y)
-    //
-    // It is recommended to get them directly from
-    // ff::WithSmallOrderMulGroup<3> if available.
+    // scalar_zeta() * (x, y) = ( base_zeta() * x, y)
 
     /// Cubic root on the base field.
-    const BASE_ZETA: Self::Base;
+    fn base_zeta() -> Self::Base;
 
     /// Cubic root on the scalar field.
-    const SCALAR_ZETA: Self::Scalar;
+    fn scalar_zeta() -> Self::Scalar;
 }
 
 /// A twisted edwards curve of the form `A x^2 + y^2 = 1 + D x^2 y^2`.
@@ -159,8 +156,13 @@ impl WeierstrassCurve for Secp256k1 {
     const A: Self::Base = Fp::from_raw([0, 0, 0, 0]);
     const B: Self::Base = Fp::from_raw([7, 0, 0, 0]);
 
-    const BASE_ZETA: Self::Base = <Fp as ff::WithSmallOrderMulGroup<3>>::ZETA;
-    const SCALAR_ZETA: Self::Scalar = <Fq as ff::WithSmallOrderMulGroup<3>>::ZETA;
+    fn base_zeta() -> Self::Base {
+        <Fp as ff::WithSmallOrderMulGroup<3>>::ZETA
+    }
+
+    fn scalar_zeta() -> Self::Scalar {
+        <Fq as ff::WithSmallOrderMulGroup<3>>::ZETA
+    }
 }
 
 // Implementation for Bls12-381.
@@ -190,8 +192,13 @@ impl WeierstrassCurve for G1Projective {
     const A: Self::Base = midnight_curves::A;
     const B: Self::Base = midnight_curves::B;
 
-    const BASE_ZETA: Self::Base = <BlsBase as ff::WithSmallOrderMulGroup<3>>::ZETA;
-    const SCALAR_ZETA: Self::Scalar = <BlsScalar as ff::WithSmallOrderMulGroup<3>>::ZETA;
+    fn base_zeta() -> Self::Base {
+        <BlsBase as ff::WithSmallOrderMulGroup<3>>::ZETA
+    }
+
+    fn scalar_zeta() -> Self::Scalar {
+        <BlsScalar as ff::WithSmallOrderMulGroup<3>>::ZETA
+    }
 }
 
 // Implementation for BN254.
@@ -220,6 +227,10 @@ impl WeierstrassCurve for bn256::G1 {
     const A: Self::Base = bn256::Fq::from_raw([0, 0, 0, 0]);
     const B: Self::Base = bn256::Fq::from_raw([3, 0, 0, 0]);
 
-    const BASE_ZETA: Self::Base = <bn256::Fq as ff::WithSmallOrderMulGroup<3>>::ZETA;
-    const SCALAR_ZETA: Self::Scalar = <bn256::Fr as ff::WithSmallOrderMulGroup<3>>::ZETA;
+    fn base_zeta() -> Self::Base {
+        <bn256::Fq as ff::WithSmallOrderMulGroup<3>>::ZETA
+    }
+    fn scalar_zeta() -> Self::Scalar {
+        <bn256::Fr as ff::WithSmallOrderMulGroup<3>>::ZETA
+    }
 }

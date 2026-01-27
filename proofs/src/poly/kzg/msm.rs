@@ -109,18 +109,32 @@ where
 #[allow(unsafe_code)]
 /// Wrapper over the MSM function to use the blstrs underlying function
 pub fn msm_specific<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C::Curve]) -> C::Curve {
+    // We remove zeros (keep only non-zero coefficients)
+    let (coeffs, bases): (Vec<C::Scalar>, Vec<C::Curve>) = coeffs
+        .iter()
+        .zip(bases)
+        .filter(|(s, _)| !s.is_zero_vartime())
+        .map(|(s, b)| (*s, *b))
+        .unzip();
+
+    if coeffs.is_empty() {
+        return C::Curve::identity();
+    }
+
     // We empirically checked that for MSMs larger than 2**18, the blstrs
     // implementation regresses.
     if coeffs.len() <= (2 << 18) && TypeId::of::<C>() == TypeId::of::<midnight_curves::G1Affine>() {
         // Safe: we just checked type
-        let coeffs = unsafe { &*(coeffs as *const _ as *const [Fq]) };
-        let bases = unsafe { &*(bases as *const _ as *const [G1Projective]) };
+        let coeffs_slice = coeffs.as_slice();
+        let bases_slice = bases.as_slice();
+        let coeffs = unsafe { &*(coeffs_slice as *const _ as *const [Fq]) };
+        let bases = unsafe { &*(bases_slice as *const _ as *const [G1Projective]) };
         let res = G1Projective::multi_exp(bases, coeffs);
         unsafe { std::mem::transmute_copy(&res) }
     } else {
         let mut affine_bases = vec![C::identity(); coeffs.len()];
-        C::Curve::batch_normalize(bases, &mut affine_bases);
-        msm_best(coeffs, &affine_bases)
+        C::Curve::batch_normalize(&bases, &mut affine_bases);
+        msm_best(&coeffs, &affine_bases)
     }
 }
 
