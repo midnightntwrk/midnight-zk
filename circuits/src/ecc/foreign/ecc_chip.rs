@@ -1947,8 +1947,8 @@ where
         ),
         Error,
     > {
-        let zeta_base = C::BASE_ZETA;
-        let zeta_scalar = C::SCALAR_ZETA;
+        let zeta_base = C::base_zeta();
+        let zeta_scalar = C::scalar_zeta();
 
         let decomposed = scalar.value().map(|x| glv_scalar_decomposition(&x, &zeta_scalar));
         let s1_value = decomposed.map(|((s1, _), _)| s1);

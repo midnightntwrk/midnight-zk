@@ -18,6 +18,8 @@ verification keys break backwards compatibility.
 * Adapt Poseidon variable length hash to agree with its CPU version [#162](https://github.com/midnightntwrk/midnight-zk/pull/162)
 * Refactor `hash` and `varhash` tests [#162](https://github.com/midnightntwrk/midnight-zk/pull/162)
 * Add explicit subgroup membership guarantees for `AssignedNativePoint` [#175](https://github.com/midnightntwrk/midnight-zk/pull/175)
+* Add methods to access zeta values in  `CircuitCurve` [#186](https://github.com/midnightntwrk/midnight-zk/pull/186)
+* Remove zeta consti in  `CircuitCurve` [#186](https://github.com/midnightntwrk/midnight-zk/pull/186)
 
 ### Removed
 * Move external implementations to zk-stdlib [#178](https://github.com/midnightntwrk/midnight-zk/pull/178)
