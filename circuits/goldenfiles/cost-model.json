@@ -318,6 +318,250 @@
       "table_rows": "23"
     }
   },
+  "emulated_jubjub": {
+    "add": {
+      "advice_columns": "30",
+      "column_queries": "111",
+      "fixed_columns": "73",
+      "lookups": "8",
+      "max_deg": "5",
+      "permutations": "34",
+      "point_sets": "5",
+      "rows": "345",
+      "table_rows": "417"
+    },
+    "assert_eq": {
+      "advice_columns": "30",
+      "column_queries": "111",
+      "fixed_columns": "73",
+      "lookups": "8",
+      "max_deg": "5",
+      "permutations": "34",
+      "point_sets": "5",
+      "rows": "141",
+      "table_rows": "417"
+    },
+    "assert_eq_fixed": {
+      "advice_columns": "30",
+      "column_queries": "111",
+      "fixed_columns": "73",
+      "lookups": "8",
+      "max_deg": "5",
+      "permutations": "34",
+      "point_sets": "5",
+      "rows": "141",
+      "table_rows": "417"
+    },
+    "assert_neq": {
+      "advice_columns": "30",
+      "column_queries": "111",
+      "fixed_columns": "73",
+      "lookups": "8",
+      "max_deg": "5",
+      "permutations": "34",
+      "point_sets": "5",
+      "rows": "212",
+      "table_rows": "417"
+    },
+    "assert_neq_fixed": {
+      "advice_columns": "30",
+      "column_queries": "111",
+      "fixed_columns": "73",
+      "lookups": "8",
+      "max_deg": "5",
+      "permutations": "34",
+      "point_sets": "5",
+      "rows": "210",
+      "table_rows": "417"
+    },
+    "assert_non_zero": {
+      "advice_columns": "30",
+      "column_queries": "112",
+      "fixed_columns": "75",
+      "lookups": "8",
+      "max_deg": "5",
+      "permutations": "35",
+      "point_sets": "5",
+      "rows": "49",
+      "table_rows": "417"
+    },
+    "assert_zero": {
+      "advice_columns": "30",
+      "column_queries": "112",
+      "fixed_columns": "75",
+      "lookups": "8",
+      "max_deg": "5",
+      "permutations": "35",
+      "point_sets": "5",
+      "rows": "0",
+      "table_rows": "16"
+    },
+    "cond_assert_equal": {
+      "advice_columns": "30",
+      "column_queries": "112",
+      "fixed_columns": "75",
+      "lookups": "8",
+      "max_deg": "5",
+      "permutations": "35",
+      "point_sets": "5",
+      "rows": "10",
+      "table_rows": "10"
+    },
+    "cond_swap": {
+      "advice_columns": "30",
+      "column_queries": "112",
+      "fixed_columns": "75",
+      "lookups": "8",
+      "max_deg": "5",
+      "permutations": "35",
+      "point_sets": "5",
+      "rows": "20",
+      "table_rows": "20"
+    },
+    "coordinates": {
+      "advice_columns": "30",
+      "column_queries": "111",
+      "fixed_columns": "73",
+      "lookups": "8",
+      "max_deg": "5",
+      "permutations": "34",
+      "point_sets": "5",
+      "rows": "262",
+      "table_rows": "417"
+    },
+    "double": {
+      "advice_columns": "30",
+      "column_queries": "111",
+      "fixed_columns": "73",
+      "lookups": "8",
+      "max_deg": "5",
+      "permutations": "34",
+      "point_sets": "5",
+      "rows": "345",
+      "table_rows": "417"
+    },
+    "is_equal": {
+      "advice_columns": "30",
+      "column_queries": "112",
+      "fixed_columns": "75",
+      "lookups": "8",
+      "max_deg": "5",
+      "permutations": "35",
+      "point_sets": "5",
+      "rows": "71",
+      "table_rows": "417"
+    },
+    "is_equal_to_fixed": {
+      "advice_columns": "30",
+      "column_queries": "112",
+      "fixed_columns": "75",
+      "lookups": "8",
+      "max_deg": "5",
+      "permutations": "35",
+      "point_sets": "5",
+      "rows": "69",
+      "table_rows": "417"
+    },
+    "is_not_equal": {
+      "advice_columns": "30",
+      "column_queries": "112",
+      "fixed_columns": "75",
+      "lookups": "8",
+      "max_deg": "5",
+      "permutations": "35",
+      "point_sets": "5",
+      "rows": "72",
+      "table_rows": "417"
+    },
+    "is_not_equal_to_fixed": {
+      "advice_columns": "30",
+      "column_queries": "112",
+      "fixed_columns": "75",
+      "lookups": "8",
+      "max_deg": "5",
+      "permutations": "35",
+      "point_sets": "5",
+      "rows": "70",
+      "table_rows": "417"
+    },
+    "is_zero": {
+      "advice_columns": "30",
+      "column_queries": "112",
+      "fixed_columns": "75",
+      "lookups": "8",
+      "max_deg": "5",
+      "permutations": "35",
+      "point_sets": "5",
+      "rows": "49",
+      "table_rows": "417"
+    },
+    "msm_3": {
+      "advice_columns": "30",
+      "column_queries": "111",
+      "fixed_columns": "73",
+      "lookups": "8",
+      "max_deg": "5",
+      "permutations": "34",
+      "point_sets": "5",
+      "rows": "316020",
+      "table_rows": "483"
+    },
+    "msm_by_bounded_scalars_3": {
+      "advice_columns": "30",
+      "column_queries": "111",
+      "fixed_columns": "73",
+      "lookups": "8",
+      "max_deg": "5",
+      "permutations": "34",
+      "point_sets": "5",
+      "rows": "112036",
+      "table_rows": "483"
+    },
+    "mul_by_constant": {
+      "advice_columns": "30",
+      "column_queries": "111",
+      "fixed_columns": "73",
+      "lookups": "8",
+      "max_deg": "5",
+      "permutations": "34",
+      "point_sets": "5",
+      "rows": "77469",
+      "table_rows": "417"
+    },
+    "neg": {
+      "advice_columns": "30",
+      "column_queries": "111",
+      "fixed_columns": "73",
+      "lookups": "8",
+      "max_deg": "5",
+      "permutations": "34",
+      "point_sets": "5",
+      "rows": "162",
+      "table_rows": "417"
+    },
+    "public_inputs": {
+      "advice_columns": "30",
+      "column_queries": "111",
+      "fixed_columns": "73",
+      "lookups": "8",
+      "max_deg": "5",
+      "permutations": "34",
+      "point_sets": "5",
+      "rows": "141",
+      "table_rows": "417"
+    },
+    "select": {
+      "advice_columns": "30",
+      "column_queries": "112",
+      "fixed_columns": "75",
+      "lookups": "8",
+      "max_deg": "5",
+      "permutations": "35",
+      "point_sets": "5",
+      "rows": "10",
+      "table_rows": "20"
+    }
+  },
   "field_chip_secp_base": {
     "add": {
       "advice_columns": "13",
