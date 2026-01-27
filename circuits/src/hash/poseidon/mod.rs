@@ -221,7 +221,7 @@ mod tests {
         // Cost model update with input size = 64 field elements
         test_wrapper::<64>(32, 14, true);
 
-        test_wrapper::<512>(64, 14, true);
+        test_wrapper::<512>(64, 14, false);
         test_wrapper::<512>(63, 14, false);
 
         test_wrapper::<256>(128, 12, false);

@@ -106,8 +106,8 @@
       "max_deg": "5",
       "permutations": "20",
       "point_sets": "4",
-      "rows": "5120",
-      "table_rows": "267"
+      "rows": "640",
+      "table_rows": "99"
     }
   },
   "VarSHA256": {
