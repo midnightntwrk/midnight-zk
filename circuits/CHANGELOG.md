@@ -20,6 +20,7 @@ verification keys break backwards compatibility.
 * Add explicit subgroup membership guarantees for `AssignedNativePoint` [#175](https://github.com/midnightntwrk/midnight-zk/pull/175)
 * Add methods to access zeta values in  `CircuitCurve` [#186](https://github.com/midnightntwrk/midnight-zk/pull/186)
 * Remove zeta consti in  `CircuitCurve` [#186](https://github.com/midnightntwrk/midnight-zk/pull/186)
+* Uniform input sizes for hash cost-model [#183](https://github.com/midnightntwrk/midnight-zk/pull/183)
 
 ### Removed
 * Move external implementations to zk-stdlib [#178](https://github.com/midnightntwrk/midnight-zk/pull/178)
