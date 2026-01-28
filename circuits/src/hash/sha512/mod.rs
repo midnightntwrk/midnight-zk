@@ -77,6 +77,8 @@ mod tests {
 
         const SHA512_BLOCK_SIZE: usize = 128;
         const SHA512_EDGE_PADDING: usize = 111;
+
+        // Cost model update with input size = 256
         test_wrapper(2 * SHA512_BLOCK_SIZE, 16, true);
 
         test_wrapper(SHA512_BLOCK_SIZE, 15, false);

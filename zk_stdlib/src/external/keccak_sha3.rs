@@ -287,18 +287,27 @@ mod test {
                 NativeGadget<Fq, _, _>,
             >(cost_model, "Keccak_256", input_size, k);
         }
-        const KECCAK_BLOCK_SIZE: usize = 128;
+        const SHA3_256_RATE: usize = 136;
+        // Cost model update with input size = 256
+        test_wrapper(256, 14, true);
 
-        test_wrapper(KECCAK_BLOCK_SIZE - 2, 17, false);
-        test_wrapper(KECCAK_BLOCK_SIZE - 1, 17, false);
-        test_wrapper(KECCAK_BLOCK_SIZE, 17, false);
-        test_wrapper(KECCAK_BLOCK_SIZE + 1, 17, false);
-        test_wrapper(KECCAK_BLOCK_SIZE + 2, 17, false);
-        test_wrapper(2 * KECCAK_BLOCK_SIZE - 2, 17, false);
-        test_wrapper(2 * KECCAK_BLOCK_SIZE - 1, 17, false);
-        test_wrapper(2 * KECCAK_BLOCK_SIZE, 17, false);
-        test_wrapper(2 * KECCAK_BLOCK_SIZE + 1, 17, false);
-        test_wrapper(2 * KECCAK_BLOCK_SIZE + 2, 17, false);
+        test_wrapper(SHA3_256_RATE - 2, 14, false);
+        test_wrapper(SHA3_256_RATE - 1, 14, false);
+        test_wrapper(SHA3_256_RATE, 14, false);
+        test_wrapper(SHA3_256_RATE + 1, 14, false);
+        test_wrapper(SHA3_256_RATE + 2, 14, false);
+
+        test_wrapper(2 * SHA3_256_RATE - 2, 16, false);
+        test_wrapper(2 * SHA3_256_RATE - 1, 16, false);
+        test_wrapper(2 * SHA3_256_RATE, 16, false);
+        test_wrapper(2 * SHA3_256_RATE + 1, 16, false);
+        test_wrapper(2 * SHA3_256_RATE + 2, 16, false);
+
+        test_wrapper(4 * SHA3_256_RATE, 16, false);
+
+        test_wrapper(0, 14, false);
+        test_wrapper(1, 14, false);
+        test_wrapper(2, 14, false);
     }
 
     #[test]
@@ -312,17 +321,28 @@ mod test {
                 NativeGadget<Fq, _, _>,
             >(cost_model, "Sha3_256", input_size, k);
         }
-        const SHA3_BLOCK_SIZE: usize = 128;
+        const SHA3_256_RATE: usize = 136;
 
-        test_wrapper(SHA3_BLOCK_SIZE - 2, 17, false);
-        test_wrapper(SHA3_BLOCK_SIZE - 1, 17, false);
-        test_wrapper(SHA3_BLOCK_SIZE, 17, false);
-        test_wrapper(SHA3_BLOCK_SIZE + 1, 17, false);
-        test_wrapper(SHA3_BLOCK_SIZE + 2, 17, false);
-        test_wrapper(2 * SHA3_BLOCK_SIZE - 2, 17, false);
-        test_wrapper(2 * SHA3_BLOCK_SIZE - 1, 17, false);
-        test_wrapper(2 * SHA3_BLOCK_SIZE, 17, false);
-        test_wrapper(2 * SHA3_BLOCK_SIZE + 1, 17, false);
-        test_wrapper(2 * SHA3_BLOCK_SIZE + 2, 17, false);
+        // Cost model update with input size = 256
+        test_wrapper(256, 15, true);
+
+        test_wrapper(SHA3_256_RATE - 2, 14, false);
+        test_wrapper(SHA3_256_RATE - 1, 14, false);
+        test_wrapper(SHA3_256_RATE, 14, false);
+        test_wrapper(SHA3_256_RATE + 1, 14, false);
+        test_wrapper(SHA3_256_RATE + 2, 14, false);
+
+        test_wrapper(2 * SHA3_256_RATE - 2, 16, false);
+        test_wrapper(2 * SHA3_256_RATE - 1, 16, false);
+
+        test_wrapper(2 * SHA3_256_RATE, 16, false);
+        test_wrapper(2 * SHA3_256_RATE + 1, 16, false);
+        test_wrapper(2 * SHA3_256_RATE + 2, 16, false);
+
+        test_wrapper(4 * SHA3_256_RATE, 16, false);
+
+        test_wrapper(0, 14, false);
+        test_wrapper(1, 14, false);
+        test_wrapper(2, 14, false);
     }
 }

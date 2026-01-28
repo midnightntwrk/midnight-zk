@@ -193,6 +193,8 @@ mod tests {
                 cost_model, "Poseidon", input_size, k,
             )
         }
+
+        // Cost model update with input size = 64 field elements
         test_wrapper(32 * RATE, 10, true);
 
         test_wrapper(RATE, 5, false);
@@ -216,9 +218,12 @@ mod tests {
                 k,
             )
         }
+        // Cost model update with input size = 64 field elements
+        test_wrapper::<64>(32, 14, true);
 
-        test_wrapper::<512>(64, 14, true);
+        test_wrapper::<512>(64, 14, false);
         test_wrapper::<512>(63, 14, false);
+
         test_wrapper::<256>(128, 12, false);
         test_wrapper::<256>(127, 12, false);
         test_wrapper::<256>(256, 12, false);

@@ -116,12 +116,14 @@ mod tests {
 
         const SHA256_BLOCK_SIZE: usize = 64;
         const SHA256_EDGE_PADDING: usize = 55;
-        test_wrapper(2 * SHA256_BLOCK_SIZE, 14, true);
+
+        // Cost model updat with input size = 256
+        test_wrapper(4 * SHA256_BLOCK_SIZE, 15, true);
 
         test_wrapper(SHA256_BLOCK_SIZE, 13, false);
         test_wrapper(SHA256_BLOCK_SIZE - 1, 13, false);
         test_wrapper(SHA256_BLOCK_SIZE - 2, 13, false);
-        test_wrapper(4 * SHA256_BLOCK_SIZE, 15, false);
+        test_wrapper(2 * SHA256_BLOCK_SIZE, 14, false);
 
         test_wrapper(SHA256_EDGE_PADDING, 13, false);
         test_wrapper(SHA256_EDGE_PADDING - 1, 13, false);
@@ -144,9 +146,11 @@ mod tests {
             >(cost_model, "VarSHA256", input_size, k)
         }
 
-        test_wrapper::<512>(64, 16, true);
+        test_wrapper::<512>(64, 16, false);
         test_wrapper::<512>(63, 16, false);
-        test_wrapper::<256>(128, 16, false);
+
+        // Cost model update with input size = 256
+        test_wrapper::<256>(128, 16, true);
         test_wrapper::<256>(127, 16, false);
 
         test_wrapper::<128>(55, 16, false); // padding edge cases
