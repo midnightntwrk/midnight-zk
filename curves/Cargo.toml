@@ -35,6 +35,9 @@ field-derive = { path = "../field-derive" }
 sha2 = "0.10"
 digest = "0.10"
 
+# k256 for secp256k1 (alternative implementation)
+k256 = { version = "0.13.4", features = ["expose-field", "bits", "alloc"], default-features = false }
+
 
 [dev-dependencies]
 rand_xorshift = "0.3.0"
