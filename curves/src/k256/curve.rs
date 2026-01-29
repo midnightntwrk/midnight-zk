@@ -244,3 +244,251 @@ impl GroupEncoding for K256Affine {
         CompressedPoint(bytes)
     }
 }
+
+// ============================================================================
+// Pure wrapper trait implementations (delegate to inner type)
+// ============================================================================
+
+use core::{
+    iter::Sum,
+    ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign},
+};
+use subtle::{ConditionallySelectable, ConstantTimeEq};
+
+impl PartialEq for K256 {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl Eq for K256 {}
+
+impl PartialEq for K256Affine {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl Eq for K256Affine {}
+
+impl ConstantTimeEq for K256 {
+    fn ct_eq(&self, other: &Self) -> Choice {
+        self.0.ct_eq(&other.0)
+    }
+}
+
+impl ConstantTimeEq for K256Affine {
+    fn ct_eq(&self, other: &Self) -> Choice {
+        self.0.ct_eq(&other.0)
+    }
+}
+
+impl ConditionallySelectable for K256 {
+    fn conditional_select(a: &Self, b: &Self, choice: Choice) -> Self {
+        Self(ProjectivePoint::conditional_select(&a.0, &b.0, choice))
+    }
+}
+
+impl ConditionallySelectable for K256Affine {
+    fn conditional_select(a: &Self, b: &Self, choice: Choice) -> Self {
+        Self(AffinePoint::conditional_select(&a.0, &b.0, choice))
+    }
+}
+
+// Arithmetic operations for K256.
+impl Add for K256 {
+    type Output = Self;
+    fn add(self, rhs: Self) -> Self {
+        Self(self.0 + rhs.0)
+    }
+}
+
+impl Add<&K256> for K256 {
+    type Output = Self;
+    fn add(self, rhs: &K256) -> Self {
+        Self(self.0 + rhs.0)
+    }
+}
+
+impl Add<K256Affine> for K256 {
+    type Output = Self;
+    fn add(self, rhs: K256Affine) -> Self {
+        Self(self.0 + rhs.0)
+    }
+}
+
+impl Add<&K256Affine> for K256 {
+    type Output = Self;
+    fn add(self, rhs: &K256Affine) -> Self {
+        Self(self.0 + rhs.0)
+    }
+}
+
+impl AddAssign for K256 {
+    fn add_assign(&mut self, rhs: Self) {
+        self.0 += rhs.0;
+    }
+}
+
+impl AddAssign<&K256> for K256 {
+    fn add_assign(&mut self, rhs: &K256) {
+        self.0 += rhs.0;
+    }
+}
+
+impl AddAssign<K256Affine> for K256 {
+    fn add_assign(&mut self, rhs: K256Affine) {
+        self.0 += rhs.0;
+    }
+}
+
+impl AddAssign<&K256Affine> for K256 {
+    fn add_assign(&mut self, rhs: &K256Affine) {
+        self.0 += rhs.0;
+    }
+}
+
+impl Sub for K256 {
+    type Output = Self;
+    fn sub(self, rhs: Self) -> Self {
+        Self(self.0 - rhs.0)
+    }
+}
+
+impl Sub<&K256> for K256 {
+    type Output = Self;
+    fn sub(self, rhs: &K256) -> Self {
+        Self(self.0 - rhs.0)
+    }
+}
+
+impl Sub<K256Affine> for K256 {
+    type Output = Self;
+    fn sub(self, rhs: K256Affine) -> Self {
+        Self(self.0 - rhs.0)
+    }
+}
+
+impl Sub<&K256Affine> for K256 {
+    type Output = Self;
+    fn sub(self, rhs: &K256Affine) -> Self {
+        Self(self.0 - rhs.0)
+    }
+}
+
+impl SubAssign for K256 {
+    fn sub_assign(&mut self, rhs: Self) {
+        self.0 -= rhs.0;
+    }
+}
+
+impl SubAssign<&K256> for K256 {
+    fn sub_assign(&mut self, rhs: &K256) {
+        self.0 -= rhs.0;
+    }
+}
+
+impl SubAssign<K256Affine> for K256 {
+    fn sub_assign(&mut self, rhs: K256Affine) {
+        self.0 -= rhs.0;
+    }
+}
+
+impl SubAssign<&K256Affine> for K256 {
+    fn sub_assign(&mut self, rhs: &K256Affine) {
+        self.0 -= rhs.0;
+    }
+}
+
+impl Neg for K256 {
+    type Output = Self;
+    fn neg(self) -> Self {
+        Self(-self.0)
+    }
+}
+
+impl Neg for &K256 {
+    type Output = K256;
+    fn neg(self) -> K256 {
+        K256(-self.0)
+    }
+}
+
+// Scalar multiplication.
+impl Mul<Fq> for K256 {
+    type Output = Self;
+    fn mul(self, rhs: Fq) -> Self {
+        Self(self.0 * rhs)
+    }
+}
+
+impl Mul<&Fq> for K256 {
+    type Output = Self;
+    fn mul(self, rhs: &Fq) -> Self {
+        Self(self.0 * rhs)
+    }
+}
+
+impl Mul<K256> for Fq {
+    type Output = K256;
+    fn mul(self, rhs: K256) -> K256 {
+        K256(rhs.0 * self)
+    }
+}
+
+impl Mul<&K256> for Fq {
+    type Output = K256;
+    fn mul(self, rhs: &K256) -> K256 {
+        K256(rhs.0 * self)
+    }
+}
+
+impl MulAssign<Fq> for K256 {
+    fn mul_assign(&mut self, rhs: Fq) {
+        self.0 *= rhs;
+    }
+}
+
+impl MulAssign<&Fq> for K256 {
+    fn mul_assign(&mut self, rhs: &Fq) {
+        self.0 *= rhs;
+    }
+}
+
+// Sum trait.
+impl Sum for K256 {
+    fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
+        iter.fold(K256::identity(), |acc, x| acc + x)
+    }
+}
+
+impl<'a> Sum<&'a K256> for K256 {
+    fn sum<I: Iterator<Item = &'a K256>>(iter: I) -> Self {
+        iter.fold(K256::identity(), |acc, x| acc + x)
+    }
+}
+
+// Conversions between K256 and K256Affine.
+impl From<K256Affine> for K256 {
+    fn from(affine: K256Affine) -> Self {
+        Self(affine.0.into())
+    }
+}
+
+impl From<&K256Affine> for K256 {
+    fn from(affine: &K256Affine) -> Self {
+        Self(affine.0.into())
+    }
+}
+
+impl From<K256> for K256Affine {
+    fn from(proj: K256) -> Self {
+        proj.to_affine()
+    }
+}
+
+impl From<&K256> for K256Affine {
+    fn from(proj: &K256) -> Self {
+        proj.to_affine()
+    }
+}
