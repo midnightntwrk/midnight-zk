@@ -92,59 +92,6 @@ impl<const T: usize> std::ops::IndexMut<std::ops::Range<usize>> for Repr<T> {
 // Re-export SerdeObject from serde_traits to avoid duplication
 pub use crate::serde_traits::SerdeObject;
 
-pub mod endian {
-    use std::convert::TryInto;
-
-    pub trait EndianRepr: Sized {
-        const ENDIAN: Endian;
-
-        fn to_bytes(&self) -> Vec<u8>;
-
-        fn from_bytes(x: &[u8]) -> subtle::CtOption<Self>;
-    }
-
-    pub enum Endian {
-        LE,
-        BE,
-    }
-
-    impl Endian {
-        pub fn to_bytes(&self, res: &mut [u8], el: &[u64]) {
-            match self {
-                Endian::LE => {
-                    el.iter().enumerate().for_each(|(i, limb)| {
-                        let off = i * 8;
-                        res[off..off + 8].copy_from_slice(&limb.to_le_bytes());
-                    });
-                }
-                Endian::BE => {
-                    el.iter().rev().enumerate().for_each(|(i, limb)| {
-                        let off = i * 8;
-                        res[off..off + 8].copy_from_slice(&limb.to_be_bytes());
-                    });
-                }
-            }
-        }
-
-        pub fn from_bytes(&self, res: &[u8], el: &mut [u64]) {
-            match self {
-                Endian::LE => {
-                    el.iter_mut().enumerate().for_each(|(i, limb)| {
-                        let off = i * 8;
-                        *limb = u64::from_le_bytes(res[off..off + 8].try_into().unwrap());
-                    });
-                }
-                Endian::BE => {
-                    el.iter_mut().rev().enumerate().for_each(|(i, limb)| {
-                        let off = i * 8;
-                        *limb = u64::from_be_bytes(res[off..off + 8].try_into().unwrap());
-                    });
-                }
-            }
-        }
-    }
-}
-
 #[allow(dead_code)]
 pub(crate) enum CompressedFlagConfig {
     // NOTE: if needed we can add fields for bit positions
@@ -190,20 +137,20 @@ impl Flag {
 pub(crate) trait Compressed<C: crate::CurveAffine>:
     Debug + Copy + Default + AsRef<[u8]> + AsMut<[u8]> + Send + Sync + 'static
 where
-    C::Base: crate::serde::endian::EndianRepr,
+    C::Base: crate::FieldEncoding,
 {
     const CONFIG: CompressedFlagConfig;
 
     fn flag_byte(&mut self) -> &mut u8 {
-        use crate::serde::endian::EndianRepr;
+        use crate::field_encoding::Endian;
         match Self::CONFIG {
             // Most sig byte is always the flag byte when extra byte flag is used
             CompressedFlagConfig::Extra => self.as_mut().first_mut().unwrap(),
-            _ => match C::Base::ENDIAN {
+            _ => match C::Base::REPR_ENDIAN {
                 // Least sig byte is the flag byte
-                crate::serde::endian::Endian::LE => self.as_mut().last_mut().unwrap(),
+                Endian::LE => self.as_mut().last_mut().unwrap(),
                 // Most sig byte is the flag byte
-                crate::serde::endian::Endian::BE => self.as_mut().first_mut().unwrap(),
+                Endian::BE => self.as_mut().first_mut().unwrap(),
             },
         }
     }
@@ -273,17 +220,17 @@ where
     }
 
     fn encode(c: &C) -> Self {
-        use crate::serde::endian::EndianRepr;
+        use crate::FieldEncoding;
         let mut this = Self::default();
         let coordinates = c.coordinates().unwrap();
         let x = coordinates.x();
-        let x_bytes = x.to_bytes();
+        let x_bytes = x.to_le_bytes();
         match Self::CONFIG {
             CompressedFlagConfig::Extra => {
                 // Most sig byte is always the flag byte when extra byte flag is used
-                this.as_mut()[1..1 + x_bytes.len()].copy_from_slice(&x_bytes)
+                this.as_mut()[1..1 + x_bytes.as_ref().len()].copy_from_slice(x_bytes.as_ref())
             }
-            _ => this.as_mut()[..x_bytes.len()].copy_from_slice(&x_bytes),
+            _ => this.as_mut()[..x_bytes.as_ref().len()].copy_from_slice(x_bytes.as_ref()),
         };
         this.set_identity(c);
         this.set_sign(c);
@@ -308,16 +255,21 @@ where
         };
         let is_valid_1: subtle::Choice = (is_valid_1 as u8).into();
 
+        use ff::Field;
         let x = match Self::CONFIG {
             CompressedFlagConfig::Extra => {
                 // Most sig byte is always the flag byte when extra byte flag is used
-                <C::Base as crate::serde::endian::EndianRepr>::from_bytes(&self.as_ref()[1..])
+                <C::Base as crate::FieldEncoding>::from_le_bytes(&self.as_ref()[1..])
             }
-            _ => <C::Base as crate::serde::endian::EndianRepr>::from_bytes(self.as_ref()),
+            _ => <C::Base as crate::FieldEncoding>::from_le_bytes(self.as_ref()),
+        };
+        // Convert Option to CtOption
+        let x = match x {
+            Some(v) => subtle::CtOption::new(v, subtle::Choice::from(1u8)),
+            None => subtle::CtOption::new(C::Base::ZERO, subtle::Choice::from(0u8)),
         };
 
         x.and_then(|x| -> subtle::CtOption<C> {
-            use ff::Field;
             let is_zero = x.is_zero();
 
             let (is_valid_2, is_identity) = match is_identity {
