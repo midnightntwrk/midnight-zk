@@ -6,7 +6,7 @@
 //!
 //! This implementation applies the same idea of plain-spreaded representation
 //! as SHA256 chip does. For more details, see the comments in
-//! [crate::hash::sha256::sha256_chip].
+//! crate::hash::sha256::sha256_chip.
 
 use ff::PrimeField;
 use midnight_proofs::{
@@ -29,7 +29,9 @@ use crate::{
             MASK_EVN_64,
         },
     },
-    instructions::{AssignmentInstructions, DecompositionInstructions, EqualityInstructions},
+    instructions::{
+        AssignmentInstructions, DecompositionInstructions, EqualityInstructions, ZeroInstructions,
+    },
     types::AssignedByte,
     utils::{
         util::{fe_to_u32, fe_to_u64, u32_to_fe, u64_to_fe},
@@ -152,11 +154,11 @@ impl<F: PrimeField> ComposableChip<F> for RipeMD160Chip<F> {
         shared_res: &Self::SharedResources,
     ) -> Self::Config {
         let fixed_cols = shared_res.1;
-        // Columns A0, A1 and A2 do not need to be copy-enabled.
-        // We have the convention that chips enable copy in a prefix of their shared
+        // Columns A0, A1 do not need to be copy-enabled. We have the
+        // convention that chips enable copy in a prefix of their shared
         // advice columns. Thus we let them be the last three columns of the given
         // shared resources.
-        let advice_cols = [3, 4, 5, 6, 7, 0, 1, 2].map(|i| shared_res.0[i]);
+        let advice_cols = [2, 3, 4, 5, 6, 7, 0, 1].map(|i| shared_res.0[i]);
         for column in advice_cols.iter().rev().take(5) {
             meta.enable_equality(*column);
         }
@@ -622,11 +624,12 @@ impl<F: PrimeField> RipeMD160Chip<F> {
 
          4) asserting that:
                  Evn = X
+                 [Odd.11a, Odd.11b, Odd.10] = [0, 0, 0]
         */
         let adv_cols = self.config().advice_cols;
         let sprdd_val = word.0.value().map(|&w| spread(fe_to_u32(w)));
 
-        let (res, sprdd_word) = layouter.assign_region(
+        let (res, odd, sprdd_word) = layouter.assign_region(
             || "Assign prepare_spreaded",
             |mut region| {
                 self.config().q_spr_sum_evn.enable(&mut region, 1)?;
@@ -637,13 +640,18 @@ impl<F: PrimeField> RipeMD160Chip<F> {
                 zero.0.copy_advice(|| "sprdd_ZERO", &mut region, adv_cols[6], 0)?;
                 zero.0.copy_advice(|| "sprdd_ZERO", &mut region, adv_cols[7], 0)?;
 
-                let res = self.assign_sprdd_11_11_10(&mut region, sprdd_val, Parity::Evn, 0)?;
+                let (res, odd) =
+                    self.assign_sprdd_11_11_10(&mut region, sprdd_val, Parity::Evn, 0)?;
 
-                Ok((res, sprdd_word))
+                Ok((res, odd, sprdd_word))
             },
         )?;
 
         let _ = self.native_gadget.is_equal(layouter, &word.0, &res.0)?;
+        self.native_gadget.assert_zero(layouter, &odd[0])?;
+        self.native_gadget.assert_zero(layouter, &odd[1])?;
+        self.native_gadget.assert_zero(layouter, &odd[2])?;
+
         Ok(sprdd_word)
     }
 
@@ -701,7 +709,9 @@ impl<F: PrimeField> RipeMD160Chip<F> {
                 sprdd_Y.0.copy_advice(|| "sprdd_Y", &mut region, adv_cols[6], 0)?;
                 zero.0.copy_advice(|| "sprdd_ZERO", &mut region, adv_cols[7], 0)?;
 
-                self.assign_sprdd_11_11_10(&mut region, val_of_sum, Parity::Odd, 0)
+                let (res, _) =
+                    self.assign_sprdd_11_11_10(&mut region, val_of_sum, Parity::Odd, 0)?;
+                Ok(res)
             },
         )
     }
@@ -760,7 +770,9 @@ impl<F: PrimeField> RipeMD160Chip<F> {
                 sprdd_Y.0.copy_advice(|| "sprdd_Y", &mut region, adv_cols[6], 0)?;
                 zero.0.copy_advice(|| "sprdd_ZERO", &mut region, adv_cols[7], 0)?;
 
-                self.assign_sprdd_11_11_10(&mut region, val_of_sum, Parity::Evn, 0)
+                let (res, _) =
+                    self.assign_sprdd_11_11_10(&mut region, val_of_sum, Parity::Evn, 0)?;
+                Ok(res)
             },
         )
     }
@@ -820,7 +832,9 @@ impl<F: PrimeField> RipeMD160Chip<F> {
                 sprdd_Y.0.copy_advice(|| "sprdd_Y", &mut region, adv_cols[6], 0)?;
                 sprdd_Z.0.copy_advice(|| "sprdd_Z", &mut region, adv_cols[7], 0)?;
 
-                self.assign_sprdd_11_11_10(&mut region, val_of_sum, Parity::Evn, 0)
+                let (res, _) =
+                    self.assign_sprdd_11_11_10(&mut region, val_of_sum, Parity::Evn, 0)?;
+                Ok(res)
             },
         )
     }
@@ -914,10 +928,11 @@ impl<F: PrimeField> RipeMD160Chip<F> {
 
                 mask_evn_64.copy_advice(|| "MASK_EVN_64", &mut region, adv_cols[6], 4)?;
 
-                let odd_XY = self.assign_sprdd_11_11_10(&mut region, XplusY_val, Parity::Odd, 0)?;
+                let (odd_XY, _) =
+                    self.assign_sprdd_11_11_10(&mut region, XplusY_val, Parity::Odd, 0)?;
                 odd_XY.0.copy_advice(|| "Odd_XY", &mut region, adv_cols[4], 1)?;
 
-                let odd_nXZ =
+                let (odd_nXZ, _) =
                     self.assign_sprdd_11_11_10(&mut region, nXplusZ_val, Parity::Odd, 3)?;
                 odd_nXZ.0.copy_advice(|| "Odd_nXZ", &mut region, adv_cols[5], 1)?;
 
@@ -1089,14 +1104,15 @@ impl<F: PrimeField> RipeMD160Chip<F> {
     /// Given a u64 value representing a spreaded value, this function
     /// decomposes it into 11-11-10 limbs for both its even and odd bits,
     /// depending on `even_or_odd` it assigns them in the circuit, and returns
-    /// the assigned word corresponding to either the even or odd part.
+    /// the assigned word corresponding to either the even or odd part, along
+    /// with the odd part (to be used in `prepare_spreaded`).
     fn assign_sprdd_11_11_10(
         &self,
         region: &mut Region<'_, F>,
         value: Value<u64>,
         even_or_odd: Parity,
         offset: usize,
-    ) -> Result<AssignedWord<F>, Error> {
+    ) -> Result<(AssignedWord<F>, [AssignedNative<F>; 3]), Error> {
         self.config().q_11_11_10.enable(region, offset + 1)?;
 
         let (evn_val, odd_val) = value.map(get_even_and_odd_bits).unzip();
@@ -1116,12 +1132,14 @@ impl<F: PrimeField> RipeMD160Chip<F> {
         self.assign_plain_and_spreaded::<11>(region, evn_11b, offset + 1, idx)?;
         self.assign_plain_and_spreaded::<10>(region, evn_10, offset + 2, idx)?;
 
-        self.assign_plain_and_spreaded::<11>(region, odd_11a, offset, 1 - idx)?;
-        self.assign_plain_and_spreaded::<11>(region, odd_11b, offset + 1, 1 - idx)?;
-        self.assign_plain_and_spreaded::<10>(region, odd_10, offset + 2, 1 - idx)?;
+        let odd = [
+            self.assign_plain_and_spreaded::<11>(region, odd_11a, offset, 1 - idx)?,
+            self.assign_plain_and_spreaded::<11>(region, odd_11b, offset + 1, 1 - idx)?,
+            self.assign_plain_and_spreaded::<10>(region, odd_10, offset + 2, 1 - idx)?,
+        ];
 
         let out_col = self.config().advice_cols[4];
-        match even_or_odd {
+        let word = match even_or_odd {
             Parity::Evn => {
                 region.assign_advice(|| "Evn", out_col, offset, || evn_val.map(u32_to_fe))
             }
@@ -1129,11 +1147,13 @@ impl<F: PrimeField> RipeMD160Chip<F> {
                 region.assign_advice(|| "Odd", out_col, offset, || odd_val.map(u32_to_fe))
             }
         }
-        .map(AssignedWord)
+        .map(AssignedWord)?;
+
+        Ok((word, odd))
     }
 
     /// Given a plain u32 value, supposedly in the range [0, 2^L), assigns it
-    /// in plain and spreaded form, returning an `AssignedPlainSpreaded<F, L>`.
+    /// in plain and spreaded form, returning the assigned plain form.
     ///
     /// The assigned values are guaranteed to be well-formed and consistent
     /// via a lookup check at the specified offset.
@@ -1152,7 +1172,7 @@ impl<F: PrimeField> RipeMD160Chip<F> {
         plain_val: Value<u32>,
         offset: usize,
         lookup_idx: usize,
-    ) -> Result<(), Error> {
+    ) -> Result<AssignedNative<F>, Error> {
         self.config().q_lookup.enable(region, offset)?;
 
         let nbits_col = self.config().fixed_cols[lookup_idx]; // 0 or 1
@@ -1164,10 +1184,8 @@ impl<F: PrimeField> RipeMD160Chip<F> {
         let plain_val: Value<F> = plain_val.map(u32_to_fe);
 
         region.assign_fixed(|| "nbits", nbits_col, offset, || nbits_val)?;
-        region.assign_advice(|| "plain", plain_col, offset, || plain_val)?;
         region.assign_advice(|| "sprdd", sprdd_col, offset, || sprdd_val)?;
-
-        Ok(())
+        region.assign_advice(|| "plain", plain_col, offset, || plain_val)
     }
 
     /// Given a u32 value representing a word and the rotation amount, computes
