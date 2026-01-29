@@ -492,3 +492,74 @@ impl From<&K256> for K256Affine {
         proj.to_affine()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use group::{Curve, Group};
+    use rand_core::SeedableRng;
+    use rand_xorshift::XorShiftRng;
+
+    const TEST_ITERATIONS: usize = 100;
+
+    fn seeded_rng() -> XorShiftRng {
+        XorShiftRng::from_seed([
+            0x59, 0x62, 0xbe, 0x5d, 0x76, 0x3d, 0x31, 0x8d, 0x17, 0xdb, 0x37, 0x32, 0x54, 0x06,
+            0xbc, 0xe5,
+        ])
+    }
+
+    #[test]
+    fn test_affine_coordinates() {
+        let mut rng = seeded_rng();
+
+        for _ in 0..TEST_ITERATIONS {
+            let point = K256::random(&mut rng);
+            let affine = point.to_affine();
+            let x = affine.x();
+            let y = affine.y();
+
+            // Reconstruct point from coordinates.
+            let reconstructed = K256Affine::from_xy(x, y);
+            assert_eq!(reconstructed.expect("Valid affine point"), affine);
+        }
+    }
+
+    #[test]
+    fn test_batch_normalize() {
+        let mut rng = seeded_rng();
+
+        for _ in 0..50 {
+            let points: Vec<K256> = (0..10).map(|_| K256::random(&mut rng)).collect();
+            let mut affine_points = vec![K256Affine::identity(); points.len()];
+
+            K256::batch_normalize(&points, &mut affine_points);
+
+            for (proj, affine) in points.iter().zip(affine_points.iter()) {
+                assert_eq!(proj.to_affine(), *affine);
+            }
+        }
+    }
+
+    #[test]
+    fn test_base_zeta_cubed_is_one() {
+        let zeta = K256::base_zeta();
+        let zeta_squared = zeta * zeta;
+        let zeta_cubed = zeta_squared * zeta;
+
+        // k256's FieldElement requires normalization after arithmetic
+        // for canonical comparison.
+        assert_eq!(zeta_cubed.normalize(), Fp::ONE);
+        assert_ne!(zeta_squared.normalize(), Fp::ONE);
+    }
+
+    #[test]
+    fn test_scalar_zeta_cubed_is_one() {
+        let zeta = K256::scalar_zeta();
+        let zeta_squared = zeta * zeta;
+        let zeta_cubed = zeta_squared * zeta;
+
+        assert_eq!(zeta_cubed, Fq::ONE);
+        assert_ne!(zeta_squared, Fq::ONE);
+    }
+}
