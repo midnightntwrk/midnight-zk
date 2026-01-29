@@ -142,7 +142,7 @@ where
     const CONFIG: CompressedFlagConfig;
 
     fn flag_byte(&mut self) -> &mut u8 {
-        use crate::field_encoding::Endian;
+        use crate::field_encoding::{Endian, FieldEncoding};
         match Self::CONFIG {
             // Most sig byte is always the flag byte when extra byte flag is used
             CompressedFlagConfig::Extra => self.as_mut().first_mut().unwrap(),

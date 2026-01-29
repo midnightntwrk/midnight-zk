@@ -293,15 +293,74 @@ pub(crate) fn impl_field(input: TokenStream) -> TokenStream {
             }
         }
 
-        impl crate::serde::endian::EndianRepr for #field {
-            const ENDIAN: crate::serde::endian::Endian = crate::serde::endian::Endian::#endian;
+        impl crate::FieldEncoding for #field {
+            type Bytes = [u8; Self::SIZE];
 
-            fn to_bytes(&self) -> Vec<u8> {
-                self.to_bytes().to_vec()
+            const BYTE_SIZE: usize = Self::SIZE;
+            const REPR_ENDIAN: crate::Endian = crate::Endian::#endian;
+
+            fn to_le_bytes(&self) -> Self::Bytes {
+                let el = self.from_mont();
+                let mut res = [0u8; Self::SIZE];
+                for (i, limb) in el.iter().enumerate() {
+                    res[i * 8..(i + 1) * 8].copy_from_slice(&limb.to_le_bytes());
+                }
+                res
             }
 
-            fn from_bytes(bytes: &[u8]) -> subtle::CtOption<Self> {
-                #field::from_bytes(bytes[..#field::SIZE].try_into().unwrap())
+            fn to_be_bytes(&self) -> Self::Bytes {
+                let el = self.from_mont();
+                let mut res = [0u8; Self::SIZE];
+                for (i, limb) in el.iter().rev().enumerate() {
+                    res[i * 8..(i + 1) * 8].copy_from_slice(&limb.to_be_bytes());
+                }
+                res
+            }
+
+            fn from_le_bytes(bytes: &[u8]) -> Option<Self> {
+                if bytes.len() != Self::SIZE {
+                    return None;
+                }
+                let mut limbs = [0u64; Self::NUM_LIMBS];
+                for (i, limb) in limbs.iter_mut().enumerate() {
+                    *limb = u64::from_le_bytes(bytes[i * 8..(i + 1) * 8].try_into().unwrap());
+                }
+                let el = #field(limbs);
+                if Self::is_less_than_modulus(&el.0) {
+                    Some(el * Self::R2)
+                } else {
+                    None
+                }
+            }
+
+            fn from_be_bytes(bytes: &[u8]) -> Option<Self> {
+                if bytes.len() != Self::SIZE {
+                    return None;
+                }
+                let mut limbs = [0u64; Self::NUM_LIMBS];
+                for (i, limb) in limbs.iter_mut().rev().enumerate() {
+                    *limb = u64::from_be_bytes(bytes[i * 8..(i + 1) * 8].try_into().unwrap());
+                }
+                let el = #field(limbs);
+                if Self::is_less_than_modulus(&el.0) {
+                    Some(el * Self::R2)
+                } else {
+                    None
+                }
+            }
+
+            fn to_biguint(&self) -> num_bigint::BigUint {
+                num_bigint::BigUint::from_bytes_le(&self.to_le_bytes())
+            }
+
+            fn from_biguint(n: &num_bigint::BigUint) -> Option<Self> {
+                let bytes = n.to_bytes_le();
+                if bytes.len() > Self::SIZE {
+                    return None;
+                }
+                let mut padded = [0u8; Self::SIZE];
+                padded[..bytes.len()].copy_from_slice(&bytes);
+                Self::from_le_bytes(&padded)
             }
         }
 
@@ -332,24 +391,26 @@ pub(crate) fn impl_field(input: TokenStream) -> TokenStream {
                 Self(val).mul_const(&Self::R2)
             }
 
-            /// Attempts to convert a <#endian>-endian byte representation of
+            /// Attempts to convert a little-endian byte representation of
             /// a scalar into a `$field`, failing if the input is not canonical.
             pub fn from_bytes(bytes: &[u8; Self::SIZE]) -> subtle::CtOption<Self> {
-                use crate::serde::endian::EndianRepr;
-                let mut el = #field::default();
-                #field::ENDIAN.from_bytes(bytes, &mut el.0);
+                let mut limbs = [0u64; Self::NUM_LIMBS];
+                for (i, limb) in limbs.iter_mut().enumerate() {
+                    *limb = u64::from_le_bytes(bytes[i * 8..(i + 1) * 8].try_into().unwrap());
+                }
+                let el = #field(limbs);
                 subtle::CtOption::new(el * Self::R2, subtle::Choice::from(Self::is_less_than_modulus(&el.0) as u8))
             }
 
-
             /// Converts an element of `$field` into a byte representation in
-            /// <#endian>-endian byte order.
+            /// little-endian byte order.
             pub fn to_bytes(&self) -> [u8; Self::SIZE] {
-                use crate::serde::endian::EndianRepr;
                 let el = self.from_mont();
-                let mut res = [0; Self::SIZE];
-                #field::ENDIAN.to_bytes(&mut res, &el);
-                res.into()
+                let mut res = [0u8; Self::SIZE];
+                for (i, limb) in el.iter().enumerate() {
+                    res[i * 8..(i + 1) * 8].copy_from_slice(&limb.to_le_bytes());
+                }
+                res
             }
 
 
@@ -471,16 +532,21 @@ pub(crate) fn impl_field(input: TokenStream) -> TokenStream {
             }
 
             fn from_repr(repr: Self::Repr) -> subtle::CtOption<Self> {
-                let mut el = #field::default();
-                crate::serde::endian::Endian::LE.from_bytes(repr.as_ref(), &mut el.0);
+                let bytes = repr.as_ref();
+                let mut limbs = [0u64; Self::NUM_LIMBS];
+                for (i, limb) in limbs.iter_mut().enumerate() {
+                    *limb = u64::from_le_bytes(bytes[i * 8..(i + 1) * 8].try_into().unwrap());
+                }
+                let el = #field(limbs);
                 subtle::CtOption::new(el * Self::R2, subtle::Choice::from(Self::is_less_than_modulus(&el.0) as u8))
             }
 
             fn to_repr(&self) -> Self::Repr {
-                use crate::serde::endian::Endian;
                 let el = self.from_mont();
-                let mut res = [0; #size];
-                crate::serde::endian::Endian::LE.to_bytes(&mut res, &el);
+                let mut res = [0u8; #size];
+                for (i, limb) in el.iter().enumerate() {
+                    res[i * 8..(i + 1) * 8].copy_from_slice(&limb.to_le_bytes());
+                }
                 res.into()
             }
 
