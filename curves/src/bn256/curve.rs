@@ -1,5 +1,4 @@
 use core::fmt::Debug;
-use std::convert::TryInto;
 
 use ff::{Field, PrimeField};
 use group::{cofactor::CofactorGroup, prime::PrimeCurveAffine, Curve, Group, GroupEncoding};
@@ -11,15 +10,57 @@ use crate::{
     impl_binops_multiplicative_mixed, new_curve_impl, Coordinates, CurveAffine, CurveExt,
 };
 
-impl crate::serde::endian::EndianRepr for Fq2 {
-    const ENDIAN: crate::serde::endian::Endian = Fq::ENDIAN;
+impl crate::FieldEncoding for Fq2 {
+    type Bytes = crate::serde::Repr<{ Self::SIZE }>;
 
-    fn to_bytes(&self) -> Vec<u8> {
-        self.to_bytes().to_vec()
+    const BYTE_SIZE: usize = Self::SIZE;
+    const REPR_ENDIAN: crate::Endian = Fq::REPR_ENDIAN;
+
+    fn to_le_bytes(&self) -> Self::Bytes {
+        let mut res = Self::Bytes::default();
+        res.as_mut()[..Fq::SIZE].copy_from_slice(&self.c0.to_le_bytes());
+        res.as_mut()[Fq::SIZE..].copy_from_slice(&self.c1.to_le_bytes());
+        res
     }
 
-    fn from_bytes(bytes: &[u8]) -> subtle::CtOption<Self> {
-        Fq2::from_bytes(bytes[..Fq2::SIZE].try_into().unwrap())
+    fn to_be_bytes(&self) -> Self::Bytes {
+        let mut res = Self::Bytes::default();
+        res.as_mut()[..Fq::SIZE].copy_from_slice(&self.c1.to_be_bytes());
+        res.as_mut()[Fq::SIZE..].copy_from_slice(&self.c0.to_be_bytes());
+        res
+    }
+
+    fn from_le_bytes(bytes: &[u8]) -> Option<Self> {
+        if bytes.len() != Self::SIZE {
+            return None;
+        }
+        let c0 = Fq::from_le_bytes(&bytes[..Fq::SIZE])?;
+        let c1 = Fq::from_le_bytes(&bytes[Fq::SIZE..])?;
+        Some(Fq2 { c0, c1 })
+    }
+
+    fn from_be_bytes(bytes: &[u8]) -> Option<Self> {
+        if bytes.len() != Self::SIZE {
+            return None;
+        }
+        let c1 = Fq::from_be_bytes(&bytes[..Fq::SIZE])?;
+        let c0 = Fq::from_be_bytes(&bytes[Fq::SIZE..])?;
+        Some(Fq2 { c0, c1 })
+    }
+
+    fn to_biguint(&self) -> num_bigint::BigUint {
+        // For extension fields, we just use le bytes representation
+        num_bigint::BigUint::from_bytes_le(self.to_le_bytes().as_ref())
+    }
+
+    fn from_biguint(n: &num_bigint::BigUint) -> Option<Self> {
+        let bytes = n.to_bytes_le();
+        if bytes.len() > Self::SIZE {
+            return None;
+        }
+        let mut padded = Self::Bytes::default();
+        padded.as_mut()[..bytes.len()].copy_from_slice(&bytes);
+        Self::from_le_bytes(padded.as_ref())
     }
 }
 
