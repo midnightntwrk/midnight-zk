@@ -30,6 +30,7 @@ pub use field_encoding::{Endian, FieldEncoding};
 // Production curves (always available)
 pub mod bls12_381;
 mod jubjub;
+pub mod k256;
 pub mod secp256k1;
 
 // Development/testing curves (feature-gated)
