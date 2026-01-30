@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@
 //! values that implement `InnerConstants`, which gives access to zero.
 
 use ff::PrimeField;
-use midnight_proofs::{circuit::Layouter, plonk::Error};
+use xxxx_proofs::{circuit::Layouter, plonk::Error};
 
 use crate::{
     instructions::{AssertionInstructions, EqualityInstructions},
@@ -37,7 +37,7 @@ where
     /// Enforces that the given assigned element is zero.
     ///
     /// ```
-    /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
+    /// # xxxx_circuits::run_test_native_gadget!(chip, layouter, {
     /// let x: AssignedNative<F> = chip.assign(&mut layouter, Value::known(F::ZERO))?;
     ///
     /// // we can now assert that the value is zero (this, obviously, discloses the value)
@@ -56,7 +56,7 @@ where
     /// Returns `1` iff the given element equals zero (the additive identity).
     ///
     /// ```
-    /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
+    /// # xxxx_circuits::run_test_native_gadget!(chip, layouter, {
     /// let x: AssignedNative<F> = chip.assign(&mut layouter, Value::known(F::ZERO))?;
     ///
     /// // the following value should be constrained further
@@ -77,13 +77,13 @@ pub(crate) mod tests {
     use std::marker::PhantomData;
 
     use ff::FromUniformBytes;
-    use midnight_proofs::{
+    use rand::SeedableRng;
+    use rand_chacha::ChaCha8Rng;
+    use xxxx_proofs::{
         circuit::{Layouter, SimpleFloorPlanner},
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem},
     };
-    use rand::SeedableRng;
-    use rand_chacha::ChaCha8Rng;
 
     use super::*;
     use crate::{

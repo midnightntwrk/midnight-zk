@@ -1,10 +1,12 @@
 //! Example of proving knowledge of a Bitcoin signature (for a public message
-//! and public key) using midnight's ZK std lib. The test vectors were generated
+//! and public key) using xxxx's ZK std lib. The test vectors were generated
 //! using Bitcoin's C library https://github.com/bitcoin-core/secp256k1.
 
 use group::GroupEncoding;
 use halo2curves::secp256k1::{Fp as secp256k1Base, Fq as secp256k1Scalar, Secp256k1};
-use midnight_circuits::{
+use rand::rngs::OsRng;
+use sha2::Digest;
+use xxxx_circuits::{
     compact_std_lib::{self, Relation, ZkStdLib, ZkStdLibArch},
     field::foreign::params::MultiEmulationParams,
     instructions::{
@@ -14,14 +16,12 @@ use midnight_circuits::{
     testing_utils::plonk_api::filecoin_srs,
     types::{AssignedByte, AssignedForeignPoint, Instantiable},
 };
-use midnight_proofs::{
+use xxxx_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
-use rand::rngs::OsRng;
-use sha2::Digest;
 
-type F = midnight_curves::Fq;
+type F = xxxx_curves::Fq;
 
 type Message = [u8; 32];
 type PK = Secp256k1;

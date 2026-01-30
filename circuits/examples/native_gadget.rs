@@ -1,7 +1,8 @@
 //! Examples on how to perform native operations using the ZkStdLib.
 
 use ff::Field;
-use midnight_circuits::{
+use rand::rngs::OsRng;
+use xxxx_circuits::{
     compact_std_lib::{self, Relation, ZkStdLib, ZkStdLibArch},
     instructions::{
         ArithInstructions, AssertionInstructions, AssignmentInstructions, BinaryInstructions,
@@ -10,13 +11,12 @@ use midnight_circuits::{
     },
     testing_utils::plonk_api::filecoin_srs,
 };
-use midnight_proofs::{
+use xxxx_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
-use rand::rngs::OsRng;
 
-type F = midnight_curves::Fq;
+type F = xxxx_curves::Fq;
 
 #[derive(Clone, Default)]
 pub struct NativeGadgetExample;

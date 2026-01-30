@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -14,11 +14,11 @@
 //! Range-check instructions interface.
 
 use ff::PrimeField;
-use midnight_proofs::{
+use num_bigint::BigUint;
+use xxxx_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
-use num_bigint::BigUint;
 
 use crate::types::InnerValue;
 
@@ -36,7 +36,7 @@ where
     ///
     /// The following example will make the circuit unsatisfiable
     /// ```should_panic
-    /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
+    /// # xxxx_circuits::run_test_native_gadget!(chip, layouter, {
     /// # use num_bigint::BigUint;
     /// chip.assign_lower_than_fixed(
     ///     &mut layouter,
@@ -69,13 +69,13 @@ pub(crate) mod tests {
     use std::{fmt::Debug, marker::PhantomData};
 
     use ff::FromUniformBytes;
-    use midnight_proofs::{
+    use rand::{RngCore, SeedableRng};
+    use rand_chacha::ChaCha8Rng;
+    use xxxx_proofs::{
         circuit::{Layouter, SimpleFloorPlanner, Value},
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem},
     };
-    use rand::{RngCore, SeedableRng};
-    use rand_chacha::ChaCha8Rng;
 
     use super::*;
     use crate::{

@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use midnight_proofs::{
+use xxxx_proofs::{
     circuit::{AssignedCell, Chip, Layouter, Region, SimpleFloorPlanner, Value},
     plonk::{
         Advice, Circuit, Column, ConstraintSystem, Constraints, Error, Fixed, Instance, Selector,
@@ -306,7 +306,7 @@ impl<F: Field> Circuit<F> for MyCircuit<F> {
 
 fn main() {
     use halo2curves::pasta::Fp;
-    use midnight_proofs::dev::MockProver;
+    use xxxx_proofs::dev::MockProver;
 
     // ANCHOR: test-circuit
     // The number of rows in our circuit cannot exceed 2^k. Since our example

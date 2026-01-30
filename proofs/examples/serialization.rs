@@ -6,7 +6,7 @@ use std::{
 use blake2b_simd::State;
 use ff::Field;
 use halo2curves::bn256::{Bn256, Fr};
-use midnight_proofs::{
+use xxxx_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
     plonk::{
         create_proof, keygen_pk, keygen_vk_with_k, prepare, Advice, Circuit, Column,

@@ -21,7 +21,7 @@
 //!    the corresponding serialisation file, and re-run step 5.
 //!
 //! ```shell
-//!    cargo test --lib -p midnight-circuits --release -- --nocapture regex_test automaton_test specs_test
+//!    cargo test --lib -p xxxx-circuits --release -- --nocapture regex_test automaton_test specs_test
 //! ```
 
 #[cfg(test)]
@@ -149,7 +149,7 @@ pub fn spec_library() -> ParsingLibrary {
             .map(|(name, _, serialization)| {
                 assert!(
                     !serialization.is_empty(),
-                    "Empty serialisation data for {:?}. The bootstrapping of the serialisation process has not been conducted. (see documentation of `midnight_circuits::parsing::specs`)",
+                    "Empty serialisation data for {:?}. The bootstrapping of the serialisation process has not been conducted. (see documentation of `xxxx_circuits::parsing::specs`)",
                     *name
                 );
                 (*name, Automaton::deserialize_unwrap(serialization))
@@ -302,7 +302,7 @@ fn check_serialization(checks: &ParsingLibrary) {
         let file_name = parser.serialization_file();
         assert!(
                 Path::new(&file_name).exists(),
-                "serialisation file {file_name} does not exist! Follow the documentation of `midnight_circuits::parsing::specs` for instructions on how to add a new parser to the standard library."
+                "serialisation file {file_name} does not exist! Follow the documentation of `xxxx_circuits::parsing::specs` for instructions on how to add a new parser to the standard library."
             );
         let previous_data = fs::read(file_name.clone()).unwrap();
         let mut current_data = Vec::new();

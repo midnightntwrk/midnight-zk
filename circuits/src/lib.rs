@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -11,7 +11,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Halo2 gadgets implemented for Midnight.
+//! Halo2 gadgets implemented for XXXX.
 
 #![deny(rustdoc::broken_intra_doc_links)]
 #![deny(missing_debug_implementations)]
@@ -35,7 +35,7 @@ pub mod verifier;
 
 // Re-exporting modules for convenience and usability.
 pub use halo2curves;
-pub use midnight_proofs;
+pub use xxxx_proofs;
 
 /// Tools useful for testing
 pub mod testing_utils {

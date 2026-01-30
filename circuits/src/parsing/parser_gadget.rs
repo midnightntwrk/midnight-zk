@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -14,12 +14,12 @@
 use std::{cmp::min, marker::PhantomData};
 
 use ff::PrimeField;
-use midnight_proofs::{circuit::Layouter, plonk::Error};
 use num_bigint::BigUint;
+use xxxx_proofs::{circuit::Layouter, plonk::Error};
 #[cfg(any(test, feature = "testing"))]
 use {
     crate::testing_utils::FromScratch,
-    midnight_proofs::plonk::{Column, ConstraintSystem, Instance},
+    xxxx_proofs::plonk::{Column, ConstraintSystem, Instance},
 };
 
 use crate::{field::AssignedNative, instructions::NativeInstructions, types::AssignedByte};
@@ -203,7 +203,7 @@ where
 #[cfg(test)]
 mod tests {
     use ff::FromUniformBytes;
-    use midnight_proofs::{
+    use xxxx_proofs::{
         circuit::{SimpleFloorPlanner, Value},
         dev::MockProver,
         plonk::Circuit,
@@ -308,7 +308,7 @@ mod tests {
 
     #[test]
     fn test_get_subsequence() {
-        type F = midnight_curves::Fq;
+        type F = xxxx_curves::Fq;
         [
             (vec![1, 2, 3, 4, 5, 6], 0, vec![1, 2, 3], true),
             (vec![1, 2, 3, 4, 5, 6], 1, vec![2, 3, 4, 5], true),
@@ -330,7 +330,7 @@ mod tests {
 
     #[test]
     fn test_fetch_bytes() {
-        type F = midnight_curves::Fq;
+        type F = xxxx_curves::Fq;
         let short = "L'essentiel est invisible pour les yeux".as_bytes();
         let long: Vec<u8> = (0..=2000).map(|i| i as u8).collect();
         [

@@ -21,7 +21,7 @@ use crate::{
 /// # Examples
 ///
 /// ```text
-/// use midnight_proofs::dev::CircuitLayout;
+/// use xxxx_proofs::dev::CircuitLayout;
 /// use plotters::prelude::*;
 ///
 /// let drawing_area =

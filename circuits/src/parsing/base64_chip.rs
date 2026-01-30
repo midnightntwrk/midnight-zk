@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@
 //! decode correctly.
 
 use ff::PrimeField;
-use midnight_proofs::{
+use xxxx_proofs::{
     circuit::{Chip, Layouter, Value},
     plonk::{Advice, Column, Error, Expression, Selector, TableColumn},
     poly::Rotation,
@@ -419,7 +419,7 @@ impl<F: PrimeField> ComposableChip<F> for Base64Chip<F> {
     }
 
     fn configure(
-        meta: &mut midnight_proofs::plonk::ConstraintSystem<F>,
+        meta: &mut xxxx_proofs::plonk::ConstraintSystem<F>,
         shared_resources: &Self::SharedResources,
     ) -> Self::Config {
         let advice_cols = *shared_resources;
@@ -487,7 +487,7 @@ impl<F: PrimeField> ComposableChip<F> for Base64Chip<F> {
 mod tests {
     use std::marker::PhantomData;
 
-    use midnight_proofs::{
+    use xxxx_proofs::{
         circuit::SimpleFloorPlanner,
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem},
@@ -501,7 +501,7 @@ mod tests {
         vec::vector_gadget::VectorGadget,
     };
 
-    type Fp = midnight_curves::Fq;
+    type Fp = xxxx_curves::Fq;
 
     struct TestCircuit<F: PrimeField> {
         input: Vec<u8>,  // base64 encoded string

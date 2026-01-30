@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -22,8 +22,8 @@
 //! where the notion of `canonical` makes sense.
 
 use ff::PrimeField;
-use midnight_proofs::{circuit::Layouter, plonk::Error};
 use num_bigint::BigUint;
+use xxxx_proofs::{circuit::Layouter, plonk::Error};
 
 use crate::{
     instructions::{AssignmentInstructions, FieldInstructions},
@@ -44,7 +44,7 @@ where
     /// the given sequence of assigned bits, interpreted in little-endian,
     /// is strictly lower than the order of `Assigned::Element`.
     /// ```
-    /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
+    /// # xxxx_circuits::run_test_native_gadget!(chip, layouter, {
     /// let x: Vec<AssignedBit<F>> = chip.assign_many(
     ///     &mut layouter,
     ///     &[
@@ -80,7 +80,7 @@ where
     /// given bound.
     /// ```
     /// # use num_bigint::BigUint;
-    /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
+    /// # xxxx_circuits::run_test_native_gadget!(chip, layouter, {
     /// let x: Vec<AssignedBit<F>> = chip.assign_many(
     ///     &mut layouter,
     ///     &[
@@ -124,14 +124,14 @@ pub(crate) mod tests {
     use std::marker::PhantomData;
 
     use ff::FromUniformBytes;
-    use midnight_proofs::{
+    use num_traits::{One, Zero};
+    use rand::{RngCore, SeedableRng};
+    use rand_chacha::ChaCha8Rng;
+    use xxxx_proofs::{
         circuit::{Layouter, SimpleFloorPlanner},
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem},
     };
-    use num_traits::{One, Zero};
-    use rand::{RngCore, SeedableRng};
-    use rand_chacha::ChaCha8Rng;
 
     use super::*;
     use crate::{

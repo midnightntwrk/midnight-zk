@@ -1,5 +1,5 @@
 use ff::PrimeField;
-use midnight_proofs::plonk::Expression;
+use xxxx_proofs::plonk::Expression;
 
 use crate::utils::util::u128_to_fe;
 
@@ -238,7 +238,7 @@ mod tests {
 
     use super::*;
 
-    type F = midnight_curves::Fq;
+    type F = xxxx_curves::Fq;
 
     #[test]
     fn test_get_even_and_odd_bits() {

@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -16,8 +16,8 @@
 use ff::{Field, PrimeField};
 use group::cofactor::CofactorGroup;
 use halo2curves::ff_ext::Legendre;
-use midnight_curves::{JubjubExtended as Jubjub, JubjubSubgroup};
 use subtle::{ConditionallySelectable, ConstantTimeEq};
+use xxxx_curves::{JubjubExtended as Jubjub, JubjubSubgroup};
 
 // use crate::instructions::ecc::EdwardsCurve;
 use super::mtc_params::{MapToEdwardsParams, MapToWeierstrassParams};

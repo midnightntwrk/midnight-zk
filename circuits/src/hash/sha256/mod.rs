@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -21,10 +21,10 @@ mod types;
 mod utils;
 
 use ff::PrimeField;
-use midnight_proofs::{circuit::Layouter, plonk::Error};
 use sha2::Digest;
 pub use sha256_chip::{Sha256Chip, Sha256Config, NB_SHA256_ADVICE_COLS, NB_SHA256_FIXED_COLS};
 pub use sha256_varlen::VarLenSha256Gadget;
+use xxxx_proofs::{circuit::Layouter, plonk::Error};
 
 use crate::{
     instructions::{
@@ -92,7 +92,7 @@ impl<F: PrimeField, const MAX_LEN: usize>
 
 #[cfg(test)]
 mod tests {
-    use midnight_curves::Fq as Scalar;
+    use xxxx_curves::Fq as Scalar;
 
     use super::sha256_varlen::VarLenSha256Gadget;
     use crate::{

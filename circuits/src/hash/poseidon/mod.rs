@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -89,7 +89,7 @@
 /// [PoseidonField], which is a subtrait of [ff::PrimeField] implementing
 /// constants for the MDS matrix and round constants. The module also contains
 /// (non-public) implementations of [PoseidonField] for
-/// [midnight_curves::Fq], [halo2curves::pasta::pallas::Base] and
+/// [xxxx_curves::Fq], [halo2curves::pasta::pallas::Base] and
 /// [halo2curves::pasta::vesta::Base].
 pub mod constants;
 

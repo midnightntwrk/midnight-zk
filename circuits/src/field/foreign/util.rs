@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -16,14 +16,14 @@
 use std::ops::{Mul, Rem};
 
 use ff::PrimeField;
-use midnight_proofs::{
+use num_bigint::{BigInt as BI, BigUint, ToBigInt};
+use num_integer::Integer;
+use num_traits::{One, Signed, Zero};
+use xxxx_proofs::{
     circuit::Value,
     plonk::{Advice, Column, Expression, VirtualCells},
     poly::Rotation,
 };
-use num_bigint::{BigInt as BI, BigUint, ToBigInt};
-use num_integer::Integer;
-use num_traits::{One, Signed, Zero};
 
 use crate::utils::util::{bigint_to_fe, modulus};
 

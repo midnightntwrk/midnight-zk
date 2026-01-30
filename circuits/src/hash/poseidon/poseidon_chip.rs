@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -15,13 +15,13 @@ use core::array::from_fn;
 use std::iter::once;
 
 use ff::{Field, PrimeField};
-use midnight_proofs::{
+use xxxx_proofs::{
     circuit::{Chip, Layouter, Region, Value},
     plonk::{Advice, Column, ConstraintSystem, Constraints, Error, Expression, Fixed, Selector},
     poly::Rotation,
 };
 #[cfg(any(test, feature = "testing"))]
-use {crate::testing_utils::FromScratch, midnight_proofs::plonk::Instance};
+use {crate::testing_utils::FromScratch, xxxx_proofs::plonk::Instance};
 
 use super::{
     constants::{PoseidonField, NB_FULL_ROUNDS, NB_PARTIAL_ROUNDS, RATE, WIDTH},
@@ -607,7 +607,7 @@ impl<F: PoseidonField> FromScratch<F> for PoseidonChip<F> {
 
 #[cfg(test)]
 mod tests {
-    use midnight_proofs::{circuit::SimpleFloorPlanner, dev::MockProver, plonk::Circuit};
+    use xxxx_proofs::{circuit::SimpleFloorPlanner, dev::MockProver, plonk::Circuit};
 
     use super::*;
     use crate::{
@@ -718,7 +718,7 @@ mod tests {
 
     #[test]
     fn permutation_test() {
-        let inputs = [midnight_curves::Fq::from(0); WIDTH];
+        let inputs = [xxxx_curves::Fq::from(0); WIDTH];
         // Set the second argument to true to experiment on the permutation cost.
         run_permutation_test(inputs, true);
     }
@@ -727,17 +727,17 @@ mod tests {
     fn sponge_test() {
         // Consistency tests between the CPU and circuit implementations of the
         // permutation.
-        run_sponge_test::<midnight_curves::Fq>("blstrs", true);
+        run_sponge_test::<xxxx_curves::Fq>("blstrs", true);
     }
 
     #[test]
     fn test_poseidon_hash() {
         test_hash::<
-            midnight_curves::Fq,
-            AssignedNative<midnight_curves::Fq>,
-            AssignedNative<midnight_curves::Fq>,
-            PoseidonChip<midnight_curves::Fq>,
-            NativeChip<midnight_curves::Fq>,
+            xxxx_curves::Fq,
+            AssignedNative<xxxx_curves::Fq>,
+            AssignedNative<xxxx_curves::Fq>,
+            PoseidonChip<xxxx_curves::Fq>,
+            NativeChip<xxxx_curves::Fq>,
         >(true, "Poseidon", 10);
     }
 }

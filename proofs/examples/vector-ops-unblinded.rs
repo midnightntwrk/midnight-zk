@@ -13,7 +13,7 @@ use halo2curves::{
     serde::SerdeObject,
     CurveAffine, CurveExt,
 };
-use midnight_proofs::{
+use xxxx_proofs::{
     circuit::{AssignedCell, Chip, Layouter, Region, SimpleFloorPlanner, Value},
     plonk::*,
     poly::{

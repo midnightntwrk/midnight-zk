@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@
 // limitations under the License.
 
 use ff::PrimeField;
-use midnight_proofs::{
+use xxxx_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
@@ -404,7 +404,7 @@ where
 }
 
 #[cfg(any(test, feature = "testing"))]
-use midnight_proofs::plonk::{Column, ConstraintSystem, Instance};
+use xxxx_proofs::plonk::{Column, ConstraintSystem, Instance};
 
 #[cfg(any(test, feature = "testing"))]
 use crate::testing_utils::FromScratch;
@@ -434,7 +434,7 @@ impl<F: PrimeField> FromScratch<F> for VectorGadget<F> {
 #[cfg(test)]
 mod tests {
     use ff::{Field, FromUniformBytes, PrimeField};
-    use midnight_proofs::{
+    use xxxx_proofs::{
         circuit::{Layouter, SimpleFloorPlanner, Value},
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem},
@@ -690,7 +690,7 @@ mod tests {
 
     #[test]
     fn vector_eq() {
-        type F = midnight_curves::Fq;
+        type F = xxxx_curves::Fq;
 
         // Create a random number generator
         let mut rng = ChaCha12Rng::seed_from_u64(0xdeadcafe);
@@ -718,7 +718,7 @@ mod tests {
 
     #[test]
     fn vector_limits() {
-        type F = midnight_curves::Fq;
+        type F = xxxx_curves::Fq;
 
         // Create a random number generator
         let mut rng = ChaCha12Rng::seed_from_u64(0xdeadcafe);
@@ -738,7 +738,7 @@ mod tests {
 
     #[test]
     fn vector_padding_flags() {
-        type F = midnight_curves::Fq;
+        type F = xxxx_curves::Fq;
 
         // Create a random number generator
         let mut rng = ChaCha12Rng::seed_from_u64(0xdeadcafe);
@@ -754,7 +754,7 @@ mod tests {
 
     #[test]
     fn vector_trim_beginning() {
-        type F = midnight_curves::Fq;
+        type F = xxxx_curves::Fq;
 
         // Create a random number generator
         let mut rng = ChaCha12Rng::seed_from_u64(0xdeadcafe);

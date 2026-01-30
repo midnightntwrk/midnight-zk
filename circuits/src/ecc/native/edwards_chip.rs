@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@
 use ecc::EccInstructions;
 use ff::{Field, PrimeField};
 use group::Group;
-use midnight_proofs::{
+use xxxx_proofs::{
     circuit::{Chip, Layouter, Region, Value},
     plonk::{Advice, Column, ConstraintSystem, Constraints, Error, Expression, Selector},
     poly::Rotation,
@@ -27,8 +27,8 @@ use midnight_proofs::{
 use {
     crate::field::decomposition::chip::P2RDecompositionConfig,
     crate::testing_utils::{FromScratch, Sampleable},
-    midnight_proofs::plonk::Instance,
     rand::RngCore,
+    xxxx_proofs::plonk::Instance,
 };
 
 use crate::{
@@ -972,7 +972,7 @@ impl<C: EdwardsCurve> EccChip<C> {
 
 /// This conversion should not exist for Base -> Scalar. It is a tech debt. We
 /// should fix this as soon as compact supports types (other than assigned
-/// native) <https://github.com/midnightntwrk/midnight-circuits/issues/433>
+/// native) <https://github.com/midnightntwrk/xxxx-circuits/issues/433>
 impl<C: EdwardsCurve>
     ConversionInstructions<C::Base, AssignedNative<C::Base>, AssignedScalarOfNativeCurve<C>>
     for EccChip<C>
@@ -994,7 +994,7 @@ impl<C: EdwardsCurve>
 
 #[cfg(test)]
 mod tests {
-    use midnight_curves::{Fq as JubjubBase, JubjubExtended};
+    use xxxx_curves::{Fq as JubjubBase, JubjubExtended};
 
     use super::*;
     use crate::{

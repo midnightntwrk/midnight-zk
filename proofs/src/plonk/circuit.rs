@@ -408,9 +408,9 @@ impl TryFrom<Column<Any>> for Column<Instance> {
 ///
 /// Selectors can be used to conditionally enable (portions of) gates:
 /// ```
-/// use midnight_proofs::poly::Rotation;
+/// use xxxx_proofs::poly::Rotation;
 /// # use halo2curves::pasta::Fp;
-/// # use midnight_proofs::plonk::{Constraints, ConstraintSystem};
+/// # use xxxx_proofs::plonk::{Constraints, ConstraintSystem};
 ///
 /// # let mut meta = ConstraintSystem::<Fp>::default();
 /// let a = meta.advice_column();
@@ -431,11 +431,11 @@ impl TryFrom<Column<Any>> for Column<Instance> {
 /// enabled on each row when required:
 /// ```
 /// use ff::Field;
-/// use midnight_proofs::{
+/// use xxxx_proofs::{
 ///     circuit::{Chip, Layouter, Value},
 ///     plonk::{Advice, Column, Error, Selector},
 /// };
-/// # use midnight_proofs::plonk::Fixed;
+/// # use xxxx_proofs::plonk::Fixed;
 ///
 /// struct Config {
 ///     a: Column<Advice>,
@@ -1538,11 +1538,11 @@ enum SelectorType {
 ///
 /// ```
 /// use halo2curves::pasta::Fp;
-/// use midnight_proofs::{
+/// use xxxx_proofs::{
 ///     plonk::{Constraints, Expression},
 ///     poly::Rotation,
 /// };
-/// # use midnight_proofs::plonk::ConstraintSystem;
+/// # use xxxx_proofs::plonk::ConstraintSystem;
 ///
 /// # let mut meta = ConstraintSystem::<Fp>::default();
 /// let a = meta.advice_column();

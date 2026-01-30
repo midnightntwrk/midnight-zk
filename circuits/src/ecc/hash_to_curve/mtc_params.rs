@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
 //! Map to curve parameter traits and implementations.
 
 use ff::PrimeField;
-use midnight_curves::{Fq as JubjubBase, JubjubExtended as Jubjub};
+use xxxx_curves::{Fq as JubjubBase, JubjubExtended as Jubjub};
 
 /// Constants for the Shallue-van de Woestijne (SVDW) map to Weierstrass curve.
 pub trait MapToWeierstrassParams<BaseField: PrimeField> {

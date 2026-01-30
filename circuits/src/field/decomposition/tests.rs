@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -13,15 +13,15 @@
 
 use ff::{Field, PrimeField};
 use halo2curves::pasta::Fp;
-use midnight_proofs::{
-    circuit::{Layouter, SimpleFloorPlanner, Value},
-    dev::MockProver,
-    plonk::{Circuit, ConstraintSystem, Error},
-};
 use num_bigint::{BigInt, RandBigInt};
 use num_traits::Zero;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
+use xxxx_proofs::{
+    circuit::{Layouter, SimpleFloorPlanner, Value},
+    dev::MockProver,
+    plonk::{Circuit, ConstraintSystem, Error},
+};
 
 use super::{
     chip::{P2RDecompositionChip, P2RDecompositionConfig},

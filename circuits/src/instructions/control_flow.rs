@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@
 //! The trait is parametrized by `Assigned` type.
 
 use ff::PrimeField;
-use midnight_proofs::{circuit::Layouter, plonk::Error};
+use xxxx_proofs::{circuit::Layouter, plonk::Error};
 
 use super::AssertionInstructions;
 use crate::types::{AssignedBit, InnerValue};
@@ -32,7 +32,7 @@ where
 {
     /// Returns `x` if `cond = true` and `y` otherwise.
     /// ```
-    /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
+    /// # xxxx_circuits::run_test_native_gadget!(chip, layouter, {
     /// let x: AssignedNative<F> = chip.assign(&mut layouter, Value::known(F::ZERO))?;
     /// let y: AssignedNative<F> = chip.assign(&mut layouter, Value::known(F::ONE))?;
     /// let cond: AssignedBit<F> = chip.assign(&mut layouter, Value::known(true))?;
@@ -81,13 +81,13 @@ pub(crate) mod tests {
     use std::marker::PhantomData;
 
     use ff::FromUniformBytes;
-    use midnight_proofs::{
+    use rand::SeedableRng;
+    use rand_chacha::ChaCha8Rng;
+    use xxxx_proofs::{
         circuit::{Layouter, SimpleFloorPlanner, Value},
         dev::MockProver,
         plonk::{Circuit, Column, ConstraintSystem, Fixed},
     };
-    use rand::SeedableRng;
-    use rand_chacha::ChaCha8Rng;
 
     use super::*;
     use crate::{

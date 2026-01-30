@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -250,6 +250,6 @@ mod tests {
 
     #[test]
     fn test_map_poseidon() {
-        run_poseidon_test::<midnight_curves::Fq>();
+        run_poseidon_test::<xxxx_curves::Fq>();
     }
 }

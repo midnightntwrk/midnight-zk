@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@
 // limitations under the License.
 
 use ff::Field;
-use midnight_proofs::plonk::Expression;
+use xxxx_proofs::plonk::Expression;
 
 use super::{sbox, PoseidonField, NB_SKIPS_CPU};
 use crate::hash::poseidon::{

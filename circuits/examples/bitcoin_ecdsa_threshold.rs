@@ -6,7 +6,9 @@ use halo2curves::{
     group::Curve,
     secp256k1::{Fq as secp256k1Scalar, Secp256k1},
 };
-use midnight_circuits::{
+use rand::{prelude::SliceRandom, rngs::OsRng, SeedableRng};
+use rand_chacha::ChaCha8Rng;
+use xxxx_circuits::{
     compact_std_lib::{self, Relation, ZkStdLib, ZkStdLibArch},
     field::foreign::{params::MultiEmulationParams as MEP, AssignedField},
     instructions::{
@@ -19,13 +21,11 @@ use midnight_circuits::{
     },
     types::{AssignedForeignPoint, InnerValue, Instantiable},
 };
-use midnight_curves::Fq as Scalar;
-use midnight_proofs::{
+use xxxx_curves::Fq as Scalar;
+use xxxx_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
-use rand::{prelude::SliceRandom, rngs::OsRng, SeedableRng};
-use rand_chacha::ChaCha8Rng;
 
 type F = Scalar;
 

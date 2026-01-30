@@ -8,10 +8,10 @@ use std::hint::black_box;
 
 use criterion::{criterion_group, criterion_main, Criterion, Throughput};
 use group::Group;
-use midnight_curves::{G1Affine, G1Projective, G2Affine, G2Prepared, G2Projective};
 use pairing_lib::{Engine, MillerLoopResult, MultiMillerLoop};
 use rand_core::SeedableRng;
 use rand_xorshift::XorShiftRng;
+use xxxx_curves::{G1Affine, G1Projective, G2Affine, G2Prepared, G2Projective};
 
 const SEED: [u8; 16] = [
     0x59, 0x62, 0xbe, 0x5d, 0x76, 0x3d, 0x31, 0x8d, 0x17, 0xdb, 0x37, 0x32, 0x54, 0x06, 0xbc, 0xe5,
@@ -24,7 +24,7 @@ fn bench_pairing(c: &mut Criterion) {
     let g2_affine = G2Affine::from(&g2_projective);
     let g2_prepared = G2Prepared::from(g2_affine);
 
-    let mm_loop_res = midnight_curves::Bls12::multi_miller_loop(&[(&g1_affine, &g2_prepared)]);
+    let mm_loop_res = xxxx_curves::Bls12::multi_miller_loop(&[(&g1_affine, &g2_prepared)]);
 
     let mut group = c.benchmark_group("Bls12-381 pairing");
     group.significance_level(0.1).sample_size(100);
@@ -35,9 +35,7 @@ fn bench_pairing(c: &mut Criterion) {
     });
 
     group.bench_function("Multi-miller loop", |b| {
-        b.iter(|| {
-            midnight_curves::Bls12::multi_miller_loop(black_box(&[(&g1_affine, &g2_prepared)]))
-        })
+        b.iter(|| xxxx_curves::Bls12::multi_miller_loop(black_box(&[(&g1_affine, &g2_prepared)])))
     });
 
     group.bench_function("Final exponentiantion", |b| {
@@ -45,7 +43,7 @@ fn bench_pairing(c: &mut Criterion) {
     });
 
     group.bench_function("Full Pairing", |b| {
-        b.iter(|| midnight_curves::Bls12::pairing(black_box(&g1_affine), black_box(&g2_affine)))
+        b.iter(|| xxxx_curves::Bls12::pairing(black_box(&g1_affine), black_box(&g2_affine)))
     });
 
     group.finish();

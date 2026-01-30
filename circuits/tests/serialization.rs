@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -11,23 +11,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Unit tests on serialization of Midnight keys.
+//! Unit tests on serialization of XXXX keys.
 
-use midnight_circuits::{
+use serial_test::serial;
+use xxxx_circuits::{
     compact_std_lib::{self, MidnightPK, MidnightVK, Relation, ZkStdLib, ZkStdLibArch},
     instructions::{
         ArithInstructions, AssertionInstructions, AssignmentInstructions, PublicInputInstructions,
     },
     testing_utils::plonk_api::filecoin_srs,
 };
-use midnight_proofs::{
+use xxxx_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
     utils::SerdeFormat,
 };
-use serial_test::serial;
 
-type F = midnight_curves::Fq;
+type F = xxxx_curves::Fq;
 
 #[derive(Clone)]
 struct DummyCircuit {

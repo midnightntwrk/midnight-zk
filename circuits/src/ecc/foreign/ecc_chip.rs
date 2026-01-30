@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -30,18 +30,18 @@ use std::{
 
 use ff::{Field, PrimeField};
 use group::Group;
-use midnight_proofs::{
+use num_bigint::BigUint;
+use num_traits::One;
+use rand::rngs::OsRng;
+use xxxx_proofs::{
     circuit::{Chip, Layouter, Value},
     plonk::{Advice, Column, ConstraintSystem, Error, Expression, Fixed, Selector},
     poly::Rotation,
 };
-use num_bigint::BigUint;
-use num_traits::One;
-use rand::rngs::OsRng;
 #[cfg(any(test, feature = "testing"))]
 use {
-    crate::testing_utils::Sampleable, crate::utils::util::FromScratch,
-    midnight_proofs::plonk::Instance, rand::RngCore,
+    crate::testing_utils::Sampleable, crate::utils::util::FromScratch, rand::RngCore,
+    xxxx_proofs::plonk::Instance,
 };
 
 use super::gates::{
@@ -2071,7 +2071,7 @@ mod tests {
         pasta::{vesta::Point as VestaCurve, Fp as VestaScalar, Fq as PallasScalar},
         secp256k1::Secp256k1,
     };
-    use midnight_curves::{Fq as BlsScalar, G1Projective as BlsG1};
+    use xxxx_curves::{Fq as BlsScalar, G1Projective as BlsG1};
 
     use super::*;
     use crate::{

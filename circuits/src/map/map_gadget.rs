@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -14,14 +14,14 @@
 //! In-circuit implementation of Succinct Key-Value Map Representation Using
 //! Merkle Trees
 use ff::PrimeField;
-use midnight_proofs::{
+use xxxx_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
 #[cfg(any(test, feature = "testing"))]
 use {
     crate::testing_utils::FromScratch,
-    midnight_proofs::plonk::{Column, ConstraintSystem, Instance},
+    xxxx_proofs::plonk::{Column, ConstraintSystem, Instance},
 };
 
 use crate::{
@@ -258,13 +258,13 @@ mod test {
     use std::marker::PhantomData;
 
     use ff::FromUniformBytes;
-    use midnight_proofs::{
+    use rand::SeedableRng;
+    use rand_chacha::ChaCha8Rng;
+    use xxxx_proofs::{
         circuit::{SimpleFloorPlanner, Value},
         dev::MockProver,
         plonk::Circuit,
     };
-    use rand::SeedableRng;
-    use rand_chacha::ChaCha8Rng;
 
     use super::*;
     use crate::{
@@ -441,6 +441,6 @@ mod test {
 
     #[test]
     fn test_map_poseidon() {
-        run_poseidon_test::<midnight_curves::Fq>(true);
+        run_poseidon_test::<xxxx_curves::Fq>(true);
     }
 }

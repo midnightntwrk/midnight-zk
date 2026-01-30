@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
 //! The trait is parametrised by the curve, `C`, where the hash is mapped.
 
 use ff::PrimeField;
-use midnight_proofs::{circuit::Layouter, plonk::Error};
+use xxxx_proofs::{circuit::Layouter, plonk::Error};
 
 use super::EccInstructions;
 use crate::{ecc::curves::CircuitCurve, types::InnerValue};
@@ -57,13 +57,13 @@ pub(crate) mod tests {
 
     use ff::{FromUniformBytes, PrimeField};
     use group::Group;
-    use midnight_proofs::{
+    use rand::SeedableRng;
+    use rand_chacha::ChaCha8Rng;
+    use xxxx_proofs::{
         circuit::{Layouter, SimpleFloorPlanner, Value},
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem, Error},
     };
-    use rand::SeedableRng;
-    use rand_chacha::ChaCha8Rng;
 
     use super::{HashToCurveCPU, HashToCurveInstructions};
     use crate::{

@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@
 use std::fmt::Debug;
 
 use ff::PrimeField;
-use midnight_proofs::{circuit::Layouter, plonk::Error};
+use xxxx_proofs::{circuit::Layouter, plonk::Error};
 
 use crate::{
     instructions::{ArithInstructions, CanonicityInstructions, ConversionInstructions},
@@ -57,7 +57,7 @@ where
     /// one bit vector.
     ///
     /// ```
-    /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
+    /// # xxxx_circuits::run_test_native_gadget!(chip, layouter, {
     /// let x = chip.assign(&mut layouter, Value::known(F::from(5)))?;
     /// let bits = chip.assigned_to_le_bits(&mut layouter, &x, Some(4), true)?;
     ///
@@ -76,7 +76,7 @@ where
     /// provided.
     ///
     /// ```should_panic
-    /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
+    /// # xxxx_circuits::run_test_native_gadget!(chip, layouter, {
     /// let x = chip.assign(&mut layouter, Value::known(F::from(16)))?;
     /// let bits = chip.assigned_to_le_bits(&mut layouter, &x, Some(4), true)?;
     /// # });
@@ -116,7 +116,7 @@ where
     /// of bytes necessary to represent any element).
     ///
     /// ```
-    /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
+    /// # xxxx_circuits::run_test_native_gadget!(chip, layouter, {
     /// let x = chip.assign(&mut layouter, Value::known(F::from(0x12345678)))?;
     /// let bytes = chip.assigned_to_le_bytes(&mut layouter, &x, Some(5))?;
     ///
@@ -135,7 +135,7 @@ where
     /// provided.
     ///
     /// ```should_panic
-    /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
+    /// # xxxx_circuits::run_test_native_gadget!(chip, layouter, {
     /// let x = chip.assign(&mut layouter, Value::known(F::from(256)))?;
     /// let bytes = chip.assigned_to_le_bytes(&mut layouter, &x, Some(1))?;
     /// # });
@@ -166,7 +166,7 @@ where
     /// The number of input bits can be arbitrary.
     ///
     /// ```
-    /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
+    /// # xxxx_circuits::run_test_native_gadget!(chip, layouter, {
     /// let b0 = chip.assign(&mut layouter, Value::known(false))?;
     /// let b1 = chip.assign(&mut layouter, Value::known(true))?;
     /// let b2 = chip.assign(&mut layouter, Value::known(true))?;
@@ -212,7 +212,7 @@ where
     /// The number of input bytes can be arbitrary.
     ///
     /// ```
-    /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
+    /// # xxxx_circuits::run_test_native_gadget!(chip, layouter, {
     /// let b0 = chip.assign(&mut layouter, Value::known(0x12))?;
     /// let b1 = chip.assign(&mut layouter, Value::known(0x34))?;
     /// let b2 = chip.assign(&mut layouter, Value::known(0x56))?;
@@ -300,15 +300,15 @@ pub(crate) mod tests {
     use std::marker::PhantomData;
 
     use ff::{Field, FromUniformBytes};
-    use midnight_proofs::{
-        circuit::{Layouter, SimpleFloorPlanner},
-        dev::MockProver,
-        plonk::{Circuit, ConstraintSystem},
-    };
     use num_bigint::BigUint;
     use num_traits::One;
     use rand::{RngCore, SeedableRng};
     use rand_chacha::ChaCha8Rng;
+    use xxxx_proofs::{
+        circuit::{Layouter, SimpleFloorPlanner},
+        dev::MockProver,
+        plonk::{Circuit, ConstraintSystem},
+    };
 
     use super::*;
     use crate::{

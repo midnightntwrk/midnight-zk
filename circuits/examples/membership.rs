@@ -8,7 +8,8 @@
 //! and `l` without revealing its membership in other sets.
 
 use ff::{Field, PrimeField};
-use midnight_circuits::{
+use rand::rngs::OsRng;
+use xxxx_circuits::{
     compact_std_lib::{self, Relation, ZkStdLib, ZkStdLibArch},
     field::AssignedNative,
     hash::poseidon::PoseidonChip,
@@ -20,13 +21,12 @@ use midnight_circuits::{
     map::cpu::MapMt,
     testing_utils::plonk_api::filecoin_srs,
 };
-use midnight_proofs::{
+use xxxx_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
-use rand::rngs::OsRng;
 
-type F = midnight_curves::Fq;
+type F = xxxx_curves::Fq;
 type SuccinctRepr = F;
 type Set = F;
 type Map = MapMt<F, PoseidonChip<F>>;

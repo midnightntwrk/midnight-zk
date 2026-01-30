@@ -1,9 +1,9 @@
 use std::{fs::OpenOptions, io::Read};
 
 use halo2curves::secp256k1::{Fq as secp256k1Scalar, Secp256k1};
-use midnight_circuits::testing_utils::ecdsa::{ECDSASig, Ecdsa, FromBase64};
-use midnight_proofs::plonk::Error;
 use sha2::Digest;
+use xxxx_circuits::testing_utils::ecdsa::{ECDSASig, Ecdsa, FromBase64};
+use xxxx_proofs::plonk::Error;
 
 // Reads a credential of up to MAX bytes from the specified path.
 pub(crate) fn read_credential<const MAX: usize>(path: &str) -> Result<Vec<u8>, Error> {

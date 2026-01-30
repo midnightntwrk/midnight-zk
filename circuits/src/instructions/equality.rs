@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@
 //! [InnerValue]) which defines the type over which we check equality.
 
 use ff::PrimeField;
-use midnight_proofs::{circuit::Layouter, plonk::Error};
+use xxxx_proofs::{circuit::Layouter, plonk::Error};
 
 use crate::types::{AssignedBit, InnerValue};
 
@@ -33,7 +33,7 @@ where
     /// Returns `1` if the elements are equal, returns `0` otherwise.
     ///
     /// ```
-    /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
+    /// # xxxx_circuits::run_test_native_gadget!(chip, layouter, {
     /// let x: AssignedNative<F> = chip.assign(&mut layouter, Value::known(F::from(1)))?;
     /// let y: AssignedNative<F> = chip.assign(&mut layouter, Value::known(F::from(2)))?;
     ///
@@ -62,7 +62,7 @@ where
     /// Returns `1` iff the given element equals the given constant.
     ///
     /// ```
-    /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
+    /// # xxxx_circuits::run_test_native_gadget!(chip, layouter, {
     /// let x: AssignedNative<F> = chip.assign(&mut layouter, Value::known(F::ONE))?;
     ///
     /// let x_equals_2 = chip.is_equal_to_fixed(&mut layouter, &x, F::from(2))?;
@@ -93,13 +93,13 @@ pub(crate) mod tests {
     use std::marker::PhantomData;
 
     use ff::FromUniformBytes;
-    use midnight_proofs::{
+    use rand::SeedableRng;
+    use rand_chacha::ChaCha8Rng;
+    use xxxx_proofs::{
         circuit::{Layouter, SimpleFloorPlanner},
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem},
     };
-    use rand::SeedableRng;
-    use rand_chacha::ChaCha8Rng;
 
     use super::*;
     use crate::{

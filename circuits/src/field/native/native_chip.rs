@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -57,13 +57,13 @@ use std::{
 };
 
 use ff::PrimeField;
-use midnight_proofs::{
+use num_bigint::BigUint;
+use num_traits::Zero;
+use xxxx_proofs::{
     circuit::{Chip, Layouter, Region, Value},
     plonk::{Advice, Column, ConstraintSystem, Constraints, Error, Fixed, Instance, Selector},
     poly::Rotation,
 };
-use num_bigint::BigUint;
-use num_traits::Zero;
 
 #[cfg(any(test, feature = "testing"))]
 use crate::testing_utils::FromScratch;
@@ -1629,7 +1629,7 @@ impl<F: PrimeField> FromScratch<F> for NativeChip<F> {
 
     fn load_from_scratch(
         &self,
-        _layouter: &mut impl midnight_proofs::circuit::Layouter<F>,
+        _layouter: &mut impl xxxx_proofs::circuit::Layouter<F>,
     ) -> Result<(), Error> {
         Ok(())
     }
@@ -1639,7 +1639,7 @@ impl<F: PrimeField> FromScratch<F> for NativeChip<F> {
 mod tests {
     use ff::FromUniformBytes;
     use halo2curves::pasta::{Fp as VestaScalar, Fq as PallasScalar};
-    use midnight_curves::Fq as BlsScalar;
+    use xxxx_curves::Fq as BlsScalar;
 
     use super::*;
     use crate::instructions::{

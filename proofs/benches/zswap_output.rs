@@ -2,11 +2,11 @@
 //! circuit from the zswap protocol.
 //!
 //! For more details, visit:
-//! https://github.com/midnightntwrk/midnight-ledger-prototype/blob/main/zswap/zswap.compact
+//! https://github.com/midnightntwrk/xxxx-ledger-prototype/blob/main/zswap/zswap.compact
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use ff::Field;
 use group::Group;
-use midnight_circuits::{
+use xxxx_circuits::{
     compact_std_lib::{MidnightCircuit, Relation, ZkStdLib},
     ecc::{hash_to_curve::HashToCurveGadget, native::EccChip},
     hash::poseidon::PoseidonChip,
@@ -16,8 +16,7 @@ use midnight_circuits::{
     },
     types::{AssignedBit, AssignedByte, AssignedNative, AssignedNativePoint, Instantiable},
 };
-use midnight_curves::{Bls12, Fr as JubjubScalar, JubjubExtended as Jubjub, JubjubSubgroup};
-use midnight_proofs::{
+use xxxx_proofs::{
     circuit::{Layouter, Value},
     plonk::{
         create_proof, keygen_pk, keygen_vk_with_k, parse_trace, verify_algebraic_constraints, Error,
@@ -31,9 +30,10 @@ use midnight_proofs::{
 use rand::{rngs::OsRng, Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use sha2::Digest;
+use xxxx_curves::{Bls12, Fr as JubjubScalar, JubjubExtended as Jubjub, JubjubSubgroup};
 
-type F = midnight_curves::Fq;
-type C = midnight_curves::G1Projective;
+type F = xxxx_curves::Fq;
+type C = xxxx_curves::G1Projective;
 
 type CoinCom = [u8; 32];
 type ValueCom = JubjubSubgroup;

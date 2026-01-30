@@ -37,7 +37,7 @@ impl<V> Value<V> {
     /// # Examples
     ///
     /// ```
-    /// use midnight_proofs::circuit::Value;
+    /// use xxxx_proofs::circuit::Value;
     ///
     /// let v = Value::known(37);
     /// ```
@@ -654,7 +654,7 @@ impl<V> Value<V> {
     /// first:
     /// ```
     /// # use halo2curves::pasta::pallas::Base as F;
-    /// use midnight_proofs::{circuit::Value, utils::rational::Rational};
+    /// use xxxx_proofs::{circuit::Value, utils::rational::Rational};
     ///
     /// let v = Value::known(F::from(2));
     /// let v: Value<Rational<F>> = v.into();

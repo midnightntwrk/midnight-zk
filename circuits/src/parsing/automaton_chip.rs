@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -38,18 +38,18 @@ use std::{
 };
 
 use ff::PrimeField;
-use midnight_proofs::{
+use rustc_hash::FxHashMap;
+use xxxx_proofs::{
     circuit::{Chip, Layouter, Region, Value},
     plonk::{Advice, Column, ConstraintSystem, Error, Selector, TableColumn},
     poly::Rotation,
 };
-use rustc_hash::FxHashMap;
 #[cfg(test)]
 use {
     super::regex::Regex, super::regex::RegexInstructions,
     crate::field::decomposition::chip::P2RDecompositionConfig,
     crate::field::decomposition::pow2range::Pow2RangeChip, crate::field::native::NB_ARITH_COLS,
-    crate::testing_utils::FromScratch, midnight_proofs::plonk::Instance,
+    crate::testing_utils::FromScratch, xxxx_proofs::plonk::Instance,
 };
 
 use super::automaton::{Automaton, ALPHABET_MAX_SIZE};
@@ -586,7 +586,7 @@ mod test {
 
     use ff::PrimeField;
     use itertools::Itertools;
-    use midnight_proofs::{
+    use xxxx_proofs::{
         circuit::{Layouter, SimpleFloorPlanner, Value},
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem, Error},
@@ -691,14 +691,14 @@ mod test {
         k: u32,
         input: &str,
         output: &[usize],
-        circuit: &RegexCircuit<midnight_curves::Fq>,
+        circuit: &RegexCircuit<xxxx_curves::Fq>,
         must_pass: bool,
     ) {
         assert!(
             !cost_model || must_pass,
             ">> [test {test_index}] (bug) if cost_model is set to true, must_pass should be set to true"
         );
-        let prover = MockProver::<midnight_curves::Fq>::run(k, circuit, vec![vec![], vec![]]);
+        let prover = MockProver::<xxxx_curves::Fq>::run(k, circuit, vec![vec![], vec![]]);
         if must_pass {
             println!(
                 ">> [test {test_index}] Parsing input {} with automaton {}, which should pass (output: {:?})",
@@ -728,7 +728,7 @@ mod test {
         }
 
         if cost_model {
-            circuit_to_json::<midnight_curves::Fq>(
+            circuit_to_json::<xxxx_curves::Fq>(
                 "Automaton",
                 &format!("parsing perf (input length = {})", circuit.input.len()),
                 circuit.clone(),

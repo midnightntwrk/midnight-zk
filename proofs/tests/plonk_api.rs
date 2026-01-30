@@ -7,7 +7,7 @@ use assert_matches::assert_matches;
 use blake2b_simd::State;
 use ff::{FromUniformBytes, WithSmallOrderMulGroup};
 use halo2curves::serde::SerdeObject;
-use midnight_proofs::{
+use xxxx_proofs::{
     circuit::{Cell, Layouter, SimpleFloorPlanner, Value},
     dev::MockProver,
     plonk::{

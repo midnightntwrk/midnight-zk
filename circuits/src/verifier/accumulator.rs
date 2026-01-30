@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -32,13 +32,13 @@ use std::collections::BTreeMap;
 use ff::Field;
 use group::prime::PrimeCurveAffine;
 use halo2curves::pairing::Engine;
-use midnight_proofs::{
+use num_bigint::BigUint;
+use num_traits::One;
+use xxxx_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
     poly::kzg::msm::DualMSM,
 };
-use num_bigint::BigUint;
-use num_traits::One;
 
 #[cfg(not(feature = "truncated-challenges"))]
 use crate::verifier::utils::powers;

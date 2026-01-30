@@ -6,7 +6,7 @@ use std::marker::PhantomData;
 use criterion::{BenchmarkId, Criterion};
 use group::ff::Field;
 use halo2curves::{bn256, bn256::Bn256};
-use midnight_proofs::{
+use xxxx_proofs::{
     circuit::{Cell, Layouter, SimpleFloorPlanner, Value},
     plonk::*,
     poly::{

@@ -7,8 +7,8 @@ use halo2curves::{
     pairing::{Engine, MillerLoopResult, MultiMillerLoop},
     CurveAffine,
 };
-use midnight_curves::{Fq, G1Projective};
 use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
+use xxxx_curves::{Fq, G1Projective};
 
 use super::params::ParamsVerifierKZG;
 use crate::{
@@ -112,7 +112,7 @@ where
 pub fn msm_specific<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C::Curve]) -> C::Curve {
     // We empirically checked that for MSMs larger than 2**18, the blstrs
     // implementation regresses.
-    if coeffs.len() <= (2 << 18) && TypeId::of::<C>() == TypeId::of::<midnight_curves::G1Affine>() {
+    if coeffs.len() <= (2 << 18) && TypeId::of::<C>() == TypeId::of::<xxxx_curves::G1Affine>() {
         // Safe: we just checked type
         let coeffs = unsafe { &*(coeffs as *const _ as *const [Fq]) };
         let bases = unsafe { &*(bases as *const _ as *const [G1Projective]) };

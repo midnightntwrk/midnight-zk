@@ -5,7 +5,9 @@
 
 use ff::Field;
 use group::Group;
-use midnight_circuits::{
+use rand::{RngCore, SeedableRng};
+use rand_chacha::ChaCha8Rng;
+use xxxx_circuits::{
     compact_std_lib::{self, Relation, ZkStdLib, ZkStdLibArch},
     ecc::native::AssignedScalarOfNativeCurve,
     hash::poseidon::PoseidonChip,
@@ -16,15 +18,13 @@ use midnight_circuits::{
     testing_utils::plonk_api::filecoin_srs,
     types::{AssignedNativePoint, Instantiable},
 };
-use midnight_curves::{Fr as JubjubScalar, JubjubAffine, JubjubExtended as Jubjub, JubjubSubgroup};
-use midnight_proofs::{
+use xxxx_curves::{Fr as JubjubScalar, JubjubAffine, JubjubExtended as Jubjub, JubjubSubgroup};
+use xxxx_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
-use rand::{RngCore, SeedableRng};
-use rand_chacha::ChaCha8Rng;
 
-type F = midnight_curves::Fq;
+type F = xxxx_curves::Fq;
 
 #[derive(Clone, Default)]
 pub struct SchnorrSignature {

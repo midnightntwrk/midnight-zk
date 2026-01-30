@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@ use halo2curves::{
     secp256k1::{Secp256k1, Secp256k1Affine},
     CurveAffine,
 };
-use midnight_curves::{Fq as BlsScalar, JubjubAffine, JubjubExtended, JubjubSubgroup};
+use xxxx_curves::{Fq as BlsScalar, JubjubAffine, JubjubExtended, JubjubSubgroup};
 
 /// An elliptic curve whose points can be represented in terms of its base
 /// field.
@@ -95,8 +95,6 @@ impl CircuitCurve for JubjubExtended {
     fn from_xy(x: Self::Base, y: Self::Base) -> Option<Self> {
         // The only way to check that the coordinates are in the curve is via
         // the `from_bytes` interface
-        // FIXME: change JubJub implementation to get a `frocm_coords_checked`
-        // https://github.com/davidnevadoc/blstrs/issues/13c
         let mut bytes = y.to_bytes_le();
         let x_sign = x.to_bytes_le()[0] << 7;
 
@@ -165,7 +163,7 @@ impl WeierstrassCurve for Secp256k1 {
 
 // Implementation for Bls12-381.
 use group::cofactor::CofactorGroup;
-use midnight_curves::{Fp as BlsBase, G1Affine, G1Projective};
+use xxxx_curves::{Fp as BlsBase, G1Affine, G1Projective};
 
 impl CircuitCurve for G1Projective {
     type Base = BlsBase;
@@ -187,8 +185,8 @@ impl CircuitCurve for G1Projective {
 }
 
 impl WeierstrassCurve for G1Projective {
-    const A: Self::Base = midnight_curves::A;
-    const B: Self::Base = midnight_curves::B;
+    const A: Self::Base = xxxx_curves::A;
+    const B: Self::Base = xxxx_curves::B;
 
     const BASE_ZETA: Self::Base = <BlsBase as ff::WithSmallOrderMulGroup<3>>::ZETA;
     const SCALAR_ZETA: Self::Scalar = <BlsScalar as ff::WithSmallOrderMulGroup<3>>::ZETA;

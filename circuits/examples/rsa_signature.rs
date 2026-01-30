@@ -5,21 +5,21 @@
 
 use std::ops::Rem;
 
-use midnight_circuits::{
+use num_bigint::{BigUint, RandBigInt};
+use num_traits::{Num, One};
+use rand::rngs::OsRng;
+use xxxx_circuits::{
     biguint::AssignedBigUint,
     compact_std_lib::{self, Relation, ZkStdLib, ZkStdLibArch},
     instructions::AssertionInstructions,
     testing_utils::plonk_api::filecoin_srs,
 };
-use midnight_proofs::{
+use xxxx_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
-use num_bigint::{BigUint, RandBigInt};
-use num_traits::{Num, One};
-use rand::rngs::OsRng;
 
-type F = midnight_curves::Fq;
+type F = xxxx_curves::Fq;
 
 type Modulus = BigUint;
 type Message = BigUint;

@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -20,9 +20,9 @@ mod types;
 mod utils;
 
 use ff::PrimeField;
-use midnight_proofs::{circuit::Layouter, plonk::Error};
 use sha2::Digest;
 pub use sha512_chip::{Sha512Chip, Sha512Config, NB_SHA512_ADVICE_COLS, NB_SHA512_FIXED_COLS};
+use xxxx_proofs::{circuit::Layouter, plonk::Error};
 
 use crate::{
     instructions::{hash::HashCPU, DecompositionInstructions, HashInstructions},
@@ -56,7 +56,7 @@ impl<F: PrimeField> HashInstructions<F, AssignedByte<F>, [AssignedByte<F>; 64]> 
 
 #[cfg(test)]
 mod tests {
-    use midnight_curves::Fq as Scalar;
+    use xxxx_curves::Fq as Scalar;
 
     use crate::{
         field::NativeGadget, hash::sha512::Sha512Chip, instructions::hash::tests::test_hash,

@@ -39,7 +39,8 @@
 //! twice per row; on columns named (T0, A0, A1) and (T1, A2, A3).
 
 use ff::PrimeField;
-use midnight_proofs::{
+use num_integer::Integer;
+use xxxx_proofs::{
     circuit::{Chip, Layouter, Region, Value},
     plonk::{
         Advice, Column, ConstraintSystem, Constraints, Error, Expression, Fixed, Selector,
@@ -47,7 +48,6 @@ use midnight_proofs::{
     },
     poly::Rotation,
 };
-use num_integer::Integer;
 
 use crate::{
     field::{decomposition::chip::P2RDecompositionChip, NativeChip, NativeGadget},
@@ -1645,7 +1645,7 @@ impl<F: PrimeField> CompressionState<F> {
 }
 
 #[cfg(any(test, feature = "testing"))]
-use midnight_proofs::plonk::Instance;
+use xxxx_proofs::plonk::Instance;
 
 #[cfg(any(test, feature = "testing"))]
 use crate::{field::decomposition::chip::P2RDecompositionConfig, testing_utils::FromScratch};

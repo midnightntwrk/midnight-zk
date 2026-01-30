@@ -1,4 +1,4 @@
-# Midnight curves
+# XXXX curves
 
 This crate provides implementations of the **BLS12-381** and **JubJub** curves.
 

@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -13,12 +13,12 @@
 
 //! Integration tests for identifying breaking changes in circuits
 
-use midnight_circuits::{
+use xxxx_circuits::{
     compact_std_lib,
     compact_std_lib::MidnightCircuit,
     testing_utils::plonk_api::{check_vk, filecoin_srs, update_circuit_goldenfiles},
 };
-use midnight_proofs::plonk::k_from_circuit;
+use xxxx_proofs::plonk::k_from_circuit;
 
 #[path = "../examples/exposing_types.rs"]
 mod exposing_types;

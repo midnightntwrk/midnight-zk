@@ -10,9 +10,9 @@ use bellman::{
     multicore::Worker,
 };
 use halo2curves::{serde::SerdeObject, CurveAffine};
-use midnight_curves::{Bls12, G1Affine, G2Affine};
-use midnight_proofs::{poly::kzg::params::ParamsKZG, utils::SerdeFormat};
 use rand::rngs::OsRng;
+use xxxx_curves::{Bls12, G1Affine, G2Affine};
+use xxxx_proofs::{poly::kzg::params::ParamsKZG, utils::SerdeFormat};
 
 const G1_SIZE: usize = 96;
 const G2_SIZE: usize = 192;

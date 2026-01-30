@@ -1,5 +1,5 @@
 [package]
-name = "midnight-circuits"
+name = "xxxx-circuits"
 version = "5.0.1"
 edition = "2021"
 license-file.workspace = true
@@ -12,8 +12,8 @@ ff = { workspace = true }
 rustc-hash = "2"
 halo2curves = { workspace = true }
 blake2b_simd = { workspace = true }
-midnight-curves = { path = "../curves", version = "0.1.1" }
-midnight-proofs = { path = "../proofs", version = "0.5.1", default-features = false, features = [
+xxxx-curves = { path = "../curves", version = "0.1.1" }
+xxxx-proofs = { path = "../proofs", version = "0.5.1", default-features = false, features = [
     "bits",
     "cost-estimator",
     "circuit-params",
@@ -47,7 +47,7 @@ bellman = "0.14.0"
 serial_test = "3.2.0"
 
 [target.'cfg(ci_build)'.dependencies]
-midnight-curves = { path = "../curves", features = ["portable"] }
+xxxx-curves = { path = "../curves", features = ["portable"] }
 
 [features]
 default = []
@@ -55,13 +55,13 @@ default = []
 testing = ["num-bigint/rand"]
 heap_profiling = []
 # Enable truncated challenges. This makes recursive proofs more efficient
-truncated-challenges = ["midnight-proofs/truncated-challenges"]
+truncated-challenges = ["xxxx-proofs/truncated-challenges"]
 
 # Feature to enable granular benchmarks in the prover. If enabled,
 # the proof generation functions take an additional input,
 # _group: &mut BenchmarkGroup<WallTime>, and return granular benchmarks
 # of the prover for that concrete circuit.
-bench-internal = ["midnight-proofs/bench-internal"]
+bench-internal = ["xxxx-proofs/bench-internal"]
 
 [[example]]
 name = "cred_full"

@@ -13,9 +13,9 @@ use criterion::{criterion_group, criterion_main, Criterion, Throughput};
 use ff::Field;
 use group::prime::PrimeCurveAffine;
 use halo2curves::CurveExt;
-use midnight_curves::G1Projective;
 use rand_core::SeedableRng;
 use rand_xorshift::XorShiftRng;
+use xxxx_curves::G1Projective;
 
 fn bench_curve_ops<G: CurveExt>(c: &mut Criterion, name: &'static str) {
     {

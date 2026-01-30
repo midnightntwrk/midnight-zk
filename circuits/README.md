@@ -1,15 +1,15 @@
-# Midnight Circuits
+# XXXX Circuits
 
-[![CI checks](https://github.com/midnightntwrk/midnight-circuits/actions/workflows/ci.yml/badge.svg)](https://github.com/midnightntwrk/midnight-circuits/actions/workflows/ci.yml)
-[![Examples](https://github.com/midnightntwrk/midnight-circuits/actions/workflows/examples.yml/badge.svg)](https://github.com/midnightntwrk/midnight-circuits/actions/workflows/examples.yml)
+[![CI checks](https://github.com/midnightntwrk/xxxx-circuits/actions/workflows/ci.yml/badge.svg)](https://github.com/midnightntwrk/xxxx-circuits/actions/workflows/ci.yml)
+[![Examples](https://github.com/midnightntwrk/xxxx-circuits/actions/workflows/examples.yml/badge.svg)](https://github.com/midnightntwrk/xxxx-circuits/actions/workflows/examples.yml)
 
-Midnight Circuits is a library designed for implementing circuits with [Halo2](https://github.com/zcash/halo2). It is built on the [PSE v0.4.0 release](https://github.com/privacy-scaling-explorations/halo2/releases/tag/v0.4.0) of Halo2, incorporating a few [minor additions](https://github.com/midnightntwrk/halo2/commits/dev/) required to support Midnight Circuits.
+XXXX Circuits is a library designed for implementing circuits with [Halo2](https://github.com/zcash/halo2). It is built on the [PSE v0.4.0 release](https://github.com/privacy-scaling-explorations/halo2/releases/tag/v0.4.0) of Halo2, incorporating a few [minor additions](https://github.com/midnightntwrk/halo2/commits/dev/) required to support XXXX Circuits.
 
 > **Disclaimer**: This library has not been audited. Use it at your own risk.
 
 ## Features
 
-Midnight Circuits provides several tools to facilitate circuit development with Halo2. These include:
+XXXX Circuits provides several tools to facilitate circuit development with Halo2. These include:
 
 1. Native and non-native field operations.
 2. Native and non-native elliptic-curve operations.
@@ -38,7 +38,7 @@ is conditionally selected to reflect the operation applied only to the actual el
 
 ## ZkStdLib
 
-Midnight Circuits includes the `ZkStdLib`, which encapsulates the functionality required by Midnight. 
+XXXX Circuits includes the `ZkStdLib`, which encapsulates the functionality required by XXXX. 
 The architecture of `ZkStdLib` is configurable via the following structure:
 
 ```text
@@ -65,13 +65,13 @@ rather than the configuration and chip creation. Developers only need to impleme
 trait, avoiding the boilerplate of Halo2's `Circuit`. For example, to prove knowledge of a SHA preimage:
 
 ```rust
-use midnight_circuits::{
+use xxxx_circuits::{
     compact_std_lib::{self, Relation, ZkStdLib, ZkStdLibArch},
     instructions::{AssignmentInstructions, PublicInputInstructions},
     testing_utils::plonk_api::filecoin_srs,
     types::{AssignedByte, Instantiable},
 };
-use midnight_proofs::{
+use xxxx_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
@@ -79,7 +79,7 @@ use rand::{rngs::OsRng, Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use sha2::Digest;
 
-type F = midnight_curves::Fq;
+type F = xxxx_curves::Fq;
 
 // In this example we show how to build a circuit for proving the knowledge of a
 // SHA256 preimage. Concretely, given public input x, we will argue that we know

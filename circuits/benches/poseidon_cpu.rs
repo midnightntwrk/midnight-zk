@@ -1,12 +1,12 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use ff::Field;
-use midnight_circuits::hash::poseidon::{
-    permutation_cpu, round_skips::PreComputedRoundCPU, PoseidonChip,
-};
 use rand::SeedableRng;
 use rand_chacha::ChaCha12Rng;
+use xxxx_circuits::hash::poseidon::{
+    permutation_cpu, round_skips::PreComputedRoundCPU, PoseidonChip,
+};
 
-type F = midnight_curves::Fq;
+type F = xxxx_curves::Fq;
 
 const WIDTH: usize = PoseidonChip::<F>::register_size();
 

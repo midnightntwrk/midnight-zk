@@ -8,21 +8,21 @@
 #[global_allocator]
 static ALLOC: dhat::Alloc = dhat::Alloc;
 
-use midnight_circuits::{
+use rand::{rngs::OsRng, Rng, SeedableRng};
+use rand_chacha::ChaCha8Rng;
+use sha2::Digest;
+use xxxx_circuits::{
     compact_std_lib::{self, Relation, ZkStdLib, ZkStdLibArch},
     instructions::{AssignmentInstructions, PublicInputInstructions},
     testing_utils::plonk_api::filecoin_srs,
     types::{AssignedByte, Instantiable},
 };
-use midnight_proofs::{
+use xxxx_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
-use rand::{rngs::OsRng, Rng, SeedableRng};
-use rand_chacha::ChaCha8Rng;
-use sha2::Digest;
 
-type F = midnight_curves::Fq;
+type F = xxxx_curves::Fq;
 
 #[derive(Clone, Default)]
 pub struct ShaPreImageCircuit;

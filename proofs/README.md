@@ -1,4 +1,4 @@
-# midnight_proofs
+# xxxx_proofs
 
 Implementation of Plonk proof system with KZG commitments. This repo initially started 
 as a fork of [`halo2`](https://github.com/privacy-scaling-explorations/halo2) v0.3.0 – 
@@ -36,7 +36,7 @@ minor version bump.
 
 ## Controlling parallelism
 
-`midnight_proofs` currently uses [rayon](https://github.com/rayon-rs/rayon) for parallel
+`xxxx_proofs` currently uses [rayon](https://github.com/rayon-rs/rayon) for parallel
 computation. The `RAYON_NUM_THREADS` environment variable can be used to set the number of
 threads.
 

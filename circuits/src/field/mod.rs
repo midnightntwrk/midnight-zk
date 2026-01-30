@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -16,8 +16,8 @@ pub mod decomposition;
 pub mod foreign;
 pub mod native;
 
-use midnight_proofs::circuit::AssignedCell;
 pub use native::{AssignedBounded, NativeChip, NativeConfig, NativeGadget};
+use xxxx_proofs::circuit::AssignedCell;
 
 /// AssignedNative
 pub type AssignedNative<F> = AssignedCell<F, F>;

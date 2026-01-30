@@ -4,7 +4,10 @@
 use std::{io::Write, time::Instant};
 
 use halo2curves::secp256k1::{Fq as secp256k1Scalar, Secp256k1};
-use midnight_circuits::{
+use num_bigint::BigUint;
+use rand::rngs::OsRng;
+use utils::{read_credential, split_blob, verify_credential_sig};
+use xxxx_circuits::{
     compact_std_lib::{self, Relation, ZkStdLib, ZkStdLibArch},
     field::foreign::{params::MultiEmulationParams, AssignedField},
     instructions::{
@@ -19,17 +22,14 @@ use midnight_circuits::{
     },
     types::{AssignedByte, AssignedForeignPoint, InnerValue, Instantiable},
 };
-use midnight_proofs::{
+use xxxx_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
-use num_bigint::BigUint;
-use rand::rngs::OsRng;
-use utils::{read_credential, split_blob, verify_credential_sig};
 
 #[path = "./utils.rs"]
 mod utils;
-type F = midnight_curves::Fq;
+type F = xxxx_curves::Fq;
 
 const CRED_PATH: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),

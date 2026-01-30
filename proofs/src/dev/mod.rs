@@ -187,7 +187,7 @@ impl<F: Field> Mul<F> for Value<F> {
 /// ```
 /// use ff::PrimeField;
 /// use halo2curves::pasta::Fp;
-/// use midnight_proofs::{
+/// use xxxx_proofs::{
 ///     circuit::{Layouter, SimpleFloorPlanner, Value},
 ///     dev::{FailureLocation, MockProver, VerifyFailure},
 ///     plonk::{Advice, Any, Circuit, Column, ConstraintSystem, Constraints, Error, Selector},

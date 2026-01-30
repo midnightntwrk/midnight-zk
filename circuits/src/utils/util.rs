@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -15,15 +15,15 @@
 #![allow(missing_docs)]
 
 use ff::PrimeField;
-#[cfg(any(test, feature = "testing"))]
-use midnight_proofs::plonk::Error;
 use num_bigint::{BigInt as BI, BigUint, Sign};
 use num_integer::Integer;
 use num_traits::{Num, One, Signed, Zero};
 #[cfg(any(test, feature = "testing"))]
+use xxxx_proofs::plonk::Error;
+#[cfg(any(test, feature = "testing"))]
 use {
-    midnight_proofs::circuit::Layouter,
-    midnight_proofs::plonk::{Column, ConstraintSystem, Instance},
+    xxxx_proofs::circuit::Layouter,
+    xxxx_proofs::plonk::{Column, ConstraintSystem, Instance},
 };
 
 pub fn modulus<F: PrimeField>() -> BigUint {
@@ -235,7 +235,7 @@ pub fn glv_scalar_decomposition<F: PrimeField>(x: &F, zeta: &F) -> ((bool, F), (
         panic!(
             "Oops, an error occurred in GLV decomposition. \
              Please, open an issue to report this problem: \
-             https://github.com/midnightntwrk/midnight-circuits/issues"
+             https://github.com/midnightntwrk/xxxx-circuits/issues"
         )
     };
 

@@ -1,5 +1,5 @@
 [package]
-name = "midnight-proofs"
+name = "xxxx-proofs"
 version = "0.5.1"
 edition = "2021"
 rust-version = "1.76.0"
@@ -37,7 +37,7 @@ backtrace = { version = "0.3", optional = true }
 ff = { workspace = true }
 group = { workspace = true }
 halo2curves = { workspace = true }
-midnight-curves = { path = "../curves", version = "0.1.1" }
+xxxx-curves = { path = "../curves", version = "0.1.1" }
 rand_core = { workspace = true }
 tracing = { workspace = true }
 blake2b_simd = { workspace = true }
@@ -55,7 +55,7 @@ num-bigint = { workspace = true }
 assert_matches = "1.5"
 proptest = "1"
 serde_json = { workspace = true }
-midnight-circuits = { path = "../circuits" }
+xxxx-circuits = { path = "../circuits" }
 sha2 = { workspace = true }
 rand = { workspace = true }
 
@@ -67,7 +67,7 @@ criterion = "0.7"
 getrandom = { version = "0.2", features = ["js"] }
 
 [target.'cfg(ci_build)'.dependencies]
-midnight-curves = { path = "../curves", features = ["portable"] }
+xxxx-curves = { path = "../curves", features = ["portable"] }
 
 [features]
 default = ["bits", "committed-instances"]
@@ -102,7 +102,7 @@ committed-instances = []
 # the proof generation functions take an additional input,
 # _group: &mut BenchmarkGroup<WallTime>, and return granular benchmarks
 # of the prover for that concrete circuit.
-bench-internal = ["midnight-circuits/bench-internal"]
+bench-internal = ["xxxx-circuits/bench-internal"]
 
 [lib]
 bench = false

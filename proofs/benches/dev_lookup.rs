@@ -6,7 +6,7 @@ use std::marker::PhantomData;
 use criterion::{BenchmarkId, Criterion};
 use ff::{Field, PrimeField};
 use halo2curves::pasta::pallas;
-use midnight_proofs::{
+use xxxx_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
     dev::MockProver,
     plonk::*,

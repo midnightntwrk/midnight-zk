@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -22,9 +22,9 @@
 //! the bitwise operations take place.
 
 use ff::{Field, PrimeField};
-use midnight_proofs::{circuit::Layouter, plonk::Error};
 use num_bigint::BigUint;
 use num_traits::One;
+use xxxx_proofs::{circuit::Layouter, plonk::Error};
 
 use super::{BinaryInstructions, DecompositionInstructions, RangeCheckInstructions};
 use crate::types::{InnerConstants, Instantiable};
@@ -45,7 +45,7 @@ where
     /// If any of the given assigned elements cannot be decomposed in `n` bits.
     ///
     /// ```
-    /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
+    /// # xxxx_circuits::run_test_native_gadget!(chip, layouter, {
     /// let x = chip.assign(&mut layouter, Value::known(F::from(13)))?;
     /// let y = chip.assign(&mut layouter, Value::known(F::from(7)))?;
     ///
@@ -56,7 +56,7 @@ where
     /// ```
     ///
     /// ```should_panic
-    /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
+    /// # xxxx_circuits::run_test_native_gadget!(chip, layouter, {
     /// let x = chip.assign(&mut layouter, Value::known(F::from(16)))?;
     /// let y = chip.assign(&mut layouter, Value::known(F::from(7)))?;
     ///
@@ -89,7 +89,7 @@ where
     /// If any of the given assigned elements cannot be decomposed in `n` bits.
     ///
     /// ```
-    /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
+    /// # xxxx_circuits::run_test_native_gadget!(chip, layouter, {
     /// let x = chip.assign(&mut layouter, Value::known(F::from(13)))?;
     /// let y = chip.assign(&mut layouter, Value::known(F::from(7)))?;
     ///
@@ -123,7 +123,7 @@ where
     /// If any of the given assigned elements cannot be decomposed in `n` bits.
     ///
     /// ```
-    /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
+    /// # xxxx_circuits::run_test_native_gadget!(chip, layouter, {
     /// let x = chip.assign(&mut layouter, Value::known(F::from(13)))?;
     /// let y = chip.assign(&mut layouter, Value::known(F::from(7)))?;
     ///
@@ -157,7 +157,7 @@ where
     /// If the given assigned element cannot be decomposed in `n` bits.
     ///
     /// ```
-    /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
+    /// # xxxx_circuits::run_test_native_gadget!(chip, layouter, {
     /// let x = chip.assign(&mut layouter, Value::known(F::from(6)))?;
     ///
     /// // !0b0110 = 0b1001
@@ -186,13 +186,13 @@ pub(crate) mod tests {
     use std::{cmp::min, marker::PhantomData};
 
     use ff::FromUniformBytes;
-    use midnight_proofs::{
+    use rand::{RngCore, SeedableRng};
+    use rand_chacha::ChaCha8Rng;
+    use xxxx_proofs::{
         circuit::{Layouter, SimpleFloorPlanner, Value},
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem},
     };
-    use rand::{RngCore, SeedableRng};
-    use rand_chacha::ChaCha8Rng;
 
     use super::*;
     use crate::{testing_utils::FromScratch, utils::circuit_modeling::circuit_to_json};

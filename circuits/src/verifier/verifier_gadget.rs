@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@
 use std::{fmt::Debug, iter};
 
 use ff::Field;
-use midnight_proofs::{
+use xxxx_proofs::{
     circuit::{Chip, Layouter, Value},
     plonk::{ConstraintSystem, Error},
     poly::{EvaluationDomain, Rotation},
@@ -208,7 +208,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
     /// trace.
     /// This function computes all Fiat-Shamir challenges, with the exception of
     /// `x`, which is computed in [Self::verify_algebraic_constraints]. It
-    /// is the in-circuit analog of "parse_trace" from midnight-proofs at
+    /// is the in-circuit analog of "parse_trace" from xxxx-proofs at
     /// src/plonk/verifier.rs.
     ///
     /// The trace is considered to be valid if it satisfies the
@@ -617,7 +617,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
     /// Prepares a plonk proof into a PCS instance that can be finalized or
     /// batched. It is responsibility of the verifier to check the validity of
     /// the instance columns. It is the in-circuit analog of "prepare" from
-    /// midnight-proofs at src/plonk/verifier.rs.
+    /// xxxx-proofs at src/plonk/verifier.rs.
     ///
     /// The proof is considered to be valid if the resulting accumulator
     /// satisfies the [invariant](crate::verifier::Accumulator::check)
@@ -655,7 +655,7 @@ pub(crate) mod tests {
     use std::collections::BTreeMap;
 
     use group::Group;
-    use midnight_proofs::{
+    use xxxx_proofs::{
         circuit::SimpleFloorPlanner,
         dev::MockProver,
         plonk::{create_proof, keygen_pk, keygen_vk_with_k, prepare, Circuit, Error},

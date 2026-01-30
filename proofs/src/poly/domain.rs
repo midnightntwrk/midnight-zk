@@ -541,8 +541,8 @@ fn test_rotate() {
 
 #[test]
 fn test_l_i() {
-    use midnight_curves::Fq;
     use rand_core::OsRng;
+    use xxxx_curves::Fq;
 
     use crate::utils::arithmetic::{eval_polynomial, lagrange_interpolate};
     let domain = EvaluationDomain::<Fq>::new(1, 3);

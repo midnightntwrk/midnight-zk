@@ -589,8 +589,8 @@ where
 #[cfg(test)]
 mod tests {
     use blake2b_simd::State;
-    use midnight_curves::{Bls12, Fq};
     use rand_core::{OsRng, RngCore};
+    use xxxx_curves::{Bls12, Fq};
 
     use super::*;
     use crate::{

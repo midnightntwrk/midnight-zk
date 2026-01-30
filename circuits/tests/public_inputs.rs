@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -19,7 +19,9 @@
 //! compact_std_lib to satisfy it.
 
 use ff::Field;
-use midnight_circuits::{
+use rand::{Rng, SeedableRng};
+use rand_chacha::ChaCha8Rng;
+use xxxx_circuits::{
     compact_std_lib::{self, Relation, ZkStdLib},
     hash::poseidon::PoseidonChip,
     instructions::{
@@ -27,14 +29,12 @@ use midnight_circuits::{
     },
     testing_utils::plonk_api::filecoin_srs,
 };
-use midnight_proofs::{
+use xxxx_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
-use rand::{Rng, SeedableRng};
-use rand_chacha::ChaCha8Rng;
 
-type F = midnight_curves::Fq;
+type F = xxxx_curves::Fq;
 
 #[derive(Clone)]
 struct PIsCircuit {

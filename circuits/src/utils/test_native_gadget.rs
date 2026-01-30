@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -16,14 +16,14 @@
 macro_rules! run_test_native_gadget {
     ($chip:ident, $layouter:ident, $synthesize_body:block) => {
         use ff::PrimeField;
-        use midnight_proofs::{
+        use xxxx_proofs::{
             circuit::{Layouter, SimpleFloorPlanner, Value},
             dev::MockProver,
             plonk::{Circuit, ConstraintSystem},
         };
-        use midnight_proofs::plonk::Error;
+        use xxxx_proofs::plonk::Error;
         use halo2curves::pasta::Fp;
-        use midnight_circuits::{
+        use xxxx_circuits::{
             types::{AssignedBit, AssignedByte, AssignedNative, ComposableChip},
             instructions::*,
             field::{

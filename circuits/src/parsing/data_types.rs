@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -12,8 +12,8 @@
 // limitations under the License.
 
 use ff::PrimeField;
-use midnight_proofs::{circuit::Layouter, plonk::Error};
 use num_bigint::BigUint;
+use xxxx_proofs::{circuit::Layouter, plonk::Error};
 
 use super::ParserGadget;
 use crate::{field::AssignedNative, instructions::NativeInstructions, types::AssignedByte};
@@ -164,7 +164,7 @@ mod tests {
     use std::marker::PhantomData;
 
     use ff::FromUniformBytes;
-    use midnight_proofs::{
+    use xxxx_proofs::{
         circuit::{SimpleFloorPlanner, Value},
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem},
@@ -262,7 +262,7 @@ mod tests {
 
     #[test]
     fn test_parse_int() {
-        type F = midnight_curves::Fq;
+        type F = xxxx_curves::Fq;
         let test_vecs: Vec<(&[u8], u64, bool)> = vec![
             (b"987654321", 987654321, true),
             (b"123456", 123456, true),
@@ -281,7 +281,7 @@ mod tests {
 
     #[test]
     fn test_parse_date() {
-        type F = midnight_curves::Fq;
+        type F = xxxx_curves::Fq;
         let format1 = (DateFormat::DDMMYYYY, Separator::NoSep);
         let format2 = (DateFormat::DDMMYYYY, Separator::Sep('-'));
         let format3 = (DateFormat::YYYYMMDD, Separator::Sep('-'));

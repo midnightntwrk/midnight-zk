@@ -1,5 +1,5 @@
 use halo2curves::pasta::Fp;
-use midnight_proofs::{
+use xxxx_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
     dev::cost_model::circuit_model,
     plonk::{Advice, Circuit, Column, ConstraintSystem, Error, Expression, Selector, TableColumn},

@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@
 // limitations under the License.
 
 //! `field_chip` is a chip for performing arithmetic over emulated fields.
-//!  See [here](https://github.com/midnightntwrk/midnight-circuits/wiki/Foreign-Field-Arithmetic)
+//!  See [here](https://github.com/midnightntwrk/xxxx-circuits/wiki/Foreign-Field-Arithmetic)
 //!  for a description of the techniques that we use in this implementation.
 
 use std::{
@@ -23,18 +23,18 @@ use std::{
 };
 
 use ff::PrimeField;
-use midnight_proofs::{
-    circuit::{Chip, Layouter, Value},
-    plonk::{Advice, Column, ConstraintSystem, Error},
-};
 use num_bigint::{BigInt as BI, BigUint, ToBigInt};
 use num_integer::Integer;
 use num_traits::{One, Signed, Zero};
+use xxxx_proofs::{
+    circuit::{Chip, Layouter, Value},
+    plonk::{Advice, Column, ConstraintSystem, Error},
+};
 #[cfg(any(test, feature = "testing"))]
 use {
     crate::testing_utils::{FromScratch, Sampleable},
-    midnight_proofs::plonk::Instance,
     rand::RngCore,
+    xxxx_proofs::plonk::Instance,
 };
 
 use super::gates::{
@@ -1693,7 +1693,7 @@ mod tests {
         pasta::{Fp as VestaScalar, Fq as PallasScalar},
         secp256k1::{Fp as secp256k1Base, Fq as secp256k1Scalar},
     };
-    use midnight_curves::Fq as BlsScalar;
+    use xxxx_curves::Fq as BlsScalar;
 
     use super::*;
     use crate::{

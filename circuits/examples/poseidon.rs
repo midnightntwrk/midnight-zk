@@ -1,20 +1,20 @@
 //! Examples on how to perform poseidon operations
 
 use ff::Field;
-use midnight_circuits::{
+use rand::{rngs::OsRng, SeedableRng};
+use rand_chacha::ChaCha8Rng;
+use xxxx_circuits::{
     compact_std_lib::{self, Relation, ZkStdLib, ZkStdLibArch},
     hash::poseidon::PoseidonChip,
     instructions::{hash::HashCPU, AssignmentInstructions, PublicInputInstructions},
     testing_utils::plonk_api::filecoin_srs,
 };
-use midnight_proofs::{
+use xxxx_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
-use rand::{rngs::OsRng, SeedableRng};
-use rand_chacha::ChaCha8Rng;
 
-type F = midnight_curves::Fq;
+type F = xxxx_curves::Fq;
 
 #[derive(Clone, Default)]
 pub struct PoseidonExample;

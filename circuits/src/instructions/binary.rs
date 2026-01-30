@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
 //! It provides functions for performing Boolean operations over [AssignedBit]s.
 
 use ff::PrimeField;
-use midnight_proofs::{circuit::Layouter, plonk::Error};
+use xxxx_proofs::{circuit::Layouter, plonk::Error};
 
 use crate::types::AssignedBit;
 
@@ -29,7 +29,7 @@ pub trait BinaryInstructions<F: PrimeField> {
     /// If `bits` is empty.
     ///
     /// ```
-    /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
+    /// # xxxx_circuits::run_test_native_gadget!(chip, layouter, {
     /// let b0 = chip.assign(&mut layouter, Value::known(false))?;
     /// let b1 = chip.assign(&mut layouter, Value::known(true))?;
     ///
@@ -39,7 +39,7 @@ pub trait BinaryInstructions<F: PrimeField> {
     /// ```
     ///
     /// ```should_panic
-    /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
+    /// # xxxx_circuits::run_test_native_gadget!(chip, layouter, {
     /// let res = chip.and(&mut layouter, &[])?;
     /// # });
     /// ```
@@ -56,7 +56,7 @@ pub trait BinaryInstructions<F: PrimeField> {
     /// If `bits` is empty.
     ///
     /// ```
-    /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
+    /// # xxxx_circuits::run_test_native_gadget!(chip, layouter, {
     /// let b0 = chip.assign(&mut layouter, Value::known(false))?;
     /// let b1 = chip.assign(&mut layouter, Value::known(true))?;
     ///
@@ -77,7 +77,7 @@ pub trait BinaryInstructions<F: PrimeField> {
     /// If `bits` is empty.
     ///
     /// ```
-    /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
+    /// # xxxx_circuits::run_test_native_gadget!(chip, layouter, {
     /// let b0 = chip.assign(&mut layouter, Value::known(false))?;
     /// let b1 = chip.assign(&mut layouter, Value::known(true))?;
     /// let b2 = chip.assign(&mut layouter, Value::known(true))?;
@@ -95,7 +95,7 @@ pub trait BinaryInstructions<F: PrimeField> {
     /// Negation of the given assigned bit.
     ///
     /// ```
-    /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
+    /// # xxxx_circuits::run_test_native_gadget!(chip, layouter, {
     /// let b = chip.assign(&mut layouter, Value::known(false))?;
     ///
     /// let res = chip.not(&mut layouter, &b)?;
@@ -114,7 +114,7 @@ pub(crate) mod tests {
     use std::{cmp::min, marker::PhantomData};
 
     use ff::FromUniformBytes;
-    use midnight_proofs::{
+    use xxxx_proofs::{
         circuit::{Layouter, SimpleFloorPlanner, Value},
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem},

@@ -33,7 +33,7 @@ use crate::{
 ///
 /// ```
 /// use ff::Field;
-/// use midnight_proofs::{
+/// use xxxx_proofs::{
 ///     circuit::{floor_planner, Layouter, Value},
 ///     dev::TracingFloorPlanner,
 ///     plonk::{Circuit, ConstraintSystem, Error},

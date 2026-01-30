@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -15,7 +15,7 @@ use std::io::{self, Read};
 
 use ff::PrimeField;
 use group::GroupEncoding;
-use midnight_proofs::transcript::{Hashable, Sampleable, TranscriptHash};
+use xxxx_proofs::transcript::{Hashable, Sampleable, TranscriptHash};
 
 use super::{
     constants::{PoseidonField, NB_FULL_ROUNDS, NB_PARTIAL_ROUNDS, RATE, WIDTH},
@@ -202,30 +202,32 @@ impl<F: PoseidonField> TranscriptHash for PoseidonState<F> {
 // /// Implementation of Hashable for BLS12-381 with Poseidon //
 // /////////////////////////////////////////////////////////////
 
-impl Hashable<PoseidonState<midnight_curves::Fq>> for midnight_curves::G1Projective {
-    fn to_input(&self) -> Vec<midnight_curves::Fq> {
-        AssignedForeignPoint::<midnight_curves::Fq, midnight_curves::G1Projective, MEP>::as_public_input(self)
+impl Hashable<PoseidonState<xxxx_curves::Fq>> for xxxx_curves::G1Projective {
+    fn to_input(&self) -> Vec<xxxx_curves::Fq> {
+        AssignedForeignPoint::<xxxx_curves::Fq, xxxx_curves::G1Projective, MEP>::as_public_input(
+            self,
+        )
     }
 
     fn to_bytes(&self) -> Vec<u8> {
-        <midnight_curves::G1Affine as GroupEncoding>::to_bytes(&self.into())
+        <xxxx_curves::G1Affine as GroupEncoding>::to_bytes(&self.into())
             .as_ref()
             .to_vec()
     }
 
     fn read(buffer: &mut impl Read) -> io::Result<Self> {
-        let mut bytes = <midnight_curves::G1Affine as GroupEncoding>::Repr::default();
+        let mut bytes = <xxxx_curves::G1Affine as GroupEncoding>::Repr::default();
 
         buffer.read_exact(bytes.as_mut())?;
 
-        Option::from(midnight_curves::G1Affine::from_bytes(&bytes))
+        Option::from(xxxx_curves::G1Affine::from_bytes(&bytes))
             .ok_or_else(|| io::Error::other("Invalid BLS12-381 point encoding in proof"))
-            .map(|p: midnight_curves::G1Affine| p.into())
+            .map(|p: xxxx_curves::G1Affine| p.into())
     }
 }
 
-impl Hashable<PoseidonState<midnight_curves::Fq>> for midnight_curves::Fq {
-    fn to_input(&self) -> Vec<midnight_curves::Fq> {
+impl Hashable<PoseidonState<xxxx_curves::Fq>> for xxxx_curves::Fq {
+    fn to_input(&self) -> Vec<xxxx_curves::Fq> {
         vec![*self]
     }
 
@@ -243,8 +245,8 @@ impl Hashable<PoseidonState<midnight_curves::Fq>> for midnight_curves::Fq {
     }
 }
 
-impl Sampleable<PoseidonState<midnight_curves::Fq>> for midnight_curves::Fq {
-    fn sample(out: midnight_curves::Fq) -> Self {
+impl Sampleable<PoseidonState<xxxx_curves::Fq>> for xxxx_curves::Fq {
+    fn sample(out: xxxx_curves::Fq) -> Self {
         out
     }
 }
@@ -309,6 +311,6 @@ mod tests {
     fn cpu_test() {
         // Testing cpu performances. In debug mode, also tests the consistency between
         // the optimised and non-optimised cpu implementations of the permutation.
-        consistency_cpu::<midnight_curves::Fq>(1);
+        consistency_cpu::<xxxx_curves::Fq>(1);
     }
 }

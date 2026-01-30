@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -17,12 +17,12 @@
 use std::{cell::RefCell, cmp::min, collections::HashMap, marker::PhantomData, rc::Rc};
 
 use ff::PrimeField;
-use midnight_proofs::{
+use num_bigint::BigUint;
+use num_traits::Zero;
+use xxxx_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
-use num_bigint::BigUint;
-use num_traits::Zero;
 #[cfg(any(test, feature = "testing"))]
 use {
     crate::field::decomposition::chip::P2RDecompositionConfig,
@@ -31,9 +31,9 @@ use {
     crate::testing_utils::FromScratch,
     crate::testing_utils::Sampleable,
     crate::utils::ComposableChip,
-    midnight_proofs::plonk::{Column, ConstraintSystem, Instance},
     rand::Rng,
     rand::RngCore,
+    xxxx_proofs::plonk::{Column, ConstraintSystem, Instance},
 };
 
 use crate::{
@@ -1750,7 +1750,7 @@ impl<F: PrimeField> FromScratch<F> for NativeGadget<F, P2RDecompositionChip<F>, 
 
 #[cfg(test)]
 mod tests {
-    use midnight_curves::Fq as BlsScalar;
+    use xxxx_curves::Fq as BlsScalar;
 
     use super::*;
     use crate::instructions::{bitwise, comparison, decomposition, division, range_check};

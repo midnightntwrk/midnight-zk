@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@
 //! `Assigned::Element`.
 
 use ff::PrimeField;
-use midnight_proofs::{circuit::Layouter, plonk::Error};
+use xxxx_proofs::{circuit::Layouter, plonk::Error};
 
 use crate::types::InnerValue;
 
@@ -38,7 +38,7 @@ where
     /// Ensures that the given assigned elements are the same.
     ///
     /// ```
-    /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
+    /// # xxxx_circuits::run_test_native_gadget!(chip, layouter, {
     /// let x: AssignedNative<F> = chip.assign(&mut layouter, Value::known(F::ZERO))?;
     /// chip.assert_equal(&mut layouter, &x, &x)?;
     /// # });
@@ -47,7 +47,7 @@ where
     /// The following should produce an unsatisfiable circuit.
     ///
     /// ```should_panic
-    /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
+    /// # xxxx_circuits::run_test_native_gadget!(chip, layouter, {
     /// let x: AssignedNative<F> = chip.assign(&mut layouter, Value::known(F::ZERO))?;
     /// let y: AssignedNative<F> = chip.assign(&mut layouter, Value::known(F::ONE))?;
     /// chip.assert_equal(&mut layouter, &x, &y)?;
@@ -63,7 +63,7 @@ where
     /// Ensures that the given assigned elements are different.
     ///
     /// ```
-    /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
+    /// # xxxx_circuits::run_test_native_gadget!(chip, layouter, {
     /// let x: AssignedByte<F> = chip.assign(&mut layouter, Value::known(255u8))?;
     /// let y: AssignedByte<F> = chip.assign(&mut layouter, Value::known(0u8))?;
     /// chip.assert_not_equal(&mut layouter, &x, &y)?;
@@ -79,7 +79,7 @@ where
     /// Ensures that the given assigned element is equal to the given constant.
     ///
     /// ```
-    /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
+    /// # xxxx_circuits::run_test_native_gadget!(chip, layouter, {
     /// let x: AssignedNative<F> = chip.assign(&mut layouter, Value::known(F::ONE))?;
     /// chip.assert_equal_to_fixed(&mut layouter, &x, F::ONE)?;
     /// # });
@@ -95,7 +95,7 @@ where
     /// constant.
     ///
     /// ```
-    /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
+    /// # xxxx_circuits::run_test_native_gadget!(chip, layouter, {
     /// let x: AssignedBit<F> = chip.assign(&mut layouter, Value::known(false))?;
     /// chip.assert_not_equal_to_fixed(&mut layouter, &x, true)?;
     /// # });
@@ -113,13 +113,13 @@ pub(crate) mod tests {
     use std::marker::PhantomData;
 
     use ff::FromUniformBytes;
-    use midnight_proofs::{
+    use rand::SeedableRng;
+    use rand_chacha::ChaCha8Rng;
+    use xxxx_proofs::{
         circuit::{Layouter, SimpleFloorPlanner, Value},
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem},
     };
-    use rand::SeedableRng;
-    use rand_chacha::ChaCha8Rng;
 
     use super::*;
     use crate::{

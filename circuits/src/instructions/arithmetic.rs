@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ use std::{
 };
 
 use ff::PrimeField;
-use midnight_proofs::{circuit::Layouter, plonk::Error};
+use xxxx_proofs::{circuit::Layouter, plonk::Error};
 
 use crate::{
     instructions::{AssertionInstructions, AssignmentInstructions},
@@ -51,7 +51,7 @@ where
     /// [mul_by_constant](ArithInstructions::mul_by_constant).
     ///
     /// ```
-    /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
+    /// # xxxx_circuits::run_test_native_gadget!(chip, layouter, {
     /// let x = chip.assign(&mut layouter, Value::known(F::from(1)))?;
     /// let y = chip.assign(&mut layouter, Value::known(F::from(2)))?;
     /// let z = chip.assign(&mut layouter, Value::known(F::from(3)))?;
@@ -74,7 +74,7 @@ where
     /// Addition.
     ///
     /// ```
-    /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
+    /// # xxxx_circuits::run_test_native_gadget!(chip, layouter, {
     /// let x = chip.assign(&mut layouter, Value::known(F::from(2)))?;
     /// let y = chip.assign(&mut layouter, Value::known(F::from(3)))?;
     ///
@@ -101,7 +101,7 @@ where
     /// Subtraction.
     ///
     /// ```
-    /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
+    /// # xxxx_circuits::run_test_native_gadget!(chip, layouter, {
     /// let x = chip.assign(&mut layouter, Value::known(F::from(2)))?;
     /// let y = chip.assign(&mut layouter, Value::known(F::from(3)))?;
     ///
@@ -128,7 +128,7 @@ where
     /// Multiplication, possibly with an additional multiplying constant.
     ///
     /// ```
-    /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
+    /// # xxxx_circuits::run_test_native_gadget!(chip, layouter, {
     /// let x = chip.assign(&mut layouter, Value::known(F::from(2)))?;
     /// let y = chip.assign(&mut layouter, Value::known(F::from(3)))?;
     ///
@@ -148,7 +148,7 @@ where
     /// Division of `x` by `y` will make the circuit unsatisfiable if `y = 0`.
     ///
     /// ```
-    /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
+    /// # xxxx_circuits::run_test_native_gadget!(chip, layouter, {
     /// let x = chip.assign(&mut layouter, Value::known(F::from(15)))?;
     /// let y = chip.assign(&mut layouter, Value::known(F::from(3)))?;
     ///
@@ -158,7 +158,7 @@ where
     /// ```
     ///
     /// ```should_panic
-    /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
+    /// # xxxx_circuits::run_test_native_gadget!(chip, layouter, {
     /// let zero = chip.assign(&mut layouter, Value::known(F::ZERO))?;
     ///
     /// let res = chip.div(&mut layouter, &zero, &zero)?;
@@ -174,7 +174,7 @@ where
     /// Negation (additive inverse).
     ///
     /// ```
-    /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
+    /// # xxxx_circuits::run_test_native_gadget!(chip, layouter, {
     /// let x = chip.assign(&mut layouter, Value::known(F::from(42)))?;
     ///
     /// let res = chip.neg(&mut layouter, &x)?;
@@ -193,7 +193,7 @@ where
     /// The circuit will become unsatisfiable if `x = 0`.
     ///
     /// ```
-    /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
+    /// # xxxx_circuits::run_test_native_gadget!(chip, layouter, {
     /// let x = chip.assign(&mut layouter, Value::known(-F::ONE))?;
     ///
     /// let res = chip.inv(&mut layouter, &x)?;
@@ -202,7 +202,7 @@ where
     /// ```
     ///
     /// ```should_panic
-    /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
+    /// # xxxx_circuits::run_test_native_gadget!(chip, layouter, {
     /// let zero = chip.assign(&mut layouter, Value::known(F::ZERO))?;
     ///
     /// let res = chip.inv(&mut layouter, &zero)?;
@@ -214,7 +214,7 @@ where
     /// If `x = 0`, this function returns `0`.
     ///
     /// ```
-    /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
+    /// # xxxx_circuits::run_test_native_gadget!(chip, layouter, {
     /// // inv0 equals inv on non-zero values
     /// let x = chip.assign(&mut layouter, Value::known(F::from(5)))?;
     /// let res = chip.inv0(&mut layouter, &x)?;
@@ -235,7 +235,7 @@ where
     /// [add](ArithInstructions::add).
     ///
     /// ```
-    /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
+    /// # xxxx_circuits::run_test_native_gadget!(chip, layouter, {
     /// let x = chip.assign(&mut layouter, Value::known(F::from(7)))?;
     ///
     /// let res = chip.add_constant(&mut layouter, &x, F::from(3))?;
@@ -268,7 +268,7 @@ where
     /// If the given slices do not have the same length.
     ///
     /// ```
-    /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
+    /// # xxxx_circuits::run_test_native_gadget!(chip, layouter, {
     /// let x = chip.assign(&mut layouter, Value::known(F::from(22)))?;
     /// let y = chip.assign(&mut layouter, Value::known(F::from(7)))?;
     ///
@@ -296,7 +296,7 @@ where
     /// [mul](ArithInstructions::mul).
     ///
     /// ```
-    /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
+    /// # xxxx_circuits::run_test_native_gadget!(chip, layouter, {
     /// let x = chip.assign(&mut layouter, Value::known(F::from(7)))?;
     ///
     /// let res = chip.mul_by_constant(&mut layouter, &x, F::from(3))?;
@@ -387,7 +387,7 @@ pub(crate) mod tests {
     use std::{cmp::min, marker::PhantomData};
 
     use ff::FromUniformBytes;
-    use midnight_proofs::{
+    use xxxx_proofs::{
         circuit::{Layouter, SimpleFloorPlanner, Value},
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem},

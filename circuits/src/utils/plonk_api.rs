@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -26,8 +26,10 @@ use std::{
 #[cfg(all(test, feature = "bench-internal"))]
 use bench_macros::inner_bench;
 use halo2curves::bn256;
-use midnight_curves::Bls12;
-use midnight_proofs::{
+use rand::{CryptoRng, RngCore};
+use sha2::Digest;
+use xxxx_curves::Bls12;
+use xxxx_proofs::{
     plonk::{
         create_proof, keygen_pk, keygen_vk, prepare, Circuit, Error, ProvingKey, VerifyingKey,
     },
@@ -41,12 +43,10 @@ use midnight_proofs::{
     transcript::{CircuitTranscript, Hashable, Sampleable, Transcript},
     utils::SerdeFormat,
 };
-use rand::{CryptoRng, RngCore};
-use sha2::Digest;
 
 use crate::{
     compact_std_lib::{cost_model, MidnightVK, Relation},
-    midnight_proofs::transcript::TranscriptHash,
+    xxxx_proofs::transcript::TranscriptHash,
 };
 
 macro_rules! plonk_api {
@@ -182,10 +182,10 @@ plonk_api!(
 
 plonk_api!(
     BlstPLONK,
-    midnight_curves::Bls12,
-    midnight_curves::Fq,
-    midnight_curves::G1Affine,
-    midnight_curves::G1Projective
+    xxxx_curves::Bls12,
+    xxxx_curves::Fq,
+    xxxx_curves::G1Affine,
+    xxxx_curves::G1Projective
 );
 
 /// Check that the VK is the same as the stored VK for Logic. This function
@@ -199,7 +199,7 @@ plonk_api!(
 ///    breaking change to midnight_lib, and should change the ChangeLog
 ///    accordingly. To update the VK, re-run the example with
 ///    CHANGE_VK=BREAKING.
-pub fn check_vk<Relation: Circuit<midnight_curves::Fq>>(vk: &MidnightVK) {
+pub fn check_vk<Relation: Circuit<xxxx_curves::Fq>>(vk: &MidnightVK) {
     let circuit_name = std::any::type_name::<Relation>()
         .split("::")
         .last()
@@ -286,7 +286,7 @@ pub fn filecoin_srs(k: u32) -> ParamsKZG<Bls12> {
     let params_fs = File::open(Path::new(&fetching_path))
         .unwrap_or_else(|_| panic!("\nIt seems you have not downloaded and/or parsed the SRS from filecoin. Either download it with (make sure you are under the directory `circuits/` first):
 
-            * `curl -L -o {srs_dir}/bls_filecoin_2p19 https://midnight-s3-fileshare-dev-eu-west-1.s3.eu-west-1.amazonaws.com/bls_filecoin_2p19`
+            * `curl -L -o {srs_dir}/bls_filecoin_2p19 https://xxxx-s3-fileshare-dev-eu-west-1.s3.eu-west-1.amazonaws.com/bls_filecoin_2p19`
 
 or, if you don't trust the source, download it from IPFS and parse it (this might take a couple of minutes):
 

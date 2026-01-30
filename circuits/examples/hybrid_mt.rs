@@ -88,7 +88,10 @@
 //! position is Right     Node_{TREE_HEIGHT-1} = Root
 
 use ff::{Field, PrimeField};
-use midnight_circuits::{
+use rand::{rngs::OsRng, Rng, SeedableRng};
+use rand_chacha::ChaCha8Rng;
+use sha2::Digest;
+use xxxx_circuits::{
     compact_std_lib::{self, Relation, ZkStdLib, ZkStdLibArch},
     hash::poseidon::{constants::PoseidonField, PoseidonChip},
     instructions::{
@@ -98,15 +101,12 @@ use midnight_circuits::{
     testing_utils::plonk_api::filecoin_srs,
     types::{AssignedBit, AssignedNative},
 };
-use midnight_proofs::{
+use xxxx_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
-use rand::{rngs::OsRng, Rng, SeedableRng};
-use rand_chacha::ChaCha8Rng;
-use sha2::Digest;
 
-type F = midnight_curves::Fq;
+type F = xxxx_curves::Fq;
 
 // The height of the tree.
 const TREE_HEIGHT: usize = 64;

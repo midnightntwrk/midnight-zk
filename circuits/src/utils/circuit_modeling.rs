@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -20,12 +20,12 @@ use std::{
 
 use ff::{FromUniformBytes, PrimeField};
 use goldenfile::Mint;
-use midnight_curves::Fq;
-use midnight_proofs::{
+use serde_json::{json, Map, Value};
+use xxxx_curves::Fq;
+use xxxx_proofs::{
     dev::cost_model::{circuit_model, CircuitModel},
     plonk::Circuit,
 };
-use serde_json::{json, Map, Value};
 
 /// Obtains the cost-model provided by `[ModelCircuit] of `circuit` .
 /// Serializes the cost-model into a `csv`.

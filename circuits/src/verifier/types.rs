@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@ use halo2curves::{
     serde::SerdeObject,
     CurveAffine, CurveExt,
 };
-use midnight_proofs::{
+use xxxx_proofs::{
     circuit::Layouter,
     plonk::Error,
     transcript::{Hashable, TranscriptHash},
@@ -126,8 +126,8 @@ pub trait SelfEmulation: Clone + Debug {
 pub struct BlstrsEmulation {}
 
 impl SelfEmulation for BlstrsEmulation {
-    type F = midnight_curves::Fq;
-    type C = midnight_curves::G1Projective;
+    type F = xxxx_curves::Fq;
+    type C = xxxx_curves::G1Projective;
     type AssignedPoint = AssignedForeignPoint<Self::F, Self::C, Self::C>;
     type Hash = PoseidonState<Self::F>;
 
@@ -135,9 +135,9 @@ impl SelfEmulation for BlstrsEmulation {
     type CurveChip = ForeignEccChip<Self::F, Self::C, Self::C, Self::ScalarChip, Self::ScalarChip>;
     type SpongeChip = PoseidonChip<Self::F>;
 
-    type G1Affine = midnight_curves::G1Affine;
-    type G2Affine = midnight_curves::G2Affine;
-    type Engine = midnight_curves::Bls12;
+    type G1Affine = xxxx_curves::G1Affine;
+    type G2Affine = xxxx_curves::G2Affine;
+    type Engine = xxxx_curves::Bls12;
 
     fn msm(
         layouter: &mut impl Layouter<Self::F>,

@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@
 //! `Assigned::Element` as input and return an `Assigned` value.
 
 use ff::PrimeField;
-use midnight_proofs::{
+use xxxx_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
@@ -40,7 +40,7 @@ where
     /// [AssignedNative](crate::types::AssignedNative).
     ///
     /// ```
-    /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
+    /// # xxxx_circuits::run_test_native_gadget!(chip, layouter, {
     /// // we load a secret variable into the circuit, only the prover may know its value
     /// let x: AssignedNative<F> = chip.assign(&mut layouter, Value::known(F::ZERO))?;
     /// # });
@@ -51,7 +51,7 @@ where
     /// [AssignedByte](crate::types::AssignedByte) and other types.
     ///
     /// ```
-    /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
+    /// # xxxx_circuits::run_test_native_gadget!(chip, layouter, {
     /// let bit: AssignedBit<F> = chip.assign(&mut layouter, Value::known(true))?;
     ///
     /// let byte: AssignedByte<F> = chip.assign(&mut layouter, Value::known(42u8))?;
@@ -66,7 +66,7 @@ where
     /// Assigns a fixed (constant) element.
     ///
     /// ```
-    /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
+    /// # xxxx_circuits::run_test_native_gadget!(chip, layouter, {
     /// // we load a constant into the circuit, everyone knows the value of `k`
     /// let x: AssignedNative<F> = chip.assign_fixed(&mut layouter, F::ONE)?;
     ///

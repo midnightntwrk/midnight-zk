@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -11,8 +11,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use midnight_proofs::{circuit::Layouter, plonk::Error};
 use num_bigint::BigUint;
+use xxxx_proofs::{circuit::Layouter, plonk::Error};
 
 use super::{
     constants::{PoseidonField, RATE},
@@ -219,13 +219,13 @@ impl<F: PoseidonField, const MAX_LEN: usize>
 #[cfg(test)]
 mod tests {
     use ff::Field;
-    use midnight_proofs::{
+    use rand::SeedableRng;
+    use rand_chacha::ChaCha12Rng;
+    use xxxx_proofs::{
         circuit::{SimpleFloorPlanner, Value},
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem},
     };
-    use rand::SeedableRng;
-    use rand_chacha::ChaCha12Rng;
 
     use super::*;
     use crate::{
@@ -325,7 +325,7 @@ mod tests {
 
     #[test]
     fn test_poseidon_varhash() {
-        type F = midnight_curves::Fq;
+        type F = xxxx_curves::Fq;
 
         // Create a random number generator
         let mut rng = ChaCha12Rng::seed_from_u64(0xdeadcafe);

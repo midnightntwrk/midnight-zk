@@ -3,7 +3,8 @@
 
 use ff::Field;
 use group::Group;
-use midnight_circuits::{
+use rand::rngs::OsRng;
+use xxxx_circuits::{
     compact_std_lib::{self, Relation, ZkStdLib, ZkStdLibArch},
     ecc::{curves::CircuitCurve, native::AssignedScalarOfNativeCurve},
     instructions::{
@@ -12,14 +13,13 @@ use midnight_circuits::{
     testing_utils::plonk_api::filecoin_srs,
     types::{AssignedNativePoint, Instantiable},
 };
-use midnight_curves::{Fr as JubjubScalar, JubjubExtended as Jubjub, JubjubSubgroup};
-use midnight_proofs::{
+use xxxx_curves::{Fr as JubjubScalar, JubjubExtended as Jubjub, JubjubSubgroup};
+use xxxx_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
-use rand::rngs::OsRng;
 
-type F = midnight_curves::Fq;
+type F = xxxx_curves::Fq;
 
 #[derive(Clone, Default)]
 pub struct EccExample;

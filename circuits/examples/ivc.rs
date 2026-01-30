@@ -6,7 +6,8 @@
 use std::{collections::BTreeMap, time::Instant};
 
 use halo2curves::{ff::Field, group::Group};
-use midnight_circuits::{
+use rand::rngs::OsRng;
+use xxxx_circuits::{
     ecc::{
         curves::CircuitCurve,
         foreign::{nb_foreign_ecc_chip_columns, ForeignEccChip, ForeignEccConfig},
@@ -32,13 +33,12 @@ use midnight_circuits::{
         VerifierGadget,
     },
 };
-use midnight_proofs::{
+use xxxx_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
     plonk::{create_proof, keygen_pk, keygen_vk_with_k, prepare, Circuit, ConstraintSystem, Error},
     poly::{kzg::KZGCommitmentScheme, EvaluationDomain},
     transcript::{CircuitTranscript, Transcript},
 };
-use rand::rngs::OsRng;
 
 type S = BlstrsEmulation;
 
@@ -258,9 +258,7 @@ fn main() {
 
     let mut fixed_bases = BTreeMap::new();
     fixed_bases.insert(String::from("com_instance"), C::identity());
-    fixed_bases.extend(midnight_circuits::verifier::fixed_bases::<S>(
-        "self_vk", &vk,
-    ));
+    fixed_bases.extend(xxxx_circuits::verifier::fixed_bases::<S>("self_vk", &vk));
     let fixed_base_names = fixed_bases.keys().cloned().collect::<Vec<_>>();
 
     // This trivial accumulator must have a single base and scalar of F::ONE, and

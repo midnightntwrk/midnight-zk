@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -20,17 +20,17 @@ use std::{
 };
 
 use ff::PrimeField;
-use midnight_proofs::{
-    circuit::{Layouter, Value},
-    plonk::Error,
-};
 use num_bigint::BigUint;
 use num_integer::Integer;
 use num_traits::One;
+use xxxx_proofs::{
+    circuit::{Layouter, Value},
+    plonk::Error,
+};
 #[cfg(any(test, feature = "testing"))]
 use {
     crate::testing_utils::FromScratch,
-    midnight_proofs::plonk::{Column, ConstraintSystem, Instance},
+    xxxx_proofs::plonk::{Column, ConstraintSystem, Instance},
 };
 
 use super::{bound_of_addition, AssignedBigUint};
@@ -819,14 +819,14 @@ mod tests {
 
     use ff::FromUniformBytes;
     use halo2curves::pasta::{Fp as VestaScalar, Fq as PallasScalar};
-    use midnight_curves::Fq as BlsScalar;
-    use midnight_proofs::{
+    use num_bigint::RandBigInt;
+    use num_traits::Zero;
+    use xxxx_curves::Fq as BlsScalar;
+    use xxxx_proofs::{
         circuit::SimpleFloorPlanner,
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem},
     };
-    use num_bigint::RandBigInt;
-    use num_traits::Zero;
 
     use super::*;
     use crate::{
@@ -974,7 +974,7 @@ mod tests {
 
     #[test]
     fn test_add_biguint() {
-        type F = midnight_curves::Fq;
+        type F = xxxx_curves::Fq;
         let zero = BigUint::ZERO;
         for _ in 0..10 {
             let x: BigUint = random_biguint(1024);
@@ -987,7 +987,7 @@ mod tests {
 
     #[test]
     fn test_sub_biguint() {
-        type F = midnight_curves::Fq;
+        type F = xxxx_curves::Fq;
         let zero = BigUint::ZERO;
         let one = BigUint::one();
         for _ in 0..10 {
@@ -1006,7 +1006,7 @@ mod tests {
 
     #[test]
     fn test_mul_biguint() {
-        type F = midnight_curves::Fq;
+        type F = xxxx_curves::Fq;
         let zero = BigUint::ZERO;
         let one = BigUint::one();
         for _ in 0..10 {
@@ -1023,7 +1023,7 @@ mod tests {
 
     #[test]
     fn test_div_rem_biguint() {
-        type F = midnight_curves::Fq;
+        type F = xxxx_curves::Fq;
         let zero = BigUint::ZERO;
         let one = BigUint::one();
         for _ in 0..10 {
@@ -1047,7 +1047,7 @@ mod tests {
 
     #[test]
     fn test_mod_exp_biguint() {
-        type F = midnight_curves::Fq;
+        type F = xxxx_curves::Fq;
         let zero = BigUint::ZERO;
         let one = BigUint::one();
         for _ in 0..10 {
@@ -1063,7 +1063,7 @@ mod tests {
 
     #[test]
     fn test_biguint_to_and_from_bits() {
-        type F = midnight_curves::Fq;
+        type F = xxxx_curves::Fq;
         let zero = BigUint::ZERO;
         let one = BigUint::one();
         for _ in 0..10 {
@@ -1077,7 +1077,7 @@ mod tests {
 
     #[test]
     fn test_lower_than_biguint() {
-        type F = midnight_curves::Fq;
+        type F = xxxx_curves::Fq;
         let zero = BigUint::ZERO;
         let one = BigUint::one();
         for _ in 0..10 {

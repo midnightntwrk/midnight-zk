@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -16,11 +16,11 @@
 use std::{collections::HashMap, marker::PhantomData};
 
 use ff::PrimeField;
-use midnight_proofs::{
+use num_traits::Zero;
+use xxxx_proofs::{
     circuit::{Chip, Layouter, Value},
     plonk::{ConstraintSystem, Error},
 };
-use num_traits::Zero;
 
 use super::{
     cpu_utils::{compute_optimal_limb_sizes, process_limb_sizes},

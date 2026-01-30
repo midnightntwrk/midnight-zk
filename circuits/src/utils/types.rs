@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -15,10 +15,10 @@ use core::fmt::Debug;
 use std::ops::{Add, Neg};
 
 use ff::PrimeField;
-use midnight_proofs::circuit::Value;
 use num_bigint::BigUint;
 #[cfg(any(test, feature = "testing"))]
 use rand::RngCore;
+use xxxx_proofs::circuit::Value;
 
 use crate::{
     types::AssignedNative,

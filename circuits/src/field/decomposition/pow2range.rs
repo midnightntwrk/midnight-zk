@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@
 use std::{cell::RefCell, collections::HashSet, fmt::Debug, marker::PhantomData, rc::Rc};
 
 use ff::PrimeField;
-use midnight_proofs::{
+use xxxx_proofs::{
     circuit::{Chip, Layouter, Region, Value},
     plonk::{Advice, Column, ConstraintSystem, Error, Fixed, Selector, TableColumn},
     poly::Rotation,
@@ -242,12 +242,12 @@ mod tests {
     use std::marker::PhantomData;
 
     use halo2curves::pasta::Fp;
-    use midnight_proofs::{
+    use rand::Rng;
+    use xxxx_proofs::{
         circuit::{Layouter, SimpleFloorPlanner, Value},
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem, Error},
     };
-    use rand::Rng;
 
     use super::*;
 

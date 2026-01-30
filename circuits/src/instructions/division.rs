@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -17,10 +17,10 @@
 //! bounded integers that fit in the native field.
 
 use ff::PrimeField;
-use midnight_proofs::{circuit::Layouter, plonk::Error};
 use num_bigint::BigUint;
 use num_integer::Integer;
 use num_traits::{One, Zero};
+use xxxx_proofs::{circuit::Layouter, plonk::Error};
 
 use crate::{
     instructions::{ArithInstructions, RangeCheckInstructions},
@@ -57,7 +57,7 @@ where
     ///    `Assigned::Element` can take.
     ///
     /// ```
-    /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
+    /// # xxxx_circuits::run_test_native_gadget!(chip, layouter, {
     /// let x = chip.assign(&mut layouter, Value::known(F::from(17)))?;
     ///
     /// let (q, r) = chip.div_rem(&mut layouter, &x, 5u64.into(), None)?;
@@ -130,7 +130,7 @@ where
     ///    `Assigned::Element` can take.
     ///
     /// ```
-    /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
+    /// # xxxx_circuits::run_test_native_gadget!(chip, layouter, {
     /// let x = chip.assign(&mut layouter, Value::known(F::from(17)))?;
     ///
     /// let r = chip.rem(&mut layouter, &x, 5u64.into(), None)?;
@@ -153,7 +153,7 @@ pub(crate) mod tests {
     use std::marker::PhantomData;
 
     use ff::FromUniformBytes;
-    use midnight_proofs::{
+    use xxxx_proofs::{
         circuit::{SimpleFloorPlanner, Value},
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem},

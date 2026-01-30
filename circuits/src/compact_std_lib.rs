@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@
 // limitations under the License.
 
 //! A collection of a full set of functionalities needed by compact &
-//! other components of Midnight's stack.
+//! other components of XXXX's stack.
 //!
 //! This library uses a fixed configuration, meaning that regardless of what one
 //! uses, it will always consist of the same columns, lookups, permutation
@@ -33,8 +33,10 @@ use bincode::{config::standard, Decode, Encode};
 use ff::{Field, PrimeField};
 use group::{prime::PrimeCurveAffine, Group};
 use halo2curves::secp256k1::{self, Secp256k1};
-use midnight_curves::{G1Affine, G1Projective};
-use midnight_proofs::{
+use num_bigint::BigUint;
+use rand::{CryptoRng, RngCore};
+use xxxx_curves::{G1Affine, G1Projective};
+use xxxx_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
     dev::cost_model::{circuit_model, CircuitModel},
     plonk::{k_from_circuit, prepare, Circuit, ConstraintSystem, Error, ProvingKey, VerifyingKey},
@@ -48,8 +50,6 @@ use midnight_proofs::{
     transcript::{CircuitTranscript, Hashable, Sampleable, Transcript, TranscriptHash},
     utils::SerdeFormat,
 };
-use num_bigint::BigUint;
-use rand::{CryptoRng, RngCore};
 
 use crate::{
     biguint::biguint_gadget::BigUintGadget,
@@ -88,16 +88,16 @@ use crate::{
     vec::{vector_gadget::VectorGadget, AssignedVector, Vectorizable},
 };
 
-type C = midnight_curves::JubjubExtended;
-type F = midnight_curves::Fq;
+type C = xxxx_curves::JubjubExtended;
+type F = xxxx_curves::Fq;
 
 // Type aliases, for readability.
 type NG = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
 type Secp256k1BaseChip = FieldChip<F, secp256k1::Fp, MEP, NG>;
 type Secp256k1ScalarChip = FieldChip<F, secp256k1::Fq, MEP, NG>;
 type Secp256k1Chip = ForeignEccChip<F, Secp256k1, MEP, Secp256k1ScalarChip, NG>;
-type Bls12381BaseChip = FieldChip<F, midnight_curves::Fp, MEP, NG>;
-type Bls12381Chip = ForeignEccChip<F, midnight_curves::G1Projective, MEP, NG, NG>;
+type Bls12381BaseChip = FieldChip<F, xxxx_curves::Fp, MEP, NG>;
+type Bls12381Chip = ForeignEccChip<F, xxxx_curves::G1Projective, MEP, NG, NG>;
 
 const ZKSTD_VERSION: u32 = 1;
 
@@ -221,12 +221,12 @@ pub struct ZkStdLibConfig {
     jubjub_config: Option<EccConfig>,
     sha256_config: Option<Sha256Config>,
     sha512_config: Option<Sha512Config>,
-    poseidon_config: Option<PoseidonConfig<midnight_curves::Fq>>,
+    poseidon_config: Option<PoseidonConfig<xxxx_curves::Fq>>,
     secp256k1_scalar_config: Option<FieldChipConfig>,
     secp256k1_config: Option<ForeignEccConfig<Secp256k1>>,
-    bls12_381_config: Option<ForeignEccConfig<midnight_curves::G1Projective>>,
+    bls12_381_config: Option<ForeignEccConfig<xxxx_curves::G1Projective>>,
     base64_config: Option<Base64Config>,
-    automaton_config: Option<AutomatonConfig<StdLibParser, midnight_curves::Fq>>,
+    automaton_config: Option<AutomatonConfig<StdLibParser, xxxx_curves::Fq>>,
 }
 
 /// The `ZkStdLib` exposes all tools that are used in circuit generation.
@@ -330,34 +330,35 @@ impl ZkStdLib {
 
     /// Configure [ZkStdLib] from scratch.
     pub fn configure(meta: &mut ConstraintSystem<F>, arch: ZkStdLibArch) -> ZkStdLibConfig {
-        let nb_advice_cols = [
-            NB_ARITH_COLS,
-            arch.nr_pow2range_cols as usize,
-            arch.jubjub as usize * NB_EDWARDS_COLS,
-            arch.poseidon as usize * NB_POSEIDON_ADVICE_COLS,
-            arch.sha256 as usize * NB_SHA256_ADVICE_COLS,
-            arch.sha512 as usize * NB_SHA512_ADVICE_COLS,
-            arch.secp256k1 as usize
-                * max(
-                    nb_field_chip_columns::<F, secp256k1::Fq, MEP>(),
-                    nb_foreign_ecc_chip_columns::<F, Secp256k1, MEP, secp256k1::Fq>(),
-                ),
-            arch.bls12_381 as usize
-                * max(
-                    nb_field_chip_columns::<F, midnight_curves::Fp, MEP>(),
-                    nb_foreign_ecc_chip_columns::<
-                        F,
-                        midnight_curves::G1Projective,
-                        MEP,
-                        midnight_curves::Fp,
-                    >(),
-                ),
-            arch.base64 as usize * NB_BASE64_ADVICE_COLS,
-            NB_AUTOMATA_COLS,
-        ]
-        .into_iter()
-        .max()
-        .unwrap_or(0);
+        let nb_advice_cols =
+            [
+                NB_ARITH_COLS,
+                arch.nr_pow2range_cols as usize,
+                arch.jubjub as usize * NB_EDWARDS_COLS,
+                arch.poseidon as usize * NB_POSEIDON_ADVICE_COLS,
+                arch.sha256 as usize * NB_SHA256_ADVICE_COLS,
+                arch.sha512 as usize * NB_SHA512_ADVICE_COLS,
+                arch.secp256k1 as usize
+                    * max(
+                        nb_field_chip_columns::<F, secp256k1::Fq, MEP>(),
+                        nb_foreign_ecc_chip_columns::<F, Secp256k1, MEP, secp256k1::Fq>(),
+                    ),
+                arch.bls12_381 as usize
+                    * max(
+                        nb_field_chip_columns::<F, xxxx_curves::Fp, MEP>(),
+                        nb_foreign_ecc_chip_columns::<
+                            F,
+                            xxxx_curves::G1Projective,
+                            MEP,
+                            xxxx_curves::Fp,
+                        >(),
+                    ),
+                arch.base64 as usize * NB_BASE64_ADVICE_COLS,
+                NB_AUTOMATA_COLS,
+            ]
+            .into_iter()
+            .max()
+            .unwrap_or(0);
 
         let nb_fixed_cols = [
             NB_ARITH_FIXED_COLS,
@@ -538,7 +539,7 @@ impl ZkStdLib {
     /// Assert that a given assigned bit is true.
     ///
     /// ```
-    /// # midnight_circuits::run_test_std_lib!(chip, layouter, 13, {
+    /// # xxxx_circuits::run_test_std_lib!(chip, layouter, 13, {
     /// let input: AssignedBit<F> = chip.assign_fixed(layouter, true)?;
     /// chip.assert_true(layouter, &input)?;
     /// # });
@@ -563,7 +564,7 @@ impl ZkStdLib {
     /// Returns `1` iff `x < y`.
     ///
     /// ```
-    /// # midnight_circuits::run_test_std_lib!(chip, layouter, 13, {
+    /// # xxxx_circuits::run_test_std_lib!(chip, layouter, 13, {
     /// let x: AssignedNative<F> = chip.assign_fixed(layouter, F::from(127))?;
     /// let y: AssignedNative<F> = chip.assign_fixed(layouter, F::from(212))?;
     /// let condition = chip.lower_than(layouter, &x, &y, 8)?;
@@ -577,7 +578,7 @@ impl ZkStdLib {
     /// If `x` or `y` are not in the range `[0, 2^n)`.
     ///
     /// ```should_panic
-    /// # midnight_circuits::run_test_std_lib!(chip, layouter, 13, {
+    /// # xxxx_circuits::run_test_std_lib!(chip, layouter, 13, {
     /// let x: AssignedNative<F> = chip.assign_fixed(layouter, F::from(127))?;
     /// let y: AssignedNative<F> = chip.assign_fixed(layouter, F::from(212))?;
     /// let _condition = chip.lower_than(layouter, &x, &y, 7)?;
@@ -601,7 +602,7 @@ impl ZkStdLib {
     /// Poseidon hash from a slice of native valure into a native value.
     ///
     /// ```
-    /// # midnight_circuits::run_test_std_lib!(chip, layouter, 13, {
+    /// # xxxx_circuits::run_test_std_lib!(chip, layouter, 13, {
     /// let x: AssignedNative<F> = chip.assign_fixed(layouter, F::from(127))?;
     /// let y: AssignedNative<F> = chip.assign_fixed(layouter, F::from(212))?;
     ///
@@ -637,7 +638,7 @@ impl ZkStdLib {
     /// input/output in bytes.
     /// We assume the field uses little endian encoding.
     /// ```
-    /// # midnight_circuits::run_test_std_lib!(chip, layouter, 13, {
+    /// # xxxx_circuits::run_test_std_lib!(chip, layouter, 13, {
     /// let input = chip.assign_many(
     ///     layouter,
     ///     &[
@@ -1189,13 +1190,13 @@ impl<'a, R: Relation> MidnightCircuit<'a, R> {
     }
 }
 
-/// A verifier key of a Midnight circuit.
+/// A verifier key of a XXXX circuit.
 #[derive(Clone, Debug)]
 pub struct MidnightVK {
     architecture: ZkStdLibArch,
     max_bit_len: u8,
     nb_public_inputs: usize,
-    vk: VerifyingKey<midnight_curves::Fq, KZGCommitmentScheme<midnight_curves::Bls12>>,
+    vk: VerifyingKey<xxxx_curves::Fq, KZGCommitmentScheme<xxxx_curves::Bls12>>,
 }
 
 impl MidnightVK {
@@ -1254,21 +1255,19 @@ impl MidnightVK {
         self.vk.get_domain().k() as u8
     }
 
-    /// The underlying midnight-proofs verifying key.
-    pub fn vk(
-        &self,
-    ) -> &VerifyingKey<midnight_curves::Fq, KZGCommitmentScheme<midnight_curves::Bls12>> {
+    /// The underlying xxxx-proofs verifying key.
+    pub fn vk(&self) -> &VerifyingKey<xxxx_curves::Fq, KZGCommitmentScheme<xxxx_curves::Bls12>> {
         &self.vk
     }
 }
 
-/// A proving key of a Midnight circuit.
+/// A proving key of a XXXX circuit.
 #[derive(Clone, Debug)]
 pub struct MidnightPK<R: Relation> {
     max_bit_len: u8,
     k: u8,
     relation: R,
-    pk: ProvingKey<midnight_curves::Fq, KZGCommitmentScheme<midnight_curves::Bls12>>,
+    pk: ProvingKey<xxxx_curves::Fq, KZGCommitmentScheme<xxxx_curves::Bls12>>,
 }
 
 impl<Rel: Relation> MidnightPK<Rel> {
@@ -1333,10 +1332,8 @@ impl<Rel: Relation> MidnightPK<Rel> {
         self.k
     }
 
-    /// The underlying midnight-proofs proving key.
-    pub fn pk(
-        &self,
-    ) -> &ProvingKey<midnight_curves::Fq, KZGCommitmentScheme<midnight_curves::Bls12>> {
+    /// The underlying xxxx-proofs proving key.
+    pub fn pk(&self) -> &ProvingKey<xxxx_curves::Fq, KZGCommitmentScheme<xxxx_curves::Bls12>> {
         &self.pk
     }
 }
@@ -1360,13 +1357,13 @@ impl<Rel: Relation> MidnightPK<Rel> {
 /// # Example
 ///
 /// ```
-/// # use midnight_circuits::{
+/// # use xxxx_circuits::{
 /// #     compact_std_lib::{self, Relation, ZkStdLib, ZkStdLibArch},
 /// #     instructions::{AssignmentInstructions, PublicInputInstructions},
 /// #     testing_utils::plonk_api::filecoin_srs,
 /// #     types::{AssignedByte, Instantiable},
 /// # };
-/// # use midnight_proofs::{
+/// # use xxxx_proofs::{
 /// #     circuit::{Layouter, Value},
 /// #     plonk::Error,
 /// # };
@@ -1374,7 +1371,7 @@ impl<Rel: Relation> MidnightPK<Rel> {
 /// # use rand_chacha::ChaCha8Rng;
 /// # use sha2::Digest;
 /// #
-/// type F = midnight_curves::Fq;
+/// type F = xxxx_curves::Fq;
 ///
 /// #[derive(Clone, Default)]
 /// struct ShaPreImageCircuit;
@@ -1569,7 +1566,7 @@ impl<R: Relation> Circuit<F> for MidnightCircuit<'_, R> {
 /// computed automatically). This step does not need to be done if you know that
 /// the SRS already has the correct size.
 pub fn downsize_srs_for_relation<R: Relation>(
-    srs: &mut ParamsKZG<midnight_curves::Bls12>,
+    srs: &mut ParamsKZG<xxxx_curves::Bls12>,
     relation: &R,
 ) {
     srs.downsize_from_circuit(&MidnightCircuit::from_relation(relation))
@@ -1577,10 +1574,7 @@ pub fn downsize_srs_for_relation<R: Relation>(
 
 /// Generates a verifying key for a `MidnightCircuit<R>` circuit. Downsizes the
 /// parameters to match the size of the Relation.
-pub fn setup_vk<R: Relation>(
-    params: &ParamsKZG<midnight_curves::Bls12>,
-    relation: &R,
-) -> MidnightVK {
+pub fn setup_vk<R: Relation>(params: &ParamsKZG<xxxx_curves::Bls12>, relation: &R) -> MidnightVK {
     let circuit = MidnightCircuit::from_relation(relation);
     let vk = BlstPLONK::<MidnightCircuit<R>>::setup_vk(params, &circuit);
 
@@ -1617,7 +1611,7 @@ pub fn setup_pk<R: Relation>(relation: &R, vk: &MidnightVK) -> MidnightPK<R> {
 /// Produces a proof of relation `R` for the given instance (using the given
 /// proving key and witness).
 pub fn prove<R: Relation, H: TranscriptHash>(
-    params: &ParamsKZG<midnight_curves::Bls12>,
+    params: &ParamsKZG<xxxx_curves::Bls12>,
     pk: &MidnightPK<R>,
     relation: &R,
     instance: &R::Instance,
@@ -1651,7 +1645,7 @@ where
 /// Verifies the given proof of relation `R` with respect to the given instance.
 /// Returns `Ok(())` if the proof is valid.
 pub fn verify<R: Relation, H: TranscriptHash>(
-    params_verifier: &ParamsVerifierKZG<midnight_curves::Bls12>,
+    params_verifier: &ParamsVerifierKZG<xxxx_curves::Bls12>,
     vk: &MidnightVK,
     instance: &R::Instance,
     committed_instance: Option<G1Affine>,
@@ -1683,7 +1677,7 @@ where
 ///
 /// Returns `Ok(())` if all proofs are valid.
 pub fn batch_verify<H: TranscriptHash>(
-    params_verifier: &ParamsVerifierKZG<midnight_curves::Bls12>,
+    params_verifier: &ParamsVerifierKZG<xxxx_curves::Bls12>,
     vks: &[MidnightVK],
     pis: &[Vec<F>],
     proofs: &[Vec<u8>],
@@ -1712,12 +1706,12 @@ where
 
             let mut transcript = CircuitTranscript::init_from_bytes(proof);
             let dual_msm = prepare::<
-                midnight_curves::Fq,
-                KZGCommitmentScheme<midnight_curves::Bls12>,
+                xxxx_curves::Fq,
+                KZGCommitmentScheme<xxxx_curves::Bls12>,
                 CircuitTranscript<H>,
             >(
                 &vk.vk,
-                &[&[midnight_curves::G1Projective::identity()]],
+                &[&[xxxx_curves::G1Projective::identity()]],
                 // TODO: We could batch here proofs with the same vk.
                 &[&[pi]],
                 &mut transcript,
