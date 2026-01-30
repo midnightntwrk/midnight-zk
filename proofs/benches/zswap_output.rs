@@ -1,11 +1,11 @@
 //! Bechmarks for the prover and verifier performance on the Zswap-output
 //! circuit from the zswap protocol.
-//!
-//! For more details, visit:
-//! https://github.com/midnightntwrk/xxxx-ledger-prototype/blob/main/zswap/zswap.compact
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use ff::Field;
 use group::Group;
+use rand::{rngs::OsRng, Rng, SeedableRng};
+use rand_chacha::ChaCha8Rng;
+use sha2::Digest;
 use xxxx_circuits::{
     compact_std_lib::{MidnightCircuit, Relation, ZkStdLib},
     ecc::{hash_to_curve::HashToCurveGadget, native::EccChip},
@@ -16,6 +16,7 @@ use xxxx_circuits::{
     },
     types::{AssignedBit, AssignedByte, AssignedNative, AssignedNativePoint, Instantiable},
 };
+use xxxx_curves::{Bls12, Fr as JubjubScalar, JubjubExtended as Jubjub, JubjubSubgroup};
 use xxxx_proofs::{
     circuit::{Layouter, Value},
     plonk::{
@@ -27,10 +28,6 @@ use xxxx_proofs::{
     },
     transcript::{CircuitTranscript, Transcript},
 };
-use rand::{rngs::OsRng, Rng, SeedableRng};
-use rand_chacha::ChaCha8Rng;
-use sha2::Digest;
-use xxxx_curves::{Bls12, Fr as JubjubScalar, JubjubExtended as Jubjub, JubjubSubgroup};
 
 type F = xxxx_curves::Fq;
 type C = xxxx_curves::G1Projective;

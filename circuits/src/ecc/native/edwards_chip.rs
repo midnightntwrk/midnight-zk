@@ -1,4 +1,4 @@
-// This file is part of MIDNIGHT-ZK.
+// This file is part of XXXX-ZK.
 // Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -972,7 +972,7 @@ impl<C: EdwardsCurve> EccChip<C> {
 
 /// This conversion should not exist for Base -> Scalar. It is a tech debt. We
 /// should fix this as soon as compact supports types (other than assigned
-/// native) <https://github.com/midnightntwrk/xxxx-circuits/issues/433>
+/// native)
 impl<C: EdwardsCurve>
     ConversionInstructions<C::Base, AssignedNative<C::Base>, AssignedScalarOfNativeCurve<C>>
     for EccChip<C>

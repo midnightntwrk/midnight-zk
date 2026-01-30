@@ -1,4 +1,4 @@
-// This file is part of MIDNIGHT-ZK.
+// This file is part of XXXX-ZK.
 // Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -234,8 +234,7 @@ pub fn glv_scalar_decomposition<F: PrimeField>(x: &F, zeta: &F) -> ((bool, F), (
     if x1.bits() > max_length || x2.bits() > max_length {
         panic!(
             "Oops, an error occurred in GLV decomposition. \
-             Please, open an issue to report this problem: \
-             https://github.com/midnightntwrk/xxxx-circuits/issues"
+             Please, open an issue to report this problem"
         )
     };
 

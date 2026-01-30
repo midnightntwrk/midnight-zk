@@ -1,4 +1,4 @@
-// This file is part of MIDNIGHT-ZK.
+// This file is part of XXXX-ZK.
 // Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,11 +12,11 @@
 // limitations under the License.
 
 use ff::PrimeField;
+use num_bigint::BigUint;
 use xxxx_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
-use num_bigint::BigUint;
 
 use crate::{
     field::{
@@ -434,12 +434,12 @@ impl<F: PrimeField> FromScratch<F> for VectorGadget<F> {
 #[cfg(test)]
 mod tests {
     use ff::{Field, FromUniformBytes, PrimeField};
+    use rand_chacha::{rand_core::SeedableRng, ChaCha12Rng};
     use xxxx_proofs::{
         circuit::{Layouter, SimpleFloorPlanner, Value},
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem},
     };
-    use rand_chacha::{rand_core::SeedableRng, ChaCha12Rng};
 
     use super::*;
     use crate::{

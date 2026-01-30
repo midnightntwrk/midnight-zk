@@ -1,4 +1,4 @@
-//! Examples on how to perform sha256 operations using midnight_lib.
+//! Examples on how to perform sha256 operations using xxxx_lib.
 //!
 //! In this example we show how to build a circuit for proving the knowledge of
 //! a SHA256 preimage. Concretely, given public input x, we will argue that we

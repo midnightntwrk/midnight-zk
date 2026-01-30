@@ -1,4 +1,4 @@
-// This file is part of MIDNIGHT-ZK.
+// This file is part of XXXX-ZK.
 // Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -192,13 +192,12 @@ plonk_api!(
 /// panics if:
 ///
 /// 1. The VK does not exist. In this case we are adding new functionality to
-///    midnight_lib, and should change the ChangeLog accordingly. To create the
-///    VK, re-run the example with CHANGE_VK=MINOR`.
+///    xxxx_lib, and should change the ChangeLog accordingly. To create the VK,
+///    re-run the example with CHANGE_VK=MINOR`.
 ///
 /// 2. The VK exists but is different. In this case we are introducing a
-///    breaking change to midnight_lib, and should change the ChangeLog
-///    accordingly. To update the VK, re-run the example with
-///    CHANGE_VK=BREAKING.
+///    breaking change to xxxx_lib, and should change the ChangeLog accordingly.
+///    To update the VK, re-run the example with CHANGE_VK=BREAKING.
 pub fn check_vk<Relation: Circuit<xxxx_curves::Fq>>(vk: &MidnightVK) {
     let circuit_name = std::any::type_name::<Relation>()
         .split("::")
@@ -214,7 +213,7 @@ pub fn check_vk<Relation: Circuit<xxxx_curves::Fq>>(vk: &MidnightVK) {
     let vk_hash: [u8; 32] = sha2::Sha256::digest(&vk_buffer).into();
 
     let vk_path = Path::new(&vk_name);
-    let error_msg = "The VK does not exist. This means that you are adding new functionality to midnight_lib. Make sure to update the CHANGELOG. To create the vk, re-run the example with env var CHANGE_VK=MINOR";
+    let error_msg = "The VK does not exist. This means that you are adding new functionality to xxxx_lib. Make sure to update the CHANGELOG. To create the vk, re-run the example with env var CHANGE_VK=MINOR";
     if File::open(vk_path).is_err() {
         match std::env::var("CHANGE_VK") {
             Ok(value) => {
@@ -236,7 +235,7 @@ pub fn check_vk<Relation: Circuit<xxxx_curves::Fq>>(vk: &MidnightVK) {
         .try_into()
         .expect("The serialized VK is expected to contain 32 bytes");
 
-    let error_msg = "The VK does not match. This means that you are changing functionality from midnight_lib. Make sure to update the CHANGELOG with breaking changes. To create the vk, re-run the example with env var CHANGE_VK=BREAKING";
+    let error_msg = "The VK does not match. This means that you are changing functionality from xxxx_lib. Make sure to update the CHANGELOG with breaking changes. To create the vk, re-run the example with env var CHANGE_VK=BREAKING";
     if vk_hash != read_vk_hash {
         match std::env::var("CHANGE_VK") {
             Ok(var) => {

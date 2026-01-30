@@ -5,7 +5,6 @@ version = "0.1.1"
 authors = ["dignifiedquire <me@dignifiedquire.com>", "XXXX team"]
 edition = "2018"
 license = "MIT/Apache-2.0"
-repository = "https://github.com/midnightntwrk/xxxx-zk/"
 categories = ["cryptography", "algorithms"]
 readme = "README.md"
 

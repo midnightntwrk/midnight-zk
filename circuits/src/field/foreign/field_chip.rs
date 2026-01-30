@@ -1,4 +1,4 @@
-// This file is part of MIDNIGHT-ZK.
+// This file is part of XXXX-ZK.
 // Copyright (C) 2025 XXXX
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,8 +12,6 @@
 // limitations under the License.
 
 //! `field_chip` is a chip for performing arithmetic over emulated fields.
-//!  See [here](https://github.com/midnightntwrk/xxxx-circuits/wiki/Foreign-Field-Arithmetic)
-//!  for a description of the techniques that we use in this implementation.
 
 use std::{
     cmp::{max, min},

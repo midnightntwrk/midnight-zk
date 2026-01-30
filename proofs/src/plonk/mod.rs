@@ -261,7 +261,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> VerifyingK
 
         // We use the debug implementation to add the gates and domain to the hashed
         // buffer. We should eventually move away from debug implementation for
-        // this purpose. See https://github.com/midnightntwrk/halo2/issues/5
+        // this purpose.
         buffer.extend_from_slice(format!("{:?}", vk.get_domain().pinned()).as_bytes());
         buffer.extend_from_slice(format!("{:?}", vk.cs().pinned()).as_bytes());
 
