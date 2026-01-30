@@ -20,7 +20,13 @@
 //!
 //! See: <https://github.com/RustCrypto/elliptic-curves/issues/531>
 
-use subtle::{Choice, ConstantTimeEq};
+use core::{
+    iter::{Product, Sum},
+    ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign},
+};
+
+use ff::{Field, PrimeField};
+use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 
 /// secp256k1 base field element with safe comparison semantics.
 ///
@@ -106,5 +112,264 @@ impl ConstantTimeEq for Fp {
     #[inline]
     fn ct_eq(&self, other: &Self) -> Choice {
         self.0.normalize().ct_eq(&other.0.normalize())
+    }
+}
+
+impl ConditionallySelectable for Fp {
+    #[inline]
+    fn conditional_select(a: &Self, b: &Self, choice: Choice) -> Self {
+        Self(k256::FieldElement::conditional_select(&a.0, &b.0, choice))
+    }
+}
+
+// ============================================================================
+// Arithmetic (delegate to inner type)
+// ============================================================================
+
+impl Add for Fp {
+    type Output = Self;
+    #[inline]
+    fn add(self, rhs: Self) -> Self {
+        Self(self.0 + rhs.0)
+    }
+}
+
+impl Add<&Fp> for Fp {
+    type Output = Self;
+    #[inline]
+    fn add(self, rhs: &Fp) -> Self {
+        Self(self.0 + rhs.0)
+    }
+}
+
+impl AddAssign for Fp {
+    #[inline]
+    fn add_assign(&mut self, rhs: Self) {
+        self.0 += rhs.0;
+    }
+}
+
+impl AddAssign<&Fp> for Fp {
+    #[inline]
+    fn add_assign(&mut self, rhs: &Fp) {
+        self.0 += rhs.0;
+    }
+}
+
+impl Sub for Fp {
+    type Output = Self;
+    #[inline]
+    fn sub(self, rhs: Self) -> Self {
+        Self(self.0 - rhs.0)
+    }
+}
+
+impl Sub<&Fp> for Fp {
+    type Output = Self;
+    #[inline]
+    fn sub(self, rhs: &Fp) -> Self {
+        Self(self.0 - rhs.0)
+    }
+}
+
+impl SubAssign for Fp {
+    #[inline]
+    fn sub_assign(&mut self, rhs: Self) {
+        self.0 -= rhs.0;
+    }
+}
+
+impl SubAssign<&Fp> for Fp {
+    #[inline]
+    fn sub_assign(&mut self, rhs: &Fp) {
+        self.0 -= rhs.0;
+    }
+}
+
+impl Mul for Fp {
+    type Output = Self;
+    #[inline]
+    fn mul(self, rhs: Self) -> Self {
+        Self(self.0 * rhs.0)
+    }
+}
+
+impl Mul<&Fp> for Fp {
+    type Output = Self;
+    #[inline]
+    fn mul(self, rhs: &Fp) -> Self {
+        Self(self.0 * rhs.0)
+    }
+}
+
+impl MulAssign for Fp {
+    #[inline]
+    fn mul_assign(&mut self, rhs: Self) {
+        self.0 *= rhs.0;
+    }
+}
+
+impl MulAssign<&Fp> for Fp {
+    #[inline]
+    fn mul_assign(&mut self, rhs: &Fp) {
+        self.0 *= rhs.0;
+    }
+}
+
+impl Neg for Fp {
+    type Output = Self;
+    #[inline]
+    fn neg(self) -> Self {
+        Self(-self.0)
+    }
+}
+
+impl Neg for &Fp {
+    type Output = Fp;
+    #[inline]
+    fn neg(self) -> Fp {
+        Fp(-self.0)
+    }
+}
+
+// ============================================================================
+// Sum and Product traits (required by Field)
+// ============================================================================
+
+impl Sum for Fp {
+    fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
+        iter.fold(Self::ZERO, |acc, x| acc + x)
+    }
+}
+
+impl<'a> Sum<&'a Fp> for Fp {
+    fn sum<I: Iterator<Item = &'a Fp>>(iter: I) -> Self {
+        iter.fold(Self::ZERO, |acc, x| acc + x)
+    }
+}
+
+impl Product for Fp {
+    fn product<I: Iterator<Item = Self>>(iter: I) -> Self {
+        iter.fold(Self::ONE, |acc, x| acc * x)
+    }
+}
+
+impl<'a> Product<&'a Fp> for Fp {
+    fn product<I: Iterator<Item = &'a Fp>>(iter: I) -> Self {
+        iter.fold(Self::ONE, |acc, x| acc * x)
+    }
+}
+
+// ============================================================================
+// Field trait implementation
+// ============================================================================
+
+impl Field for Fp {
+    const ZERO: Self = Self::ZERO;
+    const ONE: Self = Self::ONE;
+
+    fn random(rng: impl rand_core::RngCore) -> Self {
+        Self(k256::FieldElement::random(rng))
+    }
+
+    fn square(&self) -> Self {
+        Self(self.0.square())
+    }
+
+    fn double(&self) -> Self {
+        Self(self.0.double())
+    }
+
+    fn invert(&self) -> CtOption<Self> {
+        self.0.invert().map(Self)
+    }
+
+    fn sqrt(&self) -> CtOption<Self> {
+        self.0.sqrt().map(Self)
+    }
+
+    fn sqrt_ratio(num: &Self, div: &Self) -> (Choice, Self) {
+        let (choice, result) = k256::FieldElement::sqrt_ratio(&num.0, &div.0);
+        (choice, Self(result))
+    }
+}
+
+// ============================================================================
+// PrimeField trait implementation
+// ============================================================================
+
+impl PrimeField for Fp {
+    type Repr = k256::FieldBytes;
+
+    const MODULUS: &'static str = <k256::FieldElement as PrimeField>::MODULUS;
+    const NUM_BITS: u32 = <k256::FieldElement as PrimeField>::NUM_BITS;
+    const CAPACITY: u32 = <k256::FieldElement as PrimeField>::CAPACITY;
+    const TWO_INV: Self = Self(<k256::FieldElement as PrimeField>::TWO_INV);
+    const MULTIPLICATIVE_GENERATOR: Self =
+        Self(<k256::FieldElement as PrimeField>::MULTIPLICATIVE_GENERATOR);
+    const S: u32 = <k256::FieldElement as PrimeField>::S;
+    const ROOT_OF_UNITY: Self = Self(<k256::FieldElement as PrimeField>::ROOT_OF_UNITY);
+    const ROOT_OF_UNITY_INV: Self = Self(<k256::FieldElement as PrimeField>::ROOT_OF_UNITY_INV);
+    const DELTA: Self = Self(<k256::FieldElement as PrimeField>::DELTA);
+
+    fn from_repr(repr: Self::Repr) -> CtOption<Self> {
+        k256::FieldElement::from_repr(repr).map(Self)
+    }
+
+    fn to_repr(&self) -> Self::Repr {
+        // to_repr normalizes internally, so this is safe.
+        self.0.to_repr()
+    }
+
+    fn is_odd(&self) -> Choice {
+        // Use our safe normalized version.
+        Fp::is_odd(self)
+    }
+}
+
+// ============================================================================
+// Conversions
+// ============================================================================
+
+impl From<k256::FieldElement> for Fp {
+    #[inline]
+    fn from(fe: k256::FieldElement) -> Self {
+        Self(fe)
+    }
+}
+
+impl From<Fp> for k256::FieldElement {
+    #[inline]
+    fn from(fp: Fp) -> Self {
+        fp.0
+    }
+}
+
+impl From<u64> for Fp {
+    #[inline]
+    fn from(val: u64) -> Self {
+        Self(k256::FieldElement::from(val))
+    }
+}
+
+impl Fp {
+    /// Create a field element from a u64 value.
+    #[inline]
+    pub const fn from_u64(val: u64) -> Self {
+        Self(k256::FieldElement::from_u64(val))
+    }
+}
+
+impl Fp {
+    /// Create a field element from bytes (big-endian).
+    #[inline]
+    pub fn from_bytes(bytes: &k256::FieldBytes) -> CtOption<Self> {
+        k256::FieldElement::from_bytes(bytes).map(Self)
+    }
+
+    /// Serialize to bytes (big-endian). Normalizes internally.
+    #[inline]
+    pub fn to_bytes(&self) -> k256::FieldBytes {
+        self.0.to_bytes()
     }
 }
