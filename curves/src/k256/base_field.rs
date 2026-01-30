@@ -373,3 +373,62 @@ impl Fp {
         self.0.to_bytes()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Tests that compare the inner (unsafe) type with the safe wrapper.
+
+    /// k256::FieldElement.is_zero() panics on unnormalized input.
+    /// In release builds, it would return incorrect results instead of panicking.
+    #[test]
+    #[should_panic(expected = "assertion failed: self.normalized")]
+    fn test_raw_k256_is_zero_panics_without_normalize() {
+        let raw_a = k256::FieldElement::from(12345u64);
+        let raw_zero = raw_a - raw_a;
+        // This panics in debug builds because raw_zero is not normalized.
+        let _ = raw_zero.is_zero();
+    }
+
+    #[test]
+    fn test_zero_after_subtraction() {
+        let a = Fp::from(12345u64);
+        let zero = a - a;
+
+        assert!(bool::from(zero.is_zero()));
+        assert_eq!(zero, Fp::ZERO);
+    }
+
+    /// k256::FieldElement.is_odd() panics on unnormalized input.
+    #[test]
+    #[should_panic(expected = "assertion failed: self.normalized")]
+    fn test_raw_k256_is_odd_panics_without_normalize() {
+        let raw_a = k256::FieldElement::from(100u64);
+        let raw_b = k256::FieldElement::from(97u64);
+        // Subtraction produces unnormalized results. 100 - 97 = 3 (odd).
+        let diff = raw_a - raw_b;
+        // This panics in debug builds because diff is not normalized.
+        let _ = diff.is_odd();
+    }
+
+    #[test]
+    fn test_is_odd_after_subtraction() {
+        let raw_a = Fp::from(100u64);
+        let raw_b = Fp::from(97u64);
+        let diff = raw_a - raw_b;
+        assert!(bool::from(diff.is_odd()));
+    }
+
+    #[test]
+    fn test_equality_after_multiplication() {
+        const ZETA_BYTES: [u8; 32] = [
+            0x7a, 0xe9, 0x6a, 0x2b, 0x65, 0x7c, 0x07, 0x10, 0x6e, 0x64, 0x47, 0x9e, 0xac, 0x34,
+            0x34, 0xe9, 0x9c, 0xf0, 0x49, 0x75, 0x12, 0xf5, 0x89, 0x95, 0xc1, 0x39, 0x6c, 0x28,
+            0x71, 0x95, 0x01, 0xee,
+        ];
+        let zeta = Fp::from_bytes(&k256::FieldBytes::from(ZETA_BYTES)).expect("Valid ZETA bytes");
+        let zeta_cube = zeta * zeta * zeta;
+        assert_eq!(zeta_cube, Fp::ONE);
+    }
+}
