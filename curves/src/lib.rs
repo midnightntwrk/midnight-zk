@@ -24,6 +24,9 @@ pub mod msm;
 pub mod serde;
 pub mod serde_traits;
 
+mod field_encoding;
+pub use field_encoding::{Endian, FieldEncoding};
+
 // Production curves (always available)
 pub mod bls12_381;
 mod jubjub;
