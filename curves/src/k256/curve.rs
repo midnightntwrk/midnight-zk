@@ -547,10 +547,8 @@ mod tests {
         let zeta_squared = zeta * zeta;
         let zeta_cubed = zeta_squared * zeta;
 
-        // k256's FieldElement requires normalization after arithmetic
-        // for canonical comparison.
-        assert_eq!(zeta_cubed.normalize(), Fp::ONE);
-        assert_ne!(zeta_squared.normalize(), Fp::ONE);
+        assert_eq!(zeta_cubed, Fp::ONE);
+        assert_ne!(zeta_squared, Fp::ONE);
     }
 
     #[test]
