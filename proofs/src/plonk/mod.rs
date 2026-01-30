@@ -488,7 +488,7 @@ where
     F: WithSmallOrderMulGroup<3> + FromUniformBytes<64>,
     CS: PolynomialCommitmentScheme<F>,
 {
-    let nr_blinding_factors = vk.cs.nr_blinding_factors();
+    let nr_blinding_factors = vk.cs.blinding_factors();
     let l_evals = vk.domain.l_i_range(x, xn, (-((nr_blinding_factors + 1) as i32))..=0);
     assert_eq!(l_evals.len(), 2 + nr_blinding_factors);
     let l_last = l_evals[0];

@@ -7,19 +7,18 @@ use crate::{plonk::VerifyingKey, poly::commitment::PolynomialCommitmentScheme};
 /// Construct the commitment to the linearization polynomial
 /// (which will be checked that it opens to 0 at x in the multi-open argument):
 ///
-///  S_0*id_0(x) + y*S_1*id_1(x) + y^2*S_2*id_2(x) + ... + y^m*S_m*id_m(x)
-///        - (h_0 + x^n*h_1 + x^{2n}*h_2 + ... + x^{l*n}*h_l) * (x^n-1),
+///  S_0 * id_0(x) + y * S_1 * id_1(x) + ... + y^m * S_m * id_m(x)
+///        - (h_0 + x^{n-1} * h_1 + ... + x^{l*(n-1)} * h_l) * (x^n-1),
 ///
 /// where:
-/// * y is the batching challenge, for batching independent identities,
+/// * y is the batching challenge,
 /// * x is the evaluation challenge,
-/// * id_j(x) is the result of (partially or fully) evaluating the identity id_j
-///   at x (i.e., a scalar),
+/// * id_j(x) is a (partially or fully) evaluated identity at x,
 /// * S_j is, either,
-///      - (i)  the commitment to a fixed column corresponding to a simple
+///      - (i)  the commitment to a fixed column corresp. to a simple, multipl.
 ///        selector, or,
-///      - (ii) the zero commitment (because the corresponding identity id_i has
-///        been fully evaluated and thus the resulting scalar is part of the
+///      - (ii) the zero commitment (because the corresp. identity id_j has been
+///        fully evaluated and, thus, the resulting scalar is part of the
 ///        constant term of the linearization poly)
 /// * h_k are commitments to the limbs of the quotient polynomial.
 #[allow(clippy::type_complexity)]
