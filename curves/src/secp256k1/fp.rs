@@ -1,7 +1,7 @@
 use core::convert::TryInto;
 
 // use ff::PrimeField;
-use halo2derive::impl_field;
+use field_derive::impl_field;
 use rand_core::RngCore;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 
