@@ -282,16 +282,19 @@ where
 
     let mut new_scalars = Vec::with_capacity(len);
     let mut new_bases = Vec::with_capacity(len);
+    let mut new_fixed_base_scalars = Vec::with_capacity(len);
 
     msms.iter_mut().zip(scalars.iter()).for_each(|(msm, s)| {
         msm.scale(*s);
         new_scalars.extend(&msm.scalars);
         new_bases.extend(&msm.bases);
+        new_fixed_base_scalars.extend(&msm.fixed_base_indices);
     });
 
     MSMKZG {
         scalars: new_scalars,
         bases: new_bases,
+        fixed_base_indices: new_fixed_base_scalars,
     }
 }
 
