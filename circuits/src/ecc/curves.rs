@@ -203,6 +203,42 @@ impl WeierstrassCurve for Secp256k1 {
     }
 }
 
+// Implementation for K256 (secp256k1 using k256 crate).
+use midnight_curves::k256::{Fp as K256Fp, K256Affine, K256};
+
+impl CircuitCurve for K256 {
+    type Base = K256Fp;
+    type CryptographicGroup = K256;
+
+    const NUM_BITS_SUBGROUP: u32 = 256;
+
+    fn coordinates(&self) -> Option<(Self::Base, Self::Base)> {
+        let affine = self.to_affine();
+        Some((affine.x(), affine.y()))
+    }
+
+    fn from_xy(x: Self::Base, y: Self::Base) -> Option<Self> {
+        K256Affine::from_xy(x, y).map(|p| p.into())
+    }
+
+    fn into_subgroup(self) -> Self::CryptographicGroup {
+        self
+    }
+}
+
+impl WeierstrassCurve for K256 {
+    const A: Self::Base = K256Fp::ZERO;
+    const B: Self::Base = K256Fp::from_u64(7);
+
+    fn base_zeta() -> Self::Base {
+        K256::base_zeta()
+    }
+
+    fn scalar_zeta() -> Self::Scalar {
+        K256::scalar_zeta()
+    }
+}
+
 // Implementation for Bls12-381.
 use group::cofactor::CofactorGroup;
 use midnight_curves::{Fp as BlsBase, G1Affine, G1Projective};
