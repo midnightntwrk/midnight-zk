@@ -2,7 +2,7 @@
   "Automaton": {
     "parsing perf (input length = 50)": {
       "advice_columns": "5",
-      "column_queries": "51",
+      "column_queries": "48",
       "fixed_columns": "30",
       "lookups": "5",
       "max_deg": "5",
@@ -15,7 +15,7 @@
   "Map gadget": {
     "Get": {
       "advice_columns": "13",
-      "column_queries": "68",
+      "column_queries": "61",
       "fixed_columns": "46",
       "lookups": "4",
       "max_deg": "5",
@@ -26,7 +26,7 @@
     },
     "Insert": {
       "advice_columns": "13",
-      "column_queries": "68",
+      "column_queries": "61",
       "fixed_columns": "46",
       "lookups": "4",
       "max_deg": "5",
@@ -39,7 +39,7 @@
   "Poseidon": {
     "hash": {
       "advice_columns": "13",
-      "column_queries": "52",
+      "column_queries": "45",
       "fixed_columns": "42",
       "lookups": "0",
       "max_deg": "5",
@@ -50,7 +50,7 @@
     },
     "one_permutation": {
       "advice_columns": "8",
-      "column_queries": "32",
+      "column_queries": "28",
       "fixed_columns": "23",
       "lookups": "0",
       "max_deg": "5",
@@ -61,7 +61,7 @@
     },
     "sponge": {
       "advice_columns": "13",
-      "column_queries": "68",
+      "column_queries": "61",
       "fixed_columns": "46",
       "lookups": "4",
       "max_deg": "5",
@@ -74,7 +74,7 @@
   "SHA256": {
     "hash": {
       "advice_columns": "13",
-      "column_queries": "103",
+      "column_queries": "86",
       "fixed_columns": "64",
       "lookups": "10",
       "max_deg": "5",
@@ -87,7 +87,7 @@
   "SHA512": {
     "hash": {
       "advice_columns": "13",
-      "column_queries": "103",
+      "column_queries": "86",
       "fixed_columns": "64",
       "lookups": "10",
       "max_deg": "5",
@@ -100,7 +100,7 @@
   "VarSHA256": {
     "hash": {
       "advice_columns": "13",
-      "column_queries": "103",
+      "column_queries": "86",
       "fixed_columns": "64",
       "lookups": "10",
       "max_deg": "5",
@@ -113,7 +113,7 @@
   "Vector equality": {
     "Vector equality check with M=128": {
       "advice_columns": "5",
-      "column_queries": "43",
+      "column_queries": "40",
       "fixed_columns": "25",
       "lookups": "4",
       "max_deg": "5",
@@ -126,7 +126,7 @@
   "Vector limits check": {
     "Vector limit check with M=128": {
       "advice_columns": "5",
-      "column_queries": "43",
+      "column_queries": "40",
       "fixed_columns": "25",
       "lookups": "4",
       "max_deg": "5",
@@ -139,7 +139,7 @@
   "Vector padding flags.": {
     "Vector padding flags with M=128": {
       "advice_columns": "5",
-      "column_queries": "43",
+      "column_queries": "40",
       "fixed_columns": "25",
       "lookups": "4",
       "max_deg": "5",
@@ -152,7 +152,7 @@
   "Vector trim beginning.": {
     "Vector trim_beginning with M=128": {
       "advice_columns": "5",
-      "column_queries": "43",
+      "column_queries": "40",
       "fixed_columns": "25",
       "lookups": "4",
       "max_deg": "5",
@@ -165,7 +165,7 @@
   "biguint_gadget": {
     "assert_eq": {
       "advice_columns": "5",
-      "column_queries": "43",
+      "column_queries": "40",
       "fixed_columns": "25",
       "lookups": "4",
       "max_deg": "5",
@@ -176,7 +176,7 @@
     },
     "assert_eq_fixed": {
       "advice_columns": "5",
-      "column_queries": "43",
+      "column_queries": "40",
       "fixed_columns": "25",
       "lookups": "4",
       "max_deg": "5",
@@ -187,7 +187,7 @@
     },
     "assert_neq": {
       "advice_columns": "5",
-      "column_queries": "43",
+      "column_queries": "40",
       "fixed_columns": "25",
       "lookups": "4",
       "max_deg": "5",
@@ -198,7 +198,7 @@
     },
     "assert_neq_fixed": {
       "advice_columns": "5",
-      "column_queries": "43",
+      "column_queries": "40",
       "fixed_columns": "25",
       "lookups": "4",
       "max_deg": "5",
@@ -209,7 +209,7 @@
     },
     "assert_non_zero": {
       "advice_columns": "5",
-      "column_queries": "44",
+      "column_queries": "41",
       "fixed_columns": "27",
       "lookups": "4",
       "max_deg": "5",
@@ -220,7 +220,7 @@
     },
     "assert_zero": {
       "advice_columns": "5",
-      "column_queries": "44",
+      "column_queries": "41",
       "fixed_columns": "27",
       "lookups": "4",
       "max_deg": "5",
@@ -231,7 +231,7 @@
     },
     "cond_assert_equal": {
       "advice_columns": "5",
-      "column_queries": "44",
+      "column_queries": "41",
       "fixed_columns": "27",
       "lookups": "4",
       "max_deg": "5",
@@ -242,7 +242,7 @@
     },
     "cond_swap": {
       "advice_columns": "5",
-      "column_queries": "44",
+      "column_queries": "41",
       "fixed_columns": "27",
       "lookups": "4",
       "max_deg": "5",
@@ -253,7 +253,7 @@
     },
     "is_equal": {
       "advice_columns": "5",
-      "column_queries": "44",
+      "column_queries": "41",
       "fixed_columns": "27",
       "lookups": "4",
       "max_deg": "5",
@@ -264,7 +264,7 @@
     },
     "is_equal_to_fixed": {
       "advice_columns": "5",
-      "column_queries": "44",
+      "column_queries": "41",
       "fixed_columns": "27",
       "lookups": "4",
       "max_deg": "5",
@@ -275,7 +275,7 @@
     },
     "is_not_equal": {
       "advice_columns": "5",
-      "column_queries": "44",
+      "column_queries": "41",
       "fixed_columns": "27",
       "lookups": "4",
       "max_deg": "5",
@@ -286,7 +286,7 @@
     },
     "is_not_equal_to_fixed": {
       "advice_columns": "5",
-      "column_queries": "44",
+      "column_queries": "41",
       "fixed_columns": "27",
       "lookups": "4",
       "max_deg": "5",
@@ -297,7 +297,7 @@
     },
     "is_zero": {
       "advice_columns": "5",
-      "column_queries": "44",
+      "column_queries": "41",
       "fixed_columns": "27",
       "lookups": "4",
       "max_deg": "5",
@@ -308,7 +308,7 @@
     },
     "select": {
       "advice_columns": "5",
-      "column_queries": "44",
+      "column_queries": "41",
       "fixed_columns": "27",
       "lookups": "4",
       "max_deg": "5",
@@ -321,7 +321,7 @@
   "field_chip_secp_base": {
     "add": {
       "advice_columns": "13",
-      "column_queries": "56",
+      "column_queries": "51",
       "fixed_columns": "35",
       "lookups": "4",
       "max_deg": "5",
@@ -332,7 +332,7 @@
     },
     "add_and_mul": {
       "advice_columns": "13",
-      "column_queries": "56",
+      "column_queries": "51",
       "fixed_columns": "35",
       "lookups": "4",
       "max_deg": "5",
@@ -343,7 +343,7 @@
     },
     "add_constant": {
       "advice_columns": "13",
-      "column_queries": "56",
+      "column_queries": "51",
       "fixed_columns": "35",
       "lookups": "4",
       "max_deg": "5",
@@ -354,7 +354,7 @@
     },
     "assert_eq": {
       "advice_columns": "13",
-      "column_queries": "56",
+      "column_queries": "51",
       "fixed_columns": "35",
       "lookups": "4",
       "max_deg": "5",
@@ -365,7 +365,7 @@
     },
     "assert_eq_fixed": {
       "advice_columns": "13",
-      "column_queries": "56",
+      "column_queries": "51",
       "fixed_columns": "35",
       "lookups": "4",
       "max_deg": "5",
@@ -376,7 +376,7 @@
     },
     "assert_neq": {
       "advice_columns": "13",
-      "column_queries": "56",
+      "column_queries": "51",
       "fixed_columns": "35",
       "lookups": "4",
       "max_deg": "5",
@@ -387,7 +387,7 @@
     },
     "assert_neq_fixed": {
       "advice_columns": "13",
-      "column_queries": "56",
+      "column_queries": "51",
       "fixed_columns": "35",
       "lookups": "4",
       "max_deg": "5",
@@ -398,7 +398,7 @@
     },
     "assert_non_zero": {
       "advice_columns": "13",
-      "column_queries": "57",
+      "column_queries": "52",
       "fixed_columns": "37",
       "lookups": "4",
       "max_deg": "5",
@@ -409,7 +409,7 @@
     },
     "assert_zero": {
       "advice_columns": "13",
-      "column_queries": "57",
+      "column_queries": "52",
       "fixed_columns": "37",
       "lookups": "4",
       "max_deg": "5",
@@ -420,7 +420,7 @@
     },
     "cond_assert_equal": {
       "advice_columns": "13",
-      "column_queries": "57",
+      "column_queries": "52",
       "fixed_columns": "37",
       "lookups": "4",
       "max_deg": "5",
@@ -431,7 +431,7 @@
     },
     "cond_swap": {
       "advice_columns": "13",
-      "column_queries": "57",
+      "column_queries": "52",
       "fixed_columns": "37",
       "lookups": "4",
       "max_deg": "5",
@@ -442,7 +442,7 @@
     },
     "div": {
       "advice_columns": "13",
-      "column_queries": "56",
+      "column_queries": "51",
       "fixed_columns": "35",
       "lookups": "4",
       "max_deg": "5",
@@ -453,7 +453,7 @@
     },
     "from_bits": {
       "advice_columns": "18",
-      "column_queries": "92",
+      "column_queries": "84",
       "fixed_columns": "58",
       "lookups": "8",
       "max_deg": "5",
@@ -464,7 +464,7 @@
     },
     "from_bytes": {
       "advice_columns": "18",
-      "column_queries": "92",
+      "column_queries": "84",
       "fixed_columns": "58",
       "lookups": "8",
       "max_deg": "5",
@@ -475,7 +475,7 @@
     },
     "inv": {
       "advice_columns": "13",
-      "column_queries": "56",
+      "column_queries": "51",
       "fixed_columns": "35",
       "lookups": "4",
       "max_deg": "5",
@@ -486,7 +486,7 @@
     },
     "is_equal": {
       "advice_columns": "13",
-      "column_queries": "57",
+      "column_queries": "52",
       "fixed_columns": "37",
       "lookups": "4",
       "max_deg": "5",
@@ -497,7 +497,7 @@
     },
     "is_equal_to_fixed": {
       "advice_columns": "13",
-      "column_queries": "57",
+      "column_queries": "52",
       "fixed_columns": "37",
       "lookups": "4",
       "max_deg": "5",
@@ -508,7 +508,7 @@
     },
     "is_not_equal": {
       "advice_columns": "13",
-      "column_queries": "57",
+      "column_queries": "52",
       "fixed_columns": "37",
       "lookups": "4",
       "max_deg": "5",
@@ -519,7 +519,7 @@
     },
     "is_not_equal_to_fixed": {
       "advice_columns": "13",
-      "column_queries": "57",
+      "column_queries": "52",
       "fixed_columns": "37",
       "lookups": "4",
       "max_deg": "5",
@@ -530,7 +530,7 @@
     },
     "is_zero": {
       "advice_columns": "13",
-      "column_queries": "57",
+      "column_queries": "52",
       "fixed_columns": "37",
       "lookups": "4",
       "max_deg": "5",
@@ -541,7 +541,7 @@
     },
     "linear_comb": {
       "advice_columns": "13",
-      "column_queries": "56",
+      "column_queries": "51",
       "fixed_columns": "35",
       "lookups": "4",
       "max_deg": "5",
@@ -552,7 +552,7 @@
     },
     "mul": {
       "advice_columns": "13",
-      "column_queries": "56",
+      "column_queries": "51",
       "fixed_columns": "35",
       "lookups": "4",
       "max_deg": "5",
@@ -563,7 +563,7 @@
     },
     "mul_by_const": {
       "advice_columns": "13",
-      "column_queries": "56",
+      "column_queries": "51",
       "fixed_columns": "35",
       "lookups": "4",
       "max_deg": "5",
@@ -574,7 +574,7 @@
     },
     "neg": {
       "advice_columns": "13",
-      "column_queries": "56",
+      "column_queries": "51",
       "fixed_columns": "35",
       "lookups": "4",
       "max_deg": "5",
@@ -585,7 +585,7 @@
     },
     "pow": {
       "advice_columns": "13",
-      "column_queries": "56",
+      "column_queries": "51",
       "fixed_columns": "35",
       "lookups": "4",
       "max_deg": "5",
@@ -596,7 +596,7 @@
     },
     "public_inputs": {
       "advice_columns": "13",
-      "column_queries": "56",
+      "column_queries": "51",
       "fixed_columns": "35",
       "lookups": "4",
       "max_deg": "5",
@@ -607,7 +607,7 @@
     },
     "select": {
       "advice_columns": "13",
-      "column_queries": "57",
+      "column_queries": "52",
       "fixed_columns": "37",
       "lookups": "4",
       "max_deg": "5",
@@ -618,7 +618,7 @@
     },
     "sgn0": {
       "advice_columns": "18",
-      "column_queries": "92",
+      "column_queries": "84",
       "fixed_columns": "58",
       "lookups": "8",
       "max_deg": "5",
@@ -629,7 +629,7 @@
     },
     "sub": {
       "advice_columns": "13",
-      "column_queries": "56",
+      "column_queries": "51",
       "fixed_columns": "35",
       "lookups": "4",
       "max_deg": "5",
@@ -640,7 +640,7 @@
     },
     "to_bits": {
       "advice_columns": "18",
-      "column_queries": "92",
+      "column_queries": "84",
       "fixed_columns": "58",
       "lookups": "8",
       "max_deg": "5",
@@ -651,7 +651,7 @@
     },
     "to_bytes": {
       "advice_columns": "18",
-      "column_queries": "92",
+      "column_queries": "84",
       "fixed_columns": "58",
       "lookups": "8",
       "max_deg": "5",
@@ -664,7 +664,7 @@
   "field_chip_secp_scalar": {
     "add": {
       "advice_columns": "13",
-      "column_queries": "56",
+      "column_queries": "51",
       "fixed_columns": "35",
       "lookups": "4",
       "max_deg": "5",
@@ -675,7 +675,7 @@
     },
     "add_and_mul": {
       "advice_columns": "13",
-      "column_queries": "56",
+      "column_queries": "51",
       "fixed_columns": "35",
       "lookups": "4",
       "max_deg": "5",
@@ -686,7 +686,7 @@
     },
     "add_constant": {
       "advice_columns": "13",
-      "column_queries": "56",
+      "column_queries": "51",
       "fixed_columns": "35",
       "lookups": "4",
       "max_deg": "5",
@@ -697,7 +697,7 @@
     },
     "assert_eq": {
       "advice_columns": "13",
-      "column_queries": "56",
+      "column_queries": "51",
       "fixed_columns": "35",
       "lookups": "4",
       "max_deg": "5",
@@ -708,7 +708,7 @@
     },
     "assert_eq_fixed": {
       "advice_columns": "13",
-      "column_queries": "56",
+      "column_queries": "51",
       "fixed_columns": "35",
       "lookups": "4",
       "max_deg": "5",
@@ -719,7 +719,7 @@
     },
     "assert_neq": {
       "advice_columns": "13",
-      "column_queries": "56",
+      "column_queries": "51",
       "fixed_columns": "35",
       "lookups": "4",
       "max_deg": "5",
@@ -730,7 +730,7 @@
     },
     "assert_neq_fixed": {
       "advice_columns": "13",
-      "column_queries": "56",
+      "column_queries": "51",
       "fixed_columns": "35",
       "lookups": "4",
       "max_deg": "5",
@@ -741,7 +741,7 @@
     },
     "assert_non_zero": {
       "advice_columns": "13",
-      "column_queries": "57",
+      "column_queries": "52",
       "fixed_columns": "37",
       "lookups": "4",
       "max_deg": "5",
@@ -752,7 +752,7 @@
     },
     "assert_zero": {
       "advice_columns": "13",
-      "column_queries": "57",
+      "column_queries": "52",
       "fixed_columns": "37",
       "lookups": "4",
       "max_deg": "5",
@@ -763,7 +763,7 @@
     },
     "cond_assert_equal": {
       "advice_columns": "13",
-      "column_queries": "57",
+      "column_queries": "52",
       "fixed_columns": "37",
       "lookups": "4",
       "max_deg": "5",
@@ -774,7 +774,7 @@
     },
     "cond_swap": {
       "advice_columns": "13",
-      "column_queries": "57",
+      "column_queries": "52",
       "fixed_columns": "37",
       "lookups": "4",
       "max_deg": "5",
@@ -785,7 +785,7 @@
     },
     "div": {
       "advice_columns": "13",
-      "column_queries": "56",
+      "column_queries": "51",
       "fixed_columns": "35",
       "lookups": "4",
       "max_deg": "5",
@@ -796,7 +796,7 @@
     },
     "from_bits": {
       "advice_columns": "18",
-      "column_queries": "92",
+      "column_queries": "84",
       "fixed_columns": "58",
       "lookups": "8",
       "max_deg": "5",
@@ -807,7 +807,7 @@
     },
     "from_bytes": {
       "advice_columns": "18",
-      "column_queries": "92",
+      "column_queries": "84",
       "fixed_columns": "58",
       "lookups": "8",
       "max_deg": "5",
@@ -818,7 +818,7 @@
     },
     "inv": {
       "advice_columns": "13",
-      "column_queries": "56",
+      "column_queries": "51",
       "fixed_columns": "35",
       "lookups": "4",
       "max_deg": "5",
@@ -829,7 +829,7 @@
     },
     "is_equal": {
       "advice_columns": "13",
-      "column_queries": "57",
+      "column_queries": "52",
       "fixed_columns": "37",
       "lookups": "4",
       "max_deg": "5",
@@ -840,7 +840,7 @@
     },
     "is_equal_to_fixed": {
       "advice_columns": "13",
-      "column_queries": "57",
+      "column_queries": "52",
       "fixed_columns": "37",
       "lookups": "4",
       "max_deg": "5",
@@ -851,7 +851,7 @@
     },
     "is_not_equal": {
       "advice_columns": "13",
-      "column_queries": "57",
+      "column_queries": "52",
       "fixed_columns": "37",
       "lookups": "4",
       "max_deg": "5",
@@ -862,7 +862,7 @@
     },
     "is_not_equal_to_fixed": {
       "advice_columns": "13",
-      "column_queries": "57",
+      "column_queries": "52",
       "fixed_columns": "37",
       "lookups": "4",
       "max_deg": "5",
@@ -873,7 +873,7 @@
     },
     "is_zero": {
       "advice_columns": "13",
-      "column_queries": "57",
+      "column_queries": "52",
       "fixed_columns": "37",
       "lookups": "4",
       "max_deg": "5",
@@ -884,7 +884,7 @@
     },
     "linear_comb": {
       "advice_columns": "13",
-      "column_queries": "56",
+      "column_queries": "51",
       "fixed_columns": "35",
       "lookups": "4",
       "max_deg": "5",
@@ -895,7 +895,7 @@
     },
     "mul": {
       "advice_columns": "13",
-      "column_queries": "56",
+      "column_queries": "51",
       "fixed_columns": "35",
       "lookups": "4",
       "max_deg": "5",
@@ -906,7 +906,7 @@
     },
     "mul_by_const": {
       "advice_columns": "13",
-      "column_queries": "56",
+      "column_queries": "51",
       "fixed_columns": "35",
       "lookups": "4",
       "max_deg": "5",
@@ -917,7 +917,7 @@
     },
     "neg": {
       "advice_columns": "13",
-      "column_queries": "56",
+      "column_queries": "51",
       "fixed_columns": "35",
       "lookups": "4",
       "max_deg": "5",
@@ -928,7 +928,7 @@
     },
     "pow": {
       "advice_columns": "13",
-      "column_queries": "56",
+      "column_queries": "51",
       "fixed_columns": "35",
       "lookups": "4",
       "max_deg": "5",
@@ -939,7 +939,7 @@
     },
     "public_inputs": {
       "advice_columns": "13",
-      "column_queries": "56",
+      "column_queries": "51",
       "fixed_columns": "35",
       "lookups": "4",
       "max_deg": "5",
@@ -950,7 +950,7 @@
     },
     "select": {
       "advice_columns": "13",
-      "column_queries": "57",
+      "column_queries": "52",
       "fixed_columns": "37",
       "lookups": "4",
       "max_deg": "5",
@@ -961,7 +961,7 @@
     },
     "sgn0": {
       "advice_columns": "18",
-      "column_queries": "92",
+      "column_queries": "84",
       "fixed_columns": "58",
       "lookups": "8",
       "max_deg": "5",
@@ -972,7 +972,7 @@
     },
     "sub": {
       "advice_columns": "13",
-      "column_queries": "56",
+      "column_queries": "51",
       "fixed_columns": "35",
       "lookups": "4",
       "max_deg": "5",
@@ -983,7 +983,7 @@
     },
     "to_bits": {
       "advice_columns": "18",
-      "column_queries": "92",
+      "column_queries": "84",
       "fixed_columns": "58",
       "lookups": "8",
       "max_deg": "5",
@@ -994,7 +994,7 @@
     },
     "to_bytes": {
       "advice_columns": "18",
-      "column_queries": "92",
+      "column_queries": "84",
       "fixed_columns": "58",
       "lookups": "8",
       "max_deg": "5",
@@ -1007,7 +1007,7 @@
   "foreign_ecc_bls_over_bls": {
     "add": {
       "advice_columns": "25",
-      "column_queries": "110",
+      "column_queries": "98",
       "fixed_columns": "71",
       "lookups": "9",
       "max_deg": "5",
@@ -1018,7 +1018,7 @@
     },
     "assert_eq": {
       "advice_columns": "25",
-      "column_queries": "110",
+      "column_queries": "98",
       "fixed_columns": "71",
       "lookups": "9",
       "max_deg": "5",
@@ -1029,7 +1029,7 @@
     },
     "assert_eq_fixed": {
       "advice_columns": "25",
-      "column_queries": "110",
+      "column_queries": "98",
       "fixed_columns": "71",
       "lookups": "9",
       "max_deg": "5",
@@ -1040,7 +1040,7 @@
     },
     "assert_neq": {
       "advice_columns": "25",
-      "column_queries": "110",
+      "column_queries": "98",
       "fixed_columns": "71",
       "lookups": "9",
       "max_deg": "5",
@@ -1051,7 +1051,7 @@
     },
     "assert_neq_fixed": {
       "advice_columns": "25",
-      "column_queries": "110",
+      "column_queries": "98",
       "fixed_columns": "71",
       "lookups": "9",
       "max_deg": "5",
@@ -1062,7 +1062,7 @@
     },
     "assert_non_zero": {
       "advice_columns": "25",
-      "column_queries": "111",
+      "column_queries": "99",
       "fixed_columns": "73",
       "lookups": "9",
       "max_deg": "5",
@@ -1073,7 +1073,7 @@
     },
     "assert_zero": {
       "advice_columns": "25",
-      "column_queries": "111",
+      "column_queries": "99",
       "fixed_columns": "73",
       "lookups": "9",
       "max_deg": "5",
@@ -1084,7 +1084,7 @@
     },
     "cond_assert_equal": {
       "advice_columns": "25",
-      "column_queries": "111",
+      "column_queries": "99",
       "fixed_columns": "73",
       "lookups": "9",
       "max_deg": "5",
@@ -1095,7 +1095,7 @@
     },
     "cond_swap": {
       "advice_columns": "25",
-      "column_queries": "111",
+      "column_queries": "99",
       "fixed_columns": "73",
       "lookups": "9",
       "max_deg": "5",
@@ -1106,7 +1106,7 @@
     },
     "coordinates": {
       "advice_columns": "25",
-      "column_queries": "110",
+      "column_queries": "98",
       "fixed_columns": "71",
       "lookups": "9",
       "max_deg": "5",
@@ -1117,7 +1117,7 @@
     },
     "double": {
       "advice_columns": "25",
-      "column_queries": "110",
+      "column_queries": "98",
       "fixed_columns": "71",
       "lookups": "9",
       "max_deg": "5",
@@ -1128,7 +1128,7 @@
     },
     "is_equal": {
       "advice_columns": "25",
-      "column_queries": "111",
+      "column_queries": "99",
       "fixed_columns": "73",
       "lookups": "9",
       "max_deg": "5",
@@ -1139,7 +1139,7 @@
     },
     "is_equal_to_fixed": {
       "advice_columns": "25",
-      "column_queries": "111",
+      "column_queries": "99",
       "fixed_columns": "73",
       "lookups": "9",
       "max_deg": "5",
@@ -1150,7 +1150,7 @@
     },
     "is_not_equal": {
       "advice_columns": "25",
-      "column_queries": "111",
+      "column_queries": "99",
       "fixed_columns": "73",
       "lookups": "9",
       "max_deg": "5",
@@ -1161,7 +1161,7 @@
     },
     "is_not_equal_to_fixed": {
       "advice_columns": "25",
-      "column_queries": "111",
+      "column_queries": "99",
       "fixed_columns": "73",
       "lookups": "9",
       "max_deg": "5",
@@ -1172,7 +1172,7 @@
     },
     "is_zero": {
       "advice_columns": "25",
-      "column_queries": "111",
+      "column_queries": "99",
       "fixed_columns": "73",
       "lookups": "9",
       "max_deg": "5",
@@ -1183,7 +1183,7 @@
     },
     "msm_3": {
       "advice_columns": "25",
-      "column_queries": "110",
+      "column_queries": "98",
       "fixed_columns": "71",
       "lookups": "9",
       "max_deg": "5",
@@ -1194,7 +1194,7 @@
     },
     "msm_by_bounded_scalars_3": {
       "advice_columns": "25",
-      "column_queries": "110",
+      "column_queries": "98",
       "fixed_columns": "71",
       "lookups": "9",
       "max_deg": "5",
@@ -1205,7 +1205,7 @@
     },
     "mul_by_constant": {
       "advice_columns": "25",
-      "column_queries": "110",
+      "column_queries": "98",
       "fixed_columns": "71",
       "lookups": "9",
       "max_deg": "5",
@@ -1216,7 +1216,7 @@
     },
     "neg": {
       "advice_columns": "25",
-      "column_queries": "110",
+      "column_queries": "98",
       "fixed_columns": "71",
       "lookups": "9",
       "max_deg": "5",
@@ -1227,7 +1227,7 @@
     },
     "public_inputs": {
       "advice_columns": "25",
-      "column_queries": "110",
+      "column_queries": "98",
       "fixed_columns": "71",
       "lookups": "9",
       "max_deg": "5",
@@ -1238,7 +1238,7 @@
     },
     "select": {
       "advice_columns": "25",
-      "column_queries": "111",
+      "column_queries": "99",
       "fixed_columns": "73",
       "lookups": "9",
       "max_deg": "5",
@@ -1251,7 +1251,7 @@
   "foreign_ecc_secp": {
     "add": {
       "advice_columns": "27",
-      "column_queries": "115",
+      "column_queries": "101",
       "fixed_columns": "75",
       "lookups": "9",
       "max_deg": "5",
@@ -1262,7 +1262,7 @@
     },
     "assert_eq": {
       "advice_columns": "27",
-      "column_queries": "115",
+      "column_queries": "101",
       "fixed_columns": "75",
       "lookups": "9",
       "max_deg": "5",
@@ -1273,7 +1273,7 @@
     },
     "assert_eq_fixed": {
       "advice_columns": "27",
-      "column_queries": "115",
+      "column_queries": "101",
       "fixed_columns": "75",
       "lookups": "9",
       "max_deg": "5",
@@ -1284,7 +1284,7 @@
     },
     "assert_neq": {
       "advice_columns": "27",
-      "column_queries": "115",
+      "column_queries": "101",
       "fixed_columns": "75",
       "lookups": "9",
       "max_deg": "5",
@@ -1295,7 +1295,7 @@
     },
     "assert_neq_fixed": {
       "advice_columns": "27",
-      "column_queries": "115",
+      "column_queries": "101",
       "fixed_columns": "75",
       "lookups": "9",
       "max_deg": "5",
@@ -1306,7 +1306,7 @@
     },
     "assert_non_zero": {
       "advice_columns": "27",
-      "column_queries": "116",
+      "column_queries": "102",
       "fixed_columns": "77",
       "lookups": "9",
       "max_deg": "5",
@@ -1317,7 +1317,7 @@
     },
     "assert_zero": {
       "advice_columns": "27",
-      "column_queries": "116",
+      "column_queries": "102",
       "fixed_columns": "77",
       "lookups": "9",
       "max_deg": "5",
@@ -1328,7 +1328,7 @@
     },
     "cond_assert_equal": {
       "advice_columns": "27",
-      "column_queries": "116",
+      "column_queries": "102",
       "fixed_columns": "77",
       "lookups": "9",
       "max_deg": "5",
@@ -1339,7 +1339,7 @@
     },
     "cond_swap": {
       "advice_columns": "27",
-      "column_queries": "116",
+      "column_queries": "102",
       "fixed_columns": "77",
       "lookups": "9",
       "max_deg": "5",
@@ -1350,7 +1350,7 @@
     },
     "coordinates": {
       "advice_columns": "27",
-      "column_queries": "115",
+      "column_queries": "101",
       "fixed_columns": "75",
       "lookups": "9",
       "max_deg": "5",
@@ -1361,7 +1361,7 @@
     },
     "double": {
       "advice_columns": "27",
-      "column_queries": "115",
+      "column_queries": "101",
       "fixed_columns": "75",
       "lookups": "9",
       "max_deg": "5",
@@ -1372,7 +1372,7 @@
     },
     "is_equal": {
       "advice_columns": "27",
-      "column_queries": "116",
+      "column_queries": "102",
       "fixed_columns": "77",
       "lookups": "9",
       "max_deg": "5",
@@ -1383,7 +1383,7 @@
     },
     "is_equal_to_fixed": {
       "advice_columns": "27",
-      "column_queries": "116",
+      "column_queries": "102",
       "fixed_columns": "77",
       "lookups": "9",
       "max_deg": "5",
@@ -1394,7 +1394,7 @@
     },
     "is_not_equal": {
       "advice_columns": "27",
-      "column_queries": "116",
+      "column_queries": "102",
       "fixed_columns": "77",
       "lookups": "9",
       "max_deg": "5",
@@ -1405,7 +1405,7 @@
     },
     "is_not_equal_to_fixed": {
       "advice_columns": "27",
-      "column_queries": "116",
+      "column_queries": "102",
       "fixed_columns": "77",
       "lookups": "9",
       "max_deg": "5",
@@ -1416,7 +1416,7 @@
     },
     "is_zero": {
       "advice_columns": "27",
-      "column_queries": "116",
+      "column_queries": "102",
       "fixed_columns": "77",
       "lookups": "9",
       "max_deg": "5",
@@ -1427,7 +1427,7 @@
     },
     "msm_3": {
       "advice_columns": "27",
-      "column_queries": "115",
+      "column_queries": "101",
       "fixed_columns": "75",
       "lookups": "9",
       "max_deg": "5",
@@ -1438,7 +1438,7 @@
     },
     "msm_by_bounded_scalars_3": {
       "advice_columns": "27",
-      "column_queries": "115",
+      "column_queries": "101",
       "fixed_columns": "75",
       "lookups": "9",
       "max_deg": "5",
@@ -1449,7 +1449,7 @@
     },
     "mul_by_constant": {
       "advice_columns": "27",
-      "column_queries": "115",
+      "column_queries": "101",
       "fixed_columns": "75",
       "lookups": "9",
       "max_deg": "5",
@@ -1460,7 +1460,7 @@
     },
     "neg": {
       "advice_columns": "27",
-      "column_queries": "115",
+      "column_queries": "101",
       "fixed_columns": "75",
       "lookups": "9",
       "max_deg": "5",
@@ -1471,7 +1471,7 @@
     },
     "public_inputs": {
       "advice_columns": "27",
-      "column_queries": "115",
+      "column_queries": "101",
       "fixed_columns": "75",
       "lookups": "9",
       "max_deg": "5",
@@ -1482,7 +1482,7 @@
     },
     "select": {
       "advice_columns": "27",
-      "column_queries": "116",
+      "column_queries": "102",
       "fixed_columns": "77",
       "lookups": "9",
       "max_deg": "5",
@@ -1495,7 +1495,7 @@
   "native_chip": {
     "add": {
       "advice_columns": "5",
-      "column_queries": "27",
+      "column_queries": "24",
       "fixed_columns": "21",
       "lookups": "0",
       "max_deg": "4",
@@ -1506,7 +1506,7 @@
     },
     "add_and_mul": {
       "advice_columns": "5",
-      "column_queries": "27",
+      "column_queries": "24",
       "fixed_columns": "21",
       "lookups": "0",
       "max_deg": "4",
@@ -1517,7 +1517,7 @@
     },
     "add_constant": {
       "advice_columns": "5",
-      "column_queries": "27",
+      "column_queries": "24",
       "fixed_columns": "21",
       "lookups": "0",
       "max_deg": "4",
@@ -1528,7 +1528,7 @@
     },
     "and": {
       "advice_columns": "5",
-      "column_queries": "27",
+      "column_queries": "24",
       "fixed_columns": "21",
       "lookups": "0",
       "max_deg": "4",
@@ -1539,7 +1539,7 @@
     },
     "assert_eq": {
       "advice_columns": "5",
-      "column_queries": "27",
+      "column_queries": "24",
       "fixed_columns": "21",
       "lookups": "0",
       "max_deg": "4",
@@ -1550,7 +1550,7 @@
     },
     "assert_eq_fixed": {
       "advice_columns": "5",
-      "column_queries": "27",
+      "column_queries": "24",
       "fixed_columns": "21",
       "lookups": "0",
       "max_deg": "4",
@@ -1561,7 +1561,7 @@
     },
     "assert_neq": {
       "advice_columns": "5",
-      "column_queries": "27",
+      "column_queries": "24",
       "fixed_columns": "21",
       "lookups": "0",
       "max_deg": "4",
@@ -1572,7 +1572,7 @@
     },
     "assert_neq_fixed": {
       "advice_columns": "5",
-      "column_queries": "27",
+      "column_queries": "24",
       "fixed_columns": "21",
       "lookups": "0",
       "max_deg": "4",
@@ -1583,7 +1583,7 @@
     },
     "assert_non_zero": {
       "advice_columns": "5",
-      "column_queries": "29",
+      "column_queries": "26",
       "fixed_columns": "23",
       "lookups": "0",
       "max_deg": "4",
@@ -1594,7 +1594,7 @@
     },
     "assert_zero": {
       "advice_columns": "5",
-      "column_queries": "29",
+      "column_queries": "26",
       "fixed_columns": "23",
       "lookups": "0",
       "max_deg": "4",
@@ -1605,7 +1605,7 @@
     },
     "canonical": {
       "advice_columns": "5",
-      "column_queries": "27",
+      "column_queries": "24",
       "fixed_columns": "21",
       "lookups": "0",
       "max_deg": "4",
@@ -1616,7 +1616,7 @@
     },
     "cond_assert_equal": {
       "advice_columns": "5",
-      "column_queries": "29",
+      "column_queries": "26",
       "fixed_columns": "23",
       "lookups": "0",
       "max_deg": "4",
@@ -1627,7 +1627,7 @@
     },
     "cond_swap": {
       "advice_columns": "5",
-      "column_queries": "29",
+      "column_queries": "26",
       "fixed_columns": "23",
       "lookups": "0",
       "max_deg": "4",
@@ -1638,7 +1638,7 @@
     },
     "convert_from_bit": {
       "advice_columns": "5",
-      "column_queries": "27",
+      "column_queries": "24",
       "fixed_columns": "21",
       "lookups": "0",
       "max_deg": "4",
@@ -1649,7 +1649,7 @@
     },
     "convert_to_bit": {
       "advice_columns": "5",
-      "column_queries": "27",
+      "column_queries": "24",
       "fixed_columns": "21",
       "lookups": "0",
       "max_deg": "4",
@@ -1660,7 +1660,7 @@
     },
     "div": {
       "advice_columns": "5",
-      "column_queries": "27",
+      "column_queries": "24",
       "fixed_columns": "21",
       "lookups": "0",
       "max_deg": "4",
@@ -1671,7 +1671,7 @@
     },
     "geq": {
       "advice_columns": "5",
-      "column_queries": "27",
+      "column_queries": "24",
       "fixed_columns": "21",
       "lookups": "0",
       "max_deg": "4",
@@ -1682,7 +1682,7 @@
     },
     "inv": {
       "advice_columns": "5",
-      "column_queries": "27",
+      "column_queries": "24",
       "fixed_columns": "21",
       "lookups": "0",
       "max_deg": "4",
@@ -1693,7 +1693,7 @@
     },
     "is_equal": {
       "advice_columns": "5",
-      "column_queries": "29",
+      "column_queries": "26",
       "fixed_columns": "23",
       "lookups": "0",
       "max_deg": "4",
@@ -1704,7 +1704,7 @@
     },
     "is_equal_to_fixed": {
       "advice_columns": "5",
-      "column_queries": "29",
+      "column_queries": "26",
       "fixed_columns": "23",
       "lookups": "0",
       "max_deg": "4",
@@ -1715,7 +1715,7 @@
     },
     "is_not_equal": {
       "advice_columns": "5",
-      "column_queries": "29",
+      "column_queries": "26",
       "fixed_columns": "23",
       "lookups": "0",
       "max_deg": "4",
@@ -1726,7 +1726,7 @@
     },
     "is_not_equal_to_fixed": {
       "advice_columns": "5",
-      "column_queries": "29",
+      "column_queries": "26",
       "fixed_columns": "23",
       "lookups": "0",
       "max_deg": "4",
@@ -1737,7 +1737,7 @@
     },
     "is_zero": {
       "advice_columns": "5",
-      "column_queries": "29",
+      "column_queries": "26",
       "fixed_columns": "23",
       "lookups": "0",
       "max_deg": "4",
@@ -1748,7 +1748,7 @@
     },
     "linear_comb": {
       "advice_columns": "5",
-      "column_queries": "27",
+      "column_queries": "24",
       "fixed_columns": "21",
       "lookups": "0",
       "max_deg": "4",
@@ -1759,7 +1759,7 @@
     },
     "lt": {
       "advice_columns": "5",
-      "column_queries": "27",
+      "column_queries": "24",
       "fixed_columns": "21",
       "lookups": "0",
       "max_deg": "4",
@@ -1770,7 +1770,7 @@
     },
     "mul": {
       "advice_columns": "5",
-      "column_queries": "27",
+      "column_queries": "24",
       "fixed_columns": "21",
       "lookups": "0",
       "max_deg": "4",
@@ -1781,7 +1781,7 @@
     },
     "mul_by_const": {
       "advice_columns": "5",
-      "column_queries": "27",
+      "column_queries": "24",
       "fixed_columns": "21",
       "lookups": "0",
       "max_deg": "4",
@@ -1792,7 +1792,7 @@
     },
     "neg": {
       "advice_columns": "5",
-      "column_queries": "27",
+      "column_queries": "24",
       "fixed_columns": "21",
       "lookups": "0",
       "max_deg": "4",
@@ -1803,7 +1803,7 @@
     },
     "not": {
       "advice_columns": "5",
-      "column_queries": "27",
+      "column_queries": "24",
       "fixed_columns": "21",
       "lookups": "0",
       "max_deg": "4",
@@ -1814,7 +1814,7 @@
     },
     "or": {
       "advice_columns": "5",
-      "column_queries": "27",
+      "column_queries": "24",
       "fixed_columns": "21",
       "lookups": "0",
       "max_deg": "4",
@@ -1825,7 +1825,7 @@
     },
     "pow": {
       "advice_columns": "5",
-      "column_queries": "27",
+      "column_queries": "24",
       "fixed_columns": "21",
       "lookups": "0",
       "max_deg": "4",
@@ -1836,7 +1836,7 @@
     },
     "public_inputs": {
       "advice_columns": "5",
-      "column_queries": "27",
+      "column_queries": "24",
       "fixed_columns": "21",
       "lookups": "0",
       "max_deg": "4",
@@ -1847,7 +1847,7 @@
     },
     "select": {
       "advice_columns": "5",
-      "column_queries": "29",
+      "column_queries": "26",
       "fixed_columns": "23",
       "lookups": "0",
       "max_deg": "4",
@@ -1858,7 +1858,7 @@
     },
     "sub": {
       "advice_columns": "5",
-      "column_queries": "27",
+      "column_queries": "24",
       "fixed_columns": "21",
       "lookups": "0",
       "max_deg": "4",
@@ -1869,7 +1869,7 @@
     },
     "unsafe_convert_from_bit": {
       "advice_columns": "5",
-      "column_queries": "27",
+      "column_queries": "24",
       "fixed_columns": "21",
       "lookups": "0",
       "max_deg": "4",
@@ -1880,7 +1880,7 @@
     },
     "unsafe_convert_to_bit": {
       "advice_columns": "5",
-      "column_queries": "27",
+      "column_queries": "24",
       "fixed_columns": "21",
       "lookups": "0",
       "max_deg": "4",
@@ -1891,7 +1891,7 @@
     },
     "xor": {
       "advice_columns": "5",
-      "column_queries": "27",
+      "column_queries": "24",
       "fixed_columns": "21",
       "lookups": "0",
       "max_deg": "4",
@@ -1904,7 +1904,7 @@
   "native_ecc": {
     "add": {
       "advice_columns": "14",
-      "column_queries": "57",
+      "column_queries": "51",
       "fixed_columns": "35",
       "lookups": "4",
       "max_deg": "5",
@@ -1915,7 +1915,7 @@
     },
     "assert_eq": {
       "advice_columns": "14",
-      "column_queries": "57",
+      "column_queries": "51",
       "fixed_columns": "35",
       "lookups": "4",
       "max_deg": "5",
@@ -1926,7 +1926,7 @@
     },
     "assert_eq_fixed": {
       "advice_columns": "14",
-      "column_queries": "57",
+      "column_queries": "51",
       "fixed_columns": "35",
       "lookups": "4",
       "max_deg": "5",
@@ -1937,7 +1937,7 @@
     },
     "assert_neq": {
       "advice_columns": "14",
-      "column_queries": "57",
+      "column_queries": "51",
       "fixed_columns": "35",
       "lookups": "4",
       "max_deg": "5",
@@ -1948,7 +1948,7 @@
     },
     "assert_neq_fixed": {
       "advice_columns": "14",
-      "column_queries": "57",
+      "column_queries": "51",
       "fixed_columns": "35",
       "lookups": "4",
       "max_deg": "5",
@@ -1959,7 +1959,7 @@
     },
     "assert_non_zero": {
       "advice_columns": "14",
-      "column_queries": "59",
+      "column_queries": "53",
       "fixed_columns": "37",
       "lookups": "4",
       "max_deg": "5",
@@ -1970,7 +1970,7 @@
     },
     "assert_zero": {
       "advice_columns": "14",
-      "column_queries": "59",
+      "column_queries": "53",
       "fixed_columns": "37",
       "lookups": "4",
       "max_deg": "5",
@@ -1981,7 +1981,7 @@
     },
     "cond_assert_equal": {
       "advice_columns": "14",
-      "column_queries": "59",
+      "column_queries": "53",
       "fixed_columns": "37",
       "lookups": "4",
       "max_deg": "5",
@@ -1992,7 +1992,7 @@
     },
     "cond_swap": {
       "advice_columns": "14",
-      "column_queries": "59",
+      "column_queries": "53",
       "fixed_columns": "37",
       "lookups": "4",
       "max_deg": "5",
@@ -2003,7 +2003,7 @@
     },
     "coordinates": {
       "advice_columns": "14",
-      "column_queries": "57",
+      "column_queries": "51",
       "fixed_columns": "35",
       "lookups": "4",
       "max_deg": "5",
@@ -2014,7 +2014,7 @@
     },
     "double": {
       "advice_columns": "14",
-      "column_queries": "57",
+      "column_queries": "51",
       "fixed_columns": "35",
       "lookups": "4",
       "max_deg": "5",
@@ -2025,7 +2025,7 @@
     },
     "hash_to_curve": {
       "advice_columns": "27",
-      "column_queries": "102",
+      "column_queries": "89",
       "fixed_columns": "75",
       "lookups": "4",
       "max_deg": "5",
@@ -2036,7 +2036,7 @@
     },
     "is_equal": {
       "advice_columns": "14",
-      "column_queries": "59",
+      "column_queries": "53",
       "fixed_columns": "37",
       "lookups": "4",
       "max_deg": "5",
@@ -2047,7 +2047,7 @@
     },
     "is_equal_to_fixed": {
       "advice_columns": "14",
-      "column_queries": "59",
+      "column_queries": "53",
       "fixed_columns": "37",
       "lookups": "4",
       "max_deg": "5",
@@ -2058,7 +2058,7 @@
     },
     "is_not_equal": {
       "advice_columns": "14",
-      "column_queries": "59",
+      "column_queries": "53",
       "fixed_columns": "37",
       "lookups": "4",
       "max_deg": "5",
@@ -2069,7 +2069,7 @@
     },
     "is_not_equal_to_fixed": {
       "advice_columns": "14",
-      "column_queries": "59",
+      "column_queries": "53",
       "fixed_columns": "37",
       "lookups": "4",
       "max_deg": "5",
@@ -2080,7 +2080,7 @@
     },
     "is_zero": {
       "advice_columns": "14",
-      "column_queries": "59",
+      "column_queries": "53",
       "fixed_columns": "37",
       "lookups": "4",
       "max_deg": "5",
@@ -2091,7 +2091,7 @@
     },
     "msm_3": {
       "advice_columns": "14",
-      "column_queries": "57",
+      "column_queries": "51",
       "fixed_columns": "35",
       "lookups": "4",
       "max_deg": "5",
@@ -2102,7 +2102,7 @@
     },
     "msm_by_bounded_scalars_3": {
       "advice_columns": "14",
-      "column_queries": "57",
+      "column_queries": "51",
       "fixed_columns": "35",
       "lookups": "4",
       "max_deg": "5",
@@ -2113,7 +2113,7 @@
     },
     "mul_by_constant": {
       "advice_columns": "14",
-      "column_queries": "57",
+      "column_queries": "51",
       "fixed_columns": "35",
       "lookups": "4",
       "max_deg": "5",
@@ -2124,7 +2124,7 @@
     },
     "neg": {
       "advice_columns": "14",
-      "column_queries": "57",
+      "column_queries": "51",
       "fixed_columns": "35",
       "lookups": "4",
       "max_deg": "5",
@@ -2135,7 +2135,7 @@
     },
     "public_inputs": {
       "advice_columns": "14",
-      "column_queries": "57",
+      "column_queries": "51",
       "fixed_columns": "35",
       "lookups": "4",
       "max_deg": "5",
@@ -2146,7 +2146,7 @@
     },
     "select": {
       "advice_columns": "14",
-      "column_queries": "59",
+      "column_queries": "53",
       "fixed_columns": "37",
       "lookups": "4",
       "max_deg": "5",
@@ -2159,7 +2159,7 @@
   "native_gadget_bls": {
     "assert_lower_than": {
       "advice_columns": "5",
-      "column_queries": "43",
+      "column_queries": "40",
       "fixed_columns": "25",
       "lookups": "4",
       "max_deg": "5",
@@ -2170,7 +2170,7 @@
     },
     "band": {
       "advice_columns": "5",
-      "column_queries": "43",
+      "column_queries": "40",
       "fixed_columns": "25",
       "lookups": "4",
       "max_deg": "5",
@@ -2181,7 +2181,7 @@
     },
     "bnot": {
       "advice_columns": "5",
-      "column_queries": "43",
+      "column_queries": "40",
       "fixed_columns": "25",
       "lookups": "4",
       "max_deg": "5",
@@ -2192,7 +2192,7 @@
     },
     "bor": {
       "advice_columns": "5",
-      "column_queries": "43",
+      "column_queries": "40",
       "fixed_columns": "25",
       "lookups": "4",
       "max_deg": "5",
@@ -2203,7 +2203,7 @@
     },
     "bounded_of_element": {
       "advice_columns": "5",
-      "column_queries": "43",
+      "column_queries": "40",
       "fixed_columns": "25",
       "lookups": "4",
       "max_deg": "5",
@@ -2214,7 +2214,7 @@
     },
     "bxor": {
       "advice_columns": "5",
-      "column_queries": "43",
+      "column_queries": "40",
       "fixed_columns": "25",
       "lookups": "4",
       "max_deg": "5",
@@ -2225,7 +2225,7 @@
     },
     "div_rem": {
       "advice_columns": "5",
-      "column_queries": "43",
+      "column_queries": "40",
       "fixed_columns": "25",
       "lookups": "4",
       "max_deg": "5",
@@ -2236,7 +2236,7 @@
     },
     "from_bits": {
       "advice_columns": "10",
-      "column_queries": "79",
+      "column_queries": "73",
       "fixed_columns": "48",
       "lookups": "8",
       "max_deg": "5",
@@ -2247,7 +2247,7 @@
     },
     "from_bytes": {
       "advice_columns": "10",
-      "column_queries": "79",
+      "column_queries": "73",
       "fixed_columns": "48",
       "lookups": "8",
       "max_deg": "5",
@@ -2258,7 +2258,7 @@
     },
     "geq": {
       "advice_columns": "5",
-      "column_queries": "43",
+      "column_queries": "40",
       "fixed_columns": "25",
       "lookups": "4",
       "max_deg": "5",
@@ -2269,7 +2269,7 @@
     },
     "geq_fixed": {
       "advice_columns": "5",
-      "column_queries": "43",
+      "column_queries": "40",
       "fixed_columns": "25",
       "lookups": "4",
       "max_deg": "5",
@@ -2280,7 +2280,7 @@
     },
     "greater": {
       "advice_columns": "5",
-      "column_queries": "43",
+      "column_queries": "40",
       "fixed_columns": "25",
       "lookups": "4",
       "max_deg": "5",
@@ -2291,7 +2291,7 @@
     },
     "greater_fixed": {
       "advice_columns": "5",
-      "column_queries": "43",
+      "column_queries": "40",
       "fixed_columns": "25",
       "lookups": "4",
       "max_deg": "5",
@@ -2302,7 +2302,7 @@
     },
     "leq": {
       "advice_columns": "5",
-      "column_queries": "43",
+      "column_queries": "40",
       "fixed_columns": "25",
       "lookups": "4",
       "max_deg": "5",
@@ -2313,7 +2313,7 @@
     },
     "leq_fixed": {
       "advice_columns": "5",
-      "column_queries": "43",
+      "column_queries": "40",
       "fixed_columns": "25",
       "lookups": "4",
       "max_deg": "5",
@@ -2324,7 +2324,7 @@
     },
     "lower": {
       "advice_columns": "5",
-      "column_queries": "43",
+      "column_queries": "40",
       "fixed_columns": "25",
       "lookups": "4",
       "max_deg": "5",
@@ -2335,7 +2335,7 @@
     },
     "lower_fixed": {
       "advice_columns": "5",
-      "column_queries": "43",
+      "column_queries": "40",
       "fixed_columns": "25",
       "lookups": "4",
       "max_deg": "5",
@@ -2346,7 +2346,7 @@
     },
     "sgn0": {
       "advice_columns": "10",
-      "column_queries": "79",
+      "column_queries": "73",
       "fixed_columns": "48",
       "lookups": "8",
       "max_deg": "5",
@@ -2357,7 +2357,7 @@
     },
     "to_bits": {
       "advice_columns": "10",
-      "column_queries": "79",
+      "column_queries": "73",
       "fixed_columns": "48",
       "lookups": "8",
       "max_deg": "5",
@@ -2368,7 +2368,7 @@
     },
     "to_bytes": {
       "advice_columns": "10",
-      "column_queries": "79",
+      "column_queries": "73",
       "fixed_columns": "48",
       "lookups": "8",
       "max_deg": "5",
@@ -2381,7 +2381,7 @@
   "public_inputs_scalar_var": {
     "public_inputs": {
       "advice_columns": "14",
-      "column_queries": "57",
+      "column_queries": "51",
       "fixed_columns": "35",
       "lookups": "4",
       "max_deg": "5",
