@@ -80,7 +80,7 @@ mod tests {
 
         const RIPEMD160_BLOCK_SIZE: usize = 64;
         const RIPEMD160_EDGE_PADDING: usize = 55;
-        test_wrapper(2 * RIPEMD160_BLOCK_SIZE, 14, true);
+        test_wrapper(2 * RIPEMD160_BLOCK_SIZE, 15, true);
 
         test_wrapper(RIPEMD160_BLOCK_SIZE, 14, false);
         test_wrapper(RIPEMD160_BLOCK_SIZE - 1, 14, false);

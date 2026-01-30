@@ -298,28 +298,18 @@ impl<F: PrimeField> ComposableChip<F> for RipeMD160Chip<F> {
 
         meta.create_gate("addition mod 2^32", |meta| {
             // See function `add_mod_2_32` for a description of the following layout.
-            let a = meta.query_advice(advice_cols[4], Rotation(0));
-            let b = meta.query_advice(advice_cols[5], Rotation(0));
-            let c = meta.query_advice(advice_cols[6], Rotation(0));
-            let d = meta.query_advice(advice_cols[7], Rotation(0));
+            let a = meta.query_advice(advice_cols[5], Rotation(-1));
+            let b = meta.query_advice(advice_cols[6], Rotation(-1));
+            let c = meta.query_advice(advice_cols[7], Rotation(-1));
+            let d = meta.query_advice(advice_cols[5], Rotation(0));
 
-            let carry = meta.query_advice(advice_cols[0], Rotation(0));
-            let res = meta.query_advice(advice_cols[3], Rotation(0));
+            let carry = meta.query_advice(advice_cols[2], Rotation(-1));
+            let res = meta.query_advice(advice_cols[4], Rotation(-1));
 
             let id =
                 a + b + c + d - res - carry.clone() * Expression::Constant(F::from(1u64 << 32));
-            let mut range_three = Expression::Constant(F::from(1u64));
-            for i in 0..=3 {
-                range_three = range_three * (carry.clone() - Expression::Constant(F::from(i)));
-            }
 
-            Constraints::with_selector(
-                q_mod_add,
-                vec![
-                    ("addition mod 2^32", id),
-                    ("carry within three", range_three),
-                ],
-            )
+            Constraints::with_selector(q_mod_add, vec![("addition mod 2^32", id)])
         });
 
         RipeMD160Config {
@@ -605,7 +595,7 @@ impl<F: PrimeField> RipeMD160Chip<F> {
         |----|---------|----------|----|--------|--------|-----|----|----|----|
         | 11 | Evn.11a | ~Evn.11a | 11 |   0    |   ~0   | Evn | ~X | ~0 | ~0 |
         | 11 | Evn.11a | ~Evn.11a | 11 |   0    |   ~0   |     |    |    |    | <- q_spr_sum_evn, q_11_11_10
-        | 10 | Evn.11a | ~Evn.11a | 10 |   0    |   ~0   |     |    |    |    |
+        | 10 | Evn.10  | ~Evn.10  | 10 |   0    |   ~0   |     |    |    |    |
 
         with constraints of:
 
@@ -1058,18 +1048,25 @@ impl<F: PrimeField> RipeMD160Chip<F> {
         /*
         Computing the mod 2^32 addition: A ⊞ B ⊞ C ⊞ D fills the circuit layout as follows:
 
-        |  T0 |   A0  |   A1   |  T1 |   A2  |  A3  | A4 | A5 | A6 | A7 |
-        |-----|-------|--------|-----|-------|------|----|----|----|----|
-        |     | carry |        |     |       | res  | A  |  B |  C |  D | <- q_mod_add
+        |  T0 |   A0  |   A1   |  T1 |   A2  |   A3   | A4  | A5 | A6 | A7 |
+        |-----|-------|--------|-----|-------|--------|-----|----|----|----|
+        |  11 | R.11a | ~R.11a |  2  | carry | ~carry |  R  |  A |  B |  C |
+        |  11 | R.11b | ~R.11b |  0  |   0   |  ~0    |     |  D |    |    | <- q_mod_add, q_11_11_10
+        |  10 | R.10  | ~R.10  |  0  |   0   |  ~0    |     |    |    |    |
 
         with constraints of:
 
         1) asserting the mod 2^32 addition identity:
-               A + B + C + D = carry * 2^32 + res
+               A + B + C + D = carry * 2^32 + R
 
-        2) range check of `carry` in [0, 3] to make sure the above identity
-        not wrap-around, although it is not tight when number of summands < 4:
-               carry * (carry - 1) * (carry - 2) * (carry - 3) = 0
+        2) range check of `carry` in [0, 4) by applying the plain-spreaded lookup
+
+        3) range check of `R` in [0, 2^32) by applying the plain-spreaded lookup on 11-11-10 limbs of `R`:
+             R: (R.11a, R.11b, R.10)
+
+        4) asserting the 11-11-10 decomposition identity for R:
+              2^21 * R.11a + 2^10 * R.11b + R.10
+            = R
         */
         assert!(summands.len() <= 4, "At most 4 summands are supported");
 
@@ -1078,25 +1075,36 @@ impl<F: PrimeField> RipeMD160Chip<F> {
         let mut summands = summands.to_vec();
         summands.resize(4, zero);
 
-        let (carry_val, res_val): (Value<u32>, Value<F>) =
+        let (carry_val, res_val): (Value<u32>, Value<u32>) =
             Value::<Vec<F>>::from_iter(summands.iter().map(|s| s.0.value().copied()))
                 .map(|v| v.into_iter().map(fe_to_u64).sum::<u64>())
                 .map(|s| s.div_rem(&(1u64 << 32)))
-                .map(|(carry, rem)| (carry as u32, u64_to_fe(rem)))
+                .map(|(carry, rem)| (carry as u32, rem as u32))
                 .unzip();
-        let carry_val: Value<F> = carry_val.map(u32_to_fe);
 
         layouter.assign_region(
             || "Assign add_mod_2_32",
             |mut region| {
-                self.config().q_mod_add.enable(&mut region, 0)?;
-
-                summands[0].0.copy_advice(|| "S0", &mut region, adv_cols[4], 0)?;
-                summands[1].0.copy_advice(|| "S1", &mut region, adv_cols[5], 0)?;
-                summands[2].0.copy_advice(|| "S2", &mut region, adv_cols[6], 0)?;
-                summands[3].0.copy_advice(|| "S3", &mut region, adv_cols[7], 0)?;
-                region.assign_advice(|| "carry", adv_cols[0], 0, || carry_val)?;
-                region.assign_advice(|| "res", adv_cols[3], 0, || res_val).map(AssignedWord)
+                self.config().q_mod_add.enable(&mut region, 1)?;
+                self.config().q_11_11_10.enable(&mut region, 1)?;
+                // assign summands
+                summands[0].0.copy_advice(|| "S0", &mut region, adv_cols[5], 0)?;
+                summands[1].0.copy_advice(|| "S1", &mut region, adv_cols[6], 0)?;
+                summands[2].0.copy_advice(|| "S2", &mut region, adv_cols[7], 0)?;
+                summands[3].0.copy_advice(|| "S3", &mut region, adv_cols[5], 1)?;
+                // assign carry
+                self.assign_plain_and_spreaded::<2>(&mut region, carry_val, 0, 1)?;
+                self.assign_plain_and_spreaded::<0>(&mut region, Value::known(0), 1, 1)?;
+                self.assign_plain_and_spreaded::<0>(&mut region, Value::known(0), 2, 1)?;
+                // assign res in 11-11-10 limbs
+                let [R_11a, R_11b, R_10] =
+                    res_val.map(|v| u32_in_be_limbs(v, [11, 11, 10])).transpose_array();
+                self.assign_plain_and_spreaded::<11>(&mut region, R_11a, 0, 0)?;
+                self.assign_plain_and_spreaded::<11>(&mut region, R_11b, 1, 0)?;
+                self.assign_plain_and_spreaded::<10>(&mut region, R_10, 2, 0)?;
+                region
+                    .assign_advice(|| "res", adv_cols[4], 0, || res_val.map(u32_to_fe))
+                    .map(AssignedWord)
             },
         )
     }
