@@ -105,7 +105,7 @@ where
     let (advice, challenges) =
         parse_advices(params, pk, circuits, instances, transcript, &mut rng)?;
 
-    // Sample theta challenge for keeping lookup columns linearly independent
+    // Sample theta challenge for batching independent lookup columns
     let theta: F = transcript.squeeze_challenge();
 
     let lookups: Vec<Vec<lookup::prover::Permuted<F>>> = instance
@@ -135,10 +135,10 @@ where
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    // Sample beta challenge
+    // Sample beta challenge for permutation and lookup argument
     let beta: F = transcript.squeeze_challenge();
 
-    // Sample gamma challenge
+    // Sample gamma challenge for permutation and lookup argument
     let gamma: F = transcript.squeeze_challenge();
 
     // Commit to permutations.
@@ -172,7 +172,7 @@ where
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    // Trash argument
+    // Sample challenge for trash argument
     let trash_challenge: F = transcript.squeeze_challenge();
 
     let trashcans: Vec<Vec<trash::prover::Committed<F>>> = instance
@@ -206,7 +206,7 @@ where
     let y: F = transcript.squeeze_challenge();
 
     let (instance_polys, instance_values) =
-        instance.into_iter().map(|i| (i.instance_polys, i.instance_values)).unzip();
+        instance.into_iter().map(|i| (i.instance_coeffs, i.instance_values)).unzip();
 
     let advice_polys = advice
         .into_iter()
@@ -409,15 +409,16 @@ where
     instances
         .iter()
         .map(|instance| -> Result<InstanceSingle<F>, Error> {
+            // Construct poly for current instance in evaluation form
             let instance_values = instance
                 .iter()
                 .enumerate()
                 .map(|(i, values)| {
-                    // Committed instances go first.
+                    // Committed instances go first
                     let is_committed_instance = i < nb_committed_instances;
                     let mut poly = pk.vk.domain.empty_lagrange();
                     assert_eq!(poly.len(), pk.vk.domain.n as usize);
-                    if values.len() > (poly.len() - (pk.vk.cs.blinding_factors() + 1)) {
+                    if values.len() > (poly.len() - (pk.vk.cs.nr_blinding_factors() + 1)) {
                         return Err(Error::InstanceTooLarge);
                     }
                     if !is_committed_instance {
@@ -439,7 +440,8 @@ where
                 })
                 .collect::<Result<Vec<_>, _>>()?;
 
-            let instance_polys: Vec<_> = instance_values
+            // Construct poly for current instance in coefficient form
+            let instance_coeffs: Vec<_> = instance_values
                 .iter()
                 .map(|poly| {
                     let lagrange_vec = pk.vk.domain.lagrange_from_vec(poly.to_vec());
@@ -449,10 +451,10 @@ where
 
             Ok(InstanceSingle {
                 instance_values,
-                instance_polys,
+                instance_coeffs,
             })
         })
-        .collect::<Result<Vec<_>, _>>()
+        .collect::<Result<Vec<InstanceSingle<F>>, _>>()
 }
 
 #[allow(clippy::type_complexity)]
@@ -485,7 +487,7 @@ where
 
     let domain = &pk.vk.domain;
     // Selector optimizations cannot be applied here; use the ConstraintSystem
-    // from the verification key.
+    // from the verification key
     let meta = &pk.vk.cs;
 
     let mut advice = vec![
@@ -496,7 +498,7 @@ where
     ];
     let mut challenges = HashMap::<usize, F>::with_capacity(meta.num_challenges);
 
-    let unusable_rows_start = domain.n as usize - (meta.blinding_factors() + 1);
+    let unusable_rows_start = domain.n as usize - (meta.nr_blinding_factors() + 1);
     for current_phase in pk.vk.cs.phases() {
         let column_indices = meta
             .advice_column_phase
@@ -523,12 +525,12 @@ where
                 // The prover will not be allowed to assign values to advice
                 // cells that exist within inactive rows, which include some
                 // number of blinding factors and an extra row for use in the
-                // permutation argument.
+                // permutation argument
                 usable_rows: ..unusable_rows_start,
                 _marker: std::marker::PhantomData,
             };
 
-            // Synthesize the circuit to obtain the witness and other information.
+            // Synthesize the circuit to obtain the witness and other information
             ConcreteCircuit::FloorPlanner::synthesize(
                 &mut witness,
                 circuit,
@@ -609,6 +611,7 @@ pub(super) fn compute_h_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitm
         y,
         ..
     } = &trace;
+
     // Calculate the advice and instance cosets
     let advice_cosets: Vec<Vec<Polynomial<F, ExtendedLagrangeCoeff>>> = advice_polys
         .iter()
@@ -777,7 +780,7 @@ pub(super) fn compute_queries<
 #[derive(Clone)]
 pub(super) struct InstanceSingle<F: PrimeField> {
     pub instance_values: Vec<Polynomial<F, LagrangeCoeff>>,
-    pub instance_polys: Vec<Polynomial<F, Coeff>>,
+    pub instance_coeffs: Vec<Polynomial<F, Coeff>>,
 }
 
 #[derive(Clone)]

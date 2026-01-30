@@ -333,8 +333,10 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
             })
             .collect::<Result<_, Error>>()?;
 
+        // Batch the individual MSMs together
         let acc = Accumulator::<S>::accumulate(&proof_accs);
 
+        // Collect the fixed bases for the meta MSM
         let mut fixed_bases = BTreeMap::new();
         for i in 0..NB_PROOFS {
             fixed_bases.insert(com_instance_name::<NB_PROOFS>(i), C::identity());
@@ -600,6 +602,7 @@ mod tests {
             ]
         });
 
+        // Create (inner) proofs that are being aggregated
         let t = std::time::Instant::now();
         let proofs: [Vec<u8>; NB_PROOFS] = core::array::from_fn(|i| {
             midnight_zk_stdlib::prove::<InnerCircuit, LightPoseidonFS<F>>(
@@ -648,6 +651,7 @@ mod tests {
             .try_into()
             .unwrap();
 
+        // Aggregate all (inner) proofs into a single (meta) proof
         let t = std::time::Instant::now();
         let mut transcript = CircuitTranscript::<Blake2bState>::init();
         aggregator

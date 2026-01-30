@@ -113,7 +113,7 @@ impl<S: SelfEmulation> PublicInputInstructions<S::F, AssignedVk<S>> for Verifier
         unimplemented!(
             "We intend [assign_vk_as_public_input] to be the only entry point
             for assigned verifying keys. (Note that its signature is more complex
-            that this function's signature.)"
+            than this function's signature.)"
         )
     }
 }
@@ -226,7 +226,8 @@ impl<S: SelfEmulation> VerifierGadget<S> {
     ) -> Result<(super::traces::VerifierTrace<S>, TranscriptGadget<S>), Error> {
         let cs = &assigned_vk.cs;
 
-        // Check that instances matches the expected number of instance columns
+        // Check that number of instances matches the expected number of instance
+        // columns
         assert_eq!(
             cs.num_instance_columns(),
             assigned_committed_instances.len() + assigned_instances.len()
@@ -254,13 +255,12 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         // TODO: get rid of this assumption, we could support more than one phase.
         assert_eq!(cs.phases().count(), 1);
 
-        // Hash the prover's advice commitments into the transcript and squeeze
-        // challenges
+        // Read commitments to advice columns from the transcript
         let advice_commitments = (0..cs.num_advice_columns())
             .map(|_| transcript.read_point(layouter))
             .collect::<Result<Vec<_>, Error>>()?;
 
-        // Sample theta challenge for keeping lookup columns linearly independent
+        // Sample theta challenge for batching independent lookup columns
         let theta = transcript.squeeze_challenge(layouter)?;
 
         let lookups_permuted = cs
@@ -269,7 +269,10 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             .map(|_| lookup::read_permuted_commitments(layouter, &mut transcript))
             .collect::<Result<Vec<_>, Error>>()?;
 
+        // Sample beta challenge for permutation and lookup argument
         let beta = transcript.squeeze_challenge(layouter)?;
+
+        // Sample gamma challenge for permutation and lookup argument
         let gamma = transcript.squeeze_challenge(layouter)?;
 
         let permutation_committed =
@@ -283,8 +286,10 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                 lookup.read_product_commitment(layouter, &mut transcript))
             .collect::<Result<Vec<_>, _>>()?;
 
+        // Sample trash challenge
         let trash_challenge = transcript.squeeze_challenge(layouter)?;
 
+        // Read commitments to trashcans from the transcript
         let trashcans_committed = cs
             .trashcans()
             .iter()
@@ -293,7 +298,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
 
         let vanishing = vanishing::read_commitments_before_y(layouter, &mut transcript)?;
 
-        // Sample y challenge, which keeps the gates linearly independent
+        // Sample identity batching challenge y, for batching all independent identities
         let y = transcript.squeeze_challenge(layouter)?;
 
         Ok((
@@ -353,8 +358,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             assigned_vk.domain.get_quotient_poly_degree(),
         )?;
 
-        // Sample x challenge, which is used to ensure the circuit is satisfied with
-        // high probability
+        // Sample evaluation challenge x
         let x = transcript.squeeze_challenge(layouter)?;
 
         let instance_evals = {
@@ -421,20 +425,24 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         // This check ensures the circuit is satisfied so long as the polynomial
         // commitments open to the correct values.
         let vanishing = {
-            let blinding_factors = cs.blinding_factors();
+            let nr_blinding_factors = cs.nr_blinding_factors();
 
             let l_evals = evaluate_lagrange_polynomials(
                 layouter,
                 &self.scalar_chip,
                 1 << k,
                 assigned_vk.domain.get_omega(),
-                (-((blinding_factors + 1) as i32))..1,
+                (-((nr_blinding_factors + 1) as i32))..1,
                 &x,
             )?;
-            assert_eq!(l_evals.len(), 2 + blinding_factors);
+            assert_eq!(l_evals.len(), 2 + nr_blinding_factors);
             let l_last = l_evals[0].clone();
-            let l_blind = sum::<S::F>(layouter, &self.scalar_chip, &l_evals[1..=blinding_factors])?;
-            let l_0 = l_evals[1 + blinding_factors].clone();
+            let l_blind = sum::<S::F>(
+                layouter,
+                &self.scalar_chip,
+                &l_evals[1..=nr_blinding_factors],
+            )?;
+            let l_0 = l_evals[1 + nr_blinding_factors].clone();
 
             // Compute the expected value of h(x)
             let expressions = {
@@ -540,7 +548,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         let one = AssignedBoundedScalar::<S::F>::one(layouter, &self.scalar_chip)?;
         let omega = assigned_vk.domain.get_omega();
         let omega_inv = omega.invert().unwrap();
-        let omega_last = omega_inv.pow([cs.blinding_factors() as u64 + 1]);
+        let omega_last = omega_inv.pow([cs.nr_blinding_factors() as u64 + 1]);
         let x_next = self.scalar_chip.mul_by_constant(layouter, &x, omega)?;
         let x_prev = self.scalar_chip.mul_by_constant(layouter, &x, omega_inv)?;
         let x_last = self.scalar_chip.mul_by_constant(layouter, &x, omega_last)?;
@@ -607,9 +615,9 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             )
             .chain(vanishing.queries(&one, &x));
 
-        // We are now convinced the circuit is satisfied so long as the
-        // polynomial commitments open to the correct values, which is true as long
-        // as the following accumulator passes the invariant.
+        // We are now convinced the circuit is satisfied as long as the
+        // polynomial commitments open to the correct values, which is true
+        // as long as the following accumulator passes the invariant
         let multiopen_check = kzg::multi_prepare::<_, S>(
             layouter,
             #[cfg(feature = "truncated-challenges")]

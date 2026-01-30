@@ -83,7 +83,7 @@ impl<F: Field> Assignment<F> for Assembly<F> {
             return Err(Error::not_enough_rows_available(self.k));
         }
 
-        self.selectors[selector.0][row] = true;
+        self.selectors[selector.index()][row] = true;
 
         Ok(())
     }
@@ -259,7 +259,7 @@ where
         fixed: vec![domain.empty_lagrange_rational(); cs.num_fixed_columns],
         permutation: permutation::keygen::Assembly::new(domain.n as usize, &cs.permutation),
         selectors: vec![vec![false; domain.n as usize]; cs.num_selectors],
-        usable_rows: 0..domain.n as usize - (cs.blinding_factors() + 1),
+        usable_rows: 0..domain.n as usize - (cs.nr_blinding_factors() + 1),
         _marker: std::marker::PhantomData,
     };
 
@@ -314,7 +314,7 @@ where
         fixed: vec![vk.domain.empty_lagrange_rational(); cs.num_fixed_columns],
         permutation: permutation::keygen::Assembly::new(n, &cs.permutation),
         selectors: vec![vec![false; n]; cs.num_selectors],
-        usable_rows: 0..n - (cs.blinding_factors() + 1),
+        usable_rows: 0..n - (cs.nr_blinding_factors() + 1),
         _marker: std::marker::PhantomData,
     };
 
@@ -374,7 +374,7 @@ where
     // Compute l_blind(X) which evaluates to 1 for each blinding factor row
     // and 0 otherwise over the domain.
     let mut l_blind = vk.domain.empty_lagrange();
-    for evaluation in l_blind[..].iter_mut().rev().take(cs.blinding_factors()) {
+    for evaluation in l_blind[..].iter_mut().rev().take(cs.nr_blinding_factors()) {
         *evaluation = F::ONE;
     }
     let l_blind = vk.domain.lagrange_to_coeff(l_blind);
@@ -384,7 +384,7 @@ where
     // before the blinding factors) and 0 otherwise over the domain
     let mut l_last = vk.domain.empty_lagrange();
     let n = vk.domain.n as usize;
-    l_last[n - cs.blinding_factors() - 1] = F::ONE;
+    l_last[n - cs.nr_blinding_factors() - 1] = F::ONE;
     let l_last = vk.domain.lagrange_to_coeff(l_last);
     let l_last = vk.domain.coeff_to_extended(l_last);
 
