@@ -1,0 +1,26 @@
+[package]
+edition = "2021"
+name = "field-derive"
+version = "0.1.0"
+authors = ["Privacy Scaling Explorations team"]
+license = "MIT/Apache-2.0"
+repository = "https://github.com/privacy-scaling-explorations/halo2curves"
+description = "Derive macros for halo2curves fields."
+rust-version = "1.74.0"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+num-bigint = { version = "0.4", default-features = false }
+num-integer = { version = "0.1", default-features = false }
+num-traits = { version = "0.2", default-features = false }
+proc-macro2 = { version = "1.0", default-features = false }
+quote = { version = "1.0", default-features = false }
+syn = { version = "1.0", features = ["full"] }
+
+
+[features]
+default = ["std"]
+asm = []
+std = []
