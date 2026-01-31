@@ -23,6 +23,8 @@ use midnight_curves::msm::msm_best;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
+    poly::kzg::msm::MSMKZG,
+    utils::arithmetic::MSM,
 };
 
 use crate::{
@@ -31,7 +33,9 @@ use crate::{
     types::{InnerValue, Instantiable},
     verifier::{
         types::SelfEmulation,
-        utils::{assign_bounded_scalars, mul_bounded_scalars, AssignedBoundedScalar},
+        utils::{
+            add_bounded_scalars, assign_bounded_scalars, mul_bounded_scalars, AssignedBoundedScalar,
+        },
     },
 };
 
@@ -85,8 +89,8 @@ pub struct Msm<S: SelfEmulation> {
 /// This is the in-circuit analog of `Msm<C>`.
 #[derive(Clone, Debug)]
 pub struct AssignedMsm<S: SelfEmulation> {
-    bases: Vec<AssignedBase<S>>,
-    scalars: Vec<AssignedBoundedScalar<S::F>>,
+    pub(crate) bases: Vec<AssignedBase<S>>,
+    pub(crate) scalars: Vec<AssignedBoundedScalar<S::F>>,
 }
 
 impl<S: SelfEmulation> PartialEq for AssignedMsm<S> {
@@ -143,26 +147,30 @@ impl<S: SelfEmulation> Msm<S> {
     pub fn collapse(&mut self) {
         let mut variable_bases = vec![];
         let mut variable_scalars = vec![];
-        let mut fixed_bases = vec![];
-        let mut fixed_scalars = vec![];
+        let mut fixed_bases_map = BTreeMap::new();
 
         for (base, scalar) in self.bases.iter().zip(self.scalars.iter()) {
-            if let Base::Variable(b) = base {
-                variable_bases.push(*b);
-                variable_scalars.push(*scalar);
-            } else {
-                fixed_bases.push(base.clone());
-                fixed_scalars.push(*scalar);
+            match base {
+                Base::Variable(b) => {
+                    variable_bases.push(*b);
+                    variable_scalars.push(*scalar);
+                }
+                Base::Fixed(name) => {
+                    fixed_bases_map
+                        .entry(name.clone())
+                        .and_modify(|s| *s += *scalar)
+                        .or_insert(*scalar);
+                }
             }
         }
         let affine_bases: Vec<S::G1Affine> = variable_bases.iter().map(|&b| b.into()).collect();
         let collapsed_base = msm_best(&variable_scalars, &affine_bases);
 
-        self.bases = fixed_bases;
-        self.bases.push(Base::Variable(collapsed_base.into()));
+        self.bases = vec![Base::Variable(collapsed_base.into())];
+        self.bases.extend(fixed_bases_map.keys().map(|n| Base::Fixed((*n).clone())));
 
-        self.scalars = fixed_scalars;
-        self.scalars.push(S::F::ONE);
+        self.scalars = vec![S::F::ONE];
+        self.scalars.extend(fixed_bases_map.values().cloned());
     }
 
     /// Evaluates the MSM with the provided fixed_bases.
@@ -204,7 +212,32 @@ impl<S: SelfEmulation> Msm<S> {
     /// approach. The function should convert Base::Variable entries to
     /// Base::Fixed entries rather than moving scalars between fields.
     pub fn extract_fixed_bases(&mut self, _fixed_bases: &BTreeMap<String, S::C>) {
-        todo!()
+        // todo!()
+    }
+
+    /// Creates a new MSM from the given [MSMKZG] structure.
+    pub fn from_msmkzg(
+        msm_kzg: &MSMKZG<S::Engine>,
+        name_scheme: &[Option<String>],
+    ) -> (Self, BTreeMap<String, S::C>) {
+        let scalars = msm_kzg.scalars().clone();
+        let mut bases = Vec::with_capacity(msm_kzg.bases().len());
+        let mut fixed_bases_map = BTreeMap::new();
+
+        assert_eq!(msm_kzg.bases().len(), name_scheme.len());
+        for (base_name, base) in name_scheme.iter().zip(msm_kzg.bases()) {
+            match base_name {
+                Some(name) => {
+                    bases.push(Base::Fixed(name.clone()));
+                    fixed_bases_map.insert(name.clone(), base);
+                }
+                None => {
+                    bases.push(Base::Variable(base));
+                }
+            }
+        }
+
+        (Self { bases, scalars }, fixed_bases_map)
     }
 }
 
@@ -362,6 +395,17 @@ impl<S: SelfEmulation> AssignedMsm<S> {
         Ok(AssignedMsm { scalars, bases })
     }
 
+    /// TODO
+    pub fn name_scheme(&self) -> Vec<Option<String>> {
+        self.bases
+            .iter()
+            .map(|base| match base {
+                AssignedBase::Variable(_) => None,
+                AssignedBase::Fixed(name) => Some(name.clone()),
+            })
+            .collect()
+    }
+
     /// An empty AssignedMsm that evaluates to the identity point.
     pub fn empty() -> Self {
         Self {
@@ -411,29 +455,32 @@ impl<S: SelfEmulation> AssignedMsm<S> {
     ) -> Result<(), Error> {
         let mut variable_bases = vec![];
         let mut variable_scalars = vec![];
-        let mut fixed_bases = vec![];
-        let mut fixed_scalars = vec![];
+        let mut fixed_bases_map = BTreeMap::new();
 
         for (base, scalar) in self.bases.iter().zip(self.scalars.iter()) {
             match base {
-                AssignedBase::Variable(p) => {
-                    variable_bases.push(p.clone());
+                AssignedBase::Variable(b) => {
+                    variable_bases.push(b.clone());
                     variable_scalars.push((scalar.scalar.clone(), scalar.bound.bits() as usize));
                 }
-                AssignedBase::Fixed(_) => {
-                    fixed_bases.push(base.clone());
-                    fixed_scalars.push(scalar.clone());
+                AssignedBase::Fixed(name) => {
+                    if let Some(existing) = fixed_bases_map.get_mut(name) {
+                        *existing = add_bounded_scalars(layouter, scalar_chip, existing, scalar)?;
+                    } else {
+                        fixed_bases_map.insert(name.clone(), scalar.clone());
+                    }
                 }
             }
         }
 
         let collapsed_base = S::msm(layouter, curve_chip, &variable_scalars, &variable_bases)?;
 
-        self.bases = fixed_bases;
-        self.bases.push(AssignedBase::Variable(collapsed_base));
+        self.bases = vec![AssignedBase::Variable(collapsed_base)];
+        self.bases
+            .extend(fixed_bases_map.keys().map(|n| AssignedBase::Fixed((*n).clone())));
 
-        self.scalars = fixed_scalars;
-        self.scalars.push(AssignedBoundedScalar::one(layouter, scalar_chip)?);
+        self.scalars = vec![AssignedBoundedScalar::one(layouter, scalar_chip)?];
+        self.scalars.extend(fixed_bases_map.values().cloned());
 
         Ok(())
     }

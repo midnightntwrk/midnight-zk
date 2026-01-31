@@ -436,8 +436,8 @@ where
     let right = {
         let mut right = final_com; // C
         let minus_v_gen = AssignedMsm::from_fixed_term(&v, "~G");
-        right.add_msm(&minus_v_gen); // -vG
         right.add_msm(&scaled_pi); // zπ
+        right.add_msm(&minus_v_gen); // -vG
         right
     };
 

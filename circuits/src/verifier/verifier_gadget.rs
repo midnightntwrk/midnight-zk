@@ -660,7 +660,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
 #[cfg(test)]
 pub(crate) mod tests {
 
-    use std::collections::BTreeMap;
+    use std::{cell::RefCell, collections::BTreeMap};
 
     use group::Group;
     use midnight_proofs::{
@@ -771,6 +771,7 @@ pub(crate) mod tests {
         inner_committed_instance: Value<C>,
         inner_instances: Value<[F; NB_INNER_INSTANCES]>,
         inner_proof: Value<Vec<u8>>,
+        fixed_bases_scheme: RefCell<Vec<Option<String>>>,
     }
 
     impl Circuit<F> for TestCircuit {
@@ -866,6 +867,21 @@ pub(crate) mod tests {
                 self.inner_proof.clone(),
             )?;
 
+            *self.fixed_bases_scheme.borrow_mut() = inner_proof_acc.name_scheme();
+
+            println!("BEFORE COLLAPSING");
+            use crate::utils::types::InnerValue;
+            for (b, s) in inner_proof_acc.rhs.bases.iter().zip(inner_proof_acc.rhs.scalars.iter()) {
+                match b {
+                    crate::verifier::AssignedBase::Fixed(name) => {
+                        dbg!((name, s.scalar.value()));
+                    }
+                    crate::verifier::AssignedBase::Variable(b) => {
+                        dbg!((b.value(), s.scalar.value()));
+                    }
+                }
+            }
+
             inner_proof_acc.collapse(&mut layouter, &curve_chip, &native_gadget)?;
 
             verifier_chip.constrain_as_public_input(&mut layouter, &inner_proof_acc)?;
@@ -919,15 +935,32 @@ pub(crate) mod tests {
             .expect("Problem preparing the inner proof")
         };
 
-        let mut fixed_bases = BTreeMap::new();
-        fixed_bases.insert(String::from("com_instance"), C::identity());
-        fixed_bases.extend(crate::verifier::fixed_bases::<S>("inner_vk", &inner_vk));
+        let circuit = TestCircuit {
+            inner_vk: (
+                inner_vk.get_domain().clone(),
+                inner_vk.cs().clone(),
+                Value::known(inner_vk.transcript_repr()),
+            ),
+            inner_committed_instance: Value::known(C::identity()),
+            inner_instances: Value::known([F::ZERO]),
+            inner_proof: Value::known(vec![]),
+            fixed_bases_scheme: RefCell::new(vec![]),
+        };
 
-        let mut inner_acc: Accumulator<S> = inner_dual_msm.clone().into();
-        inner_acc.extract_fixed_bases(&fixed_bases);
+        // Run a dummy prover with wrong inputs, to set up the fixed_bases_scheme.
+        // This could be done by running the setup algorithm (with no witness) instead,
+        // but we do not wanna run setup in this test, since it is time consuming.
+        MockProver::run(K, &circuit, vec![vec![], vec![]]).unwrap();
+        let fixed_bases_scheme = circuit.fixed_bases_scheme.borrow().clone();
+
+        let (mut inner_acc, fixed_bases) =
+            Accumulator::<S>::from_dual_msm(&inner_dual_msm, &fixed_bases_scheme);
 
         assert!(inner_dual_msm.check(&inner_params.verifier_params()));
         assert!(inner_acc.check(&inner_params.s_g2().into(), &fixed_bases));
+
+        println!("BEFORE COLLAPSING");
+        dbg!(&inner_acc);
 
         inner_acc.collapse();
 
@@ -948,6 +981,7 @@ pub(crate) mod tests {
             inner_committed_instance: Value::known(C::identity()),
             inner_instances: Value::known([output]),
             inner_proof: Value::known(inner_proof),
+            fixed_bases_scheme: RefCell::new(vec![]),
         };
 
         let prover =

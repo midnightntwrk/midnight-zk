@@ -27,7 +27,7 @@
 //! Note that implication <= holds unconditionally, whereas implication => holds
 //! "computationally".
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use ff::Field;
 use group::prime::PrimeCurveAffine;
@@ -35,7 +35,8 @@ use midnight_curves::pairing::Engine;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
-    poly::kzg::msm::DualMSM,
+    poly::kzg::msm::{DualMSM, MSMKZG},
+    utils::arithmetic::MSM,
 };
 use num_bigint::BigUint;
 use num_traits::One;
@@ -166,6 +167,32 @@ impl<S: SelfEmulation> Accumulator<S> {
     pub fn extract_fixed_bases(&mut self, fixed_bases: &BTreeMap<String, S::C>) {
         self.rhs.extract_fixed_bases(fixed_bases);
     }
+
+    /// TODO
+    pub fn from_dual_msm(
+        dual_msm: &DualMSM<S::Engine>,
+        name_scheme: &[Option<String>],
+    ) -> (Self, BTreeMap<String, S::C>) {
+        let (lhs, rhs) = dual_msm.split();
+
+        let (lhs_bases, lhs_scalars): (Vec<S::C>, Vec<S::F>) =
+            lhs.into_iter().map(|(s, b)| (*b, *s)).unzip();
+
+        let mut rhs_msm_kzg = MSMKZG::init();
+        for (s, b) in rhs.into_iter() {
+            rhs_msm_kzg.append_term(*s, *b);
+        }
+
+        let (rhs, fixed_bases) = Msm::from_msmkzg(&rhs_msm_kzg, name_scheme);
+
+        (
+            Self {
+                lhs: Msm::from_terms(&lhs_bases, &lhs_scalars),
+                rhs,
+            },
+            fixed_bases,
+        )
+    }
 }
 
 impl<S: SelfEmulation> InnerValue for AssignedAccumulator<S> {
@@ -242,6 +269,11 @@ impl<S: SelfEmulation> AssignedAccumulator<S> {
                 acc_rhs_val,
             )?,
         ))
+    }
+
+    /// TODO
+    pub fn name_scheme(&self) -> Vec<Option<String>> {
+        self.rhs.name_scheme()
     }
 
     /// An `AssignedAccumulator` a given lhs and rhs terms respectively.
