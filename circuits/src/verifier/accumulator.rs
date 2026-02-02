@@ -121,6 +121,12 @@ impl<S: SelfEmulation> Accumulator<S> {
         self.rhs.collapse();
     }
 
+    /// Evaluates the variable and fixed parts of the Accumulator collapsing
+    /// each side to a single point.
+    pub fn fully_collapse(&self, fixed_bases: &BTreeMap<String, S::C>) -> (S::C, S::C) {
+        (self.lhs.eval(fixed_bases), self.rhs.eval(fixed_bases))
+    }
+
     /// Accumulates several accumulators together. The resulting acc will
     /// satisfy the invariant iff all the accumulators individually do.
     pub fn accumulate(accs: &[Self]) -> Self {
