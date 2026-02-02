@@ -296,7 +296,6 @@ pub(crate) fn impl_field(input: TokenStream) -> TokenStream {
         impl crate::FieldEncoding for #field {
             type Bytes = [u8; Self::SIZE];
 
-            const BYTE_SIZE: usize = Self::SIZE;
             const REPR_ENDIAN: crate::Endian = crate::Endian::#endian;
 
             fn to_le_bytes(&self) -> Self::Bytes {

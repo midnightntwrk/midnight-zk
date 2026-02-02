@@ -19,7 +19,7 @@
 //!
 //! # Example
 //!
-//! ```ignore
+//! ```
 //! use midnight_curves::{FieldEncoding, Fq};
 //!
 //! let scalar = Fq::from(42u64);
@@ -44,29 +44,24 @@ use num_bigint::BigUint;
 /// Endianness of a field native byte representation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Endian {
-    /// Little-endian: least significant byte first.
+    /// Little-endian.
     LE,
-    /// Big-endian: most significant byte first.
+    /// Big-endian.
     BE,
 }
 
 /// Extension trait for [`PrimeField`] providing explicit byte encoding methods.
 pub trait FieldEncoding: PrimeField {
     /// Fixed-size byte array type for this field.
-    ///
-    /// This should be `[u8; BYTE_SIZE]`. We use an associated type because Rust
-    /// doesn't allow using associated constants as const generic parameters.
+    //
+    // This should be `[u8; BYTE_SIZE]`. We use an associated type because Rust
+    // doesn't allow using associated constants as const generic parameters.
     type Bytes: Copy + Default + AsRef<[u8]> + AsMut<[u8]>;
 
-    /// Size of the field element in bytes.
-    ///
-    /// This should match `size_of::<Self::Repr>()` and `size_of::<Self::Bytes>()`.
-    const BYTE_SIZE: usize;
-
     /// Endianness of the native `to_repr()` representation.
-    ///
-    /// This allows generic code to know how to interpret the bytes from
-    /// `PrimeField::to_repr()` without runtime detection.
+    //
+    // This allows generic code to know how to interpret the bytes from
+    // `PrimeField::to_repr()`.
     const REPR_ENDIAN: Endian;
 
     /// Converts the field element to a little-endian byte array.

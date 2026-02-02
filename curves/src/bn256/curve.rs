@@ -13,7 +13,6 @@ use crate::{
 impl crate::FieldEncoding for Fq2 {
     type Bytes = crate::serde::Repr<{ Self::SIZE }>;
 
-    const BYTE_SIZE: usize = Self::SIZE;
     const REPR_ENDIAN: crate::Endian = Fq::REPR_ENDIAN;
 
     fn to_le_bytes(&self) -> Self::Bytes {
