@@ -66,7 +66,7 @@ where
     C: EdwardsCurve,
 {
     base_field_config: FieldChipConfig,
-    x_coord_config: CoordConfig<C>,
+    coord_config: CoordConfig<C>,
     _marker: PhantomData<C>,
 }
 
@@ -114,11 +114,11 @@ where
         _meta: &mut ConstraintSystem<F>,
         base_field_config: &FieldChipConfig,
     ) -> ForeignEdwardsEccConfig<C> {
-        let x_coord_config = CoordConfig::<C>::configure::<F, B>(_meta, base_field_config);
+        let coord_config = CoordConfig::<C>::configure::<F, B>(_meta, base_field_config);
 
         ForeignEdwardsEccConfig {
             base_field_config: base_field_config.clone(),
-            x_coord_config,
+            coord_config,
             _marker: PhantomData,
         }
     }
@@ -159,14 +159,6 @@ where
     }
 }
 
-impl<F, C, B> Eq for AssignedForeignEdwardsPoint<F, C, B>
-where
-    F: PrimeField,
-    C: EdwardsCurve,
-    B: FieldEmulationParams<F, C::Base>,
-{
-}
-
 impl<F, C, B> Hash for AssignedForeignEdwardsPoint<F, C, B>
 where
     F: PrimeField,
@@ -185,6 +177,7 @@ where
     C: EdwardsCurve,
     B: FieldEmulationParams<F, C::Base>,
 {
+    // TODO: why default to 0?
     fn as_public_input(p: &C::CryptographicGroup) -> Vec<F> {
         let (x, y) = (*p).into().coordinates().unwrap_or((C::Base::ZERO, C::Base::ZERO));
         [
@@ -261,7 +254,7 @@ where
     S: ScalarFieldInstructions<F>,
     N: NativeInstructions<F>,
 {
-    /// Converts an Edwards curve point to AssignedForeignEdwardsPoint.
+    /// Converts an Edwards curve point to [AssignedForeignEdwardsPoint].
     /// The point is not asserted (with constraints) to be on the curve.
     fn assign_point_unchecked(
         &self,
@@ -269,7 +262,7 @@ where
         value: Value<C::CryptographicGroup>,
     ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
         let (val_x, val_y) = value
-            .map(|v| v.into().coordinates().expect("assign: valid curve point"))
+            .map(|v| v.into().coordinates().expect("assign_unchecked: valid curve point"))
             .unzip();
         let x = self.base_field_chip().assign(layouter, val_x)?;
         let y = self.base_field_chip().assign(layouter, val_y)?;
@@ -278,7 +271,10 @@ where
         Ok(p)
     }
 
-    fn assert_on_curve(
+    /// Asserts the curve equation `a*x^2 + y^2 = 1 + d*x^2*y^2` of an emulated
+    /// twisted Edwards curve, given the x and y coordinate in form of
+    /// [AssignedField].
+    fn assert_curve_equation(
         &self,
         layouter: &mut impl Layouter<F>,
         x: &AssignedField<F, C::Base, B>,
@@ -319,7 +315,7 @@ where
     ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
         let point = self.assign_point_unchecked(layouter, value)?;
 
-        self.assert_on_curve(layouter, &point.x, &point.y)?;
+        self.assert_curve_equation(layouter, &point.x, &point.y)?;
 
         Ok(point)
     }
@@ -333,7 +329,7 @@ where
             constant
                 .into()
                 .coordinates()
-                .expect("assign fixed unchecked: expected valid curve point")
+                .expect("assign_point_unchecked: invalid point given")
         };
         let x = self.base_field_chip().assign_fixed(layouter, x)?;
         let y = self.base_field_chip().assign_fixed(layouter, y)?;
@@ -382,9 +378,6 @@ where
         layouter: &mut impl Layouter<F>,
         value: Value<C::CryptographicGroup>,
     ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
-        // Given our optimized way of constraining a point as public input, we
-        // cannot optimize the direct assignment as PI. We just compose `assign`
-        // with `constrain_as_public_input`.
         let point = self.assign(layouter, value)?;
         self.constrain_as_public_input(layouter, &point)?;
         Ok(point)
@@ -551,7 +544,8 @@ where
     S: ScalarFieldInstructions<F>,
     N: NativeInstructions<F>,
 {
-    /// Returns `p` if `cond = 1` and `q` otherwise.
+    /// Returns `p` if `cond = 1` and `q` otherwise. In essence, this enforces
+    /// `cond * p + (1 - cond) * q = 0` over the emulated twisted Edwards curve.
     fn select(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -623,7 +617,7 @@ where
             &py_qx,
             &d_px_py_qx_qy,
             base_chip,
-            &self.config.x_coord_config,
+            &self.config.coord_config,
         )?;
 
         // Constraint for Ry coordinate
@@ -635,7 +629,7 @@ where
             &neg_a_px_qx,
             &neg_d_px_py_qx_qy,
             base_chip,
-            &self.config.x_coord_config,
+            &self.config.coord_config,
         )?;
 
         Ok(AssignedForeignEdwardsPoint {
@@ -653,6 +647,8 @@ where
         self.add(layouter, p, p)
     }
 
+    /// The negation of a point `P = (Px, Py)` on a twisted Edwards curve is
+    /// given by `-P = (-Px, Py)`.
     fn negate(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -699,6 +695,8 @@ where
                 self.scalar_field_chip()
                     .assigned_to_le_bits(layouter, s, Some(*bit_size), true)?;
             let mut p = b.clone();
+
+            // Simple double-and-add
             for b in scalar_bits.iter() {
                 let addend = self.select(layouter, b, &p, &identity)?;
                 res = self.add(layouter, &res, &addend)?;
@@ -724,6 +722,8 @@ where
         let scalar_bits = crate::utils::util::fe_to_le_bits(&scalar, None);
         let mut p = base.clone();
         let mut res = self.assign_fixed(layouter, C::CryptographicGroup::identity())?;
+
+        // Simple double-and-add
         for b in scalar_bits {
             if b {
                 res = self.add(layouter, &res, &p)?;
@@ -740,7 +740,7 @@ where
         x: &AssignedField<F, C::Base, B>,
         y: &AssignedField<F, C::Base, B>,
     ) -> Result<Self::Point, Error> {
-        self.assert_on_curve(layouter, x, y)?;
+        self.assert_curve_equation(layouter, x, y)?;
 
         let point = x
             .value()

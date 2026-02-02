@@ -122,7 +122,8 @@ where
 
     /// Creates an assigned point from a pair of coordinates, asserting that
     /// they satisfy the curve equation.
-    /// (The identity cannot be constructed through this function.)
+    /// (In case of Weierstras curves, the identity cannot be constructed
+    /// through this function.)
     fn point_from_coordinates(
         &self,
         layouter: &mut impl Layouter<F>,
