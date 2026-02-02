@@ -299,6 +299,21 @@ impl<S: SelfEmulation> AssignedAccumulator<S> {
         self.rhs.collapse(layouter, curve_chip, scalar_chip)
     }
 
+    /// Evaluates the variable and fixed parts of the AssignedAccumulator
+    /// collapsing each side to a single point.
+    ///
+    /// This will likely be an expensive in-circuit operation.
+    pub fn fully_collapse(
+        &self,
+        layouter: &mut impl Layouter<S::F>,
+        curve_chip: &S::CurveChip,
+        fixed_bases: &BTreeMap<String, S::C>,
+    ) -> Result<(S::AssignedPoint, S::AssignedPoint), Error> {
+        let lhs_pt = self.lhs.eval(layouter, curve_chip, fixed_bases)?;
+        let rhs_pt = self.rhs.eval(layouter, curve_chip, fixed_bases)?;
+        Ok((lhs_pt, rhs_pt))
+    }
+
     /// Accumulates several accumulators together. The resulting acc will
     /// satisfy the invariant iff all the accumulators individually do.
     pub fn accumulate(
