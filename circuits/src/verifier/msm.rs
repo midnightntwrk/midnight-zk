@@ -485,6 +485,34 @@ impl<S: SelfEmulation> AssignedMsm<S> {
         Ok(())
     }
 
+    /// Evaluates the variable and fixed base parts of the AssignedMsm
+    /// collapsing it to a single point.
+    ///
+    /// The fixed bases are constrained in-circuit to be fixed.
+    pub fn eval(
+        &self,
+        layouter: &mut impl Layouter<S::F>,
+        curve_chip: &S::CurveChip,
+        fixed_bases: &BTreeMap<String, S::C>,
+    ) -> Result<S::AssignedPoint, Error> {
+        let mut bases = self.bases.clone();
+        let mut scalars = self.scalars.clone();
+
+        for (key, scalar) in self.fixed_base_scalars.iter() {
+            let base = fixed_bases.get(key).expect("Base not provided: {key}");
+            let fixed_base = curve_chip.assign_fixed(layouter, *base)?;
+            bases.push(fixed_base);
+            scalars.push(scalar.clone());
+        }
+
+        let scalar_tuples = scalars
+            .iter()
+            .map(|s| (s.scalar.clone(), s.bound.bits() as usize))
+            .collect::<Vec<_>>();
+
+        S::msm(layouter, curve_chip, &scalar_tuples, &bases)
+    }
+
     /// Scales all the scalars of the AssignedMsm by the given factor r.
     ///
     /// This function mutates self.
