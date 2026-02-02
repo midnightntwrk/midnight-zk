@@ -63,6 +63,10 @@ where
     type Commitment = E::G1;
     type VerificationGuard = DualMSM<E>;
 
+    fn constant_commitment() -> Self::Commitment {
+        E::G1::generator()
+    }
+
     fn gen_params(k: u32) -> Self::Parameters {
         ParamsKZG::unsafe_setup(k, OsRng)
     }
