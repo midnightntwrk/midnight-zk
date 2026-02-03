@@ -4,6 +4,7 @@
 
 use core::{
     cmp, fmt,
+    mem::size_of,
     ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign},
 };
 use std::{convert::TryInto, ops::Deref};
@@ -937,6 +938,54 @@ impl SerdeObject for Fp {
     }
 }
 
+// ============================================================================
+// FieldEncoding trait implementation
+// ============================================================================
+
+impl crate::FieldEncoding for Fp {
+    type Bytes = FpRepr;
+
+    const REPR_ENDIAN: crate::Endian = crate::Endian::LE;
+
+    fn to_le_bytes(&self) -> Self::Bytes {
+        FpRepr(Fp::to_bytes_le(self))
+    }
+
+    fn to_be_bytes(&self) -> Self::Bytes {
+        FpRepr(Fp::to_bytes_be(self))
+    }
+
+    fn from_le_bytes(bytes: &[u8]) -> Option<Self> {
+        if bytes.len() != size_of::<Self::Repr>() {
+            return None;
+        }
+        let arr: [u8; 48] = bytes.try_into().ok()?;
+        Fp::from_bytes_le(&arr).into()
+    }
+
+    fn from_be_bytes(bytes: &[u8]) -> Option<Self> {
+        if bytes.len() != size_of::<Self::Repr>() {
+            return None;
+        }
+        let arr: [u8; 48] = bytes.try_into().ok()?;
+        Fp::from_bytes_be(&arr).into()
+    }
+
+    fn to_biguint(&self) -> num_bigint::BigUint {
+        num_bigint::BigUint::from_bytes_le(self.to_le_bytes().as_ref())
+    }
+
+    fn from_biguint(n: &num_bigint::BigUint) -> Option<Self> {
+        let bytes = n.to_bytes_le();
+        if bytes.len() > size_of::<Self::Repr>() {
+            return None;
+        }
+        let mut padded = [0u8; 48];
+        padded[..bytes.len()].copy_from_slice(&bytes);
+        Self::from_le_bytes(&padded)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1667,4 +1716,9 @@ mod tests {
     crate::field_testing_suite!(Fp, "constants");
     crate::field_testing_suite!(Fp, "sqrt");
     crate::field_testing_suite!(Fp, "zeta");
+
+    #[test]
+    fn test_field_encoding() {
+        crate::field_encoding::tests::test_field_encoding::<Fp>();
+    }
 }

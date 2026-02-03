@@ -21,7 +21,9 @@
 //! See: <https://github.com/RustCrypto/elliptic-curves/issues/531>
 
 use core::{
+    convert::TryInto,
     iter::{Product, Sum},
+    mem::size_of,
     ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign},
 };
 
@@ -374,11 +376,67 @@ impl Fp {
     }
 }
 
+// ============================================================================
+// FieldEncoding trait implementation
+// ============================================================================
+
+impl crate::FieldEncoding for Fp {
+    type Bytes = [u8; 32];
+
+    const REPR_ENDIAN: crate::Endian = crate::Endian::BE;
+
+    fn to_le_bytes(&self) -> Self::Bytes {
+        let mut bytes: [u8; 32] = self.to_bytes().into();
+        bytes.reverse();
+        bytes
+    }
+
+    fn to_be_bytes(&self) -> Self::Bytes {
+        self.to_bytes().into()
+    }
+
+    fn from_le_bytes(bytes: &[u8]) -> Option<Self> {
+        if bytes.len() != size_of::<Self::Repr>() {
+            return None;
+        }
+        let mut be_bytes = [0u8; 32];
+        be_bytes.copy_from_slice(bytes);
+        be_bytes.reverse();
+        Self::from_bytes(&k256::FieldBytes::from(be_bytes)).into()
+    }
+
+    fn from_be_bytes(bytes: &[u8]) -> Option<Self> {
+        if bytes.len() != size_of::<Self::Repr>() {
+            return None;
+        }
+        let be_bytes: [u8; 32] = bytes.try_into().ok()?;
+        Self::from_bytes(&k256::FieldBytes::from(be_bytes)).into()
+    }
+
+    fn to_biguint(&self) -> num_bigint::BigUint {
+        num_bigint::BigUint::from_bytes_be(&self.to_be_bytes())
+    }
+
+    fn from_biguint(n: &num_bigint::BigUint) -> Option<Self> {
+        let bytes = n.to_bytes_be();
+        if bytes.len() > size_of::<Self::Repr>() {
+            return None;
+        }
+        // Pad with leading zeros for big-endian.
+        let mut padded = [0u8; 32];
+        padded[32 - bytes.len()..].copy_from_slice(&bytes);
+        Self::from_be_bytes(&padded)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::field_encoding::tests as encoding_tests;
 
-    // Tests that compare the inner (unsafe) type with the safe wrapper.
+    // ========================================================================
+    // k256-specific tests for normalization safety
+    // ========================================================================
 
     /// k256::FieldElement.is_zero() panics on unnormalized input.
     /// In release builds, it would return incorrect results instead of panicking.
@@ -430,5 +488,14 @@ mod tests {
         let zeta = Fp::from_bytes(&k256::FieldBytes::from(ZETA_BYTES)).expect("Valid ZETA bytes");
         let zeta_cube = zeta * zeta * zeta;
         assert_eq!(zeta_cube, Fp::ONE);
+    }
+
+    // ========================================================================
+    // Generic FieldEncoding tests
+    // ========================================================================
+
+    #[test]
+    fn test_field_encoding() {
+        encoding_tests::test_field_encoding::<Fp>();
     }
 }
