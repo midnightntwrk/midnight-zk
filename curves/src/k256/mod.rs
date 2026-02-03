@@ -14,8 +14,11 @@
 //! secp256k1 implementation using k256 crate.
 //!
 //! This module provides wrappers around k256's types with safe comparison
-//! semantics. The base field wrapper normalizes before comparisons to avoid
-//! issues with k256's lazy reduction strategy.
+//! semantics and FieldEncoding implementations. The base field wrapper
+//! normalizes before comparisons to avoid issues with k256's lazy reduction
+//! strategy.
+
+use core::mem::size_of;
 
 mod base_field;
 mod curve;
@@ -25,3 +28,61 @@ pub use curve::{K256Affine, K256};
 
 /// secp256k1 scalar field - direct alias to k256::Scalar.
 pub type Fq = k256::Scalar;
+
+// ============================================================================
+// FieldEncoding for k256::Scalar (Fq)
+// ============================================================================
+
+impl crate::FieldEncoding for k256::Scalar {
+    type Bytes = [u8; 32];
+
+    const REPR_ENDIAN: crate::Endian = crate::Endian::BE;
+
+    fn to_le_bytes(&self) -> Self::Bytes {
+        use ff::PrimeField;
+        let mut bytes: [u8; 32] = self.to_repr().into();
+        bytes.reverse();
+        bytes
+    }
+
+    fn to_be_bytes(&self) -> Self::Bytes {
+        use ff::PrimeField;
+        self.to_repr().into()
+    }
+
+    fn from_le_bytes(bytes: &[u8]) -> Option<Self> {
+        use ff::PrimeField;
+        if bytes.len() != size_of::<Self::Repr>() {
+            return None;
+        }
+        let mut be_bytes = [0u8; 32];
+        be_bytes.copy_from_slice(bytes);
+        be_bytes.reverse();
+        Self::from_repr(k256::FieldBytes::from(be_bytes)).into()
+    }
+
+    fn from_be_bytes(bytes: &[u8]) -> Option<Self> {
+        use core::convert::TryInto;
+        use ff::PrimeField;
+        if bytes.len() != size_of::<Self::Repr>() {
+            return None;
+        }
+        let be_bytes: [u8; 32] = bytes.try_into().ok()?;
+        Self::from_repr(k256::FieldBytes::from(be_bytes)).into()
+    }
+
+    fn to_biguint(&self) -> num_bigint::BigUint {
+        num_bigint::BigUint::from_bytes_be(&self.to_be_bytes())
+    }
+
+    fn from_biguint(n: &num_bigint::BigUint) -> Option<Self> {
+        let bytes = n.to_bytes_be();
+        if bytes.len() > size_of::<Self::Repr>() {
+            return None;
+        }
+        // Pad with leading zeros for big-endian.
+        let mut padded = [0u8; 32];
+        padded[32 - bytes.len()..].copy_from_slice(&bytes);
+        Self::from_be_bytes(&padded)
+    }
+}
