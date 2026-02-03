@@ -1716,4 +1716,9 @@ mod tests {
     crate::field_testing_suite!(Fp, "constants");
     crate::field_testing_suite!(Fp, "sqrt");
     crate::field_testing_suite!(Fp, "zeta");
+
+    #[test]
+    fn test_field_encoding() {
+        crate::field_encoding::tests::test_field_encoding::<Fp>();
+    }
 }

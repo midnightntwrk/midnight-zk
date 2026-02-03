@@ -2152,4 +2152,9 @@ mod tests {
     crate::field_testing_suite!(Fq, "sqrt");
     crate::field_testing_suite!(Fq, "zeta");
     crate::field_testing_suite!(Fq, "from_uniform_bytes", 64);
+
+    #[test]
+    fn test_field_encoding() {
+        crate::field_encoding::tests::test_field_encoding::<Fq>();
+    }
 }

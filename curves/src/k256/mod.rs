@@ -86,3 +86,14 @@ impl crate::FieldEncoding for k256::Scalar {
         Self::from_be_bytes(&padded)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::field_encoding::tests as encoding_tests;
+
+    #[test]
+    fn test_scalar_field_encoding() {
+        encoding_tests::test_field_encoding::<Fq>();
+    }
+}

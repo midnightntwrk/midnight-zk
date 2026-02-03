@@ -139,3 +139,112 @@ pub trait FieldEncoding: PrimeField {
             .expect("PrimeField::MODULUS should be a valid hex string")
     }
 }
+
+/// Generic tests for FieldEncoding implementations.
+#[cfg(test)]
+pub mod tests {
+    use super::*;
+    use rand::SeedableRng;
+    use rand_xorshift::XorShiftRng;
+
+    /// Tests that BE and LE byte conversions roundtrip correctly.
+    pub fn test_bytes_roundtrip<F: FieldEncoding>() {
+        let val = F::from(0x1234567890ABCDEFu64);
+
+        // BE roundtrip.
+        let be_bytes = val.to_be_bytes();
+        let recovered = F::from_be_bytes(be_bytes.as_ref()).unwrap();
+        assert_eq!(val, recovered, "BE roundtrip failed");
+
+        // LE roundtrip.
+        let le_bytes = val.to_le_bytes();
+        let recovered = F::from_le_bytes(le_bytes.as_ref()).unwrap();
+        assert_eq!(val, recovered, "LE roundtrip failed");
+    }
+
+    /// Tests that BigUint conversion roundtrips correctly.
+    pub fn test_biguint_roundtrip<F: FieldEncoding>() {
+        let val = F::from(0x1234567890ABCDEFu64);
+
+        let big = val.to_biguint();
+        let recovered = F::from_biguint(&big).unwrap();
+        assert_eq!(val, recovered, "BigUint roundtrip failed");
+    }
+
+    /// Tests that LE and BE byte representations are consistent.
+    pub fn test_endianness_consistency<F: FieldEncoding>() {
+        let val = F::from(0x0102030405060708u64);
+        let be_bytes = val.to_be_bytes();
+        let le_bytes = val.to_le_bytes();
+
+        // BE and LE should be reverses of each other.
+        let mut reversed_le = le_bytes.as_ref().to_vec();
+        reversed_le.reverse();
+        assert_eq!(
+            be_bytes.as_ref(),
+            &reversed_le[..],
+            "BE and LE should be byte-reversed"
+        );
+    }
+
+    /// Tests roundtrip with random values.
+    pub fn test_random_roundtrip<F: FieldEncoding>(seed: u64, iterations: usize) {
+        let mut rng = XorShiftRng::seed_from_u64(seed);
+
+        for _ in 0..iterations {
+            let original = F::random(&mut rng);
+
+            // Bytes roundtrip.
+            let be_bytes = original.to_be_bytes();
+            let recovered = F::from_be_bytes(be_bytes.as_ref()).unwrap();
+            assert_eq!(original, recovered, "Random BE roundtrip failed");
+
+            let le_bytes = original.to_le_bytes();
+            let recovered = F::from_le_bytes(le_bytes.as_ref()).unwrap();
+            assert_eq!(original, recovered, "Random LE roundtrip failed");
+
+            // BigUint roundtrip.
+            let big = original.to_biguint();
+            let recovered = F::from_biguint(&big).unwrap();
+            assert_eq!(original, recovered, "Random BigUint roundtrip failed");
+        }
+    }
+
+    /// Tests that values outside the field are rejected.
+    pub fn test_out_of_range<F: FieldEncoding>() {
+        let modulus = F::modulus();
+
+        // Modulus itself should be rejected.
+        assert!(
+            F::from_biguint(&modulus).is_none(),
+            "Modulus should be out of range"
+        );
+
+        // Modulus + 1 should be rejected.
+        let too_large = &modulus + 1u64;
+        assert!(
+            F::from_biguint(&too_large).is_none(),
+            "Modulus + 1 should be out of range"
+        );
+    }
+
+    /// Tests bit conversion roundtrip.
+    pub fn test_bits_roundtrip<F: FieldEncoding>() {
+        let val = F::from(0xDEADBEEFu64);
+
+        let bits = val.to_le_bits();
+        let recovered = F::from_le_bits(&bits).unwrap();
+        assert_eq!(val, recovered, "Bits roundtrip failed");
+    }
+
+    /// Runs all standard FieldEncoding tests for a type.
+    pub fn test_field_encoding<F: FieldEncoding>() {
+        test_bytes_roundtrip::<F>();
+        test_biguint_roundtrip::<F>();
+        test_endianness_consistency::<F>();
+        test_special_values::<F>();
+        test_out_of_range::<F>();
+        test_bits_roundtrip::<F>();
+        test_random_roundtrip::<F>(0xCAFE, 10);
+    }
+}

@@ -432,8 +432,11 @@ impl crate::FieldEncoding for Fp {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::field_encoding::tests as encoding_tests;
 
-    // Tests that compare the inner (unsafe) type with the safe wrapper.
+    // ========================================================================
+    // k256-specific tests for normalization safety
+    // ========================================================================
 
     /// k256::FieldElement.is_zero() panics on unnormalized input.
     /// In release builds, it would return incorrect results instead of panicking.
@@ -485,5 +488,14 @@ mod tests {
         let zeta = Fp::from_bytes(&k256::FieldBytes::from(ZETA_BYTES)).expect("Valid ZETA bytes");
         let zeta_cube = zeta * zeta * zeta;
         assert_eq!(zeta_cube, Fp::ONE);
+    }
+
+    // ========================================================================
+    // Generic FieldEncoding tests
+    // ========================================================================
+
+    #[test]
+    fn test_field_encoding() {
+        encoding_tests::test_field_encoding::<Fp>();
     }
 }
