@@ -178,7 +178,7 @@ mod tests {
         C: CircuitCurve<Base = F>,
         F: PrimeField,
     {
-        let [x1, x2]: [F::Repr; 2] =
+        let [x1, x2]: [_; 2] =
             [p1, p2].map(|v| v.into().coordinates().expect("Valid affine point.").0.to_repr());
 
         (x1.as_ref().iter())
