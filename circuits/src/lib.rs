@@ -20,8 +20,11 @@
 #[doc = include_str!("../README.md")]
 extern crate core;
 
+mod circuit_field;
 pub mod instructions;
 mod utils;
+
+pub use circuit_field::CircuitField;
 
 pub mod biguint;
 pub mod ecc;
