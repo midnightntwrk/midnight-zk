@@ -1038,22 +1038,17 @@ impl<F: FromUniformBytes<64> + Ord> MockProver<F> {
                             let lookup_input_exprs = lookup_input_exprs.clone();
                             input_expression
                                 .par_iter()
-                                .filter_map(move |(input, input_row)| {
-                                    if table.binary_search(input).is_err() {
-                                        Some(VerifyFailure::Lookup {
-                                            name: lookup_name.clone(),
-                                            lookup_index,
-                                            column_index,
-                                            location: FailureLocation::find_expressions(
-                                                &self.cs,
-                                                &self.regions,
-                                                *input_row,
-                                                lookup_input_exprs[column_index].iter(),
-                                            ),
-                                        })
-                                    } else {
-                                        None
-                                    }
+                                .filter(|(input, _)| table.binary_search(input).is_err())
+                                .map(move |(_, input_row)| VerifyFailure::Lookup {
+                                    name: lookup_name.clone(),
+                                    lookup_index,
+                                    column_index,
+                                    location: FailureLocation::find_expressions(
+                                        &self.cs,
+                                        &self.regions,
+                                        *input_row,
+                                        lookup_input_exprs[column_index].iter(),
+                                    ),
                                 })
                                 .collect::<Vec<_>>()
                         })

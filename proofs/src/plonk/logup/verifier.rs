@@ -18,7 +18,7 @@ use std::iter;
 use ff::{PrimeField, WithSmallOrderMulGroup};
 
 use crate::{
-    plonk::{logup::FlattenArgument, Error, VerifyingKey},
+    plonk::{logup::FlattenedArgument, Error, VerifyingKey},
     poly::{commitment::PolynomialCommitmentScheme, Rotation, VerifierQuery},
     transcript::{Hashable, Transcript},
 };
@@ -97,7 +97,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
         &'a self,
         l_last: F,
         l_blind: F,
-        argument: &'a FlattenArgument<F>,
+        argument: &'a FlattenedArgument<F>,
         theta: F,
         beta: F,
         advice_evals: &[F],
@@ -108,7 +108,6 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
         use crate::plonk::circuit::Expression;
 
         let active_rows = F::ONE - (l_last + l_blind);
-        // Evaluate expressions the same way the prover does
         let evaluate_expressions = |expressions: &[Expression<F>]| {
             expressions
                 .iter()
@@ -128,7 +127,6 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
                 })
                 .collect::<Vec<_>>()
         };
-        // Compress expressions the same way the prover does
         let compress_expressions = |expressions: &[Expression<F>]| {
             evaluate_expressions(expressions)
                 .iter()
@@ -146,39 +144,31 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
             })
             .collect::<Vec<_>>();
 
-        let partial_products: Vec<F> = (0..compressed_inputs_with_beta.len())
-            .map(|i| {
-                let mut acc = F::ONE;
-                for (j, input) in compressed_inputs_with_beta.iter().enumerate() {
-                    if j != i {
-                        acc *= input;
-                    }
-                }
-                acc
-            })
-            .collect();
-
         // Helper polynomial constraint: h(x) · ∏ⱼ(fⱼ(x) + β) = Σⱼ ∏_{k≠j}(fₖ(x) + β)
         // This ensures the helper polynomial has the correct structure for LogUp
         // soundness. Note: This must hold everywhere (as a polynomial
         // identity), not just at active rows.
         let product: F = compressed_inputs_with_beta.iter().product();
+
+        // Compute partial products: ∏_{k≠j}(fₖ(x) + β) = product / (fⱼ(x) +
+        // β)
+        let partial_products: Vec<F> = compressed_inputs_with_beta
+            .iter()
+            .map(|input| product * input.invert().unwrap())
+            .collect();
         let sum: F = partial_products.iter().sum();
         let helper_expression = || self.helper_eval * product - sum;
 
         // LogUp accumulator constraint: Z(ωx)·(t(x) + β) = (Z(x) + h(x))·(t(x) + β) -
-        // m(x) Rearranging: Z(ωx)·(t(x) + β) - (Z(x) + h(x))·(t(x) + β) + m(x)
-        // = 0
+        // m(x) Rearranging: (Z(ωx) - Z(x) - h(x)) · (t(x) + β) + m(x) = 0
         let accumulator_constraint = || {
-            let diff = self.accumulator_next_eval * (compressed_table + beta)
-                - (self.accumulator_eval + self.helper_eval) * (compressed_table + beta)
+            let diff = (self.accumulator_next_eval - self.accumulator_eval - self.helper_eval)
+                * (compressed_table + beta)
                 + self.multiplicities_eval;
             diff * active_rows
         };
 
-        std::iter::empty()
-            .chain(Some(helper_expression()))
-            .chain(Some(accumulator_constraint()))
+        [helper_expression(), accumulator_constraint()].into_iter()
     }
 
     /// Returns verification queries.

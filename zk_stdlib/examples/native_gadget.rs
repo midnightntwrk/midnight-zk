@@ -84,24 +84,7 @@ impl Relation for NativeGadgetExample {
 
         std_lib.constrain_as_public_input(layouter, &nand_result)
     }
-
-    fn used_chips(&self) -> ZkStdLibArch {
-        ZkStdLibArch {
-            jubjub: false,
-            poseidon: false,
-            sha2_256: false,
-            sha2_512: false,
-            keccak_256: false,
-            sha3_256: false,
-            secp256k1: false,
-            bls12_381: false,
-            base64: false,
-            nr_pow2range_cols: 3,
-            automaton: false,
-            blake2b: false,
-        }
-    }
-
+    
     fn write_relation<W: std::io::Write>(&self, _writer: &mut W) -> std::io::Result<()> {
         Ok(())
     }

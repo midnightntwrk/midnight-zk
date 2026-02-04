@@ -44,6 +44,7 @@ serde = { workspace = true }
 serde_derive = { workspace = true }
 rayon = { workspace = true }
 criterion = { version = "0.7", optional = true }
+rustc-hash = "2"
 
 # Developer tooling dependencies
 tabbycat = { version = "0.1", features = ["attributes"], optional = true }

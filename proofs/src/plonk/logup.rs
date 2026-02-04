@@ -29,7 +29,8 @@
 //! insight is:
 //!
 //! ```text
-//! If every fⱼ ∈ T, then:  Σⱼ 1/(fⱼ + β) = Σᵢ mᵢ/(tᵢ + β)
+//! If there exists `mᵢ` such that Σⱼ 1/(fⱼ + β) = Σᵢ mᵢ/(tᵢ + β), then, w.o.p
+//! over the choice of β, every fⱼ ∈ T,
 //! ```
 //!
 //! where `mᵢ` is the multiplicity of `tᵢ` (how many times it appears among the
@@ -115,7 +116,7 @@ pub(crate) mod verifier;
 /// The helper polynomial constraint has degree `1 + lookup_degree ×
 /// num_parallel_lookups`. When this exceeds the constraint system's degree
 /// bound, [`Self::split`] partitions the argument into multiple
-/// [`FlattenArgument`]s, each respecting the degree limit.
+/// [`FlattenedArgument`]s, each respecting the degree limit.
 #[derive(Clone)]
 pub struct BatchedArgument<F: Field> {
     pub(crate) name: String,
@@ -134,19 +135,19 @@ impl<F: Field> Debug for BatchedArgument<F> {
 
 /// A lookup argument with a bounded number of parallel lookups.
 ///
-/// Produced by [`BatchedArgument::split`], each `FlattenArgument` contains few
-/// enough parallel lookups that the helper polynomial constraint stays within
-/// the constraint system's degree bound.
+/// Produced by [`BatchedArgument::split`], each `FlattenedArgument` contains
+/// few enough parallel lookups that the helper polynomial constraint stays
+/// within the constraint system's degree bound.
 #[derive(Clone)]
-pub struct FlattenArgument<F: Field> {
+pub struct FlattenedArgument<F: Field> {
     pub(crate) name: String,
     pub(crate) input_expressions: Vec<Vec<Expression<F>>>,
     pub(crate) table_expressions: Vec<Expression<F>>,
 }
 
-impl<F: Field> Debug for FlattenArgument<F> {
+impl<F: Field> Debug for FlattenedArgument<F> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("FlattenArgument")
+        f.debug_struct("FlattenedArgument")
             .field("name", &self.name)
             .field("input_expressions", &self.input_expressions)
             .field("table_expressions", &self.table_expressions)
@@ -162,12 +163,7 @@ impl<F: Field> BatchedArgument<F> {
     /// degree `1 + lookup_degree × num_parallel_lookups`. This method returns
     /// the maximum number of parallel lookups before exceeding `cs_degree`.
     pub(crate) fn nb_parallel_lookups(&self, cs_degree: usize) -> usize {
-        // Check if cs_degree is already one above a power of two, otherwise compute it.
-        let max_degree = if (cs_degree - 1).is_power_of_two() {
-            cs_degree
-        } else {
-            cs_degree.next_power_of_two() + 1
-        };
+        let max_degree = (cs_degree - 1).next_power_of_two() + 1;
 
         // Find the maximum degree across all input expressions
         let lookup_degree = self
@@ -209,7 +205,7 @@ impl<F: Field> BatchedArgument<F> {
         // The input expressions are a 2D array, where the first dimension represents
         // the width of the lookup, while the second represents the size of the
         // parallel lookup (how many columns are we looking up in a single
-        // table). The \theta batching happens over the first dimension.
+        // table). The β batching happens over the first dimension.
         // Therefore, we transpose the array so that it is easier to handle later.
         let lookup_width = input_expressions.len();
         let nb_parallel_lookups = input_expressions[0].len();
@@ -231,13 +227,13 @@ impl<F: Field> BatchedArgument<F> {
         }
     }
 
-    /// Splits this argument into [`FlattenArgument`]s that respect the degree
+    /// Splits this argument into [`FlattenedArgument`]s that respect the degree
     /// bound.
     ///
-    /// Each resulting `FlattenArgument` contains at most
+    /// Each resulting `FlattenedArgument` contains at most
     /// [`Self::nb_parallel_lookups`] inputs, ensuring the helper constraint
     /// degree stays within `cs_degree`.
-    pub fn split(&self, cs_degree: usize) -> Vec<FlattenArgument<F>> {
+    pub fn split(&self, cs_degree: usize) -> Vec<FlattenedArgument<F>> {
         assert_eq!(
             self.input_expressions[0].len(),
             self.table_expressions.len()
@@ -246,7 +242,7 @@ impl<F: Field> BatchedArgument<F> {
         self.input_expressions
             .chunks(nb_lookups)
             .enumerate()
-            .map(|(idx, chunk)| FlattenArgument {
+            .map(|(idx, chunk)| FlattenedArgument {
                 name: format!("{}-{}", self.name, idx),
                 input_expressions: chunk.to_vec(),
                 table_expressions: self.table_expressions.clone(),
@@ -255,7 +251,7 @@ impl<F: Field> BatchedArgument<F> {
     }
 }
 
-impl<F: Field> FlattenArgument<F> {
+impl<F: Field> FlattenedArgument<F> {
     /// Returns the input expressions for this argument.
     ///
     /// Organized as `[parallel_lookups][lookup_width]`.

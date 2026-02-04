@@ -1868,9 +1868,10 @@ impl<F: Field> ConstraintSystem<F> {
             .map(|(mut inputs, table)| {
                 let mut table = cells.query_fixed(table.inner(), Rotation::cur());
                 for input in inputs.iter_mut() {
-                    if input.contains_simple_selector() {
-                        panic!("expression containing simple selector supplied to lookup argument");
-                    }
+                    assert!(
+                        !input.contains_simple_selector(),
+                        "expression containing simple selector supplied to lookup argument"
+                    );
 
                     input.query_cells(&mut cells);
                 }
@@ -1899,9 +1900,10 @@ impl<F: Field> ConstraintSystem<F> {
             .into_iter()
             .map(|(mut inputs, mut table)| {
                 for input in inputs.iter_mut() {
-                    if input.contains_simple_selector() {
-                        panic!("expression containing simple selector supplied to lookup argument");
-                    }
+                    assert!(
+                        !input.contains_simple_selector(),
+                        "expression containing simple selector supplied to lookup argument"
+                    );
 
                     input.query_cells(&mut cells);
                 }

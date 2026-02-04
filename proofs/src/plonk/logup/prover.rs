@@ -16,7 +16,8 @@
 //! Constructs and commits to three polynomials:
 //! - **Multiplicities `m(X)`**: Counts how many times each table entry is
 //!   looked up
-//! - **Helper `h(X)`**: Aggregates `Σⱼ 1/(fⱼ(X) + β)` at each row
+//! - **Helper `h(X)`**: Aggregates at each row `Σⱼ 1/(fⱼ(X) + β)`, where j
+//!   iterates over columns
 //! - **Accumulator `Z(X)`**: Running sum of log-derivative differences
 
 use std::{hash::Hash, iter};
@@ -24,7 +25,7 @@ use std::{hash::Hash, iter};
 use ff::{BatchInvert, FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
 
 use crate::{
-    plonk::{evaluation::evaluate, logup::FlattenArgument, Error, Expression, ProvingKey},
+    plonk::{evaluation::evaluate, logup::FlattenedArgument, Error, Expression, ProvingKey},
     poly::{
         commitment::PolynomialCommitmentScheme, Coeff, LagrangeCoeff, Polynomial, ProverQuery,
         Rotation,
@@ -112,7 +113,7 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> FlattenArgument<F> {
 
         // We need to compute the helper polynomial, for which we need to do batch
         // inversion for the table.
-        // T(X)   = 1 / (t(X)   + beta)
+        // T(X) = 1 / (t(X) + beta)
         let mut table_denoms = vec![F::ZERO; n];
         parallelize(&mut table_denoms, |input, start| {
             for (i, input) in input.iter_mut().enumerate() {
@@ -122,9 +123,9 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> FlattenArgument<F> {
         });
         table_denoms.iter_mut().batch_invert();
 
-        // F(X)   = 1 / (f(X)   + beta)
-        // We compute a single vector for all advice columns
-        // to compute a single `bach_invert`.
+        // F(X) = 1 / (f(X) + beta)
+        // We flatten all input columns into a single vector to perform
+        // one batch_invert call instead of one per column.
         let input_len = compressed_input_expression.len();
         let mut input_denoms = vec![F::ZERO; input_len * n];
         parallelize(&mut input_denoms, |input, start| {
@@ -205,15 +206,13 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
         let domain = &pk.vk.domain;
         let x_next = domain.rotate_omega(x, Rotation::next());
 
-        let multiplicities_eval = eval_polynomial(&self.multiplicities, x);
-        let logderivative_eval = eval_polynomial(&self.helper_poly, x);
-        let aggregator_eval = eval_polynomial(&self.aggregator_poly, x);
-        let aggregator_eval_next = eval_polynomial(&self.aggregator_poly, x_next);
-
-        for eval in iter::once(multiplicities_eval)
-            .chain(Some(logderivative_eval))
-            .chain(Some(aggregator_eval))
-            .chain(Some(aggregator_eval_next))
+        for eval in [
+            (&self.multiplicities, x),
+            (&self.helper_poly, x),
+            (&self.aggregator_poly, x),
+            (&self.aggregator_poly, x_next),
+        ]
+        .map(|(p, x)| eval_polynomial(p, x))
         {
             transcript.write(&eval)?;
         }
@@ -231,28 +230,29 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluated<F> {
     ) -> impl Iterator<Item = ProverQuery<'a, F>> + Clone {
         let x_next = pk.vk.domain.rotate_omega(x, Rotation::next());
 
-        iter::empty()
-            // We need to open the aggregator at 1 (which should evaluate to zero)
-            .chain(Some(ProverQuery {
+        [
+            ProverQuery {
                 point: F::ONE,
                 poly: &self.constructed.aggregator_poly,
-            }))
-            .chain(Some(ProverQuery {
+            },
+            ProverQuery {
                 point: x,
                 poly: &self.constructed.multiplicities,
-            }))
-            .chain(Some(ProverQuery {
+            },
+            ProverQuery {
                 point: x,
                 poly: &self.constructed.helper_poly,
-            }))
-            .chain(Some(ProverQuery {
+            },
+            ProverQuery {
                 point: x,
                 poly: &self.constructed.aggregator_poly,
-            }))
-            .chain(Some(ProverQuery {
+            },
+            ProverQuery {
                 point: x_next,
                 poly: &self.constructed.aggregator_poly,
-            }))
+            },
+        ]
+        .into_iter()
     }
 }
 
@@ -267,15 +267,12 @@ pub(crate) fn compute_multiplicities<F>(
 where
     F: PrimeField + std::hash::Hash + Eq,
 {
-    use std::collections::HashMap;
+    use rustc_hash::FxHashMap;
 
-    let mut counts: HashMap<F, u32> = table.values.iter().map(|v| (*v, 0)).collect();
-    for value in values {
-        for v in value.iter() {
-            *counts.entry(*v).or_insert(0) += 1;
+    let mut counts: FxHashMap<F, u32> = table.iter().map(|v| (*v, 0)).collect();
+    for v in values.iter().flat_map(|value| value.iter()) {
+        counts.entry(*v).and_modify(|count| *count += 1);
         }
-    }
-
     table.iter().map(|value| F::from(*counts.get(value).unwrap() as u64)).collect()
 }
 
