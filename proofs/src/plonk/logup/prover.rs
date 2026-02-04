@@ -43,30 +43,40 @@ pub(crate) struct Committed<F: PrimeField> {
     pub(crate) aggregator_poly: Polynomial<F, Coeff>,
 }
 
+/// Computed multiplicities.
+///
+/// This structure holds the multiplicity counts computed from compressing
+/// input and table expressions.
+#[cfg_attr(feature = "bench-internal", derive(Clone))]
+#[derive(Debug)]
+pub(crate) struct ComputedMultiplicities<F: PrimeField> {
+    pub(crate) multiplicities: Polynomial<F, LagrangeCoeff>,
+    pub(crate) compressed_input_expression: Vec<Polynomial<F, LagrangeCoeff>>,
+    pub(crate) compressed_table_expression: Polynomial<F, LagrangeCoeff>,
+}
+
 /// Committed polynomials after evaluation at challenge point.
 pub(crate) struct Evaluated<F: PrimeField> {
     pub(crate) constructed: Committed<F>,
 }
 
-impl<F: WithSmallOrderMulGroup<3> + Hash> FlattenArgument<F> {
-    /// Constructs and commits to the LogUp prover polynomials.
+impl<F: WithSmallOrderMulGroup<3> + Hash> FlattenedArgument<F> {
+    /// Compresses input and table expressions and computes multiplicities.
     ///
-    /// Compresses input expressions via θ-batching, computes multiplicities and
-    /// the helper polynomial using batch inversion, builds the running sum
-    /// accumulator, and commits all three to the transcript.
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) fn commit_logderivative<'a, CS: PolynomialCommitmentScheme<F>, T: Transcript>(
-        self,
+    /// This method evaluates and compresses the input/table expressions using
+    /// θ-batching, then counts how many times each table entry appears in the
+    /// inputs.
+    pub(crate) fn commit_multiplicities<'a, CS: PolynomialCommitmentScheme<F>, T: Transcript>(
+        &self,
         pk: &ProvingKey<F, CS>,
         params: &CS::Parameters,
-        beta: F,
         theta: F,
         advice_values: &'a [Polynomial<F, LagrangeCoeff>],
         fixed_values: &'a [Polynomial<F, LagrangeCoeff>],
         instance_values: &'a [Polynomial<F, LagrangeCoeff>],
         challenges: &'a [F],
         transcript: &mut T,
-    ) -> Result<Committed<F>, Error>
+    ) -> Result<ComputedMultiplicities<F>, Error>
     where
         F: WithSmallOrderMulGroup<3> + FromUniformBytes<64>,
         CS::Commitment: Hashable<T::Hash>,
@@ -111,6 +121,38 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> FlattenArgument<F> {
         let multiplicities =
             compute_multiplicities(&compressed_input_expression, &compressed_table_expression);
 
+        let multiplicities = pk.vk.domain.lagrange_from_vec(multiplicities);
+        let multiplicities_commitment = CS::commit_lagrange(params, &multiplicities);
+        transcript.write(&multiplicities_commitment)?;
+
+        Ok(ComputedMultiplicities {
+            multiplicities,
+            compressed_input_expression,
+            compressed_table_expression,
+        })
+    }
+}
+
+impl<F: WithSmallOrderMulGroup<3> + Hash> ComputedMultiplicities<F> {
+    /// Constructs and commits to the LogUp prover polynomials.
+    ///
+    /// Compresses input expressions via θ-batching, computes the helper
+    /// polynomial using batch inversion, builds the running sum
+    /// accumulator, and commits all three to the transcript.
+    pub(crate) fn commit_logderivative<'a, CS: PolynomialCommitmentScheme<F>, T: Transcript>(
+        self,
+        pk: &ProvingKey<F, CS>,
+        params: &CS::Parameters,
+        beta: F,
+        transcript: &mut T,
+    ) -> Result<Committed<F>, Error>
+    where
+        F: WithSmallOrderMulGroup<3> + FromUniformBytes<64>,
+        CS::Commitment: Hashable<T::Hash>,
+    {
+        let domain = pk.vk.get_domain();
+        let n = domain.n as usize;
+
         // We need to compute the helper polynomial, for which we need to do batch
         // inversion for the table.
         // T(X) = 1 / (t(X) + beta)
@@ -118,7 +160,7 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> FlattenArgument<F> {
         parallelize(&mut table_denoms, |input, start| {
             for (i, input) in input.iter_mut().enumerate() {
                 let i = i + start;
-                *input = beta + compressed_table_expression.values[i];
+                *input = beta + self.compressed_table_expression.values[i];
             }
         });
         table_denoms.iter_mut().batch_invert();
@@ -126,12 +168,12 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> FlattenArgument<F> {
         // F(X) = 1 / (f(X) + beta)
         // We flatten all input columns into a single vector to perform
         // one batch_invert call instead of one per column.
-        let input_len = compressed_input_expression.len();
+        let input_len = self.compressed_input_expression.len();
         let mut input_denoms = vec![F::ZERO; input_len * n];
         parallelize(&mut input_denoms, |input, start| {
             for (i, input) in input.iter_mut().enumerate() {
                 let i = i + start;
-                *input = beta + compressed_input_expression[i / n].values[i % n];
+                *input = beta + self.compressed_input_expression[i / n].values[i % n];
             }
         });
 
@@ -153,7 +195,7 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> FlattenArgument<F> {
         parallelize(&mut logderivative_poly, |poly, start| {
             for (i, coeff) in poly.iter_mut().enumerate() {
                 let i = i + start;
-                *coeff = helper_poly[i] - multiplicities[i] * table_denoms[i];
+                *coeff = helper_poly[i] - self.multiplicities[i] * table_denoms[i];
             }
         });
 
@@ -166,12 +208,8 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> FlattenArgument<F> {
             })
             .collect::<Vec<F>>();
 
-        let multiplicities = pk.vk.domain.lagrange_from_vec(multiplicities);
         let helper_poly = pk.vk.domain.lagrange_from_vec(helper_poly);
         let aggregator_poly = pk.vk.domain.lagrange_from_vec(aggregator_poly);
-
-        let multiplicities_commitment = CS::commit_lagrange(params, &multiplicities);
-        transcript.write(&multiplicities_commitment)?;
 
         let helper_commitment = CS::commit_lagrange(params, &helper_poly);
         transcript.write(&helper_commitment)?;
@@ -179,7 +217,7 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> FlattenArgument<F> {
         let aggregator_commitment = CS::commit_lagrange(params, &aggregator_poly);
         transcript.write(&aggregator_commitment)?;
 
-        let multiplicities = pk.vk.domain.lagrange_to_coeff(multiplicities);
+        let multiplicities = pk.vk.domain.lagrange_to_coeff(self.multiplicities);
         let helper_poly = pk.vk.domain.lagrange_to_coeff(helper_poly);
         let aggregator_poly = pk.vk.domain.lagrange_to_coeff(aggregator_poly);
 
@@ -272,7 +310,7 @@ where
     let mut counts: FxHashMap<F, u32> = table.iter().map(|v| (*v, 0)).collect();
     for v in values.iter().flat_map(|value| value.iter()) {
         counts.entry(*v).and_modify(|count| *count += 1);
-        }
+    }
     table.iter().map(|value| F::from(*counts.get(value).unwrap() as u64)).collect()
 }
 

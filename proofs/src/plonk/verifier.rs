@@ -105,6 +105,19 @@ where
     // Sample theta challenge for keeping lookup columns linearly independent
     let theta: F = transcript.squeeze_challenge();
 
+    // Read multiplicities
+    let lookup_multiplicities = (0..num_proofs)
+        .map(|_| -> Result<Vec<_>, _> {
+            // Hash each lookup permuted commitment
+            vk.cs
+                .lookups
+                .iter()
+                .flat_map(|l| l.split(vk.cs().degree()))
+                .map(|argument| argument.read_multiplicities(transcript))
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
     // Sample beta challenge
     let beta: F = transcript.squeeze_challenge();
 
@@ -118,14 +131,12 @@ where
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    let lookups_committed = (0..num_proofs)
-        .map(|_| -> Result<Vec<_>, _> {
-            // Hash each lookup permuted commitment
-            vk.cs
-                .lookups
-                .iter()
-                .flat_map(|l| l.split(vk.cs().degree()))
-                .map(|argument| argument.read_commitment(transcript))
+    let lookups_committed = lookup_multiplicities
+        .into_iter()
+        .map(|lookups| {
+            lookups
+                .into_iter()
+                .map(|lookup| lookup.read_commitment(transcript))
                 .collect::<Result<Vec<_>, _>>()
         })
         .collect::<Result<Vec<_>, _>>()?;
