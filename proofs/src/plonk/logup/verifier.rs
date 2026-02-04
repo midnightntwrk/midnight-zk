@@ -23,6 +23,11 @@ use crate::{
     transcript::{Hashable, Transcript},
 };
 
+/// Commitment to LogUp multiplicities
+pub struct CommittedMultiplicities<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
+    multiplicities: CS::Commitment,
+}
+
 /// Commitments to the LogUp polynomials, read from the transcript.
 #[derive(Debug)]
 pub struct Committed<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
@@ -40,21 +45,36 @@ pub struct Evaluated<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
     accumulator_next_eval: F,
 }
 
-impl<F: WithSmallOrderMulGroup<3>> FlattenArgument<F> {
-    /// Reads the prover's commitments from the transcript.
-    pub(in crate::plonk) fn read_commitment<T: Transcript, CS: PolynomialCommitmentScheme<F>>(
+impl<F: WithSmallOrderMulGroup<3>> FlattenedArgument<F> {
+    /// Reads the multiplicities commitment from the transcript.
+    pub(in crate::plonk) fn read_multiplicities<T: Transcript, CS: PolynomialCommitmentScheme<F>>(
         &self,
+        transcript: &mut T,
+    ) -> Result<CommittedMultiplicities<F, CS>, Error>
+    where
+        CS::Commitment: Hashable<T::Hash>,
+    {
+        let multiplicities = transcript.read()?;
+        Ok(CommittedMultiplicities { multiplicities })
+    }
+}
+
+impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>>
+    CommittedMultiplicities<F, CS>
+{
+    /// Reads the prover's commitments from the transcript.
+    pub(in crate::plonk) fn read_commitment<T: Transcript>(
+        self,
         transcript: &mut T,
     ) -> Result<Committed<F, CS>, Error>
     where
         CS::Commitment: Hashable<T::Hash>,
     {
-        let multiplicities = transcript.read()?;
         let helper_poly = transcript.read()?;
         let accumulator = transcript.read()?;
 
         Ok(Committed {
-            multiplicities,
+            multiplicities: self.multiplicities,
             helper_poly,
             accumulator,
         })

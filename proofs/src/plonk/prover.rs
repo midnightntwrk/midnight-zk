@@ -108,6 +108,32 @@ where
     // Sample theta challenge for keeping lookup columns linearly independent
     let theta: F = transcript.squeeze_challenge();
 
+    // Commit to the multiplicities columns
+    let lookups: Vec<Vec<logup::prover::ComputedMultiplicities<F>>> = instance
+        .iter()
+        .zip(advice.iter())
+        .map(|(instance, advice)| -> Result<Vec<_>, Error> {
+            pk.vk
+                .cs
+                .lookups
+                .iter()
+                .flat_map(|l| l.split(pk.get_vk().cs().degree()))
+                .map(|logup| {
+                    logup.commit_multiplicities(
+                        pk,
+                        params,
+                        theta,
+                        &advice.advice_polys,
+                        &pk.fixed_values,
+                        &instance.instance_values,
+                        &challenges,
+                        transcript,
+                    )
+                })
+                .collect::<Result<Vec<_>, Error>>()
+        })
+        .collect::<Result<Vec<_>, Error>>()?;
+
     // Sample beta challenge
     let beta: F = transcript.squeeze_challenge();
 
@@ -134,28 +160,13 @@ where
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    let lookups: Vec<Vec<logup::prover::Committed<F>>> = instance
-        .iter()
-        .zip(advice.iter())
-        .map(|(instance, advice)| -> Result<Vec<_>, Error> {
-            pk.vk
-                .cs
-                .lookups
-                .iter()
-                .flat_map(|l| l.split(pk.get_vk().cs().degree()))
-                .map(|logup| {
-                    logup.commit_logderivative(
-                        pk,
-                        params,
-                        beta,
-                        theta,
-                        &advice.advice_polys,
-                        &pk.fixed_values,
-                        &instance.instance_values,
-                        &challenges,
-                        transcript,
-                    )
-                })
+    let lookups: Vec<Vec<logup::prover::Committed<F>>> = lookups
+        .into_iter()
+        .map(|lookups| -> Result<Vec<_>, _> {
+            // Construct and commit to products polynomials for each lookup
+            lookups
+                .into_iter()
+                .map(|lookup| lookup.commit_logderivative(pk, params, beta, transcript))
                 .collect::<Result<Vec<_>, _>>()
         })
         .collect::<Result<Vec<_>, _>>()?;
