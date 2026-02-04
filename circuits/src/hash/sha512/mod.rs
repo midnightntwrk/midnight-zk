@@ -19,7 +19,7 @@ mod sha512_chip;
 mod types;
 mod utils;
 
-use ff::PrimeField;
+use crate::CircuitField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 use sha2::Digest;
 pub use sha512_chip::{Sha512Chip, Sha512Config, NB_SHA512_ADVICE_COLS, NB_SHA512_FIXED_COLS};
@@ -29,14 +29,14 @@ use crate::{
     types::AssignedByte,
 };
 
-impl<F: PrimeField> HashCPU<u8, [u8; 64]> for Sha512Chip<F> {
+impl<F: CircuitField> HashCPU<u8, [u8; 64]> for Sha512Chip<F> {
     fn hash(inputs: &[u8]) -> [u8; 64] {
         let output = sha2::Sha512::digest(inputs);
         output.into_iter().collect::<Vec<_>>().try_into().unwrap()
     }
 }
 
-impl<F: PrimeField> HashInstructions<F, AssignedByte<F>, [AssignedByte<F>; 64]> for Sha512Chip<F> {
+impl<F: CircuitField> HashInstructions<F, AssignedByte<F>, [AssignedByte<F>; 64]> for Sha512Chip<F> {
     fn hash(
         &self,
         layouter: &mut impl Layouter<F>,

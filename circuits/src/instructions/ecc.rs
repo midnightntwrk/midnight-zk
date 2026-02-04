@@ -15,7 +15,7 @@
 
 use std::fmt::Debug;
 
-use ff::PrimeField;
+use crate::CircuitField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 use super::AssertionInstructions;
@@ -26,12 +26,12 @@ use crate::{
 };
 
 /// The  set of circuit instructions for EC operations.
-pub trait EccInstructions<F: PrimeField, C: CircuitCurve>:
+pub trait EccInstructions<F: CircuitField, C: CircuitCurve>:
     AssertionInstructions<F, Self::Point>
 where
     Self::Point: InnerValue<Element = C::CryptographicGroup>,
     Self::Coordinate: Instantiable<F> + InnerValue<Element = C::Base> + InnerConstants,
-    Self::Scalar: InnerValue<Element = C::Scalar>,
+    Self::Scalar: InnerValue<Element = C::ScalarExt>,
 {
     /// Type for assigned elliptic curve points.
     type Point: Clone + Debug;
@@ -116,7 +116,7 @@ where
     fn mul_by_constant(
         &self,
         layouter: &mut impl Layouter<F>,
-        scalar: C::Scalar,
+        scalar: C::ScalarExt,
         base: &Self::Point,
     ) -> Result<Self::Point, Error>;
 
@@ -156,6 +156,7 @@ pub(crate) mod tests {
     use rand::SeedableRng;
     use rand_chacha::ChaCha8Rng;
 
+    use ff::PrimeField;
     use super::*;
     use crate::{
         instructions::{AssertionInstructions, AssignmentInstructions},
@@ -177,11 +178,11 @@ pub(crate) mod tests {
     #[derive(Clone, Debug)]
     struct TestCircuit<F, C, EccChip>
     where
-        F: PrimeField,
+        F: CircuitField,
         C: CircuitCurve,
     {
         inputs: Vec<C::CryptographicGroup>,
-        scalars: Option<Vec<(C::Scalar, usize)>>,
+        scalars: Option<Vec<(C::ScalarExt, usize)>>,
         expected: C::CryptographicGroup,
         operation: Operation,
         _marker: PhantomData<(F, EccChip)>,
@@ -189,7 +190,7 @@ pub(crate) mod tests {
 
     impl<F, C, EccChip> Circuit<F> for TestCircuit<F, C, EccChip>
     where
-        F: PrimeField,
+        F: CircuitField,
         C: CircuitCurve,
         EccChip: EccInstructions<F, C>
             + AssignmentInstructions<F, EccChip::Point>
@@ -283,7 +284,7 @@ pub(crate) mod tests {
     #[allow(clippy::too_many_arguments)]
     fn run<F, C, EccChip>(
         inputs: &[C::CryptographicGroup],
-        scalars: Option<&[(C::Scalar, usize)]>,
+        scalars: Option<&[(C::ScalarExt, usize)]>,
         expected: &C::CryptographicGroup,
         operation: Operation,
         must_pass: bool,
@@ -291,7 +292,7 @@ pub(crate) mod tests {
         chip_name: &str,
         op_name: &str,
     ) where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
         C: CircuitCurve,
         EccChip: EccInstructions<F, C>
             + AssignmentInstructions<F, EccChip::Point>
@@ -330,7 +331,7 @@ pub(crate) mod tests {
 
     pub fn test_add<F, C, EccChip>(name: &str)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
         C: CircuitCurve,
         EccChip: EccInstructions<F, C>
             + AssignmentInstructions<F, EccChip::Point>
@@ -380,7 +381,7 @@ pub(crate) mod tests {
 
     pub fn test_double<F, C, EccChip>(name: &str)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
         C: CircuitCurve,
         EccChip: EccInstructions<F, C>
             + AssignmentInstructions<F, EccChip::Point>
@@ -428,7 +429,7 @@ pub(crate) mod tests {
 
     pub fn test_negate<F, C, EccChip>(name: &str)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
         C: CircuitCurve,
         EccChip: EccInstructions<F, C>
             + AssignmentInstructions<F, EccChip::Point>
@@ -467,7 +468,7 @@ pub(crate) mod tests {
 
     pub fn test_msm<F, C, EccChip>(name: &str)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
         C: CircuitCurve,
         EccChip: EccInstructions<F, C>
             + AssignmentInstructions<F, EccChip::Point>
@@ -481,7 +482,7 @@ pub(crate) mod tests {
         let n = 3;
         let inputs = (0..n).map(|_| C::CryptographicGroup::random(&mut rng)).collect::<Vec<_>>();
         let scalars = (0..n)
-            .map(|_| (C::Scalar::random(&mut rng), C::Scalar::NUM_BITS as usize))
+            .map(|_| (C::ScalarExt::random(&mut rng), C::ScalarExt::NUM_BITS as usize))
             .collect::<Vec<_>>();
         let expected = (inputs.clone().into_iter().zip(scalars.clone().iter()))
             .fold(C::CryptographicGroup::identity(), |acc, (base, scalar)| {
@@ -512,7 +513,7 @@ pub(crate) mod tests {
 
     pub fn test_msm_by_bounded_scalars<F, C, EccChip>(name: &str)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
         C: CircuitCurve,
         EccChip: EccInstructions<F, C>
             + AssignmentInstructions<F, EccChip::Point>
@@ -524,12 +525,12 @@ pub(crate) mod tests {
     {
         let mut rng = ChaCha8Rng::seed_from_u64(0xc0ffee);
         let n = 3;
-        let r = C::Scalar::random(&mut rng);
+        let r = C::ScalarExt::random(&mut rng);
         let inputs = (0..n).map(|_| C::CryptographicGroup::random(&mut rng)).collect::<Vec<_>>();
         let scalars = [
-            (C::Scalar::from(3), 4),
-            (C::Scalar::from(1025), 12),
-            (r, C::Scalar::NUM_BITS as usize),
+            (C::ScalarExt::from(3), 4),
+            (C::ScalarExt::from(1025), 12),
+            (r, C::ScalarExt::NUM_BITS as usize),
         ]
         .to_vec();
         let expected = (inputs.clone().into_iter().zip(scalars.clone().iter()))
@@ -561,7 +562,7 @@ pub(crate) mod tests {
 
     pub fn test_mul_by_constant<F, C, EccChip>(name: &str)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
         C: CircuitCurve,
         EccChip: EccInstructions<F, C>
             + AssignmentInstructions<F, EccChip::Point>
@@ -573,21 +574,21 @@ pub(crate) mod tests {
     {
         let mut rng = ChaCha8Rng::seed_from_u64(0xc0ffee);
         let base = C::CryptographicGroup::random(&mut rng);
-        let s = C::Scalar::random(&mut rng);
+        let s = C::ScalarExt::random(&mut rng);
         let mut cost_model = true;
         [
             (base, s, base * s, true),
-            (base, C::Scalar::ONE, base, true),
+            (base, C::ScalarExt::ONE, base, true),
             (base, s, C::CryptographicGroup::identity(), false),
             (
                 C::CryptographicGroup::identity(),
-                C::Scalar::from(123456),
+                C::ScalarExt::from(123456),
                 C::CryptographicGroup::identity(),
                 true,
             ),
             (
                 C::CryptographicGroup::generator(),
-                C::Scalar::ZERO,
+                C::ScalarExt::ZERO,
                 C::CryptographicGroup::identity(),
                 true,
             ),
@@ -596,7 +597,7 @@ pub(crate) mod tests {
         .for_each(|(base, s, expected, must_pass)| {
             run::<F, C, EccChip>(
                 &[base],
-                Some(&[(s, C::Scalar::NUM_BITS as usize)]),
+                Some(&[(s, C::ScalarExt::NUM_BITS as usize)]),
                 &expected,
                 Operation::MulByConstant,
                 must_pass,
@@ -610,7 +611,7 @@ pub(crate) mod tests {
 
     pub fn test_coordinates<F, C, EccChip>(name: &str)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
         C: CircuitCurve,
         EccChip: EccInstructions<F, C>
             + AssignmentInstructions<F, EccChip::Point>
@@ -664,7 +665,7 @@ pub(crate) mod tests {
     /// the Edwards coordinates.
     pub fn test_coordinates_edwards<F, C, EccChip>(name: &str)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
         C: CircuitCurve,
         EccChip: EccInstructions<F, C>
             + AssignmentInstructions<F, EccChip::Point>

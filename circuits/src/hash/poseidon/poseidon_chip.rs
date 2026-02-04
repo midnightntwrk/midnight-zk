@@ -14,7 +14,8 @@
 use core::array::from_fn;
 use std::iter::once;
 
-use ff::{Field, PrimeField};
+use crate::CircuitField;
+use ff::Field;
 use midnight_proofs::{
     circuit::{Chip, Layouter, Region, Value},
     plonk::{Advice, Column, ConstraintSystem, Constraints, Error, Expression, Fixed, Selector},
@@ -55,7 +56,7 @@ pub(super) type AssignedRegister<F> = [AssignedNative<F>; WIDTH];
 
 /// In-circuit Poseidon state.
 #[derive(Clone, Debug)]
-pub struct AssignedPoseidonState<F: PrimeField> {
+pub struct AssignedPoseidonState<F: CircuitField> {
     pub(super) register: AssignedRegister<F>,
     pub(super) queue: Vec<AssignedNative<F>>,
     pub(super) squeeze_position: usize,

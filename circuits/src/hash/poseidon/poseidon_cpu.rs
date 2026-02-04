@@ -235,7 +235,7 @@ impl Hashable<PoseidonState<midnight_curves::Fq>> for midnight_curves::Fq {
 
     fn read(buffer: &mut impl Read) -> io::Result<Self> {
         use midnight_curves::Fq;
-        const NUM_BYTES: usize = (<Fq as PrimeField>::NUM_BITS as usize + 7) / 8;
+        const NUM_BYTES: usize = (<Fq as ff::PrimeField>::NUM_BITS as usize + 7) / 8;
         let mut bytes = [0u8; NUM_BYTES];
 
         buffer.read_exact(bytes.as_mut())?;

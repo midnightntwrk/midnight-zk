@@ -13,13 +13,13 @@
 
 use std::ops::Range;
 
-use ff::PrimeField;
 use midnight_proofs::circuit::Value;
 
 use crate::{
     field::AssignedNative,
     types::{AssignedByte, InnerValue},
     utils::util::fe_to_big,
+    CircuitField,
 };
 
 /// A variable-length vector of elements of type T, with size bound M.
@@ -36,7 +36,7 @@ use crate::{
 /// sized chunks. The padding at the end of the payload will be have a size in
 /// [0, A) such that | front_pad | + | payload | + | back_pad | = M.
 #[derive(Clone, Debug)]
-pub struct AssignedVector<F: PrimeField, T: Vectorizable, const M: usize, const A: usize> {
+pub struct AssignedVector<F: CircuitField, T: Vectorizable, const M: usize, const A: usize> {
     /// Padded payload of the vector.
     pub(crate) buffer: [T; M],
 
@@ -50,7 +50,7 @@ pub fn get_lims<const M: usize, const A: usize>(len: usize) -> Range<usize> {
     M - len - final_pad_len..M - final_pad_len
 }
 
-impl<F: PrimeField, const M: usize, T: Vectorizable, const A: usize> InnerValue
+impl<F: CircuitField, const M: usize, T: Vectorizable, const A: usize> InnerValue
     for AssignedVector<F, T, M, A>
 {
     type Element = Vec<T::Element>;
@@ -74,10 +74,10 @@ pub trait Vectorizable: InnerValue {
     const FILLER: Self::Element;
 }
 
-impl<F: PrimeField> Vectorizable for AssignedNative<F> {
+impl<F: CircuitField> Vectorizable for AssignedNative<F> {
     const FILLER: F = F::ZERO;
 }
 
-impl<F: PrimeField> Vectorizable for AssignedByte<F> {
+impl<F: CircuitField> Vectorizable for AssignedByte<F> {
     const FILLER: u8 = 0u8;
 }

@@ -16,7 +16,7 @@
 //! It provides (in-circuit) functions for creating a map from a specified input
 //! type into another.
 
-use ff::PrimeField;
+use crate::CircuitField;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
@@ -44,7 +44,7 @@ pub trait MapCPU<F, Key, Value> {
 /// The set of circuit instructions for mapping operations.
 pub trait MapInstructions<F, AssignedKey, AssignedValue>
 where
-    F: PrimeField,
+    F: CircuitField,
     AssignedKey: InnerValue,
     AssignedValue: InnerValue,
 {

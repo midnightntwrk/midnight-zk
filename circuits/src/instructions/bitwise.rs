@@ -21,8 +21,9 @@
 //! required to implement [PrimeField]). `Assigned` defined the type over which
 //! the bitwise operations take place.
 
-use ff::{Field, PrimeField};
+use ff::Field;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
+use crate::CircuitField;
 use num_bigint::BigUint;
 use num_traits::One;
 
@@ -33,9 +34,9 @@ use crate::types::{InnerConstants, Instantiable};
 pub trait BitwiseInstructions<F, Assigned>:
     BinaryInstructions<F> + DecompositionInstructions<F, Assigned> + RangeCheckInstructions<F, Assigned>
 where
-    F: PrimeField,
+    F: CircuitField,
     Assigned: Instantiable<F> + InnerConstants + Clone,
-    Assigned::Element: PrimeField,
+    Assigned::Element: CircuitField,
 {
     /// Bitwise conjunction of the given assigned elements, interpreted as
     /// binary bit-strings of length `n`.
@@ -219,9 +220,9 @@ pub(crate) mod tests {
 
     impl<F, Assigned, BitwiseChip> Circuit<F> for TestCircuit<F, Assigned, BitwiseChip>
     where
-        F: PrimeField,
+        F: CircuitField,
         Assigned: Instantiable<F> + InnerConstants + Clone,
-        Assigned::Element: PrimeField,
+        Assigned::Element: CircuitField,
         BitwiseChip: BitwiseInstructions<F, Assigned> + FromScratch<F>,
     {
         type Config = <BitwiseChip as FromScratch<F>>::Config;
@@ -274,9 +275,9 @@ pub(crate) mod tests {
         circuit_name: &str,
         op_name: &str,
     ) where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
         Assigned: Instantiable<F> + InnerConstants + Clone,
-        Assigned::Element: PrimeField,
+        Assigned::Element: CircuitField,
         BitwiseChip: BitwiseInstructions<F, Assigned> + FromScratch<F>,
     {
         let circuit = TestCircuit::<F, Assigned, BitwiseChip> {
@@ -303,9 +304,9 @@ pub(crate) mod tests {
 
     pub fn test_band<F, Assigned, BitwiseChip>(name: &str)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
         Assigned: Instantiable<F> + InnerConstants + Clone,
-        Assigned::Element: PrimeField + From<u64>,
+        Assigned::Element: CircuitField + From<u64>,
         BitwiseChip: BitwiseInstructions<F, Assigned> + FromScratch<F>,
     {
         let mut rng = ChaCha8Rng::seed_from_u64(0xc0ffee);
@@ -353,9 +354,9 @@ pub(crate) mod tests {
 
     pub fn test_bor<F, Assigned, BitwiseChip>(name: &str)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
         Assigned: Instantiable<F> + InnerConstants + Clone,
-        Assigned::Element: PrimeField + From<u64>,
+        Assigned::Element: CircuitField + From<u64>,
         BitwiseChip: BitwiseInstructions<F, Assigned> + FromScratch<F>,
     {
         let mut rng = ChaCha8Rng::seed_from_u64(0xc0ffee);
@@ -394,9 +395,9 @@ pub(crate) mod tests {
 
     pub fn test_bxor<F, Assigned, BitwiseChip>(name: &str)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
         Assigned: Instantiable<F> + InnerConstants + Clone,
-        Assigned::Element: PrimeField + From<u64>,
+        Assigned::Element: CircuitField + From<u64>,
         BitwiseChip: BitwiseInstructions<F, Assigned> + FromScratch<F>,
     {
         let mut rng = ChaCha8Rng::seed_from_u64(0xc0ffee);
@@ -445,9 +446,9 @@ pub(crate) mod tests {
 
     pub fn test_bnot<F, Assigned, BitwiseChip>(name: &str)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
         Assigned: Instantiable<F> + InnerConstants + Clone,
-        Assigned::Element: PrimeField + From<u64>,
+        Assigned::Element: CircuitField + From<u64>,
         BitwiseChip: BitwiseInstructions<F, Assigned> + FromScratch<F>,
     {
         let mut rng = ChaCha8Rng::seed_from_u64(0xc0ffee);

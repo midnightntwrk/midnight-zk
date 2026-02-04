@@ -1,4 +1,4 @@
-use ff::PrimeField;
+use crate::CircuitField;
 use midnight_proofs::plonk::Expression;
 
 use crate::utils::util::u128_to_fe;
@@ -70,7 +70,7 @@ pub fn u64_in_be_limbs<const N: usize>(value: u64, limb_lengths: [usize; N]) -> 
 }
 
 /// Generates the plain-spreaded lookup table.
-pub fn gen_spread_table<F: PrimeField>() -> impl Iterator<Item = (F, F, F)> {
+pub fn gen_spread_table<F: CircuitField>() -> impl Iterator<Item = (F, F, F)> {
     std::iter::once((F::ZERO, F::ZERO, F::ZERO)) // base case (disabled lookup)
         .chain(LOOKUP_LENGTHS.into_iter().flat_map(|len| {
             let tag = F::from(len as u64);
@@ -212,7 +212,7 @@ fn pow4_ip<const N: usize>(exponents: [u8; N], terms: [u128; N]) -> u128 {
 }
 
 /// Returns sum_i 2^(exponents\[i\]) * terms\[i\].
-pub(crate) fn expr_pow2_ip<F: PrimeField, const N: usize>(
+pub(crate) fn expr_pow2_ip<F: CircuitField, const N: usize>(
     exponents: [u8; N],
     terms: [&Expression<F>; N],
 ) -> Expression<F> {
@@ -224,7 +224,7 @@ pub(crate) fn expr_pow2_ip<F: PrimeField, const N: usize>(
 }
 
 /// Returns sum_i 4^(exponents\[i\]) * terms\[i\].
-pub(crate) fn expr_pow4_ip<F: PrimeField, const N: usize>(
+pub(crate) fn expr_pow4_ip<F: CircuitField, const N: usize>(
     exponents: [u8; N],
     terms: [&Expression<F>; N],
 ) -> Expression<F> {

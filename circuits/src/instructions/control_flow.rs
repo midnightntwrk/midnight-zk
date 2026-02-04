@@ -18,14 +18,14 @@
 //!
 //! The trait is parametrized by `Assigned` type.
 
-use ff::PrimeField;
+use crate::CircuitField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 use super::AssertionInstructions;
 use crate::types::{AssignedBit, InnerValue};
 
 /// The set of circuit instructions for control flow operations.
-pub trait ControlFlowInstructions<F: PrimeField, Assigned>:
+pub trait ControlFlowInstructions<F: CircuitField, Assigned>:
     AssertionInstructions<F, Assigned>
 where
     Assigned: InnerValue,
@@ -120,7 +120,7 @@ pub(crate) mod tests {
 
     impl<F, Assigned, ControlFlowChip> Circuit<F> for TestCircuit<F, Assigned, ControlFlowChip>
     where
-        F: PrimeField,
+        F: CircuitField,
         Assigned: InnerValue,
         Assigned::Element: Default,
         ControlFlowChip: ControlFlowInstructions<F, Assigned>
@@ -207,7 +207,7 @@ pub(crate) mod tests {
         chip_name: &str,
         op_name: &str,
     ) where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
         Assigned: InnerValue,
         Assigned::Element: Default,
         ControlFlowChip: ControlFlowInstructions<F, Assigned>
@@ -242,7 +242,7 @@ pub(crate) mod tests {
 
     pub fn test_select<F, Assigned, ControlFlowChip>(name: &str)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
         Assigned: InnerValue + Sampleable,
         Assigned::Element: Default,
         ControlFlowChip: ControlFlowInstructions<F, Assigned>
@@ -279,7 +279,7 @@ pub(crate) mod tests {
 
     pub fn test_cond_assert_equal<F, Assigned, ControlFlowChip>(name: &str)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
         Assigned: InnerValue + Sampleable,
         Assigned::Element: Default,
         ControlFlowChip: ControlFlowInstructions<F, Assigned>
@@ -317,7 +317,7 @@ pub(crate) mod tests {
 
     pub fn test_cond_swap<F, Assigned, ControlFlowChip>(name: &str)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
         Assigned: InnerValue + Sampleable,
         Assigned::Element: Default,
         ControlFlowChip: ControlFlowInstructions<F, Assigned>
