@@ -43,7 +43,7 @@ rand_chacha = { workspace = true }
 serde = { workspace = true }
 serde_derive = { workspace = true }
 rayon = { workspace = true }
-criterion = { version = "0.7", optional = true }
+criterion = { version = "0.8", optional = true }
 
 # Developer tooling dependencies
 tabbycat = { version = "0.1", features = ["attributes"], optional = true }
@@ -57,7 +57,7 @@ midnight-circuits = { path = "../circuits" }
 midnight-zk-stdlib = { path = "../zk_stdlib" }
 sha2 = { workspace = true }
 rand = { workspace = true }
-criterion = "0.7"
+criterion = "0.8"
 
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
 getrandom = { version = "0.2", features = ["js"] }
