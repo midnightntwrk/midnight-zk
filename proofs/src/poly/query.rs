@@ -14,6 +14,9 @@ pub trait Query<F>: Debug + Sized + Clone + Send + Sync {
     fn get_point(&self) -> F;
     fn get_eval(&self) -> Self::Eval;
     fn get_commitment(&self) -> Self::Commitment;
+    fn get_col_idx(&self) -> Vec<Option<usize>> {
+        vec![]
+    }
 }
 
 /// A polynomial query at a point
@@ -137,11 +140,16 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> CommitmentReference<'_, F
     /// If the commitment is "one piece" or "linear" and an evaluation point is
     /// provided.
     /// If the commitment is "chopped" and no evaluation point is provided.
-    pub(crate) fn as_terms(&self, eval_point_opt: Option<F>) -> Vec<(F, CS::Commitment)> {
+    pub(crate) fn as_terms(
+        &self,
+        eval_point_opt: Option<F>,
+        col_idx: Vec<Option<usize>>,
+    ) -> Vec<(F, CS::Commitment, Option<usize>)> {
         match self.clone() {
             CommitmentReference::OnePiece(com) => {
                 assert!(eval_point_opt.is_none());
-                vec![(F::ONE, com.clone())]
+                assert_eq!(col_idx.len(), 1);
+                vec![(F::ONE, com.clone(), col_idx[0])]
             }
             CommitmentReference::Chopped(parts, n) => {
                 let x = eval_point_opt
@@ -151,7 +159,7 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> CommitmentReference<'_, F
                 let mut terms = Vec::with_capacity(parts.len());
                 let mut scalar = F::ONE;
                 for &part in parts.iter() {
-                    terms.push((scalar, part.clone()));
+                    terms.push((scalar, part.clone(), None));
                     scalar *= splitting_factor;
                 }
                 terms
@@ -161,8 +169,8 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> CommitmentReference<'_, F
                 assert_eq!(points.len(), scalars.len());
 
                 let mut terms = Vec::with_capacity(points.len());
-                for (&p, s) in points.iter().zip(scalars.iter()) {
-                    terms.push((*s, p.clone()));
+                for ((&p, s), col_idx) in points.iter().zip(scalars.iter()).zip(col_idx.iter()) {
+                    terms.push((*s, p.clone(), *col_idx));
                 }
                 terms
             }
@@ -176,7 +184,7 @@ pub struct VerifierQuery<'com, F: PrimeField, CS: PolynomialCommitmentScheme<F>>
     /// Point at which polynomial is queried
     pub(crate) point: F,
     /// Commitment to polynomial
-    pub(crate) commitment: CommitmentReference<'com, F, CS>,
+    pub(crate) commitment: (Vec<Option<usize>>, CommitmentReference<'com, F, CS>),
     /// Evaluation of polynomial at query point
     pub(crate) eval: F,
 }
@@ -190,7 +198,23 @@ where
     pub fn new(point: F, commitment: &'com CS::Commitment, eval: F) -> Self {
         VerifierQuery {
             point,
-            commitment: CommitmentReference::OnePiece(commitment),
+            commitment: (vec![None], CommitmentReference::OnePiece(commitment)),
+            eval,
+        }
+    }
+    /// Create a new verifier query based on a commitment to a fixed column
+    pub fn new_fixed(
+        point: F,
+        commitment: &'com CS::Commitment,
+        eval: F,
+        fixed_col_idx: Option<usize>,
+    ) -> Self {
+        VerifierQuery {
+            point,
+            commitment: (
+                vec![fixed_col_idx],
+                CommitmentReference::OnePiece(commitment),
+            ),
             eval,
         }
     }
@@ -207,6 +231,7 @@ where
         points: Vec<&'com CS::Commitment>,
         scalars: Vec<F>,
         eval: F,
+        fixed_col_indices: Vec<Option<usize>>,
     ) -> Self {
         assert_eq!(
             points.len(),
@@ -215,7 +240,10 @@ where
         );
         VerifierQuery {
             point,
-            commitment: CommitmentReference::Linear(points, scalars),
+            commitment: (
+                fixed_col_indices,
+                CommitmentReference::Linear(points, scalars),
+            ),
             eval,
         }
     }
@@ -224,7 +252,7 @@ where
     pub fn from_parts(point: F, parts: &[&'com CS::Commitment], eval: F, n: u64) -> Self {
         VerifierQuery {
             point,
-            commitment: CommitmentReference::Chopped(parts.to_vec(), n),
+            commitment: (vec![], CommitmentReference::Chopped(parts.to_vec(), n)),
             eval,
         }
     }
@@ -243,6 +271,10 @@ impl<'com, F: PrimeField, CS: PolynomialCommitmentScheme<F>> Query<F>
         self.eval
     }
     fn get_commitment(&self) -> Self::Commitment {
-        self.commitment.clone()
+        self.commitment.1.clone()
+    }
+
+    fn get_col_idx(&self) -> Vec<Option<usize>> {
+        self.commitment.0.clone()
     }
 }

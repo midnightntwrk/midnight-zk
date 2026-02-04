@@ -39,7 +39,9 @@ pub(crate) fn compute_linearization_commitment<
     splitting_factor: &F,
     quotient_limb_commitments: &'com [CS::Commitment],
     g1: &'com CS::Commitment,
-) -> (Vec<&'com CS::Commitment>, Vec<F>) {
+) -> ((Vec<&'com CS::Commitment>, Vec<F>), Vec<Option<usize>>) {
+    let mut indices = vec![];
+
     let mut identities_points = Vec::new();
     let mut identities_scalars = Vec::new();
 
@@ -47,6 +49,7 @@ pub(crate) fn compute_linearization_commitment<
 
     let mut splitting_pow = F::ONE - *xn;
     for _ in 0..quotient_limb_commitments.len() {
+        indices.push(None);
         identities_scalars.push(splitting_pow);
         splitting_pow *= splitting_factor;
     }
@@ -61,11 +64,17 @@ pub(crate) fn compute_linearization_commitment<
 
     grouped_points.into_iter().for_each(|(col_idx, eval)| {
         match col_idx {
-            Some(col_idx) => identities_points.push(&vk.fixed_commitments[col_idx]),
+            Some(col_idx) => {
+                indices.push(Some(col_idx));
+                identities_points.push(&vk.fixed_commitments[col_idx])
+            }
             // Fully evaluated identities go to the constant term
-            None => identities_points.push(g1),
+            None => {
+                indices.push(None);
+                identities_points.push(g1)
+            }
         }
         identities_scalars.push(eval);
     });
-    (identities_points, identities_scalars)
+    ((identities_points, identities_scalars), indices)
 }

@@ -347,7 +347,7 @@ where
     );
 
     let g1 = CS::constant_commitment();
-    let lin_com = compute_linearization_commitment(
+    let (lin_com, indices) = compute_linearization_commitment(
         expressions,
         vk,
         &y,
@@ -373,6 +373,7 @@ where
         &trash_coms,
         x,
         lin_com,
+        indices,
     );
 
     // We are now convinced the circuit is satisfied so long as the
@@ -401,6 +402,7 @@ fn compute_queries<'a, F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentSch
     trash_coms: &'a [Vec<trash::verifier::Committed<F, CS>>],
     x: F,
     lin_com: (Vec<&'a CS::Commitment>, Vec<F>),
+    indices: Vec<Option<usize>>,
 ) -> Vec<VerifierQuery<'a, F, CS>> {
     committed_instances
         .iter()
@@ -478,12 +480,13 @@ fn compute_queries<'a, F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentSch
                 // Filter out queries for simple, multipl. selectors
                 .filter(|(_, (col, _))| !vk.cs.selector_flags.contains(&col.index()))
                 .map(|(query_index, &(column, at))| {
-                    VerifierQuery::new(
+                    VerifierQuery::new_fixed(
                         vk.domain.rotate_omega(x, at),
                         // fixed_commitments is sorted per col index
                         &vk.fixed_commitments[column.index()],
                         // fixed_evals is sorted per query index
                         fixed_evals[query_index],
+                        Some(column.index()),
                     )
                 }),
         )
@@ -493,6 +496,7 @@ fn compute_queries<'a, F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentSch
             lin_com.0,
             lin_com.1,
             F::ZERO,
+            indices,
         )))
         .collect::<Vec<_>>()
 }
