@@ -26,9 +26,12 @@ pub mod serde_traits;
 
 // Production curves (always available)
 pub mod bls12_381;
-pub mod curve25519;
 mod jubjub;
 pub mod secp256k1;
+
+// Optional curves
+#[cfg(feature = "curve25519")]
+pub mod curve25519;
 
 // Development/testing curves (feature-gated)
 #[cfg(any(test, feature = "dev-curves"))]

@@ -17,8 +17,11 @@ use ff::PrimeField;
 use group::{Curve, Group};
 #[cfg(feature = "dev-curves")]
 use midnight_curves::bn256;
+#[cfg(feature = "curve25519")]
+use midnight_curves::curve25519::{
+    Curve25519, Curve25519Affine, CURVE_A as CURVE25519_A, CURVE_D as CURVE25519_D,
+};
 use midnight_curves::{
-    curve25519::{Curve25519, Curve25519Affine, CURVE_A as CURVE25519_A, CURVE_D as CURVE25519_D},
     secp256k1::{Secp256k1, Secp256k1Affine},
     CurveAffine, Fq as BlsScalar, JubjubAffine, JubjubExtended, JubjubSubgroup,
 };
@@ -133,7 +136,9 @@ impl EdwardsCurve for JubjubExtended {
 }
 
 // Implementation for Curve25519.
+#[cfg(feature = "curve25519")]
 use midnight_curves::curve25519::{Curve25519Subgroup, Fp as Curve25519Base};
+#[cfg(feature = "curve25519")]
 impl CircuitCurve for Curve25519 {
     type Base = Curve25519Base;
     type CryptographicGroup = Curve25519Subgroup;
@@ -155,6 +160,7 @@ impl CircuitCurve for Curve25519 {
     }
 }
 
+#[cfg(feature = "curve25519")]
 impl EdwardsCurve for Curve25519 {
     const A: Self::Base = CURVE25519_A;
     const D: Self::Base = CURVE25519_D;

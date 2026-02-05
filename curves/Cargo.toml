@@ -31,7 +31,7 @@ lazy_static = "1.4"
 hex = { version = "0.4.3", optional = true, features = ["serde"] }
 
 # For curve25519 implementation
-curve25519-dalek = { version = "4.1.3", features = ["group"] }
+curve25519-dalek = { version = "4.1.3", features = ["group"], optional = true }
 
 # For secp256k1 implementation
 halo2derive = "0.2.0"
@@ -54,6 +54,7 @@ getrandom = { version = "0.2", features = ["js"] }
 default = ["serde", "std"]
 std = []
 serde = ["dep:serde", "dep:serde_arrays", "dep:hex"]
+curve25519 = ["dep:curve25519-dalek"]
 portable = ["blst/portable"]
 __private_bench = []
 dev-curves = []
