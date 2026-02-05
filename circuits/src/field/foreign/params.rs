@@ -319,3 +319,61 @@ impl FieldEmulationParams<bn256::Fr, bn256::Fq> for MultiEmulationParams {
     }
     const RC_LIMB_SIZE: u32 = 14;
 }
+
+/*
+====================================================
+Emulated: Curve25519's Base field
+
+Native fields supported:
+ - BLS12-381's Scalar field
+
+Parameters generated with scripts/foreign_params_gen.py:
+ - Cost: 28 rows (incomplete_add)
+ - Limbs: 4
+ - Base: 2^64
+ - Auxiliary moduli: {native, 2^128}
+ - MAX_BIT_LEN: 19-20
+====================================================
+*/
+
+/// Curve25519's Base field over BLS12-381's Scalar field.
+#[cfg(feature = "curve25519")]
+impl FieldEmulationParams<midnight_curves::Fq, midnight_curves::curve25519::Fp>
+    for MultiEmulationParams
+{
+    const LOG2_BASE: u32 = 64;
+    const NB_LIMBS: u32 = 4;
+    fn moduli() -> Vec<BigInt> {
+        vec![BigInt::from(2).pow(128)]
+    }
+    const RC_LIMB_SIZE: u32 = 20;
+}
+
+/*
+====================================================
+Emulated: Curve25519's Scalar field
+
+Native fields supported:
+ - BLS12-381's Scalar field
+
+Parameters generated with scripts/foreign_params_gen.py:
+ - Cost: 37 rows (incomplete_add)
+ - Limbs: 5
+ - Base: 2^51
+ - Auxiliary moduli: {native, 2^146}
+ - MAX_BIT_LEN: 17-20
+====================================================
+*/
+
+/// Curve25519's Scalar field over BLS12-381's Scalar field.
+#[cfg(feature = "curve25519")]
+impl FieldEmulationParams<midnight_curves::Fq, midnight_curves::curve25519::Scalar>
+    for MultiEmulationParams
+{
+    const LOG2_BASE: u32 = 51;
+    const NB_LIMBS: u32 = 5;
+    fn moduli() -> Vec<BigInt> {
+        vec![BigInt::from(2).pow(146)]
+    }
+    const RC_LIMB_SIZE: u32 = 17;
+}
