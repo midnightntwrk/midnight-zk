@@ -34,8 +34,10 @@
 //! ```
 //!
 //! where `mᵢ` is the multiplicity of `tᵢ` (how many times it appears among the
-//! `fⱼ`s) and `β` is a random challenge. This identity follows from partial
-//! fraction decomposition.
+//! `fⱼ`s) and `β` is a random challenge. When duplicate values exist in the
+//! table, multiplicities are normalized: if value `v` is looked up `k` times
+//! and appears `t` times in the table, each position gets `k/t`. This identity
+//! follows from partial fraction decomposition.
 //!
 //! ## Running Sum Formulation
 //!
