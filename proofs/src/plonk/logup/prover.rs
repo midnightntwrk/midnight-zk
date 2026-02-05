@@ -66,6 +66,7 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> FlattenedArgument<F> {
     /// This method evaluates and compresses the input/table expressions using
     /// θ-batching, then counts how many times each table entry appears in the
     /// inputs.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn commit_multiplicities<'a, CS: PolynomialCommitmentScheme<F>, T: Transcript>(
         &self,
         pk: &ProvingKey<F, CS>,
@@ -118,8 +119,12 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> FlattenedArgument<F> {
             .collect::<Vec<_>>();
         let compressed_table_expression = compress_expressions(&self.table_expressions);
 
-        let multiplicities =
-            compute_multiplicities(&compressed_input_expression, &compressed_table_expression);
+        let usable_rows = n - pk.vk.cs.blinding_factors() - 1;
+        let multiplicities = compute_multiplicities(
+            &compressed_input_expression,
+            &compressed_table_expression,
+            usable_rows,
+        );
 
         let multiplicities = pk.vk.domain.lagrange_from_vec(multiplicities);
         let multiplicities_commitment = CS::commit_lagrange(params, &multiplicities);
@@ -139,7 +144,7 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ComputedMultiplicities<F> {
     /// Compresses input expressions via θ-batching, computes the helper
     /// polynomial using batch inversion, builds the running sum
     /// accumulator, and commits all three to the transcript.
-    pub(crate) fn commit_logderivative<'a, CS: PolynomialCommitmentScheme<F>, T: Transcript>(
+    pub(crate) fn commit_logderivative<CS: PolynomialCommitmentScheme<F>, T: Transcript>(
         self,
         pk: &ProvingKey<F, CS>,
         params: &CS::Parameters,
@@ -150,6 +155,7 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ComputedMultiplicities<F> {
         F: WithSmallOrderMulGroup<3> + FromUniformBytes<64>,
         CS::Commitment: Hashable<T::Hash>,
     {
+        let blinding_factors = pk.vk.cs.blinding_factors();
         let domain = pk.vk.get_domain();
         let n = domain.n as usize;
 
@@ -211,6 +217,17 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ComputedMultiplicities<F> {
         let helper_poly = pk.vk.domain.lagrange_from_vec(helper_poly);
         let aggregator_poly = pk.vk.domain.lagrange_from_vec(aggregator_poly);
 
+        #[cfg(debug_assertions)]
+        {
+            let u = n - (blinding_factors + 1);
+
+            // l_0(X) * z(X) = 0
+            assert_eq!(aggregator_poly[0], F::ZERO);
+
+            // Running sum must be zero at last active row for LogUp to be sound
+            assert_eq!(aggregator_poly[u], F::ZERO);
+        }
+
         let helper_commitment = CS::commit_lagrange(params, &helper_poly);
         transcript.write(&helper_commitment)?;
 
@@ -270,10 +287,6 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluated<F> {
 
         [
             ProverQuery {
-                point: F::ONE,
-                poly: &self.constructed.aggregator_poly,
-            },
-            ProverQuery {
                 point: x,
                 poly: &self.constructed.multiplicities,
             },
@@ -298,26 +311,77 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluated<F> {
 ///
 /// Returns a vector where `result[i]` is the number of times `table[i]` appears
 /// in `values`.
+///
+/// When a value appears multiple times in the table, the multiplicity is
+/// normalized: if a value is looked up `k` times and appears `t` times in the
+/// table, each table position gets multiplicity `k/t`.
+///
+/// Only values in the first `usable_rows` are counted for both inputs and
+/// table. Blinding rows are excluded from the counting but still get a
+/// multiplicity value (zero for values not in the active region).
 pub(crate) fn compute_multiplicities<F>(
     values: &[Polynomial<F, LagrangeCoeff>],
     table: &Polynomial<F, LagrangeCoeff>,
+    usable_rows: usize,
 ) -> Vec<F>
 where
     F: PrimeField + std::hash::Hash + Eq,
 {
     use rustc_hash::FxHashMap;
 
-    let mut counts: FxHashMap<F, u32> = table.iter().map(|v| (*v, 0)).collect();
-    for v in values.iter().flat_map(|value| value.iter()) {
-        counts.entry(*v).and_modify(|count| *count += 1);
+    // Count how many times each value appears in the table (active rows only)
+    let mut table_counts: FxHashMap<F, u32> = FxHashMap::default();
+    for v in table.iter().take(usable_rows) {
+        *table_counts.entry(*v).or_default() += 1;
     }
-    table.iter().map(|value| F::from(*counts.get(value).unwrap() as u64)).collect()
+
+    // Count how many times each value appears in inputs (active rows only)
+    let mut input_counts: FxHashMap<F, u32> = table_counts.keys().map(|v| (*v, 0)).collect();
+    for value in values.iter() {
+        for v in value.iter().take(usable_rows) {
+            input_counts.entry(*v).and_modify(|count| *count += 1);
+    }
+    }
+
+    // Build vector of table counts for batch inversion (only for active table
+    // values)
+    let mut table_count_inverses: Vec<F> = table
+        .iter()
+        .enumerate()
+        .map(|(i, value)| {
+            if i < usable_rows {
+                F::from(*table_counts.get(value).unwrap_or(&1) as u64)
+            } else {
+                F::ONE // Blinding rows - will be multiplied by zero input count
+                       // anyway
+            }
+        })
+        .collect();
+    table_count_inverses.iter_mut().batch_invert();
+
+    // Compute normalized multiplicities: input_count / table_count
+    // For blinding rows, multiplicity is 0 (input count is 0 for random blinding
+    // values)
+    table
+        .iter()
+        .enumerate()
+        .zip(table_count_inverses)
+        .map(|((i, value), table_count_inv)| {
+            if i < usable_rows {
+                let input_count = *input_counts.get(value).unwrap_or(&0);
+                F::from(input_count as u64) * table_count_inv
+            } else {
+                F::ZERO
+            }
+        })
+        .collect()
 }
 
 #[cfg(test)]
 mod tests {
     use std::marker::PhantomData;
 
+    use ff::Field;
     use midnight_curves::Fq;
 
     use super::*;
@@ -331,19 +395,17 @@ mod tests {
 
     #[test]
     fn test_compute_multiplicities() {
-        // Table with a repeated value: [1, 2, 2, 3]
-        // This tests that duplicate table entries get the same multiplicity
+        // Table with unique values: [1, 2, 3, 4]
         let table = poly_from_vec(vec![
             Fq::from(1u64),
             Fq::from(2u64),
-            Fq::from(2u64),
             Fq::from(3u64),
+            Fq::from(4u64),
         ]);
 
         // Two input polynomials to test aggregation across multiple inputs
         // input1: [1, 2, 3, 3]
         // input2: [2, 2, 3, 4]
-        // Note: 4 is NOT in the table - tests that extra values don't cause issues
         let input1 = poly_from_vec(vec![
             Fq::from(1u64),
             Fq::from(2u64),
@@ -357,18 +419,74 @@ mod tests {
             Fq::from(4u64),
         ]);
 
-        // Expected counts across both inputs:
+        // Expected counts across both inputs (all 4 rows are usable):
         // - 1 appears 1 time
         // - 2 appears 3 times (1 in input1, 2 in input2)
         // - 3 appears 3 times (2 in input1, 1 in input2)
-        // - 4 appears 1 time but is not in table
+        // - 4 appears 1 time
 
-        let result = compute_multiplicities(&[input1, input2], &table);
+        let result = compute_multiplicities(&[input1, input2], &table, 4);
 
         assert_eq!(result.len(), 4);
         assert_eq!(result[0], Fq::from(1u64)); // table[0]=1 -> count 1
         assert_eq!(result[1], Fq::from(3u64)); // table[1]=2 -> count 3
-        assert_eq!(result[2], Fq::from(3u64)); // table[2]=2 -> count 3 (same as table[1])
-        assert_eq!(result[3], Fq::from(3u64)); // table[3]=3 -> count 3
+        assert_eq!(result[2], Fq::from(3u64)); // table[2]=3 -> count 3
+        assert_eq!(result[3], Fq::from(1u64)); // table[3]=4 -> count 1
+    }
+
+    #[test]
+    fn test_compute_multiplicities_with_duplicate_table_values() {
+        // Table: [1, 2, 2, 3] - value 2 appears twice
+        let table = poly_from_vec(vec![
+            Fq::from(1u64),
+            Fq::from(2u64),
+            Fq::from(2u64),
+            Fq::from(3u64),
+        ]);
+
+        // Input looks up: 1 once, 2 twice, 3 once
+        let input = poly_from_vec(vec![
+            Fq::from(1u64),
+            Fq::from(2u64),
+            Fq::from(2u64),
+            Fq::from(3u64),
+        ]);
+
+        let result = compute_multiplicities(&[input], &table, 4);
+
+        assert_eq!(result.len(), 4);
+        assert_eq!(result[0], Fq::from(1u64)); // table[0]=1 -> 1/1 = 1
+                                               // Value 2: looked up 2 times, appears 2 times in table -> each gets 2/2 = 1
+        assert_eq!(result[1], Fq::from(1u64)); // table[1]=2 -> 2/2 = 1
+        assert_eq!(result[2], Fq::from(1u64)); // table[2]=2 -> 2/2 = 1
+        assert_eq!(result[3], Fq::from(1u64)); // table[3]=3 -> 1/1 = 1
+    }
+
+    #[test]
+    fn test_compute_multiplicities_with_blinding_rows() {
+        // Table: [1, 2, 0, 0] - last 2 rows are "blinding" with default 0
+        // Only first 2 rows are usable
+        let table = poly_from_vec(vec![
+            Fq::from(1u64),
+            Fq::from(2u64),
+            Fq::from(0u64),
+            Fq::from(0u64),
+        ]);
+
+        // Input: [1, 2, random, random] - but we only count first 2 rows
+        let input = poly_from_vec(vec![
+            Fq::from(1u64),
+            Fq::from(2u64),
+            Fq::from(999u64), // "random" blinding value
+            Fq::from(888u64), // "random" blinding value
+        ]);
+
+        let result = compute_multiplicities(&[input], &table, 2);
+
+        assert_eq!(result.len(), 4);
+        assert_eq!(result[0], Fq::from(1u64)); // table[0]=1 -> 1/1 = 1
+        assert_eq!(result[1], Fq::from(1u64)); // table[1]=2 -> 1/1 = 1
+        assert_eq!(result[2], Fq::ZERO); // blinding row -> 0
+        assert_eq!(result[3], Fq::ZERO); // blinding row -> 0
     }
 }

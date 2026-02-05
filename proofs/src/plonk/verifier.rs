@@ -369,6 +369,7 @@ where
                         .chain(lookups.iter().zip(flattened_lookups.iter()).flat_map(
                             move |(p, argument)| {
                                 p.expressions(
+                                    l_0,
                                     l_last,
                                     l_blind,
                                     argument,

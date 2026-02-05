@@ -540,6 +540,12 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                         let table_value_test = eval_data.intermediates[nb_intermediates - 1];
                         assert_eq!(table_value, table_value_test);
 
+                        // l_0(X) * Z(X) = 0
+                        *value = *value * y + (aggregator_coset[idx] * l0[idx]);
+
+                        // l_last(X) * Z(X) = 0
+                        *value = *value * y + aggregator_coset[idx] * l_last[idx];
+
                         // Helper constraint: h(X) · ∏ⱼ(fⱼ(X) + β) = Σⱼ ∏_{k≠j}(fₖ(X) + β)
                         *value = *value * y + helper_coset[idx] * product - sum_partial_products;
 

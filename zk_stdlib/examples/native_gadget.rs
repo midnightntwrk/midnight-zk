@@ -10,7 +10,7 @@ use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
-use midnight_zk_stdlib::{utils::plonk_api::filecoin_srs, Relation, ZkStdLib, ZkStdLibArch};
+use midnight_zk_stdlib::{utils::plonk_api::filecoin_srs, Relation, ZkStdLib};
 use rand::rngs::OsRng;
 
 type F = midnight_curves::Fq;
@@ -84,7 +84,7 @@ impl Relation for NativeGadgetExample {
 
         std_lib.constrain_as_public_input(layouter, &nand_result)
     }
-    
+
     fn write_relation<W: std::io::Write>(&self, _writer: &mut W) -> std::io::Result<()> {
         Ok(())
     }

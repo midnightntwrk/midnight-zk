@@ -115,6 +115,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
     #[allow(clippy::too_many_arguments)]
     pub(in crate::plonk) fn expressions<'a>(
         &'a self,
+        l_0: F,
         l_last: F,
         l_blind: F,
         argument: &'a FlattenedArgument<F>,
@@ -188,7 +189,13 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
             diff * active_rows
         };
 
-        [helper_expression(), accumulator_constraint()].into_iter()
+        [
+            l_0 * self.accumulator_eval,
+            l_last * self.accumulator_eval,
+            helper_expression(),
+            accumulator_constraint(),
+        ]
+        .into_iter()
     }
 
     /// Returns verification queries.
@@ -200,12 +207,6 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
         let x_next = vk.domain.rotate_omega(x, Rotation::next());
 
         iter::empty()
-            // Z(1) = 0
-            .chain(Some(VerifierQuery::new(
-                F::ONE,
-                &self.committed.accumulator,
-                F::ZERO,
-            )))
             .chain(Some(VerifierQuery::new(
                 x,
                 &self.committed.multiplicities,
