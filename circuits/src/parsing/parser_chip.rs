@@ -281,6 +281,101 @@ where
             .map(|x| native.convert_unsafe(layouter, x))
             .collect::<Result<Vec<_>, Error>>()
     }
+
+    /// Asserts that `sub` is a contiguous subsequence of `sequence` starting at
+    /// index `idx` (0-indexed). More efficient than using extracting the
+    /// subsequence and asserting equality with `sub`.
+    pub fn check_subsequence(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        sequence: &[AssignedNative<F>],
+        idx: &AssignedNative<F>,
+        sub: &[AssignedNative<F>],
+    ) -> Result<(), Error> {
+        // Get a unique tag for this call and increment for next call.
+        let tag = {
+            let mut counter = self.substring_tag_counter.borrow_mut();
+            let current_tag = *counter;
+            *counter += 1;
+            F::from(current_tag)
+        };
+
+        // Precompute all indices.
+        let sub_indices = (sub.iter().enumerate())
+            .map(|(i, _)| self.native_gadget.add_constant(layouter, idx, F::from(i as u64)))
+            .collect::<Result<Vec<_>, Error>>()?;
+
+        layouter.assign_region(
+            || "substring check",
+            |mut region| {
+                let mut offset = 0;
+                // Assign `sequence` as table rows (i.e., selector OFF).
+                for byte in sequence.iter() {
+                    region.assign_fixed(
+                        || format!("sequence tag {}", offset),
+                        self.config.tag_col,
+                        offset,
+                        || Value::known(tag),
+                    )?;
+                    region.assign_advice(
+                        || format!("sequence index {}", offset),
+                        self.config.index_col,
+                        offset,
+                        || Value::known(F::from(offset as u64)),
+                    )?;
+                    byte.copy_advice(
+                        || format!("sequence byte {}", offset),
+                        &mut region,
+                        self.config.byte_col,
+                        offset,
+                    )?;
+                    offset += 1;
+                }
+
+                // Assign `sub` as lookup rows (i.e., selector ON) + copy the constrained
+                // indices (`sub_indices`).
+                for (byte, idx) in sub.iter().zip(sub_indices.iter()) {
+                    self.config.q_substring.enable(&mut region, offset)?;
+
+                    region.assign_fixed(
+                        || format!("sub tag {}", offset - sequence.len()),
+                        self.config.tag_col,
+                        offset,
+                        || Value::known(tag),
+                    )?;
+                    idx.copy_advice(
+                        || format!("sub index {}", offset - sequence.len()),
+                        &mut region,
+                        self.config.index_col,
+                        offset,
+                    )?;
+                    byte.copy_advice(
+                        || format!("sub byte {}", offset - sequence.len()),
+                        &mut region,
+                        self.config.byte_col,
+                        offset,
+                    )?;
+                    offset += 1;
+                }
+
+                Ok(())
+            },
+        )
+    }
+
+    /// Wrapper of `check_subsequence` for `AssignedByte` inputs. More efficient
+    /// than using `self.fetch_bytes` and asserting equality with `sub`.
+    pub fn check_bytes(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        sequence: &[AssignedByte<F>],
+        idx: &AssignedNative<F>,
+        sub: &[AssignedByte<F>],
+    ) -> Result<(), Error> {
+        let sequence: Vec<AssignedNative<F>> = sequence.iter().map(AssignedNative::from).collect();
+        let sub: Vec<AssignedNative<F>> = sub.iter().map(AssignedNative::from).collect();
+        self.check_subsequence(layouter, &sequence, idx, &sub)
+    }
 }
 
 #[cfg(any(test, feature = "testing"))]
@@ -326,6 +421,8 @@ mod tests {
         field::{decomposition::chip::P2RDecompositionChip, NativeChip, NativeGadget},
         instructions::AssignmentInstructions,
     };
+
+    type NG<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
 
     #[derive(Clone, Debug)]
     enum Operation {
@@ -403,7 +500,7 @@ mod tests {
     where
         F: PrimeField + FromUniformBytes<64> + Ord,
     {
-        let circuit = TestCircuit::<F, NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>> {
+        let circuit = TestCircuit::<F, NG<F>> {
             sequence: sequence.iter().map(|x| F::from(*x as u64)).map(Value::known).collect(),
             idx: Value::known(F::from(idx as u64)),
             expected: expected.iter().map(|x| F::from(*x as u64)).collect(),
@@ -477,5 +574,128 @@ mod tests {
         .for_each(|(bytes, idx, expected, must_pass)| {
             run::<F>(bytes, *idx, expected, Operation::FetchBytes, *must_pass)
         });
+    }
+
+    // Check bytes test circuit with two witnesses, so that the isolation of
+    // successive calls to `check_bytes` is also tested. That is, successive calls
+    // to `check_bytes` should not influence each others despite being performed as
+    // a single lookup over the same column.
+    #[derive(Clone, Debug)]
+    struct CheckBytesTestCircuit<F: PrimeField> {
+        full1: Vec<Value<u8>>,
+        sub1: Vec<Value<u8>>,
+        idx1: Value<F>,
+        full2: Vec<Value<u8>>,
+        sub2: Vec<Value<u8>>,
+        idx2: Value<F>,
+    }
+
+    impl<F: PrimeField> CheckBytesTestCircuit<F> {
+        fn new(case1: (&str, &str, usize), case2: (&str, &str, usize)) -> Self {
+            let (full1, sub1, idx1) = case1;
+            let (full2, sub2, idx2) = case2;
+            CheckBytesTestCircuit {
+                full1: full1.bytes().map(Value::known).collect(),
+                sub1: sub1.bytes().map(Value::known).collect(),
+                idx1: Value::known(F::from(idx1 as u64)),
+                full2: full2.bytes().map(Value::known).collect(),
+                sub2: sub2.bytes().map(Value::known).collect(),
+                idx2: Value::known(F::from(idx2 as u64)),
+            }
+        }
+    }
+
+    impl<F> Circuit<F> for CheckBytesTestCircuit<F>
+    where
+        F: PrimeField + FromUniformBytes<64> + Ord,
+    {
+        type Config = <ParserChip<F, NG<F>> as FromScratch<F>>::Config;
+        type FloorPlanner = SimpleFloorPlanner;
+        type Params = ();
+
+        fn without_witnesses(&self) -> Self {
+            unreachable!()
+        }
+
+        fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+            let instance_columns = [meta.instance_column(), meta.instance_column()];
+            ParserChip::<F, NG<F>>::configure_from_scratch(meta, &instance_columns)
+        }
+
+        fn synthesize(
+            &self,
+            config: Self::Config,
+            mut layouter: impl Layouter<F>,
+        ) -> Result<(), Error> {
+            let parser = ParserChip::<F, NG<F>>::new_from_scratch(&config);
+            let native_gadget = &parser.native_gadget;
+
+            let full1 = native_gadget.assign_many(&mut layouter, &self.full1)?;
+            let sub1 = native_gadget.assign_many(&mut layouter, &self.sub1)?;
+            let idx1 = native_gadget.assign(&mut layouter, self.idx1)?;
+            let full2 = native_gadget.assign_many(&mut layouter, &self.full2)?;
+            let sub2 = native_gadget.assign_many(&mut layouter, &self.sub2)?;
+            let idx2 = native_gadget.assign(&mut layouter, self.idx2)?;
+
+            // Two separate check_bytes calls - each should be isolated by its tag.
+            parser.check_bytes(&mut layouter, &full1, &idx1, &sub1)?;
+            parser.check_bytes(&mut layouter, &full2, &idx2, &sub2)?;
+
+            parser.load_from_scratch(&mut layouter)
+        }
+    }
+
+    fn check_bytes_test(case1: (&str, &str, usize), case2: (&str, &str, usize), must_pass: bool) {
+        type F = midnight_curves::Fq;
+
+        let circuit = CheckBytesTestCircuit::<F>::new(case1, case2);
+        println!(
+            ">> [test check_bytes] [must{} pass] on\n\t- input1: \"{}\" = \"{}\"[{}..{}]\n\t- input2: \"{}\" = \"{}\"[{}..{}]",
+            if must_pass { "" } else { " not" },
+            case1.1,
+            case1.0,
+            case1.2,
+            case1.2 + case1.1.len(),
+            case2.1,
+            case2.0,
+            case2.2,
+            case2.2 + case2.1.len(),
+        );
+        let result = MockProver::run(9, &circuit, vec![vec![], vec![]]);
+        match result {
+            Ok(p) => {
+                let verified = p.verify();
+                if must_pass {
+                    verified.expect("the test should have passed")
+                } else {
+                    assert!(verified.is_err(), "the test should have failed");
+                }
+            }
+            Err(e) => {
+                assert!(!must_pass, "Prover failed unexpectedly: {:?}", e);
+            }
+        }
+        println!("... test successful!")
+    }
+
+    #[test]
+    fn test_check_bytes() {
+        // Test of a trivial case.
+        let trivial = ("", "", 0);
+        check_bytes_test(trivial, trivial, true);
+
+        // Basic tests (with trivial second case).
+        check_bytes_test(("hello world", "hello", 0), trivial, true); // At beginning.
+        check_bytes_test(("hello world", "lo wo", 3), trivial, true); // In middle.
+        check_bytes_test(("hello world", "world", 6), trivial, true); // At end.
+        check_bytes_test(("abcdef", "d", 3), trivial, true); // Single char.
+        check_bytes_test(("test", "test", 0), trivial, true); // Full string.
+        check_bytes_test(("hello world", "xyz", 0), trivial, false); // Off-Topic.
+        check_bytes_test(("hello world", "world", 0), trivial, false); // Wrong idx.
+
+        // Tag isolation tests.
+        check_bytes_test(("a", "b", 0), ("b", "a", 0), false);
+        check_bytes_test(("hello world", "hello", 0), ("world", " world", 1), false);
+        check_bytes_test(("hello", "ell", 1), ("world", "orl", 1), true);
     }
 }
