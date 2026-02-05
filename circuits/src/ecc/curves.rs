@@ -18,6 +18,7 @@ use group::{Curve, Group};
 #[cfg(feature = "dev-curves")]
 use midnight_curves::bn256;
 use midnight_curves::{
+    curve25519::{Curve25519, Curve25519Affine, CURVE_A as CURVE25519_A, CURVE_D as CURVE25519_D},
     secp256k1::{Secp256k1, Secp256k1Affine},
     CurveAffine, Fq as BlsScalar, JubjubAffine, JubjubExtended, JubjubSubgroup,
 };
@@ -129,6 +130,34 @@ impl EdwardsCurve for JubjubExtended {
         0xf5fd_9207_e6bd_7fd4,
         0x2a93_18e7_4bfa_2b48,
     ]);
+}
+
+// Implementation for Curve25519.
+use midnight_curves::curve25519::{Curve25519Subgroup, Fp as Curve25519Base};
+impl CircuitCurve for Curve25519 {
+    type Base = Curve25519Base;
+    type CryptographicGroup = Curve25519Subgroup;
+    const COFACTOR: u128 = 8;
+    const NUM_BITS_SUBGROUP: u32 = 252;
+
+    fn coordinates(&self) -> Option<(Self::Base, Self::Base)> {
+        let affine = Curve25519Affine::from_edwards(self.0)?;
+        Some((*affine.x(), *affine.y()))
+    }
+
+    fn from_xy(x: Self::Base, y: Self::Base) -> Option<Self> {
+        let affine = Curve25519Affine::from_xy(x, y)?;
+        Some(Curve25519::from(affine))
+    }
+
+    fn into_subgroup(self) -> Self::CryptographicGroup {
+        Curve25519Subgroup::from_edwards(self.0).expect("point must be in the prime-order subgroup")
+    }
+}
+
+impl EdwardsCurve for Curve25519 {
+    const A: Self::Base = CURVE25519_A;
+    const D: Self::Base = CURVE25519_D;
 }
 
 // Implementation for Secp256k1.
