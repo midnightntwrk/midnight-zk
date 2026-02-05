@@ -15,7 +15,7 @@ use ff::PrimeField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 use num_bigint::BigUint;
 
-use super::ParserGadget;
+use super::ParserChip;
 use crate::{field::AssignedNative, instructions::NativeInstructions, types::AssignedByte};
 
 /// Order of day, month and year in the date string.
@@ -38,7 +38,7 @@ pub enum Separator {
     Sep(char),
 }
 
-impl<F, N> ParserGadget<F, N>
+impl<F, N> ParserChip<F, N>
 where
     F: PrimeField,
     N: NativeInstructions<F>,
@@ -218,7 +218,7 @@ mod tests {
             mut layouter: impl Layouter<F>,
         ) -> Result<(), Error> {
             let native_gadget = <N as FromScratch<F>>::new_from_scratch(&config);
-            let parser_gadget = ParserGadget::<F, N>::new(&native_gadget);
+            let parser_chip = ParserChip::<F, N>::new(&native_gadget);
 
             let string = native_gadget.assign_many(&mut layouter, &self.string)?;
             let bytes = string
@@ -227,9 +227,9 @@ mod tests {
                 .collect::<Result<Vec<AssignedByte<F>>, Error>>()?;
 
             let res = match self.operation {
-                Operation::ParseInt => parser_gadget.ascii_to_int(&mut layouter, &bytes),
+                Operation::ParseInt => parser_chip.ascii_to_int(&mut layouter, &bytes),
                 Operation::ParseDate(format) => {
-                    parser_gadget.date_to_int(&mut layouter, &bytes, format)
+                    parser_chip.date_to_int(&mut layouter, &bytes, format)
                 }
             }?;
 

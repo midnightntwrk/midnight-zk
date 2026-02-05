@@ -25,10 +25,10 @@ use {
 use crate::{field::AssignedNative, instructions::NativeInstructions, types::AssignedByte};
 
 #[derive(Clone, Debug)]
-/// A gadget for parsing json data. It is parametrized by:
+/// A chip for parsing data. It is parametrized by:
 ///  - F: the native field,
 ///  - N: a set of in-circuit native instructions.
-pub struct ParserGadget<F, N>
+pub struct ParserChip<F, N>
 where
     F: PrimeField,
     N: NativeInstructions<F>,
@@ -37,7 +37,7 @@ where
     _marker: PhantomData<F>,
 }
 
-impl<F, N> ParserGadget<F, N>
+impl<F, N> ParserChip<F, N>
 where
     F: PrimeField,
     N: NativeInstructions<F>,
@@ -176,7 +176,7 @@ where
 }
 
 #[cfg(any(test, feature = "testing"))]
-impl<F, N> FromScratch<F> for ParserGadget<F, N>
+impl<F, N> FromScratch<F> for ParserChip<F, N>
 where
     F: PrimeField,
     N: NativeInstructions<F> + FromScratch<F>,
@@ -185,7 +185,7 @@ where
 
     fn new_from_scratch(config: &Self::Config) -> Self {
         let native_gadget = <N as FromScratch<F>>::new_from_scratch(config);
-        ParserGadget::<F, N>::new(&native_gadget)
+        ParserChip::<F, N>::new(&native_gadget)
     }
 
     fn configure_from_scratch(
@@ -255,7 +255,7 @@ mod tests {
             mut layouter: impl Layouter<F>,
         ) -> Result<(), Error> {
             let native_gadget = <N as FromScratch<F>>::new_from_scratch(&config);
-            let parser_gadget = ParserGadget::<F, N>::new(&native_gadget);
+            let parser_chip = ParserChip::<F, N>::new(&native_gadget);
 
             let sequence = native_gadget.assign_many(&mut layouter, &self.sequence)?;
             let idx = native_gadget.assign(&mut layouter, self.idx)?;
@@ -263,14 +263,14 @@ mod tests {
 
             let res = match self.operation {
                 Operation::GetSubseq => {
-                    parser_gadget.get_subsequence(&mut layouter, &sequence, &idx, len)
+                    parser_chip.get_subsequence(&mut layouter, &sequence, &idx, len)
                 }
                 Operation::FetchBytes => {
                     let bytes = sequence
                         .iter()
                         .map(|x| native_gadget.convert(&mut layouter, x))
                         .collect::<Result<Vec<AssignedByte<F>>, Error>>()?;
-                    let fetched = parser_gadget.fetch_bytes(&mut layouter, &bytes, &idx, len)?;
+                    let fetched = parser_chip.fetch_bytes(&mut layouter, &bytes, &idx, len)?;
                     Ok(fetched.iter().map(|b| b.clone().into()).collect::<Vec<_>>())
                 }
             }?;

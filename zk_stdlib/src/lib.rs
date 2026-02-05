@@ -67,7 +67,7 @@ use midnight_circuits::{
     parsing::{
         self,
         automaton_chip::{AutomatonChip, AutomatonConfig, NB_AUTOMATA_COLS},
-        Base64Chip, Base64Config, ParserGadget, StdLibParser, NB_BASE64_ADVICE_COLS,
+        Base64Chip, Base64Config, ParserChip, StdLibParser, NB_BASE64_ADVICE_COLS,
     },
     types::{
         AssignedBit, AssignedByte, AssignedNative, AssignedNativePoint, ComposableChip, InnerValue,
@@ -284,7 +284,7 @@ pub struct ZkStdLib {
     secp256k1_curve_chip: Option<Secp256k1Chip>,
     bls12_381_curve_chip: Option<Bls12381Chip>,
     base64_chip: Option<Base64Chip<F>>,
-    parser_gadget: ParserGadget<F, NG>,
+    parser_chip: ParserChip<F, NG>,
     vector_gadget: VectorGadget<F>,
     automaton_chip: Option<AutomatonChip<StdLibParser, F>>,
 
@@ -341,7 +341,7 @@ impl ZkStdLib {
         let base64_chip = (config.base64_config.as_ref())
             .map(|base64_config| Base64Chip::new(base64_config, &native_gadget));
 
-        let parser_gadget = ParserGadget::new(&native_gadget);
+        let parser_chip = ParserChip::new(&native_gadget);
         let vector_gadget = VectorGadget::new(&native_gadget);
         let automaton_chip =
             config.automaton_config.as_ref().map(|c| AutomatonChip::new(c, &native_gadget));
@@ -368,7 +368,7 @@ impl ZkStdLib {
             secp256k1_curve_chip,
             bls12_381_curve_chip,
             base64_chip,
-            parser_gadget,
+            parser_chip,
             vector_gadget,
             automaton_chip,
             keccak_sha3_chip,
@@ -607,8 +607,8 @@ impl ZkStdLib {
     }
 
     /// Gadget for parsing properties of a JSON object.
-    pub fn parser(&self) -> &ParserGadget<F, NG> {
-        &self.parser_gadget
+    pub fn parser(&self) -> &ParserChip<F, NG> {
+        &self.parser_chip
     }
 
     /// Chip for performing automaton-based parsing.
