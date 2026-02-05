@@ -23,6 +23,7 @@
 use std::{hash::Hash, iter};
 
 use ff::{BatchInvert, FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
+use rand_core::{CryptoRng, RngCore};
 
 use crate::{
     plonk::{evaluation::evaluate, logup::FlattenedArgument, Error, Expression, ProvingKey},
@@ -149,6 +150,7 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ComputedMultiplicities<F> {
         pk: &ProvingKey<F, CS>,
         params: &CS::Parameters,
         beta: F,
+        mut rng: impl RngCore + CryptoRng,
         transcript: &mut T,
     ) -> Result<Committed<F>, Error>
     where
@@ -207,12 +209,16 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ComputedMultiplicities<F> {
 
         // We take n-1 elements because the last row is verified by the identity check.
         let aggregator_poly = iter::once(F::ZERO)
-            .chain(logderivative_poly.iter().cloned().take(n - 1))
+            .chain(logderivative_poly)
             .scan(F::ZERO, |state, cur| {
                 *state += cur;
                 Some(*state)
             })
-            .collect::<Vec<F>>();
+            // Take all rows including the "last" row.
+            .take(pk.vk.n() as usize - blinding_factors)
+            // Chain random blinding factors.
+            .chain((0..blinding_factors).map(|_| F::random(&mut rng)))
+            .collect::<Vec<_>>();
 
         let helper_poly = pk.vk.domain.lagrange_from_vec(helper_poly);
         let aggregator_poly = pk.vk.domain.lagrange_from_vec(aggregator_poly);
@@ -340,7 +346,7 @@ where
     for value in values.iter() {
         for v in value.iter().take(usable_rows) {
             input_counts.entry(*v).and_modify(|count| *count += 1);
-    }
+        }
     }
 
     // Build vector of table counts for batch inversion (only for active table
