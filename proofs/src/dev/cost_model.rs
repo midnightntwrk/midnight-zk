@@ -88,16 +88,20 @@ impl FromStr for Poly {
 struct Lookup;
 
 impl Lookup {
-    /// Returns the queries of the lookup argument
+    /// Returns the queries of the LogUp lookup argument
     fn queries(&self) -> impl Iterator<Item = Poly> {
-        // - product commitments at x and \omega x
-        // - input commitments at x and x_inv
-        // - table commitments at x
-        let product = "0,1".parse().unwrap();
-        let input = "-1,0".parse().unwrap();
-        let table = "0".parse().unwrap();
+        // LogUp polynomials:
+        // - multiplicities at x
+        // - helper at x
+        // - aggregator at x and ωx
+        let multiplicities: Poly = "0".parse().unwrap();
+        let helper: Poly = "0".parse().unwrap();
+        let aggregator: Poly = "0,1".parse().unwrap();
 
-        iter::empty().chain(Some(product)).chain(Some(input)).chain(Some(table))
+        iter::empty()
+            .chain(Some(multiplicities))
+            .chain(Some(helper))
+            .chain(Some(aggregator))
     }
 }
 
