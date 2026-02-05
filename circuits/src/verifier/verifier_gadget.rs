@@ -263,6 +263,13 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         // Sample theta challenge for keeping lookup columns linearly independent
         let theta = transcript.squeeze_challenge(layouter)?;
 
+        let multiplicities_committed = cs
+            .lookups()
+            .iter()
+            .flat_map(|l| l.split(assigned_vk.cs.degree()))
+            .map(|_| lookup::read_multiplicities(layouter, &mut transcript))
+            .collect::<Result<Vec<_>, Error>>()?;
+
         let beta = transcript.squeeze_challenge(layouter)?;
         let gamma = transcript.squeeze_challenge(layouter)?;
 
@@ -270,12 +277,12 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             // Hash each permutation product commitment
             permutation::read_product_commitments(layouter, &mut transcript, cs)?;
 
-        let lookups_committed = cs
-            .lookups()
-            .iter()
-            .flat_map(|l| l.split(assigned_vk.cs.degree()))
-            .map(|_| lookup::read_commitment(layouter, &mut transcript))
-            .collect::<Result<Vec<_>, Error>>()?;
+        let lookups_committed = multiplicities_committed
+            .into_iter()
+            .map(|lookup|
+                // Hash each lookup product commitment
+                lookup.read_commitment(layouter, &mut transcript))
+            .collect::<Result<Vec<_>, _>>()?;
 
         let trash_challenge = transcript.squeeze_challenge(layouter)?;
 
@@ -480,6 +487,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                             &advice_evals,
                             &fixed_evals,
                             &instance_evals,
+                            &l_0,
                             &l_last,
                             &l_blind,
                             &theta,
@@ -530,7 +538,6 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             )
         }?;
 
-        let zero = self.scalar_chip.assign_fixed(layouter, S::F::ZERO)?;
         let one = AssignedBoundedScalar::<S::F>::one(layouter, &self.scalar_chip)?;
         let omega = assigned_vk.domain.get_omega();
         let omega_inv = omega.invert().unwrap();
@@ -575,10 +582,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                 }),
             )
             .chain((permutations_evaluated).queries(&one, &x, &x_next, &x_last))
-            .chain(
-                (lookups_evaluated.iter())
-                    .flat_map(|lookup| lookup.queries(&zero, &one, &x, &x_next)),
-            )
+            .chain((lookups_evaluated.iter()).flat_map(|lookup| lookup.queries(&one, &x, &x_next)))
             .chain(trashcans_evaluated.iter().flat_map(|trash| trash.queries(&one, &x)))
             .chain(
                 cs.fixed_queries().iter().enumerate().map(|(query_index, &(col, rot))| {

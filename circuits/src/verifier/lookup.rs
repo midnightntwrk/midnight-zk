@@ -26,6 +26,12 @@ use crate::{
     },
 };
 
+/// Commitment to the multiplicity columns, read from the transcript.
+#[derive(Clone, Debug)]
+pub(crate) struct CommittedMultiplicities<S: SelfEmulation> {
+    multiplicities: S::AssignedPoint,
+}
+
 /// Commitments to the LogUp polynomials, read from the transcript.
 #[derive(Clone, Debug)]
 pub(crate) struct Committed<S: SelfEmulation> {
@@ -45,19 +51,30 @@ pub(crate) struct Evaluated<S: SelfEmulation> {
 }
 
 /// Reads the prover's commitments from the transcript.
-pub(crate) fn read_commitment<S: SelfEmulation>(
+pub(crate) fn read_multiplicities<S: SelfEmulation>(
     layouter: &mut impl Layouter<S::F>,
     transcript_gadget: &mut TranscriptGadget<S>,
-) -> Result<Committed<S>, Error> {
+) -> Result<CommittedMultiplicities<S>, Error> {
     let multiplicities = transcript_gadget.read_point(layouter)?;
-    let helper_poly = transcript_gadget.read_point(layouter)?;
-    let accumulator = transcript_gadget.read_point(layouter)?;
 
-    Ok(Committed {
-        multiplicities,
-        helper_poly,
-        accumulator,
-    })
+    Ok(CommittedMultiplicities { multiplicities })
+}
+
+impl<S: SelfEmulation> CommittedMultiplicities<S> {
+    pub(crate) fn read_commitment(
+        self,
+        layouter: &mut impl Layouter<S::F>,
+        transcript_gadget: &mut TranscriptGadget<S>,
+    ) -> Result<Committed<S>, Error> {
+        let helper_poly = transcript_gadget.read_point(layouter)?;
+        let accumulator = transcript_gadget.read_point(layouter)?;
+
+        Ok(Committed {
+            multiplicities: self.multiplicities,
+            helper_poly,
+            accumulator,
+        })
+    }
 }
 
 impl<S: SelfEmulation> Committed<S> {
@@ -86,13 +103,11 @@ impl<S: SelfEmulation> Committed<S> {
 impl<S: SelfEmulation> Evaluated<S> {
     pub(crate) fn queries(
         &self,
-        zero: &AssignedNative<S::F>,       // 0
         one: &AssignedBoundedScalar<S::F>, // 1
         x: &AssignedNative<S::F>,          // evaluation point x
         x_next: &AssignedNative<S::F>,     // ωx
     ) -> Vec<VerifierQuery<S>> {
         vec![
-            VerifierQuery::new(one, &one.scalar, &self.committed.accumulator, zero),
             VerifierQuery::new(
                 one,
                 x,
