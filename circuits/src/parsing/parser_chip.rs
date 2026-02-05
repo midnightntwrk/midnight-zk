@@ -11,18 +11,40 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{cmp::min, marker::PhantomData};
+use std::{cell::RefCell, cmp::min, marker::PhantomData, rc::Rc};
 
 use ff::PrimeField;
-use midnight_proofs::{circuit::Layouter, plonk::Error};
+use midnight_proofs::{
+    circuit::{Chip, Layouter, Value},
+    plonk::{Advice, Column, ConstraintSystem, Error, Expression, Fixed, Selector},
+    poly::Rotation,
+};
 use num_bigint::BigUint;
 #[cfg(any(test, feature = "testing"))]
-use {
-    crate::testing_utils::FromScratch,
-    midnight_proofs::plonk::{Column, ConstraintSystem, Instance},
+use {crate::testing_utils::FromScratch, midnight_proofs::plonk::Instance};
+
+use crate::{
+    field::AssignedNative, instructions::NativeInstructions, types::AssignedByte,
+    utils::ComposableChip,
 };
 
-use crate::{field::AssignedNative, instructions::NativeInstructions, types::AssignedByte};
+/// Number of advice columns required for substring functionality.
+pub const NB_SUBSTRING_ADVICE_COLS: usize = 2;
+
+/// Configuration for substring checking via dynamic lookups.
+#[derive(Clone, Debug)]
+pub struct SubstringConfig {
+    /// Selector for substring lookup checks.
+    q_substring: Selector,
+    /// Fixed column for tags to isolate different `check_bytes` calls. For
+    /// soundness reasons, this column cannot be shared (elements have to be 0
+    /// in rows unrelated to `check_bytes` calls).
+    tag_col: Column<Fixed>,
+    /// Advice column for indices.
+    index_col: Column<Advice>,
+    /// Advice column for byte values.
+    byte_col: Column<Advice>,
+}
 
 #[derive(Clone, Debug)]
 /// A chip for parsing data. It is parametrized by:
@@ -34,7 +56,101 @@ where
     N: NativeInstructions<F>,
 {
     pub(crate) native_gadget: N,
+    config: SubstringConfig,
+    /// Counter for generating unique positive tags for each `check_bytes` call.
+    substring_tag_counter: Rc<RefCell<u64>>,
     _marker: PhantomData<F>,
+}
+
+impl<F, N> Chip<F> for ParserChip<F, N>
+where
+    F: PrimeField,
+    N: NativeInstructions<F> + Clone,
+{
+    type Config = SubstringConfig;
+    type Loaded = ();
+
+    fn config(&self) -> &Self::Config {
+        &self.config
+    }
+
+    fn loaded(&self) -> &Self::Loaded {
+        &()
+    }
+}
+
+impl<F, N> ComposableChip<F> for ParserChip<F, N>
+where
+    F: PrimeField,
+    N: NativeInstructions<F> + Clone,
+{
+    type InstructionDeps = N;
+    type SharedResources = [Column<Advice>; NB_SUBSTRING_ADVICE_COLS];
+
+    fn new(config: &SubstringConfig, deps: &N) -> Self {
+        Self {
+            native_gadget: deps.clone(),
+            config: config.clone(),
+            substring_tag_counter: Rc::new(RefCell::new(1)),
+            _marker: PhantomData,
+        }
+    }
+
+    fn configure(
+        meta: &mut ConstraintSystem<F>,
+        advice_cols: &[Column<Advice>; NB_SUBSTRING_ADVICE_COLS],
+    ) -> SubstringConfig {
+        let q_substring = meta.complex_selector();
+        // Tag column that identify each function calls to this lookup table (see the
+        // field `substring_tag_counter` of `ParserChip`). For soundness, it is required
+        // that:
+        // 1. each function call gets a fresh tag that is never 0
+        // 2. this column is 0 outside check_bytes regions. Therefore, this column
+        //    cannot be shared.
+        let tag_col = meta.fixed_column();
+        let index_col = advice_cols[0];
+        let byte_col = advice_cols[1];
+
+        meta.enable_equality(index_col);
+        meta.enable_equality(byte_col);
+
+        // Dynamic lookup for substring checking. This is a self-referential lookup
+        // where we look up (tag, index, byte) triples from the same columns, similarly
+        // to the ECC chip. Key correctness arguments:
+        // 1. Rows where the selector is deactivated (0) induce triples (teg, index,
+        //    byte) that are automatically matched in the table.
+        // 2. Rows where the selector is activated (1) induce triples (teg, index, byte)
+        //    that need to be matched by at least one triple in a row where the selector
+        //    is 0.
+        // 3. The tag is 0 iff the row is not used for an actual substring check. It
+        //    avoids that the triple (0,0,0) is unsoundly matched (always in the table
+        //    due to rows where the selector is 0).
+        meta.lookup_any("substring lookup", |meta| {
+            let sel = meta.query_selector(q_substring);
+            let not_sel = Expression::Constant(F::ONE) - sel;
+
+            let tag = meta.query_fixed(tag_col, Rotation::cur());
+            let index = meta.query_advice(index_col, Rotation::cur());
+            let byte = meta.query_advice(byte_col, Rotation::cur());
+
+            vec![
+                (tag.clone(), not_sel.clone() * tag),
+                (index.clone(), not_sel.clone() * index),
+                (byte.clone(), not_sel * byte),
+            ]
+        });
+
+        SubstringConfig {
+            q_substring,
+            tag_col,
+            index_col,
+            byte_col,
+        }
+    }
+
+    fn load(&self, _layouter: &mut impl Layouter<F>) -> Result<(), Error> {
+        Ok(())
+    }
 }
 
 impl<F, N> ParserChip<F, N>
@@ -42,14 +158,6 @@ where
     F: PrimeField,
     N: NativeInstructions<F>,
 {
-    /// Create a new parser gadget.
-    pub fn new(native_gadget: &N) -> Self {
-        Self {
-            native_gadget: native_gadget.clone(),
-            _marker: PhantomData,
-        }
-    }
-
     /// Given a `sequence` of assigned native values, an index `idx`
     /// (represented with an assigned native value) and a length `len`,
     /// returns a vector of length `len` that is guaranteed to contain
@@ -179,20 +287,24 @@ where
 impl<F, N> FromScratch<F> for ParserChip<F, N>
 where
     F: PrimeField,
-    N: NativeInstructions<F> + FromScratch<F>,
+    N: NativeInstructions<F> + FromScratch<F> + Clone,
 {
-    type Config = <N as FromScratch<F>>::Config;
+    type Config = (<N as FromScratch<F>>::Config, SubstringConfig);
 
     fn new_from_scratch(config: &Self::Config) -> Self {
-        let native_gadget = <N as FromScratch<F>>::new_from_scratch(config);
-        ParserChip::<F, N>::new(&native_gadget)
+        let native_gadget = <N as FromScratch<F>>::new_from_scratch(&config.0);
+        <ParserChip<F, N> as ComposableChip<F>>::new(&config.1, &native_gadget)
     }
 
     fn configure_from_scratch(
         meta: &mut ConstraintSystem<F>,
         instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
-        <N as FromScratch<F>>::configure_from_scratch(meta, instance_columns)
+        let native_config = <N as FromScratch<F>>::configure_from_scratch(meta, instance_columns);
+        let advice_cols: [Column<Advice>; NB_SUBSTRING_ADVICE_COLS] =
+            [meta.advice_column(), meta.advice_column()];
+        let substring_config = ParserChip::<F, N>::configure(meta, &advice_cols);
+        (native_config, substring_config)
     }
 
     fn load_from_scratch(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
@@ -210,7 +322,10 @@ mod tests {
     };
 
     use super::*;
-    use crate::field::{decomposition::chip::P2RDecompositionChip, NativeChip, NativeGadget};
+    use crate::{
+        field::{decomposition::chip::P2RDecompositionChip, NativeChip, NativeGadget},
+        instructions::AssignmentInstructions,
+    };
 
     #[derive(Clone, Debug)]
     enum Operation {
@@ -230,9 +345,9 @@ mod tests {
     impl<F, N> Circuit<F> for TestCircuit<F, N>
     where
         F: PrimeField,
-        N: NativeInstructions<F> + FromScratch<F>,
+        N: NativeInstructions<F> + FromScratch<F> + Clone,
     {
-        type Config = <N as FromScratch<F>>::Config;
+        type Config = <ParserChip<F, N> as FromScratch<F>>::Config;
         type FloorPlanner = SimpleFloorPlanner;
         type Params = ();
 
@@ -243,7 +358,7 @@ mod tests {
         fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
             let committed_instance_column = meta.instance_column();
             let instance_column = meta.instance_column();
-            <N as FromScratch<F>>::configure_from_scratch(
+            ParserChip::<F, N>::configure_from_scratch(
                 meta,
                 &[committed_instance_column, instance_column],
             )
@@ -254,8 +369,8 @@ mod tests {
             config: Self::Config,
             mut layouter: impl Layouter<F>,
         ) -> Result<(), Error> {
-            let native_gadget = <N as FromScratch<F>>::new_from_scratch(&config);
-            let parser_chip = ParserChip::<F, N>::new(&native_gadget);
+            let parser_chip = ParserChip::<F, N>::new_from_scratch(&config);
+            let native_gadget = &parser_chip.native_gadget;
 
             let sequence = native_gadget.assign_many(&mut layouter, &self.sequence)?;
             let idx = native_gadget.assign(&mut layouter, self.idx)?;
@@ -280,7 +395,7 @@ mod tests {
                 native_gadget.assert_equal_to_fixed(&mut layouter, resulted, *expected)?;
             }
 
-            native_gadget.load_from_scratch(&mut layouter)
+            parser_chip.load_from_scratch(&mut layouter)
         }
     }
 

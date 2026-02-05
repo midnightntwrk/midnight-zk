@@ -67,7 +67,8 @@ use midnight_circuits::{
     parsing::{
         self,
         automaton_chip::{AutomatonChip, AutomatonConfig, NB_AUTOMATA_COLS},
-        Base64Chip, Base64Config, ParserChip, StdLibParser, NB_BASE64_ADVICE_COLS,
+        Base64Chip, Base64Config, ParserChip, StdLibParser, SubstringConfig, NB_BASE64_ADVICE_COLS,
+        NB_SUBSTRING_ADVICE_COLS,
     },
     types::{
         AssignedBit, AssignedByte, AssignedNative, AssignedNativePoint, ComposableChip, InnerValue,
@@ -159,6 +160,9 @@ pub struct ZkStdLibArch {
     /// Enable automaton?
     pub automaton: bool,
 
+    /// Enable parser chip?
+    pub parser: bool,
+
     /// Number of parallel lookups for range checks.
     pub nr_pow2range_cols: u8,
 }
@@ -177,6 +181,7 @@ impl Default for ZkStdLibArch {
             bls12_381: false,
             base64: false,
             automaton: false,
+            parser: false,
             nr_pow2range_cols: 1,
         }
     }
@@ -260,6 +265,7 @@ pub struct ZkStdLibConfig {
     bls12_381_config: Option<ForeignEccConfig<midnight_curves::G1Projective>>,
     base64_config: Option<Base64Config>,
     automaton_config: Option<AutomatonConfig<StdLibParser, midnight_curves::Fq>>,
+    substring_config: Option<SubstringConfig>,
 
     // Configuration of external libraries.
     keccak_sha3_config: Option<PackedConfig>,
@@ -284,7 +290,7 @@ pub struct ZkStdLib {
     secp256k1_curve_chip: Option<Secp256k1Chip>,
     bls12_381_curve_chip: Option<Bls12381Chip>,
     base64_chip: Option<Base64Chip<F>>,
-    parser_chip: ParserChip<F, NG>,
+    parser_chip: Option<ParserChip<F, NG>>,
     vector_gadget: VectorGadget<F>,
     automaton_chip: Option<AutomatonChip<StdLibParser, F>>,
 
@@ -341,7 +347,8 @@ impl ZkStdLib {
         let base64_chip = (config.base64_config.as_ref())
             .map(|base64_config| Base64Chip::new(base64_config, &native_gadget));
 
-        let parser_chip = ParserChip::new(&native_gadget);
+        let parser_chip =
+            config.substring_config.as_ref().map(|c| ParserChip::new(c, &native_gadget));
         let vector_gadget = VectorGadget::new(&native_gadget);
         let automaton_chip =
             config.automaton_config.as_ref().map(|c| AutomatonChip::new(c, &native_gadget));
@@ -411,6 +418,7 @@ impl ZkStdLib {
                 ),
             arch.base64 as usize * NB_BASE64_ADVICE_COLS,
             arch.automaton as usize * NB_AUTOMATA_COLS,
+            arch.parser as usize * NB_SUBSTRING_ADVICE_COLS,
             (arch.keccak_256 || arch.sha3_256) as usize * PACKED_ADVICE_COLS,
             arch.blake2b as usize * NB_BLAKE2B_ADVICE_COLS,
         ]
@@ -513,6 +521,13 @@ impl ZkStdLib {
             )
         });
 
+        let substring_config = arch.parser.then(|| {
+            ParserChip::<F, NG>::configure(
+                meta,
+                &advice_columns[..NB_SUBSTRING_ADVICE_COLS].try_into().unwrap(),
+            )
+        });
+
         let constant_column =
             (arch.keccak_256 || arch.sha3_256 || arch.blake2b).then(|| meta.fixed_column());
 
@@ -546,6 +561,7 @@ impl ZkStdLib {
             bls12_381_config,
             base64_config,
             automaton_config,
+            substring_config,
             keccak_sha3_config,
             blake2b_config,
         }
@@ -606,9 +622,11 @@ impl ZkStdLib {
             .unwrap_or_else(|| panic!("ZkStdLibArch must enable base64"))
     }
 
-    /// Gadget for parsing properties of a JSON object.
+    /// Chip for parsing data.
     pub fn parser(&self) -> &ParserChip<F, NG> {
-        &self.parser_chip
+        self.parser_chip
+            .as_ref()
+            .unwrap_or_else(|| panic!("ZkStdLibArch must enable parser"))
     }
 
     /// Chip for performing automaton-based parsing.

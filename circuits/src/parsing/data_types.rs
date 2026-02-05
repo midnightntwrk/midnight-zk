@@ -193,9 +193,9 @@ mod tests {
     impl<F, N> Circuit<F> for TestCircuit<F, N>
     where
         F: PrimeField,
-        N: NativeInstructions<F> + FromScratch<F>,
+        N: NativeInstructions<F> + FromScratch<F> + Clone,
     {
-        type Config = <N as FromScratch<F>>::Config;
+        type Config = <ParserChip<F, N> as FromScratch<F>>::Config;
         type FloorPlanner = SimpleFloorPlanner;
         type Params = ();
 
@@ -206,7 +206,7 @@ mod tests {
         fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
             let committed_instance_column = meta.instance_column();
             let instance_column = meta.instance_column();
-            <N as FromScratch<F>>::configure_from_scratch(
+            ParserChip::<F, N>::configure_from_scratch(
                 meta,
                 &[committed_instance_column, instance_column],
             )
@@ -217,13 +217,12 @@ mod tests {
             config: Self::Config,
             mut layouter: impl Layouter<F>,
         ) -> Result<(), Error> {
-            let native_gadget = <N as FromScratch<F>>::new_from_scratch(&config);
-            let parser_chip = ParserChip::<F, N>::new(&native_gadget);
+            let parser_chip = ParserChip::<F, N>::new_from_scratch(&config);
 
-            let string = native_gadget.assign_many(&mut layouter, &self.string)?;
+            let string = parser_chip.native_gadget.assign_many(&mut layouter, &self.string)?;
             let bytes = string
                 .iter()
-                .map(|x| native_gadget.convert(&mut layouter, x))
+                .map(|x| parser_chip.native_gadget.convert(&mut layouter, x))
                 .collect::<Result<Vec<AssignedByte<F>>, Error>>()?;
 
             let res = match self.operation {
@@ -233,9 +232,9 @@ mod tests {
                 }
             }?;
 
-            native_gadget.assert_equal_to_fixed(&mut layouter, &res, self.expected)?;
+            parser_chip.native_gadget.assert_equal_to_fixed(&mut layouter, &res, self.expected)?;
 
-            native_gadget.load_from_scratch(&mut layouter)
+            parser_chip.load_from_scratch(&mut layouter)
         }
     }
 

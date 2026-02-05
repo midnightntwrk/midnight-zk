@@ -160,6 +160,7 @@ impl Relation for CredentialProperty {
             secp256k1: true,
             base64: true,
             automaton: true,
+            parser: true,
             nr_pow2range_cols: 3,
             ..ZkStdLibArch::default()
         }
