@@ -26,6 +26,7 @@ pub mod serde_traits;
 
 // Production curves (always available)
 pub mod bls12_381;
+pub mod curve25519;
 mod jubjub;
 pub mod secp256k1;
 
