@@ -656,7 +656,7 @@ mod tests {
                 let selector = meta.query_selector(table_selector);
                 let not_selector = Expression::from(1) - selector.clone();
                 let advice = meta.query_advice(a, Rotation::cur());
-                vec![(vec![selector * advice + not_selector], sl)]
+                vec![(selector * advice + not_selector, sl)]
             });
 
             meta.create_gate(

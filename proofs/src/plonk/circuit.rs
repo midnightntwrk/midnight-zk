@@ -1858,22 +1858,20 @@ impl<F: Field> ConstraintSystem<F> {
     /// `table_map` returns a vector of maps between an input expression and the
     /// table column it needs to match.
     ///
-    /// If you want to batch multiple lookups to the same table column in parallel,
-    /// use [`batch_lookup`](Self::batch_lookup) instead.
+    /// If you want to batch multiple lookups to the same table column in
+    /// parallel, use [`batch_lookup`](Self::batch_lookup) instead.
     pub fn lookup<S: AsRef<str>>(
         &mut self,
         name: S,
         table_map: impl FnOnce(&mut VirtualCells<'_, F>) -> Vec<(Expression<F>, TableColumn)>,
     ) -> usize {
         self.batch_lookup(name, |cells| {
-            table_map(cells)
-                .into_iter()
-                .map(|(expr, table)| (vec![expr], table))
-                .collect()
+            table_map(cells).into_iter().map(|(expr, table)| (vec![expr], table)).collect()
         })
     }
 
-    /// Add a lookup argument for batches of input expressions to a table column.
+    /// Add a lookup argument for batches of input expressions to a table
+    /// column.
     ///
     /// `table_map` returns a vector of maps between input expressions
     /// and the table columns they need to match.
@@ -1906,30 +1904,29 @@ impl<F: Field> ConstraintSystem<F> {
         index
     }
 
-    /// Add a lookup argument for a single input expression per table expression.
+    /// Add a lookup argument for a single input expression per table
+    /// expression.
     ///
     /// `table_map` returns a vector of maps between an input expression and the
     /// table expression it needs to match.
     ///
-    /// If you want to batch multiple lookups to the same table expression in parallel,
-    /// use [`batch_lookup_any`](Self::batch_lookup_any) instead.
+    /// If you want to batch multiple lookups to the same table expression in
+    /// parallel, use [`batch_lookup_any`](Self::batch_lookup_any) instead.
     pub fn lookup_any<S: AsRef<str>>(
         &mut self,
         name: S,
         table_map: impl FnOnce(&mut VirtualCells<'_, F>) -> Vec<(Expression<F>, Expression<F>)>,
     ) -> usize {
         self.batch_lookup_any(name, |cells| {
-            table_map(cells)
-                .into_iter()
-                .map(|(expr, table)| (vec![expr], table))
-                .collect()
+            table_map(cells).into_iter().map(|(expr, table)| (vec![expr], table)).collect()
         })
     }
 
-    /// Add a lookup argument for batches of input expressions and table expressions.
+    /// Add a lookup argument for batches of input expressions and table
+    /// expressions.
     ///
-    /// `table_map` returns a vector of maps between input expressions (batched together)
-    /// and the table expressions they need to match.
+    /// `table_map` returns a vector of maps between input expressions (batched
+    /// together) and the table expressions they need to match.
     pub fn batch_lookup_any<S: AsRef<str>>(
         &mut self,
         name: S,
