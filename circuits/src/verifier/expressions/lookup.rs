@@ -38,6 +38,7 @@ pub(crate) fn lookup_expressions<S: SelfEmulation>(
     advice_evals: &[AssignedNative<S::F>],
     fixed_evals: &[AssignedNative<S::F>],
     instance_evals: &[AssignedNative<S::F>],
+    l_0: &AssignedNative<S::F>,
     l_last: &AssignedNative<S::F>,
     l_blind: &AssignedNative<S::F>,
     theta: &AssignedNative<S::F>,
@@ -143,5 +144,10 @@ pub(crate) fn lookup_expressions<S: SelfEmulation>(
         scalar_chip.mul(layouter, &left_minus_right, &active_rows, None)?
     };
 
-    Ok(vec![id_1, id_2])
+    Ok(vec![
+        scalar_chip.mul(layouter, l_0, &lookup_evals.accumulator_eval, None)?,
+        scalar_chip.mul(layouter, l_last, &lookup_evals.accumulator_eval, None)?,
+        id_1,
+        id_2,
+    ])
 }
