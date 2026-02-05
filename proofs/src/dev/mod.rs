@@ -1423,10 +1423,10 @@ mod tests {
                     let default = Expression::from(2);
                     vec![
                         (
-                            vec![q.clone() * a.clone() + not_q.clone() * default.clone()],
+                            q.clone() * a.clone() + not_q.clone() * default.clone(),
                             table,
                         ),
-                        (vec![q * a + not_q * default], advice_table),
+                        (q * a + not_q * default, advice_table),
                     ]
                 });
 
@@ -1586,7 +1586,7 @@ mod tests {
                     // When q is not enabled, lookup the default value instead.
                     let not_q = Expression::from(1) - q.clone();
                     let default = Expression::from(2);
-                    vec![(vec![q * a + not_q * default], table)]
+                    vec![(q * a + not_q * default, table)]
                 });
 
                 FaultyCircuitConfig { a, q, table }

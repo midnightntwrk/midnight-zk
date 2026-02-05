@@ -313,7 +313,7 @@ fn plonk_api() {
 
             meta.lookup("lookup", |meta| {
                 let a_ = meta.query_any(a, Rotation::cur());
-                vec![(vec![a_], sl)]
+                vec![(a_, sl)]
             });
 
             meta.create_gate("Combined add-mult", |meta| {

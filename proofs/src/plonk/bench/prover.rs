@@ -251,7 +251,9 @@ where
                             // Construct and commit to products polynomials for each lookup
                             lookups
                                 .into_iter()
-                                .map(|lookup| lookup.commit_logderivative(pk, params, beta, &mut rng, &mut t))
+                                .map(|lookup| {
+                                    lookup.commit_logderivative(pk, params, beta, &mut rng, &mut t)
+                                })
                                 .collect::<Result<Vec<_>, _>>()
                         })
                         .collect();
@@ -265,7 +267,9 @@ where
                 // Construct and commit to products polynomials for each lookup
                 lookups
                     .into_iter()
-                    .map(|lookup| lookup.commit_logderivative(pk, params, beta, &mut rng, transcript))
+                    .map(|lookup| {
+                        lookup.commit_logderivative(pk, params, beta, &mut rng, transcript)
+                    })
                     .collect::<Result<Vec<_>, _>>()
             })
             .collect::<Result<Vec<_>, _>>()?

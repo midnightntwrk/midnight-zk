@@ -1043,13 +1043,13 @@ where
                 .chain(base_field_config.z_cols.iter())
                 .map(|col| {
                     let val = meta.query_advice(*col, Rotation::cur());
-                    (vec![val.clone()], not_sel.clone() * val)
+                    (val.clone(), not_sel.clone() * val)
                 })
                 .collect::<Vec<_>>();
 
             // Handle tag indpendently, since it is a fixed column
             let tag = meta.query_fixed(tag_col_multi_select, Rotation::cur());
-            identities.push((vec![tag.clone()], not_sel * tag));
+            identities.push((tag.clone(), not_sel * tag));
 
             identities
         });
