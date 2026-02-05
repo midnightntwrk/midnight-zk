@@ -660,7 +660,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
 #[cfg(test)]
 pub(crate) mod tests {
 
-    use std::{cell::RefCell, collections::BTreeMap};
+    use std::cell::RefCell;
 
     use group::Group;
     use midnight_proofs::{
@@ -869,19 +869,6 @@ pub(crate) mod tests {
 
             *self.fixed_bases_scheme.borrow_mut() = inner_proof_acc.name_scheme();
 
-            println!("BEFORE COLLAPSING");
-            use crate::utils::types::InnerValue;
-            for (b, s) in inner_proof_acc.rhs.bases.iter().zip(inner_proof_acc.rhs.scalars.iter()) {
-                match b {
-                    crate::verifier::AssignedBase::Fixed(name) => {
-                        dbg!((name, s.scalar.value()));
-                    }
-                    crate::verifier::AssignedBase::Variable(b) => {
-                        dbg!((b.value(), s.scalar.value()));
-                    }
-                }
-            }
-
             inner_proof_acc.collapse(&mut layouter, &curve_chip, &native_gadget)?;
 
             verifier_chip.constrain_as_public_input(&mut layouter, &inner_proof_acc)?;
@@ -958,9 +945,6 @@ pub(crate) mod tests {
 
         assert!(inner_dual_msm.check(&inner_params.verifier_params()));
         assert!(inner_acc.check(&inner_params.s_g2().into(), &fixed_bases));
-
-        println!("BEFORE COLLAPSING");
-        dbg!(&inner_acc);
 
         inner_acc.collapse();
 

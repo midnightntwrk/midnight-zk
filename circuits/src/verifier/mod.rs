@@ -13,9 +13,6 @@
 
 //! In-circuit KZG-based PLONK verifier.
 
-use std::collections::BTreeMap;
-
-use group::Group;
 use midnight_proofs::{
     circuit::Value,
     plonk,

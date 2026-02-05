@@ -27,7 +27,7 @@
 //! Note that implication <= holds unconditionally, whereas implication => holds
 //! "computationally".
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 
 use ff::Field;
 use group::prime::PrimeCurveAffine;

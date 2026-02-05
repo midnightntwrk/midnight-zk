@@ -44,7 +44,7 @@
 //! verify the validity of C. This is done via an IPA proof for relation
 //! PoK { s in F^l : <s, LAGRANGE_BASES> = σ /\ <s, DUAL_MSM_RHS_BASES> = C }.
 
-use std::{collections::BTreeMap, io};
+use std::{cell::RefCell, collections::BTreeMap, io};
 
 use group::Group;
 use midnight_circuits::{
@@ -58,8 +58,8 @@ use midnight_circuits::{
     instructions::{AssignmentInstructions, PublicInputInstructions},
     types::{ComposableChip, Instantiable},
     verifier::{
-        Accumulator, AssignedAccumulator, AssignedMsm, AssignedVk, Base as MsmBase, Msm, SelfEmulation,
-        VerifierGadget,
+        Accumulator, AssignedAccumulator, AssignedMsm, AssignedVk, Base as MsmBase, Msm,
+        SelfEmulation, VerifierGadget,
     },
 };
 use midnight_proofs::{
@@ -115,6 +115,7 @@ pub struct LightAggregator<const NB_PROOFS: usize> {
     aggregator_vk: VerifyingKey,
     aggregator_pk: ProvingKey,
     lagrange_commitments: Vec<C>,
+    fixed_bases_schemes: Vec<Vec<Option<String>>>,
 }
 
 #[derive(Clone, Debug)]
@@ -127,6 +128,7 @@ struct AggregatorCircuit<const NB_PROOFS: usize> {
     // This will be generalized in subsequent PRs.
     instances: Value<[[F; 2]; NB_PROOFS]>,
     proofs: [Value<Vec<u8>>; NB_PROOFS],
+    fixed_bases_scheme: RefCell<Vec<Vec<Option<String>>>>,
 }
 
 impl<const NB_PROOFS: usize> Circuit<F> for AggregatorCircuit<NB_PROOFS> {
@@ -208,6 +210,9 @@ impl<const NB_PROOFS: usize> Circuit<F> for AggregatorCircuit<NB_PROOFS> {
             })
             .collect::<Result<Vec<_>, Error>>()?;
 
+        *self.fixed_bases_scheme.borrow_mut() =
+            proof_accs.iter().map(|acc| acc.name_scheme()).collect();
+
         let acc = AssignedAccumulator::<S>::accumulate(
             &mut layouter,
             &verifier_chip,
@@ -228,6 +233,54 @@ impl<const NB_PROOFS: usize> Circuit<F> for AggregatorCircuit<NB_PROOFS> {
 }
 
 impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
+    /// Reconstructs the fixed bases map from the fixed_bases_schemes and inner_vk.
+    /// This is used by both the prover and verifier.
+    fn reconstruct_fixed_bases(&self) -> BTreeMap<String, C> {
+        let mut all_fixed_bases = BTreeMap::new();
+
+        // Process each proof's fixed_bases_scheme to extract fixed base names and values
+        for (i, _name_scheme) in self.fixed_bases_schemes.iter().enumerate() {
+            // We need to simulate what from_dual_msm would return by matching the structure
+            // of a real prepare call. Since we don't have the actual MSM bases here,
+            // we need to reconstruct them from the inner_vk and known constants.
+
+            // For now, add the com_instance base for this proof
+            all_fixed_bases.insert(com_instance_name::<NB_PROOFS>(i), C::identity());
+
+            // The name_scheme tells us which bases are fixed, but to get their values
+            // we need to match them against the inner_vk structure.
+            // Fixed bases from the inner_vk include:
+            // - ~G (the generator)
+            // - ~inner_vk_fixed_com_XX (fixed commitments from the vk)
+            // - ~inner_vk_perm_com_XX (permutation commitments from the vk)
+        }
+
+        // Add the generator
+        all_fixed_bases.insert("~G".to_string(), -C::generator());
+
+        // Add fixed commitments from inner_vk
+        let nb_fixed_commitments = self.inner_vk.fixed_commitments().len();
+        if nb_fixed_commitments > 0 {
+            let nb_digits = (nb_fixed_commitments - 1).to_string().len();
+            for (i, commitment) in self.inner_vk.fixed_commitments().iter().enumerate() {
+                let name = format!("~inner_vk_fixed_com_{:0>nb_digits$}", i);
+                all_fixed_bases.insert(name, *commitment);
+            }
+        }
+
+        // Add permutation commitments from inner_vk
+        let nb_perm_commitments = self.inner_vk.permutation().commitments().len();
+        if nb_perm_commitments > 0 {
+            let nb_digits = (nb_perm_commitments - 1).to_string().len();
+            for (i, commitment) in self.inner_vk.permutation().commitments().iter().enumerate() {
+                let name = format!("~inner_vk_perm_com_{:0>nb_digits$}", i);
+                all_fixed_bases.insert(name, *commitment);
+            }
+        }
+
+        all_fixed_bases
+    }
+
     /// Initializes a new proof light aggregator for circuits of the given inner
     /// vk.
     ///
@@ -244,6 +297,7 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
             ),
             instances: Value::unknown(),
             proofs: vec![Value::unknown(); NB_PROOFS].try_into().unwrap(),
+            fixed_bases_scheme: RefCell::new(vec![]),
         };
 
         // TODO: Remove, we are hardcoding BLS constants here.
@@ -255,23 +309,24 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
 
         srs.downsize_from_circuit(&default_aggregator_circuit);
 
-        let nb_coms_per_proof = {
-            let cs = inner_vk.cs();
-            cs.num_fixed_columns()
-                + cs.num_advice_columns()
-                + cs.num_instance_columns()
-                + cs.permutation().get_columns().len()
-                + 3 * cs.lookups().len()
-        };
-
         let aggregator_vk = keygen_vk(srs, &default_aggregator_circuit)?;
         let aggregator_pk = keygen_pk(aggregator_vk.clone(), &default_aggregator_circuit)?;
+
+        // Capture the fixed_bases_scheme that was populated during keygen
+        let fixed_bases_schemes = default_aggregator_circuit.fixed_bases_scheme.borrow().clone();
+
+        // Calculate the actual number of lagrange commitments needed based on the fixed_bases_schemes
+        let nb_lagrange_coms = fixed_bases_schemes
+            .iter()
+            .map(|scheme| scheme.len())
+            .sum::<usize>();
 
         Ok(Self {
             inner_vk: inner_vk.clone(),
             aggregator_vk,
             aggregator_pk,
-            lagrange_commitments: srs.g_lagrange()[..(nb_coms_per_proof * NB_PROOFS)].to_vec(),
+            lagrange_commitments: srs.g_lagrange()[..nb_lagrange_coms].to_vec(),
+            fixed_bases_schemes,
         })
     }
 
@@ -301,10 +356,10 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
     {
         // We first verify all proofs off-circuit, to get the final batched accumulator,
         // which must be a public input of the aggregator circuit.
-        let proof_accs: Vec<Accumulator<S>> = (proofs.iter())
+        let proof_accs_with_bases: Vec<(Accumulator<S>, BTreeMap<String, C>)> = (proofs.iter())
             .zip(instances.iter())
-            .enumerate()
-            .map(|(i, (proof, proof_instances))| {
+            .zip(self.fixed_bases_schemes.iter())
+            .map(|((proof, proof_instances), name_scheme)| {
                 let mut inner_transcript =
                     CircuitTranscript::<LightPoseidonFS<F>>::init_from_bytes(proof);
                 let dual_msm = plonk::prepare::<
@@ -320,29 +375,19 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
 
                 assert!(dual_msm.clone().check(&srs.verifier_params()));
 
-                let mut fixed_bases = BTreeMap::new();
-                fixed_bases.insert(com_instance_name::<NB_PROOFS>(i), C::identity());
-                fixed_bases.extend(midnight_circuits::verifier::fixed_bases::<S>(
-                    "inner_vk",
-                    &self.inner_vk,
-                ));
-
-                let mut proof_acc: Accumulator<S> = dual_msm.into();
-                proof_acc.extract_fixed_bases(&fixed_bases);
-                Ok(proof_acc)
+                let (proof_acc, fixed_bases) = Accumulator::<S>::from_dual_msm(&dual_msm, name_scheme);
+                Ok((proof_acc, fixed_bases))
             })
             .collect::<Result<_, Error>>()?;
 
+        let proof_accs: Vec<Accumulator<S>> = proof_accs_with_bases.iter().map(|(acc, _)| acc.clone()).collect();
         let acc = Accumulator::<S>::accumulate(&proof_accs);
 
+        // Collect all fixed bases from all proofs
         let mut fixed_bases = BTreeMap::new();
-        for i in 0..NB_PROOFS {
-            fixed_bases.insert(com_instance_name::<NB_PROOFS>(i), C::identity());
+        for (_acc, bases) in proof_accs_with_bases.iter() {
+            fixed_bases.extend(bases.clone());
         }
-        fixed_bases.extend(midnight_circuits::verifier::fixed_bases::<S>(
-            "inner_vk",
-            &self.inner_vk,
-        ));
         assert!(acc.check(&srs.s_g2().into(), &fixed_bases)); // sanity check
 
         // We now proceed to aggregating all proofs.
@@ -354,6 +399,7 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
             ),
             instances: Value::known(instances.clone().map(|v| v.try_into().unwrap())),
             proofs: proofs.clone().map(Value::known),
+            fixed_bases_scheme: RefCell::new(vec![]),
         };
 
         let mut aggregator_instances = AssignedVk::<S>::as_public_input(&self.inner_vk);
@@ -373,16 +419,15 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
         // All bases should be variable at this point
         assert!(acc.lhs().bases().iter().all(|b| matches!(b, MsmBase::Variable(_))));
         transcript.write(&(acc.lhs().bases().len() as u32))?;
-        acc.lhs().bases().iter().try_for_each(|base| {
-            match base {
-                MsmBase::Variable(p) => transcript.write(p),
-                _ => unreachable!(),
-            }
+        acc.lhs().bases().iter().try_for_each(|base| match base {
+            MsmBase::Variable(p) => transcript.write(p),
+            _ => unreachable!(),
         })?;
         acc.lhs().scalars().iter().try_for_each(|s| transcript.write(s))?;
 
         // Add the RHS of the acc to the transcript (with scalars in committed form).
-        let rhs_num_bases = acc.rhs().bases().iter().filter(|b| matches!(b, MsmBase::Variable(_))).count();
+        let rhs_num_bases =
+            acc.rhs().bases().iter().filter(|b| matches!(b, MsmBase::Variable(_))).count();
         transcript.write(&(rhs_num_bases as u32))?;
         acc.rhs().bases().iter().try_for_each(|base| {
             if let MsmBase::Variable(p) = base {
@@ -486,17 +531,7 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
         };
 
         // Now verify that the final accumulator satisfies the invariant.
-        let fixed_bases = {
-            let mut fixed_bases = BTreeMap::new();
-            for i in 0..NB_PROOFS {
-                fixed_bases.insert(com_instance_name::<NB_PROOFS>(i), C::identity());
-            }
-            fixed_bases.extend(midnight_circuits::verifier::fixed_bases::<S>(
-                "inner_vk",
-                &self.inner_vk,
-            ));
-            fixed_bases
-        };
+        let fixed_bases = self.reconstruct_fixed_bases();
 
         let acc_dual_msm = DualMSM::new(
             MSMKZG::<E>::from_base(&acc_lhs.eval(&fixed_bases)),
@@ -505,7 +540,28 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
 
         // We conclude by checking the IPA proof which guarantess the validity of
         // acc_rhs_evaluated.
-        let mut bases1 = [acc_rhs_bases, fixed_bases.values().cloned().collect()].concat();
+        // We need to reconstruct bases1 in the same order as the prover did, which means
+        // interleaving Variable and Fixed bases according to the accumulated MSM structure.
+        // The accumulated RHS MSM has bases from all proofs concatenated.
+        let mut bases1 = Vec::new();
+        let mut var_base_idx = 0;
+
+        for name_scheme in self.fixed_bases_schemes.iter() {
+            for base_name_opt in name_scheme.iter() {
+                match base_name_opt {
+                    Some(name) => {
+                        // This is a Fixed base
+                        bases1.push(*fixed_bases.get(name).expect("Fixed base not found"));
+                    }
+                    None => {
+                        // This is a Variable base
+                        bases1.push(acc_rhs_bases[var_base_idx]);
+                        var_base_idx += 1;
+                    }
+                }
+            }
+        }
+
         let mut bases2 = self.lagrange_commitments[..bases1.len()].to_vec();
 
         let k = bases1.len().next_power_of_two();
