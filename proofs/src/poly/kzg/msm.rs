@@ -27,6 +27,7 @@ use crate::{
 pub struct MSMKZG<E: Engine> {
     pub(crate) scalars: Vec<E::Fr>,
     pub(crate) bases: Vec<E::G1>,
+    pub(crate) fixed_base_indices: Vec<Option<usize>>,
 }
 
 impl<E: Engine> MSMKZG<E> {
@@ -35,6 +36,7 @@ impl<E: Engine> MSMKZG<E> {
         MSMKZG {
             scalars: vec![],
             bases: vec![],
+            fixed_base_indices: vec![],
         }
     }
 
@@ -44,13 +46,19 @@ impl<E: Engine> MSMKZG<E> {
 
         let mut scalars = Vec::with_capacity(len);
         let mut bases = Vec::with_capacity(len);
+        let mut fixed_base_scalars = Vec::with_capacity(len);
 
         for mut msm in msms {
             scalars.append(&mut msm.scalars);
             bases.append(&mut msm.bases);
+            fixed_base_scalars.append(&mut msm.fixed_base_indices);
         }
 
-        Self { scalars, bases }
+        Self {
+            scalars,
+            bases,
+            fixed_base_indices: fixed_base_scalars,
+        }
     }
 
     /// Create a new MSM from a given base (with scalar of 1).
@@ -58,7 +66,29 @@ impl<E: Engine> MSMKZG<E> {
         MSMKZG {
             scalars: vec![E::Fr::ONE],
             bases: vec![*base],
+            fixed_base_indices: vec![None],
         }
+    }
+}
+
+impl<E: Engine + Debug> MSMKZG<E>
+where
+    E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
+{
+    pub(crate) fn append_term_with_col_idx(
+        &mut self,
+        scalar: E::Fr,
+        point: E::G1,
+        col_idx: Option<usize>,
+    ) {
+        self.scalars.push(scalar);
+        self.bases.push(point);
+        self.fixed_base_indices.push(col_idx);
+    }
+
+    /// Returns the indices of fixed columns.
+    pub fn fixed_base_indices(&self) -> Vec<Option<usize>> {
+        self.fixed_base_indices.clone()
     }
 }
 
@@ -77,6 +107,9 @@ where
 
         self.bases.reserve(other.bases().len());
         self.bases.extend_from_slice(&other.bases());
+
+        self.fixed_base_indices.reserve(other.bases().len());
+        self.fixed_base_indices.extend_from_slice(&other.fixed_base_indices);
     }
 
     fn scale(&mut self, factor: E::Fr) {
@@ -227,5 +260,10 @@ where
         let terms = &[term_1, term_2];
 
         bool::from(E::multi_miller_loop(&terms[..]).final_exponentiation().is_identity())
+    }
+
+    /// Returns the RHS of this [DualMSM].
+    pub fn right(&self) -> &MSMKZG<E> {
+        &self.right
     }
 }
