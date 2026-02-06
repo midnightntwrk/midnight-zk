@@ -194,7 +194,7 @@ impl<F: PrimeField> ComposableChip<F> for RipeMD160Chip<F> {
         });
 
         meta.create_gate("11-11-10 decomposition", |meta| {
-            // See function `assign_sprdd_sum` for a description of the following
+            // See function `assign_sprdd_11_11_10` for a description of the following
             // layout.
             let p11a = meta.query_advice(advice_cols[0], Rotation(-1));
             let p11b = meta.query_advice(advice_cols[0], Rotation(0));
@@ -207,7 +207,7 @@ impl<F: PrimeField> ComposableChip<F> for RipeMD160Chip<F> {
         });
 
         meta.create_gate("spreaded sum with even output", |meta| {
-            // See function `assign_sprdd_sum` for a description of the following
+            // See function `prepare_spreaded` for a description of the following
             // layout.
             let sA = meta.query_advice(advice_cols[5], Rotation(-1));
             let sB = meta.query_advice(advice_cols[6], Rotation(-1));
@@ -227,7 +227,7 @@ impl<F: PrimeField> ComposableChip<F> for RipeMD160Chip<F> {
         });
 
         meta.create_gate("spreaded sum with odd output", |meta| {
-            // See function `assign_sprdd_sum` for a description of the following
+            // See function `and` for a description of the following
             // layout.
             let sA = meta.query_advice(advice_cols[5], Rotation(-1));
             let sB = meta.query_advice(advice_cols[6], Rotation(-1));
@@ -989,8 +989,8 @@ impl<F: PrimeField> RipeMD160Chip<F> {
 
         |  T0 |   A0  |   A1  |  T1 |   A2  |   A3  |   A4  |   T2    |   T3    |      T4     |      T5     |
         |-----|-------|-------|-----|-------|-------|-------|---------|---------|-------------|-------------|
-        | t_a |  l_a  | ~l_a  | t_b |  l_b  | ~l_b  |   X   | coeff_a | coeff_b | coeff_a_rot | coeff_a_rot | <- q_lookup
-        | t_c |  l_c  | ~l_c  | t_d |  l_d  | ~l_d  | Rot(X)| coeff_c | coeff_d | coeff_a_rot | coeff_a_rot | <- q_lookup, q_left_rot
+        | t_a |  l_a  | ~l_a  | t_b |  l_b  | ~l_b  |   X   | coeff_a | coeff_b | coeff_a_rot | coeff_b_rot | <- q_lookup
+        | t_c |  l_c  | ~l_c  | t_d |  l_d  | ~l_d  | Rot(X)| coeff_c | coeff_d | coeff_c_rot | coeff_d_rot | <- q_lookup, q_left_rot
 
         with constraints of:
 
