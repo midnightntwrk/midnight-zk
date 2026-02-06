@@ -84,6 +84,7 @@ const ARCHITECTURES: [ZkStdLibArch; 4] = [
         base64: false,
         nr_pow2range_cols: 4,
         automaton: false,
+        parser: false,
     },
     ZkStdLibArch {
         jubjub: true,
@@ -98,6 +99,7 @@ const ARCHITECTURES: [ZkStdLibArch; 4] = [
         base64: false,
         nr_pow2range_cols: 4,
         automaton: false,
+        parser: false,
     },
     ZkStdLibArch {
         jubjub: false,
@@ -112,6 +114,7 @@ const ARCHITECTURES: [ZkStdLibArch; 4] = [
         base64: false,
         nr_pow2range_cols: 4,
         automaton: false,
+        parser: false,
     },
     ZkStdLibArch {
         jubjub: false,
@@ -126,6 +129,7 @@ const ARCHITECTURES: [ZkStdLibArch; 4] = [
         base64: true,
         nr_pow2range_cols: 4,
         automaton: false,
+        parser: false,
     },
 ];
 

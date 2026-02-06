@@ -13,6 +13,7 @@ verification keys break backwards compatibility.
 ## [Unreleased]
 ### Added
 * Added an example verifying an ethereum signature [#177](https://github.com/midnightntwrk/midnight-zk/pull/177)
+* Adding a boolean flag for the parser chip due to a change of its structure (configuration now optional) [#200](https://github.com/midnightntwrk/midnight-zk/pull/200)
 
 ### Changed
 * Change nr of bits to represent JubJub scalar field modulus from 255 -> 252 [#179](https://github.com/midnightntwrk/midnight-zk/pull/179)

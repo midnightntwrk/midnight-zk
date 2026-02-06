@@ -12,6 +12,7 @@ verification keys break backwards compatibility.
 
 ## [Unreleased]
 ### Added
+* Adding `check_bytes` for substring checks and parsing tools for ASN.1/passports [#200](https://github.com/midnightntwrk/midnight-zk/pull/200)
 
 ### Changed
 * Change nr of bits to represent JubJub scalar field modulus from 255 -> 252 [#179](https://github.com/midnightntwrk/midnight-zk/pull/179)

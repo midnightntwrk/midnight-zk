@@ -15,7 +15,7 @@
 
 mod base64_chip;
 mod data_types;
-mod parser_gadget;
+mod parser_chip;
 mod specs;
 
 /// A module to convert regular expressions to finite automata that can be used
@@ -34,5 +34,5 @@ mod table;
 
 pub use base64_chip::*;
 pub use data_types::{DateFormat, Separator};
-pub use parser_gadget::*;
+pub use parser_chip::*;
 pub use specs::{spec_library, StdLibParser};
