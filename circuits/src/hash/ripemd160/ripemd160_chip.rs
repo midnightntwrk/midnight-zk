@@ -30,7 +30,7 @@ use crate::{
         },
     },
     instructions::{
-        AssignmentInstructions, DecompositionInstructions, EqualityInstructions, ZeroInstructions,
+        AssertionInstructions, AssignmentInstructions, DecompositionInstructions, ZeroInstructions,
     },
     types::AssignedByte,
     utils::{
@@ -156,10 +156,10 @@ impl<F: PrimeField> ComposableChip<F> for RipeMD160Chip<F> {
         let fixed_cols = shared_res.1;
         // Columns A0, A1 do not need to be copy-enabled. We have the
         // convention that chips enable copy in a prefix of their shared
-        // advice columns. Thus we let them be the last three columns of the given
+        // advice columns. Thus we let them be the last two columns of the given
         // shared resources.
-        let advice_cols = [2, 3, 4, 5, 6, 7, 0, 1].map(|i| shared_res.0[i]);
-        for column in advice_cols.iter().rev().take(5) {
+        let advice_cols = [6, 7, 0, 1, 2, 3, 4, 5].map(|i| shared_res.0[i]);
+        for column in advice_cols.iter().rev().take(6) {
             meta.enable_equality(*column);
         }
 
@@ -369,9 +369,6 @@ impl<F: PrimeField> RipeMD160Chip<F> {
             AssignedWord::fixed(layouter, &self.native_gadget, K_PRIME[3])?,
             AssignedWord::fixed(layouter, &self.native_gadget, K_PRIME[4])?,
         ];
-        // the constant of zero will be assigned in multiple places as part of the
-        // corresponding constraints.
-        let zero = AssignedWord::fixed(layouter, &self.native_gadget, 0u32)?;
 
         let mut state = State::fixed(layouter, &self.native_gadget, IV)?;
 
@@ -385,7 +382,6 @@ impl<F: PrimeField> RipeMD160Chip<F> {
                 block_bytes.try_into().unwrap(),
                 round_consts.each_ref(),
                 round_consts_prime.each_ref(),
-                &zero,
             )?;
         }
 
@@ -421,7 +417,6 @@ impl<F: PrimeField> RipeMD160Chip<F> {
         block_bytes: &[AssignedByte<F>; 64],
         round_consts: [&AssignedWord<F>; 5],
         round_consts_prime: [&AssignedWord<F>; 5],
-        zero: &AssignedWord<F>,
     ) -> Result<(), Error> {
         let block_words = self.block_from_bytes(layouter, block_bytes)?;
 
@@ -446,18 +441,17 @@ impl<F: PrimeField> RipeMD160Chip<F> {
                 word_prime,
                 round_const,
                 round_const_prime,
-                zero,
             )?;
         }
 
         let [A, B, C, D, E] = temp_state.into();
         let [A_prime, B_prime, C_prime, D_prime, E_prime] = temp_state_prime.into();
         // Update the state.
-        let T = self.add_mod_2_32(layouter, &[&state.h1, &C, &D_prime], zero)?;
-        state.h1 = self.add_mod_2_32(layouter, &[&state.h2, &D, &E_prime], zero)?;
-        state.h2 = self.add_mod_2_32(layouter, &[&state.h3, &E, &A_prime], zero)?;
-        state.h3 = self.add_mod_2_32(layouter, &[&state.h4, &A, &B_prime], zero)?;
-        state.h4 = self.add_mod_2_32(layouter, &[&state.h0, &B, &C_prime], zero)?;
+        let T = self.add_mod_2_32(layouter, &[&state.h1, &C, &D_prime])?;
+        state.h1 = self.add_mod_2_32(layouter, &[&state.h2, &D, &E_prime])?;
+        state.h2 = self.add_mod_2_32(layouter, &[&state.h3, &E, &A_prime])?;
+        state.h3 = self.add_mod_2_32(layouter, &[&state.h4, &A, &B_prime])?;
+        state.h4 = self.add_mod_2_32(layouter, &[&state.h0, &B, &C_prime])?;
         state.h0 = T;
 
         Ok(())
@@ -496,7 +490,6 @@ impl<F: PrimeField> RipeMD160Chip<F> {
         word_prime: &AssignedWord<F>,
         round_const: &AssignedWord<F>,
         round_const_prime: &AssignedWord<F>,
-        zero: &AssignedWord<F>,
     ) -> Result<(), Error> {
         let State {
             h0: ref mut A,
@@ -516,24 +509,23 @@ impl<F: PrimeField> RipeMD160Chip<F> {
         let rot = S[idx / 16][idx % 16];
         let rot_prime = S_PRIME[idx / 16][idx % 16];
 
-        let temp = self.f(layouter, idx, B, C, D, zero)?;
-        let temp = self.add_mod_2_32(layouter, &[A, &temp, word, round_const], zero)?;
+        let temp = self.f(layouter, idx, B, C, D)?;
+        let temp = self.add_mod_2_32(layouter, &[A, &temp, word, round_const])?;
         let temp = self.left_rotate(layouter, &temp, rot)?;
-        let T = self.add_mod_2_32(layouter, &[&temp, E], zero)?;
+        let T = self.add_mod_2_32(layouter, &[&temp, E])?;
         *A = E.clone();
         *E = D.clone();
         *D = self.left_rotate(layouter, C, 10)?;
         *C = B.clone();
         *B = T;
 
-        let temp_prime = self.f(layouter, 79 - idx, B_prime, C_prime, D_prime, zero)?;
+        let temp_prime = self.f(layouter, 79 - idx, B_prime, C_prime, D_prime)?;
         let temp_prime = self.add_mod_2_32(
             layouter,
             &[A_prime, &temp_prime, word_prime, round_const_prime],
-            zero,
         )?;
         let temp_prime = self.left_rotate(layouter, &temp_prime, rot_prime)?;
-        let T_prime = self.add_mod_2_32(layouter, &[&temp_prime, E_prime], zero)?;
+        let T_prime = self.add_mod_2_32(layouter, &[&temp_prime, E_prime])?;
         *A_prime = E_prime.clone();
         *E_prime = D_prime.clone();
         *D_prime = self.left_rotate(layouter, C_prime, 10)?;
@@ -550,32 +542,24 @@ impl<F: PrimeField> RipeMD160Chip<F> {
         X: &AssignedWord<F>,
         Y: &AssignedWord<F>,
         Z: &AssignedWord<F>,
-        zero: &AssignedWord<F>,
     ) -> Result<AssignedWord<F>, Error> {
         let [sprdd_X, sprdd_Y, sprdd_Z] = [
-            self.prepare_spreaded(layouter, X, zero)?,
-            self.prepare_spreaded(layouter, Y, zero)?,
-            self.prepare_spreaded(layouter, Z, zero)?,
+            self.prepare_spreaded(layouter, X)?,
+            self.prepare_spreaded(layouter, Y)?,
+            self.prepare_spreaded(layouter, Z)?,
         ];
-
-        let mask_evn_64: AssignedNative<F> =
-            self.native_gadget.assign_fixed(layouter, F::from(MASK_EVN_64))?;
 
         match idx {
             // f(X, Y, Z) = X ⊕ Y ⊕ Z
             0..=15 => self.f_type_one(layouter, &sprdd_X, &sprdd_Y, &sprdd_Z),
             // f(X, Y, Z) = (X ∧ Y) ∨ (¬X ∧ Z)
-            16..=31 => self.f_type_two(layouter, &sprdd_X, &sprdd_Y, &sprdd_Z, zero, &mask_evn_64),
+            16..=31 => self.f_type_two(layouter, &sprdd_X, &sprdd_Y, &sprdd_Z),
             // f(X, Y, Z) = (X ∨ ¬Y) ⊕ Z
-            32..=47 => {
-                self.f_type_three(layouter, &sprdd_X, &sprdd_Y, &sprdd_Z, zero, &mask_evn_64)
-            }
+            32..=47 => self.f_type_three(layouter, &sprdd_X, &sprdd_Y, &sprdd_Z),
             // f(X, Y, Z) = (X ∧ Z) ∨ (Y ∧ ¬Z)
-            48..=63 => self.f_type_two(layouter, &sprdd_Z, &sprdd_X, &sprdd_Y, zero, &mask_evn_64),
+            48..=63 => self.f_type_two(layouter, &sprdd_Z, &sprdd_X, &sprdd_Y),
             // f(X, Y, Z) = X ⊕ (Y ∨ ¬Z)
-            64..=79 => {
-                self.f_type_three(layouter, &sprdd_Y, &sprdd_Z, &sprdd_X, zero, &mask_evn_64)
-            }
+            64..=79 => self.f_type_three(layouter, &sprdd_Y, &sprdd_Z, &sprdd_X),
             _ => unreachable!("Function index out of range"),
         }
     }
@@ -585,7 +569,6 @@ impl<F: PrimeField> RipeMD160Chip<F> {
         &self,
         layouter: &mut impl Layouter<F>,
         word: &AssignedWord<F>,
-        zero: &AssignedWord<F>,
     ) -> Result<AssignedSpreaded<F, 32>, Error> {
         /*
         Given assigned word X, we first compute its spreaded form ~X, and then
@@ -618,6 +601,7 @@ impl<F: PrimeField> RipeMD160Chip<F> {
         */
         let adv_cols = self.config().advice_cols;
         let sprdd_val = word.0.value().map(|&w| spread(fe_to_u32(w)));
+        let zero = AssignedWord::fixed(layouter, &self.native_gadget, 0u32)?;
 
         let (res, odd, sprdd_word) = layouter.assign_region(
             || "Assign prepare_spreaded",
@@ -637,7 +621,7 @@ impl<F: PrimeField> RipeMD160Chip<F> {
             },
         )?;
 
-        let _ = self.native_gadget.is_equal(layouter, &word.0, &res.0)?;
+        self.native_gadget.assert_equal(layouter, &word.0, &res.0)?;
         self.native_gadget.assert_zero(layouter, &odd[0])?;
         self.native_gadget.assert_zero(layouter, &odd[1])?;
         self.native_gadget.assert_zero(layouter, &odd[2])?;
@@ -652,7 +636,6 @@ impl<F: PrimeField> RipeMD160Chip<F> {
         layouter: &mut impl Layouter<F>,
         sprdd_X: &AssignedSpreaded<F, 32>,
         sprdd_Y: &AssignedSpreaded<F, 32>,
-        zero: &AssignedWord<F>,
     ) -> Result<AssignedWord<F>, Error> {
         /*
         X ∧ Y can be computed as the odd part of ~X + ~Y + ~0. We apply [`assign_sprdd_11_11_10`]
@@ -689,6 +672,7 @@ impl<F: PrimeField> RipeMD160Chip<F> {
         ])
         .map(|sprdd_forms: Vec<u64>| sprdd_forms.try_into().unwrap());
         let val_of_sum = val_of_sprdd_forms.map(spreaded_sum);
+        let zero = AssignedWord::fixed(layouter, &self.native_gadget, 0u32)?;
 
         layouter.assign_region(
             || "Assign AND",
@@ -713,7 +697,6 @@ impl<F: PrimeField> RipeMD160Chip<F> {
         layouter: &mut impl Layouter<F>,
         sprdd_X: &AssignedSpreaded<F, 32>,
         sprdd_Y: &AssignedSpreaded<F, 32>,
-        zero: &AssignedWord<F>,
     ) -> Result<AssignedWord<F>, Error> {
         /*
         X ⊕ Y can be computed as the even part of ~X + ~Y + ~0. We apply [`assign_sprdd_11_11_10`]
@@ -750,6 +733,7 @@ impl<F: PrimeField> RipeMD160Chip<F> {
         ])
         .map(|sprdd_forms: Vec<u64>| sprdd_forms.try_into().unwrap());
         let val_of_sum = val_of_sprdd_forms.map(spreaded_sum);
+        let zero = AssignedWord::fixed(layouter, &self.native_gadget, 0u32)?;
 
         layouter.assign_region(
             || "Assign XOR",
@@ -838,8 +822,6 @@ impl<F: PrimeField> RipeMD160Chip<F> {
         sprdd_X: &AssignedSpreaded<F, 32>,
         sprdd_Y: &AssignedSpreaded<F, 32>,
         sprdd_Z: &AssignedSpreaded<F, 32>,
-        zero: &AssignedWord<F>,
-        mask_evn_64: &AssignedNative<F>,
     ) -> Result<AssignedWord<F>, Error> {
         /*
         f(X, Y, Z) = (X ∧ Y) ∨ (¬X ∧ Z) = (X ∧ Y) ⊕ (¬X ∧ Z)
@@ -895,6 +877,10 @@ impl<F: PrimeField> RipeMD160Chip<F> {
         let nXplusZ_val = sprdd_nX_val + sprdd_Z_val;
         let sprdd_nX_val: Value<F> = sprdd_nX_val.map(u64_to_fe);
 
+        let zero = AssignedWord::fixed(layouter, &self.native_gadget, 0u32)?;
+        let mask_evn_64: AssignedNative<F> =
+            self.native_gadget.assign_fixed(layouter, F::from(MASK_EVN_64))?;
+
         layouter.assign_region(
             || "Assign f_type_two",
             |mut region| {
@@ -941,8 +927,6 @@ impl<F: PrimeField> RipeMD160Chip<F> {
         sprdd_X: &AssignedSpreaded<F, 32>,
         sprdd_Y: &AssignedSpreaded<F, 32>,
         sprdd_Z: &AssignedSpreaded<F, 32>,
-        zero: &AssignedWord<F>,
-        mask_evn_64: &AssignedNative<F>,
     ) -> Result<AssignedWord<F>, Error> {
         /*
         f(X, Y, Z) = (X ∨ ¬Y) ⊕ Z = (X ⊕ ¬Y ⊕ Z) ⊕ (X ∧ ¬Y)
@@ -953,6 +937,8 @@ impl<F: PrimeField> RipeMD160Chip<F> {
         let adv_cols = self.config().advice_cols;
         let sprdd_Y_val = sprdd_Y.0.value().copied().map(fe_to_u64);
         let sprdd_nY_val = sprdd_Y_val.map(negate_spreaded).map(u64_to_fe);
+        let mask_evn_64: AssignedNative<F> =
+            self.native_gadget.assign_fixed(layouter, F::from(MASK_EVN_64))?;
 
         let sprdd_nY = layouter.assign_region(
             || "Assign sprdd_nY",
@@ -968,11 +954,11 @@ impl<F: PrimeField> RipeMD160Chip<F> {
         )?;
 
         let temp1 = self.f_type_one(layouter, sprdd_X, &sprdd_nY, sprdd_Z)?;
-        let sprdd_temp1 = self.prepare_spreaded(layouter, &temp1, zero)?;
-        let temp2 = self.and(layouter, sprdd_X, &sprdd_nY, zero)?;
-        let sprdd_temp2 = self.prepare_spreaded(layouter, &temp2, zero)?;
+        let sprdd_temp1 = self.prepare_spreaded(layouter, &temp1)?;
+        let temp2 = self.and(layouter, sprdd_X, &sprdd_nY)?;
+        let sprdd_temp2 = self.prepare_spreaded(layouter, &temp2)?;
 
-        self.xor(layouter, &sprdd_temp1, &sprdd_temp2, zero)
+        self.xor(layouter, &sprdd_temp1, &sprdd_temp2)
     }
 
     /// Given an assigned word X and a left rotation amount `rot`, this function
@@ -1043,7 +1029,6 @@ impl<F: PrimeField> RipeMD160Chip<F> {
         &self,
         layouter: &mut impl Layouter<F>,
         summands: &[&AssignedWord<F>],
-        zero: &AssignedWord<F>,
     ) -> Result<AssignedWord<F>, Error> {
         /*
         Computing the mod 2^32 addition: A ⊞ B ⊞ C ⊞ D fills the circuit layout as follows:
@@ -1071,9 +1056,10 @@ impl<F: PrimeField> RipeMD160Chip<F> {
         assert!(summands.len() <= 4, "At most 4 summands are supported");
 
         let adv_cols = self.config().advice_cols;
+        let zero = AssignedWord::fixed(layouter, &self.native_gadget, 0u32)?;
 
         let mut summands = summands.to_vec();
-        summands.resize(4, zero);
+        summands.resize(4, &zero);
 
         let (carry_val, res_val): (Value<u32>, Value<u32>) =
             Value::<Vec<F>>::from_iter(summands.iter().map(|s| s.0.value().copied()))
