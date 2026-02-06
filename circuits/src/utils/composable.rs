@@ -15,7 +15,7 @@
 
 use std::fmt::Debug;
 
-use ff::PrimeField;
+use crate::CircuitField;
 use midnight_proofs::{
     circuit::{Chip, Layouter},
     plonk::{ConstraintSystem, Error},
@@ -24,7 +24,7 @@ use midnight_proofs::{
 /// Provides a common interface for layering chips with shared resources.
 pub trait ComposableChip<F>: Chip<F> + Clone + Debug
 where
-    F: PrimeField,
+    F: CircuitField,
 {
     /// Resources that can be used by other chips or gadgets,
     /// typically sub-chip configurations and columns.

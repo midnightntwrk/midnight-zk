@@ -22,7 +22,7 @@
 
 use std::fmt::Debug;
 
-use ff::PrimeField;
+use crate::CircuitField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 use crate::{
@@ -37,8 +37,8 @@ pub trait DecompositionInstructions<F, Assigned>:
     + ConversionInstructions<F, AssignedBit<F>, Assigned>
     + ConversionInstructions<F, AssignedByte<F>, Assigned>
 where
-    F: PrimeField,
-    Assigned::Element: PrimeField,
+    F: CircuitField,
+    Assigned::Element: CircuitField,
     Assigned: Instantiable<F> + InnerConstants + Clone,
 {
     /// Returns a vector of assigned bits representing the given assigned
@@ -285,7 +285,7 @@ where
 }
 
 /// Pow2Range range-check instructions.
-pub trait Pow2RangeInstructions<F: PrimeField>: Debug + Clone {
+pub trait Pow2RangeInstructions<F: CircuitField>: Debug + Clone {
     /// Asserts that all the given assigned values in the range `[0, 2^n)`.
     fn assert_values_lower_than_2_pow_n(
         &self,
@@ -351,8 +351,8 @@ pub(crate) mod tests {
 
     impl<F, Assigned, DecompChip, AuxChip> Circuit<F> for TestCircuit<F, Assigned, DecompChip, AuxChip>
     where
-        F: PrimeField,
-        Assigned::Element: PrimeField,
+        F: CircuitField,
+        Assigned::Element: CircuitField,
         Assigned: Instantiable<F> + InnerConstants + Clone,
         DecompChip: DecompositionInstructions<F, Assigned> + FromScratch<F>,
         AuxChip: AssertionInstructions<F, AssignedBit<F>>
@@ -473,8 +473,8 @@ pub(crate) mod tests {
         chip_name: &str,
         op_name: &str,
     ) where
-        F: PrimeField + FromUniformBytes<64> + Ord,
-        Assigned::Element: PrimeField,
+        F: CircuitField + FromUniformBytes<64> + Ord,
+        Assigned::Element: CircuitField,
         Assigned: Instantiable<F> + InnerConstants + Clone,
         DecompChip: DecompositionInstructions<F, Assigned> + FromScratch<F>,
         AuxChip: AssertionInstructions<F, AssignedBit<F>>
@@ -528,8 +528,8 @@ pub(crate) mod tests {
 
     pub fn test_bit_decomposition<F, Assigned, DecompChip, AuxChip>(name: &str)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
-        Assigned::Element: PrimeField,
+        F: CircuitField + FromUniformBytes<64> + Ord,
+        Assigned::Element: CircuitField,
         Assigned: Instantiable<F> + InnerConstants + Clone,
         DecompChip: DecompositionInstructions<F, Assigned> + FromScratch<F>,
         AuxChip: AssertionInstructions<F, AssignedBit<F>>
@@ -588,8 +588,8 @@ pub(crate) mod tests {
 
     pub fn test_byte_decomposition<F, Assigned, DecompChip, AuxChip>(name: &str)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
-        Assigned::Element: PrimeField,
+        F: CircuitField + FromUniformBytes<64> + Ord,
+        Assigned::Element: CircuitField,
         Assigned: Instantiable<F> + InnerConstants + Clone,
         DecompChip: DecompositionInstructions<F, Assigned> + FromScratch<F>,
         AuxChip: AssertionInstructions<F, AssignedBit<F>>
@@ -655,8 +655,8 @@ pub(crate) mod tests {
 
     pub fn test_sgn0<F, Assigned, DecompChip, AuxChip>(name: &str)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
-        Assigned::Element: PrimeField,
+        F: CircuitField + FromUniformBytes<64> + Ord,
+        Assigned::Element: CircuitField,
         Assigned: Instantiable<F> + InnerConstants + Clone,
         DecompChip: DecompositionInstructions<F, Assigned> + FromScratch<F>,
         AuxChip: AssertionInstructions<F, AssignedBit<F>>

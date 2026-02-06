@@ -16,7 +16,7 @@
 //! It provides instructions for computing quotient and remidners between
 //! bounded integers that fit in the native field.
 
-use ff::PrimeField;
+use crate::CircuitField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 use num_bigint::BigUint;
 use num_integer::Integer;
@@ -32,7 +32,7 @@ use crate::{
 pub trait DivisionInstructions<F, Assigned>:
     ArithInstructions<F, Assigned> + RangeCheckInstructions<F, Assigned>
 where
-    F: PrimeField,
+    F: CircuitField,
     Assigned: InnerValue,
     Assigned::Element: FromBigUint,
 {
@@ -176,7 +176,7 @@ pub(crate) mod tests {
 
     impl<F, Assigned, DivChip> Circuit<F> for TestCircuit<F, Assigned, DivChip>
     where
-        F: PrimeField,
+        F: CircuitField,
         Assigned: InnerValue,
         Assigned::Element: FromBigUint,
         DivChip: DivisionInstructions<F, Assigned> + FromScratch<F>,
@@ -222,7 +222,7 @@ pub(crate) mod tests {
         cost_model: bool,
         chip_name: &str,
     ) where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
         Assigned: InnerValue,
         Assigned::Element: FromBigUint,
         DivChip: DivisionInstructions<F, Assigned> + FromScratch<F>,
@@ -251,7 +251,7 @@ pub(crate) mod tests {
 
     pub fn test_div_rem<F, Assigned, DivChip>(chip_name: &str)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
         Assigned: InnerValue,
         Assigned::Element: FromBigUint,
         DivChip: DivisionInstructions<F, Assigned> + FromScratch<F>,

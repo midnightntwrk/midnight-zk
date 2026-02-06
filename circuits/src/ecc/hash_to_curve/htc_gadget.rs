@@ -13,7 +13,7 @@
 
 use std::marker::PhantomData;
 
-use ff::PrimeField;
+use crate::CircuitField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 #[cfg(any(test, feature = "testing"))]
 use {
@@ -40,7 +40,7 @@ use crate::{
 ///  - E: a set of in-circuit ECC instructions with map-to-curve support.
 pub struct HashToCurveGadget<F, C, I, H, E>
 where
-    F: PrimeField,
+    F: CircuitField,
     C: CircuitCurve + MapToCurveCPU<C>,
     I: InnerValue,
     H: SpongeInstructions<F, I, E::Coordinate>,
@@ -53,7 +53,7 @@ where
 
 impl<F, C, I, H, E> HashToCurveGadget<F, C, I, H, E>
 where
-    F: PrimeField,
+    F: CircuitField,
     C: CircuitCurve + MapToCurveCPU<C>,
     I: InnerValue,
     H: SpongeInstructions<F, I, E::Coordinate> + Clone,
@@ -71,7 +71,7 @@ where
 
 impl<F, C, I, H, E> HashToCurveCPU<C, I::Element> for HashToCurveGadget<F, C, I, H, E>
 where
-    F: PrimeField,
+    F: CircuitField,
     C: CircuitCurve + MapToCurveCPU<C>,
     I: InnerValue,
     H: SpongeInstructions<F, I, E::Coordinate>,
@@ -90,7 +90,7 @@ where
 
 impl<F, C, I, H, E> HashToCurveInstructions<F, C, I, E> for HashToCurveGadget<F, C, I, H, E>
 where
-    F: PrimeField,
+    F: CircuitField,
     C: CircuitCurve + MapToCurveCPU<C>,
     I: InnerValue,
     H: SpongeInstructions<F, I, E::Coordinate>,
@@ -118,7 +118,7 @@ where
 #[cfg(any(test, feature = "testing"))]
 impl<F, C, I, H, E> FromScratch<F> for HashToCurveGadget<F, C, I, H, E>
 where
-    F: PrimeField,
+    F: CircuitField,
     C: CircuitCurve + MapToCurveCPU<C>,
     I: InnerValue,
     H: SpongeInstructions<F, I, E::Coordinate> + FromScratch<F>,
@@ -164,7 +164,7 @@ mod tests {
         utils::util::{big_to_fe, fe_to_big},
     };
 
-    fn flip_random_bit<F: PrimeField>(mut rng: impl Rng, x: &F) -> F {
+    fn flip_random_bit<F: CircuitField>(mut rng: impl Rng, x: &F) -> F {
         let i = rng.gen_range(0..F::NUM_BITS) as u64;
         let mut biguint = fe_to_big(*x);
         biguint.set_bit(i, !biguint.bit(i));
@@ -176,9 +176,9 @@ mod tests {
     fn distance<C, F>(p1: C::CryptographicGroup, p2: C::CryptographicGroup) -> u32
     where
         C: CircuitCurve<Base = F>,
-        F: PrimeField,
+        F: CircuitField,
     {
-        let [x1, x2]: [F::Repr; 2] =
+        let [x1, x2]: [_; 2] =
             [p1, p2].map(|v| v.into().coordinates().expect("Valid affine point.").0.to_repr());
 
         (x1.as_ref().iter())
@@ -188,7 +188,7 @@ mod tests {
 
     fn test_avalanche_effect<F, C, H>()
     where
-        F: PrimeField,
+        F: CircuitField,
         C: CircuitCurve + MapToCurveCPU<C>,
         H: HashToCurveCPU<C, F>,
     {

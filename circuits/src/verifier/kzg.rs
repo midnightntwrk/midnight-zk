@@ -21,12 +21,13 @@
 //!  - src/utils/arithmetic.rs
 //!  - src/poly/kzg/mod.rs
 
+use crate::CircuitField;
 use std::{
     collections::{BTreeSet, HashMap},
     fmt::Debug,
 };
 
-use ff::{Field, PrimeField};
+use ff::Field;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 #[cfg(feature = "truncated-challenges")]
@@ -288,7 +289,7 @@ fn msm_inner_product<S: SelfEmulation>(
 /// evaluations. Each vector in `evals_set` is multiplied element-wise by a
 /// corresponding scalar from `scalars`, and the results are accumulated
 /// into a single vector.
-fn evals_inner_product<F: PrimeField>(
+fn evals_inner_product<F: CircuitField>(
     layouter: &mut impl Layouter<F>,
     scalar_chip: &impl ArithInstructions<F, AssignedNative<F>>,
     evals_set: &[Vec<AssignedNative<F>>],

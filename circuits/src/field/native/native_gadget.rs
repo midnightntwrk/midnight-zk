@@ -16,7 +16,7 @@
 
 use std::{cell::RefCell, cmp::min, collections::HashMap, marker::PhantomData, rc::Rc};
 
-use ff::PrimeField;
+use crate::CircuitField;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
@@ -66,7 +66,7 @@ use crate::{
 /// - Equality
 pub struct NativeGadget<F, CoreDecomposition, NativeArith>
 where
-    F: PrimeField,
+    F: CircuitField,
     CoreDecomposition: CoreDecompositionInstructions<F>,
     NativeArith: ArithInstructions<F, AssignedNative<F>>,
 {
@@ -79,7 +79,7 @@ where
 
 impl<F, CoreDecomposition, NativeArith> NativeGadget<F, CoreDecomposition, NativeArith>
 where
-    F: PrimeField,
+    F: CircuitField,
     CoreDecomposition: CoreDecompositionInstructions<F>,
     NativeArith: ArithInstructions<F, AssignedNative<F>>,
 {
@@ -103,7 +103,7 @@ where
     }
 }
 
-impl<F: PrimeField> Instantiable<F> for AssignedByte<F> {
+impl<F: CircuitField> Instantiable<F> for AssignedByte<F> {
     fn as_public_input(element: &u8) -> Vec<F> {
         vec![F::from(*element as u64)]
     }
@@ -115,9 +115,9 @@ impl<F: PrimeField> Instantiable<F> for AssignedByte<F> {
 /// constraints) that the assigned value is indeed in the range [0, 256).
 #[derive(Clone, Debug)]
 #[must_use]
-pub struct AssignedByte<F: PrimeField>(AssignedNative<F>);
+pub struct AssignedByte<F: CircuitField>(AssignedNative<F>);
 
-impl<F: PrimeField> InnerValue for AssignedByte<F> {
+impl<F: CircuitField> InnerValue for AssignedByte<F> {
     type Element = u8;
 
     fn value(&self) -> Value<u8> {
@@ -130,26 +130,26 @@ impl<F: PrimeField> InnerValue for AssignedByte<F> {
     }
 }
 
-impl<F: PrimeField> From<AssignedByte<F>> for AssignedNative<F> {
+impl<F: CircuitField> From<AssignedByte<F>> for AssignedNative<F> {
     fn from(value: AssignedByte<F>) -> Self {
         value.0
     }
 }
 
-impl<F: PrimeField> From<&AssignedByte<F>> for AssignedNative<F> {
+impl<F: CircuitField> From<&AssignedByte<F>> for AssignedNative<F> {
     fn from(value: &AssignedByte<F>) -> Self {
         value.clone().0
     }
 }
 
-impl<F: PrimeField> From<AssignedBit<F>> for AssignedByte<F> {
+impl<F: CircuitField> From<AssignedBit<F>> for AssignedByte<F> {
     fn from(value: AssignedBit<F>) -> Self {
         AssignedByte(value.0)
     }
 }
 
 #[cfg(any(test, feature = "testing"))]
-impl<F: PrimeField> Sampleable for AssignedByte<F> {
+impl<F: CircuitField> Sampleable for AssignedByte<F> {
     fn sample_inner(mut rng: impl RngCore) -> Self::Element {
         rng.r#gen()
     }
@@ -157,12 +157,12 @@ impl<F: PrimeField> Sampleable for AssignedByte<F> {
 
 /// Struct representing bounded elements, i.e. 0 <= value < 2^bound.
 #[derive(Clone, Debug)]
-pub struct BoundedElement<F: PrimeField> {
+pub struct BoundedElement<F: CircuitField> {
     value: F,
     bound: u32,
 }
 
-impl<F: PrimeField> BoundedElement<F> {
+impl<F: CircuitField> BoundedElement<F> {
     /// Creates a new bounded element
     pub fn new(value: F, bound: u32) -> Self {
         #[cfg(not(test))]
@@ -197,12 +197,12 @@ impl<F: PrimeField> BoundedElement<F> {
 /// designated entry points, which guarantee (with constraints) that the
 /// assigned value is in the desired range, `[0, 2^bound)`.
 #[derive(Clone, Debug)]
-pub struct AssignedBounded<F: PrimeField> {
+pub struct AssignedBounded<F: CircuitField> {
     value: AssignedNative<F>,
     bound: u32,
 }
 
-impl<F: PrimeField> AssignedBounded<F> {
+impl<F: CircuitField> AssignedBounded<F> {
     /// CAUTION: use only if you know what you are doing!
     ///
     /// This function converts an `AssignedNative` to an `AssignedBounded`
@@ -225,7 +225,7 @@ impl<F: PrimeField> AssignedBounded<F> {
     }
 }
 
-impl<F: PrimeField> InnerValue for AssignedBounded<F> {
+impl<F: CircuitField> InnerValue for AssignedBounded<F> {
     type Element = BoundedElement<F>;
 
     fn value(&self) -> Value<BoundedElement<F>> {
@@ -237,7 +237,7 @@ impl<F: PrimeField> InnerValue for AssignedBounded<F> {
 impl<F, CoreDecomposition, NativeArith> RangeCheckInstructions<F, AssignedNative<F>>
     for NativeGadget<F, CoreDecomposition, NativeArith>
 where
-    F: PrimeField,
+    F: CircuitField,
     CoreDecomposition: CoreDecompositionInstructions<F>,
     NativeArith: ArithInstructions<F, AssignedNative<F>>
         + AssignmentInstructions<F, AssignedBit<F>>
@@ -305,7 +305,7 @@ where
 impl<F, CoreDecomposition, NativeArith> ComparisonInstructions<F, AssignedNative<F>>
     for NativeGadget<F, CoreDecomposition, NativeArith>
 where
-    F: PrimeField,
+    F: CircuitField,
     CoreDecomposition: CoreDecompositionInstructions<F>,
     NativeArith: ArithInstructions<F, AssignedNative<F>>
         + AssignmentInstructions<F, AssignedBit<F>>
@@ -484,7 +484,7 @@ where
 impl<F, CoreDecomposition, NativeArith> DivisionInstructions<F, AssignedNative<F>>
     for NativeGadget<F, CoreDecomposition, NativeArith>
 where
-    F: PrimeField,
+    F: CircuitField,
     CoreDecomposition: CoreDecompositionInstructions<F>,
     NativeArith: ArithInstructions<F, AssignedNative<F>>
         + AssignmentInstructions<F, AssignedBit<F>>
@@ -500,7 +500,7 @@ where
 impl<F, CoreDecomposition, NativeArith> PublicInputInstructions<F, AssignedByte<F>>
     for NativeGadget<F, CoreDecomposition, NativeArith>
 where
-    F: PrimeField,
+    F: CircuitField,
     CoreDecomposition: CoreDecompositionInstructions<F>,
     NativeArith:
         PublicInputInstructions<F, AssignedNative<F>> + ArithInstructions<F, AssignedNative<F>>,
@@ -538,7 +538,7 @@ where
 
 impl<F, CD, NA, Assigned> CommittedInstanceInstructions<F, Assigned> for NativeGadget<F, CD, NA>
 where
-    F: PrimeField,
+    F: CircuitField,
     CD: CoreDecompositionInstructions<F>,
 
     NA: CommittedInstanceInstructions<F, AssignedNative<F>>
@@ -560,7 +560,7 @@ where
 impl<F, CoreDecomposition, NativeArith> AssignmentInstructions<F, AssignedByte<F>>
     for NativeGadget<F, CoreDecomposition, NativeArith>
 where
-    F: PrimeField,
+    F: CircuitField,
     CoreDecomposition: CoreDecompositionInstructions<F>,
     NativeArith: ArithInstructions<F, AssignedNative<F>>,
 {
@@ -603,7 +603,7 @@ where
 impl<F, CoreDecomposition, NativeArith> AssertionInstructions<F, AssignedByte<F>>
     for NativeGadget<F, CoreDecomposition, NativeArith>
 where
-    F: PrimeField,
+    F: CircuitField,
     CoreDecomposition: CoreDecompositionInstructions<F>,
     NativeArith: ArithInstructions<F, AssignedNative<F>>,
 {
@@ -654,7 +654,7 @@ where
 impl<F, CoreDecomposition, NativeArith> EqualityInstructions<F, AssignedByte<F>>
     for NativeGadget<F, CoreDecomposition, NativeArith>
 where
-    F: PrimeField,
+    F: CircuitField,
     CoreDecomposition: CoreDecompositionInstructions<F>,
     NativeArith:
         ArithInstructions<F, AssignedNative<F>> + EqualityInstructions<F, AssignedNative<F>>,
@@ -702,7 +702,7 @@ where
     }
 }
 
-impl<F: PrimeField, const N: usize> AssertionInstructions<F, [AssignedByte<F>; N]>
+impl<F: CircuitField, const N: usize> AssertionInstructions<F, [AssignedByte<F>; N]>
     for NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>
 {
     fn assert_equal(
@@ -763,7 +763,7 @@ impl<F, CoreDecomposition, NativeArith>
     ConversionInstructions<F, AssignedNative<F>, AssignedByte<F>>
     for NativeGadget<F, CoreDecomposition, NativeArith>
 where
-    F: PrimeField,
+    F: CircuitField,
     CoreDecomposition: CoreDecompositionInstructions<F>,
     NativeArith: ArithInstructions<F, AssignedNative<F>>,
 {
@@ -804,7 +804,7 @@ impl<F, CoreDecomposition, NativeArith>
     ConversionInstructions<F, AssignedByte<F>, AssignedNative<F>>
     for NativeGadget<F, CoreDecomposition, NativeArith>
 where
-    F: PrimeField,
+    F: CircuitField,
     CoreDecomposition: CoreDecompositionInstructions<F>,
     NativeArith: ArithInstructions<F, AssignedNative<F>>,
 {
@@ -827,7 +827,7 @@ impl<F, CoreDecomposition, NativeArith>
     UnsafeConversionInstructions<F, AssignedNative<F>, AssignedByte<F>>
     for NativeGadget<F, CoreDecomposition, NativeArith>
 where
-    F: PrimeField,
+    F: CircuitField,
     CoreDecomposition: CoreDecompositionInstructions<F>,
     NativeArith: ArithInstructions<F, AssignedNative<F>>,
 {
@@ -861,7 +861,7 @@ where
 impl<F, CoreDecomposition, NativeArith> DecompositionInstructions<F, AssignedNative<F>>
     for NativeGadget<F, CoreDecomposition, NativeArith>
 where
-    F: PrimeField,
+    F: CircuitField,
     CoreDecomposition: CoreDecompositionInstructions<F>,
     NativeArith: ArithInstructions<F, AssignedNative<F>>
         + ConversionInstructions<F, AssignedBit<F>, AssignedNative<F>>
@@ -1012,7 +1012,7 @@ where
 impl<F, CoreDecomposition, NativeArith> PublicInputInstructions<F, AssignedNative<F>>
     for NativeGadget<F, CoreDecomposition, NativeArith>
 where
-    F: PrimeField,
+    F: CircuitField,
     CoreDecomposition: CoreDecompositionInstructions<F>,
     NativeArith:
         PublicInputInstructions<F, AssignedNative<F>> + ArithInstructions<F, AssignedNative<F>>,
@@ -1046,7 +1046,7 @@ where
 impl<F, CoreDecomposition, NativeArith> AssignmentInstructions<F, AssignedNative<F>>
     for NativeGadget<F, CoreDecomposition, NativeArith>
 where
-    F: PrimeField,
+    F: CircuitField,
     CoreDecomposition: CoreDecompositionInstructions<F>,
     NativeArith: ArithInstructions<F, AssignedNative<F>>,
 {
@@ -1079,7 +1079,7 @@ where
 impl<F, CoreDecomposition, NativeArith> PublicInputInstructions<F, AssignedBit<F>>
     for NativeGadget<F, CoreDecomposition, NativeArith>
 where
-    F: PrimeField,
+    F: CircuitField,
     CoreDecomposition: CoreDecompositionInstructions<F>,
     NativeArith:
         PublicInputInstructions<F, AssignedBit<F>> + ArithInstructions<F, AssignedNative<F>>,
@@ -1113,7 +1113,7 @@ where
 impl<F, CoreDecomposition, NativeArith> AssignmentInstructions<F, AssignedBit<F>>
     for NativeGadget<F, CoreDecomposition, NativeArith>
 where
-    F: PrimeField,
+    F: CircuitField,
     CoreDecomposition: CoreDecompositionInstructions<F>,
     NativeArith: ArithInstructions<F, AssignedNative<F>>
         + AssignmentInstructions<F, AssignedBit<F>>
@@ -1154,7 +1154,7 @@ where
 impl<F, CoreDecomposition, NativeArith> AssertionInstructions<F, AssignedNative<F>>
     for NativeGadget<F, CoreDecomposition, NativeArith>
 where
-    F: PrimeField,
+    F: CircuitField,
     CoreDecomposition: CoreDecompositionInstructions<F>,
     NativeArith: ArithInstructions<F, AssignedNative<F>>,
 {
@@ -1209,7 +1209,7 @@ where
 impl<F, CoreDecomposition, NativeArith> AssertionInstructions<F, AssignedBit<F>>
     for NativeGadget<F, CoreDecomposition, NativeArith>
 where
-    F: PrimeField,
+    F: CircuitField,
     CoreDecomposition: CoreDecompositionInstructions<F>,
     NativeArith: ArithInstructions<F, AssignedNative<F>> + AssertionInstructions<F, AssignedBit<F>>,
 {
@@ -1254,7 +1254,7 @@ where
 impl<F, CoreDecomposition, NativeArith> ArithInstructions<F, AssignedNative<F>>
     for NativeGadget<F, CoreDecomposition, NativeArith>
 where
-    F: PrimeField,
+    F: CircuitField,
     CoreDecomposition: CoreDecompositionInstructions<F>,
     NativeArith: ArithInstructions<F, AssignedNative<F>>,
 {
@@ -1328,7 +1328,7 @@ where
 impl<F, CoreDecomposition, NativeArith> ConversionInstructions<F, AssignedNative<F>, AssignedBit<F>>
     for NativeGadget<F, CoreDecomposition, NativeArith>
 where
-    F: PrimeField,
+    F: CircuitField,
     CoreDecomposition: CoreDecompositionInstructions<F>,
     NativeArith: ArithInstructions<F, AssignedNative<F>>
         + ConversionInstructions<F, AssignedNative<F>, AssignedBit<F>>
@@ -1357,7 +1357,7 @@ where
 impl<F, CoreDecomposition, NativeArith> ConversionInstructions<F, AssignedBit<F>, AssignedNative<F>>
     for NativeGadget<F, CoreDecomposition, NativeArith>
 where
-    F: PrimeField,
+    F: CircuitField,
     CoreDecomposition: CoreDecompositionInstructions<F>,
     NativeArith: ArithInstructions<F, AssignedNative<F>>
         + ConversionInstructions<F, AssignedBit<F>, AssignedNative<F>>,
@@ -1381,7 +1381,7 @@ where
 impl<F, CoreDecomposition, NativeArith> BinaryInstructions<F>
     for NativeGadget<F, CoreDecomposition, NativeArith>
 where
-    F: PrimeField,
+    F: CircuitField,
     CoreDecomposition: CoreDecompositionInstructions<F>,
     NativeArith: ArithInstructions<F, AssignedNative<F>> + BinaryInstructions<F>,
 {
@@ -1422,7 +1422,7 @@ where
 impl<F, CoreDecomposition, NativeArith> EqualityInstructions<F, AssignedNative<F>>
     for NativeGadget<F, CoreDecomposition, NativeArith>
 where
-    F: PrimeField,
+    F: CircuitField,
     CoreDecomposition: CoreDecompositionInstructions<F>,
     NativeArith:
         ArithInstructions<F, AssignedNative<F>> + EqualityInstructions<F, AssignedNative<F>>,
@@ -1468,7 +1468,7 @@ where
 impl<F, CoreDecomposition, NativeArith> EqualityInstructions<F, AssignedBit<F>>
     for NativeGadget<F, CoreDecomposition, NativeArith>
 where
-    F: PrimeField,
+    F: CircuitField,
     CoreDecomposition: CoreDecompositionInstructions<F>,
     NativeArith: ArithInstructions<F, AssignedNative<F>> + EqualityInstructions<F, AssignedBit<F>>,
 {
@@ -1513,7 +1513,7 @@ where
 impl<F, CoreDecomposition, NativeArith> ZeroInstructions<F, AssignedNative<F>>
     for NativeGadget<F, CoreDecomposition, NativeArith>
 where
-    F: PrimeField,
+    F: CircuitField,
     CoreDecomposition: CoreDecompositionInstructions<F>,
     NativeArith: ArithInstructions<F, AssignedNative<F>>
         + AssertionInstructions<F, AssignedNative<F>>
@@ -1525,7 +1525,7 @@ where
 impl<F, CoreDecomposition, NativeArith> ControlFlowInstructions<F, AssignedNative<F>>
     for NativeGadget<F, CoreDecomposition, NativeArith>
 where
-    F: PrimeField,
+    F: CircuitField,
     CoreDecomposition: CoreDecompositionInstructions<F>,
     NativeArith:
         ArithInstructions<F, AssignedNative<F>> + ControlFlowInstructions<F, AssignedNative<F>>,
@@ -1555,7 +1555,7 @@ where
 impl<F, CoreDecomposition, NativeArith> ControlFlowInstructions<F, AssignedBit<F>>
     for NativeGadget<F, CoreDecomposition, NativeArith>
 where
-    F: PrimeField,
+    F: CircuitField,
     CoreDecomposition: CoreDecompositionInstructions<F>,
     NativeArith:
         ArithInstructions<F, AssignedNative<F>> + ControlFlowInstructions<F, AssignedBit<F>>,
@@ -1585,7 +1585,7 @@ where
 impl<F, CoreDecomposition, NativeArith> ControlFlowInstructions<F, AssignedByte<F>>
     for NativeGadget<F, CoreDecomposition, NativeArith>
 where
-    F: PrimeField,
+    F: CircuitField,
     CoreDecomposition: CoreDecompositionInstructions<F>,
     NativeArith:
         ArithInstructions<F, AssignedNative<F>> + ControlFlowInstructions<F, AssignedNative<F>>,
@@ -1619,7 +1619,7 @@ where
 impl<F, CoreDecomposition, NativeArith> FieldInstructions<F, AssignedNative<F>>
     for NativeGadget<F, CoreDecomposition, NativeArith>
 where
-    F: PrimeField,
+    F: CircuitField,
     CoreDecomposition: CoreDecompositionInstructions<F>,
     NativeArith: FieldInstructions<F, AssignedNative<F>>
         + AssertionInstructions<F, AssignedBit<F>>
@@ -1635,7 +1635,7 @@ where
 impl<F, CoreDecomposition, NativeArith> ScalarFieldInstructions<F>
     for NativeGadget<F, CoreDecomposition, NativeArith>
 where
-    F: PrimeField,
+    F: CircuitField,
     CoreDecomposition: CoreDecompositionInstructions<F>,
     NativeArith: CanonicityInstructions<F, AssignedNative<F>>
         + AssertionInstructions<F, AssignedBit<F>>
@@ -1652,7 +1652,7 @@ where
 impl<F, CoreDecomposition, NativeArith> CanonicityInstructions<F, AssignedNative<F>>
     for NativeGadget<F, CoreDecomposition, NativeArith>
 where
-    F: PrimeField,
+    F: CircuitField,
     CoreDecomposition: CoreDecompositionInstructions<F>,
     NativeArith: CanonicityInstructions<F, AssignedNative<F>>
         + AssertionInstructions<F, AssignedBit<F>>
@@ -1682,7 +1682,7 @@ where
 impl<F, CoreDecomposition, NativeArith> NativeInstructions<F>
     for NativeGadget<F, CoreDecomposition, NativeArith>
 where
-    F: PrimeField,
+    F: CircuitField,
     CoreDecomposition: CoreDecompositionInstructions<F>,
     NativeArith: CanonicityInstructions<F, AssignedNative<F>>
         + AssertionInstructions<F, AssignedBit<F>>
@@ -1698,7 +1698,7 @@ where
 impl<F, CoreDecomposition, NativeArith> BitwiseInstructions<F, AssignedNative<F>>
     for NativeGadget<F, CoreDecomposition, NativeArith>
 where
-    F: PrimeField,
+    F: CircuitField,
     CoreDecomposition: CoreDecompositionInstructions<F>,
     NativeArith: CanonicityInstructions<F, AssignedNative<F>>
         + AssertionInstructions<F, AssignedBit<F>>
@@ -1713,7 +1713,7 @@ where
 // Circuit implementation for NativeGadget based on the
 // P2RDecompositionChip and the NativeChip
 #[cfg(any(test, feature = "testing"))]
-impl<F: PrimeField> FromScratch<F> for NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>> {
+impl<F: CircuitField> FromScratch<F> for NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>> {
     // The circuit config is simply the P2RDecompositionConfig since this contains a
     // NativeConfig as well
     type Config = P2RDecompositionConfig;

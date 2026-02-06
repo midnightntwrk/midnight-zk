@@ -18,7 +18,7 @@
 
 use std::fmt::Debug;
 
-use ff::PrimeField;
+use crate::CircuitField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 use crate::types::InnerValue;
@@ -45,7 +45,7 @@ pub trait SpongeCPU<Input, Output> {
 /// The set of in-circuit instructions for sponge-based hashing operations.
 pub trait SpongeInstructions<F, Input, Output>: SpongeCPU<Input::Element, Output::Element>
 where
-    F: PrimeField,
+    F: CircuitField,
     Input: InnerValue,
     Output: InnerValue,
 {
@@ -112,7 +112,7 @@ pub(crate) mod tests {
     impl<F, Input, Output, SpongeChip, AssignChip> Circuit<F>
         for TestCircuit<F, Input, Output, SpongeChip, AssignChip>
     where
-        F: PrimeField,
+        F: CircuitField,
         Input: InnerValue,
         Output: InnerValue,
         SpongeChip: SpongeInstructions<F, Input, Output> + FromScratch<F>,
@@ -190,7 +190,7 @@ pub(crate) mod tests {
         chip_name: &str,
         k: u32,
     ) where
-        F: PrimeField + ff::FromUniformBytes<64> + Ord,
+        F: CircuitField + ff::FromUniformBytes<64> + Ord,
         Input: InnerValue + Sampleable,
         Output: InnerValue,
         SpongeChip: SpongeInstructions<F, Input, Output> + FromScratch<F>,

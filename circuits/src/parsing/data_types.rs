@@ -11,7 +11,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use ff::PrimeField;
+use crate::CircuitField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 use num_bigint::BigUint;
 
@@ -40,7 +40,7 @@ pub enum Separator {
 
 impl<F, N> ParserGadget<F, N>
 where
-    F: PrimeField,
+    F: CircuitField,
     N: NativeInstructions<F>,
 {
     /// Given an assigned byte as a character represented in ASCII,
@@ -192,7 +192,7 @@ mod tests {
 
     impl<F, N> Circuit<F> for TestCircuit<F, N>
     where
-        F: PrimeField,
+        F: CircuitField,
         N: NativeInstructions<F> + FromScratch<F>,
     {
         type Config = <N as FromScratch<F>>::Config;
@@ -241,7 +241,7 @@ mod tests {
 
     fn run<F>(string: &[u8], expected: u64, operation: Operation, must_pass: bool)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
     {
         const K: u32 = 10;
         let circuit = TestCircuit::<F, NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>> {

@@ -14,7 +14,7 @@
 use core::marker::PhantomData;
 use std::ops::Rem;
 
-use ff::PrimeField;
+use crate::CircuitField;
 use midnight_proofs::{
     circuit::{Chip, Layouter},
     plonk::{Advice, Column, ConstraintSystem, Constraints, Error, Expression, Selector},
@@ -57,7 +57,7 @@ impl<C: WeierstrassCurve> OnCurveConfig<C> {
     /// explanations on what such values represent.
     pub fn bounds<F, P>() -> ((BI, BI), Vec<(BI, BI)>)
     where
-        F: PrimeField,
+        F: CircuitField,
         P: FieldEmulationParams<F, C::Base>,
     {
         let base = BI::from(2).pow(P::LOG2_BASE);
@@ -130,7 +130,7 @@ impl<C: WeierstrassCurve> OnCurveConfig<C> {
         cond_col: &Column<Advice>,
     ) -> OnCurveConfig<C>
     where
-        F: PrimeField,
+        F: CircuitField,
         P: FieldEmulationParams<F, C::Base>,
     {
         let m = &modulus::<C::Base>().to_bigint().unwrap();
@@ -226,7 +226,7 @@ pub fn assert_is_on_curve<F, C, P, N>(
     on_curve_config: &OnCurveConfig<C>,
 ) -> Result<(), Error>
 where
-    F: PrimeField,
+    F: CircuitField,
     C: WeierstrassCurve,
     P: FieldEmulationParams<F, C::Base>,
     N: NativeInstructions<F>,
