@@ -20,6 +20,7 @@ midnight-proofs = { version = "0.7.0", default-features = false, features = [
 serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 sha2 = { workspace = true }
+ripemd = { workspace = true }
 rand = { workspace = true }
 
 num-bigint = { version = "0.4" }
