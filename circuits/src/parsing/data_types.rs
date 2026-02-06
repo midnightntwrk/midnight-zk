@@ -232,7 +232,9 @@ mod tests {
                 }
             }?;
 
-            parser_chip.native_gadget.assert_equal_to_fixed(&mut layouter, &res, self.expected)?;
+            parser_chip
+                .native_gadget
+                .assert_equal_to_fixed(&mut layouter, &res, self.expected)?;
 
             parser_chip.load_from_scratch(&mut layouter)
         }
