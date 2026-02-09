@@ -35,7 +35,7 @@ use crate::{
     },
     instructions::{ArithInstructions, NativeInstructions},
     types::{AssignedBit, AssignedField, InnerValue},
-    utils::util::{bigint_to_fe, fe_to_bigint, modulus},
+    utils::util::bigint_to_fe,
 };
 
 /// Foreign ECC OnCurve configuration.
@@ -66,7 +66,7 @@ impl<C: WeierstrassCurve> OnCurveConfig<C> {
         let bs = P::base_powers();
         let bs2 = P::double_base_powers();
 
-        let b = fe_to_bigint::<C::Base>(&C::B);
+        let b: BI = C::B.to_biguint().into();
 
         // Recall that limbs x_i represent emulated field element 1 + sum_i base^i x_i.
         // Let x := 1 + sum_i base^i x_i
@@ -133,14 +133,14 @@ impl<C: WeierstrassCurve> OnCurveConfig<C> {
         F: CircuitField,
         P: FieldEmulationParams<F, C::Base>,
     {
-        let m = &modulus::<C::Base>().to_bigint().unwrap();
+        let m = &C::Base::modulus().to_bigint().unwrap();
         let moduli = P::moduli();
         let bs = P::base_powers();
         let bs2 = P::double_base_powers();
 
         let ((k_min, u_max), vs_bounds) = Self::bounds::<F, P>();
 
-        let b = fe_to_bigint::<C::Base>(&C::B);
+        let b: BI = C::B.to_biguint().into();
 
         let q_on_curve = meta.selector();
 
@@ -231,13 +231,13 @@ where
     P: FieldEmulationParams<F, C::Base>,
     N: NativeInstructions<F>,
 {
-    let m = &modulus::<C::Base>().to_bigint().unwrap();
+    let m = &C::Base::modulus().to_bigint().unwrap();
     let moduli = P::moduli();
     let bs = P::base_powers();
     let bs2 = P::double_base_powers();
     let field_chip_config = base_chip.config();
 
-    let b = fe_to_bigint::<C::Base>(&C::B);
+    let b: BI = C::B.to_biguint().into();
     assert!(!BI::is_negative(&b));
 
     let x = base_chip.normalize(layouter, x)?;

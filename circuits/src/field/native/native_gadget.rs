@@ -50,7 +50,7 @@ use crate::{
         ScalarFieldInstructions, UnsafeConversionInstructions, ZeroInstructions,
     },
     types::{AssignedBit, AssignedNative, InnerValue, Instantiable},
-    utils::util::{big_to_fe, fe_to_big, modulus},
+    utils::util::big_to_fe,
 };
 
 #[derive(Debug, Clone)]
@@ -122,7 +122,7 @@ impl<F: CircuitField> InnerValue for AssignedByte<F> {
 
     fn value(&self) -> Value<u8> {
         self.0.value().map(|v| {
-            let bi_v = fe_to_big(*v);
+            let bi_v = v.to_biguint();
             #[cfg(not(test))]
             assert!(bi_v <= BigUint::from(255u8));
             bi_v.to_bytes_le().first().copied().unwrap_or(0u8)
@@ -169,7 +169,7 @@ impl<F: CircuitField> BoundedElement<F> {
         {
             use num_traits::One;
 
-            let v_as_bint = fe_to_big(value);
+            let v_as_bint = value.to_biguint();
             let bound_as_bint = BigUint::one() << bound;
             assert!(
                 v_as_bint < bound_as_bint,
@@ -290,7 +290,7 @@ where
         }
 
         // b := x in [0, 2^k)
-        let b_value = x.value().map(|x| fe_to_big(*x) < two_pow_k);
+        let b_value = x.value().map(|x| x.to_biguint() < two_pow_k);
         let b: AssignedBit<F> = self.assign(layouter, b_value)?;
 
         let diff: F = big_to_fe(bound - two_pow_k);
@@ -359,13 +359,13 @@ where
         y: F,
     ) -> Result<AssignedBit<F>, Error> {
         if let Some(current_bound) = self.constrained_cells.borrow().get(&x.value) {
-            if *current_bound <= fe_to_big(y) {
+            if *current_bound <= y.to_biguint() {
                 return self.assign_fixed(layouter, true);
             }
         }
 
-        let x_as_bint = x.value.value().map(|&x| fe_to_big(x));
-        let y_as_bint = fe_to_big(y);
+        let x_as_bint = x.value.value().map(|x| x.to_biguint());
+        let y_as_bint = y.to_biguint();
 
         // check that we try to make a meaningful comparison, i.e. y < 2^p-1
         #[cfg(not(test))]
@@ -414,8 +414,8 @@ where
         x: &AssignedBounded<F>,
         y: &AssignedBounded<F>,
     ) -> Result<AssignedBit<F>, Error> {
-        let x_as_bint = x.value.value().map(|&x| fe_to_big(x));
-        let y_as_bint = y.value.value().map(|&x| fe_to_big(x));
+        let x_as_bint = x.value.value().map(|x| x.to_biguint());
+        let y_as_bint = y.value.value().map(|x| x.to_biguint());
 
         // we will now assert the equation
         // we know 0 <= x,y < 2^bound. There are two cases:
@@ -768,7 +768,7 @@ where
     NativeArith: ArithInstructions<F, AssignedNative<F>>,
 {
     fn convert_value(&self, x: &F) -> Option<u8> {
-        let b_as_bn = fe_to_big(*x);
+        let b_as_bn = x.to_biguint();
         #[cfg(not(test))]
         assert!(
             b_as_bn <= BigUint::from(255u8),
@@ -846,7 +846,7 @@ where
     ) -> Result<AssignedByte<F>, Error> {
         #[cfg(not(test))]
         x.value().map(|&x| {
-            let x = fe_to_big(x);
+            let x = x.to_biguint();
             assert!(
                 x <= BigUint::from(255u8),
                 "Trying to convert {:?} to an AssignedByte!",
@@ -899,7 +899,7 @@ where
             .map(|x| self.native_chip.convert_unsafe(layouter, x))
             .collect::<Result<Vec<_>, Error>>()?;
         if enforce_canonical && nb_bits == F::NUM_BITS as usize {
-            debug_assert_eq!(modulus::<F>().bits(), F::NUM_BITS as u64);
+            debug_assert_eq!(F::modulus().bits(), F::NUM_BITS as u64);
             // To enforce canonicity, we leverage the fact that `F::NUM_BITS` is tight:
             // field elements have at most 2 representations as bitstrings of length
             // `F::NUM_BITS`, and when 2 representations exist, they differ in the LSB
@@ -982,7 +982,7 @@ where
         // Any element in Zp can be uniquely represented as 2 * w + e, where
         // w in [0, (p-1)/2] and e in {0, 1}, with the exception of zero, which
         // admits two representations: (w = 0, e = 0) and (w = (p-1)/2, e = 1).
-        let x_val = x.value().copied().map(fe_to_big);
+        let x_val = x.value().copied().map(|v| v.to_biguint());
         let w_val = x_val.clone().map(|x| &x / BigUint::from(2u8));
         let e_val = x_val.clone().map(|x| x.bit(0));
 
@@ -990,7 +990,7 @@ where
         let w = self.assign_lower_than_fixed(
             layouter,
             w_val.map(big_to_fe::<F>),
-            &(&(modulus::<F>() + BigUint::from(1u8)) / BigUint::from(2u8)),
+            &(&(F::modulus() + BigUint::from(1u8)) / BigUint::from(2u8)),
         )?;
         let must_be_x = self.linear_combination(
             layouter,

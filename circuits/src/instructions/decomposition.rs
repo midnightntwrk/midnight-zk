@@ -317,7 +317,7 @@ pub(crate) mod tests {
         types::InnerValue,
         utils::{
             circuit_modeling::circuit_to_json,
-            util::{big_to_fe, fe_to_big, modulus},
+            util::big_to_fe,
         },
     };
 
@@ -544,7 +544,7 @@ pub(crate) mod tests {
         let r = rng.next_u64();
         let mut bits_of_r = biguint_to_bits(&r.into());
         bits_of_r.resize(64, 0);
-        let m = modulus::<Assigned::Element>();
+        let m = Assigned::Element::modulus();
         let m_minus_1 = m.clone() - BigUint::one();
         let mut cost_model = true;
         [
@@ -605,7 +605,7 @@ pub(crate) mod tests {
         let r = rng.next_u64();
         let mut bytes_of_r = biguint_to_bytes(&r.into());
         bytes_of_r.resize(8, 0);
-        let m = modulus::<Assigned::Element>();
+        let m = Assigned::Element::modulus();
         let m_minus_1 = m.clone() - BigUint::one();
         let mut cost_model = true;
         [
@@ -672,7 +672,7 @@ pub(crate) mod tests {
 
         // Edge case where x = 0 | p_mid | 1.
         // (same as the modulus p but with the msb turned to 0).
-        let mut p = modulus::<Assigned::Element>();
+        let mut p = Assigned::Element::modulus();
         p.set_bit(F::NUM_BITS as u64 - 1, false);
         let x = big_to_fe(p.clone());
 
@@ -680,13 +680,13 @@ pub(crate) mod tests {
             parse!(0),
             parse!(1),
             x,
-            big_to_fe(modulus::<Assigned::Element>() - BigUint::one()),
+            big_to_fe(Assigned::Element::modulus() - BigUint::one()),
         ];
 
         let test_cases = &[random_test_cases.as_slice(), edge_cases].concat();
 
         test_cases.iter().enumerate().for_each(|(i, x)| {
-            let bytes = biguint_to_bytes(&fe_to_big(*x));
+            let bytes = biguint_to_bytes(&x.to_biguint());
             run::<F, Assigned, DecompChip, AuxChip>(
                 *x,
                 &bytes,

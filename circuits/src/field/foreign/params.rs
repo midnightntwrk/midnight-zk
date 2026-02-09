@@ -25,7 +25,7 @@ use midnight_curves::{bls12_381, secp256k1};
 use num_bigint::{BigInt, BigInt as BI, ToBigInt};
 use num_traits::{One, Signed};
 
-use crate::{ecc::curves::CircuitCurve, utils::util::modulus};
+use crate::ecc::curves::CircuitCurve;
 
 /// Trait for configuring a (foreign) FieldChip. These parameters need to be
 /// manually optimized for each emulation of field K over native field F.
@@ -48,7 +48,7 @@ pub trait FieldEmulationParams<F: CircuitField, K: CircuitField>:
     /// modulus.
     fn base_powers() -> Vec<BI> {
         let two = BI::from(2);
-        let m = &modulus::<K>().to_bigint().unwrap();
+        let m = &K::modulus().to_bigint().unwrap();
         (0..Self::NB_LIMBS)
             .map(|i| two.pow(Self::LOG2_BASE * i).rem(m))
             .collect::<Vec<_>>()
@@ -59,7 +59,7 @@ pub trait FieldEmulationParams<F: CircuitField, K: CircuitField>:
     /// the emulated modulus.
     fn double_base_powers() -> Vec<BI> {
         let two = BI::from(2);
-        let m = &modulus::<K>().to_bigint().unwrap();
+        let m = &K::modulus().to_bigint().unwrap();
         (0..Self::NB_LIMBS)
             .flat_map(|i| {
                 (0..Self::NB_LIMBS)
@@ -99,7 +99,7 @@ where
     K: CircuitField,
     P: FieldEmulationParams<F, K>,
 {
-    let m = &modulus::<K>().to_bigint().unwrap();
+    let m = &K::modulus().to_bigint().unwrap();
     let base = BI::from(2).pow(P::LOG2_BASE);
     let nb_limbs = P::NB_LIMBS;
 

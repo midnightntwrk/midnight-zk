@@ -22,7 +22,7 @@ use crate::testing_utils::Sampleable;
 use crate::{
     field::foreign::util::{big_from_limbs, big_to_limbs},
     types::{AssignedNative, InnerConstants, InnerValue},
-    utils::util::{big_to_fe, fe_to_big},
+    utils::util::big_to_fe,
     CircuitField,
 };
 
@@ -69,7 +69,7 @@ impl<F: CircuitField> InnerValue for AssignedBigUint<F> {
 
     fn value(&self) -> Value<BigUint> {
         let base = BigUint::one() << LOG2_BASE;
-        let limbs_as_big = self.limbs.iter().map(|l| l.value().copied().map(fe_to_big));
+        let limbs_as_big = self.limbs.iter().map(|l| l.value().copied().map(|v| v.to_biguint()));
         let value: Value<Vec<BigUint>> = Value::from_iter(limbs_as_big);
         value.map(|limbs| big_from_limbs(&base, &limbs))
     }

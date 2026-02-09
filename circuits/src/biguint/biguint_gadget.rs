@@ -47,7 +47,7 @@ use crate::{
     types::{AssignedBit, AssignedByte, AssignedNative},
     utils::{
         types::InnerValue,
-        util::{big_to_fe, fe_to_big},
+        util::big_to_fe,
     },
     CircuitField,
 };
@@ -793,7 +793,7 @@ where
         let (q_value, r_value) = x
             .value()
             .map(|v| {
-                let (q, r) = fe_to_big(*v).div_rem(&base);
+                let (q, r) = v.to_biguint().div_rem(&base);
                 (big_to_fe(q), big_to_fe(r))
             })
             .unzip();

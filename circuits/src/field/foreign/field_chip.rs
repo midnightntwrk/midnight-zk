@@ -53,7 +53,7 @@ use crate::{
         ScalarFieldInstructions, ZeroInstructions,
     },
     types::{AssignedBit, AssignedByte, AssignedNative, InnerConstants, InnerValue, Instantiable},
-    utils::util::{bigint_to_fe, fe_to_bigint, modulus},
+    utils::util::bigint_to_fe,
 };
 
 /// Type for assigned emulated field elements of K over native field F.
@@ -126,7 +126,7 @@ where
 {
     fn as_public_input(element: &K) -> Vec<F> {
         // We shift the value of x by 1 for the unique-zero representation.
-        let element_as_bi = fe_to_bigint(&(*element - K::ONE));
+        let element_as_bi = (*element - K::ONE).to_biguint().into();
         let base = BI::from(2).pow(P::LOG2_BASE);
         bi_to_limbs(P::NB_LIMBS, &base, &element_as_bi)
             .iter()
@@ -153,7 +153,10 @@ where
                 // shift back after the conversion from F to BigInt
                 let shift = BI::abs(lower_bound);
                 let fe_shift = bigint_to_fe::<F>(&shift);
-                xi.value().map(|xv| fe_to_bigint::<F>(&(*xv + fe_shift)) - &shift)
+                xi.value().map(|xv| {
+                    let bi: BI = (*xv + fe_shift).to_biguint().into();
+                    bi - &shift
+                })
             })
             .collect::<Vec<_>>();
         let bi_limbs: Value<Vec<BI>> = Value::from_iter(bi_limbs);
@@ -236,7 +239,7 @@ where
     // We want that m <= base^(nb_limbs - 1) * msl_bound < 2m,
     // therefore msl_bound must be the first power of 2 higher than or equal to
     // m / base^(nb_limbs - 1).
-    let m = &modulus::<K>().to_bigint().unwrap();
+    let m = &K::modulus().to_bigint().unwrap();
     let log2_msl_bound = m.bits() as u32 - (P::NB_LIMBS - 1) * P::LOG2_BASE;
     let mut bounds = vec![log2_msl_bound];
     bounds.resize(P::NB_LIMBS as usize, P::LOG2_BASE);
@@ -288,7 +291,7 @@ where
 {
     /// The modulus defining the domain of this emulated field element.
     pub fn modulus(&self) -> BI {
-        modulus::<K>().to_bigint().unwrap().clone()
+        K::modulus().to_bigint().unwrap().clone()
     }
 
     /// Tells whether the given emulated field element is well-formed, i.e., the
@@ -323,7 +326,10 @@ where
                 // shift back after the conversion from F to BigInt
                 let shift = BI::abs(lbound);
                 let fe_shift = bigint_to_fe::<F>(&shift);
-                xi.value().map(|xv| fe_to_bigint::<F>(&(*xv + fe_shift)) - &shift)
+                xi.value().map(|xv| {
+                    let bi: BI = (*xv + fe_shift).to_biguint().into();
+                    bi - &shift
+                })
             })
             .collect::<Vec<_>>();
         Value::from_iter(limbs)
@@ -356,7 +362,7 @@ where
     bi_to_limbs(
         P::NB_LIMBS,
         &BI::from(2).pow(P::LOG2_BASE),
-        &(modulus::<K>().to_bigint().unwrap() - BI::one()),
+        &(K::modulus().to_bigint().unwrap() - BI::one()),
     )
 }
 
@@ -393,7 +399,7 @@ where
         // We shift the value of x by 1, remember that limbs {xi}_i represent integer
         //   1 + sum_i base^i xi
         let x = x.map(|v| {
-            let bi = fe_to_bigint(&(v - K::ONE));
+            let bi = (v - K::ONE).to_biguint().into();
             bi_to_limbs(P::NB_LIMBS, &base, &bi)
         });
 
@@ -425,7 +431,7 @@ where
         let base = BI::from(2).pow(P::LOG2_BASE);
         // We shift the value of x by 1, remember that limbs {xi}_i represent integer
         //   1 + sum_i base^i xi
-        let constant = fe_to_bigint(&(constant - K::ONE));
+        let constant = (constant - K::ONE).to_biguint().into();
         let constant_limbs = bi_to_limbs(P::NB_LIMBS, &base, &constant);
         let constant_cells = constant_limbs
             .iter()
@@ -495,7 +501,7 @@ where
     ) -> Result<AssignedField<F, K, P>, Error> {
         let base = BI::from(2).pow(P::LOG2_BASE);
         // We subtract one due to the unique-zero representation.
-        let x = value.map(|v| bi_to_limbs(P::NB_LIMBS, &base, &fe_to_bigint(&(v - K::ONE))));
+        let x = value.map(|v| bi_to_limbs(P::NB_LIMBS, &base, &(v - K::ONE).to_biguint().into()));
         let limbs = (0..P::NB_LIMBS)
             .map(|i| x.clone().map(|limbs| bigint_to_fe::<F>(&limbs[i as usize])))
             .collect::<Vec<_>>();
@@ -563,7 +569,7 @@ where
         // is indeed equal to the given constant.
         let x = self.normalize(layouter, x)?;
         let constant_limbs = {
-            let constant = fe_to_bigint(&(constant - K::ONE));
+            let constant = (constant - K::ONE).to_biguint().into();
             let base = BI::from(2).pow(P::LOG2_BASE);
             bi_to_limbs(P::NB_LIMBS, &base, &constant)
         };
@@ -979,7 +985,7 @@ where
         }
 
         let base = BI::from(2).pow(P::LOG2_BASE);
-        let k_limbs = bi_to_limbs(P::NB_LIMBS, &base, &fe_to_bigint(&k));
+        let k_limbs = bi_to_limbs(P::NB_LIMBS, &base, &k.to_biguint().into());
 
         let z_limb_values = {
             self.native_gadget.add_constants(
@@ -1023,7 +1029,7 @@ where
         // violated, so the choice of this threshold is not critical for soundness.
         let threshold =
             P::max_limb_bound().div_floor(&(BI::from(1000) * BI::from(2).pow(P::LOG2_BASE)));
-        if fe_to_bigint(&k) > threshold {
+        if BI::from(k.to_biguint()) > threshold {
             let assigned_k = self.assign_fixed(layouter, k)?;
             return self.assign_mul(layouter, x, &assigned_k, false);
         }
@@ -1039,7 +1045,7 @@ where
 
         // Yes, we convert it to F (the wrong - but native - field), but this is fine
         // because the constant has been verified to be small.
-        let k_as_bigint = fe_to_bigint(&k);
+        let k_as_bigint: BI = k.to_biguint().into();
         let kv = bigint_to_fe::<F>(&k_as_bigint);
         // We've also checked k != 0 and k != 1, so it is fine to subtract one here.
         // (for the unique-zero representation).
@@ -1084,7 +1090,7 @@ where
     N: NativeInstructions<F>,
 {
     fn order(&self) -> BigUint {
-        modulus::<K>()
+        K::modulus()
     }
 }
 
@@ -1360,7 +1366,7 @@ where
                     xv * yv
                 }
             })
-            .map(|z| bi_to_limbs(nb_limbs, &base, &fe_to_bigint(&(z - K::ONE))));
+            .map(|z| bi_to_limbs(nb_limbs, &base, &(z - K::ONE).to_biguint().into()));
         let z_values = (0..nb_limbs)
             .map(|i| zv.clone().map(|zs| bigint_to_fe::<F>(&zs[i as usize])))
             .collect::<Vec<_>>();

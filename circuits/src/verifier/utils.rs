@@ -28,7 +28,6 @@ use crate::{instructions::NativeInstructions, CircuitField};
 use crate::{
     field::AssignedNative,
     instructions::{ArithInstructions, AssignmentInstructions},
-    utils::util::modulus,
 };
 
 /// An assigned scalar known to be bounded in the range [0, bound].
@@ -45,7 +44,7 @@ impl<F: CircuitField> AssignedBoundedScalar<F> {
     pub(crate) fn new(scalar: &AssignedNative<F>, bound_opt: Option<BigUint>) -> Self {
         Self {
             scalar: scalar.clone(),
-            bound: bound_opt.unwrap_or(modulus::<F>() - BigUint::one()),
+            bound: bound_opt.unwrap_or(F::modulus() - BigUint::one()),
         }
     }
 
@@ -87,7 +86,7 @@ pub(crate) fn add_bounded_scalars<F: CircuitField>(
         scalar: scalar_chip.add(layouter, &x1.scalar, &x2.scalar)?,
         bound: min(
             x1.bound.clone() + x2.bound.clone(),
-            modulus::<F>() - BigUint::one(),
+            F::modulus() - BigUint::one(),
         ),
     })
 }
@@ -103,7 +102,7 @@ pub fn mul_bounded_scalars<F: CircuitField>(
         scalar: scalar_chip.mul(layouter, &x1.scalar, &x2.scalar, None)?,
         bound: min(
             x1.bound.clone() * x2.bound.clone(),
-            modulus::<F>() - BigUint::one(),
+            F::modulus() - BigUint::one(),
         ),
     })
 }

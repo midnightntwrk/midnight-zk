@@ -18,7 +18,7 @@ use std::collections::HashMap;
 use crate::CircuitField;
 use num_bigint::BigInt;
 
-use crate::utils::util::{bigint_to_fe, fe_to_bigint};
+use crate::utils::util::bigint_to_fe;
 
 /// Decomposes an element of the input field into limbs of variable sizes and
 /// each limb is in the output field: given x\in InF and a slice limb_sizes that
@@ -36,7 +36,7 @@ pub(crate) fn decompose_in_variable_limbsizes<InF: CircuitField, OutF: CircuitFi
     limb_sizes: &[usize],
 ) -> Vec<OutF> {
     // convert the given number to bigint for efficient bitwise operations
-    let x: BigInt = fe_to_bigint(x);
+    let x: BigInt = x.to_biguint().into();
 
     // vector to keep the result
     let mut limbs: Vec<OutF> = Vec::with_capacity(limb_sizes.len());

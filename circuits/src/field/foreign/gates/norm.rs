@@ -33,7 +33,7 @@ use crate::{
     },
     instructions::RangeCheckInstructions,
     types::{AssignedField, AssignedNative},
-    utils::util::{bigint_to_fe, modulus},
+    utils::util::bigint_to_fe,
 };
 
 /// Foreign-Field Normalization configuration.
@@ -128,7 +128,7 @@ impl NormConfig {
         K: CircuitField,
         P: FieldEmulationParams<F, K>,
     {
-        let m = &modulus::<K>().to_bigint().unwrap();
+        let m = &K::modulus().to_bigint().unwrap();
         let nb_limbs = P::NB_LIMBS;
         let base_powers = P::base_powers();
         let moduli = P::moduli();
@@ -213,7 +213,7 @@ where
         |mut region| {
             let mut offset = 0;
 
-            let m = &modulus::<K>().to_bigint().unwrap();
+            let m = &K::modulus().to_bigint().unwrap();
             let base = BI::from(2).pow(P::LOG2_BASE);
             let nb_limbs = P::NB_LIMBS;
             let moduli = P::moduli();

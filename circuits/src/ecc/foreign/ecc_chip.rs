@@ -66,7 +66,7 @@ use crate::{
         PublicInputInstructions, ScalarFieldInstructions, ZeroInstructions,
     },
     types::{AssignedBit, AssignedField, AssignedNative, InnerConstants, InnerValue, Instantiable},
-    utils::util::{big_to_fe, bigint_to_fe, fe_to_big, fe_to_le_bits, glv_scalar_decomposition},
+    utils::util::{big_to_fe, bigint_to_fe, glv_scalar_decomposition},
 };
 
 /// Foreign ECC configuration.
@@ -870,7 +870,7 @@ where
         // We leverage the existing implementation for `mul_by_u128` when the scalar has
         // 128 bits. Otherwise, we just default to a standard multiplication by an
         // assigned-fixed scalar.
-        let scalar_as_big = fe_to_big(scalar);
+        let scalar_as_big = scalar.to_biguint();
         if scalar_as_big.bits() <= 128 {
             let n = scalar_as_big
                 .to_u64_digits()
@@ -886,7 +886,7 @@ where
             let r = self.mul_by_u128(layouter, n, &p)?;
             return self.select(layouter, &base.is_id, &id, &r);
         }
-        let scalar_bits = fe_to_le_bits(&scalar, None)
+        let scalar_bits = scalar.to_le_bits(None)
             .iter()
             .map(|b| self.native_gadget.assign_fixed(layouter, *b))
             .collect::<Result<Vec<_>, Error>>()?;
@@ -1469,7 +1469,7 @@ where
         // This is a hack, but it's good enough for now.
         let mut selector_idx = 0;
         selector.value().map(|v| {
-            let digits = fe_to_big(*v).to_u32_digits();
+            let digits = v.to_biguint().to_u32_digits();
             let digit = if digits.is_empty() { 0 } else { digits[0] };
             debug_assert!(digits.len() <= 1);
             debug_assert!(digit < point_table.len() as u32);

@@ -32,7 +32,7 @@ use crate::{
     },
     instructions::RangeCheckInstructions,
     types::{AssignedField, AssignedNative},
-    utils::util::{bigint_to_fe, modulus},
+    utils::util::bigint_to_fe,
 };
 
 /// Foreign-Field Mul configuration.
@@ -113,7 +113,7 @@ impl MulConfig {
         K: CircuitField,
         P: FieldEmulationParams<F, K>,
     {
-        let m = &modulus::<K>().to_bigint().unwrap();
+        let m = &K::modulus().to_bigint().unwrap();
         let base_powers = P::base_powers();
         let double_base_powers = P::double_base_powers();
         let moduli = P::moduli();
@@ -203,7 +203,7 @@ where
         |mut region| {
             let mut offset = 0;
 
-            let m = &modulus::<K>().to_bigint().unwrap();
+            let m = &K::modulus().to_bigint().unwrap();
             let moduli = P::moduli();
             let base_powers = P::base_powers();
             let double_base_powers = P::double_base_powers();

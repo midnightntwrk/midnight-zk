@@ -35,7 +35,7 @@ use crate::{
     },
     instructions::NativeInstructions,
     types::{AssignedBit, AssignedField, InnerValue},
-    utils::util::{bigint_to_fe, fe_to_bigint, modulus},
+    utils::util::bigint_to_fe,
 };
 
 /// Foreign ECC Slope configuration.
@@ -142,7 +142,7 @@ impl<C: CircuitCurve> SlopeConfig<C> {
         F: CircuitField,
         P: FieldEmulationParams<F, C::Base>,
     {
-        let m = &modulus::<C::Base>().to_bigint().unwrap();
+        let m = &C::Base::modulus().to_bigint().unwrap();
         let moduli = P::moduli();
         let bs = P::base_powers();
         let bs2 = P::double_base_powers();
@@ -251,7 +251,7 @@ where
     P: FieldEmulationParams<F, C::Base>,
     N: NativeInstructions<F>,
 {
-    let m = &modulus::<C::Base>().to_bigint().unwrap();
+    let m = &C::Base::modulus().to_bigint().unwrap();
     let moduli = P::moduli();
     let bs = P::base_powers();
     let bs2 = P::double_base_powers();
@@ -289,7 +289,10 @@ where
 
             let sign = cond_as_assigned_value
                 .value()
-                .map(|v| fe_to_bigint::<F>(&(*v + F::ONE)) - BI::one());
+                .map(|v| {
+                    let bi: BI = (*v + F::ONE).to_biguint().into();
+                    bi - BI::one()
+                });
 
             // sign - 1 + sign * sum_qy - sum_py - sum_qx + sum_px - sum_lqx + sum_lpx
             //  = (u + k_min) * m

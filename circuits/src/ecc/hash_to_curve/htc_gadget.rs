@@ -161,12 +161,12 @@ mod tests {
         ecc::native::EccChip,
         hash::poseidon::PoseidonChip,
         types::AssignedNative,
-        utils::util::{big_to_fe, fe_to_big},
+        utils::util::big_to_fe,
     };
 
     fn flip_random_bit<F: CircuitField>(mut rng: impl Rng, x: &F) -> F {
         let i = rng.gen_range(0..F::NUM_BITS) as u64;
-        let mut biguint = fe_to_big(*x);
+        let mut biguint = x.to_biguint();
         biguint.set_bit(i, !biguint.bit(i));
         big_to_fe(biguint)
     }

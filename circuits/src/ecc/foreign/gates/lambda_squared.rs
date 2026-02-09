@@ -34,7 +34,7 @@ use crate::{
     },
     instructions::NativeInstructions,
     types::{AssignedBit, AssignedField, InnerValue},
-    utils::util::{bigint_to_fe, modulus},
+    utils::util::bigint_to_fe,
 };
 
 /// Foreign-Field ECC Lambda-Squared configuration.
@@ -133,7 +133,7 @@ impl<C: CircuitCurve> LambdaSquaredConfig<C> {
         F: CircuitField,
         P: FieldEmulationParams<F, C::Base>,
     {
-        let m = &modulus::<C::Base>().to_bigint().unwrap();
+        let m = &C::Base::modulus().to_bigint().unwrap();
         let moduli = P::moduli();
         let bs = P::base_powers();
         let bs2 = P::double_base_powers();
@@ -231,7 +231,7 @@ where
     P: FieldEmulationParams<F, C::Base>,
     N: NativeInstructions<F>,
 {
-    let m = &modulus::<C::Base>().to_bigint().unwrap();
+    let m = &C::Base::modulus().to_bigint().unwrap();
     let moduli = P::moduli();
     let bs = P::base_powers();
     let bs2 = P::double_base_powers();

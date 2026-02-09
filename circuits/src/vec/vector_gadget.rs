@@ -448,7 +448,7 @@ mod tests {
             AssignedNative, NativeChip, NativeGadget,
         },
         testing_utils::FromScratch,
-        utils::{circuit_modeling::circuit_to_json, util::fe_to_big},
+        utils::circuit_modeling::circuit_to_json,
     };
 
     struct TestCircuit<F: CircuitField, const M: usize, const A: usize> {
@@ -532,7 +532,7 @@ mod tests {
                         .len
                         .value()
                         .map(|l| {
-                            let len: usize = fe_to_big(*l).try_into().unwrap();
+                            let len: usize = l.to_biguint().try_into().unwrap();
                             let range = get_lims::<M, A>(len);
                             (F::from(range.start as u64), F::from(range.end as u64))
                         })
@@ -551,7 +551,7 @@ mod tests {
                         .len
                         .value()
                         .map(|l| {
-                            let len: usize = fe_to_big(*l).try_into().unwrap();
+                            let len: usize = l.to_biguint().try_into().unwrap();
                             let range = get_lims::<M, A>(len);
                             let mut result = vec![true; M];
                             result[range].iter_mut().for_each(|r| {

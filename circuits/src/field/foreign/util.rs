@@ -25,7 +25,7 @@ use num_bigint::{BigInt as BI, BigUint, ToBigInt};
 use num_integer::Integer;
 use num_traits::{One, Signed, Zero};
 
-use crate::utils::util::{bigint_to_fe, modulus};
+use crate::utils::util::bigint_to_fe;
 
 /// Like .rem, but gives positive answers only.
 pub fn urem(value: &BI, modulus: &BI) -> BI {
@@ -151,8 +151,8 @@ where
     F: CircuitField,
     K: CircuitField,
 {
-    let m = &modulus::<K>().to_bigint().unwrap();
-    let native_modulus = &modulus::<F>().to_bigint().unwrap();
+    let m = &K::modulus().to_bigint().unwrap();
+    let native_modulus = &F::modulus().to_bigint().unwrap();
     // We enforce expr = 0 (mod m) with the equation expr = k * m
     //
     // expr_bounds := (expr_min, expr_max) contain lower and upper bounds

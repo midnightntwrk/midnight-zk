@@ -18,7 +18,6 @@ use midnight_proofs::circuit::Value;
 use crate::{
     field::AssignedNative,
     types::{AssignedByte, InnerValue},
-    utils::util::fe_to_big,
     CircuitField,
 };
 
@@ -58,7 +57,7 @@ impl<F: CircuitField, const M: usize, T: Vectorizable, const A: usize> InnerValu
     fn value(&self) -> Value<Self::Element> {
         let data = Value::<Vec<T::Element>>::from_iter(self.buffer.iter().map(|v| v.value()));
         let idxs: Value<_> = self.len.value().map(|len| {
-            let len: usize = fe_to_big(*len).try_into().unwrap();
+            let len: usize = len.to_biguint().try_into().unwrap();
 
             let end_pad = (A - (len % A)) % A;
             (M - len - end_pad, M - end_pad)

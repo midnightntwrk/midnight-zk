@@ -20,7 +20,7 @@ use num_bigint::BigUint;
 
 use crate::{
     instructions::{hash::HashCPU, map::MapCPU},
-    utils::util::{big_to_fe, fe_to_big},
+    utils::util::big_to_fe,
     CircuitField,
 };
 
@@ -88,7 +88,7 @@ where
     }
 
     fn insert(&mut self, key: &F, value: &F) {
-        self.map.insert(fe_to_big(*key), *value);
+        self.map.insert(key.to_biguint(), *value);
 
         // We initialise the child with the new representation of the element.
         let mut child = *value;
@@ -107,7 +107,7 @@ where
     }
 
     fn get(&self, key: &F) -> F {
-        self.map.get(&fe_to_big(*key)).copied().unwrap_or(self.default_nodes[0])
+        self.map.get(&key.to_biguint()).copied().unwrap_or(self.default_nodes[0])
     }
 }
 

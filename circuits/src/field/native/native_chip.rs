@@ -74,10 +74,7 @@ use crate::{
         PublicInputInstructions, UnsafeConversionInstructions, ZeroInstructions,
     },
     types::{AssignedNative, InnerValue, Instantiable},
-    utils::{
-        util::{fe_to_big, modulus},
-        ComposableChip,
-    },
+    utils::ComposableChip,
 };
 
 /// Number of columns used by the identity of the native chip.
@@ -574,7 +571,7 @@ where
         layouter: &mut impl Layouter<F>,
         constant: F,
     ) -> Result<AssignedNative<F>, Error> {
-        let constant_big = fe_to_big::<F>(constant);
+        let constant_big = constant.to_biguint();
         if let Some(assigned) = self.cached_fixed.borrow().get(&constant_big) {
             return Ok(assigned.clone());
         };
@@ -1548,7 +1545,7 @@ where
     F: CircuitField,
 {
     fn order(&self) -> BigUint {
-        modulus::<F>()
+        F::modulus()
     }
 }
 

@@ -139,7 +139,7 @@ pub(crate) mod tests {
         types::InnerValue,
         utils::{
             circuit_modeling::circuit_to_json,
-            util::{modulus, FromScratch},
+            util::FromScratch,
         },
     };
 
@@ -276,7 +276,7 @@ pub(crate) mod tests {
             + AssignmentInstructions<F, Assigned>
             + FromScratch<F>,
     {
-        let m = modulus::<Assigned::Element>();
+        let m = Assigned::Element::modulus();
         let mut cost_model = true;
         [
             (vec![0], true),
@@ -327,7 +327,7 @@ pub(crate) mod tests {
     {
         let mut rng = ChaCha8Rng::seed_from_u64(0xc0ffee);
         let r: BigUint = rng.next_u64().into();
-        let m = modulus::<Assigned::Element>();
+        let m = Assigned::Element::modulus();
         let mut cost_model = true;
         [
             (decompose_biguint(&r), r.clone() - BigUint::one(), true),
