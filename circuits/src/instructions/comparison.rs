@@ -24,7 +24,7 @@
 
 use std::{fmt::Debug, ops::Add};
 
-use ff::PrimeField;
+use crate::CircuitField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 use crate::{
@@ -36,7 +36,7 @@ use crate::{
 /// The set of circuit instructions for comparison operations.
 pub trait ComparisonInstructions<F, Assigned>: Clone + Debug + BinaryInstructions<F>
 where
-    F: PrimeField,
+    F: CircuitField,
     Assigned: InnerValue,
     Assigned::Element: From<u64> + Add<Output = Assigned::Element>,
 {
@@ -206,8 +206,8 @@ pub(crate) mod tests {
 
     impl<F, Assigned, Chip> Circuit<F> for TestCircuit<F, Assigned, Chip>
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
-        Assigned::Element: PrimeField,
+        F: CircuitField + FromUniformBytes<64> + Ord,
+        Assigned::Element: CircuitField,
         Assigned: Instantiable<F> + InnerConstants + Clone + Debug,
         Chip: AssignmentInstructions<F, Assigned>
             + AssignmentInstructions<F, AssignedBit<F>>
@@ -288,8 +288,8 @@ pub(crate) mod tests {
         chip_name: &str,
         op_name: &str,
     ) where
-        F: PrimeField + FromUniformBytes<64> + Ord,
-        Assigned::Element: PrimeField,
+        F: CircuitField + FromUniformBytes<64> + Ord,
+        Assigned::Element: CircuitField,
         Assigned: Instantiable<F> + InnerConstants + Clone + Debug,
         Chip: AssignmentInstructions<F, Assigned>
             + AssignmentInstructions<F, AssignedBit<F>>
@@ -323,8 +323,8 @@ pub(crate) mod tests {
 
     pub fn test_lower_and_greater<F, Assigned, Chip>(name: &str)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
-        Assigned::Element: PrimeField,
+        F: CircuitField + FromUniformBytes<64> + Ord,
+        Assigned::Element: CircuitField,
         Assigned: Instantiable<F> + InnerConstants + Clone + Debug,
         Chip: AssignmentInstructions<F, Assigned>
             + AssignmentInstructions<F, AssignedBit<F>>
@@ -431,8 +431,8 @@ pub(crate) mod tests {
 
     pub fn test_assert_bounded_element<F, Assigned, Chip>(name: &str)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
-        Assigned::Element: PrimeField,
+        F: CircuitField + FromUniformBytes<64> + Ord,
+        Assigned::Element: CircuitField,
         Assigned: Instantiable<F> + InnerConstants + Clone + Debug,
         Chip: AssignmentInstructions<F, Assigned>
             + AssignmentInstructions<F, AssignedBit<F>>

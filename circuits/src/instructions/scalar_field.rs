@@ -18,7 +18,7 @@
 
 use std::{fmt::Debug, hash::Hash};
 
-use ff::PrimeField;
+use crate::CircuitField;
 
 use super::FieldInstructions;
 use crate::{
@@ -30,8 +30,8 @@ use crate::{
 pub trait ScalarFieldInstructions<F>:
     FieldInstructions<F, Self::Scalar> + DecompositionInstructions<F, Self::Scalar>
 where
-    F: PrimeField,
-    <Self::Scalar as InnerValue>::Element: PrimeField,
+    F: CircuitField,
+    <Self::Scalar as InnerValue>::Element: CircuitField,
     Self::Scalar: Instantiable<F>,
 {
     /// An assigned field element.

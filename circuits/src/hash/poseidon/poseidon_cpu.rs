@@ -234,11 +234,13 @@ impl Hashable<PoseidonState<midnight_curves::Fq>> for midnight_curves::Fq {
     }
 
     fn read(buffer: &mut impl Read) -> io::Result<Self> {
-        let mut bytes = <Self as PrimeField>::Repr::default();
+        use midnight_curves::Fq;
+        const NUM_BYTES: usize = (<Fq as PrimeField>::NUM_BITS as usize + 7) / 8;
+        let mut bytes = [0u8; NUM_BYTES];
 
         buffer.read_exact(bytes.as_mut())?;
 
-        Option::from(Self::from_repr(bytes))
+        Option::from(Fq::from_repr(bytes))
             .ok_or_else(|| io::Error::other("Invalid BLS12-381 scalar encoding in proof"))
     }
 }

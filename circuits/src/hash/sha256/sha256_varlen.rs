@@ -11,7 +11,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use ff::PrimeField;
+use crate::CircuitField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 use super::{sha256_chip::IV, Sha256Chip};
@@ -35,11 +35,11 @@ use crate::{
 
 /// Gadget for SHA256 with variable-length input.
 #[derive(Clone, Debug)]
-pub struct VarLenSha256Gadget<F: PrimeField> {
+pub struct VarLenSha256Gadget<F: CircuitField> {
     pub(super) sha256chip: Sha256Chip<F>,
 }
 
-impl<F: PrimeField> VarLenSha256Gadget<F> {
+impl<F: CircuitField> VarLenSha256Gadget<F> {
     fn ng(&self) -> &NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>> {
         &self.sha256chip.native_gadget
     }
@@ -47,7 +47,7 @@ impl<F: PrimeField> VarLenSha256Gadget<F> {
 
 impl<F> VarLenSha256Gadget<F>
 where
-    F: PrimeField,
+    F: CircuitField,
 {
     // Returns the length of the final chunk and if this length needs an extra block
     // or not. If len=0, then the final block length is 0 and no extra block is
@@ -206,7 +206,7 @@ where
     }
 }
 
-impl<F: PrimeField> VarLenSha256Gadget<F> {
+impl<F: CircuitField> VarLenSha256Gadget<F> {
     // Updates the `state` with `block`.
     fn update_state(
         &self,
@@ -320,7 +320,7 @@ use midnight_proofs::plonk::{Column, ConstraintSystem, Instance};
 use crate::testing_utils::FromScratch;
 
 #[cfg(any(test, feature = "testing"))]
-impl<F: PrimeField> FromScratch<F> for VarLenSha256Gadget<F> {
+impl<F: CircuitField> FromScratch<F> for VarLenSha256Gadget<F> {
     type Config = <Sha256Chip<F> as FromScratch<F>>::Config;
 
     fn new_from_scratch(config: &Self::Config) -> Self {

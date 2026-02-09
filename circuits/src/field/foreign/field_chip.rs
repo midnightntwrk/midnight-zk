@@ -22,7 +22,7 @@ use std::{
     marker::PhantomData,
 };
 
-use ff::PrimeField;
+use crate::CircuitField;
 use midnight_proofs::{
     circuit::{Chip, Layouter, Value},
     plonk::{Advice, Column, ConstraintSystem, Error},
@@ -82,8 +82,8 @@ use crate::{
 #[must_use]
 pub struct AssignedField<F, K, P>
 where
-    F: PrimeField,
-    K: PrimeField,
+    F: CircuitField,
+    K: CircuitField,
     P: FieldEmulationParams<F, K>,
 {
     limb_values: Vec<AssignedNative<F>>,
@@ -93,8 +93,8 @@ where
 
 impl<F, K, P> PartialEq for AssignedField<F, K, P>
 where
-    F: PrimeField,
-    K: PrimeField,
+    F: CircuitField,
+    K: CircuitField,
     P: FieldEmulationParams<F, K>,
 {
     fn eq(&self, other: &Self) -> bool {
@@ -105,12 +105,12 @@ where
     }
 }
 
-impl<F: PrimeField, K: PrimeField, P: FieldEmulationParams<F, K>> Eq for AssignedField<F, K, P> {}
+impl<F: CircuitField, K: CircuitField, P: FieldEmulationParams<F, K>> Eq for AssignedField<F, K, P> {}
 
 impl<F, K, P> Hash for AssignedField<F, K, P>
 where
-    F: PrimeField,
-    K: PrimeField,
+    F: CircuitField,
+    K: CircuitField,
     P: FieldEmulationParams<F, K>,
 {
     fn hash<H: Hasher>(&self, state: &mut H) {
@@ -120,8 +120,8 @@ where
 
 impl<F, K, P> Instantiable<F> for AssignedField<F, K, P>
 where
-    F: PrimeField,
-    K: PrimeField,
+    F: CircuitField,
+    K: CircuitField,
     P: FieldEmulationParams<F, K>,
 {
     fn as_public_input(element: &K) -> Vec<F> {
@@ -137,8 +137,8 @@ where
 
 impl<F, K, P> InnerValue for AssignedField<F, K, P>
 where
-    F: PrimeField,
-    K: PrimeField,
+    F: CircuitField,
+    K: CircuitField,
     P: FieldEmulationParams<F, K>,
 {
     type Element = K;
@@ -162,10 +162,10 @@ where
     }
 }
 
-impl<F: PrimeField, K: PrimeField, P> InnerConstants for AssignedField<F, K, P>
+impl<F: CircuitField, K: CircuitField, P> InnerConstants for AssignedField<F, K, P>
 where
-    F: PrimeField,
-    K: PrimeField,
+    F: CircuitField,
+    K: CircuitField,
     P: FieldEmulationParams<F, K>,
 {
     fn inner_zero() -> K {
@@ -179,8 +179,8 @@ where
 
 impl<F, K, P> AssignedField<F, K, P>
 where
-    F: PrimeField,
-    K: PrimeField,
+    F: CircuitField,
+    K: CircuitField,
     P: FieldEmulationParams<F, K>,
 {
     /// Create an assigned value with well-formed bounds given its limbs.
@@ -201,8 +201,8 @@ where
 #[cfg(any(test, feature = "testing"))]
 impl<F, K, P> Sampleable for AssignedField<F, K, P>
 where
-    F: PrimeField,
-    K: PrimeField,
+    F: CircuitField,
+    K: CircuitField,
     P: FieldEmulationParams<F, K>,
 {
     fn sample_inner(rng: impl RngCore) -> K {
@@ -213,8 +213,8 @@ where
 /// Number of columns required by this chip.
 pub fn nb_field_chip_columns<F, K, P>() -> usize
 where
-    F: PrimeField,
-    K: PrimeField,
+    F: CircuitField,
+    K: CircuitField,
     P: FieldEmulationParams<F, K>,
 {
     P::NB_LIMBS as usize + max(P::NB_LIMBS as usize, 1 + P::moduli().len())
@@ -228,8 +228,8 @@ where
 /// 0 has a unique representation.
 pub fn well_formed_log2_bounds<F, K, P>() -> Vec<u32>
 where
-    F: PrimeField,
-    K: PrimeField,
+    F: CircuitField,
+    K: CircuitField,
     P: FieldEmulationParams<F, K>,
 {
     // Let m be the emulated modulus.
@@ -270,8 +270,8 @@ pub struct FieldChipConfig {
 #[derive(Clone, Debug)]
 pub struct FieldChip<F, K, P, N>
 where
-    F: PrimeField,
-    K: PrimeField,
+    F: CircuitField,
+    K: CircuitField,
     P: FieldEmulationParams<F, K>,
     N: NativeInstructions<F>,
 {
@@ -282,8 +282,8 @@ where
 
 impl<F, K, P> AssignedField<F, K, P>
 where
-    F: PrimeField,
-    K: PrimeField,
+    F: CircuitField,
+    K: CircuitField,
     P: FieldEmulationParams<F, K>,
 {
     /// The modulus defining the domain of this emulated field element.
@@ -336,8 +336,8 @@ where
 /// representation (even if some of them have two representations).
 fn well_formed_bounds<F, K, P>() -> Vec<(BI, BI)>
 where
-    F: PrimeField,
-    K: PrimeField,
+    F: CircuitField,
+    K: CircuitField,
     P: FieldEmulationParams<F, K>,
 {
     well_formed_log2_bounds::<F, K, P>()
@@ -349,8 +349,8 @@ where
 // The limbs of emulated zero.
 fn limbs_of_zero<F, K, P>() -> Vec<BI>
 where
-    F: PrimeField,
-    K: PrimeField,
+    F: CircuitField,
+    K: CircuitField,
     P: FieldEmulationParams<F, K>,
 {
     bi_to_limbs(
@@ -362,8 +362,8 @@ where
 
 impl<F, K, P, N> Chip<F> for FieldChip<F, K, P, N>
 where
-    F: PrimeField,
-    K: PrimeField,
+    F: CircuitField,
+    K: CircuitField,
     P: FieldEmulationParams<F, K>,
     N: NativeInstructions<F>,
 {
@@ -379,8 +379,8 @@ where
 
 impl<F, K, P, N> AssignmentInstructions<F, AssignedField<F, K, P>> for FieldChip<F, K, P, N>
 where
-    F: PrimeField,
-    K: PrimeField,
+    F: CircuitField,
+    K: CircuitField,
     P: FieldEmulationParams<F, K>,
     N: NativeInstructions<F>,
 {
@@ -453,8 +453,8 @@ where
 // public inputs.
 impl<F, K, P> From<AssignedField<F, K, P>> for Vec<AssignedNative<F>>
 where
-    F: PrimeField,
-    K: PrimeField,
+    F: CircuitField,
+    K: CircuitField,
     P: FieldEmulationParams<F, K>,
 {
     fn from(x: AssignedField<F, K, P>) -> Self {
@@ -464,8 +464,8 @@ where
 
 impl<F, K, P, N> PublicInputInstructions<F, AssignedField<F, K, P>> for FieldChip<F, K, P, N>
 where
-    F: PrimeField,
-    K: PrimeField,
+    F: CircuitField,
+    K: CircuitField,
     P: FieldEmulationParams<F, K>,
     N: NativeInstructions<F>,
 {
@@ -514,8 +514,8 @@ where
 
 impl<F, K, P, N> AssertionInstructions<F, AssignedField<F, K, P>> for FieldChip<F, K, P, N>
 where
-    F: PrimeField,
-    K: PrimeField,
+    F: CircuitField,
+    K: CircuitField,
     P: FieldEmulationParams<F, K>,
     N: NativeInstructions<F>,
 {
@@ -590,8 +590,8 @@ where
 
 impl<F, K, P, N> EqualityInstructions<F, AssignedField<F, K, P>> for FieldChip<F, K, P, N>
 where
-    F: PrimeField,
-    K: PrimeField,
+    F: CircuitField,
+    K: CircuitField,
     P: FieldEmulationParams<F, K>,
     N: NativeInstructions<F>,
 {
@@ -638,8 +638,8 @@ where
 
 impl<F, K, P, N> ZeroInstructions<F, AssignedField<F, K, P>> for FieldChip<F, K, P, N>
 where
-    F: PrimeField,
-    K: PrimeField,
+    F: CircuitField,
+    K: CircuitField,
     P: FieldEmulationParams<F, K>,
     N: NativeInstructions<F>,
 {
@@ -674,8 +674,8 @@ where
 
 impl<F, K, P, N> ControlFlowInstructions<F, AssignedField<F, K, P>> for FieldChip<F, K, P, N>
 where
-    F: PrimeField,
-    K: PrimeField,
+    F: CircuitField,
+    K: CircuitField,
     P: FieldEmulationParams<F, K>,
     N: NativeInstructions<F>,
 {
@@ -713,8 +713,8 @@ where
 
 impl<F, K, P, N> ArithInstructions<F, AssignedField<F, K, P>> for FieldChip<F, K, P, N>
 where
-    F: PrimeField,
-    K: PrimeField,
+    F: CircuitField,
+    K: CircuitField,
     P: FieldEmulationParams<F, K>,
     N: NativeInstructions<F>,
 {
@@ -1078,8 +1078,8 @@ where
 
 impl<F, K, P, N> FieldInstructions<F, AssignedField<F, K, P>> for FieldChip<F, K, P, N>
 where
-    F: PrimeField,
-    K: PrimeField,
+    F: CircuitField,
+    K: CircuitField,
     P: FieldEmulationParams<F, K>,
     N: NativeInstructions<F>,
 {
@@ -1090,8 +1090,8 @@ where
 
 impl<F, K, P, N> ScalarFieldInstructions<F> for FieldChip<F, K, P, N>
 where
-    F: PrimeField,
-    K: PrimeField,
+    F: CircuitField,
+    K: CircuitField,
     P: FieldEmulationParams<F, K>,
     N: NativeInstructions<F>,
 {
@@ -1100,8 +1100,8 @@ where
 
 impl<F, K, P, N> DecompositionInstructions<F, AssignedField<F, K, P>> for FieldChip<F, K, P, N>
 where
-    F: PrimeField,
-    K: PrimeField,
+    F: CircuitField,
+    K: CircuitField,
     P: FieldEmulationParams<F, K>,
     N: NativeInstructions<F>,
 {
@@ -1280,8 +1280,8 @@ where
 
 impl<F, K, P, N> FieldChip<F, K, P, N>
 where
-    F: PrimeField,
-    K: PrimeField,
+    F: CircuitField,
+    K: CircuitField,
     P: FieldEmulationParams<F, K>,
     N: NativeInstructions<F>,
 {
@@ -1402,8 +1402,8 @@ where
 
 impl<F, K, P, N> FieldChip<F, K, P, N>
 where
-    F: PrimeField,
-    K: PrimeField,
+    F: CircuitField,
+    K: CircuitField,
     P: FieldEmulationParams<F, K>,
     N: NativeInstructions<F>,
 {
@@ -1498,8 +1498,8 @@ where
 // Inherit Bit Assignment Instructions from NativeGadget.
 impl<F, K, P, N> AssignmentInstructions<F, AssignedBit<F>> for FieldChip<F, K, P, N>
 where
-    F: PrimeField,
-    K: PrimeField,
+    F: CircuitField,
+    K: CircuitField,
     P: FieldEmulationParams<F, K>,
     N: NativeInstructions<F>,
 {
@@ -1523,8 +1523,8 @@ where
 // Inherit Bit Assertion Instructions from NativeGadget.
 impl<F, K, P, N> AssertionInstructions<F, AssignedBit<F>> for FieldChip<F, K, P, N>
 where
-    F: PrimeField,
-    K: PrimeField,
+    F: CircuitField,
+    K: CircuitField,
     P: FieldEmulationParams<F, K>,
     N: NativeInstructions<F>,
 {
@@ -1568,8 +1568,8 @@ where
 impl<F, K, P, N> ConversionInstructions<F, AssignedBit<F>, AssignedField<F, K, P>>
     for FieldChip<F, K, P, N>
 where
-    F: PrimeField,
-    K: PrimeField,
+    F: CircuitField,
+    K: CircuitField,
     P: FieldEmulationParams<F, K>,
     N: NativeInstructions<F>,
 {
@@ -1590,8 +1590,8 @@ where
 impl<F, K, P, N> ConversionInstructions<F, AssignedByte<F>, AssignedField<F, K, P>>
     for FieldChip<F, K, P, N>
 where
-    F: PrimeField,
-    K: PrimeField,
+    F: CircuitField,
+    K: CircuitField,
     P: FieldEmulationParams<F, K>,
     N: NativeInstructions<F>,
 {
@@ -1612,8 +1612,8 @@ where
 // Inherit Canonicity Instructions from NativeGadget.
 impl<F, K, P, N> CanonicityInstructions<F, AssignedField<F, K, P>> for FieldChip<F, K, P, N>
 where
-    F: PrimeField,
-    K: PrimeField,
+    F: CircuitField,
+    K: CircuitField,
     P: FieldEmulationParams<F, K>,
     N: NativeInstructions<F>,
 {
@@ -1642,7 +1642,7 @@ where
 /// This should only be used for testing.
 pub struct FieldChipConfigForTests<F, N>
 where
-    F: PrimeField,
+    F: CircuitField,
     N: NativeInstructions<F> + FromScratch<F>,
 {
     native_gadget_config: <N as FromScratch<F>>::Config,
@@ -1652,8 +1652,8 @@ where
 #[cfg(any(test, feature = "testing"))]
 impl<F, K, P, N> FromScratch<F> for FieldChip<F, K, P, N>
 where
-    F: PrimeField,
-    K: PrimeField,
+    F: CircuitField,
+    K: CircuitField,
     P: FieldEmulationParams<F, K>,
     N: NativeInstructions<F> + FromScratch<F>,
 {

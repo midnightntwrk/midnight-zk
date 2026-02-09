@@ -13,7 +13,8 @@
 
 //! Map to curve in-circuit implementations.
 
-use ff::{Field, PrimeField};
+use crate::CircuitField;
+use ff::Field;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 use super::{
@@ -35,7 +36,7 @@ use crate::{
 /// The set of in-circuit instructions for map-to-curve.
 pub trait MapToCurveInstructions<F, C>: EccInstructions<F, C>
 where
-    F: PrimeField,
+    F: CircuitField,
     C: CircuitCurve + MapToCurveCPU<C>,
 {
     /// Map an element of the base field (a coordinate) to a pair of coordinates
@@ -92,7 +93,7 @@ fn svdw_map_to_weierstrass<F, C, T>(
     u: &T,
 ) -> Result<(T, T), Error>
 where
-    F: PrimeField,
+    F: CircuitField,
     C: CircuitCurve + MapToWeierstrassParams<C::Base>,
     T: InnerValue<Element = C::Base> + Instantiable<F> + InnerConstants + Clone,
 {
@@ -203,7 +204,7 @@ fn weierstrass_to_montgomery<F, C, T>(
     y: &T,
 ) -> Result<(T, T), Error>
 where
-    F: PrimeField,
+    F: CircuitField,
     C: CircuitCurve + MapToEdwardsParams<C::Base>,
     T: InnerValue<Element = C::Base> + Instantiable<F> + InnerConstants + Clone,
 {
@@ -229,7 +230,7 @@ fn montgomery_to_edwards<F, C, T>(
     y: &T,
 ) -> Result<(T, T), Error>
 where
-    F: PrimeField,
+    F: CircuitField,
     C: CircuitCurve + MapToEdwardsParams<C::Base>,
     T: InnerValue<Element = C::Base> + Instantiable<F> + InnerConstants + Clone,
 {

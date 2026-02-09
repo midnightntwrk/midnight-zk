@@ -21,7 +21,7 @@
 //! The implementors of this trait need to implement [FieldInstructions]
 //! where the notion of `canonical` makes sense.
 
-use ff::PrimeField;
+use crate::CircuitField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 use num_bigint::BigUint;
 
@@ -34,8 +34,8 @@ use crate::{
 pub trait CanonicityInstructions<F, Assigned>:
     FieldInstructions<F, Assigned> + AssignmentInstructions<F, AssignedBit<F>>
 where
-    F: PrimeField,
-    Assigned::Element: PrimeField,
+    F: CircuitField,
+    Assigned::Element: CircuitField,
     Assigned: Instantiable<F> + InnerConstants + Clone,
 {
     /// Returns `true` iff the given sequence of bits is canonical in the
@@ -123,7 +123,7 @@ where
 pub(crate) mod tests {
     use std::marker::PhantomData;
 
-    use ff::FromUniformBytes;
+    use ff::{FromUniformBytes, PrimeField};
     use midnight_proofs::{
         circuit::{Layouter, SimpleFloorPlanner},
         dev::MockProver,
@@ -164,8 +164,8 @@ pub(crate) mod tests {
 
     impl<F, Assigned, CanonicityChip> Circuit<F> for TestCircuit<F, Assigned, CanonicityChip>
     where
-        F: PrimeField,
-        Assigned::Element: PrimeField,
+        F: CircuitField,
+        Assigned::Element: CircuitField,
         Assigned: Instantiable<F> + InnerConstants + Clone,
         CanonicityChip: CanonicityInstructions<F, Assigned>
             + AssertionInstructions<F, Assigned>
@@ -227,8 +227,8 @@ pub(crate) mod tests {
         chip_name: &str,
         op_name: &str,
     ) where
-        F: PrimeField + FromUniformBytes<64> + Ord,
-        Assigned::Element: PrimeField,
+        F: CircuitField + FromUniformBytes<64> + Ord,
+        Assigned::Element: CircuitField,
         Assigned: Instantiable<F> + InnerConstants + Clone,
         CanonicityChip: CanonicityInstructions<F, Assigned>
             + AssertionInstructions<F, Assigned>
@@ -267,8 +267,8 @@ pub(crate) mod tests {
 
     pub fn test_canonical<F, Assigned, CanonicityChip>(name: &str)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
-        Assigned::Element: PrimeField,
+        F: CircuitField + FromUniformBytes<64> + Ord,
+        Assigned::Element: CircuitField,
         Assigned: Instantiable<F> + InnerConstants + Clone,
         CanonicityChip: CanonicityInstructions<F, Assigned>
             + AssertionInstructions<F, Assigned>
@@ -316,8 +316,8 @@ pub(crate) mod tests {
 
     pub fn test_le_bits_lower_and_geq<F, Assigned, CanonChip>(name: &str)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
-        Assigned::Element: PrimeField,
+        F: CircuitField + FromUniformBytes<64> + Ord,
+        Assigned::Element: CircuitField,
         Assigned: Instantiable<F> + InnerConstants + Clone,
         CanonChip: CanonicityInstructions<F, Assigned>
             + AssertionInstructions<F, Assigned>

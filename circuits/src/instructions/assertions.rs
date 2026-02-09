@@ -18,7 +18,7 @@
 //! Furthermore, assertions between `Assigned` elements and fixed values of type
 //! `Assigned::Element`.
 
-use ff::PrimeField;
+use crate::CircuitField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 use crate::types::InnerValue;
@@ -32,7 +32,7 @@ use crate::types::InnerValue;
 /// [AssignedByte](crate::types::AssignedByte).
 pub trait AssertionInstructions<F, Assigned>
 where
-    F: PrimeField,
+    F: CircuitField,
     Assigned: InnerValue,
 {
     /// Ensures that the given assigned elements are the same.
@@ -150,7 +150,7 @@ pub(crate) mod tests {
 
     impl<F, Assigned, AssertionChip> Circuit<F> for TestCircuit<F, Assigned, AssertionChip>
     where
-        F: PrimeField,
+        F: CircuitField,
         Assigned: InnerValue,
         Assigned::Element: Default,
         AssertionChip: AssertionInstructions<F, Assigned>
@@ -206,7 +206,7 @@ pub(crate) mod tests {
         chip_name: &str,
         op_name: &str,
     ) where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
         Assigned: InnerValue,
         Assigned::Element: Default,
         AssertionChip: AssertionInstructions<F, Assigned>
@@ -237,7 +237,7 @@ pub(crate) mod tests {
 
     pub fn test_assertions<F, Assigned, AssertionChip>(name: &str)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
         Assigned: InnerConstants + Sampleable,
         Assigned::Element: Default,
         AssertionChip: AssertionInstructions<F, Assigned>

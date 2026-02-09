@@ -13,7 +13,7 @@
 
 use std::{marker::PhantomData, ops::Rem};
 
-use ff::PrimeField;
+use crate::CircuitField;
 use midnight_proofs::{
     circuit::{Chip, Layouter},
     plonk::{Advice, Column, ConstraintSystem, Constraints, Error, Expression, Selector},
@@ -57,7 +57,7 @@ impl<C: CircuitCurve> SlopeConfig<C> {
     /// what such values represent.
     pub fn bounds<F, P>() -> ((BI, BI), Vec<(BI, BI)>)
     where
-        F: PrimeField,
+        F: CircuitField,
         P: FieldEmulationParams<F, C::Base>,
     {
         let base = BI::from(2).pow(P::LOG2_BASE);
@@ -139,7 +139,7 @@ impl<C: CircuitCurve> SlopeConfig<C> {
         cond_col: &Column<Advice>,
     ) -> SlopeConfig<C>
     where
-        F: PrimeField,
+        F: CircuitField,
         P: FieldEmulationParams<F, C::Base>,
     {
         let m = &modulus::<C::Base>().to_bigint().unwrap();
@@ -246,7 +246,7 @@ pub fn assert_slope<F, C, P, N>(
     slope_config: &SlopeConfig<C>,
 ) -> Result<(), Error>
 where
-    F: PrimeField,
+    F: CircuitField,
     C: CircuitCurve,
     P: FieldEmulationParams<F, C::Base>,
     N: NativeInstructions<F>,

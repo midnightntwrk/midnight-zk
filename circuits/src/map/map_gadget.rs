@@ -13,7 +13,6 @@
 
 //! In-circuit implementation of Succinct Key-Value Map Representation Using
 //! Merkle Trees
-use ff::PrimeField;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
@@ -31,6 +30,7 @@ use crate::{
     },
     map::cpu::{MapMt, TREE_HEIGHT},
     types::AssignedNative,
+    CircuitField,
 };
 
 #[derive(Clone, Debug)]
@@ -38,7 +38,7 @@ use crate::{
 /// the unassigned map.
 struct State<F, H>
 where
-    F: PrimeField,
+    F: CircuitField,
     H: HashInstructions<F, AssignedNative<F>, AssignedNative<F>>,
 {
     succinct_repr: AssignedNative<F>,
@@ -49,7 +49,7 @@ where
 /// Gadget for proving `insert` and `get` instructions in a map.
 pub struct MapGadget<F, N, H>
 where
-    F: PrimeField,
+    F: CircuitField,
     N: NativeInstructions<F>,
     H: HashInstructions<F, AssignedNative<F>, AssignedNative<F>>,
 {
@@ -60,7 +60,7 @@ where
 
 impl<F, N, H> MapInstructions<F, AssignedNative<F>, AssignedNative<F>> for MapGadget<F, N, H>
 where
-    F: PrimeField,
+    F: CircuitField,
     N: NativeInstructions<F>,
     H: HashInstructions<F, AssignedNative<F>, AssignedNative<F>>,
 {
@@ -129,7 +129,7 @@ where
 
 impl<F, N, H> MapGadget<F, N, H>
 where
-    F: PrimeField,
+    F: CircuitField,
     N: NativeInstructions<F>,
     H: HashInstructions<F, AssignedNative<F>, AssignedNative<F>>,
 {
@@ -223,7 +223,7 @@ where
 #[cfg(any(test, feature = "testing"))]
 impl<F, N, H> FromScratch<F> for MapGadget<F, N, H>
 where
-    F: PrimeField,
+    F: CircuitField,
     N: NativeInstructions<F> + FromScratch<F>,
     H: HashInstructions<F, AssignedNative<F>, AssignedNative<F>> + FromScratch<F>,
 {
@@ -282,7 +282,7 @@ mod test {
 
     struct TestCircuit<F, N, H>
     where
-        F: PrimeField,
+        F: CircuitField,
         N: NativeInstructions<F>,
         H: HashInstructions<F, AssignedNative<F>, AssignedNative<F>> + FromScratch<F>,
     {
@@ -295,7 +295,7 @@ mod test {
 
     impl<F, N, H> Circuit<F> for TestCircuit<F, N, H>
     where
-        F: PrimeField,
+        F: CircuitField,
         N: NativeInstructions<F> + FromScratch<F>,
         H: HashInstructions<F, AssignedNative<F>, AssignedNative<F>> + FromScratch<F>,
     {
@@ -362,7 +362,7 @@ mod test {
 
     fn test_map<F, N, H>(cost_model: bool)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
         N: NativeInstructions<F> + FromScratch<F>,
         H: HashInstructions<F, AssignedNative<F>, AssignedNative<F>> + FromScratch<F>,
     {

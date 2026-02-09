@@ -15,7 +15,7 @@
 
 use std::collections::HashMap;
 
-use ff::PrimeField;
+use crate::CircuitField;
 use num_bigint::BigInt;
 
 use crate::utils::util::{bigint_to_fe, fe_to_bigint};
@@ -31,7 +31,7 @@ use crate::utils::util::{bigint_to_fe, fe_to_bigint};
 /// # Panics
 ///
 /// If the field element cannot be represented with limb_sizes
-pub(crate) fn decompose_in_variable_limbsizes<InF: PrimeField, OutF: PrimeField>(
+pub(crate) fn decompose_in_variable_limbsizes<InF: CircuitField, OutF: CircuitField>(
     x: &InF,
     limb_sizes: &[usize],
 ) -> Vec<OutF> {
@@ -77,7 +77,7 @@ pub(crate) fn decompose_in_variable_limbsizes<InF: PrimeField, OutF: PrimeField>
 /// Given a slice limbs_sizes this corresponds to
 /// - c_i = 2^{sum_{j=1}^{i-1} limb_sizes\[i\]} if limb_sizes\[i\] > 0
 /// - 0 if limb_sizes=0
-pub(super) fn variable_limbsize_coefficients<F: PrimeField>(limb_sizes: &[usize]) -> Vec<F> {
+pub(super) fn variable_limbsize_coefficients<F: CircuitField>(limb_sizes: &[usize]) -> Vec<F> {
     // vector to keep the result
     let mut coefficients = Vec::with_capacity(limb_sizes.len());
 

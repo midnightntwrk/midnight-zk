@@ -13,6 +13,7 @@
 
 use ff::{Field, PrimeField};
 // Modify
+use crate::CircuitField;
 use midnight_curves::Fq as Fp;
 use midnight_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
@@ -79,7 +80,7 @@ enum LimbType {
 }
 
 #[derive(Clone, Debug)]
-struct TestDecompositionCircuit<F: PrimeField, const NR_COLS: usize> {
+struct TestDecompositionCircuit<F: CircuitField, const NR_COLS: usize> {
     input: F,
     limb_sizes: LimbType,
     expected: Vec<F>,
@@ -87,7 +88,7 @@ struct TestDecompositionCircuit<F: PrimeField, const NR_COLS: usize> {
 
 impl<F, const NR_COLS: usize> Circuit<F> for TestDecompositionCircuit<F, NR_COLS>
 where
-    F: PrimeField,
+    F: CircuitField,
 {
     type Config = P2RDecompositionConfig;
     type FloorPlanner = SimpleFloorPlanner;
@@ -293,14 +294,14 @@ fn test_decomposition_chip_fixed() {
 }
 
 #[derive(Clone, Debug)]
-struct TestLessThanPow2Circuit<F: PrimeField, const NR_COLS: usize> {
+struct TestLessThanPow2Circuit<F: CircuitField, const NR_COLS: usize> {
     input: F,
     bound: usize,
 }
 
 impl<F, const NR_COLS: usize> Circuit<F> for TestLessThanPow2Circuit<F, NR_COLS>
 where
-    F: PrimeField,
+    F: CircuitField,
 {
     type Config = P2RDecompositionConfig;
     type FloorPlanner = SimpleFloorPlanner;

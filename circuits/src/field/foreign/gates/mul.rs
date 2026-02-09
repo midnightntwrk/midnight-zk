@@ -13,7 +13,7 @@
 
 use std::ops::Rem;
 
-use ff::PrimeField;
+use crate::CircuitField;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::{Advice, Column, ConstraintSystem, Constraints, Error, Expression, Selector},
@@ -53,8 +53,8 @@ impl MulConfig {
     /// function for explanations on what such values represent.
     pub fn bounds<F, K, P>() -> ((BI, BI), Vec<(BI, BI)>)
     where
-        F: PrimeField,
-        K: PrimeField,
+        F: CircuitField,
+        K: CircuitField,
         P: FieldEmulationParams<F, K>,
     {
         let base = BI::from(2).pow(P::LOG2_BASE);
@@ -109,8 +109,8 @@ impl MulConfig {
         z_cols: &[Column<Advice>],
     ) -> Self
     where
-        F: PrimeField,
-        K: PrimeField,
+        F: CircuitField,
+        K: CircuitField,
         P: FieldEmulationParams<F, K>,
     {
         let m = &modulus::<K>().to_bigint().unwrap();
@@ -193,8 +193,8 @@ pub fn assert_mul<F, K, P, RangeGadget>(
     range_gadget: &RangeGadget,
 ) -> Result<(), Error>
 where
-    F: PrimeField,
-    K: PrimeField,
+    F: CircuitField,
+    K: CircuitField,
     P: FieldEmulationParams<F, K>,
     RangeGadget: RangeCheckInstructions<F, AssignedNative<F>>,
 {

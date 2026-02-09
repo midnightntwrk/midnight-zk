@@ -19,7 +19,7 @@
 //! this trait that must implement [crate::types::InnerValue] and
 //! [Instantiable]).
 
-use ff::PrimeField;
+use crate::CircuitField;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
@@ -30,7 +30,7 @@ use crate::types::{AssignedNative, Instantiable};
 /// The set of circuit instructions for constraining public inputs.
 pub trait PublicInputInstructions<F, Assigned>
 where
-    F: PrimeField,
+    F: CircuitField,
     Assigned: Instantiable<F>,
 {
     /// Returns the cells associated with the given assigned value with the same
@@ -80,7 +80,7 @@ where
 /// there is no way to enforce types or make any check on the committed values.
 pub trait CommittedInstanceInstructions<F, Assigned>
 where
-    F: PrimeField,
+    F: CircuitField,
     Assigned: Instantiable<F>,
 {
     /// Constrains the given assigned value as a public input that will be
@@ -132,7 +132,7 @@ pub(crate) mod tests {
 
     impl<F, Assigned, Chip> Circuit<F> for TestCircuit<F, Assigned, Chip>
     where
-        F: PrimeField,
+        F: CircuitField,
         Assigned: Instantiable<F> + Sampleable,
         Chip: AssignmentInstructions<F, Assigned>
             + PublicInputInstructions<F, Assigned>
@@ -197,7 +197,7 @@ pub(crate) mod tests {
         cost_model: bool,
         chip_name: &str,
     ) where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
         Assigned: Instantiable<F> + Sampleable,
         Chip: AssignmentInstructions<F, Assigned>
             + PublicInputInstructions<F, Assigned>
@@ -228,7 +228,7 @@ pub(crate) mod tests {
 
     pub fn test_public_inputs<F, Assigned, Chip>(name: &str)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
         Assigned: Instantiable<F> + InnerConstants + Sampleable,
         Chip: AssignmentInstructions<F, Assigned>
             + PublicInputInstructions<F, Assigned>

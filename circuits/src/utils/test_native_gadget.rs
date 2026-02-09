@@ -15,7 +15,7 @@
 #[macro_export]
 macro_rules! run_test_native_gadget {
     ($chip:ident, $layouter:ident, $synthesize_body:block) => {
-        use ff::PrimeField;
+        use midnight_circuits::CircuitField;
         use midnight_proofs::{
             circuit::{Layouter, SimpleFloorPlanner, Value},
             dev::MockProver,
@@ -39,7 +39,7 @@ macro_rules! run_test_native_gadget {
 
         type NG<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
 
-        impl<F: PrimeField, const NB_POW2RANGE_COLS: usize> Circuit<F> for TestCircuit<NB_POW2RANGE_COLS> {
+        impl<F: CircuitField, const NB_POW2RANGE_COLS: usize> Circuit<F> for TestCircuit<NB_POW2RANGE_COLS> {
             type Config = P2RDecompositionConfig;
             type FloorPlanner = SimpleFloorPlanner;
             type Params = ();

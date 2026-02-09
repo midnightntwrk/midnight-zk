@@ -13,7 +13,6 @@
 
 use std::cmp::max;
 
-use ff::PrimeField;
 use midnight_proofs::circuit::Value;
 use num_bigint::BigUint;
 use num_traits::{One, Zero};
@@ -24,6 +23,7 @@ use crate::{
     field::foreign::util::{big_from_limbs, big_to_limbs},
     types::{AssignedNative, InnerConstants, InnerValue},
     utils::util::{big_to_fe, fe_to_big},
+    CircuitField,
 };
 
 /// The logarithm of the base of representation `BASE := 2^LOG2_BASE`.
@@ -59,12 +59,12 @@ pub(crate) const LOG2_BASE: u32 = 96;
 /// Use `constrain_as_public_input` instead.
 #[derive(Clone, Debug)]
 #[must_use]
-pub struct AssignedBigUint<F: PrimeField> {
+pub struct AssignedBigUint<F: CircuitField> {
     pub(crate) limbs: Vec<AssignedNative<F>>,
     pub(crate) limb_size_bounds: Vec<u32>,
 }
 
-impl<F: PrimeField> InnerValue for AssignedBigUint<F> {
+impl<F: CircuitField> InnerValue for AssignedBigUint<F> {
     type Element = BigUint;
 
     fn value(&self) -> Value<BigUint> {
@@ -75,7 +75,7 @@ impl<F: PrimeField> InnerValue for AssignedBigUint<F> {
     }
 }
 
-impl<F: PrimeField> InnerConstants for AssignedBigUint<F> {
+impl<F: CircuitField> InnerConstants for AssignedBigUint<F> {
     fn inner_zero() -> BigUint {
         BigUint::zero()
     }
@@ -85,7 +85,7 @@ impl<F: PrimeField> InnerConstants for AssignedBigUint<F> {
     }
 }
 
-impl<F: PrimeField> AssignedBigUint<F> {
+impl<F: CircuitField> AssignedBigUint<F> {
     /// This function is the off-circuit analog of
     /// [crate::biguint::biguint_gadget::BigUintGadget::constrain_as_public_input].
     pub fn as_public_input(element: &BigUint, nb_bits: u32) -> Vec<F> {
@@ -97,13 +97,13 @@ impl<F: PrimeField> AssignedBigUint<F> {
 pub(crate) const TEST_NB_BITS: u32 = 1024;
 
 #[cfg(any(test, feature = "testing"))]
-impl<F: PrimeField> Sampleable for AssignedBigUint<F> {
+impl<F: CircuitField> Sampleable for AssignedBigUint<F> {
     fn sample_inner(mut rng: impl rand::RngCore) -> BigUint {
         num_bigint::RandBigInt::gen_biguint(&mut rng, TEST_NB_BITS as u64)
     }
 }
 
-impl<F: PrimeField> AssignedBigUint<F> {
+impl<F: CircuitField> AssignedBigUint<F> {
     /// Returns an upper-bound on the number of bits necessary to represent the
     /// given big unsigned integer. Such bound is computed based on the
     /// `AssignedBigUint` limb size bounds.
@@ -152,7 +152,7 @@ pub(crate) fn bound_of_addition(bound1: u32, bound2: u32) -> u32 {
 ///
 /// If `nb_limbs` is provided, this function will panic if the conversion is not
 /// possible.
-pub(crate) fn biguint_to_limbs<F: PrimeField>(value: &BigUint, nb_limbs: Option<u32>) -> Vec<F> {
+pub(crate) fn biguint_to_limbs<F: CircuitField>(value: &BigUint, nb_limbs: Option<u32>) -> Vec<F> {
     let nb_limbs = nb_limbs.unwrap_or(value.bits().div_ceil(LOG2_BASE as u64) as u32);
     big_to_limbs(nb_limbs, &(BigUint::from(1u8) << LOG2_BASE), value)
         .into_iter()

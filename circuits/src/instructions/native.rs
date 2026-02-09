@@ -13,8 +13,6 @@
 
 //! Native instructions interface.
 
-use ff::PrimeField;
-
 use super::{DivisionInstructions, RangeCheckInstructions};
 use crate::{
     instructions::{
@@ -23,6 +21,7 @@ use crate::{
         UnsafeConversionInstructions,
     },
     types::{AssignedBit, AssignedByte, AssignedNative},
+    CircuitField,
 };
 
 /// The set of circuit all native instructions.
@@ -39,6 +38,6 @@ pub trait NativeInstructions<F>:
     + UnsafeConversionInstructions<F, AssignedNative<F>, AssignedByte<F>>
     + DivisionInstructions<F, AssignedNative<F>>
 where
-    F: PrimeField,
+    F: CircuitField,
 {
 }

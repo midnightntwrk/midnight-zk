@@ -13,11 +13,11 @@
 
 //! Map to curve parameter traits and implementations.
 
-use ff::PrimeField;
+use crate::CircuitField;
 use midnight_curves::{Fq as JubjubBase, JubjubExtended as Jubjub};
 
 /// Constants for the Shallue-van de Woestijne (SVDW) map to Weierstrass curve.
-pub trait MapToWeierstrassParams<BaseField: PrimeField> {
+pub trait MapToWeierstrassParams<BaseField: CircuitField> {
     /// Z constant of the SVDW method.
     const SVDW_Z: BaseField;
 
@@ -67,7 +67,7 @@ pub trait MapToWeierstrassParams<BaseField: PrimeField> {
 
 /// Constants for the Shallue-van de Woestijne (SVDW) map to twisted Edwards
 /// curve, through Montgomery form.
-pub trait MapToEdwardsParams<BaseField: PrimeField>: MapToWeierstrassParams<BaseField> {
+pub trait MapToEdwardsParams<BaseField: CircuitField>: MapToWeierstrassParams<BaseField> {
     /// `J` constant of Montgomery curve: `K * y^2 = x^3 + J * x^2 + x`.
     const MONT_J: BaseField;
 
@@ -118,7 +118,7 @@ impl MapToEdwardsParams<JubjubBase> for Jubjub {
 
 #[cfg(test)]
 mod test {
-    use ff::Field;
+    use ff::{Field, PrimeField};
 
     use super::*;
     use crate::ecc::curves::CircuitCurve;

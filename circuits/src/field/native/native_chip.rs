@@ -55,7 +55,7 @@ use std::{
     rc::Rc,
 };
 
-use ff::PrimeField;
+use crate::CircuitField;
 use midnight_proofs::{
     circuit::{Chip, Layouter, Region, Value},
     plonk::{Advice, Column, ConstraintSystem, Constraints, Error, Fixed, Instance, Selector},
@@ -115,14 +115,14 @@ pub struct NativeConfig {
 
 /// Chip for Native operations
 #[derive(Clone, Debug)]
-pub struct NativeChip<F: PrimeField> {
+pub struct NativeChip<F: CircuitField> {
     config: NativeConfig,
     cached_fixed: Rc<RefCell<HashMap<BigUint, AssignedNative<F>>>>,
     committed_instance_offset: Rc<RefCell<usize>>,
     instance_offset: Rc<RefCell<usize>>,
 }
 
-impl<F: PrimeField> Chip<F> for NativeChip<F> {
+impl<F: CircuitField> Chip<F> for NativeChip<F> {
     type Config = NativeConfig;
     type Loaded = ();
 
@@ -135,7 +135,7 @@ impl<F: PrimeField> Chip<F> for NativeChip<F> {
     }
 }
 
-impl<F: PrimeField> ComposableChip<F> for NativeChip<F> {
+impl<F: CircuitField> ComposableChip<F> for NativeChip<F> {
     type SharedResources = (
         [Column<Advice>; NB_ARITH_COLS],
         [Column<Fixed>; NB_ARITH_FIXED_COLS],
@@ -258,7 +258,7 @@ impl<F: PrimeField> ComposableChip<F> for NativeChip<F> {
     }
 }
 
-impl<F: PrimeField> NativeChip<F> {
+impl<F: CircuitField> NativeChip<F> {
     /// Fills the arithmetic identity selectors with the given values at the
     /// current offset. This function does not assign values, it assumes they
     /// have already been assigned.
@@ -520,7 +520,7 @@ impl<F: PrimeField> NativeChip<F> {
     }
 }
 
-impl<F: PrimeField> NativeChip<F> {
+impl<F: CircuitField> NativeChip<F> {
     /// Performs parallel additions of `variables` and `constants` in one row,
     /// and increments the offset.
     pub(crate) fn add_constants_in_region(
@@ -554,7 +554,7 @@ impl<F: PrimeField> NativeChip<F> {
 
 impl<F> AssignmentInstructions<F, AssignedNative<F>> for NativeChip<F>
 where
-    F: PrimeField,
+    F: CircuitField,
 {
     fn assign(
         &self,
@@ -625,7 +625,7 @@ where
 
 impl<F> PublicInputInstructions<F, AssignedNative<F>> for NativeChip<F>
 where
-    F: PrimeField,
+    F: CircuitField,
 {
     fn as_public_input(
         &self,
@@ -660,7 +660,7 @@ where
 
 impl<F> CommittedInstanceInstructions<F, AssignedNative<F>> for NativeChip<F>
 where
-    F: PrimeField,
+    F: CircuitField,
 {
     fn constrain_as_committed_public_input(
         &self,
@@ -680,7 +680,7 @@ where
 
 impl<F> AssignmentInstructions<F, AssignedBit<F>> for NativeChip<F>
 where
-    F: PrimeField,
+    F: CircuitField,
 {
     fn assign(
         &self,
@@ -715,7 +715,7 @@ where
 
 impl<F> PublicInputInstructions<F, AssignedBit<F>> for NativeChip<F>
 where
-    F: PrimeField,
+    F: CircuitField,
 {
     fn as_public_input(
         &self,
@@ -749,7 +749,7 @@ where
 
 impl<F> AssertionInstructions<F, AssignedNative<F>> for NativeChip<F>
 where
-    F: PrimeField,
+    F: CircuitField,
 {
     fn assert_equal(
         &self,
@@ -811,7 +811,7 @@ where
 
 impl<F> AssertionInstructions<F, AssignedBit<F>> for NativeChip<F>
 where
-    F: PrimeField,
+    F: CircuitField,
 {
     fn assert_equal(
         &self,
@@ -852,11 +852,11 @@ where
     }
 }
 
-impl<F> ZeroInstructions<F, AssignedNative<F>> for NativeChip<F> where F: PrimeField {}
+impl<F> ZeroInstructions<F, AssignedNative<F>> for NativeChip<F> where F: CircuitField {}
 
 impl<F> ArithInstructions<F, AssignedNative<F>> for NativeChip<F>
 where
-    F: PrimeField,
+    F: CircuitField,
 {
     fn linear_combination(
         &self,
@@ -1033,7 +1033,7 @@ where
     }
 }
 
-impl<F: PrimeField> Instantiable<F> for AssignedBit<F> {
+impl<F: CircuitField> Instantiable<F> for AssignedBit<F> {
     fn as_public_input(element: &bool) -> Vec<F> {
         vec![if *element { F::ONE } else { F::ZERO }]
     }
@@ -1045,15 +1045,15 @@ impl<F: PrimeField> Instantiable<F> for AssignedBit<F> {
 /// constraints) that the assigned value is indeed 0 or 1.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[must_use]
-pub struct AssignedBit<F: PrimeField>(pub(crate) AssignedNative<F>);
+pub struct AssignedBit<F: CircuitField>(pub(crate) AssignedNative<F>);
 
-impl<F: PrimeField> Hash for AssignedBit<F> {
+impl<F: CircuitField> Hash for AssignedBit<F> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.0.hash(state)
     }
 }
 
-impl<F: PrimeField> InnerValue for AssignedBit<F> {
+impl<F: CircuitField> InnerValue for AssignedBit<F> {
     type Element = bool;
 
     fn value(&self) -> Value<bool> {
@@ -1061,7 +1061,7 @@ impl<F: PrimeField> InnerValue for AssignedBit<F> {
     }
 }
 
-impl<F: PrimeField> From<AssignedBit<F>> for AssignedNative<F> {
+impl<F: CircuitField> From<AssignedBit<F>> for AssignedNative<F> {
     fn from(bit: AssignedBit<F>) -> Self {
         bit.0
     }
@@ -1069,7 +1069,7 @@ impl<F: PrimeField> From<AssignedBit<F>> for AssignedNative<F> {
 
 impl<F> ConversionInstructions<F, AssignedNative<F>, AssignedBit<F>> for NativeChip<F>
 where
-    F: PrimeField,
+    F: CircuitField,
 {
     fn convert_value(&self, x: &F) -> Option<bool> {
         let is_zero: bool = F::is_zero(x).into();
@@ -1090,7 +1090,7 @@ where
 
 impl<F> ConversionInstructions<F, AssignedBit<F>, AssignedNative<F>> for NativeChip<F>
 where
-    F: PrimeField,
+    F: CircuitField,
 {
     fn convert_value(&self, x: &bool) -> Option<F> {
         Some(if *x { F::from(1) } else { F::from(0) })
@@ -1107,7 +1107,7 @@ where
 
 impl<F> UnsafeConversionInstructions<F, AssignedNative<F>, AssignedBit<F>> for NativeChip<F>
 where
-    F: PrimeField,
+    F: CircuitField,
 {
     /// CAUTION: use only if you know what you are doing!
     ///
@@ -1137,7 +1137,7 @@ where
 #[cfg(test)]
 impl<F> UnsafeConversionInstructions<F, AssignedBit<F>, AssignedNative<F>> for NativeChip<F>
 where
-    F: PrimeField,
+    F: CircuitField,
 {
     fn convert_unsafe(
         &self,
@@ -1150,7 +1150,7 @@ where
 
 impl<F> BinaryInstructions<F> for NativeChip<F>
 where
-    F: PrimeField,
+    F: CircuitField,
 {
     fn and(
         &self,
@@ -1216,7 +1216,7 @@ where
 
 impl<F> EqualityInstructions<F, AssignedNative<F>> for NativeChip<F>
 where
-    F: PrimeField + From<u64> + Neg<Output = F>,
+    F: CircuitField + From<u64> + Neg<Output = F>,
 {
     fn is_equal(
         &self,
@@ -1395,7 +1395,7 @@ where
 
 impl<F> EqualityInstructions<F, AssignedBit<F>> for NativeChip<F>
 where
-    F: PrimeField + From<u64> + Neg<Output = F>,
+    F: CircuitField + From<u64> + Neg<Output = F>,
 {
     fn is_equal(
         &self,
@@ -1456,7 +1456,7 @@ where
 
 impl<F> ControlFlowInstructions<F, AssignedNative<F>> for NativeChip<F>
 where
-    F: PrimeField + From<u64> + Neg<Output = F>,
+    F: CircuitField + From<u64> + Neg<Output = F>,
 {
     fn select(
         &self,
@@ -1519,7 +1519,7 @@ where
 
 impl<F> ControlFlowInstructions<F, AssignedBit<F>> for NativeChip<F>
 where
-    F: PrimeField,
+    F: CircuitField,
 {
     fn select(
         &self,
@@ -1545,7 +1545,7 @@ where
 
 impl<F> FieldInstructions<F, AssignedNative<F>> for NativeChip<F>
 where
-    F: PrimeField,
+    F: CircuitField,
 {
     fn order(&self) -> BigUint {
         modulus::<F>()
@@ -1554,7 +1554,7 @@ where
 
 impl<F> CanonicityInstructions<F, AssignedNative<F>> for NativeChip<F>
 where
-    F: PrimeField,
+    F: CircuitField,
 {
     fn le_bits_lower_than(
         &self,
@@ -1607,7 +1607,7 @@ where
 }
 
 #[cfg(any(test, feature = "testing"))]
-impl<F: PrimeField> FromScratch<F> for NativeChip<F> {
+impl<F: CircuitField> FromScratch<F> for NativeChip<F> {
     type Config = NativeConfig;
 
     fn new_from_scratch(config: &Self::Config) -> Self {
@@ -1698,7 +1698,7 @@ mod tests {
 
     fn test_generic_conversion_to_bit<F>(name: &str)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
     {
         [
             (
@@ -1741,7 +1741,7 @@ mod tests {
 
     fn test_generic_conversion_from_bit<F>(name: &str)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
     {
         [
             (

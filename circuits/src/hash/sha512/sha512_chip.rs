@@ -37,7 +37,7 @@
 //! We have 2 parallel lookups, which allow us to call such plain-spreaded table
 //! twice per row; on columns named (T0, A0, A1) and (T1, A2, A3).
 
-use ff::PrimeField;
+use crate::CircuitField;
 use midnight_proofs::{
     circuit::{Chip, Layouter, Region, Value},
     plonk::{
@@ -144,12 +144,12 @@ pub struct Sha512Config {
 
 /// Chip for SHA512.
 #[derive(Clone, Debug)]
-pub struct Sha512Chip<F: PrimeField> {
+pub struct Sha512Chip<F: CircuitField> {
     config: Sha512Config,
     pub(super) native_gadget: NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>,
 }
 
-impl<F: PrimeField> Chip<F> for Sha512Chip<F> {
+impl<F: CircuitField> Chip<F> for Sha512Chip<F> {
     type Config = Sha512Config;
     type Loaded = ();
 
@@ -162,7 +162,7 @@ impl<F: PrimeField> Chip<F> for Sha512Chip<F> {
     }
 }
 
-impl<F: PrimeField> ComposableChip<F> for Sha512Chip<F> {
+impl<F: CircuitField> ComposableChip<F> for Sha512Chip<F> {
     type SharedResources = (
         [Column<Advice>; NB_SHA512_ADVICE_COLS],
         [Column<Fixed>; NB_SHA512_FIXED_COLS],
@@ -691,7 +691,7 @@ impl<F: PrimeField> ComposableChip<F> for Sha512Chip<F> {
     }
 }
 
-impl<F: PrimeField> Sha512Chip<F> {
+impl<F: CircuitField> Sha512Chip<F> {
     /// In-circuit SHA512 computation, the protagonist of this chip.
     pub(super) fn sha512(
         &self,
@@ -1835,7 +1835,7 @@ impl<F: PrimeField> Sha512Chip<F> {
     }
 }
 
-impl<F: PrimeField> CompressionState<F> {
+impl<F: CircuitField> CompressionState<F> {
     /// Adds pair-wise (modulo 2^64) the fields of two compression states.
     pub fn add(
         &self,
@@ -1875,7 +1875,7 @@ use midnight_proofs::plonk::Instance;
 use crate::{field::decomposition::chip::P2RDecompositionConfig, testing_utils::FromScratch};
 
 #[cfg(any(test, feature = "testing"))]
-impl<F: PrimeField> FromScratch<F> for Sha512Chip<F> {
+impl<F: CircuitField> FromScratch<F> for Sha512Chip<F> {
     type Config = (Sha512Config, P2RDecompositionConfig);
 
     fn new_from_scratch(config: &Self::Config) -> Self {

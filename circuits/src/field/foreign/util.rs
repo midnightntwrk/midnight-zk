@@ -15,7 +15,7 @@
 
 use std::ops::{Mul, Rem};
 
-use ff::PrimeField;
+use crate::CircuitField;
 use midnight_proofs::{
     circuit::Value,
     plonk::{Advice, Column, Expression, VirtualCells},
@@ -109,7 +109,7 @@ pub fn sum_bigints(coeffs: &[BI], values: &[BI]) -> BI {
 }
 
 /// Same as [sum_bigints], but adds `Expressions<F>`.
-pub fn sum_exprs<F: PrimeField>(coeffs: &[BI], exprs: &[Expression<F>]) -> Expression<F> {
+pub fn sum_exprs<F: CircuitField>(coeffs: &[BI], exprs: &[Expression<F>]) -> Expression<F> {
     debug_assert!(coeffs.len() == exprs.len());
     exprs
         .iter()
@@ -127,7 +127,7 @@ pub fn pair_wise_prod<T: Mul<Output = T> + Clone>(v: &[T], w: &[T]) -> Vec<T> {
 
 /// Fetches a the expressions contained in a vector of columns at the given
 /// rotation with respect to the current offset.
-pub fn get_advice_vec<F: PrimeField>(
+pub fn get_advice_vec<F: CircuitField>(
     meta: &mut VirtualCells<'_, F>,
     columns: &[Column<Advice>],
     rotation: Rotation,
@@ -148,8 +148,8 @@ pub fn get_identity_auxiliary_bounds<F, K>(
     expr_mj_bounds: &[(BI, BI)],
 ) -> ((BI, BI), Vec<(BI, BI)>)
 where
-    F: PrimeField,
-    K: PrimeField,
+    F: CircuitField,
+    K: CircuitField,
 {
     let m = &modulus::<K>().to_bigint().unwrap();
     let native_modulus = &modulus::<F>().to_bigint().unwrap();

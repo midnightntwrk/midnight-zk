@@ -37,7 +37,7 @@ use std::{
     hash::Hash,
 };
 
-use ff::PrimeField;
+use crate::CircuitField;
 use midnight_proofs::{
     circuit::{Chip, Layouter, Region, Value},
     plonk::{Advice, Column, ConstraintSystem, Error, Selector, TableColumn},
@@ -83,7 +83,7 @@ pub struct NativeAutomaton<F> {
 
 impl<F> From<&Automaton> for NativeAutomaton<F>
 where
-    F: PrimeField + Ord,
+    F: CircuitField + Ord,
 {
     fn from(value: &Automaton) -> Self {
         NativeAutomaton {
@@ -105,7 +105,7 @@ where
 
 impl<F> From<Automaton> for NativeAutomaton<F>
 where
-    F: PrimeField + Ord,
+    F: CircuitField + Ord,
 {
     fn from(value: Automaton) -> Self {
         (&value).into()
@@ -114,7 +114,7 @@ where
 
 impl<F> NativeAutomaton<F>
 where
-    F: PrimeField + Ord,
+    F: CircuitField + Ord,
 {
     fn from_collection<LibIndex>(
         automata: &FxHashMap<LibIndex, Automaton>,
@@ -155,7 +155,7 @@ pub struct AutomatonConfig<LibIndex, F> {
 #[derive(Clone, Debug)]
 pub struct AutomatonChip<LibIndex, F>
 where
-    F: PrimeField,
+    F: CircuitField,
 {
     config: AutomatonConfig<LibIndex, F>,
     native_gadget: NG<F>,
@@ -164,7 +164,7 @@ where
 impl<LibIndex, F> Chip<F> for AutomatonChip<LibIndex, F>
 where
     LibIndex: Clone + Debug,
-    F: PrimeField,
+    F: CircuitField,
 {
     type Config = AutomatonConfig<LibIndex, F>;
     type Loaded = ();
@@ -179,7 +179,7 @@ where
 impl<LibIndex, F> ComposableChip<F> for AutomatonChip<LibIndex, F>
 where
     LibIndex: Copy + Clone + Debug + Hash + Eq,
-    F: PrimeField + Ord,
+    F: CircuitField + Ord,
 {
     type InstructionDeps = NG<F>;
 
@@ -313,7 +313,7 @@ where
 impl<LibIndex, F> AutomatonChip<LibIndex, F>
 where
     LibIndex: Eq + Hash,
-    F: PrimeField + Ord,
+    F: CircuitField + Ord,
 {
     // Updates the state of the automaton (AssignedNative) according to the letter
     // being read. If the run is stuck (i.e., no transition are possible), an
@@ -520,7 +520,7 @@ impl Automaton {
 #[cfg(test)]
 impl<F> FromScratch<F> for AutomatonChip<usize, F>
 where
-    F: PrimeField + Ord,
+    F: CircuitField + Ord,
 {
     type Config = (P2RDecompositionConfig, AutomatonConfig<usize, F>);
 
@@ -584,7 +584,8 @@ where
 #[cfg(test)]
 mod test {
 
-    use ff::PrimeField;
+    
+use crate::CircuitField;
     use itertools::Itertools;
     use midnight_proofs::{
         circuit::{Layouter, SimpleFloorPlanner, Value},
@@ -608,7 +609,7 @@ mod test {
         automaton_index: usize, // Which automaton to use from the hardcoded examples.
     }
 
-    impl<F: PrimeField> RegexCircuit<F> {
+    impl<F: CircuitField> RegexCircuit<F> {
         fn new(s: &str, output: &[usize], automaton_index: usize) -> Self {
             let input = s.bytes().map(Value::known).collect::<Vec<_>>();
             let output =
@@ -623,7 +624,7 @@ mod test {
 
     impl<F> Circuit<F> for RegexCircuit<F>
     where
-        F: PrimeField + Ord,
+        F: CircuitField + Ord,
     {
         type Config = <AutomatonChip<usize, F> as FromScratch<F>>::Config;
 

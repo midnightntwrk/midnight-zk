@@ -19,7 +19,7 @@
 //! This trait is parametrized by a generic `Assigned` (required to implement
 //! [InnerValue]) which defines the type over which we check equality.
 
-use ff::PrimeField;
+use crate::CircuitField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 use crate::types::{AssignedBit, InnerValue};
@@ -27,7 +27,7 @@ use crate::types::{AssignedBit, InnerValue};
 /// The set of circuit instructions for equality operations.
 pub trait EqualityInstructions<F, Assigned>
 where
-    F: PrimeField,
+    F: CircuitField,
     Assigned: InnerValue,
 {
     /// Returns `1` if the elements are equal, returns `0` otherwise.
@@ -131,7 +131,7 @@ pub(crate) mod tests {
 
     impl<F, Assigned, EqualityChip> Circuit<F> for TestCircuit<F, Assigned, EqualityChip>
     where
-        F: PrimeField,
+        F: CircuitField,
         Assigned: InnerValue,
         EqualityChip: EqualityInstructions<F, Assigned>
             + AssignmentInstructions<F, Assigned>
@@ -201,7 +201,7 @@ pub(crate) mod tests {
         chip_name: &str,
         op_name: &str,
     ) where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
         Assigned: InnerValue,
         EqualityChip: EqualityInstructions<F, Assigned>
             + AssignmentInstructions<F, Assigned>
@@ -232,7 +232,7 @@ pub(crate) mod tests {
 
     pub fn test_is_equal<F, Assigned, EqualityChip>(name: &str)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
         Assigned: InnerConstants + Sampleable,
         EqualityChip: EqualityInstructions<F, Assigned>
             + AssignmentInstructions<F, Assigned>
