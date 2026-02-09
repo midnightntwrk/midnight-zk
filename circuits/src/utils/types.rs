@@ -12,18 +12,12 @@
 // limitations under the License.
 
 use core::fmt::Debug;
-use std::ops::{Add, Neg};
 
 use midnight_proofs::circuit::Value;
-use num_bigint::BigUint;
 #[cfg(any(test, feature = "testing"))]
 use rand::RngCore;
 
-use crate::{
-    field::AssignedNative,
-    utils::util::{big_to_fe, fe_to_big},
-    CircuitField,
-};
+use crate::{field::AssignedNative, CircuitField};
 
 /// Trait for dealing with public inputs. `Instantiable` is implemented on
 /// off-circuit types to determine the way these types are transformed into
@@ -88,25 +82,6 @@ impl<F: CircuitField> InnerConstants for AssignedNative<F> {
 
     fn inner_one() -> F {
         F::ONE
-    }
-}
-
-/// A trait for types that can be converted from and into BigUint.
-pub trait FromBigUint: PartialEq + From<u64> + Add<Output = Self> + Neg<Output = Self> {
-    /// Conversion from BigUint.
-    fn from_biguint(x: BigUint) -> Self;
-
-    /// Convertion into BigUint.
-    fn into_biguint(self) -> BigUint;
-}
-
-impl<F: CircuitField> FromBigUint for F {
-    fn from_biguint(x: BigUint) -> Self {
-        big_to_fe(x)
-    }
-
-    fn into_biguint(self) -> BigUint {
-        fe_to_big(self)
     }
 }
 

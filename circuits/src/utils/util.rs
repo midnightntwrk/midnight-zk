@@ -18,7 +18,7 @@
 use midnight_proofs::plonk::Error;
 use num_bigint::{BigInt as BI, BigUint, Sign};
 use num_integer::Integer;
-use num_traits::{Num, One, Signed, Zero};
+use num_traits::{One, Signed, Zero};
 #[cfg(any(test, feature = "testing"))]
 use {
     midnight_proofs::circuit::Layouter,
@@ -27,10 +27,6 @@ use {
 
 use crate::CircuitField;
 
-pub fn modulus<F: CircuitField>() -> BigUint {
-    BigUint::from_str_radix(&F::MODULUS[2..], 16).unwrap()
-}
-
 /// Returns a quadratic non-residue of the given field.
 pub fn qnr<F: CircuitField>() -> F {
     debug_assert!(bool::from(F::MULTIPLICATIVE_GENERATOR.sqrt().is_none()));
@@ -38,32 +34,28 @@ pub fn qnr<F: CircuitField>() -> F {
 }
 
 pub fn big_to_fe<F: CircuitField>(e: BigUint) -> F {
-    let modulus = modulus::<F>();
+    let modulus = F::modulus();
     let e = e % modulus;
     F::from_str_vartime(&e.to_str_radix(10)[..]).unwrap()
 }
 
-pub fn fe_to_big<F: CircuitField>(fe: F) -> BigUint {
-    fe.to_biguint()
-}
-
 /// Panics if the conversion is not possible.
 pub fn fe_to_u32<F: CircuitField>(fe: F) -> u32 {
-    let u32_digits = fe_to_big(fe).to_u32_digits();
+    let u32_digits = fe.to_biguint().to_u32_digits();
     assert!(u32_digits.len() <= 1);
     u32_digits.first().cloned().unwrap_or(0)
 }
 
 /// Panics if the conversion is not possible.
 pub fn fe_to_u64<F: CircuitField>(fe: F) -> u64 {
-    let u64_digits = fe_to_big(fe).to_u64_digits();
+    let u64_digits = fe.to_biguint().to_u64_digits();
     assert!(u64_digits.len() <= 1);
     u64_digits.first().cloned().unwrap_or(0)
 }
 
 /// Panics if the conversion is not possible.
 pub fn fe_to_u128<F: CircuitField>(fe: F) -> u128 {
-    let u64_digits = fe_to_big(fe).to_u64_digits();
+    let u64_digits = fe.to_biguint().to_u64_digits();
     assert!(u64_digits.len() <= 2);
     ((u64_digits.get(1).cloned().unwrap_or(0) as u128) << 64)
         | (u64_digits.first().cloned().unwrap_or(0) as u128)
@@ -108,52 +100,6 @@ pub fn bigint_to_fe<F: CircuitField>(value: &BI) -> F where
     }
 }
 
-pub fn fe_to_bigint<F: CircuitField>(value: &F) -> BI {
-    value.to_biguint().into()
-}
-
-/// Decompose the given field element into little-endian bits.
-///
-/// - If `nb_bits = None`, the output will have as many bits as necessary to
-///   represent the given element, but no more.
-/// - If `nb_bits` is provided, the output will have the specified length,
-///   possibly with trailing zeros.
-///
-/// # Panics
-///
-/// If `value` does not fit in `nb_bits` bits when such argument is provided.
-pub fn fe_to_le_bits<F: CircuitField>(value: &F, nb_bits: Option<usize>) -> Vec<bool> {
-    let big = fe_to_big(*value);
-    let mut bits: Vec<bool> = (0..big.bits()).map(|i| big.bit(i)).collect();
-    if let Some(n) = nb_bits {
-        assert!(n >= bits.len());
-        bits.resize(n, false);
-    }
-    bits
-}
-
-/// The field element represented by an L-bit little-endian bitstring.
-///
-/// # Panics
-///
-/// If `|bits| > F::NUM_BITS`.
-pub fn le_bits_to_field_elem<F: CircuitField>(bits: &[bool]) -> F {
-    assert!(bits.len() as u32 <= F::NUM_BITS);
-
-    // Convert bits to little-endian bytes.
-    let bytes: Vec<u8> = bits
-        .chunks(8)
-        .map(|chunk| {
-            chunk
-                .iter()
-                .enumerate()
-                .fold(0u8, |acc, (i, b)| acc + if *b { 1 << i } else { 0 })
-        })
-        .collect();
-
-    F::from_bytes_le(&bytes).unwrap()
-}
-
 /// Off-circuit GLV scalar decomposition.
 /// Given a scalar `x`, and the cubic-root `zeta`, returns `(s1, x1), (s2, x2)`
 /// with x = ±x1 + zeta * (±x2), where the sign in front of `x1`
@@ -165,9 +111,9 @@ pub fn glv_scalar_decomposition<F: CircuitField>(x: &F, zeta: &F) -> ((bool, F),
     // We follow Algorithm 3.74 from "Guide to Elliptic Curve Cryptography",
     // Hankerson, Menezes, Vanstone, 2004.
 
-    let n: BI = modulus::<F>().into();
-    let lambda = fe_to_bigint(zeta);
-    let k = fe_to_bigint(x);
+    let n: BI = F::modulus().into();
+    let lambda: BI = zeta.to_biguint().into();
+    let k: BI = x.to_biguint().into();
 
     // xgcd:
     //  Input: Positive integers a, b with a >= b.
