@@ -13,7 +13,7 @@
 
 //! Import of the keccak variant of SHA, implementation from [Alexandros Zacharakis](https://github.com/alexandroszacharakis8).
 
-use ff::PrimeField;
+use midnight_circuits::CircuitField;
 use keccak_sha3::{
     packed_chip::{PackedChip, PackedConfig, PACKED_ADVICE_COLS, PACKED_FIXED_COLS},
     sha3_256_gadget::{Keccak256, Sha3_256},
@@ -43,13 +43,13 @@ use crate::external::{convert_to_bytes, unsafe_convert_to_bytes, NG};
 /// particular, enabling either of the two chips in the standard library has the
 /// same effect, namely configuring a `PackedChip<F>`.
 #[derive(Clone, Debug)]
-pub struct KeccakSha3Wrapper<F: PrimeField> {
+pub struct KeccakSha3Wrapper<F: CircuitField> {
     keccak_chip: Keccak256<F, PackedChip<F>>,
     sha3_chip: Sha3_256<F, PackedChip<F>>,
     native_gadget: NG<F>,
 }
 
-impl<F: PrimeField> Chip<F> for KeccakSha3Wrapper<F> {
+impl<F: CircuitField> Chip<F> for KeccakSha3Wrapper<F> {
     type Config = PackedConfig;
     type Loaded = ();
     fn config(&self) -> &Self::Config {
@@ -59,7 +59,7 @@ impl<F: PrimeField> Chip<F> for KeccakSha3Wrapper<F> {
         self.keccak_chip.loaded()
     }
 }
-impl<F: PrimeField> ComposableChip<F> for KeccakSha3Wrapper<F> {
+impl<F: CircuitField> ComposableChip<F> for KeccakSha3Wrapper<F> {
     type SharedResources = (
         Column<Fixed>,
         [Column<Advice>; PACKED_ADVICE_COLS],
@@ -90,7 +90,7 @@ impl<F: PrimeField> ComposableChip<F> for KeccakSha3Wrapper<F> {
     }
 }
 
-impl<F: PrimeField> KeccakSha3Wrapper<F> {
+impl<F: CircuitField> KeccakSha3Wrapper<F> {
     /// Wrapper for the main method of Keccak/Sha3. The argument `keccak` is set
     /// to true to invoke the `keccak256` variant of the hash, and `sha3` is
     /// called otherwise.
@@ -147,7 +147,7 @@ impl<F: PrimeField> KeccakSha3Wrapper<F> {
 }
 
 #[cfg(test)]
-impl<F: PrimeField> FromScratch<F> for KeccakSha3Wrapper<F> {
+impl<F: CircuitField> FromScratch<F> for KeccakSha3Wrapper<F> {
     type Config = (PackedConfig, P2RDecompositionConfig);
 
     fn new_from_scratch(config: &Self::Config) -> Self {
@@ -184,7 +184,7 @@ impl<F: PrimeField> FromScratch<F> for KeccakSha3Wrapper<F> {
 // Some preimage tests against an external library.
 #[cfg(test)]
 mod test {
-    use ff::PrimeField;
+    use midnight_circuits::CircuitField;
     use midnight_circuits::{
         field::NativeGadget,
         instructions::{hash::HashCPU, HashInstructions},
@@ -202,13 +202,13 @@ mod test {
 
     // A wrapper for testing Blake with 512 bits.
     #[derive(Debug, Clone)]
-    struct Keccak256<F: PrimeField>(KeccakSha3Wrapper<F>);
+    struct Keccak256<F: CircuitField>(KeccakSha3Wrapper<F>);
 
     // A wrapper for testing Blake with 256 bits.
     #[derive(Debug, Clone)]
-    struct Sha3_256<F: PrimeField>(KeccakSha3Wrapper<F>);
+    struct Sha3_256<F: CircuitField>(KeccakSha3Wrapper<F>);
 
-    impl<F: PrimeField> HashCPU<u8, [u8; 32]> for Keccak256<F> {
+    impl<F: CircuitField> HashCPU<u8, [u8; 32]> for Keccak256<F> {
         fn hash(input: &[u8]) -> [u8; 32] {
             let mut hasher = KeccakCpu::new();
             hasher.update(input);
@@ -216,7 +216,7 @@ mod test {
         }
     }
 
-    impl<F: PrimeField> HashCPU<u8, [u8; 32]> for Sha3_256<F> {
+    impl<F: CircuitField> HashCPU<u8, [u8; 32]> for Sha3_256<F> {
         fn hash(inputs: &[u8]) -> [u8; 32] {
             let mut hasher = Sha3Cpu::new();
             hasher.update(inputs);
@@ -224,7 +224,7 @@ mod test {
         }
     }
 
-    impl<F: PrimeField> HashInstructions<F, AssignedByte<F>, [AssignedByte<F>; 32]> for Keccak256<F> {
+    impl<F: CircuitField> HashInstructions<F, AssignedByte<F>, [AssignedByte<F>; 32]> for Keccak256<F> {
         fn hash(
             &self,
             layouter: &mut impl Layouter<F>,
@@ -234,7 +234,7 @@ mod test {
         }
     }
 
-    impl<F: PrimeField> HashInstructions<F, AssignedByte<F>, [AssignedByte<F>; 32]> for Sha3_256<F> {
+    impl<F: CircuitField> HashInstructions<F, AssignedByte<F>, [AssignedByte<F>; 32]> for Sha3_256<F> {
         fn hash(
             &self,
             layouter: &mut impl Layouter<F>,
@@ -244,7 +244,7 @@ mod test {
         }
     }
 
-    impl<F: PrimeField> FromScratch<F> for Keccak256<F> {
+    impl<F: CircuitField> FromScratch<F> for Keccak256<F> {
         type Config = <KeccakSha3Wrapper<F> as FromScratch<F>>::Config;
         fn new_from_scratch(config: &Self::Config) -> Self {
             Keccak256(KeccakSha3Wrapper::new_from_scratch(config))
@@ -260,7 +260,7 @@ mod test {
         }
     }
 
-    impl<F: PrimeField> FromScratch<F> for Sha3_256<F> {
+    impl<F: CircuitField> FromScratch<F> for Sha3_256<F> {
         type Config = <KeccakSha3Wrapper<F> as FromScratch<F>>::Config;
         fn new_from_scratch(config: &Self::Config) -> Self {
             Sha3_256(KeccakSha3Wrapper::new_from_scratch(config))

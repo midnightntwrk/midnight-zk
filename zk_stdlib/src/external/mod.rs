@@ -45,7 +45,7 @@ fn unsafe_convert_to_bytes<V, F>(
     bytes: &[AssignedCell<V, F>],
 ) -> Result<Vec<AssignedByte<F>>, Error>
 where
-    F: ff::PrimeField,
+    F: midnight_circuits::CircuitField,
     V: Clone,
     for<'v> Rational<F>: From<&'v V>,
 {
@@ -65,7 +65,7 @@ fn convert_to_bytes<V, F>(
     bytes: &[AssignedCell<V, F>],
 ) -> Result<Vec<AssignedByte<F>>, Error>
 where
-    F: ff::PrimeField,
+    F: midnight_circuits::CircuitField,
     V: Clone,
     for<'v> Rational<F>: From<&'v V>,
 {
