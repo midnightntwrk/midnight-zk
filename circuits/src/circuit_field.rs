@@ -77,6 +77,46 @@ pub trait CircuitField: PrimeField {
         let n = BigUint::from_bytes_be(bytes);
         Self::from_biguint(&n)
     }
+
+    /// Decomposes the field element into little-endian bits.
+    ///
+    /// - If `nb_bits = None`, the output has as many bits as necessary to
+    ///   represent the element, but no more.
+    /// - If `nb_bits` is provided, the output has the specified length,
+    ///   possibly with trailing zeros.
+    ///
+    /// # Panics
+    ///
+    /// If the element does not fit in `nb_bits` bits when such argument is
+    /// provided.
+    fn to_le_bits(&self, nb_bits: Option<usize>) -> Vec<bool> {
+        let big = self.to_biguint();
+        let mut bits: Vec<bool> = (0..big.bits()).map(|i| big.bit(i)).collect();
+        if let Some(n) = nb_bits {
+            assert!(n >= bits.len());
+            bits.resize(n, false);
+        }
+        bits
+    }
+
+    /// Creates a field element from a little-endian bitstring.
+    ///
+    /// # Panics
+    ///
+    /// If `bits.len() > Self::NUM_BITS`.
+    fn from_le_bits(bits: &[bool]) -> Self {
+        assert!(bits.len() as u32 <= Self::NUM_BITS);
+        let bytes: Vec<u8> = bits
+            .chunks(8)
+            .map(|chunk| {
+                chunk
+                    .iter()
+                    .enumerate()
+                    .fold(0u8, |acc, (i, b)| acc + if *b { 1 << i } else { 0 })
+            })
+            .collect();
+        Self::from_bytes_le(&bytes).unwrap()
+    }
 }
 
 // Macro for implementing CircuitField for LE and BE fields
