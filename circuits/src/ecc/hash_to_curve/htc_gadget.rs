@@ -179,7 +179,7 @@ mod tests {
         F: CircuitField,
     {
         let [x1, x2]: [_; 2] =
-            [p1, p2].map(|v| v.into().coordinates().expect("Valid affine point.").0.to_repr());
+            [p1, p2].map(|v| v.into().coordinates().expect("Valid affine point.").0.to_bytes_le());
 
         (x1.as_ref().iter())
             .zip(x2.as_ref().iter())

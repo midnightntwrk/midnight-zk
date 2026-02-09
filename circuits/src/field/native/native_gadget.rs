@@ -527,7 +527,7 @@ where
         layouter: &mut impl Layouter<F>,
         value: Value<u8>,
     ) -> Result<AssignedByte<F>, Error> {
-        // We can skip the in-circuit [0, 7]-range-check as this condition will
+        // We can skip the in-circuit [0, 255]-range-check as this condition will
         // be enforced through the public inputs bind anyway.
         let assigned_native = self
             .native_chip
