@@ -34,15 +34,26 @@
 //!
 //! - [Curve25519 Paper](https://cr.yp.to/ecdh/curve25519-20060209.pdf)
 
-use core::convert::TryInto;
+use core::borrow::Borrow;
+use core::cmp::Ordering;
+use core::fmt;
+use core::iter::{Product, Sum};
+use std::io;
 
+use ff::{Field, FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
 use rand_core::RngCore;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 
-/// A field element represented as 4 limbs (256 bits)
+use crate::arithmetic::{adc, mac, sbb};
+use crate::ff_ext::inverse::BYInverter;
+use crate::ff_ext::jacobi::jacobi;
+use crate::serde::endian::{Endian, EndianRepr};
+use crate::serde::{Repr, SerdeObject};
+
+/// A field element represented as 4 limbs (256 bits).
 type Limbs = [u64; 4];
 
-/// Extended limbs used during multiplication (512 bits)
+/// Extended limbs used during multiplication (512 bits).
 type ExtendedLimbs = [u64; 8];
 
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
@@ -50,10 +61,10 @@ pub struct Fp(#[doc(hidden)] pub Limbs);
 
 /// INV = -(p^{-1} mod 2^64) mod 2^64.
 const INV: u64 = 0x86bca1af286bca1bu64;
+
 impl Fp {
     #[inline(always)]
     pub const fn add(&self, rhs: &Self) -> Self {
-        use crate::arithmetic::{adc, sbb};
         let (d_0, carry) = adc(self.0[0], rhs.0[0], 0);
         let (d_1, carry) = adc(self.0[1], rhs.0[1], carry);
         let (d_2, carry) = adc(self.0[2], rhs.0[2], carry);
@@ -69,13 +80,14 @@ impl Fp {
         let (d_3, _) = adc(d_3, Self::MODULUS_LIMBS[3] & borrow, carry);
         Fp([d_0, d_1, d_2, d_3])
     }
+
     #[inline]
     pub const fn double(&self) -> Self {
         self.add(self)
     }
+
     #[inline(always)]
     pub const fn sub(&self, rhs: &Self) -> Self {
-        use crate::arithmetic::{adc, sbb};
         let (d_0, borrow) = sbb(self.0[0], rhs.0[0], 0);
         let (d_1, borrow) = sbb(self.0[1], rhs.0[1], borrow);
         let (d_2, borrow) = sbb(self.0[2], rhs.0[2], borrow);
@@ -86,9 +98,9 @@ impl Fp {
         let (d_3, _) = adc(d_3, Self::MODULUS_LIMBS[3] & borrow, carry);
         Fp([d_0, d_1, d_2, d_3])
     }
+
     #[inline(always)]
     pub const fn neg(&self) -> Self {
-        use crate::arithmetic::sbb;
         let (d_0, borrow) = sbb(Self::MODULUS_LIMBS[0], self.0[0], 0);
         let (d_1, borrow) = sbb(Self::MODULUS_LIMBS[1], self.0[1], borrow);
         let (d_2, borrow) = sbb(Self::MODULUS_LIMBS[2], self.0[2], borrow);
@@ -96,9 +108,9 @@ impl Fp {
         let mask = (((self.0[0] | self.0[1] | self.0[2] | self.0[3]) == 0) as u64).wrapping_sub(1);
         Fp([d_0 & mask, d_1 & mask, d_2 & mask, d_3 & mask])
     }
+
     #[inline(always)]
     pub const fn mul(&self, rhs: &Self) -> Self {
-        use crate::arithmetic::mac;
         let (r_0, carry) = mac(0, self.0[0], rhs.0[0], 0);
         let (r_1, carry) = mac(0, self.0[0], rhs.0[1], carry);
         let (r_2, carry) = mac(0, self.0[0], rhs.0[2], carry);
@@ -117,9 +129,9 @@ impl Fp {
         let (r_6, r_7) = mac(r_6, self.0[3], rhs.0[3], carry);
         Fp::montgomery_reduce(&[r_0, r_1, r_2, r_3, r_4, r_5, r_6, r_7])
     }
+
     #[inline(always)]
     pub const fn square(&self) -> Self {
-        use crate::arithmetic::{adc, mac};
         let (r_1, carry) = mac(0, self.0[0], self.0[1], 0);
         let (r_2, carry) = mac(0, self.0[0], self.0[2], carry);
         let (r_3, r_4) = mac(0, self.0[0], self.0[3], carry);
@@ -146,7 +158,6 @@ impl Fp {
 
     #[inline(always)]
     pub(crate) const fn montgomery_reduce(r: &ExtendedLimbs) -> Self {
-        use crate::arithmetic::{adc, mac, sbb};
         let k = r[0].wrapping_mul(INV);
         let (_, carry) = mac(r[0], k, Self::MODULUS_LIMBS[0], 0);
         let (r_1, carry) = mac(r[1], k, Self::MODULUS_LIMBS[1], carry);
@@ -182,9 +193,9 @@ impl Fp {
         let (d_3, _) = adc(d_3, Self::MODULUS_LIMBS[3] & borrow, carry);
         Fp([d_0, d_1, d_2, d_3])
     }
+
     #[inline(always)]
     pub(crate) const fn from_mont(&self) -> [u64; 4] {
-        use crate::arithmetic::mac;
         let k = self.0[0].wrapping_mul(INV);
         let (_, r_0) = mac(self.0[0], k, Self::MODULUS_LIMBS[0], 0);
         let (r_1, r_0) = mac(self.0[1], k, Self::MODULUS_LIMBS[1], r_0);
@@ -207,8 +218,7 @@ impl Fp {
         let (r_2, r_3) = mac(r_2, k, Self::MODULUS_LIMBS[3], r_3);
         Fp([r_0, r_1, r_2, r_3]).sub(&Fp(Self::MODULUS_LIMBS)).0
     }
-}
-impl Fp {
+
     /// Const-compatible multiplication (delegates to `mul`).
     #[inline(always)]
     pub(crate) const fn mul_const(&self, rhs: &Self) -> Self {
@@ -216,9 +226,8 @@ impl Fp {
     }
 }
 
-impl core::fmt::Debug for Fp {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        use ff::PrimeField;
+impl fmt::Debug for Fp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let tmp = self.to_repr();
         f.write_fmt(format_args!("0x"))?;
         for &b in tmp.as_ref().iter().rev() {
@@ -227,29 +236,29 @@ impl core::fmt::Debug for Fp {
         Ok(())
     }
 }
+
 impl ConstantTimeEq for Fp {
     fn ct_eq(&self, other: &Self) -> Choice {
         Choice::from(self.0.iter().zip(other.0).all(|(a, b)| bool::from(a.ct_eq(&b))) as u8)
     }
 }
+
 impl ConditionallySelectable for Fp {
     fn conditional_select(a: &Self, b: &Self, choice: Choice) -> Self {
-        let limbs = (0..4usize)
-            .map(|i| u64::conditional_select(&a.0[i], &b.0[i], choice))
-            .collect::<Vec<_>>()
-            .try_into()
-            .unwrap();
-        Fp(limbs)
+        Fp(core::array::from_fn(|i| {
+            u64::conditional_select(&a.0[i], &b.0[i], choice)
+        }))
     }
 }
-impl core::cmp::PartialOrd for Fp {
-    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+
+impl PartialOrd for Fp {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
-impl core::cmp::Ord for Fp {
-    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
-        use ff::PrimeField;
+
+impl Ord for Fp {
+    fn cmp(&self, other: &Self) -> Ordering {
         let left = self.to_repr();
         let right = other.to_repr();
         left.as_ref()
@@ -257,51 +266,63 @@ impl core::cmp::Ord for Fp {
             .zip(right.as_ref().iter())
             .rev()
             .find_map(|(left_byte, right_byte)| match left_byte.cmp(right_byte) {
-                core::cmp::Ordering::Equal => None,
+                Ordering::Equal => None,
                 res => Some(res),
             })
-            .unwrap_or(core::cmp::Ordering::Equal)
+            .unwrap_or(Ordering::Equal)
     }
 }
-impl<T: ::core::borrow::Borrow<Fp>> ::core::iter::Sum<T> for Fp {
+
+impl<T: Borrow<Fp>> Sum<T> for Fp {
     fn sum<I: Iterator<Item = T>>(iter: I) -> Self {
         iter.fold(Self::zero(), |acc, item| acc + item.borrow())
     }
 }
-impl<T: ::core::borrow::Borrow<Fp>> ::core::iter::Product<T> for Fp {
+
+impl<T: Borrow<Fp>> Product<T> for Fp {
     fn product<I: Iterator<Item = T>>(iter: I) -> Self {
         iter.fold(Self::one(), |acc, item| acc * item.borrow())
     }
 }
-impl crate::serde::endian::EndianRepr for Fp {
-    const ENDIAN: crate::serde::endian::Endian = crate::serde::endian::Endian::LE;
+
+impl EndianRepr for Fp {
+    const ENDIAN: Endian = Endian::LE;
+
     fn to_bytes(&self) -> Vec<u8> {
         self.to_bytes().to_vec()
     }
-    fn from_bytes(bytes: &[u8]) -> subtle::CtOption<Self> {
+
+    fn from_bytes(bytes: &[u8]) -> CtOption<Self> {
         Fp::from_bytes(bytes[..Fp::SIZE].try_into().unwrap())
     }
 }
+
 impl Fp {
+    /// Size in bytes.
     pub const SIZE: usize = 4 * 8;
+
+    /// Number of 8-byte limbs.
     pub const NUM_LIMBS: usize = 4;
+
     pub(crate) const MODULUS_LIMBS: [u64; Self::NUM_LIMBS] = [
         0xffffffffffffffed,
         0xffffffffffffffff,
         0xffffffffffffffff,
         0x7fffffffffffffff,
     ];
+
     #[allow(dead_code)]
     pub(crate) const MODULUS_LIMBS_32: [u32; Self::NUM_LIMBS * 2] = [
         0xffffffed, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff,
         0x7fffffff,
     ];
+
     const R: Self = Self([0x26, 0, 0, 0]);
     const R2: Self = Self([0x5a4, 0, 0, 0]);
     const R3: Self = Self([0xd658, 0, 0, 0]);
 
-    /// Precomputed value: 2^((p-5)/8) mod p
-    /// Used in sqrt() algorithm for p ≡ 5 (mod 8)
+    /// Precomputed value: 2^((p-5)/8) mod p.
+    /// Used in sqrt() algorithm for p ≡ 5 (mod 8).
     const T_SQRT: Self = Self::from_raw([
         0x62770d93a507504f,
         0x97a18c035697f23c,
@@ -314,47 +335,52 @@ impl Fp {
     pub const fn zero() -> Fp {
         Fp([0; Self::NUM_LIMBS])
     }
+
     /// Returns one, the multiplicative identity.
     #[inline(always)]
     pub const fn one() -> Fp {
         Self::R
     }
+
     /// Converts from an integer represented in little endian
-    /// into its (congruent) `$field` representation.
+    /// into its (congruent) `Fp` representation.
     pub const fn from_raw(val: [u64; Self::NUM_LIMBS]) -> Self {
         Self(val).mul_const(&Self::R2)
     }
-    /// Attempts to convert a <#endian>-endian byte representation of
-    /// a scalar into a `$field`, failing if the input is not canonical.
-    pub fn from_bytes(bytes: &[u8; Self::SIZE]) -> subtle::CtOption<Self> {
-        use crate::serde::endian::EndianRepr;
+
+    /// Attempts to convert a little-endian byte representation of
+    /// a scalar into an `Fp`, failing if the input is not canonical.
+    pub fn from_bytes(bytes: &[u8; Self::SIZE]) -> CtOption<Self> {
         let mut el = Fp::default();
         Fp::ENDIAN.from_bytes(bytes, &mut el.0);
-        subtle::CtOption::new(
+        CtOption::new(
             el * Self::R2,
-            subtle::Choice::from(Self::is_less_than_modulus(&el.0) as u8),
+            Choice::from(Self::is_less_than_modulus(&el.0) as u8),
         )
     }
-    /// Converts an element of `$field` into a byte representation in
-    /// <#endian>-endian byte order.
+
+    /// Converts an element of `Fp` into a little-endian byte representation.
     pub fn to_bytes(&self) -> [u8; Self::SIZE] {
-        use crate::serde::endian::EndianRepr;
         let el = self.from_mont();
         let mut res = [0; Self::SIZE];
         Fp::ENDIAN.to_bytes(&mut res, &el);
         res
     }
+
     #[inline(always)]
     fn jacobi(&self) -> i64 {
-        crate::ff_ext::jacobi::jacobi::<5>(&self.0, &Self::MODULUS_LIMBS)
+        jacobi::<5>(&self.0, &Self::MODULUS_LIMBS)
     }
+
     #[inline(always)]
     pub(crate) fn is_less_than_modulus(limbs: &[u64; Self::NUM_LIMBS]) -> bool {
-        let borrow = limbs.iter().enumerate().fold(0, |borrow, (i, limb)| {
-            crate::arithmetic::sbb(*limb, Self::MODULUS_LIMBS[i], borrow).1
-        });
+        let borrow = limbs
+            .iter()
+            .enumerate()
+            .fold(0, |borrow, (i, limb)| sbb(*limb, Self::MODULUS_LIMBS[i], borrow).1);
         (borrow as u8) & 1 == 1
     }
+
     /// Returns whether or not this element is strictly lexicographically
     /// larger than its negation.
     pub fn lexicographically_largest(&self) -> Choice {
@@ -368,42 +394,44 @@ impl Fp {
         let borrow = tmp
             .iter()
             .zip(HALF_MODULUS.iter())
-            .fold(0, |borrow, (t, m)| crate::arithmetic::sbb(*t, *m, borrow).1);
+            .fold(0, |borrow, (t, m)| sbb(*t, *m, borrow).1);
         !Choice::from((borrow as u8) & 1)
     }
 }
 
-impl ff::Field for Fp {
+impl Field for Fp {
     const ZERO: Self = Self::zero();
     const ONE: Self = Self::one();
 
     fn random(mut rng: impl RngCore) -> Self {
         let mut wide = [0u8; Self::SIZE * 2];
         rng.fill_bytes(&mut wide);
-        <Fp as ff::FromUniformBytes<{ Fp::SIZE * 2 }>>::from_uniform_bytes(&wide)
+        <Fp as FromUniformBytes<64>>::from_uniform_bytes(&wide)
     }
+
     #[inline(always)]
     fn double(&self) -> Self {
         self.double()
     }
+
     #[inline(always)]
     fn square(&self) -> Self {
         self.square()
     }
+
     #[inline(always)]
     fn invert(&self) -> CtOption<Self> {
-        const BYINVERTOR: crate::ff_ext::inverse::BYInverter<6> =
-            crate::ff_ext::inverse::BYInverter::<6>::new(&Fp::MODULUS_LIMBS, &Fp::R2.0);
+        const BYINVERTOR: BYInverter<6> = BYInverter::<6>::new(&Fp::MODULUS_LIMBS, &Fp::R2.0);
         if let Some(inverse) = BYINVERTOR.invert::<{ Self::NUM_LIMBS }>(&self.0) {
-            subtle::CtOption::new(Self(inverse), subtle::Choice::from(1))
+            CtOption::new(Self(inverse), Choice::from(1))
         } else {
-            subtle::CtOption::new(Self::zero(), subtle::Choice::from(0))
+            CtOption::new(Self::zero(), Choice::from(0))
         }
     }
 
-    fn sqrt(&self) -> subtle::CtOption<Self> {
+    fn sqrt(&self) -> CtOption<Self> {
         // Algorithm 3 https://eprint.iacr.org/2012/685.pdf
-        // for p = 5 mod 8
+        // for p = 5 mod 8.
         const EXP: [u64; 4] = [
             0xfffffffffffffffd,
             0xffffffffffffffff,
@@ -421,23 +449,25 @@ impl ff::Field for Fp {
         let x = ab * (i - Self::ONE);
         CtOption::new(x, !valid)
     }
+
     fn sqrt_ratio(num: &Self, div: &Self) -> (Choice, Self) {
         ff::helpers::sqrt_ratio_generic(num, div)
     }
 }
-impl From<Fp> for crate::serde::Repr<{ Fp::SIZE }> {
-    fn from(value: Fp) -> crate::serde::Repr<{ Fp::SIZE }> {
-        use ff::PrimeField;
+
+impl From<Fp> for Repr<{ Fp::SIZE }> {
+    fn from(value: Fp) -> Repr<{ Fp::SIZE }> {
         value.to_repr()
     }
 }
-impl<'a> From<&'a Fp> for crate::serde::Repr<{ Fp::SIZE }> {
-    fn from(value: &'a Fp) -> crate::serde::Repr<{ Fp::SIZE }> {
-        use ff::PrimeField;
+
+impl<'a> From<&'a Fp> for Repr<{ Fp::SIZE }> {
+    fn from(value: &'a Fp) -> Repr<{ Fp::SIZE }> {
         value.to_repr()
     }
 }
-impl ff::PrimeField for Fp {
+
+impl PrimeField for Fp {
     const NUM_BITS: u32 = 255;
     const CAPACITY: u32 = 255 - 1;
     const TWO_INV: Self = Self([0x13, 0, 0, 0]);
@@ -458,39 +488,34 @@ impl ff::PrimeField for Fp {
     const DELTA: Self = Self([0x260, 0, 0, 0]);
     const MODULUS: &'static str =
         "0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed";
-    type Repr = crate::serde::Repr<{ Fp::SIZE }>;
+    type Repr = Repr<{ Fp::SIZE }>;
+
     fn from_u128(v: u128) -> Self {
-        Self::R2
-            * Self(
-                [v as u64, (v >> 64) as u64]
-                    .iter()
-                    .copied()
-                    .chain(core::iter::repeat(0))
-                    .take(Self::NUM_LIMBS)
-                    .collect::<Vec<_>>()
-                    .try_into()
-                    .unwrap(),
-            )
+        Self::R2 * Self([v as u64, (v >> 64) as u64, 0, 0])
     }
-    fn from_repr(repr: Self::Repr) -> subtle::CtOption<Self> {
+
+    fn from_repr(repr: Self::Repr) -> CtOption<Self> {
         let mut el = Fp::default();
-        crate::serde::endian::Endian::LE.from_bytes(repr.as_ref(), &mut el.0);
-        subtle::CtOption::new(
+        Endian::LE.from_bytes(repr.as_ref(), &mut el.0);
+        CtOption::new(
             el * Self::R2,
-            subtle::Choice::from(Self::is_less_than_modulus(&el.0) as u8),
+            Choice::from(Self::is_less_than_modulus(&el.0) as u8),
         )
     }
+
     fn to_repr(&self) -> Self::Repr {
         let el = self.from_mont();
         let mut res = [0; 32];
-        crate::serde::endian::Endian::LE.to_bytes(&mut res, &el);
+        Endian::LE.to_bytes(&mut res, &el);
         res.into()
     }
+
     fn is_odd(&self) -> Choice {
         Choice::from(self.to_repr()[0] & 1)
     }
 }
-impl crate::serde::SerdeObject for Fp {
+
+impl SerdeObject for Fp {
     fn from_raw_bytes_unchecked(bytes: &[u8]) -> Self {
         assert_eq!(bytes.len(), 32);
         let inner = (0..4)
@@ -498,6 +523,7 @@ impl crate::serde::SerdeObject for Fp {
             .collect::<Vec<_>>();
         Self(inner.try_into().unwrap())
     }
+
     fn from_raw_bytes(bytes: &[u8]) -> Option<Self> {
         if bytes.len() != 32 {
             return None;
@@ -505,6 +531,7 @@ impl crate::serde::SerdeObject for Fp {
         let elt = Self::from_raw_bytes_unchecked(bytes);
         Self::is_less_than_modulus(&elt.0).then_some(elt)
     }
+
     fn to_raw_bytes(&self) -> Vec<u8> {
         let mut res = Vec::with_capacity(Self::SIZE);
         for limb in self.0.iter() {
@@ -512,7 +539,8 @@ impl crate::serde::SerdeObject for Fp {
         }
         res
     }
-    fn read_raw_unchecked<R: std::io::Read>(reader: &mut R) -> Self {
+
+    fn read_raw_unchecked<R: io::Read>(reader: &mut R) -> Self {
         let inner = [(); 4].map(|_| {
             let mut buf = [0; 8];
             reader.read_exact(&mut buf).unwrap();
@@ -520,7 +548,8 @@ impl crate::serde::SerdeObject for Fp {
         });
         Self(inner)
     }
-    fn read_raw<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+
+    fn read_raw<R: io::Read>(reader: &mut R) -> io::Result<Self> {
         let mut inner = [0u64; 4];
         for limb in inner.iter_mut() {
             let mut buf = [0; 8];
@@ -528,20 +557,24 @@ impl crate::serde::SerdeObject for Fp {
             *limb = u64::from_le_bytes(buf);
         }
         let elt = Self(inner);
-        Self::is_less_than_modulus(&elt.0).then_some(elt).ok_or_else(|| {
-            std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "input number is not less than field modulus",
-            )
-        })
+        Self::is_less_than_modulus(&elt.0)
+            .then_some(elt)
+            .ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "input number is not less than field modulus",
+                )
+            })
     }
-    fn write_raw<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+
+    fn write_raw<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
         for limb in self.0.iter() {
             writer.write_all(&limb.to_le_bytes())?;
         }
         Ok(())
     }
 }
+
 impl Fp {
     fn from_uniform_bytes_inner(bytes: &[u8]) -> Self {
         let mut wide = [0u8; Self::SIZE * 2];
@@ -563,18 +596,19 @@ impl Fp {
     }
 }
 
-impl ff::FromUniformBytes<48> for Fp {
+impl FromUniformBytes<48> for Fp {
     fn from_uniform_bytes(bytes: &[u8; 48]) -> Self {
         Self::from_uniform_bytes_inner(bytes)
     }
 }
 
-impl ff::FromUniformBytes<64> for Fp {
+impl FromUniformBytes<64> for Fp {
     fn from_uniform_bytes(bytes: &[u8; 64]) -> Self {
         Self::from_uniform_bytes_inner(bytes)
     }
 }
-impl ff::WithSmallOrderMulGroup<3> for Fp {
+
+impl WithSmallOrderMulGroup<3> for Fp {
     const ZETA: Self = Self([
         0x50042761e7b20780,
         0xdff5c6f9aea649f9,
