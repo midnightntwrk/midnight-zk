@@ -26,7 +26,7 @@ use core::{
 
 use curve25519_dalek::{edwards::CompressedEdwardsY, EdwardsPoint};
 use group::{Group, GroupEncoding};
-use subtle::{Choice, ConditionallySelectable, ConstantTimeEq};
+use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 
 use super::{affine::Curve25519Affine, Fp, Scalar};
 
@@ -357,7 +357,7 @@ impl group::Curve for Curve25519 {
     type AffineRepr = Curve25519Affine;
 
     fn to_affine(&self) -> Self::AffineRepr {
-        Curve25519Affine::from_edwards(self.0).expect("valid curve point")
+        Curve25519Affine::from_edwards(self.0)
     }
 
     fn batch_normalize(p: &[Self], q: &mut [Self::AffineRepr]) {
@@ -372,15 +372,15 @@ impl group::Curve for Curve25519 {
 impl GroupEncoding for Curve25519 {
     type Repr = [u8; 32];
 
-    fn from_bytes(bytes: &Self::Repr) -> subtle::CtOption<Self> {
+    fn from_bytes(bytes: &Self::Repr) -> CtOption<Self> {
         let compressed = CompressedEdwardsY(*bytes);
         match compressed.decompress() {
-            Some(point) => subtle::CtOption::new(Curve25519(point), Choice::from(1u8)),
-            None => subtle::CtOption::new(Curve25519(EdwardsPoint::identity()), Choice::from(0u8)),
+            Some(point) => CtOption::new(Curve25519(point), Choice::from(1u8)),
+            None => CtOption::new(Curve25519(EdwardsPoint::identity()), Choice::from(0u8)),
         }
     }
 
-    fn from_bytes_unchecked(bytes: &Self::Repr) -> subtle::CtOption<Self> {
+    fn from_bytes_unchecked(bytes: &Self::Repr) -> CtOption<Self> {
         Self::from_bytes(bytes)
     }
 

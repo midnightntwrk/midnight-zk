@@ -16,7 +16,7 @@
 use curve25519_dalek::{edwards::CompressedEdwardsY, EdwardsPoint};
 use ff::Field;
 use group::GroupEncoding;
-use subtle::{Choice, ConditionallySelectable, ConstantTimeEq};
+use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 
 use super::{
     curve::{Curve25519, CURVE_A, CURVE_D},
@@ -56,7 +56,7 @@ impl Curve25519Affine {
     }
 
     /// Creates a new `Curve25519Affine` from an `EdwardsPoint`.
-    pub fn from_edwards(point: EdwardsPoint) -> Option<Self> {
+    pub fn from_edwards(point: EdwardsPoint) -> Self {
         let compressed = point.compress();
         let bytes = compressed.to_bytes();
 
@@ -65,7 +65,7 @@ impl Curve25519Affine {
         let x_sign = (y_bytes[31] >> 7) & 1;
         y_bytes[31] &= 0x7f; // Clear sign bit.
 
-        let y = Fp::from_bytes(&y_bytes).into_option()?;
+        let y = Fp::from_bytes(&y_bytes).unwrap();
 
         // Recover x from y using curve equation: -x^2 + y^2 = 1 + d*x^2*y^2
         // Rearranged: x^2 = (y^2 - 1) / (1 + d*y^2)
@@ -73,14 +73,14 @@ impl Curve25519Affine {
         let u_num = y2 - Fp::ONE;
         let u_den = Fp::ONE + CURVE_D * y2;
 
-        let mut x = Fp::sqrt(&(u_num * u_den.invert().into_option()?)).into_option()?;
+        let mut x = Fp::sqrt(&(u_num * u_den.invert().unwrap())).unwrap();
 
         // Apply sign correction.
         if (x.to_bytes()[0] & 1) != x_sign {
             x = -x;
         }
 
-        Some(Self { x, y, point })
+        Self { x, y, point }
     }
 
     /// Creates a new `Curve25519Affine` from x and y coordinates.
@@ -145,7 +145,7 @@ impl ConditionallySelectable for Curve25519Affine {
 
 impl From<Curve25519> for Curve25519Affine {
     fn from(point: Curve25519) -> Self {
-        Curve25519Affine::from_edwards(point.0).expect("valid curve point")
+        Curve25519Affine::from_edwards(point.0)
     }
 }
 
@@ -158,18 +158,15 @@ impl From<Curve25519Affine> for Curve25519 {
 impl GroupEncoding for Curve25519Affine {
     type Repr = [u8; 32];
 
-    fn from_bytes(bytes: &Self::Repr) -> subtle::CtOption<Self> {
+    fn from_bytes(bytes: &Self::Repr) -> CtOption<Self> {
         let compressed = CompressedEdwardsY(*bytes);
         match compressed.decompress() {
-            Some(point) => match Curve25519Affine::from_edwards(point) {
-                Some(affine) => subtle::CtOption::new(affine, Choice::from(1u8)),
-                None => subtle::CtOption::new(Curve25519Affine::default(), Choice::from(0u8)),
-            },
-            None => subtle::CtOption::new(Curve25519Affine::default(), Choice::from(0u8)),
+            Some(point) => CtOption::new(Curve25519Affine::from_edwards(point), Choice::from(1u8)),
+            None => CtOption::new(Curve25519Affine::default(), Choice::from(0u8)),
         }
     }
 
-    fn from_bytes_unchecked(bytes: &Self::Repr) -> subtle::CtOption<Self> {
+    fn from_bytes_unchecked(bytes: &Self::Repr) -> CtOption<Self> {
         Self::from_bytes(bytes)
     }
 
