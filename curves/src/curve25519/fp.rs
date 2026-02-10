@@ -374,10 +374,9 @@ impl Fp {
 
     #[inline(always)]
     pub(crate) fn is_less_than_modulus(limbs: &[u64; Self::NUM_LIMBS]) -> bool {
-        let borrow = limbs
-            .iter()
-            .enumerate()
-            .fold(0, |borrow, (i, limb)| sbb(*limb, Self::MODULUS_LIMBS[i], borrow).1);
+        let borrow = limbs.iter().enumerate().fold(0, |borrow, (i, limb)| {
+            sbb(*limb, Self::MODULUS_LIMBS[i], borrow).1
+        });
         (borrow as u8) & 1 == 1
     }
 
@@ -441,13 +440,13 @@ impl Field for Fp {
         let a1 = self.pow_vartime(EXP);
         let a0 = (a1.square() * self).square();
 
-        let valid = a0.ct_eq(&-Self::ONE);
+        let invalid = a0.ct_eq(&-Self::ONE);
 
         let b = Self::T_SQRT * a1;
         let ab = b * self;
         let i = (ab * b).double();
         let x = ab * (i - Self::ONE);
-        CtOption::new(x, !valid)
+        CtOption::new(x, !invalid)
     }
 
     fn sqrt_ratio(num: &Self, div: &Self) -> (Choice, Self) {
@@ -557,14 +556,12 @@ impl SerdeObject for Fp {
             *limb = u64::from_le_bytes(buf);
         }
         let elt = Self(inner);
-        Self::is_less_than_modulus(&elt.0)
-            .then_some(elt)
-            .ok_or_else(|| {
-                io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "input number is not less than field modulus",
-                )
-            })
+        Self::is_less_than_modulus(&elt.0).then_some(elt).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "input number is not less than field modulus",
+            )
+        })
     }
 
     fn write_raw<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
