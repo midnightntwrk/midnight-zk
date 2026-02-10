@@ -73,11 +73,7 @@ impl Curve25519Affine {
         let u_num = y2 - Fp::ONE;
         let u_den = Fp::ONE + CURVE_D * y2;
 
-        // Compute x = sqrt(u_num / u_den).
-        let (is_valid, mut x) = Fp::sqrt_ratio(&u_num, &u_den);
-        if !bool::from(is_valid) {
-            return None;
-        }
+        let mut x = Fp::sqrt(&(u_num * u_den.invert().into_option()?)).into_option()?;
 
         // Apply sign correction.
         if (x.to_bytes()[0] & 1) != x_sign {
