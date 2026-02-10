@@ -25,8 +25,7 @@ use crate::{
         types::{AssignedSpreaded, AssignedWord, State},
         utils::{
             expr_pow2_ip, expr_pow4_ip, gen_spread_table, get_even_and_odd_bits, limb_coeffs,
-            limb_lengths, limb_values, negate_spreaded, spread, spreaded_sum, u32_in_be_limbs,
-            MASK_EVN_64,
+            limb_lengths, limb_values, negate_spreaded, spread, u32_in_be_limbs, MASK_EVN_64,
         },
     },
     instructions::{
@@ -665,14 +664,8 @@ impl<F: PrimeField> RipeMD160Chip<F> {
         and returns `Odd`
         */
         let adv_cols = self.config().advice_cols;
-        let val_of_sprdd_forms: Value<[u64; 3]> = Value::from_iter([
-            sprdd_X.0.value().copied().map(fe_to_u64),
-            sprdd_Y.0.value().copied().map(fe_to_u64),
-            Value::known(0u64),
-        ])
-        .map(|sprdd_forms: Vec<u64>| sprdd_forms.try_into().unwrap());
-        let val_of_sum = val_of_sprdd_forms.map(spreaded_sum);
-        let zero = AssignedWord::fixed(layouter, &self.native_gadget, 0u32)?;
+        let val_of_sum = sprdd_X.0.value().zip(sprdd_Y.0.value()).map(|(x, y)| fe_to_u64(*x + *y));
+        let zero: AssignedNative<F> = self.native_gadget.assign_fixed(layouter, F::ZERO)?;
 
         layouter.assign_region(
             || "Assign AND",
@@ -681,7 +674,7 @@ impl<F: PrimeField> RipeMD160Chip<F> {
 
                 sprdd_X.0.copy_advice(|| "sprdd_X", &mut region, adv_cols[5], 0)?;
                 sprdd_Y.0.copy_advice(|| "sprdd_Y", &mut region, adv_cols[6], 0)?;
-                zero.0.copy_advice(|| "sprdd_ZERO", &mut region, adv_cols[7], 0)?;
+                zero.copy_advice(|| "sprdd_ZERO", &mut region, adv_cols[7], 0)?;
 
                 let (res, _) =
                     self.assign_sprdd_11_11_10(&mut region, val_of_sum, Parity::Odd, 0)?;
@@ -726,14 +719,8 @@ impl<F: PrimeField> RipeMD160Chip<F> {
         and returns `Evn`.
         */
         let adv_cols = self.config().advice_cols;
-        let val_of_sprdd_forms: Value<[u64; 3]> = Value::from_iter([
-            sprdd_X.0.value().copied().map(fe_to_u64),
-            sprdd_Y.0.value().copied().map(fe_to_u64),
-            Value::known(0u64),
-        ])
-        .map(|sprdd_forms: Vec<u64>| sprdd_forms.try_into().unwrap());
-        let val_of_sum = val_of_sprdd_forms.map(spreaded_sum);
-        let zero = AssignedWord::fixed(layouter, &self.native_gadget, 0u32)?;
+        let val_of_sum = sprdd_X.0.value().zip(sprdd_Y.0.value()).map(|(x, y)| fe_to_u64(*x + *y));
+        let zero: AssignedNative<F> = self.native_gadget.assign_fixed(layouter, F::ZERO)?;
 
         layouter.assign_region(
             || "Assign XOR",
@@ -742,7 +729,7 @@ impl<F: PrimeField> RipeMD160Chip<F> {
 
                 sprdd_X.0.copy_advice(|| "sprdd_X", &mut region, adv_cols[5], 0)?;
                 sprdd_Y.0.copy_advice(|| "sprdd_Y", &mut region, adv_cols[6], 0)?;
-                zero.0.copy_advice(|| "sprdd_ZERO", &mut region, adv_cols[7], 0)?;
+                zero.copy_advice(|| "sprdd_ZERO", &mut region, adv_cols[7], 0)?;
 
                 let (res, _) =
                     self.assign_sprdd_11_11_10(&mut region, val_of_sum, Parity::Evn, 0)?;
@@ -789,13 +776,10 @@ impl<F: PrimeField> RipeMD160Chip<F> {
         and returns `Evn`.
         */
         let adv_cols = self.config().advice_cols;
-        let val_of_sprdd_forms: Value<[u64; 3]> = Value::from_iter([
-            sprdd_X.0.value().copied().map(fe_to_u64),
-            sprdd_Y.0.value().copied().map(fe_to_u64),
-            sprdd_Z.0.value().copied().map(fe_to_u64),
-        ])
-        .map(|sprdd_forms: Vec<u64>| sprdd_forms.try_into().unwrap());
-        let val_of_sum = val_of_sprdd_forms.map(spreaded_sum);
+        let val_of_sum = (sprdd_X.0.value())
+            .zip(sprdd_Y.0.value())
+            .zip(sprdd_Z.0.value())
+            .map(|((x, y), z)| fe_to_u64(*x + *y + *z));
 
         layouter.assign_region(
             || "Assign f_type_one",

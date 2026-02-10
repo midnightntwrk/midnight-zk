@@ -1,6 +1,5 @@
 use ff::PrimeField;
 
-use crate::hash::sha256::utils::assert_in_valid_spreaded_form;
 pub(crate) use crate::hash::sha256::utils::{
     expr_pow2_ip, expr_pow4_ip, get_even_and_odd_bits, negate_spreaded, spread, u32_in_be_limbs,
     MASK_EVN_64,
@@ -98,22 +97,6 @@ pub(super) fn limb_values(value: u32, rot: u8) -> [u32; NUM_LIMBS] {
     result
 }
 
-/// Computes off-circuit the sum of three spreaded values.
-///
-/// # Panics
-///
-/// If A, B, C are not in clean spreaded form.
-pub fn spreaded_sum(spreaded_forms: [u64; 3]) -> u64 {
-    spreaded_forms.into_iter().for_each(assert_in_valid_spreaded_form);
-
-    let [sA, sB, sC] = spreaded_forms;
-
-    // As each of sA, sB, sC is in valid spreaded form, their sum
-    // is at most: 3 * 0b0101..01 = 0b1111..11.
-    // Hence, the sum will never overflow u64.
-    sA + sB + sC
-}
-
 /// Generates the plain-spreaded lookup table. The limb lengths to be looked up
 /// cover the range [0, 11] for the rotation offsets used in RIPEMD-160.
 pub(super) fn gen_spread_table<F: PrimeField>() -> impl Iterator<Item = (F, F, F)> {
@@ -189,8 +172,8 @@ mod tests {
 
             // Compute A ⊕ B ⊕ C by the even bits of the value returned by
             // [`spreaded_sum`].
-            let spreaded_forms: [u64; 3] = vals.map(spread);
-            let (even, _odd) = get_even_and_odd_bits(spreaded_sum(spreaded_forms));
+            let [a_sprdd, b_sprdd, c_sprdd]: [u64; 3] = vals.map(spread);
+            let (even, _odd) = get_even_and_odd_bits(a_sprdd + b_sprdd + c_sprdd);
 
             assert_eq!(ret, even as u32);
         }
