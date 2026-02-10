@@ -52,8 +52,6 @@ testing = ["num-bigint/rand", "goldenfile", "serde_json", "rand_chacha"]
 heap_profiling = []
 # Enable truncated challenges. This makes recursive proofs more efficient
 truncated-challenges = ["midnight-proofs/truncated-challenges"]
-# Enable Curve25519
-curve25519 = ["midnight-curves/curve25519"]
 # Enable development curves (BN256, Pasta)
 dev-curves = ["midnight-curves/dev-curves", "midnight-proofs/dev-curves"]
 

@@ -336,7 +336,6 @@ Parameters generated with scripts/foreign_params_gen.py:
 */
 
 /// Curve25519's Base field over BLS12-381's Scalar field.
-#[cfg(feature = "curve25519")]
 impl FieldEmulationParams<midnight_curves::Fq, midnight_curves::curve25519::Fp>
     for MultiEmulationParams
 {
@@ -364,7 +363,6 @@ Parameters generated with scripts/foreign_params_gen.py:
 */
 
 /// Curve25519's Scalar field over BLS12-381's Scalar field.
-#[cfg(feature = "curve25519")]
 impl FieldEmulationParams<midnight_curves::Fq, midnight_curves::curve25519::Scalar>
     for MultiEmulationParams
 {

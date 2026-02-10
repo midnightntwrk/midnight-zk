@@ -29,8 +29,6 @@ pub mod bls12_381;
 mod jubjub;
 pub mod secp256k1;
 
-// Optional curves
-#[cfg(feature = "curve25519")]
 pub mod curve25519;
 
 // Development/testing curves (feature-gated)
