@@ -146,7 +146,7 @@ impl CircuitCurve for Curve25519 {
     const NUM_BITS_SUBGROUP: u32 = 252;
 
     fn coordinates(&self) -> Option<(Self::Base, Self::Base)> {
-        let affine = Curve25519Affine::from_edwards(self.0)?;
+        let affine = Curve25519Affine::from_edwards(self.0);
         Some((*affine.x(), *affine.y()))
     }
 
