@@ -17,10 +17,8 @@ use ff::PrimeField;
 use group::{Curve, Group};
 #[cfg(feature = "dev-curves")]
 use midnight_curves::bn256;
-use midnight_curves::curve25519::{
-    Curve25519, Curve25519Affine, CURVE_A as CURVE25519_A, CURVE_D as CURVE25519_D,
-};
 use midnight_curves::{
+    curve25519::{Curve25519, Curve25519Affine, CURVE_A as CURVE25519_A, CURVE_D as CURVE25519_D},
     secp256k1::{Secp256k1, Secp256k1Affine},
     CurveAffine, Fq as BlsScalar, JubjubAffine, JubjubExtended, JubjubSubgroup,
 };

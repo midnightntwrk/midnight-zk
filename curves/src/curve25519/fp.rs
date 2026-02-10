@@ -34,22 +34,27 @@
 //!
 //! - [Curve25519 Paper](https://cr.yp.to/ecdh/curve25519-20060209.pdf)
 
-use core::borrow::Borrow;
-use core::cmp::Ordering;
-use core::convert::TryInto;
-use core::fmt;
-use core::iter::{Product, Sum};
+use core::{
+    borrow::Borrow,
+    cmp::Ordering,
+    convert::TryInto,
+    fmt,
+    iter::{Product, Sum},
+};
 use std::io;
 
 use ff::{Field, FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
 use rand_core::RngCore;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 
-use crate::arithmetic::{adc, mac, sbb};
-use crate::ff_ext::inverse::BYInverter;
-use crate::ff_ext::jacobi::jacobi;
-use crate::serde::endian::{Endian, EndianRepr};
-use crate::serde::{Repr, SerdeObject};
+use crate::{
+    arithmetic::{adc, mac, sbb},
+    ff_ext::{inverse::BYInverter, jacobi::jacobi},
+    serde::{
+        endian::{Endian, EndianRepr},
+        Repr, SerdeObject,
+    },
+};
 
 /// A field element represented as 4 limbs (256 bits).
 type Limbs = [u64; 4];
