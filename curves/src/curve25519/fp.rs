@@ -506,7 +506,7 @@ impl crate::serde::SerdeObject for Fp {
         Self::is_less_than_modulus(&elt.0).then_some(elt)
     }
     fn to_raw_bytes(&self) -> Vec<u8> {
-        let mut res = Vec::with_capacity(4 * 4);
+        let mut res = Vec::with_capacity(Self::SIZE);
         for limb in self.0.iter() {
             res.extend_from_slice(&limb.to_le_bytes());
         }
