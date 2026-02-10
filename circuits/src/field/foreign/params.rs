@@ -332,7 +332,6 @@ Parameters generated with scripts/foreign_params_gen.py:
  - Limbs: 4
  - Base: 2^64
  - Auxiliary moduli: {native, 2^128}
- - MAX_BIT_LEN: 19-20
 ====================================================
 */
 
@@ -346,7 +345,7 @@ impl FieldEmulationParams<midnight_curves::Fq, midnight_curves::curve25519::Fp>
     fn moduli() -> Vec<BigInt> {
         vec![BigInt::from(2).pow(128)]
     }
-    const RC_LIMB_SIZE: u32 = 20;
+    const RC_LIMB_SIZE: u32 = 16;
 }
 
 /*
@@ -361,7 +360,6 @@ Parameters generated with scripts/foreign_params_gen.py:
  - Limbs: 5
  - Base: 2^51
  - Auxiliary moduli: {native, 2^146}
- - MAX_BIT_LEN: 17-20
 ====================================================
 */
 
