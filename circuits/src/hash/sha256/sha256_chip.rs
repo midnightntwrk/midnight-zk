@@ -1324,12 +1324,12 @@ impl<F: CircuitField> Sha256Chip<F> {
 
                 let a_plain = self.assign_add_mod_2_32(&mut region, summands, &zero)?;
                 let a_sprdd_val =
-                    a_plain.0.value().copied().map(fe_to_u32).map(spread).map(u64_to_fe);
+                    a_plain.value().copied().map(fe_to_u32).map(spread).map(u64_to_fe);
                 let a_sprdd = region
                     .assign_advice(|| "~A", self.config().advice_cols[4], 1, || a_sprdd_val)
                     .map(AssignedSpreaded)?;
 
-                let [val_10, val_09, val_11, val_02] = (a_plain.0.value().copied())
+                let [val_10, val_09, val_11, val_02] = (a_plain.value().copied())
                     .map(|a| u32_in_be_limbs(fe_to_u32(a), [10, 9, 11, 2]))
                     .transpose_array();
 
@@ -1342,7 +1342,7 @@ impl<F: CircuitField> Sha256Chip<F> {
 
                 Ok(LimbsOfA {
                     combined: AssignedPlainSpreaded {
-                        plain: a_plain,
+                        plain: AssignedPlain(a_plain),
                         spreaded: a_sprdd,
                     },
                     spreaded_limb_10: limb_10.spreaded,
@@ -1402,12 +1402,12 @@ impl<F: CircuitField> Sha256Chip<F> {
 
                 let e_plain = self.assign_add_mod_2_32(&mut region, summands, &zero)?;
                 let e_sprdd_val =
-                    (e_plain.0.value().copied()).map(fe_to_u32).map(spread).map(u64_to_fe);
+                    (e_plain.value().copied()).map(fe_to_u32).map(spread).map(u64_to_fe);
                 let e_sprdd = region
                     .assign_advice(|| "~E", self.config().advice_cols[4], 1, || e_sprdd_val)
                     .map(AssignedSpreaded)?;
 
-                let [val_07, val_12, val_02, val_05, val_06] = (e_plain.0.value().copied())
+                let [val_07, val_12, val_02, val_05, val_06] = (e_plain.value().copied())
                     .map(|e| u32_in_be_limbs(fe_to_u32(e), [7, 12, 2, 5, 6]))
                     .transpose_array();
 
@@ -1419,7 +1419,7 @@ impl<F: CircuitField> Sha256Chip<F> {
 
                 Ok(LimbsOfE {
                     combined: AssignedPlainSpreaded {
-                        plain: e_plain,
+                        plain: AssignedPlain(e_plain),
                         spreaded: e_sprdd,
                     },
                     spreaded_limb_07: limb_07.spreaded,
@@ -1484,7 +1484,7 @@ impl<F: CircuitField> Sha256Chip<F> {
                 let w_i_plain = self.assign_add_mod_2_32(&mut region, summands, &zero)?;
 
                 let [val_12, val_1a, val_1b, val_1c, val_07, val_3a, val_04, val_3b] =
-                    (w_i_plain.0.value().copied())
+                    (w_i_plain.value().copied())
                         .map(|w| u32_in_be_limbs(fe_to_u32(w), [12, 1, 1, 1, 7, 3, 4, 3]))
                         .transpose_array();
                 let limb_12 = self.assign_plain_and_spreaded(&mut region, val_12, 0, 0)?;
@@ -1500,7 +1500,7 @@ impl<F: CircuitField> Sha256Chip<F> {
                 let limb_1c = region.assign_advice(|| "W.1c", col, 2, || val_1c.map(u32_to_fe))?;
 
                 Ok(AssignedMessageWord {
-                    combined_plain: w_i_plain,
+                    combined_plain: AssignedPlain(w_i_plain),
                     spreaded_w_12: limb_12.spreaded,
                     spreaded_w_1a: AssignedSpreaded(limb_1a),
                     spreaded_w_1b: AssignedSpreaded(limb_1b),
@@ -1565,12 +1565,18 @@ impl<F: CircuitField> Sha256Chip<F> {
     /// # Panics
     ///
     /// If the more than 7 summands are provided.
+    ///
+    /// # WARNING
+    ///
+    /// This function does not constrain the result to be in the range
+    /// [0, 2^32), it is the caller's responsibility to do so.
+    /// Without such check, this function would be unsound.
     fn assign_add_mod_2_32(
         &self,
         region: &mut Region<'_, F>,
         summands: &[AssignedPlain<F, 32>],
         zero: &AssignedPlain<F, 32>,
-    ) -> Result<AssignedPlain<F, 32>, Error> {
+    ) -> Result<AssignedNative<F>, Error> {
         /*
         We distribute values in the PLONK table as follows.
 
@@ -1607,7 +1613,7 @@ impl<F: CircuitField> Sha256Chip<F> {
         summands[6].0.copy_advice(|| "S6", region, adv_cols[6], 2)?;
         let _carry: AssignedPlainSpreaded<F, 3> =
             self.assign_plain_and_spreaded(region, carry_val, 2, 1)?;
-        region.assign_advice(|| "sum", adv_cols[4], 0, || sum_val).map(AssignedPlain)
+        region.assign_advice(|| "sum", adv_cols[4], 0, || sum_val)
     }
 }
 
