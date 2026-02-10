@@ -36,6 +36,7 @@
 
 use core::borrow::Borrow;
 use core::cmp::Ordering;
+use core::convert::TryInto;
 use core::fmt;
 use core::iter::{Product, Sum};
 use std::io;
