@@ -16,6 +16,7 @@ verification keys break backwards compatibility.
 * `CircuitField` refactor: remove helpers, add `ScalarField` in `CircuitCurve` [#201](https://github.com/midnightntwrk/midnight-zk/pull/201)
 * Add method to assign a verifying key as a constant [#202](https://github.com/midnightntwrk/midnight-zk/pull/202)
 * RIPEMD160 chip [#156](https://github.com/midnightntwrk/midnight-zk/pull/156)
+* `CircuitField` refactor: remove helpers, add `ScalarExt` in `CircuitCurve` [#201](https://github.com/midnightntwrk/midnight-zk/pull/201)
 
 ### Changed
 * Change nr of bits to represent JubJub scalar field modulus from 255 -> 252 [#179](https://github.com/midnightntwrk/midnight-zk/pull/179)
