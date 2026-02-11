@@ -431,4 +431,15 @@ mod tests {
 
         assert_eq!(gen, decoded);
     }
+
+    #[test]
+    fn test_default() {
+        // The wrapper Curve25519Affine requires that EdwardsPoint::default()
+        // returns the identity for consistency.
+
+        let default = EdwardsPoint::default();
+        let id = EdwardsPoint::identity();
+
+        assert_eq!(id, default);
+    }
 }

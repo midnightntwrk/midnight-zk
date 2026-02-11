@@ -15,6 +15,7 @@
 
 use curve25519_dalek::{edwards::CompressedEdwardsY, EdwardsPoint};
 use ff::Field;
+use group::Group;
 use group::GroupEncoding;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 
@@ -114,7 +115,7 @@ impl Default for Curve25519Affine {
         Self {
             x: Fp::ZERO,
             y: Fp::ONE,
-            point: EdwardsPoint::default(),
+            point: EdwardsPoint::identity(),
         }
     }
 }
