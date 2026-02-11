@@ -206,8 +206,8 @@ impl CircuitCurve for G1Projective {
     const NUM_BITS_SUBGROUP: u32 = 255;
 
     fn coordinates(&self) -> Option<(Self::Base, Self::Base)> {
-        let a = self.to_affine();
-        Some((a.x(), a.y()))
+        let affine = self.to_affine();
+        Some((affine.x(), affine.y()))
     }
 
     fn from_xy(x: Self::Base, y: Self::Base) -> Option<Self> {
