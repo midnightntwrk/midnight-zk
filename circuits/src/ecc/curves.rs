@@ -169,7 +169,8 @@ impl CircuitCurve for Secp256k1 {
     const NUM_BITS_SUBGROUP: u32 = 256;
 
     fn coordinates(&self) -> Option<(Self::Base, Self::Base)> {
-        Some((self.to_affine().x, self.to_affine().y))
+        let affine = self.to_affine();
+        Some((affine.x, affine.y))
     }
 
     fn from_xy(x: Self::Base, y: Self::Base) -> Option<Self> {
@@ -205,7 +206,8 @@ impl CircuitCurve for G1Projective {
     const NUM_BITS_SUBGROUP: u32 = 255;
 
     fn coordinates(&self) -> Option<(Self::Base, Self::Base)> {
-        Some((self.to_affine().x(), self.to_affine().y()))
+        let affine = self.to_affine();
+        Some((affine.x(), affine.y()))
     }
 
     fn from_xy(x: Self::Base, y: Self::Base) -> Option<Self> {
@@ -239,7 +241,8 @@ impl CircuitCurve for bn256::G1 {
     const NUM_BITS_SUBGROUP: u32 = 254;
 
     fn coordinates(&self) -> Option<(Self::Base, Self::Base)> {
-        Some((self.to_affine().x, self.to_affine().y))
+        let affine = self.to_affine();
+        Some((affine.x, affine.y))
     }
 
     fn from_xy(x: Self::Base, y: Self::Base) -> Option<Self> {
