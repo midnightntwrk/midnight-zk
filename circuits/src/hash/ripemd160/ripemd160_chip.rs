@@ -1151,7 +1151,7 @@ impl<F: PrimeField> RipeMD160Chip<F> {
     }
 
     /// Given a plain u32 value, supposedly in the range [0, 2^L), assigns it
-    /// in plain and spreaded form, returning the assigned plain form.
+    /// in plain and spreaded form.
     ///
     /// The assigned values are guaranteed to be well-formed and consistent
     /// via a lookup check at the specified offset.
@@ -1170,7 +1170,7 @@ impl<F: PrimeField> RipeMD160Chip<F> {
         plain_val: Value<u32>,
         offset: usize,
         lookup_idx: usize,
-    ) -> Result<AssignedNative<F>, Error> {
+    ) -> Result<(), Error> {
         self.config().q_lookup.enable(region, offset)?;
 
         let nbits_col = self.config().fixed_cols[lookup_idx]; // 0 or 1
@@ -1183,7 +1183,9 @@ impl<F: PrimeField> RipeMD160Chip<F> {
 
         region.assign_fixed(|| "nbits", nbits_col, offset, || nbits_val)?;
         region.assign_advice(|| "sprdd", sprdd_col, offset, || sprdd_val)?;
-        region.assign_advice(|| "plain", plain_col, offset, || plain_val)
+        region.assign_advice(|| "plain", plain_col, offset, || plain_val)?;
+
+        Ok(())
     }
 
     /// Given a u32 value representing a word and the rotation amount, computes
