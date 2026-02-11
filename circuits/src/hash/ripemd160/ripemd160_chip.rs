@@ -812,7 +812,7 @@ impl<F: PrimeField> RipeMD160Chip<F> {
         let nXplusZ_val = sprdd_nX_val + sprdd_Z_val;
         let sprdd_nX_val: Value<F> = sprdd_nX_val.map(u64_to_fe);
 
-        let zero = AssignedWord::fixed(layouter, &self.native_gadget, 0u32)?;
+        let zero: AssignedNative<F> = self.native_gadget.assign_fixed(layouter, F::ZERO)?;
         let mask_evn_64: AssignedNative<F> =
             self.native_gadget.assign_fixed(layouter, F::from(MASK_EVN_64))?;
 
@@ -824,8 +824,8 @@ impl<F: PrimeField> RipeMD160Chip<F> {
                 self.config().q_spr_sum_odd.enable(&mut region, 4)?;
                 self.config().q_add.enable(&mut region, 4)?;
 
-                zero.0.copy_advice(|| "sprdd_ZERO", &mut region, adv_cols[7], 0)?;
-                zero.0.copy_advice(|| "sprdd_ZERO", &mut region, adv_cols[7], 3)?;
+                zero.copy_advice(|| "sprdd_ZERO", &mut region, adv_cols[7], 0)?;
+                zero.copy_advice(|| "sprdd_ZERO", &mut region, adv_cols[7], 3)?;
 
                 sprdd_X.0.copy_advice(|| "sprdd_X", &mut region, adv_cols[5], 0)?;
                 sprdd_X.0.copy_advice(|| "sprdd_X", &mut region, adv_cols[4], 4)?;
