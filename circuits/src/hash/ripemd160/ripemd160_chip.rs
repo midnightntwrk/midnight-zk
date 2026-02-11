@@ -1025,6 +1025,10 @@ impl<F: PrimeField> RipeMD160Chip<F> {
 
     /// Given a list of up to four assigned words, this function computes their
     /// addition modulo 2^32, returning the result as an assigned word.
+    ///
+    /// # Panics
+    ///
+    /// If more than 4 summands are provided.
     fn add_mod_2_32(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -1095,11 +1099,33 @@ impl<F: PrimeField> RipeMD160Chip<F> {
         )
     }
 
-    /// Given a u64 value representing a spreaded value, this function
-    /// decomposes it into 11-11-10 limbs for both its even and odd bits,
-    /// depending on `even_or_odd` it assigns them in the circuit, and returns
-    /// the assigned word corresponding to either the even or odd part, along
-    /// with the odd part (to be used in `prepare_spreaded`).
+    /// Given a u64, representing a spreaded value, this function fills a
+    /// lookup table with the limbs of its even and odd parts (or vice versa)
+    /// and returns the former or the latter, depending on the desired value
+    /// `even_or_odd`.
+    ///
+    /// If `even_or_odd` = `Parity::Evn`:
+    ///
+    ///  | T0 |    A0   |    A1    | T1 |    A2   |    A3    |  A4 |
+    ///  |----|---------|----------|----|---------|----------|-----|
+    ///  | 11 | Evn.11a | ~Evn.11a | 11 | Odd.11a | ~Odd.11a | Evn |
+    ///  | 11 | Evn.11b | ~Evn.11b | 11 | Odd.11b | ~Odd.11b |     | <- q_11_11_10
+    ///  | 10 | Evn.10  | ~Evn.10  | 10 | Odd.10  | ~Odd.10  |     |
+    ///
+    /// and returns `(Evn, [Odd.11a, Odd.11b, Odd.10])`.
+    ///
+    /// If `even_or_odd` = `Parity::Odd`:
+    ///
+    ///  | T0 |    A0   |    A1    | T1 |    A2   |    A3    |  A4 |
+    ///  |----|---------|----------|----|---------|----------|-----|
+    ///  | 11 | Odd.11a | ~Odd.11a | 11 | Evn.11a | ~Evn.11a | Odd |
+    ///  | 11 | Odd.11b | ~Odd.11b | 11 | Evn.11b | ~Evn.11b |     | <- q_11_11_10
+    ///  | 10 | Odd.10  | ~Odd.10  | 10 | Evn.10  | ~Evn.10  |     |
+    ///
+    /// and returns `(Odd, [Odd.11a, Odd.11b, Odd.10])`.
+    ///
+    /// This function guarantees that the returned value is consistent with
+    /// the values in the filled lookup table.
     fn assign_sprdd_11_11_10(
         &self,
         region: &mut Region<'_, F>,

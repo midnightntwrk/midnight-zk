@@ -3,8 +3,10 @@ use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 use crate::{field::AssignedNative, instructions::FieldInstructions, utils::util::u32_to_fe};
 
-/// An assigned 32-bit word, represented by a field element for 4 bytes in
-/// little-endian order.
+/// An assigned 32-bit word, represented by a field element. The 32 bits are
+/// stored in 4 bytes in little-endian order, i.e., the least significant byte
+/// is in the lowest 8 bits of the field element. It is guaranteed to be in the
+/// range [0, 2^32).
 #[derive(Clone, Debug)]
 pub(super) struct AssignedWord<F: PrimeField>(pub AssignedNative<F>);
 
