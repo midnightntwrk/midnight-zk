@@ -60,7 +60,7 @@ rand = { workspace = true }
 criterion = "0.7"
 
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
-getrandom = { version = "0.2", features = ["js"] }
+getrandom = { version = "0.4", features = ["js"] }
 
 [target.'cfg(ci_build)'.dependencies]
 midnight-curves = { version = "0.2.0", features = [
