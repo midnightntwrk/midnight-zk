@@ -15,8 +15,7 @@
 
 use curve25519_dalek::{edwards::CompressedEdwardsY, EdwardsPoint};
 use ff::Field;
-use group::Group;
-use group::GroupEncoding;
+use group::{Group, GroupEncoding};
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 
 use super::{
