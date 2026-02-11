@@ -13,7 +13,6 @@
 
 use std::{marker::PhantomData, ops::Rem};
 
-use crate::CircuitField;
 use midnight_proofs::{
     circuit::{Chip, Layouter},
     plonk::{Advice, Column, ConstraintSystem, Constraints, Error, Expression, Selector},
@@ -36,6 +35,7 @@ use crate::{
     instructions::NativeInstructions,
     types::{AssignedBit, AssignedField, InnerValue},
     utils::util::bigint_to_fe,
+    CircuitField,
 };
 
 /// Foreign ECC tangent configuration.

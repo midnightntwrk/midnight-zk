@@ -13,7 +13,6 @@
 
 //! Elliptic curves used in-circuit.
 
-use crate::CircuitField;
 use group::{Curve, Group};
 #[cfg(feature = "dev-curves")]
 use midnight_curves::bn256;
@@ -22,6 +21,8 @@ use midnight_curves::{
     secp256k1::{Secp256k1, Secp256k1Affine},
     CurveAffine, Fq as BlsScalar, JubjubAffine, JubjubExtended, JubjubSubgroup,
 };
+
+use crate::CircuitField;
 
 /// An elliptic curve whose points can be represented in terms of its base
 /// field.

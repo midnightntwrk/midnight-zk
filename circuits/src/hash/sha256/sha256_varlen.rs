@@ -11,7 +11,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::CircuitField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 use super::{sha256_chip::IV, Sha256Chip};
@@ -31,6 +30,7 @@ use crate::{
     },
     types::{AssignedBit, AssignedByte},
     vec::AssignedVector,
+    CircuitField,
 };
 
 /// Gadget for SHA256 with variable-length input.

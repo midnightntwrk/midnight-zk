@@ -14,7 +14,6 @@
 use core::array::from_fn;
 use std::iter::once;
 
-use crate::CircuitField;
 use ff::Field;
 use midnight_proofs::{
     circuit::{Chip, Layouter, Region, Value},
@@ -40,6 +39,7 @@ use crate::{
     instructions::{ArithInstructions, AssignmentInstructions, SpongeInstructions},
     types::AssignedNative,
     utils::ComposableChip,
+    CircuitField,
 };
 
 /// Number of times the linear part of the partial rounds is skipped in the

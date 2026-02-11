@@ -18,11 +18,13 @@
 //!
 //! The trait is parametrized by `Assigned` type.
 
-use crate::CircuitField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 use super::AssertionInstructions;
-use crate::types::{AssignedBit, InnerValue};
+use crate::{
+    types::{AssignedBit, InnerValue},
+    CircuitField,
+};
 
 /// The set of circuit instructions for control flow operations.
 pub trait ControlFlowInstructions<F: CircuitField, Assigned>:

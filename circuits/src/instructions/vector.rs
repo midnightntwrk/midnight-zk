@@ -17,7 +17,6 @@
 //! vector, as well as 2 constants: its maximum size `M` and its chunk alignment
 //! value `A`.
 
-use crate::CircuitField;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
@@ -27,6 +26,7 @@ use crate::{
     field::AssignedNative,
     types::AssignedBit,
     vec::{AssignedVector, Vectorizable},
+    CircuitField,
 };
 
 /// Instructions for Vector manipulation..

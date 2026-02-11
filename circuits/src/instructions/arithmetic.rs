@@ -25,12 +25,12 @@ use std::{
     ops::{Add, Neg},
 };
 
-use crate::CircuitField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 use crate::{
     instructions::{AssertionInstructions, AssignmentInstructions},
     types::InnerValue,
+    CircuitField,
 };
 
 /// The set of circuit instructions for arithmetic operations.

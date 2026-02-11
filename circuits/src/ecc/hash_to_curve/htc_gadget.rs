@@ -13,7 +13,6 @@
 
 use std::marker::PhantomData;
 
-use crate::CircuitField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 #[cfg(any(test, feature = "testing"))]
 use {
@@ -29,6 +28,7 @@ use crate::{
         SpongeInstructions,
     },
     types::InnerValue,
+    CircuitField,
 };
 
 #[derive(Clone, Debug)]
@@ -158,9 +158,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        ecc::native::EccChip,
-        hash::poseidon::PoseidonChip,
-        types::AssignedNative,
+        ecc::native::EccChip, hash::poseidon::PoseidonChip, types::AssignedNative,
         utils::util::big_to_fe,
     };
 

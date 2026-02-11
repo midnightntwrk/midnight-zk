@@ -37,7 +37,6 @@
 //! We have 2 parallel lookups, which allow us to call such plain-spreaded table
 //! twice per row; on columns named (T0, A0, A1) and (T1, A2, A3).
 
-use crate::CircuitField;
 use midnight_proofs::{
     circuit::{Chip, Layouter, Region, Value},
     plonk::{
@@ -67,6 +66,7 @@ use crate::{
         util::{fe_to_u128, fe_to_u64, u128_to_fe, u64_to_fe},
         ComposableChip,
     },
+    CircuitField,
 };
 
 /// Number of advice columns used by the identities of the SHA512 chip.

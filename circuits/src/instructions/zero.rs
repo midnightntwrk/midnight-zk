@@ -19,12 +19,12 @@
 //! and [EqualityInstructions]. The trait is parametrized by `assigned`
 //! values that implement `InnerConstants`, which gives access to zero.
 
-use crate::CircuitField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 use crate::{
     instructions::{AssertionInstructions, EqualityInstructions},
     types::{AssignedBit, InnerConstants},
+    CircuitField,
 };
 
 /// The set of circuit instructions for zero equality and assertions.

@@ -15,11 +15,12 @@
 
 use std::fmt::Debug;
 
-use crate::CircuitField;
 use midnight_proofs::{
     circuit::{Chip, Layouter},
     plonk::{ConstraintSystem, Error},
 };
+
+use crate::CircuitField;
 
 /// Provides a common interface for layering chips with shared resources.
 pub trait ComposableChip<F>: Chip<F> + Clone + Debug

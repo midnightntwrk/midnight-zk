@@ -21,13 +21,13 @@
 //! The implementors of this trait need to implement [FieldInstructions]
 //! where the notion of `canonical` makes sense.
 
-use crate::CircuitField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 use num_bigint::BigUint;
 
 use crate::{
     instructions::{AssignmentInstructions, FieldInstructions},
     types::{AssignedBit, InnerConstants, Instantiable},
+    CircuitField,
 };
 
 /// The set of circuit instructions for canonicity assertions.
@@ -137,10 +137,7 @@ pub(crate) mod tests {
     use crate::{
         instructions::{AssertionInstructions, AssignmentInstructions},
         types::InnerValue,
-        utils::{
-            circuit_modeling::circuit_to_json,
-            util::FromScratch,
-        },
+        utils::{circuit_modeling::circuit_to_json, util::FromScratch},
     };
 
     #[derive(Clone, Debug)]

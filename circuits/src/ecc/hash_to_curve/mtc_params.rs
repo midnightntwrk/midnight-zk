@@ -13,8 +13,9 @@
 
 //! Map to curve parameter traits and implementations.
 
-use crate::CircuitField;
 use midnight_curves::{Fq as JubjubBase, JubjubExtended as Jubjub};
+
+use crate::CircuitField;
 
 /// Constants for the Shallue-van de Woestijne (SVDW) map to Weierstrass curve.
 pub trait MapToWeierstrassParams<BaseField: CircuitField> {

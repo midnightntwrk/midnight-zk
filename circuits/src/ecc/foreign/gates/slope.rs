@@ -13,7 +13,6 @@
 
 use std::{marker::PhantomData, ops::Rem};
 
-use crate::CircuitField;
 use midnight_proofs::{
     circuit::{Chip, Layouter},
     plonk::{Advice, Column, ConstraintSystem, Constraints, Error, Expression, Selector},
@@ -36,6 +35,7 @@ use crate::{
     instructions::NativeInstructions,
     types::{AssignedBit, AssignedField, InnerValue},
     utils::util::bigint_to_fe,
+    CircuitField,
 };
 
 /// Foreign ECC Slope configuration.
@@ -287,12 +287,10 @@ where
 
             let (k_min, u_max) = slope_config.u_bounds.clone();
 
-            let sign = cond_as_assigned_value
-                .value()
-                .map(|v| {
-                    let bi: BI = (*v + F::ONE).to_biguint().into();
-                    bi - BI::one()
-                });
+            let sign = cond_as_assigned_value.value().map(|v| {
+                let bi: BI = (*v + F::ONE).to_biguint().into();
+                bi - BI::one()
+            });
 
             // sign - 1 + sign * sum_qy - sum_py - sum_qx + sum_px - sum_lqx + sum_lpx
             //  = (u + k_min) * m

@@ -19,7 +19,6 @@ mod sha512_chip;
 mod types;
 mod utils;
 
-use crate::CircuitField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 use sha2::Digest;
 pub use sha512_chip::{Sha512Chip, Sha512Config, NB_SHA512_ADVICE_COLS, NB_SHA512_FIXED_COLS};
@@ -27,6 +26,7 @@ pub use sha512_chip::{Sha512Chip, Sha512Config, NB_SHA512_ADVICE_COLS, NB_SHA512
 use crate::{
     instructions::{hash::HashCPU, DecompositionInstructions, HashInstructions},
     types::AssignedByte,
+    CircuitField,
 };
 
 impl<F: CircuitField> HashCPU<u8, [u8; 64]> for Sha512Chip<F> {
@@ -36,7 +36,9 @@ impl<F: CircuitField> HashCPU<u8, [u8; 64]> for Sha512Chip<F> {
     }
 }
 
-impl<F: CircuitField> HashInstructions<F, AssignedByte<F>, [AssignedByte<F>; 64]> for Sha512Chip<F> {
+impl<F: CircuitField> HashInstructions<F, AssignedByte<F>, [AssignedByte<F>; 64]>
+    for Sha512Chip<F>
+{
     fn hash(
         &self,
         layouter: &mut impl Layouter<F>,

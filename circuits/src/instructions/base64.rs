@@ -12,13 +12,15 @@
 // limitations under the License.
 
 //! Set of Base64 instructions.
-use crate::CircuitField;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
 
-use crate::types::{AssignedByte, AssignedVector};
+use crate::{
+    types::{AssignedByte, AssignedVector},
+    CircuitField,
+};
 
 /// This trait defines methods for converting data encoded in standard Base64 or
 /// Base64URL (URL-safe) format into its raw byte representation.

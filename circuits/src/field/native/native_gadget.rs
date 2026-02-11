@@ -16,7 +16,6 @@
 
 use std::{cell::RefCell, cmp::min, collections::HashMap, marker::PhantomData, rc::Rc};
 
-use crate::CircuitField;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
@@ -51,6 +50,7 @@ use crate::{
     },
     types::{AssignedBit, AssignedNative, InnerValue, Instantiable},
     utils::util::big_to_fe,
+    CircuitField,
 };
 
 #[derive(Debug, Clone)]

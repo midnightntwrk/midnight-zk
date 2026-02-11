@@ -11,7 +11,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::CircuitField;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
@@ -30,6 +29,7 @@ use crate::{
     },
     types::{AssignedBit, AssignedVector, InnerValue, Vectorizable},
     vec::get_lims,
+    CircuitField,
 };
 
 type NG<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;

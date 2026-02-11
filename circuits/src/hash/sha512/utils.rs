@@ -1,7 +1,6 @@
-use crate::CircuitField;
 use midnight_proofs::plonk::Expression;
 
-use crate::utils::util::u128_to_fe;
+use crate::{utils::util::u128_to_fe, CircuitField};
 
 pub(super) const MASK_EVN_128: u128 = 0x5555_5555_5555_5555_5555_5555_5555_5555; // 010101...01 (even positions in u128)
 pub(super) const MASK_ODD_128: u128 = 0xAAAA_AAAA_AAAA_AAAA_AAAA_AAAA_AAAA_AAAA; // 101010...10 (odd positions in u128)

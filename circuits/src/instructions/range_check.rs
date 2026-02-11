@@ -13,14 +13,13 @@
 
 //! Range-check instructions interface.
 
-use crate::CircuitField;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
 use num_bigint::BigUint;
 
-use crate::types::InnerValue;
+use crate::{types::InnerValue, CircuitField};
 
 /// The set of circuit instructions for range-check operations.
 pub trait RangeCheckInstructions<F, Assigned>

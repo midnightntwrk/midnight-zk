@@ -18,10 +18,9 @@
 //! Furthermore, assertions between `Assigned` elements and fixed values of type
 //! `Assigned::Element`.
 
-use crate::CircuitField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 
-use crate::types::InnerValue;
+use crate::{types::InnerValue, CircuitField};
 
 /// The set of circuit instructions for assertion operations.
 ///

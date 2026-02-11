@@ -20,7 +20,6 @@ mod sha256_varlen;
 mod types;
 mod utils;
 
-use crate::CircuitField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 use sha2::Digest;
 pub use sha256_chip::{Sha256Chip, Sha256Config, NB_SHA256_ADVICE_COLS, NB_SHA256_FIXED_COLS};
@@ -33,6 +32,7 @@ use crate::{
     },
     types::AssignedByte,
     vec::AssignedVector,
+    CircuitField,
 };
 
 impl<F: CircuitField> HashCPU<u8, [u8; 32]> for Sha256Chip<F> {
@@ -42,7 +42,9 @@ impl<F: CircuitField> HashCPU<u8, [u8; 32]> for Sha256Chip<F> {
     }
 }
 
-impl<F: CircuitField> HashInstructions<F, AssignedByte<F>, [AssignedByte<F>; 32]> for Sha256Chip<F> {
+impl<F: CircuitField> HashInstructions<F, AssignedByte<F>, [AssignedByte<F>; 32]>
+    for Sha256Chip<F>
+{
     fn hash(
         &self,
         layouter: &mut impl Layouter<F>,

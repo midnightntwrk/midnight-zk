@@ -21,7 +21,6 @@
 //!  - src/utils/arithmetic.rs
 //!  - src/poly/kzg/mod.rs
 
-use crate::CircuitField;
 use std::{
     collections::{BTreeSet, HashMap},
     fmt::Debug,
@@ -44,6 +43,7 @@ use crate::{
         },
         AssignedAccumulator, SelfEmulation,
     },
+    CircuitField,
 };
 
 // -------------------------------

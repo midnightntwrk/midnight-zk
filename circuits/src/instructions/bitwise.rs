@@ -23,12 +23,14 @@
 
 use ff::Field;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
-use crate::CircuitField;
 use num_bigint::BigUint;
 use num_traits::One;
 
 use super::{BinaryInstructions, DecompositionInstructions, RangeCheckInstructions};
-use crate::types::{InnerConstants, Instantiable};
+use crate::{
+    types::{InnerConstants, Instantiable},
+    CircuitField,
+};
 
 /// The set of circuit instructions for binary bit-wise operations.
 pub trait BitwiseInstructions<F, Assigned>:

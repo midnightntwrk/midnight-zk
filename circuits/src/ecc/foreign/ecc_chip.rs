@@ -18,7 +18,6 @@
 //! In particular, the curve (or the relevant subgroup) must have a large prime
 //! order.
 
-use crate::CircuitField;
 use std::{
     cell::RefCell,
     cmp::max,
@@ -67,6 +66,7 @@ use crate::{
     },
     types::{AssignedBit, AssignedField, AssignedNative, InnerConstants, InnerValue, Instantiable},
     utils::util::{big_to_fe, bigint_to_fe, glv_scalar_decomposition},
+    CircuitField,
 };
 
 /// Foreign ECC configuration.
@@ -886,7 +886,8 @@ where
             let r = self.mul_by_u128(layouter, n, &p)?;
             return self.select(layouter, &base.is_id, &id, &r);
         }
-        let scalar_bits = scalar.to_le_bits(None)
+        let scalar_bits = scalar
+            .to_le_bits(None)
             .iter()
             .map(|b| self.native_gadget.assign_fixed(layouter, *b))
             .collect::<Result<Vec<_>, Error>>()?;

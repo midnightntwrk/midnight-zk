@@ -55,7 +55,6 @@ use std::{
     rc::Rc,
 };
 
-use crate::CircuitField;
 use midnight_proofs::{
     circuit::{Chip, Layouter, Region, Value},
     plonk::{Advice, Column, ConstraintSystem, Constraints, Error, Fixed, Instance, Selector},
@@ -75,6 +74,7 @@ use crate::{
     },
     types::{AssignedNative, InnerValue, Instantiable},
     utils::ComposableChip,
+    CircuitField,
 };
 
 /// Number of columns used by the identity of the native chip.

@@ -18,14 +18,13 @@
 
 use std::{fmt::Debug, ops::Rem};
 
-use crate::CircuitField;
 #[cfg(feature = "dev-curves")]
 use midnight_curves::bn256;
 use midnight_curves::{bls12_381, secp256k1};
 use num_bigint::{BigInt, BigInt as BI, ToBigInt};
 use num_traits::{One, Signed};
 
-use crate::ecc::curves::CircuitCurve;
+use crate::{ecc::curves::CircuitCurve, CircuitField};
 
 /// Trait for configuring a (foreign) FieldChip. These parameters need to be
 /// manually optimized for each emulation of field K over native field F.

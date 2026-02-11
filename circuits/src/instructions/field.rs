@@ -16,7 +16,6 @@
 use ff::Field;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 use num_bigint::BigUint;
-use crate::CircuitField;
 
 use super::PublicInputInstructions;
 use crate::{
@@ -26,6 +25,7 @@ use crate::{
     },
     types::{AssignedBit, InnerConstants, Instantiable},
     utils::util::qnr,
+    CircuitField,
 };
 
 /// The set of circuit instructions for field operations.

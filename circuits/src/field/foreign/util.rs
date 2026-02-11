@@ -15,7 +15,6 @@
 
 use std::ops::{Mul, Rem};
 
-use crate::CircuitField;
 use midnight_proofs::{
     circuit::Value,
     plonk::{Advice, Column, Expression, VirtualCells},
@@ -25,7 +24,7 @@ use num_bigint::{BigInt as BI, BigUint, ToBigInt};
 use num_integer::Integer;
 use num_traits::{One, Signed, Zero};
 
-use crate::utils::util::bigint_to_fe;
+use crate::{utils::util::bigint_to_fe, CircuitField};
 
 /// Like .rem, but gives positive answers only.
 pub fn urem(value: &BI, modulus: &BI) -> BI {

@@ -18,10 +18,12 @@
 
 use std::fmt::Debug;
 
-use crate::CircuitField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 
-use crate::types::{AssignedVector, InnerValue, Vectorizable};
+use crate::{
+    types::{AssignedVector, InnerValue, Vectorizable},
+    CircuitField,
+};
 
 /// The set of off-circuit instructions for hashing operations.
 pub trait HashCPU<Input, Output>: Clone + Debug {

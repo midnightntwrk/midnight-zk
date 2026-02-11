@@ -19,10 +19,12 @@
 //! This trait is parametrized by a generic `Assigned` (required to implement
 //! [InnerValue]) which defines the type over which we check equality.
 
-use crate::CircuitField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 
-use crate::types::{AssignedBit, InnerValue};
+use crate::{
+    types::{AssignedBit, InnerValue},
+    CircuitField,
+};
 
 /// The set of circuit instructions for equality operations.
 pub trait EqualityInstructions<F, Assigned>

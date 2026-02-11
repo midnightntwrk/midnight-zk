@@ -15,7 +15,6 @@
 
 use std::{collections::HashMap, marker::PhantomData};
 
-use crate::CircuitField;
 use midnight_proofs::{
     circuit::{Chip, Layouter, Value},
     plonk::{ConstraintSystem, Error},
@@ -36,6 +35,7 @@ use crate::{
     },
     types::AssignedNative,
     utils::ComposableChip,
+    CircuitField,
 };
 
 #[derive(Clone, Debug)]

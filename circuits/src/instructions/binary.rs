@@ -15,10 +15,9 @@
 //!
 //! It provides functions for performing Boolean operations over [AssignedBit]s.
 
-use crate::CircuitField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 
-use crate::types::AssignedBit;
+use crate::{types::AssignedBit, CircuitField};
 
 /// The set of circuit instructions for binary operations.
 pub trait BinaryInstructions<F: CircuitField> {

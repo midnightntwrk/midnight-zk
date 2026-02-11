@@ -22,7 +22,6 @@
 //! The instructions ensure that inputs that agree with the base64 specification
 //! decode correctly.
 
-use crate::CircuitField;
 use midnight_proofs::{
     circuit::{Chip, Layouter, Value},
     plonk::{Advice, Column, Error, Expression, Selector, TableColumn},
@@ -40,6 +39,7 @@ use crate::{
     types::{AssignedByte, AssignedVector, InnerValue},
     utils::ComposableChip,
     vec::vector_gadget::VectorGadget,
+    CircuitField,
 };
 
 /// Number of advice columns in [Base64Chip].

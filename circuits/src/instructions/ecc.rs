@@ -15,7 +15,6 @@
 
 use std::fmt::Debug;
 
-use crate::CircuitField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 use super::AssertionInstructions;
@@ -23,6 +22,7 @@ use crate::{
     ecc::curves::CircuitCurve,
     instructions::DecompositionInstructions,
     types::{InnerConstants, InnerValue, Instantiable},
+    CircuitField,
 };
 
 /// The  set of circuit instructions for EC operations.
@@ -146,7 +146,7 @@ where
 pub(crate) mod tests {
     use std::{cmp::min, marker::PhantomData};
 
-    use ff::{Field, FromUniformBytes};
+    use ff::{Field, FromUniformBytes, PrimeField};
     use group::Group;
     use midnight_proofs::{
         circuit::{Chip, Layouter, SimpleFloorPlanner, Value},
@@ -156,7 +156,6 @@ pub(crate) mod tests {
     use rand::SeedableRng;
     use rand_chacha::ChaCha8Rng;
 
-    use ff::PrimeField;
     use super::*;
     use crate::{
         instructions::{AssertionInstructions, AssignmentInstructions},
@@ -482,7 +481,12 @@ pub(crate) mod tests {
         let n = 3;
         let inputs = (0..n).map(|_| C::CryptographicGroup::random(&mut rng)).collect::<Vec<_>>();
         let scalars = (0..n)
-            .map(|_| (C::ScalarExt::random(&mut rng), C::ScalarExt::NUM_BITS as usize))
+            .map(|_| {
+                (
+                    C::ScalarExt::random(&mut rng),
+                    C::ScalarExt::NUM_BITS as usize,
+                )
+            })
             .collect::<Vec<_>>();
         let expected = (inputs.clone().into_iter().zip(scalars.clone().iter()))
             .fold(C::CryptographicGroup::identity(), |acc, (base, scalar)| {

@@ -12,8 +12,6 @@
 // limitations under the License.
 
 use ff::{Field, PrimeField};
-// Modify
-use crate::CircuitField;
 use midnight_curves::Fq as Fp;
 use midnight_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
@@ -29,6 +27,8 @@ use super::{
     chip::{P2RDecompositionChip, P2RDecompositionConfig},
     instructions::CoreDecompositionInstructions,
 };
+// Modify
+use crate::CircuitField;
 use crate::{
     field::{
         decomposition::{

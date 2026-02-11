@@ -13,7 +13,6 @@
 
 use std::{cmp::min, ops::Range};
 
-use crate::CircuitField;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
@@ -23,12 +22,13 @@ use num_traits::One;
 
 #[cfg(not(feature = "truncated-challenges"))]
 use crate::instructions::FieldInstructions;
-#[cfg(feature = "truncated-challenges")]
-use crate::{instructions::NativeInstructions, CircuitField};
 use crate::{
     field::AssignedNative,
     instructions::{ArithInstructions, AssignmentInstructions},
+    CircuitField,
 };
+#[cfg(feature = "truncated-challenges")]
+use crate::{instructions::NativeInstructions, CircuitField};
 
 /// An assigned scalar known to be bounded in the range [0, bound].
 #[derive(Clone, Debug, PartialEq, Eq)]

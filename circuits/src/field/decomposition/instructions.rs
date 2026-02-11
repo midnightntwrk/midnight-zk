@@ -18,13 +18,12 @@
 
 use std::fmt::Debug;
 
-use crate::CircuitField;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
 
-use crate::types::AssignedNative;
+use crate::{types::AssignedNative, CircuitField};
 
 /// Trait that implement the "core" decomposition instructions
 pub trait CoreDecompositionInstructions<F: CircuitField>: Clone + Debug {

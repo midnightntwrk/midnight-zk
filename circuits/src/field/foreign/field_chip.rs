@@ -22,7 +22,6 @@ use std::{
     marker::PhantomData,
 };
 
-use crate::CircuitField;
 use midnight_proofs::{
     circuit::{Chip, Layouter, Value},
     plonk::{Advice, Column, ConstraintSystem, Error},
@@ -54,6 +53,7 @@ use crate::{
     },
     types::{AssignedBit, AssignedByte, AssignedNative, InnerConstants, InnerValue, Instantiable},
     utils::util::bigint_to_fe,
+    CircuitField,
 };
 
 /// Type for assigned emulated field elements of K over native field F.
@@ -105,7 +105,10 @@ where
     }
 }
 
-impl<F: CircuitField, K: CircuitField, P: FieldEmulationParams<F, K>> Eq for AssignedField<F, K, P> {}
+impl<F: CircuitField, K: CircuitField, P: FieldEmulationParams<F, K>> Eq
+    for AssignedField<F, K, P>
+{
+}
 
 impl<F, K, P> Hash for AssignedField<F, K, P>
 where

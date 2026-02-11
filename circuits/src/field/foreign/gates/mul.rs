@@ -13,7 +13,6 @@
 
 use std::ops::Rem;
 
-use crate::CircuitField;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::{Advice, Column, ConstraintSystem, Constraints, Error, Expression, Selector},
@@ -33,6 +32,7 @@ use crate::{
     instructions::RangeCheckInstructions,
     types::{AssignedField, AssignedNative},
     utils::util::bigint_to_fe,
+    CircuitField,
 };
 
 /// Foreign-Field Mul configuration.

@@ -13,7 +13,6 @@
 
 //! Import of the keccak variant of SHA, implementation from [Alexandros Zacharakis](https://github.com/alexandroszacharakis8).
 
-use midnight_circuits::CircuitField;
 use keccak_sha3::{
     packed_chip::{PackedChip, PackedConfig, PACKED_ADVICE_COLS, PACKED_FIXED_COLS},
     sha3_256_gadget::{Keccak256, Sha3_256},
@@ -25,7 +24,7 @@ use midnight_circuits::{
 use midnight_circuits::{
     instructions::AssertionInstructions,
     types::{AssignedByte, InnerValue},
-    ComposableChip,
+    CircuitField, ComposableChip,
 };
 #[cfg(test)]
 use midnight_proofs::plonk::Instance;
@@ -184,12 +183,12 @@ impl<F: CircuitField> FromScratch<F> for KeccakSha3Wrapper<F> {
 // Some preimage tests against an external library.
 #[cfg(test)]
 mod test {
-    use midnight_circuits::CircuitField;
     use midnight_circuits::{
         field::NativeGadget,
         instructions::{hash::HashCPU, HashInstructions},
         testing_utils::{test_hash, FromScratch},
         types::AssignedByte,
+        CircuitField,
     };
     use midnight_curves::Fq;
     use midnight_proofs::{

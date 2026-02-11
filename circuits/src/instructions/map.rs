@@ -16,13 +16,15 @@
 //! It provides (in-circuit) functions for creating a map from a specified input
 //! type into another.
 
-use crate::CircuitField;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
 
-use crate::types::{AssignedNative, InnerValue};
+use crate::{
+    types::{AssignedNative, InnerValue},
+    CircuitField,
+};
 
 /// The set of off-circuit instructions for mapping operations.
 pub trait MapCPU<F, Key, Value> {

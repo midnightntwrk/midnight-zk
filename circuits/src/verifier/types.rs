@@ -14,7 +14,6 @@
 //! Module that contains type and generic bounds.
 //! Its purpose is to minimize complexity in the rest of the verifier chip.
 
-use crate::CircuitField;
 use std::fmt::Debug;
 
 use ff::WithSmallOrderMulGroup;
@@ -46,6 +45,7 @@ use crate::{
         HashInstructions, PublicInputInstructions, SpongeInstructions,
     },
     types::{AssignedForeignPoint, InnerValue, Instantiable},
+    CircuitField,
 };
 
 /// A trait for parametrizing the VerifierGadget.

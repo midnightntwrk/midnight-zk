@@ -22,12 +22,12 @@
 
 use std::fmt::Debug;
 
-use crate::CircuitField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 use crate::{
     instructions::{ArithInstructions, CanonicityInstructions, ConversionInstructions},
     types::{AssignedBit, AssignedByte, AssignedNative, InnerConstants, Instantiable},
+    CircuitField,
 };
 
 /// The set of circuit instructions for (de)composition operations.
@@ -315,10 +315,7 @@ pub(crate) mod tests {
         instructions::{AssertionInstructions, AssignmentInstructions},
         testing_utils::FromScratch,
         types::InnerValue,
-        utils::{
-            circuit_modeling::circuit_to_json,
-            util::big_to_fe,
-        },
+        utils::{circuit_modeling::circuit_to_json, util::big_to_fe},
     };
 
     #[derive(Clone, Debug)]

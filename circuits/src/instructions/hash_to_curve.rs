@@ -15,11 +15,10 @@
 //!
 //! The trait is parametrised by the curve, `C`, where the hash is mapped.
 
-use crate::CircuitField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 use super::EccInstructions;
-use crate::{ecc::curves::CircuitCurve, types::InnerValue};
+use crate::{ecc::curves::CircuitCurve, types::InnerValue, CircuitField};
 
 /// Off-circuit instructions for hashing a given input of type `Input` into a
 /// point of curve `C`.

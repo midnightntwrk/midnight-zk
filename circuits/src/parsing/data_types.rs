@@ -11,12 +11,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::CircuitField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 use num_bigint::BigUint;
 
 use super::ParserGadget;
-use crate::{field::AssignedNative, instructions::NativeInstructions, types::AssignedByte};
+use crate::{
+    field::AssignedNative, instructions::NativeInstructions, types::AssignedByte, CircuitField,
+};
 
 /// Order of day, month and year in the date string.
 #[allow(clippy::upper_case_acronyms)]

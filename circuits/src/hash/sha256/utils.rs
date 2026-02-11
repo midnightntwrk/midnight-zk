@@ -1,5 +1,6 @@
-use crate::CircuitField;
 use midnight_proofs::plonk::Expression;
+
+use crate::CircuitField;
 
 pub(super) const MASK_EVN_64: u64 = 0x5555_5555_5555_5555; // 010101...01 (even positions in u64)
 pub(super) const MASK_ODD_64: u64 = 0xAAAA_AAAA_AAAA_AAAA; // 101010...10 (odd positions in u64)

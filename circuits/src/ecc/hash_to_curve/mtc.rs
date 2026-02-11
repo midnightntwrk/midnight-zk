@@ -13,7 +13,6 @@
 
 //! Map to curve in-circuit implementations.
 
-use crate::CircuitField;
 use ff::Field;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 
@@ -31,6 +30,7 @@ use crate::{
         FieldInstructions,
     },
     types::{AssignedBit, InnerConstants, InnerValue, Instantiable},
+    CircuitField,
 };
 
 /// The set of in-circuit instructions for map-to-curve.

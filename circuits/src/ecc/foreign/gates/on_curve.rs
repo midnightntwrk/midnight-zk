@@ -14,7 +14,6 @@
 use core::marker::PhantomData;
 use std::ops::Rem;
 
-use crate::CircuitField;
 use midnight_proofs::{
     circuit::{Chip, Layouter},
     plonk::{Advice, Column, ConstraintSystem, Constraints, Error, Expression, Selector},
@@ -36,6 +35,7 @@ use crate::{
     instructions::{ArithInstructions, NativeInstructions},
     types::{AssignedBit, AssignedField, InnerValue},
     utils::util::bigint_to_fe,
+    CircuitField,
 };
 
 /// Foreign ECC OnCurve configuration.

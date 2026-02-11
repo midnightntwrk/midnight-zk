@@ -37,7 +37,6 @@ use std::{
     hash::Hash,
 };
 
-use crate::CircuitField;
 use midnight_proofs::{
     circuit::{Chip, Layouter, Region, Value},
     plonk::{Advice, Column, ConstraintSystem, Error, Selector, TableColumn},
@@ -58,6 +57,7 @@ use crate::{
     instructions::AssignmentInstructions,
     types::AssignedByte,
     utils::ComposableChip,
+    CircuitField,
 };
 
 /// Number of columns for the automata chip.
@@ -584,8 +584,6 @@ where
 #[cfg(test)]
 mod test {
 
-    
-use crate::CircuitField;
     use itertools::Itertools;
     use midnight_proofs::{
         circuit::{Layouter, SimpleFloorPlanner, Value},
@@ -600,6 +598,7 @@ use crate::CircuitField;
         testing_utils::FromScratch,
         types::AssignedByte,
         utils::circuit_modeling::circuit_to_json,
+        CircuitField,
     };
 
     #[derive(Clone, Debug, Default)]

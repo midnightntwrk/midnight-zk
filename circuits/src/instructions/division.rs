@@ -16,7 +16,6 @@
 //! It provides instructions for computing quotient and remidners between
 //! bounded integers that fit in the native field.
 
-use crate::CircuitField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 use num_bigint::BigUint;
 use num_integer::Integer;
@@ -26,6 +25,7 @@ use crate::{
     instructions::{ArithInstructions, RangeCheckInstructions},
     types::InnerValue,
     utils::util::big_to_fe,
+    CircuitField,
 };
 
 /// Set of circuit instructions for integer division.
@@ -290,10 +290,7 @@ pub(crate) mod tests {
             run::<F, Assigned, DivChip>(
                 big_to_fe(dividend.clone()),
                 divisor.clone(),
-                (
-                    big_to_fe(q.clone()),
-                    big_to_fe(r.clone()),
-                ),
+                (big_to_fe(q.clone()), big_to_fe(r.clone())),
                 must_pass,
                 false,
                 chip_name,

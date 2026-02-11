@@ -19,13 +19,15 @@
 //! this trait that must implement [crate::types::InnerValue] and
 //! [Instantiable]).
 
-use crate::CircuitField;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
 
-use crate::types::{AssignedNative, Instantiable};
+use crate::{
+    types::{AssignedNative, Instantiable},
+    CircuitField,
+};
 
 /// The set of circuit instructions for constraining public inputs.
 pub trait PublicInputInstructions<F, Assigned>

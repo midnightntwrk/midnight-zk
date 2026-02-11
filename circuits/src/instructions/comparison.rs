@@ -24,13 +24,13 @@
 
 use std::{fmt::Debug, ops::Add};
 
-use crate::CircuitField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 use crate::{
     field::AssignedBounded,
     instructions::BinaryInstructions,
     types::{AssignedBit, InnerValue},
+    CircuitField,
 };
 
 /// The set of circuit instructions for comparison operations.

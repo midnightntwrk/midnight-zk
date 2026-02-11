@@ -45,10 +45,7 @@ use crate::{
         ZeroInstructions,
     },
     types::{AssignedBit, AssignedByte, AssignedNative},
-    utils::{
-        types::InnerValue,
-        util::big_to_fe,
-    },
+    utils::{types::InnerValue, util::big_to_fe},
     CircuitField,
 };
 

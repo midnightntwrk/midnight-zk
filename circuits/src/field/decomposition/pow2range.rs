@@ -16,7 +16,6 @@
 
 use std::{cell::RefCell, collections::HashSet, fmt::Debug, marker::PhantomData, rc::Rc};
 
-use crate::CircuitField;
 use midnight_proofs::{
     circuit::{Chip, Layouter, Region, Value},
     plonk::{Advice, Column, ConstraintSystem, Error, Fixed, Selector, TableColumn},
@@ -25,7 +24,7 @@ use midnight_proofs::{
 
 use crate::{
     field::native::NB_ARITH_COLS, instructions::decomposition::Pow2RangeInstructions,
-    types::AssignedNative,
+    types::AssignedNative, CircuitField,
 };
 
 /// Pow2Range gate configuration.

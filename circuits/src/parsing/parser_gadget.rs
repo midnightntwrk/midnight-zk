@@ -13,7 +13,6 @@
 
 use std::{cmp::min, marker::PhantomData};
 
-use crate::CircuitField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 use num_bigint::BigUint;
 #[cfg(any(test, feature = "testing"))]
@@ -22,7 +21,9 @@ use {
     midnight_proofs::plonk::{Column, ConstraintSystem, Instance},
 };
 
-use crate::{field::AssignedNative, instructions::NativeInstructions, types::AssignedByte};
+use crate::{
+    field::AssignedNative, instructions::NativeInstructions, types::AssignedByte, CircuitField,
+};
 
 #[derive(Clone, Debug)]
 /// A gadget for parsing json data. It is parametrized by:

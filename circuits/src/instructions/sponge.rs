@@ -18,10 +18,9 @@
 
 use std::fmt::Debug;
 
-use crate::CircuitField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 
-use crate::types::InnerValue;
+use crate::{types::InnerValue, CircuitField};
 
 /// The set of off-circuit instructions for sponge-based hashing operations.
 pub trait SpongeCPU<Input, Output> {

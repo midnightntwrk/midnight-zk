@@ -14,8 +14,6 @@
 use std::io::{self, Read};
 
 use ff::PrimeField;
-
-use crate::CircuitField;
 use group::GroupEncoding;
 use midnight_proofs::transcript::{Hashable, Sampleable, TranscriptHash};
 
@@ -28,6 +26,7 @@ use crate::{
     field::foreign::params::MultiEmulationParams as MEP,
     instructions::SpongeCPU,
     types::{AssignedForeignPoint, Instantiable},
+    CircuitField,
 };
 
 /// Number of times the linear part of the partial rounds is skipped in the

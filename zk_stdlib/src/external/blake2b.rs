@@ -20,12 +20,11 @@ use blake2b::{
     },
     types::byte::Byte,
 };
-use midnight_circuits::CircuitField;
 #[cfg(test)]
 use midnight_circuits::{
     field::decomposition::chip::P2RDecompositionConfig, testing_utils::FromScratch,
 };
-use midnight_circuits::{field::AssignedNative, types::AssignedByte, ComposableChip};
+use midnight_circuits::{field::AssignedNative, types::AssignedByte, CircuitField, ComposableChip};
 #[cfg(test)]
 use midnight_proofs::plonk::Instance;
 use midnight_proofs::{
@@ -156,12 +155,12 @@ impl<F: CircuitField> FromScratch<F> for Blake2bWrapper<F> {
 #[cfg(test)]
 mod test {
     use blake2::Blake2b;
-    use midnight_circuits::CircuitField;
     use midnight_circuits::{
         field::NativeGadget,
         instructions::{hash::HashCPU, HashInstructions},
         testing_utils::{test_hash, FromScratch},
         types::AssignedByte,
+        CircuitField,
     };
     use midnight_curves::Fq;
     use midnight_proofs::{
@@ -199,7 +198,9 @@ mod test {
         }
     }
 
-    impl<F: CircuitField> HashInstructions<F, AssignedByte<F>, [AssignedByte<F>; 64]> for Blake2b512<F> {
+    impl<F: CircuitField> HashInstructions<F, AssignedByte<F>, [AssignedByte<F>; 64]>
+        for Blake2b512<F>
+    {
         fn hash(
             &self,
             layouter: &mut impl Layouter<F>,
@@ -209,7 +210,9 @@ mod test {
         }
     }
 
-    impl<F: CircuitField> HashInstructions<F, AssignedByte<F>, [AssignedByte<F>; 32]> for Blake2b256<F> {
+    impl<F: CircuitField> HashInstructions<F, AssignedByte<F>, [AssignedByte<F>; 32]>
+        for Blake2b256<F>
+    {
         fn hash(
             &self,
             layouter: &mut impl Layouter<F>,

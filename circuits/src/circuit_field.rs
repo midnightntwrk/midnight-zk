@@ -13,9 +13,10 @@
 
 //! Circuit-compatible prime field trait.
 //!
-//! This module defines [`CircuitField`], a trait that extends [`ff::PrimeField`]
-//! with integer conversion methods required for limb decomposition and foreign
-//! field arithmetic. It also provides generic access to modulus fields.
+//! This module defines [`CircuitField`], a trait that extends
+//! [`ff::PrimeField`] with integer conversion methods required for limb
+//! decomposition and foreign field arithmetic. It also provides generic access
+//! to modulus fields.
 
 use std::ops::Index;
 
@@ -35,7 +36,8 @@ pub trait CircuitField: PrimeField {
     /// Byte length of the field representation.
     const NUM_BYTES: usize;
 
-    /// Fixed-size byte array for the field representation, typically `[u8; NUM_BYTES]`.
+    /// Fixed-size byte array for the field representation, typically `[u8;
+    /// NUM_BYTES]`.
     type Bytes: Copy + Send + Sync + 'static + AsRef<[u8]> + AsMut<[u8]> + Index<usize, Output = u8>;
 
     /// Converts the field element to a [`BigUint`].
@@ -45,8 +47,8 @@ pub trait CircuitField: PrimeField {
 
     /// Creates a field element from a [`BigUint`].
     ///
-    /// Returns `None` if the value is not in the canonical range `[0, modulus)`.
-    /// This method does **not** perform modular reduction.
+    /// Returns `None` if the value is not in the canonical range `[0,
+    /// modulus)`. This method does **not** perform modular reduction.
     fn from_biguint(n: &BigUint) -> Option<Self>;
 
     /// Returns the field modulus as a [`BigUint`].
@@ -64,7 +66,8 @@ pub trait CircuitField: PrimeField {
 
     /// Creates a field element from little-endian bytes.
     ///
-    /// Returns `None` if the value is not in the canonical range `[0, modulus)`.
+    /// Returns `None` if the value is not in the canonical range `[0,
+    /// modulus)`.
     fn from_bytes_le(bytes: &[u8]) -> Option<Self> {
         let n = BigUint::from_bytes_le(bytes);
         Self::from_biguint(&n)
@@ -72,7 +75,8 @@ pub trait CircuitField: PrimeField {
 
     /// Creates a field element from big-endian bytes.
     ///
-    /// Returns `None` if the value is not in the canonical range `[0, modulus)`.
+    /// Returns `None` if the value is not in the canonical range `[0,
+    /// modulus)`.
     fn from_bytes_be(bytes: &[u8]) -> Option<Self> {
         let n = BigUint::from_bytes_be(bytes);
         Self::from_biguint(&n)
@@ -186,8 +190,8 @@ macro_rules! impl_circuit_field_le {
 //
 //             fn modulus() -> BigUint {
 //                 let hex_str = &Self::MODULUS[2..]; // Skip "0x" prefix.
-//                 BigUint::from_str_radix(hex_str, 16).expect("Invalid modulus hex string")
-//             }
+//                 BigUint::from_str_radix(hex_str, 16).expect("Invalid modulus
+// hex string")             }
 //
 //             fn to_bytes_le(&self) -> Self::Bytes {
 //                 let mut bytes = [0u8; $repr_size];
