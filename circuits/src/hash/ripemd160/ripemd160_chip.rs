@@ -28,9 +28,7 @@ use crate::{
             limb_lengths, limb_values, negate_spreaded, spread, u32_in_be_limbs, MASK_EVN_64,
         },
     },
-    instructions::{
-        AssertionInstructions, AssignmentInstructions, DecompositionInstructions, ZeroInstructions,
-    },
+    instructions::{AssertionInstructions, AssignmentInstructions, DecompositionInstructions},
     types::AssignedByte,
     utils::{
         util::{fe_to_u32, fe_to_u64, u32_to_fe, u64_to_fe},
@@ -600,9 +598,9 @@ impl<F: PrimeField> RipeMD160Chip<F> {
         */
         let adv_cols = self.config().advice_cols;
         let sprdd_val = word.0.value().map(|&w| spread(fe_to_u32(w)));
-        let zero = AssignedWord::fixed(layouter, &self.native_gadget, 0u32)?;
+        let zero: AssignedNative<F> = self.native_gadget.assign_fixed(layouter, F::ZERO)?;
 
-        let (res, odd, sprdd_word) = layouter.assign_region(
+        let (word_copy, sprdd_word) = layouter.assign_region(
             || "Assign prepare_spreaded",
             |mut region| {
                 self.config().q_spr_sum_evn.enable(&mut region, 1)?;
@@ -610,20 +608,20 @@ impl<F: PrimeField> RipeMD160Chip<F> {
                 let sprdd_word = region
                     .assign_advice(|| "sprdd_word", adv_cols[5], 0, || sprdd_val.map(u64_to_fe))
                     .map(AssignedSpreaded)?;
-                zero.0.copy_advice(|| "sprdd_ZERO", &mut region, adv_cols[6], 0)?;
-                zero.0.copy_advice(|| "sprdd_ZERO", &mut region, adv_cols[7], 0)?;
+                zero.copy_advice(|| "sprdd_ZERO", &mut region, adv_cols[6], 0)?;
+                zero.copy_advice(|| "sprdd_ZERO", &mut region, adv_cols[7], 0)?;
 
-                let (res, odd) =
-                    self.assign_sprdd_11_11_10(&mut region, sprdd_val, Parity::Evn, 0)?;
+                zero.copy_advice(|| "ZERO", &mut region, adv_cols[2], 0)?;
+                zero.copy_advice(|| "ZERO", &mut region, adv_cols[2], 1)?;
+                zero.copy_advice(|| "ZERO", &mut region, adv_cols[2], 2)?;
 
-                Ok((res, odd, sprdd_word))
+                let word = self.assign_sprdd_11_11_10(&mut region, sprdd_val, Parity::Evn, 0)?;
+
+                Ok((word, sprdd_word))
             },
         )?;
 
-        self.native_gadget.assert_equal(layouter, &word.0, &res.0)?;
-        self.native_gadget.assert_zero(layouter, &odd[0])?;
-        self.native_gadget.assert_zero(layouter, &odd[1])?;
-        self.native_gadget.assert_zero(layouter, &odd[2])?;
+        self.native_gadget.assert_equal(layouter, &word.0, &word_copy.0)?;
 
         Ok(sprdd_word)
     }
@@ -676,9 +674,7 @@ impl<F: PrimeField> RipeMD160Chip<F> {
                 sprdd_Y.0.copy_advice(|| "sprdd_Y", &mut region, adv_cols[6], 0)?;
                 zero.copy_advice(|| "sprdd_ZERO", &mut region, adv_cols[7], 0)?;
 
-                let (res, _) =
-                    self.assign_sprdd_11_11_10(&mut region, val_of_sum, Parity::Odd, 0)?;
-                Ok(res)
+                self.assign_sprdd_11_11_10(&mut region, val_of_sum, Parity::Odd, 0)
             },
         )
     }
@@ -731,9 +727,7 @@ impl<F: PrimeField> RipeMD160Chip<F> {
                 sprdd_Y.0.copy_advice(|| "sprdd_Y", &mut region, adv_cols[6], 0)?;
                 zero.copy_advice(|| "sprdd_ZERO", &mut region, adv_cols[7], 0)?;
 
-                let (res, _) =
-                    self.assign_sprdd_11_11_10(&mut region, val_of_sum, Parity::Evn, 0)?;
-                Ok(res)
+                self.assign_sprdd_11_11_10(&mut region, val_of_sum, Parity::Evn, 0)
             },
         )
     }
@@ -790,9 +784,7 @@ impl<F: PrimeField> RipeMD160Chip<F> {
                 sprdd_Y.0.copy_advice(|| "sprdd_Y", &mut region, adv_cols[6], 0)?;
                 sprdd_Z.0.copy_advice(|| "sprdd_Z", &mut region, adv_cols[7], 0)?;
 
-                let (res, _) =
-                    self.assign_sprdd_11_11_10(&mut region, val_of_sum, Parity::Evn, 0)?;
-                Ok(res)
+                self.assign_sprdd_11_11_10(&mut region, val_of_sum, Parity::Evn, 0)
             },
         )
     }
@@ -888,11 +880,10 @@ impl<F: PrimeField> RipeMD160Chip<F> {
 
                 mask_evn_64.copy_advice(|| "MASK_EVN_64", &mut region, adv_cols[6], 4)?;
 
-                let (odd_XY, _) =
-                    self.assign_sprdd_11_11_10(&mut region, XplusY_val, Parity::Odd, 0)?;
+                let odd_XY = self.assign_sprdd_11_11_10(&mut region, XplusY_val, Parity::Odd, 0)?;
                 odd_XY.0.copy_advice(|| "Odd_XY", &mut region, adv_cols[4], 1)?;
 
-                let (odd_nXZ, _) =
+                let odd_nXZ =
                     self.assign_sprdd_11_11_10(&mut region, nXplusZ_val, Parity::Odd, 3)?;
                 odd_nXZ.0.copy_advice(|| "Odd_nXZ", &mut region, adv_cols[5], 1)?;
 
@@ -1083,8 +1074,8 @@ impl<F: PrimeField> RipeMD160Chip<F> {
         )
     }
 
-    /// Given a u64, representing a spreaded value, this function fills a
-    /// lookup table with the limbs of its even and odd parts (or vice versa)
+    /// Given a u64, representing a spreaded value, this function fills the
+    /// plonk table with the limbs of its even and odd parts (or vice versa)
     /// and returns the former or the latter, depending on the desired value
     /// `even_or_odd`.
     ///
@@ -1096,7 +1087,7 @@ impl<F: PrimeField> RipeMD160Chip<F> {
     ///  | 11 | Evn.11b | ~Evn.11b | 11 | Odd.11b | ~Odd.11b |     | <- q_11_11_10
     ///  | 10 | Evn.10  | ~Evn.10  | 10 | Odd.10  | ~Odd.10  |     |
     ///
-    /// and returns `(Evn, [Odd.11a, Odd.11b, Odd.10])`.
+    /// and returns `Evn`.
     ///
     /// If `even_or_odd` = `Parity::Odd`:
     ///
@@ -1106,17 +1097,24 @@ impl<F: PrimeField> RipeMD160Chip<F> {
     ///  | 11 | Odd.11b | ~Odd.11b | 11 | Evn.11b | ~Evn.11b |     | <- q_11_11_10
     ///  | 10 | Odd.10  | ~Odd.10  | 10 | Evn.10  | ~Evn.10  |     |
     ///
-    /// and returns `(Odd, [Odd.11a, Odd.11b, Odd.10])`.
+    /// and returns `Odd`.
     ///
     /// This function guarantees that the returned value is consistent with
-    /// the values in the filled lookup table.
+    /// the values filled in the table.
+    ///
+    /// Namely, that (e.g. in the case of `even_or_odd` = `Parity::Evn`):
+    ///
+    ///   2^21 * Evn.11a + 2^10 * Evn.11b + Evn.10 = Evn
+    ///
+    /// NB: This function DOES activate the plain-spreaded lookup table, which
+    /// guarantees that all 6 plain and spreaded values are consistent.
     fn assign_sprdd_11_11_10(
         &self,
         region: &mut Region<'_, F>,
         value: Value<u64>,
         even_or_odd: Parity,
         offset: usize,
-    ) -> Result<(AssignedWord<F>, [AssignedNative<F>; 3]), Error> {
+    ) -> Result<AssignedWord<F>, Error> {
         self.config().q_11_11_10.enable(region, offset + 1)?;
 
         let (evn_val, odd_val) = value.map(get_even_and_odd_bits).unzip();
@@ -1136,14 +1134,12 @@ impl<F: PrimeField> RipeMD160Chip<F> {
         self.assign_plain_and_spreaded::<11>(region, evn_11b, offset + 1, idx)?;
         self.assign_plain_and_spreaded::<10>(region, evn_10, offset + 2, idx)?;
 
-        let odd = [
-            self.assign_plain_and_spreaded::<11>(region, odd_11a, offset, 1 - idx)?,
-            self.assign_plain_and_spreaded::<11>(region, odd_11b, offset + 1, 1 - idx)?,
-            self.assign_plain_and_spreaded::<10>(region, odd_10, offset + 2, 1 - idx)?,
-        ];
+        self.assign_plain_and_spreaded::<11>(region, odd_11a, offset, 1 - idx)?;
+        self.assign_plain_and_spreaded::<11>(region, odd_11b, offset + 1, 1 - idx)?;
+        self.assign_plain_and_spreaded::<10>(region, odd_10, offset + 2, 1 - idx)?;
 
         let out_col = self.config().advice_cols[4];
-        let word = match even_or_odd {
+        match even_or_odd {
             Parity::Evn => {
                 region.assign_advice(|| "Evn", out_col, offset, || evn_val.map(u32_to_fe))
             }
@@ -1151,9 +1147,7 @@ impl<F: PrimeField> RipeMD160Chip<F> {
                 region.assign_advice(|| "Odd", out_col, offset, || odd_val.map(u32_to_fe))
             }
         }
-        .map(AssignedWord)?;
-
-        Ok((word, odd))
+        .map(AssignedWord)
     }
 
     /// Given a plain u32 value, supposedly in the range [0, 2^L), assigns it

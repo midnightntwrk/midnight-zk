@@ -1205,8 +1205,8 @@ impl<F: CircuitField> Sha256Chip<F> {
         )
     }
 
-    /// Given a u64, representing a spreaded value, this function fills a
-    /// lookup table with the limbs of its even and odd parts (or vice versa)
+    /// Given a u64, representing a spreaded value, this function fills the
+    /// plonk table with the limbs of its even and odd parts (or vice versa)
     /// and returns the former or the latter, depending on the desired value
     /// `even_or_odd`.
     ///
@@ -1231,7 +1231,14 @@ impl<F: CircuitField> Sha256Chip<F> {
     /// and returns `Odd`.
     ///
     /// This function guarantees that the returned value is consistent with
-    /// the values in the filled lookup table.
+    /// the values filled in the table.
+    ///
+    /// Namely, that (e.g. in the case of `even_or_odd` = `Parity::Evn`):
+    ///
+    ///   2^21 * Evn.11a + 2^10 * Evn.11b + Evn.10 = Evn
+    ///
+    /// NB: This function DOES activate the plain-spreaded lookup table, which
+    /// guarantees that all 6 plain and spreaded values are consistent.
     fn assign_sprdd_11_11_10(
         &self,
         region: &mut Region<'_, F>,
