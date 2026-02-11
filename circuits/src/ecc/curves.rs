@@ -141,9 +141,11 @@ impl EdwardsCurve for JubjubExtended {
 use midnight_curves::curve25519::{Curve25519Subgroup, Fp as Curve25519Base};
 impl CircuitCurve for Curve25519 {
     type Base = Curve25519Base;
+    type ScalarExt = <Self as Group>::Scalar;
+
     type CryptographicGroup = Curve25519Subgroup;
     const COFACTOR: u128 = 8;
-    const NUM_BITS_SUBGROUP: u32 = 252;
+    const NUM_BITS_SUBGROUP: u32 = 253;
 
     fn coordinates(&self) -> Option<(Self::Base, Self::Base)> {
         let affine = Curve25519Affine::from_edwards(self.0);
