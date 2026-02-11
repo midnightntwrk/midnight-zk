@@ -680,56 +680,15 @@ impl<F: PrimeField> RipeMD160Chip<F> {
     }
 
     /// Given two assigned spreaded ~X and ~Y, this function returns X ⊕ Y
-    /// the bitwise XOR as an assigned word.
+    /// the bitwise XOR of their corresponding plain values as an assigned word.
     fn xor(
         &self,
         layouter: &mut impl Layouter<F>,
         sprdd_X: &AssignedSpreaded<F, 32>,
         sprdd_Y: &AssignedSpreaded<F, 32>,
     ) -> Result<AssignedWord<F>, Error> {
-        /*
-        X ⊕ Y can be computed as the even part of ~X + ~Y + ~0. We apply [`assign_sprdd_11_11_10`]
-        to the value of ~X + ~Y + ~0 as follows:
-
-        | T0 |    A0   |    A1    | T1 |    A2   |    A3    |  A4 |  A5 | A6 | A7 |
-        |----|---------|----------|----|---------|----------|-----|-----|----|----|
-        | 11 | Evn.11a | ~Evn.11a | 11 | Odd.11a | ~Odd.11a | Evn |  ~X | ~Y | ~0 |
-        | 11 | Evn.11b | ~Evn.11b | 11 | Odd.11b | ~Odd.11b |     |     |    |    | <- q_11_11_10, q_spr_sum_evn
-        | 10 | Evn.10  | ~Evn.10  | 10 | Odd.10  | ~Odd.10  |     |     |    |    |
-
-        with constraints of:
-
-        1) applying the plain-spreaded lookup on 11-11-10 limbs of Evn and Odd:
-             Evn: (Evn.11a, Evn.11b, Evn.10)
-             Odd: (Odd.11a, Odd.11b, Odd.10)
-
-        2) asserting the 11-11-10 decomposition identity for Evn:
-              2^21 * Evn.11a + 2^10 * Evn.11b + Evn.10
-            = Evn
-
-        3) asserting the spr_sum_evn identity:
-              (4^21 * ~Evn.11a + 4^10 * ~Evn.11b + ~Evn.10) +
-          2 * (4^21 * ~Odd.11a + 4^10 * ~Odd.11b + ~Odd.10)
-             = ~A + ~B + ~C
-
-        and returns `Evn`.
-        */
-        let adv_cols = self.config().advice_cols;
-        let val_of_sum = sprdd_X.0.value().zip(sprdd_Y.0.value()).map(|(x, y)| fe_to_u64(*x + *y));
         let zero: AssignedNative<F> = self.native_gadget.assign_fixed(layouter, F::ZERO)?;
-
-        layouter.assign_region(
-            || "Assign XOR",
-            |mut region| {
-                self.config().q_spr_sum_evn.enable(&mut region, 1)?;
-
-                sprdd_X.0.copy_advice(|| "sprdd_X", &mut region, adv_cols[5], 0)?;
-                sprdd_Y.0.copy_advice(|| "sprdd_Y", &mut region, adv_cols[6], 0)?;
-                zero.copy_advice(|| "sprdd_ZERO", &mut region, adv_cols[7], 0)?;
-
-                self.assign_sprdd_11_11_10(&mut region, val_of_sum, Parity::Evn, 0)
-            },
-        )
+        self.f_type_one(layouter, sprdd_X, sprdd_Y, &AssignedSpreaded(zero))
     }
 
     /// Given three assigned spreaded ~X, ~Y, ~Z, this function computes the
