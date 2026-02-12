@@ -1620,6 +1620,7 @@ pub struct Gate<F: Field> {
     name: String,
     constraint_names: Vec<String>,
     polys: Vec<Expression<F>>,
+    simple_selector_index: Option<usize>,
     /// We track queried selectors separately from other cells, so that we can
     /// use them to trigger debug checks on gates.
     queried_selectors: Vec<Selector>,
@@ -1642,6 +1643,13 @@ impl<F: Field> Gate<F> {
         &self.polys
     }
 
+    /// If gate selector is multiplicative and simple, returns index of
+    /// fixed column corresponding to this selector (after its conversion to a
+    /// fixed column). Otherwise, returns `None`.
+    pub fn simple_selector_index(&self) -> Option<usize> {
+        self.simple_selector_index
+    }
+
     pub(crate) fn queried_selectors(&self) -> &[Selector] {
         &self.queried_selectors
     }
@@ -1659,6 +1667,13 @@ pub struct ConstraintSystem<F: Field> {
     pub(crate) num_advice_columns: usize,
     pub(crate) num_instance_columns: usize,
     pub(crate) num_selectors: usize,
+    /// The lifecycle of a selector has 2 phases: BEFORE conversion to a
+    /// fixed column, and AFTER. Accordingly, this field has 2 phases as well.
+    /// * BEFORE: The i-th element is `1` if the i-th selector is simple and
+    ///   multiplicative, and `0` otherwise.
+    /// * AFTER: Contains the fixed column indices of all simple, multiplicative
+    ///   selectors.
+    pub(crate) selector_flags: Vec<usize>,
     pub(crate) num_challenges: usize,
 
     /// Contains the index of each advice column that is left unblinded.
@@ -1790,6 +1805,7 @@ impl<F: Field> Default for ConstraintSystem<F> {
             num_advice_columns: 0,
             num_instance_columns: 0,
             num_selectors: 0,
+            selector_flags: vec![],
             num_challenges: 0,
             unblinded_advice_columns: Vec::new(),
             advice_column_phase: Vec::new(),
@@ -1809,7 +1825,13 @@ impl<F: Field> Default for ConstraintSystem<F> {
     }
 }
 
-impl<F: Field> ConstraintSystem<F> {
+impl<'com, F: Field> ConstraintSystem<F> {
+    /// Returns the indices of fixed columns corresponding to simple,
+    /// multiplicative selectors.
+    pub fn selector_flags(&'com self) -> &'com Vec<usize> {
+        &self.selector_flags
+    }
+
     /// Obtain a pinned version of this constraint system; a structure with the
     /// minimal parameters needed to determine the rest of the constraint
     /// system.
@@ -2041,6 +2063,12 @@ impl<F: Field> ConstraintSystem<F> {
             "Gates must contain at least one constraint."
         );
 
+        // Only keep track of selector indices of multiplicative, simple selectors
+        let simple_selector_index = match constraints.selector {
+            SelectorType::Multiplicative(s) if s.is_simple() => Some(s.index()),
+            _ => None,
+        };
+
         let (constraint_names, polys): (_, Vec<_>) = cells
             .apply_selector_to_constraints(constraints)
             .into_iter()
@@ -2057,6 +2085,7 @@ impl<F: Field> ConstraintSystem<F> {
             name: name.into(),
             constraint_names,
             polys,
+            simple_selector_index,
             queried_selectors,
             queried_cells,
         });
@@ -2072,12 +2101,17 @@ impl<F: Field> ConstraintSystem<F> {
         // counted for this constraint system.
         assert_eq!(selectors.len(), self.num_selectors);
 
+        let nr_fixed_columns = self.num_fixed_columns();
         let (polys, selector_replacements): (Vec<_>, Vec<_>) = selectors
             .into_iter()
-            .map(|selector| {
+            .enumerate()
+            .map(|(idx, selector)| {
                 let poly =
                     selector.iter().map(|b| if *b { F::ONE } else { F::ZERO }).collect::<Vec<_>>();
                 let column = self.fixed_column();
+                if self.selector_flags[idx] == 1 {
+                    self.selector_flags[idx] = column.index();
+                }
                 let rotation = Rotation::cur();
                 let expr = Expression::Fixed(FixedQuery {
                     index: Some(self.query_fixed_index(column, rotation)),
@@ -2088,8 +2122,17 @@ impl<F: Field> ConstraintSystem<F> {
             })
             .unzip();
 
+        self.selector_flags.retain(|&x| x != 0);
         self.replace_selectors_with_fixed(&selector_replacements);
         self.num_selectors = 0;
+
+        // Adjust indices of simple, multiplicative selectors: after converting
+        // selectors to fixed columns, the selector index of a gate should now
+        // track the index of the corresponding fixed column
+        for gate in self.gates.iter_mut() {
+            gate.simple_selector_index =
+                gate.simple_selector_index.map(|idx| idx + nr_fixed_columns);
+        }
 
         (self, polys)
     }
@@ -2151,6 +2194,7 @@ impl<F: Field> ConstraintSystem<F> {
     pub fn selector(&mut self) -> Selector {
         let index = self.num_selectors;
         self.num_selectors += 1;
+        self.selector_flags.push(1);
         Selector(index, true)
     }
 
@@ -2159,6 +2203,7 @@ impl<F: Field> ConstraintSystem<F> {
     pub fn complex_selector(&mut self) -> Selector {
         let index = self.num_selectors;
         self.num_selectors += 1;
+        self.selector_flags.push(0);
         Selector(index, false)
     }
 

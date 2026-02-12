@@ -1,6 +1,6 @@
 use std::{cmp::max, fmt::Debug};
 
-use ff::Field;
+use ff::{Field, PrimeField};
 
 use super::circuit::Expression;
 
@@ -47,4 +47,9 @@ impl<F: Field> Argument<F> {
     pub fn constraint_expressions(&self) -> &Vec<Expression<F>> {
         &self.constraint_expressions
     }
+}
+
+#[derive(Debug)]
+pub struct Evaluated<F: PrimeField> {
+    trash_eval: F,
 }

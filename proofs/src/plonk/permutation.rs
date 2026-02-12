@@ -173,3 +173,9 @@ impl<F: PrimeField> ProvingKey<F> {
             + polynomial_slice_byte_length(&self.cosets)
     }
 }
+#[derive(Debug)]
+pub(crate) struct Evaluated<F: PrimeField> {
+    pub permutation_product_eval: F,
+    pub permutation_product_next_eval: F,
+    pub permutation_product_last_eval: Option<F>,
+}
