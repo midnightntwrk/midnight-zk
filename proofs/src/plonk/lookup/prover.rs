@@ -9,7 +9,7 @@ use super::{
     Argument,
 };
 use crate::{
-    plonk::evaluation::evaluate,
+    plonk::{evaluation::evaluate, lookup},
     poly::{
         commitment::PolynomialCommitmentScheme, Coeff, EvaluationDomain, LagrangeCoeff, Polynomial,
         ProverQuery, Rotation,
@@ -39,6 +39,7 @@ pub(crate) struct Committed<F: PrimeField> {
 
 pub(crate) struct Evaluated<F: PrimeField> {
     constructed: Committed<F>,
+    pub(crate) _evaluated: lookup::Evaluated<F>,
 }
 
 impl<F: WithSmallOrderMulGroup<3> + Ord + Hash> Argument<F> {
@@ -326,7 +327,16 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
             transcript.write(&eval)?;
         }
 
-        Ok(Evaluated { constructed: self })
+        Ok(Evaluated {
+            constructed: self,
+            _evaluated: lookup::Evaluated {
+                product_eval,
+                product_next_eval,
+                permuted_input_eval,
+                permuted_input_inv_eval,
+                permuted_table_eval,
+            },
+        })
     }
 }
 

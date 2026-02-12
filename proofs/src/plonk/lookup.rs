@@ -1,6 +1,6 @@
 use std::fmt::{self, Debug};
 
-use ff::Field;
+use ff::{Field, PrimeField};
 
 use super::circuit::Expression;
 
@@ -101,4 +101,13 @@ impl<F: Field> Argument<F> {
     pub fn name(&self) -> &str {
         &self.name
     }
+}
+
+#[derive(Debug)]
+pub(crate) struct Evaluated<F: PrimeField> {
+    product_eval: F,
+    product_next_eval: F,
+    permuted_input_eval: F,
+    permuted_input_inv_eval: F,
+    permuted_table_eval: F,
 }

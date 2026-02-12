@@ -2,9 +2,9 @@ use std::iter;
 
 use ff::{PrimeField, WithSmallOrderMulGroup};
 
-use super::{super::circuit::Expression, Argument};
+use super::Argument;
 use crate::{
-    plonk::{Error, VerifyingKey},
+    plonk::{lookup, Error, Expression, VerifyingKey},
     poly::{commitment::PolynomialCommitmentScheme, Rotation, VerifierQuery},
     transcript::{Hashable, Transcript},
 };
@@ -21,13 +21,10 @@ pub struct Committed<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
     product_commitment: CS::Commitment,
 }
 
+#[derive(Debug)]
 pub struct Evaluated<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
-    committed: Committed<F, CS>,
-    product_eval: F,
-    product_next_eval: F,
-    permuted_input_eval: F,
-    permuted_input_inv_eval: F,
-    permuted_table_eval: F,
+    pub(crate) committed: Committed<F, CS>,
+    pub(crate) evaluated: lookup::Evaluated<F>,
 }
 
 impl<F: PrimeField> Argument<F> {
@@ -84,11 +81,13 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> Committed<F, CS> {
 
         Ok(Evaluated {
             committed: self,
-            product_eval,
-            product_next_eval,
-            permuted_input_eval,
-            permuted_input_inv_eval,
-            permuted_table_eval,
+            evaluated: lookup::Evaluated {
+                product_eval,
+                product_next_eval,
+                permuted_input_eval,
+                permuted_input_inv_eval,
+                permuted_table_eval,
+            },
         })
     }
 }
@@ -115,9 +114,9 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
             // z(\omega X) (a'(X) + \beta) (s'(X) + \gamma)
             // - z(X) (\theta^{m-1} a_0(X) + ... + a_{m-1}(X) + \beta) (\theta^{m-1} s_0(X)
             //   + ... + s_{m-1}(X) + \gamma)
-            let left = self.product_next_eval
-                * &(self.permuted_input_eval + &beta)
-                * &(self.permuted_table_eval + &gamma);
+            let left = self.evaluated.product_next_eval
+                * &(self.evaluated.permuted_input_eval + &beta)
+                * &(self.evaluated.permuted_table_eval + &gamma);
 
             let compress_expressions = |expressions: &[Expression<F>]| {
                 expressions
@@ -138,7 +137,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
                     })
                     .fold(F::ZERO, |acc, eval| acc * &theta + &eval)
             };
-            let right = self.product_eval
+            let right = self.evaluated.product_eval
                 * &(compress_expressions(&argument.input_expressions) + &beta)
                 * &(compress_expressions(&argument.table_expressions) + &gamma);
 
@@ -148,11 +147,13 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
         std::iter::empty()
             .chain(
                 // l_0(X) * (1 - z(X)) = 0
-                Some(l_0 * &(F::ONE - &self.product_eval)),
+                Some(l_0 * &(F::ONE - &self.evaluated.product_eval)),
             )
             .chain(
                 // l_last(X) * (z(X)^2 - z(X)) = 0
-                Some(l_last * &(self.product_eval.square() - &self.product_eval)),
+                Some(
+                    l_last * &(self.evaluated.product_eval.square() - &self.evaluated.product_eval),
+                ),
             )
             .chain(
                 // (1 - (l_last(X) + l_blind(X))) * (
@@ -164,12 +165,13 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
             )
             .chain(Some(
                 // l_0(X) * (a'(X) - s'(X)) = 0
-                l_0 * &(self.permuted_input_eval - &self.permuted_table_eval),
+                l_0 * &(self.evaluated.permuted_input_eval - &self.evaluated.permuted_table_eval),
             ))
             .chain(Some(
                 // (1 - (l_last(X) + l_blind(X))) * (a′(X) − s′(X))⋅(a′(X) − a′(\omega^{-1} X)) = 0
-                (self.permuted_input_eval - &self.permuted_table_eval)
-                    * &(self.permuted_input_eval - &self.permuted_input_inv_eval)
+                (self.evaluated.permuted_input_eval - &self.evaluated.permuted_table_eval)
+                    * &(self.evaluated.permuted_input_eval
+                        - &self.evaluated.permuted_input_inv_eval)
                     * &active_rows,
             ))
     }
@@ -187,31 +189,31 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
             .chain(Some(VerifierQuery::new(
                 x,
                 &self.committed.product_commitment,
-                self.product_eval,
+                self.evaluated.product_eval,
             )))
             // Open lookup input commitments at x
             .chain(Some(VerifierQuery::new(
                 x,
                 &self.committed.permuted.permuted_input_commitment,
-                self.permuted_input_eval,
+                self.evaluated.permuted_input_eval,
             )))
             // Open lookup table commitments at x
             .chain(Some(VerifierQuery::new(
                 x,
                 &self.committed.permuted.permuted_table_commitment,
-                self.permuted_table_eval,
+                self.evaluated.permuted_table_eval,
             )))
             // Open lookup input commitments at \omega^{-1} x
             .chain(Some(VerifierQuery::new(
                 x_inv,
                 &self.committed.permuted.permuted_input_commitment,
-                self.permuted_input_inv_eval,
+                self.evaluated.permuted_input_inv_eval,
             )))
             // Open lookup product commitment at \omega x
             .chain(Some(VerifierQuery::new(
                 x_next,
                 &self.committed.product_commitment,
-                self.product_next_eval,
+                self.evaluated.product_next_eval,
             )))
     }
 }

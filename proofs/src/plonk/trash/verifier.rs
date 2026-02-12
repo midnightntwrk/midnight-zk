@@ -2,7 +2,7 @@ use ff::{PrimeField, WithSmallOrderMulGroup};
 
 use super::Argument;
 use crate::{
-    plonk::{Error, Expression},
+    plonk::{trash, Error, Expression},
     poly::{commitment::PolynomialCommitmentScheme, VerifierQuery},
     transcript::{Hashable, Transcript},
 };
@@ -12,9 +12,10 @@ pub struct Committed<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
     trash_commitment: CS::Commitment,
 }
 
+#[derive(Debug)]
 pub struct Evaluated<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
-    committed: Committed<F, CS>,
-    trash_eval: F,
+    pub(crate) committed: Committed<F, CS>,
+    pub(crate) evaluated: trash::Evaluated<F>,
 }
 
 impl<F: PrimeField> Argument<F> {
@@ -42,7 +43,7 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> Committed<F, CS> {
 
         Ok(Evaluated {
             committed: self,
-            trash_eval,
+            evaluated: trash::Evaluated { trash_eval },
         })
     }
 }
@@ -77,14 +78,14 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
             .fold(F::ZERO, |acc, eval| acc * &trash_challenge + &eval);
 
         let q = evaluate_expression(argument.selector());
-        vec![compressed_expressions - (F::ONE - q) * self.trash_eval].into_iter()
+        vec![compressed_expressions - (F::ONE - q) * self.evaluated.trash_eval].into_iter()
     }
 
     pub(crate) fn queries(&self, x: F) -> impl Iterator<Item = VerifierQuery<F, CS>> + Clone {
         vec![VerifierQuery::new(
             x,
             &self.committed.trash_commitment,
-            self.trash_eval,
+            self.evaluated.trash_eval,
         )]
         .into_iter()
     }
