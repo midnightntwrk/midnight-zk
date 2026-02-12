@@ -264,7 +264,7 @@ where
 
     let domain = pk.get_vk().get_domain();
 
-    let h_poly = compute_h_poly(pk, &trace);
+    let nu_poly = compute_nu_poly(pk, &trace);
 
     let ProverTrace {
         advice_polys,
@@ -277,7 +277,7 @@ where
     } = trace;
 
     // Construct the vanishing argument's h(X) commitments
-    let vanishing = vanishing.construct::<CS, T>(params, domain, h_poly, transcript)?;
+    let vanishing = vanishing.construct::<CS, T>(params, domain, nu_poly, transcript)?;
 
     let x: F = transcript.squeeze_challenge();
 
@@ -591,7 +591,7 @@ where
     Ok((advice, challenges))
 }
 
-pub(super) fn compute_h_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>>(
+pub(super) fn compute_nu_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>>(
     pk: &ProvingKey<F, CS>,
     trace: &ProverTrace<F>,
 ) -> Polynomial<F, ExtendedLagrangeCoeff> {
@@ -629,8 +629,10 @@ pub(super) fn compute_h_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitm
         })
         .collect();
 
-    // Evaluate the h(X) polynomial
-    pk.ev.evaluate_h::<ExtendedLagrangeCoeff>(
+    // Evaluate the numerator polynomial nu(X) of the quotient polynomial
+    // h(X) = nu(X) / (X^n-1): nu(X) is a random linear combination of all
+    // independent identities
+    pk.ev.evaluate_numerator::<ExtendedLagrangeCoeff>(
         &pk.vk.domain,
         &pk.vk.cs,
         &advice_cosets.iter().map(|a| a.as_slice()).collect::<Vec<_>>(),
