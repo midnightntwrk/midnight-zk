@@ -39,7 +39,7 @@ pub(crate) struct Committed<F: PrimeField> {
 
 pub(crate) struct Evaluated<F: PrimeField> {
     constructed: Committed<F>,
-    pub(crate) _evaluated: lookup::Evaluated<F>,
+    pub(crate) evaluated: lookup::Evaluated<F>,
 }
 
 impl<F: WithSmallOrderMulGroup<3> + Ord + Hash> Argument<F> {
@@ -329,7 +329,7 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
 
         Ok(Evaluated {
             constructed: self,
-            _evaluated: lookup::Evaluated {
+            evaluated: lookup::Evaluated {
                 product_eval,
                 product_next_eval,
                 permuted_input_eval,
