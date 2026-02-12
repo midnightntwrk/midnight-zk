@@ -2461,11 +2461,6 @@ impl<'com, F: Field> ConstraintSystem<F> {
         // h(x) is derived by the other evaluations so it does not reveal
         // anything; in fact it does not even appear in the proof.
 
-        // h(x_3) is also not revealed; the verifier only learns a single
-        // evaluation of a polynomial in x_1 which has h(x_3) and another random
-        // polynomial evaluated at x_3 as coefficients -- this random polynomial
-        // is "random_poly" in the vanishing argument.
-
         // Add an additional blinding factor as a slight defense against
         // off-by-one errors.
         let factors = factors + 1;
