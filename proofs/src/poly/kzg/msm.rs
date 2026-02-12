@@ -23,8 +23,8 @@ use crate::{
 };
 
 /// A multi-scalar multiplication in the polynomial commitment scheme.
-/// For every i, term (bases[i], scalars[i]) may be have an optional
-/// label names[i] for debugging or other purposes.
+/// For every i, term (bases_i, scalars_i) may be have an optional
+/// label names_i for debugging or other purposes.
 #[derive(Clone, Default, Debug)]
 pub struct MSMKZG<E: Engine> {
     pub(crate) scalars: Vec<E::Fr>,
