@@ -412,10 +412,11 @@ where
                 // Filter out queries for simple, multiplicative selectors
                 .filter(|(_, (col, _))| !vk.cs.selector_flags.contains(&col.index()))
                 .map(|(query_index, &(column, at))| {
-                    VerifierQuery::new(
+                    VerifierQuery::new_fixed(
                         vk.domain.rotate_omega(x, at),
                         &vk.fixed_commitments[column.index()],
                         fixed_evals[query_index],
+                        Some(column.index()),
                     )
                 }),
         )

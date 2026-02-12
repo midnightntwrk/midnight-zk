@@ -46,6 +46,8 @@ pub(crate) fn compute_linearization_commitment<
     quotient_limb_commitments: &'com [CS::Commitment],
     g1: &'com CS::Commitment,
 ) -> VerifierQuery<'com, F, CS> {
+    let mut indices = vec![];
+
     let lin_com_len = vk.cs.selector_flags().len() + quotient_limb_commitments.len() + 1;
     let mut identities_points = Vec::with_capacity(lin_com_len);
     let mut identities_scalars = Vec::with_capacity(lin_com_len);
@@ -54,6 +56,7 @@ pub(crate) fn compute_linearization_commitment<
 
     let mut splitting_pow = F::ONE - *xn;
     for _ in 0..quotient_limb_commitments.len() {
+        indices.push(None);
         identities_scalars.push(splitting_pow);
         splitting_pow *= splitting_factor;
     }
@@ -68,12 +71,18 @@ pub(crate) fn compute_linearization_commitment<
 
     grouped_points.into_iter().for_each(|(col_idx, eval)| {
         match col_idx {
-            Some(col_idx) => identities_points.push(&vk.fixed_commitments[col_idx]),
+            Some(col_idx) => {
+                indices.push(Some(col_idx));
+                identities_points.push(&vk.fixed_commitments[col_idx])
+            }
             // Fully evaluated identities go to the constant term
-            None => identities_points.push(g1),
+            None => {
+                indices.push(None);
+                identities_points.push(g1)
+            }
         }
         identities_scalars.push(eval);
     });
 
-    VerifierQuery::new_linear(x, identities_points, identities_scalars, F::ZERO)
+    VerifierQuery::new_linear(x, identities_points, identities_scalars, F::ZERO, indices)
 }
