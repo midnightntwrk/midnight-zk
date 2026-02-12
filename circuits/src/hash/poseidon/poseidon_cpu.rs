@@ -13,7 +13,6 @@
 
 use std::io::{self, Read};
 
-use ff::PrimeField;
 use group::GroupEncoding;
 use midnight_proofs::transcript::{Hashable, Sampleable, TranscriptHash};
 
@@ -240,7 +239,7 @@ impl Hashable<PoseidonState<midnight_curves::Fq>> for midnight_curves::Fq {
 
         buffer.read_exact(bytes.as_mut())?;
 
-        Fq::from_bytes_le(&bytes)
+        <Fq as CircuitField>::from_bytes_le(&bytes)
             .ok_or_else(|| io::Error::other("Invalid BLS12-381 scalar encoding in proof"))
     }
 }

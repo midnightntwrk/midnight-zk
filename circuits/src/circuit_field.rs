@@ -18,13 +18,14 @@
 //! decomposition and foreign field arithmetic. It also provides generic access
 //! to modulus fields.
 
-use std::ops::Index;
+use std::ops::{Index, RangeTo};
 
 use ff::PrimeField;
 use num_bigint::BigUint;
 use num_traits::Num;
 
-/// A prime field suitable for use as a circuit's native field.
+/// A prime field suitable for use in a circuit, as the native field or
+/// emulated.
 ///
 /// Extends [`PrimeField`] with integer conversion methods required for limb
 /// decomposition and foreign field arithmetic.
@@ -38,7 +39,14 @@ pub trait CircuitField: PrimeField {
 
     /// Fixed-size byte array for the field representation, typically `[u8;
     /// NUM_BYTES]`.
-    type Bytes: Copy + Send + Sync + 'static + AsRef<[u8]> + AsMut<[u8]> + Index<usize, Output = u8>;
+    type Bytes: Copy
+        + Send
+        + Sync
+        + 'static
+        + AsRef<[u8]>
+        + AsMut<[u8]>
+        + Index<usize, Output = u8>
+        + Index<RangeTo<usize>, Output = [u8]>;
 
     /// Converts the field element to a [`BigUint`].
     ///
@@ -68,18 +76,16 @@ pub trait CircuitField: PrimeField {
     ///
     /// Returns `None` if the value is not in the canonical range `[0,
     /// modulus)`.
-    fn from_bytes_le(bytes: &[u8]) -> Option<Self> {
-        let n = BigUint::from_bytes_le(bytes);
-        Self::from_biguint(&n)
-    }
+    fn from_bytes_le(bytes: &[u8]) -> Option<Self>;
 
     /// Creates a field element from big-endian bytes.
     ///
     /// Returns `None` if the value is not in the canonical range `[0,
     /// modulus)`.
     fn from_bytes_be(bytes: &[u8]) -> Option<Self> {
-        let n = BigUint::from_bytes_be(bytes);
-        Self::from_biguint(&n)
+        let mut bytes_le: Vec<u8> = bytes.into();
+        bytes_le.reverse();
+        Self::from_bytes_le(&bytes_le)
     }
 
     /// Decomposes the field element into little-endian bits.
@@ -94,8 +100,21 @@ pub trait CircuitField: PrimeField {
     /// If the element does not fit in `nb_bits` bits when such argument is
     /// provided.
     fn to_le_bits(&self, nb_bits: Option<usize>) -> Vec<bool> {
-        let big = self.to_biguint();
-        let mut bits: Vec<bool> = (0..big.bits()).map(|i| big.bit(i)).collect();
+        let bytes = self.to_bytes_be();
+        let mut bits = Vec::new();
+        let mut started = false;
+        for &byte in bytes.as_ref() {
+            for j in (0..8).rev() {
+                let bit = byte & (1 << j) != 0;
+                if bit {
+                    started = true;
+                }
+                if started {
+                    bits.push(bit);
+                }
+            }
+        }
+        bits.reverse();
         if let Some(n) = nb_bits {
             assert!(n >= bits.len());
             bits.resize(n, false);
@@ -123,7 +142,7 @@ pub trait CircuitField: PrimeField {
     }
 }
 
-// Macro for implementing CircuitField for LE and BE fields
+// Macros for implementing CircuitField for LE and BE fields
 // =========================================================
 
 macro_rules! impl_circuit_field_le {
@@ -149,6 +168,12 @@ macro_rules! impl_circuit_field_le {
             fn modulus() -> BigUint {
                 let hex_str = &Self::MODULUS[2..]; // Skip "0x" prefix.
                 BigUint::from_str_radix(hex_str, 16).expect("Invalid modulus hex string")
+            }
+
+            fn from_bytes_le(bytes: &[u8]) -> Option<Self> {
+                let mut repr = [0u8; $repr_size];
+                repr.copy_from_slice(bytes);
+                <$field as PrimeField>::from_repr(repr.into()).into_option()
             }
 
             fn to_bytes_le(&self) -> Self::Bytes {
@@ -212,7 +237,7 @@ macro_rules! impl_circuit_field_le {
 // Implementations for BLS12-381 fields
 // =====================================
 
-// Jubjub scalar field (Fr) - 255 bits, 32 bytes.
+// Jubjub scalar field (Fr) - 252 bits, 32 bytes.
 impl_circuit_field_le!(midnight_curves::Fr, 32);
 
 // BLS12-381 scalar field, Jubjub base field (Fq) - 255 bits, 32 bytes.

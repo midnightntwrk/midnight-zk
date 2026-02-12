@@ -123,7 +123,7 @@ impl<C: EdwardsCurve> Instantiable<C::Base> for AssignedScalarOfNativeCurve<C> {
         element
             .to_le_bits(Some(C::NUM_BITS_SUBGROUP as usize))
             .chunks(nb_bits_per_batch)
-            .map(|bits| C::Base::from_le_bits(bits))
+            .map(C::Base::from_le_bits)
             .collect()
     }
 }
