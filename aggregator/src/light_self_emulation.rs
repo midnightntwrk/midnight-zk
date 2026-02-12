@@ -32,17 +32,17 @@ use crate::light_fiat_shamir::LightPoseidonFS;
 /// of the circuit `synthesize` function.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FakePoint<C: CircuitCurve> {
-    pieces: Vec<AssignedNative<C::Scalar>>,
+    pieces: Vec<AssignedNative<C::ScalarExt>>,
     public: Rc<RefCell<bool>>,
 }
 
-impl<C> Instantiable<C::Scalar> for FakePoint<C>
+impl<C> Instantiable<C::ScalarExt> for FakePoint<C>
 where
-    C: CircuitCurve + Hashable<LightPoseidonFS<C::Scalar>>,
-    C::Scalar: PoseidonField,
+    C: CircuitCurve + Hashable<LightPoseidonFS<C::ScalarExt>>,
+    C::ScalarExt: PoseidonField,
 {
-    fn as_public_input(p: &C) -> Vec<C::Scalar> {
-        <C as Hashable<LightPoseidonFS<C::Scalar>>>::to_input(p)
+    fn as_public_input(p: &C) -> Vec<C::ScalarExt> {
+        <C as Hashable<LightPoseidonFS<C::ScalarExt>>>::to_input(p)
     }
 }
 
@@ -66,13 +66,13 @@ impl<C: CircuitCurve> InnerValue for FakePoint<C> {
 /// chip with the guarantee that all clones will reference the same points.
 #[derive(Clone, Debug)]
 pub struct FakeCurveChip<C: CircuitCurve> {
-    scalar_chip: NativeChip<C::Scalar>,
+    scalar_chip: NativeChip<C::ScalarExt>,
     public_points: Rc<RefCell<Vec<FakePoint<C>>>>,
 }
 
 impl<C: CircuitCurve> FakeCurveChip<C> {
     /// Initializes a new `FakeCurveChip` from a native chip.
-    pub fn new(scalar_chip: &NativeChip<C::Scalar>) -> Self {
+    pub fn new(scalar_chip: &NativeChip<C::ScalarExt>) -> Self {
         Self {
             scalar_chip: scalar_chip.clone(),
             public_points: Rc::new(RefCell::new(Vec::new())),
@@ -92,21 +92,21 @@ impl<C: CircuitCurve> FakeCurveChip<C> {
     }
 }
 
-impl<C> AssignmentInstructions<C::Scalar, FakePoint<C>> for FakeCurveChip<C>
+impl<C> AssignmentInstructions<C::ScalarExt, FakePoint<C>> for FakeCurveChip<C>
 where
-    C: CircuitCurve + Hashable<LightPoseidonFS<C::Scalar>>,
-    C::Scalar: PoseidonField,
+    C: CircuitCurve + Hashable<LightPoseidonFS<C::ScalarExt>>,
+    C::ScalarExt: PoseidonField,
 {
     fn assign(
         &self,
-        layouter: &mut impl Layouter<C::Scalar>,
+        layouter: &mut impl Layouter<C::ScalarExt>,
         value: Value<C>,
     ) -> Result<FakePoint<C>, Error> {
         // Figure out how many pieces a point needs, all points need the same  number of
         // pieces, so we can take an arbitrary off-circuit point here.
-        let l = <C as Hashable<LightPoseidonFS<C::Scalar>>>::to_input(&C::generator()).len();
+        let l = <C as Hashable<LightPoseidonFS<C::ScalarExt>>>::to_input(&C::generator()).len();
         let pieces_val = value
-            .map(|p| <C as Hashable<LightPoseidonFS<C::Scalar>>>::to_input(&p))
+            .map(|p| <C as Hashable<LightPoseidonFS<C::ScalarExt>>>::to_input(&p))
             .transpose_vec(l);
         let assigned_point = FakePoint::<C> {
             pieces: self.scalar_chip.assign_many(layouter, &pieces_val)?,
@@ -120,10 +120,10 @@ where
 
     fn assign_fixed(
         &self,
-        layouter: &mut impl Layouter<C::Scalar>,
+        layouter: &mut impl Layouter<C::ScalarExt>,
         constant: <FakePoint<C> as InnerValue>::Element,
     ) -> Result<FakePoint<C>, Error> {
-        let pieces_val = <C as Hashable<LightPoseidonFS<C::Scalar>>>::to_input(&constant);
+        let pieces_val = <C as Hashable<LightPoseidonFS<C::ScalarExt>>>::to_input(&constant);
         let assigned_point = FakePoint::<C> {
             pieces: self.scalar_chip.assign_many_fixed(layouter, &pieces_val)?,
             public: Rc::new(RefCell::new(true)),
@@ -135,22 +135,22 @@ where
     }
 }
 
-impl<C> PublicInputInstructions<C::Scalar, FakePoint<C>> for FakeCurveChip<C>
+impl<C> PublicInputInstructions<C::ScalarExt, FakePoint<C>> for FakeCurveChip<C>
 where
-    C: CircuitCurve + Hashable<LightPoseidonFS<C::Scalar>>,
-    C::Scalar: PoseidonField,
+    C: CircuitCurve + Hashable<LightPoseidonFS<C::ScalarExt>>,
+    C::ScalarExt: PoseidonField,
 {
     fn as_public_input(
         &self,
-        _layouter: &mut impl Layouter<C::Scalar>,
+        _layouter: &mut impl Layouter<C::ScalarExt>,
         point: &FakePoint<C>,
-    ) -> Result<Vec<AssignedNative<C::Scalar>>, Error> {
+    ) -> Result<Vec<AssignedNative<C::ScalarExt>>, Error> {
         Ok(point.pieces.clone())
     }
 
     fn constrain_as_public_input(
         &self,
-        layouter: &mut impl Layouter<C::Scalar>,
+        layouter: &mut impl Layouter<C::ScalarExt>,
         point: &FakePoint<C>,
     ) -> Result<(), Error> {
         *point.public.borrow_mut() = true;
@@ -162,7 +162,7 @@ where
 
     fn assign_as_public_input(
         &self,
-        layouter: &mut impl Layouter<C::Scalar>,
+        layouter: &mut impl Layouter<C::ScalarExt>,
         value: Value<C>,
     ) -> Result<FakePoint<C>, Error> {
         let assigned_point = self.assign(layouter, value)?;
