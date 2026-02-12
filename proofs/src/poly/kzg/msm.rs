@@ -14,6 +14,7 @@ use crate::{
     poly::{
         commitment::{Guard, PolynomialCommitmentScheme},
         kzg::KZGCommitmentScheme,
+        CommitmentLabel,
         Error,
     },
     utils::{
@@ -29,7 +30,7 @@ use crate::{
 pub struct MSMKZG<E: Engine> {
     pub(crate) scalars: Vec<E::Fr>,
     pub(crate) bases: Vec<E::G1>,
-    pub(crate) names: Vec<Option<String>>,
+    pub(crate) names: Vec<Option<CommitmentLabel>>,
 }
 
 impl<E: Engine> MSMKZG<E> {
@@ -77,7 +78,7 @@ impl<E: Engine + Debug> MSM<E::G1Affine> for MSMKZG<E>
 where
     E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
 {
-    fn append_term(&mut self, scalar: E::Fr, point: E::G1, name: Option<String>) {
+    fn append_term(&mut self, scalar: E::Fr, point: E::G1, name: Option<CommitmentLabel>) {
         self.scalars.push(scalar);
         self.bases.push(point);
         self.names.push(name);
@@ -120,7 +121,7 @@ where
         self.scalars.clone()
     }
 
-    fn names(&self) -> Vec<Option<String>> {
+    fn names(&self) -> Vec<Option<CommitmentLabel>> {
         self.names.clone()
     }
 }

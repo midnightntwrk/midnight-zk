@@ -5,7 +5,7 @@ use ff::{PrimeField, WithSmallOrderMulGroup};
 use super::{super::circuit::Any, Argument, VerifyingKey};
 use crate::{
     plonk::{self, Error},
-    poly::{commitment::PolynomialCommitmentScheme, Rotation, VerifierQuery},
+    poly::{commitment::PolynomialCommitmentScheme, CommitmentLabel, Rotation, VerifierQuery},
     transcript::{Hashable, Transcript},
 };
 
@@ -221,24 +221,28 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
         let x_last = vk.domain.rotate_omega(x, Rotation(-((blinding_factors + 1) as i32)));
 
         iter::empty()
-            .chain(self.sets.iter().flat_map(move |set| {
+            .chain(self.sets.iter().enumerate().flat_map(move |(i, set)| {
+                let label = Some(CommitmentLabel::Custom(format!("perm_product_{i}")));
                 iter::empty()
                     // Open permutation product commitments at x and \omega x
                     .chain(Some(VerifierQuery::new(
                         x,
+                        label.clone(),
                         &set.permutation_product_commitment,
                         set.permutation_product_eval,
                     )))
                     .chain(Some(VerifierQuery::new(
                         x_next,
+                        label,
                         &set.permutation_product_commitment,
                         set.permutation_product_next_eval,
                     )))
             }))
             // Open it at \omega^{last} x for all but the last set
-            .chain(self.sets.iter().rev().skip(1).flat_map(move |set| {
+            .chain(self.sets.iter().enumerate().rev().skip(1).flat_map(move |(i, set)| {
                 Some(VerifierQuery::new(
                     x_last,
+                    Some(CommitmentLabel::Custom(format!("perm_product_{i}"))),
                     &set.permutation_product_commitment,
                     set.permutation_product_last_eval.unwrap(),
                 ))
@@ -255,7 +259,7 @@ impl<F: PrimeField> CommonEvaluated<F> {
         // Open permutation commitments for each permutation argument at x
         vkey.commitments.iter().zip(self.permutation_evals.iter()).enumerate().map(
             move |(i, (commitment, &eval))| {
-                VerifierQuery::new_with_name(x, &format!("vk_perm_{i}"), commitment, eval)
+                VerifierQuery::new(x, Some(CommitmentLabel::Permutation(i)), commitment, eval)
             },
         )
     }
