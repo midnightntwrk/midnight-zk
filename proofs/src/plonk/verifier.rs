@@ -447,8 +447,9 @@ where
         )
         .chain(
             vk.cs.fixed_queries.iter().enumerate().map(|(query_index, &(column, at))| {
-                VerifierQuery::new(
+                VerifierQuery::new_with_name(
                     vk.domain.rotate_omega(x, at),
+                    &format!("fixed_{}", column.index()),
                     &vk.fixed_commitments[column.index()],
                     fixed_evals[query_index],
                 )

@@ -27,6 +27,7 @@ use crate::{
 pub struct MSMKZG<E: Engine> {
     pub(crate) scalars: Vec<E::Fr>,
     pub(crate) bases: Vec<E::G1>,
+    pub(crate) names: Vec<Option<String>>,
 }
 
 impl<E: Engine> MSMKZG<E> {
@@ -35,6 +36,7 @@ impl<E: Engine> MSMKZG<E> {
         MSMKZG {
             scalars: vec![],
             bases: vec![],
+            names: vec![],
         }
     }
 
@@ -44,13 +46,19 @@ impl<E: Engine> MSMKZG<E> {
 
         let mut scalars = Vec::with_capacity(len);
         let mut bases = Vec::with_capacity(len);
+        let mut names = Vec::with_capacity(len);
 
         for mut msm in msms {
             scalars.append(&mut msm.scalars);
             bases.append(&mut msm.bases);
+            names.append(&mut msm.names);
         }
 
-        Self { scalars, bases }
+        Self {
+            scalars,
+            bases,
+            names,
+        }
     }
 
     /// Create a new MSM from a given base (with scalar of 1).
@@ -58,6 +66,7 @@ impl<E: Engine> MSMKZG<E> {
         MSMKZG {
             scalars: vec![E::Fr::ONE],
             bases: vec![*base],
+            names: vec![None],
         }
     }
 }
@@ -66,9 +75,10 @@ impl<E: Engine + Debug> MSM<E::G1Affine> for MSMKZG<E>
 where
     E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
 {
-    fn append_term(&mut self, scalar: E::Fr, point: E::G1) {
+    fn append_term(&mut self, scalar: E::Fr, point: E::G1, name: Option<String>) {
         self.scalars.push(scalar);
         self.bases.push(point);
+        self.names.push(name);
     }
 
     fn add_msm(&mut self, other: &Self) {
@@ -77,6 +87,9 @@ where
 
         self.bases.reserve(other.bases().len());
         self.bases.extend_from_slice(&other.bases());
+
+        self.names.reserve(other.names().len());
+        self.names.extend_from_slice(&other.names());
     }
 
     fn scale(&mut self, factor: E::Fr) {
@@ -103,6 +116,10 @@ where
 
     fn scalars(&self) -> Vec<E::Fr> {
         self.scalars.clone()
+    }
+
+    fn names(&self) -> Vec<Option<String>> {
+        self.names.clone()
     }
 }
 

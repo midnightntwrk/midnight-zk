@@ -10,6 +10,7 @@ use crate::poly::{query::Query, Error};
 
 #[derive(Clone, Debug)]
 pub(super) struct CommitmentData<F, T: PartialEq> {
+    pub(super) commitment_name: Option<String>,
     pub(super) commitment: T,
     pub(super) set_index: usize,
     pub(super) point_indices: Vec<usize>,
@@ -17,8 +18,9 @@ pub(super) struct CommitmentData<F, T: PartialEq> {
 }
 
 impl<F, T: PartialEq> CommitmentData<F, T> {
-    fn new(commitment: T) -> Self {
+    fn new(commitment: T, commitment_name: Option<String>) -> Self {
         CommitmentData {
+            commitment_name,
             commitment,
             set_index: 0,
             point_indices: vec![],
@@ -57,7 +59,7 @@ pub fn construct_intermediate_sets<F: Field + Hash + Ord, Q: Query<F>>(
             }
             commitment_map[pos].point_indices.push(*point_idx);
         } else {
-            let mut tmp = CommitmentData::new(query.get_commitment());
+            let mut tmp = CommitmentData::new(query.get_commitment(), query.get_commitment_name());
             tmp.point_indices.push(*point_idx);
             commitment_map.push(tmp);
         }

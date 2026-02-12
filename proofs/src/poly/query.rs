@@ -14,6 +14,7 @@ pub trait Query<F>: Debug + Sized + Clone + Send + Sync {
     fn get_point(&self) -> F;
     fn get_eval(&self) -> Self::Eval;
     fn get_commitment(&self) -> Self::Commitment;
+    fn get_commitment_name(&self) -> Option<String>;
 }
 
 /// A polynomial query at a point
@@ -59,6 +60,9 @@ impl<'com, F: PrimeField> Query<F> for ProverQuery<'com, F> {
     }
     fn get_commitment(&self) -> Self::Commitment {
         PolynomialPointer { poly: self.poly }
+    }
+    fn get_commitment_name(&self) -> Option<String> {
+        None
     }
 }
 
@@ -151,6 +155,8 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> CommitmentReference<'_, F
 pub struct VerifierQuery<'com, F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
     /// Point at which polynomial is queried
     pub(crate) point: F,
+    /// Optional name for the commitment in the query
+    pub(crate) commitment_name: Option<String>,
     /// Commitment to polynomial
     pub(crate) commitment: CommitmentReference<'com, F, CS>,
     /// Evaluation of polynomial at query point
@@ -166,6 +172,22 @@ where
     pub fn new(point: F, commitment: &'com CS::Commitment, eval: F) -> Self {
         VerifierQuery {
             point,
+            commitment_name: None,
+            commitment: CommitmentReference::OnePiece(commitment),
+            eval,
+        }
+    }
+
+    /// Create a new verifier query based on a named commitment
+    pub fn new_with_name(
+        point: F,
+        commitment_name: &str,
+        commitment: &'com CS::Commitment,
+        eval: F,
+    ) -> Self {
+        VerifierQuery {
+            point,
+            commitment_name: Some(commitment_name.to_owned()),
             commitment: CommitmentReference::OnePiece(commitment),
             eval,
         }
@@ -175,6 +197,7 @@ where
     pub fn from_parts(point: F, parts: &[&'com CS::Commitment], eval: F, n: u64) -> Self {
         VerifierQuery {
             point,
+            commitment_name: None,
             commitment: CommitmentReference::Chopped(parts.to_vec(), n),
             eval,
         }
@@ -195,5 +218,8 @@ impl<'com, F: PrimeField, CS: PolynomialCommitmentScheme<F>> Query<F>
     }
     fn get_commitment(&self) -> Self::Commitment {
         self.commitment.clone()
+    }
+    fn get_commitment_name(&self) -> Option<String> {
+        self.commitment_name.clone()
     }
 }

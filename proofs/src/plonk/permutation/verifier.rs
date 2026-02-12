@@ -253,9 +253,10 @@ impl<F: PrimeField> CommonEvaluated<F> {
         x: F,
     ) -> impl Iterator<Item = VerifierQuery<'r, F, CS>> + Clone {
         // Open permutation commitments for each permutation argument at x
-        vkey.commitments
-            .iter()
-            .zip(self.permutation_evals.iter())
-            .map(move |(commitment, &eval)| VerifierQuery::new(x, commitment, eval))
+        vkey.commitments.iter().zip(self.permutation_evals.iter()).enumerate().map(
+            move |(i, (commitment, &eval))| {
+                VerifierQuery::new_with_name(x, &format!("vk_perm_com_{i}"), commitment, eval)
+            },
+        )
     }
 }

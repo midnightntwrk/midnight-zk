@@ -212,7 +212,7 @@ where
                 None
             };
             for (scalar, commitment) in com_data.commitment.as_terms(eval_point_opt) {
-                msm.append_term(scalar, commitment);
+                msm.append_term(scalar, commitment, com_data.commitment_name.clone());
             }
             q_coms[com_data.set_index].push(msm);
             q_eval_sets[com_data.set_index].push(com_data.evals);
@@ -272,7 +272,7 @@ where
             let mut coms = q_coms;
             let mut f_com_as_msm = MSMKZG::init();
 
-            f_com_as_msm.append_term(E::Fr::ONE, f_com);
+            f_com_as_msm.append_term(E::Fr::ONE, f_com, None);
             coms.push(f_com_as_msm);
 
             #[cfg(feature = "truncated-challenges")]
@@ -300,12 +300,13 @@ where
         let pi: E::G1 = transcript.read().map_err(|_| Error::SamplingError)?;
 
         let mut pi_msm = MSMKZG::<E>::init();
-        pi_msm.append_term(E::Fr::ONE, pi);
+        pi_msm.append_term(E::Fr::ONE, pi, None);
 
-        // Scale zπ -vG
+        // Scale zπ - vG
         let scaled_pi = MSMKZG {
             scalars: vec![x3, v],
             bases: vec![pi, -E::G1::generator()],
+            names: vec![None, Some("-G".into())],
         };
 
         // (π, C − vG + zπ)
