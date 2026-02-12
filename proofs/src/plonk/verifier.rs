@@ -423,6 +423,7 @@ where
                             if column.index() < nb_committed_instances {
                                 Some(VerifierQuery::new(
                                     vk.domain.rotate_omega(x, at),
+                                    Some(CommitmentLabel::Instance(column.index())),
                                     &committed_instances[column.index()],
                                     instance_evals[query_index],
                                 ))
@@ -435,6 +436,7 @@ where
                         move |(query_index, &(column, at))| {
                             VerifierQuery::new(
                                 vk.domain.rotate_omega(x, at),
+                                Some(CommitmentLabel::Advice(column.index())),
                                 &advice_commitments[column.index()],
                                 advice_evals[query_index],
                             )
@@ -447,9 +449,9 @@ where
         )
         .chain(
             vk.cs.fixed_queries.iter().enumerate().map(|(query_index, &(column, at))| {
-                VerifierQuery::new_with_label(
+                VerifierQuery::new(
                     vk.domain.rotate_omega(x, at),
-                    CommitmentLabel::Fixed(column.index()),
+                    Some(CommitmentLabel::Fixed(column.index())),
                     &vk.fixed_commitments[column.index()],
                     fixed_evals[query_index],
                 )

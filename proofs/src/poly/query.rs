@@ -10,7 +10,11 @@ use crate::{
 /// A structured label for polynomial commitments in verifier queries.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum CommitmentLabel {
-    /// Fixed column commitment (index of the fixed column).
+    /// Advice column commitment (column index).
+    Advice(usize),
+    /// Instance column commitment (column index).
+    Instance(usize),
+    /// Fixed column commitment (column index).
     Fixed(usize),
     /// Permutation verifying-key commitment (index).
     Permutation(usize),
@@ -21,6 +25,8 @@ pub enum CommitmentLabel {
 impl fmt::Display for CommitmentLabel {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::Advice(i) => write!(f, "advice_{i}"),
+            Self::Instance(i) => write!(f, "instance_{i}"),
             Self::Fixed(i) => write!(f, "fixed_{i}"),
             Self::Permutation(i) => write!(f, "vk_perm_{i}"),
             Self::Custom(s) => f.write_str(s),
@@ -171,16 +177,16 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> CommitmentReference<'_, F
     }
 }
 
-/// A polynomial query at a point
+/// A polynomial query at a point.
 #[derive(Debug, Clone)]
 pub struct VerifierQuery<'com, F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
-    /// Point at which polynomial is queried
+    /// Point at which polynomial is queried.
     pub(crate) point: F,
-    /// Optional label for the commitment in the query.
+    /// Optional label identifying the commitment in this query.
     pub(crate) commitment_label: Option<CommitmentLabel>,
-    /// Commitment to polynomial
+    /// Commitment to polynomial.
     pub(crate) commitment: CommitmentReference<'com, F, CS>,
-    /// Evaluation of polynomial at query point
+    /// Evaluation of polynomial at query point.
     pub(crate) eval: F,
 }
 
@@ -189,36 +195,32 @@ where
     F: PrimeField,
     CS: PolynomialCommitmentScheme<F>,
 {
-    /// Create a new verifier query based on a commitment.
-    pub fn new(point: F, commitment: &'com CS::Commitment, eval: F) -> Self {
-        VerifierQuery {
-            point,
-            commitment_label: None,
-            commitment: CommitmentReference::OnePiece(commitment),
-            eval,
-        }
-    }
-
-    /// Create a new verifier query based on a labeled commitment.
-    pub fn new_with_label(
+    /// Create a new verifier query based on an optionally labeled commitment.
+    pub fn new(
         point: F,
-        label: CommitmentLabel,
+        label: Option<CommitmentLabel>,
         commitment: &'com CS::Commitment,
         eval: F,
     ) -> Self {
         VerifierQuery {
             point,
-            commitment_label: Some(label),
+            commitment_label: label,
             commitment: CommitmentReference::OnePiece(commitment),
             eval,
         }
     }
 
     /// Create a new verifier query based on a commitment made of pieces.
-    pub fn from_parts(point: F, parts: &[&'com CS::Commitment], eval: F, n: u64) -> Self {
+    pub fn from_parts(
+        point: F,
+        label: Option<CommitmentLabel>,
+        parts: &[&'com CS::Commitment],
+        eval: F,
+        n: u64,
+    ) -> Self {
         VerifierQuery {
             point,
-            commitment_label: None,
+            commitment_label: label,
             commitment: CommitmentReference::Chopped(parts.to_vec(), n),
             eval,
         }

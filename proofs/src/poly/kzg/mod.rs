@@ -381,14 +381,14 @@ mod tests {
         let cvy: E::Fr = transcript.read().unwrap();
 
         let valid_queries = std::iter::empty()
-            .chain(Some(VerifierQuery::new(x, &a, avx)))
-            .chain(Some(VerifierQuery::new(x, &b, bvx)))
-            .chain(Some(VerifierQuery::new(y, &c, cvy)));
+            .chain(Some(VerifierQuery::new(x, None, &a, avx)))
+            .chain(Some(VerifierQuery::new(x, None, &b, bvx)))
+            .chain(Some(VerifierQuery::new(y, None, &c, cvy)));
 
         let invalid_queries = std::iter::empty()
-            .chain(Some(VerifierQuery::new(x, &a, avx)))
-            .chain(Some(VerifierQuery::new(x, &b, avx)))
-            .chain(Some(VerifierQuery::new(y, &c, cvy)));
+            .chain(Some(VerifierQuery::new(x, None, &a, avx)))
+            .chain(Some(VerifierQuery::new(x, None, &b, avx)))
+            .chain(Some(VerifierQuery::new(y, None, &c, cvy)));
 
         let queries = if should_fail {
             invalid_queries
