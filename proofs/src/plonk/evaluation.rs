@@ -161,13 +161,26 @@ impl Calculation {
     }
 }
 
+/// Wraps a `GraphEvaluator` for lookups with named handles to the evaluator outputs.
+#[derive(Clone, Debug)]
+pub struct LookupGraphEvaluator<F: PrimeField> {
+    /// The underlying computation graph
+    pub graph: GraphEvaluator<F>,
+    /// Value containing the sum of partial products, Σⱼ ∏_{k≠j}(fₖ + β)
+    pub sum_partial_products: ValueSource,
+    /// Value containing the product, ∏ⱼ(fⱼ + β)
+    pub product: ValueSource,
+    /// Value containing the compressed table value (t + β)
+    pub table: ValueSource,
+}
+
 /// Evaluator
 #[derive(Clone, Default, Debug)]
 pub struct Evaluator<F: PrimeField> {
     ///  Custom gates evaluation
     pub custom_gates: GraphEvaluator<F>,
     ///  Lookups evaluation
-    pub lookups: Vec<GraphEvaluator<F>>,
+    pub lookups: Vec<LookupGraphEvaluator<F>>,
     ///  Trashcans evaluation
     pub trashcans: Vec<GraphEvaluator<F>>,
 }
@@ -192,6 +205,16 @@ pub struct EvaluationData<F: PrimeField> {
     pub intermediates: Vec<F>,
     /// Rotations
     pub rotations: Vec<usize>,
+}
+
+impl<F: PrimeField> EvaluationData<F> {
+    /// Resolve a `ValueSource::Intermediate` handle to its computed value.
+    pub fn resolve(&self, vs: ValueSource) -> F {
+        match vs {
+            ValueSource::Intermediate(idx) => self.intermediates[idx],
+            _ => unreachable!("expected ValueSource::Intermediate"),
+        }
+    }
 }
 
 /// CalculationInfo
@@ -283,39 +306,12 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                 ValueSource::Beta(),
             ));
 
-            // Now we have the order in the calculations as follows:
-            // * sum is at -3
-            // * product is at -2
-            // * table is at -1
-            // We perform a runtime check to ensure that the different computations in the
-            // expected position.
-            let nr_calculations = graph.calculations.len();
-            match sum_partial_products {
-                ValueSource::Intermediate(idx) => {
-                    assert_eq!(
-                        idx,
-                        nr_calculations - 3,
-                        "sum_partial_products not at expected position"
-                    );
-                }
-                _ => panic!("Sum should be an intermediate!"),
-            }
-
-            match product {
-                ValueSource::Intermediate(idx) => {
-                    assert_eq!(idx, nr_calculations - 2, "product not at expected position");
-                }
-                _ => panic!("Product should be an intermediate!"),
-            }
-
-            match table {
-                ValueSource::Intermediate(idx) => {
-                    assert_eq!(idx, nr_calculations - 1, "table not at expected position");
-                }
-                _ => panic!("Table should be an intermediate!"),
-            }
-
-            ev.lookups.push(graph);
+            ev.lookups.push(LookupGraphEvaluator {
+                graph,
+                sum_partial_products,
+                product,
+                table,
+            });
         }
 
         // Trashcans
@@ -510,12 +506,12 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
 
                 // Lookup constraints
                 parallelize(&mut values, |values, start| {
-                    let lookup_evaluator = &self.lookups[n];
-                    let mut eval_data = lookup_evaluator.instance();
+                    let lookup_eval = &self.lookups[n];
+                    let mut eval_data = lookup_eval.graph.instance();
                     for (i, value) in values.iter_mut().enumerate() {
                         let idx = start + i;
 
-                        let table_value = lookup_evaluator.evaluate(
+                        lookup_eval.graph.evaluate(
                             &mut eval_data,
                             fixed,
                             advice,
@@ -533,12 +529,10 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
 
                         let r_next = get_rotation_idx(idx, 1, rot_scale, isize);
 
-                        // We extract the different computation from the evaluation vector.
-                        let nb_intermediates = eval_data.intermediates.len();
-                        let sum_partial_products = eval_data.intermediates[nb_intermediates - 3];
-                        let product = eval_data.intermediates[nb_intermediates - 2];
-                        let table_value_test = eval_data.intermediates[nb_intermediates - 1];
-                        assert_eq!(table_value, table_value_test);
+                        let sum_partial_products =
+                            eval_data.resolve(lookup_eval.sum_partial_products);
+                        let product = eval_data.resolve(lookup_eval.product);
+                        let table_value = eval_data.resolve(lookup_eval.table);
 
                         // l_0(X) * Z(X) = 0
                         *value = *value * y + (aggregator_coset[idx] * l0[idx]);
