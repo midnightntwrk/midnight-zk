@@ -1,10 +1,16 @@
-use std::{hash::Hash, iter};
+use std::{
+    hash::Hash,
+    iter::{self},
+};
 
 use ff::{FromUniformBytes, WithSmallOrderMulGroup};
 
-use super::{vanishing, Error, VerifyingKey};
+use super::{Error, VerifyingKey};
 use crate::{
-    plonk::traces::VerifierTrace,
+    plonk::{
+        linearization::verifier::compute_linearization_commitment, partially_evaluate_identities,
+        traces::VerifierTrace,
+    },
     poly::{commitment::PolynomialCommitmentScheme, VerifierQuery},
     transcript::{read_n, Hashable, Sampleable, Transcript},
     utils::arithmetic::compute_inner_product,
@@ -152,14 +158,11 @@ where
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    let vanishing = vanishing::Argument::read_commitments_before_y(transcript)?;
-
     // Sample y challenge, which keeps the gates linearly independent.
     let y: F = transcript.squeeze_challenge();
 
     Ok(VerifierTrace {
         advice_commitments,
-        vanishing,
         lookups: lookups_committed,
         trashcans: trashcans_committed,
         permutations: permutations_committed,
@@ -210,7 +213,6 @@ where
 
     let VerifierTrace {
         advice_commitments,
-        vanishing,
         lookups,
         trashcans,
         permutations,
@@ -222,12 +224,16 @@ where
         y,
     } = trace;
 
-    let vanishing = vanishing.read_commitments_after_y(vk, transcript)?;
+    // Read commitments to limbs of the quotient polynomial h(X) = nu(X)/(X^n-1)
+    // from the transcript
+    let quotient_limb_coms = read_n(transcript, vk.domain.get_quotient_poly_degree())?;
 
     // Sample x challenge, which is used to ensure the circuit is
     // satisfied with high probability.
     let x: F = transcript.squeeze_challenge();
-    let xn = x.pow_vartime([vk.n()]);
+
+    let splitting_factor = x.pow_vartime([vk.n() - 1]);
+    let xn = splitting_factor * x;
 
     let instance_evals = {
         let (min_rotation, max_rotation) =
@@ -277,8 +283,16 @@ where
         .map(|_| -> Result<Vec<_>, _> { read_n(transcript, vk.cs.advice_queries.len()) })
         .collect::<Result<Vec<_>, _>>()?;
 
-    let fixed_evals = read_n(transcript, vk.cs.fixed_queries.len())?;
-    let vanishing = vanishing.evaluate_after_x(transcript)?;
+    // Read (num_fixed_columns - num_simple_selectors) evals and from the transcript
+    // and fill up the "missing" places with 1 (the transcript doesn't contain evals
+    // corresponding to multiplicative, simple selectors)
+    let num_evaluated_fix_queries = vk.cs.num_fixed_columns() - vk.cs.selector_flags.len();
+    let mut fixed_evals = read_n(transcript, num_evaluated_fix_queries)?;
+    for (idx, (col, _)) in vk.cs.fixed_queries().iter().enumerate() {
+        if vk.cs.selector_flags.contains(&col.index()) {
+            fixed_evals.insert(idx, F::ONE)
+        }
+    }
 
     let permutations_common = vk.permutation.evaluate(transcript)?;
 
@@ -307,97 +321,42 @@ where
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    // This check ensures the circuit is satisfied so long as the polynomial
-    // commitments open to the correct values.
-    let vanishing = {
-        let blinding_factors = vk.cs.blinding_factors();
-        let l_evals = vk.domain.l_i_range(x, xn, (-((blinding_factors + 1) as i32))..=0);
-        assert_eq!(l_evals.len(), 2 + blinding_factors);
-        let l_last = l_evals[0];
-        let l_blind: F =
-            l_evals[1..(1 + blinding_factors)].iter().fold(F::ZERO, |acc, eval| acc + eval);
-        let l_0 = l_evals[1 + blinding_factors];
+    // Partially evaluate batched identities
+    // (without fixed columns corresponding to simple, multiplicative selectors)
+    let expressions = partially_evaluate_identities(
+        &fixed_evals,
+        instance_evals.iter(),
+        advice_evals.iter(),
+        permutations_evaluated.iter().map(|e| &e.sets),
+        lookups_evaluated.iter().map(|e| e.iter().map(|inner| &inner.evaluated)),
+        trashcans_evaluated.iter().map(|e| e.iter().map(|inner| &inner.evaluated)),
+        &permutations_common,
+        x,
+        xn,
+        beta,
+        gamma,
+        theta,
+        trash_challenge,
+        vk,
+        &challenges,
+    );
 
-        // Compute the expected value of h(x)
-        let expressions = advice_evals
-            .iter()
-            .zip(instance_evals.iter())
-            .zip(permutations_evaluated.iter())
-            .zip(lookups_evaluated.iter())
-            .zip(trashcans_evaluated.iter())
-            .flat_map(
-                |((((advice_evals, instance_evals), permutation), lookups), trash)| {
-                    let challenges = &challenges;
-                    let fixed_evals = &fixed_evals;
-                    iter::empty()
-                        // Evaluate the circuit using the custom gates provided
-                        .chain(vk.cs.gates.iter().flat_map(move |gate| {
-                            gate.polynomials().iter().map(move |poly| {
-                                poly.evaluate(
-                                    &|scalar| scalar,
-                                    &|_| {
-                                        panic!("virtual selectors are removed during optimization")
-                                    },
-                                    &|query| fixed_evals[query.index.unwrap()],
-                                    &|query| advice_evals[query.index.unwrap()],
-                                    &|query| instance_evals[query.index.unwrap()],
-                                    &|challenge| challenges[challenge.index()],
-                                    &|a| -a,
-                                    &|a, b| a + &b,
-                                    &|a, b| a * &b,
-                                    &|a, scalar| a * &scalar,
-                                )
-                            })
-                        }))
-                        .chain(permutation.expressions(
-                            vk,
-                            &vk.cs.permutation,
-                            &permutations_common,
-                            advice_evals,
-                            fixed_evals,
-                            instance_evals,
-                            l_0,
-                            l_last,
-                            l_blind,
-                            beta,
-                            gamma,
-                            x,
-                        ))
-                        .chain(lookups.iter().zip(vk.cs.lookups.iter()).flat_map(
-                            move |(p, argument)| {
-                                p.expressions(
-                                    l_0,
-                                    l_last,
-                                    l_blind,
-                                    argument,
-                                    theta,
-                                    beta,
-                                    gamma,
-                                    advice_evals,
-                                    fixed_evals,
-                                    instance_evals,
-                                    challenges,
-                                )
-                            },
-                        ))
-                        .chain(trash.iter().zip(vk.cs.trashcans.iter()).flat_map(
-                            move |(p, argument)| {
-                                p.expressions(
-                                    argument,
-                                    trash_challenge,
-                                    advice_evals,
-                                    fixed_evals,
-                                    instance_evals,
-                                    challenges,
-                                )
-                            },
-                        ))
-                },
-            );
+    let g1 = CS::constant_commitment();
+    let lin_com = compute_linearization_commitment(
+        expressions,
+        vk,
+        x,
+        &y,
+        &xn,
+        &splitting_factor,
+        &quotient_limb_coms,
+        &g1,
+    );
 
-        vanishing.verify(expressions, y, xn)
-    };
-
+    // Collect queries that are checked in the multi-open argument
+    //
+    // NB: Queries corresponding to simple, multiplicative selectors need not be
+    // checked
     let queries = committed_instances
         .iter()
         .zip(instance_evals.iter())
@@ -446,16 +405,23 @@ where
             },
         )
         .chain(
-            vk.cs.fixed_queries.iter().enumerate().map(|(query_index, &(column, at))| {
-                VerifierQuery::new(
-                    vk.domain.rotate_omega(x, at),
-                    &vk.fixed_commitments[column.index()],
-                    fixed_evals[query_index],
-                )
-            }),
+            vk.cs
+                .fixed_queries
+                .iter()
+                .enumerate()
+                // Filter out queries for simple, multiplicative selectors
+                .filter(|(_, (col, _))| !vk.cs.selector_flags.contains(&col.index()))
+                .map(|(query_index, &(column, at))| {
+                    VerifierQuery::new_fixed(
+                        vk.domain.rotate_omega(x, at),
+                        &vk.fixed_commitments[column.index()],
+                        fixed_evals[query_index],
+                        Some(column.index()),
+                    )
+                }),
         )
         .chain(permutations_common.queries(&vk.permutation, x))
-        .chain(vanishing.queries(x, vk.n()))
+        .chain(iter::once(lin_com))
         .collect::<Vec<_>>();
 
     // We are now convinced the circuit is satisfied so long as the

@@ -4,7 +4,7 @@ use ff::{PrimeField, WithSmallOrderMulGroup};
 
 use super::Argument;
 use crate::{
-    plonk::{lookup, Error, Expression, VerifyingKey},
+    plonk::{lookup, Error, VerifyingKey},
     poly::{commitment::PolynomialCommitmentScheme, Rotation, VerifierQuery},
     transcript::{Hashable, Transcript},
 };
@@ -93,89 +93,6 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> Committed<F, CS> {
 }
 
 impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<F, CS> {
-    #[allow(clippy::too_many_arguments)]
-    pub(in crate::plonk) fn expressions<'a>(
-        &'a self,
-        l_0: F,
-        l_last: F,
-        l_blind: F,
-        argument: &'a Argument<F>,
-        theta: F,
-        beta: F,
-        gamma: F,
-        advice_evals: &[F],
-        fixed_evals: &[F],
-        instance_evals: &[F],
-        challenges: &[F],
-    ) -> impl Iterator<Item = F> + 'a {
-        let active_rows = F::ONE - (l_last + l_blind);
-
-        let product_expression = || {
-            // z(\omega X) (a'(X) + \beta) (s'(X) + \gamma)
-            // - z(X) (\theta^{m-1} a_0(X) + ... + a_{m-1}(X) + \beta) (\theta^{m-1} s_0(X)
-            //   + ... + s_{m-1}(X) + \gamma)
-            let left = self.evaluated.product_next_eval
-                * &(self.evaluated.permuted_input_eval + &beta)
-                * &(self.evaluated.permuted_table_eval + &gamma);
-
-            let compress_expressions = |expressions: &[Expression<F>]| {
-                expressions
-                    .iter()
-                    .map(|expression| {
-                        expression.evaluate(
-                            &|scalar| scalar,
-                            &|_| panic!("virtual selectors are removed during optimization"),
-                            &|query| fixed_evals[query.index.unwrap()],
-                            &|query| advice_evals[query.index.unwrap()],
-                            &|query| instance_evals[query.index.unwrap()],
-                            &|challenge| challenges[challenge.index()],
-                            &|a| -a,
-                            &|a, b| a + &b,
-                            &|a, b| a * &b,
-                            &|a, scalar| a * &scalar,
-                        )
-                    })
-                    .fold(F::ZERO, |acc, eval| acc * &theta + &eval)
-            };
-            let right = self.evaluated.product_eval
-                * &(compress_expressions(&argument.input_expressions) + &beta)
-                * &(compress_expressions(&argument.table_expressions) + &gamma);
-
-            (left - &right) * &active_rows
-        };
-
-        std::iter::empty()
-            .chain(
-                // l_0(X) * (1 - z(X)) = 0
-                Some(l_0 * &(F::ONE - &self.evaluated.product_eval)),
-            )
-            .chain(
-                // l_last(X) * (z(X)^2 - z(X)) = 0
-                Some(
-                    l_last * &(self.evaluated.product_eval.square() - &self.evaluated.product_eval),
-                ),
-            )
-            .chain(
-                // (1 - (l_last(X) + l_blind(X))) * (
-                //   z(\omega X) (a'(X) + \beta) (s'(X) + \gamma)
-                //   - z(X) (\theta^{m-1} a_0(X) + ... + a_{m-1}(X) + \beta) (\theta^{m-1} s_0(X) +
-                //     ... + s_{m-1}(X) + \gamma)
-                // ) = 0
-                Some(product_expression()),
-            )
-            .chain(Some(
-                // l_0(X) * (a'(X) - s'(X)) = 0
-                l_0 * &(self.evaluated.permuted_input_eval - &self.evaluated.permuted_table_eval),
-            ))
-            .chain(Some(
-                // (1 - (l_last(X) + l_blind(X))) * (a′(X) − s′(X))⋅(a′(X) − a′(\omega^{-1} X)) = 0
-                (self.evaluated.permuted_input_eval - &self.evaluated.permuted_table_eval)
-                    * &(self.evaluated.permuted_input_eval
-                        - &self.evaluated.permuted_input_inv_eval)
-                    * &active_rows,
-            ))
-    }
-
     pub(in crate::plonk) fn queries(
         &self,
         vk: &VerifyingKey<F, CS>,

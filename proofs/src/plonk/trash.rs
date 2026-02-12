@@ -1,6 +1,6 @@
 use std::{cmp::max, fmt::Debug};
 
-use ff::{Field, PrimeField};
+use ff::{Field, PrimeField, WithSmallOrderMulGroup};
 
 use super::circuit::Expression;
 
@@ -52,4 +52,38 @@ impl<F: Field> Argument<F> {
 #[derive(Debug)]
 pub struct Evaluated<F: PrimeField> {
     trash_eval: F,
+}
+
+impl<F: WithSmallOrderMulGroup<3>> Evaluated<F> {
+    pub(crate) fn expressions<'a>(
+        &'a self,
+        argument: &'a Argument<F>,
+        trash_challenge: F,
+        advice_evals: &[F],
+        fixed_evals: &[F],
+        instance_evals: &[F],
+        challenges: &[F],
+    ) -> impl Iterator<Item = F> + 'a {
+        let evaluate_expression = |expr: &Expression<F>| {
+            expr.evaluate(
+                &|scalar| scalar,
+                &|_| panic!("virtual selectors are removed during optimization"),
+                &|query| fixed_evals[query.index.unwrap()],
+                &|query| advice_evals[query.index.unwrap()],
+                &|query| instance_evals[query.index.unwrap()],
+                &|challenge| challenges[challenge.index()],
+                &|a| -a,
+                &|a, b| a + &b,
+                &|a, b| a * &b,
+                &|a, scalar| a * &scalar,
+            )
+        };
+
+        let compressed_expressions = (argument.constraint_expressions.iter())
+            .map(evaluate_expression)
+            .fold(F::ZERO, |acc, eval| acc * &trash_challenge + &eval);
+
+        let q = evaluate_expression(argument.selector());
+        vec![compressed_expressions - (F::ONE - q) * self.trash_eval].into_iter()
+    }
 }

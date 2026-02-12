@@ -19,7 +19,7 @@ pub(crate) struct Committed<F: PrimeField> {
 
 pub(crate) struct Evaluated<F: PrimeField> {
     committed: Committed<F>,
-    pub(crate) _evaluated: trash::Evaluated<F>,
+    pub(crate) evaluated: trash::Evaluated<F>,
 }
 
 impl<F: WithSmallOrderMulGroup<3> + Ord> Argument<F> {
@@ -80,7 +80,7 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
 
         Ok(Evaluated {
             committed: self,
-            _evaluated: trash::Evaluated { trash_eval },
+            evaluated: trash::Evaluated { trash_eval },
         })
     }
 }

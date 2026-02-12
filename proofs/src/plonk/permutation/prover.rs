@@ -33,7 +33,7 @@ pub(crate) struct Committed<F: PrimeField> {
 
 pub(crate) struct Evaluated<F: PrimeField> {
     constructed: Committed<F>,
-    pub(crate) _evaluated: Vec<permutation::Evaluated<F>>,
+    pub(crate) evaluated: Vec<permutation::Evaluated<F>>,
 }
 
 impl Argument {
@@ -253,7 +253,7 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
 
         Ok(Evaluated {
             constructed: self,
-            _evaluated: evaluated,
+            evaluated,
         })
     }
 }
