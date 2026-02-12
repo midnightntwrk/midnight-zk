@@ -5,7 +5,7 @@ use ff::{FromUniformBytes, WithSmallOrderMulGroup};
 use super::{vanishing, Error, VerifyingKey};
 use crate::{
     plonk::traces::VerifierTrace,
-    poly::{commitment::PolynomialCommitmentScheme, VerifierQuery},
+    poly::{commitment::PolynomialCommitmentScheme, CommitmentLabel, VerifierQuery},
     transcript::{read_n, Hashable, Sampleable, Transcript},
     utils::arithmetic::compute_inner_product,
 };
@@ -447,9 +447,9 @@ where
         )
         .chain(
             vk.cs.fixed_queries.iter().enumerate().map(|(query_index, &(column, at))| {
-                VerifierQuery::new_with_name(
+                VerifierQuery::new_with_label(
                     vk.domain.rotate_omega(x, at),
-                    &format!("fixed_{}", column.index()),
+                    CommitmentLabel::Fixed(column.index()),
                     &vk.fixed_commitments[column.index()],
                     fixed_evals[query_index],
                 )

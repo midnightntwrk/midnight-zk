@@ -5,7 +5,7 @@ use ff::{PrimeField, WithSmallOrderMulGroup};
 use super::{super::circuit::Any, Argument, VerifyingKey};
 use crate::{
     plonk::{self, Error},
-    poly::{commitment::PolynomialCommitmentScheme, Rotation, VerifierQuery},
+    poly::{commitment::PolynomialCommitmentScheme, CommitmentLabel, Rotation, VerifierQuery},
     transcript::{Hashable, Transcript},
 };
 
@@ -255,7 +255,7 @@ impl<F: PrimeField> CommonEvaluated<F> {
         // Open permutation commitments for each permutation argument at x
         vkey.commitments.iter().zip(self.permutation_evals.iter()).enumerate().map(
             move |(i, (commitment, &eval))| {
-                VerifierQuery::new_with_name(x, &format!("vk_perm_{i}"), commitment, eval)
+                VerifierQuery::new_with_label(x, CommitmentLabel::Permutation(i), commitment, eval)
             },
         )
     }

@@ -34,7 +34,7 @@ use crate::{
             params::{ParamsKZG, ParamsVerifierKZG},
             utils::construct_intermediate_sets,
         },
-        query::VerifierQuery,
+        query::{CommitmentLabel, VerifierQuery},
         Coeff, Error, LagrangeCoeff, Polynomial, ProverQuery,
     },
     transcript::{Hashable, Sampleable, Transcript},
@@ -212,7 +212,7 @@ where
                 None
             };
             for (scalar, commitment) in com_data.commitment.as_terms(eval_point_opt) {
-                msm.append_term(scalar, commitment, com_data.commitment_name.clone());
+                msm.append_term(scalar, commitment, com_data.commitment_label.clone());
             }
             q_coms[com_data.set_index].push(msm);
             q_eval_sets[com_data.set_index].push(com_data.evals);
@@ -306,7 +306,7 @@ where
         let scaled_pi = MSMKZG {
             scalars: vec![x3, v],
             bases: vec![pi, -E::G1::generator()],
-            names: vec![None, Some("-G".into())],
+            names: vec![None, Some(CommitmentLabel::Custom("-G".into()))],
         };
 
         // (π, C − vG + zπ)

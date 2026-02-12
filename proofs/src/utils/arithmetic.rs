@@ -318,29 +318,34 @@ pub(crate) fn evals_inner_product<F: PrimeField + Clone>(
 
 /// Multi scalar multiplication engine
 pub trait MSM<C: PrimeCurveAffine>: Clone + Debug + Send + Sized + Sync {
-    /// Add arbitrary term (the scalar and the point)
-    fn append_term(&mut self, scalar: C::Scalar, point: C::Curve, name: Option<String>);
+    /// Add arbitrary term (the scalar and the point).
+    fn append_term(
+        &mut self,
+        scalar: C::Scalar,
+        point: C::Curve,
+        label: Option<CommitmentLabel>,
+    );
 
-    /// Add another multiexp into this one
+    /// Add another multiexp into this one.
     fn add_msm(&mut self, other: &Self);
 
-    /// Scale all scalars in the MSM by some scaling factor
+    /// Scale all scalars in the MSM by some scaling factor.
     fn scale(&mut self, factor: C::Scalar);
 
-    /// Perform multiexp and check that it results in zero
+    /// Perform multiexp and check that it results in zero.
     fn check(&self) -> bool;
 
-    /// Perform multiexp and return the result
+    /// Perform multiexp and return the result.
     fn eval(&self) -> C::Curve;
 
-    /// Return base points
+    /// Return base points.
     fn bases(&self) -> Vec<C::Curve>;
 
-    /// Scalars
+    /// Scalars.
     fn scalars(&self) -> Vec<C::Scalar>;
 
-    /// Base names
-    fn names(&self) -> Vec<Option<String>>;
+    /// Base labels.
+    fn names(&self) -> Vec<Option<CommitmentLabel>>;
 }
 
 #[cfg(test)]
@@ -348,7 +353,7 @@ use midnight_curves::Fq as Scalar;
 #[cfg(test)]
 use rand_core::OsRng;
 
-use crate::poly::kzg::msm::MSMKZG;
+use crate::poly::{kzg::msm::MSMKZG, CommitmentLabel};
 
 #[test]
 fn test_lagrange_interpolate() {
