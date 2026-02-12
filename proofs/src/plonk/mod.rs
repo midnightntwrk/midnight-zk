@@ -33,7 +33,6 @@ pub(crate) mod logup;
 pub mod permutation;
 pub(crate) mod traces;
 pub(crate) mod trash;
-pub(crate) mod vanishing;
 
 #[cfg(feature = "bench-internal")]
 pub mod bench;
