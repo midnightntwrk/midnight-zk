@@ -28,7 +28,9 @@ use crate::{
             limb_lengths, limb_values, negate_spreaded, spread, u32_in_be_limbs, MASK_EVN_64,
         },
     },
-    instructions::{AssertionInstructions, AssignmentInstructions, DecompositionInstructions},
+    instructions::{
+        ArithInstructions, AssertionInstructions, AssignmentInstructions, DecompositionInstructions,
+    },
     types::AssignedByte,
     utils::{
         util::{fe_to_u32, fe_to_u64, u32_to_fe, u64_to_fe},
@@ -864,28 +866,15 @@ impl<F: PrimeField> RipeMD160Chip<F> {
     ) -> Result<AssignedWord<F>, Error> {
         /*
         f(X, Y, Z) = (X ∨ ¬Y) ⊕ Z = (X ⊕ ¬Y ⊕ Z) ⊕ (X ∧ ¬Y)
-        Therefore, we first compute and witness ~nY using addition identity; then compute temp1 = X ⊕ ¬Y ⊕ Z
+        Therefore, we first compute ~nY; then compute temp1 = X ⊕ ¬Y ⊕ Z
         using `f_type_one`, and prepare its spreaded form ~temp1; then we compute temp2 = X ∧ ¬Y
         using `and`, prepare its spreaded form ~temp2; finally, we compute f(X, Y, Z) = temp1 ⊕ temp2 using `xor`.
         */
-        let adv_cols = self.config().advice_cols;
-        let sprdd_Y_val = sprdd_Y.0.value().copied().map(fe_to_u64);
-        let sprdd_nY_val = sprdd_Y_val.map(negate_spreaded).map(u64_to_fe);
-        let mask_evn_64: AssignedNative<F> =
-            self.native_gadget.assign_fixed(layouter, F::from(MASK_EVN_64))?;
-
-        let sprdd_nY = layouter.assign_region(
-            || "Assign sprdd_nY",
-            |mut region| {
-                self.config.q_add.enable(&mut region, 0)?;
-
-                sprdd_Y.0.copy_advice(|| "sprdd_Y", &mut region, adv_cols[4], 0)?;
-                mask_evn_64.copy_advice(|| "MASK_EVN_64", &mut region, adv_cols[6], 0)?;
-                region
-                    .assign_advice(|| "sprdd_nY", adv_cols[5], 0, || sprdd_nY_val)
-                    .map(AssignedSpreaded)
-            },
-        )?;
+        let sprdd_nY = AssignedSpreaded(self.native_gadget.linear_combination(
+            layouter,
+            &[(-F::ONE, sprdd_Y.0.clone())],
+            F::from(MASK_EVN_64),
+        )?);
 
         let temp1 = self.f_type_one(layouter, sprdd_X, &sprdd_nY, sprdd_Z)?;
         let sprdd_temp1 = self.prepare_spreaded(layouter, &temp1)?;
