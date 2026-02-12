@@ -106,9 +106,21 @@ impl<'com, F: PrimeField> Query<F> for ProverQuery<'com, F> {
 /// case, the `Chopped` representation of the commitment includes commitments
 /// to all the pieces [A_i(X)] as well as the piece-degree `n`.
 /// (Note that the pieces are stored in little-endian.)
+///
+/// Moreover, the commitment to the linearization polynomial is a linear
+/// combination of:
+///     * scalars (representing - partially or fully - evaluated identities),
+///       and
+///     * commitments (representing, either, commitments to simple,
+///       multiplicative selectors or the commitment to the constant polynomial
+///       `P(X) = 1`).
+/// The "linear" type represents such a linear combination, which is given in
+/// form of two vectors: one vector holds references to the commitments, the
+/// other one holds the scalars.
 pub enum CommitmentReference<'com, F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
     OnePiece(&'com CS::Commitment),
     Chopped(Vec<&'com CS::Commitment>, u64),
+    Linear(Vec<&'com CS::Commitment>, Vec<F>),
 }
 
 impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> PartialEq
@@ -136,6 +148,10 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> PartialEq
 
                 self_n == other_n
             }
+            (
+                CommitmentReference::Linear(self_points, self_scalars),
+                CommitmentReference::Linear(other_points, other_scalars),
+            ) => (self_points == other_points) && (self_scalars == other_scalars),
             _ => false,
         }
     }
@@ -155,8 +171,11 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> CommitmentReference<'_, F
     ///
     /// # Panics
     ///
-    /// If the commitment is in "one piece" and an evaluation point is provided.
+    /// If the commitment is "one piece" or "linear" and an evaluation point is
+    /// provided.
     /// If the commitment is "chopped" and no evaluation point is provided.
+    /// If the commitment is "linear", and the number of points and the number
+    /// of scalars are not equal.
     pub(crate) fn as_terms(&self, eval_point_opt: Option<F>) -> Vec<(F, CS::Commitment)> {
         match self.clone() {
             CommitmentReference::OnePiece(com) => {
@@ -173,6 +192,16 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> CommitmentReference<'_, F
                 for &part in parts.iter() {
                     terms.push((scalar, part.clone()));
                     scalar *= splitting_factor;
+                }
+                terms
+            }
+            CommitmentReference::Linear(points, scalars) => {
+                assert!(eval_point_opt.is_none());
+                assert_eq!(points.len(), scalars.len());
+
+                let mut terms = Vec::with_capacity(points.len());
+                for (&p, s) in points.iter().zip(scalars.iter()) {
+                    terms.push((*s, p.clone()));
                 }
                 terms
             }
@@ -225,6 +254,33 @@ where
             point,
             commitment_label,
             commitment: CommitmentReference::Chopped(parts.to_vec(), n),
+            eval,
+        }
+    }
+
+    /// Create a new verifier query based on a commitment
+    /// represented in the form of curve points and corresponding
+    /// scalars.
+    ///
+    /// # panics
+    ///
+    /// If the number of points and scalars differs.
+    pub fn new_linear(
+        point: F,
+        commitment_label: CommitmentLabel,
+        points: Vec<&'com CS::Commitment>,
+        scalars: Vec<F>,
+        eval: F,
+    ) -> Self {
+        assert_eq!(
+            points.len(),
+            scalars.len(),
+            "The number of points and scalars needs to be equal."
+        );
+        VerifierQuery {
+            point,
+            commitment_label,
+            commitment: CommitmentReference::Linear(points, scalars),
             eval,
         }
     }
