@@ -539,7 +539,11 @@ where
                                 &|a, b| a * &b,
                                 &|a, scalar| a * &scalar,
                             );
-                            (gate.simple_selector_index(), evaluation)
+                            assert!(gate.queried_selectors().len() <= 1);
+                            (
+                                gate.queried_selectors().first().filter(|s| s.1).map(|s| s.0),
+                                evaluation,
+                            )
                         })
                     })
                     // Evaluate polys from permutation argument

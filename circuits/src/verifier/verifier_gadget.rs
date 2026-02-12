@@ -546,7 +546,11 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                     &instance_evals,
                     poly,
                 )?;
-                expressions.push((gate.simple_selector_index(), eval));
+                assert!(gate.queried_selectors().len() <= 1);
+                expressions.push((
+                    gate.queried_selectors().first().filter(|s| s.1).map(|s| s.0),
+                    eval,
+                ));
             }
         }
 

@@ -461,7 +461,7 @@ impl TryFrom<Column<Any>> for Column<Instance> {
 /// }
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct Selector(pub(crate) usize, bool);
+pub struct Selector(pub usize, pub bool);
 
 impl Selector {
     /// Enable this selector at the given offset within the given region.
@@ -1620,7 +1620,6 @@ pub struct Gate<F: Field> {
     name: String,
     constraint_names: Vec<String>,
     polys: Vec<Expression<F>>,
-    simple_selector_index: Option<usize>,
     /// We track queried selectors separately from other cells, so that we can
     /// use them to trigger debug checks on gates.
     queried_selectors: Vec<Selector>,
@@ -1643,14 +1642,8 @@ impl<F: Field> Gate<F> {
         &self.polys
     }
 
-    /// If gate selector is multiplicative and simple, returns index of
-    /// fixed column corresponding to this selector (after its conversion to a
-    /// fixed column). Otherwise, returns `None`.
-    pub fn simple_selector_index(&self) -> Option<usize> {
-        self.simple_selector_index
-    }
-
-    pub(crate) fn queried_selectors(&self) -> &[Selector] {
+    /// Returns the queried selectors of this gate.
+    pub fn queried_selectors(&self) -> &[Selector] {
         &self.queried_selectors
     }
 
@@ -2063,12 +2056,6 @@ impl<'com, F: Field> ConstraintSystem<F> {
             "Gates must contain at least one constraint."
         );
 
-        // Only keep track of selector indices of multiplicative, simple selectors
-        let simple_selector_index = match constraints.selector {
-            SelectorType::Multiplicative(s) if s.is_simple() => Some(s.index()),
-            _ => None,
-        };
-
         let (constraint_names, polys): (_, Vec<_>) = cells
             .apply_selector_to_constraints(constraints)
             .into_iter()
@@ -2085,7 +2072,6 @@ impl<'com, F: Field> ConstraintSystem<F> {
             name: name.into(),
             constraint_names,
             polys,
-            simple_selector_index,
             queried_selectors,
             queried_cells,
         });
@@ -2130,8 +2116,9 @@ impl<'com, F: Field> ConstraintSystem<F> {
         // selectors to fixed columns, the selector index of a gate should now
         // track the index of the corresponding fixed column
         for gate in self.gates.iter_mut() {
-            gate.simple_selector_index =
-                gate.simple_selector_index.map(|idx| idx + nr_fixed_columns);
+            for s in &mut gate.queried_selectors {
+                s.0 += nr_fixed_columns;
+            }
         }
 
         (self, polys)
