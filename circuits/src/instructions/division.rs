@@ -16,7 +16,6 @@
 //! It provides instructions for computing quotient and remidners between
 //! bounded integers that fit in the native field.
 
-use ff::PrimeField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 use num_bigint::BigUint;
 use num_integer::Integer;
@@ -25,22 +24,22 @@ use num_traits::{One, Zero};
 use crate::{
     instructions::{ArithInstructions, RangeCheckInstructions},
     types::InnerValue,
-    utils::types::FromBigUint,
+    utils::util::big_to_fe,
+    CircuitField,
 };
 
 /// Set of circuit instructions for integer division.
 pub trait DivisionInstructions<F, Assigned>:
     ArithInstructions<F, Assigned> + RangeCheckInstructions<F, Assigned>
 where
-    F: PrimeField,
+    F: CircuitField,
     Assigned: InnerValue,
-    Assigned::Element: FromBigUint,
+    Assigned::Element: CircuitField,
 {
     /// Integer division by a constant.
     ///
     /// This trait is implemented with respect to an Assigned type whose inner
-    /// value has an integer structure (enforced by requiring the
-    /// `FromBigUint` trait).
+    /// value has an integer structure (enforced by requiring `CircuitField`).
     ///
     /// Given a `dividend` as an assigned element (interpreted as an integer),
     /// and a constant `divisor`, returns the quotient and remainder of
@@ -79,15 +78,15 @@ where
             ));
         }
 
-        let dividend_bound = dividend_bound.unwrap_or((-Assigned::Element::from(1)).into_biguint());
+        let dividend_bound = dividend_bound.unwrap_or((-Assigned::Element::from(1)).to_biguint());
         assert!(divisor > BigUint::zero());
         assert!(divisor <= dividend_bound);
 
         let (q, r) = dividend
             .value()
             .map(|v| {
-                let (q, r) = v.into_biguint().div_rem(&divisor);
-                (FromBigUint::from_biguint(q), FromBigUint::from_biguint(r))
+                let (q, r) = v.to_biguint().div_rem(&divisor);
+                (big_to_fe(q), big_to_fe(r))
             })
             .unzip();
 
@@ -99,7 +98,7 @@ where
         let sum = self.linear_combination(
             layouter,
             &[
-                (FromBigUint::from_biguint(divisor), q.clone()),
+                (big_to_fe(divisor), q.clone()),
                 (Assigned::Element::from(1), r.clone()),
             ],
             Assigned::Element::from(0),
@@ -112,8 +111,7 @@ where
     /// Integer modulo operation.
     ///
     /// This trait is implemented with respect to an Assigned type whose inner
-    /// value has an integer structure (enforced by requiring the
-    /// `FromBigUint` trait).
+    /// value has an integer structure (enforced by requiring `CircuitField`).
     ///
     /// Given an `input` as an assigned element (interpreted as an integer
     /// bounded by `bound`), and a constant `modulus`, returns the remainder of
@@ -176,9 +174,9 @@ pub(crate) mod tests {
 
     impl<F, Assigned, DivChip> Circuit<F> for TestCircuit<F, Assigned, DivChip>
     where
-        F: PrimeField,
+        F: CircuitField,
         Assigned: InnerValue,
-        Assigned::Element: FromBigUint,
+        Assigned::Element: CircuitField,
         DivChip: DivisionInstructions<F, Assigned> + FromScratch<F>,
     {
         type Config = <DivChip as FromScratch<F>>::Config;
@@ -204,11 +202,11 @@ pub(crate) mod tests {
         ) -> Result<(), Error> {
             let chip = DivChip::new_from_scratch(&config);
 
-            let x = chip.assign(&mut layouter, self.dividend.clone())?;
+            let x = chip.assign(&mut layouter, self.dividend)?;
             let (q, r) = chip.div_rem(&mut layouter, &x, self.divisor.clone(), None)?;
 
-            chip.assert_equal_to_fixed(&mut layouter, &q, self.expected.0.clone())?;
-            chip.assert_equal_to_fixed(&mut layouter, &r, self.expected.1.clone())?;
+            chip.assert_equal_to_fixed(&mut layouter, &q, self.expected.0)?;
+            chip.assert_equal_to_fixed(&mut layouter, &r, self.expected.1)?;
 
             chip.load_from_scratch(&mut layouter)
         }
@@ -222,9 +220,9 @@ pub(crate) mod tests {
         cost_model: bool,
         chip_name: &str,
     ) where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
         Assigned: InnerValue,
-        Assigned::Element: FromBigUint,
+        Assigned::Element: CircuitField,
         DivChip: DivisionInstructions<F, Assigned> + FromScratch<F>,
     {
         let circuit = TestCircuit::<F, Assigned, DivChip> {
@@ -251,9 +249,9 @@ pub(crate) mod tests {
 
     pub fn test_div_rem<F, Assigned, DivChip>(chip_name: &str)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
         Assigned: InnerValue,
-        Assigned::Element: FromBigUint,
+        Assigned::Element: CircuitField,
         DivChip: DivisionInstructions<F, Assigned> + FromScratch<F>,
     {
         [
@@ -280,7 +278,7 @@ pub(crate) mod tests {
         let zero = BigUint::from(0u64);
         let one = BigUint::from(1u64);
         let two = BigUint::from(2u64);
-        let max = (-Assigned::Element::from(1)).into_biguint();
+        let max = (-Assigned::Element::from(1)).to_biguint();
 
         [
             (&max, &(&max - &one), (&one, &one), true),
@@ -290,12 +288,9 @@ pub(crate) mod tests {
         .into_iter()
         .for_each(|(dividend, divisor, (q, r), must_pass)| {
             run::<F, Assigned, DivChip>(
-                FromBigUint::from_biguint(dividend.clone()),
+                big_to_fe(dividend.clone()),
                 divisor.clone(),
-                (
-                    FromBigUint::from_biguint(q.clone()),
-                    FromBigUint::from_biguint(r.clone()),
-                ),
+                (big_to_fe(q.clone()), big_to_fe(r.clone())),
                 must_pass,
                 false,
                 chip_name,

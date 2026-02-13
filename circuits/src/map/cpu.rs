@@ -16,12 +16,12 @@
 
 use std::{collections::HashMap, fmt::Debug, marker::PhantomData};
 
-use ff::PrimeField;
 use num_bigint::BigUint;
 
 use crate::{
     instructions::{hash::HashCPU, map::MapCPU},
-    utils::util::{big_to_fe, fe_to_big},
+    utils::util::big_to_fe,
+    CircuitField,
 };
 
 /// This constant defines the height of the tree. This is a lower bound
@@ -33,7 +33,7 @@ pub(crate) const TREE_HEIGHT: u8 = 128;
 /// do not store all nodes. Instead, we only store the default nodes for each
 /// level, and those that have been modified.
 #[derive(Clone, Debug)]
-pub struct MapMt<F: PrimeField, H: HashCPU<F, F>> {
+pub struct MapMt<F: CircuitField, H: HashCPU<F, F>> {
     pub(crate) root: F,
     // We organise nodes by their height and their position in that level.
     nodes: HashMap<(u8, u128), F>,
@@ -44,7 +44,7 @@ pub struct MapMt<F: PrimeField, H: HashCPU<F, F>> {
     _marker: PhantomData<H>,
 }
 
-impl<F: PrimeField, H: HashCPU<F, F>> PartialEq for MapMt<F, H> {
+impl<F: CircuitField, H: HashCPU<F, F>> PartialEq for MapMt<F, H> {
     fn eq(&self, other: &Self) -> bool {
         self.root == other.root
             && self.nodes == other.nodes
@@ -53,11 +53,11 @@ impl<F: PrimeField, H: HashCPU<F, F>> PartialEq for MapMt<F, H> {
     }
 }
 
-impl<F: PrimeField, H: HashCPU<F, F>> Eq for MapMt<F, H> {}
+impl<F: CircuitField, H: HashCPU<F, F>> Eq for MapMt<F, H> {}
 
 impl<F, H> MapCPU<F, F, F> for MapMt<F, H>
 where
-    F: PrimeField,
+    F: CircuitField,
     H: HashCPU<F, F>,
 {
     fn new(default: &F) -> Self {
@@ -88,7 +88,7 @@ where
     }
 
     fn insert(&mut self, key: &F, value: &F) {
-        self.map.insert(fe_to_big(*key), *value);
+        self.map.insert(key.to_biguint(), *value);
 
         // We initialise the child with the new representation of the element.
         let mut child = *value;
@@ -107,13 +107,13 @@ where
     }
 
     fn get(&self, key: &F) -> F {
-        self.map.get(&fe_to_big(*key)).copied().unwrap_or(self.default_nodes[0])
+        self.map.get(&key.to_biguint()).copied().unwrap_or(self.default_nodes[0])
     }
 }
 
 impl<F, H> IntoIterator for MapMt<F, H>
 where
-    F: PrimeField,
+    F: CircuitField,
     H: HashCPU<F, F>,
 {
     type Item = (F, F);
@@ -129,7 +129,7 @@ where
 
 impl<F, H> MapMt<F, H>
 where
-    F: PrimeField,
+    F: CircuitField,
     H: HashCPU<F, F>,
 {
     /// Returns the nodes in the path for the given key.
@@ -182,14 +182,14 @@ where
     /// the first 128 bits of the hash output.
     fn compute_node_index(element: &F) -> u128 {
         let hashed_value = <H as HashCPU<F, F>>::hash(&[*element, F::ZERO]);
-        let bytes = hashed_value.to_repr().as_ref()[..TREE_HEIGHT as usize / 8].to_vec();
+        let bytes = hashed_value.to_bytes_le();
 
-        u128::from_le_bytes(bytes.try_into().unwrap())
+        u128::from_le_bytes(bytes[..TREE_HEIGHT as usize / 8].try_into().unwrap())
     }
 }
 
 // Takes two inputs and conditionally swaps them before hashing.
-fn conditional_swap<F: PrimeField>(cond: bool, left_input: &F, right_input: &F) -> (F, F) {
+fn conditional_swap<F: CircuitField>(cond: bool, left_input: &F, right_input: &F) -> (F, F) {
     if cond {
         (*right_input, *left_input)
     } else {
@@ -207,7 +207,7 @@ mod tests {
 
     fn test_map<F, H>()
     where
-        F: PrimeField,
+        F: CircuitField,
         H: HashCPU<F, F> + Debug,
     {
         let mut rng = ChaCha8Rng::seed_from_u64(0xc0ffee);

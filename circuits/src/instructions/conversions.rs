@@ -19,15 +19,14 @@
 //! The trait is parametrised by the source and target types, `AssignedSource`
 //! and `AssignedTarget` respectively.
 
-use ff::PrimeField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 
-use crate::types::InnerValue;
+use crate::{types::InnerValue, CircuitField};
 
 /// The set of circuit instructions for conversion operations.
 pub trait ConversionInstructions<F, AssignedSource, AssignedTarget>
 where
-    F: PrimeField,
+    F: CircuitField,
     AssignedSource: InnerValue,
     AssignedTarget: InnerValue,
 {
@@ -58,7 +57,7 @@ where
 pub trait UnsafeConversionInstructions<F, AssignedSource, AssignedTarget>:
     ConversionInstructions<F, AssignedSource, AssignedTarget>
 where
-    F: PrimeField,
+    F: CircuitField,
     AssignedSource: InnerValue,
     AssignedTarget: InnerValue,
 {
@@ -117,7 +116,7 @@ pub(crate) mod tests {
     impl<F, AssignedSource, AssignedTarget, ConversionChip> Circuit<F>
         for TestCircuit<F, AssignedSource, AssignedTarget, ConversionChip>
     where
-        F: PrimeField,
+        F: CircuitField,
         AssignedSource: InnerValue,
         AssignedTarget: InnerValue,
         AssignedSource::Element: Clone + Default,
@@ -176,7 +175,7 @@ pub(crate) mod tests {
         chip_name: &str,
         op_name: &str,
     ) where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
         AssignedSource: InnerValue,
         AssignedSource::Element: Clone + Default,
         AssignedTarget: InnerValue,

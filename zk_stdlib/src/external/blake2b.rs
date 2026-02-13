@@ -20,12 +20,11 @@ use blake2b::{
     },
     types::byte::Byte,
 };
-use ff::PrimeField;
 #[cfg(test)]
 use midnight_circuits::{
     field::decomposition::chip::P2RDecompositionConfig, testing_utils::FromScratch,
 };
-use midnight_circuits::{field::AssignedNative, types::AssignedByte, ComposableChip};
+use midnight_circuits::{field::AssignedNative, types::AssignedByte, CircuitField, ComposableChip};
 #[cfg(test)]
 use midnight_proofs::plonk::Instance;
 use midnight_proofs::{
@@ -37,12 +36,12 @@ use crate::external::{convert_to_bytes, NG};
 
 /// The chip for the external implementation of blake2b.
 #[derive(Clone, Debug)]
-pub struct Blake2bWrapper<F: PrimeField> {
+pub struct Blake2bWrapper<F: CircuitField> {
     blake2b_chip: Blake2bChip<F>,
     native_gadget: NG<F>,
 }
 
-impl<F: PrimeField> Chip<F> for Blake2bWrapper<F> {
+impl<F: CircuitField> Chip<F> for Blake2bWrapper<F> {
     type Config = Blake2bConfig;
     type Loaded = ();
     fn config(&self) -> &Self::Config {
@@ -52,7 +51,7 @@ impl<F: PrimeField> Chip<F> for Blake2bWrapper<F> {
         self.blake2b_chip.loaded()
     }
 }
-impl<F: PrimeField> ComposableChip<F> for Blake2bWrapper<F> {
+impl<F: CircuitField> ComposableChip<F> for Blake2bWrapper<F> {
     type SharedResources = (Column<Fixed>, [Column<Advice>; NB_BLAKE2B_ADVICE_COLS]);
     type InstructionDeps = NG<F>;
     fn new(config: &Self::Config, sub_chips: &Self::InstructionDeps) -> Self {
@@ -77,7 +76,7 @@ impl<F: PrimeField> ComposableChip<F> for Blake2bWrapper<F> {
     }
 }
 
-impl<F: PrimeField> Blake2bWrapper<F> {
+impl<F: CircuitField> Blake2bWrapper<F> {
     /// A front-end to the external implementation of Blake2b, managing the
     /// conversion between types.
     fn hash(
@@ -120,7 +119,7 @@ impl<F: PrimeField> Blake2bWrapper<F> {
 }
 
 #[cfg(test)]
-impl<F: PrimeField> FromScratch<F> for Blake2bWrapper<F> {
+impl<F: CircuitField> FromScratch<F> for Blake2bWrapper<F> {
     type Config = (Blake2bConfig, P2RDecompositionConfig);
 
     fn new_from_scratch(config: &Self::Config) -> Self {
@@ -156,12 +155,12 @@ impl<F: PrimeField> FromScratch<F> for Blake2bWrapper<F> {
 #[cfg(test)]
 mod test {
     use blake2::Blake2b;
-    use ff::PrimeField;
     use midnight_circuits::{
         field::NativeGadget,
         instructions::{hash::HashCPU, HashInstructions},
         testing_utils::{test_hash, FromScratch},
         types::AssignedByte,
+        CircuitField,
     };
     use midnight_curves::Fq;
     use midnight_proofs::{
@@ -177,13 +176,13 @@ mod test {
 
     // A wrapper for testing Blake with 512 bits.
     #[derive(Debug, Clone)]
-    struct Blake2b512<F: PrimeField>(Blake2bWrapper<F>);
+    struct Blake2b512<F: CircuitField>(Blake2bWrapper<F>);
 
     // A wrapper for testing Blake with 256 bits.
     #[derive(Debug, Clone)]
-    struct Blake2b256<F: PrimeField>(Blake2bWrapper<F>);
+    struct Blake2b256<F: CircuitField>(Blake2bWrapper<F>);
 
-    impl<F: PrimeField> HashCPU<u8, [u8; 64]> for Blake2b512<F> {
+    impl<F: CircuitField> HashCPU<u8, [u8; 64]> for Blake2b512<F> {
         fn hash(input: &[u8]) -> [u8; 64] {
             let mut hasher = Blake2b::<U64>::new();
             hasher.update(input);
@@ -191,7 +190,7 @@ mod test {
         }
     }
 
-    impl<F: PrimeField> HashCPU<u8, [u8; 32]> for Blake2b256<F> {
+    impl<F: CircuitField> HashCPU<u8, [u8; 32]> for Blake2b256<F> {
         fn hash(inputs: &[u8]) -> [u8; 32] {
             let mut hasher = Blake2b::<U32>::new();
             hasher.update(inputs);
@@ -199,7 +198,9 @@ mod test {
         }
     }
 
-    impl<F: PrimeField> HashInstructions<F, AssignedByte<F>, [AssignedByte<F>; 64]> for Blake2b512<F> {
+    impl<F: CircuitField> HashInstructions<F, AssignedByte<F>, [AssignedByte<F>; 64]>
+        for Blake2b512<F>
+    {
         fn hash(
             &self,
             layouter: &mut impl Layouter<F>,
@@ -209,7 +210,9 @@ mod test {
         }
     }
 
-    impl<F: PrimeField> HashInstructions<F, AssignedByte<F>, [AssignedByte<F>; 32]> for Blake2b256<F> {
+    impl<F: CircuitField> HashInstructions<F, AssignedByte<F>, [AssignedByte<F>; 32]>
+        for Blake2b256<F>
+    {
         fn hash(
             &self,
             layouter: &mut impl Layouter<F>,
@@ -219,7 +222,7 @@ mod test {
         }
     }
 
-    impl<F: PrimeField> FromScratch<F> for Blake2b512<F> {
+    impl<F: CircuitField> FromScratch<F> for Blake2b512<F> {
         type Config = <Blake2bWrapper<F> as FromScratch<F>>::Config;
         fn new_from_scratch(config: &Self::Config) -> Self {
             Blake2b512(Blake2bWrapper::new_from_scratch(config))
@@ -235,7 +238,7 @@ mod test {
         }
     }
 
-    impl<F: PrimeField> FromScratch<F> for Blake2b256<F> {
+    impl<F: CircuitField> FromScratch<F> for Blake2b256<F> {
         type Config = <Blake2bWrapper<F> as FromScratch<F>>::Config;
         fn new_from_scratch(config: &Self::Config) -> Self {
             Blake2b256(Blake2bWrapper::new_from_scratch(config))

@@ -18,10 +18,12 @@
 
 use std::fmt::Debug;
 
-use ff::PrimeField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 
-use crate::types::{AssignedVector, InnerValue, Vectorizable};
+use crate::{
+    types::{AssignedVector, InnerValue, Vectorizable},
+    CircuitField,
+};
 
 /// The set of off-circuit instructions for hashing operations.
 pub trait HashCPU<Input, Output>: Clone + Debug {
@@ -32,7 +34,7 @@ pub trait HashCPU<Input, Output>: Clone + Debug {
 /// The set of circuit instructions for hashing operations.
 pub trait HashInstructions<F, Input, Output>: HashCPU<Input::Element, Output::Element>
 where
-    F: PrimeField,
+    F: CircuitField,
     Input: InnerValue,
     Output: InnerValue,
 {
@@ -44,7 +46,7 @@ where
 pub trait VarHashInstructions<F, const MAX_LEN: usize, Input, Output, const A: usize>:
     HashCPU<<Input as InnerValue>::Element, Output::Element>
 where
-    F: PrimeField,
+    F: CircuitField,
     Input: Vectorizable,
     Output: InnerValue,
 {
@@ -94,7 +96,7 @@ pub(crate) mod tests {
     impl<F, Input, Output, HashChip, AssignChip> Circuit<F>
         for TestCircuit<F, Input, Output, HashChip, AssignChip>
     where
-        F: PrimeField,
+        F: CircuitField,
         Input: InnerValue,
         Output: InnerValue,
         HashChip: HashInstructions<F, Input, Output> + FromScratch<F>,
@@ -158,7 +160,7 @@ pub(crate) mod tests {
         size: usize,
         k: u32,
     ) where
-        F: PrimeField + ff::FromUniformBytes<64> + Ord,
+        F: CircuitField + ff::FromUniformBytes<64> + Ord,
         Input: InnerValue + Sampleable,
         Output: InnerValue,
         HashChip: HashInstructions<F, Input, Output> + FromScratch<F>,
@@ -208,7 +210,7 @@ pub(crate) mod tests {
     impl<F, Input, Output, VarHashChip, const M: usize, const A: usize> Circuit<F>
         for TestVarHashCircuit<F, Input, Output, VarHashChip, M, A>
     where
-        F: PrimeField,
+        F: CircuitField,
         Input: Vectorizable,
         Output: InnerValue,
         VarHashChip: VarHashInstructions<F, M, Input, Output, A> + FromScratch<F>,
@@ -264,7 +266,7 @@ pub(crate) mod tests {
         size: usize,
         k: u32,
     ) where
-        F: PrimeField + ff::FromUniformBytes<64> + Ord,
+        F: CircuitField + ff::FromUniformBytes<64> + Ord,
         Input: Vectorizable + Sampleable,
         Output: InnerValue,
         VarHashChip: VarHashInstructions<F, M, Input, Output, A> + FromScratch<F>,

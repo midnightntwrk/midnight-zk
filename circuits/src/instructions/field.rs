@@ -13,7 +13,7 @@
 
 //! Field instructions interface.
 
-use ff::{Field, PrimeField};
+use ff::Field;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 use num_bigint::BigUint;
 
@@ -25,6 +25,7 @@ use crate::{
     },
     types::{AssignedBit, InnerConstants, Instantiable},
     utils::util::qnr,
+    CircuitField,
 };
 
 /// The set of circuit instructions for field operations.
@@ -38,8 +39,8 @@ pub trait FieldInstructions<F, Assigned>:
     + ControlFlowInstructions<F, Assigned>
     + AssignmentInstructions<F, AssignedBit<F>>
 where
-    F: PrimeField,
-    Assigned::Element: PrimeField,
+    F: CircuitField,
+    Assigned::Element: CircuitField,
     Assigned: Instantiable<F> + InnerConstants + Clone,
 {
     /// The field order.

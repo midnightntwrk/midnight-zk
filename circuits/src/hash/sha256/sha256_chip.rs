@@ -38,7 +38,6 @@
 //! We have 2 parallel lookups, which allow us to call such plain-spreaded table
 //! twice per row; on columns named (T0, A0, A1) and (T1, A2, A3).
 
-use ff::PrimeField;
 use midnight_proofs::{
     circuit::{Chip, Layouter, Region, Value},
     plonk::{
@@ -68,6 +67,7 @@ use crate::{
         util::{fe_to_u32, fe_to_u64, u32_to_fe, u64_to_fe},
         ComposableChip,
     },
+    CircuitField,
 };
 
 /// Number of advice columns used by the identities of the SHA256 chip.
@@ -130,12 +130,12 @@ pub struct Sha256Config {
 
 /// Chip for SHA256.
 #[derive(Clone, Debug)]
-pub struct Sha256Chip<F: PrimeField> {
+pub struct Sha256Chip<F: CircuitField> {
     config: Sha256Config,
     pub(super) native_gadget: NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>,
 }
 
-impl<F: PrimeField> Chip<F> for Sha256Chip<F> {
+impl<F: CircuitField> Chip<F> for Sha256Chip<F> {
     type Config = Sha256Config;
     type Loaded = ();
 
@@ -148,7 +148,7 @@ impl<F: PrimeField> Chip<F> for Sha256Chip<F> {
     }
 }
 
-impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
+impl<F: CircuitField> ComposableChip<F> for Sha256Chip<F> {
     type SharedResources = (
         [Column<Advice>; NB_SHA256_ADVICE_COLS],
         [Column<Fixed>; NB_SHA256_FIXED_COLS],
@@ -553,7 +553,7 @@ impl<F: PrimeField> ComposableChip<F> for Sha256Chip<F> {
     }
 }
 
-impl<F: PrimeField> Sha256Chip<F> {
+impl<F: CircuitField> Sha256Chip<F> {
     /// In-circuit SHA256 computation, the protagonist of this chip.
     pub(super) fn sha256(
         &self,
@@ -1611,7 +1611,7 @@ impl<F: PrimeField> Sha256Chip<F> {
     }
 }
 
-impl<F: PrimeField> CompressionState<F> {
+impl<F: CircuitField> CompressionState<F> {
     /// Adds pair-wise (modulo 2^32) the fields of two compression states.
     pub fn add(
         &self,
@@ -1651,7 +1651,7 @@ use midnight_proofs::plonk::Instance;
 use crate::{field::decomposition::chip::P2RDecompositionConfig, testing_utils::FromScratch};
 
 #[cfg(any(test, feature = "testing"))]
-impl<F: PrimeField> FromScratch<F> for Sha256Chip<F> {
+impl<F: CircuitField> FromScratch<F> for Sha256Chip<F> {
     type Config = (Sha256Config, P2RDecompositionConfig);
 
     fn new_from_scratch(config: &Self::Config) -> Self {

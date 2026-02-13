@@ -36,10 +36,8 @@ use crate::{
     field::{decomposition::chip::P2RDecompositionChip, NativeChip, NativeGadget},
     instructions::*,
     types::{AssignedBit, AssignedByte, AssignedNative, InnerConstants, InnerValue, Instantiable},
-    utils::{
-        util::{fe_to_le_bits, le_bits_to_field_elem},
-        ComposableChip,
-    },
+    utils::ComposableChip,
+    CircuitField,
 };
 
 /// The number of advice columns used by the EccChip.
@@ -109,39 +107,40 @@ impl<C: EdwardsCurve> InnerConstants for AssignedNativePoint<C> {
 pub struct AssignedScalarOfNativeCurve<C: CircuitCurve>(Vec<AssignedBit<C::Base>>);
 
 impl<C: CircuitCurve> InnerValue for AssignedScalarOfNativeCurve<C> {
-    type Element = C::Scalar;
+    type Element = C::ScalarField;
 
     fn value(&self) -> Value<Self::Element> {
         let bools = self.0.iter().map(|b| b.value());
         let value_bools: Value<Vec<bool>> = Value::from_iter(bools);
-        value_bools.map(|le_bits| le_bits_to_field_elem::<C::Scalar>(&le_bits))
+        value_bools.map(|le_bits| C::ScalarField::from_le_bits(&le_bits))
     }
 }
 
 impl<C: EdwardsCurve> Instantiable<C::Base> for AssignedScalarOfNativeCurve<C> {
-    fn as_public_input(element: &C::Scalar) -> Vec<C::Base> {
+    fn as_public_input(element: &C::ScalarField) -> Vec<C::Base> {
         // We aggregate the bits while they fit in a single `C::Base` value.
         let nb_bits_per_batch = C::Base::NUM_BITS as usize - 1;
-        fe_to_le_bits(element, Some(C::NUM_BITS_SUBGROUP as usize))
+        element
+            .to_le_bits(Some(C::NUM_BITS_SUBGROUP as usize))
             .chunks(nb_bits_per_batch)
-            .map(le_bits_to_field_elem)
+            .map(C::Base::from_le_bits)
             .collect()
     }
 }
 
 impl<C: EdwardsCurve> InnerConstants for AssignedScalarOfNativeCurve<C> {
-    fn inner_zero() -> C::Scalar {
-        C::Scalar::ZERO
+    fn inner_zero() -> C::ScalarField {
+        C::ScalarField::ZERO
     }
-    fn inner_one() -> C::Scalar {
-        C::Scalar::ONE
+    fn inner_one() -> C::ScalarField {
+        C::ScalarField::ONE
     }
 }
 
 #[cfg(any(test, feature = "testing"))]
 impl<C: EdwardsCurve> Sampleable for AssignedScalarOfNativeCurve<C> {
-    fn sample_inner(rng: impl RngCore) -> C::Scalar {
-        C::Scalar::random(rng)
+    fn sample_inner(rng: impl RngCore) -> C::ScalarField {
+        C::ScalarField::random(rng)
     }
 }
 
@@ -557,7 +556,7 @@ impl<C: EdwardsCurve> EccChip<C> {
         if point.in_subgroup {
             return Err(Error::Synthesis("clear_cofactor() should not be called in a point that is already guaranteed to be in the prime-order subgroup.".to_owned()));
         }
-        let r = self.mul_by_constant(layouter, C::Scalar::from_u128(C::COFACTOR), point)?;
+        let r = self.mul_by_constant(layouter, C::ScalarField::from_u128(C::COFACTOR), point)?;
         Ok(AssignedNativePoint {
             x: r.x,
             y: r.y,
@@ -657,14 +656,14 @@ impl<C: EdwardsCurve> EccInstructions<C::Base, C> for EccChip<C> {
     fn mul_by_constant(
         &self,
         layouter: &mut impl Layouter<C::Base>,
-        scalar: C::Scalar,
+        scalar: C::ScalarField,
         base: &Self::Point,
     ) -> Result<Self::Point, Error> {
-        if scalar == C::Scalar::ZERO {
+        if scalar == C::ScalarField::ZERO {
             return self.assign_fixed(layouter, C::CryptographicGroup::identity());
         }
 
-        if scalar == C::Scalar::ONE {
+        if scalar == C::ScalarField::ONE {
             return Ok(base.clone());
         }
 
@@ -714,7 +713,7 @@ impl<C: EdwardsCurve> AssignmentInstructions<C::Base, AssignedNativePoint<C>> fo
         // To achieve this, we first assign the point multiplied by the inverse of the
         // cofactor. Then, we return the assigned point after multiplying it by
         // the cofactor.
-        let cofactor = C::Scalar::from_u128(C::COFACTOR);
+        let cofactor = C::ScalarField::from_u128(C::COFACTOR);
         let (x_val, y_val) = value
             .map(|p| {
                 let p = p * cofactor.invert().expect("Cofactor should not be 0");
@@ -761,21 +760,21 @@ impl<C: EdwardsCurve> AssignmentInstructions<C::Base, AssignedScalarOfNativeCurv
     fn assign(
         &self,
         layouter: &mut impl Layouter<C::Base>,
-        value: Value<C::Scalar>,
+        value: Value<C::ScalarField>,
     ) -> Result<AssignedScalarOfNativeCurve<C>, Error> {
         let bits = value
-            .map(|s| fe_to_le_bits(&s, Some(C::Scalar::NUM_BITS as usize)))
-            .transpose_vec(<C::Scalar as PrimeField>::NUM_BITS as usize);
+            .map(|s| s.to_le_bits(Some(C::ScalarField::NUM_BITS as usize)))
+            .transpose_vec(<C::ScalarField as PrimeField>::NUM_BITS as usize);
         self.native_gadget.assign_many(layouter, &bits).map(AssignedScalarOfNativeCurve)
     }
 
     fn assign_fixed(
         &self,
         layouter: &mut impl Layouter<C::Base>,
-        constant: C::Scalar,
+        constant: C::ScalarField,
     ) -> Result<AssignedScalarOfNativeCurve<C>, Error> {
         self.native_gadget
-            .assign_many_fixed(layouter, &fe_to_le_bits(&constant, None))
+            .assign_many_fixed(layouter, &constant.to_le_bits(None))
             .map(AssignedScalarOfNativeCurve)
     }
 }
@@ -892,7 +891,7 @@ impl<C: EdwardsCurve> PublicInputInstructions<C::Base, AssignedScalarOfNativeCur
     fn assign_as_public_input(
         &self,
         layouter: &mut impl Layouter<C::Base>,
-        value: Value<C::Scalar>,
+        value: Value<C::ScalarField>,
     ) -> Result<AssignedScalarOfNativeCurve<C>, Error> {
         let assigned: AssignedScalarOfNativeCurve<C> = self.assign(layouter, value)?;
         self.constrain_as_public_input(layouter, &assigned)?;
@@ -1035,7 +1034,7 @@ impl<C: EdwardsCurve>
     ConversionInstructions<C::Base, AssignedNative<C::Base>, AssignedScalarOfNativeCurve<C>>
     for EccChip<C>
 {
-    fn convert_value(&self, _x: &C::Base) -> Option<C::Scalar> {
+    fn convert_value(&self, _x: &C::Base) -> Option<C::ScalarField> {
         unimplemented!("The caller should decide how to convert the value off-circuit, i.e., what to do with overflows.");
     }
 

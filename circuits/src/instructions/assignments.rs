@@ -20,18 +20,17 @@
 //! this trait that implements [InnerValue]). The assignment functions take an
 //! `Assigned::Element` as input and return an `Assigned` value.
 
-use ff::PrimeField;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
 
-use crate::types::InnerValue;
+use crate::{types::InnerValue, CircuitField};
 
 /// The set of circuit instructions for assignment operations.
 pub trait AssignmentInstructions<F, Assigned>
 where
-    F: PrimeField,
+    F: CircuitField,
     Assigned: InnerValue,
 {
     /// Assigns an element as a private input to the circuit.

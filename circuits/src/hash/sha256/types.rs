@@ -1,4 +1,3 @@
-use ff::PrimeField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 use crate::{
@@ -6,22 +5,23 @@ use crate::{
     hash::sha256::utils::{spread, u32_in_be_limbs},
     instructions::{ControlFlowInstructions, FieldInstructions},
     types::AssignedBit,
+    CircuitField,
 };
 
 /// An assigned value in plain (non-spreaded) form, guaranteed to be in the
 /// range [0, 2^L).
 #[derive(Clone, Debug)]
-pub(super) struct AssignedPlain<F: PrimeField, const L: usize>(pub AssignedNative<F>);
+pub(super) struct AssignedPlain<F: CircuitField, const L: usize>(pub AssignedNative<F>);
 
 /// An assigned value in spreaded form, it is guaranteed to be the spreaded form
 /// of a value in the range [0, 2^L).
 #[derive(Clone, Debug)]
-pub(super) struct AssignedSpreaded<F: PrimeField, const L: usize>(pub AssignedNative<F>);
+pub(super) struct AssignedSpreaded<F: CircuitField, const L: usize>(pub AssignedNative<F>);
 
 /// A pair of assigned plain-spreaded values guaranteed to be consistent.
 /// The plain value is also guaranteed to be in the range [0, 2^L).
 #[derive(Clone, Debug)]
-pub(super) struct AssignedPlainSpreaded<F: PrimeField, const L: usize> {
+pub(super) struct AssignedPlainSpreaded<F: CircuitField, const L: usize> {
     pub(super) plain: AssignedPlain<F, L>,
     pub(super) spreaded: AssignedSpreaded<F, L>,
 }
@@ -30,7 +30,7 @@ pub(super) struct AssignedPlainSpreaded<F: PrimeField, const L: usize> {
 /// register A of 32 bits. Input type of Σ₀(A).
 /// The limb sizes are chosen to make the rotations required for Σ₀ efficient.
 #[derive(Clone, Debug)]
-pub(super) struct LimbsOfA<F: PrimeField> {
+pub(super) struct LimbsOfA<F: CircuitField> {
     pub(super) combined: AssignedPlainSpreaded<F, 32>,
     pub(super) spreaded_limb_10: AssignedSpreaded<F, 10>,
     pub(super) spreaded_limb_09: AssignedSpreaded<F, 9>,
@@ -42,7 +42,7 @@ pub(super) struct LimbsOfA<F: PrimeField> {
 /// register E of 32 bits. Input type of Σ₁(E).
 /// The limb sizes are chosen to make the rotations required for Σ₁ efficient.
 #[derive(Clone, Debug)]
-pub(super) struct LimbsOfE<F: PrimeField> {
+pub(super) struct LimbsOfE<F: CircuitField> {
     pub(super) combined: AssignedPlainSpreaded<F, 32>,
     pub(super) spreaded_limb_07: AssignedSpreaded<F, 7>,
     pub(super) spreaded_limb_12: AssignedSpreaded<F, 12>,
@@ -56,7 +56,7 @@ pub(super) struct LimbsOfE<F: PrimeField> {
 /// The limb sizes are chosen to make the rotations required for σ₀ and σ₁
 /// efficient.
 #[derive(Clone, Debug)]
-pub(super) struct AssignedMessageWord<F: PrimeField> {
+pub(super) struct AssignedMessageWord<F: CircuitField> {
     pub(super) combined_plain: AssignedPlain<F, 32>,
     pub(super) spreaded_w_12: AssignedSpreaded<F, 12>,
     pub(super) spreaded_w_1a: AssignedSpreaded<F, 1>,
@@ -71,7 +71,7 @@ pub(super) struct AssignedMessageWord<F: PrimeField> {
 /// The assigned values of the state vector (A, B, C, D, E, F, G, H).
 /// They are provided and updated in each compression round.
 #[derive(Clone, Debug)]
-pub(super) struct CompressionState<F: PrimeField> {
+pub(super) struct CompressionState<F: CircuitField> {
     pub(super) a: LimbsOfA<F>,
     pub(super) b: AssignedPlainSpreaded<F, 32>,
     pub(super) c: AssignedPlainSpreaded<F, 32>,
@@ -82,7 +82,7 @@ pub(super) struct CompressionState<F: PrimeField> {
     pub(super) h: AssignedPlain<F, 32>,
 }
 
-impl<F: PrimeField, const N: usize> AssignedPlain<F, N> {
+impl<F: CircuitField, const N: usize> AssignedPlain<F, N> {
     pub(super) fn fixed(
         layouter: &mut impl Layouter<F>,
         field_chip: &impl FieldInstructions<F, AssignedNative<F>>,
@@ -93,7 +93,7 @@ impl<F: PrimeField, const N: usize> AssignedPlain<F, N> {
     }
 }
 
-impl<F: PrimeField, const N: usize> AssignedSpreaded<F, N> {
+impl<F: CircuitField, const N: usize> AssignedSpreaded<F, N> {
     pub(super) fn fixed(
         layouter: &mut impl Layouter<F>,
         field_chip: &impl FieldInstructions<F, AssignedNative<F>>,
@@ -104,7 +104,7 @@ impl<F: PrimeField, const N: usize> AssignedSpreaded<F, N> {
     }
 }
 
-impl<F: PrimeField, const N: usize> AssignedPlainSpreaded<F, N> {
+impl<F: CircuitField, const N: usize> AssignedPlainSpreaded<F, N> {
     pub(super) fn fixed(
         layouter: &mut impl Layouter<F>,
         field_chip: &impl FieldInstructions<F, AssignedNative<F>>,
@@ -117,7 +117,7 @@ impl<F: PrimeField, const N: usize> AssignedPlainSpreaded<F, N> {
     }
 }
 
-impl<F: PrimeField> LimbsOfA<F> {
+impl<F: CircuitField> LimbsOfA<F> {
     pub(super) fn fixed(
         layouter: &mut impl Layouter<F>,
         field_chip: &impl FieldInstructions<F, AssignedNative<F>>,
@@ -138,7 +138,7 @@ impl<F: PrimeField> LimbsOfA<F> {
     }
 }
 
-impl<F: PrimeField> LimbsOfE<F> {
+impl<F: CircuitField> LimbsOfE<F> {
     pub(super) fn fixed(
         layouter: &mut impl Layouter<F>,
         field_chip: &impl FieldInstructions<F, AssignedNative<F>>,
@@ -160,7 +160,7 @@ impl<F: PrimeField> LimbsOfE<F> {
     }
 }
 
-impl<F: PrimeField> CompressionState<F> {
+impl<F: CircuitField> CompressionState<F> {
     pub(super) fn fixed(
         layouter: &mut impl Layouter<F>,
         field_chip: &impl FieldInstructions<F, AssignedNative<F>>,
@@ -192,7 +192,7 @@ impl<F: PrimeField> CompressionState<F> {
     }
 }
 
-impl<F: PrimeField, const N: usize> AssignedPlain<F, N> {
+impl<F: CircuitField, const N: usize> AssignedPlain<F, N> {
     pub(super) fn select(
         layouter: &mut impl Layouter<F>,
         cf_chip: &impl ControlFlowInstructions<F, AssignedNative<F>>,
@@ -204,7 +204,7 @@ impl<F: PrimeField, const N: usize> AssignedPlain<F, N> {
     }
 }
 
-impl<F: PrimeField, const N: usize> AssignedSpreaded<F, N> {
+impl<F: CircuitField, const N: usize> AssignedSpreaded<F, N> {
     pub(super) fn select(
         layouter: &mut impl Layouter<F>,
         cf_chip: &impl ControlFlowInstructions<F, AssignedNative<F>>,
@@ -216,7 +216,7 @@ impl<F: PrimeField, const N: usize> AssignedSpreaded<F, N> {
     }
 }
 
-impl<F: PrimeField, const N: usize> AssignedPlainSpreaded<F, N> {
+impl<F: CircuitField, const N: usize> AssignedPlainSpreaded<F, N> {
     pub(super) fn select(
         layouter: &mut impl Layouter<F>,
         cf_chip: &impl ControlFlowInstructions<F, AssignedNative<F>>,
@@ -230,7 +230,7 @@ impl<F: PrimeField, const N: usize> AssignedPlainSpreaded<F, N> {
     }
 }
 
-impl<F: PrimeField> LimbsOfA<F> {
+impl<F: CircuitField> LimbsOfA<F> {
     pub(super) fn select(
         layouter: &mut impl Layouter<F>,
         cf_chip: &impl ControlFlowInstructions<F, AssignedNative<F>>,
@@ -281,7 +281,7 @@ impl<F: PrimeField> LimbsOfA<F> {
     }
 }
 
-impl<F: PrimeField> LimbsOfE<F> {
+impl<F: CircuitField> LimbsOfE<F> {
     pub(super) fn select(
         layouter: &mut impl Layouter<F>,
         cf_chip: &impl ControlFlowInstructions<F, AssignedNative<F>>,
@@ -342,7 +342,7 @@ impl<F: PrimeField> LimbsOfE<F> {
     }
 }
 
-impl<F: PrimeField> CompressionState<F> {
+impl<F: CircuitField> CompressionState<F> {
     pub(super) fn select(
         layouter: &mut impl Layouter<F>,
         cf_chip: &impl ControlFlowInstructions<F, AssignedNative<F>>,

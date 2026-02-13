@@ -65,7 +65,8 @@ use crate::{
         PublicInputInstructions, ScalarFieldInstructions, ZeroInstructions,
     },
     types::{AssignedBit, AssignedField, AssignedNative, InnerConstants, InnerValue, Instantiable},
-    utils::util::{big_to_fe, bigint_to_fe, fe_to_big, fe_to_le_bits, glv_scalar_decomposition},
+    utils::util::{big_to_fe, bigint_to_fe, glv_scalar_decomposition},
+    CircuitField,
 };
 
 /// Foreign ECC configuration.
@@ -88,7 +89,7 @@ where
 /// Number of columns required by the custom gates of this chip.
 pub fn nb_foreign_ecc_chip_columns<F, C, B, S>() -> usize
 where
-    F: PrimeField,
+    F: CircuitField,
     C: WeierstrassCurve,
     B: FieldEmulationParams<F, C::Base>,
 {
@@ -104,11 +105,11 @@ where
 #[derive(Clone, Debug)]
 pub struct ForeignEccChip<F, C, B, S, N>
 where
-    F: PrimeField,
+    F: CircuitField,
     C: WeierstrassCurve,
     B: FieldEmulationParams<F, C::Base>,
     S: ScalarFieldInstructions<F>,
-    S::Scalar: InnerValue<Element = C::Scalar>,
+    S::Scalar: InnerValue<Element = C::ScalarField>,
     N: NativeInstructions<F>,
 {
     config: ForeignEccConfig<C>,
@@ -134,7 +135,7 @@ where
 #[must_use]
 pub struct AssignedForeignPoint<F, C, B>
 where
-    F: PrimeField,
+    F: CircuitField,
     C: WeierstrassCurve,
     B: FieldEmulationParams<F, C::Base>,
 {
@@ -146,7 +147,7 @@ where
 
 impl<F, C, B> PartialEq for AssignedForeignPoint<F, C, B>
 where
-    F: PrimeField,
+    F: CircuitField,
     C: WeierstrassCurve,
     B: FieldEmulationParams<F, C::Base>,
 {
@@ -157,7 +158,7 @@ where
 
 impl<F, C, B> Eq for AssignedForeignPoint<F, C, B>
 where
-    F: PrimeField,
+    F: CircuitField,
     C: WeierstrassCurve,
     B: FieldEmulationParams<F, C::Base>,
 {
@@ -165,7 +166,7 @@ where
 
 impl<F, C, B> Hash for AssignedForeignPoint<F, C, B>
 where
-    F: PrimeField,
+    F: CircuitField,
     C: WeierstrassCurve,
     B: FieldEmulationParams<F, C::Base>,
 {
@@ -178,7 +179,7 @@ where
 
 impl<F, C, B> Instantiable<F> for AssignedForeignPoint<F, C, B>
 where
-    F: PrimeField,
+    F: CircuitField,
     C: WeierstrassCurve,
     B: FieldEmulationParams<F, C::Base>,
 {
@@ -203,7 +204,7 @@ where
 
 impl<F, C, B> InnerValue for AssignedForeignPoint<F, C, B>
 where
-    F: PrimeField,
+    F: CircuitField,
     C: WeierstrassCurve,
     B: FieldEmulationParams<F, C::Base>,
 {
@@ -216,7 +217,7 @@ where
 
 impl<F, C, B> InnerConstants for AssignedForeignPoint<F, C, B>
 where
-    F: PrimeField,
+    F: CircuitField,
     C: WeierstrassCurve,
     B: FieldEmulationParams<F, C::Base>,
 {
@@ -232,7 +233,7 @@ where
 #[cfg(any(test, feature = "testing"))]
 impl<F, C, B> Sampleable for AssignedForeignPoint<F, C, B>
 where
-    F: PrimeField,
+    F: CircuitField,
     C: WeierstrassCurve,
     B: FieldEmulationParams<F, C::Base>,
 {
@@ -243,11 +244,11 @@ where
 
 impl<F, C, B, S, N> Chip<F> for ForeignEccChip<F, C, B, S, N>
 where
-    F: PrimeField,
+    F: CircuitField,
     C: WeierstrassCurve,
     B: FieldEmulationParams<F, C::Base>,
     S: ScalarFieldInstructions<F>,
-    S::Scalar: InnerValue<Element = C::Scalar>,
+    S::Scalar: InnerValue<Element = C::ScalarField>,
     N: NativeInstructions<F>,
 {
     type Config = ForeignEccConfig<C>;
@@ -263,11 +264,11 @@ where
 impl<F, C, B, S, N> AssignmentInstructions<F, AssignedForeignPoint<F, C, B>>
     for ForeignEccChip<F, C, B, S, N>
 where
-    F: PrimeField,
+    F: CircuitField,
     C: WeierstrassCurve,
     B: FieldEmulationParams<F, C::Base>,
     S: ScalarFieldInstructions<F>,
-    S::Scalar: InnerValue<Element = C::Scalar>,
+    S::Scalar: InnerValue<Element = C::ScalarField>,
     N: NativeInstructions<F>,
 {
     fn assign(
@@ -318,11 +319,11 @@ where
 impl<F, C, B, S, N> PublicInputInstructions<F, AssignedForeignPoint<F, C, B>>
     for ForeignEccChip<F, C, B, S, N>
 where
-    F: PrimeField,
+    F: CircuitField,
     C: WeierstrassCurve,
     B: FieldEmulationParams<F, C::Base>,
     S: ScalarFieldInstructions<F>,
-    S::Scalar: InnerValue<Element = C::Scalar>,
+    S::Scalar: InnerValue<Element = C::ScalarField>,
     N: NativeInstructions<F> + PublicInputInstructions<F, AssignedBit<F>>,
 {
     fn as_public_input(
@@ -380,11 +381,11 @@ where
 /// of this implementation.
 impl<F, C, B, S, N> AssignmentInstructions<F, AssignedNative<F>> for ForeignEccChip<F, C, B, S, N>
 where
-    F: PrimeField,
+    F: CircuitField,
     C: WeierstrassCurve,
     B: FieldEmulationParams<F, C::Base>,
     S: ScalarFieldInstructions<F, Scalar = AssignedNative<F>>,
-    S::Scalar: InnerValue<Element = C::Scalar>,
+    S::Scalar: InnerValue<Element = C::ScalarField>,
     N: NativeInstructions<F>,
 {
     fn assign(
@@ -407,16 +408,16 @@ where
 /// Inherit assignment instructions for [AssignedField], from the
 /// `scalar_field_chip` when the emulated field field is the scalar field.
 /// Mind the binding `S: ScalarFieldInstructions<F, Scalar = AssignedField<F,
-/// C::Scalar>>` of this implementation.
-impl<F, C, B, S, SP, N> AssignmentInstructions<F, AssignedField<F, C::Scalar, SP>>
+/// C::ScalarField>>` of this implementation.
+impl<F, C, B, S, SP, N> AssignmentInstructions<F, AssignedField<F, C::ScalarField, SP>>
     for ForeignEccChip<F, C, B, S, N>
 where
-    F: PrimeField,
+    F: CircuitField,
     C: WeierstrassCurve,
     B: FieldEmulationParams<F, C::Base>,
-    S: ScalarFieldInstructions<F, Scalar = AssignedField<F, C::Scalar, SP>>,
-    S::Scalar: InnerValue<Element = C::Scalar>,
-    SP: FieldEmulationParams<F, C::Scalar>,
+    S: ScalarFieldInstructions<F, Scalar = AssignedField<F, C::ScalarField, SP>>,
+    S::Scalar: InnerValue<Element = C::ScalarField>,
+    SP: FieldEmulationParams<F, C::ScalarField>,
     N: NativeInstructions<F>,
 {
     fn assign(
@@ -439,11 +440,11 @@ where
 impl<F, C, B, S, N> AssertionInstructions<F, AssignedForeignPoint<F, C, B>>
     for ForeignEccChip<F, C, B, S, N>
 where
-    F: PrimeField,
+    F: CircuitField,
     C: WeierstrassCurve,
     B: FieldEmulationParams<F, C::Base>,
     S: ScalarFieldInstructions<F>,
-    S::Scalar: InnerValue<Element = C::Scalar>,
+    S::Scalar: InnerValue<Element = C::ScalarField>,
     N: NativeInstructions<F>,
 {
     fn assert_equal(
@@ -505,11 +506,11 @@ where
 impl<F, C, B, S, N> EqualityInstructions<F, AssignedForeignPoint<F, C, B>>
     for ForeignEccChip<F, C, B, S, N>
 where
-    F: PrimeField,
+    F: CircuitField,
     C: WeierstrassCurve,
     B: FieldEmulationParams<F, C::Base>,
     S: ScalarFieldInstructions<F>,
-    S::Scalar: InnerValue<Element = C::Scalar>,
+    S::Scalar: InnerValue<Element = C::ScalarField>,
     N: NativeInstructions<F>,
 {
     fn is_equal(
@@ -573,11 +574,11 @@ where
 impl<F, C, B, S, N> ZeroInstructions<F, AssignedForeignPoint<F, C, B>>
     for ForeignEccChip<F, C, B, S, N>
 where
-    F: PrimeField,
+    F: CircuitField,
     C: WeierstrassCurve,
     B: FieldEmulationParams<F, C::Base>,
     S: ScalarFieldInstructions<F>,
-    S::Scalar: InnerValue<Element = C::Scalar>,
+    S::Scalar: InnerValue<Element = C::ScalarField>,
     N: NativeInstructions<F>,
 {
     fn is_zero(
@@ -592,11 +593,11 @@ where
 impl<F, C, B, S, N> ControlFlowInstructions<F, AssignedForeignPoint<F, C, B>>
     for ForeignEccChip<F, C, B, S, N>
 where
-    F: PrimeField,
+    F: CircuitField,
     C: WeierstrassCurve,
     B: FieldEmulationParams<F, C::Base>,
     S: ScalarFieldInstructions<F>,
-    S::Scalar: InnerValue<Element = C::Scalar>,
+    S::Scalar: InnerValue<Element = C::ScalarField>,
     N: NativeInstructions<F>,
 {
     /// Returns `p` if `cond = 1` and `q` otherwise.
@@ -627,11 +628,11 @@ where
 
 impl<F, C, B, S, N> EccInstructions<F, C> for ForeignEccChip<F, C, B, S, N>
 where
-    F: PrimeField,
+    F: CircuitField,
     C: WeierstrassCurve,
     B: FieldEmulationParams<F, C::Base>,
     S: ScalarFieldInstructions<F>,
-    S::Scalar: InnerValue<Element = C::Scalar>,
+    S::Scalar: InnerValue<Element = C::ScalarField>,
     N: NativeInstructions<F>,
 {
     type Point = AssignedForeignPoint<F, C, B>;
@@ -732,7 +733,7 @@ where
     ) -> Result<Self::Point, Error> {
         let scalars = scalars
             .iter()
-            .map(|s| (s.clone(), C::Scalar::NUM_BITS as usize))
+            .map(|s| (s.clone(), C::ScalarField::NUM_BITS as usize))
             .collect::<Vec<_>>();
         self.msm_by_bounded_scalars(layouter, &scalars, bases)
     }
@@ -747,7 +748,7 @@ where
 
         // If some of the scalars is known to be 1, remove it (with its base) from the
         // list and simply add it at the end.
-        let one: S::Scalar = self.scalar_field_chip.assign_fixed(layouter, C::Scalar::ONE)?;
+        let one: S::Scalar = self.scalar_field_chip.assign_fixed(layouter, C::ScalarField::ONE)?;
         let mut bases_without_coeff = vec![];
         let mut filtered_scalars = vec![];
         let mut filtered_bases = vec![];
@@ -809,7 +810,7 @@ where
         let mut non_id_bases = vec![];
         let mut scalars_of_non_id_bases = vec![];
         let scalar_chip = self.scalar_field_chip();
-        let zero: S::Scalar = scalar_chip.assign_fixed(layouter, C::Scalar::ZERO)?;
+        let zero: S::Scalar = scalar_chip.assign_fixed(layouter, C::ScalarField::ZERO)?;
         let g = self.assign_fixed(layouter, C::CryptographicGroup::generator())?;
         for (s, b) in scalars.iter().zip(bases.iter()) {
             let new_b = self.select(layouter, &b.is_id, &g, b)?;
@@ -821,7 +822,7 @@ where
         // Scalars with a "bad" bound will be split with GLV into 2 scalars with a
         // half-size bound.
         // (The GLV scalars are guaranteed to have half-size.)
-        let nb_bits_per_glv_scalar = C::Scalar::NUM_BITS.div_ceil(2) as usize;
+        let nb_bits_per_glv_scalar = C::ScalarField::NUM_BITS.div_ceil(2) as usize;
         let mut non_glv_scalars = vec![];
         let mut non_glv_bases = vec![];
         let mut glv_scalars = vec![];
@@ -863,13 +864,13 @@ where
     fn mul_by_constant(
         &self,
         layouter: &mut impl Layouter<F>,
-        scalar: C::Scalar,
+        scalar: C::ScalarField,
         base: &Self::Point,
     ) -> Result<Self::Point, Error> {
         // We leverage the existing implementation for `mul_by_u128` when the scalar has
         // 128 bits. Otherwise, we just default to a standard multiplication by an
         // assigned-fixed scalar.
-        let scalar_as_big = fe_to_big(scalar);
+        let scalar_as_big = scalar.to_biguint();
         if scalar_as_big.bits() <= 128 {
             let n = scalar_as_big
                 .to_u64_digits()
@@ -885,7 +886,8 @@ where
             let r = self.mul_by_u128(layouter, n, &p)?;
             return self.select(layouter, &base.is_id, &id, &r);
         }
-        let scalar_bits = fe_to_le_bits(&scalar, None)
+        let scalar_bits = scalar
+            .to_le_bits(None)
             .iter()
             .map(|b| self.native_gadget.assign_fixed(layouter, *b))
             .collect::<Result<Vec<_>, Error>>()?;
@@ -938,11 +940,11 @@ where
 
 impl<F, C, B, S, N> ForeignEccChip<F, C, B, S, N>
 where
-    F: PrimeField,
+    F: CircuitField,
     C: WeierstrassCurve,
     B: FieldEmulationParams<F, C::Base>,
     S: ScalarFieldInstructions<F>,
-    S::Scalar: InnerValue<Element = C::Scalar>,
+    S::Scalar: InnerValue<Element = C::ScalarField>,
     N: NativeInstructions<F>,
 {
     /// Given config creates new chip that implements foreign ECC
@@ -1468,7 +1470,7 @@ where
         // This is a hack, but it's good enough for now.
         let mut selector_idx = 0;
         selector.value().map(|v| {
-            let digits = fe_to_big(*v).to_u32_digits();
+            let digits = v.to_biguint().to_u32_digits();
             let digit = if digits.is_empty() { 0 } else { digits[0] };
             debug_assert!(digits.len() <= 1);
             debug_assert!(digit < point_table.len() as u32);
@@ -1682,7 +1684,7 @@ where
 
         // Assert that (n : u128) is smaller than ORDER / 2.
         // This condition allows us to use incomplete addition in the loop below.
-        assert!(129 < C::Scalar::NUM_BITS);
+        assert!(129 < C::ScalarField::NUM_BITS);
 
         // Double-and-add (starting from the LSB)
 
@@ -1808,7 +1810,7 @@ where
         // TODO: Maybe we should check that the sampled r will not have a completeness
         // problem. The probability should be overwhelming, but if the bad event
         // happened, the proof would fail. We could sample another r here instead.
-        let r_dlog = C::Scalar::random(OsRng);
+        let r_dlog = C::ScalarField::random(OsRng);
         let r_unassigned = C::CryptographicGroup::mul(C::CryptographicGroup::generator(), r_dlog);
         let r: AssignedForeignPoint<F, C, B> = self.assign(layouter, Value::known(r_unassigned))?;
 
@@ -1914,7 +1916,7 @@ where
     ) -> Result<AssignedForeignPoint<F, C, B>, Error> {
         // Windows of size 4 seem to be optimal for 256-bit scalar fields,
         // because k = 4 minimizes 2^k + 256 / k.
-        // TODO: Pick window size based on C::Scalar::NUM_BITS?
+        // TODO: Pick window size based on C::ScalarField::NUM_BITS?
         const WS: usize = 4;
         let scalars = scalars
             .iter()
@@ -1934,7 +1936,7 @@ where
     ///
     /// The returned scalars `(x1, x2)` are half-size, although this is not
     /// enforced with constraints here, so they can be decomposed into
-    /// C::Scalar::NUM_BITS / 2 bits without completeness errors.
+    /// C::ScalarField::NUM_BITS / 2 bits without completeness errors.
     #[allow(clippy::type_complexity)]
     fn glv_split(
         &self,
@@ -1972,8 +1974,8 @@ where
         // Assert that scalar = signed_x1 + zeta * signed_x2
         let x = self.scalar_field_chip.linear_combination(
             layouter,
-            &[(C::Scalar::ONE, signed_x1), (zeta_scalar, signed_x2)],
-            C::Scalar::ZERO,
+            &[(C::ScalarField::ONE, signed_x1), (zeta_scalar, signed_x2)],
+            C::ScalarField::ZERO,
         )?;
         self.scalar_field_chip.assert_equal(layouter, &x, scalar)?;
 
@@ -2043,10 +2045,10 @@ impl Bls12381Chip {
 /// should only be used for testing.
 pub struct ForeignEccTestConfig<F, C, S, N>
 where
-    F: PrimeField,
+    F: CircuitField,
     C: WeierstrassCurve,
     S: ScalarFieldInstructions<F> + FromScratch<F>,
-    S::Scalar: InnerValue<Element = C::Scalar>,
+    S::Scalar: InnerValue<Element = C::ScalarField>,
     N: NativeInstructions<F> + FromScratch<F>,
 {
     native_gadget_config: <N as FromScratch<F>>::Config,
@@ -2057,11 +2059,11 @@ where
 #[cfg(any(test, feature = "testing"))]
 impl<F, C, B, S, N> FromScratch<F> for ForeignEccChip<F, C, B, S, N>
 where
-    F: PrimeField,
+    F: CircuitField,
     C: WeierstrassCurve,
     B: FieldEmulationParams<F, C::Base>,
     S: ScalarFieldInstructions<F> + FromScratch<F>,
-    S::Scalar: InnerValue<Element = C::Scalar>,
+    S::Scalar: InnerValue<Element = C::ScalarField>,
     N: NativeInstructions<F> + FromScratch<F>,
 {
     type Config = ForeignEccTestConfig<F, C, S, N>;

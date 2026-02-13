@@ -13,7 +13,6 @@
 
 use std::{cmp::min, ops::Range};
 
-use ff::PrimeField;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
@@ -28,24 +27,24 @@ use crate::instructions::NativeInstructions;
 use crate::{
     field::AssignedNative,
     instructions::{ArithInstructions, AssignmentInstructions},
-    utils::util::modulus,
+    CircuitField,
 };
 
 /// An assigned scalar known to be bounded in the range [0, bound].
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct AssignedBoundedScalar<F: PrimeField> {
+pub struct AssignedBoundedScalar<F: CircuitField> {
     pub(crate) scalar: AssignedNative<F>,
     pub(crate) bound: BigUint,
 }
 
-impl<F: PrimeField> AssignedBoundedScalar<F> {
+impl<F: CircuitField> AssignedBoundedScalar<F> {
     /// Creates a new `AssignedBoundedScalar` from an assigned scalar and an
     /// inclusive bound on its value. The bound will default to maximum possible
     /// value of a field element when not provided.
     pub(crate) fn new(scalar: &AssignedNative<F>, bound_opt: Option<BigUint>) -> Self {
         Self {
             scalar: scalar.clone(),
-            bound: bound_opt.unwrap_or(modulus::<F>() - BigUint::one()),
+            bound: bound_opt.unwrap_or(F::modulus() - BigUint::one()),
         }
     }
 
@@ -64,7 +63,7 @@ impl<F: PrimeField> AssignedBoundedScalar<F> {
 
 /// Assigns a slice of scalars, producing a vector of assigned bounded scalars
 /// with worst-case bound.
-pub(crate) fn assign_bounded_scalars<F: PrimeField>(
+pub(crate) fn assign_bounded_scalars<F: CircuitField>(
     layouter: &mut impl Layouter<F>,
     scalar_chip: &impl AssignmentInstructions<F, AssignedNative<F>>,
     values: &[Value<F>],
@@ -77,7 +76,7 @@ pub(crate) fn assign_bounded_scalars<F: PrimeField>(
 }
 
 /// Adds the given assigned bounded scalars, updating the bound.
-pub(crate) fn add_bounded_scalars<F: PrimeField>(
+pub(crate) fn add_bounded_scalars<F: CircuitField>(
     layouter: &mut impl Layouter<F>,
     scalar_chip: &impl ArithInstructions<F, AssignedNative<F>>,
     x1: &AssignedBoundedScalar<F>,
@@ -87,13 +86,13 @@ pub(crate) fn add_bounded_scalars<F: PrimeField>(
         scalar: scalar_chip.add(layouter, &x1.scalar, &x2.scalar)?,
         bound: min(
             x1.bound.clone() + x2.bound.clone(),
-            modulus::<F>() - BigUint::one(),
+            F::modulus() - BigUint::one(),
         ),
     })
 }
 
 /// Multiplies the given assigned bounded scalars, updating the bound.
-pub fn mul_bounded_scalars<F: PrimeField>(
+pub fn mul_bounded_scalars<F: CircuitField>(
     layouter: &mut impl Layouter<F>,
     scalar_chip: &impl ArithInstructions<F, AssignedNative<F>>,
     x1: &AssignedBoundedScalar<F>,
@@ -103,7 +102,7 @@ pub fn mul_bounded_scalars<F: PrimeField>(
         scalar: scalar_chip.mul(layouter, &x1.scalar, &x2.scalar, None)?,
         bound: min(
             x1.bound.clone() * x2.bound.clone(),
-            modulus::<F>() - BigUint::one(),
+            F::modulus() - BigUint::one(),
         ),
     })
 }
@@ -112,16 +111,15 @@ pub fn mul_bounded_scalars<F: PrimeField>(
 /// This function is supposed to perform the exact same truncation that
 /// halo2 does when `feature = "truncated-challenges"` is enabled.
 #[cfg(feature = "truncated-challenges")]
-pub(crate) fn truncate_off_circuit<F: PrimeField>(scalar: F) -> F {
+pub(crate) fn truncate_off_circuit<F: CircuitField>(scalar: F) -> F {
     let nb_bytes = F::NUM_BITS.div_ceil(8).div_ceil(2) as usize;
-    let bytes = scalar.to_repr().as_ref()[..nb_bytes].to_vec();
-    let bi = BigUint::from_bytes_le(&bytes);
-    F::from_str_vartime(&BigUint::to_string(&bi)).unwrap()
+    let bytes = scalar.to_bytes_le();
+    F::from_bytes_le(&bytes[..nb_bytes]).unwrap()
 }
 
 /// In-circuit analog of [truncate].
 #[cfg(feature = "truncated-challenges")]
-pub(crate) fn truncate<F: PrimeField>(
+pub(crate) fn truncate<F: CircuitField>(
     layouter: &mut impl Layouter<F>,
     scalar_chip: &impl NativeInstructions<F>,
     x: &AssignedNative<F>,
@@ -148,7 +146,7 @@ pub(crate) fn truncate<F: PrimeField>(
 /// # Unsatisfiable Circuit
 ///
 /// If x^n = 1.
-pub fn evaluate_lagrange_polynomials<F: PrimeField>(
+pub fn evaluate_lagrange_polynomials<F: CircuitField>(
     layouter: &mut impl Layouter<F>,
     scalar_chip: &impl ArithInstructions<F, AssignedNative<F>>,
     n: u64,
@@ -179,7 +177,7 @@ pub fn evaluate_lagrange_polynomials<F: PrimeField>(
 ///
 /// That is, let f be the polynomial of smallest degree such that f(x_i) = y_i
 /// for all i in \[n\]. This function returns f(x).
-pub fn evaluate_interpolated_polynomial<F: PrimeField>(
+pub fn evaluate_interpolated_polynomial<F: CircuitField>(
     layouter: &mut impl Layouter<F>,
     scalar_chip: &impl ArithInstructions<F, AssignedNative<F>>,
     points: &[AssignedNative<F>],
@@ -223,7 +221,7 @@ pub fn evaluate_interpolated_polynomial<F: PrimeField>(
 }
 
 /// Computes the addition of all the given scalars.
-pub(crate) fn sum<F: PrimeField>(
+pub(crate) fn sum<F: CircuitField>(
     layouter: &mut impl Layouter<F>,
     scalar_chip: &impl ArithInstructions<F, AssignedNative<F>>,
     terms: &[AssignedNative<F>],
@@ -233,7 +231,7 @@ pub(crate) fn sum<F: PrimeField>(
 }
 
 /// Computes the product of all the given scalars.
-pub(crate) fn prod<F: PrimeField>(
+pub(crate) fn prod<F: CircuitField>(
     layouter: &mut impl Layouter<F>,
     scalar_chip: &impl ArithInstructions<F, AssignedNative<F>>,
     terms: &[AssignedNative<F>],
@@ -250,7 +248,7 @@ pub(crate) fn prod<F: PrimeField>(
 /// # Panics
 ///
 /// If `terms1` is empty or `|terms1| != |terms2|`.
-pub(crate) fn inner_product<F: PrimeField>(
+pub(crate) fn inner_product<F: CircuitField>(
     layouter: &mut impl Layouter<F>,
     scalar_chip: &impl ArithInstructions<F, AssignedNative<F>>,
     terms1: &[AssignedNative<F>],
@@ -267,7 +265,7 @@ pub(crate) fn inner_product<F: PrimeField>(
 }
 
 /// Computes n powers of the given scalar x, starting from the 0-th power: 1.
-pub(crate) fn powers<F: PrimeField>(
+pub(crate) fn powers<F: CircuitField>(
     layouter: &mut impl Layouter<F>,
     scalar_chip: &impl ArithInstructions<F, AssignedNative<F>>,
     x: &AssignedNative<F>,
@@ -289,7 +287,7 @@ pub(crate) fn powers<F: PrimeField>(
 
 /// Computes n powers of the given scalar x, starting from the 0-th power: 1.
 /// The powers are then truncated by removing their most-significative half.
-pub(crate) fn truncated_powers<F: PrimeField>(
+pub(crate) fn truncated_powers<F: CircuitField>(
     layouter: &mut impl Layouter<F>,
     #[cfg(feature = "truncated-challenges")] scalar_chip: &impl NativeInstructions<F>,
     #[cfg(not(feature = "truncated-challenges"))] scalar_chip: &impl FieldInstructions<
@@ -334,7 +332,7 @@ where
 }
 
 /// Computes `x * y + z`.
-pub(crate) fn mul_add<F: PrimeField>(
+pub(crate) fn mul_add<F: CircuitField>(
     layouter: &mut impl Layouter<F>,
     scalar_chip: &impl ArithInstructions<F, AssignedNative<F>>,
     x: &AssignedNative<F>,

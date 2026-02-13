@@ -18,16 +18,15 @@
 
 use std::fmt::Debug;
 
-use ff::PrimeField;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
 
-use crate::types::AssignedNative;
+use crate::{types::AssignedNative, CircuitField};
 
 /// Trait that implement the "core" decomposition instructions
-pub trait CoreDecompositionInstructions<F: PrimeField>: Clone + Debug {
+pub trait CoreDecompositionInstructions<F: CircuitField>: Clone + Debug {
     /// Decomposes a field element x in limbs of bit length limb size and
     /// returns the limbs in *low endian encoding*. If bit length is not
     /// divisible by limb_size, the last limb (corresponding to the most

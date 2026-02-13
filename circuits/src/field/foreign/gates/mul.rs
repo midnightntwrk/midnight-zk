@@ -13,7 +13,6 @@
 
 use std::ops::Rem;
 
-use ff::PrimeField;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::{Advice, Column, ConstraintSystem, Constraints, Error, Expression, Selector},
@@ -32,7 +31,8 @@ use crate::{
     },
     instructions::RangeCheckInstructions,
     types::{AssignedField, AssignedNative},
-    utils::util::{bigint_to_fe, modulus},
+    utils::util::bigint_to_fe,
+    CircuitField,
 };
 
 /// Foreign-Field Mul configuration.
@@ -53,8 +53,8 @@ impl MulConfig {
     /// function for explanations on what such values represent.
     pub fn bounds<F, K, P>() -> ((BI, BI), Vec<(BI, BI)>)
     where
-        F: PrimeField,
-        K: PrimeField,
+        F: CircuitField,
+        K: CircuitField,
         P: FieldEmulationParams<F, K>,
     {
         let base = BI::from(2).pow(P::LOG2_BASE);
@@ -109,11 +109,11 @@ impl MulConfig {
         z_cols: &[Column<Advice>],
     ) -> Self
     where
-        F: PrimeField,
-        K: PrimeField,
+        F: CircuitField,
+        K: CircuitField,
         P: FieldEmulationParams<F, K>,
     {
-        let m = &modulus::<K>().to_bigint().unwrap();
+        let m = &K::modulus().to_bigint().unwrap();
         let base_powers = P::base_powers();
         let double_base_powers = P::double_base_powers();
         let moduli = P::moduli();
@@ -193,8 +193,8 @@ pub fn assert_mul<F, K, P, RangeGadget>(
     range_gadget: &RangeGadget,
 ) -> Result<(), Error>
 where
-    F: PrimeField,
-    K: PrimeField,
+    F: CircuitField,
+    K: CircuitField,
     P: FieldEmulationParams<F, K>,
     RangeGadget: RangeCheckInstructions<F, AssignedNative<F>>,
 {
@@ -203,7 +203,7 @@ where
         |mut region| {
             let mut offset = 0;
 
-            let m = &modulus::<K>().to_bigint().unwrap();
+            let m = &K::modulus().to_bigint().unwrap();
             let moduli = P::moduli();
             let base_powers = P::base_powers();
             let double_base_powers = P::double_base_powers();

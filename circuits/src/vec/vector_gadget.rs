@@ -11,7 +11,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use ff::PrimeField;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
@@ -30,6 +29,7 @@ use crate::{
     },
     types::{AssignedBit, AssignedVector, InnerValue, Vectorizable},
     vec::get_lims,
+    CircuitField,
 };
 
 type NG<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
@@ -37,13 +37,13 @@ type NG<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
 #[derive(Clone, Debug)]
 /// A gadget for vector operations of elements that are or fit within a native
 /// field element:
-pub struct VectorGadget<F: PrimeField> {
+pub struct VectorGadget<F: CircuitField> {
     native_gadget: NG<F>,
 }
 
 impl<F> VectorGadget<F>
 where
-    F: PrimeField,
+    F: CircuitField,
 {
     /// Create a new vector gadgets.
     pub fn new(native_gadget: &NG<F>) -> Self {
@@ -55,7 +55,7 @@ where
 
 impl<F, T, const M: usize, const A: usize> VectorInstructions<F, T, M, A> for VectorGadget<F>
 where
-    F: PrimeField,
+    F: CircuitField,
     T: Vectorizable,
     T::Element: Copy,
     NG<F>: RangeCheckInstructions<F, AssignedNative<F>>
@@ -240,7 +240,7 @@ where
 impl<F, const M: usize, T, const A: usize> AssignmentInstructions<F, AssignedVector<F, T, M, A>>
     for VectorGadget<F>
 where
-    F: PrimeField,
+    F: CircuitField,
     T: Vectorizable,
     T::Element: Copy,
     Self: VectorInstructions<F, T, M, A>,
@@ -265,7 +265,7 @@ where
 impl<F, const M: usize, T, const A: usize> EqualityInstructions<F, AssignedVector<F, T, M, A>>
     for VectorGadget<F>
 where
-    F: PrimeField,
+    F: CircuitField,
     T: Vectorizable,
     T::Element: Copy,
     Self: VectorInstructions<F, T, M, A>,
@@ -343,7 +343,7 @@ where
 impl<F, T, const M: usize, const A: usize> AssertionInstructions<F, AssignedVector<F, T, M, A>>
     for VectorGadget<F>
 where
-    F: PrimeField,
+    F: CircuitField,
     T: Vectorizable,
     T::Element: Copy,
     Self: VectorInstructions<F, T, M, A> + EqualityInstructions<F, AssignedVector<F, T, M, A>>,
@@ -410,7 +410,7 @@ use midnight_proofs::plonk::{Column, ConstraintSystem, Instance};
 use crate::testing_utils::FromScratch;
 
 #[cfg(any(test, feature = "testing"))]
-impl<F: PrimeField> FromScratch<F> for VectorGadget<F> {
+impl<F: CircuitField> FromScratch<F> for VectorGadget<F> {
     type Config = <NG<F> as FromScratch<F>>::Config;
 
     fn new_from_scratch(config: &Self::Config) -> Self {
@@ -433,7 +433,7 @@ impl<F: PrimeField> FromScratch<F> for VectorGadget<F> {
 
 #[cfg(test)]
 mod tests {
-    use ff::{Field, FromUniformBytes, PrimeField};
+    use ff::{Field, FromUniformBytes};
     use midnight_proofs::{
         circuit::{Layouter, SimpleFloorPlanner, Value},
         dev::MockProver,
@@ -448,10 +448,10 @@ mod tests {
             AssignedNative, NativeChip, NativeGadget,
         },
         testing_utils::FromScratch,
-        utils::{circuit_modeling::circuit_to_json, util::fe_to_big},
+        utils::circuit_modeling::circuit_to_json,
     };
 
-    struct TestCircuit<F: PrimeField, const M: usize, const A: usize> {
+    struct TestCircuit<F: CircuitField, const M: usize, const A: usize> {
         input_1: Value<Vec<F>>,
         input_2: Vec<F>, // We don't use value here in order to easily mutate the padding.
         opts: TestOpts,
@@ -470,7 +470,7 @@ mod tests {
 
     type NG<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
 
-    impl<F: PrimeField, const M: usize, const A: usize> Circuit<F> for TestCircuit<F, M, A> {
+    impl<F: CircuitField, const M: usize, const A: usize> Circuit<F> for TestCircuit<F, M, A> {
         type Config = P2RDecompositionConfig;
 
         type FloorPlanner = SimpleFloorPlanner;
@@ -532,7 +532,7 @@ mod tests {
                         .len
                         .value()
                         .map(|l| {
-                            let len: usize = fe_to_big(*l).try_into().unwrap();
+                            let len: usize = l.to_biguint().try_into().unwrap();
                             let range = get_lims::<M, A>(len);
                             (F::from(range.start as u64), F::from(range.end as u64))
                         })
@@ -551,7 +551,7 @@ mod tests {
                         .len
                         .value()
                         .map(|l| {
-                            let len: usize = fe_to_big(*l).try_into().unwrap();
+                            let len: usize = l.to_biguint().try_into().unwrap();
                             let range = get_lims::<M, A>(len);
                             let mut result = vec![true; M];
                             result[range].iter_mut().for_each(|r| {
@@ -590,7 +590,7 @@ mod tests {
         mutate_padding: bool,
         cost_model: bool,
     ) where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
     {
         let circuit = TestCircuit::<F, M, A> {
             input_1: Value::known(input_1.to_vec()),
@@ -616,7 +616,7 @@ mod tests {
 
     fn run_limit_vec_test<F, const M: usize, const A: usize>(input_1: &[F], cost_model: bool)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
     {
         let circuit = TestCircuit::<F, M, A> {
             input_1: Value::known(input_1.to_vec()),
@@ -639,7 +639,7 @@ mod tests {
 
     fn run_padding_flags_test<F, const M: usize, const A: usize>(input_1: &[F], cost_model: bool)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
     {
         let circuit = TestCircuit::<F, M, A> {
             input_1: Value::known(input_1.to_vec()),
@@ -665,7 +665,7 @@ mod tests {
         trim_size: usize,
         cost_model: bool,
     ) where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
     {
         let input = input_1.to_vec();
         assert!(trim_size <= input.len());

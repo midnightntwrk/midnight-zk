@@ -13,7 +13,6 @@
 
 //! Elliptic curves used in-circuit.
 
-use ff::PrimeField;
 use group::{Curve, Group};
 #[cfg(feature = "dev-curves")]
 use midnight_curves::bn256;
@@ -23,14 +22,19 @@ use midnight_curves::{
     CurveAffine, Fq as BlsScalar, JubjubAffine, JubjubExtended, JubjubSubgroup,
 };
 
+use crate::CircuitField;
+
 /// An elliptic curve whose points can be represented in terms of its base
 /// field.
 pub trait CircuitCurve: Curve + Default {
     /// Base field over which the EC is defined.
-    type Base: PrimeField;
+    type Base: CircuitField;
+
+    /// Scalar field with CircuitField bound (same type as Group::Scalar).
+    type ScalarField: CircuitField;
 
     /// Cryptographic group.
-    type CryptographicGroup: Group<Scalar = Self::Scalar> + Into<Self>;
+    type CryptographicGroup: Group<Scalar = Self::ScalarField> + Into<Self>;
 
     /// Cofactor of the curve.
     const COFACTOR: u128 = 1;
@@ -68,7 +72,7 @@ pub trait WeierstrassCurve: CircuitCurve {
     fn base_zeta() -> Self::Base;
 
     /// Cubic root on the scalar field.
-    fn scalar_zeta() -> Self::Scalar;
+    fn scalar_zeta() -> Self::ScalarField;
 }
 
 /// A twisted edwards curve of the form `A x^2 + y^2 = 1 + D x^2 y^2`.
@@ -82,6 +86,7 @@ pub trait EdwardsCurve: CircuitCurve {
 
 impl CircuitCurve for JubjubExtended {
     type Base = BlsScalar;
+    type ScalarField = <Self as Group>::Scalar;
     type CryptographicGroup = JubjubSubgroup;
     const COFACTOR: u128 = 8;
     const NUM_BITS_SUBGROUP: u32 = 252;
@@ -136,9 +141,11 @@ impl EdwardsCurve for JubjubExtended {
 use midnight_curves::curve25519::{Curve25519Subgroup, Fp as Curve25519Base};
 impl CircuitCurve for Curve25519 {
     type Base = Curve25519Base;
+    type ScalarField = <Self as Group>::Scalar;
+
     type CryptographicGroup = Curve25519Subgroup;
     const COFACTOR: u128 = 8;
-    const NUM_BITS_SUBGROUP: u32 = 252;
+    const NUM_BITS_SUBGROUP: u32 = 253;
 
     fn coordinates(&self) -> Option<(Self::Base, Self::Base)> {
         let affine = Curve25519Affine::from_edwards(self.0);
@@ -164,6 +171,7 @@ impl EdwardsCurve for Curve25519 {
 use midnight_curves::secp256k1::{Fp, Fq};
 impl CircuitCurve for Secp256k1 {
     type Base = Fp;
+    type ScalarField = <Self as Group>::Scalar;
     type CryptographicGroup = Secp256k1;
 
     const NUM_BITS_SUBGROUP: u32 = 256;
@@ -190,7 +198,7 @@ impl WeierstrassCurve for Secp256k1 {
         <Fp as ff::WithSmallOrderMulGroup<3>>::ZETA
     }
 
-    fn scalar_zeta() -> Self::Scalar {
+    fn scalar_zeta() -> Self::ScalarField {
         <Fq as ff::WithSmallOrderMulGroup<3>>::ZETA
     }
 }
@@ -201,6 +209,7 @@ use midnight_curves::{Fp as BlsBase, G1Affine, G1Projective};
 
 impl CircuitCurve for G1Projective {
     type Base = BlsBase;
+    type ScalarField = <Self as Group>::Scalar;
     type CryptographicGroup = G1Projective;
 
     const NUM_BITS_SUBGROUP: u32 = 255;
@@ -227,7 +236,7 @@ impl WeierstrassCurve for G1Projective {
         <BlsBase as ff::WithSmallOrderMulGroup<3>>::ZETA
     }
 
-    fn scalar_zeta() -> Self::Scalar {
+    fn scalar_zeta() -> Self::ScalarField {
         <BlsScalar as ff::WithSmallOrderMulGroup<3>>::ZETA
     }
 }
@@ -236,6 +245,7 @@ impl WeierstrassCurve for G1Projective {
 #[cfg(feature = "dev-curves")]
 impl CircuitCurve for bn256::G1 {
     type Base = bn256::Fq;
+    type ScalarField = <Self as Group>::Scalar;
     type CryptographicGroup = bn256::G1;
 
     const NUM_BITS_SUBGROUP: u32 = 254;
@@ -262,7 +272,7 @@ impl WeierstrassCurve for bn256::G1 {
     fn base_zeta() -> Self::Base {
         <bn256::Fq as ff::WithSmallOrderMulGroup<3>>::ZETA
     }
-    fn scalar_zeta() -> Self::Scalar {
+    fn scalar_zeta() -> Self::ScalarField {
         <bn256::Fr as ff::WithSmallOrderMulGroup<3>>::ZETA
     }
 }

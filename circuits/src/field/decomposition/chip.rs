@@ -15,7 +15,6 @@
 
 use std::{collections::HashMap, marker::PhantomData};
 
-use ff::PrimeField;
 use midnight_proofs::{
     circuit::{Chip, Layouter, Value},
     plonk::{ConstraintSystem, Error},
@@ -36,6 +35,7 @@ use crate::{
     },
     types::AssignedNative,
     utils::ComposableChip,
+    CircuitField,
 };
 
 #[derive(Clone, Debug)]
@@ -85,7 +85,7 @@ impl P2RDecompositionConfig {
 
 #[derive(Clone, Debug)]
 /// A decomposition chip
-pub struct P2RDecompositionChip<F: PrimeField> {
+pub struct P2RDecompositionChip<F: CircuitField> {
     // a hash map that contains the optimal (in number of rows) limb decomposition of a number
     // that is a power of two. Check
     // [compute_optimal_limb_sizes](cpu_utils::compute_optimal_limb_sizes) for more information on
@@ -99,7 +99,7 @@ pub struct P2RDecompositionChip<F: PrimeField> {
     _marker: PhantomData<F>,
 }
 
-impl<F: PrimeField> Chip<F> for P2RDecompositionChip<F> {
+impl<F: CircuitField> Chip<F> for P2RDecompositionChip<F> {
     type Config = P2RDecompositionConfig;
     type Loaded = ();
 
@@ -112,7 +112,7 @@ impl<F: PrimeField> Chip<F> for P2RDecompositionChip<F> {
     }
 }
 
-impl<F: PrimeField> ComposableChip<F> for P2RDecompositionChip<F> {
+impl<F: CircuitField> ComposableChip<F> for P2RDecompositionChip<F> {
     type SharedResources = (NativeConfig, Pow2RangeConfig);
 
     type InstructionDeps = usize;
@@ -155,7 +155,7 @@ impl<F: PrimeField> ComposableChip<F> for P2RDecompositionChip<F> {
         self.pow2range_chip.load_table(layouter)
     }
 }
-impl<F: PrimeField> P2RDecompositionChip<F> {
+impl<F: CircuitField> P2RDecompositionChip<F> {
     /// Gives direct access to the NativeChip
     pub fn native_chip(&self) -> &NativeChip<F> {
         &self.native_chip
@@ -167,7 +167,7 @@ impl<F: PrimeField> P2RDecompositionChip<F> {
     }
 }
 
-impl<F: PrimeField> P2RDecompositionChip<F> {
+impl<F: CircuitField> P2RDecompositionChip<F> {
     /// Takes a `Value<F>` and decomposes it in limbs according to the given
     /// `limb_sizes`. It then assigns those limbs and range-checks them.
     /// It also adds the limbs, returning an `AssignedNative<F>` encoding the
@@ -299,7 +299,7 @@ impl<F: PrimeField> P2RDecompositionChip<F> {
     }
 }
 
-impl<F: PrimeField> CoreDecompositionInstructions<F> for P2RDecompositionChip<F> {
+impl<F: CircuitField> CoreDecompositionInstructions<F> for P2RDecompositionChip<F> {
     // TODO: This can be further optimized by parallelizing lookups for the
     // decomposed limbs. Perhaps using a function for optimal decomposing
     // multiple terms?

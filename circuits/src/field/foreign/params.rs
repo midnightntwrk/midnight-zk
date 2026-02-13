@@ -18,20 +18,19 @@
 
 use std::{fmt::Debug, ops::Rem};
 
-use ff::PrimeField;
 #[cfg(feature = "dev-curves")]
 use midnight_curves::bn256;
 use midnight_curves::{bls12_381, secp256k1};
 use num_bigint::{BigInt, BigInt as BI, ToBigInt};
 use num_traits::{One, Signed};
 
-use crate::{ecc::curves::CircuitCurve, utils::util::modulus};
+use crate::{ecc::curves::CircuitCurve, CircuitField};
 
 /// Trait for configuring a (foreign) FieldChip. These parameters need to be
 /// manually optimized for each emulation of field K over native field F.
 /// These parameters were generated with our script:
 /// `scripts/foreign_params_gen.py`.
-pub trait FieldEmulationParams<F: PrimeField, K: PrimeField>:
+pub trait FieldEmulationParams<F: CircuitField, K: CircuitField>:
     Default + Clone + Debug + PartialEq + Eq
 {
     /// The logarithm in base 2 (bit length) of the base in which we represent
@@ -48,7 +47,7 @@ pub trait FieldEmulationParams<F: PrimeField, K: PrimeField>:
     /// modulus.
     fn base_powers() -> Vec<BI> {
         let two = BI::from(2);
-        let m = &modulus::<K>().to_bigint().unwrap();
+        let m = &K::modulus().to_bigint().unwrap();
         (0..Self::NB_LIMBS)
             .map(|i| two.pow(Self::LOG2_BASE * i).rem(m))
             .collect::<Vec<_>>()
@@ -59,7 +58,7 @@ pub trait FieldEmulationParams<F: PrimeField, K: PrimeField>:
     /// the emulated modulus.
     fn double_base_powers() -> Vec<BI> {
         let two = BI::from(2);
-        let m = &modulus::<K>().to_bigint().unwrap();
+        let m = &K::modulus().to_bigint().unwrap();
         (0..Self::NB_LIMBS)
             .flat_map(|i| {
                 (0..Self::NB_LIMBS)
@@ -95,11 +94,11 @@ pub trait FieldEmulationParams<F: PrimeField, K: PrimeField>:
 /// Sanity checks on the parameters for the FieldChip to be sound.
 pub(crate) fn check_params<F, K, P>()
 where
-    F: PrimeField,
-    K: PrimeField,
+    F: CircuitField,
+    K: CircuitField,
     P: FieldEmulationParams<F, K>,
 {
-    let m = &modulus::<K>().to_bigint().unwrap();
+    let m = &K::modulus().to_bigint().unwrap();
     let base = BI::from(2).pow(P::LOG2_BASE);
     let nb_limbs = P::NB_LIMBS;
 
@@ -142,9 +141,9 @@ pub struct MultiEmulationParams {}
 
 /// Implement FieldEmulationParams for any curve that can emulate itself through
 /// MultiEmulationParams.
-impl<C: CircuitCurve + Default> FieldEmulationParams<C::Scalar, C::Base> for C
+impl<C: CircuitCurve + Default> FieldEmulationParams<C::ScalarField, C::Base> for C
 where
-    MultiEmulationParams: FieldEmulationParams<C::Scalar, C::Base>,
+    MultiEmulationParams: FieldEmulationParams<C::ScalarField, C::Base>,
 {
     const LOG2_BASE: u32 = MultiEmulationParams::LOG2_BASE;
 

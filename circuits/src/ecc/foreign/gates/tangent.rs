@@ -13,7 +13,6 @@
 
 use std::{marker::PhantomData, ops::Rem};
 
-use ff::PrimeField;
 use midnight_proofs::{
     circuit::{Chip, Layouter},
     plonk::{Advice, Column, ConstraintSystem, Constraints, Error, Expression, Selector},
@@ -35,7 +34,8 @@ use crate::{
     },
     instructions::NativeInstructions,
     types::{AssignedBit, AssignedField, InnerValue},
-    utils::util::{bigint_to_fe, modulus},
+    utils::util::bigint_to_fe,
+    CircuitField,
 };
 
 /// Foreign ECC tangent configuration.
@@ -57,7 +57,7 @@ impl<C: CircuitCurve> TangentConfig<C> {
     /// function for explanations on what such values represent.
     pub fn bounds<F, P>() -> ((BI, BI), Vec<(BI, BI)>)
     where
-        F: PrimeField,
+        F: CircuitField,
         P: FieldEmulationParams<F, C::Base>,
     {
         let base = BI::from(2).pow(P::LOG2_BASE);
@@ -132,10 +132,10 @@ impl<C: CircuitCurve> TangentConfig<C> {
         cond_col: &Column<Advice>,
     ) -> TangentConfig<C>
     where
-        F: PrimeField,
+        F: CircuitField,
         P: FieldEmulationParams<F, C::Base>,
     {
-        let m = &modulus::<C::Base>().to_bigint().unwrap();
+        let m = &C::Base::modulus().to_bigint().unwrap();
         let bs = P::base_powers();
         let bs2 = P::double_base_powers();
         let moduli = P::moduli();
@@ -227,12 +227,12 @@ pub fn assert_tangent<F, C, P, N>(
     tangent_config: &TangentConfig<C>,
 ) -> Result<(), Error>
 where
-    F: PrimeField,
+    F: CircuitField,
     C: CircuitCurve,
     P: FieldEmulationParams<F, C::Base>,
     N: NativeInstructions<F>,
 {
-    let m = &modulus::<C::Base>().to_bigint().unwrap();
+    let m = &C::Base::modulus().to_bigint().unwrap();
     let moduli = P::moduli();
     let bs = P::base_powers();
     let bs2 = P::double_base_powers();

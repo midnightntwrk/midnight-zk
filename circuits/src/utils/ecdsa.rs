@@ -20,6 +20,8 @@ use midnight_curves::secp256k1::{
 };
 use rand::RngCore;
 
+use crate::CircuitField;
+
 #[derive(Clone, Debug)]
 /// ECDSA implemented over SECP256k1
 pub struct Ecdsa;
@@ -51,18 +53,6 @@ impl ECDSASig {
     }
 
     /// Create ECDSASig from a slice where:
-    ///  - First 32 bytes represent LE-encoded r.
-    ///  - Next 32 bytes represent LE-encoded s.
-    pub fn from_bytes_le(bytes: &[u8]) -> Self {
-        assert_eq!(bytes.len(), 64);
-
-        let r: [u8; 32] = bytes[..32].try_into().unwrap();
-        let s_bytes: [u8; 32] = bytes[..32].try_into().unwrap();
-        let s = secp256k1Scalar::from_bytes(&s_bytes).expect("Valid Secp256k1 scalar in signature");
-        ECDSASig { r, s }
-    }
-
-    /// Create ECDSASig from a slice where:
     ///  - First 32 bytes represent BE-encoded r.
     ///  - Next 32 bytes represent BE-encoded s.
     pub fn from_bytes_be(bytes: &[u8]) -> Self {
@@ -72,11 +62,8 @@ impl ECDSASig {
         r.copy_from_slice(&bytes[..32]);
         r.reverse();
 
-        let mut s_bytes = [0u8; 32];
-        s_bytes.copy_from_slice(&bytes[32..]);
-        s_bytes.reverse();
-
-        let s = secp256k1Scalar::from_bytes(&s_bytes).expect("Valid Secp256k1 scalar in signature");
+        let s = secp256k1Scalar::from_bytes_be(&bytes[32..])
+            .expect("Valid Secp256k1 scalar in signature");
         ECDSASig { r, s }
     }
 }
@@ -95,8 +82,8 @@ impl Ecdsa {
         let k_point: Secp256k1 = Secp256k1::generator() * k;
 
         let r_as_base = k_point.to_affine().x;
-        let r = r_as_base.to_bytes();
-        let r_as_scalar = secp256k1Scalar::from_bytes(&r).unwrap();
+        let r = r_as_base.to_bytes_le();
+        let r_as_scalar = secp256k1Scalar::from_bytes_le(&r).unwrap();
 
         let s = k.invert().unwrap() * (msg_hash + r_as_scalar * sk);
         ECDSASig { r, s }
@@ -105,8 +92,8 @@ impl Ecdsa {
     /// Verify a `signature` for `msg_hash` over key `pk`
     pub fn verify(pk: &PublicKey, msg_hash: &secp256k1Scalar, signature: &ECDSASig) -> bool {
         let g = Secp256k1::generator();
-        let r_as_scalar = secp256k1Scalar::from_bytes(&signature.r).unwrap();
-        let r_as_base = secp256k1Base::from_bytes(&signature.r).unwrap();
+        let r_as_scalar = secp256k1Scalar::from_bytes_le(&signature.r).unwrap();
+        let r_as_base = secp256k1Base::from_bytes_le(&signature.r).unwrap();
 
         let s_inv = signature.s.invert().unwrap();
         let k_point = g * (s_inv * msg_hash) + pk * (s_inv * r_as_scalar);

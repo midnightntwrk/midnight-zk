@@ -18,20 +18,19 @@
 
 use std::{fmt::Debug, hash::Hash};
 
-use ff::PrimeField;
-
 use super::FieldInstructions;
 use crate::{
     instructions::DecompositionInstructions,
     types::{InnerConstants, InnerValue, Instantiable},
+    CircuitField,
 };
 
 /// The set of circuit instructions for scalar field operations.
 pub trait ScalarFieldInstructions<F>:
     FieldInstructions<F, Self::Scalar> + DecompositionInstructions<F, Self::Scalar>
 where
-    F: PrimeField,
-    <Self::Scalar as InnerValue>::Element: PrimeField,
+    F: CircuitField,
+    <Self::Scalar as InnerValue>::Element: CircuitField,
     Self::Scalar: Instantiable<F>,
 {
     /// An assigned field element.

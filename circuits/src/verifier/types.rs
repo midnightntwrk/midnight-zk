@@ -16,7 +16,7 @@
 
 use std::fmt::Debug;
 
-use ff::{PrimeField, WithSmallOrderMulGroup};
+use ff::WithSmallOrderMulGroup;
 use group::{prime::PrimeCurveAffine, Curve};
 use midnight_curves::{
     pairing::{Engine, MultiMillerLoop},
@@ -45,12 +45,13 @@ use crate::{
         HashInstructions, PublicInputInstructions, SpongeInstructions,
     },
     types::{AssignedForeignPoint, InnerValue, Instantiable},
+    CircuitField,
 };
 
 /// A trait for parametrizing the VerifierGadget.
 pub trait SelfEmulation: Clone + Debug {
     /// The native field.
-    type F: PrimeField + WithSmallOrderMulGroup<3> + Hashable<Self::Hash>;
+    type F: CircuitField + WithSmallOrderMulGroup<3> + Hashable<Self::Hash>;
 
     /// The underlying curve of the self-emulation proof.
     type C: CurveExt<ScalarExt = Self::F, AffineExt = Self::G1Affine>

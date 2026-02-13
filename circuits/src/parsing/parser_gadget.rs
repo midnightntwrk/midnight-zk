@@ -13,7 +13,6 @@
 
 use std::{cmp::min, marker::PhantomData};
 
-use ff::PrimeField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 use num_bigint::BigUint;
 #[cfg(any(test, feature = "testing"))]
@@ -22,7 +21,9 @@ use {
     midnight_proofs::plonk::{Column, ConstraintSystem, Instance},
 };
 
-use crate::{field::AssignedNative, instructions::NativeInstructions, types::AssignedByte};
+use crate::{
+    field::AssignedNative, instructions::NativeInstructions, types::AssignedByte, CircuitField,
+};
 
 #[derive(Clone, Debug)]
 /// A gadget for parsing json data. It is parametrized by:
@@ -30,7 +31,7 @@ use crate::{field::AssignedNative, instructions::NativeInstructions, types::Assi
 ///  - N: a set of in-circuit native instructions.
 pub struct ParserGadget<F, N>
 where
-    F: PrimeField,
+    F: CircuitField,
     N: NativeInstructions<F>,
 {
     pub(crate) native_gadget: N,
@@ -39,7 +40,7 @@ where
 
 impl<F, N> ParserGadget<F, N>
 where
-    F: PrimeField,
+    F: CircuitField,
     N: NativeInstructions<F>,
 {
     /// Create a new parser gadget.
@@ -178,7 +179,7 @@ where
 #[cfg(any(test, feature = "testing"))]
 impl<F, N> FromScratch<F> for ParserGadget<F, N>
 where
-    F: PrimeField,
+    F: CircuitField,
     N: NativeInstructions<F> + FromScratch<F>,
 {
     type Config = <N as FromScratch<F>>::Config;
@@ -229,7 +230,7 @@ mod tests {
 
     impl<F, N> Circuit<F> for TestCircuit<F, N>
     where
-        F: PrimeField,
+        F: CircuitField,
         N: NativeInstructions<F> + FromScratch<F>,
     {
         type Config = <N as FromScratch<F>>::Config;
@@ -286,7 +287,7 @@ mod tests {
 
     fn run<F>(sequence: &[u8], idx: usize, expected: &[u8], operation: Operation, must_pass: bool)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
     {
         let circuit = TestCircuit::<F, NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>> {
             sequence: sequence.iter().map(|x| F::from(*x as u64)).map(Value::known).collect(),

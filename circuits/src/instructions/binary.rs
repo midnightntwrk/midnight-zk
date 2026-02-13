@@ -15,13 +15,12 @@
 //!
 //! It provides functions for performing Boolean operations over [AssignedBit]s.
 
-use ff::PrimeField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 
-use crate::types::AssignedBit;
+use crate::{types::AssignedBit, CircuitField};
 
 /// The set of circuit instructions for binary operations.
-pub trait BinaryInstructions<F: PrimeField> {
+pub trait BinaryInstructions<F: CircuitField> {
     /// Conjunction of the given assigned bits.
     ///
     /// # Panics
@@ -145,7 +144,7 @@ pub(crate) mod tests {
 
     impl<F, BinaryChip> Circuit<F> for TestCircuit<F, BinaryChip>
     where
-        F: PrimeField,
+        F: CircuitField,
         BinaryChip: BinaryInstructions<F>
             + AssignmentInstructions<F, AssignedBit<F>>
             + AssertionInstructions<F, AssignedBit<F>>
@@ -199,7 +198,7 @@ pub(crate) mod tests {
         chip_name: &str,
         op_name: &str,
     ) where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
         BinaryChip: BinaryInstructions<F>
             + AssignmentInstructions<F, AssignedBit<F>>
             + AssertionInstructions<F, AssignedBit<F>>
@@ -234,7 +233,7 @@ pub(crate) mod tests {
         chip_name: &str,
         op_name: &str,
     ) where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
         BinaryChip: BinaryInstructions<F>
             + AssignmentInstructions<F, AssignedBit<F>>
             + AssertionInstructions<F, AssignedBit<F>>
@@ -252,7 +251,7 @@ pub(crate) mod tests {
 
     pub fn test_and<F, BinaryChip>(name: &str)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
         BinaryChip: BinaryInstructions<F>
             + AssignmentInstructions<F, AssignedBit<F>>
             + AssertionInstructions<F, AssignedBit<F>>
@@ -266,7 +265,7 @@ pub(crate) mod tests {
 
     pub fn test_or<F, BinaryChip>(name: &str)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
         BinaryChip: BinaryInstructions<F>
             + AssignmentInstructions<F, AssignedBit<F>>
             + AssertionInstructions<F, AssignedBit<F>>
@@ -280,7 +279,7 @@ pub(crate) mod tests {
 
     pub fn test_xor<F, BinaryChip>(name: &str)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
         BinaryChip: BinaryInstructions<F>
             + AssignmentInstructions<F, AssignedBit<F>>
             + AssertionInstructions<F, AssignedBit<F>>
@@ -294,7 +293,7 @@ pub(crate) mod tests {
 
     pub fn test_not<F, BinaryChip>(name: &str)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
         BinaryChip: BinaryInstructions<F>
             + AssignmentInstructions<F, AssignedBit<F>>
             + AssertionInstructions<F, AssignedBit<F>>

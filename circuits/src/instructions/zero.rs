@@ -19,19 +19,19 @@
 //! and [EqualityInstructions]. The trait is parametrized by `assigned`
 //! values that implement `InnerConstants`, which gives access to zero.
 
-use ff::PrimeField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 use crate::{
     instructions::{AssertionInstructions, EqualityInstructions},
     types::{AssignedBit, InnerConstants},
+    CircuitField,
 };
 
 /// The set of circuit instructions for zero equality and assertions.
 pub trait ZeroInstructions<F, Assigned>:
     AssertionInstructions<F, Assigned> + EqualityInstructions<F, Assigned>
 where
-    F: PrimeField,
+    F: CircuitField,
     Assigned: InnerConstants,
 {
     /// Enforces that the given assigned element is zero.
@@ -113,7 +113,7 @@ pub(crate) mod tests {
 
     impl<F, Assigned, ZeroChip> Circuit<F> for TestCircuit<F, Assigned, ZeroChip>
     where
-        F: PrimeField,
+        F: CircuitField,
         Assigned: InnerConstants,
         ZeroChip:
             ZeroInstructions<F, Assigned> + AssignmentInstructions<F, Assigned> + FromScratch<F>,
@@ -177,7 +177,7 @@ pub(crate) mod tests {
         chip_name: &str,
         op_name: &str,
     ) where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
         Assigned: InnerConstants,
         ZeroChip:
             ZeroInstructions<F, Assigned> + AssignmentInstructions<F, Assigned> + FromScratch<F>,
@@ -206,7 +206,7 @@ pub(crate) mod tests {
 
     pub fn test_zero_assertions<F, Assigned, ZeroChip>(name: &str)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
         Assigned: InnerConstants + Sampleable,
         ZeroChip:
             ZeroInstructions<F, Assigned> + AssignmentInstructions<F, Assigned> + FromScratch<F>,
@@ -244,7 +244,7 @@ pub(crate) mod tests {
 
     pub fn test_is_zero<F, Assigned, ZeroChip>(name: &str)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
         Assigned: InnerConstants + Sampleable,
         ZeroChip:
             ZeroInstructions<F, Assigned> + AssignmentInstructions<F, Assigned> + FromScratch<F>,

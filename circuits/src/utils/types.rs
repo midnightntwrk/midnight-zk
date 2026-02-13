@@ -12,25 +12,19 @@
 // limitations under the License.
 
 use core::fmt::Debug;
-use std::ops::{Add, Neg};
 
-use ff::PrimeField;
 use midnight_proofs::circuit::Value;
-use num_bigint::BigUint;
 #[cfg(any(test, feature = "testing"))]
 use rand::RngCore;
 
-use crate::{
-    types::AssignedNative,
-    utils::util::{big_to_fe, fe_to_big},
-};
+use crate::{field::AssignedNative, CircuitField};
 
 /// Trait for dealing with public inputs. `Instantiable` is implemented on
 /// off-circuit types to determine the way these types are transformed into
 /// vectors of native values.
 /// Analogous functions exists for constraining public inputs in-circuit in
 /// the [crate::instructions::PublicInputInstructions] trait.
-pub trait Instantiable<F: PrimeField>: InnerValue {
+pub trait Instantiable<F: CircuitField>: InnerValue {
     /// This function is the off-circuit analog of
     /// [crate::instructions::PublicInputInstructions::as_public_input].
     fn as_public_input(element: &<Self as InnerValue>::Element) -> Vec<F>;
@@ -67,13 +61,13 @@ pub trait InnerConstants: InnerValue {
     fn inner_one() -> Self::Element;
 }
 
-impl<F: PrimeField> Instantiable<F> for AssignedNative<F> {
+impl<F: CircuitField> Instantiable<F> for AssignedNative<F> {
     fn as_public_input(element: &F) -> Vec<F> {
         vec![*element]
     }
 }
 
-impl<F: PrimeField> InnerValue for AssignedNative<F> {
+impl<F: CircuitField> InnerValue for AssignedNative<F> {
     type Element = F;
 
     fn value(&self) -> Value<F> {
@@ -81,32 +75,13 @@ impl<F: PrimeField> InnerValue for AssignedNative<F> {
     }
 }
 
-impl<F: PrimeField> InnerConstants for AssignedNative<F> {
+impl<F: CircuitField> InnerConstants for AssignedNative<F> {
     fn inner_zero() -> F {
         F::ZERO
     }
 
     fn inner_one() -> F {
         F::ONE
-    }
-}
-
-/// A trait for types that can be converted from and into BigUint.
-pub trait FromBigUint: PartialEq + From<u64> + Add<Output = Self> + Neg<Output = Self> {
-    /// Conversion from BigUint.
-    fn from_biguint(x: BigUint) -> Self;
-
-    /// Convertion into BigUint.
-    fn into_biguint(self) -> BigUint;
-}
-
-impl<F: PrimeField> FromBigUint for F {
-    fn from_biguint(x: BigUint) -> Self {
-        big_to_fe(x)
-    }
-
-    fn into_biguint(self) -> BigUint {
-        fe_to_big(self)
     }
 }
 
@@ -123,7 +98,7 @@ pub trait Invertible {
 }
 
 #[cfg(any(test, feature = "testing"))]
-impl<F: PrimeField> Invertible for F {
+impl<F: CircuitField> Invertible for F {
     fn invert(&self) -> F {
         self.invert().unwrap()
     }
@@ -138,7 +113,7 @@ pub trait Sampleable: InnerValue {
 }
 
 #[cfg(any(test, feature = "testing"))]
-impl<F: PrimeField> Sampleable for AssignedNative<F> {
+impl<F: CircuitField> Sampleable for AssignedNative<F> {
     fn sample_inner(rng: impl RngCore) -> F {
         F::random(rng)
     }

@@ -19,7 +19,6 @@ use std::{
     ops::Rem,
 };
 
-use ff::PrimeField;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
@@ -46,10 +45,8 @@ use crate::{
         ZeroInstructions,
     },
     types::{AssignedBit, AssignedByte, AssignedNative},
-    utils::{
-        types::InnerValue,
-        util::{big_to_fe, fe_to_big},
-    },
+    utils::{types::InnerValue, util::big_to_fe},
+    CircuitField,
 };
 
 #[derive(Clone, Debug)]
@@ -58,7 +55,7 @@ use crate::{
 ///  - N: a set of in-circuit native instructions.
 pub struct BigUintGadget<F, N>
 where
-    F: PrimeField,
+    F: CircuitField,
     N: NativeInstructions<F>,
 {
     native_gadget: N,
@@ -67,7 +64,7 @@ where
 
 impl<F, N> BigUintGadget<F, N>
 where
-    F: PrimeField,
+    F: CircuitField,
     N: NativeInstructions<F>,
 {
     /// Create a new gadget for big unsinged integers.
@@ -81,7 +78,7 @@ where
 
 impl<F, N> AssertionInstructions<F, AssignedBigUint<F>> for BigUintGadget<F, N>
 where
-    F: PrimeField,
+    F: CircuitField,
     N: NativeInstructions<F>,
 {
     fn assert_equal(
@@ -155,7 +152,7 @@ where
 
 impl<F, N> EqualityInstructions<F, AssignedBigUint<F>> for BigUintGadget<F, N>
 where
-    F: PrimeField,
+    F: CircuitField,
     N: NativeInstructions<F>,
 {
     fn is_equal(
@@ -229,14 +226,14 @@ where
 
 impl<F, N> ZeroInstructions<F, AssignedBigUint<F>> for BigUintGadget<F, N>
 where
-    F: PrimeField,
+    F: CircuitField,
     N: NativeInstructions<F>,
 {
 }
 
 impl<F, N> ControlFlowInstructions<F, AssignedBigUint<F>> for BigUintGadget<F, N>
 where
-    F: PrimeField,
+    F: CircuitField,
     N: NativeInstructions<F>,
 {
     fn select(
@@ -272,7 +269,7 @@ where
 
 impl<F, N> BigUintGadget<F, N>
 where
-    F: PrimeField,
+    F: CircuitField,
     N: NativeInstructions<F>,
 {
     /// Assigns a BigUint (of at most `nb_bits` bits) as a private input.
@@ -611,7 +608,7 @@ where
 // A block of auxiliary non-exposed functions.
 impl<F, N> BigUintGadget<F, N>
 where
-    F: PrimeField,
+    F: CircuitField,
     N: NativeInstructions<F>,
 {
     /// Assigns a big unsigned integer, and guarantees it fits in the range
@@ -793,7 +790,7 @@ where
         let (q_value, r_value) = x
             .value()
             .map(|v| {
-                let (q, r) = fe_to_big(*v).div_rem(&base);
+                let (q, r) = v.to_biguint().div_rem(&base);
                 (big_to_fe(q), big_to_fe(r))
             })
             .unzip();
@@ -822,7 +819,7 @@ where
 #[cfg(test)]
 impl<F, N> AssignmentInstructions<F, AssignedBigUint<F>> for BigUintGadget<F, N>
 where
-    F: PrimeField,
+    F: CircuitField,
     N: NativeInstructions<F>,
 {
     fn assign(
@@ -845,7 +842,7 @@ where
 #[cfg(any(test, feature = "testing"))]
 impl<F, N> FromScratch<F> for BigUintGadget<F, N>
 where
-    F: PrimeField,
+    F: CircuitField,
     N: NativeInstructions<F> + FromScratch<F>,
 {
     type Config = <N as FromScratch<F>>::Config;
@@ -941,7 +938,7 @@ mod tests {
 
     impl<F, N> Circuit<F> for TestCircuit<F, N>
     where
-        F: PrimeField,
+        F: CircuitField,
         N: NativeInstructions<F> + FromScratch<F>,
     {
         type Config = <N as FromScratch<F>>::Config;
@@ -1003,7 +1000,7 @@ mod tests {
 
     fn run<F>(x: &BigUint, y: &BigUint, expected: &BigUint, operation: Operation, must_pass: bool)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
     {
         let circuit = TestCircuit::<F, NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>> {
             x: Value::known(x.clone()),

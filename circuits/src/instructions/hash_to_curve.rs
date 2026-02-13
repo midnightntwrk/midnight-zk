@@ -15,11 +15,10 @@
 //!
 //! The trait is parametrised by the curve, `C`, where the hash is mapped.
 
-use ff::PrimeField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 use super::EccInstructions;
-use crate::{ecc::curves::CircuitCurve, types::InnerValue};
+use crate::{ecc::curves::CircuitCurve, types::InnerValue, CircuitField};
 
 /// Off-circuit instructions for hashing a given input of type `Input` into a
 /// point of curve `C`.
@@ -35,7 +34,7 @@ where
 /// point of curve `C`, emulated over native field `F`.
 pub trait HashToCurveInstructions<F, C, Input, E>: HashToCurveCPU<C, Input::Element>
 where
-    F: PrimeField,
+    F: CircuitField,
     C: CircuitCurve,
     Input: InnerValue,
     E: EccInstructions<F, C>,
@@ -55,7 +54,7 @@ where
 pub(crate) mod tests {
     use std::marker::PhantomData;
 
-    use ff::{FromUniformBytes, PrimeField};
+    use ff::FromUniformBytes;
     use group::Group;
     use midnight_proofs::{
         circuit::{Layouter, SimpleFloorPlanner, Value},
@@ -72,6 +71,7 @@ pub(crate) mod tests {
         testing_utils::{FromScratch, Sampleable},
         types::{InnerConstants, InnerValue},
         utils::circuit_modeling::circuit_to_json,
+        CircuitField,
     };
 
     #[derive(Clone, Debug)]
@@ -88,7 +88,7 @@ pub(crate) mod tests {
     impl<F, C, I, EccChip, InputsChip, HashToCurveChip> Circuit<F>
         for TestCircuit<F, C, I, EccChip, InputsChip, HashToCurveChip>
     where
-        F: PrimeField,
+        F: CircuitField,
         C: CircuitCurve,
         I: InnerValue,
         I::Element: Clone,
@@ -141,7 +141,7 @@ pub(crate) mod tests {
         cost_model: bool,
         chip_name: &str,
     ) where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
         C: CircuitCurve,
         I: InnerValue,
         I::Element: Clone,
@@ -171,7 +171,7 @@ pub(crate) mod tests {
 
     pub fn test_hash_to_curve<F, C, I, EccChip, InputsChip, HashToCurveChip>(name: &str)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
         C: CircuitCurve,
         I: InnerConstants + Sampleable,
         I::Element: Clone,

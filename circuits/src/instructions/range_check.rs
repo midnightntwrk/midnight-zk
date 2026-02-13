@@ -13,19 +13,18 @@
 
 //! Range-check instructions interface.
 
-use ff::PrimeField;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
 use num_bigint::BigUint;
 
-use crate::types::InnerValue;
+use crate::{types::InnerValue, CircuitField};
 
 /// The set of circuit instructions for range-check operations.
 pub trait RangeCheckInstructions<F, Assigned>
 where
-    F: PrimeField,
+    F: CircuitField,
     Assigned: InnerValue,
 {
     /// Assigns an element that is immediately range-checked to be strictly
@@ -95,8 +94,8 @@ pub(crate) mod tests {
 
     impl<F, Assigned, Chip> Circuit<F> for TestCircuit<F, Assigned, Chip>
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
-        Assigned::Element: PrimeField,
+        F: CircuitField + FromUniformBytes<64> + Ord,
+        Assigned::Element: CircuitField,
         Assigned: Clone + Debug + InnerConstants,
         Chip: RangeCheckInstructions<F, Assigned>
             + AssignmentInstructions<F, Assigned>
@@ -137,8 +136,8 @@ pub(crate) mod tests {
         chip_name: &str,
         op_name: &str,
     ) where
-        F: PrimeField + FromUniformBytes<64> + Ord,
-        Assigned::Element: PrimeField,
+        F: CircuitField + FromUniformBytes<64> + Ord,
+        Assigned::Element: CircuitField,
         Assigned: Clone + Debug + InnerConstants,
         Chip: RangeCheckInstructions<F, Assigned>
             + AssignmentInstructions<F, Assigned>
@@ -166,8 +165,8 @@ pub(crate) mod tests {
 
     pub fn test_assert_lower_than_fixed<F, Assigned, Chip>(name: &str)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
-        Assigned::Element: PrimeField + From<u64>,
+        F: CircuitField + FromUniformBytes<64> + Ord,
+        Assigned::Element: CircuitField + From<u64>,
         Assigned: Clone + Debug + InnerConstants,
         Chip: RangeCheckInstructions<F, Assigned>
             + AssignmentInstructions<F, Assigned>

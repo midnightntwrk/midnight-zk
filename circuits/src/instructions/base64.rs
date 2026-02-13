@@ -12,17 +12,19 @@
 // limitations under the License.
 
 //! Set of Base64 instructions.
-use ff::PrimeField;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
 
-use crate::types::{AssignedByte, AssignedVector};
+use crate::{
+    types::{AssignedByte, AssignedVector},
+    CircuitField,
+};
 
 /// This trait defines methods for converting data encoded in standard Base64 or
 /// Base64URL (URL-safe) format into its raw byte representation.
-pub trait Base64Instructions<F: PrimeField> {
+pub trait Base64Instructions<F: CircuitField> {
     /// Receives a base64 url-safe encoded string as [AssignedByte]s and returns
     /// the decoded ASCII string as a vector of [AssignedByte].
     /// If `padded` is selected, the input length must be a multiple of 4.
@@ -70,11 +72,11 @@ pub trait Base64Instructions<F: PrimeField> {
 ///  These extra assumptions guarantee completeness.
 ///  Soundness is always guaranteed.
 #[derive(Debug, Clone)]
-pub struct Base64Vec<F: PrimeField, const M: usize, const A: usize>(
+pub struct Base64Vec<F: CircuitField, const M: usize, const A: usize>(
     pub(crate) AssignedVector<F, AssignedByte<F>, M, A>,
 );
 
-impl<F: PrimeField, const M: usize, const A: usize> From<Base64Vec<F, M, A>>
+impl<F: CircuitField, const M: usize, const A: usize> From<Base64Vec<F, M, A>>
     for AssignedVector<F, AssignedByte<F>, M, A>
 {
     fn from(value: Base64Vec<F, M, A>) -> Self {
@@ -83,7 +85,7 @@ impl<F: PrimeField, const M: usize, const A: usize> From<Base64Vec<F, M, A>>
 }
 
 /// Equivalent to Base64Instructions for variable-length inputs.
-pub trait Base64VarInstructions<F: PrimeField, const M: usize, const A: usize>:
+pub trait Base64VarInstructions<F: CircuitField, const M: usize, const A: usize>:
     Base64Instructions<F>
 {
     /// Assigns a vector of bytes into Base64Vec.

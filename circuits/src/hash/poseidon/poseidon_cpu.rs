@@ -13,7 +13,6 @@
 
 use std::io::{self, Read};
 
-use ff::PrimeField;
 use group::GroupEncoding;
 use midnight_proofs::transcript::{Hashable, Sampleable, TranscriptHash};
 
@@ -26,6 +25,7 @@ use crate::{
     field::foreign::params::MultiEmulationParams as MEP,
     instructions::SpongeCPU,
     types::{AssignedForeignPoint, Instantiable},
+    CircuitField,
 };
 
 /// Number of times the linear part of the partial rounds is skipped in the
@@ -230,15 +230,16 @@ impl Hashable<PoseidonState<midnight_curves::Fq>> for midnight_curves::Fq {
     }
 
     fn to_bytes(&self) -> Vec<u8> {
-        self.to_repr().to_vec()
+        self.to_bytes_le().as_ref().to_vec()
     }
 
     fn read(buffer: &mut impl Read) -> io::Result<Self> {
-        let mut bytes = <Self as PrimeField>::Repr::default();
+        use midnight_curves::Fq;
+        let mut bytes = [0u8; <Fq as CircuitField>::NUM_BYTES];
 
         buffer.read_exact(bytes.as_mut())?;
 
-        Option::from(Self::from_repr(bytes))
+        <Fq as CircuitField>::from_bytes_le(&bytes)
             .ok_or_else(|| io::Error::other("Invalid BLS12-381 scalar encoding in proof"))
     }
 }

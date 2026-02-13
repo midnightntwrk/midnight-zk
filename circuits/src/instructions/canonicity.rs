@@ -21,21 +21,21 @@
 //! The implementors of this trait need to implement [FieldInstructions]
 //! where the notion of `canonical` makes sense.
 
-use ff::PrimeField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 use num_bigint::BigUint;
 
 use crate::{
     instructions::{AssignmentInstructions, FieldInstructions},
     types::{AssignedBit, InnerConstants, Instantiable},
+    CircuitField,
 };
 
 /// The set of circuit instructions for canonicity assertions.
 pub trait CanonicityInstructions<F, Assigned>:
     FieldInstructions<F, Assigned> + AssignmentInstructions<F, AssignedBit<F>>
 where
-    F: PrimeField,
-    Assigned::Element: PrimeField,
+    F: CircuitField,
+    Assigned::Element: CircuitField,
     Assigned: Instantiable<F> + InnerConstants + Clone,
 {
     /// Returns `true` iff the given sequence of bits is canonical in the
@@ -123,7 +123,7 @@ where
 pub(crate) mod tests {
     use std::marker::PhantomData;
 
-    use ff::FromUniformBytes;
+    use ff::{FromUniformBytes, PrimeField};
     use midnight_proofs::{
         circuit::{Layouter, SimpleFloorPlanner},
         dev::MockProver,
@@ -137,10 +137,7 @@ pub(crate) mod tests {
     use crate::{
         instructions::{AssertionInstructions, AssignmentInstructions},
         types::InnerValue,
-        utils::{
-            circuit_modeling::circuit_to_json,
-            util::{modulus, FromScratch},
-        },
+        utils::{circuit_modeling::circuit_to_json, util::FromScratch},
     };
 
     #[derive(Clone, Debug)]
@@ -164,8 +161,8 @@ pub(crate) mod tests {
 
     impl<F, Assigned, CanonicityChip> Circuit<F> for TestCircuit<F, Assigned, CanonicityChip>
     where
-        F: PrimeField,
-        Assigned::Element: PrimeField,
+        F: CircuitField,
+        Assigned::Element: CircuitField,
         Assigned: Instantiable<F> + InnerConstants + Clone,
         CanonicityChip: CanonicityInstructions<F, Assigned>
             + AssertionInstructions<F, Assigned>
@@ -227,8 +224,8 @@ pub(crate) mod tests {
         chip_name: &str,
         op_name: &str,
     ) where
-        F: PrimeField + FromUniformBytes<64> + Ord,
-        Assigned::Element: PrimeField,
+        F: CircuitField + FromUniformBytes<64> + Ord,
+        Assigned::Element: CircuitField,
         Assigned: Instantiable<F> + InnerConstants + Clone,
         CanonicityChip: CanonicityInstructions<F, Assigned>
             + AssertionInstructions<F, Assigned>
@@ -267,8 +264,8 @@ pub(crate) mod tests {
 
     pub fn test_canonical<F, Assigned, CanonicityChip>(name: &str)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
-        Assigned::Element: PrimeField,
+        F: CircuitField + FromUniformBytes<64> + Ord,
+        Assigned::Element: CircuitField,
         Assigned: Instantiable<F> + InnerConstants + Clone,
         CanonicityChip: CanonicityInstructions<F, Assigned>
             + AssertionInstructions<F, Assigned>
@@ -276,7 +273,7 @@ pub(crate) mod tests {
             + AssignmentInstructions<F, Assigned>
             + FromScratch<F>,
     {
-        let m = modulus::<Assigned::Element>();
+        let m = Assigned::Element::modulus();
         let mut cost_model = true;
         [
             (vec![0], true),
@@ -316,8 +313,8 @@ pub(crate) mod tests {
 
     pub fn test_le_bits_lower_and_geq<F, Assigned, CanonChip>(name: &str)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
-        Assigned::Element: PrimeField,
+        F: CircuitField + FromUniformBytes<64> + Ord,
+        Assigned::Element: CircuitField,
         Assigned: Instantiable<F> + InnerConstants + Clone,
         CanonChip: CanonicityInstructions<F, Assigned>
             + AssertionInstructions<F, Assigned>
@@ -327,7 +324,7 @@ pub(crate) mod tests {
     {
         let mut rng = ChaCha8Rng::seed_from_u64(0xc0ffee);
         let r: BigUint = rng.next_u64().into();
-        let m = modulus::<Assigned::Element>();
+        let m = Assigned::Element::modulus();
         let mut cost_model = true;
         [
             (decompose_biguint(&r), r.clone() - BigUint::one(), true),

@@ -22,12 +22,12 @@
 
 use std::fmt::Debug;
 
-use ff::PrimeField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 use crate::{
     instructions::{ArithInstructions, CanonicityInstructions, ConversionInstructions},
     types::{AssignedBit, AssignedByte, AssignedNative, InnerConstants, Instantiable},
+    CircuitField,
 };
 
 /// The set of circuit instructions for (de)composition operations.
@@ -37,8 +37,8 @@ pub trait DecompositionInstructions<F, Assigned>:
     + ConversionInstructions<F, AssignedBit<F>, Assigned>
     + ConversionInstructions<F, AssignedByte<F>, Assigned>
 where
-    F: PrimeField,
-    Assigned::Element: PrimeField,
+    F: CircuitField,
+    Assigned::Element: CircuitField,
     Assigned: Instantiable<F> + InnerConstants + Clone,
 {
     /// Returns a vector of assigned bits representing the given assigned
@@ -285,7 +285,7 @@ where
 }
 
 /// Pow2Range range-check instructions.
-pub trait Pow2RangeInstructions<F: PrimeField>: Debug + Clone {
+pub trait Pow2RangeInstructions<F: CircuitField>: Debug + Clone {
     /// Asserts that all the given assigned values in the range `[0, 2^n)`.
     fn assert_values_lower_than_2_pow_n(
         &self,
@@ -315,10 +315,7 @@ pub(crate) mod tests {
         instructions::{AssertionInstructions, AssignmentInstructions},
         testing_utils::FromScratch,
         types::InnerValue,
-        utils::{
-            circuit_modeling::circuit_to_json,
-            util::{big_to_fe, fe_to_big, modulus},
-        },
+        utils::{circuit_modeling::circuit_to_json, util::big_to_fe},
     };
 
     #[derive(Clone, Debug)]
@@ -351,8 +348,8 @@ pub(crate) mod tests {
 
     impl<F, Assigned, DecompChip, AuxChip> Circuit<F> for TestCircuit<F, Assigned, DecompChip, AuxChip>
     where
-        F: PrimeField,
-        Assigned::Element: PrimeField,
+        F: CircuitField,
+        Assigned::Element: CircuitField,
         Assigned: Instantiable<F> + InnerConstants + Clone,
         DecompChip: DecompositionInstructions<F, Assigned> + FromScratch<F>,
         AuxChip: AssertionInstructions<F, AssignedBit<F>>
@@ -473,8 +470,8 @@ pub(crate) mod tests {
         chip_name: &str,
         op_name: &str,
     ) where
-        F: PrimeField + FromUniformBytes<64> + Ord,
-        Assigned::Element: PrimeField,
+        F: CircuitField + FromUniformBytes<64> + Ord,
+        Assigned::Element: CircuitField,
         Assigned: Instantiable<F> + InnerConstants + Clone,
         DecompChip: DecompositionInstructions<F, Assigned> + FromScratch<F>,
         AuxChip: AssertionInstructions<F, AssignedBit<F>>
@@ -528,8 +525,8 @@ pub(crate) mod tests {
 
     pub fn test_bit_decomposition<F, Assigned, DecompChip, AuxChip>(name: &str)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
-        Assigned::Element: PrimeField,
+        F: CircuitField + FromUniformBytes<64> + Ord,
+        Assigned::Element: CircuitField,
         Assigned: Instantiable<F> + InnerConstants + Clone,
         DecompChip: DecompositionInstructions<F, Assigned> + FromScratch<F>,
         AuxChip: AssertionInstructions<F, AssignedBit<F>>
@@ -544,7 +541,7 @@ pub(crate) mod tests {
         let r = rng.next_u64();
         let mut bits_of_r = biguint_to_bits(&r.into());
         bits_of_r.resize(64, 0);
-        let m = modulus::<Assigned::Element>();
+        let m = Assigned::Element::modulus();
         let m_minus_1 = m.clone() - BigUint::one();
         let mut cost_model = true;
         [
@@ -588,8 +585,8 @@ pub(crate) mod tests {
 
     pub fn test_byte_decomposition<F, Assigned, DecompChip, AuxChip>(name: &str)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
-        Assigned::Element: PrimeField,
+        F: CircuitField + FromUniformBytes<64> + Ord,
+        Assigned::Element: CircuitField,
         Assigned: Instantiable<F> + InnerConstants + Clone,
         DecompChip: DecompositionInstructions<F, Assigned> + FromScratch<F>,
         AuxChip: AssertionInstructions<F, AssignedBit<F>>
@@ -605,7 +602,7 @@ pub(crate) mod tests {
         let r = rng.next_u64();
         let mut bytes_of_r = biguint_to_bytes(&r.into());
         bytes_of_r.resize(8, 0);
-        let m = modulus::<Assigned::Element>();
+        let m = Assigned::Element::modulus();
         let m_minus_1 = m.clone() - BigUint::one();
         let mut cost_model = true;
         [
@@ -655,8 +652,8 @@ pub(crate) mod tests {
 
     pub fn test_sgn0<F, Assigned, DecompChip, AuxChip>(name: &str)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
-        Assigned::Element: PrimeField,
+        F: CircuitField + FromUniformBytes<64> + Ord,
+        Assigned::Element: CircuitField,
         Assigned: Instantiable<F> + InnerConstants + Clone,
         DecompChip: DecompositionInstructions<F, Assigned> + FromScratch<F>,
         AuxChip: AssertionInstructions<F, AssignedBit<F>>
@@ -672,7 +669,7 @@ pub(crate) mod tests {
 
         // Edge case where x = 0 | p_mid | 1.
         // (same as the modulus p but with the msb turned to 0).
-        let mut p = modulus::<Assigned::Element>();
+        let mut p = Assigned::Element::modulus();
         p.set_bit(F::NUM_BITS as u64 - 1, false);
         let x = big_to_fe(p.clone());
 
@@ -680,13 +677,13 @@ pub(crate) mod tests {
             parse!(0),
             parse!(1),
             x,
-            big_to_fe(modulus::<Assigned::Element>() - BigUint::one()),
+            big_to_fe(Assigned::Element::modulus() - BigUint::one()),
         ];
 
         let test_cases = &[random_test_cases.as_slice(), edge_cases].concat();
 
         test_cases.iter().enumerate().for_each(|(i, x)| {
-            let bytes = biguint_to_bytes(&fe_to_big(*x));
+            let bytes = biguint_to_bytes(&x.to_biguint());
             run::<F, Assigned, DecompChip, AuxChip>(
                 *x,
                 &bytes,

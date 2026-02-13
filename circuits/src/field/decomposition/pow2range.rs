@@ -16,7 +16,6 @@
 
 use std::{cell::RefCell, collections::HashSet, fmt::Debug, marker::PhantomData, rc::Rc};
 
-use ff::PrimeField;
 use midnight_proofs::{
     circuit::{Chip, Layouter, Region, Value},
     plonk::{Advice, Column, ConstraintSystem, Error, Fixed, Selector, TableColumn},
@@ -25,7 +24,7 @@ use midnight_proofs::{
 
 use crate::{
     field::native::NB_ARITH_COLS, instructions::decomposition::Pow2RangeInstructions,
-    types::AssignedNative,
+    types::AssignedNative, CircuitField,
 };
 
 /// Pow2Range gate configuration.
@@ -72,14 +71,14 @@ pub struct Pow2RangeConfig {
 /// For that, it is necessary to load this chip at the end of a synthesize,
 /// not at the beginning!
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Pow2RangeChip<F: PrimeField> {
+pub struct Pow2RangeChip<F: CircuitField> {
     config: Pow2RangeConfig,
     max_bit_len: usize,
     queried_tags: Rc<RefCell<HashSet<usize>>>,
     _marker: PhantomData<F>,
 }
 
-impl<F: PrimeField> Chip<F> for Pow2RangeChip<F> {
+impl<F: CircuitField> Chip<F> for Pow2RangeChip<F> {
     type Config = Pow2RangeConfig;
     type Loaded = ();
     fn config(&self) -> &Self::Config {
@@ -90,7 +89,7 @@ impl<F: PrimeField> Chip<F> for Pow2RangeChip<F> {
     }
 }
 
-impl<F: PrimeField> Pow2RangeChip<F> {
+impl<F: CircuitField> Pow2RangeChip<F> {
     pub(crate) fn assert_row_lower_than_2_pow_n(
         &self,
         region: &mut Region<'_, F>,
@@ -115,7 +114,7 @@ impl<F: PrimeField> Pow2RangeChip<F> {
     }
 }
 
-impl<F: PrimeField> Pow2RangeInstructions<F> for Pow2RangeChip<F> {
+impl<F: CircuitField> Pow2RangeInstructions<F> for Pow2RangeChip<F> {
     fn assert_values_lower_than_2_pow_n(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -155,7 +154,7 @@ impl<F: PrimeField> Pow2RangeInstructions<F> for Pow2RangeChip<F> {
     }
 }
 
-impl<F: PrimeField> Pow2RangeChip<F> {
+impl<F: CircuitField> Pow2RangeChip<F> {
     /// Creates a new Pow2RangeChip given the corresponding configuration and a
     /// given `max_bit_len`.
     pub fn new(config: &Pow2RangeConfig, max_bit_len: usize) -> Self {
@@ -251,13 +250,13 @@ mod tests {
 
     use super::*;
 
-    struct TestCircuit<F: PrimeField, const NR_COLS: usize> {
+    struct TestCircuit<F: CircuitField, const NR_COLS: usize> {
         inputs: Vec<([u64; NR_COLS], usize)>, // (values, bit_len)
         max_bit_len: usize,
         _marker: PhantomData<F>,
     }
 
-    impl<F: PrimeField, const NR_COLS: usize> Circuit<F> for TestCircuit<F, NR_COLS> {
+    impl<F: CircuitField, const NR_COLS: usize> Circuit<F> for TestCircuit<F, NR_COLS> {
         type Config = Pow2RangeConfig;
         type FloorPlanner = SimpleFloorPlanner;
         type Params = ();

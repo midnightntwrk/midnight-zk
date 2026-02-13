@@ -25,19 +25,19 @@ use std::{
     ops::{Add, Neg},
 };
 
-use ff::PrimeField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 use crate::{
     instructions::{AssertionInstructions, AssignmentInstructions},
     types::InnerValue,
+    CircuitField,
 };
 
 /// The set of circuit instructions for arithmetic operations.
 pub trait ArithInstructions<F, Assigned>:
     Clone + Debug + AssignmentInstructions<F, Assigned> + AssertionInstructions<F, Assigned>
 where
-    F: PrimeField,
+    F: CircuitField,
     Assigned::Element:
         PartialEq + From<u64> + Add<Output = Assigned::Element> + Neg<Output = Assigned::Element>,
     Assigned: InnerValue,
@@ -429,7 +429,7 @@ pub(crate) mod tests {
 
     impl<F, Assigned, ArithChip> Circuit<F> for TestCircuit<F, Assigned, ArithChip>
     where
-        F: PrimeField,
+        F: CircuitField,
         Assigned: InnerValue,
         Assigned::Element: Default
             + PartialEq
@@ -512,7 +512,7 @@ pub(crate) mod tests {
         chip_name: &str,
         op_name: &str,
     ) where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
         Assigned: InnerValue,
         Assigned::Element: Default
             + PartialEq
@@ -555,7 +555,7 @@ pub(crate) mod tests {
 
     pub fn test_add<F, Assigned, ArithChip>(chip_name: &str)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
         Assigned: InnerValue,
         Assigned::Element: Default
             + PartialEq
@@ -606,7 +606,7 @@ pub(crate) mod tests {
 
     pub fn test_sub<F, Assigned, ArithChip>(cost_model_name: &str)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
         Assigned: InnerValue,
         Assigned::Element: Default
             + PartialEq
@@ -648,7 +648,7 @@ pub(crate) mod tests {
 
     pub fn test_mul<F, Assigned, ArithChip>(cost_model_name: &str)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
         Assigned: InnerValue,
         Assigned::Element: Default
             + PartialEq
@@ -700,7 +700,7 @@ pub(crate) mod tests {
 
     pub fn test_div<F, Assigned, ArithChip>(cost_model_name: &str)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
         Assigned: InnerValue,
         Assigned::Element: Default
             + PartialEq
@@ -744,7 +744,7 @@ pub(crate) mod tests {
 
     pub fn test_neg<F, Assigned, ArithChip>(cost_model_name: &str)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
         Assigned: InnerValue,
         Assigned::Element: Default
             + PartialEq
@@ -783,7 +783,7 @@ pub(crate) mod tests {
 
     pub fn test_inv<F, Assigned, ArithChip>(cost_model_name: &str)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
         Assigned: InnerValue,
         Assigned::Element: Default
             + PartialEq
@@ -823,7 +823,7 @@ pub(crate) mod tests {
 
     pub fn test_pow<F, Assigned, ArithChip>(cost_model_name: &str)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
         Assigned: InnerValue,
         Assigned::Element: Default
             + PartialEq
@@ -869,7 +869,7 @@ pub(crate) mod tests {
 
     pub fn test_linear_combination<F, Assigned, ArithChip>(cost_model_name: &str)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
         Assigned: InnerValue,
         Assigned::Element: Default
             + PartialEq
@@ -932,7 +932,7 @@ pub(crate) mod tests {
 
     pub fn test_add_and_mul<F, Assigned, ArithChip>(chip_name: &str)
     where
-        F: PrimeField + FromUniformBytes<64> + Ord,
+        F: CircuitField + FromUniformBytes<64> + Ord,
         Assigned: Clone + Debug + InnerValue,
         Assigned::Element: Clone
             + Debug

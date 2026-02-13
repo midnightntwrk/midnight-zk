@@ -11,7 +11,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub use ff::PrimeField;
+use crate::CircuitField;
 
 /// Length of Poseidon's state.
 pub(crate) const WIDTH: usize = 3;
@@ -25,9 +25,9 @@ pub(crate) const NB_FULL_ROUNDS: usize = 8;
 /// Number of partial rounds of the Poseidon permutation.
 pub(crate) const NB_PARTIAL_ROUNDS: usize = 60;
 
-/// A PrimeField with the constants needed to compute Poseidon's permutation
+/// A CircuitField with the constants needed to compute Poseidon's permutation
 /// (MDS matrix and round constants).
-pub trait PoseidonField: PrimeField {
+pub trait PoseidonField: CircuitField {
     /// The MDS matrix used for the linear layer at each round of Poseidon.
     const MDS: [[Self; WIDTH]; WIDTH];
 

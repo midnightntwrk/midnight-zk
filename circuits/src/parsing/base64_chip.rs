@@ -22,7 +22,6 @@
 //! The instructions ensure that inputs that agree with the base64 specification
 //! decode correctly.
 
-use ff::PrimeField;
 use midnight_proofs::{
     circuit::{Chip, Layouter, Value},
     plonk::{Advice, Column, Error, Expression, Selector, TableColumn},
@@ -40,6 +39,7 @@ use crate::{
     types::{AssignedByte, AssignedVector, InnerValue},
     utils::ComposableChip,
     vec::vector_gadget::VectorGadget,
+    CircuitField,
 };
 
 /// Number of advice columns in [Base64Chip].
@@ -78,14 +78,14 @@ const B64_PAD: char = '=';
 /// Base64Chip capable of decoding base64 encoded strings.
 pub struct Base64Chip<F>
 where
-    F: PrimeField,
+    F: CircuitField,
 {
     config: Base64Config,
     vector_gadget: VectorGadget<F>,
     native_gadget: NG<F>,
 }
 
-impl<F: PrimeField> Base64Instructions<F> for Base64Chip<F> {
+impl<F: CircuitField> Base64Instructions<F> for Base64Chip<F> {
     fn decode_base64url(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -132,7 +132,7 @@ impl<F: PrimeField> Base64Instructions<F> for Base64Chip<F> {
     }
 }
 
-impl<F: PrimeField, const M: usize, const A: usize> Base64VarInstructions<F, M, A>
+impl<F: CircuitField, const M: usize, const A: usize> Base64VarInstructions<F, M, A>
     for Base64Chip<F>
 {
     fn assign_var_base64(
@@ -242,7 +242,7 @@ impl<F: PrimeField, const M: usize, const A: usize> Base64VarInstructions<F, M, 
     }
 }
 
-impl<F: PrimeField> Base64Chip<F> {
+impl<F: CircuitField> Base64Chip<F> {
     /// Converts a Base64URL encoded strig into a Base64 sstring.
     /// It does so by substituting '-' for '+' and '_' for '/',
     /// leaving the rest of characters unchanged.
@@ -392,7 +392,7 @@ impl<F: PrimeField> Base64Chip<F> {
     }
 }
 
-impl<F: PrimeField> Chip<F> for Base64Chip<F> {
+impl<F: CircuitField> Chip<F> for Base64Chip<F> {
     type Config = Base64Config;
 
     type Loaded = ();
@@ -406,7 +406,7 @@ impl<F: PrimeField> Chip<F> for Base64Chip<F> {
     }
 }
 
-impl<F: PrimeField> ComposableChip<F> for Base64Chip<F> {
+impl<F: CircuitField> ComposableChip<F> for Base64Chip<F> {
     type SharedResources = [Column<Advice>; NB_BASE64_ADVICE_COLS];
     type InstructionDeps = NG<F>;
 
@@ -503,7 +503,7 @@ mod tests {
 
     type Fp = midnight_curves::Fq;
 
-    struct TestCircuit<F: PrimeField> {
+    struct TestCircuit<F: CircuitField> {
         input: Vec<u8>,  // base64 encoded string
         output: Vec<u8>, // decoded string
         options: TestOptions,
@@ -517,7 +517,7 @@ mod tests {
         variable: bool,
     }
 
-    impl<F: PrimeField> TestCircuit<F> {
+    impl<F: CircuitField> TestCircuit<F> {
         fn new(input: &[u8], output: &[u8], options: TestOptions) -> Self {
             debug_assert_eq!(input.len().is_multiple_of(4), options.input_pad);
             // Pad output to a multiple of 3.
@@ -539,7 +539,7 @@ mod tests {
         }
     }
 
-    impl<F: PrimeField> Circuit<F> for TestCircuit<F> {
+    impl<F: CircuitField> Circuit<F> for TestCircuit<F> {
         type Config = (P2RDecompositionConfig, Base64Config);
         type FloorPlanner = SimpleFloorPlanner;
         type Params = ();

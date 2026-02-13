@@ -17,7 +17,6 @@
 //! vector, as well as 2 constants: its maximum size `M` and its chunk alignment
 //! value `A`.
 
-use ff::PrimeField;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
@@ -27,12 +26,13 @@ use crate::{
     field::AssignedNative,
     types::AssignedBit,
     vec::{AssignedVector, Vectorizable},
+    CircuitField,
 };
 
 /// Instructions for Vector manipulation..
 pub trait VectorInstructions<F, T, const M: usize, const A: usize>
 where
-    F: PrimeField,
+    F: CircuitField,
     T: Vectorizable,
     T::Element: Copy,
 {
