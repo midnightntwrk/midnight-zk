@@ -81,7 +81,7 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> Committed<F, CS> {
 
         let mut iter = self.permutation_product_commitments.iter();
 
-        while let Some(_) = iter.next() {
+        while iter.next().is_some() {
             let permutation_product_eval = transcript.read()?;
             let permutation_product_next_eval = transcript.read()?;
             let permutation_product_last_eval = if iter.len() > 0 {
@@ -112,42 +112,32 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
         let x_last = vk.domain.rotate_omega(x, Rotation(-((blinding_factors + 1) as i32)));
 
         iter::empty()
-            .chain(
-                self.coms.permutation_product_commitments.iter().zip(self.sets.iter()).flat_map(
-                    move |(com, set)| {
-                        iter::empty()
-                            // Open permutation product commitments at x and \omega x
-                            .chain(Some(VerifierQuery::new(
-                                x,
-                                CommitmentLabel::NoLabel,
-                                com,
-                                set.permutation_product_eval,
-                            )))
-                            .chain(Some(VerifierQuery::new(
-                                x_next,
-                                CommitmentLabel::NoLabel,
-                                com,
-                                set.permutation_product_next_eval,
-                            )))
-                    },
-                ),
-            )
+            .chain(self.sets.iter().enumerate().flat_map(move |(i, set)| {
+                iter::empty()
+                    // Open permutation product commitments at x and \omega x
+                    .chain(Some(VerifierQuery::new(
+                        x,
+                        CommitmentLabel::NoLabel,
+                        &self.coms.permutation_product_commitments[i],
+                        set.permutation_product_eval,
+                    )))
+                    .chain(Some(VerifierQuery::new(
+                        x_next,
+                        CommitmentLabel::NoLabel,
+                        &self.coms.permutation_product_commitments[i],
+                        set.permutation_product_next_eval,
+                    )))
+            }))
             // Open it at \omega^{last} x for all but the last set
             .chain(
-                self.coms
-                    .permutation_product_commitments
-                    .iter()
-                    .rev()
-                    .skip(1)
-                    .zip(self.sets.iter().rev().skip(1))
-                    .flat_map(move |(com, set)| {
-                        Some(VerifierQuery::new(
-                            x_last,
-                            CommitmentLabel::NoLabel,
-                            com,
-                            set.permutation_product_last_eval.unwrap(),
-                        ))
-                    }),
+                self.sets.iter().enumerate().rev().skip(1).flat_map(move |(i, set)| {
+                    Some(VerifierQuery::new(
+                        x_last,
+                        CommitmentLabel::NoLabel,
+                        &self.coms.permutation_product_commitments[i],
+                        set.permutation_product_last_eval.unwrap(),
+                    ))
+                }),
             )
     }
 }
