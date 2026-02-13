@@ -4,7 +4,7 @@ use ff::{FromUniformBytes, WithSmallOrderMulGroup};
 
 use super::{vanishing, Error, VerifyingKey};
 use crate::{
-    plonk::traces::VerifierTrace,
+    plonk::{permutation::expressions, traces::VerifierTrace},
     poly::{commitment::PolynomialCommitmentScheme, CommitmentLabel, VerifierQuery},
     transcript::{read_n, Hashable, Sampleable, Transcript},
     utils::arithmetic::compute_inner_product,
@@ -349,7 +349,8 @@ where
                                 )
                             })
                         }))
-                        .chain(permutation.expressions(
+                        .chain(expressions(
+                            &permutation.sets,
                             vk,
                             &vk.cs.permutation,
                             &permutations_common,
@@ -365,7 +366,7 @@ where
                         ))
                         .chain(lookups.iter().zip(vk.cs.lookups.iter()).flat_map(
                             move |(p, argument)| {
-                                p.expressions(
+                                p.evaluated.expressions(
                                     l_0,
                                     l_last,
                                     l_blind,
@@ -382,7 +383,7 @@ where
                         ))
                         .chain(trash.iter().zip(vk.cs.trashcans.iter()).flat_map(
                             move |(p, argument)| {
-                                p.expressions(
+                                p.evaluated.expressions(
                                     argument,
                                     trash_challenge,
                                     advice_evals,
