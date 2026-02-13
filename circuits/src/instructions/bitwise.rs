@@ -18,8 +18,8 @@
 //!
 //! This trait is parametrized by a generic `Assigned` (required to implement
 //! [InnerValue](crate::types::InnerValue)) and whose inner `Element` type is
-//! required to implement [PrimeField]). `Assigned` defined the type over which
-//! the bitwise operations take place.
+//! required to implement [CircuitField]). `Assigned` defined the type over
+//! which the bitwise operations take place.
 
 use ff::Field;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
