@@ -112,14 +112,14 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> Evaluated<F, CS> {
         iter::empty()
             .chain(Some(VerifierQuery::from_parts(
                 x,
-                Some(CommitmentLabel::Custom("vanishing".into())),
+                CommitmentLabel::Custom("vanishing".into()),
                 &self.h_commitments.iter().collect::<Vec<_>>(),
                 self.expected_h_eval,
                 n,
             )))
             .chain(Some(VerifierQuery::new(
                 x,
-                Some(CommitmentLabel::Custom("random_poly".into())),
+                CommitmentLabel::Custom("random_poly".into()),
                 &self.random_poly_commitment,
                 self.random_eval,
             )))

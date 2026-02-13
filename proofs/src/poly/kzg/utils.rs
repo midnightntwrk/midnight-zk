@@ -10,7 +10,7 @@ use crate::poly::{query::Query, CommitmentLabel, Error};
 
 #[derive(Clone, Debug)]
 pub(super) struct CommitmentData<F, T: PartialEq> {
-    pub(super) commitment_label: Option<CommitmentLabel>,
+    pub(super) commitment_label: CommitmentLabel,
     pub(super) commitment: T,
     pub(super) set_index: usize,
     pub(super) point_indices: Vec<usize>,
@@ -18,7 +18,7 @@ pub(super) struct CommitmentData<F, T: PartialEq> {
 }
 
 impl<F, T: PartialEq> CommitmentData<F, T> {
-    fn new(commitment: T, commitment_label: Option<CommitmentLabel>) -> Self {
+    fn new(commitment: T, commitment_label: CommitmentLabel) -> Self {
         CommitmentData {
             commitment_label,
             commitment,

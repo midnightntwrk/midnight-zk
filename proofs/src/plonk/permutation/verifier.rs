@@ -221,28 +221,27 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
         let x_last = vk.domain.rotate_omega(x, Rotation(-((blinding_factors + 1) as i32)));
 
         iter::empty()
-            .chain(self.sets.iter().enumerate().flat_map(move |(i, set)| {
-                let label = Some(CommitmentLabel::Custom(format!("perm_product_{i}")));
+            .chain(self.sets.iter().flat_map(move |set| {
                 iter::empty()
                     // Open permutation product commitments at x and \omega x
                     .chain(Some(VerifierQuery::new(
                         x,
-                        label.clone(),
+                        CommitmentLabel::NoLabel,
                         &set.permutation_product_commitment,
                         set.permutation_product_eval,
                     )))
                     .chain(Some(VerifierQuery::new(
                         x_next,
-                        label,
+                        CommitmentLabel::NoLabel,
                         &set.permutation_product_commitment,
                         set.permutation_product_next_eval,
                     )))
             }))
             // Open it at \omega^{last} x for all but the last set
-            .chain(self.sets.iter().enumerate().rev().skip(1).flat_map(move |(i, set)| {
+            .chain(self.sets.iter().rev().skip(1).flat_map(move |set| {
                 Some(VerifierQuery::new(
                     x_last,
-                    Some(CommitmentLabel::Custom(format!("perm_product_{i}"))),
+                    CommitmentLabel::NoLabel,
                     &set.permutation_product_commitment,
                     set.permutation_product_last_eval.unwrap(),
                 ))
@@ -259,7 +258,7 @@ impl<F: PrimeField> CommonEvaluated<F> {
         // Open permutation commitments for each permutation argument at x
         vkey.commitments.iter().zip(self.permutation_evals.iter()).enumerate().map(
             move |(i, (commitment, &eval))| {
-                VerifierQuery::new(x, Some(CommitmentLabel::Permutation(i)), commitment, eval)
+                VerifierQuery::new(x, CommitmentLabel::Permutation(i), commitment, eval)
             },
         )
     }

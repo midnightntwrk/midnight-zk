@@ -282,19 +282,19 @@ where
 
     let mut new_scalars = Vec::with_capacity(len);
     let mut new_bases = Vec::with_capacity(len);
-    let mut new_names = Vec::with_capacity(len);
+    let mut new_labels = Vec::with_capacity(len);
 
     msms.iter_mut().zip(scalars.iter()).for_each(|(msm, s)| {
         msm.scale(*s);
         new_scalars.extend(&msm.scalars);
         new_bases.extend(&msm.bases);
-        new_names.extend(msm.names.clone());
+        new_labels.extend(msm.labels.clone());
     });
 
     MSMKZG {
         scalars: new_scalars,
         bases: new_bases,
-        names: new_names,
+        labels: new_labels,
     }
 }
 
@@ -319,12 +319,7 @@ pub(crate) fn evals_inner_product<F: PrimeField + Clone>(
 /// Multi scalar multiplication engine
 pub trait MSM<C: PrimeCurveAffine>: Clone + Debug + Send + Sized + Sync {
     /// Add arbitrary term (the scalar and the point).
-    fn append_term(
-        &mut self,
-        scalar: C::Scalar,
-        point: C::Curve,
-        label: Option<CommitmentLabel>,
-    );
+    fn append_term(&mut self, scalar: C::Scalar, point: C::Curve, label: CommitmentLabel);
 
     /// Add another multiexp into this one.
     fn add_msm(&mut self, other: &Self);
@@ -345,7 +340,7 @@ pub trait MSM<C: PrimeCurveAffine>: Clone + Debug + Send + Sized + Sync {
     fn scalars(&self) -> Vec<C::Scalar>;
 
     /// Base labels.
-    fn names(&self) -> Vec<Option<CommitmentLabel>>;
+    fn labels(&self) -> Vec<CommitmentLabel>;
 }
 
 #[cfg(test)]

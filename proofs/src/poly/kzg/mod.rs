@@ -272,7 +272,7 @@ where
             let mut coms = q_coms;
             let mut f_com_as_msm = MSMKZG::init();
 
-            f_com_as_msm.append_term(E::Fr::ONE, f_com, None);
+            f_com_as_msm.append_term(E::Fr::ONE, f_com, CommitmentLabel::NoLabel);
             coms.push(f_com_as_msm);
 
             #[cfg(feature = "truncated-challenges")]
@@ -300,13 +300,16 @@ where
         let pi: E::G1 = transcript.read().map_err(|_| Error::SamplingError)?;
 
         let mut pi_msm = MSMKZG::<E>::init();
-        pi_msm.append_term(E::Fr::ONE, pi, None);
+        pi_msm.append_term(E::Fr::ONE, pi, CommitmentLabel::Custom("π".into()));
 
         // Scale zπ - vG
         let scaled_pi = MSMKZG {
             scalars: vec![x3, v],
             bases: vec![pi, -E::G1::generator()],
-            names: vec![None, Some(CommitmentLabel::Custom("-G".into()))],
+            labels: vec![
+                CommitmentLabel::Custom("π".into()),
+                CommitmentLabel::Custom("-G".into()),
+            ],
         };
 
         // (π, C − vG + zπ)
@@ -337,7 +340,7 @@ mod tests {
                 KZGCommitmentScheme,
             },
             query::{ProverQuery, VerifierQuery},
-            EvaluationDomain,
+            CommitmentLabel, EvaluationDomain,
         },
         transcript::{CircuitTranscript, Hashable, Sampleable, Transcript},
         utils::arithmetic::eval_polynomial,
@@ -380,15 +383,16 @@ mod tests {
         let bvx: E::Fr = transcript.read().unwrap();
         let cvy: E::Fr = transcript.read().unwrap();
 
+        use CommitmentLabel::NoLabel;
         let valid_queries = std::iter::empty()
-            .chain(Some(VerifierQuery::new(x, None, &a, avx)))
-            .chain(Some(VerifierQuery::new(x, None, &b, bvx)))
-            .chain(Some(VerifierQuery::new(y, None, &c, cvy)));
+            .chain(Some(VerifierQuery::new(x, NoLabel, &a, avx)))
+            .chain(Some(VerifierQuery::new(x, NoLabel, &b, bvx)))
+            .chain(Some(VerifierQuery::new(y, NoLabel, &c, cvy)));
 
         let invalid_queries = std::iter::empty()
-            .chain(Some(VerifierQuery::new(x, None, &a, avx)))
-            .chain(Some(VerifierQuery::new(x, None, &b, avx)))
-            .chain(Some(VerifierQuery::new(y, None, &c, cvy)));
+            .chain(Some(VerifierQuery::new(x, NoLabel, &a, avx)))
+            .chain(Some(VerifierQuery::new(x, NoLabel, &b, avx)))
+            .chain(Some(VerifierQuery::new(y, NoLabel, &c, cvy)));
 
         let queries = if should_fail {
             invalid_queries
