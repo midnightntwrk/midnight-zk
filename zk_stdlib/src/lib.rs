@@ -156,7 +156,7 @@ pub struct ZkStdLibArch {
     /// Enable base64 chip?
     pub base64: bool,
 
-    /// Enable automaton?
+    /// Enable scanner chip (automaton-based parsing and substring checks)?
     pub automaton: bool,
 
     /// Number of parallel lookups for range checks.
@@ -285,8 +285,8 @@ pub struct ZkStdLib {
     bls12_381_curve_chip: Option<Bls12381Chip>,
     base64_chip: Option<Base64Chip<F>>,
     parser_gadget: ParserGadget<F, NG>,
-    vector_gadget: VectorGadget<F>,
     scanner_chip: Option<ScannerChip<StdLibParser, F>>,
+    vector_gadget: VectorGadget<F>,
 
     // Third-party chips.
     keccak_sha3_chip: Option<KeccakSha3Wrapper<F>>,
@@ -301,7 +301,7 @@ pub struct ZkStdLib {
     used_secp256k1_curve: Rc<RefCell<bool>>,
     used_bls12_381_curve: Rc<RefCell<bool>>,
     used_base64: Rc<RefCell<bool>>,
-    used_scanner: Rc<RefCell<bool>>,
+    used_scanner_static: Rc<RefCell<bool>>,
     used_keccak_or_sha3: Rc<RefCell<bool>>,
     used_blake2b: Rc<RefCell<bool>>,
 }
@@ -342,9 +342,9 @@ impl ZkStdLib {
             .map(|base64_config| Base64Chip::new(base64_config, &native_gadget));
 
         let parser_gadget = ParserGadget::new(&native_gadget);
-        let vector_gadget = VectorGadget::new(&native_gadget);
         let scanner_chip =
             config.scanner_config.as_ref().map(|c| ScannerChip::new(c, &native_gadget));
+        let vector_gadget = VectorGadget::new(&native_gadget);
         let keccak_sha3_chip = config
             .keccak_sha3_config
             .as_ref()
@@ -369,8 +369,8 @@ impl ZkStdLib {
             bls12_381_curve_chip,
             base64_chip,
             parser_gadget,
-            vector_gadget,
             scanner_chip,
+            vector_gadget,
             keccak_sha3_chip,
             blake2b_chip,
             used_sha2_256: Rc::new(RefCell::new(false)),
@@ -379,7 +379,7 @@ impl ZkStdLib {
             used_secp256k1_curve: Rc::new(RefCell::new(false)),
             used_bls12_381_curve: Rc::new(RefCell::new(false)),
             used_base64: Rc::new(RefCell::new(false)),
-            used_scanner: Rc::new(RefCell::new(false)),
+            used_scanner_static: Rc::new(RefCell::new(false)),
             used_keccak_or_sha3: Rc::new(RefCell::new(false)),
             used_blake2b: Rc::new(RefCell::new(false)),
         }
@@ -606,16 +606,27 @@ impl ZkStdLib {
             .unwrap_or_else(|| panic!("ZkStdLibArch must enable base64"))
     }
 
-    /// Gadget for parsing properties of a JSON object.
+    /// Gadget for column-free parsing helpers (fetch_bytes, date_to_int, etc.).
+    /// Always available (no arch flag needed).
     pub fn parser(&self) -> &ParserGadget<F, NG> {
         &self.parser_gadget
     }
 
-    /// Chip for performing automaton-based parsing.
-    pub fn automaton(&self) -> &ScannerChip<StdLibParser, F> {
-        *self.used_scanner.borrow_mut() = true;
-        (self.scanner_chip.as_ref())
-            .unwrap_or_else(|| panic!("ZkStdLibArch must enable automaton"))
+    /// Chip for various scanning functions based on lookups. This includes
+    /// automaton-based parsing ([`ScannerChip::parse`]) and substring checks
+    /// ([`ScannerChip::check_subsequence`], [`ScannerChip::check_bytes`]).
+    ///
+    /// The `load_static_lib` argument must be set (at least once in the
+    /// circuit) to `true` if [`ScannerChip::parse`] will be called with a
+    /// `Static(..)` variant. This flag enables loading the transition tables
+    /// of the static parsing library (see [`StdLibParser`]). Set it to
+    /// `false` when only `check_subsequence` or `check_bytes` will be
+    /// called, which avoids loading the full table.
+    pub fn scanner(&self, load_static_lib: bool) -> &ScannerChip<StdLibParser, F> {
+        if load_static_lib {
+            *self.used_scanner_static.borrow_mut() = true;
+        }
+        (self.scanner_chip.as_ref()).unwrap_or_else(|| panic!("ZkStdLibArch must enable automaton"))
     }
 
     /// Assert that a given assigned bit is true.
@@ -1673,7 +1684,7 @@ impl<R: Relation> Circuit<F> for MidnightCircuit<'_, R> {
         }
 
         if let Some(ref scanner_chip) = zk_std_lib.scanner_chip {
-            if *zk_std_lib.used_scanner.borrow() {
+            if *zk_std_lib.used_scanner_static.borrow() {
                 scanner_chip.load(&mut layouter)?;
             }
         }
