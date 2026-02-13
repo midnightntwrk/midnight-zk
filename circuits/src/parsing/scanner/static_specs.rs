@@ -110,6 +110,67 @@ pub enum StdLibParser {
     ///   - `"x"` -> 5
     ///   - `"y"` -> 6
     Jwt,
+
+    /// # Description and sources
+    ///
+    /// Format of the Data Group 1 (DG1) of biometric passports, as specified in
+    /// ICAO Doc 9303 for TD3-type documents (machine-readable passports).
+    ///
+    /// The DG1 contains the Machine Readable Zone (MRZ) printed on the
+    /// passport's main page and stored verbatim on the embedded chip. It
+    /// encodes key identity attributes such as the (possibly truncated)
+    /// holder's name, date of birth, nationality, and passport number,
+    /// using a fixed-length ASCII format.
+    ///
+    /// A typical TD3 MRZ looks as follows on passports:
+    ///
+    /// ```text
+    /// PPFRADUPONT<<JEAN<MICHEL<<<<<<<<<<<<<<<<<<<<
+    /// 12AB345678FRA7408122M3101012<<<<<<<<<<<<<<04
+    /// ```
+    ///
+    /// Note that despite being presented as two lines of 44 bytes each, the DG1
+    /// is read and parsed *as a single 88-byte line*.
+    ///
+    /// These 88 bytes, along with the other Data Groups, can be retrieved by
+    /// reading the passport's NFC chip. Integrity and authenticity are ensured
+    /// via the Security Object Document (SOD), which contains signed hashes of
+    /// the Data Groups. These signatures can be verified using public keys
+    /// distributed through the ICAO Public Key Directory (PKD).
+    ///
+    /// Sources:
+    /// - [ICAO Doc 9303](https://www.icao.int/publications/doc-series/doc-9303)
+    /// - [PKD](https://www.icao.int/icao-pkd)
+    ///
+    /// # Output behaviour
+    ///
+    /// In the MRZ format, only uppercase letters, digits, and `<` (representing
+    /// special characters such as spaces or dashes, as well as padding and
+    /// separators), are used. The following fields are then marked as follows;
+    /// note that checksum fields are not mentioned, as they are neither marked
+    /// nor verified by the parser.
+    ///  - Passport type (2 bytes; uppercase) -> 1
+    ///  - Issuing country code (3 bytes; uppercase) -> 2
+    ///    + **Note**: this code is ISO 3166-1 alpha-3 compliant.
+    ///  - name field (up to 39 bytes; uppercase and spaces) -> 3 (surname) and
+    ///    4 (given names, if any)
+    ///    + **Note 1**: mononyms, i.e., people having no given names, are
+    ///      ICAO9303 TD3 compliant. In this case, no byte will be marked `4`.
+    ///    + **Note 2**: if the credential holder has at least one given name,
+    ///      the credential must include a `<<` separator between the surname
+    ///      and the given names. Names may be truncated if needed to make the
+    ///      separator fits. The whole field is also padded with `<` bytes if no
+    ///      truncation occurred.
+    ///    + **Note 3**: The `<` characters (separator or padding) are not
+    ///      marked by this parser. This is to avoid a marker ambiguity when
+    ///      reading the first padding element after the given names.
+    ///  - Passport number (9 bytes; uppercase and digits) -> 5
+    ///  - Nationality (3 bytes; uppercase) -> 6
+    ///  - Date of birth (6 bytes; YYMMDD) -> 7
+    ///  - Sex (1 byte; `M` Male, `F` Female, or `<` Other) -> 8
+    ///  - Date of expiry (6 bytes; YYMMDD) -> 9
+    ///  - Optional data (14 bytes; uppercase, digits, and `<`) -> 10
+    Icao9309Td3Dg1,
 }
 
 #[cfg(test)]
@@ -139,6 +200,11 @@ fn spec_library_data() -> LibraryData {
             StdLibParser::Jwt,
             &spec_jwt,
             include_bytes!("automaton_cache/Jwt"),
+        ),
+        (
+            StdLibParser::Icao9309Td3Dg1,
+            &spec_icao9303_td3_dg1,
+            include_bytes!("automaton_cache/Icao9309Td3Dg1"),
         ),
     ]
 }
@@ -280,6 +346,79 @@ fn spec_jwt() -> Regex {
         ],
         "}",
     )
+}
+
+/// Regex formalising the spec of `StdLIbParser::ICAO9303DataGroup1`.
+fn spec_icao9303_td3_dg1() -> Regex {
+    // The list of all tolerated passport types. Consulted at this document, Section
+    // 4.4, on Jan. 14, 2026:
+    // https://www.icao.int/sites/default/files/publications/DocSeries/9303_p4_cons_en.pdf
+    // Marked as 1.
+    let passport_type = Regex::union([
+        "P<".into(), // Legacy denomination of `PP`, before Jan. 2026.
+        "PP".into(), // National/Ordinary passport.
+        "PE".into(), // Emergency passport.
+        "PD".into(), // Diplomatic passport.
+        "PO".into(), // Official/Service passport.
+        "PR".into(), // Refugee passport.
+        "PT".into(), // Alien passport.
+        "PS".into(), // Stateless passport.
+        "PL".into(), // Laissez-passez passport.
+        "PM".into(), // Military passport.
+        "PU".into(), /* Emergency travel document. See: https://www.icao.int/sites/default/files/publications/DocSeries/9303_p8_cons_en.pdf */
+    ]).mark(&|_| Some(1));
+    // A non-empty sequence of uppercase letters, marked with `marker`.
+    let name_block = |marker: usize| -> Regex {
+        Regex::uppercase_letter().non_empty_list().mark(&|_| Some(marker))
+    };
+    // One uppercase letter or a digit, marked with `marker`.
+    let alphanum = |marker: usize| -> Regex {
+        Regex::byte_from((b'A'..=b'Z').chain(b'0'..=b'9')).mark(&|_| Some(marker))
+    };
+    // A date marked with marker, in YYMMDD format.
+    let date = |marker: usize| -> Regex { Regex::digit().mark(&|_| Some(marker)).repeat(6) };
+    // Any passport character.
+    let any = Regex::byte_from((b'A'..=b'Z').chain(b'0'..=b'9').chain(std::iter::once(b'<')));
+
+    // Example to illustrate the code below:
+    // P<FRADUPONT<<JEAN<MICHEL<<<<<<<<<<<<<<<<<<<<
+    // 12AB345678FRA7408122M3101012<<<<<<<<<<<<<<04
+
+    // Mandatory part of the first line of the DG1 (passport type, issuer, surname).
+    // The separators `<` are not marked.
+    let line1_prefix = Regex::cat([
+        passport_type,
+        Regex::uppercase_letter().mark(&|_| Some(2)).repeat(3),
+        name_block(3).separated_non_empty_list("<".into()),
+    ]);
+    // Given names in the first line of the DG1, prefixed with the separator. The
+    // separators `<` are not marked.
+    let given_names = Regex::cat([
+        "<<".into(),
+        name_block(4).separated_non_empty_list("<".into()),
+    ]);
+    // The part of the first line following `line1_prefix`. Considers cases where
+    // given names are present or not.
+    let line1_suffix = given_names.optional().terminated(Regex::word("<").list());
+    // The full first line, with the length constraint.
+    let line1 = line1_prefix.terminated(line1_suffix).and(any.clone().repeat(44));
+
+    // The second line of the DG1. All fields are length constrained.
+    let line2 = Regex::cat([
+        alphanum(5).repeat(9),
+        Regex::digit(), // Unmarked checksum.
+        Regex::uppercase_letter().mark(&|_| Some(6)).repeat(3),
+        date(7),
+        Regex::digit(), // Unmarked checksum.
+        Regex::byte_from([b'<', b'M', b'F']).mark(&|_| Some(8)),
+        date(9),
+        Regex::digit(), // Unmarked checksum.
+        any.repeat(14).mark(&|_| Some(10)),
+        Regex::digit().repeat(2), // Unmarked checksum.
+    ]);
+
+    // Concatenating the two lines, without a newline character.
+    line1.terminated(line2)
 }
 
 #[cfg(test)]
@@ -532,5 +671,94 @@ mod tests {
         let rejected0: Vec<&str> =
             vec!["hello world", &FULL_INPUT_JWT[..1000], &MINIMAL_JWT[..600]];
         specs_one_test(&spec_library, StdLibParser::Jwt, &accepted0, &rejected0);
+
+        // Tests the `ICAO9303DataGroup1` spec correctness.
+        let accepted1_raw = include_str!("specs_examples/icao9303_td3_dg1/valid_credentials.txt")
+            .lines()
+            .collect::<Vec<_>>();
+        let accepted1: Vec<(&str, &[(usize, &str)])> = vec![
+            (
+                accepted1_raw[0],
+                &[
+                    (1, "PP"),
+                    (2, "JPN"),
+                    (3, "OKABE"),
+                    (4, "RINTARO"),
+                    (5, "12AB34567"),
+                    (6, "JPN"),
+                    (7, "911214"),
+                    (8, "M"),
+                    (9, "310101"),
+                    (10, "EL<PSY<CONGROO"),
+                ],
+            ),
+            (
+                accepted1_raw[1],
+                &[
+                    (1, "PE"),
+                    (2, "ESP"),
+                    (3, "DELACRUZ"),
+                    (4, "MARIA"),
+                    (5, "UH87G9901"),
+                    (6, "ESP"),
+                    (7, "911214"),
+                    (8, "F"),
+                    (9, "310101"),
+                    (10, "XXV789<<<<<<<<"),
+                ],
+            ),
+            (
+                accepted1_raw[2],
+                &[
+                    (1, "PD"),
+                    (2, "MDG"),
+                    (3, "ANDRIANAMPOINIMERINATOMPOLOINDRINDRA"),
+                    (4, "R"),
+                    (5, "BDL3820HR"),
+                    (6, "FRA"),
+                    (7, "450101"),
+                    (8, "<"),
+                    (9, "600101"),
+                    (10, "<<<<<<<<<<<<<<"),
+                ],
+            ),
+            (
+                accepted1_raw[3],
+                &[
+                    (1, "PO"),
+                    (2, "FRA"),
+                    (3, "NOOOWAYIGOTATRUNCATEDMONONYMRIGH"),
+                    (5, "AAAAAAAAA"),
+                    (6, "FRA"),
+                    (7, "990101"),
+                    (8, "<"),
+                    (9, "300101"),
+                    (10, "<<<<<<<<<<<<<<"),
+                ],
+            ),
+            (
+                accepted1_raw[4],
+                &[
+                    (1, "PR"),
+                    (2, "USA"),
+                    (3, "ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ"),
+                    (5, "PPPPPPPPP"),
+                    (6, "USA"),
+                    (7, "990101"),
+                    (8, "M"),
+                    (9, "300102"),
+                    (10, "<<<<<<<<<<<<<<"),
+                ],
+            ),
+        ];
+        let rejected1 = include_str!("specs_examples/icao9303_td3_dg1/invalid_credentials.txt")
+            .lines()
+            .collect::<Vec<_>>();
+        specs_one_test(
+            &spec_library,
+            StdLibParser::Icao9309Td3Dg1,
+            &accepted1,
+            &rejected1,
+        );
     }
 }
