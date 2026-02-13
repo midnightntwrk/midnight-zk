@@ -31,7 +31,7 @@ pub trait EccInstructions<F: CircuitField, C: CircuitCurve>:
 where
     Self::Point: InnerValue<Element = C::CryptographicGroup>,
     Self::Coordinate: Instantiable<F> + InnerValue<Element = C::Base> + InnerConstants,
-    Self::Scalar: InnerValue<Element = C::ScalarExt>,
+    Self::Scalar: InnerValue<Element = C::ScalarField>,
 {
     /// Type for assigned elliptic curve points.
     type Point: Clone + Debug;
@@ -116,7 +116,7 @@ where
     fn mul_by_constant(
         &self,
         layouter: &mut impl Layouter<F>,
-        scalar: C::ScalarExt,
+        scalar: C::ScalarField,
         base: &Self::Point,
     ) -> Result<Self::Point, Error>;
 
@@ -181,7 +181,7 @@ pub(crate) mod tests {
         C: CircuitCurve,
     {
         inputs: Vec<C::CryptographicGroup>,
-        scalars: Option<Vec<(C::ScalarExt, usize)>>,
+        scalars: Option<Vec<(C::ScalarField, usize)>>,
         expected: C::CryptographicGroup,
         operation: Operation,
         _marker: PhantomData<(F, EccChip)>,
@@ -283,7 +283,7 @@ pub(crate) mod tests {
     #[allow(clippy::too_many_arguments)]
     fn run<F, C, EccChip>(
         inputs: &[C::CryptographicGroup],
-        scalars: Option<&[(C::ScalarExt, usize)]>,
+        scalars: Option<&[(C::ScalarField, usize)]>,
         expected: &C::CryptographicGroup,
         operation: Operation,
         must_pass: bool,
@@ -483,8 +483,8 @@ pub(crate) mod tests {
         let scalars = (0..n)
             .map(|_| {
                 (
-                    C::ScalarExt::random(&mut rng),
-                    C::ScalarExt::NUM_BITS as usize,
+                    C::ScalarField::random(&mut rng),
+                    C::ScalarField::NUM_BITS as usize,
                 )
             })
             .collect::<Vec<_>>();
@@ -529,12 +529,12 @@ pub(crate) mod tests {
     {
         let mut rng = ChaCha8Rng::seed_from_u64(0xc0ffee);
         let n = 3;
-        let r = C::ScalarExt::random(&mut rng);
+        let r = C::ScalarField::random(&mut rng);
         let inputs = (0..n).map(|_| C::CryptographicGroup::random(&mut rng)).collect::<Vec<_>>();
         let scalars = [
-            (C::ScalarExt::from(3), 4),
-            (C::ScalarExt::from(1025), 12),
-            (r, C::ScalarExt::NUM_BITS as usize),
+            (C::ScalarField::from(3), 4),
+            (C::ScalarField::from(1025), 12),
+            (r, C::ScalarField::NUM_BITS as usize),
         ]
         .to_vec();
         let expected = (inputs.clone().into_iter().zip(scalars.clone().iter()))
@@ -578,21 +578,21 @@ pub(crate) mod tests {
     {
         let mut rng = ChaCha8Rng::seed_from_u64(0xc0ffee);
         let base = C::CryptographicGroup::random(&mut rng);
-        let s = C::ScalarExt::random(&mut rng);
+        let s = C::ScalarField::random(&mut rng);
         let mut cost_model = true;
         [
             (base, s, base * s, true),
-            (base, C::ScalarExt::ONE, base, true),
+            (base, C::ScalarField::ONE, base, true),
             (base, s, C::CryptographicGroup::identity(), false),
             (
                 C::CryptographicGroup::identity(),
-                C::ScalarExt::from(123456),
+                C::ScalarField::from(123456),
                 C::CryptographicGroup::identity(),
                 true,
             ),
             (
                 C::CryptographicGroup::generator(),
-                C::ScalarExt::ZERO,
+                C::ScalarField::ZERO,
                 C::CryptographicGroup::identity(),
                 true,
             ),
@@ -601,7 +601,7 @@ pub(crate) mod tests {
         .for_each(|(base, s, expected, must_pass)| {
             run::<F, C, EccChip>(
                 &[base],
-                Some(&[(s, C::ScalarExt::NUM_BITS as usize)]),
+                Some(&[(s, C::ScalarField::NUM_BITS as usize)]),
                 &expected,
                 Operation::MulByConstant,
                 must_pass,

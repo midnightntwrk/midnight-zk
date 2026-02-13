@@ -13,7 +13,7 @@ verification keys break backwards compatibility.
 ## [Unreleased]
 ### Added
 * Add Curve25519 [#181](https://github.com/midnightntwrk/midnight-zk/pull/181)
-* `CircuitField` refactor: remove helpers, add `ScalarExt` in `CircuitCurve` [#201](https://github.com/midnightntwrk/midnight-zk/pull/201)
+* `CircuitField` refactor: remove helpers, add `ScalarField` in `CircuitCurve` [#201](https://github.com/midnightntwrk/midnight-zk/pull/201)
 
 ### Changed
 * Change nr of bits to represent JubJub scalar field modulus from 255 -> 252 [#179](https://github.com/midnightntwrk/midnight-zk/pull/179)

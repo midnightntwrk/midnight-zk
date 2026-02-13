@@ -107,17 +107,17 @@ impl<C: EdwardsCurve> InnerConstants for AssignedNativePoint<C> {
 pub struct AssignedScalarOfNativeCurve<C: CircuitCurve>(Vec<AssignedBit<C::Base>>);
 
 impl<C: CircuitCurve> InnerValue for AssignedScalarOfNativeCurve<C> {
-    type Element = C::ScalarExt;
+    type Element = C::ScalarField;
 
     fn value(&self) -> Value<Self::Element> {
         let bools = self.0.iter().map(|b| b.value());
         let value_bools: Value<Vec<bool>> = Value::from_iter(bools);
-        value_bools.map(|le_bits| C::ScalarExt::from_le_bits(&le_bits))
+        value_bools.map(|le_bits| C::ScalarField::from_le_bits(&le_bits))
     }
 }
 
 impl<C: EdwardsCurve> Instantiable<C::Base> for AssignedScalarOfNativeCurve<C> {
-    fn as_public_input(element: &C::ScalarExt) -> Vec<C::Base> {
+    fn as_public_input(element: &C::ScalarField) -> Vec<C::Base> {
         // We aggregate the bits while they fit in a single `C::Base` value.
         let nb_bits_per_batch = C::Base::NUM_BITS as usize - 1;
         element
@@ -129,18 +129,18 @@ impl<C: EdwardsCurve> Instantiable<C::Base> for AssignedScalarOfNativeCurve<C> {
 }
 
 impl<C: EdwardsCurve> InnerConstants for AssignedScalarOfNativeCurve<C> {
-    fn inner_zero() -> C::ScalarExt {
-        C::ScalarExt::ZERO
+    fn inner_zero() -> C::ScalarField {
+        C::ScalarField::ZERO
     }
-    fn inner_one() -> C::ScalarExt {
-        C::ScalarExt::ONE
+    fn inner_one() -> C::ScalarField {
+        C::ScalarField::ONE
     }
 }
 
 #[cfg(any(test, feature = "testing"))]
 impl<C: EdwardsCurve> Sampleable for AssignedScalarOfNativeCurve<C> {
-    fn sample_inner(rng: impl RngCore) -> C::ScalarExt {
-        C::ScalarExt::random(rng)
+    fn sample_inner(rng: impl RngCore) -> C::ScalarField {
+        C::ScalarField::random(rng)
     }
 }
 
@@ -556,7 +556,7 @@ impl<C: EdwardsCurve> EccChip<C> {
         if point.in_subgroup {
             return Err(Error::Synthesis("clear_cofactor() should not be called in a point that is already guaranteed to be in the prime-order subgroup.".to_owned()));
         }
-        let r = self.mul_by_constant(layouter, C::ScalarExt::from_u128(C::COFACTOR), point)?;
+        let r = self.mul_by_constant(layouter, C::ScalarField::from_u128(C::COFACTOR), point)?;
         Ok(AssignedNativePoint {
             x: r.x,
             y: r.y,
@@ -656,14 +656,14 @@ impl<C: EdwardsCurve> EccInstructions<C::Base, C> for EccChip<C> {
     fn mul_by_constant(
         &self,
         layouter: &mut impl Layouter<C::Base>,
-        scalar: C::ScalarExt,
+        scalar: C::ScalarField,
         base: &Self::Point,
     ) -> Result<Self::Point, Error> {
-        if scalar == C::ScalarExt::ZERO {
+        if scalar == C::ScalarField::ZERO {
             return self.assign_fixed(layouter, C::CryptographicGroup::identity());
         }
 
-        if scalar == C::ScalarExt::ONE {
+        if scalar == C::ScalarField::ONE {
             return Ok(base.clone());
         }
 
@@ -713,7 +713,7 @@ impl<C: EdwardsCurve> AssignmentInstructions<C::Base, AssignedNativePoint<C>> fo
         // To achieve this, we first assign the point multiplied by the inverse of the
         // cofactor. Then, we return the assigned point after multiplying it by
         // the cofactor.
-        let cofactor = C::ScalarExt::from_u128(C::COFACTOR);
+        let cofactor = C::ScalarField::from_u128(C::COFACTOR);
         let (x_val, y_val) = value
             .map(|p| {
                 let p = p * cofactor.invert().expect("Cofactor should not be 0");
@@ -760,18 +760,18 @@ impl<C: EdwardsCurve> AssignmentInstructions<C::Base, AssignedScalarOfNativeCurv
     fn assign(
         &self,
         layouter: &mut impl Layouter<C::Base>,
-        value: Value<C::ScalarExt>,
+        value: Value<C::ScalarField>,
     ) -> Result<AssignedScalarOfNativeCurve<C>, Error> {
         let bits = value
-            .map(|s| s.to_le_bits(Some(C::ScalarExt::NUM_BITS as usize)))
-            .transpose_vec(<C::ScalarExt as PrimeField>::NUM_BITS as usize);
+            .map(|s| s.to_le_bits(Some(C::ScalarField::NUM_BITS as usize)))
+            .transpose_vec(<C::ScalarField as PrimeField>::NUM_BITS as usize);
         self.native_gadget.assign_many(layouter, &bits).map(AssignedScalarOfNativeCurve)
     }
 
     fn assign_fixed(
         &self,
         layouter: &mut impl Layouter<C::Base>,
-        constant: C::ScalarExt,
+        constant: C::ScalarField,
     ) -> Result<AssignedScalarOfNativeCurve<C>, Error> {
         self.native_gadget
             .assign_many_fixed(layouter, &constant.to_le_bits(None))
@@ -891,7 +891,7 @@ impl<C: EdwardsCurve> PublicInputInstructions<C::Base, AssignedScalarOfNativeCur
     fn assign_as_public_input(
         &self,
         layouter: &mut impl Layouter<C::Base>,
-        value: Value<C::ScalarExt>,
+        value: Value<C::ScalarField>,
     ) -> Result<AssignedScalarOfNativeCurve<C>, Error> {
         let assigned: AssignedScalarOfNativeCurve<C> = self.assign(layouter, value)?;
         self.constrain_as_public_input(layouter, &assigned)?;
@@ -1034,7 +1034,7 @@ impl<C: EdwardsCurve>
     ConversionInstructions<C::Base, AssignedNative<C::Base>, AssignedScalarOfNativeCurve<C>>
     for EccChip<C>
 {
-    fn convert_value(&self, _x: &C::Base) -> Option<C::ScalarExt> {
+    fn convert_value(&self, _x: &C::Base) -> Option<C::ScalarField> {
         unimplemented!("The caller should decide how to convert the value off-circuit, i.e., what to do with overflows.");
     }
 
