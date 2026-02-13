@@ -16,6 +16,8 @@
 //!
 //! - **Static automaton parsing** ([`parse_static`]): uses a fixed lookup table
 //!   pre-loaded with transitions from a library of automata ([`StdLibParser`]).
+//! - **Substring verification** ([`check_subsequence`], [`check_bytes`]): uses
+//!   dynamic lookups to verify that a subsequence appears in a given sequence.
 
 pub(crate) mod automaton;
 /// A module to specify languages as regular expressions and convert them into
@@ -26,16 +28,18 @@ mod static_automaton;
 pub(crate) mod static_specs;
 
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    cell::RefCell,
+    collections::{BTreeMap, BTreeSet, HashMap},
     fmt::Debug,
     hash::Hash,
+    rc::Rc,
 };
 
 use automaton::{Automaton, ALPHABET_MAX_SIZE};
 use ff::PrimeField;
 use midnight_proofs::{
     circuit::{Chip, Layouter, Value},
-    plonk::{Advice, Column, ConstraintSystem, Error, Selector, TableColumn},
+    plonk::{Advice, Column, ConstraintSystem, Error, Expression, Fixed, Selector, TableColumn},
     poly::Rotation,
 };
 use rustc_hash::FxHashMap;
@@ -133,6 +137,7 @@ where
 /// Scanner gate configuration.
 #[derive(Clone, Debug)]
 pub struct ScannerConfig<LibIndex, F> {
+    // Static automaton columns.
     automata: FxHashMap<LibIndex, NativeAutomaton<F>>,
     q_automaton: Selector,
     state_col: Column<Advice>,
@@ -142,9 +147,15 @@ pub struct ScannerConfig<LibIndex, F> {
     t_letter: TableColumn,
     t_target: TableColumn,
     t_output: TableColumn,
+
+    // Substring columns.
+    q_substring: Selector,
+    substring_tag_col: Column<Fixed>,
+    index_col: Column<Advice>,
+    byte_col: Column<Advice>,
 }
 
-/// Chip for scanning: automaton parsing.
+/// Chip for scanning: automaton parsing and substring verification.
 #[derive(Clone, Debug)]
 pub struct ScannerChip<LibIndex, F>
 where
@@ -152,6 +163,12 @@ where
 {
     config: ScannerConfig<LibIndex, F>,
     native_gadget: NG<F>,
+    /// Counter for generating unique positive tags for substring lookups.
+    substring_tag_counter: Rc<RefCell<u64>>,
+    /// Cache mapping a sequence of cells to the tag assigned to it, so that
+    /// repeated `check_subsequence` calls with the same `sequence` argument
+    /// avoid copying it multiple times.
+    sequence_cache: Rc<RefCell<HashMap<Vec<AssignedNative<F>>, u64>>>,
 }
 
 impl<LibIndex, F> Chip<F> for ScannerChip<LibIndex, F>
@@ -185,6 +202,8 @@ where
         Self {
             config: config.clone(),
             native_gadget: deps.clone(),
+            substring_tag_counter: Rc::new(RefCell::new(1)),
+            sequence_cache: Rc::new(RefCell::new(HashMap::new())),
         }
     }
 
@@ -192,9 +211,11 @@ where
         meta: &mut ConstraintSystem<F>,
         shared_res: &Self::SharedResources,
     ) -> ScannerConfig<LibIndex, F> {
+        let (advice_cols, automata) = shared_res;
+
+        // Static automaton resources.
         let q_automaton = meta.complex_selector();
 
-        let (advice_cols, automata) = shared_res;
         let state_col = advice_cols[0];
         let letter_col = advice_cols[1];
         let output_col = advice_cols[2];
@@ -222,6 +243,35 @@ where
             ]
         });
 
+        // Substring resources.
+        let q_substring = meta.complex_selector();
+        // Separate tag column for substring lookups.
+        let substring_tag_col = meta.fixed_column();
+
+        // Substring reuses advice_cols[0] and advice_cols[1] as index_col and
+        // byte_col respectively.
+        let index_col = advice_cols[0];
+        let byte_col = advice_cols[1];
+
+        // Enable equality on columns used for copy_advice in substring checks.
+        meta.enable_equality(index_col);
+        meta.enable_equality(byte_col);
+
+        meta.lookup_any("substring lookup", |meta| {
+            let sel = meta.query_selector(q_substring);
+            let not_sel = Expression::Constant(F::ONE) - sel;
+
+            let tag = meta.query_fixed(substring_tag_col, Rotation::cur());
+            let index = meta.query_advice(index_col, Rotation::cur());
+            let byte = meta.query_advice(byte_col, Rotation::cur());
+
+            vec![
+                (tag.clone(), not_sel.clone() * tag),
+                (index.clone(), not_sel.clone() * index),
+                (byte.clone(), not_sel * byte),
+            ]
+        });
+
         ScannerConfig {
             automata,
             q_automaton,
@@ -232,6 +282,10 @@ where
             t_letter,
             t_target,
             t_output,
+            q_substring,
+            substring_tag_col,
+            index_col,
+            byte_col,
         }
     }
 
