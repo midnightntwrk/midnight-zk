@@ -100,7 +100,7 @@ pub(super) fn variable_limbsize_coefficients<F: PrimeField>(limb_sizes: &[usize]
 
 /// Helper function to fill the limb sizes with trivial ones, i.e. zeros
 pub(super) fn process_limb_sizes(max_parallel_lookups: usize, limbs: &mut Vec<usize>) {
-    while limbs.len() % max_parallel_lookups != 0 {
+    while !limbs.len().is_multiple_of(max_parallel_lookups) {
         limbs.push(0)
     }
 }
@@ -153,7 +153,7 @@ pub(super) fn compute_optimal_limb_sizes(
     // trivial bound
     else if bound == 0 {
         solutions.insert(bound, vec![]);
-        return vec![];
+        vec![]
     } else {
         let (mut opt_solution, mut opt_value) = (Vec::new(), usize::MAX);
         // iterate over all possibile pairs

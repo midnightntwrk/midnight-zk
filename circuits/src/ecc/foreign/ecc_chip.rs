@@ -644,7 +644,7 @@ where
         p: &Self::Point,
         q: &Self::Point,
     ) -> Result<Self::Point, Error> {
-        let r_curve = p.value().zip(q.value()).map(|(p, q)| (p + q));
+        let r_curve = p.value().zip(q.value()).map(|(p, q)| p + q);
         let r = self.assign_point_unchecked(layouter, r_curve)?;
 
         // Define some auxiliary variables.
@@ -693,7 +693,7 @@ where
         layouter: &mut impl Layouter<F>,
         p: &AssignedForeignPoint<F, C, B>,
     ) -> Result<AssignedForeignPoint<F, C, B>, Error> {
-        let r_curve = p.value().map(|p| (p + p));
+        let r_curve = p.value().map(|p| p + p);
         let r = self.assign_point_unchecked(layouter, r_curve)?;
 
         // (There are no points of order 2 by assumption.)
@@ -889,7 +889,7 @@ where
             .iter()
             .map(|b| self.native_gadget.assign_fixed(layouter, *b))
             .collect::<Result<Vec<_>, Error>>()?;
-        self.msm_by_le_bits(layouter, &[scalar_bits], &[base.clone()])
+        self.msm_by_le_bits(layouter, &[scalar_bits], std::slice::from_ref(base))
     }
 
     fn point_from_coordinates(
@@ -1120,7 +1120,7 @@ where
         p: &AssignedForeignPoint<F, C, B>,
         q: &AssignedForeignPoint<F, C, B>,
     ) -> Result<AssignedForeignPoint<F, C, B>, Error> {
-        let r_curve = p.value().zip(q.value()).map(|(p, q)| (p + q));
+        let r_curve = p.value().zip(q.value()).map(|(p, q)| p + q);
         let r = self.assign_point_unchecked(layouter, r_curve)?;
 
         // Assert that r is not the identity.
@@ -1714,7 +1714,7 @@ where
             //        (i) k ∓ 2^i != 0 because 0 < k < 2^i
             //       (ii) k - 2^i > -2^i > -ORDER    (because i < 128 < |ORDER|)
             //      (iii) k + 2^i < 2^(i+1) < ORDER  (because i+1 < 129 < |ORDER|)
-            if n % 2 != 0 {
+            if !n.is_multiple_of(2) {
                 res = match res {
                     None => Some(tmp.clone()),
                     Some(acc) => Some(self.incomplete_add(layouter, &acc, &tmp)?),
@@ -1860,6 +1860,7 @@ where
         let nb_iterations = max_len;
         let mut acc = l_times_r.clone();
 
+        #[allow(clippy::needless_range_loop)]
         for i in 0..nb_iterations {
             for _ in 0..WS {
                 acc = self.double(layouter, &acc)?;

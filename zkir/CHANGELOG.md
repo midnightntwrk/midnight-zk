@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 ### Added
 
 ### Changed
+* Updated Rust toolchain to 1.90.0 [#210](https://github.com/midnightntwrk/midnight-zk/pull/210)
 
 ### Removed
 * Halo2curves dependency [#139](https://github.com/midnightntwrk/midnight-zk/pull/139)

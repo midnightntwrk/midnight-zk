@@ -64,8 +64,8 @@ pub(super) fn render_cell_layout(
     eprint!("\n{col_headers}");
 
     let widths: Vec<usize> = columns
-        .iter()
-        .map(|(col, _)| {
+        .keys()
+        .map(|col| {
             let size = match location {
                 FailureLocation::InRegion { region, offset: _ } => {
                     if let Some(column_ann) = region.column_annotations.as_ref() {

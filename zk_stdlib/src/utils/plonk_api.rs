@@ -110,7 +110,7 @@ macro_rules! plonk_api {
                     >(
                         params,
                         pk,
-                        &[circuit.clone()],
+                        std::slice::from_ref(circuit),
                         nb_instance_commitments,
                         &[pi],
                         rng,

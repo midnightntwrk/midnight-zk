@@ -701,7 +701,7 @@ impl Regex {
     fn to_raw_automaton(&self, alphabet_size: usize) -> RawAutomaton {
         match &self.content {
             RegexInternal::Single(bytes) => {
-                RawAutomaton::byte_concat(&[bytes.clone()], alphabet_size)
+                RawAutomaton::byte_concat(std::slice::from_ref(bytes), alphabet_size)
             }
             RegexInternal::Concat(l) => {
                 RawAutomaton::concat(&Self::flatten_concat(l, alphabet_size))

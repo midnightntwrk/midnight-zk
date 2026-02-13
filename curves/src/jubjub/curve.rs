@@ -46,10 +46,6 @@ use group::{
 use rand_core::RngCore;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 
-use crate::{
-    impl_binops_additive, impl_binops_additive_specify_output, impl_binops_multiplicative,
-    impl_binops_multiplicative_mixed,
-};
 pub use crate::{Fq as BlsScalar, Fr};
 
 /// Represents an element of the base field $\mathbb{F}_q$ of the Jubjub
@@ -1264,7 +1260,7 @@ impl Group for JubjubExtended {
     fn random(mut rng: impl RngCore) -> Self {
         loop {
             let v = Base::random(&mut rng);
-            let flip_sign = rng.next_u32() % 2 != 0;
+            let flip_sign = !rng.next_u32().is_multiple_of(2);
 
             // See AffinePoint::from_bytes for details.
             let v2 = v.square();

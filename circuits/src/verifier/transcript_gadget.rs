@@ -94,7 +94,7 @@ impl<S: SelfEmulation> TranscriptGadget<S> {
     ) -> Result<(), Error> {
         self.input_len += 1;
         let state = self.sponge_state.as_mut().expect("You must init the transcript gadget");
-        self.sponge_chip.absorb(layouter, state, &[scalar.clone()])
+        self.sponge_chip.absorb(layouter, state, std::slice::from_ref(scalar))
     }
 
     /// Absorbs a point into the transcript.

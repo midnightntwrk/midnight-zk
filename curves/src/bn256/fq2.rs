@@ -62,7 +62,7 @@ impl ExtField for Fq2 {
     }
 
     fn frobenius_map(&mut self, power: usize) {
-        if power % 2 != 0 {
+        if !power.is_multiple_of(2) {
             self.conjugate();
         }
     }

@@ -80,7 +80,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
         vec![compressed_expressions - (F::ONE - q) * self.trash_eval].into_iter()
     }
 
-    pub(crate) fn queries(&self, x: F) -> impl Iterator<Item = VerifierQuery<F, CS>> + Clone {
+    pub(crate) fn queries(&self, x: F) -> impl Iterator<Item = VerifierQuery<'_, F, CS>> + Clone {
         vec![VerifierQuery::new(
             x,
             CommitmentLabel::NoLabel,

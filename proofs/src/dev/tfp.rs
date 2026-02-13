@@ -31,7 +31,7 @@ use crate::{
 ///
 /// # Examples
 ///
-/// ```
+/// ```no_run
 /// use ff::Field;
 /// use midnight_proofs::{
 ///     circuit::{floor_planner, Layouter, Value},

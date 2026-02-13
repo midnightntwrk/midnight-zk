@@ -12,10 +12,7 @@ use ff::{Field, PrimeField, PrimeFieldBits};
 use rand_core::RngCore;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 
-use crate::{
-    arithmetic::{adc, mac, sbb},
-    impl_binops_additive, impl_binops_multiplicative,
-};
+use crate::arithmetic::{adc, mac, sbb};
 
 /// Represents an element of the scalar field $\mathbb{F}_r$ of the Jubjub
 /// elliptic curve construction.

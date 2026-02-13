@@ -210,7 +210,7 @@ where
     }
 
     /// Split the [DualMSM] into `left` and `right`
-    pub fn split(&self) -> SplitDualMSM<E> {
+    pub fn split(&self) -> SplitDualMSM<'_, E> {
         let left = self.left.scalars.iter().zip(self.left.bases.iter()).collect();
         let right = self.right.scalars.iter().zip(self.right.bases.iter()).collect();
         (left, right)
