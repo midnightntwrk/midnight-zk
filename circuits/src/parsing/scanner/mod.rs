@@ -25,6 +25,7 @@ pub(crate) mod automaton;
 pub mod regex;
 mod serialization;
 mod static_automaton;
+mod substring;
 pub(crate) mod static_specs;
 
 use std::{
