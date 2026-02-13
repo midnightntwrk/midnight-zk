@@ -11,7 +11,7 @@ use crate::{
         circuit::Circuit,
         lookup, permutation,
         prover::{
-            compute_nu_poly, compute_instances, compute_queries, parse_advices,
+            compute_instances, compute_nu_poly, compute_queries, parse_advices,
             write_evals_to_transcript,
         },
         traces::ProverTrace,
