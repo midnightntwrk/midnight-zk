@@ -30,7 +30,7 @@ use exposing_types::{
     hybrid_mt::HybridMtExample,
     identity::{
         enrollment::CredentialEnrollment, full_credential::FullCredential,
-        property_check::CredentialProperty,
+        property_check::CredentialProperty, property_check_opt::CredentialPropertyOpt,
     },
     membership::MembershipExample,
     native_gadget::NativeGadgetExample,
@@ -72,6 +72,7 @@ generate_tests!(
     check_vk_cred_full: FullCredential,
     check_vk_cred_enrollment: CredentialEnrollment,
     check_vk_cred_property: CredentialProperty,
+    check_vk_cred_property_opt: CredentialPropertyOpt,
     check_vk_hybrid_mt: HybridMtExample,
     check_vk_sha: ShaPreImageCircuit,
     check_vk_schnorr: SchnorrExample
