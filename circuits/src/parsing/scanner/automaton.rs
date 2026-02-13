@@ -37,7 +37,7 @@ use std::{collections::hash_map::Entry, fmt::Debug, hash::Hash, iter::once};
 use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
 
 /// Maximal size of the alphabet of an automaton/regex, since input characters
-/// are represented by `AssignedByte`. The parser (`automaton_chip::parse`) is
+/// are represented by `AssignedByte`. The parser (`scanner::parse_static`) is
 /// using this information to store automaton final states in the transition
 /// table, by encoding them as impossible transitions starting from the said
 /// state, and labelled with letter `ALPHABET_MAX_SIZE`. This bound is also
@@ -1179,7 +1179,7 @@ impl Automaton {
 pub(super) mod tests {
     use itertools::Itertools;
 
-    use crate::parsing::regex::{Regex, RegexInstructions};
+    use crate::parsing::scanner::regex::{Regex, RegexInstructions};
 
     /// Tests whether a given regular expression accepts or rejects two sets of
     /// corresponding strings. Takes the alphabet size as a parameter to allow

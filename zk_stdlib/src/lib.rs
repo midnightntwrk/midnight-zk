@@ -66,7 +66,7 @@ use midnight_circuits::{
     map::map_gadget::MapGadget,
     parsing::{
         self,
-        automaton_chip::{AutomatonChip, AutomatonConfig, NB_AUTOMATA_COLS},
+        scanner::{ScannerChip, ScannerConfig, NB_SCANNER_ADVICE_COLS},
         Base64Chip, Base64Config, ParserGadget, StdLibParser, NB_BASE64_ADVICE_COLS,
     },
     types::{
@@ -259,7 +259,7 @@ pub struct ZkStdLibConfig {
     secp256k1_config: Option<ForeignEccConfig<Secp256k1>>,
     bls12_381_config: Option<ForeignEccConfig<midnight_curves::G1Projective>>,
     base64_config: Option<Base64Config>,
-    automaton_config: Option<AutomatonConfig<StdLibParser, midnight_curves::Fq>>,
+    scanner_config: Option<ScannerConfig<StdLibParser, midnight_curves::Fq>>,
 
     // Configuration of external libraries.
     keccak_sha3_config: Option<PackedConfig>,
@@ -286,7 +286,7 @@ pub struct ZkStdLib {
     base64_chip: Option<Base64Chip<F>>,
     parser_gadget: ParserGadget<F, NG>,
     vector_gadget: VectorGadget<F>,
-    automaton_chip: Option<AutomatonChip<StdLibParser, F>>,
+    scanner_chip: Option<ScannerChip<StdLibParser, F>>,
 
     // Third-party chips.
     keccak_sha3_chip: Option<KeccakSha3Wrapper<F>>,
@@ -301,7 +301,7 @@ pub struct ZkStdLib {
     used_secp256k1_curve: Rc<RefCell<bool>>,
     used_bls12_381_curve: Rc<RefCell<bool>>,
     used_base64: Rc<RefCell<bool>>,
-    used_automaton: Rc<RefCell<bool>>,
+    used_scanner: Rc<RefCell<bool>>,
     used_keccak_or_sha3: Rc<RefCell<bool>>,
     used_blake2b: Rc<RefCell<bool>>,
 }
@@ -343,8 +343,8 @@ impl ZkStdLib {
 
         let parser_gadget = ParserGadget::new(&native_gadget);
         let vector_gadget = VectorGadget::new(&native_gadget);
-        let automaton_chip =
-            config.automaton_config.as_ref().map(|c| AutomatonChip::new(c, &native_gadget));
+        let scanner_chip =
+            config.scanner_config.as_ref().map(|c| ScannerChip::new(c, &native_gadget));
         let keccak_sha3_chip = config
             .keccak_sha3_config
             .as_ref()
@@ -370,7 +370,7 @@ impl ZkStdLib {
             base64_chip,
             parser_gadget,
             vector_gadget,
-            automaton_chip,
+            scanner_chip,
             keccak_sha3_chip,
             blake2b_chip,
             used_sha2_256: Rc::new(RefCell::new(false)),
@@ -379,7 +379,7 @@ impl ZkStdLib {
             used_secp256k1_curve: Rc::new(RefCell::new(false)),
             used_bls12_381_curve: Rc::new(RefCell::new(false)),
             used_base64: Rc::new(RefCell::new(false)),
-            used_automaton: Rc::new(RefCell::new(false)),
+            used_scanner: Rc::new(RefCell::new(false)),
             used_keccak_or_sha3: Rc::new(RefCell::new(false)),
             used_blake2b: Rc::new(RefCell::new(false)),
         }
@@ -410,7 +410,7 @@ impl ZkStdLib {
                     >(),
                 ),
             arch.base64 as usize * NB_BASE64_ADVICE_COLS,
-            arch.automaton as usize * NB_AUTOMATA_COLS,
+            arch.automaton as usize * NB_SCANNER_ADVICE_COLS,
             (arch.keccak_256 || arch.sha3_256) as usize * PACKED_ADVICE_COLS,
             arch.blake2b as usize * NB_BLAKE2B_ADVICE_COLS,
         ]
@@ -503,11 +503,11 @@ impl ZkStdLib {
             )
         });
 
-        let automaton_config = arch.automaton.then(|| {
-            AutomatonChip::configure(
+        let scanner_config = arch.automaton.then(|| {
+            ScannerChip::configure(
                 meta,
                 &(
-                    advice_columns[..NB_AUTOMATA_COLS].try_into().unwrap(),
+                    advice_columns[..NB_SCANNER_ADVICE_COLS].try_into().unwrap(),
                     parsing::spec_library(),
                 ),
             )
@@ -545,7 +545,7 @@ impl ZkStdLib {
             secp256k1_config,
             bls12_381_config,
             base64_config,
-            automaton_config,
+            scanner_config,
             keccak_sha3_config,
             blake2b_config,
         }
@@ -612,9 +612,9 @@ impl ZkStdLib {
     }
 
     /// Chip for performing automaton-based parsing.
-    pub fn automaton(&self) -> &AutomatonChip<StdLibParser, F> {
-        *self.used_automaton.borrow_mut() = true;
-        (self.automaton_chip.as_ref())
+    pub fn automaton(&self) -> &ScannerChip<StdLibParser, F> {
+        *self.used_scanner.borrow_mut() = true;
+        (self.scanner_chip.as_ref())
             .unwrap_or_else(|| panic!("ZkStdLibArch must enable automaton"))
     }
 
@@ -1672,9 +1672,9 @@ impl<R: Relation> Circuit<F> for MidnightCircuit<'_, R> {
             }
         }
 
-        if let Some(automaton_chip) = zk_std_lib.automaton_chip {
-            if *zk_std_lib.used_automaton.borrow() {
-                automaton_chip.load(&mut layouter)?;
+        if let Some(ref scanner_chip) = zk_std_lib.scanner_chip {
+            if *zk_std_lib.used_scanner.borrow() {
+                scanner_chip.load(&mut layouter)?;
             }
         }
 

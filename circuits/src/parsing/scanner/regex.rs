@@ -761,7 +761,8 @@ impl Regex {
 mod tests {
 
     use super::{Regex, RegexInstructions};
-    use crate::parsing::{automaton, regex::ALPHABET_MAX_SIZE};
+    use crate::parsing::scanner::automaton;
+    use crate::parsing::scanner::automaton::ALPHABET_MAX_SIZE;
 
     // Tests whether a given regular expression accepts or rejects two sets of
     // corresponding strings. Uses the sub-method used in the `automaton.rs` test

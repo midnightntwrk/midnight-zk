@@ -1,4 +1,4 @@
-//! A library of parsers, represented as a Hash Map from documented custom
+//! A library of parsers, represented as a Hash Map from documented fixed
 //! tokens (`StdLibParser`) to deterministic minimal automata (`Automata`).
 //! Since these parsers can be relatively costly to generate, the automata are
 //! serialized. The tests check in particular the consistency between the
@@ -21,7 +21,7 @@
 //!    the corresponding serialisation file, and re-run step 5.
 //!
 //! ```shell
-//!    cargo test --lib -p midnight-circuits --release -- --nocapture regex_test automaton_test specs_test
+//!    cargo test --lib -p midnight-circuits --release -- --nocapture regex_test automaton_test static_specs_test
 //! ```
 
 #[cfg(test)]
@@ -33,12 +33,12 @@ use super::{
     automaton::Automaton,
     regex::{Regex, RegexInstructions},
 };
-use crate::parsing::serialization::Serialize;
+use super::serialization::Serialize;
 
 /// Folder where the serialized automata for the standard library will be
 /// stored.
 #[cfg(test)]
-const AUTOMATON_CACHE: &str = "src/parsing/automaton_cache";
+const AUTOMATON_CACHE: &str = "src/parsing/scanner/automaton_cache";
 
 /// Explicit names (and documentation) for indexing the various parsing
 /// specifications hard-coded in the standard library.
@@ -134,11 +134,13 @@ type ParsingLibrary = FxHashMap<StdLibParser, Automaton>;
 /// components. When serialization is disabled, the automaton will be computed
 /// using the second argument.
 fn spec_library_data() -> LibraryData {
-    &[(
-        StdLibParser::Jwt,
-        &spec_jwt as &'static dyn Fn() -> Regex,
-        include_bytes!("automaton_cache/Jwt") as &'static [u8],
-    )]
+    &[
+        (
+            StdLibParser::Jwt,
+            &spec_jwt,
+            include_bytes!("automaton_cache/Jwt"),
+        ),
+    ]
 }
 
 /// All automata that can be used as a parsing basis in the standard library.
@@ -149,7 +151,7 @@ pub fn spec_library() -> ParsingLibrary {
             .map(|(name, _, serialization)| {
                 assert!(
                     !serialization.is_empty(),
-                    "Empty serialisation data for {:?}. The bootstrapping of the serialisation process has not been conducted. (see documentation of `midnight_circuits::parsing::specs`)",
+                    "Empty serialisation data for {:?}. The bootstrapping of the serialisation process has not been conducted. (see documentation of `midnight_circuits::parsing::scanner::static_specs`)",
                     *name
                 );
                 (*name, Automaton::deserialize_unwrap(serialization))
@@ -157,7 +159,7 @@ pub fn spec_library() -> ParsingLibrary {
             .collect::<FxHashMap<_, _>>()
 }
 
-// Regex formalising the spec of `StdLIbParser::Jwt`.
+/// Regex formalising the spec of `StdLIbParser::Jwt`.
 fn spec_jwt() -> Regex {
     // Content of a basic field (RFC 8259 JSON string), possibly marked if `marker`
     // is not 0.
@@ -302,7 +304,7 @@ fn check_serialization(checks: &ParsingLibrary) {
         let file_name = parser.serialization_file();
         assert!(
                 Path::new(&file_name).exists(),
-                "serialisation file {file_name} does not exist! Follow the documentation of `midnight_circuits::parsing::specs` for instructions on how to add a new parser to the standard library."
+                "serialisation file {file_name} does not exist! Follow the documentation of `midnight_circuits::parsing::scanner::static_specs` for instructions on how to add a new parser to the standard library."
             );
         let previous_data = fs::read(file_name.clone()).unwrap();
         let mut current_data = Vec::new();
@@ -333,11 +335,8 @@ mod tests {
 
     use rustc_hash::{FxBuildHasher, FxHashMap};
 
-    use super::{
-        spec_library_data,
-        StdLibParser::{self, Jwt},
-    };
-    use crate::parsing::{automaton::Automaton, spec_library, specs::check_serialization};
+    use super::{check_serialization, spec_library, spec_library_data, StdLibParser};
+    use super::super::automaton::Automaton;
 
     /// Sets up the serialised library (bootstraps it if empty serialisation
     /// data is found), and performs consistency checks or updates accordingly
@@ -483,15 +482,29 @@ mod tests {
         println!(">> Now configuring the spec library for tests... (using the serialised data)");
         let start = Instant::now();
         let spec_library = spec_library();
-        println!(">> Configuration completed in {:?}", start.elapsed());
+        println!(
+            ">> Configuration completed in {:?}. Automaton breakdown:",
+            start.elapsed()
+        );
+        let mut total = 0;
         for (name, automaton) in &spec_library {
             println!(
-                "  - {:?} automaton: {} states, {} transitions",
+                "  - {:?}: {} states, {} transitions",
                 name,
                 automaton.nb_states,
                 automaton.transitions.len()
-            )
+            );
+            total += automaton.transitions.len() + automaton.final_states.len()
         }
+        println!(
+            ">> Total nb of lookup rows in the chip: {} ≤ 2^{}",
+            total,
+            total.next_power_of_two().trailing_zeros()
+        );
+
+        // Tests the `Jwt` spec correctness.
+        const FULL_INPUT_JWT: &str = include_str!("specs_examples/jwt/full.txt");
+        const MINIMAL_JWT: &str = include_str!("specs_examples/jwt/minimal.txt");
         let accepted0: Vec<(&str, &[(usize, &str)])> = vec![
             (
                 FULL_INPUT_JWT,
@@ -518,84 +531,6 @@ mod tests {
         ];
         let rejected0: Vec<&str> =
             vec!["hello world", &FULL_INPUT_JWT[..1000], &MINIMAL_JWT[..600]];
-
-        specs_one_test(&spec_library, Jwt, &accepted0, &rejected0);
+        specs_one_test(&spec_library, StdLibParser::Jwt, &accepted0, &rejected0);
     }
-
-    const FULL_INPUT_JWT: &str = r#"{
-    "iss":"did:prism:954e59ea4c212f4b4be8688bd3fe63dd7079d218ef6282205a70131f87f2887c",
-    "sub":"did:prism:73bb516fe88beec5b3b8d283eaec5964d1c13cd54ef8f1784217f4fe42688626:CtQBCtEBEkgKFG15LWF1dGgta2V5LW1pZG5pZ2h0EARKLgoJc2VjcDI1NmsxEiECS0kj3ydSeF86LU9BpHuVntMFN8SCKcHyci1tXFbRW8MSOwoHbWFzdGVyMBABSi4KCXNlY3AyNTZrMRIhAimWDggNDswAIJWKbexkfDxV0PEa58tcVcS1dk2phkDjGkgKDmFnZW50LWJhc2UtdXJsEhBMaW5rZWRSZXNvdXJjZVYxGiRodHRwOi8vMTkyLjE2OC4xLjg2OjgzMDAvY2xvdWQtYWdlbnQ",
-    "nbf":1740482175,
-    "exp":1740485775,
-    "vc":{
-       "credentialSchema":[
-          {
-             "id":"http:\/\/192.168.1.86:8400\/cloud-agent\/schema-registry\/schemas\/2fcfeeae-9532-3869-ad89-cdf5060c3a3c",
-             "type":"CredentialSchema2022"
-          }
-       ],
-       "credentialSubject":{
-          "nationalId":"12345",
-          "familyName":"Wonderland",
-          "givenName":"Alice",
-          "publicKeyJwk":{
-             "kty":"EC",
-             "crv":"secp256k1",
-             "x":"S0kj3ydSeF86LU9BpHuVntMFN8SCKcHyci1tXFbRW8M",
-             "y":"dux8h-QcIA3aZG9CSPIltDwVvOkf0kfJRJLH7K1KSlQ"
-          },
-          "id":"did:prism:73bb516fe88beec5b3b8d283eaec5964d1c13cd54ef8f1784217f4fe42688626:CtQBCtEBEkgKFG15LWF1dGgta2V5LW1pZG5pZ2h0EARKLgoJc2VjcDI1NmsxEiECS0kj3ydSeF86LU9BpHuVntMFN8SCKcHyci1tXFbRW8MSOwoHbWFzdGVyMBABSi4KCXNlY3AyNTZrMRIhAimWDggNDswAIJWKbexkfDxV0PEa58tcVcS1dk2phkDjGkgKDmFnZW50LWJhc2UtdXJsEhBMaW5rZWRSZXNvdXJjZVYxGiRodHRwOi8vMTkyLjE2OC4xLjg2OjgzMDAvY2xvdWQtYWdlbnQ",
-          "birthDate":"2000-11-13"
-       },
-       "type":[
-          "VerifiableCredential"
-       ],
-       "@context":[
-          "https:\/\/www.w3.org\/2018\/credentials\/v1"
-       ],
-       "issuer":{
-          "id":"did:prism:954e59ea4c212f4b4be8688bd3fe63dd7079d218ef6282205a70131f87f2887c",
-          "type":"Profile"
-       },
-       "credentialStatus":{
-          "statusPurpose":"Revocation",
-          "statusListIndex":3,
-          "id":"http:\/\/192.168.1.86:8400\/cloud-agent\/credential-status\/2054e2ea-f191-4640-86dd-6dde6b2f77f7#3",
-          "type":"StatusList2021Entry",
-          "statusListCredential":"http:\/\/192.168.1.86:8400\/cloud-agent\/credential-status\/2054e2ea-f191-4640-86dd-6dde6b2f77f7"
-       }
-    }
-}"#;
-
-    const MINIMAL_JWT: &str = r#"{
-    "iss" : "",
-    "sub" : "",
-    "nbf" : 0,
-    "exp" : 1,
-    "vc" : {
-       "credentialSubject" : {
-          "nationalId" : "id",
-          "familyName" : "fn",
-          "givenName" : "gn",
-          "publicKeyJwk" : {
-             "kty" : "",
-             "crv" : "",
-             "x" : "x",
-             "y" : "y"
-          },
-          "id" : "",
-          "birthDate" : "bd"
-       },
-       "type" : [],
-       "@context" : [],
-       "issuer" : "",
-       "credentialStatus" : {
-          "statusPurpose" : "",
-          "statusListIndex" : 3,
-          "id" : "",
-          "type" : "",
-          "statusListCredential" : ""
-       }
-    }
-}"#;
 }
