@@ -128,7 +128,7 @@ impl Relation for CredentialProperty {
             std_lib.constrain_as_committed_public_input(layouter, &byte_as_f)?;
         }
 
-        let parsed_json = scanner_chip.parse(layouter, &StdLibParser::Jwt, &json)?;
+        let parsed_json = scanner_chip.parse(layouter, StdLibParser::Jwt.into(), &json)?;
 
         // Check Name.
         let name = Self::get_property(std_lib, layouter, &json, &parsed_json, 3, NAME_LEN)?;
