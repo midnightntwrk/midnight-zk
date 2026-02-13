@@ -85,6 +85,17 @@
     }
   },
   "Scanner": {
+    "dynamic parsing perf (input length = 50)": {
+      "advice_columns": "5",
+      "column_queries": "62",
+      "fixed_columns": "36",
+      "lookups": "7",
+      "max_deg": "5",
+      "permutations": "9",
+      "point_sets": "4",
+      "rows": "172",
+      "table_rows": "257"
+    },
     "static parsing perf (input length = 50)": {
       "advice_columns": "5",
       "column_queries": "62",
