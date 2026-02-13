@@ -103,7 +103,7 @@ impl<F: PrimeField> Base64Instructions<F> for Base64Chip<F> {
         padded: bool,
     ) -> Result<Vec<AssignedByte<F>>, Error> {
         debug_assert!(
-            b64_input.len() % 4 == 0 || !padded,
+            b64_input.len().is_multiple_of(4) || !padded,
             "If pad is selected, the Base64 encoded input length must be a multiple of 4."
         );
         let mut last_chunk: B64Chunk<F>;
@@ -519,7 +519,7 @@ mod tests {
 
     impl<F: PrimeField> TestCircuit<F> {
         fn new(input: &[u8], output: &[u8], options: TestOptions) -> Self {
-            debug_assert_eq!(input.len() % 4 == 0, options.input_pad);
+            debug_assert_eq!(input.len().is_multiple_of(4), options.input_pad);
             // Pad output to a multiple of 3.
             let mut padded_out = output.to_vec();
 

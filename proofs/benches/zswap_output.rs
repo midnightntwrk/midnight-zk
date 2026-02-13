@@ -263,7 +263,7 @@ fn bench_zswap_output(c: &mut Criterion) {
     benchmark_create_proof(
         &srs,
         &pk,
-        &[circuit.clone()],
+        std::slice::from_ref(&circuit),
         1,
         &[&[&[], &instance]],
         OsRng,

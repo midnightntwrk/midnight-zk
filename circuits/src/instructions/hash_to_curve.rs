@@ -183,10 +183,9 @@ pub(crate) mod tests {
         [I::sample_inner(&mut rng), I::inner_zero(), I::inner_one()]
             .iter()
             .for_each(|input| {
-                let expected =
-                    <HashToCurveChip as HashToCurveCPU<C, I::Element>>::hash_to_curve(&[
-                        input.clone()
-                    ]);
+                let expected = <HashToCurveChip as HashToCurveCPU<C, I::Element>>::hash_to_curve(
+                    std::slice::from_ref(input),
+                );
                 let wrong = C::CryptographicGroup::identity();
                 run::<F, C, I, EccChip, InputsChip, HashToCurveChip>(
                     input, expected, true, true, name,

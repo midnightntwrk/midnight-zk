@@ -529,7 +529,7 @@ where
         x: &AssignedBigUint<F>,
     ) -> Result<Vec<AssignedByte<F>>, Error> {
         assert!(x.is_normalized());
-        assert!(LOG2_BASE % 8 == 0);
+        assert!(LOG2_BASE.is_multiple_of(8));
         let nb_bytes_per_limb = LOG2_BASE as usize / 8;
 
         let bytes = x
@@ -577,7 +577,7 @@ where
         layouter: &mut impl Layouter<F>,
         bytes: &[AssignedByte<F>],
     ) -> Result<AssignedBigUint<F>, Error> {
-        assert!(LOG2_BASE % 8 == 0);
+        assert!(LOG2_BASE.is_multiple_of(8));
         let nb_bytes_per_limb = LOG2_BASE as usize / 8;
 
         let limbs = bytes

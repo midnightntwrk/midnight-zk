@@ -217,7 +217,7 @@ impl<F: PrimeField> P2RDecompositionChip<F> {
         // 2. the number of given limbs is multiple of ZkStdLibArch::nr_pow2range_cols
         #[cfg(not(test))]
         assert!(
-            limb_sizes.len() % nr_pow2range_cols == 0,
+            limb_sizes.len().is_multiple_of(nr_pow2range_cols),
             "Decomposition chip: number of limbs passed in decompose_core is not a multiple of ZkStdLibArch::nr_pow2range_cols",
         );
 

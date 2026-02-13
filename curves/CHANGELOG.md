@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 
 ### Changed
 * Change nr of bits to represent JubJub scalar field modulus from 255 -> 252 [#179](https://github.com/midnightntwrk/midnight-zk/pull/179)
+* Updated Rust toolchain to 1.90.0 [#210](https://github.com/midnightntwrk/midnight-zk/pull/210)
 
 ### Removed
 

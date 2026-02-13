@@ -266,7 +266,7 @@ fn run_decomposition_chip_fixed_test<const NR_COLS: usize>() {
 
     for limb_size in [limb_size_small, limb_size_big] {
         let mut limb_sizes = vec![limb_size; Fp::NUM_BITS as usize / limb_size];
-        if Fp::NUM_BITS as usize % limb_size != 0 {
+        if !(Fp::NUM_BITS as usize).is_multiple_of(limb_size) {
             limb_sizes.push(Fp::NUM_BITS as usize % limb_size)
         }
 

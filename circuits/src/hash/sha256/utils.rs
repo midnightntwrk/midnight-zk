@@ -261,7 +261,7 @@ mod tests {
         let value: u32 = rng.gen();
         let limb_lengths = [1; 32];
         let result = u32_in_be_limbs(value, limb_lengths);
-        let expected: [u32; 32] = core::array::from_fn(|i| ((value >> (31 - i)) & 1));
+        let expected: [u32; 32] = core::array::from_fn(|i| (value >> (31 - i)) & 1);
         assert_eq!(result, expected);
     }
 

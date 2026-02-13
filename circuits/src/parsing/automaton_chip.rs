@@ -385,7 +385,7 @@ where
     ) -> Result<(), Error> {
         self.config.q_automaton.enable(region, *offset)?;
         invalid_letter.copy_advice(
-            || (format!("dummy invalid letter ({})", ALPHABET_MAX_SIZE)),
+            || format!("dummy invalid letter ({})", ALPHABET_MAX_SIZE),
             region,
             self.config.letter_col,
             *offset,

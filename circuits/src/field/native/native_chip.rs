@@ -873,8 +873,7 @@ where
         // Do we really need slices with references?
         let term_values = terms
             .iter()
-            .cloned()
-            .map(|(c, assigned_t)| (c, assigned_t.value().copied()))
+            .map(|(c, assigned_t)| (*c, assigned_t.value().copied()))
             .collect::<Vec<_>>();
 
         let result = terms.iter().fold(Value::known(constant), |acc, (coeff, x)| {

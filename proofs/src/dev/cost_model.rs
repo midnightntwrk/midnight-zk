@@ -637,7 +637,7 @@ mod tests {
             let instance = meta.instance_column();
             meta.enable_equality(instance);
 
-            [a, b, c].map(|column| meta.enable_equality(column));
+            [a, b, c].iter().for_each(|column| meta.enable_equality(*column));
 
             let table_selector = meta.complex_selector();
             let sl = meta.lookup_table_column();
@@ -780,7 +780,7 @@ mod tests {
         create_proof::<Fq, KZGCommitmentScheme<Bls12>, _, _>(
             &params,
             &pk,
-            &[circuit.clone()],
+            std::slice::from_ref(&circuit),
             #[cfg(feature = "committed-instances")]
             0,
             &[instances],

@@ -319,7 +319,7 @@ fn main() {
             >(
                 &srs,
                 &pk,
-                &[circuit.clone()],
+                std::slice::from_ref(&circuit),
                 1,
                 &[&[&[], &public_inputs]],
                 OsRng,

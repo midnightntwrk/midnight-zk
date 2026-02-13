@@ -109,7 +109,7 @@ mod tests {
         .for_each(
             |(t, v, err_opt): (IrType, IrValue, Option<(IrType, IrType)>)| {
                 assert_eq!(
-                    load_offcircuit(t, &[v.clone()]),
+                    load_offcircuit(t, std::slice::from_ref(&v)),
                     err_opt.map_or(Ok(vec![v]), |(t1, t2)| Err(Error::ExpectingType(t1, t2)))
                 )
             },

@@ -669,7 +669,7 @@ impl<C: EdwardsCurve> EccInstructions<C::Base, C> for EccChip<C> {
         }
 
         let s = self.assign_fixed(layouter, scalar)?;
-        self.msm(layouter, &[s], &[base.clone()])
+        self.msm(layouter, &[s], std::slice::from_ref(base))
     }
 
     fn point_from_coordinates(

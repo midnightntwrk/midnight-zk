@@ -69,12 +69,15 @@ pub(crate) mod tests {
     use rand_chacha::ChaCha12Rng;
 
     use super::*;
+    #[cfg(test)]
     use crate::{
         field::{decomposition::chip::P2RDecompositionChip, NativeChip, NativeGadget},
+        vec::vector_gadget::VectorGadget,
+    };
+    use crate::{
         instructions::{AssertionInstructions, AssignmentInstructions},
         testing_utils::{FromScratch, Sampleable},
         utils::circuit_modeling::circuit_to_json,
-        vec::vector_gadget::VectorGadget,
     };
 
     #[derive(Clone, Debug, Default)]
@@ -186,8 +189,10 @@ pub(crate) mod tests {
         }
     }
 
+    #[cfg(test)]
     type NG<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
 
+    #[cfg(test)]
     #[derive(Clone, Debug, Default)]
     struct TestVarHashCircuit<F, Input, Output, VarHashChip, const M: usize, const A: usize>
     where
@@ -199,6 +204,7 @@ pub(crate) mod tests {
         _marker: PhantomData<(F, Output, VarHashChip)>,
     }
 
+    #[cfg(test)]
     impl<F, Input, Output, VarHashChip, const M: usize, const A: usize> Circuit<F>
         for TestVarHashCircuit<F, Input, Output, VarHashChip, M, A>
     where

@@ -108,7 +108,7 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> Evaluated<F, CS> {
         &self,
         x: F,
         n: u64,
-    ) -> impl Iterator<Item = VerifierQuery<F, CS>> + Clone + '_ {
+    ) -> impl Iterator<Item = VerifierQuery<'_, F, CS>> + Clone + '_ {
         iter::empty()
             .chain(Some(VerifierQuery::from_parts(
                 x,
