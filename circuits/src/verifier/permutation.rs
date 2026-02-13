@@ -36,7 +36,6 @@ pub(crate) struct Committed<S: SelfEmulation> {
 
 #[derive(Clone, Debug)]
 pub(crate) struct EvaluatedSet<S: SelfEmulation> {
-    permutation_product_commitment: S::AssignedPoint,
     pub(crate) permutation_product_eval: AssignedNative<S::F>,
     pub(crate) permutation_product_next_eval: AssignedNative<S::F>,
     pub(crate) permutation_product_last_eval: Option<AssignedNative<S::F>>,
@@ -49,6 +48,7 @@ pub(crate) struct CommonEvaluated<S: SelfEmulation> {
 
 #[derive(Clone, Debug)]
 pub(crate) struct Evaluated<S: SelfEmulation> {
+    coms: Committed<S>,
     pub(crate) sets: Vec<EvaluatedSet<S>>,
 }
 
@@ -96,9 +96,9 @@ impl<S: SelfEmulation> Committed<S> {
     ) -> Result<Evaluated<S>, Error> {
         let mut sets = vec![];
 
-        let mut iter = self.permutation_product_commitments.into_iter();
+        let mut iter = self.permutation_product_commitments.iter();
 
-        while let Some(permutation_product_commitment) = iter.next() {
+        while iter.next().is_some() {
             let permutation_product_eval = transcript_gadget.read_scalar(layouter)?;
             let permutation_product_next_eval = transcript_gadget.read_scalar(layouter)?;
             let permutation_product_last_eval = if iter.len() > 0 {
@@ -108,14 +108,13 @@ impl<S: SelfEmulation> Committed<S> {
             };
 
             sets.push(EvaluatedSet {
-                permutation_product_commitment,
                 permutation_product_eval,
                 permutation_product_next_eval,
                 permutation_product_last_eval,
             });
         }
 
-        Ok(Evaluated { sets })
+        Ok(Evaluated { coms: self, sets })
     }
 }
 
@@ -130,30 +129,29 @@ impl<S: SelfEmulation> Evaluated<S> {
         x_last: &AssignedNative<S::F>,     // x * \omega^(-blinding_factors + 1)
     ) -> Vec<VerifierQuery<S>> {
         let mut queries = vec![];
-        for set in self.sets.iter() {
-            // Open permutation product commitments at x and \omega^{-1} x
+        for (i, set) in self.sets.iter().enumerate() {
             // Open permutation product commitments at x and \omega x
             queries.push(VerifierQuery::new(
                 one,
                 x,
-                &set.permutation_product_commitment,
+                &self.coms.permutation_product_commitments[i],
                 &set.permutation_product_eval,
             ));
             queries.push(VerifierQuery::new(
                 one,
                 x_next,
-                &set.permutation_product_commitment,
+                &self.coms.permutation_product_commitments[i],
                 &set.permutation_product_next_eval,
             ));
         }
 
         // Open it at \omega^{last} x for all but the last set
-        for set in self.sets.iter().rev().skip(1) {
+        for (i, set) in self.sets.iter().enumerate().rev().skip(1) {
             queries.push(VerifierQuery::new(
                 one,
                 x_last,
-                &set.permutation_product_commitment,
-                &set.clone().permutation_product_last_eval.unwrap(),
+                &self.coms.permutation_product_commitments[i],
+                set.permutation_product_last_eval.as_ref().unwrap(),
             ));
         }
 

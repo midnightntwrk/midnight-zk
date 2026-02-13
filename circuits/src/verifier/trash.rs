@@ -27,6 +27,11 @@ use crate::{
 };
 
 #[derive(Clone, Debug)]
+pub(crate) struct TrashEvaluated<S: SelfEmulation> {
+    pub(crate) trash_eval: AssignedNative<S::F>,
+}
+
+#[derive(Clone, Debug)]
 pub(crate) struct Committed<S: SelfEmulation> {
     trash_commitment: S::AssignedPoint,
 }
@@ -34,7 +39,7 @@ pub(crate) struct Committed<S: SelfEmulation> {
 #[derive(Clone, Debug)]
 pub(crate) struct Evaluated<S: SelfEmulation> {
     committed: Committed<S>,
-    pub(crate) trash_eval: AssignedNative<S::F>,
+    pub(crate) evaluated: TrashEvaluated<S>,
 }
 
 pub(crate) fn read_committed<S: SelfEmulation>(
@@ -56,7 +61,7 @@ impl<S: SelfEmulation> Committed<S> {
 
         Ok(Evaluated {
             committed: self,
-            trash_eval,
+            evaluated: TrashEvaluated { trash_eval },
         })
     }
 }
@@ -73,7 +78,7 @@ impl<S: SelfEmulation> Evaluated<S> {
             one,
             x,
             &self.committed.trash_commitment,
-            &self.trash_eval,
+            &self.evaluated.trash_eval,
         )]
     }
 }

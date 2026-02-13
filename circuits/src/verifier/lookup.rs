@@ -27,6 +27,15 @@ use crate::{
 };
 
 #[derive(Clone, Debug)]
+pub(crate) struct LookupEvaluated<S: SelfEmulation> {
+    pub(crate) product_eval: AssignedNative<S::F>,
+    pub(crate) product_next_eval: AssignedNative<S::F>,
+    pub(crate) permuted_input_eval: AssignedNative<S::F>,
+    pub(crate) permuted_input_inv_eval: AssignedNative<S::F>,
+    pub(crate) permuted_table_eval: AssignedNative<S::F>,
+}
+
+#[derive(Clone, Debug)]
 pub(crate) struct PermutationCommitments<S: SelfEmulation> {
     permuted_input_commitment: S::AssignedPoint,
     permuted_table_commitment: S::AssignedPoint,
@@ -41,11 +50,7 @@ pub(crate) struct Committed<S: SelfEmulation> {
 #[derive(Clone, Debug)]
 pub(crate) struct Evaluated<S: SelfEmulation> {
     committed: Committed<S>,
-    pub(crate) product_eval: AssignedNative<S::F>,
-    pub(crate) product_next_eval: AssignedNative<S::F>,
-    pub(crate) permuted_input_eval: AssignedNative<S::F>,
-    pub(crate) permuted_input_inv_eval: AssignedNative<S::F>,
-    pub(crate) permuted_table_eval: AssignedNative<S::F>,
+    pub(crate) evaluated: LookupEvaluated<S>,
 }
 
 pub(crate) fn read_permuted_commitments<S: SelfEmulation>(
@@ -90,11 +95,13 @@ impl<S: SelfEmulation> Committed<S> {
 
         Ok(Evaluated {
             committed: self,
-            product_eval,
-            product_next_eval,
-            permuted_input_eval,
-            permuted_input_inv_eval,
-            permuted_table_eval,
+            evaluated: LookupEvaluated {
+                product_eval,
+                product_next_eval,
+                permuted_input_eval,
+                permuted_input_inv_eval,
+                permuted_table_eval,
+            },
         })
     }
 }
@@ -114,31 +121,31 @@ impl<S: SelfEmulation> Evaluated<S> {
                 one,
                 x,
                 &self.committed.product_commitment,
-                &self.product_eval,
+                &self.evaluated.product_eval,
             ),
             VerifierQuery::new(
                 one,
                 x,
                 &self.committed.permuted.permuted_input_commitment,
-                &self.permuted_input_eval,
+                &self.evaluated.permuted_input_eval,
             ),
             VerifierQuery::new(
                 one,
                 x,
                 &self.committed.permuted.permuted_table_commitment,
-                &self.permuted_table_eval,
+                &self.evaluated.permuted_table_eval,
             ),
             VerifierQuery::new(
                 one,
                 x_prev,
                 &self.committed.permuted.permuted_input_commitment,
-                &self.permuted_input_inv_eval,
+                &self.evaluated.permuted_input_inv_eval,
             ),
             VerifierQuery::new(
                 one,
                 x_next,
                 &self.committed.product_commitment,
-                &self.product_next_eval,
+                &self.evaluated.product_next_eval,
             ),
         ]
     }
