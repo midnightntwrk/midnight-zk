@@ -4,7 +4,7 @@ use ff::{FromUniformBytes, WithSmallOrderMulGroup};
 
 use super::{vanishing, Error, VerifyingKey};
 use crate::{
-    plonk::{permutation::expressions, traces::VerifierTrace},
+    plonk::{evaluate_identities, traces::VerifierTrace},
     poly::{commitment::PolynomialCommitmentScheme, CommitmentLabel, VerifierQuery},
     transcript::{read_n, Hashable, Sampleable, Transcript},
     utils::arithmetic::compute_inner_product,
@@ -309,95 +309,25 @@ where
 
     // This check ensures the circuit is satisfied so long as the polynomial
     // commitments open to the correct values.
-    let vanishing = {
-        let blinding_factors = vk.cs.blinding_factors();
-        let l_evals = vk.domain.l_i_range(x, xn, (-((blinding_factors + 1) as i32))..=0);
-        assert_eq!(l_evals.len(), 2 + blinding_factors);
-        let l_last = l_evals[0];
-        let l_blind: F =
-            l_evals[1..(1 + blinding_factors)].iter().fold(F::ZERO, |acc, eval| acc + eval);
-        let l_0 = l_evals[1 + blinding_factors];
-
-        // Compute the expected value of h(x)
-        let expressions = advice_evals
-            .iter()
-            .zip(instance_evals.iter())
-            .zip(permutations_evaluated.iter())
-            .zip(lookups_evaluated.iter())
-            .zip(trashcans_evaluated.iter())
-            .flat_map(
-                |((((advice_evals, instance_evals), permutation), lookups), trash)| {
-                    let challenges = &challenges;
-                    let fixed_evals = &fixed_evals;
-                    iter::empty()
-                        // Evaluate the circuit using the custom gates provided
-                        .chain(vk.cs.gates.iter().flat_map(move |gate| {
-                            gate.polynomials().iter().map(move |poly| {
-                                poly.evaluate(
-                                    &|scalar| scalar,
-                                    &|_| {
-                                        panic!("virtual selectors are removed during optimization")
-                                    },
-                                    &|query| fixed_evals[query.index.unwrap()],
-                                    &|query| advice_evals[query.index.unwrap()],
-                                    &|query| instance_evals[query.index.unwrap()],
-                                    &|challenge| challenges[challenge.index()],
-                                    &|a| -a,
-                                    &|a, b| a + &b,
-                                    &|a, b| a * &b,
-                                    &|a, scalar| a * &scalar,
-                                )
-                            })
-                        }))
-                        .chain(expressions(
-                            &permutation.sets,
-                            vk,
-                            &vk.cs.permutation,
-                            &permutations_common,
-                            advice_evals,
-                            fixed_evals,
-                            instance_evals,
-                            l_0,
-                            l_last,
-                            l_blind,
-                            beta,
-                            gamma,
-                            x,
-                        ))
-                        .chain(lookups.iter().zip(vk.cs.lookups.iter()).flat_map(
-                            move |(p, argument)| {
-                                p.evaluated.expressions(
-                                    l_0,
-                                    l_last,
-                                    l_blind,
-                                    argument,
-                                    theta,
-                                    beta,
-                                    gamma,
-                                    advice_evals,
-                                    fixed_evals,
-                                    instance_evals,
-                                    challenges,
-                                )
-                            },
-                        ))
-                        .chain(trash.iter().zip(vk.cs.trashcans.iter()).flat_map(
-                            move |(p, argument)| {
-                                p.evaluated.expressions(
-                                    argument,
-                                    trash_challenge,
-                                    advice_evals,
-                                    fixed_evals,
-                                    instance_evals,
-                                    challenges,
-                                )
-                            },
-                        ))
-                },
-            );
-
-        vanishing.verify(expressions, y, xn)
-    };
+    let vanishing = evaluate_identities(
+        &fixed_evals,
+        &instance_evals,
+        &advice_evals,
+        &permutations_evaluated,
+        &lookups_evaluated,
+        &trashcans_evaluated,
+        &permutations_common,
+        x,
+        xn,
+        beta,
+        gamma,
+        theta,
+        trash_challenge,
+        vk,
+        &challenges,
+        y,
+        vanishing,
+    );
 
     let queries = committed_instances
         .iter()
