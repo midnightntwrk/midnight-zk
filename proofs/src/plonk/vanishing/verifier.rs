@@ -5,7 +5,7 @@ use ff::{PrimeField, WithSmallOrderMulGroup};
 use super::Argument;
 use crate::{
     plonk::{Error, VerifyingKey},
-    poly::{commitment::PolynomialCommitmentScheme, VerifierQuery},
+    poly::{commitment::PolynomialCommitmentScheme, CommitmentLabel, VerifierQuery},
     transcript::{read_n, Hashable, Transcript},
 };
 
@@ -112,12 +112,14 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> Evaluated<F, CS> {
         iter::empty()
             .chain(Some(VerifierQuery::from_parts(
                 x,
+                CommitmentLabel::Custom("vanishing".into()),
                 &self.h_commitments.iter().collect::<Vec<_>>(),
                 self.expected_h_eval,
                 n,
             )))
             .chain(Some(VerifierQuery::new(
                 x,
+                CommitmentLabel::Custom("random_poly".into()),
                 &self.random_poly_commitment,
                 self.random_eval,
             )))

@@ -14,7 +14,7 @@ use crate::{
     poly::{
         commitment::{Guard, PolynomialCommitmentScheme},
         kzg::KZGCommitmentScheme,
-        Error,
+        CommitmentLabel, Error,
     },
     utils::{
         arithmetic::{CurveExt, MSM},
@@ -22,11 +22,14 @@ use crate::{
     },
 };
 
-/// A multiscalar multiplication in the polynomial commitment scheme
+/// A multi-scalar multiplication in the polynomial commitment scheme.
+/// For every i, term (bases_i, scalars_i) may be have an optional
+/// label_i for debugging or other purposes.
 #[derive(Clone, Default, Debug)]
 pub struct MSMKZG<E: Engine> {
     pub(crate) scalars: Vec<E::Fr>,
     pub(crate) bases: Vec<E::G1>,
+    pub(crate) labels: Vec<CommitmentLabel>,
 }
 
 impl<E: Engine> MSMKZG<E> {
@@ -35,6 +38,7 @@ impl<E: Engine> MSMKZG<E> {
         MSMKZG {
             scalars: vec![],
             bases: vec![],
+            labels: vec![],
         }
     }
 
@@ -44,13 +48,19 @@ impl<E: Engine> MSMKZG<E> {
 
         let mut scalars = Vec::with_capacity(len);
         let mut bases = Vec::with_capacity(len);
+        let mut labels = Vec::with_capacity(len);
 
         for mut msm in msms {
             scalars.append(&mut msm.scalars);
             bases.append(&mut msm.bases);
+            labels.append(&mut msm.labels);
         }
 
-        Self { scalars, bases }
+        Self {
+            scalars,
+            bases,
+            labels,
+        }
     }
 
     /// Create a new MSM from a given base (with scalar of 1).
@@ -58,6 +68,7 @@ impl<E: Engine> MSMKZG<E> {
         MSMKZG {
             scalars: vec![E::Fr::ONE],
             bases: vec![*base],
+            labels: vec![CommitmentLabel::NoLabel],
         }
     }
 }
@@ -66,9 +77,10 @@ impl<E: Engine + Debug> MSM<E::G1Affine> for MSMKZG<E>
 where
     E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
 {
-    fn append_term(&mut self, scalar: E::Fr, point: E::G1) {
+    fn append_term(&mut self, scalar: E::Fr, point: E::G1, label: CommitmentLabel) {
         self.scalars.push(scalar);
         self.bases.push(point);
+        self.labels.push(label);
     }
 
     fn add_msm(&mut self, other: &Self) {
@@ -77,6 +89,9 @@ where
 
         self.bases.reserve(other.bases().len());
         self.bases.extend_from_slice(&other.bases());
+
+        self.labels.reserve(other.labels().len());
+        self.labels.extend_from_slice(&other.labels());
     }
 
     fn scale(&mut self, factor: E::Fr) {
@@ -103,6 +118,10 @@ where
 
     fn scalars(&self) -> Vec<E::Fr> {
         self.scalars.clone()
+    }
+
+    fn labels(&self) -> Vec<CommitmentLabel> {
+        self.labels.clone()
     }
 }
 

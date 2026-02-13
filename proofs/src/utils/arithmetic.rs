@@ -282,16 +282,19 @@ where
 
     let mut new_scalars = Vec::with_capacity(len);
     let mut new_bases = Vec::with_capacity(len);
+    let mut new_labels = Vec::with_capacity(len);
 
     msms.iter_mut().zip(scalars.iter()).for_each(|(msm, s)| {
         msm.scale(*s);
         new_scalars.extend(&msm.scalars);
         new_bases.extend(&msm.bases);
+        new_labels.extend(msm.labels.clone());
     });
 
     MSMKZG {
         scalars: new_scalars,
         bases: new_bases,
+        labels: new_labels,
     }
 }
 
@@ -315,26 +318,29 @@ pub(crate) fn evals_inner_product<F: PrimeField + Clone>(
 
 /// Multi scalar multiplication engine
 pub trait MSM<C: PrimeCurveAffine>: Clone + Debug + Send + Sized + Sync {
-    /// Add arbitrary term (the scalar and the point)
-    fn append_term(&mut self, scalar: C::Scalar, point: C::Curve);
+    /// Add arbitrary term (the scalar and the point).
+    fn append_term(&mut self, scalar: C::Scalar, point: C::Curve, label: CommitmentLabel);
 
-    /// Add another multiexp into this one
+    /// Add another multiexp into this one.
     fn add_msm(&mut self, other: &Self);
 
-    /// Scale all scalars in the MSM by some scaling factor
+    /// Scale all scalars in the MSM by some scaling factor.
     fn scale(&mut self, factor: C::Scalar);
 
-    /// Perform multiexp and check that it results in zero
+    /// Perform multiexp and check that it results in zero.
     fn check(&self) -> bool;
 
-    /// Perform multiexp and return the result
+    /// Perform multiexp and return the result.
     fn eval(&self) -> C::Curve;
 
-    /// Return base points
+    /// Return base points.
     fn bases(&self) -> Vec<C::Curve>;
 
-    /// Scalars
+    /// Scalars.
     fn scalars(&self) -> Vec<C::Scalar>;
+
+    /// Base labels.
+    fn labels(&self) -> Vec<CommitmentLabel>;
 }
 
 #[cfg(test)]
@@ -342,7 +348,7 @@ use midnight_curves::Fq as Scalar;
 #[cfg(test)]
 use rand_core::OsRng;
 
-use crate::poly::kzg::msm::MSMKZG;
+use crate::poly::{kzg::msm::MSMKZG, CommitmentLabel};
 
 #[test]
 fn test_lagrange_interpolate() {
