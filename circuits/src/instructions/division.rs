@@ -202,11 +202,11 @@ pub(crate) mod tests {
         ) -> Result<(), Error> {
             let chip = DivChip::new_from_scratch(&config);
 
-            let x = chip.assign(&mut layouter, self.dividend.clone())?;
+            let x = chip.assign(&mut layouter, self.dividend)?;
             let (q, r) = chip.div_rem(&mut layouter, &x, self.divisor.clone(), None)?;
 
-            chip.assert_equal_to_fixed(&mut layouter, &q, self.expected.0.clone())?;
-            chip.assert_equal_to_fixed(&mut layouter, &r, self.expected.1.clone())?;
+            chip.assert_equal_to_fixed(&mut layouter, &q, self.expected.0)?;
+            chip.assert_equal_to_fixed(&mut layouter, &r, self.expected.1)?;
 
             chip.load_from_scratch(&mut layouter)
         }
