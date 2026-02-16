@@ -887,7 +887,7 @@ where
             return self.select(layouter, &base.is_id, &id, &r);
         }
         let scalar_bits = scalar
-            .to_le_bits(None)
+            .to_bits_le(None)
             .iter()
             .map(|b| self.native_gadget.assign_fixed(layouter, *b))
             .collect::<Result<Vec<_>, Error>>()?;
