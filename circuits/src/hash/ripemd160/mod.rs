@@ -18,7 +18,6 @@ mod ripemd160_chip;
 mod types;
 mod utils;
 
-use ff::PrimeField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 use ripemd::Digest;
 pub use ripemd160_chip::{
@@ -28,16 +27,17 @@ pub use ripemd160_chip::{
 use crate::{
     instructions::{hash::HashCPU, DecompositionInstructions, HashInstructions},
     types::AssignedByte,
+    CircuitField,
 };
 
-impl<F: PrimeField> HashCPU<u8, [u8; 20]> for RipeMD160Chip<F> {
+impl<F: CircuitField> HashCPU<u8, [u8; 20]> for RipeMD160Chip<F> {
     fn hash(inputs: &[u8]) -> [u8; 20] {
         let output = ripemd::Ripemd160::digest(inputs);
         output.into_iter().collect::<Vec<_>>().try_into().unwrap()
     }
 }
 
-impl<F: PrimeField> HashInstructions<F, AssignedByte<F>, [AssignedByte<F>; 20]>
+impl<F: CircuitField> HashInstructions<F, AssignedByte<F>, [AssignedByte<F>; 20]>
     for RipeMD160Chip<F>
 {
     fn hash(

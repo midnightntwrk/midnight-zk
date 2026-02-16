@@ -8,7 +8,6 @@
 //! as SHA256 chip does. For more details, see the comments in
 //! crate::hash::sha256::sha256_chip.
 
-use ff::PrimeField;
 use midnight_proofs::{
     circuit::{Chip, Layouter, Region, Value},
     plonk::{
@@ -36,6 +35,7 @@ use crate::{
         util::{fe_to_u32, fe_to_u64, u32_to_fe, u64_to_fe},
         ComposableChip,
     },
+    CircuitField,
 };
 
 /// Number of advice columns used by the identities of the RIPEMD160 chip
@@ -115,12 +115,12 @@ pub struct RipeMD160Config {
 
 /// Chip for RIPEMD160
 #[derive(Clone, Debug)]
-pub struct RipeMD160Chip<F: PrimeField> {
+pub struct RipeMD160Chip<F: CircuitField> {
     config: RipeMD160Config,
     pub(super) native_gadget: NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>,
 }
 
-impl<F: PrimeField> Chip<F> for RipeMD160Chip<F> {
+impl<F: CircuitField> Chip<F> for RipeMD160Chip<F> {
     type Config = RipeMD160Config;
     type Loaded = ();
 
@@ -133,7 +133,7 @@ impl<F: PrimeField> Chip<F> for RipeMD160Chip<F> {
     }
 }
 
-impl<F: PrimeField> ComposableChip<F> for RipeMD160Chip<F> {
+impl<F: CircuitField> ComposableChip<F> for RipeMD160Chip<F> {
     type SharedResources = (
         [Column<Advice>; NB_RIPEMD160_ADVICE_COLS],
         [Column<Fixed>; NB_RIPEMD160_FIXED_COLS],
@@ -346,7 +346,7 @@ impl<F: PrimeField> ComposableChip<F> for RipeMD160Chip<F> {
     }
 }
 
-impl<F: PrimeField> RipeMD160Chip<F> {
+impl<F: CircuitField> RipeMD160Chip<F> {
     /// In-circuit RIPEMD-160 computation, the protagonist of this chip.
     pub(super) fn ripemd160(
         &self,
@@ -1210,7 +1210,7 @@ use midnight_proofs::plonk::Instance;
 use crate::{field::decomposition::chip::P2RDecompositionConfig, testing_utils::FromScratch};
 
 #[cfg(any(test, feature = "testing"))]
-impl<F: PrimeField> FromScratch<F> for RipeMD160Chip<F> {
+impl<F: CircuitField> FromScratch<F> for RipeMD160Chip<F> {
     type Config = (RipeMD160Config, P2RDecompositionConfig);
 
     fn new_from_scratch(config: &Self::Config) -> Self {

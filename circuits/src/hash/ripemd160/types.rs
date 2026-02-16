@@ -1,16 +1,17 @@
-use ff::PrimeField;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 
-use crate::{field::AssignedNative, instructions::FieldInstructions, utils::util::u32_to_fe};
+use crate::{
+    field::AssignedNative, instructions::FieldInstructions, utils::util::u32_to_fe, CircuitField,
+};
 
 /// An assigned 32-bit word, represented by a field element. The 32 bits are
 /// stored in 4 bytes in little-endian order, i.e., the least significant byte
 /// is in the lowest 8 bits of the field element. It is guaranteed to be in the
 /// range [0, 2^32).
 #[derive(Clone, Debug)]
-pub(super) struct AssignedWord<F: PrimeField>(pub AssignedNative<F>);
+pub(super) struct AssignedWord<F: CircuitField>(pub AssignedNative<F>);
 
-impl<F: PrimeField> AssignedWord<F> {
+impl<F: CircuitField> AssignedWord<F> {
     pub(super) fn fixed(
         layouter: &mut impl Layouter<F>,
         field_chip: &impl FieldInstructions<F, AssignedNative<F>>,
@@ -23,12 +24,12 @@ impl<F: PrimeField> AssignedWord<F> {
 /// An assigned value in spreaded form, it is guaranteed to be the spreaded form
 /// of a value in the range [0, 2^L).
 #[derive(Clone, Debug)]
-pub(super) struct AssignedSpreaded<F: PrimeField, const L: usize>(pub AssignedNative<F>);
+pub(super) struct AssignedSpreaded<F: CircuitField, const L: usize>(pub AssignedNative<F>);
 
 /// The assigned values of the state vector (h0, h1, h2, h3, h4).
 /// They are provided and updated for each block.
 #[derive(Clone, Debug)]
-pub(super) struct State<F: PrimeField> {
+pub(super) struct State<F: CircuitField> {
     pub(super) h0: AssignedWord<F>,
     pub(super) h1: AssignedWord<F>,
     pub(super) h2: AssignedWord<F>,
@@ -36,14 +37,14 @@ pub(super) struct State<F: PrimeField> {
     pub(super) h4: AssignedWord<F>,
 }
 
-impl<F: PrimeField> From<[AssignedWord<F>; 5]> for State<F> {
+impl<F: CircuitField> From<[AssignedWord<F>; 5]> for State<F> {
     fn from(words: [AssignedWord<F>; 5]) -> Self {
         let [h0, h1, h2, h3, h4] = words;
         Self { h0, h1, h2, h3, h4 }
     }
 }
 
-impl<F: PrimeField> TryFrom<Vec<AssignedWord<F>>> for State<F> {
+impl<F: CircuitField> TryFrom<Vec<AssignedWord<F>>> for State<F> {
     type Error = Vec<AssignedWord<F>>;
 
     fn try_from(words: Vec<AssignedWord<F>>) -> Result<Self, Self::Error> {
@@ -52,13 +53,13 @@ impl<F: PrimeField> TryFrom<Vec<AssignedWord<F>>> for State<F> {
     }
 }
 
-impl<F: PrimeField> Into<[AssignedWord<F>; 5]> for State<F> {
+impl<F: CircuitField> Into<[AssignedWord<F>; 5]> for State<F> {
     fn into(self) -> [AssignedWord<F>; 5] {
         [self.h0, self.h1, self.h2, self.h3, self.h4]
     }
 }
 
-impl<F: PrimeField> State<F> {
+impl<F: CircuitField> State<F> {
     pub(super) fn fixed(
         layouter: &mut impl Layouter<F>,
         field_chip: &impl FieldInstructions<F, AssignedNative<F>>,
