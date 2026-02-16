@@ -6,7 +6,7 @@ use std::{
 };
 
 use ff::{Field, FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
-use rand_core::{CryptoRng, RngCore};
+use rand_core::{CryptoRng, OsRng, RngCore};
 
 use super::{
     circuit::{
@@ -28,6 +28,68 @@ use crate::{
     transcript::{Hashable, Sampleable, Transcript},
     utils::{arithmetic::eval_polynomial, rational::Rational},
 };
+
+fn compute_h_poly<
+    F: WithSmallOrderMulGroup<3> + Hashable<T::Hash>,
+    CS: PolynomialCommitmentScheme<F>,
+    T: Transcript,
+>(
+    params: &CS::Parameters,
+    domain: &EvaluationDomain<F>,
+    h_poly: Polynomial<F, ExtendedLagrangeCoeff>,
+    transcript: &mut T,
+) -> Result<Vec<Polynomial<F, Coeff>>, Error>
+where
+    CS::Commitment: Hashable<T::Hash>,
+{
+    // Divide by t(X) = X^{params.n} - 1.
+    let h_poly = domain.divide_by_vanishing_poly(h_poly);
+
+    // Obtain final h(X) polynomial
+    let mut h_poly = domain.extended_to_coeff(h_poly);
+
+    // Let n := size of evaluation domain
+    // Let d := degree of constraint system
+    // Hence, the degree of the quotient poly is: d*(n-1) - n = (d-1)*(n-1) - 1,
+    // and a domain of size (d-1)*(n-1) suffices to correctly represent it
+    h_poly.truncate((domain.n - 1) as usize * domain.get_quotient_poly_degree());
+
+    // Split h(X) up into pieces
+    let mut h_pieces = h_poly
+        .chunks_exact((domain.n - 1) as usize)
+        .map(|v| v.to_vec())
+        .collect::<Vec<_>>();
+    drop(h_poly);
+
+    blind_quotient_limbs(&mut h_pieces);
+
+    let h_pieces: Vec<_> =
+        h_pieces.into_iter().map(|h_piece| domain.coeff_from_vec(h_piece)).collect();
+
+    // Compute commitments to each h(X) piece
+    let h_commitments: Vec<_> =
+        h_pieces.iter().map(|h_piece| CS::commit(params, h_piece)).collect();
+
+    // Hash each h(X) piece
+    for c in h_commitments {
+        transcript.write(&c)?;
+    }
+
+    Ok(h_pieces)
+}
+
+fn blind_quotient_limbs<F: PrimeField>(quotient_limbs: &mut [Vec<F>]) {
+    let nr_limbs = quotient_limbs.len();
+    assert!(nr_limbs >= 2);
+
+    for i in 1..nr_limbs {
+        let t = F::random(OsRng);
+        quotient_limbs[i - 1].push(t);
+        quotient_limbs[i][0] -= t;
+    }
+
+    quotient_limbs[nr_limbs - 1].push(F::ZERO);
+}
 
 #[cfg(feature = "committed-instances")]
 /// Commit to a vector of raw instances. This function can be used to prepare
