@@ -98,10 +98,7 @@ impl Lookup {
         let helper: Poly = "0".parse().unwrap();
         let aggregator: Poly = "0,1".parse().unwrap();
 
-        iter::empty()
-            .chain(Some(multiplicities))
-            .chain(Some(helper))
-            .chain(Some(aggregator))
+        [multiplicities, helper, aggregator].into_iter()
     }
 }
 

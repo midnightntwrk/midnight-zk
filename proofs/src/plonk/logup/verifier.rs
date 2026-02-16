@@ -108,10 +108,17 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> Committed<F, CS> {
 impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<F, CS> {
     /// Computes the constraint expressions.
     ///
-    /// Checks two identities:
+    /// When a lookup involves multiple columns, `theta` is used as a random
+    /// challenge to compress them into a single value via a random linear
+    /// combination. That is, given expressions `(e₁, ..., eₗ)`, the compressed
+    /// value is `e₁·θˡ⁻¹ + e₂·θˡ⁻² + ... + eₗ`. Both the input values `fⱼ`
+    /// and the table value `t` are compressed this way before being
+    /// substituted into the LogUp identities.
+    ///
+    /// Checks two identities (where `fⱼ` and `t` denote the compressed values):
     /// - **Helper constraint**: `h(x) · ∏ⱼ(fⱼ(x) + β) = Σⱼ ∏_{k≠j}(fₖ(x) + β)`
-    /// - **Accumulator constraint**:
-    ///   `Z(ωx)·(t(x) + β) = (Z(x) + h(x))·(t(x) + β) - m(x)`
+    /// - **Accumulator constraint**: `Z(ωx)·(t(x) + β) = (Z(x) + h(x))·(t(x) +
+    ///   β) - m(x)`
     #[allow(clippy::too_many_arguments)]
     pub(in crate::plonk) fn expressions<'a>(
         &'a self,
@@ -191,8 +198,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
         };
 
         [
-            l_0 * self.accumulator_eval,
-            l_last * self.accumulator_eval,
+            (l_0 + l_last) * self.accumulator_eval,
             helper_expression(),
             accumulator_constraint(),
         ]

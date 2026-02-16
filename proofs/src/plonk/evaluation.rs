@@ -161,7 +161,8 @@ impl Calculation {
     }
 }
 
-/// Wraps a `GraphEvaluator` for lookups with named handles to the evaluator outputs.
+/// Wraps a `GraphEvaluator` for lookups with named handles to the evaluator
+/// outputs.
 #[derive(Clone, Debug)]
 pub struct LookupGraphEvaluator<F: PrimeField> {
     /// The underlying computation graph
@@ -434,23 +435,23 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
 
                         // Enforce only for the first set.
                         // l_0(X) * (1 - z_0(X)) = 0
-                        *value = *value * y
-                            + ((one - first_set_permutation_product_coset[idx]) * l0[idx]);
+                        *value =
+                            *value * y + (one - first_set_permutation_product_coset[idx]) * l0[idx];
                         // Enforce only for the last set.
                         // l_last(X) * (z_l(X)^2 - z_l(X)) = 0
                         *value = *value * y
-                            + ((last_set_permutation_product_coset[idx]
+                            + (last_set_permutation_product_coset[idx]
                                 * last_set_permutation_product_coset[idx]
                                 - last_set_permutation_product_coset[idx])
-                                * l_last[idx]);
+                                * l_last[idx];
                         // Except for the first set, enforce.
                         // l_0(X) * (z_i(X) - z_{i-1}(\omega^(last) X)) = 0
                         for set_idx in 0..sets.len() {
                             if set_idx != 0 {
                                 *value = *value * y
-                                    + ((permutation_product_cosets[set_idx][idx]
+                                    + (permutation_product_cosets[set_idx][idx]
                                         - permutation_product_cosets[set_idx - 1][r_last])
-                                        * l0[idx]);
+                                        * l0[idx];
                             }
                         }
                         // And for all the sets we enforce:
@@ -488,7 +489,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                                 current_delta *= &F::DELTA;
                             }
 
-                            *value = *value * y + ((left - right) * l_active_row[idx]);
+                            *value = *value * y + (left - right) * l_active_row[idx];
                         }
                         beta_term *= &omega;
                     }
@@ -534,11 +535,8 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                         let product = eval_data.resolve(lookup_eval.product);
                         let table_value = eval_data.resolve(lookup_eval.table);
 
-                        // l_0(X) * Z(X) = 0
-                        *value = *value * y + (aggregator_coset[idx] * l0[idx]);
-
-                        // l_last(X) * Z(X) = 0
-                        *value = *value * y + aggregator_coset[idx] * l_last[idx];
+                        // (l_0(X) + l_last(X)) * Z(X) = 0
+                        *value = *value * y + aggregator_coset[idx] * (l0[idx] + l_last[idx]);
 
                         // Helper constraint: h(X) · ∏ⱼ(fⱼ(X) + β) = Σⱼ ∏_{k≠j}(fₖ(X) + β)
                         *value = *value * y + helper_coset[idx] * product - sum_partial_products;

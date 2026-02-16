@@ -184,7 +184,7 @@ pub enum VerifyFailure {
         /// called during `Circuit::configure`.
         lookup_index: usize,
         /// The index of the parallel lookup column that is not satisfied.
-        column_index: usize,
+        parallel_lookup_index: usize,
         /// The location at which the lookup is not satisfied.
         ///
         /// `FailureLocation::InRegion` is most common, and may be due to the
@@ -267,12 +267,12 @@ impl fmt::Display for VerifyFailure {
             Self::Lookup {
                 name,
                 lookup_index,
-                column_index,
+                parallel_lookup_index,
                 location,
             } => {
                 write!(
                     f,
-                    "Lookup {name}(index: {lookup_index}) is not satisfied for column {column_index} {location}",
+                    "Lookup {name}(index: {lookup_index}) is not satisfied for column {parallel_lookup_index} {location}",
                 )
             }
             Self::Permutation { column, location } => {
@@ -674,9 +674,15 @@ impl VerifyFailure {
             Self::Lookup {
                 name,
                 lookup_index,
-                column_index,
+                parallel_lookup_index,
                 location,
-            } => render_lookup(prover, name, *lookup_index, *column_index, location),
+            } => render_lookup(
+                prover,
+                name,
+                *lookup_index,
+                *parallel_lookup_index,
+                location,
+            ),
             _ => eprintln!("{self}"),
         }
     }

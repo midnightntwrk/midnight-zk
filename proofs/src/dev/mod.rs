@@ -1033,7 +1033,7 @@ impl<F: FromUniformBytes<64> + Ord> MockProver<F> {
                     parallel_inputs
                         .iter()
                         .enumerate()
-                        .flat_map(move |(column_index, input_expression)| {
+                        .flat_map(move |(parallel_lookup_index, input_expression)| {
                             let lookup_name = lookup_name.clone();
                             let lookup_input_exprs = lookup_input_exprs.clone();
                             input_expression
@@ -1042,12 +1042,12 @@ impl<F: FromUniformBytes<64> + Ord> MockProver<F> {
                                 .map(move |(_, input_row)| VerifyFailure::Lookup {
                                     name: lookup_name.clone(),
                                     lookup_index,
-                                    column_index,
+                                    parallel_lookup_index,
                                     location: FailureLocation::find_expressions(
                                         &self.cs,
                                         &self.regions,
                                         *input_row,
-                                        lookup_input_exprs[column_index].iter(),
+                                        lookup_input_exprs[parallel_lookup_index].iter(),
                                     ),
                                 })
                                 .collect::<Vec<_>>()
@@ -1544,7 +1544,7 @@ mod tests {
             Err(vec![VerifyFailure::Lookup {
                 name: "lookup-0".to_string(),
                 lookup_index: 0,
-                column_index: 0,
+                parallel_lookup_index: 0,
                 location: FailureLocation::InRegion {
                     region: (1, "Faulty synthesis").into(),
                     offset: 1,
@@ -1679,7 +1679,7 @@ mod tests {
             Err(vec![VerifyFailure::Lookup {
                 name: "lookup-0".to_string(),
                 lookup_index: 0,
-                column_index: 0,
+                parallel_lookup_index: 0,
                 location: FailureLocation::InRegion {
                     region: (2, "Faulty synthesis").into(),
                     offset: 1,

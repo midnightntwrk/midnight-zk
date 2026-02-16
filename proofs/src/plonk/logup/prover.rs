@@ -207,7 +207,6 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ComputedMultiplicities<F> {
             }
         });
 
-        // We take n-1 elements because the last row is verified by the identity check.
         let aggregator_poly = iter::once(F::ZERO)
             .chain(logderivative_poly)
             .scan(F::ZERO, |state, cur| {
@@ -345,7 +344,7 @@ where
     let mut input_counts: FxHashMap<F, u32> = table_counts.keys().map(|v| (*v, 0)).collect();
     for value in values.iter() {
         for v in value.iter().take(usable_rows) {
-            input_counts.entry(*v).and_modify(|count| *count += 1);
+            *input_counts.get_mut(v).expect("input value not found in lookup table") += 1;
         }
     }
 
@@ -438,6 +437,29 @@ mod tests {
         assert_eq!(result[1], Fq::from(3u64)); // table[1]=2 -> count 3
         assert_eq!(result[2], Fq::from(3u64)); // table[2]=3 -> count 3
         assert_eq!(result[3], Fq::from(1u64)); // table[3]=4 -> count 1
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_compute_multiplicities_value_not_in_table() {
+        // Table with values: [1, 2, 3, 4]
+        let table = poly_from_vec(vec![
+            Fq::from(1u64),
+            Fq::from(2u64),
+            Fq::from(3u64),
+            Fq::from(4u64),
+        ]);
+
+        // Input contains value 5, which is NOT in the table
+        let input = poly_from_vec(vec![
+            Fq::from(1u64),
+            Fq::from(2u64),
+            Fq::from(5u64),
+            Fq::from(3u64),
+        ]);
+
+        // Should panic because input value 5 is not found in the table
+        compute_multiplicities(&[input], &table, 4);
     }
 
     #[test]

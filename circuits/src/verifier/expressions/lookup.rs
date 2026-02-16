@@ -144,10 +144,14 @@ pub(crate) fn lookup_expressions<S: SelfEmulation>(
         scalar_chip.mul(layouter, &left_minus_right, &active_rows, None)?
     };
 
-    Ok(vec![
-        scalar_chip.mul(layouter, l_0, &lookup_evals.accumulator_eval, None)?,
-        scalar_chip.mul(layouter, l_last, &lookup_evals.accumulator_eval, None)?,
-        id_1,
-        id_2,
-    ])
+    // (l_0(x) + l_last(x)) * Z(x) = 0
+    let l_0_plus_l_last = scalar_chip.add(layouter, l_0, l_last)?;
+    let boundary = scalar_chip.mul(
+        layouter,
+        &l_0_plus_l_last,
+        &lookup_evals.accumulator_eval,
+        None,
+    )?;
+
+    Ok(vec![boundary, id_1, id_2])
 }

@@ -25,19 +25,25 @@
 //!
 //! ## The Core Idea
 //!
-//! Given lookup values `f₁, ..., fₖ` and a table `T = {t₁, ..., tₙ}`, the key
-//! insight is:
+//! Given lookup values `f₁, ..., fₖ` and a table `T = {t₁, ..., tₙ}`, the
+//! logarithmic derivative relation Σⱼ 1/(fⱼ + β) = Σᵢ mᵢ/(tᵢ + β)
+//! characterizes table membership as follows:
 //!
-//! ```text
-//! If there exists `mᵢ` such that Σⱼ 1/(fⱼ + β) = Σᵢ mᵢ/(tᵢ + β), then, w.o.p
-//! over the choice of β, every fⱼ ∈ T,
-//! ```
+//! Completeness:
+//! If fⱼ ∈ T for every j, then there exists `{mᵢ}ᵢ` such that Σⱼ 1/(fⱼ + β) =
+//! Σᵢ mᵢ/(tᵢ + β), for all β.
+//! Here, `mᵢ` is the multiplicity of `tᵢ` (how many times it appears among the
+//! `fⱼ`s).
 //!
-//! where `mᵢ` is the multiplicity of `tᵢ` (how many times it appears among the
-//! `fⱼ`s) and `β` is a random challenge. When duplicate values exist in the
-//! table, multiplicities are normalized: if value `v` is looked up `k` times
-//! and appears `t` times in the table, each position gets `k/t`. This identity
-//! follows from partial fraction decomposition.
+//! Soundness:
+//! If fⱼ∉T for some j, then for every `{mᵢ}ᵢ` it holds Σⱼ 1/(fⱼ + β) ≠ Σᵢ
+//! mᵢ/(tᵢ + β) w.o.p over the choice of β.
+//!
+//! This result follows from partial fraction decomposition.
+//!
+//! Note: When duplicate values exist in the table, multiplicities are
+//! normalized: if value `v` is looked up `k` times and appears `t` times in the
+//! table, multiplicities are normalized with `k/t`.
 //!
 //! ## Running Sum Formulation
 //!
