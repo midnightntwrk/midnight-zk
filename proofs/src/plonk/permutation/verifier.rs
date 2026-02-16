@@ -2,31 +2,25 @@ use std::iter;
 
 use ff::{PrimeField, WithSmallOrderMulGroup};
 
-use super::{super::circuit::Any, Argument, VerifyingKey};
+use super::{Argument, VerifyingKey};
 use crate::{
-    plonk::{self, Error},
+    plonk::{self, permutation, Error},
     poly::{commitment::PolynomialCommitmentScheme, CommitmentLabel, Rotation, VerifierQuery},
     transcript::{Hashable, Transcript},
 };
 
 #[derive(Debug)]
-pub struct Committed<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
+pub(crate) struct Committed<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
     permutation_product_commitments: Vec<CS::Commitment>,
 }
 
-pub struct EvaluatedSet<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
-    permutation_product_commitment: CS::Commitment,
-    permutation_product_eval: F,
-    permutation_product_next_eval: F,
-    permutation_product_last_eval: Option<F>,
+pub(crate) struct CommonEvaluated<F: PrimeField> {
+    pub(crate) permutation_evals: Vec<F>,
 }
 
-pub struct CommonEvaluated<F: PrimeField> {
-    permutation_evals: Vec<F>,
-}
-
-pub struct Evaluated<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
-    sets: Vec<EvaluatedSet<F, CS>>,
+pub(crate) struct Evaluated<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
+    coms: Committed<F, CS>,
+    pub(crate) sets: Vec<permutation::Evaluated<F>>,
 }
 
 impl Argument {
@@ -85,9 +79,9 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> Committed<F, CS> {
     {
         let mut sets = vec![];
 
-        let mut iter = self.permutation_product_commitments.into_iter();
+        let mut iter = self.permutation_product_commitments.iter();
 
-        while let Some(permutation_product_commitment) = iter.next() {
+        while iter.next().is_some() {
             let permutation_product_eval = transcript.read()?;
             let permutation_product_next_eval = transcript.read()?;
             let permutation_product_last_eval = if iter.len() > 0 {
@@ -96,121 +90,18 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> Committed<F, CS> {
                 None
             };
 
-            sets.push(EvaluatedSet {
-                permutation_product_commitment,
+            sets.push(permutation::Evaluated {
                 permutation_product_eval,
                 permutation_product_next_eval,
                 permutation_product_last_eval,
             });
         }
 
-        Ok(Evaluated { sets })
+        Ok(Evaluated { coms: self, sets })
     }
 }
 
 impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<F, CS> {
-    #[allow(clippy::too_many_arguments)]
-    pub(in crate::plonk) fn expressions<'a>(
-        &'a self,
-        vk: &'a plonk::VerifyingKey<F, CS>,
-        p: &'a Argument,
-        common: &'a CommonEvaluated<F>,
-        advice_evals: &'a [F],
-        fixed_evals: &'a [F],
-        instance_evals: &'a [F],
-        l_0: F,
-        l_last: F,
-        l_blind: F,
-        beta: F,
-        gamma: F,
-        x: F,
-    ) -> impl Iterator<Item = F> + 'a {
-        let chunk_len = vk.cs_degree - 2;
-        iter::empty()
-            // Enforce only for the first set.
-            // l_0(X) * (1 - z_0(X)) = 0
-            .chain(
-                self.sets
-                    .first()
-                    .map(|first_set| l_0 * &(F::ONE - &first_set.permutation_product_eval)),
-            )
-            // Enforce only for the last set.
-            // l_last(X) * (z_l(X)^2 - z_l(X)) = 0
-            .chain(self.sets.last().map(|last_set| {
-                (last_set.permutation_product_eval.square() - &last_set.permutation_product_eval)
-                    * &l_last
-            }))
-            // Except for the first set, enforce.
-            // l_0(X) * (z_i(X) - z_{i-1}(\omega^(last) X)) = 0
-            .chain(
-                self.sets
-                    .iter()
-                    .skip(1)
-                    .zip(self.sets.iter())
-                    .map(|(set, last_set)| {
-                        (
-                            set.permutation_product_eval,
-                            last_set.permutation_product_last_eval.unwrap(),
-                        )
-                    })
-                    .map(move |(set, prev_last)| (set - &prev_last) * &l_0),
-            )
-            // And for all the sets we enforce:
-            // (1 - (l_last(X) + l_blind(X))) * (
-            //   z_i(\omega X) \prod (p(X) + \beta s_i(X) + \gamma)
-            // - z_i(X) \prod (p(X) + \delta^i \beta X + \gamma)
-            // )
-            .chain(
-                self.sets
-                    .iter()
-                    .zip(p.columns.chunks(chunk_len))
-                    .zip(common.permutation_evals.chunks(chunk_len))
-                    .enumerate()
-                    .map(move |(chunk_index, ((set, columns), permutation_evals))| {
-                        let mut left = set.permutation_product_next_eval;
-                        for (eval, permutation_eval) in columns
-                            .iter()
-                            .map(|&column| match column.column_type() {
-                                Any::Advice(_) => {
-                                    advice_evals[vk.cs.get_any_query_index(column, Rotation::cur())]
-                                }
-                                Any::Fixed => {
-                                    fixed_evals[vk.cs.get_any_query_index(column, Rotation::cur())]
-                                }
-                                Any::Instance => {
-                                    instance_evals
-                                        [vk.cs.get_any_query_index(column, Rotation::cur())]
-                                }
-                            })
-                            .zip(permutation_evals.iter())
-                        {
-                            left *= &(eval + &(beta * permutation_eval) + &gamma);
-                        }
-
-                        let mut right = set.permutation_product_eval;
-                        let mut current_delta = (beta * &x)
-                            * &(<F as PrimeField>::DELTA
-                                .pow_vartime([(chunk_index * chunk_len) as u64]));
-                        for eval in columns.iter().map(|&column| match column.column_type() {
-                            Any::Advice(_) => {
-                                advice_evals[vk.cs.get_any_query_index(column, Rotation::cur())]
-                            }
-                            Any::Fixed => {
-                                fixed_evals[vk.cs.get_any_query_index(column, Rotation::cur())]
-                            }
-                            Any::Instance => {
-                                instance_evals[vk.cs.get_any_query_index(column, Rotation::cur())]
-                            }
-                        }) {
-                            right *= &(eval + &current_delta + &gamma);
-                            current_delta *= &F::DELTA;
-                        }
-
-                        (left - &right) * (F::ONE - &(l_last + &l_blind))
-                    }),
-            )
-    }
-
     pub(in crate::plonk) fn queries<'r>(
         &'r self,
         vk: &'r plonk::VerifyingKey<F, CS>,
@@ -221,31 +112,33 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
         let x_last = vk.domain.rotate_omega(x, Rotation(-((blinding_factors + 1) as i32)));
 
         iter::empty()
-            .chain(self.sets.iter().flat_map(move |set| {
+            .chain(self.sets.iter().enumerate().flat_map(move |(i, set)| {
                 iter::empty()
                     // Open permutation product commitments at x and \omega x
                     .chain(Some(VerifierQuery::new(
                         x,
                         CommitmentLabel::NoLabel,
-                        &set.permutation_product_commitment,
+                        &self.coms.permutation_product_commitments[i],
                         set.permutation_product_eval,
                     )))
                     .chain(Some(VerifierQuery::new(
                         x_next,
                         CommitmentLabel::NoLabel,
-                        &set.permutation_product_commitment,
+                        &self.coms.permutation_product_commitments[i],
                         set.permutation_product_next_eval,
                     )))
             }))
             // Open it at \omega^{last} x for all but the last set
-            .chain(self.sets.iter().rev().skip(1).flat_map(move |set| {
-                Some(VerifierQuery::new(
-                    x_last,
-                    CommitmentLabel::NoLabel,
-                    &set.permutation_product_commitment,
-                    set.permutation_product_last_eval.unwrap(),
-                ))
-            }))
+            .chain(
+                self.sets.iter().enumerate().rev().skip(1).flat_map(move |(i, set)| {
+                    Some(VerifierQuery::new(
+                        x_last,
+                        CommitmentLabel::NoLabel,
+                        &self.coms.permutation_product_commitments[i],
+                        set.permutation_product_last_eval.unwrap(),
+                    ))
+                }),
+            )
     }
 }
 

@@ -506,7 +506,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                         lookup_expressions(
                             layouter,
                             &self.scalar_chip,
-                            &lookups_evaluated[index],
+                            &lookups_evaluated[index].evaluated,
                             cs.lookups()[index].input_expressions(),
                             cs.lookups()[index].table_expressions(),
                             &advice_evals,
@@ -531,7 +531,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                         trash_expressions(
                             layouter,
                             &self.scalar_chip,
-                            &trashcans_evaluated[index],
+                            &trashcans_evaluated[index].evaluated,
                             cs.trashcans()[index].selector(),
                             cs.trashcans()[index].constraint_expressions(),
                             &advice_evals,

@@ -24,14 +24,14 @@ use midnight_proofs::{
 use crate::{
     field::AssignedNative,
     instructions::ArithInstructions,
-    verifier::{expressions::compress_expressions, lookup::Evaluated, SelfEmulation},
+    verifier::{expressions::compress_expressions, lookup::LookupEvaluated, SelfEmulation},
 };
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn lookup_expressions<S: SelfEmulation>(
     layouter: &mut impl Layouter<S::F>,
     scalar_chip: &S::ScalarChip,
-    lookup_evals: &Evaluated<S>,
+    lookup_evals: &LookupEvaluated<S>,
     input_expressions: &[Expression<S::F>],
     table_expressions: &[Expression<S::F>],
     advice_evals: &[AssignedNative<S::F>],
