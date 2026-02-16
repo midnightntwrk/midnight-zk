@@ -20,7 +20,7 @@ pub(crate) struct CommonEvaluated<F: PrimeField> {
 
 pub(crate) struct Evaluated<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
     coms: Committed<F, CS>,
-    pub(crate) sets: Vec<plonk::permutation::Evaluated<F>>,
+    pub(crate) sets: Vec<permutation::Evaluated<F>>,
 }
 
 impl Argument {
