@@ -18,8 +18,8 @@ use std::iter;
 use ff::{PrimeField, WithSmallOrderMulGroup};
 
 use crate::{
-    plonk::{logup::FlattenedArgument, Error, VerifyingKey},
-    poly::{commitment::PolynomialCommitmentScheme, Rotation, VerifierQuery},
+    plonk::{Error, VerifyingKey, logup::FlattenedArgument},
+    poly::{CommitmentLabel, Rotation, VerifierQuery, commitment::PolynomialCommitmentScheme},
     transcript::{Hashable, Transcript},
 };
 
@@ -210,27 +210,31 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
         &self,
         vk: &VerifyingKey<F, CS>,
         x: F,
-    ) -> impl Iterator<Item = VerifierQuery<F, CS>> + Clone {
+    ) -> impl Iterator<Item = VerifierQuery<'_, F, CS>> + Clone {
         let x_next = vk.domain.rotate_omega(x, Rotation::next());
 
         iter::empty()
             .chain(Some(VerifierQuery::new(
                 x,
+                CommitmentLabel::NoLabel,
                 &self.committed.multiplicities,
                 self.multiplicities_eval,
             )))
             .chain(Some(VerifierQuery::new(
                 x,
+                CommitmentLabel::NoLabel,
                 &self.committed.helper_poly,
                 self.helper_eval,
             )))
             .chain(Some(VerifierQuery::new(
                 x,
+                CommitmentLabel::NoLabel,
                 &self.committed.accumulator,
                 self.accumulator_eval,
             )))
             .chain(Some(VerifierQuery::new(
                 x_next,
+                CommitmentLabel::NoLabel,
                 &self.committed.accumulator,
                 self.accumulator_next_eval,
             )))
