@@ -200,7 +200,7 @@ impl<const NB_PROOFS: usize> Circuit<F> for AggregatorCircuit<NB_PROOFS> {
                 verifier_chip.prepare(
                     &mut layouter,
                     &assigned_inner_vk,
-                    &[identity_point.clone()],
+                    std::slice::from_ref(&identity_point),
                     &[&assigned_instances],
                     proof.clone(),
                 )

@@ -151,7 +151,7 @@ impl<S: SelfEmulation> Msm<S> {
         let mut scalars = self.scalars.clone();
 
         for (key, scalar) in self.fixed_base_scalars.iter() {
-            let base = fixed_bases.get(key).expect(&format!("Base not provided: {key}"));
+            let base = fixed_bases.get(key).unwrap_or_else(|| panic!("Base not provided: {key}"));
             bases.push(*base);
             scalars.push(*scalar);
         }
