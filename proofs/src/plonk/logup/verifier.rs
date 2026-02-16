@@ -18,8 +18,8 @@ use std::iter;
 use ff::{PrimeField, WithSmallOrderMulGroup};
 
 use crate::{
-    plonk::{Error, VerifyingKey, logup::FlattenedArgument},
-    poly::{CommitmentLabel, Rotation, VerifierQuery, commitment::PolynomialCommitmentScheme},
+    plonk::{logup::FlattenedArgument, Error, VerifyingKey},
+    poly::{commitment::PolynomialCommitmentScheme, CommitmentLabel, Rotation, VerifierQuery},
     transcript::{Hashable, Transcript},
 };
 
