@@ -310,6 +310,7 @@ where
     // This check ensures the circuit is satisfied so long as the polynomial
     // commitments open to the correct values.
     let vanishing = evaluate_identities(
+        vk,
         &fixed_evals,
         &instance_evals,
         &advice_evals,
@@ -323,7 +324,6 @@ where
         gamma,
         theta,
         trash_challenge,
-        vk,
         &challenges,
         y,
         vanishing,

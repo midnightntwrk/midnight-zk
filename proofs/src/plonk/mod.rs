@@ -470,6 +470,7 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> VerifyingKey<F, CS> {
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn evaluate_identities<'a, F, CS>(
+    vk: &'a VerifyingKey<F, CS>,
     fixed_evals: &'a [F],
     instance_evals: &'a [Vec<F>],
     advice_evals: &'a [Vec<F>],
@@ -483,7 +484,6 @@ pub(crate) fn evaluate_identities<'a, F, CS>(
     gamma: F,
     theta: F,
     trash_challenge: F,
-    vk: &'a VerifyingKey<F, CS>,
     challenges: &'a [F],
     y: F,
     vanishing: PartiallyEvaluated<F, CS>,
