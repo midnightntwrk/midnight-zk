@@ -195,7 +195,8 @@ impl<F: CircuitField> Pow2RangeChip<F> {
 
         meta.batch_lookup("pow2range column check", |meta| {
             let sel = meta.query_selector(q_pow2range);
-            let tags = vec![meta.query_fixed(tag_col, Rotation::cur()); val_cols.len()];
+            let tag = meta.query_fixed(tag_col, Rotation::cur());
+            let tags = vec![tag; val_cols.len()];
             let vals = val_cols
                 .iter()
                 .map(|val_col| sel.clone() * meta.query_advice(*val_col, Rotation::cur()))

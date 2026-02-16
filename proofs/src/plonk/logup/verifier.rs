@@ -110,8 +110,8 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
     ///
     /// Checks two identities:
     /// - **Helper constraint**: `h(x) · ∏ⱼ(fⱼ(x) + β) = Σⱼ ∏_{k≠j}(fₖ(x) + β)`
-    /// - **Accumulator constraint**: `Z(ωx)·(t(x) + β) = (Z(x) + h(x))·(t(x) +
-    ///   β) - m(x)`
+    /// - **Accumulator constraint**:
+    ///   `Z(ωx)·(t(x) + β) = (Z(x) + h(x))·(t(x) + β) - m(x)`
     #[allow(clippy::too_many_arguments)]
     pub(in crate::plonk) fn expressions<'a>(
         &'a self,
@@ -171,8 +171,8 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
         // identity), not just at active rows.
         let product: F = compressed_inputs_with_beta.iter().product();
 
-        // Compute partial products: ∏_{k≠j}(fₖ(x) + β) = product / (fⱼ(x) +
-        // β)
+        // Compute partial products:
+        // ∏_{k≠j}(fₖ(x) + β) = product / (fⱼ(x) + β)
         let partial_products: Vec<F> = compressed_inputs_with_beta
             .iter()
             .map(|input| product * input.invert().unwrap())
@@ -180,8 +180,9 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
         let sum: F = partial_products.iter().sum();
         let helper_expression = || self.helper_eval * product - sum;
 
-        // LogUp accumulator constraint: Z(ωx)·(t(x) + β) = (Z(x) + h(x))·(t(x) + β) -
-        // m(x) Rearranging: (Z(ωx) - Z(x) - h(x)) · (t(x) + β) + m(x) = 0
+        // LogUp accumulator constraint:
+        // Z(ωx)·(t(x) + β) = (Z(x) + h(x))·(t(x) + β) - m(x)
+        // Rearranging: (Z(ωx) - Z(x) - h(x)) · (t(x) + β) + m(x) = 0
         let accumulator_constraint = || {
             let diff = (self.accumulator_next_eval - self.accumulator_eval - self.helper_eval)
                 * (compressed_table + beta)
