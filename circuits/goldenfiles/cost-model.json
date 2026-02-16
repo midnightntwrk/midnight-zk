@@ -45,7 +45,7 @@
       "max_deg": "5",
       "permutations": "14",
       "point_sets": "3",
-      "rows": "110",
+      "rows": "704",
       "table_rows": "2"
     },
     "one_permutation": {
@@ -80,7 +80,7 @@
       "max_deg": "5",
       "permutations": "15",
       "point_sets": "4",
-      "rows": "1872",
+      "rows": "9328",
       "table_rows": "7933"
     }
   },
@@ -93,8 +93,21 @@
       "max_deg": "5",
       "permutations": "15",
       "point_sets": "6",
-      "rows": "3680",
+      "rows": "11008",
       "table_rows": "15487"
+    }
+  },
+  "VarPoseidon": {
+    "hash": {
+      "advice_columns": "18",
+      "column_queries": "92",
+      "fixed_columns": "69",
+      "lookups": "4",
+      "max_deg": "5",
+      "permutations": "20",
+      "point_sets": "3",
+      "rows": "640",
+      "table_rows": "99"
     }
   },
   "VarSHA256": {
@@ -106,7 +119,7 @@
       "max_deg": "5",
       "permutations": "15",
       "point_sets": "4",
-      "rows": "17691",
+      "rows": "10131",
       "table_rows": "7933"
     }
   },
@@ -2009,7 +2022,7 @@
       "max_deg": "5",
       "permutations": "15",
       "point_sets": "3",
-      "rows": "6",
+      "rows": "10",
       "table_rows": "4"
     },
     "double": {
