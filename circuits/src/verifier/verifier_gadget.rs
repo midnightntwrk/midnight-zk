@@ -201,6 +201,33 @@ impl<S: SelfEmulation> VerifierGadget<S> {
 
         Ok(assigned_vk)
     }
+
+    /// Assigns a verifying key as a constant. All the necessary information is
+    /// available off-circuit, except for the `transcript_repr` which is
+    /// "assigned fixed".
+    pub fn assign_fixed_vk(
+        &self,
+        layouter: &mut impl Layouter<S::F>,
+        vk_name: &str,
+        domain: &EvaluationDomain<S::F>,
+        cs: &ConstraintSystem<S::F>,
+        transcript_repr_constant: S::F,
+    ) -> Result<AssignedVk<S>, Error> {
+        let transcript_repr = self.scalar_chip.assign_fixed(layouter, transcript_repr_constant)?;
+        // We expect a finalized cs with no selectors, i.e. whose selectors have been
+        // converted into fixed columns.
+        let selectors = vec![vec![false]; cs.num_selectors()];
+        let (processed_cs, _) = cs.clone().directly_convert_selectors_to_fixed(selectors);
+
+        let assigned_vk = AssignedVk {
+            vk_name: vk_name.to_string(),
+            domain: domain.clone(),
+            cs: processed_cs,
+            transcript_repr,
+        };
+
+        Ok(assigned_vk)
+    }
 }
 
 impl<S: SelfEmulation> VerifierGadget<S> {
