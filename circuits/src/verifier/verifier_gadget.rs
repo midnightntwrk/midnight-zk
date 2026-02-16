@@ -687,8 +687,6 @@ impl<S: SelfEmulation> VerifierGadget<S> {
 #[cfg(test)]
 pub(crate) mod tests {
 
-    use std::collections::BTreeMap;
-
     use group::Group;
     use midnight_proofs::{
         circuit::SimpleFloorPlanner,
@@ -946,11 +944,10 @@ pub(crate) mod tests {
             .expect("Problem preparing the inner proof")
         };
 
-        let mut fixed_bases = BTreeMap::new();
-        fixed_bases.extend(crate::verifier::fixed_bases::<S>("inner_vk", &inner_vk));
+        let fixed_bases = crate::verifier::fixed_bases::<S>("inner_vk", &inner_vk);
 
-        let mut inner_acc: Accumulator<S> = inner_dual_msm.clone().into();
-        inner_acc.extract_fixed_bases(&fixed_bases);
+        let mut inner_acc =
+            Accumulator::<S>::from_dual_msm(inner_dual_msm.clone(), "inner_vk", &fixed_bases);
 
         assert!(inner_dual_msm.check(&inner_params.verifier_params()));
         assert!(inner_acc.check(&inner_params.s_g2().into(), &fixed_bases));

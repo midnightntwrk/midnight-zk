@@ -436,7 +436,7 @@ where
 
     let right = {
         let mut right = final_com; // C
-        let minus_v_gen = AssignedMsm::from_fixed_term(&v, "~G");
+        let minus_v_gen = AssignedMsm::from_fixed_term(&v, "-G");
         right.add_msm(layouter, scalar_chip, &minus_v_gen)?; // -vG
         right.add_msm(layouter, scalar_chip, &scaled_pi)?; // zπ
         right

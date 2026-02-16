@@ -35,7 +35,7 @@ use midnight_curves::pairing::Engine;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
-    poly::kzg::msm::DualMSM,
+    poly::{kzg::msm::DualMSM, CommitmentLabel},
 };
 use num_bigint::BigUint;
 use num_traits::One;
@@ -48,7 +48,9 @@ use crate::{
     instructions::{hash::HashCPU, HashInstructions, PublicInputInstructions},
     types::{AssignedBit, InnerValue, Instantiable},
     verifier::{
+        fixed_commitment_name,
         msm::{AssignedMsm, Msm},
+        perm_commitment_name,
         utils::AssignedBoundedScalar,
         SelfEmulation,
     },
@@ -72,21 +74,59 @@ pub struct AssignedAccumulator<C: SelfEmulation> {
     pub(crate) rhs: AssignedMsm<C>,
 }
 
-impl<S: SelfEmulation> From<DualMSM<S::Engine>> for Accumulator<S> {
-    fn from(dual_msm: DualMSM<S::Engine>) -> Self {
+impl<S: SelfEmulation> Accumulator<S> {
+    /// Converts the off-circuit dual MSM into an `Accumulator<S>` by separating
+    /// the fixed-base scalars aside in a BTreeMap indexed by the base name with
+    /// a custom prefix.
+    ///
+    /// This function also takes a map of fixed bases indexed by their name,
+    /// which is used to perform a sanity check on the fixed-base scalars of the
+    /// dual MSM.
+    pub fn from_dual_msm(
+        dual_msm: DualMSM<S::Engine>,
+        prefix: &str,
+        fixed_bases: &BTreeMap<String, S::C>,
+    ) -> Self {
         let (lhs, rhs) = dual_msm.split();
 
-        let lhs: (Vec<S::C>, Vec<S::F>) = lhs.into_iter().map(|(s, b)| (*b, *s)).unzip();
-        let rhs: (Vec<S::C>, Vec<S::F>) = rhs.into_iter().map(|(s, b)| (*b, *s)).unzip();
+        let process_msm = |msm: Vec<(&CommitmentLabel, &S::F, &S::C)>| {
+            let mut bases = Vec::with_capacity(msm.len());
+            let mut scalars = Vec::with_capacity(msm.len());
+            let mut fixed_base_scalars = BTreeMap::new();
+            for (label, scalar, base) in msm {
+                match label {
+                    CommitmentLabel::Fixed(i) => {
+                        let name = fixed_commitment_name(prefix, *i);
+                        assert_eq!(fixed_bases.get(&name), Some(base));
+                        fixed_base_scalars.insert(name, *scalar);
+                    }
+                    CommitmentLabel::Permutation(i) => {
+                        let name = perm_commitment_name(prefix, *i);
+                        assert_eq!(fixed_bases.get(&name), Some(base));
+                        fixed_base_scalars.insert(name, *scalar);
+                    }
+                    CommitmentLabel::Custom(s) if s == "-G" => {
+                        assert_eq!(fixed_bases.get(s), Some(base));
+                        fixed_base_scalars.insert("-G".into(), *scalar);
+                    }
+                    _ => {
+                        bases.push(*base);
+                        scalars.push(*scalar);
+                    }
+                }
+            }
+            (bases, scalars, fixed_base_scalars)
+        };
+
+        let (lhs_bases, lhs_scalars, lhs_fixed_base_scalars) = process_msm(lhs);
+        let (rhs_bases, rhs_scalars, rhs_fixed_base_scalars) = process_msm(rhs);
 
         Accumulator {
-            lhs: Msm::from_terms(&lhs.0, &lhs.1),
-            rhs: Msm::from_terms(&rhs.0, &rhs.1),
+            lhs: Msm::new(&lhs_bases, &lhs_scalars, &lhs_fixed_base_scalars),
+            rhs: Msm::new(&rhs_bases, &rhs_scalars, &rhs_fixed_base_scalars),
         }
     }
-}
 
-impl<S: SelfEmulation> Accumulator<S> {
     /// Checks whether the accumulator, when evaluated with the provided
     /// fixed-bases, satisfies the invariant w.r.t. the given \[τ\]₂.
     pub fn check(&self, tau_in_g2: &S::G2Affine, fixed_bases: &BTreeMap<String, S::C>) -> bool {

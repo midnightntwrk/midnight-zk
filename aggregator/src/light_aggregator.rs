@@ -321,8 +321,9 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
                 let fixed_bases =
                     midnight_circuits::verifier::fixed_bases::<S>("inner_vk", &self.inner_vk);
 
-                let mut proof_acc: Accumulator<S> = dual_msm.into();
-                proof_acc.extract_fixed_bases(&fixed_bases);
+                let proof_acc =
+                    Accumulator::<S>::from_dual_msm(dual_msm.clone(), "inner_vk", &fixed_bases);
+
                 Ok(proof_acc)
             })
             .collect::<Result<_, Error>>()?;

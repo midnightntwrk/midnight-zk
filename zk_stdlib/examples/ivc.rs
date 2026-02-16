@@ -339,8 +339,8 @@ fn main() {
 
             assert!(dual_msm.clone().check(&srs.verifier_params()));
 
-            let mut proof_acc: Accumulator<S> = dual_msm.into();
-            proof_acc.extract_fixed_bases(&fixed_bases);
+            let mut proof_acc =
+                Accumulator::<S>::from_dual_msm(dual_msm, self_vk_name, &fixed_bases);
             proof_acc.collapse();
             proof_acc
         };
