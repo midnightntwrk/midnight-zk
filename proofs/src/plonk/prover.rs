@@ -29,23 +29,23 @@ use crate::{
     utils::{arithmetic::eval_polynomial, rational::Rational},
 };
 
-fn compute_h_poly<
+pub(crate) fn compute_h_poly<
     F: WithSmallOrderMulGroup<3> + Hashable<T::Hash>,
     CS: PolynomialCommitmentScheme<F>,
     T: Transcript,
 >(
     params: &CS::Parameters,
     domain: &EvaluationDomain<F>,
-    h_poly: Polynomial<F, ExtendedLagrangeCoeff>,
+    nu_poly: Polynomial<F, ExtendedLagrangeCoeff>,
     transcript: &mut T,
 ) -> Result<Vec<Polynomial<F, Coeff>>, Error>
 where
     CS::Commitment: Hashable<T::Hash>,
 {
-    // Divide by t(X) = X^{params.n} - 1.
-    let h_poly = domain.divide_by_vanishing_poly(h_poly);
+    // Construct quotient polynomial h(X) = nu(X) / (X^n - 1) in evaluation form
+    let h_poly = domain.divide_by_vanishing_poly(nu_poly);
 
-    // Obtain final h(X) polynomial
+    // Convert h(X) to coefficient form
     let mut h_poly = domain.extended_to_coeff(h_poly);
 
     // Let n := size of evaluation domain
@@ -54,28 +54,25 @@ where
     // and a domain of size (d-1)*(n-1) suffices to correctly represent it
     h_poly.truncate((domain.n - 1) as usize * domain.get_quotient_poly_degree());
 
-    // Split h(X) up into pieces
-    let mut h_pieces = h_poly
-        .chunks_exact((domain.n - 1) as usize)
-        .map(|v| v.to_vec())
-        .collect::<Vec<_>>();
+    // Split h(X) up into limbs
+    let h_poly_iter = h_poly.chunks_exact((domain.n - 1) as usize);
+    assert_eq!(h_poly_iter.remainder().len(), 0);
+    let mut h_limbs = h_poly_iter.map(|v| v.to_vec()).collect::<Vec<_>>();
     drop(h_poly);
 
-    blind_quotient_limbs(&mut h_pieces);
+    blind_quotient_limbs(&mut h_limbs);
 
-    let h_pieces: Vec<_> =
-        h_pieces.into_iter().map(|h_piece| domain.coeff_from_vec(h_piece)).collect();
+    let h_limbs: Vec<_> = h_limbs.into_iter().map(|h_limb| domain.coeff_from_vec(h_limb)).collect();
 
-    // Compute commitments to each h(X) piece
-    let h_commitments: Vec<_> =
-        h_pieces.iter().map(|h_piece| CS::commit(params, h_piece)).collect();
+    // Compute commitment to each limb
+    let h_commitments = h_limbs.iter().map(|h_piece| CS::commit(params, h_piece));
 
-    // Hash each h(X) piece
+    // Write each limb commitment to the transcript
     for c in h_commitments {
         transcript.write(&c)?;
     }
 
-    Ok(h_pieces)
+    Ok(h_limbs)
 }
 
 fn blind_quotient_limbs<F: PrimeField>(quotient_limbs: &mut [Vec<F>]) {
