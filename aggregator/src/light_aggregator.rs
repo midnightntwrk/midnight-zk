@@ -190,8 +190,7 @@ impl<const NB_PROOFS: usize> Circuit<F> for AggregatorCircuit<NB_PROOFS> {
 
         let proof_accs = (self.instances.transpose_array().iter())
             .zip(self.proofs.iter())
-            .enumerate()
-            .map(|(i, (instances, proof))| {
+            .map(|(instances, proof)| {
                 let assigned_instances: Vec<AssignedNative<F>> = instances
                     .transpose_array()
                     .iter()
@@ -201,7 +200,7 @@ impl<const NB_PROOFS: usize> Circuit<F> for AggregatorCircuit<NB_PROOFS> {
                 verifier_chip.prepare(
                     &mut layouter,
                     &assigned_inner_vk,
-                    &[(&com_instance_name::<NB_PROOFS>(i), identity_point.clone())],
+                    &[identity_point.clone()],
                     &[&assigned_instances],
                     proof.clone(),
                 )
@@ -303,8 +302,7 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
         // which must be a public input of the aggregator circuit.
         let proof_accs: Vec<Accumulator<S>> = (proofs.iter())
             .zip(instances.iter())
-            .enumerate()
-            .map(|(i, (proof, proof_instances))| {
+            .map(|(proof, proof_instances)| {
                 let mut inner_transcript =
                     CircuitTranscript::<LightPoseidonFS<F>>::init_from_bytes(proof);
                 let dual_msm = plonk::prepare::<
@@ -320,12 +318,8 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
 
                 assert!(dual_msm.clone().check(&srs.verifier_params()));
 
-                let mut fixed_bases = BTreeMap::new();
-                fixed_bases.insert(com_instance_name::<NB_PROOFS>(i), C::identity());
-                fixed_bases.extend(midnight_circuits::verifier::fixed_bases::<S>(
-                    "inner_vk",
-                    &self.inner_vk,
-                ));
+                let fixed_bases =
+                    midnight_circuits::verifier::fixed_bases::<S>("inner_vk", &self.inner_vk);
 
                 let mut proof_acc: Accumulator<S> = dual_msm.into();
                 proof_acc.extract_fixed_bases(&fixed_bases);
@@ -335,14 +329,7 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
 
         let acc = Accumulator::<S>::accumulate(&proof_accs);
 
-        let mut fixed_bases = BTreeMap::new();
-        for i in 0..NB_PROOFS {
-            fixed_bases.insert(com_instance_name::<NB_PROOFS>(i), C::identity());
-        }
-        fixed_bases.extend(midnight_circuits::verifier::fixed_bases::<S>(
-            "inner_vk",
-            &self.inner_vk,
-        ));
+        let fixed_bases = midnight_circuits::verifier::fixed_bases::<S>("inner_vk", &self.inner_vk);
         assert!(acc.check(&srs.s_g2().into(), &fixed_bases)); // sanity check
 
         // We now proceed to aggregating all proofs.
@@ -464,17 +451,7 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
         };
 
         // Now verify that the final accumulator satisfies the invariant.
-        let fixed_bases = {
-            let mut fixed_bases = BTreeMap::new();
-            for i in 0..NB_PROOFS {
-                fixed_bases.insert(com_instance_name::<NB_PROOFS>(i), C::identity());
-            }
-            fixed_bases.extend(midnight_circuits::verifier::fixed_bases::<S>(
-                "inner_vk",
-                &self.inner_vk,
-            ));
-            fixed_bases
-        };
+        let fixed_bases = midnight_circuits::verifier::fixed_bases::<S>("inner_vk", &self.inner_vk);
 
         let acc_dual_msm = DualMSM::new(
             MSMKZG::<E>::from_base(&acc_lhs.eval(&fixed_bases)),
@@ -505,11 +482,6 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
         dual_msm.add_msm(proof_dual_msm);
         dual_msm.verify(srs_verifier).map_err(|_| Error::Opening)
     }
-}
-
-fn com_instance_name<const NB_PROOFS: usize>(i: usize) -> String {
-    let nb_digits = (NB_PROOFS - 1).to_string().len();
-    format!("com_instance_{:0>nb_digits$}", i)
 }
 
 #[cfg(test)]
