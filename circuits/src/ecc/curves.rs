@@ -208,6 +208,7 @@ use midnight_curves::k256::{Fp as K256Fp, K256Affine, K256};
 
 impl CircuitCurve for K256 {
     type Base = K256Fp;
+    type ScalarField = <Self as Group>::Scalar;
     type CryptographicGroup = K256;
 
     const NUM_BITS_SUBGROUP: u32 = 256;
@@ -234,7 +235,7 @@ impl WeierstrassCurve for K256 {
         K256::base_zeta()
     }
 
-    fn scalar_zeta() -> Self::Scalar {
+    fn scalar_zeta() -> Self::ScalarField {
         K256::scalar_zeta()
     }
 }
