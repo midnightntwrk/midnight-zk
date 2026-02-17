@@ -3,6 +3,7 @@
 
 use std::{io::Write, time::Instant};
 
+use midnight_circuits::CircuitField;
 use midnight_circuits::{
     field::foreign::{params::MultiEmulationParams, AssignedField},
     instructions::{
@@ -14,7 +15,7 @@ use midnight_circuits::{
     testing_utils::ecdsa::{ECDSASig, FromBase64, PublicKey},
     types::{AssignedByte, AssignedForeignPoint, InnerValue, Instantiable},
 };
-use midnight_curves::secp256k1::{Fq as secp256k1Scalar, Secp256k1};
+use midnight_curves::k256::{Fq as K256Scalar, K256};
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
@@ -37,23 +38,21 @@ const CRED_PATH: &str = concat!(
 const PUB_KEY: &[u8] =
     b"_bDXlQJ636HHOvXSe-flG0f-OkkRu8Jusm93PB2GBjoykg753nsOiW1vhEpCnxxybkMdarJLXIUJIYw1K2emQI";
 
-// Secret key of the credential holder.
-const HOLDER_SK: SK = SK::from_raw([
-    0x87c251f40ac6a55e,
-    0xc82dbae785c00836,
-    0x36f09fcb94100833,
-    0xc4e05a8ec16835ce,
-]);
+// Secret key of the credential holder (big-endian bytes).
+const HOLDER_SK_BYTES: [u8; 32] = [
+    0xc4, 0xe0, 0x5a, 0x8e, 0xc1, 0x68, 0x35, 0xce, 0x36, 0xf0, 0x9f, 0xcb, 0x94, 0x10, 0x08, 0x33,
+    0xc8, 0x2d, 0xba, 0xe7, 0x85, 0xc0, 0x08, 0x36, 0x87, 0xc2, 0x51, 0xf4, 0x0a, 0xc6, 0xa5, 0x5e,
+];
 
 const HEADER_LEN: usize = 38;
 const PAYLOAD_LEN: usize = 2463;
 
 // Issuer Public Key.
-type PK = Secp256k1;
+type PK = K256;
 // Credential payload.
 type Payload = [u8; PAYLOAD_LEN];
 // Holder secret key.
-type SK = secp256k1Scalar;
+type SK = K256Scalar;
 
 #[derive(Clone, Default)]
 pub struct FullCredential;
@@ -63,7 +62,7 @@ impl Relation for FullCredential {
     type Witness = (Payload, ECDSASig, SK);
 
     fn format_instance(instance: &Self::Instance) -> Result<Vec<F>, Error> {
-        Ok(AssignedForeignPoint::<F, Secp256k1, MultiEmulationParams>::as_public_input(instance))
+        Ok(AssignedForeignPoint::<F, K256, MultiEmulationParams>::as_public_input(instance))
     }
 
     fn circuit(
@@ -121,11 +120,11 @@ impl Relation for FullCredential {
             .assigned_from_be_bytes(layouter, &y_val[..32])?;
 
         let holder_pk = secp256k1_curve.point_from_coordinates(layouter, &x_coord, &y_coord)?;
-        let holder_sk: AssignedField<_, secp256k1Scalar, MultiEmulationParams> =
+        let holder_sk: AssignedField<_, K256Scalar, MultiEmulationParams> =
             std_lib.secp256k1_scalar().assign(layouter, sk)?;
 
-        let gen: AssignedForeignPoint<_, Secp256k1, MultiEmulationParams> =
-            secp256k1_curve.assign_fixed(layouter, Secp256k1::generator())?;
+        let gen: AssignedForeignPoint<_, K256, MultiEmulationParams> =
+            secp256k1_curve.assign_fixed(layouter, K256::generator())?;
         let must_be_pk = secp256k1_curve.msm(layouter, &[holder_sk], &[gen])?;
         secp256k1_curve.assert_equal(layouter, &holder_pk, &must_be_pk)?;
 
@@ -156,7 +155,7 @@ impl FullCredential {
     fn verify_ecdsa(
         std_lib: &ZkStdLib,
         layouter: &mut impl Layouter<F>,
-        pk: AssignedForeignPoint<F, Secp256k1, MultiEmulationParams>,
+        pk: AssignedForeignPoint<F, K256, MultiEmulationParams>,
         message: &[AssignedByte<F>],
         sig: Value<ECDSASig>,
     ) -> Result<(), Error> {
@@ -183,7 +182,7 @@ impl FullCredential {
         let r_over_s = secp256k1_scalar.div(layouter, &r_as_scalar, &s)?;
         let m_over_s = secp256k1_scalar.div(layouter, &msg_hash, &s)?;
 
-        let gen = secp256k1_curve.assign_fixed(layouter, Secp256k1::generator())?;
+        let gen = secp256k1_curve.assign_fixed(layouter, K256::generator())?;
         let lhs = secp256k1_curve.msm(layouter, &[m_over_s, r_over_s], &[gen, pk])?;
         let lhs_x = secp256k1_curve.x_coordinate(&lhs);
 
@@ -289,7 +288,8 @@ fn main() {
     let wit = start("Computing instance and witnesses");
     let instance = PublicKey::from_base64(PUB_KEY).expect("Base64 encoded PK");
     let witness = FullCredential::witness_from_blob(credential_blob.as_slice());
-    let witness = (witness.0, witness.1, HOLDER_SK);
+    let holder_sk = K256Scalar::from_bytes_be(&HOLDER_SK_BYTES).expect("Valid scalar");
+    let witness = (witness.0, witness.1, holder_sk);
     println!("... done ({:?})", wit.elapsed());
 
     let p = start("Proof generation");

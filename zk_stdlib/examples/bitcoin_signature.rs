@@ -10,8 +10,9 @@ use midnight_circuits::{
         PublicInputInstructions, ZeroInstructions,
     },
     types::{AssignedByte, AssignedForeignPoint, Instantiable},
+    CircuitField,
 };
-use midnight_curves::secp256k1::{Fp as secp256k1Base, Fq as secp256k1Scalar, Secp256k1};
+use midnight_curves::k256::{Fp as K256Base, Fq as K256Scalar, K256};
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
@@ -23,9 +24,9 @@ use sha2::Digest;
 type F = midnight_curves::Fq;
 
 type Message = [u8; 32];
-type PK = Secp256k1;
+type PK = K256;
 
-type Signature = (secp256k1Base, secp256k1Scalar);
+type Signature = (K256Base, K256Scalar);
 
 // Prefix used in the SHA digest of the bitcoin signature. The tag corresponds
 // to SHA256("BIP0340/nonce"), where the string is encoded as utf-8. The prefix
@@ -45,7 +46,7 @@ impl Relation for BitcoinSigExample {
 
     fn format_instance((pk, msg_bytes): &Self::Instance) -> Result<Vec<F>, Error> {
         Ok([
-            AssignedForeignPoint::<F, Secp256k1, MultiEmulationParams>::as_public_input(pk),
+            AssignedForeignPoint::<F, K256, MultiEmulationParams>::as_public_input(pk),
             msg_bytes
                 .iter()
                 .flat_map(AssignedByte::<F>::as_public_input)
@@ -114,7 +115,7 @@ impl Relation for BitcoinSigExample {
             .flatten()
             .collect::<Vec<_>>();
 
-        let gen = secp256k1_curve.assign_fixed(layouter, Secp256k1::generator())?;
+        let gen = secp256k1_curve.assign_fixed(layouter, K256::generator())?;
         let s_bits = secp256k1_scalar.assigned_to_le_bits(layouter, &s, None, true)?;
         let neg_pk = secp256k1_curve.negate(layouter, &pk)?;
 
@@ -179,9 +180,10 @@ fn main() {
     let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
 
     let instance = (parse_bitcoin_point(&pk_bytes), msg_bytes);
+    // sig_bytes are in big-endian.
     let witness = (
-        secp256k1Base::from_bytes(&reverse_bytes(&sig_bytes[..32])).expect("Secp base"),
-        secp256k1Scalar::from_bytes(&reverse_bytes(&sig_bytes[32..])).expect("Secp scalar"),
+        K256Base::from_bytes_be(&sig_bytes[..32]).expect("Secp base"),
+        K256Scalar::from_bytes_be(&sig_bytes[32..]).expect("Secp scalar"),
     );
 
     let proof = midnight_zk_stdlib::prove::<BitcoinSigExample, blake2b_simd::State>(
@@ -201,26 +203,14 @@ fn main() {
     )
 }
 
-// Bitcoin uses points that only have even y coordinates. Moreover, the bitcoin
-// library uses big endian representation, while halo2curves uses little endian.
-// This function decompresses 32 bytes (representing the x coordinate), by
-// always using the even y coordinate, and reverting the byte order prior to
-// deserialization.
-fn parse_bitcoin_point(x_coord: &[u8; 32]) -> Secp256k1 {
-    let mut secp_repr = <Secp256k1 as GroupEncoding>::Repr::default();
-    let mut bytes_with_y_coord = [0u8; 33];
-    let mut reverted_bytes = *x_coord;
-    reverted_bytes.reverse();
-    // We mark the y coordinate as even.
-    bytes_with_y_coord[0] = 0u8;
-    bytes_with_y_coord[1..].copy_from_slice(&reverted_bytes);
+// Bitcoin uses points that only have even y coordinates. The input x_coord is
+// in big-endian format. This function decompresses to the point with even y.
+fn parse_bitcoin_point(x_coord: &[u8; 32]) -> K256 {
+    // Standard SEC1 compressed encoding: 0x02 for even y + BE x-bytes.
+    let mut sec1_compressed = [0u8; 33];
+    sec1_compressed[0] = 0x02;
+    sec1_compressed[1..].copy_from_slice(x_coord);
 
-    secp_repr.as_mut().copy_from_slice(&bytes_with_y_coord);
-
-    Secp256k1::from_bytes(&secp_repr).expect("Point parsing failed")
-}
-
-// Reverses the given bytes. Panics if the inputs does not have len 32.
-fn reverse_bytes(bytes: &[u8]) -> [u8; 32] {
-    bytes.iter().copied().rev().collect::<Vec<_>>().try_into().unwrap()
+    let repr = sec1_compressed.into();
+    K256::from_bytes(&repr).expect("Point parsing failed")
 }
