@@ -305,8 +305,7 @@ impl<F: CircuitField> ComposableChip<F> for RipeMD160Chip<F> {
             let carry = meta.query_advice(advice_cols[2], Rotation(-1));
             let res = meta.query_advice(advice_cols[4], Rotation(-1));
 
-            let id =
-                a + b + c + d - res - carry.clone() * Expression::Constant(F::from(1u64 << 32));
+            let id = a + b + c + d - res - carry * Expression::Constant(F::from(1u64 << 32));
 
             Constraints::with_selector(q_mod_add, vec![("addition mod 2^32", id)])
         });
@@ -374,7 +373,7 @@ impl<F: CircuitField> RipeMD160Chip<F> {
         let padded_bytes = self.pad(layouter, input_bytes)?;
 
         // Process each 64-byte block.
-        for block_bytes in padded_bytes.chunks(64) {
+        for block_bytes in padded_bytes.chunks_exact(64) {
             self.process_block(
                 layouter,
                 &mut state,

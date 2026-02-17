@@ -44,18 +44,18 @@ impl<F: CircuitField> From<[AssignedWord<F>; 5]> for State<F> {
     }
 }
 
+impl<F: CircuitField> From<State<F>> for [AssignedWord<F>; 5] {
+    fn from(state: State<F>) -> Self {
+        [state.h0, state.h1, state.h2, state.h3, state.h4]
+    }
+}
+
 impl<F: CircuitField> TryFrom<Vec<AssignedWord<F>>> for State<F> {
     type Error = Vec<AssignedWord<F>>;
 
     fn try_from(words: Vec<AssignedWord<F>>) -> Result<Self, Self::Error> {
         let arr: [AssignedWord<F>; 5] = words.try_into()?;
         Ok(arr.into())
-    }
-}
-
-impl<F: CircuitField> Into<[AssignedWord<F>; 5]> for State<F> {
-    fn into(self) -> [AssignedWord<F>; 5] {
-        [self.h0, self.h1, self.h2, self.h3, self.h4]
     }
 }
 
