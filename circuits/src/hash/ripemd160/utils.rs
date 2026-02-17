@@ -174,7 +174,7 @@ mod tests {
             let [a_sprdd, b_sprdd, c_sprdd]: [u64; 3] = vals.map(spread);
             let (even, _odd) = get_even_and_odd_bits(a_sprdd + b_sprdd + c_sprdd);
 
-            assert_eq!(ret, even as u32);
+            assert_eq!(ret, even);
         }
 
         let mut rng = rand::thread_rng();
