@@ -20,7 +20,7 @@ use std::{fmt::Debug, ops::Rem};
 
 #[cfg(feature = "dev-curves")]
 use midnight_curves::bn256;
-use midnight_curves::{bls12_381, secp256k1};
+use midnight_curves::{bls12_381, k256};
 use num_bigint::{BigInt, BigInt as BI, ToBigInt};
 use num_traits::{One, Signed};
 
@@ -168,7 +168,7 @@ Native fields supported:
 
 /// Secp256k1's Base field over BN254's Scalar field.
 #[cfg(feature = "dev-curves")]
-impl FieldEmulationParams<bn256::Fr, secp256k1::Fp> for MultiEmulationParams {
+impl FieldEmulationParams<bn256::Fr, k256::Fp> for MultiEmulationParams {
     const LOG2_BASE: u32 = 64;
     const NB_LIMBS: u32 = 4;
     fn moduli() -> Vec<BigInt> {
@@ -178,7 +178,7 @@ impl FieldEmulationParams<bn256::Fr, secp256k1::Fp> for MultiEmulationParams {
 }
 
 /// Secp256k1's Base field over BLS12-381's Scalar field.
-impl FieldEmulationParams<bls12_381::Fp, secp256k1::Fp> for MultiEmulationParams {
+impl FieldEmulationParams<bls12_381::Fp, k256::Fp> for MultiEmulationParams {
     const LOG2_BASE: u32 = 52;
     const NB_LIMBS: u32 = 5;
     fn moduli() -> Vec<BigInt> {
@@ -188,7 +188,7 @@ impl FieldEmulationParams<bls12_381::Fp, secp256k1::Fp> for MultiEmulationParams
 }
 
 /// Secp256k1's Base field over BLS12-381's Scalar field.
-impl FieldEmulationParams<midnight_curves::Fq, secp256k1::Fp> for MultiEmulationParams {
+impl FieldEmulationParams<midnight_curves::Fq, k256::Fp> for MultiEmulationParams {
     const LOG2_BASE: u32 = 64;
     const NB_LIMBS: u32 = 4;
     fn moduli() -> Vec<BigInt> {
@@ -209,7 +209,7 @@ Native fields supported:
 
 /// Secp256k1's Scalar field over BN254's Scalar field.
 #[cfg(feature = "dev-curves")]
-impl FieldEmulationParams<bn256::Fr, secp256k1::Fq> for MultiEmulationParams {
+impl FieldEmulationParams<bn256::Fr, k256::Fq> for MultiEmulationParams {
     const LOG2_BASE: u32 = 52;
     const NB_LIMBS: u32 = 5;
     fn moduli() -> Vec<BigInt> {
@@ -219,7 +219,7 @@ impl FieldEmulationParams<bn256::Fr, secp256k1::Fq> for MultiEmulationParams {
 }
 
 /// Secp256k1's Scalar field over BLS12-381's Scalar field.
-impl FieldEmulationParams<bls12_381::Fp, secp256k1::Fq> for MultiEmulationParams {
+impl FieldEmulationParams<bls12_381::Fp, k256::Fq> for MultiEmulationParams {
     const LOG2_BASE: u32 = 52;
     const NB_LIMBS: u32 = 5;
     fn moduli() -> Vec<BigInt> {
@@ -229,7 +229,7 @@ impl FieldEmulationParams<bls12_381::Fp, secp256k1::Fq> for MultiEmulationParams
 }
 
 /// Secp256k1's Scalar field over BLS12-381's Scalar field.
-impl FieldEmulationParams<midnight_curves::Fq, secp256k1::Fq> for MultiEmulationParams {
+impl FieldEmulationParams<midnight_curves::Fq, k256::Fq> for MultiEmulationParams {
     const LOG2_BASE: u32 = 64;
     const NB_LIMBS: u32 = 4;
     fn moduli() -> Vec<BigInt> {

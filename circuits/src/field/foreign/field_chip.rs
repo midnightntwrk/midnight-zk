@@ -1699,7 +1699,7 @@ where
 #[cfg(test)]
 mod tests {
     use midnight_curves::{
-        secp256k1::{Fp as secp256k1Base, Fq as secp256k1Scalar},
+        k256::{Fp as K256Base, Fq as K256Scalar},
         Fq as BlsScalar,
     };
 
@@ -1733,12 +1733,12 @@ mod tests {
         ($mod:ident, $op:ident) => {
             #[test]
             fn $op() {
-                test_generic!($mod, $op, BlsScalar, secp256k1Base, "field_chip_secp_base");
+                test_generic!($mod, $op, BlsScalar, K256Base, "field_chip_secp_base");
                 test_generic!(
                     $mod,
                     $op,
                     BlsScalar,
-                    secp256k1Scalar,
+                    K256Scalar,
                     "field_chip_secp_scalar"
                 );
             }
@@ -1788,12 +1788,12 @@ mod tests {
         ($mod:ident, $op:ident) => {
             #[test]
             fn $op() {
-                test_generic!($mod, $op, BlsScalar, secp256k1Base, "field_chip_secp_base");
+                test_generic!($mod, $op, BlsScalar, K256Base, "field_chip_secp_base");
                 test_generic!(
                     $mod,
                     $op,
                     BlsScalar,
-                    secp256k1Scalar,
+                    K256Scalar,
                     "field_chip_secp_scalar"
                 );
             }
