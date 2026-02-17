@@ -27,7 +27,7 @@ use rand_core::{CryptoRng, RngCore};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::{
-    plonk::{evaluation::evaluate, logup::FlattenedArgument, Error, Expression, ProvingKey},
+    plonk::{evaluation::evaluate, logup::{self, FlattenedArgument}, Error, Expression, ProvingKey},
     poly::{
         commitment::PolynomialCommitmentScheme, Coeff, LagrangeCoeff, Polynomial, ProverQuery,
         Rotation,
@@ -60,6 +60,7 @@ pub(crate) struct ComputedMultiplicities<F: PrimeField> {
 /// Committed polynomials after evaluation at challenge point.
 pub(crate) struct Evaluated<F: PrimeField> {
     pub(crate) constructed: Committed<F>,
+    pub(crate) evaluated: logup::Evaluated<F>,
 }
 
 impl<F: WithSmallOrderMulGroup<3> + Hash> FlattenedArgument<F> {
@@ -266,18 +267,21 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
         let domain = &pk.vk.domain;
         let x_next = domain.rotate_omega(x, Rotation::next());
 
+        let multiplicities_eval = eval_polynomial(&self.multiplicities, x); 
+        let helper_eval = eval_polynomial(&self.helper_poly, x); 
+        let accumulator_eval = eval_polynomial(&self.aggregator_poly, x);
+        let accumulator_next_eval = eval_polynomial(&self.aggregator_poly, x_next);
         for eval in [
-            (&self.multiplicities, x),
-            (&self.helper_poly, x),
-            (&self.aggregator_poly, x),
-            (&self.aggregator_poly, x_next),
+            &multiplicities_eval,
+            &helper_eval,
+            &accumulator_eval,
+            &accumulator_next_eval,
         ]
-        .map(|(p, x)| eval_polynomial(p, x))
         {
-            transcript.write(&eval)?;
+            transcript.write(eval)?;
         }
 
-        Ok(Evaluated { constructed: self })
+        Ok(Evaluated { constructed: self, evaluated: logup::Evaluated { multiplicities_eval, helper_eval, accumulator_eval, accumulator_next_eval }})
     }
 }
 

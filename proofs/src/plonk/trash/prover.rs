@@ -2,7 +2,7 @@ use ff::{FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
 
 use super::{super::Error, Argument};
 use crate::{
-    plonk::evaluation::evaluate,
+    plonk::{evaluation::evaluate, trash},
     poly::{
         commitment::PolynomialCommitmentScheme, Coeff, EvaluationDomain, LagrangeCoeff, Polynomial,
         ProverQuery,
@@ -17,7 +17,10 @@ pub(crate) struct Committed<F: PrimeField> {
     pub(crate) trash_poly: Polynomial<F, Coeff>,
 }
 
-pub(crate) struct Evaluated<F: PrimeField>(Committed<F>);
+pub(crate) struct Evaluated<F: PrimeField> {
+    committed: Committed<F>,
+    pub(crate) evaluated: trash::Evaluated<F>,
+}
 
 impl<F: WithSmallOrderMulGroup<3> + Ord> Argument<F> {
     #[allow(clippy::too_many_arguments)]
@@ -75,7 +78,10 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
         let trash_eval = eval_polynomial(&self.trash_poly, x);
         transcript.write(&trash_eval)?;
 
-        Ok(Evaluated(self))
+        Ok(Evaluated {
+            committed: self,
+            evaluated: trash::Evaluated { trash_eval },
+        })
     }
 }
 
@@ -83,7 +89,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluated<F> {
     pub(crate) fn open(&self, x: F) -> impl Iterator<Item = ProverQuery<'_, F>> + Clone {
         vec![ProverQuery {
             point: x,
-            poly: &self.0.trash_poly,
+            poly: &self.committed.trash_poly,
         }]
         .into_iter()
     }
