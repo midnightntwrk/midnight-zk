@@ -24,6 +24,7 @@ use std::{hash::Hash, iter};
 
 use ff::{BatchInvert, FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
 use rand_core::{CryptoRng, RngCore};
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::{
     plonk::{evaluation::evaluate, logup::FlattenedArgument, Error, Expression, ProvingKey},
@@ -174,25 +175,24 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ComputedMultiplicities<F> {
         table_denoms.iter_mut().batch_invert();
 
         // F(X) = 1 / (f(X) + beta)
-        // We flatten all input columns into a single vector to perform
-        // one batch_invert call instead of one per column.
-        let input_len = self.compressed_input_expression.len();
-        let mut input_denoms = vec![F::ZERO; input_len * n];
-        parallelize(&mut input_denoms, |input, start| {
-            for (i, input) in input.iter_mut().enumerate() {
-                let i = i + start;
-                *input = beta + self.compressed_input_expression[i / n].values[i % n];
-            }
-        });
+        // Invert each column independently in parallel, then sum across columns
+        // to form the helper polynomial Σⱼ 1/(fⱼ(X) + β).
+        let inverted_columns: Vec<Vec<F>> = self
+            .compressed_input_expression
+            .par_iter()
+            .map(|col| {
+                let mut denoms: Vec<F> = col.iter().map(|v| beta + v).collect();
+                denoms.iter_mut().batch_invert();
+                denoms
+            })
+            .collect();
 
-        // Helper polynomials Σⱼ 1/(fⱼ(X) + β)
-        input_denoms.iter_mut().batch_invert();
         let mut helper_poly = vec![F::ZERO; n];
-        parallelize(&mut helper_poly, |input, start| {
-            for (i, input) in input.iter_mut().enumerate() {
-                let i = i + start;
-                for j in 0..input_len {
-                    *input += input_denoms[i + j * n];
+        parallelize(&mut helper_poly, |chunk, start| {
+            for (i, val) in chunk.iter_mut().enumerate() {
+                let row = i + start;
+                for col in &inverted_columns {
+                    *val += col[row];
                 }
             }
         });
