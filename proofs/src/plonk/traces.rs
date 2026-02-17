@@ -33,7 +33,6 @@ pub struct ProverTrace<F: PrimeField> {
 #[derive(Debug)]
 pub struct VerifierTrace<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> {
     pub(crate) advice_commitments: Vec<Vec<PCS::Commitment>>,
-    pub(crate) vanishing: vanishing::verifier::Committed<F, PCS>,
     pub(crate) lookups: Vec<Vec<logup::verifier::Committed<F, PCS>>>,
     pub(crate) trashcans: Vec<Vec<trash::verifier::Committed<F, PCS>>>,
     pub(crate) permutations: Vec<permutation::verifier::Committed<F, PCS>>,
