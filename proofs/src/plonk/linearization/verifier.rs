@@ -4,7 +4,7 @@ use ff::PrimeField;
 
 use crate::{
     plonk::VerifyingKey,
-    poly::{commitment::PolynomialCommitmentScheme, VerifierQuery},
+    poly::{commitment::PolynomialCommitmentScheme, CommitmentLabel, VerifierQuery},
 };
 
 /// Construct the commitment to the linearization polynomial
@@ -79,7 +79,7 @@ pub(crate) fn compute_linearization_commitment<
 
     VerifierQuery::new_linear(
         x,
-        crate::poly::CommitmentLabel::NoLabel,
+        CommitmentLabel::Custom("linearization_poly".into()),
         identities_points,
         identities_scalars,
         F::ZERO,
