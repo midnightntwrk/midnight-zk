@@ -9,9 +9,9 @@ const MAX_LIMB: u8 = 11;
 const LAST_LIMB: u8 = WORD % MAX_LIMB; // 10
 pub(super) const NUM_LIMBS: usize = ((WORD - 1) / MAX_LIMB + 2) as usize; // 4
 
-/// Decomposes a 32-bit word (in big-endian) into limbs so that the first k
+/// Decomposes a 32-bit word (in big-endian) into limbs so that the first k + 1
 /// limbs represent the `rot` bits that will be left-rotated, and returns
-/// the lengths of each limb along with k.
+/// the lengths of each limb along with the value k + 1.
 ///
 /// # Panics
 ///
