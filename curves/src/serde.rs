@@ -145,7 +145,7 @@ pub mod endian {
     }
 }
 
-#[allow(dead_code)]
+#[cfg(any(test, feature = "dev-curves"))]
 pub(crate) enum CompressedFlagConfig {
     // NOTE: if needed we can add fields for bit positions
 
@@ -162,14 +162,17 @@ pub(crate) enum CompressedFlagConfig {
     ThreeSpare, // is_compressed: 0, sign: 1, identity: 2
 }
 
+#[cfg(any(test, feature = "dev-curves"))]
 impl CompressedFlagConfig {
     pub(crate) const fn has_extra_byte(&self) -> bool {
         matches!(self, CompressedFlagConfig::Extra)
     }
 }
 
+#[cfg(any(test, feature = "dev-curves"))]
 pub(crate) struct Flag {}
 
+#[cfg(any(test, feature = "dev-curves"))]
 impl Flag {
     fn flag(pos: u8) -> u8 {
         1 << 7u8.checked_sub(pos).unwrap()
@@ -187,6 +190,7 @@ impl Flag {
     }
 }
 
+#[cfg(any(test, feature = "dev-curves"))]
 pub(crate) trait Compressed<C: crate::CurveAffine>:
     Debug + Copy + Default + AsRef<[u8]> + AsMut<[u8]> + Send + Sync + 'static
 where
