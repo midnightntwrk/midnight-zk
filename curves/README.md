@@ -1,4 +1,6 @@
-# Midnight curves
+# Midnight Curves
+
+[![Crates.io Version](https://img.shields.io/crates/v/midnight-curves?label=midnight-curves)](https://crates.io/crates/midnight-curves)
 
 This crate provides implementations of the **BLS12-381** and **JubJub** curves.
 

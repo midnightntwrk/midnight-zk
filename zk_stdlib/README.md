@@ -1,6 +1,10 @@
 # Midnight ZK Standard Library
 
-The Midnight ZK Standard Library (`midnight-zk-stdlib`) provides a 
+[![Crates.io Version](https://img.shields.io/crates/v/midnight-zk-stdlib?label=midnight-zk-stdlib)](https://crates.io/crates/midnight-zk-stdlib)
+
+// TODO: possible to use absolute links for Midnight Circuits and Proofs,
+that are also resolved on crates.io?
+The *Midnight ZK Standard Library* (`midnight-zk-stdlib`) provides a 
 high-level abstraction for building zero-knowledge circuits using the 
 [Midnight Circuits](../circuits) library and the [Midnight Proofs](../proofs)
 proving system.

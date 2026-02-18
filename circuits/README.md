@@ -2,6 +2,7 @@
 
 [![CI checks](https://github.com/midnightntwrk/midnight-circuits/actions/workflows/ci.yml/badge.svg)](https://github.com/midnightntwrk/midnight-circuits/actions/workflows/ci.yml)
 [![Examples](https://github.com/midnightntwrk/midnight-circuits/actions/workflows/examples.yml/badge.svg)](https://github.com/midnightntwrk/midnight-circuits/actions/workflows/examples.yml)
+[![Crates.io Version](https://img.shields.io/crates/v/midnight-circuits?label=midnight-circuits)](https://crates.io/crates/midnight-circuits)
 
 *Midnight Circuits* is a library designed for implementing circuits with [Halo2](https://github.com/zcash/halo2). It is built on the [PSE v0.4.0 release](https://github.com/privacy-scaling-explorations/halo2/releases/tag/v0.4.0) of Halo2, incorporating a few [minor additions](https://github.com/midnightntwrk/halo2/commits/dev/) required to support *Midnight Circuits*.
 

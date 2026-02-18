@@ -1,4 +1,6 @@
-# midnight_proofs
+# Midnight Proofs
+
+[![Crates.io Version](https://img.shields.io/crates/v/midnight-proofs?label=midnight-proofs)](https://crates.io/crates/midnight-proofs)
 
 Implementation of Plonk proof system with KZG commitments. This repo initially started 
 as a fork of [`halo2`](https://github.com/privacy-scaling-explorations/halo2) v0.3.0 – 
@@ -7,10 +9,9 @@ by the Privacy Scaling Explorations (PSE) team, itself originally derived from t
 ### Summary of Changes
 
 - **Generic proof system interface**  
-  The proof system is now built on top of a generic trait, `PolynomialCommitmentScheme`, with a simpler
-  and more generic interface.
-  At the moment, we provide an implementation using KZG commitments with the original Halo2  
-  [multi-open argument](https://zcash.github.io/halo2/design/proving-system/multipoint-opening.html).
+  The proof system is now built on top of a generic trait, `PolynomialCommitmentScheme`, with
+  a simpler and more generic interface. At the moment, we provide an implementation using
+  KZG commitments with the original Halo2 [multi-open argument](https://zcash.github.io/halo2/design/proving-system/multipoint-opening.html).
 
 - **Simplified transcript interface**  
   The `Transcript` API has been modified for easier use in and off-circuit.
@@ -36,16 +37,16 @@ minor version bump.
 
 ## Controlling parallelism
 
-`midnight_proofs` currently uses [rayon](https://github.com/rayon-rs/rayon) for parallel
+*Midnight Proofs* currently uses [rayon](https://github.com/rayon-rs/rayon) for parallel
 computation. The `RAYON_NUM_THREADS` environment variable can be used to set the number of
 threads.
 
 When compiling to WASM-targets, notice that since version `1.7`, `rayon` will fallback automatically (with no need to handle features) to require `getrandom` in order to be able to work. For more info related to WASM-compilation.
 
-See: [Rayon: Usage with WebAssembly](https://github.com/rayon-rs/rayon#usage-with-webassembly) for more 
+See: [Rayon: Usage with WebAssembly](https://github.com/rayon-rs/rayon#usage-with-webassembly) for more details.
 
 ## License
-
+// TODO: similar as above: absolute reference to root directory that can also be resolved in crates.io?
 See root directory for Licensing. We have copied the license files of the original [Zcash Sapling proving system](https://github.com/zcash/halo2).
 
 ### Contribution
