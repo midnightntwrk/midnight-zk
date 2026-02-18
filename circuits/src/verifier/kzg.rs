@@ -273,6 +273,9 @@ impl<S: SelfEmulation> VerifierQuery<S> {
     }
 
     #[allow(dead_code)]
+    // Neither this function nor the commitment labels on verifier
+    // queries are currently needed, but we keep them for consistency
+    // with the `proofs/` implementation and for potential future use.
     fn get_label(&self) -> &CommitmentLabel {
         &self.label
     }
