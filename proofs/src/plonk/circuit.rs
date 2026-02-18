@@ -1865,7 +1865,7 @@ impl<F: Field> ConstraintSystem<F> {
         name: S,
         table_map: impl FnOnce(&mut VirtualCells<'_, F>) -> Vec<(Expression<F>, TableColumn)>,
     ) -> usize {
-        self.batch_lookup(name, |cells| {
+        self.batched_lookup(name, |cells| {
             table_map(cells).into_iter().map(|(expr, table)| (vec![expr], table)).collect()
         })
     }
@@ -1875,7 +1875,7 @@ impl<F: Field> ConstraintSystem<F> {
     ///
     /// `table_map` returns a vector of maps between input expressions
     /// and the table columns they need to match.
-    pub fn batch_lookup<S: AsRef<str>>(
+    pub fn batched_lookup<S: AsRef<str>>(
         &mut self,
         name: S,
         table_map: impl FnOnce(&mut VirtualCells<'_, F>) -> Vec<(Vec<Expression<F>>, TableColumn)>,

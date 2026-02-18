@@ -214,7 +214,7 @@ impl<F: CircuitField> ComposableChip<F> for Sha512Chip<F> {
         let q_3_13x3_3_11_1_1_5_1 = meta.selector();
         let q_add_mod_2_64 = meta.selector();
 
-        meta.batch_lookup("plain-spreaded lookup", |meta| {
+        meta.batched_lookup("plain-spreaded lookup", |meta| {
             let q_lookup = meta.query_selector(q_lookup);
 
             let nbits_0 = meta.query_fixed(fixed_cols[0], Rotation(0));

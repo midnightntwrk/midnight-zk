@@ -214,7 +214,7 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ComputedMultiplicities<F> {
                 Some(*state)
             })
             // Take all rows including the "last" row.
-            .take(pk.vk.n() as usize - blinding_factors)
+            .take(n as usize - blinding_factors)
             // Chain random blinding factors.
             .chain((0..blinding_factors).map(|_| F::random(&mut rng)))
             .collect::<Vec<_>>();
