@@ -12,6 +12,7 @@ verification keys break backwards compatibility.
 
 ## [Unreleased]
 ### Added
+* Added an example of parallelizable IVC [#218](https://github.com/midnightntwrk/midnight-zk/pull/218)
 * Added an example verifying an ethereum signature [#177](https://github.com/midnightntwrk/midnight-zk/pull/177)
 
 ### Changed
