@@ -18,7 +18,10 @@ use std::iter;
 use ff::{PrimeField, WithSmallOrderMulGroup};
 
 use crate::{
-    plonk::{logup::FlattenedArgument, Error, VerifyingKey},
+    plonk::{
+        logup::{self, FlattenedArgument},
+        Error, VerifyingKey,
+    },
     poly::{commitment::PolynomialCommitmentScheme, CommitmentLabel, Rotation, VerifierQuery},
     transcript::{Hashable, Transcript},
 };
@@ -39,10 +42,7 @@ pub struct Committed<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
 /// Commitments plus evaluations at challenge point.
 pub struct Evaluated<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
     committed: Committed<F, CS>,
-    multiplicities_eval: F,
-    helper_eval: F,
-    accumulator_eval: F,
-    accumulator_next_eval: F,
+    pub(crate) evaluated: logup::Evaluated<F>,
 }
 
 impl<F: WithSmallOrderMulGroup<3>> FlattenedArgument<F> {
@@ -97,114 +97,17 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> Committed<F, CS> {
 
         Ok(Evaluated {
             committed: self,
-            multiplicities_eval,
-            helper_eval,
-            accumulator_eval,
-            accumulator_next_eval,
+            evaluated: logup::Evaluated {
+                multiplicities_eval,
+                helper_eval,
+                accumulator_eval,
+                accumulator_next_eval,
+            },
         })
     }
 }
 
 impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<F, CS> {
-    /// Computes the constraint expressions.
-    ///
-    /// When a lookup involves multiple columns, `theta` is used as a random
-    /// challenge to compress them into a single value via a random linear
-    /// combination. That is, given expressions `(e₁, ..., eₗ)`, the compressed
-    /// value is `e₁·θˡ⁻¹ + e₂·θˡ⁻² + ... + eₗ`. Both the input values `fⱼ`
-    /// and the table value `t` are compressed this way before being
-    /// substituted into the LogUp identities.
-    ///
-    /// Checks two identities (where `fⱼ` and `t` denote the compressed values):
-    /// - **Helper constraint**: `h(x) · ∏ⱼ(fⱼ(x) + β) = Σⱼ ∏_{k≠j}(fₖ(x) + β)`
-    /// - **Accumulator constraint**: `Z(ωx)·(t(x) + β) = (Z(x) + h(x))·(t(x) +
-    ///   β) - m(x)`
-    #[allow(clippy::too_many_arguments)]
-    pub(in crate::plonk) fn expressions<'a>(
-        &'a self,
-        l_0: F,
-        l_last: F,
-        l_blind: F,
-        argument: &'a FlattenedArgument<F>,
-        theta: F,
-        beta: F,
-        advice_evals: &[F],
-        fixed_evals: &[F],
-        instance_evals: &[F],
-        challenges: &[F],
-    ) -> impl Iterator<Item = F> + 'a {
-        use crate::plonk::circuit::Expression;
-
-        let active_rows = F::ONE - (l_last + l_blind);
-        let evaluate_expressions = |expressions: &[Expression<F>]| {
-            expressions
-                .iter()
-                .map(|expression| {
-                    expression.evaluate(
-                        &|scalar| scalar,
-                        &|_| panic!("virtual selectors are removed during optimization"),
-                        &|query| fixed_evals[query.index.unwrap()],
-                        &|query| advice_evals[query.index.unwrap()],
-                        &|query| instance_evals[query.index.unwrap()],
-                        &|challenge| challenges[challenge.index()],
-                        &|a| -a,
-                        &|a, b| a + b,
-                        &|a, b| a * b,
-                        &|a, scalar| a * scalar,
-                    )
-                })
-                .collect::<Vec<_>>()
-        };
-        let compress_expressions = |expressions: &[Expression<F>]| {
-            evaluate_expressions(expressions)
-                .iter()
-                .fold(F::ZERO, |acc, eval| acc * theta + eval)
-        };
-
-        let compressed_table = compress_expressions(&argument.table_expressions);
-
-        let compressed_inputs_with_beta = argument
-            .input_expressions
-            .iter()
-            .map(|input| {
-                let compressed = compress_expressions(input);
-                compressed + beta
-            })
-            .collect::<Vec<_>>();
-
-        // Helper polynomial constraint: h(x) · ∏ⱼ(fⱼ(x) + β) = Σⱼ ∏_{k≠j}(fₖ(x) + β)
-        // This ensures the helper polynomial has the correct structure for LogUp
-        // soundness. Note: This must hold everywhere (as a polynomial
-        // identity), not just at active rows.
-        let product: F = compressed_inputs_with_beta.iter().product();
-
-        // Compute partial products:
-        // ∏_{k≠j}(fₖ(x) + β) = product / (fⱼ(x) + β)
-        let partial_products: Vec<F> = compressed_inputs_with_beta
-            .iter()
-            .map(|input| product * input.invert().unwrap())
-            .collect();
-        let sum: F = partial_products.iter().sum();
-        let helper_expression = || self.helper_eval * product - sum;
-
-        // LogUp accumulator constraint:
-        // Z(ωx)·(t(x) + β) = (Z(x) + h(x))·(t(x) + β) - m(x)
-        // Rearranging: (Z(ωx) - Z(x) - h(x)) · (t(x) + β) + m(x) = 0
-        let accumulator_constraint = || {
-            let diff = (self.accumulator_next_eval - self.accumulator_eval - self.helper_eval)
-                * (compressed_table + beta)
-                + self.multiplicities_eval;
-            diff * active_rows
-        };
-
-        [
-            (l_0 + l_last) * self.accumulator_eval,
-            helper_expression(),
-            accumulator_constraint(),
-        ]
-        .into_iter()
-    }
-
     /// Returns verification queries.
     pub(in crate::plonk) fn queries(
         &self,
@@ -218,25 +121,25 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
                 x,
                 CommitmentLabel::NoLabel,
                 &self.committed.multiplicities,
-                self.multiplicities_eval,
+                self.evaluated.multiplicities_eval,
             )))
             .chain(Some(VerifierQuery::new(
                 x,
                 CommitmentLabel::NoLabel,
                 &self.committed.helper_poly,
-                self.helper_eval,
+                self.evaluated.helper_eval,
             )))
             .chain(Some(VerifierQuery::new(
                 x,
                 CommitmentLabel::NoLabel,
                 &self.committed.accumulator,
-                self.accumulator_eval,
+                self.evaluated.accumulator_eval,
             )))
             .chain(Some(VerifierQuery::new(
                 x_next,
                 CommitmentLabel::NoLabel,
                 &self.committed.accumulator,
-                self.accumulator_next_eval,
+                self.evaluated.accumulator_next_eval,
             )))
     }
 }

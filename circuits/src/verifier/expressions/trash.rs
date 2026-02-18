@@ -26,7 +26,7 @@ use crate::{
     instructions::ArithInstructions,
     verifier::{
         expressions::{compress_expressions, eval_expression},
-        trash::Evaluated,
+        trash::TrashEvaluated,
         SelfEmulation,
     },
 };
@@ -35,7 +35,7 @@ use crate::{
 pub(crate) fn trash_expressions<S: SelfEmulation>(
     layouter: &mut impl Layouter<S::F>,
     scalar_chip: &S::ScalarChip,
-    trash_evaluated: &Evaluated<S>,
+    trash_evaluated: &TrashEvaluated<S>,
     selector: &Expression<S::F>,
     constraint_expressions: &[Expression<S::F>],
     advice_evals: &[AssignedNative<S::F>],

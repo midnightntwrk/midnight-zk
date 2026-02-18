@@ -11,7 +11,7 @@ use crate::{
         circuit::Circuit,
         logup, permutation,
         prover::{
-            compute_h_poly, compute_instances, compute_queries, parse_advices,
+            compute_instances, compute_nu_poly, compute_queries, parse_advices,
             write_evals_to_transcript,
         },
         traces::ProverTrace,
@@ -415,10 +415,10 @@ where
     let h_poly = {
         group.bench_function("Compute H poly", |b| {
             b.iter(|| {
-                let _ = compute_h_poly(pk, &trace);
+                let _ = compute_nu_poly(pk, &trace);
             })
         });
-        compute_h_poly(pk, &trace)
+        compute_nu_poly(pk, &trace)
     };
 
     let ProverTrace {

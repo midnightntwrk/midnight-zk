@@ -32,6 +32,14 @@ pub(crate) struct CommittedMultiplicities<S: SelfEmulation> {
     multiplicities: S::AssignedPoint,
 }
 
+#[derive(Clone, Debug)]
+pub(crate) struct LookupEvaluated<S: SelfEmulation> {
+    pub(crate) multiplicities_eval: AssignedNative<S::F>,
+    pub(crate) helper_eval: AssignedNative<S::F>,
+    pub(crate) accumulator_eval: AssignedNative<S::F>,
+    pub(crate) accumulator_next_eval: AssignedNative<S::F>,
+}
+
 /// Commitments to the LogUp polynomials, read from the transcript.
 #[derive(Clone, Debug)]
 pub(crate) struct Committed<S: SelfEmulation> {
@@ -44,10 +52,7 @@ pub(crate) struct Committed<S: SelfEmulation> {
 #[derive(Clone, Debug)]
 pub(crate) struct Evaluated<S: SelfEmulation> {
     committed: Committed<S>,
-    pub(crate) multiplicities_eval: AssignedNative<S::F>,
-    pub(crate) helper_eval: AssignedNative<S::F>,
-    pub(crate) accumulator_eval: AssignedNative<S::F>,
-    pub(crate) accumulator_next_eval: AssignedNative<S::F>,
+    pub(crate) evaluated: LookupEvaluated<S>,
 }
 
 /// Reads the prover's commitments from the transcript.
@@ -90,10 +95,12 @@ impl<S: SelfEmulation> Committed<S> {
 
         Ok(Evaluated {
             committed: self,
-            multiplicities_eval,
-            helper_eval,
-            accumulator_eval,
-            accumulator_next_eval,
+            evaluated: LookupEvaluated {
+                multiplicities_eval,
+                helper_eval,
+                accumulator_eval,
+                accumulator_next_eval,
+            },
         })
     }
 }
@@ -112,15 +119,25 @@ impl<S: SelfEmulation> Evaluated<S> {
                 one,
                 x,
                 &self.committed.multiplicities,
-                &self.multiplicities_eval,
+                &self.evaluated.multiplicities_eval,
             ),
-            VerifierQuery::new(one, x, &self.committed.helper_poly, &self.helper_eval),
-            VerifierQuery::new(one, x, &self.committed.accumulator, &self.accumulator_eval),
+            VerifierQuery::new(
+                one,
+                x,
+                &self.committed.helper_poly,
+                &self.evaluated.helper_eval,
+            ),
+            VerifierQuery::new(
+                one,
+                x,
+                &self.committed.accumulator,
+                &self.evaluated.accumulator_eval,
+            ),
             VerifierQuery::new(
                 one,
                 x_next,
                 &self.committed.accumulator,
-                &self.accumulator_next_eval,
+                &self.evaluated.accumulator_next_eval,
             ),
         ]
     }
