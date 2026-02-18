@@ -85,45 +85,25 @@ impl<S: SelfEmulation> Instantiable<S::F> for AssignedVk<S> {
     }
 }
 
-/// Canonical name for the i-th verifying-key commitment.
-// We prefix commitment names with `~` for two reasons:
-// 1. It prevents collisions with other ad hoc names (e.g. for input
-//    commitments).
-// 2. It helps our very limited subroutine `extract_fixed_bases` for extracting
-//    the fixed bases from a dual_msm (produced by halo2_proofs::prepare). If
-//    two bases (with different names) are equal, this subroutine will extract
-//    them from the dual_msm in alphabetical order on their name. This requires
-//    that the committed instances have a name that goes before the one of any
-//    fixed instance, since the halo2 queries for committed instances go first.
-//    Prefixing with `~` will make sure that fixed and perm commitment names go
-//    after any ad hoc commitment name the user may choose (if they do not use
-//    this symbol).
-fn commitment_name(prefix: String, nb_commitments: usize, i: usize) -> String {
-    let nb_digits = utils::num_digits(nb_commitments - 1);
-    format!("~{prefix}_{:0>nb_digits$}", i)
-}
-
 /// Canonical name for the i-th verifying-key fixed commitment.
-fn fixed_commitment_name(prefix: &str, nb_fixed_commitments: usize, i: usize) -> String {
-    commitment_name(String::from(prefix) + "_fixed_com", nb_fixed_commitments, i)
+fn fixed_commitment_name(prefix: &str, i: usize) -> String {
+    format!("{prefix}_fixed_com_{i}")
 }
 
 /// Canonical name for the i-th verifying-key permutation commitment.
-fn perm_commitment_name(prefix: &str, nb_perm_commitments: usize, i: usize) -> String {
-    commitment_name(String::from(prefix) + "_perm_com", nb_perm_commitments, i)
+fn perm_commitment_name(prefix: &str, i: usize) -> String {
+    format!("{prefix}_perm_com_{i}")
 }
 
 impl<S: SelfEmulation> AssignedVk<S> {
     /// Canonical name for the i-th fixed commitment of this AssignedVk.
     fn fixed_commitment_name(&self, i: usize) -> String {
-        let nb_fixed_commitments = self.cs.num_fixed_columns() + self.cs.num_selectors();
-        fixed_commitment_name(&self.vk_name, nb_fixed_commitments, i)
+        fixed_commitment_name(&self.vk_name, i)
     }
 
     /// Canonical name for the i-th perm commitment of this AssignedVk.
     fn perm_commitment_name(&self, i: usize) -> String {
-        let nb_perm_commitments = self.cs.permutation().columns.len();
-        perm_commitment_name(&self.vk_name, nb_perm_commitments, i)
+        perm_commitment_name(&self.vk_name, i)
     }
 }
 
@@ -135,23 +115,17 @@ pub fn fixed_bases<S: SelfEmulation>(
 ) -> BTreeMap<String, S::C> {
     let mut fixed_bases = BTreeMap::new();
 
-    fixed_bases.insert(String::from("~G"), -S::C::generator());
+    fixed_bases.insert(String::from("-G"), -S::C::generator());
 
     let fixed_commitments = vk.fixed_commitments();
     let perm_commitments = vk.permutation().commitments();
 
     for (i, com) in fixed_commitments.iter().enumerate() {
-        fixed_bases.insert(
-            fixed_commitment_name(vk_name, fixed_commitments.len(), i),
-            *com,
-        );
+        fixed_bases.insert(fixed_commitment_name(vk_name, i), *com);
     }
 
     for (i, com) in perm_commitments.iter().enumerate() {
-        fixed_bases.insert(
-            perm_commitment_name(vk_name, perm_commitments.len(), i),
-            *com,
-        );
+        fixed_bases.insert(perm_commitment_name(vk_name, i), *com);
     }
 
     fixed_bases
@@ -171,14 +145,14 @@ pub fn fixed_base_names<S: SelfEmulation>(
     // It corresponds to the negated designated generator. It is not proper of the
     // verifying key, but there is no harm in having it here (it needs to be
     // introduced at some point anyway and this is a good place).
-    names.push("~G".into());
+    names.push("-G".into());
 
     for i in 0..nb_fixed_commitments {
-        names.push(fixed_commitment_name(vk_name, nb_fixed_commitments, i));
+        names.push(fixed_commitment_name(vk_name, i));
     }
 
     for i in 0..nb_perm_commitments {
-        names.push(perm_commitment_name(vk_name, nb_perm_commitments, i));
+        names.push(perm_commitment_name(vk_name, i));
     }
 
     names

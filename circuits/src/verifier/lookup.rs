@@ -16,7 +16,7 @@
 //! This is the in-circuit analog of `proofs/src/plonk/logup/verifier.rs`.
 //! The constraint expressions are implemented in `expressions/lookup.rs`.
 
-use midnight_proofs::{circuit::Layouter, plonk::Error};
+use midnight_proofs::{circuit::Layouter, plonk::Error, poly::CommitmentLabel};
 
 use crate::{
     field::AssignedNative,
@@ -115,27 +115,35 @@ impl<S: SelfEmulation> Evaluated<S> {
         x_next: &AssignedNative<S::F>,     // ωx
     ) -> Vec<VerifierQuery<S>> {
         vec![
+            // Open lookup product commitment at x
             VerifierQuery::new(
                 one,
                 x,
+                CommitmentLabel::NoLabel,
                 &self.committed.multiplicities,
                 &self.evaluated.multiplicities_eval,
             ),
+            // Open lookup input commitments at x
             VerifierQuery::new(
                 one,
                 x,
+                CommitmentLabel::NoLabel,
                 &self.committed.helper_poly,
                 &self.evaluated.helper_eval,
             ),
+            // Open lookup table commitments at x
             VerifierQuery::new(
                 one,
                 x,
+                CommitmentLabel::NoLabel,
                 &self.committed.accumulator,
                 &self.evaluated.accumulator_eval,
             ),
+            // Open lookup product commitment at \omega x
             VerifierQuery::new(
                 one,
                 x_next,
+                CommitmentLabel::NoLabel,
                 &self.committed.accumulator,
                 &self.evaluated.accumulator_next_eval,
             ),

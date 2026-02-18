@@ -27,7 +27,7 @@ use std::{
 };
 
 use ff::Field;
-use midnight_proofs::{circuit::Layouter, plonk::Error};
+use midnight_proofs::{circuit::Layouter, plonk::Error, poly::CommitmentLabel};
 
 #[cfg(feature = "truncated-challenges")]
 use crate::verifier::utils::truncate;
@@ -198,13 +198,15 @@ where
 // ---------------------------
 
 #[derive(Clone, Debug)]
-/// Structure to store a VerifierQuery
+/// Structure to store a VerifierQuery.
 pub(crate) struct VerifierQuery<S: SelfEmulation> {
-    /// Point at which polynomial is queried
+    /// Point at which polynomial is queried.
     point: AssignedNative<S::F>,
-    /// Commitment to the polynomial
+    /// Optional label identifying the commitment in this query.
+    label: CommitmentLabel,
+    /// Commitment to the polynomial.
     commitment: AssignedMsm<S>,
-    /// Evaluation of polynomial at query point
+    /// Evaluation of polynomial at query point.
     eval: AssignedNative<S::F>,
 }
 
@@ -214,24 +216,28 @@ impl<S: SelfEmulation> VerifierQuery<S> {
     pub(crate) fn new(
         one: &AssignedBoundedScalar<S::F>,
         point: &AssignedNative<S::F>,
+        label: CommitmentLabel,
         commitment: &S::AssignedPoint,
         eval: &AssignedNative<S::F>,
     ) -> Self {
         Self {
             point: point.clone(),
+            label,
             commitment: AssignedMsm::from_term(one, commitment),
             eval: eval.clone(),
         }
     }
 
-    /// Create a verifier query on a commitment (respresented as an MSM).
+    /// Create a verifier query on a commitment (represented as an MSM).
     pub(crate) fn new_from_msm(
         point: &AssignedNative<S::F>,
+        label: CommitmentLabel,
         commitment: &AssignedMsm<S>,
         eval: &AssignedNative<S::F>,
     ) -> Self {
         Self {
             point: point.clone(),
+            label,
             commitment: commitment.clone(),
             eval: eval.clone(),
         }
@@ -242,11 +248,13 @@ impl<S: SelfEmulation> VerifierQuery<S> {
     pub(crate) fn new_fixed(
         one: &AssignedBoundedScalar<S::F>,
         point: &AssignedNative<S::F>,
+        label: CommitmentLabel,
         commitment_name: &str,
         eval: &AssignedNative<S::F>,
     ) -> Self {
         Self {
             point: point.clone(),
+            label,
             commitment: AssignedMsm::from_fixed_term(one, commitment_name),
             eval: eval.clone(),
         }
@@ -262,6 +270,14 @@ impl<S: SelfEmulation> VerifierQuery<S> {
 
     fn get_commitment(&self) -> AssignedMsm<S> {
         self.commitment.clone()
+    }
+
+    #[allow(dead_code)]
+    // Neither this function nor the commitment labels on verifier
+    // queries are currently needed, but we keep them for consistency
+    // with the `proofs/` implementation and for potential future use.
+    fn get_label(&self) -> &CommitmentLabel {
+        &self.label
     }
 }
 
@@ -436,7 +452,7 @@ where
 
     let right = {
         let mut right = final_com; // C
-        let minus_v_gen = AssignedMsm::from_fixed_term(&v, "~G");
+        let minus_v_gen = AssignedMsm::from_fixed_term(&v, "-G");
         right.add_msm(layouter, scalar_chip, &minus_v_gen)?; // -vG
         right.add_msm(layouter, scalar_chip, &scaled_pi)?; // zπ
         right

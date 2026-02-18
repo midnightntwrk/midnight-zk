@@ -2,6 +2,7 @@ use std::{any::TypeId, fmt::Debug};
 
 use ff::Field;
 use group::{Curve, Group};
+use itertools::izip;
 use midnight_curves::{
     msm::msm_best,
     pairing::{Engine, MillerLoopResult, MultiMillerLoop},
@@ -166,8 +167,16 @@ pub struct DualMSM<E: Engine> {
 
 /// A [DualMSM] split into left and right vectors of `(Scalar, Point)` tuples
 pub type SplitDualMSM<'a, E> = (
-    Vec<(&'a <E as Engine>::Fr, &'a <E as Engine>::G1)>,
-    Vec<(&'a <E as Engine>::Fr, &'a <E as Engine>::G1)>,
+    Vec<(
+        &'a CommitmentLabel,
+        &'a <E as Engine>::Fr,
+        &'a <E as Engine>::G1,
+    )>,
+    Vec<(
+        &'a CommitmentLabel,
+        &'a <E as Engine>::Fr,
+        &'a <E as Engine>::G1,
+    )>,
 );
 
 impl<E: MultiMillerLoop + Debug> Default for DualMSM<E>
@@ -211,8 +220,18 @@ where
 
     /// Split the [DualMSM] into `left` and `right`
     pub fn split(&self) -> SplitDualMSM<'_, E> {
-        let left = self.left.scalars.iter().zip(self.left.bases.iter()).collect();
-        let right = self.right.scalars.iter().zip(self.right.bases.iter()).collect();
+        let left = izip!(
+            self.left.labels.iter(),
+            self.left.scalars.iter(),
+            self.left.bases.iter()
+        )
+        .collect();
+        let right = izip!(
+            self.right.labels.iter(),
+            self.right.scalars.iter(),
+            self.right.bases.iter(),
+        )
+        .collect();
         (left, right)
     }
 

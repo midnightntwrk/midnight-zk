@@ -19,6 +19,7 @@
 use midnight_proofs::{
     circuit::Layouter,
     plonk::{ConstraintSystem, Error},
+    poly::CommitmentLabel,
 };
 
 use crate::{
@@ -134,12 +135,14 @@ impl<S: SelfEmulation> Evaluated<S> {
             queries.push(VerifierQuery::new(
                 one,
                 x,
+                CommitmentLabel::NoLabel,
                 &self.coms.permutation_product_commitments[i],
                 &set.permutation_product_eval,
             ));
             queries.push(VerifierQuery::new(
                 one,
                 x_next,
+                CommitmentLabel::NoLabel,
                 &self.coms.permutation_product_commitments[i],
                 &set.permutation_product_next_eval,
             ));
@@ -150,6 +153,7 @@ impl<S: SelfEmulation> Evaluated<S> {
             queries.push(VerifierQuery::new(
                 one,
                 x_last,
+                CommitmentLabel::NoLabel,
                 &self.coms.permutation_product_commitments[i],
                 set.permutation_product_last_eval.as_ref().unwrap(),
             ));
@@ -173,8 +177,11 @@ impl<S: SelfEmulation> CommonEvaluated<S> {
 
         commitment_names
             .iter()
+            .enumerate()
             .zip(self.permutation_evals.iter())
-            .map(|(com_name, eval)| VerifierQuery::new_fixed(one, x, com_name, eval))
+            .map(|((i, com_name), eval)| {
+                VerifierQuery::new_fixed(one, x, CommitmentLabel::Permutation(i), com_name, eval)
+            })
             .collect()
     }
 }

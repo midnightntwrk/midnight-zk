@@ -114,7 +114,9 @@ pub fn mul_bounded_scalars<F: CircuitField>(
 pub(crate) fn truncate_off_circuit<F: CircuitField>(scalar: F) -> F {
     let nb_bytes = F::NUM_BITS.div_ceil(8).div_ceil(2) as usize;
     let bytes = scalar.to_bytes_le();
-    F::from_bytes_le(&bytes[..nb_bytes]).unwrap()
+    let mut buffer = vec![0u8; F::NUM_BITS.div_ceil(8) as usize];
+    buffer[..nb_bytes].copy_from_slice(&bytes[..nb_bytes]);
+    F::from_bytes_le(&buffer).unwrap()
 }
 
 /// In-circuit analog of [truncate].
@@ -347,21 +349,4 @@ pub(crate) fn mul_add<F: CircuitField>(
         F::ZERO,
         F::ONE,
     )
-}
-
-/// The minimum number of digits necessary to represent the given integer.
-/// Examples:
-///  * `num_digits(0) = 1`
-///  * `num_digits(1) = 1`
-///  * `num_digits(9) = 1`
-///  * `num_digits(10) = 2`
-///  * `num_digits(99) = 2`
-///  * `num_digits(100) = 3`
-pub(crate) fn num_digits(mut n: usize) -> usize {
-    let mut digits = 1;
-    while n >= 10 {
-        n /= 10;
-        digits += 1;
-    }
-    digits
 }

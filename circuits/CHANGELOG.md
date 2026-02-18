@@ -17,8 +17,10 @@ verification keys break backwards compatibility.
 * Add method to assign a verifying key as a constant [#202](https://github.com/midnightntwrk/midnight-zk/pull/202)
 * RIPEMD160 chip [#156](https://github.com/midnightntwrk/midnight-zk/pull/156)
 * `CircuitField` refactor: remove helpers, add `ScalarExt` in `CircuitCurve` [#201](https://github.com/midnightntwrk/midnight-zk/pull/201)
+* Support non-fixed input commitments in verifier gadget [#212](https://github.com/midnightntwrk/midnight-zk/pull/212)
 
 ### Changed
+* Make handling of fixed_bases more robust in verifier gadget [#212](https://github.com/midnightntwrk/midnight-zk/pull/212)
 * Change nr of bits to represent JubJub scalar field modulus from 255 -> 252 [#179](https://github.com/midnightntwrk/midnight-zk/pull/179)
 * Adapt Poseidon variable length hash to agree with its CPU version [#162](https://github.com/midnightntwrk/midnight-zk/pull/162)
 * Refactor `hash` and `varhash` tests [#162](https://github.com/midnightntwrk/midnight-zk/pull/162)

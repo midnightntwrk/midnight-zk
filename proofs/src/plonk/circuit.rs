@@ -1859,7 +1859,7 @@ impl<F: Field> ConstraintSystem<F> {
     /// table column it needs to match.
     ///
     /// If you want to batch multiple lookups to the same table column in
-    /// parallel, use [`batch_lookup`](Self::batch_lookup) instead.
+    /// parallel, use [`batch_lookup`](Self::batched_lookup) instead.
     pub fn lookup<S: AsRef<str>>(
         &mut self,
         name: S,
