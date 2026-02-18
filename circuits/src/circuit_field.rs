@@ -73,12 +73,14 @@ pub trait CircuitField: PrimeField {
     fn to_bytes_be(&self) -> Self::Bytes;
 
     /// Creates a field element from little-endian bytes.
+    /// Needs to receive excatly Self::NUM_BYTES.
     ///
     /// Returns `None` if the value is not in the canonical range `[0,
     /// modulus)`.
     fn from_bytes_le(bytes: &[u8]) -> Option<Self>;
 
     /// Creates a field element from big-endian bytes.
+    /// Needs to receive exactly Self::NUM_BYTES.
     ///
     /// Returns `None` if the value is not in the canonical range `[0,
     /// modulus)`.
@@ -111,7 +113,7 @@ pub trait CircuitField: PrimeField {
             Some(n) => {
                 // The value must fit within `n` bits.
                 assert!(
-                    all_bits[n..].iter().all(|b| !b),
+                    n > 0 && all_bits[n..].iter().all(|b| !b),
                     "field element does not fit in {n} bits"
                 );
                 all_bits[..n].to_vec()
