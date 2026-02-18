@@ -25,7 +25,7 @@ use ff::Field;
 use midnight_proofs::{
     circuit::{Chip, Layouter, Value},
     plonk::{ConstraintSystem, Error},
-    poly::{EvaluationDomain, Rotation},
+    poly::{CommitmentLabel, EvaluationDomain, Rotation},
 };
 
 use crate::{
@@ -589,6 +589,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                         Some(VerifierQuery::<S>::new(
                             &one,
                             get_point(&rot),
+                            CommitmentLabel::Instance(column.index()),
                             &assigned_committed_instances[column.index()],
                             &instance_evals[query_index],
                         ))
@@ -602,6 +603,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                     VerifierQuery::<S>::new(
                         &one,
                         get_point(&rot),
+                        CommitmentLabel::Advice(column.index()),
                         &advice_commitments[column.index()],
                         &advice_evals[query_index],
                     )
@@ -618,6 +620,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                     VerifierQuery::new_fixed(
                         &one,
                         get_point(&rot),
+                        CommitmentLabel::Fixed(col.index()),
                         &assigned_vk.fixed_commitment_name(col.index()),
                         &fixed_evals[query_index],
                     )
