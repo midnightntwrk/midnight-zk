@@ -180,32 +180,6 @@ impl<S: SelfEmulation> Accumulator<S> {
 
         acc
     }
-
-    /// Given a set of fixed bases (a map indexed by the base name),
-    /// removes the given fixed bases from `self.rhs.bases` and their
-    /// corresponding scalar is moved to `self.rhs.fixed_base_scalars` with the
-    /// base name as key.
-    ///
-    /// The resulting Accumulator is equivalent to the original one.
-    /// Note that this function mutates self.
-    ///
-    /// Also, note that the lhs is not affected.
-    ///
-    /// # Warning
-    ///
-    /// If some of the fixed bases are repeated (different name but same point),
-    /// they are removed from `self.rhs.bases` in the order dictated by the map
-    /// `fixed_bases`.
-    ///
-    /// # Panics
-    ///    
-    /// If some base names exist as a key in `self.rhs.fixed_base_scalars`.
-    ///
-    /// If some of the provided fixed bases do not appear in `self.rhs.bases`
-    /// with the exact required multiplicity.
-    pub fn extract_fixed_bases(&mut self, fixed_bases: &BTreeMap<String, S::C>) {
-        self.rhs.extract_fixed_bases(fixed_bases);
-    }
 }
 
 impl<S: SelfEmulation> InnerValue for AssignedAccumulator<S> {
