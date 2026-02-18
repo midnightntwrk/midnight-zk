@@ -40,6 +40,7 @@ rand_core = { workspace = true, features = ["getrandom"] }
 tracing = { workspace = true }
 blake2b_simd = { workspace = true }
 rand_chacha = { workspace = true }
+itertools = "0.14"
 serde = { workspace = true }
 serde_derive = { workspace = true }
 rayon = { workspace = true }

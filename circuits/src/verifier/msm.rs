@@ -151,7 +151,7 @@ impl<S: SelfEmulation> Msm<S> {
         let mut scalars = self.scalars.clone();
 
         for (key, scalar) in self.fixed_base_scalars.iter() {
-            let base = fixed_bases.get(key).expect("Base not provided: {key}");
+            let base = fixed_bases.get(key).unwrap_or_else(|| panic!("Base not provided: {key}"));
             bases.push(*base);
             scalars.push(*scalar);
         }
@@ -178,62 +178,6 @@ impl<S: SelfEmulation> Msm<S> {
         }
 
         acc
-    }
-
-    /// Given a set of fixed bases (a map indexed by the base name),
-    /// removes the given fixed bases from `self.bases` and their corresponding
-    /// scalar is moved to `self.fixed_bases_scalars` with the base name as
-    /// key.
-    ///
-    /// The resulting MSM is equivalent to the original one.
-    /// Note that this function mutates self.
-    ///
-    /// # Warning
-    ///
-    /// If some of the fixed bases are repeated (different name but same point),
-    /// they are removed from `self.bases` in the order dictated by the map
-    /// `fixed_bases`.
-    ///
-    /// # Panics
-    ///
-    /// If some of the base names exist as a key in `self.fixed_base_scalars`.
-    ///
-    /// If some of the provided fixed bases do not appear in `self.bases` with
-    /// the exact required multiplicity.
-    pub fn extract_fixed_bases(&mut self, fixed_bases: &BTreeMap<String, S::C>) {
-        assert!(
-            fixed_bases.keys().all(|name| !self.fixed_base_scalars.contains_key(name)),
-            "fixed_bases should not contain keys (names) that appear in self.fixed_base_scalars"
-        );
-
-        let n = self.bases.len();
-
-        for (name, fixed_base) in fixed_bases.iter() {
-            let mut found = false;
-            for i in 0..n {
-                if i >= self.bases.len() {
-                    break;
-                }
-                if &self.bases[i] == fixed_base {
-                    found = true;
-                    self.fixed_base_scalars.insert(name.clone(), self.scalars[i]);
-                    self.bases.remove(i);
-                    self.scalars.remove(i);
-                    break;
-                }
-            }
-            if !found {
-                panic!("{fixed_base:?} not found in self.bases (with the required multiplicity)");
-            }
-        }
-
-        // Do another search to make sure that the fixed bases do not appear
-        // anymore, thus they had the exact required multiplicity.
-        for fixed_base in fixed_bases.values() {
-            if self.bases.iter().any(|base| base == fixed_base) {
-                panic!("{fixed_base:?} appears in self.bases more times than expected");
-            }
-        }
     }
 }
 

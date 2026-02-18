@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * optional names on VerifierQuery commitments [#205](https://github.com/midnightntwrk/midnight-zk/pull/205)
 
 ### Changed
+* Improve MSM handling for fixed bases [#212](https://github.com/midnightntwrk/midnight-zk/pull/212)
 * Filtered 0s from MSM [#185](https://github.com/midnightntwrk/midnight-zk/pull/185).
 * Updated Rust toolchain to 1.90.0 [#210](https://github.com/midnightntwrk/midnight-zk/pull/210)
 * Changed lookup argument to logup [#153](https://github.com/midnightntwrk/midnight-zk/pull/153)
