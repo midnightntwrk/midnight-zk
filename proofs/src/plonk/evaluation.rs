@@ -3,7 +3,7 @@ use group::ff::Field;
 
 use super::{ConstraintSystem, Expression};
 use crate::{
-    plonk::{lookup, permutation, trash, Any},
+    plonk::{logup, permutation, trash, Any},
     poly::{EvaluationDomain, Polynomial, PolynomialRepresentation, Rotation},
     utils::arithmetic::parallelize,
 };
@@ -30,8 +30,6 @@ pub enum ValueSource {
     Challenge(usize),
     /// beta
     Beta(),
-    /// gamma
-    Gamma(),
     /// theta
     Theta(),
     /// trash challenge
@@ -61,7 +59,6 @@ impl ValueSource {
         instance_values: &[Polynomial<F, B>],
         challenges: &[F],
         beta: &F,
-        gamma: &F,
         theta: &F,
         trash_challenge: &F,
         y: &F,
@@ -81,7 +78,6 @@ impl ValueSource {
             }
             ValueSource::Challenge(index) => challenges[*index],
             ValueSource::Beta() => *beta,
-            ValueSource::Gamma() => *gamma,
             ValueSource::Theta() => *theta,
             ValueSource::TrashChallenge() => *trash_challenge,
             ValueSource::Y() => *y,
@@ -124,7 +120,6 @@ impl Calculation {
         instance_values: &[Polynomial<F, B>],
         challenges: &[F],
         beta: &F,
-        gamma: &F,
         theta: &F,
         trash_challenge: &F,
         y: &F,
@@ -140,7 +135,6 @@ impl Calculation {
                 instance_values,
                 challenges,
                 beta,
-                gamma,
                 theta,
                 trash_challenge,
                 y,
@@ -167,14 +161,28 @@ impl Calculation {
     }
 }
 
+/// Wraps a `GraphEvaluator` for lookups with named handles to the evaluator
+/// outputs.
+#[derive(Clone, Debug)]
+pub struct LookupGraphEvaluator<F: PrimeField> {
+    /// The underlying computation graph
+    pub graph: GraphEvaluator<F>,
+    /// Value containing the sum of partial products, Σⱼ ∏_{k≠j}(fₖ + β)
+    pub sum_partial_products: ValueSource,
+    /// Value containing the product, ∏ⱼ(fⱼ + β)
+    pub product: ValueSource,
+    /// Value containing the compressed table value (t + β)
+    pub table: ValueSource,
+}
+
 /// Evaluator
 #[derive(Clone, Default, Debug)]
 pub struct Evaluator<F: PrimeField> {
-    ///  Custom gates evalution
+    ///  Custom gates evaluation
     pub custom_gates: GraphEvaluator<F>,
-    ///  Lookups evalution
-    pub lookups: Vec<GraphEvaluator<F>>,
-    ///  Trashcans evalution
+    ///  Lookups evaluation
+    pub lookups: Vec<LookupGraphEvaluator<F>>,
+    ///  Trashcans evaluation
     pub trashcans: Vec<GraphEvaluator<F>>,
 }
 
@@ -200,7 +208,17 @@ pub struct EvaluationData<F: PrimeField> {
     pub rotations: Vec<usize>,
 }
 
-/// CaluclationInfo
+impl<F: PrimeField> EvaluationData<F> {
+    /// Resolve a `ValueSource::Intermediate` handle to its computed value.
+    pub fn resolve(&self, vs: ValueSource) -> F {
+        match vs {
+            ValueSource::Intermediate(idx) => self.intermediates[idx],
+            _ => unreachable!("expected ValueSource::Intermediate"),
+        }
+    }
+}
+
+/// CalculationInfo
 #[derive(Clone, Debug)]
 pub struct CalculationInfo {
     /// Calculation
@@ -227,34 +245,74 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
         ));
 
         // Lookups
-        for lookup in cs.lookups.iter() {
+        for lookup in cs.lookups.iter().flat_map(|l| l.split(cs.degree())) {
             let mut graph = GraphEvaluator::default();
 
-            let mut evaluate_lc = |expressions: &Vec<Expression<_>>| {
-                let parts = expressions.iter().map(|expr| graph.add_expression(expr)).collect();
-                graph.add_calculation(Calculation::Horner(
-                    ValueSource::Constant(0),
-                    parts,
-                    ValueSource::Theta(),
-                ))
-            };
+            // Each input expression gets compressed with θ and shifted by β
+            let compressed_inputs_cosets: Vec<_> = lookup
+                .input_expressions()
+                .iter()
+                .map(|expressions| {
+                    let parts = expressions.iter().map(|expr| graph.add_expression(expr)).collect();
+                    let compressed = graph.add_calculation(Calculation::Horner(
+                        ValueSource::Constant(0),
+                        parts,
+                        ValueSource::Theta(),
+                    ));
 
-            // Input coset
-            let compressed_input_coset = evaluate_lc(&lookup.input_expressions);
-            // table coset
-            let compressed_table_coset = evaluate_lc(&lookup.table_expressions);
-            // z(\omega X) (a'(X) + \beta) (s'(X) + \gamma)
-            let right_gamma = graph.add_calculation(Calculation::Add(
-                compressed_table_coset,
-                ValueSource::Gamma(),
+                    graph.add_calculation(Calculation::Add(compressed, ValueSource::Beta()))
+                })
+                .collect();
+
+            let table_parts: Vec<_> = lookup
+                .table_expressions()
+                .iter()
+                .map(|expr| graph.add_expression(expr))
+                .collect();
+            let compressed_table_coset = graph.add_calculation(Calculation::Horner(
+                ValueSource::Constant(0),
+                table_parts,
+                ValueSource::Theta(),
             ));
-            let lc = graph.add_calculation(Calculation::Add(
-                compressed_input_coset,
+
+            let partial_products = (0..compressed_inputs_cosets.len())
+                .map(|i| {
+                    let mut acc =
+                        graph.add_calculation(Calculation::Store(ValueSource::Constant(1)));
+                    for (j, coset) in compressed_inputs_cosets.iter().enumerate() {
+                        if j != i {
+                            acc = graph.add_calculation(Calculation::Mul(acc, *coset));
+                        }
+                    }
+                    acc
+                })
+                .collect::<Vec<_>>();
+
+            let mut sum_partial_products =
+                graph.add_calculation(Calculation::Store(partial_products[0]));
+            let mut product =
+                graph.add_calculation(Calculation::Store(compressed_inputs_cosets[0]));
+            // Compute ∏ⱼ(fⱼ + β) and Σⱼ ∏_{k≠j}(fₖ + β)
+            for (calculation, partial_prod) in
+                compressed_inputs_cosets.into_iter().zip(partial_products.into_iter()).skip(1)
+            {
+                sum_partial_products =
+                    graph.add_calculation(Calculation::Add(sum_partial_products, partial_prod));
+                product = graph.add_calculation(Calculation::Mul(product, calculation));
+            }
+
+            // Add β: compressed_table + β
+            let table = graph.add_calculation(Calculation::Add(
+                compressed_table_coset,
                 ValueSource::Beta(),
             ));
-            graph.add_calculation(Calculation::Mul(lc, right_gamma));
 
-            ev.lookups.push(graph);
+            ev.lookups.push(LookupGraphEvaluator {
+                graph,
+                sum_partial_products,
+                product,
+                table,
+            });
         }
 
         // Trashcans
@@ -295,7 +353,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
         gamma: F,
         theta: F,
         trash_challenge: F,
-        lookups: &[Vec<lookup::prover::Committed<F>>],
+        lookups: &[Vec<logup::prover::Committed<F>>],
         trashcans: &[Vec<trash::prover::Committed<F>>],
         permutations: &[permutation::prover::Committed<F>],
         l0: &Polynomial<F, B>,
@@ -338,7 +396,6 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                                 instance,
                                 challenges,
                                 &beta,
-                                &gamma,
                                 &theta,
                                 &trash_challenge,
                                 &y,
@@ -379,23 +436,23 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
 
                         // Enforce only for the first set.
                         // l_0(X) * (1 - z_0(X)) = 0
-                        *value = *value * y
-                            + ((one - first_set_permutation_product_coset[idx]) * l0[idx]);
+                        *value =
+                            *value * y + (one - first_set_permutation_product_coset[idx]) * l0[idx];
                         // Enforce only for the last set.
                         // l_last(X) * (z_l(X)^2 - z_l(X)) = 0
                         *value = *value * y
-                            + ((last_set_permutation_product_coset[idx]
+                            + (last_set_permutation_product_coset[idx]
                                 * last_set_permutation_product_coset[idx]
                                 - last_set_permutation_product_coset[idx])
-                                * l_last[idx]);
+                                * l_last[idx];
                         // Except for the first set, enforce.
                         // l_0(X) * (z_i(X) - z_{i-1}(\omega^(last) X)) = 0
                         for set_idx in 0..sets.len() {
                             if set_idx != 0 {
                                 *value = *value * y
-                                    + ((permutation_product_cosets[set_idx][idx]
+                                    + (permutation_product_cosets[set_idx][idx]
                                         - permutation_product_cosets[set_idx - 1][r_last])
-                                        * l0[idx]);
+                                        * l0[idx];
                             }
                         }
                         // And for all the sets we enforce:
@@ -433,7 +490,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                                 current_delta *= &F::DELTA;
                             }
 
-                            *value = *value * y + ((left - right) * l_active_row[idx]);
+                            *value = *value * y + (left - right) * l_active_row[idx];
                         }
                         beta_term *= &omega;
                     }
@@ -445,27 +502,24 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                 // Polynomials required for this lookup.
                 // Calculated here so these only have to be kept in memory for the short time
                 // they are actually needed.
-                let product_coset = B::coeff_to_self(domain, lookup.product_poly.clone());
-                let permuted_input_coset =
-                    B::coeff_to_self(domain, lookup.permuted_input_poly.clone());
-                let permuted_table_coset =
-                    B::coeff_to_self(domain, lookup.permuted_table_poly.clone());
+                let helper_coset = B::coeff_to_self(domain, lookup.helper_poly.clone());
+                let aggregator_coset = B::coeff_to_self(domain, lookup.aggregator_poly.clone());
+                let multiplicities_coset = B::coeff_to_self(domain, lookup.multiplicities.clone());
 
                 // Lookup constraints
                 parallelize(&mut values, |values, start| {
-                    let lookup_evaluator = &self.lookups[n];
-                    let mut eval_data = lookup_evaluator.instance();
+                    let lookup_eval = &self.lookups[n];
+                    let mut eval_data = lookup_eval.graph.instance();
                     for (i, value) in values.iter_mut().enumerate() {
                         let idx = start + i;
 
-                        let table_value = lookup_evaluator.evaluate(
+                        lookup_eval.graph.evaluate(
                             &mut eval_data,
                             fixed,
                             advice,
                             instance,
                             challenges,
                             &beta,
-                            &gamma,
                             &theta,
                             &trash_challenge,
                             &y,
@@ -476,39 +530,25 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                         );
 
                         let r_next = get_rotation_idx(idx, 1, rot_scale, isize);
-                        let r_prev = get_rotation_idx(idx, -1, rot_scale, isize);
 
-                        let a_minus_s = permuted_input_coset[idx] - permuted_table_coset[idx];
-                        // l_0(X) * (1 - z(X)) = 0
-                        *value = *value * y + ((one - product_coset[idx]) * l0[idx]);
-                        // l_last(X) * (z(X)^2 - z(X)) = 0
+                        let sum_partial_products =
+                            eval_data.resolve(lookup_eval.sum_partial_products);
+                        let product = eval_data.resolve(lookup_eval.product);
+                        let table_value = eval_data.resolve(lookup_eval.table);
+
+                        // (l_0(X) + l_last(X)) * Z(X) = 0
+                        *value = *value * y + aggregator_coset[idx] * (l0[idx] + l_last[idx]);
+
+                        // Helper constraint: h(X) · ∏ⱼ(fⱼ(X) + β) = Σⱼ ∏_{k≠j}(fₖ(X) + β)
+                        *value = *value * y + helper_coset[idx] * product - sum_partial_products;
+
+                        // Accumulator constraint: Z(ωX)·(t(X) + β) = (Z(X) + h(X))·(t(X) + β) -
+                        // m(X)
                         *value = *value * y
-                            + ((product_coset[idx] * product_coset[idx] - product_coset[idx])
-                                * l_last[idx]);
-                        // (1 - (l_last(X) + l_blind(X))) * (
-                        //   z(\omega X) (a'(X) + \beta) (s'(X) + \gamma)
-                        //   - z(X) (\theta^{m-1} a_0(X) + ... + a_{m-1}(X) + \beta) (\theta^{m-1}
-                        //     s_0(X) + ... + s_{m-1}(X) + \gamma)
-                        // ) = 0
-                        *value = *value * y
-                            + ((product_coset[r_next]
-                                * (permuted_input_coset[idx] + beta)
-                                * (permuted_table_coset[idx] + gamma)
-                                - product_coset[idx] * table_value)
-                                * l_active_row[idx]);
-                        // Check that the first values in the permuted input expression and permuted
-                        // fixed expression are the same.
-                        // l_0(X) * (a'(X) - s'(X)) = 0
-                        *value = *value * y + (a_minus_s * l0[idx]);
-                        // Check that each value in the permuted lookup input expression is either
-                        // equal to the value above it, or the value at the same index in the
-                        // permuted table expression.
-                        // (1 - (l_last + l_blind)) * (a′(X) − s′(X))⋅(a′(X) − a′(\omega^{-1} X)) =
-                        // 0
-                        *value = *value * y
-                            + (a_minus_s
-                                * (permuted_input_coset[idx] - permuted_input_coset[r_prev])
-                                * l_active_row[idx]);
+                            + l_active_row[idx]
+                                * (aggregator_coset[r_next] * table_value
+                                    - (aggregator_coset[idx] + helper_coset[idx]) * table_value
+                                    + multiplicities_coset[idx]);
                     }
                 });
             }
@@ -535,7 +575,6 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                             instance,
                             challenges,
                             &beta,
-                            &gamma,
                             &theta,
                             &trash_challenge,
                             &y,
@@ -737,7 +776,6 @@ impl<F: PrimeField> GraphEvaluator<F> {
         instance: &[Polynomial<F, B>],
         challenges: &[F],
         beta: &F,
-        gamma: &F,
         theta: &F,
         trash_challenge: &F,
         y: &F,
@@ -762,7 +800,6 @@ impl<F: PrimeField> GraphEvaluator<F> {
                 instance,
                 challenges,
                 beta,
-                gamma,
                 theta,
                 trash_challenge,
                 y,
@@ -811,7 +848,7 @@ pub fn evaluate<F: Field, B: PolynomialRepresentation>(
                 },
                 &|challenge| challenges[challenge.index()],
                 &|a| -a,
-                &|a, b| a + &b,
+                &|a, b| a + b,
                 &|a, b| a * b,
                 &|a, scalar| a * scalar,
             );

@@ -183,6 +183,8 @@ pub enum VerifyFailure {
         /// assigned in the order in which `ConstraintSystem::lookup` is
         /// called during `Circuit::configure`.
         lookup_index: usize,
+        /// The index of the parallel lookup column that is not satisfied.
+        parallel_lookup_index: usize,
         /// The location at which the lookup is not satisfied.
         ///
         /// `FailureLocation::InRegion` is most common, and may be due to the
@@ -265,11 +267,12 @@ impl fmt::Display for VerifyFailure {
             Self::Lookup {
                 name,
                 lookup_index,
+                parallel_lookup_index,
                 location,
             } => {
                 write!(
                     f,
-                    "Lookup {name}(index: {lookup_index}) is not satisfied {location}",
+                    "Lookup {name}(index: {lookup_index}) is not satisfied for column {parallel_lookup_index} {location}",
                 )
             }
             Self::Permutation { column, location } => {
@@ -478,6 +481,7 @@ fn render_lookup<F: Field>(
     prover: &MockProver<F>,
     name: &str,
     lookup_index: usize,
+    column_index: usize,
     location: &FailureLocation,
 ) {
     let n = prover.n as i32;
@@ -576,7 +580,7 @@ fn render_lookup<F: Field>(
 
     eprintln!();
     eprintln!("  Lookup '{name}' inputs:");
-    for (i, input) in lookup.input_expressions.iter().enumerate() {
+    for (i, input) in lookup.input_expressions[column_index].iter().enumerate() {
         // Fetch the cell values (since we don't store them in VerifyFailure::Lookup).
         let cell_values = input.evaluate(
             &|_| BTreeMap::default(),
@@ -670,8 +674,15 @@ impl VerifyFailure {
             Self::Lookup {
                 name,
                 lookup_index,
+                parallel_lookup_index,
                 location,
-            } => render_lookup(prover, name, *lookup_index, location),
+            } => render_lookup(
+                prover,
+                name,
+                *lookup_index,
+                *parallel_lookup_index,
+                location,
+            ),
             _ => eprintln!("{self}"),
         }
     }
