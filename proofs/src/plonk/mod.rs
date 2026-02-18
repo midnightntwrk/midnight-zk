@@ -31,7 +31,7 @@ mod circuit;
 mod error;
 pub(crate) mod evaluation;
 mod keygen;
-pub(crate) mod lookup;
+pub(crate) mod logup;
 pub mod permutation;
 pub(crate) mod traces;
 pub(crate) mod trash;
@@ -475,7 +475,7 @@ pub(crate) fn evaluate_identities<'a, F, CS>(
     instance_evals: &'a [Vec<F>],
     advice_evals: &'a [Vec<F>],
     permutation_evals: &'a [permutation::verifier::Evaluated<F, CS>],
-    lookup_evals: &'a [Vec<lookup::verifier::Evaluated<F, CS>>],
+    lookup_evals: &'a [Vec<logup::verifier::Evaluated<F, CS>>],
     trashcan_evals: &'a [Vec<trash::verifier::Evaluated<F, CS>>],
     permutations_common: &'a CommonEvaluated<F>,
     x: F,
@@ -499,6 +499,8 @@ where
     let l_blind: F =
         l_evals[1..(1 + blinding_factors)].iter().fold(F::ZERO, |acc, eval| acc + eval);
     let l_0 = l_evals[1 + blinding_factors];
+    let flattened_lookups =
+        vk.cs.lookups.iter().flat_map(|l| l.split(vk.cs().degree())).collect::<Vec<_>>();
 
     // Compute the expected value of h(x)
     let expressions = advice_evals
@@ -544,7 +546,7 @@ where
                         gamma,
                         x,
                     ))
-                    .chain(lookups.iter().zip(vk.cs.lookups.iter()).flat_map(
+                    .chain(lookups.iter().zip(flattened_lookups.iter()).flat_map(
                         move |(p, argument)| {
                             p.evaluated.expressions(
                                 l_0,
@@ -553,7 +555,6 @@ where
                                 argument,
                                 theta,
                                 beta,
-                                gamma,
                                 advice_evals,
                                 fixed_evals,
                                 instance_evals,

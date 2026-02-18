@@ -290,10 +290,11 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         // Sample theta challenge for keeping lookup columns linearly independent
         let theta = transcript.squeeze_challenge(layouter)?;
 
-        let lookups_permuted = cs
+        let multiplicities_committed = cs
             .lookups()
             .iter()
-            .map(|_| lookup::read_permuted_commitments(layouter, &mut transcript))
+            .flat_map(|l| l.split(assigned_vk.cs.degree()))
+            .map(|_| lookup::read_multiplicities(layouter, &mut transcript))
             .collect::<Result<Vec<_>, Error>>()?;
 
         let beta = transcript.squeeze_challenge(layouter)?;
@@ -303,11 +304,11 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             // Hash each permutation product commitment
             permutation::read_product_commitments(layouter, &mut transcript, cs)?;
 
-        let lookups_committed = lookups_permuted
+        let lookups_committed = multiplicities_committed
             .into_iter()
             .map(|lookup|
                 // Hash each lookup product commitment
-                lookup.read_product_commitment(layouter, &mut transcript))
+                lookup.read_commitment(layouter, &mut transcript))
             .collect::<Result<Vec<_>, _>>()?;
 
         let trash_challenge = transcript.squeeze_challenge(layouter)?;
@@ -462,6 +463,8 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             let l_last = l_evals[0].clone();
             let l_blind = sum::<S::F>(layouter, &self.scalar_chip, &l_evals[1..=blinding_factors])?;
             let l_0 = l_evals[1 + blinding_factors].clone();
+            let flattened_lookups =
+                cs.lookups().iter().flat_map(|l| l.split(cs.degree())).collect::<Vec<_>>();
 
             // Compute the expected value of h(x)
             let expressions = {
@@ -498,17 +501,16 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                     &x,
                 )?;
 
-                let evaluated_lookup_ids = cs
-                    .lookups()
+                let evaluated_lookup_ids = lookups_evaluated
                     .iter()
-                    .enumerate()
-                    .map(|(index, _)| {
+                    .zip(flattened_lookups.iter())
+                    .map(|(p, argument)| {
                         lookup_expressions(
                             layouter,
                             &self.scalar_chip,
-                            &lookups_evaluated[index].evaluated,
-                            cs.lookups()[index].input_expressions(),
-                            cs.lookups()[index].table_expressions(),
+                            &p.evaluated,
+                            argument.input_expressions(),
+                            argument.table_expressions(),
                             &advice_evals,
                             &fixed_evals,
                             &instance_evals,
@@ -517,10 +519,9 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                             &l_blind,
                             &theta,
                             &beta,
-                            &gamma,
                         )
                     })
-                    .collect::<Result<Vec<Vec<_>>, Error>>()?
+                    .collect::<Result<Vec<_>, Error>>()?
                     .concat();
 
                 let evaluated_trashcan_ids = cs
@@ -608,10 +609,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                 }),
             )
             .chain((permutations_evaluated).queries(&one, &x, &x_next, &x_last))
-            .chain(
-                (lookups_evaluated.iter())
-                    .flat_map(|lookup| lookup.queries(&one, &x, &x_next, &x_prev)),
-            )
+            .chain((lookups_evaluated.iter()).flat_map(|lookup| lookup.queries(&one, &x, &x_next)))
             .chain(trashcans_evaluated.iter().flat_map(|trash| trash.queries(&one, &x)))
             .chain(
                 cs.fixed_queries().iter().enumerate().map(|(query_index, &(col, rot))| {

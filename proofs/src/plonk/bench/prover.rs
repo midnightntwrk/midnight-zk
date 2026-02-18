@@ -9,7 +9,7 @@ use rand_core::{CryptoRng, RngCore};
 use crate::{
     plonk::{
         circuit::Circuit,
-        lookup, permutation,
+        logup, permutation,
         prover::{
             compute_instances, compute_nu_poly, compute_queries, parse_advices,
             write_evals_to_transcript,
@@ -124,35 +124,34 @@ where
     // Sample theta challenge for keeping lookup columns linearly independent
     let theta: F = transcript.squeeze_challenge();
 
-    // Construct and commit to permuted lookup columns
-    let lookups: Vec<Vec<lookup::prover::Permuted<F>>> = {
-        group.bench_function("Commit lookup permuted", |b| {
+    // Commit to the multiplicities columns
+    let lookups: Vec<Vec<logup::prover::ComputedMultiplicities<F>>> = {
+        group.bench_function("Commit lookup products", |b| {
             b.iter_batched(
-                || (transcript.clone(), instance.clone(), advice.clone()),
-                |(mut t, inst, adv)| {
-                    let _: Result<Vec<Vec<_>>, _> = inst
+                || transcript.clone(),
+                |mut t| {
+                    let _: Result<Vec<Vec<_>>, _> = instance
                         .iter()
-                        .zip(adv.iter())
+                        .zip(advice.iter())
                         .map(|(instance, advice)| -> Result<Vec<_>, Error> {
                             pk.vk
                                 .cs
                                 .lookups
                                 .iter()
-                                .map(|lookup| {
-                                    lookup.commit_permuted(
+                                .flat_map(|l| l.split(pk.get_vk().cs().degree()))
+                                .map(|logup| {
+                                    logup.commit_multiplicities(
                                         pk,
                                         params,
-                                        domain,
                                         theta,
                                         &advice.advice_polys,
                                         &pk.fixed_values,
                                         &instance.instance_values,
                                         &challenges,
-                                        &mut rng,
                                         &mut t,
                                     )
                                 })
-                                .collect()
+                                .collect::<Result<Vec<_>, Error>>()
                         })
                         .collect();
                 },
@@ -163,28 +162,26 @@ where
             .iter()
             .zip(advice.iter())
             .map(|(instance, advice)| -> Result<Vec<_>, Error> {
-                // Construct and commit to permuted values for each lookup
                 pk.vk
                     .cs
                     .lookups
                     .iter()
-                    .map(|lookup| {
-                        lookup.commit_permuted(
+                    .flat_map(|l| l.split(pk.get_vk().cs().degree()))
+                    .map(|logup| {
+                        logup.commit_multiplicities(
                             pk,
                             params,
-                            domain,
                             theta,
                             &advice.advice_polys,
                             &pk.fixed_values,
                             &instance.instance_values,
                             &challenges,
-                            &mut rng,
                             transcript,
                         )
                     })
-                    .collect()
+                    .collect::<Result<Vec<_>, Error>>()
             })
-            .collect::<Result<Vec<_>, _>>()?
+            .collect::<Result<Vec<_>, Error>>()?
     };
 
     // Sample beta challenge
@@ -242,18 +239,20 @@ where
     };
 
     // Construct and commit to lookup product polynomials
-    let lookups: Vec<Vec<lookup::prover::Committed<F>>> = {
+    let lookups: Vec<Vec<logup::prover::Committed<F>>> = {
         group.bench_function("Commit lookup products", |b| {
             b.iter_batched(
-                || (transcript.clone(), lookups.clone()),
-                |(mut t, lkps)| {
-                    let _: Result<Vec<Vec<_>>, _> = lkps
+                || transcript.clone(),
+                |mut t| {
+                    let _: Result<Vec<Vec<_>>, _> = lookups
+                        .clone()
                         .into_iter()
                         .map(|lookups| -> Result<Vec<_>, _> {
+                            // Construct and commit to products polynomials for each lookup
                             lookups
                                 .into_iter()
                                 .map(|lookup| {
-                                    lookup.commit_product(pk, params, beta, gamma, &mut rng, &mut t)
+                                    lookup.commit_logderivative(pk, params, beta, &mut rng, &mut t)
                                 })
                                 .collect::<Result<Vec<_>, _>>()
                         })
@@ -265,11 +264,11 @@ where
         lookups
             .into_iter()
             .map(|lookups| -> Result<Vec<_>, _> {
-                // Construct and commit to products for each lookup
+                // Construct and commit to products polynomials for each lookup
                 lookups
                     .into_iter()
                     .map(|lookup| {
-                        lookup.commit_product(pk, params, beta, gamma, &mut rng, transcript)
+                        lookup.commit_logderivative(pk, params, beta, &mut rng, transcript)
                     })
                     .collect::<Result<Vec<_>, _>>()
             })
@@ -505,7 +504,7 @@ where
         .collect::<Result<Vec<_>, _>>()?;
 
     // Evaluate the lookups, if any, at omega^i x.
-    let lookups: Vec<Vec<lookup::prover::Evaluated<F>>> = lookups
+    let lookups: Vec<Vec<logup::prover::Evaluated<F>>> = lookups
         .into_iter()
         .map(|lookups| -> Result<Vec<_>, _> {
             lookups

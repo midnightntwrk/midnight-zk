@@ -14,7 +14,7 @@ use super::{
         Advice, Any, Assignment, Challenge, Circuit, Column, ConstraintSystem, Fixed, FloorPlanner,
         Instance, Selector,
     },
-    lookup, permutation, vanishing, Error, ProvingKey,
+    logup, permutation, vanishing, Error, ProvingKey,
 };
 #[cfg(feature = "committed-instances")]
 use crate::poly::EvaluationDomain;
@@ -108,32 +108,31 @@ where
     // Sample theta challenge for keeping lookup columns linearly independent
     let theta: F = transcript.squeeze_challenge();
 
-    let lookups: Vec<Vec<lookup::prover::Permuted<F>>> = instance
+    // Commit to the multiplicities columns
+    let lookups: Vec<Vec<logup::prover::ComputedMultiplicities<F>>> = instance
         .iter()
         .zip(advice.iter())
         .map(|(instance, advice)| -> Result<Vec<_>, Error> {
-            // Construct and commit to permuted values for each lookup
             pk.vk
                 .cs
                 .lookups
                 .iter()
-                .map(|lookup| {
-                    lookup.commit_permuted(
+                .flat_map(|l| l.split(pk.get_vk().cs().degree()))
+                .map(|logup| {
+                    logup.commit_multiplicities(
                         pk,
                         params,
-                        domain,
                         theta,
                         &advice.advice_polys,
                         &pk.fixed_values,
                         &instance.instance_values,
                         &challenges,
-                        &mut rng,
                         transcript,
                     )
                 })
-                .collect()
+                .collect::<Result<Vec<_>, Error>>()
         })
-        .collect::<Result<Vec<_>, _>>()?;
+        .collect::<Result<Vec<_>, Error>>()?;
 
     // Sample beta challenge
     let beta: F = transcript.squeeze_challenge();
@@ -161,13 +160,13 @@ where
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    let lookups: Vec<Vec<lookup::prover::Committed<F>>> = lookups
+    let lookups: Vec<Vec<logup::prover::Committed<F>>> = lookups
         .into_iter()
         .map(|lookups| -> Result<Vec<_>, _> {
-            // Construct and commit to products for each lookup
+            // Construct and commit to products polynomials for each lookup
             lookups
                 .into_iter()
-                .map(|lookup| lookup.commit_product(pk, params, beta, gamma, &mut rng, transcript))
+                .map(|lookup| lookup.commit_logderivative(pk, params, beta, &mut rng, transcript))
                 .collect::<Result<Vec<_>, _>>()
         })
         .collect::<Result<Vec<_>, _>>()?;
@@ -302,7 +301,7 @@ where
         .collect::<Result<Vec<_>, _>>()?;
 
     // Evaluate the lookups, if any, at omega^i x.
-    let lookups: Vec<Vec<lookup::prover::Evaluated<F>>> = lookups
+    let lookups: Vec<Vec<logup::prover::Evaluated<F>>> = lookups
         .into_iter()
         .map(|lookups| -> Result<Vec<_>, _> {
             lookups
@@ -726,7 +725,7 @@ pub(super) fn compute_queries<
     instance_polys: &'a [Vec<Polynomial<F, Coeff>>],
     advice_polys: &'a [Vec<Polynomial<F, Coeff>>],
     permutations: &'a [permutation::prover::Evaluated<F>],
-    lookups: &'a [Vec<lookup::prover::Evaluated<F>>],
+    lookups: &'a [Vec<logup::prover::Evaluated<F>>],
     trashcans: &'a [Vec<trash::prover::Evaluated<F>>],
     vanishing: &'a vanishing::prover::Evaluated<F>,
     x: F,
