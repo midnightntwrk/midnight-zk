@@ -16,7 +16,7 @@
 //!
 //! The "expressions" part is dealt with in our `expressions/` directory.
 
-use midnight_proofs::{circuit::Layouter, plonk::Error};
+use midnight_proofs::{circuit::Layouter, plonk::Error, poly::CommitmentLabel};
 
 use crate::{
     field::AssignedNative,
@@ -117,33 +117,43 @@ impl<S: SelfEmulation> Evaluated<S> {
         x_prev: &AssignedNative<S::F>,     // x * \omega^(-1)
     ) -> Vec<VerifierQuery<S>> {
         vec![
+            // Open lookup product commitment at x
             VerifierQuery::new(
                 one,
                 x,
+                CommitmentLabel::NoLabel,
                 &self.committed.product_commitment,
                 &self.evaluated.product_eval,
             ),
+            // Open lookup input commitments at x
             VerifierQuery::new(
                 one,
                 x,
+                CommitmentLabel::NoLabel,
                 &self.committed.permuted.permuted_input_commitment,
                 &self.evaluated.permuted_input_eval,
             ),
+            // Open lookup table commitments at x
             VerifierQuery::new(
                 one,
                 x,
+                CommitmentLabel::NoLabel,
                 &self.committed.permuted.permuted_table_commitment,
                 &self.evaluated.permuted_table_eval,
             ),
+            // Open lookup input commitments at \omega^{-1} x
             VerifierQuery::new(
                 one,
                 x_prev,
+                CommitmentLabel::NoLabel,
                 &self.committed.permuted.permuted_input_commitment,
                 &self.evaluated.permuted_input_inv_eval,
             ),
+            // Open lookup product commitment at \omega x
             VerifierQuery::new(
                 one,
                 x_next,
+                CommitmentLabel::NoLabel,
                 &self.committed.product_commitment,
                 &self.evaluated.product_next_eval,
             ),

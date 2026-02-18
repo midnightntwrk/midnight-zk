@@ -16,7 +16,7 @@
 //!
 //! The "expressions" part is dealt with in our `expressions/` directory.
 
-use midnight_proofs::{circuit::Layouter, plonk::Error};
+use midnight_proofs::{circuit::Layouter, plonk::Error, poly::CommitmentLabel};
 
 use crate::{
     field::AssignedNative,
@@ -77,6 +77,7 @@ impl<S: SelfEmulation> Evaluated<S> {
         vec![VerifierQuery::new(
             one,
             x,
+            CommitmentLabel::NoLabel,
             &self.committed.trash_commitment,
             &self.evaluated.trash_eval,
         )]

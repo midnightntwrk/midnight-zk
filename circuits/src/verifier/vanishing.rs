@@ -15,7 +15,7 @@
 //! analog of file proofs/src/plonk/vanishing/verifier.rs.
 
 use ff::Field;
-use midnight_proofs::{circuit::Layouter, plonk::Error};
+use midnight_proofs::{circuit::Layouter, plonk::Error, poly::CommitmentLabel};
 
 use crate::{
     field::AssignedNative,
@@ -144,8 +144,19 @@ impl<S: SelfEmulation> Evaluated<S> {
         x: &AssignedNative<S::F>,          // evaluation point x
     ) -> Vec<VerifierQuery<S>> {
         vec![
-            VerifierQuery::new_from_msm(x, &self.h_commitment, &self.expected_h_eval),
-            VerifierQuery::new(one, x, &self.random_poly_commitment, &self.random_eval),
+            VerifierQuery::new_from_msm(
+                x,
+                CommitmentLabel::Custom("vanishing".into()),
+                &self.h_commitment,
+                &self.expected_h_eval,
+            ),
+            VerifierQuery::new(
+                one,
+                x,
+                CommitmentLabel::Custom("random_poly".into()),
+                &self.random_poly_commitment,
+                &self.random_eval,
+            ),
         ]
     }
 }

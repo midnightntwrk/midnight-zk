@@ -25,7 +25,7 @@ use ff::Field;
 use midnight_proofs::{
     circuit::{Chip, Layouter, Value},
     plonk::{ConstraintSystem, Error},
-    poly::{EvaluationDomain, Rotation},
+    poly::{CommitmentLabel, EvaluationDomain, Rotation},
 };
 
 use crate::{
@@ -247,7 +247,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         &self,
         layouter: &mut impl Layouter<S::F>,
         assigned_vk: &AssignedVk<S>,
-        assigned_committed_instances: &[(&str, S::AssignedPoint)], // (name, com)
+        assigned_committed_instances: &[S::AssignedPoint],
         assigned_instances: &[&[AssignedNative<S::F>]],
         proof: Value<Vec<u8>>,
     ) -> Result<(super::traces::VerifierTrace<S>, TranscriptGadget<S>), Error> {
@@ -269,7 +269,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
 
         assigned_committed_instances
             .iter()
-            .try_for_each(|(_, com)| transcript.common_point(layouter, com))?;
+            .try_for_each(|com| transcript.common_point(layouter, com))?;
 
         for instance in assigned_instances {
             let n = self.scalar_chip.assign_fixed(layouter, (instance.len() as u64).into())?;
@@ -353,7 +353,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         layouter: &mut impl Layouter<S::F>,
         assigned_vk: &AssignedVk<S>,
         trace: super::traces::VerifierTrace<S>,
-        assigned_committed_instances: &[(&str, S::AssignedPoint)], // (name, com)
+        assigned_committed_instances: &[S::AssignedPoint],
         assigned_instances: &[&[AssignedNative<S::F>]],
         mut transcript: TranscriptGadget<S>,
     ) -> Result<AssignedAccumulator<S>, Error> {
@@ -586,10 +586,11 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             .chain(cs.instance_queries().iter().enumerate().filter_map(
                 |(query_index, &(column, rot))| {
                     if column.index() < nb_committed_instances {
-                        Some(VerifierQuery::<S>::new_fixed(
+                        Some(VerifierQuery::<S>::new(
                             &one,
                             get_point(&rot),
-                            assigned_committed_instances[column.index()].0,
+                            CommitmentLabel::Instance(column.index()),
+                            &assigned_committed_instances[column.index()],
                             &instance_evals[query_index],
                         ))
                     } else {
@@ -602,6 +603,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                     VerifierQuery::<S>::new(
                         &one,
                         get_point(&rot),
+                        CommitmentLabel::Advice(column.index()),
                         &advice_commitments[column.index()],
                         &advice_evals[query_index],
                     )
@@ -618,6 +620,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                     VerifierQuery::new_fixed(
                         &one,
                         get_point(&rot),
+                        CommitmentLabel::Fixed(col.index()),
                         &assigned_vk.fixed_commitment_name(col.index()),
                         &fixed_evals[query_index],
                     )
@@ -661,7 +664,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         &self,
         layouter: &mut impl Layouter<S::F>,
         assigned_vk: &AssignedVk<S>,
-        assigned_committed_instances: &[(&str, S::AssignedPoint)], // (name, com)
+        assigned_committed_instances: &[S::AssignedPoint],
         assigned_instances: &[&[AssignedNative<S::F>]],
         proof: Value<Vec<u8>>,
     ) -> Result<AssignedAccumulator<S>, Error> {
@@ -686,8 +689,6 @@ impl<S: SelfEmulation> VerifierGadget<S> {
 
 #[cfg(test)]
 pub(crate) mod tests {
-
-    use std::collections::BTreeMap;
 
     use group::Group;
     use midnight_proofs::{
@@ -888,7 +889,7 @@ pub(crate) mod tests {
             let mut inner_proof_acc = verifier_chip.prepare(
                 &mut layouter,
                 &assigned_inner_vk,
-                &[("com_instance", assigned_committed_instance)],
+                &[assigned_committed_instance],
                 &[&assigned_inner_pi],
                 self.inner_proof.clone(),
             )?;
@@ -946,12 +947,10 @@ pub(crate) mod tests {
             .expect("Problem preparing the inner proof")
         };
 
-        let mut fixed_bases = BTreeMap::new();
-        fixed_bases.insert(String::from("com_instance"), C::identity());
-        fixed_bases.extend(crate::verifier::fixed_bases::<S>("inner_vk", &inner_vk));
+        let fixed_bases = crate::verifier::fixed_bases::<S>("inner_vk", &inner_vk);
 
-        let mut inner_acc: Accumulator<S> = inner_dual_msm.clone().into();
-        inner_acc.extract_fixed_bases(&fixed_bases);
+        let mut inner_acc =
+            Accumulator::<S>::from_dual_msm(inner_dual_msm.clone(), "inner_vk", &fixed_bases);
 
         assert!(inner_dual_msm.check(&inner_params.verifier_params()));
         assert!(inner_acc.check(&inner_params.s_g2().into(), &fixed_bases));
