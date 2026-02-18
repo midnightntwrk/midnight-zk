@@ -72,3 +72,8 @@ path = "examples/identity/enrollment.rs"
 [[example]]
 name = "cred_property"
 path = "examples/identity/property_check.rs"
+
+[[example]]
+name = "ivc_parallel"
+path = "examples/ivc_parallel.rs"
+required-features = ["truncated-challenges"]
