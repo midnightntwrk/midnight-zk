@@ -649,7 +649,7 @@ mod tests {
             let table_selector = meta.complex_selector();
             let sl = meta.lookup_table_column();
 
-            meta.lookup("lookup", |meta| {
+            meta.lookup("lookup", None, |meta| {
                 let selector = meta.query_selector(table_selector);
                 let not_selector = Expression::from(1) - selector.clone();
                 let advice = meta.query_advice(a, Rotation::cur());

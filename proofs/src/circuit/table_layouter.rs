@@ -190,7 +190,7 @@ mod tests {
                 let a = meta.advice_column();
                 let table = meta.lookup_table_column();
 
-                meta.lookup("", |cells| {
+                meta.lookup("", None, |cells| {
                     let a = cells.query_advice(a, Rotation::cur());
                     vec![(a, table)]
                 });
@@ -249,7 +249,7 @@ mod tests {
                 let a = meta.advice_column();
                 let table = meta.lookup_table_column();
 
-                meta.lookup("", |cells| {
+                meta.lookup("", None, |cells| {
                     let a = cells.query_advice(a, Rotation::cur());
                     vec![(a, table)]
                 });
@@ -314,7 +314,7 @@ mod tests {
                 let a = meta.advice_column();
                 let table = meta.lookup_table_column();
 
-                meta.lookup("", |cells| {
+                meta.lookup("", None, |cells| {
                     let a = cells.query_advice(a, Rotation::cur());
                     vec![(a, table)]
                 });
@@ -384,7 +384,7 @@ mod tests {
             fn configure(meta: &mut ConstraintSystem<Scalar>) -> Self::Config {
                 let a = meta.advice_column();
                 let table = (meta.lookup_table_column(), meta.lookup_table_column());
-                meta.lookup("", |cells| {
+                meta.lookup("", None, |cells| {
                     let a = cells.query_advice(a, Rotation::cur());
 
                     vec![(a.clone(), table.0), (a, table.1)]
