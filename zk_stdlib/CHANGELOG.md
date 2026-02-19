@@ -26,6 +26,7 @@ verification keys break backwards compatibility.
 * Replace `secp256k1` with `k256`  [#192](https://github.com/midnightntwrk/midnight-zk/pull/192)
 * Parallelise batch_verifier [#236](https://github.com/midnightntwrk/midnight-zk/pull/236)
 * BREAKING: Implemented linearization prover [#190](https://github.com/midnightntwrk/midnight-zk/pull/190)
+* Changed logup to use the selector variant [#220](https://github.com/midnightntwrk/midnight-zk/pull/220)
 
 ### Removed
 * Move Blake2b and SHA3-256/Keccak256 implementations to zk-stdlib [#178](https://github.com/midnightntwrk/midnight-zk/pull/178)
