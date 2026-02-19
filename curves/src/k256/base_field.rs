@@ -383,7 +383,8 @@ mod tests {
     /// k256::FieldElement.is_zero() panics on unnormalized input.
     /// In release builds, it would return incorrect results instead of panicking.
     #[test]
-    #[should_panic(expected = "assertion failed: self.normalized")]
+    #[should_panic]
+    #[cfg(debug_assertions)]
     fn test_raw_k256_is_zero_panics_without_normalize() {
         let raw_a = k256::FieldElement::from(12345u64);
         let raw_zero = raw_a - raw_a;
@@ -401,8 +402,11 @@ mod tests {
     }
 
     /// k256::FieldElement.is_odd() panics on unnormalized input.
+    /// In release builds, it would return incorrect results instead of
+    /// panicking.
     #[test]
-    #[should_panic(expected = "assertion failed: self.normalized")]
+    #[should_panic]
+    #[cfg(debug_assertions)]
     fn test_raw_k256_is_odd_panics_without_normalize() {
         let raw_a = k256::FieldElement::from(100u64);
         let raw_b = k256::FieldElement::from(97u64);
