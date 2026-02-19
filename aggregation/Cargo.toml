@@ -1,5 +1,5 @@
 [package]
-name = "midnight-aggregator"
+name = "midnight-aggregation"
 version = "0.1.2"
 edition = "2021"
 rust-version = "1.76.0"
@@ -7,7 +7,6 @@ description = "Toolkit for proof aggregation of midnight-proofs"
 license = "MIT OR Apache-2.0"
 categories = ["cryptography"]
 keywords = ["halo", "proofs", "zkp", "zkSNARKs", "aggregation"]
-build = "build.rs"
 
 [package.metadata.docs.rs]
 all-features = true
@@ -34,7 +33,4 @@ sha2 = { workspace = true }
 rand_chacha = { workspace = true }
 
 [features]
-# This feature is defined to allow conditional compilation when building
-# with --all-features. The aggregator does not support truncated-challenges,
-# and a warning will be emitted during build if this feature is enabled.
 truncated-challenges = []
