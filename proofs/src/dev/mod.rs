@@ -1008,6 +1008,13 @@ impl<F: FromUniformBytes<64> + Ord> MockProver<F> {
                             .clone()
                             .into_par_iter()
                             .filter_map(|input_row| {
+                                let selector_val = load(&lookup.selector, input_row);
+
+                                // Skip rows where selector is 0
+                                if selector_val == Value::Real(F::ZERO) {
+                                    return None;
+                                }
+
                                 let t = input_expressions
                                     .iter()
                                     .map(move |c| load(c, input_row))
@@ -1411,7 +1418,7 @@ mod tests {
                 meta.annotate_lookup_any_column(advice_table, || "Adv-Table");
                 meta.enable_equality(advice_table);
 
-                meta.lookup_any("lookup", |cells| {
+                meta.lookup_any("lookup", None, |cells| {
                     let a = cells.query_advice(a, Rotation::cur());
                     let q = cells.query_selector(q);
                     let advice_table = cells.query_advice(advice_table, Rotation::cur());
@@ -1578,7 +1585,7 @@ mod tests {
                 let table = meta.lookup_table_column();
                 meta.annotate_lookup_column(table, || "Table1");
 
-                meta.lookup("lookup", |cells| {
+                meta.lookup("lookup", None, |cells| {
                     let a = cells.query_advice(a, Rotation::cur());
                     let q = cells.query_selector(q);
 
