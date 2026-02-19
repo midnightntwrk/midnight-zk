@@ -173,6 +173,8 @@ pub struct LookupGraphEvaluator<F: PrimeField> {
     pub product: ValueSource,
     /// Value containing the compressed table value (t + β)
     pub table: ValueSource,
+    /// Selector of the lookup argument
+    pub selector: ValueSource,
 }
 
 /// Evaluator
@@ -213,7 +215,7 @@ impl<F: PrimeField> EvaluationData<F> {
     pub fn resolve(&self, vs: ValueSource) -> F {
         match vs {
             ValueSource::Intermediate(idx) => self.intermediates[idx],
-            _ => unreachable!("expected ValueSource::Intermediate"),
+            _ => unreachable!("expected Intermediate, got {vs:?}"),
         }
     }
 }
@@ -307,7 +309,11 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                 ValueSource::Beta(),
             ));
 
+            let selector = graph.add_expression(&lookup.selector);
+            let selector = graph.add_calculation(Calculation::Store(selector));
+
             ev.lookups.push(LookupGraphEvaluator {
+                selector,
                 graph,
                 sum_partial_products,
                 product,
@@ -535,6 +541,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                             eval_data.resolve(lookup_eval.sum_partial_products);
                         let product = eval_data.resolve(lookup_eval.product);
                         let table_value = eval_data.resolve(lookup_eval.table);
+                        let selector = eval_data.resolve(lookup_eval.selector);
 
                         // (l_0(X) + l_last(X)) * Z(X) = 0
                         *value = *value * y + aggregator_coset[idx] * (l0[idx] + l_last[idx]);
@@ -542,12 +549,13 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                         // Helper constraint: h(X) · ∏ⱼ(fⱼ(X) + β) = Σⱼ ∏_{k≠j}(fₖ(X) + β)
                         *value = *value * y + helper_coset[idx] * product - sum_partial_products;
 
-                        // Accumulator constraint: Z(ωX)·(t(X) + β) = (Z(X) + h(X))·(t(X) + β) -
-                        // m(X)
+                        // Accumulator constraint:
+                        // (Z(ωX) - Z(X))·(t(X) + β) - selector·h(X)·(t(X) + β) + m(X) = 0
                         *value = *value * y
                             + l_active_row[idx]
-                                * (aggregator_coset[r_next] * table_value
-                                    - (aggregator_coset[idx] + helper_coset[idx]) * table_value
+                                * ((aggregator_coset[r_next] - aggregator_coset[idx])
+                                    * table_value
+                                    - selector * helper_coset[idx] * table_value
                                     + multiplicities_coset[idx]);
                     }
                 });
