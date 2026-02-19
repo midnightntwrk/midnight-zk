@@ -36,3 +36,5 @@ pub trait PoseidonField: CircuitField {
 }
 
 mod blstrs;
+#[cfg(feature = "dev-curves")]
+mod bn;

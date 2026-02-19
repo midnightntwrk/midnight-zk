@@ -44,6 +44,8 @@ mod verifier_gadget;
 
 pub use accumulator::{Accumulator, AssignedAccumulator};
 pub use msm::{AssignedMsm, Msm};
+#[cfg(feature = "dev-curves")]
+pub use types::BnEmulation;
 pub use types::{BlstrsEmulation, SelfEmulation};
 pub use verifier_gadget::VerifierGadget;
 
