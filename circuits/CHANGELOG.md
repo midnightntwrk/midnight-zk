@@ -18,6 +18,7 @@ verification keys break backwards compatibility.
 * RIPEMD160 chip [#156](https://github.com/midnightntwrk/midnight-zk/pull/156)
 * `CircuitField` refactor: remove helpers, add `ScalarExt` in `CircuitCurve` [#201](https://github.com/midnightntwrk/midnight-zk/pull/201)
 * Support non-fixed input commitments in verifier gadget [#212](https://github.com/midnightntwrk/midnight-zk/pull/212)
+* Add BN poseidon constants [#222](https://github.com/midnightntwrk/midnight-zk/pull/222)
 
 ### Changed
 * Make handling of fixed_bases more robust in verifier gadget [#212](https://github.com/midnightntwrk/midnight-zk/pull/212)
