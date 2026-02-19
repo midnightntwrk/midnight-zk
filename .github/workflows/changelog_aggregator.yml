@@ -1,7 +1,7 @@
 on:
   pull_request:
     paths:
-      - 'aggregator/**'
+      - 'aggregation/**'
 
 jobs:
   # Enforces the update of a changelog file on every pull request
@@ -10,4 +10,4 @@ jobs:
     steps:
       - uses: dangoslen/changelog-enforcer@204e7d3ef26579f4cd0fd759c57032656fdf23c7
         with:
-          changeLogPath: aggregator/CHANGELOG.md
+          changeLogPath: aggregation/CHANGELOG.md
