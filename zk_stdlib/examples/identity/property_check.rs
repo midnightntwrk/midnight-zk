@@ -3,7 +3,6 @@
 use std::time::Instant;
 
 use base64::{decode_config, STANDARD_NO_PAD};
-use midnight_circuits::CircuitField;
 use midnight_circuits::{
     field::foreign::{params::MultiEmulationParams, AssignedField},
     instructions::{
@@ -13,6 +12,7 @@ use midnight_circuits::{
     parsing::{DateFormat, Separator, StdLibParser},
     testing_utils::ecdsa::{ECDSASig, FromBase64},
     types::{AssignedByte, AssignedForeignPoint, AssignedNative},
+    CircuitField,
 };
 use midnight_curves::{
     k256::{Fq as K256Scalar, K256},

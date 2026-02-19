@@ -381,7 +381,8 @@ mod tests {
     // Tests that compare the inner (unsafe) type with the safe wrapper.
 
     /// k256::FieldElement.is_zero() panics on unnormalized input.
-    /// In release builds, it would return incorrect results instead of panicking.
+    /// In release builds, it would return incorrect results instead of
+    /// panicking.
     #[test]
     #[should_panic]
     #[cfg(debug_assertions)]

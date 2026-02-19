@@ -3,7 +3,6 @@
 
 use std::{io::Write, time::Instant};
 
-use midnight_circuits::CircuitField;
 use midnight_circuits::{
     field::foreign::{params::MultiEmulationParams, AssignedField},
     instructions::{
@@ -14,6 +13,7 @@ use midnight_circuits::{
     parsing::{DateFormat, Separator},
     testing_utils::ecdsa::{ECDSASig, FromBase64, PublicKey},
     types::{AssignedByte, AssignedForeignPoint, InnerValue, Instantiable},
+    CircuitField,
 };
 use midnight_curves::k256::{Fq as K256Scalar, K256};
 use midnight_proofs::{

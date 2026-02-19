@@ -15,17 +15,19 @@
 
 use ff::Field as FfField;
 use group::{Curve, Group, GroupEncoding};
-use k256::elliptic_curve::sec1::{FromEncodedPoint, ToEncodedPoint};
-use k256::{AffinePoint, ProjectivePoint};
+use k256::{
+    elliptic_curve::{
+        ff::PrimeField as K256PrimeField,
+        group::GroupEncoding as K256GroupEncoding,
+        point::AffineCoordinates,
+        sec1::{FromEncodedPoint, ToEncodedPoint},
+        BatchNormalize, Group as K256Group,
+    },
+    AffinePoint, ProjectivePoint,
+};
 use subtle::{Choice, CtOption};
 
-use k256::elliptic_curve::group::GroupEncoding as K256GroupEncoding;
-use k256::elliptic_curve::point::AffineCoordinates;
-use k256::elliptic_curve::BatchNormalize;
-use k256::elliptic_curve::Group as K256Group;
-
 use super::{Fp, Fq};
-use k256::elliptic_curve::ff::PrimeField as K256PrimeField;
 
 /// secp256k1 curve point in projective coordinates.
 // NOTE: Necessary to implement group::Curve, which is necessary to implement
@@ -61,8 +63,8 @@ impl K256 {
         Fp::from_bytes(&k256::FieldBytes::from(ZETA_BYTES)).expect("Valid ZETA bytes")
     }
 
-    /// Returns the cubic root of unity in the scalar field for GLV endomorphism.
-    /// ZETA^3 = 1 mod n, ZETA != 1.
+    /// Returns the cubic root of unity in the scalar field for GLV
+    /// endomorphism. ZETA^3 = 1 mod n, ZETA != 1.
     pub fn scalar_zeta() -> Fq {
         // 0x5363ad4cc05c30e0a5261c028812645a122e22ea20816678df02967c1b23bd72
         const ZETA_BYTES: [u8; 32] = [
@@ -253,6 +255,7 @@ use core::{
     iter::Sum,
     ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign},
 };
+
 use subtle::{ConditionallySelectable, ConstantTimeEq};
 
 impl PartialEq for K256 {
@@ -495,10 +498,11 @@ impl From<&K256> for K256Affine {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use group::{Curve, Group};
     use rand_core::SeedableRng;
     use rand_xorshift::XorShiftRng;
+
+    use super::*;
 
     const TEST_ITERATIONS: usize = 100;
 

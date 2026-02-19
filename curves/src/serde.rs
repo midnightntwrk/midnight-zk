@@ -145,6 +145,7 @@ pub mod endian {
     }
 }
 
+#[allow(dead_code)]
 #[cfg(any(test, feature = "dev-curves"))]
 pub(crate) enum CompressedFlagConfig {
     // NOTE: if needed we can add fields for bit positions

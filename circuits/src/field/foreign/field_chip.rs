@@ -1734,13 +1734,7 @@ mod tests {
             #[test]
             fn $op() {
                 test_generic!($mod, $op, BlsScalar, K256Base, "field_chip_secp_base");
-                test_generic!(
-                    $mod,
-                    $op,
-                    BlsScalar,
-                    K256Scalar,
-                    "field_chip_secp_scalar"
-                );
+                test_generic!($mod, $op, BlsScalar, K256Scalar, "field_chip_secp_scalar");
             }
         };
     }
@@ -1789,13 +1783,7 @@ mod tests {
             #[test]
             fn $op() {
                 test_generic!($mod, $op, BlsScalar, K256Base, "field_chip_secp_base");
-                test_generic!(
-                    $mod,
-                    $op,
-                    BlsScalar,
-                    K256Scalar,
-                    "field_chip_secp_scalar"
-                );
+                test_generic!($mod, $op, BlsScalar, K256Scalar, "field_chip_secp_scalar");
             }
         };
     }
