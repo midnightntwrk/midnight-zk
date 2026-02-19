@@ -4,7 +4,6 @@ use crate::{field::AssignedNative, verifier::SelfEmulation};
 #[derive(Debug)]
 pub struct VerifierTrace<S: SelfEmulation> {
     pub(crate) advice_commitments: Vec<S::AssignedPoint>,
-    pub(crate) vanishing: super::vanishing::Committed<S>,
     pub(crate) lookups: Vec<super::lookup::Committed<S>>,
     pub(crate) trashcans: Vec<super::trash::Committed<S>>,
     pub(crate) permutations: super::permutation::Committed<S>,
