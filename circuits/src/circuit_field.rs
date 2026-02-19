@@ -22,7 +22,6 @@ use std::ops::{Index, RangeTo};
 
 use ff::PrimeField;
 use num_bigint::BigUint;
-use num_traits::Num;
 
 /// A prime field suitable for use in a circuit, as the native field or
 /// emulated.
@@ -59,8 +58,10 @@ pub trait CircuitField: PrimeField {
     /// modulus)`. This method does **not** perform modular reduction.
     fn from_biguint(n: &BigUint) -> Option<Self>;
 
-    /// Returns the field modulus as a [`BigUint`].
-    fn modulus() -> BigUint;
+    /// Returns the prime field modulus as a [`BigUint`].
+    fn modulus() -> BigUint {
+        (-Self::ONE).to_biguint() + 1u64
+    }
 
     /// Converts the field element to little-endian bytes.
     ///
@@ -165,11 +166,6 @@ macro_rules! impl_circuit_field_le {
                 Self::from_repr(padded.into()).into()
             }
 
-            fn modulus() -> BigUint {
-                let hex_str = &Self::MODULUS[2..]; // Skip "0x" prefix.
-                BigUint::from_str_radix(hex_str, 16).expect("Invalid modulus hex string")
-            }
-
             fn from_bytes_le(bytes: &[u8]) -> Option<Self> {
                 let mut repr = [0u8; $repr_size];
                 repr.copy_from_slice(bytes);
@@ -211,11 +207,6 @@ macro_rules! impl_circuit_field_be {
                 let mut padded = [0u8; $repr_size];
                 padded[$repr_size - bytes.len()..].copy_from_slice(&bytes);
                 Self::from_repr(padded.into()).into()
-            }
-
-            fn modulus() -> BigUint {
-                let hex_str = &Self::MODULUS[2..]; // Skip "0x" prefix.
-                BigUint::from_str_radix(hex_str, 16).expect("Invalid modulus hex string")
             }
 
             fn from_bytes_le(bytes: &[u8]) -> Option<Self> {
