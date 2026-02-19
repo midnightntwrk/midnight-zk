@@ -13,15 +13,15 @@
 
 //! secp256k1 implementation using k256 crate.
 //!
-//! This module re-exports k256's field types directly and provides a wrapper
-//! curve points.
+//! This module provides wrappers around k256's types with safe comparison
+//! semantics. The base field wrapper normalizes before comparisons to avoid
+//! issues with k256's lazy reduction strategy.
 
+mod base_field;
 mod curve;
 
+pub use base_field::Fp;
 pub use curve::{K256Affine, K256};
-
-/// secp256k1 base field - direct alias to k256::FieldElement.
-pub type Fp = k256::FieldElement;
 
 /// secp256k1 scalar field - direct alias to k256::Scalar.
 pub type Fq = k256::Scalar;
