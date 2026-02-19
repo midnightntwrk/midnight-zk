@@ -43,7 +43,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                 advice: meta.advice_column(),
             };
 
-            meta.lookup("lookup", |meta| {
+            meta.lookup("lookup", None, |meta| {
                 let selector = meta.query_selector(config.selector);
                 let not_selector = Expression::from(1) - selector.clone();
                 let advice = meta.query_advice(config.advice, Rotation::cur());
