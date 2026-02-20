@@ -14,9 +14,9 @@
 //! Safe wrapper around k256::FieldElement.
 //!
 //! k256's FieldElement uses lazy reduction, meaning field elements may not be
-//! in canonical form after arithmetic operations. This wrapper ensures that
-//! comparison and predicate methods normalize before operating, eliminating
-//! the risk of incorrect results.
+//! in canonical form after arithmetic operations. This wrapper normalizes
+//! after every arithmetic operation, guaranteeing that elements are always in
+//! canonical form.
 //!
 //! See: <https://github.com/RustCrypto/elliptic-curves/issues/531>
 
@@ -130,7 +130,7 @@ impl Add for Fp {
     type Output = Self;
     #[inline]
     fn add(self, rhs: Self) -> Self {
-        Self(self.0 + rhs.0)
+        Self((self.0 + rhs.0).normalize())
     }
 }
 
@@ -138,21 +138,21 @@ impl Add<&Fp> for Fp {
     type Output = Self;
     #[inline]
     fn add(self, rhs: &Fp) -> Self {
-        Self(self.0 + rhs.0)
+        Self((self.0 + rhs.0).normalize())
     }
 }
 
 impl AddAssign for Fp {
     #[inline]
     fn add_assign(&mut self, rhs: Self) {
-        self.0 += rhs.0;
+        self.0 = (self.0 + rhs.0).normalize();
     }
 }
 
 impl AddAssign<&Fp> for Fp {
     #[inline]
     fn add_assign(&mut self, rhs: &Fp) {
-        self.0 += rhs.0;
+        self.0 = (self.0 + rhs.0).normalize();
     }
 }
 
@@ -160,7 +160,7 @@ impl Sub for Fp {
     type Output = Self;
     #[inline]
     fn sub(self, rhs: Self) -> Self {
-        Self(self.0 - rhs.0)
+        Self((self.0 - rhs.0).normalize())
     }
 }
 
@@ -168,21 +168,21 @@ impl Sub<&Fp> for Fp {
     type Output = Self;
     #[inline]
     fn sub(self, rhs: &Fp) -> Self {
-        Self(self.0 - rhs.0)
+        Self((self.0 - rhs.0).normalize())
     }
 }
 
 impl SubAssign for Fp {
     #[inline]
     fn sub_assign(&mut self, rhs: Self) {
-        self.0 -= rhs.0;
+        self.0 = (self.0 - rhs.0).normalize();
     }
 }
 
 impl SubAssign<&Fp> for Fp {
     #[inline]
     fn sub_assign(&mut self, rhs: &Fp) {
-        self.0 -= rhs.0;
+        self.0 = (self.0 - rhs.0).normalize();
     }
 }
 
@@ -190,7 +190,7 @@ impl Mul for Fp {
     type Output = Self;
     #[inline]
     fn mul(self, rhs: Self) -> Self {
-        Self(self.0 * rhs.0)
+        Self((self.0 * rhs.0).normalize())
     }
 }
 
@@ -198,21 +198,21 @@ impl Mul<&Fp> for Fp {
     type Output = Self;
     #[inline]
     fn mul(self, rhs: &Fp) -> Self {
-        Self(self.0 * rhs.0)
+        Self((self.0 * rhs.0).normalize())
     }
 }
 
 impl MulAssign for Fp {
     #[inline]
     fn mul_assign(&mut self, rhs: Self) {
-        self.0 *= rhs.0;
+        self.0 = (self.0 * rhs.0).normalize();
     }
 }
 
 impl MulAssign<&Fp> for Fp {
     #[inline]
     fn mul_assign(&mut self, rhs: &Fp) {
-        self.0 *= rhs.0;
+        self.0 = (self.0 * rhs.0).normalize();
     }
 }
 
@@ -220,7 +220,7 @@ impl Neg for Fp {
     type Output = Self;
     #[inline]
     fn neg(self) -> Self {
-        Self(-self.0)
+        Self((-self.0).normalize())
     }
 }
 
@@ -228,7 +228,7 @@ impl Neg for &Fp {
     type Output = Fp;
     #[inline]
     fn neg(self) -> Fp {
-        Fp(-self.0)
+        Fp((-self.0).normalize())
     }
 }
 
@@ -273,11 +273,11 @@ impl Field for Fp {
     }
 
     fn square(&self) -> Self {
-        Self(self.0.square())
+        Self(self.0.square().normalize())
     }
 
     fn double(&self) -> Self {
-        Self(self.0.double())
+        Self(self.0.double().normalize())
     }
 
     fn invert(&self) -> CtOption<Self> {
