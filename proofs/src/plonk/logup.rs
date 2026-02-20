@@ -11,9 +11,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! # LogUp Lookup Argument
+//! # LogUp Lookup Argument with Selector
 //!
-//! This module implements the [LogUp (Logarithmic Derivative) lookup argument](https://eprint.iacr.org/2022/1530),
+//! This module implements a selector-extended variant of the
+//! [LogUp (Logarithmic Derivative) lookup argument](https://eprint.iacr.org/2022/1530),
 //! adapted for univariate polynomials in the PLONK arithmetization. LogUp
 //! provides an efficient way to prove that a set of values is contained
 //! within a predefined table.
@@ -45,6 +46,25 @@
 //! normalized: if value `v` is looked up `k` times and appears `t` times in the
 //! table, multiplicities are normalized with `k/t`.
 //!
+//! ## Selector Extension
+//!
+//! Each lookup argument carries an optional **selector** `s(X)` that restricts
+//! which rows participate. When `s(X) = 0` at a row, that row's input values
+//! are ignored; when `s(X) = 1`, the row is active and its inputs must be in
+//! the table.
+//!
+//! The selector modifies the balance equation to:
+//! ```text
+//! Σᵢ s(Xᵢ)·h(Xᵢ) = Σᵢ m(Xᵢ)/(t(Xᵢ) + β)
+//! ```
+//!
+//! Critically, **the selector gates only the input side** (`h`). The
+//! multiplicities `m` are always summed over all table rows, because they count
+//! how many *selected* input rows reference each table entry — so
+//! `Σᵢ mᵢ/(tᵢ + β)` telescopes to `Σᵢ s(Xᵢ)·h(Xᵢ)` unconditionally.
+//! Gating `m` by the selector would silently drop table-row contributions and
+//! break the balance.
+//!
 //! ## Running Sum Formulation
 //!
 //! Rather than checking the sum equality directly (which would require
@@ -53,12 +73,13 @@
 //!
 //! - **Helper polynomial** `h(X)`: Encodes `Σⱼ 1/(fⱼ(X) + β)` at each row
 //! - **Multiplicities** `m(X)`: Counts how many times each table entry is used
+//!   by selected input rows
 //! - **Accumulator** `Z(X)`: Running sum that accumulates the log-derivative
 //!   differences
 //!
 //! The accumulator satisfies:
 //! ```text
-//! Z(ω·X) - Z(X) = h(X) - m(X)/(t(X) + β)
+//! Z(ω·X) - Z(X) = s(X)·h(X) - m(X)/(t(X) + β)
 //! ```
 //!
 //! With boundary condition `Z(1) = 0`. If the lookup is valid, the accumulator
@@ -67,7 +88,7 @@
 //! The running sum is enforced in the constraint system via the following
 //! identity:
 //! ```text
-//! Z(ω·X)·(t(X) + β) = (Z(X) + h(X))·(t(X) + β) - m(X)
+//! Z(ω·X)·(t(X) + β) = Z(X)·(t(X) + β) + s(X)·h(X)·(t(X) + β) - m(X)
 //! ```
 //!
 //! ## Lookup Width vs Parallel Lookups
@@ -103,13 +124,16 @@ use std::fmt::{self, Debug};
 use ff::{Field, PrimeField};
 
 use super::circuit::Expression;
+use crate::plonk::Selector;
 
 pub(crate) mod prover;
 pub(crate) mod verifier;
 
 /// A `BatchedArgument` collects all lookups that query the same table. For
 /// multi-column lookups (e.g., checking `(a, b) ∈ (t_1, t_2)`), columns are
-/// compressed using a random challenge `θ` into a single value.
+/// compressed using a random challenge `θ` into a single value. An optional
+/// selector gates which rows participate in the lookup; rows where the selector
+/// evaluates to zero are excluded from the accumulator.
 ///
 /// # Layout
 ///
@@ -128,6 +152,7 @@ pub(crate) mod verifier;
 #[derive(Clone)]
 pub struct BatchedArgument<F: Field> {
     pub(crate) name: String,
+    pub(crate) selector: Expression<F>,
     pub(crate) input_expressions: Vec<Vec<Expression<F>>>,
     pub(crate) table_expressions: Vec<Expression<F>>,
 }
@@ -135,6 +160,7 @@ pub struct BatchedArgument<F: Field> {
 impl<F: Field> Debug for BatchedArgument<F> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("BatchedArgument")
+            .field("selector", &self.selector)
             .field("input_expressions", &self.input_expressions)
             .field("table_expressions", &self.table_expressions)
             .finish()
@@ -149,6 +175,7 @@ impl<F: Field> Debug for BatchedArgument<F> {
 #[derive(Clone)]
 pub struct FlattenedArgument<F: Field> {
     pub(crate) name: String,
+    pub(crate) selector: Expression<F>,
     pub(crate) input_expressions: Vec<Vec<Expression<F>>>,
     pub(crate) table_expressions: Vec<Expression<F>>,
 }
@@ -157,6 +184,7 @@ impl<F: Field> Debug for FlattenedArgument<F> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("FlattenedArgument")
             .field("name", &self.name)
+            .field("selector", &self.selector)
             .field("input_expressions", &self.input_expressions)
             .field("table_expressions", &self.table_expressions)
             .finish()
@@ -197,14 +225,33 @@ impl<F: Field> BatchedArgument<F> {
             .max()
             .unwrap_or(1);
 
-        self.nb_parallel_lookups(cs_degree) * lookup_degree + 1
+        let helper_degree = self.nb_parallel_lookups(cs_degree) * lookup_degree + 1;
+
+        // The accumulator constraint includes the term:
+        //   l_active_row (degree 1) * selector * helper (degree 1) * table_value
+        // with degree: 2 + selector.degree() + table_degree.
+        // When a selector is present (degree 1), this yields degree 4 for a
+        // fixed-column table, which can exceed the helper constraint degree of
+        // 3.
+        //
+        // Additionally, the system requires cs.degree() - 1 to be a power of 2 so that
+        // FlattenedArgument helper degrees after split(cs.degree()) equal cs.degree().
+        // We therefore round the minimum required degree up to the next value where
+        // (x - 1) is a power of 2 using: (max_raw_degree - 1).next_power_of_two() + 1.
+        let table_degree = self.table_expressions.iter().map(|e| e.degree()).max().unwrap_or(1);
+        let accumulator_degree = 2 + self.selector.degree() + table_degree;
+
+        (std::cmp::max(helper_degree, accumulator_degree) - 1).next_power_of_two() + 1
     }
 
     /// Constructs a new lookup argument.
     ///
-    /// `table_map` is a sequence of `(input, table)` tuples.
+    /// `table_map` is a sequence of `(input, table)` tuples. `selector`, if
+    /// provided, restricts the lookup to rows where it is active; passing
+    /// `None` activates all rows.
     pub fn new<S: AsRef<str>>(
         name: S,
+        selector: Option<Selector>,
         table_map: Vec<(Vec<Expression<F>>, Expression<F>)>,
     ) -> Self {
         let (input_expressions, table_expressions): (Vec<Vec<Expression<F>>>, Vec<Expression<F>>) =
@@ -228,8 +275,15 @@ impl<F: Field> BatchedArgument<F> {
                 .for_each(|(j, parallel)| transposed_input_expressions[j][i] = parallel)
         });
 
+        let selector = if let Some(selector) = selector {
+            Expression::Selector(selector)
+        } else {
+            Expression::Constant(F::ONE)
+        };
+
         BatchedArgument {
             name: name.as_ref().to_string(),
+            selector,
             input_expressions: transposed_input_expressions,
             table_expressions,
         }
@@ -251,6 +305,7 @@ impl<F: Field> BatchedArgument<F> {
             .chunks(nb_lookups)
             .enumerate()
             .map(|(idx, chunk)| FlattenedArgument {
+                selector: self.selector.clone(),
                 name: format!("{}-{}", self.name, idx),
                 input_expressions: chunk.to_vec(),
                 table_expressions: self.table_expressions.clone(),
@@ -260,6 +315,11 @@ impl<F: Field> BatchedArgument<F> {
 }
 
 impl<F: Field> FlattenedArgument<F> {
+    /// Returns the selector expression for this argument.
+    pub fn selector_expression(&self) -> &Expression<F> {
+        &self.selector
+    }
+
     /// Returns the input expressions for this argument.
     ///
     /// Organized as `[parallel_lookups][lookup_width]`.
@@ -294,8 +354,10 @@ impl<F: PrimeField> Evaluated<F> {
     ///
     /// Checks two identities (where `fⱼ` and `t` denote the compressed values):
     /// - **Helper constraint**: `h(x) · ∏ⱼ(fⱼ(x) + β) = Σⱼ ∏_{k≠j}(fₖ(x) + β)`
-    /// - **Accumulator constraint**: `Z(ωx)·(t(x) + β) = (Z(x) + h(x))·(t(x) +
-    ///   β) - m(x)`
+    /// - **Accumulator constraint**: `(Z(ωx) - Z(x))·(t(x) + β) =
+    ///   selector·h(x)·(t(x) + β) - m(x)` where the selector gates only the
+    ///   input side (`h`); multiplicities are always subtracted so the
+    ///   table-side balance is maintained.
     #[allow(clippy::too_many_arguments)]
     pub(in crate::plonk) fn expressions<'a>(
         &'a self,
@@ -365,11 +427,18 @@ impl<F: PrimeField> Evaluated<F> {
         let helper_expression = || self.helper_eval * product - sum;
 
         // LogUp accumulator constraint:
-        // Z(ωx)·(t(x) + β) = (Z(x) + h(x))·(t(x) + β) - m(x)
-        // Rearranging: (Z(ωx) - Z(x) - h(x)) · (t(x) + β) + m(x) = 0
+        // Z(ωx)·(t(x) + β) = Z(x) · (t(x) + β) + h(x)) · (t(x) + β) - m(x)
+        // With a selector we exclude the recurring sum new value
+        // Z(ωx)·(t(x) + β) = Z(x) · (t(x) + β) + selector · h(x) · (t(x) + β) - m(x)
+        // Rearranging:
+        // (Z(ωx) - Z(x)) · (t(x) + β) - selector · h(x) · (t(x) + β) + m(x) = 0
+        let selector =
+            evaluate_expressions(std::slice::from_ref(&argument.selector)).swap_remove(0);
+
         let accumulator_constraint = || {
-            let diff = (self.accumulator_next_eval - self.accumulator_eval - self.helper_eval)
+            let diff = (self.accumulator_next_eval - self.accumulator_eval)
                 * (compressed_table + beta)
+                - selector * self.helper_eval * (compressed_table + beta)
                 + self.multiplicities_eval;
             diff * active_rows
         };
