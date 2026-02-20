@@ -60,10 +60,7 @@ where
             *offset,
         )?;
         let target_opt_value = state.value().zip(letter.value()).map(|(state, letter)| {
-            self.config.automata[automaton_index]
-                .transitions
-                .get(&(*state, *letter))
-                .copied()
+            self.config.automata[automaton_index].get_transition(state, letter)
         });
         target_opt_value.error_if_known_and(|o| o.is_none())?;
         let target_value = target_opt_value.map(|o| o.unwrap());

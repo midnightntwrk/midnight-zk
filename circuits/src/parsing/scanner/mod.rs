@@ -68,15 +68,17 @@ type NG<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
 /// precompute all transition operations on the prover code.
 #[derive(Clone, Debug)]
 pub struct NativeAutomaton<F> {
+    /// The number of states of the automaton.
+    pub nb_states: usize,
     /// The initial state of the automaton.
     pub initial_state: F,
     /// The final states of the automaton.
     pub final_states: BTreeSet<F>,
-    /// When `transitions[(source_state,letter)] = (target_state,marker)`, it
+    /// When `transitions[source_state][letter] = (target_state, marker)`, it
     /// means that in state `source_state`, upon reading the byte `letter`, the
     /// automaton run moves to state `target_state` and marks `letter` with
     /// `marker`. If the entry is undefined, the automaton run gets stuck.
-    pub transitions: BTreeMap<(F, F), (F, F)>,
+    pub transitions: BTreeMap<F, BTreeMap<F, (F, F)>>,
 }
 
 impl<F> From<&Automaton> for NativeAutomaton<F>
@@ -84,19 +86,26 @@ where
     F: CircuitField + Ord,
 {
     fn from(value: &Automaton) -> Self {
+        let mut transitions = BTreeMap::new();
+        for (&source, inner) in &value.transitions {
+            let native_inner: BTreeMap<F, (F, F)> = inner
+                .iter()
+                .map(|(&letter, &(target, marker))| {
+                    (
+                        F::from(letter as u64),
+                        (F::from(target as u64), F::from(marker as u64)),
+                    )
+                })
+                .collect();
+            transitions.insert(F::from(source as u64), native_inner);
+        }
         NativeAutomaton {
+            nb_states: value.nb_states,
             initial_state: F::from(value.initial_state as u64),
             final_states: (value.final_states.iter())
                 .map(|s| F::from(*s as u64))
                 .collect::<BTreeSet<_>>(),
-            transitions: (value.transitions.iter())
-                .map(|(&(s1, a), &(s2, marker))| {
-                    (
-                        (F::from(s1 as u64), F::from(a as u64)),
-                        (F::from(s2 as u64), F::from(marker as u64)),
-                    )
-                })
-                .collect::<BTreeMap<_, _>>(),
+            transitions,
         }
     }
 }
@@ -114,6 +123,11 @@ impl<F> NativeAutomaton<F>
 where
     F: CircuitField + Ord,
 {
+    /// Looks up the transition from `state` reading `letter`.
+    fn get_transition(&self, state: &F, letter: &F) -> Option<(F, F)> {
+        self.transitions.get(state).and_then(|inner| inner.get(letter)).copied()
+    }
+
     fn from_collection<LibIndex>(
         automata: &FxHashMap<LibIndex, Automaton>,
     ) -> FxHashMap<LibIndex, NativeAutomaton<F>>
@@ -338,12 +352,14 @@ where
 
                 // Main transitions.
                 for automaton in self.config.automata.iter() {
-                    for ((source, letter), (target,output_extr)) in automaton.1.transitions.iter() {
+                    for (source, inner) in automaton.1.transitions.iter() {
+                        for (letter, (target, output_extr)) in inner.iter() {
                             assert!(
                                 *source != F::ZERO && *target != F::ZERO ,
                                 "sanity check failed: the circuit requires that state 0 is not used, but the automaton generation failed to ensure it."
                             );
                             add_entry(*source, *letter, *target, *output_extr)?
+                        }
                     }
                     // Dummy transitions to represent final states. Recall that letter are
                     // represented in-circuit by elements of `AssignedByte`, which are therefore

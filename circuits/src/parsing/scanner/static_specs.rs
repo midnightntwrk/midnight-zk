@@ -492,9 +492,9 @@ mod tests {
                 "  - {:?}: {} states, {} transitions",
                 name,
                 automaton.nb_states,
-                automaton.transitions.len()
+                automaton.transitions.values().map(|m| m.len()).sum::<usize>()
             );
-            total += automaton.transitions.len() + automaton.final_states.len()
+            total += automaton.transitions.values().map(|m| m.len()).sum::<usize>() + automaton.final_states.len()
         }
         println!(
             ">> Total nb of lookup rows in the chip: {} ≤ 2^{}",
