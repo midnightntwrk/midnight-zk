@@ -177,6 +177,10 @@ impl CircuitCurve for K256 {
     const NUM_BITS_SUBGROUP: u32 = 256;
 
     fn coordinates(&self) -> Option<(Self::Base, Self::Base)> {
+        // Identity point maps to (0, 0) by circuit convention.
+        if bool::from(self.is_identity()) {
+            return Some((K256Fp::ZERO, K256Fp::ZERO));
+        }
         let affine = self.to_affine();
         Some((affine.x(), affine.y()))
     }
@@ -274,5 +278,18 @@ impl WeierstrassCurve for bn256::G1 {
     }
     fn scalar_zeta() -> Self::ScalarField {
         <bn256::Fr as ff::WithSmallOrderMulGroup<3>>::ZETA
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_k256_identity_coordinates_are_zero() {
+        let identity = K256::identity();
+        let (x, y) = identity.coordinates().expect("coordinates should be Some");
+        assert_eq!(x, K256Fp::ZERO);
+        assert_eq!(y, K256Fp::ZERO);
     }
 }
