@@ -30,6 +30,7 @@ verification keys break backwards compatibility.
 * Remove zeta consti in  `CircuitCurve` [#186](https://github.com/midnightntwrk/midnight-zk/pull/186)
 * Uniform input sizes for hash cost-model [#183](https://github.com/midnightntwrk/midnight-zk/pull/183)
 * Updated Rust toolchain to 1.90.0 [#210](https://github.com/midnightntwrk/midnight-zk/pull/210)
+* CircuitField fixes [#214](https://github.com/midnightntwrk/midnight-zk/pull/214)
 
 ### Removed
 * Move external implementations to zk-stdlib [#178](https://github.com/midnightntwrk/midnight-zk/pull/178)

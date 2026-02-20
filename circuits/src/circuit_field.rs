@@ -73,12 +73,14 @@ pub trait CircuitField: PrimeField {
     fn to_bytes_be(&self) -> Self::Bytes;
 
     /// Creates a field element from little-endian bytes.
+    /// Needs to receive excatly Self::NUM_BYTES.
     ///
     /// Returns `None` if the value is not in the canonical range `[0,
     /// modulus)`.
     fn from_bytes_le(bytes: &[u8]) -> Option<Self>;
 
     /// Creates a field element from big-endian bytes.
+    /// Needs to receive exactly Self::NUM_BYTES.
     ///
     /// Returns `None` if the value is not in the canonical range `[0,
     /// modulus)`.
@@ -91,7 +93,7 @@ pub trait CircuitField: PrimeField {
     /// Decomposes the field element into little-endian bits.
     ///
     /// - If `nb_bits = None`, the output has as many bits as necessary to
-    ///   represent the element, but no more.
+    ///   represent the element, but no more. Zero needs 1 bit.
     /// - If `nb_bits` is provided, the output has the specified length,
     ///   possibly with trailing zeros.
     ///
@@ -99,45 +101,49 @@ pub trait CircuitField: PrimeField {
     ///
     /// If the element does not fit in `nb_bits` bits when such argument is
     /// provided.
-    fn to_le_bits(&self, nb_bits: Option<usize>) -> Vec<bool> {
-        let bytes = self.to_bytes_be();
-        let mut bits = Vec::new();
-        let mut started = false;
-        for &byte in bytes.as_ref() {
-            for j in (0..8).rev() {
-                let bit = byte & (1 << j) != 0;
-                if bit {
-                    started = true;
-                }
-                if started {
-                    bits.push(bit);
-                }
+    fn to_bits_le(&self, nb_bits: Option<usize>) -> Vec<bool> {
+        let bytes = self.to_bytes_le();
+        let all_bits: Vec<bool> = bytes
+            .as_ref()
+            .iter()
+            .flat_map(|byte| (0..8).map(move |j| byte & (1 << j) != 0))
+            .collect();
+
+        match nb_bits {
+            Some(n) => {
+                // The value must fit within `n` bits.
+                assert!(
+                    n > 0 && all_bits[n..].iter().all(|b| !b),
+                    "field element does not fit in {n} bits"
+                );
+                all_bits[..n].to_vec()
+            }
+            None => {
+                // Strip trailing zeros. Keep at least one bit (zero is [false], not an empty
+                // vec).
+                let len = all_bits.iter().rposition(|b| *b).unwrap_or(0);
+                all_bits[..=len].to_vec()
             }
         }
-        bits.reverse();
-        if let Some(n) = nb_bits {
-            assert!(n >= bits.len());
-            bits.resize(n, false);
-        }
-        bits
     }
 
     /// Creates a field element from a little-endian bitstring.
     ///
+    /// The input may have fewer bits than `Self::NUM_BITS`; missing high bits
+    /// are treated as zero.
+    ///
     /// # Panics
     ///
     /// If `bits.len() > Self::NUM_BITS`.
-    fn from_le_bits(bits: &[bool]) -> Self {
+    fn from_bits_le(bits: &[bool]) -> Self {
         assert!(bits.len() as u32 <= Self::NUM_BITS);
-        let bytes: Vec<u8> = bits
-            .chunks(8)
-            .map(|chunk| {
-                chunk
-                    .iter()
-                    .enumerate()
-                    .fold(0u8, |acc, (i, b)| acc + if *b { 1 << i } else { 0 })
-            })
-            .collect();
+        let mut bytes = vec![0u8; Self::NUM_BYTES];
+        for (i, chunk) in bits.chunks(8).enumerate() {
+            bytes[i] = chunk
+                .iter()
+                .enumerate()
+                .fold(0u8, |acc, (j, b)| acc + if *b { 1 << j } else { 0 });
+        }
         Self::from_bytes_le(&bytes).unwrap()
     }
 }
@@ -337,6 +343,37 @@ mod tests {
             let recovered = F::from_bytes_le(&bytes).unwrap();
             assert_eq!(fe, recovered);
         }
+    }
+
+    #[test]
+    fn test_bits_le_roundtrip() {
+        let mut rng = ChaCha8Rng::seed_from_u64(0xFACE);
+
+        for _ in 0..100 {
+            let fe = F::random(&mut rng);
+            let bits = fe.to_bits_le(None);
+            let recovered = F::from_bits_le(&bits);
+            assert_eq!(fe, recovered);
+        }
+
+        // Fixed-width variant.
+        for _ in 0..100 {
+            let fe = F::random(&mut rng);
+            let bits = fe.to_bits_le(Some(F::NUM_BITS as usize));
+            assert_eq!(bits.len(), F::NUM_BITS as usize);
+            let recovered = F::from_bits_le(&bits);
+            assert_eq!(fe, recovered);
+        }
+
+        // Zero roundtrips and produces a single `false` bit.
+        let bits = F::ZERO.to_bits_le(None);
+        assert_eq!(bits, vec![false]);
+        assert_eq!(F::from_bits_le(&bits), F::ZERO);
+
+        // One roundtrips and produces a single `true` bit.
+        let bits = F::ONE.to_bits_le(None);
+        assert_eq!(bits, vec![true]);
+        assert_eq!(F::from_bits_le(&bits), F::ONE);
     }
 
     #[test]
