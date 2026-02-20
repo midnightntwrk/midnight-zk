@@ -598,6 +598,17 @@ impl ZkStdLib {
             .unwrap_or_else(|| panic!("ZkStdLibArch must enable secp256k1"))
     }
 
+    /// Chip for performing in-circuit operations over the BLS12-381 scalar
+    /// field.
+    pub fn bls12_381_scalar(&self) -> &NG {
+        assert!(
+            self.bls12_381_curve_chip.is_some(),
+            "ZkStdLibArch must enable bls12_381"
+        );
+
+        &self.native_gadget
+    }
+
     /// Chip for performing in-circuit operations over the BLS12-381 curve.
     /// Note that this is the whole BLS curve (whose order is a 381-bits
     /// integer). If you need to work over the BLS subgroup, you may want to
