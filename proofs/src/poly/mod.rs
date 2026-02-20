@@ -401,6 +401,16 @@ impl<F: Field, B: PolynomialRepresentation> Mul<F> for Polynomial<F, B> {
     }
 }
 
+impl<F: Field, B: PolynomialRepresentation> Mul<F> for &Polynomial<F, B> {
+    type Output = Polynomial<F, B>;
+
+    fn mul(self, rhs: F) -> Polynomial<F, B> {
+        let mut res = self.clone();
+        res.mul_assign(rhs);
+        res
+    }
+}
+
 impl<F: Field, B: PolynomialRepresentation> MulAssign<F> for Polynomial<F, B> {
     fn mul_assign(&mut self, rhs: F) {
         if rhs == F::ZERO {
