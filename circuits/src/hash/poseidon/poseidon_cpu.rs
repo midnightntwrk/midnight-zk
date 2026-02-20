@@ -15,6 +15,8 @@ use std::io::{self, Read};
 
 use group::GroupEncoding;
 use midnight_proofs::transcript::{Hashable, Sampleable, TranscriptHash};
+#[cfg(feature = "dev-curves")]
+use {ff::PrimeField, midnight_curves::bn256};
 
 use super::{
     constants::{PoseidonField, NB_FULL_ROUNDS, NB_PARTIAL_ROUNDS, RATE, WIDTH},
@@ -246,6 +248,58 @@ impl Hashable<PoseidonState<midnight_curves::Fq>> for midnight_curves::Fq {
 
 impl Sampleable<PoseidonState<midnight_curves::Fq>> for midnight_curves::Fq {
     fn sample(out: midnight_curves::Fq) -> Self {
+        out
+    }
+}
+
+// /////////////////////////////////////////////////////////
+// /// Implementation of Hashable for BN256 with Poseidon //
+// /////////////////////////////////////////////////////////
+
+#[cfg(feature = "dev-curves")]
+impl Hashable<PoseidonState<bn256::Fr>> for bn256::G1 {
+    fn to_input(&self) -> Vec<bn256::Fr> {
+        AssignedForeignPoint::<bn256::Fr, bn256::G1, MEP>::as_public_input(self)
+    }
+
+    fn to_bytes(&self) -> Vec<u8> {
+        <bn256::G1Affine as GroupEncoding>::to_bytes(&self.into()).as_ref().to_vec()
+    }
+
+    fn read(buffer: &mut impl Read) -> io::Result<Self> {
+        let mut bytes = <bn256::G1Affine as GroupEncoding>::Repr::default();
+
+        buffer.read_exact(bytes.as_mut())?;
+
+        Option::from(bn256::G1Affine::from_bytes(&bytes))
+            .ok_or_else(|| io::Error::other("Invalid BN256 point encoding in proof"))
+            .map(|p: bn256::G1Affine| p.into())
+    }
+}
+
+#[cfg(feature = "dev-curves")]
+impl Hashable<PoseidonState<bn256::Fr>> for bn256::Fr {
+    fn to_input(&self) -> Vec<bn256::Fr> {
+        vec![*self]
+    }
+
+    fn to_bytes(&self) -> Vec<u8> {
+        self.to_bytes().to_vec()
+    }
+
+    fn read(buffer: &mut impl Read) -> io::Result<Self> {
+        let mut bytes = <Self as PrimeField>::Repr::default();
+
+        buffer.read_exact(bytes.as_mut())?;
+
+        Option::from(Self::from_repr(bytes))
+            .ok_or_else(|| io::Error::other("Invalid BN256 scalar encoding in proof"))
+    }
+}
+
+#[cfg(feature = "dev-curves")]
+impl Sampleable<PoseidonState<bn256::Fr>> for bn256::Fr {
+    fn sample(out: bn256::Fr) -> Self {
         out
     }
 }

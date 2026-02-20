@@ -157,3 +157,41 @@ impl SelfEmulation for BlstrsEmulation {
         scalar_chip.constrain_as_committed_public_input(layouter, assigned_scalar)
     }
 }
+
+/// Implementation of the SelfEmulation trait for bn256.
+#[cfg(feature = "dev-curves")]
+#[derive(Clone, Debug)]
+pub struct BnEmulation {}
+
+#[cfg(feature = "dev-curves")]
+impl SelfEmulation for BnEmulation {
+    type F = midnight_curves::bn256::Fr;
+    type C = midnight_curves::bn256::G1;
+    type AssignedPoint = AssignedForeignPoint<Self::F, Self::C, Self::C>;
+    type Hash = PoseidonState<Self::F>;
+
+    type ScalarChip = NativeGadget<Self::F, P2RDecompositionChip<Self::F>, NativeChip<Self::F>>;
+    type CurveChip = ForeignEccChip<Self::F, Self::C, Self::C, Self::ScalarChip, Self::ScalarChip>;
+    type SpongeChip = PoseidonChip<Self::F>;
+
+    type G1Affine = midnight_curves::bn256::G1Affine;
+    type G2Affine = midnight_curves::bn256::G2Affine;
+    type Engine = midnight_curves::bn256::Bn256;
+
+    fn msm(
+        layouter: &mut impl Layouter<Self::F>,
+        curve_chip: &Self::CurveChip,
+        scalars: &[(AssignedNative<Self::F>, usize)],
+        bases: &[Self::AssignedPoint],
+    ) -> Result<Self::AssignedPoint, Error> {
+        curve_chip.msm_by_bounded_scalars(layouter, scalars, bases)
+    }
+
+    fn constrain_scalar_as_committed_public_input(
+        layouter: &mut impl Layouter<Self::F>,
+        scalar_chip: &Self::ScalarChip,
+        assigned_scalar: &AssignedNative<Self::F>,
+    ) -> Result<(), Error> {
+        scalar_chip.constrain_as_committed_public_input(layouter, assigned_scalar)
+    }
+}
