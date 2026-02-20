@@ -11,22 +11,25 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! A chip combining lookup-based parsing techniques such as automaton-based
+//! A chip combining lookup-based parsing techniques such automaton-based
 //! parsing. The chip supports:
 //!
 //! - **Static automaton parsing** ([`parse_static`]): uses a fixed lookup table
 //!   pre-loaded with transitions from a library of automata ([`StdLibParser`]).
+//! - **Dynamic automaton parsing** ([`parse_dynamic`]): uses dynamic lookups to
+//!   parse arbitrary regular expressions at runtime.
 //! - **Substring verification** ([`check_subsequence`], [`check_bytes`]): uses
 //!   dynamic lookups to verify that a subsequence appears in a given sequence.
 
 pub(crate) mod automaton;
+mod dynamic_automaton;
 /// A module to specify languages as regular expressions and convert them into
 /// finite automata.
 pub mod regex;
 mod serialization;
 mod static_automaton;
-mod substring;
 pub(crate) mod static_specs;
+mod substring;
 
 use std::{
     cell::RefCell,
@@ -36,13 +39,14 @@ use std::{
     rc::Rc,
 };
 
-use automaton::{Automaton, ALPHABET_MAX_SIZE};
+use automaton::Automaton;
 use crate::CircuitField;
 use midnight_proofs::{
     circuit::{Chip, Layouter, Value},
     plonk::{Advice, Column, ConstraintSystem, Error, Expression, Fixed, Selector, TableColumn},
     poly::Rotation,
 };
+use regex::Regex;
 use rustc_hash::FxHashMap;
 pub use static_specs::{spec_library, StdLibParser};
 #[cfg(test)]
@@ -57,6 +61,21 @@ use crate::{
     types::AssignedByte,
     utils::ComposableChip,
 };
+
+/// Maximal size of the alphabet of an automaton/regex, since input characters
+/// are represented by `AssignedByte`. The parser (`scanner::parse_static`) is
+/// using this information to store automaton final states in the transition
+/// table, by encoding them as impossible transitions starting from the said
+/// state, and labelled with letter `ALPHABET_MAX_SIZE`. This bound is also
+/// needed to represent letters as u8.
+const ALPHABET_MAX_SIZE: usize = 256;
+
+/// Padding used in the dynamic automaton tables, due to the fact that they have
+/// to spread over two rows. The padding is used to fill the second row with
+/// garbage data that cannot be meaningfully interpreted by parsing circuits. In
+/// particular, it should not be a `u8` value, nor `ALPHABET_MAX_SIZE` which is
+/// used as an encoding of final state checks.
+const DYNAMIC_AUTOMATON_PADDING: usize = ALPHABET_MAX_SIZE + 1;
 
 /// Number of advice columns for the scanner chip.
 pub const NB_SCANNER_ADVICE_COLS: usize = 3;
@@ -149,6 +168,47 @@ where
     }
 }
 
+#[derive(Clone, Debug)]
+/// A reference for parsing methods for the function `parse`. Either an entry of
+/// the static automaton library (more efficient, but limited library), or a
+/// dynamic regular expression (more costly, but supports arbitrary regexes).
+pub enum AutomatonParser {
+    /// Static automaton library, as defined in `parsing::static_specs` (see the
+    /// documentation of each object of type `StdLibParser` to get the exact
+    /// regular expression they check). Implemented using fixed lookups.
+    Static(StdLibParser),
+    /// Parses an arbitrary regular expression. Implemented using dynamic
+    /// lookups. More costly than the static library (`Static`), but more
+    /// generic.
+    ///
+    /// # Resources
+    ///
+    /// Parsing dynamic regexes converts them into automata, whose transitions
+    /// are then copied in the circuit. I.e., parsing a regex creates an
+    /// overhead of as many Plonk rows as there are transitions. Calls are
+    /// however cached, so that several parsing with the same `Regex` only load
+    /// the transition table once.
+    Dynamic(Regex),
+}
+
+impl From<&StdLibParser> for AutomatonParser {
+    fn from(value: &StdLibParser) -> Self {
+        AutomatonParser::Static(*value)
+    }
+}
+
+impl From<StdLibParser> for AutomatonParser {
+    fn from(value: StdLibParser) -> Self {
+        AutomatonParser::from(&value)
+    }
+}
+
+impl From<Regex> for AutomatonParser {
+    fn from(value: Regex) -> Self {
+        AutomatonParser::Dynamic(value)
+    }
+}
+
 /// Scanner gate configuration.
 #[derive(Clone, Debug)]
 pub struct ScannerConfig<LibIndex, F> {
@@ -163,12 +223,17 @@ pub struct ScannerConfig<LibIndex, F> {
     t_target: TableColumn,
     t_output: TableColumn,
 
+    // Dynamic automaton columns.
+    q_dynamic: Selector,
+
     // Substring columns.
     q_substring: Selector,
     substring_tag_col: Column<Fixed>,
     index_col: Column<Advice>,
     byte_col: Column<Advice>,
 }
+
+type RegexCache<F> = HashMap<Regex, NativeAutomaton<F>>;
 
 /// Chip for scanning: automaton parsing and substring verification.
 #[derive(Clone, Debug)]
@@ -178,6 +243,11 @@ where
 {
     config: ScannerConfig<LibIndex, F>,
     native_gadget: NG<F>,
+    /// Tracks the maximum state index used by dynamic automata, used to
+    /// offset_states for new automata so their states don't overlap.
+    dynamic_max_state: Rc<RefCell<u64>>,
+    /// Cache mapping a Regex to its converted automaton and assigned tag.
+    regex_cache: Rc<RefCell<RegexCache<F>>>,
     /// Counter for generating unique positive tags for substring lookups.
     substring_tag_counter: Rc<RefCell<u64>>,
     /// Cache mapping a sequence of cells to the tag assigned to it, so that
@@ -217,6 +287,8 @@ where
         Self {
             config: config.clone(),
             native_gadget: deps.clone(),
+            dynamic_max_state: Rc::new(RefCell::new(1)),
+            regex_cache: Rc::new(RefCell::new(HashMap::new())),
             substring_tag_counter: Rc::new(RefCell::new(1)),
             sequence_cache: Rc::new(RefCell::new(HashMap::new())),
         }
@@ -239,9 +311,6 @@ where
         let t_target = meta.lookup_table_column();
         let t_output = meta.lookup_table_column();
 
-        // The fixed automaton of the configuration. Its set of states is offset by 1 to
-        // ensure that 0 is not a reachable state (required due to how the table lookup
-        // is filled).
         let automata = NativeAutomaton::<F>::from_collection(automata);
 
         meta.lookup("automaton transition check", |meta| {
@@ -258,19 +327,53 @@ where
             ]
         });
 
+        // Dynamic automaton resources.
+        let q_dynamic = meta.complex_selector();
+
+        meta.enable_equality(state_col);
+        meta.enable_equality(letter_col);
+        meta.enable_equality(output_col);
+
+        // Self-referential dynamic lookup: rows where q_dynamic is ON must
+        // match a row where q_dynamic is OFF (i.e., a table row). The table
+        // is chain-ordered by `dynamic_transition_table()`, so
+        // `state_col[row]` is the source and `state_col[row+1]` is the
+        // target. The lookup queries 4 expressions over 3 advice columns:
+        // (source, letter, output) at Rotation::cur and the target at
+        // Rotation::next on the same state_col.
+        meta.lookup_any("dynamic automaton transition check", |meta| {
+            let sel = meta.query_selector(q_dynamic);
+            let not_sel = Expression::Constant(F::ONE) - sel;
+
+            let source = meta.query_advice(state_col, Rotation::cur());
+            let letter = meta.query_advice(letter_col, Rotation::cur());
+            let target = meta.query_advice(state_col, Rotation::next());
+            let output = meta.query_advice(output_col, Rotation::cur());
+
+            vec![
+                (source.clone(), not_sel.clone() * source),
+                (letter.clone(), not_sel.clone() * letter),
+                (target.clone(), not_sel.clone() * target),
+                (output.clone(), not_sel * output),
+            ]
+        });
+
         // Substring resources.
         let q_substring = meta.complex_selector();
-        // Separate tag column for substring lookups.
         let substring_tag_col = meta.fixed_column();
+
+        // Constants column used by assign_advice_from_constant to pin
+        // dynamic automaton table entries at keygen time.
+        let constants_col = meta.fixed_column();
+        meta.enable_constant(constants_col);
 
         // Substring reuses advice_cols[0] and advice_cols[1] as index_col and
         // byte_col respectively.
         let index_col = advice_cols[0];
         let byte_col = advice_cols[1];
 
-        // Enable equality on columns used for copy_advice in substring checks.
-        meta.enable_equality(index_col);
-        meta.enable_equality(byte_col);
+        // enable_equality for index_col and byte_col: state_col (=advice_cols[0])
+        // and letter_col (=advice_cols[1]) are already equality-enabled above.
 
         meta.lookup_any("substring lookup", |meta| {
             let sel = meta.query_selector(q_substring);
@@ -297,6 +400,7 @@ where
             t_letter,
             t_target,
             t_output,
+            q_dynamic,
             q_substring,
             substring_tag_col,
             index_col,
@@ -380,20 +484,29 @@ where
     F: CircuitField + Ord,
 {
     /// Parses `input` in-circuit w.r.t. a regular expression / transducer and
-    /// outputs the sequence of integers it produces. The parser uses a static
-    /// library of automata.
+    /// outputs the sequence of integers it produces. The parser may either be
+    /// part of a static library (faster to parse) or an arbitrary regex (more
+    /// costly but supports any regex).
     pub fn parse(
         &self,
         layouter: &mut impl Layouter<F>,
-        automaton_index: &LibIndex,
+        parser: AutomatonParser,
         input: &[AssignedByte<F>],
-    ) -> Result<Vec<AssignedNative<F>>, Error> {
-        self.parse_static(layouter, automaton_index, input)
+    ) -> Result<Vec<AssignedNative<F>>, Error>
+    where
+        LibIndex: From<StdLibParser>,
+    {
+        match parser {
+            AutomatonParser::Static(automaton_index) => {
+                self.parse_static(layouter, &automaton_index.into(), input)
+            }
+            AutomatonParser::Dynamic(regex) => self.parse_dynamic(layouter, &regex, input),
+        }
     }
 }
 
 #[cfg(test)]
-impl regex::Regex {
+impl Regex {
     // "hello hello [...] hello \( world , world , [...] , world \) !!!!!" with
     // 1. arbitrary spaces whenever there is one
     // 2. at least one "hello" and one "world"
@@ -402,7 +515,6 @@ impl regex::Regex {
     // The definition of the regex purposely performs some non succinct operations
     // to test several constructions of the library.
     fn hard_coded_example0() -> Self {
-        use regex::Regex;
         let hellos = Regex::word("hello").separated_non_empty_list(Regex::blanks_strict());
         let worlds = Regex::word("world").separated_non_empty_list(Regex::cat([
             Regex::blanks(),
@@ -425,7 +537,6 @@ impl regex::Regex {
     }
 
     fn hard_coded_example1() -> Self {
-        use regex::Regex;
         // `marker_regex` accepts any character, marking 'l' as 2, and
         // any other non-blank character different from 'h' as 1.
         let marker_regex = Regex::any_byte()
@@ -471,8 +582,8 @@ where
         let fixed_cols = (0..NB_ARITH_COLS + 4).map(|_| meta.fixed_column()).collect::<Vec<_>>();
         let automata = FxHashMap::from_iter(
             [
-                regex::Regex::hard_coded_example0().to_automaton(),
-                regex::Regex::hard_coded_example1().to_automaton(),
+                Regex::hard_coded_example0().to_automaton(),
+                Regex::hard_coded_example1().to_automaton(),
             ]
             .into_iter()
             .enumerate(),

@@ -620,8 +620,8 @@ impl ZkStdLib {
     /// circuit) to `true` if [`ScannerChip::parse`] will be called with a
     /// `Static(..)` variant. This flag enables loading the transition tables
     /// of the static parsing library (see [`StdLibParser`]). Set it to
-    /// `false` when only `check_subsequence` or `check_bytes` will be
-    /// called, which avoids loading the full table.
+    /// `false` when only `Dynamic(..)` parsing, `check_subsequence`, or
+    /// `check_bytes` will be called, which avoids loading the full table.
     pub fn scanner(&self, load_static_lib: bool) -> &ScannerChip<StdLibParser, F> {
         if load_static_lib {
             *self.used_scanner_static.borrow_mut() = true;
