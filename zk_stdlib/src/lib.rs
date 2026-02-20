@@ -76,7 +76,7 @@ use midnight_circuits::{
     vec::{vector_gadget::VectorGadget, AssignedVector, Vectorizable},
 };
 use midnight_curves::{
-    secp256k1::{self, Secp256k1},
+    k256::{self as k256_mod, K256},
     Fq, G1Affine, G1Projective,
 };
 use midnight_proofs::{
@@ -106,9 +106,9 @@ type F = midnight_curves::Fq;
 
 // Type aliases, for readability.
 type NG = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
-type Secp256k1BaseChip = FieldChip<F, secp256k1::Fp, MEP, NG>;
-type Secp256k1ScalarChip = FieldChip<F, secp256k1::Fq, MEP, NG>;
-type Secp256k1Chip = ForeignEccChip<F, Secp256k1, MEP, Secp256k1ScalarChip, NG>;
+type Secp256k1BaseChip = FieldChip<F, k256_mod::Fp, MEP, NG>;
+type Secp256k1ScalarChip = FieldChip<F, k256_mod::Fq, MEP, NG>;
+type Secp256k1Chip = ForeignEccChip<F, K256, MEP, Secp256k1ScalarChip, NG>;
 type Bls12381BaseChip = FieldChip<F, midnight_curves::Fp, MEP, NG>;
 type Bls12381Chip = ForeignEccChip<F, midnight_curves::G1Projective, MEP, NG, NG>;
 
@@ -256,7 +256,7 @@ pub struct ZkStdLibConfig {
     sha2_512_config: Option<Sha512Config>,
     poseidon_config: Option<PoseidonConfig<midnight_curves::Fq>>,
     secp256k1_scalar_config: Option<FieldChipConfig>,
-    secp256k1_config: Option<ForeignEccConfig<Secp256k1>>,
+    secp256k1_config: Option<ForeignEccConfig<K256>>,
     bls12_381_config: Option<ForeignEccConfig<midnight_curves::G1Projective>>,
     base64_config: Option<Base64Config>,
     automaton_config: Option<AutomatonConfig<StdLibParser, midnight_curves::Fq>>,
@@ -396,8 +396,8 @@ impl ZkStdLib {
             arch.sha2_512 as usize * NB_SHA512_ADVICE_COLS,
             arch.secp256k1 as usize
                 * max(
-                    nb_field_chip_columns::<F, secp256k1::Fq, MEP>(),
-                    nb_foreign_ecc_chip_columns::<F, Secp256k1, MEP, secp256k1::Fq>(),
+                    nb_field_chip_columns::<F, k256_mod::Fq, MEP>(),
+                    nb_foreign_ecc_chip_columns::<F, K256, MEP, k256_mod::Fq>(),
                 ),
             arch.bls12_381 as usize
                 * max(

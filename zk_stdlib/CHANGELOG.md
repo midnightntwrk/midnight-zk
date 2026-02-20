@@ -20,6 +20,7 @@ verification keys break backwards compatibility.
 * Adapt external hash tests to hash instructions interface [#162](https://github.com/midnightntwrk/midnight-zk/pull/162)
 * Updated Rust toolchain to 1.90.0 [#210](https://github.com/midnightntwrk/midnight-zk/pull/210)
 * `CircuitField` refactor  [#201](https://github.com/midnightntwrk/midnight-zk/pull/201)
+* Replace `secp256k1` with `k256`  [#192](https://github.com/midnightntwrk/midnight-zk/pull/192)
 
 ### Removed
 * Move Blake2b and SHA3-256/Keccak256 implementations to zk-stdlib [#178](https://github.com/midnightntwrk/midnight-zk/pull/178)

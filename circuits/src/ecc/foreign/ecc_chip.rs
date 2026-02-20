@@ -2104,7 +2104,7 @@ where
 #[cfg(test)]
 mod tests {
     use group::Group;
-    use midnight_curves::{secp256k1::Secp256k1, Fq as BlsScalar, G1Projective as BlsG1};
+    use midnight_curves::{k256::K256, Fq as BlsScalar, G1Projective as BlsG1};
 
     use super::*;
     use crate::{
@@ -2139,7 +2139,7 @@ mod tests {
         ($mod:ident, $op:ident) => {
             #[test]
             fn $op() {
-                test_generic!($mod, $op, BlsScalar, Secp256k1, EmulatedField<BlsScalar, Secp256k1>, "foreign_ecc_secp");
+                test_generic!($mod, $op, BlsScalar, K256, EmulatedField<BlsScalar, K256>, "foreign_ecc_secp");
 
                 // a test of BLS over itself, where the scalar field is native
                 test_generic!($mod, $op, BlsScalar, BlsG1, Native<BlsScalar>, "foreign_ecc_bls_over_bls");
@@ -2180,7 +2180,7 @@ mod tests {
         ($op:ident) => {
             #[test]
             fn $op() {
-                ecc_test!($op, BlsScalar, Secp256k1, EmulatedField<BlsScalar, Secp256k1>, "foreign_ecc_secp");
+                ecc_test!($op, BlsScalar, K256, EmulatedField<BlsScalar, K256>, "foreign_ecc_secp");
 
                 // a test of BLS over itself, where the scalar field is native
                 ecc_test!($op, BlsScalar, BlsG1, Native<BlsScalar>, "foreign_ecc_bls_over_bls");

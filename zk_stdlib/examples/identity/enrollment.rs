@@ -12,7 +12,7 @@ use midnight_circuits::{
     testing_utils::ecdsa::{ECDSASig, FromBase64, PublicKey},
     types::{AssignedByte, AssignedForeignPoint, Instantiable},
 };
-use midnight_curves::{secp256k1::Secp256k1, G1Affine};
+use midnight_curves::{k256::K256, G1Affine};
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::{commit_to_instances, Error},
@@ -40,7 +40,7 @@ const HEADER_LEN: usize = 38;
 const PAYLOAD_LEN: usize = 2463;
 
 // Issuer Public Key.
-type PK = Secp256k1;
+type PK = K256;
 // Credential payload.
 type Payload = [u8; PAYLOAD_LEN];
 
@@ -55,7 +55,7 @@ impl Relation for CredentialEnrollment {
     type Witness = (Payload, ECDSASig);
 
     fn format_instance(instance: &Self::Instance) -> Result<Vec<F>, Error> {
-        Ok(AssignedForeignPoint::<F, Secp256k1, MultiEmulationParams>::as_public_input(instance))
+        Ok(AssignedForeignPoint::<F, K256, MultiEmulationParams>::as_public_input(instance))
     }
 
     fn format_committed_instances(witness: &Self::Witness) -> Vec<F> {
@@ -137,7 +137,7 @@ impl CredentialEnrollment {
     fn verify_ecdsa(
         std_lib: &ZkStdLib,
         layouter: &mut impl Layouter<F>,
-        pk: AssignedForeignPoint<F, Secp256k1, MultiEmulationParams>,
+        pk: AssignedForeignPoint<F, K256, MultiEmulationParams>,
         message: &[AssignedByte<F>],
         sig: Value<ECDSASig>,
     ) -> Result<(), Error> {
@@ -164,7 +164,7 @@ impl CredentialEnrollment {
         let r_over_s = secp256k1_scalar.div(layouter, &r_as_scalar, &s)?;
         let m_over_s = secp256k1_scalar.div(layouter, &msg_hash, &s)?;
 
-        let gen = secp256k1_curve.assign_fixed(layouter, Secp256k1::generator())?;
+        let gen = secp256k1_curve.assign_fixed(layouter, K256::generator())?;
         let lhs = secp256k1_curve.msm(layouter, &[m_over_s, r_over_s], &[gen, pk])?;
         let lhs_x = secp256k1_curve.x_coordinate(&lhs);
 
