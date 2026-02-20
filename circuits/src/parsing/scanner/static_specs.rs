@@ -671,5 +671,94 @@ mod tests {
         let rejected0: Vec<&str> =
             vec!["hello world", &FULL_INPUT_JWT[..1000], &MINIMAL_JWT[..600]];
         specs_one_test(&spec_library, StdLibParser::Jwt, &accepted0, &rejected0);
+
+        // Tests the `ICAO9303DataGroup1` spec correctness.
+        let accepted1_raw = include_str!("specs_examples/icao9303_td3_dg1/valid_credentials.txt")
+            .lines()
+            .collect::<Vec<_>>();
+        let accepted1: Vec<(&str, &[(usize, &str)])> = vec![
+            (
+                accepted1_raw[0],
+                &[
+                    (1, "PP"),
+                    (2, "JPN"),
+                    (3, "OKABE"),
+                    (4, "RINTARO"),
+                    (5, "12AB34567"),
+                    (6, "JPN"),
+                    (7, "911214"),
+                    (8, "M"),
+                    (9, "310101"),
+                    (10, "EL<PSY<CONGROO"),
+                ],
+            ),
+            (
+                accepted1_raw[1],
+                &[
+                    (1, "PE"),
+                    (2, "ESP"),
+                    (3, "DELACRUZ"),
+                    (4, "MARIA"),
+                    (5, "UH87G9901"),
+                    (6, "ESP"),
+                    (7, "911214"),
+                    (8, "F"),
+                    (9, "310101"),
+                    (10, "XXV789<<<<<<<<"),
+                ],
+            ),
+            (
+                accepted1_raw[2],
+                &[
+                    (1, "PD"),
+                    (2, "MDG"),
+                    (3, "ANDRIANAMPOINIMERINATOMPOLOINDRINDRA"),
+                    (4, "R"),
+                    (5, "BDL3820HR"),
+                    (6, "FRA"),
+                    (7, "450101"),
+                    (8, "<"),
+                    (9, "600101"),
+                    (10, "<<<<<<<<<<<<<<"),
+                ],
+            ),
+            (
+                accepted1_raw[3],
+                &[
+                    (1, "PO"),
+                    (2, "FRA"),
+                    (3, "NOOOWAYIGOTATRUNCATEDMONONYMRIGH"),
+                    (5, "AAAAAAAAA"),
+                    (6, "FRA"),
+                    (7, "990101"),
+                    (8, "<"),
+                    (9, "300101"),
+                    (10, "<<<<<<<<<<<<<<"),
+                ],
+            ),
+            (
+                accepted1_raw[4],
+                &[
+                    (1, "PR"),
+                    (2, "USA"),
+                    (3, "ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ"),
+                    (5, "PPPPPPPPP"),
+                    (6, "USA"),
+                    (7, "990101"),
+                    (8, "M"),
+                    (9, "300102"),
+                    (10, "<<<<<<<<<<<<<<"),
+                ],
+            ),
+        ];
+        let rejected1 = include_str!("specs_examples/icao9303_td3_dg1/invalid_credentials.txt")
+            .lines()
+            .collect::<Vec<_>>();
+        specs_one_test(
+            &spec_library,
+            StdLibParser::Icao9309Td3Dg1,
+            &accepted1,
+            &rejected1,
+        );
     }
 }
