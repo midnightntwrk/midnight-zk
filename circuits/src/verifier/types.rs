@@ -158,7 +158,7 @@ impl SelfEmulation for BlstrsEmulation {
     }
 }
 
-/// Implementation of the SelfEmulation trait for blstrs.
+/// Implementation of the SelfEmulation trait for bn256.
 #[cfg(feature = "dev-curves")]
 #[derive(Clone, Debug)]
 pub struct BnEmulation {}

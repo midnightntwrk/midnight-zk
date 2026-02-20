@@ -252,9 +252,9 @@ impl Sampleable<PoseidonState<midnight_curves::Fq>> for midnight_curves::Fq {
     }
 }
 
-// /////////////////////////////////////////////////////////////
-// /// Implementation of Hashable for BLS12-381 with Poseidon //
-// /////////////////////////////////////////////////////////////
+// /////////////////////////////////////////////////////////
+// /// Implementation of Hashable for BN256 with Poseidon //
+// /////////////////////////////////////////////////////////
 
 #[cfg(feature = "dev-curves")]
 impl Hashable<PoseidonState<bn256::Fr>> for bn256::G1 {
@@ -272,7 +272,7 @@ impl Hashable<PoseidonState<bn256::Fr>> for bn256::G1 {
         buffer.read_exact(bytes.as_mut())?;
 
         Option::from(bn256::G1Affine::from_bytes(&bytes))
-            .ok_or_else(|| io::Error::other("Invalid BLS12-381 point encoding in proof"))
+            .ok_or_else(|| io::Error::other("Invalid BN256 point encoding in proof"))
             .map(|p: bn256::G1Affine| p.into())
     }
 }
@@ -293,7 +293,7 @@ impl Hashable<PoseidonState<bn256::Fr>> for bn256::Fr {
         buffer.read_exact(bytes.as_mut())?;
 
         Option::from(Self::from_repr(bytes))
-            .ok_or_else(|| io::Error::other("Invalid BLS12-381 scalar encoding in proof"))
+            .ok_or_else(|| io::Error::other("Invalid BN256 scalar encoding in proof"))
     }
 }
 
