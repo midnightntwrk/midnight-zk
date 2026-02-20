@@ -1,3 +1,4 @@
+#[cfg(any(test, feature = "dev-curves"))]
 #[macro_use]
 pub mod curve;
 #[macro_use]
