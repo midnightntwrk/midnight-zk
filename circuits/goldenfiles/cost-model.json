@@ -98,24 +98,35 @@
     }
   },
   "Scanner": {
+    "dynamic parsing perf (input length = 50)": {
+      "advice_columns": "5",
+      "column_queries": "61",
+      "fixed_columns": "35",
+      "lookups": "7",
+      "max_deg": "5",
+      "permutations": "9",
+      "point_sets": "4",
+      "rows": "181",
+      "table_rows": "257"
+    },
     "static parsing perf (input length = 50)": {
       "advice_columns": "5",
-      "column_queries": "56",
-      "fixed_columns": "32",
-      "lookups": "6",
+      "column_queries": "61",
+      "fixed_columns": "35",
+      "lookups": "7",
       "max_deg": "5",
-      "permutations": "8",
+      "permutations": "9",
       "point_sets": "4",
       "rows": "75",
       "table_rows": "315"
     },
     "substring perf (full length = 65, sub length = 50)": {
       "advice_columns": "5",
-      "column_queries": "56",
-      "fixed_columns": "32",
-      "lookups": "6",
+      "column_queries": "61",
+      "fixed_columns": "35",
+      "lookups": "7",
       "max_deg": "5",
-      "permutations": "8",
+      "permutations": "9",
       "point_sets": "4",
       "rows": "207",
       "table_rows": "257"
