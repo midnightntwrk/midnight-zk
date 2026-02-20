@@ -225,7 +225,23 @@ impl<F: Field> BatchedArgument<F> {
             .max()
             .unwrap_or(1);
 
-        self.nb_parallel_lookups(cs_degree) * lookup_degree + 1
+        let helper_degree = self.nb_parallel_lookups(cs_degree) * lookup_degree + 1;
+
+        // The accumulator constraint includes the term:
+        //   l_active_row (degree 1) * selector * helper (degree 1) * table_value
+        // with degree: 2 + selector.degree() + table_degree.
+        // When a selector is present (degree 1), this yields degree 4 for a
+        // fixed-column table, which can exceed the helper constraint degree of
+        // 3.
+        //
+        // Additionally, the system requires cs.degree() - 1 to be a power of 2 so that
+        // FlattenedArgument helper degrees after split(cs.degree()) equal cs.degree().
+        // We therefore round the minimum required degree up to the next value where
+        // (x - 1) is a power of 2 using: (max_raw_degree - 1).next_power_of_two() + 1.
+        let table_degree = self.table_expressions.iter().map(|e| e.degree()).max().unwrap_or(1);
+        let accumulator_degree = 2 + self.selector.degree() + table_degree;
+
+        (std::cmp::max(helper_degree, accumulator_degree) - 1).next_power_of_two() + 1
     }
 
     /// Constructs a new lookup argument.
