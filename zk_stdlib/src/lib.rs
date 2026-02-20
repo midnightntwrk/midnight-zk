@@ -74,6 +74,7 @@ use midnight_circuits::{
         Instantiable,
     },
     vec::{vector_gadget::VectorGadget, AssignedVector, Vectorizable},
+    verifier::{BlstrsEmulation, VerifierGadget},
 };
 use midnight_curves::{
     k256::{self as k256_mod, K256},
@@ -110,7 +111,8 @@ type Secp256k1BaseChip = FieldChip<F, k256_mod::Fp, MEP, NG>;
 type Secp256k1ScalarChip = FieldChip<F, k256_mod::Fq, MEP, NG>;
 type Secp256k1Chip = ForeignEccChip<F, K256, MEP, Secp256k1ScalarChip, NG>;
 type Bls12381BaseChip = FieldChip<F, midnight_curves::Fp, MEP, NG>;
-type Bls12381Chip = ForeignEccChip<F, midnight_curves::G1Projective, MEP, NG, NG>;
+type Bls12381Chip =
+    ForeignEccChip<F, midnight_curves::G1Projective, midnight_curves::G1Projective, NG, NG>;
 
 const ZKSTD_VERSION: u32 = 1;
 
@@ -287,6 +289,7 @@ pub struct ZkStdLib {
     parser_gadget: ParserGadget<F, NG>,
     vector_gadget: VectorGadget<F>,
     automaton_chip: Option<AutomatonChip<StdLibParser, F>>,
+    verifier_gadget: Option<VerifierGadget<BlstrsEmulation>>,
 
     // Third-party chips.
     keccak_sha3_chip: Option<KeccakSha3Wrapper<F>>,
@@ -345,6 +348,13 @@ impl ZkStdLib {
         let vector_gadget = VectorGadget::new(&native_gadget);
         let automaton_chip =
             config.automaton_config.as_ref().map(|c| AutomatonChip::new(c, &native_gadget));
+
+        let verifier_gadget = bls12_381_curve_chip.as_ref().zip(poseidon_gadget.as_ref()).map(
+            |(curve_chip, sponge_chip)| {
+                VerifierGadget::<BlstrsEmulation>::new(curve_chip, &native_gadget, sponge_chip)
+            },
+        );
+
         let keccak_sha3_chip = config
             .keccak_sha3_config
             .as_ref()
@@ -371,6 +381,7 @@ impl ZkStdLib {
             parser_gadget,
             vector_gadget,
             automaton_chip,
+            verifier_gadget,
             keccak_sha3_chip,
             blake2b_chip,
             used_sha2_256: Rc::new(RefCell::new(false)),
@@ -616,6 +627,15 @@ impl ZkStdLib {
         *self.used_automaton.borrow_mut() = true;
         (self.automaton_chip.as_ref())
             .unwrap_or_else(|| panic!("ZkStdLibArch must enable automaton"))
+    }
+
+    /// Chip for performing in-circuit verification of proofs
+    /// (generated with Poseidon as the Fiat-Shamir transcript hash).
+    pub fn verifier(&self) -> &VerifierGadget<BlstrsEmulation> {
+        *self.used_bls12_381_curve.borrow_mut() = true;
+        self.verifier_gadget
+            .as_ref()
+            .unwrap_or_else(|| panic!("ZkStdLibArch must enable bls12_381 & poseidon"))
     }
 
     /// Assert that a given assigned bit is true.
