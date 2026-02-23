@@ -306,7 +306,7 @@ impl<C: CurveAffine> Schedule<C> {
     }
 
     fn contains(&self, buck_idx: usize) -> bool {
-        self.set.iter().any(|sch| sch.buck_idx == buck_idx)
+        self.set[..self.ptr].iter().any(|sch| sch.buck_idx == buck_idx)
     }
 
     fn execute(&mut self, bases: &[Affine<C>]) {
