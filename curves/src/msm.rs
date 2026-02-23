@@ -61,6 +61,9 @@ fn batch_add<C: CurveAffine>(
     points: &[SchedulePoint],
     bases: &[Affine<C>],
 ) {
+    // We are assuming a=0 in the doubling formula.
+    debug_assert_eq!(C::a(), C::Base::ZERO);
+
     let mut t = vec![C::Base::ZERO; size]; // Stores x2 - x1
     let mut z = vec![C::Base::ZERO; size]; // Stores y2 - y1
     let mut acc = C::Base::ONE;
