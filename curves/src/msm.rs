@@ -61,6 +61,9 @@ fn batch_add<C: CurveAffine>(
     points: &[SchedulePoint],
     bases: &[Affine<C>],
 ) {
+    // We are assuming a=0 in the doubling formula.
+    debug_assert_eq!(C::a(), C::Base::ZERO);
+
     let mut t = vec![C::Base::ZERO; size]; // Stores x2 - x1
     let mut z = vec![C::Base::ZERO; size]; // Stores y2 - y1
     let mut acc = C::Base::ONE;
@@ -303,7 +306,7 @@ impl<C: CurveAffine> Schedule<C> {
     }
 
     fn contains(&self, buck_idx: usize) -> bool {
-        self.set.iter().any(|sch| sch.buck_idx == buck_idx)
+        self.set[..self.ptr].iter().any(|sch| sch.buck_idx == buck_idx)
     }
 
     fn execute(&mut self, bases: &[Affine<C>]) {
@@ -467,10 +470,13 @@ pub fn msm_best<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
         return msm_parallel(coeffs, bases);
     }
 
-    // coeffs to byte representation
-    let coeffs: Vec<_> = coeffs.par_iter().map(|a| a.to_repr()).collect();
-    // copy bases into `Affine` to skip in on curve check for every access
-    let bases_local: Vec<_> = bases.par_iter().map(Affine::from).collect();
+    // Filter out identities. Transform scalars to bytes and bases to affine.
+    let (coeffs, bases_local): (Vec<_>, Vec<_>) = coeffs
+        .par_iter()
+        .zip(bases.par_iter())
+        .filter(|(_, b)| !bool::from(b.is_identity()))
+        .map(|(c, b)| (c.to_repr(), Affine::from(b)))
+        .unzip();
 
     // number of windows
     let number_of_windows = C::Scalar::NUM_BITS as usize / c + 1;
@@ -493,8 +499,7 @@ pub fn msm_best<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
 
                 if sched.contains(buck_idx) {
                     // greedy accumulation
-                    // we use original bases here
-                    j_bucks[buck_idx].add_assign(&bases[base_idx], sign);
+                    j_bucks[buck_idx].add_assign(&bases_local[base_idx].eval(), sign);
                 } else {
                     // also flushes the schedule if full
                     sched.add(&bases_local, base_idx, buck_idx, sign);
