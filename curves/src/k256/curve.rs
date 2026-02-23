@@ -46,7 +46,7 @@ impl K256 {
         Self(ProjectivePoint::IDENTITY)
     }
 
-    /// Returns the generator point.
+    /// Returns the designated generator.
     pub fn generator() -> Self {
         Self(ProjectivePoint::GENERATOR)
     }
