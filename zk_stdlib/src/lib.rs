@@ -1273,6 +1273,23 @@ impl<'a, R: Relation> MidnightCircuit<'a, R> {
         MidnightCircuit::new(relation, Value::unknown(), Value::unknown(), None)
     }
 
+    /// A MidnightCircuit with unknown instance-witness for the given relation.
+    /// This function takes an additional parameter `k`, the desired number of
+    /// rows in the underlying circuit to this relation.
+    ///
+    /// `k` must be at least the minimum number of rows necessary to implement
+    /// the circuit. If such value is not known, use
+    /// [MidnightCircuit::from_relation] instead, which is slower but will
+    /// automatically derive the optimal `k`.
+    pub fn from_relation_with_k(relation: &'a R, k: u32) -> Self {
+        MidnightCircuit::new(
+            relation,
+            Value::unknown(),
+            Value::unknown(),
+            Some(k as u8 - 1),
+        )
+    }
+
     /// Creates a new MidnightCircuit for the given relation. If not provided,
     /// this function selects the optimal max_bit_len for the pow2range table.
     pub fn new(
@@ -1756,6 +1773,36 @@ pub fn setup_vk<R: Relation>(
     }
 }
 
+/// Generates a verifying key for a `MidnightCircuit<R>` circuit.
+///
+/// This function takes an additional parameter `k`, the desired number of rows
+/// in the underlying circuit to this relation.
+/// `k` must be at least the minimum number of rows necessary to implement
+/// the circuit. If such value is not known, use
+/// [MidnightCircuit::from_relation] instead, which is slower but will
+/// automatically derive the optimal `k`.
+///
+/// This function downsizes the parameters to match the size `k`.
+pub fn setup_vk_with_k<R: Relation>(
+    params: &ParamsKZG<midnight_curves::Bls12>,
+    relation: &R,
+    k: u32,
+) -> MidnightVK {
+    let circuit = MidnightCircuit::from_relation_with_k(relation, k);
+    let vk = BlstPLONK::<MidnightCircuit<R>>::setup_vk(params, &circuit);
+
+    // During the call to [setup_vk] the circuit RefCell on public inputs has been
+    // mutated with the correct value. The following [unwrap] is safe here.
+    let nb_public_inputs = circuit.nb_public_inputs.clone().borrow().unwrap();
+
+    MidnightVK {
+        architecture: relation.used_chips(),
+        max_bit_len: circuit.max_bit_len,
+        nb_public_inputs,
+        vk,
+    }
+}
+
 /// Generates a proving key for a `MidnightCircuit<R>` circuit.
 pub fn setup_pk<R: Relation>(relation: &R, vk: &MidnightVK) -> MidnightPK<R> {
     let circuit = MidnightCircuit::new(
@@ -1900,5 +1947,14 @@ where
 /// Cost model of the given relation.
 pub fn cost_model<R: Relation>(relation: &R) -> CircuitModel {
     let circuit = MidnightCircuit::from_relation(relation);
+    circuit_model::<_, 48, 32>(&circuit)
+}
+
+/// Cost model of the given relation.
+/// This function takes an additional parameter `k`, an upper-bound in the
+/// number of rows necessary to implement in the underlying circuit to this
+/// relation.
+pub fn cost_model_with_k<R: Relation>(relation: &R, k: u32) -> CircuitModel {
+    let circuit = MidnightCircuit::from_relation_with_k(relation, k);
     circuit_model::<_, 48, 32>(&circuit)
 }
