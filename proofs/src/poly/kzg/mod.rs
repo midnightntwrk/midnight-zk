@@ -34,7 +34,7 @@ use crate::{
             params::{ParamsKZG, ParamsVerifierKZG},
             utils::construct_intermediate_sets,
         },
-        query::{CommitmentLabel, VerifierQuery},
+        query::{CommitmentLabel, CommitmentReference, VerifierQuery},
         Coeff, Error, LagrangeCoeff, Polynomial, ProverQuery,
     },
     transcript::{Hashable, Sampleable, Transcript},
@@ -62,6 +62,10 @@ where
     type VerifierParameters = ParamsVerifierKZG<E>;
     type Commitment = E::G1;
     type VerificationGuard = DualMSM<E>;
+
+    fn constant_commitment() -> Self::Commitment {
+        E::G1::generator()
+    }
 
     fn gen_params(k: u32) -> Self::Parameters {
         ParamsKZG::unsafe_setup(k, OsRng)
@@ -211,8 +215,13 @@ where
             } else {
                 None
             };
-            for (scalar, commitment) in com_data.commitment.as_terms(eval_point_opt) {
-                msm.append_term(scalar, commitment, com_data.commitment_label.clone());
+            let terms = com_data.commitment.as_terms(eval_point_opt);
+            let term_labels: Vec<CommitmentLabel> = match &com_data.commitment {
+                CommitmentReference::Linear(_, _, labels) => labels.clone(),
+                _ => vec![com_data.commitment_label.clone(); terms.len()],
+            };
+            for ((scalar, commitment), label) in terms.into_iter().zip(term_labels) {
+                msm.append_term(scalar, commitment, label);
             }
             q_coms[com_data.set_index].push(msm);
             q_eval_sets[com_data.set_index].push(com_data.evals);

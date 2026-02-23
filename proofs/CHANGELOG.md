@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Filtered 0s from MSM [#185](https://github.com/midnightntwrk/midnight-zk/pull/185).
 * Updated Rust toolchain to 1.90.0 [#210](https://github.com/midnightntwrk/midnight-zk/pull/210)
 * Changed lookup argument to logup [#153](https://github.com/midnightntwrk/midnight-zk/pull/153)
+* Implemented linearization prover [#190](https://github.com/midnightntwrk/midnight-zk/pull/190)
 
 ### Removed
 

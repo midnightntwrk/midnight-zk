@@ -8,7 +8,7 @@ CircuitModel {
     fixed_columns: 32,
     lookups: 1,
     permutations: 10,
-    column_queries: 44,
+    column_queries: 37,
     point_sets: 3,
-    size: 3120,
+    size: 2816,
 }

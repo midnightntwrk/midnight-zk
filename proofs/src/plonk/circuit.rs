@@ -461,7 +461,7 @@ impl TryFrom<Column<Any>> for Column<Instance> {
 /// }
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct Selector(pub(crate) usize, bool);
+pub struct Selector(pub usize, pub bool);
 
 impl Selector {
     /// Enable this selector at the given offset within the given region.
@@ -1642,7 +1642,8 @@ impl<F: Field> Gate<F> {
         &self.polys
     }
 
-    pub(crate) fn queried_selectors(&self) -> &[Selector] {
+    /// Returns the queried selectors of this gate.
+    pub fn queried_selectors(&self) -> &[Selector] {
         &self.queried_selectors
     }
 
@@ -1659,6 +1660,13 @@ pub struct ConstraintSystem<F: Field> {
     pub(crate) num_advice_columns: usize,
     pub(crate) num_instance_columns: usize,
     pub(crate) num_selectors: usize,
+    /// The lifecycle of a selector has 2 phases: BEFORE conversion to a
+    /// fixed column, and AFTER. Accordingly, this field has 2 phases as well.
+    /// * BEFORE: The i-th element is `1` if the i-th selector is simple and
+    ///   multiplicative, and `0` otherwise.
+    /// * AFTER: Contains the fixed column indices of all simple, multiplicative
+    ///   selectors.
+    pub(crate) selector_flags: Vec<usize>,
     pub(crate) num_challenges: usize,
 
     /// Contains the index of each advice column that is left unblinded.
@@ -1790,6 +1798,7 @@ impl<F: Field> Default for ConstraintSystem<F> {
             num_advice_columns: 0,
             num_instance_columns: 0,
             num_selectors: 0,
+            selector_flags: vec![],
             num_challenges: 0,
             unblinded_advice_columns: Vec::new(),
             advice_column_phase: Vec::new(),
@@ -1809,7 +1818,13 @@ impl<F: Field> Default for ConstraintSystem<F> {
     }
 }
 
-impl<F: Field> ConstraintSystem<F> {
+impl<'com, F: Field> ConstraintSystem<F> {
+    /// Returns the indices of fixed columns corresponding to simple,
+    /// multiplicative selectors.
+    pub fn selector_flags(&'com self) -> &'com Vec<usize> {
+        &self.selector_flags
+    }
+
     /// Obtain a pinned version of this constraint system; a structure with the
     /// minimal parameters needed to determine the rest of the constraint
     /// system.
@@ -2117,12 +2132,25 @@ impl<F: Field> ConstraintSystem<F> {
         // counted for this constraint system.
         assert_eq!(selectors.len(), self.num_selectors);
 
+        let nr_fixed_columns = self.num_fixed_columns();
         let (polys, selector_replacements): (Vec<_>, Vec<_>) = selectors
             .into_iter()
-            .map(|selector| {
+            .enumerate()
+            .map(|(idx, selector)| {
                 let poly =
                     selector.iter().map(|b| if *b { F::ONE } else { F::ZERO }).collect::<Vec<_>>();
                 let column = self.fixed_column();
+                if self.selector_flags[idx] == 1 {
+                    // TODO: this assert necessary, or maybe use other encoding?
+                    // The problem would be: if the column index is 0, this index would later be
+                    // filtered out, as it is interpreted as the index of a complex selector
+                    // column. Assert is only relevant if there is no fixed
+                    // column before calling this function, which shouldn't be a
+                    // problem since there should already be other fixed columns
+                    // at this point.
+                    // assert_ne!(column.index(), 0);
+                    self.selector_flags[idx] = column.index();
+                }
                 let rotation = Rotation::cur();
                 let expr = Expression::Fixed(FixedQuery {
                     index: Some(self.query_fixed_index(column, rotation)),
@@ -2133,8 +2161,18 @@ impl<F: Field> ConstraintSystem<F> {
             })
             .unzip();
 
+        self.selector_flags.retain(|&x| x != 0);
         self.replace_selectors_with_fixed(&selector_replacements);
         self.num_selectors = 0;
+
+        // Adjust indices of simple, multiplicative selectors: after converting
+        // selectors to fixed columns, the selector index of a gate should now
+        // track the index of the corresponding fixed column
+        for gate in self.gates.iter_mut() {
+            for s in &mut gate.queried_selectors {
+                s.0 += nr_fixed_columns;
+            }
+        }
 
         (self, polys)
     }
@@ -2200,6 +2238,7 @@ impl<F: Field> ConstraintSystem<F> {
     pub fn selector(&mut self) -> Selector {
         let index = self.num_selectors;
         self.num_selectors += 1;
+        self.selector_flags.push(1);
         Selector(index, true)
     }
 
@@ -2208,6 +2247,7 @@ impl<F: Field> ConstraintSystem<F> {
     pub fn complex_selector(&mut self) -> Selector {
         let index = self.num_selectors;
         self.num_selectors += 1;
+        self.selector_flags.push(0);
         Selector(index, false)
     }
 
@@ -2420,11 +2460,6 @@ impl<F: Field> ConstraintSystem<F> {
 
         // h(x) is derived by the other evaluations so it does not reveal
         // anything; in fact it does not even appear in the proof.
-
-        // h(x_3) is also not revealed; the verifier only learns a single
-        // evaluation of a polynomial in x_1 which has h(x_3) and another random
-        // polynomial evaluated at x_3 as coefficients -- this random polynomial
-        // is "random_poly" in the vanishing argument.
 
         // Add an additional blinding factor as a slight defense against
         // off-by-one errors.
