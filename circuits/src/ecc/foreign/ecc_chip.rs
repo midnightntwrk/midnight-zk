@@ -746,15 +746,16 @@ where
     ) -> Result<AssignedForeignPoint<F, C, B>, Error> {
         const WS: usize = 4;
 
-        // If some of the scalars is known to be 1, remove it (with its base) from the
-        // list and simply add it at the end.
+        // If some of the scalars is known to be 1, or as bound of 1 (i.e. it is known
+        // to be either 0 or 1) remove it (with its base) from the list and simply add
+        // it at the end.
         let one: S::Scalar = self.scalar_field_chip.assign_fixed(layouter, C::ScalarField::ONE)?;
-        let mut bases_without_coeff = vec![];
+        let mut bases_with_1bit_scalar = vec![];
         let mut filtered_scalars = vec![];
         let mut filtered_bases = vec![];
         for (scalar, base) in scalars.iter().zip(bases.iter()) {
-            if scalar.0 == one {
-                bases_without_coeff.push(base.clone());
+            if scalar.0 == one || scalar.1 == 1 {
+                bases_with_1bit_scalar.push((base.clone(), scalar.0.clone()));
             } else {
                 filtered_scalars.push(scalar.clone());
                 filtered_bases.push(base.clone());
@@ -858,7 +859,16 @@ where
         }
         let res = self.windowed_msm::<WS>(layouter, &decomposed_scalars, &bases)?;
 
-        bases_without_coeff.iter().try_fold(res, |acc, b| self.add(layouter, &acc, b))
+        let id_point = self.assign_fixed(layouter, C::CryptographicGroup::identity())?;
+        bases_with_1bit_scalar.iter().try_fold(res, |acc, (b, s)| {
+            let s_times_b = if s == &one {
+                b.clone()
+            } else {
+                let s_is_zero = self.scalar_field_chip().is_zero(layouter, s)?;
+                self.select(layouter, &s_is_zero, &id_point, b)?
+            };
+            self.add(layouter, &acc, &s_times_b)
+        })
     }
 
     fn mul_by_constant(
