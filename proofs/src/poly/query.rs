@@ -120,7 +120,7 @@ impl<'com, F: PrimeField> Query<F> for ProverQuery<'com, F> {
 pub enum CommitmentReference<'com, F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
     OnePiece(&'com CS::Commitment),
     Chopped(Vec<&'com CS::Commitment>, u64),
-    Linear(Vec<&'com CS::Commitment>, Vec<F>),
+    Linear(Vec<&'com CS::Commitment>, Vec<F>, Vec<CommitmentLabel>),
 }
 
 impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> PartialEq
@@ -149,8 +149,8 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> PartialEq
                 self_n == other_n
             }
             (
-                CommitmentReference::Linear(self_points, self_scalars),
-                CommitmentReference::Linear(other_points, other_scalars),
+                CommitmentReference::Linear(self_points, self_scalars, _),
+                CommitmentReference::Linear(other_points, other_scalars, _),
             ) => (self_points == other_points) && (self_scalars == other_scalars),
             _ => false,
         }
@@ -195,7 +195,7 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> CommitmentReference<'_, F
                 }
                 terms
             }
-            CommitmentReference::Linear(points, scalars) => {
+            CommitmentReference::Linear(points, scalars, _) => {
                 assert!(eval_point_opt.is_none());
                 assert_eq!(points.len(), scalars.len());
 
@@ -260,16 +260,19 @@ where
 
     /// Create a new verifier query based on a commitment
     /// represented in the form of curve points and corresponding
-    /// scalars.
+    /// scalars. Each term carries its own `CommitmentLabel` so that
+    /// downstream consumers (e.g. `from_dual_msm`) can classify
+    /// individual bases correctly.
     ///
     /// # panics
     ///
-    /// If the number of points and scalars differs.
+    /// If the number of points, scalars, or base_labels differs.
     pub fn new_linear(
         point: F,
         commitment_label: CommitmentLabel,
         points: Vec<&'com CS::Commitment>,
         scalars: Vec<F>,
+        base_labels: Vec<CommitmentLabel>,
         eval: F,
     ) -> Self {
         assert_eq!(
@@ -277,10 +280,15 @@ where
             scalars.len(),
             "The number of points and scalars needs to be equal."
         );
+        assert_eq!(
+            points.len(),
+            base_labels.len(),
+            "The number of points and base_labels needs to be equal."
+        );
         VerifierQuery {
             point,
             commitment_label,
-            commitment: CommitmentReference::Linear(points, scalars),
+            commitment: CommitmentReference::Linear(points, scalars, base_labels),
             eval,
         }
     }

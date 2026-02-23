@@ -51,12 +51,14 @@ pub(crate) fn compute_linearization_commitment<
     let lin_com_len = vk.cs.selector_flags().len() + quotient_limb_commitments.len() + 1;
     let mut identities_points = Vec::with_capacity(lin_com_len);
     let mut identities_scalars = Vec::with_capacity(lin_com_len);
+    let mut identities_labels = Vec::with_capacity(lin_com_len);
 
     identities_points.extend(quotient_limb_commitments);
 
     let mut splitting_pow = F::ONE - *xn;
     for _ in 0..quotient_limb_commitments.len() {
         identities_scalars.push(splitting_pow);
+        identities_labels.push(CommitmentLabel::NoLabel);
         splitting_pow *= splitting_factor;
     }
 
@@ -70,9 +72,15 @@ pub(crate) fn compute_linearization_commitment<
 
     grouped_points.into_iter().for_each(|(col_idx, eval)| {
         match col_idx {
-            Some(col_idx) => identities_points.push(&vk.fixed_commitments[col_idx]),
+            Some(col_idx) => {
+                identities_points.push(&vk.fixed_commitments[col_idx]);
+                identities_labels.push(CommitmentLabel::Fixed(col_idx));
+            }
             // Fully evaluated identities go to the constant term
-            None => identities_points.push(const_1_com),
+            None => {
+                identities_points.push(const_1_com);
+                identities_labels.push(CommitmentLabel::NoLabel);
+            }
         }
         identities_scalars.push(eval);
     });
@@ -82,6 +90,7 @@ pub(crate) fn compute_linearization_commitment<
         CommitmentLabel::Custom("linearization_poly".into()),
         identities_points,
         identities_scalars,
+        identities_labels,
         F::ZERO,
     )
 }
