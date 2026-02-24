@@ -218,6 +218,7 @@ macro_rules! impl_circuit_field_be {
             fn from_bytes_le(bytes: &[u8]) -> Option<Self> {
                 let mut repr = [0u8; $repr_size];
                 repr.copy_from_slice(&bytes);
+                repr.reverse();
                 <$field as PrimeField>::from_repr(repr.into()).into_option()
             }
 
