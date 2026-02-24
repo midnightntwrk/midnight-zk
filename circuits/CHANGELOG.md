@@ -19,6 +19,7 @@ verification keys break backwards compatibility.
 * `CircuitField` refactor: remove helpers, add `ScalarExt` in `CircuitCurve` [#201](https://github.com/midnightntwrk/midnight-zk/pull/201)
 * Support non-fixed input commitments in verifier gadget [#212](https://github.com/midnightntwrk/midnight-zk/pull/212)
 * Add BN poseidon constants [#222](https://github.com/midnightntwrk/midnight-zk/pull/222)
+* Add `CircuitField` implementations for `k256::Fp` and `k256::Fq` [#192](https://github.com/midnightntwrk/midnight-zk/pull/192)
 
 ### Changed
 * Make handling of fixed_bases more robust in verifier gadget [#212](https://github.com/midnightntwrk/midnight-zk/pull/212)
@@ -31,9 +32,12 @@ verification keys break backwards compatibility.
 * Uniform input sizes for hash cost-model [#183](https://github.com/midnightntwrk/midnight-zk/pull/183)
 * Updated Rust toolchain to 1.90.0 [#210](https://github.com/midnightntwrk/midnight-zk/pull/210)
 * CircuitField fixes [#214](https://github.com/midnightntwrk/midnight-zk/pull/214)
+* Replace native `secp256k1` types with `k256` [#192](https://github.com/midnightntwrk/midnight-zk/pull/192)
+* `CircuitField::modulus()` computed from field arith instead of parsing `PrimeField::MODULUS` [#192](https://github.com/midnightntwrk/midnight-zk/pull/192)
 
 ### Removed
 * Move external implementations to zk-stdlib [#178](https://github.com/midnightntwrk/midnight-zk/pull/178)
+* Remove native `secp256k1` `CircuitCurve` and `WeierstrassCurve` implementations [#216](https://github.com/midnightntwrk/midnight-zk/pull/216)
 
 ## [6.0.0] - 18-12-2025
 ### Added

@@ -1,7 +1,10 @@
 use std::{fs::OpenOptions, io::Read};
 
-use midnight_circuits::testing_utils::ecdsa::{ECDSASig, Ecdsa, FromBase64};
-use midnight_curves::secp256k1::{Fq as secp256k1Scalar, Secp256k1};
+use midnight_circuits::{
+    testing_utils::ecdsa::{ECDSASig, Ecdsa, FromBase64},
+    CircuitField,
+};
+use midnight_curves::k256::{Fq as K256Scalar, K256};
 use midnight_proofs::plonk::Error;
 use sha2::Digest;
 
@@ -40,12 +43,12 @@ pub(crate) fn split_blob(blob: &[u8]) -> (Vec<u8>, Vec<u8>) {
 /// The public key, message (or payload) and signature are expected in base64
 /// encoding.
 pub(crate) fn verify_credential_sig(pk_base64: &[u8], msg: &[u8], sig_base64: &[u8]) -> bool {
-    let pk_affine = Secp256k1::from_base64(pk_base64).unwrap();
+    let pk_affine = K256::from_base64(pk_base64).unwrap();
     let sig = ECDSASig::from_base64(sig_base64).unwrap();
 
-    let mut msg_hash_bytes: [u8; 32] = sha2::Sha256::digest(msg).into();
-    msg_hash_bytes.reverse(); // BE to LE
-    let msg_scalar = secp256k1Scalar::from_bytes(&msg_hash_bytes).unwrap();
+    // SHA2 output is big-endian.
+    let msg_hash_bytes: [u8; 32] = sha2::Sha256::digest(msg).into();
+    let msg_scalar = K256Scalar::from_bytes_be(&msg_hash_bytes).unwrap();
 
     Ecdsa::verify(&pk_affine, &msg_scalar, &sig)
 }
