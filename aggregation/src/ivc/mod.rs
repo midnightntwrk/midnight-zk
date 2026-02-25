@@ -42,6 +42,7 @@ pub(crate) type E = <S as SelfEmulation>::Engine;
 pub mod circuit;
 pub mod prover;
 pub mod setup;
+pub mod verifier;
 
 /// State representation for an Incrementally Verifiable Computation (IVC).
 ///
