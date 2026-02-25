@@ -39,6 +39,8 @@ pub(crate) type F = <S as SelfEmulation>::F;
 pub(crate) type C = <S as SelfEmulation>::C;
 pub(crate) type E = <S as SelfEmulation>::Engine;
 
+pub mod circuit;
+
 /// State representation for an Incrementally Verifiable Computation (IVC).
 ///
 /// An IVC state evolves from a distinguished *genesis* value through repeated
