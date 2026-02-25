@@ -12,3 +12,5 @@ extern crate core;
 // code as it's incompatible with this feature.
 #[cfg(not(feature = "truncated-challenges"))]
 pub mod light_aggregator;
+
+pub mod ivc;

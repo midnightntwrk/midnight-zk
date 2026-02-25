@@ -33,4 +33,7 @@ sha2 = { workspace = true }
 rand_chacha = { workspace = true }
 
 [features]
-truncated-challenges = []
+truncated-challenges = [
+    "midnight-proofs/truncated-challenges",
+    "midnight-circuits/truncated-challenges",
+]
