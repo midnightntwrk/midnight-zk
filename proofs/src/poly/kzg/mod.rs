@@ -273,6 +273,11 @@ where
             let mut f_com_as_msm = MSMKZG::init();
 
             f_com_as_msm.append_term(E::Fr::ONE, f_com, CommitmentLabel::NoLabel);
+
+            // Collapse all MSMs before combining with x4 powers, to match the
+            // in-circuit verifier. Skip the first one since its x4 power is 1.
+            #[cfg(feature = "truncated-challenges")]
+            coms.iter_mut().skip(1).for_each(|com| com.collapse());
             coms.push(f_com_as_msm);
 
             #[cfg(feature = "truncated-challenges")]

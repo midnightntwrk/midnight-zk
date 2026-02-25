@@ -1,18 +1,20 @@
 # Changelog
 
-All notable changes to `aggregator` will be documented in this file.
+All notable changes to `aggregation` will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://book.async.rs/overview/stability-guarantees.html).
 
 ## [Unreleased]
 ### Added
+* IVC module [#227](https://github.com/midnightntwrk/midnight-zk/pull/227)
 * Rebase to new `zk_stdlib/` outside of `circuits/` [#155](https://github.com/midnightntwrk/midnight-zk/pull/155)
 * Rebase to new `circuits/` [#120](https://github.com/midnightntwrk/midnight-zk/pull/120)
 * Rebase to new `circuits/` with `sha512` [#96](https://github.com/midnightntwrk/midnight-zk/pull/96)
 * truncated_challenges feature to allow --all-features compilation [#146](https://github.com/midnightntwrk/midnight-zk/pull/146)
 * Rebase to new `circuits/` with `keccak` and `blake2b` [#135](https://github.com/midnightntwrk/midnight-zk/pull/135)
 ### Changed
+* Rename crate from `aggregator` to `aggregation` [#227](https://github.com/midnightntwrk/midnight-zk/pull/227)
 * Adapt light aggregator to support non-fixed input commitments and improved fixed_bases handling [#212](https://github.com/midnightntwrk/midnight-zk/pull/212)
 * Updated Rust toolchain to 1.90.0 [#210](https://github.com/midnightntwrk/midnight-zk/pull/210)
 * `CircuitField` refactor [#201](https://github.com/midnightntwrk/midnight-zk/pull/201)

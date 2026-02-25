@@ -74,6 +74,33 @@ impl<E: Engine> MSMKZG<E> {
     }
 }
 
+impl<E: Engine + Debug> MSMKZG<E>
+where
+    E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
+{
+    /// Evaluates the MSM to a single point and replaces all terms with that
+    /// single point (scalar = 1, label = `NoLabel`).
+    ///
+    /// This mirrors `AssignedMsm::collapse` in the circuits crate.
+    ///
+    /// # Panics (in debug mode)
+    ///
+    /// If any term carries a label other than `NoLabel` or `Advice`.
+    pub fn collapse(&mut self) {
+        debug_assert!(
+            self.labels
+                .iter()
+                .all(|l| matches!(l, CommitmentLabel::NoLabel | CommitmentLabel::Advice(_))),
+            "collapse: all labels must be NoLabel or Advice, found: {:?}",
+            self.labels,
+        );
+        let point = self.eval();
+        self.scalars = vec![E::Fr::ONE];
+        self.bases = vec![point];
+        self.labels = vec![CommitmentLabel::NoLabel];
+    }
+}
+
 impl<E: Engine + Debug> MSM<E::G1Affine> for MSMKZG<E>
 where
     E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,

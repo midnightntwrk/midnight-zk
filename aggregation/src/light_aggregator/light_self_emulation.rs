@@ -17,7 +17,7 @@ use midnight_proofs::{
     transcript::Hashable,
 };
 
-use crate::light_fiat_shamir::LightPoseidonFS;
+use crate::light_aggregator::light_fiat_shamir::LightPoseidonFS;
 
 /// An assigned point of curve C. It is "fake" in the sense that it cannot be
 /// operated with it, only assigned as public input or fixed.
