@@ -470,7 +470,7 @@ pub fn msm_best<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
         return msm_parallel(coeffs, bases);
     }
 
-    // Filter out identities. Transform scalars to bytes and bases to affine.
+    // Filter out identity points. Transform scalars to bytes and bases to affine.
     let (coeffs, bases_local): (Vec<_>, Vec<_>) = coeffs
         .par_iter()
         .zip(bases.par_iter())
