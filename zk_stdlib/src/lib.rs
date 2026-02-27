@@ -1869,10 +1869,7 @@ where
         powers.push(p);
         p *= r;
     }
-    guards
-        .par_iter_mut()
-        .enumerate()
-        .for_each(|(i, guard)| guard.scale(powers[i]));
+    guards.par_iter_mut().enumerate().for_each(|(i, guard)| guard.scale(powers[i]));
 
     // Phase 4: add scaled guards sequentially.
     let mut acc_guard = guards.pop();
