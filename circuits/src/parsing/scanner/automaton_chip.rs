@@ -68,6 +68,32 @@
 //! The function returns the outputs, which can be used to extract information
 //! about which characters matched which parts of the regex, or more generally,
 //! perform computations on the input.
+//!
+//! # Parallelisation
+//!
+//! The automaton lookup is batched: `AUTOMATON_PARALLELISM` transitions are
+//! checked per row, each using `NB_AUTOMATON_COLS` (= 3) advice columns.
+//! Transitions chain within a row: batch *k*'s target state is stored in
+//! batch *k+1*'s source column (same row), and the last batch's target is
+//! the first batch's source on the next row. This reduces the number of
+//! rows by a factor of `AUTOMATON_PARALLELISM`.
+//!
+//! ```text
+//! AUTOMATON_PARALLELISM = 2, NB_AUTOMATON_COLS = 3
+//!
+//!         batch 0               batch 1
+//!   src | letter | output   src | letter | output
+//!   ----+--------+-------   ----+--------+-------
+//!   s0  |  'h'   |  o0      s1  |  'e'   |  o1      <- row 0, 2 transitions
+//!   s2  |  'l'   |  o2      s3  |  'l'   |  o3      <- row 1, 2 transitions
+//!   s4  |  'o'   |  o4      s5  |  256   |  0       <- row 2, transition + final check
+//!   0   |        |                                   <- padding
+//! ```
+//!
+//! Batch 0's target is read from batch 1's source column (same row).
+//! Batch 1's target (last batch) is read from batch 0's source column
+//! (next row). Unused batch slots default to `(0, 0, 0, 0)`, which
+//! matches the dummy transition in the table.
 
 use midnight_proofs::{
     circuit::{Layouter, Region, Value},
