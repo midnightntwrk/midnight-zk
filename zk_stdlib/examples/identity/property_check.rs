@@ -105,7 +105,7 @@ impl Relation for CredentialProperty {
     ) -> Result<(), Error> {
         let secp256k1_curve = std_lib.secp256k1_curve();
         let b64_chip = std_lib.base64();
-        let automaton_chip = std_lib.automaton();
+        let automaton_chip = std_lib.scanner(true);
 
         let (json, sk) = witness.unzip();
 
