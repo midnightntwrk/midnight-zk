@@ -33,12 +33,12 @@ use super::{
     automaton::Automaton,
     regex::{Regex, RegexInstructions},
 };
-use crate::parsing::serialization::Serialize;
+use crate::parsing::scanner::serialization::Serialize;
 
 /// Folder where the serialized automata for the standard library will be
 /// stored.
 #[cfg(test)]
-const AUTOMATON_CACHE: &str = "src/parsing/automaton_cache";
+const AUTOMATON_CACHE: &str = "src/parsing/scanner/automaton_cache";
 
 /// Explicit names (and documentation) for indexing the various parsing
 /// specifications hard-coded in the standard library.
@@ -149,7 +149,7 @@ pub fn spec_library() -> ParsingLibrary {
             .map(|(name, _, serialization)| {
                 assert!(
                     !serialization.is_empty(),
-                    "Empty serialisation data for {:?}. The bootstrapping of the serialisation process has not been conducted. (see documentation of `midnight_circuits::parsing::specs`)",
+                    "Empty serialisation data for {:?}. The bootstrapping of the serialisation process has not been conducted. (see documentation of `midnight_circuits::parsing::scanner::static_specs`)",
                     *name
                 );
                 (*name, Automaton::deserialize_unwrap(serialization))
@@ -337,7 +337,9 @@ mod tests {
         spec_library_data,
         StdLibParser::{self, Jwt},
     };
-    use crate::parsing::{automaton::Automaton, spec_library, specs::check_serialization};
+    use crate::parsing::scanner::{
+        automaton::Automaton, spec_library, static_specs::check_serialization,
+    };
 
     /// Sets up the serialised library (bootstraps it if empty serialisation
     /// data is found), and performs consistency checks or updates accordingly
@@ -492,6 +494,10 @@ mod tests {
                 automaton.transitions.len()
             )
         }
+
+        // Tests the `Jwt` spec correctness.
+        const FULL_INPUT_JWT: &str = include_str!("specs_examples/jwt/full.txt");
+        const MINIMAL_JWT: &str = include_str!("specs_examples/jwt/minimal.txt");
         let accepted0: Vec<(&str, &[(usize, &str)])> = vec![
             (
                 FULL_INPUT_JWT,
@@ -521,81 +527,4 @@ mod tests {
 
         specs_one_test(&spec_library, Jwt, &accepted0, &rejected0);
     }
-
-    const FULL_INPUT_JWT: &str = r#"{
-    "iss":"did:prism:954e59ea4c212f4b4be8688bd3fe63dd7079d218ef6282205a70131f87f2887c",
-    "sub":"did:prism:73bb516fe88beec5b3b8d283eaec5964d1c13cd54ef8f1784217f4fe42688626:CtQBCtEBEkgKFG15LWF1dGgta2V5LW1pZG5pZ2h0EARKLgoJc2VjcDI1NmsxEiECS0kj3ydSeF86LU9BpHuVntMFN8SCKcHyci1tXFbRW8MSOwoHbWFzdGVyMBABSi4KCXNlY3AyNTZrMRIhAimWDggNDswAIJWKbexkfDxV0PEa58tcVcS1dk2phkDjGkgKDmFnZW50LWJhc2UtdXJsEhBMaW5rZWRSZXNvdXJjZVYxGiRodHRwOi8vMTkyLjE2OC4xLjg2OjgzMDAvY2xvdWQtYWdlbnQ",
-    "nbf":1740482175,
-    "exp":1740485775,
-    "vc":{
-       "credentialSchema":[
-          {
-             "id":"http:\/\/192.168.1.86:8400\/cloud-agent\/schema-registry\/schemas\/2fcfeeae-9532-3869-ad89-cdf5060c3a3c",
-             "type":"CredentialSchema2022"
-          }
-       ],
-       "credentialSubject":{
-          "nationalId":"12345",
-          "familyName":"Wonderland",
-          "givenName":"Alice",
-          "publicKeyJwk":{
-             "kty":"EC",
-             "crv":"secp256k1",
-             "x":"S0kj3ydSeF86LU9BpHuVntMFN8SCKcHyci1tXFbRW8M",
-             "y":"dux8h-QcIA3aZG9CSPIltDwVvOkf0kfJRJLH7K1KSlQ"
-          },
-          "id":"did:prism:73bb516fe88beec5b3b8d283eaec5964d1c13cd54ef8f1784217f4fe42688626:CtQBCtEBEkgKFG15LWF1dGgta2V5LW1pZG5pZ2h0EARKLgoJc2VjcDI1NmsxEiECS0kj3ydSeF86LU9BpHuVntMFN8SCKcHyci1tXFbRW8MSOwoHbWFzdGVyMBABSi4KCXNlY3AyNTZrMRIhAimWDggNDswAIJWKbexkfDxV0PEa58tcVcS1dk2phkDjGkgKDmFnZW50LWJhc2UtdXJsEhBMaW5rZWRSZXNvdXJjZVYxGiRodHRwOi8vMTkyLjE2OC4xLjg2OjgzMDAvY2xvdWQtYWdlbnQ",
-          "birthDate":"2000-11-13"
-       },
-       "type":[
-          "VerifiableCredential"
-       ],
-       "@context":[
-          "https:\/\/www.w3.org\/2018\/credentials\/v1"
-       ],
-       "issuer":{
-          "id":"did:prism:954e59ea4c212f4b4be8688bd3fe63dd7079d218ef6282205a70131f87f2887c",
-          "type":"Profile"
-       },
-       "credentialStatus":{
-          "statusPurpose":"Revocation",
-          "statusListIndex":3,
-          "id":"http:\/\/192.168.1.86:8400\/cloud-agent\/credential-status\/2054e2ea-f191-4640-86dd-6dde6b2f77f7#3",
-          "type":"StatusList2021Entry",
-          "statusListCredential":"http:\/\/192.168.1.86:8400\/cloud-agent\/credential-status\/2054e2ea-f191-4640-86dd-6dde6b2f77f7"
-       }
-    }
-}"#;
-
-    const MINIMAL_JWT: &str = r#"{
-    "iss" : "",
-    "sub" : "",
-    "nbf" : 0,
-    "exp" : 1,
-    "vc" : {
-       "credentialSubject" : {
-          "nationalId" : "id",
-          "familyName" : "fn",
-          "givenName" : "gn",
-          "publicKeyJwk" : {
-             "kty" : "",
-             "crv" : "",
-             "x" : "x",
-             "y" : "y"
-          },
-          "id" : "",
-          "birthDate" : "bd"
-       },
-       "type" : [],
-       "@context" : [],
-       "issuer" : "",
-       "credentialStatus" : {
-          "statusPurpose" : "",
-          "statusListIndex" : 3,
-          "id" : "",
-          "type" : "",
-          "statusListCredential" : ""
-       }
-    }
-}"#;
 }

@@ -66,7 +66,7 @@ use midnight_circuits::{
     map::map_gadget::MapGadget,
     parsing::{
         self,
-        automaton_chip::{AutomatonChip, AutomatonConfig, NB_AUTOMATA_COLS},
+        scanner::automaton_chip::{AutomatonChip, AutomatonConfig, NB_AUTOMATA_COLS},
         Base64Chip, Base64Config, ParserGadget, StdLibParser, NB_BASE64_ADVICE_COLS,
     },
     types::{

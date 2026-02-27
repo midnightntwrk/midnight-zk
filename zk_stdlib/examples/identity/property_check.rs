@@ -1,4 +1,14 @@
-//! Example of property proofs in a JSON credential.
+//! Example of property proofs in a JSON credential. Is parsed with an
+//! automaton-based technique.
+//!
+//! NB: The automaton-based technique is a bit overkill for this kind of
+//! credential that have a lot of structure. Typically, instead of parsing the
+//! full credential structure, one could simply scan the input to search for the
+//! field names ("givenName", "birthDate"...). This is actually what is done in
+//! `property_check_opt.rs`, which is much more efficient. The present example
+//! should rather be seen as an illustration of the use of the automaton chip,
+//! useful in cases of less structured credentials, without keywords (e.g.,
+//! ASN.1 encodings).
 
 use std::time::Instant;
 
@@ -7,7 +17,8 @@ use midnight_circuits::{
     field::foreign::{params::MultiEmulationParams, AssignedField},
     instructions::{
         public_input::CommittedInstanceInstructions, AssertionInstructions, AssignmentInstructions,
-        Base64Instructions, DecompositionInstructions, EccInstructions, RangeCheckInstructions,
+        Base64Instructions, ControlFlowInstructions, DecompositionInstructions, EccInstructions,
+        EqualityInstructions, RangeCheckInstructions,
     },
     parsing::{DateFormat, Separator, StdLibParser},
     testing_utils::ecdsa::{ECDSASig, FromBase64},
@@ -118,7 +129,7 @@ impl Relation for CredentialProperty {
 
         let parsed_json = automaton_chip.parse(layouter, &StdLibParser::Jwt, &json)?;
 
-        // // Check Name.
+        // Check Name.
         let name = Self::get_property(std_lib, layouter, &json, &parsed_json, 3, NAME_LEN)?;
         Self::assert_str_match(std_lib, layouter, &name, VALID_NAME)?;
 
@@ -186,7 +197,8 @@ impl From<Date> for BigUint {
 }
 
 impl CredentialProperty {
-    /// Searches for "property": and returns the following `val_len` characters.
+    /// Searches for the first position in `parsed_body` marked with `marker`,
+    /// and returns the following `val_len` bytes from `body`.
     fn get_property(
         std_lib: &ZkStdLib,
         layouter: &mut impl Layouter<F>,
@@ -195,19 +207,19 @@ impl CredentialProperty {
         marker: usize,
         val_len: usize,
     ) -> Result<Vec<AssignedByte<F>>, Error> {
-        let parser = std_lib.parser();
-        let parsed_seq: Value<Vec<F>> =
-            Value::from_iter(parsed_body.iter().map(|b| b.value().copied()));
-        let idx = parsed_seq.map(|parsed_seq| {
-            let idx = parsed_seq
-                .iter()
-                .position(|&m| m == F::from(marker as u64))
-                .expect("Property should appear in the credential.");
-            F::from(idx as u64)
-        });
+        let marker_f = F::from(marker as u64);
 
-        let idx = std_lib.assign(layouter, idx)?; // idx will be range-checked in `fetch_bytes`.
-        parser.fetch_bytes(layouter, body, &idx, val_len)
+        // In-circuit scan: find the first position of `marker` in `parsed_body`.
+        // Iterating in reverse so that the final overwrite is the first occurrence of
+        // the marker.
+        let mut idx: AssignedNative<F> = std_lib.assign_fixed(layouter, F::from(0u64))?;
+        for (i, m) in parsed_body.iter().enumerate().rev() {
+            let is_match = std_lib.is_equal_to_fixed(layouter, m, marker_f)?;
+            let i_val: AssignedNative<F> = std_lib.assign_fixed(layouter, F::from(i as u64))?;
+            idx = std_lib.select(layouter, &is_match, &i_val, &idx)?;
+        }
+
+        std_lib.parser().fetch_bytes(layouter, body, &idx, val_len)
     }
 
     fn assert_str_match(
@@ -255,7 +267,7 @@ impl CredentialProperty {
 }
 
 fn main() {
-    const K: u32 = 15;
+    const K: u32 = 16;
     let srs = filecoin_srs(K);
     let credential_blob = read_credential::<4096>(CRED_PATH).expect("Path to credential file.");
 
