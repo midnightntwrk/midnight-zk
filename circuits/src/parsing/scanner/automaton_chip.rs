@@ -69,8 +69,6 @@
 //! information about which characters matched which parts of the regex, or more
 //! generally, perform computations on the input.
 
-use std::hash::Hash;
-
 use midnight_proofs::{
     circuit::{Layouter, Region, Value},
     plonk::Error,
