@@ -143,6 +143,9 @@ fn batch_add<C: CurveAffine>(
     }
 }
 
+/// Wrapper to provide direct access to affine coordinates.
+/// This avoids repeated calls to `CurveAffine::coordinates()` (which returns
+/// a `CtOption` and performs an identity check).
 #[derive(Debug, Clone, Copy)]
 struct Affine<C: CurveAffine> {
     x: C::Base,
@@ -470,12 +473,12 @@ pub fn msm_best<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
         return msm_parallel(coeffs, bases);
     }
 
-    // Filter out identity points. Transform scalars to bytes and bases to affine.
-    let (coeffs, bases_local): (Vec<_>, Vec<_>) = coeffs
+    // Filter out identities. Transform scalars to bytes and bases to affine.
+    let (coeffs, (bases, bases_local)): (Vec<_>, (Vec<_>, Vec<_>)) = coeffs
         .par_iter()
         .zip(bases.par_iter())
         .filter(|(_, b)| !bool::from(b.is_identity()))
-        .map(|(c, b)| (c.to_repr(), Affine::from(b)))
+        .map(|(c, b)| (c.to_repr(), (*b, Affine::from(b))))
         .unzip();
 
     // number of windows
@@ -499,7 +502,7 @@ pub fn msm_best<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
 
                 if sched.contains(buck_idx) {
                     // greedy accumulation
-                    j_bucks[buck_idx].add_assign(&bases_local[base_idx].eval(), sign);
+                    j_bucks[buck_idx].add_assign(&bases[base_idx], sign);
                 } else {
                     // also flushes the schedule if full
                     sched.add(&bases_local, base_idx, buck_idx, sign);
