@@ -258,3 +258,178 @@ where
     }
 }
 
+#[cfg(test)]
+mod test {
+    use ff::FromUniformBytes;
+    use midnight_proofs::{
+        circuit::{Layouter, SimpleFloorPlanner, Value},
+        dev::MockProver,
+        plonk::{Circuit, ConstraintSystem, Error},
+    };
+
+    use super::super::ScannerChip;
+    use crate::{
+        instructions::AssignmentInstructions, testing_utils::FromScratch, types::AssignedByte,
+        utils::circuit_modeling::circuit_to_json, CircuitField,
+    };
+
+    /// Check bytes test circuit with two witnesses, so that the isolation of
+    /// successive calls to `check_bytes` is also tested.
+    #[derive(Clone, Debug)]
+    struct CheckBytesTestCircuit<F: CircuitField> {
+        full1: Vec<Value<u8>>,
+        sub1: Vec<Value<u8>>,
+        idx1: Value<F>,
+        full2: Vec<Value<u8>>,
+        sub2: Vec<Value<u8>>,
+        idx2: Value<F>,
+    }
+
+    impl<F: CircuitField> CheckBytesTestCircuit<F> {
+        fn new(case1: (&str, &str, usize), case2: (&str, &str, usize)) -> Self {
+            let (full1, sub1, idx1) = case1;
+            let (full2, sub2, idx2) = case2;
+            CheckBytesTestCircuit {
+                full1: full1.bytes().map(Value::known).collect(),
+                sub1: sub1.bytes().map(Value::known).collect(),
+                idx1: Value::known(F::from(idx1 as u64)),
+                full2: full2.bytes().map(Value::known).collect(),
+                sub2: sub2.bytes().map(Value::known).collect(),
+                idx2: Value::known(F::from(idx2 as u64)),
+            }
+        }
+    }
+
+    impl<F> Circuit<F> for CheckBytesTestCircuit<F>
+    where
+        F: CircuitField + FromUniformBytes<64> + Ord,
+    {
+        type Config = <ScannerChip<usize, F> as FromScratch<F>>::Config;
+        type FloorPlanner = SimpleFloorPlanner;
+        type Params = ();
+
+        fn without_witnesses(&self) -> Self {
+            unreachable!()
+        }
+
+        fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+            let instance_columns = [meta.instance_column(), meta.instance_column()];
+            ScannerChip::<usize, F>::configure_from_scratch(meta, &instance_columns)
+        }
+
+        fn synthesize(
+            &self,
+            config: Self::Config,
+            mut layouter: impl Layouter<F>,
+        ) -> Result<(), Error> {
+            let scanner = ScannerChip::<usize, F>::new_from_scratch(&config);
+            let native_gadget = &scanner.native_gadget;
+
+            let full1: Vec<AssignedByte<F>> =
+                native_gadget.assign_many(&mut layouter, &self.full1)?;
+            let sub1: Vec<AssignedByte<F>> =
+                native_gadget.assign_many(&mut layouter, &self.sub1)?;
+            let idx1 = native_gadget.assign(&mut layouter, self.idx1)?;
+            let full2: Vec<AssignedByte<F>> =
+                native_gadget.assign_many(&mut layouter, &self.full2)?;
+            let sub2: Vec<AssignedByte<F>> =
+                native_gadget.assign_many(&mut layouter, &self.sub2)?;
+            let idx2 = native_gadget.assign(&mut layouter, self.idx2)?;
+
+            // Two separate check_bytes calls — each gets a different sequence
+            // key in the cache, so they will be assigned different tags.
+            scanner.check_bytes(&mut layouter, &full1, &idx1, &sub1)?;
+            scanner.check_bytes(&mut layouter, &full2, &idx2, &sub2)?;
+
+            // Load triggers finalise_substring_checks (deferred execution model).
+            scanner.load_from_scratch(&mut layouter)
+        }
+    }
+
+    fn check_bytes_test(
+        cost_model: bool,
+        k: u32,
+        case1: (&str, &str, usize),
+        case2: (&str, &str, usize),
+        must_pass: bool,
+    ) {
+        assert!(
+            !cost_model || must_pass,
+            "(bug) if cost_model is set to true, must_pass should be set to true"
+        );
+        type F = midnight_curves::Fq;
+
+        let circuit = CheckBytesTestCircuit::<F>::new(case1, case2);
+        println!(
+            ">> [test check_bytes] [must{} pass] on\n\t- input1: \"{}\" = \"{}\"[{}..{}]\n\t- input2: \"{}\" = \"{}\"[{}..{}]",
+            if must_pass { "" } else { " not" },
+            case1.1,
+            case1.0,
+            case1.2,
+            case1.2 + case1.1.len(),
+            case2.1,
+            case2.0,
+            case2.2,
+            case2.2 + case2.1.len(),
+        );
+        let result = MockProver::run(k, &circuit, vec![vec![], vec![]]);
+        match result {
+            Ok(p) => {
+                let verified = p.verify();
+                if must_pass {
+                    verified.expect("the test should have passed")
+                } else {
+                    assert!(verified.is_err(), "the test should have failed");
+                }
+            }
+            Err(e) => {
+                assert!(!must_pass, "Prover failed unexpectedly: {:?}", e);
+            }
+        }
+        println!("... test successful!");
+
+        if cost_model {
+            circuit_to_json::<F>(
+                "Scanner",
+                &format!(
+                    "substring perf (full length = {}, sub length = {})",
+                    case1.0.len(),
+                    case1.1.len()
+                ),
+                circuit,
+            );
+        }
+    }
+
+    #[test]
+    fn test_check_bytes() {
+        // Test of a trivial case.
+        let trivial = ("", "", 0);
+        check_bytes_test(false, 9, trivial, trivial, true);
+
+        // Basic tests (with trivial second case).
+        check_bytes_test(false, 9, ("hello world", "hello", 0), trivial, true); // At beginning.
+        check_bytes_test(false, 9, ("hello world", "lo wo", 3), trivial, true); // In middle.
+        check_bytes_test(false, 9, ("hello world", "world", 6), trivial, true); // At end.
+        check_bytes_test(false, 9, ("abcdef", "d", 3), trivial, true); // Single char.
+        check_bytes_test(false, 9, ("test", "test", 0), trivial, true); // Full string.
+        check_bytes_test(false, 9, ("hello world", "xyz", 0), trivial, false); // Off-Topic.
+        check_bytes_test(false, 9, ("hello world", "world", 0), trivial, false); // Wrong idx.
+
+        // Tag isolation tests.
+        check_bytes_test(false, 9, ("a", "b", 0), ("b", "a", 0), false);
+        check_bytes_test(
+            false,
+            9,
+            ("hello world", "hello", 0),
+            ("world", " world", 1),
+            false,
+        );
+        check_bytes_test(false, 9, ("hello", "ell", 1), ("world", "orl", 1), true);
+
+        // Performance test for the golden files, using a sub of 50 bytes.
+        let full = "abcdefghij abcdefghij abcdefghij abcdefghij abcdefghij abcdefghij";
+        let sub = &full[5..55]; // 50 bytes
+        check_bytes_test(true, 10, (full, sub, 5), ("world", "orl", 1), true);
+    }
+}

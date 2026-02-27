@@ -241,7 +241,7 @@ where
     fn configure(
         meta: &mut ConstraintSystem<F>,
         shared_res: &Self::SharedResources,
-    ) -> ScannerConfig {
+    ) -> ScannerConfig<LibIndex, F> {
         #[allow(clippy::assertions_on_constants)]
         {
             assert!(
