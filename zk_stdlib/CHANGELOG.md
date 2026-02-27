@@ -21,6 +21,7 @@ verification keys break backwards compatibility.
 * Updated Rust toolchain to 1.90.0 [#210](https://github.com/midnightntwrk/midnight-zk/pull/210)
 * `CircuitField` refactor  [#201](https://github.com/midnightntwrk/midnight-zk/pull/201)
 * Replace `secp256k1` with `k256`  [#192](https://github.com/midnightntwrk/midnight-zk/pull/192)
+* Parallelise batch_verifier [#236](https://github.com/midnightntwrk/midnight-zk/pull/236)
 
 ### Removed
 * Move Blake2b and SHA3-256/Keccak256 implementations to zk-stdlib [#178](https://github.com/midnightntwrk/midnight-zk/pull/178)
