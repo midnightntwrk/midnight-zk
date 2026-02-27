@@ -22,6 +22,7 @@ verification keys break backwards compatibility.
 * Add `CircuitField` implementations for `k256::Fp` and `k256::Fq` [#192](https://github.com/midnightntwrk/midnight-zk/pull/192)
 * Implementation of substring checks [#229](https://github.com/midnightntwrk/midnight-zk/pull/229)
 * Scanner chip: dynamic regex support and lazy automaton loading [#232](https://github.com/midnightntwrk/midnight-zk/pull/232)
+* Scanner chip: ICAO 9303 TD3 DG1 passport parser [#233](https://github.com/midnightntwrk/midnight-zk/pull/233)
 
 ### Changed
 * Refactor of the automaton chip, now called scanner chip [#240](https://github.com/midnightntwrk/midnight-zk/pull/240)
