@@ -40,12 +40,12 @@ use std::{
 };
 
 use automaton::Automaton;
-use regex::Regex;
 use midnight_proofs::{
     circuit::{Chip, Layouter},
     plonk::{Advice, Column, ConstraintSystem, Error, Expression, Fixed, Selector, TableColumn},
     poly::Rotation,
 };
+use regex::Regex;
 use rustc_hash::FxHashMap;
 pub use static_specs::{spec_library, StdLibParser};
 #[cfg(test)]
@@ -74,19 +74,26 @@ const NB_AUTOMATON_COLS: usize = 3;
 /// sequence+index, packed sub+index).
 const NB_SUBSTRING_COLS: usize = 2;
 
+/// Number of parallel lookups performed by automata based parsers.
+const AUTOMATON_PARALLELISM: usize = 2;
+/// Number of parallel query lookups for substring checks. The total advice
+/// columns is `(1 + SUBSTRING_PARALLELISM) * NB_SUBSTRING_COLS`.
+const SUBSTRING_PARALLELISM: usize = 3;
+
 /// Maximum bit-length for the longer sequence length in substring checks. This
 /// value must be chosen lower or equal than `F::CAPACITY - 9`.
 const PARSING_MAX_LEN_BITS: u32 = 64;
 
 /// Number of advice columns for the scanner chip.
 pub const NB_SCANNER_ADVICE_COLS: usize = {
-    if NB_AUTOMATON_COLS > NB_SUBSTRING_COLS {
-        NB_AUTOMATON_COLS
+    let automaton = NB_AUTOMATON_COLS * AUTOMATON_PARALLELISM;
+    let substring = SUBSTRING_PARALLELISM * NB_SUBSTRING_COLS;
+    if automaton > substring {
+        automaton
     } else {
-        NB_SUBSTRING_COLS
+        substring
     }
 };
-
 /// Number of shared fixed columns necessary for the scanner chip.
 pub const NB_SCANNER_FIXED_COLS: usize = 1;
 
@@ -294,6 +301,10 @@ where
         #[allow(clippy::assertions_on_constants)]
         {
             assert!(
+                AUTOMATON_PARALLELISM > 0 && SUBSTRING_PARALLELISM > 0,
+                "at least 1 lookup required for automata and substring checks"
+            );
+            assert!(
                 PARSING_MAX_LEN_BITS <= F::CAPACITY - (u8::BITS + 1),
                 "check_subsequence batching exceeds field capacity ({} / {})",
                 PARSING_MAX_LEN_BITS + u8::BITS + 1,
@@ -310,88 +321,95 @@ where
 
         // Automaton resources (shared fixed lookup table).
         let q_automaton = meta.complex_selector();
-
-        let state_col = advice_cols[0];
-        let letter_col = advice_cols[1];
-        let output_col = advice_cols[2];
         let t_source = meta.lookup_table_column();
         let t_letter = meta.lookup_table_column();
         let t_target = meta.lookup_table_column();
         let t_output = meta.lookup_table_column();
 
-        meta.lookup("automaton transition check", |meta| {
-            let q = meta.query_selector(q_automaton);
-            let source = meta.query_advice(state_col, Rotation::cur());
-            let letter = meta.query_advice(letter_col, Rotation::cur());
-            let target = meta.query_advice(state_col, Rotation::next());
-            let output = meta.query_advice(output_col, Rotation::cur());
-            vec![
-                (q.clone() * source, t_source),
-                (q.clone() * letter, t_letter),
-                (q.clone() * target, t_target),
-                (q * output, t_output),
-            ]
-        });
+        // Automaton lookup by batch: AUTOMATON_PARALLELISM transitions per row.
+        for batch in 0..AUTOMATON_PARALLELISM {
+            meta.lookup(
+                format!("automaton transition check (batch {batch})"),
+                |meta| {
+                    let q = meta.query_selector(q_automaton);
+                    let base = NB_AUTOMATON_COLS * batch;
+                    let [source, letter, output] = core::array::from_fn(|i| {
+                        meta.query_advice(advice_cols[base + i], Rotation::cur())
+                    });
+                    let target = if batch + 1 < AUTOMATON_PARALLELISM {
+                        meta.query_advice(advice_cols[base + NB_AUTOMATON_COLS], Rotation::cur())
+                    } else {
+                        meta.query_advice(advice_cols[0], Rotation::next())
+                    };
+                    vec![
+                        (q.clone() * source, t_source),
+                        (q.clone() * letter, t_letter),
+                        (q.clone() * target, t_target),
+                        (q * output, t_output),
+                    ]
+                },
+            );
+        }
 
         // Substring resources.
         let tag_col = meta.fixed_column();
         let q_substring = meta.complex_selector();
 
-        // Substring lookup argument (see the `substring` module for full details).
+        // Substring lookup arguments (see the `substring` module for full details).
         //
-        // Each row carries two advice cells: a table entry (state_col) and a query
-        // entry (letter_col), plus two fixed cells: index and tag. The lookup asserts
-        // that every query appears somewhere in the table with the same tag.
+        // There are `SUBSTRING_PARALLELISM` independent lookup arguments, each
+        // operating on 2 advice columns: `advice_cols[2*batch]` (table byte)
+        // and `advice_cols[2*batch + 1]` (packed query), plus 2 shared fixed
+        // columns: index and tag.
         //
-        // Example: checking `wor` appears in `hello world` at index 6. The circuit will
-        // assign the following values in the region:
+        // Example: checking `wor` appears in `hello world` at index 6 (batch 0):
         //
-        //    fixed           advice
-        //    tag | index     state_col | letter_col
-        //    -----------     -----------------------
-        //     1  |  0           'h'    | 257*6 + 'w'    <- query for sub[0]
-        //     1  |  1           'e'    | 257*7 + 'o'    <- query for sub[1]
-        //     1  |  2           'l'    | 257*8 + 'r'    <- query for sub[2]
-        //     1  |  3           'l'    | (padding)
-        //     1  |  4           'o'    | (padding)
-        //     1  |  5           ' '    | (padding)
-        //     1  |  6           'w'    | (padding)
-        //     1  |  7           'o'    | (padding)
-        //     1  |  8           'r'    | (padding)
-        //     1  |  9           'l'    | (padding)
-        //     1  | 10           'd'    | (padding)
+        //    fixed          advice
+        //    tag | index    cols[2*i] | cols[2*i+1]
+        //    -----------    -----------------------
+        //     1  |  0          'h'    | 257*6 + 'w'    <- query for sub[0]
+        //     1  |  1          'e'    | 257*7 + 'o'    <- query for sub[1]
+        //     1  |  2          'l'    | 257*8 + 'r'    <- query for sub[2]
+        //     1  |  3          'l'    | (padding)
+        //     1  |  4          'o'    | (padding)
+        //     1  |  5          ' '    | (padding)
+        //     1  |  6          'w'    | (padding)
+        //     1  |  7          'o'    | (padding)
+        //     1  |  8          'r'    | (padding)
+        //     1  |  9          'l'    | (padding)
+        //     1  | 10          'd'    | (padding)
         //
-        // Note in particular that a packed value `257 * (idx + i) + sub[i]` is assigned
-        // to `letter_col`. The lookup identity below then checks that each of these
-        // packed values belong to a table, constructed by packing the rows of
-        // `state_col` similarly.
+        // The packed query `257 * (idx + i) + sub[i]` is pre-computed in
+        // circuit (see `index_and_pack_sequence` in `substring`). The table
+        // packing is done in the expression below:
         //
-        // `table_packed[i] = 257 * index[i] + state_col[i]`
+        //     table_packed = 257 * index + table_byte
         //
-        // The lookup then checks: (tag, packed_query) ∈ {(tag, table_packed)}.
+        // The lookup checks: (tag, packed_query) ∈ {(tag, table_packed)}.
         //
-        // When sel=OFF, both sides reduce to (tag, query), i.e., a tautology, so rows
-        // not used by substring checks are unconstrained. The tag fixed column will
-        // default to 0 outside of the substring check regions, isolating the tables
-        // from the unrelated regions.
-        meta.lookup_any("substring lookup", |meta| {
-            let sel = meta.query_selector(q_substring);
-            let not_sel = Expression::Constant(F::ONE) - sel.clone();
-            let index = meta.query_fixed(*index_col, Rotation::cur());
-            let tag = meta.query_fixed(tag_col, Rotation::cur());
-            let shift = Expression::Constant(F::from(ALPHABET_MAX_SIZE as u64 + 1));
+        // When sel=OFF, both sides reduce to (tag, query) — a tautology, so
+        // rows not used by substring checks are unconstrained.
+        for batch in 0..SUBSTRING_PARALLELISM {
+            meta.lookup_any(format!("substring lookup (batch {batch})"), |meta| {
+                let sel = meta.query_selector(q_substring);
+                let not_sel = Expression::Constant(F::ONE) - sel.clone();
+                let index = meta.query_fixed(*index_col, Rotation::cur());
+                let tag = meta.query_fixed(tag_col, Rotation::cur());
+                let shift = Expression::Constant(F::from(ALPHABET_MAX_SIZE as u64 + 1));
 
-            let table = meta.query_advice(state_col, Rotation::cur());
-            let query = meta.query_advice(letter_col, Rotation::cur());
+                let base = NB_SUBSTRING_COLS * batch;
+                let table = meta.query_advice(advice_cols[base], Rotation::cur());
+                let query = meta.query_advice(advice_cols[base + 1], Rotation::cur());
 
-            vec![
-                (tag.clone(), sel.clone() * tag.clone()),
-                (
-                    query.clone(),
-                    sel * (index * shift + table) + not_sel * query,
-                ),
-            ]
-        });
+                vec![
+                    (tag.clone(), sel.clone() * tag.clone()),
+                    (
+                        query.clone(),
+                        sel * (index * shift + table) + not_sel * query,
+                    ),
+                ]
+            });
+        }
 
         ScannerConfig {
             advice_cols: *advice_cols,
