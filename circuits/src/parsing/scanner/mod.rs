@@ -24,17 +24,20 @@ mod automaton_chip;
 pub mod regex;
 mod serialization;
 pub(crate) mod static_specs;
+mod substring;
 
 use std::{
+    cell::RefCell,
     collections::{BTreeMap, BTreeSet},
     fmt::Debug,
     hash::Hash,
+    rc::Rc,
 };
 
 use automaton::Automaton;
 use midnight_proofs::{
     circuit::{Chip, Layouter, Value},
-    plonk::{Advice, Column, ConstraintSystem, Error, Selector, TableColumn},
+    plonk::{Advice, Column, ConstraintSystem, Error, Expression, Fixed, Selector, TableColumn},
     poly::Rotation,
 };
 use rustc_hash::FxHashMap;
@@ -47,7 +50,7 @@ use {
 };
 
 use crate::{
-    field::{decomposition::chip::P2RDecompositionChip, NativeChip, NativeGadget},
+    field::{decomposition::chip::P2RDecompositionChip, AssignedNative, NativeChip, NativeGadget},
     utils::ComposableChip,
     CircuitField,
 };
@@ -60,8 +63,27 @@ use crate::{
 /// needed to represent letters as u8.
 const ALPHABET_MAX_SIZE: usize = 256;
 
+/// Number of advice columns used per automaton lookup (source, letter, output).
+const NB_AUTOMATON_COLS: usize = 3;
+/// Number of advice columns used per substring lookup argument (packed
+/// sequence+index, packed sub+index).
+const NB_SUBSTRING_COLS: usize = 2;
+
+/// Maximum bit-length for the longer sequence length in substring checks. This
+/// value must be chosen lower or equal than `F::CAPACITY - 8`.
+const PARSING_MAX_LEN_BITS: u32 = 64;
+
 /// Number of advice columns for the scanner chip.
-pub const NB_SCANNER_ADVICE_COLS: usize = 3;
+pub const NB_SCANNER_ADVICE_COLS: usize = {
+    if NB_AUTOMATON_COLS > NB_SUBSTRING_COLS {
+        NB_AUTOMATON_COLS
+    } else {
+        NB_SUBSTRING_COLS
+    }
+};
+
+/// Number of shared fixed columns necessary for the scanner chip.
+pub const NB_SCANNER_FIXED_COLS: usize = 1;
 
 // Native gadget type abbreviation.
 type NG<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
@@ -137,6 +159,13 @@ where
     }
 }
 
+/// A sequence of assigned elements.
+type Sequence<F> = Vec<AssignedNative<F>>;
+/// Cache of assigned sequences passed as arguments to `check_subsequence`. Each
+/// sequence is mapped to the list of `(idx, sub)` pairs it was called with.
+/// Also stores the cumulative length of all `sub` associateed to this key.
+type SequenceCache<F> = FxHashMap<Sequence<F>, (Vec<(AssignedNative<F>, Sequence<F>)>, usize)>;
+
 /// Scanner gate configuration.
 #[derive(Clone, Debug)]
 pub struct ScannerConfig<LibIndex, F> {
@@ -150,9 +179,14 @@ pub struct ScannerConfig<LibIndex, F> {
     t_letter: TableColumn,
     t_target: TableColumn,
     t_output: TableColumn,
+
+    // Substring resources. The tag column is used for domain separation and cannot be shared.
+    q_substring: Selector,
+    index_col: Column<Fixed>,
+    tag_col: Column<Fixed>,
 }
 
-/// Chip for scanning: automaton parsing.
+/// Chip for scanning: automaton parsing and substring verification.
 #[derive(Clone, Debug)]
 pub struct ScannerChip<LibIndex, F>
 where
@@ -160,6 +194,12 @@ where
 {
     config: ScannerConfig<LibIndex, F>,
     native_gadget: NG<F>,
+
+    /// Cache mapping a sequence of cells to the list of `(idx, sub)` pairs
+    /// it was called with, so that repeated `check_bytes` calls with the same
+    /// `sequence` argument share the table cost. Tags are assigned later
+    /// during finalisation.
+    sequence_cache: Rc<RefCell<SequenceCache<F>>>,
 }
 
 impl<LibIndex, F> Chip<F> for ScannerChip<LibIndex, F>
@@ -186,6 +226,7 @@ where
 
     type SharedResources = (
         [Column<Advice>; NB_SCANNER_ADVICE_COLS],
+        Column<Fixed>,
         FxHashMap<LibIndex, Automaton>,
     );
 
@@ -193,6 +234,7 @@ where
         Self {
             config: config.clone(),
             native_gadget: deps.clone(),
+            sequence_cache: Rc::new(RefCell::new(FxHashMap::default())),
         }
     }
 
@@ -200,7 +242,7 @@ where
         meta: &mut ConstraintSystem<F>,
         shared_res: &Self::SharedResources,
     ) -> ScannerConfig<LibIndex, F> {
-        let (advice_cols, automata) = shared_res;
+        let (advice_cols, index_col, automata) = shared_res;
 
         // Static automaton resources.
         let q_automaton = meta.complex_selector();
@@ -232,16 +274,50 @@ where
             ]
         });
 
+        // Substring resources.
+        let tag_col = meta.fixed_column();
+        let q_substring = meta.complex_selector();
+
+        // Each lookup argument operate on NB_SUBSTRING_COLS = 2 advice columns: 1 table
+        // column + 1 query column. Queries are looked up in the table with the
+        // following convention:
+        //   1. sel=ON, index > 0: 1 table entry + 1 query for each lookup argument, in
+        //      this row.
+        //   2. sel=OFF, index > 0: 1 query. The table column is unconstrained. In
+        //      practice, will never happen.
+        //   3. sel=OFF, index = 0: tautology. Happens when managing other functions.
+        meta.lookup_any("substring lookup", |meta| {
+            let sel = meta.query_selector(q_substring);
+            let not_sel = Expression::Constant(F::ONE) - sel.clone();
+            let index = meta.query_fixed(*index_col, Rotation::cur());
+            let tag = meta.query_fixed(tag_col, Rotation::cur());
+            let shift = Expression::Constant(F::from(ALPHABET_MAX_SIZE as u64 + 1));
+
+            let table = meta.query_advice(state_col, Rotation::cur());
+            let query = meta.query_advice(letter_col, Rotation::cur());
+
+            vec![
+                (tag.clone(), sel.clone() * tag.clone()),
+                (
+                    query.clone(),
+                    sel * (index * shift + table) + not_sel * query,
+                ),
+            ]
+        });
+
         ScannerConfig {
-            automata,
-            q_automaton,
             state_col,
             letter_col,
             output_col,
+            automata: automata.clone(),
+            q_automaton,
             t_source,
             t_letter,
             t_target,
             t_output,
+            q_substring,
+            index_col: *index_col,
+            tag_col,
         }
     }
 
@@ -412,6 +488,7 @@ where
             meta,
             &(
                 advice_cols[..NB_SCANNER_ADVICE_COLS].try_into().unwrap(),
+                fixed_cols[0],
                 automata,
             ),
         );
