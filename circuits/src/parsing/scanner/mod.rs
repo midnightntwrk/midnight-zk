@@ -11,18 +11,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Module implementing chips and gadgets to process JSON objects.
+//! A chip combining lookup-based parsing techniques such as automaton-based
+//! parsing. The chip supports:
 
-mod base64_chip;
-mod data_types;
-mod parser_gadget;
+mod static_specs;
 
-/// A module containing the scanner chip (automata).
-pub mod scanner;
+/// A module to convert regular expressions to finite automata that can be used
+/// as basis for circuit gates.
+mod automaton;
+/// A module containing the definitions of the automata that will be loaded in
+/// the standard library.
+pub mod automaton_chip;
+/// A module to specify languages as regular expressions and convert them into
+/// finite automata.
+pub mod regex;
+/// A module to serialize automata as sequences of bytes.
+mod serialization;
 
-mod table;
-
-pub use base64_chip::*;
-pub use data_types::{DateFormat, Separator};
-pub use parser_gadget::*;
-pub use scanner::{regex, spec_library, StdLibParser};
+pub use static_specs::{spec_library, StdLibParser};
