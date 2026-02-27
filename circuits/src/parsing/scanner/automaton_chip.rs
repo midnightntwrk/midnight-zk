@@ -326,22 +326,22 @@ mod test {
         CircuitField,
     };
 
-    #[derive(Clone, Debug, Default)]
+    #[derive(Clone, Debug)]
     struct RegexCircuit<F> {
         input: Vec<Value<u8>>,
         output: Vec<Value<F>>,
-        automaton_index: usize,
+        regex: Regex,
     }
 
     impl<F: CircuitField> RegexCircuit<F> {
-        fn new(s: &str, output: &[usize], automaton_index: usize) -> Self {
+        fn new(s: &str, output: &[usize], regex: Regex) -> Self {
             let input = s.bytes().map(Value::known).collect::<Vec<_>>();
             let output =
                 output.iter().map(|&x| Value::known(F::from(x as u64))).collect::<Vec<_>>();
             RegexCircuit {
                 input,
                 output,
-                automaton_index,
+                regex,
             }
         }
     }
@@ -378,12 +378,11 @@ mod test {
             let output: Vec<AssignedNative<F>> =
                 scanner_chip.native_gadget.assign_many(&mut layouter, &self.output)?;
 
-            println!(">> [test] About to parse an automaton with index {}, which contains {} transitions, and {} final states.",
-                self.automaton_index,
-                scanner_chip.config.automata[&self.automaton_index].transitions.len(),
-                scanner_chip.config.automata[&self.automaton_index].final_states.len()
-            );
-            let parsed_output = scanner_chip.parse(&mut layouter, &self.automaton_index, &input)?;
+            let parsed_output = scanner_chip.parse(
+                &mut layouter,
+                AutomatonParser::Dynamic(self.regex.clone()),
+                &input,
+            )?;
             assert!(
                 parsed_output.len() == output.len(),
                 "test failed: the lengths of the
@@ -416,8 +415,8 @@ mod test {
         let prover = MockProver::<midnight_curves::Fq>::run(k, circuit, vec![vec![], vec![]]);
         if must_pass {
             println!(
-                ">> [test {test_index}] Parsing input {} with automaton {}, which should pass (output: {:?})",
-                input, circuit.automaton_index, output
+                ">> [test {test_index}] Parsing input {}, which should pass (output: {:?})",
+                input, output
             );
             prover.unwrap().assert_satisfied()
         } else {
@@ -446,7 +445,7 @@ mod test {
             circuit_to_json::<midnight_curves::Fq>(
                 "Scanner",
                 &format!(
-                    "static parsing perf (input length = {})",
+                    "automaton parsing perf (input length = {})",
                     circuit.input.len()
                 ),
                 circuit.clone(),
@@ -455,41 +454,26 @@ mod test {
     }
 
     // A test to check the validity of the circuit.
-    fn basic_test(
-        test_index: usize,
-        input: &str,
-        output: &[usize],
-        automaton_index: usize,
-        must_pass: bool,
-    ) {
+    fn basic_test(test_index: usize, input: &str, output: &[usize], regex: Regex, must_pass: bool) {
         parsing_one_test(
             test_index,
             false,
             10,
             input,
             output,
-            &RegexCircuit::new(input, output, automaton_index),
+            &RegexCircuit::new(input, output, regex),
             must_pass,
         )
     }
 
     // A test for inputs that do not match the tested regex.
-    fn basic_fail_test(test_index: usize, input: &str, automaton_index: usize) {
-        basic_test(
-            test_index,
-            input,
-            &vec![0; input.len()],
-            automaton_index,
-            false,
-        )
+    fn basic_fail_test(test_index: usize, input: &str, regex: Regex) {
+        basic_test(test_index, input, &vec![0; input.len()], regex, false)
     }
 
     // A test to record the performances of the circuit in the golden files.
-    fn perf_test(test_index: usize, input: &str, automaton_index: usize, k: u32) {
-        println!(
-            "\n>> Performance test (automaton {automaton_index}), input size {}:",
-            input.len()
-        );
+    fn perf_test(test_index: usize, input: &str, regex: Regex, k: u32) {
+        println!("\n>> Performance test, input size {}:", input.len());
         let output = vec![0; input.len()];
         parsing_one_test(
             test_index,
@@ -497,92 +481,99 @@ mod test {
             k,
             input,
             &output,
-            &RegexCircuit::new(input, &output, automaton_index),
+            &RegexCircuit::new(input, &output, regex),
             true,
         )
     }
 
     #[test]
-    // Tests static automaton parsing.
+    // Tests automaton parsing with a single regex.
     fn parsing_test() {
+        let regex0 = Regex::hard_coded_example0();
+        let regex1 = Regex::hard_coded_example1();
+
         // Correct inputs for automaton 0.
-        basic_test(0, "hello (world)!!!!!", &[0; 18], 0, true);
-        basic_test(0, "hello (world)!!!!!", &[1; 18], 0, false); // Variant with a wrong output.
+        basic_test(0, "hello (world)!!!!!", &[0; 18], regex0.clone(), true);
+        basic_test(0, "hello (world)!!!!!", &[1; 18], regex0.clone(), false); // Variant with a wrong output.
         basic_test(
             1,
             "hello (world)!!!!!oipdsfihs32,;'p'';@",
             &[0; 37],
-            0,
+            regex0.clone(),
             true,
         );
-        basic_test(2, "hello (world)  !!!!!", &[0; 20], 0, true);
-        basic_test(2, "hello (world)  !!!!!", &[1; 20], 0, false); // Variant with a wrong output.
-        basic_test(3, "hello (world  )!!!!!", &[0; 20], 0, true);
-        basic_test(4, "hello (  world)!!!!!", &[0; 20], 0, true);
+        basic_test(2, "hello (world)  !!!!!", &[0; 20], regex0.clone(), true);
+        basic_test(2, "hello (world)  !!!!!", &[1; 20], regex0.clone(), false); // Variant with a wrong output.
+        basic_test(3, "hello (world  )!!!!!", &[0; 20], regex0.clone(), true);
+        basic_test(4, "hello (  world)!!!!!", &[0; 20], regex0.clone(), true);
         basic_test(
             5,
             "hello  hello hello  (world , world ) !!!!!",
             &[0; 42],
-            0,
+            regex0.clone(),
             true,
         );
         basic_test(
             6,
             "hello  hello hello  (world , world ) !!!!!  ;'{][0(*&6235%  /.,><",
             &[0; 65],
-            0,
+            regex0.clone(),
             true,
         );
         basic_test(
             7,
             "hello   hello  hello ( world,world  , world )!!!!!",
             &[0; 50],
-            0,
+            regex0.clone(),
             true,
         );
 
         // Incorrect inputs for automaton 0:
         // Missing '!'.
-        basic_fail_test(8, "hello (world)!!!!", 0);
+        basic_fail_test(8, "hello (world)!!!!", regex0.clone());
         // Additional '!'.
-        basic_fail_test(9, "hello (world)!!!!!!", 0);
+        basic_fail_test(9, "hello (world)!!!!!!", regex0.clone());
         // Missing '('.
-        basic_fail_test(10, "hello world)!!!!!", 0);
+        basic_fail_test(10, "hello world)!!!!!", regex0.clone());
         // Spelling.
-        basic_fail_test(11, "hello (warudo)!!!!!", 0);
+        basic_fail_test(11, "hello (warudo)!!!!!", regex0.clone());
         // Missing space before '('.
-        basic_fail_test(12, "hello hello hello(world)!!!!!", 0);
+        basic_fail_test(12, "hello hello hello(world)!!!!!", regex0.clone());
         // "world"s should be separated by ','.
-        basic_fail_test(13, "hello  hello hello  (world  world ) !!!!!", 0);
+        basic_fail_test(
+            13,
+            "hello  hello hello  (world  world ) !!!!!",
+            regex0.clone(),
+        );
         // Missing space.
-        basic_fail_test(14, "hello hellohello ( world,world )!!!!!", 0);
+        basic_fail_test(14, "hello hellohello ( world,world )!!!!!", regex0.clone());
         // Spaces between '!'s.
-        basic_fail_test(15, "hello hellohello ( world,world )!!! !!", 0);
+        basic_fail_test(15, "hello hellohello ( world,world )!!! !!", regex0.clone());
 
         // Correct inputs for automaton 1.
         basic_test(
             16,
             "holy hell !!!",
             &[0, 1, 2, 1, 0, 0, 1, 2, 2, 0, 1, 1, 1],
-            1,
+            regex1.clone(),
             true,
         );
-        basic_test(16, "holy hell !!!", &[0; 13], 1, false); // Variant with a wrong output.
+        basic_test(16, "holy hell !!!", &[0; 13], regex1.clone(), false); // Variant with a wrong output.
         basic_test(
             17,
             "holy   hell    !!!!!!",
             &[
                 0, 1, 2, 1, 0, 0, 0, 0, 1, 2, 2, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1,
             ],
-            1,
+            regex1.clone(),
             true,
         );
-        basic_test(17, "holy   hell    !!!!!!", &[0; 21], 1, false); // Variant with a wrong output.
+        basic_test(17, "holy   hell    !!!!!!", &[0; 21], regex1.clone(), false); // Variant with a wrong output.
         basic_test(
             18,
             "holyyyy hell !!!",
             &[0, 1, 2, 1, 1, 1, 1, 0, 0, 1, 2, 2, 0, 1, 1, 1],
-            1,
+            regex1.clone(),
             true,
         );
         basic_test(
@@ -591,30 +582,272 @@ mod test {
             &[
                 0, 1, 2, 1, 1, 1, 1, 0, 0, 0, 0, 1, 2, 2, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1,
             ],
-            1,
+            regex1.clone(),
             true,
         );
 
         // Incorrect inputs for automaton 1:
         // Missing space.
-        basic_fail_test(20, "holy hell!!!", 1);
-        basic_fail_test(21, "holyhell !!!", 1);
-        basic_fail_test(22, "holyhell!!!", 1);
-        basic_fail_test(23, "holyyyy hell!!!", 1);
-        basic_fail_test(24, "holyyyyhell    !!!!!!", 1);
+        basic_fail_test(20, "holy hell!!!", regex1.clone());
+        basic_fail_test(21, "holyhell !!!", regex1.clone());
+        basic_fail_test(22, "holyhell!!!", regex1.clone());
+        basic_fail_test(23, "holyyyy hell!!!", regex1.clone());
+        basic_fail_test(24, "holyyyyhell    !!!!!!", regex1.clone());
         // Missing '!'.
-        basic_fail_test(25, "holy hell ", 1);
-        basic_fail_test(26, "holyyyy      hell   ", 1);
+        basic_fail_test(25, "holy hell ", regex1.clone());
+        basic_fail_test(26, "holyyyy      hell   ", regex1.clone());
         // Additional 'l'.
-        basic_fail_test(27, "holy hellllll !!!", 1);
+        basic_fail_test(27, "holy hellllll !!!", regex1.clone());
 
         // Performance inputs for the golden files, using automaton 0, for an input of
         // 50 bytes.
         perf_test(
             28,
             "hello hello  hello (world, world  , world )  !!!!!",
-            0,
+            regex0,
             10,
+        );
+    }
+
+    // ---- Multi-regex / caching tests ----
+
+    /// A circuit that parses two inputs against dynamically-provided regexes.
+    /// When both regexes are equal, the second call should hit the cache.
+    /// `must_cache` controls whether this is asserted.
+    #[derive(Clone, Debug)]
+    struct DynamicRegexCircuit<F: CircuitField> {
+        regex1: Regex,
+        input1: Vec<Value<u8>>,
+        output1: Vec<Value<F>>,
+        regex2: Regex,
+        input2: Vec<Value<u8>>,
+        output2: Vec<Value<F>>,
+        must_cache: bool,
+    }
+
+    impl<F: CircuitField> DynamicRegexCircuit<F> {
+        fn new(
+            regex1: Regex,
+            input1: &str,
+            output1: &[usize],
+            regex2: Regex,
+            input2: &str,
+            output2: &[usize],
+            must_cache: bool,
+        ) -> Self {
+            Self {
+                regex1,
+                input1: input1.bytes().map(Value::known).collect(),
+                output1: output1.iter().map(|&x| Value::known(F::from(x as u64))).collect(),
+                regex2,
+                input2: input2.bytes().map(Value::known).collect(),
+                output2: output2.iter().map(|&x| Value::known(F::from(x as u64))).collect(),
+                must_cache,
+            }
+        }
+    }
+
+    impl<F> Circuit<F> for DynamicRegexCircuit<F>
+    where
+        F: CircuitField + Ord,
+    {
+        type Config = <ScannerChip<F> as FromScratch<F>>::Config;
+        type FloorPlanner = SimpleFloorPlanner;
+        type Params = ();
+
+        fn without_witnesses(&self) -> Self {
+            unreachable!()
+        }
+
+        fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+            let committed_instance_column = meta.instance_column();
+            let instance_column = meta.instance_column();
+            ScannerChip::configure_from_scratch(meta, &[committed_instance_column, instance_column])
+        }
+
+        fn synthesize(
+            &self,
+            config: Self::Config,
+            mut layouter: impl Layouter<F>,
+        ) -> Result<(), Error> {
+            let scanner_chip = ScannerChip::<F>::new_from_scratch(&config);
+
+            // First parse.
+            let input1: Vec<AssignedByte<F>> =
+                scanner_chip.native_gadget.assign_many(&mut layouter, &self.input1)?;
+            let output1: Vec<AssignedNative<F>> =
+                scanner_chip.native_gadget.assign_many(&mut layouter, &self.output1)?;
+            let parsed1 = scanner_chip.parse(
+                &mut layouter,
+                AutomatonParser::Dynamic(self.regex1.clone()),
+                &input1,
+            )?;
+            assert_eq!(parsed1.len(), output1.len(), "first output length mismatch");
+            parsed1.iter().zip_eq(output1.iter()).try_for_each(|(o1, o2)| {
+                scanner_chip.native_gadget.assert_equal(&mut layouter, o1, o2)
+            })?;
+
+            // Second parse.
+            let input2: Vec<AssignedByte<F>> =
+                scanner_chip.native_gadget.assign_many(&mut layouter, &self.input2)?;
+            let output2: Vec<AssignedNative<F>> =
+                scanner_chip.native_gadget.assign_many(&mut layouter, &self.output2)?;
+            let parsed2 = scanner_chip.parse(
+                &mut layouter,
+                AutomatonParser::Dynamic(self.regex2.clone()),
+                &input2,
+            )?;
+            assert_eq!(
+                parsed2.len(),
+                output2.len(),
+                "second output length mismatch"
+            );
+            parsed2.iter().zip_eq(output2.iter()).try_for_each(|(o1, o2)| {
+                scanner_chip.native_gadget.assert_equal(&mut layouter, o1, o2)
+            })?;
+
+            // Check caching: with the same regex used twice, only 1 entry
+            // should be in the cache. With 2 distinct regexes, 2 entries.
+            let cache_size = scanner_chip.automaton_cache.borrow().len();
+            if self.must_cache {
+                assert_eq!(cache_size, 1, "expected 1 cached regex, got {cache_size}");
+            } else {
+                assert_eq!(cache_size, 2, "expected 2 cached regexes, got {cache_size}");
+            }
+
+            scanner_chip.load_from_scratch(&mut layouter)
+        }
+    }
+
+    fn dynamic_basic_test(
+        test_index: usize,
+        cost_model: bool,
+        entry1: (Regex, &str, &[usize]),
+        entry2: (Regex, &str, &[usize]),
+        must_pass: bool,
+        must_cache: bool,
+    ) {
+        assert!(
+            !cost_model || must_pass,
+            ">> [dynamic test {test_index}] (bug) if cost_model is set to true, must_pass should be set to true"
+        );
+        let circuit = DynamicRegexCircuit::<midnight_curves::Fq>::new(
+            entry1.0, entry1.1, entry1.2, entry2.0, entry2.1, entry2.2, must_cache,
+        );
+        let prover = MockProver::<midnight_curves::Fq>::run(11, &circuit, vec![vec![], vec![]]);
+        if must_pass {
+            println!(
+                ">> [dynamic test {test_index}] Parsing inputs '{}' and '{}', which should pass (cache: {must_cache})",
+                entry1.1, entry2.1
+            );
+            prover.unwrap().assert_satisfied()
+        } else {
+            match prover {
+                Ok(prover) => {
+                    if let Ok(()) = prover.verify() {
+                        panic!(
+                            ">> [dynamic test {test_index}] inputs '{}' / '{}' incorrectly accepted",
+                            entry1.1, entry2.1
+                        )
+                    } else {
+                        println!(">> [dynamic test {test_index}] verifier failed (expected)",)
+                    }
+                }
+                Err(_) => println!(">> [dynamic test {test_index}] prover failed (expected)",),
+            }
+        }
+
+        if cost_model {
+            circuit_to_json::<midnight_curves::Fq>(
+                "Scanner",
+                &format!(
+                    "multi-regex parsing perf (input length = {})",
+                    entry1.1.len()
+                ),
+                circuit,
+            );
+        }
+    }
+
+    #[test]
+    fn dynamic_parsing_test() {
+        let regex1 = Regex::hard_coded_example1();
+        let regex2 = Regex::hard_coded_example0();
+
+        // Two correct inputs with the same regex, cache expected.
+        dynamic_basic_test(
+            0,
+            false,
+            (
+                regex1.clone(),
+                "holy hell !!!",
+                &[0, 1, 2, 1, 0, 0, 1, 2, 2, 0, 1, 1, 1],
+            ),
+            (
+                regex1.clone(),
+                "holyyyy hell !!!",
+                &[0, 1, 2, 1, 1, 1, 1, 0, 0, 1, 2, 2, 0, 1, 1, 1],
+            ),
+            true,
+            true,
+        );
+
+        // Same regex, wrong output markers on second input.
+        dynamic_basic_test(
+            1,
+            false,
+            (
+                regex1.clone(),
+                "holy hell !!!",
+                &[0, 1, 2, 1, 0, 0, 1, 2, 2, 0, 1, 1, 1],
+            ),
+            (regex1.clone(), "holy hell !!!", &[0; 13]),
+            false,
+            true,
+        );
+
+        // Same regex, second input doesn't match (missing space).
+        dynamic_basic_test(
+            2,
+            false,
+            (
+                regex1.clone(),
+                "holy hell !!!",
+                &[0, 1, 2, 1, 0, 0, 1, 2, 2, 0, 1, 1, 1],
+            ),
+            (regex1.clone(), "holy hell!!!", &[0; 12]),
+            false,
+            true,
+        );
+
+        // Two different regexes, no cache expected.
+        dynamic_basic_test(
+            3,
+            false,
+            (
+                regex1.clone(),
+                "holy hell !!!",
+                &[0, 1, 2, 1, 0, 0, 1, 2, 2, 0, 1, 1, 1],
+            ),
+            (regex2, "hello (world)!!!!!", &[0; 18]),
+            true,
+            false,
+        );
+
+        // Performance test for the golden files, using an input of 50 bytes.
+        let perf_input = "holyyyyyyyyy   hell    !!!!!!!!!!!!!!!!!!!!!!!!!!!";
+        #[rustfmt::skip]
+        let perf_output: &[usize] = &[
+            0, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 2, 2, 0, 0, 0, 0,
+            1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        ];
+        dynamic_basic_test(
+            4,
+            true,
+            (regex1.clone(), perf_input, perf_output),
+            (regex1, perf_input, perf_output),
+            true,
+            true,
         );
     }
 }
