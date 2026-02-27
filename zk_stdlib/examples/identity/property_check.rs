@@ -105,7 +105,7 @@ impl Relation for CredentialProperty {
     ) -> Result<(), Error> {
         let secp256k1_curve = std_lib.secp256k1_curve();
         let b64_chip = std_lib.base64();
-        let automaton_chip = std_lib.scanner();
+        let scanner_chip = std_lib.scanner();
 
         let (json, sk) = witness.unzip();
 
@@ -127,7 +127,7 @@ impl Relation for CredentialProperty {
             std_lib.constrain_as_committed_public_input(layouter, &byte_as_f)?;
         }
 
-        let parsed_json = automaton_chip.parse(layouter, StdLibParser::Jwt.into(), &json)?;
+        let parsed_json = scanner_chip.parse(layouter, StdLibParser::Jwt.into(), &json)?;
 
         // Check Name.
         let name = Self::get_property(std_lib, layouter, &json, &parsed_json, 3, NAME_LEN)?;
