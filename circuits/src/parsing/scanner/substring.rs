@@ -134,6 +134,46 @@
 //! `ScannerChip::index_and_pack_sequence` using `linear_combination`. The
 //! packing of table entries is performed inside the lookup expression itself
 //! (see `ScannerChip::configure`).
+//!
+//! # Parallelisation (Optimisation 3)
+//!
+//! The substring lookup is batched: `SUBSTRING_PARALLELISM` independent
+//! lookup arguments operate on the same rows, each using its own pair of
+//! advice columns (table + query) but sharing the same tag and index
+//! fixed columns.
+//!
+//! This allows multiple query lookups against the same sequence to run
+//! in parallel on the same row set. For example, parforming the 3 checks:
+//!
+//!   - `wor <= hello world`
+//!   - `hel <= hello world`
+//!   - `hol <= hola mundo`
+//!
+//! with `SUBSTRING_PARALLELISM = 2`, we obtain the following layout:
+//!
+//! ```text
+//!               batch 0                 batch 1
+//! tag | index   table  | query          table      | query
+//! -----------   ------------------      ------------------------
+//!  1  |  0       'h'   | 257*6 + 'w'     'h'       | 257*0 + 'h'
+//!  1  |  1       'e'   | 257*7 + 'o'     'o'       | 257*1 + 'o'
+//!  1  |  2       'l'   | 257*8 + 'r'     'l'       | 257*2 + 'l'
+//!  1  |  3       'l'   | 257*0 + 'h'     'a'       |
+//!  1  |  4       'o'   | 257*1 + 'e'     ' '       |
+//!  1  |  5       ' '   | 257*2 + 'l'     'm'       |
+//!  1  |  6       'w'   |                 'u'       |
+//!  1  |  7       'o'   |                 'n'       |
+//!  1  |  8       'r'   |                 'd'       |
+//!  1  |  9       'l'   |                 '0'       |
+//!  1  | 10       'd'   |
+//! ```
+//!
+//! # Note on padding
+//!
+//! Table and query columns are padded to have the same number of rows, in a way
+//! that is inconsequential to the substring check. Tables are padded with
+//! `ALPHABET_MAX_SIZE` (which cannot be a valid byte), and queries are padded
+//! by stuttering on their first entry.
 
 use midnight_proofs::{
     circuit::{Layouter, Region, Value},
