@@ -131,9 +131,10 @@ where
         // We shift the value of x by 1 for the unique-zero representation.
         let element_as_bi = (*element - K::ONE).to_biguint().into();
         let base = BI::from(2).pow(P::LOG2_BASE);
+        let nb_limbs_per_batch = (F::CAPACITY / P::LOG2_BASE) as usize;
         bi_to_limbs(P::NB_LIMBS, &base, &element_as_bi)
-            .iter()
-            .map(|x| bigint_to_fe::<F>(x))
+            .chunks(nb_limbs_per_batch)
+            .map(|chunk| bigint_to_fe::<F>(&bi_from_limbs(&base, chunk)))
             .collect()
     }
 }
@@ -484,7 +485,20 @@ where
         assigned: &AssignedField<F, K, P>,
     ) -> Result<Vec<AssignedNative<F>>, Error> {
         let assigned = self.normalize(layouter, assigned)?;
-        Ok(assigned.limb_values)
+        let nb_limbs_per_batch = (F::CAPACITY / P::LOG2_BASE) as usize;
+        let base = BI::from(2).pow(P::LOG2_BASE);
+        assigned
+            .limb_values
+            .chunks(nb_limbs_per_batch)
+            .map(|chunk| {
+                let terms: Vec<(F, AssignedNative<F>)> = chunk
+                    .iter()
+                    .enumerate()
+                    .map(|(i, limb)| (bigint_to_fe::<F>(&base.pow(i as u32)), limb.clone()))
+                    .collect();
+                self.native_gadget.linear_combination(layouter, &terms, F::ZERO)
+            })
+            .collect()
     }
 
     fn constrain_as_public_input(
@@ -502,22 +516,11 @@ where
         layouter: &mut impl Layouter<F>,
         value: Value<K>,
     ) -> Result<AssignedField<F, K, P>, Error> {
-        let base = BI::from(2).pow(P::LOG2_BASE);
-        // We subtract one due to the unique-zero representation.
-        let x = value.map(|v| bi_to_limbs(P::NB_LIMBS, &base, &(v - K::ONE).to_biguint().into()));
-        let limbs = (0..P::NB_LIMBS)
-            .map(|i| x.clone().map(|limbs| bigint_to_fe::<F>(&limbs[i as usize])))
-            .collect::<Vec<_>>();
-        // We can skip all range-checks given that the assigned field element will be
-        // constrained with public inputs, thus that structure will be enforced anyway.
-        let assigned_limbs = self.native_gadget.assign_many(layouter, &limbs)?;
-        let assigned_field = AssignedField::<F, K, P> {
-            limb_values: assigned_limbs,
-            limb_bounds: well_formed_bounds::<F, K, P>(),
-            _marker: PhantomData,
-        };
-        self.constrain_as_public_input(layouter, &assigned_field)?;
-        Ok(assigned_field)
+        // Do NOT optimize this implementation. Since we batch various limbs when
+        // constraing as public inputs, we cannot skip the range-checks on the limbs.
+        let assigned = self.assign(layouter, value)?;
+        self.constrain_as_public_input(layouter, &assigned)?;
+        Ok(assigned)
     }
 }
 
