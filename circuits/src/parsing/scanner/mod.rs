@@ -40,6 +40,7 @@ use std::{
 };
 
 use automaton::Automaton;
+use regex::Regex;
 use midnight_proofs::{
     circuit::{Chip, Layouter},
     plonk::{Advice, Column, ConstraintSystem, Error, Expression, Fixed, Selector, TableColumn},
@@ -54,8 +55,6 @@ use {
     crate::testing_utils::FromScratch, midnight_proofs::plonk::Instance, regex::RegexInstructions,
 };
 
-#[cfg(test)]
-use crate::parsing::regex::Regex;
 use crate::{
     field::{decomposition::chip::P2RDecompositionChip, AssignedNative, NativeChip, NativeGadget},
     utils::ComposableChip,
