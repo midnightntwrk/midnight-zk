@@ -628,7 +628,7 @@
       "max_deg": "5",
       "permutations": "16",
       "point_sets": "4",
-      "rows": "8",
+      "rows": "12",
       "table_rows": "257"
     },
     "select": {
@@ -971,7 +971,7 @@
       "max_deg": "5",
       "permutations": "16",
       "point_sets": "4",
-      "rows": "8",
+      "rows": "12",
       "table_rows": "257"
     },
     "select": {
@@ -1259,7 +1259,7 @@
       "max_deg": "5",
       "permutations": "29",
       "point_sets": "5",
-      "rows": "72",
+      "rows": "80",
       "table_rows": "417"
     },
     "select": {
@@ -1503,7 +1503,7 @@
       "max_deg": "5",
       "permutations": "31",
       "point_sets": "5",
-      "rows": "42",
+      "rows": "50",
       "table_rows": "449"
     },
     "select": {
