@@ -114,6 +114,7 @@ impl NormConfig {
             &moduli,
             expr_bounds,
             &expr_mj_bounds,
+            P::RC_LIMB_SIZE,
         )
     }
 

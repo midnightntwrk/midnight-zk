@@ -129,7 +129,7 @@ impl<C: CircuitCurve> SlopeConfig<C> {
                 (expr_mj_min, expr_mj_max)
             })
             .collect();
-        get_identity_auxiliary_bounds::<F, C::Base>("slope", &moduli, expr_bounds, &expr_mj_bounds)
+        get_identity_auxiliary_bounds::<F, C::Base>("slope", &moduli, expr_bounds, &expr_mj_bounds, P::RC_LIMB_SIZE)
     }
 
     /// Configures the  foreign slope gate

@@ -120,6 +120,7 @@ impl<C: WeierstrassCurve> OnCurveConfig<C> {
             &moduli,
             expr_bounds,
             &expr_mj_bounds,
+            P::RC_LIMB_SIZE,
         )
     }
 
