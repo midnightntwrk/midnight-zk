@@ -28,13 +28,13 @@ use super::automaton::{Automaton, Letter, RawAutomaton};
 use crate::parsing::scanner::ALPHABET_MAX_SIZE;
 
 /// A type for formal languages described as regular expressions.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Regex {
     /// The acutal regular expression.
     content: RegexInternal,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 enum RegexInternal {
     // A language accepting a word of one arbitrary marked byte from the range (`Vec`) taken as an
     // argument. Working with ranges instead of single bytes allows to precompute some single-byte

@@ -66,8 +66,8 @@ use midnight_circuits::{
     map::map_gadget::MapGadget,
     parsing::{
         self,
-        scanner::{ScannerChip, ScannerConfig, NB_SCANNER_ADVICE_COLS},
-        Base64Chip, Base64Config, ParserGadget, StdLibParser, NB_BASE64_ADVICE_COLS,
+        scanner::{ScannerChip, ScannerConfig, NB_SCANNER_ADVICE_COLS, NB_SCANNER_FIXED_COLS},
+        Base64Chip, Base64Config, ParserGadget, NB_BASE64_ADVICE_COLS,
     },
     types::{
         AssignedBit, AssignedByte, AssignedNative, AssignedNativePoint, ComposableChip, InnerValue,
@@ -259,7 +259,7 @@ pub struct ZkStdLibConfig {
     secp256k1_config: Option<ForeignEccConfig<K256>>,
     bls12_381_config: Option<ForeignEccConfig<midnight_curves::G1Projective>>,
     base64_config: Option<Base64Config>,
-    scanner_config: Option<ScannerConfig<StdLibParser, midnight_curves::Fq>>,
+    scanner_config: Option<ScannerConfig>,
 
     // Configuration of external libraries.
     keccak_sha3_config: Option<PackedConfig>,
@@ -285,7 +285,7 @@ pub struct ZkStdLib {
     bls12_381_curve_chip: Option<Bls12381Chip>,
     base64_chip: Option<Base64Chip<F>>,
     parser_gadget: ParserGadget<F, NG>,
-    scanner_chip: Option<ScannerChip<StdLibParser, F>>,
+    scanner_chip: Option<ScannerChip<F>>,
     vector_gadget: VectorGadget<F>,
 
     // Third-party chips.
@@ -301,7 +301,7 @@ pub struct ZkStdLib {
     used_secp256k1_curve: Rc<RefCell<bool>>,
     used_bls12_381_curve: Rc<RefCell<bool>>,
     used_base64: Rc<RefCell<bool>>,
-    used_scanner_static: Rc<RefCell<bool>>,
+    used_scanner: Rc<RefCell<bool>>,
     used_keccak_or_sha3: Rc<RefCell<bool>>,
     used_blake2b: Rc<RefCell<bool>>,
 }
@@ -379,7 +379,7 @@ impl ZkStdLib {
             used_secp256k1_curve: Rc::new(RefCell::new(false)),
             used_bls12_381_curve: Rc::new(RefCell::new(false)),
             used_base64: Rc::new(RefCell::new(false)),
-            used_scanner_static: Rc::new(RefCell::new(false)),
+            used_scanner: Rc::new(RefCell::new(false)),
             used_keccak_or_sha3: Rc::new(RefCell::new(false)),
             used_blake2b: Rc::new(RefCell::new(false)),
         }
@@ -424,6 +424,7 @@ impl ZkStdLib {
             arch.sha2_256 as usize * NB_SHA256_FIXED_COLS,
             arch.sha2_512 as usize * NB_SHA512_FIXED_COLS,
             (arch.keccak_256 || arch.sha3_256) as usize * PACKED_FIXED_COLS,
+            arch.automaton as usize * NB_SCANNER_FIXED_COLS,
         ]
         .into_iter()
         .max()
@@ -617,15 +618,8 @@ impl ZkStdLib {
     /// automaton-based parsing ([`ScannerChip::parse`]) and substring checks
     /// ([`ScannerChip::check_subsequence`], [`ScannerChip::check_bytes`]).
     ///
-    /// The `load_static_lib` argument must be set (at least once in the
-    /// circuit) to `true` if [`ScannerChip::parse`] will be called. This flag
-    /// enables loading the transition tables of the static parsing library
-    /// (see [`StdLibParser`]). Set it to `false` when only `check_subsequence`
-    /// or `check_bytes` will be called, which avoids loading the full table.
-    pub fn scanner(&self, load_static_lib: bool) -> &ScannerChip<StdLibParser, F> {
-        if load_static_lib {
-            *self.used_scanner_static.borrow_mut() = true;
-        }
+    pub fn scanner(&self) -> &ScannerChip<F> {
+        *self.used_scanner.borrow_mut() = true;
         (self.scanner_chip.as_ref()).unwrap_or_else(|| panic!("ZkStdLibArch must enable automaton"))
     }
 
@@ -1683,8 +1677,8 @@ impl<R: Relation> Circuit<F> for MidnightCircuit<'_, R> {
             }
         }
 
-        if let Some(ref scanner_chip) = zk_std_lib.scanner_chip {
-            if *zk_std_lib.used_scanner_static.borrow() {
+        if let Some(scanner_chip) = zk_std_lib.scanner_chip {
+            if *zk_std_lib.used_scanner.borrow() {
                 scanner_chip.load(&mut layouter)?;
             }
         }
