@@ -508,6 +508,7 @@ impl ZkStdLib {
                 meta,
                 &(
                     advice_columns[..NB_SCANNER_ADVICE_COLS].try_into().unwrap(),
+                    fixed_columns[0],
                     parsing::spec_library(),
                 ),
             )
