@@ -152,10 +152,47 @@ where
     fn get_transition(&self, state: &F, letter: &F) -> Option<(F, F)> {
         self.transitions.get(state).and_then(|inner| inner.get(letter)).copied()
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+/// A reference for parsing methods for the function `parse`. Either an entry of
+/// the static automaton library (more efficient, but limited library), or a
+/// dynamic regular expression (more costly, but supports arbitrary regexes).
+pub enum AutomatonParser {
+    /// Static automaton library, as defined in `parsing::static_specs` (see the
+    /// documentation of each object of type `StdLibParser` to get the exact
+    /// regular expression they check). The off-circuit conversion
+    /// Regex->Automaton has been pre-computed and is serialised.
+    Static(StdLibParser),
+    /// Parses an arbitrary regular expression. Induces the same circuit logic
+    /// and performances as `Static`, but the conversion Regex->Automaton will
+    /// be performed by the prover (off-circuit).
+    Dynamic(Regex),
+}
+
+impl From<&StdLibParser> for AutomatonParser {
+    fn from(value: &StdLibParser) -> Self {
+        AutomatonParser::Static(*value)
+    }
+}
+
+impl From<StdLibParser> for AutomatonParser {
+    fn from(value: StdLibParser) -> Self {
+        AutomatonParser::from(&value)
+    }
+}
+
+impl From<Regex> for AutomatonParser {
+    fn from(value: Regex) -> Self {
+        AutomatonParser::Dynamic(value)
+    }
+}
 
 /// A static library of serialised automata for parsing common regexes. The
 /// automaton states start from 0 and may overlap one with each other.
 type ParsingLibrary = FxHashMap<StdLibParser, Automaton>;
+/// Set of automata (with offset states) called by `parse`.
+type AutomatonCache<F> = FxHashMap<AutomatonParser, NativeAutomaton<F>>;
 /// A sequence of assigned elements.
 type Sequence<F> = Vec<AssignedNative<F>>;
 /// Cache of assigned sequences passed as arguments to `check_subsequence`. Each
@@ -195,6 +232,15 @@ where
     config: ScannerConfig,
     native_gadget: NG<F>,
 
+    /// Unified cache of all resolved automata (both static library and dynamic
+    /// regexes), with their states already offset. Populated on demand by
+    /// `resolve_automaton` when `parse` is called for the first time with a
+    /// given `AutomatonParser`.
+    automaton_cache: Rc<RefCell<AutomatonCache<F>>>,
+    /// Tracks the next available state offset. Starts at 1 (state 0 is
+    /// reserved as the dummy state for soundness).
+    max_state: Rc<RefCell<usize>>,
+
     /// Cache mapping a sequence of cells to the list of `(idx, sub)` pairs
     /// it was called with, so that repeated `check_bytes` calls with the same
     /// `sequence` argument share the table cost. Tags are assigned later
@@ -232,6 +278,8 @@ where
         Self {
             config: config.clone(),
             native_gadget: deps.clone(),
+            automaton_cache: Rc::new(RefCell::new(FxHashMap::default())),
+            max_state: Rc::new(RefCell::new(1)),
             sequence_cache: Rc::new(RefCell::new(FxHashMap::default())),
         }
     }
@@ -239,7 +287,7 @@ where
     fn configure(
         meta: &mut ConstraintSystem<F>,
         shared_res: &Self::SharedResources,
-    ) -> ScannerConfig<LibIndex, F> {
+    ) -> ScannerConfig {
         #[allow(clippy::assertions_on_constants)]
         {
             assert!(

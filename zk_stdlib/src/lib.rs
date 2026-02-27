@@ -618,6 +618,9 @@ impl ZkStdLib {
     /// automaton-based parsing ([`ScannerChip::parse`]) and substring checks
     /// ([`ScannerChip::check_subsequence`], [`ScannerChip::check_bytes`]).
     ///
+    /// Returns the scanner chip for automaton-based parsing and substring
+    /// checks. The static automaton table is loaded automatically when
+    /// `parse` is called with a `Static(..)` variant.
     pub fn scanner(&self) -> &ScannerChip<F> {
         *self.used_scanner.borrow_mut() = true;
         (self.scanner_chip.as_ref()).unwrap_or_else(|| panic!("ZkStdLibArch must enable automaton"))

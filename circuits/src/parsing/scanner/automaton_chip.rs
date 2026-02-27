@@ -49,15 +49,66 @@ impl<F> ScannerChip<F>
 where
     F: CircuitField + Ord,
 {
-    /// Updates the state of the automaton (AssignedNative) according to the
-    /// letter being read. If the run is stuck (i.e., no transition are
-    /// possible), an `Error` is returned.
+    /// Verifies that an input matches the regular expression represented by the
+    /// given automaton.
+    pub(super) fn parse_automaton(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        automaton: &NativeAutomaton<F>,
+        input: &[AssignedByte<F>],
+    ) -> Result<Vec<AssignedNative<F>>, Error> {
+        let init_state: AssignedNative<F> =
+            self.native_gadget.assign_fixed(layouter, automaton.initial_state)?;
+        let invalid_letter: AssignedNative<F> =
+            self.native_gadget.assign_fixed(layouter, F::from(ALPHABET_MAX_SIZE as u64))?;
+        let zero: AssignedNative<F> = self.native_gadget.assign_fixed(layouter, F::ZERO)?;
+
+        layouter.assign_region(
+            || "parsing layout",
+            |mut region| {
+                let mut offset = 0;
+                let mut markers = Vec::with_capacity(input.len());
+
+                // Assign initial state.
+                let mut state = init_state.copy_advice(
+                    || "initial state",
+                    &mut region,
+                    self.config.advice_cols[0],
+                    offset,
+                )?;
+
+                for letter in input {
+                    self.apply_one_transition(
+                        &mut region,
+                        automaton,
+                        &mut state,
+                        letter,
+                        &mut markers,
+                        &mut offset,
+                    )?;
+                }
+
+                // Final-state check + padding on the last row.
+                #[allow(clippy::modulo_one)]
+                self.assert_final_state(
+                    &mut region,
+                    invalid_letter.clone(),
+                    zero.clone(),
+                    &mut offset,
+                )?;
+
+                Ok(markers)
+            },
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    /// Applies one automaton transition at position `batch` within the current
+    /// row. Assumes that `state` (the source) is already assigned at the
+    /// correct cell.
     ///
-    /// This function enables the automaton selector at the current offset. It
-    /// assumes that `state` is already properly copied in the current region
-    /// and offset, but not `letter`. It then copies `letter` at the current
-    /// offset, the next state at the next one, and updates `state` and
-    /// `offset`.
+    /// Copies the `letter`, assigns the `output` marker and the next state,
+    /// then updates `state`.
     fn apply_one_transition(
         &self,
         region: &mut Region<'_, F>,
@@ -147,6 +198,7 @@ where
     ///  - Dummy transitions `(s, 256, 0, 0)` are added for all final states `s`
     ///    to emulate final-state checking.
     pub(crate) fn load_automata_table(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
+        let cache = self.automaton_cache.borrow();
         layouter.assign_table(
             || "automaton table",
             |mut table| {
@@ -184,9 +236,9 @@ where
                 // Dummy transition for empty rows.
                 add_entry(F::ZERO, F::ZERO, F::ZERO, F::ZERO)?;
 
-                // Main transitions.
-                for automaton in self.config.automata.iter() {
-                    for (source, inner) in automaton.1.transitions.iter() {
+                // Transitions and final-state checks for every used automaton.
+                for automaton in cache.values() {
+                    for (source, inner) in automaton.transitions.iter() {
                         for (letter, (target, output_extr)) in inner.iter() {
                             assert!(
                                 *source != F::ZERO && *target != F::ZERO,
@@ -211,56 +263,44 @@ impl<F> ScannerChip<F>
 where
     F: CircuitField + Ord,
 {
-    /// Verifies that an input, taken under the form of a slice of
-    /// `AssignedNative`, matches the regular expression represented by the
-    /// automaton in `self.config.automaton`. Additionally asserts that all
-    /// assigned values of `input` are lower than `regex::ALPHABET_MAX_SIZE` to
-    /// enforce that the slice elements represent valid elements of type
-    /// `RegexLetter`.
+    /// Resolves an `AutomatonParser` to a `NativeAutomaton<F>`, caching the
+    /// result. On first use the raw automaton (from the static library or from
+    /// a regex) is offset so that its states don't collide with any previously
+    /// resolved automaton.
+    fn resolve_automaton(&self, parser: &AutomatonParser) -> NativeAutomaton<F> {
+        if let Some(aut) = self.automaton_cache.borrow().get(parser) {
+            return aut.clone();
+        }
+
+        let raw_automaton = match parser {
+            AutomatonParser::Static(spec) => self.config.static_library[spec].clone(),
+            AutomatonParser::Dynamic(regex) => regex.to_automaton(),
+        };
+
+        let offset = {
+            let mut ms = self.max_state.borrow_mut();
+            let o = *ms;
+            *ms += raw_automaton.nb_states;
+            o
+        };
+        let native: NativeAutomaton<F> = raw_automaton.offset_states(offset).into();
+        self.automaton_cache.borrow_mut().insert(parser.clone(), native.clone());
+        native
+    }
+
+    /// Parses `input` in-circuit w.r.t. a regular expression / transducer and
+    /// outputs the sequence of integers it produces. The parser may either be
+    /// part of a static library (faster to parse) or an arbitrary regex (more
+    /// costly but supports any regex). Both variants use the same fixed lookup
+    /// table mechanism.
     pub fn parse(
         &self,
         layouter: &mut impl Layouter<F>,
-        automaton_index: &LibIndex,
+        parser: AutomatonParser,
         input: &[AssignedByte<F>],
     ) -> Result<Vec<AssignedNative<F>>, Error> {
-        let init_state: AssignedNative<F> = self.native_gadget.assign_fixed(
-            layouter,
-            self.config.automata[automaton_index].initial_state,
-        )?;
-        let invalid_letter: AssignedNative<F> =
-            self.native_gadget.assign_fixed(layouter, F::from(ALPHABET_MAX_SIZE as u64))?;
-        let invalid_state: AssignedNative<F> =
-            self.native_gadget.assign_fixed(layouter, F::from(0))?;
-        layouter.assign_region(
-            || "parsing layout",
-            |mut region| {
-                let mut offset = 0;
-                let mut markers = Vec::with_capacity(input.len());
-                let mut state = init_state.copy_advice(
-                    || "initial state",
-                    &mut region,
-                    self.config.state_col,
-                    offset,
-                )?;
-                input.iter().try_for_each(|letter| {
-                    self.apply_one_transition(
-                        &mut region,
-                        automaton_index,
-                        &mut state,
-                        letter,
-                        &mut markers,
-                        &mut offset,
-                    )
-                })?;
-                self.assert_final_state(
-                    &mut region,
-                    invalid_letter.clone(),
-                    invalid_state.clone(),
-                    &mut offset,
-                )?;
-                Ok(markers)
-            },
-        )
+        let automaton = self.resolve_automaton(&parser);
+        self.parse_automaton(layouter, &automaton, input)
     }
 }
 
