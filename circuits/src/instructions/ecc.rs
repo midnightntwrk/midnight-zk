@@ -310,9 +310,10 @@ pub(crate) mod tests {
         };
         let log2_nb_rows = match operation {
             Operation::Msm => 19,
-            Operation::MsmBounded => 18,
+            Operation::MsmBounded => 17,
             Operation::MulByConstant => 17,
             Operation::Neg => 10,
+            Operation::Coordinates => 12,
             _ => 11,
         };
         let public_inputs = vec![vec![], vec![]];
