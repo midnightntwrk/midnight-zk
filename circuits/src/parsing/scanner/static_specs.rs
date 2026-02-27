@@ -491,7 +491,7 @@ mod tests {
                 "  - {:?} automaton: {} states, {} transitions",
                 name,
                 automaton.nb_states,
-                automaton.transitions.len()
+                automaton.transitions.values().map(|m| m.len()).sum::<usize>()
             )
         }
 

@@ -76,14 +76,34 @@ use midnight_proofs::{
     plonk::Error,
 };
 
-use super::{ScannerChip, ALPHABET_MAX_SIZE};
+use super::{NativeAutomaton, ScannerChip, ALPHABET_MAX_SIZE};
 use crate::{
-    field::AssignedNative, instructions::AssignmentInstructions, types::AssignedByte, CircuitField,
+    field::AssignedNative, instructions::AssignmentInstructions, parsing::scanner::AutomatonParser,
+    types::AssignedByte, CircuitField,
 };
 
-impl<LibIndex, F> ScannerChip<LibIndex, F>
+impl<F> NativeAutomaton<F>
 where
-    LibIndex: Eq + Hash,
+    F: CircuitField + Ord,
+{
+    /// Computes a transition off-circuit: given the current state and a letter,
+    /// returns `(target, output)`.
+    fn next_transition(
+        &self,
+        state: &AssignedNative<F>,
+        letter: &AssignedByte<F>,
+    ) -> Result<(Value<F>, Value<F>), Error> {
+        let letter_native: AssignedNative<F> = letter.into();
+        let target_opt =
+            state.value().zip(letter_native.value()).map(|(s, l)| self.get_transition(s, l));
+        target_opt.error_if_known_and(|o| o.is_none())?;
+        let target = target_opt.map(|o| o.unwrap());
+        Ok((target.map(|t| t.0), target.map(|t| t.1)))
+    }
+}
+
+impl<F> ScannerChip<F>
+where
     F: CircuitField + Ord,
 {
     /// Updates the state of the automaton (AssignedNative) according to the
@@ -98,7 +118,7 @@ where
     fn apply_one_transition(
         &self,
         region: &mut Region<'_, F>,
-        automaton_index: &LibIndex,
+        automaton: &NativeAutomaton<F>,
         state: &mut AssignedNative<F>,
         letter: &AssignedByte<F>,
         markers: &mut Vec<AssignedNative<F>>,
@@ -106,39 +126,32 @@ where
     ) -> Result<(), Error> {
         self.config.q_automaton.enable(region, *offset)?;
 
-        // Casting the letter as a regular `AssignedNative` to enable some methods.
-        let letter: AssignedNative<F> = letter.into();
-
-        letter.copy_advice(
-            || "copying letter for parsing",
+        let letter_native: AssignedNative<F> = letter.into();
+        letter_native.copy_advice(
+            || "letter batch",
             region,
-            self.config.letter_col,
+            self.config.advice_cols[1],
             *offset,
         )?;
-        let target_opt_value = state.value().zip(letter.value()).map(|(state, letter)| {
-            self.config.automata[automaton_index]
-                .transitions
-                .get(&(*state, *letter))
-                .copied()
-        });
-        target_opt_value.error_if_known_and(|o| o.is_none())?;
-        let target_value = target_opt_value.map(|o| o.unwrap());
-        let next_state_value = target_value.map(|t| t.0);
-        let next_output_value = target_value.map(|t| t.1);
-        let output = region.assign_advice(
-            || "parsing output boolean",
-            self.config.output_col,
+
+        let (next_state_val, output_val) = automaton.next_transition(state, letter)?;
+
+        let marker = region.assign_advice(
+            || "output batch",
+            self.config.advice_cols[2],
             *offset,
-            || next_output_value,
+            || output_val,
         )?;
-        markers.push(output);
+        markers.push(marker);
+
         *offset += 1;
         *state = region.assign_advice(
-            || "parsing next state",
-            self.config.state_col,
+            || "next state batch",
+            self.config.advice_cols[0],
             *offset,
-            || next_state_value,
+            || next_state_val,
         )?;
+
         Ok(())
     }
 
@@ -159,27 +172,27 @@ where
         invalid_letter.copy_advice(
             || format!("dummy invalid letter ({})", ALPHABET_MAX_SIZE),
             region,
-            self.config.letter_col,
+            self.config.advice_cols[1],
             *offset,
         )?;
         invalid_state.copy_advice(
             || "dummy output boolean (0)",
             region,
-            self.config.output_col,
+            self.config.advice_cols[2],
             *offset,
         )?;
         *offset += 1;
         invalid_state.copy_advice(
             || "dummy target state (0)",
             region,
-            self.config.state_col,
+            self.config.advice_cols[0],
             *offset,
         )?;
         Ok(())
     }
 }
 
-impl<LibIndex, F> ScannerChip<LibIndex, F>
+impl<F> ScannerChip<F>
 where
     F: CircuitField + Ord,
 {
@@ -196,7 +209,7 @@ where
             |mut table| {
                 let mut offset = 0;
                 let mut add_entry =
-                    |source: F, letter: F, target: F, marker:F| -> Result<(), Error> {
+                    |source: F, letter: F, target: F, marker: F| -> Result<(), Error> {
                         table.assign_cell(
                             || "t_source",
                             self.config.t_source,
@@ -230,17 +243,18 @@ where
 
                 // Main transitions.
                 for automaton in self.config.automata.iter() {
-                    for ((source, letter), (target, output_extr)) in automaton.1.transitions.iter() {
+                    for (source, inner) in automaton.1.transitions.iter() {
+                        for (letter, (target, output_extr)) in inner.iter() {
                             assert!(
-                                *source != F::ZERO && *target != F::ZERO ,
-                                "sanity check failed: the circuit requires that state 0 is not used, but the automaton generation failed to ensure it."
+                                *source != F::ZERO && *target != F::ZERO,
+                                "sanity check failed: the circuit requires that state 0 \
+                                 is not used, but the automaton generation failed to \
+                                 ensure it."
                             );
                             add_entry(*source, *letter, *target, *output_extr)?
+                        }
                     }
-                    // Dummy transitions to represent final states. Recall that letter are
-                    // represented in-circuit by elements of `AssignedByte`, which are therefore
-                    // range-checked to be lower than `REGEX_ALPHABET_MAX_SIZE`.
-                    for state in automaton.1.final_states.iter() {
+                    for state in automaton.final_states.iter() {
                         add_entry(*state, F::from(ALPHABET_MAX_SIZE as u64), F::ZERO, F::ZERO)?
                     }
                 }
@@ -250,9 +264,8 @@ where
     }
 }
 
-impl<LibIndex, F> ScannerChip<LibIndex, F>
+impl<F> ScannerChip<F>
 where
-    LibIndex: Eq + Hash,
     F: CircuitField + Ord,
 {
     /// Verifies that an input, taken under the form of a slice of
@@ -317,7 +330,10 @@ mod test {
         plonk::{Circuit, ConstraintSystem, Error},
     };
 
-    use super::ScannerChip;
+    use super::{
+        super::{regex::Regex, AutomatonParser},
+        ScannerChip,
+    };
     use crate::{
         field::AssignedNative,
         instructions::{AssertionInstructions, AssignmentInstructions},
@@ -351,7 +367,7 @@ mod test {
     where
         F: CircuitField + Ord,
     {
-        type Config = <ScannerChip<usize, F> as FromScratch<F>>::Config;
+        type Config = <ScannerChip<F> as FromScratch<F>>::Config;
 
         type FloorPlanner = SimpleFloorPlanner;
 
@@ -372,7 +388,7 @@ mod test {
             config: Self::Config,
             mut layouter: impl Layouter<F>,
         ) -> Result<(), Error> {
-            let scanner_chip = ScannerChip::<usize, F>::new_from_scratch(&config);
+            let scanner_chip = ScannerChip::<F>::new_from_scratch(&config);
 
             let input: Vec<AssignedByte<F>> =
                 scanner_chip.native_gadget.assign_many(&mut layouter, &self.input.clone())?;
