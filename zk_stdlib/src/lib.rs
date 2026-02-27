@@ -1875,7 +1875,7 @@ where
         .for_each(|(i, guard)| guard.scale(powers[i]));
 
     // Phase 4: add scaled guards sequentially.
-    let mut acc_guard = guards.remove(0);
+    let mut acc_guard = guards.pop();
     for guard in guards {
         acc_guard.add_msm(guard);
     }
