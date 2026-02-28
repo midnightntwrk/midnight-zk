@@ -17,7 +17,7 @@
 use std::hash::Hash;
 
 use midnight_proofs::{
-    circuit::{Layouter, Region},
+    circuit::{Layouter, Region, Value},
     plonk::Error,
 };
 
@@ -122,7 +122,83 @@ where
         )?;
         Ok(())
     }
+}
 
+impl<LibIndex, F> ScannerChip<LibIndex, F>
+where
+    F: CircuitField + Ord,
+{
+    /// Loads the automaton data (both static library and dynamic regexes) into
+    /// a single fixed lookup table. Notably:
+    ///
+    ///  - The dummy transition `(0,0,0,0)` is added since the empty lookup rows
+    ///    will be filled by it.
+    ///  - Dummy transitions `(s, 256, 0, 0)` are added for all final states `s`
+    ///    to emulate final-state checking.
+    pub(crate) fn load_automata_table(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
+        layouter.assign_table(
+            || "automaton table",
+            |mut table| {
+                let mut offset = 0;
+                let mut add_entry =
+                    |source: F, letter: F, target: F, marker:F| -> Result<(), Error> {
+                        table.assign_cell(
+                            || "t_source",
+                            self.config.t_source,
+                            offset,
+                            || Value::known(source),
+                        )?;
+                        table.assign_cell(
+                            || "t_letter",
+                            self.config.t_letter,
+                            offset,
+                            || Value::known(letter),
+                        )?;
+                        table.assign_cell(
+                            || "t_target",
+                            self.config.t_target,
+                            offset,
+                            || Value::known(target),
+                        )?;
+                        table.assign_cell(
+                            || "t_output",
+                            self.config.t_output,
+                            offset,
+                            || Value::known(marker),
+                        )?;
+                        offset += 1;
+                        Ok(())
+                    };
+
+                // Dummy transition for empty rows.
+                add_entry(F::ZERO, F::ZERO, F::ZERO, F::ZERO)?;
+
+                // Main transitions.
+                for automaton in self.config.automata.iter() {
+                    for ((source, letter), (target,output_extr)) in automaton.1.transitions.iter() {
+                            assert!(
+                                *source != F::ZERO && *target != F::ZERO ,
+                                "sanity check failed: the circuit requires that state 0 is not used, but the automaton generation failed to ensure it."
+                            );
+                            add_entry(*source, *letter, *target, *output_extr)?
+                    }
+                    // Dummy transitions to represent final states. Recall that letter are
+                    // represented in-circuit by elements of `AssignedByte`, which are therefore
+                    // range-checked to be lower than `REGEX_ALPHABET_MAX_SIZE`.
+                    for state in automaton.1.final_states.iter() {
+                        add_entry(*state, F::from(ALPHABET_MAX_SIZE as u64), F::ZERO, F::ZERO)?
+                    }
+                }
+                Ok(())
+            },
+        )
+    }
+}
+impl<LibIndex, F> ScannerChip<LibIndex, F>
+where
+    LibIndex: Eq + Hash,
+    F: CircuitField + Ord,
+{
     /// Verifies that an input, taken under the form of a slice of
     /// `AssignedNative`, matches the regular expression represented by the
     /// automaton in `self.config.automaton`. Additionally asserts that all

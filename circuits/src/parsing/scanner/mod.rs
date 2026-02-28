@@ -36,7 +36,7 @@ use std::{
 
 use automaton::Automaton;
 use midnight_proofs::{
-    circuit::{Chip, Layouter, Value},
+    circuit::{Chip, Layouter},
     plonk::{Advice, Column, ConstraintSystem, Error, Expression, Fixed, Selector, TableColumn},
     poly::Rotation,
 };
@@ -70,7 +70,7 @@ const NB_AUTOMATON_COLS: usize = 3;
 const NB_SUBSTRING_COLS: usize = 2;
 
 /// Maximum bit-length for the longer sequence length in substring checks. This
-/// value must be chosen lower or equal than `F::CAPACITY - 8`.
+/// value must be chosen lower or equal than `F::CAPACITY - 9`.
 const PARSING_MAX_LEN_BITS: u32 = 64;
 
 /// Number of advice columns for the scanner chip.
@@ -241,10 +241,25 @@ where
     fn configure(
         meta: &mut ConstraintSystem<F>,
         shared_res: &Self::SharedResources,
-    ) -> ScannerConfig<LibIndex, F> {
+    ) -> ScannerConfig {
+        #[allow(clippy::assertions_on_constants)]
+        {
+            assert!(
+                PARSING_MAX_LEN_BITS <= F::CAPACITY - (u8::BITS + 1),
+                "check_subsequence batching exceeds field capacity ({} / {})",
+                PARSING_MAX_LEN_BITS + u8::BITS + 1,
+                F::CAPACITY
+            )
+        }
+
         let (advice_cols, index_col, automata) = shared_res;
 
-        // Static automaton resources.
+        // Enable equality on all advice columns.
+        for &col in advice_cols {
+            meta.enable_equality(col);
+        }
+
+        // Automaton resources (shared fixed lookup table).
         let q_automaton = meta.complex_selector();
 
         let state_col = advice_cols[0];
@@ -321,71 +336,15 @@ where
         }
     }
 
-    // Load the automaton data (stored in config) inside a lookup table. Notably:
-    //  - The dummy transition `(0,0,0)` is added since the empty lookup rows will
-    //    be filled by it. This assumes that the transition table of the automaton
-    //    has been offset by at least 1 to ensure that 0 can never be a reachable
-    //    state of the automaton.
-    //  - Dummy transitions (s,256,0) are added for all final states s to emulate
-    //    final-state checking at the end of the automaton's run. The number 256 is
-    //    chosen in particular since it is not a valid byte number.
+    /// Finalises all deferred operations and, if any automaton was parsed,
+    /// loads the automaton lookup table.
+    ///
+    /// # Location Requirement
+    ///
+    /// Must be called *at the end of the circuit synthesis*.
     fn load(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
-        layouter.assign_table(
-            || "automaton table",
-            |mut table| {
-                let mut offset = 0;
-                let mut add_entry =
-                    |source: F, letter: F, target: F, marker:F| -> Result<(), Error> {
-                        table.assign_cell(
-                            || "t_source",
-                            self.config.t_source,
-                            offset,
-                            || Value::known(source),
-                        )?;
-                        table.assign_cell(
-                            || "t_letter",
-                            self.config.t_letter,
-                            offset,
-                            || Value::known(letter),
-                        )?;
-                        table.assign_cell(
-                            || "t_target",
-                            self.config.t_target,
-                            offset,
-                            || Value::known(target),
-                        )?;
-                        table.assign_cell(
-                            || "t_output",
-                            self.config.t_output,
-                            offset,
-                            || Value::known(marker),
-                        )?;
-                        offset += 1;
-                        Ok(())
-                    };
-
-                // Dummy transition for empty rows.
-                add_entry(F::ZERO, F::ZERO, F::ZERO, F::ZERO)?;
-
-                // Main transitions.
-                for automaton in self.config.automata.iter() {
-                    for ((source, letter), (target,output_extr)) in automaton.1.transitions.iter() {
-                            assert!(
-                                *source != F::ZERO && *target != F::ZERO ,
-                                "sanity check failed: the circuit requires that state 0 is not used, but the automaton generation failed to ensure it."
-                            );
-                            add_entry(*source, *letter, *target, *output_extr)?
-                    }
-                    // Dummy transitions to represent final states. Recall that letter are
-                    // represented in-circuit by elements of `AssignedByte`, which are therefore
-                    // range-checked to be lower than `REGEX_ALPHABET_MAX_SIZE`.
-                    for state in automaton.1.final_states.iter() {
-                        add_entry(*state, F::from(ALPHABET_MAX_SIZE as u64), F::ZERO, F::ZERO)?
-                    }
-                }
-                Ok(())
-            },
-        )
+        self.load_automata_table(layouter)?;
+        self.finalise_substring_checks(layouter)
     }
 }
 
