@@ -12,7 +12,7 @@ use midnight_circuits::{
     },
     parsing::{DateFormat, Separator},
     testing_utils::ecdsa::{ECDSASig, FromBase64, PublicKey},
-    types::{AssignedByte, AssignedForeignPoint, InnerValue, Instantiable},
+    types::{AssignedByte, AssignedForeignPoint, AssignedNative, InnerValue, Instantiable},
     CircuitField,
 };
 use midnight_curves::k256::{Fq as K256Scalar, K256};
@@ -57,6 +57,11 @@ type SK = K256Scalar;
 #[derive(Clone, Default)]
 pub struct FullCredential;
 
+const VALID_NAME: &[u8] = b"Alice";
+const NAME_LEN: usize = VALID_NAME.len(); // TODO: this value should not be fixed.
+const BIRTHDATE_LEN: usize = 10;
+const COORD_LEN: usize = 43;
+
 impl Relation for FullCredential {
     type Instance = PK;
     type Witness = (Payload, ECDSASig, SK);
@@ -92,24 +97,23 @@ impl Relation for FullCredential {
             b64_chip.decode_base64(layouter, &payload[HEADER_LEN + 1..PAYLOAD_LEN], false)?;
 
         // Check Name.
-        let name = Self::get_property(std_lib, layouter, &json, b"givenName", 7)?;
-        Self::assert_str_match(std_lib, layouter, &name[1..6], b"Alice")?;
+        let name = Self::get_property(std_lib, layouter, &json, b"givenName", NAME_LEN)?;
+        Self::assert_str_match(std_lib, layouter, &name, VALID_NAME)?;
 
         // Check birth date.
-        let birthdate = Self::get_property(std_lib, layouter, &json, b"birthDate", 12)?;
+        let birthdate = Self::get_property(std_lib, layouter, &json, b"birthDate", BIRTHDATE_LEN)?;
         let limit = Date {
             day: 1,
             month: 1,
             year: 2004,
         };
-        Self::assert_date_before(std_lib, layouter, &birthdate[1..11], limit)?;
+        Self::assert_date_before(std_lib, layouter, &birthdate, limit)?;
 
         // Get holder public key.
-        let holder_key = Self::get_property(std_lib, layouter, &json, b"publicKeyJwk", 220)?;
-        let x = Self::get_property(std_lib, layouter, &holder_key, b"x", 45)?;
-        let y = Self::get_property(std_lib, layouter, &holder_key, b"y", 45)?;
-        let x_val = b64_chip.decode_base64url(layouter, &x[1..44], false)?;
-        let y_val = b64_chip.decode_base64url(layouter, &y[1..44], false)?;
+        let x = Self::get_property(std_lib, layouter, &json, b"x", COORD_LEN)?;
+        let y = Self::get_property(std_lib, layouter, &json, b"y", COORD_LEN)?;
+        let x_val = b64_chip.decode_base64url(layouter, &x, false)?;
+        let y_val = b64_chip.decode_base64url(layouter, &y, false)?;
 
         // Check knowledge of corresponding sk.
         let x_coord = secp256k1_curve
@@ -136,6 +140,7 @@ impl Relation for FullCredential {
             sha2_256: true,
             secp256k1: true,
             base64: true,
+            automaton: true,
             nr_pow2range_cols: 3,
             ..ZkStdLibArch::default()
         }
@@ -189,30 +194,66 @@ impl FullCredential {
         secp256k1_base.assert_equal(layouter, &lhs_x, &r_as_base)
     }
 
-    /// Searches for "property": and returns the following `val_len` characters.
+    /// Verifies that a JSON field appears in the credential and extracts its
+    /// value using
+    /// [`check_bytes`](midnight_circuits::parsing::ScannerChip::check_bytes).
+    ///
+    /// Given a field name (e.g., `b"birthDate"`) and value length, this
+    /// function builds the full prefix `"<field_name>":"` internally, then:
+    /// 1. Finds the field in the decoded credential (off-circuit).
+    /// 2. Assigns the prefix as fixed constants and the value as witness bytes.
+    /// 3. Uses `check_bytes` to verify the full snippet (prefix + value +
+    ///    closing `"`) is a substring of the credential.
+    /// 4. Returns the extracted value bytes.
     fn get_property(
         std_lib: &ZkStdLib,
         layouter: &mut impl Layouter<F>,
-        body: &[AssignedByte<F>],
-        property: &[u8],
-        val_len: usize,
+        cred: &[AssignedByte<F>],
+        field_name: &[u8],
+        value_len: usize,
     ) -> Result<Vec<AssignedByte<F>>, Error> {
-        let parser = std_lib.parser();
+        let field_prefix: Vec<u8> = [b"\"".as_slice(), field_name, b"\":\""].concat();
+        let snippet_len = field_prefix.len() + value_len + 1; // +1 for closing quote.
 
-        let property = [b"\"", property, b"\":"].concat();
-        let p_len = property.len();
-        let seq: Value<Vec<u8>> = Value::from_iter(body.iter().map(|b| b.value()));
+        // Off-circuit: find the snippet position and extract the value.
+        let seq: Value<Vec<u8>> = Value::from_iter(cred.iter().map(|b| b.value()));
+        let (value_raw, idx_val): (Value<Vec<u8>>, Value<F>) = seq
+            .map(|d| {
+                let pos = find_subsequence(&d, &field_prefix)
+                    .expect("Field prefix should appear in credential");
+                assert!(
+                    pos + snippet_len <= d.len(),
+                    "Snippet exceeds credential length"
+                );
+                let value =
+                    d[pos + field_prefix.len()..pos + field_prefix.len() + value_len].to_vec();
+                (value, F::from(pos as u64))
+            })
+            .unzip();
 
-        let idx = seq.map(|seq| {
-            let idx = find_subsequence(&seq, &property)
-                .expect("Property should appear in the credential.");
-            F::from(idx as u64)
-        });
+        // Assign prefix as fixed constants.
+        let prefix_bytes: Vec<AssignedByte<F>> =
+            std_lib.assign_many_fixed(layouter, &field_prefix)?;
 
-        let idx = std_lib.assign(layouter, idx)?; // idx will be range-checked in `fetch_bytes`.
+        // Assign value from witness.
+        let value_bytes: Vec<AssignedByte<F>> =
+            std_lib.assign_many(layouter, value_raw.transpose_vec(value_len).as_slice())?;
 
-        let raw_propety = parser.fetch_bytes(layouter, body, &idx, p_len + val_len)?;
-        Ok(raw_propety[p_len..].to_vec())
+        // Assign closing quote as fixed.
+        let closing_quote: AssignedByte<F> = std_lib.assign_fixed(layouter, b'"')?;
+
+        // Build full snippet: prefix || value || closing quote.
+        let snippet_bytes: Vec<AssignedByte<F>> = prefix_bytes
+            .into_iter()
+            .chain(value_bytes.iter().cloned())
+            .chain(std::iter::once(closing_quote))
+            .collect();
+        assert_eq!(snippet_bytes.len(), snippet_len);
+
+        let idx: AssignedNative<F> = std_lib.assign(layouter, idx_val)?;
+        std_lib.scanner().check_bytes(layouter, cred, &idx, &snippet_bytes)?;
+
+        Ok(value_bytes)
     }
 
     fn assert_str_match(

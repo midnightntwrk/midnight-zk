@@ -23,6 +23,7 @@ verification keys break backwards compatibility.
 * Adds Scanner chip for automaton parsing and substring checks [#229](https://github.com/midnightntwrk/midnight-zk/pull/229)
 * Scanner chip: dynamic regex support and lazy automaton loading [#232](https://github.com/midnightntwrk/midnight-zk/pull/232)
 * Scanner chip: ICAO 9303 TD3 DG1 passport parser [#233](https://github.com/midnightntwrk/midnight-zk/pull/233)
+* Scanner chip: parallel lookups [#234](https://github.com/midnightntwrk/midnight-zk/pull/234)
 
 ### Changed
 * Make handling of fixed_bases more robust in verifier gadget [#212](https://github.com/midnightntwrk/midnight-zk/pull/212)
