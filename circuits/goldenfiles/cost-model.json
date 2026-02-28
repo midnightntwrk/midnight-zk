@@ -98,7 +98,7 @@
     }
   },
   "Scanner": {
-    "static parsing perf (input length = 50)": {
+    "automaton parsing perf (input length = 50)": {
       "advice_columns": "5",
       "column_queries": "56",
       "fixed_columns": "32",
@@ -107,7 +107,18 @@
       "permutations": "8",
       "point_sets": "4",
       "rows": "75",
-      "table_rows": "315"
+      "table_rows": "291"
+    },
+    "multi-regex parsing perf (input length = 50)": {
+      "advice_columns": "5",
+      "column_queries": "56",
+      "fixed_columns": "32",
+      "lookups": "6",
+      "max_deg": "5",
+      "permutations": "8",
+      "point_sets": "4",
+      "rows": "150",
+      "table_rows": "257"
     },
     "substring perf (full length = 65, sub length = 50)": {
       "advice_columns": "5",
@@ -118,7 +129,7 @@
       "permutations": "8",
       "point_sets": "4",
       "rows": "161",
-      "table_rows": "315"
+      "table_rows": "257"
     }
   },
   "VarPoseidon": {

@@ -140,7 +140,7 @@ pub struct Automaton {
     /// abnormally slow. This however has no effect on the verifier time, and
     /// does not affect users that only access the parsers we provide
     /// through the standard library.
-    pub transitions: FxHashMap<(usize, u8), (usize, usize)>,
+    pub transitions: FxHashMap<usize, FxHashMap<u8, (usize, usize)>>,
 }
 
 // Basic automaton constructions.
@@ -1070,8 +1070,7 @@ impl RawAutomaton {
             .expect("(bug) witness_reachability has been called on an unreachable state {state}")
     }
 
-    /// Conversion into a minimal deterministic automaton. Mutates the argument
-    /// to determinise it.
+    /// Conversion into a minimal deterministic automaton.
     pub(super) fn normalise(self) -> Automaton {
         let alphabet_size = (self.transitions.iter())
             .map(|succ| {
@@ -1085,8 +1084,9 @@ impl RawAutomaton {
             FxHashMap::with_capacity_and_hasher(base.transitions.len(), FxBuildHasher);
         for (source, succ) in base.transitions.iter().enumerate() {
             for (letter, target) in succ {
+                let inner = transitions.entry(source).or_insert_with(FxHashMap::default);
                 if let Some((target2, marker2)) =
-                    transitions.insert((source, letter.char), (*target, letter.marker))
+                    inner.insert(letter.char, (*target, letter.marker))
                 {
                     if letter.marker == marker2 {
                         panic!(
@@ -1122,17 +1122,20 @@ impl Automaton {
     /// useful when handling several independent automaton at the same time (to
     /// ensure their state numbers do not overlap).
     pub fn offset_states(&self, offset: usize) -> Self {
+        let mut transitions =
+            FxHashMap::with_capacity_and_hasher(self.transitions.len(), FxBuildHasher);
+        for (&source, inner) in &self.transitions {
+            let new_inner: FxHashMap<u8, (usize, usize)> = inner
+                .iter()
+                .map(|(&letter, &(target, marker))| (letter, (target + offset, marker)))
+                .collect();
+            transitions.insert(source + offset, new_inner);
+        }
         Self {
             nb_states: self.nb_states + offset,
             initial_state: self.initial_state + offset,
             final_states: self.final_states.iter().map(|s| s + offset).collect::<FxHashSet<_>>(),
-            transitions: self
-                .transitions
-                .iter()
-                .map(|((source, letter), (target, marker))| {
-                    ((*source + offset, *letter), (*target + offset, *marker))
-                })
-                .collect::<FxHashMap<_, _>>(),
+            transitions,
         }
     }
 }
@@ -1153,7 +1156,7 @@ impl Automaton {
         // Iterates over the letters of the input and moves accross the states
         // accordingly.
         while let Some(a) = letter {
-            match self.transitions.get(&(current_state, *a)).copied() {
+            match self.transitions.get(&current_state).and_then(|inner| inner.get(a)).copied() {
                 // Interrupted run.
                 None => return (states, Vec::new(), true),
                 // The run goes on.

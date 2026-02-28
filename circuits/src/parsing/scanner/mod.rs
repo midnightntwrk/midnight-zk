@@ -14,8 +14,11 @@
 //! A chip combining lookup-based parsing techniques such as automaton-based
 //! parsing. The chip supports:
 //!
-//! - **Static automaton parsing** (`parse_static`): uses a fixed lookup table
-//!   pre-loaded with transitions from a library of automata ([`StdLibParser`]).
+//! - **Automaton parsing** (`parse`): uses a fixed lookup table loaded with
+//!   transitions from a static library of automata ([`StdLibParser`]) and/or
+//!   dynamically-provided regular expressions.
+//! - **Substring verification** (`check_subsequence`, `check_bytes`): uses
+//!   dynamic lookups to verify that a subsequence appears in a given sequence.
 
 pub(crate) mod automaton;
 mod automaton_chip;
@@ -29,8 +32,6 @@ mod substring;
 use std::{
     cell::RefCell,
     collections::{BTreeMap, BTreeSet},
-    fmt::Debug,
-    hash::Hash,
     rc::Rc,
 };
 
@@ -40,6 +41,7 @@ use midnight_proofs::{
     plonk::{Advice, Column, ConstraintSystem, Error, Expression, Fixed, Selector, TableColumn},
     poly::Rotation,
 };
+use regex::Regex;
 use rustc_hash::FxHashMap;
 pub use static_specs::{spec_library, StdLibParser};
 #[cfg(test)]
@@ -85,22 +87,23 @@ pub const NB_SCANNER_ADVICE_COLS: usize = {
 /// Number of shared fixed columns necessary for the scanner chip.
 pub const NB_SCANNER_FIXED_COLS: usize = 1;
 
-// Native gadget type abbreviation.
 type NG<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
 
 /// A simple map from the automaton structure to handle field elements, and thus
 /// precompute all transition operations on the prover code.
 #[derive(Clone, Debug)]
 pub struct NativeAutomaton<F> {
+    /// The number of states of the automaton.
+    pub nb_states: usize,
     /// The initial state of the automaton.
     pub initial_state: F,
     /// The final states of the automaton.
     pub final_states: BTreeSet<F>,
-    /// When `transitions[(source_state,letter)] = (target_state,marker)`, it
+    /// When `transitions[source_state][letter] = (target_state, marker)`, it
     /// means that in state `source_state`, upon reading the byte `letter`, the
     /// automaton run moves to state `target_state` and marks `letter` with
     /// `marker`. If the entry is undefined, the automaton run gets stuck.
-    pub transitions: BTreeMap<(F, F), (F, F)>,
+    pub transitions: BTreeMap<F, BTreeMap<F, (F, F)>>,
 }
 
 impl<F> From<&Automaton> for NativeAutomaton<F>
@@ -108,19 +111,26 @@ where
     F: CircuitField + Ord,
 {
     fn from(value: &Automaton) -> Self {
+        let mut transitions = BTreeMap::new();
+        for (&source, inner) in &value.transitions {
+            let native_inner: BTreeMap<F, (F, F)> = inner
+                .iter()
+                .map(|(&letter, &(target, marker))| {
+                    (
+                        F::from(letter as u64),
+                        (F::from(target as u64), F::from(marker as u64)),
+                    )
+                })
+                .collect();
+            transitions.insert(F::from(source as u64), native_inner);
+        }
         NativeAutomaton {
+            nb_states: value.nb_states,
             initial_state: F::from(value.initial_state as u64),
             final_states: (value.final_states.iter())
                 .map(|s| F::from(*s as u64))
                 .collect::<BTreeSet<_>>(),
-            transitions: (value.transitions.iter())
-                .map(|(&(s1, a), &(s2, marker))| {
-                    (
-                        (F::from(s1 as u64), F::from(a as u64)),
-                        (F::from(s2 as u64), F::from(marker as u64)),
-                    )
-                })
-                .collect::<BTreeMap<_, _>>(),
+            transitions,
         }
     }
 }
@@ -138,27 +148,51 @@ impl<F> NativeAutomaton<F>
 where
     F: CircuitField + Ord,
 {
-    fn from_collection<LibIndex>(
-        automata: &FxHashMap<LibIndex, Automaton>,
-    ) -> FxHashMap<LibIndex, NativeAutomaton<F>>
-    where
-        LibIndex: Hash + Eq + Copy,
-    {
-        // The offset needs to start from 1 and not 0, to ensure that no automata will
-        // use the state 0 (required by the automaton chip for soundness, since
-        // 0 is used as a dummy state to encode some checks as fake
-        // transitions).
-        let mut offset = 1;
-        (automata.iter())
-            .map(|(name, automaton)| {
-                let na: NativeAutomaton<F> = automaton.offset_states(offset).into();
-                offset += automaton.nb_states;
-                (*name, na)
-            })
-            .collect::<FxHashMap<_, _>>()
+    /// Looks up the transition from `state` reading `letter`.
+    fn get_transition(&self, state: &F, letter: &F) -> Option<(F, F)> {
+        self.transitions.get(state).and_then(|inner| inner.get(letter)).copied()
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+/// A reference for parsing methods for the function `parse`. Either an entry of
+/// the static automaton library (more efficient, but limited library), or a
+/// dynamic regular expression (more costly, but supports arbitrary regexes).
+pub enum AutomatonParser {
+    /// Static automaton library, as defined in `parsing::static_specs` (see the
+    /// documentation of each object of type `StdLibParser` to get the exact
+    /// regular expression they check). The off-circuit conversion
+    /// Regex->Automaton has been pre-computed and is serialised.
+    Static(StdLibParser),
+    /// Parses an arbitrary regular expression. Induces the same circuit logic
+    /// and performances as `Static`, but the conversion Regex->Automaton will
+    /// be performed by the prover (off-circuit).
+    Dynamic(Regex),
+}
+
+impl From<&StdLibParser> for AutomatonParser {
+    fn from(value: &StdLibParser) -> Self {
+        AutomatonParser::Static(*value)
+    }
+}
+
+impl From<StdLibParser> for AutomatonParser {
+    fn from(value: StdLibParser) -> Self {
+        AutomatonParser::from(&value)
+    }
+}
+
+impl From<Regex> for AutomatonParser {
+    fn from(value: Regex) -> Self {
+        AutomatonParser::Dynamic(value)
+    }
+}
+
+/// A static library of serialised automata for parsing common regexes. The
+/// automaton states start from 0 and may overlap one with each other.
+type ParsingLibrary = FxHashMap<StdLibParser, Automaton>;
+/// Set of automata (with offset states) called by `parse`.
+type AutomatonCache<F> = FxHashMap<AutomatonParser, NativeAutomaton<F>>;
 /// A sequence of assigned elements.
 type Sequence<F> = Vec<AssignedNative<F>>;
 /// Cache of assigned sequences passed as arguments to `check_subsequence`. Each
@@ -168,13 +202,16 @@ type SequenceCache<F> = FxHashMap<Sequence<F>, (Vec<(AssignedNative<F>, Sequence
 
 /// Scanner gate configuration.
 #[derive(Clone, Debug)]
-pub struct ScannerConfig<LibIndex, F> {
-    // Static automaton columns.
-    automata: FxHashMap<LibIndex, NativeAutomaton<F>>,
+pub struct ScannerConfig {
+    // Shared advice columns used by scanner operations.
+    advice_cols: [Column<Advice>; NB_SCANNER_ADVICE_COLS],
+
+    /// Pre-computed library of automata. If some are not used in the circuit,
+    /// their table will not be loaded wastingly.
+    static_library: ParsingLibrary,
+
+    // Automaton circuit resources.
     q_automaton: Selector,
-    state_col: Column<Advice>,
-    letter_col: Column<Advice>,
-    output_col: Column<Advice>,
     t_source: TableColumn,
     t_letter: TableColumn,
     t_target: TableColumn,
@@ -188,12 +225,21 @@ pub struct ScannerConfig<LibIndex, F> {
 
 /// Chip for scanning: automaton parsing and substring verification.
 #[derive(Clone, Debug)]
-pub struct ScannerChip<LibIndex, F>
+pub struct ScannerChip<F>
 where
     F: CircuitField,
 {
-    config: ScannerConfig<LibIndex, F>,
+    config: ScannerConfig,
     native_gadget: NG<F>,
+
+    /// Unified cache of all resolved automata (both static library and dynamic
+    /// regexes), with their states already offset. Populated on demand by
+    /// `resolve_automaton` when `parse` is called for the first time with a
+    /// given `AutomatonParser`.
+    automaton_cache: Rc<RefCell<AutomatonCache<F>>>,
+    /// Tracks the next available state offset. Starts at 1 (state 0 is
+    /// reserved as the dummy state for soundness).
+    max_state: Rc<RefCell<usize>>,
 
     /// Cache mapping a sequence of cells to the list of `(idx, sub)` pairs
     /// it was called with, so that repeated `check_bytes` calls with the same
@@ -202,12 +248,11 @@ where
     sequence_cache: Rc<RefCell<SequenceCache<F>>>,
 }
 
-impl<LibIndex, F> Chip<F> for ScannerChip<LibIndex, F>
+impl<F> Chip<F> for ScannerChip<F>
 where
-    LibIndex: Clone + Debug,
     F: CircuitField,
 {
-    type Config = ScannerConfig<LibIndex, F>;
+    type Config = ScannerConfig;
     type Loaded = ();
     fn config(&self) -> &Self::Config {
         &self.config
@@ -217,9 +262,8 @@ where
     }
 }
 
-impl<LibIndex, F> ComposableChip<F> for ScannerChip<LibIndex, F>
+impl<F> ComposableChip<F> for ScannerChip<F>
 where
-    LibIndex: Copy + Clone + Debug + Hash + Eq,
     F: CircuitField + Ord,
 {
     type InstructionDeps = NG<F>;
@@ -227,13 +271,15 @@ where
     type SharedResources = (
         [Column<Advice>; NB_SCANNER_ADVICE_COLS],
         Column<Fixed>,
-        FxHashMap<LibIndex, Automaton>,
+        FxHashMap<StdLibParser, Automaton>,
     );
 
-    fn new(config: &ScannerConfig<LibIndex, F>, deps: &Self::InstructionDeps) -> Self {
+    fn new(config: &ScannerConfig, deps: &Self::InstructionDeps) -> Self {
         Self {
             config: config.clone(),
             native_gadget: deps.clone(),
+            automaton_cache: Rc::new(RefCell::new(FxHashMap::default())),
+            max_state: Rc::new(RefCell::new(1)),
             sequence_cache: Rc::new(RefCell::new(FxHashMap::default())),
         }
     }
@@ -241,7 +287,7 @@ where
     fn configure(
         meta: &mut ConstraintSystem<F>,
         shared_res: &Self::SharedResources,
-    ) -> ScannerConfig<LibIndex, F> {
+    ) -> ScannerConfig {
         #[allow(clippy::assertions_on_constants)]
         {
             assert!(
@@ -269,11 +315,6 @@ where
         let t_letter = meta.lookup_table_column();
         let t_target = meta.lookup_table_column();
         let t_output = meta.lookup_table_column();
-
-        // The fixed automaton of the configuration. Its set of states is offset by 1 to
-        // ensure that 0 is not a reachable state (required due to how the table lookup
-        // is filled).
-        let automata = NativeAutomaton::<F>::from_collection(automata);
 
         meta.lookup("automaton transition check", |meta| {
             let q = meta.query_selector(q_automaton);
@@ -321,10 +362,8 @@ where
         });
 
         ScannerConfig {
-            state_col,
-            letter_col,
-            output_col,
-            automata: automata.clone(),
+            advice_cols: *advice_cols,
+            static_library: automata.clone(),
             q_automaton,
             t_source,
             t_letter,
@@ -349,7 +388,7 @@ where
 }
 
 #[cfg(test)]
-impl regex::Regex {
+impl Regex {
     // "hello hello [...] hello \( world , world , [...] , world \) !!!!!" with
     // 1. arbitrary spaces whenever there is one
     // 2. at least one "hello" and one "world"
@@ -358,7 +397,6 @@ impl regex::Regex {
     // The definition of the regex purposely performs some non succinct operations
     // to test several constructions of the library.
     fn hard_coded_example0() -> Self {
-        use regex::Regex;
         let hellos = Regex::word("hello").separated_non_empty_list(Regex::blanks_strict());
         let worlds = Regex::word("world").separated_non_empty_list(Regex::cat([
             Regex::blanks(),
@@ -381,7 +419,6 @@ impl regex::Regex {
     }
 
     fn hard_coded_example1() -> Self {
-        use regex::Regex;
         // `marker_regex` accepts any character, marking 'l' as 2, and
         // any other non-blank character different from 'h' as 1.
         let marker_regex = Regex::any_byte()
@@ -404,18 +441,18 @@ impl regex::Regex {
 }
 
 #[cfg(test)]
-impl<F> FromScratch<F> for ScannerChip<usize, F>
+impl<F> FromScratch<F> for ScannerChip<F>
 where
     F: CircuitField + Ord,
 {
-    type Config = (P2RDecompositionConfig, ScannerConfig<usize, F>);
+    type Config = (P2RDecompositionConfig, ScannerConfig);
 
     fn new_from_scratch(config: &Self::Config) -> Self {
         let max_bit_len = 8;
         let native_chip = NativeChip::new(&config.0.native_config, &());
         let core_decomposition_chip = P2RDecompositionChip::new(&config.0, &max_bit_len);
         let native_gadget = NG::<F>::new(core_decomposition_chip, native_chip);
-        <ScannerChip<usize, F> as ComposableChip<F>>::new(&config.1, &native_gadget)
+        <ScannerChip<F> as ComposableChip<F>>::new(&config.1, &native_gadget)
     }
 
     fn configure_from_scratch(
@@ -425,14 +462,6 @@ where
         let nb_advice_cols = std::cmp::max(NB_SCANNER_ADVICE_COLS, NB_ARITH_COLS);
         let advice_cols = (0..nb_advice_cols).map(|_| meta.advice_column()).collect::<Vec<_>>();
         let fixed_cols = (0..NB_ARITH_COLS + 4).map(|_| meta.fixed_column()).collect::<Vec<_>>();
-        let automata = FxHashMap::from_iter(
-            [
-                regex::Regex::hard_coded_example0().to_automaton(),
-                regex::Regex::hard_coded_example1().to_automaton(),
-            ]
-            .into_iter()
-            .enumerate(),
-        );
 
         let native_config = NativeChip::configure(
             meta,
@@ -448,7 +477,7 @@ where
             &(
                 advice_cols[..NB_SCANNER_ADVICE_COLS].try_into().unwrap(),
                 fixed_cols[0],
-                automata,
+                FxHashMap::default(),
             ),
         );
 
