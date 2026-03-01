@@ -13,6 +13,7 @@ verification keys break backwards compatibility.
 ## [Unreleased]
 ### Added
 * Added an example verifying an ethereum signature [#177](https://github.com/midnightntwrk/midnight-zk/pull/177)
+* Adds identity related examples to evaluate the impact of substring checks [#229](https://github.com/midnightntwrk/midnight-zk/pull/229)
 
 ### Changed
 * bug patch in the credential property verification example, which was omitting some index computation in circuit [#240](https://github.com/midnightntwrk/midnight-zk/pull/240)
