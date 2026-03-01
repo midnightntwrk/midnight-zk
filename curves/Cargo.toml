@@ -3,7 +3,7 @@ name = "midnight-curves"
 description = "Implementation of BLS12 381 and Jubjub curves."
 version = "0.2.0"
 authors = ["dignifiedquire <me@dignifiedquire.com>", "Midnight team"]
-edition = "2018"
+edition = "2021"
 license = "MIT/Apache-2.0"
 repository = "https://github.com/midnightntwrk/midnight-zk/"
 categories = ["cryptography", "algorithms"]
@@ -39,7 +39,11 @@ sha2 = "0.10"
 digest = "0.10"
 
 # k256 for secp256k1 (alternative implementation)
-k256 = { version = "0.13.4", features = ["expose-field", "bits", "alloc"], default-features = false }
+k256 = { version = "0.13.4", features = [
+  "expose-field",
+  "bits",
+  "alloc",
+], default-features = false }
 
 
 [dev-dependencies]
