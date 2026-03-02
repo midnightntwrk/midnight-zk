@@ -123,8 +123,8 @@ where
     /// Creates an assigned point from a pair of coordinates, asserting that
     /// they satisfy the curve equation.
     /// If the curve has non-prime order, the point is guaranteed to be in the
-    /// prime order subgroup. (The identity cannot be constructed through
-    /// this function.)
+    /// prime order subgroup. (In case of Weierstrass curves, the identity
+    /// cannot be constructed through this function.)
     fn point_from_coordinates(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -309,10 +309,10 @@ pub(crate) mod tests {
             _marker: PhantomData,
         };
         let log2_nb_rows = match operation {
-            Operation::Msm => 17,
-            Operation::MsmBounded => 16,
-            Operation::MulByConstant => 16,
-            _ => 10,
+            Operation::Msm => 19,
+            Operation::MsmBounded => 18,
+            Operation::MulByConstant => 18,
+            _ => 12,
         };
         let public_inputs = vec![vec![], vec![]];
         match MockProver::run(log2_nb_rows, &circuit, public_inputs) {
