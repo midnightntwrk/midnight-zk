@@ -27,12 +27,17 @@ use std::{
 
 use ff::{Field, PrimeField};
 use group::Group;
+#[cfg(any(test, feature = "testing"))]
+use midnight_proofs::plonk::{Column, Instance};
 use midnight_proofs::{
     circuit::{Chip, Layouter, Value},
     plonk::{ConstraintSystem, Error},
 };
 #[cfg(any(test, feature = "testing"))]
-use {crate::testing_utils::Sampleable, rand::RngCore};
+use {
+    crate::testing_utils::{FromScratch, Sampleable},
+    rand::RngCore,
+};
 
 use crate::{
     ecc::curves::EdwardsCurve,
@@ -797,5 +802,378 @@ where
 
     fn base_field(&self) -> &impl DecompositionInstructions<F, Self::Coordinate> {
         self.base_field_chip()
+    }
+}
+
+#[derive(Clone, Debug)]
+#[cfg(any(test, feature = "testing"))]
+/// Configuration used to implement `FromScratch` for the
+/// `ForeignEdwardsEccChip` chip. This should only be used for testing.
+pub struct ForeignEdwardsEccTestConfig<F, C, S, N>
+where
+    F: CircuitField,
+    C: EdwardsCurve,
+    S: ScalarFieldInstructions<F> + FromScratch<F>,
+    S::Scalar: InnerValue<Element = C::ScalarField>,
+    N: NativeInstructions<F> + FromScratch<F>,
+{
+    native_gadget_config: <N as FromScratch<F>>::Config,
+    scalar_field_config: <S as FromScratch<F>>::Config,
+    ff_ecc_config: ForeignEdwardsEccConfig<C>,
+}
+
+#[cfg(any(test, feature = "testing"))]
+impl<F, C, B, S, N> FromScratch<F> for ForeignEdwardsEccChip<F, C, B, S, N>
+where
+    F: CircuitField,
+    C: EdwardsCurve,
+    B: FieldEmulationParams<F, C::Base>,
+    S: ScalarFieldInstructions<F> + FromScratch<F>,
+    S::Scalar: InnerValue<Element = C::ScalarField>,
+    N: NativeInstructions<F> + FromScratch<F>,
+{
+    type Config = ForeignEdwardsEccTestConfig<F, C, S, N>;
+
+    fn new_from_scratch(config: &Self::Config) -> Self {
+        let native_gadget = <N as FromScratch<F>>::new_from_scratch(&config.native_gadget_config);
+        let scalar_field_chip =
+            <S as FromScratch<F>>::new_from_scratch(&config.scalar_field_config);
+        ForeignEdwardsEccChip::new(&config.ff_ecc_config, &native_gadget, &scalar_field_chip)
+    }
+
+    fn load_from_scratch(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
+        self.native_gadget.load_from_scratch(layouter)?;
+        self.scalar_field_chip.load_from_scratch(layouter)
+    }
+
+    fn configure_from_scratch(
+        meta: &mut ConstraintSystem<F>,
+        instance_columns: &[Column<Instance>; 2],
+    ) -> ForeignEdwardsEccTestConfig<F, C, S, N> {
+        use crate::field::foreign::nb_field_chip_columns;
+
+        let native_gadget_config =
+            <N as FromScratch<F>>::configure_from_scratch(meta, instance_columns);
+        let scalar_field_config =
+            <S as FromScratch<F>>::configure_from_scratch(meta, instance_columns);
+        let nb_advice_cols = nb_field_chip_columns::<F, C::Base, B>();
+        let advice_columns = (0..nb_advice_cols).map(|_| meta.advice_column()).collect::<Vec<_>>();
+        let nb_parallel_range_checks = 4;
+        let max_bit_len = 8;
+        let base_field_config = FieldChip::<F, C::Base, B, N>::configure(
+            meta,
+            &advice_columns,
+            nb_parallel_range_checks,
+            max_bit_len,
+        );
+        let ff_ecc_config =
+            ForeignEdwardsEccChip::<F, C, B, S, N>::configure(meta, &base_field_config);
+        ForeignEdwardsEccTestConfig {
+            native_gadget_config,
+            scalar_field_config,
+            ff_ecc_config,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use group::Group;
+    use midnight_curves::{curve25519::Curve25519, BlsScalar, JubjubExtended};
+    use midnight_proofs::{circuit::SimpleFloorPlanner, dev::MockProver, plonk::Circuit};
+    use rand::SeedableRng;
+    use rand_chacha::ChaCha8Rng;
+
+    use super::*;
+    use crate::{
+        ecc::curves::CircuitCurve,
+        field::{
+            decomposition::chip::P2RDecompositionChip, foreign::params::MultiEmulationParams,
+            NativeChip, NativeGadget,
+        },
+        instructions::{assertions, control_flow, ecc, equality, public_input, zero},
+    };
+
+    type F = BlsScalar;
+    type Native<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
+    type EmulatedField<F, C> = FieldChip<F, <C as Group>::Scalar, MultiEmulationParams, Native<F>>;
+
+    macro_rules! test_generic {
+        ($mod:ident, $op:ident, $native:ty, $curve:ty, $scalar_field:ty,
+    $name:expr) => {
+            $mod::tests::$op::<
+                $native,
+                AssignedForeignEdwardsPoint<$native, $curve, MultiEmulationParams>,
+                ForeignEdwardsEccChip<
+                    $native,
+                    $curve,
+                    MultiEmulationParams,
+                    $scalar_field,
+                    Native<$native>,
+                >,
+            >($name);
+        };
+    }
+
+    macro_rules! test {
+        ($mod:ident, $op:ident) => {
+            #[test]
+            fn $op() {
+                test_generic!($mod, $op, F, JubjubExtended, EmulatedField<F, JubjubExtended>, "emulated_jubjub");
+                test_generic!($mod, $op, F, Curve25519, EmulatedField<F, Curve25519>, "emulated_curve25519");
+            }
+        };
+    }
+
+    test!(assertions, test_assertions);
+
+    test!(public_input, test_public_inputs);
+
+    test!(equality, test_is_equal);
+
+    test!(zero, test_zero_assertions);
+    test!(zero, test_is_zero);
+
+    test!(control_flow, test_select);
+    test!(control_flow, test_cond_assert_equal);
+    test!(control_flow, test_cond_swap);
+
+    macro_rules! ecc_test {
+        ($op:ident, $native:ty, $curve:ty, $scalar_field:ty, $name:expr) => {
+            ecc::tests::$op::<
+                $native,
+                $curve,
+                ForeignEdwardsEccChip<
+                    $native,
+                    $curve,
+                    MultiEmulationParams,
+                    $scalar_field,
+                    Native<$native>,
+                >,
+            >($name);
+        };
+    }
+
+    macro_rules! ecc_tests {
+        ($op:ident) => {
+            #[test]
+            fn $op() {
+                ecc_test!($op, BlsScalar, JubjubExtended, EmulatedField<BlsScalar, JubjubExtended>, "emulated_jubjub");
+                ecc_test!($op, BlsScalar, Curve25519, EmulatedField<BlsScalar, Curve25519>, "emulated_curve25519");
+            }
+        };
+    }
+
+    ecc_tests!(test_add);
+    ecc_tests!(test_double);
+    ecc_tests!(test_negate);
+    ecc_tests!(test_msm);
+    ecc_tests!(test_msm_by_bounded_scalars);
+    ecc_tests!(test_mul_by_constant);
+    ecc_tests!(test_coordinates_edwards);
+
+    #[test]
+    fn test_assert_in_subgroup() {
+        run_test_assert_in_subgroup::<Curve25519>();
+        run_test_assert_in_subgroup::<JubjubExtended>();
+    }
+
+    #[test]
+    fn test_assert_on_curve() {
+        run_test_assert_on_curve::<Curve25519>();
+        run_test_assert_on_curve::<JubjubExtended>();
+    }
+
+    fn run_test_assert_in_subgroup<C>()
+    where
+        C: EdwardsCurve,
+        MultiEmulationParams: FieldEmulationParams<BlsScalar, C::Base>
+            + FieldEmulationParams<BlsScalar, C::ScalarField>,
+    {
+        let mut rng = ChaCha8Rng::seed_from_u64(0x0);
+        let point = C::CryptographicGroup::random(&mut rng);
+
+        let circuit = InSubgroupCheckCircuit::<C> { point };
+        let prover = MockProver::run(11, &circuit, vec![vec![], vec![]])
+            .expect("proof generation should not fail");
+        prover.verify().expect("random subgroup point should verify");
+    }
+
+    fn run_test_assert_on_curve<C>()
+    where
+        C: EdwardsCurve,
+        MultiEmulationParams: FieldEmulationParams<BlsScalar, C::Base>
+            + FieldEmulationParams<BlsScalar, C::ScalarField>,
+    {
+        let mut rng = ChaCha8Rng::seed_from_u64(0x0);
+
+        // Sample random subgroup point
+        let point = C::CryptographicGroup::random(&mut rng);
+        let (x, y) = point.into().coordinates().expect("valid curve point");
+
+        // Valid point: identity (0, 1)
+        let circuit = OnCurveCheckCircuit::<C> {
+            x: C::Base::ZERO,
+            y: C::Base::ONE,
+        };
+        let prover = MockProver::run(10, &circuit, vec![vec![], vec![]])
+            .expect("proof generation should not fail");
+        prover.verify().expect("identity (0,1) should pass verification");
+
+        // Valid point: generator
+        let gen = C::CryptographicGroup::generator();
+        let (gx, gy) = gen.into().coordinates().expect("valid generator");
+        let circuit = OnCurveCheckCircuit::<C> { x: gx, y: gy };
+        let prover = MockProver::run(10, &circuit, vec![vec![], vec![]])
+            .expect("proof generation should not fail");
+        prover.verify().expect("generator should pass verification");
+
+        // Invalid point: offset the y coordinate of a random curve point by 1, so the
+        // curve equation is not satisfied with overwhelming probability (there
+        // is a negligible probability this test fails)
+        let circuit = OnCurveCheckCircuit::<C> {
+            x,
+            y: y + C::Base::ONE,
+        };
+        let prover = MockProver::run(10, &circuit, vec![vec![], vec![]])
+            .expect("proof generation should not fail");
+        assert!(
+            prover.verify().is_err(),
+            "invalid point should fail verification"
+        );
+
+        // Invalid point: (1,1)
+        let circuit = OnCurveCheckCircuit::<C> {
+            x: C::Base::ONE,
+            y: C::Base::ONE,
+        };
+        let prover = MockProver::run(10, &circuit, vec![vec![], vec![]])
+            .expect("proof generation should not fail");
+        assert!(
+            prover.verify().is_err(),
+            "invalid point (1,1) should fail verification"
+        );
+
+        // Invalid point: (0, 0)
+        let circuit = OnCurveCheckCircuit::<C> {
+            x: C::Base::ZERO,
+            y: C::Base::ZERO,
+        };
+        let prover = MockProver::run(10, &circuit, vec![vec![], vec![]])
+            .expect("proof generation should not fail");
+        assert!(
+            prover.verify().is_err(),
+            "invalid point (0,0) should fail verification"
+        );
+    }
+
+    type EdwardsChip<C> = ForeignEdwardsEccChip<
+        F,
+        C,
+        MultiEmulationParams,
+        FieldChip<F, <C as CircuitCurve>::ScalarField, MultiEmulationParams, Native<F>>,
+        Native<F>,
+    >;
+
+    /// Test circuit that calls `assert_in_subgroup` and `assert_on_curve` for a
+    /// given point of a twisted Edwards curve.
+    ///
+    /// Since `assert_in_subgroup` already takes as input a point in form of
+    /// [AssignedForeignEdwardsPoint], which, in turn, wraps a valid subgroup
+    /// point, this circuit checks correctness of `assert_in_subgroup` and
+    /// `assert_on_curve` for valid subgroup points.
+    #[derive(Clone, Debug)]
+    struct InSubgroupCheckCircuit<C: EdwardsCurve> {
+        point: C::CryptographicGroup,
+    }
+
+    impl<C> Circuit<F> for InSubgroupCheckCircuit<C>
+    where
+        C: EdwardsCurve,
+        MultiEmulationParams:
+            FieldEmulationParams<F, C::Base> + FieldEmulationParams<F, C::ScalarField>,
+    {
+        type Config = <EdwardsChip<C> as FromScratch<F>>::Config;
+        type FloorPlanner = SimpleFloorPlanner;
+        type Params = ();
+
+        fn without_witnesses(&self) -> Self {
+            unreachable!()
+        }
+
+        fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+            let committed = meta.instance_column();
+            let instance = meta.instance_column();
+            EdwardsChip::<C>::configure_from_scratch(meta, &[committed, instance])
+        }
+
+        fn synthesize(
+            &self,
+            config: Self::Config,
+            mut layouter: impl Layouter<F>,
+        ) -> Result<(), Error> {
+            let chip = EdwardsChip::<C>::new_from_scratch(&config);
+
+            let curve_point: C = self.point.into();
+            let (x, y) = curve_point.coordinates().expect("valid curve point");
+
+            let x = chip.base_field_chip().assign(&mut layouter, Value::known(x))?;
+            let y = chip.base_field_chip().assign(&mut layouter, Value::known(y))?;
+            let p = AssignedForeignEdwardsPoint {
+                point: Value::known(self.point),
+                x,
+                y,
+            };
+
+            chip.assert_in_subgroup(&mut layouter, &p)?;
+            chip.assert_on_curve(&mut layouter, &p.x, &p.y)?; // redundant
+            chip.load_from_scratch(&mut layouter)
+        }
+    }
+
+    /// Test circuit that calls `assert_on_curve` for arbitrary (x, y)
+    /// coordinates (not necessarily representing a valid curve point).
+    ///
+    /// This circuit checks if `assert_on_curve` correctly verifies, or fails,
+    /// on a selected set of inputs.
+    #[derive(Clone, Debug)]
+    struct OnCurveCheckCircuit<C: EdwardsCurve> {
+        x: C::Base,
+        y: C::Base,
+    }
+
+    impl<C> Circuit<F> for OnCurveCheckCircuit<C>
+    where
+        C: EdwardsCurve,
+        MultiEmulationParams:
+            FieldEmulationParams<F, C::Base> + FieldEmulationParams<F, C::ScalarField>,
+    {
+        type Config = <EdwardsChip<C> as FromScratch<F>>::Config;
+        type FloorPlanner = SimpleFloorPlanner;
+        type Params = ();
+
+        fn without_witnesses(&self) -> Self {
+            unreachable!()
+        }
+
+        fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+            let committed = meta.instance_column();
+            let instance = meta.instance_column();
+            EdwardsChip::<C>::configure_from_scratch(meta, &[committed, instance])
+        }
+
+        fn synthesize(
+            &self,
+            config: Self::Config,
+            mut layouter: impl Layouter<F>,
+        ) -> Result<(), Error> {
+            let chip = EdwardsChip::<C>::new_from_scratch(&config);
+
+            let x = chip.base_field_chip().assign(&mut layouter, Value::known(self.x))?;
+            let y = chip.base_field_chip().assign(&mut layouter, Value::known(self.y))?;
+
+            chip.assert_on_curve(&mut layouter, &x, &y)?;
+            chip.load_from_scratch(&mut layouter)
+        }
     }
 }

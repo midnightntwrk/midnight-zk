@@ -309,10 +309,10 @@ pub(crate) mod tests {
             _marker: PhantomData,
         };
         let log2_nb_rows = match operation {
-            Operation::Msm => 17,
-            Operation::MsmBounded => 16,
-            Operation::MulByConstant => 16,
-            _ => 10,
+            Operation::Msm => 19,
+            Operation::MsmBounded => 18,
+            Operation::MulByConstant => 18,
+            _ => 12,
         };
         let public_inputs = vec![vec![], vec![]];
         match MockProver::run(log2_nb_rows, &circuit, public_inputs) {
