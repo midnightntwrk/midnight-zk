@@ -11,7 +11,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! TODO: Doc the chip.
+//! Elliptic curve (in twisted Edwards form) operations over foreign fields.
+//! This module supports curves of the form a*x^2 + y^2 = 1 + d*x^2*y^2, where
+//! a is square and d is non-square.
+//!
+//! We require that the emulated elliptic curve do not have low-order points.
+//! In particular, the curve (or the relevant subgroup) must have a large prime
+//! order.
 
 use std::{
     fmt::Debug,
@@ -19,23 +25,30 @@ use std::{
     marker::PhantomData,
 };
 
-use ff::Field;
+use ff::{Field, PrimeField};
 use group::Group;
 use midnight_proofs::{
     circuit::{Chip, Layouter, Value},
-    plonk::Error,
+    plonk::{ConstraintSystem, Error},
 };
 #[cfg(any(test, feature = "testing"))]
 use {crate::testing_utils::Sampleable, rand::RngCore};
 
 use crate::{
     ecc::curves::EdwardsCurve,
-    field::foreign::{
-        field_chip::{FieldChip, FieldChipConfig},
-        params::FieldEmulationParams,
+    field::{
+        foreign::{
+            field_chip::{FieldChip, FieldChipConfig},
+            params::FieldEmulationParams,
+        },
+        AssignedNative,
     },
-    instructions::{AssignmentInstructions, NativeInstructions, ScalarFieldInstructions},
-    types::{AssignedField, InnerConstants, InnerValue, Instantiable},
+    instructions::{
+        ArithInstructions, AssertionInstructions, AssignmentInstructions, ControlFlowInstructions,
+        DecompositionInstructions, EccInstructions, EqualityInstructions, NativeInstructions,
+        PublicInputInstructions, ScalarFieldInstructions, ZeroInstructions,
+    },
+    types::{AssignedBit, AssignedField, InnerConstants, InnerValue, Instantiable},
     CircuitField,
 };
 
@@ -49,7 +62,7 @@ where
     _marker: PhantomData<C>,
 }
 
-/// ['ECChip'] to perform foreign Edwards EC operations.
+/// ECC chip to perform foreign Edwards EC operations.
 #[derive(Clone, Debug)]
 pub struct ForeignEdwardsEccChip<F, C, B, S, N>
 where
@@ -64,6 +77,87 @@ where
     native_gadget: N,
     base_field_chip: FieldChip<F, C::Base, B, N>,
     scalar_field_chip: S,
+}
+
+impl<F, C, B, S, N> ForeignEdwardsEccChip<F, C, B, S, N>
+where
+    F: CircuitField,
+    C: EdwardsCurve,
+    B: FieldEmulationParams<F, C::Base>,
+    S: ScalarFieldInstructions<F>,
+    S::Scalar: InnerValue<Element = C::ScalarField>,
+    N: NativeInstructions<F>,
+{
+    /// Creates new foreign Edwards ECC chip from its building blocks.
+    pub fn new(
+        config: &ForeignEdwardsEccConfig<C>,
+        native_gadget: &N,
+        scalar_field_chip: &S,
+    ) -> Self {
+        let base_field_chip = FieldChip::new(&config.base_field_config, native_gadget);
+        Self {
+            config: config.clone(),
+            native_gadget: native_gadget.clone(),
+            base_field_chip,
+            scalar_field_chip: scalar_field_chip.clone(),
+        }
+    }
+
+    /// Configures the foreign Edwards ECC chip.
+    pub fn configure(
+        _meta: &mut ConstraintSystem<F>,
+        base_field_config: &FieldChipConfig,
+    ) -> ForeignEdwardsEccConfig<C> {
+        ForeignEdwardsEccConfig {
+            base_field_config: base_field_config.clone(),
+            _marker: PhantomData,
+        }
+    }
+
+    /// The emulated base field chip of this foreign Edwards ECC chip.
+    pub fn base_field_chip(&self) -> &FieldChip<F, C::Base, B, N> {
+        &self.base_field_chip
+    }
+
+    /// A chip with instructions for the scalar field of this ECC chip.
+    pub fn scalar_field_chip(&self) -> &S {
+        &self.scalar_field_chip
+    }
+
+    /// Asserts that the given point lies in the subgroup (and thus also on the
+    /// curve).
+    fn assert_in_subgroup(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        p: &AssignedForeignEdwardsPoint<F, C, B>,
+    ) -> Result<(), Error> {
+        // Let h be the cofactor of the subgroup.
+        //
+        // To prove that a point P lies in the subgroup,
+        // we exhibit a curve point Q such that h * Q = P.
+        //
+        // In other words, we prove that P lies in the image
+        // of the multiplication-by-h map.
+        //
+        // Above check needs to be asserted (in-circuit) with the
+        // following constraints:
+        //  1. Q satisfies the curve equation.
+        //  2. h * Q is equal to P.
+        let cofactor = C::ScalarField::from_u128(C::COFACTOR);
+        let q = self.assign_point_unchecked(
+            layouter,
+            p.value().map(|p| {
+                p * cofactor
+                    .invert()
+                    .expect("cofactor must be nonzero and coprime to subgroup order")
+            }),
+        )?;
+
+        self.assert_on_curve(layouter, &q.x, &q.y)?;
+
+        let cofactor_times_q = self.mul_by_constant(layouter, cofactor, &q)?;
+        self.assert_equal(layouter, p, &cofactor_times_q)
+    }
 }
 
 /// Type for foreign Edwards EC points.
@@ -117,6 +211,7 @@ where
     C: EdwardsCurve,
     B: FieldEmulationParams<F, C::Base>,
 {
+    // TODO: why default to 0?
     fn as_public_input(p: &C::CryptographicGroup) -> Vec<F> {
         let (x, y) = (*p).into().coordinates().unwrap_or((C::Base::ZERO, C::Base::ZERO));
         [
@@ -186,6 +281,60 @@ where
     }
 }
 
+impl<F, C, B, S, N> ForeignEdwardsEccChip<F, C, B, S, N>
+where
+    F: CircuitField,
+    C: EdwardsCurve,
+    B: FieldEmulationParams<F, C::Base>,
+    S: ScalarFieldInstructions<F>,
+    S::Scalar: InnerValue<Element = C::ScalarField>,
+    N: NativeInstructions<F>,
+{
+    /// Converts a subgroup point to [AssignedForeignEdwardsPoint].
+    /// The point is _not_ asserted (with constraints) to be on the curve.
+    fn assign_point_unchecked(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        value: Value<C::CryptographicGroup>,
+    ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
+        let (val_x, val_y) = value
+            .map(|v| v.into().coordinates().expect("assign_unchecked: valid point"))
+            .unzip();
+        let x = self.base_field_chip().assign(layouter, val_x)?;
+        let y = self.base_field_chip().assign(layouter, val_y)?;
+        let p = AssignedForeignEdwardsPoint::<F, C, B> { point: value, x, y };
+
+        Ok(p)
+    }
+
+    /// Asserts the curve equation `a*x^2 + y^2 = 1 + d*x^2*y^2` of an emulated
+    /// twisted Edwards curve, given the x and y coordinates in form of
+    /// [AssignedField].
+    fn assert_on_curve(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &AssignedField<F, C::Base, B>,
+        y: &AssignedField<F, C::Base, B>,
+    ) -> Result<(), Error> {
+        let base_chip = self.base_field_chip();
+
+        // Compute x^2, y^2 and a*x^2 + y^2 - 1 - d*x^2*y^2 in-circuit
+        let x_x = base_chip.mul(layouter, x, x, None)?;
+        let y_y = base_chip.mul(layouter, y, y, None)?;
+        let id = base_chip.add_and_mul(
+            layouter,
+            (C::A, &x_x),
+            (C::Base::ONE, &y_y),
+            (C::Base::ZERO, &x_x), // using x_x as dummy value here
+            -C::Base::ONE,
+            -C::D,
+        )?;
+
+        // Assert a*x^2 + y^2 - 1 - d*x^2*y^2 = 0
+        base_chip.assert_zero(layouter, &id)
+    }
+}
+
 impl<F, C, B, S, N> AssignmentInstructions<F, AssignedForeignEdwardsPoint<F, C, B>>
     for ForeignEdwardsEccChip<F, C, B, S, N>
 where
@@ -201,8 +350,11 @@ where
         layouter: &mut impl Layouter<F>,
         value: Value<C::CryptographicGroup>,
     ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
-        // Recreate the curve equation using the self.base_field_chip.
-        todo!()
+        let p = self.assign_point_unchecked(layouter, value)?;
+
+        self.assert_in_subgroup(layouter, &p)?;
+
+        Ok(p)
     }
 
     fn assign_fixed(
@@ -210,6 +362,440 @@ where
         layouter: &mut impl Layouter<F>,
         constant: C::CryptographicGroup,
     ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
-        todo!()
+        let (x, y) = constant.into().coordinates().expect("assign_fixed: valid point");
+        let x = self.base_field_chip().assign_fixed(layouter, x)?;
+        let y = self.base_field_chip().assign_fixed(layouter, y)?;
+
+        Ok(AssignedForeignEdwardsPoint::<F, C, B> {
+            point: Value::known(constant),
+            x,
+            y,
+        })
+    }
+}
+
+impl<F, C, B, S, N> PublicInputInstructions<F, AssignedForeignEdwardsPoint<F, C, B>>
+    for ForeignEdwardsEccChip<F, C, B, S, N>
+where
+    F: CircuitField,
+    C: EdwardsCurve,
+    B: FieldEmulationParams<F, C::Base>,
+    S: ScalarFieldInstructions<F>,
+    S::Scalar: InnerValue<Element = C::ScalarField>,
+    N: NativeInstructions<F> + PublicInputInstructions<F, AssignedBit<F>>,
+{
+    fn as_public_input(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        p: &AssignedForeignEdwardsPoint<F, C, B>,
+    ) -> Result<Vec<AssignedNative<F>>, Error> {
+        Ok([
+            self.base_field_chip.as_public_input(layouter, &p.x)?.as_slice(),
+            self.base_field_chip.as_public_input(layouter, &p.y)?.as_slice(),
+        ]
+        .concat())
+    }
+
+    fn constrain_as_public_input(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        assigned: &AssignedForeignEdwardsPoint<F, C, B>,
+    ) -> Result<(), Error> {
+        self.as_public_input(layouter, assigned)?
+            .iter()
+            .try_for_each(|c| self.native_gadget.constrain_as_public_input(layouter, c))
+    }
+
+    fn assign_as_public_input(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        value: Value<C::CryptographicGroup>,
+    ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
+        let point = self.assign(layouter, value)?;
+        self.constrain_as_public_input(layouter, &point)?;
+        Ok(point)
+    }
+}
+
+/// Inherit assignment instructions for [AssignedField], from the
+/// `scalar_field_chip`.
+impl<F, C, B, S, SP, N> AssignmentInstructions<F, AssignedField<F, C::ScalarField, SP>>
+    for ForeignEdwardsEccChip<F, C, B, S, N>
+where
+    F: CircuitField,
+    C: EdwardsCurve,
+    B: FieldEmulationParams<F, C::Base>,
+    S: ScalarFieldInstructions<F, Scalar = AssignedField<F, C::ScalarField, SP>>,
+    SP: FieldEmulationParams<F, C::ScalarField>,
+    N: NativeInstructions<F>,
+{
+    fn assign(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        value: Value<<S::Scalar as InnerValue>::Element>,
+    ) -> Result<S::Scalar, Error> {
+        self.scalar_field_chip().assign(layouter, value)
+    }
+
+    fn assign_fixed(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        constant: <S::Scalar as InnerValue>::Element,
+    ) -> Result<S::Scalar, Error> {
+        self.scalar_field_chip().assign_fixed(layouter, constant)
+    }
+}
+
+impl<F, C, B, S, N> AssertionInstructions<F, AssignedForeignEdwardsPoint<F, C, B>>
+    for ForeignEdwardsEccChip<F, C, B, S, N>
+where
+    F: CircuitField,
+    C: EdwardsCurve,
+    B: FieldEmulationParams<F, C::Base>,
+    S: ScalarFieldInstructions<F>,
+    S::Scalar: InnerValue<Element = C::ScalarField>,
+    N: NativeInstructions<F>,
+{
+    fn assert_equal(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        p: &AssignedForeignEdwardsPoint<F, C, B>,
+        q: &AssignedForeignEdwardsPoint<F, C, B>,
+    ) -> Result<(), Error> {
+        self.base_field_chip().assert_equal(layouter, &p.x, &q.x)?;
+        self.base_field_chip().assert_equal(layouter, &p.y, &q.y)
+    }
+
+    fn assert_not_equal(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        p: &AssignedForeignEdwardsPoint<F, C, B>,
+        q: &AssignedForeignEdwardsPoint<F, C, B>,
+    ) -> Result<(), Error> {
+        let p_eq_q = self.is_equal(layouter, p, q)?;
+        self.native_gadget.assert_equal_to_fixed(layouter, &p_eq_q, false)
+    }
+
+    fn assert_equal_to_fixed(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        p: &AssignedForeignEdwardsPoint<F, C, B>,
+        constant: C::CryptographicGroup,
+    ) -> Result<(), Error> {
+        let coordinates = constant.into().coordinates().expect("valid point");
+        self.base_field_chip().assert_equal_to_fixed(layouter, &p.x, coordinates.0)?;
+        self.base_field_chip().assert_equal_to_fixed(layouter, &p.y, coordinates.1)
+    }
+
+    fn assert_not_equal_to_fixed(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        p: &AssignedForeignEdwardsPoint<F, C, B>,
+        constant: C::CryptographicGroup,
+    ) -> Result<(), Error> {
+        let p_eq_constant = self.is_equal_to_fixed(layouter, p, constant)?;
+        self.native_gadget.assert_equal_to_fixed(layouter, &p_eq_constant, false)
+    }
+}
+
+impl<F, C, B, S, N> EqualityInstructions<F, AssignedForeignEdwardsPoint<F, C, B>>
+    for ForeignEdwardsEccChip<F, C, B, S, N>
+where
+    F: CircuitField,
+    C: EdwardsCurve,
+    B: FieldEmulationParams<F, C::Base>,
+    S: ScalarFieldInstructions<F>,
+    S::Scalar: InnerValue<Element = C::ScalarField>,
+    N: NativeInstructions<F>,
+{
+    fn is_equal(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        p: &AssignedForeignEdwardsPoint<F, C, B>,
+        q: &AssignedForeignEdwardsPoint<F, C, B>,
+    ) -> Result<AssignedBit<F>, Error> {
+        let eq_x = self.base_field_chip().is_equal(layouter, &p.x, &q.x)?;
+        let eq_y = self.base_field_chip().is_equal(layouter, &p.y, &q.y)?;
+        self.native_gadget.and(layouter, &[eq_x, eq_y])
+    }
+
+    fn is_equal_to_fixed(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        p: &AssignedForeignEdwardsPoint<F, C, B>,
+        constant: <AssignedForeignEdwardsPoint<F, C, B> as InnerValue>::Element,
+    ) -> Result<AssignedBit<F>, Error> {
+        let coordinates = constant.into().coordinates().expect("Valid point");
+        let eq_x = self.base_field_chip().is_equal_to_fixed(layouter, &p.x, coordinates.0)?;
+        let eq_y = self.base_field_chip().is_equal_to_fixed(layouter, &p.y, coordinates.1)?;
+        self.native_gadget.and(layouter, &[eq_x, eq_y])
+    }
+
+    fn is_not_equal(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &AssignedForeignEdwardsPoint<F, C, B>,
+        y: &AssignedForeignEdwardsPoint<F, C, B>,
+    ) -> Result<AssignedBit<F>, Error> {
+        let b = self.is_equal(layouter, x, y)?;
+        self.native_gadget.not(layouter, &b)
+    }
+
+    fn is_not_equal_to_fixed(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &AssignedForeignEdwardsPoint<F, C, B>,
+        constant: <AssignedForeignEdwardsPoint<F, C, B> as InnerValue>::Element,
+    ) -> Result<AssignedBit<F>, Error> {
+        let b = self.is_equal_to_fixed(layouter, x, constant)?;
+        self.native_gadget.not(layouter, &b)
+    }
+}
+
+impl<F, C, B, S, N> ZeroInstructions<F, AssignedForeignEdwardsPoint<F, C, B>>
+    for ForeignEdwardsEccChip<F, C, B, S, N>
+where
+    F: CircuitField,
+    C: EdwardsCurve,
+    B: FieldEmulationParams<F, C::Base>,
+    S: ScalarFieldInstructions<F>,
+    S::Scalar: InnerValue<Element = C::ScalarField>,
+    N: NativeInstructions<F>,
+{
+    fn is_zero(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        p: &AssignedForeignEdwardsPoint<F, C, B>,
+    ) -> Result<AssignedBit<F>, Error> {
+        self.is_equal_to_fixed(layouter, p, C::CryptographicGroup::identity())
+    }
+}
+
+impl<F, C, B, S, N> ControlFlowInstructions<F, AssignedForeignEdwardsPoint<F, C, B>>
+    for ForeignEdwardsEccChip<F, C, B, S, N>
+where
+    F: CircuitField,
+    C: EdwardsCurve,
+    B: FieldEmulationParams<F, C::Base>,
+    S: ScalarFieldInstructions<F>,
+    S::Scalar: InnerValue<Element = C::ScalarField>,
+    N: NativeInstructions<F>,
+{
+    /// Returns `p` if `cond = 1` and `q` otherwise. In essence, this enforces
+    /// `cond * p + (1 - cond) * q = 0` over the emulated twisted Edwards curve.
+    fn select(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        cond: &AssignedBit<F>,
+        p: &AssignedForeignEdwardsPoint<F, C, B>,
+        q: &AssignedForeignEdwardsPoint<F, C, B>,
+    ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
+        let x = self.base_field_chip().select(layouter, cond, &p.x, &q.x)?;
+        let y = self.base_field_chip().select(layouter, cond, &p.y, &q.y)?;
+
+        // point = p if cond is unknown or 1, q if cond is known and 0
+        let a = cond.value().error_if_known_and(|&v| !v);
+        let point = if a.is_ok() { p.point } else { q.point };
+
+        Ok(AssignedForeignEdwardsPoint::<F, C, B> { point, x, y })
+    }
+}
+
+impl<F, C, B, S, N> EccInstructions<F, C> for ForeignEdwardsEccChip<F, C, B, S, N>
+where
+    F: CircuitField,
+    C: EdwardsCurve,
+    B: FieldEmulationParams<F, C::Base>,
+    S: ScalarFieldInstructions<F>,
+    S::Scalar: InnerValue<Element = C::ScalarField>,
+    N: NativeInstructions<F>,
+{
+    type Point = AssignedForeignEdwardsPoint<F, C, B>;
+    type Coordinate = AssignedField<F, C::Base, B>;
+    type Scalar = S::Scalar;
+
+    fn add(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        p: &Self::Point,
+        q: &Self::Point,
+    ) -> Result<Self::Point, Error> {
+        // Complete addition law on twisted edwards curve:
+        // (see https://eprint.iacr.org/2008/013.pdf)
+        //
+        // P + Q = R
+        // <=>
+        // (Px, Py) + (Qx, Qy) = (Rx, Ry)
+        // <=>
+        // Rx = (Px * Qy +     Py * Qx) / (1 + d * Px * Py * Qx * Qy)
+        // Ry = (Py * Qy - a * Px * Qx) / (1 - d * Px * Py * Qx * Qy)
+        // <=> (denominators are non-zero)
+        // Rx * (1 + d * Px * Py * Qx * Qy) = (Px * Qy +     Py * Qx)
+        // Ry * (1 - d * Px * Py * Qx * Qy) = (Py * Qy - a * Px * Qx)
+
+        let base_chip = self.base_field_chip();
+
+        let r_value = p.value().zip(q.value()).map(|(p, q)| p + q);
+        let r = self.assign_point_unchecked(layouter, r_value)?;
+
+        let px_qy = base_chip.mul(layouter, &p.x, &q.y, None)?;
+        let py_qx = base_chip.mul(layouter, &p.y, &q.x, None)?;
+        let py_qy = base_chip.mul(layouter, &p.y, &q.y, None)?;
+        let px_qx = base_chip.mul(layouter, &p.x, &q.x, None)?;
+        let neg_a_px_qx = base_chip.mul_by_constant(layouter, &px_qx, -C::A)?;
+        let d_px_py_qx_qy = base_chip.mul(layouter, &px_qx, &py_qy, Some(C::D))?;
+        let neg_d_px_py_qx_qy = base_chip.neg(layouter, &d_px_py_qx_qy)?;
+
+        // Rx coordinate
+        let num = base_chip.add(layouter, &px_qy, &py_qx)?;
+        let den = base_chip.add_constant(layouter, &d_px_py_qx_qy, C::Base::ONE)?;
+        let lhs = base_chip.mul(layouter, &r.x, &den, None)?;
+        base_chip.assert_equal(layouter, &lhs, &num)?;
+
+        // Ry coordinate
+        let num = base_chip.add(layouter, &py_qy, &neg_a_px_qx)?;
+        let den = base_chip.add_constant(layouter, &neg_d_px_py_qx_qy, C::Base::ONE)?;
+        let lhs = base_chip.mul(layouter, &r.y, &den, None)?;
+        base_chip.assert_equal(layouter, &lhs, &num)?;
+
+        Ok(AssignedForeignEdwardsPoint {
+            point: r_value,
+            x: r.x,
+            y: r.y,
+        })
+    }
+
+    fn double(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        p: &AssignedForeignEdwardsPoint<F, C, B>,
+    ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
+        self.add(layouter, p, p)
+    }
+
+    fn negate(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        p: &Self::Point,
+    ) -> Result<Self::Point, Error> {
+        // The negation of `P = (x, y)` on a twisted Edwards curve is `-P = (-x, y)`
+        let neg_x = self.base_field_chip().neg(layouter, &p.x)?;
+        let neg_x = self.base_field_chip().normalize(layouter, &neg_x)?;
+        Ok(AssignedForeignEdwardsPoint::<F, C, B> {
+            point: -p.point,
+            x: neg_x,
+            y: p.y.clone(),
+        })
+    }
+
+    fn msm(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        scalars: &[Self::Scalar],
+        bases: &[Self::Point],
+    ) -> Result<Self::Point, Error> {
+        let scalars = scalars
+            .iter()
+            .map(|s| (s.clone(), C::ScalarField::NUM_BITS as usize))
+            .collect::<Vec<_>>();
+
+        self.msm_by_bounded_scalars(layouter, &scalars, bases)
+    }
+
+    fn msm_by_bounded_scalars(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        scalars: &[(S::Scalar, usize)],
+        bases: &[AssignedForeignEdwardsPoint<F, C, B>],
+    ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
+        if scalars.len() != bases.len() {
+            panic!("Nr of scalars and points should be the same.")
+        }
+
+        let identity = self.assign_fixed(layouter, C::CryptographicGroup::identity())?;
+        let mut res = identity.clone();
+
+        for ((s, bit_size), b) in scalars.iter().zip(bases.iter()) {
+            let scalar_bits =
+                self.scalar_field_chip()
+                    .assigned_to_le_bits(layouter, s, Some(*bit_size), true)?;
+            let mut p = b.clone();
+
+            // Simple double-and-add
+            for (i, b) in scalar_bits.iter().enumerate() {
+                let addend = self.select(layouter, b, &p, &identity)?;
+                res = self.add(layouter, &res, &addend)?;
+                // The doubling in the last iteration is not needed
+                if i < scalar_bits.len() - 1 {
+                    p = self.double(layouter, &p)?;
+                }
+            }
+        }
+
+        Ok(res)
+    }
+
+    fn mul_by_constant(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        scalar: C::ScalarField,
+        base: &AssignedForeignEdwardsPoint<F, C, B>,
+    ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
+        if scalar == C::ScalarField::ZERO {
+            return self.assign_fixed(layouter, C::CryptographicGroup::identity());
+        } else if scalar == C::ScalarField::ONE {
+            return Ok(base.clone());
+        }
+
+        let scalar_bits = scalar.to_bits_le(None);
+        let mut p = base.clone();
+        let mut res = self.assign_fixed(layouter, C::CryptographicGroup::identity())?;
+
+        // Simple double-and-add
+        for (i, b) in scalar_bits.iter().enumerate() {
+            if *b {
+                res = self.add(layouter, &res, &p)?;
+            }
+            // The doubling in the last iteration is not needed
+            if i + 1 < scalar_bits.len() {
+                p = self.double(layouter, &p)?;
+            }
+        }
+
+        Ok(res)
+    }
+
+    fn point_from_coordinates(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &AssignedField<F, C::Base, B>,
+        y: &AssignedField<F, C::Base, B>,
+    ) -> Result<Self::Point, Error> {
+        let point = x
+            .value()
+            .zip(y.value())
+            .map(|(x, y)| C::from_xy(x, y).expect("valid coordinates").into_subgroup());
+
+        let p = AssignedForeignEdwardsPoint::<F, C, B> {
+            point,
+            x: x.clone(),
+            y: y.clone(),
+        };
+
+        self.assert_in_subgroup(layouter, &p)?;
+
+        Ok(p)
+    }
+
+    fn x_coordinate(&self, point: &Self::Point) -> Self::Coordinate {
+        point.x.clone()
+    }
+
+    fn y_coordinate(&self, point: &Self::Point) -> Self::Coordinate {
+        point.y.clone()
+    }
+
+    fn base_field(&self) -> &impl DecompositionInstructions<F, Self::Coordinate> {
+        self.base_field_chip()
     }
 }
