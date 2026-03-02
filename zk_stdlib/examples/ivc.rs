@@ -10,7 +10,9 @@ use group::Group;
 use midnight_circuits::{
     ecc::{
         curves::CircuitCurve,
-        foreign::{nb_foreign_ecc_chip_columns, ForeignWeierstrassEccChip, ForeignWeierstrassEccConfig},
+        foreign::{
+            nb_foreign_ecc_chip_columns, ForeignWeierstrassEccChip, ForeignWeierstrassEccConfig,
+        },
     },
     field::{
         decomposition::{
@@ -96,8 +98,11 @@ fn configure_ivc_circuit(
     };
 
     let base_config = FieldChip::<F, CBase, C, NG>::configure(meta, &advice_columns);
-    let curve_config =
-        ForeignWeierstrassEccChip::<F, C, C, NG, NG>::configure(meta, &base_config, &advice_columns);
+    let curve_config = ForeignWeierstrassEccChip::<F, C, C, NG, NG>::configure(
+        meta,
+        &base_config,
+        &advice_columns,
+    );
 
     let poseidon_config = PoseidonChip::configure(
         meta,
