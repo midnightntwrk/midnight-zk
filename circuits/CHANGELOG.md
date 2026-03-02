@@ -21,6 +21,7 @@ verification keys break backwards compatibility.
 * Add BN poseidon constants [#222](https://github.com/midnightntwrk/midnight-zk/pull/222)
 * Add `CircuitField` implementations for `k256::Fp` and `k256::Fq` [#192](https://github.com/midnightntwrk/midnight-zk/pull/192)
 * Foreign arithmetic over twisted Edwards curves [#241](https://github.com/midnightntwrk/midnight-zk/pull/241)
+* Custom gate for foreign point addition over twisted Edwards curves [#242](https://github.com/midnightntwrk/midnight-zk/pull/242)
 
 ### Changed
 * Make handling of fixed_bases more robust in verifier gadget [#212](https://github.com/midnightntwrk/midnight-zk/pull/212)

@@ -310,9 +310,10 @@ pub(crate) mod tests {
         };
         let log2_nb_rows = match operation {
             Operation::Msm => 19,
-            Operation::MsmBounded => 18,
-            Operation::MulByConstant => 18,
-            _ => 12,
+            Operation::MsmBounded => 17,
+            Operation::MulByConstant => 17,
+            Operation::Coordinates => 12,
+            _ => 11,
         };
         let public_inputs = vec![vec![], vec![]];
         match MockProver::run(log2_nb_rows, &circuit, public_inputs) {
