@@ -557,7 +557,7 @@ where
     };
 
     // Compute linearization polynomial
-    let linearization_poly = {
+    let (homogeneous_lin_poly, lin_poly_affine_term) = {
         group.bench_function("Compute linearization poly", |b| {
             b.iter(|| {
                 let _ = compute_linearization_poly(
@@ -574,9 +574,9 @@ where
     };
 
     debug_assert_eq!(
-        eval_polynomial(&linearization_poly, x),
-        F::ZERO,
-        "The linearization poly should evaluate to zero at the evaluation challenge x."
+        eval_polynomial(&homogeneous_lin_poly, x),
+        -lin_poly_affine_term,
+        "L'(x) should equal -C, where C is the constant part from fully evaluated identities."
     );
 
     let queries = {
@@ -591,7 +591,7 @@ where
                     &lookups,
                     &trashcans,
                     x,
-                    &linearization_poly,
+                    &homogeneous_lin_poly,
                 );
             })
         });
@@ -604,7 +604,7 @@ where
             &lookups,
             &trashcans,
             x,
-            &linearization_poly,
+            &homogeneous_lin_poly,
         )
     };
 

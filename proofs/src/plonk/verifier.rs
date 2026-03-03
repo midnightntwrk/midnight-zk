@@ -353,7 +353,6 @@ where
         &challenges,
     );
 
-    let const_1_com = CS::constant_commitment();
     let lin_com = compute_linearization_commitment(
         expressions,
         vk,
@@ -362,7 +361,6 @@ where
         &xn,
         &splitting_factor,
         &quotient_limb_coms,
-        &const_1_com,
     );
 
     // Collect queries that are checked in the multi-open argument
