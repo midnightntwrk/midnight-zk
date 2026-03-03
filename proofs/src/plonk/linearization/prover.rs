@@ -40,7 +40,7 @@ pub(crate) fn compute_linearization_poly<F: PrimeField, CS: PolynomialCommitment
         Polynomial::init(pk.vk.get_domain().n as usize),
         |mut acc, (col_idx, eval)| match col_idx {
             Some(col_idx) => {
-                let acc = acc + &pk.fixed_polys[*col_idx] * (y_pow * eval);
+                let acc = acc + pk.fixed_polys[*col_idx].clone() * (y_pow * eval);
                 y_pow *= y;
                 acc
             }
@@ -57,6 +57,6 @@ pub(crate) fn compute_linearization_poly<F: PrimeField, CS: PolynomialCommitment
     quotient_limbs
         .iter()
         .zip(splitting_powers)
-        .map(|(l, p)| l * p)
+        .map(|(l, p)| l.clone() * p)
         .fold(lin_poly, |acc, next| acc - &next)
 }
