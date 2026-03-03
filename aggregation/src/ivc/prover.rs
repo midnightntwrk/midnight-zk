@@ -14,14 +14,14 @@ use midnight_circuits::{
     verifier::{Accumulator, AssignedAccumulator, AssignedVk},
 };
 use midnight_proofs::{
-    plonk::{self, Error},
+    plonk::{self},
     poly::kzg::{params::ParamsKZG, KZGCommitmentScheme},
     transcript::{CircuitTranscript, Transcript},
 };
 use midnight_zk_stdlib::MidnightPK;
 use rand::rngs::OsRng;
 
-use super::{IvcCircuit, IvcInstance, IvcTransition, IvcWitness, C, E, F, S};
+use super::{IvcCircuit, IvcError, IvcInstance, IvcTransition, IvcWitness, C, E, F, S};
 
 /// Stateful IVC prover holding:
 /// - the SRS (params),
@@ -57,7 +57,7 @@ impl<T: IvcTransition> IvcProver<T> {
     ///
     /// If the current state is genesis (no previous proof), a trivial
     /// accumulator is used instead of verifying the previous proof.
-    pub fn prove_step(&mut self, transition_witness: T::Witness) -> Result<Vec<u8>, Error> {
+    pub fn prove_step(&mut self, transition_witness: T::Witness) -> Result<Vec<u8>, IvcError> {
         let next_state = T::transition(&self.state, transition_witness.clone());
         let is_genesis = self.proof.is_empty();
 
@@ -101,7 +101,7 @@ impl<T: IvcTransition> IvcProver<T> {
             >(vk, &[&[C::identity()]], &[&[&prev_pi]], &mut transcript)?;
 
             if !dual_msm.clone().check(&self.params.verifier_params()) {
-                return Err(Error::Opening);
+                return Err(IvcError::InvalidProof);
             }
 
             Accumulator::from_dual_msm(dual_msm, "self_vk", &fixed_bases)

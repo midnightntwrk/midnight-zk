@@ -20,6 +20,7 @@
 //! the state that the transition function increments at each step.
 
 pub use circuit::{IvcCircuit, IvcInstance, IvcWitness};
+pub use error::IvcError;
 use midnight_circuits::{
     instructions::{AssignmentInstructions, PublicInputInstructions},
     types::{AssignedBit, InnerValue, Instantiable},
@@ -40,6 +41,7 @@ pub(crate) type C = <S as SelfEmulation>::C;
 pub(crate) type E = <S as SelfEmulation>::Engine;
 
 pub mod circuit;
+pub mod error;
 pub mod prover;
 pub mod setup;
 pub mod verifier;

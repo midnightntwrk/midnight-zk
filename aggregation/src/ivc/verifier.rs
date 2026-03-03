@@ -8,13 +8,13 @@
 use group::Group;
 use midnight_circuits::{hash::poseidon::PoseidonState, verifier::Accumulator};
 use midnight_proofs::{
-    plonk::{self, Error},
+    plonk::{self},
     poly::kzg::{params::ParamsVerifierKZG, KZGCommitmentScheme},
     transcript::{CircuitTranscript, Transcript},
 };
 use midnight_zk_stdlib::{MidnightVK, Relation};
 
-use super::{IvcCircuit, IvcInstance, IvcTransition, C, E, F, S};
+use super::{IvcCircuit, IvcError, IvcInstance, IvcTransition, C, E, F, S};
 
 /// Lightweight IVC verifier carrying only:
 /// - the self-verifying key,
@@ -44,15 +44,16 @@ impl IvcVerifier {
         &self,
         instance: &IvcInstance<T>,
         proof: &[u8],
-    ) -> Result<(), Error> {
+    ) -> Result<(), IvcError> {
         // Reject proofs whose instance claims a different verifying key.
         if instance.vk_repr != self.vk.vk().transcript_repr() {
-            return Err(Error::Opening);
+            return Err(IvcError::VkMismatch);
         }
 
         let fixed_bases = midnight_circuits::verifier::fixed_bases::<S>("self_vk", self.vk.vk());
 
-        let pi = IvcCircuit::<T>::format_instance(instance)?;
+        let pi =
+            IvcCircuit::<T>::format_instance(instance).map_err(|_| IvcError::InvalidInstance)?;
 
         let mut transcript = CircuitTranscript::<PoseidonState<F>>::init_from_bytes(proof);
         let dual_msm =
@@ -61,7 +62,8 @@ impl IvcVerifier {
                 &[&[C::identity()]],
                 &[&[&pi]],
                 &mut transcript,
-            )?;
+            )
+            .map_err(|_| IvcError::InvalidProof)?;
 
         let proof_acc = Accumulator::from_dual_msm(dual_msm, "self_vk", &fixed_bases);
 
@@ -69,9 +71,9 @@ impl IvcVerifier {
         // invariant, with a single pairing, by accumulating them first.
         let final_acc = Accumulator::<S>::accumulate(&[proof_acc, instance.acc.clone()]);
         if !final_acc.check(&self.params_verifier, &fixed_bases) {
-            return Err(Error::Opening);
+            return Err(IvcError::InvalidProof);
         };
-        transcript.assert_empty().map_err(|_| Error::Opening)?;
+        transcript.assert_empty().map_err(|_| IvcError::TranscriptNotEmpty)?;
         Ok(())
     }
 }
