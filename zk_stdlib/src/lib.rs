@@ -116,6 +116,12 @@ type Bls12381Chip =
 
 const ZKSTD_VERSION: u32 = 1;
 
+/// Byte size of a serialized BLS12-381 G1 commitment (compressed).
+const COMMITMENT_BYTE_SIZE: usize = 48;
+
+/// Byte size of a serialized BLS12-381 scalar.
+const SCALAR_BYTE_SIZE: usize = 32;
+
 /// Architecture of the standard library. Specifies what chips need to be
 /// configured.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Encode, Decode)]
@@ -1274,13 +1280,14 @@ impl<'a, R: Relation> MidnightCircuit<'a, R> {
     }
 
     /// A MidnightCircuit with unknown instance-witness for the given relation.
-    /// This function takes an additional parameter `k`, the desired number of
-    /// rows in the underlying circuit to this relation.
+    /// This function takes an additional parameter `k`, the log2 of the desired
+    /// number of rows in the underlying circuit to this relation.
     ///
     /// `k` must be at least the minimum number of rows necessary to implement
     /// the circuit. If such value is not known, use
-    /// [MidnightCircuit::from_relation] instead, which is slower but will
-    /// automatically derive the optimal `k`.
+    /// [`MidnightCircuit::from_relation`] instead, which determines the optimal
+    /// `k` automatically by running the circuit configuration repeatedly with
+    /// different table sizes.
     pub fn from_relation_with_k(relation: &'a R, k: u32) -> Self {
         MidnightCircuit::new(
             relation,
@@ -1309,7 +1316,7 @@ impl<'a, R: Relation> MidnightCircuit<'a, R> {
         }
 
         let model_with_max_bit_len = |max_bit_len: u8| -> CircuitModel {
-            circuit_model::<_, 48, 32>(&MidnightCircuit {
+            circuit_model::<_, COMMITMENT_BYTE_SIZE, SCALAR_BYTE_SIZE>(&MidnightCircuit {
                 relation,
                 max_bit_len,
                 instance: Value::unknown(),
@@ -1775,12 +1782,13 @@ pub fn setup_vk<R: Relation>(
 
 /// Generates a verifying key for a `MidnightCircuit<R>` circuit.
 ///
-/// This function takes an additional parameter `k`, the desired number of rows
-/// in the underlying circuit to this relation.
+/// This function takes an additional parameter `k`, the log2 of the desired
+/// number of rows in the underlying circuit to this relation.
 /// `k` must be at least the minimum number of rows necessary to implement
 /// the circuit. If such value is not known, use
-/// [MidnightCircuit::from_relation] instead, which is slower but will
-/// automatically derive the optimal `k`.
+/// [`MidnightCircuit::from_relation`] instead, which determines the optimal
+/// `k` automatically by running the circuit configuration repeatedly with
+/// different table sizes.
 ///
 /// This function downsizes the parameters to match the size `k`.
 pub fn setup_vk_with_k<R: Relation>(
@@ -1959,14 +1967,14 @@ where
 /// Cost model of the given relation.
 pub fn cost_model<R: Relation>(relation: &R) -> CircuitModel {
     let circuit = MidnightCircuit::from_relation(relation);
-    circuit_model::<_, 48, 32>(&circuit)
+    circuit_model::<_, COMMITMENT_BYTE_SIZE, SCALAR_BYTE_SIZE>(&circuit)
 }
 
 /// Cost model of the given relation.
-/// This function takes an additional parameter `k`, an upper-bound in the
-/// number of rows necessary to implement in the underlying circuit to this
-/// relation.
+/// This function takes an additional parameter `k`, an upper-bound in the log2
+/// of the number of rows necessary to implement in the underlying circuit to
+/// this relation.
 pub fn cost_model_with_k<R: Relation>(relation: &R, k: u32) -> CircuitModel {
     let circuit = MidnightCircuit::from_relation_with_k(relation, k);
-    circuit_model::<_, 48, 32>(&circuit)
+    circuit_model::<_, COMMITMENT_BYTE_SIZE, SCALAR_BYTE_SIZE>(&circuit)
 }

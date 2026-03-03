@@ -86,6 +86,11 @@ where
     /// # Panics (in debug mode)
     ///
     /// If any term carries a label other than `NoLabel` or `Advice`.
+    //
+    // We only allow `NoLabel` or `Advice` because these types of labels are
+    // not relevant for the `verifier_gadget` in `midnight-circuits` (at least for
+    // now). Other types of labels may carry information that we do not want to lose
+    // when "collapsing".
     pub fn collapse(&mut self) {
         debug_assert!(
             self.labels
