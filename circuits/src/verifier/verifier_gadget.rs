@@ -343,7 +343,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         ))
     }
 
-    /// Construct the commitment to the linearization polynomial in-circuit
+    /// Construct the commitment and evaluation to the linearization polynomial in-circuit
     /// (which will be checked in-circuit that it opens to 0 at x in the
     /// multi-open argument):
     ///
@@ -374,8 +374,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         xn: AssignedCell<S::F, S::F>,
         splitting_factor: AssignedCell<S::F, S::F>,
         quotient_limb_commitments: &'com [S::AssignedPoint],
-        generator: &'com S::AssignedPoint,
-    ) -> Result<AssignedMsm<S>, Error> {
+    ) -> Result<(AssignedMsm<S>, AssignedCell<S::F, S::F>), Error> {
         let mut acc_msm: AssignedMsm<S> = AssignedMsm::empty();
 
         let mut splitting_powers = Vec::with_capacity(quotient_limb_commitments.len());
@@ -407,6 +406,10 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             y_pow = scalar_chip.mul(layouter, &y_pow, &y, None)?;
         }
 
+        // Fully evaluated identities (None) are excluded from the MSM.
+        // Their accumulated scalar C is returned so the caller can use -C as
+        // the expected evaluation of L'(X) at x.
+        let mut constant_sum = zero;
         for (col_idx, eval) in grouped_points {
             match col_idx.map(|column_index| vk.fixed_commitment_name(column_index)) {
                 Some(com) => {
@@ -419,12 +422,13 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                         ),
                     )?;
                 }
-                // Fully evaluated identities go to the constant term
-                None => acc_msm.add_term(&AssignedBoundedScalar::new(&eval, None), generator),
+                None => {
+                    constant_sum = scalar_chip.add(layouter, &constant_sum, &eval)?;
+                }
             }
         }
 
-        Ok(acc_msm)
+        Ok((acc_msm, constant_sum))
     }
 
     /// Given a [super::traces::VerifierTrace], this function computes the
@@ -656,8 +660,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         let splitting_factor =
             ArithInstructions::pow(&self.scalar_chip, layouter, &x, (1 << k) - 1)?;
         let xn = self.scalar_chip.mul(layouter, &x, &splitting_factor, None)?;
-        let assigned_gen = self.curve_chip.assign_fixed(layouter, S::C::generator())?;
-        let linearization_com = Self::compute_linearization_commitment(
+        let (linearization_com, constant_sum) = Self::compute_linearization_commitment(
             layouter,
             &self.scalar_chip,
             assigned_vk,
@@ -666,8 +669,11 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             xn,
             splitting_factor,
             &limb_commitments,
-            &assigned_gen,
         )?;
+        // L'(x) = L(x) - C = -C; the expected opening of the linearization
+        // commitment is the negation of the sum from fully-evaluated
+        // identities (constant part of the linearization polynomial).
+        let expected_lin_eval = self.scalar_chip.neg(layouter, &constant_sum)?;
 
         let one = AssignedBoundedScalar::<S::F>::one(layouter, &self.scalar_chip)?;
         let omega = assigned_vk.domain.get_omega();
@@ -745,7 +751,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                 &x,
                 CommitmentLabel::Custom("linearization_poly".into()),
                 &linearization_com,
-                &self.scalar_chip.assign_fixed(layouter, S::F::ZERO)?,
+                &expected_lin_eval,
             )));
 
         // We are now convinced the circuit is satisfied so long as the

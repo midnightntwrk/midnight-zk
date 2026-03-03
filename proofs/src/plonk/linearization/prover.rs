@@ -38,14 +38,15 @@ pub(crate) fn compute_linearization_poly<F: PrimeField, CS: PolynomialCommitment
     let mut y_pow = F::ONE;
     let lin_poly = expressions.iter().rev().fold(
         Polynomial::init(pk.vk.get_domain().n as usize),
-        |mut acc, (col_idx, eval)| match col_idx {
+        |acc, (col_idx, eval)| match col_idx {
             Some(col_idx) => {
                 let acc = acc + &pk.fixed_polys[*col_idx] * (y_pow * eval);
                 y_pow *= y;
                 acc
             }
             None => {
-                acc.values[0] += y_pow * eval;
+                // The constant term is excluded from L'(X). It is moved to the
+                // eval side of the VerifierQuery (as -C) by the verifier.
                 y_pow *= y;
                 acc
             }
