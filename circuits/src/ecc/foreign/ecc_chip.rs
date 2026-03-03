@@ -746,7 +746,7 @@ where
     ) -> Result<AssignedForeignPoint<F, C, B>, Error> {
         const WS: usize = 4;
 
-        // If some of the scalars is known to be 1, or as bound of 1 (i.e. it is known
+        // If any of the scalars is known to be 1, or has a bound of 1 (i.e. it is known
         // to be either 0 or 1) remove it (with its base) from the list and simply add
         // it at the end.
         let one: S::Scalar = self.scalar_field_chip.assign_fixed(layouter, C::ScalarField::ONE)?;
