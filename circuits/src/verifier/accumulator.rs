@@ -144,6 +144,18 @@ impl<S: SelfEmulation> Accumulator<S> {
         DualMSM::new(lhs, rhs).check(params)
     }
 
+    /// Returns a trivial accumulator that satisfies the pairing invariant.
+    ///
+    /// All scalars (variable and fixed-base) are zero, so both sides
+    /// evaluate to the identity point regardless of the bases.
+    pub fn trivial(fixed_base_names: &[String]) -> Self {
+        let zero_fixed = fixed_base_names.iter().map(|n| (n.clone(), S::F::ZERO)).collect();
+        Accumulator {
+            lhs: Msm::new(&[S::C::default()], &[S::F::ZERO], &BTreeMap::new()),
+            rhs: Msm::new(&[S::C::default()], &[S::F::ZERO], &zero_fixed),
+        }
+    }
+
     /// An accumulator a given lhs and rhs terms respectively.
     pub fn new(lhs: Msm<S>, rhs: Msm<S>) -> Self {
         Accumulator { lhs, rhs }

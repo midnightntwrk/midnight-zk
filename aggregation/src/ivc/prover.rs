@@ -7,14 +7,11 @@
 //! accumulates the result, produces a new proof for the updated state, and
 //! stores everything internally so the next step can build on it.
 
-use std::collections::BTreeMap;
-
-use ff::Field;
 use group::Group;
 use midnight_circuits::{
     hash::poseidon::PoseidonState,
     types::Instantiable,
-    verifier::{Accumulator, AssignedAccumulator, AssignedVk, Msm},
+    verifier::{Accumulator, AssignedAccumulator, AssignedVk},
 };
 use midnight_proofs::{
     plonk::{self, Error},
@@ -68,9 +65,24 @@ impl<T: IvcTransition> IvcProver<T> {
         let vk_repr = vk.transcript_repr();
 
         let fixed_bases = midnight_circuits::verifier::fixed_bases::<S>("self_vk", vk);
+
         // Off-circuit verification of the previous proof.
         let proof_acc = if is_genesis {
-            trivial_acc(&fixed_bases.keys().cloned().collect::<Vec<_>>())
+            // In the case of genesis, we simply set `proof_acc` to be the trivial
+            // accumulator (which evaluates to the identity point on both sides).
+            //
+            // Arguably, this is not equivalent to what is happening in-circuit (where we
+            // scale the result of `prepare` by bit 0) as the trivial accumulator only has 1
+            // base, whereas the result of `prepare` may have several bases.
+            //
+            // That means that the batching challenge `r` used for accumulating `proof_acc`
+            // with `acc` will be different in the off-circuit and in-circuit executions
+            // during the genesis iteration. This is not a problem if `acc` also evaluates
+            // to the identity in such iteration (which is the case by construction)
+            // essentially because `0 + r * 0` equals `0` for any `r` so the resulting
+            // accumulator (so-called `next_acc`) will be the same in both (in-circuit and
+            // off-circuit) executions after `collapse`.
+            Accumulator::<S>::trivial(&fixed_bases.keys().cloned().collect::<Vec<_>>())
         } else {
             // Construct the public inputs of the previous proof.
             let prev_pi = [
@@ -96,13 +108,13 @@ impl<T: IvcTransition> IvcProver<T> {
         };
 
         // Accumulate the proof accumulator with the previous accumulator.
-        let mut acc = Accumulator::accumulate(&[proof_acc, self.acc.clone()]);
-        acc.collapse();
+        let mut next_acc = Accumulator::accumulate(&[proof_acc, self.acc.clone()]);
+        next_acc.collapse();
 
         let instance = IvcInstance {
             vk_repr,
             state: next_state.clone(),
-            acc: acc.clone(),
+            acc: next_acc.clone(),
         };
 
         let witness = IvcWitness {
@@ -123,7 +135,7 @@ impl<T: IvcTransition> IvcProver<T> {
 
         self.state = next_state;
         self.proof = proof.clone();
-        self.acc = acc;
+        self.acc = next_acc;
 
         Ok(proof)
     }
@@ -141,19 +153,4 @@ impl<T: IvcTransition> IvcProver<T> {
             acc: self.acc.clone(),
         }
     }
-}
-
-/// Returns a trivial accumulator that satisfies the invariant.
-///
-/// This is the result of `scale_by_bit` with a 0 bit on any collapsed
-/// accumulator, which zeroes out all scalars.
-pub fn trivial_acc(fixed_base_names: &[String]) -> Accumulator<S> {
-    Accumulator::<S>::new(
-        Msm::new(&[C::default()], &[F::ZERO], &BTreeMap::new()),
-        Msm::new(
-            &[C::default()],
-            &[F::ZERO],
-            &fixed_base_names.iter().map(|name| (name.clone(), F::ZERO)).collect(),
-        ),
-    )
 }

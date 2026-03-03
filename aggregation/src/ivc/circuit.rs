@@ -186,10 +186,8 @@ impl<T: IvcTransition> Relation for IvcCircuit<T> {
             witness.map(|w| w.prev_proof),
         )?;
 
-        // If `prev_state` is genesis, the provided accumulator is discarded
-        // and replaced by the trivially valid one (defined in
-        // [`trivial_acc`](super::prover::trivial_acc)). Scaling by bit 0
-        // zeros out all MSM scalars, making the result equivalent.
+        // If `prev_state` is genesis, the provided accumulator is discarded/multiplied
+        // by 0 so that it trivially satisfies the invariant.
         let is_genesis = ivc_gadget.is_genesis(layouter, &prev_state)?;
         let is_not_genesis = std_lib.not(layouter, &is_genesis)?;
         AssignedAccumulator::scale_by_bit(
