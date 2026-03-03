@@ -28,6 +28,7 @@ verification keys break backwards compatibility.
 * Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 
 ### Changed
+* Split linearization commitment into homogeneous and affine parts, removing the generator point from the MSM [#313](https://github.com/midnightntwrk/midnight-zk/pull/313)
 * Make `NB_ARITH_COLS` configurable instead of a compile-time constant [#287](https://github.com/midnightntwrk/midnight-zk/pull/287)
 * Support `fewer-point-sets` feature in verifier gadget [#281](https://github.com/midnightntwrk/midnight-zk/pull/281)
 * `multi_prepare` now takes a slice instead of `IntoIterator` [#281](https://github.com/midnightntwrk/midnight-zk/pull/281)

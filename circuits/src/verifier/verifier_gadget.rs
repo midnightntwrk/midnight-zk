@@ -21,7 +21,6 @@
 use std::{collections::BTreeMap, fmt::Debug, iter};
 
 use ff::Field;
-use group::Group;
 use midnight_proofs::{
     circuit::{AssignedCell, Chip, Layouter, Value},
     plonk::{ConstraintSystem, Error},
@@ -395,9 +394,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         ))
     }
 
-    /// Construct the commitment to the linearization polynomial in-circuit
-    /// (which will be checked in-circuit that it opens to `0` at `x` in the
-    /// multi-open argument):
+    /// Construct the commitment to the linearization polynomial in-circuit:
     ///
     ///  `S_0 * id_0(x) + y * S_1 * id_1(x) + ... + y^m * S_m * id_m(x)
     ///        - (h_0 + x^{n-1} * h_1 + ... + x^{l*(n-1)} * h_l) * (x^n-1),`
@@ -409,11 +406,13 @@ impl<S: SelfEmulation> VerifierGadget<S> {
     /// * `S_j` is, either,
     ///      - (i)  the commitment to a fixed column corresponding to a simple,
     ///        multiplicative selector, or,
-    ///      - (ii) the commitment to the constant polynomial `P(X) = 1` (in
-    ///        case the corresponding identity `id_j` has been fully evaluated
-    ///        and, thus, the resulting scalar `id_j(x)` is part of the constant
-    ///        term of the linearization poly),
+    ///      - (ii) 1 (in case the corresponding identity `id_j` has been fully
+    ///        evaluated and, thus, the resulting scalar `id_j(x)` contributes to
+    ///        the affine term `C` of the linearization polynomial),
     /// * `h_k` are commitments to the limbs of the quotient polynomial.
+    ///
+    /// The linearization polynomial is split into its homogeneous and affine parts:
+    /// `L(X) = L'(X) + C`. Both parts are returned separately.
     ///
     /// # Arguments
     ///
@@ -425,7 +424,8 @@ impl<S: SelfEmulation> VerifierGadget<S> {
     ///
     /// # Returns
     ///
-    /// The commitment to the linearization polynomial as [AssignedMsm].
+    /// A tuple `(L'(X), C)`, where `L'(X)` is an [AssignedMsm] and `C` is a
+    /// scalar. The verifier uses `-C` as the expected evaluation of `L'(X)` at `x`.
     #[allow(clippy::too_many_arguments)]
     #[allow(clippy::type_complexity)]
     fn compute_linearization_commitment<'com>(
@@ -437,8 +437,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         xn: AssignedCell<S::F, S::F>,
         splitting_factor: AssignedCell<S::F, S::F>,
         quotient_limb_commitments: &'com [S::AssignedPoint],
-        generator: &'com S::AssignedPoint,
-    ) -> Result<AssignedMsm<S>, Error> {
+    ) -> Result<(AssignedMsm<S>, AssignedCell<S::F, S::F>), Error> {
         let mut acc_msm: AssignedMsm<S> = AssignedMsm::empty();
 
         let mut splitting_powers = Vec::with_capacity(quotient_limb_commitments.len());
@@ -470,6 +469,10 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             y_pow = scalar_chip.mul(layouter, &y_pow, &y, None)?;
         }
 
+        // Fully evaluated identities (None) are excluded from the MSM.
+        // Their accumulated scalar C is returned so the caller can use -C as
+        // the expected evaluation of L'(X) at x.
+        let mut lin_poly_affine_term = zero;
         for (col_idx, eval) in grouped_points {
             match col_idx.map(|column_index| vk.fixed_commitment_name(column_index)) {
                 Some(com) => {
@@ -482,12 +485,13 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                         ),
                     )?;
                 }
-                // Fully evaluated identities go to the constant term
-                None => acc_msm.add_term(&AssignedBoundedScalar::new(&eval, None), generator),
+                None => {
+                    lin_poly_affine_term = scalar_chip.add(layouter, &lin_poly_affine_term, &eval)?;
+                }
             }
         }
 
-        Ok(acc_msm)
+        Ok((acc_msm, lin_poly_affine_term))
     }
 
     /// Given a [super::traces::VerifierTrace], this function computes the
@@ -728,8 +732,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         let splitting_factor =
             ArithInstructions::pow(&self.scalar_chip, layouter, &x, (1 << k) - 1)?;
         let xn = self.scalar_chip.mul(layouter, &x, &splitting_factor, None)?;
-        let assigned_gen = self.curve_chip.assign_fixed(layouter, S::C::generator())?;
-        let linearization_com = Self::compute_linearization_commitment(
+        let (linearization_com, lin_poly_affine_term) = Self::compute_linearization_commitment(
             layouter,
             &self.scalar_chip,
             assigned_vk,
@@ -738,8 +741,9 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             xn,
             splitting_factor,
             &limb_commitments,
-            &assigned_gen,
         )?;
+        // The expected opening of L'(X) at x is -C (the negated affine term).
+        let expected_lin_eval = self.scalar_chip.neg(layouter, &lin_poly_affine_term)?;
 
         let one = AssignedBoundedScalar::<S::F>::one(layouter, &self.scalar_chip)?;
         let omega = assigned_vk.domain.get_omega();
@@ -817,7 +821,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                 &x,
                 CommitmentLabel::Custom("linearization_poly".into()),
                 &linearization_com,
-                &self.scalar_chip.assign_fixed(layouter, S::F::ZERO)?,
+                &expected_lin_eval,
             )));
 
         // We are now convinced the circuit is satisfied so long as the
