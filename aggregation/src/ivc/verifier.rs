@@ -73,7 +73,8 @@ impl IvcVerifier {
         let final_acc = Accumulator::<S>::accumulate(&[proof_acc, instance.acc.clone()]);
         if !final_acc.check(&self.s_g2, &fixed_bases) {
             return Err(Error::Opening);
-        }
+        };
+        transcript.assert_empty().map_err(|_| Error::Opening)?;
         Ok(())
     }
 }
