@@ -38,7 +38,7 @@ pub fn setup<T: IvcTransition>(params: ParamsKZG<E>, k: u32) -> (IvcProver<T>, I
 
     let verifier = IvcVerifier {
         vk,
-        s_g2: params.s_g2().into(),
+        params_verifier: params.verifier_params(),
     };
 
     let prover = IvcProver {

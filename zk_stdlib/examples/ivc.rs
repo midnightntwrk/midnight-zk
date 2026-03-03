@@ -357,7 +357,7 @@ fn main() {
         accumulated.collapse();
 
         assert!(
-            accumulated.check(&srs.s_g2().into(), &fixed_bases),
+            accumulated.check(&srs.verifier_params(), &fixed_bases),
             "IVC acc verification failed"
         );
 

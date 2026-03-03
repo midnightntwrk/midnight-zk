@@ -990,8 +990,9 @@ pub(crate) mod tests {
         let mut inner_acc =
             Accumulator::<S>::from_dual_msm(inner_dual_msm.clone(), "inner_vk", &fixed_bases);
 
-        assert!(inner_dual_msm.check(&inner_params.verifier_params()));
-        assert!(inner_acc.check(&inner_params.s_g2().into(), &fixed_bases));
+        let inner_verifier_params = inner_params.verifier_params();
+        assert!(inner_dual_msm.check(&inner_verifier_params));
+        assert!(inner_acc.check(&inner_verifier_params, &fixed_bases));
 
         inner_acc.collapse();
 

@@ -6,13 +6,10 @@
 //! of how many steps the prover has performed.
 
 use group::Group;
-use midnight_circuits::{
-    hash::poseidon::PoseidonState,
-    verifier::{Accumulator, SelfEmulation},
-};
+use midnight_circuits::{hash::poseidon::PoseidonState, verifier::Accumulator};
 use midnight_proofs::{
     plonk::{self, Error},
-    poly::kzg::KZGCommitmentScheme,
+    poly::kzg::{params::ParamsVerifierKZG, KZGCommitmentScheme},
     transcript::{CircuitTranscript, Transcript},
 };
 use midnight_zk_stdlib::{MidnightVK, Relation};
@@ -21,13 +18,13 @@ use super::{IvcCircuit, IvcInstance, IvcTransition, C, E, F, S};
 
 /// Lightweight IVC verifier carrying only:
 /// - the self-verifying key,
-/// - the s · G2 point from the SRS (for the pairing check).
+/// - the SRS verifier parameters (for the pairing check).
 ///
 /// Returned by [`super::setup()`].
 #[derive(Clone, Debug)]
 pub struct IvcVerifier {
     pub(crate) vk: MidnightVK,
-    pub(crate) s_g2: <S as SelfEmulation>::G2Affine,
+    pub(crate) params_verifier: ParamsVerifierKZG<E>,
 }
 
 impl IvcVerifier {
@@ -71,7 +68,7 @@ impl IvcVerifier {
         // Verify that both `proof_acc` and `instance.acc` satisfy the pairing
         // invariant, with a single pairing, by accumulating them first.
         let final_acc = Accumulator::<S>::accumulate(&[proof_acc, instance.acc.clone()]);
-        if !final_acc.check(&self.s_g2, &fixed_bases) {
+        if !final_acc.check(&self.params_verifier, &fixed_bases) {
             return Err(Error::Opening);
         };
         transcript.assert_empty().map_err(|_| Error::Opening)?;

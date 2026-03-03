@@ -332,7 +332,7 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
         let acc = Accumulator::<S>::accumulate(&proof_accs);
 
         let fixed_bases = midnight_circuits::verifier::fixed_bases::<S>("inner_vk", &self.inner_vk);
-        assert!(acc.check(&srs.s_g2().into(), &fixed_bases)); // sanity check
+        assert!(acc.check(&srs.verifier_params(), &fixed_bases)); // sanity check
 
         // We now proceed to aggregating all proofs.
         let aggregator_circuit = AggregatorCircuit::<NB_PROOFS> {
