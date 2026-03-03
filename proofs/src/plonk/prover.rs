@@ -807,7 +807,7 @@ where
         .iter()
         .map(|&(column, at)| {
             let col_idx = column.index();
-            if meta.selector_flags.contains(&col_idx) {
+            if meta.has_simple_selector_col(col_idx) {
                 Ok(F::ONE)
             } else {
                 let eval = eval_polynomial(&pk.fixed_polys[col_idx], domain.rotate_omega(x, at));
@@ -874,7 +874,7 @@ pub(super) fn compute_queries<
                 .fixed_queries
                 .iter()
                 // Filter out queries for simple, multiplicative selectors
-                .filter(|(col, _)| !pk.vk.cs.selector_flags.contains(&col.index()))
+                .filter(|(col, _)| !pk.vk.cs.has_simple_selector_col(col.index()))
                 .map(|&(column, at)| ProverQuery {
                     point: domain.rotate_omega(x, at),
                     poly: &pk.fixed_polys[column.index()],

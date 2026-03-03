@@ -48,7 +48,7 @@ pub(crate) fn compute_linearization_commitment<
     quotient_limb_commitments: &'com [CS::Commitment],
     const_1_com: &'com CS::Commitment,
 ) -> VerifierQuery<'com, F, CS> {
-    let lin_com_len = vk.cs.selector_flags().len() + quotient_limb_commitments.len() + 1;
+    let lin_com_len = vk.cs.num_simple_selectors() + quotient_limb_commitments.len() + 1;
     let mut identities_points = Vec::with_capacity(lin_com_len);
     let mut identities_scalars = Vec::with_capacity(lin_com_len);
     let mut identities_labels = Vec::with_capacity(lin_com_len);

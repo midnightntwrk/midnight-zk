@@ -289,10 +289,10 @@ where
     // corresponding to multiplicative, simple selectors)
     let mut fixed_evals = read_n(
         transcript,
-        vk.cs.num_fixed_columns() - vk.cs.selector_flags.len(),
+        vk.cs.num_fixed_columns() - vk.cs.num_simple_selectors(),
     )?;
     for (idx, (col, _)) in vk.cs.fixed_queries().iter().enumerate() {
-        if vk.cs.selector_flags.contains(&col.index()) {
+        if vk.cs.has_simple_selector_col(col.index()) {
             fixed_evals.insert(idx, F::ONE)
         }
     }
@@ -415,7 +415,7 @@ where
                 .iter()
                 .enumerate()
                 // Filter out queries for simple, multiplicative selectors
-                .filter(|(_, (col, _))| !vk.cs.selector_flags.contains(&col.index()))
+                .filter(|(_, (col, _))| !vk.cs.has_simple_selector_col(col.index()))
                 .map(|(query_index, &(column, at))| {
                     VerifierQuery::new(
                         vk.domain.rotate_omega(x, at),

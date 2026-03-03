@@ -16,11 +16,13 @@ use serde_derive::Serialize;
 
 use super::Region;
 use crate::{
-    circuit,
-    circuit::Value,
+    circuit::{self, Value},
     plonk::{
-        sealed, sealed::SealedPhase, Advice, Any, Any::Fixed, Assignment, Challenge, Circuit,
-        Column, ConstraintSystem, Error, FirstPhase, FloorPlanner, Instance, Phase, Selector,
+        sealed::{self, SealedPhase},
+        Advice,
+        Any::{self, Fixed},
+        Assignment, Challenge, Circuit, Column, ConstraintSystem, Error, FirstPhase, FloorPlanner,
+        Instance, Phase, Selector,
     },
     utils::rational::Rational,
 };
@@ -276,7 +278,7 @@ pub(crate) fn cost_model_options<F: Ord + Field + FromUniformBytes<64>, C: Circu
         // init the fixed polynomials with no rotations
         let mut fixed = vec![Poly { rotations: vec![] }; cs.num_fixed_columns()];
         for (col, rot) in cs.fixed_queries() {
-            if !cs.selector_flags().contains(&col.index()) {
+            if !cs.has_simple_selector_col(col.index()) {
                 fixed[col.index()].rotations.push(rot.0 as isize);
             }
         }

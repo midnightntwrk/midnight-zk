@@ -510,18 +510,18 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             .map(|_| transcript.read_scalar(layouter))
             .collect::<Result<Vec<_>, _>>()?;
 
-        // The transcript doesn't contain evals of fixed cols corresp. to simple
+        // The transcript doesn't contain evals of fixed cols corresponding to simple
         // selectors. Fill up the "missing" places with 1, to align with the
         // fixed queries
         let one: AssignedCell<<S as SelfEmulation>::F, <S as SelfEmulation>::F> =
             self.scalar_chip.assign_fixed(layouter, S::F::ONE)?;
 
-        let num_evaluated_fix_queries = cs.num_fixed_columns() - cs.selector_flags().len();
+        let num_evaluated_fix_queries = cs.num_fixed_columns() - cs.num_simple_selectors();
         let mut fixed_evals = (0..num_evaluated_fix_queries)
             .map(|_| transcript.read_scalar(layouter))
             .collect::<Result<Vec<_>, _>>()?;
         for (idx, (col, _)) in assigned_vk.cs.fixed_queries().iter().enumerate() {
-            if assigned_vk.cs.selector_flags().contains(&col.index()) {
+            if assigned_vk.cs.has_simple_selector_col(col.index()) {
                 fixed_evals.insert(idx, one.clone())
             }
         }
@@ -725,7 +725,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                 cs.fixed_queries()
                     .iter()
                     .enumerate()
-                    .filter(|(_, (col, _))| !assigned_vk.cs.selector_flags().contains(&col.index()))
+                    .filter(|(_, (col, _))| !assigned_vk.cs.has_simple_selector_col(col.index()))
                     .map(|(query_index, &(col, rot))| {
                         VerifierQuery::new_fixed(
                             &one,

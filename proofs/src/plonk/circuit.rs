@@ -1652,6 +1652,26 @@ impl<F: Field> Gate<F> {
     }
 }
 
+/// Type for tracking information about selectors.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SelectorFlag(bool, Option<usize>);
+
+impl SelectorFlag {
+    /// Returns `true` if this selector flag tracks a simple selector, `false`
+    /// otherwise.
+    pub fn is_simple(&self) -> bool {
+        self.0
+    }
+
+    /// Returns an [Option] containing
+    ///  * the column index of this selector after it has been converted to a
+    ///    fixed column,
+    ///  * `None` otherwise.
+    pub fn col_idx(&self) -> Option<usize> {
+        self.1
+    }
+}
+
 /// This is a description of the circuit environment, such as the gate, column
 /// and permutation arrangements.
 #[derive(Debug, Clone)]
@@ -1660,13 +1680,7 @@ pub struct ConstraintSystem<F: Field> {
     pub(crate) num_advice_columns: usize,
     pub(crate) num_instance_columns: usize,
     pub(crate) num_selectors: usize,
-    /// The lifecycle of a selector has 2 phases: BEFORE conversion to a
-    /// fixed column, and AFTER. Accordingly, this field has 2 phases as well.
-    /// * BEFORE: The i-th element is `1` if the i-th selector is simple and
-    ///   multiplicative, and `0` otherwise.
-    /// * AFTER: Contains the fixed column indices of all simple, multiplicative
-    ///   selectors.
-    pub(crate) selector_flags: Vec<usize>,
+    pub(crate) selector_flags: Vec<SelectorFlag>,
     pub(crate) num_challenges: usize,
 
     /// Contains the index of each advice column that is left unblinded.
@@ -1818,11 +1832,18 @@ impl<F: Field> Default for ConstraintSystem<F> {
     }
 }
 
-impl<'com, F: Field> ConstraintSystem<F> {
-    /// Returns the indices of fixed columns corresponding to simple,
-    /// multiplicative selectors.
-    pub fn selector_flags(&'com self) -> &'com Vec<usize> {
-        &self.selector_flags
+impl<F: Field> ConstraintSystem<F> {
+    /// Returns `true` if this constraint system contains a [SelectorFlag] of a
+    /// simple selector with the given column index.
+    pub fn has_simple_selector_col(&self, col_idx: usize) -> bool {
+        self.selector_flags
+            .iter()
+            .any(|f| f.is_simple() && f.col_idx() == Some(col_idx))
+    }
+
+    /// Returns the number of [SelectorFlag]s that track simple selectors.
+    pub fn num_simple_selectors(&self) -> usize {
+        self.selector_flags.iter().filter(|f| f.is_simple()).count()
     }
 
     /// Obtain a pinned version of this constraint system; a structure with the
@@ -2140,16 +2161,8 @@ impl<'com, F: Field> ConstraintSystem<F> {
                 let poly =
                     selector.iter().map(|b| if *b { F::ONE } else { F::ZERO }).collect::<Vec<_>>();
                 let column = self.fixed_column();
-                if self.selector_flags[idx] == 1 {
-                    // TODO: this assert necessary, or maybe use other encoding?
-                    // The problem would be: if the column index is 0, this index would later be
-                    // filtered out, as it is interpreted as the index of a complex selector
-                    // column. Assert is only relevant if there is no fixed
-                    // column before calling this function, which shouldn't be a
-                    // problem since there should already be other fixed columns
-                    // at this point.
-                    // assert_ne!(column.index(), 0);
-                    self.selector_flags[idx] = column.index();
+                if self.selector_flags[idx].is_simple() {
+                    self.selector_flags[idx] = SelectorFlag(true, Some(column.index()));
                 }
                 let rotation = Rotation::cur();
                 let expr = Expression::Fixed(FixedQuery {
@@ -2161,7 +2174,6 @@ impl<'com, F: Field> ConstraintSystem<F> {
             })
             .unzip();
 
-        self.selector_flags.retain(|&x| x != 0);
         self.replace_selectors_with_fixed(&selector_replacements);
         self.num_selectors = 0;
 
@@ -2238,7 +2250,7 @@ impl<'com, F: Field> ConstraintSystem<F> {
     pub fn selector(&mut self) -> Selector {
         let index = self.num_selectors;
         self.num_selectors += 1;
-        self.selector_flags.push(1);
+        self.selector_flags.push(SelectorFlag(true, None));
         Selector(index, true)
     }
 
@@ -2247,7 +2259,7 @@ impl<'com, F: Field> ConstraintSystem<F> {
     pub fn complex_selector(&mut self) -> Selector {
         let index = self.num_selectors;
         self.num_selectors += 1;
-        self.selector_flags.push(0);
+        self.selector_flags.push(SelectorFlag(false, None));
         Selector(index, false)
     }
 
