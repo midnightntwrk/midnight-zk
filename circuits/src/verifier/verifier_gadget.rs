@@ -579,7 +579,11 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                 expressions.push((
                     // TODO: this relies on the assumption that there is _at most_ one simple
                     // selector per gate. Double-check!
-                    gate.queried_selectors().iter().filter(|s| s.1).map(|s| s.0).next(),
+                    gate.queried_selectors()
+                        .iter()
+                        .filter(|s| s.is_simple())
+                        .map(|s| s.index())
+                        .next(),
                     eval,
                 ));
             }
