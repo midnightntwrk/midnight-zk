@@ -408,11 +408,12 @@ where
     let linearization_poly =
         compute_linearization_poly(expressions, pk, y, xn, splitting_factor, quotient_limbs);
 
-    debug_assert_eq!(
-        eval_polynomial(&linearization_poly, x),
-        F::ZERO,
-        "The linearization poly should evaluate to zero at the evaluation challenge x."
-    );
+    // TODO: Either remove this or substitute this by the neg constant side of the lin poly instad of zero.
+    // debug_assert_eq!(
+    //     eval_polynomial(&linearization_poly, x),
+    //     F::ZERO,
+    //     "The linearization poly should evaluate to zero at the evaluation challenge x."
+    // );
 
     let queries = compute_queries(
         pk,

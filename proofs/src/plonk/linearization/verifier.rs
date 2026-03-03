@@ -46,7 +46,6 @@ pub(crate) fn compute_linearization_commitment<
     xn: &F,
     splitting_factor: &F,
     quotient_limb_commitments: &'com [CS::Commitment],
-    const_1_com: &'com CS::Commitment,
 ) -> VerifierQuery<'com, F, CS> {
     let lin_com_len = vk.cs.selector_flags().len() + quotient_limb_commitments.len() + 1;
     let mut identities_points = Vec::with_capacity(lin_com_len);
@@ -70,19 +69,20 @@ pub(crate) fn compute_linearization_commitment<
         y_pow *= y;
     });
 
+    let mut expected_eval = F::ZERO;
     grouped_points.into_iter().for_each(|(col_idx, eval)| {
         match col_idx {
             Some(col_idx) => {
                 identities_points.push(&vk.fixed_commitments[col_idx]);
                 identities_labels.push(CommitmentLabel::Fixed(col_idx));
+                identities_scalars.push(eval);
             }
-            // Fully evaluated identities go to the constant term
+            // Fully evaluated identities are not included and pass (negated)
+            // to the evaluation side.
             None => {
-                identities_points.push(const_1_com);
-                identities_labels.push(CommitmentLabel::NoLabel);
+                expected_eval -= eval;
             }
         }
-        identities_scalars.push(eval);
     });
 
     VerifierQuery::new_linear(
@@ -91,6 +91,6 @@ pub(crate) fn compute_linearization_commitment<
         identities_points,
         identities_scalars,
         identities_labels,
-        F::ZERO,
+        expected_eval,
     )
 }
