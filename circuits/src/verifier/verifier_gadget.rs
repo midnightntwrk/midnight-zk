@@ -577,8 +577,6 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                     poly,
                 )?;
                 expressions.push((
-                    // TODO: this relies on the assumption that there is _at most_ one simple
-                    // selector per gate. Double-check!
                     gate.queried_selectors()
                         .iter()
                         .filter(|s| s.is_simple())
