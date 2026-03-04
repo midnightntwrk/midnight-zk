@@ -9,20 +9,27 @@ use crate::{
 
 /// Construct the linearization polynomial:
 ///
-///  S_0(X) * id_0(x) + y * S_1(X) * id_1(x) + ... + y^m * S_m(X) * id_m(x)
-///      - (h_0(X) + x^{n-1} * h_1(X) + ... + x^{l*(n-1)} * h_l(X)) * (x^n-1),
+///  `S_0(T) * id_0(x) + y * S_1(T) * id_1(x) + ... + y^m * S_m(T) * id_m(x)
+///      - (h_0(T) + x^{n-1} * h_1(T) + ... + x^{l*(n-1)} * h_l(T)) * (x^n-1),`
 ///
 /// where:
-/// * y is the batching challenge,
-/// * x is the evaluation challenge,
-/// * id_j(x) is a (partially or fully) evaluated identity at x,
-/// * S_j(X) is, either,
-///      - (i)  the poly of a fixed column corresponding to a simple,
+/// * `y` is the batching challenge,
+/// * `x` is the evaluation challenge,
+/// * `id_j(x)` is a (partially or fully) evaluated identity at `x`,
+/// * `S_j(T)` is, either,
+///      - (i)  the polynomial of a fixed column corresponding to a simple,
 ///        multiplicative selector, or,
-///      - (ii) 1 (in case the corresponding identity id_j has been fully
-///        evaluated and, thus, the resulting scalar is part of the constant
-///        term of the linearization poly),
-/// * h_k(X) are the limbs of the quotient polynomial.
+///      - (ii) 1 (in case the corresponding identity `id_j` has been fully
+///        evaluated and, thus, the resulting scalar `id_j(x)` is part of the
+///        constant term of the linearization polynomial),
+/// * `h_k(T)` are the limbs of the quotient polynomial.
+///
+/// # Arguments
+///
+/// * `expressions` - the output of
+///   [crate::plonk::partially_evaluate_identities]
+/// * `splitting_factor` - the evaluated splitting factor `x^{n-1}` from
+///   decomposing the quotient polynomial `h(T)` into limbs
 ///
 /// # Returns
 ///

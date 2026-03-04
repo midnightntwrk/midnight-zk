@@ -344,25 +344,36 @@ impl<S: SelfEmulation> VerifierGadget<S> {
     }
 
     /// Construct the commitment to the linearization polynomial in-circuit
-    /// (which will be checked in-circuit that it opens to 0 at x in the
+    /// (which will be checked in-circuit that it opens to `0` at `x` in the
     /// multi-open argument):
     ///
-    ///  S_0 * id_0(x) + y * S_1 * id_1(x) + ... + y^m * S_m * id_m(x)
-    ///        - (h_0 + x^{n-1} * h_1 + ... + x^{l*(n-1)} * h_l) * (x^n-1),
+    ///  `S_0 * id_0(x) + y * S_1 * id_1(x) + ... + y^m * S_m * id_m(x)
+    ///        - (h_0 + x^{n-1} * h_1 + ... + x^{l*(n-1)} * h_l) * (x^n-1),`
     ///
     /// where:
-    /// * y is the batching challenge y,
-    /// * x is the evaluation challenge,
-    /// * id_j(x) is the result of (partially or fully) evaluating the identity
-    ///   id_j at x (i.e., a scalar),
-    /// * S_j is, either,
+    /// * `y` is the batching challenge,
+    /// * `x` is the evaluation challenge,
+    /// * `id_j(x)` is a (partially or fully) evaluated identity at `x`,
+    /// * `S_j` is, either,
     ///      - (i)  the commitment to a fixed column corresponding to a simple,
     ///        multiplicative selector, or,
     ///      - (ii) the commitment to the constant polynomial `P(X) = 1` (in
-    ///        case the corresponding identity id_j has been fully evaluated
-    ///        and, thus, the resulting scalar is part of the constant term of
-    ///        the linearization poly),
-    /// * h_k are commitments to the limbs of the quotient polynomial.
+    ///        case the corresponding identity `id_j` has been fully evaluated
+    ///        and, thus, the resulting scalar `id_j(x)` is part of the constant
+    ///        term of the linearization poly),
+    /// * `h_k` are commitments to the limbs of the quotient polynomial.
+    ///
+    /// # Arguments
+    ///
+    /// * `expressions` - the partially evaluated batched identity (computed
+    ///   in-circuit); it is the in-circuit analogue of the output of
+    ///   [midnight_proofs::plonk::partially_evaluate_identities]
+    /// * `splitting_factor` - the splitting factor `x^{n-1}` from decomposing
+    ///   the quotient polynomial `h(T)` into limbs (computed in-circuit)
+    ///
+    /// # Returns
+    ///
+    /// The commitment to the linearization polynomial as [AssignedMsm].
     #[allow(clippy::too_many_arguments)]
     #[allow(clippy::type_complexity)]
     fn compute_linearization_commitment<'com>(

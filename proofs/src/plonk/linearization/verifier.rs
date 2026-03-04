@@ -8,30 +8,38 @@ use crate::{
 };
 
 /// Construct the commitment to the linearization polynomial
-/// (which will be checked that it opens to 0 at x in the multi-open argument):
+/// (which will be checked that it opens to `0` at `x` in the multi-open
+/// argument):
 ///
-///  S_0 * id_0(x) + y * S_1 * id_1(x) + ... + y^m * S_m * id_m(x)
-///        - (h_0 + x^{n-1} * h_1 + ... + x^{l*(n-1)} * h_l) * (x^n-1),
+///  `S_0 * id_0(x) + y * S_1 * id_1(x) + ... + y^m * S_m * id_m(x)
+///        - (h_0 + x^{n-1} * h_1 + ... + x^{l*(n-1)} * h_l) * (x^n-1),`
 ///
 /// where:
-/// * y is the batching challenge,
-/// * x is the evaluation challenge,
-/// * id_j(x) is a (partially or fully) evaluated identity at x,
-/// * S_j is, either,
-///      - (i)  the commitment to a fixed column corresponding to a simple,
+/// * `y` is the batching challenge,
+/// * `x` is the evaluation challenge,
+/// * `id_j(x)` is a (partially or fully) evaluated identity at `x`,
+/// * `S_j` is, either,
+///      - (i)  the commitment to a fixed column representing a simple,
 ///        multiplicative selector, or,
 ///      - (ii) the commitment to the constant polynomial `P(X) = 1` (in case
-///        the corresponding identity id_j has been fully evaluated and, thus,
+///        the corresponding identity `id_j` has been fully evaluated and, thus,
 ///        the resulting scalar is part of the constant term of the
 ///        linearization polynomial)
-/// * h_k are commitments to the limbs of the quotient polynomial.
+/// * `h_k` are commitments to the limbs of the quotient polynomial.
+///
+/// # Arguments
+///
+/// * `expressions` - the output of
+///   [crate::plonk::partially_evaluate_identities]
+/// * `splitting_factor` - the evaluated splitting factor `x^{n-1}` from
+///   decomposing the quotient polynomial `h(T)` into limbs
 ///
 /// # Returns
 ///
 /// A [VerifierQuery], that checks if the commitment to the linearization
-/// polynomial opens to 0 at the evaluation challenge x. The commitment itself
-/// is represented as an MSM in form of a vector of points and a vector of
-/// scalars.
+/// polynomial opens to `0` at the evaluation challenge `x`. The commitment
+/// itself is an MSM represented as a vector of points and a vector
+/// of scalars.
 #[allow(clippy::type_complexity)]
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn compute_linearization_commitment<

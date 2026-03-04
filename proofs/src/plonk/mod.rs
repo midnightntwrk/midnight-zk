@@ -467,7 +467,7 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> VerifyingKey<F, CS> {
 
 /// Partially evaluates the (batched) identities: all polynomials, except those
 /// corresponding to simple, multiplicative selectors, are evaluated at the
-/// evaluation challenge x.
+/// evaluation challenge `x`.
 ///
 /// This function is a boilerplate for, both, prover and verifier. The prover
 /// uses it to compute the linearization polynomial, while the verifier needs it
@@ -475,8 +475,10 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> VerifyingKey<F, CS> {
 ///
 /// # Returns
 ///
-/// The partially evaluated batched identity. It is given in form of a vector of
-/// 2-tuples consisting of an evaluation point and an [Option] indicating:
+/// The partially evaluated batched identity. It is given as a [Vec] of 2-tuples
+/// `(Option<usize>, F)` containing an evaluation point (representing a
+/// partially or fully evaluated identity at `x`) and an [Option] which
+/// references:
 ///     * the fixed column index of a simple, multiplicative selector, if this
 ///       evaluation point is multiplied by such a selector,
 ///     * `None` otherwise.
