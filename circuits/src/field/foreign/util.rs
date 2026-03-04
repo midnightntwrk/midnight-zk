@@ -24,7 +24,10 @@ use num_bigint::{BigInt as BI, BigUint, ToBigInt};
 use num_integer::Integer;
 use num_traits::{One, Signed, Zero};
 
-use crate::{utils::util::bigint_to_fe, CircuitField};
+use crate::{
+    field::decomposition::cpu_utils::compute_optimal_limb_sizes, utils::util::bigint_to_fe,
+    CircuitField,
+};
 
 /// Like .rem, but gives positive answers only.
 pub fn urem(value: &BI, modulus: &BI) -> BI {
@@ -40,9 +43,36 @@ pub fn ceil_log2(value: &BI) -> u32 {
     BI::bits(&(value - BI::one())) as u32
 }
 
-/// Computes the smallest n such that 2^n is >= the given value.
-pub fn next_power_of_two(value: &BI) -> BI {
-    BI::pow(&BI::from(2), ceil_log2(value))
+/// Like `next_power_of_two`, but picks the power of 2 that minimizes
+/// range-check cost. A larger power of 2 might be cheaper to range-check
+/// if its bit count aligns better with the decomposition chip's parallel
+/// lookup structure (all lookups in a row must use the same bit-length tag).
+fn next_cheapest_power_of_two(nb_parallel_range_checks: usize, max_bit_len: u32, x: &BI) -> BI {
+    let mut solutions = std::collections::HashMap::new();
+    let cost = |solutions: &mut std::collections::HashMap<i32, Vec<Vec<usize>>>, bound: u32| {
+        compute_optimal_limb_sizes(
+            solutions,
+            nb_parallel_range_checks,
+            max_bit_len as usize,
+            bound as i32,
+        )
+        .len()
+    };
+
+    let base_log = ceil_log2(x);
+    let mut best_log = base_log;
+    let mut best_cost = cost(&mut solutions, base_log);
+
+    // Search for a larger power of 2 that is cheaper to range-check.
+    // Looking amongst the next 128 powers is more than enough.
+    for i in 1..=128 {
+        let c = cost(&mut solutions, base_log + i);
+        if c < best_cost {
+            best_cost = c;
+            best_log = base_log + i;
+        }
+    }
+    BI::pow(&BI::from(2), best_log)
 }
 
 /// Breaks the given `value` into `nb_limbs` limbs representing the value in the
@@ -145,6 +175,8 @@ pub fn get_identity_auxiliary_bounds<F, K>(
     moduli: &[BI],
     expr_bounds: (BI, BI),
     expr_mj_bounds: &[(BI, BI)],
+    nb_parallel_range_checks: usize,
+    max_bit_len: u32,
 ) -> ((BI, BI), Vec<(BI, BI)>)
 where
     F: CircuitField,
@@ -166,7 +198,11 @@ where
     // The advantage of this is that now u is restricted in the range [0, u_max),
     // (for any u_max > k_max - k_min), a constraint that can be enforced through
     // range-checks.
-    let u_max = next_power_of_two(&(&k_max - &k_min + BI::one()));
+    let u_max = next_cheapest_power_of_two(
+        nb_parallel_range_checks,
+        max_bit_len,
+        &(&k_max - &k_min + BI::one()),
+    );
 
     // Now, assuming u is restricted in [0, u_max), we will bound the amount:
     //  expr - (u + k_min) * m
@@ -226,7 +262,11 @@ where
             //
             // Now, vj can be restricted in the range [0, vj_max),
             // (for any vj_max > lj_max - lj_min).
-            let vj_max = next_power_of_two(&(&lj_max - &lj_min + BI::one()));
+            let vj_max = next_cheapest_power_of_two(
+                nb_parallel_range_checks,
+                max_bit_len,
+                &(&lj_max - &lj_min + BI::one()),
+            );
 
             // Now, assuming vj is restricted in [0, vj_max), we will bound the amount:
             //  expr_mj - u * (m % mj) - (k_min * m) % mj - (vj + lj_min) * mj

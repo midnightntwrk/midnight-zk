@@ -55,7 +55,10 @@ impl<C: CircuitCurve> SlopeConfig<C> {
     /// involved in the identities enforced by the ModArith custom gate.
     /// We refer to the implementation of this function for explanations on
     /// what such values represent.
-    pub fn bounds<F, P>() -> ((BI, BI), Vec<(BI, BI)>)
+    pub fn bounds<F, P>(
+        nb_parallel_range_checks: usize,
+        max_bit_len: u32,
+    ) -> ((BI, BI), Vec<(BI, BI)>)
     where
         F: CircuitField,
         P: FieldEmulationParams<F, C::Base>,
@@ -129,7 +132,14 @@ impl<C: CircuitCurve> SlopeConfig<C> {
                 (expr_mj_min, expr_mj_max)
             })
             .collect();
-        get_identity_auxiliary_bounds::<F, C::Base>("slope", &moduli, expr_bounds, &expr_mj_bounds)
+        get_identity_auxiliary_bounds::<F, C::Base>(
+            "slope",
+            &moduli,
+            expr_bounds,
+            &expr_mj_bounds,
+            nb_parallel_range_checks,
+            max_bit_len,
+        )
     }
 
     /// Configures the  foreign slope gate
@@ -137,6 +147,8 @@ impl<C: CircuitCurve> SlopeConfig<C> {
         meta: &mut ConstraintSystem<F>,
         field_chip_config: &FieldChipConfig,
         cond_col: &Column<Advice>,
+        nb_parallel_range_checks: usize,
+        max_bit_len: u32,
     ) -> SlopeConfig<C>
     where
         F: CircuitField,
@@ -147,7 +159,8 @@ impl<C: CircuitCurve> SlopeConfig<C> {
         let bs = P::base_powers();
         let bs2 = P::double_base_powers();
 
-        let ((k_min, u_max), vs_bounds) = Self::bounds::<F, P>();
+        let ((k_min, u_max), vs_bounds) =
+            Self::bounds::<F, P>(nb_parallel_range_checks, max_bit_len);
 
         let q_slope = meta.selector();
 

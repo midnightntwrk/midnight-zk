@@ -984,6 +984,8 @@ where
         meta: &mut ConstraintSystem<F>,
         base_field_config: &FieldChipConfig,
         advice_columns: &[Column<Advice>],
+        nb_parallel_range_checks: usize,
+        max_bit_len: u32,
     ) -> ForeignEccConfig<C> {
         // Assert that there is room for the cond_col in the existing columns of the
         // field_chip configurations.
@@ -992,16 +994,37 @@ where
         let cond_col = advice_columns[cond_col_idx];
         meta.enable_equality(cond_col);
 
-        let on_curve_config =
-            OnCurveConfig::<C>::configure::<F, B>(meta, base_field_config, &cond_col);
+        let on_curve_config = OnCurveConfig::<C>::configure::<F, B>(
+            meta,
+            base_field_config,
+            &cond_col,
+            nb_parallel_range_checks,
+            max_bit_len,
+        );
 
-        let slope_config = SlopeConfig::<C>::configure::<F, B>(meta, base_field_config, &cond_col);
+        let slope_config = SlopeConfig::<C>::configure::<F, B>(
+            meta,
+            base_field_config,
+            &cond_col,
+            nb_parallel_range_checks,
+            max_bit_len,
+        );
 
-        let tangent_config =
-            TangentConfig::<C>::configure::<F, B>(meta, base_field_config, &cond_col);
+        let tangent_config = TangentConfig::<C>::configure::<F, B>(
+            meta,
+            base_field_config,
+            &cond_col,
+            nb_parallel_range_checks,
+            max_bit_len,
+        );
 
-        let lambda_squared_config =
-            LambdaSquaredConfig::<C>::configure::<F, B>(meta, base_field_config, &cond_col);
+        let lambda_squared_config = LambdaSquaredConfig::<C>::configure::<F, B>(
+            meta,
+            base_field_config,
+            &cond_col,
+            nb_parallel_range_checks,
+            max_bit_len,
+        );
 
         // We prepare a dynamic lookup of points for an efficient multi_select.
         // It counts with a selector, an index column (the selected item) and a table
@@ -2100,9 +2123,22 @@ where
             <S as FromScratch<F>>::configure_from_scratch(meta, instance_columns);
         let nb_advice_cols = nb_foreign_ecc_chip_columns::<F, C, B, S>();
         let advice_columns = (0..nb_advice_cols).map(|_| meta.advice_column()).collect::<Vec<_>>();
-        let base_field_config = FieldChip::<F, C::Base, B, N>::configure(meta, &advice_columns);
-        let ff_ecc_config =
-            ForeignEccChip::<F, C, B, S, N>::configure(meta, &base_field_config, &advice_columns);
+        // Use hard-coded pow2range values matching NativeGadget::configure_from_scratch
+        let nb_parallel_range_checks = 4;
+        let max_bit_len = 8;
+        let base_field_config = FieldChip::<F, C::Base, B, N>::configure(
+            meta,
+            &advice_columns,
+            nb_parallel_range_checks,
+            max_bit_len,
+        );
+        let ff_ecc_config = ForeignEccChip::<F, C, B, S, N>::configure(
+            meta,
+            &base_field_config,
+            &advice_columns,
+            nb_parallel_range_checks,
+            max_bit_len,
+        );
         ForeignEccTestConfig {
             native_gadget_config,
             scalar_field_config,

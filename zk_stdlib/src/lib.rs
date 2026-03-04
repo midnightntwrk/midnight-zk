@@ -375,7 +375,10 @@ impl ZkStdLib {
     }
 
     /// Configure [ZkStdLib] from scratch.
-    pub fn configure(meta: &mut ConstraintSystem<F>, arch: ZkStdLibArch) -> ZkStdLibConfig {
+    pub fn configure(
+        meta: &mut ConstraintSystem<F>,
+        (arch, max_bit_len): (ZkStdLibArch, u8),
+    ) -> ZkStdLibConfig {
         let nb_advice_cols = [
             NB_ARITH_COLS,
             arch.nr_pow2range_cols as usize,
@@ -432,6 +435,9 @@ impl ZkStdLib {
             ),
         );
 
+        let nb_parallel_range_checks = arch.nr_pow2range_cols as usize;
+        let max_bit_len = max_bit_len as u32;
+
         let pow2range_config =
             Pow2RangeChip::configure(meta, &advice_columns[1..=arch.nr_pow2range_cols as usize]);
 
@@ -472,17 +478,45 @@ impl ZkStdLib {
             )
         });
 
-        let secp256k1_scalar_config =
-            arch.secp256k1.then(|| Secp256k1ScalarChip::configure(meta, &advice_columns));
+        let secp256k1_scalar_config = arch.secp256k1.then(|| {
+            Secp256k1ScalarChip::configure(
+                meta,
+                &advice_columns,
+                nb_parallel_range_checks,
+                max_bit_len,
+            )
+        });
 
         let secp256k1_config = arch.secp256k1.then(|| {
-            let base_config = Secp256k1BaseChip::configure(meta, &advice_columns);
-            Secp256k1Chip::configure(meta, &base_config, &advice_columns)
+            let base_config = Secp256k1BaseChip::configure(
+                meta,
+                &advice_columns,
+                nb_parallel_range_checks,
+                max_bit_len,
+            );
+            Secp256k1Chip::configure(
+                meta,
+                &base_config,
+                &advice_columns,
+                nb_parallel_range_checks,
+                max_bit_len,
+            )
         });
 
         let bls12_381_config = arch.bls12_381.then(|| {
-            let base_config = Bls12381BaseChip::configure(meta, &advice_columns);
-            Bls12381Chip::configure(meta, &base_config, &advice_columns)
+            let base_config = Bls12381BaseChip::configure(
+                meta,
+                &advice_columns,
+                nb_parallel_range_checks,
+                max_bit_len,
+            );
+            Bls12381Chip::configure(
+                meta,
+                &base_config,
+                &advice_columns,
+                nb_parallel_range_checks,
+                max_bit_len,
+            )
         });
 
         let base64_config = arch.base64.then(|| {
@@ -1336,7 +1370,7 @@ impl MidnightVK {
         let nb_public_inputs = u32::from_le_bytes(bytes) as usize;
 
         let mut cs = ConstraintSystem::default();
-        let _config = ZkStdLib::configure(&mut cs, architecture);
+        let _config = ZkStdLib::configure(&mut cs, (architecture, k - 1));
 
         let vk = VerifyingKey::read_from_cs::<R>(reader, format, cs)?;
 
@@ -1586,22 +1620,25 @@ impl<R: Relation> Circuit<F> for MidnightCircuit<'_, R> {
     // FIXME: this could be parametrised by MidnightCircuit.
     type FloorPlanner = SimpleFloorPlanner;
 
-    type Params = ZkStdLibArch;
+    type Params = (ZkStdLibArch, u8);
 
     fn without_witnesses(&self) -> Self {
         unreachable!()
     }
 
     fn params(&self) -> Self::Params {
-        self.relation.used_chips()
+        (self.relation.used_chips(), (self.k - 1) as u8)
     }
 
-    fn configure_with_params(meta: &mut ConstraintSystem<F>, arch: ZkStdLibArch) -> Self::Config {
-        ZkStdLib::configure(meta, arch)
+    fn configure_with_params(
+        meta: &mut ConstraintSystem<F>,
+        params: (ZkStdLibArch, u8),
+    ) -> Self::Config {
+        ZkStdLib::configure(meta, params)
     }
 
     fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
-        ZkStdLib::configure(meta, ZkStdLibArch::default())
+        ZkStdLib::configure(meta, (ZkStdLibArch::default(), 8))
     }
 
     fn synthesize(
