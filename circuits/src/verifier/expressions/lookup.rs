@@ -133,34 +133,28 @@ pub(crate) fn lookup_expressions<S: SelfEmulation>(
         )?
     };
 
-    // Accumulator constraint: (Z(ωx) - Z(x))·(t(x) + β) - selector·h(x)·(t(x) + β)
-    // + m(x) = 0 The selector gates only the input side (h); m is always added
+    // Accumulator constraint:
+    // (Z(ωx) - Z(x) - selector·h(x)) · (t(x) + β) + m(x) = 0
+    // The selector gates only the input side (h); m is always added
     // so the table-side balance is maintained (see module-level docs in
     // logup.rs).
-    let id_2 = {
-        let left = {
-            let aux1 = scalar_chip.sub(
+    let acc_constraint = {
+        let acc_step = {
+            let z_next_minus_z = scalar_chip.sub(
                 layouter,
                 &lookup_evals.accumulator_next_eval,
                 &lookup_evals.accumulator_eval,
             )?;
-            scalar_chip.mul(layouter, &aux1, &compressed_table_with_beta, None)?
-        };
-
-        // selector · h(x) · (t(x) + β)
-        let selector_h_t = {
             let selector_h =
                 scalar_chip.mul(layouter, &selector, &lookup_evals.helper_eval, None)?;
-            scalar_chip.mul(layouter, &selector_h, &compressed_table_with_beta, None)?
+            let aux = scalar_chip.sub(layouter, &z_next_minus_z, &selector_h)?;
+            scalar_chip.mul(layouter, &aux, &compressed_table_with_beta, None)?
         };
 
-        // left - selector·h·(t+β) + m
-        let diff = {
-            let aux = scalar_chip.sub(layouter, &left, &selector_h_t)?;
-            scalar_chip.add(layouter, &aux, &lookup_evals.multiplicities_eval)?
-        };
+        // acc_step + m
+        let balance = scalar_chip.add(layouter, &acc_step, &lookup_evals.multiplicities_eval)?;
 
-        scalar_chip.mul(layouter, &diff, &active_rows, None)?
+        scalar_chip.mul(layouter, &balance, &active_rows, None)?
     };
 
     // (l_0(x) + l_last(x)) * Z(x) = 0
@@ -172,5 +166,5 @@ pub(crate) fn lookup_expressions<S: SelfEmulation>(
         None,
     )?;
 
-    Ok(vec![boundary, id_1, id_2])
+    Ok(vec![boundary, id_1, acc_constraint])
 }

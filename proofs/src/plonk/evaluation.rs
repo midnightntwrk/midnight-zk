@@ -550,12 +550,13 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                         *value = *value * y + helper_coset[idx] * product - sum_partial_products;
 
                         // Accumulator constraint:
-                        // (Z(ωX) - Z(X))·(t(X) + β) - selector·h(X)·(t(X) + β) + m(X) = 0
+                        // (Z(ωX) - Z(X)- selector·h(X))·(t(X) + β) + m(X) = 0
                         *value = *value * y
                             + l_active_row[idx]
-                                * ((aggregator_coset[r_next] - aggregator_coset[idx])
+                                * ((aggregator_coset[r_next]
+                                    - aggregator_coset[idx]
+                                    - selector * helper_coset[idx])
                                     * table_value
-                                    - selector * helper_coset[idx] * table_value
                                     + multiplicities_coset[idx]);
                     }
                 });

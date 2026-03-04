@@ -132,8 +132,8 @@ pub(crate) mod verifier;
 /// A `BatchedArgument` collects all lookups that query the same table. For
 /// multi-column lookups (e.g., checking `(a, b) ∈ (t_1, t_2)`), columns are
 /// compressed using a random challenge `θ` into a single value. An optional
-/// selector gates which rows participate in the lookup; rows where the selector
-/// evaluates to zero are excluded from the accumulator.
+/// selector controls which rows participate in the lookup; rows where the
+/// selector evaluates to zero are excluded from the accumulator.
 ///
 /// # Layout
 ///
@@ -225,7 +225,7 @@ impl<F: Field> BatchedArgument<F> {
             .max()
             .unwrap_or(1);
 
-        let helper_degree = self.nb_parallel_lookups(cs_degree) * lookup_degree + 1;
+        let helper_constraint_degree = self.nb_parallel_lookups(cs_degree) * lookup_degree + 1;
 
         // The accumulator constraint includes the term:
         //   l_active_row (degree 1) * selector * helper (degree 1) * table_value
@@ -239,9 +239,11 @@ impl<F: Field> BatchedArgument<F> {
         // We therefore round the minimum required degree up to the next value where
         // (x - 1) is a power of 2 using: (max_raw_degree - 1).next_power_of_two() + 1.
         let table_degree = self.table_expressions.iter().map(|e| e.degree()).max().unwrap_or(1);
-        let accumulator_degree = 2 + self.selector.degree() + table_degree;
+        let accumulator_constraint_degree = 2 + self.selector.degree() + table_degree;
 
-        (std::cmp::max(helper_degree, accumulator_degree) - 1).next_power_of_two() + 1
+        (std::cmp::max(helper_constraint_degree, accumulator_constraint_degree) - 1)
+            .next_power_of_two()
+            + 1
     }
 
     /// Constructs a new lookup argument.
@@ -275,11 +277,7 @@ impl<F: Field> BatchedArgument<F> {
                 .for_each(|(j, parallel)| transposed_input_expressions[j][i] = parallel)
         });
 
-        let selector = if let Some(selector) = selector {
-            Expression::Selector(selector)
-        } else {
-            Expression::Constant(F::ONE)
-        };
+        let selector = selector.map(Expression::Selector).unwrap_or(Expression::Constant(F::ONE));
 
         BatchedArgument {
             name: name.as_ref().to_string(),
@@ -436,10 +434,10 @@ impl<F: PrimeField> Evaluated<F> {
             evaluate_expressions(std::slice::from_ref(&argument.selector)).swap_remove(0);
 
         let accumulator_constraint = || {
-            let diff = (self.accumulator_next_eval - self.accumulator_eval)
-                * (compressed_table + beta)
-                - selector * self.helper_eval * (compressed_table + beta)
-                + self.multiplicities_eval;
+            let diff =
+                (self.accumulator_next_eval - self.accumulator_eval - selector * self.helper_eval)
+                    * (compressed_table + beta)
+                    + self.multiplicities_eval;
             diff * active_rows
         };
 

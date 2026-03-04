@@ -1015,18 +1015,14 @@ impl<F: FromUniformBytes<64> + Ord> MockProver<F> {
                                     return None;
                                 }
 
-                                let t = input_expressions
+                                // Also keep track of the original input row, since we're going
+                                // to sort.
+                                let t: Vec<_> = input_expressions
                                     .iter()
                                     .map(move |c| load(c, input_row))
                                     .collect();
 
-                                if t != fill_row {
-                                    // Also keep track of the original input row, since we're going
-                                    // to sort.
-                                    Some((t, input_row))
-                                } else {
-                                    None
-                                }
+                                (t != fill_row).then_some((t, input_row))
                             })
                             .collect();
                         inputs.par_sort_unstable();
