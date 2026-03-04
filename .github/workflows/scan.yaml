@@ -15,6 +15,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  build:
+    runs-on: ubuntu-latest
+    needs: scan
+    steps:
+      - run: echo Skip
   scan:
     runs-on: ubuntu-latest
     permissions:
