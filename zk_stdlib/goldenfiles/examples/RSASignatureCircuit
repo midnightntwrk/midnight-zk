@@ -1,7 +1,7 @@
 CircuitModel {
     k: 12,
-    rows: 2697,
-    table_rows: 487,
+    rows: 2595,
+    table_rows: 3975,
     nb_unusable_rows: 6,
     max_deg: 5,
     advice_columns: 5,

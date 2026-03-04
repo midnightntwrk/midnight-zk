@@ -88,7 +88,6 @@ fn main() {
 
     let relation = EccExample;
     let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
-
     let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
 
     const N: usize = 5;

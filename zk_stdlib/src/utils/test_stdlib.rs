@@ -80,7 +80,7 @@ macro_rules! run_test_stdlib {
             }
         }
 
-        let circuit = MidnightCircuit::from_relation(&TestCircuit);
+        let circuit = MidnightCircuit::from_relation(&TestCircuit, None);
 
         MockProver::run($k, &circuit, vec![vec![], vec![]])
             .expect("Failed to generate proof")

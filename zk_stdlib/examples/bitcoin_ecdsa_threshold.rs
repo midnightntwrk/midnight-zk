@@ -204,7 +204,6 @@ fn main() {
 
     let relation = BitcoinThresholdECDSA;
     let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
-
     let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
 
     // Generate a random instance-witness pair.

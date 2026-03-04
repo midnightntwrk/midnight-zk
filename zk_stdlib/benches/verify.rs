@@ -65,6 +65,7 @@ const BATCH_SIZE: usize = 25;
 fn bench_verify(c: &mut Criterion) {
     let srs = filecoin_srs(6);
     let relation = PoseidonBench;
+
     let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
     let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
     let params_verifier = srs.verifier_params();

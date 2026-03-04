@@ -247,7 +247,7 @@ pub fn update_circuit_goldenfiles<R: Relation>(relation: &R) {
     let path = Path::new(&file_name);
     let mut f =
         File::create(path).unwrap_or_else(|_| panic!("Could not create file {}", file_name));
-    writeln!(f, "{:#?}", cost_model(relation))
+    writeln!(f, "{:#?}", cost_model(relation, None))
         .unwrap_or_else(|_| panic!("Could not write to file {}", file_name));
 }
 

@@ -69,7 +69,7 @@ impl ZkirRelation {
 
         // If the public input types are not known, we can initialize them with an
         // in-circuit parser pass.
-        dummy_synthesize_run(&MidnightCircuit::from_relation(self))?;
+        dummy_synthesize_run(&MidnightCircuit::from_relation(self, None))?;
         let pi_types = self.public_input_types.borrow().clone();
         assert_eq!(pis.len(), pi_types.len());
         Ok(pis.into_iter().zip(pi_types).collect())
