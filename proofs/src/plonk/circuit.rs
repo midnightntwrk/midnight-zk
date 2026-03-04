@@ -2476,6 +2476,11 @@ impl<F: Field> ConstraintSystem<F> {
         // Add an additional blinding factor as a slight defense against
         // off-by-one errors.
         let factors = factors + 1;
+
+        // Add an additional blinding factor as a security margin for opening
+        // the linearization polynomial in the multi-open argument
+        let factors = factors + 1;
+
         if factors > i32::MAX as usize {
             panic!("Number of blinding factors overflowed max expected value");
         }
