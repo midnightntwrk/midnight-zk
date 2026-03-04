@@ -224,36 +224,6 @@ impl ZkStdLibArch {
         // the beginning.
         Self::read(reader)
     }
-
-    /// Returns a tuple `(points_in_proof, points_in_vk, points_in_final_msm)`
-    /// where:
-    ///
-    /// * `points_in_proof`: total number of EC points deserialized when reading
-    ///   a proof for this relation.
-    /// * `points_in_vk`: total number of EC points deserialized when reading
-    ///   the verifying key.
-    /// * `points_in_final_msm`: number of EC points involved in the final MSM
-    ///   operation during verification.
-    pub fn nb_points(&self) -> (usize, usize, usize) {
-        let mut cs = ConstraintSystem::default();
-        let _config = ZkStdLib::configure(&mut cs, *self);
-
-        let nb_perm_chunks =
-            (cs.permutation().columns.len().saturating_sub(1) / cs.degree().saturating_sub(2)) + 1;
-
-        let points_in_proof = cs.num_advice_columns() +
-            cs.lookups().len() * 3 +
-            nb_perm_chunks +
-            cs.degree() + // chunks of the vanishing
-            2; // points in multiopen argument
-
-        let points_in_vk =
-            cs.num_fixed_columns() + cs.num_selectors() + cs.permutation().columns.len();
-
-        let points_in_final_msm = points_in_proof + points_in_vk + 1; // + 1 comes from the the generator in the final check
-
-        (points_in_proof, points_in_vk, points_in_final_msm)
-    }
 }
 
 #[derive(Debug, Clone)]
