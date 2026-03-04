@@ -44,9 +44,16 @@
 //! verify the validity of C. This is done via an IPA proof for relation
 //! PoK { s in F^l : <s, LAGRANGE_BASES> = σ /\ <s, DUAL_MSM_RHS_BASES> = C }.
 
+mod inner_product_argument;
+mod light_fiat_shamir;
+mod light_self_emulation;
+
 use std::{collections::BTreeMap, io};
 
 use group::Group;
+use inner_product_argument::{ipa_prove, ipa_verify};
+use light_fiat_shamir::LightPoseidonFS;
+use light_self_emulation::{FakeCurveChip, LightBlstrsEmulation};
 use midnight_circuits::{
     field::{
         native::{NB_ARITH_COLS, NB_ARITH_FIXED_COLS},
@@ -80,12 +87,6 @@ use midnight_proofs::{
     transcript::{CircuitTranscript, Hashable, Sampleable, Transcript},
 };
 use rand::{CryptoRng, RngCore};
-
-use crate::{
-    inner_product_argument::{ipa_prove, ipa_verify},
-    light_fiat_shamir::LightPoseidonFS,
-    light_self_emulation::{FakeCurveChip, LightBlstrsEmulation},
-};
 
 // BLS12-381 is hard-coded here as the underlying curve of the PLONK proofs.
 // This is for the sake of simplicity, since we need to configure and
@@ -331,7 +332,7 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
         let acc = Accumulator::<S>::accumulate(&proof_accs);
 
         let fixed_bases = midnight_circuits::verifier::fixed_bases::<S>("inner_vk", &self.inner_vk);
-        assert!(acc.check(&srs.s_g2().into(), &fixed_bases)); // sanity check
+        assert!(acc.check(&srs.verifier_params(), &fixed_bases)); // sanity check
 
         // We now proceed to aggregating all proofs.
         let aggregator_circuit = AggregatorCircuit::<NB_PROOFS> {

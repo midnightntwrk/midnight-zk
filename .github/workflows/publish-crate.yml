@@ -8,7 +8,7 @@ on:
         required: true
         type: choice
         options:
-          - aggregator
+          - aggregation
           - circuits
           - curves
           - proofs
