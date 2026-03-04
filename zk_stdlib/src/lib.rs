@@ -36,7 +36,7 @@ use blake2b::blake2b::{
     blake2b_chip::{Blake2bChip, Blake2bConfig},
     NB_BLAKE2B_ADVICE_COLS,
 };
-use ff::PrimeField;
+use ff::{Field, PrimeField};
 use group::{prime::PrimeCurveAffine, Group};
 use keccak_sha3::packed_chip::{PackedChip, PackedConfig, PACKED_ADVICE_COLS, PACKED_FIXED_COLS};
 use midnight_circuits::{
@@ -1863,16 +1863,14 @@ where
     let r: F = r_transcript.squeeze_challenge();
 
     let n_guards = guards.len();
-    let mut powers = Vec::with_capacity(n_guards);
-    let mut p = <F as ff::Field>::ONE;
-    for _ in 0..n_guards {
-        powers.push(p);
-        p *= r;
-    }
+    let powers: Vec<F> =
+        std::iter::successors(Some(F::ONE), |p| Some(*p * r)).take(n_guards).collect();
     guards.par_iter_mut().enumerate().for_each(|(i, guard)| guard.scale(powers[i]));
 
     // Phase 4: add scaled guards sequentially.
-    let mut acc_guard = guards.pop();
+    let Some(mut acc_guard) = guards.pop() else {
+        return Ok(());
+    };
     for guard in guards {
         acc_guard.add_msm(guard);
     }
