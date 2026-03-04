@@ -342,7 +342,12 @@ where
 
     let x: F = transcript.squeeze_challenge();
 
-    let (fixed_evals, instance_evals, advice_evals) = write_evals_to_transcript(
+    let Evals {
+        fixed_evals,
+        instance_evals,
+        advice_evals,
+        ..
+    } = write_evals_to_transcript(
         pk,
         nb_committed_instances,
         &instance_polys,
@@ -745,7 +750,19 @@ pub(super) fn compute_nu_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommit
     )
 }
 
-#[allow(clippy::type_complexity)]
+// Structure for holding evaluations of fixed, instance, and advice columns.
+#[derive(Debug, Clone)]
+pub(super) struct Evals<F, T>
+where
+    T: Transcript,
+    F: WithSmallOrderMulGroup<3> + Hashable<T::Hash>,
+{
+    fixed_evals: Vec<F>,
+    instance_evals: Vec<Vec<F>>,
+    advice_evals: Vec<Vec<F>>,
+    _marker: std::marker::PhantomData<T>,
+}
+
 pub(super) fn write_evals_to_transcript<F, CS, T>(
     pk: &ProvingKey<F, CS>,
     nb_committed_instances: usize,
@@ -753,7 +770,7 @@ pub(super) fn write_evals_to_transcript<F, CS, T>(
     advice_polys: &[Vec<Polynomial<F, Coeff>>],
     x: F,
     transcript: &mut T,
-) -> Result<(Vec<F>, Vec<Vec<F>>, Vec<Vec<F>>), Error>
+) -> Result<Evals<F, T>, Error>
 where
     F: WithSmallOrderMulGroup<3> + Hashable<T::Hash>,
     CS: PolynomialCommitmentScheme<F>,
@@ -816,7 +833,12 @@ where
         })
         .collect::<Result<Vec<F>, Error>>()?;
 
-    Ok((fixed_evals, instance_evals, advice_evals))
+    Ok(Evals {
+        fixed_evals,
+        instance_evals,
+        advice_evals,
+        _marker: std::marker::PhantomData::<T>,
+    })
 }
 
 #[allow(clippy::too_many_arguments)]
