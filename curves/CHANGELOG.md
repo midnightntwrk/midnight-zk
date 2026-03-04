@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 * Updated Rust toolchain to 1.90.0 [#210](https://github.com/midnightntwrk/midnight-zk/pull/210)
 * Feature-gate `derive::curve` macro and `hash_to_curve` module behind `dev-curves` [#216](https://github.com/midnightntwrk/midnight-zk/pull/216)
 * Make `halo2derive` dependency optional, only needed with `dev-curves` [#216](https://github.com/midnightntwrk/midnight-zk/pull/216)
+* Fix MSM identity handling [#225](https://github.com/midnightntwrk/midnight-zk/pull/225)
 
 ### Removed
 * Remove native `secp256k1` module (replaced by `k256`) [#216](https://github.com/midnightntwrk/midnight-zk/pull/216)
