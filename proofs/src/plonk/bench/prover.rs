@@ -13,7 +13,7 @@ use crate::{
         logup, partially_evaluate_identities, permutation,
         prover::{
             compute_h_poly, compute_instances, compute_nu_poly, compute_queries, parse_advices,
-            write_evals_to_transcript,
+            write_evals_to_transcript, Evals,
         },
         traces::ProverTrace,
         trash, Error, ProvingKey,
@@ -455,7 +455,12 @@ where
             criterion::BatchSize::SmallInput,
         )
     });
-    let (fixed_evals, instance_evals, advice_evals) = write_evals_to_transcript(
+    let Evals {
+        fixed_evals,
+        instance_evals,
+        advice_evals,
+        ..
+    } = write_evals_to_transcript(
         pk,
         nb_committed_instances,
         &instance_polys,

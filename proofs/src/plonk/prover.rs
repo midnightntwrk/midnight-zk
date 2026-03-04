@@ -757,9 +757,9 @@ where
     T: Transcript,
     F: WithSmallOrderMulGroup<3> + Hashable<T::Hash>,
 {
-    fixed_evals: Vec<F>,
-    instance_evals: Vec<Vec<F>>,
-    advice_evals: Vec<Vec<F>>,
+    pub(crate) fixed_evals: Vec<F>,
+    pub(crate) instance_evals: Vec<Vec<F>>,
+    pub(crate) advice_evals: Vec<Vec<F>>,
     _marker: std::marker::PhantomData<T>,
 }
 
