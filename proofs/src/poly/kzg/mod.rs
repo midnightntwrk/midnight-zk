@@ -106,6 +106,7 @@ where
         let x2: E::Fr = transcript.squeeze_challenge();
 
         let (poly_map, point_sets) = construct_intermediate_sets(prover_query)?;
+        dbg!(&point_sets);
 
         let mut q_polys = vec![vec![]; point_sets.len()];
 
@@ -125,6 +126,16 @@ where
                 inner_product(polys, x1)
             })
             .collect::<Vec<_>>();
+
+        // Sort by ascending point-set size so that the shortest set
+        // (typically containing Fixed/Permutation columns) comes first.
+        let (q_polys, point_sets) = {
+            let mut order: Vec<usize> = (0..point_sets.len()).collect();
+            order.sort_by_key(|&i| point_sets[i].len());
+            let q_polys: Vec<_> = order.iter().map(|&i| q_polys[i].clone()).collect();
+            let point_sets: Vec<_> = order.iter().map(|&i| point_sets[i].clone()).collect();
+            (q_polys, point_sets)
+        };
 
         let f_poly = {
             let f_polys = point_sets
@@ -237,6 +248,17 @@ where
             .map(|evals| evals_inner_product(evals, &powers_x1))
             .collect::<Vec<_>>();
 
+        // Sort by ascending point-set size so that the first q_com
+        // (not collapsed) always contains Fixed/Permutation commitments.
+        let (q_coms, q_eval_sets, point_sets) = {
+            let mut order: Vec<usize> = (0..point_sets.len()).collect();
+            order.sort_by_key(|&i| point_sets[i].len());
+            let q_coms: Vec<_> = order.iter().map(|&i| q_coms[i].clone()).collect();
+            let q_eval_sets: Vec<_> = order.iter().map(|&i| q_eval_sets[i].clone()).collect();
+            let point_sets: Vec<_> = order.iter().map(|&i| point_sets[i].clone()).collect();
+            (q_coms, q_eval_sets, point_sets)
+        };
+
         let f_com: E::G1 = transcript.read().map_err(|_| Error::SamplingError)?;
 
         // Sample a challenge x_3 for checking that f(X) was committed to
@@ -276,6 +298,7 @@ where
 
             // Collapse all MSMs before combining with x4 powers, to match the
             // in-circuit verifier. Skip the first one since its x4 power is 1.
+            dbg!(&coms);
             #[cfg(feature = "truncated-challenges")]
             coms.iter_mut().skip(1).for_each(MSMKZG::collapse);
             coms.push(f_com_as_msm);
