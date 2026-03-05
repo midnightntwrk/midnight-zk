@@ -368,6 +368,17 @@ where
         .map(|evals| evals_inner_product(layouter, scalar_chip, evals, &truncated_x1_powers))
         .collect::<Result<Vec<_>, Error>>()?;
 
+    // Sort by ascending point-set size so that the first q_com
+    // (not collapsed) always contains Fixed/Permutation commitments.
+    let (q_coms, q_eval_sets, point_sets) = {
+        let mut order: Vec<usize> = (0..point_sets.len()).collect();
+        order.sort_by_key(|&i| point_sets[i].len());
+        let q_coms: Vec<_> = order.iter().map(|&i| q_coms[i].clone()).collect();
+        let q_eval_sets: Vec<_> = order.iter().map(|&i| q_eval_sets[i].clone()).collect();
+        let point_sets: Vec<_> = order.iter().map(|&i| point_sets[i].clone()).collect();
+        (q_coms, q_eval_sets, point_sets)
+    };
+
     let f_com = transcript_gadget.read_point(layouter)?;
 
     let x3 = transcript_gadget.squeeze_challenge(layouter)?;
