@@ -122,7 +122,7 @@ pub(crate) fn lookup_expressions<S: SelfEmulation>(
     };
 
     // h(x) · ∏ⱼ(fⱼ(x) + β) - Σⱼ ∏_{k≠j}(fₖ(x) + β) = 0
-    let id_1 = {
+    let helper_constraint = {
         scalar_chip.add_and_mul(
             layouter,
             (S::F::ZERO, &lookup_evals.helper_eval),
@@ -166,5 +166,5 @@ pub(crate) fn lookup_expressions<S: SelfEmulation>(
         None,
     )?;
 
-    Ok(vec![boundary, id_1, acc_constraint])
+    Ok(vec![boundary, helper_constraint, acc_constraint])
 }
