@@ -17,6 +17,7 @@ verification keys break backwards compatibility.
 * Expose `verifier_gadget` and `bls12_381_scalar` (native gadget) from `ZkStdLib` [#227](https://github.com/midnightntwrk/midnight-zk/pull/227)
 
 ### Changed
+* bug patch in the credential property verification example, which was omitting some index computation in circuit [#240](https://github.com/midnightntwrk/midnight-zk/pull/240)
 * Update IVC example to use improved verifier gadget [#212](https://github.com/midnightntwrk/midnight-zk/pull/212)
 * Change nr of bits to represent JubJub scalar field modulus from 255 -> 252 [#179](https://github.com/midnightntwrk/midnight-zk/pull/179)
 * Adapt external hash tests to hash instructions interface [#162](https://github.com/midnightntwrk/midnight-zk/pull/162)

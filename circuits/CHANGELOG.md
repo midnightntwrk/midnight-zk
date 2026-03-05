@@ -23,6 +23,7 @@ verification keys break backwards compatibility.
 * Add `CircuitField` implementations for `k256::Fp` and `k256::Fq` [#192](https://github.com/midnightntwrk/midnight-zk/pull/192)
 
 ### Changed
+* Refactor of the automaton chip, now called scanner chip [#240](https://github.com/midnightntwrk/midnight-zk/pull/240)
 * Optimize `msm_by_bounded_scalars` in foreign ECC chip [#227](https://github.com/midnightntwrk/midnight-zk/pull/227)
 * Make handling of fixed_bases more robust in verifier gadget [#212](https://github.com/midnightntwrk/midnight-zk/pull/212)
 * Change nr of bits to represent JubJub scalar field modulus from 255 -> 252 [#179](https://github.com/midnightntwrk/midnight-zk/pull/179)
