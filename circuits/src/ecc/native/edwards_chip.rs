@@ -112,7 +112,7 @@ impl<C: CircuitCurve> InnerValue for AssignedScalarOfNativeCurve<C> {
     fn value(&self) -> Value<Self::Element> {
         let bools = self.0.iter().map(|b| b.value());
         let value_bools: Value<Vec<bool>> = Value::from_iter(bools);
-        value_bools.map(|le_bits| C::ScalarField::from_le_bits(&le_bits))
+        value_bools.map(|le_bits| C::ScalarField::from_bits_le(&le_bits))
     }
 }
 
@@ -121,9 +121,9 @@ impl<C: EdwardsCurve> Instantiable<C::Base> for AssignedScalarOfNativeCurve<C> {
         // We aggregate the bits while they fit in a single `C::Base` value.
         let nb_bits_per_batch = C::Base::NUM_BITS as usize - 1;
         element
-            .to_le_bits(Some(C::NUM_BITS_SUBGROUP as usize))
+            .to_bits_le(Some(C::NUM_BITS_SUBGROUP as usize))
             .chunks(nb_bits_per_batch)
-            .map(C::Base::from_le_bits)
+            .map(C::Base::from_bits_le)
             .collect()
     }
 }
@@ -763,7 +763,7 @@ impl<C: EdwardsCurve> AssignmentInstructions<C::Base, AssignedScalarOfNativeCurv
         value: Value<C::ScalarField>,
     ) -> Result<AssignedScalarOfNativeCurve<C>, Error> {
         let bits = value
-            .map(|s| s.to_le_bits(Some(C::ScalarField::NUM_BITS as usize)))
+            .map(|s| s.to_bits_le(Some(C::ScalarField::NUM_BITS as usize)))
             .transpose_vec(<C::ScalarField as PrimeField>::NUM_BITS as usize);
         self.native_gadget.assign_many(layouter, &bits).map(AssignedScalarOfNativeCurve)
     }
@@ -774,7 +774,7 @@ impl<C: EdwardsCurve> AssignmentInstructions<C::Base, AssignedScalarOfNativeCurv
         constant: C::ScalarField,
     ) -> Result<AssignedScalarOfNativeCurve<C>, Error> {
         self.native_gadget
-            .assign_many_fixed(layouter, &constant.to_le_bits(None))
+            .assign_many_fixed(layouter, &constant.to_bits_le(None))
             .map(AssignedScalarOfNativeCurve)
     }
 }

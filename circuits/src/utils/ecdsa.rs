@@ -11,44 +11,42 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Helper module for cpu ECDSA signatures over SECP256k1
+//! Helper module for cpu ECDSA signatures over secp256k1 (k256).
 use base64::DecodeError;
 use ff::Field;
-use group::{Curve, GroupEncoding, UncompressedEncoding};
-use midnight_curves::secp256k1::{
-    Fp as secp256k1Base, Fq as secp256k1Scalar, Secp256k1, Secp256k1Affine,
-};
+use group::{Curve, GroupEncoding};
+use midnight_curves::k256::{Fp as K256Base, Fq as K256Scalar, K256Affine, K256};
 use rand::RngCore;
 
 use crate::CircuitField;
 
 #[derive(Clone, Debug)]
-/// ECDSA implemented over SECP256k1
+/// ECDSA implemented over secp256k1 (k256).
 pub struct Ecdsa;
 
-/// ECDSA public key
-pub type PublicKey = Secp256k1;
+/// ECDSA public key.
+pub type PublicKey = K256;
 
-/// ECDSA secret key
-pub type SecretKey = secp256k1Scalar;
+/// ECDSA secret key.
+pub type SecretKey = K256Scalar;
 
 #[derive(Clone, Copy, Debug)]
 
-/// ECDSA signature
+/// ECDSA signature.
 pub struct ECDSASig {
     // LE encoded r.
     r: [u8; 32],
-    s: secp256k1Scalar,
+    s: K256Scalar,
 }
 
 impl ECDSASig {
-    /// Return `r` scalar as bytes
+    /// Return `r` scalar as bytes.
     pub fn get_r(&self) -> [u8; 32] {
         self.r
     }
 
-    /// Return `s` scalar
-    pub fn get_s(&self) -> secp256k1Scalar {
+    /// Return `s` scalar.
+    pub fn get_s(&self) -> K256Scalar {
         self.s
     }
 
@@ -62,43 +60,43 @@ impl ECDSASig {
         r.copy_from_slice(&bytes[..32]);
         r.reverse();
 
-        let s = secp256k1Scalar::from_bytes_be(&bytes[32..])
-            .expect("Valid Secp256k1 scalar in signature");
+        let s =
+            K256Scalar::from_bytes_be(&bytes[32..]).expect("Valid secp256k1 scalar in signature");
         ECDSASig { r, s }
     }
 }
 
 impl Ecdsa {
-    /// Generate keypair
+    /// Generate keypair.
     pub fn keygen<R: RngCore>(rng: &mut R) -> (PublicKey, SecretKey) {
-        let sk = secp256k1Scalar::random(rng);
-        let pk = Secp256k1::generator() * sk;
+        let sk = K256Scalar::random(rng);
+        let pk = K256::generator() * sk;
         (pk, sk)
     }
 
-    /// Produce a signature for `msg_hash`
-    pub fn sign<R: RngCore>(sk: &SecretKey, msg_hash: &secp256k1Scalar, rng: &mut R) -> ECDSASig {
-        let k = secp256k1Scalar::random(rng);
-        let k_point: Secp256k1 = Secp256k1::generator() * k;
+    /// Produce a signature for `msg_hash`.
+    pub fn sign<R: RngCore>(sk: &SecretKey, msg_hash: &K256Scalar, rng: &mut R) -> ECDSASig {
+        let k = K256Scalar::random(rng);
+        let k_point: K256 = K256::generator() * k;
 
-        let r_as_base = k_point.to_affine().x;
+        let r_as_base = k_point.to_affine().x();
         let r = r_as_base.to_bytes_le();
-        let r_as_scalar = secp256k1Scalar::from_bytes_le(&r).unwrap();
+        let r_as_scalar = K256Scalar::from_bytes_le(&r).unwrap();
 
         let s = k.invert().unwrap() * (msg_hash + r_as_scalar * sk);
         ECDSASig { r, s }
     }
 
-    /// Verify a `signature` for `msg_hash` over key `pk`
-    pub fn verify(pk: &PublicKey, msg_hash: &secp256k1Scalar, signature: &ECDSASig) -> bool {
-        let g = Secp256k1::generator();
-        let r_as_scalar = secp256k1Scalar::from_bytes_le(&signature.r).unwrap();
-        let r_as_base = secp256k1Base::from_bytes_le(&signature.r).unwrap();
+    /// Verify a `signature` for `msg_hash` over key `pk`.
+    pub fn verify(pk: &PublicKey, msg_hash: &K256Scalar, signature: &ECDSASig) -> bool {
+        let g = K256::generator();
+        let r_as_scalar = K256Scalar::from_bytes_le(&signature.r).unwrap();
+        let r_as_base = K256Base::from_bytes_le(&signature.r).unwrap();
 
         let s_inv = signature.s.invert().unwrap();
-        let k_point = g * (s_inv * msg_hash) + pk * (s_inv * r_as_scalar);
+        let k_point = g * (s_inv * msg_hash) + *pk * (s_inv * r_as_scalar);
 
-        k_point.to_affine().x == r_as_base
+        k_point.to_affine().x() == r_as_base
     }
 }
 
@@ -123,24 +121,18 @@ impl FromBase64 for PublicKey {
         let input_len = base64_bytes.len();
 
         match input_len {
-            // Compressed format.
+            // Compressed format: standard SEC1 (0x02/0x03 prefix + 32 BE x-bytes).
             44 => {
-                let mut bytes = base64::decode_config(base64_bytes, base64::STANDARD_NO_PAD)?;
+                let bytes = base64::decode_config(base64_bytes, base64::STANDARD_NO_PAD)?;
                 assert_eq!(bytes.len(), 33);
-                // Note:
-                // Hack to adapt Secp256k1 spec format to halo2curves format.
-                // We need to clear the identity flag, the second LSB of the first byte.
-                // We do so by clearing all bits except the sign bit, the LSB.
-                bytes[0] &= 0x01;
-                bytes[1..].reverse();
-                let repr = bytes.as_slice().into();
+                let repr: [u8; 33] = bytes.try_into().expect("33 bytes");
 
-                let ret =
-                    Secp256k1Affine::from_bytes(&repr).expect("Valid compressed Secp256k1 point.");
+                let ret = K256Affine::from_bytes(&repr.into())
+                    .expect("Valid compressed secp256k1 point.");
                 Ok(ret.into())
             }
 
-            // Uncompressed format.
+            // Uncompressed format (JWK: two base64-encoded coordinates).
             86 => from_jwk(&base64_bytes[..43], &base64_bytes[43..]),
             _ => Err(DecodeError::InvalidLength),
         }
@@ -150,15 +142,15 @@ impl FromBase64 for PublicKey {
 /// Receives a public key in JWK format: (x, y) coordinates base64 encoded.
 /// Returns the public key as a curve point.
 fn from_jwk(x: &[u8], y: &[u8]) -> Result<PublicKey, DecodeError> {
-    let mut x_bytes = base64::decode_config(x, base64::URL_SAFE)?;
-    let mut y_bytes = base64::decode_config(y, base64::URL_SAFE)?;
+    let x_bytes = base64::decode_config(x, base64::URL_SAFE)?;
+    let y_bytes = base64::decode_config(y, base64::URL_SAFE)?;
     assert_eq!(x_bytes.len(), 32);
     assert_eq!(y_bytes.len(), 32);
 
-    x_bytes.reverse();
-    y_bytes.reverse();
+    // JWK coordinates are in BE.
+    let x_fp = K256Base::from_bytes_be(&x_bytes).expect("Valid x coordinate");
+    let y_fp = K256Base::from_bytes_be(&y_bytes).expect("Valid y coordinate");
 
-    let bytes: [u8; 64] = [x_bytes, y_bytes].concat().try_into().expect("64 bytes");
-    let ret = Secp256k1Affine::from_uncompressed(&bytes.into()).expect("Invalid point");
+    let ret = K256Affine::from_xy(x_fp, y_fp).expect("Valid point on curve");
     Ok(ret.into())
 }

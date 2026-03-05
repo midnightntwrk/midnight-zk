@@ -30,12 +30,16 @@
 use std::collections::BTreeMap;
 
 use ff::Field;
-use group::prime::PrimeCurveAffine;
-use midnight_curves::pairing::Engine;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
-    poly::{kzg::msm::DualMSM, CommitmentLabel},
+    poly::{
+        kzg::{
+            msm::{DualMSM, MSMKZG},
+            params::ParamsVerifierKZG,
+        },
+        CommitmentLabel,
+    },
 };
 use num_bigint::BigUint;
 use num_traits::One;
@@ -128,12 +132,28 @@ impl<S: SelfEmulation> Accumulator<S> {
     }
 
     /// Checks whether the accumulator, when evaluated with the provided
-    /// fixed-bases, satisfies the invariant w.r.t. the given \[τ\]₂.
-    pub fn check(&self, tau_in_g2: &S::G2Affine, fixed_bases: &BTreeMap<String, S::C>) -> bool {
-        // TODO: Share the Miller-loop?
-        let lhs = self.lhs.eval(fixed_bases).into();
-        let rhs = self.rhs.eval(fixed_bases).into();
-        S::Engine::pairing(&lhs, tau_in_g2) == S::Engine::pairing(&rhs, &S::G2Affine::generator())
+    /// fixed-bases, satisfies the pairing invariant w.r.t. the SRS verifier
+    /// parameters.
+    pub fn check(
+        &self,
+        params: &ParamsVerifierKZG<S::Engine>,
+        fixed_bases: &BTreeMap<String, S::C>,
+    ) -> bool {
+        let lhs = MSMKZG::<S::Engine>::from_base(&self.lhs.eval(fixed_bases));
+        let rhs = MSMKZG::<S::Engine>::from_base(&self.rhs.eval(fixed_bases));
+        DualMSM::new(lhs, rhs).check(params)
+    }
+
+    /// Returns a trivial accumulator that satisfies the pairing invariant.
+    ///
+    /// All scalars (variable and fixed-base) are zero, so both sides
+    /// evaluate to the identity point regardless of the bases.
+    pub fn trivial(fixed_base_names: &[String]) -> Self {
+        let zero_fixed = fixed_base_names.iter().map(|n| (n.clone(), S::F::ZERO)).collect();
+        Accumulator {
+            lhs: Msm::new(&[S::C::default()], &[S::F::ZERO], &BTreeMap::new()),
+            rhs: Msm::new(&[S::C::default()], &[S::F::ZERO], &zero_fixed),
+        }
     }
 
     /// An accumulator a given lhs and rhs terms respectively.
