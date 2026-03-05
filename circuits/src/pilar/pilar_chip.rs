@@ -23,6 +23,9 @@
 //! are fixed columns. Consecutive rotations (`Rotation(0)`, `Rotation(1)`,
 //! `Rotation(2)`) replace multiple advice columns.
 //!
+//! There is no selector — when all fixed columns are zero the identity is
+//! trivially satisfied. This keeps max_degree at 3 (the `q_m · a · a` term).
+//!
 //! NOTE: Public inputs are not supported yet. They may be added in a future
 //! iteration.
 
@@ -30,7 +33,7 @@ use std::marker::PhantomData;
 
 use midnight_proofs::{
     circuit::{Chip, Layouter},
-    plonk::{Advice, Column, ConstraintSystem, Constraints, Error, Fixed, Selector},
+    plonk::{Advice, Column, ConstraintSystem, Constraints, Error, Fixed},
     poly::Rotation,
 };
 
@@ -42,8 +45,6 @@ pub const NB_PILAR_FIXED_COLS: usize = 5;
 /// Configuration for [`PilarChip`].
 #[derive(Clone, Debug)]
 pub struct PilarConfig {
-    /// Selector that enables the arithmetic gate.
-    pub q_pilar: Selector,
     /// The single advice column.
     pub advice: Column<Advice>,
     /// Fixed column for the coefficient of `a(X)`.
@@ -98,7 +99,6 @@ impl<F: CircuitField> ComposableChip<F> for PilarChip<F> {
         let advice = shared_res.0;
         let fixed_cols = &shared_res.1;
 
-        let q_pilar = meta.selector();
         let q_a = fixed_cols[0];
         let q_b = fixed_cols[1];
         let q_c = fixed_cols[2];
@@ -125,11 +125,10 @@ impl<F: CircuitField> ComposableChip<F> for PilarChip<F> {
                 + q_m * a_cur * a_next
                 + q_k;
 
-            Constraints::with_selector(q_pilar, vec![identity])
+            Constraints::without_selector(vec![identity])
         });
 
         PilarConfig {
-            q_pilar,
             advice,
             q_a,
             q_b,
@@ -199,7 +198,6 @@ mod tests {
                     }
 
                     for &(offset, q_a, q_b, q_c, q_m, q_k) in &self.gates {
-                        config.q_pilar.enable(&mut region, offset)?;
                         region.assign_fixed(
                             || "q_a",
                             config.q_a,
