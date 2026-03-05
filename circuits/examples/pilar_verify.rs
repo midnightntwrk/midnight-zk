@@ -105,7 +105,8 @@ impl Circuit<F> for InnerPilarCircuit {
         let fixed_cols: [Column<Fixed>; NB_PILAR_FIXED_COLS] =
             core::array::from_fn(|_| meta.fixed_column());
 
-        let pilar_config = PilarChip::<F>::configure(meta, &(advice, fixed_cols));
+        let pilar_config =
+            PilarChip::<F>::configure(meta, &(advice, fixed_cols, instance_column));
 
         (pilar_config, committed_instance_column, instance_column)
     }
@@ -130,12 +131,13 @@ impl Circuit<F> for InnerPilarCircuit {
                     || self.a.zip(self.b).map(|(a, b)| a + b),
                 )?;
 
-                // Set fixed coefficients: q_a·a + q_b·b + q_c·c = 0, with q_a=1, q_b=1, q_c=-1.
-                region.assign_fixed(|| "q_a", pilar_config.q_a, 0, || Value::known(F::ONE))?;
-                region.assign_fixed(|| "q_b", pilar_config.q_b, 0, || Value::known(F::ONE))?;
-                region.assign_fixed(|| "q_c", pilar_config.q_c, 0, || Value::known(-F::ONE))?;
-                region.assign_fixed(|| "q_m", pilar_config.q_m, 0, || Value::known(F::ZERO))?;
-                region.assign_fixed(|| "q_k", pilar_config.q_k, 0, || Value::known(F::ZERO))?;
+                // Gate at row 1: q_a·a_prev + q_b·a_cur + q_c·a_next = 0.
+                // With rotations {-1,0,1}, row 1 accesses a[0], a[1], a[2].
+                region.assign_fixed(|| "q_a", pilar_config.q_a, 1, || Value::known(F::ONE))?;
+                region.assign_fixed(|| "q_b", pilar_config.q_b, 1, || Value::known(F::ONE))?;
+                region.assign_fixed(|| "q_c", pilar_config.q_c, 1, || Value::known(-F::ONE))?;
+                region.assign_fixed(|| "q_m", pilar_config.q_m, 1, || Value::known(F::ZERO))?;
+                region.assign_fixed(|| "q_k", pilar_config.q_k, 1, || Value::known(F::ZERO))?;
 
                 Ok(c_cell)
             },

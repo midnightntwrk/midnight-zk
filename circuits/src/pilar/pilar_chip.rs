@@ -16,24 +16,20 @@
 //! The gate enforces:
 //!
 //! ```text
-//! q_a · a(X) + q_b · a(ωX) + q_c · a(ω²X) + q_m · a(X) · a(ωX) + q_k = 0
+//! q_a · a(ω⁻¹X) + q_b · a(X) + q_c · a(ωX) + q_m · a(ω⁻¹X) · a(X) + q_k = 0
 //! ```
 //!
 //! where `a` is the single advice column and `q_a`, `q_b`, `q_c`, `q_m`, `q_k`
-//! are fixed columns. Consecutive rotations (`Rotation(0)`, `Rotation(1)`,
-//! `Rotation(2)`) replace multiple advice columns.
+//! are fixed columns. Rotations `{-1, 0, 1}` replace multiple advice columns.
 //!
 //! There is no selector — when all fixed columns are zero the identity is
 //! trivially satisfied. This keeps max_degree at 3 (the `q_m · a · a` term).
-//!
-//! NOTE: Public inputs are not supported yet. They may be added in a future
-//! iteration.
 
 use std::marker::PhantomData;
 
 use midnight_proofs::{
     circuit::{Chip, Layouter},
-    plonk::{Advice, Column, ConstraintSystem, Constraints, Error, Fixed},
+    plonk::{Advice, Column, ConstraintSystem, Constraints, Error, Fixed, Instance},
     poly::Rotation,
 };
 
@@ -47,13 +43,15 @@ pub const NB_PILAR_FIXED_COLS: usize = 5;
 pub struct PilarConfig {
     /// The single advice column.
     pub advice: Column<Advice>,
-    /// Fixed column for the coefficient of `a(X)`.
+    /// The public input (instance) column.
+    pub instance: Column<Instance>,
+    /// Fixed column for the coefficient of `a(ω⁻¹X)`.
     pub q_a: Column<Fixed>,
-    /// Fixed column for the coefficient of `a(ωX)`.
+    /// Fixed column for the coefficient of `a(X)`.
     pub q_b: Column<Fixed>,
-    /// Fixed column for the coefficient of `a(ω²X)`.
+    /// Fixed column for the coefficient of `a(ωX)`.
     pub q_c: Column<Fixed>,
-    /// Fixed column for the multiplication coefficient `a(X) · a(ωX)`.
+    /// Fixed column for the multiplication coefficient `a(ω⁻¹X) · a(X)`.
     pub q_m: Column<Fixed>,
     /// Fixed column for the constant term.
     pub q_k: Column<Fixed>,
@@ -82,7 +80,11 @@ impl<F: CircuitField> Chip<F> for PilarChip<F> {
 }
 
 impl<F: CircuitField> ComposableChip<F> for PilarChip<F> {
-    type SharedResources = (Column<Advice>, [Column<Fixed>; NB_PILAR_FIXED_COLS]);
+    type SharedResources = (
+        Column<Advice>,
+        [Column<Fixed>; NB_PILAR_FIXED_COLS],
+        Column<Instance>,
+    );
     type InstructionDeps = ();
 
     fn new(config: &PilarConfig, _sub_chips: &()) -> Self {
@@ -98,6 +100,7 @@ impl<F: CircuitField> ComposableChip<F> for PilarChip<F> {
     ) -> PilarConfig {
         let advice = shared_res.0;
         let fixed_cols = &shared_res.1;
+        let instance = shared_res.2;
 
         let q_a = fixed_cols[0];
         let q_b = fixed_cols[1];
@@ -106,12 +109,13 @@ impl<F: CircuitField> ComposableChip<F> for PilarChip<F> {
         let q_k = fixed_cols[4];
 
         meta.enable_equality(advice);
+        meta.enable_equality(instance);
 
-        // q_a · a(X) + q_b · a(ωX) + q_c · a(ω²X) + q_m · a(X) · a(ωX) + q_k = 0
+        // q_a · a(ω⁻¹X) + q_b · a(X) + q_c · a(ωX) + q_m · a(ω⁻¹X) · a(X) + q_k = 0
         meta.create_gate("pilar_gate", |meta| {
+            let a_prev = meta.query_advice(advice, Rotation::prev());
             let a_cur = meta.query_advice(advice, Rotation::cur());
             let a_next = meta.query_advice(advice, Rotation::next());
-            let a_next2 = meta.query_advice(advice, Rotation(2));
 
             let q_a = meta.query_fixed(q_a, Rotation::cur());
             let q_b = meta.query_fixed(q_b, Rotation::cur());
@@ -119,10 +123,10 @@ impl<F: CircuitField> ComposableChip<F> for PilarChip<F> {
             let q_m = meta.query_fixed(q_m, Rotation::cur());
             let q_k = meta.query_fixed(q_k, Rotation::cur());
 
-            let identity = q_a * a_cur.clone()
-                + q_b * a_next.clone()
-                + q_c * a_next2
-                + q_m * a_cur * a_next
+            let identity = q_a * a_prev.clone()
+                + q_b * a_cur.clone()
+                + q_c * a_next
+                + q_m * a_prev * a_cur
                 + q_k;
 
             Constraints::without_selector(vec![identity])
@@ -130,6 +134,7 @@ impl<F: CircuitField> ComposableChip<F> for PilarChip<F> {
 
         PilarConfig {
             advice,
+            instance,
             q_a,
             q_b,
             q_c,
@@ -176,8 +181,9 @@ mod tests {
             let advice = meta.advice_column();
             let fixed_cols: [Column<Fixed>; NB_PILAR_FIXED_COLS] =
                 core::array::from_fn(|_| meta.fixed_column());
+            let instance = meta.instance_column();
 
-            PilarChip::<F>::configure(meta, &(advice, fixed_cols))
+            PilarChip::<F>::configure(meta, &(advice, fixed_cols, instance))
         }
 
         fn synthesize(
@@ -245,7 +251,7 @@ mod tests {
             advice_values,
             gates,
         };
-        let prover = MockProver::run(k, &circuit, vec![]).unwrap();
+        let prover = MockProver::run(k, &circuit, vec![vec![]]).unwrap();
         prover.verify()
     }
 
@@ -258,60 +264,63 @@ mod tests {
     }
 
     // ---- Positive tests ----
+    // NOTE: With rotations {-1, 0, 1}, the gate at row r accesses
+    // a[r-1], a[r], a[r+1]. So gates are placed at offset 1 (not 0)
+    // to access three consecutive rows starting from row 0.
 
     #[test]
     fn test_addition() {
-        // a + b = c: q_a=1, q_b=1, q_c=-1.
+        // a_prev + a_cur = a_next: q_a=1, q_b=1, q_c=-1.
         // 1·3 + 1·5 + (-1)·8 = 0.
         let result = run_pilar_circuit(
             vec![f(3), f(5), f(8)],
-            vec![(0, f(1), f(1), neg(1), f(0), f(0))],
+            vec![(1, f(1), f(1), neg(1), f(0), f(0))],
         );
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_multiplication() {
-        // a * b = c: q_m=1, q_c=-1.
+        // a_prev * a_cur = a_next: q_m=1, q_c=-1.
         // 1·3·7 + (-1)·21 = 0.
         let result = run_pilar_circuit(
             vec![f(3), f(7), f(21)],
-            vec![(0, f(0), f(0), neg(1), f(1), f(0))],
+            vec![(1, f(0), f(0), neg(1), f(1), f(0))],
         );
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_constant_term() {
-        // q_a·a + q_k = 0: a=7, q_a=1, q_k=-7.
+        // q_a·a_prev + q_k = 0: a_prev=7, q_a=1, q_k=-7.
         let result = run_pilar_circuit(
             vec![f(7), f(0), f(0)],
-            vec![(0, f(1), f(0), f(0), f(0), neg(7))],
+            vec![(1, f(1), f(0), f(0), f(0), neg(7))],
         );
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_full_identity() {
-        // q_a·a + q_b·b + q_c·c + q_m·a·b + q_k = 0.
-        // a=2, b=3, c=17, q_a=1, q_b=2, q_c=-1, q_m=1, q_k=3.
+        // q_a·a_prev + q_b·a_cur + q_c·a_next + q_m·a_prev·a_cur + q_k = 0.
+        // a_prev=2, a_cur=3, a_next=17, q_a=1, q_b=2, q_c=-1, q_m=1, q_k=3.
         // 1·2 + 2·3 + (-1)·17 + 1·2·3 + 3 = 2 + 6 - 17 + 6 + 3 = 0.
         let result = run_pilar_circuit(
             vec![f(2), f(3), f(17)],
-            vec![(0, f(1), f(2), neg(1), f(1), f(3))],
+            vec![(1, f(1), f(2), neg(1), f(1), f(3))],
         );
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_multiple_gates() {
-        // Gate at row 0: addition 3 + 5 = 8.
-        // Gate at row 3: multiplication 2 * 4 = 8.
+        // Gate at row 1: addition 3 + 5 = 8 (advice rows 0,1,2).
+        // Gate at row 4: multiplication 2 * 4 = 8 (advice rows 3,4,5).
         let result = run_pilar_circuit(
             vec![f(3), f(5), f(8), f(2), f(4), f(8)],
             vec![
-                (0, f(1), f(1), neg(1), f(0), f(0)),
-                (3, f(0), f(0), neg(1), f(1), f(0)),
+                (1, f(1), f(1), neg(1), f(0), f(0)),
+                (4, f(0), f(0), neg(1), f(1), f(0)),
             ],
         );
         assert!(result.is_ok());
@@ -321,20 +330,20 @@ mod tests {
 
     #[test]
     fn test_wrong_addition_fails() {
-        // a + b should be 8, but c = 7.
+        // a_prev + a_cur should be 8, but a_next = 7.
         let result = run_pilar_circuit(
             vec![f(3), f(5), f(7)],
-            vec![(0, f(1), f(1), neg(1), f(0), f(0))],
+            vec![(1, f(1), f(1), neg(1), f(0), f(0))],
         );
         assert!(result.is_err());
     }
 
     #[test]
     fn test_wrong_multiplication_fails() {
-        // a * b should be 21, but c = 20.
+        // a_prev * a_cur should be 21, but a_next = 20.
         let result = run_pilar_circuit(
             vec![f(3), f(7), f(20)],
-            vec![(0, f(0), f(0), neg(1), f(1), f(0))],
+            vec![(1, f(0), f(0), neg(1), f(1), f(0))],
         );
         assert!(result.is_err());
     }
