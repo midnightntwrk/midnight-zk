@@ -171,6 +171,44 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             &self.scalar_chip,
         )
     }
+
+    /// Witnesses an accumulator with just 1 non-fixed base-scalar pair on each
+    /// side, and as many fixed-base scalars (on its right-hand-side) as
+    /// provided through the `fixed_base_names` argument (no fixed-base scalars
+    /// on the left-hand-side).
+    pub fn assign_collapsed_accumulator(
+        &self,
+        layouter: &mut impl Layouter<S::F>,
+        fixed_base_names: &[String],
+        value: Value<Accumulator<S>>,
+    ) -> Result<AssignedAccumulator<S>, Error> {
+        AssignedAccumulator::assign(
+            layouter,
+            &self.curve_chip,
+            &self.scalar_chip,
+            1,
+            1,
+            &[],
+            fixed_base_names,
+            value,
+        )
+    }
+
+    /// Accumulates several accumulators together. The resulting acc will
+    /// satisfy the invariant iff all the accumulators individually do.
+    pub fn accumulate(
+        &self,
+        layouter: &mut impl Layouter<S::F>,
+        accs: &[AssignedAccumulator<S>],
+    ) -> Result<AssignedAccumulator<S>, Error> {
+        AssignedAccumulator::<S>::accumulate(
+            layouter,
+            self,
+            &self.scalar_chip,
+            &self.sponge_chip,
+            accs,
+        )
+    }
 }
 
 impl<S: SelfEmulation> VerifierGadget<S> {
@@ -1076,8 +1114,9 @@ pub(crate) mod tests {
         let mut inner_acc =
             Accumulator::<S>::from_dual_msm(inner_dual_msm.clone(), "inner_vk", &fixed_bases);
 
-        assert!(inner_dual_msm.check(&inner_params.verifier_params()));
-        assert!(inner_acc.check(&inner_params.s_g2().into(), &fixed_bases));
+        let inner_verifier_params = inner_params.verifier_params();
+        assert!(inner_dual_msm.check(&inner_verifier_params));
+        assert!(inner_acc.check(&inner_verifier_params, &fixed_bases));
 
         inner_acc.collapse();
 
