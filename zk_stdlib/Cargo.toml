@@ -24,6 +24,7 @@ blake2b = { package = "blake2b_halo2", version = "0.1.0" }
 serde = { workspace = true, optional = true }
 sha2 = { workspace = true }
 rand = { workspace = true }
+rayon = { workspace = true }
 
 num-bigint = { version = "0.4" }
 num-traits = "0.2"
@@ -60,6 +61,10 @@ truncated-challenges = [
 
 [lib]
 bench = false
+
+[[bench]]
+name = "verify"
+harness = false
 
 [[example]]
 name = "cred_full"
