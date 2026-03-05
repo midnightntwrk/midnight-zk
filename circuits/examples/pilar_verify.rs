@@ -21,6 +21,8 @@
 //! cargo run -p midnight-circuits --example pilar_verify
 //! ```
 
+use std::time::Instant;
+
 use ff::Field;
 use group::Group;
 use midnight_circuits::{
@@ -42,7 +44,7 @@ use midnight_circuits::{
         NB_POSEIDON_FIXED_COLS,
     },
     instructions::{AssignmentInstructions, PublicInputInstructions},
-    pilar::{NB_PILAR_FIXED_COLS, PilarChip, PilarConfig},
+    pilar::{PilarChip, PilarConfig, NB_PILAR_FIXED_COLS},
     types::{ComposableChip, Instantiable},
     verifier::{
         fixed_bases, Accumulator, AssignedAccumulator, AssignedVk, BlstrsEmulation, SelfEmulation,
@@ -51,7 +53,7 @@ use midnight_circuits::{
 };
 use midnight_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
-    dev::MockProver,
+    dev::{cost_model::circuit_model, MockProver},
     plonk::{
         create_proof, keygen_pk, keygen_vk_with_k, prepare, Circuit, Column, ConstraintSystem,
         Error, Fixed, Instance,
@@ -128,16 +130,10 @@ impl Circuit<F> for InnerPilarCircuit {
                     || self.a.zip(self.b).map(|(a, b)| a + b),
                 )?;
 
-                // Enable gate: q_a·a + q_b·b + q_c·c = 0, with q_a=1, q_b=1, q_c=-1.
-                pilar_config.q_pilar.enable(&mut region, 0)?;
+                // Set fixed coefficients: q_a·a + q_b·b + q_c·c = 0, with q_a=1, q_b=1, q_c=-1.
                 region.assign_fixed(|| "q_a", pilar_config.q_a, 0, || Value::known(F::ONE))?;
                 region.assign_fixed(|| "q_b", pilar_config.q_b, 0, || Value::known(F::ONE))?;
-                region.assign_fixed(
-                    || "q_c",
-                    pilar_config.q_c,
-                    0,
-                    || Value::known(-F::ONE),
-                )?;
+                region.assign_fixed(|| "q_c", pilar_config.q_c, 0, || Value::known(-F::ONE))?;
                 region.assign_fixed(|| "q_m", pilar_config.q_m, 0, || Value::known(F::ZERO))?;
                 region.assign_fixed(|| "q_k", pilar_config.q_k, 0, || Value::known(F::ZERO))?;
 
@@ -230,8 +226,7 @@ impl Circuit<F> for OuterVerifierCircuit {
         let curve_chip = ForeignEccChip::new(&config.2, &native_gadget, &native_gadget);
         let poseidon_chip = PoseidonChip::new(&config.3, &native_chip);
 
-        let verifier_chip =
-            VerifierGadget::<S>::new(&curve_chip, &native_gadget, &poseidon_chip);
+        let verifier_chip = VerifierGadget::<S>::new(&curve_chip, &native_gadget, &poseidon_chip);
 
         let assigned_inner_vk = verifier_chip.assign_vk_as_public_input(
             &mut layouter,
@@ -244,8 +239,8 @@ impl Circuit<F> for OuterVerifierCircuit {
         let assigned_committed_instance =
             curve_chip.assign(&mut layouter, self.inner_committed_instance)?;
 
-        let assigned_inner_pi = native_gadget
-            .assign_many(&mut layouter, &self.inner_instances.transpose_array())?;
+        let assigned_inner_pi =
+            native_gadget.assign_many(&mut layouter, &self.inner_instances.transpose_array())?;
 
         let mut inner_proof_acc = verifier_chip.prepare(
             &mut layouter,
@@ -267,8 +262,27 @@ impl Circuit<F> for OuterVerifierCircuit {
 // Main: generate inner proof, then verify it in-circuit.
 // ---------------------------------------------------------------------------
 
+fn print_cost_model(name: &str, circuit: &impl Circuit<F>) {
+    // BLS12-381: 48-byte commitments, 32-byte scalars.
+    let model = circuit_model::<F, 48, 32>(circuit);
+    println!("\n  Cost model for {name}:");
+    println!("    k (log2 rows) .... {}", model.k);
+    println!("    rows ............. {}", model.rows);
+    println!("    table rows ....... {}", model.table_rows);
+    println!("    unusable rows .... {}", model.nb_unusable_rows);
+    println!("    max degree ....... {}", model.max_deg);
+    println!("    advice columns ... {}", model.advice_columns);
+    println!("    fixed columns .... {}", model.fixed_columns);
+    println!("    lookups .......... {}", model.lookups);
+    println!("    permutations ..... {}", model.permutations);
+    println!("    column queries ... {}", model.column_queries);
+    println!("    point sets ....... {}", model.point_sets);
+    println!("    proof size ....... {} bytes", model.size);
+}
+
 fn main() {
     let mut rng = ChaCha8Rng::from_seed([0u8; 32]);
+    let total = Instant::now();
 
     // --- Step 1: Create inner PilarChip proof ---
 
@@ -277,12 +291,16 @@ fn main() {
     let c = a + b;
     let inner_public_inputs = vec![c];
 
+    let t = Instant::now();
     let inner_k = 5;
     let inner_params = ParamsKZG::unsafe_setup(inner_k, &mut rng);
-    let inner_vk =
-        keygen_vk_with_k(&inner_params, &InnerPilarCircuit::default(), inner_k).unwrap();
+    let inner_vk = keygen_vk_with_k(&inner_params, &InnerPilarCircuit::default(), inner_k).unwrap();
     let inner_pk = keygen_pk(inner_vk.clone(), &InnerPilarCircuit::default()).unwrap();
+    println!("Inner keygen ......... {:?}", t.elapsed());
 
+    print_cost_model("inner circuit", &InnerPilarCircuit::default());
+
+    let t = Instant::now();
     let inner_proof = {
         let mut transcript = CircuitTranscript::<PoseidonState<F>>::init();
         create_proof::<
@@ -305,14 +323,17 @@ fn main() {
         .expect("Failed to create inner proof");
         transcript.finalize()
     };
-
-    println!("Inner proof created ({} bytes).", inner_proof.len());
+    println!(
+        "\nInner proof .......... {:?} ({} bytes)",
+        t.elapsed(),
+        inner_proof.len()
+    );
 
     // --- Step 2: Prepare accumulator off-circuit ---
 
+    let t = Instant::now();
     let inner_dual_msm = {
-        let mut transcript =
-            CircuitTranscript::<PoseidonState<F>>::init_from_bytes(&inner_proof);
+        let mut transcript = CircuitTranscript::<PoseidonState<F>>::init_from_bytes(&inner_proof);
         prepare::<F, KZGCommitmentScheme<E>, CircuitTranscript<PoseidonState<F>>>(
             &inner_vk,
             &[&[C::identity()]],
@@ -322,21 +343,55 @@ fn main() {
         .expect("Failed to prepare inner proof")
     };
 
+    // Print DualMSM contents.
+    {
+        let (lhs, rhs) = inner_dual_msm.split();
+        println!("\n  DualMSM (pairing check: e(lhs, [τ]₂) = e(rhs, [1]₂)):");
+        println!("    LHS ({} terms):", lhs.len());
+        for (label, _scalar, _base) in &lhs {
+            println!("      {label}");
+        }
+        println!("    RHS ({} terms):", rhs.len());
+        for (label, _scalar, _base) in &rhs {
+            println!("      {label}");
+        }
+
+        use midnight_proofs::poly::CommitmentLabel;
+        let is_fixed_base = |label: &CommitmentLabel| match label {
+            CommitmentLabel::Fixed(_) | CommitmentLabel::Permutation(_) => true,
+            CommitmentLabel::Custom(s) if s == "-G" => true,
+            _ => false,
+        };
+        let count_variable = |side: &[(&CommitmentLabel, _, _)]| {
+            side.iter().filter(|(label, _, _)| !is_fixed_base(label)).count()
+        };
+        let lhs_var = count_variable(&lhs);
+        let rhs_var = count_variable(&rhs);
+        let lhs_fixed = lhs.len() - lhs_var;
+        let rhs_fixed = rhs.len() - rhs_var;
+        println!(
+            "    Variable-base MSMs: {} (lhs: {lhs_var}, rhs: {rhs_var})",
+            lhs_var + rhs_var
+        );
+        println!(
+            "    Fixed-base MSMs:    {} (lhs: {lhs_fixed}, rhs: {rhs_fixed})",
+            lhs_fixed + rhs_fixed
+        );
+    }
+
     let fb = fixed_bases::<S>("inner_vk", &inner_vk);
-    let mut inner_acc =
-        Accumulator::<S>::from_dual_msm(inner_dual_msm.clone(), "inner_vk", &fb);
+    let mut inner_acc = Accumulator::<S>::from_dual_msm(inner_dual_msm.clone(), "inner_vk", &fb);
 
     let inner_verifier_params = inner_params.verifier_params();
     assert!(inner_dual_msm.check(&inner_verifier_params));
     assert!(inner_acc.check(&inner_verifier_params, &fb));
 
     inner_acc.collapse();
-
-    println!("Inner proof verified off-circuit.");
+    println!("Off-circuit verify ... {:?}", t.elapsed());
 
     // --- Step 3: Verify the inner proof in-circuit ---
 
-    const OUTER_K: u32 = 18;
+    const OUTER_K: u32 = 17;
 
     let mut public_inputs = AssignedVk::<S>::as_public_input(&inner_vk);
     public_inputs.extend(AssignedAccumulator::as_public_input(&inner_acc));
@@ -352,9 +407,16 @@ fn main() {
         inner_proof: Value::known(inner_proof),
     };
 
-    let prover = MockProver::run(OUTER_K, &circuit, vec![vec![], public_inputs])
-        .expect("MockProver failed");
-    prover.assert_satisfied();
+    print_cost_model("outer verifier circuit", &circuit);
 
-    println!("Outer circuit (in-circuit verification) satisfied!");
+    let t = Instant::now();
+    let prover =
+        MockProver::run(OUTER_K, &circuit, vec![vec![], public_inputs]).expect("MockProver failed");
+    println!("\nMockProver::run ...... {:?}", t.elapsed());
+
+    let t = Instant::now();
+    prover.assert_satisfied();
+    println!("MockProver::verify ... {:?}", t.elapsed());
+
+    println!("\nTotal ................ {:?}", total.elapsed());
 }
