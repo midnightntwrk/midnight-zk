@@ -6,7 +6,11 @@ use rand_core::RngCore;
 
 use super::{super::circuit::Any, Argument, ProvingKey};
 use crate::{
-    plonk::{self, Error},
+    plonk::{
+        self,
+        permutation::{self, verifier::CommonEvaluated},
+        Error,
+    },
     poly::{
         commitment::PolynomialCommitmentScheme, Coeff, LagrangeCoeff, Polynomial, ProverQuery,
         Rotation,
@@ -29,6 +33,7 @@ pub(crate) struct Committed<F: PrimeField> {
 
 pub(crate) struct Evaluated<F: PrimeField> {
     constructed: Committed<F>,
+    pub(crate) evaluated: Vec<permutation::Evaluated<F>>,
 }
 
 impl Argument {
@@ -173,16 +178,22 @@ impl<F: PrimeField> super::ProvingKey<F> {
         self.polys.iter().map(move |poly| ProverQuery { point: x, poly })
     }
 
-    pub(crate) fn evaluate<T: Transcript>(&self, x: F, transcript: &mut T) -> Result<(), Error>
+    pub(crate) fn evaluate<T: Transcript>(
+        &self,
+        x: F,
+        transcript: &mut T,
+    ) -> Result<CommonEvaluated<F>, Error>
     where
         F: Hashable<T::Hash>,
     {
+        let mut permutation_evals = Vec::new();
         // Hash permutation evals
         for eval in self.polys.iter().map(|poly| eval_polynomial(poly, x)) {
+            permutation_evals.push(eval);
             transcript.write(&eval)?;
         }
 
-        Ok(())
+        Ok(CommonEvaluated { permutation_evals })
     }
 }
 
@@ -196,43 +207,54 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
     where
         F: Hashable<T::Hash>,
     {
+        let mut evaluated = vec![];
+
         let domain = &pk.vk.domain;
         let blinding_factors = pk.vk.cs.blinding_factors();
 
-        {
-            let mut sets = self.sets.iter();
+        let mut sets = self.sets.iter();
 
-            while let Some(set) = sets.next() {
-                let permutation_product_eval = eval_polynomial(&set.permutation_product_poly, x);
+        while let Some(set) = sets.next() {
+            let permutation_product_eval = eval_polynomial(&set.permutation_product_poly, x);
 
-                let permutation_product_next_eval = eval_polynomial(
+            let permutation_product_next_eval = eval_polynomial(
+                &set.permutation_product_poly,
+                domain.rotate_omega(x, Rotation::next()),
+            );
+
+            // Hash permutation product evals
+            for eval in iter::empty()
+                .chain(Some(&permutation_product_eval))
+                .chain(Some(&permutation_product_next_eval))
+            {
+                transcript.write(eval)?;
+            }
+
+            // If we have any remaining sets to process, evaluate this set at omega^u
+            // so we can constrain the last value of its running product to equal the
+            // first value of the next set's running product, chaining them together.
+            let permutation_product_last_eval = if sets.len() > 0 {
+                let eval = eval_polynomial(
                     &set.permutation_product_poly,
-                    domain.rotate_omega(x, Rotation::next()),
+                    domain.rotate_omega(x, Rotation(-((blinding_factors + 1) as i32))),
                 );
 
-                // Hash permutation product evals
-                for eval in iter::empty()
-                    .chain(Some(&permutation_product_eval))
-                    .chain(Some(&permutation_product_next_eval))
-                {
-                    transcript.write(eval)?;
-                }
+                transcript.write(&eval).map(|_| Some(eval))?
+            } else {
+                None
+            };
 
-                // If we have any remaining sets to process, evaluate this set at omega^u
-                // so we can constrain the last value of its running product to equal the
-                // first value of the next set's running product, chaining them together.
-                if sets.len() > 0 {
-                    let permutation_product_last_eval = eval_polynomial(
-                        &set.permutation_product_poly,
-                        domain.rotate_omega(x, Rotation(-((blinding_factors + 1) as i32))),
-                    );
-
-                    transcript.write(&permutation_product_last_eval)?;
-                }
-            }
+            evaluated.push(permutation::Evaluated {
+                permutation_product_eval,
+                permutation_product_next_eval,
+                permutation_product_last_eval,
+            });
         }
 
-        Ok(Evaluated { constructed: self })
+        Ok(Evaluated {
+            constructed: self,
+            evaluated,
+        })
     }
 }
 

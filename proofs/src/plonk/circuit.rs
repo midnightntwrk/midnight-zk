@@ -1642,12 +1642,33 @@ impl<F: Field> Gate<F> {
         &self.polys
     }
 
-    pub(crate) fn queried_selectors(&self) -> &[Selector] {
+    /// Returns the queried selectors of this gate.
+    pub fn queried_selectors(&self) -> &[Selector] {
         &self.queried_selectors
     }
 
     pub(crate) fn queried_cells(&self) -> &[VirtualCell] {
         &self.queried_cells
+    }
+}
+
+/// Type for tracking information about selectors.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SelectorFlag(bool, Option<usize>);
+
+impl SelectorFlag {
+    /// Returns `true` if this selector flag tracks a simple selector, `false`
+    /// otherwise.
+    pub fn is_simple(&self) -> bool {
+        self.0
+    }
+
+    /// Returns an [Option] containing
+    ///  * the column index of this selector after it has been converted to a
+    ///    fixed column,
+    ///  * `None` otherwise.
+    pub fn col_idx(&self) -> Option<usize> {
+        self.1
     }
 }
 
@@ -1659,6 +1680,7 @@ pub struct ConstraintSystem<F: Field> {
     pub(crate) num_advice_columns: usize,
     pub(crate) num_instance_columns: usize,
     pub(crate) num_selectors: usize,
+    pub(crate) selector_flags: Vec<SelectorFlag>,
     pub(crate) num_challenges: usize,
 
     /// Contains the index of each advice column that is left unblinded.
@@ -1790,6 +1812,7 @@ impl<F: Field> Default for ConstraintSystem<F> {
             num_advice_columns: 0,
             num_instance_columns: 0,
             num_selectors: 0,
+            selector_flags: vec![],
             num_challenges: 0,
             unblinded_advice_columns: Vec::new(),
             advice_column_phase: Vec::new(),
@@ -1810,6 +1833,19 @@ impl<F: Field> Default for ConstraintSystem<F> {
 }
 
 impl<F: Field> ConstraintSystem<F> {
+    /// Returns `true` if this constraint system contains a [SelectorFlag] of a
+    /// simple selector with the given column index.
+    pub fn has_simple_selector_col(&self, col_idx: usize) -> bool {
+        self.selector_flags
+            .iter()
+            .any(|f| f.is_simple() && f.col_idx() == Some(col_idx))
+    }
+
+    /// Returns the number of [SelectorFlag]s that track simple selectors.
+    pub fn num_simple_selectors(&self) -> usize {
+        self.selector_flags.iter().filter(|f| f.is_simple()).count()
+    }
+
     /// Obtain a pinned version of this constraint system; a structure with the
     /// minimal parameters needed to determine the rest of the constraint
     /// system.
@@ -2117,12 +2153,17 @@ impl<F: Field> ConstraintSystem<F> {
         // counted for this constraint system.
         assert_eq!(selectors.len(), self.num_selectors);
 
+        let nr_fixed_columns = self.num_fixed_columns();
         let (polys, selector_replacements): (Vec<_>, Vec<_>) = selectors
             .into_iter()
-            .map(|selector| {
+            .enumerate()
+            .map(|(idx, selector)| {
                 let poly =
                     selector.iter().map(|b| if *b { F::ONE } else { F::ZERO }).collect::<Vec<_>>();
                 let column = self.fixed_column();
+                if self.selector_flags[idx].is_simple() {
+                    self.selector_flags[idx] = SelectorFlag(true, Some(column.index()));
+                }
                 let rotation = Rotation::cur();
                 let expr = Expression::Fixed(FixedQuery {
                     index: Some(self.query_fixed_index(column, rotation)),
@@ -2135,6 +2176,15 @@ impl<F: Field> ConstraintSystem<F> {
 
         self.replace_selectors_with_fixed(&selector_replacements);
         self.num_selectors = 0;
+
+        // Adjust indices of simple, multiplicative selectors: after converting
+        // selectors to fixed columns, the selector index of a gate should now
+        // track the index of the corresponding fixed column
+        for gate in self.gates.iter_mut() {
+            for s in &mut gate.queried_selectors {
+                s.0 += nr_fixed_columns;
+            }
+        }
 
         (self, polys)
     }
@@ -2200,6 +2250,7 @@ impl<F: Field> ConstraintSystem<F> {
     pub fn selector(&mut self) -> Selector {
         let index = self.num_selectors;
         self.num_selectors += 1;
+        self.selector_flags.push(SelectorFlag(true, None));
         Selector(index, true)
     }
 
@@ -2208,6 +2259,7 @@ impl<F: Field> ConstraintSystem<F> {
     pub fn complex_selector(&mut self) -> Selector {
         let index = self.num_selectors;
         self.num_selectors += 1;
+        self.selector_flags.push(SelectorFlag(false, None));
         Selector(index, false)
     }
 
@@ -2421,14 +2473,14 @@ impl<F: Field> ConstraintSystem<F> {
         // h(x) is derived by the other evaluations so it does not reveal
         // anything; in fact it does not even appear in the proof.
 
-        // h(x_3) is also not revealed; the verifier only learns a single
-        // evaluation of a polynomial in x_1 which has h(x_3) and another random
-        // polynomial evaluated at x_3 as coefficients -- this random polynomial
-        // is "random_poly" in the vanishing argument.
-
         // Add an additional blinding factor as a slight defense against
         // off-by-one errors.
         let factors = factors + 1;
+
+        // Add an additional blinding factor as a security margin for opening
+        // the linearization polynomial in the multi-open argument
+        let factors = factors + 1;
+
         if factors > i32::MAX as usize {
             panic!("Number of blinding factors overflowed max expected value");
         }

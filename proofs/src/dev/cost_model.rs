@@ -16,11 +16,13 @@ use serde_derive::Serialize;
 
 use super::Region;
 use crate::{
-    circuit,
-    circuit::Value,
+    circuit::{self, Value},
     plonk::{
-        sealed, sealed::SealedPhase, Advice, Any, Any::Fixed, Assignment, Challenge, Circuit,
-        Column, ConstraintSystem, Error, FirstPhase, FloorPlanner, Instance, Phase, Selector,
+        sealed::{self, SealedPhase},
+        Advice,
+        Any::{self, Fixed},
+        Assignment, Challenge, Circuit, Column, ConstraintSystem, Error, FirstPhase, FloorPlanner,
+        Instance, Phase, Selector,
     },
     utils::rational::Rational,
 };
@@ -209,11 +211,9 @@ impl CostOptions {
             + (comp_bytes(1, 3) * nb_perm_chunks).saturating_sub(comp_bytes(0, 1)) // we don't need the permutation_product_last_eval of the last chunk
             + comp_bytes(0, 1) * self.permutation.columns;
 
-        // Vanishing argument:
-        // - COMM bytes for random poly
-        // - (max_deg - 1) COMM bytes for the pieces
-        // - SCALAR bytes for random piece eval
-        let vanishing = comp_bytes(self.max_degree, 1);
+        // Commitments to quotient limbs:
+        // - (max_deg - 1) COMM bytes for the limbs
+        let limbs = comp_bytes(self.max_degree - 1, 0);
 
         // Multiopening argument:
         // - COMM bytes for f_commitment
@@ -232,7 +232,7 @@ impl CostOptions {
             nr_rotations.extend(poly.rotations.clone());
         }
 
-        let size = plonk + vanishing + multiopen;
+        let size = plonk + multiopen + limbs;
 
         CircuitModel {
             k: self.min_k,
@@ -278,7 +278,9 @@ pub(crate) fn cost_model_options<F: Ord + Field + FromUniformBytes<64>, C: Circu
         // init the fixed polynomials with no rotations
         let mut fixed = vec![Poly { rotations: vec![] }; cs.num_fixed_columns()];
         for (col, rot) in cs.fixed_queries() {
-            fixed[col.index()].rotations.push(rot.0 as isize);
+            if !cs.has_simple_selector_col(col.index()) {
+                fixed[col.index()].rotations.push(rot.0 as isize);
+            }
         }
         fixed
     };
@@ -814,8 +816,8 @@ mod tests {
                         let circuit = StandardPlonk::<NB_PI>(Fq::from(random_byte[0] as u64));
                         let cost_model = cost_model_options(&circuit);
 
-                        // nb of unusable rows for this circuit is 6.
-                        let pi_k = (NB_PI + 6).next_power_of_two().ilog2();
+                        // nb of unusable rows for this circuit is 7.
+                        let pi_k = (NB_PI + 7).next_power_of_two().ilog2();
                         assert_eq!(cost_model.min_k, max(9, pi_k));
                     }
                 )*
