@@ -31,6 +31,7 @@ verification keys break backwards compatibility.
 * Updated Rust toolchain to 1.90.0 [#210](https://github.com/midnightntwrk/midnight-zk/pull/210)
 * Bumped midnight-proofs version to support logup [#153](https://github.com/midnightntwrk/midnight-zk/pull/153)
 * Implemented linearization prover [#190](https://github.com/midnightntwrk/midnight-zk/pull/190)
+* Use logup with the selector variant [#220](https://github.com/midnightntwrk/midnight-zk/pull/220)
 
 ### Removed
 * Move external implementations to zk-stdlib [#178](https://github.com/midnightntwrk/midnight-zk/pull/178)

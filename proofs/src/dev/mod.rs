@@ -1008,18 +1008,21 @@ impl<F: FromUniformBytes<64> + Ord> MockProver<F> {
                             .clone()
                             .into_par_iter()
                             .filter_map(|input_row| {
-                                let t = input_expressions
+                                let selector_val = load(&lookup.selector, input_row);
+
+                                // Skip rows where selector is 0
+                                if selector_val == Value::Real(F::ZERO) {
+                                    return None;
+                                }
+
+                                // Also keep track of the original input row, since we're going
+                                // to sort.
+                                let t: Vec<_> = input_expressions
                                     .iter()
                                     .map(move |c| load(c, input_row))
                                     .collect();
 
-                                if t != fill_row {
-                                    // Also keep track of the original input row, since we're going
-                                    // to sort.
-                                    Some((t, input_row))
-                                } else {
-                                    None
-                                }
+                                (t != fill_row).then_some((t, input_row))
                             })
                             .collect();
                         inputs.par_sort_unstable();
@@ -1411,7 +1414,7 @@ mod tests {
                 meta.annotate_lookup_any_column(advice_table, || "Adv-Table");
                 meta.enable_equality(advice_table);
 
-                meta.lookup_any("lookup", |cells| {
+                meta.lookup_any("lookup", None, |cells| {
                     let a = cells.query_advice(a, Rotation::cur());
                     let q = cells.query_selector(q);
                     let advice_table = cells.query_advice(advice_table, Rotation::cur());
@@ -1578,7 +1581,7 @@ mod tests {
                 let table = meta.lookup_table_column();
                 meta.annotate_lookup_column(table, || "Table1");
 
-                meta.lookup("lookup", |cells| {
+                meta.lookup("lookup", None, |cells| {
                     let a = cells.query_advice(a, Rotation::cur());
                     let q = cells.query_selector(q);
 

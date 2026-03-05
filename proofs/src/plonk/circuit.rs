@@ -1895,13 +1895,14 @@ impl<F: Field> ConstraintSystem<F> {
     /// table column it needs to match.
     ///
     /// If you want to batch multiple lookups to the same table column in
-    /// parallel, use [`batch_lookup`](Self::batch_lookup) instead.
+    /// parallel, use [`batched_lookup`](Self::batched_lookup) instead.
     pub fn lookup<S: AsRef<str>>(
         &mut self,
         name: S,
+        selector: Option<Selector>,
         table_map: impl FnOnce(&mut VirtualCells<'_, F>) -> Vec<(Expression<F>, TableColumn)>,
     ) -> usize {
-        self.batched_lookup(name, |cells| {
+        self.batched_lookup(name, selector, |cells| {
             table_map(cells).into_iter().map(|(expr, table)| (vec![expr], table)).collect()
         })
     }
@@ -1914,6 +1915,7 @@ impl<F: Field> ConstraintSystem<F> {
     pub fn batched_lookup<S: AsRef<str>>(
         &mut self,
         name: S,
+        selector: Option<Selector>,
         table_map: impl FnOnce(&mut VirtualCells<'_, F>) -> Vec<(Vec<Expression<F>>, TableColumn)>,
     ) -> usize {
         let mut cells = VirtualCells::new(self);
@@ -1935,7 +1937,11 @@ impl<F: Field> ConstraintSystem<F> {
             .collect();
         let index = self.lookups.len();
 
-        self.lookups.push(logup::BatchedArgument::new(name.as_ref(), table_map));
+        self.lookups.push(logup::BatchedArgument::new(
+            name.as_ref(),
+            selector,
+            table_map,
+        ));
 
         index
     }
@@ -1951,9 +1957,10 @@ impl<F: Field> ConstraintSystem<F> {
     pub fn lookup_any<S: AsRef<str>>(
         &mut self,
         name: S,
+        selector: Option<Selector>,
         table_map: impl FnOnce(&mut VirtualCells<'_, F>) -> Vec<(Expression<F>, Expression<F>)>,
     ) -> usize {
-        self.batch_lookup_any(name, |cells| {
+        self.batch_lookup_any(name, selector, |cells| {
             table_map(cells).into_iter().map(|(expr, table)| (vec![expr], table)).collect()
         })
     }
@@ -1966,6 +1973,7 @@ impl<F: Field> ConstraintSystem<F> {
     pub fn batch_lookup_any<S: AsRef<str>>(
         &mut self,
         name: S,
+        selector: Option<Selector>,
         table_map: impl FnOnce(&mut VirtualCells<'_, F>) -> Vec<(Vec<Expression<F>>, Expression<F>)>,
     ) -> usize {
         let mut cells = VirtualCells::new(self);
@@ -1989,7 +1997,11 @@ impl<F: Field> ConstraintSystem<F> {
             .collect();
         let index = self.lookups.len();
 
-        self.lookups.push(logup::BatchedArgument::new(name.as_ref(), table_map));
+        self.lookups.push(logup::BatchedArgument::new(
+            name.as_ref(),
+            selector,
+            table_map,
+        ));
 
         index
     }
@@ -2232,6 +2244,11 @@ impl<F: Field> ConstraintSystem<F> {
                 .chain(lookup.table_expressions.iter_mut())
         }) {
             replace_selectors(expr, selector_replacements, true);
+        }
+
+        // Substitute selectors in the lookup selector fields.
+        for lookup in self.lookups.iter_mut() {
+            replace_selectors(&mut lookup.selector, selector_replacements, true);
         }
 
         // Substitute selectors in all trash arguments.

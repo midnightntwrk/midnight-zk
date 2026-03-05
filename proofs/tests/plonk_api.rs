@@ -311,7 +311,7 @@ fn plonk_api() {
              * ]
              */
 
-            meta.lookup("lookup", |meta| {
+            meta.lookup("lookup", None, |meta| {
                 let a_ = meta.query_any(a, Rotation::cur());
                 vec![(a_, sl)]
             });

@@ -25,7 +25,11 @@ use midnight_proofs::{
 use crate::{
     field::AssignedNative,
     instructions::{ArithInstructions, AssignmentInstructions},
-    verifier::{expressions::compress_expressions, lookup::LookupEvaluated, SelfEmulation},
+    verifier::{
+        expressions::{compress_expressions, eval_expression},
+        lookup::LookupEvaluated,
+        SelfEmulation,
+    },
 };
 
 #[allow(clippy::too_many_arguments)]
@@ -33,6 +37,7 @@ pub(crate) fn lookup_expressions<S: SelfEmulation>(
     layouter: &mut impl Layouter<S::F>,
     scalar_chip: &S::ScalarChip,
     lookup_evals: &LookupEvaluated<S>,
+    selector_expression: &Expression<S::F>,
     input_expressions: &[Vec<Expression<S::F>>],
     table_expressions: &[Expression<S::F>],
     advice_evals: &[AssignedNative<S::F>],
@@ -51,6 +56,15 @@ pub(crate) fn lookup_expressions<S: SelfEmulation>(
             S::F::ONE,
         )?
     };
+
+    let selector = eval_expression::<S>(
+        layouter,
+        scalar_chip,
+        advice_evals,
+        fixed_evals,
+        instance_evals,
+        selector_expression,
+    )?;
 
     let compressed_inputs_with_beta = input_expressions
         .iter()
@@ -108,7 +122,7 @@ pub(crate) fn lookup_expressions<S: SelfEmulation>(
     };
 
     // h(x) · ∏ⱼ(fⱼ(x) + β) - Σⱼ ∏_{k≠j}(fₖ(x) + β) = 0
-    let id_1 = {
+    let helper_constraint = {
         scalar_chip.add_and_mul(
             layouter,
             (S::F::ZERO, &lookup_evals.helper_eval),
@@ -119,29 +133,28 @@ pub(crate) fn lookup_expressions<S: SelfEmulation>(
         )?
     };
 
-    // Accumulator constraint: Z(ωx)·(t(x) + β) = (Z(x) + h(x))·(t(x) + β) - m(x)
-    let id_2 = {
-        let left = {
-            scalar_chip.mul(
+    // Accumulator constraint:
+    // (Z(ωx) - Z(x) - selector·h(x)) · (t(x) + β) + m(x) = 0
+    // The selector gates only the input side (h); m is always added
+    // so the table-side balance is maintained (see module-level docs in
+    // logup.rs).
+    let acc_constraint = {
+        let acc_step = {
+            let z_next_minus_z = scalar_chip.sub(
                 layouter,
                 &lookup_evals.accumulator_next_eval,
-                &compressed_table_with_beta,
-                None,
-            )?
-        };
-
-        let right = {
-            let aux1 = scalar_chip.add(
-                layouter,
                 &lookup_evals.accumulator_eval,
-                &lookup_evals.helper_eval,
             )?;
-            let aux = scalar_chip.mul(layouter, &aux1, &compressed_table_with_beta, None)?;
-            scalar_chip.sub(layouter, &aux, &lookup_evals.multiplicities_eval)?
+            let selector_h =
+                scalar_chip.mul(layouter, &selector, &lookup_evals.helper_eval, None)?;
+            let aux = scalar_chip.sub(layouter, &z_next_minus_z, &selector_h)?;
+            scalar_chip.mul(layouter, &aux, &compressed_table_with_beta, None)?
         };
 
-        let left_minus_right = scalar_chip.sub(layouter, &left, &right)?;
-        scalar_chip.mul(layouter, &left_minus_right, &active_rows, None)?
+        // acc_step + m
+        let balance = scalar_chip.add(layouter, &acc_step, &lookup_evals.multiplicities_eval)?;
+
+        scalar_chip.mul(layouter, &balance, &active_rows, None)?
     };
 
     // (l_0(x) + l_last(x)) * Z(x) = 0
@@ -153,5 +166,5 @@ pub(crate) fn lookup_expressions<S: SelfEmulation>(
         None,
     )?;
 
-    Ok(vec![boundary, id_1, id_2])
+    Ok(vec![boundary, helper_constraint, acc_constraint])
 }
