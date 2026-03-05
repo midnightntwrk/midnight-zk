@@ -32,6 +32,7 @@ pub mod field;
 pub mod hash;
 pub mod map;
 pub mod parsing;
+pub mod pilar;
 pub mod vec;
 pub mod verifier;
 
