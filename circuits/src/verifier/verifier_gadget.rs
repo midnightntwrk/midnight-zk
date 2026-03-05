@@ -606,18 +606,48 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         let omega = assigned_vk.domain.get_omega();
         let omega_inv = omega.invert().unwrap();
         let omega_last = omega_inv.pow([cs.blinding_factors() as u64 + 1]);
-        let x_next = self.scalar_chip.mul_by_constant(layouter, &x, omega)?;
-        let x_prev = self.scalar_chip.mul_by_constant(layouter, &x, omega_inv)?;
         let x_last = self.scalar_chip.mul_by_constant(layouter, &x, omega_last)?;
+
+        // Pre-compute evaluation points for all rotations in the constraint system.
+        let rotation_points = {
+            let mut rotations = std::collections::BTreeSet::new();
+            // Permutations and lookups always require rotations {-1, 0, 1}.
+            rotations.extend([-1, 0, 1]);
+            for &(_, rot) in cs.advice_queries() {
+                rotations.insert(rot.0);
+            }
+            for &(_, rot) in cs.fixed_queries() {
+                rotations.insert(rot.0);
+            }
+            for &(_, rot) in cs.instance_queries() {
+                rotations.insert(rot.0);
+            }
+
+            let mut points = std::collections::BTreeMap::new();
+            for r in rotations {
+                let point = if r == 0 {
+                    x.clone()
+                } else {
+                    let omega_r = if r > 0 {
+                        omega.pow([r as u64])
+                    } else {
+                        omega_inv.pow([(-r) as u64])
+                    };
+                    self.scalar_chip.mul_by_constant(layouter, &x, omega_r)?
+                };
+                points.insert(r, point);
+            }
+            points
+        };
+
+        let x_next = rotation_points[&1].clone();
+        let x_prev = rotation_points[&-1].clone();
 
         // Gets the evaluation point for a query at the given rotation.
         let get_point = |rotation: &Rotation| -> &AssignedNative<S::F> {
-            match rotation.0 {
-                -1 => &x_prev,
-                0 => &x,
-                1 => &x_next,
-                _ => panic!("We do not support other rotations"),
-            }
+            rotation_points
+                .get(&rotation.0)
+                .unwrap_or_else(|| panic!("Unsupported rotation: {}", rotation.0))
         };
 
         let queries = iter::empty()
