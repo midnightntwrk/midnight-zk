@@ -56,6 +56,7 @@ pub(crate) struct Committed<F: PrimeField> {
 #[cfg_attr(feature = "bench-internal", derive(Clone))]
 #[derive(Debug)]
 pub(crate) struct ComputedMultiplicities<F: PrimeField> {
+    pub(crate) selector: Polynomial<F, LagrangeCoeff>,
     pub(crate) multiplicities: Polynomial<F, LagrangeCoeff>,
     pub(crate) compressed_input_expression: Vec<Polynomial<F, LagrangeCoeff>>,
     pub(crate) compressed_table_expression: Polynomial<F, LagrangeCoeff>,
@@ -126,8 +127,11 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> FlattenedArgument<F> {
             .collect::<Vec<_>>();
         let compressed_table_expression = compress_expressions(&self.table_expressions);
 
+        let selector = eval_expressions(std::slice::from_ref(&self.selector)).swap_remove(0);
+
         let usable_rows = n - pk.vk.cs.blinding_factors() - 1;
         let multiplicities = compute_multiplicities(
+            &selector,
             &compressed_input_expression,
             &compressed_table_expression,
             usable_rows,
@@ -138,6 +142,7 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> FlattenedArgument<F> {
         transcript.write(&multiplicities_commitment)?;
 
         Ok(ComputedMultiplicities {
+            selector,
             multiplicities,
             compressed_input_expression,
             compressed_table_expression,
@@ -202,13 +207,20 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ComputedMultiplicities<F> {
             }
         });
 
-        // Polynomial over which we compute the running sum
-        // logderivative_poly = h(X) - m(X)/(t(X) + β)
+        // Polynomial over which we compute the running sum:
+        //   logderivative_poly[i] = selector[i]·h[i] - m[i]/(t[i]+β)
+        //
+        // The selector applies only to the input side (h), not to the multiplicities
+        // (m). m[i] counts how many selected inputs reference the table value
+        // t[i], so it lives on table rows — not input rows. Gating m by the
+        // selector would incorrectly exclude those table contributions,
+        // breaking the logup balance.
         let mut logderivative_poly = vec![F::ZERO; n];
         parallelize(&mut logderivative_poly, |poly, start| {
             for (i, coeff) in poly.iter_mut().enumerate() {
                 let i = i + start;
-                *coeff = helper_poly[i] - self.multiplicities[i] * table_denoms[i];
+                *coeff =
+                    self.selector[i] * helper_poly[i] - self.multiplicities[i] * table_denoms[i];
             }
         });
 
@@ -339,7 +351,13 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluated<F> {
 /// Only values in the first `usable_rows` are counted for both inputs and
 /// table. Blinding rows are excluded from the counting but still get a
 /// multiplicity value (zero for values not in the active region).
+///
+/// # Panics
+///
+/// Panics if any selected input value (where the selector is non-zero) is not
+/// present in `table`.
 pub(crate) fn compute_multiplicities<F>(
+    selector: &Polynomial<F, LagrangeCoeff>,
     values: &[Polynomial<F, LagrangeCoeff>],
     table: &Polynomial<F, LagrangeCoeff>,
     usable_rows: usize,
@@ -355,12 +373,20 @@ where
         *table_counts.entry(*v).or_default() += 1;
     }
 
-    // Count how many times each value appears in inputs (active rows only)
+    // Count how many times each value appears in inputs (only where the selector is
+    // non-zero).
     let mut input_counts: FxHashMap<F, u32> = table_counts.keys().map(|v| (*v, 0)).collect();
     for value in values.iter() {
-        for v in value.iter().take(usable_rows) {
-            *input_counts.get_mut(v).expect("input value not found in lookup table") += 1;
-        }
+        value
+            .iter()
+            .zip(selector.iter())
+            .take(usable_rows)
+            .filter(|(_, sel)| !sel.is_zero_vartime())
+            .for_each(|(v, _)| {
+                *input_counts
+                    .get_mut(v)
+                    .unwrap_or_else(|| panic!("input value {v:?} not found in lookup table")) += 1;
+            });
     }
 
     // Build vector of table counts for batch inversion (only for active table
@@ -445,7 +471,12 @@ mod tests {
         // - 3 appears 3 times (2 in input1, 1 in input2)
         // - 4 appears 1 time
 
-        let result = compute_multiplicities(&[input1, input2], &table, 4);
+        let result = compute_multiplicities(
+            &poly_from_vec(vec![Fq::ONE; 4]),
+            &[input1, input2],
+            &table,
+            4,
+        );
 
         assert_eq!(result.len(), 4);
         assert_eq!(result[0], Fq::from(1u64)); // table[0]=1 -> count 1
@@ -474,7 +505,7 @@ mod tests {
         ]);
 
         // Should panic because input value 5 is not found in the table
-        compute_multiplicities(&[input], &table, 4);
+        compute_multiplicities(&poly_from_vec(vec![Fq::ONE; 4]), &[input], &table, 4);
     }
 
     #[test]
@@ -495,7 +526,7 @@ mod tests {
             Fq::from(3u64),
         ]);
 
-        let result = compute_multiplicities(&[input], &table, 4);
+        let result = compute_multiplicities(&poly_from_vec(vec![Fq::ONE; 4]), &[input], &table, 4);
 
         assert_eq!(result.len(), 4);
         assert_eq!(result[0], Fq::from(1u64)); // table[0]=1 -> 1/1 = 1
@@ -524,7 +555,7 @@ mod tests {
             Fq::from(888u64), // "random" blinding value
         ]);
 
-        let result = compute_multiplicities(&[input], &table, 2);
+        let result = compute_multiplicities(&poly_from_vec(vec![Fq::ONE; 4]), &[input], &table, 2);
 
         assert_eq!(result.len(), 4);
         assert_eq!(result[0], Fq::from(1u64)); // table[0]=1 -> 1/1 = 1

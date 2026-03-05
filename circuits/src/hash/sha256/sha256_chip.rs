@@ -200,8 +200,7 @@ impl<F: CircuitField> ComposableChip<F> for Sha256Chip<F> {
         let q_12_1x3_7_3_4_3 = meta.selector();
         let q_add_mod_2_32 = meta.selector();
 
-        meta.batched_lookup("plain-spreaded lookup", |meta| {
-            let q_lookup = meta.query_selector(q_lookup);
+        meta.batched_lookup("plain-spreaded lookup", Some(q_lookup), |meta| {
             let nbits_0 = meta.query_fixed(fixed_cols[0], Rotation(0));
             let nbits_1 = meta.query_fixed(fixed_cols[1], Rotation(0));
             let plain_0 = meta.query_advice(advice_cols[0], Rotation(0));
@@ -210,18 +209,9 @@ impl<F: CircuitField> ComposableChip<F> for Sha256Chip<F> {
             let sprdd_1 = meta.query_advice(advice_cols[3], Rotation(0));
 
             vec![
-                (
-                    vec![q_lookup.clone() * nbits_0, q_lookup.clone() * nbits_1],
-                    table.nbits_col,
-                ),
-                (
-                    vec![q_lookup.clone() * plain_0, q_lookup.clone() * plain_1],
-                    table.plain_col,
-                ),
-                (
-                    vec![q_lookup.clone() * sprdd_0, q_lookup.clone() * sprdd_1],
-                    table.sprdd_col,
-                ),
+                (vec![nbits_0, nbits_1], table.nbits_col),
+                (vec![plain_0, plain_1], table.plain_col),
+                (vec![sprdd_0, sprdd_1], table.sprdd_col),
             ]
         });
 

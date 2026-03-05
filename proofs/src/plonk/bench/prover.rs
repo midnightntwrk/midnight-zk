@@ -128,7 +128,7 @@ where
 
     // Commit to the multiplicities columns
     let lookups: Vec<Vec<logup::prover::ComputedMultiplicities<F>>> = {
-        group.bench_function("Commit lookup products", |b| {
+        group.bench_function("Commit lookup multiplicities", |b| {
             b.iter_batched(
                 || transcript.clone(),
                 |mut t| {
@@ -244,10 +244,9 @@ where
     let lookups: Vec<Vec<logup::prover::Committed<F>>> = {
         group.bench_function("Commit lookup products", |b| {
             b.iter_batched(
-                || transcript.clone(),
-                |mut t| {
+                || (transcript.clone(), lookups.clone()),
+                |(mut t, lookups)| {
                     let _: Result<Vec<Vec<_>>, _> = lookups
-                        .clone()
                         .into_iter()
                         .map(|lookups| -> Result<Vec<_>, _> {
                             // Construct and commit to products polynomials for each lookup
@@ -410,14 +409,18 @@ where
 
     let quotient_limbs = {
         group.bench_function("Compute quotient poly", |b| {
-            b.iter(|| {
-                let _ = compute_h_poly::<F, CS, T>(
-                    params,
-                    pk.get_vk().get_domain(),
-                    nu_poly.clone(),
-                    transcript,
-                );
-            })
+            b.iter_batched(
+                || transcript.clone(),
+                |mut t| {
+                    let _ = compute_h_poly::<F, CS, T>(
+                        params,
+                        pk.get_vk().get_domain(),
+                        nu_poly.clone(),
+                        &mut t,
+                    );
+                },
+                criterion::BatchSize::SmallInput,
+            )
         });
         compute_h_poly::<F, CS, T>(params, pk.get_vk().get_domain(), nu_poly, transcript)?
     };

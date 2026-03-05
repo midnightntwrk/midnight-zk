@@ -665,6 +665,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                     layouter,
                     &self.scalar_chip,
                     &p.evaluated,
+                    argument.selector_expression(),
                     argument.input_expressions(),
                     argument.table_expressions(),
                     &advice_evals,
