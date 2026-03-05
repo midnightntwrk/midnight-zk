@@ -4,7 +4,7 @@
 use ff::PrimeField;
 
 use crate::{
-    plonk::{logup, permutation, trash, vanishing},
+    plonk::{logup, permutation, trash},
     poly::{commitment::PolynomialCommitmentScheme, Coeff, LagrangeCoeff, Polynomial},
 };
 
@@ -17,7 +17,6 @@ pub struct ProverTrace<F: PrimeField> {
     #[allow(dead_code)]
     // This field will be useful for split accumulation
     pub(crate) instance_values: Vec<Vec<Polynomial<F, LagrangeCoeff>>>,
-    pub(crate) vanishing: vanishing::prover::Committed<F>,
     pub(crate) lookups: Vec<Vec<logup::prover::Committed<F>>>,
     pub(crate) trashcans: Vec<Vec<trash::prover::Committed<F>>>,
     pub(crate) permutations: Vec<permutation::prover::Committed<F>>,
@@ -34,7 +33,6 @@ pub struct ProverTrace<F: PrimeField> {
 #[derive(Debug)]
 pub struct VerifierTrace<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> {
     pub(crate) advice_commitments: Vec<Vec<PCS::Commitment>>,
-    pub(crate) vanishing: vanishing::verifier::Committed<F, PCS>,
     pub(crate) lookups: Vec<Vec<logup::verifier::Committed<F, PCS>>>,
     pub(crate) trashcans: Vec<Vec<trash::verifier::Committed<F, PCS>>>,
     pub(crate) permutations: Vec<permutation::verifier::Committed<F, PCS>>,

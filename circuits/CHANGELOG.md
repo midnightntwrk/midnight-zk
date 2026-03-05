@@ -40,6 +40,7 @@ verification keys break backwards compatibility.
 * Replace native `secp256k1` types with `k256` [#192](https://github.com/midnightntwrk/midnight-zk/pull/192)
 * `CircuitField::modulus()` computed from field arith instead of parsing `PrimeField::MODULUS` [#192](https://github.com/midnightntwrk/midnight-zk/pull/192)
 * Fix `from_bytes_le` [#226](https://github.com/midnightntwrk/midnight-zk/pull/226)
+* Implemented linearization prover [#190](https://github.com/midnightntwrk/midnight-zk/pull/190)
 
 ### Removed
 * Move external implementations to zk-stdlib [#178](https://github.com/midnightntwrk/midnight-zk/pull/178)

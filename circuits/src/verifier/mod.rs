@@ -39,7 +39,6 @@ mod transcript_gadget;
 mod trash;
 mod types;
 mod utils;
-mod vanishing;
 mod verifier_gadget;
 
 pub use accumulator::{Accumulator, AssignedAccumulator};

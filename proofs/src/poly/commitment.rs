@@ -34,6 +34,9 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
     /// Verification guard. Allows for batch verification
     type VerificationGuard: Guard<F, Self>;
 
+    /// Returns the commitment to the constant polynomial `P(X) = 1`.
+    fn constant_commitment() -> Self::Commitment;
+
     /// Generates the parameters of the polynomial commitment scheme
     fn gen_params(k: u32) -> Self::Parameters;
 
