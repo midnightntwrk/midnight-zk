@@ -11,9 +11,10 @@ use midnight_circuits::{
     },
     testing_utils::ecdsa::{ECDSASig, Ecdsa},
     types::{AssignedForeignPoint, InnerValue, Instantiable},
+    CircuitField,
 };
 use midnight_curves::{
-    secp256k1::{Fq as secp256k1Scalar, Secp256k1},
+    k256::{Fq as K256Scalar, K256},
     Fq as Scalar,
 };
 use midnight_proofs::{
@@ -29,8 +30,8 @@ type F = Scalar;
 const N: usize = 5; // The total number of public keys.
 const T: usize = 4; // The threshold of valid signatures.
 
-type PK = Secp256k1;
-type MsgHash = secp256k1Scalar;
+type PK = K256;
+type MsgHash = K256Scalar;
 
 #[derive(Clone, Default)]
 pub struct BitcoinThresholdECDSA;
@@ -44,9 +45,9 @@ impl Relation for BitcoinThresholdECDSA {
 
     fn format_instance((msg_hash, pks): &Self::Instance) -> Result<Vec<F>, Error> {
         Ok([
-            AssignedField::<F, secp256k1Scalar, MEP>::as_public_input(msg_hash),
+            AssignedField::<F, K256Scalar, MEP>::as_public_input(msg_hash),
             pks.iter()
-                .flat_map(AssignedForeignPoint::<F, Secp256k1, MEP>::as_public_input)
+                .flat_map(AssignedForeignPoint::<F, K256, MEP>::as_public_input)
                 .collect::<Vec<_>>(),
         ]
         .into_iter()
@@ -96,8 +97,8 @@ impl Relation for BitcoinThresholdECDSA {
 
         // TODO: For now, and because this is a PoC, let alpha be fixed, which should be
         // derived with Poseidon instead.
-        let alpha: AssignedField<F, secp256k1Scalar, _> =
-            secp256k1_scalar.assign_fixed(layouter, secp256k1Scalar::from(42))?;
+        let alpha: AssignedField<F, K256Scalar, _> =
+            secp256k1_scalar.assign_fixed(layouter, K256Scalar::from(42u64))?;
 
         let mut alpha_powers: [_; T] = core::array::from_fn(|_| alpha.clone());
         for i in 1..T {
@@ -140,14 +141,14 @@ impl Relation for BitcoinThresholdECDSA {
             .map(|(val, r_i)| {
                 let k_point_y_val = val.zip(instance.unzip().0).zip(r_i.value()).map(
                     |(((pk_i, sig_i), msg_hash), r_i)| {
-                        let gen = Secp256k1::generator();
-                        let r_as_scalar = secp256k1Scalar::from_bytes(&sig_i.get_r()).unwrap();
+                        let gen = K256::generator();
+                        let r_as_scalar = K256Scalar::from_bytes_le(&sig_i.get_r()).unwrap();
                         let s_inv = sig_i.get_s().invert().unwrap();
                         let k_point = gen * (s_inv * msg_hash) + pk_i * (s_inv * r_as_scalar);
 
-                        // cpu sanity check
-                        assert_eq!(r_i, k_point.to_affine().x);
-                        k_point.to_affine().y
+                        // CPU sanity check.
+                        assert_eq!(r_i, k_point.to_affine().x());
+                        k_point.to_affine().y()
                     },
                 );
 
@@ -159,14 +160,14 @@ impl Relation for BitcoinThresholdECDSA {
         let sum_alphas = {
             let terms = alpha_powers
                 .iter()
-                .map(|alpha_i| (secp256k1Scalar::ONE, alpha_i.clone()))
+                .map(|alpha_i| (K256Scalar::ONE, alpha_i.clone()))
                 .collect::<Vec<_>>();
-            secp256k1_scalar.linear_combination(layouter, &terms, secp256k1Scalar::ZERO)
+            secp256k1_scalar.linear_combination(layouter, &terms, K256Scalar::ZERO)
         }?;
         let sum_alphas_times_msg_hash =
             secp256k1_scalar.mul(layouter, &sum_alphas, &msg_hash, None)?;
 
-        let gen = secp256k1_curve.assign_fixed(layouter, Secp256k1::generator())?;
+        let gen = secp256k1_curve.assign_fixed(layouter, K256::generator())?;
         let mut bases = vec![gen];
         bases.extend(assigned_selected_pks);
         bases.extend(k_points);
@@ -208,7 +209,7 @@ fn main() {
 
     // Generate a random instance-witness pair.
     let mut rng = ChaCha8Rng::seed_from_u64(0xba5eba11);
-    let msg_hash = secp256k1Scalar::random(&mut rng);
+    let msg_hash = K256Scalar::random(&mut rng);
 
     let keys: [_; N] = core::array::from_fn(|_| Ecdsa::keygen(&mut rng));
     let pks = keys.map(|(pk, _)| pk);

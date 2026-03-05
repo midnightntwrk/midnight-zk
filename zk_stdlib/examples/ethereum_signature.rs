@@ -9,8 +9,9 @@ use midnight_circuits::{
         DecompositionInstructions, EccInstructions, PublicInputInstructions, ZeroInstructions,
     },
     types::{AssignedByte, AssignedForeignPoint, Instantiable},
+    CircuitField,
 };
-use midnight_curves::secp256k1::{Fq as secp256k1Scalar, Secp256k1};
+use midnight_curves::k256::{Fq as K256Scalar, K256};
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
@@ -23,9 +24,9 @@ type F = midnight_curves::Fq;
 // Message type (the length is arbitrary).
 const MSG_LEN: usize = 32;
 type Message = [u8; MSG_LEN];
-type PK = Secp256k1;
+type PK = K256;
 
-type Signature = (secp256k1Scalar, secp256k1Scalar);
+type Signature = (K256Scalar, K256Scalar);
 
 // Prefix used in the Keccak digest of the Ethereum signature of 32-byte
 // messages (EIP-191 protocol with a fixed input size assumption).
@@ -41,7 +42,7 @@ impl Relation for EthereumSigExample {
 
     fn format_instance((pk, msg_bytes): &Self::Instance) -> Result<Vec<F>, Error> {
         Ok([
-            AssignedForeignPoint::<F, Secp256k1, MultiEmulationParams>::as_public_input(pk),
+            AssignedForeignPoint::<F, K256, MultiEmulationParams>::as_public_input(pk),
             msg_bytes
                 .iter()
                 .flat_map(AssignedByte::<F>::as_public_input)
@@ -99,7 +100,7 @@ impl Relation for EthereumSigExample {
         let u1 = secp256k1_scalar.mul(layouter, &z, &s_inv, None)?;
         let u2 = secp256k1_scalar.mul(layouter, &r, &s_inv, None)?;
 
-        let gen = secp256k1_curve.assign_fixed(layouter, Secp256k1::generator())?;
+        let gen = secp256k1_curve.assign_fixed(layouter, K256::generator())?;
         let u1_bits = secp256k1_scalar.assigned_to_le_bits(layouter, &u1, None, true)?;
         let u2_bits = secp256k1_scalar.assigned_to_le_bits(layouter, &u2, None, true)?;
 
@@ -184,9 +185,10 @@ fn main() {
     println!(" - Deserialising public key...");
     let instance = (parse_eth_point(&pk_bytes), msg_bytes);
     println!(" - Deserialising signatures...");
+    // sig_bytes are in big-endian.
     let witness = (
-        secp256k1Scalar::from_bytes(&reverse_bytes(&sig_bytes[0])).expect("Secp scalar 0"),
-        secp256k1Scalar::from_bytes(&reverse_bytes(&sig_bytes[1])).expect("Secp scalar 1"),
+        K256Scalar::from_bytes_be(&sig_bytes[0]).expect("Secp scalar 0"),
+        K256Scalar::from_bytes_be(&sig_bytes[1]).expect("Secp scalar 1"),
     );
 
     println!(" - Setting up vk...");
@@ -214,25 +216,14 @@ fn main() {
 }
 
 // Computation of an Ethereum public key from raw serialised data.
-fn parse_eth_point(bytes: &[[u8; 32]; 2]) -> Secp256k1 {
-    let mut secp_repr = <Secp256k1 as GroupEncoding>::Repr::default();
-    let mut bytes_with_y_coord = [0u8; 33];
-    // Assigning the parity of `y` in the first byte. In this library, the parity
-    // bit is 0 or 1 (instead of `0x02` or `0x03` in common convetions for
-    // secp256k1), but the bit is stored at the most significant bit, making it
-    // in practice `0x00` and `0x80`.
-    bytes_with_y_coord[0] = 0x80 * (bytes[1][31] % 2);
-    // Assigning `x`, reversed to match the little-endian convention of halo2curves.
-    let mut reverted_bytes = bytes[0];
-    reverted_bytes.reverse();
-    bytes_with_y_coord[1..].copy_from_slice(&reverted_bytes);
+// Takes BE-encoded x and y coordinates.
+fn parse_eth_point(bytes: &[[u8; 32]; 2]) -> K256 {
+    // Standard SEC1 compressed encoding: 0x02 (even y) or 0x03 (odd y) + BE x.
+    let y_parity = bytes[1][31] % 2;
+    let mut sec1_compressed = [0u8; 33];
+    sec1_compressed[0] = 0x02 + y_parity;
+    sec1_compressed[1..].copy_from_slice(&bytes[0]);
 
-    secp_repr.as_mut().copy_from_slice(&bytes_with_y_coord);
-
-    Secp256k1::from_bytes(&secp_repr).expect("Point parsing failed")
-}
-
-// Reverses the given bytes. Panics if the inputs does not have len 32.
-fn reverse_bytes(bytes: &[u8]) -> [u8; 32] {
-    bytes.iter().copied().rev().collect::<Vec<_>>().try_into().unwrap()
+    let repr = sec1_compressed.into();
+    K256::from_bytes(&repr).expect("Point parsing failed")
 }

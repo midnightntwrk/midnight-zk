@@ -18,7 +18,6 @@ use group::{Curve, Group};
 use midnight_curves::bn256;
 use midnight_curves::{
     curve25519::{Curve25519, Curve25519Affine, CURVE_A as CURVE25519_A, CURVE_D as CURVE25519_D},
-    secp256k1::{Secp256k1, Secp256k1Affine},
     CurveAffine, Fq as BlsScalar, JubjubAffine, JubjubExtended, JubjubSubgroup,
 };
 
@@ -167,22 +166,27 @@ impl EdwardsCurve for Curve25519 {
     const D: Self::Base = CURVE25519_D;
 }
 
-// Implementation for Secp256k1.
-use midnight_curves::secp256k1::{Fp, Fq};
-impl CircuitCurve for Secp256k1 {
-    type Base = Fp;
+// Implementation for K256 (secp256k1 using k256 crate).
+use midnight_curves::k256::{Fp as K256Fp, K256Affine, K256};
+
+impl CircuitCurve for K256 {
+    type Base = K256Fp;
     type ScalarField = <Self as Group>::Scalar;
-    type CryptographicGroup = Secp256k1;
+    type CryptographicGroup = K256;
 
     const NUM_BITS_SUBGROUP: u32 = 256;
 
     fn coordinates(&self) -> Option<(Self::Base, Self::Base)> {
+        // Identity point maps to (0, 0) by circuit convention.
+        if bool::from(self.is_identity()) {
+            return Some((K256Fp::ZERO, K256Fp::ZERO));
+        }
         let affine = self.to_affine();
-        Some((affine.x, affine.y))
+        Some((affine.x(), affine.y()))
     }
 
     fn from_xy(x: Self::Base, y: Self::Base) -> Option<Self> {
-        <Secp256k1Affine as CurveAffine>::from_xy(x, y).into_option().map(|p| p.into())
+        K256Affine::from_xy(x, y).map(|p| p.into())
     }
 
     fn into_subgroup(self) -> Self::CryptographicGroup {
@@ -190,16 +194,16 @@ impl CircuitCurve for Secp256k1 {
     }
 }
 
-impl WeierstrassCurve for Secp256k1 {
-    const A: Self::Base = Fp::from_raw([0, 0, 0, 0]);
-    const B: Self::Base = Fp::from_raw([7, 0, 0, 0]);
+impl WeierstrassCurve for K256 {
+    const A: Self::Base = K256Fp::ZERO;
+    const B: Self::Base = K256Fp::from_u64(7);
 
     fn base_zeta() -> Self::Base {
-        <Fp as ff::WithSmallOrderMulGroup<3>>::ZETA
+        K256::base_zeta()
     }
 
     fn scalar_zeta() -> Self::ScalarField {
-        <Fq as ff::WithSmallOrderMulGroup<3>>::ZETA
+        K256::scalar_zeta()
     }
 }
 
@@ -274,5 +278,18 @@ impl WeierstrassCurve for bn256::G1 {
     }
     fn scalar_zeta() -> Self::ScalarField {
         <bn256::Fr as ff::WithSmallOrderMulGroup<3>>::ZETA
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_k256_identity_coordinates_are_zero() {
+        let identity = K256::identity();
+        let (x, y) = identity.coordinates().expect("coordinates should be Some");
+        assert_eq!(x, K256Fp::ZERO);
+        assert_eq!(y, K256Fp::ZERO);
     }
 }
