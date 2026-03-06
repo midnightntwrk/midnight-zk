@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) Midnight Foundation
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -24,7 +24,8 @@ use std::iter::once;
 
 use rustc_hash::{FxBuildHasher, FxHashSet};
 
-use super::automaton::{Automaton, Letter, RawAutomaton, ALPHABET_MAX_SIZE};
+use super::automaton::{Automaton, Letter, RawAutomaton};
+use crate::parsing::scanner::ALPHABET_MAX_SIZE;
 
 /// A type for formal languages described as regular expressions.
 #[derive(Clone, Debug)]
@@ -761,7 +762,7 @@ impl Regex {
 mod tests {
 
     use super::{Regex, RegexInstructions};
-    use crate::parsing::{automaton, regex::ALPHABET_MAX_SIZE};
+    use crate::parsing::scanner::{automaton, ALPHABET_MAX_SIZE};
 
     // Tests whether a given regular expression accepts or rejects two sets of
     // corresponding strings. Uses the sub-method used in the `automaton.rs` test

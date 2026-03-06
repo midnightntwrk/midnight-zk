@@ -40,7 +40,7 @@ Ensure the title is a clear summary of the requirement and provides enough conte
 
 ```
 // This file is part of <REPLACE WITH REPOSITORY NAME>.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) Midnight Foundation
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
