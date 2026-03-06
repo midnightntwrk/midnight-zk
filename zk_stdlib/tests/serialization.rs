@@ -38,6 +38,8 @@ impl Relation for DummyCircuit {
 
     type Witness = F;
 
+    type Error = Error;
+
     fn format_instance(x: &Self::Instance) -> Result<Vec<F>, Error> {
         Ok(vec![*x])
     }

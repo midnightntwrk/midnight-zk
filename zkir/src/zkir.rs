@@ -81,6 +81,8 @@ impl Relation for ZkirRelation {
 
     type Witness = HashMap<&'static str, IrValue>;
 
+    type Error = plonk::Error;
+
     fn format_instance(instance: &Self::Instance) -> Result<Vec<F>, plonk::Error> {
         instance
             .iter()
