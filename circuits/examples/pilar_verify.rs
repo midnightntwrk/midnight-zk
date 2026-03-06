@@ -13,7 +13,8 @@
 
 //! Example: create a PilarChip proof and verify it in-circuit.
 //!
-//! The inner circuit uses PilarChip to prove a + b = c.
+//! The inner circuit uses PilarChip + PilarPoseidonGadget to compute a chain
+//! of Poseidon hashes and exposes the final digest as a public input.
 //! The outer circuit uses the VerifierGadget to verify the inner proof.
 //!
 //! Run with:
@@ -23,7 +24,6 @@
 
 use std::time::Instant;
 
-use ff::Field;
 use group::Group;
 use midnight_circuits::{
     ecc::{
@@ -43,8 +43,11 @@ use midnight_circuits::{
         PoseidonChip, PoseidonConfig, PoseidonState, NB_POSEIDON_ADVICE_COLS,
         NB_POSEIDON_FIXED_COLS,
     },
-    instructions::{AssignmentInstructions, PublicInputInstructions},
-    pilar::{PilarChip, PilarConfig, NB_PILAR_FIXED_COLS},
+    instructions::{
+        hash::{HashCPU, HashInstructions},
+        AssignmentInstructions, PublicInputInstructions,
+    },
+    pilar::{poseidon::PilarPoseidonGadget, PilarChip, PilarConfig, NB_PILAR_FIXED_COLS},
     types::{ComposableChip, Instantiable},
     verifier::{
         fixed_bases, Accumulator, AssignedAccumulator, AssignedVk, BlstrsEmulation, SelfEmulation,
@@ -76,8 +79,11 @@ type NG = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
 
 const NB_INNER_INSTANCES: usize = 1;
 
+/// Number of Poseidon hash iterations in the inner circuit.
+const NB_HASH_ITERS: usize = 256;
+
 // ---------------------------------------------------------------------------
-// Inner circuit: proves a + b = c using PilarChip.
+// Inner circuit: chains Poseidon hashes using PilarChip.
 // ---------------------------------------------------------------------------
 
 #[derive(Clone, Debug, Default)]
@@ -118,33 +124,22 @@ impl Circuit<F> for InnerPilarCircuit {
     ) -> Result<(), Error> {
         let (pilar_config, _committed_col, instance_col) = config;
 
-        let c_cell = layouter.assign_region(
-            || "pilar addition gate",
-            |mut region| {
-                region.assign_advice(|| "a", pilar_config.advice, 0, || self.a)?;
-                region.assign_advice(|| "b", pilar_config.advice, 1, || self.b)?;
+        let chip = PilarChip::<F>::new(&pilar_config, &());
+        let poseidon = PilarPoseidonGadget::new(chip.clone());
 
-                let c_cell = region.assign_advice(
-                    || "c = a + b",
-                    pilar_config.advice,
-                    2,
-                    || self.a.zip(self.b).map(|(a, b)| a + b),
-                )?;
+        // Assign initial inputs.
+        let mut x = chip.assign(&mut layouter, self.a)?;
+        let mut y = chip.assign(&mut layouter, self.b)?;
 
-                // Gate at row 1: q_a·a_prev + q_b·a_cur + q_c·a_next = 0.
-                // With rotations {-1,0,1}, row 1 accesses a[0], a[1], a[2].
-                region.assign_fixed(|| "q_a", pilar_config.q_a, 1, || Value::known(F::ONE))?;
-                region.assign_fixed(|| "q_b", pilar_config.q_b, 1, || Value::known(F::ONE))?;
-                region.assign_fixed(|| "q_c", pilar_config.q_c, 1, || Value::known(-F::ONE))?;
-                region.assign_fixed(|| "q_m", pilar_config.q_m, 1, || Value::known(F::ZERO))?;
-                region.assign_fixed(|| "q_k", pilar_config.q_k, 1, || Value::known(F::ZERO))?;
+        // Chain NB_HASH_ITERS Poseidon hashes: h = H(x, y), then x=h, y=h.
+        for _ in 0..NB_HASH_ITERS {
+            let h = poseidon.hash(&mut layouter, &[x, y])?;
+            x = h.clone();
+            y = h;
+        }
 
-                Ok(c_cell)
-            },
-        )?;
-
-        // Constrain c = a + b as a public input.
-        layouter.constrain_instance(c_cell.cell(), instance_col, 0)
+        // Expose the final hash as a public input.
+        layouter.constrain_instance(x.cell(), instance_col, 0)
     }
 }
 
@@ -290,11 +285,21 @@ fn main() {
 
     let a = F::from(3u64);
     let b = F::from(5u64);
-    let c = a + b;
-    let inner_public_inputs = vec![c];
+
+    // Compute the expected public input off-circuit: chain of Poseidon hashes.
+    let expected_output = {
+        let (mut x, mut y) = (a, b);
+        for _ in 0..NB_HASH_ITERS {
+            let h = <PilarPoseidonGadget<F> as HashCPU<F, F>>::hash(&[x, y]);
+            x = h;
+            y = h;
+        }
+        x
+    };
+    let inner_public_inputs = vec![expected_output];
 
     let t = Instant::now();
-    let inner_k = 5;
+    let inner_k = 19;
     let inner_params = ParamsKZG::unsafe_setup(inner_k, &mut rng);
     let inner_vk = keygen_vk_with_k(&inner_params, &InnerPilarCircuit::default(), inner_k).unwrap();
     let inner_pk = keygen_pk(inner_vk.clone(), &InnerPilarCircuit::default()).unwrap();
@@ -405,7 +410,7 @@ fn main() {
             Value::known(inner_vk.transcript_repr()),
         ),
         inner_committed_instance: Value::known(C::identity()),
-        inner_instances: Value::known([c]),
+        inner_instances: Value::known([expected_output]),
         inner_proof: Value::known(inner_proof),
     };
 

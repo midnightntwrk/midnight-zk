@@ -2,6 +2,8 @@
 //! and public key) using midnight's ZK std lib. The test vectors were generated
 //! using Bitcoin's C library https://github.com/bitcoin-core/secp256k1.
 
+use std::time::Instant;
+
 use group::GroupEncoding;
 use midnight_circuits::{
     field::foreign::params::MultiEmulationParams,
@@ -173,11 +175,17 @@ fn main() {
     ];
 
     const K: u32 = 15;
-    let srs = filecoin_srs(K);
 
     let relation = BitcoinSigExample;
+
+    let t = Instant::now();
+    let srs = filecoin_srs(K);
+    println!("SRS load ........... {:?}", t.elapsed());
+
+    let t = Instant::now();
     let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
     let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
+    println!("Setup (vk + pk) .... {:?}", t.elapsed());
 
     let instance = (parse_bitcoin_point(&pk_bytes), msg_bytes);
     // sig_bytes are in big-endian.
@@ -186,21 +194,24 @@ fn main() {
         K256Scalar::from_bytes_be(&sig_bytes[32..]).expect("Secp scalar"),
     );
 
+    let t = Instant::now();
     let proof = midnight_zk_stdlib::prove::<BitcoinSigExample, blake2b_simd::State>(
         &srs, &pk, &relation, &instance, witness, OsRng,
     )
     .expect("Proof generation should not fail");
+    println!("Prove .............. {:?}", t.elapsed());
+    println!("Proof size ......... {} bytes", proof.len());
 
-    assert!(
-        midnight_zk_stdlib::verify::<BitcoinSigExample, blake2b_simd::State>(
-            &srs.verifier_params(),
-            &vk,
-            &instance,
-            None,
-            &proof
-        )
-        .is_ok()
+    let t = Instant::now();
+    midnight_zk_stdlib::verify::<BitcoinSigExample, blake2b_simd::State>(
+        &srs.verifier_params(),
+        &vk,
+        &instance,
+        None,
+        &proof,
     )
+    .expect("Verification should not fail");
+    println!("Verify ............. {:?}", t.elapsed());
 }
 
 // Bitcoin uses points that only have even y coordinates. The input x_coord is
