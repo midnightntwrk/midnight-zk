@@ -43,6 +43,8 @@ impl Relation for BitcoinThresholdECDSA {
 
     type Witness = [(PK, ECDSASig); T];
 
+    type Error = Error;
+
     fn format_instance((msg_hash, pks): &Self::Instance) -> Result<Vec<F>, Error> {
         Ok([
             AssignedField::<F, K256Scalar, MEP>::as_public_input(msg_hash),

@@ -44,6 +44,8 @@ impl Relation for BitcoinSigExample {
 
     type Witness = Signature;
 
+    type Error = Error;
+
     fn format_instance((pk, msg_bytes): &Self::Instance) -> Result<Vec<F>, Error> {
         Ok([
             AssignedForeignPoint::<F, K256, MultiEmulationParams>::as_public_input(pk),

@@ -19,6 +19,7 @@ verification keys break backwards compatibility.
 * Add `PartialEq` impl for `AssignedBigUint` [#259](https://github.com/midnightntwrk/midnight-zk/pull/259)
 
 ### Changed
+* Add associated type `Error` to `Relation` trait for typed domain errors [#252](https://github.com/midnightntwrk/midnight-zk/pull/252)
 * bug patch in the credential property verification example, which was omitting some index computation in circuit [#240](https://github.com/midnightntwrk/midnight-zk/pull/240)
 * Pass `max_bit_len` to foreign-field chip configuration [#251](https://github.com/midnightntwrk/midnight-zk/pull/251)
 * Update IVC example to use improved verifier gadget [#212](https://github.com/midnightntwrk/midnight-zk/pull/212)

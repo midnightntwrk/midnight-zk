@@ -91,6 +91,7 @@ pub struct SchnorrExample;
 impl Relation for SchnorrExample {
     type Instance = (SchnorrPK, Message);
     type Witness = SchnorrSignature;
+    type Error = Error;
 
     fn format_instance((pk, msg): &Self::Instance) -> Result<Vec<F>, Error> {
         Ok([

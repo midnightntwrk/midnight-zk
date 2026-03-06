@@ -60,6 +60,7 @@ pub struct FullCredential;
 impl Relation for FullCredential {
     type Instance = PK;
     type Witness = (Payload, ECDSASig, SK);
+    type Error = Error;
 
     fn format_instance(instance: &Self::Instance) -> Result<Vec<F>, Error> {
         Ok(AssignedForeignPoint::<F, K256, MultiEmulationParams>::as_public_input(instance))
