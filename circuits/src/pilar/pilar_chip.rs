@@ -109,7 +109,6 @@ impl<F: CircuitField> ComposableChip<F> for PilarChip<F> {
         let q_k = fixed_cols[4];
 
         meta.enable_equality(advice);
-        meta.enable_equality(instance);
 
         // q_a · a(ω⁻¹X) + q_b · a(X) + q_c · a(ωX) + q_m · a(ω⁻¹X) · a(X) + q_k = 0
         meta.create_gate("pilar_gate", |meta| {
