@@ -15,5 +15,6 @@
 
 pub mod instructions;
 pub mod pilar_chip;
+pub mod poseidon;
 
 pub use pilar_chip::*;
