@@ -106,7 +106,6 @@ where
         let x2: E::Fr = transcript.squeeze_challenge();
 
         let (poly_map, point_sets) = construct_intermediate_sets(prover_query)?;
-        dbg!(&point_sets);
 
         let mut q_polys = vec![vec![]; point_sets.len()];
 
@@ -294,13 +293,14 @@ where
             let mut coms = q_coms;
             let mut f_com_as_msm = MSMKZG::init();
 
-            f_com_as_msm.append_term(E::Fr::ONE, f_com, CommitmentLabel::NoLabel);
+            f_com_as_msm.append_term(E::Fr::ONE, f_com, CommitmentLabel::Custom("f_com".into()));
 
             // Collapse all MSMs before combining with x4 powers, to match the
             // in-circuit verifier. Skip the first one since its x4 power is 1.
-            dbg!(&coms);
             #[cfg(feature = "truncated-challenges")]
-            coms.iter_mut().skip(1).for_each(MSMKZG::collapse);
+            for (i, com) in coms.iter_mut().enumerate().skip(1) {
+                com.collapse(CommitmentLabel::Custom(format!("q_{i}")));
+            }
             coms.push(f_com_as_msm);
 
             #[cfg(feature = "truncated-challenges")]

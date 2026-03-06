@@ -117,13 +117,13 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
                     // Open permutation product commitments at x and \omega x
                     .chain(Some(VerifierQuery::new(
                         x,
-                        CommitmentLabel::NoLabel,
+                        CommitmentLabel::Custom("perm_product".into()),
                         &self.coms.permutation_product_commitments[i],
                         set.permutation_product_eval,
                     )))
                     .chain(Some(VerifierQuery::new(
                         x_next,
-                        CommitmentLabel::NoLabel,
+                        CommitmentLabel::Custom("perm_product".into()),
                         &self.coms.permutation_product_commitments[i],
                         set.permutation_product_next_eval,
                     )))
@@ -133,7 +133,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
                 self.sets.iter().enumerate().rev().skip(1).flat_map(move |(i, set)| {
                     Some(VerifierQuery::new(
                         x_last,
-                        CommitmentLabel::NoLabel,
+                        CommitmentLabel::Custom("perm_product".into()),
                         &self.coms.permutation_product_commitments[i],
                         set.permutation_product_last_eval.unwrap(),
                     ))

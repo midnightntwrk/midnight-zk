@@ -105,35 +105,35 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
             // Open lookup product commitment at x
             .chain(Some(VerifierQuery::new(
                 x,
-                CommitmentLabel::NoLabel,
+                CommitmentLabel::Custom("lookup_product".into()),
                 &self.committed.product_commitment,
                 self.evaluated.product_eval,
             )))
             // Open lookup input commitments at x
             .chain(Some(VerifierQuery::new(
                 x,
-                CommitmentLabel::NoLabel,
+                CommitmentLabel::Custom("lookup_input".into()),
                 &self.committed.permuted.permuted_input_commitment,
                 self.evaluated.permuted_input_eval,
             )))
             // Open lookup table commitments at x
             .chain(Some(VerifierQuery::new(
                 x,
-                CommitmentLabel::NoLabel,
+                CommitmentLabel::Custom("lookup_table".into()),
                 &self.committed.permuted.permuted_table_commitment,
                 self.evaluated.permuted_table_eval,
             )))
             // Open lookup input commitments at \omega^{-1} x
             .chain(Some(VerifierQuery::new(
                 x_inv,
-                CommitmentLabel::NoLabel,
+                CommitmentLabel::Custom("lookup_input".into()),
                 &self.committed.permuted.permuted_input_commitment,
                 self.evaluated.permuted_input_inv_eval,
             )))
             // Open lookup product commitment at \omega x
             .chain(Some(VerifierQuery::new(
                 x_next,
-                CommitmentLabel::NoLabel,
+                CommitmentLabel::Custom("lookup_product".into()),
                 &self.committed.product_commitment,
                 self.evaluated.product_next_eval,
             )))

@@ -52,7 +52,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
     pub(crate) fn queries(&self, x: F) -> impl Iterator<Item = VerifierQuery<'_, F, CS>> + Clone {
         vec![VerifierQuery::new(
             x,
-            CommitmentLabel::NoLabel,
+            CommitmentLabel::Custom("trash".into()),
             &self.committed.trash_commitment,
             self.evaluated.trash_eval,
         )]

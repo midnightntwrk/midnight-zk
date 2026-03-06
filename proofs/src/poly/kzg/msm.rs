@@ -85,24 +85,21 @@ where
     ///
     /// # Panics (in debug mode)
     ///
-    /// If any term carries a label other than `NoLabel` or `Advice`.
-    //
-    // We only allow `NoLabel` or `Advice` because these types of labels are
-    // not relevant for the `verifier_gadget` in `midnight-circuits` (at least for
-    // now). Other types of labels may carry information that we do not want to lose
-    // when "collapsing".
-    pub fn collapse(&mut self) {
+    /// If any term carries a `Fixed` or `Permutation` label, which represent
+    /// verifying-key commitments that must not be collapsed.
+    pub fn collapse(&mut self, label: CommitmentLabel) {
         debug_assert!(
-            self.labels
-                .iter()
-                .all(|l| matches!(l, CommitmentLabel::NoLabel | CommitmentLabel::Advice(_))),
-            "collapse: all labels must be NoLabel or Advice, found: {:?}",
+            self.labels.iter().all(|l| !matches!(
+                l,
+                CommitmentLabel::Fixed(_) | CommitmentLabel::Permutation(_)
+            )),
+            "collapse: Fixed/Permutation labels must not be collapsed, found: {:?}",
             self.labels,
         );
         let point = self.eval();
         self.scalars = vec![E::Fr::ONE];
         self.bases = vec![point];
-        self.labels = vec![CommitmentLabel::NoLabel];
+        self.labels = vec![label];
     }
 }
 
