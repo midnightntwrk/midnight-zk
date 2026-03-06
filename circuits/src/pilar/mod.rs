@@ -13,6 +13,7 @@
 
 //! PilarChip: a minimal single-column arithmetic chip.
 
+pub mod instructions;
 pub mod pilar_chip;
 
 pub use pilar_chip::*;
