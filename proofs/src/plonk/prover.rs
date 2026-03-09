@@ -249,6 +249,7 @@ pub(crate) fn finalise_proof<'a, F, CS: PolynomialCommitmentScheme<F>, T: Transc
     #[cfg(feature = "committed-instances")] nb_committed_instances: usize,
     trace: ProverTrace<F>,
     transcript: &mut T,
+    rng: impl RngCore,
 ) -> Result<(), Error>
 where
     CS::Commitment: Hashable<T::Hash>,
@@ -277,7 +278,7 @@ where
     } = trace;
 
     // Construct the vanishing argument's h(X) commitments
-    let vanishing = vanishing.construct::<CS, T>(params, domain, nu_poly, transcript)?;
+    let vanishing = vanishing.construct::<CS, T>(params, domain, nu_poly, transcript, rng)?;
 
     let x: F = transcript.squeeze_challenge();
 
@@ -356,7 +357,7 @@ pub fn create_proof<
     circuits: &[ConcreteCircuit],
     #[cfg(feature = "committed-instances")] nb_committed_instances: usize,
     instances: &[&[&[F]]],
-    rng: impl RngCore + CryptoRng,
+    mut rng: impl RngCore + CryptoRng,
     transcript: &mut T,
 ) -> Result<(), Error>
 where
@@ -375,7 +376,7 @@ where
         #[cfg(feature = "committed-instances")]
         nb_committed_instances,
         instances,
-        rng,
+        &mut rng,
         transcript,
     )?;
     finalise_proof(
@@ -385,6 +386,7 @@ where
         nb_committed_instances,
         trace,
         transcript,
+        rng,
     )
 }
 
