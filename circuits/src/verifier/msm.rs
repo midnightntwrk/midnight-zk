@@ -59,7 +59,7 @@ pub struct Msm<S: SelfEmulation> {
 #[derive(Clone, Debug)]
 pub struct AssignedMsm<S: SelfEmulation> {
     bases: Vec<S::AssignedPoint>,
-    scalars: Vec<AssignedBoundedScalar<S::F>>,
+    pub(crate) scalars: Vec<AssignedBoundedScalar<S::F>>,
     fixed_base_scalars: BTreeMap<String, AssignedBoundedScalar<S::F>>,
 }
 
