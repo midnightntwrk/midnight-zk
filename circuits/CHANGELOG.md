@@ -27,6 +27,7 @@ verification keys break backwards compatibility.
 ### Changed
 * Filter out compile-time identity points in MSM [#256](https://github.com/midnightntwrk/midnight-zk/pull/256)
 * Sort point sets deterministically in KZG multiopen for in-circuit verification [#256](https://github.com/midnightntwrk/midnight-zk/pull/256)
+* Move advice queries before instance queries in verifier gadget [#256](https://github.com/midnightntwrk/midnight-zk/pull/256)
 * Optimize assignment of collapsed accumulators [#253](https://github.com/midnightntwrk/midnight-zk/pull/253)
 * Share MSM randomness across all MSMs in foreign ECC chip [#253](https://github.com/midnightntwrk/midnight-zk/pull/253)
 * Optimize foreign-field range-check bounds [#251](https://github.com/midnightntwrk/midnight-zk/pull/251)

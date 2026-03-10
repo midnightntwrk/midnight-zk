@@ -744,6 +744,12 @@ pub(super) fn compute_queries<
             move |((((instance, advice), permutation), lookups), trash)| {
                 iter::empty()
                     .chain(
+                        pk.vk.cs.advice_queries.iter().map(move |&(column, at)| ProverQuery {
+                            point: domain.rotate_omega(x, at),
+                            poly: &advice[column.index()],
+                        }),
+                    )
+                    .chain(
                         pk.vk.cs.instance_queries.iter().filter_map(move |&(column, at)| {
                             if column.index() < nb_committed_instances {
                                 Some(ProverQuery {
@@ -753,12 +759,6 @@ pub(super) fn compute_queries<
                             } else {
                                 None
                             }
-                        }),
-                    )
-                    .chain(
-                        pk.vk.cs.advice_queries.iter().map(move |&(column, at)| ProverQuery {
-                            point: domain.rotate_omega(x, at),
-                            poly: &advice[column.index()],
                         }),
                     )
                     .chain(permutation.open(pk, x))
