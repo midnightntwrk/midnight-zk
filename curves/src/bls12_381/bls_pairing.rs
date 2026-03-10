@@ -154,6 +154,10 @@ pub fn unique_messages(msgs: &[&[u8]]) -> bool {
 #[repr(transparent)]
 pub struct MillerLoopResult(pub(crate) Fp12);
 
+pub fn from_fp12(val: Fp12) -> MillerLoopResult {
+    MillerLoopResult(val)
+}
+
 impl ConditionallySelectable for MillerLoopResult {
     fn conditional_select(a: &Self, b: &Self, choice: Choice) -> Self {
         MillerLoopResult(Fp12::conditional_select(&a.0, &b.0, choice))
