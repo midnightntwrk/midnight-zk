@@ -398,6 +398,10 @@ where
     }
 
     /// Multiplies the given assigned big unsinged integers.
+    // NOTE: The product loop accumulates each product into its output position
+    // with a separate `native_add`. An alternative is to collect all products
+    // per position and batch them with a single `linear_combination`, saving
+    // ~1 row per product (see `square` for an implementation of this strategy).
     pub fn mul(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -431,8 +435,6 @@ where
     }
 
     /// Squares the given assigned big unsigned integer.
-    /// Exploits the symmetry x_i * x_j = x_j * x_i to halve the number of
-    /// native multiplications compared to `mul(x, x)`.
     pub fn square(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -441,28 +443,39 @@ where
         let x = self.normalize(layouter, x)?;
 
         let native_gadget = &self.native_gadget;
-        let zero = native_gadget.assign_fixed(layouter, F::ZERO)?;
-        let nb_prod_limbs = 2 * x.limbs.len() - 1;
-        let mut limbs = vec![zero; nb_prod_limbs];
-        let mut limb_size_bounds = vec![0; nb_prod_limbs];
+        let nb_limbs = x.limbs.len();
+        let nb_prod_limbs = 2 * nb_limbs - 1;
 
-        for i in 0..x.limbs.len() {
-            // Diagonal term: x_i^2.
+        // Phase 1: compute all products and collect them per output position.
+        // products[k] holds (coeff, assigned_product) pairs for limb position k.
+        let mut products: Vec<Vec<(F, AssignedNative<F>)>> = vec![vec![]; nb_prod_limbs];
+        let mut limb_size_bounds = vec![0u32; nb_prod_limbs];
+
+        for i in 0..nb_limbs {
+            // Diagonal term: x_i * x_i.
             let p = native_gadget.mul(layouter, &x.limbs[i], &x.limbs[i], None)?;
+            products[2 * i].push((F::ONE, p));
+
+            // Update bounds.
             let p_bound = x.limb_size_bounds[i] + x.limb_size_bounds[i];
-            limbs[2 * i] = native_gadget.add(layouter, &limbs[2 * i], &p)?;
             limb_size_bounds[2 * i] = bound_of_addition(limb_size_bounds[2 * i], p_bound);
 
-            // Off-diagonal terms: 2 * x_i * x_j for j > i.
-            for j in (i + 1)..x.limbs.len() {
-                let p =
-                    native_gadget.mul(layouter, &x.limbs[i], &x.limbs[j], Some(F::from(2u64)))?;
+            // Off-diagonal terms: x_i * x_j.
+            for j in (i + 1)..nb_limbs {
+                let p = native_gadget.mul(layouter, &x.limbs[i], &x.limbs[j], None)?;
+                products[i + j].push((F::from(2u64), p)); // x2 off-diagonal terms.
+
+                // Update bounds. (1 bit extra for the x2)
                 let p_bound = 1 + x.limb_size_bounds[i] + x.limb_size_bounds[j];
-                limbs[i + j] = native_gadget.add(layouter, &limbs[i + j], &p)?;
-                limb_size_bounds[i + j] =
-                    bound_of_addition(limb_size_bounds[i + j], p_bound);
+                limb_size_bounds[i + j] = bound_of_addition(limb_size_bounds[i + j], p_bound);
             }
         }
+
+        // Phase 2: accumulate each position with a single linear_combination.
+        let limbs = products
+            .iter()
+            .map(|terms| native_gadget.linear_combination(layouter, terms, F::ZERO))
+            .collect::<Result<Vec<_>, _>>()?;
 
         let z = AssignedBigUint {
             limbs,
