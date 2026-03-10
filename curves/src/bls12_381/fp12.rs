@@ -322,7 +322,7 @@ impl ExtField for Fp12 {
 }
 
 // non_residue^((modulus^i-1)/6) for i=0,...,11
-const FROBENIUS_COEFF_FP12_C1: [blst_fp2; 12] = [
+pub const FROBENIUS_COEFF_FP12_C1: [blst_fp2; 12] = [
     // Fp2(u + 1)**(((q^0) - 1) / 6)
     blst_fp2 {
         fp: [

@@ -116,7 +116,7 @@ const R3: Fp = Fp(blst_fp {
 pub struct Fp(pub(crate) blst_fp);
 
 // Coefficients for the Frobenius automorphism.
-pub(crate) const FROBENIUS_COEFF_FP2_C1: [Fp; 2] = [
+pub const FROBENIUS_COEFF_FP2_C1: [Fp; 2] = [
     // Fp(-1)**(((q^0) - 1) / 2)
     Fp(blst_fp {
         l: [
