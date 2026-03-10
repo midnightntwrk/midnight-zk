@@ -1,6 +1,8 @@
 use super::{U64Double, U64Words};
 
 pub(crate) type U384 = U64Words<6>;
+
+#[allow(dead_code)]
 pub(crate) type U768 = U64Double<6>;
 
 #[cfg(test)]

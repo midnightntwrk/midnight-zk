@@ -31,6 +31,7 @@ const fn sub64_with_overflow(a: u64, b: u64, borrow: u64) -> (u64, u64) {
 
 impl<const N: usize> U64Double<N> {
     /// Takes as input a u64 slice and returns a U64Double<N>.
+    #[allow(dead_code)]
     pub(crate) const fn from(val: &[u64]) -> Self {
         assert!(val.len() == 2 * N);
         let mut low = [0; N];
@@ -87,6 +88,7 @@ impl<const N: usize> U64Double<N> {
     }
 
     /// Return the maximum value of U64Double<N> type.
+    #[allow(dead_code)]
     pub(crate) const fn max() -> Self {
         Self {
             low: U64Words::<N>::max(),
@@ -171,6 +173,7 @@ impl<const N: usize> U64Double<N> {
 
     /// Return the addition of two U64Double<N> as well as the carry
     /// If carry > 0, this means the addition overflowed
+    #[allow(dead_code)]
     pub(crate) const fn add(&self, b: &Self) -> (Self, u64) {
         let (sum_low, carry_low) = self.low.add(&b.low);
         let (sum_high, carry) = self.high.add_with_carry(&b.high, carry_low);
@@ -241,6 +244,7 @@ impl<const N: usize> U64Words<N> {
     }
 
     /// Cast a u64 as a U64Words<N>
+    #[allow(dead_code)]
     pub(crate) const fn from_u64(val: u64) -> Self {
         let mut buffer = [0; N];
         buffer[0] = val;
@@ -269,6 +273,7 @@ impl<const N: usize> U64Words<N> {
     }
 
     /// Return a U64Words<N> as a slice
+    #[allow(dead_code)]
     pub(crate) const fn as_slice(&self) -> &[u64] {
         &self.0
     }
@@ -437,10 +442,10 @@ impl<const N: usize> U64Words<N> {
                     }
                 }
             } else if modulus.cmp(&result) == 1 {
-                    return result;
-                } else {
-                    let (difference, _) = result.sub(modulus);
-                    return difference;
+                return result;
+            } else {
+                let (difference, _) = result.sub(modulus);
+                return difference;
             };
 
             let (difference, _) = result.sub(&shifted_modulus);
