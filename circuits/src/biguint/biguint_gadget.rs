@@ -1153,6 +1153,20 @@ mod tests {
     }
 
     #[test]
+    fn test_square_biguint() {
+        type F = midnight_curves::Fq;
+        let zero = BigUint::ZERO;
+        let one = BigUint::one();
+        for _ in 0..10 {
+            let x: BigUint = random_biguint(1024);
+            run::<F>(&x, &zero, &(&x * &x), Operation::Square, true);
+            run::<F>(&x, &zero, &zero, Operation::Square, false);
+        }
+        run::<F>(&zero, &zero, &zero, Operation::Square, true);
+        run::<F>(&one, &zero, &one, Operation::Square, true);
+    }
+
+    #[test]
     fn test_div_rem_biguint() {
         type F = midnight_curves::Fq;
         let zero = BigUint::ZERO;
