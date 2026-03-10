@@ -542,7 +542,7 @@ where
             n >>= 1;
 
             if n > 0 {
-                tmp = self.mod_mul(layouter, &tmp, &tmp, m)?;
+                tmp = self.mod_square(layouter, &tmp, m)?;
             }
         }
 
@@ -785,6 +785,18 @@ where
         m: &AssignedBigUint<F>,
     ) -> Result<AssignedBigUint<F>, Error> {
         let p = self.mul(layouter, x, y)?;
+        let (_, r) = self.div_rem(layouter, &p, m)?;
+        Ok(r)
+    }
+
+    /// Modular multiplication. Returns `(x * x) % m`.
+    fn mod_square(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &AssignedBigUint<F>,
+        m: &AssignedBigUint<F>,
+    ) -> Result<AssignedBigUint<F>, Error> {
+        let p = self.square(layouter, x)?;
         let (_, r) = self.div_rem(layouter, &p, m)?;
         Ok(r)
     }
