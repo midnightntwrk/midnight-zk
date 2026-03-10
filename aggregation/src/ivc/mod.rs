@@ -95,6 +95,15 @@ pub trait IvcState:
         layouter: &mut impl Layouter<F>,
         state: &Self::AssignedState,
     ) -> Result<AssignedBit<F>, Error>;
+
+    /// Off-circuit check that the state meets the required invariants.
+    ///
+    /// Automatically called by [`IvcVerifier::verify`] to check any
+    /// properties that are deferred to off-circuit verification, such as
+    /// accumulator validity or hash-chain integrity.
+    ///
+    /// Returns `true` if the state passes all checks.
+    fn decider(ctx: &Self::Context, state: &Self::State) -> bool;
 }
 
 /// A single-step transition function for an IVC computation.

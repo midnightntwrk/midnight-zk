@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 
 ## [Unreleased]
 ### Added
+* Proof aggregation example [#258](https://github.com/midnightntwrk/midnight-zk/pull/258)
 * Introduce `IvcContext` [#258](https://github.com/midnightntwrk/midnight-zk/pull/258)
 * IVC module [#227](https://github.com/midnightntwrk/midnight-zk/pull/227)
 * Rebase to new `zk_stdlib/` outside of `circuits/` [#155](https://github.com/midnightntwrk/midnight-zk/pull/155)

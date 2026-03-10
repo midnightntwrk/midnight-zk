@@ -103,6 +103,10 @@ impl<const N: usize> IvcState for PoseidonChain<N> {
         let val_is_zero = self.std_lib.bls12_381_scalar().is_zero(layouter, &state.val)?;
         self.std_lib.and(layouter, &[cnt_is_zero, val_is_zero])
     }
+
+    fn decider(_ctx: &Self::Context, _state: &Self::State) -> bool {
+        true
+    }
 }
 
 impl<const N: usize> AssignmentInstructions<F, AssignedState> for PoseidonChain<N> {
@@ -221,7 +225,7 @@ fn main() {
         let instance = prover.instance();
 
         let start = Instant::now();
-        verifier.verify(&instance, &proof).unwrap();
+        verifier.verify(&(), &instance, &proof).unwrap();
         let verify_time = start.elapsed();
 
         println!("Step {i}: prove {prove_time:.2?}, verify {verify_time:.2?}");
