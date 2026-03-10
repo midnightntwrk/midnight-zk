@@ -81,17 +81,21 @@ pub struct IvcWitness<T: IvcTransition> {
 pub struct IvcCircuit<T: IvcTransition> {
     domain: EvaluationDomain<F>,
     cs: ConstraintSystem<F>,
-    _marker: std::marker::PhantomData<T>,
+    ctx: T::Context,
 }
 
 impl<T: IvcTransition> IvcCircuit<T> {
-    /// Creates a new IVC circuit from a domain and constraint system.
-    pub fn new(domain: EvaluationDomain<F>, cs: ConstraintSystem<F>) -> Self {
-        IvcCircuit {
-            domain,
-            cs,
-            _marker: std::marker::PhantomData,
-        }
+    /// Creates a new IVC circuit.
+    ///
+    /// The `ctx` contains metadata that parametrizes the IVC computation
+    /// (transition function). See [`IvcContext`](super::IvcContext).
+    pub fn new(domain: EvaluationDomain<F>, cs: ConstraintSystem<F>, ctx: T::Context) -> Self {
+        IvcCircuit { domain, cs, ctx }
+    }
+
+    /// Returns a reference to the context.
+    pub fn ctx(&self) -> &T::Context {
+        &self.ctx
     }
 
     /// The [ZkStdLibArch] for the IVC circuit, combining the transition's
@@ -130,7 +134,7 @@ impl<T: IvcTransition> Relation for IvcCircuit<T> {
         witness: Value<Self::Witness>,
     ) -> Result<(), Error> {
         let verifier_gadget = std_lib.verifier();
-        let ivc_gadget = T::from(std_lib.clone());
+        let ivc_gadget = T::new(std_lib.clone(), &self.ctx);
 
         let assigned_self_vk: AssignedVk<S> = verifier_gadget.assign_vk_as_public_input(
             layouter,
@@ -205,22 +209,21 @@ impl<T: IvcTransition> Relation for IvcCircuit<T> {
     }
 
     fn write_relation<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        writer.write_all(&self.domain.k().to_le_bytes())
+        writer.write_all(&self.domain.k().to_le_bytes())?;
+        T::write_context(&self.ctx, writer)
     }
 
     fn read_relation<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let mut bytes = [0u8; 4];
-        reader.read_exact(&mut bytes)?;
-        let k = u32::from_le_bytes(bytes);
+        let mut k_bytes = [0u8; 4];
+        reader.read_exact(&mut k_bytes)?;
+        let k = u32::from_le_bytes(k_bytes);
+
+        let ctx = T::read_context(reader)?;
 
         let mut cs = ConstraintSystem::default();
         ZkStdLib::configure(&mut cs, (Self::arch(), (k - 1) as u8));
         let domain = EvaluationDomain::new(cs.degree() as u32, k);
 
-        Ok(IvcCircuit {
-            domain,
-            cs,
-            _marker: std::marker::PhantomData,
-        })
+        Ok(IvcCircuit { domain, cs, ctx })
     }
 }

@@ -21,11 +21,15 @@ use super::{IvcCircuit, IvcProver, IvcTransition, IvcVerifier, E, S};
 /// The returned [`IvcVerifier`] holds the self-verifying key. A verifier only
 /// needs to run this function once; the resulting [`IvcVerifier`] can then be
 /// reused to check any [`super::IvcInstance`].
-pub fn setup<T: IvcTransition>(params: ParamsKZG<E>, k: u32) -> (IvcProver<T>, IvcVerifier) {
+pub fn setup<T: IvcTransition>(
+    params: ParamsKZG<E>,
+    k: u32,
+    ctx: T::Context,
+) -> (IvcProver<T>, IvcVerifier) {
     let mut cs = ConstraintSystem::default();
     ZkStdLib::configure(&mut cs, (IvcCircuit::<T>::arch(), (k - 1) as u8));
     let domain = EvaluationDomain::new(cs.degree() as u32, k);
-    let relation = IvcCircuit::<T>::new(domain, cs);
+    let relation = IvcCircuit::<T>::new(domain, cs, ctx.clone());
 
     // Uncomment for visualizing the size of this IVC circuit.
     // dbg!(midnight_zk_stdlib::cost_model(&relation, Some(k)));
@@ -45,7 +49,7 @@ pub fn setup<T: IvcTransition>(params: ParamsKZG<E>, k: u32) -> (IvcProver<T>, I
         params,
         relation,
         pk,
-        state: T::genesis(),
+        state: T::genesis(&ctx),
         proof: vec![],
         acc: Accumulator::<S>::trivial(&fixed_base_names),
     };

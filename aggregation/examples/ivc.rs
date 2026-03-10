@@ -10,7 +10,7 @@
 use std::time::Instant;
 
 use ff::Field;
-use midnight_aggregation::ivc::{self, IvcState, IvcTransition};
+use midnight_aggregation::ivc::{self, IvcContext, IvcState, IvcTransition};
 use midnight_circuits::{
     hash::poseidon::PoseidonChip,
     instructions::{hash::HashCPU, *},
@@ -67,11 +67,27 @@ pub struct PoseidonChain<const N: usize> {
     std_lib: ZkStdLib,
 }
 
+impl<const N: usize> IvcContext for PoseidonChain<N> {
+    type Context = ();
+
+    fn new(std_lib: ZkStdLib, _ctx: &()) -> Self {
+        PoseidonChain { std_lib }
+    }
+
+    fn write_context<W: std::io::Write>(_ctx: &(), _writer: &mut W) -> std::io::Result<()> {
+        Ok(())
+    }
+
+    fn read_context<R: std::io::Read>(_reader: &mut R) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
 impl<const N: usize> IvcState for PoseidonChain<N> {
     type State = State;
     type AssignedState = AssignedState;
 
-    fn genesis() -> Self::State {
+    fn genesis(_ctx: &()) -> Self::State {
         State {
             cnt: F::ZERO,
             val: F::ZERO,
@@ -139,12 +155,6 @@ impl<const N: usize> PublicInputInstructions<F, AssignedState> for PoseidonChain
     }
 }
 
-impl<const N: usize> From<ZkStdLib> for PoseidonChain<N> {
-    fn from(std_lib: ZkStdLib) -> Self {
-        PoseidonChain { std_lib }
-    }
-}
-
 impl<const N: usize> IvcTransition for PoseidonChain<N> {
     // This transition function is deterministic, it does not depend on a witness.
     type Witness = ();
@@ -157,7 +167,7 @@ impl<const N: usize> IvcTransition for PoseidonChain<N> {
         }
     }
 
-    fn transition(state: &Self::State, _witness: Self::Witness) -> Self::State {
+    fn transition(_ctx: &(), state: &Self::State, _witness: Self::Witness) -> Self::State {
         let mut val = state.val;
         for _ in 0..N {
             val = <PoseidonChip<F> as HashCPU<F, F>>::hash(&[val]);
@@ -200,7 +210,7 @@ fn main() {
     let srs = midnight_zk_stdlib::utils::plonk_api::filecoin_srs(K);
 
     let start = Instant::now();
-    let (mut prover, verifier) = ivc::setup::<PoseidonChain<N>>(srs, K);
+    let (mut prover, verifier) = ivc::setup::<PoseidonChain<N>>(srs, K, ());
     println!("IVC setup completed in {:.2?}", start.elapsed());
 
     for i in 0..STEPS {
@@ -219,7 +229,7 @@ fn main() {
 
     println!(
         "IVC completed: {STEPS} steps from\n genesis {:?}\n      to {:?}",
-        PoseidonChain::<N>::genesis(),
+        PoseidonChain::<N>::genesis(&()),
         prover.instance().state()
     );
 }
