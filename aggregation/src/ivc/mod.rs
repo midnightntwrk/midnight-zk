@@ -82,8 +82,8 @@ pub trait IvcState:
 ///
 /// Defines how an [`IvcState`] evolves:
 /// [`transition`](Self::transition) computes the next state off-circuit,
-/// while [`assert_transition`](Self::assert_transition) enforces the same
-/// relationship inside the circuit.
+/// while [`circuit_transition`](Self::circuit_transition) computes the
+/// same transition inside the circuit, returning the new assigned state.
 pub trait IvcTransition: IvcState {
     /// The witness type for a single transition step.
     type Witness: Clone;
@@ -95,20 +95,16 @@ pub trait IvcTransition: IvcState {
     /// (off-circuit).
     fn transition(state: &Self::State, witness: Self::Witness) -> Self::State;
 
-    /// Asserts in-circuit that the transition from `state` to `next_state` is
-    /// valid.
+    /// Computes the next state in-circuit from the current state and witness.
     ///
-    /// A straightforward implementation would compute the transition
-    /// in-circuit and constrain the result to equal `next_state`. However,
-    /// verifying a transition can sometimes be done more efficiently than
-    /// recomputing it. This method receives both `state` and `next_state` and
-    /// only needs to assert that their relationship (which may depend on an
-    /// additional witness) is correct.
-    fn assert_transition(
+    /// This is the in-circuit analog of [`transition`](Self::transition). It
+    /// receives the assigned current state and a witnessed transition input,
+    /// and returns the assigned next state. The IVC circuit will constrain
+    /// the returned state as public input.
+    fn circuit_transition(
         &self,
         layouter: &mut impl Layouter<F>,
         state: &Self::AssignedState,
-        next_state: &Self::AssignedState,
         witness: Value<Self::Witness>,
-    ) -> Result<(), Error>;
+    ) -> Result<Self::AssignedState, Error>;
 }

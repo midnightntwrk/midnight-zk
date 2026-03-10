@@ -168,13 +168,12 @@ impl<const N: usize> IvcTransition for PoseidonChain<N> {
         }
     }
 
-    fn assert_transition(
+    fn circuit_transition(
         &self,
         layouter: &mut impl Layouter<F>,
         state: &Self::AssignedState,
-        next_state: &Self::AssignedState,
         _witness: Value<Self::Witness>,
-    ) -> Result<(), Error> {
+    ) -> Result<Self::AssignedState, Error> {
         let scalar_chip = self.std_lib.bls12_381_scalar();
 
         let mut val = state.val.clone();
@@ -182,9 +181,8 @@ impl<const N: usize> IvcTransition for PoseidonChain<N> {
             val = self.std_lib.poseidon(layouter, &[val])?;
         }
 
-        let expected_cnt = scalar_chip.add_constant(layouter, &state.cnt, F::from(N as u64))?;
-        scalar_chip.assert_equal(layouter, &expected_cnt, &next_state.cnt)?;
-        scalar_chip.assert_equal(layouter, &val, &next_state.val)
+        let cnt = scalar_chip.add_constant(layouter, &state.cnt, F::from(N as u64))?;
+        Ok(AssignedState { cnt, val })
     }
 }
 

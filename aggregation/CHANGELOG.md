@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 * truncated_challenges feature to allow --all-features compilation [#146](https://github.com/midnightntwrk/midnight-zk/pull/146)
 * Rebase to new `circuits/` with `keccak` and `blake2b` [#135](https://github.com/midnightntwrk/midnight-zk/pull/135)
 ### Changed
+* Rename `assert_transition` to `circuit_transition` in `IvcTransition` [#258](https://github.com/midnightntwrk/midnight-zk/pull/258)
 * Pass `max_bit_len` to IVC circuit configuration [#251](https://github.com/midnightntwrk/midnight-zk/pull/251)
 * Rename crate from `aggregator` to `aggregation` [#227](https://github.com/midnightntwrk/midnight-zk/pull/227)
 * Adapt light aggregator to support non-fixed input commitments and improved fixed_bases handling [#212](https://github.com/midnightntwrk/midnight-zk/pull/212)

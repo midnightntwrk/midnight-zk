@@ -143,16 +143,12 @@ impl<T: IvcTransition> Relation for IvcCircuit<T> {
         let prev_state_val = witness.as_ref().map(|w| w.prev_state.clone());
         let prev_state = ivc_gadget.assign(layouter, prev_state_val)?;
 
-        let next_state_val = instance.as_ref().map(|x| x.state.clone());
-        let next_state = ivc_gadget.assign(layouter, next_state_val)?;
-        ivc_gadget.constrain_as_public_input(layouter, &next_state)?;
-
-        ivc_gadget.assert_transition(
+        let next_state = ivc_gadget.circuit_transition(
             layouter,
             &prev_state,
-            &next_state,
             witness.as_ref().map(|w| w.transition_witness.clone()),
         )?;
+        ivc_gadget.constrain_as_public_input(layouter, &next_state)?;
 
         let fixed_base_names = midnight_circuits::verifier::fixed_base_names::<S>(
             "self_vk",
