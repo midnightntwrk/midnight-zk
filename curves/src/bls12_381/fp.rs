@@ -17,6 +17,9 @@ use super::fp2::Fp2;
 use crate::serde_traits::SerdeObject;
 
 use crate::ff_ext::ExtField;
+
+use crate::utils::U384;
+
 pub const NEGATIVE_ONE: Fp = Fp::from_unchecked([
     0xb9fe_ffff_ffff_aaaa,
     0x1eab_fffe_b153_ffff,
@@ -700,6 +703,17 @@ impl Fp {
     /// Montgomery form (i.e. without multiplying by `R`).
     pub const fn from_mont_unchecked(l: [u64; 6]) -> Fp {
         Fp(blst_fp { l })
+    }
+
+    /// Constructs an element of `Fp` from a little-endian array of limbs
+    /// without checking that it is canonical, and converting it to
+    /// Montgomery form (i.e. multiplying by `R`).
+    pub const fn from_unchecked(val: [u64; 6]) -> Fp {
+        let value = U384::from(val);
+        let r2 = U384::from(R.0.l);
+        let modulo = U384::from(u64s_from_bytes(&MODULUS_REPR));
+        let l = value.mul(&r2).modulo_half(&modulo).value();
+        Self(blst_fp { l })
     }
 
     /// `u64s` represent a little-endian non-Montgomery form integer mod p.
