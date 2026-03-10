@@ -404,7 +404,8 @@ where
         x: &AssignedBigUint<F>,
         y: &AssignedBigUint<F>,
     ) -> Result<AssignedBigUint<F>, Error> {
-        // Use the more efficient square instructions if the inputs are known to be equal.
+        // Use the more efficient square instructions if the inputs are known to be
+        // equal.
         if x == y {
             return self.square(layouter, x);
         }
