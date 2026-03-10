@@ -32,6 +32,8 @@ pub mod k256;
 
 pub mod curve25519;
 
+pub(crate) mod utils;
+
 // Development/testing curves (feature-gated)
 #[cfg(any(test, feature = "dev-curves"))]
 pub mod bn256;
