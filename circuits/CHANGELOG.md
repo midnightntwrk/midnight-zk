@@ -21,6 +21,8 @@ verification keys break backwards compatibility.
 * Support non-fixed input commitments in verifier gadget [#212](https://github.com/midnightntwrk/midnight-zk/pull/212)
 * Add BN poseidon constants [#222](https://github.com/midnightntwrk/midnight-zk/pull/222)
 * Add `CircuitField` implementations for `k256::Fp` and `k256::Fq` [#192](https://github.com/midnightntwrk/midnight-zk/pull/192)
+* Add `square`, `mod_square` operations in `BigUintGadget` [#259](https://github.com/midnightntwrk/midnight-zk/pull/259)
+* Add `PartialEq` impl for `AssignedBigUint` [#259](https://github.com/midnightntwrk/midnight-zk/pull/259)
 
 ### Changed
 * Batch foreign field limbs when constraining as public inputs [#235](https://github.com/midnightntwrk/midnight-zk/pull/235)
@@ -39,6 +41,7 @@ verification keys break backwards compatibility.
 * Replace native `secp256k1` types with `k256` [#192](https://github.com/midnightntwrk/midnight-zk/pull/192)
 * `CircuitField::modulus()` computed from field arith instead of parsing `PrimeField::MODULUS` [#192](https://github.com/midnightntwrk/midnight-zk/pull/192)
 * Fix `from_bytes_le` [#226](https://github.com/midnightntwrk/midnight-zk/pull/226)
+* Optimize `mul` operation in `BigUintGadget` [#259](https://github.com/midnightntwrk/midnight-zk/pull/259)
 
 ### Removed
 * Move external implementations to zk-stdlib [#178](https://github.com/midnightntwrk/midnight-zk/pull/178)
