@@ -397,11 +397,7 @@ where
         Ok(res)
     }
 
-    /// Multiplies the given assigned big unsinged integers.
-    // NOTE: The product loop accumulates each product into its output position
-    // with a separate `native_add`. An alternative is to collect all products
-    // per position and batch them with a single `linear_combination`, saving
-    // ~1 row per product (see `square` for an implementation of this strategy).
+    /// Multiplies the given assigned big unsigned integers.
     pub fn mul(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -412,19 +408,28 @@ where
         let y = self.normalize(layouter, y)?;
 
         let native_gadget = &self.native_gadget;
-        let zero = native_gadget.assign_fixed(layouter, F::ZERO)?;
         let nb_prod_limbs = x.limbs.len() + y.limbs.len() - 1;
-        let mut limbs = vec![zero; nb_prod_limbs];
-        let mut limb_size_bounds = vec![0; nb_prod_limbs];
+
+        // Phase 1: compute all products and collect them per output position.
+        // products[k] holds (coeff, assigned_product) pairs for limb position k.
+        let mut products: Vec<Vec<(F, AssignedNative<F>)>> = vec![vec![]; nb_prod_limbs];
+        let mut limb_size_bounds = vec![0u32; nb_prod_limbs];
 
         for i in 0..x.limbs.len() {
             for j in 0..y.limbs.len() {
                 let p = native_gadget.mul(layouter, &x.limbs[i], &y.limbs[j], None)?;
+                products[i + j].push((F::ONE, p));
+
                 let p_bound = x.limb_size_bounds[i] + y.limb_size_bounds[j];
-                limbs[i + j] = native_gadget.add(layouter, &limbs[i + j], &p)?;
                 limb_size_bounds[i + j] = bound_of_addition(limb_size_bounds[i + j], p_bound);
             }
         }
+
+        // Phase 2: accumulate each position with a single linear_combination.
+        let limbs = products
+            .iter()
+            .map(|terms| native_gadget.linear_combination(layouter, terms, F::ZERO))
+            .collect::<Result<Vec<_>, _>>()?;
 
         let z = AssignedBigUint {
             limbs,
