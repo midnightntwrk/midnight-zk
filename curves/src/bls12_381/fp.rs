@@ -85,29 +85,29 @@ const R: Fp = Fp(blst_fp {
 
 // These constant is needed to implement [`FormUniformBytes`].
 // It is left here in case the trait is implemented in the future.
-// /// R2 = 2^(384*2) mod p
-// const R2: Fp = Fp(blst_fp {
-//     l: [
-//         0xf4df_1f34_1c34_1746,
-//         0x0a76_e6a6_09d1_04f1,
-//         0x8de5_476c_4c95_b6d5,
-//         0x67eb_88a9_939d_83c0,
-//         0x9a79_3e85_b519_952d,
-//         0x1198_8fe5_92ca_e3aa,
-//     ],
-// });
-//
-// /// R3 = 2^(384*3) mod p
-// const R3: Fp = Fp(blst_fp {
-//     l: [
-//         0xed48_ac6b_d94c_a1e0,
-//         0x315f_831e_03a7_adf8,
-//         0x9a53_352a_615e_29dd,
-//         0x34c0_4e5e_921e_1761,
-//         0x2512_d435_6572_4728,
-//         0x0aa6_3460_9175_5d4d,
-//     ],
-// });
+/// R2 = 2^(384*2) mod p
+const R2: Fp = Fp(blst_fp {
+    l: [
+        0xf4df_1f34_1c34_1746,
+        0x0a76_e6a6_09d1_04f1,
+        0x8de5_476c_4c95_b6d5,
+        0x67eb_88a9_939d_83c0,
+        0x9a79_3e85_b519_952d,
+        0x1198_8fe5_92ca_e3aa,
+    ],
+});
+
+/// R3 = 2^(384*3) mod p
+const R3: Fp = Fp(blst_fp {
+    l: [
+        0xed48_ac6b_d94c_a1e0,
+        0x315f_831e_03a7_adf8,
+        0x9a53_352a_615e_29dd,
+        0x34c0_4e5e_921e_1761,
+        0x2512_d435_6572_4728,
+        0x0aa6_3460_9175_5d4d,
+    ],
+});
 
 /// `Fp` values are always in Montgomery form; i.e., Fp(a) = aR mod p, with R =
 /// 2^384. `blst_fp.l` is in little-endian `u64` limbs format.
@@ -741,6 +741,32 @@ impl Fp {
     #[inline]
     pub fn square_assign(&mut self) {
         unsafe { blst_fp_sqr(&mut self.0, &self.0) };
+    }
+}
+
+impl ff::FromUniformBytes<96> for Fp {
+    fn from_uniform_bytes(bytes: &[u8; 96]) -> Fp {
+        let mut wide = [0u8; 96];
+        wide[..96].copy_from_slice(bytes);
+        let (a0, a1) = wide.split_at(48);
+
+        let a0: [u64; 6] = (0..6)
+            .map(|off| u64::from_le_bytes(a0[off * 8..(off + 1) * 8].try_into().unwrap()))
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap();
+        let a0 = Fp(blst_fp { l: a0 });
+
+        let a1: [u64; 6] = (0..6)
+            .map(|off| u64::from_le_bytes(a1[off * 8..(off + 1) * 8].try_into().unwrap()))
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap();
+        let a1 = Fp(blst_fp { l: a1 });
+
+        // enforce non assembly impl since asm is likely to be optimized for sparse
+        // fields
+        a0.mul(R2) + a1.mul(R3)
     }
 }
 
@@ -1685,4 +1711,5 @@ mod tests {
     crate::field_testing_suite!(Fp, "constants");
     crate::field_testing_suite!(Fp, "sqrt");
     crate::field_testing_suite!(Fp, "zeta");
+    crate::field_testing_suite!(Fp, "from_uniform_bytes", 96);
 }
