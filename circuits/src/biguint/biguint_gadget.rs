@@ -430,6 +430,48 @@ where
         self.normalize(layouter, &z)
     }
 
+    /// Squares the given assigned big unsigned integer.
+    /// Exploits the symmetry x_i * x_j = x_j * x_i to halve the number of
+    /// native multiplications compared to `mul(x, x)`.
+    pub fn square(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &AssignedBigUint<F>,
+    ) -> Result<AssignedBigUint<F>, Error> {
+        let x = self.normalize(layouter, x)?;
+
+        let native_gadget = &self.native_gadget;
+        let zero = native_gadget.assign_fixed(layouter, F::ZERO)?;
+        let nb_prod_limbs = 2 * x.limbs.len() - 1;
+        let mut limbs = vec![zero; nb_prod_limbs];
+        let mut limb_size_bounds = vec![0; nb_prod_limbs];
+
+        for i in 0..x.limbs.len() {
+            // Diagonal term: x_i^2.
+            let p = native_gadget.mul(layouter, &x.limbs[i], &x.limbs[i], None)?;
+            let p_bound = x.limb_size_bounds[i] + x.limb_size_bounds[i];
+            limbs[2 * i] = native_gadget.add(layouter, &limbs[2 * i], &p)?;
+            limb_size_bounds[2 * i] = bound_of_addition(limb_size_bounds[2 * i], p_bound);
+
+            // Off-diagonal terms: 2 * x_i * x_j for j > i.
+            for j in (i + 1)..x.limbs.len() {
+                let p =
+                    native_gadget.mul(layouter, &x.limbs[i], &x.limbs[j], Some(F::from(2u64)))?;
+                let p_bound = 1 + x.limb_size_bounds[i] + x.limb_size_bounds[j];
+                limbs[i + j] = native_gadget.add(layouter, &limbs[i + j], &p)?;
+                limb_size_bounds[i + j] =
+                    bound_of_addition(limb_size_bounds[i + j], p_bound);
+            }
+        }
+
+        let z = AssignedBigUint {
+            limbs,
+            limb_size_bounds,
+        };
+
+        self.normalize(layouter, &z)
+    }
+
     /// Integer division with remainder. Returns (big unsigned) integers
     /// `(q, r)` satisfying:
     ///  - `r in [0, y)`
@@ -919,6 +961,7 @@ mod tests {
         Add,
         Sub,
         Mul,
+        Square,
         Div,
         Rem,
         ModExp,
@@ -973,6 +1016,7 @@ mod tests {
                 Operation::Add => biguint_gadget.add(&mut layouter, &x, &y)?,
                 Operation::Sub => biguint_gadget.sub(&mut layouter, &x, &y)?,
                 Operation::Mul => biguint_gadget.mul(&mut layouter, &x, &y)?,
+                Operation::Square => biguint_gadget.square(&mut layouter, &x)?,
                 Operation::Div => biguint_gadget.div_rem(&mut layouter, &x, &y)?.0,
                 Operation::Rem => biguint_gadget.div_rem(&mut layouter, &x, &y)?.1,
                 Operation::ModExp => biguint_gadget.mod_exp(&mut layouter, &x, 3, &y)?,
