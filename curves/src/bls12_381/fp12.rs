@@ -267,7 +267,25 @@ impl Fp12 {
         Fp12(blst_fp12 { fp6: [c0.0, c1.0] })
     }
 
-    pub fn frobenius_map(&mut self, power: usize) {
+    pub fn c0(&self) -> Fp6 {
+        Fp6(self.0.fp6[0])
+    }
+
+    pub fn c1(&self) -> Fp6 {
+        Fp6(self.0.fp6[1])
+    }
+
+    pub fn conjugate(&mut self) {
+        unsafe { blst_fp12_conjugate(&mut self.0) };
+    }
+}
+
+use crate::ff_ext::ExtField;
+
+impl ExtField for Fp12 {
+    const NON_RESIDUE: Self = Fp12::ZERO; // no needs
+
+    fn frobenius_map(&mut self, power: usize) {
         if power > 0 && power < 4 {
             unsafe { blst_fp12_frobenius_map(&mut self.0, &self.0, power) }
         } else {
@@ -300,18 +318,6 @@ impl Fp12 {
 
             self.0.fp6 = [c0.0, c1.0];
         }
-    }
-
-    pub fn c0(&self) -> Fp6 {
-        Fp6(self.0.fp6[0])
-    }
-
-    pub fn c1(&self) -> Fp6 {
-        Fp6(self.0.fp6[1])
-    }
-
-    pub fn conjugate(&mut self) {
-        unsafe { blst_fp12_conjugate(&mut self.0) };
     }
 }
 

@@ -16,6 +16,24 @@ use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 use super::fp2::Fp2;
 use crate::serde_traits::SerdeObject;
 
+use crate::ff_ext::ExtField;
+pub const NEGATIVE_ONE: Fp = Fp::from_unchecked([
+    0xb9fe_ffff_ffff_aaaa,
+    0x1eab_fffe_b153_ffff,
+    0x6730_d2a0_f6b0_f624,
+    0x6477_4b84_f385_12bf,
+    0x4b1b_a7b6_434b_acd7,
+    0x1a01_11ea_397f_e69a,
+]);
+
+impl ExtField for Fp {
+    const NON_RESIDUE: Self = NEGATIVE_ONE;
+    fn mul_by_nonresidue(&self) -> Self {
+        self.neg()
+    }
+    fn frobenius_map(&mut self, _: usize) {}
+}
+
 // Little-endian non-Montgomery form.
 const MODULUS: [u64; NUM_LIMBS] = [
     0xb9fe_ffff_ffff_aaab,

@@ -227,16 +227,6 @@ impl Fp2 {
         Fp(self.0.fp[1])
     }
 
-    /// Multiply this element by the cubic and quadratic nonresidue 1 + u.
-    pub fn mul_by_nonresidue(&mut self) {
-        let t0 = self.c0();
-        let c0 = self.c0() - self.c1();
-        let c1 = self.c1() + t0;
-
-        self.0.fp[0] = c0.0;
-        self.0.fp[1] = c1.0;
-    }
-
     /// Norm of Fq2 as extension field in i over Fq
     pub fn norm(&self) -> Fp {
         self.c0().square() + self.c1().square()
@@ -298,6 +288,25 @@ impl Field for Fp2 {
     fn sqrt_ratio(_num: &Self, _div: &Self) -> (Choice, Self) {
         // ff::helpers::sqrt_ratio_generic(num, div)
         unimplemented!()
+    }
+}
+
+use crate::ff_ext::ExtField;
+
+impl ExtField for Fp2 {
+    const NON_RESIDUE: Self = Fp2::new(Fp::ONE, Fp::ONE);
+
+    fn mul_by_nonresidue(&self) -> Self {
+        let c0 = self.c0() - self.c1();
+        let c1 = self.c1() + self.c0();
+
+        Self::new(c0, c1)
+    }
+
+    fn frobenius_map(&mut self, power: usize) {
+        let mut c1 = self.c1();
+        c1 *= &FROBENIUS_COEFF_FP2_C1[power % 2];
+        self.0.fp[1] = c1.0;
     }
 }
 
@@ -1044,7 +1053,7 @@ mod tests {
         // i^2 = -1
         let mut a = -Fp2::ONE;
         assert!(a.is_quad_res());
-        a.mul_by_nonresidue();
+        a = a.mul_by_nonresidue();
         assert!(!a.is_quad_res());
     }
 
@@ -1060,7 +1069,7 @@ mod tests {
         for _ in 0..1000 {
             let mut a = Fp2::random(&mut rng);
             let mut b = a;
-            a.mul_by_nonresidue();
+            a = a.mul_by_nonresidue();
             b *= &nqr;
 
             assert_eq!(a, b);

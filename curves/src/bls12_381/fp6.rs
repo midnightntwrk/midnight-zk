@@ -220,7 +220,7 @@ impl MulAssign<&Fp6> for Fp6 {
             t1 *= &tmp;
             t1 -= &b_b;
             t1 -= &c_c;
-            t1.mul_by_nonresidue();
+            t1 = t1.mul_by_nonresidue();
             t1 += &a_a;
         }
 
@@ -245,7 +245,7 @@ impl MulAssign<&Fp6> for Fp6 {
             t2 *= &tmp;
             t2 -= &a_a;
             t2 -= &b_b;
-            c_c.mul_by_nonresidue();
+            c_c = c_c.mul_by_nonresidue();
             t2 += &c_c;
         }
 
@@ -304,11 +304,11 @@ impl Field for Fp6 {
         s4 = s4.square();
 
         let mut c0 = s3;
-        c0.mul_by_nonresidue();
+        c0 = c0.mul_by_nonresidue();
         c0 += &s0;
 
         let mut c1 = s4;
-        c1.mul_by_nonresidue();
+        c1 = c1.mul_by_nonresidue();
         c1 += &s1;
 
         let mut c2 = s1;
@@ -322,7 +322,7 @@ impl Field for Fp6 {
 
     fn invert(&self) -> CtOption<Self> {
         let mut c0 = self.c2();
-        c0.mul_by_nonresidue();
+        c0 = c0.mul_by_nonresidue();
         c0 *= &self.c1();
         c0 = -c0;
         {
@@ -332,7 +332,7 @@ impl Field for Fp6 {
         }
         let mut c1 = self.c2();
         c1 = c1.square();
-        c1.mul_by_nonresidue();
+        c1 = c1.mul_by_nonresidue();
         {
             let mut c01 = self.c0();
             c01 *= &self.c1();
@@ -350,7 +350,7 @@ impl Field for Fp6 {
         let mut tmp2 = self.c1();
         tmp2 *= &c2;
         tmp1 += &tmp2;
-        tmp1.mul_by_nonresidue();
+        tmp1 = tmp1.mul_by_nonresidue();
         tmp2 = self.c0();
         tmp2 *= &c0;
         tmp1 += &tmp2;
@@ -386,18 +386,20 @@ impl Fp6 {
     pub fn c2(&self) -> Fp2 {
         Fp2(self.0.fp2[2])
     }
+}
 
-    /// Multiply by quadratic nonresidue v.
-    pub fn mul_by_nonresidue(&mut self) {
-        self.0.fp2.swap(0, 1);
-        self.0.fp2.swap(0, 2);
+use crate::ff_ext::ExtField;
 
-        let mut c0 = self.c0();
-        c0.mul_by_nonresidue();
-        self.0.fp2[0] = c0.0;
+impl ExtField for Fp6 {
+    const NON_RESIDUE: Self = Fp6::new(Fp2::ZERO, Fp2::ONE, Fp2::ZERO);
+
+    fn mul_by_nonresidue(&self) -> Self {
+        let mut c2 = self.c2().clone();
+        c2 = c2.mul_by_nonresidue();
+        Self::new(c2, self.c0().clone(), self.c1().clone())
     }
 
-    pub fn frobenius_map(&mut self, power: usize) {
+    fn frobenius_map(&mut self, power: usize) {
         let mut c0 = self.c0();
         c0.frobenius_map(power);
         let mut c1 = self.c1();
@@ -433,7 +435,7 @@ mod tests {
         for _ in 0..1000 {
             let mut a = Fp6::random(&mut rng);
             let mut b = a;
-            a.mul_by_nonresidue();
+            a = a.mul_by_nonresidue();
             b.mul_assign(&nqr);
 
             assert_eq!(a, b);
