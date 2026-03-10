@@ -12,10 +12,8 @@ mod gt;
 
 pub use bls_pairing::*;
 use ff::Field;
-pub use fp::Fp;
-pub use fp::{FROBENIUS_COEFF_FP2_C1, FROBENIUS_COEFF_FP6_C1, FROBENIUS_COEFF_FP6_C2};
-pub use fp12::Fp12;
-pub use fp12::FROBENIUS_COEFF_FP12_C1;
+pub use fp::{Fp, FROBENIUS_COEFF_FP2_C1, FROBENIUS_COEFF_FP6_C1, FROBENIUS_COEFF_FP6_C2};
+pub use fp12::{Fp12, FROBENIUS_COEFF_FP12_C1};
 pub use fp2::Fp2;
 pub use fp6::Fp6;
 pub use fq::Fq;

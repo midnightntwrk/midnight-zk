@@ -14,11 +14,7 @@ use rand_core::RngCore;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 
 use super::fp2::Fp2;
-use crate::serde_traits::SerdeObject;
-
-use crate::ff_ext::ExtField;
-
-use crate::utils::U384;
+use crate::{ff_ext::ExtField, serde_traits::SerdeObject, utils::U384};
 
 pub const NEGATIVE_ONE: Fp = Fp::from_unchecked([
     0xb9fe_ffff_ffff_aaaa,

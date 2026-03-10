@@ -394,9 +394,9 @@ impl ExtField for Fp6 {
     const NON_RESIDUE: Self = Fp6::new(Fp2::ZERO, Fp2::ONE, Fp2::ZERO);
 
     fn mul_by_nonresidue(&self) -> Self {
-        let mut c2 = self.c2().clone();
+        let mut c2 = self.c2();
         c2 = c2.mul_by_nonresidue();
-        Self::new(c2, self.c0().clone(), self.c1().clone())
+        Self::new(c2, self.c0(), self.c1())
     }
 
     fn frobenius_map(&mut self, power: usize) {

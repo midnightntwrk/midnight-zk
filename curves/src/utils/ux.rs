@@ -120,7 +120,7 @@ impl<const N: usize> U64Double<N> {
         if index < N {
             return self.low.0[index];
         }
-        return self.high.0[index - N];
+        self.high.0[index - N]
     }
 
     /// Modifying the u64 value stored at index `index` of a U64Double<N>
@@ -215,11 +215,11 @@ impl<const N: usize> U64Double<N> {
             // If result is i bit longer than modulus, with i > 0,
             // we attempt to remove modulus*2**i to result, othewise modulus.
             // If result already is smaller than modulus, return modulus.
-            let mut shifted_modulus = modulus_double.pow2(diff_size as usize);
+            let mut shifted_modulus = modulus_double.pow2(diff_size);
             // If modulus*2**i > result, we remove instead modulus * 2**{i-1} or modulus
             if shifted_modulus.cmp(&result) == 1 {
                 if diff_size > 1 {
-                    shifted_modulus = modulus_double.pow2(diff_size as usize - 1);
+                    shifted_modulus = modulus_double.pow2(diff_size - 1);
                 } else {
                     shifted_modulus = modulus_double.copy();
                 }
@@ -352,8 +352,8 @@ impl<const N: usize> U64Words<N> {
         self.add_with_carry(b, 0u64)
     }
 
-    /// Return the difference of two U64Double<N> and a u64 as well as the borrow
-    /// If borrow > 0, this means that |a - b| > 2^(2*N)
+    /// Return the difference of two U64Double<N> and a u64 as well as the
+    /// borrow If borrow > 0, this means that |a - b| > 2^(2*N)
     pub(crate) const fn sub_with_borrow(&self, b: &Self, borrow_in: u64) -> (Self, u64) {
         let mut res = Self::zero();
         let mut borrow = borrow_in;
@@ -436,13 +436,11 @@ impl<const N: usize> U64Words<N> {
                         shifted_modulus = modulus.copy();
                     }
                 }
-            } else {
-                if modulus.cmp(&result) == 1 {
+            } else if modulus.cmp(&result) == 1 {
                     return result;
                 } else {
                     let (difference, _) = result.sub(modulus);
                     return difference;
-                }
             };
 
             let (difference, _) = result.sub(&shifted_modulus);
