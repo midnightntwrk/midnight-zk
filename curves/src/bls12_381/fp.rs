@@ -557,15 +557,25 @@ fn is_valid_u64(le_bytes: &[u64; 6]) -> bool {
     false
 }
 
-fn u64s_from_bytes(bytes: &[u8; 48]) -> [u64; 6] {
-    [
-        u64::from_le_bytes(bytes[0..8].try_into().unwrap()),
-        u64::from_le_bytes(bytes[8..16].try_into().unwrap()),
-        u64::from_le_bytes(bytes[16..24].try_into().unwrap()),
-        u64::from_le_bytes(bytes[24..32].try_into().unwrap()),
-        u64::from_le_bytes(bytes[32..40].try_into().unwrap()),
-        u64::from_le_bytes(bytes[40..].try_into().unwrap()),
-    ]
+const fn u64s_from_bytes(bytes: &[u8; 48]) -> [u64; 6] {
+    let mut out = [0u64; 6];
+    let mut i = 0;
+
+    while i < 6 {
+        out[i] = u64::from_le_bytes([
+            bytes[i * 8],
+            bytes[i * 8 + 1],
+            bytes[i * 8 + 2],
+            bytes[i * 8 + 3],
+            bytes[i * 8 + 4],
+            bytes[i * 8 + 5],
+            bytes[i * 8 + 6],
+            bytes[i * 8 + 7],
+        ]);
+        i += 1;
+    }
+
+    out
 }
 
 const NUM_BITS: u32 = 381;
@@ -634,6 +644,18 @@ impl Field for Fp {
 }
 
 impl Fp {
+    pub const fn zero() -> Fp {
+        ZERO
+    }
+
+    pub const fn one() -> Fp {
+        R
+    }
+
+    pub const fn neg_one() -> Fp {
+        NEGATIVE_ONE
+    }
+
     pub fn char() -> [u8; 48] {
         MODULUS_REPR
     }
@@ -676,7 +698,7 @@ impl Fp {
     /// Constructs an element of `Fp` from a little-endian array of limbs
     /// without checking that it is canonical and without converting it to
     /// Montgomery form (i.e. without multiplying by `R`).
-    pub(super) fn from_mont_unchecked(l: [u64; 6]) -> Fp {
+    pub const fn from_mont_unchecked(l: [u64; 6]) -> Fp {
         Fp(blst_fp { l })
     }
 
