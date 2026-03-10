@@ -93,6 +93,13 @@ impl<F: CircuitField> AssignedBigUint<F> {
     }
 }
 
+impl<F: CircuitField> PartialEq for AssignedBigUint<F> {
+    fn eq(&self, other: &Self) -> bool {
+        // Cell address comparison
+        self.limbs.iter().zip(other.limbs.iter()).all(|(s, o)| s == o)
+    }
+}
+
 #[cfg(any(test, feature = "testing"))]
 pub(crate) const TEST_NB_BITS: u32 = 1024;
 
