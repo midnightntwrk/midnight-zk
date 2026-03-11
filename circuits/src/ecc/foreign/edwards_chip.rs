@@ -12,8 +12,8 @@
 // limitations under the License.
 
 //! Elliptic curve (in twisted Edwards form) operations over foreign fields.
-//! This module supports curves of the form a*x^2 + y^2 = 1 + d*x^2*y^2, where
-//! a is square and d is non-square.
+//! This module supports curves of the form `a*x^2 + y^2 = 1 + d*x^2*y^2`, where
+//! `a` is square and `d` is non-square.
 //!
 //! We require that the emulated elliptic curve do not have low-order points.
 //! In particular, the curve (or the relevant subgroup) must have a large prime
@@ -27,6 +27,7 @@ use std::{
 
 use ff::{Field, PrimeField};
 use group::Group;
+use midnight_curves::ff_ext::Legendre;
 #[cfg(any(test, feature = "testing"))]
 use midnight_proofs::plonk::{Column, Instance};
 use midnight_proofs::{
@@ -88,6 +89,31 @@ impl<F, C, B, S, N> ForeignEdwardsEccChip<F, C, B, S, N>
 where
     F: CircuitField,
     C: EdwardsCurve,
+    C::Base: Legendre,
+    B: FieldEmulationParams<F, C::Base>,
+    S: ScalarFieldInstructions<F>,
+    S::Scalar: InnerValue<Element = C::ScalarField>,
+    N: NativeInstructions<F>,
+{
+    /// Configures the foreign Edwards ECC chip.
+    pub fn configure(
+        _meta: &mut ConstraintSystem<F>,
+        base_field_config: &FieldChipConfig,
+    ) -> ForeignEdwardsEccConfig<C> {
+        assert!(C::A.legendre() == 1);
+        assert!(C::D.legendre() == -1);
+
+        ForeignEdwardsEccConfig {
+            base_field_config: base_field_config.clone(),
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<F, C, B, S, N> ForeignEdwardsEccChip<F, C, B, S, N>
+where
+    F: CircuitField,
+    C: EdwardsCurve,
     B: FieldEmulationParams<F, C::Base>,
     S: ScalarFieldInstructions<F>,
     S::Scalar: InnerValue<Element = C::ScalarField>,
@@ -105,17 +131,6 @@ where
             native_gadget: native_gadget.clone(),
             base_field_chip,
             scalar_field_chip: scalar_field_chip.clone(),
-        }
-    }
-
-    /// Configures the foreign Edwards ECC chip.
-    pub fn configure(
-        _meta: &mut ConstraintSystem<F>,
-        base_field_config: &FieldChipConfig,
-    ) -> ForeignEdwardsEccConfig<C> {
-        ForeignEdwardsEccConfig {
-            base_field_config: base_field_config.clone(),
-            _marker: PhantomData,
         }
     }
 
@@ -216,7 +231,6 @@ where
     C: EdwardsCurve,
     B: FieldEmulationParams<F, C::Base>,
 {
-    // TODO: why default to 0?
     fn as_public_input(p: &C::CryptographicGroup) -> Vec<F> {
         let (x, y) = (*p).into().coordinates().unwrap_or((C::Base::ZERO, C::Base::ZERO));
         [
@@ -707,6 +721,11 @@ where
         self.msm_by_bounded_scalars(layouter, &scalars, bases)
     }
 
+    // This function currently implements a basic form of double-and-add.
+    // There are several improvements available:
+    //  * Batching equal points
+    //  * Filtering scalars (e.g., if they are 0 or 1)
+    //  * Using the windowed method
     fn msm_by_bounded_scalars(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -827,6 +846,7 @@ impl<F, C, B, S, N> FromScratch<F> for ForeignEdwardsEccChip<F, C, B, S, N>
 where
     F: CircuitField,
     C: EdwardsCurve,
+    C::Base: Legendre,
     B: FieldEmulationParams<F, C::Base>,
     S: ScalarFieldInstructions<F> + FromScratch<F>,
     S::Scalar: InnerValue<Element = C::ScalarField>,
@@ -987,6 +1007,7 @@ mod tests {
     fn run_test_assert_in_subgroup<C>()
     where
         C: EdwardsCurve,
+        C::Base: Legendre,
         MultiEmulationParams: FieldEmulationParams<BlsScalar, C::Base>
             + FieldEmulationParams<BlsScalar, C::ScalarField>,
     {
@@ -1002,6 +1023,7 @@ mod tests {
     fn run_test_assert_on_curve<C>()
     where
         C: EdwardsCurve,
+        C::Base: Legendre,
         MultiEmulationParams: FieldEmulationParams<BlsScalar, C::Base>
             + FieldEmulationParams<BlsScalar, C::ScalarField>,
     {
@@ -1090,6 +1112,7 @@ mod tests {
     impl<C> Circuit<F> for InSubgroupCheckCircuit<C>
     where
         C: EdwardsCurve,
+        C::Base: Legendre,
         MultiEmulationParams:
             FieldEmulationParams<F, C::Base> + FieldEmulationParams<F, C::ScalarField>,
     {
@@ -1145,6 +1168,7 @@ mod tests {
     impl<C> Circuit<F> for OnCurveCheckCircuit<C>
     where
         C: EdwardsCurve,
+        C::Base: Legendre,
         MultiEmulationParams:
             FieldEmulationParams<F, C::Base> + FieldEmulationParams<F, C::ScalarField>,
     {
