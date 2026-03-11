@@ -29,6 +29,7 @@ const SAMPLE_SIZE: usize = 10;
 const SEED: [u8; 16] = [
     0x59, 0x62, 0xbe, 0x5d, 0x76, 0x3d, 0x31, 0x8d, 0x17, 0xdb, 0x37, 0x32, 0x54, 0x06, 0xbc, 0xe5,
 ];
+const SEED_U64: u64 = 0x5962be5d763d318d;
 
 const MULTICORE_RANGE: &[u8] = &[8, 10, 12, 14, 16, 18, 20];
 const BITS: &[usize] = &[256];
@@ -151,5 +152,32 @@ fn msm_blst(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, msm_blst);
+fn msm_vroom(c: &mut Criterion) {
+    let mut group = c.benchmark_group("Msm");
+    group.significance_level(0.1).sample_size(SAMPLE_SIZE);
+
+    let ctx = unsafe { vroom_msm_sys::vroom_ctx_new() };
+    let max_k = *MULTICORE_RANGE.iter().max().unwrap_or(&16);
+    let n_max: usize = 1 << max_k;
+
+    let points = unsafe { vroom_msm_sys::vroom_generate_points(ctx, n_max, SEED_U64) };
+    let scalars = unsafe { vroom_msm_sys::vroom_generate_scalars(n_max, SEED_U64) };
+
+    for k in MULTICORE_RANGE {
+        let n: usize = 1 << k;
+        let id = format!("vroom_256b_{k}");
+        group.bench_function(BenchmarkId::new("Vroom", &id), |b| {
+            b.iter(|| unsafe { vroom_msm_sys::vroom_g1_msm(ctx, points, scalars, n) })
+        });
+    }
+
+    unsafe {
+        vroom_msm_sys::vroom_free_scalars(scalars);
+        vroom_msm_sys::vroom_free_points(points);
+        vroom_msm_sys::vroom_ctx_free(ctx);
+    }
+    group.finish();
+}
+
+criterion_group!(benches, msm_blst, msm_vroom);
 criterion_main!(benches);

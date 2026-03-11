@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 
-members = ["proofs", "curves", "circuits", "aggregation", "zkir", "zk_stdlib"]
+members = ["proofs", "curves", "circuits", "aggregation", "zkir", "zk_stdlib", "vroom-msm-sys"]
 
 package = { license-file = "LICENSE" }
 
