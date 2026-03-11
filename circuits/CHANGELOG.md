@@ -42,6 +42,7 @@ verification keys break backwards compatibility.
 * `CircuitField::modulus()` computed from field arith instead of parsing `PrimeField::MODULUS` [#192](https://github.com/midnightntwrk/midnight-zk/pull/192)
 * Fix `from_bytes_le` [#226](https://github.com/midnightntwrk/midnight-zk/pull/226)
 * Optimize `mul` operation in `BigUintGadget` [#259](https://github.com/midnightntwrk/midnight-zk/pull/259)
+* Optimize `linear_combination` in `NativeChip` [#260](https://github.com/midnightntwrk/midnight-zk/pull/260)
 
 ### Removed
 * Move external implementations to zk-stdlib [#178](https://github.com/midnightntwrk/midnight-zk/pull/178)
