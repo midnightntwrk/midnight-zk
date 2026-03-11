@@ -56,17 +56,6 @@ static void bigint_to_bytes_le(uint8_t *bytes, const BigInt &value, size_t len) 
     }
 }
 
-static BigInt vec384_montgomery_to_bigint(const vec384 a) {
-    vec384 normal;
-    from_fp(normal, a);
-    BigInt result(0);
-    BigInt two_to_64 = BigInt(1) << 64;
-    for (int i = 5; i >= 0; i--) {
-        result = result * two_to_64 + BigInt(static_cast<unsigned long>(normal[i]));
-    }
-    return result;
-}
-
 static AffPoint blst_g1_to_affine_point(const POINTonE1_affine &p, const RingType &ring) {
     BigInt x = vec384_montgomery_to_bigint(p.X);
     BigInt y = vec384_montgomery_to_bigint(p.Y);

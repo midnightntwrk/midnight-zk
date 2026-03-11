@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Midnight ZK implements the zero-knowledge proof system for **Midnight**, built on PLONK with KZG commitments over BLS12-381. It is a Rust workspace with 6 crates organized in a layered architecture.
+Midnight ZK implements the zero-knowledge proof system for **Midnight**, built on PLONK with KZG commitments over BLS12-381. It is a Rust workspace with 7 crates organized in a layered architecture.
 
 ## Build & Test Commands
 
@@ -36,6 +36,10 @@ cargo doc --workspace --document-private-items --no-deps
 
 # Update goldenfiles (run locally, commit changes)
 cargo test -p midnight-zk-stdlib --release -- --ignored
+
+# Run benchmarks (e.g., curves, proofs, circuits, zk_stdlib)
+cargo bench -p midnight-curves
+cargo bench -p midnight-proofs
 ```
 
 **CI-specific:** Tests for circuits and zk_stdlib set `RUSTFLAGS=--cfg ci_build` to use portable BLST. zk_stdlib tests require an SRS file at `zk_stdlib/examples/assets/bls_filecoin_2p19`.
@@ -60,6 +64,9 @@ Incremental verifiable computation (IVC) and light aggregation for recursive pro
 **ZKIR** (`zkir/`, crate: `midnight-zkir`):
 Intermediate representation parser for circuit definitions. Parses ZKIR relations into executable circuits.
 
+**VROOM MSM** (`vroom-msm-sys/`, crate: `vroom-msm-sys`):
+C++ FFI wrapper providing an optimized multi-scalar multiplication implementation for benchmarking against the native Rust MSM.
+
 ### Dependency Order
 ```
 curves → proofs → circuits → zk_stdlib → aggregation
@@ -79,6 +86,16 @@ curves → proofs → circuits → zk_stdlib → aggregation
 - zk_stdlib goldenfiles in `zk_stdlib/goldenfiles/examples/` are regression-checked in CI; regenerate with `cargo test -p midnight-zk-stdlib --release -- --ignored` and commit changes
 - proofs benchmarks require `libfontconfig1-dev` on Linux (for chart generation)
 - Most tests are slow; always use `--release`
+- The workspace Cargo.toml patches `crates-io` and the GitHub remote to use local paths for `midnight-proofs`, `midnight-curves`, and `midnight-circuits` — this ensures all crates resolve to the local workspace versions
+
+## License Header
+
+New source files must include the Apache-2.0 license header:
+```
+// This file is part of midnight-zk.
+// Copyright (C) 2025 Midnight Foundation
+// SPDX-License-Identifier: Apache-2.0
+```
 
 ## Taking notes
 

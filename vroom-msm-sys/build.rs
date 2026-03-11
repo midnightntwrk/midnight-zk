@@ -26,28 +26,9 @@ fn main() {
     // Find GMP
     let gmp_include = find_gmp_include();
 
-    // --- Compile BLST C code ---
-    let mut c_build = cc::Build::new();
-    c_build
-        .file(blst_dir.join("server_small.c"))
-        .flag("-O2")
-        .flag("-fPIC")
-        .define("__x86_64__", None)
-        .define("__ADX__", None)
-        .warnings(false);
-    // Add BLST include path so nested #includes resolve
-    c_build.include(&blst_dir);
-    c_build.compile("blst_c");
-
-    // --- Compile BLST assembly ---
-    let mut asm_build = cc::Build::new();
-    asm_build
-        .file(blst_dir.join("assembly_small.S"))
-        .define("__x86_64__", None)
-        .define("__ADX__", None)
-        .warnings(false);
-    asm_build.include(&blst_dir);
-    asm_build.compile("blst_asm");
+    // NOTE: BLST C code and assembly are NOT compiled here.
+    // The `blst` Rust crate (depended on by midnight-curves) already provides
+    // these symbols. We only need the BLST headers for type declarations.
 
     // --- Compile C++ wrapper ---
     let mut cpp_build = cc::Build::new();

@@ -163,11 +163,26 @@ fn msm_vroom(c: &mut Criterion) {
     let points = unsafe { vroom_msm_sys::vroom_generate_points(ctx, n_max, SEED_U64) };
     let scalars = unsafe { vroom_msm_sys::vroom_generate_scalars(n_max, SEED_U64) };
 
+    // Single-threaded VROOM.
     for k in MULTICORE_RANGE {
         let n: usize = 1 << k;
         let id = format!("vroom_256b_{k}");
         group.bench_function(BenchmarkId::new("Vroom", &id), |b| {
             b.iter(|| unsafe { vroom_msm_sys::vroom_g1_msm(ctx, points, scalars, n) })
+        });
+    }
+
+    // Parallel VROOM (uses all available cores).
+    let num_threads = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4);
+    for k in MULTICORE_RANGE {
+        let n: usize = 1 << k;
+        let id = format!("vroom_par_{num_threads}t_256b_{k}");
+        group.bench_function(BenchmarkId::new("Vroom_par", &id), |b| {
+            b.iter(|| unsafe {
+                vroom_msm_sys::vroom_g1_msm_parallel(ctx, points, scalars, n, num_threads)
+            })
         });
     }
 
