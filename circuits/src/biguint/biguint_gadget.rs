@@ -414,28 +414,28 @@ where
         let y = self.normalize(layouter, y)?;
 
         let native_gadget = &self.native_gadget;
-        let nb_prod_limbs = x.limbs.len() + y.limbs.len() - 1;
 
-        // Phase 1: compute all products and collect them per output position.
-        // products[k] holds (coeff, assigned_product) pairs for limb position k.
-        let mut products: Vec<Vec<(F, AssignedNative<F>)>> = vec![vec![]; nb_prod_limbs];
-        let mut limb_size_bounds = vec![0u32; nb_prod_limbs];
+        let zero = native_gadget.assign_fixed(layouter, F::ZERO)?;
+        let nb_prod_limbs = x.limbs.len() + y.limbs.len() - 1;
+        let mut limbs = vec![zero; nb_prod_limbs];
+        let mut limb_size_bounds = vec![0; nb_prod_limbs];
 
         for i in 0..x.limbs.len() {
             for j in 0..y.limbs.len() {
-                let p = native_gadget.mul(layouter, &x.limbs[i], &y.limbs[j], None)?;
-                products[i + j].push((F::ONE, p));
+                // limbs[i + j] += x.limbs[i] * y.limbs[j]
+                limbs[i + j] = native_gadget.add_and_mul(
+                    layouter,
+                    (F::ZERO, &x.limbs[i]),
+                    (F::ZERO, &y.limbs[j]),
+                    (F::ONE, &limbs[i + j]),
+                    F::ZERO,
+                    F::ONE,
+                )?;
 
                 let p_bound = x.limb_size_bounds[i] + y.limb_size_bounds[j];
                 limb_size_bounds[i + j] = bound_of_addition(limb_size_bounds[i + j], p_bound);
             }
         }
-
-        // Phase 2: accumulate each position with a single linear_combination.
-        let limbs = products
-            .iter()
-            .map(|terms| native_gadget.linear_combination(layouter, terms, F::ZERO))
-            .collect::<Result<Vec<_>, _>>()?;
 
         let z = AssignedBigUint {
             limbs,
@@ -454,39 +454,45 @@ where
         let x = self.normalize(layouter, x)?;
 
         let native_gadget = &self.native_gadget;
+
+        let zero = native_gadget.assign_fixed(layouter, F::ZERO)?;
         let nb_limbs = x.limbs.len();
         let nb_prod_limbs = 2 * nb_limbs - 1;
-
-        // Phase 1: compute all products and collect them per output position.
-        // products[k] holds (coeff, assigned_product) pairs for limb position k.
-        let mut products: Vec<Vec<(F, AssignedNative<F>)>> = vec![vec![]; nb_prod_limbs];
+        let mut limbs = vec![zero; nb_prod_limbs];
         let mut limb_size_bounds = vec![0u32; nb_prod_limbs];
 
         for i in 0..nb_limbs {
-            // Diagonal term: x_i * x_i.
-            let p = native_gadget.mul(layouter, &x.limbs[i], &x.limbs[i], None)?;
-            products[2 * i].push((F::ONE, p));
+            // limbs[2 * i] += x_i * x_i (diagonal term)
+            limbs[2 * i] = native_gadget.add_and_mul(
+                layouter,
+                (F::ZERO, &x.limbs[i]),
+                (F::ZERO, &x.limbs[i]),
+                (F::ONE, &limbs[2 * i]),
+                F::ZERO,
+                F::ONE,
+            )?;
 
             // Update bounds.
-            let p_bound = x.limb_size_bounds[i] + x.limb_size_bounds[i];
+            let p_bound = 2 * x.limb_size_bounds[i];
             limb_size_bounds[2 * i] = bound_of_addition(limb_size_bounds[2 * i], p_bound);
 
             // Off-diagonal terms: x_i * x_j.
             for j in (i + 1)..nb_limbs {
-                let p = native_gadget.mul(layouter, &x.limbs[i], &x.limbs[j], None)?;
-                products[i + j].push((F::from(2u64), p)); // x2 off-diagonal terms.
+                // limbs[i + j] += 2 * x_i * x_j (2x off-diagonal terms)
+                limbs[i + j] = native_gadget.add_and_mul(
+                    layouter,
+                    (F::ZERO, &x.limbs[i]),
+                    (F::ZERO, &x.limbs[j]),
+                    (F::ONE, &limbs[i + j]),
+                    F::ZERO,
+                    F::from(2),
+                )?;
 
                 // Update bounds. (1 bit extra for the x2)
                 let p_bound = 1 + x.limb_size_bounds[i] + x.limb_size_bounds[j];
                 limb_size_bounds[i + j] = bound_of_addition(limb_size_bounds[i + j], p_bound);
             }
         }
-
-        // Phase 2: accumulate each position with a single linear_combination.
-        let limbs = products
-            .iter()
-            .map(|terms| native_gadget.linear_combination(layouter, terms, F::ZERO))
-            .collect::<Result<Vec<_>, _>>()?;
 
         let z = AssignedBigUint {
             limbs,
