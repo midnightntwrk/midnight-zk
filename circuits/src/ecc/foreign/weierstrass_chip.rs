@@ -409,7 +409,7 @@ where
 /// Inherit assignment instructions for [AssignedField], from the
 /// `scalar_field_chip` when the emulated field is the scalar field.
 /// Mind the binding `S: ScalarFieldInstructions<F, Scalar = AssignedField<F,
-/// C::Scalar>>` of this implementation.
+/// C::ScalarField>>` of this implementation.
 impl<F, C, B, S, SP, N> AssignmentInstructions<F, AssignedField<F, C::ScalarField, SP>>
     for ForeignWeierstrassEccChip<F, C, B, S, N>
 where
