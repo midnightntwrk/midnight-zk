@@ -54,6 +54,12 @@ impl<C: CircuitCurve> LambdaSquaredConfig<C> {
     /// are parameters involved in the identities enforced by the ModArith
     /// custom gate. We refer to the implementation of this function for
     /// explanations on what such values represent.
+    ///
+    /// The `nb_parallel_range_checks` and `max_bit_len` parameters describe
+    /// the range-check decomposition chip: how many lookups run in parallel
+    /// per row and the maximum bit-length each lookup supports. They are used
+    /// to pick range-check-friendly bounds (powers of two whose bit count
+    /// aligns well with the chip's parallel lookup structure).
     pub fn bounds<F, P>(
         nb_parallel_range_checks: usize,
         max_bit_len: u32,

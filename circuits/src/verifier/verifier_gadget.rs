@@ -876,7 +876,7 @@ pub(crate) mod tests {
             let max_bit_len = 16;
             let core_decomp_config = {
                 let pow2_config =
-                    Pow2RangeChip::configure(meta, &advice_columns[1..nb_parallel_range_checks]);
+                    Pow2RangeChip::configure(meta, &advice_columns[1..=nb_parallel_range_checks]);
                 P2RDecompositionChip::configure(meta, &(native_config.clone(), pow2_config))
             };
 
