@@ -15,7 +15,10 @@ pub mod sha_preimage;
 pub fn constraint_system(
     arch: ZkStdLibArch,
     k: u32,
-) -> (midnight_proofs::plonk::ConstraintSystem<F>, EvaluationDomain<F>) {
+) -> (
+    midnight_proofs::plonk::ConstraintSystem<F>,
+    EvaluationDomain<F>,
+) {
     let mut cs = midnight_proofs::plonk::ConstraintSystem::default();
     ZkStdLib::configure(&mut cs, arch);
     let domain = EvaluationDomain::new(cs.degree() as u32, k);

@@ -36,12 +36,16 @@ use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::{self, ConstraintSystem, Error},
     poly::{
-        kzg::{params::ParamsVerifierKZG, KZGCommitmentScheme},
+        kzg::{
+            params::{ParamsKZG, ParamsVerifierKZG},
+            KZGCommitmentScheme,
+        },
         EvaluationDomain,
     },
     transcript::{CircuitTranscript, Transcript},
 };
 use midnight_zk_stdlib::{MidnightVK, Relation, ZkStdLib, ZkStdLibArch};
+use rand::rngs::OsRng;
 
 use crate::common::sha_preimage;
 
@@ -385,7 +389,8 @@ fn main() {
     const IVC_K: u32 = 19;
     const STEPS: usize = 3;
 
-    let inner_srs = midnight_zk_stdlib::utils::plonk_api::filecoin_srs(sha_preimage::K);
+    // The inner circuit can use a different SRS than the IVC circuit.
+    let inner_srs = ParamsKZG::unsafe_setup(sha_preimage::K, OsRng);
     let inner_vk = sha_preimage::setup_vk(&inner_srs);
     let inner_pk = sha_preimage::setup_pk(&inner_vk);
     let inner_ctx = {

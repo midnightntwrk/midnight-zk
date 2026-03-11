@@ -127,8 +127,7 @@ pub trait IvcTransition: IvcState {
     ///
     /// This is the in-circuit analog of [`transition`](Self::transition). It
     /// receives the assigned current state and a witnessed transition input,
-    /// and returns the assigned next state. The IVC circuit will constrain
-    /// the returned state as public input.
+    /// and returns the assigned next state.
     fn circuit_transition(
         &self,
         layouter: &mut impl Layouter<F>,
