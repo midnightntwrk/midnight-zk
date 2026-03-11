@@ -397,17 +397,24 @@ where
         Ok(res)
     }
 
-    /// Multiplies the given assigned big unsinged integers.
+    /// Multiplies the given assigned big unsigned integers.
     pub fn mul(
         &self,
         layouter: &mut impl Layouter<F>,
         x: &AssignedBigUint<F>,
         y: &AssignedBigUint<F>,
     ) -> Result<AssignedBigUint<F>, Error> {
+        // Use the more efficient square instructions if the inputs are known to be
+        // equal.
+        if x == y {
+            return self.square(layouter, x);
+        }
+
         let x = self.normalize(layouter, x)?;
         let y = self.normalize(layouter, y)?;
 
         let native_gadget = &self.native_gadget;
+
         let zero = native_gadget.assign_fixed(layouter, F::ZERO)?;
         let nb_prod_limbs = x.limbs.len() + y.limbs.len() - 1;
         let mut limbs = vec![zero; nb_prod_limbs];
@@ -415,9 +422,74 @@ where
 
         for i in 0..x.limbs.len() {
             for j in 0..y.limbs.len() {
-                let p = native_gadget.mul(layouter, &x.limbs[i], &y.limbs[j], None)?;
+                // limbs[i + j] += x.limbs[i] * y.limbs[j]
+                limbs[i + j] = native_gadget.add_and_mul(
+                    layouter,
+                    (F::ZERO, &x.limbs[i]),
+                    (F::ZERO, &y.limbs[j]),
+                    (F::ONE, &limbs[i + j]),
+                    F::ZERO,
+                    F::ONE,
+                )?;
+
                 let p_bound = x.limb_size_bounds[i] + y.limb_size_bounds[j];
-                limbs[i + j] = native_gadget.add(layouter, &limbs[i + j], &p)?;
+                limb_size_bounds[i + j] = bound_of_addition(limb_size_bounds[i + j], p_bound);
+            }
+        }
+
+        let z = AssignedBigUint {
+            limbs,
+            limb_size_bounds,
+        };
+
+        self.normalize(layouter, &z)
+    }
+
+    /// Squares the given assigned big unsigned integer.
+    pub fn square(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &AssignedBigUint<F>,
+    ) -> Result<AssignedBigUint<F>, Error> {
+        let x = self.normalize(layouter, x)?;
+
+        let native_gadget = &self.native_gadget;
+
+        let zero = native_gadget.assign_fixed(layouter, F::ZERO)?;
+        let nb_limbs = x.limbs.len();
+        let nb_prod_limbs = 2 * nb_limbs - 1;
+        let mut limbs = vec![zero; nb_prod_limbs];
+        let mut limb_size_bounds = vec![0u32; nb_prod_limbs];
+
+        for i in 0..nb_limbs {
+            // limbs[2 * i] += x_i * x_i (diagonal term)
+            limbs[2 * i] = native_gadget.add_and_mul(
+                layouter,
+                (F::ZERO, &x.limbs[i]),
+                (F::ZERO, &x.limbs[i]),
+                (F::ONE, &limbs[2 * i]),
+                F::ZERO,
+                F::ONE,
+            )?;
+
+            // Update bounds.
+            let p_bound = 2 * x.limb_size_bounds[i];
+            limb_size_bounds[2 * i] = bound_of_addition(limb_size_bounds[2 * i], p_bound);
+
+            // Off-diagonal terms: x_i * x_j.
+            for j in (i + 1)..nb_limbs {
+                // limbs[i + j] += 2 * x_i * x_j (2x off-diagonal terms)
+                limbs[i + j] = native_gadget.add_and_mul(
+                    layouter,
+                    (F::ZERO, &x.limbs[i]),
+                    (F::ZERO, &x.limbs[j]),
+                    (F::ONE, &limbs[i + j]),
+                    F::ZERO,
+                    F::from(2),
+                )?;
+
+                // Update bounds. (1 bit extra for the x2)
+                let p_bound = 1 + x.limb_size_bounds[i] + x.limb_size_bounds[j];
                 limb_size_bounds[i + j] = bound_of_addition(limb_size_bounds[i + j], p_bound);
             }
         }
@@ -482,7 +554,7 @@ where
             n >>= 1;
 
             if n > 0 {
-                tmp = self.mod_mul(layouter, &tmp, &tmp, m)?;
+                tmp = self.mod_square(layouter, &tmp, m)?;
             }
         }
 
@@ -729,6 +801,18 @@ where
         Ok(r)
     }
 
+    /// Modular multiplication. Returns `(x * x) % m`.
+    fn mod_square(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &AssignedBigUint<F>,
+        m: &AssignedBigUint<F>,
+    ) -> Result<AssignedBigUint<F>, Error> {
+        let p = self.square(layouter, x)?;
+        let (_, r) = self.div_rem(layouter, &p, m)?;
+        Ok(r)
+    }
+
     /// Returns `1` iff `x >= y`.
     fn geq(
         &self,
@@ -919,6 +1003,7 @@ mod tests {
         Add,
         Sub,
         Mul,
+        Square,
         Div,
         Rem,
         ModExp,
@@ -973,6 +1058,7 @@ mod tests {
                 Operation::Add => biguint_gadget.add(&mut layouter, &x, &y)?,
                 Operation::Sub => biguint_gadget.sub(&mut layouter, &x, &y)?,
                 Operation::Mul => biguint_gadget.mul(&mut layouter, &x, &y)?,
+                Operation::Square => biguint_gadget.square(&mut layouter, &x)?,
                 Operation::Div => biguint_gadget.div_rem(&mut layouter, &x, &y)?.0,
                 Operation::Rem => biguint_gadget.div_rem(&mut layouter, &x, &y)?.1,
                 Operation::ModExp => biguint_gadget.mod_exp(&mut layouter, &x, 3, &y)?,
@@ -1071,6 +1157,20 @@ mod tests {
             run::<F>(&one, &x, &x, Operation::Mul, true);
             run::<F>(&x, &y, &zero, Operation::Add, false)
         }
+    }
+
+    #[test]
+    fn test_square_biguint() {
+        type F = midnight_curves::Fq;
+        let zero = BigUint::ZERO;
+        let one = BigUint::one();
+        for _ in 0..10 {
+            let x: BigUint = random_biguint(1024);
+            run::<F>(&x, &zero, &(&x * &x), Operation::Square, true);
+            run::<F>(&x, &zero, &zero, Operation::Square, false);
+        }
+        run::<F>(&zero, &zero, &zero, Operation::Square, true);
+        run::<F>(&one, &zero, &one, Operation::Square, true);
     }
 
     #[test]
