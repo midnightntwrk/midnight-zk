@@ -42,7 +42,7 @@ use midnight_proofs::{
     },
     transcript::{CircuitTranscript, Transcript},
 };
-use midnight_zk_stdlib::{MidnightVK, Relation, ZkStdLib, ZkStdLibArch};
+use midnight_zk_stdlib::{prove, setup_pk, setup_vk, MidnightVK, Relation, ZkStdLib, ZkStdLibArch};
 use rand::rngs::OsRng;
 
 use crate::common::sha_preimage;
@@ -346,8 +346,8 @@ fn main() {
 
     // The inner circuit can use a different SRS than the IVC circuit.
     let inner_srs = ParamsKZG::unsafe_setup(sha_preimage::K, OsRng);
-    let inner_vk = sha_preimage::setup_vk(&inner_srs);
-    let inner_pk = sha_preimage::setup_pk(&inner_vk);
+    let inner_vk = setup_vk(&inner_srs, &ShaPreimageCircuit);
+    let inner_pk = setup_pk(&ShaPreimageCircuit, &inner_vk);
     let inner_ctx = {
         let (inner_cs, inner_domain) =
             common::constraint_system(ShaPreimageCircuit.used_chips(), sha_preimage::K);
@@ -366,7 +366,15 @@ fn main() {
         std::array::from_fn(|_| sha_preimage::random_instance());
     let inner_proofs: [_; STEPS] = std::array::from_fn(|i| {
         let (digest, preimage) = &inner_statements_with_witnesses[i];
-        sha_preimage::prove(&inner_srs, &inner_pk, digest, *preimage)
+        prove::<ShaPreimageCircuit, PoseidonState<F>>(
+            &inner_srs,
+            &inner_pk,
+            &ShaPreimageCircuit,
+            digest,
+            *preimage,
+            OsRng,
+        )
+        .expect("proof generation should not fail")
     });
     let inner_statements = inner_statements_with_witnesses.map(|(x, _)| x);
     println!("{STEPS} inner proofs generated in {:.2?}", start.elapsed());
