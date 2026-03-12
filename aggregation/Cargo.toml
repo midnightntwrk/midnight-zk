@@ -37,7 +37,7 @@ name = "ivc"
 required-features = ["truncated-challenges"]
 
 [[example]]
-name = "proof_aggregation"
+name = "single_circuit_aggregation"
 required-features = ["truncated-challenges"]
 
 [features]

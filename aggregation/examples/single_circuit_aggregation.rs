@@ -1,9 +1,9 @@
-//! Proof aggregation via IVC.
+//! Single-circuit proof aggregation via IVC.
 //!
-//! This example demonstrates how to aggregate multiple proofs of the same
+//! This example demonstrates how to aggregate multiple proofs of a single
 //! circuit (a SHA-256 preimage circuit) using Incrementally Verifiable
-//! Computation (IVC). All aggregated proofs must share the same verifying
-//! key, i.e. they must originate from the same inner circuit.
+//! Computation (IVC). All aggregated proofs share the same verifying key
+//! since they originate from the same inner circuit.
 //!
 //! The IVC state tracks:
 //! - A list of aggregated statements (off-circuit),
