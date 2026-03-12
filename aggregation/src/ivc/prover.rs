@@ -58,7 +58,8 @@ impl<T: IvcTransition> IvcProver<T> {
     /// If the current state is genesis (no previous proof), a trivial
     /// accumulator is used instead of verifying the previous proof.
     pub fn prove_step(&mut self, transition_witness: T::Witness) -> Result<Vec<u8>, IvcError> {
-        let next_state = T::transition(&self.state, transition_witness.clone());
+        let next_state =
+            T::transition(self.relation.ctx(), &self.state, transition_witness.clone());
         let is_genesis = self.proof.is_empty();
 
         let vk = self.pk.pk().get_vk();

@@ -4,13 +4,11 @@
 //! function that iteratively hashes a value using Poseidon.
 //!
 //! DO NOT add this example to the CI as it is slow.
-//!
-//! Run with `features = truncated-challenges`.
 
 use std::time::Instant;
 
 use ff::Field;
-use midnight_aggregation::ivc::{self, IvcState, IvcTransition};
+use midnight_aggregation::ivc::{self, IvcContext, IvcState, IvcTransition};
 use midnight_circuits::{
     hash::poseidon::PoseidonChip,
     instructions::{hash::HashCPU, *},
@@ -67,11 +65,27 @@ pub struct PoseidonChain<const N: usize> {
     std_lib: ZkStdLib,
 }
 
+impl<const N: usize> IvcContext for PoseidonChain<N> {
+    type Context = ();
+
+    fn new(std_lib: ZkStdLib, _ctx: &()) -> Self {
+        PoseidonChain { std_lib }
+    }
+
+    fn write_context<W: std::io::Write>(_ctx: &(), _writer: &mut W) -> std::io::Result<()> {
+        Ok(())
+    }
+
+    fn read_context<R: std::io::Read>(_reader: &mut R) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
 impl<const N: usize> IvcState for PoseidonChain<N> {
     type State = State;
     type AssignedState = AssignedState;
 
-    fn genesis() -> Self::State {
+    fn genesis(_ctx: &()) -> Self::State {
         State {
             cnt: F::ZERO,
             val: F::ZERO,
@@ -86,6 +100,10 @@ impl<const N: usize> IvcState for PoseidonChain<N> {
         let cnt_is_zero = self.std_lib.bls12_381_scalar().is_zero(layouter, &state.cnt)?;
         let val_is_zero = self.std_lib.bls12_381_scalar().is_zero(layouter, &state.val)?;
         self.std_lib.and(layouter, &[cnt_is_zero, val_is_zero])
+    }
+
+    fn decider(_ctx: &Self::Context, _state: &Self::State) -> bool {
+        true
     }
 }
 
@@ -139,12 +157,6 @@ impl<const N: usize> PublicInputInstructions<F, AssignedState> for PoseidonChain
     }
 }
 
-impl<const N: usize> From<ZkStdLib> for PoseidonChain<N> {
-    fn from(std_lib: ZkStdLib) -> Self {
-        PoseidonChain { std_lib }
-    }
-}
-
 impl<const N: usize> IvcTransition for PoseidonChain<N> {
     // This transition function is deterministic, it does not depend on a witness.
     type Witness = ();
@@ -157,7 +169,7 @@ impl<const N: usize> IvcTransition for PoseidonChain<N> {
         }
     }
 
-    fn transition(state: &Self::State, _witness: Self::Witness) -> Self::State {
+    fn transition(_ctx: &(), state: &Self::State, _witness: Self::Witness) -> Self::State {
         let mut val = state.val;
         for _ in 0..N {
             val = <PoseidonChip<F> as HashCPU<F, F>>::hash(&[val]);
@@ -168,13 +180,12 @@ impl<const N: usize> IvcTransition for PoseidonChain<N> {
         }
     }
 
-    fn assert_transition(
+    fn circuit_transition(
         &self,
         layouter: &mut impl Layouter<F>,
         state: &Self::AssignedState,
-        next_state: &Self::AssignedState,
         _witness: Value<Self::Witness>,
-    ) -> Result<(), Error> {
+    ) -> Result<Self::AssignedState, Error> {
         let scalar_chip = self.std_lib.bls12_381_scalar();
 
         let mut val = state.val.clone();
@@ -182,9 +193,8 @@ impl<const N: usize> IvcTransition for PoseidonChain<N> {
             val = self.std_lib.poseidon(layouter, &[val])?;
         }
 
-        let expected_cnt = scalar_chip.add_constant(layouter, &state.cnt, F::from(N as u64))?;
-        scalar_chip.assert_equal(layouter, &expected_cnt, &next_state.cnt)?;
-        scalar_chip.assert_equal(layouter, &val, &next_state.val)
+        let cnt = scalar_chip.add_constant(layouter, &state.cnt, F::from(N as u64))?;
+        Ok(AssignedState { cnt, val })
     }
 }
 
@@ -202,7 +212,7 @@ fn main() {
     let srs = midnight_zk_stdlib::utils::plonk_api::filecoin_srs(K);
 
     let start = Instant::now();
-    let (mut prover, verifier) = ivc::setup::<PoseidonChain<N>>(srs, K);
+    let (mut prover, verifier) = ivc::setup::<PoseidonChain<N>>(srs, K, ());
     println!("IVC setup completed in {:.2?}", start.elapsed());
 
     for i in 0..STEPS {
@@ -213,7 +223,7 @@ fn main() {
         let instance = prover.instance();
 
         let start = Instant::now();
-        verifier.verify(&instance, &proof).unwrap();
+        verifier.verify(&(), &instance, &proof).unwrap();
         let verify_time = start.elapsed();
 
         println!("Step {i}: prove {prove_time:.2?}, verify {verify_time:.2?}");
@@ -221,7 +231,7 @@ fn main() {
 
     println!(
         "IVC completed: {STEPS} steps from\n genesis {:?}\n      to {:?}",
-        PoseidonChain::<N>::genesis(),
+        PoseidonChain::<N>::genesis(&()),
         prover.instance().state()
     );
 }

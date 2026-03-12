@@ -46,18 +46,37 @@ pub mod prover;
 pub mod setup;
 pub mod verifier;
 
+/// External configuration for an IVC computation.
+///
+/// The context carries any metadata that the transition function needs.
+/// Consider moving immutable state values (e.g. verification keys, domain
+/// parameters) into the context rather than recomputing them at each step
+/// or carrying them in the state.
+pub trait IvcContext: Clone {
+    /// The external configuration threaded through the IVC framework.
+    /// Use `()` when no context is required.
+    type Context: Clone + std::fmt::Debug;
+
+    /// Constructs the in-circuit gadget from a [`ZkStdLib`] and the provided
+    /// context.
+    fn new(std_lib: ZkStdLib, ctx: &Self::Context) -> Self;
+
+    /// Serializes the context to a writer.
+    fn write_context<W: std::io::Write>(ctx: &Self::Context, writer: &mut W)
+        -> std::io::Result<()>;
+
+    /// Deserializes a context from a reader.
+    fn read_context<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self::Context>;
+}
+
 /// State representation for an Incrementally Verifiable Computation (IVC).
 ///
 /// An IVC state evolves from a distinguished *genesis* value through repeated
 /// applications of a transition function (see [`IvcTransition`]). This trait
 /// captures the state type together with the ability to detect genesis, which
 /// the IVC circuit needs to handle the very first step.
-///
-/// Implementors must be constructable from a [`ZkStdLib`] (via [`From`])
-/// so that the IVC circuit can instantiate the gadget.
 pub trait IvcState:
-    Clone
-    + From<ZkStdLib>
+    IvcContext
     + AssignmentInstructions<F, Self::AssignedState>
     + PublicInputInstructions<F, Self::AssignedState>
 {
@@ -68,7 +87,7 @@ pub trait IvcState:
     type AssignedState: Clone + Instantiable<F> + InnerValue<Element = Self::State>;
 
     /// The genesis (initial) state of the IVC chain.
-    fn genesis() -> Self::State;
+    fn genesis(ctx: &Self::Context) -> Self::State;
 
     /// Returns true (in-circuit) if the given state is genesis.
     fn is_genesis(
@@ -76,14 +95,23 @@ pub trait IvcState:
         layouter: &mut impl Layouter<F>,
         state: &Self::AssignedState,
     ) -> Result<AssignedBit<F>, Error>;
+
+    /// Off-circuit check that the state meets the required invariants.
+    ///
+    /// Automatically called by [`IvcVerifier::verify`] to check any
+    /// properties that are deferred to off-circuit verification, such as
+    /// accumulator validity or hash-chain integrity.
+    ///
+    /// Returns `true` if the state passes all checks.
+    fn decider(ctx: &Self::Context, state: &Self::State) -> bool;
 }
 
 /// A single-step transition function for an IVC computation.
 ///
 /// Defines how an [`IvcState`] evolves:
 /// [`transition`](Self::transition) computes the next state off-circuit,
-/// while [`assert_transition`](Self::assert_transition) enforces the same
-/// relationship inside the circuit.
+/// while [`circuit_transition`](Self::circuit_transition) computes the
+/// same transition inside the circuit, returning the new assigned state.
 pub trait IvcTransition: IvcState {
     /// The witness type for a single transition step.
     type Witness: Clone;
@@ -93,22 +121,17 @@ pub trait IvcTransition: IvcState {
 
     /// Computes the next state from the current state and witness
     /// (off-circuit).
-    fn transition(state: &Self::State, witness: Self::Witness) -> Self::State;
+    fn transition(ctx: &Self::Context, state: &Self::State, witness: Self::Witness) -> Self::State;
 
-    /// Asserts in-circuit that the transition from `state` to `next_state` is
-    /// valid.
+    /// Computes the next state in-circuit from the current state and witness.
     ///
-    /// A straightforward implementation would compute the transition
-    /// in-circuit and constrain the result to equal `next_state`. However,
-    /// verifying a transition can sometimes be done more efficiently than
-    /// recomputing it. This method receives both `state` and `next_state` and
-    /// only needs to assert that their relationship (which may depend on an
-    /// additional witness) is correct.
-    fn assert_transition(
+    /// This is the in-circuit analog of [`transition`](Self::transition). It
+    /// receives the assigned current state and a witnessed transition input,
+    /// and returns the assigned next state.
+    fn circuit_transition(
         &self,
         layouter: &mut impl Layouter<F>,
         state: &Self::AssignedState,
-        next_state: &Self::AssignedState,
         witness: Value<Self::Witness>,
-    ) -> Result<(), Error>;
+    ) -> Result<Self::AssignedState, Error>;
 }

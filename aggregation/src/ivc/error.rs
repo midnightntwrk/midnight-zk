@@ -17,6 +17,8 @@ pub enum IvcError {
     InvalidProof,
     /// The proof transcript contains trailing data.
     TranscriptNotEmpty,
+    /// The application-level decider check failed.
+    DeciderFailed,
 }
 
 impl From<plonk::Error> for IvcError {
@@ -33,6 +35,7 @@ impl fmt::Display for IvcError {
             IvcError::VkMismatch => write!(f, "verifying-key mismatch"),
             IvcError::InvalidProof => write!(f, "invalid proof"),
             IvcError::TranscriptNotEmpty => write!(f, "proof transcript not empty"),
+            IvcError::DeciderFailed => write!(f, "decider check failed"),
         }
     }
 }

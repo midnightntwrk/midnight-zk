@@ -34,6 +34,8 @@ impl IvcVerifier {
     /// 1. Preparing the proof to obtain a proof accumulator.
     /// 2. Accumulating it with the instance's accumulator.
     /// 3. Checking the pairing invariant on the result.
+    /// 4. Running the application-level [`decider`](super::IvcState::decider)
+    ///    on the instance state.
     ///
     /// This method checks that `instance.vk_repr` matches the canonical
     /// verifying key held by this verifier (derived from
@@ -42,12 +44,17 @@ impl IvcVerifier {
     /// verification.
     pub fn verify<T: IvcTransition>(
         &self,
+        ctx: &T::Context,
         instance: &IvcInstance<T>,
         proof: &[u8],
     ) -> Result<(), IvcError> {
         // Reject proofs whose instance claims a different verifying key.
         if instance.vk_repr != self.vk.vk().transcript_repr() {
             return Err(IvcError::VkMismatch);
+        }
+
+        if !T::decider(ctx, &instance.state) {
+            return Err(IvcError::DeciderFailed);
         }
 
         let fixed_bases = midnight_circuits::verifier::fixed_bases::<S>("self_vk", self.vk.vk());
@@ -65,6 +72,8 @@ impl IvcVerifier {
             )
             .map_err(|_| IvcError::InvalidProof)?;
 
+        transcript.assert_empty().map_err(|_| IvcError::TranscriptNotEmpty)?;
+
         let proof_acc = Accumulator::from_dual_msm(dual_msm, "self_vk", &fixed_bases);
 
         // Verify that both `proof_acc` and `instance.acc` satisfy the pairing
@@ -73,7 +82,7 @@ impl IvcVerifier {
         if !final_acc.check(&self.params_verifier, &fixed_bases) {
             return Err(IvcError::InvalidProof);
         };
-        transcript.assert_empty().map_err(|_| IvcError::TranscriptNotEmpty)?;
+
         Ok(())
     }
 }
