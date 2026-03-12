@@ -252,7 +252,7 @@ fn bench_zswap_output(c: &mut Criterion) {
     const K: u32 = 14;
     let srs = ParamsKZG::unsafe_setup(K, OsRng);
 
-    let circuit = MidnightCircuit::from_relation(&ZSwapOutputCircuit);
+    let circuit = MidnightCircuit::from_relation(&ZSwapOutputCircuit, Some(K));
     let vk = keygen_vk_with_k::<_, KZGCommitmentScheme<Bls12>, _>(&srs, &circuit, K)
         .expect("Failed to generate VK");
     let pk = keygen_pk(vk, &circuit).expect("Failed to generate PK");

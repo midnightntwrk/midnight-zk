@@ -4,9 +4,7 @@ use blake2b_simd::State as Blake2b;
 use ff::Field;
 use group::Group;
 use midnight_curves::{Fr as JubjubFr, JubjubSubgroup};
-use midnight_proofs::{
-    circuit::Value, dev::cost_model::dummy_synthesize_run, plonk, poly::kzg::params::ParamsKZG,
-};
+use midnight_proofs::{dev::cost_model::dummy_synthesize_run, plonk, poly::kzg::params::ParamsKZG};
 use midnight_zk_stdlib::MidnightCircuit;
 use midnight_zkir::{
     Error, Instruction, IrType, IrValue,
@@ -828,7 +826,7 @@ fn test_without_witness(
 ) {
     let instructions = build_instructions(raw_instructions);
     let relation = ZkirRelation::from_instructions(&instructions).unwrap();
-    let circuit = MidnightCircuit::new(&relation, Value::unknown(), Value::unknown(), Some(8));
+    let circuit = MidnightCircuit::from_relation(&relation, Some(9));
     assert_eq!(
         dummy_synthesize_run(&circuit).map_err(|e| e.to_string()).map(|_| ()),
         expected_error
@@ -862,7 +860,7 @@ fn test_with_witness(
     let instructions = build_instructions(raw_instructions);
     let relation = ZkirRelation::from_instructions(&instructions).unwrap();
 
-    let k = MidnightCircuit::from_relation(&relation).min_k();
+    let k = midnight_zk_stdlib::optimal_k(&relation);
     let srs = ParamsKZG::unsafe_setup(k, OsRng);
 
     let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);

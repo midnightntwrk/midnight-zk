@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) Midnight Foundation
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -861,9 +861,23 @@ where
         terms: &[(F, AssignedNative<F>)],
         constant: F,
     ) -> Result<AssignedNative<F>, Error> {
-        let terms: Vec<_> = terms.iter().filter(|(c, _)| !F::is_zero_vartime(c)).cloned().collect();
+        let zero: AssignedNative<F> = self.assign_fixed(layouter, F::ZERO)?;
+
+        let terms: Vec<_> = terms
+            .iter()
+            .filter(|(c, x)| !F::is_zero_vartime(c) && *x != zero)
+            .cloned()
+            .collect();
+
         if terms.is_empty() {
             return self.assign_fixed(layouter, constant);
+        }
+
+        // If only one term remains after filtering, we may early return.
+        if let [(coeff, var)] = terms.as_slice() {
+            if *coeff == F::ONE && F::is_zero_vartime(&constant) {
+                return Ok(var.clone());
+            }
         }
 
         // Maybe a  &[(F, AssignedNative<F>)] (and correspondingly to the aux function.

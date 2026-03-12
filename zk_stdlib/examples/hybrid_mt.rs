@@ -349,7 +349,6 @@ fn main() {
 
     let relation = HybridMtExample;
     let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
-
     let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
 
     let witness: MerklePath<F> = create_random_merkle_path();

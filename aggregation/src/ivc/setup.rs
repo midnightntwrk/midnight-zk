@@ -7,7 +7,7 @@ use midnight_proofs::{
 };
 use midnight_zk_stdlib::ZkStdLib;
 
-use super::{IvcCircuit, IvcProver, IvcTransition, IvcVerifier, E, S};
+use super::{Ivc, IvcCircuit, IvcProver, IvcVerifier, E, S};
 
 /// Sets up the IVC context: compiles the circuit, generates keys,
 /// and initializes the prover at the genesis state.
@@ -21,16 +21,16 @@ use super::{IvcCircuit, IvcProver, IvcTransition, IvcVerifier, E, S};
 /// The returned [`IvcVerifier`] holds the self-verifying key. A verifier only
 /// needs to run this function once; the resulting [`IvcVerifier`] can then be
 /// reused to check any [`super::IvcInstance`].
-pub fn setup<T: IvcTransition>(params: ParamsKZG<E>, k: u32) -> (IvcProver<T>, IvcVerifier) {
+pub fn setup<T: Ivc>(params: ParamsKZG<E>, k: u32, ctx: T::Context) -> (IvcProver<T>, IvcVerifier) {
     let mut cs = ConstraintSystem::default();
-    ZkStdLib::configure(&mut cs, IvcCircuit::<T>::arch());
+    ZkStdLib::configure(&mut cs, (IvcCircuit::<T>::arch(), (k - 1) as u8));
     let domain = EvaluationDomain::new(cs.degree() as u32, k);
-    let relation = IvcCircuit::<T>::new(domain, cs);
+    let relation = IvcCircuit::<T>::new(domain, cs, ctx.clone());
 
     // Uncomment for visualizing the size of this IVC circuit.
-    // dbg!(midnight_zk_stdlib::cost_model_with_k(&relation, k));
+    // dbg!(midnight_zk_stdlib::cost_model(&relation, Some(k)));
 
-    let vk = midnight_zk_stdlib::setup_vk_with_k(&params, &relation, k);
+    let vk = midnight_zk_stdlib::setup_vk(&params, &relation);
     let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
 
     let fixed_base_names: Vec<String> =
@@ -45,7 +45,7 @@ pub fn setup<T: IvcTransition>(params: ParamsKZG<E>, k: u32) -> (IvcProver<T>, I
         params,
         relation,
         pk,
-        state: T::genesis(),
+        state: T::genesis(&ctx),
         proof: vec![],
         acc: Accumulator::<S>::trivial(&fixed_base_names),
     };

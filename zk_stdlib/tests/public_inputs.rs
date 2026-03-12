@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) Midnight Foundation
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -117,7 +117,8 @@ fn pi_test(nb_public_inputs: u32, extra_pi: bool) {
     let mut srs = filecoin_srs(10);
 
     let relation = PIsCircuit { nb_public_inputs };
-    midnight_zk_stdlib::downsize_srs_for_relation(&mut srs, &relation);
+    let k = midnight_zk_stdlib::optimal_k(&relation);
+    srs.downsize(k);
     let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
     let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
 

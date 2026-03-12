@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) Midnight Foundation
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -55,7 +55,16 @@ impl<C: CircuitCurve> TangentConfig<C> {
     /// vj_max)}_j, which are parameters involved in the identities enforced
     /// by the FFA custom gate. We refer to the implementation of this
     /// function for explanations on what such values represent.
-    pub fn bounds<F, P>() -> ((BI, BI), Vec<(BI, BI)>)
+    ///
+    /// The `nb_parallel_range_checks` and `max_bit_len` parameters describe
+    /// the range-check decomposition chip: how many lookups run in parallel
+    /// per row and the maximum bit-length each lookup supports. They are used
+    /// to pick range-check-friendly bounds (powers of two whose bit count
+    /// aligns well with the chip's parallel lookup structure).
+    pub fn bounds<F, P>(
+        nb_parallel_range_checks: usize,
+        max_bit_len: u32,
+    ) -> ((BI, BI), Vec<(BI, BI)>)
     where
         F: CircuitField,
         P: FieldEmulationParams<F, C::Base>,
@@ -122,6 +131,8 @@ impl<C: CircuitCurve> TangentConfig<C> {
             &moduli,
             expr_bounds,
             &expr_mj_bounds,
+            nb_parallel_range_checks,
+            max_bit_len,
         )
     }
 
@@ -130,6 +141,8 @@ impl<C: CircuitCurve> TangentConfig<C> {
         meta: &mut ConstraintSystem<F>,
         field_chip_config: &FieldChipConfig,
         cond_col: &Column<Advice>,
+        nb_parallel_range_checks: usize,
+        max_bit_len: u32,
     ) -> TangentConfig<C>
     where
         F: CircuitField,
@@ -140,7 +153,8 @@ impl<C: CircuitCurve> TangentConfig<C> {
         let bs2 = P::double_base_powers();
         let moduli = P::moduli();
 
-        let ((k_min, u_max), vs_bounds) = Self::bounds::<F, P>();
+        let ((k_min, u_max), vs_bounds) =
+            Self::bounds::<F, P>(nb_parallel_range_checks, max_bit_len);
 
         let q_tangent = meta.selector();
 

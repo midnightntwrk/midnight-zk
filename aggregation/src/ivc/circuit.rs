@@ -22,7 +22,7 @@ use midnight_proofs::{
 };
 use midnight_zk_stdlib::{Relation, ZkStdLib, ZkStdLibArch};
 
-use super::{IvcTransition, C, F, S};
+use super::{Ivc, C, F, S};
 
 /// The public instance (statement) of an IVC proof.
 ///
@@ -36,13 +36,13 @@ use super::{IvcTransition, C, F, S};
 /// running [`setup`](super::setup()).
 /// See [`IvcVerifier::verify`](super::IvcVerifier::verify) for details.
 #[derive(Clone, Debug)]
-pub struct IvcInstance<T: IvcTransition> {
+pub struct IvcInstance<T: Ivc> {
     pub(crate) vk_repr: F,
     pub(crate) state: T::State,
     pub(crate) acc: Accumulator<S>,
 }
 
-impl<T: IvcTransition> IvcInstance<T> {
+impl<T: Ivc> IvcInstance<T> {
     /// Returns the current state.
     pub fn state(&self) -> &T::State {
         &self.state
@@ -57,7 +57,7 @@ impl<T: IvcTransition> IvcInstance<T> {
 /// - a proof asserting the validity of the previous step (if not genesis),
 /// - a transition witness (input that drives the state change).
 #[derive(Clone, Debug)]
-pub struct IvcWitness<T: IvcTransition> {
+pub struct IvcWitness<T: Ivc> {
     pub(crate) prev_state: T::State,
     pub(crate) prev_acc: Accumulator<S>,
     pub(crate) prev_proof: Vec<u8>,
@@ -78,20 +78,24 @@ pub struct IvcWitness<T: IvcTransition> {
 /// 3. `acc` is the accumulation of `prev_acc` with the accumulator resulting
 ///    from verifying `prev_proof`.
 #[derive(Clone, Debug)]
-pub struct IvcCircuit<T: IvcTransition> {
+pub struct IvcCircuit<T: Ivc> {
     domain: EvaluationDomain<F>,
     cs: ConstraintSystem<F>,
-    _marker: std::marker::PhantomData<T>,
+    ctx: T::Context,
 }
 
-impl<T: IvcTransition> IvcCircuit<T> {
-    /// Creates a new IVC circuit from a domain and constraint system.
-    pub fn new(domain: EvaluationDomain<F>, cs: ConstraintSystem<F>) -> Self {
-        IvcCircuit {
-            domain,
-            cs,
-            _marker: std::marker::PhantomData,
-        }
+impl<T: Ivc> IvcCircuit<T> {
+    /// Creates a new IVC circuit.
+    ///
+    /// The `ctx` contains metadata that parametrizes the IVC computation
+    /// (transition function). See [`IvcContext`](super::IvcContext).
+    pub fn new(domain: EvaluationDomain<F>, cs: ConstraintSystem<F>, ctx: T::Context) -> Self {
+        IvcCircuit { domain, cs, ctx }
+    }
+
+    /// Returns a reference to the context.
+    pub fn ctx(&self) -> &T::Context {
+        &self.ctx
     }
 
     /// The [ZkStdLibArch] for the IVC circuit, combining the transition's
@@ -104,7 +108,7 @@ impl<T: IvcTransition> IvcCircuit<T> {
     }
 }
 
-impl<T: IvcTransition> Relation for IvcCircuit<T> {
+impl<T: Ivc> Relation for IvcCircuit<T> {
     type Instance = IvcInstance<T>;
 
     type Witness = IvcWitness<T>;
@@ -116,7 +120,7 @@ impl<T: IvcTransition> Relation for IvcCircuit<T> {
     fn format_instance(instance: &Self::Instance) -> Result<Vec<F>, Error> {
         Ok([
             vec![instance.vk_repr],
-            <T::AssignedState as Instantiable<F>>::as_public_input(&instance.state),
+            T::format_public_input(&instance.state),
             AssignedAccumulator::<S>::as_public_input(&instance.acc),
         ]
         .concat())
@@ -130,7 +134,7 @@ impl<T: IvcTransition> Relation for IvcCircuit<T> {
         witness: Value<Self::Witness>,
     ) -> Result<(), Error> {
         let verifier_gadget = std_lib.verifier();
-        let ivc_gadget = T::from(std_lib.clone());
+        let ivc_gadget = T::new(std_lib.clone(), &self.ctx);
 
         let assigned_self_vk: AssignedVk<S> = verifier_gadget.assign_vk_as_public_input(
             layouter,
@@ -143,16 +147,12 @@ impl<T: IvcTransition> Relation for IvcCircuit<T> {
         let prev_state_val = witness.as_ref().map(|w| w.prev_state.clone());
         let prev_state = ivc_gadget.assign(layouter, prev_state_val)?;
 
-        let next_state_val = instance.as_ref().map(|x| x.state.clone());
-        let next_state = ivc_gadget.assign(layouter, next_state_val)?;
-        ivc_gadget.constrain_as_public_input(layouter, &next_state)?;
-
-        ivc_gadget.assert_transition(
+        let next_state = ivc_gadget.circuit_transition(
             layouter,
             &prev_state,
-            &next_state,
             witness.as_ref().map(|w| w.transition_witness.clone()),
         )?;
+        ivc_gadget.constrain_as_public_input(layouter, &next_state)?;
 
         let fixed_base_names = midnight_circuits::verifier::fixed_base_names::<S>(
             "self_vk",
@@ -209,22 +209,21 @@ impl<T: IvcTransition> Relation for IvcCircuit<T> {
     }
 
     fn write_relation<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        writer.write_all(&self.domain.k().to_le_bytes())
+        writer.write_all(&self.domain.k().to_le_bytes())?;
+        T::write_context(&self.ctx, writer)
     }
 
     fn read_relation<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let mut bytes = [0u8; 4];
-        reader.read_exact(&mut bytes)?;
-        let k = u32::from_le_bytes(bytes);
+        let mut k_bytes = [0u8; 4];
+        reader.read_exact(&mut k_bytes)?;
+        let k = u32::from_le_bytes(k_bytes);
+
+        let ctx = T::read_context(reader)?;
 
         let mut cs = ConstraintSystem::default();
-        ZkStdLib::configure(&mut cs, Self::arch());
+        ZkStdLib::configure(&mut cs, (Self::arch(), (k - 1) as u8));
         let domain = EvaluationDomain::new(cs.degree() as u32, k);
 
-        Ok(IvcCircuit {
-            domain,
-            cs,
-            _marker: std::marker::PhantomData,
-        })
+        Ok(IvcCircuit { domain, cs, ctx })
     }
 }

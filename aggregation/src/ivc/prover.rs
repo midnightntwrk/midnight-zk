@@ -21,7 +21,7 @@ use midnight_proofs::{
 use midnight_zk_stdlib::MidnightPK;
 use rand::rngs::OsRng;
 
-use super::{IvcCircuit, IvcError, IvcInstance, IvcTransition, IvcWitness, C, E, F, S};
+use super::{Ivc, IvcCircuit, IvcError, IvcInstance, IvcWitness, C, E, F, S};
 
 /// Stateful IVC prover holding:
 /// - the SRS (params),
@@ -32,7 +32,7 @@ use super::{IvcCircuit, IvcError, IvcInstance, IvcTransition, IvcWitness, C, E, 
 /// Created via [`super::setup()`]. Use [`IvcProver::prove_step`] to advance
 /// the state and [`IvcProver::instance`] to obtain the latest instance.
 #[derive(Clone, Debug)]
-pub struct IvcProver<T: IvcTransition> {
+pub struct IvcProver<T: Ivc> {
     pub(crate) params: ParamsKZG<E>,
     pub(crate) relation: IvcCircuit<T>,
     pub(crate) pk: MidnightPK<IvcCircuit<T>>,
@@ -41,7 +41,7 @@ pub struct IvcProver<T: IvcTransition> {
     pub(crate) acc: Accumulator<S>,
 }
 
-impl<T: IvcTransition> IvcProver<T> {
+impl<T: Ivc> IvcProver<T> {
     /// Resets the prover to a previously saved state, allowing it to resume
     /// proving from an intermediate point in the chain.
     pub fn resume_from(&mut self, state: T::State, proof: Vec<u8>, acc: Accumulator<S>) {
@@ -58,7 +58,8 @@ impl<T: IvcTransition> IvcProver<T> {
     /// If the current state is genesis (no previous proof), a trivial
     /// accumulator is used instead of verifying the previous proof.
     pub fn prove_step(&mut self, transition_witness: T::Witness) -> Result<Vec<u8>, IvcError> {
-        let next_state = T::transition(&self.state, transition_witness.clone());
+        let next_state =
+            T::transition(self.relation.ctx(), &self.state, transition_witness.clone());
         let is_genesis = self.proof.is_empty();
 
         let vk = self.pk.pk().get_vk();
@@ -87,7 +88,7 @@ impl<T: IvcTransition> IvcProver<T> {
             // Construct the public inputs of the previous proof.
             let prev_pi = [
                 AssignedVk::<S>::as_public_input(vk),
-                <T::AssignedState as Instantiable<F>>::as_public_input(&self.state),
+                T::format_public_input(&self.state),
                 AssignedAccumulator::<S>::as_public_input(&self.acc),
             ]
             .concat();

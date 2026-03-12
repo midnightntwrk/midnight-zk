@@ -25,6 +25,17 @@ verification keys break backwards compatibility.
 * Add `CircuitField` implementations for `k256::Fp` and `k256::Fq` [#192](https://github.com/midnightntwrk/midnight-zk/pull/192)
 
 ### Changed
+* Add BN poseidon constants [#222](https://github.com/midnightntwrk/midnight-zk/pull/222)
+* Add `CircuitField` implementations for `k256::Fp` and `k256::Fq` [#192](https://github.com/midnightntwrk/midnight-zk/pull/192)
+* Add `square`, `mod_square` operations in `BigUintGadget` [#259](https://github.com/midnightntwrk/midnight-zk/pull/259)
+* Add `PartialEq` impl for `AssignedBigUint` [#259](https://github.com/midnightntwrk/midnight-zk/pull/259)
+
+### Changed
+* Optimize assignment of collapsed accumulators [#253](https://github.com/midnightntwrk/midnight-zk/pull/253)
+* Share MSM randomness across all MSMs in foreign ECC chip [#253](https://github.com/midnightntwrk/midnight-zk/pull/253)
+* Optimize foreign-field range-check bounds [#251](https://github.com/midnightntwrk/midnight-zk/pull/251)
+* Batch foreign field limbs when constraining as public inputs [#235](https://github.com/midnightntwrk/midnight-zk/pull/235)
+* Refactor of the automaton chip, now called scanner chip [#240](https://github.com/midnightntwrk/midnight-zk/pull/240)
 * Optimize `msm_by_bounded_scalars` in foreign ECC chip [#227](https://github.com/midnightntwrk/midnight-zk/pull/227)
 * Make handling of fixed_bases more robust in verifier gadget [#212](https://github.com/midnightntwrk/midnight-zk/pull/212)
 * Change nr of bits to represent JubJub scalar field modulus from 255 -> 252 [#179](https://github.com/midnightntwrk/midnight-zk/pull/179)
@@ -42,6 +53,9 @@ verification keys break backwards compatibility.
 * Fix `from_bytes_le` [#226](https://github.com/midnightntwrk/midnight-zk/pull/226)
 * Implemented linearization prover [#190](https://github.com/midnightntwrk/midnight-zk/pull/190)
 * Use logup with the selector variant [#220](https://github.com/midnightntwrk/midnight-zk/pull/220)
+* Optimize `mul` operation in `BigUintGadget` [#259](https://github.com/midnightntwrk/midnight-zk/pull/259)
+* Optimize `linear_combination` in `NativeChip` [#260](https://github.com/midnightntwrk/midnight-zk/pull/260)
+* Optimize `mul` and `square` in `BigUintGadget` with `F::add_and_mul` [#260](https://github.com/midnightntwrk/midnight-zk/pull/260)
 
 ### Removed
 * Move external implementations to zk-stdlib [#178](https://github.com/midnightntwrk/midnight-zk/pull/178)
