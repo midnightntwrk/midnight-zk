@@ -23,11 +23,11 @@ use std::{collections::BTreeMap, time::Instant};
 use common::sha_preimage::ShaPreimageCircuit;
 use ff::Field;
 use group::Group;
-use midnight_aggregation::ivc::{self, IvcContext, IvcState, IvcTransition};
+use midnight_aggregation::ivc::{self, IvcContext, IvcIO, IvcState, IvcTransition};
 use midnight_circuits::{
     hash::poseidon::{PoseidonChip, PoseidonState},
     instructions::{hash::HashCPU, *},
-    types::{AssignedBit, AssignedNative, InnerValue, Instantiable},
+    types::{AssignedBit, AssignedNative, Instantiable},
     verifier::{self, Accumulator, AssignedAccumulator, BlstrsEmulation, SelfEmulation},
 };
 use midnight_proofs::{
@@ -92,30 +92,6 @@ pub struct AssignedState {
     inner_acc: AssignedAccumulator<S>,
 }
 
-impl InnerValue for AssignedState {
-    type Element = State;
-
-    fn value(&self) -> Value<State> {
-        self.statements_hash
-            .value()
-            .zip(self.inner_acc.value())
-            .map(|(hash, acc)| State {
-                statements: vec![], // off-circuit only; not recoverable from cells
-                statements_hash: *hash,
-                inner_acc: acc,
-            })
-    }
-}
-
-impl Instantiable<F> for AssignedState {
-    fn as_public_input(element: &State) -> Vec<F> {
-        [
-            vec![element.statements_hash],
-            AssignedAccumulator::<S>::as_public_input(&element.inner_acc),
-        ]
-        .concat()
-    }
-}
 
 /// Witness for a single aggregation step: an inner statement and its proof.
 #[derive(Clone, Debug)]
@@ -193,7 +169,7 @@ impl IvcState for ProofAggregation {
     }
 }
 
-impl AssignmentInstructions<F, AssignedState> for ProofAggregation {
+impl IvcIO for ProofAggregation {
     fn assign(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -214,16 +190,15 @@ impl AssignmentInstructions<F, AssignedState> for ProofAggregation {
         })
     }
 
-    fn assign_fixed(
+    fn constrain_as_public_input(
         &self,
-        _layouter: &mut impl Layouter<F>,
-        _constant: State,
-    ) -> Result<AssignedState, Error> {
-        unimplemented!("not used by IVC")
+        layouter: &mut impl Layouter<F>,
+        state: &AssignedState,
+    ) -> Result<(), Error> {
+        self.std_lib.constrain_as_public_input(layouter, &state.statements_hash)?;
+        self.std_lib.verifier().constrain_as_public_input(layouter, &state.inner_acc)
     }
-}
 
-impl PublicInputInstructions<F, AssignedState> for ProofAggregation {
     fn as_public_input(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -236,21 +211,12 @@ impl PublicInputInstructions<F, AssignedState> for ProofAggregation {
         .concat())
     }
 
-    fn constrain_as_public_input(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        state: &AssignedState,
-    ) -> Result<(), Error> {
-        self.std_lib.constrain_as_public_input(layouter, &state.statements_hash)?;
-        self.std_lib.verifier().constrain_as_public_input(layouter, &state.inner_acc)
-    }
-
-    fn assign_as_public_input(
-        &self,
-        _layouter: &mut impl Layouter<F>,
-        _value: Value<State>,
-    ) -> Result<AssignedState, Error> {
-        unimplemented!("not used by IVC")
+    fn format_public_input(state: &State) -> Vec<F> {
+        [
+            vec![state.statements_hash],
+            AssignedAccumulator::<S>::as_public_input(&state.inner_acc),
+        ]
+        .concat()
     }
 }
 

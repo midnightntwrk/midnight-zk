@@ -8,11 +8,11 @@
 use std::time::Instant;
 
 use ff::Field;
-use midnight_aggregation::ivc::{self, IvcContext, IvcState, IvcTransition};
+use midnight_aggregation::ivc::{self, IvcContext, IvcIO, IvcState, IvcTransition};
 use midnight_circuits::{
     hash::poseidon::PoseidonChip,
     instructions::{hash::HashCPU, *},
-    types::{AssignedBit, AssignedNative, InnerValue, Instantiable},
+    types::{AssignedBit, AssignedNative},
     verifier::{BlstrsEmulation, SelfEmulation},
 };
 use midnight_proofs::{
@@ -41,22 +41,6 @@ pub struct AssignedState {
     val: AssignedNative<F>,
 }
 
-impl InnerValue for AssignedState {
-    type Element = State;
-
-    fn value(&self) -> Value<State> {
-        (self.cnt.value()).zip(self.val.value()).map(|(cnt, val)| State {
-            cnt: *cnt,
-            val: *val,
-        })
-    }
-}
-
-impl Instantiable<F> for AssignedState {
-    fn as_public_input(element: &State) -> Vec<F> {
-        vec![element.cnt, element.val]
-    }
-}
 
 /// IVC transition that applies N rounds of Poseidon hashing to the value, and
 /// increments the counter by N.
@@ -107,7 +91,7 @@ impl<const N: usize> IvcState for PoseidonChain<N> {
     }
 }
 
-impl<const N: usize> AssignmentInstructions<F, AssignedState> for PoseidonChain<N> {
+impl<const N: usize> IvcIO for PoseidonChain<N> {
     fn assign(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -120,24 +104,6 @@ impl<const N: usize> AssignmentInstructions<F, AssignedState> for PoseidonChain<
         })
     }
 
-    fn assign_fixed(
-        &self,
-        _layouter: &mut impl Layouter<F>,
-        _constant: State,
-    ) -> Result<AssignedState, Error> {
-        unimplemented!("not used by IVC")
-    }
-}
-
-impl<const N: usize> PublicInputInstructions<F, AssignedState> for PoseidonChain<N> {
-    fn as_public_input(
-        &self,
-        _layouter: &mut impl Layouter<F>,
-        state: &AssignedState,
-    ) -> Result<Vec<AssignedNative<F>>, Error> {
-        Ok(vec![state.cnt.clone(), state.val.clone()])
-    }
-
     fn constrain_as_public_input(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -148,12 +114,16 @@ impl<const N: usize> PublicInputInstructions<F, AssignedState> for PoseidonChain
         scalar_chip.constrain_as_public_input(layouter, &state.val)
     }
 
-    fn assign_as_public_input(
+    fn as_public_input(
         &self,
         _layouter: &mut impl Layouter<F>,
-        _value: Value<State>,
-    ) -> Result<AssignedState, Error> {
-        unimplemented!("not used by IVC")
+        state: &AssignedState,
+    ) -> Result<Vec<AssignedNative<F>>, Error> {
+        Ok(vec![state.cnt.clone(), state.val.clone()])
+    }
+
+    fn format_public_input(state: &State) -> Vec<F> {
+        vec![state.cnt, state.val]
     }
 }
 
