@@ -633,6 +633,17 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         };
 
         let queries = iter::empty()
+            .chain(
+                cs.advice_queries().iter().enumerate().map(|(query_index, &(column, rot))| {
+                    VerifierQuery::<S>::new(
+                        &one,
+                        get_point(&rot),
+                        CommitmentLabel::Advice(column.index()),
+                        &advice_commitments[column.index()],
+                        &advice_evals[query_index],
+                    )
+                }),
+            )
             .chain(cs.instance_queries().iter().enumerate().filter_map(
                 |(query_index, &(column, rot))| {
                     if column.index() < nb_committed_instances {
@@ -648,17 +659,6 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                     }
                 },
             ))
-            .chain(
-                cs.advice_queries().iter().enumerate().map(|(query_index, &(column, rot))| {
-                    VerifierQuery::<S>::new(
-                        &one,
-                        get_point(&rot),
-                        CommitmentLabel::Advice(column.index()),
-                        &advice_commitments[column.index()],
-                        &advice_evals[query_index],
-                    )
-                }),
-            )
             .chain((permutations_evaluated).queries(&one, &x, &x_next, &x_last))
             .chain(
                 (lookups_evaluated.iter())
