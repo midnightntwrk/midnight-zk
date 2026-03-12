@@ -22,7 +22,7 @@ use midnight_proofs::{
 };
 use midnight_zk_stdlib::{Relation, ZkStdLib, ZkStdLibArch};
 
-use super::{IvcTransition, C, F, S};
+use super::{IvcIO, IvcTransition, C, F, S};
 
 /// The public instance (statement) of an IVC proof.
 ///
@@ -36,13 +36,13 @@ use super::{IvcTransition, C, F, S};
 /// running [`setup`](super::setup()).
 /// See [`IvcVerifier::verify`](super::IvcVerifier::verify) for details.
 #[derive(Clone, Debug)]
-pub struct IvcInstance<T: IvcTransition> {
+pub struct IvcInstance<T: IvcTransition + IvcIO> {
     pub(crate) vk_repr: F,
     pub(crate) state: T::State,
     pub(crate) acc: Accumulator<S>,
 }
 
-impl<T: IvcTransition> IvcInstance<T> {
+impl<T: IvcTransition + IvcIO> IvcInstance<T> {
     /// Returns the current state.
     pub fn state(&self) -> &T::State {
         &self.state
@@ -57,7 +57,7 @@ impl<T: IvcTransition> IvcInstance<T> {
 /// - a proof asserting the validity of the previous step (if not genesis),
 /// - a transition witness (input that drives the state change).
 #[derive(Clone, Debug)]
-pub struct IvcWitness<T: IvcTransition> {
+pub struct IvcWitness<T: IvcTransition + IvcIO> {
     pub(crate) prev_state: T::State,
     pub(crate) prev_acc: Accumulator<S>,
     pub(crate) prev_proof: Vec<u8>,
@@ -78,13 +78,13 @@ pub struct IvcWitness<T: IvcTransition> {
 /// 3. `acc` is the accumulation of `prev_acc` with the accumulator resulting
 ///    from verifying `prev_proof`.
 #[derive(Clone, Debug)]
-pub struct IvcCircuit<T: IvcTransition> {
+pub struct IvcCircuit<T: IvcTransition + IvcIO> {
     domain: EvaluationDomain<F>,
     cs: ConstraintSystem<F>,
     ctx: T::Context,
 }
 
-impl<T: IvcTransition> IvcCircuit<T> {
+impl<T: IvcTransition + IvcIO> IvcCircuit<T> {
     /// Creates a new IVC circuit.
     ///
     /// The `ctx` contains metadata that parametrizes the IVC computation
@@ -108,7 +108,7 @@ impl<T: IvcTransition> IvcCircuit<T> {
     }
 }
 
-impl<T: IvcTransition> Relation for IvcCircuit<T> {
+impl<T: IvcTransition + IvcIO> Relation for IvcCircuit<T> {
     type Instance = IvcInstance<T>;
 
     type Witness = IvcWitness<T>;
@@ -120,7 +120,7 @@ impl<T: IvcTransition> Relation for IvcCircuit<T> {
     fn format_instance(instance: &Self::Instance) -> Result<Vec<F>, Error> {
         Ok([
             vec![instance.vk_repr],
-            <T::AssignedState as Instantiable<F>>::as_public_input(&instance.state),
+            T::format_public_input(&instance.state),
             AssignedAccumulator::<S>::as_public_input(&instance.acc),
         ]
         .concat())

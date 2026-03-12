@@ -21,7 +21,7 @@ use midnight_proofs::{
 use midnight_zk_stdlib::MidnightPK;
 use rand::rngs::OsRng;
 
-use super::{IvcCircuit, IvcError, IvcInstance, IvcTransition, IvcWitness, C, E, F, S};
+use super::{IvcCircuit, IvcError, IvcIO, IvcInstance, IvcTransition, IvcWitness, C, E, F, S};
 
 /// Stateful IVC prover holding:
 /// - the SRS (params),
@@ -32,7 +32,7 @@ use super::{IvcCircuit, IvcError, IvcInstance, IvcTransition, IvcWitness, C, E, 
 /// Created via [`super::setup()`]. Use [`IvcProver::prove_step`] to advance
 /// the state and [`IvcProver::instance`] to obtain the latest instance.
 #[derive(Clone, Debug)]
-pub struct IvcProver<T: IvcTransition> {
+pub struct IvcProver<T: IvcTransition + IvcIO> {
     pub(crate) params: ParamsKZG<E>,
     pub(crate) relation: IvcCircuit<T>,
     pub(crate) pk: MidnightPK<IvcCircuit<T>>,
@@ -41,7 +41,7 @@ pub struct IvcProver<T: IvcTransition> {
     pub(crate) acc: Accumulator<S>,
 }
 
-impl<T: IvcTransition> IvcProver<T> {
+impl<T: IvcTransition + IvcIO> IvcProver<T> {
     /// Resets the prover to a previously saved state, allowing it to resume
     /// proving from an intermediate point in the chain.
     pub fn resume_from(&mut self, state: T::State, proof: Vec<u8>, acc: Accumulator<S>) {
@@ -88,7 +88,7 @@ impl<T: IvcTransition> IvcProver<T> {
             // Construct the public inputs of the previous proof.
             let prev_pi = [
                 AssignedVk::<S>::as_public_input(vk),
-                <T::AssignedState as Instantiable<F>>::as_public_input(&self.state),
+                T::format_public_input(&self.state),
                 AssignedAccumulator::<S>::as_public_input(&self.acc),
             ]
             .concat();
