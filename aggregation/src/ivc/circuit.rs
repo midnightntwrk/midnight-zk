@@ -22,7 +22,7 @@ use midnight_proofs::{
 };
 use midnight_zk_stdlib::{Relation, ZkStdLib, ZkStdLibArch};
 
-use super::{IvcIO, IvcTransition, C, F, S};
+use super::{Ivc, C, F, S};
 
 /// The public instance (statement) of an IVC proof.
 ///
@@ -36,13 +36,13 @@ use super::{IvcIO, IvcTransition, C, F, S};
 /// running [`setup`](super::setup()).
 /// See [`IvcVerifier::verify`](super::IvcVerifier::verify) for details.
 #[derive(Clone, Debug)]
-pub struct IvcInstance<T: IvcTransition + IvcIO> {
+pub struct IvcInstance<T: Ivc> {
     pub(crate) vk_repr: F,
     pub(crate) state: T::State,
     pub(crate) acc: Accumulator<S>,
 }
 
-impl<T: IvcTransition + IvcIO> IvcInstance<T> {
+impl<T: Ivc> IvcInstance<T> {
     /// Returns the current state.
     pub fn state(&self) -> &T::State {
         &self.state
@@ -57,7 +57,7 @@ impl<T: IvcTransition + IvcIO> IvcInstance<T> {
 /// - a proof asserting the validity of the previous step (if not genesis),
 /// - a transition witness (input that drives the state change).
 #[derive(Clone, Debug)]
-pub struct IvcWitness<T: IvcTransition + IvcIO> {
+pub struct IvcWitness<T: Ivc> {
     pub(crate) prev_state: T::State,
     pub(crate) prev_acc: Accumulator<S>,
     pub(crate) prev_proof: Vec<u8>,
@@ -78,13 +78,13 @@ pub struct IvcWitness<T: IvcTransition + IvcIO> {
 /// 3. `acc` is the accumulation of `prev_acc` with the accumulator resulting
 ///    from verifying `prev_proof`.
 #[derive(Clone, Debug)]
-pub struct IvcCircuit<T: IvcTransition + IvcIO> {
+pub struct IvcCircuit<T: Ivc> {
     domain: EvaluationDomain<F>,
     cs: ConstraintSystem<F>,
     ctx: T::Context,
 }
 
-impl<T: IvcTransition + IvcIO> IvcCircuit<T> {
+impl<T: Ivc> IvcCircuit<T> {
     /// Creates a new IVC circuit.
     ///
     /// The `ctx` contains metadata that parametrizes the IVC computation
@@ -108,7 +108,7 @@ impl<T: IvcTransition + IvcIO> IvcCircuit<T> {
     }
 }
 
-impl<T: IvcTransition + IvcIO> Relation for IvcCircuit<T> {
+impl<T: Ivc> Relation for IvcCircuit<T> {
     type Instance = IvcInstance<T>;
 
     type Witness = IvcWitness<T>;

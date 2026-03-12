@@ -14,7 +14,7 @@ use midnight_proofs::{
 };
 use midnight_zk_stdlib::{MidnightVK, Relation};
 
-use super::{IvcCircuit, IvcError, IvcIO, IvcInstance, IvcTransition, C, E, F, S};
+use super::{Ivc, IvcCircuit, IvcError, IvcInstance, C, E, F, S};
 
 /// Lightweight IVC verifier carrying only:
 /// - the self-verifying key,
@@ -42,7 +42,7 @@ impl IvcVerifier {
     /// [`setup`](super::setup())). Without this check, a proof generated
     /// under a different (potentially malicious) circuit could pass
     /// verification.
-    pub fn verify<T: IvcTransition + IvcIO>(
+    pub fn verify<T: Ivc>(
         &self,
         ctx: &T::Context,
         instance: &IvcInstance<T>,

@@ -203,3 +203,11 @@ pub trait IvcTransition: IvcState {
         witness: Value<Self::Witness>,
     ) -> Result<Self::AssignedState, Error>;
 }
+
+/// Convenience trait combining [`IvcTransition`] and [`IvcIO`].
+///
+/// Automatically implemented for any type that implements both. This is the
+/// bound required by the IVC machinery ([`IvcCircuit`], [`IvcProver`],
+/// [`IvcVerifier`], [`setup`]).
+pub trait Ivc: IvcTransition + IvcIO {}
+impl<I: IvcTransition + IvcIO> Ivc for I {}

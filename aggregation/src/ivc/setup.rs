@@ -7,7 +7,7 @@ use midnight_proofs::{
 };
 use midnight_zk_stdlib::ZkStdLib;
 
-use super::{IvcCircuit, IvcIO, IvcProver, IvcTransition, IvcVerifier, E, S};
+use super::{Ivc, IvcCircuit, IvcProver, IvcVerifier, E, S};
 
 /// Sets up the IVC context: compiles the circuit, generates keys,
 /// and initializes the prover at the genesis state.
@@ -21,7 +21,7 @@ use super::{IvcCircuit, IvcIO, IvcProver, IvcTransition, IvcVerifier, E, S};
 /// The returned [`IvcVerifier`] holds the self-verifying key. A verifier only
 /// needs to run this function once; the resulting [`IvcVerifier`] can then be
 /// reused to check any [`super::IvcInstance`].
-pub fn setup<T: IvcTransition + IvcIO>(
+pub fn setup<T: Ivc>(
     params: ParamsKZG<E>,
     k: u32,
     ctx: T::Context,

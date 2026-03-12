@@ -21,7 +21,7 @@ use midnight_proofs::{
 use midnight_zk_stdlib::MidnightPK;
 use rand::rngs::OsRng;
 
-use super::{IvcCircuit, IvcError, IvcIO, IvcInstance, IvcTransition, IvcWitness, C, E, F, S};
+use super::{Ivc, IvcCircuit, IvcError, IvcInstance, IvcWitness, C, E, F, S};
 
 /// Stateful IVC prover holding:
 /// - the SRS (params),
@@ -32,7 +32,7 @@ use super::{IvcCircuit, IvcError, IvcIO, IvcInstance, IvcTransition, IvcWitness,
 /// Created via [`super::setup()`]. Use [`IvcProver::prove_step`] to advance
 /// the state and [`IvcProver::instance`] to obtain the latest instance.
 #[derive(Clone, Debug)]
-pub struct IvcProver<T: IvcTransition + IvcIO> {
+pub struct IvcProver<T: Ivc> {
     pub(crate) params: ParamsKZG<E>,
     pub(crate) relation: IvcCircuit<T>,
     pub(crate) pk: MidnightPK<IvcCircuit<T>>,
@@ -41,7 +41,7 @@ pub struct IvcProver<T: IvcTransition + IvcIO> {
     pub(crate) acc: Accumulator<S>,
 }
 
-impl<T: IvcTransition + IvcIO> IvcProver<T> {
+impl<T: Ivc> IvcProver<T> {
     /// Resets the prover to a previously saved state, allowing it to resume
     /// proving from an intermediate point in the chain.
     pub fn resume_from(&mut self, state: T::State, proof: Vec<u8>, acc: Accumulator<S>) {
