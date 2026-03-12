@@ -41,7 +41,6 @@ pub struct AssignedState {
     val: AssignedNative<F>,
 }
 
-
 /// IVC transition that applies N rounds of Poseidon hashing to the value, and
 /// increments the counter by N.
 #[derive(Clone, Debug)]

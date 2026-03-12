@@ -92,7 +92,6 @@ pub struct AssignedState {
     inner_acc: AssignedAccumulator<S>,
 }
 
-
 /// Witness for a single aggregation step: an inner statement and its proof.
 #[derive(Clone, Debug)]
 pub struct AggregationWitness {

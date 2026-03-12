@@ -208,6 +208,6 @@ pub trait IvcTransition: IvcState {
 ///
 /// Automatically implemented for any type that implements both. This is the
 /// bound required by the IVC machinery ([`IvcCircuit`], [`IvcProver`],
-/// [`IvcVerifier`], [`setup`]).
+/// [`IvcVerifier`], [`setup()`]).
 pub trait Ivc: IvcTransition + IvcIO {}
 impl<I: IvcTransition + IvcIO> Ivc for I {}
