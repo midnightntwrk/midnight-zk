@@ -158,9 +158,8 @@ where
     // at random for statistical completeness) and this is not a problem for
     // soundness.
     // Lazily initialized on first MSM call. By sharing `r` across MSM calls,
-    // precomputed tables (which depend on α = (2^WS - 1) * r) can be cached
-    // and reused for the same base points. Keyed by window size, since α
-    // depends on WS.
+    // computations depending on it e.g. α can be cached and reused.
+    // Importantly, such cache is keyed by window size.
     msm_randomness: Rc<RefCell<MsmRandomnessMap<F, C, B>>>,
 }
 
