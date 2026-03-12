@@ -30,6 +30,7 @@
 use std::collections::BTreeMap;
 
 use ff::Field;
+use group::Group;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
@@ -146,13 +147,16 @@ impl<S: SelfEmulation> Accumulator<S> {
 
     /// Returns a trivial accumulator that satisfies the pairing invariant.
     ///
-    /// All scalars (variable and fixed-base) are zero, so both sides
-    /// evaluate to the identity point regardless of the bases.
+    /// The variable-base scalar is 1 (matching the invariant of collapsed
+    /// accumulators, where the variable part has been collapsed to a single
+    /// base with scalar 1). The base is the identity point and all
+    /// fixed-base scalars are zero, so both sides evaluate to the identity
+    /// regardless.
     pub fn trivial(fixed_base_names: &[String]) -> Self {
         let zero_fixed = fixed_base_names.iter().map(|n| (n.clone(), S::F::ZERO)).collect();
         Accumulator {
-            lhs: Msm::new(&[S::C::default()], &[S::F::ZERO], &BTreeMap::new()),
-            rhs: Msm::new(&[S::C::default()], &[S::F::ZERO], &zero_fixed),
+            lhs: Msm::new(&[S::C::identity()], &[S::F::ONE], &BTreeMap::new()),
+            rhs: Msm::new(&[S::C::identity()], &[S::F::ONE], &zero_fixed),
         }
     }
 

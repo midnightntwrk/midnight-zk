@@ -27,11 +27,14 @@ use midnight_proofs::{
     plonk::{ConstraintSystem, Error},
     poly::{CommitmentLabel, EvaluationDomain, Rotation},
 };
+use num_bigint::BigUint;
+use num_traits::One;
 
 use crate::{
     field::AssignedNative,
     instructions::{
-        assignments::AssignmentInstructions, ArithInstructions, PublicInputInstructions,
+        assignments::AssignmentInstructions, ArithInstructions, AssertionInstructions,
+        PublicInputInstructions,
     },
     verifier::{
         expressions::{
@@ -173,16 +176,16 @@ impl<S: SelfEmulation> VerifierGadget<S> {
     }
 
     /// Witnesses an accumulator with just 1 non-fixed base-scalar pair on each
-    /// side, and as many fixed-base scalars (on its right-hand-side) as
-    /// provided through the `fixed_base_names` argument (no fixed-base scalars
-    /// on the left-hand-side).
+    /// side (the scalar being constant 1), and as many fixed-base scalars (on
+    /// its right-hand-side) as provided through the `fixed_base_names`
+    /// argument (no fixed-base scalars on the left-hand-side).
     pub fn assign_collapsed_accumulator(
         &self,
         layouter: &mut impl Layouter<S::F>,
         fixed_base_names: &[String],
         value: Value<Accumulator<S>>,
     ) -> Result<AssignedAccumulator<S>, Error> {
-        AssignedAccumulator::assign(
+        let mut acc = AssignedAccumulator::assign(
             layouter,
             &self.curve_chip,
             &self.scalar_chip,
@@ -191,7 +194,16 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             &[],
             fixed_base_names,
             value,
-        )
+        )?;
+
+        let scalar_chip = &self.scalar_chip;
+
+        scalar_chip.assert_equal_to_fixed(layouter, &acc.lhs.scalars[0].scalar, S::F::ONE)?;
+        scalar_chip.assert_equal_to_fixed(layouter, &acc.rhs.scalars[0].scalar, S::F::ONE)?;
+        acc.lhs.scalars[0].bound = BigUint::one();
+        acc.rhs.scalars[0].bound = BigUint::one();
+
+        Ok(acc)
     }
 
     /// Accumulates several accumulators together. The resulting acc will
