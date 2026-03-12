@@ -4,8 +4,6 @@
 //! function that iteratively hashes a value using Poseidon.
 //!
 //! DO NOT add this example to the CI as it is slow.
-//!
-//! Run with `features = truncated-challenges`.
 
 use std::time::Instant;
 

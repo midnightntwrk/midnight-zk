@@ -14,8 +14,6 @@
 //! in-circuit and folds the result into the running accumulator.
 //!
 //! DO NOT add this example to the CI as it is slow.
-//!
-//! Run with `features = truncated-challenges`.
 
 #[path = "common/mod.rs"]
 mod common;

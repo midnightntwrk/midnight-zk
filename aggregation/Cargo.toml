@@ -32,6 +32,14 @@ sha2 = { workspace = true }
 [dev-dependencies]
 rand_chacha = { workspace = true }
 
+[[example]]
+name = "ivc"
+required-features = ["truncated-challenges"]
+
+[[example]]
+name = "proof_aggregation"
+required-features = ["truncated-challenges"]
+
 [features]
 truncated-challenges = [
     "midnight-proofs/truncated-challenges",
