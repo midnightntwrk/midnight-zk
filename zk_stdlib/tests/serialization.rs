@@ -134,7 +134,8 @@ fn vk_serde_test(architecture: ZkStdLibArch, write_format: SerdeFormat, read_for
 
     let relation = DummyCircuit { architecture };
 
-    midnight_zk_stdlib::downsize_srs_for_relation(&mut srs, &relation);
+    let k = midnight_zk_stdlib::optimal_k(&relation);
+    srs.downsize(k);
     let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
 
     let mut buffer = Vec::new();
@@ -198,7 +199,8 @@ fn pk_serde_test(architecture: ZkStdLibArch, write_format: SerdeFormat, read_for
 
     let relation = DummyCircuit { architecture };
 
-    midnight_zk_stdlib::downsize_srs_for_relation(&mut srs, &relation);
+    let k = midnight_zk_stdlib::optimal_k(&relation);
+    srs.downsize(k);
     let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
     let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
 

@@ -56,7 +56,16 @@ impl NormConfig {
     /// parameters involved in the identities enforced by the ModArith
     /// normalization custom gate. We refer to the implementation of this
     /// function for explanations on what such values represent.
-    pub fn bounds<F, K, P>() -> ((BI, BI), Vec<(BI, BI)>)
+    ///
+    /// The `nb_parallel_range_checks` and `max_bit_len` parameters describe
+    /// the range-check decomposition chip: how many lookups run in parallel
+    /// per row and the maximum bit-length each lookup supports. They are used
+    /// to pick range-check-friendly bounds (powers of two whose bit count
+    /// aligns well with the chip's parallel lookup structure).
+    pub fn bounds<F, K, P>(
+        nb_parallel_range_checks: usize,
+        max_bit_len: u32,
+    ) -> ((BI, BI), Vec<(BI, BI)>)
     where
         F: CircuitField,
         K: CircuitField,
@@ -114,6 +123,8 @@ impl NormConfig {
             &moduli,
             expr_bounds,
             &expr_mj_bounds,
+            nb_parallel_range_checks,
+            max_bit_len,
         )
     }
 
@@ -122,6 +133,8 @@ impl NormConfig {
         meta: &mut ConstraintSystem<F>,
         x_cols: &[Column<Advice>],
         z_cols: &[Column<Advice>],
+        nb_parallel_range_checks: usize,
+        max_bit_len: u32,
     ) -> NormConfig
     where
         F: CircuitField,
@@ -134,7 +147,8 @@ impl NormConfig {
         let moduli = P::moduli();
         let max_limb_bound = P::max_limb_bound();
 
-        let ((k_min, u_max), vs_bounds) = Self::bounds::<F, K, P>();
+        let ((k_min, u_max), vs_bounds) =
+            Self::bounds::<F, K, P>(nb_parallel_range_checks, max_bit_len);
 
         let q_norm = meta.selector();
 

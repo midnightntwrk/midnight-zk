@@ -871,14 +871,28 @@ pub(crate) mod tests {
                     [committed_instance_column, instance_column],
                 ),
             );
+
+            let nb_parallel_range_checks = NB_ARITH_COLS - 1;
+            let max_bit_len = 16;
             let core_decomp_config = {
-                let pow2_config = Pow2RangeChip::configure(meta, &advice_columns[1..NB_ARITH_COLS]);
+                let pow2_config =
+                    Pow2RangeChip::configure(meta, &advice_columns[1..=nb_parallel_range_checks]);
                 P2RDecompositionChip::configure(meta, &(native_config.clone(), pow2_config))
             };
 
-            let base_config = FieldChip::<F, CBase, C, NG>::configure(meta, &advice_columns);
-            let curve_config =
-                ForeignEccChip::<F, C, C, NG, NG>::configure(meta, &base_config, &advice_columns);
+            let base_config = FieldChip::<F, CBase, C, NG>::configure(
+                meta,
+                &advice_columns,
+                nb_parallel_range_checks,
+                max_bit_len,
+            );
+            let curve_config = ForeignEccChip::<F, C, C, NG, NG>::configure(
+                meta,
+                &base_config,
+                &advice_columns,
+                nb_parallel_range_checks,
+                max_bit_len,
+            );
 
             let poseidon_config = PoseidonChip::configure(
                 meta,

@@ -23,14 +23,14 @@ use super::{IvcCircuit, IvcProver, IvcTransition, IvcVerifier, E, S};
 /// reused to check any [`super::IvcInstance`].
 pub fn setup<T: IvcTransition>(params: ParamsKZG<E>, k: u32) -> (IvcProver<T>, IvcVerifier) {
     let mut cs = ConstraintSystem::default();
-    ZkStdLib::configure(&mut cs, IvcCircuit::<T>::arch());
+    ZkStdLib::configure(&mut cs, (IvcCircuit::<T>::arch(), (k - 1) as u8));
     let domain = EvaluationDomain::new(cs.degree() as u32, k);
     let relation = IvcCircuit::<T>::new(domain, cs);
 
     // Uncomment for visualizing the size of this IVC circuit.
-    // dbg!(midnight_zk_stdlib::cost_model_with_k(&relation, k));
+    // dbg!(midnight_zk_stdlib::cost_model(&relation, Some(k)));
 
-    let vk = midnight_zk_stdlib::setup_vk_with_k(&params, &relation, k);
+    let vk = midnight_zk_stdlib::setup_vk(&params, &relation);
     let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
 
     let fixed_base_names: Vec<String> =

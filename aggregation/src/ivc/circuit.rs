@@ -218,7 +218,7 @@ impl<T: IvcTransition> Relation for IvcCircuit<T> {
         let k = u32::from_le_bytes(bytes);
 
         let mut cs = ConstraintSystem::default();
-        ZkStdLib::configure(&mut cs, Self::arch());
+        ZkStdLib::configure(&mut cs, (Self::arch(), (k - 1) as u8));
         let domain = EvaluationDomain::new(cs.degree() as u32, k);
 
         Ok(IvcCircuit {

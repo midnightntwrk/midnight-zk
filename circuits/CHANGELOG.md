@@ -25,6 +25,7 @@ verification keys break backwards compatibility.
 * Add `PartialEq` impl for `AssignedBigUint` [#259](https://github.com/midnightntwrk/midnight-zk/pull/259)
 
 ### Changed
+* Optimize foreign-field range-check bounds [#251](https://github.com/midnightntwrk/midnight-zk/pull/251)
 * Batch foreign field limbs when constraining as public inputs [#235](https://github.com/midnightntwrk/midnight-zk/pull/235)
 * Refactor of the automaton chip, now called scanner chip [#240](https://github.com/midnightntwrk/midnight-zk/pull/240)
 * Optimize `msm_by_bounded_scalars` in foreign ECC chip [#227](https://github.com/midnightntwrk/midnight-zk/pull/227)

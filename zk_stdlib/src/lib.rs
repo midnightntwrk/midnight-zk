@@ -83,7 +83,9 @@ use midnight_curves::{
 use midnight_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
     dev::cost_model::{circuit_model, CircuitModel},
-    plonk::{k_from_circuit, prepare, Circuit, ConstraintSystem, Error, ProvingKey, VerifyingKey},
+    plonk::{
+        keygen_vk_with_k, prepare, Circuit, ConstraintSystem, Error, ProvingKey, VerifyingKey,
+    },
     poly::{
         commitment::{Guard, Params},
         kzg::{
@@ -221,36 +223,6 @@ impl ZkStdLibArch {
         // The current serialization of the verifying key places the architecture at
         // the beginning.
         Self::read(reader)
-    }
-
-    /// Returns a tuple `(points_in_proof, points_in_vk, points_in_final_msm)`
-    /// where:
-    ///
-    /// * `points_in_proof`: total number of EC points deserialized when reading
-    ///   a proof for this relation.
-    /// * `points_in_vk`: total number of EC points deserialized when reading
-    ///   the verifying key.
-    /// * `points_in_final_msm`: number of EC points involved in the final MSM
-    ///   operation during verification.
-    pub fn nb_points(&self) -> (usize, usize, usize) {
-        let mut cs = ConstraintSystem::default();
-        let _config = ZkStdLib::configure(&mut cs, *self);
-
-        let nb_perm_chunks =
-            (cs.permutation().columns.len().saturating_sub(1) / cs.degree().saturating_sub(2)) + 1;
-
-        let points_in_proof = cs.num_advice_columns() +
-            cs.lookups().len() * 3 +
-            nb_perm_chunks +
-            cs.degree() + // chunks of the vanishing
-            2; // points in multiopen argument
-
-        let points_in_vk =
-            cs.num_fixed_columns() + cs.num_selectors() + cs.permutation().columns.len();
-
-        let points_in_final_msm = points_in_proof + points_in_vk + 1; // + 1 comes from the the generator in the final check
-
-        (points_in_proof, points_in_vk, points_in_final_msm)
     }
 }
 
@@ -403,7 +375,10 @@ impl ZkStdLib {
     }
 
     /// Configure [ZkStdLib] from scratch.
-    pub fn configure(meta: &mut ConstraintSystem<F>, arch: ZkStdLibArch) -> ZkStdLibConfig {
+    pub fn configure(
+        meta: &mut ConstraintSystem<F>,
+        (arch, max_bit_len): (ZkStdLibArch, u8),
+    ) -> ZkStdLibConfig {
         let nb_advice_cols = [
             NB_ARITH_COLS,
             arch.nr_pow2range_cols as usize,
@@ -460,6 +435,9 @@ impl ZkStdLib {
             ),
         );
 
+        let nb_parallel_range_checks = arch.nr_pow2range_cols as usize;
+        let max_bit_len = max_bit_len as u32;
+
         let pow2range_config =
             Pow2RangeChip::configure(meta, &advice_columns[1..=arch.nr_pow2range_cols as usize]);
 
@@ -500,17 +478,45 @@ impl ZkStdLib {
             )
         });
 
-        let secp256k1_scalar_config =
-            arch.secp256k1.then(|| Secp256k1ScalarChip::configure(meta, &advice_columns));
+        let secp256k1_scalar_config = arch.secp256k1.then(|| {
+            Secp256k1ScalarChip::configure(
+                meta,
+                &advice_columns,
+                nb_parallel_range_checks,
+                max_bit_len,
+            )
+        });
 
         let secp256k1_config = arch.secp256k1.then(|| {
-            let base_config = Secp256k1BaseChip::configure(meta, &advice_columns);
-            Secp256k1Chip::configure(meta, &base_config, &advice_columns)
+            let base_config = Secp256k1BaseChip::configure(
+                meta,
+                &advice_columns,
+                nb_parallel_range_checks,
+                max_bit_len,
+            );
+            Secp256k1Chip::configure(
+                meta,
+                &base_config,
+                &advice_columns,
+                nb_parallel_range_checks,
+                max_bit_len,
+            )
         });
 
         let bls12_381_config = arch.bls12_381.then(|| {
-            let base_config = Bls12381BaseChip::configure(meta, &advice_columns);
-            Bls12381Chip::configure(meta, &base_config, &advice_columns)
+            let base_config = Bls12381BaseChip::configure(
+                meta,
+                &advice_columns,
+                nb_parallel_range_checks,
+                max_bit_len,
+            );
+            Bls12381Chip::configure(
+                meta,
+                &base_config,
+                &advice_columns,
+                nb_parallel_range_checks,
+                max_bit_len,
+            )
         });
 
         let base64_config = arch.base64.then(|| {
@@ -1277,7 +1283,7 @@ where
 #[derive(Clone, Debug)]
 pub struct MidnightCircuit<'a, R: Relation> {
     relation: &'a R,
-    max_bit_len: u8,
+    k: u32,
     instance: Value<R::Instance>,
     witness: Value<R::Witness>,
     nb_public_inputs: Rc<RefCell<Option<usize>>>,
@@ -1285,86 +1291,34 @@ pub struct MidnightCircuit<'a, R: Relation> {
 
 impl<'a, R: Relation> MidnightCircuit<'a, R> {
     /// A MidnightCircuit with unknown instance-witness for the given relation.
-    pub fn from_relation(relation: &'a R) -> Self {
-        MidnightCircuit::new(relation, Value::unknown(), Value::unknown(), None)
+    /// `k` is the log2 of the circuit size (i.e. the circuit has `2^k` rows).
+    /// If `k` is `None`, the optimal value is computed automatically.
+    pub fn from_relation(relation: &'a R, k: Option<u32>) -> Self {
+        MidnightCircuit::new(relation, Value::unknown(), Value::unknown(), k)
     }
 
-    /// A MidnightCircuit with unknown instance-witness for the given relation.
-    /// This function takes an additional parameter `k`, the log2 of the desired
-    /// number of rows in the underlying circuit to this relation.
-    ///
-    /// `k` must be at least the minimum number of rows necessary to implement
-    /// the circuit. If such value is not known, use
-    /// [`MidnightCircuit::from_relation`] instead, which determines the optimal
-    /// `k` automatically by running the circuit configuration repeatedly with
-    /// different table sizes.
-    pub fn from_relation_with_k(relation: &'a R, k: u32) -> Self {
-        MidnightCircuit::new(
-            relation,
-            Value::unknown(),
-            Value::unknown(),
-            Some(k as u8 - 1),
-        )
-    }
-
-    /// Creates a new MidnightCircuit for the given relation. If not provided,
-    /// this function selects the optimal max_bit_len for the pow2range table.
+    /// Creates a new MidnightCircuit for the given relation.
+    /// `k` is the log2 of the circuit size (i.e. the circuit has `2^k` rows).
+    /// If `k` is `None`, the optimal value is computed automatically.
     pub fn new(
         relation: &'a R,
         instance: Value<R::Instance>,
         witness: Value<R::Witness>,
-        max_bit_len_opt: Option<u8>,
+        k: Option<u32>,
     ) -> Self {
-        if let Some(max_bit_len) = max_bit_len_opt {
-            return MidnightCircuit {
-                relation,
-                max_bit_len,
-                instance,
-                witness,
-                nb_public_inputs: Rc::new(RefCell::new(None)),
-            };
-        }
-
-        let model_with_max_bit_len = |max_bit_len: u8| -> CircuitModel {
-            circuit_model::<_, COMMITMENT_BYTE_SIZE, SCALAR_BYTE_SIZE>(&MidnightCircuit {
-                relation,
-                max_bit_len,
-                instance: Value::unknown(),
-                witness: Value::unknown(),
-                nb_public_inputs: Rc::new(RefCell::new(None)),
-            })
-        };
-
-        let mut best_k = u32::MAX;
-        let mut best_max_bit_len = 8;
-
-        // Loop for finding the optimal `max_bit_len`.
-        for max_bit_len in 8..25 {
-            let model = model_with_max_bit_len(max_bit_len);
-
-            if model.k < best_k {
-                best_k = model.k;
-                best_max_bit_len = max_bit_len;
-            }
-
-            // Stop when the table becomes the bottleneck.
-            if model.rows < (1 << (max_bit_len + 1)) {
-                break;
-            }
-        }
-
+        let k = k.unwrap_or_else(|| optimal_k(relation));
         MidnightCircuit {
             relation,
-            max_bit_len: best_max_bit_len,
+            k,
             instance,
             witness,
             nb_public_inputs: Rc::new(RefCell::new(None)),
         }
     }
 
-    /// The minimum `k` necessary to implement this circuit.
-    pub fn min_k(&self) -> u32 {
-        k_from_circuit(self)
+    /// Returns the log2 of the circuit size.
+    pub fn k(&self) -> u32 {
+        self.k
     }
 }
 
@@ -1372,7 +1326,7 @@ impl<'a, R: Relation> MidnightCircuit<'a, R> {
 #[derive(Clone, Debug)]
 pub struct MidnightVK {
     architecture: ZkStdLibArch,
-    max_bit_len: u8,
+    k: u8,
     nb_public_inputs: usize,
     vk: VerifyingKey<midnight_curves::Fq, KZGCommitmentScheme<midnight_curves::Bls12>>,
 }
@@ -1389,7 +1343,7 @@ impl MidnightVK {
     pub fn write<W: io::Write>(&self, writer: &mut W, format: SerdeFormat) -> io::Result<()> {
         self.architecture.write(writer)?;
 
-        writer.write_all(&[self.max_bit_len])?;
+        writer.write_all(&[self.k])?;
 
         writer.write_all(&(self.nb_public_inputs as u32).to_le_bytes())?;
 
@@ -1409,20 +1363,20 @@ impl MidnightVK {
 
         let mut byte = [0u8; 1];
         reader.read_exact(&mut byte)?;
-        let max_bit_len = byte[0];
+        let k = byte[0];
 
         let mut bytes = [0u8; 4];
         reader.read_exact(&mut bytes)?;
         let nb_public_inputs = u32::from_le_bytes(bytes) as usize;
 
         let mut cs = ConstraintSystem::default();
-        let _config = ZkStdLib::configure(&mut cs, architecture);
+        let _config = ZkStdLib::configure(&mut cs, (architecture, k - 1));
 
         let vk = VerifyingKey::read_from_cs::<R>(reader, format, cs)?;
 
         Ok(MidnightVK {
             architecture,
-            max_bit_len,
+            k,
             nb_public_inputs,
             vk,
         })
@@ -1430,7 +1384,7 @@ impl MidnightVK {
 
     /// The size of the domain associated to this verifying key.
     pub fn k(&self) -> u8 {
-        self.vk.get_domain().k() as u8
+        self.k
     }
 
     /// The underlying midnight-proofs verifying key.
@@ -1444,7 +1398,6 @@ impl MidnightVK {
 /// A proving key of a Midnight circuit.
 #[derive(Clone, Debug)]
 pub struct MidnightPK<R: Relation> {
-    max_bit_len: u8,
     k: u8,
     relation: R,
     pk: ProvingKey<midnight_curves::Fq, KZGCommitmentScheme<midnight_curves::Bls12>>,
@@ -1460,7 +1413,6 @@ impl<Rel: Relation> MidnightPK<Rel> {
     /// Using `RawBytesUnchecked` will have the same effect as `RawBytes`,
     /// but it is not recommended.
     pub fn write<W: io::Write>(&self, writer: &mut W, format: SerdeFormat) -> io::Result<()> {
-        writer.write_all(&[self.max_bit_len])?;
         writer.write_all(&[self.k])?;
 
         Rel::write_relation(&self.relation, writer)?;
@@ -1480,9 +1432,6 @@ impl<Rel: Relation> MidnightPK<Rel> {
         let mut byte = [0u8; 1];
 
         reader.read_exact(&mut byte)?;
-        let max_bit_len = byte[0];
-
-        reader.read_exact(&mut byte)?;
         let k = byte[0];
 
         let relation = Rel::read_relation(reader)?;
@@ -1494,17 +1443,12 @@ impl<Rel: Relation> MidnightPK<Rel> {
                 &relation,
                 Value::unknown(),
                 Value::unknown(),
-                Some(max_bit_len),
+                Some(k as u32),
             )
             .params(),
         )?;
 
-        Ok(MidnightPK {
-            max_bit_len,
-            k,
-            relation,
-            pk,
-        })
+        Ok(MidnightPK { k, relation, pk })
     }
 
     /// The size of the domain associated to this proving key.
@@ -1676,22 +1620,25 @@ impl<R: Relation> Circuit<F> for MidnightCircuit<'_, R> {
     // FIXME: this could be parametrised by MidnightCircuit.
     type FloorPlanner = SimpleFloorPlanner;
 
-    type Params = ZkStdLibArch;
+    type Params = (ZkStdLibArch, u8);
 
     fn without_witnesses(&self) -> Self {
         unreachable!()
     }
 
     fn params(&self) -> Self::Params {
-        self.relation.used_chips()
+        (self.relation.used_chips(), (self.k - 1) as u8)
     }
 
-    fn configure_with_params(meta: &mut ConstraintSystem<F>, arch: ZkStdLibArch) -> Self::Config {
-        ZkStdLib::configure(meta, arch)
+    fn configure_with_params(
+        meta: &mut ConstraintSystem<F>,
+        params: (ZkStdLibArch, u8),
+    ) -> Self::Config {
+        ZkStdLib::configure(meta, params)
     }
 
     fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
-        ZkStdLib::configure(meta, ZkStdLibArch::default())
+        ZkStdLib::configure(meta, (ZkStdLibArch::default(), 8))
     }
 
     fn synthesize(
@@ -1699,7 +1646,8 @@ impl<R: Relation> Circuit<F> for MidnightCircuit<'_, R> {
         config: Self::Config,
         mut layouter: impl Layouter<F>,
     ) -> Result<(), Error> {
-        let zk_std_lib = ZkStdLib::new(&config, self.max_bit_len as usize);
+        let max_bit_len = (self.k - 1) as usize;
+        let zk_std_lib = ZkStdLib::new(&config, max_bit_len);
 
         self.relation.circuit(
             &zk_std_lib,
@@ -1759,24 +1707,19 @@ impl<R: Relation> Circuit<F> for MidnightCircuit<'_, R> {
     }
 }
 
-/// Downsizes the given SRS to the size required by the given circuit (which is
-/// computed automatically). This step does not need to be done if you know that
-/// the SRS already has the correct size.
-pub fn downsize_srs_for_relation<R: Relation>(
-    srs: &mut ParamsKZG<midnight_curves::Bls12>,
-    relation: &R,
-) {
-    srs.downsize_from_circuit(&MidnightCircuit::from_relation(relation))
-}
-
-/// Generates a verifying key for a `MidnightCircuit<R>` circuit. Downsizes the
-/// parameters to match the size of the Relation.
+/// Generates a verifying key for a `MidnightCircuit<R>` circuit.
+///
+/// The log2 of the circuit size (`k`) is derived from the SRS parameters.
+/// For optimal performance, downsize the SRS to the circuit's optimal `k`
+/// beforehand (see [optimal_k]). Otherwise, the circuit will use the full
+/// size of the SRS, which may be unnecessarily large.
 pub fn setup_vk<R: Relation>(
     params: &ParamsKZG<midnight_curves::Bls12>,
     relation: &R,
 ) -> MidnightVK {
-    let circuit = MidnightCircuit::from_relation(relation);
-    let vk = BlstPLONK::<MidnightCircuit<R>>::setup_vk(params, &circuit);
+    let k = params.max_k();
+    let circuit = MidnightCircuit::from_relation(relation, Some(k));
+    let vk = keygen_vk_with_k(params, &circuit, k).expect("keygen_vk should not fail");
 
     // During the call to [setup_vk] the circuit RefCell on public inputs has been
     // mutated with the correct value. The following [unwrap] is safe here.
@@ -1784,38 +1727,7 @@ pub fn setup_vk<R: Relation>(
 
     MidnightVK {
         architecture: relation.used_chips(),
-        max_bit_len: circuit.max_bit_len,
-        nb_public_inputs,
-        vk,
-    }
-}
-
-/// Generates a verifying key for a `MidnightCircuit<R>` circuit.
-///
-/// This function takes an additional parameter `k`, the log2 of the desired
-/// number of rows in the underlying circuit to this relation.
-/// `k` must be at least the minimum number of rows necessary to implement
-/// the circuit. If such value is not known, use
-/// [`MidnightCircuit::from_relation`] instead, which determines the optimal
-/// `k` automatically by running the circuit configuration repeatedly with
-/// different table sizes.
-///
-/// This function downsizes the parameters to match the size `k`.
-pub fn setup_vk_with_k<R: Relation>(
-    params: &ParamsKZG<midnight_curves::Bls12>,
-    relation: &R,
-    k: u32,
-) -> MidnightVK {
-    let circuit = MidnightCircuit::from_relation_with_k(relation, k);
-    let vk = BlstPLONK::<MidnightCircuit<R>>::setup_vk(params, &circuit);
-
-    // During the call to [setup_vk] the circuit RefCell on public inputs has been
-    // mutated with the correct value. The following [unwrap] is safe here.
-    let nb_public_inputs = circuit.nb_public_inputs.clone().borrow().unwrap();
-
-    MidnightVK {
-        architecture: relation.used_chips(),
-        max_bit_len: circuit.max_bit_len,
+        k: circuit.k as u8,
         nb_public_inputs,
         vk,
     }
@@ -1827,12 +1739,11 @@ pub fn setup_pk<R: Relation>(relation: &R, vk: &MidnightVK) -> MidnightPK<R> {
         relation,
         Value::unknown(),
         Value::unknown(),
-        Some(vk.max_bit_len),
+        Some(vk.k() as u32),
     );
     let pk = BlstPLONK::<MidnightCircuit<R>>::setup_pk(&circuit, &vk.vk);
     MidnightPK {
-        max_bit_len: vk.max_bit_len,
-        k: vk.vk.get_domain().k() as u8,
+        k: vk.k(),
         relation: relation.clone(),
         pk,
     }
@@ -1858,7 +1769,7 @@ where
         relation,
         Value::known(instance.clone()),
         Value::known(witness),
-        Some(pk.max_bit_len),
+        Some(pk.k as u32),
     );
     BlstPLONK::<MidnightCircuit<R>>::prove::<H>(
         params,
@@ -1974,17 +1885,32 @@ where
     acc_guard.verify(params_verifier).map_err(|_| Error::Opening)
 }
 
-/// Cost model of the given relation.
-pub fn cost_model<R: Relation>(relation: &R) -> CircuitModel {
-    let circuit = MidnightCircuit::from_relation(relation);
+/// Cost model of the given relation for the given `k`.
+/// `k` is the log2 of the circuit size. If `None`, the optimal value is
+/// computed automatically.
+pub fn cost_model<R: Relation>(relation: &R, k: Option<u32>) -> CircuitModel {
+    let circuit = MidnightCircuit::from_relation(relation, k);
     circuit_model::<_, COMMITMENT_BYTE_SIZE, SCALAR_BYTE_SIZE>(&circuit)
 }
 
-/// Cost model of the given relation.
-/// This function takes an additional parameter `k`, an upper-bound in the log2
-/// of the number of rows necessary to implement in the underlying circuit to
-/// this relation.
-pub fn cost_model_with_k<R: Relation>(relation: &R, k: u32) -> CircuitModel {
-    let circuit = MidnightCircuit::from_relation_with_k(relation, k);
-    circuit_model::<_, COMMITMENT_BYTE_SIZE, SCALAR_BYTE_SIZE>(&circuit)
+/// Finds the optimal `k` (log2 of the circuit size) for the given relation.
+/// Tries different values of `k` (9..=25) and picks the smallest one where
+/// the circuit fits. The pow2range table uses `max_bit_len = k - 1`.
+pub fn optimal_k<R: Relation>(relation: &R) -> u32 {
+    let mut best_k = u32::MAX;
+
+    for k in 9..=25 {
+        let model = cost_model(relation, Some(k));
+
+        if model.k < best_k {
+            best_k = model.k;
+        }
+
+        // Stop when the pow2range table (2^k rows) becomes the bottleneck.
+        if model.rows < (1 << k) {
+            break;
+        }
+    }
+
+    best_k
 }

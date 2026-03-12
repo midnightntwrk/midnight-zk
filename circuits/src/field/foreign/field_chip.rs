@@ -1312,6 +1312,8 @@ where
     pub fn configure(
         meta: &mut ConstraintSystem<F>,
         advice_columns: &[Column<Advice>],
+        nb_parallel_range_checks: usize,
+        max_bit_len: u32,
     ) -> FieldChipConfig {
         check_params::<F, K, P>();
 
@@ -1327,8 +1329,20 @@ where
             [(nb_limbs as usize + 1)..(nb_limbs as usize + 1 + P::moduli().len())]
             .to_vec();
 
-        let mul_config = MulConfig::configure::<F, K, P>(meta, &x_cols, &z_cols);
-        let norm_config = NormConfig::configure::<F, K, P>(meta, &x_cols, &z_cols);
+        let mul_config = MulConfig::configure::<F, K, P>(
+            meta,
+            &x_cols,
+            &z_cols,
+            nb_parallel_range_checks,
+            max_bit_len,
+        );
+        let norm_config = NormConfig::configure::<F, K, P>(
+            meta,
+            &x_cols,
+            &z_cols,
+            nb_parallel_range_checks,
+            max_bit_len,
+        );
 
         FieldChipConfig {
             mul_config,
@@ -1686,11 +1700,19 @@ where
     ) -> FieldChipConfigForTests<F, N> {
         let native_gadget_config =
             <N as FromScratch<F>>::configure_from_scratch(meta, instance_columns);
+        // Use hard-coded pow2range values matching NativeGadget::configure_from_scratch
+        let nb_parallel_range_checks = 4;
+        let max_bit_len = 8;
         let field_chip_config = {
             let advice_cols = (0..nb_field_chip_columns::<F, K, P>())
                 .map(|_| meta.advice_column())
                 .collect::<Vec<_>>();
-            FieldChip::<F, K, P, N>::configure(meta, &advice_cols)
+            FieldChip::<F, K, P, N>::configure(
+                meta,
+                &advice_cols,
+                nb_parallel_range_checks,
+                max_bit_len,
+            )
         };
         FieldChipConfigForTests {
             native_gadget_config,

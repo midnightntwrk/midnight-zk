@@ -555,7 +555,8 @@ mod tests {
 
         let mut inner_srs = srs.clone();
 
-        midnight_zk_stdlib::downsize_srs_for_relation(&mut inner_srs, &InnerCircuit);
+        let inner_k = midnight_zk_stdlib::optimal_k(&InnerCircuit);
+        inner_srs.downsize(inner_k);
         let inner_vk = midnight_zk_stdlib::setup_vk(&inner_srs, &InnerCircuit);
         let inner_pk = midnight_zk_stdlib::setup_pk(&InnerCircuit, &inner_vk);
 
