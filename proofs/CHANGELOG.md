@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * optional names on VerifierQuery commitments [#205](https://github.com/midnightntwrk/midnight-zk/pull/205)
 
 ### Changed
+* Sort point sets deterministically in KZG multiopen for in-circuit verification [#256](https://github.com/midnightntwrk/midnight-zk/pull/256)
+* Move advice queries before instance queries in prover and verifier [#256](https://github.com/midnightntwrk/midnight-zk/pull/256)
 * `Circuit::Params` extended to carry `max_bit_len` [#251](https://github.com/midnightntwrk/midnight-zk/pull/251)
 * Collapse MSMs during `multi_prepare` to match in-circuit verifier [#227](https://github.com/midnightntwrk/midnight-zk/pull/227)
 * Improve MSM handling for fixed bases [#212](https://github.com/midnightntwrk/midnight-zk/pull/212)

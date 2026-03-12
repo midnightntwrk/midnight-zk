@@ -380,6 +380,16 @@ where
                 trash,
             )| {
                 iter::empty()
+                    .chain(vk.cs.advice_queries.iter().enumerate().map(
+                        move |(query_index, &(column, at))| {
+                            VerifierQuery::new(
+                                vk.domain.rotate_omega(x, at),
+                                CommitmentLabel::Advice(column.index()),
+                                &advice_commitments[column.index()],
+                                advice_evals[query_index],
+                            )
+                        },
+                    ))
                     .chain(vk.cs.instance_queries.iter().enumerate().filter_map(
                         move |(query_index, &(column, at))| {
                             if column.index() < nb_committed_instances {
@@ -392,16 +402,6 @@ where
                             } else {
                                 None
                             }
-                        },
-                    ))
-                    .chain(vk.cs.advice_queries.iter().enumerate().map(
-                        move |(query_index, &(column, at))| {
-                            VerifierQuery::new(
-                                vk.domain.rotate_omega(x, at),
-                                CommitmentLabel::Advice(column.index()),
-                                &advice_commitments[column.index()],
-                                advice_evals[query_index],
-                            )
                         },
                     ))
                     .chain(permutation.queries(vk, x))

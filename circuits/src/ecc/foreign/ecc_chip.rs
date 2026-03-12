@@ -786,6 +786,16 @@ where
     ) -> Result<AssignedForeignPoint<F, C, B>, Error> {
         const WS: usize = 4;
 
+        // Filter out bases that are known to be the identity at compile time.
+        // These contribute nothing to the MSM result.
+        let id_point = self.assign_fixed(layouter, C::CryptographicGroup::identity())?;
+        let (scalars, bases): (Vec<_>, Vec<_>) = scalars
+            .iter()
+            .zip(bases.iter())
+            .filter(|(_, base)| *base != &id_point)
+            .map(|(s, b)| (s.clone(), b.clone()))
+            .unzip();
+
         // If any of the scalars is known to be 1, or has a bound of 1 (i.e. it is known
         // to be either 0 or 1) remove it (with its base) from the list and simply add
         // it at the end.
@@ -847,7 +857,6 @@ where
         // In order to support the identity point for some bases, we select in-circuit
         // based on the value of is_id and put a 0 scalar and an arbitrary non-id point
         // (e.g. the generator) for the base when is_id equals 1.
-
         let mut non_id_bases = vec![];
         let mut scalars_of_non_id_bases = vec![];
         let scalar_chip = self.scalar_field_chip();
