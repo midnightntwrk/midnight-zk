@@ -22,8 +22,7 @@
 pub use circuit::{IvcCircuit, IvcInstance, IvcWitness};
 pub use error::IvcError;
 use midnight_circuits::{
-    instructions::{AssignmentInstructions, PublicInputInstructions},
-    types::{AssignedBit, InnerValue, Instantiable},
+    types::{AssignedBit, AssignedNative},
     verifier::{BlstrsEmulation, SelfEmulation},
 };
 use midnight_proofs::{
@@ -75,16 +74,38 @@ pub trait IvcContext: Clone {
 /// applications of a transition function (see [`IvcTransition`]). This trait
 /// captures the state type together with the ability to detect genesis, which
 /// the IVC circuit needs to handle the very first step.
-pub trait IvcState:
-    IvcContext
-    + AssignmentInstructions<F, Self::AssignedState>
-    + PublicInputInstructions<F, Self::AssignedState>
-{
+///
+/// [`State`](Self::State) and [`AssignedState`](Self::AssignedState) both
+/// represent the same logical state, but [`State`](Self::State) may carry
+/// additional data (e.g. variable-length collections) that cannot be
+/// represented in constant size inside the circuit.
+/// [`AssignedState`](Self::AssignedState) is its constant-size in-circuit
+/// counterpart. When extra data is present, [`State`](Self::State) stores
+/// both the full data *and* constant-size summaries of it (e.g. hashes or
+/// commitments) that bind to the full data.
+/// [`AssignedState`](Self::AssignedState) contains only these summaries,
+/// which are exactly the fields that get assigned into the circuit.
+/// A collision-resistant hash, for example, ensures that no two distinct
+/// [`State`](Self::State) values map to the same
+/// [`AssignedState`](Self::AssignedState), so that
+/// [`AssignedState`](Self::AssignedState) computationally determines
+/// [`State`](Self::State).
+pub trait IvcState: IvcContext {
     /// The native (off-circuit) state type.
+    ///
+    /// It may contain data whose size grows over time (e.g. a list of
+    /// aggregated statements) together with constant-size summaries of that
+    /// data (e.g. hashes or commitments). These summaries are the same fields
+    /// that [`AssignedState`](Self::AssignedState) contains.
     type State: Clone;
 
-    /// The in-circuit state type.
-    type AssignedState: Clone + Instantiable<F> + InnerValue<Element = Self::State>;
+    /// The constant-size in-circuit state type.
+    ///
+    /// It must uniquely determine [`State`](Self::State) (at least
+    /// computationally), e.g. by including hashes or binding commitments of
+    /// any data in [`State`](Self::State) that cannot be directly represented
+    /// in constant size inside the circuit.
+    type AssignedState: Clone;
 
     /// The genesis (initial) state of the IVC chain.
     fn genesis(ctx: &Self::Context) -> Self::State;
@@ -102,8 +123,55 @@ pub trait IvcState:
     /// properties that are deferred to off-circuit verification, such as
     /// accumulator validity or hash-chain integrity.
     ///
+    /// In particular, when [`State`](Self::State) contains data that
+    /// does not appear directly in [`AssignedState`](Self::AssignedState)
+    /// but only through a hash or commitment, this function must verify
+    /// that the summary stored in [`State`](Self::State) (e.g. a hash
+    /// field) is consistent with the full data it summarises.
+    ///
     /// Returns `true` if the state passes all checks.
     fn decider(ctx: &Self::Context, state: &Self::State) -> bool;
+}
+
+/// Input/output interface for IVC state values.
+///
+/// Bridges [`State`](IvcState::State) and
+/// [`AssignedState`](IvcState::AssignedState): assigning native values into the
+/// circuit, constraining them as public inputs, and formatting them as
+/// raw native field elements for the public-input vector.
+pub trait IvcIO: IvcState {
+    /// Assigns a [`State`](IvcState::State) value as a private input,
+    /// producing the corresponding [`AssignedState`](IvcState::AssignedState).
+    ///
+    /// Only the constant-size portion of the state is assigned; any
+    /// variable-size data in [`State`](IvcState::State) that is only
+    /// represented through a hash or commitment is not materialised in the
+    /// resulting [`AssignedState`](IvcState::AssignedState).
+    fn assign(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        value: Value<Self::State>,
+    ) -> Result<Self::AssignedState, Error>;
+
+    /// Constrains the assigned state as a public input to the circuit.
+    fn constrain_as_public_input(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        state: &Self::AssignedState,
+    ) -> Result<(), Error>;
+
+    /// Returns the cells of the assigned state formatted as public input
+    /// (in-circuit analog of
+    /// [`format_public_input`](Self::format_public_input)).
+    fn as_public_input(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        state: &Self::AssignedState,
+    ) -> Result<Vec<AssignedNative<F>>, Error>;
+
+    /// Formats a [`State`](IvcState::State) as raw native field elements
+    /// (off-circuit analog of [`as_public_input`](Self::as_public_input)).
+    fn format_public_input(state: &Self::State) -> Vec<F>;
 }
 
 /// A single-step transition function for an IVC computation.
@@ -135,3 +203,11 @@ pub trait IvcTransition: IvcState {
         witness: Value<Self::Witness>,
     ) -> Result<Self::AssignedState, Error>;
 }
+
+/// Convenience trait combining [`IvcTransition`] and [`IvcIO`].
+///
+/// Automatically implemented for any type that implements both. This is the
+/// bound required by the IVC machinery ([`IvcCircuit`], [`IvcProver`],
+/// [`IvcVerifier`], [`setup()`]).
+pub trait Ivc: IvcTransition + IvcIO {}
+impl<I: IvcTransition + IvcIO> Ivc for I {}

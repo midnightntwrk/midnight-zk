@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 
 ## [Unreleased]
 ### Added
+* Introduce `IvcIO` trait and `Ivc` convenience trait [#264](https://github.com/midnightntwrk/midnight-zk/pull/264)
 * Proof aggregation example [#258](https://github.com/midnightntwrk/midnight-zk/pull/258)
 * Introduce `IvcContext` [#258](https://github.com/midnightntwrk/midnight-zk/pull/258)
 * IVC module [#227](https://github.com/midnightntwrk/midnight-zk/pull/227)
@@ -16,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 * truncated_challenges feature to allow --all-features compilation [#146](https://github.com/midnightntwrk/midnight-zk/pull/146)
 * Rebase to new `circuits/` with `keccak` and `blake2b` [#135](https://github.com/midnightntwrk/midnight-zk/pull/135)
 ### Changed
+* Rename `proof_aggregation` example to `single_circuit_aggregation` [#264](https://github.com/midnightntwrk/midnight-zk/pull/264)
+* Remove `InnerValue` and `Instantiable` requirements from IVC `AssignedState` [#264](https://github.com/midnightntwrk/midnight-zk/pull/264)
+* Decouple `IvcTransition` from `IvcIO` [#264](https://github.com/midnightntwrk/midnight-zk/pull/264)
 * Rename `assert_transition` to `circuit_transition` in `IvcTransition` [#258](https://github.com/midnightntwrk/midnight-zk/pull/258)
 * Pass `max_bit_len` to IVC circuit configuration [#251](https://github.com/midnightntwrk/midnight-zk/pull/251)
 * Rename crate from `aggregator` to `aggregation` [#227](https://github.com/midnightntwrk/midnight-zk/pull/227)
