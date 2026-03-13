@@ -150,7 +150,7 @@ use crate::{
 /// Structure of assigned cells for verifying substring checks.
 type SubstringCheckLayout<F> = Vec<[Sequence<F>; NB_SUBSTRING_COLS]>;
 
-impl<LibIndex, F> ScannerChip<LibIndex, F>
+impl<F> ScannerChip<F>
 where
     F: CircuitField + Ord,
 {
@@ -220,7 +220,7 @@ where
     }
 }
 
-impl<LibIndex, F> ScannerChip<LibIndex, F>
+impl<F> ScannerChip<F>
 where
     F: CircuitField,
 {
@@ -311,13 +311,13 @@ where
         lookups[0].copy_advice(
             || format!("substring check (table {offset})"),
             region,
-            self.config.state_col,
+            self.config.advice_cols[0],
             offset,
         )?;
         lookups[1].copy_advice(
             || format!("substring check (query {offset})"),
             region,
-            self.config.letter_col,
+            self.config.advice_cols[1],
             offset,
         )?;
         Ok(())
@@ -403,7 +403,7 @@ mod test {
     where
         F: CircuitField + FromUniformBytes<64> + Ord,
     {
-        type Config = <ScannerChip<usize, F> as FromScratch<F>>::Config;
+        type Config = <ScannerChip<F> as FromScratch<F>>::Config;
         type FloorPlanner = SimpleFloorPlanner;
         type Params = ();
 
@@ -413,7 +413,7 @@ mod test {
 
         fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
             let instance_columns = [meta.instance_column(), meta.instance_column()];
-            ScannerChip::<usize, F>::configure_from_scratch(meta, &instance_columns)
+            ScannerChip::<F>::configure_from_scratch(meta, &instance_columns)
         }
 
         fn synthesize(
@@ -421,7 +421,7 @@ mod test {
             config: Self::Config,
             mut layouter: impl Layouter<F>,
         ) -> Result<(), Error> {
-            let scanner = ScannerChip::<usize, F>::new_from_scratch(&config);
+            let scanner = ScannerChip::<F>::new_from_scratch(&config);
             let native_gadget = &scanner.native_gadget;
 
             let full1: Vec<AssignedByte<F>> =
