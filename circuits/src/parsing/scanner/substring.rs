@@ -13,16 +13,124 @@
 
 //! Substring verification via packed lookup arguments.
 //!
-//! Each `(index, byte)` pair is packed into a single field element
-//! `index * (ALPHABET_MAX_SIZE + 1) + byte` (see
-//! [`ScannerChip::index_and_pack_sequence`]). Because indexes start at 1, zero
-//! is never a valid packed value and can safely be used for padding.
+//! # Overview
 //!
-//! Calls to [`ScannerChip::check_bytes`] are deferred and grouped by
-//! `sequence` argument in the [`SequenceCache`](super::SequenceCache). At
-//! synthesis end, [`ScannerChip::finalise_substring_checks`] drains the
-//! cache, packs both table and query entries, builds a row plan, and assigns
-//! the region.
+//! [`ScannerChip::check_bytes`] asserts that `sub` (a sequence of
+//! [`AssignedByte`](crate::types::AssignedByte)) is a contiguous subsequence
+//! of `sequence` starting at index `idx`
+//! ([`AssignedNative`](crate::field::AssignedNative), 0-based).
+//!
+//! The general idea is to index the positions of both `sequence` and `sub`,
+//! and use a dynamic lookup to verify containment. For example, checking that
+//! `"wor"` appears in `"hello world"` at index 6 can be done via the lookup:
+//!
+//! ```text
+//! table:       queries:
+//! | 0  | h |   | 6 | w |  (idx)
+//! | 1  | e |   | 7 | o |  (idx+1)
+//! | 2  | l |   | 8 | r |  (idx+2)
+//! | 3  | l |
+//! | 4  | o |
+//! | 5  |   |
+//! | 6  | w |
+//! | 7  | o |
+//! | 8  | r |
+//! | 9  | l |
+//! | 10 | d |
+//! ```
+//!
+//! In practice, the lookup argument is however a bit more complex, as detailed
+//! step by step below. The implemented lookup layout is the one described in
+//! the last section below.
+//!
+//! # Tagging (soundness requirement)
+//!
+//! In addition to the base idea, a tag column is needed to isolate independent
+//! substring checks that share the same lookup argument. For example, `wor <=
+//! hello world` and `mun <= hola mundo` would be laid out as:
+//!
+//! ```text
+//! table:           queries:
+//! | 1 | 0  | h |   | 1 | 6 | w |
+//! | 1 | 1  | e |   | 1 | 7 | o |
+//! | 1 | 2  | l |   | 1 | 8 | r |
+//! | 1 | 3  | l |
+//! | 1 | 4  | o |
+//! | 1 | 5  |   |
+//! | 1 | 6  | w |
+//! | 1 | 7  | o |
+//! | 1 | 8  | r |
+//! | 1 | 9  | l |
+//! | 1 | 10 | d |
+//! | 2 | 0  | h |   | 2 | 5 | m |
+//! | 2 | 1  | o |   | 2 | 6 | u |
+//! | 2 | 2  | l |   | 2 | 7 | n |
+//! | 2 | 3  | a |
+//! | 2 | 4  |   |
+//! | 2 | 5  | m |
+//! | 2 | 6  | u |
+//! | 2 | 7  | n |
+//! | 2 | 8  | d |
+//! | 2 | 9  | o |
+//! ```
+//!
+//! Tags and the table index column are written in fixed columns; the
+//! remaining columns (table bytes and query entries) are advice columns.
+//!
+//! # Sequence sharing (Optimisation 1)
+//!
+//! When several calls share the same `sequence` argument, the sequence is
+//! assigned only once and all corresponding `sub` arguments get the same tag.
+//! For example, checking both `wor <= hello world` at index 6 and
+//! `hel <= hello world` at index 0:
+//!
+//! ```text
+//! table:           queries:
+//! | 1 | 0  | h |   | 1 | 6 | w |
+//! | 1 | 1  | e |   | 1 | 7 | o |
+//! | 1 | 2  | l |   | 1 | 8 | r |
+//! | 1 | 3  | l |   | 1 | 0 | h |
+//! | 1 | 4  | o |   | 1 | 1 | e |
+//! | 1 | 5  |   |   | 1 | 2 | l |
+//! | 1 | 6  | w |
+//! | 1 | 7  | o |
+//! | 1 | 8  | r |
+//! | 1 | 9  | l |
+//! | 1 | 10 | d |
+//! ```
+//!
+//! To achieve this, calls to [`ScannerChip::check_bytes`] are deferred and
+//! recorded in the `SequenceCache` without performing
+//! circuit operations. At the end of circuit synthesis,
+//! [`ScannerChip::finalise_substring_checks`] drains the cache, groups calls
+//! by their `sequence` argument, assigns tags, and lays out the region.
+//!
+//! # Packing (Optimisation 2)
+//!
+//! To save columns, each `(index, byte)` pair is packed into a single field
+//! element: `index * 257 + byte` (where 257 = `ALPHABET_MAX_SIZE + 1`).
+//! The index `idx` is range-checked (`idx < 2^PARSING_MAX_LEN_BITS`) to
+//! guarantee that the packing is injective over the field.
+//!
+//! ```text
+//! table:                   queries:
+//! | 1 | 257 * 0  + 'h' |   | 1 | 257 * 6 + 'w' |
+//! | 1 | 257 * 1  + 'e' |   | 1 | 257 * 7 + 'o' |
+//! | 1 | 257 * 2  + 'l' |   | 1 | 257 * 8 + 'r' |
+//! | 1 | 257 * 3  + 'l' |   | 1 | 257 * 0 + 'h' |
+//! | 1 | 257 * 4  + 'o' |   | 1 | 257 * 1 + 'e' |
+//! | 1 | 257 * 5  + ' ' |   | 1 | 257 * 2 + 'l' |
+//! | 1 | 257 * 6  + 'w' |
+//! | 1 | 257 * 7  + 'o' |
+//! | 1 | 257 * 8  + 'r' |
+//! | 1 | 257 * 9  + 'l' |
+//! | 1 | 257 * 10 + 'd' |
+//! ```
+//!
+//! The packing of queries is computed in-circuit via
+//! `ScannerChip::index_and_pack_sequence` using `linear_combination`. The
+//! packing of table entries is performed inside the lookup expression itself
+//! (see `ScannerChip::configure`).
 
 use midnight_proofs::{
     circuit::{Layouter, Region, Value},
@@ -47,17 +155,17 @@ where
     F: CircuitField + Ord,
 {
     /// Asserts that `sub` is a contiguous subsequence of `sequence` starting at
-    /// index `idx` (0-indexed). In practice, this function queues the call
-    /// (grouping those with the same `sequence` argument) for batch
-    /// finalisation in `Self::finalise_substring_checks`.
+    /// index `idx` (0-indexed). This function defers the actual circuit work:
+    /// it records the call in the `SequenceCache`,
+    /// grouping entries with the same `sequence` argument under a single tag.
+    /// The circuit assignment happens later in
+    /// `Self::finalise_substring_checks`.
     ///
     /// # Cost
     ///
     /// The cost of one call is of the order of `|sequence| + |sub|` rows.
     /// Due to caching, multiple calls with the same `sequence` argument only
-    /// pay the `sequence`-related cost once. Up to `SUBSTRING_PARALLELISM`
-    /// calls with different `sequence` arguments share the same rows through
-    /// parallel lookups.
+    /// pay the `sequence`-related cost once.
     ///
     /// # Range check
     ///
@@ -220,19 +328,10 @@ where
     ///
     /// The sequence cache is drained and each unique sequence, together with
     /// all its associated `(idx, sub)` pairs, is packed into indexed field
-    /// elements. The packed entries are then chunked into groups of
-    /// `SUBSTRING_PARALLELISM` (each group assigned a fresh non-zero tag) and
-    /// laid out row by row:
-    ///
-    /// - **sel=ON rows**: contribute table entries (packed sequence values) and
-    ///   carry queries (packed sub values). Shorter sequences within a chunk
-    ///   are zero-padded, which adds `(tag, 0)` to the lookup table.
-    /// - **sel=OFF rows** (if subs overflow): carry remaining queries, which
-    ///   are still verified against the same tag's table entries.
-    ///
-    /// Each chunk contains one extra sel=ON row beyond the longest sequence,
-    /// guaranteeing that `(tag, 0)` is always in the table so that
-    /// zero-padded queries always pass.
+    /// elements. Each unique sequence is assigned a fresh non-zero tag and
+    /// laid out row by row. The selector is enabled on every row so that each
+    /// row contributes both a table entry (packed sequence byte) and a query
+    /// (packed sub byte).
     pub(super) fn finalise_substring_checks(
         &self,
         layouter: &mut impl Layouter<F>,

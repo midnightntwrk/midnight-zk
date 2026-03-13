@@ -11,11 +11,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! A chip combining lookup-based parsing techniques such as automaton-based
-//! parsing. The chip supports:
+//! A chip combining lookup-based parsing techniques. The chip supports:
 //!
-//! - **Static automaton parsing** (`parse_static`): uses a fixed lookup table
+//! - **Static automaton parsing** (`ScannerChip::parse`): verifies that a byte
+//!   sequence matches a regular expression, using a fixed lookup table
 //!   pre-loaded with transitions from a library of automata ([`StdLibParser`]).
+//!   See the `automaton_chip` module for details.
+//!
+//! - **Substring checks** (`ScannerChip::check_bytes`): verifies that a
+//!   sub-sequence appears at a given position inside a larger sequence, using a
+//!   dynamic lookup argument. Calls are deferred and batched at the end of
+//!   circuit synthesis for efficiency. See the `substring` module for details.
 
 pub(crate) mod automaton;
 mod automaton_chip;
@@ -55,12 +61,11 @@ use crate::{
     CircuitField,
 };
 
-/// Maximal size of the alphabet of an automaton/regex, since input characters
-/// are represented by `AssignedByte`. The parser (`scanner::parse_automaton`)
-/// is using this information to store automaton final states in the transition
-/// table, by encoding them as impossible transitions starting from the said
-/// state, and labelled with letter `ALPHABET_MAX_SIZE`. This bound is also
-/// needed to represent letters as u8.
+/// Maximal size of the alphabet of an automaton/regex (input bytes are in
+/// `[0, 255]`). Also used to encode final states in the transition table as
+/// dummy transitions labelled with `ALPHABET_MAX_SIZE` (see the
+/// `automaton_chip` module), and as the packing shift for substring checks
+/// (see the `substring` module).
 const ALPHABET_MAX_SIZE: usize = 256;
 
 /// Number of advice columns used per automaton lookup (source, letter, output).
@@ -293,14 +298,43 @@ where
         let tag_col = meta.fixed_column();
         let q_substring = meta.complex_selector();
 
-        // Each lookup argument operate on NB_SUBSTRING_COLS = 2 advice columns: 1 table
-        // column + 1 query column. Queries are looked up in the table with the
-        // following convention:
-        //   1. sel=ON, index > 0: 1 table entry + 1 query for each lookup argument, in
-        //      this row.
-        //   2. sel=OFF, index > 0: 1 query. The table column is unconstrained. In
-        //      practice, will never happen.
-        //   3. sel=OFF, index = 0: tautology. Happens when managing other functions.
+        // Substring lookup argument (see the `substring` module for full details).
+        //
+        // Each row carries two advice cells: a table entry (state_col) and a query
+        // entry (letter_col), plus two fixed cells: index and tag. The lookup asserts
+        // that every query appears somewhere in the table with the same tag.
+        //
+        // Example: checking `wor` appears in `hello world` at index 6. The circuit will
+        // assign the following values in the region:
+        //
+        //    fixed           advice
+        //    tag | index     state_col | letter_col
+        //    -----------     -----------------------
+        //     1  |  0           'h'    | 257*6 + 'w'    <- query for sub[0]
+        //     1  |  1           'e'    | 257*7 + 'o'    <- query for sub[1]
+        //     1  |  2           'l'    | 257*8 + 'r'    <- query for sub[2]
+        //     1  |  3           'l'    | (padding)
+        //     1  |  4           'o'    | (padding)
+        //     1  |  5           ' '    | (padding)
+        //     1  |  6           'w'    | (padding)
+        //     1  |  7           'o'    | (padding)
+        //     1  |  8           'r'    | (padding)
+        //     1  |  9           'l'    | (padding)
+        //     1  | 10           'd'    | (padding)
+        //
+        // Note in particular that a packed value `257 * (idx + i) + sub[i]` is assigned
+        // to `letter_col`. The lookup identity below then checks that each of these
+        // packed values belong to a table, constructed by packing the rows of
+        // `state_col` similarly.
+        //
+        // `table_packed[i] = 257 * index[i] + state_col[i]`
+        //
+        // The lookup then checks: (tag, packed_query) ∈ {(tag, table_packed)}.
+        //
+        // When sel=OFF, both sides reduce to (tag, query), i.e., a tautology, so rows
+        // not used by substring checks are unconstrained. The tag fixed column will
+        // default to 0 outside of the substring check regions, isolating the tables
+        // from the unrelated regions.
         meta.lookup_any("substring lookup", |meta| {
             let sel = meta.query_selector(q_substring);
             let not_sel = Expression::Constant(F::ONE) - sel.clone();
@@ -336,12 +370,8 @@ where
         }
     }
 
-    /// Finalises all deferred operations and, if any automaton was parsed,
-    /// loads the automaton lookup table.
-    ///
-    /// # Location Requirement
-    ///
-    /// Must be called *at the end of the circuit synthesis*.
+    /// Loads the automaton transition table and finalises all deferred
+    /// substring checks. Must be called at the end of circuit synthesis.
     fn load(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
         self.load_automata_table(layouter)?;
         self.finalise_substring_checks(layouter)
