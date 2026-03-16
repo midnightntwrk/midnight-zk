@@ -99,7 +99,7 @@ impl<C: CircuitCurve> CoordConfig<C> {
         let max_sum = sum_bigints(&bs, &limbs_max);
         let max_sum_sqrd = sum_bigints(&bs_sqrd, &limbs_max_sqrd);
 
-        // 2 * sum_a + sum_z + sum_az - sum_b - sum_c >= -sum_b - sum_c >= -2 * sum_max
+        // 2 * sum_a + sum_z + sum_az - sum_b - sum_c
         let expr_min = -(BI::from(2) * max_sum.clone());
         let expr_max = BI::from(3) * max_sum + max_sum_sqrd;
         let expr_bounds = (expr_min, expr_max);
