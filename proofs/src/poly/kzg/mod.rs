@@ -28,7 +28,7 @@ use rand_core::OsRng;
 use crate::utils::arithmetic::{truncate, truncated_powers};
 use crate::{
     poly::{
-        commitment::{Params, PolynomialCommitmentScheme},
+        commitment::PolynomialCommitmentScheme,
         kzg::{
             msm::{msm_specific, DualMSM, MSMKZG},
             params::{ParamsKZG, ParamsVerifierKZG},
@@ -104,6 +104,21 @@ where
         E::Fr: Sampleable<T::Hash> + Hash + Ord + Hashable<T::Hash>,
         E::G1: Hashable<T::Hash>,
     {
+        /// Like [`inner_product`] but for coefficient-form polynomials that may
+        /// have different lengths (zero-extending the shorter operands via
+        /// [`Polynomial::padded_add`]).
+        fn poly_inner_product<F: ff::PrimeField>(
+            polys: &[Polynomial<F, Coeff>],
+            scalars: impl Iterator<Item = F>,
+        ) -> Polynomial<F, Coeff> {
+            polys
+                .iter()
+                .zip(scalars)
+                .map(|(p, s)| p.clone() * s)
+                .reduce(|acc, p| acc.padded_add(&p))
+                .unwrap()
+        }
+
         // Refer to the halo2 book for docs:
         // https://zcash.github.io/halo2/design/proving-system/multipoint-opening.html
         let x1: E::Fr = transcript.squeeze_challenge();
@@ -126,7 +141,7 @@ where
                 #[cfg(not(feature = "truncated-challenges"))]
                 let x1 = powers(x1);
 
-                inner_product(polys, x1)
+                poly_inner_product(polys, x1)
             })
             .collect::<Vec<_>>();
 
@@ -161,7 +176,7 @@ where
                     }
                 })
                 .collect::<Vec<_>>();
-            inner_product(&f_polys, powers(x2))
+            poly_inner_product(&f_polys, powers(x2))
         };
 
         let f_com = Self::commit(params, &f_poly);
@@ -188,7 +203,7 @@ where
             #[cfg(not(feature = "truncated-challenges"))]
             let powers = powers(x4);
 
-            inner_product(&polys, powers)
+            poly_inner_product(&polys, powers)
         };
         let v = eval_polynomial(&final_poly, x3);
 

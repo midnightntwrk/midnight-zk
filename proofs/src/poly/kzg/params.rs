@@ -25,9 +25,13 @@ pub struct ParamsKZG<E: Engine> {
 
 impl<E: Engine> Params for ParamsKZG<E> {
     fn max_k(&self) -> u32 {
+        #[cfg(not(feature = "single-h-commitment"))]
         assert_eq!(self.g.len(), self.g_lagrange.len());
+        self.g_lagrange.len().ilog2()
+    }
 
-        self.g.len().ilog2()
+    fn g_monomial_size(&self) -> usize {
+        self.g.len()
     }
 
     fn downsize(&mut self, new_k: u32) {
@@ -46,6 +50,25 @@ impl<E: Engine + Debug> ParamsKZG<E> {
         assert!(n < self.g_lagrange.len());
         self.g.truncate(n);
         self.g_lagrange = g_to_lagrange(&self.g, new_k);
+    }
+
+    /// Recompute the Lagrange basis for a smaller circuit domain `new_k` while
+    /// keeping the full monomial basis `g` intact.
+    ///
+    /// Use this when the `single-h-commitment` feature is enabled: generate an
+    /// SRS large enough for the whole quotient polynomial (i.e. with `k'`
+    /// such that `2^{k'} ≥ (n-1) * quotient_poly_degree`), then call
+    /// `downsize_lagrange(k)` so that `max_k()` equals the circuit domain size
+    /// `k` while `g` retains its original length for the H-polynomial
+    /// commitment.
+    #[cfg(feature = "single-h-commitment")]
+    pub fn downsize_lagrange(&mut self, new_k: u32) {
+        let n = 1usize << new_k;
+        assert!(
+            self.g.len() >= n,
+            "g is too small to build a Lagrange basis of size 2^{new_k}"
+        );
+        self.g_lagrange = g_to_lagrange(&self.g[..n], new_k);
     }
 
     /// Initializes parameters for the curve, draws toxic secret from given rng.
