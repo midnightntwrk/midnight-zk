@@ -9,7 +9,7 @@ use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
-use midnight_zk_stdlib::{utils::plonk_api::filecoin_srs, Relation, ZkStdLib, ZkStdLibArch};
+use midnight_zk_stdlib::{utils::plonk_api::srs_for_test, Relation, ZkStdLib, ZkStdLibArch};
 use rand::{rngs::OsRng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 
@@ -57,9 +57,8 @@ impl Relation for PoseidonExample {
 
 fn main() {
     const K: u32 = 6;
-    let srs = filecoin_srs(K);
-
     let relation = PoseidonExample;
+    let srs = srs_for_test(&relation, Some(K));
     let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
     let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
 

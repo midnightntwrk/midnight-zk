@@ -20,7 +20,7 @@ use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
-use midnight_zk_stdlib::{utils::plonk_api::filecoin_srs, Relation, ZkStdLib, ZkStdLibArch};
+use midnight_zk_stdlib::{utils::plonk_api::srs_for_test, Relation, ZkStdLib, ZkStdLibArch};
 use num_bigint::BigUint;
 use rand::rngs::OsRng;
 use utils::{read_credential, split_blob, verify_credential_sig};
@@ -268,10 +268,9 @@ where
 
 fn main() {
     const K: u32 = 17;
-    let srs = filecoin_srs(K);
-    let credential_blob = read_credential::<4096>(CRED_PATH).expect("Path to credential file.");
-
     let relation = FullCredential;
+    let srs = srs_for_test(&relation, Some(K));
+    let credential_blob = read_credential::<4096>(CRED_PATH).expect("Path to credential file.");
 
     let start = |msg: &str| -> Instant {
         print!("{msg}");

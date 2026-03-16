@@ -41,7 +41,7 @@ use midnight_proofs::{
 use rand::{CryptoRng, RngCore};
 use sha2::Digest;
 
-use crate::{cost_model, MidnightVK, Relation};
+use crate::{cost_model, optimal_k, MidnightVK, Relation};
 
 macro_rules! plonk_api {
     ($name:ident, $engine:ty, $native:ty, $curve:ty, $projective:ty) => {
@@ -251,7 +251,14 @@ pub fn update_circuit_goldenfiles<R: Relation>(relation: &R) {
         .unwrap_or_else(|_| panic!("Could not write to file {}", file_name));
 }
 
-/// Use filecoin's SRS (over BLS12-381)
+/// Loads Filecoin's production SRS (over BLS12-381) for the given relation.
+/// If `k` is `None`, the optimal circuit size is derived automatically.
+pub fn srs_for_test<R: Relation>(relation: &R, k: Option<u32>) -> ParamsKZG<Bls12> {
+    filecoin_srs(k.unwrap_or_else(|| optimal_k(relation)))
+}
+
+/// Loads Filecoin's production SRS (over BLS12-381) for the given circuit
+/// size `k` (log2 of the number of rows).
 pub fn filecoin_srs(k: u32) -> ParamsKZG<Bls12> {
     assert!(k <= 19, "We don't have an SRS for circuits of bit size {k}");
 

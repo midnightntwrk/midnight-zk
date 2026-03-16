@@ -14,8 +14,7 @@
 //! Integration tests for identifying breaking changes in circuits
 
 use midnight_zk_stdlib::{
-    optimal_k,
-    utils::plonk_api::{check_vk, filecoin_srs, update_circuit_goldenfiles},
+    utils::plonk_api::{check_vk, srs_for_test, update_circuit_goldenfiles},
     MidnightCircuit,
 };
 
@@ -49,8 +48,7 @@ macro_rules! generate_tests {
 
                 update_circuit_goldenfiles(&relation);
 
-                let k = optimal_k(&relation);
-                let srs = filecoin_srs(k);
+                let srs = srs_for_test(&relation, None);
 
                 let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
                 check_vk::<MidnightCircuit<$circuit>>(&vk);

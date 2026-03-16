@@ -19,7 +19,7 @@ use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
-use midnight_zk_stdlib::{utils::plonk_api::filecoin_srs, Relation, ZkStdLib, ZkStdLibArch};
+use midnight_zk_stdlib::{utils::plonk_api::srs_for_test, Relation, ZkStdLib, ZkStdLibArch};
 use rand::{RngCore, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 
@@ -160,12 +160,11 @@ impl Relation for SchnorrExample {
 }
 
 fn main() {
-    const K: u32 = 11;
-
-    let srs = filecoin_srs(K);
     let mut rng = ChaCha8Rng::seed_from_u64(0xf001ba11);
 
+    const K: u32 = 11;
     let relation = SchnorrExample;
+    let srs = srs_for_test(&relation, Some(K));
     let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
     let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
 
