@@ -20,6 +20,12 @@ use midnight_proofs::{
     plonk::Error,
 };
 use midnight_zk_stdlib::{ZkStdLib, ZkStdLibArch};
+#[cfg(feature = "whole-h-poly")]
+use midnight_curves::Bls12;
+#[cfg(feature = "whole-h-poly")]
+use midnight_proofs::poly::kzg::params::ParamsKZG;
+#[cfg(feature = "whole-h-poly")]
+use rand::rngs::OsRng;
 
 type S = BlstrsEmulation;
 type F = <S as SelfEmulation>::F;
@@ -178,7 +184,18 @@ fn main() {
     const N: usize = 1_000; // Number of Poseidon iteration per IVC step.
     const STEPS: usize = 3; // Number of IVC steps to run.
 
+    // When the `whole-h-poly` feature is enabled the prover commits to h(X) as
+    // a single polynomial, which requires a larger monomial SRS. We generate
+    // params with k=20 (large enough for the extended H domain) and then
+    // downsize the Lagrange basis to the circuit domain K=18.
+    #[cfg(not(feature = "whole-h-poly"))]
     let srs = midnight_zk_stdlib::utils::plonk_api::filecoin_srs(K);
+    #[cfg(feature = "whole-h-poly")]
+    let srs = {
+        let mut srs = ParamsKZG::<Bls12>::unsafe_setup(20, OsRng);
+        srs.downsize_lagrange(K);
+        srs
+    };
 
     let start = Instant::now();
     let (mut prover, verifier) = ivc::setup::<PoseidonChain<N>>(srs, K, ());
