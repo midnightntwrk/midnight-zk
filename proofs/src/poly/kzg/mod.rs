@@ -166,10 +166,9 @@ where
                 .iter()
                 .zip(q_polys.clone())
                 .map(|(points, q_poly)| {
-                    let mut poly = points.iter().fold(q_poly.clone().values, |poly, point| {
+                    let poly = points.iter().fold(q_poly.clone().values, |poly, point| {
                         kate_division(&poly, *point)
                     });
-                    poly.resize(1 << params.max_k() as usize, E::Fr::ZERO);
                     Polynomial {
                         values: poly,
                         _marker: PhantomData,
