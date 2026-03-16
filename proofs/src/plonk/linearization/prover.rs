@@ -61,9 +61,16 @@ pub(crate) fn compute_linearization_poly<F: PrimeField, CS: PolynomialCommitment
 
     let splitting_powers = successors(Some(xn - F::ONE), |&prev| Some(prev * splitting_factor));
 
+    // When the `whole-h-poly` feature is enabled `quotient_limbs` contains a
+    // single element: the full quotient polynomial H(X). In that case this
+    // loop executes once and produces `lin_poly - (x^n - 1) * H(X)`, which
+    // evaluates to zero at `x` iff the circuit is satisfied (same as the
+    // multi-limb case). The resulting polynomial has degree deg(H), so
+    // the caller must supply params with a sufficiently large SRS.
+    //
     quotient_limbs
         .iter()
         .zip(splitting_powers)
         .map(|(l, p)| l.clone() * p)
-        .fold(lin_poly, |acc, next| acc - &next)
+        .fold(lin_poly, |acc, next| acc.padded_sub(&next))
 }

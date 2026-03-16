@@ -45,3 +45,7 @@ truncated-challenges = [
     "midnight-proofs/truncated-challenges",
     "midnight-circuits/truncated-challenges",
 ]
+whole-h-poly = [
+    "midnight-proofs/whole-h-poly",
+    "midnight-circuits/whole-h-poly",
+]

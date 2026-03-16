@@ -408,6 +408,9 @@ where
         compute_nu_poly(pk, &trace)
     };
 
+    // Construct the quotient polynomial h(X) = nu(X)/(X^n-1) and commit.
+    // When `whole-h-poly` is enabled this produces a single commitment;
+    // otherwise h(X) is split into limbs and each is committed separately.
     let quotient_limbs = {
         group.bench_function("Compute quotient poly", |b| {
             b.iter_batched(

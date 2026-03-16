@@ -58,6 +58,11 @@ truncated-challenges = [
     "midnight-proofs/truncated-challenges",
     "midnight-circuits/truncated-challenges",
 ]
+# Commit to the quotient polynomial H as a single commitment (see midnight-proofs)
+whole-h-poly = [
+    "midnight-proofs/whole-h-poly",
+    "midnight-circuits/whole-h-poly",
+]
 
 [lib]
 bench = false
