@@ -1725,6 +1725,7 @@ where
 mod tests {
     use midnight_curves::{
         k256::{Fp as K256Base, Fq as K256Scalar},
+        p256::{Fp as P256Base, Fq as P256Scalar},
         Fq as BlsScalar,
     };
 
@@ -1758,8 +1759,10 @@ mod tests {
         ($mod:ident, $op:ident) => {
             #[test]
             fn $op() {
-                test_generic!($mod, $op, BlsScalar, K256Base, "field_chip_secp_base");
-                test_generic!($mod, $op, BlsScalar, K256Scalar, "field_chip_secp_scalar");
+                test_generic!($mod, $op, BlsScalar, K256Base, "field_chip_k256_base");
+                test_generic!($mod, $op, BlsScalar, K256Scalar, "field_chip_k256_scalar");
+                test_generic!($mod, $op, BlsScalar, P256Base, "field_chip_p256_base");
+                test_generic!($mod, $op, BlsScalar, P256Scalar, "field_chip_p256_scalar");
             }
         };
     }
@@ -1809,6 +1812,8 @@ mod tests {
             fn $op() {
                 test_generic!($mod, $op, BlsScalar, K256Base, "field_chip_secp_base");
                 test_generic!($mod, $op, BlsScalar, K256Scalar, "field_chip_secp_scalar");
+                test_generic!($mod, $op, BlsScalar, P256Base, "field_chip_p256_base");
+                test_generic!($mod, $op, BlsScalar, P256Scalar, "field_chip_p256_scalar");
             }
         };
     }
