@@ -20,8 +20,7 @@ use std::{fmt::Debug, ops::Rem};
 
 #[cfg(feature = "dev-curves")]
 use midnight_curves::bn256;
-use midnight_curves::k256;
-use midnight_curves::p256;
+use midnight_curves::{k256, p256};
 use num_bigint::{BigInt, BigInt as BI, ToBigInt};
 use num_traits::{One, Signed};
 
