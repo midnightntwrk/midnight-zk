@@ -61,13 +61,12 @@ impl P256Affine {
     }
 
     /// Returns the x coordinate.
-    /// 
+    ///
     /// # Panics
-    /// 
+    ///
     /// If the point is the identity, which has no affine coordinates.
     pub fn x(&self) -> Fp {
-        self.try_x()
-            .expect("Point at infinity has no affine x coordinate")
+        self.try_x().expect("Point at infinity has no affine x coordinate")
     }
 
     /// Returns the x coordinate for non-identity points.
@@ -79,13 +78,12 @@ impl P256Affine {
     }
 
     /// Returns the y coordinate.
-    /// 
+    ///
     /// # Panics
-    /// 
+    ///
     /// If the point is the identity, which has no affine coordinates.
     pub fn y(&self) -> Fp {
-        self.try_y()
-            .expect("Point at infinity has no affine y coordinate")
+        self.try_y().expect("Point at infinity has no affine y coordinate")
     }
 
     /// Returns the y coordinate for non-identity points.
@@ -560,8 +558,8 @@ mod tests {
     fn test_malformed_compressed_encoding_rejected() {
         // 0x01 is not a valid SEC1 tag.
         let bytes = CompressedPoint::from([
-            0x01, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0,
+            0x01, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0,
         ]);
 
         assert!(!bool::from(P256::from_bytes(&bytes).is_some()));
