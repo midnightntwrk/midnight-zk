@@ -23,9 +23,15 @@ use midnight_zk_stdlib::{ZkStdLib, ZkStdLibArch};
 #[cfg(feature = "whole-h-poly")]
 use midnight_curves::Bls12;
 #[cfg(feature = "whole-h-poly")]
-use midnight_proofs::poly::kzg::params::ParamsKZG;
+use midnight_proofs::{poly::kzg::params::ParamsKZG, utils::SerdeFormat};
 #[cfg(feature = "whole-h-poly")]
 use rand::rngs::OsRng;
+#[cfg(feature = "whole-h-poly")]
+use std::{
+    fs::File,
+    io::{BufReader, BufWriter, Write},
+    path::Path,
+};
 
 type S = BlstrsEmulation;
 type F = <S as SelfEmulation>::F;
@@ -139,7 +145,7 @@ impl<const N: usize> IvcTransition for PoseidonChain<N> {
     fn arch() -> ZkStdLibArch {
         ZkStdLibArch {
             poseidon: true,
-            nr_pow2range_cols: 4,
+            nr_pow2range_cols: 8,
             ..ZkStdLibArch::default()
         }
     }
@@ -179,23 +185,19 @@ fn main() {
     // message will hint at a valid (but not necessarily optimal) value, e.g.
     // `keygen_vk should not fail: SrsError(14, 19)` means K = 19 works, but a
     // smaller K might too. Binary-search to find it.
-    const K: u32 = 18;
+    const K: u32 = 17;
 
-    const N: usize = 1_000; // Number of Poseidon iteration per IVC step.
+    const N: usize = 0; // Number of Poseidon iteration per IVC step.
     const STEPS: usize = 3; // Number of IVC steps to run.
 
     // When the `whole-h-poly` feature is enabled the prover commits to h(X) as
     // a single polynomial, which requires a larger monomial SRS. We generate
     // params with k=20 (large enough for the extended H domain) and then
     // downsize the Lagrange basis to the circuit domain K=18.
-    #[cfg(not(feature = "whole-h-poly"))]
+    // #[cfg(not(feature = "whole-h-poly"))]
     let srs = midnight_zk_stdlib::utils::plonk_api::filecoin_srs(K);
-    #[cfg(feature = "whole-h-poly")]
-    let srs = {
-        let mut srs = ParamsKZG::<Bls12>::unsafe_setup(20, OsRng);
-        srs.downsize_lagrange(K);
-        srs
-    };
+    // #[cfg(feature = "whole-h-poly")]
+    // let mut srs = ParamsKZG::<Bls12>::unsafe_setup(20, OsRng);
 
     let start = Instant::now();
     let (mut prover, verifier) = ivc::setup::<PoseidonChain<N>>(srs, K, ());

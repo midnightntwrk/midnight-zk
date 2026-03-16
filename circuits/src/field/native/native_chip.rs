@@ -80,7 +80,7 @@ use crate::{
 /// Number of columns used by the identity of the native chip.
 /// This number should NOT be smaller than 5.
 /// This limit is imposed by functions like [NativeChip::select].
-pub const NB_ARITH_COLS: usize = 5;
+pub const NB_ARITH_COLS: usize = 9;
 
 /// Number of fixed columns used by the identity of the native chip.
 pub const NB_ARITH_FIXED_COLS: usize = NB_ARITH_COLS + 4;

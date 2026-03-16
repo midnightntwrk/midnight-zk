@@ -28,7 +28,7 @@ pub fn setup<T: Ivc>(params: ParamsKZG<E>, k: u32, ctx: T::Context) -> (IvcProve
     let relation = IvcCircuit::<T>::new(domain, cs, ctx.clone());
 
     // Uncomment for visualizing the size of this IVC circuit.
-    // dbg!(midnight_zk_stdlib::cost_model(&relation, Some(k)));
+    dbg!(midnight_zk_stdlib::cost_model(&relation, Some(k)));
 
     let vk = midnight_zk_stdlib::setup_vk(&params, &relation);
     let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
