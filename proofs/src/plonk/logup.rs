@@ -118,6 +118,39 @@
 //! This has degree `1 + lookup_degree × num_parallel_lookups`, which limits how
 //! many parallel lookups can be batched into a single argument before exceeding
 //! the constraint system's degree bound.
+//!
+//! ## Shared Multiplicities and Accumulator Across Flattened Arguments
+//!
+//! When a [`BatchedArgument`] is split into `k` [`FlattenedArgument`]s (because
+//! the helper constraint degree would otherwise exceed the CS degree bound), a
+//! naïve approach would give each flattened argument its own `m(X)`, `h(X)`, and
+//! `Z(X)` — totalling `3k` committed polynomials and `4k` evaluation queries.
+//!
+//! Since all flattened arguments in a batch share the same selector and table,
+//! a **single combined `m(X)`** (counting all input rows across every flattened
+//! argument against the shared table) and a **single combined `Z(X)`** are both
+//! correct and sufficient. Only the `k` helper polynomials `hᵢ(X)` must remain
+//! separate, because it is precisely the helper constraint that forced the split.
+//!
+//! The combined accumulator constraint is:
+//! ```text
+//! (Z(ωX) - Z(X) - s(X)·Σᵢhᵢ(X))·(t(X) + β) + m(X) = 0   (on active rows)
+//! ```
+//!
+//! This reduces the number of committed polynomials from `3k` to `k + 2` and
+//! the number of opening queries from `4k` to `k + 3` per batch.
+//!
+//! The combined `m(X)` is computed in one pass over **all** input columns across
+//! all flattened arguments, rather than by summing per-flattened multiplicities
+//! after the fact.
+//!
+//! This is a breaking change to the proof format relative to a per-flattened
+//! implementation; the transcript order is:
+//! 1. One `m` commitment per [`BatchedArgument`]
+//! 2. `[squeeze β, γ]`
+//! 3. `k` helper `hᵢ` commitments + one `Z` commitment per batch
+//! 4. `[squeeze trash_challenge, y, x]`
+//! 5. One `m(x)` eval, `k` `hᵢ(x)` evals, one `Z(x)` eval, one `Z(ωx)` eval per batch
 
 use std::fmt::{self, Debug};
 
@@ -331,17 +364,21 @@ impl<F: Field> FlattenedArgument<F> {
     }
 }
 
+/// Evaluations of all LogUp polynomials for a single `BatchedArgument`.
+///
+/// Holds the shared multiplicities and accumulator evaluations alongside one
+/// helper evaluation per [`FlattenedArgument`] that the batch was split into.
 #[derive(Debug)]
-pub(crate) struct Evaluated<F: PrimeField> {
-    multiplicities_eval: F,
-    helper_eval: F,
-    accumulator_eval: F,
-    accumulator_next_eval: F,
+pub(crate) struct BatchEvaluated<F: PrimeField> {
+    pub(crate) multiplicities_eval: F,
+    /// One evaluation per flattened argument in the batch.
+    pub(crate) helper_evals: Vec<F>,
+    pub(crate) accumulator_eval: F,
+    pub(crate) accumulator_next_eval: F,
 }
 
-impl<F: PrimeField> Evaluated<F> {
-    #[allow(clippy::too_many_arguments)]
-    /// Computes the constraint expressions.
+impl<F: PrimeField> BatchEvaluated<F> {
+    /// Computes the constraint expressions for a full batch.
     ///
     /// When a lookup involves multiple columns, `theta` is used as a random
     /// challenge to compress them into a single value via a random linear
@@ -350,19 +387,19 @@ impl<F: PrimeField> Evaluated<F> {
     /// and the table value `t` are compressed this way before being
     /// substituted into the LogUp identities.
     ///
-    /// Checks two identities (where `fⱼ` and `t` denote the compressed values):
-    /// - **Helper constraint**: `h(x) · ∏ⱼ(fⱼ(x) + β) = Σⱼ ∏_{k≠j}(fₖ(x) + β)`
-    /// - **Accumulator constraint**: `(Z(ωx) - Z(x))·(t(x) + β) =
-    ///   selector·h(x)·(t(x) + β) - m(x)` where the selector gates only the
-    ///   input side (`h`); multiplicities are always subtracted so the
-    ///   table-side balance is maintained.
+    /// Produces `2 + k` expressions (where `k = flattened_args.len()`):
+    /// 1. **Boundary**: `(l_0 + l_last) · Z(x) = 0`
+    /// 2. **Helper constraints** (one per flattened arg `i`):
+    ///    `hᵢ(x) · ∏ⱼ(fᵢⱼ(x) + β) = Σⱼ ∏_{k≠j}(fᵢₖ(x) + β)`
+    /// 3. **Accumulator constraint** (shared `m` and `Z`, using sum of all helpers):
+    ///    `active_rows · ((Z(ωx) - Z(x) - s·Σᵢhᵢ(x))·(t(x) + β) + m(x)) = 0`
     #[allow(clippy::too_many_arguments)]
     pub(in crate::plonk) fn expressions<'a>(
         &'a self,
         l_0: F,
         l_last: F,
         l_blind: F,
-        argument: &'a FlattenedArgument<F>,
+        flattened_args: &'a [FlattenedArgument<F>],
         theta: F,
         beta: F,
         advice_evals: &[F],
@@ -373,79 +410,69 @@ impl<F: PrimeField> Evaluated<F> {
         use crate::plonk::circuit::Expression;
 
         let active_rows = F::ONE - (l_last + l_blind);
-        let evaluate_expressions = |expressions: &[Expression<F>]| {
-            expressions
-                .iter()
-                .map(|expression| {
-                    expression.evaluate(
-                        &|scalar| scalar,
-                        &|_| panic!("virtual selectors are removed during optimization"),
-                        &|query| fixed_evals[query.index.unwrap()],
-                        &|query| advice_evals[query.index.unwrap()],
-                        &|query| instance_evals[query.index.unwrap()],
-                        &|challenge| challenges[challenge.index()],
-                        &|a| -a,
-                        &|a, b| a + b,
-                        &|a, b| a * b,
-                        &|a, scalar| a * scalar,
-                    )
-                })
-                .collect::<Vec<_>>()
+
+        let evaluate_expression = move |expression: &Expression<F>| {
+            expression.evaluate(
+                &|scalar| scalar,
+                &|_| panic!("virtual selectors are removed during optimization"),
+                &|query| fixed_evals[query.index.unwrap()],
+                &|query| advice_evals[query.index.unwrap()],
+                &|query| instance_evals[query.index.unwrap()],
+                &|challenge| challenges[challenge.index()],
+                &|a| -a,
+                &|a, b| a + b,
+                &|a, b| a * b,
+                &|a, scalar| a * scalar,
+            )
         };
-        let compress_expressions = |expressions: &[Expression<F>]| {
-            evaluate_expressions(expressions)
-                .iter()
-                .fold(F::ZERO, |acc, eval| acc * theta + eval)
+        let compress_expressions = move |expressions: &[Expression<F>]| {
+            expressions.iter().fold(F::ZERO, |acc, e| acc * theta + evaluate_expression(e))
         };
 
-        let compressed_table = compress_expressions(&argument.table_expressions);
+        // All flattened args share the same selector and table — evaluate once.
+        let first = &flattened_args[0];
+        let compressed_table = compress_expressions(&first.table_expressions);
+        let selector = evaluate_expression(&first.selector);
 
-        let compressed_inputs_with_beta = argument
-            .input_expressions
+        // 1. Boundary: (l_0 + l_last) * Z(x) = 0
+        let boundary = (l_0 + l_last) * self.accumulator_eval;
+
+        // 2. Helper constraints + accumulate s·Σᵢhᵢ for use in the accumulator constraint
+        let mut sum_helpers = F::ZERO;
+        let helper_constraints: Vec<F> = flattened_args
             .iter()
-            .map(|input| {
-                let compressed = compress_expressions(input);
-                compressed + beta
+            .zip(self.helper_evals.iter())
+            .map(|(arg, &helper_eval)| {
+                let compressed_inputs_with_beta: Vec<F> = arg
+                    .input_expressions
+                    .iter()
+                    .map(|input| compress_expressions(input) + beta)
+                    .collect();
+
+                // Helper constraint: h(x) · ∏ⱼ(fⱼ(x) + β) = Σⱼ ∏_{k≠j}(fₖ(x) + β)
+                let product: F = compressed_inputs_with_beta.iter().product();
+                let partial_products: Vec<F> = compressed_inputs_with_beta
+                    .iter()
+                    .map(|f| product * f.invert().unwrap())
+                    .collect();
+                let sum: F = partial_products.iter().sum();
+
+                sum_helpers += selector * helper_eval;
+                helper_eval * product - sum
             })
-            .collect::<Vec<_>>();
-
-        // Helper polynomial constraint: h(x) · ∏ⱼ(fⱼ(x) + β) = Σⱼ ∏_{k≠j}(fₖ(x) + β)
-        // This ensures the helper polynomial has the correct structure for LogUp
-        // soundness. Note: This must hold everywhere (as a polynomial
-        // identity), not just at active rows.
-        let product: F = compressed_inputs_with_beta.iter().product();
-
-        // Compute partial products:
-        // ∏_{k≠j}(fₖ(x) + β) = product / (fⱼ(x) + β)
-        let partial_products: Vec<F> = compressed_inputs_with_beta
-            .iter()
-            .map(|input| product * input.invert().unwrap())
             .collect();
-        let sum: F = partial_products.iter().sum();
-        let helper_expression = || self.helper_eval * product - sum;
 
-        // LogUp accumulator constraint:
-        // Z(ωx)·(t(x) + β) = Z(x) · (t(x) + β) + h(x)) · (t(x) + β) - m(x)
-        // With a selector we exclude the recurring sum new value
-        // Z(ωx)·(t(x) + β) = Z(x) · (t(x) + β) + selector · h(x) · (t(x) + β) - m(x)
-        // Rearranging:
-        // (Z(ωx) - Z(x)) · (t(x) + β) - selector · h(x) · (t(x) + β) + m(x) = 0
-        let selector =
-            evaluate_expressions(std::slice::from_ref(&argument.selector)).swap_remove(0);
-
-        let accumulator_constraint = || {
-            let diff =
-                (self.accumulator_next_eval - self.accumulator_eval - selector * self.helper_eval)
-                    * (compressed_table + beta)
-                    + self.multiplicities_eval;
+        // 3. Accumulator constraint with shared m and Z:
+        // (Z(ωx) - Z(x) - s·Σᵢhᵢ)·(t(x) + β) + m(x) = 0, on active rows
+        let accumulator_constraint = {
+            let diff = (self.accumulator_next_eval - self.accumulator_eval - sum_helpers)
+                * (compressed_table + beta)
+                + self.multiplicities_eval;
             diff * active_rows
         };
 
-        [
-            (l_0 + l_last) * self.accumulator_eval,
-            helper_expression(),
-            accumulator_constraint(),
-        ]
-        .into_iter()
+        std::iter::once(boundary)
+            .chain(helper_constraints)
+            .chain(std::iter::once(accumulator_constraint))
     }
 }

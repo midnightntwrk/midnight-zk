@@ -207,8 +207,8 @@ where
     // Sample theta challenge for keeping lookup columns linearly independent
     let theta: F = transcript.squeeze_challenge();
 
-    // Commit to the multiplicities columns
-    let lookups: Vec<Vec<logup::prover::ComputedMultiplicities<F>>> = instance
+    // Commit to the multiplicities columns (one shared m per BatchedArgument)
+    let lookups: Vec<Vec<logup::prover::BatchComputedMultiplicities<F>>> = instance
         .iter()
         .zip(advice.iter())
         .map(|(instance, advice)| -> Result<Vec<_>, Error> {
@@ -216,9 +216,8 @@ where
                 .cs
                 .lookups
                 .iter()
-                .flat_map(|l| l.split(pk.get_vk().cs().degree()))
-                .map(|logup| {
-                    logup.commit_multiplicities(
+                .map(|batch| {
+                    batch.commit_multiplicities(
                         pk,
                         params,
                         theta,
@@ -259,13 +258,13 @@ where
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    let lookups: Vec<Vec<logup::prover::Committed<F>>> = lookups
+    let lookups: Vec<Vec<logup::prover::BatchCommitted<F>>> = lookups
         .into_iter()
         .map(|lookups| -> Result<Vec<_>, _> {
-            // Construct and commit to products polynomials for each lookup
+            // Construct and commit to helper and accumulator polynomials for each batch
             lookups
                 .into_iter()
-                .map(|lookup| lookup.commit_logderivative(pk, params, beta, &mut rng, transcript))
+                .map(|batch| batch.commit_logderivative(pk, params, beta, &mut rng, transcript))
                 .collect::<Result<Vec<_>, _>>()
         })
         .collect::<Result<Vec<_>, _>>()?;
@@ -404,7 +403,7 @@ where
         .collect::<Result<Vec<_>, _>>()?;
 
     // Evaluate the lookups, if any, at omega^i x.
-    let lookups: Vec<Vec<logup::prover::Evaluated<F>>> = lookups
+    let lookups: Vec<Vec<logup::prover::BatchEvaluated<F>>> = lookups
         .into_iter()
         .map(|lookups| -> Result<Vec<_>, _> {
             lookups
@@ -887,7 +886,7 @@ pub(super) fn compute_queries<
     instance_polys: &'a [Vec<Polynomial<F, Coeff>>],
     advice_polys: &'a [Vec<Polynomial<F, Coeff>>],
     permutations: &'a [permutation::prover::Evaluated<F>],
-    lookups: &'a [Vec<logup::prover::Evaluated<F>>],
+    lookups: &'a [Vec<logup::prover::BatchEvaluated<F>>],
     trashcans: &'a [Vec<trash::prover::Evaluated<F>>],
     x: F,
     linearization_poly: &'a Polynomial<F, Coeff>,

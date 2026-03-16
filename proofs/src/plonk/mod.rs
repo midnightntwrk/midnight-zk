@@ -489,7 +489,7 @@ pub(crate) fn partially_evaluate_identities<'a, F, CS>(
     instance_evals: &'a [Vec<F>],
     advice_evals: &'a [Vec<F>],
     permutation_evals: impl Iterator<Item = &'a Vec<permutation::Evaluated<F>>> + 'a,
-    lookup_evals: impl Iterator<Item = impl Iterator<Item = &'a logup::Evaluated<F>>> + 'a,
+    lookup_evals: impl Iterator<Item = impl Iterator<Item = &'a logup::BatchEvaluated<F>>> + 'a,
     trashcan_evals: impl Iterator<Item = impl Iterator<Item = &'a trash::Evaluated<F>>> + 'a,
     permutations_common: &'a CommonEvaluated<F>,
     x: F,
@@ -511,8 +511,7 @@ where
     let l_blind: F =
         l_evals[1..(1 + blinding_factors)].iter().fold(F::ZERO, |acc, eval| acc + eval);
     let l_0 = l_evals[1 + blinding_factors];
-    let flattened_lookups =
-        vk.cs.lookups.iter().flat_map(|l| l.split(vk.cs().degree())).collect::<Vec<_>>();
+    let cs_degree = vk.cs().degree();
 
     advice_evals
         .iter()
@@ -570,13 +569,14 @@ where
                     )
                     .chain(
                         lookups
-                            .zip(flattened_lookups.iter())
-                            .flat_map(move |(p, argument)| {
+                            .zip(vk.cs.lookups.iter())
+                            .flat_map(move |(p, batch_arg)| {
+                                let flattened = batch_arg.split(cs_degree);
                                 p.expressions(
                                     l_0,
                                     l_last,
                                     l_blind,
-                                    argument,
+                                    &flattened,
                                     theta,
                                     beta,
                                     advice_evals,
@@ -584,6 +584,7 @@ where
                                     instance_evals,
                                     challenges,
                                 )
+                                .collect::<Vec<_>>()
                             })
                             .map(|e| (None, e)),
                     )

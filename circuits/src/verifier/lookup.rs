@@ -26,78 +26,84 @@ use crate::{
     },
 };
 
-/// Commitment to the multiplicity columns, read from the transcript.
+/// Commitment to the multiplicity column for a batch, read from the transcript.
 #[derive(Clone, Debug)]
-pub(crate) struct CommittedMultiplicities<S: SelfEmulation> {
+pub(crate) struct BatchCommittedMultiplicities<S: SelfEmulation> {
     multiplicities: S::AssignedPoint,
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct LookupEvaluated<S: SelfEmulation> {
+pub(crate) struct BatchLookupEvaluated<S: SelfEmulation> {
     pub(crate) multiplicities_eval: AssignedNative<S::F>,
-    pub(crate) helper_eval: AssignedNative<S::F>,
+    pub(crate) helper_evals: Vec<AssignedNative<S::F>>, // one per flattened arg in batch
     pub(crate) accumulator_eval: AssignedNative<S::F>,
     pub(crate) accumulator_next_eval: AssignedNative<S::F>,
 }
 
-/// Commitments to the LogUp polynomials, read from the transcript.
+/// Commitments to the LogUp polynomials for a batch, read from the transcript.
 #[derive(Clone, Debug)]
-pub(crate) struct Committed<S: SelfEmulation> {
+pub(crate) struct BatchCommitted<S: SelfEmulation> {
     multiplicities: S::AssignedPoint,
-    helper_poly: S::AssignedPoint,
+    helper_polys: Vec<S::AssignedPoint>, // one per flattened arg in batch
     accumulator: S::AssignedPoint,
 }
 
 /// Commitments plus evaluations at challenge point.
 #[derive(Clone, Debug)]
-pub(crate) struct Evaluated<S: SelfEmulation> {
-    committed: Committed<S>,
-    pub(crate) evaluated: LookupEvaluated<S>,
+pub(crate) struct BatchEvaluated<S: SelfEmulation> {
+    committed: BatchCommitted<S>,
+    pub(crate) evaluated: BatchLookupEvaluated<S>,
 }
 
-/// Reads the prover's commitments from the transcript.
+/// Reads the prover's multiplicity commitment from the transcript.
 pub(crate) fn read_multiplicities<S: SelfEmulation>(
     layouter: &mut impl Layouter<S::F>,
     transcript_gadget: &mut TranscriptGadget<S>,
-) -> Result<CommittedMultiplicities<S>, Error> {
+) -> Result<BatchCommittedMultiplicities<S>, Error> {
     let multiplicities = transcript_gadget.read_point(layouter)?;
 
-    Ok(CommittedMultiplicities { multiplicities })
+    Ok(BatchCommittedMultiplicities { multiplicities })
 }
 
-impl<S: SelfEmulation> CommittedMultiplicities<S> {
+impl<S: SelfEmulation> BatchCommittedMultiplicities<S> {
     pub(crate) fn read_commitment(
         self,
+        nb_flattened: usize,
         layouter: &mut impl Layouter<S::F>,
         transcript_gadget: &mut TranscriptGadget<S>,
-    ) -> Result<Committed<S>, Error> {
-        let helper_poly = transcript_gadget.read_point(layouter)?;
+    ) -> Result<BatchCommitted<S>, Error> {
+        let helper_polys = (0..nb_flattened)
+            .map(|_| transcript_gadget.read_point(layouter))
+            .collect::<Result<Vec<_>, Error>>()?;
         let accumulator = transcript_gadget.read_point(layouter)?;
 
-        Ok(Committed {
+        Ok(BatchCommitted {
             multiplicities: self.multiplicities,
-            helper_poly,
+            helper_polys,
             accumulator,
         })
     }
 }
 
-impl<S: SelfEmulation> Committed<S> {
+impl<S: SelfEmulation> BatchCommitted<S> {
     pub(crate) fn evaluate(
         self,
         layouter: &mut impl Layouter<S::F>,
         transcript_gadget: &mut TranscriptGadget<S>,
-    ) -> Result<Evaluated<S>, Error> {
+    ) -> Result<BatchEvaluated<S>, Error> {
+        let nb_flattened = self.helper_polys.len();
         let multiplicities_eval = transcript_gadget.read_scalar(layouter)?;
-        let helper_eval = transcript_gadget.read_scalar(layouter)?;
+        let helper_evals = (0..nb_flattened)
+            .map(|_| transcript_gadget.read_scalar(layouter))
+            .collect::<Result<Vec<_>, Error>>()?;
         let accumulator_eval = transcript_gadget.read_scalar(layouter)?;
         let accumulator_next_eval = transcript_gadget.read_scalar(layouter)?;
 
-        Ok(Evaluated {
+        Ok(BatchEvaluated {
             committed: self,
-            evaluated: LookupEvaluated {
+            evaluated: BatchLookupEvaluated {
                 multiplicities_eval,
-                helper_eval,
+                helper_evals,
                 accumulator_eval,
                 accumulator_next_eval,
             },
@@ -107,15 +113,15 @@ impl<S: SelfEmulation> Committed<S> {
 
 // "expressions" is implemented in `expressions/lookup.rs`
 
-impl<S: SelfEmulation> Evaluated<S> {
+impl<S: SelfEmulation> BatchEvaluated<S> {
     pub(crate) fn queries(
         &self,
         one: &AssignedBoundedScalar<S::F>, // 1
         x: &AssignedNative<S::F>,          // evaluation point x
         x_next: &AssignedNative<S::F>,     // ωx
     ) -> Vec<VerifierQuery<S>> {
-        vec![
-            // Open lookup product commitment at x
+        let mut queries = vec![
+            // Open multiplicity commitment at x
             VerifierQuery::new(
                 one,
                 x,
@@ -123,30 +129,35 @@ impl<S: SelfEmulation> Evaluated<S> {
                 &self.committed.multiplicities,
                 &self.evaluated.multiplicities_eval,
             ),
-            // Open lookup input commitments at x
-            VerifierQuery::new(
+        ];
+        // Open each helper poly commitment at x
+        for (h_commit, h_eval) in
+            self.committed.helper_polys.iter().zip(self.evaluated.helper_evals.iter())
+        {
+            queries.push(VerifierQuery::new(
                 one,
                 x,
                 CommitmentLabel::NoLabel,
-                &self.committed.helper_poly,
-                &self.evaluated.helper_eval,
-            ),
-            // Open lookup table commitments at x
-            VerifierQuery::new(
-                one,
-                x,
-                CommitmentLabel::NoLabel,
-                &self.committed.accumulator,
-                &self.evaluated.accumulator_eval,
-            ),
-            // Open lookup product commitment at \omega x
-            VerifierQuery::new(
-                one,
-                x_next,
-                CommitmentLabel::NoLabel,
-                &self.committed.accumulator,
-                &self.evaluated.accumulator_next_eval,
-            ),
-        ]
+                h_commit,
+                h_eval,
+            ));
+        }
+        // Open accumulator commitment at x
+        queries.push(VerifierQuery::new(
+            one,
+            x,
+            CommitmentLabel::NoLabel,
+            &self.committed.accumulator,
+            &self.evaluated.accumulator_eval,
+        ));
+        // Open accumulator commitment at ωx
+        queries.push(VerifierQuery::new(
+            one,
+            x_next,
+            CommitmentLabel::NoLabel,
+            &self.committed.accumulator,
+            &self.evaluated.accumulator_next_eval,
+        ));
+        queries
     }
 }

@@ -127,7 +127,7 @@ where
     let theta: F = transcript.squeeze_challenge();
 
     // Commit to the multiplicities columns
-    let lookups: Vec<Vec<logup::prover::ComputedMultiplicities<F>>> = {
+    let lookups: Vec<Vec<logup::prover::BatchComputedMultiplicities<F>>> = {
         group.bench_function("Commit lookup multiplicities", |b| {
             b.iter_batched(
                 || transcript.clone(),
@@ -140,9 +140,8 @@ where
                                 .cs
                                 .lookups
                                 .iter()
-                                .flat_map(|l| l.split(pk.get_vk().cs().degree()))
-                                .map(|logup| {
-                                    logup.commit_multiplicities(
+                                .map(|batch| {
+                                    batch.commit_multiplicities(
                                         pk,
                                         params,
                                         theta,
@@ -168,9 +167,8 @@ where
                     .cs
                     .lookups
                     .iter()
-                    .flat_map(|l| l.split(pk.get_vk().cs().degree()))
-                    .map(|logup| {
-                        logup.commit_multiplicities(
+                    .map(|batch| {
+                        batch.commit_multiplicities(
                             pk,
                             params,
                             theta,
@@ -241,7 +239,7 @@ where
     };
 
     // Construct and commit to lookup product polynomials
-    let lookups: Vec<Vec<logup::prover::Committed<F>>> = {
+    let lookups: Vec<Vec<logup::prover::BatchCommitted<F>>> = {
         group.bench_function("Commit lookup products", |b| {
             b.iter_batched(
                 || (transcript.clone(), lookups.clone()),
@@ -252,8 +250,8 @@ where
                             // Construct and commit to products polynomials for each lookup
                             lookups
                                 .into_iter()
-                                .map(|lookup| {
-                                    lookup.commit_logderivative(pk, params, beta, &mut rng, &mut t)
+                                .map(|batch| {
+                                    batch.commit_logderivative(pk, params, beta, &mut rng, &mut t)
                                 })
                                 .collect::<Result<Vec<_>, _>>()
                         })
@@ -268,8 +266,8 @@ where
                 // Construct and commit to products polynomials for each lookup
                 lookups
                     .into_iter()
-                    .map(|lookup| {
-                        lookup.commit_logderivative(pk, params, beta, &mut rng, transcript)
+                    .map(|batch| {
+                        batch.commit_logderivative(pk, params, beta, &mut rng, transcript)
                     })
                     .collect::<Result<Vec<_>, _>>()
             })
@@ -495,7 +493,7 @@ where
         .collect::<Result<Vec<_>, _>>()?;
 
     // Evaluate the lookups, if any, at omega^i x.
-    let lookups: Vec<Vec<logup::prover::Evaluated<F>>> = lookups
+    let lookups: Vec<Vec<logup::prover::BatchEvaluated<F>>> = lookups
         .into_iter()
         .map(|lookups| -> Result<Vec<_>, _> {
             lookups
