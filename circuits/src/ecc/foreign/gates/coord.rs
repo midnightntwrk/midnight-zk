@@ -64,25 +64,25 @@ impl<C: CircuitCurve> CoordConfig<C> {
         let bs = P::base_powers();
         let bs_sqrd = P::double_base_powers();
 
-        // Let a := 1 + sum_i B^i * a_i
-        //     b := 1 + sum_i B^i * b_i
-        //     c := 1 + sum_i B^i * c_i
+        // Let x := 1 + sum_i B^i * x_i
+        //     y := 1 + sum_i B^i * y_i
         //     z := 1 + sum_i B^i * z_i
+        //     w := 1 + sum_i B^i * w_i
         //
         // Let m denote the foreign modulus. Define:
-        //      sum_a := sum_i (B^i % m) * a_i
-        //      sum_b := sum_i (B^i % m) * b_i
-        //      sum_c := sum_i (B^i % m) * c_i
+        //      sum_x := sum_i (B^i % m) * x_i
+        //      sum_y := sum_i (B^i % m) * y_i
         //      sum_z := sum_i (B^i % m) * z_i
-        //      sum_az := sum_i sum_j (B^{i+j} % m) * a_i * z_j
+        //      sum_w := sum_i (B^i % m) * w_i
+        //      sum_xw := sum_i sum_j (B^{i+j} % m) * x_i * w_j
         //
         // This custom gate enforces the constraint:
         //
-        // a * (1 + z) = b + c    (mod m)
+        // x * (1 + w) = y + z    (mod m)
         // <=>
-        // (1 + sum_a) * (2 + sum_z) = 2 + sum_b + sum_c    (mod m)
+        // (1 + sum_x) * (2 + sum_w) = 2 + sum_y + sum_z    (mod m)
         // <=>
-        // 2 * sum_a + sum_z + sum_az - sum_b - sum_c  = k * m    (over the integers)
+        // 2 * sum_x + sum_w + sum_xw - sum_y - sum_z  = k * m    (over the integers)
         // <=>
         // LHS = k * m   (over the integers)
         //
@@ -99,7 +99,7 @@ impl<C: CircuitCurve> CoordConfig<C> {
         let max_sum = sum_bigints(&bs, &limbs_max);
         let max_sum_sqrd = sum_bigints(&bs_sqrd, &limbs_max_sqrd);
 
-        // 2 * sum_a + sum_z + sum_az - sum_b - sum_c
+        // 2 * sum_x + sum_w + sum_xw - sum_y - sum_z
         let expr_min = -(BI::from(2) * max_sum.clone());
         let expr_max = BI::from(3) * max_sum + max_sum_sqrd;
         let expr_bounds = (expr_min, expr_max);
@@ -141,27 +141,27 @@ impl<C: CircuitCurve> CoordConfig<C> {
         let q = meta.selector();
 
         // The layout is in three rows:
-        // | a_0 ... a_k | z_0    ... z_k |
-        // | b_0 ... b_k |                |  <-- selector enabled here
-        // | c_0 ... c_k | u v_0  ... v_l |
+        // | x_0 ... x_k | w_0    ... w_k |
+        // | y_0 ... y_k |                |  <-- selector enabled here
+        // | z_0 ... z_k | u v_0  ... v_l |
 
         meta.create_gate("Foreign-Edwards coord", |meta| {
-            let a_limbs = get_advice_vec(meta, &field_chip_config.x_cols, Rotation::prev());
-            let b_limbs = get_advice_vec(meta, &field_chip_config.x_cols, Rotation::cur());
-            let c_limbs = get_advice_vec(meta, &field_chip_config.x_cols, Rotation::next());
-            let z_limbs = get_advice_vec(meta, &field_chip_config.z_cols, Rotation::prev());
+            let x_limbs = get_advice_vec(meta, &field_chip_config.x_cols, Rotation::prev());
+            let y_limbs = get_advice_vec(meta, &field_chip_config.x_cols, Rotation::cur());
+            let z_limbs = get_advice_vec(meta, &field_chip_config.x_cols, Rotation::next());
+            let w_limbs = get_advice_vec(meta, &field_chip_config.z_cols, Rotation::prev());
             let u = meta.query_advice(field_chip_config.u_col, Rotation::next());
             let vs = get_advice_vec(meta, &field_chip_config.v_cols, Rotation::next());
 
-            let az_limbs = pair_wise_prod(&a_limbs, &z_limbs);
+            let xw_limbs = pair_wise_prod(&x_limbs, &w_limbs);
 
-            // 2 * sum_a + sum_z + sum_az - sum_b - sum_c  = (u + k_min) * m
+            // 2 * sum_x + sum_w + sum_xw - sum_y - sum_z  = (u + k_min) * m
             let two = Expression::from(2);
-            let native_id = &two * sum_exprs::<F>(&bs, &a_limbs)
-                + sum_exprs::<F>(&bs, &z_limbs)
-                + sum_exprs::<F>(&bs_sqrd, &az_limbs)
-                - sum_exprs::<F>(&bs, &b_limbs)
-                - sum_exprs::<F>(&bs, &c_limbs)
+            let native_id = &two * sum_exprs::<F>(&bs, &x_limbs)
+                + sum_exprs::<F>(&bs, &w_limbs)
+                + sum_exprs::<F>(&bs_sqrd, &xw_limbs)
+                - sum_exprs::<F>(&bs, &y_limbs)
+                - sum_exprs::<F>(&bs, &z_limbs)
                 - (&u + Expression::Constant(bigint_to_fe::<F>(&k_min)))
                     * Expression::Constant(bigint_to_fe::<F>(m));
 
@@ -174,13 +174,13 @@ impl<C: CircuitCurve> CoordConfig<C> {
                     let bs_sqrd_mj = bs_sqrd.iter().map(|b| b.rem(mj)).collect::<Vec<_>>();
                     let (lj_min, _) = vj_bounds;
 
-                    // 2 * sum_a_mj + sum_z_mj + sum_az_mj - sum_b_mj - sum_c_mj
+                    // 2 * sum_x_mj + sum_w_mj + sum_xw_mj - sum_y_mj - sum_z_mj
                     // - u * (m % mj) - (k_min * m) % mj - (vj + lj_min) * mj = 0
-                    &two * sum_exprs::<F>(&bs_mj, &a_limbs)
-                        + sum_exprs::<F>(&bs_mj, &z_limbs)
-                        + sum_exprs::<F>(&bs_sqrd_mj, &az_limbs)
-                        - sum_exprs::<F>(&bs_mj, &b_limbs)
-                        - sum_exprs::<F>(&bs_mj, &c_limbs)
+                    &two * sum_exprs::<F>(&bs_mj, &x_limbs)
+                        + sum_exprs::<F>(&bs_mj, &w_limbs)
+                        + sum_exprs::<F>(&bs_sqrd_mj, &xw_limbs)
+                        - sum_exprs::<F>(&bs_mj, &y_limbs)
+                        - sum_exprs::<F>(&bs_mj, &z_limbs)
                         - &u * Expression::Constant(bigint_to_fe::<F>(&urem(m, mj)))
                         - Expression::Constant(bigint_to_fe::<F>(&urem(&(&k_min * m), mj)))
                         - (vj + Expression::Constant(bigint_to_fe::<F>(lj_min)))
@@ -202,14 +202,14 @@ impl<C: CircuitCurve> CoordConfig<C> {
     }
 }
 
-/// Asserts that `a * (1 + z) = b + c`.
+/// Asserts that `x * (1 + w) = y + z`.
 #[allow(clippy::type_complexity)]
 pub fn assert_coord<F, C, P, N>(
     layouter: &mut impl Layouter<F>,
-    a: &AssignedField<F, C::Base, P>,
-    b: &AssignedField<F, C::Base, P>,
-    c: &AssignedField<F, C::Base, P>,
+    x: &AssignedField<F, C::Base, P>,
+    y: &AssignedField<F, C::Base, P>,
     z: &AssignedField<F, C::Base, P>,
+    w: &AssignedField<F, C::Base, P>,
     base_chip: &FieldChip<F, C::Base, P, N>,
     coord_config: &CoordConfig<C>,
 ) -> Result<(), Error>
@@ -225,28 +225,28 @@ where
     let bs_sqrd = P::double_base_powers();
     let field_chip_config = base_chip.config();
 
-    let a_norm = &base_chip.normalize(layouter, a)?;
-    let b_norm = &base_chip.normalize(layouter, b)?;
-    let c_norm = &base_chip.normalize(layouter, c)?;
+    let x_norm = &base_chip.normalize(layouter, x)?;
+    let y_norm = &base_chip.normalize(layouter, y)?;
     let z_norm = &base_chip.normalize(layouter, z)?;
+    let w_norm = &base_chip.normalize(layouter, w)?;
 
     let range_checks = layouter.assign_region(
         || "Foreign-Edwards coord",
         |mut region| {
-            let as_val = a_norm.bigint_limbs();
-            let bs_val = b_norm.bigint_limbs();
-            let cs_val = c_norm.bigint_limbs();
+            let xs_val = x_norm.bigint_limbs();
+            let ys_val = y_norm.bigint_limbs();
             let zs_val = z_norm.bigint_limbs();
-            let az_val = as_val.clone().zip(zs_val.clone()).map(|(a, z)| pair_wise_prod(&a, &z));
+            let ws_val = w_norm.bigint_limbs();
+            let xw_val = xs_val.clone().zip(ws_val.clone()).map(|(x, w)| pair_wise_prod(&x, &w));
 
             let (k_min, u_max) = coord_config.u_bounds.clone();
 
-            // 2 * sum_a + sum_z + sum_az - sum_b - sum_c  = (u + k_min) * m
-            let expr = as_val.clone().map(|v| BI::from(2) * sum_bigints(&bs, &v))
-                + zs_val.clone().map(|v| sum_bigints(&bs, &v))
-                + az_val.clone().map(|v| sum_bigints(&bs_sqrd, &v))
-                - bs_val.clone().map(|v| sum_bigints(&bs, &v))
-                - cs_val.clone().map(|v| sum_bigints(&bs, &v));
+            // 2 * sum_x + sum_w + sum_xw - sum_y - sum_z  = (u + k_min) * m
+            let expr = xs_val.clone().map(|v| BI::from(2) * sum_bigints(&bs, &v))
+                + ws_val.clone().map(|v| sum_bigints(&bs, &v))
+                + xw_val.clone().map(|v| sum_bigints(&bs_sqrd, &v))
+                - ys_val.clone().map(|v| sum_bigints(&bs, &v))
+                - zs_val.clone().map(|v| sum_bigints(&bs, &v));
 
             let u = expr.map(|e| compute_u(m, &e, (&k_min, &u_max), Value::unknown()));
 
@@ -256,45 +256,45 @@ where
                     let bs_sqrd_mj = bs_sqrd.iter().map(|b| b.rem(mj)).collect::<Vec<_>>();
                     let (lj_min, vj_max) = vj_bounds.clone();
 
-                    // 2 * sum_a_mj + sum_z_mj + sum_az_mj - sum_b_mj - sum_c_mj
+                    // 2 * sum_x_mj + sum_w_mj + sum_xw_mj - sum_y_mj - sum_z_mj
                     // - u * (m % mj) - (k_min * m) % mj - (vj + lj_min) * mj = 0
-                    let expr_mj = as_val.clone().map(|v| BI::from(2) * sum_bigints(&bs_mj, &v))
-                        + zs_val.clone().map(|v| sum_bigints(&bs_mj, &v))
-                        + az_val.clone().map(|v| sum_bigints(&bs_sqrd_mj, &v))
-                        - bs_val.clone().map(|v| sum_bigints(&bs_mj, &v))
-                        - cs_val.clone().map(|v| sum_bigints(&bs_mj, &v));
+                    let expr_mj = xs_val.clone().map(|v| BI::from(2) * sum_bigints(&bs_mj, &v))
+                        + ws_val.clone().map(|v| sum_bigints(&bs_mj, &v))
+                        + xw_val.clone().map(|v| sum_bigints(&bs_sqrd_mj, &v))
+                        - ys_val.clone().map(|v| sum_bigints(&bs_mj, &v))
+                        - zs_val.clone().map(|v| sum_bigints(&bs_mj, &v));
 
                     expr_mj.zip(u.clone()).map(|(e, u)| {
                         compute_vj(m, mj, &e, &u, &k_min, (&lj_min, &vj_max), Value::unknown())
                     })
                 });
 
-            let a_limbs = a_norm.limb_values();
-            let b_limbs = b_norm.limb_values();
-            let c_limbs = c_norm.limb_values();
+            let x_limbs = x_norm.limb_values();
+            let y_limbs = y_norm.limb_values();
             let z_limbs = z_norm.limb_values();
+            let w_limbs = w_norm.limb_values();
 
             // The layout is in three rows:
-            // | a_0 ... a_k | z_0    ... z_k |
-            // | b_0 ... b_k |                |  <-- selector enabled here
-            // | c_0 ... c_k | u v_0  ... v_l |
+            // | x_0 ... x_k | w_0    ... w_k |
+            // | y_0 ... y_k |                |  <-- selector enabled here
+            // | z_0 ... z_k | u v_0  ... v_l |
 
             let mut offset = 0;
 
             // 1st row
-            a_limbs
+            x_limbs
                 .iter()
                 .zip(field_chip_config.x_cols.iter())
                 .map(|(cell, &col)| {
-                    cell.copy_advice(|| "Edwards.coord a", &mut region, col, offset)
+                    cell.copy_advice(|| "Edwards.coord x", &mut region, col, offset)
                 })
                 .collect::<Result<Vec<_>, _>>()?;
 
-            z_limbs
+            w_limbs
                 .iter()
                 .zip(field_chip_config.z_cols.iter())
                 .map(|(cell, &col)| {
-                    cell.copy_advice(|| "Edwards.coord z", &mut region, col, offset)
+                    cell.copy_advice(|| "Edwards.coord w", &mut region, col, offset)
                 })
                 .collect::<Result<Vec<_>, _>>()?;
 
@@ -304,22 +304,22 @@ where
             // Activate selector on middle row of this region
             coord_config.q.enable(&mut region, offset)?;
 
-            b_limbs
+            y_limbs
                 .iter()
                 .zip(field_chip_config.x_cols.iter())
                 .map(|(cell, &col)| {
-                    cell.copy_advice(|| "Edwards.coord b", &mut region, col, offset)
+                    cell.copy_advice(|| "Edwards.coord y", &mut region, col, offset)
                 })
                 .collect::<Result<Vec<_>, _>>()?;
 
             offset += 1;
 
             // 3rd row
-            c_limbs
+            z_limbs
                 .iter()
                 .zip(field_chip_config.x_cols.iter())
                 .map(|(cell, &col)| {
-                    cell.copy_advice(|| "Edwards.coord c", &mut region, col, offset)
+                    cell.copy_advice(|| "Edwards.coord z", &mut region, col, offset)
                 })
                 .collect::<Result<Vec<_>, _>>()?;
 
