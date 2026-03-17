@@ -64,6 +64,16 @@ impl<C: CircuitCurve> CoordConfig<C> {
         let bs = P::base_powers();
         let bs_sqrd = P::double_base_powers();
 
+        // The equation of this custom gate is:
+        // x * (1 + w) = y + z
+        //
+        // It models the coordinates of the complete addition formula
+        // on twisted Edwards curves:
+        // (Rx,Ry) = (Px,Py) + (Qx,Qy)
+        // <=>
+        // Rx * (1 + d * Px * Py * Qx * Qy) = Px * Qy +     Py * Qx
+        // Ry * (1 - d * Px * Py * Qx * Qy) = Py * Qy - a * Px * Qx
+        //
         // Let x := 1 + sum_i B^i * x_i
         //     y := 1 + sum_i B^i * y_i
         //     z := 1 + sum_i B^i * z_i
@@ -203,6 +213,14 @@ impl<C: CircuitCurve> CoordConfig<C> {
 }
 
 /// Asserts that `x * (1 + w) = y + z`.
+///
+/// This identity models both coordinates of the complete addition formula on
+/// twisted Edwards curves:  
+/// `(Rx,Ry) = (Px,Py) + (Qx,Qy)`  
+/// `<=>`  
+/// `Rx * (1 + d * Px * Py * Qx * Qy) = Px * Qy + Py * Qx`  
+/// and  
+/// `Ry * (1 - d * Px * Py * Qx * Qy) = Py * Qy - a * Px * Qx`.
 #[allow(clippy::type_complexity)]
 pub fn assert_coord<F, C, P, N>(
     layouter: &mut impl Layouter<F>,
