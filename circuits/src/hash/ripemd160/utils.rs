@@ -1,4 +1,4 @@
-pub(crate) use crate::hash::sha256::utils::{
+pub(crate) use crate::hash::util::{
     expr_pow2_ip, expr_pow4_ip, get_even_and_odd_bits, negate_spreaded, spread, u32_in_be_limbs,
     MASK_EVN_64,
 };
@@ -80,20 +80,8 @@ pub(super) fn limb_coeffs(rot: u8) -> ([u32; NUM_LIMBS], [u32; NUM_LIMBS]) {
 /// lengths in big-endian order. It is slightly different from
 /// [`u32_in_be_limbs`], especially when some limb lengths are zero.
 pub(super) fn limb_values(value: u32, rot: u8) -> [u32; NUM_LIMBS] {
-    let (limb_lengths, _) = limb_lengths(rot);
-
-    let mut result = [0u32; NUM_LIMBS];
-    let mut shift = WORD;
-
-    for (i, &len) in limb_lengths.iter().enumerate() {
-        if len == 0 {
-            result[i] = 0;
-        } else {
-            shift -= len;
-            result[i] = (value >> shift) & ((1 << len) - 1);
-        }
-    }
-    result
+    let (lengths, _) = limb_lengths(rot);
+    u32_in_be_limbs(value, lengths)
 }
 
 /// Generates the plain-spreaded lookup table. The limb lengths to be looked up
