@@ -9,7 +9,7 @@ use ff::{Field, FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
 #[cfg(not(feature = "single-h-commitment"))]
 use rand_core::OsRng;
 use rand_core::{CryptoRng, RngCore};
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
 use super::{
     circuit::{
@@ -310,7 +310,7 @@ where
         .into_iter()
         .map(|a| {
             a.advice_polys
-                .into_iter()
+                .into_par_iter()
                 .map(|p| domain.lagrange_to_coeff(p))
                 .collect::<Vec<_>>()
         })
