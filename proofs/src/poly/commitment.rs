@@ -95,7 +95,7 @@ pub trait Guard<F: PrimeField, CS: PolynomialCommitmentScheme<F>>: Sized {
 }
 
 /// Interface for PCS params
-pub trait Params {
+pub trait Params: Send + Sync {
     /// Returns the size of the Lagrange basis, expressed as the exponent `k`
     /// such that the Lagrange domain has `2^k` elements. This equals the
     /// circuit domain size and is used by keygen to validate the SRS.
