@@ -9,6 +9,7 @@ use ff::{Field, FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
 #[cfg(not(feature = "single-h-commitment"))]
 use rand_core::OsRng;
 use rand_core::{CryptoRng, RngCore};
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use super::{
     circuit::{
@@ -751,7 +752,7 @@ pub(super) fn compute_nu_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommit
         .iter()
         .map(|advice_polys| {
             advice_polys
-                .iter()
+                .par_iter()
                 .map(|poly| pk.vk.get_domain().coeff_to_extended(poly.clone()))
                 .collect()
         })
@@ -760,7 +761,7 @@ pub(super) fn compute_nu_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommit
         .iter()
         .map(|instance_polys| {
             instance_polys
-                .iter()
+                .par_iter()
                 .map(|poly| pk.vk.get_domain().coeff_to_extended(poly.clone()))
                 .collect()
         })
