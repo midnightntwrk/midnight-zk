@@ -272,7 +272,10 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
             inner_vk: inner_vk.clone(),
             aggregator_vk,
             aggregator_pk,
-            lagrange_commitments: srs.g_lagrange()[..(nb_coms_per_proof * NB_PROOFS)].to_vec(),
+            lagrange_commitments: srs.g_lagrange()[..(nb_coms_per_proof * NB_PROOFS)]
+                .iter()
+                .map(|p| (*p).into())
+                .collect(),
         })
     }
 
