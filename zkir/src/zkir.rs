@@ -4,7 +4,6 @@ use bincode::{Decode, Encode};
 use midnight_proofs::{
     circuit::{Layouter, Value},
     dev::cost_model::dummy_synthesize_run,
-    plonk,
 };
 use midnight_zk_stdlib::{MidnightCircuit, Relation, ZkStdLib, ZkStdLibArch};
 use serde::{Deserialize, Serialize};
@@ -81,15 +80,14 @@ impl Relation for ZkirRelation {
 
     type Witness = HashMap<&'static str, IrValue>;
 
-    type Error = plonk::Error;
+    type Error = Error;
 
-    fn format_instance(instance: &Self::Instance) -> Result<Vec<F>, plonk::Error> {
+    fn format_instance(instance: &Self::Instance) -> Result<Vec<F>, Error> {
         instance
             .iter()
             .map(|(v, t)| CircuitValue::as_public_input(v, *t))
             .collect::<Result<Vec<_>, Error>>()
             .map(|vec| vec.concat())
-            .map_err(|_| plonk::Error::InvalidInstances)
     }
 
     fn circuit(
@@ -98,7 +96,7 @@ impl Relation for ZkirRelation {
         layouter: &mut impl Layouter<F>,
         _instance: Value<Self::Instance>,
         witness: Value<Self::Witness>,
-    ) -> Result<(), plonk::Error> {
+    ) -> Result<(), Error> {
         let mut parser = parser::incircuit::Parser::new(witness);
 
         for instruction in self.program.instructions.iter() {
