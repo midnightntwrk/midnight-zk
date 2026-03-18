@@ -32,8 +32,16 @@ use crate::{
 /// over this type. As a result of this alignment, the data may contain filler
 /// values before and after the effective payload. The padding in front of
 /// the payload will always be 0 mod A, so that the payload begins aligned in A
-/// sized chunks. The padding at the end of the payload will be have a size in
+/// sized chunks. The padding at the end of the payload will have a size in
 /// [0, A) such that | front_pad | + | payload | + | back_pad | = M.
+///
+/// **Invariant: `M` must be a multiple of `A`** (and `A > 0`, `M >= A`).
+/// Several operations (`padding_flag`, `get_limits`, hashing, …) rely on this
+/// to guarantee that the buffer decomposes into exactly `M / A` full chunks
+/// and that a full-capacity vector (`len == M`) can always be placed without
+/// overflow. This is enforced by the entry points
+/// [`assign_with_filler`](`VectorInstructions::assign_with_filler`) and
+/// [`assign`](`AssignmentInstructions::assign`).
 #[derive(Clone, Debug)]
 pub struct AssignedVector<F: CircuitField, T: Vectorizable, const M: usize, const A: usize> {
     /// Padded payload of the vector.

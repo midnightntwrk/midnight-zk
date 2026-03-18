@@ -1,0 +1,4 @@
+# Indefinite form (0x80), forbidden in DER
+80
+# Long form indicator with no following bytes
+82

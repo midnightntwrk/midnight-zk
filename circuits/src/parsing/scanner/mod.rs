@@ -24,14 +24,19 @@
 //!   dynamic lookup argument. Calls are deferred and batched at the end of
 //!   circuit synthesis for efficiency. See the `substring` module for details.
 
+/// ASN.1 DER encoding helpers, structure types, and circuit-level
+/// tag/length interpretation functions.
+pub mod asn1;
 pub(crate) mod automaton;
 mod automaton_chip;
 /// A module to specify languages as regular expressions and convert them into
 /// finite automata.
 pub mod regex;
 mod serialization;
-pub(crate) mod static_specs;
+pub mod static_specs;
 mod substring;
+mod substring_varlen;
+pub(crate) mod varlen;
 
 use std::{
     cell::RefCell,
@@ -47,7 +52,16 @@ use midnight_proofs::{
 };
 use regex::Regex;
 use rustc_hash::FxHashMap;
-pub use static_specs::{spec_library, StdLibParser};
+pub use static_specs::StdLibParser;
+
+/// A test vector pairing an input with expected marker-grouped outputs.
+#[cfg(test)]
+pub(crate) type MarkerTestVector<'a> = (&'a [u8], &'a [(usize, &'a [u8])]);
+
+/// A test vector pairing an input with the expected raw output sequence.
+#[cfg(test)]
+pub(crate) type OutputTestVector<'a> = (&'a [u8], &'a [usize]);
+
 #[cfg(test)]
 use {
     crate::field::decomposition::chip::P2RDecompositionConfig,
@@ -56,8 +70,12 @@ use {
 };
 
 use crate::{
-    field::{decomposition::chip::P2RDecompositionChip, AssignedNative, NativeChip, NativeGadget},
+    field::{
+        decomposition::chip::P2RDecompositionChip, native::AssignedBit, AssignedNative, NativeChip,
+        NativeGadget,
+    },
     utils::ComposableChip,
+    vec::vector_gadget::VectorGadget,
     CircuitField,
 };
 
@@ -134,12 +152,28 @@ where
                 .collect();
             transitions.insert(F::from(source as u64), native_inner);
         }
+
+        let initial_state = F::from(value.initial_state as u64);
+        let final_states: BTreeSet<F> =
+            (value.final_states.iter()).map(|s| F::from(*s as u64)).collect();
+
+        // Self-loop transitions on the filler letter (ALPHABET_MAX_SIZE) for
+        // the initial and final states. These allow `parse_varlen` to skip
+        // filler elements in [`ScannerVec`] buffers, and are also loaded into
+        // the fixed lookup table unconditionally.
+        let filler = F::from(ALPHABET_MAX_SIZE as u64);
+        transitions
+            .entry(initial_state)
+            .or_default()
+            .insert(filler, (initial_state, F::ZERO));
+        for &state in &final_states {
+            transitions.entry(state).or_default().insert(filler, (state, F::ZERO));
+        }
+
         NativeAutomaton {
             nb_states: value.nb_states,
-            initial_state: F::from(value.initial_state as u64),
-            final_states: (value.final_states.iter())
-                .map(|s| F::from(*s as u64))
-                .collect::<BTreeSet<_>>(),
+            initial_state,
+            final_states,
             transitions,
         }
     }
@@ -201,14 +235,39 @@ impl From<Regex> for AutomatonParser {
 /// A static library of serialised automata for parsing common regexes. The
 /// automaton states start from 0 and may overlap one with each other.
 type ParsingLibrary = FxHashMap<StdLibParser, Automaton>;
-/// Set of automata (with offset states) called by `parse`.
+/// Set of automata (with offset states) called by [`ScannerChip::parse`] or
+/// [`ScannerChip::parse_varlen`].
 type AutomatonCache<F> = FxHashMap<AutomatonParser, NativeAutomaton<F>>;
 /// A sequence of assigned elements.
 type Sequence<F> = Vec<AssignedNative<F>>;
-/// Cache of assigned sequences passed as arguments to `check_subsequence`. Each
-/// sequence is mapped to the list of `(idx, sub)` pairs it was called with.
-/// Also stores the cumulative length of all `sub` associateed to this key.
-type SequenceCache<F> = FxHashMap<Sequence<F>, (Vec<(AssignedNative<F>, Sequence<F>)>, usize)>;
+
+/// Optional per-element padding flags for variable-length subs. When present,
+/// filler positions (flag = true) are masked to zero during packing.
+type PaddingFlags<F> = Option<Vec<AssignedBit<F>>>;
+
+/// A cached sub entry: (idx, index offsets, sub content, padding flags).
+/// Index offsets are additional `(coefficient, value)` terms folded into the
+/// packing linear combination alongside `idx`, saving a dedicated row per sub.
+type CachedSub<F> = (
+    AssignedNative<F>,
+    Vec<(F, AssignedNative<F>)>,
+    Sequence<F>,
+    PaddingFlags<F>,
+);
+
+/// Cache of assigned sequences passed as arguments to `check_subsequence` or
+/// `check_subsequence_varlen`. Each sequence (keyed by its cells) is mapped to
+/// the list of sub entries and the cumulative sub length.
+///
+/// **Cell-identity assumption**: the cache key is based on
+/// [`AssignedCell`](`midnight_proofs::circuit::AssignedCell`) identity (column
+/// and row), not on the cell's value. This means two sequences holding the same
+/// byte values but assigned at different circuit positions are distinct cache
+/// entries. Conversely, any construction that reuses the *same* cells (e.g. a
+/// zero-cost wrapper around an existing buffer) would share the entry. Callers
+/// that introduce new ways to build sequences must ensure fresh cells are
+/// produced if a distinct cache entry is intended.
+type SequenceCache<F> = FxHashMap<Sequence<F>, (Vec<CachedSub<F>>, usize)>;
 
 /// Scanner gate configuration.
 #[derive(Clone, Debug)]
@@ -241,6 +300,7 @@ where
 {
     config: ScannerConfig,
     native_gadget: NG<F>,
+    vector_gadget: VectorGadget<F>,
 
     /// Unified cache of all resolved automata (both static library and dynamic
     /// regexes), with their states already offset. Populated on demand by
@@ -287,6 +347,7 @@ where
     fn new(config: &ScannerConfig, deps: &Self::InstructionDeps) -> Self {
         Self {
             config: config.clone(),
+            vector_gadget: VectorGadget::new(deps),
             native_gadget: deps.clone(),
             automaton_cache: Rc::new(RefCell::new(FxHashMap::default())),
             max_state: Rc::new(RefCell::new(1)),

@@ -29,6 +29,10 @@ use crate::{
     CircuitField,
 };
 
+/// Indicator of the number of filler elements at the beginning and end of an
+/// assigned vector's buffer, as returned by `get_limits`.
+pub type VectorBounds<F> = (AssignedNative<F>, AssignedNative<F>);
+
 /// Instructions for Vector manipulation..
 pub trait VectorInstructions<F, T, const M: usize, const A: usize>
 where
@@ -75,16 +79,18 @@ where
 
     /// Returns a vector of AssignedBits signaling the cells that represent
     /// padding with a 1, and the ones that represent payload data with a 0.
+    /// Also returns the (start, end) limits of the data in the buffer, since
+    /// they are computed internally.
     fn padding_flag(
         &self,
         layouter: &mut impl Layouter<F>,
         input: &AssignedVector<F, T, M, A>,
-    ) -> Result<[AssignedBit<F>; M], Error>;
+    ) -> Result<([AssignedBit<F>; M], VectorBounds<F>), Error>;
 
     /// Returns the first and last positions of data in the buffer.
     fn get_limits(
         &self,
         layouter: &mut impl Layouter<F>,
         input: &AssignedVector<F, T, M, A>,
-    ) -> Result<(AssignedNative<F>, AssignedNative<F>), Error>;
+    ) -> Result<VectorBounds<F>, Error>;
 }

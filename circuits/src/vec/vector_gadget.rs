@@ -97,10 +97,18 @@ where
         value: Value<Vec<T::Element>>,
         filler: Option<T::Element>,
     ) -> Result<AssignedVector<F, T, M, A>, Error> {
+        assert!(M >= A, "AssignedVector requires M >= A (got M={M}, A={A})");
+        assert!(A > 0, "AssignedVector requires A positive (A={A})");
+        assert!(
+            M.is_multiple_of(A),
+            "AssignedVector requires M % A == 0 (got M={M}, A={A})"
+        );
         let ng = &self.native_gadget;
         let filler = filler.unwrap_or(T::FILLER);
         let (data_val, len_val) = value
             .map(|v| {
+                // `v` needs to be at most `M - M % A`, i.e., `M` since we require above that it
+                // is a multiple of `A`.
                 assert!(v.len() <= M);
                 let len = F::from(v.len() as u64);
                 let mut buffer = [filler; M];
@@ -121,28 +129,30 @@ where
         &self,
         layouter: &mut impl Layouter<F>,
         input: &AssignedVector<F, T, M, A>,
-    ) -> Result<[AssignedBit<F>; M], Error> {
+    ) -> Result<([AssignedBit<F>; M], (AssignedNative<F>, AssignedNative<F>)), Error> {
         let ng = &self.native_gadget;
-        let (start, end) = self.get_limits(layouter, input)?;
+        let limits = self.get_limits(layouter, input)?;
+        let (start, end) = &limits;
         let mut is_data: AssignedBit<F> = ng.assign_fixed(layouter, true)?;
 
-        let result = (0..M - A)
+        let result = (0..M - A + 1)
             .map(|i| {
-                let is_start = ng.is_equal_to_fixed(layouter, &start, F::from(i as u64))?;
+                let is_start = ng.is_equal_to_fixed(layouter, start, F::from(i as u64))?;
                 is_data = ng.xor(layouter, &[is_data.clone(), is_start])?;
                 Ok(is_data.clone())
             })
             .collect::<Result<Vec<_>, Error>>()?;
 
-        let last_chunk = (M - A..M)
+        let last_chunk = (M - A + 1..M)
             .map(|i| {
-                let is_end = ng.is_equal_to_fixed(layouter, &end, F::from(i as u64))?;
+                let is_end = ng.is_equal_to_fixed(layouter, end, F::from(i as u64))?;
                 is_data = ng.xor(layouter, &[is_data.clone(), is_end])?;
                 Ok(is_data.clone())
             })
             .collect::<Result<Vec<_>, Error>>()?;
 
-        Ok([result, last_chunk].concat().try_into().expect("Mismatch in vector lengths"))
+        let flags = [result, last_chunk].concat().try_into().expect("Mismatch in vector lengths");
+        Ok((flags, limits))
     }
 
     fn get_limits(
@@ -284,6 +294,7 @@ where
         // Check all data values are equal.
         let val_checks = self
             .padding_flag(layouter, x)?
+            .0
             .into_iter()
             .zip(x.buffer.iter().zip(y.buffer.iter()))
             .map(|(is_padding, (a, b))| {
@@ -561,7 +572,7 @@ mod tests {
                         })
                         .transpose_array();
 
-                    let result = vg.padding_flag(&mut layouter, &vec_1)?;
+                    let (result, _limits) = vg.padding_flag(&mut layouter, &vec_1)?;
 
                     for (r, e) in result.iter().zip(expected.iter()) {
                         let e: AssignedBit<F> = ng.assign(&mut layouter, *e)?;
@@ -698,7 +709,7 @@ mod tests {
 
         // Equal vectors, different padding.
         run_eq_vec_test::<_, 128, 2>(&inputs, &inputs, true, true, true);
-        run_eq_vec_test::<_, 128, 3>(&inputs, &inputs, true, true, false);
+        run_eq_vec_test::<_, 126, 3>(&inputs, &inputs, true, true, false);
 
         // Equal vectors, equal padding.
         run_eq_vec_test::<_, 128, 2>(&inputs, &inputs, true, false, false);
@@ -727,9 +738,9 @@ mod tests {
         // Test different alignments.
         run_limit_vec_test::<_, 128, 1>(&inputs, true);
         run_limit_vec_test::<_, 128, 2>(&inputs, false);
-        run_limit_vec_test::<_, 128, 3>(&inputs, false);
+        run_limit_vec_test::<_, 126, 3>(&inputs, false);
         run_limit_vec_test::<_, 128, 4>(&inputs, false);
-        run_limit_vec_test::<_, 128, 5>(&inputs, false);
+        run_limit_vec_test::<_, 130, 5>(&inputs, false);
 
         // Test edge cases.
         run_limit_vec_test::<_, 64, 2>(&inputs[..64], false);
@@ -746,7 +757,7 @@ mod tests {
 
         run_padding_flags_test::<_, 128, 1>(&inputs, true);
         run_padding_flags_test::<_, 128, 2>(&inputs, false);
-        run_padding_flags_test::<_, 128, 3>(&inputs, false);
+        run_padding_flags_test::<_, 126, 3>(&inputs, false);
         run_padding_flags_test::<_, 128, 64>(&inputs, false);
         run_padding_flags_test::<F, 128, 64>(&[], false);
         run_padding_flags_test::<F, 64, 16>(&inputs[..64], false);
@@ -772,14 +783,14 @@ mod tests {
         run_trim_vec_test::<_, 128, 32>(&inputs, 31, false);
 
         // Above or equal to A.
-        run_trim_vec_test::<_, 128, 3>(&inputs, 3, false);
-        run_trim_vec_test::<_, 128, 3>(&inputs, 4, false);
-        run_trim_vec_test::<_, 128, 3>(&inputs, 5, false);
-        run_trim_vec_test::<_, 128, 3>(&inputs, 6, false);
-        run_trim_vec_test::<_, 128, 3>(&inputs, 10, false);
-        run_trim_vec_test::<_, 128, 3>(&inputs, 20, false);
-        run_trim_vec_test::<_, 128, 3>(&inputs, 30, false);
-        run_trim_vec_test::<_, 128, 3>(&inputs, 40, false);
+        run_trim_vec_test::<_, 126, 3>(&inputs, 3, false);
+        run_trim_vec_test::<_, 126, 3>(&inputs, 4, false);
+        run_trim_vec_test::<_, 126, 3>(&inputs, 5, false);
+        run_trim_vec_test::<_, 126, 3>(&inputs, 6, false);
+        run_trim_vec_test::<_, 126, 3>(&inputs, 10, false);
+        run_trim_vec_test::<_, 126, 3>(&inputs, 20, false);
+        run_trim_vec_test::<_, 126, 3>(&inputs, 30, false);
+        run_trim_vec_test::<_, 126, 3>(&inputs, 40, false);
 
         // Edge case: offset of original vector = 0;
         run_trim_vec_test::<_, 128, 32>(&inputs[..96], 23, false);

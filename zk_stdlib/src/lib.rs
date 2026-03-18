@@ -62,7 +62,7 @@ use midnight_circuits::{
         sha256::{Sha256Chip, Sha256Config, NB_SHA256_ADVICE_COLS, NB_SHA256_FIXED_COLS},
         sha512::{Sha512Chip, Sha512Config, NB_SHA512_ADVICE_COLS, NB_SHA512_FIXED_COLS},
     },
-    instructions::{public_input::CommittedInstanceInstructions, *},
+    instructions::{public_input::CommittedInstanceInstructions, vector::VectorBounds, *},
     map::map_gadget::MapGadget,
     parsing::{
         self,
@@ -1246,7 +1246,7 @@ where
         &self,
         layouter: &mut impl Layouter<F>,
         input: &AssignedVector<F, T, M, A>,
-    ) -> Result<[AssignedBit<F>; M], Error> {
+    ) -> Result<([AssignedBit<F>; M], VectorBounds<F>), Error> {
         self.vector_gadget.padding_flag(layouter, input)
     }
 
@@ -1254,7 +1254,7 @@ where
         &self,
         layouter: &mut impl Layouter<F>,
         input: &AssignedVector<F, T, M, A>,
-    ) -> Result<(AssignedNative<F>, AssignedNative<F>), Error> {
+    ) -> Result<VectorBounds<F>, Error> {
         self.vector_gadget.get_limits(layouter, input)
     }
 
