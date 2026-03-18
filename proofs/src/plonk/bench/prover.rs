@@ -4,7 +4,7 @@ use std::hash::Hash;
 
 use criterion::BenchmarkGroup;
 use ff::{FromUniformBytes, WithSmallOrderMulGroup};
-use rand_core::{CryptoRng, RngCore};
+use rand_core::{CryptoRng, OsRng, RngCore};
 
 use crate::{
     plonk::{
@@ -384,6 +384,7 @@ pub(crate) fn finalise_proof<'a, F, CS: PolynomialCommitmentScheme<F>, T: Transc
     #[cfg(feature = "committed-instances")] nb_committed_instances: usize,
     trace: ProverTrace<F>,
     transcript: &mut T,
+    rng: impl RngCore,
     group: &mut BenchmarkGroup<criterion::measurement::WallTime>,
 ) -> Result<(), Error>
 where
@@ -638,7 +639,7 @@ pub fn benchmark_create_proof<
     circuits: &[ConcreteCircuit],
     #[cfg(feature = "committed-instances")] nb_committed_instances: usize,
     instances: &[&[&[F]]],
-    rng: impl RngCore + CryptoRng,
+    mut rng: impl RngCore + CryptoRng,
     transcript: &mut T,
     group: &mut BenchmarkGroup<criterion::measurement::WallTime>,
 ) -> Result<(), Error>
@@ -661,7 +662,7 @@ where
         #[cfg(feature = "committed-instances")]
         nb_committed_instances,
         instances,
-        rng,
+        &mut rng,
         transcript,
         group,
     )?;
@@ -673,6 +674,7 @@ where
         nb_committed_instances,
         trace,
         transcript,
+        rng,
         group,
     )
 }

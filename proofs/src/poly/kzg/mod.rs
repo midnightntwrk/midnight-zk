@@ -130,6 +130,22 @@ where
             })
             .collect::<Vec<_>>();
 
+        // Sort point sets by ascending cardinality to ensure the first set is the one
+        // that contains fixed commitments (which are evaluated at x only). This
+        // property is not necessary for the actual proving system, but it is important
+        // for in-circuit verification of proofs. (It enables an optimization based on
+        // an internal collapse.)
+        //
+        // The (len, i) key provides a deterministic total order even when two sets
+        // share the same cardinality.
+        let (q_polys, point_sets) = {
+            let mut order: Vec<usize> = (0..point_sets.len()).collect();
+            order.sort_by_key(|&i| (point_sets[i].len(), i));
+            let q_polys: Vec<_> = order.iter().map(|&i| q_polys[i].clone()).collect();
+            let point_sets: Vec<_> = order.iter().map(|&i| point_sets[i].clone()).collect();
+            (q_polys, point_sets)
+        };
+
         let f_poly = {
             let f_polys = point_sets
                 .iter()
@@ -246,6 +262,23 @@ where
             .map(|evals| evals_inner_product(evals, &powers_x1))
             .collect::<Vec<_>>();
 
+        // Sort point sets by ascending cardinality to ensure the first set is the one
+        // that contains fixed commitments (which are evaluated at x only). This
+        // property is not necessary for the actual proving system, but it is important
+        // for in-circuit verification of proofs. (It enables an optimization based on
+        // an internal collapse.)
+        //
+        // The (len, i) key provides a deterministic total order even when two sets
+        // share the same cardinality.
+        let (q_coms, q_eval_sets, point_sets) = {
+            let mut order: Vec<usize> = (0..point_sets.len()).collect();
+            order.sort_by_key(|&i| (point_sets[i].len(), i));
+            let q_coms: Vec<_> = order.iter().map(|&i| q_coms[i].clone()).collect();
+            let q_eval_sets: Vec<_> = order.iter().map(|&i| q_eval_sets[i].clone()).collect();
+            let point_sets: Vec<_> = order.iter().map(|&i| point_sets[i].clone()).collect();
+            (q_coms, q_eval_sets, point_sets)
+        };
+
         let f_com: E::G1 = transcript.read().map_err(|_| Error::SamplingError)?;
 
         // Sample a challenge x_3 for checking that f(X) was committed to
@@ -282,6 +315,11 @@ where
             let mut f_com_as_msm = MSMKZG::init();
 
             f_com_as_msm.append_term(E::Fr::ONE, f_com, CommitmentLabel::NoLabel);
+
+            // Collapse all MSMs before combining with x4 powers, to match the
+            // in-circuit verifier. Skip the first one since its x4 power is 1.
+            #[cfg(feature = "truncated-challenges")]
+            coms.iter_mut().skip(1).for_each(MSMKZG::collapse);
             coms.push(f_com_as_msm);
 
             #[cfg(feature = "truncated-challenges")]

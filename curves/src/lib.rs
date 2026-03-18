@@ -19,6 +19,7 @@ mod derive;
 mod curve;
 pub mod ff_ext;
 pub mod fft;
+#[cfg(any(test, feature = "dev-curves"))]
 pub mod hash_to_curve;
 pub mod msm;
 pub mod serde;
@@ -27,7 +28,7 @@ pub mod serde_traits;
 // Production curves (always available)
 pub mod bls12_381;
 mod jubjub;
-pub mod secp256k1;
+pub mod k256;
 
 pub mod curve25519;
 

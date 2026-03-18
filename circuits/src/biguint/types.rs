@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) Midnight Foundation
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -90,6 +90,13 @@ impl<F: CircuitField> AssignedBigUint<F> {
     /// [crate::biguint::biguint_gadget::BigUintGadget::constrain_as_public_input].
     pub fn as_public_input(element: &BigUint, nb_bits: u32) -> Vec<F> {
         biguint_to_limbs(element, Some(nb_bits.div_ceil(LOG2_BASE)))
+    }
+}
+
+impl<F: CircuitField> PartialEq for AssignedBigUint<F> {
+    fn eq(&self, other: &Self) -> bool {
+        // Cell address comparison
+        self.limbs.iter().zip(other.limbs.iter()).all(|(s, o)| s == o)
     }
 }
 

@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) Midnight Foundation
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -59,7 +59,7 @@ pub struct Msm<S: SelfEmulation> {
 #[derive(Clone, Debug)]
 pub struct AssignedMsm<S: SelfEmulation> {
     bases: Vec<S::AssignedPoint>,
-    scalars: Vec<AssignedBoundedScalar<S::F>>,
+    pub(crate) scalars: Vec<AssignedBoundedScalar<S::F>>,
     fixed_base_scalars: BTreeMap<String, AssignedBoundedScalar<S::F>>,
 }
 

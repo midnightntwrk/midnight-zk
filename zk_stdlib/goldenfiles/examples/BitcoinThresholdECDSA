@@ -1,8 +1,14 @@
 CircuitModel {
     k: 16,
+<<<<<<< HEAD
     rows: 63405,
     table_rows: 505,
     nb_unusable_rows: 7,
+=======
+    rows: 54008,
+    table_rows: 62745,
+    nb_unusable_rows: 6,
+>>>>>>> next
     max_deg: 5,
     advice_columns: 9,
     fixed_columns: 39,

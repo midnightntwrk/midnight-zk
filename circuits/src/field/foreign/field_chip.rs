@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) Midnight Foundation
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -131,9 +131,10 @@ where
         // We shift the value of x by 1 for the unique-zero representation.
         let element_as_bi = (*element - K::ONE).to_biguint().into();
         let base = BI::from(2).pow(P::LOG2_BASE);
+        let nb_limbs_per_batch = (F::CAPACITY / P::LOG2_BASE) as usize;
         bi_to_limbs(P::NB_LIMBS, &base, &element_as_bi)
-            .iter()
-            .map(|x| bigint_to_fe::<F>(x))
+            .chunks(nb_limbs_per_batch)
+            .map(|chunk| bigint_to_fe::<F>(&bi_from_limbs(&base, chunk)))
             .collect()
     }
 }
@@ -484,7 +485,20 @@ where
         assigned: &AssignedField<F, K, P>,
     ) -> Result<Vec<AssignedNative<F>>, Error> {
         let assigned = self.normalize(layouter, assigned)?;
-        Ok(assigned.limb_values)
+        let nb_limbs_per_batch = (F::CAPACITY / P::LOG2_BASE) as usize;
+        let base = BI::from(2).pow(P::LOG2_BASE);
+        assigned
+            .limb_values
+            .chunks(nb_limbs_per_batch)
+            .map(|chunk| {
+                let terms: Vec<(F, AssignedNative<F>)> = chunk
+                    .iter()
+                    .enumerate()
+                    .map(|(i, limb)| (bigint_to_fe::<F>(&base.pow(i as u32)), limb.clone()))
+                    .collect();
+                self.native_gadget.linear_combination(layouter, &terms, F::ZERO)
+            })
+            .collect()
     }
 
     fn constrain_as_public_input(
@@ -502,22 +516,11 @@ where
         layouter: &mut impl Layouter<F>,
         value: Value<K>,
     ) -> Result<AssignedField<F, K, P>, Error> {
-        let base = BI::from(2).pow(P::LOG2_BASE);
-        // We subtract one due to the unique-zero representation.
-        let x = value.map(|v| bi_to_limbs(P::NB_LIMBS, &base, &(v - K::ONE).to_biguint().into()));
-        let limbs = (0..P::NB_LIMBS)
-            .map(|i| x.clone().map(|limbs| bigint_to_fe::<F>(&limbs[i as usize])))
-            .collect::<Vec<_>>();
-        // We can skip all range-checks given that the assigned field element will be
-        // constrained with public inputs, thus that structure will be enforced anyway.
-        let assigned_limbs = self.native_gadget.assign_many(layouter, &limbs)?;
-        let assigned_field = AssignedField::<F, K, P> {
-            limb_values: assigned_limbs,
-            limb_bounds: well_formed_bounds::<F, K, P>(),
-            _marker: PhantomData,
-        };
-        self.constrain_as_public_input(layouter, &assigned_field)?;
-        Ok(assigned_field)
+        // Do NOT optimize this implementation. Since we batch various limbs when
+        // constraing as public inputs, we cannot skip the range-checks on the limbs.
+        let assigned = self.assign(layouter, value)?;
+        self.constrain_as_public_input(layouter, &assigned)?;
+        Ok(assigned)
     }
 }
 
@@ -1309,6 +1312,8 @@ where
     pub fn configure(
         meta: &mut ConstraintSystem<F>,
         advice_columns: &[Column<Advice>],
+        nb_parallel_range_checks: usize,
+        max_bit_len: u32,
     ) -> FieldChipConfig {
         check_params::<F, K, P>();
 
@@ -1324,8 +1329,20 @@ where
             [(nb_limbs as usize + 1)..(nb_limbs as usize + 1 + P::moduli().len())]
             .to_vec();
 
-        let mul_config = MulConfig::configure::<F, K, P>(meta, &x_cols, &z_cols);
-        let norm_config = NormConfig::configure::<F, K, P>(meta, &x_cols, &z_cols);
+        let mul_config = MulConfig::configure::<F, K, P>(
+            meta,
+            &x_cols,
+            &z_cols,
+            nb_parallel_range_checks,
+            max_bit_len,
+        );
+        let norm_config = NormConfig::configure::<F, K, P>(
+            meta,
+            &x_cols,
+            &z_cols,
+            nb_parallel_range_checks,
+            max_bit_len,
+        );
 
         FieldChipConfig {
             mul_config,
@@ -1683,11 +1700,19 @@ where
     ) -> FieldChipConfigForTests<F, N> {
         let native_gadget_config =
             <N as FromScratch<F>>::configure_from_scratch(meta, instance_columns);
+        // Use hard-coded pow2range values matching NativeGadget::configure_from_scratch
+        let nb_parallel_range_checks = 4;
+        let max_bit_len = 8;
         let field_chip_config = {
             let advice_cols = (0..nb_field_chip_columns::<F, K, P>())
                 .map(|_| meta.advice_column())
                 .collect::<Vec<_>>();
-            FieldChip::<F, K, P, N>::configure(meta, &advice_cols)
+            FieldChip::<F, K, P, N>::configure(
+                meta,
+                &advice_cols,
+                nb_parallel_range_checks,
+                max_bit_len,
+            )
         };
         FieldChipConfigForTests {
             native_gadget_config,
@@ -1699,7 +1724,7 @@ where
 #[cfg(test)]
 mod tests {
     use midnight_curves::{
-        secp256k1::{Fp as secp256k1Base, Fq as secp256k1Scalar},
+        k256::{Fp as K256Base, Fq as K256Scalar},
         Fq as BlsScalar,
     };
 
@@ -1733,14 +1758,8 @@ mod tests {
         ($mod:ident, $op:ident) => {
             #[test]
             fn $op() {
-                test_generic!($mod, $op, BlsScalar, secp256k1Base, "field_chip_secp_base");
-                test_generic!(
-                    $mod,
-                    $op,
-                    BlsScalar,
-                    secp256k1Scalar,
-                    "field_chip_secp_scalar"
-                );
+                test_generic!($mod, $op, BlsScalar, K256Base, "field_chip_secp_base");
+                test_generic!($mod, $op, BlsScalar, K256Scalar, "field_chip_secp_scalar");
             }
         };
     }
@@ -1788,14 +1807,8 @@ mod tests {
         ($mod:ident, $op:ident) => {
             #[test]
             fn $op() {
-                test_generic!($mod, $op, BlsScalar, secp256k1Base, "field_chip_secp_base");
-                test_generic!(
-                    $mod,
-                    $op,
-                    BlsScalar,
-                    secp256k1Scalar,
-                    "field_chip_secp_scalar"
-                );
+                test_generic!($mod, $op, BlsScalar, K256Base, "field_chip_secp_base");
+                test_generic!($mod, $op, BlsScalar, K256Scalar, "field_chip_secp_scalar");
             }
         };
     }

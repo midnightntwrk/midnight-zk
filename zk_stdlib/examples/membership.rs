@@ -105,7 +105,6 @@ fn main() {
 
     let relation = MembershipExample;
     let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
-
     let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
 
     let mut mt = MapMt::<F, PoseidonChip<F>>::new(&F::ZERO);

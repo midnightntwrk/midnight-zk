@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) Midnight Foundation
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -24,7 +24,6 @@ use std::{
     collections::HashMap,
     fmt::Debug,
     hash::{Hash, Hasher},
-    ops::Mul,
     rc::Rc,
 };
 
@@ -101,6 +100,39 @@ where
     B::NB_LIMBS as usize + max(B::NB_LIMBS as usize, 2 + B::moduli().len()) + 1
 }
 
+/// Shared MSM randomness for the windowed double-and-add algorithm.
+///
+/// In the windowed MSM, a random point `r` is used to randomize the
+/// double-and-add accumulator, ensuring that intermediate values do not
+/// collide with table entries (in particular, avoiding equal x-coordinates
+/// or identity points). This allows the use of incomplete addition
+/// throughout the loop, which is cheaper than complete addition.
+///
+/// The value of `r` can be chosen by the prover (who will choose it
+/// uniformly at random for statistical completeness) and this is not a
+/// problem for soundness.
+///
+/// By sharing `r` (and thus `α = (2^WS - 1) * r`) across all MSM calls on
+/// the same chip, precomputed tables for the same base point can be reused
+/// across MSM invocations. Sharing the randomness across all MSMs hinders
+/// completeness, but only by a polynomial factor: we still get statistical
+/// completeness (i.e. completeness with overwhelming probability over the
+/// choice of `r`).
+#[derive(Clone, Debug)]
+struct MsmRandomness<F, C, B>
+where
+    F: CircuitField,
+    C: WeierstrassCurve,
+    B: FieldEmulationParams<F, C::Base>,
+{
+    r: AssignedForeignPoint<F, C, B>,
+    neg_alpha: AssignedForeignPoint<F, C, B>,
+}
+
+/// Map from window size to the corresponding [`MsmRandomness`], lazily
+/// populated on first MSM call for each window size.
+type MsmRandomnessMap<F, C, B> = HashMap<usize, MsmRandomness<F, C, B>>;
+
 /// ['ECChip'] to perform foreign EC operations.
 #[derive(Clone, Debug)]
 pub struct ForeignEccChip<F, C, B, S, N>
@@ -121,6 +153,14 @@ where
     // It will never overflow unless you include more than 2^64 tables, will you?
     // Even in that case, we would get a compile-time error.
     tag_cnt: Rc<RefCell<u64>>,
+    // Shared random point `r` for the windowed MSM double-and-add algorithm.
+    // The value of `r` can be chosen by the prover (who will choose it uniformly
+    // at random for statistical completeness) and this is not a problem for
+    // soundness.
+    // Lazily initialized on first MSM call. By sharing `r` across MSM calls,
+    // computations depending on it e.g. α can be cached and reused.
+    // Importantly, such cache is keyed by window size.
+    msm_randomness: Rc<RefCell<MsmRandomnessMap<F, C, B>>>,
 }
 
 /// Type for foreign EC points.
@@ -746,15 +786,26 @@ where
     ) -> Result<AssignedForeignPoint<F, C, B>, Error> {
         const WS: usize = 4;
 
-        // If some of the scalars is known to be 1, remove it (with its base) from the
-        // list and simply add it at the end.
+        // Filter out bases that are known to be the identity at compile time.
+        // These contribute nothing to the MSM result.
+        let id_point = self.assign_fixed(layouter, C::CryptographicGroup::identity())?;
+        let (scalars, bases): (Vec<_>, Vec<_>) = scalars
+            .iter()
+            .zip(bases.iter())
+            .filter(|(_, base)| *base != &id_point)
+            .map(|(s, b)| (s.clone(), b.clone()))
+            .unzip();
+
+        // If any of the scalars is known to be 1, or has a bound of 1 (i.e. it is known
+        // to be either 0 or 1) remove it (with its base) from the list and simply add
+        // it at the end.
         let one: S::Scalar = self.scalar_field_chip.assign_fixed(layouter, C::ScalarField::ONE)?;
-        let mut bases_without_coeff = vec![];
+        let mut bases_with_1bit_scalar = vec![];
         let mut filtered_scalars = vec![];
         let mut filtered_bases = vec![];
         for (scalar, base) in scalars.iter().zip(bases.iter()) {
-            if scalar.0 == one {
-                bases_without_coeff.push(base.clone());
+            if scalar.0 == one || scalar.1 == 1 {
+                bases_with_1bit_scalar.push((base.clone(), scalar.0.clone()));
             } else {
                 filtered_scalars.push(scalar.clone());
                 filtered_bases.push(base.clone());
@@ -806,7 +857,6 @@ where
         // In order to support the identity point for some bases, we select in-circuit
         // based on the value of is_id and put a 0 scalar and an arbitrary non-id point
         // (e.g. the generator) for the base when is_id equals 1.
-
         let mut non_id_bases = vec![];
         let mut scalars_of_non_id_bases = vec![];
         let scalar_chip = self.scalar_field_chip();
@@ -858,7 +908,16 @@ where
         }
         let res = self.windowed_msm::<WS>(layouter, &decomposed_scalars, &bases)?;
 
-        bases_without_coeff.iter().try_fold(res, |acc, b| self.add(layouter, &acc, b))
+        let id_point = self.assign_fixed(layouter, C::CryptographicGroup::identity())?;
+        bases_with_1bit_scalar.iter().try_fold(res, |acc, (b, s)| {
+            let s_times_b = if s == &one {
+                b.clone()
+            } else {
+                let s_is_zero = self.scalar_field_chip().is_zero(layouter, s)?;
+                self.select(layouter, &s_is_zero, &id_point, b)?
+            };
+            self.add(layouter, &acc, &s_times_b)
+        })
     }
 
     fn mul_by_constant(
@@ -887,7 +946,7 @@ where
             return self.select(layouter, &base.is_id, &id, &r);
         }
         let scalar_bits = scalar
-            .to_le_bits(None)
+            .to_bits_le(None)
             .iter()
             .map(|b| self.native_gadget.assign_fixed(layouter, *b))
             .collect::<Result<Vec<_>, Error>>()?;
@@ -956,6 +1015,7 @@ where
             base_field_chip,
             scalar_field_chip: scalar_field_chip.clone(),
             tag_cnt: Rc::new(RefCell::new(1)),
+            msm_randomness: Rc::new(RefCell::new(HashMap::new())),
         }
     }
 
@@ -974,6 +1034,8 @@ where
         meta: &mut ConstraintSystem<F>,
         base_field_config: &FieldChipConfig,
         advice_columns: &[Column<Advice>],
+        nb_parallel_range_checks: usize,
+        max_bit_len: u32,
     ) -> ForeignEccConfig<C> {
         // Assert that there is room for the cond_col in the existing columns of the
         // field_chip configurations.
@@ -982,16 +1044,37 @@ where
         let cond_col = advice_columns[cond_col_idx];
         meta.enable_equality(cond_col);
 
-        let on_curve_config =
-            OnCurveConfig::<C>::configure::<F, B>(meta, base_field_config, &cond_col);
+        let on_curve_config = OnCurveConfig::<C>::configure::<F, B>(
+            meta,
+            base_field_config,
+            &cond_col,
+            nb_parallel_range_checks,
+            max_bit_len,
+        );
 
-        let slope_config = SlopeConfig::<C>::configure::<F, B>(meta, base_field_config, &cond_col);
+        let slope_config = SlopeConfig::<C>::configure::<F, B>(
+            meta,
+            base_field_config,
+            &cond_col,
+            nb_parallel_range_checks,
+            max_bit_len,
+        );
 
-        let tangent_config =
-            TangentConfig::<C>::configure::<F, B>(meta, base_field_config, &cond_col);
+        let tangent_config = TangentConfig::<C>::configure::<F, B>(
+            meta,
+            base_field_config,
+            &cond_col,
+            nb_parallel_range_checks,
+            max_bit_len,
+        );
 
-        let lambda_squared_config =
-            LambdaSquaredConfig::<C>::configure::<F, B>(meta, base_field_config, &cond_col);
+        let lambda_squared_config = LambdaSquaredConfig::<C>::configure::<F, B>(
+            meta,
+            base_field_config,
+            &cond_col,
+            nb_parallel_range_checks,
+            max_bit_len,
+        );
 
         // We prepare a dynamic lookup of points for an efficient multi_select.
         // It counts with a selector, an index column (the selected item) and a table
@@ -1732,6 +1815,44 @@ where
         Ok(res.unwrap())
     }
 
+    /// Returns the shared MSM randomness for window size `WS`, initializing
+    /// it on first call for that window size.
+    ///
+    /// On first call for a given `WS`, samples a random curve point `r` and
+    /// computes `α = (2^WS - 1) * r` and `neg_alpha = -α`. The point `r` is
+    /// constrained to not be the identity.
+    ///
+    /// On subsequent calls with the same `WS`, returns the cached randomness.
+    /// Different window sizes get independent randomness.
+    ///
+    /// # Postconditions
+    ///
+    /// - `r` is not the identity point (enforced in-circuit).
+    /// - `neg_alpha = -((2^WS - 1) * r)`.
+    fn msm_randomness<const WS: usize>(
+        &self,
+        layouter: &mut impl Layouter<F>,
+    ) -> Result<MsmRandomness<F, C, B>, Error> {
+        if let Some(cached) = self.msm_randomness.borrow().get(&WS) {
+            return Ok(cached.clone());
+        }
+
+        let r: AssignedForeignPoint<F, C, B> =
+            self.assign(layouter, Value::known(C::CryptographicGroup::random(OsRng)))?;
+
+        // Assert the chosen r is not the identity point.
+        self.base_field_chip
+            .native_gadget
+            .assert_equal_to_fixed(layouter, &r.is_id, false)?;
+
+        let alpha = self.mul_by_u128(layouter, (1u128 << WS) - 1, &r)?;
+        let neg_alpha = self.negate(layouter, &alpha)?;
+
+        let randomness = MsmRandomness { r, neg_alpha };
+        self.msm_randomness.borrow_mut().insert(WS, randomness.clone());
+        Ok(randomness)
+    }
+
     /// Curve multi-scalar multiplication.
     /// This implementation uses a windowed double-and-add with `WS` window
     /// size.
@@ -1793,6 +1914,10 @@ where
         // at random for statistical completeness) and this is not a problem for
         // soundness.
         //
+        // The randomness `r` is shared across all MSM calls on this chip, so that
+        // precomputed tables (which depend on α = (2^WS - 1) * r) can be cached
+        // and reused for the same base points.
+        //
         // Let l := bases.len(), the initial double-and-add accumulator will be
         // acc := l * r. On every double-and-add iteration i, we will double WS times
         // and then, for every j in [l], conditionally add (kj_i * base_j - α)
@@ -1806,22 +1931,12 @@ where
         // To finish the computation we will thus need to subtract l * r, which will
         // be done in-circuit.
         //
-        // FIXME: Can we directly sample a random C point? (The following is also fine.)
         // TODO: Maybe we should check that the sampled r will not have a completeness
         // problem. The probability should be overwhelming, but if the bad event
         // happened, the proof would fail. We could sample another r here instead.
-        let r_dlog = C::ScalarField::random(OsRng);
-        let r_unassigned = C::CryptographicGroup::mul(C::CryptographicGroup::generator(), r_dlog);
-        let r: AssignedForeignPoint<F, C, B> = self.assign(layouter, Value::known(r_unassigned))?;
-
-        // Assert the chosen r is not the identity point
-        self.base_field_chip
-            .native_gadget
-            .assert_equal_to_fixed(layouter, &r.is_id, false)?;
+        let MsmRandomness { r, neg_alpha } = self.msm_randomness::<WS>(layouter)?;
 
         let l_times_r = self.mul_by_u128(layouter, bases.len() as u128, &r)?;
-        let alpha = self.mul_by_u128(layouter, (1u128 << WS) - 1, &r)?;
-        let neg_alpha = self.negate(layouter, &alpha)?;
 
         // Get the global tag counter and increase it with |bases|
         let tag_cnt = *self.tag_cnt.clone().borrow();
@@ -1830,7 +1945,8 @@ where
         // Compute table, [-α, p-α, 2p-α, ..., (2^WS-1)p-α] for every p in bases.
         let mut tables = vec![];
         for (i, p) in bases.iter().enumerate() {
-            self.incomplete_assert_different_x(layouter, &alpha, p)?;
+            // Assert that α.x ≠ p.x (note that α and -α have the same x-coordinate).
+            self.incomplete_assert_different_x(layouter, &neg_alpha, p)?;
             let mut acc = neg_alpha.clone();
             let mut p_table = vec![acc.clone()];
             for _ in 1..(1usize << WS) {
@@ -2090,9 +2206,22 @@ where
             <S as FromScratch<F>>::configure_from_scratch(meta, instance_columns);
         let nb_advice_cols = nb_foreign_ecc_chip_columns::<F, C, B, S>();
         let advice_columns = (0..nb_advice_cols).map(|_| meta.advice_column()).collect::<Vec<_>>();
-        let base_field_config = FieldChip::<F, C::Base, B, N>::configure(meta, &advice_columns);
-        let ff_ecc_config =
-            ForeignEccChip::<F, C, B, S, N>::configure(meta, &base_field_config, &advice_columns);
+        // Use hard-coded pow2range values matching NativeGadget::configure_from_scratch
+        let nb_parallel_range_checks = 4;
+        let max_bit_len = 8;
+        let base_field_config = FieldChip::<F, C::Base, B, N>::configure(
+            meta,
+            &advice_columns,
+            nb_parallel_range_checks,
+            max_bit_len,
+        );
+        let ff_ecc_config = ForeignEccChip::<F, C, B, S, N>::configure(
+            meta,
+            &base_field_config,
+            &advice_columns,
+            nb_parallel_range_checks,
+            max_bit_len,
+        );
         ForeignEccTestConfig {
             native_gadget_config,
             scalar_field_config,
@@ -2104,7 +2233,7 @@ where
 #[cfg(test)]
 mod tests {
     use group::Group;
-    use midnight_curves::{secp256k1::Secp256k1, Fq as BlsScalar, G1Projective as BlsG1};
+    use midnight_curves::{k256::K256, Fq as BlsScalar, G1Projective as BlsG1};
 
     use super::*;
     use crate::{
@@ -2139,7 +2268,7 @@ mod tests {
         ($mod:ident, $op:ident) => {
             #[test]
             fn $op() {
-                test_generic!($mod, $op, BlsScalar, Secp256k1, EmulatedField<BlsScalar, Secp256k1>, "foreign_ecc_secp");
+                test_generic!($mod, $op, BlsScalar, K256, EmulatedField<BlsScalar, K256>, "foreign_ecc_secp");
 
                 // a test of BLS over itself, where the scalar field is native
                 test_generic!($mod, $op, BlsScalar, BlsG1, Native<BlsScalar>, "foreign_ecc_bls_over_bls");
@@ -2180,7 +2309,7 @@ mod tests {
         ($op:ident) => {
             #[test]
             fn $op() {
-                ecc_test!($op, BlsScalar, Secp256k1, EmulatedField<BlsScalar, Secp256k1>, "foreign_ecc_secp");
+                ecc_test!($op, BlsScalar, K256, EmulatedField<BlsScalar, K256>, "foreign_ecc_secp");
 
                 // a test of BLS over itself, where the scalar field is native
                 ecc_test!($op, BlsScalar, BlsG1, Native<BlsScalar>, "foreign_ecc_bls_over_bls");

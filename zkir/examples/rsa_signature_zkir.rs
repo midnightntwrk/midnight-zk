@@ -5,7 +5,6 @@ use std::collections::HashMap;
 
 use blake2b_simd::State as Blake2b;
 use midnight_proofs::poly::kzg::params::ParamsKZG;
-use midnight_zk_stdlib::{self, MidnightCircuit};
 use midnight_zkir::{IrValue, ZkirRelation};
 use num_bigint::BigUint;
 use num_traits::Num;
@@ -33,9 +32,9 @@ fn main() {
 
     let relation = ZkirRelation::read(ir_raw).expect("valid IR");
 
-    dbg!(midnight_zk_stdlib::cost_model(&relation));
+    let k = midnight_zk_stdlib::optimal_k(&relation);
+    dbg!(midnight_zk_stdlib::cost_model(&relation, Some(k)));
 
-    let k = MidnightCircuit::from_relation(&relation).min_k();
     let srs = ParamsKZG::unsafe_setup(k, OsRng);
 
     let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);

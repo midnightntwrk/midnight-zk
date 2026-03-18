@@ -305,6 +305,7 @@ pub(crate) fn finalise_proof<'a, F, CS: PolynomialCommitmentScheme<F>, T: Transc
     #[cfg(feature = "committed-instances")] nb_committed_instances: usize,
     trace: ProverTrace<F>,
     transcript: &mut T,
+    rng: impl RngCore,
 ) -> Result<(), Error>
 where
     CS::Commitment: Hashable<T::Hash>,
@@ -452,7 +453,7 @@ pub fn create_proof<
     circuits: &[ConcreteCircuit],
     #[cfg(feature = "committed-instances")] nb_committed_instances: usize,
     instances: &[&[&[F]]],
-    rng: impl RngCore + CryptoRng,
+    mut rng: impl RngCore + CryptoRng,
     transcript: &mut T,
 ) -> Result<(), Error>
 where
@@ -471,7 +472,7 @@ where
         #[cfg(feature = "committed-instances")]
         nb_committed_instances,
         instances,
-        rng,
+        &mut rng,
         transcript,
     )?;
     finalise_proof(
@@ -481,6 +482,7 @@ where
         nb_committed_instances,
         trace,
         transcript,
+        rng,
     )
 }
 
@@ -865,6 +867,12 @@ pub(super) fn compute_queries<
             move |((((instance, advice), permutation), lookups), trash)| {
                 iter::empty()
                     .chain(
+                        pk.vk.cs.advice_queries.iter().map(move |&(column, at)| ProverQuery {
+                            point: domain.rotate_omega(x, at),
+                            poly: &advice[column.index()],
+                        }),
+                    )
+                    .chain(
                         pk.vk.cs.instance_queries.iter().filter_map(move |&(column, at)| {
                             if column.index() < nb_committed_instances {
                                 Some(ProverQuery {
@@ -874,12 +882,6 @@ pub(super) fn compute_queries<
                             } else {
                                 None
                             }
-                        }),
-                    )
-                    .chain(
-                        pk.vk.cs.advice_queries.iter().map(move |&(column, at)| ProverQuery {
-                            point: domain.rotate_omega(x, at),
-                            poly: &advice[column.index()],
                         }),
                     )
                     .chain(permutation.open(pk, x))

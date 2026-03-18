@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) Midnight Foundation
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -80,7 +80,7 @@ macro_rules! run_test_stdlib {
             }
         }
 
-        let circuit = MidnightCircuit::from_relation(&TestCircuit);
+        let circuit = MidnightCircuit::from_relation(&TestCircuit, None);
 
         MockProver::run($k, &circuit, vec![vec![], vec![]])
             .expect("Failed to generate proof")

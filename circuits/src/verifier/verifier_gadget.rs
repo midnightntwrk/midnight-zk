@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) Midnight Foundation
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -27,11 +27,14 @@ use midnight_proofs::{
     plonk::{ConstraintSystem, Error},
     poly::{CommitmentLabel, EvaluationDomain, Rotation},
 };
+use num_bigint::BigUint;
+use num_traits::One;
 
 use crate::{
     field::AssignedNative,
     instructions::{
-        assignments::AssignmentInstructions, ArithInstructions, PublicInputInstructions,
+        assignments::AssignmentInstructions, ArithInstructions, AssertionInstructions,
+        PublicInputInstructions,
     },
     verifier::{
         expressions::{
@@ -169,6 +172,53 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             layouter,
             &self.curve_chip,
             &self.scalar_chip,
+        )
+    }
+
+    /// Witnesses an accumulator with just 1 non-fixed base-scalar pair on each
+    /// side (the scalar being constant 1), and as many fixed-base scalars (on
+    /// its right-hand-side) as provided through the `fixed_base_names`
+    /// argument (no fixed-base scalars on the left-hand-side).
+    pub fn assign_collapsed_accumulator(
+        &self,
+        layouter: &mut impl Layouter<S::F>,
+        fixed_base_names: &[String],
+        value: Value<Accumulator<S>>,
+    ) -> Result<AssignedAccumulator<S>, Error> {
+        let mut acc = AssignedAccumulator::assign(
+            layouter,
+            &self.curve_chip,
+            &self.scalar_chip,
+            1,
+            1,
+            &[],
+            fixed_base_names,
+            value,
+        )?;
+
+        let scalar_chip = &self.scalar_chip;
+
+        scalar_chip.assert_equal_to_fixed(layouter, &acc.lhs.scalars[0].scalar, S::F::ONE)?;
+        scalar_chip.assert_equal_to_fixed(layouter, &acc.rhs.scalars[0].scalar, S::F::ONE)?;
+        acc.lhs.scalars[0].bound = BigUint::one();
+        acc.rhs.scalars[0].bound = BigUint::one();
+
+        Ok(acc)
+    }
+
+    /// Accumulates several accumulators together. The resulting acc will
+    /// satisfy the invariant iff all the accumulators individually do.
+    pub fn accumulate(
+        &self,
+        layouter: &mut impl Layouter<S::F>,
+        accs: &[AssignedAccumulator<S>],
+    ) -> Result<AssignedAccumulator<S>, Error> {
+        AssignedAccumulator::<S>::accumulate(
+            layouter,
+            self,
+            &self.scalar_chip,
+            &self.sponge_chip,
+            accs,
         )
     }
 }
@@ -702,6 +752,17 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         };
 
         let queries = iter::empty()
+            .chain(
+                cs.advice_queries().iter().enumerate().map(|(query_index, &(column, rot))| {
+                    VerifierQuery::<S>::new(
+                        &one,
+                        get_point(&rot),
+                        CommitmentLabel::Advice(column.index()),
+                        &advice_commitments[column.index()],
+                        &advice_evals[query_index],
+                    )
+                }),
+            )
             .chain(cs.instance_queries().iter().enumerate().filter_map(
                 |(query_index, &(column, rot))| {
                     if column.index() < nb_committed_instances {
@@ -717,17 +778,6 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                     }
                 },
             ))
-            .chain(
-                cs.advice_queries().iter().enumerate().map(|(query_index, &(column, rot))| {
-                    VerifierQuery::<S>::new(
-                        &one,
-                        get_point(&rot),
-                        CommitmentLabel::Advice(column.index()),
-                        &advice_commitments[column.index()],
-                        &advice_evals[query_index],
-                    )
-                }),
-            )
             .chain((permutations_evaluated).queries(&one, &x, &x_next, &x_last))
             .chain((lookups_evaluated.iter()).flat_map(|lookup| lookup.queries(&one, &x, &x_next)))
             .chain(trashcans_evaluated.iter().flat_map(|trash| trash.queries(&one, &x)))
@@ -958,14 +1008,28 @@ pub(crate) mod tests {
                     [committed_instance_column, instance_column],
                 ),
             );
+
+            let nb_parallel_range_checks = NB_ARITH_COLS - 1;
+            let max_bit_len = 16;
             let core_decomp_config = {
-                let pow2_config = Pow2RangeChip::configure(meta, &advice_columns[1..NB_ARITH_COLS]);
+                let pow2_config =
+                    Pow2RangeChip::configure(meta, &advice_columns[1..=nb_parallel_range_checks]);
                 P2RDecompositionChip::configure(meta, &(native_config.clone(), pow2_config))
             };
 
-            let base_config = FieldChip::<F, CBase, C, NG>::configure(meta, &advice_columns);
-            let curve_config =
-                ForeignEccChip::<F, C, C, NG, NG>::configure(meta, &base_config, &advice_columns);
+            let base_config = FieldChip::<F, CBase, C, NG>::configure(
+                meta,
+                &advice_columns,
+                nb_parallel_range_checks,
+                max_bit_len,
+            );
+            let curve_config = ForeignEccChip::<F, C, C, NG, NG>::configure(
+                meta,
+                &base_config,
+                &advice_columns,
+                nb_parallel_range_checks,
+                max_bit_len,
+            );
 
             let poseidon_config = PoseidonChip::configure(
                 meta,
@@ -1077,8 +1141,9 @@ pub(crate) mod tests {
         let mut inner_acc =
             Accumulator::<S>::from_dual_msm(inner_dual_msm.clone(), "inner_vk", &fixed_bases);
 
-        assert!(inner_dual_msm.check(&inner_params.verifier_params()));
-        assert!(inner_acc.check(&inner_params.s_g2().into(), &fixed_bases));
+        let inner_verifier_params = inner_params.verifier_params();
+        assert!(inner_dual_msm.check(&inner_verifier_params));
+        assert!(inner_acc.check(&inner_verifier_params, &fixed_bases));
 
         inner_acc.collapse();
 
