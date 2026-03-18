@@ -23,6 +23,7 @@ use crate::{
     },
 };
 
+
 /// A multi-scalar multiplication in the polynomial commitment scheme.
 /// For every i, term (bases_i, scalars_i) may be have an optional
 /// label_i for debugging or other purposes.
@@ -159,9 +160,9 @@ where
 }
 
 #[allow(unsafe_code)]
-/// Wrapper over the MSM function to use the blstrs underlying function
+/// Wrapper over the MSM function to use the blstrs underlying function.
 pub fn msm_specific<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C::Curve]) -> C::Curve {
-    // We remove zeros (keep only non-zero coefficients)
+    // We remove zeros (keep only non-zero coefficients).
     let (coeffs, bases): (Vec<C::Scalar>, Vec<C::Curve>) = coeffs
         .iter()
         .zip(bases)
@@ -175,8 +176,10 @@ pub fn msm_specific<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C::Curve]) ->
 
     // We empirically checked that for MSMs larger than 2**18, the blstrs
     // implementation regresses.
-    if coeffs.len() <= (2 << 18) && TypeId::of::<C>() == TypeId::of::<midnight_curves::G1Affine>() {
-        // Safe: we just checked type
+    if coeffs.len() <= (2 << 18)
+        && TypeId::of::<C>() == TypeId::of::<midnight_curves::G1Affine>()
+    {
+        // Safe: we just checked type.
         let coeffs_slice = coeffs.as_slice();
         let bases_slice = bases.as_slice();
         let coeffs = unsafe { &*(coeffs_slice as *const _ as *const [Fq]) };
