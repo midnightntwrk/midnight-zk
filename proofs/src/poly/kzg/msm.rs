@@ -6,12 +6,12 @@ use std::{
 };
 
 use ff::Field;
-use group::{Curve, Group};
+use group::{prime::PrimeCurveAffine, Curve, Group};
 use itertools::izip;
 use midnight_curves::{
     msm::msm_best,
     pairing::{Engine, MillerLoopResult, MultiMillerLoop},
-    CurveAffine, Fq, G1Projective,
+    CurveAffine, Fq, G1Affine, G1Projective,
 };
 use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 
@@ -213,7 +213,13 @@ where
         if self.scalars == vec![E::Fr::ONE] {
             self.bases[0]
         } else {
-            msm_specific::<E::G1Affine>(&self.scalars, &self.bases)
+            // TODO: Not sure if MSMKZG should store proj ar affine.
+            // The normalization was previouly performed inside the MSM call.
+            // MSMKZG stores projective bases (verifier path, few points).
+            // Convert to affine for msm_specific.
+            let mut affine = vec![E::G1Affine::identity(); self.bases.len()];
+            E::G1::batch_normalize(&self.bases, &mut affine);
+            msm_specific::<E::G1Affine>(&self.scalars, &affine)
         }
     }
 
@@ -232,9 +238,10 @@ where
 
 #[allow(unsafe_code)]
 /// Wrapper over the MSM function to use the blstrs underlying function.
-pub fn msm_specific<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C::Curve]) -> C::Curve {
+/// Bases are passed as affine points.
+pub fn msm_specific<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
     // We remove zeros (keep only non-zero coefficients).
-    let (coeffs, bases): (Vec<C::Scalar>, Vec<C::Curve>) = coeffs
+    let (coeffs, bases): (Vec<C::Scalar>, Vec<C>) = coeffs
         .iter()
         .zip(bases)
         .filter(|(s, _)| !s.is_zero_vartime())
@@ -254,20 +261,18 @@ pub fn msm_specific<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C::Curve]) ->
 
     // We empirically checked that for MSMs larger than 2**18, the blstrs
     // implementation regresses.
-    let result = if coeffs.len() <= (2 << 18)
-        && TypeId::of::<C>() == TypeId::of::<midnight_curves::G1Affine>()
-    {
-        // Safe: we just checked type.
+    let result = if coeffs.len() <= (2 << 18) && TypeId::of::<C>() == TypeId::of::<G1Affine>() {
+        // Safe: we just checked the type.
         let coeffs_slice = coeffs.as_slice();
         let bases_slice = bases.as_slice();
         let coeffs = unsafe { &*(coeffs_slice as *const _ as *const [Fq]) };
-        let bases = unsafe { &*(bases_slice as *const _ as *const [G1Projective]) };
-        let res = G1Projective::multi_exp(bases, coeffs);
+        let bases = unsafe { &*(bases_slice as *const _ as *const [G1Affine]) };
+        // TODO: 255 is fine because type is checked. Another option is propagating
+        // nbits as an input of msm_specific.
+        let res = G1Affine::multi_exp_affine(bases, coeffs, 255);
         unsafe { std::mem::transmute_copy(&res) }
     } else {
-        let mut affine_bases = vec![C::identity(); coeffs.len()];
-        C::Curve::batch_normalize(&bases, &mut affine_bases);
-        msm_best(&coeffs, &affine_bases)
+        msm_best(&coeffs, &bases)
     };
 
     if let Some(start) = start {

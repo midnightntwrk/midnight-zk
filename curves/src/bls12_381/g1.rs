@@ -419,6 +419,31 @@ impl G1Affine {
     }
 }
 
+impl G1Affine {
+    /// Perform a multi-exponentiation on affine points.
+    ///
+    /// `nbits` is the maximum number of significant bits across all scalars.
+    pub fn multi_exp_affine(points: &[Self], scalars: &[Fq], nbits: usize) -> G1Projective {
+        use blst::MultiPoint;
+
+        let n = points.len();
+        assert_eq!(n, scalars.len());
+
+        // G1Affine is #[repr(transparent)] over blst_p1_affine.
+        let affine_slice =
+            unsafe { std::slice::from_raw_parts(points.as_ptr() as *const blst_p1_affine, n) };
+
+        let mut scalar_bytes: Vec<u8> = Vec::with_capacity(n * 32);
+        for a in scalars.iter().map(|s| s.to_bytes_le()) {
+            scalar_bytes.extend_from_slice(&a);
+        }
+
+        // Call Pippenger directly on the affine slice.
+        let res = affine_slice.mult(scalar_bytes.as_slice(), nbits);
+        G1Projective(res)
+    }
+}
+
 impl SerdeObject for G1Affine {
     fn from_raw_bytes_unchecked(bytes: &[u8]) -> Self {
         debug_assert_eq!(bytes.len(), UNCOMPRESSED_SIZE);
