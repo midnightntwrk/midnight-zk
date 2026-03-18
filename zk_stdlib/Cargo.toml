@@ -71,6 +71,10 @@ bench = false
 name = "verify"
 harness = false
 
+[[bench]]
+name = "prove"
+harness = false
+
 [[example]]
 name = "cred_full"
 path = "examples/identity/full_credential.rs"
