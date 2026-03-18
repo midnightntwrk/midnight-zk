@@ -34,16 +34,15 @@ use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::{self, ConstraintSystem, Error},
     poly::{
-        kzg::{
-            params::{ParamsKZG, ParamsVerifierKZG},
-            KZGCommitmentScheme,
-        },
+        kzg::{params::ParamsVerifierKZG, KZGCommitmentScheme},
         EvaluationDomain,
     },
     transcript::{CircuitTranscript, Transcript},
 };
-use midnight_zk_stdlib::{MidnightVK, Relation, ZkStdLib, ZkStdLibArch};
-use rand::rngs::OsRng;
+use midnight_zk_stdlib::{
+    utils::plonk_api::{load_srs, SrsSource},
+    MidnightVK, Relation, ZkStdLib, ZkStdLibArch,
+};
 
 use crate::common::sha_preimage;
 
@@ -353,7 +352,7 @@ fn main() {
     const STEPS: usize = 3;
 
     // The inner circuit can use a different SRS than the IVC circuit.
-    let inner_srs = ParamsKZG::unsafe_setup(sha_preimage::K, OsRng);
+    let inner_srs = load_srs(SrsSource::Filecoin, sha_preimage::K, 5); // CS degree is 5
     let inner_vk = sha_preimage::setup_vk(&inner_srs);
     let inner_pk = sha_preimage::setup_pk(&inner_vk);
     let inner_ctx = {
@@ -380,7 +379,7 @@ fn main() {
     println!("{STEPS} inner proofs generated in {:.2?}", start.elapsed());
 
     // IVC setup.
-    let ivc_srs = midnight_zk_stdlib::utils::plonk_api::filecoin_srs(IVC_K);
+    let ivc_srs = load_srs(SrsSource::Midnight, IVC_K, 5); // CS degree is 5
     let start = Instant::now();
     let (mut prover, verifier) = ivc::setup::<ProofAggregation>(ivc_srs, IVC_K, inner_ctx.clone());
     println!("IVC setup completed in {:.2?}", start.elapsed());

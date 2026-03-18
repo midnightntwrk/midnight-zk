@@ -41,7 +41,7 @@ use midnight_proofs::{
 use rand::{CryptoRng, RngCore};
 use sha2::Digest;
 
-use crate::{cost_model, MidnightVK, Relation};
+use crate::{cost_model, optimal_k, MidnightVK, Relation};
 
 macro_rules! plonk_api {
     ($name:ident, $engine:ty, $native:ty, $curve:ty, $projective:ty) => {
@@ -251,7 +251,76 @@ pub fn update_circuit_goldenfiles<R: Relation>(relation: &R) {
         .unwrap_or_else(|_| panic!("Could not write to file {}", file_name));
 }
 
-/// Use filecoin's SRS (over BLS12-381)
+/// Available SRS sources.
+pub enum SrsSource {
+    Filecoin,
+    Midnight,
+}
+
+/// Loads an SRS (over BLS12-381) for the given circuit size `k` and
+/// constraint-system degree `cs_degree`.
+///
+/// Without the `single-h-commitment` feature, the monomial and Lagrange bases
+/// have the same size `2^k`. With the feature enabled the monomial basis is
+/// extended to `k + ceil(log2(cs_degree - 1))` so that it can hold the full
+/// quotient polynomial, while the Lagrange basis is kept at size `2^k`.
+pub fn load_srs(source: SrsSource, k: u32, cs_degree: usize) -> ParamsKZG<Bls12> {
+    let fetch = |k| match source {
+        SrsSource::Filecoin => filecoin_srs(k),
+        SrsSource::Midnight => midnight_srs(k),
+    };
+
+    #[cfg(not(feature = "single-h-commitment"))]
+    {
+        let _ = cs_degree;
+        fetch(k)
+    }
+    #[cfg(feature = "single-h-commitment")]
+    {
+        let extended_k = k + ((cs_degree - 1) as f64).log2().ceil() as u32;
+        let mut srs = fetch(extended_k);
+        srs.downsize_lagrange(k);
+        srs
+    }
+}
+
+/// Loads Filecoin's production SRS (over BLS12-381) for the given relation.
+/// If `k` is `None`, the optimal circuit size is derived automatically.
+pub fn srs_for_test<R: Relation>(relation: &R, k: Option<u32>) -> ParamsKZG<Bls12> {
+    let k = k.unwrap_or_else(|| optimal_k(relation));
+    let cs_degree = cost_model(relation, Some(k)).max_deg;
+    load_srs(SrsSource::Filecoin, k, cs_degree)
+}
+
+/// Loads Midnight's production SRS (over BLS12-381) for the given circuit
+/// size `k` (log2 of the number of rows).
+///
+/// The SRS files are expected at `$SRS_DIR/midnight-srs-2p<k>`.
+///
+/// For checksums and extra validation steps, see `MIDNIGHT_SRS_CATALOG.md` in
+/// the official repository of the Midnight trusted ceremony:
+/// <https://github.com/midnightntwrk/midnight-trusted-setup>
+pub fn midnight_srs(k: u32) -> ParamsKZG<Bls12> {
+    let srs_dir = env::var("SRS_DIR").unwrap_or("./examples/assets".into());
+    let srs_path = format!("{srs_dir}/midnight-srs-2p{k}");
+
+    let params_fs = File::open(Path::new(&srs_path)).unwrap_or_else(|_| {
+        panic!(
+            "\nSRS file not found at {srs_path}. Download it with:\
+             \n\n    curl -L -o {srs_path} \
+             https://srs.midnight.network/midnight-srs-2p{k}\n"
+        )
+    });
+
+    ParamsKZG::read_custom::<_>(
+        &mut BufReader::new(params_fs),
+        SerdeFormat::RawBytesUnchecked,
+    )
+    .expect("Failed to read SRS params")
+}
+
+/// Loads Filecoin's production SRS (over BLS12-381) for the given circuit
+/// size `k` (log2 of the number of rows).
 pub fn filecoin_srs(k: u32) -> ParamsKZG<Bls12> {
     assert!(k <= 19, "We don't have an SRS for circuits of bit size {k}");
 
