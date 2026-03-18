@@ -1207,6 +1207,15 @@ where
     ) -> Result<AssignedForeignPoint<F, C, B>, Error> {
         let r_curve = p.value().zip(q.value()).map(|(p, q)| p + q);
         let r = self.assign_point_unchecked(layouter, r_curve)?;
+        let mut fluke = false;
+        r_curve.map(|p| {
+            if C::CryptographicGroup::is_identity(&p).into() {
+                fluke = true;
+            }
+        });
+        if fluke {
+            return Err(Error::MSMCompletenessFluke);
+        }
 
         // Assert that r is not the identity.
         self.native_gadget.assert_equal(layouter, &p.is_id, &r.is_id)?;
@@ -1738,6 +1747,16 @@ where
 
         let diff = native_gadget.linear_combination(layouter, &terms, F::ZERO)?;
 
+        let mut fluke = false;
+        diff.value().map(|&v| {
+            if v == F::ZERO || v == m || v == -m {
+                fluke = true;
+            }
+        });
+        if fluke {
+            return Err(Error::MSMCompletenessFluke);
+        }
+
         // We assert that `diff not in {0, m, -m}`.
         // TODO: the following could be done more efficiently if we had dedicated
         // instructions in the native gadget.
@@ -1839,6 +1858,16 @@ where
 
         let r: AssignedForeignPoint<F, C, B> =
             self.assign(layouter, Value::known(C::CryptographicGroup::random(OsRng)))?;
+
+        let mut fluke = false;
+        r.point.map(|p| {
+            if C::CryptographicGroup::is_identity(&p).into() {
+                fluke = true;
+            }
+        });
+        if fluke {
+            return Err(Error::MSMCompletenessFluke);
+        }
 
         // Assert the chosen r is not the identity point.
         self.base_field_chip
@@ -2324,4 +2353,99 @@ mod tests {
     ecc_tests!(test_msm_by_bounded_scalars);
     ecc_tests!(test_mul_by_constant);
     ecc_tests!(test_coordinates);
+
+    #[test]
+    fn test_msm_completeness_fluke() {
+        use midnight_proofs::{circuit::SimpleFloorPlanner, dev::MockProver, plonk::Circuit};
+        use rand::SeedableRng;
+        use rand_chacha::ChaCha8Rng;
+
+        struct FlukeCircuit;
+        impl Circuit<BlsScalar> for FlukeCircuit {
+            type Config =
+                ForeignEccTestConfig<BlsScalar, BlsG1, Native<BlsScalar>, Native<BlsScalar>>;
+            type FloorPlanner = SimpleFloorPlanner;
+            type Params = ();
+
+            fn without_witnesses(&self) -> Self {
+                FlukeCircuit
+            }
+            fn configure(meta: &mut ConstraintSystem<BlsScalar>) -> Self::Config {
+                let committed_instance_column = meta.instance_column();
+                let instance_column = meta.instance_column();
+                Bls12381Chip::configure_from_scratch(
+                    meta,
+                    &[committed_instance_column, instance_column],
+                )
+            }
+
+            fn synthesize(
+                &self,
+                config: Self::Config,
+                mut layouter: impl Layouter<BlsScalar>,
+            ) -> Result<(), Error> {
+                let ecc_chip = Bls12381Chip::new_from_scratch(&config);
+                let mut rng = ChaCha8Rng::seed_from_u64(0xc0ffee);
+                let p_val = BlsG1::random(&mut rng);
+                let q_val = -p_val;
+
+                let p = ecc_chip.assign(&mut layouter, Value::known(p_val))?;
+                let q = ecc_chip.assign(&mut layouter, Value::known(q_val))?;
+
+                // This should trigger the fluke error in incomplete_add because p + q = identity
+                let _ = ecc_chip.incomplete_add(&mut layouter, &p, &q)?;
+
+                ecc_chip.load_from_scratch(&mut layouter)
+            }
+        }
+
+        match MockProver::run(10, &FlukeCircuit, vec![vec![], vec![]]) {
+            Err(Error::MSMCompletenessFluke) => (),
+            e => panic!("Expected MSMCompletenessFluke, got {:?}", e),
+        }
+
+        struct CollisionCircuit;
+        impl Circuit<BlsScalar> for CollisionCircuit {
+            type Config =
+                ForeignEccTestConfig<BlsScalar, BlsG1, Native<BlsScalar>, Native<BlsScalar>>;
+            type FloorPlanner = SimpleFloorPlanner;
+            type Params = ();
+
+            fn without_witnesses(&self) -> Self {
+                CollisionCircuit
+            }
+            fn configure(meta: &mut ConstraintSystem<BlsScalar>) -> Self::Config {
+                let committed_instance_column = meta.instance_column();
+                let instance_column = meta.instance_column();
+                Bls12381Chip::configure_from_scratch(
+                    meta,
+                    &[committed_instance_column, instance_column],
+                )
+            }
+
+            fn synthesize(
+                &self,
+                config: Self::Config,
+                mut layouter: impl Layouter<BlsScalar>,
+            ) -> Result<(), Error> {
+                let ecc_chip = Bls12381Chip::new_from_scratch(&config);
+                let mut rng = ChaCha8Rng::seed_from_u64(0xc0ffee);
+                let p_val = BlsG1::random(&mut rng);
+                let q_val = -p_val; // p.x == q.x
+
+                let p = ecc_chip.assign(&mut layouter, Value::known(p_val))?;
+                let q = ecc_chip.assign(&mut layouter, Value::known(q_val))?;
+
+                // This should trigger the fluke error in incomplete_assert_different_x
+                ecc_chip.incomplete_assert_different_x(&mut layouter, &p, &q)?;
+
+                ecc_chip.load_from_scratch(&mut layouter)
+            }
+        }
+
+        match MockProver::run(10, &CollisionCircuit, vec![vec![], vec![]]) {
+            Err(Error::MSMCompletenessFluke) => (),
+            e => panic!("Expected MSMCompletenessFluke, got {:?}", e),
+        }
+    }
 }
