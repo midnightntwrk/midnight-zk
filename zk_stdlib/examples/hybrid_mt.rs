@@ -222,6 +222,8 @@ impl Relation for HybridMtExample {
 
     type Witness = MerklePath<F>;
 
+    type Error = Error;
+
     fn format_instance(instance: &Self::Instance) -> Result<Vec<F>, Error> {
         Ok(vec![*instance])
     }

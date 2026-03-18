@@ -46,6 +46,8 @@ macro_rules! run_test_stdlib {
 
             type Instance = ();
 
+            type Error = Error;
+
             fn format_instance(_instance: &Self::Instance) -> Result<Vec<F>, Error> {
                 Ok(vec![])
             }
