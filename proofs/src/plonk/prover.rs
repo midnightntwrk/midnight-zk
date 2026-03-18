@@ -212,16 +212,23 @@ where
     let theta: F = transcript.squeeze_challenge();
 
     // Commit to the multiplicities columns
+    // Parallel compute phase, then sequential transcript writes.
     let lookups: Vec<Vec<logup::prover::ComputedMultiplicities<F>>> = instance
         .iter()
         .zip(advice.iter())
         .map(|(instance, advice)| -> Result<Vec<_>, Error> {
-            pk.vk
+            let logup_args: Vec<_> = pk
+                .vk
                 .cs
                 .lookups
                 .iter()
-                .map(|l| {
-                    l.chunk_by_degree(pk.vk.cs.degree()).commit_multiplicities(
+                .map(|l| l.chunk_by_degree(pk.vk.cs.degree()))
+                .collect();
+            // Compute all lookups in parallel (no transcript access).
+            let results: Vec<_> = logup_args
+                .par_iter()
+                .map(|logup| {
+                    logup.compute_multiplicities_parallel(
                         pk,
                         params,
                         theta,
@@ -229,8 +236,15 @@ where
                         &pk.fixed_values,
                         &instance.instance_values,
                         &challenges,
-                        transcript,
                     )
+                })
+                .collect::<Result<Vec<_>, Error>>()?;
+            // Sequential transcript writes to preserve Fiat-Shamir ordering.
+            results
+                .into_iter()
+                .map(|(computed, commitment)| {
+                    transcript.write(&commitment)?;
+                    Ok(computed)
                 })
                 .collect::<Result<Vec<_>, Error>>()
         })
@@ -262,14 +276,42 @@ where
         })
         .collect::<Result<Vec<_>, _>>()?;
 
+    // Compute logderivative for each lookup (sequential due to &mut rng),
+    // then write to transcript and convert to coefficient form.
     let lookups: Vec<Vec<logup::prover::Committed<F>>> = lookups
         .into_iter()
         .map(|lookups| -> Result<Vec<_>, _> {
-            // Construct and commit to products polynomials for each lookup
-            lookups
+            // Compute phase: sequential (rng dependency).
+            let computed: Vec<_> = lookups
                 .into_iter()
-                .map(|batch| batch.commit_logderivative(pk, params, beta, &mut rng, transcript))
-                .collect::<Result<Vec<_>, _>>()
+                .map(|lookup| lookup.compute_logderivative(pk, params, beta, &mut rng))
+                .collect::<Result<Vec<_>, _>>()?;
+            // Commit helper polys and write all commitments to transcript in order.
+            for c in &computed {
+                for h in &c.helper_polys_lagrange {
+                    let h_poly = domain.lagrange_from_vec(h.clone());
+                    let h_commitment = CS::commit_lagrange(params, &h_poly);
+                    transcript.write(&h_commitment)?;
+                }
+                transcript.write(&c.aggregator_commitment)?;
+            }
+            // Convert to coefficient form (FFTs can overlap via rayon).
+            let committed: Vec<_> = computed
+                .into_par_iter()
+                .map(|c| {
+                    let helper_polys = c
+                        .helper_polys_lagrange
+                        .into_iter()
+                        .map(|h| domain.lagrange_to_coeff(domain.lagrange_from_vec(h)))
+                        .collect();
+                    logup::prover::Committed {
+                        multiplicities: domain.lagrange_to_coeff(c.multiplicities),
+                        helper_polys,
+                        aggregator_poly: domain.lagrange_to_coeff(c.aggregator_poly),
+                    }
+                })
+                .collect();
+            Ok(committed) as Result<_, Error>
         })
         .collect::<Result<Vec<_>, _>>()?;
 
