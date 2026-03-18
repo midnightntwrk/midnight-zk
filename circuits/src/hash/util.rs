@@ -20,7 +20,8 @@ pub const MASK_EVN_64: u64 = 0x5555_5555_5555_5555; // 010101...01 (even positio
 /// Mask for selecting odd bits in u64 (little-endian representation).
 pub const MASK_ODD_64: u64 = 0xAAAA_AAAA_AAAA_AAAA; // 101010...10 (odd positions in u64)
 
-/// Returns the even and odd bits of little-endian binary representation of u64.
+/// Returns the even and odd bits of little-endian binary representation of
+/// u64.
 pub fn get_even_and_odd_bits(value: u64) -> (u32, u32) {
     (compact_even(value), compact_even(value >> 1))
 }
@@ -38,6 +39,10 @@ fn compact_even(mut x: u64) -> u32 {
 
 /// Asserts x is in correct spreaded form, i.e. its little-endian binary
 /// representation has zeros in odd positions.
+///
+/// # Panics
+///
+/// If the input is not in clean spreaded form.
 pub fn assert_in_valid_spreaded_form(x: u64) {
     assert_eq!(MASK_ODD_64 & x, 0, "Input must be in valid spreaded form")
 }
