@@ -17,6 +17,7 @@ verification keys break backwards compatibility.
 * Expose `verifier_gadget` and `bls12_381_scalar` (native gadget) from `ZkStdLib` [#227](https://github.com/midnightntwrk/midnight-zk/pull/227)
 * Add `square`, `mod_square` operations in `BigUintGadget` [#259](https://github.com/midnightntwrk/midnight-zk/pull/259)
 * Add `PartialEq` impl for `AssignedBigUint` [#259](https://github.com/midnightntwrk/midnight-zk/pull/259)
+* Update READMEs and add badges [#261](https://github.com/midnightntwrk/midnight-zk/pull/261)
 
 ### Changed
 * bug patch in the credential property verification example, which was omitting some index computation in circuit [#240](https://github.com/midnightntwrk/midnight-zk/pull/240)
