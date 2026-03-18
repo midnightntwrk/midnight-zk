@@ -9,7 +9,6 @@ use group::Group;
 use midnight_circuits::{hash::poseidon::PoseidonChip, instructions::hash::HashCPU};
 use midnight_curves::{Fr as JubjubScalar, JubjubAffine, JubjubExtended as Jubjub, JubjubSubgroup};
 use midnight_proofs::poly::kzg::params::ParamsKZG;
-use midnight_zk_stdlib::{self, MidnightCircuit};
 use midnight_zkir::ZkirRelation;
 use rand_chacha::{
     rand_core::{OsRng, RngCore, SeedableRng},
@@ -50,7 +49,8 @@ fn main() {
 
     let relation = ZkirRelation::read(ir_raw).expect("valid IR");
 
-    dbg!(midnight_zk_stdlib::cost_model(&relation));
+    let k = midnight_zk_stdlib::optimal_k(&relation);
+    dbg!(midnight_zk_stdlib::cost_model(&relation, Some(k)));
 
     let mut rng = ChaCha8Rng::seed_from_u64(0xf001ba11);
 
@@ -66,7 +66,6 @@ fn main() {
     ]);
     let instance = relation.public_inputs(witness.clone()).expect("off-circuit run failed");
 
-    let k = MidnightCircuit::from_relation(&relation).min_k();
     let srs = ParamsKZG::unsafe_setup(k, OsRng);
 
     let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);

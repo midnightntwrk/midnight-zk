@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) Midnight Foundation
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -22,7 +22,6 @@ use std::ops::{Index, RangeTo};
 
 use ff::PrimeField;
 use num_bigint::BigUint;
-use num_traits::Num;
 
 /// A prime field suitable for use in a circuit, as the native field or
 /// emulated.
@@ -59,8 +58,10 @@ pub trait CircuitField: PrimeField {
     /// modulus)`. This method does **not** perform modular reduction.
     fn from_biguint(n: &BigUint) -> Option<Self>;
 
-    /// Returns the field modulus as a [`BigUint`].
-    fn modulus() -> BigUint;
+    /// Returns the prime field modulus as a [`BigUint`].
+    fn modulus() -> BigUint {
+        (-Self::ONE).to_biguint() + 1u64
+    }
 
     /// Converts the field element to little-endian bytes.
     ///
@@ -73,12 +74,14 @@ pub trait CircuitField: PrimeField {
     fn to_bytes_be(&self) -> Self::Bytes;
 
     /// Creates a field element from little-endian bytes.
+    /// Needs to receive excatly Self::NUM_BYTES.
     ///
     /// Returns `None` if the value is not in the canonical range `[0,
     /// modulus)`.
     fn from_bytes_le(bytes: &[u8]) -> Option<Self>;
 
     /// Creates a field element from big-endian bytes.
+    /// Needs to receive exactly Self::NUM_BYTES.
     ///
     /// Returns `None` if the value is not in the canonical range `[0,
     /// modulus)`.
@@ -91,7 +94,7 @@ pub trait CircuitField: PrimeField {
     /// Decomposes the field element into little-endian bits.
     ///
     /// - If `nb_bits = None`, the output has as many bits as necessary to
-    ///   represent the element, but no more.
+    ///   represent the element, but no more. Zero needs 1 bit.
     /// - If `nb_bits` is provided, the output has the specified length,
     ///   possibly with trailing zeros.
     ///
@@ -99,45 +102,49 @@ pub trait CircuitField: PrimeField {
     ///
     /// If the element does not fit in `nb_bits` bits when such argument is
     /// provided.
-    fn to_le_bits(&self, nb_bits: Option<usize>) -> Vec<bool> {
-        let bytes = self.to_bytes_be();
-        let mut bits = Vec::new();
-        let mut started = false;
-        for &byte in bytes.as_ref() {
-            for j in (0..8).rev() {
-                let bit = byte & (1 << j) != 0;
-                if bit {
-                    started = true;
-                }
-                if started {
-                    bits.push(bit);
-                }
+    fn to_bits_le(&self, nb_bits: Option<usize>) -> Vec<bool> {
+        let bytes = self.to_bytes_le();
+        let all_bits: Vec<bool> = bytes
+            .as_ref()
+            .iter()
+            .flat_map(|byte| (0..8).map(move |j| byte & (1 << j) != 0))
+            .collect();
+
+        match nb_bits {
+            Some(n) => {
+                // The value must fit within `n` bits.
+                assert!(
+                    n > 0 && all_bits[n..].iter().all(|b| !b),
+                    "field element does not fit in {n} bits"
+                );
+                all_bits[..n].to_vec()
+            }
+            None => {
+                // Strip trailing zeros. Keep at least one bit (zero is [false], not an empty
+                // vec).
+                let len = all_bits.iter().rposition(|b| *b).unwrap_or(0);
+                all_bits[..=len].to_vec()
             }
         }
-        bits.reverse();
-        if let Some(n) = nb_bits {
-            assert!(n >= bits.len());
-            bits.resize(n, false);
-        }
-        bits
     }
 
     /// Creates a field element from a little-endian bitstring.
     ///
+    /// The input may have fewer bits than `Self::NUM_BITS`; missing high bits
+    /// are treated as zero.
+    ///
     /// # Panics
     ///
     /// If `bits.len() > Self::NUM_BITS`.
-    fn from_le_bits(bits: &[bool]) -> Self {
+    fn from_bits_le(bits: &[bool]) -> Self {
         assert!(bits.len() as u32 <= Self::NUM_BITS);
-        let bytes: Vec<u8> = bits
-            .chunks(8)
-            .map(|chunk| {
-                chunk
-                    .iter()
-                    .enumerate()
-                    .fold(0u8, |acc, (i, b)| acc + if *b { 1 << i } else { 0 })
-            })
-            .collect();
+        let mut bytes = vec![0u8; Self::NUM_BYTES];
+        for (i, chunk) in bits.chunks(8).enumerate() {
+            bytes[i] = chunk
+                .iter()
+                .enumerate()
+                .fold(0u8, |acc, (j, b)| acc + if *b { 1 << j } else { 0 });
+        }
         Self::from_bytes_le(&bytes).unwrap()
     }
 }
@@ -165,11 +172,6 @@ macro_rules! impl_circuit_field_le {
                 Self::from_repr(padded.into()).into()
             }
 
-            fn modulus() -> BigUint {
-                let hex_str = &Self::MODULUS[2..]; // Skip "0x" prefix.
-                BigUint::from_str_radix(hex_str, 16).expect("Invalid modulus hex string")
-            }
-
             fn from_bytes_le(bytes: &[u8]) -> Option<Self> {
                 let mut repr = [0u8; $repr_size];
                 repr.copy_from_slice(bytes);
@@ -192,47 +194,49 @@ macro_rules! impl_circuit_field_le {
     };
 }
 
-// Note: Will be used for k256.
-// macro_rules! impl_circuit_field_be {
-//     ($field:ty, $repr_size:expr) => {
-//         impl CircuitField for $field {
-//             const NUM_BYTES: usize = $repr_size;
-//             type Bytes = [u8; $repr_size];
-//
-//             fn to_biguint(&self) -> BigUint {
-//                 BigUint::from_bytes_be(self.to_repr().as_ref())
-//             }
-//
-//             fn from_biguint(n: &BigUint) -> Option<Self> {
-//                 let bytes = n.to_bytes_be();
-//                 if bytes.len() > $repr_size {
-//                     return None;
-//                 }
-//                 let mut padded = [0u8; $repr_size];
-//                 padded[..bytes.len()].copy_from_slice(&bytes);
-//                 Self::from_repr(padded.into()).into()
-//             }
-//
-//             fn modulus() -> BigUint {
-//                 let hex_str = &Self::MODULUS[2..]; // Skip "0x" prefix.
-//                 BigUint::from_str_radix(hex_str, 16).expect("Invalid modulus
-// hex string")             }
-//
-//             fn to_bytes_le(&self) -> Self::Bytes {
-//                 let mut bytes = [0u8; $repr_size];
-//                 bytes.copy_from_slice(self.to_repr().as_ref());
-//                 bytes.reverse();
-//                 bytes
-//             }
-//
-//             fn to_bytes_be(&self) -> Self::Bytes {
-//                 let mut bytes = [0u8; $repr_size];
-//                 bytes.copy_from_slice(self.to_repr().as_ref());
-//                 bytes
-//             }
-//         }
-//     };
-// }
+macro_rules! impl_circuit_field_be {
+    ($field:ty, $repr_size:expr) => {
+        impl CircuitField for $field {
+            const NUM_BYTES: usize = $repr_size;
+            type Bytes = [u8; $repr_size];
+
+            fn to_biguint(&self) -> BigUint {
+                BigUint::from_bytes_be(self.to_repr().as_ref())
+            }
+
+            fn from_biguint(n: &BigUint) -> Option<Self> {
+                let bytes = n.to_bytes_be();
+                if bytes.len() > $repr_size {
+                    return None;
+                }
+                // Big-endian: pad on the left (high bytes).
+                let mut padded = [0u8; $repr_size];
+                padded[$repr_size - bytes.len()..].copy_from_slice(&bytes);
+                Self::from_repr(padded.into()).into()
+            }
+
+            fn from_bytes_le(bytes: &[u8]) -> Option<Self> {
+                let mut repr = [0u8; $repr_size];
+                repr.copy_from_slice(&bytes);
+                repr.reverse();
+                <$field as PrimeField>::from_repr(repr.into()).into_option()
+            }
+
+            fn to_bytes_le(&self) -> Self::Bytes {
+                let mut bytes = [0u8; $repr_size];
+                bytes.copy_from_slice(self.to_repr().as_ref());
+                bytes.reverse();
+                bytes
+            }
+
+            fn to_bytes_be(&self) -> Self::Bytes {
+                let mut bytes = [0u8; $repr_size];
+                bytes.copy_from_slice(self.to_repr().as_ref());
+                bytes
+            }
+        }
+    };
+}
 
 // Implementations for BLS12-381 fields
 // =====================================
@@ -246,14 +250,14 @@ impl_circuit_field_le!(midnight_curves::Fq, 32);
 // BLS12-381 base field (Fp) - 381 bits, 48 bytes.
 impl_circuit_field_le!(midnight_curves::Fp, 48);
 
-// Implementations for secp256k1 fields
-// =====================================
+// Implementations for k256 (secp256k1) fields
+// =============================================
 
-// secp256k1 base field (Fp) - 256 bits, 32 bytes.
-impl_circuit_field_le!(midnight_curves::secp256k1::Fp, 32);
+// k256 base field (Fp) - 256 bits, 32 bytes, BE repr.
+impl_circuit_field_be!(midnight_curves::k256::Fp, 32);
 
-// secp256k1 scalar field (Fq) - 256 bits, 32 bytes.
-impl_circuit_field_le!(midnight_curves::secp256k1::Fq, 32);
+// k256 scalar field (Fq) - 256 bits, 32 bytes, BE repr.
+impl_circuit_field_be!(midnight_curves::k256::Fq, 32);
 
 // Implementations for curve25519 fields
 // =====================================
@@ -337,6 +341,37 @@ mod tests {
             let recovered = F::from_bytes_le(&bytes).unwrap();
             assert_eq!(fe, recovered);
         }
+    }
+
+    #[test]
+    fn test_bits_le_roundtrip() {
+        let mut rng = ChaCha8Rng::seed_from_u64(0xFACE);
+
+        for _ in 0..100 {
+            let fe = F::random(&mut rng);
+            let bits = fe.to_bits_le(None);
+            let recovered = F::from_bits_le(&bits);
+            assert_eq!(fe, recovered);
+        }
+
+        // Fixed-width variant.
+        for _ in 0..100 {
+            let fe = F::random(&mut rng);
+            let bits = fe.to_bits_le(Some(F::NUM_BITS as usize));
+            assert_eq!(bits.len(), F::NUM_BITS as usize);
+            let recovered = F::from_bits_le(&bits);
+            assert_eq!(fe, recovered);
+        }
+
+        // Zero roundtrips and produces a single `false` bit.
+        let bits = F::ZERO.to_bits_le(None);
+        assert_eq!(bits, vec![false]);
+        assert_eq!(F::from_bits_le(&bits), F::ZERO);
+
+        // One roundtrips and produces a single `true` bit.
+        let bits = F::ONE.to_bits_le(None);
+        assert_eq!(bits, vec![true]);
+        assert_eq!(F::from_bits_le(&bits), F::ONE);
     }
 
     #[test]

@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) Midnight Foundation
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -43,6 +43,8 @@ mod verifier_gadget;
 
 pub use accumulator::{Accumulator, AssignedAccumulator};
 pub use msm::{AssignedMsm, Msm};
+#[cfg(feature = "dev-curves")]
+pub use types::BnEmulation;
 pub use types::{BlstrsEmulation, SelfEmulation};
 pub use verifier_gadget::VerifierGadget;
 

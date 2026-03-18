@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) Midnight Foundation
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -136,7 +136,7 @@ pub(super) fn process_limb_sizes(max_parallel_lookups: usize, limbs: &mut Vec<us
 ///             }
 ///         1 + OPT(bound - i*j)      
 ///      with SOL = [i; j] concatenated with SOL(bound - i*j)
-pub(super) fn compute_optimal_limb_sizes(
+pub(crate) fn compute_optimal_limb_sizes(
     solutions: &mut HashMap<i32, Vec<Vec<usize>>>,
     max_parallel_lookups: usize,
     max_bit_length: usize,

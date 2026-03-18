@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) Midnight Foundation
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -247,7 +247,7 @@ pub fn update_circuit_goldenfiles<R: Relation>(relation: &R) {
     let path = Path::new(&file_name);
     let mut f =
         File::create(path).unwrap_or_else(|_| panic!("Could not create file {}", file_name));
-    writeln!(f, "{:#?}", cost_model(relation))
+    writeln!(f, "{:#?}", cost_model(relation, None))
         .unwrap_or_else(|_| panic!("Could not write to file {}", file_name));
 }
 

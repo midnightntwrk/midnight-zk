@@ -43,7 +43,7 @@ def log2(n):
 def next_cheapest_power_of_2(MAX_BIT_LEN, x):
     best_log = len(bin(x-1)) - 2
     best = cost_range_check(MAX_BIT_LEN, best_log)
-    for i in range(1, 100):
+    for i in range(1, 128):
         cost = cost_range_check(MAX_BIT_LEN, best_log + i)
         if cost < best:
             best = cost
@@ -505,13 +505,13 @@ def optimize(p, q):
           tangent_cost = cost_tangent(RC_len, params)
 
           params_mul = Params(p, q, params.B, params.auxiliary_moduli, RC_len, mul_expr_bounds)
-          mul_cost = cost_mul(RC_len, params)
+          mul_cost = cost_mul(RC_len, params_mul)
 
           params_lambda2 = Params(p, q, params.B, params.auxiliary_moduli, RC_len, lambda2_expr_bounds)
-          lambda2_cost = cost_lambda2(RC_len, params)
+          lambda2_cost = cost_lambda2(RC_len, params_lambda2)
 
           params_slope = Params(p, q, params.B, params.auxiliary_moduli, RC_len, slope_expr_bounds)
-          slope_cost = cost_slope(RC_len, params)
+          slope_cost = cost_slope(RC_len, params_slope)
 
           norm_cost = mul_cost # This is an upper bound for the cost of normalization
 

@@ -104,16 +104,20 @@ impl Relation for ShaPreImageCircuit {
     }
 }
 
-// An upper bound on the log2 of the number of rows in the circuit.
-// The closer to the real value, the better, but you do not have to worry too much.
+// The SRS (Structured Reference String) must match the circuit size exactly.
+// `k` is the log2 of the circuit size (i.e. the circuit has 2^k rows).
+// We can load an SRS that is larger than needed and downsize it automatically.
 const K: u32 = 14;
 let mut srs = filecoin_srs(K);
 
 let relation = ShaPreImageCircuit;
 
-// The actual k needed by this circuit is 13. We can downsize it automatically.
-midnight_zk_stdlib::downsize_srs_for_relation(&mut srs, &relation);
+// Compute the optimal k for the circuit and downsize the SRS to match.
+let k = midnight_zk_stdlib::optimal_k(&relation);
+srs.downsize(k);
 
+// If you already know the exact k for your circuit, you can skip the above
+// and load an SRS of the right size directly.
 let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
 let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
 

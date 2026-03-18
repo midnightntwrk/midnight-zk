@@ -1,5 +1,5 @@
 // This file is part of MIDNIGHT-ZK.
-// Copyright (C) 2025 Midnight Foundation
+// Copyright (C) Midnight Foundation
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -119,10 +119,7 @@ where
         inverse_point_index_map.insert(point_index, point.clone());
     }
 
-    // Construct map of unique ordered point_idx_sets to their set_idx
-    // Again, mind the difference of `HashMap` vs halo2's `BTreeMap`.
-    // This difference is not significant, it leads to equivalent code,
-    // as the key order is not relevant here.
+    // Construct map of unique ordered point_idx_sets to their set_idx.
     let mut point_idx_sets = HashMap::new();
     // Also construct mapping from commitment to point_idx_set
     let mut commitment_set_map = Vec::new();
@@ -367,6 +364,23 @@ where
         .iter()
         .map(|evals| evals_inner_product(layouter, scalar_chip, evals, &truncated_x1_powers))
         .collect::<Result<Vec<_>, Error>>()?;
+
+    // Sort point sets by ascending cardinality to ensure the first set is the one
+    // that contains fixed commitments (which are evaluated at x only). This
+    // property is not necessary for the actual proving system, but it is important
+    // for in-circuit verification of proofs. (It enables an optimization based on
+    // an internal collapse.)
+    //
+    // The (len, i) key provides a deterministic total order even when two sets
+    // share the same cardinality.
+    let (q_coms, q_eval_sets, point_sets) = {
+        let mut order: Vec<usize> = (0..point_sets.len()).collect();
+        order.sort_by_key(|&i| (point_sets[i].len(), i));
+        let q_coms: Vec<_> = order.iter().map(|&i| q_coms[i].clone()).collect();
+        let q_eval_sets: Vec<_> = order.iter().map(|&i| q_eval_sets[i].clone()).collect();
+        let point_sets: Vec<_> = order.iter().map(|&i| point_sets[i].clone()).collect();
+        (q_coms, q_eval_sets, point_sets)
+    };
 
     let f_com = transcript_gadget.read_point(layouter)?;
 
