@@ -1,4 +1,9 @@
-use std::{any::TypeId, fmt::Debug};
+use std::{
+    any::TypeId,
+    fmt::Debug,
+    sync::{Mutex, OnceLock},
+    time::{Duration, Instant},
+};
 
 use ff::Field;
 use group::{Curve, Group};
@@ -22,6 +27,73 @@ use crate::{
         helpers::ProcessedSerdeObject,
     },
 };
+
+// ---------------------------------------------------------------------------
+// Optional MSM timing (activate with `MSM_TIMING=1`).
+// ---------------------------------------------------------------------------
+
+/// A single MSM timing entry.
+#[derive(Clone, Debug)]
+pub struct MsmTimingEntry {
+    /// Number of non-zero scalar–base pairs.
+    pub n: usize,
+    /// Wall-clock start instant.
+    pub start: Instant,
+    /// Wall-clock end instant.
+    pub end: Instant,
+}
+
+static MSM_TIMING_ENABLED: OnceLock<bool> = OnceLock::new();
+static MSM_TIMING_LOG: Mutex<Vec<MsmTimingEntry>> = Mutex::new(Vec::new());
+
+/// Returns `true` when `MSM_TIMING=1` is set in the environment.
+pub fn msm_timing_enabled() -> bool {
+    *MSM_TIMING_ENABLED.get_or_init(|| std::env::var("MSM_TIMING").as_deref() == Ok("1"))
+}
+
+/// Clears the accumulated MSM timing log.
+pub fn msm_timing_reset() {
+    if msm_timing_enabled() {
+        MSM_TIMING_LOG.lock().unwrap().clear();
+    }
+}
+
+/// Returns all accumulated timing entries and clears the log.
+pub fn msm_timing_snapshot() -> Vec<MsmTimingEntry> {
+    if msm_timing_enabled() {
+        std::mem::take(&mut *MSM_TIMING_LOG.lock().unwrap())
+    } else {
+        Vec::new()
+    }
+}
+
+/// Total wall-clock time spent in MSMs, accounting for concurrency.
+/// Overlapping intervals are merged so concurrent MSMs are not double-counted.
+pub fn msm_timing_wall_clock(entries: &[MsmTimingEntry]) -> Duration {
+    if entries.is_empty() {
+        return Duration::ZERO;
+    }
+    let mut intervals: Vec<_> = entries.iter().map(|e| (e.start, e.end)).collect();
+    intervals.sort_by_key(|(s, _)| *s);
+
+    let mut total = Duration::ZERO;
+    let (mut cur_start, mut cur_end) = intervals[0];
+    for &(s, e) in &intervals[1..] {
+        if s <= cur_end {
+            // Overlapping — extend.
+            cur_end = cur_end.max(e);
+        } else {
+            // Gap — flush previous interval.
+            total += cur_end.duration_since(cur_start);
+            cur_start = s;
+            cur_end = e;
+        }
+    }
+    total += cur_end.duration_since(cur_start);
+    total
+}
+
+// ---------------------------------------------------------------------------
 
 /// A multi-scalar multiplication in the polynomial commitment scheme.
 /// For every i, term (bases_i, scalars_i) may be have an optional
@@ -159,9 +231,9 @@ where
 }
 
 #[allow(unsafe_code)]
-/// Wrapper over the MSM function to use the blstrs underlying function
+/// Wrapper over the MSM function to use the blstrs underlying function.
 pub fn msm_specific<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C::Curve]) -> C::Curve {
-    // We remove zeros (keep only non-zero coefficients)
+    // We remove zeros (keep only non-zero coefficients).
     let (coeffs, bases): (Vec<C::Scalar>, Vec<C::Curve>) = coeffs
         .iter()
         .zip(bases)
@@ -173,10 +245,19 @@ pub fn msm_specific<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C::Curve]) ->
         return C::Curve::identity();
     }
 
+    let n = coeffs.len();
+    let start = if msm_timing_enabled() {
+        Some(Instant::now())
+    } else {
+        None
+    };
+
     // We empirically checked that for MSMs larger than 2**18, the blstrs
     // implementation regresses.
-    if coeffs.len() <= (2 << 18) && TypeId::of::<C>() == TypeId::of::<midnight_curves::G1Affine>() {
-        // Safe: we just checked type
+    let result = if coeffs.len() <= (2 << 18)
+        && TypeId::of::<C>() == TypeId::of::<midnight_curves::G1Affine>()
+    {
+        // Safe: we just checked type.
         let coeffs_slice = coeffs.as_slice();
         let bases_slice = bases.as_slice();
         let coeffs = unsafe { &*(coeffs_slice as *const _ as *const [Fq]) };
@@ -187,7 +268,14 @@ pub fn msm_specific<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C::Curve]) ->
         let mut affine_bases = vec![C::identity(); coeffs.len()];
         C::Curve::batch_normalize(&bases, &mut affine_bases);
         msm_best(&coeffs, &affine_bases)
+    };
+
+    if let Some(start) = start {
+        let end = Instant::now();
+        MSM_TIMING_LOG.lock().unwrap().push(MsmTimingEntry { n, start, end });
     }
+
+    result
 }
 
 /// Two channel MSM accumulator
