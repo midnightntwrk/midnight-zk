@@ -58,7 +58,8 @@ pub fn negate_spreaded(x: u64) -> u64 {
     x ^ MASK_EVN_64
 }
 
-/// Breaks the 32-bit value into big-endian limbs following the required limb lengths.
+/// Breaks the 32-bit value into big-endian limbs following the required limb
+/// lengths.
 ///
 /// # Panics
 ///

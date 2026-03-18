@@ -122,7 +122,6 @@ fn pow4_ip<const N: usize>(exponents: [u8; N], terms: [u64; N]) -> u64 {
     exponents.iter().zip(terms.iter()).map(|(e, t)| (1 << (2 * e)) * t).sum()
 }
 
-
 #[cfg(test)]
 mod tests {
 
@@ -131,7 +130,6 @@ mod tests {
     use super::*;
 
     type F = midnight_curves::Fq;
-
 
     #[test]
     fn test_gen_spread_table() {
