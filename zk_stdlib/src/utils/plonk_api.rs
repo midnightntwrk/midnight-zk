@@ -300,7 +300,7 @@ pub fn srs_for_test<R: Relation>(relation: &R, k: Option<u32>) -> ParamsKZG<Bls1
 /// For checksums and extra validation steps, see `MIDNIGHT_SRS_CATALOG.md` in
 /// the official repository of the Midnight trusted ceremony:
 /// <https://github.com/midnightntwrk/midnight-trusted-setup>
-pub fn midnight_srs(k: u32) -> ParamsKZG<Bls12> {
+fn midnight_srs(k: u32) -> ParamsKZG<Bls12> {
     let srs_dir = env::var("SRS_DIR").unwrap_or("./examples/assets".into());
     let srs_path = format!("{srs_dir}/midnight-srs-2p{k}");
 
@@ -321,7 +321,7 @@ pub fn midnight_srs(k: u32) -> ParamsKZG<Bls12> {
 
 /// Loads Filecoin's production SRS (over BLS12-381) for the given circuit
 /// size `k` (log2 of the number of rows).
-pub fn filecoin_srs(k: u32) -> ParamsKZG<Bls12> {
+fn filecoin_srs(k: u32) -> ParamsKZG<Bls12> {
     assert!(k <= 19, "We don't have an SRS for circuits of bit size {k}");
 
     let srs_dir = env::var("SRS_DIR").unwrap_or("./examples/assets".into());

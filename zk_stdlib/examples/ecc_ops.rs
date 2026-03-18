@@ -15,7 +15,7 @@ use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
-use midnight_zk_stdlib::{utils::plonk_api::filecoin_srs, Relation, ZkStdLib, ZkStdLibArch};
+use midnight_zk_stdlib::{utils::plonk_api::srs_for_test, Relation, ZkStdLib, ZkStdLibArch};
 use rand::rngs::OsRng;
 
 type F = midnight_curves::Fq;
@@ -84,9 +84,8 @@ impl Relation for EccExample {
 
 fn main() {
     const K: u32 = 11;
-    let srs = filecoin_srs(K);
-
     let relation = EccExample;
+    let srs = srs_for_test(&relation, Some(K));
     let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
     let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
 

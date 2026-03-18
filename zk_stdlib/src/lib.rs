@@ -1487,7 +1487,7 @@ impl<Rel: Relation> MidnightPK<Rel> {
 /// #     instructions::{AssignmentInstructions, PublicInputInstructions},
 /// #     types::{AssignedByte, Instantiable},
 /// # };
-/// # use midnight_zk_stdlib::{utils::plonk_api::filecoin_srs, Relation, ZkStdLib, ZkStdLibArch};
+/// # use midnight_zk_stdlib::{utils::plonk_api::srs_for_test, Relation, ZkStdLib, ZkStdLibArch};
 /// # use midnight_proofs::{
 /// #     circuit::{Layouter, Value},
 /// #     plonk::Error,
@@ -1543,10 +1543,8 @@ impl<Rel: Relation> MidnightPK<Rel> {
 ///     }
 /// }
 ///
-/// const K: u32 = 13;
-/// let mut srs = filecoin_srs(K);
-///
 /// let relation = ShaPreImageCircuit;
+/// let srs = srs_for_test(&relation, Some(13));
 ///
 /// let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
 /// let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
