@@ -305,7 +305,6 @@ pub(crate) fn finalise_proof<'a, F, CS: PolynomialCommitmentScheme<F>, T: Transc
     #[cfg(feature = "committed-instances")] nb_committed_instances: usize,
     trace: ProverTrace<F>,
     transcript: &mut T,
-    rng: impl RngCore,
 ) -> Result<(), Error>
 where
     CS::Commitment: Hashable<T::Hash>,
@@ -482,7 +481,6 @@ where
         nb_committed_instances,
         trace,
         transcript,
-        rng,
     )
 }
 

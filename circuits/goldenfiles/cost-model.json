@@ -21,7 +21,7 @@
       "max_deg": "5",
       "permutations": "14",
       "point_sets": "3",
-      "rows": "2838",
+      "rows": "2580",
       "table_rows": "387"
     },
     "Insert": {
@@ -32,7 +32,7 @@
       "max_deg": "5",
       "permutations": "14",
       "point_sets": "3",
-      "rows": "5676",
+      "rows": "5160",
       "table_rows": "387"
     }
   },
@@ -67,7 +67,7 @@
       "max_deg": "5",
       "permutations": "14",
       "point_sets": "3",
-      "rows": "635",
+      "rows": "632",
       "table_rows": "7"
     }
   },
@@ -93,7 +93,7 @@
       "max_deg": "5",
       "permutations": "15",
       "point_sets": "4",
-      "rows": "9328",
+      "rows": "9314",
       "table_rows": "7933"
     }
   },
@@ -106,19 +106,19 @@
       "max_deg": "5",
       "permutations": "15",
       "point_sets": "6",
-      "rows": "11008",
+      "rows": "10978",
       "table_rows": "15487"
     }
   },
   "Scanner": {
     "static parsing perf (input length = 50)": {
       "advice_columns": "5",
-      "column_queries": "51",
+      "column_queries": "39",
       "fixed_columns": "30",
-      "lookups": "5",
+      "lookups": "2",
       "max_deg": "5",
       "permutations": "8",
-      "point_sets": "4",
+      "point_sets": "3",
       "rows": "75",
       "table_rows": "315"
     }
@@ -171,7 +171,7 @@
       "max_deg": "5",
       "permutations": "8",
       "point_sets": "3",
-      "rows": "39",
+      "rows": "38",
       "table_rows": "129"
     }
   },
@@ -184,7 +184,7 @@
       "max_deg": "5",
       "permutations": "8",
       "point_sets": "3",
-      "rows": "549",
+      "rows": "548",
       "table_rows": "129"
     }
   },
@@ -366,7 +366,7 @@
       "max_deg": "5",
       "permutations": "16",
       "point_sets": "3",
-      "rows": "26",
+      "rows": "23",
       "table_rows": "449"
     },
     "add_and_mul": {
@@ -377,7 +377,7 @@
       "max_deg": "5",
       "permutations": "16",
       "point_sets": "3",
-      "rows": "45",
+      "rows": "42",
       "table_rows": "449"
     },
     "add_constant": {
@@ -498,7 +498,7 @@
       "max_deg": "5",
       "permutations": "22",
       "point_sets": "3",
-      "rows": "31",
+      "rows": "25",
       "table_rows": "449"
     },
     "from_bytes": {
@@ -586,7 +586,7 @@
       "max_deg": "5",
       "permutations": "16",
       "point_sets": "3",
-      "rows": "65",
+      "rows": "62",
       "table_rows": "449"
     },
     "mul": {
@@ -641,7 +641,7 @@
       "max_deg": "5",
       "permutations": "16",
       "point_sets": "3",
-      "rows": "8",
+      "rows": "10",
       "table_rows": "257"
     },
     "select": {
@@ -674,7 +674,7 @@
       "max_deg": "5",
       "permutations": "16",
       "point_sets": "3",
-      "rows": "26",
+      "rows": "23",
       "table_rows": "449"
     },
     "to_bits": {
@@ -709,7 +709,7 @@
       "max_deg": "5",
       "permutations": "16",
       "point_sets": "3",
-      "rows": "26",
+      "rows": "23",
       "table_rows": "449"
     },
     "add_and_mul": {
@@ -720,7 +720,7 @@
       "max_deg": "5",
       "permutations": "16",
       "point_sets": "3",
-      "rows": "53",
+      "rows": "49",
       "table_rows": "449"
     },
     "add_constant": {
@@ -830,7 +830,7 @@
       "max_deg": "5",
       "permutations": "16",
       "point_sets": "3",
-      "rows": "42",
+      "rows": "41",
       "table_rows": "449"
     },
     "from_bits": {
@@ -841,7 +841,7 @@
       "max_deg": "5",
       "permutations": "22",
       "point_sets": "3",
-      "rows": "31",
+      "rows": "25",
       "table_rows": "449"
     },
     "from_bytes": {
@@ -863,7 +863,7 @@
       "max_deg": "5",
       "permutations": "16",
       "point_sets": "3",
-      "rows": "31",
+      "rows": "30",
       "table_rows": "449"
     },
     "is_equal": {
@@ -929,7 +929,7 @@
       "max_deg": "5",
       "permutations": "16",
       "point_sets": "3",
-      "rows": "73",
+      "rows": "69",
       "table_rows": "449"
     },
     "mul": {
@@ -940,7 +940,7 @@
       "max_deg": "5",
       "permutations": "16",
       "point_sets": "3",
-      "rows": "31",
+      "rows": "30",
       "table_rows": "449"
     },
     "mul_by_const": {
@@ -973,7 +973,7 @@
       "max_deg": "5",
       "permutations": "16",
       "point_sets": "3",
-      "rows": "31",
+      "rows": "30",
       "table_rows": "449"
     },
     "public_inputs": {
@@ -984,7 +984,7 @@
       "max_deg": "5",
       "permutations": "16",
       "point_sets": "3",
-      "rows": "8",
+      "rows": "10",
       "table_rows": "257"
     },
     "select": {
@@ -1017,7 +1017,7 @@
       "max_deg": "5",
       "permutations": "16",
       "point_sets": "3",
-      "rows": "26",
+      "rows": "23",
       "table_rows": "449"
     },
     "to_bits": {
@@ -2281,7 +2281,7 @@
       "max_deg": "5",
       "permutations": "14",
       "point_sets": "3",
-      "rows": "16",
+      "rows": "10",
       "table_rows": "3"
     },
     "from_bytes": {
