@@ -60,16 +60,8 @@ impl P256Affine {
         Self(AffinePoint::GENERATOR)
     }
 
-    /// Returns the x coordinate.
-    ///
-    /// # Panics
-    ///
-    /// If the point is the identity, which has no affine coordinates.
-    pub fn x(&self) -> Fp {
-        self.try_x().expect("Point at infinity has no affine x coordinate")
-    }
-
-    /// Returns the x coordinate for non-identity points.
+    /// Returns the x coordinate for non-identity points, or `None` for the
+    /// identity.
     pub fn try_x(&self) -> Option<Fp> {
         if bool::from(self.0.is_identity()) {
             return None;
@@ -77,16 +69,8 @@ impl P256Affine {
         Option::from(<Fp as P256PrimeField>::from_repr(self.0.x()))
     }
 
-    /// Returns the y coordinate.
-    ///
-    /// # Panics
-    ///
-    /// If the point is the identity, which has no affine coordinates.
-    pub fn y(&self) -> Fp {
-        self.try_y().expect("Point at infinity has no affine y coordinate")
-    }
-
-    /// Returns the y coordinate for non-identity points.
+    /// Returns the y coordinate for non-identity points, or `None` for the
+    /// identity.
     pub fn try_y(&self) -> Option<Fp> {
         if bool::from(self.0.is_identity()) {
             return None;
@@ -153,24 +137,6 @@ impl Curve for P256 {
 
     fn to_affine(&self) -> Self::AffineRepr {
         P256Affine(self.0.to_affine())
-    }
-
-    fn batch_normalize(p: &[Self], q: &mut [Self::AffineRepr]) {
-        assert_eq!(p.len(), q.len());
-        // p256 0.13.2's `alloc` feature doesn't propagate to primeorder,
-        // so slice-based BatchNormalize is unavailable. Convert each point
-        // independently and write directly into the destination.
-        if p.len() < 32 {
-            for (dst, src) in q.iter_mut().zip(p.iter()) {
-                *dst = P256Affine(src.0.to_affine());
-            }
-            return;
-        }
-
-        use rayon::prelude::*;
-        p.par_iter()
-            .zip(q.par_iter_mut())
-            .for_each(|(src, dst)| *dst = P256Affine(src.0.to_affine()));
     }
 }
 
@@ -522,8 +488,14 @@ mod tests {
         for _ in 0..TEST_ITERATIONS {
             let point = P256::random(&mut rng);
             let affine = point.to_affine();
-            let x = affine.x();
-            let y = affine.y();
+
+            // Skip identity point since it will panic when we try to get coordinates.
+            if bool::from(affine.0.is_identity()) {
+                continue;
+            }
+
+            let x = affine.try_x().unwrap();
+            let y = affine.try_y().unwrap();
 
             // Reconstruct point from coordinates.
             let reconstructed = P256Affine::from_xy(x, y);
@@ -539,7 +511,10 @@ mod tests {
             let points: Vec<P256> = (0..10).map(|_| P256::random(&mut rng)).collect();
             let mut affine_points = vec![P256Affine::identity(); points.len()];
 
-            P256::batch_normalize(&points, &mut affine_points);
+            // Convert each point to affine individually
+            for (i, point) in points.iter().enumerate() {
+                affine_points[i] = point.to_affine();
+            }
 
             for (proj, affine) in points.iter().zip(affine_points.iter()) {
                 assert_eq!(proj.to_affine(), *affine);
