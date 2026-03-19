@@ -24,7 +24,7 @@ use crate::{
         types::{AssignedSpreaded, AssignedWord, State},
         utils::{
             expr_pow2_ip, expr_pow4_ip, gen_spread_table, get_even_and_odd_bits, limb_coeffs,
-            limb_lengths, limb_values, negate_spreaded, spread, u32_in_be_limbs, MASK_EVN_64,
+            limb_lengths, limb_values, negate_spreaded, spread, u32_to_limbs_be, MASK_EVN_64,
         },
     },
     instructions::{
@@ -1010,7 +1010,7 @@ impl<F: CircuitField> RipeMD160Chip<F> {
                 self.assign_plain_and_spreaded::<0>(&mut region, Value::known(0), 2, 1)?;
                 // assign res in 11-11-10 limbs
                 let [R_11a, R_11b, R_10] =
-                    res_val.map(|v| u32_in_be_limbs(v, [11, 11, 10])).transpose_array();
+                    res_val.map(|v| u32_to_limbs_be(v, [11, 11, 10])).transpose_array();
                 self.assign_plain_and_spreaded::<11>(&mut region, R_11a, 0, 0)?;
                 self.assign_plain_and_spreaded::<11>(&mut region, R_11b, 1, 0)?;
                 self.assign_plain_and_spreaded::<10>(&mut region, R_10, 2, 0)?;
@@ -1067,10 +1067,10 @@ impl<F: CircuitField> RipeMD160Chip<F> {
         let (evn_val, odd_val) = value.map(get_even_and_odd_bits).unzip();
 
         let [evn_11a, evn_11b, evn_10] =
-            evn_val.map(|v| u32_in_be_limbs(v, [11, 11, 10])).transpose_array();
+            evn_val.map(|v| u32_to_limbs_be(v, [11, 11, 10])).transpose_array();
 
         let [odd_11a, odd_11b, odd_10] =
-            odd_val.map(|v| u32_in_be_limbs(v, [11, 11, 10])).transpose_array();
+            odd_val.map(|v| u32_to_limbs_be(v, [11, 11, 10])).transpose_array();
 
         let idx = match even_or_odd {
             Parity::Evn => 0,

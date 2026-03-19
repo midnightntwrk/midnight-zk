@@ -1,19 +1,29 @@
 use ff::PrimeField;
 
 pub(crate) use crate::hash::util::{
-    assert_in_valid_spreaded_form, expr_pow2_ip, expr_pow4_ip, get_even_and_odd_bits,
-    negate_spreaded, spread, u32_in_be_limbs, MASK_EVN_64,
+    assert_in_valid_spreaded_form, expr_pow2_ip, expr_pow4_ip, gen_spread_table as gen_table,
+    get_even_and_odd_bits, negate_spreaded, spread, u32_to_limbs_be, MASK_EVN_64,
 };
 
-const LOOKUP_LENGTHS: [u32; 10] = [2, 3, 4, 5, 6, 7, 9, 10, 11, 12]; // supported lookup bit lengths
+const LOOKUP_LENGTHS: [u32; 11] = [0, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12]; // supported lookup bit lengths
+
+/// Breaks the 32-bit value into big-endian limbs following the required limb
+/// lengths.
+///
+/// # Panics
+///
+/// If any given limb length equals 0.
+/// If sum(limb_lengths) != 32.
+pub(crate) fn u32_in_be_limbs<const N: usize>(value: u32, limb_lengths: [u8; N]) -> [u32; N] {
+    for &len in &limb_lengths {
+        assert!(len != 0, "Limb length cannot be zero in SHA-256 context");
+    }
+    u32_to_limbs_be(value, limb_lengths)
+}
 
 /// Generates the plain-spreaded lookup table.
 pub(super) fn gen_spread_table<F: PrimeField>() -> impl Iterator<Item = (F, F, F)> {
-    std::iter::once((F::ZERO, F::ZERO, F::ZERO)) // base case (disabled lookup)
-        .chain(LOOKUP_LENGTHS.into_iter().flat_map(|len| {
-            let tag = F::from(len as u64);
-            (0..(1 << len)).map(move |i| (tag, F::from(i as u64), F::from(spread(i as u32))))
-        }))
+    gen_table(LOOKUP_LENGTHS)
 }
 
 /// Computes off-circuit spreaded Maj(A, B, C) with A, B, C in spreaded forms.

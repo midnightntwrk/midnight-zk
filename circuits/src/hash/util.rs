@@ -66,10 +66,13 @@ pub fn negate_spreaded(x: u64) -> u64 {
 /// Breaks the 32-bit value into big-endian limbs following the required limb
 /// lengths.
 ///
+/// This version supports zero-length limbs, which are skipped while the bit-shift
+/// is only updated for non-zero lengths.
+///
 /// # Panics
 ///
 /// If sum(limb_lengths) != 32.
-pub fn u32_in_be_limbs<const N: usize>(value: u32, limb_lengths: [u8; N]) -> [u32; N] {
+pub fn u32_to_limbs_be<const N: usize>(value: u32, limb_lengths: [u8; N]) -> [u32; N] {
     assert_eq!(limb_lengths.iter().map(|&l| l as usize).sum::<usize>(), 32);
 
     let mut result = [0u32; N];
@@ -87,7 +90,17 @@ pub fn u32_in_be_limbs<const N: usize>(value: u32, limb_lengths: [u8; N]) -> [u3
     result
 }
 
-/// Returns sum_i 2^(exponents\[i\]) * terms\[i\].
+/// Generates the plain-spreaded lookup table for the given bit lengths.
+pub fn gen_spread_table<F: PrimeField>(
+    lengths: impl IntoIterator<Item = u32>,
+) -> impl Iterator<Item = (F, F, F)> {
+    lengths.into_iter().flat_map(|len| {
+        let tag = F::from(len as u64);
+        (0..(1 << len)).map(move |i| (tag, F::from(i as u64), F::from(spread(i as u32))))
+    })
+}
+
+/// Returns sum_i 2^(exponents[i]) * terms[i].
 pub fn expr_pow2_ip<F: PrimeField, const N: usize>(
     exponents: [u8; N],
     terms: [&Expression<F>; N],
@@ -99,7 +112,7 @@ pub fn expr_pow2_ip<F: PrimeField, const N: usize>(
     expr
 }
 
-/// Returns sum_i 4^(exponents\[i\]) * terms\[i\].
+/// Returns sum_i 4^(exponents[i]) * terms[i].
 pub fn expr_pow4_ip<F: PrimeField, const N: usize>(
     exponents: [u8; N],
     terms: [&Expression<F>; N],
@@ -150,7 +163,7 @@ mod tests {
     }
 
     #[test]
-    fn test_u32_in_be_limbs() {
+    fn test_u32_to_limbs_be() {
         [
             (0x12345678u32, [8, 8, 8, 8], [0x12, 0x34, 0x56, 0x78]),
             (0x12345678u32, [4, 8, 12, 8], [0x1, 0x23, 0x456, 0x78]),
@@ -158,14 +171,14 @@ mod tests {
         ]
         .into_iter()
         .for_each(|(value, limb_lengths, expected)| {
-            assert_eq!(u32_in_be_limbs(value, limb_lengths), expected)
+            assert_eq!(u32_to_limbs_be(value, limb_lengths), expected)
         });
 
         // Test with 32 limbs of 1 bit each
         let mut rng = rand::thread_rng();
         let value: u32 = rng.gen();
         let limb_lengths = [1u8; 32];
-        let result = u32_in_be_limbs(value, limb_lengths);
+        let result = u32_to_limbs_be(value, limb_lengths);
         let expected: [u32; 32] = core::array::from_fn(|i| (value >> (31 - i)) & 1);
         assert_eq!(result, expected);
     }
