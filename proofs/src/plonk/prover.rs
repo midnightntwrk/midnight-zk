@@ -9,7 +9,9 @@ use ff::{Field, FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
 #[cfg(not(feature = "single-h-commitment"))]
 use rand_core::OsRng;
 use rand_core::{CryptoRng, RngCore};
-use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
+use rayon::iter::{
+    IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
+};
 
 use super::{
     circuit::{
@@ -276,15 +278,24 @@ where
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    // Compute logderivative for each lookup (sequential due to &mut rng),
-    // then write to transcript and convert to coefficient form.
+    // Compute logderivative for each lookup in parallel, then write to
+    // transcript and convert to coefficient form. Blinding values are
+    // pre-generated so that compute_logderivative does not need &mut rng.
     let lookups: Vec<Vec<logup::prover::Committed<F>>> = lookups
         .into_iter()
         .map(|lookups| -> Result<Vec<_>, _> {
-            // Compute phase: sequential (rng dependency).
+            let blinding_factors = pk.vk.cs.blinding_factors();
+            // Pre-generate blinding values for all lookups.
+            let all_blindings: Vec<Vec<F>> = (0..lookups.len())
+                .map(|_| (0..blinding_factors).map(|_| F::random(&mut rng)).collect())
+                .collect();
+            // Parallel compute phase (no &mut rng needed).
             let computed: Vec<_> = lookups
-                .into_iter()
-                .map(|lookup| lookup.compute_logderivative(pk, params, beta, &mut rng))
+                .into_par_iter()
+                .zip(all_blindings.into_par_iter())
+                .map(|(lookup, blindings)| {
+                    lookup.compute_logderivative(pk, params, beta, blindings)
+                })
                 .collect::<Result<Vec<_>, _>>()?;
             // Commit helper polys and write all commitments to transcript in order.
             for c in &computed {

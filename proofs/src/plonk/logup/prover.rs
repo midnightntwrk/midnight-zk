@@ -23,7 +23,6 @@
 use std::{hash::Hash, iter};
 
 use ff::{BatchInvert, FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
-use rand_core::{CryptoRng, RngCore};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::{
@@ -165,17 +164,22 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ComputedMultiplicities<F> {
     /// Constructs and commits to the LogUp prover polynomials, but does NOT
     /// write to the transcript or convert to coefficient form. The caller
     /// handles transcript ordering and can batch the FFTs.
+    ///
+    /// `blinding_values` must contain exactly `blinding_factors` random field
+    /// elements. They are provided externally so the caller can pre-generate
+    /// them from `&mut rng` and then invoke multiple lookups in parallel.
     pub(crate) fn compute_logderivative<CS: PolynomialCommitmentScheme<F>>(
         self,
         pk: &ProvingKey<F, CS>,
         params: &CS::Parameters,
         beta: F,
-        mut rng: impl RngCore + CryptoRng,
+        blinding_values: Vec<F>,
     ) -> Result<ComputedLogderivative<F, CS::Commitment>, Error>
     where
         F: WithSmallOrderMulGroup<3> + FromUniformBytes<64>,
     {
         let blinding_factors = pk.vk.cs.blinding_factors();
+        assert_eq!(blinding_values.len(), blinding_factors);
         let domain = pk.vk.get_domain();
         let n = domain.n as usize;
 
@@ -247,7 +251,7 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ComputedMultiplicities<F> {
             })
             // Take all rows including the "last" row.
             .take(n - blinding_factors)
-            .chain((0..blinding_factors).map(|_| F::random(&mut rng)))
+            .chain(blinding_values)
             .collect::<Vec<_>>();
 
         let aggregator_poly = pk.vk.domain.lagrange_from_vec(aggregator_poly);
