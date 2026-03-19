@@ -1207,15 +1207,6 @@ where
     ) -> Result<AssignedForeignPoint<F, C, B>, Error> {
         let r_curve = p.value().zip(q.value()).map(|(p, q)| p + q);
         let r = self.assign_point_unchecked(layouter, r_curve)?;
-        let mut fluke = false;
-        r_curve.map(|p| {
-            if C::CryptographicGroup::is_identity(&p).into() {
-                fluke = true;
-            }
-        });
-        if fluke {
-            return Err(Error::MSMCompletenessFluke);
-        }
 
         // Assert that r is not the identity.
         self.native_gadget.assert_equal(layouter, &p.is_id, &r.is_id)?;
@@ -1747,16 +1738,6 @@ where
 
         let diff = native_gadget.linear_combination(layouter, &terms, F::ZERO)?;
 
-        let mut fluke = false;
-        diff.value().map(|&v| {
-            if v == F::ZERO || v == m || v == -m {
-                fluke = true;
-            }
-        });
-        if fluke {
-            return Err(Error::MSMCompletenessFluke);
-        }
-
         // We assert that `diff not in {0, m, -m}`.
         // TODO: the following could be done more efficiently if we had dedicated
         // instructions in the native gadget.
@@ -1859,15 +1840,9 @@ where
         let r: AssignedForeignPoint<F, C, B> =
             self.assign(layouter, Value::known(C::CryptographicGroup::random(OsRng)))?;
 
-        let mut fluke = false;
-        r.point.map(|p| {
-            if C::CryptographicGroup::is_identity(&p).into() {
-                fluke = true;
-            }
-        });
-        if fluke {
-            return Err(Error::MSMCompletenessFluke);
-        }
+        r.point
+            .error_if_known_and(|p| C::CryptographicGroup::is_identity(p).into())
+            .map_err(|_| Error::CompletenessFailure)?;
 
         // Assert the chosen r is not the identity point.
         self.base_field_chip
@@ -1966,6 +1941,10 @@ where
         let MsmRandomness { r, neg_alpha } = self.msm_randomness::<WS>(layouter)?;
 
         let l_times_r = self.mul_by_u128(layouter, bases.len() as u128, &r)?;
+        l_times_r
+            .value()
+            .error_if_known_and(|p| C::CryptographicGroup::is_identity(p).into())
+            .map_err(|_| Error::CompletenessFailure)?;
 
         // Get the global tag counter and increase it with |bases|
         let tag_cnt = *self.tag_cnt.clone().borrow();
@@ -1975,6 +1954,19 @@ where
         let mut tables = vec![];
         for (i, p) in bases.iter().enumerate() {
             // Assert that α.x ≠ p.x (note that α and -α have the same x-coordinate).
+            neg_alpha
+                .value()
+                .zip(p.value())
+                .error_if_known_and(|(nav, pv)| {
+                    if nav.is_identity().into() || pv.is_identity().into() {
+                        false
+                    } else {
+                        let nax = (*nav).into().coordinates().unwrap().0;
+                        let px = (*pv).into().coordinates().unwrap().0;
+                        nax == px
+                    }
+                })
+                .map_err(|_| Error::CompletenessFailure)?;
             self.incomplete_assert_different_x(layouter, &neg_alpha, p)?;
             let mut acc = neg_alpha.clone();
             let mut p_table = vec![acc.clone()];
@@ -1995,7 +1987,22 @@ where
                 //     k = 1,...,(2^WS-2). Note that (k-1)p-α cannot be the identity as it is
                 //     the result of a previous call to [incomplete_add], thus kp-α != p, so
                 //     the third precondition of [incomplete_add] is met.
+                acc.value()
+                    .zip(p.value())
+                    .error_if_known_and(|(av, pv)| {
+                        if av.is_identity().into() || pv.is_identity().into() {
+                            false
+                        } else {
+                            let ax = (*av).into().coordinates().unwrap().0;
+                            let px = (*pv).into().coordinates().unwrap().0;
+                            ax == px
+                        }
+                    })
+                    .map_err(|_| Error::CompletenessFailure)?;
                 acc = self.incomplete_add(layouter, &acc, p)?;
+                acc.value()
+                    .error_if_known_and(|p| C::CryptographicGroup::is_identity(p).into())
+                    .map_err(|_| Error::CompletenessFailure)?;
 
                 assert!(acc.x.is_well_formed() && acc.y.is_well_formed());
                 p_table.push(acc.clone())
@@ -2029,8 +2036,23 @@ where
                 //     identity, as asserted above (in the construction of the tables).
                 // (3) is asserted here, this assertion will not hinder completeness except
                 //     with negligible probability (over the choice of α).
+                acc.value()
+                    .zip(addend.value())
+                    .error_if_known_and(|(av, addv)| {
+                        if av.is_identity().into() || addv.is_identity().into() {
+                            false
+                        } else {
+                            let ax = (*av).into().coordinates().unwrap().0;
+                            let addx = (*addv).into().coordinates().unwrap().0;
+                            ax == addx
+                        }
+                    })
+                    .map_err(|_| Error::CompletenessFailure)?;
                 self.incomplete_assert_different_x(layouter, &acc, &addend)?;
                 acc = self.incomplete_add(layouter, &acc, &addend)?;
+                acc.value()
+                    .error_if_known_and(|p| C::CryptographicGroup::is_identity(p).into())
+                    .map_err(|_| Error::CompletenessFailure)?;
             }
         }
 
@@ -2353,99 +2375,4 @@ mod tests {
     ecc_tests!(test_msm_by_bounded_scalars);
     ecc_tests!(test_mul_by_constant);
     ecc_tests!(test_coordinates);
-
-    #[test]
-    fn test_msm_completeness_fluke() {
-        use midnight_proofs::{circuit::SimpleFloorPlanner, dev::MockProver, plonk::Circuit};
-        use rand::SeedableRng;
-        use rand_chacha::ChaCha8Rng;
-
-        struct FlukeCircuit;
-        impl Circuit<BlsScalar> for FlukeCircuit {
-            type Config =
-                ForeignEccTestConfig<BlsScalar, BlsG1, Native<BlsScalar>, Native<BlsScalar>>;
-            type FloorPlanner = SimpleFloorPlanner;
-            type Params = ();
-
-            fn without_witnesses(&self) -> Self {
-                FlukeCircuit
-            }
-            fn configure(meta: &mut ConstraintSystem<BlsScalar>) -> Self::Config {
-                let committed_instance_column = meta.instance_column();
-                let instance_column = meta.instance_column();
-                Bls12381Chip::configure_from_scratch(
-                    meta,
-                    &[committed_instance_column, instance_column],
-                )
-            }
-
-            fn synthesize(
-                &self,
-                config: Self::Config,
-                mut layouter: impl Layouter<BlsScalar>,
-            ) -> Result<(), Error> {
-                let ecc_chip = Bls12381Chip::new_from_scratch(&config);
-                let mut rng = ChaCha8Rng::seed_from_u64(0xc0ffee);
-                let p_val = BlsG1::random(&mut rng);
-                let q_val = -p_val;
-
-                let p = ecc_chip.assign(&mut layouter, Value::known(p_val))?;
-                let q = ecc_chip.assign(&mut layouter, Value::known(q_val))?;
-
-                // This should trigger the fluke error in incomplete_add because p + q = identity
-                let _ = ecc_chip.incomplete_add(&mut layouter, &p, &q)?;
-
-                ecc_chip.load_from_scratch(&mut layouter)
-            }
-        }
-
-        match MockProver::run(10, &FlukeCircuit, vec![vec![], vec![]]) {
-            Err(Error::MSMCompletenessFluke) => (),
-            e => panic!("Expected MSMCompletenessFluke, got {:?}", e),
-        }
-
-        struct CollisionCircuit;
-        impl Circuit<BlsScalar> for CollisionCircuit {
-            type Config =
-                ForeignEccTestConfig<BlsScalar, BlsG1, Native<BlsScalar>, Native<BlsScalar>>;
-            type FloorPlanner = SimpleFloorPlanner;
-            type Params = ();
-
-            fn without_witnesses(&self) -> Self {
-                CollisionCircuit
-            }
-            fn configure(meta: &mut ConstraintSystem<BlsScalar>) -> Self::Config {
-                let committed_instance_column = meta.instance_column();
-                let instance_column = meta.instance_column();
-                Bls12381Chip::configure_from_scratch(
-                    meta,
-                    &[committed_instance_column, instance_column],
-                )
-            }
-
-            fn synthesize(
-                &self,
-                config: Self::Config,
-                mut layouter: impl Layouter<BlsScalar>,
-            ) -> Result<(), Error> {
-                let ecc_chip = Bls12381Chip::new_from_scratch(&config);
-                let mut rng = ChaCha8Rng::seed_from_u64(0xc0ffee);
-                let p_val = BlsG1::random(&mut rng);
-                let q_val = -p_val; // p.x == q.x
-
-                let p = ecc_chip.assign(&mut layouter, Value::known(p_val))?;
-                let q = ecc_chip.assign(&mut layouter, Value::known(q_val))?;
-
-                // This should trigger the fluke error in incomplete_assert_different_x
-                ecc_chip.incomplete_assert_different_x(&mut layouter, &p, &q)?;
-
-                ecc_chip.load_from_scratch(&mut layouter)
-            }
-        }
-
-        match MockProver::run(10, &CollisionCircuit, vec![vec![], vec![]]) {
-            Err(Error::MSMCompletenessFluke) => (),
-            e => panic!("Expected MSMCompletenessFluke, got {:?}", e),
-        }
-    }
 }
