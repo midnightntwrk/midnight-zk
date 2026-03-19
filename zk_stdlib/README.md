@@ -118,8 +118,8 @@ let k = midnight_zk_stdlib::optimal_k(&relation);
 // the `single-h-commitment` feature is enabled, for an extended monomial basis.
 let cs_degree = midnight_zk_stdlib::cost_model(&relation, Some(k)).max_deg;
 
-// Load the Midnight production SRS for the given circuit size.
-let srs = load_srs(SrsSource::Midnight, k, cs_degree);
+// Load an SRS for the given circuit size.
+let srs = load_srs(SrsSource::Filecoin, k, cs_degree);
 let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
 let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
 
