@@ -108,10 +108,11 @@ where
         let h_limbs: Vec<_> =
             h_limbs.into_iter().map(|h_limb| domain.coeff_from_vec(h_limb)).collect();
 
-        // Compute commitment to each limb
-        let h_commitments = h_limbs.iter().map(|h_piece| CS::commit(params, h_piece));
+        // Compute commitment to each limb (parallel MSMs).
+        let h_commitments: Vec<_> =
+            h_limbs.par_iter().map(|h_piece| CS::commit(params, h_piece)).collect();
 
-        // Write each limb commitment to the transcript
+        // Write each limb commitment to the transcript in order.
         for c in h_commitments {
             transcript.write(&c)?;
         }
@@ -755,7 +756,7 @@ where
             }
 
             let advice_commitments: Vec<_> =
-                advice_values.iter().map(|poly| CS::commit_lagrange(params, poly)).collect();
+                advice_values.par_iter().map(|poly| CS::commit_lagrange(params, poly)).collect();
 
             for commitment in &advice_commitments {
                 transcript.write(commitment)?;
