@@ -71,6 +71,28 @@ impl<E: Engine + Debug> ParamsKZG<E> {
         self.g_lagrange = g_to_lagrange(&self.g[..n], new_k);
     }
 
+    /// Combine the monomial basis from `extended` with the Lagrange basis from
+    /// `self`, consuming both. This avoids the FFT that [`downsize_lagrange`]
+    /// would otherwise require.
+    ///
+    /// # Panics
+    ///
+    /// If `extended.g` is not strictly larger than `self.g`, or if the shared
+    /// prefix of the monomial bases does not match.
+    #[cfg(feature = "single-h-commitment")]
+    pub fn with_extended_monomial(mut self, extended: Self) -> Self {
+        assert!(
+            extended.g.len() > self.g.len(),
+            "extended SRS must be strictly larger than the base SRS"
+        );
+        assert!(
+            self.g[..] == extended.g[..self.g.len()],
+            "monomial bases of the two SRSs do not match"
+        );
+        self.g = extended.g;
+        self
+    }
+
     /// Initializes parameters for the curve, draws toxic secret from given rng.
     /// MUST NOT be used in production.
     pub fn unsafe_setup<R: RngCore>(k: u32, rng: R) -> Self {
