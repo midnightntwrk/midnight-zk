@@ -278,9 +278,9 @@ pub fn load_srs(source: SrsSource, k: u32, cs_degree: usize) -> ParamsKZG<Bls12>
     #[cfg(feature = "single-h-commitment")]
     {
         let extended_k = k + ((cs_degree - 1) as f64).log2().ceil() as u32;
-        let mut srs = fetch(extended_k);
-        srs.downsize_lagrange(k);
-        srs
+        let base = fetch(k);
+        let extended = fetch(extended_k);
+        base.with_extended_monomial(extended)
     }
 }
 
