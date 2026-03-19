@@ -5,10 +5,31 @@ use std::marker::PhantomData;
 
 use ff::WithSmallOrderMulGroup;
 use group::ff::{BatchInvert, Field};
-use midnight_curves::fft::best_fft;
+use midnight_curves::fft::{best_fft_with_twiddles, compute_twiddles};
 
 use super::{Coeff, ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial, Rotation};
 use crate::utils::{arithmetic::parallelize, rational::Rational};
+
+/// Precomputed twiddle factors for the FFT.
+///
+/// Twiddle factors are the powers of the root of unity used in the
+/// butterfly operations of the Cooley-Tukey FFT:
+///   `[1, ω, ω², ..., ω^(n/2 - 1)]`
+/// where ω is the n-th root of unity in the field.
+///
+/// Computing these on-the-fly requires a sequential loop (each power depends
+/// on the previous). Pre-computing them once avoids repeated allocation and
+/// sequential computation across the 30+ FFT calls per prove invocation.
+///
+/// Four sets are stored: forward and inverse for both the base domain (size
+/// 2^k) and the extended domain (size 2^extended_k).
+#[derive(Clone, Debug)]
+struct CachedTwiddles<F: Field> {
+    omega: Vec<F>,
+    omega_inv: Vec<F>,
+    extended_omega: Vec<F>,
+    extended_omega_inv: Vec<F>,
+}
 
 /// This structure contains precomputed constants and other details needed for
 /// performing operations on an evaluation domain of size $2^k$ and an extended
@@ -29,6 +50,7 @@ pub struct EvaluationDomain<F: Field> {
     extended_ifft_divisor: F,
     t_evaluations: Vec<F>,
     barycentric_weight: F,
+    twiddles: CachedTwiddles<F>,
 }
 
 impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
@@ -123,6 +145,14 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
             .chain(Some(&mut omega_inv))
             .batch_invert();
 
+        // Precompute twiddle factors for all FFT configurations.
+        let twiddles = CachedTwiddles {
+            omega: compute_twiddles(&omega, k),
+            omega_inv: compute_twiddles(&omega_inv, k),
+            extended_omega: compute_twiddles(&extended_omega, extended_k),
+            extended_omega_inv: compute_twiddles(&extended_omega_inv, extended_k),
+        };
+
         EvaluationDomain {
             n,
             k,
@@ -138,6 +168,7 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
             extended_ifft_divisor,
             t_evaluations,
             barycentric_weight,
+            twiddles,
         }
     }
 
@@ -224,8 +255,8 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
     pub fn lagrange_to_coeff(&self, mut a: Polynomial<F, LagrangeCoeff>) -> Polynomial<F, Coeff> {
         assert_eq!(a.values.len(), 1 << self.k);
 
-        // Perform inverse FFT to obtain the polynomial in coefficient form
-        Self::ifft(&mut a.values, self.omega_inv, self.k, self.ifft_divisor);
+        // Perform inverse FFT using cached twiddle factors.
+        Self::ifft(&mut a.values, &self.twiddles.omega_inv, self.k, self.ifft_divisor);
 
         Polynomial {
             values: a.values,
@@ -238,7 +269,7 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
     pub fn coeff_to_lagrange(&self, mut a: Polynomial<F, Coeff>) -> Polynomial<F, LagrangeCoeff> {
         assert_eq!(a.values.len(), 1 << self.k);
 
-        best_fft(&mut a.values, self.omega, self.k);
+        best_fft_with_twiddles(&mut a.values, &self.twiddles.omega, self.k);
 
         Polynomial {
             values: a.values,
@@ -256,7 +287,7 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
 
         self.distribute_powers_zeta(&mut a.values, true);
         a.values.resize(self.extended_len(), F::ZERO);
-        best_fft(&mut a.values, self.extended_omega, self.extended_k);
+        best_fft_with_twiddles(&mut a.values, &self.twiddles.extended_omega, self.extended_k);
 
         Polynomial {
             values: a.values,
@@ -272,10 +303,10 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
     pub fn extended_to_coeff(&self, mut a: Polynomial<F, ExtendedLagrangeCoeff>) -> Vec<F> {
         assert_eq!(a.values.len(), self.extended_len());
 
-        // Inverse FFT
+        // Inverse FFT using cached twiddle factors.
         Self::ifft(
             &mut a.values,
-            self.extended_omega_inv,
+            &self.twiddles.extended_omega_inv,
             self.extended_k,
             self.extended_ifft_divisor,
         );
@@ -300,7 +331,7 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
 
         Self::ifft(
             &mut a.values,
-            self.extended_omega_inv,
+            &self.twiddles.extended_omega_inv,
             self.extended_k,
             self.extended_ifft_divisor,
         );
@@ -308,7 +339,7 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
         a.values.truncate(self.n as usize);
         self.distribute_powers_zeta(&mut a.values, false);
 
-        best_fft(&mut a.values, self.omega, self.k);
+        best_fft_with_twiddles(&mut a.values, &self.twiddles.omega, self.k);
 
         Polynomial {
             values: a.values,
@@ -346,6 +377,15 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
     ///
     /// `into_coset` should be set to `true` when moving into the coset,
     /// and `false` when moving out. This toggles the choice of `zeta`.
+    fn ifft(a: &mut [F], twiddles: &[F], log_n: u32, divisor: F) {
+        best_fft_with_twiddles(a, twiddles, log_n);
+        parallelize(a, |a, _| {
+            for a in a {
+                *a *= &divisor;
+            }
+        });
+    }
+
     fn distribute_powers_zeta(&self, a: &mut [F], into_coset: bool) {
         let coset_powers = if into_coset {
             [self.g_coset, self.g_coset_inv]
@@ -364,15 +404,6 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
         });
     }
 
-    fn ifft(a: &mut [F], omega_inv: F, log_n: u32, divisor: F) {
-        best_fft(a, omega_inv, log_n);
-        parallelize(a, |a, _| {
-            for a in a {
-                // Finish iFFT
-                *a *= &divisor;
-            }
-        });
-    }
 
     /// Get the size of the domain
     pub fn k(&self) -> u32 {
