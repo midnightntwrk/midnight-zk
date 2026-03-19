@@ -39,9 +39,9 @@ pub enum Error {
     TableError(TableError),
     /// The SRS provided does not have the correct size for the Circuit
     SrsError(usize, usize),
-    /// Incomplete MSM failure due to bad luck in random sampling.
-    /// Please try again with different randomness.
-    MSMCompletenessFluke,
+    /// Incomplete ceremony failure due to bad luck in random sampling.
+    /// This error is expected to be almost impossible to trigger.
+    CompletenessFailure,
 }
 
 impl From<io::Error> for Error {
@@ -84,7 +84,7 @@ impl fmt::Display for Error {
             ),
             Error::TableError(error) => write!(f, "{error}"),
             Error::SrsError(srs_k, circuit_k) => write!(f, "The SRS (with size {srs_k}) does not match for the given circuit (of size {circuit_k})"),
-            Error::MSMCompletenessFluke => write!(f, "Incomplete MSM failure due to bad luck in random sampling. Please try again with different randomness."),
+            Error::CompletenessFailure => write!(f, "Incomplete ceremony failure due to bad luck in random sampling. This error is expected to be almost impossible to trigger."),
         }
     }
 }
