@@ -55,6 +55,8 @@ heap_profiling = []
 truncated-challenges = ["midnight-proofs/truncated-challenges"]
 # Commit to the quotient polynomial H as a single commitment (see midnight-proofs)
 single-h-commitment = ["midnight-proofs/single-h-commitment"]
+# Pad polynomial evaluations to collapse multi-open point sets (see midnight-proofs)
+fewer-point-sets = ["midnight-proofs/fewer-point-sets"]
 # Enable development curves (BN256, Pasta)
 dev-curves = ["midnight-curves/dev-curves", "midnight-proofs/dev-curves"]
 

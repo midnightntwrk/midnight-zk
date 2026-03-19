@@ -97,5 +97,11 @@ bench-internal = ["criterion"]
 # params must be generated with k >= log2(n * (d-1))).
 single-h-commitment = []
 
+# Pad polynomial evaluations so that every commitment is opened at either
+# {x} alone or at the full rotation set {x·ω⁻¹, x, x·ω, x·ω^last}. This
+# collapses the multi-open point sets from ≥4 down to exactly 2, reducing
+# the cost of IVC circuit verification.
+fewer-point-sets = []
+
 [lib]
 bench = false

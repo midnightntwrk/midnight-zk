@@ -335,6 +335,26 @@ pub(crate) fn multi_prepare<I, S: SelfEmulation>(
 where
     I: IntoIterator<Item = VerifierQuery<S>> + Clone,
 {
+    // fewer-point-sets: mirror the prover's padding.
+    #[cfg(feature = "fewer-point-sets")]
+    let queries = {
+        let queries_vec: Vec<VerifierQuery<S>> = queries.clone().into_iter().collect();
+        let padding = midnight_proofs::poly::kzg::point_set_padding(
+            queries_vec.iter().map(|q| (q.get_commitment(), q.get_point())),
+        );
+        let mut all = queries_vec;
+        for (commitment, point) in padding {
+            let eval = transcript_gadget.read_scalar(layouter)?;
+            all.push(VerifierQuery {
+                point,
+                label: CommitmentLabel::NoLabel,
+                commitment,
+                eval,
+            });
+        }
+        all
+    };
+
     let x1 = transcript_gadget.squeeze_challenge(layouter)?;
     let x2 = transcript_gadget.squeeze_challenge(layouter)?;
 

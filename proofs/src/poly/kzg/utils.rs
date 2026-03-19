@@ -131,3 +131,46 @@ pub fn construct_intermediate_sets<F: Field + Hash + Ord, Q: Query<F>>(
 
     Ok((commitment_map, point_sets))
 }
+
+/// Given `(key, point)` pairs, returns the extra `(key, point)` pairs needed to
+/// make every non-singleton point set identical (their union). The output order
+/// is deterministic (insertion order), so prover and verifier stay in sync.
+#[cfg(feature = "fewer-point-sets")]
+pub fn point_set_padding<K: PartialEq + Clone, P: PartialEq + Clone>(
+    pairs: impl IntoIterator<Item = (K, P)>,
+) -> Vec<(K, P)> {
+    // Group by key, preserving insertion order.
+    let mut grouped: Vec<(K, Vec<P>)> = vec![];
+    for (key, point) in pairs {
+        if let Some((_, pts)) = grouped.iter_mut().find(|(k, _)| *k == key) {
+            if !pts.contains(&point) {
+                pts.push(point);
+            }
+        } else {
+            grouped.push((key, vec![point]));
+        }
+    }
+
+    // Union of all non-singleton point sets (insertion order).
+    let full: Vec<P> = grouped
+        .iter()
+        .filter(|(_, pts)| pts.len() > 1)
+        .flat_map(|(_, pts)| pts.iter())
+        .fold(vec![], |mut acc, pt| {
+            if !acc.contains(pt) {
+                acc.push(pt.clone());
+            }
+            acc
+        });
+
+    // Collect the missing (key, point) pairs.
+    grouped
+        .iter()
+        .filter(|(_, pts)| pts.len() > 1)
+        .flat_map(|(key, existing)| {
+            full.iter()
+                .filter(|pt| !existing.contains(pt))
+                .map(|pt| (key.clone(), pt.clone()))
+        })
+        .collect()
+}

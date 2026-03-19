@@ -23,6 +23,8 @@ use ff::Field;
 use group::Group;
 use midnight_curves::pairing::MultiMillerLoop;
 use rand_core::OsRng;
+#[cfg(feature = "fewer-point-sets")]
+pub use utils::point_set_padding;
 
 #[cfg(feature = "truncated-challenges")]
 use crate::utils::arithmetic::{truncate, truncated_powers};
@@ -118,6 +120,26 @@ where
                 .reduce(|acc, p| acc.padded_add(&p))
                 .unwrap()
         }
+
+        // fewer-point-sets: pad every commitment opened at more than one point
+        // so that all non-singleton point sets collapse into one.
+        #[cfg(feature = "fewer-point-sets")]
+        let prover_query = {
+            let padding = utils::point_set_padding(
+                prover_query.iter().map(|q| (q.poly as *const _, q.point)),
+            );
+            let mut all = prover_query.to_vec();
+            for (ptr, point) in padding {
+                let poly = prover_query.iter().find(|q| std::ptr::eq(q.poly, ptr)).unwrap().poly;
+                transcript
+                    .write(&eval_polynomial(poly, point))
+                    .map_err(|_| Error::OpeningError)?;
+                all.push(ProverQuery::new(point, poly));
+            }
+            all
+        };
+        #[cfg(feature = "fewer-point-sets")]
+        let prover_query = &prover_query[..];
 
         // Refer to the halo2 book for docs:
         // https://zcash.github.io/halo2/design/proving-system/multipoint-opening.html
@@ -225,6 +247,27 @@ where
         E::Fr: Sampleable<T::Hash> + Ord + Hash + Hashable<T::Hash>,
         E::G1: 'com + Hashable<T::Hash> + CurveExt<ScalarExt = E::Fr>,
     {
+        // fewer-point-sets: mirror the prover's padding.
+        #[cfg(feature = "fewer-point-sets")]
+        let verifier_query = {
+            let padding = utils::point_set_padding(
+                verifier_query.iter().map(|q| (q.commitment.clone(), q.point)),
+            );
+            let mut all = verifier_query.to_vec();
+            for (commitment, point) in padding {
+                let eval: E::Fr = transcript.read().map_err(|_| Error::SamplingError)?;
+                all.push(VerifierQuery {
+                    point,
+                    commitment_label: CommitmentLabel::NoLabel,
+                    commitment,
+                    eval,
+                });
+            }
+            all
+        };
+        #[cfg(feature = "fewer-point-sets")]
+        let verifier_query = &verifier_query[..];
+
         // Refer to the halo2 book for docs:
         // https://zcash.github.io/halo2/design/proving-system/multipoint-opening.html
         let x1: E::Fr = transcript.squeeze_challenge();
