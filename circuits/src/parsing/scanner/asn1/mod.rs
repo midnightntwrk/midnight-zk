@@ -3,10 +3,8 @@
 //! format but does not enforce minimality of tag/length encodings.
 
 pub mod der_encoding;
-pub mod passport;
 mod parser;
 use std::{fmt::Debug, hash::Hash};
-
 
 // ---------------------------------------------------------------------------
 // Internal enums (not exposed)
