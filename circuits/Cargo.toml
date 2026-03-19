@@ -53,6 +53,8 @@ testing = ["num-bigint/rand", "goldenfile", "serde_json", "rand_chacha"]
 heap_profiling = []
 # Enable truncated challenges. This makes recursive proofs more efficient
 truncated-challenges = ["midnight-proofs/truncated-challenges"]
+# Commit to the quotient polynomial H as a single commitment (see midnight-proofs)
+single-h-commitment = ["midnight-proofs/single-h-commitment"]
 # Enable development curves (BN256, Pasta)
 dev-curves = ["midnight-curves/dev-curves", "midnight-proofs/dev-curves"]
 

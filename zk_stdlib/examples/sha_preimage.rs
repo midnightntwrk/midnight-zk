@@ -16,7 +16,7 @@ use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
-use midnight_zk_stdlib::{utils::plonk_api::filecoin_srs, Relation, ZkStdLib, ZkStdLibArch};
+use midnight_zk_stdlib::{utils::plonk_api::srs_for_test, Relation, ZkStdLib, ZkStdLibArch};
 use rand::{rngs::OsRng, Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use sha2::Digest;
@@ -66,9 +66,8 @@ impl Relation for ShaPreImageCircuit {
 
 fn main() {
     const K: u32 = 13;
-    let srs = filecoin_srs(K);
-
     let relation = ShaPreImageCircuit;
+    let srs = srs_for_test(&relation, Some(K));
     let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
     let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
 

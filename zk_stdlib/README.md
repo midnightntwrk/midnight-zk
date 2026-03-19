@@ -42,7 +42,10 @@ use midnight_circuits::{
     instructions::{AssignmentInstructions, PublicInputInstructions},
     types::{AssignedByte, Instantiable},
 };
-use midnight_zk_stdlib::{utils::plonk_api::filecoin_srs, Relation, ZkStdLib, ZkStdLibArch};
+use midnight_zk_stdlib::{
+    utils::plonk_api::{load_srs, SrsSource},
+    Relation, ZkStdLib, ZkStdLibArch,
+};
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
@@ -104,20 +107,19 @@ impl Relation for ShaPreImageCircuit {
     }
 }
 
-// The SRS (Structured Reference String) must match the circuit size exactly.
-// `k` is the log2 of the circuit size (i.e. the circuit has 2^k rows).
-// We can load an SRS that is larger than needed and downsize it automatically.
-const K: u32 = 14;
-let mut srs = filecoin_srs(K);
-
 let relation = ShaPreImageCircuit;
 
-// Compute the optimal k for the circuit and downsize the SRS to match.
+// The SRS (Structured Reference String) must match the circuit size.
+// `k` is the log2 of the number of rows (i.e. the circuit has 2^k rows).
+// `optimal_k` derives the smallest `k` that fits the circuit.
 let k = midnight_zk_stdlib::optimal_k(&relation);
-srs.downsize(k);
 
-// If you already know the exact k for your circuit, you can skip the above
-// and load an SRS of the right size directly.
+// `cs_degree` is the maximum constraint degree of the circuit, needed only if
+// the `single-h-commitment` feature is enabled, for an extended monomial basis.
+let cs_degree = midnight_zk_stdlib::cost_model(&relation, Some(k)).max_deg;
+
+// Load an SRS for the given circuit size.
+let srs = load_srs(SrsSource::Filecoin, k, cs_degree);
 let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
 let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
 

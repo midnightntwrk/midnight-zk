@@ -521,9 +521,15 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             y,
         } = trace;
 
-        // Read commitments to limbs of the quotient polynomial h(X) = nu(X)/(X^n-1)
-        // from the transcript
-        let limb_commitments = (0..assigned_vk.domain.get_quotient_poly_degree())
+        // Read commitment(s) to the quotient polynomial h(X) = nu(X)/(X^n-1) from
+        // the transcript. When the `single-h-commitment` feature is enabled the prover
+        // commits to h(X) as a single polynomial (one commitment); otherwise it
+        // splits h(X) into `quotient_poly_degree` limbs (one commitment each).
+        #[cfg(not(feature = "single-h-commitment"))]
+        let nb_quotient_coms = assigned_vk.domain.get_quotient_poly_degree();
+        #[cfg(feature = "single-h-commitment")]
+        let nb_quotient_coms = 1;
+        let limb_commitments = (0..nb_quotient_coms)
             .map(|_| transcript.read_point(layouter))
             .collect::<Result<Vec<_>, Error>>()?;
 

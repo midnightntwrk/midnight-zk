@@ -19,7 +19,10 @@ use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
-use midnight_zk_stdlib::{ZkStdLib, ZkStdLibArch};
+use midnight_zk_stdlib::{
+    utils::plonk_api::{load_srs, SrsSource},
+    ZkStdLib, ZkStdLibArch,
+};
 
 type S = BlstrsEmulation;
 type F = <S as SelfEmulation>::F;
@@ -178,7 +181,7 @@ fn main() {
     const N: usize = 1_000; // Number of Poseidon iteration per IVC step.
     const STEPS: usize = 3; // Number of IVC steps to run.
 
-    let srs = midnight_zk_stdlib::utils::plonk_api::filecoin_srs(K);
+    let srs = load_srs(SrsSource::Midnight, K, 5); // CS degree is 5
 
     let start = Instant::now();
     let (mut prover, verifier) = ivc::setup::<PoseidonChain<N>>(srs, K, ());

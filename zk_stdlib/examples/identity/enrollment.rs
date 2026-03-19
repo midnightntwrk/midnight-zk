@@ -18,7 +18,7 @@ use midnight_proofs::{
     plonk::{commit_to_instances, Error},
     poly::kzg::KZGCommitmentScheme,
 };
-use midnight_zk_stdlib::{utils::plonk_api::filecoin_srs, Relation, ZkStdLib, ZkStdLibArch};
+use midnight_zk_stdlib::{utils::plonk_api::srs_for_test, Relation, ZkStdLib, ZkStdLibArch};
 use rand::rngs::OsRng;
 use utils::{read_credential, split_blob, verify_credential_sig};
 
@@ -174,10 +174,10 @@ impl CredentialEnrollment {
 
 fn main() {
     const K: u32 = 17;
-    let srs = filecoin_srs(K);
     let credential_blob = read_credential::<4096>(CRED_PATH).expect("Path to credential file.");
 
     let relation = CredentialEnrollment;
+    let srs = srs_for_test(&relation, Some(K));
 
     let start = |msg: &str| -> Instant {
         print!("{msg}");

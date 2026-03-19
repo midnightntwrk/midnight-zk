@@ -225,9 +225,15 @@ where
         y,
     } = trace;
 
-    // Read commitments to limbs of the quotient polynomial h(X) = nu(X)/(X^n-1)
-    // from the transcript
-    let quotient_limb_coms = read_n(transcript, vk.domain.get_quotient_poly_degree())?;
+    // Read commitment(s) to the quotient polynomial h(X) = nu(X)/(X^n-1) from
+    // the transcript. When the `single-h-commitment` feature is enabled the prover
+    // commits to h(X) as a single polynomial (one commitment); otherwise it
+    // splits h(X) into `quotient_poly_degree` limbs (one commitment each).
+    #[cfg(not(feature = "single-h-commitment"))]
+    let nb_quotient_coms = vk.domain.get_quotient_poly_degree();
+    #[cfg(feature = "single-h-commitment")]
+    let nb_quotient_coms = 1;
+    let quotient_limb_coms = read_n(transcript, nb_quotient_coms)?;
 
     // Sample x challenge, which is used to ensure the circuit is
     // satisfied with high probability.
