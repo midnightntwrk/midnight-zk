@@ -1,18 +1,15 @@
-//! ASN.1 spec definitions for ICAO 9303 biometric passport structures.
+//! ICAO 9303 biometric passport structures for zero-knowledge proofs.
 //!
-//! The main structures are:
-//! - **DG1**: The Machine Readable Zone (MRZ), wrapped in a simple TLV.
-//! - **SOD**: The Security Object Document (CMS SignedData), containing the
-//!   signed hashes of data groups and the DS certificate chain.
+//! - **DG1**: Fixed-layout Machine Readable Zone (MRZ). Not parsed via
+//!   `Asn1Spec` — field offsets are given as constants.
+//! - **SOD**: Security Object Document (CMS SignedData), parsed via `Asn1Spec`
+//!   to extract the fields needed for the verification chain.
 //!
-//! These specs are designed to be used with [`ScannerChip::parse_asn1`].
+//! This module targets the **SHA-256 + RSA-2048** algorithm pair.
 
-use std::{fmt::Debug, hash::Hash};
+use std::ops::Range;
 
-use midnight_circuits::parsing::scanner::asn1::{
-    der_encoding::{self, encode_length, encode_tag, tag, CONSTRUCTED},
-    Asn1RawData, Asn1Spec, Asn1Value,
-};
+use midnight_circuits::parsing::scanner::asn1::{Asn1Spec, Asn1Value};
 
 // -----------------------------------------------------------------------
 // Well-known OIDs
@@ -33,61 +30,65 @@ const OID_CONTENT_TYPE: &[u32] = &[1, 2, 840, 113549, 1, 9, 3];
 /// OID 1.2.840.113549.1.9.4 — messageDigest (CMS attribute).
 const OID_MESSAGE_DIGEST: &[u32] = &[1, 2, 840, 113549, 1, 9, 4];
 
-// -----------------------------------------------------------------------
-// Helpers
-// -----------------------------------------------------------------------
+/// OID 1.2.840.113549.1.1.11 — SHA-256 with RSA encryption.
+const OID_SHA256_RSA: &[u32] = &[1, 2, 840, 113549, 1, 1, 11];
 
-/// Builds a fixed tag as `Asn1RawData::fixed`.
-fn fixed_tag<Index: Eq + Hash + Debug>(byte: u8) -> Asn1RawData<Index> {
-    Asn1RawData::fixed(&[byte])
-}
+/// OID 1.2.840.113549.1.1.1 — RSA encryption.
+const OID_RSA: &[u32] = &[1, 2, 840, 113549, 1, 1, 1];
 
-/// Builds a variable-length length field.
-fn varlen_length<Index: Eq + Hash + Debug>() -> Asn1RawData<Index> {
-    Asn1RawData::any(None)
-}
+/// BIT STRING content size for an RSA-2048 public key:
+/// 1 byte (unused bits = 0x00) + DER(SEQUENCE { INTEGER(256+overhead), INTEGER(3+overhead) }).
+/// The SEQUENCE is: 30 82 01 0A  02 82 01 01 00 <256 bytes modulus> 02 03 01 00 01
+/// = 4 + 259 + 5 = 268 content bytes. BIT STRING content = 1 + 268 = 269 bytes.
+const RSA2048_BIT_STRING_LEN: usize = 269;
 
-/// Builds a fixed length field from a known value.
-fn fixed_length<Index: Eq + Hash + Debug>(len: usize) -> Asn1RawData<Index> {
-    Asn1RawData::fixed(&encode_length(len))
-}
+/// RSA-2048 signature size: always exactly 256 bytes. BIT STRING
+/// content = 1 (unused bits) + 256 = 257 bytes.
+const RSA2048_SIG_BIT_STRING_LEN: usize = 257;
 
-/// Builds a TLV with a known single-byte tag and variable-length content.
-fn tlv_varlen<Index: Eq + Hash + Debug>(
-    tag_byte: u8,
-    val: impl Into<Asn1Value<Index>>,
-) -> Asn1Spec<Index> {
-    Asn1Spec::init().read_tlv(fixed_tag(tag_byte), varlen_length(), val)
-}
-
-/// Builds a complete DER-encoded OID TLV as a static block.
-fn tlv_oid<Index: Eq + Hash + Debug>(components: &[u32]) -> Asn1Spec<Index> {
-    Asn1Spec::init().read_static(&der_encoding::oid(components))
-}
-
-/// Builds an AlgorithmIdentifier SEQUENCE with the given OID and NULL params.
-fn algorithm_identifier<Index: Eq + Hash + Debug>(oid: &[u32]) -> Asn1Spec<Index> {
-    Asn1Spec::init().read_static(&der_encoding::sequence(&[
-        der_encoding::oid(oid),
-        der_encoding::null(),
-    ]))
-}
-
-/// Context-specific constructed tag (0xA0 | number).
-fn context_tag<Index: Eq + Hash + Debug>(number: u8) -> Asn1RawData<Index> {
-    fixed_tag(der_encoding::class::CONTEXT_SPECIFIC | CONSTRUCTED | number)
-}
+/// RSA-2048 signature size as OCTET STRING content: 256 bytes.
+const RSA2048_SIG_OCTET_STRING_LEN: usize = 256;
 
 // -----------------------------------------------------------------------
-// Index types
+// DG1 layout (TD3, 93 bytes total)
 // -----------------------------------------------------------------------
+//
+// The hash of DG1 covers the entire 93-byte TLV (tag + length + MRZ).
+//
+// ```text
+// 61 5B                     -- Application 1, constructed, length 91
+//   5F1F 58                 -- Application 31, primitive, length 88
+//     <line 1: 44 bytes>    -- document type, country, name
+//     <line 2: 44 bytes>    -- passport number, DOB, sex, expiry, etc.
+// ```
 
-/// Indexes for extracted regions of a DG1 structure.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Dg1Field {
-    /// The 88-byte MRZ payload.
-    Mrz,
-}
+/// Document type (e.g., "P<"). 2 bytes.
+pub const DG1_DOC_TYPE: Range<usize> = 5..7;
+
+/// Issuing state or organization (ISO 3166-1 alpha-3). 3 bytes.
+pub const DG1_ISSUING_COUNTRY: Range<usize> = 7..10;
+
+/// Surname and given names (separated by `<<`, padded with `<`). 39 bytes.
+pub const DG1_NAME: Range<usize> = 10..49;
+
+/// Passport number. 9 bytes.
+pub const DG1_PASSPORT_NUMBER: Range<usize> = 49..58;
+
+/// Nationality (ISO 3166-1 alpha-3). 3 bytes.
+pub const DG1_NATIONALITY: Range<usize> = 59..62;
+
+/// Date of birth (YYMMDD). 6 bytes.
+pub const DG1_DOB: Range<usize> = 62..68;
+
+/// Sex (M, F, or <). 1 byte.
+pub const DG1_SEX: Range<usize> = 69..70;
+
+/// Date of expiry (YYMMDD). 6 bytes.
+pub const DG1_EXPIRY: Range<usize> = 70..76;
+
+// -----------------------------------------------------------------------
+// SOD index type
+// -----------------------------------------------------------------------
 
 /// Indexes for extracted regions of a SOD structure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -113,44 +114,14 @@ pub enum SodField {
 }
 
 // -----------------------------------------------------------------------
-// DG1 spec
+// SOD spec (SHA-256 + RSA-2048)
 // -----------------------------------------------------------------------
 
-/// DG1 structure for TD3 passports (93 bytes total):
+/// Builds the SOD spec for a SHA-256 + RSA-2048 passport.
 ///
-/// ```text
-/// 61 5B                     -- Application 1, constructed, length 91
-///   5F1F 58                 -- Application 31, primitive, length 88
-///     <88 bytes MRZ>
-/// ```
-pub fn dg1_td3_spec() -> Asn1Spec<Dg1Field> {
-    let mrz_tag_bytes = encode_tag(&der_encoding::Tag {
-        class: der_encoding::class::APPLICATION,
-        constructed: false,
-        number: 31,
-    });
-    let mrz = Asn1Spec::init().read_tlv(
-        Asn1RawData::fixed(&mrz_tag_bytes),
-        fixed_length(88),
-        Asn1Value::any(Some(88)).mark(Dg1Field::Mrz),
-    );
-
-    let outer_tag_bytes = encode_tag(&der_encoding::Tag {
-        class: der_encoding::class::APPLICATION,
-        constructed: true,
-        number: 1,
-    });
-    Asn1Spec::init().read_tlv(Asn1RawData::fixed(&outer_tag_bytes), fixed_length(91), mrz)
-}
-
-// -----------------------------------------------------------------------
-// SOD spec (SHA-256 + ECDSA, PoC version)
-// -----------------------------------------------------------------------
-
-/// Builds the SOD spec for a SHA-256 based passport.
-///
-/// PoC assumptions: single DigestAlgorithm (SHA-256), single SignerInfo,
-/// single certificate, DG1 is the first DataGroupHash entry.
+/// Assumptions: single DigestAlgorithm (SHA-256), single SignerInfo,
+/// single certificate, DG1 is the first DataGroupHash entry,
+/// RSA-2048 keys.
 ///
 /// ```text
 /// SEQUENCE (ContentInfo)
@@ -158,90 +129,54 @@ pub fn dg1_td3_spec() -> Asn1Spec<Dg1Field> {
 ///   [0] CONSTRUCTED
 ///     SEQUENCE (SignedData)
 ///       INTEGER 3
-///       SET { AlgorithmIdentifier(SHA-256) }
+///       SET { AlgId(SHA-256, NULL) }
 ///       SEQUENCE (encapContentInfo)
 ///         OID ldsSecurityObject
 ///         [0] CONSTRUCTED
-///           OCTET STRING (eContent)         -- EXTRACT
+///           OCTET STRING (eContent)             -- EXTRACT
 ///       [0] IMPLICIT (certificates)
 ///         SEQUENCE (Certificate)
-///           SEQUENCE (tbsCertificate)       -- EXTRACT
-///             ...
+///           SEQUENCE (tbsCertificate)           -- EXTRACT
+///             [0] { INTEGER 2 }                 -- version v3 (fixed)
+///             INTEGER serialNumber
+///             AlgId(SHA256-RSA, NULL)            -- fixed
+///             Name issuer
+///             SEQUENCE validity
+///             Name subject
 ///             SEQUENCE (subjectPublicKeyInfo)
-///               AlgorithmIdentifier
-///               BIT STRING (publicKey)      -- EXTRACT
-///             ...
-///           SEQUENCE (signatureAlgorithm)
-///           BIT STRING (signatureValue)     -- EXTRACT
+///               AlgId(RSA, NULL)                -- fixed
+///               BIT STRING (269 bytes)          -- EXTRACT
+///           AlgId(SHA256-RSA, NULL)             -- fixed
+///           BIT STRING (257 bytes)              -- EXTRACT
 ///       SET (signerInfos)
 ///         SEQUENCE (SignerInfo)
 ///           INTEGER 1
 ///           SEQUENCE (issuerAndSerialNumber)
-///           AlgorithmIdentifier(SHA-256)
-///           [0] (signedAttrs)               -- EXTRACT
-///             SEQUENCE { OID contentType, SET { OID } }
-///             SEQUENCE { OID messageDigest, SET { OCTET STRING } }  -- EXTRACT
-///           SEQUENCE (signatureAlgorithm)
-///           OCTET STRING (signature)        -- EXTRACT
+///           AlgId(SHA-256, NULL)                -- fixed
+///           [0] (signedAttrs)                   -- EXTRACT
+///             SEQUENCE { contentType attr }
+///             SEQUENCE { messageDigest attr }   -- EXTRACT
+///           AlgId(SHA256-RSA, NULL)             -- fixed
+///           OCTET STRING (256 bytes)            -- EXTRACT
 /// ```
-pub fn sod_sha256_spec() -> Asn1Spec<SodField> {
-    // --- encapContentInfo ---
-    let lds_security_object = lds_security_object_sha256_spec();
-    let econtent_octet_string = Asn1Spec::init().read_tlv(
-        fixed_tag(tag::OCTET_STRING),
-        varlen_length(),
-        Asn1Value::from(lds_security_object).mark(SodField::EContent),
-    );
-    let econtent_wrapper = Asn1Spec::init().read_tlv(
-        context_tag(0),
-        varlen_length(),
-        econtent_octet_string,
-    );
-    let encap_content_info = tlv_varlen(
-        tag::SEQUENCE,
-        Asn1Spec::init()
-            .then(tlv_oid(OID_LDS_SECURITY_OBJECT))
-            .then(econtent_wrapper),
+pub fn sod_sha256_rsa2048_spec() -> Asn1Spec<SodField> {
+    let econtent = Asn1Spec::empty().read_octet_string(
+        Asn1Value::from(lds_security_object_spec()).mark(SodField::EContent),
     );
 
-    // --- certificates [0] IMPLICIT ---
-    let certificates = Asn1Spec::init().read_tlv(
-        context_tag(0),
-        varlen_length(),
-        x509_certificate_spec(),
+    let signed_data = Asn1Spec::empty().read_sequence(
+        Asn1Spec::empty()
+            .read_integer_fixed(3)
+            .read_set(Asn1Spec::empty().read_algid_null(OID_SHA256))
+            .read_sequence(
+                Asn1Spec::empty().read_oid(OID_LDS_SECURITY_OBJECT).read_ctx(0, econtent),
+            )
+            .read_ctx(0, x509_certificate_spec())
+            .read_set(signer_info_spec()),
     );
 
-    // --- signerInfos ---
-    let signer_infos = tlv_varlen(tag::SET, signer_info_sha256_spec());
-
-    // --- digestAlgorithms ---
-    let digest_algorithms: Asn1Spec<SodField> =
-        tlv_varlen(tag::SET, algorithm_identifier(OID_SHA256));
-
-    // --- SignedData ---
-    let version = Asn1Spec::init().read_static(&der_encoding::integer(3));
-    let signed_data = tlv_varlen(
-        tag::SEQUENCE,
-        Asn1Spec::cat(vec![
-            version,
-            digest_algorithms,
-            encap_content_info,
-            certificates,
-            signer_infos,
-        ]),
-    );
-
-    // --- ContentInfo ---
-    tlv_varlen(
-        tag::SEQUENCE,
-        Asn1Spec::init()
-            .then(tlv_oid(OID_SIGNED_DATA))
-            .then(Asn1Spec::init().read_tlv(
-                context_tag(0),
-                varlen_length(),
-                signed_data,
-            )),
-    )
+    Asn1Spec::empty()
+        .read_sequence(Asn1Spec::empty().read_oid(OID_SIGNED_DATA).read_ctx(0, signed_data))
 }
 
 // -----------------------------------------------------------------------
@@ -249,190 +184,96 @@ pub fn sod_sha256_spec() -> Asn1Spec<SodField> {
 // -----------------------------------------------------------------------
 
 /// LDSSecurityObject (the eContent payload), SHA-256 variant.
-/// Extracts `HashDg1`. Additional DG hashes after DG1 are consumed as
-/// an opaque variable-length blob.
-fn lds_security_object_sha256_spec() -> Asn1Spec<SodField> {
-    let version = Asn1Spec::init().read_static(&der_encoding::integer(0));
-    let hash_algorithm: Asn1Spec<SodField> = algorithm_identifier(OID_SHA256);
-
-    // DataGroupHash for DG1:
-    //   SEQUENCE { INTEGER 1, OCTET STRING(32) }
-    let dg1_hash = tlv_varlen(
-        tag::SEQUENCE,
-        Asn1Spec::init()
-            .then(Asn1Spec::init().read_static(&der_encoding::integer(1)))
-            .then(Asn1Spec::init().read_tlv(
-                fixed_tag(tag::OCTET_STRING),
-                fixed_length(32),
-                Asn1Value::any(Some(32)).mark(SodField::HashDg1),
-            )),
-    );
-
-    // dataGroupHashValues: SEQUENCE OF DataGroupHash.
-    // DG1 is first; any remaining DGs are consumed as opaque data.
-    let data_group_hashes = tlv_varlen(tag::SEQUENCE, dg1_hash);
-
-    tlv_varlen(
-        tag::SEQUENCE,
-        Asn1Spec::cat(vec![version, hash_algorithm, data_group_hashes]),
-    )
-}
-
-/// X.509 certificate spec. Extracts `TbsCertificate`, `DsPublicKey`,
-/// and `CscaSignature`.
-fn x509_certificate_spec() -> Asn1Spec<SodField> {
-    let tbs_certificate = tlv_varlen(
-        tag::SEQUENCE,
-        Asn1Value::from(tbs_certificate_spec()).mark(SodField::TbsCertificate),
-    );
-
-    // signatureAlgorithm: AlgorithmIdentifier (not extracted)
-    let sig_algorithm: Asn1Spec<SodField> = tlv_varlen(tag::SEQUENCE, Asn1Value::any(None));
-
-    // signatureValue: BIT STRING
-    let sig_value = Asn1Spec::init().read_tlv(
-        fixed_tag(tag::BIT_STRING),
-        varlen_length(),
-        Asn1Value::any(None).mark(SodField::CscaSignature),
-    );
-
-    tlv_varlen(
-        tag::SEQUENCE,
-        Asn1Spec::cat(vec![tbs_certificate, sig_algorithm, sig_value]),
-    )
-}
-
-/// tbsCertificate inner structure. Extracts `DsPublicKey`.
-/// Fields before subjectPublicKeyInfo are consumed as opaque blobs.
 ///
-/// ```text
-/// SEQUENCE {
-///   [0] EXPLICIT { INTEGER version }
-///   INTEGER serialNumber
-///   AlgorithmIdentifier signature
-///   Name issuer
-///   SEQUENCE { Time notBefore, Time notAfter } validity
-///   Name subject
-///   SEQUENCE (subjectPublicKeyInfo)
-///     AlgorithmIdentifier algorithm
-///     BIT STRING publicKey                    -- EXTRACT
-///   ... (optional extensions, ignored)
-/// }
-/// ```
-fn tbs_certificate_spec() -> Asn1Spec<SodField> {
-    // version: [0] EXPLICIT { INTEGER }
-    let version: Asn1Spec<SodField> =
-        Asn1Spec::init().read_tlv(context_tag(0), varlen_length(), Asn1Value::any(None));
-    // serialNumber: INTEGER
-    let serial: Asn1Spec<SodField> = tlv_varlen(tag::INTEGER, Asn1Value::any(None));
-    // signature: AlgorithmIdentifier
-    let signature: Asn1Spec<SodField> = tlv_varlen(tag::SEQUENCE, Asn1Value::any(None));
-    // issuer: Name (SEQUENCE)
-    let issuer: Asn1Spec<SodField> = tlv_varlen(tag::SEQUENCE, Asn1Value::any(None));
-    // validity: SEQUENCE { Time, Time }
-    let validity: Asn1Spec<SodField> = tlv_varlen(tag::SEQUENCE, Asn1Value::any(None));
-    // subject: Name (SEQUENCE)
-    let subject: Asn1Spec<SodField> = tlv_varlen(tag::SEQUENCE, Asn1Value::any(None));
-
-    // subjectPublicKeyInfo: SEQUENCE { AlgorithmIdentifier, BIT STRING }
-    let spki_algorithm: Asn1Spec<SodField> = tlv_varlen(tag::SEQUENCE, Asn1Value::any(None));
-    let spki_public_key = Asn1Spec::init().read_tlv(
-        fixed_tag(tag::BIT_STRING),
-        varlen_length(),
-        Asn1Value::any(None).mark(SodField::DsPublicKey),
-    );
-    let spki = tlv_varlen(
-        tag::SEQUENCE,
-        Asn1Spec::cat(vec![spki_algorithm, spki_public_key]),
+/// Extracts `HashDg1`. The DG1 DataGroupHash is parsed explicitly.
+///
+/// **Limitation:** additional DG hashes (DG2, DG14, etc.) are not
+/// described. The defensive check in `process_value` will panic if the
+/// witness contains more than one DataGroupHash.
+fn lds_security_object_spec() -> Asn1Spec<SodField> {
+    let dg1_hash = Asn1Spec::empty().read_sequence(
+        Asn1Spec::empty()
+            .read_integer_fixed(1)
+            .read_octet_string(Asn1Value::any(Some(32)).mark(SodField::HashDg1)),
     );
 
-    // Remaining fields (issuerUniqueID, subjectUniqueID, extensions) are
-    // optional. They will be consumed by the TLV length assertion in
-    // process_tlv — process_value's defensive check ensures the inner
-    // spec matches the actual byte count. For now, we don't parse them
-    // and rely on the enclosing TLV length to delimit.
-    Asn1Spec::cat(vec![
-        version, serial, signature, issuer, validity, subject, spki,
-    ])
+    Asn1Spec::empty().read_sequence(
+        Asn1Spec::empty()
+            .read_integer_fixed(0)
+            .read_algid_null(OID_SHA256)
+            .read_sequence(dg1_hash),
+    )
 }
 
-/// SignerInfo spec (SHA-256 variant). Extracts `SignedAttrs`,
+/// X.509 certificate spec (RSA-2048). Extracts `TbsCertificate`,
+/// `DsPublicKey`, and `CscaSignature`.
+fn x509_certificate_spec() -> Asn1Spec<SodField> {
+    Asn1Spec::empty().read_sequence(
+        Asn1Spec::empty()
+            .read_sequence(Asn1Value::from(tbs_certificate_spec()).mark(SodField::TbsCertificate))
+            .read_algid_null(OID_SHA256_RSA)            // signatureAlgorithm (fixed)
+            .read_bit_string(                            // signatureValue (fixed 257 bytes)
+                Asn1Value::any(Some(RSA2048_SIG_BIT_STRING_LEN)).mark(SodField::CscaSignature),
+            ),
+    )
+}
+
+/// tbsCertificate inner structure (RSA-2048). Extracts `DsPublicKey`.
+///
+/// **Limitation:** optional fields after `subjectPublicKeyInfo`
+/// (extensions, etc.) are not described. The defensive check in
+/// `process_value` will panic if extensions are present.
+fn tbs_certificate_spec() -> Asn1Spec<SodField> {
+    let spki = Asn1Spec::empty().read_sequence(
+        Asn1Spec::empty()
+            .read_algid_null(OID_RSA)                   // algorithm (fixed)
+            .read_bit_string(                            // publicKey (fixed 269 bytes)
+                Asn1Value::any(Some(RSA2048_BIT_STRING_LEN)).mark(SodField::DsPublicKey),
+            ),
+    );
+
+    Asn1Spec::empty()
+        .read_ctx(0, Asn1Spec::empty().read_integer_fixed(2))  // version v3 (fixed)
+        .read_integer(Asn1Value::any(None))                     // serialNumber
+        .read_algid_null(OID_SHA256_RSA)                        // signature (fixed)
+        .read_sequence(Asn1Value::any(None))                    // issuer
+        .read_sequence(Asn1Value::any(None))                    // validity
+        .read_sequence(Asn1Value::any(None))                    // subject
+        .then(spki)
+}
+
+/// SignerInfo spec (SHA-256 + RSA-2048). Extracts `SignedAttrs`,
 /// `MessageDigest`, and `DsSignature`.
-fn signer_info_sha256_spec() -> Asn1Spec<SodField> {
-    let version = Asn1Spec::init().read_static(&der_encoding::integer(1));
-
-    // issuerAndSerialNumber: SEQUENCE (not extracted)
-    let issuer_serial: Asn1Spec<SodField> = tlv_varlen(tag::SEQUENCE, Asn1Value::any(None));
-
-    // digestAlgorithm: AlgorithmIdentifier (SHA-256)
-    let digest_alg: Asn1Spec<SodField> = algorithm_identifier(OID_SHA256);
-
-    // signedAttrs: [0] IMPLICIT SET — extract the whole blob, and also
-    // parse inside to extract the messageDigest value.
-    let signed_attrs = Asn1Spec::init().read_tlv(
-        context_tag(0),
-        varlen_length(),
-        Asn1Value::from(signed_attrs_spec()).mark(SodField::SignedAttrs),
-    );
-
-    // signatureAlgorithm: AlgorithmIdentifier (not extracted)
-    let sig_algorithm: Asn1Spec<SodField> = tlv_varlen(tag::SEQUENCE, Asn1Value::any(None));
-
-    // signature: OCTET STRING
-    let signature = Asn1Spec::init().read_tlv(
-        fixed_tag(tag::OCTET_STRING),
-        varlen_length(),
-        Asn1Value::any(None).mark(SodField::DsSignature),
-    );
-
-    tlv_varlen(
-        tag::SEQUENCE,
-        Asn1Spec::cat(vec![
-            version,
-            issuer_serial,
-            digest_alg,
-            signed_attrs,
-            sig_algorithm,
-            signature,
-        ]),
+fn signer_info_spec() -> Asn1Spec<SodField> {
+    Asn1Spec::empty().read_sequence(
+        Asn1Spec::empty()
+            .read_integer_fixed(1)                              // version
+            .read_sequence(Asn1Value::any(None))                // issuerAndSerialNumber
+            .read_algid_null(OID_SHA256)                        // digestAlgorithm (fixed)
+            .read_ctx(0, Asn1Value::from(signed_attrs_spec()).mark(SodField::SignedAttrs))
+            .read_algid_null(OID_SHA256_RSA)                    // signatureAlgorithm (fixed)
+            .read_octet_string(                                 // signature (fixed 256 bytes)
+                Asn1Value::any(Some(RSA2048_SIG_OCTET_STRING_LEN)).mark(SodField::DsSignature),
+            ),
     )
 }
 
 /// Signed attributes inner structure. Extracts `MessageDigest`.
-///
-/// ```text
-/// SET {
-///   SEQUENCE { OID contentType, SET { OID ldsSecurityObject } }
-///   SEQUENCE { OID messageDigest, SET { OCTET STRING(32) } }  -- EXTRACT
-/// }
-/// ```
 fn signed_attrs_spec() -> Asn1Spec<SodField> {
-    // contentType attribute: SEQUENCE { OID, SET { OID } }
-    let content_type_attr: Asn1Spec<SodField> = tlv_varlen(
-        tag::SEQUENCE,
-        Asn1Spec::init()
-            .then(tlv_oid(OID_CONTENT_TYPE))
-            .then(tlv_varlen(
-                tag::SET,
-                tlv_oid::<SodField>(OID_LDS_SECURITY_OBJECT),
-            )),
+    let content_type_attr = Asn1Spec::empty().read_sequence(
+        Asn1Spec::empty()
+            .read_oid(OID_CONTENT_TYPE)
+            .read_set(Asn1Spec::empty().read_oid(OID_LDS_SECURITY_OBJECT)),
     );
 
-    // messageDigest attribute: SEQUENCE { OID, SET { OCTET STRING(32) } }
-    let message_digest_attr = tlv_varlen(
-        tag::SEQUENCE,
-        Asn1Spec::init()
-            .then(tlv_oid(OID_MESSAGE_DIGEST))
-            .then(Asn1Spec::init().read_tlv(
-                fixed_tag(tag::SET),
-                varlen_length(),
-                Asn1Spec::init().read_tlv(
-                    fixed_tag(tag::OCTET_STRING),
-                    fixed_length(32),
-                    Asn1Value::any(Some(32)).mark(SodField::MessageDigest),
-                ),
-            )),
+    let message_digest_attr = Asn1Spec::empty().read_sequence(
+        Asn1Spec::empty()
+            .read_oid(OID_MESSAGE_DIGEST)
+            .read_set(
+                Asn1Spec::empty()
+                    .read_octet_string(Asn1Value::any(Some(32)).mark(SodField::MessageDigest)),
+            ),
     );
 
-    Asn1Spec::cat(vec![content_type_attr, message_digest_attr])
+    content_type_attr.then(message_digest_attr)
 }

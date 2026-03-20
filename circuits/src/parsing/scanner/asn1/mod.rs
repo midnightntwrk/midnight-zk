@@ -72,6 +72,22 @@ where
     Tlv(Asn1Tlv<Index>, Option<Index>),
 }
 
+impl<Index: Eq + Hash> Asn1Block<Index> {
+    /// Returns the total byte count of this block if statically known.
+    fn known_len(&self) -> Option<usize> {
+        match self {
+            Asn1Block::Const(v, _) => Some(v.len()),
+            Asn1Block::Fixlen(n, _) => Some(*n),
+            Asn1Block::Tlv(tlv, _) => {
+                let tag_len = tlv.tag.len()?;
+                let len_len = tlv.len.len()?;
+                let val_len = tlv.val.known_len()?;
+                Some(tag_len + len_len + val_len)
+            }
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Public types
 // ---------------------------------------------------------------------------
@@ -90,6 +106,54 @@ pub struct Asn1RawData<Index>(Asn1RawDataInternal<Index>)
 where
     Index: Eq + Hash;
 
+impl<Index: Eq + Hash + Debug> From<der_encoding::Tag> for Asn1RawData<Index> {
+    /// Encodes the tag and wraps as a constant block.
+    fn from(tag: der_encoding::Tag) -> Self {
+        Asn1RawData::fixed(&der_encoding::encode_tag(&tag))
+    }
+}
+
+impl<Index: Eq + Hash + Debug> From<&[u8]> for Asn1RawData<Index> {
+    /// Wraps raw bytes as a constant block.
+    fn from(bytes: &[u8]) -> Self {
+        Asn1RawData::fixed(bytes)
+    }
+}
+
+impl<Index: Eq + Hash + Debug, const N: usize> From<&[u8; N]> for Asn1RawData<Index> {
+    /// Wraps raw bytes as a constant block.
+    fn from(bytes: &[u8; N]) -> Self {
+        Asn1RawData::fixed(bytes)
+    }
+}
+
+impl<Index: Eq + Hash + Debug> From<&Vec<u8>> for Asn1RawData<Index> {
+    /// Wraps raw bytes as a constant block.
+    fn from(bytes: &Vec<u8>) -> Self {
+        Asn1RawData::fixed(bytes)
+    }
+}
+
+impl<Index: Eq + Hash + Debug> From<usize> for Asn1RawData<Index> {
+    /// Encodes a length value and wraps as a constant block.
+    fn from(len: usize) -> Self {
+        Asn1RawData::fixed(&der_encoding::encode_length(len))
+    }
+}
+
+impl<Index: Eq + Hash> Asn1RawData<Index> {
+    /// Returns the known byte count of this data block, or `None` for
+    /// variable-length blocks.
+    #[allow(clippy::len_without_is_empty)]
+    pub fn len(&self) -> Option<usize> {
+        match &self.0 {
+            Asn1RawDataInternal::Const(v, _) => Some(v.len()),
+            Asn1RawDataInternal::Fixlen(n, _) => Some(*n),
+            Asn1RawDataInternal::Varlen(_) => None,
+        }
+    }
+}
+
 impl<Index> Asn1RawData<Index>
 where
     Index: Eq + Hash + Debug,
@@ -106,17 +170,6 @@ where
         match len {
             None => Asn1RawData(Asn1RawDataInternal::Varlen(None)),
             Some(len) => Asn1RawData(Asn1RawDataInternal::Fixlen(len, None)),
-        }
-    }
-
-    /// Returns the known size of this data block, or `None` for
-    /// variable length blocks.
-    #[allow(clippy::len_without_is_empty)]
-    pub fn len(&self) -> Option<usize> {
-        match &self.0 {
-            Asn1RawDataInternal::Const(v, _) => Some(v.len()),
-            Asn1RawDataInternal::Fixlen(n, _) => Some(*n),
-            Asn1RawDataInternal::Varlen(_) => None,
         }
     }
 
@@ -141,6 +194,16 @@ where
 pub struct Asn1Value<Index>(Asn1ValueInternal<Index>)
 where
     Index: Eq + Hash;
+
+impl<Index: Eq + Hash> Asn1Value<Index> {
+    /// Returns the total byte count of this value if statically known.
+    fn known_len(&self) -> Option<usize> {
+        match &self.0 {
+            Asn1ValueInternal::Simple(raw) => raw.len(),
+            Asn1ValueInternal::Recursive(spec, _) => spec.size(),
+        }
+    }
+}
 
 impl<Index> From<Asn1Spec<Index>> for Asn1Value<Index>
 where
@@ -184,18 +247,37 @@ where
 /// An ASN.1 spec: a complete ASN.1 encoding which may include several
 /// blocks at the same level. The internal structure is opaque; use the
 /// builder methods to construct instances as chains of instructions.
+///
+/// The spec caches the total byte count when all blocks have statically
+/// known sizes, accessible via [`size`](`Self::size`).
 #[derive(Debug, Clone)]
-pub struct Asn1Spec<Index>(Vec<Asn1Block<Index>>)
+pub struct Asn1Spec<Index>(Option<usize>, Vec<Asn1Block<Index>>)
 where
     Index: Eq + Hash;
+
+impl<Index: Eq + Hash> Asn1Spec<Index> {
+    /// Creates an empty specification.
+    pub fn empty() -> Self {
+        Self(Some(0), Vec::new())
+    }
+
+    /// Returns the total byte count if all blocks have statically known
+    /// sizes, or `None` otherwise.
+    pub fn size(&self) -> Option<usize> {
+        self.0
+    }
+}
 
 impl<Index> Asn1Spec<Index>
 where
     Index: Eq + Hash + Debug,
 {
-    /// Adds several blocks to the spec.
+    /// Adds several blocks to the spec, updating the cached size.
     fn add_many_block(mut self, blocks: Vec<Asn1Block<Index>>) -> Self {
-        self.0.extend(blocks);
+        for block in &blocks {
+            self.0 = self.0.and_then(|s| block.known_len().map(|b| s + b));
+        }
+        self.1.extend(blocks);
         self
     }
 
@@ -204,56 +286,206 @@ where
         self.add_many_block(vec![block])
     }
 
-    /// Creates an empty specification.
-    pub fn init() -> Self {
-        Self(vec![])
-    }
-
-    /// Instruction reading a fixed sequence of bytes from the input.
-    pub fn read_static(self, bytes: &[u8]) -> Self {
+    /// Adds an instruction reading a fixed sequence of bytes from the input.
+    pub fn read_fixed(self, bytes: &[u8]) -> Self {
         self.add_block(Asn1Block::Const(bytes.to_vec(), None))
     }
 
-    /// Instruction reading `len` bytes from the input.
+    /// Adds an instruction reading `len` bytes from the input.
     pub fn read_bytes(self, len: usize) -> Self {
         self.add_block(Asn1Block::Fixlen(len, None))
     }
 
     /// Adds a TLV node to the spec. The caller is responsible for ensuring
-    /// consistency between the variability of `tag`, `len`, and `val`. For
-    /// recursion, i.e., when `val` is itself a sequence of TLV nodes, it
-    /// suffices to instantiate it by an [`Asn1Spec`].
+    /// consistency between the variability of `tag`, `len`, and `val`.
+    ///
+    /// # Type conversions
+    ///
+    /// `tag`, `len`, and `val` accept several types via `Into`:
+    ///
+    ///    - `tag`: [`Tag`](der_encoding::Tag) (encoded via
+    ///      [`encode_tag`](der_encoding::encode_tag)) or `&[u8]` (pre-encoded
+    ///      raw tag bytes).
+    ///
+    ///   - `len`: `usize` (encoded via
+    ///     [`encode_length`](der_encoding::encode_length), e.g., `88usize` ->
+    ///     `[0x58]`) or `&[u8]` (pre-encoded raw length bytes).
+    ///
+    ///   - `val`: [`Asn1Value`] directly, or [`Asn1Spec`] for recursive
+    ///     structures.
     pub fn read_tlv(
         self,
-        tag: Asn1RawData<Index>,
-        len: Asn1RawData<Index>,
+        tag: impl Into<Asn1RawData<Index>>,
+        len: impl Into<Asn1RawData<Index>>,
         val: impl Into<Asn1Value<Index>>,
     ) -> Self {
-        self.add_block(Asn1Block::Tlv(
-            Asn1Tlv {
-                tag,
-                len,
-                val: val.into(),
-            },
-            None,
-        ))
+        let tag = tag.into();
+        let len = len.into();
+        let val = val.into();
+
+        // Safety checks for spec consistency.
+        let val_known = val.known_len();
+        match &len.0 {
+            Asn1RawDataInternal::Const(len_bytes, _) => {
+                let (_, decoded) = der_encoding::decode_length(len_bytes)
+                    .expect("read_tlv: constant length bytes are not valid DER");
+                match val_known {
+                    None => panic!(
+                        "read_tlv: length is constant ({decoded} bytes) but value \
+                         has unknown size. The spec is likely inconsistent."
+                    ),
+                    Some(n) if n != decoded => panic!(
+                        "read_tlv: constant length says {decoded} bytes but value \
+                         has known size {n}. The spec is inconsistent."
+                    ),
+                    _ => {}
+                }
+            }
+            Asn1RawDataInternal::Fixlen(..) | Asn1RawDataInternal::Varlen(_) => {
+                if let Some(n) = val_known {
+                    panic!(
+                        "read_tlv: value has known size ({n} bytes) but length is \
+                         not specified as constant. Use a fixed length for better \
+                         efficiency (you may compute it automatically via \
+                         `Asn1Spec::size()`)."
+                    );
+                }
+            }
+        }
+
+        self.add_block(Asn1Block::Tlv(Asn1Tlv { tag, len, val }, None))
     }
 
     /// Adds another full spec after this one.
     pub fn then(self, spec: Asn1Spec<Index>) -> Self {
-        self.add_many_block(spec.0)
+        self.add_many_block(spec.1)
     }
 
     /// Concatenates several specs in order.
     pub fn cat(items: Vec<Self>) -> Self {
-        items.into_iter().fold(Self::init(), |acc, spec| acc.then(spec))
+        items.into_iter().fold(Self::empty(), |acc, spec| acc.then(spec))
+    }
+
+    // -------------------------------------------------------------------
+    // Common ASN.1 structure helpers
+    //
+    // All take `self` and append to the current spec via `read_tlv` or
+    // `read_fixed`, for uniform chaining.
+    // -------------------------------------------------------------------
+
+    /// Returns the appropriate length field for a value: a fixed
+    /// `usize` if the value's byte count is known, or `Asn1RawData::any(None)`
+    /// (varlen) otherwise.
+    fn auto_len(val: &Asn1Value<Index>) -> Asn1RawData<Index> {
+        match val.known_len() {
+            Some(n) => n.into(),
+            None => Asn1RawData::any(None),
+        }
+    }
+
+    /// Appends a SEQUENCE TLV. Uses a fixed-length encoding when the
+    /// value's byte count is statically known.
+    pub fn read_sequence(self, val: impl Into<Asn1Value<Index>>) -> Self {
+        let val = val.into();
+        let len = Self::auto_len(&val);
+        self.read_tlv(&[der_encoding::tag::SEQUENCE], len, val)
+    }
+
+    /// Appends a SET TLV. Uses a fixed-length encoding when the value's
+    /// byte count is statically known.
+    pub fn read_set(self, val: impl Into<Asn1Value<Index>>) -> Self {
+        let val = val.into();
+        let len = Self::auto_len(&val);
+        self.read_tlv(&[der_encoding::tag::SET], len, val)
+    }
+
+    /// Appends an OCTET STRING TLV. Uses a fixed-length encoding when
+    /// the value's byte count is statically known.
+    pub fn read_octet_string(self, val: impl Into<Asn1Value<Index>>) -> Self {
+        let val = val.into();
+        let len = Self::auto_len(&val);
+        self.read_tlv(&[der_encoding::tag::OCTET_STRING], len, val)
+    }
+
+    /// Appends a BIT STRING TLV. Uses a fixed-length encoding when the
+    /// value's byte count is statically known.
+    pub fn read_bit_string(self, val: impl Into<Asn1Value<Index>>) -> Self {
+        let val = val.into();
+        let len = Self::auto_len(&val);
+        self.read_tlv(&[der_encoding::tag::BIT_STRING], len, val)
+    }
+
+    /// Appends an INTEGER TLV. Uses a fixed-length encoding when the
+    /// value's byte count is statically known.
+    pub fn read_integer(self, val: impl Into<Asn1Value<Index>>) -> Self {
+        let val = val.into();
+        let len = Self::auto_len(&val);
+        self.read_tlv(&[der_encoding::tag::INTEGER], len, val)
+    }
+
+    /// Appends a context-specific constructed TLV (`[number] CONSTRUCTED`).
+    /// Uses a fixed-length encoding when the value's byte count is
+    /// statically known.
+    pub fn read_ctx(self, number: u32, val: impl Into<Asn1Value<Index>>) -> Self {
+        let val = val.into();
+        let len = Self::auto_len(&val);
+        let ctx_tag = der_encoding::Tag {
+            class: der_encoding::class::CONTEXT_SPECIFIC,
+            constructed: true,
+            number,
+        };
+        self.read_tlv(ctx_tag, len, val)
+    }
+
+    /// Appends a complete DER-encoded OID as a fixed block.
+    pub fn read_oid(self, components: &[u32]) -> Self {
+        self.read_fixed(&der_encoding::oid(components))
+    }
+
+    /// Appends a fixed DER-encoded INTEGER value as a static block.
+    /// For a variable-length INTEGER, use
+    /// [`read_integer`](`Self::read_integer`).
+    pub fn read_integer_fixed(self, n: i64) -> Self {
+        self.read_fixed(&der_encoding::integer(n))
+    }
+
+    /// Appends an AlgorithmIdentifier SEQUENCE with explicit NULL
+    /// parameters: `SEQUENCE { OID, NULL }`.
+    ///
+    /// Used for algorithms whose ASN.1 definition requires a NULL
+    /// parameter field, such as SHA-256 (`2.16.840.1.101.3.4.2.1`) or
+    /// RSA (`1.2.840.113549.1.1.1`).
+    ///
+    /// For algorithms with absent parameters (e.g., ECDSA), use
+    /// [`read_algid`](`Self::read_algid`) instead.
+    pub fn read_algid_null(self, oid_components: &[u32]) -> Self {
+        self.read_fixed(&der_encoding::sequence(&[
+            der_encoding::oid(oid_components),
+            der_encoding::null(),
+        ]))
+    }
+
+    /// Appends an AlgorithmIdentifier SEQUENCE with no parameters:
+    /// `SEQUENCE { OID }`.
+    ///
+    /// Used for algorithms whose ASN.1 definition specifies absent
+    /// (omitted) parameters, such as ECDSA-SHA256
+    /// (`1.2.840.10045.4.3.2`).
+    ///
+    /// For algorithms that require an explicit NULL parameter (e.g.,
+    /// SHA-256, RSA), use [`read_algid_null`](`Self::read_algid_null`)
+    /// instead.
+    pub fn read_algid(self, oid_components: &[u32]) -> Self {
+        self.read_fixed(&der_encoding::sequence(&[der_encoding::oid(
+            oid_components,
+        )]))
     }
 
     /// Indicates that the last block of `self`'s extraction will be referenced
     /// as `m`.
     pub fn mark(mut self, m: Index) -> Self {
         let last_block =
-            (self.0.last_mut()).unwrap_or_else(|| panic!("no block to mark with index {:?}", m));
+            (self.1.last_mut()).unwrap_or_else(|| panic!("no block to mark with index {:?}", m));
         let slot = match last_block {
             Asn1Block::Const(_, idx) => idx,
             Asn1Block::Fixlen(_, idx) => idx,

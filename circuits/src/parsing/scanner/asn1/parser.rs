@@ -503,7 +503,7 @@ where
         spec: Asn1Spec<Index>,
         state: &mut ParserState<F, Index, TAG_M, LEN_M, VAL_M, VAL_A>,
     ) -> Result<(), Error> {
-        let mut blocks = spec.0;
+        let mut blocks = spec.1;
         blocks.reverse();
         while let Some(block) = blocks.pop() {
             match block {
