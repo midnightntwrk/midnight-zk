@@ -13,11 +13,10 @@
 
 //! NIST P-256 / secp256r1 curve types using p256.
 
-use ff::Field as FfField;
+use ff::{Field as FfField, PrimeField};
 use group::{Curve, Group, GroupEncoding};
 use p256::{
     elliptic_curve::{
-        ff::PrimeField as P256PrimeField,
         group::GroupEncoding as P256GroupEncoding,
         point::AffineCoordinates,
         sec1::{FromEncodedPoint, ToEncodedPoint},
@@ -60,26 +59,17 @@ impl P256Affine {
         Self(AffinePoint::GENERATOR)
     }
 
-    /// Returns the x coordinate for non-identity points, or `None` for the
-    /// identity.
-    pub fn try_x(&self) -> Option<Fp> {
-        if bool::from(self.0.is_identity()) {
-            return None;
-        }
-        Option::from(<Fp as P256PrimeField>::from_repr(self.0.x()))
+    /// Returns the x coordinate.
+    pub fn x(&self) -> Fp {
+        Fp::from_repr(self.0.x()).expect("Valid coordinate")
     }
 
-    /// Returns the y coordinate for non-identity points, or `None` for the
-    /// identity.
-    pub fn try_y(&self) -> Option<Fp> {
-        if bool::from(self.0.is_identity()) {
-            return None;
-        }
-
+    /// Returns the y coordinate.
+    pub fn y(&self) -> Fp {
         // Use uncompressed encoding to get y coordinate.
         let encoded = self.0.to_encoded_point(false);
-        let y_bytes = encoded.y()?;
-        Option::from(<Fp as P256PrimeField>::from_repr(*y_bytes))
+        let y_bytes = encoded.y().expect("Uncompressed point has y coordinate");
+        Fp::from_repr(*y_bytes).expect("Valid coordinate")
     }
 
     /// Creates an affine point from x and y coordinates.
@@ -488,14 +478,8 @@ mod tests {
         for _ in 0..TEST_ITERATIONS {
             let point = P256::random(&mut rng);
             let affine = point.to_affine();
-
-            // Skip identity point since it will panic when we try to get coordinates.
-            if bool::from(affine.0.is_identity()) {
-                continue;
-            }
-
-            let x = affine.try_x().unwrap();
-            let y = affine.try_y().unwrap();
+            let x = affine.x();
+            let y = affine.y();
 
             // Reconstruct point from coordinates.
             let reconstructed = P256Affine::from_xy(x, y);
@@ -511,22 +495,12 @@ mod tests {
             let points: Vec<P256> = (0..10).map(|_| P256::random(&mut rng)).collect();
             let mut affine_points = vec![P256Affine::identity(); points.len()];
 
-            // Convert each point to affine individually
-            for (i, point) in points.iter().enumerate() {
-                affine_points[i] = point.to_affine();
-            }
+            P256::batch_normalize(&points, &mut affine_points);
 
             for (proj, affine) in points.iter().zip(affine_points.iter()) {
                 assert_eq!(proj.to_affine(), *affine);
             }
         }
-    }
-
-    #[test]
-    fn test_identity_coordinates_are_none() {
-        let identity = P256Affine::identity();
-        assert!(identity.try_x().is_none());
-        assert!(identity.try_y().is_none());
     }
 
     #[test]
