@@ -2,7 +2,7 @@ use ff::PrimeField;
 
 pub(crate) use crate::hash::util::{
     assert_in_valid_spreaded_form, expr_pow2_ip, expr_pow4_ip, gen_spread_table as gen_table,
-    get_even_and_odd_bits, negate_spreaded, spread, u32_to_limbs_be, MASK_EVN_64,
+    get_even_and_odd_bits, negate_spreaded, spread, u32_to_be_limbs, MASK_EVN_64,
 };
 
 const LOOKUP_LENGTHS: [u32; 11] = [0, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12]; // supported lookup bit lengths
@@ -18,7 +18,7 @@ pub(crate) fn u32_in_be_limbs<const N: usize>(value: u32, limb_lengths: [u8; N])
     for &len in &limb_lengths {
         assert!(len != 0, "Limb length cannot be zero in SHA-256 context");
     }
-    u32_to_limbs_be(value, limb_lengths)
+    u32_to_be_limbs(value, limb_lengths)
 }
 
 /// Generates the plain-spreaded lookup table.

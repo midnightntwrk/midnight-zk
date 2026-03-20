@@ -1,6 +1,6 @@
 pub(crate) use crate::hash::util::{
     expr_pow2_ip, expr_pow4_ip, gen_spread_table as gen_table, get_even_and_odd_bits,
-    negate_spreaded, spread, u32_to_limbs_be, MASK_EVN_64,
+    negate_spreaded, spread, u32_to_be_limbs as u32_in_be_limbs, MASK_EVN_64,
 };
 use crate::CircuitField;
 
@@ -81,7 +81,7 @@ pub(super) fn limb_coeffs(rot: u8) -> ([u32; NUM_LIMBS], [u32; NUM_LIMBS]) {
 /// [`u32_in_be_limbs`] in SHA-256, as it supports zero-length segments.
 pub(super) fn limb_values(value: u32, rot: u8) -> [u32; NUM_LIMBS] {
     let (lengths, _) = limb_lengths(rot);
-    u32_to_limbs_be(value, lengths)
+    u32_in_be_limbs(value, lengths)
 }
 
 /// Generates the plain-spreaded lookup table. The limb lengths to be looked up
