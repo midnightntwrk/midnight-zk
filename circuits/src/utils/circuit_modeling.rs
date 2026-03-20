@@ -45,7 +45,7 @@ where
     // Store model only when tests are run in BLS12-381 (i.e. when the
     // native scalar is BLS's scalar
     if F::MODULUS == Fq::MODULUS {
-        let model = circuit_model::<F, 48, 32>(&circuit);
+        let model = circuit_model::<F, 48, 32>(&circuit, 0);
         update_json(chip_name, op_name, model).expect("csv generation failed");
     }
 }
