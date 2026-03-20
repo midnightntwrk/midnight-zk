@@ -1,4 +1,6 @@
 use super::super::regex::{Regex, RegexInstructions};
+#[cfg(test)]
+use crate::parsing::{scanner::automaton::Automaton, StdLibParser};
 
 /// Regex formalising the spec of `StdLibParser::Icao9309Td3Dg1`.
 pub(super) fn spec_icao9303_td3_dg1() -> Regex {
@@ -74,9 +76,7 @@ pub(super) fn spec_icao9303_td3_dg1() -> Regex {
 }
 
 #[cfg(test)]
-pub(super) fn test_dg1(
-    spec_library: &rustc_hash::FxHashMap<super::StdLibParser, super::super::automaton::Automaton>,
-) {
+pub(super) fn test_dg1(spec_library: &rustc_hash::FxHashMap<StdLibParser, (Regex, Automaton)>) {
     use super::StdLibParser;
 
     let accepted_raw: Vec<&[u8]> = include_str!("examples/icao9303_td3_dg1/valid_credentials.txt")

@@ -234,7 +234,7 @@ impl From<Regex> for AutomatonParser {
 
 /// A static library of serialised automata for parsing common regexes. The
 /// automaton states start from 0 and may overlap one with each other.
-type ParsingLibrary = FxHashMap<StdLibParser, Automaton>;
+type ParsingLibrary = FxHashMap<StdLibParser, (Regex, Automaton)>;
 /// Set of automata (with offset states) called by [`ScannerChip::parse`] or
 /// [`ScannerChip::parse_varlen`].
 type AutomatonCache<F> = FxHashMap<AutomatonParser, NativeAutomaton<F>>;
@@ -318,6 +318,22 @@ where
     sequence_cache: Rc<RefCell<SequenceCache<F>>>,
 }
 
+impl<F> ScannerChip<F>
+where
+    F: CircuitField,
+{
+    /// Gets the regex associated to a `StdLibParser`, as stored in the static
+    /// library of `self`.
+    pub fn specs_regex(&self, parser: &StdLibParser) -> &Regex {
+        let (regex, _) = self
+            .config
+            .static_library
+            .get(parser)
+            .unwrap_or_else(|| panic!("parser {:?} not found", parser));
+        regex
+    }
+}
+
 impl<F> Chip<F> for ScannerChip<F>
 where
     F: CircuitField,
@@ -341,7 +357,7 @@ where
     type SharedResources = (
         [Column<Advice>; NB_SCANNER_ADVICE_COLS],
         Column<Fixed>,
-        FxHashMap<StdLibParser, Automaton>,
+        FxHashMap<StdLibParser, (Regex, Automaton)>,
     );
 
     fn new(config: &ScannerConfig, deps: &Self::InstructionDeps) -> Self {

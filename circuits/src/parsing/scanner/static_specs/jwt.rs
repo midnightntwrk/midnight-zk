@@ -1,4 +1,6 @@
 use super::super::regex::{Regex, RegexInstructions};
+#[cfg(test)]
+use crate::parsing::{scanner::automaton::Automaton, StdLibParser};
 
 /// Regex formalising the spec of `StdLibParser::Jwt`.
 pub(super) fn spec_jwt() -> Regex {
@@ -124,9 +126,7 @@ pub(super) fn spec_jwt() -> Regex {
 }
 
 #[cfg(test)]
-pub(super) fn test_jwt(
-    spec_library: &rustc_hash::FxHashMap<super::StdLibParser, super::super::automaton::Automaton>,
-) {
+pub(super) fn test_jwt(spec_library: &rustc_hash::FxHashMap<StdLibParser, (Regex, Automaton)>) {
     use super::StdLibParser;
 
     const FULL_INPUT_JWT: &[u8] = include_str!("examples/jwt/full.txt").as_bytes();

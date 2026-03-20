@@ -371,7 +371,7 @@ where
         }
 
         let raw_automaton = match parser {
-            AutomatonParser::Static(spec) => self.config.static_library[spec].clone(),
+            AutomatonParser::Static(spec) => self.config.static_library[spec].clone().1,
             AutomatonParser::Dynamic(regex) => regex.to_automaton(),
         };
 

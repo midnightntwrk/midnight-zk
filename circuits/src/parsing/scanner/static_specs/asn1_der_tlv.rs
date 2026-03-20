@@ -5,9 +5,13 @@
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 use super::super::regex::{Regex, RegexInstructions};
+#[cfg(test)]
+use crate::parsing::scanner::automaton::Automaton;
 use crate::{
     field::AssignedNative,
-    instructions::{arithmetic::ArithInstructions, assertions::AssertionInstructions},
+    instructions::{
+        arithmetic::ArithInstructions, assertions::AssertionInstructions, AssignmentInstructions,
+    },
     parsing::scanner::{varlen::ScannerVec, AutomatonParser, ScannerChip, StdLibParser},
     types::AssignedByte,
     CircuitField,
@@ -42,7 +46,7 @@ pub(super) fn spec_asn1_der_tag() -> Regex {
 
     let tag_long = Regex::cat([tag_long_first, tag_continuation.list(), tag_long_last]);
 
-    tag_short.or(tag_long)
+    tag_short.or(tag_long).or(Regex::epsilon())
 }
 
 /// Controls which markers the DER length automaton outputs.
@@ -78,7 +82,7 @@ fn spec_asn1_der_length_with(m: DerLengthMarking) -> Regex {
     // later in the circuit.
     let long = Regex::cat([long_first, value_byte.non_empty_list()]);
 
-    short.or(long)
+    short.or(long).or(Regex::epsilon())
 }
 
 /// Full-output DER length automaton (used by `StdLibParser::Asn1DerLength`).
@@ -101,6 +105,10 @@ pub(super) fn spec_asn1_der_length_value() -> Regex {
 impl<F: CircuitField + Ord> ScannerChip<F> {
     /// Parses a fixed-size DER tag encoding via the `Asn1DerTag` automaton
     /// and returns the decoded tag identity value as a field element.
+    ///
+    /// # Unconventional case
+    ///
+    /// Empty tags are interpreted as 0.
     pub fn parse_asn1_tag(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -124,6 +132,10 @@ impl<F: CircuitField + Ord> ScannerChip<F> {
     /// Variable-length variant of
     /// [`parse_asn1_tag`](`Self::parse_asn1_tag`). Parses via
     /// the `Asn1DerTag` automaton and returns the decoded tag value.
+    ///
+    /// # Unconventional case
+    ///
+    /// Empty tags are interpreted as 0.
     pub fn parse_asn1_tag_varlen<const M: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -147,6 +159,10 @@ impl<F: CircuitField + Ord> ScannerChip<F> {
     /// Parses a fixed-size DER length encoding via the `Asn1DerLength`
     /// automaton. Asserts in-circuit that the total encoding byte count matches
     /// `bytes.len()` and returns the decoded length value.
+    ///
+    /// # Unconventional case
+    ///
+    /// If `bytes` is empty, returns 0.
     pub fn parse_asn1_len(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -157,7 +173,10 @@ impl<F: CircuitField + Ord> ScannerChip<F> {
             AutomatonParser::Static(StdLibParser::Asn1DerLength),
             bytes,
         )?;
-        if markers.len() == 1 {
+        if markers.is_empty() {
+            // Convention for empty inputs.
+            self.native_gadget.assign_fixed(layouter, F::ZERO)
+        } else if markers.len() == 1 {
             // Short form: total_bytes = 1 = bytes.len(), trivially true.
             Ok(markers[0].clone())
         } else {
@@ -188,13 +207,15 @@ impl<F: CircuitField + Ord> ScannerChip<F> {
     /// buffer, allowing direct big-endian interpretation of the marker buffer.
     /// This is more efficient than a generic approach using
     /// [`padding_flags`](`ScannerVec::padding_flags`).
+    ///
+    /// # Unconventional case
+    ///
+    /// If `input` is empty, this asserts that `input.len()` is 0 and returns 0.
     pub fn parse_asn1_len_varlen<const M: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
         input: &ScannerVec<F, M, 1>,
     ) -> Result<AssignedNative<F>, Error> {
-        let ng = &self.native_gadget;
-
         // Total byte count: sum of TotalBytes automaton markers.
         // Assert it matches the input length.
         let tb_markers = self.parse_varlen(
@@ -203,8 +224,9 @@ impl<F: CircuitField + Ord> ScannerChip<F> {
             input,
         )?;
         let terms_buffer: Vec<_> = tb_markers.buffer.iter().map(|m| (F::ONE, m.clone())).collect();
-        let total_bytes = ng.linear_combination(layouter, &terms_buffer, F::ZERO)?;
-        ng.assert_equal(layouter, &total_bytes, input.len())?;
+        let total_bytes =
+            self.native_gadget.linear_combination(layouter, &terms_buffer, F::ZERO)?;
+        self.native_gadget.assert_equal(layouter, &total_bytes, input.len())?;
 
         // Decoded length: big-endian interpretation of Value automaton markers.
         let val_markers = self.parse_varlen(
@@ -219,7 +241,7 @@ impl<F: CircuitField + Ord> ScannerChip<F> {
                 Some(term)
             })
             .collect::<Vec<_>>();
-        ng.linear_combination(layouter, &be_terms, F::ZERO)
+        self.native_gadget.linear_combination(layouter, &be_terms, F::ZERO)
     }
 }
 
@@ -245,9 +267,7 @@ fn read_hex_lines(content: &str) -> Vec<Vec<u8>> {
 }
 
 #[cfg(test)]
-pub(super) fn test_asn1(
-    spec_library: &rustc_hash::FxHashMap<super::StdLibParser, super::super::automaton::Automaton>,
-) {
+pub(super) fn test_asn1(spec_library: &rustc_hash::FxHashMap<StdLibParser, (Regex, Automaton)>) {
     use super::StdLibParser;
 
     let valid_tags = read_hex_lines(include_str!("examples/asn1/valid_tags.txt"));

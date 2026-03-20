@@ -221,6 +221,11 @@ pub enum StdLibParser {
     /// [`ScannerChip::parse_asn1_tag_varlen`] typically parse a tag with this
     /// automaton, and interpret the result in base 128 in-circuit to return the
     /// actual assigned value of the tag.
+    ///
+    /// # Unconventional behaviour
+    ///
+    /// For the purpose of supporting optional fields (common in ASN.1
+    /// specifications), this parser also accepts empty inputs.
     Asn1DerTag,
 
     /// **Note**: This is an auxiliary automaton performing partial operations.
@@ -271,6 +276,11 @@ pub enum StdLibParser {
     /// See also [`ScannerChip::parse_asn1_len`] and
     /// [`ScannerChip::parse_asn1_len_varlen`] for circuit-level
     /// interpretation.
+    ///
+    /// # Unconventional behaviour
+    ///
+    /// For the purpose of supporting optional fields (common in ASN.1
+    /// specifications), this parser also accepts empty inputs.
     Asn1DerLength,
 
     /// **Note**: This is an auxiliary automaton performing partial operations.
@@ -283,6 +293,11 @@ pub enum StdLibParser {
     /// the first byte of the input. Subsequent bytes in long form output 0.
     /// Makes it easier to retrieve this specific field after a
     /// variable-length parsing.
+    ///
+    /// # Unconventional behaviour
+    ///
+    /// For the purpose of supporting optional fields (common in ASN.1
+    /// specifications), this parser also accepts empty inputs.
     Asn1DerLengthTotalBytes,
 
     /// **Note**: This is an auxiliary automaton performing partial operations.
@@ -294,6 +309,11 @@ pub enum StdLibParser {
     /// value bytes: byte value for short form and for subsequent long-form
     /// bytes, 0 for the long-form header. Makes it easier to retrieve this
     /// specific field after a variable-length parsing.
+    ///
+    /// # Unconventional behaviour
+    ///
+    /// For the purpose of supporting optional fields (common in ASN.1
+    /// specifications), this parser also accepts empty inputs.
     Asn1DerLengthValue,
 }
 
@@ -312,7 +332,7 @@ impl StdLibParser {
 type LibraryData = &'static [(StdLibParser, &'static dyn Fn() -> Regex, &'static [u8])];
 
 /// A library of parsing automata, computed or deserialised.
-type ParsingLibrary = FxHashMap<StdLibParser, Automaton>;
+type ParsingLibrary = FxHashMap<StdLibParser, (Regex, Automaton)>;
 
 /// The basic, non computed data of the parsing library. When serialization is
 /// enabled, the automata will be deserialized in `spec_library` from the third
@@ -358,13 +378,13 @@ fn spec_library_data() -> LibraryData {
 pub fn spec_library() -> ParsingLibrary {
     spec_library_data()
             .iter()
-            .map(|(name, _, serialization)| {
+            .map(|(name, regex, serialization)| {
                 assert!(
                     !serialization.is_empty(),
                     "Empty serialisation data for {:?}. The bootstrapping of the serialisation process has not been conducted. (see documentation of `midnight_circuits::parsing::scanner::static_specs`)",
                     *name
                 );
-                (*name, Automaton::deserialize_unwrap(serialization))
+                (*name, (regex(), Automaton::deserialize_unwrap(serialization)))
             })
             .collect::<FxHashMap<_, _>>()
 }
@@ -387,7 +407,7 @@ fn check_serialization(checks: &ParsingLibrary) {
     // Tracks whether a recompilation is needed so that the serialisation data is in
     // sync.
     let mut recompile = false;
-    for (parser, automaton) in checks {
+    for (parser, (_, automaton)) in checks {
         let file_name = parser.serialization_file();
         assert!(
                 Path::new(&file_name).exists(),
@@ -426,6 +446,7 @@ mod tests {
         super::automaton::Automaton, check_serialization, spec_library, spec_library_data,
         StdLibParser,
     };
+    use crate::parsing::{regex::Regex, scanner::MarkerTestVector};
 
     /// Sets up the serialised library (bootstraps it if empty serialisation
     /// data is found), and performs consistency checks or updates accordingly
@@ -444,7 +465,7 @@ mod tests {
                 *name,
                 start_local.elapsed()
             );
-            lib.insert(*name, automaton);
+            lib.insert(*name, (spec(), automaton));
         }
         println!(
             ">> Full parsing library re-computed in {:?}!\n======\n>> Now checking the consistency of serialised data.",
@@ -509,12 +530,12 @@ mod tests {
     /// collected into groups, and each group is compared against the
     /// expected byte sequence.
     pub(super) fn specs_one_test_with_markers(
-        spec_library: &FxHashMap<StdLibParser, Automaton>,
+        spec_library: &FxHashMap<StdLibParser, (Regex, Automaton)>,
         spec: StdLibParser,
-        accepted: &[super::super::MarkerTestVector<'_>],
+        accepted: &[MarkerTestVector<'_>],
         rejected: &[&[u8]],
     ) {
-        let automaton = spec_library.get(&spec).unwrap();
+        let (_, automaton) = spec_library.get(&spec).unwrap();
         println!("\n\n** TEST of the spec {:?}", spec);
         for (index, &(input, expected_outputs)) in accepted.iter().enumerate() {
             let output_automaton = check_accepted(automaton, spec, index, input);
@@ -566,12 +587,12 @@ mod tests {
     /// byte). The raw output sequence is compared against the expected
     /// sequence.
     pub(super) fn specs_one_test_with_outputs(
-        spec_library: &FxHashMap<StdLibParser, Automaton>,
+        spec_library: &FxHashMap<StdLibParser, (Regex, Automaton)>,
         spec: StdLibParser,
         accepted: &[super::super::OutputTestVector<'_>],
         rejected: &[&[u8]],
     ) {
-        let automaton = spec_library.get(&spec).unwrap();
+        let (_, automaton) = spec_library.get(&spec).unwrap();
         println!("\n\n** TEST of the spec {:?}", spec);
         for (index, &(input, expected)) in accepted.iter().enumerate() {
             let actual = check_accepted(automaton, spec, index, input);
@@ -601,7 +622,7 @@ mod tests {
             start.elapsed()
         );
         let mut total = 0;
-        for (name, automaton) in &spec_library {
+        for (name, (_, automaton)) in &spec_library {
             println!(
                 "  - {:?}: {} states, {} transitions",
                 name,
