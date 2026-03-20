@@ -1019,6 +1019,12 @@ where
         }
     }
 
+    /// Returns [`Error::CompletenessFailure`] if `value` is known and `f` returns
+    /// `true`.
+    fn completeness_error_if<V>(value: &Value<V>, f: impl FnOnce(&V) -> bool) -> Result<(), Error> {
+        value.error_if_known_and(f).map_err(|_| Error::CompletenessFailure)
+    }
+
     /// The emulated base field chip of this foreign ECC chip
     pub fn base_field_chip(&self) -> &FieldChip<F, C::Base, B, N> {
         &self.base_field_chip
@@ -1840,6 +1846,8 @@ where
         let r: AssignedForeignPoint<F, C, B> =
             self.assign(layouter, Value::known(C::CryptographicGroup::random(OsRng)))?;
 
+        Self::completeness_error_if(&r.point, |p| C::CryptographicGroup::is_identity(p).into())?;
+
         // Assert the chosen r is not the identity point.
         self.base_field_chip
             .native_gadget
@@ -1946,6 +1954,19 @@ where
         let mut tables = vec![];
         for (i, p) in bases.iter().enumerate() {
             // Assert that α.x ≠ p.x (note that α and -α have the same x-coordinate).
+            neg_alpha
+                .value()
+                .zip(p.value())
+                .error_if_known_and(|(nav, pv)| {
+                    if nav.is_identity().into() || pv.is_identity().into() {
+                        false
+                    } else {
+                        let nax = (*nav).into().coordinates().unwrap().0;
+                        let px = (*pv).into().coordinates().unwrap().0;
+                        nax == px
+                    }
+                })
+                .map_err(|_| Error::CompletenessFailure)?;
             self.incomplete_assert_different_x(layouter, &neg_alpha, p)?;
             let mut acc = neg_alpha.clone();
             let mut p_table = vec![acc.clone()];
@@ -1966,6 +1987,10 @@ where
                 //     k = 1,...,(2^WS-2). Note that (k-1)p-α cannot be the identity as it is
                 //     the result of a previous call to [incomplete_add], thus kp-α != p, so
                 //     the third precondition of [incomplete_add] is met.
+                Self::completeness_error_if(&acc.value().zip(p.value()), |(av, pv)| {
+                    av == pv || *av == -(*pv)
+                })?;
+
                 acc = self.incomplete_add(layouter, &acc, p)?;
 
                 assert!(acc.x.is_well_formed() && acc.y.is_well_formed());
@@ -2000,6 +2025,10 @@ where
                 //     identity, as asserted above (in the construction of the tables).
                 // (3) is asserted here, this assertion will not hinder completeness except
                 //     with negligible probability (over the choice of α).
+                Self::completeness_error_if(&acc.value().zip(addend.value()), |(av, addv)| {
+                    av == addv || *av == -(*addv)
+                })?;
+
                 self.incomplete_assert_different_x(layouter, &acc, &addend)?;
                 acc = self.incomplete_add(layouter, &acc, &addend)?;
             }
