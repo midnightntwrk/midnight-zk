@@ -182,8 +182,9 @@ pub struct LookupGraphEvaluator<F: PrimeField> {
 pub struct Evaluator<F: PrimeField> {
     ///  Custom gates evaluation
     pub custom_gates: GraphEvaluator<F>,
-    ///  Lookups evaluation
-    pub lookups: Vec<LookupGraphEvaluator<F>>,
+    ///  Lookups evaluation (one Vec per BatchedArgument, one entry per
+    /// flattened arg)
+    pub lookups: Vec<Vec<LookupGraphEvaluator<F>>>,
     ///  Trashcans evaluation
     pub trashcans: Vec<GraphEvaluator<F>>,
 }
@@ -247,78 +248,89 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
         ));
 
         // Lookups
-        for lookup in cs.lookups.iter().flat_map(|l| l.split(cs.degree())) {
-            let mut graph = GraphEvaluator::default();
-
-            // Each input expression gets compressed with θ and shifted by β
-            let compressed_inputs_cosets: Vec<_> = lookup
-                .input_expressions()
+        for lookup in cs.lookups.iter() {
+            let lookup = lookup.flatten(cs.degree());
+            let flat_evals = lookup
+                .input_expression_chunks()
                 .iter()
-                .map(|expressions| {
-                    let parts = expressions.iter().map(|expr| graph.add_expression(expr)).collect();
-                    let compressed = graph.add_calculation(Calculation::Horner(
+                .map(|chunk| {
+                    let mut graph = GraphEvaluator::default();
+
+                    // Each input expression gets compressed with θ and shifted by β
+                    let compressed_inputs_cosets: Vec<_> = chunk
+                        .iter()
+                        .map(|expressions| {
+                            let parts =
+                                expressions.iter().map(|expr| graph.add_expression(expr)).collect();
+                            let compressed = graph.add_calculation(Calculation::Horner(
+                                ValueSource::Constant(0),
+                                parts,
+                                ValueSource::Theta(),
+                            ));
+
+                            graph.add_calculation(Calculation::Add(compressed, ValueSource::Beta()))
+                        })
+                        .collect();
+
+                    let table_parts: Vec<_> = lookup
+                        .table_expressions()
+                        .iter()
+                        .map(|expr| graph.add_expression(expr))
+                        .collect();
+                    let compressed_table_coset = graph.add_calculation(Calculation::Horner(
                         ValueSource::Constant(0),
-                        parts,
+                        table_parts,
                         ValueSource::Theta(),
                     ));
 
-                    graph.add_calculation(Calculation::Add(compressed, ValueSource::Beta()))
-                })
-                .collect();
+                    let partial_products = (0..compressed_inputs_cosets.len())
+                        .map(|i| {
+                            let mut acc =
+                                graph.add_calculation(Calculation::Store(ValueSource::Constant(1)));
+                            for (j, coset) in compressed_inputs_cosets.iter().enumerate() {
+                                if j != i {
+                                    acc = graph.add_calculation(Calculation::Mul(acc, *coset));
+                                }
+                            }
+                            acc
+                        })
+                        .collect::<Vec<_>>();
 
-            let table_parts: Vec<_> = lookup
-                .table_expressions()
-                .iter()
-                .map(|expr| graph.add_expression(expr))
-                .collect();
-            let compressed_table_coset = graph.add_calculation(Calculation::Horner(
-                ValueSource::Constant(0),
-                table_parts,
-                ValueSource::Theta(),
-            ));
-
-            let partial_products = (0..compressed_inputs_cosets.len())
-                .map(|i| {
-                    let mut acc =
-                        graph.add_calculation(Calculation::Store(ValueSource::Constant(1)));
-                    for (j, coset) in compressed_inputs_cosets.iter().enumerate() {
-                        if j != i {
-                            acc = graph.add_calculation(Calculation::Mul(acc, *coset));
-                        }
+                    let mut sum_partial_products =
+                        graph.add_calculation(Calculation::Store(partial_products[0]));
+                    let mut product =
+                        graph.add_calculation(Calculation::Store(compressed_inputs_cosets[0]));
+                    // Compute ∏ⱼ(fⱼ + β) and Σⱼ ∏_{k≠j}(fₖ + β)
+                    for (calculation, partial_prod) in compressed_inputs_cosets
+                        .into_iter()
+                        .zip(partial_products.into_iter())
+                        .skip(1)
+                    {
+                        sum_partial_products = graph
+                            .add_calculation(Calculation::Add(sum_partial_products, partial_prod));
+                        product = graph.add_calculation(Calculation::Mul(product, calculation));
                     }
-                    acc
+
+                    // Add β: compressed_table + β
+                    let table = graph.add_calculation(Calculation::Add(
+                        compressed_table_coset,
+                        ValueSource::Beta(),
+                    ));
+
+                    let selector = graph.add_expression(lookup.selector_expression());
+                    let selector = graph.add_calculation(Calculation::Store(selector));
+
+                    LookupGraphEvaluator {
+                        selector,
+                        graph,
+                        sum_partial_products,
+                        product,
+                        table,
+                    }
                 })
-                .collect::<Vec<_>>();
+                .collect();
 
-            let mut sum_partial_products =
-                graph.add_calculation(Calculation::Store(partial_products[0]));
-            let mut product =
-                graph.add_calculation(Calculation::Store(compressed_inputs_cosets[0]));
-            // Compute ∏ⱼ(fⱼ + β) and Σⱼ ∏_{k≠j}(fₖ + β)
-            for (calculation, partial_prod) in
-                compressed_inputs_cosets.into_iter().zip(partial_products.into_iter()).skip(1)
-            {
-                sum_partial_products =
-                    graph.add_calculation(Calculation::Add(sum_partial_products, partial_prod));
-                product = graph.add_calculation(Calculation::Mul(product, calculation));
-            }
-
-            // Add β: compressed_table + β
-            let table = graph.add_calculation(Calculation::Add(
-                compressed_table_coset,
-                ValueSource::Beta(),
-            ));
-
-            let selector = graph.add_expression(&lookup.selector);
-            let selector = graph.add_calculation(Calculation::Store(selector));
-
-            ev.lookups.push(LookupGraphEvaluator {
-                selector,
-                graph,
-                sum_partial_products,
-                product,
-                table,
-            });
+            ev.lookups.push(flat_evals);
         }
 
         // Trashcans
@@ -508,54 +520,69 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                 // Polynomials required for this lookup.
                 // Calculated here so these only have to be kept in memory for the short time
                 // they are actually needed.
-                let helper_coset = B::coeff_to_self(domain, lookup.helper_poly.clone());
+                let helper_cosets: Vec<_> = lookup
+                    .helper_polys
+                    .iter()
+                    .map(|h| B::coeff_to_self(domain, h.clone()))
+                    .collect();
                 let aggregator_coset = B::coeff_to_self(domain, lookup.aggregator_poly.clone());
                 let multiplicities_coset = B::coeff_to_self(domain, lookup.multiplicities.clone());
 
                 // Lookup constraints
                 parallelize(&mut values, |values, start| {
                     let lookup_eval = &self.lookups[n];
-                    let mut eval_data = lookup_eval.graph.instance();
                     for (i, value) in values.iter_mut().enumerate() {
                         let idx = start + i;
-
-                        lookup_eval.graph.evaluate(
-                            &mut eval_data,
-                            fixed,
-                            advice,
-                            instance,
-                            challenges,
-                            &beta,
-                            &theta,
-                            &trash_challenge,
-                            &y,
-                            &F::ZERO,
-                            idx,
-                            rot_scale,
-                            isize,
-                        );
-
                         let r_next = get_rotation_idx(idx, 1, rot_scale, isize);
-
-                        let sum_partial_products =
-                            eval_data.resolve(lookup_eval.sum_partial_products);
-                        let product = eval_data.resolve(lookup_eval.product);
-                        let table_value = eval_data.resolve(lookup_eval.table);
-                        let selector = eval_data.resolve(lookup_eval.selector);
 
                         // (l_0(X) + l_last(X)) * Z(X) = 0
                         *value = *value * y + aggregator_coset[idx] * (l0[idx] + l_last[idx]);
 
-                        // Helper constraint: h(X) · ∏ⱼ(fⱼ(X) + β) = Σⱼ ∏_{k≠j}(fₖ(X) + β)
-                        *value = *value * y + helper_coset[idx] * product - sum_partial_products;
+                        let mut sum_helpers = F::ZERO;
+                        let mut table_value = F::ZERO;
+                        let mut selector = F::ZERO;
+                        for (fi, lookup_eval) in lookup_eval.iter().enumerate() {
+                            let mut eval_data = lookup_eval.graph.instance();
+                            lookup_eval.graph.evaluate(
+                                &mut eval_data,
+                                fixed,
+                                advice,
+                                instance,
+                                challenges,
+                                &beta,
+                                &theta,
+                                &trash_challenge,
+                                &y,
+                                &F::ZERO,
+                                idx,
+                                rot_scale,
+                                isize,
+                            );
+
+                            let sum_partial_products =
+                                eval_data.resolve(lookup_eval.sum_partial_products);
+                            let product = eval_data.resolve(lookup_eval.product);
+
+                            // We only resolve the table and selector in the first batch
+                            if fi == 0 {
+                                table_value = eval_data.resolve(lookup_eval.table);
+                                selector = eval_data.resolve(lookup_eval.selector);
+                            }
+
+                            // Helper constraint: h(X) · ∏ⱼ(fⱼ(X) + β) = Σⱼ ∏_{k≠j}(fₖ(X) + β)
+                            *value = *value * y + helper_cosets[fi][idx] * product
+                                - sum_partial_products;
+
+                            sum_helpers += helper_cosets[fi][idx];
+                        }
 
                         // Accumulator constraint:
-                        // (Z(ωX) - Z(X)- selector·h(X))·(t(X) + β) + m(X) = 0
+                        // (Z(ωX) - Z(X)- s·Σᵢhᵢ(X))·(t(X) + β) + m(X) = 0
                         *value = *value * y
                             + l_active_row[idx]
                                 * ((aggregator_coset[r_next]
                                     - aggregator_coset[idx]
-                                    - selector * helper_coset[idx])
+                                    - selector * sum_helpers)
                                     * table_value
                                     + multiplicities_coset[idx]);
                     }

@@ -118,8 +118,7 @@ where
             vk.cs
                 .lookups
                 .iter()
-                .flat_map(|l| l.split(vk.cs().degree()))
-                .map(|argument| argument.read_multiplicities(transcript))
+                .map(|l| l.flatten(vk.cs_degree).read_multiplicities::<_, CS>(transcript))
                 .collect::<Result<Vec<_>, _>>()
         })
         .collect::<Result<Vec<_>, _>>()?;
@@ -142,7 +141,11 @@ where
         .map(|lookups| {
             lookups
                 .into_iter()
-                .map(|lookup| lookup.read_commitment(transcript))
+                .zip(vk.cs.lookups.iter().map(|l| l.flatten(vk.cs_degree)))
+                .map(|(m, batch)| {
+                    let nb_flat = batch.num_chunks();
+                    m.read_commitment(nb_flat, transcript)
+                })
                 .collect::<Result<Vec<_>, _>>()
         })
         .collect::<Result<Vec<_>, _>>()?;

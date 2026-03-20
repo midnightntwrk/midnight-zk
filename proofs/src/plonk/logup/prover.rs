@@ -45,7 +45,7 @@ use crate::{
 #[derive(Debug)]
 pub(crate) struct Committed<F: PrimeField> {
     pub(crate) multiplicities: Polynomial<F, Coeff>,
-    pub(crate) helper_poly: Polynomial<F, Coeff>,
+    pub(crate) helper_polys: Vec<Polynomial<F, Coeff>>,
     pub(crate) aggregator_poly: Polynomial<F, Coeff>,
 }
 
@@ -58,7 +58,7 @@ pub(crate) struct Committed<F: PrimeField> {
 pub(crate) struct ComputedMultiplicities<F: PrimeField> {
     pub(crate) selector: Polynomial<F, LagrangeCoeff>,
     pub(crate) multiplicities: Polynomial<F, LagrangeCoeff>,
-    pub(crate) compressed_input_expression: Vec<Polynomial<F, LagrangeCoeff>>,
+    pub(crate) flattened_compressed_inputs: Vec<Vec<Polynomial<F, LagrangeCoeff>>>,
     pub(crate) compressed_table_expression: Polynomial<F, LagrangeCoeff>,
 }
 
@@ -120,19 +120,22 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> FlattenedArgument<F> {
             compressed_expression
         };
 
-        let compressed_input_expression = self
-            .input_expressions
-            .iter()
-            .map(|chunk| compress_expressions(chunk))
-            .collect::<Vec<_>>();
         let compressed_table_expression = compress_expressions(&self.table_expressions);
 
         let selector = eval_expressions(std::slice::from_ref(&self.selector)).swap_remove(0);
+        let flattened_compressed_inputs: Vec<Vec<Polynomial<F, LagrangeCoeff>>> = self
+            .input_expression_chunks
+            .iter()
+            .map(|chunk| chunk.iter().map(|exprs| compress_expressions(exprs)).collect())
+            .collect();
+
+        let all_compressed_inputs: Vec<&Polynomial<F, LagrangeCoeff>> =
+            flattened_compressed_inputs.iter().flat_map(|v| v.iter()).collect();
 
         let usable_rows = n - pk.vk.cs.blinding_factors() - 1;
         let multiplicities = compute_multiplicities(
             &selector,
-            &compressed_input_expression,
+            &all_compressed_inputs,
             &compressed_table_expression,
             usable_rows,
         );
@@ -144,7 +147,7 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> FlattenedArgument<F> {
         Ok(ComputedMultiplicities {
             selector,
             multiplicities,
-            compressed_input_expression,
+            flattened_compressed_inputs,
             compressed_table_expression,
         })
     }
@@ -187,25 +190,37 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ComputedMultiplicities<F> {
         // F(X) = 1 / (f(X) + beta)
         // Invert each column independently in parallel, then sum across columns
         // to form the helper polynomial Σⱼ 1/(fⱼ(X) + β).
-        let inverted_columns: Vec<Vec<F>> = self
-            .compressed_input_expression
-            .par_iter()
-            .map(|col| {
-                let mut denoms: Vec<F> = col.iter().map(|v| beta + v).collect();
-                denoms.iter_mut().batch_invert();
-                denoms
+        let helper_polys_lagrange: Vec<Vec<F>> = self
+            .flattened_compressed_inputs
+            .iter()
+            .map(|compressed_inputs| {
+                let inverted_columns: Vec<Vec<F>> = compressed_inputs
+                    .par_iter()
+                    .map(|col| {
+                        let mut denoms: Vec<F> = col.iter().map(|v| beta + v).collect();
+                        denoms.iter_mut().batch_invert();
+                        denoms
+                    })
+                    .collect();
+
+                let mut helper = vec![F::ZERO; n];
+                parallelize(&mut helper, |chunk, start| {
+                    for (i, val) in chunk.iter_mut().enumerate() {
+                        let row = i + start;
+                        for col in &inverted_columns {
+                            *val += col[row];
+                        }
+                    }
+                });
+                helper
             })
             .collect();
 
-        let mut helper_poly = vec![F::ZERO; n];
-        parallelize(&mut helper_poly, |chunk, start| {
-            for (i, val) in chunk.iter_mut().enumerate() {
-                let row = i + start;
-                for col in &inverted_columns {
-                    *val += col[row];
-                }
-            }
-        });
+        for helper in &helper_polys_lagrange {
+            let helper_lagrange = domain.lagrange_from_vec(helper.clone());
+            let helper_commitment = CS::commit_lagrange(params, &helper_lagrange);
+            transcript.write(&helper_commitment)?;
+        }
 
         // Polynomial over which we compute the running sum:
         //   logderivative_poly[i] = selector[i]·h[i] - m[i]/(t[i]+β)
@@ -219,8 +234,8 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ComputedMultiplicities<F> {
         parallelize(&mut logderivative_poly, |poly, start| {
             for (i, coeff) in poly.iter_mut().enumerate() {
                 let i = i + start;
-                *coeff =
-                    self.selector[i] * helper_poly[i] - self.multiplicities[i] * table_denoms[i];
+                let sum_helpers: F = helper_polys_lagrange.iter().map(|h| h[i]).sum();
+                *coeff = self.selector[i] * sum_helpers - self.multiplicities[i] * table_denoms[i];
             }
         });
 
@@ -236,7 +251,6 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ComputedMultiplicities<F> {
             .chain((0..blinding_factors).map(|_| F::random(&mut rng)))
             .collect::<Vec<_>>();
 
-        let helper_poly = pk.vk.domain.lagrange_from_vec(helper_poly);
         let aggregator_poly = pk.vk.domain.lagrange_from_vec(aggregator_poly);
 
         #[cfg(debug_assertions)]
@@ -250,19 +264,19 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ComputedMultiplicities<F> {
             assert_eq!(aggregator_poly[u], F::ZERO);
         }
 
-        let helper_commitment = CS::commit_lagrange(params, &helper_poly);
-        transcript.write(&helper_commitment)?;
-
         let aggregator_commitment = CS::commit_lagrange(params, &aggregator_poly);
         transcript.write(&aggregator_commitment)?;
 
         let multiplicities = pk.vk.domain.lagrange_to_coeff(self.multiplicities);
-        let helper_poly = pk.vk.domain.lagrange_to_coeff(helper_poly);
+        let helper_polys: Vec<Polynomial<F, Coeff>> = helper_polys_lagrange
+            .into_iter()
+            .map(|h| pk.vk.domain.lagrange_to_coeff(domain.lagrange_from_vec(h)))
+            .collect();
         let aggregator_poly = pk.vk.domain.lagrange_to_coeff(aggregator_poly);
 
         Ok(Committed {
             multiplicities,
-            helper_poly,
+            helper_polys,
             aggregator_poly,
         })
     }
@@ -284,23 +298,27 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
         let x_next = domain.rotate_omega(x, Rotation::next());
 
         let multiplicities_eval = eval_polynomial(&self.multiplicities, x);
-        let helper_eval = eval_polynomial(&self.helper_poly, x);
+        transcript.write(&multiplicities_eval)?;
+
+        let helper_evals: Vec<F> = self
+            .helper_polys
+            .iter()
+            .map(|h| {
+                let eval = eval_polynomial(h, x);
+                transcript.write(&eval).map(|_| eval)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
         let accumulator_eval = eval_polynomial(&self.aggregator_poly, x);
         let accumulator_next_eval = eval_polynomial(&self.aggregator_poly, x_next);
-        for eval in [
-            &multiplicities_eval,
-            &helper_eval,
-            &accumulator_eval,
-            &accumulator_next_eval,
-        ] {
-            transcript.write(eval)?;
-        }
+        transcript.write(&accumulator_eval)?;
+        transcript.write(&accumulator_next_eval)?;
 
         Ok(Evaluated {
             constructed: self,
             evaluated: logup::Evaluated {
                 multiplicities_eval,
-                helper_eval,
+                helper_evals,
                 accumulator_eval,
                 accumulator_next_eval,
             },
@@ -317,15 +335,18 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluated<F> {
     ) -> impl Iterator<Item = ProverQuery<'a, F>> + Clone {
         let x_next = pk.vk.domain.rotate_omega(x, Rotation::next());
 
-        [
-            ProverQuery {
-                point: x,
-                poly: &self.constructed.multiplicities,
-            },
-            ProverQuery {
-                point: x,
-                poly: &self.constructed.helper_poly,
-            },
+        let m_query = iter::once(ProverQuery {
+            point: x,
+            poly: &self.constructed.multiplicities,
+        });
+
+        let helper_queries = self
+            .constructed
+            .helper_polys
+            .iter()
+            .map(move |h| ProverQuery { point: x, poly: h });
+
+        let z_queries = [
             ProverQuery {
                 point: x,
                 poly: &self.constructed.aggregator_poly,
@@ -334,8 +355,9 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluated<F> {
                 point: x_next,
                 poly: &self.constructed.aggregator_poly,
             },
-        ]
-        .into_iter()
+        ];
+
+        m_query.chain(helper_queries).chain(z_queries)
     }
 }
 
@@ -358,7 +380,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluated<F> {
 /// present in `table`.
 pub(crate) fn compute_multiplicities<F>(
     selector: &Polynomial<F, LagrangeCoeff>,
-    values: &[Polynomial<F, LagrangeCoeff>],
+    values: &[&Polynomial<F, LagrangeCoeff>],
     table: &Polynomial<F, LagrangeCoeff>,
     usable_rows: usize,
 ) -> Vec<F>
@@ -473,7 +495,7 @@ mod tests {
 
         let result = compute_multiplicities(
             &poly_from_vec(vec![Fq::ONE; 4]),
-            &[input1, input2],
+            &[&input1, &input2],
             &table,
             4,
         );
@@ -505,7 +527,7 @@ mod tests {
         ]);
 
         // Should panic because input value 5 is not found in the table
-        compute_multiplicities(&poly_from_vec(vec![Fq::ONE; 4]), &[input], &table, 4);
+        compute_multiplicities(&poly_from_vec(vec![Fq::ONE; 4]), &[&input], &table, 4);
     }
 
     #[test]
@@ -526,7 +548,7 @@ mod tests {
             Fq::from(3u64),
         ]);
 
-        let result = compute_multiplicities(&poly_from_vec(vec![Fq::ONE; 4]), &[input], &table, 4);
+        let result = compute_multiplicities(&poly_from_vec(vec![Fq::ONE; 4]), &[&input], &table, 4);
 
         assert_eq!(result.len(), 4);
         assert_eq!(result[0], Fq::from(1u64)); // table[0]=1 -> 1/1 = 1
@@ -555,7 +577,7 @@ mod tests {
             Fq::from(888u64), // "random" blinding value
         ]);
 
-        let result = compute_multiplicities(&poly_from_vec(vec![Fq::ONE; 4]), &[input], &table, 2);
+        let result = compute_multiplicities(&poly_from_vec(vec![Fq::ONE; 4]), &[&input], &table, 2);
 
         assert_eq!(result.len(), 4);
         assert_eq!(result[0], Fq::from(1u64)); // table[0]=1 -> 1/1 = 1

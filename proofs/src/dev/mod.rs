@@ -945,13 +945,8 @@ impl<F: FromUniformBytes<64> + Ord> MockProver<F> {
         let mut cached_table = Vec::new();
         let mut cached_table_identifier = Vec::new();
         // Check that all lookups exist in their respective tables.
-        let lookup_errors = self
-            .cs
-            .lookups
-            .iter()
-            .flat_map(|l| l.split(self.cs.degree()))
-            .enumerate()
-            .flat_map(|(lookup_index, lookup)| {
+        let lookup_errors =
+            self.cs.lookups.iter().enumerate().flat_map(|(lookup_index, lookup)| {
                 assert_eq!(
                     lookup.table_expressions.len(),
                     lookup.input_expressions[0].len()
@@ -1545,7 +1540,7 @@ mod tests {
         assert_eq!(
             prover.verify(),
             Err(vec![VerifyFailure::Lookup {
-                name: "lookup-0".to_string(),
+                name: "lookup".to_string(),
                 lookup_index: 0,
                 parallel_lookup_index: 0,
                 location: FailureLocation::InRegion {
@@ -1680,7 +1675,7 @@ mod tests {
         assert_eq!(
             prover.verify(),
             Err(vec![VerifyFailure::Lookup {
-                name: "lookup-0".to_string(),
+                name: "lookup".to_string(),
                 lookup_index: 0,
                 parallel_lookup_index: 0,
                 location: FailureLocation::InRegion {
