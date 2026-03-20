@@ -27,7 +27,7 @@ jobs:
 
     steps:
       - name: Add github.com credentials to netrc
-        uses: extractions/netrc@f6f1722d05ce2890aa86fd9654565b1214ac53a4
+        uses: extractions/netrc@c3879108aae6b4ed5c4eb60854ae04f06d2f2f68
         with:
           machine: github.com
           username: ${{ secrets.GH_USERNAME }}
