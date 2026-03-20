@@ -13,7 +13,8 @@ use crate::{
     field::AssignedNative,
     instructions::{
         arithmetic::ArithInstructions, assertions::AssertionInstructions,
-        assignments::AssignmentInstructions, ZeroInstructions,
+        assignments::AssignmentInstructions, control_flow::ControlFlowInstructions,
+        equality::EqualityInstructions, ZeroInstructions,
     },
     parsing::scanner::{varlen::ScannerVec, AutomatonParser, ScannerChip, StdLibParser},
     types::AssignedByte,
@@ -521,6 +522,13 @@ where
                     assert!(index.is_none(), "full TLV extraction not supported. Extract the Tag, Length, and Value separately.");
                     self.process_tlv(layouter, input, tlv, state)?;
                 }
+                Asn1Block::OptionalTlv {
+                    expected_tag,
+                    len,
+                    val,
+                } => {
+                    self.process_optional_tlv(layouter, input, &expected_tag, len, val, state)?;
+                }
             }
         }
         Ok(())
@@ -764,6 +772,119 @@ where
                 }
             }
         }
+        Ok(())
+    }
+
+    /// Computes the off-circuit tag identity value that the `Asn1DerTag`
+    /// automaton would produce for `tag_bytes`:
+    /// - Short form: the full first byte (class + constructed + number).
+    /// - Long form: `decode_tag().number` (base-128 of continuation bytes).
+    fn compute_tag_identity(tag_bytes: &[u8]) -> u64 {
+        let (_, tag) = decode_tag(tag_bytes).expect("compute_tag_identity: invalid DER tag");
+        if tag_bytes[0] & 0x1F != 0x1F {
+            tag_bytes[0] as u64
+        } else {
+            tag.number as u64
+        }
+    }
+
+    /// Processes an optional TLV. If the witness starts with `expected_tag`,
+    /// the full T+L+V is consumed; otherwise nothing is consumed and all
+    /// three ScannerVecs are empty (len=0). Conditional constraints ensure
+    /// tag identity and length consistency when present, and are trivially
+    /// satisfied when absent.
+    fn process_optional_tlv<
+        Index: Eq + Hash + Debug + Clone,
+        const TAG_M: usize,
+        const LEN_M: usize,
+        const VAL_M: usize,
+        const VAL_A: usize,
+    >(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        input: &mut &[u8],
+        expected_tag: &[u8],
+        len: Asn1RawData<Index>,
+        val: Asn1Value<Index>,
+        state: &mut ParserState<F, Index, TAG_M, LEN_M, VAL_M, VAL_A>,
+    ) -> Result<(), Error> {
+        state.varlen = true;
+
+        // Off-circuit: peek and conditionally consume.
+        let (tag_raw, len_raw, val_raw) = if input.starts_with(expected_tag) {
+            let tag_raw = consume(input, expected_tag.len());
+            let (n_len, len_value) =
+                decode_length(input).expect("process_optional_tlv: failed to decode length");
+            let len_raw = consume(input, n_len);
+            let val_raw = consume(input, len_value);
+            (tag_raw, len_raw, val_raw)
+        } else {
+            (vec![], vec![], vec![])
+        };
+
+        // Assign raw bytes to assigned_input.
+        let all_raw: Vec<Value<u8>> = tag_raw
+            .iter()
+            .chain(len_raw.iter())
+            .chain(val_raw.iter())
+            .map(|&b| Value::known(b))
+            .collect();
+        let assigned = self.native_gadget.assign_many(layouter, &all_raw)?;
+        state.assigned_input.extend_from_slice(&assigned);
+
+        // Assign 3 ScannerVecs (empty vecs produce valid ScannerVecs with len=0).
+        let tag_sv: ScannerVec<F, TAG_M, 1> =
+            self.assign_scanner_vec(layouter, Value::known(tag_raw))?;
+        let len_sv: ScannerVec<F, LEN_M, 1> =
+            self.assign_scanner_vec(layouter, Value::known(len_raw))?;
+        let val_sv: ScannerVec<F, VAL_M, VAL_A> =
+            self.assign_scanner_vec(layouter, Value::known(val_raw))?;
+
+        // Deferred substring checks + position advance.
+        state.substring_checks.push((
+            state.position.clone(),
+            Asn1ParsedUnit::VarlenTag(tag_sv.clone()),
+        ));
+        state.position.advance_variable(tag_sv.len().clone());
+
+        state.substring_checks.push((
+            state.position.clone(),
+            Asn1ParsedUnit::VarlenLen(len_sv.clone()),
+        ));
+        state.position.advance_variable(len_sv.len().clone());
+
+        state.substring_checks.push((
+            state.position.clone(),
+            Asn1ParsedUnit::VarlenVal(val_sv.clone()),
+        ));
+        state.position.advance_variable(val_sv.len().clone());
+
+        // Automaton validation (accepts empty via epsilon).
+        let decoded_tag = self.parse_asn1_tag_varlen(layouter, &tag_sv)?;
+        let decoded_len = self.parse_asn1_len_varlen(layouter, &len_sv)?;
+
+        // Conditional constraints.
+        let ng = &self.native_gadget;
+        let is_present = ng.is_not_equal_to_fixed(layouter, tag_sv.len(), F::ZERO)?;
+
+        // Tag match: is_present => decoded_tag == expected_tag_identity.
+        let expected_tag_id = Self::compute_tag_identity(expected_tag);
+        let expected_assigned = ng.assign_fixed(layouter, F::from(expected_tag_id))?;
+        let selected_tag = ng.select(layouter, &is_present, &decoded_tag, &expected_assigned)?;
+        ng.assert_equal(layouter, &selected_tag, &expected_assigned)?;
+
+        // Length consistency: is_present => decoded_len == val_sv.len().
+        let selected_len = ng.select(layouter, &is_present, &decoded_len, val_sv.len())?;
+        ng.assert_equal(layouter, &selected_len, val_sv.len())?;
+
+        // Extract markers from len and val.
+        if let Some(idx) = len.into_marker() {
+            state.extracted.insert(idx, Asn1ParsedUnit::VarlenLen(len_sv));
+        }
+        if let Some(idx) = val.into_marker() {
+            state.extracted.insert(idx, Asn1ParsedUnit::VarlenVal(val_sv));
+        }
+
         Ok(())
     }
 

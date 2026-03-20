@@ -70,6 +70,17 @@ where
     Fixlen(usize, Option<Index>),
     /// A TLV unit.
     Tlv(Asn1Tlv<Index>, Option<Index>),
+    /// An optional TLV unit: the tag bytes are peeked at during witness
+    /// consumption; if they match `expected_tag`, the full T+L+V is consumed,
+    /// otherwise nothing is consumed. Both cases produce valid ScannerVecs
+    /// (populated or empty with len=0).
+    ///
+    /// **Limitation:** the value must be `Simple` (non-recursive).
+    OptionalTlv {
+        expected_tag: Vec<u8>,
+        len: Asn1RawData<Index>,
+        val: Asn1Value<Index>,
+    },
 }
 
 impl<Index: Eq + Hash> Asn1Block<Index> {
@@ -84,6 +95,7 @@ impl<Index: Eq + Hash> Asn1Block<Index> {
                 let val_len = tlv.val.known_len()?;
                 Some(tag_len + len_len + val_len)
             }
+            Asn1Block::OptionalTlv { .. } => None,
         }
     }
 }
@@ -152,6 +164,15 @@ impl<Index: Eq + Hash> Asn1RawData<Index> {
             Asn1RawDataInternal::Varlen(_) => None,
         }
     }
+
+    /// Consumes the block and returns the extraction marker, if any.
+    fn into_marker(self) -> Option<Index> {
+        match self.0 {
+            Asn1RawDataInternal::Const(_, idx) => idx,
+            Asn1RawDataInternal::Fixlen(_, idx) => idx,
+            Asn1RawDataInternal::Varlen(idx) => idx,
+        }
+    }
 }
 
 impl<Index> Asn1RawData<Index>
@@ -201,6 +222,14 @@ impl<Index: Eq + Hash> Asn1Value<Index> {
         match &self.0 {
             Asn1ValueInternal::Simple(raw) => raw.len(),
             Asn1ValueInternal::Recursive(spec, _) => spec.size(),
+        }
+    }
+
+    /// Consumes the value and returns the extraction marker, if any.
+    fn into_marker(self) -> Option<Index> {
+        match self.0 {
+            Asn1ValueInternal::Simple(raw) => raw.into_marker(),
+            Asn1ValueInternal::Recursive(_, idx) => idx,
         }
     }
 }
@@ -286,6 +315,43 @@ where
         self.add_many_block(vec![block])
     }
 
+    /// Validates that the `len` and `val` parts of a TLV spec are consistent:
+    /// - If `len` is constant, its decoded value must match `val`'s known size.
+    /// - If `val` has a known size, `len` should be constant for efficiency.
+    ///
+    /// `caller` is used in panic messages for diagnostics.
+    fn check_tlv_spec_consistency(caller: &str, len: &Asn1RawData<Index>, val: &Asn1Value<Index>) {
+        let val_known = val.known_len();
+        match &len.0 {
+            Asn1RawDataInternal::Const(len_bytes, _) => {
+                let (_, decoded) = der_encoding::decode_length(len_bytes).unwrap_or_else(|| {
+                    panic!("{caller}: constant length bytes are not valid DER")
+                });
+                match val_known {
+                    None => panic!(
+                        "{caller}: length is constant ({decoded} bytes) but value \
+                         has unknown size. The spec is likely inconsistent."
+                    ),
+                    Some(n) if n != decoded => panic!(
+                        "{caller}: constant length says {decoded} bytes but value \
+                         has known size {n}. The spec is inconsistent."
+                    ),
+                    _ => {}
+                }
+            }
+            Asn1RawDataInternal::Fixlen(..) | Asn1RawDataInternal::Varlen(_) => {
+                if let Some(n) = val_known {
+                    panic!(
+                        "{caller}: value has known size ({n} bytes) but length is \
+                         not specified as constant. Use a fixed length for better \
+                         efficiency (you may compute it automatically via \
+                         `Asn1Spec::size()`)."
+                    );
+                }
+            }
+        }
+    }
+
     /// Adds an instruction reading a fixed sequence of bytes from the input.
     pub fn read_fixed(self, bytes: &[u8]) -> Self {
         self.add_block(Asn1Block::Const(bytes.to_vec(), None))
@@ -323,37 +389,36 @@ where
         let len = len.into();
         let val = val.into();
 
-        // Safety checks for spec consistency.
-        let val_known = val.known_len();
-        match &len.0 {
-            Asn1RawDataInternal::Const(len_bytes, _) => {
-                let (_, decoded) = der_encoding::decode_length(len_bytes)
-                    .expect("read_tlv: constant length bytes are not valid DER");
-                match val_known {
-                    None => panic!(
-                        "read_tlv: length is constant ({decoded} bytes) but value \
-                         has unknown size. The spec is likely inconsistent."
-                    ),
-                    Some(n) if n != decoded => panic!(
-                        "read_tlv: constant length says {decoded} bytes but value \
-                         has known size {n}. The spec is inconsistent."
-                    ),
-                    _ => {}
-                }
-            }
-            Asn1RawDataInternal::Fixlen(..) | Asn1RawDataInternal::Varlen(_) => {
-                if let Some(n) = val_known {
-                    panic!(
-                        "read_tlv: value has known size ({n} bytes) but length is \
-                         not specified as constant. Use a fixed length for better \
-                         efficiency (you may compute it automatically via \
-                         `Asn1Spec::size()`)."
-                    );
-                }
-            }
-        }
-
+        Self::check_tlv_spec_consistency("read_tlv", &len, &val);
         self.add_block(Asn1Block::Tlv(Asn1Tlv { tag, len, val }, None))
+    }
+
+    /// Adds an optional TLV node to the spec. When the witness starts with
+    /// `tag` the full T+L+V is consumed; otherwise nothing is consumed and
+    /// all three ScannerVecs are empty (len=0).
+    ///
+    /// # Limitations
+    ///
+    /// - The value must be `Simple` (non-recursive). Recursive optional
+    ///   values are not supported.
+    pub fn read_tlv_optional(
+        self,
+        tag: &[u8],
+        len: impl Into<Asn1RawData<Index>>,
+        val: impl Into<Asn1Value<Index>>,
+    ) -> Self {
+        let len = len.into();
+        let val = val.into();
+        assert!(
+            matches!(val.0, Asn1ValueInternal::Simple(_)),
+            "read_tlv_optional: recursive values are not supported for optional TLV fields"
+        );
+        Self::check_tlv_spec_consistency("read_tlv_optional", &len, &val);
+        self.add_block(Asn1Block::OptionalTlv {
+            expected_tag: tag.to_vec(),
+            len,
+            val,
+        })
     }
 
     /// Adds another full spec after this one.
@@ -490,6 +555,7 @@ where
             Asn1Block::Const(_, idx) => idx,
             Asn1Block::Fixlen(_, idx) => idx,
             Asn1Block::Tlv(_, _) => panic!("extraction of full TLVs is not supported. Use `mark` either on the value, or on each T, L, and V components separately."),
+            Asn1Block::OptionalTlv { .. } => panic!("extraction of full optional TLVs is not supported. Mark the length or value components individually."),
         };
         match slot.take() {
             None => *slot = Some(m),

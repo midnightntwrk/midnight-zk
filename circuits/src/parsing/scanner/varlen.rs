@@ -43,8 +43,7 @@ use super::{ScannerChip, ALPHABET_MAX_SIZE};
 use crate::{
     field::{native::AssignedBit, AssignedNative},
     instructions::{
-        ArithInstructions, AssertionInstructions, AssignmentInstructions, ControlFlowInstructions,
-        EqualityInstructions, RangeCheckInstructions, VectorInstructions,
+        AssignmentInstructions, ControlFlowInstructions, RangeCheckInstructions, VectorInstructions,
     },
     types::{AssignedByte, AssignedVector},
     CircuitField,
@@ -141,16 +140,21 @@ where
     ) -> Result<ScannerVec<F, M, A>, Error> {
         assert!(M >= A && A > 0 && M.is_multiple_of(A));
         assert!(bytes.len() <= M);
-        let ng = &self.native_gadget;
 
-        // Build the padded buffer: filler | payload | filler, aligned to A.
+        // Build the padded buffer: filler | payload | filler, aligned to A. The filler
+        // can be anything, it will be replaced during the call to
+        // `scanner_vec_from_byte_vec` below anyway.
         let lims = crate::vec::vector::get_lims::<M, A>(bytes.len());
-        let filler: AssignedByte<F> = ng.assign(layouter, Value::known(0u8))?;
+        let filler: AssignedByte<F> = if let Some(b) = bytes.first() {
+            b.clone()
+        } else {
+            self.native_gadget.assign(layouter, Value::known(0u8))?
+        };
         let mut buffer: Vec<AssignedByte<F>> = vec![filler; M];
         buffer[lims].clone_from_slice(bytes);
         let buffer: [AssignedByte<F>; M] = buffer.try_into().unwrap();
 
-        let len = ng.assign_lower_than_fixed(
+        let len = self.native_gadget.assign_lower_than_fixed(
             layouter,
             Value::known(F::from(bytes.len() as u64)),
             &(M + 1).into(),
@@ -164,39 +168,27 @@ where
     /// and anchoring the length.
     ///
     /// The input elements are already range-checked (they are
-    /// [`AssignedByte`]s). This function computes padding flags, constrains
-    /// fillers via [`select`](`ControlFlowInstructions::select`), and verifies
-    /// that [`len`](`ScannerVec::len`) equals the number of non-filler
-    /// elements.
+    /// [`AssignedByte`]s). This function computes padding flags and constrains
+    /// fillers via [`select`](`ControlFlowInstructions::select`).
     pub fn scanner_vec_from_byte_vec<const M: usize, const A: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
         vec: AssignedVector<F, AssignedByte<F>, M, A>,
     ) -> Result<ScannerVec<F, M, A>, Error> {
-        let ng = &self.native_gadget;
-
         // Compute padding flags and limits in one call.
         let (padding_flags, limits) = self.vector_gadget.padding_flag(layouter, &vec)?;
 
         // Constrain filler positions to ALPHABET_MAX_SIZE.
-        let filler = ng.assign_fixed(layouter, F::from(ALPHABET_MAX_SIZE as u64))?;
+        let filler =
+            self.native_gadget.assign_fixed(layouter, F::from(ALPHABET_MAX_SIZE as u64))?;
         let buffer: [AssignedNative<F>; M] = (vec.buffer.iter().zip(padding_flags.iter()))
             .map(|(elem, is_padding)| {
                 let native_elem = AssignedNative::from(elem);
-                ng.select(layouter, is_padding, &filler, &native_elem)
+                self.native_gadget.select(layouter, is_padding, &filler, &native_elem)
             })
             .collect::<Result<Vec<_>, Error>>()?
             .try_into()
             .expect("Length mismatch in ScannerVec buffer");
-
-        // Constrain len to equal the number of non-filler elements in the buffer.
-        let mut payload_count = ng.assign_fixed(layouter, F::ZERO)?;
-        for elem in buffer.iter() {
-            let is_payload =
-                ng.is_not_equal_to_fixed(layouter, elem, F::from(ALPHABET_MAX_SIZE as u64))?;
-            payload_count = ng.add(layouter, &payload_count, &AssignedNative::from(is_payload))?;
-        }
-        ng.assert_equal(layouter, &payload_count, &vec.len)?;
 
         Ok(ScannerVec {
             length: vec.len,
