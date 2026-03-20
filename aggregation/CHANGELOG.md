@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 * Rebase to new `circuits/` with `sha512` [#96](https://github.com/midnightntwrk/midnight-zk/pull/96)
 * truncated_challenges feature to allow --all-features compilation [#146](https://github.com/midnightntwrk/midnight-zk/pull/146)
 * Rebase to new `circuits/` with `keccak` and `blake2b` [#135](https://github.com/midnightntwrk/midnight-zk/pull/135)
+### Fixed
+* Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
+
 ### Changed
 * Rename `proof_aggregation` example to `single_circuit_aggregation` [#264](https://github.com/midnightntwrk/midnight-zk/pull/264)
 * Remove `InnerValue` and `Instantiable` requirements from IVC `AssignedState` [#264](https://github.com/midnightntwrk/midnight-zk/pull/264)
