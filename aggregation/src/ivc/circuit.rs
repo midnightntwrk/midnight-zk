@@ -188,8 +188,11 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
 
         // If `prev_state` is genesis, the provided accumulator is discarded/multiplied
         // by 0 so that it trivially satisfies the invariant.
-        let is_genesis = ivc_gadget.is_genesis(layouter, &prev_state)?;
-        let is_not_genesis = std_lib.not(layouter, &is_genesis)?;
+
+        let is_not_genesis = {
+            let b = ivc_gadget.circuit_is_genesis(std_lib, layouter, &self.ctx, &prev_state)?;
+            std_lib.not(layouter, &b)?
+        };
         AssignedAccumulator::scale_by_bit(
             layouter,
             std_lib.bls12_381_scalar(),

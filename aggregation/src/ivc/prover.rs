@@ -60,7 +60,6 @@ impl<T: Ivc> IvcProver<T> {
     pub fn prove_step(&mut self, transition_witness: T::Witness) -> Result<Vec<u8>, IvcError> {
         let next_state =
             T::transition(self.relation.ctx(), &self.state, transition_witness.clone());
-        let is_genesis = self.proof.is_empty();
 
         let vk = self.pk.pk().get_vk();
         let vk_repr = vk.transcript_repr();
@@ -68,7 +67,7 @@ impl<T: Ivc> IvcProver<T> {
         let fixed_bases = midnight_circuits::verifier::fixed_bases::<S>("self_vk", vk);
 
         // Off-circuit verification of the previous proof.
-        let proof_acc = if is_genesis {
+        let proof_acc = if T::is_genesis(self.relation.ctx(), &self.state) {
             // In the case of genesis, we simply set `proof_acc` to be the trivial
             // accumulator (which evaluates to the identity point on both sides).
             //

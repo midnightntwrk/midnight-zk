@@ -12,7 +12,7 @@ use midnight_aggregation::ivc::{self, IvcContext, IvcIO, IvcState, IvcTransition
 use midnight_circuits::{
     hash::poseidon::PoseidonChip,
     instructions::{hash::HashCPU, *},
-    types::{AssignedBit, AssignedNative},
+    types::AssignedNative,
     verifier::{BlstrsEmulation, SelfEmulation},
 };
 use midnight_proofs::{
@@ -73,16 +73,6 @@ impl<const N: usize> IvcState for PoseidonChain<N> {
             cnt: F::ZERO,
             val: F::ZERO,
         }
-    }
-
-    fn is_genesis(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        state: &Self::AssignedState,
-    ) -> Result<AssignedBit<F>, Error> {
-        let cnt_is_zero = self.std_lib.bls12_381_scalar().is_zero(layouter, &state.cnt)?;
-        let val_is_zero = self.std_lib.bls12_381_scalar().is_zero(layouter, &state.val)?;
-        self.std_lib.and(layouter, &[cnt_is_zero, val_is_zero])
     }
 
     fn decider(_ctx: &Self::Context, _state: &Self::State) -> bool {
