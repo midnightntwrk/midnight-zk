@@ -223,7 +223,9 @@ impl WeierstrassCurve for K256 {
 }
 
 // Implementation for P256 (secp256r1 / NIST P-256).
-use midnight_curves::p256::{Fp as P256Fp, P256Affine, CURVE_A, CURVE_B, P256};
+use midnight_curves::p256::{
+    affine_from_xy, affine_x, affine_y, Fp as P256Fp, CURVE_A, CURVE_B, P256,
+};
 
 impl CircuitCurve for P256 {
     type Base = P256Fp;
@@ -237,11 +239,11 @@ impl CircuitCurve for P256 {
             return Some((P256Fp::ZERO, P256Fp::ZERO));
         }
         let affine = self.to_affine();
-        Some((affine.x(), affine.y()))
+        Some((affine_x(&affine), affine_y(&affine)))
     }
 
     fn from_xy(x: Self::Base, y: Self::Base) -> Option<Self> {
-        P256Affine::from_xy(x, y).map(|p| p.into())
+        affine_from_xy(x, y).map(Into::into)
     }
 
     fn into_subgroup(self) -> Self::CryptographicGroup {

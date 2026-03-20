@@ -11,21 +11,43 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! secp256r1 / NIST P-256 implementation using the p256 crate.
-//!
-//! The p256 crate already exposes a suitable base-field type, so this module
-//! re-exports it directly and keeps only a small helper for the Montgomery-form
-//! curve constant.
+//! secp256r1 / NIST P-256 aliases and constants using the p256 crate.
 
-mod curve;
-
-pub use curve::{P256Affine, P256};
+use ff::PrimeField;
+use p256::elliptic_curve::{
+    point::AffineCoordinates,
+    sec1::{FromEncodedPoint, ToEncodedPoint},
+};
 
 /// secp256r1 base field element.
 pub type Fp = p256::FieldElement;
 
 /// secp256r1 scalar field.
 pub type Fq = p256::Scalar;
+
+/// secp256r1 projective curve point.
+pub type P256 = p256::ProjectivePoint;
+
+/// secp256r1 affine curve point.
+pub type P256Affine = p256::AffinePoint;
+
+/// Returns the affine x-coordinate as an `Fp` element.
+pub fn affine_x(point: &P256Affine) -> Fp {
+    Fp::from_repr(point.x()).expect("valid affine x coordinate")
+}
+
+/// Returns the affine y-coordinate as an `Fp` element.
+pub fn affine_y(point: &P256Affine) -> Fp {
+    let encoded = point.to_encoded_point(false);
+    let y_bytes = *encoded.y().expect("uncompressed point has y coordinate");
+    Fp::from_repr(y_bytes).expect("valid affine y coordinate")
+}
+
+/// Constructs an affine point from `x` and `y` field elements.
+pub fn affine_from_xy(x: Fp, y: Fp) -> Option<P256Affine> {
+    let encoded = p256::EncodedPoint::from_affine_coordinates(&x.to_repr(), &y.to_repr(), false);
+    P256Affine::from_encoded_point(&encoded).into_option()
+}
 
 /// Creates a field element from raw Montgomery-form limbs (little-endian u64).
 ///
