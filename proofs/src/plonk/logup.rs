@@ -118,6 +118,17 @@
 //! This has degree `1 + lookup_degree × num_parallel_lookups`, which limits how
 //! many parallel lookups can be batched into a single argument before exceeding
 //! the constraint system's degree bound.
+//!
+//! ## Shared multiplicity and accumulator across chunks
+//!
+//! When the number of parallel lookups exceeds the per-chunk limit, the input
+//! expressions are partitioned into chunks, each with its own helper polynomial
+//! `hᵢ(X)`. However, the selector `s(X)`, table `t(X)`, multiplicity `m(X)`,
+//! and accumulator `Z(X)` are **shared across all chunks**: they are committed
+//! only once per [`BatchedArgument`]. The accumulator constraint becomes:
+//! ```text
+//! (Z(ωX) - Z(X) - s(X)·Σᵢhᵢ(X))·(t(X) + β) + m(X) = 0.
+//! ```
 
 use std::fmt::{self, Debug};
 
@@ -143,12 +154,18 @@ pub(crate) mod verifier;
 /// - The inner dimension indexes columns within a single lookup (for
 ///   θ-compression)
 ///
-/// # Splitting
+/// # Degree bound and chunking
 ///
 /// The helper polynomial constraint has degree `1 + lookup_degree ×
 /// num_parallel_lookups`. When this exceeds the constraint system's degree
-/// bound, [`Self::split`] partitions the argument into multiple
-/// [`FlattenedArgument`]s, each respecting the degree limit.
+/// bound, the parallel lookups must be split across multiple helper
+/// polynomials. Call [`Self::flatten`] to produce a [`FlattenedArgument`]
+/// with pre-computed degree-bounded chunks; each chunk gets its own committed
+/// helper polynomial `hᵢ(X)`.
+///
+/// The selector `s(X)`, table `t(X)`, multiplicity `m(X)`, and accumulator
+/// `Z(X)` are **shared across all chunks** — only the helper polynomial is
+/// duplicated.
 #[derive(Clone)]
 pub struct BatchedArgument<F: Field> {
     pub(crate) name: String,
@@ -160,6 +177,7 @@ pub struct BatchedArgument<F: Field> {
 impl<F: Field> Debug for BatchedArgument<F> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("BatchedArgument")
+            .field("name", &self.name)
             .field("selector", &self.selector)
             .field("input_expressions", &self.input_expressions)
             .field("table_expressions", &self.table_expressions)
@@ -167,16 +185,18 @@ impl<F: Field> Debug for BatchedArgument<F> {
     }
 }
 
-/// A lookup argument with a bounded number of parallel lookups.
+/// A [`BatchedArgument`] whose input expressions have been split into
+/// degree-bounded chunks, each requiring its own committed helper polynomial.
 ///
-/// Produced by [`BatchedArgument::split`], each `FlattenedArgument` contains
-/// few enough parallel lookups that the helper polynomial constraint stays
-/// within the constraint system's degree bound.
+/// Produced by [`BatchedArgument::flatten`]. The selector `s(X)`, table
+/// `t(X)`, multiplicity `m(X)`, and accumulator `Z(X)` are shared across all
+/// chunks.
 #[derive(Clone)]
 pub struct FlattenedArgument<F: Field> {
     pub(crate) name: String,
     pub(crate) selector: Expression<F>,
-    pub(crate) input_expressions: Vec<Vec<Expression<F>>>,
+    /// Pre-split chunks: `[chunk][parallel_lookup][lookup_width]`
+    pub(crate) input_expression_chunks: Vec<Vec<Vec<Expression<F>>>>,
     pub(crate) table_expressions: Vec<Expression<F>>,
 }
 
@@ -185,7 +205,7 @@ impl<F: Field> Debug for FlattenedArgument<F> {
         f.debug_struct("FlattenedArgument")
             .field("name", &self.name)
             .field("selector", &self.selector)
-            .field("input_expressions", &self.input_expressions)
+            .field("input_expression_chunks", &self.input_expression_chunks)
             .field("table_expressions", &self.table_expressions)
             .finish()
     }
@@ -235,7 +255,7 @@ impl<F: Field> BatchedArgument<F> {
         // 3.
         //
         // Additionally, the system requires cs.degree() - 1 to be a power of 2 so that
-        // FlattenedArgument helper degrees after split(cs.degree()) equal cs.degree().
+        // helper degrees after chunking equal cs.degree().
         // We therefore round the minimum required degree up to the next value where
         // (x - 1) is a power of 2 using: (max_raw_degree - 1).next_power_of_two() + 1.
         let table_degree = self.table_expressions.iter().map(|e| e.degree()).max().unwrap_or(1);
@@ -287,42 +307,59 @@ impl<F: Field> BatchedArgument<F> {
         }
     }
 
-    /// Splits this argument into [`FlattenedArgument`]s that respect the degree
-    /// bound.
+    /// Returns the number of degree-bounded chunks of parallel lookups.
     ///
-    /// Each resulting `FlattenedArgument` contains at most
-    /// [`Self::nb_parallel_lookups`] inputs, ensuring the helper constraint
-    /// degree stays within `cs_degree`.
-    pub fn split(&self, cs_degree: usize) -> Vec<FlattenedArgument<F>> {
-        assert_eq!(
-            self.input_expressions[0].len(),
-            self.table_expressions.len()
-        );
-        let nb_lookups = self.nb_parallel_lookups(cs_degree);
-        self.input_expressions
-            .chunks(nb_lookups)
-            .enumerate()
-            .map(|(idx, chunk)| FlattenedArgument {
-                selector: self.selector.clone(),
-                name: format!("{}-{}", self.name, idx),
-                input_expressions: chunk.to_vec(),
-                table_expressions: self.table_expressions.clone(),
-            })
-            .collect()
+    /// Each chunk gets its own committed helper polynomial.
+    pub fn num_chunks(&self, cs_degree: usize) -> usize {
+        let nb = self.nb_parallel_lookups(cs_degree);
+        self.input_expressions.chunks(nb).count()
     }
-}
 
-impl<F: Field> FlattenedArgument<F> {
+    /// Splits `input_expressions` into degree-bounded chunks and returns a
+    /// [`FlattenedArgument`] with those chunks pre-computed.
+    ///
+    /// Each chunk contains at most [`Self::nb_parallel_lookups`] entries and
+    /// corresponds to one committed helper polynomial `hᵢ(X)`.
+    pub fn flatten(&self, cs_degree: usize) -> FlattenedArgument<F> {
+        let nb = self.nb_parallel_lookups(cs_degree);
+        let input_expression_chunks =
+            self.input_expressions.chunks(nb).map(|chunk| chunk.to_vec()).collect();
+
+        FlattenedArgument {
+            name: self.name.clone(),
+            selector: self.selector.clone(),
+            input_expression_chunks,
+            table_expressions: self.table_expressions.clone(),
+        }
+    }
+
     /// Returns the selector expression for this argument.
     pub fn selector_expression(&self) -> &Expression<F> {
         &self.selector
     }
 
-    /// Returns the input expressions for this argument.
+    /// Returns the table expressions for this argument.
+    pub fn table_expressions(&self) -> &[Expression<F>] {
+        &self.table_expressions
+    }
+}
+
+impl<F: Field> FlattenedArgument<F> {
+    /// Returns the number of chunks (one helper polynomial per chunk).
+    pub fn num_chunks(&self) -> usize {
+        self.input_expression_chunks.len()
+    }
+
+    /// Returns the pre-split input expression chunks.
     ///
-    /// Organized as `[parallel_lookups][lookup_width]`.
-    pub fn input_expressions(&self) -> &[Vec<Expression<F>>] {
-        &self.input_expressions
+    /// Each element is one chunk: a `[parallel_lookup][lookup_width]` slice.
+    pub fn input_expression_chunks(&self) -> &[Vec<Vec<Expression<F>>>] {
+        &self.input_expression_chunks
+    }
+
+    /// Returns the selector expression for this argument.
+    pub fn selector_expression(&self) -> &Expression<F> {
+        &self.selector
     }
 
     /// Returns the table expressions for this argument.
@@ -334,7 +371,7 @@ impl<F: Field> FlattenedArgument<F> {
 #[derive(Debug)]
 pub(crate) struct Evaluated<F: PrimeField> {
     multiplicities_eval: F,
-    helper_eval: F,
+    helper_evals: Vec<F>,
     accumulator_eval: F,
     accumulator_next_eval: F,
 }
@@ -399,53 +436,45 @@ impl<F: PrimeField> Evaluated<F> {
         };
 
         let compressed_table = compress_expressions(&argument.table_expressions);
-
-        let compressed_inputs_with_beta = argument
-            .input_expressions
-            .iter()
-            .map(|input| {
-                let compressed = compress_expressions(input);
-                compressed + beta
-            })
-            .collect::<Vec<_>>();
-
-        // Helper polynomial constraint: h(x) · ∏ⱼ(fⱼ(x) + β) = Σⱼ ∏_{k≠j}(fₖ(x) + β)
-        // This ensures the helper polynomial has the correct structure for LogUp
-        // soundness. Note: This must hold everywhere (as a polynomial
-        // identity), not just at active rows.
-        let product: F = compressed_inputs_with_beta.iter().product();
-
-        // Compute partial products:
-        // ∏_{k≠j}(fₖ(x) + β) = product / (fⱼ(x) + β)
-        let partial_products: Vec<F> = compressed_inputs_with_beta
-            .iter()
-            .map(|input| product * input.invert().unwrap())
-            .collect();
-        let sum: F = partial_products.iter().sum();
-        let helper_expression = || self.helper_eval * product - sum;
-
-        // LogUp accumulator constraint:
-        // Z(ωx)·(t(x) + β) = Z(x) · (t(x) + β) + h(x)) · (t(x) + β) - m(x)
-        // With a selector we exclude the recurring sum new value
-        // Z(ωx)·(t(x) + β) = Z(x) · (t(x) + β) + selector · h(x) · (t(x) + β) - m(x)
-        // Rearranging:
-        // (Z(ωx) - Z(x)) · (t(x) + β) - selector · h(x) · (t(x) + β) + m(x) = 0
         let selector =
             evaluate_expressions(std::slice::from_ref(&argument.selector)).swap_remove(0);
 
-        let accumulator_constraint = || {
+        let boundary = (l_0 + l_last) * self.accumulator_eval;
+
+        let mut sum_helpers = F::ZERO;
+        let helper_constraints: Vec<F> = argument
+            .input_expression_chunks()
+            .iter()
+            .zip(self.helper_evals.iter())
+            .map(|(chunk, &helper_eval)| {
+                let compressed_inputs_with_beta: Vec<F> =
+                    chunk.iter().map(|input| compress_expressions(input) + beta).collect();
+
+                // Helper constraint: h(x) · ∏ⱼ(fⱼ(x) + β) = Σⱼ ∏_{k≠j}(fₖ(x) + β)
+                let product: F = compressed_inputs_with_beta.iter().product();
+                let partial_products: Vec<F> = compressed_inputs_with_beta
+                    .iter()
+                    .map(|f| product * f.invert().unwrap())
+                    .collect();
+                let sum: F = partial_products.iter().sum();
+
+                sum_helpers += helper_eval;
+                helper_eval * product - sum
+            })
+            .collect();
+
+        // LogUp accumulator constraint with shared m and Z:
+        // (Z(ωx) - Z(x) - s·Σᵢhᵢ)·(t(x) + β) + m(x) = 0, on active rows
+        let accumulator_constraint = {
             let diff =
-                (self.accumulator_next_eval - self.accumulator_eval - selector * self.helper_eval)
+                (self.accumulator_next_eval - self.accumulator_eval - selector * sum_helpers)
                     * (compressed_table + beta)
                     + self.multiplicities_eval;
             diff * active_rows
         };
 
-        [
-            (l_0 + l_last) * self.accumulator_eval,
-            helper_expression(),
-            accumulator_constraint(),
-        ]
-        .into_iter()
+        std::iter::once(boundary)
+            .chain(helper_constraints)
+            .chain(std::iter::once(accumulator_constraint))
     }
 }

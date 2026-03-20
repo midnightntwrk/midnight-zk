@@ -26,16 +26,19 @@ use crate::{
     transcript::{Hashable, Transcript},
 };
 
-/// Commitment to LogUp multiplicities
+/// Commitment to the shared multiplicity polynomial, read from the transcript.
 pub struct CommittedMultiplicities<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
     multiplicities: CS::Commitment,
 }
 
-/// Commitments to the LogUp polynomials, read from the transcript.
+/// Commitments to all LogUp polynomials for a [`FlattenedArgument`].
+///
+/// One shared `m` and `Z`, plus one `hᵢ` per chunk.
 #[derive(Debug)]
 pub struct Committed<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
     multiplicities: CS::Commitment,
-    helper_poly: CS::Commitment,
+    /// One commitment per flattened argument.
+    helper_polys: Vec<CS::Commitment>,
     accumulator: CS::Commitment,
 }
 
@@ -62,20 +65,23 @@ impl<F: WithSmallOrderMulGroup<3>> FlattenedArgument<F> {
 impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>>
     CommittedMultiplicities<F, CS>
 {
-    /// Reads the prover's commitments from the transcript.
+    /// Reads `nb_flattened` helper commitments and one accumulator commitment
+    /// from the transcript.
     pub(in crate::plonk) fn read_commitment<T: Transcript>(
         self,
+        nb_flattened: usize,
         transcript: &mut T,
     ) -> Result<Committed<F, CS>, Error>
     where
         CS::Commitment: Hashable<T::Hash>,
     {
-        let helper_poly = transcript.read()?;
+        let helper_polys =
+            (0..nb_flattened).map(|_| transcript.read()).collect::<Result<Vec<_>, _>>()?;
         let accumulator = transcript.read()?;
 
         Ok(Committed {
             multiplicities: self.multiplicities,
-            helper_poly,
+            helper_polys,
             accumulator,
         })
     }
@@ -83,6 +89,9 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>>
 
 impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> Committed<F, CS> {
     /// Reads polynomial evaluations from the transcript.
+    ///
+    /// Order: `m_eval`, then `hᵢ_eval` for each flattened arg, then `Z_eval`,
+    /// `Z(ωx)_eval`.
     pub(crate) fn evaluate<T: Transcript>(
         self,
         transcript: &mut T,
@@ -90,8 +99,11 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> Committed<F, CS> {
     where
         F: Hashable<T::Hash>,
     {
+        let nb_flattened = self.helper_polys.len();
+
         let multiplicities_eval = transcript.read()?;
-        let helper_eval = transcript.read()?;
+        let helper_evals =
+            (0..nb_flattened).map(|_| transcript.read()).collect::<Result<Vec<_>, _>>()?;
         let accumulator_eval = transcript.read()?;
         let accumulator_next_eval = transcript.read()?;
 
@@ -99,7 +111,7 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> Committed<F, CS> {
             committed: self,
             evaluated: logup::Evaluated {
                 multiplicities_eval,
-                helper_eval,
+                helper_evals,
                 accumulator_eval,
                 accumulator_next_eval,
             },
@@ -108,7 +120,7 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> Committed<F, CS> {
 }
 
 impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<F, CS> {
-    /// Returns verification queries.
+    /// Returns verification queries for all committed polynomials.
     pub(in crate::plonk) fn queries(
         &self,
         vk: &VerifyingKey<F, CS>,
@@ -116,30 +128,36 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
     ) -> impl Iterator<Item = VerifierQuery<'_, F, CS>> + Clone {
         let x_next = vk.domain.rotate_omega(x, Rotation::next());
 
-        iter::empty()
-            .chain(Some(VerifierQuery::new(
-                x,
-                CommitmentLabel::NoLabel,
-                &self.committed.multiplicities,
-                self.evaluated.multiplicities_eval,
-            )))
-            .chain(Some(VerifierQuery::new(
-                x,
-                CommitmentLabel::NoLabel,
-                &self.committed.helper_poly,
-                self.evaluated.helper_eval,
-            )))
-            .chain(Some(VerifierQuery::new(
+        let m_query = iter::once(VerifierQuery::new(
+            x,
+            CommitmentLabel::NoLabel,
+            &self.committed.multiplicities,
+            self.evaluated.multiplicities_eval,
+        ));
+
+        let helper_queries = self
+            .committed
+            .helper_polys
+            .iter()
+            .zip(self.evaluated.helper_evals.iter())
+            .map(move |(com, &eval)| VerifierQuery::new(x, CommitmentLabel::NoLabel, com, eval))
+            .collect::<Vec<_>>();
+
+        let z_queries = [
+            VerifierQuery::new(
                 x,
                 CommitmentLabel::NoLabel,
                 &self.committed.accumulator,
                 self.evaluated.accumulator_eval,
-            )))
-            .chain(Some(VerifierQuery::new(
+            ),
+            VerifierQuery::new(
                 x_next,
                 CommitmentLabel::NoLabel,
                 &self.committed.accumulator,
                 self.evaluated.accumulator_next_eval,
-            )))
+            ),
+        ];
+
+        m_query.chain(helper_queries).chain(z_queries)
     }
 }
