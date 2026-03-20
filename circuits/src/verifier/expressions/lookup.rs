@@ -38,7 +38,7 @@ pub(crate) fn lookup_expressions<S: SelfEmulation>(
     scalar_chip: &S::ScalarChip,
     lookup_evals: &LookupEvaluated<S>,
     selector_expression: &Expression<S::F>,
-    input_expressions: &[Vec<Expression<S::F>>],
+    per_flat_input_expressions: &[&[Vec<Expression<S::F>>]],
     table_expressions: &[Expression<S::F>],
     advice_evals: &[AssignedNative<S::F>],
     fixed_evals: &[AssignedNative<S::F>],
@@ -66,22 +66,6 @@ pub(crate) fn lookup_expressions<S: SelfEmulation>(
         selector_expression,
     )?;
 
-    let compressed_inputs_with_beta = input_expressions
-        .iter()
-        .map(|input| {
-            let compressed = compress_expressions::<S>(
-                layouter,
-                scalar_chip,
-                advice_evals,
-                fixed_evals,
-                instance_evals,
-                theta,
-                input,
-            )?;
-            scalar_chip.add(layouter, &compressed, beta)
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-
     let compressed_table = compress_expressions::<S>(
         layouter,
         scalar_chip,
@@ -93,70 +77,6 @@ pub(crate) fn lookup_expressions<S: SelfEmulation>(
     )?;
     let compressed_table_with_beta = scalar_chip.add(layouter, &compressed_table, beta)?;
 
-    let partial_products: Vec<AssignedNative<S::F>> = (0..compressed_inputs_with_beta.len())
-        .map(|i| {
-            let mut acc = scalar_chip.assign_fixed(layouter, S::F::ONE)?;
-            for (j, input) in compressed_inputs_with_beta.iter().enumerate() {
-                if j != i {
-                    acc = scalar_chip.mul(layouter, &acc, input, None)?;
-                }
-            }
-            Ok::<_, Error>(acc)
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-
-    // Helper constraint: h(x) · ∏ⱼ(fⱼ(x) + β) = Σⱼ ∏_{k≠j}(fₖ(x) + β)
-    // This must hold everywhere (as a polynomial identity), not just at active
-    // rows.
-    let product: AssignedNative<S::F> = {
-        let mut iter = compressed_inputs_with_beta.into_iter();
-        let first = iter.next().expect("compressed_inputs_with_beta should not be empty");
-        iter.try_fold(first, |acc, input| {
-            scalar_chip.mul(layouter, &acc, &input, None)
-        })?
-    };
-    let sum: AssignedNative<S::F> = {
-        let mut iter = partial_products.into_iter();
-        let first = iter.next().expect("partial_products should not be empty");
-        iter.try_fold(first, |acc, input| scalar_chip.add(layouter, &acc, &input))?
-    };
-
-    // h(x) · ∏ⱼ(fⱼ(x) + β) - Σⱼ ∏_{k≠j}(fₖ(x) + β) = 0
-    let helper_constraint = {
-        scalar_chip.add_and_mul(
-            layouter,
-            (S::F::ZERO, &lookup_evals.helper_eval),
-            (S::F::ZERO, &product),
-            (-S::F::ONE, &sum),
-            S::F::ZERO,
-            S::F::ONE,
-        )?
-    };
-
-    // Accumulator constraint:
-    // (Z(ωx) - Z(x) - selector·h(x)) · (t(x) + β) + m(x) = 0
-    // The selector gates only the input side (h); m is always added
-    // so the table-side balance is maintained (see module-level docs in
-    // logup.rs).
-    let acc_constraint = {
-        let acc_step = {
-            let z_next_minus_z = scalar_chip.sub(
-                layouter,
-                &lookup_evals.accumulator_next_eval,
-                &lookup_evals.accumulator_eval,
-            )?;
-            let selector_h =
-                scalar_chip.mul(layouter, &selector, &lookup_evals.helper_eval, None)?;
-            let aux = scalar_chip.sub(layouter, &z_next_minus_z, &selector_h)?;
-            scalar_chip.mul(layouter, &aux, &compressed_table_with_beta, None)?
-        };
-
-        // acc_step + m
-        let balance = scalar_chip.add(layouter, &acc_step, &lookup_evals.multiplicities_eval)?;
-
-        scalar_chip.mul(layouter, &balance, &active_rows, None)?
-    };
-
     // (l_0(x) + l_last(x)) * Z(x) = 0
     let l_0_plus_l_last = scalar_chip.add(layouter, l_0, l_last)?;
     let boundary = scalar_chip.mul(
@@ -166,5 +86,95 @@ pub(crate) fn lookup_expressions<S: SelfEmulation>(
         None,
     )?;
 
-    Ok(vec![boundary, helper_constraint, acc_constraint])
+    let mut result = vec![boundary];
+    let mut sum_helpers: Option<AssignedNative<S::F>> = None;
+
+    for (input_expressions, h_eval) in
+        per_flat_input_expressions.iter().zip(lookup_evals.helper_evals.iter())
+    {
+        let compressed_inputs_with_beta = input_expressions
+            .iter()
+            .map(|input| {
+                let compressed = compress_expressions::<S>(
+                    layouter,
+                    scalar_chip,
+                    advice_evals,
+                    fixed_evals,
+                    instance_evals,
+                    theta,
+                    input,
+                )?;
+                scalar_chip.add(layouter, &compressed, beta)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let partial_products: Vec<AssignedNative<S::F>> = (0..compressed_inputs_with_beta.len())
+            .map(|i| {
+                let mut acc = scalar_chip.assign_fixed(layouter, S::F::ONE)?;
+                for (j, input) in compressed_inputs_with_beta.iter().enumerate() {
+                    if j != i {
+                        acc = scalar_chip.mul(layouter, &acc, input, None)?;
+                    }
+                }
+                Ok::<_, Error>(acc)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // Helper constraint: h(x) · ∏ⱼ(fⱼ(x) + β) = Σⱼ ∏_{k≠j}(fₖ(x) + β)
+        // This must hold everywhere (as a polynomial identity), not just at active
+        // rows.
+        let product: AssignedNative<S::F> = {
+            let mut iter = compressed_inputs_with_beta.into_iter();
+            let first = iter.next().expect("compressed_inputs_with_beta should not be empty");
+            iter.try_fold(first, |acc, input| {
+                scalar_chip.mul(layouter, &acc, &input, None)
+            })?
+        };
+        let sum_pp: AssignedNative<S::F> = {
+            let mut iter = partial_products.into_iter();
+            let first = iter.next().expect("partial_products should not be empty");
+            iter.try_fold(first, |acc, input| scalar_chip.add(layouter, &acc, &input))?
+        };
+
+        // h(x) · ∏ⱼ(fⱼ(x) + β) - Σⱼ ∏_{k≠j}(fₖ(x) + β) = 0
+        let helper_constraint = {
+            scalar_chip.add_and_mul(
+                layouter,
+                (S::F::ZERO, h_eval),
+                (S::F::ZERO, &product),
+                (-S::F::ONE, &sum_pp),
+                S::F::ZERO,
+                S::F::ONE,
+            )?
+        };
+        result.push(helper_constraint);
+
+        let selector_h = scalar_chip.mul(layouter, &selector, h_eval, None)?;
+        sum_helpers = Some(match sum_helpers {
+            None => selector_h,
+            Some(acc) => scalar_chip.add(layouter, &acc, &selector_h)?,
+        });
+    }
+
+    let sum_helpers = sum_helpers.expect("at least one flattened arg");
+
+    // Accumulator constraint:
+    // (Z(ωx) - Z(x) - selector·h(x)) · (t(x) + β) + m(x) = 0
+    // The selector gates only the input side (h); m is always added
+    // so the table-side balance is maintained (see module-level docs in
+    // logup.rs).
+    let acc_constraint = {
+        let z_next_minus_z = scalar_chip.sub(
+            layouter,
+            &lookup_evals.accumulator_next_eval,
+            &lookup_evals.accumulator_eval,
+        )?;
+        let aux = scalar_chip.sub(layouter, &z_next_minus_z, &sum_helpers)?;
+        let acc_step = scalar_chip.mul(layouter, &aux, &compressed_table_with_beta, None)?;
+        let balance = scalar_chip.add(layouter, &acc_step, &lookup_evals.multiplicities_eval)?;
+        scalar_chip.mul(layouter, &balance, &active_rows, None)?
+    };
+    result.push(acc_constraint);
+
+    Ok(result)
 }
