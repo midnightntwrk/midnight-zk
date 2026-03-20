@@ -54,7 +54,6 @@ pub trait CircuitCurve: Curve + Default {
 }
 
 /// A Weierstrass curve of the form `y^2 = x^3 + Ax + B`.
-/// equipped with an efficient cubic endomorphism.
 pub trait WeierstrassCurve: CircuitCurve {
     /// `A` parameter.
     const A: Self::Base;
@@ -62,16 +61,32 @@ pub trait WeierstrassCurve: CircuitCurve {
     /// `B` parameter.
     const B: Self::Base;
 
+    /// Whether the curve admits a cubic endomorphism `φ(x,y) = (ζx, y)` that
+    /// can be used for GLV scalar decomposition.
+    const HAS_CUBIC_ENDOMORPHISM: bool = true;
+
     // Note:
     // There are 2 choices for each cubic root,
     // but they must agree!
     // scalar_zeta() * (x, y) = ( base_zeta() * x, y)
 
     /// Cubic root on the base field.
-    fn base_zeta() -> Self::Base;
+    ///
+    /// Only meaningful when
+    /// [`HAS_CUBIC_ENDOMORPHISM`](Self::HAS_CUBIC_ENDOMORPHISM) is `true`.
+    /// The default implementation panics.
+    fn base_zeta() -> Self::Base {
+        unimplemented!("this curve does not have a cubic endomorphism")
+    }
 
     /// Cubic root on the scalar field.
-    fn scalar_zeta() -> Self::ScalarField;
+    ///
+    /// Only meaningful when
+    /// [`HAS_CUBIC_ENDOMORPHISM`](Self::HAS_CUBIC_ENDOMORPHISM) is `true`.
+    /// The default implementation panics.
+    fn scalar_zeta() -> Self::ScalarField {
+        unimplemented!("this curve does not have a cubic endomorphism")
+    }
 }
 
 /// A twisted edwards curve of the form `A x^2 + y^2 = 1 + D x^2 y^2`.
@@ -207,6 +222,39 @@ impl WeierstrassCurve for K256 {
     }
 }
 
+// Implementation for P256 (secp256r1 / NIST P-256).
+use midnight_curves::p256::{Fp as P256Fp, P256Affine, CURVE_A, CURVE_B, P256};
+
+impl CircuitCurve for P256 {
+    type Base = P256Fp;
+    type ScalarField = <Self as Group>::Scalar;
+    type CryptographicGroup = P256;
+
+    const NUM_BITS_SUBGROUP: u32 = 256;
+
+    fn coordinates(&self) -> Option<(Self::Base, Self::Base)> {
+        if bool::from(self.is_identity()) {
+            return Some((P256Fp::ZERO, P256Fp::ZERO));
+        }
+        let affine = self.to_affine();
+        Some((affine.x(), affine.y()))
+    }
+
+    fn from_xy(x: Self::Base, y: Self::Base) -> Option<Self> {
+        P256Affine::from_xy(x, y).map(|p| p.into())
+    }
+
+    fn into_subgroup(self) -> Self::CryptographicGroup {
+        self
+    }
+}
+
+impl WeierstrassCurve for P256 {
+    const A: Self::Base = CURVE_A;
+    const B: Self::Base = CURVE_B;
+    const HAS_CUBIC_ENDOMORPHISM: bool = false;
+}
+
 // Implementation for Bls12-381.
 use group::cofactor::CofactorGroup;
 use midnight_curves::{Fp as BlsBase, G1Affine, G1Projective};
@@ -285,11 +333,18 @@ impl WeierstrassCurve for bn256::G1 {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_k256_identity_coordinates_are_zero() {
-        let identity = K256::identity();
-        let (x, y) = identity.coordinates().expect("coordinates should be Some");
-        assert_eq!(x, K256Fp::ZERO);
-        assert_eq!(y, K256Fp::ZERO);
+    macro_rules! test_identity_coordinates_are_zero {
+        ($test_name:ident, $curve:ty, $base:ty) => {
+            #[test]
+            fn $test_name() {
+                let identity = <$curve>::identity();
+                let (x, y) = identity.coordinates().expect("coordinates should be Some");
+                assert_eq!(x, <$base>::ZERO);
+                assert_eq!(y, <$base>::ZERO);
+            }
+        };
     }
+
+    test_identity_coordinates_are_zero!(test_k256_identity_coordinates_are_zero, K256, K256Fp);
+    test_identity_coordinates_are_zero!(test_p256_identity_coordinates_are_zero, P256, P256Fp);
 }
