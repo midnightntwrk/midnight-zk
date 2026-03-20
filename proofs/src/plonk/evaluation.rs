@@ -260,7 +260,8 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                     let compressed_inputs_cosets: Vec<_> = chunk
                         .iter()
                         .map(|expressions| {
-                            let parts = expressions.iter().map(|expr| graph.add_expression(expr)).collect();
+                            let parts =
+                                expressions.iter().map(|expr| graph.add_expression(expr)).collect();
                             let compressed = graph.add_calculation(Calculation::Horner(
                                 ValueSource::Constant(0),
                                 parts,
@@ -300,11 +301,13 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                     let mut product =
                         graph.add_calculation(Calculation::Store(compressed_inputs_cosets[0]));
                     // Compute ∏ⱼ(fⱼ + β) and Σⱼ ∏_{k≠j}(fₖ + β)
-                    for (calculation, partial_prod) in 
-                        compressed_inputs_cosets.into_iter().zip(partial_products.into_iter()).skip(1)
+                    for (calculation, partial_prod) in compressed_inputs_cosets
+                        .into_iter()
+                        .zip(partial_products.into_iter())
+                        .skip(1)
                     {
-                        sum_partial_products =
-                            graph.add_calculation(Calculation::Add(sum_partial_products, partial_prod));
+                        sum_partial_products = graph
+                            .add_calculation(Calculation::Add(sum_partial_products, partial_prod));
                         product = graph.add_calculation(Calculation::Mul(product, calculation));
                     }
 
