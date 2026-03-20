@@ -53,6 +53,8 @@ default = []
 # Feature that exposes some testing functionality, such as load from scratch or instantiable
 testing = ["num-bigint/rand"]
 heap_profiling = []
+# Assert that cost-model proof size matches actual proof size after proving
+check-cost-model = []
 # Enable truncated challenges. This makes recursive proofs more efficient
 truncated-challenges = [
     "midnight-proofs/truncated-challenges",

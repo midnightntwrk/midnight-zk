@@ -1769,14 +1769,26 @@ where
         Value::known(witness),
         Some(pk.k as u32),
     );
-    BlstPLONK::<MidnightCircuit<R>>::prove::<H>(
+    let proof = BlstPLONK::<MidnightCircuit<R>>::prove::<H>(
         params,
         &pk.pk,
         &circuit,
         1,
         &[com_inst.as_slice(), &pi],
         rng,
-    )
+    )?;
+
+    #[cfg(feature = "check-cost-model")]
+    {
+        let model = cost_model(relation, Some(pk.k as u32));
+        assert_eq!(
+            model.size,
+            proof.len(),
+            "Cost model proof size does not match actual proof size"
+        );
+    }
+
+    Ok(proof)
 }
 
 /// Verifies the given proof of relation `R` with respect to the given instance.
