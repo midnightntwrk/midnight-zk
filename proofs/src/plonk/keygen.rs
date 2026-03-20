@@ -201,7 +201,7 @@ impl<F: Field> Assignment<F> for Assembly<F> {
 
 /// Compute the minimal `k` to compute a circuit.
 pub fn k_from_circuit<F: Ord + Field + FromUniformBytes<64>, C: Circuit<F>>(circuit: &C) -> u32 {
-    cost_model_options(circuit).min_k as u32
+    cost_model_options(circuit, 0).min_k as u32
 }
 
 /// Generates a `VerifyingKey` from a `Circuit` instance.
