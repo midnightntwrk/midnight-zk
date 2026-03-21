@@ -9,7 +9,7 @@
 
 use std::ops::Range;
 
-use midnight_circuits::parsing::scanner::asn1::{Asn1RawData, Asn1Spec, Asn1Value};
+use midnight_circuits::parsing::scanner::asn1::{Asn1Spec, Asn1Value};
 
 // -----------------------------------------------------------------------
 // Well-known OIDs
@@ -183,15 +183,11 @@ pub fn sod_sha256_rsa2048_spec() -> Asn1Spec<SodField> {
 // Sub-specs
 // -----------------------------------------------------------------------
 
-/// Maximum number of additional (non-DG1) DataGroupHash entries supported.
-/// Covers typical configurations (DG2, DG7, DG11, DG12, DG14, etc.).
-const MAX_OPTIONAL_DG_HASHES: usize = 4;
-
 /// LDSSecurityObject (the eContent payload), SHA-256 variant.
 ///
 /// Extracts `HashDg1`. The DG1 DataGroupHash is parsed explicitly;
-/// up to [`MAX_OPTIONAL_DG_HASHES`] additional DG hashes (DG2, DG14,
-/// etc.) are consumed but not extracted.
+/// any additional DG hashes (DG2, DG14, etc.) are consumed as the
+/// tail of the `dataGroupHashValues` SEQUENCE.
 fn lds_security_object_spec() -> Asn1Spec<SodField> {
     let dg1_hash = Asn1Spec::empty().read_sequence(
         Asn1Spec::empty()
@@ -199,16 +195,11 @@ fn lds_security_object_spec() -> Asn1Spec<SodField> {
             .read_octet_string(Asn1Value::any(Some(32)).mark(SodField::HashDg1)),
     );
 
-    // Additional DG hashes are optional SEQUENCE TLVs after DG1.
-    let dg_hashes = (0..MAX_OPTIONAL_DG_HASHES).fold(dg1_hash, |spec, _| {
-        spec.read_tlv_optional(&[0x30], Asn1RawData::any(None), Asn1Value::any(None))
-    });
-
     Asn1Spec::empty().read_sequence(
         Asn1Spec::empty()
             .read_integer_fixed(0)
             .read_algid_null(OID_SHA256)
-            .read_sequence(dg_hashes),
+            .read_sequence(Asn1Value::from(dg1_hash).with_rest()),
     )
 }
 

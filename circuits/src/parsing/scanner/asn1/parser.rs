@@ -746,16 +746,54 @@ where
             Asn1ValueInternal::Simple(raw_data) => {
                 self.process_raw(layouter, input, n, raw_data, RawDataRole::Val, state)?;
             }
-            Asn1ValueInternal::Recursive(inner_spec, index) => {
+            Asn1ValueInternal::Recursive(inner_spec, index, tail) => {
                 // Save raw bytes before processing for varlen extraction.
                 let raw_bytes = (value_is_varlen && index.is_some()).then(|| input[..n].to_vec());
                 let cursor_before = state.assigned_input.len();
                 self.process_blocks(layouter, input, inner_spec, state)?;
                 let bytes_consumed = state.assigned_input.len() - cursor_before;
-                assert_eq!(
-                    bytes_consumed, n,
-                    "recursive value consumed {bytes_consumed} bytes but TLV length field says {n}. Either the `Asn1Spec` is inconsistent, or the witness is ill-formed."
-                );
+
+                // Handle tail: consume remaining bytes after inner blocks.
+                if let Some(tail_marker) = tail {
+                    let tail_len = n - bytes_consumed;
+                    state.varlen = true;
+
+                    if let Some(tail_idx) = tail_marker {
+                        // Indexed tail: assign bytes, create ScannerVec, substring check.
+                        let tail_raw = consume(input, tail_len);
+                        let tail_values: Vec<_> =
+                            tail_raw.iter().map(|&b| Value::known(b)).collect();
+                        let assigned =
+                            self.native_gadget.assign_many(layouter, &tail_values)?;
+                        state.assigned_input.extend_from_slice(&assigned);
+
+                        let sv: ScannerVec<F, VAL_M, VAL_A> =
+                            self.assign_scanner_vec(layouter, Value::known(tail_raw))?;
+                        state.substring_checks.push((
+                            state.position.clone(),
+                            Asn1ParsedUnit::VarlenVal(sv.clone()),
+                        ));
+                        state.position.advance_variable(sv.len().clone());
+                        state.extracted.insert(tail_idx, Asn1ParsedUnit::VarlenVal(sv));
+                    } else {
+                        // Non-indexed tail: assign bytes, advance position.
+                        self.assign_witness(layouter, input, tail_len, state)?;
+                        let tail_len_assigned = self.native_gadget.assign(
+                            layouter,
+                            Value::known(F::from(tail_len as u64)),
+                        )?;
+                        state.position.advance_variable(tail_len_assigned);
+                    }
+                } else {
+                    assert_eq!(
+                        bytes_consumed, n,
+                        "recursive value consumed {bytes_consumed} bytes but TLV length \
+                         field says {n}. Either the `Asn1Spec` is inconsistent, or the \
+                         witness is ill-formed. Consider using `with_rest()` if the \
+                         value has trailing data."
+                    );
+                }
+
                 if index.is_some() {
                     match raw_bytes {
                         None => {

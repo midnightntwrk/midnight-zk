@@ -43,7 +43,10 @@ where
     /// Terminal block of data.
     Simple(Asn1RawData<Index>),
     /// Recursive: the value is itself parsed as a sequence of blocks.
-    Recursive(Asn1Spec<Index>, Option<Index>),
+    /// Fields: inner spec, value marker, tail marker.
+    /// Tail: `None` = no tail, `Some(None)` = non-indexed tail,
+    /// `Some(Some(idx))` = indexed tail.
+    Recursive(Asn1Spec<Index>, Option<Index>, Option<Option<Index>>),
 }
 
 /// An ASN.1 TLV (Tag-Length-Value) unit.
@@ -221,7 +224,8 @@ impl<Index: Eq + Hash> Asn1Value<Index> {
     fn known_len(&self) -> Option<usize> {
         match &self.0 {
             Asn1ValueInternal::Simple(raw) => raw.len(),
-            Asn1ValueInternal::Recursive(spec, _) => spec.size(),
+            Asn1ValueInternal::Recursive(_, _, Some(_)) => None,
+            Asn1ValueInternal::Recursive(spec, _, None) => spec.size(),
         }
     }
 
@@ -229,7 +233,7 @@ impl<Index: Eq + Hash> Asn1Value<Index> {
     fn into_marker(self) -> Option<Index> {
         match self.0 {
             Asn1ValueInternal::Simple(raw) => raw.into_marker(),
-            Asn1ValueInternal::Recursive(_, idx) => idx,
+            Asn1ValueInternal::Recursive(_, idx, _) => idx,
         }
     }
 }
@@ -240,7 +244,7 @@ where
 {
     /// Interprets an [`Asn1Spec`] as a recursive value without a marker.
     fn from(value: Asn1Spec<Index>) -> Self {
-        Asn1Value(Asn1ValueInternal::Recursive(value, None))
+        Asn1Value(Asn1ValueInternal::Recursive(value, None, None))
     }
 }
 
@@ -265,10 +269,43 @@ where
     pub fn mark(self, m: Index) -> Self {
         match self.0 {
             Asn1ValueInternal::Simple(x) => Asn1Value(Asn1ValueInternal::Simple(x.mark(m))),
-            Asn1ValueInternal::Recursive(s, None) => {
-                Asn1Value(Asn1ValueInternal::Recursive(s, Some(m)))
+            Asn1ValueInternal::Recursive(s, None, tail) => {
+                Asn1Value(Asn1ValueInternal::Recursive(s, Some(m), tail))
             }
-            Asn1ValueInternal::Recursive(_, Some(m2)) => double_mark(m, m2),
+            Asn1ValueInternal::Recursive(_, Some(m2), _) => double_mark(m, m2),
+        }
+    }
+
+    /// Adds a non-indexed tail: any bytes remaining after the inner spec's
+    /// blocks are consumed without extraction. Only valid on recursive
+    /// values.
+    pub fn with_rest(self) -> Self {
+        match self.0 {
+            Asn1ValueInternal::Recursive(s, idx, None) => {
+                Asn1Value(Asn1ValueInternal::Recursive(s, idx, Some(None)))
+            }
+            Asn1ValueInternal::Recursive(_, _, Some(_)) => {
+                panic!("with_rest: tail already set on this value")
+            }
+            Asn1ValueInternal::Simple(_) => {
+                panic!("with_rest: only valid on recursive values")
+            }
+        }
+    }
+
+    /// Adds an indexed tail: any bytes remaining after the inner spec's
+    /// blocks are extracted as `m`. Only valid on recursive values.
+    pub fn with_rest_as(self, m: Index) -> Self {
+        match self.0 {
+            Asn1ValueInternal::Recursive(s, idx, None) => {
+                Asn1Value(Asn1ValueInternal::Recursive(s, idx, Some(Some(m))))
+            }
+            Asn1ValueInternal::Recursive(_, _, Some(_)) => {
+                panic!("with_rest_as: tail already set on this value")
+            }
+            Asn1ValueInternal::Simple(_) => {
+                panic!("with_rest_as: only valid on recursive values")
+            }
         }
     }
 }
@@ -324,9 +361,8 @@ where
         let val_known = val.known_len();
         match &len.0 {
             Asn1RawDataInternal::Const(len_bytes, _) => {
-                let (_, decoded) = der_encoding::decode_length(len_bytes).unwrap_or_else(|| {
-                    panic!("{caller}: constant length bytes are not valid DER")
-                });
+                let (_, decoded) = der_encoding::decode_length(len_bytes)
+                    .unwrap_or_else(|| panic!("{caller}: constant length bytes are not valid DER"));
                 match val_known {
                     None => panic!(
                         "{caller}: length is constant ({decoded} bytes) but value \
@@ -393,14 +429,14 @@ where
         self.add_block(Asn1Block::Tlv(Asn1Tlv { tag, len, val }, None))
     }
 
-    /// Adds an optional TLV node to the spec. When the witness starts with
-    /// `tag` the full T+L+V is consumed; otherwise nothing is consumed and
-    /// all three ScannerVecs are empty (len=0).
+    /// Adds an optional TLV node to the spec. Produces three variable length
+    /// vectors for each T+L+V, which are empty (len=0) when the field is not
+    /// present in the witness. In particular, the verifier does not know a
+    /// priori whether the optional field is present or not.
     ///
     /// # Limitations
     ///
-    /// - The value must be `Simple` (non-recursive). Recursive optional
-    ///   values are not supported.
+    /// The value `val` must be non-recursive.
     pub fn read_tlv_optional(
         self,
         tag: &[u8],
