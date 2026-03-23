@@ -40,12 +40,12 @@ use std::{
 };
 
 use automaton::Automaton;
-use regex::Regex;
 use midnight_proofs::{
     circuit::{Chip, Layouter},
     plonk::{Advice, Column, ConstraintSystem, Error, Expression, Fixed, Selector, TableColumn},
     poly::Rotation,
 };
+use regex::Regex;
 use rustc_hash::FxHashMap;
 pub use static_specs::{spec_library, StdLibParser};
 #[cfg(test)]
