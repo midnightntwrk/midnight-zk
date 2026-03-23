@@ -179,8 +179,7 @@ impl<C: CircuitCurve> CoordConfig<C> {
             let xw_limbs = pair_wise_prod(&x_limbs, &w_limbs);
 
             // 2 * sum_x + sum_w + sum_xw - sum_y - sum_z  = (u + k_min) * m
-            let two = Expression::from(2);
-            let native_id = &two * sum_exprs::<F>(&bs, &x_limbs)
+            let native_id = Expression::from(2) * sum_exprs::<F>(&bs, &x_limbs)
                 + sum_exprs::<F>(&bs, &w_limbs)
                 + sum_exprs::<F>(&bs_sqrd, &xw_limbs)
                 - sum_exprs::<F>(&bs, &y_limbs)
@@ -199,7 +198,7 @@ impl<C: CircuitCurve> CoordConfig<C> {
 
                     // 2 * sum_x_mj + sum_w_mj + sum_xw_mj - sum_y_mj - sum_z_mj
                     // - u * (m % mj) - (k_min * m) % mj - (vj + lj_min) * mj = 0
-                    &two * sum_exprs::<F>(&bs_mj, &x_limbs)
+                    Expression::from(2) * sum_exprs::<F>(&bs_mj, &x_limbs)
                         + sum_exprs::<F>(&bs_mj, &w_limbs)
                         + sum_exprs::<F>(&bs_sqrd_mj, &xw_limbs)
                         - sum_exprs::<F>(&bs_mj, &y_limbs)
