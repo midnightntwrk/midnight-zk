@@ -1781,15 +1781,6 @@ where
         rng,
     )?;
 
-    #[cfg(feature = "check-cost-model")]
-    {
-        assert_eq!(
-            cost_model(relation, Some(pk.k as u32)).size,
-            proof.len(),
-            "Cost model proof size does not match actual proof size"
-        );
-    }
-
     Ok(proof)
 }
 

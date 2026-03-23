@@ -106,8 +106,13 @@ impl Relation for PIsCircuit {
     }
 
     fn used_chips(&self) -> ZkStdLibArch {
+        // We enable extra chips beyond what the circuit needs so that the proof-size
+        // check below exercises the cost model with a richer architecture.
         ZkStdLibArch {
             poseidon: true,
+            jubjub: true,
+            sha2_256: true,
+            secp256k1: true,
             ..ZkStdLibArch::default()
         }
     }
@@ -136,6 +141,12 @@ fn pi_test(nb_public_inputs: u32, extra_pi: bool) {
         &srs, &pk, &relation, &instance, witness, rng,
     )
     .expect("Proof generation should not fail");
+
+    // Check that the cost model proof size matches the actual proof size.
+    assert_eq!(
+        midnight_zk_stdlib::cost_model(&relation, Some(vk.k() as u32)).size,
+        proof.len()
+    );
 
     assert!(
         midnight_zk_stdlib::verify::<PIsCircuit, blake2b_simd::State>(

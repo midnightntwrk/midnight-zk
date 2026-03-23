@@ -856,6 +856,38 @@ mod tests {
         assert_eq!(circuit_model::<_, 48, 32>(&circuit, 0).size, proof.len());
     }
 
+    #[cfg(feature = "committed-instances")]
+    #[test]
+    fn cost_model_with_committed_instances() {
+        let k = 9;
+        let mut random_byte = [0u8; 1];
+        OsRng::fill_bytes(&mut OsRng, &mut random_byte);
+        let circuit = StandardPlonk::<1>(Fq::from(random_byte[0] as u64));
+
+        let params = ParamsKZG::<Bls12>::unsafe_setup(k, OsRng);
+        let vk = keygen_vk_with_k::<_, KZGCommitmentScheme<Bls12>, _>(&params, &circuit, k)
+            .expect("vk should not fail");
+        let pk = keygen_pk(vk, &circuit).expect("pk should not fail");
+
+        let instances: &[&[Fq]] = &[&[circuit.0]];
+        let mut transcript = CircuitTranscript::<State>::init();
+
+        create_proof::<Fq, KZGCommitmentScheme<Bls12>, _, _>(
+            &params,
+            &pk,
+            std::slice::from_ref(&circuit),
+            1,
+            &[instances],
+            OsRng,
+            &mut transcript,
+        )
+        .expect("proof generation should not fail");
+
+        let proof = transcript.finalize();
+
+        assert_eq!(circuit_model::<_, 48, 32>(&circuit, 1).size, proof.len());
+    }
+
     #[test]
     fn check_correct_computation_k() {
         let mut random_byte = [0u8; 1];
