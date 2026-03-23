@@ -97,5 +97,11 @@ bench-internal = ["criterion"]
 # params must be generated with k >= log2(n * (d-1))).
 single-h-commitment = []
 
+# Enables a heuristic to reduce the number of distinct multi-open point sets,
+# lowering the verifier MSM length. This can be particularly beneficial for
+# in-circuit verifiers. The heuristic works by adding dummy queries for some
+# polynomials, which may slightly increase proof size.
+fewer-point-sets = []
+
 [lib]
 bench = false

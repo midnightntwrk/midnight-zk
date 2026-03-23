@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * optional names on VerifierQuery commitments [#205](https://github.com/midnightntwrk/midnight-zk/pull/205)
 * `padded_add` and `padded_sub` polynomial operations [#276](https://github.com/midnightntwrk/midnight-zk/pull/276)
 * `single-h-commitment` feature to commit the quotient polynomial in one piece [#276](https://github.com/midnightntwrk/midnight-zk/pull/276)
+* `fewer-point-sets` feature to reduce the number of distinct multi-open point sets [#281](https://github.com/midnightntwrk/midnight-zk/pull/281)
 
 ### Fixed
 * Fix cost model to account for committed instance column evaluations [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)

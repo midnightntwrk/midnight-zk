@@ -28,6 +28,8 @@ verification keys break backwards compatibility.
 * Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 
 ### Changed
+* Support `fewer-point-sets` feature in verifier gadget [#281](https://github.com/midnightntwrk/midnight-zk/pull/281)
+* `multi_prepare` now takes a slice instead of `IntoIterator` [#281](https://github.com/midnightntwrk/midnight-zk/pull/281)
 * Support `single-h-commitment` feature in verifier gadget [#276](https://github.com/midnightntwrk/midnight-zk/pull/276)
 * Filter out compile-time identity points in MSM [#256](https://github.com/midnightntwrk/midnight-zk/pull/256)
 * Sort point sets deterministically in KZG multiopen for in-circuit verification [#256](https://github.com/midnightntwrk/midnight-zk/pull/256)

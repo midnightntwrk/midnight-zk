@@ -11,6 +11,9 @@ use std::marker::PhantomData;
 
 use midnight_curves::pairing::Engine;
 
+#[cfg(feature = "fewer-point-sets")]
+use super::query::Query;
+
 /// Multiscalar multiplication engines
 pub mod msm;
 /// KZG commitment scheme
@@ -23,6 +26,8 @@ use ff::Field;
 use group::Group;
 use midnight_curves::pairing::MultiMillerLoop;
 use rand_core::OsRng;
+#[cfg(feature = "fewer-point-sets")]
+pub use utils::compute_dummy_queries;
 
 #[cfg(feature = "truncated-challenges")]
 use crate::utils::arithmetic::{truncate, truncated_powers};
@@ -119,11 +124,29 @@ where
                 .unwrap()
         }
 
+        // Add dummy queries to reduce the number of distinct multi-open point sets.
+        #[cfg(feature = "fewer-point-sets")]
+        let padded_prover_query = {
+            let mut queries = prover_query.to_vec();
+            let pairs: Vec<_> =
+                prover_query.iter().map(|q| (q.get_commitment(), q.point)).collect();
+            for (idx, point) in compute_dummy_queries(&pairs) {
+                let poly = prover_query[idx].poly;
+                transcript
+                    .write(&eval_polynomial(poly, point))
+                    .map_err(|_| Error::OpeningError)?;
+                queries.push(ProverQuery::new(point, poly));
+            }
+            queries
+        };
+
         // Refer to the halo2 book for docs:
         // https://zcash.github.io/halo2/design/proving-system/multipoint-opening.html
         let x1: E::Fr = transcript.squeeze_challenge();
         let x2: E::Fr = transcript.squeeze_challenge();
 
+        #[cfg(feature = "fewer-point-sets")]
+        let prover_query = padded_prover_query.as_slice();
         let (poly_map, point_sets) = construct_intermediate_sets(prover_query)?;
 
         let mut q_polys = vec![vec![]; point_sets.len()];
@@ -225,11 +248,30 @@ where
         E::Fr: Sampleable<T::Hash> + Ord + Hash + Hashable<T::Hash>,
         E::G1: 'com + Hashable<T::Hash> + CurveExt<ScalarExt = E::Fr>,
     {
+        // Add dummy queries to reduce the number of distinct multi-open point sets.
+        #[cfg(feature = "fewer-point-sets")]
+        let padded_verifier_query = {
+            let mut queries = verifier_query.to_vec();
+            let pairs: Vec<_> =
+                verifier_query.iter().map(|q| (q.commitment.clone(), q.point)).collect();
+            for (idx, point) in compute_dummy_queries(&pairs) {
+                queries.push(VerifierQuery {
+                    point,
+                    commitment_label: verifier_query[idx].commitment_label.clone(),
+                    commitment: verifier_query[idx].commitment.clone(),
+                    eval: transcript.read().map_err(|_| Error::SamplingError)?,
+                });
+            }
+            queries
+        };
+
         // Refer to the halo2 book for docs:
         // https://zcash.github.io/halo2/design/proving-system/multipoint-opening.html
         let x1: E::Fr = transcript.squeeze_challenge();
         let x2: E::Fr = transcript.squeeze_challenge();
 
+        #[cfg(feature = "fewer-point-sets")]
+        let verifier_query = padded_verifier_query.as_slice();
         let (commitment_map, point_sets) = construct_intermediate_sets(verifier_query)?;
 
         let mut q_coms: Vec<_> = vec![vec![]; point_sets.len()];
