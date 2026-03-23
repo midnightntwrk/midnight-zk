@@ -75,7 +75,10 @@
 //! ```
 //!
 //! Tags and the table index column are written in fixed columns; the
-//! remaining columns (table bytes and query entries) are advice columns.
+//! remaining columns (table bytes and query entries) are advice columns. The
+//! invariant is that the tag is >0 in substring-check regions, and 0 in
+//! irrelevant rows (which is why the tag column cannot be shared with other
+//! chips).
 //!
 //! # Sequence sharing (Optimisation 1)
 //!

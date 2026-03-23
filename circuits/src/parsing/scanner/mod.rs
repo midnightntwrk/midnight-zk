@@ -332,9 +332,13 @@ where
         // The lookup then checks: (tag, packed_query) ∈ {(tag, table_packed)}.
         //
         // When sel=OFF, both sides reduce to (tag, query), i.e., a tautology, so rows
-        // not used by substring checks are unconstrained. The tag fixed column will
-        // default to 0 outside of the substring check regions, isolating the tables
-        // from the unrelated regions.
+        // not used by substring checks are unconstrained.
+        //
+        // Invariant: the tag column is 0 on every row that is not part of a substring
+        // check region, and non-zero (a unique positive integer) inside each region.
+        // This isolates independent substring checks from each other and from
+        // unrelated rows: a query tagged T can only match table entries with the
+        // same tag T, and rows with tag 0 never participate in any lookup.
         meta.lookup_any("substring lookup", |meta| {
             let sel = meta.query_selector(q_substring);
             let not_sel = Expression::Constant(F::ONE) - sel.clone();
