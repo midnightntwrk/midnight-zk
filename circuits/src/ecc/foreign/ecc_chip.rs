@@ -1953,20 +1953,6 @@ where
         // Compute table, [-α, p-α, 2p-α, ..., (2^WS-1)p-α] for every p in bases.
         let mut tables = vec![];
         for (i, p) in bases.iter().enumerate() {
-            // Assert that α.x ≠ p.x (note that α and -α have the same x-coordinate).
-            neg_alpha
-                .value()
-                .zip(p.value())
-                .error_if_known_and(|(nav, pv)| {
-                    if nav.is_identity().into() || pv.is_identity().into() {
-                        false
-                    } else {
-                        let nax = (*nav).into().coordinates().unwrap().0;
-                        let px = (*pv).into().coordinates().unwrap().0;
-                        nax == px
-                    }
-                })
-                .map_err(|_| Error::CompletenessFailure)?;
             self.incomplete_assert_different_x(layouter, &neg_alpha, p)?;
             let mut acc = neg_alpha.clone();
             let mut p_table = vec![acc.clone()];
