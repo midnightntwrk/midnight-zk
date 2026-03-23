@@ -823,13 +823,13 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         // We are now convinced the circuit is satisfied so long as the
         // polynomial commitments open to the correct values, which is true as long
         // as the following accumulator passes the invariant.
-        let multiopen_check = kzg::multi_prepare::<_, S>(
+        let multiopen_check = kzg::multi_prepare::<S>(
             layouter,
             #[cfg(feature = "truncated-challenges")]
             &self.curve_chip,
             &self.scalar_chip,
             &mut transcript,
-            queries,
+            &queries.collect::<Vec<_>>(),
         )?;
 
         Ok(multiopen_check)
