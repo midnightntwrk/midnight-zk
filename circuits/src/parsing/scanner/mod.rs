@@ -200,7 +200,7 @@ type AutomatonCache<F> = FxHashMap<AutomatonParser, NativeAutomaton<F>>;
 type Sequence<F> = Vec<AssignedNative<F>>;
 /// Cache of assigned sequences passed as arguments to `check_subsequence`. Each
 /// sequence is mapped to the list of `(idx, sub)` pairs it was called with.
-/// Also stores the cumulative length of all `sub` associateed to this key.
+/// Also stores the cumulative length of all `sub` associated to this key.
 type SequenceCache<F> = FxHashMap<Sequence<F>, (Vec<(AssignedNative<F>, Sequence<F>)>, usize)>;
 
 /// Scanner gate configuration.

@@ -134,9 +134,10 @@ pub enum StdLibParser {
     ///
     /// These 88 bytes, along with the other Data Groups, can be retrieved by
     /// reading the passport's NFC chip. Integrity and authenticity are ensured
-    /// via the Security Object Document (SOD), which contains signed hashes of
-    /// the Data Groups. These signatures can be verified using public keys
-    /// distributed through the ICAO Public Key Directory (PKD).
+    /// via the Security Object Document (SOD), which contains the signed
+    /// sequence of hashes of the Data Groups. These signatures can be
+    /// verified using public keys distributed through the ICAO Public Key
+    /// Directory (PKD).
     ///
     /// Sources:
     /// - [ICAO Doc 9303](https://www.icao.int/publications/doc-series/doc-9303)
@@ -159,11 +160,13 @@ pub enum StdLibParser {
     ///    + **Note 2**: if the credential holder has at least one given name,
     ///      the credential must include a `<<` separator between the surname
     ///      and the given names. Names may be truncated if needed to make the
-    ///      separator fits. The whole field is also padded with `<` bytes if no
+    ///      separator fit. The whole field is also padded with `<` bytes if no
     ///      truncation occurred.
     ///    + **Note 3**: The `<` characters (separator or padding) are not
-    ///      marked by this parser. This is to avoid a marker ambiguity when
-    ///      reading the first padding element after the given names.
+    ///      marked by this parser. E.g., in `DUPONT<<JEAN<MICHEL`, the 3 `<`
+    ///      get no marker. This is because of the impossibility, for a finite
+    ///      automaton to, e.g., decide the third `<` is a padding or, like
+    ///      here, a space before an additional given name.
     ///  - Passport number (9 bytes; uppercase and digits) -> 5
     ///  - Nationality (3 bytes; uppercase) -> 6
     ///  - Date of birth (6 bytes; YYMMDD) -> 7
