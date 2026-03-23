@@ -26,6 +26,7 @@ verification keys break backwards compatibility.
 * Update READMEs and add badges [#261](https://github.com/midnightntwrk/midnight-zk/pull/261)
 * Implementation of substring checks [#229](https://github.com/midnightntwrk/midnight-zk/pull/229)
 * Foreign arithmetic over twisted Edwards curves [#241](https://github.com/midnightntwrk/midnight-zk/pull/241)
+* Custom gate for foreign point addition over twisted Edwards curves [#242](https://github.com/midnightntwrk/midnight-zk/pull/242)
 
 ### Changed
 * Filter out compile-time identity points in MSM [#256](https://github.com/midnightntwrk/midnight-zk/pull/256)

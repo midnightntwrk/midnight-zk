@@ -41,7 +41,10 @@ use {
 };
 
 use crate::{
-    ecc::curves::EdwardsCurve,
+    ecc::{
+        curves::EdwardsCurve,
+        foreign::gates::coord::{self, CoordConfig},
+    },
     field::{
         foreign::{
             field_chip::{FieldChip, FieldChipConfig},
@@ -65,6 +68,7 @@ where
     C: EdwardsCurve,
 {
     base_field_config: FieldChipConfig,
+    coord_config: CoordConfig<C>,
     _marker: PhantomData<C>,
 }
 
@@ -99,12 +103,21 @@ where
     pub fn configure(
         _meta: &mut ConstraintSystem<F>,
         base_field_config: &FieldChipConfig,
+        nb_parallel_range_checks: usize,
+        max_bit_len: u32,
     ) -> ForeignEdwardsEccConfig<C> {
         assert!(C::A.legendre() == 1);
         assert!(C::D.legendre() == -1);
+        let coord_config = CoordConfig::<C>::configure::<F, B>(
+            _meta,
+            base_field_config,
+            nb_parallel_range_checks,
+            max_bit_len,
+        );
 
         ForeignEdwardsEccConfig {
             base_field_config: base_field_config.clone(),
+            coord_config,
             _marker: PhantomData,
         }
     }
@@ -665,17 +678,29 @@ where
         let d_px_py_qx_qy = base_chip.mul(layouter, &px_qx, &py_qy, Some(C::D))?;
         let neg_d_px_py_qx_qy = base_chip.neg(layouter, &d_px_py_qx_qy)?;
 
-        // Rx coordinate
-        let num = base_chip.add(layouter, &px_qy, &py_qx)?;
-        let den = base_chip.add_constant(layouter, &d_px_py_qx_qy, C::Base::ONE)?;
-        let lhs = base_chip.mul(layouter, &r.x, &den, None)?;
-        base_chip.assert_equal(layouter, &lhs, &num)?;
+        // Constraint for Rx coordinate
+        // Rx * (1 + d * Px * Py * Qx * Qy) = (Px * Qy + Py * Qx)
+        coord::assert_coord(
+            layouter,
+            &r.x,
+            &px_qy,
+            &py_qx,
+            &d_px_py_qx_qy,
+            base_chip,
+            &self.config.coord_config,
+        )?;
 
-        // Ry coordinate
-        let num = base_chip.add(layouter, &py_qy, &neg_a_px_qx)?;
-        let den = base_chip.add_constant(layouter, &neg_d_px_py_qx_qy, C::Base::ONE)?;
-        let lhs = base_chip.mul(layouter, &r.y, &den, None)?;
-        base_chip.assert_equal(layouter, &lhs, &num)?;
+        // Constraint for Ry coordinate
+        // Ry * (1 - d * Px * Py * Qx * Qy) = (Py * Qy - a * Px * Qx)
+        coord::assert_coord(
+            layouter,
+            &r.y,
+            &py_qy,
+            &neg_a_px_qx,
+            &neg_d_px_py_qx_qy,
+            base_chip,
+            &self.config.coord_config,
+        )?;
 
         Ok(AssignedForeignEdwardsPoint {
             point: r_value,
@@ -886,8 +911,12 @@ where
             nb_parallel_range_checks,
             max_bit_len,
         );
-        let ff_ecc_config =
-            ForeignEdwardsEccChip::<F, C, B, S, N>::configure(meta, &base_field_config);
+        let ff_ecc_config = ForeignEdwardsEccChip::<F, C, B, S, N>::configure(
+            meta,
+            &base_field_config,
+            nb_parallel_range_checks,
+            max_bit_len,
+        );
         ForeignEdwardsEccTestConfig {
             native_gadget_config,
             scalar_field_config,
