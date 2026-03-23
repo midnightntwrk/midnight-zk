@@ -11,7 +11,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Elliptic curve operations over foreign fields.
+//! Elliptic curve (in Weierstrass form) operations over foreign fields.
 //! This module supports curves of the form y^2 = x^3 + b (i.e. with a = 0).
 //!
 //! We require that the emulated elliptic curve do not have low-order points.
@@ -68,9 +68,9 @@ use crate::{
     CircuitField,
 };
 
-/// Foreign ECC configuration.
+/// Foreign Weierstrass ECC configuration.
 #[derive(Clone, Debug)]
-pub struct ForeignEccConfig<C>
+pub struct ForeignWeierstrassEccConfig<C>
 where
     C: WeierstrassCurve,
 {
@@ -133,9 +133,9 @@ where
 /// populated on first MSM call for each window size.
 type MsmRandomnessMap<F, C, B> = HashMap<usize, MsmRandomness<F, C, B>>;
 
-/// ['ECChip'] to perform foreign EC operations.
+/// ['ECChip'] to perform foreign Weierstrass EC operations.
 #[derive(Clone, Debug)]
-pub struct ForeignEccChip<F, C, B, S, N>
+pub struct ForeignWeierstrassEccChip<F, C, B, S, N>
 where
     F: CircuitField,
     C: WeierstrassCurve,
@@ -144,7 +144,7 @@ where
     S::Scalar: InnerValue<Element = C::ScalarField>,
     N: NativeInstructions<F>,
 {
-    config: ForeignEccConfig<C>,
+    config: ForeignWeierstrassEccConfig<C>,
     native_gadget: N,
     base_field_chip: FieldChip<F, C::Base, B, N>,
     scalar_field_chip: S,
@@ -282,7 +282,7 @@ where
     }
 }
 
-impl<F, C, B, S, N> Chip<F> for ForeignEccChip<F, C, B, S, N>
+impl<F, C, B, S, N> Chip<F> for ForeignWeierstrassEccChip<F, C, B, S, N>
 where
     F: CircuitField,
     C: WeierstrassCurve,
@@ -291,7 +291,7 @@ where
     S::Scalar: InnerValue<Element = C::ScalarField>,
     N: NativeInstructions<F>,
 {
-    type Config = ForeignEccConfig<C>;
+    type Config = ForeignWeierstrassEccConfig<C>;
     type Loaded = ();
     fn config(&self) -> &Self::Config {
         &self.config
@@ -302,7 +302,7 @@ where
 }
 
 impl<F, C, B, S, N> AssignmentInstructions<F, AssignedForeignPoint<F, C, B>>
-    for ForeignEccChip<F, C, B, S, N>
+    for ForeignWeierstrassEccChip<F, C, B, S, N>
 where
     F: CircuitField,
     C: WeierstrassCurve,
@@ -357,7 +357,7 @@ where
 }
 
 impl<F, C, B, S, N> PublicInputInstructions<F, AssignedForeignPoint<F, C, B>>
-    for ForeignEccChip<F, C, B, S, N>
+    for ForeignWeierstrassEccChip<F, C, B, S, N>
 where
     F: CircuitField,
     C: WeierstrassCurve,
@@ -419,7 +419,8 @@ where
 /// field.
 /// Mind the binding `S: ScalarFieldInstructions<F, Scalar = AssignedNative<F>>`
 /// of this implementation.
-impl<F, C, B, S, N> AssignmentInstructions<F, AssignedNative<F>> for ForeignEccChip<F, C, B, S, N>
+impl<F, C, B, S, N> AssignmentInstructions<F, AssignedNative<F>>
+    for ForeignWeierstrassEccChip<F, C, B, S, N>
 where
     F: CircuitField,
     C: WeierstrassCurve,
@@ -448,9 +449,9 @@ where
 /// Inherit assignment instructions for [AssignedField], from the
 /// `scalar_field_chip` when the emulated field field is the scalar field.
 /// Mind the binding `S: ScalarFieldInstructions<F, Scalar = AssignedField<F,
-/// C::ScalarField>>` of this implementation.
+/// C::Scalar>>` of this implementation.
 impl<F, C, B, S, SP, N> AssignmentInstructions<F, AssignedField<F, C::ScalarField, SP>>
-    for ForeignEccChip<F, C, B, S, N>
+    for ForeignWeierstrassEccChip<F, C, B, S, N>
 where
     F: CircuitField,
     C: WeierstrassCurve,
@@ -478,7 +479,7 @@ where
 }
 
 impl<F, C, B, S, N> AssertionInstructions<F, AssignedForeignPoint<F, C, B>>
-    for ForeignEccChip<F, C, B, S, N>
+    for ForeignWeierstrassEccChip<F, C, B, S, N>
 where
     F: CircuitField,
     C: WeierstrassCurve,
@@ -544,7 +545,7 @@ where
 }
 
 impl<F, C, B, S, N> EqualityInstructions<F, AssignedForeignPoint<F, C, B>>
-    for ForeignEccChip<F, C, B, S, N>
+    for ForeignWeierstrassEccChip<F, C, B, S, N>
 where
     F: CircuitField,
     C: WeierstrassCurve,
@@ -612,7 +613,7 @@ where
 }
 
 impl<F, C, B, S, N> ZeroInstructions<F, AssignedForeignPoint<F, C, B>>
-    for ForeignEccChip<F, C, B, S, N>
+    for ForeignWeierstrassEccChip<F, C, B, S, N>
 where
     F: CircuitField,
     C: WeierstrassCurve,
@@ -631,7 +632,7 @@ where
 }
 
 impl<F, C, B, S, N> ControlFlowInstructions<F, AssignedForeignPoint<F, C, B>>
-    for ForeignEccChip<F, C, B, S, N>
+    for ForeignWeierstrassEccChip<F, C, B, S, N>
 where
     F: CircuitField,
     C: WeierstrassCurve,
@@ -666,7 +667,7 @@ where
     }
 }
 
-impl<F, C, B, S, N> EccInstructions<F, C> for ForeignEccChip<F, C, B, S, N>
+impl<F, C, B, S, N> EccInstructions<F, C> for ForeignWeierstrassEccChip<F, C, B, S, N>
 where
     F: CircuitField,
     C: WeierstrassCurve,
@@ -997,7 +998,7 @@ where
     }
 }
 
-impl<F, C, B, S, N> ForeignEccChip<F, C, B, S, N>
+impl<F, C, B, S, N> ForeignWeierstrassEccChip<F, C, B, S, N>
 where
     F: CircuitField,
     C: WeierstrassCurve,
@@ -1007,7 +1008,11 @@ where
     N: NativeInstructions<F>,
 {
     /// Given config creates new chip that implements foreign ECC
-    pub fn new(config: &ForeignEccConfig<C>, native_gadget: &N, scalar_field_chip: &S) -> Self {
+    pub fn new(
+        config: &ForeignWeierstrassEccConfig<C>,
+        native_gadget: &N,
+        scalar_field_chip: &S,
+    ) -> Self {
         let base_field_chip = FieldChip::new(&config.base_field_config, native_gadget);
         Self {
             config: config.clone(),
@@ -1036,7 +1041,7 @@ where
         advice_columns: &[Column<Advice>],
         nb_parallel_range_checks: usize,
         max_bit_len: u32,
-    ) -> ForeignEccConfig<C> {
+    ) -> ForeignWeierstrassEccConfig<C> {
         // Assert that there is room for the cond_col in the existing columns of the
         // field_chip configurations.
         let cond_col_idx = base_field_config.x_cols.len() + base_field_config.v_cols.len() + 1;
@@ -1137,7 +1142,7 @@ where
             identities
         });
 
-        ForeignEccConfig {
+        ForeignWeierstrassEccConfig {
             base_field_config: base_field_config.clone(),
             on_curve_config,
             slope_config,
@@ -2132,7 +2137,7 @@ use crate::field::{
 
 type F = midnight_curves::Fq;
 type NG = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
-type Bls12381Chip = ForeignEccChip<F, midnight_curves::G1Projective, MEP, NG, NG>;
+type Bls12381Chip = ForeignWeierstrassEccChip<F, midnight_curves::G1Projective, MEP, NG, NG>;
 
 impl Bls12381Chip {
     /// Asserts that the given point belongs to the BLS subgroup.
@@ -2169,11 +2174,11 @@ where
 {
     native_gadget_config: <N as FromScratch<F>>::Config,
     scalar_field_config: <S as FromScratch<F>>::Config,
-    ff_ecc_config: ForeignEccConfig<C>,
+    ff_ecc_config: ForeignWeierstrassEccConfig<C>,
 }
 
 #[cfg(any(test, feature = "testing"))]
-impl<F, C, B, S, N> FromScratch<F> for ForeignEccChip<F, C, B, S, N>
+impl<F, C, B, S, N> FromScratch<F> for ForeignWeierstrassEccChip<F, C, B, S, N>
 where
     F: CircuitField,
     C: WeierstrassCurve,
@@ -2188,7 +2193,7 @@ where
         let native_gadget = <N as FromScratch<F>>::new_from_scratch(&config.native_gadget_config);
         let scalar_field_chip =
             <S as FromScratch<F>>::new_from_scratch(&config.scalar_field_config);
-        ForeignEccChip::new(&config.ff_ecc_config, &native_gadget, &scalar_field_chip)
+        ForeignWeierstrassEccChip::new(&config.ff_ecc_config, &native_gadget, &scalar_field_chip)
     }
 
     fn load_from_scratch(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
@@ -2215,7 +2220,7 @@ where
             nb_parallel_range_checks,
             max_bit_len,
         );
-        let ff_ecc_config = ForeignEccChip::<F, C, B, S, N>::configure(
+        let ff_ecc_config = ForeignWeierstrassEccChip::<F, C, B, S, N>::configure(
             meta,
             &base_field_config,
             &advice_columns,
@@ -2253,7 +2258,7 @@ mod tests {
             $mod::tests::$op::<
                 $native,
                 AssignedForeignPoint<$native, $curve, MultiEmulationParams>,
-                ForeignEccChip<
+                ForeignWeierstrassEccChip<
                     $native,
                     $curve,
                     MultiEmulationParams,
@@ -2294,7 +2299,7 @@ mod tests {
             ecc::tests::$op::<
                 $native,
                 $curve,
-                ForeignEccChip<
+                ForeignWeierstrassEccChip<
                     $native,
                     $curve,
                     MultiEmulationParams,

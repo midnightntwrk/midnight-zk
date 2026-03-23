@@ -755,7 +755,9 @@ pub(crate) mod tests {
     use crate::{
         ecc::{
             curves::CircuitCurve,
-            foreign::{nb_foreign_ecc_chip_columns, ForeignEccChip, ForeignEccConfig},
+            foreign::{
+                nb_foreign_ecc_chip_columns, ForeignWeierstrassEccChip, ForeignWeierstrassEccConfig,
+            },
         },
         field::{
             decomposition::{
@@ -855,7 +857,7 @@ pub(crate) mod tests {
         type Config = (
             NativeConfig,
             P2RDecompositionConfig,
-            ForeignEccConfig<C>,
+            ForeignWeierstrassEccConfig<C>,
             PoseidonConfig<F>,
         );
         type FloorPlanner = SimpleFloorPlanner;
@@ -898,7 +900,7 @@ pub(crate) mod tests {
                 nb_parallel_range_checks,
                 max_bit_len,
             );
-            let curve_config = ForeignEccChip::<F, C, C, NG, NG>::configure(
+            let curve_config = ForeignWeierstrassEccChip::<F, C, C, NG, NG>::configure(
                 meta,
                 &base_config,
                 &advice_columns,
@@ -930,7 +932,8 @@ pub(crate) mod tests {
             let native_chip = <NativeChip<F> as ComposableChip<F>>::new(&config.0, &());
             let core_decomp_chip = P2RDecompositionChip::new(&config.1, &16);
             let native_gadget = NativeGadget::new(core_decomp_chip.clone(), native_chip.clone());
-            let curve_chip = ForeignEccChip::new(&config.2, &native_gadget, &native_gadget);
+            let curve_chip =
+                ForeignWeierstrassEccChip::new(&config.2, &native_gadget, &native_gadget);
             let poseidon_chip = PoseidonChip::new(&config.3, &native_chip);
 
             let verifier_chip =
