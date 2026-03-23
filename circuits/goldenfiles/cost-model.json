@@ -100,13 +100,24 @@
   "Scanner": {
     "static parsing perf (input length = 50)": {
       "advice_columns": "5",
-      "column_queries": "51",
-      "fixed_columns": "30",
-      "lookups": "5",
+      "column_queries": "56",
+      "fixed_columns": "32",
+      "lookups": "6",
       "max_deg": "5",
       "permutations": "8",
       "point_sets": "4",
       "rows": "75",
+      "table_rows": "315"
+    },
+    "substring perf (full length = 65, sub length = 50)": {
+      "advice_columns": "5",
+      "column_queries": "56",
+      "fixed_columns": "32",
+      "lookups": "6",
+      "max_deg": "5",
+      "permutations": "8",
+      "point_sets": "4",
+      "rows": "161",
       "table_rows": "315"
     }
   },

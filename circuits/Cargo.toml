@@ -42,9 +42,7 @@ itertools = "0.14"
 dhat = "0.3"
 
 [target.'cfg(ci_build)'.dependencies]
-midnight-curves = { version = "0.2.0", features = [
-    "portable",
-] }
+midnight-curves = { version = "0.2.0", features = ["portable"] }
 
 [features]
 default = []
