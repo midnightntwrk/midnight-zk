@@ -11,11 +11,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! A chip combining lookup-based parsing techniques such as automaton-based
-//! parsing. The chip supports:
+//! A chip combining lookup-based parsing techniques. The chip supports:
 //!
-//! - **Static automaton parsing** (`parse_static`): uses a fixed lookup table
+//! - **Static automaton parsing** (`ScannerChip::parse`): verifies that a byte
+//!   sequence matches a regular expression, using a fixed lookup table
 //!   pre-loaded with transitions from a library of automata ([`StdLibParser`]).
+//!   See the `automaton_chip` module for details.
+//!
+//! - **Substring checks** (`ScannerChip::check_bytes`): verifies that a
+//!   sub-sequence appears at a given position inside a larger sequence, using a
+//!   dynamic lookup argument. Calls are deferred and batched at the end of
+//!   circuit synthesis for efficiency. See the `substring` module for details.
 
 pub(crate) mod automaton;
 mod automaton_chip;
@@ -24,17 +30,20 @@ mod automaton_chip;
 pub mod regex;
 mod serialization;
 pub(crate) mod static_specs;
+mod substring;
 
 use std::{
+    cell::RefCell,
     collections::{BTreeMap, BTreeSet},
     fmt::Debug,
     hash::Hash,
+    rc::Rc,
 };
 
 use automaton::Automaton;
 use midnight_proofs::{
-    circuit::{Chip, Layouter, Value},
-    plonk::{Advice, Column, ConstraintSystem, Error, Selector, TableColumn},
+    circuit::{Chip, Layouter},
+    plonk::{Advice, Column, ConstraintSystem, Error, Expression, Fixed, Selector, TableColumn},
     poly::Rotation,
 };
 use rustc_hash::FxHashMap;
@@ -47,21 +56,39 @@ use {
 };
 
 use crate::{
-    field::{decomposition::chip::P2RDecompositionChip, NativeChip, NativeGadget},
+    field::{decomposition::chip::P2RDecompositionChip, AssignedNative, NativeChip, NativeGadget},
     utils::ComposableChip,
     CircuitField,
 };
 
-/// Maximal size of the alphabet of an automaton/regex, since input characters
-/// are represented by `AssignedByte`. The parser (`scanner::parse_automaton`)
-/// is using this information to store automaton final states in the transition
-/// table, by encoding them as impossible transitions starting from the said
-/// state, and labelled with letter `ALPHABET_MAX_SIZE`. This bound is also
-/// needed to represent letters as u8.
+/// Maximal size of the alphabet of an automaton/regex (input bytes are in
+/// `[0, 255]`). Also used to encode final states in the transition table as
+/// dummy transitions labelled with `ALPHABET_MAX_SIZE` (see the
+/// `automaton_chip` module), and as the packing shift for substring checks
+/// (see the `substring` module).
 const ALPHABET_MAX_SIZE: usize = 256;
 
+/// Number of advice columns used per automaton lookup (source, letter, output).
+const NB_AUTOMATON_COLS: usize = 3;
+/// Number of advice columns used per substring lookup argument (packed
+/// sequence+index, packed sub+index).
+const NB_SUBSTRING_COLS: usize = 2;
+
+/// Maximum bit-length for the longer sequence length in substring checks. This
+/// value must be chosen lower or equal than `F::CAPACITY - 9`.
+const PARSING_MAX_LEN_BITS: u32 = 64;
+
 /// Number of advice columns for the scanner chip.
-pub const NB_SCANNER_ADVICE_COLS: usize = 3;
+pub const NB_SCANNER_ADVICE_COLS: usize = {
+    if NB_AUTOMATON_COLS > NB_SUBSTRING_COLS {
+        NB_AUTOMATON_COLS
+    } else {
+        NB_SUBSTRING_COLS
+    }
+};
+
+/// Number of shared fixed columns necessary for the scanner chip.
+pub const NB_SCANNER_FIXED_COLS: usize = 1;
 
 // Native gadget type abbreviation.
 type NG<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
@@ -137,6 +164,13 @@ where
     }
 }
 
+/// A sequence of assigned elements.
+type Sequence<F> = Vec<AssignedNative<F>>;
+/// Cache of assigned sequences passed as arguments to `check_subsequence`. Each
+/// sequence is mapped to the list of `(idx, sub)` pairs it was called with.
+/// Also stores the cumulative length of all `sub` associateed to this key.
+type SequenceCache<F> = FxHashMap<Sequence<F>, (Vec<(AssignedNative<F>, Sequence<F>)>, usize)>;
+
 /// Scanner gate configuration.
 #[derive(Clone, Debug)]
 pub struct ScannerConfig<LibIndex, F> {
@@ -150,9 +184,14 @@ pub struct ScannerConfig<LibIndex, F> {
     t_letter: TableColumn,
     t_target: TableColumn,
     t_output: TableColumn,
+
+    // Substring resources. The tag column is used for domain separation and cannot be shared.
+    q_substring: Selector,
+    index_col: Column<Fixed>,
+    tag_col: Column<Fixed>,
 }
 
-/// Chip for scanning: automaton parsing.
+/// Chip for scanning: automaton parsing and substring verification.
 #[derive(Clone, Debug)]
 pub struct ScannerChip<LibIndex, F>
 where
@@ -160,6 +199,12 @@ where
 {
     config: ScannerConfig<LibIndex, F>,
     native_gadget: NG<F>,
+
+    /// Cache mapping a sequence of cells to the list of `(idx, sub)` pairs
+    /// it was called with, so that repeated `check_bytes` calls with the same
+    /// `sequence` argument share the table cost. Tags are assigned later
+    /// during finalisation.
+    sequence_cache: Rc<RefCell<SequenceCache<F>>>,
 }
 
 impl<LibIndex, F> Chip<F> for ScannerChip<LibIndex, F>
@@ -186,6 +231,7 @@ where
 
     type SharedResources = (
         [Column<Advice>; NB_SCANNER_ADVICE_COLS],
+        Column<Fixed>,
         FxHashMap<LibIndex, Automaton>,
     );
 
@@ -193,6 +239,7 @@ where
         Self {
             config: config.clone(),
             native_gadget: deps.clone(),
+            sequence_cache: Rc::new(RefCell::new(FxHashMap::default())),
         }
     }
 
@@ -200,9 +247,24 @@ where
         meta: &mut ConstraintSystem<F>,
         shared_res: &Self::SharedResources,
     ) -> ScannerConfig<LibIndex, F> {
-        let (advice_cols, automata) = shared_res;
+        #[allow(clippy::assertions_on_constants)]
+        {
+            assert!(
+                PARSING_MAX_LEN_BITS <= F::CAPACITY - (u8::BITS + 1),
+                "check_subsequence batching exceeds field capacity ({} / {})",
+                PARSING_MAX_LEN_BITS + u8::BITS + 1,
+                F::CAPACITY
+            )
+        }
 
-        // Static automaton resources.
+        let (advice_cols, index_col, automata) = shared_res;
+
+        // Enable equality on all advice columns.
+        for &col in advice_cols {
+            meta.enable_equality(col);
+        }
+
+        // Automaton resources (shared fixed lookup table).
         let q_automaton = meta.complex_selector();
 
         let state_col = advice_cols[0];
@@ -232,84 +294,91 @@ where
             ]
         });
 
+        // Substring resources.
+        let tag_col = meta.fixed_column();
+        let q_substring = meta.complex_selector();
+
+        // Substring lookup argument (see the `substring` module for full details).
+        //
+        // Each row carries two advice cells: a table entry (state_col) and a query
+        // entry (letter_col), plus two fixed cells: index and tag. The lookup asserts
+        // that every query appears somewhere in the table with the same tag.
+        //
+        // Example: checking `wor` appears in `hello world` at index 6. The circuit will
+        // assign the following values in the region:
+        //
+        //    fixed           advice
+        //    tag | index     state_col | letter_col
+        //    -----------     -----------------------
+        //     1  |  0           'h'    | 257*6 + 'w'    <- query for sub[0]
+        //     1  |  1           'e'    | 257*7 + 'o'    <- query for sub[1]
+        //     1  |  2           'l'    | 257*8 + 'r'    <- query for sub[2]
+        //     1  |  3           'l'    | (padding)
+        //     1  |  4           'o'    | (padding)
+        //     1  |  5           ' '    | (padding)
+        //     1  |  6           'w'    | (padding)
+        //     1  |  7           'o'    | (padding)
+        //     1  |  8           'r'    | (padding)
+        //     1  |  9           'l'    | (padding)
+        //     1  | 10           'd'    | (padding)
+        //
+        // Note in particular that a packed value `257 * (idx + i) + sub[i]` is assigned
+        // to `letter_col`. The lookup identity below then checks that each of these
+        // packed values belong to a table, constructed by packing the rows of
+        // `state_col` similarly.
+        //
+        // `table_packed[i] = 257 * index[i] + state_col[i]`
+        //
+        // The lookup then checks: (tag, packed_query) ∈ {(tag, table_packed)}.
+        //
+        // When sel=OFF, both sides reduce to (tag, query), i.e., a tautology, so rows
+        // not used by substring checks are unconstrained.
+        //
+        // Invariant: the tag column is 0 on every row that is not part of a substring
+        // check region, and non-zero (a unique positive integer) inside each region.
+        // This isolates independent substring checks from each other and from
+        // unrelated rows: a query tagged T can only match table entries with the
+        // same tag T, and rows with tag 0 never participate in any lookup.
+        meta.lookup_any("substring lookup", |meta| {
+            let sel = meta.query_selector(q_substring);
+            let not_sel = Expression::Constant(F::ONE) - sel.clone();
+            let index = meta.query_fixed(*index_col, Rotation::cur());
+            let tag = meta.query_fixed(tag_col, Rotation::cur());
+            let shift = Expression::Constant(F::from(ALPHABET_MAX_SIZE as u64 + 1));
+
+            let table = meta.query_advice(state_col, Rotation::cur());
+            let query = meta.query_advice(letter_col, Rotation::cur());
+
+            vec![
+                (tag.clone(), sel.clone() * tag.clone()),
+                (
+                    query.clone(),
+                    sel * (index * shift + table) + not_sel * query,
+                ),
+            ]
+        });
+
         ScannerConfig {
-            automata,
-            q_automaton,
             state_col,
             letter_col,
             output_col,
+            automata: automata.clone(),
+            q_automaton,
             t_source,
             t_letter,
             t_target,
             t_output,
+            q_substring,
+            index_col: *index_col,
+            tag_col,
         }
     }
 
-    // Load the automaton data (stored in config) inside a lookup table. Notably:
-    //  - The dummy transition `(0,0,0)` is added since the empty lookup rows will
-    //    be filled by it. This assumes that the transition table of the automaton
-    //    has been offset by at least 1 to ensure that 0 can never be a reachable
-    //    state of the automaton.
-    //  - Dummy transitions (s,256,0) are added for all final states s to emulate
-    //    final-state checking at the end of the automaton's run. The number 256 is
-    //    chosen in particular since it is not a valid byte number.
+    /// Loads the automaton transition table and finalises all deferred
+    /// substring checks. Must be called at the end of circuit synthesis.
     fn load(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
-        layouter.assign_table(
-            || "automaton table",
-            |mut table| {
-                let mut offset = 0;
-                let mut add_entry =
-                    |source: F, letter: F, target: F, marker:F| -> Result<(), Error> {
-                        table.assign_cell(
-                            || "t_source",
-                            self.config.t_source,
-                            offset,
-                            || Value::known(source),
-                        )?;
-                        table.assign_cell(
-                            || "t_letter",
-                            self.config.t_letter,
-                            offset,
-                            || Value::known(letter),
-                        )?;
-                        table.assign_cell(
-                            || "t_target",
-                            self.config.t_target,
-                            offset,
-                            || Value::known(target),
-                        )?;
-                        table.assign_cell(
-                            || "t_output",
-                            self.config.t_output,
-                            offset,
-                            || Value::known(marker),
-                        )?;
-                        offset += 1;
-                        Ok(())
-                    };
-
-                // Dummy transition for empty rows.
-                add_entry(F::ZERO, F::ZERO, F::ZERO, F::ZERO)?;
-
-                // Main transitions.
-                for automaton in self.config.automata.iter() {
-                    for ((source, letter), (target,output_extr)) in automaton.1.transitions.iter() {
-                            assert!(
-                                *source != F::ZERO && *target != F::ZERO ,
-                                "sanity check failed: the circuit requires that state 0 is not used, but the automaton generation failed to ensure it."
-                            );
-                            add_entry(*source, *letter, *target, *output_extr)?
-                    }
-                    // Dummy transitions to represent final states. Recall that letter are
-                    // represented in-circuit by elements of `AssignedByte`, which are therefore
-                    // range-checked to be lower than `REGEX_ALPHABET_MAX_SIZE`.
-                    for state in automaton.1.final_states.iter() {
-                        add_entry(*state, F::from(ALPHABET_MAX_SIZE as u64), F::ZERO, F::ZERO)?
-                    }
-                }
-                Ok(())
-            },
-        )
+        self.load_automata_table(layouter)?;
+        self.finalise_substring_checks(layouter)
     }
 }
 
@@ -412,6 +481,7 @@ where
             meta,
             &(
                 advice_cols[..NB_SCANNER_ADVICE_COLS].try_into().unwrap(),
+                fixed_cols[0],
                 automata,
             ),
         );

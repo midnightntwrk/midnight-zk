@@ -24,6 +24,7 @@ verification keys break backwards compatibility.
 * Add `square`, `mod_square` operations in `BigUintGadget` [#259](https://github.com/midnightntwrk/midnight-zk/pull/259)
 * Add `PartialEq` impl for `AssignedBigUint` [#259](https://github.com/midnightntwrk/midnight-zk/pull/259)
 * Update READMEs and add badges [#261](https://github.com/midnightntwrk/midnight-zk/pull/261)
+* Implementation of substring checks [#229](https://github.com/midnightntwrk/midnight-zk/pull/229)
 
 ### Changed
 * Filter out compile-time identity points in MSM [#256](https://github.com/midnightntwrk/midnight-zk/pull/256)
