@@ -1,7 +1,7 @@
 //! ICAO 9303 biometric passport structures for zero-knowledge proofs.
 //!
 //! - **DG1**: Fixed-layout Machine Readable Zone (MRZ). Not parsed via
-//!   `Asn1Spec` — field offsets are given as constants.
+//!   `Asn1Spec`:field offsets are given as constants.
 //! - **SOD**: Security Object Document (CMS SignedData), parsed via `Asn1Spec`
 //!   to extract the fields needed for the verification chain.
 //!
@@ -9,31 +9,31 @@
 
 use std::ops::Range;
 
-use midnight_circuits::parsing::scanner::asn1::{Asn1Spec, Asn1Value};
+use midnight_circuits::parsing::scanner::asn1::Asn1Spec;
 
 // -----------------------------------------------------------------------
 // Well-known OIDs
 // -----------------------------------------------------------------------
 
-/// OID 1.2.840.113549.1.7.2 — CMS signedData.
+/// OID 1.2.840.113549.1.7.2:CMS signedData.
 const OID_SIGNED_DATA: &[u32] = &[1, 2, 840, 113549, 1, 7, 2];
 
-/// OID 2.16.840.1.101.3.4.2.1 — SHA-256.
+/// OID 2.16.840.1.101.3.4.2.1:SHA-256.
 const OID_SHA256: &[u32] = &[2, 16, 840, 1, 101, 3, 4, 2, 1];
 
-/// OID 2.23.136.1.1.1 — LDSSecurityObject (ICAO).
+/// OID 2.23.136.1.1.1:LDSSecurityObject (ICAO).
 const OID_LDS_SECURITY_OBJECT: &[u32] = &[2, 23, 136, 1, 1, 1];
 
-/// OID 1.2.840.113549.1.9.3 — contentType (CMS attribute).
+/// OID 1.2.840.113549.1.9.3:contentType (CMS attribute).
 const OID_CONTENT_TYPE: &[u32] = &[1, 2, 840, 113549, 1, 9, 3];
 
-/// OID 1.2.840.113549.1.9.4 — messageDigest (CMS attribute).
+/// OID 1.2.840.113549.1.9.4:messageDigest (CMS attribute).
 const OID_MESSAGE_DIGEST: &[u32] = &[1, 2, 840, 113549, 1, 9, 4];
 
-/// OID 1.2.840.113549.1.1.11 — SHA-256 with RSA encryption.
+/// OID 1.2.840.113549.1.1.11:SHA-256 with RSA encryption.
 const OID_SHA256_RSA: &[u32] = &[1, 2, 840, 113549, 1, 1, 11];
 
-/// OID 1.2.840.113549.1.1.1 — RSA encryption.
+/// OID 1.2.840.113549.1.1.1:RSA encryption.
 const OID_RSA: &[u32] = &[1, 2, 840, 113549, 1, 1, 1];
 
 /// BIT STRING content size for an RSA-2048 public key:
@@ -87,33 +87,6 @@ pub const DG1_SEX: Range<usize> = 69..70;
 pub const DG1_EXPIRY: Range<usize> = 70..76;
 
 // -----------------------------------------------------------------------
-// SOD index type
-// -----------------------------------------------------------------------
-
-/// Indexes for extracted regions of a SOD structure.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum SodField {
-    /// The full `eContent` bytes (LDSSecurityObject, to be hashed for
-    /// step 2 of verification).
-    EContent,
-    /// The hash of DG1 inside the LDSSecurityObject.
-    HashDg1,
-    /// The `signedAttrs` bytes (to be hashed for DS signature verification).
-    SignedAttrs,
-    /// The `messageDigest` value from signedAttrs (hash of eContent).
-    MessageDigest,
-    /// The DS signature over the signed attributes.
-    DsSignature,
-    /// The full `tbsCertificate` bytes (to be hashed for CSCA signature
-    /// verification).
-    TbsCertificate,
-    /// The DS public key (BIT STRING content from subjectPublicKeyInfo).
-    DsPublicKey,
-    /// The CSCA signature over the tbsCertificate.
-    CscaSignature,
-}
-
-// -----------------------------------------------------------------------
 // SOD spec (SHA-256 + RSA-2048)
 // -----------------------------------------------------------------------
 
@@ -159,24 +132,24 @@ pub enum SodField {
 ///           AlgId(SHA256-RSA, NULL)             -- fixed
 ///           OCTET STRING (256 bytes)            -- EXTRACT
 /// ```
-pub fn sod_sha256_rsa2048_spec() -> Asn1Spec<SodField> {
-    let econtent = Asn1Spec::empty().read_octet_string(
-        Asn1Value::from(lds_security_object_spec()).mark(SodField::EContent),
+pub fn sod_sha256_rsa2048_spec() -> Asn1Spec<&'static str> {
+    let econtent = Asn1Spec::new().read_octet_string(
+        lds_security_object_spec().mark_full("eContent"),
     );
 
-    let signed_data = Asn1Spec::empty().read_sequence(
-        Asn1Spec::empty()
-            .read_integer_fixed(3)
-            .read_set(Asn1Spec::empty().read_algid_null(OID_SHA256))
+    let signed_data = Asn1Spec::new().read_sequence(
+        Asn1Spec::new()
+            .read_integer_const(3)
+            .read_set(Asn1Spec::new().read_algid_null(OID_SHA256))
             .read_sequence(
-                Asn1Spec::empty().read_oid(OID_LDS_SECURITY_OBJECT).read_ctx(0, econtent),
+                Asn1Spec::new().read_oid(OID_LDS_SECURITY_OBJECT).read_ctx(0, econtent),
             )
             .read_ctx(0, x509_certificate_spec())
             .read_set(signer_info_spec()),
     );
 
-    Asn1Spec::empty()
-        .read_sequence(Asn1Spec::empty().read_oid(OID_SIGNED_DATA).read_ctx(0, signed_data))
+    Asn1Spec::new()
+        .read_sequence(Asn1Spec::new().read_oid(OID_SIGNED_DATA).read_ctx(0, signed_data))
 }
 
 // -----------------------------------------------------------------------
@@ -188,30 +161,34 @@ pub fn sod_sha256_rsa2048_spec() -> Asn1Spec<SodField> {
 /// Extracts `HashDg1`. The DG1 DataGroupHash is parsed explicitly;
 /// any additional DG hashes (DG2, DG14, etc.) are consumed as the
 /// tail of the `dataGroupHashValues` SEQUENCE.
-fn lds_security_object_spec() -> Asn1Spec<SodField> {
-    let dg1_hash = Asn1Spec::empty().read_sequence(
-        Asn1Spec::empty()
-            .read_integer_fixed(1)
-            .read_octet_string(Asn1Value::any(Some(32)).mark(SodField::HashDg1)),
+fn lds_security_object_spec() -> Asn1Spec<&'static str> {
+    let dg1_hash = Asn1Spec::new().read_sequence(
+        Asn1Spec::new()
+            .read_integer_const(1)
+            .read_octet_string(
+                Asn1Spec::new().read_bytes(32).mark_last("hashDg1"),
+            ),
     );
 
-    Asn1Spec::empty().read_sequence(
-        Asn1Spec::empty()
-            .read_integer_fixed(0)
+    Asn1Spec::new().read_sequence(
+        Asn1Spec::new()
+            .read_integer_const(0)
             .read_algid_null(OID_SHA256)
-            .read_sequence(Asn1Value::from(dg1_hash).with_rest()),
+            .read_sequence(dg1_hash.read_trail()),
     )
 }
 
 /// X.509 certificate spec (RSA-2048). Extracts `TbsCertificate`,
 /// `DsPublicKey`, and `CscaSignature`.
-fn x509_certificate_spec() -> Asn1Spec<SodField> {
-    Asn1Spec::empty().read_sequence(
-        Asn1Spec::empty()
-            .read_sequence(Asn1Value::from(tbs_certificate_spec()).mark(SodField::TbsCertificate))
+fn x509_certificate_spec() -> Asn1Spec<&'static str> {
+    Asn1Spec::new().read_sequence(
+        Asn1Spec::new()
+            .read_sequence(tbs_certificate_spec())
+                .mark_last("tbsCertificate")
             .read_algid_null(OID_SHA256_RSA)            // signatureAlgorithm (fixed)
             .read_bit_string(                            // signatureValue (fixed 257 bytes)
-                Asn1Value::any(Some(RSA2048_SIG_BIT_STRING_LEN)).mark(SodField::CscaSignature),
+                Asn1Spec::new().read_bytes(RSA2048_SIG_BIT_STRING_LEN)
+                    .mark_last("cscaSignature"),
             ),
     )
 }
@@ -220,56 +197,60 @@ fn x509_certificate_spec() -> Asn1Spec<SodField> {
 ///
 /// **Limitation:** optional fields after `subjectPublicKeyInfo`
 /// (extensions, etc.) are not described. The defensive check in
-/// `process_value` will panic if extensions are present.
-fn tbs_certificate_spec() -> Asn1Spec<SodField> {
-    let spki = Asn1Spec::empty().read_sequence(
-        Asn1Spec::empty()
+/// the parser will panic if extensions are present.
+fn tbs_certificate_spec() -> Asn1Spec<&'static str> {
+    let spki = Asn1Spec::new().read_sequence(
+        Asn1Spec::new()
             .read_algid_null(OID_RSA)                   // algorithm (fixed)
             .read_bit_string(                            // publicKey (fixed 269 bytes)
-                Asn1Value::any(Some(RSA2048_BIT_STRING_LEN)).mark(SodField::DsPublicKey),
+                Asn1Spec::new().read_bytes(RSA2048_BIT_STRING_LEN)
+                    .mark_last("dsPublicKey"),
             ),
     );
 
-    Asn1Spec::empty()
-        .read_ctx(0, Asn1Spec::empty().read_integer_fixed(2))  // version v3 (fixed)
-        .read_integer(Asn1Value::any(None))                     // serialNumber
-        .read_algid_null(OID_SHA256_RSA)                        // signature (fixed)
-        .read_sequence(Asn1Value::any(None))                    // issuer
-        .read_sequence(Asn1Value::any(None))                    // validity
-        .read_sequence(Asn1Value::any(None))                    // subject
+    Asn1Spec::new()
+        .read_ctx(0, Asn1Spec::new().read_integer_const(2))  // version v3 (fixed)
+        .read_integer(Asn1Spec::new().read_trail())            // serialNumber
+        .read_algid_null(OID_SHA256_RSA)                       // signature (fixed)
+        .read_sequence(Asn1Spec::new().read_trail())           // issuer
+        .read_sequence(Asn1Spec::new().read_trail())           // validity
+        .read_sequence(Asn1Spec::new().read_trail())           // subject
         .then(spki)
 }
 
 /// SignerInfo spec (SHA-256 + RSA-2048). Extracts `SignedAttrs`,
 /// `MessageDigest`, and `DsSignature`.
-fn signer_info_spec() -> Asn1Spec<SodField> {
-    Asn1Spec::empty().read_sequence(
-        Asn1Spec::empty()
-            .read_integer_fixed(1)                              // version
-            .read_sequence(Asn1Value::any(None))                // issuerAndSerialNumber
+fn signer_info_spec() -> Asn1Spec<&'static str> {
+    Asn1Spec::new().read_sequence(
+        Asn1Spec::new()
+            .read_integer_const(1)                              // version
+            .read_sequence(Asn1Spec::new().read_trail())        // issuerAndSerialNumber
             .read_algid_null(OID_SHA256)                        // digestAlgorithm (fixed)
-            .read_ctx(0, Asn1Value::from(signed_attrs_spec()).mark(SodField::SignedAttrs))
+            .read_ctx(0, signed_attrs_spec().mark_full("signedAttrs"))
             .read_algid_null(OID_SHA256_RSA)                    // signatureAlgorithm (fixed)
             .read_octet_string(                                 // signature (fixed 256 bytes)
-                Asn1Value::any(Some(RSA2048_SIG_OCTET_STRING_LEN)).mark(SodField::DsSignature),
+                Asn1Spec::new().read_bytes(RSA2048_SIG_OCTET_STRING_LEN)
+                    .mark_last("dsSignature"),
             ),
     )
 }
 
 /// Signed attributes inner structure. Extracts `MessageDigest`.
-fn signed_attrs_spec() -> Asn1Spec<SodField> {
-    let content_type_attr = Asn1Spec::empty().read_sequence(
-        Asn1Spec::empty()
+fn signed_attrs_spec() -> Asn1Spec<&'static str> {
+    let content_type_attr = Asn1Spec::new().read_sequence(
+        Asn1Spec::new()
             .read_oid(OID_CONTENT_TYPE)
-            .read_set(Asn1Spec::empty().read_oid(OID_LDS_SECURITY_OBJECT)),
+            .read_set(Asn1Spec::new().read_oid(OID_LDS_SECURITY_OBJECT)),
     );
 
-    let message_digest_attr = Asn1Spec::empty().read_sequence(
-        Asn1Spec::empty()
+    let message_digest_attr = Asn1Spec::new().read_sequence(
+        Asn1Spec::new()
             .read_oid(OID_MESSAGE_DIGEST)
             .read_set(
-                Asn1Spec::empty()
-                    .read_octet_string(Asn1Value::any(Some(32)).mark(SodField::MessageDigest)),
+                Asn1Spec::new()
+                    .read_octet_string(
+                        Asn1Spec::new().read_bytes(32).mark_last("messageDigest"),
+                    ),
             ),
     );
 

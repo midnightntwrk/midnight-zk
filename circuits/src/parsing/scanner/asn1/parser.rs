@@ -7,11 +7,12 @@ use midnight_proofs::{
 
 use super::{
     der_encoding::{decode_length, decode_tag},
-    Asn1Block, Asn1RawData, Asn1RawDataInternal, Asn1Spec, Asn1Tlv, Asn1Value, Asn1ValueInternal,
+    Asn1Block, Asn1RawData, Asn1RawDataInternal, Asn1Spec, Asn1Tlv,
 };
 use crate::{
     field::AssignedNative,
     instructions::{
+
         arithmetic::ArithInstructions, assertions::AssertionInstructions,
         assignments::AssignmentInstructions, control_flow::ControlFlowInstructions,
         equality::EqualityInstructions, ZeroInstructions,
@@ -205,7 +206,6 @@ impl<F: CircuitField> ParsingPosition<F> {
 enum RawDataRole {
     Tag,
     Len,
-    Val,
 }
 
 /// Mutable state threaded through the ASN.1 parsing functions.
@@ -416,11 +416,19 @@ where
         spec: Asn1Spec<Index>,
     ) -> Result<Asn1FixlenResult<F, Index>, Error> {
         let mut state = ParserState::<F, Index, 0, 0, 0, 0>::new();
-        self.process_blocks(layouter, input, spec, &mut state)?;
+        let (spec, full_marker) = spec.strip_full_marker();
+        self.process_blocks(layouter, input, spec, None, &mut state)?;
         assert!(
             !state.varlen,
             "parse_asn1_fixlen: spec contains variable-length blocks"
         );
+
+        // Handle root-level full_marker extraction.
+        if let Some(idx) = full_marker {
+            let bytes = state.assigned_input.clone();
+            state.record(Some(idx), Asn1ParsedUnit::Fixlen(bytes), true);
+        }
+
         self.assert_equal_positions(
             layouter,
             &state.position,
@@ -470,11 +478,22 @@ where
         spec: Asn1Spec<Index>,
     ) -> Result<Asn1VarlenResult<F, Index, TAG_M, LEN_M, VAL_M, VAL_A, M, A>, Error> {
         let mut state = ParserState::<F, Index, TAG_M, LEN_M, VAL_M, VAL_A>::new();
-        self.process_blocks(layouter, input, spec, &mut state)?;
+        let (spec, full_marker) = spec.strip_full_marker();
+        let raw_snapshot = full_marker.as_ref().map(|_| input.to_vec());
+        self.process_blocks(layouter, input, spec, None, &mut state)?;
         assert!(
             state.varlen,
             "parse_asn1_varlen: spec contains no variable-length blocks"
         );
+
+        // Handle root-level full_marker extraction.
+        if let Some(idx) = full_marker {
+            let raw = &raw_snapshot.unwrap()[..state.assigned_input.len()];
+            let sv: ScannerVec<F, VAL_M, VAL_A> =
+                self.assign_scanner_vec(layouter, Value::known(raw.to_vec()))?;
+            state.record(Some(idx), Asn1ParsedUnit::VarlenVal(sv), true);
+        }
+
         let input_vec: ScannerVec<F, M, A> =
             self.scanner_vec_from_assigned(layouter, &state.assigned_input)?;
         let pos_assigned = self.position_to_assigned(layouter, &state.position)?;
@@ -491,6 +510,10 @@ where
     }
 
     /// Processes the blocks of an [`Asn1Spec`], updating `state`.
+    ///
+    /// `remaining` is the off-circuit byte count of the enclosing TLV's
+    /// value region, or `None` if this is a top-level call. It is required
+    /// for `Varlen` (trail) blocks to compute the trail length.
     fn process_blocks<
         Index: Eq + Hash + Debug + Clone,
         const TAG_M: usize,
@@ -502,8 +525,10 @@ where
         layouter: &mut impl Layouter<F>,
         input: &mut &[u8],
         spec: Asn1Spec<Index>,
+        remaining: Option<usize>,
         state: &mut ParserState<F, Index, TAG_M, LEN_M, VAL_M, VAL_A>,
     ) -> Result<(), Error> {
+        let cursor_at_start = state.assigned_input.len();
         let mut blocks = spec.1;
         blocks.reverse();
         while let Some(block) = blocks.pop() {
@@ -518,9 +543,8 @@ where
                     state.record(index, Asn1ParsedUnit::Fixlen(bytes), true);
                     state.position.advance_exact(n);
                 }
-                Asn1Block::Tlv(tlv, index) => {
-                    assert!(index.is_none(), "full TLV extraction not supported. Extract the Tag, Length, and Value separately.");
-                    self.process_tlv(layouter, input, tlv, state)?;
+                Asn1Block::Tlv(tlv, tlv_marker) => {
+                    self.process_tlv(layouter, input, tlv, tlv_marker, state)?;
                 }
                 Asn1Block::OptionalTlv {
                     expected_tag,
@@ -528,6 +552,42 @@ where
                     val,
                 } => {
                     self.process_optional_tlv(layouter, input, &expected_tag, len, val, state)?;
+                }
+                Asn1Block::Varlen(index) => {
+                    let remaining = remaining.expect(
+                        "Varlen (trail) block at top level: trail blocks can only \
+                         appear inside a TLV value",
+                    );
+                    state.varlen = true;
+                    let bytes_consumed = state.assigned_input.len() - cursor_at_start;
+                    let trail_len = remaining - bytes_consumed;
+
+                    if let Some(trail_idx) = index {
+                        // Indexed trail: assign bytes, create ScannerVec, substring check.
+                        let trail_raw = consume(input, trail_len);
+                        let trail_values: Vec<_> =
+                            trail_raw.iter().map(|&b| Value::known(b)).collect();
+                        let assigned =
+                            self.native_gadget.assign_many(layouter, &trail_values)?;
+                        state.assigned_input.extend_from_slice(&assigned);
+
+                        let sv: ScannerVec<F, VAL_M, VAL_A> =
+                            self.assign_scanner_vec(layouter, Value::known(trail_raw))?;
+                        state.substring_checks.push((
+                            state.position.clone(),
+                            Asn1ParsedUnit::VarlenVal(sv.clone()),
+                        ));
+                        state.position.advance_variable(sv.len().clone());
+                        state.extracted.insert(trail_idx, Asn1ParsedUnit::VarlenVal(sv));
+                    } else {
+                        // Non-indexed trail: assign bytes, advance position.
+                        self.assign_witness(layouter, input, trail_len, state)?;
+                        let trail_len_assigned = self.native_gadget.assign(
+                            layouter,
+                            Value::known(F::from(trail_len as u64)),
+                        )?;
+                        state.position.advance_variable(trail_len_assigned);
+                    }
                 }
             }
         }
@@ -572,7 +632,6 @@ where
                         decode_tag(&v).expect("ill-formed const Tag in witness");
                         None
                     }
-                    RawDataRole::Val => None,
                 };
                 state.record(index, Asn1ParsedUnit::Fixlen(bytes), false);
                 state.position.advance_exact(n);
@@ -616,13 +675,6 @@ where
                         let parsed_unit = Asn1ParsedUnit::VarlenLen(sv.clone());
                         (sv.len().clone(), Some(decoded), parsed_unit)
                     }
-                    RawDataRole::Val => {
-                        // Val role: only assigning the vector, no additional constraints needed.
-                        let sv: ScannerVec<F, VAL_M, VAL_A> =
-                            self.assign_scanner_vec(layouter, Value::known(raw_bytes))?;
-                        let parsed_unit = Asn1ParsedUnit::VarlenVal(sv.clone());
-                        (sv.len().clone(), None, parsed_unit)
-                    }
                 };
                 state.record(index, parsed_unit, true);
                 state.position.advance_variable(assigned_len);
@@ -633,8 +685,7 @@ where
 
     /// Validates and interprets a fixed-size raw data block based on its
     /// `role`. For `Tag`, validates the encoding and discards the result.
-    /// For `Len`, validates and returns the decoded length value. For
-    /// `Val`, does nothing.
+    /// For `Len`, validates and returns the decoded length value.
     fn automaton_validate_fixlen(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -654,7 +705,6 @@ where
                 let length_value = self.parse_asn1_len(layouter, bytes)?;
                 Ok(Some(length_value))
             }
-            RawDataRole::Val => Ok(None),
         }
     }
 
@@ -686,6 +736,10 @@ where
     /// Processes a complete TLV: parses tag, length, and value, then
     /// validates the tag/length encodings via automata and asserts that
     /// the decoded length equals the value byte count.
+    ///
+    /// `tlv_marker`: if set, extracts the full T+L+V bytes under this
+    /// index. The value spec's `full_marker` (if any) additionally
+    /// extracts V-only bytes.
     fn process_tlv<
         Index: Eq + Hash + Debug + Clone,
         const TAG_M: usize,
@@ -697,119 +751,80 @@ where
         layouter: &mut impl Layouter<F>,
         input: &mut &[u8],
         tlv: Asn1Tlv<Index>,
+        tlv_marker: Option<Index>,
         state: &mut ParserState<F, Index, TAG_M, LEN_M, VAL_M, VAL_A>,
     ) -> Result<(), Error> {
-        // Decode tag and length off-circuit (peek, then parse consumes).
+        // Peek at tag and length off-circuit before consuming.
         let (n_tag, _) = decode_tag(input).expect("failed to decode tag from witness");
+        let (n_len, len_value) =
+            decode_length(&input[n_tag..]).expect("failed to decode length from witness");
         let value_is_varlen = !matches!(&tlv.len.0, Asn1RawDataInternal::Const(..));
 
-        // Process T, L, V. Automaton validation happens inside process_raw.
-        self.process_raw(layouter, input, n_tag, tlv.tag, RawDataRole::Tag, state)?;
+        // Strip full_marker from value spec.
+        let (val_spec, full_marker) = tlv.val.strip_full_marker();
 
-        let (n_len, len_value) =
-            decode_length(input).expect("failed to decode length from witness");
+        // Snapshot raw bytes for varlen extractions (before consuming).
+        let tlv_total = n_tag + n_len + len_value;
+        let tlv_raw = (tlv_marker.is_some() && value_is_varlen)
+            .then(|| input[..tlv_total].to_vec());
+        let val_raw = (full_marker.is_some() && value_is_varlen)
+            .then(|| input[n_tag + n_len..tlv_total].to_vec());
+
+        // Cursor snapshots for fixed-size extraction.
+        let tlv_cursor = state.assigned_input.len();
+
+        // Process T, L. Automaton validation happens inside process_raw.
+        self.process_raw(layouter, input, n_tag, tlv.tag, RawDataRole::Tag, state)?;
         let decoded_len = self
             .process_raw(layouter, input, n_len, tlv.len, RawDataRole::Len, state)?
             .expect("process_raw with RawDataRole::Len must return a decoded length");
         let expected_len = ParsingPosition::from(decoded_len);
 
         let pos_before_val = state.position.clone();
-        self.process_value(layouter, input, len_value, tlv.val, value_is_varlen, state)?;
+        let val_cursor = state.assigned_input.len();
+
+        // Process V blocks.
+        self.process_blocks(layouter, input, val_spec, Some(len_value), state)?;
+
         let effective_len = state.position.diff(&pos_before_val);
 
-        // Constraining that the effective Value's length
-        // (`pos_after_val.diff(&pos_before_val)`) corresponds to the Length block
-        // (`decoded_length`).
-        self.assert_equal_positions(layouter, &effective_len, &expected_len)
-    }
+        // Assert decoded length equals effective value length.
+        self.assert_equal_positions(layouter, &effective_len, &expected_len)?;
 
-    /// Processes an `Asn1Value`: either a simple raw data block or a
-    /// recursive spec. `value_is_varlen` indicates whether the enclosing
-    /// TLV's length was non-constant (the value region has a
-    /// witness-dependent size).
-    fn process_value<
-        Index: Eq + Hash + Debug + Clone,
-        const TAG_M: usize,
-        const LEN_M: usize,
-        const VAL_M: usize,
-        const VAL_A: usize,
-    >(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        input: &mut &[u8],
-        n: usize,
-        data: Asn1Value<Index>,
-        value_is_varlen: bool,
-        state: &mut ParserState<F, Index, TAG_M, LEN_M, VAL_M, VAL_A>,
-    ) -> Result<(), Error> {
-        match data.0 {
-            Asn1ValueInternal::Simple(raw_data) => {
-                self.process_raw(layouter, input, n, raw_data, RawDataRole::Val, state)?;
-            }
-            Asn1ValueInternal::Recursive(inner_spec, index, tail) => {
-                // Save raw bytes before processing for varlen extraction.
-                let raw_bytes = (value_is_varlen && index.is_some()).then(|| input[..n].to_vec());
-                let cursor_before = state.assigned_input.len();
-                self.process_blocks(layouter, input, inner_spec, state)?;
-                let bytes_consumed = state.assigned_input.len() - cursor_before;
-
-                // Handle tail: consume remaining bytes after inner blocks.
-                if let Some(tail_marker) = tail {
-                    let tail_len = n - bytes_consumed;
-                    state.varlen = true;
-
-                    if let Some(tail_idx) = tail_marker {
-                        // Indexed tail: assign bytes, create ScannerVec, substring check.
-                        let tail_raw = consume(input, tail_len);
-                        let tail_values: Vec<_> =
-                            tail_raw.iter().map(|&b| Value::known(b)).collect();
-                        let assigned =
-                            self.native_gadget.assign_many(layouter, &tail_values)?;
-                        state.assigned_input.extend_from_slice(&assigned);
-
-                        let sv: ScannerVec<F, VAL_M, VAL_A> =
-                            self.assign_scanner_vec(layouter, Value::known(tail_raw))?;
-                        state.substring_checks.push((
-                            state.position.clone(),
-                            Asn1ParsedUnit::VarlenVal(sv.clone()),
-                        ));
-                        state.position.advance_variable(sv.len().clone());
-                        state.extracted.insert(tail_idx, Asn1ParsedUnit::VarlenVal(sv));
-                    } else {
-                        // Non-indexed tail: assign bytes, advance position.
-                        self.assign_witness(layouter, input, tail_len, state)?;
-                        let tail_len_assigned = self.native_gadget.assign(
-                            layouter,
-                            Value::known(F::from(tail_len as u64)),
-                        )?;
-                        state.position.advance_variable(tail_len_assigned);
-                    }
-                } else {
-                    assert_eq!(
-                        bytes_consumed, n,
-                        "recursive value consumed {bytes_consumed} bytes but TLV length \
-                         field says {n}. Either the `Asn1Spec` is inconsistent, or the \
-                         witness is ill-formed. Consider using `with_rest()` if the \
-                         value has trailing data."
-                    );
+        // Handle full_marker (V-only extraction).
+        if let Some(idx) = full_marker {
+            match val_raw {
+                None => {
+                    // Fixed-size extraction.
+                    let v_bytes = state.assigned_input[val_cursor..].to_vec();
+                    state.record(Some(idx), Asn1ParsedUnit::Fixlen(v_bytes), true);
                 }
-
-                if index.is_some() {
-                    match raw_bytes {
-                        None => {
-                            // Fixed-size: extract from assigned_input.
-                            let v_bytes = state.assigned_input[cursor_before..].to_vec();
-                            state.record(index, Asn1ParsedUnit::Fixlen(v_bytes), true);
-                        }
-                        Some(raw) => {
-                            // Variable-size: build a ScannerVec.
-                            let sv = self.assign_scanner_vec(layouter, Value::known(raw))?;
-                            state.record(index, Asn1ParsedUnit::VarlenVal(sv), true);
-                        }
-                    }
+                Some(raw) => {
+                    // Variable-size extraction.
+                    let sv: ScannerVec<F, VAL_M, VAL_A> =
+                        self.assign_scanner_vec(layouter, Value::known(raw))?;
+                    state.record(Some(idx), Asn1ParsedUnit::VarlenVal(sv), true);
                 }
             }
         }
+
+        // Handle tlv_marker (full T+L+V extraction).
+        if let Some(idx) = tlv_marker {
+            match tlv_raw {
+                None => {
+                    // Fixed-size extraction.
+                    let tlv_bytes = state.assigned_input[tlv_cursor..].to_vec();
+                    state.record(Some(idx), Asn1ParsedUnit::Fixlen(tlv_bytes), true);
+                }
+                Some(raw) => {
+                    // Variable-size extraction.
+                    let sv: ScannerVec<F, VAL_M, VAL_A> =
+                        self.assign_scanner_vec(layouter, Value::known(raw))?;
+                    state.record(Some(idx), Asn1ParsedUnit::VarlenVal(sv), true);
+                }
+            }
+        }
+
         Ok(())
     }
 
@@ -843,7 +858,7 @@ where
         input: &mut &[u8],
         expected_tag: &[u8],
         len: Asn1RawData<Index>,
-        val: Asn1Value<Index>,
+        val: Asn1Spec<Index>,
         state: &mut ParserState<F, Index, TAG_M, LEN_M, VAL_M, VAL_A>,
     ) -> Result<(), Error> {
         state.varlen = true;
@@ -919,7 +934,7 @@ where
         if let Some(idx) = len.into_marker() {
             state.extracted.insert(idx, Asn1ParsedUnit::VarlenLen(len_sv));
         }
-        if let Some(idx) = val.into_marker() {
+        if let Some(idx) = val.into_single_block_marker() {
             state.extracted.insert(idx, Asn1ParsedUnit::VarlenVal(val_sv));
         }
 
