@@ -23,7 +23,7 @@ use std::{collections::BTreeMap, time::Instant};
 use common::sha_preimage::ShaPreimageCircuit;
 use ff::Field;
 use group::Group;
-use midnight_aggregation::ivc::{self, IvcContext, IvcIO, IvcState, IvcTransition};
+use midnight_aggregation::ivc::{self, IvcCircuit, IvcContext, IvcIO, IvcState, IvcTransition};
 use midnight_circuits::{
     hash::poseidon::{PoseidonChip, PoseidonState},
     instructions::{hash::HashCPU, *},
@@ -40,6 +40,7 @@ use midnight_proofs::{
     transcript::{CircuitTranscript, Transcript},
 };
 use midnight_zk_stdlib::{
+    cs_degree,
     utils::plonk_api::{load_srs, SrsSource},
     MidnightVK, Relation, ZkStdLib, ZkStdLibArch,
 };
@@ -352,13 +353,12 @@ fn main() {
     const STEPS: usize = 3;
 
     // The inner circuit can use a different SRS than the IVC circuit.
-    let inner_srs = load_srs(SrsSource::Filecoin, sha_preimage::K, 5); // CS degree is 5
+    let inner_arch = ShaPreimageCircuit.used_chips();
+    let inner_srs = load_srs(SrsSource::Filecoin, sha_preimage::K, cs_degree(inner_arch));
     let inner_vk = sha_preimage::setup_vk(&inner_srs);
     let inner_pk = sha_preimage::setup_pk(&inner_vk);
     let inner_ctx = {
-        let (inner_cs, inner_domain) =
-            common::constraint_system(ShaPreimageCircuit.used_chips(), sha_preimage::K);
-
+        let (inner_cs, inner_domain) = common::constraint_system(inner_arch, sha_preimage::K);
         InnerCircuitContext {
             cs: inner_cs,
             domain: inner_domain,
@@ -379,7 +379,11 @@ fn main() {
     println!("{STEPS} inner proofs generated in {:.2?}", start.elapsed());
 
     // IVC setup.
-    let ivc_srs = load_srs(SrsSource::Midnight, IVC_K, 5); // CS degree is 5
+    let ivc_srs = load_srs(
+        SrsSource::Midnight,
+        IVC_K,
+        IvcCircuit::<ProofAggregation>::cs_degree(),
+    );
     let start = Instant::now();
     let (mut prover, verifier) = ivc::setup::<ProofAggregation>(ivc_srs, IVC_K, inner_ctx.clone());
     println!("IVC setup completed in {:.2?}", start.elapsed());

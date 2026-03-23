@@ -1883,6 +1883,14 @@ where
     acc_guard.verify(params_verifier).map_err(|_| Error::Opening)
 }
 
+/// Returns the constraint-system degree relative to the given [`ZkStdLibArch`].
+pub fn cs_degree(arch: ZkStdLibArch) -> usize {
+    let mut cs = midnight_proofs::plonk::ConstraintSystem::<F>::default();
+    // max_bit_len does not affect the CS degree, use an arbitrary value.
+    ZkStdLib::configure(&mut cs, (arch, 8));
+    cs.degree()
+}
+
 /// Cost model of the given relation for the given `k`.
 /// `k` is the log2 of the circuit size. If `None`, the optimal value is
 /// computed automatically.
