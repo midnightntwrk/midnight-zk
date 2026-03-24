@@ -193,13 +193,11 @@ impl Relation for PassportVerification {
 
         // -- Step 1: Parse SOD --
         let spec = spec::sod_sha256_rsa2048_spec();
-        let mut sod_raw_buf: Vec<u8> = Vec::new();
-        witness.as_ref().map(|(sod, _, _, _)| sod_raw_buf = sod.clone());
-        let mut sod_input: &[u8] = &sod_raw_buf;
+        let sod_input = witness.as_ref().map(|(sod, _, _, _)| sod.clone());
         let sod_result = scanner
             .parse_asn1_varlen::<&str, TAG_M, LEN_M, VAL_M, VAL_A, SOD_M, SOD_A>(
                 layouter,
-                &mut sod_input,
+                sod_input,
                 spec,
             )?;
 

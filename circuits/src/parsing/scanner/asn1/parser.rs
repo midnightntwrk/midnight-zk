@@ -6,13 +6,12 @@ use midnight_proofs::{
 };
 
 use super::{
-    der_encoding::{decode_length, decode_tag},
+    der_encoding::{decode_length, decode_tag, encode_length},
     Asn1Block, Asn1RawData, Asn1RawDataInternal, Asn1Spec, Asn1Tlv,
 };
 use crate::{
     field::AssignedNative,
     instructions::{
-
         arithmetic::ArithInstructions, assertions::AssertionInstructions,
         assignments::AssignmentInstructions, control_flow::ControlFlowInstructions,
         equality::EqualityInstructions, ZeroInstructions,
@@ -281,6 +280,37 @@ impl<
 // Off-circuit helpers
 // -----------------------------------------------------------------------
 
+/// Generates minimal valid DER bytes matching a spec, for use as a dummy
+/// witness during keygen. The structure matches any real input conforming
+/// to the spec, so the parser produces the same circuit.
+fn dummy_input<Index: Eq + Hash>(spec: &Asn1Spec<Index>) -> Vec<u8> {
+    let mut out = Vec::new();
+    for block in &spec.1 {
+        match block {
+            Asn1Block::Const(v, _) => out.extend_from_slice(v),
+            Asn1Block::Fixlen(n, _) => out.extend(std::iter::repeat_n(0u8, *n)),
+            Asn1Block::Tlv(tlv, _) => {
+                match &tlv.tag.0 {
+                    Asn1RawDataInternal::Const(v, _) => out.extend_from_slice(v),
+                    Asn1RawDataInternal::Fixlen(n, _) => {
+                        out.extend(std::iter::repeat_n(0u8, *n))
+                    }
+                    Asn1RawDataInternal::Varlen(_) => out.push(0x00),
+                }
+                let val_bytes = dummy_input(&tlv.val);
+                match &tlv.len.0 {
+                    Asn1RawDataInternal::Const(v, _) => out.extend_from_slice(v),
+                    _ => out.extend(encode_length(val_bytes.len())),
+                }
+                out.extend(val_bytes);
+            }
+            Asn1Block::OptionalTlv { .. } => {}
+            Asn1Block::Varlen(_) => {}
+        }
+    }
+    out
+}
+
 /// Consume `n` bytes from the front of `input`.
 fn consume(input: &mut &[u8], n: usize) -> Vec<u8> {
     assert!(
@@ -414,6 +444,10 @@ where
     /// and constrained data can be recovered using `Asn1FixlenResult`
     /// associated functions.
     ///
+    /// When `input` is `Value::unknown()` (e.g., during keygen), a dummy
+    /// byte sequence derived from the spec is used so the circuit
+    /// structure is built correctly without a real witness.
+    ///
     /// # Panics
     ///
     /// If the spec contains any variable-length blocks (use
@@ -421,12 +455,16 @@ where
     pub fn parse_asn1_fixlen<Index: Eq + Hash + Debug + Clone>(
         &self,
         layouter: &mut impl Layouter<F>,
-        input: &mut &[u8],
+        input: Value<Vec<u8>>,
         spec: Asn1Spec<Index>,
     ) -> Result<Asn1FixlenResult<F, Index>, Error> {
+        let dummy = dummy_input(&spec);
+        let mut raw: Vec<u8> = dummy;
+        input.map(|v| raw = v);
+        let mut slice: &[u8] = &raw;
         let mut state = ParserState::<F, Index, 0, 0, 0, 0>::new();
         let (spec, full_marker) = spec.strip_full_marker();
-        self.process_blocks(layouter, input, spec, None, &mut state)?;
+        self.process_blocks(layouter, &mut slice, spec, None, &mut state)?;
         assert!(
             !state.varlen,
             "parse_asn1_fixlen: spec contains variable-length blocks"
@@ -472,6 +510,28 @@ where
     ///
     /// If the spec contains no variable-length blocks (use
     /// [`parse_asn1_fixlen`](`Self::parse_asn1_fixlen`) instead).
+    /// Parses a witness that may contain variable-length blocks. The assigned
+    /// and constrained data can be recovered using `Asn1VarlenResult`
+    /// associated functions. The different const parameters stand for (put
+    /// an arbitrary value if not applicable):
+    ///
+    /// - `TAG_M`: maximal length of a variable-length Tag unit in TLV blocks.
+    /// - `LEN_M`: maximal length of a variable-length Length unit in TLV
+    ///   blocks.
+    /// - `VAL_M`: maximal length of a variable-length Value unit in TLV blocks.
+    /// - `VAL_A`: `AssignedVector` alignment for variable-length Value units in
+    ///   TLV blocks.
+    /// - `M`: maximal length of `input`.
+    /// - `A`: `AssignedVector` alignment for `input`.
+    ///
+    /// When `input` is `Value::unknown()` (e.g., during keygen), a dummy
+    /// byte sequence derived from the spec is used so the circuit
+    /// structure is built correctly without a real witness.
+    ///
+    /// # Panics
+    ///
+    /// If the spec contains no variable-length blocks (use
+    /// [`parse_asn1_fixlen`](`Self::parse_asn1_fixlen`) instead).
     pub fn parse_asn1_varlen<
         Index: Eq + Hash + Debug + Clone,
         const TAG_M: usize,
@@ -483,13 +543,17 @@ where
     >(
         &self,
         layouter: &mut impl Layouter<F>,
-        input: &mut &[u8],
+        input: Value<Vec<u8>>,
         spec: Asn1Spec<Index>,
     ) -> Result<Asn1VarlenResult<F, Index, TAG_M, LEN_M, VAL_M, VAL_A, M, A>, Error> {
+        let dummy = dummy_input(&spec);
+        let mut raw: Vec<u8> = dummy;
+        input.map(|v| raw = v);
+        let mut slice: &[u8] = &raw;
         let mut state = ParserState::<F, Index, TAG_M, LEN_M, VAL_M, VAL_A>::new();
         let (spec, full_marker) = spec.strip_full_marker();
-        let raw_snapshot = full_marker.as_ref().map(|_| input.to_vec());
-        self.process_blocks(layouter, input, spec, None, &mut state)?;
+        let raw_snapshot = full_marker.as_ref().map(|_| slice.to_vec());
+        self.process_blocks(layouter, &mut slice, spec, None, &mut state)?;
         assert!(
             state.varlen,
             "parse_asn1_varlen: spec contains no variable-length blocks"
@@ -576,8 +640,7 @@ where
                         let trail_raw = consume(input, trail_len);
                         let trail_values: Vec<_> =
                             trail_raw.iter().map(|&b| Value::known(b)).collect();
-                        let assigned =
-                            self.native_gadget.assign_many(layouter, &trail_values)?;
+                        let assigned = self.native_gadget.assign_many(layouter, &trail_values)?;
                         state.assigned_input.extend_from_slice(&assigned);
 
                         let sv: ScannerVec<F, VAL_M, VAL_A> =
@@ -591,10 +654,9 @@ where
                     } else {
                         // Non-indexed trail: assign bytes, advance position.
                         self.assign_witness(layouter, input, trail_len, state)?;
-                        let trail_len_assigned = self.native_gadget.assign(
-                            layouter,
-                            Value::known(F::from(trail_len as u64)),
-                        )?;
+                        let trail_len_assigned = self
+                            .native_gadget
+                            .assign(layouter, Value::known(F::from(trail_len as u64)))?;
                         state.position.advance_variable(trail_len_assigned);
                     }
                 }
@@ -774,8 +836,8 @@ where
 
         // Snapshot raw bytes for varlen extractions (before consuming).
         let tlv_total = n_tag + n_len + len_value;
-        let tlv_raw = (tlv_marker.is_some() && value_is_varlen)
-            .then(|| input[..tlv_total].to_vec());
+        let tlv_raw =
+            (tlv_marker.is_some() && value_is_varlen).then(|| input[..tlv_total].to_vec());
         let val_raw = (full_marker.is_some() && value_is_varlen)
             .then(|| input[n_tag + n_len..tlv_total].to_vec());
 

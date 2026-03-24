@@ -37,11 +37,14 @@ const OID_SHA256_RSA: &[u32] = &[1, 2, 840, 113549, 1, 1, 11];
 const OID_RSA: &[u32] = &[1, 2, 840, 113549, 1, 1, 1];
 
 /// BIT STRING content size for an RSA-2048 public key:
-/// 1 byte (unused bits = 0x00) + DER(SEQUENCE { INTEGER(256+overhead),
-/// INTEGER(3+overhead) }). The SEQUENCE is: 30 82 01 0A  02 82 01 01 00 <256
-/// bytes modulus> 02 03 01 00 01 = 4 + 259 + 5 = 268 content bytes. BIT STRING
-/// content = 1 + 268 = 269 bytes.
-pub const RSA2048_BIT_STRING_LEN: usize = 269;
+/// 1 byte (unused bits = 0x00) + DER(SEQUENCE { INTEGER modulus, INTEGER exponent }).
+///
+/// - INTEGER modulus: tag(1) + length(3, 0x82 0x01 0x01 = 257) + 0x00 + 256 bytes = 261
+/// - INTEGER exponent (65537): tag(1) + length(1) + 3 bytes = 5
+/// - SEQUENCE content: 261 + 5 = 266
+/// - SEQUENCE TLV: tag(1) + length(3, 0x82 0x01 0x0A) + 266 = 270
+/// - BIT STRING content: 1 (unused bits) + 270 = 271
+pub const RSA2048_BIT_STRING_LEN: usize = 271;
 
 /// RSA-2048 signature size: always exactly 256 bytes. BIT STRING
 /// content = 1 (unused bits) + 256 = 257 bytes.
@@ -214,6 +217,7 @@ fn tbs_certificate_spec() -> Asn1Spec<&'static str> {
         .read_sequence(Asn1Spec::new().read_trail()) // validity
         .read_sequence(Asn1Spec::new().read_trail()) // subject
         .then(spki)
+        .read_trail() // optional extensions ([3] EXPLICIT)
 }
 
 /// SignerInfo spec (SHA-256 + RSA-2048). Extracts `SignedAttrs`,
