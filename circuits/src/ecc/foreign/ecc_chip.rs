@@ -1019,8 +1019,8 @@ where
         }
     }
 
-    /// Returns [`Error::CompletenessFailure`] if `value` is known and `f` returns
-    /// `true`.
+    /// Returns [`Error::CompletenessFailure`] if `value` is known and `f`
+    /// returns `true`.
     fn completeness_error_if<V>(value: &Value<V>, f: impl FnOnce(&V) -> bool) -> Result<(), Error> {
         value.error_if_known_and(f).map_err(|_| Error::CompletenessFailure)
     }
