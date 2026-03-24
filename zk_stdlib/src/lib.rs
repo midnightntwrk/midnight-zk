@@ -182,7 +182,7 @@ pub struct ZkStdLibArch {
     /// Number of parallel lookups for range checks.
     ///
     /// Must be strictly smaller than `nb_arith_cols`.
-    pub nr_pow2range_cols: u8,
+    pub num_pow2range_cols: u8,
 }
 
 impl Default for ZkStdLibArch {
@@ -200,7 +200,7 @@ impl Default for ZkStdLibArch {
             base64: false,
             automaton: false,
             nb_arith_cols: 5,
-            nr_pow2range_cols: 1,
+            num_pow2range_cols: 1,
         }
     }
 }
@@ -394,7 +394,7 @@ impl ZkStdLib {
     ) -> ZkStdLibConfig {
         let nb_advice_cols = [
             arch.nb_arith_cols as usize,
-            arch.nr_pow2range_cols as usize,
+            arch.num_pow2range_cols as usize,
             arch.jubjub as usize * NB_EDWARDS_COLS,
             arch.poseidon as usize * NB_POSEIDON_ADVICE_COLS,
             arch.sha2_256 as usize * NB_SHA256_ADVICE_COLS,
@@ -450,11 +450,11 @@ impl ZkStdLib {
             ),
         );
 
-        let nb_parallel_range_checks = arch.nr_pow2range_cols as usize;
+        let nb_parallel_range_checks = arch.num_pow2range_cols as usize;
         let max_bit_len = max_bit_len as u32;
 
         let pow2range_config =
-            Pow2RangeChip::configure(meta, &advice_columns[1..=arch.nr_pow2range_cols as usize]);
+            Pow2RangeChip::configure(meta, &advice_columns[1..=arch.num_pow2range_cols as usize]);
 
         let core_decomposition_config =
             P2RDecompositionChip::configure(meta, &(native_config.clone(), pow2range_config));

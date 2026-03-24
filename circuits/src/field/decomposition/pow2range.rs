@@ -120,8 +120,8 @@ impl<F: CircuitField> Pow2RangeInstructions<F> for Pow2RangeChip<F> {
         values: &[AssignedNative<F>],
         n: usize,
     ) -> Result<(), Error> {
-        let nr_range_check_cols = self.config.val_cols.len();
-        for chunk in values.chunks(nr_range_check_cols) {
+        let num_range_check_cols = self.config.val_cols.len();
+        for chunk in values.chunks(num_range_check_cols) {
             layouter.assign_region(
                 || "Assign values",
                 |mut region| {
@@ -136,8 +136,8 @@ impl<F: CircuitField> Pow2RangeInstructions<F> for Pow2RangeChip<F> {
                         region.constrain_equal(x.cell(), assigned.cell())?
                     }
                     // Assign zeros in the unassigned lookup columns in case |chunk| <
-                    // ZkStdLibArch::nr_pow2range_cols.
-                    for i in chunk.len()..nr_range_check_cols {
+                    // ZkStdLibArch::num_pow2range_cols.
+                    for i in chunk.len()..num_range_check_cols {
                         region.assign_advice(
                             || "pow2range zero",
                             self.config.val_cols[i],
@@ -241,13 +241,13 @@ mod tests {
 
     use super::*;
 
-    struct TestCircuit<F: CircuitField, const NR_COLS: usize> {
-        inputs: Vec<([u64; NR_COLS], usize)>, // (values, bit_len)
+    struct TestCircuit<F: CircuitField, const NUM_COLS: usize> {
+        inputs: Vec<([u64; NUM_COLS], usize)>, // (values, bit_len)
         max_bit_len: usize,
         _marker: PhantomData<F>,
     }
 
-    impl<F: CircuitField, const NR_COLS: usize> Circuit<F> for TestCircuit<F, NR_COLS> {
+    impl<F: CircuitField, const NUM_COLS: usize> Circuit<F> for TestCircuit<F, NUM_COLS> {
         type Config = Pow2RangeConfig;
         type FloorPlanner = SimpleFloorPlanner;
         type Params = ();
@@ -257,7 +257,7 @@ mod tests {
         }
 
         fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
-            let columns = (0..NR_COLS).map(|_| meta.advice_column()).collect::<Vec<_>>();
+            let columns = (0..NUM_COLS).map(|_| meta.advice_column()).collect::<Vec<_>>();
             Pow2RangeChip::configure(meta, &columns)
         }
 
@@ -272,7 +272,7 @@ mod tests {
                 || "pow2range test",
                 |mut region| {
                     for (offset, input) in self.inputs.iter().enumerate() {
-                        for i in 0..NR_COLS {
+                        for i in 0..NUM_COLS {
                             let col = pow2range_chip.config.val_cols[i];
                             let val = Value::known(F::from(input.0[i]));
                             region.assign_advice(|| "pow2range val", col, offset, || val)?;
@@ -288,7 +288,7 @@ mod tests {
         }
     }
 
-    fn run_pow2range_test<const NR_COLS: usize>() {
+    fn run_pow2range_test<const NUM_COLS: usize>() {
         const MAX_BIT_LEN: usize = 10;
         // FIXME: Ideally k should be (MAX_BIT_LEN + 1), this is currently not possible
         // because there seem to be 6 unusable rows for the ZK adjustment.
@@ -297,7 +297,7 @@ mod tests {
 
         let inputs = (0..MAX_BIT_LEN)
             .map(|n| {
-                let mut values = [0u64; NR_COLS];
+                let mut values = [0u64; NUM_COLS];
                 values[0] = (1 << n) - 1;
                 for value in values.iter_mut().skip(1) {
                     *value = rng.gen_range(0..(1 << n));
@@ -306,7 +306,7 @@ mod tests {
             })
             .collect();
 
-        let circuit = TestCircuit::<Fp, NR_COLS> {
+        let circuit = TestCircuit::<Fp, NUM_COLS> {
             inputs,
             max_bit_len: MAX_BIT_LEN,
             _marker: PhantomData,
@@ -329,20 +329,20 @@ mod tests {
         run_pow2range_test::<4>();
     }
 
-    fn run_pow2range_negative_test<const NR_COLS: usize>() {
+    fn run_pow2range_negative_test<const NUM_COLS: usize>() {
         const MAX_BIT_LEN: usize = 10;
         // FIXME: Ideally k should be (MAX_BIT_LEN + 1), this is currently not possible
         // because there seem to be 6 unusable rows for the ZK adjustment.
         let k = (MAX_BIT_LEN + 2) as u32;
 
         (0..MAX_BIT_LEN).for_each(|n| {
-            let mut values = [0u64; NR_COLS];
+            let mut values = [0u64; NUM_COLS];
             // Set the i-th position to 2^n to make the circuit fail.
             // We vary i to check that the assertion works in all enabled columns.
-            let i = n % NR_COLS;
+            let i = n % NUM_COLS;
             values[i] = 1 << n;
 
-            let circuit = TestCircuit::<Fp, NR_COLS> {
+            let circuit = TestCircuit::<Fp, NUM_COLS> {
                 inputs: vec![(values, n)],
                 max_bit_len: MAX_BIT_LEN,
                 _marker: PhantomData,

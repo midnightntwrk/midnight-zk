@@ -72,7 +72,7 @@ impl Relation for RSASignatureCircuit {
 
     fn used_chips(&self) -> ZkStdLibArch {
         ZkStdLibArch {
-            nr_pow2range_cols: 4,
+            num_pow2range_cols: 4,
             ..ZkStdLibArch::default()
         }
     }

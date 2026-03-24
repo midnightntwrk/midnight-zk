@@ -184,7 +184,7 @@ impl Relation for BitcoinThresholdECDSA {
     fn used_chips(&self) -> ZkStdLibArch {
         ZkStdLibArch {
             secp256k1: true,
-            nr_pow2range_cols: 4,
+            num_pow2range_cols: 4,
             ..ZkStdLibArch::default()
         }
     }

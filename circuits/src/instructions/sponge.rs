@@ -153,7 +153,7 @@ pub(crate) mod tests {
                 <SpongeChip as SpongeCPU<Input::Element, Output::Element>>::init(None);
 
             for step in self.sequence.iter() {
-                for _nr_absorb in 0..step.0 {
+                for _num_absorb in 0..step.0 {
                     let input_vec = self.inputs[input_idx]
                         .iter()
                         .map(|input| Value::known(input.clone()))
@@ -169,7 +169,7 @@ pub(crate) mod tests {
                     input_idx += 1;
                 }
 
-                for _nr_squeeze in 0..step.1 {
+                for _num_squeeze in 0..step.1 {
                     let out = chip.squeeze(&mut layouter, &mut state)?;
                     let expected_out =
                         <SpongeChip as SpongeCPU<Input::Element, Output::Element>>::squeeze(

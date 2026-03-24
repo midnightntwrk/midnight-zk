@@ -124,7 +124,7 @@ impl Relation for EthereumSigExample {
         ZkStdLibArch {
             keccak_256: true,
             secp256k1: true,
-            nr_pow2range_cols: 4,
+            num_pow2range_cols: 4,
             ..ZkStdLibArch::default()
         }
     }

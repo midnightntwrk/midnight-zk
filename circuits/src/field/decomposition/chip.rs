@@ -50,7 +50,7 @@ impl P2RDecompositionConfig {
     /// Creates the config from the configs of a native and a pow2range chips.
     ///
     /// It assumes that the advice columns of the pow2range_chip are exactly
-    /// advice_cols[1..`ZkStdLibArch::nr_pow2range_cols`+1] of the
+    /// advice_cols[1..`ZkStdLibArch::num_pow2range_cols`+1] of the
     /// native chip.
     ///
     /// # Panics
@@ -189,8 +189,8 @@ impl<F: CircuitField> P2RDecompositionChip<F> {
     ///  It assumes that the following about the limbs:
     ///  - all limbs are all smaller than or equal to self.max_bit_len
     ///  - the total number of limbs is a multiple of
-    ///    `ZkStdLibArch::nr_pow2range_cols`
-    ///  - each `ZkStdLibArch::nr_pow2range_cols` - chunk consists of a single
+    ///    `ZkStdLibArch::num_pow2range_cols`
+    ///  - each `ZkStdLibArch::num_pow2range_cols` - chunk consists of a single
     ///    limb_bit_size and possibly zeros, the latter coming always at the end
     ///
     ///  # Panics
@@ -203,7 +203,7 @@ impl<F: CircuitField> P2RDecompositionChip<F> {
         x: Value<F>,
         limb_sizes: &[usize],
     ) -> Result<(AssignedNative<F>, Vec<AssignedNative<F>>), Error> {
-        let nr_pow2range_cols = self.pow2range_chip.config().val_cols.len();
+        let num_pow2range_cols = self.pow2range_chip.config().val_cols.len();
 
         // assert limb_sizes structure is correct
 
@@ -214,18 +214,19 @@ impl<F: CircuitField> P2RDecompositionChip<F> {
             "Decomposition chip: Try to use decompose_core with limb sizes greater than the supported max limb length",
         );
 
-        // 2. the number of given limbs is multiple of ZkStdLibArch::nr_pow2range_cols
+        // 2. the number of given limbs is multiple of ZkStdLibArch::num_pow2range_cols
         #[cfg(not(test))]
         assert!(
-            limb_sizes.len().is_multiple_of(nr_pow2range_cols),
-            "Decomposition chip: number of limbs passed in decompose_core is not a multiple of ZkStdLibArch::nr_pow2range_cols",
+            limb_sizes.len().is_multiple_of(num_pow2range_cols),
+            "Decomposition chip: number of limbs passed in decompose_core is not a multiple of ZkStdLibArch::num_pow2range_cols",
         );
 
-        // 3. each ZkStdLibArch::nr_pow2range_cols chunk is the same number and possibly
+        // 3. each ZkStdLibArch::num_pow2range_cols chunk is the same number and
+        //    possibly
         // some zeros
         #[cfg(not(test))]
         {
-            let limb_sizes_structure = limb_sizes.chunks(nr_pow2range_cols).all(|chunk| {
+            let limb_sizes_structure = limb_sizes.chunks(num_pow2range_cols).all(|chunk| {
                 let mut v = chunk.to_vec();
                 v.sort();
                 v.dedup();
@@ -250,7 +251,7 @@ impl<F: CircuitField> P2RDecompositionChip<F> {
                 let mut offset = 0;
 
                 // compute the range_check tags for each column
-                let tags = limb_sizes.chunks(nr_pow2range_cols).map(|x| x[0]).collect::<Vec<_>>();
+                let tags = limb_sizes.chunks(num_pow2range_cols).map(|x| x[0]).collect::<Vec<_>>();
 
                 // compute the linear combination terms, i.e. (coef, limb) pairs
                 // by convention the coefficient of a zero sized limb is 0 so no constraint
@@ -270,7 +271,7 @@ impl<F: CircuitField> P2RDecompositionChip<F> {
                     terms.as_slice(),
                     F::ZERO,
                     &x,
-                    nr_pow2range_cols,
+                    num_pow2range_cols,
                     &mut offset,
                 )?;
                 offset += 1;
@@ -314,19 +315,19 @@ impl<F: CircuitField> CoreDecompositionInstructions<F> for P2RDecompositionChip<
         let number_of_limbs = bit_length / limb_size;
         let last_limb_size = bit_length % limb_size;
 
-        let nr_pow2range_cols = self.pow2range_chip.config().val_cols.len();
+        let num_pow2range_cols = self.pow2range_chip.config().val_cols.len();
 
         // limb decomposition can be supported natively by the lookup table
         if limb_size <= self.max_bit_len {
             // prepare the limb_size slice by filling with zeros to do parallel lookups
             let mut limb_sizes = vec![limb_size; number_of_limbs];
-            process_limb_sizes(nr_pow2range_cols, &mut limb_sizes);
+            process_limb_sizes(num_pow2range_cols, &mut limb_sizes);
             // prepare the limb sizes for last (possibly smaller limb). This is either empty
-            // or contains exactly ZkStdLibArch::nr_pow2range_cols elements where the last
-            // ZkStdLibArch::nr_pow2range_cols-1 are 0s
+            // or contains exactly ZkStdLibArch::num_pow2range_cols elements where the last
+            // ZkStdLibArch::num_pow2range_cols-1 are 0s
             if last_limb_size != 0 {
                 limb_sizes.push(last_limb_size);
-                process_limb_sizes(nr_pow2range_cols, &mut limb_sizes);
+                process_limb_sizes(num_pow2range_cols, &mut limb_sizes);
             }
 
             // we call the core function to retrieve the result
@@ -379,7 +380,7 @@ impl<F: CircuitField> CoreDecompositionInstructions<F> for P2RDecompositionChip<
                             terms.as_slice(),
                             F::ZERO,
                             &x.value().copied(),
-                            nr_pow2range_cols,
+                            num_pow2range_cols,
                             &mut offset,
                         )?;
 

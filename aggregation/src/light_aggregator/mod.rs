@@ -534,7 +534,7 @@ mod tests {
                 jubjub: true,
                 poseidon: true,
                 sha2_256: true,
-                nr_pow2range_cols: 4,
+                num_pow2range_cols: 4,
                 ..ZkStdLibArch::default()
             }
         }

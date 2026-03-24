@@ -134,7 +134,7 @@ impl Relation for ZkirRelation {
             automaton: false,
             base64: false,
             nb_arith_cols: 5,
-            nr_pow2range_cols: 4,
+            num_pow2range_cols: 4,
         }
     }
 

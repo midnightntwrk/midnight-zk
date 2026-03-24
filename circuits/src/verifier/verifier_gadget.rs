@@ -612,23 +612,23 @@ impl<S: SelfEmulation> VerifierGadget<S> {
 
         // Partially evaluate batched identities
         // (without fixed columns corresponding to simple selectors)
-        let nr_blinding_factors = cs.blinding_factors();
+        let num_blinding_factors = cs.blinding_factors();
         let l_evals = evaluate_lagrange_polynomials(
             layouter,
             &self.scalar_chip,
             1 << k,
             assigned_vk.domain.get_omega(),
-            (-((nr_blinding_factors + 1) as i32))..1,
+            (-((num_blinding_factors + 1) as i32))..1,
             &x,
         )?;
-        assert_eq!(l_evals.len(), 2 + nr_blinding_factors);
+        assert_eq!(l_evals.len(), 2 + num_blinding_factors);
         let l_last = l_evals[0].clone();
         let l_blind = sum::<S::F>(
             layouter,
             &self.scalar_chip,
-            &l_evals[1..=nr_blinding_factors],
+            &l_evals[1..=num_blinding_factors],
         )?;
-        let l_0 = l_evals[1 + nr_blinding_factors].clone();
+        let l_0 = l_evals[1 + num_blinding_factors].clone();
 
         let mut expressions = Vec::new();
         // (Partially) evaluate polys from (custom) gates
