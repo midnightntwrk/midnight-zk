@@ -96,8 +96,20 @@ pub trait Guard<F: PrimeField, CS: PolynomialCommitmentScheme<F>>: Sized {
 
 /// Interface for PCS params
 pub trait Params {
-    /// Returns the max size of polynomials that these parameters can commit to
+    /// Returns the size of the Lagrange basis, expressed as the exponent `k`
+    /// such that the Lagrange domain has `2^k` elements. This equals the
+    /// circuit domain size and is used by keygen to validate the SRS.
     fn max_k(&self) -> u32;
+
+    /// Returns the number of monomial-basis elements `[s^i]G₁` available in
+    /// the SRS. For a standard SRS this equals `1 << max_k()`. When the
+    /// `single-h-commitment` feature is enabled the monomial basis may be
+    /// larger than the Lagrange basis (which covers only the circuit
+    /// domain), so this method returns the true capacity for
+    /// coefficient-form commitments.
+    fn g_monomial_size(&self) -> usize {
+        1 << self.max_k()
+    }
 
     /// Downsize the params to work with a circuit of size `new_k`
     fn downsize(&mut self, new_k: u32);

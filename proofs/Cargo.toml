@@ -90,5 +90,12 @@ committed-instances = []
 # Feature to expose internal prover types and benchmarking utilities.
 bench-internal = ["criterion"]
 
+# Feature to commit to the quotient polynomial H as a single polynomial
+# commitment instead of splitting it into degree-(n-1) limbs. Requires the
+# KZG parameters to support polynomials of degree up to (d-1)*(n-1), where d
+# is the maximum constraint degree and n is the circuit domain size (i.e., the
+# params must be generated with k >= log2(n * (d-1))).
+single-h-commitment = []
+
 [lib]
 bench = false

@@ -25,6 +25,7 @@ verification keys break backwards compatibility.
 * Add `PartialEq` impl for `AssignedBigUint` [#259](https://github.com/midnightntwrk/midnight-zk/pull/259)
 
 ### Changed
+* Support `single-h-commitment` feature in verifier gadget [#276](https://github.com/midnightntwrk/midnight-zk/pull/276)
 * Filter out compile-time identity points in MSM [#256](https://github.com/midnightntwrk/midnight-zk/pull/256)
 * Sort point sets deterministically in KZG multiopen for in-circuit verification [#256](https://github.com/midnightntwrk/midnight-zk/pull/256)
 * Move advice queries before instance queries in verifier gadget [#256](https://github.com/midnightntwrk/midnight-zk/pull/256)
