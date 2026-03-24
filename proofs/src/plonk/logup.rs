@@ -159,9 +159,9 @@ pub(crate) mod verifier;
 /// The helper polynomial constraint has degree `1 + lookup_degree ×
 /// num_parallel_lookups`. When this exceeds the constraint system's degree
 /// bound, the parallel lookups must be split across multiple helper
-/// polynomials. Call [`Self::flatten`] to produce a [`FlattenedArgument`]
-/// with pre-computed degree-bounded chunks; each chunk gets its own committed
-/// helper polynomial `hᵢ(X)`.
+/// polynomials. Call [`Self::chunk_by_degree`] to produce a
+/// [`FlattenedArgument`] with pre-computed degree-bounded chunks; each chunk
+/// gets its own committed helper polynomial `hᵢ(X)`.
 ///
 /// The selector `s(X)`, table `t(X)`, multiplicity `m(X)`, and accumulator
 /// `Z(X)` are **shared across all chunks** — only the helper polynomial is
@@ -188,7 +188,7 @@ impl<F: Field> Debug for BatchedArgument<F> {
 /// A [`BatchedArgument`] whose input expressions have been split into
 /// degree-bounded chunks, each requiring its own committed helper polynomial.
 ///
-/// Produced by [`BatchedArgument::flatten`]. The selector `s(X)`, table
+/// Produced by [`BatchedArgument::chunk_by_degree`]. The selector `s(X)`, table
 /// `t(X)`, multiplicity `m(X)`, and accumulator `Z(X)` are shared across all
 /// chunks.
 #[derive(Clone)]
