@@ -14,6 +14,8 @@ Notation:
  - q : non-native emulated modulus
  - B : base of the limbs-representation
  - n : number of limbs necessary to represent a Zq integer: ceil(log_B(q))
+ - a : Weierstrass coefficient a in y^2 = x^3 + ax + b (only relevant for ECC gates; default 0)
+ - b : Weierstrass coefficient b in y^2 = x^3 + ax + b (only relevant for the on_curve gate; default 0)
 '''
 
 import sys
@@ -40,6 +42,13 @@ def log2(n):
     assert(2**k == n)
     return k
 
+# Return x mod m with the representative closest to 0 (in (-m/2, m/2])
+def signed_mod(x, m):
+    r = x % m
+    if r > m // 2:
+        r -= m
+    return r
+
 def next_cheapest_power_of_2(MAX_BIT_LEN, x):
     best_log = len(bin(x-1)) - 2
     best = cost_range_check(MAX_BIT_LEN, best_log)
@@ -50,7 +59,7 @@ def next_cheapest_power_of_2(MAX_BIT_LEN, x):
             best_log = best_log + i
     return 2**best_log
 
-def mul_expr_bounds(q, n, B, base_powers, double_base_powers):
+def mul_expr_bounds(q, n, B, base_powers, double_base_powers, **_):
     # Note that x := 1 + sum_i base^i x_i, and that y, z are defined
     # analogously.
     #
@@ -77,7 +86,7 @@ def mul_expr_bounds(q, n, B, base_powers, double_base_powers):
 
     return (expr_min, expr_max)
 
-def tangent_expr_bounds(q, n, B, base_powers, double_base_powers):
+def tangent_expr_bounds(q, n, B, base_powers, double_base_powers, a_plus_one=1, **_):
     # Recall that limbs x_i represent integer 1 + sum_i base^i x_i.
     # Let px := 1 + sum_i base^i px_i
     #     py := 1 + sum_i base^i py_i
@@ -93,12 +102,12 @@ def tangent_expr_bounds(q, n, B, base_powers, double_base_powers):
     #     sum_px2 := sum_i (sum_j (base^{i+j} % m) * px_i * px_j)
     #     sum_lpy := sum_i (sum_j (base^{i+j} % m) * lambda_i * py_j)
     #
-    # We enforce relation (we assume a = 0):
-    #    3 * (1 + sum_px) * (1 + sum_px)
+    # We enforce relation:
+    #    3 * (1 + sum_px) * (1 + sum_px) + a
     #  = 2 * (1 + sum_py) * (1 + sum_lambda)  (mod m)
     #
     # Thus, expr is
-    #   3 * (2 * sum_px + sum_px2) + 1
+    #   3 * (2 * sum_px + sum_px2) + (a + 1)
     # - 2 * (sum_py + sum_lambda + sum_lpy)
 
     max_sum_px = (B-1) * sum(base_powers)
@@ -106,17 +115,60 @@ def tangent_expr_bounds(q, n, B, base_powers, double_base_powers):
     max_sum_lambda = max_sum_px
     max_sum_px2 = (B-1)**2 * sum(double_base_powers)
     max_sum_lpy = max_sum_px2
-    expr_min = - 2 * (max_sum_py + max_sum_lambda + max_sum_lpy) + 1
-    expr_max = 3 * (max_sum_px + max_sum_px + max_sum_px2) + 1
+
+    # a_plus_one is a constant (possibly negative for signed representation).
+    # It appears additively, so it shifts both min and max equally.
+    expr_min = - 2 * (max_sum_py + max_sum_lambda + max_sum_lpy) + a_plus_one
+    expr_max = 3 * (max_sum_px + max_sum_px + max_sum_px2) + a_plus_one
 
     return (expr_min, expr_max)
 
-def lambda2_expr_bounds(q, n, B, base_powers, double_base_powers):
+def on_curve_expr_bounds(q, n, B, base_powers, double_base_powers, a_plus_one=1, a_plus_b=0, **_):
+    # Recall that limbs x_i represent emulated field element 1 + sum_i base^i x_i.
+    # Let x := 1 + sum_i base^i x_i
+    #     y := 1 + sum_i base^i y_i
+    #     z := 1 + sum_i base^i z_i   (where z = x^2 mod m, computed via mul)
+    #
+    # We will have a custom gate enforcing equation:
+    #   y^2 = x * z + a * x + b   (mod m)
+    #
+    # Define:
+    #   sum_x := sum_i (base^i % m) * x_i
+    #   sum_y := sum_i (base^i % m) * y_i
+    #   sum_z := sum_i (base^i % m) * z_i
+    #  sum_xz := sum_i (sum_j (base^{i+j} % m) * x_i * z_j)
+    #  sum_y2 := sum_i (sum_j (base^{i+j} % m) * y_i * y_j)
+    #
+    # We enforce y^2 = x * z + a * x + b (mod m) with equation:
+    #   2 * sum_y + sum_y2 - sum_xz - sum_z - (a+1) * sum_x - (a+b) = k * m
+    #
+    # This comes from expanding:
+    #   (1+sum_y)^2 - (1+sum_x)(1+sum_z) - a*(1+sum_x) - b
+    #   = 1 + 2*sum_y + sum_y2 - 1 - sum_x - sum_z - sum_xz - a - a*sum_x - b
+    #   = 2*sum_y + sum_y2 - sum_xz - sum_z - (1+a)*sum_x - (a+b)
+
+    max_sum_x = (B-1) * sum(base_powers)
+    max_sum_y = max_sum_x
+    max_sum_z = max_sum_x
+    max_sum_xz = (B-1)**2 * sum(double_base_powers)
+    max_sum_y2 = max_sum_xz
+
+    # Handle the sign of (a+1) when computing min/max.
+    if a_plus_one >= 0:
+        expr_min = -(max_sum_xz + max_sum_z + a_plus_one * max_sum_x) - a_plus_b
+        expr_max = 2 * max_sum_y + max_sum_y2 - a_plus_b
+    else:
+        expr_min = -(max_sum_xz + max_sum_z) - a_plus_b
+        expr_max = 2 * max_sum_y + max_sum_y2 + abs(a_plus_one) * max_sum_x - a_plus_b
+
+    return (expr_min, expr_max)
+
+def lambda2_expr_bounds(q, n, B, base_powers, double_base_powers, **_):
     # Recall that limbs x_i represent emulated field element 1 + sum_i base^i x_i.
     # Let px := 1 + sum_i base^i px_i
     #     qx := 1 + sum_i base^i qx_i
     #     rx := 1 + sum_i base^i rx_i
-    #  lamda := 1 + sum_i base^i lambda_i
+    #  lambda := 1 + sum_i base^i lambda_i
     #
     # We will have a custom gate enforcing equation:
     #  px + qx + rx = lambda^2   (mod m)
@@ -147,7 +199,7 @@ def lambda2_expr_bounds(q, n, B, base_powers, double_base_powers):
     return (expr_min, expr_max)
 
 
-def slope_expr_bounds(q, n, B, base_powers, double_base_powers):
+def slope_expr_bounds(q, n, B, base_powers, double_base_powers, **_):
     # Recall that limbs x_i represent emulated field element 1 + sum_i base^i x_i.
     # Let px := 1 + sum_i base^i px_i
     #     py := 1 + sum_i base^i py_i
@@ -193,7 +245,10 @@ def slope_expr_bounds(q, n, B, base_powers, double_base_powers):
 
 class Params:
     def __init__(self, p, q, B, auxiliary_moduli, RC_len,
-                 expr_bounds, double_base_powers = None):
+                 expr_bounds, double_base_powers = None, curve_constants = None):
+        if curve_constants is None:
+            curve_constants = {}
+
         n = ceil(log(q) / log(B))
         self.p = p
         self.q = q
@@ -207,7 +262,8 @@ class Params:
         if double_base_powers == None:
             double_base_powers = [B**(i+j) % q for i in range(n) for j in range(n)]
 
-        (expr_min, expr_max) = expr_bounds(q, n, B, base_powers, double_base_powers)
+        (expr_min, expr_max) = expr_bounds(q, n, B, base_powers, double_base_powers,
+                                           **curve_constants)
 
         # We can bound the value of k in the range [k_min, k_max], where:
         assert (expr_min < 0)
@@ -246,6 +302,10 @@ class Params:
             bi_mod_q_mod_mj = [(B**i % q) % mj for i in range(n)]
             bij_mod_q_mod_mj = [b % mj for b in double_base_powers]
 
+            # Reduce curve constants mod mj using signed representative
+            # (closest to 0) for tighter bounds.
+            cc_mj = {k: signed_mod(v, mj) for k, v in curve_constants.items()}
+
             # In order to enforce the above equation modulo lcm(M), we need to
             # enforce the following equation for every mj in M:
             #
@@ -257,7 +317,8 @@ class Params:
             # For the rest of moduli, we can bound the auxiliary variable lj in
             # the interval [lj_min, lj_max] as follows.
 
-            (expr_mj_min, expr_mj_max) = expr_bounds(q, n, B, bi_mod_q_mod_mj, bij_mod_q_mod_mj)
+            (expr_mj_min, expr_mj_max) = expr_bounds(q, n, B, bi_mod_q_mod_mj,
+                                                     bij_mod_q_mod_mj, **cc_mj)
 
             lj_min = - (abs(expr_mj_min - u_max * (q % mj) - (k_min * q) % mj ) // mj)
             lj_max = (expr_mj_max - (k_min * q) % mj ) // mj
@@ -354,6 +415,19 @@ def cost_tangent(RC_len, params):
 
     return cost
 
+# The cost in rows of implementing on_curve assertion with the given params.
+def cost_on_curve(RC_len, params, mul_cost):
+    # on_curve = 1 mul (for z = x^2) + 2 rows (gate) + range checks
+    cost = mul_cost + 2
+
+    # Consider the range-check of u
+    cost += cost_range_check(RC_len, log2(params.u_max))
+
+    # Consider the range-checks of vj
+    cost += sum([cost_range_check(RC_len, log2(vj)) for vj in params.vs_max])
+
+    return cost
+
 # The cost in rows of implementing tangent assertion with the given params.
 def cost_lambda2(RC_len, params):
     # We place the mul identity in 3 rows
@@ -438,21 +512,23 @@ def cost_scalar_mul(B, n, WS, RC_len, norm_cost, lambda2_cost, slope_cost, tange
     return cost
 
 # p is the native modulus, q is the emulated one
-def optimization_round(p, q, RC_len, nb_limbs, expr_bounds):
+def optimization_round(p, q, RC_len, nb_limbs, expr_bounds, curve_constants=None):
 
     nb_bits = ceil(log(q) / log(2))
     log2_B = min([k for k in range(nb_bits) if 2**(k * nb_limbs) >= q])
     B = next_cheapest_power_of_2(RC_len, 2**log2_B)
 
     auxiliary_moduli = [p]
-    params = Params(p, q, B, auxiliary_moduli, RC_len, expr_bounds)
+    params = Params(p, q, B, auxiliary_moduli, RC_len, expr_bounds,
+                    curve_constants=curve_constants)
     if params.validity == VALID_PARAMETERS:
         return (params, ['native'])
 
     # Figure out what maximum power of two as an auxiliary modulus we can use
     log2_m = 0
     for k in range(1, nb_bits):
-        params = Params(p, q, B, [2**k], RC_len, expr_bounds)
+        params = Params(p, q, B, [2**k], RC_len, expr_bounds,
+                        curve_constants=curve_constants)
         if params.validity == INVALID_AUX_MODULUS:
             break
         log2_m = k
@@ -464,12 +540,13 @@ def optimization_round(p, q, RC_len, nb_limbs, expr_bounds):
     auxiliary_moduli = [p, m]
     auxiliary_moduli_str = ['native', '2^' + str(log2_m)]
 
-    params = Params(p, q, B, auxiliary_moduli, RC_len, expr_bounds)
+    params = Params(p, q, B, auxiliary_moduli, RC_len, expr_bounds,
+                    curve_constants=curve_constants)
 
     i = 1
     while params.validity != VALID_PARAMETERS:
         params = Params(p, q, B, auxiliary_moduli + [m - i],
-                        RC_len, expr_bounds)
+                        RC_len, expr_bounds, curve_constants=curve_constants)
         if params.validity != INVALID_AUX_MODULUS:
             auxiliary_moduli += [m - i]
             auxiliary_moduli_str += ['2^' + str(log2_m) + '-' + str(i)]
@@ -489,7 +566,16 @@ def pp_params(params, RC_len, auxiliary_moduli_str):
 
 
 # p is the native modulus, q is the emulated one
-def optimize(p, q):
+def optimize(p, q, a=0, b=0):
+    # Compute curve constants as signed integers.
+    # For the main (native) expression, these are used as-is.
+    # For auxiliary moduli, they are reduced via signed_mod in Params.__init__.
+    a_plus_one = a + 1
+    a_plus_b = a + b
+
+    tangent_cc = {'a_plus_one': a_plus_one}
+    on_curve_cc = {'a_plus_one': a_plus_one, 'a_plus_b': a_plus_b}
+
     # We minimize tangent_expr_bounds, typically the bottleneck
     expr_bounds = tangent_expr_bounds
 
@@ -497,21 +583,30 @@ def optimize(p, q):
       best_cost = 2**31 # A large number, reset the best on every nb_limbs
       print()
       for RC_len in range(8, 20+1):
-          opt = optimization_round(p, q, RC_len, nb_limbs, expr_bounds)
+          opt = optimization_round(p, q, RC_len, nb_limbs, expr_bounds,
+                                   curve_constants=tangent_cc)
           if opt == None:
               continue
 
           (params, auxiliary_moduli_str) = opt
           tangent_cost = cost_tangent(RC_len, params)
 
-          params_mul = Params(p, q, params.B, params.auxiliary_moduli, RC_len, mul_expr_bounds)
+          params_mul = Params(p, q, params.B, params.auxiliary_moduli, RC_len,
+                              mul_expr_bounds)
           mul_cost = cost_mul(RC_len, params_mul)
 
-          params_lambda2 = Params(p, q, params.B, params.auxiliary_moduli, RC_len, lambda2_expr_bounds)
+          params_lambda2 = Params(p, q, params.B, params.auxiliary_moduli, RC_len,
+                                  lambda2_expr_bounds)
           lambda2_cost = cost_lambda2(RC_len, params_lambda2)
 
-          params_slope = Params(p, q, params.B, params.auxiliary_moduli, RC_len, slope_expr_bounds)
+          params_slope = Params(p, q, params.B, params.auxiliary_moduli, RC_len,
+                                slope_expr_bounds)
           slope_cost = cost_slope(RC_len, params_slope)
+
+          params_on_curve = Params(p, q, params.B, params.auxiliary_moduli, RC_len,
+                                   on_curve_expr_bounds, curve_constants=on_curve_cc)
+          
+          on_curve_cost = cost_on_curve(RC_len, params_on_curve, mul_cost)
 
           norm_cost = mul_cost # This is an upper bound for the cost of normalization
 
@@ -521,14 +616,16 @@ def optimize(p, q):
           if cost <= best_cost:
               best_cost = cost
               info = pp_params(params, RC_len, auxiliary_moduli_str)
-              print("%d (incomplete_add) | %d (mul) | %d (slope) | %d (λ²) | %d (tangent) \t%s" %
-                    (cost, mul_cost, slope_cost, lambda2_cost, tangent_cost, info))
+              print("%d (incomplete_add) | %d (mul) | %d (slope) | %d (λ²) | %d (tangent) | %d (on_curve) \t%s" %
+                    (cost, mul_cost, slope_cost, lambda2_cost, tangent_cost, on_curve_cost, info))
 
 PLUTO_SCALAR = 0x24000000000024000130e0000d7f70e4a803ca76f439266f443f9a5c7a8a6c7be4a775fe8e177fd69ca7e85d60050af41ffffcd300000001
 ERIS_SCALAR = 0x24000000000024000130e0000d7f70e4a803ca76f439266f443f9a5cda8a6c7be4a7a5fe8fadffd6a2a7e8c30006b9459ffffcd300000001
 ORDERS = {
     'secp256k1-base' : 2**256 - 2**32 - 2**9 - 2**8 - 2**7 - 2**6 - 2**4 - 1,
     'secp256k1-scalar' : 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141,
+    'secp256r1-base' : 0xffffffff00000001000000000000000000000000ffffffffffffffffffffffff,
+    'secp256r1-scalar' : 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551,
     'pluto-base' : ERIS_SCALAR,
     'pluto-scalar' : PLUTO_SCALAR,
     'eris-scalar' : ERIS_SCALAR,
@@ -539,6 +636,7 @@ ORDERS = {
     'curve25519-base': 0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed,
     'curve25519-scalar': 0x1000000000000000000000000000000014def9dea2f79cd65812631a5cf5d3ed,
 }
+
 
 def parse_modulus(m):
     fetched = ORDERS.get(m)
@@ -551,12 +649,18 @@ def parse_modulus(m):
 if __name__ == '__main__':
     if len(sys.argv) < 3:
         keys = "\n".join([" - " + k for k in ORDERS.keys()])
-        sys.exit("Usage: python3 foreign_params_gen.py NATIVE EMULATED\n"\
+        sys.exit("Usage: python3 foreign_params_gen.py NATIVE EMULATED [A B]\n"\
                  "Where NATIVE and EMULATED must be replaced by concrete constants or "\
-                 "one of the following supported values:\n" + keys)
+                 "one of the following supported values:\n" + keys + "\n\n" \
+                 "A and B are optional Weierstrass coefficients for y^2 = x^3 + Ax + B (default 0).")
 
     p = parse_modulus(sys.argv[1])
     q = parse_modulus(sys.argv[2])
 
+    a = int(sys.argv[3], 0) if len(sys.argv) >= 4 else 0
+    b = int(sys.argv[4], 0) if len(sys.argv) >= 5 else 0
+
     print("Optimizing parameters for:\n   Native modulus: %d\n Emulated modulus: %d" % (p, q))
-    optimize(p, q)
+    if a != 0 or b != 0:
+        print(" Weierstrass coefficient a: %d\n Weierstrass coefficient b: %d" % (a, b))
+    optimize(p, q, a=a, b=b)
