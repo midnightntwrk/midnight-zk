@@ -219,7 +219,7 @@ pub(crate) mod tests {
             _marker: PhantomData,
         };
 
-        let log2_nb_rows = 10;
+        let log2_nb_rows = 11;
         let public_inputs = vec![vec![], vec![]];
         match MockProver::run(log2_nb_rows, &circuit, public_inputs) {
             Ok(prover) => match prover.verify() {
