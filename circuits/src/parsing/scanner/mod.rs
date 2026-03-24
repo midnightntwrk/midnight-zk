@@ -192,6 +192,12 @@ pub struct ScannerConfig<LibIndex, F> {
 }
 
 /// Chip for scanning: automaton parsing and substring verification.
+///
+/// # Important
+///
+/// This chip uses dynamic lookup tables for substring checks. Consequently,
+/// it is **essential** to call `load` at the very end of the `synthesize`
+/// method, after all substring queries have been made.
 #[derive(Clone, Debug)]
 pub struct ScannerChip<LibIndex, F>
 where

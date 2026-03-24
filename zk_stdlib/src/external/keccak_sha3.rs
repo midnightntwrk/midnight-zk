@@ -37,6 +37,12 @@ use crate::external::{convert_to_bytes, unsafe_convert_to_bytes, NG};
 
 /// The chip for the external implementation of keccak and sha3.
 ///
+/// # Important
+///
+/// This chip relies on internal lookup tables. To ensure correct behavior,
+/// it is recommended to call `load` (which calls `load_table`) at the end
+/// of the `synthesize` method.
+///
 /// Note: A single wrapper is used for the two circuits since, internally, both
 /// are configured with the same columns and table (`PackedChip<F>`). In
 /// particular, enabling either of the two chips in the standard library has the
