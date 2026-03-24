@@ -31,7 +31,7 @@ macro_rules! run_test_native_gadget {
                     chip::{P2RDecompositionChip, P2RDecompositionConfig},
                     pow2range::Pow2RangeChip,
                 },
-                AssignedBounded, NativeChip, NativeGadget, native::{NB_ARITH_COLS, NB_ARITH_FIXED_COLS},
+                AssignedBounded, NativeChip, NativeGadget, native::NB_EXTRA_ARITH_FIXED_COLS,
             },
         };
 
@@ -50,6 +50,9 @@ macro_rules! run_test_native_gadget {
 
             fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
                 // We create the needed columns
+                const NB_ARITH_COLS: usize = 5;
+                const NB_ARITH_FIXED_COLS: usize = NB_ARITH_COLS + NB_EXTRA_ARITH_FIXED_COLS;
+
                 let advice_columns: [_; NB_ARITH_COLS] =
                     core::array::from_fn(|_| meta.advice_column());
                 let fixed_columns: [_; NB_ARITH_FIXED_COLS] =
@@ -60,8 +63,8 @@ macro_rules! run_test_native_gadget {
                 let native_config = NativeChip::configure(
                     meta,
                     &(
-                        advice_columns,
-                        fixed_columns,
+                        advice_columns.to_vec(),
+                        fixed_columns.to_vec(),
                         [committed_instance_column, instance_column],
                     ),
                 );

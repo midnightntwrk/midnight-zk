@@ -28,14 +28,13 @@ use super::{
     instructions::CoreDecompositionInstructions,
 };
 // Modify
-use crate::CircuitField;
+use crate::{field::native::NB_EXTRA_ARITH_FIXED_COLS, CircuitField};
 use crate::{
     field::{
         decomposition::{
             cpu_utils::{decompose_in_variable_limbsizes, variable_limbsize_coefficients},
             pow2range::Pow2RangeChip,
         },
-        native::{NB_ARITH_COLS, NB_ARITH_FIXED_COLS},
         NativeChip,
     },
     instructions::{ArithInstructions, AssertionInstructions, AssignmentInstructions},
@@ -99,16 +98,18 @@ where
     }
 
     fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+        const NB_ARITH_COLS: usize = 5;
         let advice_columns: [_; NB_ARITH_COLS] = core::array::from_fn(|_| meta.advice_column());
-        let fixed_columns: [_; NB_ARITH_FIXED_COLS] = core::array::from_fn(|_| meta.fixed_column());
+        let fixed_columns: [_; NB_ARITH_COLS + NB_EXTRA_ARITH_FIXED_COLS] =
+            core::array::from_fn(|_| meta.fixed_column());
         let committed_instance_column = meta.instance_column();
         let instance_column = meta.instance_column();
 
         let native_config = NativeChip::configure(
             meta,
             &(
-                advice_columns,
-                fixed_columns,
+                advice_columns.to_vec(),
+                fixed_columns.to_vec(),
                 [committed_instance_column, instance_column],
             ),
         );
@@ -312,6 +313,9 @@ where
     }
 
     fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+        const NB_ARITH_COLS: usize = 5;
+        const NB_ARITH_FIXED_COLS: usize = NB_ARITH_COLS + NB_EXTRA_ARITH_FIXED_COLS;
+
         let advice_columns: [_; NB_ARITH_COLS] = core::array::from_fn(|_| meta.advice_column());
         let fixed_columns: [_; NB_ARITH_FIXED_COLS] = core::array::from_fn(|_| meta.fixed_column());
         let committed_instance_column = meta.instance_column();
@@ -320,8 +324,8 @@ where
         let native_config = NativeChip::configure(
             meta,
             &(
-                advice_columns,
-                fixed_columns,
+                advice_columns.to_vec(),
+                fixed_columns.to_vec(),
                 [committed_instance_column, instance_column],
             ),
         );

@@ -1206,7 +1206,10 @@ impl<F: CircuitField> RipeMD160Chip<F> {
 use midnight_proofs::plonk::Instance;
 
 #[cfg(any(test, feature = "testing"))]
-use crate::{field::decomposition::chip::P2RDecompositionConfig, testing_utils::FromScratch};
+use crate::{
+    field::{decomposition::chip::P2RDecompositionConfig, native::NB_EXTRA_ARITH_FIXED_COLS},
+    testing_utils::FromScratch,
+};
 
 #[cfg(any(test, feature = "testing"))]
 impl<F: CircuitField> FromScratch<F> for RipeMD160Chip<F> {
@@ -1225,10 +1228,10 @@ impl<F: CircuitField> FromScratch<F> for RipeMD160Chip<F> {
     ) -> Self::Config {
         use std::cmp::max;
 
-        use crate::field::{
-            decomposition::pow2range::Pow2RangeChip,
-            native::{NB_ARITH_COLS, NB_ARITH_FIXED_COLS},
-        };
+        use crate::field::decomposition::pow2range::Pow2RangeChip;
+
+        const NB_ARITH_COLS: usize = 5;
+        const NB_ARITH_FIXED_COLS: usize = NB_ARITH_COLS + NB_EXTRA_ARITH_FIXED_COLS;
 
         let advice_columns = (0..max(NB_ARITH_COLS, NB_RIPEMD160_ADVICE_COLS))
             .map(|_| meta.advice_column())
@@ -1241,8 +1244,8 @@ impl<F: CircuitField> FromScratch<F> for RipeMD160Chip<F> {
         let native_config = NativeChip::configure(
             meta,
             &(
-                advice_columns[..NB_ARITH_COLS].try_into().unwrap(),
-                fixed_columns[..NB_ARITH_FIXED_COLS].try_into().unwrap(),
+                advice_columns[..NB_ARITH_COLS].to_vec(),
+                fixed_columns[..NB_ARITH_FIXED_COLS].to_vec(),
                 *instance_columns,
             ),
         );

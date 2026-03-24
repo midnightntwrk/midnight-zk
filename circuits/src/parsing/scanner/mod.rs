@@ -42,10 +42,12 @@ pub use static_specs::{spec_library, StdLibParser};
 #[cfg(test)]
 use {
     crate::field::decomposition::chip::P2RDecompositionConfig,
-    crate::field::decomposition::pow2range::Pow2RangeChip, crate::field::native::NB_ARITH_COLS,
-    crate::testing_utils::FromScratch, midnight_proofs::plonk::Instance, regex::RegexInstructions,
+    crate::field::decomposition::pow2range::Pow2RangeChip, crate::testing_utils::FromScratch,
+    midnight_proofs::plonk::Instance, regex::RegexInstructions,
 };
 
+#[cfg(test)]
+use crate::field::native::NB_EXTRA_ARITH_FIXED_COLS;
 use crate::{
     field::{decomposition::chip::P2RDecompositionChip, NativeChip, NativeGadget},
     utils::ComposableChip,
@@ -386,9 +388,12 @@ where
         meta: &mut ConstraintSystem<F>,
         instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
+        const NB_ARITH_COLS: usize = 5;
+        const NB_ARITH_FIXED_COLS: usize = NB_ARITH_COLS + NB_EXTRA_ARITH_FIXED_COLS;
+
         let nb_advice_cols = std::cmp::max(NB_SCANNER_ADVICE_COLS, NB_ARITH_COLS);
         let advice_cols = (0..nb_advice_cols).map(|_| meta.advice_column()).collect::<Vec<_>>();
-        let fixed_cols = (0..NB_ARITH_COLS + 4).map(|_| meta.fixed_column()).collect::<Vec<_>>();
+        let fixed_cols = (0..NB_ARITH_FIXED_COLS).map(|_| meta.fixed_column()).collect::<Vec<_>>();
         let automata = FxHashMap::from_iter(
             [
                 regex::Regex::hard_coded_example0().to_automaton(),

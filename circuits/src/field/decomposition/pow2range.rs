@@ -23,8 +23,7 @@ use midnight_proofs::{
 };
 
 use crate::{
-    field::native::NB_ARITH_COLS, instructions::decomposition::Pow2RangeInstructions,
-    types::AssignedNative, CircuitField,
+    instructions::decomposition::Pow2RangeInstructions, types::AssignedNative, CircuitField,
 };
 
 /// Pow2Range gate configuration.
@@ -173,20 +172,21 @@ impl<F: CircuitField> Pow2RangeChip<F> {
 
     /// Creates a Pow2RangeConfig given a constraint system and a set of
     /// available advice columns.
-    ///
-    /// # Panics
-    ///
-    /// If the number of provided columns is greater than or equal to
-    /// `NB_ARITH_COLS`.
     pub fn configure(
         meta: &mut ConstraintSystem<F>,
         columns: &[Column<Advice>],
     ) -> Pow2RangeConfig {
         let val_cols = columns.to_vec();
-        assert!(
-            val_cols.len() < NB_ARITH_COLS,
-            "Nr of range-check columns should be smaller than NB_ARITHM_COLS."
-        );
+
+        // The assertion that I've just removed is not necessary here. This chip
+        // is actually independent of the native_chip.
+        //
+        // It is needed, and already present in P2RDecompositionConfig::new
+        // which checks that the pow2range columns are a subset of native advice columns
+        // starting at index 1.
+        //
+        // This comment is only for reviewers of this PR.
+        // It will self destruct in the next commit.
 
         let q_pow2range = meta.complex_selector();
         let tag_col = meta.fixed_column();

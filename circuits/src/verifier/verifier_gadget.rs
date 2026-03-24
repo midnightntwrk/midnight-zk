@@ -896,7 +896,7 @@ pub(crate) mod tests {
                 pow2range::Pow2RangeChip,
             },
             foreign::FieldChip,
-            native::NB_ARITH_COLS,
+            native::NB_EXTRA_ARITH_FIXED_COLS,
             NativeChip, NativeConfig, NativeGadget,
         },
         hash::poseidon::{
@@ -999,8 +999,11 @@ pub(crate) mod tests {
         }
 
         fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+            const NB_ARITH_COLS: usize = 5;
+            const NB_ARITH_FIXED_COLS: usize = NB_ARITH_COLS + NB_EXTRA_ARITH_FIXED_COLS;
+
             let nb_advice_cols = nb_foreign_ecc_chip_columns::<F, C, C, NG>();
-            let nb_fixed_cols = NB_ARITH_COLS + 4;
+            let nb_fixed_cols = NB_ARITH_FIXED_COLS;
 
             let advice_columns: Vec<_> =
                 (0..nb_advice_cols).map(|_| meta.advice_column()).collect();
@@ -1011,8 +1014,8 @@ pub(crate) mod tests {
             let native_config = NativeChip::configure(
                 meta,
                 &(
-                    advice_columns[..NB_ARITH_COLS].try_into().unwrap(),
-                    fixed_columns[..NB_ARITH_COLS + 4].try_into().unwrap(),
+                    advice_columns[..NB_ARITH_COLS].to_vec(),
+                    fixed_columns[..NB_ARITH_FIXED_COLS].to_vec(),
                     [committed_instance_column, instance_column],
                 ),
             );

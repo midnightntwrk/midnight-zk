@@ -30,10 +30,7 @@ use super::{
     NB_POSEIDON_ADVICE_COLS, NB_POSEIDON_FIXED_COLS,
 };
 #[cfg(any(test, feature = "testing"))]
-use crate::field::{
-    native::{NB_ARITH_COLS, NB_ARITH_FIXED_COLS},
-    NativeConfig,
-};
+use crate::field::{native::NB_EXTRA_ARITH_FIXED_COLS, NativeConfig};
 use crate::{
     field::NativeChip,
     instructions::{ArithInstructions, AssignmentInstructions, SpongeInstructions},
@@ -559,6 +556,9 @@ impl<F: PoseidonField> FromScratch<F> for PoseidonChip<F> {
         meta: &mut ConstraintSystem<F>,
         instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
+        const NB_ARITH_COLS: usize = 5;
+        const NB_ARITH_FIXED_COLS: usize = NB_ARITH_COLS + NB_EXTRA_ARITH_FIXED_COLS;
+
         let nb_advice_cols = std::cmp::max(NB_POSEIDON_ADVICE_COLS, NB_ARITH_COLS);
         let nb_fixed_cols = std::cmp::max(NB_POSEIDON_FIXED_COLS, NB_ARITH_FIXED_COLS);
 
@@ -569,8 +569,8 @@ impl<F: PoseidonField> FromScratch<F> for PoseidonChip<F> {
         let native_config = NativeChip::configure(
             meta,
             &(
-                advice_cols[..NB_ARITH_COLS].try_into().unwrap(),
-                fixed_cols[..NB_ARITH_FIXED_COLS].try_into().unwrap(),
+                advice_cols[..NB_ARITH_COLS].to_vec(),
+                fixed_cols[..NB_ARITH_FIXED_COLS].to_vec(),
                 *instance_columns,
             ),
         );
