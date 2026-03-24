@@ -122,6 +122,9 @@ impl<S: SelfEmulation> TranscriptGadget<S> {
 
     /// Reads a point from the reader buffer, and adds it to the transcript.
     /// Think of the read point as a witness freely chosen by the prover.
+    ///
+    /// The received points are not enforced to be part of the prime order
+    /// subgroup.
     pub fn read_point(
         &mut self,
         layouter: &mut impl Layouter<S::F>,
@@ -134,7 +137,7 @@ impl<S: SelfEmulation> TranscriptGadget<S> {
             Err(_) => Value::known(S::C::default()),
         };
 
-        let assigned_point = self.curve_chip.assign(layouter, point)?;
+        let assigned_point = S::assign_without_subgroup_check(layouter, &self.curve_chip, point)?;
         self.common_point(layouter, &assigned_point)?;
 
         Ok(assigned_point)
@@ -269,9 +272,18 @@ mod tests {
                 .scalar_chip
                 .assign_many(&mut layouter, &self.scalars.transpose_array())?;
 
-            let assigned_points = transcript_gadget
-                .curve_chip
-                .assign_many(&mut layouter, &self.points.transpose_array())?;
+            let assigned_points = self
+                .points
+                .transpose_array()
+                .iter()
+                .map(|p| {
+                    S::assign_without_subgroup_check(
+                        &mut layouter,
+                        &transcript_gadget.curve_chip,
+                        *p,
+                    )
+                })
+                .collect::<Result<Vec<_>, Error>>()?;
 
             for i in 0..(SIZE / 2) {
                 transcript_gadget.common_scalar(&mut layouter, &assigned_scalars[i])?;

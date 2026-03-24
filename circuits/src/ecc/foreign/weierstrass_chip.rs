@@ -53,7 +53,7 @@ use super::gates::{
     tangent::TangentConfig,
 };
 use crate::{
-    ecc::curves::WeierstrassCurve,
+    ecc::curves::{CircuitCurve, WeierstrassCurve},
     field::foreign::{
         field_chip::{FieldChip, FieldChipConfig},
         params::FieldEmulationParams,
@@ -311,22 +311,28 @@ where
     S::Scalar: InnerValue<Element = C::ScalarField>,
     N: NativeInstructions<F>,
 {
+    /// Assigns a private curve point and enforces in-circuit that it is on the
+    /// curve and lies in the prime-order subgroup.
+    /// 
+    /// If you deliberately need to skip the subgroup check, use
+    /// [`EccInstructions::assign_without_subgroup_check`] instead.
     fn assign(
         &self,
         layouter: &mut impl Layouter<F>,
         value: Value<C::CryptographicGroup>,
     ) -> Result<AssignedForeignPoint<F, C, B>, Error> {
-        let p = self.assign_point_unchecked(layouter, value)?;
-        let is_not_id = self.native_gadget.not(layouter, &p.is_id)?;
-        on_curve::assert_is_on_curve::<F, C, B, N>(
-            layouter,
-            &is_not_id,
-            &p.x,
-            &p.y,
-            self.base_field_chip(),
-            &self.config.on_curve_config,
-        )?;
-        Ok(p)
+        if C::COFACTOR > 1 {
+            let cofactor = C::ScalarField::from_u128(C::COFACTOR);
+            // Exhibit a cofactor root Q such that h * Q = p in-circuit.
+            // This proves p ∈ G1 because h · E(Fp) = G1.
+            let cofactor_root = self.assign_without_subgroup_check(
+                layouter,
+                value.map(|p| p * cofactor.invert().unwrap()),
+            )?;
+            self.mul_by_constant(layouter, cofactor, &cofactor_root)
+        } else {
+            self.assign_without_subgroup_check(layouter, value)
+        }
     }
 
     fn assign_fixed(
@@ -983,6 +989,24 @@ where
             x: x.clone(),
             y: y.clone(),
         })
+    }
+
+    fn assign_without_subgroup_check(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        value: Value<C::CryptographicGroup>,
+    ) -> Result<Self::Point, Error> {
+        let p = self.assign_point_unchecked(layouter, value)?;
+        let is_not_id = self.native_gadget.not(layouter, &p.is_id)?;
+        on_curve::assert_is_on_curve::<F, C, B, N>(
+            layouter,
+            &is_not_id,
+            &p.x,
+            &p.y,
+            self.base_field_chip(),
+            &self.config.on_curve_config,
+        )?;
+        Ok(p)
     }
 
     fn x_coordinate(&self, point: &Self::Point) -> Self::Coordinate {
@@ -2163,11 +2187,14 @@ impl Bls12381Chip {
         p: &<Bls12381Chip as EccInstructions<F, G1Projective>>::Point,
     ) -> Result<(), Error> {
         // We exhibit a COFACTOR "root" (an element that, multiplied by the cofactor
-        // results in p). This is more efficient that powering `p` to the subgroup order
+        // results in p). This is more efficient than powering `p` to the subgroup order
         // and checking it results in the identity.
-        let cofactor = F::from_raw([0x8c00aaab0000aaab, 0x396c8c005555e156, 0, 0]);
-        let cofactor_root: <Bls12381Chip as EccInstructions<F, G1Projective>>::Point =
-            self.assign(layouter, p.value().map(|p| p * cofactor.invert().unwrap()))?;
+        let cofactor = F::from_u128(G1Projective::COFACTOR);
+        let cofactor_root: <Bls12381Chip as EccInstructions<F, G1Projective>>::Point = self
+            .assign_without_subgroup_check(
+                layouter,
+                p.value().map(|p| p * cofactor.invert().unwrap()),
+            )?;
 
         let cofactor_root_times_cofactor =
             self.mul_by_constant(layouter, cofactor, &cofactor_root)?;

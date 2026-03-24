@@ -15,7 +15,10 @@
 
 use std::fmt::Debug;
 
-use midnight_proofs::{circuit::Layouter, plonk::Error};
+use midnight_proofs::{
+    circuit::{Layouter, Value},
+    plonk::Error,
+};
 
 use super::AssertionInstructions;
 use crate::{
@@ -132,6 +135,17 @@ where
         y: &Self::Coordinate,
     ) -> Result<Self::Point, Error>;
 
+    /// Assigns a private curve point, checking it is on the curve but skipping
+    /// any subgroup-membership check.
+    ///
+    /// For curves with a non-trivial cofactor this skips
+    /// the expensive cofactor-based subgroup check.
+    fn assign_without_subgroup_check(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        value: Value<C::CryptographicGroup>,
+    ) -> Result<Self::Point, Error>;
+
     /// The assigned x-coordinate of an assigned point.
     fn x_coordinate(&self, point: &Self::Point) -> Self::Coordinate;
 
@@ -165,6 +179,8 @@ pub(crate) mod tests {
 
     #[derive(Clone, Copy, Debug)]
     enum Operation {
+        Assign,
+        AssignWithoutSubgroupCheck,
         Add,
         Double,
         Neg,
@@ -220,9 +236,30 @@ pub(crate) mod tests {
         ) -> Result<(), Error> {
             let ecc_chip = EccChip::new_from_scratch(&config);
 
+            // Assign and AssignWithoutSubgroupCheck operations use minimal
+            // circuits.
+            match self.operation {
+                Operation::Assign => {
+                    let p: EccChip::Point =
+                        ecc_chip.assign(&mut layouter, Value::known(self.inputs[0]))?;
+                    ecc_chip.assert_equal_to_fixed(&mut layouter, &p, self.expected)?;
+                    return ecc_chip.load_from_scratch(&mut layouter);
+                }
+                Operation::AssignWithoutSubgroupCheck => {
+                    let p: EccChip::Point = ecc_chip.assign_without_subgroup_check(
+                        &mut layouter,
+                        Value::known(self.inputs[0]),
+                    )?;
+                    ecc_chip.assert_equal_to_fixed(&mut layouter, &p, self.expected)?;
+                    return ecc_chip.load_from_scratch(&mut layouter);
+                }
+                _ => {}
+            }
+
             // y does not apply in tests of arity-1 functions.
             let y_idx = min(self.inputs.len() - 1, 1);
-            let p: EccChip::Point = ecc_chip.assign(&mut layouter, Value::known(self.inputs[0]))?;
+            let p: EccChip::Point = ecc_chip
+                .assign_without_subgroup_check(&mut layouter, Value::known(self.inputs[0]))?;
             let q: EccChip::Point = ecc_chip.assign_fixed(&mut layouter, self.inputs[y_idx])?;
 
             let res = match self.operation {
@@ -264,14 +301,14 @@ pub(crate) mod tests {
                 }
                 Operation::MulByConstant => {
                     let s = self.scalars.clone().unwrap()[0].0;
-                    let base = ecc_chip.assign(&mut layouter, Value::known(self.inputs[0]))?;
-                    ecc_chip.mul_by_constant(&mut layouter, s, &base)
+                    ecc_chip.mul_by_constant(&mut layouter, s, &p)
                 }
                 Operation::Coordinates => {
                     let px = ecc_chip.x_coordinate(&p);
                     let py = ecc_chip.y_coordinate(&p);
                     ecc_chip.point_from_coordinates(&mut layouter, &px, &py)
                 }
+                Operation::Assign | Operation::AssignWithoutSubgroupCheck => unreachable!(),
             }?;
 
             ecc_chip.assert_equal_to_fixed(&mut layouter, &res, self.expected)?;
@@ -314,6 +351,7 @@ pub(crate) mod tests {
             Operation::MulByConstant => 17,
             Operation::Neg => 10,
             Operation::Coordinates => 12,
+            Operation::Assign => 14,
             _ => 11,
         };
         let public_inputs = vec![vec![], vec![]];
@@ -717,5 +755,70 @@ pub(crate) mod tests {
                 "",
             );
         });
+    }
+
+    pub fn test_assign<F, C, EccChip>(name: &str)
+    where
+        F: CircuitField + FromUniformBytes<64> + Ord,
+        C: CircuitCurve,
+        EccChip: EccInstructions<F, C>
+            + AssignmentInstructions<F, EccChip::Point>
+            + AssignmentInstructions<F, EccChip::Scalar>
+            + AssertionInstructions<F, EccChip::Point>
+            + Chip<F>
+            + FromScratch<F>,
+        EccChip::Point: InnerValue<Element = C::CryptographicGroup> + Clone,
+    {
+        let mut rng = ChaCha8Rng::seed_from_u64(0xc0ffee);
+        let p = C::CryptographicGroup::random(&mut rng);
+        let wrong = C::CryptographicGroup::random(&mut rng);
+        run::<F, C, EccChip>(
+            &[p],
+            None,
+            &p,
+            Operation::Assign,
+            true,
+            true,
+            name,
+            "assign with subgroup check",
+        );
+        run::<F, C, EccChip>(&[p], None, &wrong, Operation::Assign, false, false, "", "");
+    }
+
+    pub fn test_assign_without_subgroup_check<F, C, EccChip>(name: &str)
+    where
+        F: CircuitField + FromUniformBytes<64> + Ord,
+        C: CircuitCurve,
+        EccChip: EccInstructions<F, C>
+            + AssignmentInstructions<F, EccChip::Point>
+            + AssignmentInstructions<F, EccChip::Scalar>
+            + AssertionInstructions<F, EccChip::Point>
+            + Chip<F>
+            + FromScratch<F>,
+        EccChip::Point: InnerValue<Element = C::CryptographicGroup> + Clone,
+    {
+        let mut rng = ChaCha8Rng::seed_from_u64(0xc0ffee);
+        let p = C::CryptographicGroup::random(&mut rng);
+        let wrong = C::CryptographicGroup::random(&mut rng);
+        run::<F, C, EccChip>(
+            &[p],
+            None,
+            &p,
+            Operation::AssignWithoutSubgroupCheck,
+            true,
+            true,
+            name,
+            "assign_without_subgroup_check",
+        );
+        run::<F, C, EccChip>(
+            &[p],
+            None,
+            &wrong,
+            Operation::AssignWithoutSubgroupCheck,
+            false,
+            false,
+            "",
+            "",
+        );
     }
 }

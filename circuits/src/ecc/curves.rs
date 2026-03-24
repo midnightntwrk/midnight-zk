@@ -216,6 +216,8 @@ impl CircuitCurve for G1Projective {
     type ScalarField = <Self as Group>::Scalar;
     type CryptographicGroup = G1Projective;
 
+    // BLS12-381 G1 cofactor.
+    const COFACTOR: u128 = 0x396c8c005555e1568c00aaab0000aaab;
     const NUM_BITS_SUBGROUP: u32 = 255;
 
     fn coordinates(&self) -> Option<(Self::Base, Self::Base)> {

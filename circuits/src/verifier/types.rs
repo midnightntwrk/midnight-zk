@@ -24,7 +24,7 @@ use midnight_curves::{
     CurveAffine, CurveExt,
 };
 use midnight_proofs::{
-    circuit::Layouter,
+    circuit::{Layouter, Value},
     plonk::Error,
     transcript::{Hashable, TranscriptHash},
 };
@@ -118,6 +118,14 @@ pub trait SelfEmulation: Clone + Debug {
         scalar_chip: &Self::ScalarChip,
         assigned_scalar: &AssignedNative<Self::F>,
     ) -> Result<(), Error>;
+
+    /// Assigns a point without checking that it is part of the prime order
+    /// subgroup.
+    fn assign_without_subgroup_check(
+        layouter: &mut impl Layouter<Self::F>,
+        curve_chip: &Self::CurveChip,
+        base: Value<Self::C>,
+    ) -> Result<Self::AssignedPoint, Error>;
 }
 
 // Implementations
@@ -157,6 +165,14 @@ impl SelfEmulation for BlstrsEmulation {
     ) -> Result<(), Error> {
         scalar_chip.constrain_as_committed_public_input(layouter, assigned_scalar)
     }
+
+    fn assign_without_subgroup_check(
+        layouter: &mut impl Layouter<Self::F>,
+        curve_chip: &Self::CurveChip,
+        base: Value<Self::C>,
+    ) -> Result<Self::AssignedPoint, Error> {
+        curve_chip.assign_without_subgroup_check(layouter, base)
+    }
 }
 
 /// Implementation of the SelfEmulation trait for bn256.
@@ -195,5 +211,13 @@ impl SelfEmulation for BnEmulation {
         assigned_scalar: &AssignedNative<Self::F>,
     ) -> Result<(), Error> {
         scalar_chip.constrain_as_committed_public_input(layouter, assigned_scalar)
+    }
+
+    fn assign_without_subgroup_check(
+        layouter: &mut impl Layouter<Self::F>,
+        curve_chip: &Self::CurveChip,
+        base: Value<Self::C>,
+    ) -> Result<Self::AssignedPoint, Error> {
+        curve_chip.assign(layouter, base)
     }
 }

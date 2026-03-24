@@ -688,6 +688,31 @@ impl<C: EdwardsCurve> EccInstructions<C::Base, C> for EccChip<C> {
         Ok(point)
     }
 
+    fn assign_without_subgroup_check(
+        &self,
+        layouter: &mut impl Layouter<C::Base>,
+        value: Value<C::CryptographicGroup>,
+    ) -> Result<Self::Point, Error> {
+        let config = self.config();
+        let (x_val, y_val) = value
+            .map(|p| p.into().coordinates().expect("assign_without_subgroup_check: invalid point"))
+            .unzip();
+
+        layouter.assign_region(
+            || "assign point without subgroup check",
+            |mut region: Region<'_, C::Base>| {
+                config.q_mem.enable(&mut region, 0)?;
+                let x = region.assign_advice(|| "x", config.advice_cols[0], 0, || x_val)?;
+                let y = region.assign_advice(|| "y", config.advice_cols[1], 0, || y_val)?;
+                Ok(AssignedNativePoint {
+                    x,
+                    y,
+                    in_subgroup: false,
+                })
+            },
+        )
+    }
+
     fn x_coordinate(&self, point: &Self::Point) -> Self::Coordinate {
         point.x.clone()
     }
