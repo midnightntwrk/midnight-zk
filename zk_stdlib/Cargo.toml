@@ -77,3 +77,7 @@ path = "examples/identity/enrollment.rs"
 [[example]]
 name = "cred_property"
 path = "examples/identity/property_check.rs"
+
+[[example]]
+name = "passport_verification"
+path = "examples/passport_verification.rs"

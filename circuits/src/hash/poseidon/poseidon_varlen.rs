@@ -99,7 +99,7 @@ impl<F: PoseidonField> VarLenPoseidonGadget<F> {
     /// # Panics
     ///
     /// If `MAX_LEN` is not a multiple of `RATE`.
-    pub(crate) fn poseidon_varlen<const MAX_LEN: usize>(
+    pub fn poseidon_varlen<const MAX_LEN: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
         input: &AssignedVector<F, AssignedNative<F>, MAX_LEN, RATE>,

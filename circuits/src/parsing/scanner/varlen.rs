@@ -43,7 +43,8 @@ use super::{ScannerChip, ALPHABET_MAX_SIZE};
 use crate::{
     field::{native::AssignedBit, AssignedNative},
     instructions::{
-        AssignmentInstructions, ControlFlowInstructions, RangeCheckInstructions, VectorInstructions,
+        AssignmentInstructions, ControlFlowInstructions, RangeCheckInstructions,
+        UnsafeConversionInstructions, VectorInstructions,
     },
     types::{AssignedByte, AssignedVector},
     CircuitField,
@@ -114,6 +115,38 @@ impl<F> ScannerChip<F>
 where
     F: CircuitField + Ord,
 {
+    /// Converts a [`ScannerVec`] into an `AssignedVector` of [`AssignedByte`]s.
+    ///
+    /// Filler positions (value 256) are replaced with 0 so that all buffer
+    /// elements are valid bytes. The resulting vector can be passed to
+    /// operations that expect `AssignedByte` inputs, such as variable-length
+    /// SHA-256.
+    ///
+    /// No range-check constraints are added: payload bytes were already
+    /// range-checked during [`ScannerVec`] construction, and fillers are
+    /// replaced by a known constant (0).
+    pub fn scanner_vec_to_byte_vector<const M: usize, const A: usize>(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        sv: &ScannerVec<F, M, A>,
+    ) -> Result<AssignedVector<F, AssignedByte<F>, M, A>, Error> {
+        let zero = self.native_gadget.assign_fixed(layouter, F::ZERO)?;
+
+        // Replace fillers (256) with 0, keep payload bytes unchanged.
+        let byte_buffer: Vec<AssignedByte<F>> = (sv.buffer.iter().zip(sv.padding_flags.iter()))
+            .map(|(elem, flag)| {
+                // flag=1 (filler) -> zero; flag=0 (payload) -> elem.
+                let zeroed = self.native_gadget.select(layouter, flag, &zero, elem)?;
+                self.native_gadget.convert_unsafe(layouter, &zeroed)
+            })
+            .collect::<Result<Vec<_>, Error>>()?;
+
+        Ok(AssignedVector {
+            buffer: byte_buffer.try_into().unwrap(),
+            len: sv.length.clone(),
+        })
+    }
+
     /// Assigns a variable-length byte vector as a [`ScannerVec`].
     ///
     /// The input bytes are assigned as [`AssignedByte`]s (range-checked to

@@ -135,6 +135,16 @@ pub struct Sha256Chip<F: CircuitField> {
     pub(super) native_gadget: NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>,
 }
 
+impl<F: CircuitField> Sha256Chip<F> {
+    /// Returns a [`VarLenSha256Gadget`] wrapping this chip for variable-length
+    /// hashing.
+    pub fn varlen_gadget(&self) -> super::VarLenSha256Gadget<F> {
+        super::VarLenSha256Gadget {
+            sha256chip: self.clone(),
+        }
+    }
+}
+
 impl<F: CircuitField> Chip<F> for Sha256Chip<F> {
     type Config = Sha256Config;
     type Loaded = ();

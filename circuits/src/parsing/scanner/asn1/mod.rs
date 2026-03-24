@@ -216,6 +216,12 @@ pub struct Asn1Spec<Index>(Option<usize>, Vec<Asn1Block<Index>>, Option<Index>)
 where
     Index: Eq + Hash;
 
+impl<Index: Eq + Hash> Default for Asn1Spec<Index> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<Index: Eq + Hash> Asn1Spec<Index> {
     /// Creates an empty specification.
     pub fn new() -> Self {
@@ -248,9 +254,9 @@ impl<Index: Eq + Hash> Asn1Spec<Index> {
         }
         if self.1.len() == 1 {
             match self.1.into_iter().next().unwrap() {
-                Asn1Block::Const(_, idx)
-                | Asn1Block::Fixlen(_, idx)
-                | Asn1Block::Varlen(idx) => idx,
+                Asn1Block::Const(_, idx) | Asn1Block::Fixlen(_, idx) | Asn1Block::Varlen(idx) => {
+                    idx
+                }
                 _ => None,
             }
         } else {
@@ -421,7 +427,8 @@ where
     ///
     /// # Panics
     ///
-    /// If either spec has a full marker set via [`mark_full`](`Self::mark_full`).
+    /// If either spec has a full marker set via
+    /// [`mark_full`](`Self::mark_full`).
     pub fn then(self, spec: Asn1Spec<Index>) -> Self {
         assert!(
             self.2.is_none(),
@@ -436,9 +443,7 @@ where
 
     /// Concatenates several specs in order.
     pub fn cat(items: Vec<Self>) -> Self {
-        items
-            .into_iter()
-            .fold(Self::empty(), |acc, spec| acc.then(spec))
+        items.into_iter().fold(Self::empty(), |acc, spec| acc.then(spec))
     }
 
     // -------------------------------------------------------------------
@@ -644,5 +649,4 @@ where
     pub fn read_trail(self) -> Self {
         self.add_block(Asn1Block::Varlen(None))
     }
-
 }

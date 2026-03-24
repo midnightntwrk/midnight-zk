@@ -37,10 +37,11 @@ const OID_SHA256_RSA: &[u32] = &[1, 2, 840, 113549, 1, 1, 11];
 const OID_RSA: &[u32] = &[1, 2, 840, 113549, 1, 1, 1];
 
 /// BIT STRING content size for an RSA-2048 public key:
-/// 1 byte (unused bits = 0x00) + DER(SEQUENCE { INTEGER(256+overhead), INTEGER(3+overhead) }).
-/// The SEQUENCE is: 30 82 01 0A  02 82 01 01 00 <256 bytes modulus> 02 03 01 00 01
-/// = 4 + 259 + 5 = 268 content bytes. BIT STRING content = 1 + 268 = 269 bytes.
-const RSA2048_BIT_STRING_LEN: usize = 269;
+/// 1 byte (unused bits = 0x00) + DER(SEQUENCE { INTEGER(256+overhead),
+/// INTEGER(3+overhead) }). The SEQUENCE is: 30 82 01 0A  02 82 01 01 00 <256
+/// bytes modulus> 02 03 01 00 01 = 4 + 259 + 5 = 268 content bytes. BIT STRING
+/// content = 1 + 268 = 269 bytes.
+pub const RSA2048_BIT_STRING_LEN: usize = 269;
 
 /// RSA-2048 signature size: always exactly 256 bytes. BIT STRING
 /// content = 1 (unused bits) + 256 = 257 bytes.
@@ -133,17 +134,14 @@ pub const DG1_EXPIRY: Range<usize> = 70..76;
 ///           OCTET STRING (256 bytes)            -- EXTRACT
 /// ```
 pub fn sod_sha256_rsa2048_spec() -> Asn1Spec<&'static str> {
-    let econtent = Asn1Spec::new().read_octet_string(
-        lds_security_object_spec().mark_full("eContent"),
-    );
+    let econtent =
+        Asn1Spec::new().read_octet_string(lds_security_object_spec().mark_full("eContent"));
 
     let signed_data = Asn1Spec::new().read_sequence(
         Asn1Spec::new()
             .read_integer_const(3)
             .read_set(Asn1Spec::new().read_algid_null(OID_SHA256))
-            .read_sequence(
-                Asn1Spec::new().read_oid(OID_LDS_SECURITY_OBJECT).read_ctx(0, econtent),
-            )
+            .read_sequence(Asn1Spec::new().read_oid(OID_LDS_SECURITY_OBJECT).read_ctx(0, econtent))
             .read_ctx(0, x509_certificate_spec())
             .read_set(signer_info_spec()),
     );
@@ -165,9 +163,7 @@ fn lds_security_object_spec() -> Asn1Spec<&'static str> {
     let dg1_hash = Asn1Spec::new().read_sequence(
         Asn1Spec::new()
             .read_integer_const(1)
-            .read_octet_string(
-                Asn1Spec::new().read_bytes(32).mark_last("hashDg1"),
-            ),
+            .read_octet_string(Asn1Spec::new().read_bytes(32).mark_last("hashDg1")),
     );
 
     Asn1Spec::new().read_sequence(
@@ -184,10 +180,12 @@ fn x509_certificate_spec() -> Asn1Spec<&'static str> {
     Asn1Spec::new().read_sequence(
         Asn1Spec::new()
             .read_sequence(tbs_certificate_spec())
-                .mark_last("tbsCertificate")
-            .read_algid_null(OID_SHA256_RSA)            // signatureAlgorithm (fixed)
-            .read_bit_string(                            // signatureValue (fixed 257 bytes)
-                Asn1Spec::new().read_bytes(RSA2048_SIG_BIT_STRING_LEN)
+            .mark_last("tbsCertificate")
+            .read_algid_null(OID_SHA256_RSA) // signatureAlgorithm (fixed)
+            .read_bit_string(
+                // signatureValue (fixed 257 bytes)
+                Asn1Spec::new()
+                    .read_bytes(RSA2048_SIG_BIT_STRING_LEN)
                     .mark_last("cscaSignature"),
             ),
     )
@@ -201,20 +199,20 @@ fn x509_certificate_spec() -> Asn1Spec<&'static str> {
 fn tbs_certificate_spec() -> Asn1Spec<&'static str> {
     let spki = Asn1Spec::new().read_sequence(
         Asn1Spec::new()
-            .read_algid_null(OID_RSA)                   // algorithm (fixed)
-            .read_bit_string(                            // publicKey (fixed 269 bytes)
-                Asn1Spec::new().read_bytes(RSA2048_BIT_STRING_LEN)
-                    .mark_last("dsPublicKey"),
+            .read_algid_null(OID_RSA) // algorithm (fixed)
+            .read_bit_string(
+                // publicKey (fixed 269 bytes)
+                Asn1Spec::new().read_bytes(RSA2048_BIT_STRING_LEN).mark_last("dsPublicKey"),
             ),
     );
 
     Asn1Spec::new()
-        .read_ctx(0, Asn1Spec::new().read_integer_const(2))  // version v3 (fixed)
-        .read_integer(Asn1Spec::new().read_trail())            // serialNumber
-        .read_algid_null(OID_SHA256_RSA)                       // signature (fixed)
-        .read_sequence(Asn1Spec::new().read_trail())           // issuer
-        .read_sequence(Asn1Spec::new().read_trail())           // validity
-        .read_sequence(Asn1Spec::new().read_trail())           // subject
+        .read_ctx(0, Asn1Spec::new().read_integer_const(2)) // version v3 (fixed)
+        .read_integer(Asn1Spec::new().read_trail()) // serialNumber
+        .read_algid_null(OID_SHA256_RSA) // signature (fixed)
+        .read_sequence(Asn1Spec::new().read_trail()) // issuer
+        .read_sequence(Asn1Spec::new().read_trail()) // validity
+        .read_sequence(Asn1Spec::new().read_trail()) // subject
         .then(spki)
 }
 
@@ -223,13 +221,15 @@ fn tbs_certificate_spec() -> Asn1Spec<&'static str> {
 fn signer_info_spec() -> Asn1Spec<&'static str> {
     Asn1Spec::new().read_sequence(
         Asn1Spec::new()
-            .read_integer_const(1)                              // version
-            .read_sequence(Asn1Spec::new().read_trail())        // issuerAndSerialNumber
-            .read_algid_null(OID_SHA256)                        // digestAlgorithm (fixed)
+            .read_integer_const(1) // version
+            .read_sequence(Asn1Spec::new().read_trail()) // issuerAndSerialNumber
+            .read_algid_null(OID_SHA256) // digestAlgorithm (fixed)
             .read_ctx(0, signed_attrs_spec().mark_full("signedAttrs"))
-            .read_algid_null(OID_SHA256_RSA)                    // signatureAlgorithm (fixed)
-            .read_octet_string(                                 // signature (fixed 256 bytes)
-                Asn1Spec::new().read_bytes(RSA2048_SIG_OCTET_STRING_LEN)
+            .read_algid_null(OID_SHA256_RSA) // signatureAlgorithm (fixed)
+            .read_octet_string(
+                // signature (fixed 256 bytes)
+                Asn1Spec::new()
+                    .read_bytes(RSA2048_SIG_OCTET_STRING_LEN)
                     .mark_last("dsSignature"),
             ),
     )
@@ -244,14 +244,10 @@ fn signed_attrs_spec() -> Asn1Spec<&'static str> {
     );
 
     let message_digest_attr = Asn1Spec::new().read_sequence(
-        Asn1Spec::new()
-            .read_oid(OID_MESSAGE_DIGEST)
-            .read_set(
-                Asn1Spec::new()
-                    .read_octet_string(
-                        Asn1Spec::new().read_bytes(32).mark_last("messageDigest"),
-                    ),
-            ),
+        Asn1Spec::new().read_oid(OID_MESSAGE_DIGEST).read_set(
+            Asn1Spec::new()
+                .read_octet_string(Asn1Spec::new().read_bytes(32).mark_last("messageDigest")),
+        ),
     );
 
     content_type_attr.then(message_digest_attr)

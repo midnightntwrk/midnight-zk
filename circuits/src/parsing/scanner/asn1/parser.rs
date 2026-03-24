@@ -59,21 +59,23 @@ pub struct Asn1FixlenResult<F: CircuitField, Index: Eq + Hash> {
     extracted: HashMap<Index, Asn1ParsedUnit<F, 0, 0, 0, 0>>,
 }
 
-impl<F: CircuitField, Index: Eq + Hash> Asn1FixlenResult<F, Index> {
+impl<F: CircuitField, Index: Eq + Hash + Debug> Asn1FixlenResult<F, Index> {
     /// Returns the full assigned and constrained witness.
     pub fn witness(&self) -> &[AssignedByte<F>] {
         &self.full_witness
     }
 
     /// Returns the extracted unit for the given index.
-    pub fn get(&self, index: &Index) -> Option<&[AssignedByte<F>]> {
-        self.extracted.get(index).map(|extr| {
-            if let Asn1ParsedUnit::Fixlen(v) = extr {
-                v.as_slice()
-            } else {
-                panic!("[parse_asn1_fixlen] should have filtered out varlen extractors")
-            }
-        })
+    pub fn get(&self, index: &Index) -> &[AssignedByte<F>] {
+        let extr = self
+            .extracted
+            .get(index)
+            .unwrap_or_else(|| panic!("no extraction for index {:?}", index));
+        if let Asn1ParsedUnit::Fixlen(v) = extr {
+            v.as_slice()
+        } else {
+            panic!("[parse_asn1_fixlen] should have filtered out varlen extractors")
+        }
     }
 }
 
@@ -96,7 +98,7 @@ pub struct Asn1VarlenResult<
 
 impl<
         F: CircuitField,
-        Index: Eq + Hash,
+        Index: Eq + Hash + Debug,
         const TAG_M: usize,
         const LEN_M: usize,
         const VAL_M: usize,
@@ -111,39 +113,46 @@ impl<
     }
 
     /// Returns a fixed-length extracted region as a byte slice.
-    /// Panics if the region exists but is not fixed-length.
-    pub fn get_fixlen(&self, index: &Index) -> Option<&[AssignedByte<F>]> {
-        self.extracted.get(index).map(|unit| match unit {
-            Asn1ParsedUnit::Fixlen(v) => v.as_slice(),
-            _ => panic!("expected Fixlen extraction"),
-        })
+    /// Panics if the index is missing or the extraction is not fixed-length.
+    pub fn get_fixlen(&self, index: &Index) -> &[AssignedByte<F>] {
+        match self.extracted.get(index) {
+            Some(Asn1ParsedUnit::Fixlen(v)) => v.as_slice(),
+            Some(_) => panic!("extraction {:?} is not Fixlen", index),
+            None => panic!("no extraction for index {:?}", index),
+        }
     }
 
     /// Returns an extracted Tag (T of a TLV) as a variable-length
-    /// [`ScannerVec`]. Panics if the region exists but is not a varlen tag.
-    pub fn get_varlen_tag(&self, index: &Index) -> Option<&ScannerVec<F, TAG_M, 1>> {
-        self.extracted.get(index).map(|unit| match unit {
-            Asn1ParsedUnit::VarlenTag(sv) => sv,
-            _ => panic!("expected VarlenTag extraction"),
-        })
+    /// [`ScannerVec`]. Panics if the index is missing or the extraction
+    /// is not a varlen tag.
+    pub fn get_varlen_tag(&self, index: &Index) -> &ScannerVec<F, TAG_M, 1> {
+        match self.extracted.get(index) {
+            Some(Asn1ParsedUnit::VarlenTag(sv)) => sv,
+            Some(_) => panic!("extraction {:?} is not VarlenTag", index),
+            None => panic!("no extraction for index {:?}", index),
+        }
     }
 
     /// Returns an extracted Length (L of a TLV) as a variable-length
-    /// [`ScannerVec`]. Panics if the region exists but is not a varlen length.
-    pub fn get_varlen_len(&self, index: &Index) -> Option<&ScannerVec<F, LEN_M, 1>> {
-        self.extracted.get(index).map(|unit| match unit {
-            Asn1ParsedUnit::VarlenLen(sv) => sv,
-            _ => panic!("expected VarlenLen extraction"),
-        })
+    /// [`ScannerVec`]. Panics if the index is missing or the extraction
+    /// is not a varlen length.
+    pub fn get_varlen_len(&self, index: &Index) -> &ScannerVec<F, LEN_M, 1> {
+        match self.extracted.get(index) {
+            Some(Asn1ParsedUnit::VarlenLen(sv)) => sv,
+            Some(_) => panic!("extraction {:?} is not VarlenLen", index),
+            None => panic!("no extraction for index {:?}", index),
+        }
     }
 
     /// Returns an extracted Value (V of a TLV) as a variable-length
-    /// [`ScannerVec`]. Panics if the region exists but is not a varlen value.
-    pub fn get_varlen_val(&self, index: &Index) -> Option<&ScannerVec<F, VAL_M, VAL_A>> {
-        self.extracted.get(index).map(|unit| match unit {
-            Asn1ParsedUnit::VarlenVal(sv) => sv,
-            _ => panic!("expected VarlenVal extraction"),
-        })
+    /// [`ScannerVec`]. Panics if the index is missing or the extraction
+    /// is not a varlen value.
+    pub fn get_varlen_val(&self, index: &Index) -> &ScannerVec<F, VAL_M, VAL_A> {
+        match self.extracted.get(index) {
+            Some(Asn1ParsedUnit::VarlenVal(sv)) => sv,
+            Some(_) => panic!("extraction {:?} is not VarlenVal", index),
+            None => panic!("no extraction for index {:?}", index),
+        }
     }
 }
 
