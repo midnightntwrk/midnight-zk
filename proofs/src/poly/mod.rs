@@ -378,7 +378,7 @@ impl<F: Field> Polynomial<Rational<F>, LagrangeCoeff> {
 /// Both operands must have been created over the same domain (or with the same
 /// number of coefficients). This invariant is enforced by a runtime assertion.
 /// For coefficient-form polynomials of different lengths see
-/// [`Polynomial::padded_add`].
+/// `Polynomial::padded_add`.
 impl<'a, F: Field, B: PolynomialRepresentation> Add<&'a Polynomial<F, B>> for Polynomial<F, B> {
     type Output = Polynomial<F, B>;
 
@@ -393,7 +393,7 @@ impl<'a, F: Field, B: PolynomialRepresentation> Add<&'a Polynomial<F, B>> for Po
 /// Both operands must have been created over the same domain (or with the same
 /// number of coefficients). This invariant is enforced by a runtime assertion.
 /// For coefficient-form polynomials of different lengths see
-/// [`Polynomial::padded_add`].
+/// `Polynomial::padded_add`.
 impl<'a, F: Field, B: PolynomialRepresentation> AddAssign<&'a Polynomial<F, B>>
     for Polynomial<F, B>
 {
@@ -412,7 +412,7 @@ impl<'a, F: Field, B: PolynomialRepresentation> AddAssign<&'a Polynomial<F, B>>
 /// Both operands must have been created over the same domain (or with the same
 /// number of coefficients). This invariant is enforced by a runtime assertion.
 /// For coefficient-form polynomials of different lengths see
-/// [`Polynomial::padded_add`].
+/// `Polynomial::padded_add`.
 impl<F: Field, B: PolynomialRepresentation> Add<Polynomial<F, B>> for Polynomial<F, B> {
     type Output = Polynomial<F, B>;
 
@@ -433,7 +433,7 @@ impl<F: Field, B: PolynomialRepresentation> Add<Polynomial<F, B>> for Polynomial
 /// Both operands must have been created over the same domain (or with the same
 /// number of coefficients). This invariant is enforced by a runtime assertion.
 /// For coefficient-form polynomials of different lengths see
-/// [`Polynomial::padded_sub`].
+/// `Polynomial::padded_sub`.
 impl<'a, F: Field, B: PolynomialRepresentation> Sub<&'a Polynomial<F, B>> for Polynomial<F, B> {
     type Output = Polynomial<F, B>;
 

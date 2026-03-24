@@ -90,7 +90,7 @@ pub const MIN_NB_ARITH_COLS: usize = 5;
 pub const NB_EXTRA_ARITH_FIXED_COLS: usize = 4;
 
 /// Number of additions (by constant) that can be performed in
-/// parallel in 1 row. This number should not exceed [NB_ARITH_COLS].
+/// parallel in 1 row. This number should not exceed [MIN_NB_ARITH_COLS].
 ///
 /// The Poseidon chip requires this number to match the Poseidon
 /// register width. Have that into consideration before modifying
@@ -573,7 +573,7 @@ impl<F: CircuitField> NativeChip<F> {
 
         (variables.iter())
             .zip(self.config.value_cols.iter())
-            .try_for_each(|(x, col)| self.copy_in_row(region, x, &col, *offset))?;
+            .try_for_each(|(x, col)| self.copy_in_row(region, x, col, *offset))?;
 
         constants.iter().zip(self.config.coeff_cols.iter()).try_for_each(|(c, col)| {
             region.assign_fixed(|| "add_consts", *col, *offset, || Value::known(*c))?;
