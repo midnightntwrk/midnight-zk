@@ -428,9 +428,9 @@ def cost_on_curve(RC_len, params, mul_cost):
 
     return cost
 
-# The cost in rows of implementing tangent assertion with the given params.
+# The cost in rows of implementing lambda2 assertion with the given params.
 def cost_lambda2(RC_len, params):
-    # We place the mul identity in 3 rows
+    # We place the lambda2 identity in 3 rows
     cost = 3
 
     # Consider the range-check of u
@@ -441,9 +441,9 @@ def cost_lambda2(RC_len, params):
 
     return cost
 
-# The cost in rows of implementing tangent assertion with the given params.
+# The cost in rows of implementing slope assertion with the given params.
 def cost_slope(RC_len, params):
-    # We place the mul identity in 3 rows
+    # We place the slope identity in 3 rows
     cost = 3
 
     # Consider the range-check of u
@@ -605,10 +605,7 @@ def optimize(p, q, a=0, b=0):
 
           params_on_curve = Params(p, q, params.B, params.auxiliary_moduli, RC_len,
                                    on_curve_expr_bounds, curve_constants=on_curve_cc)
-          
           on_curve_cost = cost_on_curve(RC_len, params_on_curve, mul_cost)
-
-          norm_cost = mul_cost # This is an upper bound for the cost of normalization
 
           # Let's optimize the cost of incomplete point addition, the dominant factor in an msm
           cost = cost_incomplete_point_add(params.B, params.n, RC_len, lambda2_cost, slope_cost)
@@ -621,6 +618,13 @@ def optimize(p, q, a=0, b=0):
 
 PLUTO_SCALAR = 0x24000000000024000130e0000d7f70e4a803ca76f439266f443f9a5c7a8a6c7be4a775fe8e177fd69ca7e85d60050af41ffffcd300000001
 ERIS_SCALAR = 0x24000000000024000130e0000d7f70e4a803ca76f439266f443f9a5cda8a6c7be4a7a5fe8fadffd6a2a7e8c30006b9459ffffcd300000001
+CURVES = {
+    'secp256k1': (0, 7),
+    'secp256r1': (-3, 0x5ac635d8aa3a93e7b3ebbd55769886bc651d06b0cc53b0f63bce3c3e27d2604b),
+    'bls12-381': (0, 4),
+    'bn254':     (0, 3),
+}
+
 ORDERS = {
     'secp256k1-base' : 2**256 - 2**32 - 2**9 - 2**8 - 2**7 - 2**6 - 2**4 - 1,
     'secp256k1-scalar' : 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141,
@@ -646,19 +650,33 @@ def parse_modulus(m):
     return eval(m)
 
 
+def parse_curve(name):
+    fetched = CURVES.get(name)
+    if fetched != None:
+        return fetched
+    return None
+
 if __name__ == '__main__':
     if len(sys.argv) < 3:
         keys = "\n".join([" - " + k for k in ORDERS.keys()])
-        sys.exit("Usage: python3 foreign_params_gen.py NATIVE EMULATED [A B]\n"\
+        curves = "\n".join([" - " + k for k in CURVES.keys()])
+        sys.exit("Usage: python3 foreign_params_gen.py NATIVE EMULATED [CURVE | A B]\n"\
                  "Where NATIVE and EMULATED must be replaced by concrete constants or "\
                  "one of the following supported values:\n" + keys + "\n\n" \
-                 "A and B are optional Weierstrass coefficients for y^2 = x^3 + Ax + B (default 0).")
+                 "Weierstrass coefficients (y^2 = x^3 + Ax + B) can be specified as a\n"\
+                 "curve name or explicit A B values (default 0). Supported curves:\n" + curves)
 
     p = parse_modulus(sys.argv[1])
     q = parse_modulus(sys.argv[2])
 
-    a = int(sys.argv[3], 0) if len(sys.argv) >= 4 else 0
-    b = int(sys.argv[4], 0) if len(sys.argv) >= 5 else 0
+    a, b = 0, 0
+    if len(sys.argv) >= 4:
+        curve = parse_curve(sys.argv[3])
+        if curve != None:
+            a, b = curve
+        else:
+            a = int(sys.argv[3], 0)
+            b = int(sys.argv[4], 0) if len(sys.argv) >= 5 else 0
 
     print("Optimizing parameters for:\n   Native modulus: %d\n Emulated modulus: %d" % (p, q))
     if a != 0 or b != 0:
