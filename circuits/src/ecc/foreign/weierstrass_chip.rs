@@ -941,7 +941,8 @@ where
             let n = scalar_as_big
                 .to_u64_digits()
                 .iter()
-                .fold(0u128, |acc, limb| acc + *limb as u128);
+                .rev()
+                .fold(0u128, |acc, limb| (acc << 64) | (*limb as u128));
 
             // `mul_by_u128` is incomplete (it cannot take the identity).
             // Change the base in case it is the identity and then change
