@@ -35,7 +35,7 @@ pub(crate) struct CommittedMultiplicities<S: SelfEmulation> {
 #[derive(Clone, Debug)]
 pub(crate) struct LookupEvaluated<S: SelfEmulation> {
     pub(crate) multiplicities_eval: AssignedNative<S::F>,
-    pub(crate) helper_eval: AssignedNative<S::F>,
+    pub(crate) helper_evals: Vec<AssignedNative<S::F>>,
     pub(crate) accumulator_eval: AssignedNative<S::F>,
     pub(crate) accumulator_next_eval: AssignedNative<S::F>,
 }
@@ -44,7 +44,7 @@ pub(crate) struct LookupEvaluated<S: SelfEmulation> {
 #[derive(Clone, Debug)]
 pub(crate) struct Committed<S: SelfEmulation> {
     multiplicities: S::AssignedPoint,
-    helper_poly: S::AssignedPoint,
+    helper_polys: Vec<S::AssignedPoint>,
     accumulator: S::AssignedPoint,
 }
 
@@ -68,15 +68,18 @@ pub(crate) fn read_multiplicities<S: SelfEmulation>(
 impl<S: SelfEmulation> CommittedMultiplicities<S> {
     pub(crate) fn read_commitment(
         self,
+        nb_flattened: usize,
         layouter: &mut impl Layouter<S::F>,
         transcript_gadget: &mut TranscriptGadget<S>,
     ) -> Result<Committed<S>, Error> {
-        let helper_poly = transcript_gadget.read_point(layouter)?;
+        let helper_polys = (0..nb_flattened)
+            .map(|_| transcript_gadget.read_point(layouter))
+            .collect::<Result<Vec<_>, Error>>()?;
         let accumulator = transcript_gadget.read_point(layouter)?;
 
         Ok(Committed {
             multiplicities: self.multiplicities,
-            helper_poly,
+            helper_polys,
             accumulator,
         })
     }
@@ -88,8 +91,11 @@ impl<S: SelfEmulation> Committed<S> {
         layouter: &mut impl Layouter<S::F>,
         transcript_gadget: &mut TranscriptGadget<S>,
     ) -> Result<Evaluated<S>, Error> {
+        let nb_flattened = self.helper_polys.len();
         let multiplicities_eval = transcript_gadget.read_scalar(layouter)?;
-        let helper_eval = transcript_gadget.read_scalar(layouter)?;
+        let helper_evals = (0..nb_flattened)
+            .map(|_| transcript_gadget.read_scalar(layouter))
+            .collect::<Result<Vec<_>, Error>>()?;
         let accumulator_eval = transcript_gadget.read_scalar(layouter)?;
         let accumulator_next_eval = transcript_gadget.read_scalar(layouter)?;
 
@@ -97,7 +103,7 @@ impl<S: SelfEmulation> Committed<S> {
             committed: self,
             evaluated: LookupEvaluated {
                 multiplicities_eval,
-                helper_eval,
+                helper_evals,
                 accumulator_eval,
                 accumulator_next_eval,
             },
@@ -114,7 +120,7 @@ impl<S: SelfEmulation> Evaluated<S> {
         x: &AssignedNative<S::F>,          // evaluation point x
         x_next: &AssignedNative<S::F>,     // ωx
     ) -> Vec<VerifierQuery<S>> {
-        vec![
+        let mut queries = vec![
             // Open lookup product commitment at x
             VerifierQuery::new(
                 one,
@@ -123,30 +129,35 @@ impl<S: SelfEmulation> Evaluated<S> {
                 &self.committed.multiplicities,
                 &self.evaluated.multiplicities_eval,
             ),
-            // Open lookup input commitments at x
-            VerifierQuery::new(
+        ];
+        // Open lookup input commitments at x
+        for (h_commit, h_eval) in
+            self.committed.helper_polys.iter().zip(self.evaluated.helper_evals.iter())
+        {
+            queries.push(VerifierQuery::new(
                 one,
                 x,
                 CommitmentLabel::NoLabel,
-                &self.committed.helper_poly,
-                &self.evaluated.helper_eval,
-            ),
-            // Open lookup table commitments at x
-            VerifierQuery::new(
-                one,
-                x,
-                CommitmentLabel::NoLabel,
-                &self.committed.accumulator,
-                &self.evaluated.accumulator_eval,
-            ),
-            // Open lookup product commitment at \omega x
-            VerifierQuery::new(
-                one,
-                x_next,
-                CommitmentLabel::NoLabel,
-                &self.committed.accumulator,
-                &self.evaluated.accumulator_next_eval,
-            ),
-        ]
+                h_commit,
+                h_eval,
+            ));
+        }
+        // Open lookup table commitments at x
+        queries.push(VerifierQuery::new(
+            one,
+            x,
+            CommitmentLabel::NoLabel,
+            &self.committed.accumulator,
+            &self.evaluated.accumulator_eval,
+        ));
+        // Open lookup product commitment at \omega x
+        queries.push(VerifierQuery::new(
+            one,
+            x_next,
+            CommitmentLabel::NoLabel,
+            &self.committed.accumulator,
+            &self.evaluated.accumulator_next_eval,
+        ));
+        queries
     }
 }

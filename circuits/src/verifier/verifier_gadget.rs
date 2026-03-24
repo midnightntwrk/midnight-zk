@@ -348,7 +348,6 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         let multiplicities_committed = cs
             .lookups()
             .iter()
-            .flat_map(|l| l.split(assigned_vk.cs.degree()))
             .map(|_| lookup::read_multiplicities(layouter, &mut transcript))
             .collect::<Result<Vec<_>, Error>>()?;
 
@@ -361,9 +360,12 @@ impl<S: SelfEmulation> VerifierGadget<S> {
 
         let lookups_committed = multiplicities_committed
             .into_iter()
-            .map(|lookup|
+            .zip(cs.lookups().iter())
+            .map(|(m, batch)| {
+                let nb_flat = batch.num_chunks(assigned_vk.cs.degree());
                 // Hash each lookup product commitment
-                lookup.read_commitment(layouter, &mut transcript))
+                m.read_commitment(nb_flat, layouter, &mut transcript)
+            })
             .collect::<Result<Vec<_>, _>>()?;
 
         let trash_challenge = transcript.squeeze_challenge(layouter)?;
@@ -629,9 +631,6 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         let l_0 = l_evals[1 + nr_blinding_factors].clone();
 
         let mut expressions = Vec::new();
-        let flattened_lookups =
-            cs.lookups().iter().flat_map(|l| l.split(cs.degree())).collect::<Vec<_>>();
-
         // (Partially) evaluate polys from (custom) gates
         for gate in cs.gates().iter() {
             for poly in gate.polynomials().iter() {
@@ -677,14 +676,17 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         // Evaluate polys from lookup argument
         lookups_evaluated
             .iter()
-            .zip(flattened_lookups.iter())
+            .zip(cs.lookups().iter())
             .map(|(p, argument)| {
+                let argument = argument.chunk_by_degree(cs.degree());
+                let per_flat_inputs: Vec<&[Vec<_>]> =
+                    argument.input_expression_chunks().iter().map(|c| c.as_slice()).collect();
                 lookup_expressions(
                     layouter,
                     &self.scalar_chip,
                     &p.evaluated,
                     argument.selector_expression(),
-                    argument.input_expressions(),
+                    &per_flat_inputs,
                     argument.table_expressions(),
                     &advice_evals,
                     &fixed_evals,

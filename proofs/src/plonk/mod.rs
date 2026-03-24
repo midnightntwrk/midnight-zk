@@ -511,9 +511,6 @@ where
     let l_blind: F =
         l_evals[1..(1 + blinding_factors)].iter().fold(F::ZERO, |acc, eval| acc + eval);
     let l_0 = l_evals[1 + blinding_factors];
-    let flattened_lookups =
-        vk.cs.lookups.iter().flat_map(|l| l.split(vk.cs().degree())).collect::<Vec<_>>();
-
     advice_evals
         .iter()
         .zip(instance_evals)
@@ -570,13 +567,13 @@ where
                     )
                     .chain(
                         lookups
-                            .zip(flattened_lookups.iter())
+                            .zip(vk.cs.lookups.iter().map(|l| l.chunk_by_degree(vk.cs_degree)))
                             .flat_map(move |(p, argument)| {
                                 p.expressions(
                                     l_0,
                                     l_last,
                                     l_blind,
-                                    argument,
+                                    &argument,
                                     theta,
                                     beta,
                                     advice_evals,
@@ -584,6 +581,7 @@ where
                                     instance_evals,
                                     challenges,
                                 )
+                                .collect::<Vec<_>>()
                             })
                             .map(|e| (None, e)),
                     )

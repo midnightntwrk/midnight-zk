@@ -140,9 +140,8 @@ where
                                 .cs
                                 .lookups
                                 .iter()
-                                .flat_map(|l| l.split(pk.get_vk().cs().degree()))
-                                .map(|logup| {
-                                    logup.commit_multiplicities(
+                                .map(|l| {
+                                    l.chunk_by_degree(pk.vk.cs.degree()).commit_multiplicities(
                                         pk,
                                         params,
                                         theta,
@@ -168,9 +167,8 @@ where
                     .cs
                     .lookups
                     .iter()
-                    .flat_map(|l| l.split(pk.get_vk().cs().degree()))
-                    .map(|logup| {
-                        logup.commit_multiplicities(
+                    .map(|l| {
+                        l.chunk_by_degree(pk.vk.cs.degree()).commit_multiplicities(
                             pk,
                             params,
                             theta,
@@ -252,8 +250,8 @@ where
                             // Construct and commit to products polynomials for each lookup
                             lookups
                                 .into_iter()
-                                .map(|lookup| {
-                                    lookup.commit_logderivative(pk, params, beta, &mut rng, &mut t)
+                                .map(|batch| {
+                                    batch.commit_logderivative(pk, params, beta, &mut rng, &mut t)
                                 })
                                 .collect::<Result<Vec<_>, _>>()
                         })
@@ -268,9 +266,7 @@ where
                 // Construct and commit to products polynomials for each lookup
                 lookups
                     .into_iter()
-                    .map(|lookup| {
-                        lookup.commit_logderivative(pk, params, beta, &mut rng, transcript)
-                    })
+                    .map(|batch| batch.commit_logderivative(pk, params, beta, &mut rng, transcript))
                     .collect::<Result<Vec<_>, _>>()
             })
             .collect::<Result<Vec<_>, _>>()?
