@@ -39,8 +39,8 @@ pub trait FieldEmulationParams<F: CircuitField, K: CircuitField>:
     const LOG2_BASE: u32;
 
     /// The number of limbs used to represent a emulated field element.
-    /// It must hold base^NB_LIMBS >= emulated_modulus.
-    const NB_LIMBS: u32;
+    /// It must hold base^NUM_LIMBS >= emulated_modulus.
+    const NUM_LIMBS: u32;
 
     /// Vector of powers of the base, used for the foreign-field identities.
     /// The i-th element must be congruent to base^i modulo the emulated
@@ -48,20 +48,20 @@ pub trait FieldEmulationParams<F: CircuitField, K: CircuitField>:
     fn base_powers() -> Vec<BI> {
         let two = BI::from(2);
         let m = &K::modulus().to_bigint().unwrap();
-        (0..Self::NB_LIMBS)
+        (0..Self::NUM_LIMBS)
             .map(|i| two.pow(Self::LOG2_BASE * i).rem(m))
             .collect::<Vec<_>>()
     }
 
     /// Vector of powers of the base, used for the foreign-field identities.
-    /// The (i * nb_limbs + j)-th element must be congruent to base^(i+j) modulo
-    /// the emulated modulus.
+    /// The (i * num_limbs + j)-th element must be congruent to base^(i+j)
+    /// modulo the emulated modulus.
     fn double_base_powers() -> Vec<BI> {
         let two = BI::from(2);
         let m = &K::modulus().to_bigint().unwrap();
-        (0..Self::NB_LIMBS)
+        (0..Self::NUM_LIMBS)
             .flat_map(|i| {
-                (0..Self::NB_LIMBS)
+                (0..Self::NUM_LIMBS)
                     .map(|j| two.pow(Self::LOG2_BASE * (i + j)).rem(m))
                     .collect::<Vec<_>>()
             })
@@ -100,26 +100,26 @@ where
 {
     let m = &K::modulus().to_bigint().unwrap();
     let base = BI::from(2).pow(P::LOG2_BASE);
-    let nb_limbs = P::NB_LIMBS;
+    let num_limbs = P::NUM_LIMBS;
 
     // The integer represented by limbs [x0, ..., x_{n-1}] is 1 + sum_i base^i xi
 
     assert!(*m > BI::one());
     assert!(base > BI::one());
 
-    // Assert that we can encode any integer in [Z_m] with [nb_limbs] limbs of size
+    // Assert that we can encode any integer in [Z_m] with [num_limbs] limbs of size
     // [base].
-    assert!(BI::pow(&base, nb_limbs) >= *m);
+    assert!(BI::pow(&base, num_limbs) >= *m);
 
     let base_powers = P::base_powers();
     let double_base_powers = P::double_base_powers();
 
-    assert_eq!(base_powers.len(), nb_limbs as usize);
-    assert_eq!(double_base_powers.len(), (nb_limbs * nb_limbs) as usize);
+    assert_eq!(base_powers.len(), num_limbs as usize);
+    assert_eq!(double_base_powers.len(), (num_limbs * num_limbs) as usize);
 
-    let expected_powers = (0..nb_limbs).map(|i| BI::pow(&base, i).rem(m));
-    let expected_double_powers = (0..nb_limbs)
-        .flat_map(|i| (0..nb_limbs).map(|j| BI::pow(&base, i + j).rem(m)).collect::<Vec<_>>());
+    let expected_powers = (0..num_limbs).map(|i| BI::pow(&base, i).rem(m));
+    let expected_double_powers = (0..num_limbs)
+        .flat_map(|i| (0..num_limbs).map(|j| BI::pow(&base, i + j).rem(m)).collect::<Vec<_>>());
 
     // Check that the powers in ModAP are congruent to the expected powers modulo m.
     base_powers
@@ -147,7 +147,7 @@ where
 {
     const LOG2_BASE: u32 = MultiEmulationParams::LOG2_BASE;
 
-    const NB_LIMBS: u32 = MultiEmulationParams::NB_LIMBS;
+    const NUM_LIMBS: u32 = MultiEmulationParams::NUM_LIMBS;
 
     fn moduli() -> Vec<BigInt> {
         MultiEmulationParams::moduli()
@@ -170,7 +170,7 @@ Native fields supported:
 #[cfg(feature = "dev-curves")]
 impl FieldEmulationParams<bn256::Fr, k256::Fp> for MultiEmulationParams {
     const LOG2_BASE: u32 = 64;
-    const NB_LIMBS: u32 = 4;
+    const NUM_LIMBS: u32 = 4;
     fn moduli() -> Vec<BigInt> {
         vec![BigInt::from(2).pow(128)]
     }
@@ -180,7 +180,7 @@ impl FieldEmulationParams<bn256::Fr, k256::Fp> for MultiEmulationParams {
 /// Secp256k1's Base field over BLS12-381's Scalar field.
 impl FieldEmulationParams<midnight_curves::Fq, k256::Fp> for MultiEmulationParams {
     const LOG2_BASE: u32 = 64;
-    const NB_LIMBS: u32 = 4;
+    const NUM_LIMBS: u32 = 4;
     fn moduli() -> Vec<BigInt> {
         vec![BigInt::from(2).pow(128)]
     }
@@ -201,7 +201,7 @@ Native fields supported:
 #[cfg(feature = "dev-curves")]
 impl FieldEmulationParams<bn256::Fr, k256::Fq> for MultiEmulationParams {
     const LOG2_BASE: u32 = 52;
-    const NB_LIMBS: u32 = 5;
+    const NUM_LIMBS: u32 = 5;
     fn moduli() -> Vec<BigInt> {
         vec![BigInt::from(2).pow(141)]
     }
@@ -211,7 +211,7 @@ impl FieldEmulationParams<bn256::Fr, k256::Fq> for MultiEmulationParams {
 /// Secp256k1's Scalar field over BLS12-381's Scalar field.
 impl FieldEmulationParams<midnight_curves::Fq, k256::Fq> for MultiEmulationParams {
     const LOG2_BASE: u32 = 64;
-    const NB_LIMBS: u32 = 4;
+    const NUM_LIMBS: u32 = 4;
     fn moduli() -> Vec<BigInt> {
         vec![
             BigInt::from(2).pow(118),
@@ -233,7 +233,7 @@ Native fields supported:
 /// BLS12-381's Base field over BLS12-381's Scalar field.
 impl FieldEmulationParams<midnight_curves::Fq, midnight_curves::Fp> for MultiEmulationParams {
     const LOG2_BASE: u32 = 56;
-    const NB_LIMBS: u32 = 7;
+    const NUM_LIMBS: u32 = 7;
     fn moduli() -> Vec<BigInt> {
         vec![
             BigInt::from(2).pow(134),
@@ -257,7 +257,7 @@ Native fields supported:
 #[cfg(feature = "dev-curves")]
 impl FieldEmulationParams<midnight_curves::Fq, bn256::Fq> for MultiEmulationParams {
     const LOG2_BASE: u32 = 52;
-    const NB_LIMBS: u32 = 5;
+    const NUM_LIMBS: u32 = 5;
     fn moduli() -> Vec<BigInt> {
         vec![BigInt::from(2).pow(142)]
     }
@@ -268,7 +268,7 @@ impl FieldEmulationParams<midnight_curves::Fq, bn256::Fq> for MultiEmulationPara
 #[cfg(feature = "dev-curves")]
 impl FieldEmulationParams<bn256::Fr, bn256::Fq> for MultiEmulationParams {
     const LOG2_BASE: u32 = 52;
-    const NB_LIMBS: u32 = 5;
+    const NUM_LIMBS: u32 = 5;
     fn moduli() -> Vec<BigInt> {
         vec![BigInt::from(2).pow(141)]
     }
@@ -289,7 +289,7 @@ impl FieldEmulationParams<midnight_curves::Fq, midnight_curves::curve25519::Fp>
     for MultiEmulationParams
 {
     const LOG2_BASE: u32 = 64;
-    const NB_LIMBS: u32 = 4;
+    const NUM_LIMBS: u32 = 4;
     fn moduli() -> Vec<BigInt> {
         vec![BigInt::from(2).pow(128)]
     }
@@ -310,7 +310,7 @@ impl FieldEmulationParams<midnight_curves::Fq, midnight_curves::curve25519::Scal
     for MultiEmulationParams
 {
     const LOG2_BASE: u32 = 51;
-    const NB_LIMBS: u32 = 5;
+    const NUM_LIMBS: u32 = 5;
     fn moduli() -> Vec<BigInt> {
         vec![BigInt::from(2).pow(146)]
     }

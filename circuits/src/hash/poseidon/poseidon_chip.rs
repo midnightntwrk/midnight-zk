@@ -24,10 +24,10 @@ use midnight_proofs::{
 use {crate::testing_utils::FromScratch, midnight_proofs::plonk::Instance};
 
 use super::{
-    constants::{PoseidonField, NB_FULL_ROUNDS, NB_PARTIAL_ROUNDS, RATE, WIDTH},
+    constants::{PoseidonField, NUM_FULL_ROUNDS, NUM_PARTIAL_ROUNDS, RATE, WIDTH},
     full_round_cpu, partial_round_cpu_for_circuits,
     round_skips::PreComputedRoundCircuit,
-    NB_POSEIDON_ADVICE_COLS, NB_POSEIDON_FIXED_COLS,
+    NUM_POSEIDON_ADVICE_COLS, NUM_POSEIDON_FIXED_COLS,
 };
 #[cfg(any(test, feature = "testing"))]
 use crate::field::NativeConfig;
@@ -42,9 +42,9 @@ use crate::{
 /// Number of times the linear part of the partial rounds is skipped in the
 /// Poseidon chip (0 is the default implementation without skips at all).
 ///
-/// Note: The chip configuration will panic if `NB_PARTIAL_ROUNDS` is not
-/// dividable by `1 + NB_SKIPS_CIRCUIT`.
-pub(crate) const NB_SKIPS_CIRCUIT: usize = 5;
+/// Note: The chip configuration will panic if `NUM_PARTIAL_ROUNDS` is not
+/// dividable by `1 + NUM_SKIPS_CIRCUIT`.
+pub(crate) const NUM_SKIPS_CIRCUIT: usize = 5;
 
 // A recurring type representing a set of assigned registers, representing the
 // internal state of Poseidon's computation. Does not account for the additional
@@ -66,7 +66,7 @@ pub struct PoseidonConfig<F: PoseidonField> {
     /// Selector for full rounds.
     q_full_round: Selector,
 
-    /// Selector for optimized partial rounds skipping `1+NB_SKIPS_CIRCUIT`
+    /// Selector for optimized partial rounds skipping `1+NUM_SKIPS_CIRCUIT`
     /// rounds.
     q_partial_round: Selector,
 
@@ -76,12 +76,12 @@ pub struct PoseidonConfig<F: PoseidonField> {
     /// `WIDTH`) columns where `native_chip::add_constants_in_region` assigns
     /// its result. An assertion is checking this assumption in
     /// `PoseidonChip::permutation` in debug mode.
-    register_cols: [Column<Advice>; NB_POSEIDON_ADVICE_COLS],
+    register_cols: [Column<Advice>; NUM_POSEIDON_ADVICE_COLS],
 
     /// Fixed columns, one for each register column (their content will be
     /// loaded from the precomputed array stored at the field
     /// `round_constant_opt`).
-    constant_cols: [Column<Fixed>; NB_POSEIDON_FIXED_COLS],
+    constant_cols: [Column<Fixed>; NUM_POSEIDON_FIXED_COLS],
 
     /// Precomputed data for partial rounds (identities and round constants).
     pre_computed: PreComputedRoundCircuit<F>,
@@ -119,13 +119,13 @@ impl<F: PoseidonField> PoseidonChip<F> {
     }
 
     /// Number of full rounds of the Poseidon permutation.
-    pub const fn nb_full_rounds() -> usize {
-        NB_FULL_ROUNDS
+    pub const fn num_full_rounds() -> usize {
+        NUM_FULL_ROUNDS
     }
 
     /// Number of partial rounds of the Poseidon permutation.
-    pub const fn nb_partial_rounds() -> usize {
-        NB_PARTIAL_ROUNDS
+    pub const fn num_partial_rounds() -> usize {
+        NUM_PARTIAL_ROUNDS
     }
 }
 
@@ -156,8 +156,8 @@ pub(crate) fn sbox<F: Field>(x: Expression<F>) -> Expression<F> {
 
 impl<F: PoseidonField> ComposableChip<F> for PoseidonChip<F> {
     type SharedResources = (
-        [Column<Advice>; NB_POSEIDON_ADVICE_COLS],
-        [Column<Fixed>; NB_POSEIDON_FIXED_COLS],
+        [Column<Advice>; NUM_POSEIDON_ADVICE_COLS],
+        [Column<Fixed>; NUM_POSEIDON_FIXED_COLS],
     );
 
     type InstructionDeps = NativeChip<F>;
@@ -216,11 +216,11 @@ impl<F: PoseidonField> ComposableChip<F> for PoseidonChip<F> {
         });
 
         // Generation of the optimised round identities, representing a batch of
-        // `1+NB_SKIPS` partial rounds.
+        // `1+NUM_SKIPS` partial rounds.
         let pre_computed = PreComputedRoundCircuit::<F>::init();
         let ids = pre_computed.partial_round_id;
 
-        // A batch of `1+NB_SKIPS` partial gates. Most of the work has been done in the
+        // A batch of `1+NUM_SKIPS` partial gates. Most of the work has been done in the
         // previous line, with `ids` now storing the expressions that will be used to
         // represent the core of the gates' polynomial identities.
         meta.create_gate("partial_round_gate", |meta| {
@@ -241,11 +241,11 @@ impl<F: PoseidonField> ComposableChip<F> for PoseidonChip<F> {
 
             let output_lin_constraints =
                 (0..WIDTH - 1).map(|i| &round_constants[i] - &outputs[i] + &constraints[i]);
-            let input_pow_constraints = (WIDTH - 1..WIDTH + NB_SKIPS_CIRCUIT - 1)
+            let input_pow_constraints = (WIDTH - 1..WIDTH + NUM_SKIPS_CIRCUIT - 1)
                 .map(|i| &round_constants[i] - &inputs[i + 1] + &constraints[i]);
             let output_pow_constraint: Expression<F> =
-                &round_constants[WIDTH + NB_SKIPS_CIRCUIT - 1] - &outputs[WIDTH - 1]
-                    + &constraints[WIDTH + NB_SKIPS_CIRCUIT - 1];
+                &round_constants[WIDTH + NUM_SKIPS_CIRCUIT - 1] - &outputs[WIDTH - 1]
+                    + &constraints[WIDTH + NUM_SKIPS_CIRCUIT - 1];
 
             let constraints = output_lin_constraints
                 .chain(input_pow_constraints)
@@ -276,7 +276,7 @@ impl<F: PoseidonField> PoseidonChip<F> {
         round_index: usize,
         offset: usize,
     ) -> Result<(), Error> {
-        let round_constants = if round_index == NB_FULL_ROUNDS + NB_PARTIAL_ROUNDS - 1 {
+        let round_constants = if round_index == NUM_FULL_ROUNDS + NUM_PARTIAL_ROUNDS - 1 {
             [F::ZERO; WIDTH]
         } else {
             F::ROUND_CONSTANTS[round_index + 1]
@@ -306,7 +306,7 @@ impl<F: PoseidonField> PoseidonChip<F> {
             .zip(&self.config.pre_computed.round_constants[round_batch_index])
         {
             region.assign_fixed(
-                || format!("load constant for partial a round with {NB_SKIPS_CIRCUIT} skips"),
+                || format!("load constant for partial a round with {NUM_SKIPS_CIRCUIT} skips"),
                 *col,
                 offset,
                 || Value::known(*constant),
@@ -364,7 +364,7 @@ impl<F: PoseidonField> PoseidonChip<F> {
     /// Analogue for optimised partial rounds.
     ///
     /// Note: Initially, only the first `WIDTH` inputs are assigned, but not the
-    /// `NB_SKIPS_CIRCUIT` auxiliary advice columns at the current offset. This
+    /// `NUM_SKIPS_CIRCUIT` auxiliary advice columns at the current offset. This
     /// function assigns them as well as the first `WIDTH` columns of the
     /// resulting output.
     fn partial_round(
@@ -385,7 +385,8 @@ impl<F: PoseidonField> PoseidonChip<F> {
                     round_batch_index,
                     &mut state,
                 );
-                for (col, skip_advice) in self.config.register_cols[WIDTH..WIDTH + NB_SKIPS_CIRCUIT]
+                for (col, skip_advice) in self.config.register_cols
+                    [WIDTH..WIDTH + NUM_SKIPS_CIRCUIT]
                     .iter()
                     .zip(skip_advice_vals)
                 {
@@ -413,8 +414,8 @@ impl<F: PoseidonField> PoseidonChip<F> {
     }
 
     /// A combination of the different circuit gates to produce the full
-    /// Poseidon permutation (`NB_FULL_ROUNDS` full rounds, separated in the
-    /// middle by `NB_PARTIAL_ROUNDS` partial rounds, possibly with
+    /// Poseidon permutation (`NUM_FULL_ROUNDS` full rounds, separated in the
+    /// middle by `NUM_PARTIAL_ROUNDS` partial rounds, possibly with
     /// optimized skips).
     pub(super) fn permutation(
         &self,
@@ -447,14 +448,14 @@ impl<F: PoseidonField> PoseidonChip<F> {
                     })
                 );
 
-                for round_index in 0..NB_FULL_ROUNDS / 2 {
+                for round_index in 0..NUM_FULL_ROUNDS / 2 {
                     self.full_round(&mut region, &mut state, round_index, &mut offset)?;
                 }
-                for round_batch_index in 0..NB_PARTIAL_ROUNDS / (1 + NB_SKIPS_CIRCUIT) {
+                for round_batch_index in 0..NUM_PARTIAL_ROUNDS / (1 + NUM_SKIPS_CIRCUIT) {
                     self.partial_round(&mut region, &mut state, round_batch_index, &mut offset)?;
                 }
                 for round_index in
-                    (NB_FULL_ROUNDS / 2 + NB_PARTIAL_ROUNDS..).take(NB_FULL_ROUNDS / 2)
+                    (NUM_FULL_ROUNDS / 2 + NUM_PARTIAL_ROUNDS..).take(NUM_FULL_ROUNDS / 2)
                 {
                     self.full_round(&mut region, &mut state, round_index, &mut offset)?;
                 }
@@ -561,18 +562,18 @@ impl<F: PoseidonField> FromScratch<F> for PoseidonChip<F> {
         let mut advice_cols = native_config.advice_columns().to_vec();
         let mut fixed_cols = native_config.fixed_columns();
 
-        while advice_cols.len() < NB_POSEIDON_ADVICE_COLS {
+        while advice_cols.len() < NUM_POSEIDON_ADVICE_COLS {
             advice_cols.push(meta.advice_column());
         }
-        while fixed_cols.len() < NB_POSEIDON_FIXED_COLS {
+        while fixed_cols.len() < NUM_POSEIDON_FIXED_COLS {
             fixed_cols.push(meta.fixed_column());
         }
 
         let poseidon_config = PoseidonChip::configure(
             meta,
             &(
-                advice_cols[..NB_POSEIDON_ADVICE_COLS].try_into().unwrap(),
-                fixed_cols[..NB_POSEIDON_FIXED_COLS].try_into().unwrap(),
+                advice_cols[..NUM_POSEIDON_ADVICE_COLS].try_into().unwrap(),
+                fixed_cols[..NUM_POSEIDON_FIXED_COLS].try_into().unwrap(),
             ),
         );
 
@@ -683,7 +684,7 @@ mod tests {
     {
         println!(
             ">> Testing Poseidon Sponge (field {field}, {} partial-round skips)",
-            NB_SKIPS_CIRCUIT
+            NUM_SKIPS_CIRCUIT
         );
         test_sponge::<
             F,

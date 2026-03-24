@@ -39,10 +39,10 @@ use crate::{
 };
 
 /// Number of advice columns used by the identities of the RIPEMD160 chip
-pub const NB_RIPEMD160_ADVICE_COLS: usize = 8;
+pub const NUM_RIPEMD160_ADVICE_COLS: usize = 8;
 
 /// Number of fixed columns used by the identities of the RIPEMD160 chip
-pub const NB_RIPEMD160_FIXED_COLS: usize = 6;
+pub const NUM_RIPEMD160_FIXED_COLS: usize = 6;
 
 /// Round constants K (left) and K' (right)
 pub const K: [u32; 5] = [0x00000000, 0x5A827999, 0x6ED9EBA1, 0x8F1BBCDC, 0xA953FD4E];
@@ -101,8 +101,8 @@ struct SpreadTable {
 /// Configuration for the RIPEMD160 chip
 #[derive(Clone, Debug)]
 pub struct RipeMD160Config {
-    advice_cols: [Column<Advice>; NB_RIPEMD160_ADVICE_COLS],
-    fixed_cols: [Column<Fixed>; NB_RIPEMD160_FIXED_COLS],
+    advice_cols: [Column<Advice>; NUM_RIPEMD160_ADVICE_COLS],
+    fixed_cols: [Column<Fixed>; NUM_RIPEMD160_FIXED_COLS],
     q_lookup: Selector,
     table: SpreadTable,
     q_11_11_10: Selector,
@@ -135,8 +135,8 @@ impl<F: CircuitField> Chip<F> for RipeMD160Chip<F> {
 
 impl<F: CircuitField> ComposableChip<F> for RipeMD160Chip<F> {
     type SharedResources = (
-        [Column<Advice>; NB_RIPEMD160_ADVICE_COLS],
-        [Column<Fixed>; NB_RIPEMD160_FIXED_COLS],
+        [Column<Advice>; NUM_RIPEMD160_ADVICE_COLS],
+        [Column<Fixed>; NUM_RIPEMD160_FIXED_COLS],
     );
 
     type InstructionDeps = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
@@ -1230,18 +1230,18 @@ impl<F: CircuitField> FromScratch<F> for RipeMD160Chip<F> {
         let mut advice_columns = native_config.advice_columns().to_vec();
         let mut fixed_columns = native_config.fixed_columns();
 
-        while advice_columns.len() < NB_RIPEMD160_ADVICE_COLS {
+        while advice_columns.len() < NUM_RIPEMD160_ADVICE_COLS {
             advice_columns.push(meta.advice_column());
         }
-        while fixed_columns.len() < NB_RIPEMD160_FIXED_COLS {
+        while fixed_columns.len() < NUM_RIPEMD160_FIXED_COLS {
             fixed_columns.push(meta.fixed_column());
         }
 
         let ripemd160_config = RipeMD160Chip::configure(
             meta,
             &(
-                advice_columns[..NB_RIPEMD160_ADVICE_COLS].try_into().unwrap(),
-                fixed_columns[..NB_RIPEMD160_FIXED_COLS].try_into().unwrap(),
+                advice_columns[..NUM_RIPEMD160_ADVICE_COLS].try_into().unwrap(),
+                fixed_columns[..NUM_RIPEMD160_FIXED_COLS].try_into().unwrap(),
             ),
         );
 

@@ -118,11 +118,11 @@ type ReachGraph = Vec<FxHashSet<usize>>;
 
 /// A normalised model of a deterministic (but not necessarily complete) finite
 /// automaton operating on bytes. The set of states is implicitly represented by
-/// the range `0..nb_states`.
+/// the range `0..num_states`.
 #[derive(Clone, Debug)]
 pub struct Automaton {
     /// Upper bound on the number of reachable states.
-    pub nb_states: usize,
+    pub num_states: usize,
     /// The initial state of the automaton.
     pub initial_state: usize,
     /// The final states of the automaton.
@@ -347,10 +347,10 @@ impl RawAutomaton {
     fn filter_map_transitions(
         transitions: &[Vec<(Letter, usize)>],
         f: impl Fn(usize) -> Option<usize>,
-        new_nb_states: usize,
+        new_num_states: usize,
         offset: usize,
     ) -> (Vec<Vec<(Letter, usize)>>, FxHashSet<usize>) {
-        let mut new_transitions = vec![vec![]; new_nb_states];
+        let mut new_transitions = vec![vec![]; new_num_states];
         let mut markers = FxHashSet::default();
         for (source, succ) in transitions.iter().enumerate() {
             for (letter, target) in succ {
@@ -561,17 +561,17 @@ impl RawAutomaton {
         let mut union_automaton = RawAutomaton::empty();
         let mut union_initial_states = Vec::with_capacity(automata.len());
         for automaton in automata {
-            let nb_states = union_automaton.transitions.len();
+            let num_states = union_automaton.transitions.len();
             let (transitions, markers) = RawAutomaton::filter_map_transitions(
                 &automaton.transitions,
-                |state| Some(state + nb_states),
+                |state| Some(state + num_states),
                 automaton.transitions.len(),
-                nb_states,
+                num_states,
             );
-            union_initial_states.push(automaton.initial_state + nb_states);
+            union_initial_states.push(automaton.initial_state + num_states);
             union_automaton
                 .final_states
-                .extend(automaton.final_states.iter().map(|state| state + nb_states));
+                .extend(automaton.final_states.iter().map(|state| state + num_states));
             union_automaton.markers.extend(markers);
             union_automaton.transitions.extend(transitions);
         }
@@ -605,12 +605,12 @@ impl RawAutomaton {
         // forward order would miss some transitions when some initial states
         // happen to be final as well.
         for automaton in automata.iter().rev() {
-            let nb_states = concat_automaton.transitions.len();
+            let num_states = concat_automaton.transitions.len();
             let (mut transitions, _) = RawAutomaton::filter_map_transitions(
                 &automaton.transitions,
-                |state| Some(state + nb_states),
+                |state| Some(state + num_states),
                 automaton.transitions.len(),
-                nb_states,
+                num_states,
             );
             if automaton.nothing_after_final() {
                 // In this branch, an optimisation can be done to save one state and one
@@ -618,7 +618,7 @@ impl RawAutomaton {
                 // towards `concat_automaton.initial_state`).
                 for succ in transitions.iter_mut() {
                     for (_, target) in succ {
-                        if automaton.final_states.contains(&(*target - nb_states)) {
+                        if automaton.final_states.contains(&(*target - num_states)) {
                             garbage.insert(*target);
                             *target = concat_automaton.initial_state;
                         }
@@ -626,7 +626,7 @@ impl RawAutomaton {
                 }
                 concat_automaton.transitions.extend(transitions);
                 loop_on_initial = automaton.loop_on_initial();
-                concat_automaton.initial_state = automaton.initial_state + nb_states;
+                concat_automaton.initial_state = automaton.initial_state + num_states;
             } else {
                 concat_automaton.transitions.extend(transitions);
                 // Copying outgoing transitions from `concat_automaton.initial` to each final
@@ -634,14 +634,14 @@ impl RawAutomaton {
                 for state in &automaton.final_states {
                     let outgoing =
                         concat_automaton.transitions[concat_automaton.initial_state].clone();
-                    concat_automaton.transitions[state + nb_states].extend(outgoing);
+                    concat_automaton.transitions[state + num_states].extend(outgoing);
                 }
                 // If the initial state of `concat_automaton` is also final, the final states of
                 // `automaton` have to be added as final states of `concat_automaton`.
                 if concat_automaton.final_states.contains(&concat_automaton.initial_state) {
                     concat_automaton
                         .final_states
-                        .extend(automaton.final_states.iter().map(|s| s + nb_states));
+                        .extend(automaton.final_states.iter().map(|s| s + num_states));
                 }
 
                 // Updating the initial state and garbage collecting the previous one if
@@ -650,7 +650,7 @@ impl RawAutomaton {
                     garbage.insert(concat_automaton.initial_state);
                 }
                 loop_on_initial = automaton.loop_on_initial();
-                concat_automaton.initial_state = automaton.initial_state + nb_states;
+                concat_automaton.initial_state = automaton.initial_state + num_states;
             }
         }
 
@@ -797,8 +797,8 @@ impl RawAutomaton {
 
 impl RawAutomaton {
     /// Computes an automaton for the complement of a language.
-    /// Assumes that all states are numbered from 0 to `self.nb_states - 1`, and
-    /// that the automaton is deterministic and complete. Mutates the
+    /// Assumes that all states are numbered from 0 to `self.num_states - 1`,
+    /// and that the automaton is deterministic and complete. Mutates the
     /// argument.
     pub(super) fn complement(self) -> Self {
         assert!(
@@ -1109,7 +1109,7 @@ impl RawAutomaton {
             }
         }
         Automaton {
-            nb_states: base.transitions.len(),
+            num_states: base.transitions.len(),
             initial_state: base.initial_state,
             final_states: base.final_states,
             transitions,
@@ -1123,7 +1123,7 @@ impl Automaton {
     /// ensure their state numbers do not overlap).
     pub fn offset_states(&self, offset: usize) -> Self {
         Self {
-            nb_states: self.nb_states + offset,
+            num_states: self.num_states + offset,
             initial_state: self.initial_state + offset,
             final_states: self.final_states.iter().map(|s| s + offset).collect::<FxHashSet<_>>(),
             transitions: self

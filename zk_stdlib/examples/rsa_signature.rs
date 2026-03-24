@@ -25,7 +25,7 @@ type Signature = BigUint;
 const E: u64 = 3;
 type PK = Modulus;
 
-const NB_BITS: u32 = 1024;
+const NUM_BITS: u32 = 1024;
 
 #[derive(Clone, Default)]
 pub struct RSASignatureCircuit;
@@ -37,8 +37,8 @@ impl Relation for RSASignatureCircuit {
 
     fn format_instance((pk, msg): &Self::Instance) -> Result<Vec<F>, Error> {
         Ok([
-            AssignedBigUint::<F>::as_public_input(pk, NB_BITS),
-            AssignedBigUint::<F>::as_public_input(msg, NB_BITS),
+            AssignedBigUint::<F>::as_public_input(pk, NUM_BITS),
+            AssignedBigUint::<F>::as_public_input(msg, NUM_BITS),
         ]
         .into_iter()
         .flatten()
@@ -57,13 +57,13 @@ impl Relation for RSASignatureCircuit {
         let public_key = biguint.assign_biguint(
             layouter,
             instance.as_ref().map(|(pk, _)| pk.clone()),
-            NB_BITS,
+            NUM_BITS,
         )?;
-        let message = biguint.assign_biguint(layouter, instance.map(|(_, msg)| msg), NB_BITS)?;
-        let signature = biguint.assign_biguint(layouter, witness, NB_BITS)?;
+        let message = biguint.assign_biguint(layouter, instance.map(|(_, msg)| msg), NUM_BITS)?;
+        let signature = biguint.assign_biguint(layouter, witness, NUM_BITS)?;
 
-        biguint.constrain_as_public_input(layouter, &public_key, NB_BITS)?;
-        biguint.constrain_as_public_input(layouter, &message, NB_BITS)?;
+        biguint.constrain_as_public_input(layouter, &public_key, NUM_BITS)?;
+        biguint.constrain_as_public_input(layouter, &message, NUM_BITS)?;
 
         let expected_msg = biguint.mod_exp(layouter, &signature, E, &public_key)?;
 
@@ -100,7 +100,7 @@ fn main() {
     let d = BigUint::from(E).modinv(&phi).unwrap();
 
     let public_key = &p * &q;
-    let message = rand::thread_rng().gen_biguint(NB_BITS as u64).rem(&public_key);
+    let message = rand::thread_rng().gen_biguint(NUM_BITS as u64).rem(&public_key);
 
     let signature = message.modpow(&d, &public_key);
 

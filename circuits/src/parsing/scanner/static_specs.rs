@@ -490,7 +490,7 @@ mod tests {
             println!(
                 "  - {:?} automaton: {} states, {} transitions",
                 name,
-                automaton.nb_states,
+                automaton.num_states,
                 automaton.transitions.len()
             )
         }

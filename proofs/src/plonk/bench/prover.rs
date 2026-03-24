@@ -42,9 +42,9 @@ pub(crate) fn compute_trace<
     pk: &ProvingKey<F, CS>,
     circuits: &[ConcreteCircuit],
     // The prover needs to get all instances in non-committed form. However,
-    // the first `nb_committed_instances` instance columns are dedicated for
+    // the first `num_committed_instances` instance columns are dedicated for
     // instances that the verifier receives in committed form.
-    #[cfg(feature = "committed-instances")] nb_committed_instances: usize,
+    #[cfg(feature = "committed-instances")] num_committed_instances: usize,
     instances: &[&[&[F]]],
     mut rng: impl RngCore + CryptoRng,
     transcript: &mut T,
@@ -60,7 +60,7 @@ where
         + FromUniformBytes<64>,
 {
     #[cfg(not(feature = "committed-instances"))]
-    let nb_committed_instances: usize = 0;
+    let num_committed_instances: usize = 0;
 
     if circuits.len() != instances.len() {
         return Err(Error::InvalidInstances);
@@ -68,7 +68,7 @@ where
 
     for instances in instances.iter() {
         if instances.len() != pk.vk.cs.num_instance_columns
-            || instances.len() < nb_committed_instances
+            || instances.len() < num_committed_instances
         {
             return Err(Error::InvalidInstances);
         }
@@ -98,14 +98,14 @@ where
                         params,
                         pk,
                         &inst,
-                        nb_committed_instances,
+                        num_committed_instances,
                         &mut t,
                     );
                 },
                 criterion::BatchSize::SmallInput,
             )
         });
-        compute_instances(params, pk, instances, nb_committed_instances, transcript)?
+        compute_instances(params, pk, instances, num_committed_instances, transcript)?
     };
 
     let (advice, challenges) = {
@@ -375,9 +375,9 @@ pub(crate) fn finalise_proof<'a, F, CS: PolynomialCommitmentScheme<F>, T: Transc
     params: &'a CS::Parameters,
     pk: &'a ProvingKey<F, CS>,
     // The prover needs to get all instances in non-committed form. However,
-    // the first `nb_committed_instances` instance columns are dedicated for
+    // the first `num_committed_instances` instance columns are dedicated for
     // instances that the verifier receives in committed form.
-    #[cfg(feature = "committed-instances")] nb_committed_instances: usize,
+    #[cfg(feature = "committed-instances")] num_committed_instances: usize,
     trace: ProverTrace<F>,
     transcript: &mut T,
     group: &mut BenchmarkGroup<criterion::measurement::WallTime>,
@@ -392,7 +392,7 @@ where
         + FromUniformBytes<64>,
 {
     #[cfg(not(feature = "committed-instances"))]
-    let nb_committed_instances: usize = 0;
+    let num_committed_instances: usize = 0;
 
     let nu_poly = {
         group.bench_function("Compute numerator poly", |b| {
@@ -447,7 +447,7 @@ where
             |mut t| {
                 let _ = write_evals_to_transcript(
                     pk,
-                    nb_committed_instances,
+                    num_committed_instances,
                     &instance_polys,
                     &advice_polys,
                     x,
@@ -464,7 +464,7 @@ where
         ..
     } = write_evals_to_transcript(
         pk,
-        nb_committed_instances,
+        num_committed_instances,
         &instance_polys,
         &advice_polys,
         x,
@@ -584,7 +584,7 @@ where
             b.iter(|| {
                 let _ = compute_queries(
                     pk,
-                    nb_committed_instances,
+                    num_committed_instances,
                     &instance_polys,
                     &advice_polys,
                     &permutations,
@@ -597,7 +597,7 @@ where
         });
         compute_queries(
             pk,
-            nb_committed_instances,
+            num_committed_instances,
             &instance_polys,
             &advice_polys,
             &permutations,
@@ -635,7 +635,7 @@ pub fn benchmark_create_proof<
     params: &CS::Parameters,
     pk: &ProvingKey<F, CS>,
     circuits: &[ConcreteCircuit],
-    #[cfg(feature = "committed-instances")] nb_committed_instances: usize,
+    #[cfg(feature = "committed-instances")] num_committed_instances: usize,
     instances: &[&[&[F]]],
     rng: impl RngCore + CryptoRng,
     transcript: &mut T,
@@ -651,14 +651,14 @@ where
         + FromUniformBytes<64>,
 {
     #[cfg(not(feature = "committed-instances"))]
-    let nb_committed_instances: usize = 0;
+    let num_committed_instances: usize = 0;
 
     let trace = compute_trace(
         params,
         pk,
         circuits,
         #[cfg(feature = "committed-instances")]
-        nb_committed_instances,
+        num_committed_instances,
         instances,
         rng,
         transcript,
@@ -669,7 +669,7 @@ where
         params,
         pk,
         #[cfg(feature = "committed-instances")]
-        nb_committed_instances,
+        num_committed_instances,
         trace,
         transcript,
         group,

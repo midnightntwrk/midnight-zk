@@ -27,8 +27,8 @@ impl CircuitValue {
             Native(x) => AssignedNative::as_public_input(x),
             BigUint(big) => {
                 use IrType::BigUint;
-                let BigUint(nb_bits) = t else { unreachable!() };
-                AssignedBigUint::as_public_input(big, nb_bits)
+                let BigUint(num_bits) = t else { unreachable!() };
+                AssignedBigUint::as_public_input(big, num_bits)
             }
             JubjubPoint(p) => AssignedJubjubPoint::as_public_input(p),
             JubjubScalar(s) => AssignedJubjubScalar::as_public_input(s),
@@ -53,7 +53,7 @@ pub fn publish_incircuit(
         Bool(b) => std_lib.constrain_as_public_input(layouter, b),
         Bytes(v) => v.iter().try_for_each(|b| std_lib.constrain_as_public_input(layouter, b)),
         Native(x) => std_lib.constrain_as_public_input(layouter, x),
-        BigUint(big) => std_lib.biguint().constrain_as_public_input(layouter, big, big.nb_bits()),
+        BigUint(big) => std_lib.biguint().constrain_as_public_input(layouter, big, big.num_bits()),
         JubjubPoint(p) => std_lib.jubjub().constrain_as_public_input(layouter, p),
         JubjubScalar(s) => std_lib.jubjub().constrain_as_public_input(layouter, s),
     }

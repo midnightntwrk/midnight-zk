@@ -112,10 +112,10 @@ pub fn mul_bounded_scalars<F: CircuitField>(
 /// halo2 does when `feature = "truncated-challenges"` is enabled.
 #[cfg(feature = "truncated-challenges")]
 pub(crate) fn truncate_off_circuit<F: CircuitField>(scalar: F) -> F {
-    let nb_bytes = F::NUM_BITS.div_ceil(8).div_ceil(2) as usize;
+    let num_bytes = F::NUM_BITS.div_ceil(8).div_ceil(2) as usize;
     let bytes = scalar.to_bytes_le();
     let mut buffer = vec![0u8; F::NUM_BITS.div_ceil(8) as usize];
-    buffer[..nb_bytes].copy_from_slice(&bytes[..nb_bytes]);
+    buffer[..num_bytes].copy_from_slice(&bytes[..num_bytes]);
     F::from_bytes_le(&buffer).unwrap()
 }
 
@@ -134,9 +134,9 @@ pub(crate) fn truncate<F: CircuitField>(
     // msm. This computation is not being reused. It is hard to combine
     // elegantly though.
     let bits = scalar_chip.assigned_to_le_bits(layouter, x, None, true)?;
-    let nb_half_bits = 8 * (F::NUM_BITS.div_ceil(8).div_ceil(2) as usize);
-    let scalar = scalar_chip.assigned_from_le_bits(layouter, &bits[..nb_half_bits])?;
-    let bound = (BigUint::one() << nb_half_bits) - BigUint::one();
+    let num_half_bits = 8 * (F::NUM_BITS.div_ceil(8).div_ceil(2) as usize);
+    let scalar = scalar_chip.assigned_from_le_bits(layouter, &bits[..num_half_bits])?;
+    let bound = (BigUint::one() << num_half_bits) - BigUint::one();
     Ok(AssignedBoundedScalar::new(&scalar, Some(bound)))
 }
 

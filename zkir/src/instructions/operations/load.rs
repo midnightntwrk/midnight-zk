@@ -59,12 +59,12 @@ pub fn load_incircuit(
             .map_err(|e| e.into())
             .map(|xs| xs.into_iter().map(CircuitValue::Native).collect()),
 
-        IrType::BigUint(nb_bits) => convert_values::<BigUint>(values)?
+        IrType::BigUint(num_bits) => convert_values::<BigUint>(values)?
             .into_iter()
             .map(|value| {
                 std_lib
                     .biguint()
-                    .assign_biguint(layouter, value, nb_bits)
+                    .assign_biguint(layouter, value, num_bits)
                     .map_err(|e| e.into())
                     .map(CircuitValue::BigUint)
             })

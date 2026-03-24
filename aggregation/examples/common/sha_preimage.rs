@@ -24,7 +24,7 @@ type E = midnight_curves::Bls12;
 pub const K: u32 = 13;
 
 /// Number of public input field elements (32 bytes, 1 field element each).
-pub const NB_PUBLIC_INPUTS: usize = 32;
+pub const NUM_PUBLIC_INPUTS: usize = 32;
 
 #[derive(Clone, Debug, Default)]
 pub struct ShaPreimageCircuit;

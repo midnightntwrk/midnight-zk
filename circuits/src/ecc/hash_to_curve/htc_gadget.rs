@@ -191,9 +191,9 @@ mod tests {
         H: HashToCurveCPU<C, F>,
     {
         let mut rng = rand_chacha::ChaCha8Rng::from_seed([1u8; 32]);
-        const NB_REPETITIONS: usize = 10000;
+        const NUM_REPETITIONS: usize = 10000;
 
-        let distances = (0..NB_REPETITIONS).map(|_| {
+        let distances = (0..NUM_REPETITIONS).map(|_| {
             let input = F::random(&mut rng);
             let other = flip_random_bit(&mut rng, &input);
 
@@ -208,7 +208,7 @@ mod tests {
             d
         });
 
-        let distances_mean = distances.sum::<u32>() / NB_REPETITIONS as u32;
+        let distances_mean = distances.sum::<u32>() / NUM_REPETITIONS as u32;
 
         // Assert that, on average, half of the output bits change.
         assert_eq!(distances_mean, F::NUM_BITS / 2);

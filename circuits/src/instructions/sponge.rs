@@ -203,8 +203,8 @@ pub(crate) mod tests {
         // Between each call, the hasher is not re-initialised. We test
         let sequence = [(1, 1), (0, 1), (3, 3), (7, 2)];
 
-        let nb_absorb_calls = sequence.iter().map(|s| s.0).sum();
-        let inputs = (0..nb_absorb_calls).map(|_| {
+        let num_absorb_calls = sequence.iter().map(|s| s.0).sum();
+        let inputs = (0..num_absorb_calls).map(|_| {
             let random_size: usize = rng.gen_range(1..10);
             (0..random_size).map(|_| Input::sample_inner(&mut rng)).collect::<Vec<_>>()
         });

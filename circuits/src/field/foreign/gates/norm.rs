@@ -57,13 +57,13 @@ impl NormConfig {
     /// normalization custom gate. We refer to the implementation of this
     /// function for explanations on what such values represent.
     ///
-    /// The `nb_parallel_range_checks` and `max_bit_len` parameters describe
+    /// The `num_parallel_range_checks` and `max_bit_len` parameters describe
     /// the range-check decomposition chip: how many lookups run in parallel
     /// per row and the maximum bit-length each lookup supports. They are used
     /// to pick range-check-friendly bounds (powers of two whose bit count
     /// aligns well with the chip's parallel lookup structure).
     pub fn bounds<F, K, P>(
-        nb_parallel_range_checks: usize,
+        num_parallel_range_checks: usize,
         max_bit_len: u32,
     ) -> ((BI, BI), Vec<(BI, BI)>)
     where
@@ -72,7 +72,7 @@ impl NormConfig {
         P: FieldEmulationParams<F, K>,
     {
         let base = BI::from(2).pow(P::LOG2_BASE);
-        let nb_limbs = P::NB_LIMBS;
+        let num_limbs = P::NUM_LIMBS;
         let moduli = P::moduli();
         let max_limb_bound = P::max_limb_bound();
         let base_powers = P::base_powers();
@@ -97,10 +97,10 @@ impl NormConfig {
         // Note that (x_i + max_limb_bound) is guaranteed to be in the range
         // [0, 2 * max_limb_bound].
 
-        let shifts = vec![max_limb_bound; nb_limbs as usize];
+        let shifts = vec![max_limb_bound; num_limbs as usize];
         let sum_shifts = sum_bigints(&base_powers, &shifts);
         let max_sum_shifted_x = &sum_shifts + &sum_shifts;
-        let z_limbs_max = vec![&base - BI::one(); nb_limbs as usize];
+        let z_limbs_max = vec![&base - BI::one(); num_limbs as usize];
         let max_sum_z = sum_bigints(&base_powers, &z_limbs_max);
         let expr_min = -&max_sum_z - &sum_shifts;
         let expr_max = &max_sum_shifted_x - &sum_shifts;
@@ -123,7 +123,7 @@ impl NormConfig {
             &moduli,
             expr_bounds,
             &expr_mj_bounds,
-            nb_parallel_range_checks,
+            num_parallel_range_checks,
             max_bit_len,
         )
     }
@@ -133,7 +133,7 @@ impl NormConfig {
         meta: &mut ConstraintSystem<F>,
         x_cols: &[Column<Advice>],
         z_cols: &[Column<Advice>],
-        nb_parallel_range_checks: usize,
+        num_parallel_range_checks: usize,
         max_bit_len: u32,
     ) -> NormConfig
     where
@@ -142,13 +142,13 @@ impl NormConfig {
         P: FieldEmulationParams<F, K>,
     {
         let m = &K::modulus().to_bigint().unwrap();
-        let nb_limbs = P::NB_LIMBS;
+        let num_limbs = P::NUM_LIMBS;
         let base_powers = P::base_powers();
         let moduli = P::moduli();
         let max_limb_bound = P::max_limb_bound();
 
         let ((k_min, u_max), vs_bounds) =
-            Self::bounds::<F, K, P>(nb_parallel_range_checks, max_bit_len);
+            Self::bounds::<F, K, P>(num_parallel_range_checks, max_bit_len);
 
         let q_norm = meta.selector();
 
@@ -164,7 +164,7 @@ impl NormConfig {
 
             let shift = Expression::Constant(bigint_to_fe::<F>(&max_limb_bound));
             let shifted_x = xs.iter().map(|x| x + &shift).collect::<Vec<_>>();
-            let shifts = vec![max_limb_bound; nb_limbs as usize];
+            let shifts = vec![max_limb_bound; num_limbs as usize];
             let sum_shifts = sum_bigints(&base_powers, &shifts);
 
             //  sum_shifted_x - sum_z - sum_shifts - (u + k_min) * m = 0
@@ -229,7 +229,7 @@ where
 
             let m = &K::modulus().to_bigint().unwrap();
             let base = BI::from(2).pow(P::LOG2_BASE);
-            let nb_limbs = P::NB_LIMBS;
+            let num_limbs = P::NUM_LIMBS;
             let moduli = P::moduli();
             let base_powers = P::base_powers();
             let max_limb_bound = P::max_limb_bound();
@@ -239,16 +239,16 @@ where
                 .bigint_limbs()
                 .map(|limbs| limbs.iter().map(|xi| shift.clone() + xi).collect::<Vec<_>>());
             // Convert to BigInt in order to normalize, then back to limbs
-            let shifts = vec![max_limb_bound; nb_limbs as usize];
+            let shifts = vec![max_limb_bound; num_limbs as usize];
             let sum_shifted_x = xs_shifted.clone().map(|v| sum_bigints(&base_powers, &v));
             let sum_shifts = sum_bigints(&base_powers, &shifts);
             // The shift of +1 on x (for the unique representation of 0) has not been added,
             // but this will cancel out if we do not shift zv either in the call to
             // `bi_to_libms`.
             let zv = sum_shifted_x.clone().map(|v| urem(&(&v - &sum_shifts), m));
-            let zs = zv.map(|v| bi_to_limbs(nb_limbs, &base, &v));
+            let zs = zv.map(|v| bi_to_limbs(num_limbs, &base, &v));
             let z_values =
-                (0..nb_limbs).map(|i| zs.clone().map(|zs| bigint_to_fe::<F>(&zs[i as usize])));
+                (0..num_limbs).map(|i| zs.clone().map(|zs| bigint_to_fe::<F>(&zs[i as usize])));
 
             let sum_z = zs.clone().map(|v| sum_bigints(&base_powers, &v));
 

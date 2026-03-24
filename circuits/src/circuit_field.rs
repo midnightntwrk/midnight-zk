@@ -93,16 +93,16 @@ pub trait CircuitField: PrimeField {
 
     /// Decomposes the field element into little-endian bits.
     ///
-    /// - If `nb_bits = None`, the output has as many bits as necessary to
+    /// - If `num_bits = None`, the output has as many bits as necessary to
     ///   represent the element, but no more. Zero needs 1 bit.
-    /// - If `nb_bits` is provided, the output has the specified length,
+    /// - If `num_bits` is provided, the output has the specified length,
     ///   possibly with trailing zeros.
     ///
     /// # Panics
     ///
-    /// If the element does not fit in `nb_bits` bits when such argument is
+    /// If the element does not fit in `num_bits` bits when such argument is
     /// provided.
-    fn to_bits_le(&self, nb_bits: Option<usize>) -> Vec<bool> {
+    fn to_bits_le(&self, num_bits: Option<usize>) -> Vec<bool> {
         let bytes = self.to_bytes_le();
         let all_bits: Vec<bool> = bytes
             .as_ref()
@@ -110,7 +110,7 @@ pub trait CircuitField: PrimeField {
             .flat_map(|byte| (0..8).map(move |j| byte & (1 << j) != 0))
             .collect();
 
-        match nb_bits {
+        match num_bits {
             Some(n) => {
                 // The value must fit within `n` bits.
                 assert!(

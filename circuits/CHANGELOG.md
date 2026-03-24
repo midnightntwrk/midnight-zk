@@ -28,7 +28,7 @@ verification keys break backwards compatibility.
 * Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 
 ### Changed
-* Make `NB_ARITH_COLS` configurable instead of a compile-time constant [#287](https://github.com/midnightntwrk/midnight-zk/pull/287)
+* Make `NUM_ARITH_COLS` configurable instead of a compile-time constant [#287](https://github.com/midnightntwrk/midnight-zk/pull/287)
 * Support `fewer-point-sets` feature in verifier gadget [#281](https://github.com/midnightntwrk/midnight-zk/pull/281)
 * `multi_prepare` now takes a slice instead of `IntoIterator` [#281](https://github.com/midnightntwrk/midnight-zk/pull/281)
 * Support `single-h-commitment` feature in verifier gadget [#276](https://github.com/midnightntwrk/midnight-zk/pull/276)

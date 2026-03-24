@@ -55,9 +55,9 @@ use inner_product_argument::{ipa_prove, ipa_verify};
 use light_fiat_shamir::LightPoseidonFS;
 use light_self_emulation::{FakeCurveChip, LightBlstrsEmulation};
 use midnight_circuits::{
-    field::{native::NB_EXTRA_ARITH_FIXED_COLS, AssignedNative, NativeChip, NativeConfig},
+    field::{native::NUM_EXTRA_ARITH_FIXED_COLS, AssignedNative, NativeChip, NativeConfig},
     hash::poseidon::{
-        PoseidonChip, PoseidonConfig, NB_POSEIDON_ADVICE_COLS, NB_POSEIDON_FIXED_COLS,
+        PoseidonChip, PoseidonConfig, NUM_POSEIDON_ADVICE_COLS, NUM_POSEIDON_FIXED_COLS,
     },
     instructions::{AssignmentInstructions, PublicInputInstructions},
     types::{ComposableChip, Instantiable},
@@ -108,7 +108,7 @@ type ProvingKey = plonk::ProvingKey<F, KZGCommitmentScheme<E>>;
 /// This first version can only aggregate circuits with the same vk,
 /// described by (domain, cs, vk_repr).
 #[derive(Clone, Debug)]
-pub struct LightAggregator<const NB_PROOFS: usize> {
+pub struct LightAggregator<const NUM_PROOFS: usize> {
     inner_vk: VerifyingKey,
     aggregator_vk: VerifyingKey,
     aggregator_pk: ProvingKey,
@@ -116,18 +116,18 @@ pub struct LightAggregator<const NB_PROOFS: usize> {
 }
 
 #[derive(Clone, Debug)]
-struct AggregatorCircuit<const NB_PROOFS: usize> {
+struct AggregatorCircuit<const NUM_PROOFS: usize> {
     // This first version can only aggregate circuits with the same vk,
     // described by (domain, cs, vk_repr).
     #[allow(clippy::type_complexity)]
     inner_vk: (EvaluationDomain<F>, ConstraintSystem<F>, Value<F>),
     // TODO: This version is limited to circuits with exactly 2 public inputs.
     // This will be generalized in subsequent PRs.
-    instances: Value<[[F; 2]; NB_PROOFS]>,
-    proofs: [Value<Vec<u8>>; NB_PROOFS],
+    instances: Value<[[F; 2]; NUM_PROOFS]>,
+    proofs: [Value<Vec<u8>>; NUM_PROOFS],
 }
 
-impl<const NB_PROOFS: usize> Circuit<F> for AggregatorCircuit<NB_PROOFS> {
+impl<const NUM_PROOFS: usize> Circuit<F> for AggregatorCircuit<NUM_PROOFS> {
     type Config = (NativeConfig, PoseidonConfig<F>);
     type FloorPlanner = SimpleFloorPlanner;
     type Params = ();
@@ -137,22 +137,22 @@ impl<const NB_PROOFS: usize> Circuit<F> for AggregatorCircuit<NB_PROOFS> {
     }
 
     fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
-        const NB_ARITH_COLS: usize = 5;
-        const NB_ARITH_FIXED_COLS: usize = NB_ARITH_COLS + NB_EXTRA_ARITH_FIXED_COLS;
+        const NUM_ARITH_COLS: usize = 5;
+        const NUM_ARITH_FIXED_COLS: usize = NUM_ARITH_COLS + NUM_EXTRA_ARITH_FIXED_COLS;
 
-        let nb_advice_cols = std::cmp::max(NB_ARITH_COLS, NB_POSEIDON_ADVICE_COLS);
-        let nb_fixed_cols = std::cmp::max(NB_ARITH_FIXED_COLS, NB_POSEIDON_FIXED_COLS);
+        let num_advice_cols = std::cmp::max(NUM_ARITH_COLS, NUM_POSEIDON_ADVICE_COLS);
+        let num_fixed_cols = std::cmp::max(NUM_ARITH_FIXED_COLS, NUM_POSEIDON_FIXED_COLS);
 
-        let advice_columns: Vec<_> = (0..nb_advice_cols).map(|_| meta.advice_column()).collect();
-        let fixed_columns: Vec<_> = (0..nb_fixed_cols).map(|_| meta.fixed_column()).collect();
+        let advice_columns: Vec<_> = (0..num_advice_cols).map(|_| meta.advice_column()).collect();
+        let fixed_columns: Vec<_> = (0..num_fixed_cols).map(|_| meta.fixed_column()).collect();
         let committed_instance_column = meta.instance_column();
         let instance_column = meta.instance_column();
 
         let native_config = NativeChip::configure(
             meta,
             &(
-                advice_columns[..NB_ARITH_COLS].to_vec(),
-                fixed_columns[..NB_ARITH_FIXED_COLS].to_vec(),
+                advice_columns[..NUM_ARITH_COLS].to_vec(),
+                fixed_columns[..NUM_ARITH_FIXED_COLS].to_vec(),
                 [committed_instance_column, instance_column],
             ),
         );
@@ -160,8 +160,8 @@ impl<const NB_PROOFS: usize> Circuit<F> for AggregatorCircuit<NB_PROOFS> {
         let poseidon_config = PoseidonChip::configure(
             meta,
             &(
-                advice_columns[..NB_POSEIDON_ADVICE_COLS].try_into().unwrap(),
-                fixed_columns[..NB_POSEIDON_FIXED_COLS].try_into().unwrap(),
+                advice_columns[..NUM_POSEIDON_ADVICE_COLS].try_into().unwrap(),
+                fixed_columns[..NUM_POSEIDON_FIXED_COLS].try_into().unwrap(),
             ),
         );
 
@@ -227,7 +227,7 @@ impl<const NB_PROOFS: usize> Circuit<F> for AggregatorCircuit<NB_PROOFS> {
     }
 }
 
-impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
+impl<const NUM_PROOFS: usize> LightAggregator<NUM_PROOFS> {
     /// Initializes a new proof light aggregator for circuits of the given inner
     /// vk.
     ///
@@ -236,14 +236,14 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
     /// This function may downgrade the provided `srs` to adjust it to the
     /// aggregator circuit size.
     pub fn init(srs: &mut ParamsKZG<E>, inner_vk: &VerifyingKey) -> Result<Self, Error> {
-        let default_aggregator_circuit = AggregatorCircuit::<NB_PROOFS> {
+        let default_aggregator_circuit = AggregatorCircuit::<NUM_PROOFS> {
             inner_vk: (
                 inner_vk.get_domain().clone(),
                 inner_vk.cs().clone(),
                 Value::unknown(),
             ),
             instances: Value::unknown(),
-            proofs: vec![Value::unknown(); NB_PROOFS].try_into().unwrap(),
+            proofs: vec![Value::unknown(); NUM_PROOFS].try_into().unwrap(),
         };
 
         // TODO: Remove, we are hardcoding BLS constants here.
@@ -256,7 +256,7 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
 
         srs.downsize_from_circuit(&default_aggregator_circuit);
 
-        let nb_coms_per_proof = {
+        let num_coms_per_proof = {
             let cs = inner_vk.cs();
             cs.num_fixed_columns()
                 + cs.num_advice_columns()
@@ -272,7 +272,7 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
             inner_vk: inner_vk.clone(),
             aggregator_vk,
             aggregator_pk,
-            lagrange_commitments: srs.g_lagrange()[..(nb_coms_per_proof * NB_PROOFS)].to_vec(),
+            lagrange_commitments: srs.g_lagrange()[..(num_coms_per_proof * NUM_PROOFS)].to_vec(),
         })
     }
 
@@ -289,8 +289,8 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
     pub fn aggregate_proofs<T>(
         &self,
         srs: &ParamsKZG<E>,
-        instances: &[Vec<F>; NB_PROOFS],
-        proofs: &[Vec<u8>; NB_PROOFS],
+        instances: &[Vec<F>; NUM_PROOFS],
+        proofs: &[Vec<u8>; NUM_PROOFS],
         mut rng: impl RngCore + CryptoRng,
         transcript: &mut T,
     ) -> Result<(), Error>
@@ -336,7 +336,7 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
         assert!(acc.check(&srs.verifier_params(), &fixed_bases)); // sanity check
 
         // We now proceed to aggregating all proofs.
-        let aggregator_circuit = AggregatorCircuit::<NB_PROOFS> {
+        let aggregator_circuit = AggregatorCircuit::<NUM_PROOFS> {
             inner_vk: (
                 self.inner_vk.get_domain().clone(),
                 self.inner_vk.cs().clone(),
@@ -372,7 +372,7 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
         transcript.write(&acc_rhs_evaluated)?;
 
         // Create a proof of having verified the native part of all inner proofs.
-        create_proof::<F, KZGCommitmentScheme<E>, T, AggregatorCircuit<NB_PROOFS>>(
+        create_proof::<F, KZGCommitmentScheme<E>, T, AggregatorCircuit<NUM_PROOFS>>(
             srs,
             &self.aggregator_pk,
             &[aggregator_circuit],
@@ -406,7 +406,7 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
     pub fn verify<T>(
         &self,
         srs_verifier: &ParamsVerifierKZG<E>,
-        instances: &[Vec<F>; NB_PROOFS],
+        instances: &[Vec<F>; NUM_PROOFS],
         transcript: &mut T,
     ) -> Result<(), Error>
     where
@@ -550,7 +550,7 @@ mod tests {
 
     #[test]
     fn test_aggregate_proofs() {
-        const NB_PROOFS: usize = 3;
+        const NUM_PROOFS: usize = 3;
 
         let mut srs = ParamsKZG::unsafe_setup(15, OsRng);
 
@@ -561,15 +561,15 @@ mod tests {
         let inner_vk = midnight_zk_stdlib::setup_vk(&inner_srs, &InnerCircuit);
         let inner_pk = midnight_zk_stdlib::setup_pk(&InnerCircuit, &inner_vk);
 
-        let aggregator = LightAggregator::<NB_PROOFS>::init(&mut srs, inner_vk.vk())
+        let aggregator = LightAggregator::<NUM_PROOFS>::init(&mut srs, inner_vk.vk())
             .expect("Failed to init the aggregator");
 
         let mut rng = ChaCha8Rng::from_seed([0u8; 32]);
 
-        let witnesses: [_; NB_PROOFS] =
+        let witnesses: [_; NUM_PROOFS] =
             core::array::from_fn(|_| [F::random(&mut rng), F::random(&mut rng)]);
 
-        let instances: [_; NB_PROOFS] = witnesses.map(|preimage| {
+        let instances: [_; NUM_PROOFS] = witnesses.map(|preimage| {
             [
                 <PoseidonChip<F> as HashCPU<F, F>>::hash(&preimage),
                 <PoseidonChip<F> as HashCPU<F, F>>::hash(&preimage[1..]),
@@ -577,7 +577,7 @@ mod tests {
         });
 
         let t = std::time::Instant::now();
-        let proofs: [Vec<u8>; NB_PROOFS] = core::array::from_fn(|i| {
+        let proofs: [Vec<u8>; NUM_PROOFS] = core::array::from_fn(|i| {
             midnight_zk_stdlib::prove::<InnerCircuit, LightPoseidonFS<F>>(
                 &inner_srs,
                 &inner_pk,
@@ -590,14 +590,14 @@ mod tests {
         });
         println!(
             "{} inner proofs generated in {:?} s",
-            NB_PROOFS,
+            NUM_PROOFS,
             t.elapsed().as_secs()
         );
 
         let inner_verifier_params = inner_srs.verifier_params();
 
         let t = std::time::Instant::now();
-        for i in 0..NB_PROOFS {
+        for i in 0..NUM_PROOFS {
             let mut transcript =
                 CircuitTranscript::<LightPoseidonFS<F>>::init_from_bytes(&proofs[i]);
             let dual_msm =
@@ -613,11 +613,11 @@ mod tests {
         }
         println!(
             "{} inner proofs verified in {:?} ms",
-            NB_PROOFS,
+            NUM_PROOFS,
             t.elapsed().as_millis()
         );
 
-        let all_instances: [Vec<F>; NB_PROOFS] = instances
+        let all_instances: [Vec<F>; NUM_PROOFS] = instances
             .iter()
             .map(|instance| InnerCircuit::format_instance(instance).unwrap())
             .collect::<Vec<_>>()

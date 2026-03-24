@@ -25,7 +25,7 @@ use num_traits::Zero;
 #[cfg(any(test, feature = "testing"))]
 use {
     crate::field::decomposition::{chip::P2RDecompositionConfig, pow2range::Pow2RangeChip},
-    crate::field::native::NB_EXTRA_ARITH_FIXED_COLS,
+    crate::field::native::NUM_EXTRA_ARITH_FIXED_COLS,
     crate::testing_utils::{FromScratch, Sampleable},
     crate::utils::ComposableChip,
     midnight_proofs::plonk::{Column, ConstraintSystem, Instance},
@@ -878,24 +878,24 @@ where
         &self,
         layouter: &mut impl Layouter<F>,
         x: &AssignedNative<F>,
-        nb_bits: Option<usize>,
+        num_bits: Option<usize>,
         enforce_canonical: bool,
     ) -> Result<Vec<AssignedBit<F>>, Error> {
-        let nb_bits = nb_bits.unwrap_or(F::NUM_BITS as usize);
+        let num_bits = num_bits.unwrap_or(F::NUM_BITS as usize);
 
         assert!(
-            nb_bits <= F::NUM_BITS as usize,
+            num_bits <= F::NUM_BITS as usize,
             "assigned_to_le_bits: why do you need the output to have more bits than necessary?"
         );
 
         let limbs = self
             .core_decomposition_chip
-            .decompose_fixed_limb_size(layouter, x, nb_bits, 1)?;
+            .decompose_fixed_limb_size(layouter, x, num_bits, 1)?;
         let bits = limbs
             .iter()
             .map(|x| self.native_chip.convert_unsafe(layouter, x))
             .collect::<Result<Vec<_>, Error>>()?;
-        if enforce_canonical && nb_bits == F::NUM_BITS as usize {
+        if enforce_canonical && num_bits == F::NUM_BITS as usize {
             debug_assert_eq!(F::modulus().bits(), F::NUM_BITS as u64);
             // To enforce canonicity, we leverage the fact that `F::NUM_BITS` is tight:
             // field elements have at most 2 representations as bitstrings of length
@@ -914,17 +914,17 @@ where
         &self,
         layouter: &mut impl Layouter<F>,
         x: &AssignedNative<F>,
-        nb_bytes: Option<usize>,
+        num_bytes: Option<usize>,
     ) -> Result<Vec<AssignedByte<F>>, Error> {
         let f_num_bytes = F::NUM_BITS.div_ceil(8);
-        let nb_bytes = nb_bytes.unwrap_or(f_num_bytes as usize);
-        if nb_bytes > f_num_bytes as usize {
+        let num_bytes = num_bytes.unwrap_or(f_num_bytes as usize);
+        if num_bytes > f_num_bytes as usize {
             panic!("assigned_to_le_bytes: why do you need the output to have more bytes than necessary?");
         }
-        // If nb_bytes equals ⌈F::NUM_BITS / 8⌉, we need extra care to
+        // If num_bytes equals ⌈F::NUM_BITS / 8⌉, we need extra care to
         // guarantee that the output is canonical: we split in bits enforcing canonicity
         // and then group the bits in bytes.
-        if nb_bytes == f_num_bytes as usize {
+        if num_bytes == f_num_bytes as usize {
             let bits = self.assigned_to_le_bits(layouter, x, Some(F::NUM_BITS as usize), true)?;
             bits.chunks(8)
                 .map(|chunk| {
@@ -938,13 +938,13 @@ where
                 })
                 .collect::<Result<Vec<AssignedByte<F>>, Error>>()
         }
-        // If nb_bytes < ⌈F::NUM_BITS / 8⌉, wrap-arounds are not possible, so canonicity is always
+        // If num_bytes < ⌈F::NUM_BITS / 8⌉, wrap-arounds are not possible, so canonicity is always
         // guaranteed. In this case we can split in bytes more efficiently.
         else {
             let limbs = self.core_decomposition_chip.decompose_fixed_limb_size(
                 layouter,
                 x,
-                8 * nb_bytes,
+                8 * num_bytes,
                 8,
             )?;
             limbs
@@ -958,16 +958,16 @@ where
         &self,
         layouter: &mut impl Layouter<F>,
         x: &AssignedNative<F>,
-        nb_bits_per_chunk: usize,
-        nb_chunks: Option<usize>,
+        num_bits_per_chunk: usize,
+        num_chunks: Option<usize>,
     ) -> Result<Vec<AssignedNative<F>>, Error> {
-        assert!(nb_bits_per_chunk < F::NUM_BITS as usize);
-        let nb_chunks = nb_chunks.unwrap_or((F::NUM_BITS as usize).div_ceil(nb_bits_per_chunk));
+        assert!(num_bits_per_chunk < F::NUM_BITS as usize);
+        let num_chunks = num_chunks.unwrap_or((F::NUM_BITS as usize).div_ceil(num_bits_per_chunk));
         self.core_decomposition_chip.decompose_fixed_limb_size(
             layouter,
             x,
-            nb_bits_per_chunk * nb_chunks,
-            nb_bits_per_chunk,
+            num_bits_per_chunk * num_chunks,
+            num_bits_per_chunk,
         )
     }
 
@@ -1731,11 +1731,12 @@ impl<F: CircuitField> FromScratch<F> for NativeGadget<F, P2RDecompositionChip<F>
         meta: &mut ConstraintSystem<F>,
         instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
-        const NB_ARITH_COLS: usize = 5;
-        const NB_ARITH_FIXED_COLS: usize = NB_ARITH_COLS + NB_EXTRA_ARITH_FIXED_COLS;
+        const NUM_ARITH_COLS: usize = 5;
+        const NUM_ARITH_FIXED_COLS: usize = NUM_ARITH_COLS + NUM_EXTRA_ARITH_FIXED_COLS;
 
-        let advice_columns: [_; NB_ARITH_COLS] = core::array::from_fn(|_| meta.advice_column());
-        let fixed_columns: [_; NB_ARITH_FIXED_COLS] = core::array::from_fn(|_| meta.fixed_column());
+        let advice_columns: [_; NUM_ARITH_COLS] = core::array::from_fn(|_| meta.advice_column());
+        let fixed_columns: [_; NUM_ARITH_FIXED_COLS] =
+            core::array::from_fn(|_| meta.fixed_column());
 
         let native_config = NativeChip::configure(
             meta,

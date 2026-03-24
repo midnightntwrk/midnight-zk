@@ -41,7 +41,7 @@ use crate::{
 };
 
 /// The number of advice columns used by the EccChip.
-pub const NB_EDWARDS_COLS: usize = 9;
+pub const NUM_EDWARDS_COLS: usize = 9;
 
 /// A twisted Edwards curve point represented in affine (x, y) coordinates, the
 /// identity represented as (0, 1).
@@ -119,10 +119,10 @@ impl<C: CircuitCurve> InnerValue for AssignedScalarOfNativeCurve<C> {
 impl<C: EdwardsCurve> Instantiable<C::Base> for AssignedScalarOfNativeCurve<C> {
     fn as_public_input(element: &C::ScalarField) -> Vec<C::Base> {
         // We aggregate the bits while they fit in a single `C::Base` value.
-        let nb_bits_per_batch = C::Base::NUM_BITS as usize - 1;
+        let num_bits_per_batch = C::Base::NUM_BITS as usize - 1;
         element
             .to_bits_le(Some(C::NUM_BITS_SUBGROUP as usize))
-            .chunks(nb_bits_per_batch)
+            .chunks(num_bits_per_batch)
             .map(C::Base::from_bits_le)
             .collect()
     }
@@ -144,13 +144,13 @@ impl<C: EdwardsCurve> Sampleable for AssignedScalarOfNativeCurve<C> {
     }
 }
 
-/// [`EccConfig`], which uses [`NB_EDWARDS_COLS`] advice columns.
+/// [`EccConfig`], which uses [`NUM_EDWARDS_COLS`] advice columns.
 #[derive(Clone, Debug)]
 pub struct EccConfig {
     pub(crate) q_double: Selector,
     pub(crate) q_cond_add: Selector,
     pub(crate) q_mem: Selector,
-    pub(crate) advice_cols: [Column<Advice>; NB_EDWARDS_COLS],
+    pub(crate) advice_cols: [Column<Advice>; NUM_EDWARDS_COLS],
 }
 
 impl EccConfig {
@@ -339,7 +339,7 @@ impl<C: EdwardsCurve> Chip<C::Base> for EccChip<C> {
 }
 
 impl<C: EdwardsCurve> ComposableChip<C::Base> for EccChip<C> {
-    type SharedResources = [Column<Advice>; NB_EDWARDS_COLS];
+    type SharedResources = [Column<Advice>; NUM_EDWARDS_COLS];
     type InstructionDeps = NG<C::Base>;
 
     fn new(config: &Self::Config, sub_chips: &Self::InstructionDeps) -> Self {
@@ -870,10 +870,10 @@ impl<C: EdwardsCurve> PublicInputInstructions<C::Base, AssignedScalarOfNativeCur
         assigned: &AssignedScalarOfNativeCurve<C>,
     ) -> Result<Vec<AssignedNative<C::Base>>, Error> {
         // We aggregate the bits while they fit in a single `AssignedNative`.
-        let nb_bits_per_batch = C::Base::NUM_BITS as usize - 1;
+        let num_bits_per_batch = C::Base::NUM_BITS as usize - 1;
         assigned
             .0
-            .chunks(nb_bits_per_batch)
+            .chunks(num_bits_per_batch)
             .map(|chunk| self.native_gadget.assigned_from_le_bits(layouter, chunk))
             .collect()
     }
@@ -986,7 +986,7 @@ impl<C: EdwardsCurve> FromScratch<C::Base> for EccChip<C> {
     ) -> Self::Config {
         let native_gadget_config =
             <NG<C::Base> as FromScratch<C::Base>>::configure_from_scratch(meta, instance_columns);
-        let advice_cols: [Column<Advice>; NB_EDWARDS_COLS] =
+        let advice_cols: [Column<Advice>; NUM_EDWARDS_COLS] =
             core::array::from_fn(|_| meta.advice_column());
         let ecc_config = EccChip::<C>::configure(meta, &advice_cols);
 

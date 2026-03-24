@@ -361,9 +361,9 @@ pub(crate) fn multi_prepare<S: SelfEmulation>(
     }
 
     let truncated_x1_powers = {
-        let nb_x1_powers = q_coms.iter().map(|v| v.len()).max().unwrap_or(0);
-        assert!(nb_x1_powers >= q_eval_sets.iter().map(|v| v.len()).max().unwrap_or(0));
-        truncated_powers(layouter, scalar_chip, &x1, nb_x1_powers)?
+        let num_x1_powers = q_coms.iter().map(|v| v.len()).max().unwrap_or(0);
+        assert!(num_x1_powers >= q_eval_sets.iter().map(|v| v.len()).max().unwrap_or(0));
+        truncated_powers(layouter, scalar_chip, &x1, num_x1_powers)?
     };
 
     let q_coms = q_coms

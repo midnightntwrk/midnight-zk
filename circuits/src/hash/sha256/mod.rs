@@ -22,7 +22,7 @@ pub(crate) mod utils;
 
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 use sha2::Digest;
-pub use sha256_chip::{Sha256Chip, Sha256Config, NB_SHA256_ADVICE_COLS, NB_SHA256_FIXED_COLS};
+pub use sha256_chip::{Sha256Chip, Sha256Config, NUM_SHA256_ADVICE_COLS, NUM_SHA256_FIXED_COLS};
 pub use sha256_varlen::VarLenSha256Gadget;
 
 use crate::{

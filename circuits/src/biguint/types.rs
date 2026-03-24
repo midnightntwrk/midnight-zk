@@ -88,8 +88,8 @@ impl<F: CircuitField> InnerConstants for AssignedBigUint<F> {
 impl<F: CircuitField> AssignedBigUint<F> {
     /// This function is the off-circuit analog of
     /// [crate::biguint::biguint_gadget::BigUintGadget::constrain_as_public_input].
-    pub fn as_public_input(element: &BigUint, nb_bits: u32) -> Vec<F> {
-        biguint_to_limbs(element, Some(nb_bits.div_ceil(LOG2_BASE)))
+    pub fn as_public_input(element: &BigUint, num_bits: u32) -> Vec<F> {
+        biguint_to_limbs(element, Some(num_bits.div_ceil(LOG2_BASE)))
     }
 }
 
@@ -101,12 +101,12 @@ impl<F: CircuitField> PartialEq for AssignedBigUint<F> {
 }
 
 #[cfg(any(test, feature = "testing"))]
-pub(crate) const TEST_NB_BITS: u32 = 1024;
+pub(crate) const TEST_NUM_BITS: u32 = 1024;
 
 #[cfg(any(test, feature = "testing"))]
 impl<F: CircuitField> Sampleable for AssignedBigUint<F> {
     fn sample_inner(mut rng: impl rand::RngCore) -> BigUint {
-        num_bigint::RandBigInt::gen_biguint(&mut rng, TEST_NB_BITS as u64)
+        num_bigint::RandBigInt::gen_biguint(&mut rng, TEST_NUM_BITS as u64)
     }
 }
 
@@ -115,10 +115,10 @@ impl<F: CircuitField> AssignedBigUint<F> {
     /// given big unsigned integer. Such bound is computed based on the
     /// `AssignedBigUint` limb size bounds.
     ///
-    /// This function does not simply return `nb_limbs * LOG2_BASE` because it
+    /// This function does not simply return `num_limbs * LOG2_BASE` because it
     /// can also deal with big unsigned integers that are not normalized i.e.
     /// whose bounds are allowed to exceed LOG2_BASE.
-    pub fn nb_bits(&self) -> u32 {
+    pub fn num_bits(&self) -> u32 {
         self.limb_size_bounds
             .iter()
             .rev()
@@ -151,17 +151,17 @@ pub(crate) fn bound_of_addition(bound1: u32, bound2: u32) -> u32 {
     1 + max(bound1, bound2)
 }
 
-/// Breaks the given BigUint into `nb_limbs` limbs (over the underlying prime
+/// Breaks the given BigUint into `num_limbs` limbs (over the underlying prime
 /// field) representing the value in base 2^LOG2_BASE (in little-endian).
 ///
-/// If not provided, `nb_limbs` will default to the minimum number of limbs
+/// If not provided, `num_limbs` will default to the minimum number of limbs
 /// necessary to represent the given integer.
 ///
-/// If `nb_limbs` is provided, this function will panic if the conversion is not
-/// possible.
-pub(crate) fn biguint_to_limbs<F: CircuitField>(value: &BigUint, nb_limbs: Option<u32>) -> Vec<F> {
-    let nb_limbs = nb_limbs.unwrap_or(value.bits().div_ceil(LOG2_BASE as u64) as u32);
-    big_to_limbs(nb_limbs, &(BigUint::from(1u8) << LOG2_BASE), value)
+/// If `num_limbs` is provided, this function will panic if the conversion is
+/// not possible.
+pub(crate) fn biguint_to_limbs<F: CircuitField>(value: &BigUint, num_limbs: Option<u32>) -> Vec<F> {
+    let num_limbs = num_limbs.unwrap_or(value.bits().div_ceil(LOG2_BASE as u64) as u32);
+    big_to_limbs(num_limbs, &(BigUint::from(1u8) << LOG2_BASE), value)
         .into_iter()
         .map(big_to_fe::<F>)
         .collect()

@@ -131,9 +131,9 @@ where
         // We shift the value of x by 1 for the unique-zero representation.
         let element_as_bi = (*element - K::ONE).to_biguint().into();
         let base = BI::from(2).pow(P::LOG2_BASE);
-        let nb_limbs_per_batch = (F::CAPACITY / P::LOG2_BASE) as usize;
-        bi_to_limbs(P::NB_LIMBS, &base, &element_as_bi)
-            .chunks(nb_limbs_per_batch)
+        let num_limbs_per_batch = (F::CAPACITY / P::LOG2_BASE) as usize;
+        bi_to_limbs(P::NUM_LIMBS, &base, &element_as_bi)
+            .chunks(num_limbs_per_batch)
             .map(|chunk| bigint_to_fe::<F>(&bi_from_limbs(&base, chunk)))
             .collect()
     }
@@ -196,7 +196,7 @@ where
     /// that was asserted elsewhere.
     /// DO NOT use this function unless you know what you are doing.
     pub(crate) fn from_limbs_unsafe(limb_values: Vec<AssignedNative<F>>) -> Self {
-        debug_assert!(limb_values.len() as u32 == P::NB_LIMBS);
+        debug_assert!(limb_values.len() as u32 == P::NUM_LIMBS);
         Self {
             limb_values,
             limb_bounds: well_formed_bounds::<F, K, P>(),
@@ -218,13 +218,13 @@ where
 }
 
 /// Number of columns required by this chip.
-pub fn nb_field_chip_columns<F, K, P>() -> usize
+pub fn num_field_chip_columns<F, K, P>() -> usize
 where
     F: CircuitField,
     K: CircuitField,
     P: FieldEmulationParams<F, K>,
 {
-    P::NB_LIMBS as usize + max(P::NB_LIMBS as usize, 1 + P::moduli().len())
+    P::NUM_LIMBS as usize + max(P::NUM_LIMBS as usize, 1 + P::moduli().len())
 }
 
 /// Creates a vector of upper-bounds (one per limb), specifiying the maximum
@@ -240,13 +240,13 @@ where
     P: FieldEmulationParams<F, K>,
 {
     // Let m be the emulated modulus.
-    // We want that m <= base^(nb_limbs - 1) * msl_bound < 2m,
+    // We want that m <= base^(num_limbs - 1) * msl_bound < 2m,
     // therefore msl_bound must be the first power of 2 higher than or equal to
-    // m / base^(nb_limbs - 1).
+    // m / base^(num_limbs - 1).
     let m = &K::modulus().to_bigint().unwrap();
-    let log2_msl_bound = m.bits() as u32 - (P::NB_LIMBS - 1) * P::LOG2_BASE;
+    let log2_msl_bound = m.bits() as u32 - (P::NUM_LIMBS - 1) * P::LOG2_BASE;
     let mut bounds = vec![log2_msl_bound];
-    bounds.resize(P::NB_LIMBS as usize, P::LOG2_BASE);
+    bounds.resize(P::NUM_LIMBS as usize, P::LOG2_BASE);
     bounds.into_iter().rev().collect::<Vec<_>>()
 }
 
@@ -340,9 +340,9 @@ where
     }
 }
 
-/// A vector of `NB_LIMBS` bounds of the form [0, base), except for possibly the
-/// most significant limb, which may be of the form [0, 2^k) with 2^k <= base.
-/// This is so that there exist emulated field elements with a unique
+/// A vector of `NUM_LIMBS` bounds of the form [0, base), except for possibly
+/// the most significant limb, which may be of the form [0, 2^k) with 2^k <=
+/// base. This is so that there exist emulated field elements with a unique
 /// representation (even if some of them have two representations).
 fn well_formed_bounds<F, K, P>() -> Vec<(BI, BI)>
 where
@@ -364,7 +364,7 @@ where
     P: FieldEmulationParams<F, K>,
 {
     bi_to_limbs(
-        P::NB_LIMBS,
+        P::NUM_LIMBS,
         &BI::from(2).pow(P::LOG2_BASE),
         &(K::modulus().to_bigint().unwrap() - BI::one()),
     )
@@ -404,11 +404,11 @@ where
         //   1 + sum_i base^i xi
         let x = x.map(|v| {
             let bi = (v - K::ONE).to_biguint().into();
-            bi_to_limbs(P::NB_LIMBS, &base, &bi)
+            bi_to_limbs(P::NUM_LIMBS, &base, &bi)
         });
 
         // Range-check the cells in the range [0, base)
-        let x_cells = (0..P::NB_LIMBS)
+        let x_cells = (0..P::NUM_LIMBS)
             .map(|i| x.clone().map(|limbs| bigint_to_fe::<F>(&limbs[i as usize])))
             .zip(well_formed_log2_bounds::<F, K, P>().iter())
             .map(|(xi_value, log2_bound)| {
@@ -436,7 +436,7 @@ where
         // We shift the value of x by 1, remember that limbs {xi}_i represent integer
         //   1 + sum_i base^i xi
         let constant = (constant - K::ONE).to_biguint().into();
-        let constant_limbs = bi_to_limbs(P::NB_LIMBS, &base, &constant);
+        let constant_limbs = bi_to_limbs(P::NUM_LIMBS, &base, &constant);
         let constant_cells = constant_limbs
             .iter()
             .map(|x| self.native_gadget.assign_fixed(layouter, bigint_to_fe::<F>(x)))
@@ -485,11 +485,11 @@ where
         assigned: &AssignedField<F, K, P>,
     ) -> Result<Vec<AssignedNative<F>>, Error> {
         let assigned = self.normalize(layouter, assigned)?;
-        let nb_limbs_per_batch = (F::CAPACITY / P::LOG2_BASE) as usize;
+        let num_limbs_per_batch = (F::CAPACITY / P::LOG2_BASE) as usize;
         let base = BI::from(2).pow(P::LOG2_BASE);
         assigned
             .limb_values
-            .chunks(nb_limbs_per_batch)
+            .chunks(num_limbs_per_batch)
             .map(|chunk| {
                 let terms: Vec<(F, AssignedNative<F>)> = chunk
                     .iter()
@@ -577,7 +577,7 @@ where
         let constant_limbs = {
             let constant = (constant - K::ONE).to_biguint().into();
             let base = BI::from(2).pow(P::LOG2_BASE);
-            bi_to_limbs(P::NB_LIMBS, &base, &constant)
+            bi_to_limbs(P::NUM_LIMBS, &base, &constant)
         };
         x.limb_values
             .iter()
@@ -768,7 +768,7 @@ where
         // least-significant limb to account for this difference.
 
         let mut constants = vec![BI::one()];
-        constants.resize(P::NB_LIMBS as usize, BI::zero());
+        constants.resize(P::NUM_LIMBS as usize, BI::zero());
 
         let z_limb_values = x
             .limb_values
@@ -822,7 +822,7 @@ where
         // of -1 to the least-significant limb to account for this difference.
 
         let mut constants = vec![BI::from(-1)];
-        constants.resize(P::NB_LIMBS as usize, BI::zero());
+        constants.resize(P::NUM_LIMBS as usize, BI::zero());
 
         let z_limb_values = x
             .limb_values
@@ -920,7 +920,7 @@ where
         // limb to account for this difference.
 
         let mut constants = vec![BI::from(-2)];
-        constants.resize(P::NB_LIMBS as usize, BI::zero());
+        constants.resize(P::NUM_LIMBS as usize, BI::zero());
 
         let z_limb_values = x
             .limb_values
@@ -991,7 +991,7 @@ where
         }
 
         let base = BI::from(2).pow(P::LOG2_BASE);
-        let k_limbs = bi_to_limbs(P::NB_LIMBS, &base, &k.to_biguint().into());
+        let k_limbs = bi_to_limbs(P::NUM_LIMBS, &base, &k.to_biguint().into());
 
         let z_limb_values = {
             self.native_gadget.add_constants(
@@ -1056,7 +1056,7 @@ where
         // We've also checked k != 0 and k != 1, so it is fine to subtract one here.
         // (for the unique-zero representation).
         let mut constants = vec![k_as_bigint.clone() - BI::one()];
-        constants.resize(P::NB_LIMBS as usize, BI::zero());
+        constants.resize(P::NUM_LIMBS as usize, BI::zero());
 
         let z_limb_values = x
             .limb_values
@@ -1121,7 +1121,7 @@ where
         &self,
         layouter: &mut impl Layouter<F>,
         x: &AssignedField<F, K, P>,
-        nb_bits: Option<usize>,
+        num_bits: Option<usize>,
         enforce_canonical: bool,
     ) -> Result<Vec<AssignedBit<F>>, Error> {
         // Add one to account for the extra +1 in the unique-zero representation.
@@ -1147,12 +1147,12 @@ where
 
         // Drop the most significant bits up to the desired length, but make sure
         // they encode 0.
-        let nb_bits = nb_bits.unwrap_or(K::NUM_BITS as usize);
-        bits[nb_bits..]
+        let num_bits = num_bits.unwrap_or(K::NUM_BITS as usize);
+        bits[num_bits..]
             .iter()
             .try_for_each(|byte| self.native_gadget.assert_equal_to_fixed(layouter, byte, false))?;
-        let bits = bits[0..nb_bits].to_vec();
-        if enforce_canonical && nb_bits >= K::NUM_BITS as usize {
+        let bits = bits[0..num_bits].to_vec();
+        if enforce_canonical && num_bits >= K::NUM_BITS as usize {
             let canonical = self.is_canonical(layouter, &bits)?;
             self.assert_equal_to_fixed(layouter, &canonical, true)?;
         }
@@ -1163,11 +1163,11 @@ where
         &self,
         layouter: &mut impl Layouter<F>,
         x: &AssignedField<F, K, P>,
-        nb_bytes: Option<usize>,
+        num_bytes: Option<usize>,
     ) -> Result<Vec<AssignedByte<F>>, Error> {
-        let nb_bytes = nb_bytes.unwrap_or(K::NUM_BITS.div_ceil(8) as usize);
+        let num_bytes = num_bytes.unwrap_or(K::NUM_BITS.div_ceil(8) as usize);
         // The following could be further optimzed when 8 divides LOG2_BASE.
-        let bits = self.assigned_to_le_bits(layouter, x, Some(nb_bytes * 8), true)?;
+        let bits = self.assigned_to_le_bits(layouter, x, Some(num_bytes * 8), true)?;
         let bytes = bits
             .chunks(8)
             .map(|chunk| {
@@ -1183,10 +1183,10 @@ where
 
         // Drop the most significant bytes up to the desired length, but make sure
         // they encode 0.
-        bytes[nb_bytes..]
+        bytes[num_bytes..]
             .iter()
             .try_for_each(|byte| self.native_gadget.assert_equal_to_fixed(layouter, byte, 0u8))?;
-        Ok(bytes[0..nb_bytes].to_vec())
+        Ok(bytes[0..num_bytes].to_vec())
     }
 
     fn assigned_from_le_bits(
@@ -1223,8 +1223,8 @@ where
     ) -> Result<AssignedField<F, K, P>, Error> {
         let mut coeff = K::ONE;
         let mut terms = vec![];
-        let nb_bytes_per_chunk = P::LOG2_BASE / 8;
-        for chunk in bytes.chunks(nb_bytes_per_chunk as usize) {
+        let num_bytes_per_chunk = P::LOG2_BASE / 8;
+        for chunk in bytes.chunks(num_bytes_per_chunk as usize) {
             let mut native_coeff = F::ONE;
             let mut native_terms = vec![];
             for b in chunk.iter() {
@@ -1238,7 +1238,7 @@ where
                 self.assigned_field_from_limb(layouter, &limb)?
             };
             terms.push((coeff, term));
-            coeff = bigint_to_fe::<K>(&BI::from(2).pow(8 * nb_bytes_per_chunk)) * coeff;
+            coeff = bigint_to_fe::<K>(&BI::from(2).pow(8 * num_bytes_per_chunk)) * coeff;
         }
         let x = self.linear_combination(layouter, &terms, K::ZERO)?;
         self.normalize(layouter, &x)
@@ -1248,14 +1248,14 @@ where
         &self,
         layouter: &mut impl Layouter<F>,
         x: &AssignedField<F, K, P>,
-        nb_bits_per_chunk: usize,
-        nb_chunks: Option<usize>,
+        num_bits_per_chunk: usize,
+        num_chunks: Option<usize>,
     ) -> Result<Vec<AssignedNative<F>>, Error> {
-        assert!(nb_bits_per_chunk < F::NUM_BITS as usize);
-        if P::LOG2_BASE % (nb_bits_per_chunk as u32) == 0 {
-            let nb_chunks_per_limb = (P::LOG2_BASE / (nb_bits_per_chunk as u32)) as usize;
-            let mut nb_missing_chunks =
-                nb_chunks.unwrap_or(nb_chunks_per_limb * P::NB_LIMBS as usize);
+        assert!(num_bits_per_chunk < F::NUM_BITS as usize);
+        if P::LOG2_BASE % (num_bits_per_chunk as u32) == 0 {
+            let num_chunks_per_limb = (P::LOG2_BASE / (num_bits_per_chunk as u32)) as usize;
+            let mut num_missing_chunks =
+                num_chunks.unwrap_or(num_chunks_per_limb * P::NUM_LIMBS as usize);
             // Add one to account for the extra +1 in the unique-zero representation.
             let x = self.add_constant(layouter, x, K::ONE)?;
             let x = self.normalize(layouter, &x)?;
@@ -1263,25 +1263,25 @@ where
                 .limb_values
                 .iter()
                 .map(|limb| {
-                    let nb_chunks_on_this_limb = min(nb_missing_chunks, nb_chunks_per_limb);
-                    nb_missing_chunks -= nb_chunks_on_this_limb;
+                    let num_chunks_on_this_limb = min(num_missing_chunks, num_chunks_per_limb);
+                    num_missing_chunks -= num_chunks_on_this_limb;
                     self.native_gadget.assigned_to_le_chunks(
                         layouter,
                         limb,
-                        nb_bits_per_chunk,
-                        Some(nb_chunks_on_this_limb),
+                        num_bits_per_chunk,
+                        Some(num_chunks_on_this_limb),
                     )
                 })
                 .collect::<Result<Vec<_>, Error>>()?
                 .concat();
-            assert_eq!(nb_missing_chunks, 0);
+            assert_eq!(num_missing_chunks, 0);
             Ok(chunks)
         }
-        // When nb_bits_per_chunk does not divide P::LOG2_BASE we cannot proceed as above,
+        // When num_bits_per_chunk does not divide P::LOG2_BASE we cannot proceed as above,
         // let's split in bits and then aggregate chunks, this is a bit less efficient.
         else {
             let bits = self.assigned_to_le_bits(layouter, x, None, false)?;
-            bits.chunks(nb_bits_per_chunk)
+            bits.chunks(num_bits_per_chunk)
                 .map(|bits_of_chunk| {
                     self.native_gadget.assigned_from_le_bits(layouter, bits_of_chunk)
                 })
@@ -1308,39 +1308,39 @@ where
 
     /// Configures the emulated field chip.
     /// `advice_columns` should contain at least as many columns as this chip
-    /// requires, namely `nb_field_chip_columns::<P>()`.
+    /// requires, namely `num_field_chip_columns::<P>()`.
     pub fn configure(
         meta: &mut ConstraintSystem<F>,
         advice_columns: &[Column<Advice>],
-        nb_parallel_range_checks: usize,
+        num_parallel_range_checks: usize,
         max_bit_len: u32,
     ) -> FieldChipConfig {
         check_params::<F, K, P>();
 
-        let nb_limbs = P::NB_LIMBS;
-        let x_cols = advice_columns[..(nb_limbs as usize)].to_vec();
+        let num_limbs = P::NUM_LIMBS;
+        let x_cols = advice_columns[..(num_limbs as usize)].to_vec();
         let y_cols = x_cols.clone();
-        let z_cols = advice_columns[(nb_limbs as usize)..(2 * nb_limbs as usize)].to_vec();
+        let z_cols = advice_columns[(num_limbs as usize)..(2 * num_limbs as usize)].to_vec();
 
         x_cols.iter().chain(z_cols.iter()).for_each(|&col| meta.enable_equality(col));
 
-        let u_col = advice_columns[nb_limbs as usize];
+        let u_col = advice_columns[num_limbs as usize];
         let v_cols = advice_columns
-            [(nb_limbs as usize + 1)..(nb_limbs as usize + 1 + P::moduli().len())]
+            [(num_limbs as usize + 1)..(num_limbs as usize + 1 + P::moduli().len())]
             .to_vec();
 
         let mul_config = MulConfig::configure::<F, K, P>(
             meta,
             &x_cols,
             &z_cols,
-            nb_parallel_range_checks,
+            num_parallel_range_checks,
             max_bit_len,
         );
         let norm_config = NormConfig::configure::<F, K, P>(
             meta,
             &x_cols,
             &z_cols,
-            nb_parallel_range_checks,
+            num_parallel_range_checks,
             max_bit_len,
         );
 
@@ -1369,7 +1369,7 @@ where
         division: bool,
     ) -> Result<AssignedField<F, K, P>, Error> {
         let base = BI::from(2).pow(P::LOG2_BASE);
-        let nb_limbs = P::NB_LIMBS;
+        let num_limbs = P::NUM_LIMBS;
 
         let x = self.normalize(layouter, x)?;
         let y = self.normalize(layouter, y)?;
@@ -1386,8 +1386,8 @@ where
                     xv * yv
                 }
             })
-            .map(|z| bi_to_limbs(nb_limbs, &base, &(z - K::ONE).to_biguint().into()));
-        let z_values = (0..nb_limbs)
+            .map(|z| bi_to_limbs(num_limbs, &base, &(z - K::ONE).to_biguint().into()));
+        let z_values = (0..num_limbs)
             .map(|i| zv.clone().map(|zs| bigint_to_fe::<F>(&zs[i as usize])))
             .collect::<Vec<_>>();
 
@@ -1511,7 +1511,7 @@ where
         let mut limb_values = vec![least_significant_limb];
         let mut limb_bounds = well_formed_bounds::<F, K, P>();
         let zero = self.native_gadget.assign_fixed(layouter, F::ZERO)?;
-        limb_values.resize(P::NB_LIMBS as usize, zero);
+        limb_values.resize(P::NUM_LIMBS as usize, zero);
         limb_bounds[0] = (limb_bounds[0].clone().0 - 1, limb_bounds[0].clone().1 - 1);
         Ok(AssignedField::<F, K, P> {
             limb_values,
@@ -1701,16 +1701,16 @@ where
         let native_gadget_config =
             <N as FromScratch<F>>::configure_from_scratch(meta, instance_columns);
         // Use hard-coded pow2range values matching NativeGadget::configure_from_scratch
-        let nb_parallel_range_checks = 4;
+        let num_parallel_range_checks = 4;
         let max_bit_len = 8;
         let field_chip_config = {
-            let advice_cols = (0..nb_field_chip_columns::<F, K, P>())
+            let advice_cols = (0..num_field_chip_columns::<F, K, P>())
                 .map(|_| meta.advice_column())
                 .collect::<Vec<_>>();
             FieldChip::<F, K, P, N>::configure(
                 meta,
                 &advice_cols,
-                nb_parallel_range_checks,
+                num_parallel_range_checks,
                 max_bit_len,
             )
         };

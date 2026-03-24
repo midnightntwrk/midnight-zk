@@ -56,13 +56,13 @@ impl<C: WeierstrassCurve> OnCurveConfig<C> {
     /// custom gate. We refer to the implementation of this function for
     /// explanations on what such values represent.
     ///
-    /// The `nb_parallel_range_checks` and `max_bit_len` parameters describe
+    /// The `num_parallel_range_checks` and `max_bit_len` parameters describe
     /// the range-check decomposition chip: how many lookups run in parallel
     /// per row and the maximum bit-length each lookup supports. They are used
     /// to pick range-check-friendly bounds (powers of two whose bit count
     /// aligns well with the chip's parallel lookup structure).
     pub fn bounds<F, P>(
-        nb_parallel_range_checks: usize,
+        num_parallel_range_checks: usize,
         max_bit_len: u32,
     ) -> ((BI, BI), Vec<(BI, BI)>)
     where
@@ -70,7 +70,7 @@ impl<C: WeierstrassCurve> OnCurveConfig<C> {
         P: FieldEmulationParams<F, C::Base>,
     {
         let base = BI::from(2).pow(P::LOG2_BASE);
-        let nb_limbs = P::NB_LIMBS;
+        let num_limbs = P::NUM_LIMBS;
         let moduli = P::moduli();
         let bs = P::base_powers();
         let bs2 = P::double_base_powers();
@@ -98,8 +98,8 @@ impl<C: WeierstrassCurve> OnCurveConfig<C> {
         // We enforce y^2 = x * z + b (mod m) with equation:
         //   2 * sum_y + sum_y2 - (sum_xz + sum_z + sum_x + b) = k * m
 
-        let limbs_max = vec![&base - BI::one(); nb_limbs as usize];
-        let limbs_max2 = vec![(&base - BI::one()).pow(2); (nb_limbs * nb_limbs) as usize];
+        let limbs_max = vec![&base - BI::one(); num_limbs as usize];
+        let limbs_max2 = vec![(&base - BI::one()).pow(2); (num_limbs * num_limbs) as usize];
         let max_sum_x = sum_bigints(&bs, &limbs_max);
         let max_sum_y = max_sum_x.clone();
         let max_sum_z = max_sum_x.clone();
@@ -129,7 +129,7 @@ impl<C: WeierstrassCurve> OnCurveConfig<C> {
             &moduli,
             expr_bounds,
             &expr_mj_bounds,
-            nb_parallel_range_checks,
+            num_parallel_range_checks,
             max_bit_len,
         )
     }
@@ -139,7 +139,7 @@ impl<C: WeierstrassCurve> OnCurveConfig<C> {
         meta: &mut ConstraintSystem<F>,
         field_chip_config: &FieldChipConfig,
         cond_col: &Column<Advice>,
-        nb_parallel_range_checks: usize,
+        num_parallel_range_checks: usize,
         max_bit_len: u32,
     ) -> OnCurveConfig<C>
     where
@@ -152,7 +152,7 @@ impl<C: WeierstrassCurve> OnCurveConfig<C> {
         let bs2 = P::double_base_powers();
 
         let ((k_min, u_max), vs_bounds) =
-            Self::bounds::<F, P>(nb_parallel_range_checks, max_bit_len);
+            Self::bounds::<F, P>(num_parallel_range_checks, max_bit_len);
 
         let b: BI = C::B.to_biguint().into();
 

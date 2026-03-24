@@ -218,7 +218,7 @@ impl<F: Field> BatchedArgument<F> {
     /// The helper constraint `h(X) · ∏ⱼ(fⱼ(X) + β) = Σⱼ ∏_{k≠j}(fₖ(X) + β)` has
     /// degree `1 + lookup_degree × num_parallel_lookups`. This method returns
     /// the maximum number of parallel lookups before exceeding `cs_degree`.
-    pub(crate) fn nb_parallel_lookups(&self, cs_degree: usize) -> usize {
+    pub(crate) fn num_parallel_lookups(&self, cs_degree: usize) -> usize {
         let max_degree = (cs_degree - 1).next_power_of_two() + 1;
 
         // Find the maximum degree across all input expressions
@@ -231,7 +231,7 @@ impl<F: Field> BatchedArgument<F> {
 
         // The dominating factor of the lookup argument is:
         // h(X) * ∏_j(f_j(X) + β) = Σ_j ∏_{k≠j}(f_k(X) + β)
-        // which has degree: 1 + lookup_degree * nb_parallel_lookups
+        // which has degree: 1 + lookup_degree * num_parallel_lookups
         (max_degree - 1) / lookup_degree
     }
 
@@ -245,7 +245,7 @@ impl<F: Field> BatchedArgument<F> {
             .max()
             .unwrap_or(1);
 
-        let helper_constraint_degree = self.nb_parallel_lookups(cs_degree) * lookup_degree + 1;
+        let helper_constraint_degree = self.num_parallel_lookups(cs_degree) * lookup_degree + 1;
 
         // The accumulator constraint includes the term:
         //   l_active_row (degree 1) * selector * helper (degree 1) * table_value
@@ -285,12 +285,12 @@ impl<F: Field> BatchedArgument<F> {
         // table). The β batching happens over the first dimension.
         // Therefore, we transpose the array so that it is easier to handle later.
         let lookup_width = input_expressions.len();
-        let nb_parallel_lookups = input_expressions[0].len();
+        let num_parallel_lookups = input_expressions[0].len();
         let mut transposed_input_expressions =
-            vec![vec![Expression::Constant(F::ZERO); lookup_width]; nb_parallel_lookups];
+            vec![vec![Expression::Constant(F::ZERO); lookup_width]; num_parallel_lookups];
 
         input_expressions.into_iter().enumerate().for_each(|(i, width)| {
-            assert_eq!(width.len(), nb_parallel_lookups);
+            assert_eq!(width.len(), num_parallel_lookups);
             width
                 .into_iter()
                 .enumerate()
@@ -311,17 +311,17 @@ impl<F: Field> BatchedArgument<F> {
     ///
     /// Each chunk gets its own committed helper polynomial.
     pub fn num_chunks(&self, cs_degree: usize) -> usize {
-        let nb = self.nb_parallel_lookups(cs_degree);
+        let nb = self.num_parallel_lookups(cs_degree);
         self.input_expressions.chunks(nb).count()
     }
 
     /// Splits `input_expressions` into degree-bounded chunks and returns a
     /// [`FlattenedArgument`] with those chunks pre-computed.
     ///
-    /// Each chunk contains at most [`Self::nb_parallel_lookups`] entries and
+    /// Each chunk contains at most [`Self::num_parallel_lookups`] entries and
     /// corresponds to one committed helper polynomial `hᵢ(X)`.
     pub fn chunk_by_degree(&self, cs_degree: usize) -> FlattenedArgument<F> {
-        let nb = self.nb_parallel_lookups(cs_degree);
+        let nb = self.num_parallel_lookups(cs_degree);
         let input_expression_chunks =
             self.input_expressions.chunks(nb).map(|chunk| chunk.to_vec()).collect();
 
