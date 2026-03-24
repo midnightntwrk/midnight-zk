@@ -1206,10 +1206,7 @@ impl<F: CircuitField> RipeMD160Chip<F> {
 use midnight_proofs::plonk::Instance;
 
 #[cfg(any(test, feature = "testing"))]
-use crate::{
-    field::{decomposition::chip::P2RDecompositionConfig, native::NB_EXTRA_ARITH_FIXED_COLS},
-    testing_utils::FromScratch,
-};
+use crate::{field::decomposition::chip::P2RDecompositionConfig, testing_utils::FromScratch};
 
 #[cfg(any(test, feature = "testing"))]
 impl<F: CircuitField> FromScratch<F> for RipeMD160Chip<F> {
@@ -1226,33 +1223,19 @@ impl<F: CircuitField> FromScratch<F> for RipeMD160Chip<F> {
         meta: &mut ConstraintSystem<F>,
         instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
-        use std::cmp::max;
-
-        use crate::field::decomposition::pow2range::Pow2RangeChip;
-
-        const NB_ARITH_COLS: usize = 5;
-        const NB_ARITH_FIXED_COLS: usize = NB_ARITH_COLS + NB_EXTRA_ARITH_FIXED_COLS;
-
-        let advice_columns = (0..max(NB_ARITH_COLS, NB_RIPEMD160_ADVICE_COLS))
-            .map(|_| meta.advice_column())
-            .collect::<Vec<_>>();
-
-        let fixed_columns = (0..max(NB_ARITH_FIXED_COLS, NB_RIPEMD160_FIXED_COLS))
-            .map(|_| meta.fixed_column())
-            .collect::<Vec<_>>();
-
-        let native_config = NativeChip::configure(
-            meta,
-            &(
-                advice_columns[..NB_ARITH_COLS].to_vec(),
-                fixed_columns[..NB_ARITH_FIXED_COLS].to_vec(),
-                *instance_columns,
-            ),
-        );
-
-        let pow2range_config = Pow2RangeChip::configure(meta, &advice_columns[1..=4]);
         let core_decomposition_config =
-            P2RDecompositionChip::configure(meta, &(native_config, pow2range_config));
+            NativeGadget::configure_from_scratch(meta, instance_columns);
+
+        let native_config = &core_decomposition_config.native_config;
+        let mut advice_columns = native_config.advice_columns().to_vec();
+        let mut fixed_columns = native_config.fixed_columns();
+
+        while advice_columns.len() < NB_RIPEMD160_ADVICE_COLS {
+            advice_columns.push(meta.advice_column());
+        }
+        while fixed_columns.len() < NB_RIPEMD160_FIXED_COLS {
+            fixed_columns.push(meta.fixed_column());
+        }
 
         let ripemd160_config = RipeMD160Chip::configure(
             meta,

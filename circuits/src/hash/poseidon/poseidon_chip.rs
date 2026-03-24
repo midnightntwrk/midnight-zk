@@ -30,7 +30,7 @@ use super::{
     NB_POSEIDON_ADVICE_COLS, NB_POSEIDON_FIXED_COLS,
 };
 #[cfg(any(test, feature = "testing"))]
-use crate::field::{native::NB_EXTRA_ARITH_FIXED_COLS, NativeConfig};
+use crate::field::NativeConfig;
 use crate::{
     field::NativeChip,
     instructions::{ArithInstructions, AssignmentInstructions, SpongeInstructions},
@@ -556,24 +556,18 @@ impl<F: PoseidonField> FromScratch<F> for PoseidonChip<F> {
         meta: &mut ConstraintSystem<F>,
         instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
-        const NB_ARITH_COLS: usize = 5;
-        const NB_ARITH_FIXED_COLS: usize = NB_ARITH_COLS + NB_EXTRA_ARITH_FIXED_COLS;
+        let native_config = NativeChip::configure_from_scratch(meta, instance_columns);
 
-        let nb_advice_cols = std::cmp::max(NB_POSEIDON_ADVICE_COLS, NB_ARITH_COLS);
-        let nb_fixed_cols = std::cmp::max(NB_POSEIDON_FIXED_COLS, NB_ARITH_FIXED_COLS);
+        let mut advice_cols = native_config.advice_columns().to_vec();
+        let mut fixed_cols = native_config.fixed_columns();
 
-        let advice_cols = (0..nb_advice_cols).map(|_| meta.advice_column()).collect::<Vec<_>>();
+        while advice_cols.len() < NB_POSEIDON_ADVICE_COLS {
+            advice_cols.push(meta.advice_column());
+        }
+        while fixed_cols.len() < NB_POSEIDON_FIXED_COLS {
+            fixed_cols.push(meta.fixed_column());
+        }
 
-        let fixed_cols = (0..nb_fixed_cols).map(|_| meta.fixed_column()).collect::<Vec<_>>();
-
-        let native_config = NativeChip::configure(
-            meta,
-            &(
-                advice_cols[..NB_ARITH_COLS].to_vec(),
-                fixed_cols[..NB_ARITH_FIXED_COLS].to_vec(),
-                *instance_columns,
-            ),
-        );
         let poseidon_config = PoseidonChip::configure(
             meta,
             &(

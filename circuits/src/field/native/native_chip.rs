@@ -114,6 +114,26 @@ pub struct NativeConfig {
     instance_col: Column<Instance>,
 }
 
+impl NativeConfig {
+    /// Returns the advice columns used by this config.
+    pub fn advice_columns(&self) -> &[Column<Advice>] {
+        &self.value_cols
+    }
+
+    /// Returns all fixed columns used by this config, in the same order
+    /// they were provided during configuration.
+    pub fn fixed_columns(&self) -> Vec<Column<Fixed>> {
+        let mut cols = vec![
+            self.q_next_col,
+            self.mul_ab_col,
+            self.mul_ac_col,
+            self.constant_col,
+        ];
+        cols.extend_from_slice(&self.coeff_cols);
+        cols
+    }
+}
+
 /// Chip for Native operations
 #[derive(Clone, Debug)]
 pub struct NativeChip<F: CircuitField> {
