@@ -68,8 +68,12 @@ pub struct Pow2RangeConfig {
 ///
 /// Note: The table will include only the tag values that are actually used in
 /// the circuit! This allows us to have smaller tables when possible.
-/// For that, it is necessary to load this chip at the end of a synthesize,
-/// not at the beginning!
+///
+/// # Important
+///
+/// Because the table content depends on the tags queried during synthesis,
+/// it is **essential** to call `load_table` at the very end of the
+/// `synthesize` method, after all assignments have been made.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Pow2RangeChip<F: CircuitField> {
     config: Pow2RangeConfig,
