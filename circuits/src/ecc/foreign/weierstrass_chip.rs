@@ -313,7 +313,7 @@ where
 {
     /// Assigns a private curve point and enforces in-circuit that it is on the
     /// curve and lies in the prime-order subgroup.
-    /// 
+    ///
     /// If you deliberately need to skip the subgroup check, use
     /// [`EccInstructions::assign_without_subgroup_check`] instead.
     fn assign(
@@ -2372,4 +2372,6 @@ mod tests {
     ecc_tests!(test_msm_by_bounded_scalars);
     ecc_tests!(test_mul_by_constant);
     ecc_tests!(test_coordinates);
+    ecc_tests!(test_assign);
+    ecc_tests!(test_assign_without_subgroup_check);
 }

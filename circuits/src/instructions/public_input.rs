@@ -212,7 +212,7 @@ pub(crate) mod tests {
             _marker: PhantomData,
         };
 
-        let log2_nb_rows = 11;
+        let log2_nb_rows = 14;
         let pi = Assigned::as_public_input(x);
 
         match MockProver::run(log2_nb_rows, &circuit, vec![vec![], pi.clone()]) {
