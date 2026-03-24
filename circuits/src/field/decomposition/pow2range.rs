@@ -178,16 +178,6 @@ impl<F: CircuitField> Pow2RangeChip<F> {
     ) -> Pow2RangeConfig {
         let val_cols = columns.to_vec();
 
-        // The assertion that I've just removed is not necessary here. This chip
-        // is actually independent of the native_chip.
-        //
-        // It is needed, and already present in P2RDecompositionConfig::new
-        // which checks that the pow2range columns are a subset of native advice columns
-        // starting at index 1.
-        //
-        // This comment is only for reviewers of this PR.
-        // It will self destruct in the next commit.
-
         let q_pow2range = meta.complex_selector();
         let tag_col = meta.fixed_column();
         let t_tag = meta.lookup_table_column();
