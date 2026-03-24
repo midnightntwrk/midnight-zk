@@ -567,7 +567,7 @@ where
                     )
                     .chain(
                         lookups
-                            .zip(vk.cs.lookups.iter().map(|l| l.flatten(vk.cs_degree)))
+                            .zip(vk.cs.lookups.iter().map(|l| l.chunk_by_degree(vk.cs_degree)))
                             .flat_map(move |(p, argument)| {
                                 p.expressions(
                                     l_0,

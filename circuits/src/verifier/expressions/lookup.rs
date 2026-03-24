@@ -121,8 +121,8 @@ pub(crate) fn lookup_expressions<S: SelfEmulation>(
             .collect::<Result<Vec<_>, _>>()?;
 
         // Helper constraint: h(x) · ∏ⱼ(fⱼ(x) + β) = Σⱼ ∏_{k≠j}(fₖ(x) + β)
-        // This must hold everywhere (as a polynomial identity), not just at active
-        // rows.
+        // This is enforced at every row so that the constraint degree stays low —
+        // multiplying by the selector would raise it.
         let product: AssignedNative<S::F> = {
             let mut iter = compressed_inputs_with_beta.into_iter();
             let first = iter.next().expect("compressed_inputs_with_beta should not be empty");

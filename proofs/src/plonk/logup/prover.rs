@@ -58,7 +58,7 @@ pub(crate) struct Committed<F: PrimeField> {
 pub(crate) struct ComputedMultiplicities<F: PrimeField> {
     pub(crate) selector: Polynomial<F, LagrangeCoeff>,
     pub(crate) multiplicities: Polynomial<F, LagrangeCoeff>,
-    pub(crate) flattened_compressed_inputs: Vec<Vec<Polynomial<F, LagrangeCoeff>>>,
+    pub(crate) chunked_compressed_inputs: Vec<Vec<Polynomial<F, LagrangeCoeff>>>,
     pub(crate) compressed_table_expression: Polynomial<F, LagrangeCoeff>,
 }
 
@@ -120,17 +120,18 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> FlattenedArgument<F> {
             compressed_expression
         };
 
-        let compressed_table_expression = compress_expressions(&self.table_expressions);
-
-        let selector = eval_expressions(std::slice::from_ref(&self.selector)).swap_remove(0);
-        let flattened_compressed_inputs: Vec<Vec<Polynomial<F, LagrangeCoeff>>> = self
+        let chunked_compressed_inputs: Vec<Vec<Polynomial<F, LagrangeCoeff>>> = self
             .input_expression_chunks
             .iter()
             .map(|chunk| chunk.iter().map(|exprs| compress_expressions(exprs)).collect())
             .collect();
 
         let all_compressed_inputs: Vec<&Polynomial<F, LagrangeCoeff>> =
-            flattened_compressed_inputs.iter().flat_map(|v| v.iter()).collect();
+            chunked_compressed_inputs.iter().flat_map(|v| v.iter()).collect();
+
+        let compressed_table_expression = compress_expressions(&self.table_expressions);
+
+        let selector = eval_expressions(std::slice::from_ref(&self.selector)).swap_remove(0);
 
         let usable_rows = n - pk.vk.cs.blinding_factors() - 1;
         let multiplicities = compute_multiplicities(
@@ -147,7 +148,7 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> FlattenedArgument<F> {
         Ok(ComputedMultiplicities {
             selector,
             multiplicities,
-            flattened_compressed_inputs,
+            chunked_compressed_inputs,
             compressed_table_expression,
         })
     }
@@ -191,8 +192,8 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ComputedMultiplicities<F> {
         // Invert each column independently in parallel, then sum across columns
         // to form the helper polynomial Σⱼ 1/(fⱼ(X) + β).
         let helper_polys_lagrange: Vec<Vec<F>> = self
-            .flattened_compressed_inputs
-            .iter()
+            .chunked_compressed_inputs
+            .par_iter()
             .map(|compressed_inputs| {
                 let inverted_columns: Vec<Vec<F>> = compressed_inputs
                     .par_iter()

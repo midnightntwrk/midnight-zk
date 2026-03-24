@@ -179,7 +179,7 @@ where
                 .lookups
                 .iter()
                 .map(|l| {
-                    l.flatten(pk.vk.cs.degree()).commit_multiplicities(
+                    l.chunk_by_degree(pk.vk.cs.degree()).commit_multiplicities(
                         pk,
                         params,
                         theta,

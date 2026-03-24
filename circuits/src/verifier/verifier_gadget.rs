@@ -672,7 +672,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             .iter()
             .zip(cs.lookups().iter())
             .map(|(p, argument)| {
-                let argument = argument.flatten(cs.degree());
+                let argument = argument.chunk_by_degree(cs.degree());
                 let per_flat_inputs: Vec<&[Vec<_>]> =
                     argument.input_expression_chunks().iter().map(|c| c.as_slice()).collect();
                 lookup_expressions(

@@ -249,7 +249,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
 
         // Lookups
         for lookup in cs.lookups.iter() {
-            let lookup = lookup.flatten(cs.degree());
+            let lookup = lookup.chunk_by_degree(cs.degree());
             let flat_evals = lookup
                 .input_expression_chunks()
                 .iter()

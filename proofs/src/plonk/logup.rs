@@ -320,7 +320,7 @@ impl<F: Field> BatchedArgument<F> {
     ///
     /// Each chunk contains at most [`Self::nb_parallel_lookups`] entries and
     /// corresponds to one committed helper polynomial `hᵢ(X)`.
-    pub fn flatten(&self, cs_degree: usize) -> FlattenedArgument<F> {
+    pub fn chunk_by_degree(&self, cs_degree: usize) -> FlattenedArgument<F> {
         let nb = self.nb_parallel_lookups(cs_degree);
         let input_expression_chunks =
             self.input_expressions.chunks(nb).map(|chunk| chunk.to_vec()).collect();
