@@ -250,6 +250,7 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
         dbg!(
             midnight_proofs::dev::cost_model::circuit_model::<_, 48, 32>(
                 &default_aggregator_circuit,
+                1,
             )
         );
 

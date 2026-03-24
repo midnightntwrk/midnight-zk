@@ -124,6 +124,9 @@ const COMMITMENT_BYTE_SIZE: usize = 48;
 /// Byte size of a serialized BLS12-381 scalar.
 const SCALAR_BYTE_SIZE: usize = 32;
 
+/// Number of instance columns given in committed form in a ZK stdlib proof.
+const NB_COMMITTED_INSTANCES: usize = 1;
+
 /// Architecture of the standard library. Specifies what chips need to be
 /// configured.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Encode, Decode)]
@@ -1769,14 +1772,16 @@ where
         Value::known(witness),
         Some(pk.k as u32),
     );
-    BlstPLONK::<MidnightCircuit<R>>::prove::<H>(
+    let proof = BlstPLONK::<MidnightCircuit<R>>::prove::<H>(
         params,
         &pk.pk,
         &circuit,
-        1,
+        NB_COMMITTED_INSTANCES,
         &[com_inst.as_slice(), &pi],
         rng,
-    )
+    )?;
+
+    Ok(proof)
 }
 
 /// Verifies the given proof of relation `R` with respect to the given instance.
@@ -1896,7 +1901,7 @@ pub fn cs_degree(arch: ZkStdLibArch) -> usize {
 /// computed automatically.
 pub fn cost_model<R: Relation>(relation: &R, k: Option<u32>) -> CircuitModel {
     let circuit = MidnightCircuit::from_relation(relation, k);
-    circuit_model::<_, COMMITMENT_BYTE_SIZE, SCALAR_BYTE_SIZE>(&circuit)
+    circuit_model::<_, COMMITMENT_BYTE_SIZE, SCALAR_BYTE_SIZE>(&circuit, NB_COMMITTED_INSTANCES)
 }
 
 /// Finds the optimal `k` (log2 of the circuit size) for the given relation.

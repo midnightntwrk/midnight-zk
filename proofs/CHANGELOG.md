@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `padded_add` and `padded_sub` polynomial operations [#276](https://github.com/midnightntwrk/midnight-zk/pull/276)
 * `single-h-commitment` feature to commit the quotient polynomial in one piece [#276](https://github.com/midnightntwrk/midnight-zk/pull/276)
 
+### Fixed
+* Fix cost model to account for committed instance column evaluations [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
+
 ### Changed
 * Remove unnecessary polynomial padding in KZG multi-open [#276](https://github.com/midnightntwrk/midnight-zk/pull/276)
 * Sort point sets deterministically in KZG multiopen for in-circuit verification [#256](https://github.com/midnightntwrk/midnight-zk/pull/256)

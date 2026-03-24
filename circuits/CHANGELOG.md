@@ -24,6 +24,9 @@ verification keys break backwards compatibility.
 * Add `square`, `mod_square` operations in `BigUintGadget` [#259](https://github.com/midnightntwrk/midnight-zk/pull/259)
 * Add `PartialEq` impl for `AssignedBigUint` [#259](https://github.com/midnightntwrk/midnight-zk/pull/259)
 
+### Fixed
+* Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
+
 ### Changed
 * Support `single-h-commitment` feature in verifier gadget [#276](https://github.com/midnightntwrk/midnight-zk/pull/276)
 * Filter out compile-time identity points in MSM [#256](https://github.com/midnightntwrk/midnight-zk/pull/256)
