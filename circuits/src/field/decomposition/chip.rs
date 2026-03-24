@@ -84,7 +84,13 @@ impl P2RDecompositionConfig {
 }
 
 #[derive(Clone, Debug)]
-/// A decomposition chip
+/// A decomposition chip.
+///
+/// # Important
+///
+/// This chip relies on `Pow2RangeChip` for lookup-based range checks.
+/// Because the underlying lookup table only includes used tags, this chip
+/// **must** be loaded (via `load`) at the very end of the `synthesize` method.
 pub struct P2RDecompositionChip<F: CircuitField> {
     // a hash map that contains the optimal (in number of rows) limb decomposition of a number
     // that is a power of two. Check
