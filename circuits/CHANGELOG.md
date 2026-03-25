@@ -56,6 +56,7 @@ verification keys break backwards compatibility.
 * Optimize `mul` operation in `BigUintGadget` [#259](https://github.com/midnightntwrk/midnight-zk/pull/259)
 * Optimize `linear_combination` in `NativeChip` [#260](https://github.com/midnightntwrk/midnight-zk/pull/260)
 * Optimize `mul` and `square` in `BigUintGadget` with `F::add_and_mul` [#260](https://github.com/midnightntwrk/midnight-zk/pull/260)
+* Adapt `foreign_params_gen.py` to general Weierstrass equations [#282](https://github.com/midnightntwrk/midnight-zk/pull/282)
 
 ### Removed
 * Move external implementations to zk-stdlib [#178](https://github.com/midnightntwrk/midnight-zk/pull/178)
