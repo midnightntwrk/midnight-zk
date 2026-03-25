@@ -207,6 +207,48 @@ impl WeierstrassCurve for K256 {
     }
 }
 
+// Implementation for P256 (secp256r1 / NIST P-256).
+use midnight_curves::p256::{
+    affine_from_xy, affine_x, affine_y, Fp as P256Fp, CURVE_A, CURVE_B, P256,
+};
+
+impl CircuitCurve for P256 {
+    type Base = P256Fp;
+    type ScalarField = <Self as Group>::Scalar;
+    type CryptographicGroup = P256;
+
+    const NUM_BITS_SUBGROUP: u32 = 256;
+
+    fn coordinates(&self) -> Option<(Self::Base, Self::Base)> {
+        if bool::from(self.is_identity()) {
+            return Some((P256Fp::ZERO, P256Fp::ZERO));
+        }
+        let affine = self.to_affine();
+        Some((affine_x(&affine), affine_y(&affine)))
+    }
+
+    fn from_xy(x: Self::Base, y: Self::Base) -> Option<Self> {
+        affine_from_xy(x, y).map(Into::into)
+    }
+
+    fn into_subgroup(self) -> Self::CryptographicGroup {
+        self
+    }
+}
+
+impl WeierstrassCurve for P256 {
+    const A: Self::Base = CURVE_A;
+    const B: Self::Base = CURVE_B;
+
+    fn base_zeta() -> Self::Base {
+        unimplemented!("P256 does not have a cubic endomorphism")
+    }
+
+    fn scalar_zeta() -> Self::ScalarField {
+        unimplemented!("P256 does not have a cubic endomorphism")
+    }
+}
+
 // Implementation for Bls12-381.
 use group::cofactor::CofactorGroup;
 use midnight_curves::{Fp as BlsBase, G1Affine, G1Projective};
@@ -285,11 +327,18 @@ impl WeierstrassCurve for bn256::G1 {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_k256_identity_coordinates_are_zero() {
-        let identity = K256::identity();
-        let (x, y) = identity.coordinates().expect("coordinates should be Some");
-        assert_eq!(x, K256Fp::ZERO);
-        assert_eq!(y, K256Fp::ZERO);
+    macro_rules! test_identity_coordinates_are_zero {
+        ($test_name:ident, $curve:ty, $base:ty) => {
+            #[test]
+            fn $test_name() {
+                let identity = <$curve>::identity();
+                let (x, y) = identity.coordinates().expect("coordinates should be Some");
+                assert_eq!(x, <$base>::ZERO);
+                assert_eq!(y, <$base>::ZERO);
+            }
+        };
     }
+
+    test_identity_coordinates_are_zero!(test_k256_identity_coordinates_are_zero, K256, K256Fp);
+    test_identity_coordinates_are_zero!(test_p256_identity_coordinates_are_zero, P256, P256Fp);
 }
