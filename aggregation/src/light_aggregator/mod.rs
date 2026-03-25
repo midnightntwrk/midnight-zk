@@ -55,10 +55,7 @@ use inner_product_argument::{ipa_prove, ipa_verify};
 use light_fiat_shamir::LightPoseidonFS;
 use light_self_emulation::{FakeCurveChip, LightBlstrsEmulation};
 use midnight_circuits::{
-    field::{
-        native::{NB_ARITH_COLS, NB_ARITH_FIXED_COLS},
-        AssignedNative, NativeChip, NativeConfig,
-    },
+    field::{native::NB_EXTRA_ARITH_FIXED_COLS, AssignedNative, NativeChip, NativeConfig},
     hash::poseidon::{
         PoseidonChip, PoseidonConfig, NB_POSEIDON_ADVICE_COLS, NB_POSEIDON_FIXED_COLS,
     },
@@ -140,6 +137,9 @@ impl<const NB_PROOFS: usize> Circuit<F> for AggregatorCircuit<NB_PROOFS> {
     }
 
     fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+        const NB_ARITH_COLS: usize = 5;
+        const NB_ARITH_FIXED_COLS: usize = NB_ARITH_COLS + NB_EXTRA_ARITH_FIXED_COLS;
+
         let nb_advice_cols = std::cmp::max(NB_ARITH_COLS, NB_POSEIDON_ADVICE_COLS);
         let nb_fixed_cols = std::cmp::max(NB_ARITH_FIXED_COLS, NB_POSEIDON_FIXED_COLS);
 
@@ -151,8 +151,8 @@ impl<const NB_PROOFS: usize> Circuit<F> for AggregatorCircuit<NB_PROOFS> {
         let native_config = NativeChip::configure(
             meta,
             &(
-                advice_columns[..NB_ARITH_COLS].try_into().unwrap(),
-                fixed_columns[..NB_ARITH_FIXED_COLS].try_into().unwrap(),
+                advice_columns[..NB_ARITH_COLS].to_vec(),
+                fixed_columns[..NB_ARITH_FIXED_COLS].to_vec(),
                 [committed_instance_column, instance_column],
             ),
         );

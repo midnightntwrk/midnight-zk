@@ -23,8 +23,7 @@ use midnight_proofs::{
 };
 
 use crate::{
-    field::native::NB_ARITH_COLS, instructions::decomposition::Pow2RangeInstructions,
-    types::AssignedNative, CircuitField,
+    instructions::decomposition::Pow2RangeInstructions, types::AssignedNative, CircuitField,
 };
 
 /// Pow2Range gate configuration.
@@ -173,20 +172,11 @@ impl<F: CircuitField> Pow2RangeChip<F> {
 
     /// Creates a Pow2RangeConfig given a constraint system and a set of
     /// available advice columns.
-    ///
-    /// # Panics
-    ///
-    /// If the number of provided columns is greater than or equal to
-    /// `NB_ARITH_COLS`.
     pub fn configure(
         meta: &mut ConstraintSystem<F>,
         columns: &[Column<Advice>],
     ) -> Pow2RangeConfig {
         let val_cols = columns.to_vec();
-        assert!(
-            val_cols.len() < NB_ARITH_COLS,
-            "Nr of range-check columns should be smaller than NB_ARITHM_COLS."
-        );
 
         let q_pow2range = meta.complex_selector();
         let tag_col = meta.fixed_column();

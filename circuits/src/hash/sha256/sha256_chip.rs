@@ -1677,33 +1677,20 @@ impl<F: CircuitField> FromScratch<F> for Sha256Chip<F> {
         meta: &mut ConstraintSystem<F>,
         instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
-        use std::cmp::max;
-
-        use crate::field::{
-            decomposition::pow2range::Pow2RangeChip,
-            native::{NB_ARITH_COLS, NB_ARITH_FIXED_COLS},
-        };
-
-        let advice_columns = (0..max(NB_ARITH_COLS, NB_SHA256_ADVICE_COLS))
-            .map(|_| meta.advice_column())
-            .collect::<Vec<_>>();
-
-        let fixed_columns = (0..max(NB_ARITH_FIXED_COLS, NB_SHA256_FIXED_COLS))
-            .map(|_| meta.fixed_column())
-            .collect::<Vec<_>>();
-
-        let native_config = NativeChip::configure(
-            meta,
-            &(
-                advice_columns[..NB_ARITH_COLS].try_into().unwrap(),
-                fixed_columns[..NB_ARITH_FIXED_COLS].try_into().unwrap(),
-                *instance_columns,
-            ),
-        );
-
-        let pow2range_config = Pow2RangeChip::configure(meta, &advice_columns[1..=4]);
         let core_decomposition_config =
-            P2RDecompositionChip::configure(meta, &(native_config, pow2range_config));
+            NativeGadget::configure_from_scratch(meta, instance_columns);
+
+        let native_config = &core_decomposition_config.native_config;
+        let mut advice_columns = native_config.advice_columns().to_vec();
+        let mut fixed_columns = native_config.fixed_columns();
+
+        // Create additional columns if SHA256 needs more than the native chip provides.
+        while advice_columns.len() < NB_SHA256_ADVICE_COLS {
+            advice_columns.push(meta.advice_column());
+        }
+        while fixed_columns.len() < NB_SHA256_FIXED_COLS {
+            fixed_columns.push(meta.fixed_column());
+        }
 
         let sha256_config = Sha256Chip::configure(
             meta,

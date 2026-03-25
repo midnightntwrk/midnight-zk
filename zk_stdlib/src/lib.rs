@@ -54,7 +54,7 @@ use midnight_circuits::{
         foreign::{
             nb_field_chip_columns, params::MultiEmulationParams as MEP, FieldChip, FieldChipConfig,
         },
-        native::{NB_ARITH_COLS, NB_ARITH_FIXED_COLS},
+        native::NB_EXTRA_ARITH_FIXED_COLS,
         NativeChip, NativeConfig, NativeGadget,
     },
     hash::{
@@ -172,7 +172,16 @@ pub struct ZkStdLibArch {
     /// Enable scanner chip (automaton-based parsing and substring checks)?
     pub automaton: bool,
 
+    /// Number of columns for the arithmetic identity. The higher, the more
+    /// terms can be added in a single row. This number also limits the number
+    /// of range-check parallel lookups.
+    ///
+    /// Must be at least 5.
+    pub nb_arith_cols: u8,
+
     /// Number of parallel lookups for range checks.
+    ///
+    /// Must be strictly smaller than `nb_arith_cols`.
     pub nr_pow2range_cols: u8,
 }
 
@@ -190,6 +199,7 @@ impl Default for ZkStdLibArch {
             bls12_381: false,
             base64: false,
             automaton: false,
+            nb_arith_cols: 5,
             nr_pow2range_cols: 1,
         }
     }
@@ -219,7 +229,7 @@ impl ZkStdLibArch {
         }
     }
 
-    /// Reads the ZkStdArchitecture from a buffer where a MidnightVK was
+    /// Reads the ZkStdLib architecture from a buffer where a MidnightVK was
     /// serialized. This enables the reader to know the architecture without
     /// the need of deserializing the full verifying key.
     pub fn read_from_serialized_vk<R: io::Read>(reader: &mut R) -> io::Result<Self> {
@@ -383,7 +393,7 @@ impl ZkStdLib {
         (arch, max_bit_len): (ZkStdLibArch, u8),
     ) -> ZkStdLibConfig {
         let nb_advice_cols = [
-            NB_ARITH_COLS,
+            arch.nb_arith_cols as usize,
             arch.nr_pow2range_cols as usize,
             arch.jubjub as usize * NB_EDWARDS_COLS,
             arch.poseidon as usize * NB_POSEIDON_ADVICE_COLS,
@@ -413,8 +423,10 @@ impl ZkStdLib {
         .max()
         .unwrap_or(0);
 
+        let nb_arith_fixed_cols = arch.nb_arith_cols as usize + NB_EXTRA_ARITH_FIXED_COLS;
+
         let nb_fixed_cols = [
-            NB_ARITH_FIXED_COLS,
+            nb_arith_fixed_cols,
             arch.poseidon as usize * NB_POSEIDON_FIXED_COLS,
             arch.sha2_256 as usize * NB_SHA256_FIXED_COLS,
             arch.sha2_512 as usize * NB_SHA512_FIXED_COLS,
@@ -432,8 +444,8 @@ impl ZkStdLib {
         let native_config = NativeChip::configure(
             meta,
             &(
-                advice_columns[..NB_ARITH_COLS].try_into().unwrap(),
-                fixed_columns[..NB_ARITH_FIXED_COLS].try_into().unwrap(),
+                advice_columns[..arch.nb_arith_cols as usize].to_vec(),
+                fixed_columns[..nb_arith_fixed_cols].to_vec(),
                 [committed_instance_column, instance_column],
             ),
         );

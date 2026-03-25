@@ -35,10 +35,10 @@ use crate::{
             cpu_utils::{decompose_in_variable_limbsizes, variable_limbsize_coefficients},
             pow2range::Pow2RangeChip,
         },
-        native::{NB_ARITH_COLS, NB_ARITH_FIXED_COLS},
         NativeChip,
     },
     instructions::{ArithInstructions, AssertionInstructions, AssignmentInstructions},
+    testing_utils::FromScratch,
     types::AssignedNative,
     utils::{util::bigint_to_fe, ComposableChip},
 };
@@ -99,19 +99,9 @@ where
     }
 
     fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
-        let advice_columns: [_; NB_ARITH_COLS] = core::array::from_fn(|_| meta.advice_column());
-        let fixed_columns: [_; NB_ARITH_FIXED_COLS] = core::array::from_fn(|_| meta.fixed_column());
-        let committed_instance_column = meta.instance_column();
-        let instance_column = meta.instance_column();
-
-        let native_config = NativeChip::configure(
-            meta,
-            &(
-                advice_columns,
-                fixed_columns,
-                [committed_instance_column, instance_column],
-            ),
-        );
+        let instance_columns = [meta.instance_column(), meta.instance_column()];
+        let native_config = NativeChip::configure_from_scratch(meta, &instance_columns);
+        let advice_columns = native_config.advice_columns();
         let pow2range_config = Pow2RangeChip::configure(meta, &advice_columns[1..=NR_COLS]);
 
         P2RDecompositionConfig::new(&native_config, &pow2range_config)
@@ -312,19 +302,9 @@ where
     }
 
     fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
-        let advice_columns: [_; NB_ARITH_COLS] = core::array::from_fn(|_| meta.advice_column());
-        let fixed_columns: [_; NB_ARITH_FIXED_COLS] = core::array::from_fn(|_| meta.fixed_column());
-        let committed_instance_column = meta.instance_column();
-        let instance_column = meta.instance_column();
-
-        let native_config = NativeChip::configure(
-            meta,
-            &(
-                advice_columns,
-                fixed_columns,
-                [committed_instance_column, instance_column],
-            ),
-        );
+        let instance_columns = [meta.instance_column(), meta.instance_column()];
+        let native_config = NativeChip::configure_from_scratch(meta, &instance_columns);
+        let advice_columns = native_config.advice_columns();
         let pow2range_config = Pow2RangeChip::configure(meta, &advice_columns[1..=NR_COLS]);
 
         P2RDecompositionConfig::new(&native_config, &pow2range_config)

@@ -133,6 +133,7 @@ impl Relation for ZkirRelation {
             bls12_381: false,
             automaton: false,
             base64: false,
+            nb_arith_cols: 5,
             nr_pow2range_cols: 4,
         }
     }

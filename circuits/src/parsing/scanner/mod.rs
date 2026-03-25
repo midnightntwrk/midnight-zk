@@ -41,9 +41,8 @@ use rustc_hash::FxHashMap;
 pub use static_specs::{spec_library, StdLibParser};
 #[cfg(test)]
 use {
-    crate::field::decomposition::chip::P2RDecompositionConfig,
-    crate::field::decomposition::pow2range::Pow2RangeChip, crate::field::native::NB_ARITH_COLS,
-    crate::testing_utils::FromScratch, midnight_proofs::plonk::Instance, regex::RegexInstructions,
+    crate::field::decomposition::chip::P2RDecompositionConfig, crate::testing_utils::FromScratch,
+    midnight_proofs::plonk::Instance, regex::RegexInstructions,
 };
 
 use crate::{
@@ -386,9 +385,10 @@ where
         meta: &mut ConstraintSystem<F>,
         instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
-        let nb_advice_cols = std::cmp::max(NB_SCANNER_ADVICE_COLS, NB_ARITH_COLS);
-        let advice_cols = (0..nb_advice_cols).map(|_| meta.advice_column()).collect::<Vec<_>>();
-        let fixed_cols = (0..NB_ARITH_COLS + 4).map(|_| meta.fixed_column()).collect::<Vec<_>>();
+        let native_gadget_config = NativeGadget::configure_from_scratch(meta, instance_columns);
+
+        let advice_cols = native_gadget_config.native_config.advice_columns().to_vec();
+
         let automata = FxHashMap::from_iter(
             [
                 regex::Regex::hard_coded_example0().to_automaton(),
@@ -398,15 +398,6 @@ where
             .enumerate(),
         );
 
-        let native_config = NativeChip::configure(
-            meta,
-            &(
-                advice_cols[..NB_ARITH_COLS].try_into().unwrap(),
-                fixed_cols[..NB_ARITH_COLS + 4].try_into().unwrap(),
-                *instance_columns,
-            ),
-        );
-
         let scanner_config = ScannerChip::configure(
             meta,
             &(
@@ -414,13 +405,6 @@ where
                 automata,
             ),
         );
-
-        let pow2range_config = Pow2RangeChip::configure(meta, &advice_cols[1..=4]);
-
-        let native_gadget_config = P2RDecompositionConfig {
-            native_config,
-            pow2range_config,
-        };
 
         (native_gadget_config, scanner_config)
     }

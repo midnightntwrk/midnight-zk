@@ -24,15 +24,12 @@ use num_bigint::BigUint;
 use num_traits::Zero;
 #[cfg(any(test, feature = "testing"))]
 use {
-    crate::field::decomposition::chip::P2RDecompositionConfig,
-    crate::field::decomposition::pow2range::Pow2RangeChip,
-    crate::field::native::{NB_ARITH_COLS, NB_ARITH_FIXED_COLS},
-    crate::testing_utils::FromScratch,
-    crate::testing_utils::Sampleable,
+    crate::field::decomposition::{chip::P2RDecompositionConfig, pow2range::Pow2RangeChip},
+    crate::field::native::NB_EXTRA_ARITH_FIXED_COLS,
+    crate::testing_utils::{FromScratch, Sampleable},
     crate::utils::ComposableChip,
     midnight_proofs::plonk::{Column, ConstraintSystem, Instance},
-    rand::Rng,
-    rand::RngCore,
+    rand::{Rng, RngCore},
 };
 
 use crate::{
@@ -1734,11 +1731,20 @@ impl<F: CircuitField> FromScratch<F> for NativeGadget<F, P2RDecompositionChip<F>
         meta: &mut ConstraintSystem<F>,
         instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
+        const NB_ARITH_COLS: usize = 5;
+        const NB_ARITH_FIXED_COLS: usize = NB_ARITH_COLS + NB_EXTRA_ARITH_FIXED_COLS;
+
         let advice_columns: [_; NB_ARITH_COLS] = core::array::from_fn(|_| meta.advice_column());
         let fixed_columns: [_; NB_ARITH_FIXED_COLS] = core::array::from_fn(|_| meta.fixed_column());
 
-        let native_config =
-            NativeChip::configure(meta, &(advice_columns, fixed_columns, *instance_columns));
+        let native_config = NativeChip::configure(
+            meta,
+            &(
+                advice_columns.to_vec(),
+                fixed_columns.to_vec(),
+                *instance_columns,
+            ),
+        );
         // Use hard-coded value for nr of range check cols in test
         let pow2range_config = Pow2RangeChip::configure(meta, &advice_columns[1..=4]);
 
