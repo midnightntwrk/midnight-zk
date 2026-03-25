@@ -1958,6 +1958,7 @@ where
         // Compute table, [-α, p-α, 2p-α, ..., (2^WS-1)p-α] for every p in bases.
         let mut tables = vec![];
         for (i, p) in bases.iter().enumerate() {
+            // Assert that α.x ≠ p.x (note that α and -α have the same x-coordinate).
             self.incomplete_assert_different_x(layouter, &neg_alpha, p)?;
             let mut acc = neg_alpha.clone();
             let mut p_table = vec![acc.clone()];
