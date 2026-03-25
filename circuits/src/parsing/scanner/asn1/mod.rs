@@ -6,6 +6,10 @@ pub mod der_encoding;
 mod parser;
 use std::{fmt::Debug, hash::Hash};
 
+use midnight_proofs::circuit::Value;
+
+use crate::parsing::scanner::asn1::der_encoding::encode_length;
+
 // ---------------------------------------------------------------------------
 // Internal enums (not exposed)
 // ---------------------------------------------------------------------------
@@ -143,7 +147,7 @@ impl<Index: Eq + Hash + Debug> From<&Vec<u8>> for Asn1RawData<Index> {
 impl<Index: Eq + Hash + Debug> From<usize> for Asn1RawData<Index> {
     /// Encodes a length value and wraps as a constant block.
     fn from(len: usize) -> Self {
-        Asn1RawData::bytes_const(&der_encoding::encode_length(len))
+        Asn1RawData::bytes_const(&encode_length(len))
     }
 }
 
@@ -190,7 +194,10 @@ where
         }
     }
 
-    /// Indicates that `self`'s extraction will be referenced as `m`.
+    /// Indicates that `self`'s extraction will be referenced as `m`. Extracting
+    /// constant data is free (and likely useless). Extracting fixed-len data
+    /// incurs an additional cost, and variable-length data adds yet another
+    /// overhead.
     pub fn mark(mut self, m: Index) -> Self {
         let slot = self.0.marker_mut();
         match slot.take() {
@@ -222,7 +229,10 @@ impl<Index: Eq + Hash> Default for Asn1Spec<Index> {
     }
 }
 
-impl<Index: Eq + Hash> Asn1Spec<Index> {
+impl<Index> Asn1Spec<Index>
+where
+    Index: Eq + Hash,
+{
     /// Creates an empty specification.
     pub fn new() -> Self {
         Self(Some(0), Vec::new(), None)
@@ -239,10 +249,70 @@ impl<Index: Eq + Hash> Asn1Spec<Index> {
         self.0
     }
 
-    /// Consumes the spec and separates the full marker from the blocks.
-    fn strip_full_marker(self) -> (Self, Option<Index>) {
-        let marker = self.2;
-        (Asn1Spec(self.0, self.1, None), marker)
+    /// Requires that the spec does not have a marker at toplevel. Such a marker
+    /// would incur additional circuit work while the whole witness is already
+    /// accessible for free by other means.
+    fn no_full_marker(&self) {
+        assert!(self.2.is_none(), "Marker detected for the full spec. The API already provides the associated function `witness()` that extracts for free the full witness from the result of `parse_asn1_fixlen` and `parse_asn1_varlen`. This marker would incur wasted circuit costs.")
+    }
+
+    /// Generates minimal valid DER bytes matching a spec, for use as a dummy
+    /// witness during keygen. The parser's circuit structure will only depend
+    /// on `self`, which is why having an explicit `self` in all cases does not
+    /// fail the proving process. It makes the context-dependent parsing much
+    /// easier to manage as well.
+    fn dummy_input(&self) -> Vec<u8> {
+        let mut out = Vec::new();
+        for block in &self.1 {
+            match block {
+                Asn1Block::Const(v, _) => out.extend_from_slice(v),
+                Asn1Block::Fixlen(n, _) => out.extend(std::iter::repeat_n(0u8, *n)),
+                Asn1Block::Tlv(tlv, _) => {
+                    match &tlv.tag.0 {
+                        Asn1RawDataInternal::Const(v, _) => out.extend_from_slice(v),
+                        Asn1RawDataInternal::Fixlen(n, _) => {
+                            out.extend(std::iter::repeat_n(0u8, *n))
+                        }
+                        Asn1RawDataInternal::Varlen(_) => out.push(0x00),
+                    }
+                    let val_bytes = tlv.val.dummy_input();
+                    match &tlv.len.0 {
+                        Asn1RawDataInternal::Const(v, _) => out.extend_from_slice(v),
+                        _ => out.extend(encode_length(val_bytes.len())),
+                    }
+                    out.extend(val_bytes);
+                }
+                Asn1Block::OptionalTlv { .. } => {}
+                Asn1Block::Varlen(_) => {}
+            }
+        }
+        out
+    }
+
+    /// Recovers an explicit input from a witness, i.e., a `Value` gated vector
+    /// of bytes. If the value is known, the input is simply the content.
+    /// Otherwise, it is generated with [`Self::dummy_input`]. This allows to
+    /// have an explicit slice at all time, making context-dependent parsing
+    /// manageable.
+    ///
+    /// # Note
+    ///
+    /// The parser circuit is responsible for generating the same circuit
+    /// structure regardless of the (variable-size regions) of the input. If
+    /// failing to do so, unless the real credential has the same structure as
+    /// the dummy input (very unlikely in practice), a `ConstraintSystemError`
+    /// will be triggered during proof generation.
+    fn get_explicit_input(&self, input: Value<Vec<u8>>) -> Vec<u8> {
+        let mut raw = Vec::new();
+        let mut mutated = false;
+        input.map(|v| {
+            mutated = true;
+            raw = v;
+        });
+        if !mutated {
+            raw = self.dummy_input()
+        }
+        raw
     }
 
     /// Extracts a marker from a simple (single-block or full-marker) spec.
@@ -368,9 +438,8 @@ where
     ///      [`encode_tag`](der_encoding::encode_tag)) or `&[u8]` (pre-encoded
     ///      raw tag bytes).
     ///
-    ///   - `len`: `usize` (encoded via
-    ///     [`encode_length`](der_encoding::encode_length), e.g., `88usize` ->
-    ///     `[0x58]`) or `&[u8]` (pre-encoded raw length bytes).
+    ///   - `len`: `usize` (encoded via [`encode_length`](encode_length), e.g.,
+    ///     `88usize` -> `[0x58]`) or `&[u8]` (pre-encoded raw length bytes).
     pub fn read_tlv(
         self,
         tag: impl Into<Asn1RawData<Index>>,
@@ -593,8 +662,13 @@ where
     /// # Panics
     ///
     /// - If the spec has no blocks.
-    /// - If the last block is `OptionalTlv` (mark components individually).
+    /// - If the last block is `OptionalTlv` (mark components individually
+    ///   instead).
     /// - If the last block already has a marker.
+    ///
+    /// The parsing code will also panic if the full Spec has been marked. The
+    /// interface already provides functions for extracting the full spec
+    /// without additional cost in-circuit.
     pub fn mark_last(mut self, m: Index) -> Self {
         let last_block =
             (self.1.last_mut()).unwrap_or_else(|| panic!("no block to mark with index {:?}", m));
@@ -630,7 +704,9 @@ where
     ///
     /// # Panics
     ///
-    /// If a full marker is already set.
+    /// If a full marker is already set. The parsing code will also panic if the
+    /// full Spec has been marked. The interface already provides functions for
+    /// extracting the full spec without additional cost in-circuit.
     pub fn mark_full(mut self, m: Index) -> Self {
         match self.2.take() {
             None => self.2 = Some(m),

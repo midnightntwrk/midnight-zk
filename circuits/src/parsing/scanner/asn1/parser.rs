@@ -6,7 +6,7 @@ use midnight_proofs::{
 };
 
 use super::{
-    der_encoding::{decode_length, decode_tag, encode_length},
+    der_encoding::{decode_length, decode_tag},
     Asn1Block, Asn1RawData, Asn1RawDataInternal, Asn1Spec, Asn1Tlv,
 };
 use crate::{
@@ -290,41 +290,6 @@ impl<
     }
 }
 
-// -----------------------------------------------------------------------
-// Off-circuit helpers
-// -----------------------------------------------------------------------
-
-/// Generates minimal valid DER bytes matching a spec, for use as a dummy
-/// witness during keygen. The structure matches any real input conforming
-/// to the spec, so the parser produces the same circuit.
-fn dummy_input<Index: Eq + Hash>(spec: &Asn1Spec<Index>) -> Vec<u8> {
-    let mut out = Vec::new();
-    for block in &spec.1 {
-        match block {
-            Asn1Block::Const(v, _) => out.extend_from_slice(v),
-            Asn1Block::Fixlen(n, _) => out.extend(std::iter::repeat_n(0u8, *n)),
-            Asn1Block::Tlv(tlv, _) => {
-                match &tlv.tag.0 {
-                    Asn1RawDataInternal::Const(v, _) => out.extend_from_slice(v),
-                    Asn1RawDataInternal::Fixlen(n, _) => {
-                        out.extend(std::iter::repeat_n(0u8, *n))
-                    }
-                    Asn1RawDataInternal::Varlen(_) => out.push(0x00),
-                }
-                let val_bytes = dummy_input(&tlv.val);
-                match &tlv.len.0 {
-                    Asn1RawDataInternal::Const(v, _) => out.extend_from_slice(v),
-                    _ => out.extend(encode_length(val_bytes.len())),
-                }
-                out.extend(val_bytes);
-            }
-            Asn1Block::OptionalTlv { .. } => {}
-            Asn1Block::Varlen(_) => {}
-        }
-    }
-    out
-}
-
 /// Consume `n` bytes from the front of `input`.
 fn consume(input: &mut &[u8], n: usize) -> Vec<u8> {
     assert!(
@@ -472,25 +437,20 @@ where
         input: Value<Vec<u8>>,
         spec: Asn1Spec<Index>,
     ) -> Result<Asn1FixlenResult<F, Index>, Error> {
-        let dummy = dummy_input(&spec);
-        let mut raw: Vec<u8> = dummy;
-        input.map(|v| raw = v);
-        let mut slice: &[u8] = &raw;
+        // Getting an explicit input as it greatly simplifies the handling of
+        // context-dependent parsing. Since `spec` only contains fixed-length blocks,
+        // the generated circuit will always have the same structure.
+        let mut input: &[u8] = &spec.get_explicit_input(input);
+
+        // Main call to generate the parsing circuit.
         let mut state = ParserState::<F, Index, 0, 0, 0, 0>::new();
-        let (spec, full_marker) = spec.strip_full_marker();
-        self.process_blocks(layouter, &mut slice, spec, None, &mut state)?;
+        spec.no_full_marker();
+        self.process_blocks(layouter, &mut input, spec, None, &mut state)?;
         assert!(
             !state.varlen,
-            "parse_asn1_fixlen: spec contains variable-length blocks"
+            "parse_asn1_fixlen: spec cannot contain variable-length blocks. You must call \
+            parse_asn1_varlen instead."
         );
-
-        // Handle root-level full_marker extraction.
-        // The extraction starts at position 0 (the beginning of the input).
-        if let Some(idx) = full_marker {
-            let bytes = state.assigned_input.clone();
-            let pos_zero = ParsingPosition::from(0);
-            state.record_at(Some(idx), Asn1ParsedUnit::Fixlen(bytes), true, &pos_zero);
-        }
 
         self.assert_equal_positions(
             layouter,
@@ -562,28 +522,19 @@ where
         input: Value<Vec<u8>>,
         spec: Asn1Spec<Index>,
     ) -> Result<Asn1VarlenResult<F, Index, TAG_M, LEN_M, VAL_M, VAL_A, M, A>, Error> {
-        let dummy = dummy_input(&spec);
-        let mut raw: Vec<u8> = dummy;
-        input.map(|v| raw = v);
-        let mut slice: &[u8] = &raw;
+        // Getting an explicit input as it greatly simplifies the handling of
+        // context-dependent parsing. The code below ensures that the same circuit
+        // structure is produced regardless of the variable-length parts of `spec`.
+        let mut input: &[u8] = &spec.get_explicit_input(input);
+
         let mut state = ParserState::<F, Index, TAG_M, LEN_M, VAL_M, VAL_A>::new();
-        let (spec, full_marker) = spec.strip_full_marker();
-        let raw_snapshot = full_marker.as_ref().map(|_| slice.to_vec());
-        self.process_blocks(layouter, &mut slice, spec, None, &mut state)?;
+        spec.no_full_marker();
+        self.process_blocks(layouter, &mut input, spec, None, &mut state)?;
         assert!(
             state.varlen,
-            "parse_asn1_varlen: spec contains no variable-length blocks"
+            "parse_asn1_varlen: spec contains no variable-length blocks. Call the cheaper \
+            parse_asn1_fixlen instead."
         );
-
-        // Handle root-level full_marker extraction.
-        // The extraction starts at position 0 (the beginning of the input).
-        if let Some(idx) = full_marker {
-            let raw = &raw_snapshot.unwrap()[..state.assigned_input.len()];
-            let sv: ScannerVec<F, VAL_M, VAL_A> =
-                self.assign_scanner_vec(layouter, Value::known(raw.to_vec()))?;
-            let pos_zero = ParsingPosition::from(0);
-            state.record_at(Some(idx), Asn1ParsedUnit::VarlenVal(sv), true, &pos_zero);
-        }
 
         let input_vec: ScannerVec<F, M, A> =
             self.scanner_vec_from_assigned(layouter, &state.assigned_input)?;
@@ -849,13 +800,11 @@ where
             decode_length(&input[n_tag..]).expect("failed to decode length from witness");
         let value_is_varlen = !matches!(&tlv.len.0, Asn1RawDataInternal::Const(..));
 
-        // Strip full_marker from value spec.
-        let (val_spec, full_marker) = tlv.val.strip_full_marker();
-
         // Snapshot raw bytes for varlen extractions (before consuming).
         let tlv_total = n_tag + n_len + len_value;
         let tlv_raw =
             (tlv_marker.is_some() && value_is_varlen).then(|| input[..tlv_total].to_vec());
+        let full_marker = tlv.val.2.clone();
         let val_raw = (full_marker.is_some() && value_is_varlen)
             .then(|| input[n_tag + n_len..tlv_total].to_vec());
 
@@ -875,7 +824,7 @@ where
         let val_cursor = state.assigned_input.len();
 
         // Process V blocks.
-        self.process_blocks(layouter, input, val_spec, Some(len_value), state)?;
+        self.process_blocks(layouter, input, tlv.val, Some(len_value), state)?;
 
         let effective_len = state.position.diff(&pos_before_val);
 
@@ -890,13 +839,23 @@ where
                 None => {
                     // Fixed-size extraction.
                     let v_bytes = state.assigned_input[val_cursor..].to_vec();
-                    state.record_at(Some(idx), Asn1ParsedUnit::Fixlen(v_bytes), true, &pos_before_val);
+                    state.record_at(
+                        Some(idx),
+                        Asn1ParsedUnit::Fixlen(v_bytes),
+                        true,
+                        &pos_before_val,
+                    );
                 }
                 Some(raw) => {
                     // Variable-size extraction.
                     let sv: ScannerVec<F, VAL_M, VAL_A> =
                         self.assign_scanner_vec(layouter, Value::known(raw))?;
-                    state.record_at(Some(idx), Asn1ParsedUnit::VarlenVal(sv), true, &pos_before_val);
+                    state.record_at(
+                        Some(idx),
+                        Asn1ParsedUnit::VarlenVal(sv),
+                        true,
+                        &pos_before_val,
+                    );
                 }
             }
         }
@@ -909,13 +868,23 @@ where
                 None => {
                     // Fixed-size extraction.
                     let tlv_bytes = state.assigned_input[tlv_cursor..].to_vec();
-                    state.record_at(Some(idx), Asn1ParsedUnit::Fixlen(tlv_bytes), true, &pos_before_tlv);
+                    state.record_at(
+                        Some(idx),
+                        Asn1ParsedUnit::Fixlen(tlv_bytes),
+                        true,
+                        &pos_before_tlv,
+                    );
                 }
                 Some(raw) => {
                     // Variable-size extraction.
                     let sv: ScannerVec<F, VAL_M, VAL_A> =
                         self.assign_scanner_vec(layouter, Value::known(raw))?;
-                    state.record_at(Some(idx), Asn1ParsedUnit::VarlenVal(sv), true, &pos_before_tlv);
+                    state.record_at(
+                        Some(idx),
+                        Asn1ParsedUnit::VarlenVal(sv),
+                        true,
+                        &pos_before_tlv,
+                    );
                 }
             }
         }
