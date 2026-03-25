@@ -65,29 +65,5 @@
 //!    trusted CSCA moduli from the PKD to obtain the Merkle tree (witness) and
 //!    its root (public input).
 
-/// # Test data
-///
-/// Synthetic test fixtures can be generated with the Python script at
-/// `credentials/passport/generate.py`. It produces a fake SOD, DG1,
-/// and CSCA key for the SHA-256 + RSA-2048 algorithm pair, using the
-/// ICAO specimen country code "UTO". MRZ fields (name, DOB, passport
-/// number, etc.) are configurable via command-line arguments.
-///
-/// ```sh
-/// # Setup (once):
-/// python3 -m venv venv && venv/bin/pip install cryptography
-///
-/// # Generate with defaults:
-/// venv/bin/python3 credentials/passport/generate.py
-///
-/// # Or with custom fields:
-/// venv/bin/python3 credentials/passport/generate.py \
-///     --surname DUPONT --given-names "JEAN MICHEL" --dob 900115
-/// ```
-///
-/// Output files in `credentials/passport/`:
-/// - `dg1.bin`: 93-byte DG1 (TLV header + 88-byte MRZ)
-/// - `sod.der`: DER-encoded CMS ContentInfo (SignedData)
-/// - `csca_key.bin`: 256-byte CSCA RSA-2048 modulus (big-endian)
+pub mod circuit;
 pub mod spec;
-pub mod verification;

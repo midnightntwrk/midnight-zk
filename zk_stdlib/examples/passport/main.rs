@@ -1,6 +1,6 @@
 //! Example: passport verification circuit (SHA-256 + RSA-2048).
 //!
-//! Loads test credentials from `examples/identity/credentials/passport/`,
+//! Loads test credentials from `examples/passport/credentials/`,
 //! runs the full verification chain, and prints timing information.
 //!
 //! Usage:
@@ -12,17 +12,17 @@ use midnight_circuits::instructions::map::MapCPU;
 use midnight_zk_stdlib::utils::plonk_api::filecoin_srs;
 use rand::rngs::OsRng;
 
-// The passport modules are compiled via #[path] since examples can't
-// use the normal module system.
-#[path = "./identity/passport/mod.rs"]
+// The passport modules are compiled via #[path] since Cargo examples
+// don't use the normal module system.
+#[path = "./mod.rs"]
 mod passport;
 
-use passport::verification::{self, PassportVerification};
+use passport::circuit::{self, PassportVerification};
 
 /// Path to the credentials directory, relative to the zk_stdlib crate root.
 const CRED_DIR: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/examples/identity/credentials/passport"
+    "/examples/passport/credentials"
 );
 
 fn load_credential(name: &str) -> (Vec<u8>, [u8; 93], [u8; 256]) {
@@ -47,6 +47,14 @@ fn start(msg: &str) -> Instant {
 }
 
 fn main() {
+    // The full passport circuit is large enough to overflow the default
+    // thread stack during synthesis. Run on a thread with a larger stack.
+    let builder = std::thread::Builder::new().stack_size(64 * 1024 * 1024);
+    let handler = builder.spawn(run).expect("failed to spawn thread");
+    handler.join().expect("thread panicked");
+}
+
+fn run() {
     // Use credential_1 as the default test case.
     let cred_name = std::env::args().nth(1).unwrap_or_else(|| "credential_1".to_string());
     println!("=== Passport verification example ===");
@@ -77,16 +85,17 @@ fn main() {
     println!("SOD size: {} bytes\n", sod.len());
 
     // Build the CSCA map with just this one key.
-    let csca_map = verification::build_csca_map(&[csca_key]);
+    let csca_map = circuit::build_csca_map(&[csca_key]);
     let instance = csca_map.succinct_repr();
     let witness = (sod, dg1, csca_key, csca_map);
 
     let relation = PassportVerification;
 
     // Setup.
-    const K: u32 = 18;
+    let k = midnight_zk_stdlib::optimal_k(&relation);
+    println!("optimal_k = {k}");
     let t = start("Loading SRS...");
-    let srs = filecoin_srs(K);
+    let srs = filecoin_srs(k);
     println!(" done ({:?})", t.elapsed());
 
     let t = start("Setting up VK...");
@@ -107,16 +116,14 @@ fn main() {
 
     // Verify.
     let t = start("Verifying proof...");
-    assert!(
-        midnight_zk_stdlib::verify::<PassportVerification, blake2b_simd::State>(
-            &srs.verifier_params(),
-            &vk,
-            &instance,
-            None,
-            &proof,
-        )
-        .is_ok()
-    );
+    midnight_zk_stdlib::verify::<PassportVerification, blake2b_simd::State>(
+        &srs.verifier_params(),
+        &vk,
+        &instance,
+        None,
+        &proof,
+    )
+    .expect("Verification should not fail");
     println!(" done ({:?})", t.elapsed());
 
     println!("\nAll checks passed.");

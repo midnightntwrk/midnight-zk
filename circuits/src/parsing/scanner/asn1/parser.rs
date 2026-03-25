@@ -261,15 +261,29 @@ impl<
     }
 
     /// Record an extraction and (for non-const data) a substring check.
+    /// Uses `self.position` as the substring check position.
     fn record(
         &mut self,
         index: Option<Index>,
         unit: Asn1ParsedUnit<F, TAG_M, LEN_M, VAL_M, VAL_A>,
         needs_substring_check: bool,
     ) {
+        self.record_at(index, unit, needs_substring_check, &self.position.clone());
+    }
+
+    /// Record an extraction with an explicit substring check position.
+    /// Used when the current `self.position` has already advanced past
+    /// the extraction (e.g., full_marker / tlv_marker in `process_tlv`).
+    fn record_at(
+        &mut self,
+        index: Option<Index>,
+        unit: Asn1ParsedUnit<F, TAG_M, LEN_M, VAL_M, VAL_A>,
+        needs_substring_check: bool,
+        position: &ParsingPosition<F>,
+    ) {
         if let Some(idx) = index {
             if needs_substring_check {
-                self.substring_checks.push((self.position.clone(), unit.clone()));
+                self.substring_checks.push((position.clone(), unit.clone()));
             }
             self.extracted.insert(idx, unit);
         }
@@ -471,9 +485,11 @@ where
         );
 
         // Handle root-level full_marker extraction.
+        // The extraction starts at position 0 (the beginning of the input).
         if let Some(idx) = full_marker {
             let bytes = state.assigned_input.clone();
-            state.record(Some(idx), Asn1ParsedUnit::Fixlen(bytes), true);
+            let pos_zero = ParsingPosition::from(0);
+            state.record_at(Some(idx), Asn1ParsedUnit::Fixlen(bytes), true, &pos_zero);
         }
 
         self.assert_equal_positions(
@@ -560,11 +576,13 @@ where
         );
 
         // Handle root-level full_marker extraction.
+        // The extraction starts at position 0 (the beginning of the input).
         if let Some(idx) = full_marker {
             let raw = &raw_snapshot.unwrap()[..state.assigned_input.len()];
             let sv: ScannerVec<F, VAL_M, VAL_A> =
                 self.assign_scanner_vec(layouter, Value::known(raw.to_vec()))?;
-            state.record(Some(idx), Asn1ParsedUnit::VarlenVal(sv), true);
+            let pos_zero = ParsingPosition::from(0);
+            state.record_at(Some(idx), Asn1ParsedUnit::VarlenVal(sv), true, &pos_zero);
         }
 
         let input_vec: ScannerVec<F, M, A> =
@@ -843,6 +861,8 @@ where
 
         // Cursor snapshots for fixed-size extraction.
         let tlv_cursor = state.assigned_input.len();
+        // Position snapshot for tlv_marker substring check.
+        let pos_before_tlv = state.position.clone();
 
         // Process T, L. Automaton validation happens inside process_raw.
         self.process_raw(layouter, input, n_tag, tlv.tag, RawDataRole::Tag, state)?;
@@ -863,35 +883,39 @@ where
         self.assert_equal_positions(layouter, &effective_len, &expected_len)?;
 
         // Handle full_marker (V-only extraction).
+        // The V bytes start at `pos_before_val`, not at `state.position`
+        // (which has already advanced past V).
         if let Some(idx) = full_marker {
             match val_raw {
                 None => {
                     // Fixed-size extraction.
                     let v_bytes = state.assigned_input[val_cursor..].to_vec();
-                    state.record(Some(idx), Asn1ParsedUnit::Fixlen(v_bytes), true);
+                    state.record_at(Some(idx), Asn1ParsedUnit::Fixlen(v_bytes), true, &pos_before_val);
                 }
                 Some(raw) => {
                     // Variable-size extraction.
                     let sv: ScannerVec<F, VAL_M, VAL_A> =
                         self.assign_scanner_vec(layouter, Value::known(raw))?;
-                    state.record(Some(idx), Asn1ParsedUnit::VarlenVal(sv), true);
+                    state.record_at(Some(idx), Asn1ParsedUnit::VarlenVal(sv), true, &pos_before_val);
                 }
             }
         }
 
         // Handle tlv_marker (full T+L+V extraction).
+        // The T+L+V bytes start at `pos_before_tlv`, not at `state.position`
+        // (which has already advanced past the entire TLV).
         if let Some(idx) = tlv_marker {
             match tlv_raw {
                 None => {
                     // Fixed-size extraction.
                     let tlv_bytes = state.assigned_input[tlv_cursor..].to_vec();
-                    state.record(Some(idx), Asn1ParsedUnit::Fixlen(tlv_bytes), true);
+                    state.record_at(Some(idx), Asn1ParsedUnit::Fixlen(tlv_bytes), true, &pos_before_tlv);
                 }
                 Some(raw) => {
                     // Variable-size extraction.
                     let sv: ScannerVec<F, VAL_M, VAL_A> =
                         self.assign_scanner_vec(layouter, Value::known(raw))?;
-                    state.record(Some(idx), Asn1ParsedUnit::VarlenVal(sv), true);
+                    state.record_at(Some(idx), Asn1ParsedUnit::VarlenVal(sv), true, &pos_before_tlv);
                 }
             }
         }

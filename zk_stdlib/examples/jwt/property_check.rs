@@ -1,18 +1,14 @@
-//! Optimized example of property proofs in a JSON credential.
+//! Example of property proofs in a JSON credential. Is parsed with an
+//! automaton-based technique.
 //!
-//! This is an alternative to `property_check.rs` that replaces the
-//! automaton-based in-circuit parsing with
-//! [`check_bytes`](midnight_circuits::parsing::ScannerChip::check_bytes)
-//! substring verification. Much more efficient, but less general technique that
-//! is not always applicable.
-//!
-//! # Trust assumption
-//!
-//! Unlike the automaton-based version, this circuit does **not** verify the
-//! structural correctness of the credential (e.g. valid JSON, UTF-8 encoding).
-//! It assumes the credential is well-formed and that field names are unique,
-//! which is guaranteed by the issuer whose signature has been verified.
-//! It also assumes there is no insignificant whitespace around `:` separators.
+//! NB: The automaton-based technique is a bit overkill for this kind of
+//! credential that have a lot of structure. Typically, instead of parsing the
+//! full credential structure, one could simply scan the input to search for the
+//! field names ("givenName", "birthDate"...). This is actually what is done in
+//! `property_check_opt.rs`, which is much more efficient. The present example
+//! should rather be seen as an illustration of the use of the automaton chip,
+//! useful in cases of less structured credentials, without keywords (e.g.,
+//! ASN.1 encodings).
 
 use std::time::Instant;
 
@@ -21,9 +17,10 @@ use midnight_circuits::{
     field::foreign::{params::MultiEmulationParams, AssignedField},
     instructions::{
         public_input::CommittedInstanceInstructions, AssertionInstructions, AssignmentInstructions,
-        Base64Instructions, DecompositionInstructions, EccInstructions, RangeCheckInstructions,
+        Base64Instructions, ControlFlowInstructions, DecompositionInstructions, EccInstructions,
+        EqualityInstructions, RangeCheckInstructions,
     },
-    parsing::{DateFormat, Separator},
+    parsing::{DateFormat, Separator, StdLibParser},
     testing_utils::ecdsa::{ECDSASig, FromBase64},
     types::{AssignedByte, AssignedForeignPoint, AssignedNative},
     CircuitField,
@@ -49,7 +46,7 @@ type F = midnight_curves::Fq;
 
 const CRED_PATH: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/examples/identity/credentials/2k-credential"
+    "/examples/jwt/credentials/2k-credential"
 );
 
 // Public Key of the issuer, signer of the credential.
@@ -71,7 +68,7 @@ type Payload = [u8; PAYLOAD_LEN];
 type SK = K256Scalar;
 
 #[derive(Clone, Default)]
-pub struct CredentialPropertyOpt;
+pub struct CredentialProperty;
 
 const MAX_VALID_DATE: Date = Date {
     day: 1,
@@ -84,7 +81,7 @@ const NAME_LEN: usize = VALID_NAME.len(); // TODO: this value should not be fixe
 const BIRTHDATE_LEN: usize = 10;
 const COORD_LEN: usize = 43;
 
-impl Relation for CredentialPropertyOpt {
+impl Relation for CredentialProperty {
     type Instance = ();
     type Witness = (Payload, SK);
 
@@ -108,49 +105,42 @@ impl Relation for CredentialPropertyOpt {
     ) -> Result<(), Error> {
         let secp256k1_curve = std_lib.secp256k1_curve();
         let b64_chip = std_lib.base64();
+        let scanner_chip = std_lib.scanner();
 
-        let (payload, sk) = witness.unzip();
+        let (json, sk) = witness.unzip();
 
-        // Decode Base64 JSON off-circuit (for finding snippet positions).
-        let decoded: Value<Vec<u8>> = payload.map(|p| {
-            let json_b64 = &p[HEADER_LEN + 1..PAYLOAD_LEN];
-            decode_config(json_b64, STANDARD_NO_PAD).expect("Valid base64 encoded JSON.")
-        });
-
-        // Assign decoded JSON bytes.
-        let json_len = (PAYLOAD_LEN - (HEADER_LEN + 1)) / 4 * 3;
-        let json: Vec<AssignedByte<F>> = {
-            let vals = decoded.clone().transpose_vec(json_len);
+        // Assign decoded Base64 JSON
+        let json: Vec<AssignedByte<_>> = {
+            let len = (PAYLOAD_LEN - (HEADER_LEN + 1)) / 4 * 3;
+            let vals = json
+                .map(|json| {
+                    let json_b64 = &json[HEADER_LEN + 1..PAYLOAD_LEN];
+                    decode_config(json_b64, STANDARD_NO_PAD).expect("Valid base64 encoded JSON.")
+                })
+                .transpose_vec(len);
             std_lib.assign_many(layouter, vals.as_slice())?
         };
 
-        // Constrain as committed instance (to link with enrollment proof).
+        // Constrains as committed instance (to link with enrollment proof).
         for byte in json.iter() {
             let byte_as_f: AssignedNative<_> = byte.into();
             std_lib.constrain_as_committed_public_input(layouter, &byte_as_f)?;
         }
 
-        // Name check.
-        let name = Self::get_property(std_lib, layouter, &json, &decoded, b"givenName", NAME_LEN)?;
+        let parsed_json = scanner_chip.parse(layouter, StdLibParser::Jwt.into(), &json)?;
+
+        // Check Name.
+        let name = Self::get_property(std_lib, layouter, &json, &parsed_json, 3, NAME_LEN)?;
         Self::assert_str_match(std_lib, layouter, &name, VALID_NAME)?;
 
-        // Birthdate check.
-        let birthdate = Self::get_property(
-            std_lib,
-            layouter,
-            &json,
-            &decoded,
-            b"birthDate",
-            BIRTHDATE_LEN,
-        )?;
+        // Check birth date.
+        let birthdate =
+            Self::get_property(std_lib, layouter, &json, &parsed_json, 4, BIRTHDATE_LEN)?;
         Self::assert_date_before(std_lib, layouter, &birthdate, MAX_VALID_DATE)?;
 
-        // Extract `x` field.
-        let x = Self::get_property(std_lib, layouter, &json, &decoded, b"x", COORD_LEN)?;
-
-        // Extract `y` field.
-        let y = Self::get_property(std_lib, layouter, &json, &decoded, b"y", COORD_LEN)?;
-
+        // Get holder public key.
+        let x = Self::get_property(std_lib, layouter, &json, &parsed_json, 5, COORD_LEN)?;
+        let y = Self::get_property(std_lib, layouter, &json, &parsed_json, 6, COORD_LEN)?;
         let x_val = b64_chip.decode_base64url(layouter, &x, false)?;
         let y_val = b64_chip.decode_base64url(layouter, &y, false)?;
 
@@ -176,6 +166,7 @@ impl Relation for CredentialPropertyOpt {
 
     fn used_chips(&self) -> ZkStdLibArch {
         ZkStdLibArch {
+            sha2_256: true,
             secp256k1: true,
             base64: true,
             automaton: true,
@@ -189,7 +180,7 @@ impl Relation for CredentialPropertyOpt {
     }
 
     fn read_relation<R: std::io::Read>(_reader: &mut R) -> std::io::Result<Self> {
-        Ok(CredentialPropertyOpt)
+        Ok(CredentialProperty)
     }
 }
 
@@ -205,70 +196,30 @@ impl From<Date> for BigUint {
     }
 }
 
-impl CredentialPropertyOpt {
-    /// Verifies that a JSON field appears in the credential and extracts its
-    /// value.
-    ///
-    /// Given a field name (e.g., `b"birthDate"`) and value length, this
-    /// function builds the full prefix `"<field_name>":"` internally, then:
-    /// 1. Finds the field in the decoded credential (off-circuit).
-    /// 2. Assigns the prefix as fixed constants and the value as witness bytes.
-    /// 3. Uses `check_bytes` to verify the full snippet (prefix + value +
-    ///    closing `"`) is a substring of the credential.
-    /// 4. Returns the extracted value bytes.
+impl CredentialProperty {
+    /// Searches for the first position in `parsed_body` marked with `marker`,
+    /// and returns the following `val_len` bytes from `body`.
     fn get_property(
         std_lib: &ZkStdLib,
         layouter: &mut impl Layouter<F>,
-        cred: &[AssignedByte<F>],
-        decoded: &Value<Vec<u8>>,
-        field_name: &[u8],
-        value_len: usize,
+        body: &[AssignedByte<F>],
+        parsed_body: &[AssignedNative<F>],
+        marker: usize,
+        val_len: usize,
     ) -> Result<Vec<AssignedByte<F>>, Error> {
-        let field_prefix: Vec<u8> = [b"\"".as_slice(), field_name, b"\":\""].concat();
-        let snippet_len = field_prefix.len() + value_len + 1; // +1 for closing quote.
+        let marker_f = F::from(marker as u64);
 
-        // Off-circuit: find the snippet position and extract the value.
-        let (value_raw, idx_val): (Value<Vec<u8>>, Value<F>) = decoded
-            .as_ref()
-            .map(|d| {
-                let pos = d
-                    .windows(field_prefix.len())
-                    .position(|w| w == field_prefix.as_slice())
-                    .expect("Field prefix should appear in credential");
-                assert!(
-                    pos + snippet_len <= d.len(),
-                    "Snippet exceeds credential length"
-                );
-                let value =
-                    d[pos + field_prefix.len()..pos + field_prefix.len() + value_len].to_vec();
-                (value, F::from(pos as u64))
-            })
-            .unzip();
+        // In-circuit scan: find the first position of `marker` in `parsed_body`.
+        // Iterating in reverse so that the final overwrite is the first occurrence of
+        // the marker.
+        let mut idx: AssignedNative<F> = std_lib.assign_fixed(layouter, F::from(0u64))?;
+        for (i, m) in parsed_body.iter().enumerate().rev() {
+            let is_match = std_lib.is_equal_to_fixed(layouter, m, marker_f)?;
+            let i_val: AssignedNative<F> = std_lib.assign_fixed(layouter, F::from(i as u64))?;
+            idx = std_lib.select(layouter, &is_match, &i_val, &idx)?;
+        }
 
-        // Assign prefix as fixed constants.
-        let prefix_bytes: Vec<AssignedByte<F>> =
-            std_lib.assign_many_fixed(layouter, &field_prefix)?;
-
-        // Assign value from witness.
-        let value_data = value_raw.transpose_vec(value_len);
-        let value_bytes: Vec<AssignedByte<F>> =
-            std_lib.assign_many(layouter, value_data.as_slice())?;
-
-        // Assign closing quote as fixed.
-        let closing_quote: AssignedByte<F> = std_lib.assign_fixed(layouter, b'"')?;
-
-        // Build full snippet: prefix || value || closing quote.
-        let snippet_bytes: Vec<AssignedByte<F>> = prefix_bytes
-            .into_iter()
-            .chain(value_bytes.iter().cloned())
-            .chain(std::iter::once(closing_quote))
-            .collect();
-        assert_eq!(snippet_bytes.len(), snippet_len);
-
-        let idx: AssignedNative<F> = std_lib.assign(layouter, idx_val)?;
-        std_lib.scanner().check_bytes(layouter, cred, &idx, &snippet_bytes)?;
-
-        Ok(value_bytes)
+        std_lib.parser().fetch_bytes(layouter, body, &idx, val_len)
     }
 
     fn assert_str_match(
@@ -298,8 +249,7 @@ impl CredentialPropertyOpt {
         let date = std_lib.parser().date_to_int(layouter, date, format)?;
         std_lib.assert_lower_than_fixed(layouter, &date, &limit_date.into())
     }
-
-    // Creates a CredentialPropertyOpt witness from:
+    // Creates an CredentialProperty witness from:
     // 1. A JWT encoded credential.
     // 2. The corresponding base64 encoded ECDSA public key.
     fn witness_from_blob(blob: &[u8]) -> (Payload, ECDSASig) {
@@ -317,11 +267,11 @@ impl CredentialPropertyOpt {
 }
 
 fn main() {
-    const K: u32 = 15;
+    const K: u32 = 16;
     let srs = filecoin_srs(K);
     let credential_blob = read_credential::<4096>(CRED_PATH).expect("Path to credential file.");
 
-    let relation = CredentialPropertyOpt;
+    let relation = CredentialProperty;
 
     let start = |msg: &str| -> Instant {
         println!("{msg}");
@@ -335,19 +285,19 @@ fn main() {
 
     // Build the instance and witness to be proven.
     let wit = start("Computing instance and witnesses");
-    let witness = CredentialPropertyOpt::witness_from_blob(credential_blob.as_slice());
+    let witness = CredentialProperty::witness_from_blob(credential_blob.as_slice());
     let holder_sk = K256Scalar::from_bytes_be(&HOLDER_SK_BYTES).expect("Valid scalar");
     let witness = (witness.0, holder_sk);
 
     let committed_credential: G1Affine = {
-        let instance = CredentialPropertyOpt::format_committed_instances(&witness);
+        let instance = CredentialProperty::format_committed_instances(&witness);
         commit_to_instances::<_, KZGCommitmentScheme<_>>(&srs, vk.vk().get_domain(), &instance)
             .into()
     };
     println!("... done ({:?})", wit.elapsed());
 
     let p = start("Proof generation");
-    let proof = midnight_zk_stdlib::prove::<CredentialPropertyOpt, blake2b_simd::State>(
+    let proof = midnight_zk_stdlib::prove::<CredentialProperty, blake2b_simd::State>(
         &srs,
         &pk,
         &relation,
@@ -360,7 +310,7 @@ fn main() {
 
     let v = start("Proof verification");
     assert!(
-        midnight_zk_stdlib::verify::<CredentialPropertyOpt, blake2b_simd::State>(
+        midnight_zk_stdlib::verify::<CredentialProperty, blake2b_simd::State>(
             &srs.verifier_params(),
             &vk,
             &(),

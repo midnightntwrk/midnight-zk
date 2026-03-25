@@ -279,29 +279,33 @@ def extract_issuer_and_serial(cert_der: bytes) -> bytes:
     Parses the TBSCertificate to find the serialNumber and issuer
     fields, then re-encodes them as SEQUENCE { issuer, serial }.
     """
-    # Certificate is SEQUENCE { tbsCertificate, signatureAlgorithm, signature }
-    tbs_content = _unwrap_sequence(cert_der)
+    # Certificate = SEQUENCE { tbsCertificate, signatureAlgorithm, signature }
+    cert_content = _unwrap_sequence(cert_der)
+
+    # First element is the tbsCertificate SEQUENCE TLV. Unwrap it.
+    _, tbs_len, tbs_start = _read_tl(cert_content, 0)
+    tbs = cert_content[tbs_start : tbs_start + tbs_len]
 
     pos = 0
     # version [0] EXPLICIT (optional, skip if present)
-    if tbs_content[pos] == 0xA0:
-        _, length, pos = _read_tl(tbs_content, pos)
+    if tbs[pos] == 0xA0:
+        _, length, pos = _read_tl(tbs, pos)
         pos += length
 
     # serialNumber INTEGER
     serial_start = pos
-    _, length, pos = _read_tl(tbs_content, pos)
-    serial_der = tbs_content[serial_start:pos + length]
+    _, length, pos = _read_tl(tbs, pos)
+    serial_der = tbs[serial_start : pos + length]
     pos += length
 
     # signature AlgorithmIdentifier (skip)
-    _, length, pos = _read_tl(tbs_content, pos)
+    _, length, pos = _read_tl(tbs, pos)
     pos += length
 
     # issuer Name
     issuer_start = pos
-    _, length, pos = _read_tl(tbs_content, pos)
-    issuer_der = tbs_content[issuer_start:pos + length]
+    _, length, pos = _read_tl(tbs, pos)
+    issuer_der = tbs[issuer_start : pos + length]
 
     return der_sequence(issuer_der + serial_der)
 
@@ -373,6 +377,8 @@ def main():
     parser.add_argument("--issuing-country", default="UTO", help="Issuing country (3-letter ISO code)")
     parser.add_argument("--passport-type", default="P", help="Passport type (1-2 chars)")
     parser.add_argument("--optional-data", default="", help="Optional data (up to 14 chars)")
+    parser.add_argument("--num-dg-hashes", type=int, default=2, help="Number of DG hashes (1-16)")
+    parser.add_argument("--dn-padding", type=int, default=0, help="Extra bytes in DN fields (pads issuer/subject)")
     parser.add_argument(
         "--output-dir",
         default=os.path.dirname(os.path.abspath(__file__)),
@@ -398,11 +404,17 @@ def main():
 
     # 2. Generate CSCA and DS key pairs + certificates.
     csca_key = generate_keypair()
+    # Extra NameAttributes to pad the certificate DN fields.
+    dn_extra_attrs = []
+    for i in range(args.dn_padding):
+        dn_extra_attrs.append(
+            NameAttribute(NameOID.ORGANIZATIONAL_UNIT_NAME, f"Unit{i:04d}" + "P" * 50)
+        )
     csca_name = Name([
         NameAttribute(NameOID.COUNTRY_NAME, args.issuing_country[:2]),
         NameAttribute(NameOID.ORGANIZATION_NAME, "Test CSCA"),
         NameAttribute(NameOID.COMMON_NAME, f"Test CSCA {args.issuing_country}"),
-    ])
+    ] + dn_extra_attrs)
     csca_cert = build_certificate(csca_name, csca_name, csca_key, csca_key, is_ca=True)
 
     ds_key = generate_keypair()
@@ -410,14 +422,16 @@ def main():
         NameAttribute(NameOID.COUNTRY_NAME, args.issuing_country[:2]),
         NameAttribute(NameOID.ORGANIZATION_NAME, "Test DS"),
         NameAttribute(NameOID.COMMON_NAME, f"Test DS {args.issuing_country}"),
-    ])
+    ] + dn_extra_attrs)
     ds_cert = build_certificate(ds_name, csca_name, ds_key, csca_key, is_ca=False)
     ds_cert_der = ds_cert.public_bytes(serialization.Encoding.DER)
 
     # 3. Build LDSSecurityObject (eContent).
     dg1_hash = hashlib.sha256(dg1).digest()
-    dg2_hash = hashlib.sha256(b"fake DG2 photo data").digest()
-    econtent_der = build_lds_security_object({1: dg1_hash, 2: dg2_hash})
+    dg_hashes = {1: dg1_hash}
+    for i in range(2, args.num_dg_hashes + 1):
+        dg_hashes[i] = hashlib.sha256(f"fake DG{i} data".encode()).digest()
+    econtent_der = build_lds_security_object(dg_hashes)
 
     # 4. Build the SOD.
     sod_der = build_sod(ds_cert_der, ds_key, econtent_der)
@@ -441,27 +455,145 @@ def main():
     for name, data in files.items():
         print(f"  {name:20s} ({len(data)} bytes)")
 
-    # 7. Sanity checks.
-    # CSCA -> DS certificate signature.
-    csca_key.public_key().verify(
-        ds_cert.signature, ds_cert.tbs_certificate_bytes,
-        padding.PKCS1v15(), hashes.SHA256(),
-    )
-    print("\nCSCA -> DS certificate signature: OK")
+    # 7. End-to-end verification of the generated SOD.
+    # This mirrors the circuit's verification chain to catch structural bugs.
+    verify_sod(sod_der, dg1, csca_key.public_key())
+    print(f"\nSOD size: {len(sod_der)} bytes")
 
-    # DS -> signedAttrs signature.
-    econtent_hash = hashlib.sha256(econtent_der).digest()
-    signed_attrs = build_signed_attrs(econtent_hash)
-    # Re-extract signature from the SOD to verify.
-    # (Simpler: just verify our signing key works.)
-    test_sig = ds_key.sign(signed_attrs, padding.PKCS1v15(), hashes.SHA256())
-    ds_key.public_key().verify(test_sig, signed_attrs, padding.PKCS1v15(), hashes.SHA256())
-    print("DS -> signedAttrs signature: OK")
 
-    # eContent hash == messageDigest.
-    print(f"DG1 SHA-256:      {dg1_hash.hex()}")
-    print(f"eContent SHA-256: {econtent_hash.hex()}")
-    print(f"SOD size:         {len(sod_der)} bytes")
+def verify_sod(sod_der: bytes, dg1: bytes, csca_pub_key) -> None:
+    """Verify the full SOD signature chain by parsing the DER.
+
+    This performs the same checks as the ZK circuit, off-circuit:
+    1. Parse SOD structure to extract fields.
+    2. Verify CSCA signature on tbsCertificate.
+    3. Verify DS signature on signedAttrs.
+    4. Verify eContent hash == messageDigest.
+    5. Verify DG1 hash == hashDg1.
+    """
+    # Parse ContentInfo -> SignedData.
+    ci_content = _unwrap_sequence(sod_der)
+    # Skip OID, unwrap [0] EXPLICIT.
+    _, oid_len, oid_end = _read_tl(ci_content, 0)
+    _, sd_outer_len, sd_outer_start = _read_tl(ci_content, oid_end + oid_len)
+    sd_content = _unwrap_sequence(ci_content[sd_outer_start:sd_outer_start + sd_outer_len])
+
+    pos = 0
+    # version INTEGER 3
+    _, l, pos = _read_tl(sd_content, pos); pos += l
+    # digestAlgorithms SET
+    _, l, pos = _read_tl(sd_content, pos); pos += l
+    # encapContentInfo SEQUENCE
+    ecap_start = pos
+    _, ecap_len, ecap_content_start = _read_tl(sd_content, pos)
+    ecap_content = sd_content[ecap_content_start:ecap_content_start + ecap_len]
+    pos = ecap_content_start + ecap_len
+
+    # Parse eContent from encapContentInfo.
+    # Skip OID, unwrap [0] EXPLICIT -> OCTET STRING -> eContent.
+    epos = 0
+    _, l, epos = _read_tl(ecap_content, epos); epos += l  # OID
+    _, l, epos = _read_tl(ecap_content, epos)  # [0]
+    ctx0_content = ecap_content[epos:epos + l]
+    _, oct_len, oct_start = _read_tl(ctx0_content, 0)
+    econtent = ctx0_content[oct_start:oct_start + oct_len]
+
+    # Parse DG1 hash from eContent (LDSSecurityObject).
+    lds_content = _unwrap_sequence(econtent)
+    lpos = 0
+    _, l, lpos = _read_tl(lds_content, lpos); lpos += l  # version
+    _, l, lpos = _read_tl(lds_content, lpos); lpos += l  # hashAlgorithm
+    dg_hashes_content = _unwrap_sequence(lds_content[lpos:])
+    # First entry: DG1 hash.
+    dg1_entry = _unwrap_sequence(dg_hashes_content)
+    hpos = 0
+    _, l, hpos = _read_tl(dg1_entry, hpos); hpos += l  # INTEGER 1
+    _, hash_len, hash_start = _read_tl(dg1_entry, hpos)  # OCTET STRING
+    hash_dg1 = dg1_entry[hash_start:hash_start + hash_len]
+
+    # Step 5: DG1 integrity.
+    computed_dg1_hash = hashlib.sha256(dg1).digest()
+    assert computed_dg1_hash == hash_dg1, \
+        f"DG1 hash mismatch:\n  computed: {computed_dg1_hash.hex()}\n  expected: {hash_dg1.hex()}"
+    print("  DG1 hash check: OK")
+
+    # Step 4: eContent integrity.
+    econtent_hash = hashlib.sha256(econtent).digest()
+
+    # certificates [0]
+    _, cert_block_len, cert_block_start = _read_tl(sd_content, pos)
+    # The certificate DER is inside the [0] wrapper.
+    cert_der_start = cert_block_start
+    _, cert_len, cert_content_start = _read_tl(sd_content, cert_der_start)
+    cert_der = sd_content[cert_der_start:cert_content_start + cert_len]
+    pos = cert_block_start + cert_block_len
+
+    # Extract tbsCertificate for CSCA signature verification.
+    cert_content = _unwrap_sequence(cert_der)
+    _, tbs_len, tbs_content_start = _read_tl(cert_content, 0)
+    tbs_der = cert_content[0:tbs_content_start + tbs_len]
+
+    # Extract DS public key from tbsCertificate.
+    from cryptography.x509 import load_der_x509_certificate
+    ds_cert = load_der_x509_certificate(cert_der)
+    ds_pub_key = ds_cert.public_key()
+
+    # Step 2: CSCA signature on DS certificate.
+    # Parse the signature from the Certificate (last field = BIT STRING).
+    sig_scan_pos = tbs_content_start + tbs_len  # after tbsCertificate
+    _, l, sig_scan_pos = _read_tl(cert_content, sig_scan_pos)  # signatureAlgorithm
+    sig_scan_pos += l
+    _, sig_bs_len, sig_bs_start = _read_tl(cert_content, sig_scan_pos)  # BIT STRING
+    csca_signature = cert_content[sig_bs_start + 1:sig_bs_start + sig_bs_len]  # skip unused-bits
+
+    csca_pub_key.verify(csca_signature, tbs_der, padding.PKCS1v15(), hashes.SHA256())
+    print("  CSCA -> DS certificate: OK")
+
+    # signerInfos SET
+    si_set_content = _unwrap_sequence(sd_content[pos:])
+    si_content = _unwrap_sequence(si_set_content)
+
+    # Parse SignerInfo fields.
+    si_pos = 0
+    _, l, si_pos = _read_tl(si_content, si_pos); si_pos += l  # version
+    _, l, si_pos = _read_tl(si_content, si_pos); si_pos += l  # issuerAndSerialNumber
+    _, l, si_pos = _read_tl(si_content, si_pos); si_pos += l  # digestAlgorithm
+
+    # signedAttrs [0] IMPLICIT
+    sa_tag_start = si_pos
+    _, sa_len, sa_content_start = _read_tl(si_content, si_pos)
+    # Reconstruct SET-tagged encoding for signature verification.
+    sa_content = si_content[sa_content_start:sa_content_start + sa_len]
+    signed_attrs_set = der_set(sa_content)
+    si_pos = sa_content_start + sa_len
+
+    # Verify messageDigest in signedAttrs matches eContent hash.
+    # Parse the second attribute (messageDigest).
+    sa_inner_pos = 0
+    _, l, sa_inner_pos = _read_tl(sa_content, sa_inner_pos); sa_inner_pos += l  # contentType attr
+    md_attr_content = _unwrap_sequence(sa_content[sa_inner_pos:])
+    md_pos = 0
+    _, l, md_pos = _read_tl(md_attr_content, md_pos); md_pos += l  # OID
+    md_set_content = _unwrap_sequence(md_attr_content[md_pos:])
+    _, md_len, md_start = _read_tl(md_set_content, 0)  # OCTET STRING
+    message_digest = md_set_content[md_start:md_start + md_len]
+
+    assert econtent_hash == message_digest, \
+        f"eContent hash != messageDigest:\n  {econtent_hash.hex()}\n  {message_digest.hex()}"
+    print("  eContent hash == messageDigest: OK")
+
+    # signatureAlgorithm (skip)
+    _, l, si_pos = _read_tl(si_content, si_pos); si_pos += l
+
+    # signature OCTET STRING
+    _, ds_sig_len, ds_sig_start = _read_tl(si_content, si_pos)
+    ds_signature = si_content[ds_sig_start:ds_sig_start + ds_sig_len]
+
+    # Step 3: DS signature on signedAttrs.
+    ds_pub_key.verify(ds_signature, signed_attrs_set, padding.PKCS1v15(), hashes.SHA256())
+    print("  DS -> signedAttrs: OK")
+
+    print("  All SOD checks passed.")
 
 
 if __name__ == "__main__":

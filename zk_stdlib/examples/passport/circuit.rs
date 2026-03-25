@@ -1,47 +1,30 @@
-//! Passport verification circuit (SHA-256 + RSA-2048).
+//! Passport verification circuit definition (SHA-256 + RSA-2048). See [module
+//! level documentation](super) for more details.
 //!
-//! Proves in zero-knowledge that the prover holds a valid ICAO 9303
-//! biometric passport, without revealing the passport contents beyond
-//! what the verifier's predicate requires.
+//! # Test data
 //!
-//! # Verification chain
+//! Synthetic test fixtures can be generated with the Python script at
+//! `credentials/generate.py`. It produces a fake SOD, DG1, and CSCA
+//! key for the SHA-256 + RSA-2048 algorithm pair. MRZ fields (name,
+//! DOB, passport number, etc.) are configurable via command-line
+//! arguments.
 //!
-//! The circuit performs the following checks:
+//! ```sh
+//! # Setup (once):
+//! python3 -m venv venv && venv/bin/pip install cryptography
 //!
-//! 1. **SOD parsing**: parse the Security Object Document according to
-//!    [`spec::sod_sha256_rsa2048_spec`] to extract eContent, signedAttrs,
-//!    messageDigest, tbsCertificate, dsPublicKey, dsSignature, cscaSignature,
-//!    and hashDg1.
+//! # Generate with defaults:
+//! venv/bin/python3 credentials/generate.py
 //!
-//! 2. **CSCA signature verification**: hash tbsCertificate with SHA-256, apply
-//!    PKCS#1 v1.5 padding, and verify the RSA-2048 signature (cscaSignature)
-//!    against the CSCA public key provided in the witness.
+//! # Or with custom fields:
+//! venv/bin/python3 credentials/generate.py \
+//!     --surname DUPONT --given-names "JEAN MICHEL" --dob 900115
+//! ```
 //!
-//! 3. **CSCA key membership**: prove that the CSCA public key belongs to the
-//!    trusted set, represented as a Poseidon Merkle tree whose root is the
-//!    public input.
-//!
-//! 4. **DS signature verification**: hash signedAttrs with SHA-256, apply
-//!    PKCS#1 v1.5 padding, and verify the RSA-2048 signature (dsSignature)
-//!    against dsPublicKey.
-//!
-//! 5. **eContent integrity**: hash eContent with SHA-256 and check equality
-//!    with messageDigest.
-//!
-//! 6. **DG1 integrity**: hash the full DG1 (93 bytes) with SHA-256 and check
-//!    equality with hashDg1 from the eContent.
-//!
-//! # Public inputs
-//!
-//! - The Poseidon Merkle root of the trusted CSCA key set. Each key in the set
-//!   is keyed by `SHA-256(modulus_be)` truncated to a field element.
-//!
-//! # Witness
-//!
-//! - The full SOD bytes.
-//! - The full DG1 bytes (93 bytes).
-//! - The CSCA public key (RSA-2048 modulus, big-endian bytes).
-//! - The Poseidon Merkle tree of trusted CSCA keys (for the membership proof).
+//! Output files in `credentials/<name>/`:
+//! - `dg1.bin`: 93-byte DG1 (TLV header + 88-byte MRZ)
+//! - `sod.der`: DER-encoded CMS ContentInfo (SignedData)
+//! - `csca_key.bin`: 256-byte CSCA RSA-2048 modulus (big-endian)
 
 use ff::{Field, PrimeField};
 use midnight_circuits::{
@@ -103,15 +86,20 @@ const VAL_M: usize = 1024;
 /// SHA-256.
 const VAL_A: usize = 64;
 
-/// Max total SOD (ContentInfo) size. Variable due to:
+/// Max total SOD (ContentInfo) size. Derived from `credential_maximal`
+/// (16 DG hashes, 3 extra OU attributes per DN), which produces 2588
+/// bytes.
 ///
-///   - Number of data group hashes in eContent (+39 bytes per DG).
-///   - Issuer/subject DN lengths in the DS certificate.
-///   - Certificate extensions.
-///   - IssuerAndSerialNumber duplication in SignerInfo.
+/// Size breakdown (approximate):
+///   - Fixed overhead (ContentInfo + SignedData framing): ~65 bytes
+///   - eContent (LDSSecurityObject): ~20 + 39 * num_DGs bytes
+///   - DS certificate: ~780 + DN padding bytes
+///   - SignerInfo: ~370 + issuer DN duplication bytes
+///   - Signatures (CSCA + DS): 2 * 260 = 520 bytes
 ///
-/// Typical: ~1700 bytes. Upper bound with 16 DGs: ~2600 bytes.
-const SOD_M: usize = 2688;
+/// Typical (2 DGs, short DNs): ~1400 bytes.
+/// Maximum (16 DGs, padded DNs): ~2600 bytes.
+const SOD_M: usize = 2588;
 
 /// Chunk alignment for the full SOD input. The full SOD witness is not hashed
 /// directly (only extracted parts are), so alignment is 1.
@@ -136,7 +124,7 @@ const PKCS1_SHA256_DIGEST_INFO: [u8; 19] = [
 /// the modulus (product of two ~1024-bit primes) always has its MSB set.
 const RSA_PUBKEY_PREFIX: [u8; 10] = [
     0x00, // unused bits
-    0x30, 0x82, 0x01, 0x22, // SEQUENCE header (290 bytes)
+    0x30, 0x82, 0x01, 0x0A, // SEQUENCE header (266 bytes)
     0x02, 0x82, 0x01, 0x01, // INTEGER tag + length (257)
     0x00, // leading zero (modulus MSB is always set for RSA-2048)
 ];
@@ -196,9 +184,7 @@ impl Relation for PassportVerification {
         let sod_input = witness.as_ref().map(|(sod, _, _, _)| sod.clone());
         let sod_result = scanner
             .parse_asn1_varlen::<&str, TAG_M, LEN_M, VAL_M, VAL_A, SOD_M, SOD_A>(
-                layouter,
-                sod_input,
-                spec,
+                layouter, sod_input, spec,
             )?;
 
         // Fixlen extractions:
@@ -217,14 +203,11 @@ impl Relation for PassportVerification {
         let tbs_bytes = scanner.scanner_vec_to_byte_vector(layouter, tbs_sv)?;
 
         // -- Step 2: CSCA signature verification --
-        // Assign the CSCA key from the witness and verify the signature.
-        let mut csca_key_assigned =
-            std_lib.assign_many(layouter, &csca_key_bytes.transpose_array())?;
-        csca_key_assigned.reverse();
-        let csca_key_biguint = biguint.from_le_bytes(layouter, &csca_key_assigned)?;
+        let csca_key_be = std_lib.assign_many(layouter, &csca_key_bytes.transpose_array())?;
+        let csca_key_le: Vec<AssignedByte<F>> = csca_key_be.iter().rev().cloned().collect();
+        let csca_key_biguint = biguint.from_le_bytes(layouter, &csca_key_le)?;
 
         let tbs_hash = std_lib.sha2_256_varlen(layouter, &tbs_bytes)?;
-        // cscaSignature is a BIT STRING (257 bytes): skip the unused-bits byte.
         let csca_sig_raw: &[AssignedByte<F>; RSA_BYTES] =
             csca_signature_bytes[1..].try_into().expect("257 - 1 = 256");
         verify_rsa_pkcs1_sha256(
@@ -236,23 +219,30 @@ impl Relation for PassportVerification {
         )?;
 
         // -- Step 3: CSCA key membership --
-        // Pack the CSCA key bytes into field elements (31 bytes each) and
-        // Poseidon-hash them to derive the map lookup key.
-        let csca_packed = pack_bytes_to_field_elements(std_lib, layouter, &csca_key_assigned)?;
+        let csca_packed = pack_bytes_to_field_elements(std_lib, layouter, &csca_key_be)?;
         let csca_map_key = std_lib.poseidon(layouter, &csca_packed)?;
 
         let mut csca_map = std_lib.map_gadget().clone();
         csca_map.init(layouter, witness.map(|(_, _, _, map)| map))?;
-
-        // Public input: the Merkle root of the trusted CSCA key set.
         std_lib.constrain_as_public_input(layouter, &csca_map.succinct_repr())?;
 
-        // Membership check: the value at csca_map_key must be CSCA_MAP_PRESENT.
         let map_value = csca_map.get(layouter, &csca_map_key)?;
         std_lib.assert_equal_to_fixed(layouter, &map_value, F::from(CSCA_MAP_PRESENT))?;
 
         // -- Step 4: DS signature verification --
-        let sa_hash = std_lib.sha2_256(layouter, signed_attrs)?;
+        let sa_set_header = {
+            let mut hdr = vec![0x31u8]; // SET tag
+            hdr.extend(
+                midnight_circuits::parsing::scanner::asn1::der_encoding::encode_length(
+                    signed_attrs.len(),
+                ),
+            );
+            hdr
+        };
+        let sa_header_assigned = std_lib.assign_many_fixed(layouter, &sa_set_header)?;
+        let sa_for_hashing: Vec<AssignedByte<F>> =
+            sa_header_assigned.iter().chain(signed_attrs.iter()).cloned().collect();
+        let sa_hash = std_lib.sha2_256(layouter, &sa_for_hashing)?;
         let ds_modulus = parse_rsa_public_key(std_lib, layouter, ds_public_key_bytes)?;
         let ds_sig_raw: &[AssignedByte<F>; RSA_BYTES] =
             ds_signature_bytes.try_into().expect("256 bytes");
@@ -260,17 +250,13 @@ impl Relation for PassportVerification {
 
         // -- Step 5: eContent integrity --
         let econtent_hash = std_lib.sha2_256_varlen(layouter, &econtent_bytes)?;
-        for (computed, expected) in econtent_hash.iter().zip(message_digest.iter()) {
-            std_lib.assert_equal(layouter, computed, expected)?;
-        }
+        assert_bytes_equal(std_lib, layouter, &econtent_hash, message_digest)?;
 
         // -- Step 6: DG1 integrity --
-        let dg1_values: [Value<u8>; DG1_LEN] = dg1_bytes.transpose_array();
-        let dg1_assigned = std_lib.assign_many(layouter, &dg1_values)?;
+        let dg1_assigned: Vec<AssignedByte<F>> =
+            std_lib.assign_many(layouter, &dg1_bytes.transpose_array())?;
         let dg1_hash = std_lib.sha2_256(layouter, &dg1_assigned)?;
-        for (computed, expected) in dg1_hash.iter().zip(hash_dg1_from_sod.iter()) {
-            std_lib.assert_equal(layouter, computed, expected)?;
-        }
+        assert_bytes_equal(std_lib, layouter, &dg1_hash, hash_dg1_from_sod)?;
 
         // At this point, the DG1 bytes are authenticated. The caller
         // can extract MRZ fields using the constants from
@@ -465,4 +451,18 @@ fn parse_rsa_public_key(
     // Convert modulus bytes (big-endian) to BigUint (little-endian).
     let modulus_le: Vec<AssignedByte<F>> = modulus_be.iter().rev().cloned().collect();
     biguint.from_le_bytes(layouter, &modulus_le)
+}
+
+/// Asserts that two byte slices are element-wise equal.
+fn assert_bytes_equal(
+    std_lib: &ZkStdLib,
+    layouter: &mut impl Layouter<F>,
+    a: &[AssignedByte<F>],
+    b: &[AssignedByte<F>],
+) -> Result<(), Error> {
+    assert_eq!(a.len(), b.len(), "byte slices must have equal length");
+    for (x, y) in a.iter().zip(b.iter()) {
+        std_lib.assert_equal(layouter, x, y)?;
+    }
+    Ok(())
 }
