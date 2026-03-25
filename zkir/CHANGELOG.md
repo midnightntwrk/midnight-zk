@@ -10,7 +10,8 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 ### Added
 
 ### Changed
-* Adapt to configurable `NB_ARITH_COLS` [#287](https://github.com/midnightntwrk/midnight-zk/pull/287)
+* Rename `nr_`/`nb_` prefixes to `num_` [#288](https://github.com/midnightntwrk/midnight-zk/pull/288)
+* Adapt to configurable `NUM_ARITH_COLS` [#287](https://github.com/midnightntwrk/midnight-zk/pull/287)
 * Updated Rust toolchain to 1.90.0 [#210](https://github.com/midnightntwrk/midnight-zk/pull/210)
 
 ### Removed

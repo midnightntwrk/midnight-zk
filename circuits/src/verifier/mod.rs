@@ -137,10 +137,10 @@ pub fn fixed_bases<S: SelfEmulation>(
 /// and permutation commitments is necessary, not their actual values.
 pub fn fixed_base_names<S: SelfEmulation>(
     vk_name: &str,
-    nb_fixed_commitments: usize,
-    nb_perm_commitments: usize,
+    num_fixed_commitments: usize,
+    num_perm_commitments: usize,
 ) -> Vec<String> {
-    let mut names = Vec::with_capacity(nb_fixed_commitments + nb_perm_commitments + 1);
+    let mut names = Vec::with_capacity(num_fixed_commitments + num_perm_commitments + 1);
 
     // This term will be introduced by the KZG multiopen argument as a fixed base.
     // It corresponds to the negated designated generator. It is not proper of the
@@ -148,11 +148,11 @@ pub fn fixed_base_names<S: SelfEmulation>(
     // introduced at some point anyway and this is a good place).
     names.push("-G".into());
 
-    for i in 0..nb_fixed_commitments {
+    for i in 0..num_fixed_commitments {
         names.push(fixed_commitment_name(vk_name, i));
     }
 
-    for i in 0..nb_perm_commitments {
+    for i in 0..num_perm_commitments {
         names.push(perm_commitment_name(vk_name, i));
     }
 

@@ -32,15 +32,15 @@ macro_rules! run_test_native_gadget {
                     pow2range::Pow2RangeChip,
                 },
                 AssignedBounded, NativeChip, NativeGadget,
-                native::NB_EXTRA_ARITH_FIXED_COLS,
+                native::NUM_EXTRA_ARITH_FIXED_COLS,
             },
         };
 
-        struct TestCircuit<const NB_POW2RANGE_COLS: usize>;
+        struct TestCircuit<const NUM_POW2RANGE_COLS: usize>;
 
         type NG<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
 
-        impl<F: CircuitField, const NB_POW2RANGE_COLS: usize> Circuit<F> for TestCircuit<NB_POW2RANGE_COLS> {
+        impl<F: CircuitField, const NUM_POW2RANGE_COLS: usize> Circuit<F> for TestCircuit<NUM_POW2RANGE_COLS> {
             type Config = P2RDecompositionConfig;
             type FloorPlanner = SimpleFloorPlanner;
             type Params = ();
@@ -50,12 +50,12 @@ macro_rules! run_test_native_gadget {
             }
 
             fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
-                const NB_ARITH_COLS: usize = 5;
-                const NB_ARITH_FIXED_COLS: usize = NB_ARITH_COLS + NB_EXTRA_ARITH_FIXED_COLS;
+                const NUM_ARITH_COLS: usize = 5;
+                const NUM_ARITH_FIXED_COLS: usize = NUM_ARITH_COLS + NUM_EXTRA_ARITH_FIXED_COLS;
 
-                let advice_columns: [_; NB_ARITH_COLS] =
+                let advice_columns: [_; NUM_ARITH_COLS] =
                     core::array::from_fn(|_| meta.advice_column());
-                let fixed_columns: [_; NB_ARITH_FIXED_COLS] =
+                let fixed_columns: [_; NUM_ARITH_FIXED_COLS] =
                     core::array::from_fn(|_| meta.fixed_column());
                 let committed_instance_column = meta.instance_column();
                 let instance_column = meta.instance_column();
@@ -70,7 +70,7 @@ macro_rules! run_test_native_gadget {
                 );
 
                 let pow2range_config =
-                    Pow2RangeChip::configure(meta, &advice_columns[1..=NB_POW2RANGE_COLS]);
+                    Pow2RangeChip::configure(meta, &advice_columns[1..=NUM_POW2RANGE_COLS]);
                 P2RDecompositionConfig::new(&native_config, &pow2range_config)
             }
 

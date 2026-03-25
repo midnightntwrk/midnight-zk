@@ -71,10 +71,10 @@ use crate::{
 };
 
 /// Number of advice columns used by the identities of the SHA256 chip.
-pub const NB_SHA256_ADVICE_COLS: usize = 8;
+pub const NUM_SHA256_ADVICE_COLS: usize = 8;
 
 /// Number of fixed columns used by the identities of the SHA256 chip.
-pub const NB_SHA256_FIXED_COLS: usize = 2;
+pub const NUM_SHA256_FIXED_COLS: usize = 2;
 
 pub(super) const ROUND_CONSTANTS: [u32; 64] = [
     0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
@@ -108,8 +108,8 @@ struct SpreadTable {
 /// Configuration of Sha256Chip.
 #[derive(Clone, Debug)]
 pub struct Sha256Config {
-    advice_cols: [Column<Advice>; NB_SHA256_ADVICE_COLS],
-    fixed_cols: [Column<Fixed>; NB_SHA256_FIXED_COLS],
+    advice_cols: [Column<Advice>; NUM_SHA256_ADVICE_COLS],
+    fixed_cols: [Column<Fixed>; NUM_SHA256_FIXED_COLS],
 
     q_lookup: Selector,
     table: SpreadTable,
@@ -150,8 +150,8 @@ impl<F: CircuitField> Chip<F> for Sha256Chip<F> {
 
 impl<F: CircuitField> ComposableChip<F> for Sha256Chip<F> {
     type SharedResources = (
-        [Column<Advice>; NB_SHA256_ADVICE_COLS],
-        [Column<Fixed>; NB_SHA256_FIXED_COLS],
+        [Column<Advice>; NUM_SHA256_ADVICE_COLS],
+        [Column<Fixed>; NUM_SHA256_FIXED_COLS],
     );
 
     type InstructionDeps = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
@@ -1685,18 +1685,18 @@ impl<F: CircuitField> FromScratch<F> for Sha256Chip<F> {
         let mut fixed_columns = native_config.fixed_columns();
 
         // Create additional columns if SHA256 needs more than the native chip provides.
-        while advice_columns.len() < NB_SHA256_ADVICE_COLS {
+        while advice_columns.len() < NUM_SHA256_ADVICE_COLS {
             advice_columns.push(meta.advice_column());
         }
-        while fixed_columns.len() < NB_SHA256_FIXED_COLS {
+        while fixed_columns.len() < NUM_SHA256_FIXED_COLS {
             fixed_columns.push(meta.fixed_column());
         }
 
         let sha256_config = Sha256Chip::configure(
             meta,
             &(
-                advice_columns[..NB_SHA256_ADVICE_COLS].try_into().unwrap(),
-                fixed_columns[..NB_SHA256_FIXED_COLS].try_into().unwrap(),
+                advice_columns[..NUM_SHA256_ADVICE_COLS].try_into().unwrap(),
+                fixed_columns[..NUM_SHA256_FIXED_COLS].try_into().unwrap(),
             ),
         );
 

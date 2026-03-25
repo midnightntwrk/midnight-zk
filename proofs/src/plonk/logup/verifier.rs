@@ -65,18 +65,18 @@ impl<F: WithSmallOrderMulGroup<3>> FlattenedArgument<F> {
 impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>>
     CommittedMultiplicities<F, CS>
 {
-    /// Reads `nb_flattened` helper commitments and one accumulator commitment
+    /// Reads `num_flattened` helper commitments and one accumulator commitment
     /// from the transcript.
     pub(in crate::plonk) fn read_commitment<T: Transcript>(
         self,
-        nb_flattened: usize,
+        num_flattened: usize,
         transcript: &mut T,
     ) -> Result<Committed<F, CS>, Error>
     where
         CS::Commitment: Hashable<T::Hash>,
     {
         let helper_polys =
-            (0..nb_flattened).map(|_| transcript.read()).collect::<Result<Vec<_>, _>>()?;
+            (0..num_flattened).map(|_| transcript.read()).collect::<Result<Vec<_>, _>>()?;
         let accumulator = transcript.read()?;
 
         Ok(Committed {
@@ -99,11 +99,11 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> Committed<F, CS> {
     where
         F: Hashable<T::Hash>,
     {
-        let nb_flattened = self.helper_polys.len();
+        let num_flattened = self.helper_polys.len();
 
         let multiplicities_eval = transcript.read()?;
         let helper_evals =
-            (0..nb_flattened).map(|_| transcript.read()).collect::<Result<Vec<_>, _>>()?;
+            (0..num_flattened).map(|_| transcript.read()).collect::<Result<Vec<_>, _>>()?;
         let accumulator_eval = transcript.read()?;
         let accumulator_next_eval = transcript.read()?;
 

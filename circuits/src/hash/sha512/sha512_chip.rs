@@ -70,10 +70,10 @@ use crate::{
 };
 
 /// Number of advice columns used by the identities of the SHA512 chip.
-pub const NB_SHA512_ADVICE_COLS: usize = 8;
+pub const NUM_SHA512_ADVICE_COLS: usize = 8;
 
 /// Number of fixed columns used by the identities of the SHA512 chip.
-pub const NB_SHA512_FIXED_COLS: usize = 2;
+pub const NUM_SHA512_FIXED_COLS: usize = 2;
 
 #[rustfmt::skip]
 const ROUND_CONSTANTS: [u64; 80] = [
@@ -122,8 +122,8 @@ struct SpreadTable {
 /// Configuration of Sha512Chip.
 #[derive(Clone, Debug)]
 pub struct Sha512Config {
-    advice_cols: [Column<Advice>; NB_SHA512_ADVICE_COLS],
-    fixed_cols: [Column<Fixed>; NB_SHA512_FIXED_COLS],
+    advice_cols: [Column<Advice>; NUM_SHA512_ADVICE_COLS],
+    fixed_cols: [Column<Fixed>; NUM_SHA512_FIXED_COLS],
 
     q_lookup: Selector,
     table: SpreadTable,
@@ -164,8 +164,8 @@ impl<F: CircuitField> Chip<F> for Sha512Chip<F> {
 
 impl<F: CircuitField> ComposableChip<F> for Sha512Chip<F> {
     type SharedResources = (
-        [Column<Advice>; NB_SHA512_ADVICE_COLS],
-        [Column<Fixed>; NB_SHA512_FIXED_COLS],
+        [Column<Advice>; NUM_SHA512_ADVICE_COLS],
+        [Column<Fixed>; NUM_SHA512_FIXED_COLS],
     );
 
     type InstructionDeps = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
@@ -1895,18 +1895,18 @@ impl<F: CircuitField> FromScratch<F> for Sha512Chip<F> {
         let mut advice_columns = native_config.advice_columns().to_vec();
         let mut fixed_columns = native_config.fixed_columns();
 
-        while advice_columns.len() < NB_SHA512_ADVICE_COLS {
+        while advice_columns.len() < NUM_SHA512_ADVICE_COLS {
             advice_columns.push(meta.advice_column());
         }
-        while fixed_columns.len() < NB_SHA512_FIXED_COLS {
+        while fixed_columns.len() < NUM_SHA512_FIXED_COLS {
             fixed_columns.push(meta.fixed_column());
         }
 
         let sha512_config = Sha512Chip::configure(
             meta,
             &(
-                advice_columns[..NB_SHA512_ADVICE_COLS].try_into().unwrap(),
-                fixed_columns[..NB_SHA512_FIXED_COLS].try_into().unwrap(),
+                advice_columns[..NUM_SHA512_ADVICE_COLS].try_into().unwrap(),
+                fixed_columns[..NUM_SHA512_FIXED_COLS].try_into().unwrap(),
             ),
         );
 

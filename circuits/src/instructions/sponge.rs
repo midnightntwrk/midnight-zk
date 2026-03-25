@@ -153,7 +153,7 @@ pub(crate) mod tests {
                 <SpongeChip as SpongeCPU<Input::Element, Output::Element>>::init(None);
 
             for step in self.sequence.iter() {
-                for _nr_absorb in 0..step.0 {
+                for _num_absorb in 0..step.0 {
                     let input_vec = self.inputs[input_idx]
                         .iter()
                         .map(|input| Value::known(input.clone()))
@@ -169,7 +169,7 @@ pub(crate) mod tests {
                     input_idx += 1;
                 }
 
-                for _nr_squeeze in 0..step.1 {
+                for _num_squeeze in 0..step.1 {
                     let out = chip.squeeze(&mut layouter, &mut state)?;
                     let expected_out =
                         <SpongeChip as SpongeCPU<Input::Element, Output::Element>>::squeeze(
@@ -203,8 +203,8 @@ pub(crate) mod tests {
         // Between each call, the hasher is not re-initialised. We test
         let sequence = [(1, 1), (0, 1), (3, 3), (7, 2)];
 
-        let nb_absorb_calls = sequence.iter().map(|s| s.0).sum();
-        let inputs = (0..nb_absorb_calls).map(|_| {
+        let num_absorb_calls = sequence.iter().map(|s| s.0).sum();
+        let inputs = (0..num_absorb_calls).map(|_| {
             let random_size: usize = rng.gen_range(1..10);
             (0..random_size).map(|_| Input::sample_inner(&mut rng)).collect::<Vec<_>>()
         });

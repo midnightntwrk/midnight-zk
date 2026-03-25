@@ -225,7 +225,7 @@ impl IvcTransition for ProofAggregation {
     fn arch() -> ZkStdLibArch {
         ZkStdLibArch {
             poseidon: true,
-            nr_pow2range_cols: 4,
+            num_pow2range_cols: 4,
             ..ZkStdLibArch::default()
         }
     }
@@ -305,7 +305,7 @@ impl IvcTransition for ProofAggregation {
             &witness
                 .as_ref()
                 .map(|w| ShaPreimageCircuit::format_instance(&w.inner_statement).unwrap())
-                .transpose_vec(sha_preimage::NB_PUBLIC_INPUTS),
+                .transpose_vec(sha_preimage::NUM_PUBLIC_INPUTS),
         )?;
 
         // Verify the inner proof in-circuit.

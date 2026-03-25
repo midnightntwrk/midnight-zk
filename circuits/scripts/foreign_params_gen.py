@@ -20,7 +20,7 @@ import sys
 from math import ceil, log, gcd
 
 # The number of parallel lookups that we support in one row.
-NB_PARALLEL_LOOKUPS = 4
+NUM_PARALLEL_LOOKUPS = 4
 
 DEBUG = "--debug" in sys.argv
 
@@ -312,9 +312,9 @@ def cost_range_check(MAX_BIT_LEN, n):
         return T.get(n)
 
     best = n   # An upper bound on the optimum
-    for nb_cols in range(1, NB_PARALLEL_LOOKUPS+1):
+    for num_cols in range(1, NUM_PARALLEL_LOOKUPS+1):
         for bit_len in range(1, MAX_BIT_LEN+1):
-            next_n = n - nb_cols * bit_len
+            next_n = n - num_cols * bit_len
             if next_n < 0:
                 continue
 
@@ -392,32 +392,32 @@ def cost_incomplete_point_add(B, n, RC_len, lambda2_cost, slope_cost):
 # given parameters.
 def cost_scalar_mul(B, n, WS, RC_len, norm_cost, lambda2_cost, slope_cost, tangent_cost):
     # Cost of assign r:
-    nb_assign = 1
+    num_assign = 1
 
     # Cost of computing α:
-    nb_incomplete_add = 1
-    nb_double = 1
+    num_incomplete_add = 1
+    num_double = 1
 
     # Cost of negate α:
-    nb_negate = 1
+    num_negate = 1
 
     # Cost of computing the table: [-α, p-α, 2p-α, 3p-α, ..., (2^WS-1)p-α]
-    nb_incomplete_assert_different_x = 2**WS - 1
-    nb_incomplete_add += 2**WS - 1
-    nb_multi_select = 2**WS
+    num_incomplete_assert_different_x = 2**WS - 1
+    num_incomplete_add += 2**WS - 1
+    num_multi_select = 2**WS
 
     # Double-and-add loop
-    nb_iterations = ceil(256 / WS)
-    nb_double += 256
-    nb_incomplete_add += nb_iterations
-    nb_incomplete_assert_different_x += nb_iterations
-    nb_multi_select += nb_iterations
+    num_iterations = ceil(256 / WS)
+    num_double += 256
+    num_incomplete_add += num_iterations
+    num_incomplete_assert_different_x += num_iterations
+    num_multi_select += num_iterations
 
     # Negate r_correction:
-    nb_negate += 1
+    num_negate += 1
 
     # Complete add correction:
-    nb_incomplete_add += 1
+    num_incomplete_add += 1
 
     cost_assign = n * cost_range_check(RC_len, log2(B))
     cost_assign_point = 1 + 2 * cost_assign
@@ -428,20 +428,20 @@ def cost_scalar_mul(B, n, WS, RC_len, norm_cost, lambda2_cost, slope_cost, tange
     cost_multi_select = 1
 
     cost = 0
-    cost += cost_assign * nb_assign
-    cost += cost_negate * nb_negate
-    cost += cost_incomplete_add * nb_incomplete_add
-    cost += cost_double * nb_double
-    cost += cost_incomplete_assert_different_x * nb_incomplete_assert_different_x
-    cost += cost_multi_select * nb_multi_select
+    cost += cost_assign * num_assign
+    cost += cost_negate * num_negate
+    cost += cost_incomplete_add * num_incomplete_add
+    cost += cost_double * num_double
+    cost += cost_incomplete_assert_different_x * num_incomplete_assert_different_x
+    cost += cost_multi_select * num_multi_select
 
     return cost
 
 # p is the native modulus, q is the emulated one
-def optimization_round(p, q, RC_len, nb_limbs, expr_bounds):
+def optimization_round(p, q, RC_len, num_limbs, expr_bounds):
 
-    nb_bits = ceil(log(q) / log(2))
-    log2_B = min([k for k in range(nb_bits) if 2**(k * nb_limbs) >= q])
+    num_bits = ceil(log(q) / log(2))
+    log2_B = min([k for k in range(num_bits) if 2**(k * num_limbs) >= q])
     B = next_cheapest_power_of_2(RC_len, 2**log2_B)
 
     auxiliary_moduli = [p]
@@ -451,7 +451,7 @@ def optimization_round(p, q, RC_len, nb_limbs, expr_bounds):
 
     # Figure out what maximum power of two as an auxiliary modulus we can use
     log2_m = 0
-    for k in range(1, nb_bits):
+    for k in range(1, num_bits):
         params = Params(p, q, B, [2**k], RC_len, expr_bounds)
         if params.validity == INVALID_AUX_MODULUS:
             break
@@ -481,7 +481,7 @@ def pp_params(params, RC_len, auxiliary_moduli_str):
     assert (params.validity == VALID_PARAMETERS)
     log2_B = int(log(params.B) / log(2))
     moduli = ", ".join(auxiliary_moduli_str)
-    info = "B = 2^%d, nb_limbs = %d, moduli = {%s}" % (log2_B, params.n, moduli)
+    info = "B = 2^%d, num_limbs = %d, moduli = {%s}" % (log2_B, params.n, moduli)
     info += ", u_max = {%d}" % log2(params.u_max)
     info += ", vs_max = {[%s]}" % str([log2(v) for v in params.vs_max])
     info += ", MAX_BIT_LEN = %d" % RC_len
@@ -493,11 +493,11 @@ def optimize(p, q):
     # We minimize tangent_expr_bounds, typically the bottleneck
     expr_bounds = tangent_expr_bounds
 
-    for nb_limbs in range(2, 8):
-      best_cost = 2**31 # A large number, reset the best on every nb_limbs
+    for num_limbs in range(2, 8):
+      best_cost = 2**31 # A large number, reset the best on every num_limbs
       print()
       for RC_len in range(8, 20+1):
-          opt = optimization_round(p, q, RC_len, nb_limbs, expr_bounds)
+          opt = optimization_round(p, q, RC_len, num_limbs, expr_bounds)
           if opt == None:
               continue
 

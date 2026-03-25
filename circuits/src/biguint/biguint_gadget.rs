@@ -34,7 +34,7 @@ use {
 
 use super::{bound_of_addition, AssignedBigUint};
 #[cfg(test)]
-use crate::biguint::types::TEST_NB_BITS;
+use crate::biguint::types::TEST_NUM_BITS;
 #[cfg(test)]
 use crate::instructions::AssignmentInstructions;
 use crate::{
@@ -272,14 +272,14 @@ where
     F: CircuitField,
     N: NativeInstructions<F>,
 {
-    /// Assigns a BigUint (of at most `nb_bits` bits) as a private input.
+    /// Assigns a BigUint (of at most `num_bits` bits) as a private input.
     pub fn assign_biguint(
         &self,
         layouter: &mut impl Layouter<F>,
         value: Value<BigUint>,
-        nb_bits: u32,
+        num_bits: u32,
     ) -> Result<AssignedBigUint<F>, Error> {
-        self.assign_bounded(layouter, value, nb_bits)
+        self.assign_bounded(layouter, value, num_bits)
     }
 
     /// Assigns a fixed (constant) BigUint.
@@ -288,10 +288,10 @@ where
         layouter: &mut impl Layouter<F>,
         constant: BigUint,
     ) -> Result<AssignedBigUint<F>, Error> {
-        let nb_bits = max(constant.bits(), 1) as u32;
-        let nb_limbs = nb_bits.div_ceil(LOG2_BASE) as usize;
+        let num_bits = max(constant.bits(), 1) as u32;
+        let num_limbs = num_bits.div_ceil(LOG2_BASE) as usize;
         let base = BigUint::one() << LOG2_BASE;
-        let limbs = big_to_limbs(nb_limbs as u32, &base, &constant)
+        let limbs = big_to_limbs(num_limbs as u32, &base, &constant)
             .into_iter()
             .map(|l| self.native_gadget.assign_fixed(layouter, big_to_fe::<F>(l)))
             .collect::<Result<Vec<_>, Error>>()?;
@@ -299,8 +299,8 @@ where
         // All limbs are known to be in the range [0, 2^LOG2_BASE) except possibly the
         // most significant one, which may be restricted further if LOG2_BASE does not
         // divide constant.bits().
-        let mut limb_size_bounds = vec![LOG2_BASE; nb_limbs];
-        *limb_size_bounds.last_mut().unwrap() = (nb_bits - 1).rem(LOG2_BASE) + 1; // msl bound
+        let mut limb_size_bounds = vec![LOG2_BASE; num_limbs];
+        *limb_size_bounds.last_mut().unwrap() = (num_bits - 1).rem(LOG2_BASE) + 1; // msl bound
 
         Ok(AssignedBigUint {
             limbs,
@@ -314,21 +314,21 @@ where
     ///
     /// # Panics
     ///
-    /// If the provided bound `nb_bits` does not coincide with the bound that
+    /// If the provided bound `num_bits` does not coincide with the bound that
     /// can be derived from the given `AssignedBigUint`. This is to make sure
     /// that the user knows tight bounds for the BigUint they are constraining,
     /// and that they will create the off-circuit public inputs correctly (using
-    /// the same bounds) via `AssignedBigUint::as_public_input(..., nb_bits)`.
+    /// the same bounds) via `AssignedBigUint::as_public_input(..., num_bits)`.
     pub fn constrain_as_public_input(
         &self,
         layouter: &mut impl Layouter<F>,
         assigned: &AssignedBigUint<F>,
-        nb_bits: u32,
+        num_bits: u32,
     ) -> Result<(), Error> {
-        if nb_bits != assigned.nb_bits() {
+        if num_bits != assigned.num_bits() {
             return Err(Error::Synthesis(format!(
-                "constrain_as_public_input: {nb_bits} != {} (the derived `nb_bits` bound)",
-                assigned.nb_bits()
+                "constrain_as_public_input: {num_bits} != {} (the derived `num_bits` bound)",
+                assigned.num_bits()
             )));
         }
         self.normalize(layouter, assigned)?
@@ -391,7 +391,7 @@ where
             // soundness problem since, in that case, the resulting circuit would be unsatisfiable,
             // given that we require x = res + y below.
             .map(|(x, y)| if x >= y { x - y } else { BigUint::ZERO });
-        let res = self.assign_bounded(layouter, res_value, x.nb_bits())?;
+        let res = self.assign_bounded(layouter, res_value, x.num_bits())?;
         let z = self.add(layouter, &res, y)?;
         self.assert_equal(layouter, x, &z)?;
         Ok(res)
@@ -416,9 +416,9 @@ where
         let native_gadget = &self.native_gadget;
 
         let zero = native_gadget.assign_fixed(layouter, F::ZERO)?;
-        let nb_prod_limbs = x.limbs.len() + y.limbs.len() - 1;
-        let mut limbs = vec![zero; nb_prod_limbs];
-        let mut limb_size_bounds = vec![0; nb_prod_limbs];
+        let num_prod_limbs = x.limbs.len() + y.limbs.len() - 1;
+        let mut limbs = vec![zero; num_prod_limbs];
+        let mut limb_size_bounds = vec![0; num_prod_limbs];
 
         for i in 0..x.limbs.len() {
             for j in 0..y.limbs.len() {
@@ -456,12 +456,12 @@ where
         let native_gadget = &self.native_gadget;
 
         let zero = native_gadget.assign_fixed(layouter, F::ZERO)?;
-        let nb_limbs = x.limbs.len();
-        let nb_prod_limbs = 2 * nb_limbs - 1;
-        let mut limbs = vec![zero; nb_prod_limbs];
-        let mut limb_size_bounds = vec![0u32; nb_prod_limbs];
+        let num_limbs = x.limbs.len();
+        let num_prod_limbs = 2 * num_limbs - 1;
+        let mut limbs = vec![zero; num_prod_limbs];
+        let mut limb_size_bounds = vec![0u32; num_prod_limbs];
 
-        for i in 0..nb_limbs {
+        for i in 0..num_limbs {
             // limbs[2 * i] += x_i * x_i (diagonal term)
             limbs[2 * i] = native_gadget.add_and_mul(
                 layouter,
@@ -477,7 +477,7 @@ where
             limb_size_bounds[2 * i] = bound_of_addition(limb_size_bounds[2 * i], p_bound);
 
             // Off-diagonal terms: x_i * x_j.
-            for j in (i + 1)..nb_limbs {
+            for j in (i + 1)..num_limbs {
                 // limbs[i + j] += 2 * x_i * x_j (2x off-diagonal terms)
                 limbs[i + j] = native_gadget.add_and_mul(
                     layouter,
@@ -514,8 +514,8 @@ where
     ) -> Result<(AssignedBigUint<F>, AssignedBigUint<F>), Error> {
         let (q_value, r_value) = x.value().zip(y.value()).map(|(x, y)| x.div_rem(&y)).unzip();
 
-        let q = self.assign_bounded(layouter, q_value, x.nb_bits())?;
-        let r = self.assign_bounded(layouter, r_value, y.nb_bits())?;
+        let q = self.assign_bounded(layouter, q_value, x.num_bits())?;
+        let r = self.assign_bounded(layouter, r_value, y.num_bits())?;
 
         let q_times_y = self.mul(layouter, &q, y)?;
         let q_times_y_plus_r = self.add(layouter, &q_times_y, &r)?;
@@ -599,13 +599,14 @@ where
     ) -> Result<Vec<AssignedByte<F>>, Error> {
         assert!(x.is_normalized());
         assert!(LOG2_BASE.is_multiple_of(8));
-        let nb_bytes_per_limb = LOG2_BASE as usize / 8;
+        let num_bytes_per_limb = LOG2_BASE as usize / 8;
 
         let bytes = x
             .limbs
             .iter()
             .map(|limb| {
-                self.native_gadget.assigned_to_le_bytes(layouter, limb, Some(nb_bytes_per_limb))
+                self.native_gadget
+                    .assigned_to_le_bytes(layouter, limb, Some(num_bytes_per_limb))
             })
             .collect::<Result<Vec<_>, Error>>()?
             .into_iter()
@@ -647,15 +648,15 @@ where
         bytes: &[AssignedByte<F>],
     ) -> Result<AssignedBigUint<F>, Error> {
         assert!(LOG2_BASE.is_multiple_of(8));
-        let nb_bytes_per_limb = LOG2_BASE as usize / 8;
+        let num_bytes_per_limb = LOG2_BASE as usize / 8;
 
         let limbs = bytes
-            .chunks(nb_bytes_per_limb)
+            .chunks(num_bytes_per_limb)
             .map(|chunk_bytes| self.native_gadget.assigned_from_le_bytes(layouter, chunk_bytes))
             .collect::<Result<Vec<_>, Error>>()?;
 
         let limb_size_bounds = bytes
-            .chunks(nb_bytes_per_limb)
+            .chunks(num_bytes_per_limb)
             .map(|chunk_bytes| 8 * chunk_bytes.len() as u32)
             .collect();
 
@@ -684,22 +685,22 @@ where
     N: NativeInstructions<F>,
 {
     /// Assigns a big unsigned integer, and guarantees it fits in the range
-    /// `[0, 2^nb_bits)`.
+    /// `[0, 2^num_bits)`.
     fn assign_bounded(
         &self,
         layouter: &mut impl Layouter<F>,
         value: Value<BigUint>,
-        nb_bits: u32,
+        num_bits: u32,
     ) -> Result<AssignedBigUint<F>, Error> {
-        let nb_limbs = max(nb_bits, 1).div_ceil(LOG2_BASE) as usize;
+        let num_limbs = max(num_bits, 1).div_ceil(LOG2_BASE) as usize;
         // All limbs will be bounded by 2^LOG2_BASE except possibly the most significant
-        // one, which will be restricted further if LOG2_BASE does not divide nb_bits.
-        let mut limb_size_bounds = vec![LOG2_BASE; nb_limbs];
-        *limb_size_bounds.last_mut().unwrap() = (nb_bits - 1).rem(LOG2_BASE) + 1; // msl bound
+        // one, which will be restricted further if LOG2_BASE does not divide num_bits.
+        let mut limb_size_bounds = vec![LOG2_BASE; num_limbs];
+        *limb_size_bounds.last_mut().unwrap() = (num_bits - 1).rem(LOG2_BASE) + 1; // msl bound
 
         let limbs = value
-            .map(|x| big_to_limbs(nb_limbs as u32, &(BigUint::one() << LOG2_BASE), &x))
-            .transpose_vec(nb_limbs)
+            .map(|x| big_to_limbs(num_limbs as u32, &(BigUint::one() << LOG2_BASE), &x))
+            .transpose_vec(num_limbs)
             .into_iter()
             .zip(limb_size_bounds.iter())
             .map(|(limb_value, size_bound)| {
@@ -729,17 +730,17 @@ where
         }
 
         let native_gadget = &self.native_gadget;
-        let nb_limbs_output = x.nb_bits().div_ceil(LOG2_BASE) as usize;
+        let num_limbs_output = x.num_bits().div_ceil(LOG2_BASE) as usize;
 
         // Extend x with trailing zeros to fit the output length.
         let mut x = x.clone();
-        self.resize(layouter, nb_limbs_output, &mut x)?;
+        self.resize(layouter, num_limbs_output, &mut x)?;
 
         let mut carry: AssignedNative<F> = native_gadget.assign_fixed(layouter, F::ZERO)?;
         let mut carry_size_bound = 0;
-        let mut limbs = Vec::with_capacity(nb_limbs_output);
+        let mut limbs = Vec::with_capacity(num_limbs_output);
 
-        for i in 0..nb_limbs_output {
+        for i in 0..num_limbs_output {
             let payload = native_gadget.add(layouter, &carry, &x.limbs[i])?;
             let payload_bound = bound_of_addition(carry_size_bound, x.limb_size_bounds[i]);
 
@@ -762,7 +763,7 @@ where
 
         Ok(AssignedBigUint {
             limbs,
-            limb_size_bounds: vec![LOG2_BASE; nb_limbs_output],
+            limb_size_bounds: vec![LOG2_BASE; num_limbs_output],
         })
     }
 
@@ -911,7 +912,7 @@ where
         layouter: &mut impl Layouter<F>,
         value: Value<BigUint>,
     ) -> Result<AssignedBigUint<F>, Error> {
-        self.assign_biguint(layouter, value, TEST_NB_BITS)
+        self.assign_biguint(layouter, value, TEST_NUM_BITS)
     }
 
     fn assign_fixed(
@@ -1095,9 +1096,9 @@ mod tests {
             operation,
             _marker: PhantomData,
         };
-        let log2_nb_rows = 12;
+        let log2_num_rows = 12;
         let public_inputs = vec![vec![], vec![]];
-        match MockProver::run(log2_nb_rows, &circuit, public_inputs) {
+        match MockProver::run(log2_num_rows, &circuit, public_inputs) {
             Ok(prover) => match prover.verify() {
                 Ok(()) => assert!(must_pass),
                 Err(e) => assert!(!must_pass, "Failed verifier with error {e:?}"),
@@ -1106,8 +1107,8 @@ mod tests {
         }
     }
 
-    fn random_biguint(nb_bits: u64) -> BigUint {
-        rand::thread_rng().gen_biguint(nb_bits)
+    fn random_biguint(num_bits: u64) -> BigUint {
+        rand::thread_rng().gen_biguint(num_bits)
     }
 
     #[test]

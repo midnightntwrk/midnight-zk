@@ -89,7 +89,7 @@ macro_rules! plonk_api {
                 params: &ParamsKZG<$engine>,
                 pk: &ProvingKey<$native, KZGCommitmentScheme<$engine>>,
                 circuit: &Relation,
-                nb_instance_commitments: usize,
+                num_instance_commitments: usize,
                 pi: &[&[$native]],
                 rng: impl RngCore + CryptoRng,
             ) -> Result<Vec<u8>, Error>
@@ -111,7 +111,7 @@ macro_rules! plonk_api {
                         params,
                         pk,
                         std::slice::from_ref(circuit),
-                        nb_instance_commitments,
+                        num_instance_commitments,
                         &[pi],
                         rng,
                         &mut transcript,

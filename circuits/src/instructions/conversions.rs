@@ -192,9 +192,9 @@ pub(crate) mod tests {
             operation,
             _marker: PhantomData,
         };
-        let log2_nb_rows = 5;
+        let log2_num_rows = 5;
         let public_inputs = vec![vec![], vec![]];
-        match MockProver::run(log2_nb_rows, &circuit, public_inputs) {
+        match MockProver::run(log2_num_rows, &circuit, public_inputs) {
             Ok(prover) => match prover.verify() {
                 Ok(()) => assert!(must_pass),
                 Err(e) => assert!(!must_pass, "Failed verifier with error {e:?}"),

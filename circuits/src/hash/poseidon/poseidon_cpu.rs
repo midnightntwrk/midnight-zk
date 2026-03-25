@@ -19,9 +19,9 @@ use midnight_proofs::transcript::{Hashable, Sampleable, TranscriptHash};
 use {ff::PrimeField, midnight_curves::bn256};
 
 use super::{
-    constants::{PoseidonField, NB_FULL_ROUNDS, NB_PARTIAL_ROUNDS, RATE, WIDTH},
+    constants::{PoseidonField, NUM_FULL_ROUNDS, NUM_PARTIAL_ROUNDS, RATE, WIDTH},
     round_skips::{PreComputedRoundCPU, PreComputedRoundCircuit},
-    PoseidonChip, NB_SKIPS_CIRCUIT,
+    PoseidonChip, NUM_SKIPS_CIRCUIT,
 };
 use crate::{
     field::foreign::params::MultiEmulationParams as MEP,
@@ -33,7 +33,7 @@ use crate::{
 /// Number of times the linear part of the partial rounds is skipped in the
 /// Poseidon cpu implemetation (0 is the default implementation without skips at
 /// all).
-pub(crate) const NB_SKIPS_CPU: usize = 2;
+pub(crate) const NUM_SKIPS_CPU: usize = 2;
 
 /// Off-circuit Poseidon state.
 #[derive(Clone, Debug)]
@@ -62,7 +62,7 @@ fn linear_layer<F: PoseidonField>(state: &mut [F], constants: &mut [F]) {
 /// mutating the `state` argument (length `WIDTH`).
 pub(crate) fn full_round_cpu<F: PoseidonField>(round_index: usize, state: &mut [F]) {
     state.iter_mut().for_each(|x| *x = x.square().square() * *x);
-    let mut new_state = if round_index == NB_FULL_ROUNDS + NB_PARTIAL_ROUNDS - 1 {
+    let mut new_state = if round_index == NUM_FULL_ROUNDS + NUM_PARTIAL_ROUNDS - 1 {
         [F::ZERO; WIDTH]
     } else {
         F::ROUND_CONSTANTS[round_index + 1]
@@ -70,7 +70,7 @@ pub(crate) fn full_round_cpu<F: PoseidonField>(round_index: usize, state: &mut [
     linear_layer(state, &mut new_state);
 }
 
-// A cpu version of Poseidon with `1 + NB_SKIPS_CIRCUIT` partial rounds.
+// A cpu version of Poseidon with `1 + NUM_SKIPS_CIRCUIT` partial rounds.
 fn partial_round_cpu<F: PoseidonField>(
     pre_computed: &PreComputedRoundCPU<F>,
     round_batch_index: usize,
@@ -78,20 +78,20 @@ fn partial_round_cpu<F: PoseidonField>(
 ) {
     pre_computed
         .partial_round_id
-        .eval::<NB_SKIPS_CPU>(&pre_computed.round_constants[round_batch_index], state);
+        .eval::<NUM_SKIPS_CPU>(&pre_computed.round_constants[round_batch_index], state);
 }
 
-/// A cpu version of Poseidon with `1 + NB_SKIPS_CIRCUIT` partial rounds. Also
+/// A cpu version of Poseidon with `1 + NUM_SKIPS_CIRCUIT` partial rounds. Also
 /// returns the values of the last column of the skipped rows
-/// (`NB_SKIPS_CIRCUIT` elements) as needed to fill the circuit's rows.
+/// (`NUM_SKIPS_CIRCUIT` elements) as needed to fill the circuit's rows.
 pub(crate) fn partial_round_cpu_for_circuits<F: PoseidonField>(
     pre_computed: &PreComputedRoundCircuit<F>,
     round_batch_index: usize,
     state: &mut [F], // Length `WIDTH`.
-) -> [F; NB_SKIPS_CIRCUIT] {
+) -> [F; NUM_SKIPS_CIRCUIT] {
     pre_computed
         .partial_round_id
-        .eval::<NB_SKIPS_CIRCUIT>(&pre_computed.round_constants[round_batch_index], state)
+        .eval::<NUM_SKIPS_CIRCUIT>(&pre_computed.round_constants[round_batch_index], state)
 }
 
 // Alternative partial round version, without any skips.
@@ -103,21 +103,21 @@ fn partial_round_cpu_raw<F: PoseidonField>(round: usize, state: &mut [F]) {
 
 /// A cpu version of the full Poseidon's permutation with partial-round skips.
 pub fn permutation_cpu<F: PoseidonField>(pre_computed: &PreComputedRoundCPU<F>, state: &mut [F]) {
-    let nb_skips = pre_computed.partial_round_id.nb_skips;
-    let nb_main_partial_rounds = NB_PARTIAL_ROUNDS / (1 + nb_skips);
-    let remainder_partial_rounds = NB_PARTIAL_ROUNDS % (1 + nb_skips);
+    let num_skips = pre_computed.partial_round_id.num_skips;
+    let num_main_partial_rounds = NUM_PARTIAL_ROUNDS / (1 + num_skips);
+    let remainder_partial_rounds = NUM_PARTIAL_ROUNDS % (1 + num_skips);
 
     for (x, k0) in state.iter_mut().zip(F::ROUND_CONSTANTS[0]) {
         *x += k0;
     }
-    (0..NB_FULL_ROUNDS / 2).for_each(|round_index| full_round_cpu(round_index, state));
-    (0..nb_main_partial_rounds)
+    (0..NUM_FULL_ROUNDS / 2).for_each(|round_index| full_round_cpu(round_index, state));
+    (0..num_main_partial_rounds)
         .for_each(|round_batch_index| partial_round_cpu(pre_computed, round_batch_index, state));
-    (NB_FULL_ROUNDS / 2 + NB_PARTIAL_ROUNDS - remainder_partial_rounds..)
+    (NUM_FULL_ROUNDS / 2 + NUM_PARTIAL_ROUNDS - remainder_partial_rounds..)
         .take(remainder_partial_rounds)
         .for_each(|round_index| partial_round_cpu_raw(round_index, state));
-    (NB_FULL_ROUNDS / 2 + NB_PARTIAL_ROUNDS..)
-        .take(NB_FULL_ROUNDS / 2)
+    (NUM_FULL_ROUNDS / 2 + NUM_PARTIAL_ROUNDS..)
+        .take(NUM_FULL_ROUNDS / 2)
         .for_each(|round_index| {
             full_round_cpu(round_index, state);
         })
@@ -318,26 +318,26 @@ mod tests {
         for (x, k0) in state.iter_mut().zip(F::ROUND_CONSTANTS[0]) {
             *x += k0;
         }
-        for round_index in 0..NB_FULL_ROUNDS / 2 {
+        for round_index in 0..NUM_FULL_ROUNDS / 2 {
             full_round_cpu(round_index, state);
         }
-        for round_index in (NB_FULL_ROUNDS / 2..).take(NB_PARTIAL_ROUNDS) {
+        for round_index in (NUM_FULL_ROUNDS / 2..).take(NUM_PARTIAL_ROUNDS) {
             partial_round_cpu_raw(round_index, state);
         }
-        for round_index in (NB_FULL_ROUNDS / 2 + NB_PARTIAL_ROUNDS..).take(NB_FULL_ROUNDS / 2) {
+        for round_index in (NUM_FULL_ROUNDS / 2 + NUM_PARTIAL_ROUNDS..).take(NUM_FULL_ROUNDS / 2) {
             full_round_cpu(round_index, state);
         }
     }
     // Tests the performances of the cpu version of Poseidon. In debug mode, also
     // tests the consistency between the version with and without round skips.
-    fn consistency_cpu<F: PoseidonField + ff::FromUniformBytes<64>>(nb_samples: usize) {
+    fn consistency_cpu<F: PoseidonField + ff::FromUniformBytes<64>>(num_samples: usize) {
         println!(
-            ">> Testing the consistency between the two cpu implementations of the permutation ({NB_SKIPS_CPU} round skips VS no round skips)."
+            ">> Testing the consistency between the two cpu implementations of the permutation ({NUM_SKIPS_CPU} round skips VS no round skips)."
         );
 
         let pre_computed = PreComputedRoundCPU::init();
         let mut rng = ChaCha12Rng::seed_from_u64(0xf007ba11);
-        (0..nb_samples)
+        (0..num_samples)
             .for_each(|_| {
                 let input: [F; WIDTH] =
                     core::array::from_fn(|_| F::random(&mut rng));

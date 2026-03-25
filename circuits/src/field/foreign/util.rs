@@ -47,12 +47,12 @@ pub fn ceil_log2(value: &BI) -> u32 {
 /// range-check cost. A larger power of 2 might be cheaper to range-check
 /// if its bit count aligns better with the decomposition chip's parallel
 /// lookup structure (all lookups in a row must use the same bit-length tag).
-fn next_cheapest_power_of_two(nb_parallel_range_checks: usize, max_bit_len: u32, x: &BI) -> BI {
+fn next_cheapest_power_of_two(num_parallel_range_checks: usize, max_bit_len: u32, x: &BI) -> BI {
     let mut solutions = std::collections::HashMap::new();
     let cost = |solutions: &mut std::collections::HashMap<i32, Vec<Vec<usize>>>, bound: u32| {
         compute_optimal_limb_sizes(
             solutions,
-            nb_parallel_range_checks,
+            num_parallel_range_checks,
             max_bit_len as usize,
             bound as i32,
         )
@@ -75,10 +75,10 @@ fn next_cheapest_power_of_two(nb_parallel_range_checks: usize, max_bit_len: u32,
     BI::pow(&BI::from(2), best_log)
 }
 
-/// Breaks the given `value` into `nb_limbs` limbs representing the value in the
-/// given `base` (in little-endian).
+/// Breaks the given `value` into `num_limbs` limbs representing the value in
+/// the given `base` (in little-endian).
 /// Panics if the given value is negative or if the conversion is not possible.
-pub fn bi_to_limbs(nb_limbs: u32, base: &BI, value: &BI) -> Vec<BI> {
+pub fn bi_to_limbs(num_limbs: u32, base: &BI, value: &BI) -> Vec<BI> {
     if value.is_negative() {
         panic!("bi_to_limbs: value must be greater than or equal to zero");
     }
@@ -86,14 +86,14 @@ pub fn bi_to_limbs(nb_limbs: u32, base: &BI, value: &BI) -> Vec<BI> {
     let mut output = vec![];
     let mut q = (*value).clone();
     let mut r;
-    while output.len() < nb_limbs as usize {
+    while output.len() < num_limbs as usize {
         (q, r) = q.div_rem(base);
         output.push(r.clone());
     }
     if !BI::is_zero(&q) {
         panic!(
             "bi_to_limbs: {} cannot be expressed in base {} with {} limbs",
-            value, base, nb_limbs
+            value, base, num_limbs
         )
     };
     output
@@ -105,21 +105,21 @@ pub fn bi_from_limbs(base: &BI, limbs: &[BI]) -> BI {
     limbs.iter().rev().fold(BI::zero(), |acc, limb| acc * base + limb)
 }
 
-/// Breaks the given `value` into `nb_limbs` limbs representing the value in the
-/// given `base` (in little-endian).
+/// Breaks the given `value` into `num_limbs` limbs representing the value in
+/// the given `base` (in little-endian).
 /// Panics if the conversion is not possible.
-pub fn big_to_limbs(nb_limbs: u32, base: &BigUint, value: &BigUint) -> Vec<BigUint> {
+pub fn big_to_limbs(num_limbs: u32, base: &BigUint, value: &BigUint) -> Vec<BigUint> {
     let mut output = vec![];
     let mut q = (*value).clone();
     let mut r;
-    while output.len() < nb_limbs as usize {
+    while output.len() < num_limbs as usize {
         (q, r) = q.div_rem(base);
         output.push(r.clone());
     }
     if !BigUint::is_zero(&q) {
         panic!(
             "big_to_limbs: {} cannot be expressed in base {} with {} limbs",
-            value, base, nb_limbs
+            value, base, num_limbs
         )
     };
     output
@@ -171,7 +171,7 @@ pub fn get_advice_vec<F: CircuitField>(
 /// to the implementation of this function for explanations on what such values
 /// represent.
 ///
-/// The `nb_parallel_range_checks` and `max_bit_len` parameters describe the
+/// The `num_parallel_range_checks` and `max_bit_len` parameters describe the
 /// range-check decomposition chip: how many lookups run in parallel per row
 /// and the maximum bit-length each lookup supports. They are used to pick
 /// range-check-friendly bounds (powers of two whose bit count aligns well
@@ -181,7 +181,7 @@ pub fn get_identity_auxiliary_bounds<F, K>(
     moduli: &[BI],
     expr_bounds: (BI, BI),
     expr_mj_bounds: &[(BI, BI)],
-    nb_parallel_range_checks: usize,
+    num_parallel_range_checks: usize,
     max_bit_len: u32,
 ) -> ((BI, BI), Vec<(BI, BI)>)
 where
@@ -205,7 +205,7 @@ where
     // (for any u_max > k_max - k_min), a constraint that can be enforced through
     // range-checks.
     let u_max = next_cheapest_power_of_two(
-        nb_parallel_range_checks,
+        num_parallel_range_checks,
         max_bit_len,
         &(&k_max - &k_min + BI::one()),
     );
@@ -269,7 +269,7 @@ where
             // Now, vj can be restricted in the range [0, vj_max),
             // (for any vj_max > lj_max - lj_min).
             let vj_max = next_cheapest_power_of_two(
-                nb_parallel_range_checks,
+                num_parallel_range_checks,
                 max_bit_len,
                 &(&lj_max - &lj_min + BI::one()),
             );

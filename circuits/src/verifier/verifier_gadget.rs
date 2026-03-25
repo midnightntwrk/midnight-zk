@@ -362,9 +362,9 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             .into_iter()
             .zip(cs.lookups().iter())
             .map(|(m, batch)| {
-                let nb_flat = batch.num_chunks(assigned_vk.cs.degree());
+                let num_flat = batch.num_chunks(assigned_vk.cs.degree());
                 // Hash each lookup product commitment
-                m.read_commitment(nb_flat, layouter, &mut transcript)
+                m.read_commitment(num_flat, layouter, &mut transcript)
             })
             .collect::<Result<Vec<_>, _>>()?;
 
@@ -509,7 +509,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
     ) -> Result<AssignedAccumulator<S>, Error> {
         let cs = &assigned_vk.cs;
         let k = assigned_vk.domain.k();
-        let nb_committed_instances = assigned_committed_instances.len();
+        let num_committed_instances = assigned_committed_instances.len();
 
         let super::traces::VerifierTrace {
             advice_commitments,
@@ -528,10 +528,10 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         // commits to h(X) as a single polynomial (one commitment); otherwise it
         // splits h(X) into `quotient_poly_degree` limbs (one commitment each).
         #[cfg(not(feature = "single-h-commitment"))]
-        let nb_quotient_coms = assigned_vk.domain.get_quotient_poly_degree();
+        let num_quotient_coms = assigned_vk.domain.get_quotient_poly_degree();
         #[cfg(feature = "single-h-commitment")]
-        let nb_quotient_coms = 1;
-        let limb_commitments = (0..nb_quotient_coms)
+        let num_quotient_coms = 1;
+        let limb_commitments = (0..num_quotient_coms)
             .map(|_| transcript.read_point(layouter))
             .collect::<Result<Vec<_>, Error>>()?;
 
@@ -559,10 +559,11 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             instance_queries
                 .iter()
                 .map(|(column, rotation)| {
-                    if column.index() < nb_committed_instances {
+                    if column.index() < num_committed_instances {
                         transcript.read_scalar(layouter)
                     } else {
-                        let instances = assigned_instances[column.index() - nb_committed_instances];
+                        let instances =
+                            assigned_instances[column.index() - num_committed_instances];
                         let offset = (max_rotation - rotation.0) as usize;
                         inner_product(
                             layouter,
@@ -612,23 +613,23 @@ impl<S: SelfEmulation> VerifierGadget<S> {
 
         // Partially evaluate batched identities
         // (without fixed columns corresponding to simple selectors)
-        let nr_blinding_factors = cs.blinding_factors();
+        let num_blinding_factors = cs.blinding_factors();
         let l_evals = evaluate_lagrange_polynomials(
             layouter,
             &self.scalar_chip,
             1 << k,
             assigned_vk.domain.get_omega(),
-            (-((nr_blinding_factors + 1) as i32))..1,
+            (-((num_blinding_factors + 1) as i32))..1,
             &x,
         )?;
-        assert_eq!(l_evals.len(), 2 + nr_blinding_factors);
+        assert_eq!(l_evals.len(), 2 + num_blinding_factors);
         let l_last = l_evals[0].clone();
         let l_blind = sum::<S::F>(
             layouter,
             &self.scalar_chip,
-            &l_evals[1..=nr_blinding_factors],
+            &l_evals[1..=num_blinding_factors],
         )?;
-        let l_0 = l_evals[1 + nr_blinding_factors].clone();
+        let l_0 = l_evals[1 + num_blinding_factors].clone();
 
         let mut expressions = Vec::new();
         // (Partially) evaluate polys from (custom) gates
@@ -773,7 +774,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             )
             .chain(cs.instance_queries().iter().enumerate().filter_map(
                 |(query_index, &(column, rot))| {
-                    if column.index() < nb_committed_instances {
+                    if column.index() < num_committed_instances {
                         Some(VerifierQuery::<S>::new(
                             &one,
                             get_point(&rot),
@@ -888,7 +889,7 @@ pub(crate) mod tests {
     use crate::{
         ecc::{
             curves::CircuitCurve,
-            foreign::{nb_foreign_ecc_chip_columns, ForeignEccChip, ForeignEccConfig},
+            foreign::{num_foreign_ecc_chip_columns, ForeignEccChip, ForeignEccConfig},
         },
         field::{
             decomposition::{
@@ -896,12 +897,12 @@ pub(crate) mod tests {
                 pow2range::Pow2RangeChip,
             },
             foreign::FieldChip,
-            native::NB_EXTRA_ARITH_FIXED_COLS,
+            native::NUM_EXTRA_ARITH_FIXED_COLS,
             NativeChip, NativeConfig, NativeGadget,
         },
         hash::poseidon::{
-            PoseidonChip, PoseidonConfig, PoseidonState, NB_POSEIDON_ADVICE_COLS,
-            NB_POSEIDON_FIXED_COLS,
+            PoseidonChip, PoseidonConfig, PoseidonState, NUM_POSEIDON_ADVICE_COLS,
+            NUM_POSEIDON_FIXED_COLS,
         },
         instructions::{
             hash::{HashCPU, HashInstructions},
@@ -922,7 +923,7 @@ pub(crate) mod tests {
 
     type NG = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
 
-    const NB_INNER_INSTANCES: usize = 1;
+    const NUM_INNER_INSTANCES: usize = 1;
 
     #[derive(Clone, Debug, Default)]
     pub struct InnerCircuit {
@@ -980,7 +981,7 @@ pub(crate) mod tests {
     pub struct TestCircuit {
         inner_vk: (EvaluationDomain<F>, ConstraintSystem<F>, Value<F>), // (domain, cs, vk_repr)
         inner_committed_instance: Value<C>,
-        inner_instances: Value<[F; NB_INNER_INSTANCES]>,
+        inner_instances: Value<[F; NUM_INNER_INSTANCES]>,
         inner_proof: Value<Vec<u8>>,
     }
 
@@ -999,54 +1000,54 @@ pub(crate) mod tests {
         }
 
         fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
-            const NB_ARITH_COLS: usize = 5;
-            const NB_ARITH_FIXED_COLS: usize = NB_ARITH_COLS + NB_EXTRA_ARITH_FIXED_COLS;
+            const NUM_ARITH_COLS: usize = 5;
+            const NUM_ARITH_FIXED_COLS: usize = NUM_ARITH_COLS + NUM_EXTRA_ARITH_FIXED_COLS;
 
-            let nb_advice_cols = nb_foreign_ecc_chip_columns::<F, C, C, NG>();
-            let nb_fixed_cols = NB_ARITH_FIXED_COLS;
+            let num_advice_cols = num_foreign_ecc_chip_columns::<F, C, C, NG>();
+            let num_fixed_cols = NUM_ARITH_FIXED_COLS;
 
             let advice_columns: Vec<_> =
-                (0..nb_advice_cols).map(|_| meta.advice_column()).collect();
-            let fixed_columns: Vec<_> = (0..nb_fixed_cols).map(|_| meta.fixed_column()).collect();
+                (0..num_advice_cols).map(|_| meta.advice_column()).collect();
+            let fixed_columns: Vec<_> = (0..num_fixed_cols).map(|_| meta.fixed_column()).collect();
             let committed_instance_column = meta.instance_column();
             let instance_column = meta.instance_column();
 
             let native_config = NativeChip::configure(
                 meta,
                 &(
-                    advice_columns[..NB_ARITH_COLS].to_vec(),
-                    fixed_columns[..NB_ARITH_FIXED_COLS].to_vec(),
+                    advice_columns[..NUM_ARITH_COLS].to_vec(),
+                    fixed_columns[..NUM_ARITH_FIXED_COLS].to_vec(),
                     [committed_instance_column, instance_column],
                 ),
             );
 
-            let nb_parallel_range_checks = NB_ARITH_COLS - 1;
+            let num_parallel_range_checks = NUM_ARITH_COLS - 1;
             let max_bit_len = 16;
             let core_decomp_config = {
                 let pow2_config =
-                    Pow2RangeChip::configure(meta, &advice_columns[1..=nb_parallel_range_checks]);
+                    Pow2RangeChip::configure(meta, &advice_columns[1..=num_parallel_range_checks]);
                 P2RDecompositionChip::configure(meta, &(native_config.clone(), pow2_config))
             };
 
             let base_config = FieldChip::<F, CBase, C, NG>::configure(
                 meta,
                 &advice_columns,
-                nb_parallel_range_checks,
+                num_parallel_range_checks,
                 max_bit_len,
             );
             let curve_config = ForeignEccChip::<F, C, C, NG, NG>::configure(
                 meta,
                 &base_config,
                 &advice_columns,
-                nb_parallel_range_checks,
+                num_parallel_range_checks,
                 max_bit_len,
             );
 
             let poseidon_config = PoseidonChip::configure(
                 meta,
                 &(
-                    advice_columns[..NB_POSEIDON_ADVICE_COLS].try_into().unwrap(),
-                    fixed_columns[..NB_POSEIDON_FIXED_COLS].try_into().unwrap(),
+                    advice_columns[..NUM_POSEIDON_ADVICE_COLS].try_into().unwrap(),
+                    fixed_columns[..NUM_POSEIDON_FIXED_COLS].try_into().unwrap(),
                 ),
             );
 

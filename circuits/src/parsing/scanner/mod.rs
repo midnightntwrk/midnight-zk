@@ -60,7 +60,7 @@ use crate::{
 const ALPHABET_MAX_SIZE: usize = 256;
 
 /// Number of advice columns for the scanner chip.
-pub const NB_SCANNER_ADVICE_COLS: usize = 3;
+pub const NUM_SCANNER_ADVICE_COLS: usize = 3;
 
 // Native gadget type abbreviation.
 type NG<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
@@ -129,7 +129,7 @@ where
         (automata.iter())
             .map(|(name, automaton)| {
                 let na: NativeAutomaton<F> = automaton.offset_states(offset).into();
-                offset += automaton.nb_states;
+                offset += automaton.num_states;
                 (*name, na)
             })
             .collect::<FxHashMap<_, _>>()
@@ -184,7 +184,7 @@ where
     type InstructionDeps = NG<F>;
 
     type SharedResources = (
-        [Column<Advice>; NB_SCANNER_ADVICE_COLS],
+        [Column<Advice>; NUM_SCANNER_ADVICE_COLS],
         FxHashMap<LibIndex, Automaton>,
     );
 
@@ -401,7 +401,7 @@ where
         let scanner_config = ScannerChip::configure(
             meta,
             &(
-                advice_cols[..NB_SCANNER_ADVICE_COLS].try_into().unwrap(),
+                advice_cols[..NUM_SCANNER_ADVICE_COLS].try_into().unwrap(),
                 automata,
             ),
         );

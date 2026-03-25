@@ -101,7 +101,7 @@ impl CircuitValue {
             CircuitValue::Bool(_) => IrType::Bool,
             CircuitValue::Bytes(v) => IrType::Bytes(v.len()),
             CircuitValue::Native(_) => IrType::Native,
-            CircuitValue::BigUint(big) => IrType::BigUint(big.nb_bits()),
+            CircuitValue::BigUint(big) => IrType::BigUint(big.num_bits()),
             CircuitValue::JubjubPoint(_) => IrType::JubjubPoint,
             CircuitValue::JubjubScalar(_) => IrType::JubjubScalar,
         }

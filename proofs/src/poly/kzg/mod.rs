@@ -293,14 +293,14 @@ where
             q_eval_sets[com_data.set_index].push(com_data.evals);
         }
 
-        let nb_x1_powers = q_coms.iter().map(|v| v.len()).max().unwrap_or(0);
-        assert!(nb_x1_powers >= q_eval_sets.iter().map(|v| v.len()).max().unwrap_or(0));
+        let num_x1_powers = q_coms.iter().map(|v| v.len()).max().unwrap_or(0);
+        assert!(num_x1_powers >= q_eval_sets.iter().map(|v| v.len()).max().unwrap_or(0));
 
         #[cfg(feature = "truncated-challenges")]
-        let powers_x1 = truncated_powers(x1).take(nb_x1_powers).collect::<Vec<_>>();
+        let powers_x1 = truncated_powers(x1).take(num_x1_powers).collect::<Vec<_>>();
 
         #[cfg(not(feature = "truncated-challenges"))]
-        let powers_x1 = powers(x1).take(nb_x1_powers).collect::<Vec<_>>();
+        let powers_x1 = powers(x1).take(num_x1_powers).collect::<Vec<_>>();
 
         let q_coms = q_coms
             .into_iter()

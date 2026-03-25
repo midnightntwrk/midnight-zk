@@ -56,13 +56,13 @@ impl<C: CircuitCurve> TangentConfig<C> {
     /// by the FFA custom gate. We refer to the implementation of this
     /// function for explanations on what such values represent.
     ///
-    /// The `nb_parallel_range_checks` and `max_bit_len` parameters describe
+    /// The `num_parallel_range_checks` and `max_bit_len` parameters describe
     /// the range-check decomposition chip: how many lookups run in parallel
     /// per row and the maximum bit-length each lookup supports. They are used
     /// to pick range-check-friendly bounds (powers of two whose bit count
     /// aligns well with the chip's parallel lookup structure).
     pub fn bounds<F, P>(
-        nb_parallel_range_checks: usize,
+        num_parallel_range_checks: usize,
         max_bit_len: u32,
     ) -> ((BI, BI), Vec<(BI, BI)>)
     where
@@ -70,7 +70,7 @@ impl<C: CircuitCurve> TangentConfig<C> {
         P: FieldEmulationParams<F, C::Base>,
     {
         let base = BI::from(2).pow(P::LOG2_BASE);
-        let nb_limbs = P::NB_LIMBS;
+        let num_limbs = P::NUM_LIMBS;
         let moduli = P::moduli();
         let bs = P::base_powers();
         let bs2 = P::double_base_powers();
@@ -98,8 +98,8 @@ impl<C: CircuitCurve> TangentConfig<C> {
         //   3 * (2 * sum_px + sum_px2) + 1
         // - 2 * (sum_py + sum_lambda + sum_lpy) = k * m
 
-        let limbs_max = vec![&base - BI::one(); nb_limbs as usize];
-        let limbs_max2 = vec![(&base - BI::one()).pow(2); (nb_limbs * nb_limbs) as usize];
+        let limbs_max = vec![&base - BI::one(); num_limbs as usize];
+        let limbs_max2 = vec![(&base - BI::one()).pow(2); (num_limbs * num_limbs) as usize];
         let max_sum_px = sum_bigints(&bs, &limbs_max);
         let max_sum_py = max_sum_px.clone();
         let max_sum_lambda = max_sum_px.clone();
@@ -131,7 +131,7 @@ impl<C: CircuitCurve> TangentConfig<C> {
             &moduli,
             expr_bounds,
             &expr_mj_bounds,
-            nb_parallel_range_checks,
+            num_parallel_range_checks,
             max_bit_len,
         )
     }
@@ -141,7 +141,7 @@ impl<C: CircuitCurve> TangentConfig<C> {
         meta: &mut ConstraintSystem<F>,
         field_chip_config: &FieldChipConfig,
         cond_col: &Column<Advice>,
-        nb_parallel_range_checks: usize,
+        num_parallel_range_checks: usize,
         max_bit_len: u32,
     ) -> TangentConfig<C>
     where
@@ -154,7 +154,7 @@ impl<C: CircuitCurve> TangentConfig<C> {
         let moduli = P::moduli();
 
         let ((k_min, u_max), vs_bounds) =
-            Self::bounds::<F, P>(nb_parallel_range_checks, max_bit_len);
+            Self::bounds::<F, P>(num_parallel_range_checks, max_bit_len);
 
         let q_tangent = meta.selector();
 

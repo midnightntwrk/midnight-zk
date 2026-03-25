@@ -37,7 +37,7 @@ pub(crate) struct CostOptions {
     instance: Vec<Poly>,
 
     /// How many of the instance columns are given in committed form.
-    nb_committed_instances: usize,
+    num_committed_instances: usize,
 
     /// A fixed column with the given rotations. May be repeated.
     fixed: Vec<Poly>,
@@ -70,7 +70,7 @@ pub(crate) struct CostOptions {
 
     /// Number of rows that are devoted to blinding factors and cannot be used
     /// for "computing".
-    nb_unusable_rows: usize,
+    num_unusable_rows: usize,
 }
 
 /// Structure holding polynomial related data for benchmarks
@@ -172,7 +172,7 @@ pub struct CircuitModel {
     pub table_rows: usize,
     /// Number of rows that are devoted to blinding factors and cannot be used
     /// for "computing".
-    pub nb_unusable_rows: usize,
+    pub num_unusable_rows: usize,
     /// Maximum degree of the circuit.
     pub max_deg: usize,
     /// Number of advice columns.
@@ -201,7 +201,7 @@ impl CostOptions {
     fn into_circuit_model<const COMM: usize, const SCALAR: usize>(self) -> CircuitModel {
         let mut queries: Vec<_> = iter::empty()
             .chain(self.advice.iter())
-            .chain(self.instance.iter().take(self.nb_committed_instances))
+            .chain(self.instance.iter().take(self.num_committed_instances))
             .chain(self.fixed.iter())
             .cloned()
             .chain(self.lookup.iter().flat_map(|l| l.queries()))
@@ -228,7 +228,7 @@ impl CostOptions {
         // - Per permutation chunk: 1 COMM + 3 SCALAR (last chunk has 2 SCALAR)
         // - Per lookup argument: (num_chunks + 2) COMM + (num_chunks + 3) SCALAR
         // - Per trash argument: 1 COMM + 1 SCALAR
-        let nb_perm_chunks =
+        let num_perm_chunks =
             (self.permutation.columns.saturating_sub(1) / self.max_degree.saturating_sub(2)) + 1;
         let plonk = comp_bytes(1, 0) * self.advice.len()
             + self
@@ -239,7 +239,7 @@ impl CostOptions {
             + self
                 .instance
                 .iter()
-                .take(self.nb_committed_instances)
+                .take(self.num_committed_instances)
                 .map(|polys| comp_bytes(0, polys.rotations.len()))
                 .sum::<usize>()
             + self
@@ -248,7 +248,7 @@ impl CostOptions {
                 .map(|polys| comp_bytes(0, polys.rotations.len()))
                 .sum::<usize>()
             + comp_bytes(0, 1) * self.permutation.columns
-            + (comp_bytes(1, 3) * nb_perm_chunks).saturating_sub(comp_bytes(0, 1)) // we don't need the permutation_product_last_eval of the last chunk
+            + (comp_bytes(1, 3) * num_perm_chunks).saturating_sub(comp_bytes(0, 1)) // we don't need the permutation_product_last_eval of the last chunk
             + self
                 .lookup
                 .iter()
@@ -266,15 +266,15 @@ impl CostOptions {
         // - COMM bytes for proof
         let multiopen = comp_bytes(2, point_sets);
 
-        let mut nr_rotations = HashSet::new();
+        let mut num_rotations = HashSet::new();
         for poly in self.advice.iter() {
-            nr_rotations.extend(poly.rotations.clone());
+            num_rotations.extend(poly.rotations.clone());
         }
         for poly in self.fixed.iter() {
-            nr_rotations.extend(poly.rotations.clone());
+            num_rotations.extend(poly.rotations.clone());
         }
         for poly in self.instance.iter() {
-            nr_rotations.extend(poly.rotations.clone());
+            num_rotations.extend(poly.rotations.clone());
         }
 
         let size = plonk + multiopen + limbs;
@@ -283,7 +283,7 @@ impl CostOptions {
             k: self.min_k,
             rows: self.rows_count,
             table_rows: self.table_rows_count,
-            nb_unusable_rows: self.nb_unusable_rows,
+            num_unusable_rows: self.num_unusable_rows,
             max_deg: self.max_degree,
             advice_columns: self.advice.len(),
             // Note that we have one fixed commitment per column in the permutation argument
@@ -305,9 +305,9 @@ pub fn circuit_model<
     const SCALAR: usize,
 >(
     circuit: &impl Circuit<F>,
-    nb_committed_instances: usize,
+    num_committed_instances: usize,
 ) -> CircuitModel {
-    let options = cost_model_options(circuit, nb_committed_instances);
+    let options = cost_model_options(circuit, num_committed_instances);
     options.into_circuit_model::<COMM, SCALAR>()
 }
 
@@ -316,7 +316,7 @@ pub fn circuit_model<
 /// computation).
 pub(crate) fn cost_model_options<F: Ord + Field + FromUniformBytes<64>, C: Circuit<F>>(
     circuit: &C,
-    nb_committed_instances: usize,
+    num_committed_instances: usize,
 ) -> CostOptions {
     let prover = DevAssembly::run(circuit).unwrap();
 
@@ -397,27 +397,27 @@ pub(crate) fn cost_model_options<F: Ord + Field + FromUniformBytes<64>, C: Circu
         (table_rows_count, rows_count)
     };
 
-    let nb_unusable_rows = cs.blinding_factors() + 1;
+    let num_unusable_rows = cs.blinding_factors() + 1;
 
-    let nb_instances = prover.instance_rows.take();
+    let num_instances = prover.instance_rows.take();
     let min_circuit_size = [
-        rows_count + nb_unusable_rows,
-        table_rows_count + nb_unusable_rows,
-        nb_instances + nb_unusable_rows,
+        rows_count + num_unusable_rows,
+        table_rows_count + num_unusable_rows,
+        num_instances + num_unusable_rows,
         cs.minimum_rows() + 1,
     ]
     .into_iter()
     .max()
     .unwrap();
 
-    if min_circuit_size == nb_instances {
+    if min_circuit_size == num_instances {
         println!("WARNING: The dominant factor in your circuit's size is the number of public inputs, which causes the verifier to perform linear work.");
     }
 
     CostOptions {
         advice,
         instance,
-        nb_committed_instances,
+        num_committed_instances,
         fixed,
         max_degree: cs.degree(),
         lookup,
@@ -426,7 +426,7 @@ pub(crate) fn cost_model_options<F: Ord + Field + FromUniformBytes<64>, C: Circu
         min_k: min_circuit_size.next_power_of_two().ilog2(),
         rows_count,
         table_rows_count,
-        nb_unusable_rows,
+        num_unusable_rows,
     }
 }
 
@@ -742,9 +742,9 @@ mod tests {
     }
 
     #[derive(Clone, Default)]
-    struct StandardPlonk<const NB_PUBLIC_INPUTS: usize>(Fq);
+    struct StandardPlonk<const NUM_PUBLIC_INPUTS: usize>(Fq);
 
-    impl<const NB_PUBLIC_INPUTS: usize> Circuit<Fq> for StandardPlonk<NB_PUBLIC_INPUTS> {
+    impl<const NUM_PUBLIC_INPUTS: usize> Circuit<Fq> for StandardPlonk<NUM_PUBLIC_INPUTS> {
         type Config = StandardPlonkConfig;
         type FloorPlanner = SimpleFloorPlanner;
         #[cfg(feature = "circuit-params")]
@@ -808,8 +808,8 @@ mod tests {
                     region.assign_advice(|| "", config.a, 5, || Value::known(Fq::ZERO))?;
 
                     // Assign instances. We are just forcing the number of instances to be
-                    // determined by the variable `NB_PUBLIC_INPUTS`.
-                    for i in 0..NB_PUBLIC_INPUTS {
+                    // determined by the variable `NUM_PUBLIC_INPUTS`.
+                    for i in 0..NUM_PUBLIC_INPUTS {
                         let _ = region.assign_advice_from_instance(
                             || "",
                             config.instance,
@@ -893,22 +893,22 @@ mod tests {
         let mut random_byte = [0u8; 1];
         OsRng::fill_bytes(&mut OsRng, &mut random_byte);
 
-        macro_rules! test_nb_pi {
-            ($($nb_pi:expr),*) => {
+        macro_rules! test_num_pi {
+            ($($num_pi:expr),*) => {
                 $(
                     {
-                        const NB_PI: usize = $nb_pi;
-                        let circuit = StandardPlonk::<NB_PI>(Fq::from(random_byte[0] as u64));
+                        const NUM_PI: usize = $num_pi;
+                        let circuit = StandardPlonk::<NUM_PI>(Fq::from(random_byte[0] as u64));
                         let cost_model = cost_model_options(&circuit, 0);
 
                         // nb of unusable rows for this circuit is 7.
-                        let pi_k = (NB_PI + 7).next_power_of_two().ilog2();
+                        let pi_k = (NUM_PI + 7).next_power_of_two().ilog2();
                         assert_eq!(cost_model.min_k, max(9, pi_k));
                     }
                 )*
             };
         }
 
-        test_nb_pi!(1, 10, 100, 1017, 1018, 1019, 1020);
+        test_num_pi!(1, 10, 100, 1017, 1018, 1019, 1020);
     }
 }

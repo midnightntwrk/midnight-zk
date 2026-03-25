@@ -119,16 +119,16 @@ where
 
 #[cfg(not(feature = "single-h-commitment"))]
 fn blind_quotient_limbs<F: PrimeField>(quotient_limbs: &mut [Vec<F>]) {
-    let nr_limbs = quotient_limbs.len();
-    assert!(nr_limbs >= 2);
+    let num_limbs = quotient_limbs.len();
+    assert!(num_limbs >= 2);
 
-    for i in 1..nr_limbs {
+    for i in 1..num_limbs {
         let t = F::random(OsRng);
         quotient_limbs[i - 1].push(t);
         quotient_limbs[i][0] -= t;
     }
 
-    quotient_limbs[nr_limbs - 1].push(F::ZERO);
+    quotient_limbs[num_limbs - 1].push(F::ZERO);
 }
 
 #[cfg(feature = "committed-instances")]
@@ -166,9 +166,9 @@ pub(crate) fn compute_trace<
     pk: &ProvingKey<F, CS>,
     circuits: &[ConcreteCircuit],
     // The prover needs to get all instances in non-committed form. However,
-    // the first `nb_committed_instances` instance columns are dedicated for
+    // the first `num_committed_instances` instance columns are dedicated for
     // instances that the verifier receives in committed form.
-    #[cfg(feature = "committed-instances")] nb_committed_instances: usize,
+    #[cfg(feature = "committed-instances")] num_committed_instances: usize,
     instances: &[&[&[F]]],
     mut rng: impl RngCore + CryptoRng,
     transcript: &mut T,
@@ -183,7 +183,7 @@ where
         + FromUniformBytes<64>,
 {
     #[cfg(not(feature = "committed-instances"))]
-    let nb_committed_instances: usize = 0;
+    let num_committed_instances: usize = 0;
 
     if circuits.len() != instances.len() {
         return Err(Error::InvalidInstances);
@@ -191,7 +191,7 @@ where
 
     for instances in instances.iter() {
         if instances.len() != pk.vk.cs.num_instance_columns
-            || instances.len() < nb_committed_instances
+            || instances.len() < num_committed_instances
         {
             return Err(Error::InvalidInstances);
         }
@@ -202,7 +202,7 @@ where
 
     let domain = &pk.vk.domain;
 
-    let instance = compute_instances(params, pk, instances, nb_committed_instances, transcript)?;
+    let instance = compute_instances(params, pk, instances, num_committed_instances, transcript)?;
 
     let (advice, challenges) =
         parse_advices(params, pk, circuits, instances, transcript, &mut rng)?;
@@ -340,9 +340,9 @@ pub(crate) fn finalise_proof<'a, F, CS: PolynomialCommitmentScheme<F>, T: Transc
     params: &'a CS::Parameters,
     pk: &'a ProvingKey<F, CS>,
     // The prover needs to get all instances in non-committed form. However,
-    // the first `nb_committed_instances` instance columns are dedicated for
+    // the first `num_committed_instances` instance columns are dedicated for
     // instances that the verifier receives in committed form.
-    #[cfg(feature = "committed-instances")] nb_committed_instances: usize,
+    #[cfg(feature = "committed-instances")] num_committed_instances: usize,
     trace: ProverTrace<F>,
     transcript: &mut T,
 ) -> Result<(), Error>
@@ -356,7 +356,7 @@ where
         + FromUniformBytes<64>,
 {
     #[cfg(not(feature = "committed-instances"))]
-    let nb_committed_instances: usize = 0;
+    let num_committed_instances: usize = 0;
 
     let nu_poly = compute_nu_poly(pk, &trace);
 
@@ -389,7 +389,7 @@ where
         ..
     } = write_evals_to_transcript(
         pk,
-        nb_committed_instances,
+        num_committed_instances,
         &instance_polys,
         &advice_polys,
         x,
@@ -461,7 +461,7 @@ where
 
     let queries = compute_queries(
         pk,
-        nb_committed_instances,
+        num_committed_instances,
         &instance_polys,
         &advice_polys,
         &permutations,
@@ -490,7 +490,7 @@ pub fn create_proof<
     params: &CS::Parameters,
     pk: &ProvingKey<F, CS>,
     circuits: &[ConcreteCircuit],
-    #[cfg(feature = "committed-instances")] nb_committed_instances: usize,
+    #[cfg(feature = "committed-instances")] num_committed_instances: usize,
     instances: &[&[&[F]]],
     mut rng: impl RngCore + CryptoRng,
     transcript: &mut T,
@@ -509,7 +509,7 @@ where
         pk,
         circuits,
         #[cfg(feature = "committed-instances")]
-        nb_committed_instances,
+        num_committed_instances,
         instances,
         &mut rng,
         transcript,
@@ -518,7 +518,7 @@ where
         params,
         pk,
         #[cfg(feature = "committed-instances")]
-        nb_committed_instances,
+        num_committed_instances,
         trace,
         transcript,
     )
@@ -528,7 +528,7 @@ pub(super) fn compute_instances<F, CS, T>(
     params: &CS::Parameters,
     pk: &ProvingKey<F, CS>,
     instances: &[&[&[F]]],
-    nb_committed_instances: usize,
+    num_committed_instances: usize,
     transcript: &mut T,
 ) -> Result<Vec<InstanceSingle<F>>, Error>
 where
@@ -550,7 +550,7 @@ where
                 .enumerate()
                 .map(|(i, values)| {
                     // Committed instances go first.
-                    let is_committed_instance = i < nb_committed_instances;
+                    let is_committed_instance = i < num_committed_instances;
                     let mut poly = pk.vk.domain.empty_lagrange();
                     assert_eq!(poly.len(), pk.vk.domain.n as usize);
                     if values.len() > (poly.len() - (pk.vk.cs.blinding_factors() + 1)) {
@@ -803,7 +803,7 @@ where
 
 pub(super) fn write_evals_to_transcript<F, CS, T>(
     pk: &ProvingKey<F, CS>,
-    nb_committed_instances: usize,
+    num_committed_instances: usize,
     instance_polys: &[Vec<Polynomial<F, Coeff>>],
     advice_polys: &[Vec<Polynomial<F, Coeff>>],
     x: F,
@@ -828,7 +828,7 @@ where
                 .map(|&(column, at)| {
                     let eval =
                         eval_polynomial(&instance[column.index()], domain.rotate_omega(x, at));
-                    if column.index() < nb_committed_instances {
+                    if column.index() < num_committed_instances {
                         transcript.write(&eval)?;
                     }
                     Ok(eval)
@@ -885,7 +885,7 @@ pub(super) fn compute_queries<
     CS: PolynomialCommitmentScheme<F>,
 >(
     pk: &'a ProvingKey<F, CS>,
-    nb_committed_instances: usize,
+    num_committed_instances: usize,
     instance_polys: &'a [Vec<Polynomial<F, Coeff>>],
     advice_polys: &'a [Vec<Polynomial<F, Coeff>>],
     permutations: &'a [permutation::prover::Evaluated<F>],
@@ -912,7 +912,7 @@ pub(super) fn compute_queries<
                     )
                     .chain(
                         pk.vk.cs.instance_queries.iter().filter_map(move |&(column, at)| {
-                            if column.index() < nb_committed_instances {
+                            if column.index() < num_committed_instances {
                                 Some(ProverQuery {
                                     point: domain.rotate_omega(x, at),
                                     poly: &instance[column.index()],

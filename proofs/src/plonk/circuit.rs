@@ -2165,7 +2165,7 @@ impl<F: Field> ConstraintSystem<F> {
         // counted for this constraint system.
         assert_eq!(selectors.len(), self.num_selectors);
 
-        let nr_fixed_columns = self.num_fixed_columns();
+        let num_fixed_columns = self.num_fixed_columns();
         let (polys, selector_replacements): (Vec<_>, Vec<_>) = selectors
             .into_iter()
             .enumerate()
@@ -2194,7 +2194,7 @@ impl<F: Field> ConstraintSystem<F> {
         // track the index of the corresponding fixed column
         for gate in self.gates.iter_mut() {
             for s in &mut gate.queried_selectors {
-                s.0 += nr_fixed_columns;
+                s.0 += num_fixed_columns;
             }
         }
 

@@ -26,7 +26,7 @@ pub struct ZkStdLibArch {
     pub bls12_381: bool,
     pub base64: bool,
     pub automaton: bool,
-    pub nr_pow2range_cols: u8,
+    pub num_pow2range_cols: u8,
 }
 ```
 

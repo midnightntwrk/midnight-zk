@@ -133,14 +133,14 @@ impl Relation for ZkirRelation {
             bls12_381: false,
             automaton: false,
             base64: false,
-            nb_arith_cols: 5,
-            nr_pow2range_cols: 4,
+            num_arith_cols: 5,
+            num_pow2range_cols: 4,
         }
     }
 
     fn write_relation<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
         bincode::encode_into_std_write(self.program.clone(), writer, bincode::config::standard())
-            .map(|_nb_bytes_written| ())
+            .map(|_num_bytes_written| ())
             .map_err(io::Error::other)
     }
 

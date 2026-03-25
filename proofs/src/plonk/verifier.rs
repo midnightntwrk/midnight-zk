@@ -47,9 +47,9 @@ where
         return Err(Error::InvalidInstances);
     }
 
-    let nb_committed_instances = committed_instances[0].len();
+    let num_committed_instances = committed_instances[0].len();
     for committed_instances in committed_instances.iter() {
-        if committed_instances.len() != nb_committed_instances {
+        if committed_instances.len() != num_committed_instances {
             return Err(Error::InvalidInstances);
         }
     }
@@ -143,8 +143,8 @@ where
                 .into_iter()
                 .zip(vk.cs.lookups.iter().map(|l| l.chunk_by_degree(vk.cs_degree)))
                 .map(|(m, batch)| {
-                    let nb_flat = batch.num_chunks();
-                    m.read_commitment(nb_flat, transcript)
+                    let num_flat = batch.num_chunks();
+                    m.read_commitment(num_flat, transcript)
                 })
                 .collect::<Result<Vec<_>, _>>()
         })
@@ -212,7 +212,7 @@ where
         return Err(Error::InvalidInstances);
     }
 
-    let nb_committed_instances = committed_instances[0].len();
+    let num_committed_instances = committed_instances[0].len();
     let num_proofs = instances.len();
 
     let VerifierTrace {
@@ -233,10 +233,10 @@ where
     // commits to h(X) as a single polynomial (one commitment); otherwise it
     // splits h(X) into `quotient_poly_degree` limbs (one commitment each).
     #[cfg(not(feature = "single-h-commitment"))]
-    let nb_quotient_coms = vk.domain.get_quotient_poly_degree();
+    let num_quotient_coms = vk.domain.get_quotient_poly_degree();
     #[cfg(feature = "single-h-commitment")]
-    let nb_quotient_coms = 1;
-    let quotient_limb_coms = read_n(transcript, nb_quotient_coms)?;
+    let num_quotient_coms = 1;
+    let quotient_limb_coms = read_n(transcript, num_quotient_coms)?;
 
     // Sample x challenge, which is used to ensure the circuit is
     // satisfied with high probability.
@@ -273,10 +273,10 @@ where
                     .instance_queries
                     .iter()
                     .map(|(column, rotation)| {
-                        if column.index() < nb_committed_instances {
+                        if column.index() < num_committed_instances {
                             transcript.read()
                         } else {
-                            let instances = instances[column.index() - nb_committed_instances];
+                            let instances = instances[column.index() - num_committed_instances];
                             let offset = (max_rotation - rotation.0) as usize;
                             Ok(compute_inner_product(
                                 instances,
@@ -401,7 +401,7 @@ where
                     ))
                     .chain(vk.cs.instance_queries.iter().enumerate().filter_map(
                         move |(query_index, &(column, at))| {
-                            if column.index() < nb_committed_instances {
+                            if column.index() < num_committed_instances {
                                 Some(VerifierQuery::new(
                                     vk.domain.rotate_omega(x, at),
                                     CommitmentLabel::Instance(column.index()),

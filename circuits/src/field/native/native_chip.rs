@@ -44,7 +44,7 @@
 //
 //  q_par_add * { value[i] + coeff[i] - value[i](omega) } = 0
 //
-// for all i = 0..NB_PARALLEL_ADD_COLS.
+// for all i = 0..NUM_PARALLEL_ADD_COLS.
 
 use std::{
     cell::RefCell,
@@ -79,23 +79,23 @@ use crate::{
 
 /// Minimum number of arithmetic columns.
 /// This limit is imposed by functions like [NativeChip::select].
-pub const MIN_NB_ARITH_COLS: usize = 5;
+pub const MIN_NUM_ARITH_COLS: usize = 5;
 
 /// Number of extra fixed columns beyond the per-arithmetic-column coefficients.
-/// The native chip uses `nb_arith_cols` fixed columns for the arithmetic
+/// The native chip uses `num_arith_cols` fixed columns for the arithmetic
 /// coefficients (one per advice column), plus these extra fixed columns
 /// for `q_next`, `mul_ab`, `mul_ac`, and `constant`.
-/// In total, the chip requires `nb_arith_cols + NB_EXTRA_FIXED_COLS` fixed
+/// In total, the chip requires `num_arith_cols + NUM_EXTRA_FIXED_COLS` fixed
 /// columns.
-pub const NB_EXTRA_ARITH_FIXED_COLS: usize = 4;
+pub const NUM_EXTRA_ARITH_FIXED_COLS: usize = 4;
 
 /// Number of additions (by constant) that can be performed in
-/// parallel in 1 row. This number should not exceed [MIN_NB_ARITH_COLS].
+/// parallel in 1 row. This number should not exceed [MIN_NUM_ARITH_COLS].
 ///
 /// The Poseidon chip requires this number to match the Poseidon
 /// register width. Have that into consideration before modifying
 /// this number.
-const NB_PARALLEL_ADD_COLS: usize = 3;
+const NUM_PARALLEL_ADD_COLS: usize = 3;
 
 /// Config defines fixed and witness columns of the main gate
 #[derive(Clone, Debug)]
@@ -183,15 +183,15 @@ impl<F: CircuitField> ComposableChip<F> for NativeChip<F> {
         let value_columns = &shared_res.0;
         let fixed_columns = &shared_res.1;
 
-        // The number of provided advice columns dictates nb_arith_cols.
+        // The number of provided advice columns dictates num_arith_cols.
         assert!(
-            value_columns.len() >= MIN_NB_ARITH_COLS,
-            "nb_arith_cols must be >= {MIN_NB_ARITH_COLS}"
+            value_columns.len() >= MIN_NUM_ARITH_COLS,
+            "num_arith_cols must be >= {MIN_NUM_ARITH_COLS}"
         );
         // Extra fixed columns beyond the required ones are ignored.
         assert!(
-            fixed_columns.len() >= value_columns.len() + NB_EXTRA_ARITH_FIXED_COLS,
-            "expected at least nb_arith_cols + {NB_EXTRA_ARITH_FIXED_COLS} fixed columns, got {}",
+            fixed_columns.len() >= value_columns.len() + NUM_EXTRA_ARITH_FIXED_COLS,
+            "expected at least num_arith_cols + {NUM_EXTRA_ARITH_FIXED_COLS} fixed columns, got {}",
             fixed_columns.len()
         );
 
@@ -208,7 +208,7 @@ impl<F: CircuitField> ComposableChip<F> for NativeChip<F> {
         let mul_ac_col = fixed_columns[2];
         let constant_col = fixed_columns[3];
         let coeff_cols = fixed_columns[4..].to_vec();
-        const { assert!(NB_EXTRA_ARITH_FIXED_COLS == 4) };
+        const { assert!(NUM_EXTRA_ARITH_FIXED_COLS == 4) };
 
         let fixed_values_col = meta.fixed_column();
         meta.enable_equality(fixed_values_col);
@@ -258,8 +258,8 @@ impl<F: CircuitField> ComposableChip<F> for NativeChip<F> {
         });
 
         meta.create_gate("parallel_add_gate", |meta| {
-            let ids = (value_columns[0..NB_PARALLEL_ADD_COLS].iter())
-                .zip(coeff_cols[0..NB_PARALLEL_ADD_COLS].iter())
+            let ids = (value_columns[0..NUM_PARALLEL_ADD_COLS].iter())
+                .zip(coeff_cols[0..NUM_PARALLEL_ADD_COLS].iter())
                 .map(|(val_col, const_col)| {
                     let val = meta.query_advice(*val_col, Rotation::cur());
                     let res = meta.query_advice(*val_col, Rotation::next());
@@ -554,7 +554,7 @@ impl<F: CircuitField> NativeChip<F> {
 
     /// The total number of public inputs (as raw scalars) that have been
     /// constrained so far by this chip.
-    pub fn nb_public_inputs(&self) -> usize {
+    pub fn num_public_inputs(&self) -> usize {
         *self.instance_offset.borrow()
     }
 }
@@ -565,8 +565,8 @@ impl<F: CircuitField> NativeChip<F> {
     pub(crate) fn add_constants_in_region(
         &self,
         region: &mut Region<'_, F>,
-        variables: &[AssignedNative<F>; NB_PARALLEL_ADD_COLS],
-        constants: &[F; NB_PARALLEL_ADD_COLS],
+        variables: &[AssignedNative<F>; NUM_PARALLEL_ADD_COLS],
+        constants: &[F; NUM_PARALLEL_ADD_COLS],
         offset: &mut usize,
     ) -> Result<Vec<AssignedNative<F>>, Error> {
         self.config.q_par_add.enable(region, *offset)?;
@@ -646,12 +646,12 @@ where
         layouter: &mut impl Layouter<F>,
         values: &[Value<F>],
     ) -> Result<Vec<AssignedNative<F>>, Error> {
-        let nb_arith_cols = self.config.value_cols.len();
+        let num_arith_cols = self.config.value_cols.len();
         layouter.assign_region(
             || "assign_many (native)",
             |mut region| {
                 let mut assigned = vec![];
-                for (i, chunk_values) in values.chunks(nb_arith_cols).enumerate() {
+                for (i, chunk_values) in values.chunks(num_arith_cols).enumerate() {
                     for (value, col) in chunk_values.iter().zip(self.config.value_cols.iter()) {
                         let cell = region.assign_advice(|| "assign", *col, i, || *value)?;
                         assigned.push(cell);
@@ -934,7 +934,7 @@ where
             acc.zip(x.value()).map(|(acc, val)| acc + *coeff * val)
         });
 
-        let nb_arith_cols = self.config.value_cols.len();
+        let num_arith_cols = self.config.value_cols.len();
         layouter.assign_region(
             || "Linear combination",
             |mut region| {
@@ -944,7 +944,7 @@ where
                     term_values.as_slice(),
                     constant,
                     &result,
-                    nb_arith_cols - 1,
+                    num_arith_cols - 1,
                     &mut offset,
                 )?;
 
@@ -1050,7 +1050,7 @@ where
 
         let mut non_trivial_outputs = Vec::with_capacity(pairs.len());
 
-        let mut chunks = pairs.chunks_exact(NB_PARALLEL_ADD_COLS);
+        let mut chunks = pairs.chunks_exact(NUM_PARALLEL_ADD_COLS);
         for chunk in chunks.by_ref() {
             let outputs = layouter.assign_region(
                 || "add_constants",
@@ -1068,7 +1068,7 @@ where
             non_trivial_outputs.extend(outputs);
         }
 
-        // Proecss a final chunk of length < NB_PARALLEL_ADD_COLS, "manually".
+        // Proecss a final chunk of length < NUM_PARALLEL_ADD_COLS, "manually".
         for (x, c) in chunks.remainder() {
             non_trivial_outputs.push(self.add_constant(layouter, x, **c)?);
         }
@@ -1673,11 +1673,12 @@ impl<F: CircuitField> FromScratch<F> for NativeChip<F> {
         meta: &mut ConstraintSystem<F>,
         instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
-        const NB_ARITH_COLS: usize = 5;
-        const NB_ARITH_FIXED_COLS: usize = NB_ARITH_COLS + NB_EXTRA_ARITH_FIXED_COLS;
+        const NUM_ARITH_COLS: usize = 5;
+        const NUM_ARITH_FIXED_COLS: usize = NUM_ARITH_COLS + NUM_EXTRA_ARITH_FIXED_COLS;
 
-        let advice_columns: [_; NB_ARITH_COLS] = core::array::from_fn(|_| meta.advice_column());
-        let fixed_columns: [_; NB_ARITH_FIXED_COLS] = core::array::from_fn(|_| meta.fixed_column());
+        let advice_columns: [_; NUM_ARITH_COLS] = core::array::from_fn(|_| meta.advice_column());
+        let fixed_columns: [_; NUM_ARITH_FIXED_COLS] =
+            core::array::from_fn(|_| meta.fixed_column());
         NativeChip::configure(
             meta,
             &(

@@ -42,9 +42,9 @@ use keccak_sha3::packed_chip::{PackedChip, PackedConfig, PACKED_ADVICE_COLS, PAC
 use midnight_circuits::{
     biguint::biguint_gadget::BigUintGadget,
     ecc::{
-        foreign::{nb_foreign_ecc_chip_columns, ForeignEccChip, ForeignEccConfig},
+        foreign::{num_foreign_ecc_chip_columns, ForeignEccChip, ForeignEccConfig},
         hash_to_curve::HashToCurveGadget,
-        native::{EccChip, EccConfig, NB_EDWARDS_COLS},
+        native::{EccChip, EccConfig, NUM_EDWARDS_COLS},
     },
     field::{
         decomposition::{
@@ -52,22 +52,24 @@ use midnight_circuits::{
             pow2range::Pow2RangeChip,
         },
         foreign::{
-            nb_field_chip_columns, params::MultiEmulationParams as MEP, FieldChip, FieldChipConfig,
+            num_field_chip_columns, params::MultiEmulationParams as MEP, FieldChip, FieldChipConfig,
         },
-        native::NB_EXTRA_ARITH_FIXED_COLS,
+        native::NUM_EXTRA_ARITH_FIXED_COLS,
         NativeChip, NativeConfig, NativeGadget,
     },
     hash::{
-        poseidon::{PoseidonChip, PoseidonConfig, NB_POSEIDON_ADVICE_COLS, NB_POSEIDON_FIXED_COLS},
-        sha256::{Sha256Chip, Sha256Config, NB_SHA256_ADVICE_COLS, NB_SHA256_FIXED_COLS},
-        sha512::{Sha512Chip, Sha512Config, NB_SHA512_ADVICE_COLS, NB_SHA512_FIXED_COLS},
+        poseidon::{
+            PoseidonChip, PoseidonConfig, NUM_POSEIDON_ADVICE_COLS, NUM_POSEIDON_FIXED_COLS,
+        },
+        sha256::{Sha256Chip, Sha256Config, NUM_SHA256_ADVICE_COLS, NUM_SHA256_FIXED_COLS},
+        sha512::{Sha512Chip, Sha512Config, NUM_SHA512_ADVICE_COLS, NUM_SHA512_FIXED_COLS},
     },
     instructions::{public_input::CommittedInstanceInstructions, *},
     map::map_gadget::MapGadget,
     parsing::{
         self,
-        scanner::{ScannerChip, ScannerConfig, NB_SCANNER_ADVICE_COLS},
-        Base64Chip, Base64Config, ParserGadget, StdLibParser, NB_BASE64_ADVICE_COLS,
+        scanner::{ScannerChip, ScannerConfig, NUM_SCANNER_ADVICE_COLS},
+        Base64Chip, Base64Config, ParserGadget, StdLibParser, NUM_BASE64_ADVICE_COLS,
     },
     types::{
         AssignedBit, AssignedByte, AssignedNative, AssignedNativePoint, ComposableChip, InnerValue,
@@ -125,7 +127,7 @@ const COMMITMENT_BYTE_SIZE: usize = 48;
 const SCALAR_BYTE_SIZE: usize = 32;
 
 /// Number of instance columns given in committed form in a ZK stdlib proof.
-const NB_COMMITTED_INSTANCES: usize = 1;
+const NUM_COMMITTED_INSTANCES: usize = 1;
 
 /// Architecture of the standard library. Specifies what chips need to be
 /// configured.
@@ -177,12 +179,12 @@ pub struct ZkStdLibArch {
     /// of range-check parallel lookups.
     ///
     /// Must be at least 5.
-    pub nb_arith_cols: u8,
+    pub num_arith_cols: u8,
 
     /// Number of parallel lookups for range checks.
     ///
-    /// Must be strictly smaller than `nb_arith_cols`.
-    pub nr_pow2range_cols: u8,
+    /// Must be strictly smaller than `num_arith_cols`.
+    pub num_pow2range_cols: u8,
 }
 
 impl Default for ZkStdLibArch {
@@ -199,8 +201,8 @@ impl Default for ZkStdLibArch {
             bls12_381: false,
             base64: false,
             automaton: false,
-            nb_arith_cols: 5,
-            nr_pow2range_cols: 1,
+            num_arith_cols: 5,
+            num_pow2range_cols: 1,
         }
     }
 }
@@ -392,30 +394,30 @@ impl ZkStdLib {
         meta: &mut ConstraintSystem<F>,
         (arch, max_bit_len): (ZkStdLibArch, u8),
     ) -> ZkStdLibConfig {
-        let nb_advice_cols = [
-            arch.nb_arith_cols as usize,
-            arch.nr_pow2range_cols as usize,
-            arch.jubjub as usize * NB_EDWARDS_COLS,
-            arch.poseidon as usize * NB_POSEIDON_ADVICE_COLS,
-            arch.sha2_256 as usize * NB_SHA256_ADVICE_COLS,
-            arch.sha2_512 as usize * NB_SHA512_ADVICE_COLS,
+        let num_advice_cols = [
+            arch.num_arith_cols as usize,
+            arch.num_pow2range_cols as usize,
+            arch.jubjub as usize * NUM_EDWARDS_COLS,
+            arch.poseidon as usize * NUM_POSEIDON_ADVICE_COLS,
+            arch.sha2_256 as usize * NUM_SHA256_ADVICE_COLS,
+            arch.sha2_512 as usize * NUM_SHA512_ADVICE_COLS,
             arch.secp256k1 as usize
                 * max(
-                    nb_field_chip_columns::<F, k256_mod::Fq, MEP>(),
-                    nb_foreign_ecc_chip_columns::<F, K256, MEP, k256_mod::Fq>(),
+                    num_field_chip_columns::<F, k256_mod::Fq, MEP>(),
+                    num_foreign_ecc_chip_columns::<F, K256, MEP, k256_mod::Fq>(),
                 ),
             arch.bls12_381 as usize
                 * max(
-                    nb_field_chip_columns::<F, midnight_curves::Fp, MEP>(),
-                    nb_foreign_ecc_chip_columns::<
+                    num_field_chip_columns::<F, midnight_curves::Fp, MEP>(),
+                    num_foreign_ecc_chip_columns::<
                         F,
                         midnight_curves::G1Projective,
                         MEP,
                         midnight_curves::Fp,
                     >(),
                 ),
-            arch.base64 as usize * NB_BASE64_ADVICE_COLS,
-            arch.automaton as usize * NB_SCANNER_ADVICE_COLS,
+            arch.base64 as usize * NUM_BASE64_ADVICE_COLS,
+            arch.automaton as usize * NUM_SCANNER_ADVICE_COLS,
             (arch.keccak_256 || arch.sha3_256) as usize * PACKED_ADVICE_COLS,
             arch.blake2b as usize * NB_BLAKE2B_ADVICE_COLS,
         ]
@@ -423,52 +425,55 @@ impl ZkStdLib {
         .max()
         .unwrap_or(0);
 
-        let nb_arith_fixed_cols = arch.nb_arith_cols as usize + NB_EXTRA_ARITH_FIXED_COLS;
+        let num_arith_fixed_cols = arch.num_arith_cols as usize + NUM_EXTRA_ARITH_FIXED_COLS;
 
-        let nb_fixed_cols = [
-            nb_arith_fixed_cols,
-            arch.poseidon as usize * NB_POSEIDON_FIXED_COLS,
-            arch.sha2_256 as usize * NB_SHA256_FIXED_COLS,
-            arch.sha2_512 as usize * NB_SHA512_FIXED_COLS,
+        let num_fixed_cols = [
+            num_arith_fixed_cols,
+            arch.poseidon as usize * NUM_POSEIDON_FIXED_COLS,
+            arch.sha2_256 as usize * NUM_SHA256_FIXED_COLS,
+            arch.sha2_512 as usize * NUM_SHA512_FIXED_COLS,
             (arch.keccak_256 || arch.sha3_256) as usize * PACKED_FIXED_COLS,
         ]
         .into_iter()
         .max()
         .unwrap_or(0);
 
-        let advice_columns = (0..nb_advice_cols).map(|_| meta.advice_column()).collect::<Vec<_>>();
-        let fixed_columns = (0..nb_fixed_cols).map(|_| meta.fixed_column()).collect::<Vec<_>>();
+        let advice_columns = (0..num_advice_cols).map(|_| meta.advice_column()).collect::<Vec<_>>();
+        let fixed_columns = (0..num_fixed_cols).map(|_| meta.fixed_column()).collect::<Vec<_>>();
         let committed_instance_column = meta.instance_column();
         let instance_column = meta.instance_column();
 
         let native_config = NativeChip::configure(
             meta,
             &(
-                advice_columns[..arch.nb_arith_cols as usize].to_vec(),
-                fixed_columns[..nb_arith_fixed_cols].to_vec(),
+                advice_columns[..arch.num_arith_cols as usize].to_vec(),
+                fixed_columns[..num_arith_fixed_cols].to_vec(),
                 [committed_instance_column, instance_column],
             ),
         );
 
-        let nb_parallel_range_checks = arch.nr_pow2range_cols as usize;
+        let num_parallel_range_checks = arch.num_pow2range_cols as usize;
         let max_bit_len = max_bit_len as u32;
 
         let pow2range_config =
-            Pow2RangeChip::configure(meta, &advice_columns[1..=arch.nr_pow2range_cols as usize]);
+            Pow2RangeChip::configure(meta, &advice_columns[1..=arch.num_pow2range_cols as usize]);
 
         let core_decomposition_config =
             P2RDecompositionChip::configure(meta, &(native_config.clone(), pow2range_config));
 
         let jubjub_config = arch.jubjub.then(|| {
-            EccChip::<C>::configure(meta, &advice_columns[..NB_EDWARDS_COLS].try_into().unwrap())
+            EccChip::<C>::configure(
+                meta,
+                &advice_columns[..NUM_EDWARDS_COLS].try_into().unwrap(),
+            )
         });
 
         let sha2_256_config = arch.sha2_256.then(|| {
             Sha256Chip::configure(
                 meta,
                 &(
-                    advice_columns[..NB_SHA256_ADVICE_COLS].try_into().unwrap(),
-                    fixed_columns[..NB_SHA256_FIXED_COLS].try_into().unwrap(),
+                    advice_columns[..NUM_SHA256_ADVICE_COLS].try_into().unwrap(),
+                    fixed_columns[..NUM_SHA256_FIXED_COLS].try_into().unwrap(),
                 ),
             )
         });
@@ -477,8 +482,8 @@ impl ZkStdLib {
             Sha512Chip::configure(
                 meta,
                 &(
-                    advice_columns[..NB_SHA512_ADVICE_COLS].try_into().unwrap(),
-                    fixed_columns[..NB_SHA512_FIXED_COLS].try_into().unwrap(),
+                    advice_columns[..NUM_SHA512_ADVICE_COLS].try_into().unwrap(),
+                    fixed_columns[..NUM_SHA512_FIXED_COLS].try_into().unwrap(),
                 ),
             )
         });
@@ -487,8 +492,8 @@ impl ZkStdLib {
             PoseidonChip::configure(
                 meta,
                 &(
-                    advice_columns[..NB_POSEIDON_ADVICE_COLS].try_into().unwrap(),
-                    fixed_columns[..NB_POSEIDON_FIXED_COLS].try_into().unwrap(),
+                    advice_columns[..NUM_POSEIDON_ADVICE_COLS].try_into().unwrap(),
+                    fixed_columns[..NUM_POSEIDON_FIXED_COLS].try_into().unwrap(),
                 ),
             )
         });
@@ -497,7 +502,7 @@ impl ZkStdLib {
             Secp256k1ScalarChip::configure(
                 meta,
                 &advice_columns,
-                nb_parallel_range_checks,
+                num_parallel_range_checks,
                 max_bit_len,
             )
         });
@@ -506,14 +511,14 @@ impl ZkStdLib {
             let base_config = Secp256k1BaseChip::configure(
                 meta,
                 &advice_columns,
-                nb_parallel_range_checks,
+                num_parallel_range_checks,
                 max_bit_len,
             );
             Secp256k1Chip::configure(
                 meta,
                 &base_config,
                 &advice_columns,
-                nb_parallel_range_checks,
+                num_parallel_range_checks,
                 max_bit_len,
             )
         });
@@ -522,14 +527,14 @@ impl ZkStdLib {
             let base_config = Bls12381BaseChip::configure(
                 meta,
                 &advice_columns,
-                nb_parallel_range_checks,
+                num_parallel_range_checks,
                 max_bit_len,
             );
             Bls12381Chip::configure(
                 meta,
                 &base_config,
                 &advice_columns,
-                nb_parallel_range_checks,
+                num_parallel_range_checks,
                 max_bit_len,
             )
         });
@@ -537,7 +542,7 @@ impl ZkStdLib {
         let base64_config = arch.base64.then(|| {
             Base64Chip::configure(
                 meta,
-                advice_columns[..NB_BASE64_ADVICE_COLS].try_into().unwrap(),
+                advice_columns[..NUM_BASE64_ADVICE_COLS].try_into().unwrap(),
             )
         });
 
@@ -545,7 +550,7 @@ impl ZkStdLib {
             ScannerChip::configure(
                 meta,
                 &(
-                    advice_columns[..NB_SCANNER_ADVICE_COLS].try_into().unwrap(),
+                    advice_columns[..NUM_SCANNER_ADVICE_COLS].try_into().unwrap(),
                     parsing::spec_library(),
                 ),
             )
@@ -1071,30 +1076,30 @@ impl DecompositionInstructions<F, AssignedNative<F>> for ZkStdLib {
         &self,
         layouter: &mut impl Layouter<F>,
         x: &AssignedNative<F>,
-        nb_bits: Option<usize>,
+        num_bits: Option<usize>,
         enforce_canonical: bool,
     ) -> Result<Vec<AssignedBit<F>>, Error> {
-        self.native_gadget.assigned_to_le_bits(layouter, x, nb_bits, enforce_canonical)
+        self.native_gadget.assigned_to_le_bits(layouter, x, num_bits, enforce_canonical)
     }
 
     fn assigned_to_le_bytes(
         &self,
         layouter: &mut impl Layouter<F>,
         x: &AssignedNative<F>,
-        nb_bytes: Option<usize>,
+        num_bytes: Option<usize>,
     ) -> Result<Vec<AssignedByte<F>>, Error> {
-        self.native_gadget.assigned_to_le_bytes(layouter, x, nb_bytes)
+        self.native_gadget.assigned_to_le_bytes(layouter, x, num_bytes)
     }
 
     fn assigned_to_le_chunks(
         &self,
         layouter: &mut impl Layouter<F>,
         x: &AssignedNative<F>,
-        nb_bits_per_chunk: usize,
-        nb_chunks: Option<usize>,
+        num_bits_per_chunk: usize,
+        num_chunks: Option<usize>,
     ) -> Result<Vec<AssignedNative<F>>, Error> {
         self.native_gadget
-            .assigned_to_le_chunks(layouter, x, nb_bits_per_chunk, nb_chunks)
+            .assigned_to_le_chunks(layouter, x, num_bits_per_chunk, num_chunks)
     }
 
     fn sgn0(
@@ -1301,7 +1306,7 @@ pub struct MidnightCircuit<'a, R: Relation> {
     k: u32,
     instance: Value<R::Instance>,
     witness: Value<R::Witness>,
-    nb_public_inputs: Rc<RefCell<Option<usize>>>,
+    num_public_inputs: Rc<RefCell<Option<usize>>>,
 }
 
 impl<'a, R: Relation> MidnightCircuit<'a, R> {
@@ -1327,7 +1332,7 @@ impl<'a, R: Relation> MidnightCircuit<'a, R> {
             k,
             instance,
             witness,
-            nb_public_inputs: Rc::new(RefCell::new(None)),
+            num_public_inputs: Rc::new(RefCell::new(None)),
         }
     }
 
@@ -1342,7 +1347,7 @@ impl<'a, R: Relation> MidnightCircuit<'a, R> {
 pub struct MidnightVK {
     architecture: ZkStdLibArch,
     k: u8,
-    nb_public_inputs: usize,
+    num_public_inputs: usize,
     vk: VerifyingKey<midnight_curves::Fq, KZGCommitmentScheme<midnight_curves::Bls12>>,
 }
 
@@ -1360,7 +1365,7 @@ impl MidnightVK {
 
         writer.write_all(&[self.k])?;
 
-        writer.write_all(&(self.nb_public_inputs as u32).to_le_bytes())?;
+        writer.write_all(&(self.num_public_inputs as u32).to_le_bytes())?;
 
         self.vk.write(writer, format)
     }
@@ -1382,7 +1387,7 @@ impl MidnightVK {
 
         let mut bytes = [0u8; 4];
         reader.read_exact(&mut bytes)?;
-        let nb_public_inputs = u32::from_le_bytes(bytes) as usize;
+        let num_public_inputs = u32::from_le_bytes(bytes) as usize;
 
         let mut cs = ConstraintSystem::default();
         let _config = ZkStdLib::configure(&mut cs, (architecture, k - 1));
@@ -1392,7 +1397,7 @@ impl MidnightVK {
         Ok(MidnightVK {
             architecture,
             k,
-            nb_public_inputs,
+            num_public_inputs,
             vk,
         })
     }
@@ -1673,8 +1678,8 @@ impl<R: Relation> Circuit<F> for MidnightCircuit<'_, R> {
         // number of raw public inputs in [Self] (via a RefCell). This number will
         // be stored in the MidnightVK so that we can make sure it matches the number of
         // public inputs provided during verification.
-        *self.nb_public_inputs.borrow_mut() =
-            Some(zk_std_lib.native_gadget.native_chip.nb_public_inputs());
+        *self.num_public_inputs.borrow_mut() =
+            Some(zk_std_lib.native_gadget.native_chip.num_public_inputs());
 
         // We load the tables at the end, once we have figured out what chips/gadgets
         // were actually used.
@@ -1736,12 +1741,12 @@ pub fn setup_vk<R: Relation>(
 
     // During the call to [setup_vk] the circuit RefCell on public inputs has been
     // mutated with the correct value. The following [unwrap] is safe here.
-    let nb_public_inputs = circuit.nb_public_inputs.clone().borrow().unwrap();
+    let num_public_inputs = circuit.num_public_inputs.clone().borrow().unwrap();
 
     MidnightVK {
         architecture: relation.used_chips(),
         k: circuit.k as u8,
-        nb_public_inputs,
+        num_public_inputs,
         vk,
     }
 }
@@ -1788,7 +1793,7 @@ where
         params,
         &pk.pk,
         &circuit,
-        NB_COMMITTED_INSTANCES,
+        NUM_COMMITTED_INSTANCES,
         &[com_inst.as_slice(), &pi],
         rng,
     )?;
@@ -1811,7 +1816,7 @@ where
 {
     let pi = R::format_instance(instance)?;
     let committed_pi = committed_instance.unwrap_or(G1Affine::identity());
-    if pi.len() != vk.nb_public_inputs {
+    if pi.len() != vk.num_public_inputs {
         return Err(Error::InvalidInstances);
     }
     BlstPLONK::<MidnightCircuit<R>>::verify::<H>(
@@ -1854,7 +1859,7 @@ where
         .zip(pis.par_iter())
         .zip(proofs.par_iter())
         .map(|((vk, pi), proof)| {
-            if pi.len() != vk.nb_public_inputs {
+            if pi.len() != vk.num_public_inputs {
                 return Err(Error::InvalidInstances);
             }
 
@@ -1913,7 +1918,7 @@ pub fn cs_degree(arch: ZkStdLibArch) -> usize {
 /// computed automatically.
 pub fn cost_model<R: Relation>(relation: &R, k: Option<u32>) -> CircuitModel {
     let circuit = MidnightCircuit::from_relation(relation, k);
-    circuit_model::<_, COMMITMENT_BYTE_SIZE, SCALAR_BYTE_SIZE>(&circuit, NB_COMMITTED_INSTANCES)
+    circuit_model::<_, COMMITMENT_BYTE_SIZE, SCALAR_BYTE_SIZE>(&circuit, NUM_COMMITTED_INSTANCES)
 }
 
 /// Finds the optimal `k` (log2 of the circuit size) for the given relation.

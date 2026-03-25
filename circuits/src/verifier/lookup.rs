@@ -68,11 +68,11 @@ pub(crate) fn read_multiplicities<S: SelfEmulation>(
 impl<S: SelfEmulation> CommittedMultiplicities<S> {
     pub(crate) fn read_commitment(
         self,
-        nb_flattened: usize,
+        num_flattened: usize,
         layouter: &mut impl Layouter<S::F>,
         transcript_gadget: &mut TranscriptGadget<S>,
     ) -> Result<Committed<S>, Error> {
-        let helper_polys = (0..nb_flattened)
+        let helper_polys = (0..num_flattened)
             .map(|_| transcript_gadget.read_point(layouter))
             .collect::<Result<Vec<_>, Error>>()?;
         let accumulator = transcript_gadget.read_point(layouter)?;
@@ -91,9 +91,9 @@ impl<S: SelfEmulation> Committed<S> {
         layouter: &mut impl Layouter<S::F>,
         transcript_gadget: &mut TranscriptGadget<S>,
     ) -> Result<Evaluated<S>, Error> {
-        let nb_flattened = self.helper_polys.len();
+        let num_flattened = self.helper_polys.len();
         let multiplicities_eval = transcript_gadget.read_scalar(layouter)?;
-        let helper_evals = (0..nb_flattened)
+        let helper_evals = (0..num_flattened)
             .map(|_| transcript_gadget.read_scalar(layouter))
             .collect::<Result<Vec<_>, Error>>()?;
         let accumulator_eval = transcript_gadget.read_scalar(layouter)?;

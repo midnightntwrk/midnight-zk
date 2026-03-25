@@ -76,13 +76,13 @@ pub(crate) fn read_product_commitments<S: SelfEmulation>(
 /// in halo2 src/plonk/permutation/verifier.rs.
 ///
 /// Instead of evaluating it for the `VerifyingKey`, we directly require the
-/// `nb_perm_commitments` as an argument.
+/// `num_perm_commitments` as an argument.
 pub(crate) fn evaluate_permutation_common<S: SelfEmulation>(
     layouter: &mut impl Layouter<S::F>,
     transcript_gadget: &mut TranscriptGadget<S>,
-    nb_perm_commitments: usize,
+    num_perm_commitments: usize,
 ) -> Result<CommonEvaluated<S>, Error> {
-    let permutation_evals = (0..nb_perm_commitments)
+    let permutation_evals = (0..num_perm_commitments)
         .map(|_| transcript_gadget.read_scalar(layouter))
         .collect::<Result<Vec<_>, _>>()?;
 

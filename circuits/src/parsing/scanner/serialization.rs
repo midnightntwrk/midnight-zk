@@ -257,7 +257,7 @@ macro_rules! impl_serialize_for_struct {
 }
 
 impl_serialize_for_struct!(Automaton {
-    nb_states,
+    num_states,
     initial_state,
     final_states,
     transitions

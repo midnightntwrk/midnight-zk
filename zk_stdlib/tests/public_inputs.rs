@@ -37,7 +37,7 @@ type F = midnight_curves::Fq;
 
 #[derive(Clone)]
 struct PIsCircuit {
-    nb_public_inputs: u32,
+    num_public_inputs: u32,
 }
 
 impl Relation for PIsCircuit {
@@ -64,21 +64,21 @@ impl Relation for PIsCircuit {
         // A better way to load the inputs would be the following:
         //
         //   let inputs = instance
-        //     .transpose_vec(self.nb_public_inputs as usize)
+        //     .transpose_vec(self.num_public_inputs as usize)
         //     .into_iter()
         //     .map(|input| std_lib.assign_as_public_input(layouter, input))
         //     .collect::<Result<Vec<_>, Error>>()?;
         //
         // however, that would not allow us to test the issue that we are
         // concerned about here.
-        let mut inputs = vec![F::ZERO; self.nb_public_inputs as usize];
-        instance.map(|v| inputs = v[..self.nb_public_inputs as usize].to_vec());
+        let mut inputs = vec![F::ZERO; self.num_public_inputs as usize];
+        instance.map(|v| inputs = v[..self.num_public_inputs as usize].to_vec());
         let inputs = inputs
             .into_iter()
             .map(|input| std_lib.assign_as_public_input(layouter, Value::known(input)))
             .collect::<Result<Vec<_>, Error>>()?;
 
-        let preimage_values = witness.transpose_vec(self.nb_public_inputs as usize);
+        let preimage_values = witness.transpose_vec(self.num_public_inputs as usize);
         let preimages = std_lib.assign_many(layouter, &preimage_values)?;
 
         let hashes = preimages
@@ -94,14 +94,14 @@ impl Relation for PIsCircuit {
     }
 
     fn write_relation<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        writer.write_all(&self.nb_public_inputs.to_le_bytes())
+        writer.write_all(&self.num_public_inputs.to_le_bytes())
     }
 
     fn read_relation<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let mut bytes = [0u8; 4];
         reader.read_exact(&mut bytes)?;
         Ok(PIsCircuit {
-            nb_public_inputs: u32::from_le_bytes(bytes),
+            num_public_inputs: u32::from_le_bytes(bytes),
         })
     }
 
@@ -118,15 +118,15 @@ impl Relation for PIsCircuit {
     }
 }
 
-fn pi_test(nb_public_inputs: u32, extra_pi: bool) {
-    let relation = PIsCircuit { nb_public_inputs };
+fn pi_test(num_public_inputs: u32, extra_pi: bool) {
+    let relation = PIsCircuit { num_public_inputs };
     let srs = srs_for_test(&relation, None);
     let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
     let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
 
     let mut rng = ChaCha8Rng::from_entropy();
 
-    let witness = (0..nb_public_inputs).map(|_| F::random(&mut rng)).collect::<Vec<_>>();
+    let witness = (0..num_public_inputs).map(|_| F::random(&mut rng)).collect::<Vec<_>>();
 
     let mut instance = witness
         .iter()

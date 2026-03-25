@@ -114,29 +114,29 @@ where
         // Once there, we can expand to bytes again and perform a finer search
         // over the bytes.
 
-        let nb_bytes_per_chunk = F::CAPACITY as usize / 8;
-        let nb_chunks = n.div_ceil(nb_bytes_per_chunk);
+        let num_bytes_per_chunk = F::CAPACITY as usize / 8;
+        let num_chunks = n.div_ceil(num_bytes_per_chunk);
 
-        let mut chunks = Vec::with_capacity(nb_chunks + 1); // A dummy chunk will be added.
-        for chunk_bytes in sequence.chunks(nb_bytes_per_chunk) {
+        let mut chunks = Vec::with_capacity(num_chunks + 1); // A dummy chunk will be added.
+        for chunk_bytes in sequence.chunks(num_bytes_per_chunk) {
             let chunk = native.assigned_from_le_bytes(layouter, chunk_bytes)?;
             chunks.push(chunk);
         }
 
         // The idx will be split into chunk_idx and fine_search_idx, where:
-        //   * chunk_idx       := idx / nb_bytes_per_chunk
-        //   * fine_search_idx := idx % nb_bytes_per_chunk
+        //   * chunk_idx       := idx / num_bytes_per_chunk
+        //   * fine_search_idx := idx % num_bytes_per_chunk
         //
         let (chunk_idx, fine_search_idx) = native.div_rem(
             layouter,
             idx,
-            nb_bytes_per_chunk.into(),
+            num_bytes_per_chunk.into(),
             Some((1u64 << 18).into()),
         )?;
 
         // Add 1 because the index of interest could be between 2 chunks, even if
         // the length we are looking for fits in 1 chunk.
-        let len_for_chunks = min(nb_chunks, 1 + len.div_ceil(nb_bytes_per_chunk));
+        let len_for_chunks = min(num_chunks, 1 + len.div_ceil(num_bytes_per_chunk));
 
         // Add a dummy chunk before the chunk search, to account for the +1 added to
         // len_for_chunks. This dummy value will never be read, but it is necessary
@@ -146,13 +146,13 @@ where
 
         // The following is implicitly range-checking chunk_idx to be in the range
         // [0, |chunks| - len_for_chunks]. Note that:
-        //   * |chunks|       := n.div_ceil(nb_bytes_per_chunk)
-        //   * len_for_chunks := min(|chunks|, 1 + len.div_ceil(nb_bytes_per_chunk))
+        //   * |chunks|       := n.div_ceil(num_bytes_per_chunk)
+        //   * len_for_chunks := min(|chunks|, 1 + len.div_ceil(num_bytes_per_chunk))
         //
         // Thus the above range is equal to [0, 0] or
-        // [0, n.div_ceil(nb_bytes_per_chunk) - len.div_ceil(nb_bytes_per_chunk) - 1],
+        // [0, n.div_ceil(num_bytes_per_chunk) - len.div_ceil(num_bytes_per_chunk) - 1],
         // which is equal or contained in the desired range:
-        // [0, (n - len) / nb_bytes_per_chunk].
+        // [0, (n - len) / num_bytes_per_chunk].
         let selected_chunks =
             self.get_subsequence(layouter, &chunks, &chunk_idx, len_for_chunks)?;
 
@@ -161,7 +161,7 @@ where
 
         let mut selected_bytes = Vec::with_capacity(len_for_chunks * 8);
         for chunk in selected_chunks.iter() {
-            let bytes = native.assigned_to_le_bytes(layouter, chunk, Some(nb_bytes_per_chunk))?;
+            let bytes = native.assigned_to_le_bytes(layouter, chunk, Some(num_bytes_per_chunk))?;
             selected_bytes.extend(bytes);
         }
 
@@ -296,9 +296,9 @@ mod tests {
             operation,
             _marker: PhantomData,
         };
-        let log2_nb_rows = if sequence.len() > 1000 { 13 } else { 12 };
+        let log2_num_rows = if sequence.len() > 1000 { 13 } else { 12 };
         let public_inputs = vec![vec![], vec![]];
-        match MockProver::run(log2_nb_rows, &circuit, public_inputs) {
+        match MockProver::run(log2_num_rows, &circuit, public_inputs) {
             Ok(prover) => match prover.verify() {
                 Ok(()) => assert!(must_pass),
                 Err(e) => assert!(!must_pass, "Failed verifier with error {e:?}"),

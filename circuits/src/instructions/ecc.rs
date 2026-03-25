@@ -308,14 +308,14 @@ pub(crate) mod tests {
             operation,
             _marker: PhantomData,
         };
-        let log2_nb_rows = match operation {
+        let log2_num_rows = match operation {
             Operation::Msm => 17,
             Operation::MsmBounded => 16,
             Operation::MulByConstant => 16,
             _ => 10,
         };
         let public_inputs = vec![vec![], vec![]];
-        match MockProver::run(log2_nb_rows, &circuit, public_inputs) {
+        match MockProver::run(log2_num_rows, &circuit, public_inputs) {
             Ok(prover) => match prover.verify() {
                 Ok(()) => assert!(must_pass),
                 Err(e) => assert!(!must_pass, "Failed verifier with error {e:?}"),

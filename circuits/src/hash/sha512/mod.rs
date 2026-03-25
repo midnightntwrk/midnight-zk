@@ -21,7 +21,7 @@ mod utils;
 
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 use sha2::Digest;
-pub use sha512_chip::{Sha512Chip, Sha512Config, NB_SHA512_ADVICE_COLS, NB_SHA512_FIXED_COLS};
+pub use sha512_chip::{Sha512Chip, Sha512Config, NUM_SHA512_ADVICE_COLS, NUM_SHA512_FIXED_COLS};
 
 use crate::{
     instructions::{hash::HashCPU, DecompositionInstructions, HashInstructions},

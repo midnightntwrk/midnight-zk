@@ -43,12 +43,12 @@ use crate::{
 };
 
 /// Number of advice columns in [Base64Chip].
-pub const NB_BASE64_ADVICE_COLS: usize = 4;
+pub const NUM_BASE64_ADVICE_COLS: usize = 4;
 
 #[derive(Clone, Debug)]
 /// Config for Base64Chip.
 pub struct Base64Config {
-    advice_cols: [Column<Advice>; NB_BASE64_ADVICE_COLS],
+    advice_cols: [Column<Advice>; NUM_BASE64_ADVICE_COLS],
 
     lookup_sel: Selector,
     // Base64 table.
@@ -407,7 +407,7 @@ impl<F: CircuitField> Chip<F> for Base64Chip<F> {
 }
 
 impl<F: CircuitField> ComposableChip<F> for Base64Chip<F> {
-    type SharedResources = [Column<Advice>; NB_BASE64_ADVICE_COLS];
+    type SharedResources = [Column<Advice>; NUM_BASE64_ADVICE_COLS];
     type InstructionDeps = NG<F>;
 
     fn new(config: &Self::Config, sub_chips: &Self::InstructionDeps) -> Self {
@@ -554,7 +554,7 @@ mod tests {
                 &[committed_instance_column, instance_column],
             );
             let sr =
-                &ng_config.native_config.value_cols[..NB_BASE64_ADVICE_COLS].try_into().unwrap();
+                &ng_config.native_config.value_cols[..NUM_BASE64_ADVICE_COLS].try_into().unwrap();
             let b64_config = Base64Chip::configure(meta, sr);
 
             (ng_config, b64_config)

@@ -19,10 +19,10 @@
 // (here, exponentiated) by the S-box. In particular, when performing several
 // partial rounds in a row, the final output can be expressed as a linear
 // combination of the initial input of the round, and of the exponentiated
-// columns. Rephrasing, upon performing `NB_SKIPS` skips (i.e., `1 + NB_SKIPS`
+// columns. Rephrasing, upon performing `NUM_SKIPS` skips (i.e., `1 + NUM_SKIPS`
 // partial rounds in a row), over an input of length `WIDTH`, we can perform
-// this batch of rounds in one Plonk row (instead of `1 + NB_SKIPS` rows), using
-// `WIDTH + NB_SKIPS` advice cells instead of `WIDTH * NB_SKIPS` cells.
+// this batch of rounds in one Plonk row (instead of `1 + NUM_SKIPS` rows),
+// using `WIDTH + NUM_SKIPS` advice cells instead of `WIDTH * NUM_SKIPS` cells.
 // Formalisation and full details about this optimisation can be found at:
 //
 // Miguel Ambrona, Anne-Laure Schmitt, Raphael R. Toledo, and Danny Willems,
@@ -30,10 +30,10 @@
 // https://eprint.iacr.org/2022/462.pdf
 //
 // With a more graphical explanation, consider the case `WIDTH == 3` and
-// `NB_SKIPS == 2`. The cells of a Plonk matrix will look like this:
+// `NUM_SKIPS == 2`. The cells of a Plonk matrix will look like this:
 //
 // | x0 | y0 | z0 || a0 | b0 | c0 | --> initial input
-// | x1 | y1 | z1 || a1 | b1 | c1 | --> `NB_SKIPS` rounds to be skipped
+// | x1 | y1 | z1 || a1 | b1 | c1 | --> `NUM_SKIPS` rounds to be skipped
 // | x2 | y2 | z2 || a2 | b2 | c2 |
 // | x3 | y3 | z3 ||    |    |    | --> final output
 //
@@ -66,8 +66,8 @@
 //     components of an identity. Indeed, all identities are of the form: `(x3
 //     y3 z1 z2 z3) = L(x0 y0 z0^5 z1^5 z2^5) + P({ai,bi,ci}_i))` with `L` a
 //     linear function and `P` a polynomial. Therefore, instead of loading all
-//     `WIDTH * (1 + NB_SKIPS)` round constants `{ai,bi,ci}` in the circuit,
-//     only the `WIDTH + NB_SKIPS` components of `C = P({ai,bi,ci}_i))` need to
+//     `WIDTH * (1 + NUM_SKIPS)` round constants `{ai,bi,ci}` in the circuit,
+//     only the `WIDTH + NUM_SKIPS` components of `C = P({ai,bi,ci}_i))` need to
 //     be loaded. `RoundId<F>::round_constants_opt` computes `C` for each
 //     (non-skipped) partial round of Poseidon.
 //   - `RoundId<F>::to_expression` converts a set of round identities into Plonk
@@ -79,9 +79,9 @@
 //     to derive a CPU (i.e., off-circuit) version of Poseidon implementing
 //     round skips as well.
 //
-// Note that `NB_SKIPS` can have two different values, depending on whether we
-// are implementing a CPU version of poseidon (`NB_SKIPS_CPU`) or a
-// circuit chip (`NB_SKIPS_CIRCUIT`). The reason for separating
+// Note that `NUM_SKIPS` can have two different values, depending on whether we
+// are implementing a CPU version of poseidon (`NUM_SKIPS_CPU`) or a
+// circuit chip (`NUM_SKIPS_CIRCUIT`). The reason for separating
 // the two values is that CPU and circuit implementations have different
 // resource requirements, and therefore different optimal number of skips.
 
@@ -96,7 +96,7 @@ mod poseidon_chip;
 
 /// Implementation of CPU versions of Poseidon's permutation and round function.
 /// The functions use two different numbers of round skips depending on whether
-/// they will be used for circuits (NB_SKIPS_CIRCUIT) or CPU (NB_SKIPS_CPU).
+/// they will be used for circuits (NUM_SKIPS_CIRCUIT) or CPU (NUM_SKIPS_CPU).
 mod poseidon_cpu;
 
 mod poseidon_varlen;
@@ -119,14 +119,14 @@ use crate::{
 };
 
 /// Number of advice columns used by the Poseidon chip.
-pub const NB_POSEIDON_ADVICE_COLS: usize = if NB_SKIPS_CIRCUIT >= WIDTH {
-    WIDTH + NB_SKIPS_CIRCUIT
+pub const NUM_POSEIDON_ADVICE_COLS: usize = if NUM_SKIPS_CIRCUIT >= WIDTH {
+    WIDTH + NUM_SKIPS_CIRCUIT
 } else {
     2 * WIDTH
 };
 
 /// Number of fixed columns used by the Poseidon chip.
-pub const NB_POSEIDON_FIXED_COLS: usize = WIDTH + NB_SKIPS_CIRCUIT;
+pub const NUM_POSEIDON_FIXED_COLS: usize = WIDTH + NUM_SKIPS_CIRCUIT;
 
 impl<F: PoseidonField> HashCPU<F, F> for PoseidonChip<F> {
     fn hash(inputs: &[F]) -> F {

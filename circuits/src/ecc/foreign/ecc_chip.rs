@@ -86,7 +86,7 @@ where
 }
 
 /// Number of columns required by the custom gates of this chip.
-pub fn nb_foreign_ecc_chip_columns<F, C, B, S>() -> usize
+pub fn num_foreign_ecc_chip_columns<F, C, B, S>() -> usize
 where
     F: CircuitField,
     C: WeierstrassCurve,
@@ -97,7 +97,7 @@ where
     // The 2 in `2 + |moduli|` corresponds to `u_col` + `cond_col`.
     // The outer `+ 1` corresponds to the advice column for the index of
     // `multi_select`.
-    B::NB_LIMBS as usize + max(B::NB_LIMBS as usize, 2 + B::moduli().len()) + 1
+    B::NUM_LIMBS as usize + max(B::NUM_LIMBS as usize, 2 + B::moduli().len()) + 1
 }
 
 /// Shared MSM randomness for the windowed double-and-add algorithm.
@@ -872,7 +872,7 @@ where
         // Scalars with a "bad" bound will be split with GLV into 2 scalars with a
         // half-size bound.
         // (The GLV scalars are guaranteed to have half-size.)
-        let nb_bits_per_glv_scalar = C::ScalarField::NUM_BITS.div_ceil(2) as usize;
+        let num_bits_per_glv_scalar = C::ScalarField::NUM_BITS.div_ceil(2) as usize;
         let mut non_glv_scalars = vec![];
         let mut non_glv_bases = vec![];
         let mut glv_scalars = vec![];
@@ -881,10 +881,10 @@ where
             // We heuristically say a bound is "bad" if it far from NUM_BITS / 2 in the
             // following sense. Note that, ATM, in windowed_msm all sequences
             // are padded with zeros to meet the longest one.
-            if s.1 > nb_bits_per_glv_scalar + WS {
+            if s.1 > num_bits_per_glv_scalar + WS {
                 let ((s1, s2), (b1, b2)) = self.glv_split(layouter, &s.0, b)?;
-                glv_scalars.push((s1, nb_bits_per_glv_scalar));
-                glv_scalars.push((s2, nb_bits_per_glv_scalar));
+                glv_scalars.push((s1, num_bits_per_glv_scalar));
+                glv_scalars.push((s2, num_bits_per_glv_scalar));
                 glv_bases.push(b1);
                 glv_bases.push(b2);
             } else {
@@ -897,12 +897,12 @@ where
         let bases = [glv_bases, non_glv_bases].concat();
 
         let mut decomposed_scalars = vec![];
-        for (s, nb_bits_s) in scalars.iter() {
+        for (s, num_bits_s) in scalars.iter() {
             let s_bits = self.scalar_field_chip().assigned_to_le_chunks(
                 layouter,
                 s,
                 WS,
-                Some(nb_bits_s.div_ceil(WS)),
+                Some(num_bits_s.div_ceil(WS)),
             )?;
             decomposed_scalars.push(s_bits)
         }
@@ -1034,7 +1034,7 @@ where
         meta: &mut ConstraintSystem<F>,
         base_field_config: &FieldChipConfig,
         advice_columns: &[Column<Advice>],
-        nb_parallel_range_checks: usize,
+        num_parallel_range_checks: usize,
         max_bit_len: u32,
     ) -> ForeignEccConfig<C> {
         // Assert that there is room for the cond_col in the existing columns of the
@@ -1048,7 +1048,7 @@ where
             meta,
             base_field_config,
             &cond_col,
-            nb_parallel_range_checks,
+            num_parallel_range_checks,
             max_bit_len,
         );
 
@@ -1056,7 +1056,7 @@ where
             meta,
             base_field_config,
             &cond_col,
-            nb_parallel_range_checks,
+            num_parallel_range_checks,
             max_bit_len,
         );
 
@@ -1064,7 +1064,7 @@ where
             meta,
             base_field_config,
             &cond_col,
-            nb_parallel_range_checks,
+            num_parallel_range_checks,
             max_bit_len,
         );
 
@@ -1072,7 +1072,7 @@ where
             meta,
             base_field_config,
             &cond_col,
-            nb_parallel_range_checks,
+            num_parallel_range_checks,
             max_bit_len,
         );
 
@@ -1713,7 +1713,7 @@ where
         assert!(q.x.is_well_formed());
 
         // Modular integers have at most two representations in limbs form,
-        // because m <= B^(nb_limbs) < 2m, where m is the emulated modulus and B is
+        // because m <= B^(num_limbs) < 2m, where m is the emulated modulus and B is
         // the base of representation.
         // In other words, an integer x may be represented with limbs x_i such that
         // sum_x = x or sum_x = x + m, where sum_x := 1 + sum_i B^i x_i.
@@ -1975,11 +1975,11 @@ where
             tables.push(p_table)
         }
 
-        let nb_iterations = max_len;
+        let num_iterations = max_len;
         let mut acc = l_times_r.clone();
 
         #[allow(clippy::needless_range_loop)]
-        for i in 0..nb_iterations {
+        for i in 0..num_iterations {
             for _ in 0..WS {
                 acc = self.double(layouter, &acc)?;
             }
@@ -2204,22 +2204,22 @@ where
             <N as FromScratch<F>>::configure_from_scratch(meta, instance_columns);
         let scalar_field_config =
             <S as FromScratch<F>>::configure_from_scratch(meta, instance_columns);
-        let nb_advice_cols = nb_foreign_ecc_chip_columns::<F, C, B, S>();
-        let advice_columns = (0..nb_advice_cols).map(|_| meta.advice_column()).collect::<Vec<_>>();
+        let num_advice_cols = num_foreign_ecc_chip_columns::<F, C, B, S>();
+        let advice_columns = (0..num_advice_cols).map(|_| meta.advice_column()).collect::<Vec<_>>();
         // Use hard-coded pow2range values matching NativeGadget::configure_from_scratch
-        let nb_parallel_range_checks = 4;
+        let num_parallel_range_checks = 4;
         let max_bit_len = 8;
         let base_field_config = FieldChip::<F, C::Base, B, N>::configure(
             meta,
             &advice_columns,
-            nb_parallel_range_checks,
+            num_parallel_range_checks,
             max_bit_len,
         );
         let ff_ecc_config = ForeignEccChip::<F, C, B, S, N>::configure(
             meta,
             &base_field_config,
             &advice_columns,
-            nb_parallel_range_checks,
+            num_parallel_range_checks,
             max_bit_len,
         );
         ForeignEccTestConfig {

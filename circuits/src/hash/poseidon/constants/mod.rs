@@ -20,10 +20,10 @@ pub(crate) const WIDTH: usize = 3;
 pub(crate) const RATE: usize = 2;
 
 /// Number of full rounds of the Poseidon permutation.
-pub(crate) const NB_FULL_ROUNDS: usize = 8;
+pub(crate) const NUM_FULL_ROUNDS: usize = 8;
 
 /// Number of partial rounds of the Poseidon permutation.
-pub(crate) const NB_PARTIAL_ROUNDS: usize = 60;
+pub(crate) const NUM_PARTIAL_ROUNDS: usize = 60;
 
 /// A CircuitField with the constants needed to compute Poseidon's permutation
 /// (MDS matrix and round constants).
@@ -32,7 +32,7 @@ pub trait PoseidonField: CircuitField {
     const MDS: [[Self; WIDTH]; WIDTH];
 
     /// The constants added to Poseidon's state on every round.
-    const ROUND_CONSTANTS: [[Self; WIDTH]; NB_FULL_ROUNDS + NB_PARTIAL_ROUNDS];
+    const ROUND_CONSTANTS: [[Self; WIDTH]; NUM_FULL_ROUNDS + NUM_PARTIAL_ROUNDS];
 }
 
 mod blstrs;

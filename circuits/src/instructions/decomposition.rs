@@ -72,7 +72,7 @@ where
     ///
     /// # Unsatisfiable Circuit
     ///
-    /// If `x` cannot be decomposed in `nb_bits` bits when such argument is
+    /// If `x` cannot be decomposed in `num_bits` bits when such argument is
     /// provided.
     ///
     /// ```should_panic
@@ -85,7 +85,7 @@ where
         &self,
         layouter: &mut impl Layouter<F>,
         x: &Assigned,
-        nb_bits: Option<usize>,
+        num_bits: Option<usize>,
         enforce_canonical: bool,
     ) -> Result<Vec<AssignedBit<F>>, Error>;
 
@@ -95,10 +95,10 @@ where
         &self,
         layouter: &mut impl Layouter<F>,
         x: &Assigned,
-        nb_bits: Option<usize>,
+        num_bits: Option<usize>,
         enforce_canonical: bool,
     ) -> Result<Vec<AssignedBit<F>>, Error> {
-        let mut bits = self.assigned_to_le_bits(layouter, x, nb_bits, enforce_canonical)?;
+        let mut bits = self.assigned_to_le_bits(layouter, x, num_bits, enforce_canonical)?;
         bits.reverse();
         Ok(bits)
     }
@@ -131,7 +131,7 @@ where
     ///
     /// # Unsatisfiable Circuit
     ///
-    /// If `x` cannot be decomposed in `nb_bytes` bytes when such argument is
+    /// If `x` cannot be decomposed in `num_bytes` bytes when such argument is
     /// provided.
     ///
     /// ```should_panic
@@ -144,7 +144,7 @@ where
         &self,
         layouter: &mut impl Layouter<F>,
         x: &Assigned,
-        nb_bytes: Option<usize>,
+        num_bytes: Option<usize>,
     ) -> Result<Vec<AssignedByte<F>>, Error>;
 
     /// Same as [assigned_to_le_bytes](Self::assigned_to_le_bytes) but the
@@ -153,9 +153,9 @@ where
         &self,
         layouter: &mut impl Layouter<F>,
         x: &Assigned,
-        nb_bytes: Option<usize>,
+        num_bytes: Option<usize>,
     ) -> Result<Vec<AssignedByte<F>>, Error> {
-        let mut bytes = self.assigned_to_le_bytes(layouter, x, nb_bytes)?;
+        let mut bytes = self.assigned_to_le_bytes(layouter, x, num_bytes)?;
         bytes.reverse();
         Ok(bytes)
     }
@@ -256,25 +256,26 @@ where
     /// imposing an upper bound on the value of `x`.
     ///
     /// This vector is NOT guaranteed to be canonical, but it is guaranteed to
-    /// satisfy: `x = sum_i 2^{i * nb_bits_per_chunk} * chunks_i`,
+    /// satisfy: `x = sum_i 2^{i * num_bits_per_chunk} * chunks_i`,
     /// when interpreting `chunks_i` as `Assigned` values instead of
     /// [AssignedNative] values. Note that this is possible because
     /// `Assigned::Element : PrimeField`.
     ///
     /// # Unsatisfiable Circuit
     ///
-    /// If `x` cannot be decomposed in `nb_chunks` chunks of `nb_bits_per_chunk`
-    /// bits, when the argument `nb_chunks` is provided.
+    /// If `x` cannot be decomposed in `num_chunks` chunks of
+    /// `num_bits_per_chunk` bits, when the argument `num_chunks` is
+    /// provided.
     ///
     /// # Panics
     ///
-    /// If `nb_bits_per_chunk >= F::NUM_BITS`.
+    /// If `num_bits_per_chunk >= F::NUM_BITS`.
     fn assigned_to_le_chunks(
         &self,
         layouter: &mut impl Layouter<F>,
         x: &Assigned,
-        nb_bits_per_chunk: usize,
-        nb_chunks: Option<usize>,
+        num_bits_per_chunk: usize,
+        num_chunks: Option<usize>,
     ) -> Result<Vec<AssignedNative<F>>, Error>;
 
     /// Sign function as described in RFC 9380. `sgn0(x) := x mod 2`.
@@ -340,7 +341,7 @@ pub(crate) mod tests {
     {
         x: Assigned::Element,
         decomposed: Vec<u8>,
-        nb_parts: Option<usize>,
+        num_parts: Option<usize>,
         endianess: Endianess,
         operation: Operation,
         _marker: PhantomData<(F, Assigned, DecompChip, AuxChip)>,
@@ -391,10 +392,10 @@ pub(crate) mod tests {
             match self.operation {
                 Operation::ToBits => {
                     let x: Assigned = chip.assign_fixed(&mut layouter, self.x)?;
-                    let nb_bits = self.nb_parts;
+                    let num_bits = self.num_parts;
                     let bits = match self.endianess {
-                        LE => chip.assigned_to_le_bits(&mut layouter, &x, nb_bits, true),
-                        BE => chip.assigned_to_be_bits(&mut layouter, &x, nb_bits, true),
+                        LE => chip.assigned_to_le_bits(&mut layouter, &x, num_bits, true),
+                        BE => chip.assigned_to_be_bits(&mut layouter, &x, num_bits, true),
                     }?;
                     assert_eq!(bits.len(), self.decomposed.len());
                     bits.iter().zip(self.decomposed.iter()).try_for_each(|(bit, expected)| {
@@ -403,10 +404,10 @@ pub(crate) mod tests {
                 }
                 Operation::ToBytes => {
                     let x: Assigned = chip.assign_fixed(&mut layouter, self.x)?;
-                    let nb_bytes = self.nb_parts;
+                    let num_bytes = self.num_parts;
                     let bytes = match self.endianess {
-                        LE => chip.assigned_to_le_bytes(&mut layouter, &x, nb_bytes),
-                        BE => chip.assigned_to_be_bytes(&mut layouter, &x, nb_bytes),
+                        LE => chip.assigned_to_le_bytes(&mut layouter, &x, num_bytes),
+                        BE => chip.assigned_to_be_bytes(&mut layouter, &x, num_bytes),
                     }?;
                     bytes.iter().zip(self.decomposed.iter()).try_for_each(|(bit, expected)| {
                         aux_chip.assert_equal_to_fixed(&mut layouter, bit, *expected)
@@ -462,7 +463,7 @@ pub(crate) mod tests {
     fn run<F, Assigned, DecompChip, AuxChip>(
         x: Assigned::Element,
         decomposed: &[u8],
-        nb_parts: Option<usize>,
+        num_parts: Option<usize>,
         endianess: Endianess,
         operation: Operation,
         must_pass: bool,
@@ -483,14 +484,14 @@ pub(crate) mod tests {
         let circuit = TestCircuit::<F, Assigned, DecompChip, AuxChip> {
             x,
             decomposed: decomposed.to_vec(),
-            nb_parts,
+            num_parts,
             endianess,
             operation,
             _marker: PhantomData,
         };
-        let log2_nb_rows = 10;
+        let log2_num_rows = 10;
         let public_inputs = vec![vec![], vec![]];
-        match MockProver::run(log2_nb_rows, &circuit, public_inputs) {
+        match MockProver::run(log2_num_rows, &circuit, public_inputs) {
             Ok(prover) => match prover.verify() {
                 Ok(()) => assert!(must_pass),
                 Err(e) => assert!(!must_pass, "Failed verifier with error {e:?}"),
@@ -556,11 +557,11 @@ pub(crate) mod tests {
             (parse!(3), vec![0, 0, 0, 1, 1], Some(5), false, false),
         ]
         .iter()
-        .for_each(|(x, bits, nb_bits, ok_to, ok_from)| {
+        .for_each(|(x, bits, num_bits, ok_to, ok_from)| {
             let mut rev = bits.clone();
             rev.reverse();
             run::<F, Assigned, DecompChip, AuxChip>(
-                *x, bits, *nb_bits, LE, ToBits, *ok_to, cost_model, name, "to_bits",
+                *x, bits, *num_bits, LE, ToBits, *ok_to, cost_model, name, "to_bits",
             );
             run::<F, Assigned, DecompChip, AuxChip>(
                 *x,
@@ -575,7 +576,7 @@ pub(crate) mod tests {
             );
             cost_model = false;
             run::<F, Assigned, DecompChip, AuxChip>(
-                *x, &rev, *nb_bits, BE, ToBits, *ok_to, false, "", "",
+                *x, &rev, *num_bits, BE, ToBits, *ok_to, false, "", "",
             );
             run::<F, Assigned, DecompChip, AuxChip>(
                 *x, &rev, None, BE, FromBits, *ok_from, false, "", "",
@@ -623,11 +624,11 @@ pub(crate) mod tests {
             ),
         ]
         .iter()
-        .for_each(|(x, bytes, nb_bytes, ok_to, ok_from)| {
+        .for_each(|(x, bytes, num_bytes, ok_to, ok_from)| {
             let mut rev = bytes.clone();
             rev.reverse();
             run::<F, Assigned, DecompChip, AuxChip>(
-                *x, bytes, *nb_bytes, LE, ToBytes, *ok_to, cost_model, name, "to_bytes",
+                *x, bytes, *num_bytes, LE, ToBytes, *ok_to, cost_model, name, "to_bytes",
             );
             run::<F, Assigned, DecompChip, AuxChip>(
                 *x,
@@ -642,7 +643,7 @@ pub(crate) mod tests {
             );
             cost_model = false;
             run::<F, Assigned, DecompChip, AuxChip>(
-                *x, &rev, *nb_bytes, BE, ToBytes, *ok_to, false, "", "",
+                *x, &rev, *num_bytes, BE, ToBytes, *ok_to, false, "", "",
             );
             run::<F, Assigned, DecompChip, AuxChip>(
                 *x, &rev, None, BE, FromBytes, *ok_from, false, "", "",

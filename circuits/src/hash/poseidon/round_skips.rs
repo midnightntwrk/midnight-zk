@@ -14,24 +14,24 @@
 use ff::Field;
 use midnight_proofs::plonk::Expression;
 
-use super::{sbox, PoseidonField, NB_SKIPS_CPU};
+use super::{sbox, PoseidonField, NUM_SKIPS_CPU};
 use crate::hash::poseidon::{
-    constants::{NB_FULL_ROUNDS, NB_PARTIAL_ROUNDS, WIDTH},
-    NB_SKIPS_CIRCUIT,
+    constants::{NUM_FULL_ROUNDS, NUM_PARTIAL_ROUNDS, WIDTH},
+    NUM_SKIPS_CIRCUIT,
 };
 
 /// Maximal number of partial-round skips performed during Poseidon.
-pub(crate) const NB_SKIPS_MAX: usize = if NB_SKIPS_CIRCUIT < NB_SKIPS_CPU {
-    NB_SKIPS_CPU
+pub(crate) const NUM_SKIPS_MAX: usize = if NUM_SKIPS_CIRCUIT < NUM_SKIPS_CPU {
+    NUM_SKIPS_CPU
 } else {
-    NB_SKIPS_CIRCUIT
+    NUM_SKIPS_CIRCUIT
 };
 
 // Pre-generated partial-round constants for CPU implementations.
-type RoundContantsCPU<F> = [[F; WIDTH + NB_SKIPS_CPU]; NB_PARTIAL_ROUNDS / (1 + NB_SKIPS_CPU)];
+type RoundContantsCPU<F> = [[F; WIDTH + NUM_SKIPS_CPU]; NUM_PARTIAL_ROUNDS / (1 + NUM_SKIPS_CPU)];
 // Pre-generated partial-round constants for circuit implementations.
 type RoundContantsCircuit<F> =
-    [[F; WIDTH + NB_SKIPS_CIRCUIT]; NB_PARTIAL_ROUNDS / (1 + NB_SKIPS_CIRCUIT)];
+    [[F; WIDTH + NUM_SKIPS_CIRCUIT]; NUM_PARTIAL_ROUNDS / (1 + NUM_SKIPS_CIRCUIT)];
 
 /// Represents a combination
 /// `a1 x1 + ... + an xn + b1 y1^5 + ... + bp yp^5 + c1 z1 + ... + cq zq`
@@ -41,14 +41,14 @@ type RoundContantsCircuit<F> =
 /// and `constants` correspond to linear variables/constants `xi`, while
 /// `var_coeffs[WIDTH-1..]` is for the variables `yi` that are exponentiated.
 ///
-/// Note: the size of the array are overapproximated by using `NB_SKIPS_MAX` to
-/// avoid having to deal with different types for `NB_SKIPS_CPU` and
-/// `NB_SKIPS_CIRCUIT`. This will be the case for all similar types that are
+/// Note: the size of the array are overapproximated by using `NUM_SKIPS_MAX` to
+/// avoid having to deal with different types for `NUM_SKIPS_CPU` and
+/// `NUM_SKIPS_CIRCUIT`. This will be the case for all similar types that are
 /// only used in precomputations.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct RoundVarId<F> {
-    var_coeffs: [F; WIDTH + NB_SKIPS_MAX], // Length WIDTH + number of round skips.
-    const_coeffs: [F; WIDTH * (1 + NB_SKIPS_MAX)], // Length 1 + number of round skips.
+    var_coeffs: [F; WIDTH + NUM_SKIPS_MAX], // Length WIDTH + number of round skips.
+    const_coeffs: [F; WIDTH * (1 + NUM_SKIPS_MAX)], // Length 1 + number of round skips.
 }
 
 /// A set of linear combinations representing a set of polynomial identities
@@ -56,20 +56,20 @@ pub(crate) struct RoundVarId<F> {
 /// cells that do not go through an exponentiation, unlike those in
 /// `ids[WIDTH-1..]`.
 ///
-/// Note: Unlike the field `var_coeffs` which has `WIDTH + nb_skips` elements,
-/// `ids` contains `WIDTH + nb_skips + 1` identities. The additional element (at
-/// index 0) represents the last input of the round (which is a trivial
+/// Note: Unlike the field `var_coeffs` which has `WIDTH + num_skips` elements,
+/// `ids` contains `WIDTH + num_skips + 1` identities. The additional element
+/// (at index 0) represents the last input of the round (which is a trivial
 /// identity, simply here for the convenience of the computation).
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct RoundId<F> {
-    pub nb_skips: usize,
-    ids: [RoundVarId<F>; WIDTH + 1 + NB_SKIPS_MAX], // Real length `WIDTH + 1 + self.nb_skips`.
+    pub num_skips: usize,
+    ids: [RoundVarId<F>; WIDTH + 1 + NUM_SKIPS_MAX], // Real length `WIDTH + 1 + self.num_skips`.
 }
 
 /// Precomputed data for cpu partial rounds (round constants and round
 /// identities). The `round_constants` field has dimension `[[F; WIDTH +
-/// self.partial_round_id.nb_skips]; NB_FULL_ROUNDS + NB_PARTIAL_ROUNDS / (1 +
-/// self.partial_round_id.nb_skips)]`.
+/// self.partial_round_id.num_skips]; NUM_FULL_ROUNDS + NUM_PARTIAL_ROUNDS / (1
+/// + self.partial_round_id.num_skips)]`.
 #[derive(Clone, Copy, Debug)]
 pub struct PreComputedRoundCPU<F: PoseidonField> {
     pub(crate) round_constants: RoundContantsCPU<F>,
@@ -96,8 +96,8 @@ impl<F: Field> RoundVarId<F> {
     // Generates a null linear combination.
     fn init() -> Self {
         RoundVarId {
-            var_coeffs: [F::ZERO; WIDTH + NB_SKIPS_MAX],
-            const_coeffs: [F::ZERO; WIDTH * (1 + NB_SKIPS_MAX)],
+            var_coeffs: [F::ZERO; WIDTH + NUM_SKIPS_MAX],
+            const_coeffs: [F::ZERO; WIDTH * (1 + NUM_SKIPS_MAX)],
         }
     }
 
@@ -111,7 +111,7 @@ impl<F: Field> RoundVarId<F> {
 
     // Takes a valuation for each variable of the `constants` field, and returns the
     // evaluation of the linear combination when evaluating all other variables as
-    // zero. The argument `instances` has length `1 + self.nb_skips`.
+    // zero. The argument `instances` has length `1 + self.num_skips`.
     fn eval_constants(&self, instances: &[[F; WIDTH]]) -> F {
         self.const_coeffs
             .iter()
@@ -125,7 +125,7 @@ impl<F: Field> RoundVarId<F> {
     // variables have already been exponentiated.
     fn eval_vars(
         &self,
-        instances: &[F], // Has length `WIDTH + self.nb_skips`.
+        instances: &[F], // Has length `WIDTH + self.num_skips`.
         constant: F,
     ) -> F {
         self.var_coeffs
@@ -136,7 +136,7 @@ impl<F: Field> RoundVarId<F> {
 
     // Converts a set of identities into a Halo2 `Expression`, upon taking as an
     // argument the representation of the input variables as `Expression`. The
-    // argument `vars` has length `WIDTH + self.nb_skips`.
+    // argument `vars` has length `WIDTH + self.num_skips`.
     // Note: does *not* include the `self.constant` component in the conversion.
     fn to_expression(self, vars: &[Expression<F>]) -> Expression<F> {
         let (lin_coeffs, pow_coeffs) = self.var_coeffs.split_at(WIDTH - 1);
@@ -167,9 +167,9 @@ impl<F: PoseidonField> RoundId<F> {
     // themselves ("x = x"), and the exponentiated variables are initialised to 0
     // ("x = 0"). The latter will be overwritten during the identity generation
     // anyway, so their initialisation does not matter.
-    fn init(nb_skips: usize) -> Self {
+    fn init(num_skips: usize) -> Self {
         RoundId {
-            nb_skips,
+            num_skips,
             ids: core::array::from_fn(|i| {
                 if i < WIDTH {
                     let mut id = RoundVarId::init();
@@ -212,21 +212,21 @@ impl<F: PoseidonField> RoundId<F> {
     }
 
     /// Generates the final identities for an optimised partial rounds, i.e.,
-    /// applies `1+nb_skips` times the function `ids.update_row`.
-    fn generate(nb_skips: usize) -> Self {
-        let mut ids = RoundId::<F>::init(nb_skips);
-        for row in 0..1 + nb_skips {
+    /// applies `1+num_skips` times the function `ids.update_row`.
+    fn generate(num_skips: usize) -> Self {
+        let mut ids = RoundId::<F>::init(num_skips);
+        for row in 0..1 + num_skips {
             ids.update_row(&row);
         }
         ids
     }
 
     // Uplifting of the function `RoundVarId<F>::eval_constants` to sets of
-    // identities. The `instances` argument has length `1 + self.nb_skips`, and the
-    // result has length `WIDTH + self.nb_skips`. Mutates the `arg` argument to
+    // identities. The `instances` argument has length `1 + self.num_skips`, and the
+    // result has length `WIDTH + self.num_skips`. Mutates the `arg` argument to
     // store the result.
     fn eval_constants(&self, round: usize, arg: &mut [F]) {
-        let instances = &F::ROUND_CONSTANTS[round + 1..round + 2 + self.nb_skips];
+        let instances = &F::ROUND_CONSTANTS[round + 1..round + 2 + self.num_skips];
         self.ids[..WIDTH - 1]
             .iter()
             .chain(self.ids[WIDTH..].iter())
@@ -238,23 +238,23 @@ impl<F: PoseidonField> RoundId<F> {
     /// Uplifting of the function `RoundVarId<F>::eval_vars` to sets of
     /// identities, and adds the output of `self.eval_constants` to the result
     /// (taken as the `round_constants` argument). Returns the value of
-    /// the last column of the skipped rows (length `self.nb_skips`, passed as
-    /// the parameter `NB_SKIPS` so that it can be used as array's length).
-    pub(crate) fn eval<const NB_SKIPS: usize>(
+    /// the last column of the skipped rows (length `self.num_skips`, passed as
+    /// the parameter `NUM_SKIPS` so that it can be used as array's length).
+    pub(crate) fn eval<const NUM_SKIPS: usize>(
         &self,
-        round_constants: &[F], // Length `WIDTH + self.nb_skips`.
+        round_constants: &[F], // Length `WIDTH + self.num_skips`.
         instances: &mut [F],   // Length `WIDTH`.
-    ) -> [F; NB_SKIPS] {
-        let mut pow_instances = [F::ZERO; NB_SKIPS];
+    ) -> [F; NUM_SKIPS] {
+        let mut pow_instances = [F::ZERO; NUM_SKIPS];
         instances[WIDTH - 1] *= instances[WIDTH - 1].square().square();
         let mut pow_instances_exp = instances
             .iter()
-            .chain(std::iter::repeat_n(&F::ZERO, NB_SKIPS))
+            .chain(std::iter::repeat_n(&F::ZERO, NUM_SKIPS))
             .copied()
             .collect::<Vec<_>>();
 
         #[allow(clippy::reversed_empty_ranges)]
-        for i in 0..self.nb_skips {
+        for i in 0..self.num_skips {
             let next =
                 self.ids[WIDTH + i].eval_vars(&pow_instances_exp, round_constants[WIDTH - 1 + i]);
             pow_instances[i] = next;
@@ -264,8 +264,8 @@ impl<F: PoseidonField> RoundId<F> {
         for i in 0..WIDTH - 1 {
             output[i] = self.ids[i].eval_vars(&pow_instances_exp, round_constants[i]);
         }
-        output[WIDTH - 1] = self.ids[WIDTH + NB_SKIPS]
-            .eval_vars(&pow_instances_exp, round_constants[WIDTH + NB_SKIPS - 1]);
+        output[WIDTH - 1] = self.ids[WIDTH + NUM_SKIPS]
+            .eval_vars(&pow_instances_exp, round_constants[WIDTH + NUM_SKIPS - 1]);
         instances.copy_from_slice(&output);
         pow_instances
     }
@@ -273,10 +273,10 @@ impl<F: PoseidonField> RoundId<F> {
     // Computes the round constants necessary for partial-round (cpu) with
     // round skips.
     fn round_constants_cpu(&self) -> RoundContantsCPU<F> {
-        let mut v = [[F::ZERO; WIDTH + NB_SKIPS_CPU]; NB_PARTIAL_ROUNDS / (1 + NB_SKIPS_CPU)];
-        for (round, main_round) in (NB_FULL_ROUNDS / 2..)
-            .take(NB_PARTIAL_ROUNDS - NB_PARTIAL_ROUNDS % (1 + NB_SKIPS_CPU))
-            .step_by(1 + NB_SKIPS_CPU)
+        let mut v = [[F::ZERO; WIDTH + NUM_SKIPS_CPU]; NUM_PARTIAL_ROUNDS / (1 + NUM_SKIPS_CPU)];
+        for (round, main_round) in (NUM_FULL_ROUNDS / 2..)
+            .take(NUM_PARTIAL_ROUNDS - NUM_PARTIAL_ROUNDS % (1 + NUM_SKIPS_CPU))
+            .step_by(1 + NUM_SKIPS_CPU)
             .zip(0..)
         {
             self.eval_constants(round, &mut v[main_round])
@@ -290,25 +290,25 @@ impl<F: PoseidonField> RoundId<F> {
         // Practical restriction: skipping partial rounds should always be done in a way
         // that avoids having to add trailing rounds, at least in circuit.
         assert_eq!(
-            NB_PARTIAL_ROUNDS % (1 + NB_SKIPS_CIRCUIT),
+            NUM_PARTIAL_ROUNDS % (1 + NUM_SKIPS_CIRCUIT),
             0,
-            "The Poseidon chip assumes that the number of partial round (NB_PARTIAL_ROUNDS = {}) is dividable by the number of round skips (1 + NB_SKIPS = {}).",
-            NB_PARTIAL_ROUNDS,
-            1 + NB_SKIPS_CIRCUIT
+            "The Poseidon chip assumes that the number of partial round (NUM_PARTIAL_ROUNDS = {}) is dividable by the number of round skips (1 + NUM_SKIPS = {}).",
+            NUM_PARTIAL_ROUNDS,
+            1 + NUM_SKIPS_CIRCUIT
         );
         // Also assumes that the number of full rounds is even.
         assert_eq!(
-            NB_FULL_ROUNDS % 2,
+            NUM_FULL_ROUNDS % 2,
             0,
-            "The Poseidon chip assumes the number of full round (NB_FULL_ROUNDS = {}) is even.",
-            NB_FULL_ROUNDS
+            "The Poseidon chip assumes the number of full round (NUM_FULL_ROUNDS = {}) is even.",
+            NUM_FULL_ROUNDS
         );
 
         let mut v =
-            [[F::ZERO; WIDTH + NB_SKIPS_CIRCUIT]; NB_PARTIAL_ROUNDS / (1 + NB_SKIPS_CIRCUIT)];
-        for (round, main_round) in (NB_FULL_ROUNDS / 2..)
-            .take(NB_PARTIAL_ROUNDS - NB_PARTIAL_ROUNDS % (1 + NB_SKIPS_CIRCUIT))
-            .step_by(1 + NB_SKIPS_CIRCUIT)
+            [[F::ZERO; WIDTH + NUM_SKIPS_CIRCUIT]; NUM_PARTIAL_ROUNDS / (1 + NUM_SKIPS_CIRCUIT)];
+        for (round, main_round) in (NUM_FULL_ROUNDS / 2..)
+            .take(NUM_PARTIAL_ROUNDS - NUM_PARTIAL_ROUNDS % (1 + NUM_SKIPS_CIRCUIT))
+            .step_by(1 + NUM_SKIPS_CIRCUIT)
             .zip(0..)
         {
             self.eval_constants(round, &mut v[main_round])
@@ -317,11 +317,11 @@ impl<F: PoseidonField> RoundId<F> {
     }
 
     // Uplifting of the function `RoundVarId<F>::to_expression` to sets of
-    // identities. The `vars` argument has length `WIDTH + self.nb_skips`. In the
+    // identities. The `vars` argument has length `WIDTH + self.num_skips`. In the
     // resulting array:
     // - the first `WIDTH-1` expressions represent the linear variables of the
     //   output (i.e., the whole output except the last column)
-    // - the next `self.nb_skips` expressions represent the exponentiated auxiliary
+    // - the next `self.num_skips` expressions represent the exponentiated auxiliary
     //   variables that are introduced due to round skips
     // - the last expression is for the last missing output.
     // Note: does *not* include the constant component in the conversion.
@@ -336,9 +336,9 @@ impl<F: PoseidonField> RoundId<F> {
 
 impl<F: PoseidonField> PreComputedRoundCPU<F> {
     /// Pre-computes partial rounds and the associated round contants for
-    /// Poseidon's using NB_SKIPS_CPU round skips.
+    /// Poseidon's using NUM_SKIPS_CPU round skips.
     pub fn init() -> Self {
-        let partial_round_id = RoundId::<F>::generate(NB_SKIPS_CPU);
+        let partial_round_id = RoundId::<F>::generate(NUM_SKIPS_CPU);
         let round_constants = partial_round_id.round_constants_cpu();
         PreComputedRoundCPU {
             partial_round_id,
@@ -349,7 +349,7 @@ impl<F: PoseidonField> PreComputedRoundCPU<F> {
 
 impl<F: PoseidonField> PreComputedRoundCircuit<F> {
     pub(crate) fn init() -> Self {
-        let partial_round_id = RoundId::<F>::generate(NB_SKIPS_CIRCUIT);
+        let partial_round_id = RoundId::<F>::generate(NUM_SKIPS_CIRCUIT);
         let round_constants = partial_round_id.round_constants_circuit();
         PreComputedRoundCircuit {
             partial_round_id,

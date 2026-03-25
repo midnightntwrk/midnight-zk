@@ -22,7 +22,8 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 * Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 
 ### Changed
-* Adapt to configurable `NB_ARITH_COLS` [#287](https://github.com/midnightntwrk/midnight-zk/pull/287)
+* Rename `nr_`/`nb_` prefixes to `num_` [#288](https://github.com/midnightntwrk/midnight-zk/pull/288)
+* Adapt to configurable `NUM_ARITH_COLS` [#287](https://github.com/midnightntwrk/midnight-zk/pull/287)
 * Rename `proof_aggregation` example to `single_circuit_aggregation` [#264](https://github.com/midnightntwrk/midnight-zk/pull/264)
 * Remove `InnerValue` and `Instantiable` requirements from IVC `AssignedState` [#264](https://github.com/midnightntwrk/midnight-zk/pull/264)
 * Decouple `IvcTransition` from `IvcIO` [#264](https://github.com/midnightntwrk/midnight-zk/pull/264)

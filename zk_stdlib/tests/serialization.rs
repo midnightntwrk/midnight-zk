@@ -82,8 +82,8 @@ const ARCHITECTURES: [ZkStdLibArch; 4] = [
         secp256k1: true,
         bls12_381: true,
         base64: false,
-        nb_arith_cols: 5,
-        nr_pow2range_cols: 4,
+        num_arith_cols: 5,
+        num_pow2range_cols: 4,
         automaton: false,
     },
     ZkStdLibArch {
@@ -97,8 +97,8 @@ const ARCHITECTURES: [ZkStdLibArch; 4] = [
         secp256k1: false,
         bls12_381: false,
         base64: false,
-        nb_arith_cols: 5,
-        nr_pow2range_cols: 4,
+        num_arith_cols: 5,
+        num_pow2range_cols: 4,
         automaton: false,
     },
     ZkStdLibArch {
@@ -112,8 +112,8 @@ const ARCHITECTURES: [ZkStdLibArch; 4] = [
         secp256k1: false,
         bls12_381: true,
         base64: false,
-        nb_arith_cols: 5,
-        nr_pow2range_cols: 4,
+        num_arith_cols: 5,
+        num_pow2range_cols: 4,
         automaton: false,
     },
     ZkStdLibArch {
@@ -127,8 +127,8 @@ const ARCHITECTURES: [ZkStdLibArch; 4] = [
         secp256k1: true,
         bls12_381: false,
         base64: true,
-        nb_arith_cols: 5,
-        nr_pow2range_cols: 4,
+        num_arith_cols: 5,
+        num_pow2range_cols: 4,
         automaton: false,
     },
 ];

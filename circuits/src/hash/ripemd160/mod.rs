@@ -21,7 +21,7 @@ mod utils;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 use ripemd::Digest;
 pub use ripemd160_chip::{
-    RipeMD160Chip, RipeMD160Config, NB_RIPEMD160_ADVICE_COLS, NB_RIPEMD160_FIXED_COLS,
+    RipeMD160Chip, RipeMD160Config, NUM_RIPEMD160_ADVICE_COLS, NUM_RIPEMD160_FIXED_COLS,
 };
 
 use crate::{
