@@ -154,6 +154,8 @@ def on_curve_expr_bounds(q, n, B, base_powers, double_base_powers, a_plus_one=1,
     max_sum_y2 = max_sum_xz
 
     # Handle the sign of (a+1) when computing min/max.
+    # Note: (a+b) is a constant offset (not a coefficient of a variable), so it
+    # shifts both min and max equally regardless of sign — no case split needed.
     if a_plus_one >= 0:
         expr_min = -(max_sum_xz + max_sum_z + a_plus_one * max_sum_x) - a_plus_b
         expr_max = 2 * max_sum_y + max_sum_y2 - a_plus_b
