@@ -138,8 +138,8 @@ where
     /// Assigns a private curve point, checking it is on the curve but skipping
     /// any subgroup-membership check.
     ///
-    /// For curves with a non-trivial cofactor this skips
-    /// the expensive cofactor-based subgroup check.
+    /// For curves with a non-trivial cofactor this skips the expensive
+    /// cofactor-based subgroup check.
     fn assign_without_subgroup_check(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -780,7 +780,7 @@ pub(crate) mod tests {
             true,
             true,
             name,
-            "assign with subgroup check",
+            "assign_with_subgroup_check",
         );
         run::<F, C, EccChip>(&[p], None, &wrong, Operation::Assign, false, false, "", "");
     }

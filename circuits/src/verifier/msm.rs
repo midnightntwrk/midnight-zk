@@ -306,8 +306,12 @@ impl<S: SelfEmulation> AssignedMsm<S> {
 
 impl<S: SelfEmulation> AssignedMsm<S> {
     /// Witnesses an MSM computation of `len` bases/scalars and a `BTreeMap` of
-    /// fixed_base_scalars indexed by the given `fixed_base_names`. The points
-    /// of the MSM are not enforced to be part of the prime order subgroup.
+    /// fixed_base_scalars indexed by the given `fixed_base_names`.
+    ///
+    /// # Warning
+    ///
+    /// The points of the MSM are not enforced to be part of the relevant prime
+    /// order subgroup.
     pub fn assign(
         layouter: &mut impl Layouter<S::F>,
         curve_chip: &S::CurveChip,

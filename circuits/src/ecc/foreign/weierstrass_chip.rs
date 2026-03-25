@@ -53,7 +53,7 @@ use super::gates::{
     tangent::TangentConfig,
 };
 use crate::{
-    ecc::curves::{CircuitCurve, WeierstrassCurve},
+    ecc::curves::WeierstrassCurve,
     field::foreign::{
         field_chip::{FieldChip, FieldChipConfig},
         params::FieldEmulationParams,
@@ -327,7 +327,7 @@ where
             // This proves p ∈ G1 because h · E(Fp) = G1.
             let cofactor_root = self.assign_without_subgroup_check(
                 layouter,
-                value.map(|p| p * cofactor.invert().unwrap()),
+                value.map(|point| point * cofactor.invert().unwrap()),
             )?;
             self.mul_by_constant(layouter, cofactor, &cofactor_root)
         } else {
@@ -2167,43 +2167,6 @@ where
     }
 }
 
-/// Implement subgroup membership checks for ForeignEccChip emulating BLS12-381
-/// over BLS12-381.
-use midnight_curves::G1Projective;
-
-use crate::field::{
-    decomposition::chip::P2RDecompositionChip, foreign::params::MultiEmulationParams as MEP,
-    NativeChip, NativeGadget,
-};
-
-type F = midnight_curves::Fq;
-type NG = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
-type Bls12381Chip = ForeignWeierstrassEccChip<F, midnight_curves::G1Projective, MEP, NG, NG>;
-
-impl Bls12381Chip {
-    /// Asserts that the given point belongs to the BLS subgroup.
-    pub fn assert_in_bls12_381_subgroup(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        p: &<Bls12381Chip as EccInstructions<F, G1Projective>>::Point,
-    ) -> Result<(), Error> {
-        // We exhibit a COFACTOR "root" (an element that, multiplied by the cofactor
-        // results in p). This is more efficient than powering `p` to the subgroup order
-        // and checking it results in the identity.
-        let cofactor = F::from_u128(G1Projective::COFACTOR);
-        let cofactor_root: <Bls12381Chip as EccInstructions<F, G1Projective>>::Point = self
-            .assign_without_subgroup_check(
-                layouter,
-                p.value().map(|p| p * cofactor.invert().unwrap()),
-            )?;
-
-        let cofactor_root_times_cofactor =
-            self.mul_by_constant(layouter, cofactor, &cofactor_root)?;
-
-        self.assert_equal(layouter, p, &cofactor_root_times_cofactor)
-    }
-}
-
 #[derive(Clone, Debug)]
 #[cfg(any(test, feature = "testing"))]
 /// Configuration used to implement `FromScratch` for the ForeignEcc chip. This
@@ -2366,6 +2329,8 @@ mod tests {
         };
     }
 
+    ecc_tests!(test_assign);
+    ecc_tests!(test_assign_without_subgroup_check);
     ecc_tests!(test_add);
     ecc_tests!(test_double);
     ecc_tests!(test_negate);
@@ -2373,6 +2338,4 @@ mod tests {
     ecc_tests!(test_msm_by_bounded_scalars);
     ecc_tests!(test_mul_by_constant);
     ecc_tests!(test_coordinates);
-    ecc_tests!(test_assign);
-    ecc_tests!(test_assign_without_subgroup_check);
 }

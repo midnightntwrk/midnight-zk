@@ -123,8 +123,10 @@ impl<S: SelfEmulation> TranscriptGadget<S> {
     /// Reads a point from the reader buffer, and adds it to the transcript.
     /// Think of the read point as a witness freely chosen by the prover.
     ///
-    /// The received points are not enforced to be part of the prime order
-    /// subgroup.
+    /// # Warning
+    ///
+    /// The received points are not enforced to be part of the relevant prime
+    /// order subgroup.
     pub fn read_point(
         &mut self,
         layouter: &mut impl Layouter<S::F>,

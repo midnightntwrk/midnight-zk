@@ -121,6 +121,9 @@ pub trait SelfEmulation: Clone + Debug {
 
     /// Assigns a point without checking that it is part of the prime order
     /// subgroup.
+    /// Allowing points outside the subgroup does not give any advantage to an
+    /// adversary in PLONK.
+    // TODO: Provide a formal analysis of subgroup soundness in this context.
     fn assign_without_subgroup_check(
         layouter: &mut impl Layouter<Self::F>,
         curve_chip: &Self::CurveChip,

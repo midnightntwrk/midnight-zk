@@ -57,14 +57,14 @@ pub const NB_EDWARDS_COLS: usize = 9;
 pub struct AssignedNativePoint<C: CircuitCurve> {
     x: AssignedNative<C::Base>,
     y: AssignedNative<C::Base>,
-    in_subgroup: bool,
+    checked_in_subgroup: bool,
 }
 
 impl<C: CircuitCurve> InnerValue for AssignedNativePoint<C> {
     type Element = C::CryptographicGroup;
 
     fn value(&self) -> Value<Self::Element> {
-        assert!(self.in_subgroup);
+        assert!(self.checked_in_subgroup);
         self.x
             .value()
             .zip(self.y.value())
@@ -408,7 +408,7 @@ impl<C: EdwardsCurve> EccChip<C> {
         config.q_cond_add.enable(region, offset)?;
 
         let (q_val, s_val) = (q.curve_value(), s.curve_value());
-        let in_subgroup = q.in_subgroup && s.in_subgroup;
+        let in_subgroup = q.checked_in_subgroup && s.checked_in_subgroup;
 
         let (xr_val, yr_val) = Self::p_plus_b_q(q_val, s_val, b.value());
         let xr = region.assign_advice(|| "xr", config.advice_cols[5], offset, || xr_val)?;
@@ -422,7 +422,7 @@ impl<C: EdwardsCurve> EccChip<C> {
         Ok(AssignedNativePoint {
             x: xr,
             y: yr,
-            in_subgroup,
+            checked_in_subgroup: in_subgroup,
         })
     }
 
@@ -452,7 +452,7 @@ impl<C: EdwardsCurve> EccChip<C> {
         config.q_double.enable(region, offset)?;
 
         let (q_val, p_val) = (q.curve_value(), p.curve_value());
-        let in_subgroup = q.in_subgroup && p.in_subgroup;
+        let in_subgroup = q.checked_in_subgroup && p.checked_in_subgroup;
 
         let (xs_val, ys_val) = Self::p_plus_b_q(p_val, q_val, b.value());
 
@@ -483,7 +483,7 @@ impl<C: EdwardsCurve> EccChip<C> {
         Ok(AssignedNativePoint {
             x: xr,
             y: yr,
-            in_subgroup,
+            checked_in_subgroup: in_subgroup,
         })
     }
 
@@ -553,14 +553,14 @@ impl<C: EdwardsCurve> EccChip<C> {
         layouter: &mut impl Layouter<C::Base>,
         point: &AssignedNativePoint<C>,
     ) -> Result<AssignedNativePoint<C>, Error> {
-        if point.in_subgroup {
+        if point.checked_in_subgroup {
             return Err(Error::Synthesis("clear_cofactor() should not be called in a point that is already guaranteed to be in the prime-order subgroup.".to_owned()));
         }
         let r = self.mul_by_constant(layouter, C::ScalarField::from_u128(C::COFACTOR), point)?;
         Ok(AssignedNativePoint {
             x: r.x,
             y: r.y,
-            in_subgroup: true,
+            checked_in_subgroup: true,
         })
     }
 
@@ -583,7 +583,7 @@ impl<C: EdwardsCurve> EccChip<C> {
         Ok(AssignedNativePoint {
             x: x.clone(),
             y: y.clone(),
-            in_subgroup: false,
+            checked_in_subgroup: false,
         })
     }
 }
@@ -632,7 +632,7 @@ impl<C: EdwardsCurve> EccInstructions<C::Base, C> for EccChip<C> {
         Ok(AssignedNativePoint {
             x: self.native_gadget.neg(layouter, &p.x)?,
             y: p.y.clone(),
-            in_subgroup: p.in_subgroup,
+            checked_in_subgroup: p.checked_in_subgroup,
         })
     }
 
@@ -707,7 +707,7 @@ impl<C: EdwardsCurve> EccInstructions<C::Base, C> for EccChip<C> {
                 Ok(AssignedNativePoint {
                     x,
                     y,
-                    in_subgroup: false,
+                    checked_in_subgroup: false,
                 })
             },
         )
@@ -755,7 +755,7 @@ impl<C: EdwardsCurve> AssignmentInstructions<C::Base, AssignedNativePoint<C>> fo
                 Ok(AssignedNativePoint {
                     x,
                     y,
-                    in_subgroup: false,
+                    checked_in_subgroup: false,
                 })
             },
         )?;
@@ -774,7 +774,7 @@ impl<C: EdwardsCurve> AssignmentInstructions<C::Base, AssignedNativePoint<C>> fo
         Ok(AssignedNativePoint {
             x,
             y,
-            in_subgroup: true,
+            checked_in_subgroup: true,
         })
     }
 }
@@ -881,7 +881,7 @@ impl<C: EdwardsCurve> PublicInputInstructions<C::Base, AssignedNativePoint<C>> f
         Ok(AssignedNativePoint {
             x,
             y,
-            in_subgroup: true,
+            checked_in_subgroup: true,
         })
     }
 }
@@ -984,8 +984,12 @@ impl<C: EdwardsCurve> ControlFlowInstructions<C::Base, AssignedNativePoint<C>> f
     ) -> Result<AssignedNativePoint<C>, Error> {
         let x = self.native_gadget.select(layouter, cond, &a.x, &b.x)?;
         let y = self.native_gadget.select(layouter, cond, &a.y, &b.y)?;
-        let in_subgroup = a.in_subgroup && b.in_subgroup;
-        Ok(AssignedNativePoint { x, y, in_subgroup })
+        let in_subgroup = a.checked_in_subgroup && b.checked_in_subgroup;
+        Ok(AssignedNativePoint {
+            x,
+            y,
+            checked_in_subgroup: in_subgroup,
+        })
     }
 }
 
@@ -1133,6 +1137,8 @@ mod tests {
         };
     }
 
+    ecc_tests!(test_assign);
+    ecc_tests!(test_assign_without_subgroup_check);
     ecc_tests!(test_add);
     ecc_tests!(test_double);
     ecc_tests!(test_negate);
@@ -1140,8 +1146,6 @@ mod tests {
     ecc_tests!(test_msm_by_bounded_scalars);
     ecc_tests!(test_mul_by_constant);
     ecc_tests!(test_coordinates_edwards);
-    ecc_tests!(test_assign);
-    ecc_tests!(test_assign_without_subgroup_check);
 
     #[test]
     fn test_htc() {
