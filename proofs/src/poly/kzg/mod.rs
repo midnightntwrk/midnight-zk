@@ -102,7 +102,7 @@ where
 
     fn multi_open<T: Transcript>(
         params: &Self::Parameters,
-        prover_query: &[ProverQuery<E::Fr>],
+        queries: &[ProverQuery<E::Fr>],
         transcript: &mut T,
     ) -> Result<(), Error>
     where
@@ -126,12 +126,11 @@ where
 
         // Add dummy queries to reduce the number of distinct multi-open point sets.
         #[cfg(feature = "fewer-point-sets")]
-        let padded_prover_query = {
-            let mut queries = prover_query.to_vec();
-            let pairs: Vec<_> =
-                prover_query.iter().map(|q| (q.get_commitment(), q.point)).collect();
+        let queries = &{
+            let mut queries = queries.to_vec();
+            let pairs: Vec<_> = queries.iter().map(|q| (q.get_commitment(), q.point)).collect();
             for (idx, point) in compute_dummy_queries(&pairs) {
-                let poly = prover_query[idx].poly;
+                let poly = queries[idx].poly;
                 transcript
                     .write(&eval_polynomial(poly, point))
                     .map_err(|_| Error::OpeningError)?;
@@ -145,9 +144,7 @@ where
         let x1: E::Fr = transcript.squeeze_challenge();
         let x2: E::Fr = transcript.squeeze_challenge();
 
-        #[cfg(feature = "fewer-point-sets")]
-        let prover_query = padded_prover_query.as_slice();
-        let (poly_map, point_sets) = construct_intermediate_sets(prover_query)?;
+        let (poly_map, point_sets) = construct_intermediate_sets(queries)?;
 
         let mut q_polys = vec![vec![]; point_sets.len()];
 
@@ -241,7 +238,7 @@ where
     }
 
     fn multi_prepare<'com, T: Transcript>(
-        verifier_query: &[VerifierQuery<'com, E::Fr, KZGCommitmentScheme<E>>],
+        queries: &[VerifierQuery<'com, E::Fr, KZGCommitmentScheme<E>>],
         transcript: &mut T,
     ) -> Result<DualMSM<E>, Error>
     where
@@ -250,15 +247,14 @@ where
     {
         // Add dummy queries to reduce the number of distinct multi-open point sets.
         #[cfg(feature = "fewer-point-sets")]
-        let padded_verifier_query = {
-            let mut queries = verifier_query.to_vec();
-            let pairs: Vec<_> =
-                verifier_query.iter().map(|q| (q.commitment.clone(), q.point)).collect();
+        let queries = &{
+            let mut queries = queries.to_vec();
+            let pairs: Vec<_> = queries.iter().map(|q| (q.commitment.clone(), q.point)).collect();
             for (idx, point) in compute_dummy_queries(&pairs) {
                 queries.push(VerifierQuery {
                     point,
-                    commitment_label: verifier_query[idx].commitment_label.clone(),
-                    commitment: verifier_query[idx].commitment.clone(),
+                    commitment_label: queries[idx].commitment_label.clone(),
+                    commitment: queries[idx].commitment.clone(),
                     eval: transcript.read().map_err(|_| Error::SamplingError)?,
                 });
             }
@@ -270,9 +266,7 @@ where
         let x1: E::Fr = transcript.squeeze_challenge();
         let x2: E::Fr = transcript.squeeze_challenge();
 
-        #[cfg(feature = "fewer-point-sets")]
-        let verifier_query = padded_verifier_query.as_slice();
-        let (commitment_map, point_sets) = construct_intermediate_sets(verifier_query)?;
+        let (commitment_map, point_sets) = construct_intermediate_sets(queries)?;
 
         let mut q_coms: Vec<_> = vec![vec![]; point_sets.len()];
         let mut q_eval_sets = vec![vec![]; point_sets.len()];

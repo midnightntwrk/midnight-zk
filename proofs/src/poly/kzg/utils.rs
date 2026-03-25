@@ -138,7 +138,9 @@ pub fn construct_intermediate_sets<F: Field + Hash + Ord, Q: Query<F>>(
 /// by key (by commitment) computes the union of all point sets that contain
 /// more than one point, and returns the missing `(index, point)` pairs that,
 /// once added, make every such point set identical. Keys with a single point
-/// are left untouched.
+/// are left untouched (we do this because there are many commitments opened
+/// at a single point, e.g. most selectors; we could also pad those, but the
+/// impact on the proof size would be more significant).
 ///
 /// Each returned `index` refers to the position of the key's first occurrence
 /// in the input, so callers can index back into the original query slice.
