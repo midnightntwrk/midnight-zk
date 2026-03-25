@@ -81,3 +81,7 @@ path = "examples/jwt/property_check.rs"
 [[example]]
 name = "passport_verification"
 path = "examples/passport/main.rs"
+
+[[example]]
+name = "passport_debug"
+path = "examples/passport/debug_prover.rs"

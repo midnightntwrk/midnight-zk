@@ -43,8 +43,8 @@ use super::{ScannerChip, ALPHABET_MAX_SIZE};
 use crate::{
     field::{native::AssignedBit, AssignedNative},
     instructions::{
-        AssignmentInstructions, ControlFlowInstructions, RangeCheckInstructions,
-        UnsafeConversionInstructions, VectorInstructions,
+        AssignmentInstructions, ControlFlowInstructions, UnsafeConversionInstructions,
+        VectorInstructions,
     },
     types::{AssignedByte, AssignedVector},
     CircuitField,
@@ -162,40 +162,6 @@ where
         let byte_vec: AssignedVector<F, AssignedByte<F>, M, A> =
             self.vector_gadget.assign_with_filler(layouter, value, None)?;
         self.scanner_vec_from_byte_vec(layouter, byte_vec)
-    }
-
-    /// Builds a [`ScannerVec`] from a slice of already-assigned bytes.
-    /// The bytes are placed into an `M`-sized buffer with filler padding,
-    /// and the length is assigned and range-checked. Delegates to
-    /// [`scanner_vec_from_byte_vec`](`Self::scanner_vec_from_byte_vec`).
-    pub fn scanner_vec_from_assigned<const M: usize, const A: usize>(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        bytes: &[AssignedByte<F>],
-    ) -> Result<ScannerVec<F, M, A>, Error> {
-        assert!(M >= A && A > 0 && M.is_multiple_of(A));
-        assert!(bytes.len() <= M);
-
-        // Build the padded buffer: filler | payload | filler, aligned to A. The filler
-        // can be anything, it will be replaced during the call to
-        // `scanner_vec_from_byte_vec` below anyway.
-        let lims = crate::vec::vector::get_lims::<M, A>(bytes.len());
-        let filler: AssignedByte<F> = if let Some(b) = bytes.first() {
-            b.clone()
-        } else {
-            self.native_gadget.assign(layouter, Value::known(0u8))?
-        };
-        let mut buffer: Vec<AssignedByte<F>> = vec![filler; M];
-        buffer[lims].clone_from_slice(bytes);
-        let buffer: Box<[AssignedByte<F>; M]> = Box::new(buffer.try_into().unwrap());
-
-        let len = self.native_gadget.assign_lower_than_fixed(
-            layouter,
-            Value::known(F::from(bytes.len() as u64)),
-            &(M + 1).into(),
-        )?;
-        let vec = AssignedVector { buffer, len };
-        self.scanner_vec_from_byte_vec(layouter, vec)
     }
 
     /// Converts an existing [`AssignedVector`] of [`AssignedByte`]s into a

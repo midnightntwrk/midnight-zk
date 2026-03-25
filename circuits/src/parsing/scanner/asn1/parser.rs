@@ -569,9 +569,12 @@ where
         );
 
         let input_vec: ScannerVec<F, M, A> =
-            self.scanner_vec_from_assigned(layouter, &state.assigned_input)?;
-        let pos_assigned = self.position_to_assigned(layouter, &state.position)?;
-        self.native_gadget.assert_equal(layouter, &pos_assigned, input_vec.len())?;
+            self.assign_scanner_vec(layouter, Value::known(input.to_vec()))?;
+        self.assert_equal_positions(
+            layouter,
+            &state.position,
+            &ParsingPosition::from(input_vec.len().clone()),
+        )?;
         self.do_varlen_substring_checks::<TAG_M, LEN_M, VAL_M, VAL_A, M, A>(
             layouter,
             &input_vec,
@@ -642,12 +645,11 @@ where
 
                     if let Some(trail_idx) = index {
                         // Indexed trail: assign bytes, create ScannerVec, substring check.
-                        let trail_with_dummies =
-                            self.assign_witness_varlen(layouter, input, trail_len, VAL_M, state)?;
+                        self.assign_witness_varlen(layouter, input, trail_len, VAL_M, state)?;
 
-                        let sv: ScannerVec<F, VAL_M, VAL_A> = self.scanner_vec_from_assigned(
+                        let sv: ScannerVec<F, VAL_M, VAL_A> = self.assign_scanner_vec(
                             layouter,
-                            &trail_with_dummies[..trail_len],
+                            Value::known(input[..trail_len].to_vec()),
                         )?;
                         state.substring_checks.push((
                             state.position.clone(),
@@ -724,22 +726,21 @@ where
             }
             Asn1RawDataInternal::Varlen(index) => {
                 state.varlen = true;
-
                 // Constraining the assigned witness depending on the role. Computes the
                 // effective (assigned) length of the block, the length encoded in the block in
                 // the `RawDataRole::Len` case, and the `Asn1ParsedUnit` corresponding to the
                 // block.
+                let raw_bytes = input[..n].to_vec();
                 let (assigned_len, decoded_len, parsed_unit) = match role {
                     RawDataRole::Tag => {
                         assert!(
                             TAG_M != 0,
                             "Variable-length tags require a non-zero max-length parameter TAG_M."
                         );
-                        let assigned =
-                            self.assign_witness_varlen(layouter, input, n, TAG_M, state)?;
+                        self.assign_witness_varlen(layouter, input, n, TAG_M, state)?;
                         // Tag role: automaton parsing.
                         let sv: ScannerVec<F, TAG_M, 1> =
-                            self.scanner_vec_from_assigned(layouter, &assigned[..n])?;
+                            self.assign_scanner_vec(layouter, Value::known(raw_bytes))?;
                         self.automaton_validate_varlen_tag(layouter, &sv)?;
                         let parsed_unit = Asn1ParsedUnit::VarlenTag(sv.clone());
                         (sv.len().clone(), None, parsed_unit)
@@ -749,11 +750,10 @@ where
                             LEN_M != 0,
                             "Variable-length lengths require a non-zero max-length parameter LEN_M."
                         );
-                        let assigned =
-                            self.assign_witness_varlen(layouter, input, n, LEN_M, state)?;
+                        self.assign_witness_varlen(layouter, input, n, LEN_M, state)?;
                         // Len role: automaton parsing + length decoding.
                         let sv: ScannerVec<F, LEN_M, 1> =
-                            self.scanner_vec_from_assigned(layouter, &assigned[..n])?;
+                            self.assign_scanner_vec(layouter, Value::known(raw_bytes))?;
                         let decoded = self.automaton_validate_varlen_len(layouter, &sv)?;
                         let parsed_unit = Asn1ParsedUnit::VarlenLen(sv.clone());
                         (sv.len().clone(), Some(decoded), parsed_unit)
@@ -988,16 +988,21 @@ where
         };
         let max_end = expected_tag.len() + LEN_M + VAL_M;
 
+        // Snapshot raw bytes before consumption.
+        let tag_raw = input[..tag_end].to_vec();
+        let len_raw = input[tag_end..len_end].to_vec();
+        let val_raw = input[len_end..val_end].to_vec();
+
         // Assign raw bytes to assigned_input.
-        let assigned = self.assign_witness_varlen(layouter, input, val_end, max_end, state)?;
+        self.assign_witness_varlen(layouter, input, val_end, max_end, state)?;
 
         // Assign 3 ScannerVecs (empty vecs produce valid ScannerVecs with len=0).
         let tag_sv: ScannerVec<F, TAG_M, 1> =
-            self.scanner_vec_from_assigned(layouter, &assigned[..tag_end])?;
+            self.assign_scanner_vec(layouter, Value::known(tag_raw))?;
         let len_sv: ScannerVec<F, LEN_M, 1> =
-            self.scanner_vec_from_assigned(layouter, &assigned[tag_end..len_end])?;
+            self.assign_scanner_vec(layouter, Value::known(len_raw))?;
         let val_sv: ScannerVec<F, VAL_M, VAL_A> =
-            self.scanner_vec_from_assigned(layouter, &assigned[len_end..val_end])?;
+            self.assign_scanner_vec(layouter, Value::known(val_raw))?;
 
         // Deferred substring checks + position advance.
         state.substring_checks.push((
