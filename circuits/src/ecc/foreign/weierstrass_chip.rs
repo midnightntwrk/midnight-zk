@@ -882,7 +882,7 @@ where
             // We heuristically say a bound is "bad" if it far from NUM_BITS / 2 in the
             // following sense. Note that, ATM, in windowed_msm all sequences
             // are padded with zeros to meet the longest one.
-            if s.1 > nb_bits_per_glv_scalar + WS {
+            if C::has_cubic_endomorphism() && s.1 > nb_bits_per_glv_scalar + WS {
                 let ((s1, s2), (b1, b2)) = self.glv_split(layouter, &s.0, b)?;
                 glv_scalars.push((s1, nb_bits_per_glv_scalar));
                 glv_scalars.push((s2, nb_bits_per_glv_scalar));
@@ -1254,7 +1254,8 @@ where
                     C::Base::ONE
                 } else {
                     let p = p.into().coordinates().unwrap();
-                    (C::Base::from(3) * p.0 * p.0) * (C::Base::from(2) * p.1).invert().unwrap()
+                    (C::Base::from(3) * p.0 * p.0 + C::A)
+                        * (C::Base::from(2) * p.1).invert().unwrap()
                 }
             });
             self.base_field_chip().assign(layouter, lambda_value)?
@@ -2238,7 +2239,7 @@ where
 #[cfg(test)]
 mod tests {
     use group::Group;
-    use midnight_curves::{k256::K256, Fq as BlsScalar, G1Projective as BlsG1};
+    use midnight_curves::{k256::K256, p256::P256, Fq as BlsScalar, G1Projective as BlsG1};
 
     use super::*;
     use crate::{
@@ -2273,7 +2274,8 @@ mod tests {
         ($mod:ident, $op:ident) => {
             #[test]
             fn $op() {
-                test_generic!($mod, $op, BlsScalar, K256, EmulatedField<BlsScalar, K256>, "foreign_ecc_secp");
+                test_generic!($mod, $op, BlsScalar, K256, EmulatedField<BlsScalar, K256>, "foreign_ecc_k256");
+                test_generic!($mod, $op, BlsScalar, P256, EmulatedField<BlsScalar, P256>, "foreign_ecc_p256");
 
                 // a test of BLS over itself, where the scalar field is native
                 test_generic!($mod, $op, BlsScalar, BlsG1, Native<BlsScalar>, "foreign_ecc_bls_over_bls");
@@ -2314,7 +2316,8 @@ mod tests {
         ($op:ident) => {
             #[test]
             fn $op() {
-                ecc_test!($op, BlsScalar, K256, EmulatedField<BlsScalar, K256>, "foreign_ecc_secp");
+                ecc_test!($op, BlsScalar, K256, EmulatedField<BlsScalar, K256>, "foreign_ecc_k256");
+                ecc_test!($op, BlsScalar, P256, EmulatedField<BlsScalar, P256>, "foreign_ecc_p256");
 
                 // a test of BLS over itself, where the scalar field is native
                 ecc_test!($op, BlsScalar, BlsG1, Native<BlsScalar>, "foreign_ecc_bls_over_bls");

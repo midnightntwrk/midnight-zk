@@ -20,7 +20,7 @@ use midnight_proofs::{
     poly::Rotation,
 };
 use num_bigint::{BigInt as BI, ToBigInt};
-use num_traits::{One, Signed};
+use num_traits::{One, Zero};
 
 use crate::{
     ecc::curves::WeierstrassCurve,
@@ -29,7 +29,7 @@ use crate::{
         params::FieldEmulationParams,
         util::{
             compute_u, compute_vj, get_advice_vec, get_identity_auxiliary_bounds, pair_wise_prod,
-            sum_bigints, sum_exprs, urem,
+            signed_mod, signed_repr, sum_bigints, sum_exprs, urem,
         },
     },
     instructions::{ArithInstructions, NativeInstructions},
@@ -75,7 +75,14 @@ impl<C: WeierstrassCurve> OnCurveConfig<C> {
         let bs = P::base_powers();
         let bs2 = P::double_base_powers();
 
-        let b: BI = C::B.to_biguint().into();
+        // Use signed representatives of 'a' and 'b' (closest to zero) so that
+        // (a+1)*sum_x and (a+b) terms are small. Critical for curves like P-256
+        // where a = -3 and the unsigned representative q-3 would cause auxiliary
+        // modulus bounds to overflow.
+        let a: BI = signed_repr::<C::Base>()(C::A.to_biguint().into());
+        let b: BI = signed_repr::<C::Base>()(C::B.to_biguint().into());
+        let a_plus_one = &a + BI::one();
+        let a_plus_b = &a + &b;
 
         // Recall that limbs x_i represent emulated field element 1 + sum_i base^i x_i.
         // Let x := 1 + sum_i base^i x_i
@@ -83,7 +90,7 @@ impl<C: WeierstrassCurve> OnCurveConfig<C> {
         //     z := 1 + sum_i base^i z_i
         //
         // We will have a custom gate enforcing equation:
-        //   y^2 - (x * z + b) = 0  (mod m)
+        //   y^2 - (x * z + a * x + b) = 0  (mod m)
         //
         // So if z equals to x^2 (mod m), this is asserting that (x, y) satisfies the
         // curve equation.
@@ -95,8 +102,8 @@ impl<C: WeierstrassCurve> OnCurveConfig<C> {
         //  sum_xz := sum_i (sum_j (base^{i+j} % m) * x_i * z_j)
         //  sum_y2 := sum_i (sum_j (base^{i+j} % m) * y_i * y_j)
         //
-        // We enforce y^2 = x * z + b (mod m) with equation:
-        //   2 * sum_y + sum_y2 - (sum_xz + sum_z + sum_x + b) = k * m
+        // We enforce y^2 = x * z + a * x + b (mod m) with equation:
+        //   2 * sum_y + sum_y2 - (sum_xz + sum_z + (a + 1) * sum_x + (a + b)) = k * m
 
         let limbs_max = vec![&base - BI::one(); nb_limbs as usize];
         let limbs_max2 = vec![(&base - BI::one()).pow(2); (nb_limbs * nb_limbs) as usize];
@@ -105,8 +112,15 @@ impl<C: WeierstrassCurve> OnCurveConfig<C> {
         let max_sum_z = max_sum_x.clone();
         let max_sum_xz = sum_bigints(&bs2, &limbs_max2);
         let max_sum_y2 = max_sum_xz.clone();
-        let expr_min = -(&max_sum_xz + max_sum_z + max_sum_x + &b);
-        let expr_max = BI::from(2) * max_sum_y + max_sum_y2;
+
+        // expr = 2*sum_y + sum_y2 - sum_xz - sum_z - (a+1)*sum_x - (a+b)
+        // The (a+1)*sum_x term can be positive or negative depending on the
+        // curve. We use max/min with 0 to route it into the correct bound
+        // without branching on the sign of (a+1).
+        let a1_sum_x = &a_plus_one * &max_sum_x;
+        let expr_min = -(&max_sum_xz + &max_sum_z + a1_sum_x.clone().max(BI::zero())) - &a_plus_b;
+        let expr_max =
+            BI::from(2) * &max_sum_y + &max_sum_y2 - a1_sum_x.min(BI::zero()) - &a_plus_b;
         let expr_bounds = (expr_min, expr_max);
 
         let expr_mj_bounds: Vec<_> = moduli
@@ -119,8 +133,15 @@ impl<C: WeierstrassCurve> OnCurveConfig<C> {
                 let max_sum_z_mj = max_sum_x_mj.clone();
                 let max_sum_xz_mj = sum_bigints(&bs2_mj, &limbs_max2);
                 let max_sum_y2_mj = max_sum_xz_mj.clone();
-                let expr_mj_min = -(&max_sum_xz_mj + max_sum_z_mj + max_sum_x_mj + urem(&b, mj));
-                let expr_mj_max = BI::from(2) * max_sum_y_mj + max_sum_y2_mj;
+                let a_plus_one_mj = signed_mod(&a_plus_one, mj);
+                let a_plus_b_mj = signed_mod(&a_plus_b, mj);
+                let a1_sum_x_mj = &a_plus_one_mj * &max_sum_x_mj;
+                let expr_mj_min =
+                    -(&max_sum_xz_mj + &max_sum_z_mj + a1_sum_x_mj.clone().max(BI::zero()))
+                        - &a_plus_b_mj;
+                let expr_mj_max = BI::from(2) * &max_sum_y_mj + &max_sum_y2_mj
+                    - a1_sum_x_mj.min(BI::zero())
+                    - &a_plus_b_mj;
                 (expr_mj_min, expr_mj_max)
             })
             .collect();
@@ -154,7 +175,10 @@ impl<C: WeierstrassCurve> OnCurveConfig<C> {
         let ((k_min, u_max), vs_bounds) =
             Self::bounds::<F, P>(nb_parallel_range_checks, max_bit_len);
 
-        let b: BI = C::B.to_biguint().into();
+        let a: BI = signed_repr::<C::Base>()(C::A.to_biguint().into());
+        let b: BI = signed_repr::<C::Base>()(C::B.to_biguint().into());
+        let a_plus_one = &a + BI::one();
+        let a_plus_b = &a + &b;
 
         let q_on_curve = meta.selector();
 
@@ -175,15 +199,17 @@ impl<C: WeierstrassCurve> OnCurveConfig<C> {
             let xzs = pair_wise_prod(&xs, &zs);
             let y2s = pair_wise_prod(&ys, &ys);
 
-            let const_b = Expression::Constant(bigint_to_fe::<F>(&b));
+            let const_a_plus_one = Expression::Constant(bigint_to_fe::<F>(&a_plus_one));
+            let const_a_plus_b = Expression::Constant(bigint_to_fe::<F>(&a_plus_b));
 
-            // 2 * sum_y + sum_y2 - (sum_xz + sum_z + (a+1) * sum_x + b) = (u + k_min) * m
+            // 2 * sum_y + sum_y2 - (sum_xz + sum_z + (a + 1) * sum_x + (a + b)) = (u +
+            // k_min) * m
             let native_id = &cond
                 * (Expression::from(2) * sum_exprs::<F>(&bs, &ys) + sum_exprs::<F>(&bs2, &y2s)
                     - (sum_exprs::<F>(&bs2, &xzs)
                         + sum_exprs::<F>(&bs, &zs)
-                        + sum_exprs::<F>(&bs, &xs)
-                        + const_b)
+                        + const_a_plus_one * sum_exprs::<F>(&bs, &xs)
+                        + const_a_plus_b)
                     - (&u + Expression::Constant(bigint_to_fe::<F>(&k_min)))
                         * Expression::Constant(bigint_to_fe::<F>(m)));
             let mut moduli_ids = moduli
@@ -194,18 +220,21 @@ impl<C: WeierstrassCurve> OnCurveConfig<C> {
                     let (lj_min, _vj_max) = vj_bounds;
                     let bs2_mj = bs2.iter().map(|b| b.rem(mj)).collect::<Vec<_>>();
                     let bs_mj = bs.iter().map(|b| b.rem(mj)).collect::<Vec<_>>();
-                    let const_b_mj = Expression::Constant(bigint_to_fe::<F>(&urem(&b, mj)));
+                    let const_a_plus_one_mj =
+                        Expression::Constant(bigint_to_fe::<F>(&signed_mod(&a_plus_one, mj)));
+                    let const_a_plus_b_mj =
+                        Expression::Constant(bigint_to_fe::<F>(&signed_mod(&a_plus_b, mj)));
 
                     // 2 * sum_y_mj + sum_y2_mj - (sum_xz_mj + sum_z_mj
-                    //  + ((a+1) % mj) * sum_x_mj + b % mj)
+                    //  + signed_mod(a + 1, mj) * sum_x_mj + signed_mod(a + b, mj))
                     //  - u * (m % mj) - (k_min * m) % mj - (vj + lj_min) * mj = 0
                     &cond
                         * (Expression::from(2) * sum_exprs::<F>(&bs_mj, &ys)
                             + sum_exprs::<F>(&bs2_mj, &y2s)
                             - (sum_exprs::<F>(&bs2_mj, &xzs)
                                 + sum_exprs::<F>(&bs_mj, &zs)
-                                + sum_exprs::<F>(&bs_mj, &xs)
-                                + const_b_mj)
+                                + const_a_plus_one_mj * sum_exprs::<F>(&bs_mj, &xs)
+                                + const_a_plus_b_mj)
                             - &u * Expression::Constant(bigint_to_fe::<F>(&urem(m, mj)))
                             - Expression::Constant(bigint_to_fe::<F>(&urem(&(&k_min * m), mj)))
                             - (vj + Expression::Constant(bigint_to_fe::<F>(lj_min)))
@@ -228,7 +257,7 @@ impl<C: WeierstrassCurve> OnCurveConfig<C> {
 }
 
 /// If `cond = 1`, it asserts that `(x, y)` satisfy the curve `C` equation:
-///   `y^2 = x^3 + b`.
+///   `y^2 = x^3 + a * x + b`.
 ///
 /// If `cond = 0`, it asserts nothing.
 pub fn assert_is_on_curve<F, C, P, N>(
@@ -251,8 +280,10 @@ where
     let bs2 = P::double_base_powers();
     let field_chip_config = base_chip.config();
 
-    let b: BI = C::B.to_biguint().into();
-    assert!(!BI::is_negative(&b));
+    let a: BI = signed_repr::<C::Base>()(C::A.to_biguint().into());
+    let b: BI = signed_repr::<C::Base>()(C::B.to_biguint().into());
+    let a_plus_one = &a + BI::one();
+    let a_plus_b = &a + &b;
 
     let x = base_chip.normalize(layouter, x)?;
     let y = base_chip.normalize(layouter, y)?;
@@ -272,12 +303,13 @@ where
 
             let (k_min, u_max) = on_curve_config.u_bounds.clone();
 
-            // 2 * sum_y + sum_y2 - (sum_xz + sum_z + (a+1) * sum_x + b) = (u + k_min) * m
-            let expr = ys.clone().map(|v| BI::from(2) * sum_bigints(&bs, &v) - &b)
+            // 2 * sum_y + sum_y2 - (sum_xz + sum_z + (a + 1) * sum_x + (a + b)) = (u +
+            // k_min) * m
+            let expr = ys.clone().map(|v| BI::from(2) * sum_bigints(&bs, &v) - &a_plus_b)
                 + y2s.clone().map(|v| sum_bigints(&bs2, &v))
                 - xzs.clone().map(|v| sum_bigints(&bs2, &v))
                 - zs.clone().map(|v| sum_bigints(&bs, &v))
-                - xs.clone().map(|v| sum_bigints(&bs, &v));
+                - xs.clone().map(|v| &a_plus_one * sum_bigints(&bs, &v));
             let u = expr.map(|e| compute_u(m, &e, (&k_min, &u_max), cond.value()));
 
             let vs_values =
@@ -286,14 +318,19 @@ where
                     let bs2_mj = bs2.iter().map(|b| b.rem(mj)).collect::<Vec<_>>();
                     let (lj_min, vj_max) = vj_bounds.clone();
 
+                    let a_plus_one_mj = signed_mod(&a_plus_one, mj);
+                    let a_plus_b_mj = signed_mod(&a_plus_b, mj);
+
                     // 2 * sum_y_mj + sum_y2_mj
-                    //  - (sum_xz_mj + sum_z_mj + (a+1) * sum_x_mj + b)
+                    //  - (sum_xz_mj + sum_z_mj + signed_mod(a+1, mj) * sum_x_mj + signed_mod(a+b,
+                    //    mj))
                     //  - u * (m % mj) - (k_min * m) % mj = (vj + lj_min) * mj
-                    let expr_mj = ys.clone().map(|v| BI::from(2) * sum_bigints(&bs_mj, &v) - &b)
-                        + y2s.clone().map(|v| sum_bigints(&bs2_mj, &v))
-                        - xzs.clone().map(|v| sum_bigints(&bs2_mj, &v))
-                        - zs.clone().map(|v| sum_bigints(&bs_mj, &v))
-                        - xs.clone().map(|v| sum_bigints(&bs_mj, &v));
+                    let expr_mj =
+                        ys.clone().map(|v| BI::from(2) * sum_bigints(&bs_mj, &v) - &a_plus_b_mj)
+                            + y2s.clone().map(|v| sum_bigints(&bs2_mj, &v))
+                            - xzs.clone().map(|v| sum_bigints(&bs2_mj, &v))
+                            - zs.clone().map(|v| sum_bigints(&bs_mj, &v))
+                            - xs.clone().map(|v| &a_plus_one_mj * sum_bigints(&bs_mj, &v));
                     expr_mj.zip(u.clone()).map(|(e, u)| {
                         compute_vj(m, mj, &e, &u, &k_min, (&lj_min, &vj_max), cond.value())
                     })
