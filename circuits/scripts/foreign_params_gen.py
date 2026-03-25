@@ -156,12 +156,8 @@ def on_curve_expr_bounds(q, n, B, base_powers, double_base_powers, a_plus_one=1,
     # Handle the sign of (a+1) when computing min/max.
     # Note: (a+b) is a constant offset (not a coefficient of a variable), so it
     # shifts both min and max equally regardless of sign — no case split needed.
-    if a_plus_one >= 0:
-        expr_min = -(max_sum_xz + max_sum_z + a_plus_one * max_sum_x) - a_plus_b
-        expr_max = 2 * max_sum_y + max_sum_y2 - a_plus_b
-    else:
-        expr_min = -(max_sum_xz + max_sum_z) - a_plus_b
-        expr_max = 2 * max_sum_y + max_sum_y2 + abs(a_plus_one) * max_sum_x - a_plus_b
+    expr_min = -(max_sum_xz + max_sum_z + max(a_plus_one * max_sum_x, 0)) - a_plus_b
+    expr_max = 2 * max_sum_y + max_sum_y2 - min(a_plus_one * max_sum_x, 0) - a_plus_b
 
     return (expr_min, expr_max)
 
@@ -662,11 +658,11 @@ if __name__ == '__main__':
     if len(sys.argv) < 3:
         keys = "\n".join([" - " + k for k in ORDERS.keys()])
         curves = "\n".join([" - " + k for k in CURVES.keys()])
-        sys.exit("Usage: python3 foreign_params_gen.py NATIVE EMULATED [CURVE | A B]\n"\
+        sys.exit("Usage: python3 foreign_params_gen.py NATIVE EMULATED [CURVE | a b]\n"\
                  "Where NATIVE and EMULATED must be replaced by concrete constants or "\
                  "one of the following supported values:\n" + keys + "\n\n" \
-                 "Weierstrass coefficients (y^2 = x^3 + Ax + B) can be specified as a\n"\
-                 "curve name or explicit A B values (default 0). Supported curves:\n" + curves)
+                 "Weierstrass coefficients (y^2 = x^3 + ax + b) can be specified as a\n"\
+                 "curve name or explicit a b values (default 0). Supported curves:\n" + curves)
 
     p = parse_modulus(sys.argv[1])
     q = parse_modulus(sys.argv[2])
