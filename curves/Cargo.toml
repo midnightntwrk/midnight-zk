@@ -42,7 +42,8 @@ digest = "0.10"
 k256 = { version = "0.13.4", features = ["expose-field", "bits", "alloc"], default-features = false }
 
 # p256 for secp256r1 / NIST P-256
-p256 = { version = "0.13.2", features = ["expose-field", "bits", "alloc"], default-features = false }
+p256 = { version = "0.13.2", features = ["expose-field", "bits", "alloc", "arithmetic"], default-features = false }
+primeorder = "0.13"
 
 
 [dev-dependencies]
