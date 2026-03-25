@@ -24,18 +24,14 @@ use num_bigint::BigUint;
 use num_traits::Zero;
 #[cfg(any(test, feature = "testing"))]
 use {
-    crate::field::decomposition::chip::P2RDecompositionConfig,
-    crate::field::decomposition::pow2range::Pow2RangeChip,
-    crate::testing_utils::FromScratch,
-    crate::testing_utils::Sampleable,
+    crate::field::decomposition::{chip::P2RDecompositionConfig, pow2range::Pow2RangeChip},
+    crate::field::native::NB_EXTRA_ARITH_FIXED_COLS,
+    crate::testing_utils::{FromScratch, Sampleable},
     crate::utils::ComposableChip,
     midnight_proofs::plonk::{Column, ConstraintSystem, Instance},
-    rand::Rng,
-    rand::RngCore,
+    rand::{Rng, RngCore},
 };
 
-#[cfg(any(test, feature = "testing"))]
-use crate::field::native::NB_EXTRA_ARITH_FIXED_COLS;
 use crate::{
     field::{
         decomposition::{chip::P2RDecompositionChip, instructions::CoreDecompositionInstructions},
