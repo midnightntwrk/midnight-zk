@@ -119,16 +119,16 @@ where
 
 #[cfg(not(feature = "single-h-commitment"))]
 fn blind_quotient_limbs<F: PrimeField>(quotient_limbs: &mut [Vec<F>]) {
-    let nr_limbs = quotient_limbs.len();
-    assert!(nr_limbs >= 2);
+    let num_limbs = quotient_limbs.len();
+    assert!(num_limbs >= 2);
 
-    for i in 1..nr_limbs {
+    for i in 1..num_limbs {
         let t = F::random(OsRng);
         quotient_limbs[i - 1].push(t);
         quotient_limbs[i][0] -= t;
     }
 
-    quotient_limbs[nr_limbs - 1].push(F::ZERO);
+    quotient_limbs[num_limbs - 1].push(F::ZERO);
 }
 
 #[cfg(feature = "committed-instances")]

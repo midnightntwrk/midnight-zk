@@ -266,15 +266,15 @@ impl CostOptions {
         // - COMM bytes for proof
         let multiopen = comp_bytes(2, point_sets);
 
-        let mut nr_rotations = HashSet::new();
+        let mut num_rotations = HashSet::new();
         for poly in self.advice.iter() {
-            nr_rotations.extend(poly.rotations.clone());
+            num_rotations.extend(poly.rotations.clone());
         }
         for poly in self.fixed.iter() {
-            nr_rotations.extend(poly.rotations.clone());
+            num_rotations.extend(poly.rotations.clone());
         }
         for poly in self.instance.iter() {
-            nr_rotations.extend(poly.rotations.clone());
+            num_rotations.extend(poly.rotations.clone());
         }
 
         let size = plonk + multiopen + limbs;
