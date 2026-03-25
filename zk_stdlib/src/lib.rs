@@ -1283,7 +1283,7 @@ where
         &self,
         layouter: &mut impl Layouter<F>,
         input: &AssignedVector<F, T, M, A>,
-    ) -> Result<([AssignedBit<F>; M], VectorBounds<F>), Error> {
+    ) -> Result<(Box<[AssignedBit<F>; M]>, VectorBounds<F>), Error> {
         self.vector_gadget.padding_flag(layouter, input)
     }
 

@@ -422,9 +422,9 @@ where
         // Parse the buffer directly. Filler positions read `ALPHABET_MAX_SIZE`
         // and hit the self-loop transitions (added during NativeAutomaton
         // construction), outputting marker 0.
-        let buffer = self.parse_automaton(layouter, &automaton, &input.buffer)?;
+        let buffer = self.parse_automaton(layouter, &automaton, &*input.buffer)?;
         Ok(AssignedVector {
-            buffer: buffer.try_into().unwrap(),
+            buffer: Box::new(buffer.try_into().unwrap()),
             len: input.len().clone(),
         })
     }

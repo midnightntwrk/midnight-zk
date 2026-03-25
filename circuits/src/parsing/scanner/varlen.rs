@@ -62,12 +62,14 @@ use crate::{
 pub struct ScannerVec<F: CircuitField, const M: usize, const A: usize> {
     /// The effective length of the payload (constrained during construction).
     length: AssignedNative<F>,
-    /// Buffer with filler positions constrained to 256.
-    pub(crate) buffer: [AssignedNative<F>; M],
+    /// Buffer with filler positions constrained to 256. Boxed to keep
+    /// large buffers off the stack.
+    pub(crate) buffer: Box<[AssignedNative<F>; M]>,
     /// (start, end) positions of the payload in the buffer.
     pub(crate) limits: (AssignedNative<F>, AssignedNative<F>),
-    /// Per-element padding flags (1 = filler, 0 = payload).
-    pub(crate) padding_flags: [AssignedBit<F>; M],
+    /// Per-element padding flags (1 = filler, 0 = payload). Boxed to
+    /// keep large buffers off the stack.
+    pub(crate) padding_flags: Box<[AssignedBit<F>; M]>,
 }
 
 impl<F: CircuitField, const M: usize, const A: usize> ScannerVec<F, M, A> {
@@ -142,7 +144,7 @@ where
             .collect::<Result<Vec<_>, Error>>()?;
 
         Ok(AssignedVector {
-            buffer: byte_buffer.try_into().unwrap(),
+            buffer: Box::new(byte_buffer.try_into().unwrap()),
             len: sv.length.clone(),
         })
     }
@@ -185,7 +187,7 @@ where
         };
         let mut buffer: Vec<AssignedByte<F>> = vec![filler; M];
         buffer[lims].clone_from_slice(bytes);
-        let buffer: [AssignedByte<F>; M] = buffer.try_into().unwrap();
+        let buffer: Box<[AssignedByte<F>; M]> = Box::new(buffer.try_into().unwrap());
 
         let len = self.native_gadget.assign_lower_than_fixed(
             layouter,
@@ -214,14 +216,16 @@ where
         // Constrain filler positions to ALPHABET_MAX_SIZE.
         let filler =
             self.native_gadget.assign_fixed(layouter, F::from(ALPHABET_MAX_SIZE as u64))?;
-        let buffer: [AssignedNative<F>; M] = (vec.buffer.iter().zip(padding_flags.iter()))
-            .map(|(elem, is_padding)| {
-                let native_elem = AssignedNative::from(elem);
-                self.native_gadget.select(layouter, is_padding, &filler, &native_elem)
-            })
-            .collect::<Result<Vec<_>, Error>>()?
-            .try_into()
-            .expect("Length mismatch in ScannerVec buffer");
+        let buffer: Box<[AssignedNative<F>; M]> = Box::new(
+            (vec.buffer.iter().zip(padding_flags.iter()))
+                .map(|(elem, is_padding)| {
+                    let native_elem = AssignedNative::from(elem);
+                    self.native_gadget.select(layouter, is_padding, &filler, &native_elem)
+                })
+                .collect::<Result<Vec<_>, Error>>()?
+                .try_into()
+                .expect("Length mismatch in ScannerVec buffer"),
+        );
 
         Ok(ScannerVec {
             length: vec.len,

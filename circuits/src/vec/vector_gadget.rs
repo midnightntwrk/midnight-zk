@@ -82,8 +82,8 @@ where
             .native_gadget
             .assign_many(layouter, &vec![Value::known(T::FILLER); L - M])?;
 
-        let buffer: [T; L] =
-            [extra_pad.as_slice(), input.buffer.as_slice()].concat().try_into().unwrap();
+        let buffer: Box<[T; L]> =
+            Box::new([extra_pad.as_slice(), input.buffer.as_slice()].concat().try_into().unwrap());
 
         Ok(AssignedVector {
             buffer,
@@ -117,10 +117,11 @@ where
             })
             .unzip();
 
-        let data = ng
-            .assign_many(layouter, &data_val.transpose_array())?
-            .try_into()
-            .expect("Length mismatch in AssignedVector.");
+        let data: Box<[T; M]> = Box::new(
+            ng.assign_many(layouter, &data_val.transpose_array())?
+                .try_into()
+                .expect("Length mismatch in AssignedVector."),
+        );
         let len = ng.assign_lower_than_fixed(layouter, len_val, &(M + 1).into())?;
         Ok(AssignedVector { buffer: data, len })
     }
@@ -129,7 +130,7 @@ where
         &self,
         layouter: &mut impl Layouter<F>,
         input: &AssignedVector<F, T, M, A>,
-    ) -> Result<([AssignedBit<F>; M], (AssignedNative<F>, AssignedNative<F>)), Error> {
+    ) -> Result<(Box<[AssignedBit<F>; M]>, (AssignedNative<F>, AssignedNative<F>)), Error> {
         let ng = &self.native_gadget;
         let limits = self.get_limits(layouter, input)?;
         let (start, end) = &limits;
@@ -151,7 +152,8 @@ where
             })
             .collect::<Result<Vec<_>, Error>>()?;
 
-        let flags = [result, last_chunk].concat().try_into().expect("Mismatch in vector lengths");
+        let flags: Box<[AssignedBit<F>; M]> =
+            Box::new([result, last_chunk].concat().try_into().expect("Mismatch in vector lengths"));
         Ok((flags, limits))
     }
 
@@ -234,11 +236,13 @@ where
         };
         debug_assert_eq!(buffer.len(), M + A);
 
-        let buffer: [_; M] = (0..M)
-            .map(|i| ng.select(layouter, &needs_adjust, &buffer[i], &buffer[A + i]))
-            .collect::<Result<Vec<_>, Error>>()?
-            .try_into()
-            .unwrap();
+        let buffer: Box<[_; M]> = Box::new(
+            (0..M)
+                .map(|i| ng.select(layouter, &needs_adjust, &buffer[i], &buffer[A + i]))
+                .collect::<Result<Vec<_>, Error>>()?
+                .try_into()
+                .unwrap(),
+        );
 
         // Compute final length.
         let len = ng.add_constant(layouter, &input.len, -F::from(n_elems as u64))?;

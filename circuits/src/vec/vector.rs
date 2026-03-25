@@ -44,8 +44,9 @@ use crate::{
 /// [`assign`](`AssignmentInstructions::assign`).
 #[derive(Clone, Debug)]
 pub struct AssignedVector<F: CircuitField, T: Vectorizable, const M: usize, const A: usize> {
-    /// Padded payload of the vector.
-    pub(crate) buffer: [T; M],
+    /// Padded payload of the vector. Boxed to keep large buffers
+    /// off the stack.
+    pub(crate) buffer: Box<[T; M]>,
 
     /// Effective length of the vector.
     pub(crate) len: AssignedNative<F>,

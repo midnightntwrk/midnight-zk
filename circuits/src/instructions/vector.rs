@@ -81,11 +81,12 @@ where
     /// padding with a 1, and the ones that represent payload data with a 0.
     /// Also returns the (start, end) limits of the data in the buffer, since
     /// they are computed internally.
+    #[allow(clippy::type_complexity)]
     fn padding_flag(
         &self,
         layouter: &mut impl Layouter<F>,
         input: &AssignedVector<F, T, M, A>,
-    ) -> Result<([AssignedBit<F>; M], VectorBounds<F>), Error>;
+    ) -> Result<(Box<[AssignedBit<F>; M]>, VectorBounds<F>), Error>;
 
     /// Returns the first and last positions of data in the buffer.
     fn get_limits(
