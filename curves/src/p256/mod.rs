@@ -51,6 +51,7 @@ pub fn affine_from_xy(x: Fp, y: Fp) -> Option<P256Affine> {
 }
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 /// P-256 curve coefficient `a = -3`.
 pub const CURVE_A: Fp = <p256::NistP256 as PrimeCurveParams>::EQUATION_A;
 =======
@@ -67,10 +68,15 @@ const unsafe fn from_montgomery_limbs(limbs: [u64; 4]) -> Fp {
 /// P-256 curve coefficient `a = -3`.
 pub const CURVE_A: Fp = Fp::from_u64(3).neg();
 >>>>>>> 36bec662 (add p256 as curve dependency)
+=======
+/// P-256 curve coefficient `a = -3`.
+pub const CURVE_A: Fp = <p256::NistP256 as PrimeCurveParams>::EQUATION_A;
+>>>>>>> fdc61af6 (import directly coeff A and B)
 
 /// P-256 curve coefficient `b`.
 ///
 /// `b = 0x5ac635d8aa3a93e7b3ebbd55769886bc651d06b0cc53b0f63bce3c3e27d2604b`
+<<<<<<< HEAD
 <<<<<<< HEAD
 pub const CURVE_B: Fp = <p256::NistP256 as PrimeCurveParams>::EQUATION_B;
 =======
@@ -113,4 +119,5 @@ mod tests {
         assert_eq!(CURVE_B, expected);
     }
 }
->>>>>>> 36bec662 (add p256 as curve dependency)
+
+pub const CURVE_B: Fp = <p256::NistP256 as PrimeCurveParams>::EQUATION_B;
