@@ -323,8 +323,8 @@ where
     ) -> Result<AssignedForeignPoint<F, C, B>, Error> {
         if C::COFACTOR > 1 {
             let cofactor = C::ScalarField::from_u128(C::COFACTOR);
-            // Exhibit a cofactor root Q such that h * Q = p in-circuit.
-            // This proves p ∈ G1 because h · E(Fp) = G1.
+            // Exhibit a cofactor-root Q and assert h * Q = p in-circuit.
+            // This guarantees that p ∈ C::CryptographicGroup = h · E(Fp).
             let cofactor_root = self.assign_without_subgroup_check(
                 layouter,
                 value.map(|point| point * cofactor.invert().unwrap()),
