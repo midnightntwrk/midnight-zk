@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 
 ## [Unreleased]
 ### Added
+* `fewer-point-sets` feature [#281](https://github.com/midnightntwrk/midnight-zk/pull/281)
 * `single-h-commitment` feature [#276](https://github.com/midnightntwrk/midnight-zk/pull/276)
 * Introduce `IvcIO` trait and `Ivc` convenience trait [#264](https://github.com/midnightntwrk/midnight-zk/pull/264)
 * Proof aggregation example [#258](https://github.com/midnightntwrk/midnight-zk/pull/258)

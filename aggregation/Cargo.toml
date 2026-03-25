@@ -50,3 +50,7 @@ single-h-commitment = [
     "midnight-circuits/single-h-commitment",
     "midnight-zk-stdlib/single-h-commitment",
 ]
+fewer-point-sets = [
+    "midnight-proofs/fewer-point-sets",
+    "midnight-circuits/fewer-point-sets",
+]
