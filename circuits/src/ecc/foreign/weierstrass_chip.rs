@@ -659,15 +659,15 @@ where
         let x = self.base_field_chip().select(layouter, cond, &p.x, &q.x)?;
         let y = self.base_field_chip().select(layouter, cond, &p.y, &q.y)?;
 
-        // This is kind of hacky:
-        // When the value of the condition is unknown (during the setup phase)
-        // we select the first point, instead of passing an unknown value.
-        // In reality, this is equivalent, since in the setup phase the
-        // value of the points will be unknown as well.
-
-        // point = p if cond is unknown or 1, q if cond is known and 0
-        let a = cond.value().error_if_known_and(|&v| !v);
-        let point = if a.is_ok() { p.point } else { q.point };
+        // point = p if cond is 1, q if cond is 0, Value::unknown() if cond is unknown.
+        // When cond is unknown we return Value::unknown().
+        let point = if cond.value().error_if_known_and(|&v| !v).is_err() {
+            q.point
+        } else if cond.value().error_if_known_and(|&v| v).is_err() {
+            p.point
+        } else {
+            Value::unknown()
+        };
 
         Ok(AssignedForeignPoint::<F, C, B> { point, is_id, x, y })
     }
