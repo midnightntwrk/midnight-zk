@@ -660,14 +660,7 @@ where
         let y = self.base_field_chip().select(layouter, cond, &p.y, &q.y)?;
 
         // point = p if cond is 1, q if cond is 0, Value::unknown() if cond is unknown.
-        // When cond is unknown we return Value::unknown().
-        let point = if cond.value().error_if_known_and(|&v| !v).is_err() {
-            q.point
-        } else if cond.value().error_if_known_and(|&v| v).is_err() {
-            p.point
-        } else {
-            Value::unknown()
-        };
+        let point = p.point.zip(q.point).zip(cond.value()).map(|((p, q), b)| if b { p } else { q });
 
         Ok(AssignedForeignPoint::<F, C, B> { point, is_id, x, y })
     }
