@@ -43,7 +43,7 @@ use {
 use crate::{
     ecc::{
         curves::EdwardsCurve,
-        foreign::gates::edwards::coord::{self, CoordConfig},
+        foreign::gates::edwards::addition::{self, AdditionConfig},
     },
     field::{
         foreign::{
@@ -68,7 +68,7 @@ where
     C: EdwardsCurve,
 {
     base_field_config: FieldChipConfig,
-    coord_config: CoordConfig<C>,
+    addition_config: AdditionConfig<C>,
     _marker: PhantomData<C>,
 }
 
@@ -108,7 +108,7 @@ where
     ) -> ForeignEdwardsEccConfig<C> {
         assert!(C::A.legendre() == 1);
         assert!(C::D.legendre() == -1);
-        let coord_config = CoordConfig::<C>::configure::<F, B>(
+        let addition_config = AdditionConfig::<C>::configure::<F, B>(
             _meta,
             base_field_config,
             nb_parallel_range_checks,
@@ -117,7 +117,7 @@ where
 
         ForeignEdwardsEccConfig {
             base_field_config: base_field_config.clone(),
-            coord_config,
+            addition_config,
             _marker: PhantomData,
         }
     }
@@ -680,26 +680,26 @@ where
 
         // Constraint for Rx coordinate
         // Rx * (1 + d * Px * Py * Qx * Qy) = (Px * Qy + Py * Qx)
-        coord::assert_coord(
+        addition::assert_addition_coordinate(
             layouter,
             &r.x,
             &px_qy,
             &py_qx,
             &d_px_py_qx_qy,
             base_chip,
-            &self.config.coord_config,
+            &self.config.addition_config,
         )?;
 
         // Constraint for Ry coordinate
         // Ry * (1 - d * Px * Py * Qx * Qy) = (Py * Qy - a * Px * Qx)
-        coord::assert_coord(
+        addition::assert_addition_coordinate(
             layouter,
             &r.y,
             &py_qy,
             &neg_a_px_qx,
             &neg_d_px_py_qx_qy,
             base_chip,
-            &self.config.coord_config,
+            &self.config.addition_config,
         )?;
 
         Ok(AssignedForeignEdwardsPoint {
