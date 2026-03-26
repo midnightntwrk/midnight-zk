@@ -27,7 +27,7 @@ use midnight_proofs::{
 
 use crate::{
     field::AssignedNative,
-    instructions::{AssignmentInstructions, PublicInputInstructions},
+    instructions::PublicInputInstructions,
     types::{InnerValue, Instantiable},
     verifier::{
         types::SelfEmulation,
@@ -307,6 +307,11 @@ impl<S: SelfEmulation> AssignedMsm<S> {
 impl<S: SelfEmulation> AssignedMsm<S> {
     /// Witnesses an MSM computation of `len` bases/scalars and a `BTreeMap` of
     /// fixed_base_scalars indexed by the given `fixed_base_names`.
+    ///
+    /// # Warning
+    ///
+    /// The points of the MSM are not enforced to be part of the relevant prime
+    /// order subgroup.
     pub fn assign(
         layouter: &mut impl Layouter<S::F>,
         curve_chip: &S::CurveChip,
@@ -332,7 +337,10 @@ impl<S: SelfEmulation> AssignedMsm<S> {
         let mut fixed_base_names = fixed_base_names.to_vec();
         fixed_base_names.sort();
 
-        let bases = curve_chip.assign_many(layouter, &bases_val)?;
+        let bases = bases_val
+            .iter()
+            .map(|p| S::assign_without_subgroup_check(layouter, curve_chip, *p))
+            .collect::<Result<Vec<_>, Error>>()?;
         let scalars = assign_bounded_scalars(layouter, scalar_chip, &scalars_val)?;
         let fixed_base_scalars: BTreeMap<String, AssignedBoundedScalar<S::F>> = {
             let scalars = assign_bounded_scalars(layouter, scalar_chip, &fixed_base_scalars_val)?;

@@ -632,8 +632,7 @@ impl ZkStdLib {
 
     /// Chip for performing in-circuit operations over the BLS12-381 curve.
     /// Note that this is the whole BLS curve (whose order is a 381-bits
-    /// integer). If you need to work over the BLS subgroup, you may want to
-    /// use [Bls12381Chip::assert_in_bls12_381_subgroup].
+    /// integer).
     pub fn bls12_381_curve(&self) -> &Bls12381Chip {
         *self.used_bls12_381_curve.borrow_mut() = true;
         self.bls12_381_curve_chip
