@@ -28,6 +28,8 @@ verification keys break backwards compatibility.
 * Implementation of substring checks [#229](https://github.com/midnightntwrk/midnight-zk/pull/229)
 * Foreign arithmetic over twisted Edwards curves [#241](https://github.com/midnightntwrk/midnight-zk/pull/241)
 * Custom gate for foreign point addition over twisted Edwards curves [#242](https://github.com/midnightntwrk/midnight-zk/pull/242)
+* Add `p256` as curve dependency [#269](https://github.com/midnightntwrk/midnight-zk/pull/269)
+* Add emulations of base/scalar fields of `p256` over `bls12-381` scalar field [#270](https://github.com/midnightntwrk/midnight-zk/pull/270)
 * add MSMCompletenessFluke error [#277](https://github.com/midnightntwrk/midnight-zk/pull/277)
 
 ### Changed
