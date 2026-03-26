@@ -8,7 +8,6 @@
 
 use std::{io::Write, path::Path, time::Instant};
 
-use midnight_circuits::instructions::map::MapCPU;
 use midnight_zk_stdlib::utils::plonk_api::filecoin_srs;
 use rand::rngs::OsRng;
 
@@ -20,10 +19,7 @@ mod passport;
 use passport::circuit::{self, PassportVerification};
 
 /// Path to the credentials directory, relative to the zk_stdlib crate root.
-const CRED_DIR: &str = concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/examples/passport/credentials"
-);
+const CRED_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/passport/credentials");
 
 fn load_credential(name: &str) -> (Vec<u8>, [u8; 93], [u8; 256]) {
     let dir = Path::new(CRED_DIR).join(name);
@@ -84,11 +80,9 @@ fn run() {
     println!("  Expiry:      {}", field(DG1_EXPIRY));
     println!("SOD size: {} bytes\n", sod.len());
 
-    // Build the CSCA map with just this one key.
-    let csca_map = circuit::build_csca_map(&[csca_key]);
-    let instance = csca_map.succinct_repr();
-    let witness = (sod, dg1, csca_key, csca_map);
-
+    // Generates the witness, including the CSCA map.
+    let witness = PassportVerification::generate_witness(sod, dg1, csca_key);
+    let instance = PassportVerification::parse_csca_registry(circuit::CSCA_REGISTRY);
     let relation = PassportVerification;
 
     // Setup.

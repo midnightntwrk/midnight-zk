@@ -24,6 +24,7 @@ Output files (in the same directory as the script):
 
 import argparse
 import hashlib
+import json
 import os
 import struct
 from datetime import datetime, timedelta, timezone
@@ -380,6 +381,11 @@ def main():
     parser.add_argument("--num-dg-hashes", type=int, default=2, help="Number of DG hashes (1-16)")
     parser.add_argument("--dn-padding", type=int, default=0, help="Extra bytes in DN fields (pads issuer/subject)")
     parser.add_argument(
+        "--csca-key-index", type=int, default=None,
+        help="Index of CSCA key in the registry file (uses csca_private_keys_*.json). "
+             "If not set, generates a fresh key pair.",
+    )
+    parser.add_argument(
         "--output-dir",
         default=os.path.dirname(os.path.abspath(__file__)),
         help="Output directory",
@@ -402,8 +408,26 @@ def main():
     print(f"MRZ line 1: {mrz[:44].decode()}")
     print(f"MRZ line 2: {mrz[44:].decode()}")
 
-    # 2. Generate CSCA and DS key pairs + certificates.
-    csca_key = generate_keypair()
+    # 2. Load or generate CSCA key pair.
+    if args.csca_key_index is not None:
+        # Load from the registry.
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        # Find the private keys file (csca_private_keys_*.json).
+        priv_files = sorted(f for f in os.listdir(script_dir) if f.startswith("csca_private_keys_"))
+        if not priv_files:
+            raise FileNotFoundError("No csca_private_keys_*.json found in the credentials directory.")
+        priv_path = os.path.join(script_dir, priv_files[-1])  # latest
+        with open(priv_path) as f:
+            priv_keys = json.load(f)
+        idx_str = str(args.csca_key_index)
+        if idx_str not in priv_keys:
+            raise KeyError(f"Key index {args.csca_key_index} not found in {priv_files[-1]}. "
+                           f"Available: {sorted(int(k) for k in priv_keys.keys())[:10]}...")
+        pem = priv_keys[idx_str].encode()
+        csca_key = serialization.load_pem_private_key(pem, password=None)
+        print(f"Using CSCA key index {args.csca_key_index} from {priv_files[-1]}")
+    else:
+        csca_key = generate_keypair()
     # Extra NameAttributes to pad the certificate DN fields.
     dn_extra_attrs = []
     for i in range(args.dn_padding):

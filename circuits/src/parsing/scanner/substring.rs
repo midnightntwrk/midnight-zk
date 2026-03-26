@@ -164,8 +164,6 @@
 //! filled with zeros on both sides. Padding rows are omitted from the diagrams
 //! above for clarity.
 
-use std::iter::{once, repeat_n};
-
 use midnight_proofs::{
     circuit::{Layouter, Region, Value},
     plonk::Error,
@@ -220,63 +218,26 @@ where
         self.check_subsequence(layouter, &sequence, idx, &sub)
     }
 
-    /// Checks that `elt (represented as a sequence of assigned bytes)` is
-    /// `sequence[idx]`. This can be used a way to perform set-membership
-    /// tests provided prior conversion of each elements to byte sequences. This
-    /// is emulated by checking that `elt`, surrounded by two `256`, is a
-    /// substring of the concatenation of the elements of `sequence` separated
-    /// by `256`.
+    /// More permissive version of [`Self::check_bytes`] that allows both
+    /// `sequence` and `sub` to include the value 256. This function
+    /// range-checks all of their cells by 257 to enable that.
     ///
-    /// A requirement of the function is that all elements of `sequence` have
-    /// length `M` at most.
-    pub fn check_member<const M: usize>(
+    /// Less resilient, and slightly less efficient than [`Self::check_bytes`],
+    /// but permits to encode more complex tests on bytes by using 256 as
+    /// separator arbitrarily. E.g., the positions at which `sub` may start may
+    /// be restricted by putting 256 blockers in `sequence`, and at the
+    /// beginning and the end of `sub`.
+    pub fn check_bytes_ext(
         &self,
         layouter: &mut impl Layouter<F>,
-        sequence: &[Vec<AssignedByte<F>>],
+        sequence: &[AssignedNative<F>],
         idx: &AssignedNative<F>,
-        elt: &[AssignedByte<F>],
+        sub: &[AssignedNative<F>],
     ) -> Result<(), Error> {
-        // Checking inconsistencies in call arguments.
-        for v in sequence {
-            assert!(
-                v.len() <= M,
-                "inconsistent max size passed to check_member ({} > {})",
-                v.len(),
-                M
-            )
+        for x in sequence.iter().chain(sub) {
+            self.native_gadget.assert_lower_than_fixed(layouter, x, &257u16.into())?;
         }
-        assert!(
-            elt.len() <= M,
-            "too large elt in check_member ({} > {})",
-            elt.len(),
-            M
-        );
-
-        // Padding all elements of `sequence` with 256 so that they have length `M` and
-        // adding one 256 between each block, and at the very beginning and end of the
-        // whole thing.
-        let pad: AssignedNative<F> = self.native_gadget.assign_fixed(layouter, F::from(256))?;
-        let separated_sequence: &[AssignedNative<F>] = &once(pad.clone())
-            .chain(sequence.iter().flat_map(|v| {
-                v.iter().map(AssignedNative::from).chain(repeat_n(pad.clone(), M + 1 - v.len()))
-            }))
-            .collect::<Vec<_>>();
-
-        // Computing the offset at which `elt` is expected to appear. Range check to
-        // ensure that the multiplication does not overflow the field.
-        let expanded_idx =
-            self.native_gadget.mul_by_constant(layouter, idx, F::from(M as u64 + 1))?;
-        self.native_gadget
-            .assert_lower_than_fixed(layouter, idx, &sequence.len().into())?;
-
-        // Prefixing and suffixing `elt` with 256.
-        let separated_elt: &[AssignedNative<F>] = &once(pad.clone())
-            .chain(elt.iter().map(AssignedNative::from))
-            .chain(once(pad))
-            .collect::<Vec<_>>();
-
-        // The membership is then equivalent to a substring check.
-        self.check_subsequence(layouter, separated_sequence, &expanded_idx, separated_elt)
+        self.check_subsequence(layouter, sequence, idx, sub)
     }
 
     /// Generic version of `check_bytes`. Cannot be exposed publicly because

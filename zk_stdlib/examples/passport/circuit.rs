@@ -28,15 +28,9 @@
 
 use std::iter::once;
 
-use ff::{Field, PrimeField};
 use midnight_circuits::{
     biguint::AssignedBigUint,
-    hash::poseidon::PoseidonChip,
-    instructions::{
-        map::{MapCPU, MapInstructions},
-        ArithInstructions, AssertionInstructions, AssignmentInstructions, PublicInputInstructions,
-    },
-    map::cpu::MapMt,
+    instructions::{AssertionInstructions, AssignmentInstructions, PublicInputInstructions},
     parsing::scanner::asn1::der_encoding::encode_length,
     types::{AssignedByte, AssignedNative},
 };
@@ -135,37 +129,149 @@ const RSA_PUBKEY_PREFIX: [u8; 10] = [
 /// Fixed suffix: the exponent INTEGER encoding for e = 65537.
 const RSA_PUBKEY_SUFFIX: [u8; 5] = [0x02, 0x03, 0x01, 0x00, 0x01];
 
-/// Sentinel value used in the CSCA Merkle tree map to indicate that a key is
-/// present. Any non-default value works.
-const CSCA_MAP_PRESENT: u64 = 1;
-
-/// Maximum number of bytes that can be packed into a single native field
-/// element without overflow: `floor(F::CAPACITY / 8)`. For BLS12-381
-/// scalar field (~255-bit modulus), this is 31 bytes (248 bits).
-const BYTES_PER_FIELD_ELEMENT: usize = (F::CAPACITY / 8) as usize;
-
 // -----------------------------------------------------------------------
 // Instance and witness types
 // -----------------------------------------------------------------------
 
-/// The off-circuit Merkle tree map for CSCA keys.
-type CscaMap = MapMt<F, PoseidonChip<F>>;
-
-/// Public inputs: Poseidon Merkle root of trusted CSCA key set.
-type Instance = F;
-
-/// Witness: SOD bytes, DG1 bytes, CSCA modulus (big-endian), CSCA map.
-type Witness = (Vec<u8>, [u8; DG1_LEN], [u8; RSA_BYTES], CscaMap);
+/// Dummy CSCA registry with realistic proportions (536 keys, for various
+/// algorithms reflecting the proportions observed in the ICAO
+/// Public-Key-Directory in March 2026).
+pub const CSCA_REGISTRY: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/examples/passport/credentials/csca_public_keys.txt"
+));
+/// Conservative estimate of the number of bytes necessary to store the registry
+/// (cumulative number of key bytes + separators).
+const MAX_REGISTRY_SIZE: usize = 160000;
 
 #[derive(Clone, Default)]
 pub struct PassportVerification;
+
+impl PassportVerification {
+    /// Parses a CSCA key registry file (custom format). The format alternates
+    /// comment lines (starting with `#`) and hex-encoded key lines:
+    ///
+    /// ```text
+    /// # key 0: RSA-2048, C=NZ
+    /// a1b2c3d4...
+    /// # key 1: ECDSA-P256, C=SG
+    /// 01020304...
+    /// ```
+    ///
+    /// Returns a `Vec<Vec<u8>>` suitable for use as the circuit's
+    /// `Instance`. Keys of all algorithms are included; only RSA-2048
+    /// keys (256 bytes) are usable in the current circuit.
+    pub fn parse_csca_registry(data: &str) -> Vec<Vec<u8>> {
+        data.lines()
+            .filter(|line| !line.starts_with('#') && !line.trim().is_empty())
+            .map(|hex_line| {
+                let hex_line = hex_line.trim();
+                assert!(
+                    hex_line.len() % 2 == 0,
+                    "odd-length hex line in CSCA registry"
+                );
+                (0..hex_line.len())
+                    .step_by(2)
+                    .map(|i| {
+                        u8::from_str_radix(&hex_line[i..i + 2], 16)
+                            .unwrap_or_else(|e| panic!("invalid hex in CSCA registry: {e}"))
+                    })
+                    .collect()
+            })
+            .collect()
+    }
+
+    /// Checks if `key` is in the CSCA registry. `idx` indicates at which offset
+    /// the separator before the entry appears in the formatted registry.
+    fn csca_member(
+        std_lib: &ZkStdLib,
+        layouter: &mut impl Layouter<F>,
+        key: [AssignedByte<F>; RSA_BYTES],
+        formatted_registry: [AssignedNative<F>; MAX_REGISTRY_SIZE],
+        idx: AssignedNative<F>,
+    ) -> Result<(), Error> {
+        let pad: AssignedNative<F> = std_lib.assign_fixed(layouter, F::from(256))?;
+        let sub = once(pad.clone())
+            .chain(key.into_iter().map(AssignedNative::from))
+            .chain([pad])
+            .collect::<Vec<_>>();
+        std_lib.scanner().check_bytes_ext(layouter, &formatted_registry, &idx, &sub)
+    }
+}
+
+/// Public inputs: List of CSCA keys. Storing all the keys with separators
+/// should fit in `MAX_REGISTRY_SIZE` total byte count.
+type Instance = Vec<Vec<u8>>;
+
+/// Witness: SOD bytes, DG1 bytes, CSCA modulus (big-endian), the formatted CSCA
+/// key registry, and the index at which the (separator before the) public key
+/// appear in the registry.
+#[derive(Debug, Clone)]
+pub struct Witness {
+    sod: Vec<u8>,
+    dg1: [u8; DG1_LEN],
+    pub_key: [u8; RSA_BYTES],
+    registry: Vec<F>,
+    idx: F,
+}
+
+impl PassportVerification {
+    /// Formats the instance and returns the index at which the has been found,
+    /// if any.
+    fn format_csca(
+        instance: &<Self as Relation>::Instance,
+        pub_key: Option<[u8; RSA_BYTES]>,
+    ) -> (Vec<F>, Option<F>) {
+        let mut instance_padded: Vec<F> = vec![F::from(256); MAX_REGISTRY_SIZE];
+        let mut index = None;
+        // Starting at position 1 to have one 256 at the beginning.
+        let mut position = 1;
+        for key in instance {
+            let key64: &[F] = &key.iter().map(|x| F::from(*x as u64)).collect::<Vec<_>>();
+            instance_padded[position..position + key.len()].copy_from_slice(key64);
+            if let Some(rsa_key) = pub_key {
+                if index.is_none() && key == &rsa_key.to_vec() {
+                    index = Some(F::from(position as u64 - 1));
+                }
+            }
+            // +1 to insert a 256 between entries.
+            position += key.len() + 1;
+        }
+        // Checks that there is at least one 256 at the end before returning.
+        assert!(position < MAX_REGISTRY_SIZE - 1);
+        assert!(pub_key.is_none() || index.is_some(), "public key not found");
+        (instance_padded, index)
+    }
+
+    /// Creates a witness from the passport data, using the stored CSCA list.
+    pub fn generate_witness(
+        sod: Vec<u8>,
+        dg1: [u8; DG1_LEN],
+        pub_key: [u8; RSA_BYTES],
+    ) -> <Self as Relation>::Witness {
+        let parsed_instance = Self::parse_csca_registry(CSCA_REGISTRY);
+        let (registry, idx) = Self::format_csca(&parsed_instance, Some(pub_key));
+        let idx = idx.expect("unexpected format_csca failure");
+        Witness {
+            sod,
+            dg1,
+            pub_key,
+            registry,
+            idx,
+        }
+    }
+}
 
 impl Relation for PassportVerification {
     type Instance = Instance;
     type Witness = Witness;
 
+    // Instances are formatted in a way that the result always has constant length
+    // `MAX_REGISTRY_SIZE` (padded with 256). Separators 256 are also inserted
+    // between different keys, as well as at the very beginning and the very end.
     fn format_instance(instance: &Self::Instance) -> Result<Vec<F>, Error> {
-        Ok(vec![*instance])
+        let (instance_padded, _) = Self::format_csca(instance, None);
+        Ok(instance_padded)
     }
 
     fn circuit(
@@ -178,19 +284,32 @@ impl Relation for PassportVerification {
         let biguint = std_lib.biguint();
         let scanner = std_lib.scanner();
 
-        // -- Assign witness --
-        let dg1_bytes = witness.as_ref().map(|(_, dg1, _, _)| *dg1);
-        let csca_key_bytes = witness.as_ref().map(|(_, _, m, _)| *m);
+        // -- Initialisation --
+        // Assign witnesses.
+        let dg1_bytes = witness.as_ref().map(|w| w.dg1).transpose_array();
+        let dg1_assigned = std_lib.assign_many(layouter, &dg1_bytes)?;
+        let csca_key_bytes = witness.as_ref().map(|w| w.pub_key).transpose_array();
+        let csca_key_assigned = std_lib.assign_many(layouter, &csca_key_bytes)?;
+        let csca_idx_bytes = witness.as_ref().map(|w| w.idx);
+        let csca_idx_assigned = std_lib.assign(layouter, csca_idx_bytes)?;
+
+        // Constrain the public CSCA registry.
+        let csca_registry =
+            witness.as_ref().map(|w| w.registry.clone()).transpose_vec(MAX_REGISTRY_SIZE);
+        let csca_registry_assigned = csca_registry
+            .into_iter()
+            .map(|slot| std_lib.assign_as_public_input(layouter, slot))
+            .collect::<Result<Vec<AssignedNative<_>>, Error>>()?;
 
         // -- Step 1: Parse SOD --
         let spec = spec::sod_sha256_rsa2048_spec();
-        let sod_input = witness.as_ref().map(|(sod, _, _, _)| sod.clone());
+        let sod_input = witness.as_ref().map(|w| w.sod.clone());
         let sod_result = scanner
             .parse_asn1_varlen::<&str, TAG_M, LEN_M, VAL_M, VAL_A, SOD_M, SOD_A>(
                 layouter, sod_input, spec,
             )?;
 
-        // Fixlen extractions:
+        // Fixlen extractions.
         let hash_dg1_from_sod = sod_result.get_fixlen(&"hashDg1");
         let message_digest = sod_result.get_fixlen(&"messageDigest");
         let ds_signature_bytes = sod_result.get_fixlen(&"dsSignature");
@@ -198,7 +317,7 @@ impl Relation for PassportVerification {
         let csca_signature_bytes = sod_result.get_fixlen(&"cscaSignature");
         let signed_attrs = sod_result.get_fixlen(&"signedAttrs");
 
-        // Varlen extractions (ScannerVec -> byte vector for hashing):
+        // Varlen extractions (conversion ScannerVec -> AssignedVector for hashing).
         let econtent_sv = sod_result.get_varlen_val(&"eContent");
         let econtent_bytes = scanner.scanner_vec_to_byte_vector(layouter, econtent_sv)?;
 
@@ -206,8 +325,7 @@ impl Relation for PassportVerification {
         let tbs_bytes = scanner.scanner_vec_to_byte_vector(layouter, tbs_sv)?;
 
         // -- Step 2: CSCA signature verification --
-        let csca_key_be = std_lib.assign_many(layouter, &csca_key_bytes.transpose_array())?;
-        let csca_key_le: Vec<AssignedByte<F>> = csca_key_be.iter().rev().cloned().collect();
+        let csca_key_le: Vec<AssignedByte<F>> = csca_key_assigned.iter().rev().cloned().collect();
         let csca_key_biguint = biguint.from_le_bytes(layouter, &csca_key_le)?;
 
         let tbs_hash = std_lib.sha2_256_varlen(layouter, &tbs_bytes)?;
@@ -222,15 +340,13 @@ impl Relation for PassportVerification {
         )?;
 
         // // -- Step 3: CSCA key membership --
-        let csca_packed = pack_bytes_to_field_elements(std_lib, layouter, &csca_key_be)?;
-        let csca_map_key = std_lib.poseidon(layouter, &csca_packed)?;
-
-        let mut csca_map = std_lib.map_gadget().clone();
-        csca_map.init(layouter, witness.map(|(_, _, _, map)| map))?;
-        std_lib.constrain_as_public_input(layouter, &csca_map.succinct_repr())?;
-
-        let map_value = csca_map.get(layouter, &csca_map_key)?;
-        std_lib.assert_equal_to_fixed(layouter, &map_value, F::from(CSCA_MAP_PRESENT))?;
+        Self::csca_member(
+            std_lib,
+            layouter,
+            csca_key_assigned.try_into().unwrap(),
+            csca_registry_assigned.try_into().unwrap(),
+            csca_idx_assigned,
+        )?;
 
         // // -- Step 4: DS signature verification --
         let sa_set_header =
@@ -244,13 +360,11 @@ impl Relation for PassportVerification {
             ds_signature_bytes.try_into().expect("256 bytes");
         verify_rsa_pkcs1_sha256(std_lib, layouter, &sa_hash, ds_sig_raw, &ds_modulus)?;
 
-        // // -- Step 5: eContent integrity --
+        // -- Step 5: eContent integrity --
         let econtent_hash = std_lib.sha2_256_varlen(layouter, &econtent_bytes)?;
         assert_bytes_equal(std_lib, layouter, &econtent_hash, message_digest)?;
 
-        // // -- Step 6: DG1 integrity --
-        let dg1_assigned: Vec<AssignedByte<F>> =
-            std_lib.assign_many(layouter, &dg1_bytes.transpose_array())?;
+        // -- Step 6: DG1 integrity --
         let dg1_hash = std_lib.sha2_256(layouter, &dg1_assigned)?;
         assert_bytes_equal(std_lib, layouter, &dg1_hash, hash_dg1_from_sod)?;
 
@@ -278,71 +392,6 @@ impl Relation for PassportVerification {
     fn read_relation<R: std::io::Read>(_reader: &mut R) -> std::io::Result<Self> {
         Ok(PassportVerification)
     }
-}
-
-// -----------------------------------------------------------------------
-// CSCA map construction (off-circuit)
-// -----------------------------------------------------------------------
-
-/// Builds the off-circuit CSCA Merkle tree map from a list of trusted
-/// CSCA keys (RSA-2048, big-endian bytes). Each key is packed into
-/// field elements (31 bytes each, little-endian) and Poseidon-hashed
-/// to derive the map key.
-pub fn build_csca_map(trusted_keys: &[[u8; RSA_BYTES]]) -> CscaMap {
-    let mut map = CscaMap::new(&F::ZERO);
-    for key_bytes in trusted_keys {
-        let map_key = csca_map_key_offcircuit(key_bytes);
-        map.insert(&map_key, &F::from(CSCA_MAP_PRESENT));
-    }
-    map
-}
-
-/// Off-circuit computation of the CSCA map key: pack bytes into field
-/// elements (31 bytes each, little-endian: `sum(byte[i] * 256^i)`) and
-/// Poseidon-hash them. Must match the in-circuit computation in
-/// `pack_bytes_to_field_elements` + `poseidon`.
-fn csca_map_key_offcircuit(key_bytes: &[u8; RSA_BYTES]) -> F {
-    use midnight_circuits::{hash::poseidon::PoseidonChip, instructions::hash::HashCPU};
-
-    let packed: Vec<F> = key_bytes
-        .chunks(BYTES_PER_FIELD_ELEMENT)
-        .map(|chunk| {
-            chunk.iter().enumerate().fold(F::ZERO, |acc, (i, &b)| {
-                acc + F::from(b as u64) * F::from(256u64).pow([i as u64])
-            })
-        })
-        .collect();
-    PoseidonChip::<F>::hash(&packed)
-}
-
-// -----------------------------------------------------------------------
-// Helper functions
-// -----------------------------------------------------------------------
-
-/// Packs a byte slice into native field elements,
-/// [`BYTES_PER_FIELD_ELEMENT`] bytes per element (little-endian,
-/// according to field capacity). Used to prepare the CSCA key for
-/// Poseidon hashing.
-fn pack_bytes_to_field_elements(
-    std_lib: &ZkStdLib,
-    layouter: &mut impl Layouter<F>,
-    bytes: &[AssignedByte<F>],
-) -> Result<Vec<AssignedNative<F>>, Error> {
-    bytes
-        .chunks(BYTES_PER_FIELD_ELEMENT)
-        .map(|chunk| {
-            let terms: Vec<(F, AssignedNative<F>)> = chunk
-                .iter()
-                .enumerate()
-                .map(|(i, b)| {
-                    // 256^i for little-endian packing.
-                    let coeff = F::from(256u64).pow([i as u64]);
-                    (coeff, b.clone().into())
-                })
-                .collect();
-            std_lib.linear_combination(layouter, &terms, F::ZERO)
-        })
-        .collect()
 }
 
 /// Verifies an RSA-2048 PKCS#1 v1.5 signature over a SHA-256 hash.
