@@ -774,7 +774,7 @@ pub(crate) mod tests {
         },
         instructions::{
             hash::{HashCPU, HashInstructions},
-            AssignmentInstructions,
+            AssignmentInstructions, EccInstructions,
         },
         testing_utils::FromScratch,
         types::{ComposableChip, Instantiable},
@@ -947,8 +947,8 @@ pub(crate) mod tests {
                 self.inner_vk.2,
             )?;
 
-            let assigned_committed_instance =
-                curve_chip.assign(&mut layouter, self.inner_committed_instance)?;
+            let assigned_committed_instance = curve_chip
+                .assign_without_subgroup_check(&mut layouter, self.inner_committed_instance)?;
 
             let assigned_inner_pi = native_gadget
                 .assign_many(&mut layouter, &self.inner_instances.transpose_array())?;
