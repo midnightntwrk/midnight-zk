@@ -43,7 +43,7 @@ use {
     midnight_proofs::plonk::Instance, rand::RngCore,
 };
 
-use super::gates::{
+use super::gates::weierstrass::{
     lambda_squared,
     lambda_squared::LambdaSquaredConfig,
     on_curve,
