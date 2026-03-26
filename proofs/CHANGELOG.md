@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.7.0]
 ### Added
 * changed `sha256` name in benches to account for the change of naming convention in `circuits` [#135](https://github.com/midnightntwrk/midnight-zk/pull/135)
+* add MSMCompletenessFluke error [#277](https://github.com/midnightntwrk/midnight-zk/pull/277)
 
 ### Changed
 * Interface of `ParamsKZG::from_parts` 
