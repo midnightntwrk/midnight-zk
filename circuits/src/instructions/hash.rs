@@ -79,7 +79,7 @@ pub(crate) mod tests {
     use crate::{
         instructions::{AssertionInstructions, AssignmentInstructions},
         testing_utils::{FromScratch, Sampleable},
-        utils::circuit_modeling::circuit_to_json,
+        utils::circuit_modeling::{circuit_to_json, cost_measure_end, cost_measure_start},
     };
 
     #[derive(Clone, Debug, Default)]
@@ -134,7 +134,9 @@ pub(crate) mod tests {
 
             let inputs = assign_chip.assign_many(&mut layouter, &self.input)?;
 
+            cost_measure_start(&mut layouter);
             let output = chip.hash(&mut layouter, &inputs)?;
+            cost_measure_end(&mut layouter);
             assign_chip.assert_equal_to_fixed(
                 &mut layouter,
                 &output,
@@ -250,7 +252,9 @@ pub(crate) mod tests {
             let assigned_input: AssignedVector<_, _, M, A> =
                 vg.assign(&mut layouter, self.input.clone())?;
 
+            cost_measure_start(&mut layouter);
             let output = chip.varhash(&mut layouter, &assigned_input)?;
+            cost_measure_end(&mut layouter);
             ng.assert_equal_to_fixed(&mut layouter, &output, self.expected_output.clone())?;
 
             chip.load_from_scratch(&mut layouter)?;

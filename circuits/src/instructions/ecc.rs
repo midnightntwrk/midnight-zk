@@ -176,7 +176,7 @@ pub(crate) mod tests {
     use crate::{
         instructions::{AssertionInstructions, AssignmentInstructions},
         testing_utils::FromScratch,
-        utils::circuit_modeling::circuit_to_json,
+        utils::circuit_modeling::{circuit_to_json, cost_measure_end, cost_measure_start},
     };
 
     #[derive(Clone, Copy, Debug)]
@@ -244,6 +244,7 @@ pub(crate) mod tests {
                 .assign_without_subgroup_check(&mut layouter, Value::known(self.inputs[0]))?;
             let q: EccChip::Point = ecc_chip.assign_fixed(&mut layouter, self.inputs[y_idx])?;
 
+            cost_measure_start(&mut layouter);
             let res = match self.operation {
                 Operation::Assign => ecc_chip.assign(&mut layouter, Value::known(self.inputs[0])),
                 Operation::AssignWithoutSubgroupCheck => ecc_chip
@@ -294,6 +295,7 @@ pub(crate) mod tests {
                     ecc_chip.point_from_coordinates(&mut layouter, &px, &py)
                 }
             }?;
+            cost_measure_end(&mut layouter);
 
             ecc_chip.assert_equal_to_fixed(&mut layouter, &res, self.expected)?;
 
