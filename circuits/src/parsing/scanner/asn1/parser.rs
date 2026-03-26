@@ -232,8 +232,8 @@ struct ParserState<
 > {
     /// Current parsing position (may be exact or variable).
     position: ParsingPosition<F>,
-    /// Bytes assigned so far, in order.
-    assigned_input: Vec<AssignedByte<F>>,
+    /// Number of input bytes consumed so far (off-circuit position).
+    real_position: usize,
     /// Extracted regions keyed by user-supplied index.
     extracted: HashMap<Index, Asn1ParsedUnit<F, TAG_M, LEN_M, VAL_M, VAL_A>>,
     /// Deferred substring checks: (position, content) pairs to verify at the
@@ -258,39 +258,47 @@ impl<
     fn new() -> Self {
         Self {
             position: ParsingPosition::from(0),
-            assigned_input: Vec::new(),
+            real_position: 0,
             extracted: HashMap::new(),
             substring_checks: Vec::new(),
             varlen: false,
         }
     }
 
-    /// Record an extraction and (for non-const data) a substring check.
+    /// Records an extraction and a substring check (possibly forced).
     /// Uses `self.position` as the substring check position.
     fn record(
         &mut self,
         index: Option<Index>,
         unit: Asn1ParsedUnit<F, TAG_M, LEN_M, VAL_M, VAL_A>,
-        needs_substring_check: bool,
+        force_substring_check: bool,
     ) {
-        self.record_at(index, unit, needs_substring_check, &self.position.clone());
+        self.record_at(index, unit, force_substring_check, &self.position.clone());
     }
 
-    /// Record an extraction with an explicit substring check position.
-    /// Used when the current `self.position` has already advanced past
-    /// the extraction (e.g., full_marker / tlv_marker in `process_tlv`).
+    /// Record an extraction with an explicit substring check position. The
+    /// substring check is performed if `force_substring_check` is true, or if
+    /// `index` is not None.
+    ///
+    /// This function is used instead of `record` when the current
+    /// `self.position` has already advanced past the extraction.
     fn record_at(
         &mut self,
         index: Option<Index>,
         unit: Asn1ParsedUnit<F, TAG_M, LEN_M, VAL_M, VAL_A>,
-        needs_substring_check: bool,
+        force_substring_check: bool,
         position: &ParsingPosition<F>,
     ) {
-        if let Some(idx) = index {
-            if needs_substring_check {
-                self.substring_checks.push((position.clone(), unit.clone()));
+        match index {
+            None => {
+                if force_substring_check {
+                    self.substring_checks.push((position.clone(), unit.clone()))
+                }
             }
-            self.extracted.insert(idx, unit);
+            Some(idx) => {
+                self.substring_checks.push((position.clone(), unit.clone()));
+                self.extracted.insert(idx, unit);
+            }
         }
     }
 }
@@ -365,9 +373,8 @@ where
     }
 
     /// Assigns `v.len()` bytes as fixed constants. Asserts (off-circuit) that
-    /// the witness matches `v`. Adds the assigned constants to
-    /// `state.assigned_input`. The caller is responsible for advancing
-    /// `state.position`.
+    /// the witness matches `v`. Advances `state.real_position`. The caller is
+    /// responsible for advancing `state.position`.
     fn assign_const<
         Index: Eq + Hash + Debug + Clone,
         const TAG_M: usize,
@@ -383,20 +390,18 @@ where
     ) -> Result<Vec<AssignedByte<F>>, Error> {
         let input_block = consume(input, v.len());
         assert_eq!(
-            v,
-            &input_block[..],
+            v, &input_block,
             "ASN.1 parsing error: expected {:?}, got {:?}",
-            v,
-            input_block
+            v, input_block
         );
         let assigned = self.native_gadget.assign_many_fixed(layouter, v)?;
-        state.assigned_input.extend_from_slice(&assigned);
+        state.real_position += v.len();
         Ok(assigned)
     }
 
-    /// Assigns `n` bytes as unconstrained witness values. Adds the assigned
-    /// values to `state.assigned_input`. The caller is responsible for
-    /// advancing `state.position`.
+    /// Assigns `n` bytes as unconstrained witness values. Advances
+    /// `state.real_position`. The caller is responsible for advancing
+    /// `state.position`.
     ///
     /// For soundness, these values however need to be subjected to a substring
     /// check, to constrain them to appear in the original credential. The
@@ -416,11 +421,11 @@ where
     ) -> Result<Vec<AssignedByte<F>>, Error> {
         let input_block: Vec<_> = consume(input, n).into_iter().map(Value::known).collect();
         let assigned = self.native_gadget.assign_many(layouter, &input_block)?;
-        state.assigned_input.extend_from_slice(&assigned);
+        state.real_position += n;
         Ok(assigned)
     }
 
-    /// Similarl to `assign_witness`, but also performs dummy assignments so
+    /// Similar to `assign_witness_fixlen`, but also performs dummy assignments so
     /// that it produces the same structure as a call with `n` = `max_n`.
     /// Returns the assigned values, including the dummies.
     fn assign_witness_varlen<
@@ -442,7 +447,7 @@ where
             .map(Value::known)
             .collect();
         let assigned = self.native_gadget.assign_many(layouter, &input_block)?;
-        state.assigned_input.extend_from_slice(&assigned[..n]);
+        state.real_position += n;
         Ok(assigned)
     }
 }
@@ -473,6 +478,11 @@ where
         // context-dependent parsing. Since `spec` only contains fixed-length blocks,
         // the generated circuit will always have the same structure.
         let mut input: &[u8] = &spec.get_explicit_input(input);
+        let input_len = input.len();
+        let assigned_input: Vec<AssignedByte<F>> = self.native_gadget.assign_many(
+            layouter,
+            &input.iter().copied().map(Value::known).collect::<Vec<_>>(),
+        )?;
 
         // Main call to generate the parsing circuit.
         let mut state = ParserState::<F, Index, 0, 0, 0, 0>::new();
@@ -484,18 +494,14 @@ where
             parse_asn1_varlen instead."
         );
 
-        self.assert_equal_positions(
-            layouter,
-            &state.position,
-            &ParsingPosition::from(state.assigned_input.len()),
-        )?;
+        self.assert_equal_positions(layouter, &state.position, &ParsingPosition::from(input_len))?;
         self.do_fixlen_substring_checks::<0, 0, 0, 0>(
             layouter,
-            &state.assigned_input,
+            &assigned_input,
             state.substring_checks,
         )?;
         Ok(Asn1FixlenResult {
-            full_witness: state.assigned_input,
+            full_witness: assigned_input,
             extracted: state.extracted,
         })
     }
@@ -558,6 +564,8 @@ where
         // context-dependent parsing. The code below ensures that the same circuit
         // structure is produced regardless of the variable-length parts of `spec`.
         let mut input: &[u8] = &spec.get_explicit_input(input);
+        let input_vec: ScannerVec<F, M, A> =
+            self.assign_scanner_vec(layouter, Value::known(input.to_vec()))?;
 
         let mut state = ParserState::<F, Index, TAG_M, LEN_M, VAL_M, VAL_A>::new();
         spec.no_full_marker();
@@ -567,9 +575,6 @@ where
             "parse_asn1_varlen: spec contains no variable-length blocks. Call the cheaper \
             parse_asn1_fixlen instead."
         );
-
-        let input_vec: ScannerVec<F, M, A> =
-            self.assign_scanner_vec(layouter, Value::known(input.to_vec()))?;
         self.assert_equal_positions(
             layouter,
             &state.position,
@@ -605,19 +610,19 @@ where
         remaining: Option<usize>,
         state: &mut ParserState<F, Index, TAG_M, LEN_M, VAL_M, VAL_A>,
     ) -> Result<(), Error> {
-        let cursor_at_start = state.assigned_input.len();
+        let cursor_at_start = state.real_position;
         let mut blocks = spec.1;
         blocks.reverse();
         while let Some(block) = blocks.pop() {
             match block {
                 Asn1Block::Const(v, index) => {
                     let bytes = self.assign_const(layouter, input, &v, state)?;
-                    state.record(index, Asn1ParsedUnit::Fixlen(bytes), false);
+                    state.record(index, Asn1ParsedUnit::Fixlen(bytes), true);
                     state.position.advance_exact(v.len());
                 }
                 Asn1Block::Fixlen(n, index) => {
                     let bytes = self.assign_witness_fixlen(layouter, input, n, state)?;
-                    state.record(index, Asn1ParsedUnit::Fixlen(bytes), true);
+                    state.record(index, Asn1ParsedUnit::Fixlen(bytes), false);
                     state.position.advance_exact(n);
                 }
                 Asn1Block::Tlv(tlv, tlv_marker) => {
@@ -640,17 +645,16 @@ where
                         "trailing blocks in TLVs require a non-zero max-length parameter VAL_M."
                     );
                     state.varlen = true;
-                    let bytes_consumed = state.assigned_input.len() - cursor_at_start;
+                    let bytes_consumed = state.real_position - cursor_at_start;
                     let trail_len = remaining - bytes_consumed;
 
                     if let Some(trail_idx) = index {
                         // Indexed trail: assign bytes, create ScannerVec, substring check.
+                        let trail_raw = input[..trail_len].to_vec();
                         self.assign_witness_varlen(layouter, input, trail_len, VAL_M, state)?;
 
-                        let sv: ScannerVec<F, VAL_M, VAL_A> = self.assign_scanner_vec(
-                            layouter,
-                            Value::known(input[..trail_len].to_vec()),
-                        )?;
+                        let sv: ScannerVec<F, VAL_M, VAL_A> =
+                            self.assign_scanner_vec(layouter, Value::known(trail_raw))?;
                         state.substring_checks.push((
                             state.position.clone(),
                             Asn1ParsedUnit::VarlenVal(sv.clone()),
@@ -712,7 +716,7 @@ where
                         None
                     }
                 };
-                state.record(index, Asn1ParsedUnit::Fixlen(bytes), false);
+                state.record(index, Asn1ParsedUnit::Fixlen(bytes), true);
                 state.position.advance_exact(n);
                 Ok(decoded_len)
             }
@@ -720,7 +724,7 @@ where
                 assert_eq!(n, m, "ill-formed raw data in witness");
                 let bytes = self.assign_witness_fixlen(layouter, input, n, state)?;
                 let decoded_len = self.automaton_validate_fixlen(layouter, &bytes, &role)?;
-                state.record(index, Asn1ParsedUnit::Fixlen(bytes), true);
+                state.record(index, Asn1ParsedUnit::Fixlen(bytes), false);
                 state.position.advance_exact(n);
                 Ok(decoded_len)
             }
@@ -759,7 +763,7 @@ where
                         (sv.len().clone(), Some(decoded), parsed_unit)
                     }
                 };
-                state.record(index, parsed_unit, true);
+                state.record(index, parsed_unit, false);
                 state.position.advance_variable(assigned_len);
                 Ok(decoded_len)
             }
@@ -816,6 +820,36 @@ where
         self.parse_asn1_len_varlen(layouter, sv)
     }
 
+    /// Assigns raw bytes and records an extraction at the given position.
+    /// If `is_varlen`, the extraction produces a `VarlenVal` (ScannerVec);
+    /// otherwise it produces a `Fixlen` (assigned bytes).
+    fn extract_and_record<
+        Index: Eq + Hash + Debug + Clone,
+        const TAG_M: usize,
+        const LEN_M: usize,
+        const VAL_M: usize,
+        const VAL_A: usize,
+    >(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        raw: &[u8],
+        is_varlen: bool,
+        index: Index,
+        position: &ParsingPosition<F>,
+        state: &mut ParserState<F, Index, TAG_M, LEN_M, VAL_M, VAL_A>,
+    ) -> Result<(), Error> {
+        if is_varlen {
+            let sv: ScannerVec<F, VAL_M, VAL_A> =
+                self.assign_scanner_vec(layouter, Value::known(raw.to_vec()))?;
+            state.record_at(Some(index), Asn1ParsedUnit::VarlenVal(sv), false, position);
+        } else {
+            let values: Vec<_> = raw.iter().map(|&b| Value::known(b)).collect();
+            let bytes = self.native_gadget.assign_many(layouter, &values)?;
+            state.record_at(Some(index), Asn1ParsedUnit::Fixlen(bytes), false, position);
+        }
+        Ok(())
+    }
+
     /// Processes a complete TLV: parses tag, length, and value, then
     /// validates the tag/length encodings via automata and asserts that
     /// the decoded length equals the value byte count.
@@ -841,18 +875,19 @@ where
         let (n_tag, _) = decode_tag(input).expect("failed to decode tag from witness");
         let (n_len, len_value) =
             decode_length(&input[n_tag..]).expect("failed to decode length from witness");
-        let value_is_varlen = !matches!(&tlv.len.0, Asn1RawDataInternal::Const(..));
+        // Whether the value (resp. the full TLV) has witness-dependent size.
+        // val_is_varlen is true when the value spec has unknown size (implies
+        // the length field is varlen too, enforced by check_tlv_spec_consistency).
+        // tlv_is_varlen additionally accounts for varlen tags.
+        let val_is_varlen = tlv.val.size().is_none();
+        let tlv_is_varlen = tlv.tag.len().is_none() || val_is_varlen;
 
-        // Snapshot raw bytes for varlen extractions (before consuming).
+        // Snapshot raw bytes for extractions (before consuming).
         let tlv_total = n_tag + n_len + len_value;
-        let tlv_raw =
-            (tlv_marker.is_some() && value_is_varlen).then(|| input[..tlv_total].to_vec());
         let full_marker = tlv.val.2.clone();
-        let val_raw = (full_marker.is_some() && value_is_varlen)
-            .then(|| input[n_tag + n_len..tlv_total].to_vec());
+        let tlv_raw = tlv_marker.as_ref().map(|_| input[..tlv_total].to_vec());
+        let val_raw = full_marker.as_ref().map(|_| input[n_tag + n_len..tlv_total].to_vec());
 
-        // Cursor snapshots for fixed-size extraction.
-        let tlv_cursor = state.assigned_input.len();
         // Position snapshot for tlv_marker substring check.
         let pos_before_tlv = state.position.clone();
 
@@ -864,7 +899,6 @@ where
         let expected_len = ParsingPosition::from(decoded_len);
 
         let pos_before_val = state.position.clone();
-        let val_cursor = state.assigned_input.len();
 
         // Process V blocks.
         self.process_blocks(layouter, input, tlv.val, Some(len_value), state)?;
@@ -875,61 +909,15 @@ where
         self.assert_equal_positions(layouter, &effective_len, &expected_len)?;
 
         // Handle full_marker (V-only extraction).
-        // The V bytes start at `pos_before_val`, not at `state.position`
-        // (which has already advanced past V).
         if let Some(idx) = full_marker {
-            match val_raw {
-                None => {
-                    // Fixed-size extraction.
-                    let v_bytes = state.assigned_input[val_cursor..].to_vec();
-                    state.record_at(
-                        Some(idx),
-                        Asn1ParsedUnit::Fixlen(v_bytes),
-                        true,
-                        &pos_before_val,
-                    );
-                }
-                Some(raw) => {
-                    // Variable-size extraction.
-                    let sv: ScannerVec<F, VAL_M, VAL_A> =
-                        self.assign_scanner_vec(layouter, Value::known(raw))?;
-                    state.record_at(
-                        Some(idx),
-                        Asn1ParsedUnit::VarlenVal(sv),
-                        true,
-                        &pos_before_val,
-                    );
-                }
-            }
+            let raw = val_raw.unwrap();
+            self.extract_and_record(layouter, &raw, val_is_varlen, idx, &pos_before_val, state)?;
         }
 
         // Handle tlv_marker (full T+L+V extraction).
-        // The T+L+V bytes start at `pos_before_tlv`, not at `state.position`
-        // (which has already advanced past the entire TLV).
         if let Some(idx) = tlv_marker {
-            match tlv_raw {
-                None => {
-                    // Fixed-size extraction.
-                    let tlv_bytes = state.assigned_input[tlv_cursor..].to_vec();
-                    state.record_at(
-                        Some(idx),
-                        Asn1ParsedUnit::Fixlen(tlv_bytes),
-                        true,
-                        &pos_before_tlv,
-                    );
-                }
-                Some(raw) => {
-                    // Variable-size extraction.
-                    let sv: ScannerVec<F, VAL_M, VAL_A> =
-                        self.assign_scanner_vec(layouter, Value::known(raw))?;
-                    state.record_at(
-                        Some(idx),
-                        Asn1ParsedUnit::VarlenVal(sv),
-                        true,
-                        &pos_before_tlv,
-                    );
-                }
-            }
+            let raw = tlv_raw.unwrap();
+            self.extract_and_record(layouter, &raw, tlv_is_varlen, idx, &pos_before_tlv, state)?;
         }
 
         Ok(())

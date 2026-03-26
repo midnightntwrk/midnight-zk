@@ -26,6 +26,8 @@
 //! - `sod.der`: DER-encoded CMS ContentInfo (SignedData)
 //! - `csca_key.bin`: 256-byte CSCA RSA-2048 modulus (big-endian)
 
+use std::iter::once;
+
 use ff::{Field, PrimeField};
 use midnight_circuits::{
     biguint::AssignedBigUint,
@@ -35,6 +37,7 @@ use midnight_circuits::{
         ArithInstructions, AssertionInstructions, AssignmentInstructions, PublicInputInstructions,
     },
     map::cpu::MapMt,
+    parsing::scanner::asn1::der_encoding::encode_length,
     types::{AssignedByte, AssignedNative},
 };
 use midnight_proofs::{
@@ -218,7 +221,7 @@ impl Relation for PassportVerification {
             &csca_key_biguint,
         )?;
 
-        // -- Step 3: CSCA key membership --
+        // // -- Step 3: CSCA key membership --
         let csca_packed = pack_bytes_to_field_elements(std_lib, layouter, &csca_key_be)?;
         let csca_map_key = std_lib.poseidon(layouter, &csca_packed)?;
 
@@ -229,16 +232,9 @@ impl Relation for PassportVerification {
         let map_value = csca_map.get(layouter, &csca_map_key)?;
         std_lib.assert_equal_to_fixed(layouter, &map_value, F::from(CSCA_MAP_PRESENT))?;
 
-        // -- Step 4: DS signature verification --
-        let sa_set_header = {
-            let mut hdr = vec![0x31u8]; // SET tag
-            hdr.extend(
-                midnight_circuits::parsing::scanner::asn1::der_encoding::encode_length(
-                    signed_attrs.len(),
-                ),
-            );
-            hdr
-        };
+        // // -- Step 4: DS signature verification --
+        let sa_set_header =
+            once(0x31u8).chain(encode_length(signed_attrs.len())).collect::<Vec<_>>();
         let sa_header_assigned = std_lib.assign_many_fixed(layouter, &sa_set_header)?;
         let sa_for_hashing: Vec<AssignedByte<F>> =
             sa_header_assigned.iter().chain(signed_attrs.iter()).cloned().collect();
@@ -248,11 +244,11 @@ impl Relation for PassportVerification {
             ds_signature_bytes.try_into().expect("256 bytes");
         verify_rsa_pkcs1_sha256(std_lib, layouter, &sa_hash, ds_sig_raw, &ds_modulus)?;
 
-        // -- Step 5: eContent integrity --
+        // // -- Step 5: eContent integrity --
         let econtent_hash = std_lib.sha2_256_varlen(layouter, &econtent_bytes)?;
         assert_bytes_equal(std_lib, layouter, &econtent_hash, message_digest)?;
 
-        // -- Step 6: DG1 integrity --
+        // // -- Step 6: DG1 integrity --
         let dg1_assigned: Vec<AssignedByte<F>> =
             std_lib.assign_many(layouter, &dg1_bytes.transpose_array())?;
         let dg1_hash = std_lib.sha2_256(layouter, &dg1_assigned)?;
@@ -387,15 +383,13 @@ fn verify_rsa_pkcs1_sha256(
     let padding_len = RSA_BYTES - 3 - PKCS1_SHA256_DIGEST_INFO.len() - 32; // = 202
 
     let mut padded_be: Vec<AssignedByte<F>> = Vec::with_capacity(RSA_BYTES);
-    padded_be.push(std_lib.assign_fixed(layouter, 0x00u8)?);
-    padded_be.push(std_lib.assign_fixed(layouter, 0x01u8)?);
-    for _ in 0..padding_len {
-        padded_be.push(std_lib.assign_fixed(layouter, 0xFFu8)?);
-    }
-    padded_be.push(std_lib.assign_fixed(layouter, 0x00u8)?);
-    for &b in &PKCS1_SHA256_DIGEST_INFO {
-        padded_be.push(std_lib.assign_fixed(layouter, b)?);
-    }
+    let prefix: Vec<u8> = ([0x00, 0x01].into_iter())
+        .chain(vec![0xFF; padding_len])
+        .chain([0x00])
+        .chain(PKCS1_SHA256_DIGEST_INFO)
+        .collect();
+    let prefix_assigned: Vec<AssignedByte<F>> = std_lib.assign_many_fixed(layouter, &prefix)?;
+    padded_be.extend_from_slice(&prefix_assigned);
     padded_be.extend_from_slice(hash);
     assert_eq!(padded_be.len(), RSA_BYTES);
 
@@ -423,18 +417,12 @@ fn parse_rsa_public_key(
     layouter: &mut impl Layouter<F>,
     bit_string_content: &[AssignedByte<F>],
 ) -> Result<AssignedBigUint<F>, Error> {
-    let biguint = std_lib.biguint();
-
     assert_eq!(
         bit_string_content.len(),
         spec::RSA2048_BIT_STRING_LEN,
         "unexpected BIT STRING content length for RSA-2048 public key"
     );
-
-    // Verify prefix (fixed DER headers).
-    for (assigned, &expected) in bit_string_content.iter().zip(RSA_PUBKEY_PREFIX.iter()) {
-        std_lib.assert_equal_to_fixed(layouter, assigned, expected)?;
-    }
+    let biguint = std_lib.biguint();
 
     // Extract 256-byte modulus (big-endian).
     let modulus_offset = RSA_PUBKEY_PREFIX.len();
