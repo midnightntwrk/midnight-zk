@@ -259,6 +259,15 @@ impl_circuit_field_be!(midnight_curves::k256::Fp, 32);
 // k256 scalar field (Fq) - 256 bits, 32 bytes, BE repr.
 impl_circuit_field_be!(midnight_curves::k256::Fq, 32);
 
+// Implementations for p256 (secp256r1) fields
+// ============================================
+
+// p256 base field (Fp) - 256 bits, 32 bytes, BE repr.
+impl_circuit_field_be!(midnight_curves::p256::Fp, 32);
+
+// p256 scalar field (Fq) - 256 bits, 32 bytes, BE repr.
+impl_circuit_field_be!(midnight_curves::p256::Fq, 32);
+
 // Implementations for curve25519 fields
 // =====================================
 
