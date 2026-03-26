@@ -732,33 +732,13 @@ impl<C: EdwardsCurve> AssignmentInstructions<C::Base, AssignedNativePoint<C>> fo
         layouter: &mut impl Layouter<C::Base>,
         value: Value<C::CryptographicGroup>,
     ) -> Result<AssignedNativePoint<C>, Error> {
-        let config = self.config();
-
         // Ensure the point lies in the correct subgroup.
         // To achieve this, we first assign the point multiplied by the inverse of the
         // cofactor. Then, we return the assigned point after multiplying it by
         // the cofactor.
         let cofactor = C::ScalarField::from_u128(C::COFACTOR);
-        let (x_val, y_val) = value
-            .map(|p| {
-                let p = p * cofactor.invert().expect("Cofactor should not be 0");
-                p.into().coordinates().unwrap()
-            })
-            .unzip();
-
-        let cf_root = layouter.assign_region(
-            || "assign point",
-            |mut region: Region<'_, C::Base>| {
-                config.q_mem.enable(&mut region, 0)?;
-                let x = region.assign_advice(|| "x", config.advice_cols[0], 0, || x_val)?;
-                let y = region.assign_advice(|| "y", config.advice_cols[1], 0, || y_val)?;
-                Ok(AssignedNativePoint {
-                    x,
-                    y,
-                    checked_in_subgroup: false,
-                })
-            },
-        )?;
+        let cf_root_val = value.map(|p| p * cofactor.invert().expect("Cofactor must not be 0"));
+        let cf_root = self.assign_without_subgroup_check(layouter, cf_root_val)?;
 
         self.clear_cofactor(layouter, &cf_root)
     }
