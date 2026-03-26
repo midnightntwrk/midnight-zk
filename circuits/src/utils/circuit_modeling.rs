@@ -18,14 +18,44 @@ use std::{
     sync::{Arc, Mutex, OnceLock},
 };
 
-use ff::{FromUniformBytes, PrimeField};
+use ff::{Field, FromUniformBytes, PrimeField};
 use goldenfile::Mint;
 use midnight_curves::Fq;
 use midnight_proofs::{
-    dev::cost_model::{circuit_model, CircuitModel},
+    circuit::Layouter,
+    dev::cost_model::{circuit_model, CircuitModel, COST_MEASURE_END, COST_MEASURE_START},
     plonk::Circuit,
 };
 use serde_json::{json, Map, Value};
+
+/// Marks the start of the cost-model measurement window inside a `synthesize`
+/// function.
+///
+/// Place this call immediately **before** the operation whose row cost you want
+/// to isolate. Pair with [`cost_measure_end`]. When both markers are
+/// present, the cost-model will report `rows` as the span covered by the
+/// marked section rather than the full circuit row count.
+///
+/// ```ignore
+/// fn synthesize(&self, config: ..., mut layouter: ...) {
+///     let x = chip.assign(&mut layouter, ...)?;
+///
+///     cost_measure_start(&mut layouter);
+///     let res = chip.add(&mut layouter, &x, &y)?;
+///     cost_measure_end(&mut layouter);
+/// }
+/// ```
+pub fn cost_measure_start<F: Field>(layouter: &mut impl Layouter<F>) {
+    let _ = layouter.namespace(|| COST_MEASURE_START);
+}
+
+/// Marks the end of the cost-model measurement window inside a `synthesize`
+/// function.
+///
+/// See [`cost_measure_start`].
+pub fn cost_measure_end<F: Field>(layouter: &mut impl Layouter<F>) {
+    let _ = layouter.namespace(|| COST_MEASURE_END);
+}
 
 /// Obtains the cost-model provided by `[ModelCircuit] of `circuit` .
 /// Serializes the cost-model into a `csv`.
