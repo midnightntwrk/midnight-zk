@@ -37,17 +37,19 @@ use crate::{
     CircuitField,
 };
 
-/// Foreign-field configuration for asserting each coordinate of point addition
-/// on twisted Edwards curves.
+/// Foreign-field custom gate for point addition on twisted Edwards curves.
+///
+/// The gate enforces a single identity, `x * (1 + w) = y + z mod m`, that is
+/// reused for computing both coordinates of the result point.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CoordConfig<C: CircuitCurve> {
+pub struct AdditionConfig<C: CircuitCurve> {
     q: Selector,
     u_bounds: (BI, BI),
     vs_bounds: Vec<(BI, BI)>,
     _marker: PhantomData<C>,
 }
 
-impl<C: CircuitCurve> CoordConfig<C> {
+impl<C: CircuitCurve> AdditionConfig<C> {
     /// Checks that the FieldEmulationParams are sound for implementing the
     /// addition assertion. Returns (k_min, u_max), {(lj_min, vj_max)}_j, which
     /// are parameters involved in the identities enforced by the ModArith
@@ -133,7 +135,7 @@ impl<C: CircuitCurve> CoordConfig<C> {
             .collect();
 
         get_identity_auxiliary_bounds::<F, C::Base>(
-            "coord",
+            "addition",
             &moduli,
             expr_bounds,
             &expr_mj_bounds,
@@ -148,7 +150,7 @@ impl<C: CircuitCurve> CoordConfig<C> {
         field_chip_config: &FieldChipConfig,
         nb_parallel_range_checks: usize,
         max_bit_len: u32,
-    ) -> CoordConfig<C>
+    ) -> AdditionConfig<C>
     where
         F: CircuitField,
         P: FieldEmulationParams<F, C::Base>,
@@ -168,7 +170,7 @@ impl<C: CircuitCurve> CoordConfig<C> {
         // | y_0 ... y_k |                |  <-- selector enabled here
         // | z_0 ... z_k | u v_0  ... v_l |
 
-        meta.create_gate("Foreign-Edwards coord", |meta| {
+        meta.create_gate("Foreign-Edwards addition", |meta| {
             let x_limbs = get_advice_vec(meta, &field_chip_config.x_cols, Rotation::prev());
             let y_limbs = get_advice_vec(meta, &field_chip_config.x_cols, Rotation::cur());
             let z_limbs = get_advice_vec(meta, &field_chip_config.x_cols, Rotation::next());
@@ -215,7 +217,7 @@ impl<C: CircuitCurve> CoordConfig<C> {
             Constraints::with_selector(q, moduli_ids)
         });
 
-        CoordConfig {
+        AdditionConfig {
             q,
             u_bounds: (k_min, u_max),
             vs_bounds,
@@ -224,24 +226,28 @@ impl<C: CircuitCurve> CoordConfig<C> {
     }
 }
 
-/// Asserts that `x * (1 + w) = y + z`.
+/// Asserts the addition identity `x * (1 + w) = y + z (mod m)`.
 ///
-/// This identity models both coordinates of the complete addition formula on
-/// twisted Edwards curves:  
-/// `(Rx,Ry) = (Px,Py) + (Qx,Qy)`  
-/// `<=>`  
-/// `Rx * (1 + d * Px * Py * Qx * Qy) = Px * Qy + Py * Qx`  
-/// and  
-/// `Ry * (1 - d * Px * Py * Qx * Qy) = Py * Qy - a * Px * Qx`.
+/// This is a gate for Edwards point addition. The same identity is invoked
+/// twice per addition: once for the x-coordinate and once for the
+/// y-coordinate of the result, with different assignments to `x, y, z, w`.
+///
+/// Concretely, the complete addition formula on twisted Edwards curves is:
+/// `(Rx,Ry) = (Px,Py) + (Qx,Qy)`
+/// where
+/// `Rx * (1 + d * Px * Py * Qx * Qy) = Px * Qy + Py * Qx`
+/// `Ry * (1 - d * Px * Py * Qx * Qy) = Py * Qy - a * Px * Qx`
+///
+/// Both equations have the shape `x * (1 + w) = y + z`.
 #[allow(clippy::type_complexity)]
-pub fn assert_coord<F, C, P, N>(
+pub fn assert_addition_coordinate<F, C, P, N>(
     layouter: &mut impl Layouter<F>,
     x: &AssignedField<F, C::Base, P>,
     y: &AssignedField<F, C::Base, P>,
     z: &AssignedField<F, C::Base, P>,
     w: &AssignedField<F, C::Base, P>,
     base_chip: &FieldChip<F, C::Base, P, N>,
-    coord_config: &CoordConfig<C>,
+    addition_config: &AdditionConfig<C>,
 ) -> Result<(), Error>
 where
     F: CircuitField,
@@ -261,7 +267,7 @@ where
     let w_norm = &base_chip.normalize(layouter, w)?;
 
     let range_checks = layouter.assign_region(
-        || "Foreign-Edwards coord",
+        || "Foreign-Edwards addition",
         |mut region| {
             let xs_val = x_norm.bigint_limbs();
             let ys_val = y_norm.bigint_limbs();
@@ -269,7 +275,7 @@ where
             let ws_val = w_norm.bigint_limbs();
             let xw_val = xs_val.clone().zip(ws_val.clone()).map(|(x, w)| pair_wise_prod(&x, &w));
 
-            let (k_min, u_max) = coord_config.u_bounds.clone();
+            let (k_min, u_max) = addition_config.u_bounds.clone();
 
             // 2 * sum_x + sum_w + sum_xw - sum_y - sum_z  = (u + k_min) * m
             let expr = xs_val.clone().map(|v| BI::from(2) * sum_bigints(&bs, &v))
@@ -281,7 +287,7 @@ where
             let u = expr.map(|e| compute_u(m, &e, (&k_min, &u_max), Value::unknown()));
 
             let vs_values =
-                moduli.iter().zip(coord_config.vs_bounds.iter()).map(|(mj, vj_bounds)| {
+                moduli.iter().zip(addition_config.vs_bounds.iter()).map(|(mj, vj_bounds)| {
                     let bs_mj = bs.iter().map(|b| b.rem(mj)).collect::<Vec<_>>();
                     let bs_sqrd_mj = bs_sqrd.iter().map(|b| b.rem(mj)).collect::<Vec<_>>();
                     let (lj_min, vj_max) = vj_bounds.clone();
@@ -316,7 +322,7 @@ where
                 .iter()
                 .zip(field_chip_config.x_cols.iter())
                 .map(|(cell, &col)| {
-                    cell.copy_advice(|| "Edwards.coord x", &mut region, col, offset)
+                    cell.copy_advice(|| "Edwards.addition x", &mut region, col, offset)
                 })
                 .collect::<Result<Vec<_>, _>>()?;
 
@@ -324,7 +330,7 @@ where
                 .iter()
                 .zip(field_chip_config.z_cols.iter())
                 .map(|(cell, &col)| {
-                    cell.copy_advice(|| "Edwards.coord w", &mut region, col, offset)
+                    cell.copy_advice(|| "Edwards.addition w", &mut region, col, offset)
                 })
                 .collect::<Result<Vec<_>, _>>()?;
 
@@ -332,13 +338,13 @@ where
 
             // 2nd row
             // Activate selector on middle row of this region
-            coord_config.q.enable(&mut region, offset)?;
+            addition_config.q.enable(&mut region, offset)?;
 
             y_limbs
                 .iter()
                 .zip(field_chip_config.x_cols.iter())
                 .map(|(cell, &col)| {
-                    cell.copy_advice(|| "Edwards.coord y", &mut region, col, offset)
+                    cell.copy_advice(|| "Edwards.addition y", &mut region, col, offset)
                 })
                 .collect::<Result<Vec<_>, _>>()?;
 
@@ -349,13 +355,13 @@ where
                 .iter()
                 .zip(field_chip_config.x_cols.iter())
                 .map(|(cell, &col)| {
-                    cell.copy_advice(|| "Edwards.coord z", &mut region, col, offset)
+                    cell.copy_advice(|| "Edwards.addition z", &mut region, col, offset)
                 })
                 .collect::<Result<Vec<_>, _>>()?;
 
             let u_value = u.clone().map(|u| bigint_to_fe::<F>(&u));
             let u_cell = region.assign_advice(
-                || "Edwards.coord u",
+                || "Edwards.addition u",
                 field_chip_config.u_col,
                 offset,
                 || u_value,
@@ -365,14 +371,14 @@ where
                 .zip(field_chip_config.v_cols.iter())
                 .map(|(vj, &col)| {
                     let vj_value = vj.map(|vj| bigint_to_fe::<F>(&vj));
-                    region.assign_advice(|| "Edwards.coord vj", col, offset, || vj_value)
+                    region.assign_advice(|| "Edwards.addition vj", col, offset, || vj_value)
                 })
                 .collect::<Result<Vec<_>, _>>()?;
 
             // u_cell will be range-checked in [0, u_max)
             let u_range_check = (u_cell, u_max);
 
-            let vs_max = coord_config.vs_bounds.iter().map(|(_, vj_max)| vj_max.clone());
+            let vs_max = addition_config.vs_bounds.iter().map(|(_, vj_max)| vj_max.clone());
 
             // Every vj_cell will be range-checked in [0, vj_max)
             let vs_range_checks = vs_cells.into_iter().zip(vs_max);
