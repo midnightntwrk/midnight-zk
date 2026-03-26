@@ -450,7 +450,6 @@ mod test {
 
     fn check_bytes_test(
         cost_model: bool,
-        k: u32,
         case1: (&str, &str, usize),
         case2: (&str, &str, usize),
         must_pass: bool,
@@ -474,7 +473,7 @@ mod test {
             case2.2,
             case2.2 + case2.1.len(),
         );
-        let result = MockProver::run(k, &circuit, vec![vec![], vec![]]);
+        let result = MockProver::run_dynamic(&circuit, vec![vec![], vec![]]);
         match result {
             Ok(p) => {
                 let verified = p.verify();
@@ -507,31 +506,30 @@ mod test {
     fn test_check_bytes() {
         // Test of a trivial case.
         let trivial = ("", "", 0);
-        check_bytes_test(false, 9, trivial, trivial, true);
+        check_bytes_test(false, trivial, trivial, true);
 
         // Basic tests (with trivial second case).
-        check_bytes_test(false, 9, ("hello world", "hello", 0), trivial, true); // At beginning.
-        check_bytes_test(false, 9, ("hello world", "lo wo", 3), trivial, true); // In middle.
-        check_bytes_test(false, 9, ("hello world", "world", 6), trivial, true); // At end.
-        check_bytes_test(false, 9, ("abcdef", "d", 3), trivial, true); // Single char.
-        check_bytes_test(false, 9, ("test", "test", 0), trivial, true); // Full string.
-        check_bytes_test(false, 9, ("hello world", "xyz", 0), trivial, false); // Off-Topic.
-        check_bytes_test(false, 9, ("hello world", "world", 0), trivial, false); // Wrong idx.
+        check_bytes_test(false, ("hello world", "hello", 0), trivial, true); // At beginning.
+        check_bytes_test(false, ("hello world", "lo wo", 3), trivial, true); // In middle.
+        check_bytes_test(false, ("hello world", "world", 6), trivial, true); // At end.
+        check_bytes_test(false, ("abcdef", "d", 3), trivial, true); // Single char.
+        check_bytes_test(false, ("test", "test", 0), trivial, true); // Full string.
+        check_bytes_test(false, ("hello world", "xyz", 0), trivial, false); // Off-Topic.
+        check_bytes_test(false, ("hello world", "world", 0), trivial, false); // Wrong idx.
 
         // Tag isolation tests.
-        check_bytes_test(false, 9, ("a", "b", 0), ("b", "a", 0), false);
+        check_bytes_test(false, ("a", "b", 0), ("b", "a", 0), false);
         check_bytes_test(
             false,
-            9,
             ("hello world", "hello", 0),
             ("world", " world", 1),
             false,
         );
-        check_bytes_test(false, 9, ("hello", "ell", 1), ("world", "orl", 1), true);
+        check_bytes_test(false, ("hello", "ell", 1), ("world", "orl", 1), true);
 
         // Performance test for the golden files, using a sub of 50 bytes.
         let full = "abcdefghij abcdefghij abcdefghij abcdefghij abcdefghij abcdefghij";
         let sub = &full[5..55]; // 50 bytes
-        check_bytes_test(true, 10, (full, sub, 5), ("world", "orl", 1), true);
+        check_bytes_test(true, (full, sub, 5), ("world", "orl", 1), true);
     }
 }

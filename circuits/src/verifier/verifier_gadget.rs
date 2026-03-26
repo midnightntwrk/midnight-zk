@@ -1028,8 +1028,6 @@ pub(crate) mod tests {
         // The inner proof is ready.
         // Now, let us make a proof that we know an inner proof.
 
-        const K: u32 = 18;
-
         let mut public_inputs = AssignedVk::<S>::as_public_input(&inner_vk);
         public_inputs.extend(AssignedAccumulator::as_public_input(&inner_acc));
 
@@ -1044,8 +1042,8 @@ pub(crate) mod tests {
             inner_proof: Value::known(inner_proof),
         };
 
-        let prover =
-            MockProver::run(K, &circuit, vec![vec![], public_inputs]).expect("MockProver failed");
+        let prover = MockProver::run_dynamic(&circuit, vec![vec![], public_inputs])
+            .expect("MockProver failed");
         prover.assert_satisfied();
     }
 }

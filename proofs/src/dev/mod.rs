@@ -585,11 +585,13 @@ impl<F: Field> Assignment<F> for MockProver<F> {
     }
 }
 
-/// A lightweight [`Assignment`] implementation that determines the minimum circuit size.
+/// A lightweight [`Assignment`] implementation that determines the minimum
+/// circuit size.
 ///
-/// Performs a dry run of synthesis, tracking only the maximum row index accessed.
-/// This can be used to compute the minimum `k` (where `n = 2^k`) required to fit
-/// a circuit, without allocating full column storage or doing any field arithmetic.
+/// Performs a dry run of synthesis, tracking only the maximum row index
+/// accessed. This can be used to compute the minimum `k` (where `n = 2^k`)
+/// required to fit a circuit, without allocating full column storage or doing
+/// any field arithmetic.
 ///
 /// # Example
 ///
@@ -623,7 +625,10 @@ pub struct RowSizer<F: Field> {
 impl<F: Field> RowSizer<F> {
     /// Creates a new `RowSizer` with the given instance columns.
     pub fn new(instance: Vec<Vec<F>>) -> Self {
-        Self { max_row: 0, instance }
+        Self {
+            max_row: 0,
+            instance,
+        }
     }
 
     fn update_max_row(&mut self, row: usize) {
@@ -634,8 +639,9 @@ impl<F: Field> RowSizer<F> {
 }
 
 impl<F: FromUniformBytes<64> + Ord> RowSizer<F> {
-    /// Synthesizes `circuit` and returns `(k, n)` — the minimum circuit size parameters
-    /// such that `n = 2^k` is large enough to hold all assigned rows.
+    /// Synthesizes `circuit` and returns `(k, n)` — the minimum circuit size
+    /// parameters such that `n = 2^k` is large enough to hold all assigned
+    /// rows.
     pub fn min_k<ConcreteCircuit: Circuit<F>>(
         circuit: &ConcreteCircuit,
         instance: Vec<Vec<F>>,
@@ -773,10 +779,11 @@ impl<F: Field> Assignment<F> for RowSizer<F> {
 
 impl<F: FromUniformBytes<64> + Ord> MockProver<F> {
     /// Runs a synthetic keygen-and-prove operation on the given circuit,
-    /// automatically determining the minimum required `k` (circuit size parameter).
+    /// automatically determining the minimum required `k` (circuit size
+    /// parameter).
     ///
-    /// Uses [`RowSizer`] for a lightweight dry run to find the minimum `k`, then
-    /// performs full synthesis with that `k`.
+    /// Uses [`RowSizer`] for a lightweight dry run to find the minimum `k`,
+    /// then performs full synthesis with that `k`.
     pub fn run_dynamic<ConcreteCircuit: Circuit<F>>(
         circuit: &ConcreteCircuit,
         instance: Vec<Vec<F>>,
@@ -889,8 +896,8 @@ impl<F: FromUniformBytes<64> + Ord> MockProver<F> {
 
     /// Wrapper around [`MockProver::run_dynamic`] for API compatibility.
     ///
-    /// The `k` parameter is ignored; the minimum required `k` is always determined
-    /// automatically from the circuit layout via [`RowSizer`].
+    /// The `k` parameter is ignored; the minimum required `k` is always
+    /// determined automatically from the circuit layout via [`RowSizer`].
     pub fn run<ConcreteCircuit: Circuit<F>>(
         _k: u32,
         circuit: &ConcreteCircuit,

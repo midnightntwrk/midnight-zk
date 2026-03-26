@@ -283,10 +283,6 @@ fn main() {
 
     const N: usize = 20000;
     // ANCHOR: test-circuit
-    // The number of rows in our circuit cannot exceed 2^k. Since our example
-    // circuit is very small, we can pick a very small value here.
-    let k = 16;
-
     // Prepare the private and public inputs to the circuit!
     let a = [Scalar::from(2); N];
     let b = [Scalar::from(3); N];
@@ -304,14 +300,14 @@ fn main() {
 
     let start = std::time::Instant::now();
     // Given the correct public input, our circuit will verify.
-    let prover = MockProver::run(k, &circuit, vec![public_inputs.clone()]).unwrap();
+    let prover = MockProver::run_dynamic(&circuit, vec![public_inputs.clone()]).unwrap();
     assert_eq!(prover.verify(), Ok(()));
     println!("positive test took {:?}", start.elapsed());
 
     // If we try some other public input, the proof will fail!
     let start = std::time::Instant::now();
     public_inputs[0] += Scalar::ONE;
-    let prover = MockProver::run(k, &circuit, vec![public_inputs]).unwrap();
+    let prover = MockProver::run_dynamic(&circuit, vec![public_inputs]).unwrap();
     assert!(prover.verify().is_err());
     println!("negative test took {:?}", start.elapsed());
     // ANCHOR_END: test-circuit

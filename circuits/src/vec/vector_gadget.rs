@@ -601,9 +601,9 @@ mod tests {
             },
         };
 
-        let k = 14;
-
-        MockProver::run(k, &circuit, vec![vec![], vec![]]).unwrap().assert_satisfied();
+        MockProver::run_dynamic(&circuit, vec![vec![], vec![]])
+            .unwrap()
+            .assert_satisfied();
 
         if cost_model {
             circuit_to_json(
@@ -624,9 +624,9 @@ mod tests {
             opts: TestOpts::Limits,
         };
 
-        let k = 14;
-
-        MockProver::run(k, &circuit, vec![vec![], vec![]]).unwrap().assert_satisfied();
+        MockProver::run_dynamic(&circuit, vec![vec![], vec![]])
+            .unwrap()
+            .assert_satisfied();
 
         if cost_model {
             circuit_to_json(
@@ -647,9 +647,9 @@ mod tests {
             opts: TestOpts::Padding,
         };
 
-        let k = 14;
-
-        MockProver::run(k, &circuit, vec![vec![], vec![]]).unwrap().assert_satisfied();
+        MockProver::run_dynamic(&circuit, vec![vec![], vec![]])
+            .unwrap()
+            .assert_satisfied();
 
         if cost_model {
             circuit_to_json(
@@ -675,9 +675,9 @@ mod tests {
             opts: TestOpts::Trim { trim_size },
         };
 
-        let k = 14;
-
-        MockProver::run(k, &circuit, vec![vec![], vec![]]).unwrap().assert_satisfied();
+        MockProver::run_dynamic(&circuit, vec![vec![], vec![]])
+            .unwrap()
+            .assert_satisfied();
 
         if cost_model {
             circuit_to_json(

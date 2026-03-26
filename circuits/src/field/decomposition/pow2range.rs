@@ -299,9 +299,6 @@ mod tests {
 
     fn run_pow2range_test<const NR_COLS: usize>() {
         const MAX_BIT_LEN: usize = 10;
-        // FIXME: Ideally k should be (MAX_BIT_LEN + 1), this is currently not possible
-        // because there seem to be 6 unusable rows for the ZK adjustment.
-        let k = (MAX_BIT_LEN + 2) as u32;
         let mut rng = rand::thread_rng();
 
         let inputs = (0..MAX_BIT_LEN)
@@ -322,7 +319,7 @@ mod tests {
         };
 
         let public_inputs = vec![];
-        let prover = match MockProver::run(k, &circuit, public_inputs) {
+        let prover = match MockProver::run_dynamic(&circuit, public_inputs) {
             Ok(prover) => prover,
             Err(e) => panic!("{e:#?}"),
         };
@@ -340,10 +337,6 @@ mod tests {
 
     fn run_pow2range_negative_test<const NR_COLS: usize>() {
         const MAX_BIT_LEN: usize = 10;
-        // FIXME: Ideally k should be (MAX_BIT_LEN + 1), this is currently not possible
-        // because there seem to be 6 unusable rows for the ZK adjustment.
-        let k = (MAX_BIT_LEN + 2) as u32;
-
         (0..MAX_BIT_LEN).for_each(|n| {
             let mut values = [0u64; NR_COLS];
             // Set the i-th position to 2^n to make the circuit fail.
@@ -358,7 +351,7 @@ mod tests {
             };
 
             let public_inputs = vec![];
-            let prover = match MockProver::run(k, &circuit, public_inputs) {
+            let prover = match MockProver::run_dynamic(&circuit, public_inputs) {
                 Ok(prover) => prover,
                 Err(e) => panic!("{e:#?}"),
             };

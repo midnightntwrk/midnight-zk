@@ -674,9 +674,9 @@ mod tests {
             expected,
         };
 
-        let k = 10;
-
-        MockProver::run(k, &circuit, vec![vec![], vec![]]).unwrap().assert_satisfied();
+        MockProver::run_dynamic(&circuit, vec![vec![], vec![]])
+            .unwrap()
+            .assert_satisfied();
 
         if cost_model {
             circuit_to_json("Poseidon", "one_permutation", circuit);
@@ -697,7 +697,7 @@ mod tests {
             AssignedNative<F>,
             PoseidonChip<F>,
             NativeGadget<F, _, _>,
-        >(cost_model, "Poseidon", 10);
+        >(cost_model, "Poseidon");
         println!("=> Done.\n")
     }
 

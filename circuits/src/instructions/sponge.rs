@@ -184,11 +184,8 @@ pub(crate) mod tests {
         }
     }
 
-    pub fn test_sponge<F, Input, Output, SpongeChip, AssignChip>(
-        cost_model: bool,
-        chip_name: &str,
-        k: u32,
-    ) where
+    pub fn test_sponge<F, Input, Output, SpongeChip, AssignChip>(cost_model: bool, chip_name: &str)
+    where
         F: CircuitField + ff::FromUniformBytes<64> + Ord,
         Input: InnerValue + Sampleable,
         Output: InnerValue,
@@ -215,7 +212,9 @@ pub(crate) mod tests {
             _marker: PhantomData,
         };
 
-        MockProver::run(k, &circuit, vec![vec![], vec![]]).unwrap().assert_satisfied();
+        MockProver::run_dynamic(&circuit, vec![vec![], vec![]])
+            .unwrap()
+            .assert_satisfied();
 
         if cost_model {
             circuit_to_json(chip_name, "sponge", circuit);

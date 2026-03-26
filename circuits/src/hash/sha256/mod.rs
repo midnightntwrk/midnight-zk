@@ -106,38 +106,38 @@ mod tests {
 
     #[test]
     fn test_sha256_hash() {
-        fn test_wrapper(input_size: usize, k: u32, cost_model: bool) {
+        fn test_wrapper(input_size: usize, cost_model: bool) {
             test_hash::<
                 Scalar,
                 AssignedByte<Scalar>,
                 [AssignedByte<Scalar>; 32],
                 Sha256Chip<Scalar>,
                 NativeGadget<Scalar, _, _>,
-            >(cost_model, "SHA256", input_size, k)
+            >(cost_model, "SHA256", input_size)
         }
 
         const SHA256_BLOCK_SIZE: usize = 64;
         const SHA256_EDGE_PADDING: usize = 55;
 
         // Cost model updat with input size = 256
-        test_wrapper(4 * SHA256_BLOCK_SIZE, 15, true);
+        test_wrapper(4 * SHA256_BLOCK_SIZE, true);
 
-        test_wrapper(SHA256_BLOCK_SIZE, 13, false);
-        test_wrapper(SHA256_BLOCK_SIZE - 1, 13, false);
-        test_wrapper(SHA256_BLOCK_SIZE - 2, 13, false);
-        test_wrapper(2 * SHA256_BLOCK_SIZE, 14, false);
+        test_wrapper(SHA256_BLOCK_SIZE, false);
+        test_wrapper(SHA256_BLOCK_SIZE - 1, false);
+        test_wrapper(SHA256_BLOCK_SIZE - 2, false);
+        test_wrapper(2 * SHA256_BLOCK_SIZE, false);
 
-        test_wrapper(SHA256_EDGE_PADDING, 13, false);
-        test_wrapper(SHA256_EDGE_PADDING - 1, 13, false);
+        test_wrapper(SHA256_EDGE_PADDING, false);
+        test_wrapper(SHA256_EDGE_PADDING - 1, false);
 
-        test_wrapper(0, 13, false);
-        test_wrapper(1, 13, false);
-        test_wrapper(2, 13, false);
+        test_wrapper(0, false);
+        test_wrapper(1, false);
+        test_wrapper(2, false);
     }
 
     #[test]
     fn test_sha256_varhash() {
-        fn test_wrapper<const M: usize>(input_size: usize, k: u32, cost_model: bool) {
+        fn test_wrapper<const M: usize>(input_size: usize, cost_model: bool) {
             test_varhash::<
                 Scalar,
                 AssignedByte<Scalar>,
@@ -145,20 +145,20 @@ mod tests {
                 VarLenSha256Gadget<Scalar>,
                 M,
                 64,
-            >(cost_model, "VarSHA256", input_size, k)
+            >(cost_model, "VarSHA256", input_size)
         }
 
-        test_wrapper::<512>(64, 16, false);
-        test_wrapper::<512>(63, 16, false);
+        test_wrapper::<512>(64, false);
+        test_wrapper::<512>(63, false);
 
         // Cost model update with input size = 256
-        test_wrapper::<256>(128, 16, true);
-        test_wrapper::<256>(127, 16, false);
+        test_wrapper::<256>(128, true);
+        test_wrapper::<256>(127, false);
 
-        test_wrapper::<128>(55, 16, false); // padding edge cases
-        test_wrapper::<128>(56, 16, false);
+        test_wrapper::<128>(55, false); // padding edge cases
+        test_wrapper::<128>(56, false);
 
-        test_wrapper::<128>(0, 16, false);
-        test_wrapper::<128>(1, 16, false);
+        test_wrapper::<128>(0, false);
+        test_wrapper::<128>(1, false);
     }
 }

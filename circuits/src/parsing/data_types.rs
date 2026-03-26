@@ -244,7 +244,6 @@ mod tests {
     where
         F: CircuitField + FromUniformBytes<64> + Ord,
     {
-        const K: u32 = 10;
         let circuit = TestCircuit::<F, NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>> {
             string: string.iter().map(|x| F::from(*x as u64)).map(Value::known).collect(),
             expected: F::from(expected),
@@ -252,7 +251,7 @@ mod tests {
             _marker: PhantomData,
         };
         let public_inputs = vec![vec![], vec![]];
-        match MockProver::run(K, &circuit, public_inputs) {
+        match MockProver::run_dynamic(&circuit, public_inputs) {
             Ok(prover) => match prover.verify() {
                 Ok(()) => assert!(must_pass),
                 Err(e) => assert!(!must_pass, "Failed verifier with error {e:?}"),

@@ -289,9 +289,8 @@ pub(crate) mod tests {
             operation,
             _marker: PhantomData,
         };
-        let log2_nb_rows = 10;
         let public_inputs = vec![vec![], vec![]];
-        match MockProver::run(log2_nb_rows, &circuit, public_inputs) {
+        match MockProver::run_dynamic(&circuit, public_inputs) {
             Ok(prover) => match prover.verify() {
                 Ok(()) => assert!(must_pass),
                 Err(e) => assert!(!must_pass, "Failed verifier with error {e:?}"),
