@@ -10,7 +10,8 @@ Search the issue tracker to see if your bug or feature request already exists. F
 
 **Sign your commits.** All commits must be signed.
 
-**Update the CHANGELOG.** Every repo you touch needs a CHANGELOG entry describing what changed and why.
+**Update the CHANGELOG.** Every crate you modify must include a corresponding entry in its `CHANGELOG.md` describing what changed and why. Each `CHANGELOG.md` lives in the crate’s own folder.
+
 
 **Keep it simple.** Write the least code that solves the problem. Short, obvious, easy to maintain. Avoid clever solutions. We value code that is straightforward enough that reviewing it doesn't take longer than writing it would have.
 
