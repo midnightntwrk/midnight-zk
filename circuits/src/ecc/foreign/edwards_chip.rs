@@ -43,7 +43,7 @@ use {
 use crate::{
     ecc::{
         curves::EdwardsCurve,
-        foreign::gates::coord::{self, CoordConfig},
+        foreign::gates::edwards::coord::{self, CoordConfig},
     },
     field::{
         foreign::{
