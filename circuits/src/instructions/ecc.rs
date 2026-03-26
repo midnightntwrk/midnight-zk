@@ -236,26 +236,6 @@ pub(crate) mod tests {
         ) -> Result<(), Error> {
             let ecc_chip = EccChip::new_from_scratch(&config);
 
-            // Assign and AssignWithoutSubgroupCheck operations use minimal
-            // circuits.
-            match self.operation {
-                Operation::Assign => {
-                    let p: EccChip::Point =
-                        ecc_chip.assign(&mut layouter, Value::known(self.inputs[0]))?;
-                    ecc_chip.assert_equal_to_fixed(&mut layouter, &p, self.expected)?;
-                    return ecc_chip.load_from_scratch(&mut layouter);
-                }
-                Operation::AssignWithoutSubgroupCheck => {
-                    let p: EccChip::Point = ecc_chip.assign_without_subgroup_check(
-                        &mut layouter,
-                        Value::known(self.inputs[0]),
-                    )?;
-                    ecc_chip.assert_equal_to_fixed(&mut layouter, &p, self.expected)?;
-                    return ecc_chip.load_from_scratch(&mut layouter);
-                }
-                _ => {}
-            }
-
             // y does not apply in tests of arity-1 functions.
             let y_idx = min(self.inputs.len() - 1, 1);
             let p: EccChip::Point = ecc_chip
@@ -263,6 +243,9 @@ pub(crate) mod tests {
             let q: EccChip::Point = ecc_chip.assign_fixed(&mut layouter, self.inputs[y_idx])?;
 
             let res = match self.operation {
+                Operation::Assign => ecc_chip.assign(&mut layouter, Value::known(self.inputs[0])),
+                Operation::AssignWithoutSubgroupCheck => ecc_chip
+                    .assign_without_subgroup_check(&mut layouter, Value::known(self.inputs[0])),
                 Operation::Add => ecc_chip.add(&mut layouter, &p, &q),
                 Operation::Double => ecc_chip.double(&mut layouter, &p),
                 Operation::Neg => ecc_chip.negate(&mut layouter, &p),
@@ -308,7 +291,6 @@ pub(crate) mod tests {
                     let py = ecc_chip.y_coordinate(&p);
                     ecc_chip.point_from_coordinates(&mut layouter, &px, &py)
                 }
-                Operation::Assign | Operation::AssignWithoutSubgroupCheck => unreachable!(),
             }?;
 
             ecc_chip.assert_equal_to_fixed(&mut layouter, &res, self.expected)?;
