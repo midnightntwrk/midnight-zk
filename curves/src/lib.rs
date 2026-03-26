@@ -29,6 +29,7 @@ pub mod serde_traits;
 pub mod bls12_381;
 mod jubjub;
 pub mod k256;
+pub mod p256;
 
 pub mod curve25519;
 
