@@ -622,13 +622,9 @@ where
         p: &AssignedForeignEdwardsPoint<F, C, B>,
         q: &AssignedForeignEdwardsPoint<F, C, B>,
     ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
+        let point = p.point.zip(q.point).zip(cond.value()).map(|((p, q), b)| if b { p } else { q });
         let x = self.base_field_chip().select(layouter, cond, &p.x, &q.x)?;
         let y = self.base_field_chip().select(layouter, cond, &p.y, &q.y)?;
-
-        // point = p if cond is unknown or 1, q if cond is known and 0
-        let a = cond.value().error_if_known_and(|&v| !v);
-        let point = if a.is_ok() { p.point } else { q.point };
-
         Ok(AssignedForeignEdwardsPoint::<F, C, B> { point, x, y })
     }
 }
