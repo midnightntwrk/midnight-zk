@@ -54,13 +54,7 @@ pub fn signed_mod(value: &BI, modulus: &BI) -> BI {
 /// Maps values in `[0, modulus)` to `(-modulus/2, modulus/2]`.
 pub fn signed_repr<K: CircuitField>() -> impl Fn(BI) -> BI {
     let m = K::modulus().to_bigint().unwrap();
-    move |v: BI| {
-        if &v * 2 > m {
-            v - &m
-        } else {
-            v
-        }
-    }
+    move |v: BI| signed_mod(&v, &m)
 }
 
 /// Computes the logarithm in base 2 of the given value, rounded up.
