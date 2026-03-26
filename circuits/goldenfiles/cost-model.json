@@ -364,7 +364,7 @@
       "max_deg": "5",
       "permutations": "32",
       "point_sets": "5",
-      "rows": "724",
+      "rows": "157",
       "table_rows": "385"
     },
     "assert_eq": {
@@ -433,6 +433,28 @@
       "rows": "0",
       "table_rows": "12"
     },
+    "assign_with_subgroup_check": {
+      "advice_columns": "28",
+      "column_queries": "108",
+      "fixed_columns": "71",
+      "lookups": "8",
+      "max_deg": "5",
+      "permutations": "32",
+      "point_sets": "5",
+      "rows": "603",
+      "table_rows": "385"
+    },
+    "assign_without_subgroup_check": {
+      "advice_columns": "28",
+      "column_queries": "108",
+      "fixed_columns": "71",
+      "lookups": "8",
+      "max_deg": "5",
+      "permutations": "32",
+      "point_sets": "5",
+      "rows": "36",
+      "table_rows": "385"
+    },
     "cond_assert_equal": {
       "advice_columns": "28",
       "column_queries": "109",
@@ -463,7 +485,7 @@
       "max_deg": "5",
       "permutations": "32",
       "point_sets": "5",
-      "rows": "1152",
+      "rows": "585",
       "table_rows": "385"
     },
     "double": {
@@ -474,7 +496,7 @@
       "max_deg": "5",
       "permutations": "32",
       "point_sets": "5",
-      "rows": "724",
+      "rows": "157",
       "table_rows": "385"
     },
     "is_equal": {
@@ -540,7 +562,7 @@
       "max_deg": "5",
       "permutations": "32",
       "point_sets": "5",
-      "rows": "217133",
+      "rows": "216566",
       "table_rows": "419"
     },
     "msm_by_bounded_scalars_3": {
@@ -551,7 +573,7 @@
       "max_deg": "5",
       "permutations": "32",
       "point_sets": "5",
-      "rows": "76993",
+      "rows": "76426",
       "table_rows": "419"
     },
     "mul_by_constant": {
@@ -562,7 +584,7 @@
       "max_deg": "5",
       "permutations": "32",
       "point_sets": "5",
-      "rows": "52074",
+      "rows": "50922",
       "table_rows": "385"
     },
     "neg": {
@@ -573,7 +595,7 @@
       "max_deg": "5",
       "permutations": "32",
       "point_sets": "5",
-      "rows": "604",
+      "rows": "37",
       "table_rows": "385"
     },
     "public_inputs": {
@@ -608,7 +630,7 @@
       "max_deg": "5",
       "permutations": "34",
       "point_sets": "5",
-      "rows": "852",
+      "rows": "184",
       "table_rows": "417"
     },
     "assert_eq": {
@@ -677,6 +699,28 @@
       "rows": "0",
       "table_rows": "16"
     },
+    "assign_with_subgroup_check": {
+      "advice_columns": "30",
+      "column_queries": "111",
+      "fixed_columns": "73",
+      "lookups": "8",
+      "max_deg": "5",
+      "permutations": "34",
+      "point_sets": "5",
+      "rows": "708",
+      "table_rows": "417"
+    },
+    "assign_without_subgroup_check": {
+      "advice_columns": "30",
+      "column_queries": "111",
+      "fixed_columns": "73",
+      "lookups": "8",
+      "max_deg": "5",
+      "permutations": "34",
+      "point_sets": "5",
+      "rows": "40",
+      "table_rows": "417"
+    },
     "cond_assert_equal": {
       "advice_columns": "30",
       "column_queries": "112",
@@ -707,7 +751,7 @@
       "max_deg": "5",
       "permutations": "34",
       "point_sets": "5",
-      "rows": "1356",
+      "rows": "688",
       "table_rows": "417"
     },
     "double": {
@@ -718,7 +762,7 @@
       "max_deg": "5",
       "permutations": "34",
       "point_sets": "5",
-      "rows": "852",
+      "rows": "184",
       "table_rows": "417"
     },
     "is_equal": {
@@ -784,7 +828,7 @@
       "max_deg": "5",
       "permutations": "34",
       "point_sets": "5",
-      "rows": "255596",
+      "rows": "254928",
       "table_rows": "419"
     },
     "msm_by_bounded_scalars_3": {
@@ -795,7 +839,7 @@
       "max_deg": "5",
       "permutations": "34",
       "point_sets": "5",
-      "rows": "90652",
+      "rows": "89984",
       "table_rows": "419"
     },
     "mul_by_constant": {
@@ -806,7 +850,7 @@
       "max_deg": "5",
       "permutations": "34",
       "point_sets": "5",
-      "rows": "63240",
+      "rows": "61884",
       "table_rows": "417"
     },
     "neg": {
@@ -817,7 +861,7 @@
       "max_deg": "5",
       "permutations": "34",
       "point_sets": "5",
-      "rows": "708",
+      "rows": "40",
       "table_rows": "417"
     },
     "public_inputs": {
@@ -1618,6 +1662,17 @@
       "rows": "14051",
       "table_rows": "385"
     },
+    "assign_with_subgroup_check": {
+      "advice_columns": "25",
+      "column_queries": "110",
+      "fixed_columns": "71",
+      "lookups": "9",
+      "max_deg": "5",
+      "permutations": "29",
+      "point_sets": "5",
+      "rows": "14051",
+      "table_rows": "385"
+    },
     "assign_without_subgroup_check": {
       "advice_columns": "25",
       "column_queries": "110",
@@ -1874,6 +1929,17 @@
       "table_rows": "10"
     },
     "assign with subgroup check": {
+      "advice_columns": "27",
+      "column_queries": "115",
+      "fixed_columns": "75",
+      "lookups": "9",
+      "max_deg": "5",
+      "permutations": "31",
+      "point_sets": "5",
+      "rows": "80",
+      "table_rows": "449"
+    },
+    "assign_with_subgroup_check": {
       "advice_columns": "27",
       "column_queries": "115",
       "fixed_columns": "75",
@@ -2549,6 +2615,17 @@
       "table_rows": "4"
     },
     "assign with subgroup check": {
+      "advice_columns": "14",
+      "column_queries": "57",
+      "fixed_columns": "35",
+      "lookups": "4",
+      "max_deg": "5",
+      "permutations": "15",
+      "point_sets": "4",
+      "rows": "6",
+      "table_rows": "4"
+    },
+    "assign_with_subgroup_check": {
       "advice_columns": "14",
       "column_queries": "57",
       "fixed_columns": "35",
