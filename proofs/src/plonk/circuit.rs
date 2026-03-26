@@ -2367,6 +2367,9 @@ impl<F: Field> ConstraintSystem<F> {
         // polynomial evaluated at x_3 as coefficients -- this random polynomial
         // is "random_poly" in the vanishing argument.
 
+        // Add an additional blinding factor to account for the helper_poly.
+        let factors = factors + 1;
+
         // Add an additional blinding factor as a slight defense against
         // off-by-one errors.
         let factors = factors + 1;
