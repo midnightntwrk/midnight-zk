@@ -136,7 +136,9 @@ where
     ) -> Result<Self::Point, Error>;
 
     /// Assigns a private curve point, checking it is on the curve but skipping
-    /// any subgroup-membership check.
+    /// any subgroup-membership check. We enforce honest users to operate over
+    /// the prime-order subgroup, but allow the circuit to skip enforcing this
+    /// constraint where this guarantee is not required.
     ///
     /// For curves with a non-trivial cofactor this skips the expensive
     /// cofactor-based subgroup check.
