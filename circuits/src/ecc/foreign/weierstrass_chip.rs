@@ -311,22 +311,28 @@ where
     S::Scalar: InnerValue<Element = C::ScalarField>,
     N: NativeInstructions<F>,
 {
+    /// Assigns a private curve point and enforces in-circuit that it is on the
+    /// curve and lies in the prime-order subgroup.
+    ///
+    /// If you deliberately need to skip the subgroup check, use
+    /// [`EccInstructions::assign_without_subgroup_check`] instead.
     fn assign(
         &self,
         layouter: &mut impl Layouter<F>,
         value: Value<C::CryptographicGroup>,
     ) -> Result<AssignedForeignPoint<F, C, B>, Error> {
-        let p = self.assign_point_unchecked(layouter, value)?;
-        let is_not_id = self.native_gadget.not(layouter, &p.is_id)?;
-        on_curve::assert_is_on_curve::<F, C, B, N>(
-            layouter,
-            &is_not_id,
-            &p.x,
-            &p.y,
-            self.base_field_chip(),
-            &self.config.on_curve_config,
-        )?;
-        Ok(p)
+        if C::COFACTOR > 1 {
+            let cofactor = C::ScalarField::from_u128(C::COFACTOR);
+            // Exhibit a cofactor-root Q and assert h * Q = p in-circuit.
+            // This guarantees that p ∈ C::CryptographicGroup = h · E(Fp).
+            let cofactor_root = self.assign_without_subgroup_check(
+                layouter,
+                value.map(|point| point * cofactor.invert().unwrap()),
+            )?;
+            self.mul_by_constant(layouter, cofactor, &cofactor_root)
+        } else {
+            self.assign_without_subgroup_check(layouter, value)
+        }
     }
 
     fn assign_fixed(
@@ -653,15 +659,15 @@ where
         let x = self.base_field_chip().select(layouter, cond, &p.x, &q.x)?;
         let y = self.base_field_chip().select(layouter, cond, &p.y, &q.y)?;
 
-        // This is kind of hacky:
-        // When the value of the condition is unknown (during the setup phase)
-        // we select the first point, instead of passing an unknown value.
-        // In reality, this is equivalent, since in the setup phase the
-        // value of the points will be unknown as well.
-
-        // point = p if cond is unknown or 1, q if cond is known and 0
-        let a = cond.value().error_if_known_and(|&v| !v);
-        let point = if a.is_ok() { p.point } else { q.point };
+        // point = p if cond is 1, q if cond is 0, Value::unknown() if cond is unknown.
+        // When cond is unknown we return Value::unknown().
+        let point = if cond.value().error_if_known_and(|&v| !v).is_err() {
+            q.point
+        } else if cond.value().error_if_known_and(|&v| v).is_err() {
+            p.point
+        } else {
+            Value::unknown()
+        };
 
         Ok(AssignedForeignPoint::<F, C, B> { point, is_id, x, y })
     }
@@ -935,7 +941,8 @@ where
             let n = scalar_as_big
                 .to_u64_digits()
                 .iter()
-                .fold(0u128, |acc, limb| acc + *limb as u128);
+                .rev()
+                .fold(0u128, |acc, limb| (acc << 64) | (*limb as u128));
 
             // `mul_by_u128` is incomplete (it cannot take the identity).
             // Change the base in case it is the identity and then change
@@ -983,6 +990,24 @@ where
             x: x.clone(),
             y: y.clone(),
         })
+    }
+
+    fn assign_without_subgroup_check(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        value: Value<C::CryptographicGroup>,
+    ) -> Result<Self::Point, Error> {
+        let p = self.assign_point_unchecked(layouter, value)?;
+        let is_not_id = self.native_gadget.not(layouter, &p.is_id)?;
+        on_curve::assert_is_on_curve::<F, C, B, N>(
+            layouter,
+            &is_not_id,
+            &p.x,
+            &p.y,
+            self.base_field_chip(),
+            &self.config.on_curve_config,
+        )?;
+        Ok(p)
     }
 
     fn x_coordinate(&self, point: &Self::Point) -> Self::Coordinate {
@@ -2142,40 +2167,6 @@ where
     }
 }
 
-/// Implement subgroup membership checks for ForeignEccChip emulating BLS12-381
-/// over BLS12-381.
-use midnight_curves::G1Projective;
-
-use crate::field::{
-    decomposition::chip::P2RDecompositionChip, foreign::params::MultiEmulationParams as MEP,
-    NativeChip, NativeGadget,
-};
-
-type F = midnight_curves::Fq;
-type NG = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
-type Bls12381Chip = ForeignWeierstrassEccChip<F, midnight_curves::G1Projective, MEP, NG, NG>;
-
-impl Bls12381Chip {
-    /// Asserts that the given point belongs to the BLS subgroup.
-    pub fn assert_in_bls12_381_subgroup(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        p: &<Bls12381Chip as EccInstructions<F, G1Projective>>::Point,
-    ) -> Result<(), Error> {
-        // We exhibit a COFACTOR "root" (an element that, multiplied by the cofactor
-        // results in p). This is more efficient that powering `p` to the subgroup order
-        // and checking it results in the identity.
-        let cofactor = F::from_raw([0x8c00aaab0000aaab, 0x396c8c005555e156, 0, 0]);
-        let cofactor_root: <Bls12381Chip as EccInstructions<F, G1Projective>>::Point =
-            self.assign(layouter, p.value().map(|p| p * cofactor.invert().unwrap()))?;
-
-        let cofactor_root_times_cofactor =
-            self.mul_by_constant(layouter, cofactor, &cofactor_root)?;
-
-        self.assert_equal(layouter, p, &cofactor_root_times_cofactor)
-    }
-}
-
 #[derive(Clone, Debug)]
 #[cfg(any(test, feature = "testing"))]
 /// Configuration used to implement `FromScratch` for the ForeignEcc chip. This
@@ -2338,6 +2329,8 @@ mod tests {
         };
     }
 
+    ecc_tests!(test_assign);
+    ecc_tests!(test_assign_without_subgroup_check);
     ecc_tests!(test_add);
     ecc_tests!(test_double);
     ecc_tests!(test_negate);

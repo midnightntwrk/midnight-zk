@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 
 ## [Unreleased]
 ### Added
+* Add `assign_without_subgroup_check` to `SelfEmulation` trait [#284](https://github.com/midnightntwrk/midnight-zk/pull/284)
 * Introduce `IvcIO` trait and `Ivc` convenience trait [#264](https://github.com/midnightntwrk/midnight-zk/pull/264)
 * Proof aggregation example [#258](https://github.com/midnightntwrk/midnight-zk/pull/258)
 * Introduce `IvcContext` [#258](https://github.com/midnightntwrk/midnight-zk/pull/258)

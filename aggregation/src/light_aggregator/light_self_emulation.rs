@@ -205,4 +205,12 @@ impl SelfEmulation for LightBlstrsEmulation {
     ) -> Result<(), Error> {
         scalar_chip.constrain_as_committed_public_input(layouter, assigned_scalar)
     }
+
+    fn assign_without_subgroup_check(
+        layouter: &mut impl Layouter<Self::F>,
+        curve_chip: &Self::CurveChip,
+        base: Value<Self::C>,
+    ) -> Result<Self::AssignedPoint, Error> {
+        curve_chip.assign(layouter, base)
+    }
 }
