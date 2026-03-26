@@ -78,7 +78,7 @@ impl<C: WeierstrassCurve> TangentConfig<C> {
         // (a + 1) is small. For curves with a = 0 this is 1; for P-256
         // where a = -3, this gives a + 1 = -2 instead of q - 2.
         let a: BI = signed_repr::<C::Base>()(C::A.to_biguint().into());
-        let a_plus_one = &a + BI::one();
+        let a_plus_1 = &a + BI::one();
 
         // Recall that limbs x_i represent integer 1 + sum_i base^i x_i.
         // Let px := 1 + sum_i base^i px_i
@@ -111,8 +111,8 @@ impl<C: WeierstrassCurve> TangentConfig<C> {
         let max_sum_px2 = sum_bigints(&bs2, &limbs_max2);
         let max_sum_lpy = max_sum_px2.clone();
         let expr_min =
-            -BI::from(2) * (max_sum_py + max_sum_lambda + max_sum_lpy) + a_plus_one.clone();
-        let expr_max = BI::from(3) * (&max_sum_px + &max_sum_px + max_sum_px2) + a_plus_one.clone();
+            -BI::from(2) * (max_sum_py + max_sum_lambda + max_sum_lpy) + a_plus_1.clone();
+        let expr_max = BI::from(3) * (&max_sum_px + &max_sum_px + max_sum_px2) + a_plus_1.clone();
         let expr_bounds = (expr_min, expr_max);
 
         let expr_mj_bounds: Vec<_> = moduli
@@ -125,12 +125,12 @@ impl<C: WeierstrassCurve> TangentConfig<C> {
                 let max_sum_lambda_mj = max_sum_px_mj.clone();
                 let max_sum_px2_mj = sum_bigints(&bs2_mj, &limbs_max2);
                 let max_sum_lpy_mj = max_sum_px2_mj.clone();
-                let a_plus_one_mj = signed_mod(&a_plus_one, mj);
+                let a_plus_1_mj = signed_mod(&a_plus_1, mj);
                 let expr_mj_min = -BI::from(2)
                     * (max_sum_py_mj + max_sum_lambda_mj + max_sum_lpy_mj)
-                    + a_plus_one_mj.clone();
-                let expr_mj_max = BI::from(3) * (&max_sum_px_mj + &max_sum_px_mj + max_sum_px2_mj)
-                    + a_plus_one_mj;
+                    + a_plus_1_mj.clone();
+                let expr_mj_max =
+                    BI::from(3) * (&max_sum_px_mj + &max_sum_px_mj + max_sum_px2_mj) + a_plus_1_mj;
                 (expr_mj_min, expr_mj_max)
             })
             .collect();
@@ -164,7 +164,7 @@ impl<C: WeierstrassCurve> TangentConfig<C> {
         let ((k_min, u_max), vs_bounds) =
             Self::bounds::<F, P>(nb_parallel_range_checks, max_bit_len);
         let a: BI = signed_repr::<C::Base>()(C::A.to_biguint().into());
-        let a_plus_one = &a + BI::one();
+        let a_plus_1 = &a + BI::one();
 
         let q_tangent = meta.selector();
 
@@ -189,7 +189,7 @@ impl<C: WeierstrassCurve> TangentConfig<C> {
                 * (Expression::from(3)
                     * (Expression::from(2) * sum_exprs::<F>(&bs, &pxs)
                         + sum_exprs::<F>(&bs2, &px2s))
-                    + Expression::Constant(bigint_to_fe::<F>(&a_plus_one))
+                    + Expression::Constant(bigint_to_fe::<F>(&a_plus_1))
                     - Expression::from(2)
                         * (sum_exprs::<F>(&bs, &pys)
                             + sum_exprs::<F>(&bs, &lambdas)
@@ -212,7 +212,7 @@ impl<C: WeierstrassCurve> TangentConfig<C> {
                         * (Expression::from(3)
                             * (Expression::from(2) * sum_exprs::<F>(&bs_mj, &pxs)
                                 + sum_exprs::<F>(&bs2_mj, &px2s))
-                            + Expression::Constant(bigint_to_fe::<F>(&signed_mod(&a_plus_one, mj)))
+                            + Expression::Constant(bigint_to_fe::<F>(&signed_mod(&a_plus_1, mj)))
                             - Expression::from(2)
                                 * (sum_exprs::<F>(&bs_mj, &pys)
                                     + sum_exprs::<F>(&bs_mj, &lambdas)
@@ -262,7 +262,7 @@ where
     let bs2 = P::double_base_powers();
     let base_chip_config = base_chip.config();
     let a: BI = signed_repr::<C::Base>()(C::A.to_biguint().into());
-    let a_plus_one = &a + BI::one();
+    let a_plus_1 = &a + BI::one();
 
     let px = &base_chip.normalize(layouter, p.0)?;
     let py = &base_chip.normalize(layouter, p.1)?;
@@ -285,7 +285,7 @@ where
             //   3 * (2 * sum_px + sum_px2) + (a + 1)
             // - 2 * (sum_py + sum_lambda + sum_lpy) = (u + k_min) * m
             let expr = pxs.clone().map(|v| BI::from(6) * sum_bigints(&bs, &v))
-                + px2s.clone().map(|v| BI::from(3) * sum_bigints(&bs2, &v) + a_plus_one.clone())
+                + px2s.clone().map(|v| BI::from(3) * sum_bigints(&bs2, &v) + a_plus_1.clone())
                 - (pys.clone().map(|v| sum_bigints(&bs, &v))
                     + lambdas.clone().map(|v| sum_bigints(&bs, &v))
                     + lpys.clone().map(|v| sum_bigints(&bs2, &v)))
@@ -299,7 +299,7 @@ where
 
                     let (lj_min, vj_max) = vj_bounds.clone();
 
-                    let a_plus_one_mj = signed_mod(&a_plus_one, mj);
+                    let a_plus_1_mj = signed_mod(&a_plus_1, mj);
 
                     //    3 * (2 * sum_px_mj + sum_px2_mj) + signed_mod(a + 1, mj)
                     //  - 2 * (sum_py_mj + sum_lambda_mj + sum_lpy_mj)
@@ -307,7 +307,7 @@ where
                     let expr_mj = pxs.clone().map(|v| BI::from(6) * sum_bigints(&bs_mj, &v))
                         + px2s
                             .clone()
-                            .map(|v| BI::from(3) * sum_bigints(&bs2_mj, &v) + &a_plus_one_mj)
+                            .map(|v| BI::from(3) * sum_bigints(&bs2_mj, &v) + &a_plus_1_mj)
                         - (pys.clone().map(|v| sum_bigints(&bs_mj, &v))
                             + lambdas.clone().map(|v| sum_bigints(&bs_mj, &v))
                             + lpys.clone().map(|v| sum_bigints(&bs2_mj, &v)))
