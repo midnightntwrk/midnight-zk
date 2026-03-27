@@ -33,6 +33,7 @@ verification keys break backwards compatibility.
 * add MSMCompletenessFluke error [#277](https://github.com/midnightntwrk/midnight-zk/pull/277)
 
 ### Changed
+* Reorganize foreign ECC gates into `weierstrass/` and `edwards/` subdirectories [#298](https://github.com/midnightntwrk/midnight-zk/pull/298)
 * Filter out compile-time identity points in MSM [#256](https://github.com/midnightntwrk/midnight-zk/pull/256)
 * Sort point sets deterministically in KZG multiopen for in-circuit verification [#256](https://github.com/midnightntwrk/midnight-zk/pull/256)
 * Move advice queries before instance queries in verifier gadget [#256](https://github.com/midnightntwrk/midnight-zk/pull/256)
@@ -59,6 +60,10 @@ verification keys break backwards compatibility.
 * Optimize `linear_combination` in `NativeChip` [#260](https://github.com/midnightntwrk/midnight-zk/pull/260)
 * Optimize `mul` and `square` in `BigUintGadget` with `F::add_and_mul` [#260](https://github.com/midnightntwrk/midnight-zk/pull/260)
 * Adapt `foreign_params_gen.py` to general Weierstrass equations [#282](https://github.com/midnightntwrk/midnight-zk/pull/282)
+
+### Fixed
+* Fix `assign_without_subgroup_check` in Edwards chip to assert the point is on the curve [#298](https://github.com/midnightntwrk/midnight-zk/pull/298)
+* Revisit specification of `from_xy` and `coordinates()` in `CircuitCurve` and update implementations accordingly [#298](https://github.com/midnightntwrk/midnight-zk/pull/298)
 
 ### Removed
 * Move external implementations to zk-stdlib [#178](https://github.com/midnightntwrk/midnight-zk/pull/178)

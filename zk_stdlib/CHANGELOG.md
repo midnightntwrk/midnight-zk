@@ -21,6 +21,7 @@ verification keys break backwards compatibility.
 * Adds identity related examples to evaluate the impact of substring checks [#229](https://github.com/midnightntwrk/midnight-zk/pull/229)
 
 ### Changed
+* Adapt imports to foreign ECC module reorganization [#298](https://github.com/midnightntwrk/midnight-zk/pull/298)
 * bug patch in the credential property verification example, which was omitting some index computation in circuit [#240](https://github.com/midnightntwrk/midnight-zk/pull/240)
 * Pass `max_bit_len` to foreign-field chip configuration [#251](https://github.com/midnightntwrk/midnight-zk/pull/251)
 * Update IVC example to use improved verifier gadget [#212](https://github.com/midnightntwrk/midnight-zk/pull/212)
