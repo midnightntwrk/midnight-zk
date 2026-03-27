@@ -300,14 +300,14 @@ fn main() {
 
     let start = std::time::Instant::now();
     // Given the correct public input, our circuit will verify.
-    let prover = MockProver::run_dynamic(&circuit, vec![public_inputs.clone()]).unwrap();
+    let prover = MockProver::run(&circuit, vec![public_inputs.clone()]).unwrap();
     assert_eq!(prover.verify(), Ok(()));
     println!("positive test took {:?}", start.elapsed());
 
     // If we try some other public input, the proof will fail!
     let start = std::time::Instant::now();
     public_inputs[0] += Scalar::ONE;
-    let prover = MockProver::run_dynamic(&circuit, vec![public_inputs]).unwrap();
+    let prover = MockProver::run(&circuit, vec![public_inputs]).unwrap();
     assert!(prover.verify().is_err());
     println!("negative test took {:?}", start.elapsed());
     // ANCHOR_END: test-circuit

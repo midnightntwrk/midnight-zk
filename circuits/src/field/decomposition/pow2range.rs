@@ -319,7 +319,7 @@ mod tests {
         };
 
         let public_inputs = vec![];
-        let prover = match MockProver::run_dynamic(&circuit, public_inputs) {
+        let prover = match MockProver::run(&circuit, public_inputs) {
             Ok(prover) => prover,
             Err(e) => panic!("{e:#?}"),
         };
@@ -351,7 +351,7 @@ mod tests {
             };
 
             let public_inputs = vec![];
-            let prover = match MockProver::run_dynamic(&circuit, public_inputs) {
+            let prover = match MockProver::run(&circuit, public_inputs) {
                 Ok(prover) => prover,
                 Err(e) => panic!("{e:#?}"),
             };

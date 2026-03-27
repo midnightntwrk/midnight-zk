@@ -212,9 +212,7 @@ pub(crate) mod tests {
             _marker: PhantomData,
         };
 
-        MockProver::run_dynamic(&circuit, vec![vec![], vec![]])
-            .unwrap()
-            .assert_satisfied();
+        MockProver::run(&circuit, vec![vec![], vec![]]).unwrap().assert_satisfied();
 
         if cost_model {
             circuit_to_json(chip_name, "sponge", circuit);

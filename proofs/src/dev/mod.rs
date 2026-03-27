@@ -184,7 +184,6 @@ impl<F: Field> Mul<F> for Value<F> {
 ///     plonk::{Advice, Any, Circuit, Column, ConstraintSystem, Constraints, Error, Selector},
 ///     poly::Rotation,
 /// };
-/// const K: u32 = 5;
 ///
 /// #[derive(Copy, Clone)]
 /// struct MyConfig {
@@ -255,7 +254,7 @@ impl<F: Field> Mul<F> for Value<F> {
 /// // This circuit has no public inputs.
 /// let instance = vec![];
 ///
-/// let prover = MockProver::<Scalar>::run(K, &circuit, instance).unwrap();
+/// let prover = MockProver::<Scalar>::run(&circuit, instance).unwrap();
 /// assert_eq!(
 ///     prover.verify(),
 ///     Err(vec![VerifyFailure::ConstraintNotSatisfied {
@@ -803,7 +802,7 @@ impl<F: FromUniformBytes<64> + Ord> MockProver<F> {
     ///
     /// Uses [`RowSizer`] for a lightweight dry run to find the minimum `k`,
     /// then performs full synthesis with that `k`.
-    pub fn run_dynamic<ConcreteCircuit: Circuit<F>>(
+    pub fn run<ConcreteCircuit: Circuit<F>>(
         circuit: &ConcreteCircuit,
         instance: Vec<Vec<F>>,
     ) -> Result<Self, Error> {
@@ -900,18 +899,6 @@ impl<F: FromUniformBytes<64> + Ord> MockProver<F> {
         }));
 
         Ok(prover)
-    }
-
-    /// Wrapper around [`MockProver::run_dynamic`] for API compatibility.
-    ///
-    /// The `k` parameter is ignored; the minimum required `k` is always
-    /// determined automatically from the circuit layout via [`RowSizer`].
-    pub fn run<ConcreteCircuit: Circuit<F>>(
-        _k: u32,
-        circuit: &ConcreteCircuit,
-        instance: Vec<Vec<F>>,
-    ) -> Result<Self, Error> {
-        Self::run_dynamic(circuit, instance)
     }
 
     /// Return the content of an advice column as assigned by the circuit.
@@ -1476,8 +1463,6 @@ mod tests {
 
     #[test]
     fn unassigned_cell() {
-        const K: u32 = 4;
-
         #[derive(Clone)]
         struct FaultyCircuitConfig {
             a: Column<Advice>,
@@ -1542,7 +1527,7 @@ mod tests {
             }
         }
 
-        let prover = MockProver::run(K, &FaultyCircuit {}, vec![]).unwrap();
+        let prover = MockProver::run(&FaultyCircuit {}, vec![]).unwrap();
         assert_eq!(
             prover.verify(),
             Err(vec![VerifyFailure::CellNotAssigned {
@@ -1562,8 +1547,6 @@ mod tests {
 
     #[test]
     fn bad_lookup_any() {
-        const K: u32 = 4;
-
         #[derive(Clone)]
         struct FaultyCircuitConfig {
             a: Column<Advice>,
@@ -1708,7 +1691,6 @@ mod tests {
         }
 
         let prover = MockProver::run(
-            K,
             &FaultyCircuit {},
             // This is our "lookup table".
             vec![vec![
@@ -1852,7 +1834,7 @@ mod tests {
             }
         }
 
-        let prover = MockProver::run(K, &FaultyCircuit {}, vec![]).unwrap();
+        let prover = MockProver::run(&FaultyCircuit {}, vec![]).unwrap();
         assert_eq!(
             prover.verify(),
             Err(vec![VerifyFailure::Lookup {
@@ -1868,8 +1850,6 @@ mod tests {
 
     #[test]
     fn contraint_unsatisfied() {
-        const K: u32 = 4;
-
         #[derive(Clone)]
         struct FaultyCircuitConfig {
             a: Column<Advice>,
@@ -1991,7 +1971,7 @@ mod tests {
             }
         }
 
-        let prover = MockProver::run(K, &FaultyCircuit {}, vec![]).unwrap();
+        let prover = MockProver::run(&FaultyCircuit {}, vec![]).unwrap();
         assert_eq!(
             prover.verify(),
             Err(vec![VerifyFailure::ConstraintNotSatisfied {

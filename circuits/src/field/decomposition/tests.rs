@@ -236,7 +236,7 @@ fn run_decomposition_chip_variable_test<const NR_COLS: usize>() {
         limb_sizes: LimbType::Variable(limb_sizes),
         expected,
     };
-    let prover = MockProver::run_dynamic(&circuit_variable, vec![vec![], vec![]])
+    let prover = MockProver::run(&circuit_variable, vec![vec![], vec![]])
         .expect("Failed to run mock prover");
     prover.assert_satisfied();
 }
@@ -275,7 +275,7 @@ fn run_decomposition_chip_fixed_test<const NR_COLS: usize>() {
             expected,
         };
 
-        let prover = MockProver::run_dynamic(&circuit_fixed, vec![vec![], vec![]])
+        let prover = MockProver::run(&circuit_fixed, vec![vec![], vec![]])
             .expect("Failed to run mock prover");
         prover.assert_satisfied();
     }
@@ -357,7 +357,7 @@ fn run_decomposition_less_than_pow2_test<const NR_COLS: usize>() {
     let circuit = TestLessThanPow2Circuit::<Fp, NR_COLS> { input: x, bound };
 
     let prover =
-        MockProver::run_dynamic(&circuit, vec![vec![], vec![]]).expect("Failed to run mock prover");
+        MockProver::run(&circuit, vec![vec![], vec![]]).expect("Failed to run mock prover");
     prover.assert_satisfied();
 }
 

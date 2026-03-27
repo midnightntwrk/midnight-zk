@@ -307,7 +307,7 @@ pub(crate) mod tests {
             _marker: PhantomData,
         };
         let public_inputs = vec![vec![], vec![]];
-        match MockProver::run_dynamic(&circuit, public_inputs) {
+        match MockProver::run(&circuit, public_inputs) {
             Ok(prover) => match prover.verify() {
                 Ok(()) => assert!(must_pass),
                 Err(e) => assert!(!must_pass, "Failed verifier with error {e:?}"),

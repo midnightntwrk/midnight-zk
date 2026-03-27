@@ -215,7 +215,7 @@ mod tests {
             }
         }
 
-        let prover = MockProver::run_dynamic(&FaultyCircuit, vec![]);
+        let prover = MockProver::run(&FaultyCircuit, vec![]);
         assert_eq!(
             format!("{}", prover.unwrap_err()),
             "TableColumn { inner: Column { index: 0, column_type: Fixed } } not fully assigned. Help: assign a value at offset 0."
@@ -278,7 +278,7 @@ mod tests {
             }
         }
 
-        let prover = MockProver::run_dynamic(&FaultyCircuit, vec![]);
+        let prover = MockProver::run(&FaultyCircuit, vec![]);
         assert_eq!(
             format!("{}", prover.unwrap_err()),
             "Attempted to overwrite default value Value { inner: Some(Trivial(Fq(0x0000000000000000000000000000000000000000000000000000000000000000))) } with Value { inner: Some(Trivial(Fq(0x0000000000000000000000000000000000000000000000000000000000000000))) } in TableColumn { inner: Column { index: 0, column_type: Fixed } }"
@@ -347,7 +347,7 @@ mod tests {
             }
         }
 
-        let prover = MockProver::run_dynamic(&FaultyCircuit, vec![]);
+        let prover = MockProver::run(&FaultyCircuit, vec![]);
         assert_eq!(
             format!("{}", prover.unwrap_err()),
             "TableColumn { inner: Column { index: 0, column_type: Fixed } } has already been used"
@@ -412,7 +412,7 @@ mod tests {
             }
         }
 
-        let prover = MockProver::run_dynamic(&FaultyCircuit, vec![]);
+        let prover = MockProver::run(&FaultyCircuit, vec![]);
         assert_eq!(
             format!("{}", prover.unwrap_err()),
             "TableColumn { inner: Column { index: 0, column_type: Fixed } } has length 2 while TableColumn { inner: Column { index: 1, column_type: Fixed } } has length 1"

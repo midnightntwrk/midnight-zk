@@ -495,7 +495,7 @@ fn plonk_api() {
         .expect("proof generation should not fail");
 
         // Check this circuit is satisfied.
-        let prover = match MockProver::run_dynamic(&circuit, vec![vec![instance]]) {
+        let prover = match MockProver::run(&circuit, vec![vec![instance]]) {
             Ok(prover) => prover,
             Err(e) => panic!("{e:?}"),
         };

@@ -674,9 +674,7 @@ mod tests {
             expected,
         };
 
-        MockProver::run_dynamic(&circuit, vec![vec![], vec![]])
-            .unwrap()
-            .assert_satisfied();
+        MockProver::run(&circuit, vec![vec![], vec![]]).unwrap().assert_satisfied();
 
         if cost_model {
             circuit_to_json("Poseidon", "one_permutation", circuit);

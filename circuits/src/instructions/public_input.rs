@@ -214,7 +214,7 @@ pub(crate) mod tests {
 
         let pi = Assigned::as_public_input(x);
 
-        match MockProver::run_dynamic(&circuit, vec![vec![], pi.clone()]) {
+        match MockProver::run(&circuit, vec![vec![], pi.clone()]) {
             Ok(prover) => match prover.verify() {
                 Ok(()) => assert!(must_pass),
                 Err(e) => assert!(!must_pass, "Failed verifier with error {e:?}"),

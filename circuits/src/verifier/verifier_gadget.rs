@@ -1042,8 +1042,8 @@ pub(crate) mod tests {
             inner_proof: Value::known(inner_proof),
         };
 
-        let prover = MockProver::run_dynamic(&circuit, vec![vec![], public_inputs])
-            .expect("MockProver failed");
+        let prover =
+            MockProver::run(&circuit, vec![vec![], public_inputs]).expect("MockProver failed");
         prover.assert_satisfied();
     }
 }

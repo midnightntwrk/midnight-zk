@@ -641,7 +641,7 @@ Deep roots are not reached by the frost.
         let circuit = TestCircuit::<Fp>::new(b64_input, output, options);
 
         let public_inputs = vec![vec![], vec![]];
-        let prover = match MockProver::run_dynamic(&circuit, public_inputs) {
+        let prover = match MockProver::run(&circuit, public_inputs) {
             Ok(prover) => prover,
             Err(e) => panic!("{e:#?}"),
         };
@@ -663,7 +663,7 @@ Deep roots are not reached by the frost.
         let circuit = TestCircuit::<Fp>::new(b64_input, output, options);
 
         let public_inputs = vec![vec![], vec![]];
-        let prover = match MockProver::run_dynamic(&circuit, public_inputs) {
+        let prover = match MockProver::run(&circuit, public_inputs) {
             Ok(prover) => prover,
             Err(e) => panic!("{e:#?}"),
         };
@@ -687,7 +687,7 @@ Deep roots are not reached by the frost.
         let circuit_bad = TestCircuit::<Fp>::new(b64_input_bad, output, options);
 
         let public_inputs = vec![vec![], vec![]];
-        let prover = match MockProver::run_dynamic(&circuit, public_inputs) {
+        let prover = match MockProver::run(&circuit, public_inputs) {
             Ok(prover) => prover,
             Err(e) => panic!("{e:#?}"),
         };
@@ -695,7 +695,7 @@ Deep roots are not reached by the frost.
         assert_eq!(prover.verify(), Ok(()));
 
         let public_inputs = vec![vec![], vec![]];
-        let prover = match MockProver::run_dynamic(&circuit_bad, public_inputs) {
+        let prover = match MockProver::run(&circuit_bad, public_inputs) {
             Ok(prover) => prover,
             Err(e) => panic!("{e:#?}"),
         };
@@ -715,7 +715,7 @@ Deep roots are not reached by the frost.
         let circuit = TestCircuit::<Fp>::new(b64_input, output, options);
 
         let public_inputs = vec![vec![], vec![]];
-        let prover = match MockProver::run_dynamic(&circuit, public_inputs) {
+        let prover = match MockProver::run(&circuit, public_inputs) {
             Ok(prover) => prover,
             Err(e) => panic!("{e:#?}"),
         };
@@ -743,7 +743,7 @@ Deep roots are not reached by the frost.
         let circuit = TestCircuit::<Fp>::new(b64_input, output, options);
 
         let public_inputs = vec![vec![], vec![]];
-        let prover = match MockProver::run_dynamic(&circuit, public_inputs) {
+        let prover = match MockProver::run(&circuit, public_inputs) {
             Ok(prover) => prover,
             Err(e) => panic!("{e:#?}"),
         };
@@ -765,7 +765,7 @@ Deep roots are not reached by the frost.
         let circuit = TestCircuit::<Fp>::new(b64_input, output, options);
 
         let public_inputs = vec![vec![], vec![]];
-        let prover = match MockProver::run_dynamic(&circuit, public_inputs) {
+        let prover = match MockProver::run(&circuit, public_inputs) {
             Ok(prover) => prover,
             Err(e) => panic!("{e:#?}"),
         };

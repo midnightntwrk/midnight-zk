@@ -473,7 +473,7 @@ mod test {
             case2.2,
             case2.2 + case2.1.len(),
         );
-        let result = MockProver::run_dynamic(&circuit, vec![vec![], vec![]]);
+        let result = MockProver::run(&circuit, vec![vec![], vec![]]);
         match result {
             Ok(p) => {
                 let verified = p.verify();

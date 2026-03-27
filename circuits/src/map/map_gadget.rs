@@ -419,7 +419,7 @@ mod test {
                 _marker: PhantomData::<N>,
             };
 
-            let prover = MockProver::run_dynamic(&circuit, vec![vec![], pi.clone()]).unwrap();
+            let prover = MockProver::run(&circuit, vec![vec![], pi.clone()]).unwrap();
             if test_passes {
                 assert!(prover.verify().is_ok());
             } else {

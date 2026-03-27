@@ -518,12 +518,12 @@ fn main() {
     let mut public_inputs = vec![d];
 
     // Given the correct public input, our circuit will verify.
-    let prover = MockProver::run_dynamic(&circuit, vec![public_inputs.clone()]).unwrap();
+    let prover = MockProver::run(&circuit, vec![public_inputs.clone()]).unwrap();
     assert_eq!(prover.verify(), Ok(()));
 
     // If we try some other public input, the proof will fail!
     public_inputs[0] += Scalar::ONE;
-    let prover = MockProver::run_dynamic(&circuit, vec![public_inputs]).unwrap();
+    let prover = MockProver::run(&circuit, vec![public_inputs]).unwrap();
     assert!(prover.verify().is_err());
     // ANCHOR_END: test-circuit
 }
