@@ -343,6 +343,71 @@ pub(crate) mod tests {
         }
     }
 
+    pub fn test_assign<F, C, EccChip>(name: &str)
+    where
+        F: CircuitField + FromUniformBytes<64> + Ord,
+        C: CircuitCurve,
+        EccChip: EccInstructions<F, C>
+            + AssignmentInstructions<F, EccChip::Point>
+            + AssignmentInstructions<F, EccChip::Scalar>
+            + AssertionInstructions<F, EccChip::Point>
+            + Chip<F>
+            + FromScratch<F>,
+        EccChip::Point: InnerValue<Element = C::CryptographicGroup> + Clone,
+    {
+        let mut rng = ChaCha8Rng::seed_from_u64(0xc0ffee);
+        let p = C::CryptographicGroup::random(&mut rng);
+        let wrong = C::CryptographicGroup::random(&mut rng);
+        run::<F, C, EccChip>(
+            &[p],
+            None,
+            &p,
+            Operation::Assign,
+            true,
+            true,
+            name,
+            "assign_with_subgroup_check",
+        );
+        run::<F, C, EccChip>(&[p], None, &wrong, Operation::Assign, false, false, "", "");
+    }
+
+    pub fn test_assign_without_subgroup_check<F, C, EccChip>(name: &str)
+    where
+        F: CircuitField + FromUniformBytes<64> + Ord,
+        C: CircuitCurve,
+        EccChip: EccInstructions<F, C>
+            + AssignmentInstructions<F, EccChip::Point>
+            + AssignmentInstructions<F, EccChip::Scalar>
+            + AssertionInstructions<F, EccChip::Point>
+            + Chip<F>
+            + FromScratch<F>,
+        EccChip::Point: InnerValue<Element = C::CryptographicGroup> + Clone,
+    {
+        let mut rng = ChaCha8Rng::seed_from_u64(0xc0ffee);
+        let p = C::CryptographicGroup::random(&mut rng);
+        let wrong = C::CryptographicGroup::random(&mut rng);
+        run::<F, C, EccChip>(
+            &[p],
+            None,
+            &p,
+            Operation::AssignWithoutSubgroupCheck,
+            true,
+            true,
+            name,
+            "assign_without_subgroup_check",
+        );
+        run::<F, C, EccChip>(
+            &[p],
+            None,
+            &wrong,
+            Operation::AssignWithoutSubgroupCheck,
+            false,
+            false,
+            "",
+            "",
+        );
+    }
+
     pub fn test_add<F, C, EccChip>(name: &str)
     where
         F: CircuitField + FromUniformBytes<64> + Ord,
@@ -730,70 +795,5 @@ pub(crate) mod tests {
                 "",
             );
         });
-    }
-
-    pub fn test_assign<F, C, EccChip>(name: &str)
-    where
-        F: CircuitField + FromUniformBytes<64> + Ord,
-        C: CircuitCurve,
-        EccChip: EccInstructions<F, C>
-            + AssignmentInstructions<F, EccChip::Point>
-            + AssignmentInstructions<F, EccChip::Scalar>
-            + AssertionInstructions<F, EccChip::Point>
-            + Chip<F>
-            + FromScratch<F>,
-        EccChip::Point: InnerValue<Element = C::CryptographicGroup> + Clone,
-    {
-        let mut rng = ChaCha8Rng::seed_from_u64(0xc0ffee);
-        let p = C::CryptographicGroup::random(&mut rng);
-        let wrong = C::CryptographicGroup::random(&mut rng);
-        run::<F, C, EccChip>(
-            &[p],
-            None,
-            &p,
-            Operation::Assign,
-            true,
-            true,
-            name,
-            "assign_with_subgroup_check",
-        );
-        run::<F, C, EccChip>(&[p], None, &wrong, Operation::Assign, false, false, "", "");
-    }
-
-    pub fn test_assign_without_subgroup_check<F, C, EccChip>(name: &str)
-    where
-        F: CircuitField + FromUniformBytes<64> + Ord,
-        C: CircuitCurve,
-        EccChip: EccInstructions<F, C>
-            + AssignmentInstructions<F, EccChip::Point>
-            + AssignmentInstructions<F, EccChip::Scalar>
-            + AssertionInstructions<F, EccChip::Point>
-            + Chip<F>
-            + FromScratch<F>,
-        EccChip::Point: InnerValue<Element = C::CryptographicGroup> + Clone,
-    {
-        let mut rng = ChaCha8Rng::seed_from_u64(0xc0ffee);
-        let p = C::CryptographicGroup::random(&mut rng);
-        let wrong = C::CryptographicGroup::random(&mut rng);
-        run::<F, C, EccChip>(
-            &[p],
-            None,
-            &p,
-            Operation::AssignWithoutSubgroupCheck,
-            true,
-            true,
-            name,
-            "assign_without_subgroup_check",
-        );
-        run::<F, C, EccChip>(
-            &[p],
-            None,
-            &wrong,
-            Operation::AssignWithoutSubgroupCheck,
-            false,
-            false,
-            "",
-            "",
-        );
     }
 }
