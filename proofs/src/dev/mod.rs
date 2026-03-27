@@ -1,7 +1,11 @@
 //! Tools for developing circuits.
 
 use std::{
-    cell::RefCell, collections::{HashMap, HashSet}, iter, ops::{Add, Mul, Neg, Range}, rc::Rc
+    cell::RefCell,
+    collections::{HashMap, HashSet},
+    iter,
+    ops::{Add, Mul, Neg, Range},
+    rc::Rc,
 };
 
 use blake2b_simd::blake2b;
@@ -606,6 +610,7 @@ impl<F: Field> Assignment<F> for MockProver<F> {
 /// # impl Circuit<Scalar> for MyCircuit {
 /// #     type Config = ();
 /// #     type FloorPlanner = SimpleFloorPlanner;
+/// #     type Params = ();
 /// #     fn without_witnesses(&self) -> Self { Self }
 /// #     fn configure(_: &mut ConstraintSystem<Scalar>) {}
 /// #     fn synthesize(&self, _: (), _: impl Layouter<Scalar>) -> Result<(), Error> { Ok(()) }
@@ -656,7 +661,21 @@ impl<F: FromUniformBytes<64> + Ord> RowSizer<F> {
         ConcreteCircuit::FloorPlanner::synthesize(&mut sizer, circuit, config, constants)?;
 
         let blinding_factors = cs.blinding_factors();
-        let required_n = (*sizer.max_row.borrow() + blinding_factors + 2).max(cs.minimum_rows());
+        // Find the maximum positive rotation used by any gate query. Rows near the end
+        // of usable_rows that are accessed with a positive rotation could
+        // otherwise land in blinding rows, causing Value::Poison to appear
+        // during constraint verification.
+        let max_positive_rotation = cs
+            .advice_queries()
+            .iter()
+            .map(|(_, r)| r.0)
+            .chain(cs.fixed_queries().iter().map(|(_, r)| r.0))
+            .chain(cs.instance_queries().iter().map(|(_, r)| r.0))
+            .filter(|&r| r > 0)
+            .max()
+            .unwrap_or(0) as usize;
+        let required_n = (*sizer.max_row.borrow() + blinding_factors + 2 + max_positive_rotation)
+            .max(cs.minimum_rows());
         let n = required_n.next_power_of_two();
         let k = n.trailing_zeros();
         Ok((k, n))
