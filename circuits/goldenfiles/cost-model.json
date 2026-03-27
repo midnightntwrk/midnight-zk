@@ -463,7 +463,7 @@
       "max_deg": "5",
       "permutations": "14",
       "point_sets": "5",
-      "rows": "18",
+      "rows": "132",
       "table_rows": "385"
     },
     "cond_assert_equal": {

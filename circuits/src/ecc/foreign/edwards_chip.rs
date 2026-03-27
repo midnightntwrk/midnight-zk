@@ -817,7 +817,9 @@ where
         layouter: &mut impl Layouter<F>,
         value: Value<C::CryptographicGroup>,
     ) -> Result<Self::Point, Error> {
-        self.assign_point_unchecked(layouter, value)
+        let p = self.assign_point_unchecked(layouter, value)?;
+        self.assert_on_curve(layouter, &p.x, &p.y)?;
+        Ok(p)
     }
 }
 
