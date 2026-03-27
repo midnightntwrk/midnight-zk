@@ -1,6 +1,6 @@
-pub(crate) use crate::hash::sha256::utils::{
-    expr_pow2_ip, expr_pow4_ip, get_even_and_odd_bits, negate_spreaded, spread, u32_in_be_limbs,
-    MASK_EVN_64,
+pub(crate) use crate::hash::util::{
+    expr_pow2_ip, expr_pow4_ip, gen_spread_table as gen_table, get_even_and_odd_bits,
+    negate_spreaded, spread, u32_to_be_limbs as u32_to_limbs_be, MASK_EVN_64,
 };
 use crate::CircuitField;
 
@@ -81,28 +81,13 @@ pub(super) fn limb_coeffs(rot: u8) -> ([u32; NUM_LIMBS], [u32; NUM_LIMBS]) {
 /// [`u32_in_be_limbs`], especially when some limb lengths are zero.
 pub(super) fn limb_values(value: u32, rot: u8) -> [u32; NUM_LIMBS] {
     let (limb_lengths, _) = limb_lengths(rot);
-
-    let mut result = [0u32; NUM_LIMBS];
-    let mut shift = WORD;
-
-    for (i, &len) in limb_lengths.iter().enumerate() {
-        if len == 0 {
-            result[i] = 0;
-        } else {
-            shift -= len;
-            result[i] = (value >> shift) & ((1 << len) - 1);
-        }
-    }
-    result
+    u32_to_limbs_be(value, limb_lengths)
 }
 
 /// Generates the plain-spreaded lookup table. The limb lengths to be looked up
 /// cover the range [0, 11] for the rotation offsets used in RIPEMD-160.
 pub(super) fn gen_spread_table<F: CircuitField>() -> impl Iterator<Item = (F, F, F)> {
-    (0..=11).flat_map(|len| {
-        let tag = F::from(len as u64);
-        (0..(1 << len)).map(move |i| (tag, F::from(i as u64), F::from(spread(i as u32))))
-    })
+    gen_table(0..=11)
 }
 
 #[cfg(test)]
