@@ -64,6 +64,13 @@ use crate::{
 /// - Conversions
 /// - Decomposition
 /// - Equality
+///
+/// # Important
+///
+/// This gadget uses `P2RDecompositionChip`, which relies on dynamic lookup
+/// tables. Consequently, any circuit using this gadget must ensure that the
+/// underlying tables are loaded at the very end of the `synthesize` method
+/// (typically via `P2RDecompositionChip::load` or similar).
 pub struct NativeGadget<F, CoreDecomposition, NativeArith>
 where
     F: CircuitField,
