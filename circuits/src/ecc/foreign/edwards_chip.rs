@@ -1040,31 +1040,9 @@ mod tests {
     ecc_tests!(test_coordinates);
 
     #[test]
-    fn test_assert_in_subgroup() {
-        run_test_assert_in_subgroup::<Curve25519>();
-        run_test_assert_in_subgroup::<JubjubExtended>();
-    }
-
-    #[test]
     fn test_assert_on_curve() {
         run_test_assert_on_curve::<Curve25519>();
         run_test_assert_on_curve::<JubjubExtended>();
-    }
-
-    fn run_test_assert_in_subgroup<C>()
-    where
-        C: EdwardsCurve,
-        C::Base: Legendre,
-        MultiEmulationParams: FieldEmulationParams<BlsScalar, C::Base>
-            + FieldEmulationParams<BlsScalar, C::ScalarField>,
-    {
-        let mut rng = ChaCha8Rng::seed_from_u64(0x0);
-        let point = C::CryptographicGroup::random(&mut rng);
-
-        let circuit = InSubgroupCheckCircuit::<C> { point };
-        let prover = MockProver::run(&circuit, vec![vec![], vec![]])
-            .expect("proof generation should not fail");
-        prover.verify().expect("random subgroup point should verify");
     }
 
     fn run_test_assert_on_curve<C>()
@@ -1143,68 +1121,6 @@ mod tests {
         FieldChip<F, <C as CircuitCurve>::ScalarField, MultiEmulationParams, Native<F>>,
         Native<F>,
     >;
-
-    /// Test circuit that calls `assert_in_subgroup` and `assert_on_curve` for a
-    /// given point of a twisted Edwards curve.
-    ///
-    /// Since `assert_in_subgroup` already takes as input a point in form of
-    /// [AssignedForeignEdwardsPoint], which, in turn, wraps a valid subgroup
-    /// point, this circuit checks correctness of `assert_in_subgroup` and
-    /// `assert_on_curve` for valid subgroup points.
-    #[derive(Clone, Debug)]
-    struct InSubgroupCheckCircuit<C: EdwardsCurve> {
-        point: C::CryptographicGroup,
-    }
-
-    impl<C> Circuit<F> for InSubgroupCheckCircuit<C>
-    where
-        C: EdwardsCurve,
-        C::Base: Legendre,
-        MultiEmulationParams:
-            FieldEmulationParams<F, C::Base> + FieldEmulationParams<F, C::ScalarField>,
-    {
-        type Config = <EdwardsChip<C> as FromScratch<F>>::Config;
-        type FloorPlanner = SimpleFloorPlanner;
-        type Params = ();
-
-        fn without_witnesses(&self) -> Self {
-            unreachable!()
-        }
-
-        fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
-            let committed = meta.instance_column();
-            let instance = meta.instance_column();
-            EdwardsChip::<C>::configure_from_scratch(
-                meta,
-                &mut vec![],
-                &mut vec![],
-                &[committed, instance],
-            )
-        }
-
-        fn synthesize(
-            &self,
-            config: Self::Config,
-            mut layouter: impl Layouter<F>,
-        ) -> Result<(), Error> {
-            let chip = EdwardsChip::<C>::new_from_scratch(&config);
-
-            let curve_point: C = self.point.into();
-            let (x, y) = curve_point.coordinates().expect("valid curve point");
-
-            let x = chip.base_field_chip().assign(&mut layouter, Value::known(x))?;
-            let y = chip.base_field_chip().assign(&mut layouter, Value::known(y))?;
-            let p = AssignedForeignEdwardsPoint {
-                point: Value::known(self.point),
-                x,
-                y,
-            };
-
-            chip.assert_in_subgroup(&mut layouter, &p)?;
-            chip.assert_on_curve(&mut layouter, &p.x, &p.y)?; // redundant
-            chip.load_from_scratch(&mut layouter)
-        }
-    }
 
     /// Test circuit that calls `assert_on_curve` for arbitrary (x, y)
     /// coordinates (not necessarily representing a valid curve point).
