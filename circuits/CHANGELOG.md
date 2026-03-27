@@ -33,6 +33,7 @@ verification keys break backwards compatibility.
 * add MSMCompletenessFluke error [#277](https://github.com/midnightntwrk/midnight-zk/pull/277)
 
 ### Changed
+* Reorganize foreign ECC gates into `weierstrass/` and `edwards/` subdirectories [#295](https://github.com/midnightntwrk/midnight-zk/pull/295)
 * Filter out compile-time identity points in MSM [#256](https://github.com/midnightntwrk/midnight-zk/pull/256)
 * Sort point sets deterministically in KZG multiopen for in-circuit verification [#256](https://github.com/midnightntwrk/midnight-zk/pull/256)
 * Move advice queries before instance queries in verifier gadget [#256](https://github.com/midnightntwrk/midnight-zk/pull/256)
