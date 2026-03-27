@@ -366,7 +366,6 @@ mod test {
         N: NativeInstructions<F> + FromScratch<F>,
         H: HashInstructions<F, AssignedNative<F>, AssignedNative<F>> + FromScratch<F>,
     {
-        let k: u32 = 15;
         let mut rng = ChaCha8Rng::seed_from_u64(0xc0ffee);
 
         let mut mt = MapMt::<F, H>::new(&F::ZERO);
@@ -420,7 +419,7 @@ mod test {
                 _marker: PhantomData::<N>,
             };
 
-            let prover = MockProver::run(k, &circuit, vec![vec![], pi.clone()]).unwrap();
+            let prover = MockProver::run(&circuit, vec![vec![], pi.clone()]).unwrap();
             if test_passes {
                 assert!(prover.verify().is_ok());
             } else {

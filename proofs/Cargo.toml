@@ -24,10 +24,6 @@ name = "plonk"
 harness = false
 
 [[bench]]
-name = "dev_lookup"
-harness = false
-
-[[bench]]
 name = "zswap_output"
 required-features = ["bench-internal"]
 harness = false

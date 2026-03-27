@@ -337,9 +337,8 @@ mod tests {
 
         let challenge_2 = off_circuit_transcript.squeeze_challenge();
 
-        let k = 12;
         let public_inputs = vec![vec![], vec![challenge_1, challenge_2]];
-        let prover = MockProver::run(k, &circuit, public_inputs).unwrap();
+        let prover = MockProver::run(&circuit, public_inputs).unwrap();
         prover.assert_satisfied();
     }
 }

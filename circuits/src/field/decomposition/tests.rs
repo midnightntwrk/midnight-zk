@@ -201,8 +201,6 @@ where
 }
 
 fn run_decomposition_chip_variable_test<const NR_COLS: usize>() {
-    const K: u32 = 10;
-
     let mut rng = ChaCha8Rng::from_entropy();
 
     let mut limb_sizes = Vec::new();
@@ -238,7 +236,7 @@ fn run_decomposition_chip_variable_test<const NR_COLS: usize>() {
         limb_sizes: LimbType::Variable(limb_sizes),
         expected,
     };
-    let prover = MockProver::run(K, &circuit_variable, vec![vec![], vec![]])
+    let prover = MockProver::run(&circuit_variable, vec![vec![], vec![]])
         .expect("Failed to run mock prover");
     prover.assert_satisfied();
 }
@@ -252,8 +250,6 @@ fn test_decomposition_chip_variable() {
 }
 
 fn run_decomposition_chip_fixed_test<const NR_COLS: usize>() {
-    const K: u32 = 10;
-
     let mut rng = ChaCha8Rng::from_entropy();
 
     // sample two random limb sizes:
@@ -279,7 +275,7 @@ fn run_decomposition_chip_fixed_test<const NR_COLS: usize>() {
             expected,
         };
 
-        let prover = MockProver::run(K, &circuit_fixed, vec![vec![], vec![]])
+        let prover = MockProver::run(&circuit_fixed, vec![vec![], vec![]])
             .expect("Failed to run mock prover");
         prover.assert_satisfied();
     }
@@ -347,8 +343,6 @@ where
 }
 
 fn run_decomposition_less_than_pow2_test<const NR_COLS: usize>() {
-    const K: u32 = 10;
-
     let mut rng = ChaCha8Rng::from_entropy();
 
     // sample a random power in the range 1..255
@@ -363,7 +357,7 @@ fn run_decomposition_less_than_pow2_test<const NR_COLS: usize>() {
     let circuit = TestLessThanPow2Circuit::<Fp, NR_COLS> { input: x, bound };
 
     let prover =
-        MockProver::run(K, &circuit, vec![vec![], vec![]]).expect("Failed to run mock prover");
+        MockProver::run(&circuit, vec![vec![], vec![]]).expect("Failed to run mock prover");
     prover.assert_satisfied();
 }
 

@@ -1054,7 +1054,7 @@ mod tests {
         let point = C::CryptographicGroup::random(&mut rng);
 
         let circuit = InSubgroupCheckCircuit::<C> { point };
-        let prover = MockProver::run(11, &circuit, vec![vec![], vec![]])
+        let prover = MockProver::run(&circuit, vec![vec![], vec![]])
             .expect("proof generation should not fail");
         prover.verify().expect("random subgroup point should verify");
     }
@@ -1077,7 +1077,7 @@ mod tests {
             x: C::Base::ZERO,
             y: C::Base::ONE,
         };
-        let prover = MockProver::run(10, &circuit, vec![vec![], vec![]])
+        let prover = MockProver::run(&circuit, vec![vec![], vec![]])
             .expect("proof generation should not fail");
         prover.verify().expect("identity (0,1) should pass verification");
 
@@ -1085,7 +1085,7 @@ mod tests {
         let gen = C::CryptographicGroup::generator();
         let (gx, gy) = gen.into().coordinates().expect("valid generator");
         let circuit = OnCurveCheckCircuit::<C> { x: gx, y: gy };
-        let prover = MockProver::run(10, &circuit, vec![vec![], vec![]])
+        let prover = MockProver::run(&circuit, vec![vec![], vec![]])
             .expect("proof generation should not fail");
         prover.verify().expect("generator should pass verification");
 
@@ -1096,7 +1096,7 @@ mod tests {
             x,
             y: y + C::Base::ONE,
         };
-        let prover = MockProver::run(10, &circuit, vec![vec![], vec![]])
+        let prover = MockProver::run(&circuit, vec![vec![], vec![]])
             .expect("proof generation should not fail");
         assert!(
             prover.verify().is_err(),
@@ -1108,7 +1108,7 @@ mod tests {
             x: C::Base::ONE,
             y: C::Base::ONE,
         };
-        let prover = MockProver::run(10, &circuit, vec![vec![], vec![]])
+        let prover = MockProver::run(&circuit, vec![vec![], vec![]])
             .expect("proof generation should not fail");
         assert!(
             prover.verify().is_err(),
@@ -1120,7 +1120,7 @@ mod tests {
             x: C::Base::ZERO,
             y: C::Base::ZERO,
         };
-        let prover = MockProver::run(10, &circuit, vec![vec![], vec![]])
+        let prover = MockProver::run(&circuit, vec![vec![], vec![]])
             .expect("proof generation should not fail");
         assert!(
             prover.verify().is_err(),

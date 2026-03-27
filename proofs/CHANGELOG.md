@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * add MSMCompletenessFluke error [#277](https://github.com/midnightntwrk/midnight-zk/pull/277)
 
 ### Changed
+* `MockProver::run` no longer takes a `k` parameter; the minimum required `k` is determined automatically [#293](https://github.com/midnightntwrk/midnight-zk/pull/293)
 * Sort point sets deterministically in KZG multiopen for in-circuit verification [#256](https://github.com/midnightntwrk/midnight-zk/pull/256)
 * Move advice queries before instance queries in prover and verifier [#256](https://github.com/midnightntwrk/midnight-zk/pull/256)
 * `Circuit::Params` extended to carry `max_bit_len` [#251](https://github.com/midnightntwrk/midnight-zk/pull/251)
