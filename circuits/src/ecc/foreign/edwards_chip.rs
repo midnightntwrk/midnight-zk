@@ -25,6 +25,7 @@ use std::{
     marker::PhantomData,
 };
 
+use super::common::msm_preprocess;
 use ff::{Field, PrimeField};
 use group::Group;
 use midnight_curves::ff_ext::Legendre;
@@ -34,6 +35,7 @@ use midnight_proofs::{
     circuit::{Chip, Layouter, Value},
     plonk::{ConstraintSystem, Error},
 };
+
 #[cfg(any(test, feature = "testing"))]
 use {
     crate::testing_utils::{FromScratch, Sampleable},
@@ -748,8 +750,6 @@ where
 
     // This function currently implements a basic form of double-and-add.
     // There are several improvements available:
-    //  * Batching equal points
-    //  * Filtering scalars (e.g., if they are 0 or 1)
     //  * Using the windowed method
     fn msm_by_bounded_scalars(
         &self,
@@ -760,8 +760,13 @@ where
         if scalars.len() != bases.len() {
             panic!("Nr of scalars and points should be the same.")
         }
-
+        let scalar_chip = self.scalar_field_chip();
         let identity = self.assign_fixed(layouter, C::CryptographicGroup::identity())?;
+        let one = self.scalar_field_chip().assign_fixed(layouter, C::ScalarField::ONE)?;
+
+        let (scalars, bases, bases_with_1bit_scalar) =
+            msm_preprocess(self, scalar_chip, layouter, scalars, bases)?;
+
         let mut res = identity.clone();
 
         for ((s, bit_size), b) in scalars.iter().zip(bases.iter()) {
@@ -781,7 +786,16 @@ where
             }
         }
 
-        Ok(res)
+        // Add 1-bit scalar bases
+        bases_with_1bit_scalar.iter().try_fold(res, |acc, (b, s)| {
+            let s_times_b = if s == &one {
+                b.clone()
+            } else {
+                let s_is_zero = scalar_chip.is_zero(layouter, s)?;
+                self.select(layouter, &s_is_zero, &identity, b)?
+            };
+            self.add(layouter, &acc, &s_times_b)
+        })
     }
 
     fn mul_by_constant(

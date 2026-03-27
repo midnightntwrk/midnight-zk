@@ -43,6 +43,7 @@ use {
     midnight_proofs::plonk::Instance, rand::RngCore,
 };
 
+use super::common::msm_preprocess;
 use super::gates::{
     lambda_squared,
     lambda_squared::LambdaSquaredConfig,
@@ -792,81 +793,16 @@ where
         bases: &[AssignedForeignPoint<F, C, B>],
     ) -> Result<AssignedForeignPoint<F, C, B>, Error> {
         const WS: usize = 4;
+        let scalar_chip = self.scalar_field_chip();
 
-        // Filter out bases that are known to be the identity at compile time.
-        // These contribute nothing to the MSM result.
-        let id_point = self.assign_fixed(layouter, C::CryptographicGroup::identity())?;
-        let (scalars, bases): (Vec<_>, Vec<_>) = scalars
-            .iter()
-            .zip(bases.iter())
-            .filter(|(_, base)| *base != &id_point)
-            .map(|(s, b)| (s.clone(), b.clone()))
-            .unzip();
-
-        // If any of the scalars is known to be 1, or has a bound of 1 (i.e. it is known
-        // to be either 0 or 1) remove it (with its base) from the list and simply add
-        // it at the end.
-        let one: S::Scalar = self.scalar_field_chip.assign_fixed(layouter, C::ScalarField::ONE)?;
-        let mut bases_with_1bit_scalar = vec![];
-        let mut filtered_scalars = vec![];
-        let mut filtered_bases = vec![];
-        for (scalar, base) in scalars.iter().zip(bases.iter()) {
-            if scalar.0 == one || scalar.1 == 1 {
-                bases_with_1bit_scalar.push((base.clone(), scalar.0.clone()));
-            } else {
-                filtered_scalars.push(scalar.clone());
-                filtered_bases.push(base.clone());
-            }
-        }
-
-        let scalars = filtered_scalars;
-        let bases = filtered_bases;
-
-        // If two bases are exactly the same (as symbolic PLONK variables), we
-        // deduplicate them by adding their scalars.
-        let mut cache_bases: HashMap<AssignedForeignPoint<F, C, B>, (S::Scalar, usize)> =
-            HashMap::new();
-        let mut unique_bases: Vec<AssignedForeignPoint<F, C, B>> = vec![];
-        for (base, scalar) in bases.iter().zip(scalars.iter()) {
-            if let Some(acc) = cache_bases.insert(base.clone(), scalar.clone()) {
-                let new_scalar = self.scalar_field_chip.add(layouter, &acc.0, &scalar.0)?;
-                let new_bound = max(acc.1, scalar.1) + 1;
-                cache_bases.insert(base.clone(), (new_scalar, new_bound));
-            } else {
-                unique_bases.push(base.clone());
-            }
-        }
-        let scalars = unique_bases
-            .iter()
-            .map(|b| cache_bases.get(b).unwrap().clone())
-            .collect::<Vec<_>>();
-        let bases = unique_bases;
-
-        // If two scalars are exactly the same (as symbolic PLONK variables), we
-        // deduplicate them by adding their bases.
-        let mut cache_scalars: HashMap<(S::Scalar, usize), AssignedForeignPoint<F, C, B>> =
-            HashMap::new();
-        let mut unique_scalars: Vec<(S::Scalar, usize)> = vec![];
-        for (scalar, base) in scalars.iter().zip(bases.iter()) {
-            if let Some(acc) = cache_scalars.insert(scalar.clone(), base.clone()) {
-                let new_acc = self.add(layouter, &acc, base)?;
-                cache_scalars.insert(scalar.clone(), new_acc);
-            } else {
-                unique_scalars.push(scalar.clone());
-            }
-        }
-        let bases = unique_scalars
-            .iter()
-            .map(|s| cache_scalars.get(s).unwrap().clone())
-            .collect::<Vec<_>>();
-        let scalars = unique_scalars;
+        let (scalars, bases, bases_with_1bit_scalar) =
+            msm_preprocess(self, scalar_chip, layouter, scalars, bases)?;
 
         // In order to support the identity point for some bases, we select in-circuit
         // based on the value of is_id and put a 0 scalar and an arbitrary non-id point
         // (e.g. the generator) for the base when is_id equals 1.
         let mut non_id_bases = vec![];
         let mut scalars_of_non_id_bases = vec![];
-        let scalar_chip = self.scalar_field_chip();
         let zero: S::Scalar = scalar_chip.assign_fixed(layouter, C::ScalarField::ZERO)?;
         let g = self.assign_fixed(layouter, C::CryptographicGroup::generator())?;
         for (s, b) in scalars.iter().zip(bases.iter()) {
@@ -916,6 +852,7 @@ where
         let res = self.windowed_msm::<WS>(layouter, &decomposed_scalars, &bases)?;
 
         let id_point = self.assign_fixed(layouter, C::CryptographicGroup::identity())?;
+        let one = scalar_chip.assign_fixed(layouter, C::ScalarField::ONE)?;
         bases_with_1bit_scalar.iter().try_fold(res, |acc, (b, s)| {
             let s_times_b = if s == &one {
                 b.clone()
