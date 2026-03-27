@@ -32,6 +32,11 @@ midnight-proofs = { path = "proofs" }
 midnight-curves = { path = "curves" }
 midnight-circuits = { path = "circuits" }
 
+# blake2b_halo2 depends on midnight-proofs via git; this redirects that git source
+# to the local workspace so both resolve to the same crate instance.
+[patch."https://github.com/midnightntwrk/midnight-zk"]
+midnight-proofs = { path = "proofs" }
+
 ## Benchmarks
 
 [profile.bench]
