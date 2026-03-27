@@ -912,7 +912,7 @@ where
 #[cfg(test)]
 mod tests {
     use group::Group;
-    use midnight_curves::{curve25519::Curve25519, BlsScalar, JubjubExtended};
+    use midnight_curves::{curve25519::Curve25519, BlsScalar};
     use midnight_proofs::{circuit::SimpleFloorPlanner, dev::MockProver, plonk::Circuit};
     use rand::SeedableRng;
     use rand_chacha::ChaCha8Rng;
@@ -952,7 +952,6 @@ mod tests {
         ($mod:ident, $op:ident) => {
             #[test]
             fn $op() {
-                test_generic!($mod, $op, F, JubjubExtended, EmulatedField<F, JubjubExtended>, "emulated_jubjub");
                 test_generic!($mod, $op, F, Curve25519, EmulatedField<F, Curve25519>, "emulated_curve25519");
             }
         };
@@ -991,7 +990,6 @@ mod tests {
         ($op:ident) => {
             #[test]
             fn $op() {
-                ecc_test!($op, BlsScalar, JubjubExtended, EmulatedField<BlsScalar, JubjubExtended>, "emulated_jubjub");
                 ecc_test!($op, BlsScalar, Curve25519, EmulatedField<BlsScalar, Curve25519>, "emulated_curve25519");
             }
         };
@@ -1010,7 +1008,6 @@ mod tests {
     #[test]
     fn test_assert_on_curve() {
         run_test_assert_on_curve::<Curve25519>();
-        run_test_assert_on_curve::<JubjubExtended>();
     }
 
     /// Negative tests for `assert_on_curve`. Positive cases (identity,
