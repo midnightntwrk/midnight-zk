@@ -847,6 +847,14 @@ where
     fn base_field(&self) -> &impl DecompositionInstructions<F, Self::Coordinate> {
         self.base_field_chip()
     }
+
+    fn assign_without_subgroup_check(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        value: Value<C::CryptographicGroup>,
+    ) -> Result<Self::Point, Error> {
+        self.assign_point_unchecked(layouter, value)
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -1013,6 +1021,8 @@ mod tests {
         };
     }
 
+    ecc_tests!(test_assign);
+    ecc_tests!(test_assign_without_subgroup_check);
     ecc_tests!(test_add);
     ecc_tests!(test_double);
     ecc_tests!(test_negate);

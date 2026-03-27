@@ -15,7 +15,10 @@
 
 use std::fmt::Debug;
 
-use midnight_proofs::{circuit::Layouter, plonk::Error};
+use midnight_proofs::{
+    circuit::{Layouter, Value},
+    plonk::Error,
+};
 
 use super::AssertionInstructions;
 use crate::{
@@ -132,6 +135,19 @@ where
         y: &Self::Coordinate,
     ) -> Result<Self::Point, Error>;
 
+    /// Assigns a private curve point, checking it is on the curve but skipping
+    /// any subgroup-membership check. We enforce honest users to operate over
+    /// the prime-order subgroup, but allow the circuit to skip enforcing this
+    /// constraint where this guarantee is not required.
+    ///
+    /// For curves with a non-trivial cofactor this skips the expensive
+    /// cofactor-based subgroup check.
+    fn assign_without_subgroup_check(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        value: Value<C::CryptographicGroup>,
+    ) -> Result<Self::Point, Error>;
+
     /// The assigned x-coordinate of an assigned point.
     fn x_coordinate(&self, point: &Self::Point) -> Self::Coordinate;
 
@@ -165,6 +181,8 @@ pub(crate) mod tests {
 
     #[derive(Clone, Copy, Debug)]
     enum Operation {
+        Assign,
+        AssignWithoutSubgroupCheck,
         Add,
         Double,
         Neg,
@@ -222,10 +240,14 @@ pub(crate) mod tests {
 
             // y does not apply in tests of arity-1 functions.
             let y_idx = min(self.inputs.len() - 1, 1);
-            let p: EccChip::Point = ecc_chip.assign(&mut layouter, Value::known(self.inputs[0]))?;
+            let p: EccChip::Point = ecc_chip
+                .assign_without_subgroup_check(&mut layouter, Value::known(self.inputs[0]))?;
             let q: EccChip::Point = ecc_chip.assign_fixed(&mut layouter, self.inputs[y_idx])?;
 
             let res = match self.operation {
+                Operation::Assign => ecc_chip.assign(&mut layouter, Value::known(self.inputs[0])),
+                Operation::AssignWithoutSubgroupCheck => ecc_chip
+                    .assign_without_subgroup_check(&mut layouter, Value::known(self.inputs[0])),
                 Operation::Add => ecc_chip.add(&mut layouter, &p, &q),
                 Operation::Double => ecc_chip.double(&mut layouter, &p),
                 Operation::Neg => ecc_chip.negate(&mut layouter, &p),
@@ -264,8 +286,7 @@ pub(crate) mod tests {
                 }
                 Operation::MulByConstant => {
                     let s = self.scalars.clone().unwrap()[0].0;
-                    let base = ecc_chip.assign(&mut layouter, Value::known(self.inputs[0]))?;
-                    ecc_chip.mul_by_constant(&mut layouter, s, &base)
+                    ecc_chip.mul_by_constant(&mut layouter, s, &p)
                 }
                 Operation::Coordinates => {
                     let px = ecc_chip.x_coordinate(&p);
@@ -709,5 +730,70 @@ pub(crate) mod tests {
                 "",
             );
         });
+    }
+
+    pub fn test_assign<F, C, EccChip>(name: &str)
+    where
+        F: CircuitField + FromUniformBytes<64> + Ord,
+        C: CircuitCurve,
+        EccChip: EccInstructions<F, C>
+            + AssignmentInstructions<F, EccChip::Point>
+            + AssignmentInstructions<F, EccChip::Scalar>
+            + AssertionInstructions<F, EccChip::Point>
+            + Chip<F>
+            + FromScratch<F>,
+        EccChip::Point: InnerValue<Element = C::CryptographicGroup> + Clone,
+    {
+        let mut rng = ChaCha8Rng::seed_from_u64(0xc0ffee);
+        let p = C::CryptographicGroup::random(&mut rng);
+        let wrong = C::CryptographicGroup::random(&mut rng);
+        run::<F, C, EccChip>(
+            &[p],
+            None,
+            &p,
+            Operation::Assign,
+            true,
+            true,
+            name,
+            "assign_with_subgroup_check",
+        );
+        run::<F, C, EccChip>(&[p], None, &wrong, Operation::Assign, false, false, "", "");
+    }
+
+    pub fn test_assign_without_subgroup_check<F, C, EccChip>(name: &str)
+    where
+        F: CircuitField + FromUniformBytes<64> + Ord,
+        C: CircuitCurve,
+        EccChip: EccInstructions<F, C>
+            + AssignmentInstructions<F, EccChip::Point>
+            + AssignmentInstructions<F, EccChip::Scalar>
+            + AssertionInstructions<F, EccChip::Point>
+            + Chip<F>
+            + FromScratch<F>,
+        EccChip::Point: InnerValue<Element = C::CryptographicGroup> + Clone,
+    {
+        let mut rng = ChaCha8Rng::seed_from_u64(0xc0ffee);
+        let p = C::CryptographicGroup::random(&mut rng);
+        let wrong = C::CryptographicGroup::random(&mut rng);
+        run::<F, C, EccChip>(
+            &[p],
+            None,
+            &p,
+            Operation::AssignWithoutSubgroupCheck,
+            true,
+            true,
+            name,
+            "assign_without_subgroup_check",
+        );
+        run::<F, C, EccChip>(
+            &[p],
+            None,
+            &wrong,
+            Operation::AssignWithoutSubgroupCheck,
+            false,
+            false,
+            "",
+            "",
+        );
     }
 }
