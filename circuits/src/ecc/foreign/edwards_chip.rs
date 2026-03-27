@@ -1037,7 +1037,7 @@ mod tests {
     ecc_tests!(test_msm);
     ecc_tests!(test_msm_by_bounded_scalars);
     ecc_tests!(test_mul_by_constant);
-    ecc_tests!(test_coordinates_edwards);
+    ecc_tests!(test_coordinates);
 
     #[test]
     fn test_assert_in_subgroup() {

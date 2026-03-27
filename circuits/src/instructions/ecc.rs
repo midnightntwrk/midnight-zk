@@ -714,65 +714,16 @@ pub(crate) mod tests {
     {
         let mut rng = ChaCha8Rng::seed_from_u64(0xc0ffee);
         let wrong = C::CryptographicGroup::random(&mut rng);
+        let id_from_coord_ok = {
+            C::CryptographicGroup::identity()
+                .into()
+                .coordinates()
+                .is_some_and(|(x, y)| C::from_xy(x, y).is_some())
+        };
         let mut cost_model = true;
         [
             (C::CryptographicGroup::random(&mut rng), true),
-            (C::CryptographicGroup::identity(), false),
-            (C::CryptographicGroup::generator(), true),
-        ]
-        .into_iter()
-        .for_each(|(x, must_pass)| {
-            let inputs = vec![x];
-            run::<F, C, EccChip>(
-                &inputs,
-                None,
-                &x,
-                Operation::Coordinates,
-                must_pass,
-                cost_model & must_pass,
-                name,
-                "coordinates",
-            );
-            if must_pass {
-                cost_model = false
-            }
-            run::<F, C, EccChip>(
-                &inputs,
-                None,
-                &wrong,
-                Operation::Coordinates,
-                false,
-                false,
-                "",
-                "",
-            );
-        });
-    }
-
-    /// The identity on Edwards curves is (0, 1) which indeed satisfies the
-    /// curve equation. By contrast, the identity on Weierstrass curves is
-    /// defined as (0, 0) which does NOT satisfy the curve equation.
-    /// To distinguish these two cases, we have to use another test function for
-    /// the Edwards coordinates.
-    pub fn test_coordinates_edwards<F, C, EccChip>(name: &str)
-    where
-        F: CircuitField + FromUniformBytes<64> + Ord,
-        C: CircuitCurve,
-        EccChip: EccInstructions<F, C>
-            + AssignmentInstructions<F, EccChip::Point>
-            + AssignmentInstructions<F, EccChip::Scalar>
-            + AssertionInstructions<F, EccChip::Point>
-            + Chip<F>
-            + FromScratch<F>,
-        EccChip::Point: InnerValue<Element = C::CryptographicGroup> + Clone,
-    {
-        let mut rng = ChaCha8Rng::seed_from_u64(0xc0ffee);
-        let wrong = C::CryptographicGroup::random(&mut rng);
-        let mut cost_model = true;
-        [
-            // used for identity on Edwards curves
-            (C::CryptographicGroup::random(&mut rng), true),
-            (C::CryptographicGroup::identity(), true),
+            (C::CryptographicGroup::identity(), id_from_coord_ok),
             (C::CryptographicGroup::generator(), true),
         ]
         .into_iter()
