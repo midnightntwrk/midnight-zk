@@ -89,7 +89,7 @@ macro_rules! run_test_native_gadget {
         }
 
         assert_eq!(
-            MockProver::<Scalar>::run(10, &(TestCircuit::<4> {}), vec![vec![], vec![]])
+            MockProver::<Scalar>::run(&(TestCircuit::<4> {}), vec![vec![], vec![]])
                 .unwrap()
                 .verify(),
             Ok(())

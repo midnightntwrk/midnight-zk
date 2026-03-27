@@ -296,9 +296,8 @@ mod tests {
             operation,
             _marker: PhantomData,
         };
-        let log2_nb_rows = if sequence.len() > 1000 { 13 } else { 12 };
         let public_inputs = vec![vec![], vec![]];
-        match MockProver::run(log2_nb_rows, &circuit, public_inputs) {
+        match MockProver::run(&circuit, public_inputs) {
             Ok(prover) => match prover.verify() {
                 Ok(()) => assert!(must_pass),
                 Err(e) => assert!(!must_pass, "Failed verifier with error {e:?}"),

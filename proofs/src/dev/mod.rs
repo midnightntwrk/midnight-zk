@@ -1,9 +1,11 @@
 //! Tools for developing circuits.
 
 use std::{
+    cell::RefCell,
     collections::{HashMap, HashSet},
     iter,
     ops::{Add, Mul, Neg, Range},
+    rc::Rc,
 };
 
 use blake2b_simd::blake2b;
@@ -182,7 +184,6 @@ impl<F: Field> Mul<F> for Value<F> {
 ///     plonk::{Advice, Any, Circuit, Column, ConstraintSystem, Constraints, Error, Selector},
 ///     poly::Rotation,
 /// };
-/// const K: u32 = 5;
 ///
 /// #[derive(Copy, Clone)]
 /// struct MyConfig {
@@ -253,7 +254,7 @@ impl<F: Field> Mul<F> for Value<F> {
 /// // This circuit has no public inputs.
 /// let instance = vec![];
 ///
-/// let prover = MockProver::<Scalar>::run(K, &circuit, instance).unwrap();
+/// let prover = MockProver::<Scalar>::run(&circuit, instance).unwrap();
 /// assert_eq!(
 ///     prover.verify(),
 ///     Err(vec![VerifyFailure::ConstraintNotSatisfied {
@@ -268,15 +269,6 @@ impl<F: Field> Mul<F> for Value<F> {
 ///             (((Any::advice(), 2).into(), 0).into(), "0x8".to_string()),
 ///         ],
 ///     }])
-/// );
-///
-/// // If we provide a too-small K, we get a panic.
-/// use std::panic;
-/// let result =
-///     panic::catch_unwind(|| MockProver::<Scalar>::run(2, &circuit, vec![]).unwrap_err());
-/// assert_eq!(
-///     result.unwrap_err().downcast_ref::<String>().unwrap(),
-///     "n=4, minimum_rows=8, k=2"
 /// );
 /// ```
 #[derive(Debug)]
@@ -594,32 +586,237 @@ impl<F: Field> Assignment<F> for MockProver<F> {
     }
 }
 
-impl<F: FromUniformBytes<64> + Ord> MockProver<F> {
-    /// Runs a synthetic keygen-and-prove operation on the given circuit,
-    /// collecting data about the constraints and their assignments.
-    pub fn run<ConcreteCircuit: Circuit<F>>(
-        k: u32,
+/// A lightweight [`Assignment`] implementation that determines the minimum
+/// circuit size.
+///
+/// Performs a dry run of synthesis, tracking only the maximum row index
+/// accessed. This can be used to compute the minimum `k` (where `n = 2^k`)
+/// required to fit a circuit, without allocating full column storage or doing
+/// any field arithmetic.
+///
+/// # Example
+///
+/// ```
+/// # use ff::PrimeField;
+/// # use midnight_curves::Fq as Scalar;
+/// # use midnight_proofs::{
+/// #     circuit::{Layouter, SimpleFloorPlanner, Value},
+/// #     dev::RowSizer,
+/// #     plonk::{Circuit, ConstraintSystem, Error},
+/// # };
+/// # #[derive(Clone, Default)]
+/// # struct MyCircuit;
+/// # impl Circuit<Scalar> for MyCircuit {
+/// #     type Config = ();
+/// #     type FloorPlanner = SimpleFloorPlanner;
+/// #     type Params = ();
+/// #     fn without_witnesses(&self) -> Self { Self }
+/// #     fn configure(_: &mut ConstraintSystem<Scalar>) {}
+/// #     fn synthesize(&self, _: (), _: impl Layouter<Scalar>) -> Result<(), Error> { Ok(()) }
+/// # }
+/// let circuit = MyCircuit;
+/// let (k, n) = RowSizer::<Scalar>::min_k(&circuit, vec![]).unwrap();
+/// ```
+#[derive(Debug)]
+pub struct RowSizer<F: Field> {
+    /// The maximum row index accessed during synthesis.
+    pub max_row: Rc<RefCell<usize>>,
+    instance: Vec<Vec<F>>,
+}
+
+impl<F: Field> RowSizer<F> {
+    /// Creates a new `RowSizer` with the given instance columns.
+    pub fn new(instance: Vec<Vec<F>>) -> Self {
+        Self {
+            max_row: Rc::new(RefCell::new(0)),
+            instance,
+        }
+    }
+
+    fn update_max_row(&self, row: usize) {
+        let mut max_row = self.max_row.borrow_mut();
+        if row > *max_row {
+            *max_row = row;
+        }
+    }
+}
+
+impl<F: FromUniformBytes<64> + Ord> RowSizer<F> {
+    /// Synthesizes `circuit` and returns `(k, n)` — the minimum circuit size
+    /// parameters such that `n = 2^k` is large enough to hold all assigned
+    /// rows.
+    pub fn min_k<ConcreteCircuit: Circuit<F>>(
         circuit: &ConcreteCircuit,
         instance: Vec<Vec<F>>,
-    ) -> Result<Self, Error> {
-        let n = 1 << k;
-
+    ) -> Result<(u32, usize), Error> {
         let mut cs = ConstraintSystem::default();
         #[cfg(feature = "circuit-params")]
         let config = ConcreteCircuit::configure_with_params(&mut cs, circuit.params());
         #[cfg(not(feature = "circuit-params"))]
         let config = ConcreteCircuit::configure(&mut cs);
-        let cs = cs;
 
-        assert!(
-            n >= cs.minimum_rows(),
-            "n={}, minimum_rows={}, k={}",
-            n,
-            cs.minimum_rows(),
-            k,
-        );
+        let mut sizer = RowSizer::new(instance);
+        let constants = cs.constants.clone();
+        ConcreteCircuit::FloorPlanner::synthesize(&mut sizer, circuit, config, constants)?;
+
+        let blinding_factors = cs.blinding_factors();
+        // Find the maximum positive rotation used by any gate query. Rows near the end
+        // of usable_rows that are accessed with a positive rotation could
+        // otherwise land in blinding rows, causing Value::Poison to appear
+        // during constraint verification.
+        let max_positive_rotation = cs
+            .advice_queries()
+            .iter()
+            .map(|(_, r)| r.0)
+            .chain(cs.fixed_queries().iter().map(|(_, r)| r.0))
+            .chain(cs.instance_queries().iter().map(|(_, r)| r.0))
+            .filter(|&r| r > 0)
+            .max()
+            .unwrap_or(0) as usize;
+        let required_n = (*sizer.max_row.borrow() + blinding_factors + 2 + max_positive_rotation)
+            .max(cs.minimum_rows());
+        let n = required_n.next_power_of_two();
+        let k = n.trailing_zeros();
+        Ok((k, n))
+    }
+}
+
+impl<F: Field> Assignment<F> for RowSizer<F> {
+    fn enter_region<NR, N>(&mut self, _: N)
+    where
+        NR: Into<String>,
+        N: FnOnce() -> NR,
+    {
+    }
+
+    fn exit_region(&mut self) {}
+
+    fn annotate_column<A, AR>(&mut self, _: A, _: Column<Any>)
+    where
+        A: FnOnce() -> AR,
+        AR: Into<String>,
+    {
+    }
+
+    fn enable_selector<A, AR>(&mut self, _: A, _: &Selector, row: usize) -> Result<(), Error>
+    where
+        A: FnOnce() -> AR,
+        AR: Into<String>,
+    {
+        self.update_max_row(row);
+        Ok(())
+    }
+
+    fn query_instance(
+        &self,
+        column: Column<Instance>,
+        row: usize,
+    ) -> Result<circuit::Value<F>, Error> {
+        self.update_max_row(row);
+        Ok(self
+            .instance
+            .get(column.index())
+            .and_then(|col| col.get(row))
+            .map(|v| circuit::Value::known(*v))
+            .unwrap_or_else(circuit::Value::unknown))
+    }
+
+    fn assign_advice<V, VR, A, AR>(
+        &mut self,
+        _: A,
+        _: Column<Advice>,
+        row: usize,
+        to: V,
+    ) -> Result<(), Error>
+    where
+        V: FnOnce() -> circuit::Value<VR>,
+        VR: Into<Rational<F>>,
+        A: FnOnce() -> AR,
+        AR: Into<String>,
+    {
+        self.update_max_row(row);
+        let _ = to();
+        Ok(())
+    }
+
+    fn assign_fixed<V, VR, A, AR>(
+        &mut self,
+        _: A,
+        _: Column<Fixed>,
+        row: usize,
+        to: V,
+    ) -> Result<(), Error>
+    where
+        V: FnOnce() -> circuit::Value<VR>,
+        VR: Into<Rational<F>>,
+        A: FnOnce() -> AR,
+        AR: Into<String>,
+    {
+        self.update_max_row(row);
+        let _ = to();
+        Ok(())
+    }
+
+    fn copy(
+        &mut self,
+        _: Column<Any>,
+        left_row: usize,
+        _: Column<Any>,
+        right_row: usize,
+    ) -> Result<(), Error> {
+        self.update_max_row(left_row);
+        self.update_max_row(right_row);
+        Ok(())
+    }
+
+    fn fill_from_row(
+        &mut self,
+        _: Column<Fixed>,
+        _: usize,
+        _: circuit::Value<Rational<F>>,
+    ) -> Result<(), Error> {
+        // fill_from_row fills up to usable_rows, which is determined by k.
+        // It doesn't add a new upper bound on row usage beyond what k determines,
+        // so we skip it here.
+        Ok(())
+    }
+
+    fn get_challenge(&self, _: Challenge) -> circuit::Value<F> {
+        circuit::Value::unknown()
+    }
+
+    fn push_namespace<NR, N>(&mut self, _: N)
+    where
+        NR: Into<String>,
+        N: FnOnce() -> NR,
+    {
+    }
+
+    fn pop_namespace(&mut self, _: Option<String>) {}
+}
+
+impl<F: FromUniformBytes<64> + Ord> MockProver<F> {
+    /// Runs a synthetic keygen-and-prove operation on the given circuit,
+    /// automatically determining the minimum required `k` (circuit size
+    /// parameter).
+    ///
+    /// Uses [`RowSizer`] for a lightweight dry run to find the minimum `k`,
+    /// then performs full synthesis with that `k`.
+    pub fn run<ConcreteCircuit: Circuit<F>>(
+        circuit: &ConcreteCircuit,
+        instance: Vec<Vec<F>>,
+    ) -> Result<Self, Error> {
+        let mut cs = ConstraintSystem::default();
+        #[cfg(feature = "circuit-params")]
+        let config = ConcreteCircuit::configure_with_params(&mut cs, circuit.params());
+        #[cfg(not(feature = "circuit-params"))]
+        let config = ConcreteCircuit::configure(&mut cs);
 
         assert_eq!(instance.len(), cs.num_instance_columns);
+
+        // Dry run via RowSizer to find the minimum n = 2^k.
+        let (k, n) = RowSizer::min_k(circuit, instance.clone())?;
+        let constants = cs.constants.clone();
 
         let instance = instance
             .into_iter()
@@ -631,26 +828,20 @@ impl<F: FromUniformBytes<64> + Ord> MockProver<F> {
                     n,
                     cs.blinding_factors()
                 );
-
                 let mut instance_values = vec![InstanceValue::Padding; n];
                 for (idx, value) in instance.into_iter().enumerate() {
                     instance_values[idx] = InstanceValue::Assigned(value);
                 }
-
                 instance_values
             })
             .collect::<Vec<_>>();
 
-        // Fixed columns contain no blinding factors.
         let fixed = vec![vec![CellValue::Unassigned; n]; cs.num_fixed_columns];
         let selectors = vec![vec![false; n]; cs.num_selectors];
-        // Advice columns contain blinding factors.
-        let blinding_factors = cs.blinding_factors();
-        let usable_rows = n - (blinding_factors + 1);
+        let usable_rows = n - (cs.blinding_factors() + 1);
         let advice = vec![
             {
                 let mut column = vec![CellValue::Unassigned; n];
-                // Poison unusable rows.
                 for (i, cell) in column.iter_mut().enumerate().skip(usable_rows) {
                     *cell = CellValue::Poison(i);
                 }
@@ -659,9 +850,7 @@ impl<F: FromUniformBytes<64> + Ord> MockProver<F> {
             cs.num_advice_columns
         ];
         let permutation = permutation::keygen::Assembly::new(n, &cs.permutation);
-        let constants = cs.constants.clone();
 
-        // Use hash chain to derive deterministic challenges for testing
         let challenges = {
             let mut hash: [u8; 64] = blake2b(b"Halo2-MockProver").as_bytes().try_into().unwrap();
             iter::repeat_with(|| {
@@ -1274,8 +1463,6 @@ mod tests {
 
     #[test]
     fn unassigned_cell() {
-        const K: u32 = 4;
-
         #[derive(Clone)]
         struct FaultyCircuitConfig {
             a: Column<Advice>,
@@ -1340,7 +1527,7 @@ mod tests {
             }
         }
 
-        let prover = MockProver::run(K, &FaultyCircuit {}, vec![]).unwrap();
+        let prover = MockProver::run(&FaultyCircuit {}, vec![]).unwrap();
         assert_eq!(
             prover.verify(),
             Err(vec![VerifyFailure::CellNotAssigned {
@@ -1360,8 +1547,6 @@ mod tests {
 
     #[test]
     fn bad_lookup_any() {
-        const K: u32 = 4;
-
         #[derive(Clone)]
         struct FaultyCircuitConfig {
             a: Column<Advice>,
@@ -1506,7 +1691,6 @@ mod tests {
         }
 
         let prover = MockProver::run(
-            K,
             &FaultyCircuit {},
             // This is our "lookup table".
             vec![vec![
@@ -1650,7 +1834,7 @@ mod tests {
             }
         }
 
-        let prover = MockProver::run(K, &FaultyCircuit {}, vec![]).unwrap();
+        let prover = MockProver::run(&FaultyCircuit {}, vec![]).unwrap();
         assert_eq!(
             prover.verify(),
             Err(vec![VerifyFailure::Lookup {
@@ -1666,8 +1850,6 @@ mod tests {
 
     #[test]
     fn contraint_unsatisfied() {
-        const K: u32 = 4;
-
         #[derive(Clone)]
         struct FaultyCircuitConfig {
             a: Column<Advice>,
@@ -1789,7 +1971,7 @@ mod tests {
             }
         }
 
-        let prover = MockProver::run(K, &FaultyCircuit {}, vec![]).unwrap();
+        let prover = MockProver::run(&FaultyCircuit {}, vec![]).unwrap();
         assert_eq!(
             prover.verify(),
             Err(vec![VerifyFailure::ConstraintNotSatisfied {

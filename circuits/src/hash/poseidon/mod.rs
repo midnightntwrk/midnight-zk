@@ -188,48 +188,47 @@ mod tests {
     type F = midnight_curves::Fq;
     #[test]
     fn test_poseidon_hash() {
-        fn test_wrapper(input_size: usize, k: u32, cost_model: bool) {
+        fn test_wrapper(input_size: usize, cost_model: bool) {
             test_hash::<F, AssignedNative<F>, AssignedNative<F>, PoseidonChip<F>, NativeChip<F>>(
-                cost_model, "Poseidon", input_size, k,
+                cost_model, "Poseidon", input_size,
             )
         }
 
         // Cost model update with input size = 64 field elements
-        test_wrapper(32 * RATE, 10, true);
+        test_wrapper(32 * RATE, true);
 
-        test_wrapper(RATE, 5, false);
-        test_wrapper(RATE - 1, 5, false);
-        test_wrapper(RATE - 2, 5, false);
-        test_wrapper(2 * RATE, 7, false);
-        test_wrapper(2 * RATE - 1, 7, false);
-        test_wrapper(2 * RATE + 1, 7, false);
-        test_wrapper(4 * RATE, 7, false);
-        test_wrapper(8 * RATE, 8, false);
-        test_wrapper(16 * RATE, 9, false);
+        test_wrapper(RATE, false);
+        test_wrapper(RATE - 1, false);
+        test_wrapper(RATE - 2, false);
+        test_wrapper(2 * RATE, false);
+        test_wrapper(2 * RATE - 1, false);
+        test_wrapper(2 * RATE + 1, false);
+        test_wrapper(4 * RATE, false);
+        test_wrapper(8 * RATE, false);
+        test_wrapper(16 * RATE, false);
     }
 
     #[test]
     fn test_poseidon_varhash() {
-        fn test_wrapper<const M: usize>(input_size: usize, k: u32, cost_model: bool) {
+        fn test_wrapper<const M: usize>(input_size: usize, cost_model: bool) {
             test_varhash::<F, AssignedNative<F>, AssignedNative<F>, VarLenPoseidonGadget<F>, M, RATE>(
                 cost_model,
                 "VarPoseidon",
                 input_size,
-                k,
             )
         }
         // Cost model update with input size = 64 field elements
-        test_wrapper::<64>(32, 14, true);
+        test_wrapper::<64>(32, true);
 
-        test_wrapper::<512>(64, 14, false);
-        test_wrapper::<512>(63, 14, false);
+        test_wrapper::<512>(64, false);
+        test_wrapper::<512>(63, false);
 
-        test_wrapper::<256>(128, 12, false);
-        test_wrapper::<256>(127, 12, false);
-        test_wrapper::<256>(256, 12, false);
+        test_wrapper::<256>(128, false);
+        test_wrapper::<256>(127, false);
+        test_wrapper::<256>(256, false);
 
-        test_wrapper::<128>(0, 11, false);
-        test_wrapper::<128>(1, 11, false);
-        test_wrapper::<128>(2, 11, false);
+        test_wrapper::<128>(0, false);
+        test_wrapper::<128>(1, false);
+        test_wrapper::<128>(2, false);
     }
 }

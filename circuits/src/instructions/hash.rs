@@ -158,7 +158,6 @@ pub(crate) mod tests {
         cost_model: bool,
         chip_name: &str,
         size: usize,
-        k: u32,
     ) where
         F: CircuitField + ff::FromUniformBytes<64> + Ord,
         Input: InnerValue + Sampleable,
@@ -183,7 +182,7 @@ pub(crate) mod tests {
             _marker: PhantomData,
         };
 
-        MockProver::run(k, &circuit, vec![vec![], vec![]]).unwrap().assert_satisfied();
+        MockProver::run(&circuit, vec![vec![], vec![]]).unwrap().assert_satisfied();
         println!("\n... succeeded!\n");
 
         if cost_model {
@@ -264,7 +263,6 @@ pub(crate) mod tests {
         cost_model: bool,
         chip_name: &str,
         size: usize,
-        k: u32,
     ) where
         F: CircuitField + ff::FromUniformBytes<64> + Ord,
         Input: Vectorizable + Sampleable,
@@ -285,7 +283,7 @@ pub(crate) mod tests {
             _marker: PhantomData,
         };
 
-        MockProver::run(k, &circuit, vec![vec![], vec![]]).unwrap().assert_satisfied();
+        MockProver::run(&circuit, vec![vec![], vec![]]).unwrap().assert_satisfied();
 
         if cost_model {
             circuit_to_json(chip_name, "hash", circuit);

@@ -404,7 +404,6 @@ mod test {
     fn parsing_one_test(
         test_index: usize,
         cost_model: bool,
-        k: u32,
         input: &str,
         output: &[usize],
         circuit: &RegexCircuit<midnight_curves::Fq>,
@@ -414,7 +413,7 @@ mod test {
             !cost_model || must_pass,
             ">> [test {test_index}] (bug) if cost_model is set to true, must_pass should be set to true"
         );
-        let prover = MockProver::<midnight_curves::Fq>::run(k, circuit, vec![vec![], vec![]]);
+        let prover = MockProver::<midnight_curves::Fq>::run(circuit, vec![vec![], vec![]]);
         if must_pass {
             println!(
                 ">> [test {test_index}] Parsing input {} with automaton {}, which should pass (output: {:?})",
@@ -466,7 +465,6 @@ mod test {
         parsing_one_test(
             test_index,
             false,
-            10,
             input,
             output,
             &RegexCircuit::new(input, output, automaton_index),
@@ -486,7 +484,7 @@ mod test {
     }
 
     // A test to record the performances of the circuit in the golden files.
-    fn perf_test(test_index: usize, input: &str, automaton_index: usize, k: u32) {
+    fn perf_test(test_index: usize, input: &str, automaton_index: usize) {
         println!(
             "\n>> Performance test (automaton {automaton_index}), input size {}:",
             input.len()
@@ -495,7 +493,6 @@ mod test {
         parsing_one_test(
             test_index,
             true,
-            k,
             input,
             &output,
             &RegexCircuit::new(input, &output, automaton_index),
@@ -611,11 +608,6 @@ mod test {
 
         // Performance inputs for the golden files, using automaton 0, for an input of
         // 50 bytes.
-        perf_test(
-            28,
-            "hello hello  hello (world, world  , world )  !!!!!",
-            0,
-            10,
-        );
+        perf_test(28, "hello hello  hello (world, world  , world )  !!!!!", 0);
     }
 }

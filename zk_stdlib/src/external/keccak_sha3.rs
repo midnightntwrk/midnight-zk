@@ -277,71 +277,71 @@ mod test {
 
     #[test]
     fn test_keccak_preimage() {
-        fn test_wrapper(input_size: usize, k: u32, cost_model: bool) {
+        fn test_wrapper(input_size: usize, cost_model: bool) {
             test_hash::<
                 Fq,
                 AssignedByte<Fq>,
                 [AssignedByte<Fq>; 32],
                 Keccak256<Fq>,
                 NativeGadget<Fq, _, _>,
-            >(cost_model, "Keccak_256", input_size, k);
+            >(cost_model, "Keccak_256", input_size);
         }
         const SHA3_256_RATE: usize = 136;
         // Cost model update with input size = 256
-        test_wrapper(256, 14, true);
+        test_wrapper(256, true);
 
-        test_wrapper(SHA3_256_RATE - 2, 14, false);
-        test_wrapper(SHA3_256_RATE - 1, 14, false);
-        test_wrapper(SHA3_256_RATE, 14, false);
-        test_wrapper(SHA3_256_RATE + 1, 14, false);
-        test_wrapper(SHA3_256_RATE + 2, 14, false);
+        test_wrapper(SHA3_256_RATE - 2, false);
+        test_wrapper(SHA3_256_RATE - 1, false);
+        test_wrapper(SHA3_256_RATE, false);
+        test_wrapper(SHA3_256_RATE + 1, false);
+        test_wrapper(SHA3_256_RATE + 2, false);
 
-        test_wrapper(2 * SHA3_256_RATE - 2, 16, false);
-        test_wrapper(2 * SHA3_256_RATE - 1, 16, false);
-        test_wrapper(2 * SHA3_256_RATE, 16, false);
-        test_wrapper(2 * SHA3_256_RATE + 1, 16, false);
-        test_wrapper(2 * SHA3_256_RATE + 2, 16, false);
+        test_wrapper(2 * SHA3_256_RATE - 2, false);
+        test_wrapper(2 * SHA3_256_RATE - 1, false);
+        test_wrapper(2 * SHA3_256_RATE, false);
+        test_wrapper(2 * SHA3_256_RATE + 1, false);
+        test_wrapper(2 * SHA3_256_RATE + 2, false);
 
-        test_wrapper(4 * SHA3_256_RATE, 16, false);
+        test_wrapper(4 * SHA3_256_RATE, false);
 
-        test_wrapper(0, 14, false);
-        test_wrapper(1, 14, false);
-        test_wrapper(2, 14, false);
+        test_wrapper(0, false);
+        test_wrapper(1, false);
+        test_wrapper(2, false);
     }
 
     #[test]
     fn test_sha3_preimage() {
-        fn test_wrapper(input_size: usize, k: u32, cost_model: bool) {
+        fn test_wrapper(input_size: usize, cost_model: bool) {
             test_hash::<
                 Fq,
                 AssignedByte<Fq>,
                 [AssignedByte<Fq>; 32],
                 Sha3_256<Fq>,
                 NativeGadget<Fq, _, _>,
-            >(cost_model, "Sha3_256", input_size, k);
+            >(cost_model, "Sha3_256", input_size);
         }
         const SHA3_256_RATE: usize = 136;
 
         // Cost model update with input size = 256
-        test_wrapper(256, 15, true);
+        test_wrapper(256, true);
 
-        test_wrapper(SHA3_256_RATE - 2, 14, false);
-        test_wrapper(SHA3_256_RATE - 1, 14, false);
-        test_wrapper(SHA3_256_RATE, 14, false);
-        test_wrapper(SHA3_256_RATE + 1, 14, false);
-        test_wrapper(SHA3_256_RATE + 2, 14, false);
+        test_wrapper(SHA3_256_RATE - 2, false);
+        test_wrapper(SHA3_256_RATE - 1, false);
+        test_wrapper(SHA3_256_RATE, false);
+        test_wrapper(SHA3_256_RATE + 1, false);
+        test_wrapper(SHA3_256_RATE + 2, false);
 
-        test_wrapper(2 * SHA3_256_RATE - 2, 16, false);
-        test_wrapper(2 * SHA3_256_RATE - 1, 16, false);
+        test_wrapper(2 * SHA3_256_RATE - 2, false);
+        test_wrapper(2 * SHA3_256_RATE - 1, false);
 
-        test_wrapper(2 * SHA3_256_RATE, 16, false);
-        test_wrapper(2 * SHA3_256_RATE + 1, 16, false);
-        test_wrapper(2 * SHA3_256_RATE + 2, 16, false);
+        test_wrapper(2 * SHA3_256_RATE, false);
+        test_wrapper(2 * SHA3_256_RATE + 1, false);
+        test_wrapper(2 * SHA3_256_RATE + 2, false);
 
-        test_wrapper(4 * SHA3_256_RATE, 16, false);
+        test_wrapper(4 * SHA3_256_RATE, false);
 
-        test_wrapper(0, 14, false);
-        test_wrapper(1, 14, false);
-        test_wrapper(2, 14, false);
+        test_wrapper(0, false);
+        test_wrapper(1, false);
+        test_wrapper(2, false);
     }
 }
