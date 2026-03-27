@@ -1001,6 +1001,8 @@ mod tests {
         run_test_assert_on_curve::<JubjubExtended>();
     }
 
+    /// Negative tests for `assert_on_curve`. Positive cases (identity,
+    /// generator, random points) are covered by the generic `test_assign`.
     fn run_test_assert_on_curve<C>()
     where
         C: EdwardsCurve,
@@ -1008,66 +1010,27 @@ mod tests {
         MultiEmulationParams: FieldEmulationParams<BlsScalar, C::Base>
             + FieldEmulationParams<BlsScalar, C::ScalarField>,
     {
+        fn assert_not_on_curve<C: EdwardsCurve>(x: C::Base, y: C::Base)
+        where
+            C::Base: Legendre,
+            MultiEmulationParams: FieldEmulationParams<BlsScalar, C::Base>
+                + FieldEmulationParams<BlsScalar, C::ScalarField>,
+        {
+            let circuit = OnCurveCheckCircuit::<C> { x, y };
+            let prover = MockProver::run(&circuit, vec![vec![], vec![]])
+                .expect("proof generation should not fail");
+            assert!(prover.verify().is_err());
+        }
+
         let mut rng = ChaCha8Rng::seed_from_u64(0x0);
 
-        // Sample random subgroup point
+        // Random point with y offset by 1
         let point = C::CryptographicGroup::random(&mut rng);
         let (x, y) = point.into().coordinates().expect("valid curve point");
 
-        // Valid point: identity (0, 1)
-        let circuit = OnCurveCheckCircuit::<C> {
-            x: C::Base::ZERO,
-            y: C::Base::ONE,
-        };
-        let prover = MockProver::run(&circuit, vec![vec![], vec![]])
-            .expect("proof generation should not fail");
-        prover.verify().expect("identity (0,1) should pass verification");
-
-        // Valid point: generator
-        let gen = C::CryptographicGroup::generator();
-        let (gx, gy) = gen.into().coordinates().expect("valid generator");
-        let circuit = OnCurveCheckCircuit::<C> { x: gx, y: gy };
-        let prover = MockProver::run(&circuit, vec![vec![], vec![]])
-            .expect("proof generation should not fail");
-        prover.verify().expect("generator should pass verification");
-
-        // Invalid point: offset the y coordinate of a random curve point by 1, so the
-        // curve equation is not satisfied with overwhelming probability (there
-        // is a negligible probability this test fails)
-        let circuit = OnCurveCheckCircuit::<C> {
-            x,
-            y: y + C::Base::ONE,
-        };
-        let prover = MockProver::run(&circuit, vec![vec![], vec![]])
-            .expect("proof generation should not fail");
-        assert!(
-            prover.verify().is_err(),
-            "invalid point should fail verification"
-        );
-
-        // Invalid point: (1,1)
-        let circuit = OnCurveCheckCircuit::<C> {
-            x: C::Base::ONE,
-            y: C::Base::ONE,
-        };
-        let prover = MockProver::run(&circuit, vec![vec![], vec![]])
-            .expect("proof generation should not fail");
-        assert!(
-            prover.verify().is_err(),
-            "invalid point (1,1) should fail verification"
-        );
-
-        // Invalid point: (0, 0)
-        let circuit = OnCurveCheckCircuit::<C> {
-            x: C::Base::ZERO,
-            y: C::Base::ZERO,
-        };
-        let prover = MockProver::run(&circuit, vec![vec![], vec![]])
-            .expect("proof generation should not fail");
-        assert!(
-            prover.verify().is_err(),
-            "invalid point (0,0) should fail verification"
-        );
+        assert_not_on_curve::<C>(x, y + C::Base::ONE);
+        assert_not_on_curve::<C>(C::Base::ONE, C::Base::ONE);
+        assert_not_on_curve::<C>(C::Base::ZERO, C::Base::ZERO);
     }
 
     type EdwardsChip<C> = ForeignEdwardsEccChip<
