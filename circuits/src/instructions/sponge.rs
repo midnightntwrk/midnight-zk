@@ -94,7 +94,7 @@ pub(crate) mod tests {
     use crate::{
         instructions::{AssertionInstructions, AssignmentInstructions},
         testing_utils::{FromScratch, Sampleable},
-        utils::circuit_modeling::circuit_to_json,
+        utils::circuit_modeling::{circuit_to_json, cost_measure_end, cost_measure_start},
     };
 
     #[derive(Clone, Debug, Default)]
@@ -152,6 +152,7 @@ pub(crate) mod tests {
             let mut cpu_state =
                 <SpongeChip as SpongeCPU<Input::Element, Output::Element>>::init(None);
 
+            cost_measure_start(&mut layouter);
             for step in self.sequence.iter() {
                 for _nr_absorb in 0..step.0 {
                     let input_vec = self.inputs[input_idx]
@@ -178,6 +179,7 @@ pub(crate) mod tests {
                     assign_chip.assert_equal_to_fixed(&mut layouter, &out, expected_out)?;
                 }
             }
+            cost_measure_end(&mut layouter);
 
             chip.load_from_scratch(&mut layouter)?;
             assign_chip.load_from_scratch(&mut layouter)

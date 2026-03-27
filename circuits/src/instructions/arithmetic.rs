@@ -398,7 +398,7 @@ pub(crate) mod tests {
     use super::*;
     use crate::{
         testing_utils::{FromScratch, Invertible},
-        utils::circuit_modeling::circuit_to_json,
+        utils::circuit_modeling::{circuit_to_json, cost_measure_end, cost_measure_start},
     };
 
     #[derive(Clone, Debug)]
@@ -465,6 +465,7 @@ pub(crate) mod tests {
             let y = chip.assign_fixed(&mut layouter, self.inputs[y_idx].clone())?;
             let k = self.inputs[y_idx].clone();
 
+            cost_measure_start(&mut layouter);
             let res = match self.operation {
                 Operation::Add => chip.add(&mut layouter, &x, &y),
                 Operation::Sub => chip.sub(&mut layouter, &x, &y),
@@ -495,6 +496,7 @@ pub(crate) mod tests {
                     Assigned::Element::from(1),
                 ),
             }?;
+            cost_measure_end(&mut layouter);
 
             let expected = chip.assign_fixed(&mut layouter, self.expected.clone())?;
             chip.assert_equal(&mut layouter, &expected, &res)?;

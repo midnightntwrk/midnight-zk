@@ -70,7 +70,7 @@ pub(crate) mod tests {
         instructions::{AssignmentInstructions, EccInstructions},
         testing_utils::{FromScratch, Sampleable},
         types::{InnerConstants, InnerValue},
-        utils::circuit_modeling::circuit_to_json,
+        utils::circuit_modeling::{circuit_to_json, cost_measure_end, cost_measure_start},
         CircuitField,
     };
 
@@ -126,7 +126,9 @@ pub(crate) mod tests {
             let htc_chip = HashToCurveChip::new_from_scratch(&config.1);
 
             let input = inputs_chip.assign(&mut layouter, self.input.clone())?;
+            cost_measure_start(&mut layouter);
             let res = htc_chip.hash_to_curve(&mut layouter, &[input])?;
+            cost_measure_end(&mut layouter);
             htc_chip.ecc_chip().assert_equal_to_fixed(&mut layouter, &res, self.expected)?;
 
             inputs_chip.load_from_scratch(&mut layouter)?;

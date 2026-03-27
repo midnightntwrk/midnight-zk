@@ -62,6 +62,11 @@ struct Region {
     /// The cells assigned in this region. We store this as a `Vec` so that if
     /// any cells are double-assigned, they will be visibly darker.
     cells: HashMap<(Column<Any>, usize), usize>,
+    /// Whether this region is inside a cost-model measurement window (delimited
+    /// by [`cost_model::COST_MEASURE_START`] / [`cost_model::COST_MEASURE_END`]
+    /// namespace markers).  Always `false` for `MockProver`; set by
+    /// `DevAssembly`.
+    is_measured: bool,
 }
 
 impl Region {
@@ -344,6 +349,7 @@ impl<F: Field> Assignment<F> for MockProver<F> {
             annotations: HashMap::default(),
             enabled_selectors: HashMap::default(),
             cells: HashMap::default(),
+            is_measured: false,
         });
     }
 
