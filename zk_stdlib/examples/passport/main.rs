@@ -8,6 +8,7 @@
 
 use std::{io::Write, path::Path, time::Instant};
 
+use midnight_circuits::instructions::map::MapCPU;
 use midnight_zk_stdlib::utils::plonk_api::filecoin_srs;
 use rand::rngs::OsRng;
 
@@ -16,7 +17,15 @@ use rand::rngs::OsRng;
 #[path = "./mod.rs"]
 mod passport;
 
-use passport::circuit::{self, PassportVerification};
+use passport::circuit::PassportVerification;
+
+use crate::passport::{
+    circuit::{CSCA_PATH, CSCA_REGISTRY},
+    spec::{
+        DG1_DOB, DG1_DOC_TYPE, DG1_EXPIRY, DG1_ISSUING_COUNTRY, DG1_NAME, DG1_NATIONALITY,
+        DG1_PASSPORT_NUMBER, DG1_SEX,
+    },
+};
 
 /// Path to the credentials directory, relative to the zk_stdlib crate root.
 const CRED_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/passport/credentials");
@@ -36,10 +45,15 @@ fn load_credential(name: &str) -> (Vec<u8>, [u8; 93], [u8; 256]) {
     (sod, dg1, csca_key)
 }
 
-fn start(msg: &str) -> Instant {
-    print!("{msg}");
+/// Prints a messahe, run a command, and then display its execution time and
+/// returns the function result.
+fn perf_run<A>(msg: &str, f: impl FnOnce() -> A) -> A {
+    print!("> {msg}...");
     let _ = std::io::stdout().flush();
-    Instant::now()
+    let t = Instant::now();
+    let res = f();
+    println!(" done ({:?})", t.elapsed());
+    res
 }
 
 fn main() {
@@ -68,9 +82,9 @@ fn run() {
     );
 
     // Show extracted MRZ fields using the spec constants.
-    use passport::spec::*;
     let field = |r: std::ops::Range<usize>| std::str::from_utf8(&dg1[r]).unwrap_or("?");
-    println!("  Name:        {}", field(DG1_NAME));
+    let name: &str = &field(DG1_NAME).replace("<<", " ").replace("<", " ");
+    println!("  Name:        {}", name);
     println!("  DOB:         {}", field(DG1_DOB));
     println!("  Sex:         {}", field(DG1_SEX));
     println!("  Nationality: {}", field(DG1_NATIONALITY));
@@ -80,45 +94,52 @@ fn run() {
     println!("  Expiry:      {}", field(DG1_EXPIRY));
     println!("SOD size: {} bytes\n", sod.len());
 
-    // Generates the witness, including the CSCA map.
-    let witness = PassportVerification::generate_witness(sod, dg1, csca_key);
-    let instance = PassportVerification::parse_csca_registry(circuit::CSCA_REGISTRY);
+    // Generates the witness, including the CSCA Merkle tree map.
+    let witness = perf_run("Generating witness", || {
+        PassportVerification::generate_witness(sod, dg1, csca_key)
+    });
+    println!(
+        "  -> NB: Includes a CSCA issuer whitelist ({} entries, from {})",
+        CSCA_REGISTRY.lines().count() / 2,
+        CSCA_PATH
+    );
+    let instance = witness.3.succinct_repr();
     let relation = PassportVerification;
 
     // Setup.
-    let k = midnight_zk_stdlib::optimal_k(&relation);
-    println!("optimal_k = {k}");
-    let t = start("Loading SRS...");
-    let srs = filecoin_srs(k);
-    println!(" done ({:?})", t.elapsed());
+    let k = perf_run("For reference: computing optimal size param k", || {
+        midnight_zk_stdlib::optimal_k(&relation)
+    });
+    println!("  -> k = {k}");
+    let srs = perf_run("Loading SRS", || filecoin_srs(k));
 
-    let t = start("Setting up VK...");
-    let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
-    println!(" done ({:?})", t.elapsed());
+    let vk = perf_run("Setting up VK", || {
+        midnight_zk_stdlib::setup_vk(&srs, &relation)
+    });
 
-    let t = start("Setting up PK...");
-    let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
-    println!(" done ({:?})", t.elapsed());
+    let pk = perf_run("Setting up PK", || {
+        midnight_zk_stdlib::setup_pk(&relation, &vk)
+    });
 
-    // Prove.
-    let t = start("Generating proof...");
-    let proof = midnight_zk_stdlib::prove::<PassportVerification, blake2b_simd::State>(
-        &srs, &pk, &relation, &instance, witness, OsRng,
-    )
-    .expect("Proof generation should not fail");
-    println!(" done ({:?})", t.elapsed());
+    // Proof.
+    let proof = perf_run("Generating identity proof", || {
+        midnight_zk_stdlib::prove::<PassportVerification, blake2b_simd::State>(
+            &srs, &pk, &relation, &instance, witness, OsRng,
+        )
+        .expect("Proof generation should not fail")
+    });
 
-    // Verify.
-    let t = start("Verifying proof...");
-    midnight_zk_stdlib::verify::<PassportVerification, blake2b_simd::State>(
-        &srs.verifier_params(),
-        &vk,
-        &instance,
-        None,
-        &proof,
-    )
-    .expect("Verification should not fail");
-    println!(" done ({:?})", t.elapsed());
+    // Verification.
+    perf_run("Verifying credential", || {
+        midnight_zk_stdlib::verify::<PassportVerification, blake2b_simd::State>(
+            &srs.verifier_params(),
+            &vk,
+            &instance,
+            None,
+            &proof,
+        )
+        .expect("Verification should not fail");
+    });
 
-    println!("\nAll checks passed.");
+    println!("\nAll checks passed!");
 }
