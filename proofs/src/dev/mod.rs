@@ -1,9 +1,7 @@
 //! Tools for developing circuits.
 
 use std::{
-    collections::{HashMap, HashSet},
-    iter,
-    ops::{Add, Mul, Neg, Range},
+    cell::RefCell, collections::{HashMap, HashSet}, iter, ops::{Add, Mul, Neg, Range}, rc::Rc
 };
 
 use blake2b_simd::blake2b;
@@ -618,7 +616,7 @@ impl<F: Field> Assignment<F> for MockProver<F> {
 #[derive(Debug)]
 pub struct RowSizer<F: Field> {
     /// The maximum row index accessed during synthesis.
-    pub max_row: usize,
+    pub max_row: Rc<RefCell<usize>>,
     instance: Vec<Vec<F>>,
 }
 
@@ -626,14 +624,15 @@ impl<F: Field> RowSizer<F> {
     /// Creates a new `RowSizer` with the given instance columns.
     pub fn new(instance: Vec<Vec<F>>) -> Self {
         Self {
-            max_row: 0,
+            max_row: Rc::new(RefCell::new(0)),
             instance,
         }
     }
 
-    fn update_max_row(&mut self, row: usize) {
-        if row > self.max_row {
-            self.max_row = row;
+    fn update_max_row(&self, row: usize) {
+        let mut max_row = self.max_row.borrow_mut();
+        if row > *max_row {
+            *max_row = row;
         }
     }
 }
@@ -657,7 +656,7 @@ impl<F: FromUniformBytes<64> + Ord> RowSizer<F> {
         ConcreteCircuit::FloorPlanner::synthesize(&mut sizer, circuit, config, constants)?;
 
         let blinding_factors = cs.blinding_factors();
-        let required_n = (sizer.max_row + blinding_factors + 2).max(cs.minimum_rows());
+        let required_n = (*sizer.max_row.borrow() + blinding_factors + 2).max(cs.minimum_rows());
         let n = required_n.next_power_of_two();
         let k = n.trailing_zeros();
         Ok((k, n))
@@ -695,6 +694,7 @@ impl<F: Field> Assignment<F> for RowSizer<F> {
         column: Column<Instance>,
         row: usize,
     ) -> Result<circuit::Value<F>, Error> {
+        self.update_max_row(row);
         Ok(self
             .instance
             .get(column.index())
@@ -797,29 +797,18 @@ impl<F: FromUniformBytes<64> + Ord> MockProver<F> {
         assert_eq!(instance.len(), cs.num_instance_columns);
 
         // Dry run via RowSizer to find the minimum n = 2^k.
-        let mut sizer = RowSizer::new(instance.clone());
+        let (k, n) = RowSizer::min_k(circuit, instance.clone())?;
         let constants = cs.constants.clone();
-        ConcreteCircuit::FloorPlanner::synthesize(
-            &mut sizer,
-            circuit,
-            config.clone(),
-            constants.clone(),
-        )?;
-
-        let blinding_factors = cs.blinding_factors();
-        let required_n = (sizer.max_row + blinding_factors + 2).max(cs.minimum_rows());
-        let n = required_n.next_power_of_two();
-        let k = n.trailing_zeros();
 
         let instance = instance
             .into_iter()
             .map(|instance| {
                 assert!(
-                    instance.len() <= n - (blinding_factors + 1),
+                    instance.len() <= n - (cs.blinding_factors() + 1),
                     "instance.len={}, n={}, cs.blinding_factors={}",
                     instance.len(),
                     n,
-                    blinding_factors
+                    cs.blinding_factors()
                 );
                 let mut instance_values = vec![InstanceValue::Padding; n];
                 for (idx, value) in instance.into_iter().enumerate() {
@@ -831,7 +820,7 @@ impl<F: FromUniformBytes<64> + Ord> MockProver<F> {
 
         let fixed = vec![vec![CellValue::Unassigned; n]; cs.num_fixed_columns];
         let selectors = vec![vec![false; n]; cs.num_selectors];
-        let usable_rows = n - (blinding_factors + 1);
+        let usable_rows = n - (cs.blinding_factors() + 1);
         let advice = vec![
             {
                 let mut column = vec![CellValue::Unassigned; n];
