@@ -156,41 +156,6 @@ where
     pub fn scalar_field_chip(&self) -> &S {
         &self.scalar_field_chip
     }
-
-    /// Asserts that the given point lies in the subgroup (and thus also on the
-    /// curve).
-    fn assert_in_subgroup(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        p: &AssignedForeignEdwardsPoint<F, C, B>,
-    ) -> Result<(), Error> {
-        // Let h be the cofactor of the subgroup.
-        //
-        // To prove that a point P lies in the subgroup,
-        // we exhibit a curve point Q such that h * Q = P.
-        //
-        // In other words, we prove that P lies in the image
-        // of the multiplication-by-h map.
-        //
-        // Above check needs to be asserted (in-circuit) with the
-        // following constraints:
-        //  1. Q satisfies the curve equation.
-        //  2. h * Q is equal to P.
-        let cofactor = C::ScalarField::from_u128(C::COFACTOR);
-        let q = self.assign_point_unchecked(
-            layouter,
-            p.value().map(|p| {
-                p * cofactor
-                    .invert()
-                    .expect("cofactor must be nonzero and coprime to subgroup order")
-            }),
-        )?;
-
-        self.assert_on_curve(layouter, &q.x, &q.y)?;
-
-        let cofactor_times_q = self.mul_by_constant(layouter, cofactor, &q)?;
-        self.assert_equal(layouter, p, &cofactor_times_q)
-    }
 }
 
 /// Type for foreign Edwards EC points.
@@ -380,13 +345,18 @@ where
     fn assign(
         &self,
         layouter: &mut impl Layouter<F>,
-        value: Value<C::CryptographicGroup>,
+        p_value: Value<C::CryptographicGroup>,
     ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
-        let p = self.assign_point_unchecked(layouter, value)?;
+        // Let h be the cofactor of the subgroup.
+        //
+        // Instead of witnessing P, we witness its h-root Q, and return h * Q.
+        // This guarantess that the returned point is in the desired subgroup.
+        let cofactor = C::ScalarField::from_u128(C::COFACTOR);
+        let q =
+            self.assign_point_unchecked(layouter, p_value.map(|p| p * cofactor.invert().unwrap()))?;
 
-        self.assert_in_subgroup(layouter, &p)?;
-
-        Ok(p)
+        self.assert_on_curve(layouter, &q.x, &q.y)?;
+        self.mul_by_constant(layouter, cofactor, &q)
     }
 
     fn assign_fixed(
@@ -816,18 +786,16 @@ where
         x: &AssignedField<F, C::Base, B>,
         y: &AssignedField<F, C::Base, B>,
     ) -> Result<Self::Point, Error> {
-        let point = x
-            .value()
-            .zip(y.value())
-            .map(|(x, y)| C::from_xy(x, y).expect("valid coordinates").into_subgroup());
+        let p_value = x.value().zip(y.value()).map_with_result(|(x, y)| {
+            C::from_xy(x, y)
+                .map(|p| p.into_subgroup())
+                .ok_or(Error::Synthesis("invalid coordinates".into()))
+        })?;
 
-        let p = AssignedForeignEdwardsPoint::<F, C, B> {
-            point,
-            x: x.clone(),
-            y: y.clone(),
-        };
+        let p = self.assign(layouter, p_value)?;
 
-        self.assert_in_subgroup(layouter, &p)?;
+        self.base_field_chip.assert_equal(layouter, x, &self.x_coordinate(&p))?;
+        self.base_field_chip.assert_equal(layouter, y, &self.y_coordinate(&p))?;
 
         Ok(p)
     }
