@@ -29,6 +29,17 @@ where
 ///
 /// This will use multithreading if beneficial.
 pub fn best_fft<Scalar: Field, G: FftGroup<Scalar>>(a: &mut [G], omega: Scalar, log_n: u32) {
+    let twiddles = compute_twiddles(&omega, log_n);
+    best_fft_with_twiddles(a, &twiddles, log_n);
+}
+
+/// Same as [`best_fft`] but uses precomputed twiddle factors.
+/// Use [`compute_twiddles`] to generate the twiddle array.
+pub fn best_fft_with_twiddles<Scalar: Field, G: FftGroup<Scalar>>(
+    a: &mut [G],
+    twiddles: &[Scalar],
+    log_n: u32,
+) {
     fn bitreverse(mut n: usize, l: usize) -> usize {
         let mut r = 0;
         for _ in 0..l {
@@ -49,15 +60,6 @@ pub fn best_fft<Scalar: Field, G: FftGroup<Scalar>>(a: &mut [G], omega: Scalar, 
             a.swap(rk, k);
         }
     }
-
-    // precompute twiddle factors
-    let twiddles: Vec<_> = (0..(n / 2))
-        .scan(Scalar::ONE, |w, _| {
-            let tw = *w;
-            *w *= &omega;
-            Some(tw)
-        })
-        .collect();
 
     if log_n <= log_threads {
         let mut chunk = 2_usize;
@@ -86,8 +88,21 @@ pub fn best_fft<Scalar: Field, G: FftGroup<Scalar>>(a: &mut [G], omega: Scalar, 
             twiddle_chunk /= 2;
         }
     } else {
-        recursive_butterfly_arithmetic(a, n, 1, &twiddles)
+        recursive_butterfly_arithmetic(a, n, 1, twiddles)
     }
+}
+
+/// Precompute twiddle factors (powers of omega) for an FFT of size `2^log_n`.
+/// Returns a vector of `2^(log_n-1)` elements.
+pub fn compute_twiddles<Scalar: Field>(omega: &Scalar, log_n: u32) -> Vec<Scalar> {
+    let n = 1usize << log_n;
+    (0..(n / 2))
+        .scan(Scalar::ONE, |w, _| {
+            let tw = *w;
+            *w *= omega;
+            Some(tw)
+        })
+        .collect()
 }
 
 /// This perform recursive butterfly arithmetic

@@ -9,6 +9,9 @@ use ff::{Field, FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
 #[cfg(not(feature = "single-h-commitment"))]
 use rand_core::OsRng;
 use rand_core::{CryptoRng, RngCore};
+use rayon::iter::{
+    IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
+};
 
 use super::{
     circuit::{
@@ -105,10 +108,11 @@ where
         let h_limbs: Vec<_> =
             h_limbs.into_iter().map(|h_limb| domain.coeff_from_vec(h_limb)).collect();
 
-        // Compute commitment to each limb
-        let h_commitments = h_limbs.iter().map(|h_piece| CS::commit(params, h_piece));
+        // Compute commitment to each limb (parallel MSMs).
+        let h_commitments: Vec<_> =
+            h_limbs.par_iter().map(|h_piece| CS::commit(params, h_piece)).collect();
 
-        // Write each limb commitment to the transcript
+        // Write each limb commitment to the transcript in order.
         for c in h_commitments {
             transcript.write(&c)?;
         }
@@ -211,16 +215,23 @@ where
     let theta: F = transcript.squeeze_challenge();
 
     // Commit to the multiplicities columns
+    // Parallel compute phase, then sequential transcript writes.
     let lookups: Vec<Vec<logup::prover::ComputedMultiplicities<F>>> = instance
         .iter()
         .zip(advice.iter())
         .map(|(instance, advice)| -> Result<Vec<_>, Error> {
-            pk.vk
+            let logup_args: Vec<_> = pk
+                .vk
                 .cs
                 .lookups
                 .iter()
-                .map(|l| {
-                    l.chunk_by_degree(pk.vk.cs.degree()).commit_multiplicities(
+                .map(|l| l.chunk_by_degree(pk.vk.cs.degree()))
+                .collect();
+            // Compute all lookups in parallel (no transcript access).
+            let results: Vec<_> = logup_args
+                .par_iter()
+                .map(|logup| {
+                    logup.compute_multiplicities_parallel(
                         pk,
                         params,
                         theta,
@@ -228,8 +239,15 @@ where
                         &pk.fixed_values,
                         &instance.instance_values,
                         &challenges,
-                        transcript,
                     )
+                })
+                .collect::<Result<Vec<_>, Error>>()?;
+            // Sequential transcript writes to preserve Fiat-Shamir ordering.
+            results
+                .into_iter()
+                .map(|(computed, commitment)| {
+                    transcript.write(&commitment)?;
+                    Ok(computed)
                 })
                 .collect::<Result<Vec<_>, Error>>()
         })
@@ -261,14 +279,51 @@ where
         })
         .collect::<Result<Vec<_>, _>>()?;
 
+    // Compute logderivative for each lookup in parallel, then write to
+    // transcript and convert to coefficient form. Blinding values are
+    // pre-generated so that compute_logderivative does not need &mut rng.
     let lookups: Vec<Vec<logup::prover::Committed<F>>> = lookups
         .into_iter()
         .map(|lookups| -> Result<Vec<_>, _> {
-            // Construct and commit to products polynomials for each lookup
-            lookups
-                .into_iter()
-                .map(|batch| batch.commit_logderivative(pk, params, beta, &mut rng, transcript))
-                .collect::<Result<Vec<_>, _>>()
+            let blinding_factors = pk.vk.cs.blinding_factors();
+            // Pre-generate blinding values for all lookups.
+            let all_blindings: Vec<Vec<F>> = (0..lookups.len())
+                .map(|_| (0..blinding_factors).map(|_| F::random(&mut rng)).collect())
+                .collect();
+            // Parallel compute phase (no &mut rng needed).
+            let computed: Vec<_> = lookups
+                .into_par_iter()
+                .zip(all_blindings.into_par_iter())
+                .map(|(lookup, blindings)| {
+                    lookup.compute_logderivative(pk, params, beta, blindings)
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            // Commit helper polys and write all commitments to transcript in order.
+            for c in &computed {
+                for h in &c.helper_polys_lagrange {
+                    let h_poly = domain.lagrange_from_vec(h.clone());
+                    let h_commitment = CS::commit_lagrange(params, &h_poly);
+                    transcript.write(&h_commitment)?;
+                }
+                transcript.write(&c.aggregator_commitment)?;
+            }
+            // Convert to coefficient form (FFTs can overlap via rayon).
+            let committed: Vec<_> = computed
+                .into_par_iter()
+                .map(|c| {
+                    let helper_polys = c
+                        .helper_polys_lagrange
+                        .into_iter()
+                        .map(|h| domain.lagrange_to_coeff(domain.lagrange_from_vec(h)))
+                        .collect();
+                    logup::prover::Committed {
+                        multiplicities: domain.lagrange_to_coeff(c.multiplicities),
+                        helper_polys,
+                        aggregator_poly: domain.lagrange_to_coeff(c.aggregator_poly),
+                    }
+                })
+                .collect();
+            Ok(committed) as Result<_, Error>
         })
         .collect::<Result<Vec<_>, _>>()?;
 
@@ -309,7 +364,7 @@ where
         .into_iter()
         .map(|a| {
             a.advice_polys
-                .into_iter()
+                .into_par_iter()
                 .map(|p| domain.lagrange_to_coeff(p))
                 .collect::<Vec<_>>()
         })
@@ -701,7 +756,7 @@ where
             }
 
             let advice_commitments: Vec<_> =
-                advice_values.iter().map(|poly| CS::commit_lagrange(params, poly)).collect();
+                advice_values.par_iter().map(|poly| CS::commit_lagrange(params, poly)).collect();
 
             for commitment in &advice_commitments {
                 transcript.write(commitment)?;
@@ -750,7 +805,7 @@ pub(super) fn compute_nu_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommit
         .iter()
         .map(|advice_polys| {
             advice_polys
-                .iter()
+                .par_iter()
                 .map(|poly| pk.vk.get_domain().coeff_to_extended(poly.clone()))
                 .collect()
         })
@@ -759,7 +814,7 @@ pub(super) fn compute_nu_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommit
         .iter()
         .map(|instance_polys| {
             instance_polys
-                .iter()
+                .par_iter()
                 .map(|poly| pk.vk.get_domain().coeff_to_extended(poly.clone()))
                 .collect()
         })
