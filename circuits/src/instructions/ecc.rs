@@ -110,6 +110,15 @@ where
         bases: &[Self::Point],
     ) -> Result<Self::Point, Error> {
         // This blanket implementation simply ignores all bounds.
+
+        // NOTE FOR Reviewers:
+        // Should it be the other way around?
+        // msm() calls msm_by_bounded_scalars() with max NUM_BITS
+        // instead of this function calling msm()?
+        // Right now foreign edwards_chip and foreign weierstrass chips implement both functions,
+        // but if their msm_by_bounded_scalars
+        // impl is removed we would get a circular function call.
+
         let scalars = scalars.iter().map(|s| s.0.clone()).collect::<Vec<_>>();
         self.msm(layouter, &scalars, bases)
     }
