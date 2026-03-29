@@ -747,18 +747,20 @@ where
         let identity = self.assign_fixed(layouter, C::CryptographicGroup::identity())?;
         let one = self.scalar_field_chip().assign_fixed(layouter, C::ScalarField::ONE)?;
 
+        // Add max bound to scalars + preprocess.
         let scalars: Vec<_> =
             scalars.iter().map(|s| (s.clone(), C::ScalarField::NUM_BITS as usize)).collect();
         let (scalars, bases, bases_with_1bit_scalar) =
             msm_preprocess(self, scalar_chip, layouter, &scalars, bases)?;
-
         let scalar_bits = scalars
             .iter()
             .map(|s| scalar_chip.assigned_to_le_bits(layouter, &s.0, None, true))
             .collect::<Result<Vec<_>, Error>>()?;
+
+        // Windowed msm with shared doubling.
         let res = self.windowed_msm::<3>(layouter, &scalar_bits, &bases)?;
 
-        // Add 1-bit scalar bases
+        // Add 1-bit scalar bases.
         bases_with_1bit_scalar.iter().try_fold(res, |acc, (b, s)| {
             let s_times_b = if s == &one {
                 b.clone()
@@ -770,9 +772,9 @@ where
         })
     }
 
-    // This function currently implements a basic form of double-and-add.
-    // If the scalars are full length, it is better to use `msm`, that sacrifices
-    // specific window-size tuning in order to share the doubling.
+    // Per-base windowed MSM with adaptive window size. Unlike `msm`, this does
+    // not share doublings across bases, avoiding padding waste when scalar
+    // bounds differ significantly.
     fn msm_by_bounded_scalars(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -805,7 +807,7 @@ where
             res = self.add(layouter, &res, &term)?;
         }
 
-        // Add 1-bit scalar bases
+        // Add 1-bit scalar bases.
         bases_with_1bit_scalar.iter().try_fold(res, |acc, (b, s)| {
             let s_times_b = if s == &one {
                 b.clone()
@@ -892,7 +894,7 @@ where
 
 /// Precomputed table of points for windowed MSM.
 #[derive(Clone, Debug)]
-pub struct PrecomputedTable<F, C, B, const WS: usize>
+struct PrecomputedTable<F, C, B, const WS: usize>
 where
     F: CircuitField,
     C: EdwardsCurve,
@@ -911,28 +913,30 @@ where
     S::Scalar: InnerValue<Element = C::ScalarField>,
     N: NativeInstructions<F>,
 {
+    /// Builds table `[0*base, 1*base, ..., (2^WS-1)*base]`. Cost: 2^WS - 2 adds.
     fn precompute<const WS: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
         base: &AssignedForeignEdwardsPoint<F, C, B>,
     ) -> Result<PrecomputedTable<F, C, B, WS>, Error> {
-        let mut acc = base.clone();
         let identity = self.assign_fixed(layouter, C::CryptographicGroup::identity())?;
         let mut table = vec![identity, base.clone()];
+        let mut acc = base.clone();
         for _ in 2..1 << WS {
             acc = self.add(layouter, &acc, base)?;
-            table.push(acc.clone())
+            table.push(acc.clone());
         }
         Ok(PrecomputedTable { table })
     }
 
+    /// Selects `table[w]` where `w` is the LE value of `bits`, using a binary
+    /// mux tree. Cost: 2^WS - 1 point selects.
     fn multi_select<const WS: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
         bits: &[AssignedBit<F>; WS],
         table: &PrecomputedTable<F, C, B, WS>,
     ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
-        assert_eq!(bits.len(), WS);
         assert_eq!(table.table.len(), 1 << WS);
         let mut res = table.table.clone();
 
@@ -947,7 +951,8 @@ where
         Ok(res[0].clone())
     }
 
-    /// Windowed MSM.
+    /// Windowed interleaved MSM over LE bit-decomposed scalars. Shares the
+    /// doubling chain across all bases. MSB-first Horner evaluation.
     fn windowed_msm<const WS: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -990,7 +995,7 @@ where
             }
             for (bits, table) in scalars.iter().zip(tables.iter()) {
                 let window_bits: &[AssignedBit<F>; WS] =
-                    bits[w * WS..(w + 1) * WS].try_into().expect("WS bits");
+                    bits[w * WS..(w + 1) * WS].try_into().expect("window slice length must equal WS");
                 let addend = self.multi_select::<WS>(layouter, window_bits, table)?;
                 res = self.add(layouter, &res, &addend)?;
             }
