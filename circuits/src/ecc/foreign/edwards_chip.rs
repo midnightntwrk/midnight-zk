@@ -767,26 +767,14 @@ where
         let (scalars, bases, bases_with_1bit_scalar) =
             msm_preprocess(self, scalar_chip, layouter, scalars, bases)?;
 
-        let mut max_bits = 0usize;
-        let decomposed_scalars: Vec<Vec<AssignedBit<_>>> = scalars
-            .iter()
-            .map(|(s, num_bits)| {
-                max_bits = std::cmp::max(max_bits, *num_bits);
-                scalar_chip.assigned_to_le_bits(layouter, s, Some(*num_bits), true)
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-
+        // We do not share doublings because we assume the difference in
+        // scalar upper bounds negate the benefits, since we will double
+        // until the max of the bounds.
         let mut res = identity.clone();
-        for i in (0..max_bits).rev() {
-            if i < max_bits - 1 {
-                res = self.add(layouter, &res, &res)?;
-            }
-            for (s, b) in decomposed_scalars.iter().zip(bases.iter()) {
-                if i < s.len() {
-                    let addend = self.select(layouter, &s[i], b, &identity)?;
-                    res = self.add(layouter, &res, &addend)?;
-                }
-            }
+        for ((s, num_bits), b) in scalars.iter().zip(bases.iter()) {
+            let bits = scalar_chip.assigned_to_le_bits(layouter, s, Some(*num_bits), true)?;
+            let term = self.windowed_msm::<3>(layouter, &[bits], &[b.clone()])?;
+            res = self.add(layouter, &res, &term)?;
         }
 
         // Add 1-bit scalar bases
@@ -1450,7 +1438,11 @@ mod tests {
         type P<C> = <C as CircuitCurve>::CryptographicGroup;
 
         let check = |scalars, bases, expected| {
-            let circuit = WindowedMsmCircuit::<C> { scalars, bases, expected };
+            let circuit = WindowedMsmCircuit::<C> {
+                scalars,
+                bases,
+                expected,
+            };
             MockProver::run(17, &circuit, vec![vec![], vec![]])
                 .expect("proof generation should not fail")
                 .verify()
