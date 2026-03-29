@@ -839,6 +839,116 @@ where
     }
 }
 
+/// Precomputed table of points for windowed MSM.
+#[derive(Clone, Debug)]
+pub struct PrecomputedTable<F, C, B, const WS: usize>
+where
+    F: CircuitField,
+    C: EdwardsCurve,
+    B: FieldEmulationParams<F, C::Base>,
+{
+    /// Table of precomputed points, where table[i] = i * base.
+    table: Vec<AssignedForeignEdwardsPoint<F, C, B>>,
+}
+
+impl<F, C, B, S, N> ForeignEdwardsEccChip<F, C, B, S, N>
+where
+    F: CircuitField,
+    C: EdwardsCurve,
+    B: FieldEmulationParams<F, C::Base>,
+    S: ScalarFieldInstructions<F>,
+    S::Scalar: InnerValue<Element = C::ScalarField>,
+    N: NativeInstructions<F>,
+{
+    fn precompute<const WS: usize>(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        base: &AssignedForeignEdwardsPoint<F, C, B>,
+    ) -> Result<PrecomputedTable<F, C, B, WS>, Error> {
+        let mut acc = base.clone();
+        let identity = self.assign_fixed(layouter, C::CryptographicGroup::identity())?;
+        let mut table = vec![identity, base.clone()];
+        for _ in 2..1 << WS {
+            acc = self.add(layouter, &acc, base)?;
+            table.push(acc.clone())
+        }
+        Ok(PrecomputedTable { table })
+    }
+
+    fn multi_select<const WS: usize>(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        bits: &[AssignedBit<F>; WS],
+        table: &PrecomputedTable<F, C, B, WS>,
+    ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
+        assert_eq!(bits.len(), WS);
+        assert_eq!(table.table.len(), 1 << WS);
+        let mut res = table.table.clone();
+
+        let mut len = 1 << WS;
+        for b in bits.iter().rev() {
+            let half_len = len / 2;
+            for i in 0..half_len {
+                res[i] = self.select(layouter, b, &res[i + half_len], &res[i])?;
+            }
+            len = half_len;
+        }
+        Ok(res[0].clone())
+    }
+
+    /// Windowed MSM.
+    fn windowed_msm<const WS: usize>(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        scalars: &[Vec<AssignedBit<F>>],
+        bases: &[AssignedForeignEdwardsPoint<F, C, B>],
+    ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
+        assert_eq!(scalars.len(), bases.len());
+
+        if bases.is_empty() {
+            return self.assign_fixed(layouter, C::CryptographicGroup::identity());
+        }
+
+        // Pad all bit vectors to a common length that is a multiple of WS.
+        let max_bits = scalars.iter().map(|s| s.len()).max().unwrap_or(0);
+        let padded_len = max_bits.div_ceil(WS) * WS;
+        let zero_bit: AssignedBit<F> = self.native_gadget.assign_fixed(layouter, false)?;
+        let scalars: Vec<Vec<AssignedBit<F>>> = scalars
+            .iter()
+            .map(|bits| {
+                let mut padded = bits.clone();
+                padded.resize(padded_len, zero_bit.clone());
+                padded
+            })
+            .collect();
+        let num_windows = padded_len / WS;
+
+        // Precompute tables for each base.
+        let tables: Vec<PrecomputedTable<F, C, B, WS>> = bases
+            .iter()
+            .map(|b| self.precompute::<WS>(layouter, b))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let mut res = self.assign_fixed(layouter, C::CryptographicGroup::identity())?;
+        for w in (0..num_windows).rev() {
+            // Skip doubling in first window.
+            if w < num_windows - 1 {
+                for _ in 0..WS {
+                    res = self.double(layouter, &res)?;
+                }
+            }
+            for (bits, table) in scalars.iter().zip(tables.iter()) {
+                let window_bits: &[AssignedBit<F>; WS] =
+                    bits[w * WS..(w + 1) * WS].try_into().expect("WS bits");
+                let addend = self.multi_select::<WS>(layouter, window_bits, table)?;
+                res = self.add(layouter, &res, &addend)?;
+            }
+        }
+
+        Ok(res)
+    }
+}
+
 #[derive(Clone, Debug)]
 #[cfg(any(test, feature = "testing"))]
 /// Configuration used to implement `FromScratch` for the
