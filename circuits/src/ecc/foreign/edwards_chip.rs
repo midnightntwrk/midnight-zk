@@ -35,6 +35,7 @@ use midnight_proofs::{
     circuit::{Chip, Layouter, Value},
     plonk::{ConstraintSystem, Error},
 };
+use num_traits::identities;
 
 #[cfg(any(test, feature = "testing"))]
 use {
@@ -758,7 +759,7 @@ where
         bases: &[AssignedForeignEdwardsPoint<F, C, B>],
     ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
         if scalars.len() != bases.len() {
-            panic!("Nr of scalars and points should be the same.")
+            panic!("Number of scalars and points should be the same.")
         }
         let scalar_chip = self.scalar_field_chip();
         let identity = self.assign_fixed(layouter, C::CryptographicGroup::identity())?;
@@ -767,21 +768,24 @@ where
         let (scalars, bases, bases_with_1bit_scalar) =
             msm_preprocess(self, scalar_chip, layouter, scalars, bases)?;
 
+        let mut max_bits = 0usize;
+        let decomposed_scalars: Vec<Vec<AssignedBit<_>>> = scalars
+            .iter()
+            .map(|(s, num_bits)| {
+                max_bits = std::cmp::max(max_bits, *num_bits);
+                scalar_chip.assigned_to_le_bits(layouter, s, Some(*num_bits), true)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
         let mut res = identity.clone();
-
-        for ((s, bit_size), b) in scalars.iter().zip(bases.iter()) {
-            let scalar_bits =
-                self.scalar_field_chip()
-                    .assigned_to_le_bits(layouter, s, Some(*bit_size), true)?;
-            let mut p = b.clone();
-
-            // Simple double-and-add
-            for (i, b) in scalar_bits.iter().enumerate() {
-                let addend = self.select(layouter, b, &p, &identity)?;
-                res = self.add(layouter, &res, &addend)?;
-                // The doubling in the last iteration is not needed
-                if i < scalar_bits.len() - 1 {
-                    p = self.double(layouter, &p)?;
+        for i in (0..max_bits).rev() {
+            if i < max_bits - 1 {
+                res = self.add(layouter, &res, &res)?;
+            }
+            for (s, b) in decomposed_scalars.iter().zip(bases.iter()) {
+                if i < s.len() {
+                    let addend = self.select(layouter, &s[i], b, &identity)?;
+                    res = self.add(layouter, &res, &addend)?;
                 }
             }
         }
