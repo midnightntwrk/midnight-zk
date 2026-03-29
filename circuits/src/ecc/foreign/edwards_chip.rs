@@ -704,17 +704,39 @@ where
         scalars: &[Self::Scalar],
         bases: &[Self::Point],
     ) -> Result<Self::Point, Error> {
-        let scalars = scalars
-            .iter()
-            .map(|s| (s.clone(), C::ScalarField::NUM_BITS as usize))
-            .collect::<Vec<_>>();
+        if scalars.len() != bases.len() {
+            panic!("Number of scalars and points should be the same.")
+        }
+        let scalar_chip = self.scalar_field_chip();
+        let identity = self.assign_fixed(layouter, C::CryptographicGroup::identity())?;
+        let one = self.scalar_field_chip().assign_fixed(layouter, C::ScalarField::ONE)?;
 
-        self.msm_by_bounded_scalars(layouter, &scalars, bases)
+        let scalars: Vec<_> =
+            scalars.iter().map(|s| (s.clone(), C::ScalarField::NUM_BITS as usize)).collect();
+        let (scalars, bases, bases_with_1bit_scalar) =
+            msm_preprocess(self, scalar_chip, layouter, &scalars, bases)?;
+
+        let scalar_bits = scalars
+            .iter()
+            .map(|s| scalar_chip.assigned_to_le_bits(layouter, &s.0, None, true))
+            .collect::<Result<Vec<_>, Error>>()?;
+        let res = self.windowed_msm::<3>(layouter, &scalar_bits, &bases)?;
+
+        // Add 1-bit scalar bases
+        bases_with_1bit_scalar.iter().try_fold(res, |acc, (b, s)| {
+            let s_times_b = if s == &one {
+                b.clone()
+            } else {
+                let s_is_zero = scalar_chip.is_zero(layouter, s)?;
+                self.select(layouter, &s_is_zero, &identity, b)?
+            };
+            self.add(layouter, &acc, &s_times_b)
+        })
     }
 
     // This function currently implements a basic form of double-and-add.
-    // There are several improvements available:
-    //  * Using the windowed method
+    // If the scalars are full length, it is better to use `msm`, that sacrifices
+    // specific window-size tuning in order to share the doubling.
     fn msm_by_bounded_scalars(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -737,7 +759,13 @@ where
         let mut res = identity.clone();
         for ((s, num_bits), b) in scalars.iter().zip(bases.iter()) {
             let bits = scalar_chip.assigned_to_le_bits(layouter, s, Some(*num_bits), true)?;
-            let term = self.windowed_msm::<3>(layouter, &[bits], &[b.clone()])?;
+            let term = if *num_bits <= 3 {
+                self.windowed_msm::<1>(layouter, &[bits], &[b.clone()])?
+            } else if *num_bits <= 32 {
+                self.windowed_msm::<2>(layouter, &[bits], &[b.clone()])?
+            } else {
+                self.windowed_msm::<3>(layouter, &[bits], &[b.clone()])?
+            };
             res = self.add(layouter, &res, &term)?;
         }
 
