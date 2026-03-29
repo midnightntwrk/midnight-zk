@@ -135,8 +135,8 @@ fn pow4_ip<const N: usize>(exponents: [u8; N], terms: [u64; N]) -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use rand::{seq::SliceRandom, Rng};
     use super::*;
+    use rand::{seq::SliceRandom, Rng};
     type F = midnight_curves::Fq;
 
     #[test]
