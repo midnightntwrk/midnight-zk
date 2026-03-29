@@ -35,7 +35,6 @@ use midnight_proofs::{
     circuit::{Chip, Layouter, Value},
     plonk::{ConstraintSystem, Error},
 };
-use num_traits::identities;
 
 #[cfg(any(test, feature = "testing"))]
 use {
@@ -1063,6 +1062,7 @@ where
 
 #[cfg(test)]
 mod tests {
+    use ff::Field;
     use group::Group;
     use midnight_curves::{curve25519::Curve25519, BlsScalar, JubjubExtended};
     use midnight_proofs::{circuit::SimpleFloorPlanner, dev::MockProver, plonk::Circuit};
@@ -1366,5 +1366,113 @@ mod tests {
             chip.assert_on_curve(&mut layouter, &x, &y)?;
             chip.load_from_scratch(&mut layouter)
         }
+    }
+
+    /// Test circuit for `windowed_msm`: computes sum_i(scalar_i * base_i) and
+    /// asserts the result equals the expected point.
+    #[derive(Clone, Debug)]
+    struct WindowedMsmCircuit<C: EdwardsCurve> {
+        scalars: Vec<C::ScalarField>,
+        bases: Vec<C::CryptographicGroup>,
+        expected: C::CryptographicGroup,
+    }
+
+    impl<C> Circuit<F> for WindowedMsmCircuit<C>
+    where
+        C: EdwardsCurve,
+        C::Base: Legendre,
+        MultiEmulationParams:
+            FieldEmulationParams<F, C::Base> + FieldEmulationParams<F, C::ScalarField>,
+    {
+        type Config = <EdwardsChip<C> as FromScratch<F>>::Config;
+        type FloorPlanner = SimpleFloorPlanner;
+        type Params = ();
+
+        fn without_witnesses(&self) -> Self {
+            unreachable!()
+        }
+
+        fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+            let committed = meta.instance_column();
+            let instance = meta.instance_column();
+            EdwardsChip::<C>::configure_from_scratch(meta, &[committed, instance])
+        }
+
+        fn synthesize(
+            &self,
+            config: Self::Config,
+            mut layouter: impl Layouter<F>,
+        ) -> Result<(), Error> {
+            let chip = EdwardsChip::<C>::new_from_scratch(&config);
+
+            // Assign bases.
+            let bases: Vec<_> = self
+                .bases
+                .iter()
+                .map(|b| chip.assign(&mut layouter, Value::known(*b)))
+                .collect::<Result<Vec<_>, _>>()?;
+
+            // Decompose scalars to LE bits.
+            let scalar_chip = chip.scalar_field_chip();
+            let scalar_bits: Vec<Vec<AssignedBit<F>>> = self
+                .scalars
+                .iter()
+                .map(|s| {
+                    let assigned = scalar_chip.assign_fixed(&mut layouter, *s)?;
+                    scalar_chip.assigned_to_le_bits(
+                        &mut layouter,
+                        &assigned,
+                        Some(C::ScalarField::NUM_BITS as usize),
+                        true,
+                    )
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+
+            let result = chip.windowed_msm::<3>(&mut layouter, &scalar_bits, &bases)?;
+
+            // Assert result matches expected.
+            let expected = chip.assign_fixed(&mut layouter, self.expected)?;
+            chip.assert_equal(&mut layouter, &result, &expected)?;
+
+            chip.load_from_scratch(&mut layouter)
+        }
+    }
+
+    fn run_test_windowed_msm<C>()
+    where
+        C: EdwardsCurve,
+        C::Base: Legendre,
+        MultiEmulationParams:
+            FieldEmulationParams<F, C::Base> + FieldEmulationParams<F, C::ScalarField>,
+    {
+        let mut rng = ChaCha8Rng::seed_from_u64(0xc00ffee);
+        type S<C> = <C as CircuitCurve>::ScalarField;
+        type P<C> = <C as CircuitCurve>::CryptographicGroup;
+
+        let check = |scalars, bases, expected| {
+            let circuit = WindowedMsmCircuit::<C> { scalars, bases, expected };
+            MockProver::run(17, &circuit, vec![vec![], vec![]])
+                .expect("proof generation should not fail")
+                .verify()
+                .expect("windowed MSM should verify");
+        };
+
+        let (s, p) = (S::<C>::random(&mut rng), P::<C>::random(&mut rng));
+        check(vec![s], vec![p], p * s);
+
+        let (s1, s2) = (S::<C>::random(&mut rng), S::<C>::random(&mut rng));
+        let (p1, p2) = (P::<C>::random(&mut rng), P::<C>::random(&mut rng));
+        check(vec![s1, s2], vec![p1, p2], p1 * s1 + p2 * s2);
+
+        let p = P::<C>::random(&mut rng);
+        check(vec![S::<C>::ZERO], vec![p], P::<C>::identity());
+
+        let p = P::<C>::random(&mut rng);
+        check(vec![S::<C>::ONE], vec![p], p);
+    }
+
+    #[test]
+    fn test_windowed_msm() {
+        run_test_windowed_msm::<JubjubExtended>();
     }
 }
