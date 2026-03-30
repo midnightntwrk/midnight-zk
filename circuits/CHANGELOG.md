@@ -12,6 +12,7 @@ verification keys break backwards compatibility.
 
 ## [Unreleased]
 ### Added
+* Add functions to mark the region of a circuit to be measured for cost modelling [#296](https://github.com/midnightntwrk/midnight-zk/pull/296)
 * Add `assign_without_subgroup_check` to `EccInstructions` and `SelfEmulation` traits [#284](https://github.com/midnightntwrk/midnight-zk/pull/284)
 * Add Curve25519 [#181](https://github.com/midnightntwrk/midnight-zk/pull/181)
 * Expose helper functions directly in `verifier_gadget` [#227](https://github.com/midnightntwrk/midnight-zk/pull/227)

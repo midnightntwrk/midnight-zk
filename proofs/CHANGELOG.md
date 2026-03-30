@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
+* Add functions to mark the region of a circuit to be measured for cost modelling [#296](https://github.com/midnightntwrk/midnight-zk/pull/296)
 * changed `sha256` name in benches to account for the change of naming convention in `circuits` [#135](https://github.com/midnightntwrk/midnight-zk/pull/135)
 * optional names on VerifierQuery commitments [#205](https://github.com/midnightntwrk/midnight-zk/pull/205)
 * Update READMEs and add badges [#261](https://github.com/midnightntwrk/midnight-zk/pull/261)

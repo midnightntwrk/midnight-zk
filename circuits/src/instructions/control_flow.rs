@@ -96,7 +96,7 @@ pub(crate) mod tests {
         instructions::{AssertionInstructions, AssignmentInstructions},
         testing_utils::{FromScratch, Sampleable},
         types::InnerValue,
-        utils::circuit_modeling::circuit_to_json,
+        utils::circuit_modeling::{circuit_to_json, cost_measure_end, cost_measure_start},
     };
 
     #[derive(Clone, Debug)]
@@ -175,6 +175,7 @@ pub(crate) mod tests {
 
             let cond = AssignedBit(cond_value);
 
+            cost_measure_start(&mut layouter);
             match self.operation {
                 Operation::Select => {
                     let res = chip.select(&mut layouter, &cond, &x, &y)?;
@@ -191,6 +192,7 @@ pub(crate) mod tests {
                     )
                 }
             }?;
+            cost_measure_end(&mut layouter);
 
             chip.load_from_scratch(&mut layouter)
         }

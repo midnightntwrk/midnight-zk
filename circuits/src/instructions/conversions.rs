@@ -92,7 +92,7 @@ pub(crate) mod tests {
     use crate::{
         instructions::{AssertionInstructions, AssignmentInstructions},
         testing_utils::FromScratch,
-        utils::circuit_modeling::circuit_to_json,
+        utils::circuit_modeling::{circuit_to_json, cost_measure_end, cost_measure_start},
     };
 
     #[derive(Clone, Debug)]
@@ -153,10 +153,12 @@ pub(crate) mod tests {
 
             let x = chip.assign(&mut layouter, Value::known(self.x.clone()))?;
 
+            cost_measure_start(&mut layouter);
             let y = match self.operation {
                 Operation::Convert => chip.convert(&mut layouter, &x),
                 Operation::UnsafeConvert => chip.convert_unsafe(&mut layouter, &x),
             }?;
+            cost_measure_end(&mut layouter);
 
             if let Some(expected) = self.expected.clone() {
                 chip.assert_equal_to_fixed(&mut layouter, &y, expected)?;

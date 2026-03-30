@@ -323,7 +323,7 @@ mod test {
         instructions::{AssertionInstructions, AssignmentInstructions},
         testing_utils::FromScratch,
         types::AssignedByte,
-        utils::circuit_modeling::circuit_to_json,
+        utils::circuit_modeling::{circuit_to_json, cost_measure_end, cost_measure_start},
         CircuitField,
     };
 
@@ -384,7 +384,9 @@ mod test {
                 scanner_chip.config.automata[&self.automaton_index].transitions.len(),
                 scanner_chip.config.automata[&self.automaton_index].final_states.len()
             );
+            cost_measure_start(&mut layouter);
             let parsed_output = scanner_chip.parse(&mut layouter, &self.automaton_index, &input)?;
+            cost_measure_end(&mut layouter);
             assert!(
                 parsed_output.len() == output.len(),
                 "test failed: the lengths of the
