@@ -672,10 +672,14 @@ where
         let r_value = p.value().zip(q.value()).map(|(p, q)| p + q);
         let r = self.assign_point_unchecked(layouter, r_value)?;
 
-        let px_qy = base_chip.mul(layouter, &p.x, &q.y, None)?;
-        let py_qx = base_chip.mul(layouter, &p.y, &q.x, None)?;
-        let py_qy = base_chip.mul(layouter, &p.y, &q.y, None)?;
         let px_qx = base_chip.mul(layouter, &p.x, &q.x, None)?;
+        let py_qy = base_chip.mul(layouter, &p.y, &q.y, None)?;
+        let px_qy = base_chip.mul(layouter, &p.x, &q.y, None)?;
+        let py_qx = if p == q {
+            px_qy.clone()
+        } else {
+            base_chip.mul(layouter, &p.y, &q.x, None)?
+        };
         let neg_a_px_qx = base_chip.mul_by_constant(layouter, &px_qx, -C::A)?;
         let d_px_py_qx_qy = base_chip.mul(layouter, &px_qx, &py_qy, Some(C::D))?;
         let neg_d_px_py_qx_qy = base_chip.neg(layouter, &d_px_py_qx_qy)?;
