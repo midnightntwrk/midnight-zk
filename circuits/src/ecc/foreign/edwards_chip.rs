@@ -101,7 +101,7 @@ where
 {
     /// Configures the foreign Edwards ECC chip.
     pub fn configure(
-        _meta: &mut ConstraintSystem<F>,
+        meta: &mut ConstraintSystem<F>,
         base_field_config: &FieldChipConfig,
         nb_parallel_range_checks: usize,
         max_bit_len: u32,
@@ -109,7 +109,7 @@ where
         assert!(C::A.legendre() == 1);
         assert!(C::D.legendre() == -1);
         let addition_config = AdditionConfig::<C>::configure::<F, B>(
-            _meta,
+            meta,
             base_field_config,
             nb_parallel_range_checks,
             max_bit_len,
@@ -210,7 +210,7 @@ where
     B: FieldEmulationParams<F, C::Base>,
 {
     fn as_public_input(p: &C::CryptographicGroup) -> Vec<F> {
-        let (x, y) = (*p).into().coordinates().unwrap_or((C::Base::ZERO, C::Base::ZERO));
+        let (x, y) = (*p).into().coordinates().expect("Edwards coordinates cannot fail");
         [
             AssignedField::<F, C::Base, B>::as_public_input(&x).as_slice(),
             AssignedField::<F, C::Base, B>::as_public_input(&y).as_slice(),
@@ -295,7 +295,7 @@ where
         value: Value<C::CryptographicGroup>,
     ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
         let (val_x, val_y) = value
-            .map(|v| v.into().coordinates().expect("assign_unchecked: valid point"))
+            .map(|v| v.into().coordinates().expect("Edwards coordinates cannot fail"))
             .unzip();
         let x = self.base_field_chip().assign(layouter, val_x)?;
         let y = self.base_field_chip().assign(layouter, val_y)?;
@@ -362,7 +362,7 @@ where
         layouter: &mut impl Layouter<F>,
         constant: C::CryptographicGroup,
     ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
-        let (x, y) = constant.into().coordinates().expect("assign_fixed: valid point");
+        let (x, y) = constant.into().coordinates().expect("Edwards coordinates cannot fail");
         let x = self.base_field_chip().assign_fixed(layouter, x)?;
         let y = self.base_field_chip().assign_fixed(layouter, y)?;
 
@@ -482,7 +482,7 @@ where
         p: &AssignedForeignEdwardsPoint<F, C, B>,
         constant: C::CryptographicGroup,
     ) -> Result<(), Error> {
-        let coordinates = constant.into().coordinates().expect("valid point");
+        let coordinates = constant.into().coordinates().expect("Edwards coordinates cannot fail");
         self.base_field_chip().assert_equal_to_fixed(layouter, &p.x, coordinates.0)?;
         self.base_field_chip().assert_equal_to_fixed(layouter, &p.y, coordinates.1)
     }
@@ -525,7 +525,7 @@ where
         p: &AssignedForeignEdwardsPoint<F, C, B>,
         constant: <AssignedForeignEdwardsPoint<F, C, B> as InnerValue>::Element,
     ) -> Result<AssignedBit<F>, Error> {
-        let coordinates = constant.into().coordinates().expect("Valid point");
+        let coordinates = constant.into().coordinates().expect("Edwards coordinates cannot fail");
         let eq_x = self.base_field_chip().is_equal_to_fixed(layouter, &p.x, coordinates.0)?;
         let eq_y = self.base_field_chip().is_equal_to_fixed(layouter, &p.y, coordinates.1)?;
         self.native_gadget.and(layouter, &[eq_x, eq_y])
