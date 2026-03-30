@@ -762,11 +762,11 @@ where
         for ((s, num_bits), b) in scalars.iter().zip(bases.iter()) {
             let bits = scalar_chip.assigned_to_le_bits(layouter, s, Some(*num_bits), true)?;
             let term = if *num_bits <= 3 {
-                self.windowed_msm::<1>(layouter, &[bits], &[b.clone()])?
+                self.windowed_scalar_mul::<1>(layouter, &bits, b)?
             } else if *num_bits <= 32 {
-                self.windowed_msm::<2>(layouter, &[bits], &[b.clone()])?
+                self.windowed_scalar_mul::<2>(layouter, &bits, b)?
             } else {
-                self.windowed_msm::<3>(layouter, &[bits], &[b.clone()])?
+                self.windowed_scalar_mul::<3>(layouter, &bits, b)?
             };
             res = self.add(layouter, &res, &term)?;
         }
@@ -958,14 +958,25 @@ where
                 }
             }
             for (bits, table) in scalars.iter().zip(tables.iter()) {
-                let window_bits: &[AssignedBit<F>; WS] =
-                    bits[w * WS..(w + 1) * WS].try_into().expect("window slice length must equal WS");
+                let window_bits: &[AssignedBit<F>; WS] = bits[w * WS..(w + 1) * WS]
+                    .try_into()
+                    .expect("window slice length must equal WS");
                 let addend = self.multi_select::<WS>(layouter, window_bits, table)?;
                 res = self.add(layouter, &res, &addend)?;
             }
         }
 
         Ok(res)
+    }
+
+    /// Single-base windowed scalar multiplication.
+    fn windowed_scalar_mul<const WS: usize>(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        scalar: &[AssignedBit<F>],
+        base: &AssignedForeignEdwardsPoint<F, C, B>,
+    ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
+        self.windowed_msm::<WS>(layouter, &[scalar.to_vec()], std::slice::from_ref(base))
     }
 }
 
