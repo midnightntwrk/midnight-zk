@@ -30,6 +30,7 @@ use crate::{
 ///
 /// Phase 1: Filters out identity bases and separates 1-bit scalars.
 /// Phase 2: Deduplicates bases and scalars known to be equal.
+#[allow(clippy::type_complexity)]
 pub(crate) fn msm_preprocess<F, C, EI, SFI>(
     ec_chip: &EI,
     scalar_chip: &SFI,
