@@ -25,7 +25,6 @@ use std::{
     marker::PhantomData,
 };
 
-use super::common::msm_preprocess;
 use ff::{Field, PrimeField};
 use group::Group;
 use midnight_curves::ff_ext::Legendre;
@@ -35,13 +34,13 @@ use midnight_proofs::{
     circuit::{Chip, Layouter, Value},
     plonk::{ConstraintSystem, Error},
 };
-
 #[cfg(any(test, feature = "testing"))]
 use {
     crate::testing_utils::{FromScratch, Sampleable},
     rand::RngCore,
 };
 
+use super::common::msm_preprocess;
 use crate::{
     ecc::{
         curves::EdwardsCurve,
@@ -917,7 +916,8 @@ where
     S::Scalar: InnerValue<Element = C::ScalarField>,
     N: NativeInstructions<F>,
 {
-    /// Builds table `[0*base, 1*base, ..., (2^WS-1)*base]`. Cost: 2^WS - 2 adds.
+    /// Builds table `[0*base, 1*base, ..., (2^WS-1)*base]`. Cost: 2^WS - 2
+    /// adds.
     fn precompute<const WS: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -1491,7 +1491,7 @@ mod tests {
                 bases,
                 expected,
             };
-            MockProver::run(17, &circuit, vec![vec![], vec![]])
+            MockProver::run(&circuit, vec![vec![], vec![]])
                 .expect("proof generation should not fail")
                 .verify()
                 .expect("windowed MSM should verify");

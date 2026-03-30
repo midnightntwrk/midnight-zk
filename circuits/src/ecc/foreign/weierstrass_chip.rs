@@ -43,15 +43,17 @@ use {
     midnight_proofs::plonk::Instance, rand::RngCore,
 };
 
-use super::common::msm_preprocess;
-use super::gates::{
-    lambda_squared,
-    lambda_squared::LambdaSquaredConfig,
-    on_curve,
-    on_curve::OnCurveConfig,
-    slope::{self, SlopeConfig},
-    tangent,
-    tangent::TangentConfig,
+use super::{
+    common::msm_preprocess,
+    gates::{
+        lambda_squared,
+        lambda_squared::LambdaSquaredConfig,
+        on_curve,
+        on_curve::OnCurveConfig,
+        slope::{self, SlopeConfig},
+        tangent,
+        tangent::TangentConfig,
+    },
 };
 use crate::{
     ecc::curves::WeierstrassCurve,
