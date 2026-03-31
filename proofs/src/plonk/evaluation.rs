@@ -1,5 +1,6 @@
 use ff::{PrimeField, WithSmallOrderMulGroup};
 use group::ff::Field;
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use super::{ConstraintSystem, Expression};
 use crate::{
@@ -436,7 +437,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                 let delta_start = beta * &B::g_coset(domain);
 
                 let permutation_product_cosets: Vec<Polynomial<F, B>> = sets
-                    .iter()
+                    .par_iter()
                     .map(|set| B::coeff_to_self(domain, set.permutation_product_poly.clone()))
                     .collect();
 
@@ -515,19 +516,28 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                 });
             }
 
-            // Lookups
-            for (n, lookup) in lookups.iter().enumerate() {
-                // Polynomials required for this lookup.
-                // Calculated here so these only have to be kept in memory for the short time
-                // they are actually needed.
-                let helper_cosets: Vec<_> = lookup
-                    .helper_polys
-                    .iter()
-                    .map(|h| B::coeff_to_self(domain, h.clone()))
-                    .collect();
-                let aggregator_coset = B::coeff_to_self(domain, lookup.aggregator_poly.clone());
-                let multiplicities_coset = B::coeff_to_self(domain, lookup.multiplicities.clone());
+            // Pre-compute all lookup cosets in parallel. This trades peak memory
+            // for parallelism: the FFTs for different lookups can now overlap.
+            let all_lookup_cosets: Vec<_> = lookups
+                .par_iter()
+                .map(|lookup| {
+                    let helper_cosets: Vec<_> = lookup
+                        .helper_polys
+                        .iter()
+                        .map(|h| B::coeff_to_self(domain, h.clone()))
+                        .collect();
+                    let aggregator_coset =
+                        B::coeff_to_self(domain, lookup.aggregator_poly.clone());
+                    let multiplicities_coset =
+                        B::coeff_to_self(domain, lookup.multiplicities.clone());
+                    (helper_cosets, aggregator_coset, multiplicities_coset)
+                })
+                .collect();
 
+            // Lookups
+            for (n, (helper_cosets, aggregator_coset, multiplicities_coset)) in
+                all_lookup_cosets.iter().enumerate()
+            {
                 // Lookup constraints
                 parallelize(&mut values, |values, start| {
                     let lookup_eval = &self.lookups[n];
@@ -589,13 +599,14 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                 });
             }
 
-            // Trashcans
-            for (n, trash) in trashcans.iter().enumerate() {
-                // Polynomials required for this trash argument.
-                // Calculated here so these only have to be kept in memory for the short time
-                // they are actually needed.
-                let trash_poly = B::coeff_to_self(domain, trash.trash_poly.clone());
+            // Pre-compute all trash cosets in parallel.
+            let trash_cosets: Vec<_> = trashcans
+                .par_iter()
+                .map(|trash| B::coeff_to_self(domain, trash.trash_poly.clone()))
+                .collect();
 
+            // Trashcans
+            for (n, trash_poly) in trash_cosets.iter().enumerate() {
                 // Trash argument constraints.
                 parallelize(&mut values, |values, start| {
                     let trash_evaluator = &self.trashcans[n];
