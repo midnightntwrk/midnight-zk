@@ -269,65 +269,98 @@ where
     // Sample gamma challenge
     let gamma: F = transcript.squeeze_challenge();
 
-    // Commit to permutations.
-    let permutations: Vec<permutation::prover::Committed<F>> = instance
+    // Pre-generate all blinding values for permutation and logup before the
+    // parallel compute section.
+    let blinding_factors = pk.vk.cs.blinding_factors();
+    let chunk_len = pk.vk.cs_degree - 2;
+    let num_perm_sets = pk.vk.cs.permutation.columns.chunks(chunk_len).len();
+    let perm_all_blindings: Vec<Vec<Vec<F>>> = (0..instance.len())
+        .map(|_| {
+            (0..num_perm_sets)
+                .map(|_| (0..blinding_factors).map(|_| F::random(&mut rng)).collect())
+                .collect()
+        })
+        .collect();
+    let logup_all_blindings: Vec<Vec<Vec<F>>> = lookups
+        .iter()
+        .map(|circuit_lookups| {
+            (0..circuit_lookups.len())
+                .map(|_| (0..blinding_factors).map(|_| F::random(&mut rng)).collect())
+                .collect()
+        })
+        .collect();
+
+    // Overlap permutation and logup computation.
+    // Both only need β (and γ for permutation). Neither touches the transcript.
+    // The compute phases run in parallel per circuit.
+    // Transcript writes preserve the original ordering:
+    // all permutation commitments first, then all logup commitments.
+    let (all_perm_computed, all_logup_computed): (Vec<_>, Vec<Result<_, Error>>) = instance
         .iter()
         .zip(advice.iter())
-        .map(|(instance, advice)| {
-            pk.vk.cs.permutation.commit(
-                params,
-                pk,
-                &pk.permutation,
-                &advice.advice_polys,
-                &pk.fixed_values,
-                &instance.instance_values,
-                beta,
-                gamma,
-                &mut rng,
-                transcript,
-            )
-        })
+        .zip(lookups.into_iter())
+        .zip(perm_all_blindings)
+        .zip(logup_all_blindings)
+        .map(
+            |((((instance, advice), circuit_lookups), perm_blinds), logup_blinds)| {
+                rayon::join(
+                    || {
+                        pk.vk.cs.permutation.compute::<F, CS>(
+                            params,
+                            pk,
+                            &pk.permutation,
+                            &advice.advice_polys,
+                            &pk.fixed_values,
+                            &instance.instance_values,
+                            beta,
+                            gamma,
+                            perm_blinds,
+                        )
+                    },
+                    || -> Result<_, Error> {
+                        let computed: Vec<_> = circuit_lookups
+                            .into_par_iter()
+                            .zip(logup_blinds.into_par_iter())
+                            .map(|(lookup, blindings)| {
+                                lookup.compute_logderivative(pk, params, beta, blindings)
+                            })
+                            .collect::<Result<Vec<_>, _>>()?;
+                        let all_helper_commitments: Vec<Vec<CS::Commitment>> = computed
+                            .par_iter()
+                            .map(|c| {
+                                c.helper_polys_lagrange
+                                    .par_iter()
+                                    .map(|h| {
+                                        let h_poly = domain.lagrange_from_vec(h.clone());
+                                        CS::commit_lagrange(params, &h_poly)
+                                    })
+                                    .collect()
+                            })
+                            .collect();
+                        Ok((computed, all_helper_commitments))
+                    },
+                )
+            },
+        )
+        .unzip();
+
+    // Write all permutation commitments first (across all circuits).
+    let permutations: Vec<_> = all_perm_computed
+        .into_iter()
+        .map(|computed| computed.write_and_convert(domain, transcript))
         .collect::<Result<Vec<_>, _>>()?;
 
-    // Compute logderivative for each lookup in parallel, then write to
-    // transcript and convert to coefficient form. Blinding values are
-    // pre-generated so that compute_logderivative does not need &mut rng.
-    let lookups: Vec<Vec<logup::prover::Committed<F>>> = lookups
+    // Then write all logup commitments and convert to coefficient form.
+    let lookups: Vec<Vec<logup::prover::Committed<F>>> = all_logup_computed
         .into_iter()
-        .map(|lookups| -> Result<Vec<_>, _> {
-            let blinding_factors = pk.vk.cs.blinding_factors();
-            // Pre-generate blinding values for all lookups.
-            let all_blindings: Vec<Vec<F>> = (0..lookups.len())
-                .map(|_| (0..blinding_factors).map(|_| F::random(&mut rng)).collect())
-                .collect();
-            // Parallel compute phase (no &mut rng needed).
-            let computed: Vec<_> = lookups
-                .into_par_iter()
-                .zip(all_blindings.into_par_iter())
-                .map(|(lookup, blindings)| {
-                    lookup.compute_logderivative(pk, params, beta, blindings)
-                })
-                .collect::<Result<Vec<_>, _>>()?;
-            // Compute all helper poly commitments in parallel, then write in order.
-            let all_helper_commitments: Vec<Vec<CS::Commitment>> = computed
-                .par_iter()
-                .map(|c| {
-                    c.helper_polys_lagrange
-                        .par_iter()
-                        .map(|h| {
-                            let h_poly = domain.lagrange_from_vec(h.clone());
-                            CS::commit_lagrange(params, &h_poly)
-                        })
-                        .collect()
-                })
-                .collect();
+        .map(|result| -> Result<Vec<_>, _> {
+            let (computed, all_helper_commitments) = result?;
             for (c, helper_commitments) in computed.iter().zip(all_helper_commitments.iter()) {
                 for h_commitment in helper_commitments {
                     transcript.write(h_commitment)?;
                 }
                 transcript.write(&c.aggregator_commitment)?;
             }
-            // Convert to coefficient form (FFTs can overlap via rayon).
             let committed: Vec<_> = computed
                 .into_par_iter()
                 .map(|c| {
