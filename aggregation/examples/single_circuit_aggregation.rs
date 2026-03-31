@@ -15,12 +15,11 @@
 //!
 //! DO NOT add this example to the CI as it is slow.
 
-#[path = "common/mod.rs"]
-mod common;
+#[path = "circuits/sha_preimage.rs"]
+mod sha_preimage;
 
 use std::{collections::BTreeMap, time::Instant};
 
-use common::sha_preimage::ShaPreimageCircuit;
 use ff::Field;
 use group::Group;
 use midnight_aggregation::ivc::{self, IvcContext, IvcIO, IvcState, IvcTransition};
@@ -42,10 +41,9 @@ use midnight_proofs::{
     },
     transcript::{CircuitTranscript, Transcript},
 };
-use midnight_zk_stdlib::{MidnightVK, Relation, ZkStdLib, ZkStdLibArch};
+use midnight_zk_stdlib::{prove, setup_pk, setup_vk, MidnightVK, Relation, ZkStdLib, ZkStdLibArch};
 use rand::rngs::OsRng;
-
-use crate::common::sha_preimage;
+use sha_preimage::ShaPreimageCircuit;
 
 type S = BlstrsEmulation;
 type F = <S as SelfEmulation>::F;
@@ -346,15 +344,18 @@ fn main() {
 
     // The inner circuit can use a different SRS than the IVC circuit.
     let inner_srs = ParamsKZG::unsafe_setup(sha_preimage::K, OsRng);
-    let inner_vk = sha_preimage::setup_vk(&inner_srs);
-    let inner_pk = sha_preimage::setup_pk(&inner_vk);
+    let inner_vk = setup_vk(&inner_srs, &ShaPreimageCircuit);
+    let inner_pk = setup_pk(&ShaPreimageCircuit, &inner_vk);
     let inner_ctx = {
-        let (inner_cs, inner_domain) =
-            common::constraint_system(ShaPreimageCircuit.used_chips(), sha_preimage::K);
+        let arch = ShaPreimageCircuit.used_chips();
+        let k = sha_preimage::K;
+        let mut cs = midnight_proofs::plonk::ConstraintSystem::default();
+        ZkStdLib::configure(&mut cs, (arch, (k - 1) as u8));
+        let domain = midnight_proofs::poly::EvaluationDomain::new(cs.degree() as u32, k);
 
         InnerCircuitContext {
-            cs: inner_cs,
-            domain: inner_domain,
+            cs,
+            domain,
             vk: inner_vk,
             params_verifier: inner_srs.verifier_params(),
         }
@@ -366,7 +367,15 @@ fn main() {
         std::array::from_fn(|_| sha_preimage::random_instance());
     let inner_proofs: [_; STEPS] = std::array::from_fn(|i| {
         let (digest, preimage) = &inner_statements_with_witnesses[i];
-        sha_preimage::prove(&inner_srs, &inner_pk, digest, *preimage)
+        prove::<ShaPreimageCircuit, PoseidonState<F>>(
+            &inner_srs,
+            &inner_pk,
+            &ShaPreimageCircuit,
+            digest,
+            *preimage,
+            OsRng,
+        )
+        .expect("proof generation should not fail")
     });
     let inner_statements = inner_statements_with_witnesses.map(|(x, _)| x);
     println!("{STEPS} inner proofs generated in {:.2?}", start.elapsed());
@@ -374,7 +383,7 @@ fn main() {
     // IVC setup.
     let ivc_srs = midnight_zk_stdlib::utils::plonk_api::filecoin_srs(IVC_K);
     let start = Instant::now();
-    let (mut prover, verifier) = ivc::setup::<ProofAggregation>(ivc_srs, IVC_K, inner_ctx.clone());
+    let (mut prover, verifier) = ivc::setup::<ProofAggregation>(ivc_srs, IVC_K, inner_ctx);
     println!("IVC setup completed in {:.2?}", start.elapsed());
 
     // Aggregation steps.
@@ -390,7 +399,7 @@ fn main() {
 
         let ivc_instance = prover.instance();
         let start = Instant::now();
-        verifier.verify(&inner_ctx, &ivc_instance, &ivc_proof).unwrap();
+        verifier.verify(&ivc_instance, &ivc_proof).unwrap();
         let verify_time = start.elapsed();
 
         println!("Step {i}: IVC prove {prove_time:.2?}, verify {verify_time:.2?}");

@@ -182,7 +182,7 @@ fn main() {
         let instance = prover.instance();
 
         let start = Instant::now();
-        verifier.verify(&(), &instance, &proof).unwrap();
+        verifier.verify(&instance, &proof).unwrap();
         let verify_time = start.elapsed();
 
         println!("Step {i}: prove {prove_time:.2?}, verify {verify_time:.2?}");

@@ -136,6 +136,25 @@ impl<S: SelfEmulation> Msm<S> {
         self.scalars = vec![S::F::ONE];
     }
 
+    /// Given the actual fixed bases, resolves the fixed-base part of the MSM
+    /// by pairing each named scalar with its base and moving them to regular
+    /// variable-base entries.
+    ///
+    /// After this call, `fixed_base_scalars` becomes empty.
+    ///
+    /// # Panics
+    ///
+    /// If some of the keys in `fixed_base_scalars` do not appear in the
+    /// provided `fixed_bases` map.
+    pub fn resolve_fixed_bases(&mut self, fixed_bases: &BTreeMap<String, S::C>) {
+        for (name, scalar) in &self.fixed_base_scalars {
+            let base = fixed_bases.get(name).unwrap_or_else(|| panic!("Base not provided: {name}"));
+            self.bases.push(*base);
+            self.scalars.push(*scalar);
+        }
+        self.fixed_base_scalars.clear();
+    }
+
     /// Evaluates the MSM with the provided fixed_bases.
     /// I.e. it computes `<scalars, bases> + <fixed_bases, fixed_base_scalars>`.
     ///
@@ -312,6 +331,12 @@ impl<S: SelfEmulation> AssignedMsm<S> {
     ///
     /// The points of the MSM are not enforced to be part of the relevant prime
     /// order subgroup.
+    ///
+    /// # Panics
+    ///
+    /// If `msm_value` is known and its number of variable bases differs from
+    /// `len`, or its number of fixed-base scalars differs from
+    /// `fixed_base_names.len()`.
     pub fn assign(
         layouter: &mut impl Layouter<S::F>,
         curve_chip: &S::CurveChip,
@@ -435,6 +460,27 @@ impl<S: SelfEmulation> AssignedMsm<S> {
         self.scalars = vec![AssignedBoundedScalar::one(layouter, scalar_chip)?];
 
         Ok(())
+    }
+
+    /// Given the actual fixed bases, resolves the fixed-base part of the MSM
+    /// by pairing each named scalar with its base and moving them to regular
+    /// variable-base entries.
+    ///
+    /// After this call, `fixed_base_scalars` becomes empty.
+    ///
+    /// # Panics
+    ///
+    /// If some of the keys in `fixed_base_scalars` do not appear in the
+    /// provided `fixed_bases` map.
+    pub fn resolve_fixed_bases(&mut self, fixed_bases: &BTreeMap<String, S::AssignedPoint>) {
+        for (name, scalar) in &self.fixed_base_scalars {
+            let base = fixed_bases
+                .get(name)
+                .unwrap_or_else(|| panic!("Fixed base not provided: {name}"));
+            self.bases.push(base.clone());
+            self.scalars.push(scalar.clone());
+        }
+        self.fixed_base_scalars.clear();
     }
 
     /// Scales all the scalars of the AssignedMsm by the given factor r.

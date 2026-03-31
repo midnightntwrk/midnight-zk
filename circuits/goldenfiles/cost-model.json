@@ -2488,7 +2488,7 @@
       "max_deg": "5",
       "permutations": "29",
       "point_sets": "5",
-      "rows": "49868",
+      "rows": "35953",
       "table_rows": "417"
     },
     "msm_by_bounded_scalars_3": {
@@ -2499,7 +2499,7 @@
       "max_deg": "5",
       "permutations": "29",
       "point_sets": "5",
-      "rows": "41570",
+      "rows": "27655",
       "table_rows": "417"
     },
     "mul_by_constant": {
@@ -2510,7 +2510,7 @@
       "max_deg": "5",
       "permutations": "29",
       "point_sets": "5",
-      "rows": "42480",
+      "rows": "28565",
       "table_rows": "417"
     },
     "neg": {
