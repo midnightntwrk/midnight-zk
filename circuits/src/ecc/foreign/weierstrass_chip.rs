@@ -414,7 +414,7 @@ where
         // Given our optimized way of constraining a point as public input, we
         // cannot optimize the direct assignment as PI. We just compose `assign`
         // with `constrain_as_public_input`.
-        let point = self.assign(layouter, value)?;
+        let point = self.assign_without_subgroup_check(layouter, value)?;
         self.constrain_as_public_input(layouter, &point)?;
         Ok(point)
     }
@@ -1873,8 +1873,10 @@ where
             return Ok(cached.clone());
         }
 
-        let r: AssignedForeignPoint<F, C, B> =
-            self.assign(layouter, Value::known(C::CryptographicGroup::random(OsRng)))?;
+        let r: AssignedForeignPoint<F, C, B> = self.assign_without_subgroup_check(
+            layouter,
+            Value::known(C::CryptographicGroup::random(OsRng)),
+        )?;
 
         Self::completeness_error_if(&r.point, |p| C::CryptographicGroup::is_identity(p).into())?;
 
