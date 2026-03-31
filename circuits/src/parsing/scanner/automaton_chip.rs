@@ -101,11 +101,12 @@ use midnight_proofs::{
 };
 
 use super::{
-    NativeAutomaton, ScannerChip, ALPHABET_MAX_SIZE, AUTOMATON_PARALLELISM, NB_AUTOMATON_COLS,
+    varlen::ScannerVec, NativeAutomaton, ScannerChip, ALPHABET_MAX_SIZE, AUTOMATON_PARALLELISM,
+    NB_AUTOMATON_COLS,
 };
 use crate::{
     field::AssignedNative, instructions::AssignmentInstructions, parsing::scanner::AutomatonParser,
-    types::AssignedByte, CircuitField,
+    types::AssignedByte, vec::AssignedVector, CircuitField,
 };
 
 impl<F> NativeAutomaton<F>
@@ -117,11 +118,9 @@ where
     fn next_transition(
         &self,
         state: &AssignedNative<F>,
-        letter: &AssignedByte<F>,
+        letter: &AssignedNative<F>,
     ) -> Result<(Value<F>, Value<F>), Error> {
-        let letter_native: AssignedNative<F> = letter.into();
-        let target_opt =
-            state.value().zip(letter_native.value()).map(|(s, l)| self.get_transition(s, l));
+        let target_opt = state.value().zip(letter.value()).map(|(s, l)| self.get_transition(s, l));
         target_opt.error_if_known_and(|o| o.is_none())?;
         let target = target_opt.map(|o| o.unwrap());
         Ok((target.map(|t| t.0), target.map(|t| t.1)))
@@ -148,7 +147,7 @@ where
         &self,
         layouter: &mut impl Layouter<F>,
         automaton: &NativeAutomaton<F>,
-        input: &[AssignedByte<F>],
+        input: &[AssignedNative<F>],
     ) -> Result<Vec<AssignedNative<F>>, Error> {
         let init_state: AssignedNative<F> =
             self.native_gadget.assign_fixed(layouter, automaton.initial_state)?;
@@ -214,7 +213,7 @@ where
         region: &mut Region<'_, F>,
         automaton: &NativeAutomaton<F>,
         state: &mut AssignedNative<F>,
-        letter: &AssignedByte<F>,
+        letter: &AssignedNative<F>,
         batch: usize,
         outputs: &mut Vec<AssignedNative<F>>,
         offset: &mut usize,
@@ -222,8 +221,7 @@ where
         self.config.q_automaton.enable(region, *offset)?;
 
         let base = NB_AUTOMATON_COLS * batch;
-        let letter_native: AssignedNative<F> = letter.into();
-        letter_native.copy_advice(
+        letter.copy_advice(
             || format!("letter batch {batch}"),
             region,
             self.config.advice_cols[base + 1],
@@ -310,6 +308,11 @@ where
     ///
     ///  - The dummy transition `(0,0,0,0)` is added since the empty lookup rows
     ///    will be filled by it.
+    ///  - Self-loop transitions `(s, 256, s, 0)` for initial and final states
+    ///    are part of every [`NativeAutomaton`] (added during conversion from
+    ///    [`Automaton`]). These allow
+    ///    [`parse_varlen`](`ScannerChip::parse_varlen`) to skip
+    ///    [`ScannerVec`](super::varlen::ScannerVec) filler elements.
     ///  - Dummy transitions `(s, 256, 0, 0)` are added for all final states `s`
     ///    to emulate final-state checking.
     pub(crate) fn load_automata_table(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
@@ -351,7 +354,11 @@ where
                 // Dummy transition for empty rows.
                 add_entry(F::ZERO, F::ZERO, F::ZERO, F::ZERO)?;
 
+                let filler = F::from(ALPHABET_MAX_SIZE as u64);
                 // Transitions and final-state checks for every used automaton.
+                // Self-loop transitions on the filler letter for initial/final
+                // states are already part of the NativeAutomaton (added during
+                // conversion from Automaton).
                 for automaton in cache.values() {
                     for (source, inner) in automaton.transitions.iter() {
                         for (letter, (target, output_extr)) in inner.iter() {
@@ -365,7 +372,9 @@ where
                         }
                     }
                     for state in automaton.final_states.iter() {
-                        add_entry(*state, F::from(ALPHABET_MAX_SIZE as u64), F::ZERO, F::ZERO)?
+                        // Dummy transition to the stuck state 0 to represent
+                        // final-state checks.
+                        add_entry(*state, filler, F::ZERO, F::ZERO)?
                     }
                 }
                 Ok(())
@@ -378,7 +387,7 @@ impl<F> ScannerChip<F>
 where
     F: CircuitField + Ord,
 {
-    /// Resolves an `AutomatonParser` to a `NativeAutomaton<F>`, caching the
+    /// Resolves an [`AutomatonParser`] to a [`NativeAutomaton`], caching the
     /// result. On first use the raw automaton (from the static library or from
     /// a regex) is offset so that its states don't collide with any previously
     /// resolved automaton.
@@ -388,7 +397,7 @@ where
         }
 
         let raw_automaton = match parser {
-            AutomatonParser::Static(spec) => self.config.static_library[spec].clone(),
+            AutomatonParser::Static(spec) => self.config.static_library[spec].clone().1,
             AutomatonParser::Dynamic(regex) => regex.to_automaton(),
         };
 
@@ -415,7 +424,35 @@ where
         input: &[AssignedByte<F>],
     ) -> Result<Vec<AssignedNative<F>>, Error> {
         let automaton = self.resolve_automaton(&parser);
-        self.parse_automaton(layouter, &automaton, input)
+        let native_input: Vec<AssignedNative<F>> = input.iter().map(AssignedNative::from).collect();
+        self.parse_automaton(layouter, &automaton, &native_input)
+    }
+
+    /// Parses the variable-length `input` in-circuit w.r.t. a regular
+    /// expression / transducer and returns the sequence of markers it produces.
+    ///
+    /// The returned vector has the same length as `input`'s buffer (`M`
+    /// elements). It inherits the same
+    /// [`get_limits`](`ScannerVec::get_limits`), and
+    /// [`padding_flags`](`ScannerVec::padding_flags`) as `input`. Filler
+    /// positions in the output are constrained to 0 (the self-loop transitions
+    /// on initial/final states output marker 0).
+    pub fn parse_varlen<const M: usize, const A: usize>(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        parser: AutomatonParser,
+        input: &ScannerVec<F, M, A>,
+    ) -> Result<AssignedVector<F, AssignedNative<F>, M, A>, Error> {
+        let automaton = self.resolve_automaton(&parser);
+
+        // Parse the buffer directly. Filler positions read `ALPHABET_MAX_SIZE`
+        // and hit the self-loop transitions (added during NativeAutomaton
+        // construction), outputting marker 0.
+        let buffer = self.parse_automaton(layouter, &automaton, &*input.buffer)?;
+        Ok(AssignedVector {
+            buffer: Box::new(buffer.try_into().unwrap()),
+            len: input.len().clone(),
+        })
     }
 }
 
@@ -958,6 +995,135 @@ mod test {
             (regex1.clone(), perf_input, perf_output),
             (regex1, perf_input, perf_output),
             true,
+            true,
+        );
+    }
+
+    // ---- parse_varlen tests ----
+
+    #[derive(Clone, Debug)]
+    struct VarlenParseCircuit<F: CircuitField> {
+        input: Value<Vec<u8>>,
+        /// Full M-element expected output buffer (0 for fillers, markers for
+        /// payload).
+        expected_buffer: [Value<F>; 32],
+        regex: Regex,
+    }
+
+    impl<F: CircuitField> VarlenParseCircuit<F> {
+        fn new(input: &[u8], payload_output: &[usize], regex: Regex) -> Self {
+            use crate::vec::get_lims;
+
+            // Compute where the payload lands in the M=32, A=1 buffer.
+            let range = get_lims::<32, 1>(input.len());
+            assert_eq!(
+                payload_output.len(),
+                range.len(),
+                "payload_output length must match input length"
+            );
+            let mut buffer = [Value::known(F::ZERO); 32];
+            for (pos, &marker) in range.zip(payload_output.iter()) {
+                buffer[pos] = Value::known(F::from(marker as u64));
+            }
+
+            Self {
+                input: Value::known(input.to_vec()),
+                expected_buffer: buffer,
+                regex,
+            }
+        }
+    }
+
+    impl<F> Circuit<F> for VarlenParseCircuit<F>
+    where
+        F: CircuitField + Ord,
+    {
+        type Config = <ScannerChip<F> as FromScratch<F>>::Config;
+        type FloorPlanner = SimpleFloorPlanner;
+        type Params = ();
+
+        fn without_witnesses(&self) -> Self {
+            unreachable!()
+        }
+
+        fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+            let instance_columns = [meta.instance_column(), meta.instance_column()];
+            ScannerChip::configure_from_scratch(meta, &instance_columns)
+        }
+
+        fn synthesize(
+            &self,
+            config: Self::Config,
+            mut layouter: impl Layouter<F>,
+        ) -> Result<(), Error> {
+            let scanner = ScannerChip::<F>::new_from_scratch(&config);
+            let ng = &scanner.native_gadget;
+
+            let input = scanner.assign_scanner_vec::<32, 1>(&mut layouter, self.input.clone())?;
+            let expected: Vec<AssignedNative<F>> =
+                ng.assign_many(&mut layouter, &self.expected_buffer)?;
+
+            let parsed = scanner.parse_varlen(
+                &mut layouter,
+                AutomatonParser::Dynamic(self.regex.clone()),
+                &input,
+            )?;
+
+            // Pointwise equality on the full buffer.
+            for (out_cell, exp_cell) in parsed.buffer.iter().zip(expected.iter()) {
+                ng.assert_equal(&mut layouter, out_cell, exp_cell)?;
+            }
+
+            scanner.load_from_scratch(&mut layouter)
+        }
+    }
+
+    fn varlen_parse_test(input: &[u8], output: &[usize], regex: Regex, must_pass: bool) {
+        type F = midnight_curves::Fq;
+        let circuit = VarlenParseCircuit::<F>::new(input, output, regex);
+        println!(
+            ">> [varlen_parse] [must{} pass] input len={}",
+            if must_pass { "" } else { " not" },
+            input.len(),
+        );
+        let result = MockProver::run(&circuit, vec![vec![], vec![]]);
+        match result {
+            Ok(p) => {
+                let verified = p.verify();
+                if must_pass {
+                    verified.expect("should have passed")
+                } else {
+                    assert!(verified.is_err(), "should have failed");
+                }
+            }
+            Err(e) => assert!(!must_pass, "Prover failed unexpectedly: {:?}", e),
+        }
+        println!("... ok!");
+    }
+
+    #[test]
+    fn parse_varlen_test() {
+        let regex1 = Regex::hard_coded_example1();
+
+        // Same test data as the fixed-length parsing_test, but via varlen.
+        varlen_parse_test(
+            b"holy hell !!!",
+            &[0, 1, 2, 1, 0, 0, 1, 2, 2, 0, 1, 1, 1],
+            regex1.clone(),
+            true,
+        );
+
+        // Wrong output markers.
+        varlen_parse_test(b"holy hell !!!", &[0; 13], regex1.clone(), false);
+
+        // Invalid input (missing space).
+        varlen_parse_test(b"holy hell!!!", &[0; 12], regex1.clone(), false);
+
+        // Short input (single-chunk payload to exercise the padding_flag fix).
+        varlen_parse_test(
+            b"holyyyy hell !!!",
+            &[0, 1, 2, 1, 1, 1, 1, 0, 0, 1, 2, 2, 0, 1, 1, 1],
+            regex1,
             true,
         );
     }

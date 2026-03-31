@@ -68,12 +68,17 @@ harness = false
 
 [[example]]
 name = "cred_full"
-path = "examples/identity/full_credential.rs"
+path = "examples/identity/jwt/full_credential.rs"
 
 [[example]]
 name = "cred_enrollment"
-path = "examples/identity/enrollment.rs"
+path = "examples/identity/jwt/enrollment.rs"
 
 [[example]]
 name = "cred_property"
-path = "examples/identity/property_check.rs"
+path = "examples/identity/jwt/property_check.rs"
+
+[[example]]
+name = "passport_verification"
+path = "examples/identity/passport/main.rs"
+

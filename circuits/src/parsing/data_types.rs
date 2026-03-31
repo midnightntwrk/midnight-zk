@@ -16,17 +16,23 @@ use num_bigint::BigUint;
 
 use super::ParserGadget;
 use crate::{
-    field::AssignedNative, instructions::NativeInstructions, types::AssignedByte, CircuitField,
+    field::{native::AssignedBit, AssignedNative},
+    instructions::NativeInstructions,
+    types::{AssignedByte, InnerValue},
+    CircuitField,
 };
 
 /// Order of day, month and year in the date string.
 #[allow(clippy::upper_case_acronyms)]
 #[derive(Clone, Copy, Debug)]
 pub enum DateFormat {
-    /// Year, month, day.
+    /// Four-digit year, month, day.
     YYYYMMDD,
-    /// Day, month, year.
+    /// Day, month, four-digit year.
     DDMMYYYY,
+    /// Two-digit year, month, day. Requires a `century_base` parameter
+    /// in [`ParserGadget::date_to_int`] to resolve the century.
+    YYMMDD,
 }
 
 /// Date strings may have 1 character separating year, month and day
@@ -103,60 +109,173 @@ where
     }
 
     /// Given an ASCII string of assigned bytes, representing a date in the
-    /// specified format, returns  DD + 100 * MM + 10_000 * YYYY as an assigned
-    /// native value. This function does not check the validity of the date,
-    /// i.e. (in DDMMYYYY, NoSep) format, "32011990" will be accepted as 32
-    /// January 1990. Concretely, no range check is performed on the values,
-    /// so implicitly all *dates* in the range 0-99 / 0-99 / 0-9999 are
-    /// accepted.
+    /// specified format, returns `DD + 100 * MM + 10_000 * YYYY` as an
+    /// assigned native value. This function does not check the validity of
+    /// the date (e.g. `"32011990"` in DDMMYYYY is accepted as 32 January
+    /// 1990).
+    ///
+    /// For two-digit year formats ([`DateFormat::YYMMDD`]), `century_base`
+    /// must be `Some(N)` where N is an assigned value in [0, 99]. The year
+    /// is then resolved as `1900 + YY + (if YY < N { 100 } else { 0 })`,
+    /// i.e. the 100-year window is [1900+N, 2000+N). The caller is
+    /// responsible for constraining N < 100.
+    ///
+    /// For four-digit year formats, `century_base` must be `None`.
     pub fn date_to_int(
         &self,
         layouter: &mut impl Layouter<F>,
         input: &[AssignedByte<F>],
         format: (DateFormat, Separator),
+        century_base: Option<&AssignedNative<F>>,
     ) -> Result<AssignedNative<F>, Error> {
         let native = &self.native_gadget;
         let n = input.len();
 
-        // Indices for day, month, year bytes in the input.
-        let indices: (_, _, _) = match format {
-            (DateFormat::DDMMYYYY, Separator::NoSep) => {
-                assert_eq!(n, 8, "Date format must be 8 characters long: DDMMYYYY");
-                ((0..2), (2..4), (4..8))
+        match format {
+            (DateFormat::YYMMDD, Separator::NoSep) => {
+                assert_eq!(n, 6, "Date format must be 6 characters long: YYMMDD");
+                let century_base =
+                    century_base.expect("YYMMDD format requires a century_base parameter");
+                self.date_to_int_short_year(layouter, input, century_base)
             }
-
-            (DateFormat::DDMMYYYY, Separator::Sep(sep)) => {
-                assert_eq!(
-                    n, 10,
-                    "Date format must be 10 characters long: DD{sep}MM{sep}YYYY"
+            (DateFormat::YYMMDD, Separator::Sep(_)) => {
+                panic!("YYMMDD with separator is not supported")
+            }
+            _ => {
+                assert!(
+                    century_base.is_none(),
+                    "century_base is only used with YYMMDD format"
                 );
-
-                native.assert_equal_to_fixed(layouter, &input[2], sep as u8)?;
-                native.assert_equal_to_fixed(layouter, &input[5], sep as u8)?;
-                ((0..2), (3..5), (6..10))
+                // Indices for day, month, year bytes in the input.
+                let indices: (_, _, _) = match format {
+                    (DateFormat::DDMMYYYY, Separator::NoSep) => {
+                        assert_eq!(n, 8, "Date format must be 8 characters long: DDMMYYYY");
+                        ((0..2), (2..4), (4..8))
+                    }
+                    (DateFormat::DDMMYYYY, Separator::Sep(sep)) => {
+                        assert_eq!(
+                            n, 10,
+                            "Date format must be 10 characters long: DD{sep}MM{sep}YYYY"
+                        );
+                        native.assert_equal_to_fixed(layouter, &input[2], sep as u8)?;
+                        native.assert_equal_to_fixed(layouter, &input[5], sep as u8)?;
+                        ((0..2), (3..5), (6..10))
+                    }
+                    (DateFormat::YYYYMMDD, Separator::NoSep) => {
+                        assert_eq!(n, 8, "Date format must be 8 characters long: YYYYMMDD");
+                        ((6..8), (4..6), (0..4))
+                    }
+                    (DateFormat::YYYYMMDD, Separator::Sep(sep)) => {
+                        assert_eq!(
+                            n, 10,
+                            "Date format must be 10 characters long: YYYY{sep}MM{sep}DD"
+                        );
+                        native.assert_equal_to_fixed(layouter, &input[4], sep as u8)?;
+                        native.assert_equal_to_fixed(layouter, &input[7], sep as u8)?;
+                        ((8..10), (5..7), (0..4))
+                    }
+                    (DateFormat::YYMMDD, _) => unreachable!(),
+                };
+                let bytes = [&input[indices.2], &input[indices.1], &input[indices.0]].concat();
+                self.ascii_to_int(layouter, &bytes)
             }
+        }
+    }
 
-            (DateFormat::YYYYMMDD, Separator::NoSep) => {
-                assert_eq!(n, 8, "Date format must be 8 characters long: YYYYMMDD");
-                ((6..8), (4..6), (0..4))
-            }
+    /// Resolves a 6-byte YYMMDD date into a YYYYMMDD integer using the
+    /// century base N. The year is `1900 + YY + (if YY < N { 100 } else { 0
+    /// })`.
+    fn date_to_int_short_year(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        input: &[AssignedByte<F>],
+        century_base: &AssignedNative<F>,
+    ) -> Result<AssignedNative<F>, Error> {
+        let native = &self.native_gadget;
 
-            (DateFormat::YYYYMMDD, Separator::Sep(sep)) => {
-                assert_eq!(
-                    n, 10,
-                    "Date format must be 10 characters long: YYYY{sep}MM{sep}DD"
-                );
+        let yy = self.ascii_to_int(layouter, &input[0..2])?;
+        let mmdd = self.ascii_to_int(layouter, &input[2..6])?;
 
-                native.assert_equal_to_fixed(layouter, &input[4], sep as u8)?;
-                native.assert_equal_to_fixed(layouter, &input[7], sep as u8)?;
+        // Off-circuit: compute is_20xx = (YY < N).
+        let yy_val = input[0]
+            .value()
+            .zip(input[1].value())
+            .map(|(d0, d1)| (d0 - 48) as u64 * 10 + (d1 - 48) as u64);
+        let n_val =
+            InnerValue::value(century_base).map(|be| u64::try_from(be.to_biguint()).unwrap());
+        let is_20xx_val = yy_val.zip(n_val).map(|(yy, n)| yy < n);
 
-                ((8..10), (5..7), (0..4))
-            }
-        };
+        // Assign is_20xx as a bit (constrains it to {0, 1}).
+        let is_20xx: AssignedBit<F> = native.assign(layouter, is_20xx_val)?;
+        let is_20xx_native: AssignedNative<F> = is_20xx.into();
 
-        let bytes = [&input[indices.2], &input[indices.1], &input[indices.0]].concat();
+        // Constrain: yy - century_base + is_20xx * 100 ∈ [0, 128).
+        // This enforces the correct relationship between is_20xx, yy, and N.
+        let check = native.linear_combination(
+            layouter,
+            &[
+                (F::ONE, yy.clone()),
+                (-F::ONE, century_base.clone()),
+                (F::from(100u64), is_20xx_native.clone()),
+            ],
+            F::ZERO,
+        )?;
+        native.assert_lower_than_fixed(layouter, &check, &BigUint::from(128u64))?;
 
-        self.ascii_to_int(layouter, &bytes)
+        // Result: (1900 + YY + is_20xx * 100) * 10_000 + MMDD
+        native.linear_combination(
+            layouter,
+            &[
+                (F::from(10_000u64), yy),
+                (F::from(1_000_000u64), is_20xx_native),
+                (F::ONE, mmdd),
+            ],
+            F::from(19_000_000u64),
+        )
+    }
+}
+
+/// A calendar date with a full 4-digit year.
+#[derive(Clone, Copy, Debug)]
+pub struct Date {
+    /// Day of the month (1-31).
+    pub day: u8,
+    /// Month (1-12).
+    pub month: u8,
+    /// Four-digit year.
+    pub year: u16,
+}
+
+impl Date {
+    /// Encodes as YYYYMMDD integer: `year * 10_000 + month * 100 + day`.
+    pub fn as_yyyymmdd(&self) -> u64 {
+        self.year as u64 * 10_000 + self.month as u64 * 100 + self.day as u64
+    }
+}
+
+impl From<Date> for BigUint {
+    fn from(value: Date) -> Self {
+        value.as_yyyymmdd().into()
+    }
+}
+
+impl<F, N> ParserGadget<F, N>
+where
+    F: CircuitField,
+    N: NativeInstructions<F>,
+{
+    /// Asserts that a date (as assigned bytes in the given format) is
+    /// strictly before `limit_date`. Convenience wrapper around
+    /// [`date_to_int`](Self::date_to_int) + a range check.
+    pub fn assert_date_before_fixed(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        date_bytes: &[AssignedByte<F>],
+        format: (DateFormat, Separator),
+        limit_date: Date,
+    ) -> Result<(), Error> {
+        let date = self.date_to_int(layouter, date_bytes, format, None)?;
+        self.native_gadget.assert_lower_than_fixed(layouter, &date, &limit_date.into())
     }
 }
 
@@ -178,16 +297,18 @@ mod tests {
     };
 
     #[derive(Clone, Copy, Debug)]
-    enum Operation {
-        ParseInt,
-        ParseDate((DateFormat, Separator)),
+    enum ParseTarget {
+        Int,
+        Date((DateFormat, Separator)),
+        /// Parse a short-year date with `century_base`.
+        DateShortYear((DateFormat, Separator), u64),
     }
 
     #[derive(Clone, Debug)]
     struct TestCircuit<F, N> {
         string: Vec<Value<F>>,
         expected: F,
-        operation: Operation,
+        operation: ParseTarget,
         _marker: PhantomData<N>,
     }
 
@@ -228,9 +349,14 @@ mod tests {
                 .collect::<Result<Vec<AssignedByte<F>>, Error>>()?;
 
             let res = match self.operation {
-                Operation::ParseInt => parser_gadget.ascii_to_int(&mut layouter, &bytes),
-                Operation::ParseDate(format) => {
-                    parser_gadget.date_to_int(&mut layouter, &bytes, format)
+                ParseTarget::Int => parser_gadget.ascii_to_int(&mut layouter, &bytes),
+                ParseTarget::Date(format) => {
+                    parser_gadget.date_to_int(&mut layouter, &bytes, format, None)
+                }
+                ParseTarget::DateShortYear(format, n) => {
+                    let century_base =
+                        native_gadget.assign(&mut layouter, Value::known(F::from(n)))?;
+                    parser_gadget.date_to_int(&mut layouter, &bytes, format, Some(&century_base))
                 }
             }?;
 
@@ -240,7 +366,7 @@ mod tests {
         }
     }
 
-    fn run<F>(string: &[u8], expected: u64, operation: Operation, must_pass: bool)
+    fn run<F>(string: &[u8], expected: u64, operation: ParseTarget, must_pass: bool)
     where
         F: CircuitField + FromUniformBytes<64> + Ord,
     {
@@ -275,7 +401,7 @@ mod tests {
             (b"54321", 0, false),
         ];
         test_vecs.iter().for_each(|(input, expected, must_pass)| {
-            run::<F>(input, *expected, Operation::ParseInt, *must_pass)
+            run::<F>(input, *expected, ParseTarget::Int, *must_pass)
         });
     }
 
@@ -308,7 +434,39 @@ mod tests {
             (b"19701225", format4, 19701225, true),
         ];
         test_vecs.iter().for_each(|(input, format, expected, must_pass)| {
-            run::<F>(input, *expected, Operation::ParseDate(*format), *must_pass)
+            run::<F>(input, *expected, ParseTarget::Date(*format), *must_pass)
+        });
+    }
+
+    #[test]
+    fn test_parse_date_short_year() {
+        type F = midnight_curves::Fq;
+        let yymmdd = (DateFormat::YYMMDD, Separator::NoSep);
+
+        // N = 26: window [1926, 2026). YY >= 26 → 19xx, YY < 26 → 20xx.
+        let test_vecs: Vec<(&[u8], _, u64, _, _)> = vec![
+            (b"000101", yymmdd, 26, 20000101, true),  // YY=0 < 26 → 2000
+            (b"251231", yymmdd, 26, 20251231, true),  // YY=25 < 26 → 2025
+            (b"260101", yymmdd, 26, 19260101, true),  // YY=26 >= 26 → 1926
+            (b"911214", yymmdd, 26, 19911214, true),  // YY=91 >= 26 → 1991
+            (b"991231", yymmdd, 26, 19991231, true),  // YY=99 >= 26 → 1999
+            (b"100812", yymmdd, 26, 20100812, true),  // YY=10 < 26 → 2010
+            (b"911214", yymmdd, 26, 20171214, false), // wrong century
+            // N = 0: window [1900, 2000). All YY → 19xx.
+            (b"000101", yymmdd, 0, 19000101, true),
+            (b"991231", yymmdd, 0, 19991231, true),
+            // N = 99: window [1999, 2099). YY=99 → 1999, YY=0..98 → 20xx.
+            (b"990101", yymmdd, 99, 19990101, true),
+            (b"000101", yymmdd, 99, 20000101, true),
+            (b"980101", yymmdd, 99, 20980101, true),
+        ];
+        test_vecs.iter().for_each(|(input, format, n, expected, must_pass)| {
+            run::<F>(
+                input,
+                *expected,
+                ParseTarget::DateShortYear(*format, *n),
+                *must_pass,
+            )
         });
     }
 }

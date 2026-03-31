@@ -176,7 +176,10 @@ use num_bigint::BigUint;
 use super::{ScannerChip, NB_SUBSTRING_COLS, PARSING_MAX_LEN_BITS, SUBSTRING_PARALLELISM};
 use crate::{
     field::AssignedNative,
-    instructions::{ArithInstructions, AssignmentInstructions, RangeCheckInstructions},
+    instructions::{
+        ArithInstructions, AssertionInstructions, AssignmentInstructions, ControlFlowInstructions,
+        RangeCheckInstructions,
+    },
     parsing::scanner::{Sequence, ALPHABET_MAX_SIZE},
     types::AssignedByte,
     CircuitField,
@@ -189,6 +192,44 @@ impl<F> ScannerChip<F>
 where
     F: CircuitField + Ord,
 {
+    /// Generic version of `check_bytes`. Cannot be exposed publicly because
+    /// it is unsound without range-checks on the elements of `sequence` and
+    /// `sub` (they are packed with indexes, so values outside `[0, 255]`
+    /// would break injectivity).
+    fn check_subsequence(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        sequence: &[AssignedNative<F>],
+        idx: &AssignedNative<F>,
+        sub: &[AssignedNative<F>],
+    ) -> Result<(), Error> {
+        if sub.is_empty() {
+            // The circuit logic will assume `sub` is not empty for padding purposes, hence
+            // handling it separately.
+            return Ok(());
+        }
+        // Range-check idx to ensure packing injectivity.
+        self.native_gadget.assert_lower_than_fixed(
+            layouter,
+            idx,
+            &(BigUint::from(1u8) << PARSING_MAX_LEN_BITS),
+        )?;
+
+        self.sequence_cache
+            .borrow_mut()
+            .entry(sequence.to_vec())
+            .and_modify(|(calls, len)| {
+                *len += sub.len();
+                calls.push((idx.clone(), vec![], sub.to_vec(), None))
+            })
+            .or_insert_with(|| {
+                let sub_entry = (idx.clone(), vec![], sub.to_vec(), None);
+                (vec![sub_entry], sub.len())
+            });
+
+        Ok(())
+    }
+
     /// Asserts that `sub` is a contiguous subsequence of `sequence` starting at
     /// index `idx` (0-indexed). This function defers the actual circuit work:
     /// it records the call in the `SequenceCache`,
@@ -219,38 +260,40 @@ where
         self.check_subsequence(layouter, &sequence, idx, &sub)
     }
 
-    /// Generic version of `check_bytes`. Cannot be exposed publicly because
-    /// it is unsound without range-checks on the elements of `sequence` and
-    /// `sub` (they are packed with indexes, so values outside `[0, 255]`
-    /// would break injectivity).
-    fn check_subsequence(
+    /// More permissive version of [`Self::check_bytes`] that allows both
+    /// `sequence` and `sub` to include the value 256. This function
+    /// range-checks all of their cells by 257 to enable that.
+    ///
+    /// Less resilient, and slightly less efficient than [`Self::check_bytes`],
+    /// but permits to encode more complex tests on bytes by using 256 as
+    /// separator arbitrarily. E.g., the positions at which `sub` may start may
+    /// be restricted by putting 256 blockers in `sequence`, and at the
+    /// beginning and the end of `sub`.
+    pub fn check_bytes_ext(
         &self,
         layouter: &mut impl Layouter<F>,
         sequence: &[AssignedNative<F>],
         idx: &AssignedNative<F>,
         sub: &[AssignedNative<F>],
     ) -> Result<(), Error> {
-        if sub.is_empty() {
-            // The circuit logic will assume `sub` is not empty for padding purposes, hence
-            // handling it separately.
-            return Ok(());
+        for x in sequence.iter().chain(sub) {
+            self.native_gadget.assert_lower_than_fixed(layouter, x, &257u16.into())?;
         }
-        // Range-check idx to ensure packing injectivity.
-        self.native_gadget.assert_lower_than_fixed(
-            layouter,
-            idx,
-            &(BigUint::from(1u8) << PARSING_MAX_LEN_BITS),
-        )?;
+        self.check_subsequence(layouter, sequence, idx, sub)
+    }
 
-        self.sequence_cache
-            .borrow_mut()
-            .entry(sequence.to_vec())
-            .and_modify(|(calls, len)| {
-                *len += sub.len();
-                calls.push((idx.clone(), sub.to_vec()))
-            })
-            .or_insert_with(|| (vec![(idx.clone(), sub.to_vec())], sub.len()));
-
+    /// Asserts that two byte slices of fixed length are element-wise equal.
+    /// Proceeds by iterating and asserting equality over cells.
+    pub fn assert_equal_fixlen(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        v1: &[AssignedByte<F>],
+        v2: &[AssignedByte<F>],
+    ) -> Result<(), Error> {
+        assert_eq!(v1.len(), v2.len(), "byte slices must have equal length");
+        for (x, y) in v1.iter().zip(v2.iter()) {
+            self.native_gadget.assert_equal(layouter, x, y)?;
+        }
         Ok(())
     }
 }
@@ -260,23 +303,30 @@ where
     F: CircuitField,
 {
     /// Packs a sequence of assigned bytes into indexed field elements:
-    /// `packed[i] = (start_idx + i) * (ALPHABET_MAX_SIZE + 1) +
-    /// byte[i]`
+    /// `packed[i] = (start_idx + sum(offsets) + i + base_offset) *
+    /// (ALPHABET_MAX_SIZE + 1) + byte[i]`
+    ///
+    /// The `base_offset` accounts for sentinel rows prepended to each
+    /// sequence column during finalisation. The `idx_offsets` are additional
+    /// `(coefficient, value)` terms folded into the same linear combination,
+    /// avoiding a dedicated row for precomputing the adjusted index.
     fn index_and_pack_sequence(
         &self,
         layouter: &mut impl Layouter<F>,
         sequence: &[AssignedNative<F>],
         start_idx: &AssignedNative<F>,
+        idx_offsets: &[(F, AssignedNative<F>)],
+        base_offset: u64,
     ) -> Result<Sequence<F>, Error> {
         let shift = F::from(ALPHABET_MAX_SIZE as u64 + 1);
         (sequence.iter().enumerate())
             .map(|(i, byte)| {
-                let constant = F::from(i as u64);
-                self.native_gadget.linear_combination(
-                    layouter,
-                    &[(shift, start_idx.clone()), (F::ONE, byte.clone())],
-                    constant * shift,
-                )
+                let constant = F::from(i as u64 + base_offset);
+                let mut terms = vec![(shift, start_idx.clone()), (F::ONE, byte.clone())];
+                for (coeff, val) in idx_offsets {
+                    terms.push((*coeff * shift, val.clone()));
+                }
+                self.native_gadget.linear_combination(layouter, &terms, constant * shift)
             })
             .collect()
     }
@@ -286,18 +336,25 @@ where
     /// their index. Returns one `(packed_sequence, flattened_packed_subs)` per
     /// unique sequence. Each sequences and subs have been padded and organised
     /// so that it only remains to assign them in circuit.
+    ///
+    /// Each table column is prepended with a zero sentinel row (index 0), so
+    /// `(tag, 0)` is always in the lookup table and zero-padded queries pass
+    /// trivially. Sub entries are packed with `base_offset = 1` to account for
+    /// this shift. Subs with variable-length metadata have their filler
+    /// positions masked to zero.
     fn index_and_pack_calls(
         &self,
         layouter: &mut impl Layouter<F>,
     ) -> Result<SubstringCheckLayout<F>, Error> {
+        let ng = &self.native_gadget;
         let mut calls: Vec<_> = self.sequence_cache.borrow_mut().drain().collect();
         calls.sort_by(|a, b| b.0.len().cmp(&a.0.len()).then(b.1 .1.cmp(&a.1 .1)));
 
         // Padding for tables: a value that cannot be a valid byte.
         let sequence_padding: AssignedNative<F> =
-            self.native_gadget.assign_fixed(layouter, F::from(ALPHABET_MAX_SIZE as u64))?;
-        // Padding for unused parallel columns: zero cell.
-        let zero: AssignedNative<F> = self.native_gadget.assign_fixed(layouter, F::ZERO)?;
+            ng.assign_fixed(layouter, F::from(ALPHABET_MAX_SIZE as u64))?;
+        // Zero cell used for sentinels, masking, and unused parallel columns.
+        let zero: AssignedNative<F> = ng.assign_fixed(layouter, F::ZERO)?;
         // The calls divided in regions of `SUBSTRING_PARALLELISM` parallel executions.
         let mut layout: SubstringCheckLayout<F> =
             Vec::with_capacity(calls.len().div_ceil(SUBSTRING_PARALLELISM));
@@ -305,27 +362,49 @@ where
         for chunk in calls.chunks(SUBSTRING_PARALLELISM) {
             let mut local_layout = Vec::with_capacity(NB_SUBSTRING_COLS * SUBSTRING_PARALLELISM);
             let region_size = chunk.iter().map(|(s, (_, len))| s.len().max(*len)).max().unwrap();
+            // +1 for the sentinel row at index 0.
+            let padded_size = region_size + 1;
 
             // Process real entries.
-            for (sequence, (indexes_and_subs, _)) in chunk {
-                let mut padded_sequence: Sequence<F> = sequence.to_vec();
-                padded_sequence.resize(region_size, sequence_padding.clone());
-                let subs_packed: Sequence<F> = (indexes_and_subs.iter())
-                    .map(|(idx, sub)| self.index_and_pack_sequence(layouter, sub, idx))
+            for (sequence, (subs, _)) in chunk {
+                // Table column: zero sentinel + sequence + padding.
+                let mut padded_sequence: Sequence<F> = Vec::with_capacity(padded_size);
+                padded_sequence.push(zero.clone());
+                padded_sequence.extend_from_slice(sequence);
+                padded_sequence.resize(padded_size, sequence_padding.clone());
+
+                // Query column: pack subs with base_offset=1, mask varlen fillers.
+                let subs_packed: Sequence<F> = (subs.iter())
+                    .map(|(idx, idx_offsets, sub, padding_flags)| {
+                        let packed =
+                            self.index_and_pack_sequence(layouter, sub, idx, idx_offsets, 1)?;
+                        if let Some(flags) = padding_flags {
+                            packed
+                                .iter()
+                                .zip(flags.iter())
+                                .map(|(val, is_pad)| ng.select(layouter, is_pad, &zero, val))
+                                .collect()
+                        } else {
+                            Ok(packed)
+                        }
+                    })
                     .collect::<Result<Vec<Sequence<F>>, _>>()?
                     .into_iter()
                     .flatten()
                     .collect();
-                // Padding by repeating the first element, which never panics
-                // since `check_subsequence` rejects empty `sub` arguments.
-                let mut padded_subs_packed = subs_packed.clone();
-                padded_subs_packed.resize(region_size, subs_packed[0].clone());
+
+                // Zero sentinel + packed subs + zero padding.
+                let mut padded_subs_packed: Sequence<F> = Vec::with_capacity(padded_size);
+                padded_subs_packed.push(zero.clone());
+                padded_subs_packed.extend(subs_packed);
+                padded_subs_packed.resize(padded_size, zero.clone());
+
                 local_layout.extend_from_slice(&[padded_sequence, padded_subs_packed]);
             }
 
             // Fill unused parallel slots with zeros. These match the (tag, 0)
-            // table entry that each chunk already provides at index 0.
-            let zero_col = vec![zero.clone(); region_size];
+            // sentinel entry.
+            let zero_col = vec![zero.clone(); padded_size];
             local_layout.resize(NB_SUBSTRING_COLS * SUBSTRING_PARALLELISM, zero_col);
 
             layout.push(local_layout.try_into().unwrap());
@@ -576,9 +655,9 @@ mod test {
         );
         check_bytes_test(false, ("hello", "ell", 1), ("world", "orl", 1), true);
 
-        // Performance test for the golden files, using a sub of 50 bytes.
-        let full = "abcdefghij abcdefghij abcdefghij abcdefghij abcdefghij abcdefghij";
-        let sub = &full[5..55]; // 50 bytes
-        check_bytes_test(true, (full, sub, 5), ("world", "orl", 1), true);
+        // Performance test for the golden files (full=16, sub=5 to match varlen tests).
+        let full = "abcdefghij abcde";
+        let sub = &full[6..11]; // 5 bytes
+        check_bytes_test(true, (full, sub, 6), ("world", "orl", 1), true);
     }
 }

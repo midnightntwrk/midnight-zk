@@ -23,6 +23,6 @@ pub mod scanner;
 mod table;
 
 pub use base64_chip::*;
-pub use data_types::{DateFormat, Separator};
+pub use data_types::{Date, DateFormat, Separator};
 pub use parser_gadget::*;
-pub use scanner::{regex, spec_library, StdLibParser};
+pub use scanner::{regex, static_specs::spec_library, StdLibParser};

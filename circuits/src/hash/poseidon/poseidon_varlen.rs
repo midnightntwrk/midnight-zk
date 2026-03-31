@@ -94,37 +94,12 @@ impl<F: PoseidonField> VarLenPoseidonGadget<F> {
         Ok(result)
     }
 
-    /// Format the last chunk of data so it is zeroed after the effective
-    /// payload. Given chunk = [x1, x2, ..., xn], with n = RATE, returns
-    /// [x1, ..., x_{offset-1}, 0, ..., 0]. If offset = 0, the chunk is
-    /// returned intact.
-    fn constrain_last_chunk(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        chunk: &[AssignedNative<F>],
-        offset: &AssignedNative<F>,
-    ) -> Result<Vec<AssignedNative<F>>, Error> {
-        assert_eq!(chunk.len(), RATE);
-        let ng = &self.native_gadget;
-
-        let mut chunk = chunk.to_vec();
-        let zero = ng.assign_fixed(layouter, F::ZERO)?;
-        let mut after_data: AssignedBit<F> = ng.assign_fixed(layouter, false)?;
-        for (i, elem) in chunk.iter_mut().enumerate().skip(1) {
-            let b = ng.is_equal_to_fixed(layouter, offset, F::from(i as u64))?;
-            after_data = ng.xor(layouter, &[b, after_data])?;
-            *elem = ng.select(layouter, &after_data, &zero, elem)?;
-        }
-
-        Ok(chunk)
-    }
-
     /// Hashes the variable-length vector inputs.
     ///
     /// # Panics
     ///
     /// If `MAX_LEN` is not a multiple of `RATE`.
-    pub(crate) fn poseidon_varlen<const MAX_LEN: usize>(
+    pub fn poseidon_varlen<const MAX_LEN: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
         input: &AssignedVector<F, AssignedNative<F>, MAX_LEN, RATE>,
@@ -165,13 +140,7 @@ impl<F: PoseidonField> VarLenPoseidonGadget<F> {
             )?;
             updating = ng.xor(layouter, &[b, updating])?;
 
-            register = if i == MAX_LEN / RATE {
-                // Constrain vector filler values in the last chunk.
-                let last_chunk = self.constrain_last_chunk(layouter, chunk, &last_chunk_len)?;
-                self.cond_update(layouter, &register, &last_chunk, &updating)?
-            } else {
-                self.cond_update(layouter, &register, chunk, &updating)?
-            }
+            register = self.cond_update(layouter, &register, chunk, &updating)?;
         }
         Ok(register[0].clone())
     }

@@ -60,11 +60,17 @@ use midnight_circuits::{
         NativeChip, NativeConfig, NativeGadget,
     },
     hash::{
-        poseidon::{PoseidonChip, PoseidonConfig, NB_POSEIDON_ADVICE_COLS, NB_POSEIDON_FIXED_COLS},
+        poseidon::{
+            PoseidonChip, PoseidonConfig, VarLenPoseidonGadget, NB_POSEIDON_ADVICE_COLS,
+            NB_POSEIDON_FIXED_COLS,
+        },
         sha256::{Sha256Chip, Sha256Config, NB_SHA256_ADVICE_COLS, NB_SHA256_FIXED_COLS},
         sha512::{Sha512Chip, Sha512Config, NB_SHA512_ADVICE_COLS, NB_SHA512_FIXED_COLS},
     },
-    instructions::{public_input::CommittedInstanceInstructions, *},
+    instructions::{
+        hash::VarHashInstructions, public_input::CommittedInstanceInstructions,
+        vector::VectorBounds, *,
+    },
     map::map_gadget::MapGadget,
     parsing::{
         self,
@@ -760,6 +766,22 @@ impl ZkStdLib {
             .hash(layouter, input)
     }
 
+    /// Variable-length Poseidon hash. Takes an [`AssignedVector`] of native
+    /// field elements with chunk alignment 2 (Poseidon rate) and maximum
+    /// length `M`. `M` must be a multiple of 2.
+    pub fn poseidon_varlen<const M: usize>(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        input: &AssignedVector<F, AssignedNative<F>, M, 2>,
+    ) -> Result<AssignedNative<F>, Error> {
+        let poseidon_chip = self
+            .poseidon_gadget
+            .as_ref()
+            .unwrap_or_else(|| panic!("ZkStdLibArch must enable poseidon"));
+        let gadget = VarLenPoseidonGadget::new(poseidon_chip, &self.native_gadget);
+        gadget.poseidon_varlen(layouter, input)
+    }
+
     /// Hashes a slice of assigned values into `(x, y)` coordinates which are
     /// guaranteed to be in the curve `C`. For usage, see [HashToCurveGadget].
     pub fn hash_to_curve(
@@ -802,6 +824,21 @@ impl ZkStdLib {
             .as_ref()
             .expect("ZkStdLibArch must enable sha256")
             .hash(layouter, input)
+    }
+
+    /// Variable-length SHA-256 hash. Takes an [`AssignedVector`] of bytes
+    /// with chunk alignment 64 (SHA-256 block size) and maximum length `M`.
+    pub fn sha2_256_varlen<const M: usize>(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        input: &AssignedVector<F, AssignedByte<F>, M, 64>,
+    ) -> Result<[AssignedByte<F>; 32], Error> {
+        *self.used_sha2_256.borrow_mut() = true;
+        self.sha2_256_chip
+            .as_ref()
+            .expect("ZkStdLibArch must enable sha256")
+            .varlen_gadget()
+            .varhash(layouter, input)
     }
 
     /// Sha2_512 hash.
@@ -1253,7 +1290,7 @@ where
         &self,
         layouter: &mut impl Layouter<F>,
         input: &AssignedVector<F, T, M, A>,
-    ) -> Result<[AssignedBit<F>; M], Error> {
+    ) -> Result<(Box<[AssignedBit<F>; M]>, VectorBounds<F>), Error> {
         self.vector_gadget.padding_flag(layouter, input)
     }
 
@@ -1261,7 +1298,7 @@ where
         &self,
         layouter: &mut impl Layouter<F>,
         input: &AssignedVector<F, T, M, A>,
-    ) -> Result<(AssignedNative<F>, AssignedNative<F>), Error> {
+    ) -> Result<VectorBounds<F>, Error> {
         self.vector_gadget.get_limits(layouter, input)
     }
 

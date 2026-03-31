@@ -8,9 +8,8 @@ use midnight_circuits::{
     instructions::{
         ArithInstructions, AssertionInstructions, AssignmentInstructions, Base64Instructions,
         DecompositionInstructions, EccInstructions, PublicInputInstructions,
-        RangeCheckInstructions,
     },
-    parsing::{DateFormat, Separator},
+    parsing::{Date, DateFormat, Separator},
     testing_utils::ecdsa::{ECDSASig, FromBase64, PublicKey},
     types::{AssignedByte, AssignedForeignPoint, AssignedNative, InnerValue, Instantiable},
     CircuitField,
@@ -21,7 +20,6 @@ use midnight_proofs::{
     plonk::Error,
 };
 use midnight_zk_stdlib::{utils::plonk_api::filecoin_srs, Relation, ZkStdLib, ZkStdLibArch};
-use num_bigint::BigUint;
 use rand::rngs::OsRng;
 use utils::{read_credential, split_blob, verify_credential_sig};
 
@@ -31,7 +29,7 @@ type F = midnight_curves::Fq;
 
 const CRED_PATH: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/examples/identity/credentials/2k-credential"
+    "/examples/identity/jwt/credentials/2k-credential"
 );
 
 // Public Key of the issuer, signer of the credential.
@@ -102,12 +100,13 @@ impl Relation for FullCredential {
 
         // Check birth date.
         let birthdate = Self::get_property(std_lib, layouter, &json, b"birthDate", BIRTHDATE_LEN)?;
-        let limit = Date {
-            day: 1,
-            month: 1,
-            year: 2004,
-        };
-        Self::assert_date_before(std_lib, layouter, &birthdate, limit)?;
+        let limit = Date { day: 1, month: 1, year: 2004 };
+        std_lib.parser().assert_date_before_fixed(
+            layouter,
+            &birthdate,
+            (DateFormat::YYYYMMDD, Separator::Sep('-')),
+            limit,
+        )?;
 
         // Get holder public key.
         let x = Self::get_property(std_lib, layouter, &json, b"x", COORD_LEN)?;
@@ -273,28 +272,6 @@ impl FullCredential {
         Ok(())
     }
 
-    fn assert_date_before(
-        std_lib: &ZkStdLib,
-        layouter: &mut impl Layouter<F>,
-        date: &[AssignedByte<F>],
-        limit_date: Date,
-    ) -> Result<(), Error> {
-        let format = (DateFormat::YYYYMMDD, Separator::Sep('-'));
-        let date = std_lib.parser().date_to_int(layouter, date, format)?;
-        std_lib.assert_lower_than_fixed(layouter, &date, &limit_date.into())
-    }
-}
-
-struct Date {
-    day: u8,
-    month: u8,
-    year: u16,
-}
-
-impl From<Date> for BigUint {
-    fn from(value: Date) -> Self {
-        (value.year as u64 * 10_000 + value.month as u64 * 100 + value.day as u64).into()
-    }
 }
 
 // Returns the index of a subsequence inside a larger sequence, if it is
