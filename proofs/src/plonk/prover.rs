@@ -308,12 +308,22 @@ where
                     lookup.compute_logderivative(pk, params, beta, blindings)
                 })
                 .collect::<Result<Vec<_>, _>>()?;
-            // Commit helper polys and write all commitments to transcript in order.
-            for c in &computed {
-                for h in &c.helper_polys_lagrange {
-                    let h_poly = domain.lagrange_from_vec(h.clone());
-                    let h_commitment = CS::commit_lagrange(params, &h_poly);
-                    transcript.write(&h_commitment)?;
+            // Compute all helper poly commitments in parallel, then write in order.
+            let all_helper_commitments: Vec<Vec<CS::Commitment>> = computed
+                .par_iter()
+                .map(|c| {
+                    c.helper_polys_lagrange
+                        .par_iter()
+                        .map(|h| {
+                            let h_poly = domain.lagrange_from_vec(h.clone());
+                            CS::commit_lagrange(params, &h_poly)
+                        })
+                        .collect()
+                })
+                .collect();
+            for (c, helper_commitments) in computed.iter().zip(all_helper_commitments.iter()) {
+                for h_commitment in helper_commitments {
+                    transcript.write(h_commitment)?;
                 }
                 transcript.write(&c.aggregator_commitment)?;
             }

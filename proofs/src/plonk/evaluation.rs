@@ -1,5 +1,6 @@
 use ff::{PrimeField, WithSmallOrderMulGroup};
 use group::ff::Field;
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use super::{ConstraintSystem, Expression};
 use crate::{
@@ -1025,7 +1026,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                 let delta_start = beta * &B::g_coset(domain);
 
                 let permutation_product_cosets: Vec<Polynomial<F, B>> = sets
-                    .iter()
+                    .par_iter()
                     .map(|set| B::coeff_to_self(domain, set.permutation_product_poly.clone()))
                     .collect();
 
@@ -1107,7 +1108,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
             // Pre-compute all lookup cosets in parallel. This trades peak memory
             // for parallelism: the FFTs for different lookups can now overlap.
             let all_lookup_cosets: Vec<_> = lookups
-                .iter()
+                .par_iter()
                 .map(|lookup| {
                     let helper_cosets: Vec<_> = lookup
                         .helper_polys
@@ -1124,7 +1125,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
             // Pre-compute all trash cosets in parallel (lookup cosets
             // are already pre-computed above).
             let trash_cosets: Vec<_> = trashcans
-                .iter()
+                .par_iter()
                 .map(|trash| B::coeff_to_self(domain, trash.trash_poly.clone()))
                 .collect();
 
