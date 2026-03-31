@@ -383,7 +383,7 @@ fn main() {
     // IVC setup.
     let ivc_srs = midnight_zk_stdlib::utils::plonk_api::filecoin_srs(IVC_K);
     let start = Instant::now();
-    let (mut prover, verifier) = ivc::setup::<ProofAggregation>(ivc_srs, IVC_K, inner_ctx.clone());
+    let (mut prover, verifier) = ivc::setup::<ProofAggregation>(ivc_srs, IVC_K, inner_ctx);
     println!("IVC setup completed in {:.2?}", start.elapsed());
 
     // Aggregation steps.
@@ -399,7 +399,7 @@ fn main() {
 
         let ivc_instance = prover.instance();
         let start = Instant::now();
-        verifier.verify(&inner_ctx, &ivc_instance, &ivc_proof).unwrap();
+        verifier.verify(&ivc_instance, &ivc_proof).unwrap();
         let verify_time = start.elapsed();
 
         println!("Step {i}: IVC prove {prove_time:.2?}, verify {verify_time:.2?}");
