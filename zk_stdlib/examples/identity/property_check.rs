@@ -197,24 +197,24 @@ impl From<Date> for BigUint {
 }
 
 impl CredentialProperty {
-    /// Searches for the first position in `parsed_body` marked with `marker`,
+    /// Searches for the first position in `parsed_body` tagged with `output`,
     /// and returns the following `val_len` bytes from `body`.
     fn get_property(
         std_lib: &ZkStdLib,
         layouter: &mut impl Layouter<F>,
         body: &[AssignedByte<F>],
         parsed_body: &[AssignedNative<F>],
-        marker: usize,
+        output: usize,
         val_len: usize,
     ) -> Result<Vec<AssignedByte<F>>, Error> {
-        let marker_f = F::from(marker as u64);
+        let output_f = F::from(output as u64);
 
-        // In-circuit scan: find the first position of `marker` in `parsed_body`.
+        // In-circuit scan: find the first position of `output` in `parsed_body`.
         // Iterating in reverse so that the final overwrite is the first occurrence of
-        // the marker.
+        // the output.
         let mut idx: AssignedNative<F> = std_lib.assign_fixed(layouter, F::from(0u64))?;
         for (i, m) in parsed_body.iter().enumerate().rev() {
-            let is_match = std_lib.is_equal_to_fixed(layouter, m, marker_f)?;
+            let is_match = std_lib.is_equal_to_fixed(layouter, m, output_f)?;
             let i_val: AssignedNative<F> = std_lib.assign_fixed(layouter, F::from(i as u64))?;
             idx = std_lib.select(layouter, &is_match, &i_val, &idx)?;
         }

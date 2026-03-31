@@ -17,7 +17,7 @@
 //!
 //! An automaton is a regular expression compiled into a transition system (see
 //! [`super::regex`]). Each transition is a tuple
-//! `(source_state, input_byte, output_marker, target_state)`.
+//! `(source_state, input_byte, output, target_state)`.
 //!
 //! The full transition table for all configured automata is loaded once as a
 //! fixed lookup table (see [`ScannerChip::load_automata_table`]). It has the
@@ -65,9 +65,9 @@
 //! The last two rows assert that the final state is accepting, by looking up
 //! the dummy final-state transition `(s_final, 256, 0, 0)`.
 //!
-//! The function returns the output markers, which can be used to extract
-//! information about which characters matched which parts of the regex, or more
-//! generally, perform computations on the input.
+//! The function returns the outputs, which can be used to extract information
+//! about which characters matched which parts of the regex, or more generally,
+//! perform computations on the input.
 
 use midnight_proofs::{
     circuit::{Layouter, Region, Value},
@@ -122,7 +122,7 @@ where
             || "parsing layout",
             |mut region| {
                 let mut offset = 0;
-                let mut markers = Vec::with_capacity(input.len());
+                let mut outputs = Vec::with_capacity(input.len());
 
                 // Assign initial state.
                 let mut state = init_state.copy_advice(
@@ -138,21 +138,16 @@ where
                         automaton,
                         &mut state,
                         letter,
-                        &mut markers,
+                        &mut outputs,
                         &mut offset,
                     )?;
                 }
 
                 // Final-state check + padding on the last row.
                 #[allow(clippy::modulo_one)]
-                self.assert_final_state(
-                    &mut region,
-                    invalid_letter.clone(),
-                    zero.clone(),
-                    &mut offset,
-                )?;
+                self.assert_final_state(&mut region, &invalid_letter, &zero, &mut offset)?;
 
-                Ok(markers)
+                Ok(outputs)
             },
         )
     }
@@ -162,15 +157,15 @@ where
     /// row. Assumes that `state` (the source) is already assigned at the
     /// correct cell.
     ///
-    /// Copies the `letter`, assigns the `output` marker and the next state,
-    /// then updates `state`.
+    /// Copies the `letter`, assigns the output and the next state, then updates
+    /// `state`.
     fn apply_one_transition(
         &self,
         region: &mut Region<'_, F>,
         automaton: &NativeAutomaton<F>,
         state: &mut AssignedNative<F>,
         letter: &AssignedByte<F>,
-        markers: &mut Vec<AssignedNative<F>>,
+        outputs: &mut Vec<AssignedNative<F>>,
         offset: &mut usize,
     ) -> Result<(), Error> {
         self.config.q_automaton.enable(region, *offset)?;
@@ -185,13 +180,13 @@ where
 
         let (next_state_val, output_val) = automaton.next_transition(state, letter)?;
 
-        let marker = region.assign_advice(
+        let output = region.assign_advice(
             || "output batch",
             self.config.advice_cols[2],
             *offset,
             || output_val,
         )?;
-        markers.push(marker);
+        outputs.push(output);
 
         *offset += 1;
         *state = region.assign_advice(
@@ -207,14 +202,14 @@ where
     /// Checks that the state, assigned at the current offset in the column
     /// `t_source`, is a final state. This is done by using a dummy transition
     /// labelled with the invalid byte number 256, and with the target state and
-    /// the output marker set to 0. If the state is not final (which means the
-    /// parsed input does not match the expected regular expression), the
-    /// circuit will become unsatisfiable.
+    /// the output set to 0. If the state is not final (which means the parsed
+    /// input does not match the expected regular expression), the circuit will
+    /// become unsatisfiable.
     fn assert_final_state(
         &self,
         region: &mut Region<'_, F>,
-        invalid_letter: AssignedNative<F>,
-        invalid_state: AssignedNative<F>,
+        invalid_letter: &AssignedNative<F>,
+        invalid_state: &AssignedNative<F>,
         offset: &mut usize,
     ) -> Result<(), Error> {
         self.config.q_automaton.enable(region, *offset)?;
@@ -259,7 +254,7 @@ where
             |mut table| {
                 let mut offset = 0;
                 let mut add_entry =
-                    |source: F, letter: F, target: F, marker: F| -> Result<(), Error> {
+                    |source: F, letter: F, target: F, output: F| -> Result<(), Error> {
                         table.assign_cell(
                             || "t_source",
                             self.config.t_source,
@@ -282,7 +277,7 @@ where
                             || "t_output",
                             self.config.t_output,
                             offset,
-                            || Value::known(marker),
+                            || Value::known(output),
                         )?;
                         offset += 1;
                         Ok(())
@@ -843,7 +838,7 @@ mod test {
             true,
         );
 
-        // Same regex, wrong output markers on second input.
+        // Same regex, wrong outputs on second input.
         dynamic_basic_test(
             1,
             false,

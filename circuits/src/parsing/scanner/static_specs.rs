@@ -68,17 +68,17 @@ pub enum StdLibParser {
     ///         type: string
     ///       }[],
     ///       credentialSubject: {
-    ///         nationalId: string, # marked "1"
-    ///         familyName: string, # marked "2"
-    ///         givenName: string,  # marked "3"
+    ///         nationalId: string, # output "1"
+    ///         familyName: string, # output "2"
+    ///         givenName: string,  # output "3"
     ///         publicKeyJwk: {
     ///           kty: string,
     ///           crv: string,
-    ///           x: string, # marked "5"
-    ///           y: string  # marked "6"
+    ///           x: string, # output "5"
+    ///           y: string  # output "6"
     ///         }
     ///         id: string,
-    ///         birthDate: string,  # marked "4"
+    ///         birthDate: string,  # output "4"
     ///       },
     ///       type: string[],
     ///       @context: string[],
@@ -102,7 +102,7 @@ pub enum StdLibParser {
     /// # Output Behaviour:
     ///
     /// As Specified in the above grammar, the following field contents
-    /// (excluding the double quotes) are marked as follows:
+    /// (excluding the double quotes) are output as follows:
     ///   - `"nationalId"` -> 1
     ///   - `"familyName"` -> 2
     ///   - `"givenName"` -> 3
@@ -159,16 +159,16 @@ pub fn spec_library() -> ParsingLibrary {
 
 // Regex formalising the spec of `StdLIbParser::Jwt`.
 fn spec_jwt() -> Regex {
-    // Content of a basic field (RFC 8259 JSON string), possibly marked if `marker`
-    // is not 0.
-    let string = |marker: usize| -> Regex {
-        Regex::json_string().replace_markers(&|m| if m == 1 { Some(marker) } else { None })
+    // Content of a basic field (RFC 8259 JSON string), possibly with output if
+    // `output` is not 0.
+    let string = |output: usize| -> Regex {
+        Regex::json_string().replace_outputs(&|m| if m == 1 { Some(output) } else { None })
     };
     // A json field, with possible white spaces.
     let field = |name: &str, content: Regex| -> Regex {
         Regex::spaced_cat([format!("\"{name}\"").into(), ":".into(), content])
     };
-    let string_field = |name: &str, marker: usize| -> Regex { field(name, string(marker)) };
+    let string_field = |name: &str, output: usize| -> Regex { field(name, string(output)) };
     let int_field = |name: &str| -> Regex { field(name, Regex::digit().non_empty_list()) };
 
     // A collection of regular expressions, delimited by `opening` and `closing`,
@@ -202,8 +202,8 @@ fn spec_jwt() -> Regex {
             vec![
                 string_field("kty", 0),
                 string_field("crv", 0),
-                string_field("x", 5), // Marked 5.
-                string_field("y", 6), // Marked 6.
+                string_field("x", 5), // Output 5.
+                string_field("y", 6), // Output 6.
             ],
             "}",
         ),
@@ -213,12 +213,12 @@ fn spec_jwt() -> Regex {
         collec(
             "{",
             vec![
-                string_field("nationalId", 1), // Marked 1.
-                string_field("familyName", 2), // Marked 2.
-                string_field("givenName", 3),  // Marked 3.
+                string_field("nationalId", 1), // Output 1.
+                string_field("familyName", 2), // Output 2.
+                string_field("givenName", 3),  // Output 3.
                 public_key_jwk,
                 string_field("id", 0),
-                string_field("birthDate", 4), // Marked 4.
+                string_field("birthDate", 4), // Output 4.
             ],
             "}",
         ),
@@ -369,7 +369,7 @@ mod tests {
 
     /// Tests whether a given regular expression accepts or rejects two sets of
     /// corresponding strings. For accepted strings, checks the list of outputs
-    /// for each markers.
+    /// for each output.
     fn specs_one_test(
         spec_library: &FxHashMap<StdLibParser, Automaton>,
         spec: StdLibParser,
@@ -410,7 +410,7 @@ mod tests {
                 expected_outputs.iter().all(|(j,_)| i != j)
             ){
                 panic!(
-                    "[test of spec {:?}, nb. {index}]: the input {s} is accepted as expected, but it has been marked with a {}, which is unexpected\nThe automaton reached the final state {} in {} transitions.",
+                    "[test of spec {:?}, nb. {index}]: the input {s} is accepted as expected, but it has an unexpected output {}, which is unexpected\nThe automaton reached the final state {} in {} transitions.",
                     spec, n.0, state, counter
                 )
             }
@@ -418,12 +418,12 @@ mod tests {
                 let expected_output_bytes = expected_output.as_bytes();
                 match outputs.get(i) {
                     None => panic!(
-                        "[test of spec {:?}, nb. {index}]: the input {s} is accepted as expected, but it has no marker {i}, which is unexpected\nThe automaton reached the final state {} in {} transitions.",
+                        "[test of spec {:?}, nb. {index}]: the input {s} is accepted as expected, but it has no output {i}, which is unexpected\nThe automaton reached the final state {} in {} transitions.",
                         spec, state, counter
                     ),
                     Some(output_bytes) => {
                         assert!(output_bytes == expected_output_bytes,
-                            "[test of spec {:?}, nb. {index}]: the input {s} is accepted as expected, but the output marked {i} is\n  \"{}\"\ninstead of\n  \"{}\"\nwhich is unexpected. The automaton reached the final state {} in {} transitions.",
+                            "[test of spec {:?}, nb. {index}]: the input {s} is accepted as expected, but output {i} is\n  \"{}\"\ninstead of\n  \"{}\"\nwhich is unexpected. The automaton reached the final state {} in {} transitions.",
                             spec,
                             String::from_utf8_lossy(output_bytes),
                             String::from_utf8_lossy(expected_output_bytes),

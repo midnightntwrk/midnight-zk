@@ -40,12 +40,12 @@ use std::{
 };
 
 use automaton::Automaton;
-use regex::Regex;
 use midnight_proofs::{
     circuit::{Chip, Layouter},
     plonk::{Advice, Column, ConstraintSystem, Error, Expression, Fixed, Selector, TableColumn},
     poly::Rotation,
 };
+use regex::Regex;
 use rustc_hash::FxHashMap;
 pub use static_specs::{spec_library, StdLibParser};
 #[cfg(test)]
@@ -102,10 +102,10 @@ pub struct NativeAutomaton<F> {
     pub initial_state: F,
     /// The final states of the automaton.
     pub final_states: BTreeSet<F>,
-    /// When `transitions[source_state][letter] = (target_state, marker)`, it
+    /// When `transitions[source_state][letter] = (target_state, output)`, it
     /// means that in state `source_state`, upon reading the byte `letter`, the
-    /// automaton run moves to state `target_state` and marks `letter` with
-    /// `marker`. If the entry is undefined, the automaton run gets stuck.
+    /// automaton run moves to state `target_state` and tags `letter` with
+    /// `output`. If the entry is undefined, the automaton run gets stuck.
     pub transitions: BTreeMap<F, BTreeMap<F, (F, F)>>,
 }
 
@@ -118,10 +118,10 @@ where
         for (&source, inner) in &value.transitions {
             let native_inner: BTreeMap<F, (F, F)> = inner
                 .iter()
-                .map(|(&letter, &(target, marker))| {
+                .map(|(&letter, &(target, output))| {
                     (
                         F::from(letter as u64),
-                        (F::from(target as u64), F::from(marker as u64)),
+                        (F::from(target as u64), F::from(output as u64)),
                     )
                 })
                 .collect();
@@ -451,10 +451,10 @@ impl Regex {
     }
 
     fn hard_coded_example1() -> Self {
-        // `marker_regex` accepts any character, marking 'l' as 2, and
+        // `output_regex` accepts any character, marking 'l' as 2, and
         // any other non-blank character different from 'h' as 1.
-        let marker_regex = Regex::any_byte()
-            .mark(&|b| {
+        let output_regex = Regex::any_byte()
+            .output(&|b| {
                 if b == b'l' {
                     Some(2)
                 } else if !b"h\n\t ".contains(&b) {
@@ -468,7 +468,7 @@ impl Regex {
         let hell = Regex::word("hell");
         let marks = Regex::word("!").non_empty_list();
         let sentence = Regex::separated_cat([holy, hell, marks], Regex::blanks_strict());
-        sentence.and(marker_regex)
+        sentence.and(output_regex)
     }
 }
 
