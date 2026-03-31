@@ -15,12 +15,11 @@
 //!
 //! DO NOT add this example to the CI as it is slow.
 
-#[path = "common/mod.rs"]
-mod common;
+#[path = "circuits/sha_preimage.rs"]
+mod sha_preimage;
 
 use std::{collections::BTreeMap, time::Instant};
 
-use common::sha_preimage::ShaPreimageCircuit;
 use ff::Field;
 use group::Group;
 use midnight_aggregation::ivc::{self, IvcContext, IvcIO, IvcState, IvcTransition};
@@ -44,8 +43,7 @@ use midnight_proofs::{
 };
 use midnight_zk_stdlib::{prove, setup_pk, setup_vk, MidnightVK, Relation, ZkStdLib, ZkStdLibArch};
 use rand::rngs::OsRng;
-
-use crate::common::sha_preimage;
+use sha_preimage::ShaPreimageCircuit;
 
 type S = BlstrsEmulation;
 type F = <S as SelfEmulation>::F;
@@ -349,12 +347,15 @@ fn main() {
     let inner_vk = setup_vk(&inner_srs, &ShaPreimageCircuit);
     let inner_pk = setup_pk(&ShaPreimageCircuit, &inner_vk);
     let inner_ctx = {
-        let (inner_cs, inner_domain) =
-            common::constraint_system(ShaPreimageCircuit.used_chips(), sha_preimage::K);
+        let arch = ShaPreimageCircuit.used_chips();
+        let k = sha_preimage::K;
+        let mut cs = midnight_proofs::plonk::ConstraintSystem::default();
+        ZkStdLib::configure(&mut cs, (arch, (k - 1) as u8));
+        let domain = midnight_proofs::poly::EvaluationDomain::new(cs.degree() as u32, k);
 
         InnerCircuitContext {
-            cs: inner_cs,
-            domain: inner_domain,
+            cs,
+            domain,
             vk: inner_vk,
             params_verifier: inner_srs.verifier_params(),
         }
