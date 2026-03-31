@@ -12,6 +12,8 @@ verification keys break backwards compatibility.
 
 ## [Unreleased]
 ### Added
+* Add `resolve_fixed_bases` to `Msm`, `AssignedMsm`, `Accumulator` and `AssignedAccumulator` [#302](https://github.com/midnightntwrk/midnight-zk/pull/302)
+* Expose `fixed_base_names`, `fixed_commitment_name` and `perm_commitment_name` helper functions [#302](https://github.com/midnightntwrk/midnight-zk/pull/302)
 * Add `assign_without_subgroup_check` to `EccInstructions` and `SelfEmulation` traits [#284](https://github.com/midnightntwrk/midnight-zk/pull/284)
 * Add Curve25519 [#181](https://github.com/midnightntwrk/midnight-zk/pull/181)
 * Expose helper functions directly in `verifier_gadget` [#227](https://github.com/midnightntwrk/midnight-zk/pull/227)
