@@ -33,6 +33,7 @@ verification keys break backwards compatibility.
 * Add `p256` as curve dependency [#269](https://github.com/midnightntwrk/midnight-zk/pull/269)
 * Add emulations of base/scalar fields of `p256` over `bls12-381` scalar field [#270](https://github.com/midnightntwrk/midnight-zk/pull/270)
 * add MSMCompletenessFluke error [#277](https://github.com/midnightntwrk/midnight-zk/pull/277)
+* Scanner chip: dynamic regex support and lazy automaton loading [#232](https://github.com/midnightntwrk/midnight-zk/pull/232)
 
 ### Changed
 * Filter out compile-time identity points in MSM [#256](https://github.com/midnightntwrk/midnight-zk/pull/256)
