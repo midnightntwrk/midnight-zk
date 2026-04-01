@@ -292,7 +292,7 @@ impl CredentialProperty {
         limit_date: Date,
     ) -> Result<(), Error> {
         let format = (DateFormat::YYYYMMDD, Separator::Sep('-'));
-        let date = std_lib.parser().date_to_int(layouter, date, format)?;
+        let date = std_lib.parser().date_to_int(layouter, date, format, None)?;
         std_lib.assert_lower_than_fixed(layouter, &date, &limit_date.into())
     }
 
