@@ -950,8 +950,8 @@ where
 {
     /// Given config creates new chip that implements foreign ECC.
     /// The RNG is used to sample a random point used for incomplete addition
-    /// during windowed MSM operations. Randomness does not affect soundness,
-    /// only completeness.
+    /// Soundness does not rely on this point being random, but completeness 
+    /// does.
     pub fn new(
         config: &ForeignEccConfig<C>,
         native_gadget: &N,
