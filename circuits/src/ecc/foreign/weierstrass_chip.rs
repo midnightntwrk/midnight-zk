@@ -35,11 +35,11 @@ use midnight_proofs::{
 };
 use num_bigint::BigUint;
 use num_traits::One;
-use rand::rngs::OsRng;
+use rand::{CryptoRng, RngCore};
 #[cfg(any(test, feature = "testing"))]
 use {
     crate::testing_utils::Sampleable, crate::utils::util::FromScratch,
-    midnight_proofs::plonk::Instance, rand::RngCore,
+    midnight_proofs::plonk::Instance, rand::rngs::OsRng,
 };
 
 use super::gates::weierstrass::{
@@ -166,6 +166,10 @@ where
     // computations depending on it e.g. α can be cached and reused.
     // Importantly, such cache is keyed by window size.
     msm_randomness: Rc<RefCell<MsmRandomnessMap<F, C, B>>>,
+    // A random point used in windowed_msm (to shift the initial accumulator) so that the
+    // double-and-add loop can internally use incomplete addition. Sampled once at chip
+    // construction time.
+    random_point: C::CryptographicGroup,
 }
 
 /// Type for foreign EC points.
@@ -956,12 +960,19 @@ where
     N: NativeInstructions<F>,
 {
     /// Given config creates new chip that implements foreign ECC
+    /// The RNG is used to sample a random point used for incomplete addition
+    /// Soundness does not rely on this point being random, but completeness
+    /// does.
     pub fn new(
         config: &ForeignWeierstrassEccConfig<C>,
         native_gadget: &N,
         scalar_field_chip: &S,
+        mut rng: impl RngCore + CryptoRng,
     ) -> Self {
+        let random_point = C::random(&mut rng).into_subgroup();
+
         let base_field_chip = FieldChip::new(&config.base_field_config, native_gadget);
+
         Self {
             config: config.clone(),
             native_gadget: native_gadget.clone(),
@@ -969,6 +980,7 @@ where
             scalar_field_chip: scalar_field_chip.clone(),
             tag_cnt: Rc::new(RefCell::new(1)),
             msm_randomness: Rc::new(RefCell::new(HashMap::new())),
+            random_point,
         }
     }
 
@@ -1696,17 +1708,25 @@ where
             return Ok(cached.clone());
         }
 
-        let r: AssignedForeignPoint<F, C, B> = self.assign_without_subgroup_check(
-            layouter,
-            Value::known(C::CryptographicGroup::random(OsRng)),
-        )?;
+        let r: AssignedForeignPoint<F, C, B> = if let Some(cached) = self.msm_randomness.borrow().get(&1) {
+            cached.r
+        } else {
+            let p = self.assign_without_subgroup_check(
+                layouter,
+                Value::known(self.random_point)
+            )?;
 
-        Self::completeness_error_if(&r.point, |p| C::CryptographicGroup::is_identity(p).into())?;
+            // Cache the random point
+            let randomness = MsmRandomness { r: p.clone(), neg_alpha: p.clone() };
+            self.msm_randomness.borrow_mut().insert(1, randomness.clone());
 
-        // Assert the chosen r is not the identity point.
-        self.base_field_chip
-            .native_gadget
-            .assert_equal_to_fixed(layouter, &r.is_id, false)?;
+            // Assert the chosen r is not the identity point.
+            self.base_field_chip
+                .native_gadget
+                .assert_equal_to_fixed(layouter, &r.is_id, false)?;
+
+            p
+        };
 
         let alpha = self.mul_by_u128(layouter, (1u128 << WS) - 1, &r)?;
         let neg_alpha = self.negate(layouter, &alpha)?;
@@ -2023,7 +2043,7 @@ where
         let native_gadget = <N as FromScratch<F>>::new_from_scratch(&config.native_gadget_config);
         let scalar_field_chip =
             <S as FromScratch<F>>::new_from_scratch(&config.scalar_field_config);
-        ForeignWeierstrassEccChip::new(&config.ff_ecc_config, &native_gadget, &scalar_field_chip)
+        ForeignWeierstrassEccChip::new(&config.ff_ecc_config, &native_gadget, &scalar_field_chip, OsRng)
     }
 
     fn load_from_scratch(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {

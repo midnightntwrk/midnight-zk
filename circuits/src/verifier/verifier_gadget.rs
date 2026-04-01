@@ -748,7 +748,7 @@ pub(crate) mod tests {
         poly::kzg::{params::ParamsKZG, KZGCommitmentScheme},
         transcript::{CircuitTranscript, Transcript},
     };
-    use rand::SeedableRng;
+    use rand::{rngs::OsRng, SeedableRng};
     use rand_chacha::ChaCha8Rng;
 
     use super::*;
@@ -935,7 +935,7 @@ pub(crate) mod tests {
             let core_decomp_chip = P2RDecompositionChip::new(&config.1, &16);
             let native_gadget = NativeGadget::new(core_decomp_chip.clone(), native_chip.clone());
             let curve_chip =
-                ForeignWeierstrassEccChip::new(&config.2, &native_gadget, &native_gadget);
+                ForeignWeierstrassEccChip::new(&config.2, &native_gadget, &native_gadget, OsRng);
             let poseidon_chip = PoseidonChip::new(&config.3, &native_chip);
 
             let verifier_chip =

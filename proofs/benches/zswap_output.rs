@@ -268,7 +268,7 @@ fn bench_zswap_output(c: &mut Criterion) {
         std::slice::from_ref(&circuit),
         1,
         &[&[&[], &instance]],
-        OsRng,
+        &mut OsRng,
         &mut transcript,
         &mut group,
     )
