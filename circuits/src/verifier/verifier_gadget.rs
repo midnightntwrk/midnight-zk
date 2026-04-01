@@ -755,7 +755,7 @@ pub(crate) mod tests {
     use crate::{
         ecc::{
             curves::CircuitCurve,
-            foreign::{
+            foreign::weierstrass_chip::{
                 nb_foreign_ecc_chip_columns, ForeignWeierstrassEccChip, ForeignWeierstrassEccConfig,
             },
         },

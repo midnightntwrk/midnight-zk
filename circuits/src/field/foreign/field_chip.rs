@@ -1028,6 +1028,10 @@ where
             return Ok(x.clone());
         }
 
+        if k == -K::ONE {
+            return self.neg(layouter, x);
+        }
+
         // If the constant is too big, we should multiply normally instead.
         // This threshold is just a heuristic, it will allow us to perform about 1000
         // sums after this multiplication without normalization.

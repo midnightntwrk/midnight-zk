@@ -36,7 +36,7 @@ use crate::instructions::NativeInstructions;
 use crate::{
     ecc::{
         curves::{CircuitCurve, WeierstrassCurve},
-        foreign::ForeignWeierstrassEccChip,
+        foreign::weierstrass_chip::ForeignWeierstrassEccChip,
     },
     field::{decomposition::chip::P2RDecompositionChip, AssignedNative, NativeChip, NativeGadget},
     hash::poseidon::{PoseidonChip, PoseidonState},
