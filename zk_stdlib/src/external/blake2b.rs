@@ -142,15 +142,14 @@ impl<F: CircuitField> FromScratch<F> for Blake2bWrapper<F> {
         while advice_columns.len() < NB_BLAKE2B_ADVICE_COLS {
             advice_columns.push(meta.advice_column());
         }
-        while fixed_columns.len() < 1 {
+        while fixed_columns.is_empty() {
             fixed_columns.push(meta.fixed_column());
         }
         let advice_cols: [_; NB_BLAKE2B_ADVICE_COLS] =
             advice_columns[..NB_BLAKE2B_ADVICE_COLS].try_into().unwrap();
         let constant_column = fixed_columns[0];
 
-        let blake2b_config =
-            Blake2bWrapper::configure(meta, &(constant_column, advice_cols));
+        let blake2b_config = Blake2bWrapper::configure(meta, &(constant_column, advice_cols));
         (blake2b_config, native_config)
     }
 
