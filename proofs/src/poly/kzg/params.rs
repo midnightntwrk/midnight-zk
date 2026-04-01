@@ -242,6 +242,11 @@ impl<E: MultiMillerLoop + Debug> ParamsVerifierKZG<E>
 where
     E::G2: Curve + ProcessedSerdeObject,
 {
+    /// Returns first power of secret on G2
+    pub fn s_g2(&self) -> E::G2 {
+        self.s_g2
+    }
+
     /// Writes parameters to buffer
     pub fn write<W: io::Write>(&self, writer: &mut W, format: SerdeFormat) -> io::Result<()> {
         self.s_g2.write(writer, format)?;
