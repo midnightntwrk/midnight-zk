@@ -176,10 +176,8 @@ impl<F: CircuitField> FromScratch<F> for KeccakSha3Wrapper<F> {
             fixed_columns[..PACKED_FIXED_COLS].try_into().unwrap();
         let constant_column = fixed_columns[PACKED_FIXED_COLS];
 
-        let sha_config = KeccakSha3Wrapper::configure(
-            meta,
-            &(constant_column, advice_cols, fixed_cols),
-        );
+        let sha_config =
+            KeccakSha3Wrapper::configure(meta, &(constant_column, advice_cols, fixed_cols));
         (sha_config, native_config)
     }
 
