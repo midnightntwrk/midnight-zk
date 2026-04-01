@@ -102,8 +102,7 @@ where
 
     let instance = compute_instances(params, pk, instances, nb_committed_instances, transcript)?;
 
-    let (advice, challenges) =
-        parse_advices(params, pk, circuits, instances, transcript, rng)?;
+    let (advice, challenges) = parse_advices(params, pk, circuits, instances, transcript, rng)?;
 
     // Sample theta challenge for keeping lookup columns linearly independent
     let theta: F = transcript.squeeze_challenge();
@@ -966,7 +965,8 @@ fn test_create_proof() {
 
     const K: u32 = 4;
     let params: ParamsKZG<Bn256> = ParamsKZG::unsafe_setup(K, OsRng);
-    let vk = keygen_vk_with_k::<Fr, KZGCommitmentScheme<Bn256>, _>(&params, &MyCircuit, K).expect("keygen_vk should not fail");
+    let vk = keygen_vk_with_k::<Fr, KZGCommitmentScheme<Bn256>, _>(&params, &MyCircuit, K)
+        .expect("keygen_vk should not fail");
     let pk = keygen_pk(vk, &MyCircuit).expect("keygen_pk should not fail");
     let mut transcript = CircuitTranscript::<_>::init();
 

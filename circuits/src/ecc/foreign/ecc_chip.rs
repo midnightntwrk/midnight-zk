@@ -949,8 +949,8 @@ where
     N: NativeInstructions<F>,
 {
     /// Given config creates new chip that implements foreign ECC.
-    /// The RNG is used to sample a random point used for incomplete addition during
-    /// windowed MSM operations.
+    /// The RNG is used to sample a random point used for incomplete addition
+    /// during windowed MSM operations.
     pub fn new(
         config: &ForeignEccConfig<C>,
         native_gadget: &N,
@@ -958,8 +958,7 @@ where
         mut rng: impl RngCore + CryptoRng,
     ) -> Self {
         let r_dlog = C::Scalar::random(&mut rng);
-        let random_point =
-            C::CryptographicGroup::mul(C::CryptographicGroup::generator(), r_dlog);
+        let random_point = C::CryptographicGroup::mul(C::CryptographicGroup::generator(), r_dlog);
         let base_field_chip = FieldChip::new(&config.base_field_config, native_gadget);
         Self {
             config: config.clone(),
@@ -2082,7 +2081,12 @@ where
         let native_gadget = <N as FromScratch<F>>::new_from_scratch(&config.native_gadget_config);
         let scalar_field_chip =
             <S as FromScratch<F>>::new_from_scratch(&config.scalar_field_config);
-        ForeignEccChip::new(&config.ff_ecc_config, &native_gadget, &scalar_field_chip, OsRng)
+        ForeignEccChip::new(
+            &config.ff_ecc_config,
+            &native_gadget,
+            &scalar_field_chip,
+            OsRng,
+        )
     }
 
     fn load_from_scratch(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {

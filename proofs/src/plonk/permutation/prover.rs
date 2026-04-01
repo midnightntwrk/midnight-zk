@@ -2,7 +2,7 @@ use std::iter::{self, ExactSizeIterator};
 
 use ff::{PrimeField, WithSmallOrderMulGroup};
 use group::ff::BatchInvert;
-use rand_core::{RngCore, CryptoRng};
+use rand_core::{CryptoRng, RngCore};
 
 use super::{super::circuit::Any, Argument, ProvingKey};
 use crate::{

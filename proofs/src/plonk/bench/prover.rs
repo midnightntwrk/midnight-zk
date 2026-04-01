@@ -268,9 +268,7 @@ where
                 // Construct and commit to products for each lookup
                 lookups
                     .into_iter()
-                    .map(|lookup| {
-                        lookup.commit_product(pk, params, beta, gamma, rng, transcript)
-                    })
+                    .map(|lookup| lookup.commit_product(pk, params, beta, gamma, rng, transcript))
                     .collect::<Result<Vec<_>, _>>()
             })
             .collect::<Result<Vec<_>, _>>()?

@@ -670,7 +670,7 @@ pub(crate) mod tests {
         poly::kzg::{params::ParamsKZG, KZGCommitmentScheme},
         transcript::{CircuitTranscript, Transcript},
     };
-    use rand::{SeedableRng, rngs::OsRng};
+    use rand::{rngs::OsRng, SeedableRng};
     use rand_chacha::ChaCha8Rng;
 
     use super::*;

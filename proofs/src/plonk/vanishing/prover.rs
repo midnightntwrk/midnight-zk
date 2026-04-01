@@ -135,7 +135,10 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
     }
 }
 
-fn blind_quotient_limbs<F: PrimeField>(quotient_limbs: &mut [Vec<F>], rng: &mut (impl RngCore + CryptoRng)) {
+fn blind_quotient_limbs<F: PrimeField>(
+    quotient_limbs: &mut [Vec<F>],
+    rng: &mut (impl RngCore + CryptoRng),
+) {
     let nr_limbs = quotient_limbs.len();
     assert!(nr_limbs >= 2);
 
