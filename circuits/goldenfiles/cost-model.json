@@ -98,7 +98,7 @@
     }
   },
   "Scanner": {
-    "static parsing perf (input length = 50)": {
+    "automaton parsing perf (input length = 50)": {
       "advice_columns": "5",
       "column_queries": "56",
       "fixed_columns": "32",
@@ -107,7 +107,18 @@
       "permutations": "8",
       "point_sets": "4",
       "rows": "75",
-      "table_rows": "315"
+      "table_rows": "291"
+    },
+    "multi-regex parsing perf (input length = 50)": {
+      "advice_columns": "5",
+      "column_queries": "56",
+      "fixed_columns": "32",
+      "lookups": "6",
+      "max_deg": "5",
+      "permutations": "8",
+      "point_sets": "4",
+      "rows": "150",
+      "table_rows": "257"
     },
     "substring perf (full length = 65, sub length = 50)": {
       "advice_columns": "5",
@@ -118,7 +129,7 @@
       "permutations": "8",
       "point_sets": "4",
       "rows": "161",
-      "table_rows": "315"
+      "table_rows": "257"
     }
   },
   "VarPoseidon": {
@@ -2477,7 +2488,7 @@
       "max_deg": "5",
       "permutations": "29",
       "point_sets": "5",
-      "rows": "49868",
+      "rows": "35953",
       "table_rows": "417"
     },
     "msm_by_bounded_scalars_3": {
@@ -2488,7 +2499,7 @@
       "max_deg": "5",
       "permutations": "29",
       "point_sets": "5",
-      "rows": "41570",
+      "rows": "27655",
       "table_rows": "417"
     },
     "mul_by_constant": {
@@ -2499,7 +2510,7 @@
       "max_deg": "5",
       "permutations": "29",
       "point_sets": "5",
-      "rows": "42480",
+      "rows": "28565",
       "table_rows": "417"
     },
     "neg": {
