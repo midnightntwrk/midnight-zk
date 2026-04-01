@@ -69,11 +69,7 @@ pub fn negate_spreaded(x: u64) -> u64 {
 ///
 /// If sum(limb_lengths) != 32.
 pub fn u32_to_be_limbs<const N: usize>(value: u32, limb_lengths: [usize; N]) -> [u32; N] {
-    let mut sum = 0;
-    for &len in &limb_lengths {
-        sum += len;
-    }
-    assert_eq!(sum, 32, "Sum of limb lengths must be 32 (got {})", sum);
+    assert_eq!(limb_lengths.iter().sum::<usize>(), 32);
 
     let mut result = [0u32; N];
     let mut shift = 32;
