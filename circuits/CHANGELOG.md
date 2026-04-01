@@ -35,6 +35,7 @@ verification keys break backwards compatibility.
 * add MSMCompletenessFluke error [#277](https://github.com/midnightntwrk/midnight-zk/pull/277)
 * Scanner chip: dynamic regex support and lazy automaton loading [#232](https://github.com/midnightntwrk/midnight-zk/pull/232)
 * Scanner chip: ICAO 9303 TD3 DG1 passport parser [#233](https://github.com/midnightntwrk/midnight-zk/pull/233)
+* Add implementation of `p256` as foreign Weierstrass chip [#291](https://github.com/midnightntwrk/midnight-zk/pull/291)
 
 ### Changed
 * Filter out compile-time identity points in MSM [#256](https://github.com/midnightntwrk/midnight-zk/pull/256)

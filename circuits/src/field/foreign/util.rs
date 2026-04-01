@@ -38,6 +38,25 @@ pub fn urem(value: &BI, modulus: &BI) -> BI {
     output
 }
 
+/// Reduces `value` modulo `modulus` using the representative closest to zero,
+/// i.e. in the range `(-modulus/2, modulus/2]`. This gives tighter expression
+/// bounds than `urem` when the unsigned representative is close to `modulus`.
+pub fn signed_mod(value: &BI, modulus: &BI) -> BI {
+    let r = urem(value, modulus);
+    if &r * 2 > *modulus {
+        r - modulus
+    } else {
+        r
+    }
+}
+
+/// Returns the signed representative of a field element (closest to zero).
+/// Maps values in `[0, modulus)` to `(-modulus/2, modulus/2]`.
+pub fn signed_repr<K: CircuitField>() -> impl Fn(BI) -> BI {
+    let m = K::modulus().to_bigint().unwrap();
+    move |v: BI| signed_mod(&v, &m)
+}
+
 /// Computes the logarithm in base 2 of the given value, rounded up.
 pub fn ceil_log2(value: &BI) -> u32 {
     BI::bits(&(value - BI::one())) as u32
