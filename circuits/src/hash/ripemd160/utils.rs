@@ -1,13 +1,13 @@
-pub(crate) use crate::hash::sha256::utils::{
-    expr_pow2_ip, expr_pow4_ip, get_even_and_odd_bits, negate_spreaded, spread, u32_in_be_limbs,
-    MASK_EVN_64,
+pub(crate) use crate::hash::util::{
+    expr_pow2_ip, expr_pow4_ip, gen_spread_table as gen_table, get_even_and_odd_bits,
+    negate_spreaded, spread, u32_to_be_limbs, MASK_EVN_64,
 };
 use crate::CircuitField;
 
-const WORD: u8 = 32;
-const MAX_LIMB: u8 = 11;
-const LAST_LIMB: u8 = WORD % MAX_LIMB; // 10
-pub(super) const NUM_LIMBS: usize = ((WORD - 1) / MAX_LIMB + 2) as usize; // 4
+const WORD: usize = 32;
+const MAX_LIMB: usize = 11;
+const LAST_LIMB: usize = WORD % MAX_LIMB; // 10
+pub(super) const NUM_LIMBS: usize = (WORD - 1) / MAX_LIMB + 2; // 4
 
 /// Decomposes a 32-bit word (in big-endian) into limbs so that the first k + 1
 /// limbs represent the `rot` bits that will be left-rotated, and returns
@@ -16,7 +16,7 @@ pub(super) const NUM_LIMBS: usize = ((WORD - 1) / MAX_LIMB + 2) as usize; // 4
 /// # Panics
 ///
 /// If `rot` is not in the range (0, 16).
-pub(super) fn limb_lengths(rot: u8) -> ([u8; NUM_LIMBS], usize) {
+pub(super) fn limb_lengths(rot: u8) -> ([usize; NUM_LIMBS], usize) {
     /*
      Given the word size |W| = [`WORD`] and the maximum lookup bit
      size: [`MAX_LIMB`], the following two equalities hold:
@@ -29,8 +29,9 @@ pub(super) fn limb_lengths(rot: u8) -> ([u8; NUM_LIMBS], usize) {
      a and b = [`MAX_LIMB`] - a, we can represent the rot bits in the first
      k+1 limbs:
      w   = | F0 | F1 | .. |    Fk   | .. | Fn | L |
-         = |<--      rot    -->| S2 | .. | Fn | L |
+          = |<--      rot    -->| S2 | .. | Fn | L |
     */
+    let rot = rot as usize;
     assert!(rot > 0 && rot < 16);
     let mut lengths = [MAX_LIMB; NUM_LIMBS];
     lengths[NUM_LIMBS - 1] = LAST_LIMB;
@@ -38,7 +39,7 @@ pub(super) fn limb_lengths(rot: u8) -> ([u8; NUM_LIMBS], usize) {
     let b = MAX_LIMB - a;
     // When a == 0, the limb Fk will be split into | 0 | MAX_LIMB |,
     // thus the value of k should always be incremented by 1.
-    let k = (rot / MAX_LIMB + 1) as usize;
+    let k = rot / MAX_LIMB + 1;
     lengths[k - 1] = a;
     lengths[k] = b;
     (lengths, k)
@@ -57,7 +58,7 @@ pub(super) fn limb_coeffs(rot: u8) -> ([u32; NUM_LIMBS], [u32; NUM_LIMBS]) {
       rot_w = c0'*F0 + c1'*F1 + .. + c_n+1'*L
     where rot_w is w left-rotated by `rot` bits.
     */
-    let compute_coeffs = |lengths: &[u8; NUM_LIMBS]| {
+    let compute_coeffs = |lengths: &[usize; NUM_LIMBS]| {
         let mut acc = 1u32;
         let mut res = [0u32; NUM_LIMBS];
         for (i, &len) in lengths.iter().rev().enumerate() {
@@ -81,28 +82,13 @@ pub(super) fn limb_coeffs(rot: u8) -> ([u32; NUM_LIMBS], [u32; NUM_LIMBS]) {
 /// [`u32_in_be_limbs`], especially when some limb lengths are zero.
 pub(super) fn limb_values(value: u32, rot: u8) -> [u32; NUM_LIMBS] {
     let (limb_lengths, _) = limb_lengths(rot);
-
-    let mut result = [0u32; NUM_LIMBS];
-    let mut shift = WORD;
-
-    for (i, &len) in limb_lengths.iter().enumerate() {
-        if len == 0 {
-            result[i] = 0;
-        } else {
-            shift -= len;
-            result[i] = (value >> shift) & ((1 << len) - 1);
-        }
-    }
-    result
+    u32_to_be_limbs(value, limb_lengths)
 }
 
 /// Generates the plain-spreaded lookup table. The limb lengths to be looked up
 /// cover the range [0, 11] for the rotation offsets used in RIPEMD-160.
 pub(super) fn gen_spread_table<F: CircuitField>() -> impl Iterator<Item = (F, F, F)> {
-    (0..=11).flat_map(|len| {
-        let tag = F::from(len as u64);
-        (0..(1 << len)).map(move |i| (tag, F::from(i as u64), F::from(spread(i as u32))))
-    })
+    gen_table(0..=11)
 }
 
 #[cfg(test)]
@@ -119,15 +105,15 @@ mod tests {
         // and the sum of the first k lengths should equal the rotation offset.
         for rot in 1..16 {
             let (lengths, k) = limb_lengths(rot);
-            let sum: u8 = lengths.iter().sum();
+            let sum: usize = lengths.iter().copied().sum();
             assert_eq!(
                 sum, WORD,
                 "Sum of lengths does not equal WORD={} for rot={}",
                 WORD, rot
             );
-            let expected_rot = lengths.iter().take(k).sum::<u8>();
+            let expected_rot: usize = lengths.iter().take(k).copied().sum();
             assert_eq!(
-                expected_rot, rot,
+                expected_rot, rot as usize,
                 "Sum of the first k = {} lengths does not equal rot={}",
                 k, rot
             );
