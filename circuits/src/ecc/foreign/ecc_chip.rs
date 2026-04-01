@@ -24,7 +24,6 @@ use std::{
     collections::HashMap,
     fmt::Debug,
     hash::{Hash, Hasher},
-    ops::Mul,
     rc::Rc,
 };
 
@@ -120,8 +119,9 @@ where
     // It will never overflow unless you include more than 2^64 tables, will you?
     // Even in that case, we would get a compile-time error.
     tag_cnt: Rc<RefCell<u64>>,
-    // A random point used in windowed_msm to allow incomplete addition.
-    // Sampled once at chip construction time.
+    // A random point used in windowed_msm (to shift the initial accumulator) so that the
+    // double-and-add loop can internally use incomplete addition. Sampled once at chip
+    // construction time.
     random_point: C::CryptographicGroup,
 }
 
@@ -950,15 +950,15 @@ where
 {
     /// Given config creates new chip that implements foreign ECC.
     /// The RNG is used to sample a random point used for incomplete addition
-    /// during windowed MSM operations.
+    /// during windowed MSM operations. Randomness does not affect soundness,
+    /// only completeness.
     pub fn new(
         config: &ForeignEccConfig<C>,
         native_gadget: &N,
         scalar_field_chip: &S,
         mut rng: impl RngCore + CryptoRng,
     ) -> Self {
-        let r_dlog = C::Scalar::random(&mut rng);
-        let random_point = C::CryptographicGroup::mul(C::CryptographicGroup::generator(), r_dlog);
+        let random_point = C::random(&mut rng).into_subgroup();
         let base_field_chip = FieldChip::new(&config.base_field_config, native_gadget);
         Self {
             config: config.clone(),

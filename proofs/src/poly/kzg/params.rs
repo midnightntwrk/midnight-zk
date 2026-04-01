@@ -127,7 +127,7 @@ impl<E: Engine + Debug> ParamsKZG<E> {
         self.g2
     }
 
-    /// Returns first power of secret on G2
+    /// Returns [τ]₂, a commitment to τ in G2.
     pub fn s_g2(&self) -> E::G2 {
         self.s_g2
     }
@@ -242,7 +242,7 @@ impl<E: MultiMillerLoop + Debug> ParamsVerifierKZG<E>
 where
     E::G2: Curve + ProcessedSerdeObject,
 {
-    /// Returns first power of secret on G2
+    /// Returns [τ]₂, a commitment to τ in G2.
     pub fn s_g2(&self) -> E::G2 {
         self.s_g2
     }
