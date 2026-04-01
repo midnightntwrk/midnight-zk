@@ -1,18 +1,15 @@
-//! Optimized example of property proofs in a JSON credential.
+//! Example of property proofs in a JSON credential.
 //!
-//! This is an alternative to `property_check.rs` that replaces the
-//! automaton-based in-circuit parsing with
-//! [`check_bytes`](midnight_circuits::parsing::ScannerChip::check_bytes)
-//! substring verification. Much more efficient, but less general technique that
-//! is not always applicable.
+//! Uses [`check_bytes`](midnight_circuits::parsing::ScannerChip::check_bytes)
+//! substring verification to extract and verify credential fields.
 //!
 //! # Trust assumption
 //!
-//! Unlike the automaton-based version, this circuit does **not** verify the
-//! structural correctness of the credential (e.g. valid JSON, UTF-8 encoding).
-//! It assumes the credential is well-formed and that field names are unique,
-//! which is guaranteed by the issuer whose signature has been verified.
-//! It also assumes there is no insignificant whitespace around `:` separators.
+//! This circuit does **not** verify the structural correctness of the
+//! credential (e.g. valid JSON, UTF-8 encoding). It assumes the credential
+//! is well-formed and that field names are unique, which is guaranteed by
+//! the issuer whose signature has been verified. It also assumes there is
+//! no insignificant whitespace around `:` separators.
 
 use std::time::Instant;
 
@@ -49,7 +46,7 @@ type F = midnight_curves::Fq;
 
 const CRED_PATH: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/examples/identity/credentials/2k-credential"
+    "/examples/identity/jwt/credentials/2k-credential"
 );
 
 // Public Key of the issuer, signer of the credential.
@@ -71,7 +68,7 @@ type Payload = [u8; PAYLOAD_LEN];
 type SK = K256Scalar;
 
 #[derive(Clone, Default)]
-pub struct CredentialPropertyOpt;
+pub struct CredentialProperty;
 
 const MAX_VALID_DATE: Date = Date {
     day: 1,
@@ -84,7 +81,7 @@ const NAME_LEN: usize = VALID_NAME.len(); // TODO: this value should not be fixe
 const BIRTHDATE_LEN: usize = 10;
 const COORD_LEN: usize = 43;
 
-impl Relation for CredentialPropertyOpt {
+impl Relation for CredentialProperty {
     type Instance = ();
     type Witness = (Payload, SK);
 
@@ -189,7 +186,7 @@ impl Relation for CredentialPropertyOpt {
     }
 
     fn read_relation<R: std::io::Read>(_reader: &mut R) -> std::io::Result<Self> {
-        Ok(CredentialPropertyOpt)
+        Ok(CredentialProperty)
     }
 }
 
@@ -205,7 +202,7 @@ impl From<Date> for BigUint {
     }
 }
 
-impl CredentialPropertyOpt {
+impl CredentialProperty {
     /// Verifies that a JSON field appears in the credential and extracts its
     /// value.
     ///
@@ -299,7 +296,7 @@ impl CredentialPropertyOpt {
         std_lib.assert_lower_than_fixed(layouter, &date, &limit_date.into())
     }
 
-    // Creates a CredentialPropertyOpt witness from:
+    // Creates a CredentialProperty witness from:
     // 1. A JWT encoded credential.
     // 2. The corresponding base64 encoded ECDSA public key.
     fn witness_from_blob(blob: &[u8]) -> (Payload, ECDSASig) {
@@ -321,7 +318,7 @@ fn main() {
     let srs = filecoin_srs(K);
     let credential_blob = read_credential::<4096>(CRED_PATH).expect("Path to credential file.");
 
-    let relation = CredentialPropertyOpt;
+    let relation = CredentialProperty;
 
     let start = |msg: &str| -> Instant {
         println!("{msg}");
@@ -335,19 +332,19 @@ fn main() {
 
     // Build the instance and witness to be proven.
     let wit = start("Computing instance and witnesses");
-    let witness = CredentialPropertyOpt::witness_from_blob(credential_blob.as_slice());
+    let witness = CredentialProperty::witness_from_blob(credential_blob.as_slice());
     let holder_sk = K256Scalar::from_bytes_be(&HOLDER_SK_BYTES).expect("Valid scalar");
     let witness = (witness.0, holder_sk);
 
     let committed_credential: G1Affine = {
-        let instance = CredentialPropertyOpt::format_committed_instances(&witness);
+        let instance = CredentialProperty::format_committed_instances(&witness);
         commit_to_instances::<_, KZGCommitmentScheme<_>>(&srs, vk.vk().get_domain(), &instance)
             .into()
     };
     println!("... done ({:?})", wit.elapsed());
 
     let p = start("Proof generation");
-    let proof = midnight_zk_stdlib::prove::<CredentialPropertyOpt, blake2b_simd::State>(
+    let proof = midnight_zk_stdlib::prove::<CredentialProperty, blake2b_simd::State>(
         &srs,
         &pk,
         &relation,
@@ -360,7 +357,7 @@ fn main() {
 
     let v = start("Proof verification");
     assert!(
-        midnight_zk_stdlib::verify::<CredentialPropertyOpt, blake2b_simd::State>(
+        midnight_zk_stdlib::verify::<CredentialProperty, blake2b_simd::State>(
             &srs.verifier_params(),
             &vk,
             &(),
