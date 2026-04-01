@@ -32,6 +32,7 @@ use exposing_types::{
         enrollment::CredentialEnrollment, full_credential::FullCredential,
         property_check::CredentialProperty,
     },
+    identity::passport::circuit::PassportVerification,
     membership::MembershipExample,
     native_gadget::NativeGadgetExample,
     poseidon::PoseidonExample,
@@ -73,5 +74,6 @@ generate_tests!(
     check_vk_cred_property: CredentialProperty,
     check_vk_hybrid_mt: HybridMtExample,
     check_vk_sha: ShaPreImageCircuit,
-    check_vk_schnorr: SchnorrExample
+    check_vk_schnorr: SchnorrExample,
+    check_vk_passport: PassportVerification
 );
