@@ -156,20 +156,29 @@ impl<F: CircuitField> FromScratch<F> for KeccakSha3Wrapper<F> {
 
     fn configure_from_scratch(
         meta: &mut ConstraintSystem<F>,
+        advice_columns: &mut Vec<Column<Advice>>,
+        fixed_columns: &mut Vec<Column<Fixed>>,
         instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
-        let advice_cols = (0..PACKED_ADVICE_COLS).map(|_| meta.advice_column()).collect::<Vec<_>>();
-        let fixed_cols = (0..PACKED_FIXED_COLS).map(|_| meta.fixed_column()).collect::<Vec<_>>();
-        let constant_column = meta.fixed_column();
+        let native_config =
+            NG::configure_from_scratch(meta, advice_columns, fixed_columns, instance_columns);
+        while advice_columns.len() < PACKED_ADVICE_COLS {
+            advice_columns.push(meta.advice_column());
+        }
+        // +1 for constant_column
+        let nb_fixed_needed = std::cmp::max(fixed_columns.len(), PACKED_FIXED_COLS + 1);
+        while fixed_columns.len() < nb_fixed_needed {
+            fixed_columns.push(meta.fixed_column());
+        }
+        let advice_cols: [_; PACKED_ADVICE_COLS] =
+            advice_columns[..PACKED_ADVICE_COLS].try_into().unwrap();
+        let fixed_cols: [_; PACKED_FIXED_COLS] =
+            fixed_columns[..PACKED_FIXED_COLS].try_into().unwrap();
+        let constant_column = fixed_columns[PACKED_FIXED_COLS];
 
-        let native_config = NG::configure_from_scratch(meta, instance_columns);
         let sha_config = KeccakSha3Wrapper::configure(
             meta,
-            &(
-                constant_column,
-                advice_cols[..PACKED_ADVICE_COLS].try_into().unwrap(),
-                fixed_cols[..PACKED_FIXED_COLS].try_into().unwrap(),
-            ),
+            &(constant_column, advice_cols, fixed_cols),
         );
         (sha_config, native_config)
     }
@@ -193,7 +202,7 @@ mod test {
     use midnight_curves::Fq;
     use midnight_proofs::{
         circuit::Layouter,
-        plonk::{Column, ConstraintSystem, Error, Instance},
+        plonk::{Advice, Column, ConstraintSystem, Error, Fixed, Instance},
     };
     use sha3::{Digest, Keccak256 as KeccakCpu, Sha3_256 as Sha3Cpu};
 
@@ -250,9 +259,16 @@ mod test {
         }
         fn configure_from_scratch(
             meta: &mut ConstraintSystem<F>,
+            advice_columns: &mut Vec<Column<Advice>>,
+            fixed_columns: &mut Vec<Column<Fixed>>,
             instance_columns: &[Column<Instance>; 2],
         ) -> Self::Config {
-            KeccakSha3Wrapper::configure_from_scratch(meta, instance_columns)
+            KeccakSha3Wrapper::configure_from_scratch(
+                meta,
+                advice_columns,
+                fixed_columns,
+                instance_columns,
+            )
         }
         fn load_from_scratch(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
             KeccakSha3Wrapper::load_from_scratch(&self.0, layouter)
@@ -266,9 +282,16 @@ mod test {
         }
         fn configure_from_scratch(
             meta: &mut ConstraintSystem<F>,
+            advice_columns: &mut Vec<Column<Advice>>,
+            fixed_columns: &mut Vec<Column<Fixed>>,
             instance_columns: &[Column<Instance>; 2],
         ) -> Self::Config {
-            KeccakSha3Wrapper::configure_from_scratch(meta, instance_columns)
+            KeccakSha3Wrapper::configure_from_scratch(
+                meta,
+                advice_columns,
+                fixed_columns,
+                instance_columns,
+            )
         }
         fn load_from_scratch(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
             KeccakSha3Wrapper::load_from_scratch(&self.0, layouter)

@@ -27,7 +27,7 @@ use midnight_proofs::{
 use {
     crate::field::decomposition::chip::P2RDecompositionConfig,
     crate::testing_utils::{FromScratch, Sampleable},
-    midnight_proofs::plonk::Instance,
+    midnight_proofs::plonk::{Fixed, Instance},
     rand::RngCore,
 };
 
@@ -991,12 +991,21 @@ impl<C: EdwardsCurve> FromScratch<C::Base> for EccChip<C> {
 
     fn configure_from_scratch(
         meta: &mut ConstraintSystem<C::Base>,
+        advice_columns: &mut Vec<Column<Advice>>,
+        fixed_columns: &mut Vec<Column<Fixed>>,
         instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
-        let native_gadget_config =
-            <NG<C::Base> as FromScratch<C::Base>>::configure_from_scratch(meta, instance_columns);
-        let advice_cols: [Column<Advice>; NB_EDWARDS_COLS] =
-            core::array::from_fn(|_| meta.advice_column());
+        let native_gadget_config = <NG<C::Base> as FromScratch<C::Base>>::configure_from_scratch(
+            meta,
+            advice_columns,
+            fixed_columns,
+            instance_columns,
+        );
+        while advice_columns.len() < NB_EDWARDS_COLS {
+            advice_columns.push(meta.advice_column());
+        }
+        let advice_cols: [_; NB_EDWARDS_COLS] =
+            advice_columns[..NB_EDWARDS_COLS].try_into().unwrap();
         let ecc_config = EccChip::<C>::configure(meta, &advice_cols);
 
         (ecc_config, native_gadget_config)

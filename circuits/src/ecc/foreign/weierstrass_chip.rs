@@ -2213,27 +2213,39 @@ where
 
     fn configure_from_scratch(
         meta: &mut ConstraintSystem<F>,
+        advice_columns: &mut Vec<Column<Advice>>,
+        fixed_columns: &mut Vec<Column<Fixed>>,
         instance_columns: &[Column<Instance>; 2],
     ) -> ForeignEccTestConfig<F, C, S, N> {
-        let native_gadget_config =
-            <N as FromScratch<F>>::configure_from_scratch(meta, instance_columns);
-        let scalar_field_config =
-            <S as FromScratch<F>>::configure_from_scratch(meta, instance_columns);
+        let native_gadget_config = <N as FromScratch<F>>::configure_from_scratch(
+            meta,
+            advice_columns,
+            fixed_columns,
+            instance_columns,
+        );
+        let scalar_field_config = <S as FromScratch<F>>::configure_from_scratch(
+            meta,
+            advice_columns,
+            fixed_columns,
+            instance_columns,
+        );
         let nb_advice_cols = nb_foreign_ecc_chip_columns::<F, C, B, S>();
-        let advice_columns = (0..nb_advice_cols).map(|_| meta.advice_column()).collect::<Vec<_>>();
+        while advice_columns.len() < nb_advice_cols {
+            advice_columns.push(meta.advice_column());
+        }
         // Use hard-coded pow2range values matching NativeGadget::configure_from_scratch
         let nb_parallel_range_checks = 4;
         let max_bit_len = 8;
         let base_field_config = FieldChip::<F, C::Base, B, N>::configure(
             meta,
-            &advice_columns,
+            &advice_columns[..nb_advice_cols],
             nb_parallel_range_checks,
             max_bit_len,
         );
         let ff_ecc_config = ForeignWeierstrassEccChip::<F, C, B, S, N>::configure(
             meta,
             &base_field_config,
-            &advice_columns,
+            &advice_columns[..nb_advice_cols],
             nb_parallel_range_checks,
             max_bit_len,
         );

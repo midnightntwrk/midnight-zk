@@ -178,7 +178,7 @@ impl<F: PoseidonField> VarLenPoseidonGadget<F> {
 }
 
 #[cfg(any(test, feature = "testing"))]
-use midnight_proofs::plonk::{Column, ConstraintSystem, Instance};
+use midnight_proofs::plonk::{Advice, Column, ConstraintSystem, Fixed, Instance};
 
 #[cfg(any(test, feature = "testing"))]
 use crate::field::decomposition::chip::P2RDecompositionConfig;
@@ -201,10 +201,18 @@ impl<F: PoseidonField> FromScratch<F> for VarLenPoseidonGadget<F> {
 
     fn configure_from_scratch(
         meta: &mut ConstraintSystem<F>,
+        advice_columns: &mut Vec<Column<Advice>>,
+        fixed_columns: &mut Vec<Column<Fixed>>,
         instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
-        let native_config = NG::<F>::configure_from_scratch(meta, instance_columns);
-        let poseidon_config = PoseidonChip::configure_from_scratch(meta, instance_columns);
+        let native_config =
+            NG::<F>::configure_from_scratch(meta, advice_columns, fixed_columns, instance_columns);
+        let poseidon_config = PoseidonChip::configure_from_scratch(
+            meta,
+            advice_columns,
+            fixed_columns,
+            instance_columns,
+        );
         (native_config, poseidon_config)
     }
 
