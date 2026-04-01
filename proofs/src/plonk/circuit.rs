@@ -2367,8 +2367,9 @@ impl<F: Field> ConstraintSystem<F> {
         // polynomial evaluated at x_3 as coefficients -- this random polynomial
         // is "random_poly" in the vanishing argument.
 
-        // Add an additional blinding factor to account for the helper_poly.
-        let factors = factors + 1;
+        // Each lookup argument introduces one helper polynomial that must be
+        // blinded (one blinding factor per logup argument, 0 if no lookups).
+        let factors = factors + self.lookups.len();
 
         // Add an additional blinding factor as a slight defense against
         // off-by-one errors.

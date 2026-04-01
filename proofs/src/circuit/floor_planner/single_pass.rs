@@ -415,9 +415,8 @@ mod tests {
         }
 
         let circuit = MyCircuit {};
-        let k = 4;
         assert!(matches!(
-            MockProver::run(k, &circuit, vec![]).unwrap_err(),
+            MockProver::run(3, &circuit, vec![]).unwrap_err(),
             Error::NotEnoughColumnsForConstants,
         ));
     }
