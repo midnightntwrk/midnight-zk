@@ -107,7 +107,7 @@
       "permutations": "9",
       "point_sets": "4",
       "rows": "50",
-      "table_rows": "291"
+      "table_rows": "293"
     },
     "multi-regex parsing perf (input length = 50)": {
       "advice_columns": "6",
@@ -131,6 +131,17 @@
       "rows": "75",
       "table_rows": "315"
     },
+    "substring perf (full length = 16, sub length = 5)": {
+      "advice_columns": "6",
+      "column_queries": "66",
+      "fixed_columns": "33",
+      "lookups": "9",
+      "max_deg": "5",
+      "permutations": "9",
+      "point_sets": "4",
+      "rows": "39",
+      "table_rows": "257"
+    },
     "substring perf (full length = 65, sub length = 50)": {
       "advice_columns": "6",
       "column_queries": "66",
@@ -141,6 +152,28 @@
       "point_sets": "4",
       "rows": "156",
       "table_rows": "257"
+    },
+    "varlen full substring perf (M_SEQ = 16, M_SUB = 8, sub length = 5)": {
+      "advice_columns": "6",
+      "column_queries": "66",
+      "fixed_columns": "33",
+      "lookups": "9",
+      "max_deg": "5",
+      "permutations": "9",
+      "point_sets": "4",
+      "rows": "157",
+      "table_rows": "281"
+    },
+    "varlen partial substring perf (M = 16, sub length = 5)": {
+      "advice_columns": "6",
+      "column_queries": "66",
+      "fixed_columns": "33",
+      "lookups": "9",
+      "max_deg": "5",
+      "permutations": "9",
+      "point_sets": "4",
+      "rows": "104",
+      "table_rows": "273"
     }
   },
   "VarPoseidon": {
