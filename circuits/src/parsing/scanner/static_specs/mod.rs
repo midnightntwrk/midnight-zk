@@ -24,6 +24,7 @@
 //!    cargo test --lib -p midnight-circuits --release -- --nocapture regex_test automaton_test static_specs_test
 //! ```
 
+mod asn1_der_tlv;
 mod icao9303_td3_dg1;
 mod jwt;
 
@@ -188,6 +189,150 @@ pub enum StdLibParser {
     ///  - Date of expiry (6 bytes; YYMMDD) -> 9
     ///  - Optional data (14 bytes; uppercase, digits, and `<`) -> 10
     Icao9309Td3Dg1,
+
+    /// **Note**: This is an auxiliary automaton performing partial operations.
+    /// In most cases, rather than calling [`AutomatonChip::parse`] with this
+    /// automaton, you likely need the wrappers [`ScannerChip::parse_asn1_tag`]
+    /// or [`ScannerChip::parse_asn1_tag_varlen`] instead.
+    ///
+    /// # Description and sources
+    ///
+    /// A single ASN.1 DER tag, as specified in ITU-T X.690.
+    ///
+    /// A DER tag encodes three pieces of information:
+    ///   - The **class** (2 bits): Universal, Application, Context-specific,
+    ///     Private.
+    ///   - The **form** (1 bit): Primitive or Constructed.
+    ///   - The **tag number** (5 bits or more).
+    ///
+    /// When the tag number fits in 5 bits (0–30), the tag is a single byte
+    /// (so-called "short form"):
+    ///
+    /// ```text
+    ///   byte:  [class: 2 bits][form: 1 bit][tag number: 5 bits]
+    /// ```
+    ///
+    /// When the tag number is 31 or more, bits 4–0 of the first byte are all
+    /// 1s, and subsequent bytes encode the tag number using 7 bits each. Bit 7
+    /// is a continuation flag (1 = more bytes follow, 0 = last byte). This is
+    /// called a "long form".
+    ///
+    /// ```text
+    ///   byte 0:  [class: 2 bits][form: 1 bit][1 1 1 1 1]
+    ///   byte 1+: [continuation: 1 bit][tag number fragment: 7 bits]
+    ///            ...last byte has continuation = 0
+    /// ```
+    ///
+    /// # Output behaviour
+    ///
+    /// Each byte that carries actual tag identity bits outputs its payload
+    /// (the tag-relevant bits), stripping structural overhead:
+    ///   - Short form: the full byte value `B` is output when `B` is read (it
+    ///     carries class, form, and tag number — all part of the tag identity).
+    ///   - Long form: byte 0 produces no output (bits 4–0 are just the `11111`
+    ///     sentinel). Each continuation or final byte `B` outputs `B & 0x7F`
+    ///     (the low 7 bits; the continuation flag is stripped). The tag number
+    ///     can thus be reconstructed by reading the sequence of outputs as a
+    ///     big-endian number in base 128.
+    ///
+    /// Recall that [`ScannerChip::parse_asn1_tag`] and
+    /// [`ScannerChip::parse_asn1_tag_varlen`] typically parse a tag with this
+    /// automaton, and interpret the result in base 128 in-circuit to return the
+    /// actual assigned value of the tag.
+    ///
+    /// # Unconventional behaviour
+    ///
+    /// For the purpose of supporting optional fields (common in ASN.1
+    /// specifications), this parser also accepts empty inputs.
+    Asn1DerTag,
+
+    /// **Note**: This is an auxiliary automaton performing partial operations.
+    /// In most cases, rather than calling [`AutomatonChip::parse`] with this
+    /// automaton, you likely need the wrappers [`ScannerChip::parse_asn1_len`]
+    /// or [`ScannerChip::parse_asn1_len_varlen`] instead.
+    ///
+    /// # Description and sources
+    ///
+    /// A single ASN.1 DER length field, as specified in ITU-T X.690.
+    ///
+    /// The length field follows the tag and indicates the number of bytes in
+    /// the value. DER mandates the **definite** form with minimal encoding:
+    ///
+    /// **Short form** (length 0–127): a single byte whose bit 7 is 0.
+    ///
+    /// ```text
+    ///   byte:  0 | length (7 bits)
+    /// ```
+    ///
+    /// **Long form** (length 128+): the first byte has bit 7 = 1 and bits
+    /// 6–0 encode the number N of subsequent bytes. The next N bytes give the
+    /// length as a big-endian unsigned integer.
+    ///
+    /// ```text
+    ///   byte 0:        1 | N (7 bits, N >=1)
+    ///   bytes 1..=N:   length: N bytes, interpreted big-endian
+    /// ```
+    ///
+    /// This is however, the *theoretical* behaviour. As an automaton cannot
+    /// check that exactly `N` bytes are read, trails of arbitrary sizes are
+    /// accepted. A circuit using this automaton then has to enforce this length
+    /// constraint separately (see [`ScannerChip::parse_asn1_len`] and
+    /// [`ScannerChip::parse_asn1_len_varlen`]).
+    ///
+    /// Note: the indefinite form (byte 0 = 0x80) is forbidden by DER.
+    ///
+    /// # Output behaviour
+    ///
+    /// Each byte outputs its length-relevant payload:
+    ///   - Short form: the byte value `B` is output (it *is* the length, since
+    ///     bit 7 is 0).
+    ///   - Long form: byte 0 outputs `(B & 0x7F) + 1` = N + 1 (the total
+    ///     encoding byte count). Each of the N subsequent bytes outputs its
+    ///     byte value `B`. The length can be reconstructed by reading the
+    ///     outputs of bytes 1..=N as a big-endian number in base 256.
+    ///
+    /// See also [`ScannerChip::parse_asn1_len`] and
+    /// [`ScannerChip::parse_asn1_len_varlen`] for circuit-level
+    /// interpretation.
+    ///
+    /// # Unconventional behaviour
+    ///
+    /// For the purpose of supporting optional fields (common in ASN.1
+    /// specifications), this parser also accepts empty inputs.
+    Asn1DerLength,
+
+    /// **Note**: This is an auxiliary automaton performing partial operations.
+    /// In most cases, rather than calling [`AutomatonChip::parse`] with this
+    /// automaton, you likely need the wrappers [`ScannerChip::parse_asn1_len`]
+    /// or [`ScannerChip::parse_asn1_len_varlen`] instead.
+    ///
+    /// Restricted variant of `Asn1DerLength` that only outputs the total
+    /// encoding byte count: 1 for short form, N+1 for long form where `N` is
+    /// the first byte of the input. Subsequent bytes in long form output 0.
+    /// Makes it easier to retrieve this specific field after a
+    /// variable-length parsing.
+    ///
+    /// # Unconventional behaviour
+    ///
+    /// For the purpose of supporting optional fields (common in ASN.1
+    /// specifications), this parser also accepts empty inputs.
+    Asn1DerLengthTotalBytes,
+
+    /// **Note**: This is an auxiliary automaton performing partial operations.
+    /// In most cases, rather than calling [`AutomatonChip::parse`] with this
+    /// automaton, you likely need the wrappers [`ScannerChip::parse_asn1_len`]
+    /// or [`ScannerChip::parse_asn1_len_varlen`] instead.
+    ///
+    /// Restricted variant of `Asn1DerLength` that only outputs the length
+    /// value bytes: byte value for short form and for subsequent long-form
+    /// bytes, 0 for the long-form header. Makes it easier to retrieve this
+    /// specific field after a variable-length parsing.
+    ///
+    /// # Unconventional behaviour
+    ///
+    /// For the purpose of supporting optional fields (common in ASN.1
+    /// specifications), this parser also accepts empty inputs.
+    Asn1DerLengthValue,
 }
 
 #[cfg(test)]
@@ -222,6 +367,26 @@ fn spec_library_data() -> LibraryData {
             StdLibParser::Icao9309Td3Dg1,
             &icao9303_td3_dg1::spec_icao9303_td3_dg1,
             include_bytes!("automaton_cache/Icao9309Td3Dg1"),
+        ),
+        (
+            StdLibParser::Asn1DerTag,
+            &asn1_der_tlv::spec_asn1_der_tag,
+            include_bytes!("automaton_cache/Asn1DerTag"),
+        ),
+        (
+            StdLibParser::Asn1DerLength,
+            &asn1_der_tlv::spec_asn1_der_length,
+            include_bytes!("automaton_cache/Asn1DerLength"),
+        ),
+        (
+            StdLibParser::Asn1DerLengthTotalBytes,
+            &asn1_der_tlv::spec_asn1_der_length_total_bytes,
+            include_bytes!("automaton_cache/Asn1DerLengthTotalBytes"),
+        ),
+        (
+            StdLibParser::Asn1DerLengthValue,
+            &asn1_der_tlv::spec_asn1_der_length_value,
+            include_bytes!("automaton_cache/Asn1DerLengthValue"),
         ),
     ]
 }
@@ -493,5 +658,6 @@ mod tests {
 
         super::jwt::test_jwt(&spec_library);
         super::icao9303_td3_dg1::test_dg1(&spec_library);
+        super::asn1_der_tlv::test_asn1(&spec_library);
     }
 }

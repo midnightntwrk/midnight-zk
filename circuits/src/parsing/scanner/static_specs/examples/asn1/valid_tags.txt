@@ -1,0 +1,10 @@
+# Short-form tags (single byte, tag number 0–30)
+30
+02
+04
+61
+# Long-form 2-byte tags (first byte has low 5 bits = 0x1F)
+5F1F
+7F61
+# Long-form 3-byte tag (tag number > 127, needs continuation byte)
+5F8101
