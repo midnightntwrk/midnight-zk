@@ -118,9 +118,21 @@ pub(crate) mod tests {
             let committed_instance_column = meta.instance_column();
             let instance_column = meta.instance_column();
             let instance_columns = [committed_instance_column, instance_column];
+            let mut advice_columns = vec![];
+            let mut fixed_columns = vec![];
             (
-                HashChip::configure_from_scratch(meta, &instance_columns),
-                AssignChip::configure_from_scratch(meta, &instance_columns),
+                HashChip::configure_from_scratch(
+                    meta,
+                    &mut advice_columns,
+                    &mut fixed_columns,
+                    &instance_columns,
+                ),
+                AssignChip::configure_from_scratch(
+                    meta,
+                    &mut advice_columns,
+                    &mut fixed_columns,
+                    &instance_columns,
+                ),
             )
         }
 
@@ -231,9 +243,21 @@ pub(crate) mod tests {
             let committed_instance_column = meta.instance_column();
             let instance_column = meta.instance_column();
             let instance_columns = [committed_instance_column, instance_column];
+            let mut advice_columns = vec![];
+            let mut fixed_columns = vec![];
             (
-                VarHashChip::configure_from_scratch(meta, &instance_columns),
-                VectorGadget::configure_from_scratch(meta, &instance_columns),
+                VarHashChip::configure_from_scratch(
+                    meta,
+                    &mut advice_columns,
+                    &mut fixed_columns,
+                    &instance_columns,
+                ),
+                VectorGadget::configure_from_scratch(
+                    meta,
+                    &mut advice_columns,
+                    &mut fixed_columns,
+                    &instance_columns,
+                ),
             )
         }
 

@@ -17,7 +17,7 @@ use midnight_proofs::{circuit::Layouter, plonk::Error};
 #[cfg(any(test, feature = "testing"))]
 use {
     crate::testing_utils::FromScratch,
-    midnight_proofs::plonk::{Column, ConstraintSystem, Instance},
+    midnight_proofs::plonk::{Advice, Column, ConstraintSystem, Fixed, Instance},
 };
 
 use super::{mtc::MapToCurveInstructions, mtc_cpu::MapToCurveCPU};
@@ -136,11 +136,13 @@ where
 
     fn configure_from_scratch(
         meta: &mut ConstraintSystem<F>,
+        advice_columns: &mut Vec<Column<Advice>>,
+        fixed_columns: &mut Vec<Column<Fixed>>,
         instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
         (
-            H::configure_from_scratch(meta, instance_columns),
-            E::configure_from_scratch(meta, instance_columns),
+            H::configure_from_scratch(meta, advice_columns, fixed_columns, instance_columns),
+            E::configure_from_scratch(meta, advice_columns, fixed_columns, instance_columns),
         )
     }
 

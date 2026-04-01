@@ -562,6 +562,8 @@ mod tests {
             let instance_column = meta.instance_column();
             let ng_config = NativeGadget::configure_from_scratch(
                 meta,
+                &mut vec![],
+                &mut vec![],
                 &[committed_instance_column, instance_column],
             );
             let sr =

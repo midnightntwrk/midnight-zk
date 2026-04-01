@@ -1676,6 +1676,8 @@ impl<F: CircuitField> FromScratch<F> for Sha256Chip<F> {
 
     fn configure_from_scratch(
         meta: &mut ConstraintSystem<F>,
+        advice_columns: &mut Vec<Column<Advice>>,
+        fixed_columns: &mut Vec<Column<Fixed>>,
         instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
         use std::cmp::max;
@@ -1685,13 +1687,15 @@ impl<F: CircuitField> FromScratch<F> for Sha256Chip<F> {
             native::{NB_ARITH_COLS, NB_ARITH_FIXED_COLS},
         };
 
-        let advice_columns = (0..max(NB_ARITH_COLS, NB_SHA256_ADVICE_COLS))
-            .map(|_| meta.advice_column())
-            .collect::<Vec<_>>();
+        let nb_advice_needed = max(NB_ARITH_COLS, NB_SHA256_ADVICE_COLS);
+        let nb_fixed_needed = max(NB_ARITH_FIXED_COLS, NB_SHA256_FIXED_COLS);
 
-        let fixed_columns = (0..max(NB_ARITH_FIXED_COLS, NB_SHA256_FIXED_COLS))
-            .map(|_| meta.fixed_column())
-            .collect::<Vec<_>>();
+        while advice_columns.len() < nb_advice_needed {
+            advice_columns.push(meta.advice_column());
+        }
+        while fixed_columns.len() < nb_fixed_needed {
+            fixed_columns.push(meta.fixed_column());
+        }
 
         let native_config = NativeChip::configure(
             meta,

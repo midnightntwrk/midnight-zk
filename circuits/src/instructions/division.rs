@@ -192,7 +192,12 @@ pub(crate) mod tests {
         fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
             let committed_instance_column = meta.instance_column();
             let instance_column = meta.instance_column();
-            DivChip::configure_from_scratch(meta, &[committed_instance_column, instance_column])
+            DivChip::configure_from_scratch(
+                meta,
+                &mut vec![],
+                &mut vec![],
+                &[committed_instance_column, instance_column],
+            )
         }
 
         fn synthesize(

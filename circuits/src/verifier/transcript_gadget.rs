@@ -167,7 +167,7 @@ impl<S: SelfEmulation> TranscriptGadget<S> {
 }
 
 #[cfg(any(test, feature = "testing"))]
-use midnight_proofs::plonk::{Column, ConstraintSystem, Instance};
+use midnight_proofs::plonk::{Advice, Column, ConstraintSystem, Fixed, Instance};
 
 #[cfg(any(test, feature = "testing"))]
 use crate::testing_utils::FromScratch;
@@ -200,12 +200,29 @@ where
 
     fn configure_from_scratch(
         meta: &mut ConstraintSystem<S::F>,
+        advice_columns: &mut Vec<Column<Advice>>,
+        fixed_columns: &mut Vec<Column<Fixed>>,
         instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
         (
-            S::ScalarChip::configure_from_scratch(meta, instance_columns),
-            S::CurveChip::configure_from_scratch(meta, instance_columns),
-            S::SpongeChip::configure_from_scratch(meta, instance_columns),
+            S::ScalarChip::configure_from_scratch(
+                meta,
+                advice_columns,
+                fixed_columns,
+                instance_columns,
+            ),
+            S::CurveChip::configure_from_scratch(
+                meta,
+                advice_columns,
+                fixed_columns,
+                instance_columns,
+            ),
+            S::SpongeChip::configure_from_scratch(
+                meta,
+                advice_columns,
+                fixed_columns,
+                instance_columns,
+            ),
         )
     }
 }
@@ -245,6 +262,8 @@ mod tests {
         let instance_column = meta.instance_column();
         TranscriptGadget::<S>::configure_from_scratch(
             meta,
+            &mut vec![],
+            &mut vec![],
             &[committed_instance_column, instance_column],
         )
     }
