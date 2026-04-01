@@ -2348,17 +2348,6 @@
       "rows": "0",
       "table_rows": "16"
     },
-    "assign with subgroup check": {
-      "advice_columns": "25",
-      "column_queries": "110",
-      "fixed_columns": "71",
-      "lookups": "9",
-      "max_deg": "5",
-      "permutations": "29",
-      "point_sets": "5",
-      "rows": "14051",
-      "table_rows": "385"
-    },
     "assign_with_subgroup_check": {
       "advice_columns": "25",
       "column_queries": "110",
@@ -2624,17 +2613,6 @@
       "point_sets": "5",
       "rows": "0",
       "table_rows": "10"
-    },
-    "assign with subgroup check": {
-      "advice_columns": "27",
-      "column_queries": "115",
-      "fixed_columns": "75",
-      "lookups": "9",
-      "max_deg": "5",
-      "permutations": "31",
-      "point_sets": "5",
-      "rows": "80",
-      "table_rows": "449"
     },
     "assign_with_subgroup_check": {
       "advice_columns": "27",
@@ -2902,6 +2880,28 @@
       "rows": "0",
       "table_rows": "10"
     },
+    "assign_with_subgroup_check": {
+      "advice_columns": "27",
+      "column_queries": "115",
+      "fixed_columns": "75",
+      "lookups": "9",
+      "max_deg": "5",
+      "permutations": "31",
+      "point_sets": "5",
+      "rows": "112",
+      "table_rows": "449"
+    },
+    "assign_without_subgroup_check": {
+      "advice_columns": "27",
+      "column_queries": "115",
+      "fixed_columns": "75",
+      "lookups": "9",
+      "max_deg": "5",
+      "permutations": "31",
+      "point_sets": "5",
+      "rows": "112",
+      "table_rows": "449"
+    },
     "cond_assert_equal": {
       "advice_columns": "27",
       "column_queries": "116",
@@ -3031,7 +3031,7 @@
       "max_deg": "5",
       "permutations": "31",
       "point_sets": "5",
-      "rows": "25295",
+      "rows": "25239",
       "table_rows": "449"
     },
     "neg": {
@@ -3553,17 +3553,6 @@
       "permutations": "16",
       "point_sets": "4",
       "rows": "0",
-      "table_rows": "4"
-    },
-    "assign with subgroup check": {
-      "advice_columns": "14",
-      "column_queries": "57",
-      "fixed_columns": "35",
-      "lookups": "4",
-      "max_deg": "5",
-      "permutations": "15",
-      "point_sets": "4",
-      "rows": "6",
       "table_rows": "4"
     },
     "assign_with_subgroup_check": {
