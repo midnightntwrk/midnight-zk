@@ -30,7 +30,7 @@ mod automaton_chip;
 /// finite automata.
 pub mod regex;
 mod serialization;
-pub(crate) mod static_specs;
+pub mod static_specs;
 mod substring;
 
 use std::{
@@ -47,7 +47,15 @@ use midnight_proofs::{
 };
 use regex::Regex;
 use rustc_hash::FxHashMap;
-pub use static_specs::{spec_library, StdLibParser};
+pub use static_specs::StdLibParser;
+
+/// A test vector pairing an input with expected marker-grouped outputs.
+#[cfg(test)]
+pub(crate) type MarkerTestVector<'a> = (&'a [u8], &'a [(usize, &'a [u8])]);
+
+/// A test vector pairing an input with the expected raw output sequence.
+#[cfg(test)]
+pub(crate) type OutputTestVector<'a> = (&'a [u8], &'a [usize]);
 #[cfg(test)]
 use {
     crate::field::decomposition::chip::P2RDecompositionConfig,
@@ -200,7 +208,7 @@ impl From<Regex> for AutomatonParser {
 
 /// A static library of serialised automata for parsing common regexes. The
 /// automaton states start from 0 and may overlap one with each other.
-type ParsingLibrary = FxHashMap<StdLibParser, Automaton>;
+type ParsingLibrary = FxHashMap<StdLibParser, (Regex, Automaton)>;
 /// Set of automata (with offset states) called by `parse`.
 type AutomatonCache<F> = FxHashMap<AutomatonParser, NativeAutomaton<F>>;
 /// A sequence of assigned elements.
@@ -281,7 +289,7 @@ where
     type SharedResources = (
         [Column<Advice>; NB_SCANNER_ADVICE_COLS],
         Column<Fixed>,
-        FxHashMap<StdLibParser, Automaton>,
+        FxHashMap<StdLibParser, (Regex, Automaton)>,
     );
 
     fn new(config: &ScannerConfig, deps: &Self::InstructionDeps) -> Self {
