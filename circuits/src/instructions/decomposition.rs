@@ -45,7 +45,8 @@ where
     /// element in little-endian.
     ///
     /// The number of bits (the length of the resulting vector) can be
-    /// specified. If unspecified, the resulting vector will contain exactly
+    /// specified, but will be capped at `Self::Assigned::Element::NUM_BITS`. If
+    /// unspecified, the resulting vector will contain exactly
     /// `Self::Assigned::Element::NUM_BITS` bits (the minimum number of bits
     /// necessary to represent any element).
     ///
@@ -111,7 +112,8 @@ where
     /// constraints.
     ///
     /// The number of bytes (the length of the resulting vector) can be
-    /// specified. If unspecified, the resulting vector will contain exactly
+    /// specified, but will be capped at `ceil(Self::Assigned::Element::NUM_BITS
+    /// / 8)`. If unspecified, the resulting vector will contain exactly
     /// `ceil(Self::Assigned::Element::NUM_BITS / 8)` bytes (the minimum number
     /// of bytes necessary to represent any element).
     ///
