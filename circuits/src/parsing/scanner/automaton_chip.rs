@@ -68,13 +68,41 @@
 //! The function returns the outputs, which can be used to extract information
 //! about which characters matched which parts of the regex, or more generally,
 //! perform computations on the input.
+//!
+//! # Parallelisation
+//!
+//! The automaton lookup is batched: `AUTOMATON_PARALLELISM` transitions are
+//! checked per row, each using `NB_AUTOMATON_COLS` (= 3) advice columns.
+//! Transitions chain within a row: batch *k*'s target state is stored in
+//! batch *k+1*'s source column (same row), and the last batch's target is
+//! the first batch's source on the next row. This reduces the number of
+//! rows by a factor of `AUTOMATON_PARALLELISM`.
+//!
+//! ```text
+//! AUTOMATON_PARALLELISM = 2, NB_AUTOMATON_COLS = 3
+//!
+//!         batch 0               batch 1
+//!   src | letter | output   src | letter | output
+//!   ----+--------+-------   ----+--------+-------
+//!   s0  |  'h'   |  o0      s1  |  'e'   |  o1      <- row 0, 2 transitions
+//!   s2  |  'l'   |  o2      s3  |  'l'   |  o3      <- row 1, 2 transitions
+//!   s4  |  'o'   |  o4      s5  |  256   |  0       <- row 2, transition + final check
+//!   0   |        |                                   <- padding
+//! ```
+//!
+//! Batch 0's target is read from batch 1's source column (same row).
+//! Batch 1's target (last batch) is read from batch 0's source column
+//! (next row). Unused batch slots default to `(0, 0, 0, 0)`, which
+//! matches the dummy transition in the table.
 
 use midnight_proofs::{
     circuit::{Layouter, Region, Value},
     plonk::Error,
 };
 
-use super::{NativeAutomaton, ScannerChip, ALPHABET_MAX_SIZE};
+use super::{
+    NativeAutomaton, ScannerChip, ALPHABET_MAX_SIZE, AUTOMATON_PARALLELISM, NB_AUTOMATON_COLS,
+};
 use crate::{
     field::AssignedNative, instructions::AssignmentInstructions, parsing::scanner::AutomatonParser,
     types::AssignedByte, CircuitField,
@@ -105,7 +133,17 @@ where
     F: CircuitField + Ord,
 {
     /// Verifies that an input matches the regular expression represented by the
-    /// given automaton.
+    /// given automaton, using parallel lookups
+    /// (`AUTOMATON_PARALLELISM` transitions per row).
+    ///
+    /// Layout per row (q_automaton ON):
+    ///  - Group g: `adv[N*g]`=source, `adv[N*g+1]`=letter, `adv[N*g+2]`=output
+    ///    (N=`NB_AUTOMATON_COLS`).
+    ///  - Target of group g: `adv[N*(g+1)]` (cur) for non-last groups, `adv[0]`
+    ///    (next) for last.
+    ///
+    /// The final row handles remaining bytes (< AUTOMATON_PARALLELISM), the
+    /// final-state check, and zero-padding for unused groups.
     pub(super) fn parse_automaton(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -132,20 +170,30 @@ where
                     offset,
                 )?;
 
-                for letter in input {
-                    self.apply_one_transition(
-                        &mut region,
-                        automaton,
-                        &mut state,
-                        letter,
-                        &mut outputs,
-                        &mut offset,
-                    )?;
+                // Process AUTOMATON_PARALLELISM bytes per row.
+                for chunk in input.chunks(AUTOMATON_PARALLELISM) {
+                    for (batch, letter) in chunk.iter().enumerate() {
+                        self.apply_one_transition(
+                            &mut region,
+                            automaton,
+                            &mut state,
+                            letter,
+                            batch,
+                            &mut outputs,
+                            &mut offset,
+                        )?;
+                    }
                 }
 
                 // Final-state check + padding on the last row.
                 #[allow(clippy::modulo_one)]
-                self.assert_final_state(&mut region, &invalid_letter, &zero, &mut offset)?;
+                self.assert_final_state(
+                    &mut region,
+                    &invalid_letter,
+                    &zero,
+                    input.len() % AUTOMATON_PARALLELISM,
+                    &mut offset,
+                )?;
 
                 Ok(outputs)
             },
@@ -157,41 +205,50 @@ where
     /// row. Assumes that `state` (the source) is already assigned at the
     /// correct cell.
     ///
-    /// Copies the `letter`, assigns the output and the next state, then updates
-    /// `state`.
+    /// Copies the `letter`, assigns the `output` and the next state, then
+    /// updates `state`. When `batch` is the last group in the row, the offset
+    /// is incremented and the next state is placed at adv\[0\] of the following
+    /// row.
     fn apply_one_transition(
         &self,
         region: &mut Region<'_, F>,
         automaton: &NativeAutomaton<F>,
         state: &mut AssignedNative<F>,
         letter: &AssignedByte<F>,
+        batch: usize,
         outputs: &mut Vec<AssignedNative<F>>,
         offset: &mut usize,
     ) -> Result<(), Error> {
         self.config.q_automaton.enable(region, *offset)?;
 
+        let base = NB_AUTOMATON_COLS * batch;
         let letter_native: AssignedNative<F> = letter.into();
         letter_native.copy_advice(
-            || "letter batch",
+            || format!("letter batch {batch}"),
             region,
-            self.config.advice_cols[1],
+            self.config.advice_cols[base + 1],
             *offset,
         )?;
 
         let (next_state_val, output_val) = automaton.next_transition(state, letter)?;
 
         let output = region.assign_advice(
-            || "output batch",
-            self.config.advice_cols[2],
+            || format!("output batch {batch}"),
+            self.config.advice_cols[base + 2],
             *offset,
             || output_val,
         )?;
         outputs.push(output);
 
-        *offset += 1;
+        let target_col = if batch == AUTOMATON_PARALLELISM - 1 {
+            *offset += 1;
+            0
+        } else {
+            base + NB_AUTOMATON_COLS
+        };
         *state = region.assign_advice(
-            || "next state batch",
-            self.config.advice_cols[0],
+            || format!("next state batch {batch}"),
+            self.config.advice_cols[target_col],
             *offset,
             || next_state_val,
         )?;
@@ -199,39 +256,47 @@ where
         Ok(())
     }
 
-    /// Checks that the state, assigned at the current offset in the column
-    /// `t_source`, is a final state. This is done by using a dummy transition
-    /// labelled with the invalid byte number 256, and with the target state and
-    /// the output set to 0. If the state is not final (which means the parsed
-    /// input does not match the expected regular expression), the circuit will
-    /// become unsatisfiable.
+    /// Checks that the current state is a final state, by looking up the dummy
+    /// transition `(state, 256, 0, 0)`. Fills remaining groups with zeros
+    /// (matching the dummy `(0,0,0,0)` table entry) and assigns the terminal
+    /// row (`adv[0] = 0`, target of the last group).
     fn assert_final_state(
         &self,
         region: &mut Region<'_, F>,
         invalid_letter: &AssignedNative<F>,
-        invalid_state: &AssignedNative<F>,
+        zero: &AssignedNative<F>,
+        batch: usize,
         offset: &mut usize,
     ) -> Result<(), Error> {
         self.config.q_automaton.enable(region, *offset)?;
+
+        // Final-state check (letter=256; output=0 and target=0 will be assigned as part
+        // of the trailing zeroes).
+        let base = NB_AUTOMATON_COLS * batch;
         invalid_letter.copy_advice(
-            || format!("dummy invalid letter ({})", ALPHABET_MAX_SIZE),
+            || format!("final check letter ({ALPHABET_MAX_SIZE})"),
             region,
-            self.config.advice_cols[1],
+            self.config.advice_cols[base + 1],
             *offset,
         )?;
-        invalid_state.copy_advice(
-            || "dummy output boolean (0)",
-            region,
-            self.config.advice_cols[2],
-            *offset,
-        )?;
+
+        // Zero-fill remaining columns on the current row + terminal 0.
+        for col in (base + 2)..(NB_AUTOMATON_COLS * AUTOMATON_PARALLELISM) {
+            zero.copy_advice(
+                || "parsing trailing 0",
+                region,
+                self.config.advice_cols[col],
+                *offset,
+            )?;
+        }
         *offset += 1;
-        invalid_state.copy_advice(
-            || "dummy target state (0)",
+        zero.copy_advice(
+            || "parsing trailing 0",
             region,
             self.config.advice_cols[0],
             *offset,
         )?;
+
         Ok(())
     }
 }
