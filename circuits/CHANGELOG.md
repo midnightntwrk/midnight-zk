@@ -17,6 +17,10 @@ verification keys break backwards compatibility.
 
 ### Removed
 
+## [6.1.0]
+### Changed
+* `ForeignEccChip::new` samples the windowed-MSM blinding point at construction time [#307](https://github.com/midnightntwrk/midnight-zk/pull/307)
+
 ## [6.0.0] - 18-12-2025
 ### Added
 * SHA512 chip [#96](https://github.com/midnightntwrk/midnight-zk/pull/96)

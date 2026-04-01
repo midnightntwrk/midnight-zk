@@ -266,7 +266,7 @@ fn bench_zswap_output(c: &mut Criterion) {
         &[circuit.clone()],
         1,
         &[&[&[], &instance]],
-        OsRng,
+        &mut OsRng,
         &mut transcript,
         &mut group,
     )

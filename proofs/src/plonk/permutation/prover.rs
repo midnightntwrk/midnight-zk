@@ -2,7 +2,7 @@ use std::iter::{self, ExactSizeIterator};
 
 use ff::{PrimeField, WithSmallOrderMulGroup};
 use group::ff::BatchInvert;
-use rand_core::RngCore;
+use rand_core::{CryptoRng, RngCore};
 
 use super::{super::circuit::Any, Argument, ProvingKey};
 use crate::{
@@ -36,7 +36,6 @@ impl Argument {
     pub(crate) fn commit<
         F: WithSmallOrderMulGroup<3>,
         CS: PolynomialCommitmentScheme<F>,
-        R: RngCore,
         T: Transcript,
     >(
         &self,
@@ -48,7 +47,7 @@ impl Argument {
         instance: &[Polynomial<F, LagrangeCoeff>],
         beta: F,
         gamma: F,
-        mut rng: R,
+        rng: &mut (impl RngCore + CryptoRng),
         transcript: &mut T,
     ) -> Result<Committed<F>, Error>
     where
@@ -149,7 +148,7 @@ impl Argument {
             let mut z = domain.lagrange_from_vec(z);
             // Set blinding factors
             for z in &mut z[domain.n as usize - blinding_factors..] {
-                *z = F::random(&mut rng);
+                *z = F::random(&mut *rng);
             }
             // Set new last_z
             last_z = z[domain.n as usize - (blinding_factors + 1)];

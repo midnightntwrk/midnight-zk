@@ -2,7 +2,7 @@ use std::{collections::HashMap, iter};
 
 use ff::{PrimeField, WithSmallOrderMulGroup};
 use rand_chacha::ChaCha20Rng;
-use rand_core::{OsRng, RngCore, SeedableRng};
+use rand_core::{CryptoRng, RngCore, SeedableRng};
 use rayon::current_num_threads;
 
 use super::Argument;
@@ -34,10 +34,10 @@ pub(crate) struct Evaluated<F: PrimeField> {
 }
 
 impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Argument<F, CS> {
-    pub(crate) fn commit<R: RngCore, T: Transcript>(
+    pub(crate) fn commit<T: Transcript>(
         params: &CS::Parameters,
         domain: &EvaluationDomain<F>,
-        mut rng: R,
+        rng: &mut (impl RngCore + CryptoRng),
         transcript: &mut T,
     ) -> Result<Committed<F>, Error>
     where
@@ -88,6 +88,7 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
         params: &CS::Parameters,
         domain: &EvaluationDomain<F>,
         h_poly: Polynomial<F, ExtendedLagrangeCoeff>,
+        rng: &mut (impl RngCore + CryptoRng),
         transcript: &mut T,
     ) -> Result<Constructed<F>, Error>
     where
@@ -113,7 +114,7 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
             .collect::<Vec<_>>();
         drop(h_poly);
 
-        blind_quotient_limbs(&mut h_pieces);
+        blind_quotient_limbs(&mut h_pieces, rng);
 
         let h_pieces: Vec<_> =
             h_pieces.into_iter().map(|h_piece| domain.coeff_from_vec(h_piece)).collect();
@@ -134,12 +135,15 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
     }
 }
 
-fn blind_quotient_limbs<F: PrimeField>(quotient_limbs: &mut [Vec<F>]) {
+fn blind_quotient_limbs<F: PrimeField>(
+    quotient_limbs: &mut [Vec<F>],
+    rng: &mut (impl RngCore + CryptoRng),
+) {
     let nr_limbs = quotient_limbs.len();
     assert!(nr_limbs >= 2);
 
     for i in 1..nr_limbs {
-        let t = F::random(OsRng);
+        let t = F::random(&mut *rng);
         quotient_limbs[i - 1].push(t);
         quotient_limbs[i][0] -= t;
     }

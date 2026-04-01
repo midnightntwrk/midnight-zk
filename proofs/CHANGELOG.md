@@ -7,11 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
-* changed `sha256` name in benches to account for the change of naming convention in `circuits` [#135](https://github.com/midnightntwrk/midnight-zk/pull/135)
 
 ### Changed
 
 ### Removed
+
+## [0.7.1]
+### Changed
+* Thread the prover RNG explicitly [#307](https://github.com/midnightntwrk/midnight-zk/pull/307)
+* Add `s_g2()` accessor on `ParamsVerifierKZG` [#307](https://github.com/midnightntwrk/midnight-zk/pull/307)
 
 ## [0.7.0]
 ### Added

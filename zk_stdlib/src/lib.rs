@@ -94,7 +94,7 @@ use midnight_proofs::{
     utils::SerdeFormat,
 };
 use num_bigint::BigUint;
-use rand::{CryptoRng, RngCore};
+use rand::{rngs::OsRng, CryptoRng, RngCore};
 
 use crate::utils::plonk_api::BlstPLONK;
 
@@ -330,10 +330,11 @@ impl ZkStdLib {
         let secp256k1_curve_chip = (config.secp256k1_config.as_ref())
             .zip(secp256k1_scalar_chip.as_ref())
             .map(|(curve_config, scalar_chip)| {
-                ForeignEccChip::new(curve_config, &native_gadget, scalar_chip)
+                ForeignEccChip::new(curve_config, &native_gadget, scalar_chip, OsRng)
             });
-        let bls12_381_curve_chip = (config.bls12_381_config.as_ref())
-            .map(|curve_config| ForeignEccChip::new(curve_config, &native_gadget, &native_gadget));
+        let bls12_381_curve_chip = (config.bls12_381_config.as_ref()).map(|curve_config| {
+            ForeignEccChip::new(curve_config, &native_gadget, &native_gadget, OsRng)
+        });
 
         let base64_chip = (config.base64_config.as_ref())
             .map(|base64_config| Base64Chip::new(base64_config, &native_gadget));

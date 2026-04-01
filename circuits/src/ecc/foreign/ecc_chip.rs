@@ -24,7 +24,6 @@ use std::{
     collections::HashMap,
     fmt::Debug,
     hash::{Hash, Hasher},
-    ops::Mul,
     rc::Rc,
 };
 
@@ -37,11 +36,11 @@ use midnight_proofs::{
 };
 use num_bigint::BigUint;
 use num_traits::One;
-use rand::rngs::OsRng;
+use rand::{CryptoRng, RngCore};
 #[cfg(any(test, feature = "testing"))]
 use {
     crate::testing_utils::Sampleable, crate::utils::util::FromScratch,
-    midnight_proofs::plonk::Instance, rand::RngCore,
+    midnight_proofs::plonk::Instance, rand::rngs::OsRng,
 };
 
 use super::gates::{
@@ -120,6 +119,10 @@ where
     // It will never overflow unless you include more than 2^64 tables, will you?
     // Even in that case, we would get a compile-time error.
     tag_cnt: Rc<RefCell<u64>>,
+    // A random point used in windowed_msm (to shift the initial accumulator) so that the
+    // double-and-add loop can internally use incomplete addition. Sampled once at chip
+    // construction time.
+    random_point: C::CryptographicGroup,
 }
 
 /// Type for foreign EC points.
@@ -945,8 +948,17 @@ where
     S::Scalar: InnerValue<Element = C::Scalar>,
     N: NativeInstructions<F>,
 {
-    /// Given config creates new chip that implements foreign ECC
-    pub fn new(config: &ForeignEccConfig<C>, native_gadget: &N, scalar_field_chip: &S) -> Self {
+    /// Given config creates new chip that implements foreign ECC.
+    /// The RNG is used to sample a random point used for incomplete addition
+    /// Soundness does not rely on this point being random, but completeness
+    /// does.
+    pub fn new(
+        config: &ForeignEccConfig<C>,
+        native_gadget: &N,
+        scalar_field_chip: &S,
+        mut rng: impl RngCore + CryptoRng,
+    ) -> Self {
+        let random_point = C::random(&mut rng).into_subgroup();
         let base_field_chip = FieldChip::new(&config.base_field_config, native_gadget);
         Self {
             config: config.clone(),
@@ -954,6 +966,7 @@ where
             base_field_chip,
             scalar_field_chip: scalar_field_chip.clone(),
             tag_cnt: Rc::new(RefCell::new(1)),
+            random_point,
         }
     }
 
@@ -1808,9 +1821,8 @@ where
         // TODO: Maybe we should check that the sampled r will not have a completeness
         // problem. The probability should be overwhelming, but if the bad event
         // happened, the proof would fail. We could sample another r here instead.
-        let r_dlog = C::Scalar::random(OsRng);
-        let r_unassigned = C::CryptographicGroup::mul(C::CryptographicGroup::generator(), r_dlog);
-        let r: AssignedForeignPoint<F, C, B> = self.assign(layouter, Value::known(r_unassigned))?;
+        let r: AssignedForeignPoint<F, C, B> =
+            self.assign(layouter, Value::known(self.random_point))?;
 
         // Assert the chosen r is not the identity point
         self.base_field_chip
@@ -2069,7 +2081,12 @@ where
         let native_gadget = <N as FromScratch<F>>::new_from_scratch(&config.native_gadget_config);
         let scalar_field_chip =
             <S as FromScratch<F>>::new_from_scratch(&config.scalar_field_config);
-        ForeignEccChip::new(&config.ff_ecc_config, &native_gadget, &scalar_field_chip)
+        ForeignEccChip::new(
+            &config.ff_ecc_config,
+            &native_gadget,
+            &scalar_field_chip,
+            OsRng,
+        )
     }
 
     fn load_from_scratch(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
