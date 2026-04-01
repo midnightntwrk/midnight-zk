@@ -816,14 +816,6 @@ pub trait Circuit<F: Field> {
     /// Given the provided `cs`, synthesize the circuit. The concrete type of
     /// the caller will be different depending on the context, and they may or
     /// may not expect to have a witness present.
-    ///
-    /// # Important
-    ///
-    /// Some chips (e.g., those using dynamic lookup tables like `Pow2RangeChip`)
-    /// only load the table entries that are actually queried during synthesis.
-    /// For these chips, it is **essential** to call their table-loading methods
-    /// (e.g., `load_table`) at the very end of the `synthesize` method, after
-    /// all constraints and assignments have been made.
     fn synthesize(&self, config: Self::Config, layouter: impl Layouter<F>) -> Result<(), Error>;
 }
 
