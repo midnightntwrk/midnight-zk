@@ -147,24 +147,24 @@ pub enum StdLibParser {
     ///
     /// In the MRZ format, only uppercase letters, digits, and `<` (representing
     /// special characters such as spaces or dashes, as well as padding and
-    /// separators), are used. The following fields are then marked as follows;
-    /// note that checksum fields are not mentioned, as they are neither marked
-    /// nor verified by the parser.
+    /// separators), are used. The following fields are then output as follows;
+    /// note that checksum fields are not mentioned, as they get no output and
+    /// are not verified by the parser.
     ///  - Passport type (2 bytes; uppercase) -> 1
     ///  - Issuing country code (3 bytes; uppercase) -> 2
     ///    + **Note**: this code is ISO 3166-1 alpha-3 compliant.
     ///  - name field (up to 39 bytes; uppercase and spaces) -> 3 (surname) and
     ///    4 (given names, if any)
     ///    + **Note 1**: mononyms, i.e., people having no given names, are
-    ///      ICAO9303 TD3 compliant. In this case, no byte will be marked `4`.
+    ///      ICAO9303 TD3 compliant. In this case, no byte will be output `4`.
     ///    + **Note 2**: if the credential holder has at least one given name,
     ///      the credential must include a `<<` separator between the surname
     ///      and the given names. Names may be truncated if needed to make the
     ///      separator fit. The whole field is also padded with `<` bytes if no
     ///      truncation occurred.
     ///    + **Note 3**: The `<` characters (separator or padding) are not
-    ///      marked by this parser. E.g., in `DUPONT<<JEAN<MICHEL`, the 3 `<`
-    ///      get no marker. This is because of the impossibility, for a finite
+    ///      output by this parser. E.g., in `DUPONT<<JEAN<MICHEL`, the 3 `<`
+    ///      get no output. This is because of the impossibility, for a finite
     ///      automaton to, e.g., decide the third `<` is a padding or, like
     ///      here, a space before an additional given name.
     ///  - Passport number (9 bytes; uppercase and digits) -> 5
@@ -356,7 +356,7 @@ fn spec_icao9303_td3_dg1() -> Regex {
     // The list of all tolerated passport types. Consulted at this document, Section
     // 4.4, on Jan. 14, 2026:
     // https://www.icao.int/sites/default/files/publications/DocSeries/9303_p4_cons_en.pdf
-    // Marked as 1.
+    // Output 1.
     let passport_type = Regex::union([
         "P<".into(), // Legacy denomination of `PP`, before Jan. 2026.
         "PP".into(), // National/Ordinary passport.
@@ -369,17 +369,17 @@ fn spec_icao9303_td3_dg1() -> Regex {
         "PL".into(), // Laissez-passez passport.
         "PM".into(), // Military passport.
         "PU".into(), /* Emergency travel document. See: https://www.icao.int/sites/default/files/publications/DocSeries/9303_p8_cons_en.pdf */
-    ]).mark(&|_| Some(1));
-    // A non-empty sequence of uppercase letters, marked with `marker`.
-    let name_block = |marker: usize| -> Regex {
-        Regex::uppercase_letter().non_empty_list().mark(&|_| Some(marker))
+    ]).output(&|_| Some(1));
+    // A non-empty sequence of uppercase letters, with output `output`.
+    let name_block = |output: usize| -> Regex {
+        Regex::uppercase_letter().non_empty_list().output(&|_| Some(output))
     };
-    // One uppercase letter or a digit, marked with `marker`.
-    let alphanum = |marker: usize| -> Regex {
-        Regex::byte_from((b'A'..=b'Z').chain(b'0'..=b'9')).mark(&|_| Some(marker))
+    // One uppercase letter or a digit, with output `output`.
+    let alphanum = |output: usize| -> Regex {
+        Regex::byte_from((b'A'..=b'Z').chain(b'0'..=b'9')).output(&|_| Some(output))
     };
-    // A date marked with marker, in YYMMDD format.
-    let date = |marker: usize| -> Regex { Regex::digit().mark(&|_| Some(marker)).repeat(6) };
+    // A date with the given output, in YYMMDD format.
+    let date = |output: usize| -> Regex { Regex::digit().output(&|_| Some(output)).repeat(6) };
     // Any passport character.
     let any = Regex::byte_from((b'A'..=b'Z').chain(b'0'..=b'9').chain(std::iter::once(b'<')));
 
@@ -388,14 +388,14 @@ fn spec_icao9303_td3_dg1() -> Regex {
     // 12AB345678FRA7408122M3101012<<<<<<<<<<<<<<04
 
     // Mandatory part of the first line of the DG1 (passport type, issuer, surname).
-    // The separators `<` are not marked.
+    // The separators `<` get no output.
     let line1_prefix = Regex::cat([
         passport_type,
-        Regex::uppercase_letter().mark(&|_| Some(2)).repeat(3),
+        Regex::uppercase_letter().output(&|_| Some(2)).repeat(3),
         name_block(3).separated_non_empty_list("<".into()),
     ]);
     // Given names in the first line of the DG1, prefixed with the separator. The
-    // separators `<` are not marked.
+    // separators `<` get no output.
     let given_names = Regex::cat([
         "<<".into(),
         name_block(4).separated_non_empty_list("<".into()),
@@ -409,15 +409,15 @@ fn spec_icao9303_td3_dg1() -> Regex {
     // The second line of the DG1. All fields are length constrained.
     let line2 = Regex::cat([
         alphanum(5).repeat(9),
-        Regex::digit(), // Unmarked checksum.
-        Regex::uppercase_letter().mark(&|_| Some(6)).repeat(3),
+        Regex::digit(), // No-output checksum.
+        Regex::uppercase_letter().output(&|_| Some(6)).repeat(3),
         date(7),
-        Regex::digit(), // Unmarked checksum.
-        Regex::byte_from([b'<', b'M', b'F']).mark(&|_| Some(8)),
+        Regex::digit(), // No-output checksum.
+        Regex::byte_from([b'<', b'M', b'F']).output(&|_| Some(8)),
         date(9),
-        Regex::digit(), // Unmarked checksum.
-        any.repeat(14).mark(&|_| Some(10)),
-        Regex::digit().repeat(2), // Unmarked checksum.
+        Regex::digit(), // No-output checksum.
+        any.repeat(14).output(&|_| Some(10)),
+        Regex::digit().repeat(2), // No-output checksum.
     ]);
 
     // Concatenating the two lines, without a newline character.
