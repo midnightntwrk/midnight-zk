@@ -54,13 +54,18 @@ pub trait CircuitCurve: Curve + Default {
 }
 
 /// A Weierstrass curve of the form `y^2 = x^3 + Ax + B`.
-/// equipped with an efficient cubic endomorphism.
 pub trait WeierstrassCurve: CircuitCurve {
     /// `A` parameter.
     const A: Self::Base;
 
     /// `B` parameter.
     const B: Self::Base;
+
+    /// Whether this curve supports the cubic endomorphism used by the GLV MSM
+    /// optimization.
+    fn has_cubic_endomorphism() -> bool {
+        true
+    }
 
     // Note:
     // There are 2 choices for each cubic root,
@@ -239,6 +244,10 @@ impl CircuitCurve for P256 {
 impl WeierstrassCurve for P256 {
     const A: Self::Base = CURVE_A;
     const B: Self::Base = CURVE_B;
+
+    fn has_cubic_endomorphism() -> bool {
+        false
+    }
 
     fn base_zeta() -> Self::Base {
         unimplemented!("P256 does not have a cubic endomorphism")

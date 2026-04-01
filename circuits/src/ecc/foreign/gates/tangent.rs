@@ -22,13 +22,14 @@ use num_bigint::{BigInt as BI, ToBigInt};
 use num_traits::One;
 
 use crate::{
-    ecc::curves::CircuitCurve,
+    ecc::curves::WeierstrassCurve,
     field::foreign::{
         field_chip::FieldChipConfig,
         params::FieldEmulationParams,
         util::{
             compute_u, compute_vj, get_advice_vec, get_identity_auxiliary_bounds,
-            karatsuba_bilinear_sum, pair_wise_prod, sum_bigints, sum_exprs, urem,
+            karatsuba_bilinear_sum, pair_wise_prod, signed_mod, signed_repr, sum_bigints,
+            sum_exprs, urem,
         },
         FieldChip,
     },
@@ -40,7 +41,7 @@ use crate::{
 
 /// Foreign ECC tangent configuration.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct TangentConfig<C: CircuitCurve> {
+pub struct TangentConfig<C: WeierstrassCurve> {
     q_tangent: Selector,
     u_bounds: (BI, BI),
     vs_bounds: Vec<(BI, BI)>,
@@ -48,7 +49,7 @@ pub struct TangentConfig<C: CircuitCurve> {
     _marker: PhantomData<C>,
 }
 
-impl<C: CircuitCurve> TangentConfig<C> {
+impl<C: WeierstrassCurve> TangentConfig<C> {
     /// Checks that the FieldEmulationParams are sound for implementing the
     /// assertion that lambda is the slope of the tangent to the
     /// curve at a given point. Returns (k_min, u_max), {(lj_min,
@@ -74,6 +75,11 @@ impl<C: CircuitCurve> TangentConfig<C> {
         let moduli = P::moduli();
         let bs = P::base_powers();
         let bs2 = P::double_base_powers();
+        // Use the signed representative of 'a' (closest to zero) so that
+        // (a + 1) is small. For curves with a = 0 this is 1; for P-256
+        // where a = -3, this gives a + 1 = -2 instead of q - 2.
+        let a: BI = signed_repr::<C::Base>()(C::A.to_biguint().into());
+        let a_plus_1 = &a + BI::one();
 
         // Recall that limbs x_i represent integer 1 + sum_i base^i x_i.
         // Let px := 1 + sum_i base^i px_i
@@ -90,12 +96,12 @@ impl<C: CircuitCurve> TangentConfig<C> {
         //   sum_px2 := sum_i (sum_j (base^{i+j} % m) * px_i * px_j)
         //   sum_lpy := sum_i (sum_j (base^{i+j} % m) * lambda_i * py_j)
 
-        // We enforce relation (from now on we assume a = 0):
-        //    3 * (1 + sum_px) * (1 + sum_px)
+        // We enforce relation:
+        //    3 * (1 + sum_px) * (1 + sum_px) + a
         //  = 2 * (1 + sum_py) * (1 + sum_lambda)  (mod m)
 
         // with equation:
-        //   3 * (2 * sum_px + sum_px2) + 1
+        //   3 * (2 * sum_px + sum_px2) + (a + 1)
         // - 2 * (sum_py + sum_lambda + sum_lpy) = k * m
 
         let limbs_max = vec![&base - BI::one(); nb_limbs as usize];
@@ -105,8 +111,9 @@ impl<C: CircuitCurve> TangentConfig<C> {
         let max_sum_lambda = max_sum_px.clone();
         let max_sum_px2 = sum_bigints(&bs2, &limbs_max2);
         let max_sum_lpy = max_sum_px2.clone();
-        let expr_min = -BI::from(2) * (max_sum_py + max_sum_lambda + max_sum_lpy) + BI::one();
-        let expr_max = BI::from(3) * (&max_sum_px + &max_sum_px + max_sum_px2) + BI::one();
+        let expr_min =
+            -BI::from(2) * (max_sum_py + max_sum_lambda + max_sum_lpy) + a_plus_1.clone();
+        let expr_max = BI::from(3) * (&max_sum_px + &max_sum_px + max_sum_px2) + a_plus_1.clone();
         let expr_bounds = (expr_min, expr_max);
 
         let expr_mj_bounds: Vec<_> = moduli
@@ -119,10 +126,12 @@ impl<C: CircuitCurve> TangentConfig<C> {
                 let max_sum_lambda_mj = max_sum_px_mj.clone();
                 let max_sum_px2_mj = sum_bigints(&bs2_mj, &limbs_max2);
                 let max_sum_lpy_mj = max_sum_px2_mj.clone();
-                let expr_mj_min =
-                    -BI::from(2) * (max_sum_py_mj + max_sum_lambda_mj + max_sum_lpy_mj) + BI::one();
+                let a_plus_1_mj = signed_mod(&a_plus_1, mj);
+                let expr_mj_min = -BI::from(2)
+                    * (max_sum_py_mj + max_sum_lambda_mj + max_sum_lpy_mj)
+                    + a_plus_1_mj.clone();
                 let expr_mj_max =
-                    BI::from(3) * (&max_sum_px_mj + &max_sum_px_mj + max_sum_px2_mj) + BI::one();
+                    BI::from(3) * (&max_sum_px_mj + &max_sum_px_mj + max_sum_px2_mj) + a_plus_1_mj;
                 (expr_mj_min, expr_mj_max)
             })
             .collect();
@@ -155,6 +164,8 @@ impl<C: CircuitCurve> TangentConfig<C> {
 
         let ((k_min, u_max), vs_bounds) =
             Self::bounds::<F, P>(nb_parallel_range_checks, max_bit_len);
+        let a: BI = signed_repr::<C::Base>()(C::A.to_biguint().into());
+        let a_plus_1 = &a + BI::one();
 
         let q_tangent = meta.selector();
 
@@ -170,13 +181,13 @@ impl<C: CircuitCurve> TangentConfig<C> {
             let u = meta.query_advice(field_chip_config.u_col, Rotation::next());
             let vs = get_advice_vec(meta, &field_chip_config.v_cols, Rotation::next());
 
-            //   3 * (2 * sum_px + sum_px2) + 1
+            //   3 * (2 * sum_px + sum_px2) + (a + 1)
             // - 2 * (sum_py + sum_lambda + sum_lpy) = (u + k_min) * m
             let native_id = &cond
                 * (Expression::from(3)
                     * (Expression::from(2) * sum_exprs::<F>(&bs, &pxs)
                         + karatsuba_bilinear_sum::<F>(&bs2, &pxs, &pxs))
-                    + Expression::from(1)
+                    + Expression::Constant(bigint_to_fe::<F>(&a_plus_1))
                     - Expression::from(2)
                         * (sum_exprs::<F>(&bs, &pys)
                             + sum_exprs::<F>(&bs, &lambdas)
@@ -192,14 +203,14 @@ impl<C: CircuitCurve> TangentConfig<C> {
                     let bs2_mj = bs2.iter().map(|b| b.rem(mj)).collect::<Vec<_>>();
                     let bs_mj = bs.iter().map(|b| b.rem(mj)).collect::<Vec<_>>();
 
-                    //   3 * (2 * sum_px_mj + sum_px2_mj) + 1
+                    //   3 * (2 * sum_px_mj + sum_px2_mj) + signed_mod(a + 1, mj)
                     // - 2 * (sum_py_mj + sum_lambda_mj + sum_lpy_mj)
                     // - u * (m % mj) - (k_min * m) % mj - (vj + lj_min) * mj = 0
                     &cond
                         * (Expression::from(3)
                             * (Expression::from(2) * sum_exprs::<F>(&bs_mj, &pxs)
                                 + karatsuba_bilinear_sum::<F>(&bs2_mj, &pxs, &pxs))
-                            + Expression::from(1)
+                            + Expression::Constant(bigint_to_fe::<F>(&signed_mod(&a_plus_1, mj)))
                             - Expression::from(2)
                                 * (sum_exprs::<F>(&bs_mj, &pys)
                                     + sum_exprs::<F>(&bs_mj, &lambdas)
@@ -225,7 +236,7 @@ impl<C: CircuitCurve> TangentConfig<C> {
     }
 }
 
-/// If `cond = 1`, it asserts that `3 * p.0 * p.0 = 2 * p.1 * lambda`.
+/// If `cond = 1`, it asserts that `3 * p.0 * p.0 + a = 2 * p.1 * lambda`.
 ///
 /// If `cond = 0`, it asserts nothing.
 #[allow(clippy::type_complexity)]
@@ -239,7 +250,7 @@ pub fn assert_tangent<F, C, P, N>(
 ) -> Result<(), Error>
 where
     F: CircuitField,
-    C: CircuitCurve,
+    C: WeierstrassCurve,
     P: FieldEmulationParams<F, C::Base>,
     N: NativeInstructions<F>,
 {
@@ -248,6 +259,8 @@ where
     let bs = P::base_powers();
     let bs2 = P::double_base_powers();
     let base_chip_config = base_chip.config();
+    let a: BI = signed_repr::<C::Base>()(C::A.to_biguint().into());
+    let a_plus_1 = &a + BI::one();
 
     let px = &base_chip.normalize(layouter, p.0)?;
     let py = &base_chip.normalize(layouter, p.1)?;
@@ -267,10 +280,10 @@ where
 
             let (k_min, u_max) = tangent_config.u_bounds.clone();
 
-            //   3 * (2 * sum_px + sum_px2) + 1
+            //   3 * (2 * sum_px + sum_px2) + (a + 1)
             // - 2 * (sum_py + sum_lambda + sum_lpy) = (u + k_min) * m
             let expr = pxs.clone().map(|v| BI::from(6) * sum_bigints(&bs, &v))
-                + px2s.clone().map(|v| BI::from(3) * sum_bigints(&bs2, &v) + BI::one())
+                + px2s.clone().map(|v| BI::from(3) * sum_bigints(&bs2, &v) + a_plus_1.clone())
                 - (pys.clone().map(|v| sum_bigints(&bs, &v))
                     + lambdas.clone().map(|v| sum_bigints(&bs, &v))
                     + lpys.clone().map(|v| sum_bigints(&bs2, &v)))
@@ -284,13 +297,15 @@ where
 
                     let (lj_min, vj_max) = vj_bounds.clone();
 
-                    //    3 * (2 * sum_px_mj + sum_px2_mj) + 1
+                    let a_plus_1_mj = signed_mod(&a_plus_1, mj);
+
+                    //    3 * (2 * sum_px_mj + sum_px2_mj) + signed_mod(a + 1, mj)
                     //  - 2 * (sum_py_mj + sum_lambda_mj + sum_lpy_mj)
                     //  - u * (m % mj) - (k_min * m) % mj = (vj + lj_min) * mj
                     let expr_mj = pxs.clone().map(|v| BI::from(6) * sum_bigints(&bs_mj, &v))
                         + px2s
                             .clone()
-                            .map(|v| BI::from(3) * sum_bigints(&bs2_mj, &v) + BI::from(1))
+                            .map(|v| BI::from(3) * sum_bigints(&bs2_mj, &v) + &a_plus_1_mj)
                         - (pys.clone().map(|v| sum_bigints(&bs_mj, &v))
                             + lambdas.clone().map(|v| sum_bigints(&bs_mj, &v))
                             + lpys.clone().map(|v| sum_bigints(&bs2_mj, &v)))

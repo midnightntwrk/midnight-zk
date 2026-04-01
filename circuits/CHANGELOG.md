@@ -30,6 +30,9 @@ verification keys break backwards compatibility.
 * Add `p256` as curve dependency [#269](https://github.com/midnightntwrk/midnight-zk/pull/269)
 * Add emulations of base/scalar fields of `p256` over `bls12-381` scalar field [#270](https://github.com/midnightntwrk/midnight-zk/pull/270)
 * add MSMCompletenessFluke error [#277](https://github.com/midnightntwrk/midnight-zk/pull/277)
+* Scanner chip: dynamic regex support and lazy automaton loading [#232](https://github.com/midnightntwrk/midnight-zk/pull/232)
+* Scanner chip: ICAO 9303 TD3 DG1 passport parser [#233](https://github.com/midnightntwrk/midnight-zk/pull/233)
+* Add implementation of `p256` as foreign Weierstrass chip [#291](https://github.com/midnightntwrk/midnight-zk/pull/291)
 
 ### Fixed
 * Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
