@@ -1158,7 +1158,7 @@ where
         bits = bits[0..nb_bits].to_vec();
 
         // The case nb_bits > K::NUM_BITS cannot happen since by above definition
-        // nb_bits = min(K::NUM_BITS,...), and thus nb_bits <= K::NUM_BITS
+        // nb_bits = min(K::NUM_BITS,...), and thus nb_bits <= K::NUM_BITS.
         if enforce_canonical && nb_bits == K::NUM_BITS as usize {
             let canonical = self.is_canonical(layouter, &bits)?;
             self.assert_equal_to_fixed(layouter, &canonical, true)?;
