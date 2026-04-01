@@ -1145,14 +1145,21 @@ where
             .into_iter()
             .for_each(|new_bits| bits.extend(new_bits));
 
+        let nb_bits = min(
+            K::NUM_BITS as usize,
+            nb_bits.unwrap_or(K::NUM_BITS as usize),
+        );
+
         // Drop the most significant bits up to the desired length, but make sure
         // they encode 0.
-        let nb_bits = nb_bits.unwrap_or(K::NUM_BITS as usize);
         bits[nb_bits..]
             .iter()
             .try_for_each(|byte| self.native_gadget.assert_equal_to_fixed(layouter, byte, false))?;
-        let bits = bits[0..nb_bits].to_vec();
-        if enforce_canonical && nb_bits >= K::NUM_BITS as usize {
+        bits = bits[0..nb_bits].to_vec();
+
+        // The case nb_bits > K::NUM_BITS cannot happen since by above definition
+        // nb_bits = min(K::NUM_BITS,...), and thus nb_bits <= K::NUM_BITS.
+        if enforce_canonical && nb_bits == K::NUM_BITS as usize {
             let canonical = self.is_canonical(layouter, &bits)?;
             self.assert_equal_to_fixed(layouter, &canonical, true)?;
         }
