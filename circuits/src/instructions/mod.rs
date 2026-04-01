@@ -60,5 +60,5 @@ pub use public_input::PublicInputInstructions;
 pub use range_check::RangeCheckInstructions;
 pub use scalar_field::ScalarFieldInstructions;
 pub use sponge::{SpongeCPU, SpongeInstructions};
-pub use vector::VectorInstructions;
+pub use vector::{VectorBounds, VectorInstructions};
 pub use zero::ZeroInstructions;

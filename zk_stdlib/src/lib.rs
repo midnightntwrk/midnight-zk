@@ -1253,7 +1253,7 @@ where
         &self,
         layouter: &mut impl Layouter<F>,
         input: &AssignedVector<F, T, M, A>,
-    ) -> Result<[AssignedBit<F>; M], Error> {
+    ) -> Result<(Box<[AssignedBit<F>; M]>, VectorBounds<F>), Error> {
         self.vector_gadget.padding_flag(layouter, input)
     }
 
@@ -1261,7 +1261,7 @@ where
         &self,
         layouter: &mut impl Layouter<F>,
         input: &AssignedVector<F, T, M, A>,
-    ) -> Result<(AssignedNative<F>, AssignedNative<F>), Error> {
+    ) -> Result<VectorBounds<F>, Error> {
         self.vector_gadget.get_limits(layouter, input)
     }
 
