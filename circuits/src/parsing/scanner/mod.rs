@@ -234,6 +234,13 @@ pub struct ScannerConfig {
 }
 
 /// Chip for scanning: automaton parsing and substring verification.
+///
+/// # Important
+///
+/// This chip uses lookup tables that are effectively assigned, or not, based on
+/// their effective usage in the circuit. Consequently, load **must** be called
+/// at the very end of the synthesize method, after all calls to methods of the
+/// chip have been made.
 #[derive(Clone, Debug)]
 pub struct ScannerChip<F>
 where
