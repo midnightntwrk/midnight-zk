@@ -40,6 +40,7 @@ use {
     rand::RngCore,
 };
 
+use super::common::msm_preprocess;
 use crate::{
     ecc::{
         curves::EdwardsCurve,
@@ -670,10 +671,14 @@ where
         let r_value = p.value().zip(q.value()).map(|(p, q)| p + q);
         let r = self.assign_point_unchecked(layouter, r_value)?;
 
-        let px_qy = base_chip.mul(layouter, &p.x, &q.y, None)?;
-        let py_qx = base_chip.mul(layouter, &p.y, &q.x, None)?;
-        let py_qy = base_chip.mul(layouter, &p.y, &q.y, None)?;
         let px_qx = base_chip.mul(layouter, &p.x, &q.x, None)?;
+        let py_qy = base_chip.mul(layouter, &p.y, &q.y, None)?;
+        let px_qy = base_chip.mul(layouter, &p.x, &q.y, None)?;
+        let py_qx = if p == q {
+            px_qy.clone()
+        } else {
+            base_chip.mul(layouter, &p.y, &q.x, None)?
+        };
         let neg_a_px_qx = base_chip.mul_by_constant(layouter, &px_qx, -C::A)?;
         let d_px_py_qx_qy = base_chip.mul(layouter, &px_qx, &py_qy, Some(C::D))?;
         let neg_d_px_py_qx_qy = base_chip.neg(layouter, &d_px_py_qx_qy)?;
@@ -738,19 +743,41 @@ where
         scalars: &[Self::Scalar],
         bases: &[Self::Point],
     ) -> Result<Self::Point, Error> {
-        let scalars = scalars
-            .iter()
-            .map(|s| (s.clone(), C::ScalarField::NUM_BITS as usize))
-            .collect::<Vec<_>>();
+        if scalars.len() != bases.len() {
+            panic!("Number of scalars and points should be the same.")
+        }
+        let scalar_chip = self.scalar_field_chip();
+        let identity = self.assign_fixed(layouter, C::CryptographicGroup::identity())?;
+        let one = self.scalar_field_chip().assign_fixed(layouter, C::ScalarField::ONE)?;
 
-        self.msm_by_bounded_scalars(layouter, &scalars, bases)
+        // Add max bound to scalars + preprocess.
+        let scalars: Vec<_> =
+            scalars.iter().map(|s| (s.clone(), C::ScalarField::NUM_BITS as usize)).collect();
+        let (scalars, bases, bases_with_1bit_scalar) =
+            msm_preprocess(self, scalar_chip, layouter, &scalars, bases)?;
+        let scalar_bits = scalars
+            .iter()
+            .map(|s| scalar_chip.assigned_to_le_bits(layouter, &s.0, None, true))
+            .collect::<Result<Vec<_>, Error>>()?;
+
+        // Windowed msm with shared doubling.
+        let res = self.windowed_msm::<3>(layouter, &scalar_bits, &bases)?;
+
+        // Add 1-bit scalar bases.
+        bases_with_1bit_scalar.iter().try_fold(res, |acc, (b, s)| {
+            let s_times_b = if s == &one {
+                b.clone()
+            } else {
+                let s_is_zero = scalar_chip.is_zero(layouter, s)?;
+                self.select(layouter, &s_is_zero, &identity, b)?
+            };
+            self.add(layouter, &acc, &s_times_b)
+        })
     }
 
-    // This function currently implements a basic form of double-and-add.
-    // There are several improvements available:
-    //  * Batching equal points
-    //  * Filtering scalars (e.g., if they are 0 or 1)
-    //  * Using the windowed method
+    // Per-base windowed MSM with adaptive window size. Unlike `msm`, this does
+    // not share doublings across bases, avoiding padding waste when scalar
+    // bounds differ significantly.
     fn msm_by_bounded_scalars(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -758,30 +785,41 @@ where
         bases: &[AssignedForeignEdwardsPoint<F, C, B>],
     ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
         if scalars.len() != bases.len() {
-            panic!("Nr of scalars and points should be the same.")
+            panic!("Number of scalars and points should be the same.")
         }
-
+        let scalar_chip = self.scalar_field_chip();
         let identity = self.assign_fixed(layouter, C::CryptographicGroup::identity())?;
+        let one = self.scalar_field_chip().assign_fixed(layouter, C::ScalarField::ONE)?;
+
+        let (scalars, bases, bases_with_1bit_scalar) =
+            msm_preprocess(self, scalar_chip, layouter, scalars, bases)?;
+
+        // We do not share doublings because we assume the difference in
+        // scalar upper bounds negate the benefits, since we will double
+        // until the max of the bounds.
         let mut res = identity.clone();
-
-        for ((s, bit_size), b) in scalars.iter().zip(bases.iter()) {
-            let scalar_bits =
-                self.scalar_field_chip()
-                    .assigned_to_le_bits(layouter, s, Some(*bit_size), true)?;
-            let mut p = b.clone();
-
-            // Simple double-and-add
-            for (i, b) in scalar_bits.iter().enumerate() {
-                let addend = self.select(layouter, b, &p, &identity)?;
-                res = self.add(layouter, &res, &addend)?;
-                // The doubling in the last iteration is not needed
-                if i < scalar_bits.len() - 1 {
-                    p = self.double(layouter, &p)?;
-                }
-            }
+        for ((s, num_bits), b) in scalars.iter().zip(bases.iter()) {
+            let bits = scalar_chip.assigned_to_le_bits(layouter, s, Some(*num_bits), true)?;
+            let term = if *num_bits <= 3 {
+                self.windowed_scalar_mul::<1>(layouter, &bits, b)?
+            } else if *num_bits <= 32 {
+                self.windowed_scalar_mul::<2>(layouter, &bits, b)?
+            } else {
+                self.windowed_scalar_mul::<3>(layouter, &bits, b)?
+            };
+            res = self.add(layouter, &res, &term)?;
         }
 
-        Ok(res)
+        // Add 1-bit scalar bases.
+        bases_with_1bit_scalar.iter().try_fold(res, |acc, (b, s)| {
+            let s_times_b = if s == &one {
+                b.clone()
+            } else {
+                let s_is_zero = scalar_chip.is_zero(layouter, s)?;
+                self.select(layouter, &s_is_zero, &identity, b)?
+            };
+            self.add(layouter, &acc, &s_times_b)
+        })
     }
 
     fn mul_by_constant(
@@ -854,6 +892,131 @@ where
         value: Value<C::CryptographicGroup>,
     ) -> Result<Self::Point, Error> {
         self.assign_point_unchecked(layouter, value)
+    }
+}
+
+/// Precomputed table of points for windowed MSM.
+#[derive(Clone, Debug)]
+struct PrecomputedTable<F, C, B, const WS: usize>
+where
+    F: CircuitField,
+    C: EdwardsCurve,
+    B: FieldEmulationParams<F, C::Base>,
+{
+    /// Table of precomputed points, where table[i] = i * base.
+    table: Vec<AssignedForeignEdwardsPoint<F, C, B>>,
+}
+
+impl<F, C, B, S, N> ForeignEdwardsEccChip<F, C, B, S, N>
+where
+    F: CircuitField,
+    C: EdwardsCurve,
+    B: FieldEmulationParams<F, C::Base>,
+    S: ScalarFieldInstructions<F>,
+    S::Scalar: InnerValue<Element = C::ScalarField>,
+    N: NativeInstructions<F>,
+{
+    /// Builds table `[0*base, 1*base, ..., (2^WS-1)*base]`. Cost: 2^WS - 2
+    /// adds.
+    fn precompute<const WS: usize>(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        base: &AssignedForeignEdwardsPoint<F, C, B>,
+    ) -> Result<PrecomputedTable<F, C, B, WS>, Error> {
+        let identity = self.assign_fixed(layouter, C::CryptographicGroup::identity())?;
+        let mut table = vec![identity, base.clone()];
+        let mut acc = base.clone();
+        for _ in 2..1 << WS {
+            acc = self.add(layouter, &acc, base)?;
+            table.push(acc.clone());
+        }
+        Ok(PrecomputedTable { table })
+    }
+
+    /// Selects `table[w]` where `w` is the LE value of `bits`, using a binary
+    /// mux tree. Cost: 2^WS - 1 point selects.
+    fn multi_select<const WS: usize>(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        bits: &[AssignedBit<F>; WS],
+        table: &PrecomputedTable<F, C, B, WS>,
+    ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
+        assert_eq!(table.table.len(), 1 << WS);
+        let mut res = table.table.clone();
+
+        let mut len = 1 << WS;
+        for b in bits.iter().rev() {
+            let half_len = len / 2;
+            for i in 0..half_len {
+                res[i] = self.select(layouter, b, &res[i + half_len], &res[i])?;
+            }
+            len = half_len;
+        }
+        Ok(res[0].clone())
+    }
+
+    /// Windowed interleaved MSM over LE bit-decomposed scalars. Shares the
+    /// doubling chain across all bases. MSB-first Horner evaluation.
+    fn windowed_msm<const WS: usize>(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        scalars: &[Vec<AssignedBit<F>>],
+        bases: &[AssignedForeignEdwardsPoint<F, C, B>],
+    ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
+        assert_eq!(scalars.len(), bases.len());
+
+        if bases.is_empty() {
+            return self.assign_fixed(layouter, C::CryptographicGroup::identity());
+        }
+
+        // Pad all bit vectors to a common length that is a multiple of WS.
+        let max_bits = scalars.iter().map(|s| s.len()).max().unwrap_or(0);
+        let padded_len = max_bits.div_ceil(WS) * WS;
+        let zero_bit: AssignedBit<F> = self.native_gadget.assign_fixed(layouter, false)?;
+        let scalars: Vec<Vec<AssignedBit<F>>> = scalars
+            .iter()
+            .map(|bits| {
+                let mut padded = bits.clone();
+                padded.resize(padded_len, zero_bit.clone());
+                padded
+            })
+            .collect();
+        let num_windows = padded_len / WS;
+
+        // Precompute tables for each base.
+        let tables: Vec<PrecomputedTable<F, C, B, WS>> = bases
+            .iter()
+            .map(|b| self.precompute::<WS>(layouter, b))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let mut res = self.assign_fixed(layouter, C::CryptographicGroup::identity())?;
+        for w in (0..num_windows).rev() {
+            // Skip doubling in first window.
+            if w < num_windows - 1 {
+                for _ in 0..WS {
+                    res = self.double(layouter, &res)?;
+                }
+            }
+            for (bits, table) in scalars.iter().zip(tables.iter()) {
+                let window_bits: &[AssignedBit<F>; WS] = bits[w * WS..(w + 1) * WS]
+                    .try_into()
+                    .expect("window slice length must equal WS");
+                let addend = self.multi_select::<WS>(layouter, window_bits, table)?;
+                res = self.add(layouter, &res, &addend)?;
+            }
+        }
+
+        Ok(res)
+    }
+
+    /// Single-base windowed scalar multiplication.
+    fn windowed_scalar_mul<const WS: usize>(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        scalar: &[AssignedBit<F>],
+        base: &AssignedForeignEdwardsPoint<F, C, B>,
+    ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
+        self.windowed_msm::<WS>(layouter, &[scalar.to_vec()], std::slice::from_ref(base))
     }
 }
 
@@ -935,6 +1098,7 @@ where
 
 #[cfg(test)]
 mod tests {
+    use ff::Field;
     use group::Group;
     use midnight_curves::{curve25519::Curve25519, BlsScalar, JubjubExtended};
     use midnight_proofs::{circuit::SimpleFloorPlanner, dev::MockProver, plonk::Circuit};
@@ -1238,5 +1402,117 @@ mod tests {
             chip.assert_on_curve(&mut layouter, &x, &y)?;
             chip.load_from_scratch(&mut layouter)
         }
+    }
+
+    /// Test circuit for `windowed_msm`: computes sum_i(scalar_i * base_i) and
+    /// asserts the result equals the expected point.
+    #[derive(Clone, Debug)]
+    struct WindowedMsmCircuit<C: EdwardsCurve> {
+        scalars: Vec<C::ScalarField>,
+        bases: Vec<C::CryptographicGroup>,
+        expected: C::CryptographicGroup,
+    }
+
+    impl<C> Circuit<F> for WindowedMsmCircuit<C>
+    where
+        C: EdwardsCurve,
+        C::Base: Legendre,
+        MultiEmulationParams:
+            FieldEmulationParams<F, C::Base> + FieldEmulationParams<F, C::ScalarField>,
+    {
+        type Config = <EdwardsChip<C> as FromScratch<F>>::Config;
+        type FloorPlanner = SimpleFloorPlanner;
+        type Params = ();
+
+        fn without_witnesses(&self) -> Self {
+            unreachable!()
+        }
+
+        fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+            let committed = meta.instance_column();
+            let instance = meta.instance_column();
+            EdwardsChip::<C>::configure_from_scratch(meta, &[committed, instance])
+        }
+
+        fn synthesize(
+            &self,
+            config: Self::Config,
+            mut layouter: impl Layouter<F>,
+        ) -> Result<(), Error> {
+            let chip = EdwardsChip::<C>::new_from_scratch(&config);
+
+            // Assign bases.
+            let bases: Vec<_> = self
+                .bases
+                .iter()
+                .map(|b| chip.assign(&mut layouter, Value::known(*b)))
+                .collect::<Result<Vec<_>, _>>()?;
+
+            // Decompose scalars to LE bits.
+            let scalar_chip = chip.scalar_field_chip();
+            let scalar_bits: Vec<Vec<AssignedBit<F>>> = self
+                .scalars
+                .iter()
+                .map(|s| {
+                    let assigned = scalar_chip.assign_fixed(&mut layouter, *s)?;
+                    scalar_chip.assigned_to_le_bits(
+                        &mut layouter,
+                        &assigned,
+                        Some(C::ScalarField::NUM_BITS as usize),
+                        true,
+                    )
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+
+            let result = chip.windowed_msm::<3>(&mut layouter, &scalar_bits, &bases)?;
+
+            // Assert result matches expected.
+            let expected = chip.assign_fixed(&mut layouter, self.expected)?;
+            chip.assert_equal(&mut layouter, &result, &expected)?;
+
+            chip.load_from_scratch(&mut layouter)
+        }
+    }
+
+    fn run_test_windowed_msm<C>()
+    where
+        C: EdwardsCurve,
+        C::Base: Legendre,
+        MultiEmulationParams:
+            FieldEmulationParams<F, C::Base> + FieldEmulationParams<F, C::ScalarField>,
+    {
+        let mut rng = ChaCha8Rng::seed_from_u64(0xc00ffee);
+        type S<C> = <C as CircuitCurve>::ScalarField;
+        type P<C> = <C as CircuitCurve>::CryptographicGroup;
+
+        let check = |scalars, bases, expected| {
+            let circuit = WindowedMsmCircuit::<C> {
+                scalars,
+                bases,
+                expected,
+            };
+            MockProver::run(&circuit, vec![vec![], vec![]])
+                .expect("proof generation should not fail")
+                .verify()
+                .expect("windowed MSM should verify");
+        };
+
+        let (s, p) = (S::<C>::random(&mut rng), P::<C>::random(&mut rng));
+        check(vec![s], vec![p], p * s);
+
+        let (s1, s2) = (S::<C>::random(&mut rng), S::<C>::random(&mut rng));
+        let (p1, p2) = (P::<C>::random(&mut rng), P::<C>::random(&mut rng));
+        check(vec![s1, s2], vec![p1, p2], p1 * s1 + p2 * s2);
+
+        let p = P::<C>::random(&mut rng);
+        check(vec![S::<C>::ZERO], vec![p], P::<C>::identity());
+
+        let p = P::<C>::random(&mut rng);
+        check(vec![S::<C>::ONE], vec![p], p);
+    }
+
+    #[test]
+    fn test_windowed_msm() {
+        run_test_windowed_msm::<JubjubExtended>();
     }
 }
