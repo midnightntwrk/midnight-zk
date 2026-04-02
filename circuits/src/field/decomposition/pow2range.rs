@@ -14,7 +14,13 @@
 //! `pow2range` is a chip for performing membership assertions in ranges of the
 //! form [0, 2^n) via lookups.
 
-use std::{cell::RefCell, collections::HashSet, fmt::Debug, marker::PhantomData, rc::Rc};
+use std::{
+    cell::{Cell, RefCell},
+    collections::HashSet,
+    fmt::Debug,
+    marker::PhantomData,
+    rc::Rc,
+};
 
 use midnight_proofs::{
     circuit::{Chip, Layouter, Region, Value},
@@ -68,13 +74,27 @@ pub struct Pow2RangeConfig {
 ///
 /// Note: The table will include only the tag values that are actually used in
 /// the circuit! This allows us to have smaller tables when possible.
-/// For that, it is necessary to load this chip at the end of a synthesize,
-/// not at the beginning!
-#[derive(Clone, Debug, PartialEq, Eq)]
+///
+/// # Table Loading Invariant
+///
+/// The lookup table is built from the set of tags accumulated during constraint
+/// emission. Therefore, [`load_table`](Self::load_table) **must** be called
+/// after all calls to [`assert_row_lower_than_2_pow_n`](Self::assert_row_lower_than_2_pow_n)
+/// (or any instruction that delegates to it). This invariant is enforced at
+/// runtime: calling `assert_row_lower_than_2_pow_n` after `load_table` will
+/// panic.
+///
+/// If the full set of required tags is known upfront, use
+/// [`precompute_tags`](Self::precompute_tags) to register them before
+/// `load_table`, which then makes the loading order safe.
+#[derive(Clone, Debug)]
 pub struct Pow2RangeChip<F: CircuitField> {
     config: Pow2RangeConfig,
     max_bit_len: usize,
     queried_tags: Rc<RefCell<HashSet<usize>>>,
+    /// Set to `true` once `load_table` has been called. Any subsequent call to
+    /// `assert_row_lower_than_2_pow_n` will panic.
+    frozen: Rc<Cell<bool>>,
     _marker: PhantomData<F>,
 }
 
@@ -100,6 +120,15 @@ impl<F: CircuitField> Pow2RangeChip<F> {
             panic!(
                 "assert_row_lower_than_2_pow_n: n={} cannot exceed max_bit_len={}",
                 n, self.max_bit_len
+            )
+        }
+        if self.frozen.get() {
+            panic!(
+                "Pow2RangeChip: cannot emit lookup constraint for tag={} after load_table() \
+                 has been called. The lookup table has already been materialized and does not \
+                 contain this tag. Either move load_table() to after all constraint emission, \
+                 or use precompute_tags() to register all required tags before loading.",
+                n
             )
         }
         self.config.q_pow2range.enable(region, offset)?;
@@ -162,6 +191,7 @@ impl<F: CircuitField> Pow2RangeChip<F> {
             config: config.clone(),
             max_bit_len,
             queried_tags: Rc::new(RefCell::new(HashSet::new())),
+            frozen: Rc::new(Cell::new(false)),
             _marker: PhantomData,
         }
     }
@@ -212,7 +242,16 @@ impl<F: CircuitField> Pow2RangeChip<F> {
     }
 
     /// Load the pow2range lookup table (to be used in synthesis).
+    ///
+    /// # Table Loading Invariant
+    ///
+    /// This method materializes the lookup table from the set of tags
+    /// accumulated during constraint emission. After this call, the chip is
+    /// **frozen**: any subsequent call to
+    /// [`assert_row_lower_than_2_pow_n`](Self::assert_row_lower_than_2_pow_n)
+    /// will panic, because the table cannot be extended after materialization.
     pub fn load_table(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
+        self.frozen.set(true);
         layouter.assign_table(
             || "pow2range table",
             |mut table| {
@@ -233,6 +272,40 @@ impl<F: CircuitField> Pow2RangeChip<F> {
                 Ok(())
             },
         )
+    }
+
+    /// Pre-register tag values so that the lookup table will include them
+    /// even if no constraint has been emitted for them yet.
+    ///
+    /// This is useful when the full set of required tags is known upfront
+    /// (e.g., in static circuits) and you want to load the table early.
+    ///
+    /// # Panics
+    ///
+    /// If the chip is already frozen (i.e., `load_table` has been called).
+    /// If any tag exceeds `max_bit_len`.
+    pub fn precompute_tags(&self, tags: &[usize]) {
+        if self.frozen.get() {
+            panic!(
+                "Pow2RangeChip: cannot precompute tags after load_table() has been called."
+            )
+        }
+        let mut queried = self.queried_tags.borrow_mut();
+        for &tag in tags {
+            assert!(
+                tag <= self.max_bit_len,
+                "precompute_tags: tag={} exceeds max_bit_len={}",
+                tag,
+                self.max_bit_len
+            );
+            queried.insert(tag);
+        }
+    }
+
+    /// Returns `true` if the table has been materialized (i.e., `load_table`
+    /// has been called).
+    pub fn is_frozen(&self) -> bool {
+        self.frozen.get()
     }
 }
 
@@ -366,5 +439,200 @@ mod tests {
         run_pow2range_negative_test::<2>();
         run_pow2range_negative_test::<3>();
         run_pow2range_negative_test::<4>();
+    }
+
+    /// Negative test: calling `assert_row_lower_than_2_pow_n` after
+    /// `load_table` must panic.
+    #[test]
+    #[should_panic(expected = "cannot emit lookup constraint")]
+    fn test_post_load_constraint_panics() {
+        const MAX_BIT_LEN: usize = 10;
+
+        struct PostLoadCircuit<F: CircuitField> {
+            _marker: PhantomData<F>,
+        }
+
+        impl<F: CircuitField> Circuit<F> for PostLoadCircuit<F> {
+            type Config = Pow2RangeConfig;
+            type FloorPlanner = SimpleFloorPlanner;
+            type Params = ();
+
+            fn without_witnesses(&self) -> Self {
+                unreachable!();
+            }
+
+            fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+                let columns = (0..1).map(|_| meta.advice_column()).collect::<Vec<_>>();
+                Pow2RangeChip::configure(meta, &columns)
+            }
+
+            fn synthesize(
+                &self,
+                config: Self::Config,
+                mut layouter: impl Layouter<F>,
+            ) -> Result<(), Error> {
+                let chip = Pow2RangeChip::<F>::new(&config, MAX_BIT_LEN);
+
+                // Load table first (this freezes the chip)
+                chip.load_table(&mut layouter)?;
+
+                // Now try to emit a constraint — this must panic
+                layouter.assign_region(
+                    || "post-load constraint",
+                    |mut region| {
+                        let col = chip.config.val_cols[0];
+                        region.assign_advice(
+                            || "val",
+                            col,
+                            0,
+                            || Value::known(F::from(3u64)),
+                        )?;
+                        chip.assert_row_lower_than_2_pow_n(&mut region, 5, 0)
+                    },
+                )?;
+
+                Ok(())
+            }
+        }
+
+        let circuit = PostLoadCircuit::<Fp> {
+            _marker: PhantomData,
+        };
+        let _ = MockProver::run(&circuit, vec![]);
+    }
+
+    /// Test that `precompute_tags` allows loading the table before constraint
+    /// emission, as long as all needed tags are pre-registered.
+    #[test]
+    fn test_precompute_tags_enables_early_load() {
+        const MAX_BIT_LEN: usize = 10;
+
+        struct PrecomputeCircuit<F: CircuitField> {
+            _marker: PhantomData<F>,
+        }
+
+        impl<F: CircuitField> Circuit<F> for PrecomputeCircuit<F> {
+            type Config = Pow2RangeConfig;
+            type FloorPlanner = SimpleFloorPlanner;
+            type Params = ();
+
+            fn without_witnesses(&self) -> Self {
+                unreachable!();
+            }
+
+            fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+                let columns = (0..1).map(|_| meta.advice_column()).collect::<Vec<_>>();
+                Pow2RangeChip::configure(meta, &columns)
+            }
+
+            fn synthesize(
+                &self,
+                config: Self::Config,
+                mut layouter: impl Layouter<F>,
+            ) -> Result<(), Error> {
+                let chip = Pow2RangeChip::<F>::new(&config, MAX_BIT_LEN);
+
+                // Pre-register the tags we know we'll need
+                chip.precompute_tags(&[3, 5]);
+
+                // Load table early — this is now safe because tags are pre-registered
+                chip.load_table(&mut layouter)?;
+
+                // The chip is frozen, but the table already has tags 3 and 5.
+                // We cannot call assert_row_lower_than_2_pow_n anymore, but the
+                // table is complete for our needs.
+                // (In a real circuit, you'd emit constraints before loading.)
+                Ok(())
+            }
+        }
+
+        let circuit = PrecomputeCircuit::<Fp> {
+            _marker: PhantomData,
+        };
+        let prover = MockProver::run(&circuit, vec![]).unwrap();
+        assert_eq!(prover.verify(), Ok(()));
+    }
+
+    /// Test that `precompute_tags` panics after freeze, via a circuit.
+    #[test]
+    #[should_panic(expected = "cannot precompute tags after load_table")]
+    fn test_precompute_after_freeze_circuit() {
+        const MAX_BIT_LEN: usize = 10;
+
+        struct FreezePrecomputeCircuit<F: CircuitField> {
+            _marker: PhantomData<F>,
+        }
+
+        impl<F: CircuitField> Circuit<F> for FreezePrecomputeCircuit<F> {
+            type Config = Pow2RangeConfig;
+            type FloorPlanner = SimpleFloorPlanner;
+            type Params = ();
+
+            fn without_witnesses(&self) -> Self {
+                unreachable!();
+            }
+
+            fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+                let columns = (0..1).map(|_| meta.advice_column()).collect::<Vec<_>>();
+                Pow2RangeChip::configure(meta, &columns)
+            }
+
+            fn synthesize(
+                &self,
+                config: Self::Config,
+                mut layouter: impl Layouter<F>,
+            ) -> Result<(), Error> {
+                let chip = Pow2RangeChip::<F>::new(&config, MAX_BIT_LEN);
+                chip.load_table(&mut layouter)?;
+                // This must panic
+                chip.precompute_tags(&[3]);
+                Ok(())
+            }
+        }
+
+        let circuit = FreezePrecomputeCircuit::<Fp> {
+            _marker: PhantomData,
+        };
+        let _ = MockProver::run(&circuit, vec![]);
+    }
+
+    /// Test that `is_frozen` correctly reflects the chip state.
+    #[test]
+    fn test_is_frozen_state() {
+        struct FrozenStateCircuit<F: CircuitField> {
+            _marker: PhantomData<F>,
+        }
+
+        impl<F: CircuitField> Circuit<F> for FrozenStateCircuit<F> {
+            type Config = Pow2RangeConfig;
+            type FloorPlanner = SimpleFloorPlanner;
+            type Params = ();
+
+            fn without_witnesses(&self) -> Self {
+                unreachable!();
+            }
+
+            fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+                let columns = (0..1).map(|_| meta.advice_column()).collect::<Vec<_>>();
+                Pow2RangeChip::configure(meta, &columns)
+            }
+
+            fn synthesize(
+                &self,
+                config: Self::Config,
+                mut layouter: impl Layouter<F>,
+            ) -> Result<(), Error> {
+                let chip = Pow2RangeChip::<F>::new(&config, 10);
+                assert!(!chip.is_frozen(), "chip should not be frozen before load");
+                chip.load_table(&mut layouter)?;
+                assert!(chip.is_frozen(), "chip should be frozen after load");
+                Ok(())
+            }
+        }
+
+        let circuit = FrozenStateCircuit::<Fp> {
+            _marker: PhantomData,
+        };
+        let _ = MockProver::run(&circuit, vec![]).unwrap();
     }
 }

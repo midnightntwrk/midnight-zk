@@ -48,6 +48,16 @@ where
         shared_resources: &Self::SharedResources,
     ) -> Self::Config;
 
-    /// Load all tables (including those of underlying chips taken as configs)
+    /// Load all tables (including those of underlying chips taken as configs).
+    ///
+    /// # Contract
+    ///
+    /// This method **must** be called after all constraint emission that
+    /// references the chip's lookup tables has completed. Chips with dynamic
+    /// lookup tables (e.g., `Pow2RangeChip`) accumulate state during constraint
+    /// emission and materialize the table from that state in this method.
+    ///
+    /// Calling chip operations that emit lookup constraints after `load()` will
+    /// panic at runtime.
     fn load(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error>;
 }

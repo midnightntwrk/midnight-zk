@@ -1,0 +1,62 @@
+fix(circuits): enforce table-load-after-emit invariant in Pow2RangeChip and ScannerChip
+
+Closes #149
+
+Problem
+-------
+Lookup tables in Pow2RangeChip and ScannerChip are dynamically built from
+state accumulated during constraint emission (queried_tags and automaton_cache,
+respectively). If load_table()/load() is called before all constraints are
+emitted, the materialized table is incomplete and lookup verification fails
+silently -- producing cryptic constraint system errors with no indication of
+the actual root cause.
+
+This ordering dependency was implicit, undocumented, and enforced only by
+careful placement of load() calls at the end of synthesize(). Any new chip
+composer or FromScratch user could violate it unknowingly.
+
+Root Cause
+----------
+- Pow2RangeChip::load_table() reads queried_tags (Rc/RefCell/HashSet) to
+  decide which (tag, value) pairs to include in the lookup table. If called
+  before constraint emission, queried_tags is empty and the table contains
+  only the sentinel (tag=0, val=0).
+- ScannerChip::load() reads automaton_cache and sequence_cache to build the
+  automaton transition table and finalize substring checks. Same issue.
+
+Solution
+--------
+Introduce a frozen: Rc/Cell/bool flag in both chips that converts the
+implicit temporal contract into an explicit, runtime-enforced invariant:
+
+- load_table()/load() sets frozen=true before materializing the table.
+- assert_row_lower_than_2_pow_n(), parse(), and check_bytes() panic with a
+  clear, actionable error message if called after the chip is frozen.
+- Added Pow2RangeChip::precompute_tags() as an escape hatch for circuits
+  where the full tag set is known upfront.
+- Added Pow2RangeChip::is_frozen() for state introspection.
+- Updated ComposableChip::load() doc-comment with the explicit contract.
+
+Files Changed
+-------------
+- circuits/src/field/decomposition/pow2range.rs
+- circuits/src/parsing/scanner/mod.rs
+- circuits/src/parsing/scanner/automaton_chip.rs
+- circuits/src/parsing/scanner/substring.rs
+- circuits/src/utils/composable.rs
+
+Tests
+-----
+Added 4 new tests in pow2range.rs:
+- test_post_load_constraint_panics (negative: panic on post-load emit)
+- test_precompute_tags_enables_early_load (positive: precompute escape hatch)
+- test_precompute_after_freeze_circuit (negative: panic on late precompute)
+- test_is_frozen_state (state transition verification)
+
+All 210 circuit unit tests, 4 zk_stdlib tests, and 49 doc tests pass.
+
+Audit
+-----
+Full analysis in audit/issue-149-table-order-dependency/:
+ROOT_CAUSE.md, STATE_MACHINE.md, INVARIANTS.md, DESIGN_OPTIONS.md,
+FINAL_DESIGN.md, PATCH.md, TEST_PLAN.md

@@ -408,12 +408,23 @@ where
     /// part of a static library (faster to parse) or an arbitrary regex (more
     /// costly but supports any regex). Both variants use the same fixed lookup
     /// table mechanism.
+    ///
+    /// # Panics
+    ///
+    /// If the chip has been frozen (i.e., `load` has already been called).
     pub fn parse(
         &self,
         layouter: &mut impl Layouter<F>,
         parser: AutomatonParser,
         input: &[AssignedByte<F>],
     ) -> Result<Vec<AssignedNative<F>>, Error> {
+        if self.frozen.get() {
+            panic!(
+                "ScannerChip: cannot call parse() after load() has been called. \
+                 The automaton transition table has already been materialized. \
+                 Move load() to after all parse() calls."
+            )
+        }
         let automaton = self.resolve_automaton(&parser);
         self.parse_automaton(layouter, &automaton, input)
     }
