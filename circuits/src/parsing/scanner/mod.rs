@@ -195,9 +195,10 @@ pub struct ScannerConfig<LibIndex, F> {
 ///
 /// # Important
 ///
-/// This chip uses dynamic lookup tables for substring checks. Consequently,
-/// it is **essential** to call `load` at the very end of the `synthesize`
-/// method, after all substring queries have been made.
+/// This chip uses lookup tables that are effectively assigned, or not, based on
+/// their effective usage in the circuit. Consequently, load **must** be called
+/// at the very end of the synthesize method, after all calls to methods of the
+/// chip have been made.
 #[derive(Clone, Debug)]
 pub struct ScannerChip<LibIndex, F>
 where
