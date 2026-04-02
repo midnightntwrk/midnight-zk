@@ -34,7 +34,7 @@ pub(crate) mod static_specs;
 mod substring;
 
 use std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
     collections::{BTreeMap, BTreeSet},
     rc::Rc,
 };
@@ -234,6 +234,12 @@ pub struct ScannerConfig {
 }
 
 /// Chip for scanning: automaton parsing and substring verification.
+///
+/// # Table Loading Invariant
+///
+/// The automaton transition table is built from automata accumulated during
+/// `parse` calls. Therefore, [`load`](ComposableChip::load) **must** be called
+/// after all `parse` calls. This invariant is enforced at runtime.
 #[derive(Clone, Debug)]
 pub struct ScannerChip<F>
 where
@@ -256,6 +262,10 @@ where
     /// `sequence` argument share the table cost. Tags are assigned later
     /// during finalisation.
     sequence_cache: Rc<RefCell<SequenceCache<F>>>,
+
+    /// Set to `true` once `load` has been called. Any subsequent call to
+    /// `parse` will panic.
+    frozen: Rc<Cell<bool>>,
 }
 
 impl<F> Chip<F> for ScannerChip<F>
@@ -291,6 +301,7 @@ where
             automaton_cache: Rc::new(RefCell::new(FxHashMap::default())),
             max_state: Rc::new(RefCell::new(1)),
             sequence_cache: Rc::new(RefCell::new(FxHashMap::default())),
+            frozen: Rc::new(Cell::new(false)),
         }
     }
 
@@ -433,7 +444,11 @@ where
 
     /// Loads the automaton transition table and finalises all deferred
     /// substring checks. Must be called at the end of circuit synthesis.
+    ///
+    /// After this call, the chip is **frozen**: any subsequent call to
+    /// `parse` will panic.
     fn load(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
+        self.frozen.set(true);
         self.load_automata_table(layouter)?;
         self.finalise_substring_checks(layouter)
     }

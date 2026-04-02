@@ -207,6 +207,10 @@ where
     /// The starting index is range-checked (`idx < 2^PARSING_MAX_LEN_BITS`)
     /// so that the packed lookup value `(idx + i) * (ALPHABET_MAX_SIZE + 1) +
     /// byte` is injective over the field.
+    ///
+    /// # Panics
+    ///
+    /// If the chip has been frozen (i.e., `load` has already been called).
     pub fn check_bytes(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -214,6 +218,13 @@ where
         idx: &AssignedNative<F>,
         sub: &[AssignedByte<F>],
     ) -> Result<(), Error> {
+        if self.frozen.get() {
+            panic!(
+                "ScannerChip: cannot call check_bytes() after load() has been called. \
+                 The substring check table has already been finalized. \
+                 Move load() to after all check_bytes() calls."
+            )
+        }
         let sequence: Sequence<F> = sequence.iter().map(AssignedNative::from).collect();
         let sub: Sequence<F> = sub.iter().map(AssignedNative::from).collect();
         self.check_subsequence(layouter, &sequence, idx, &sub)
