@@ -20,7 +20,7 @@ use midnight_proofs::{
 #[cfg(any(test, feature = "testing"))]
 use {
     crate::testing_utils::FromScratch,
-    midnight_proofs::plonk::{Column, ConstraintSystem, Instance},
+    midnight_proofs::plonk::{Advice, Column, ConstraintSystem, Fixed, Instance},
 };
 
 use crate::{
@@ -239,11 +239,13 @@ where
 
     fn configure_from_scratch(
         meta: &mut ConstraintSystem<F>,
+        advice_columns: &mut Vec<Column<Advice>>,
+        fixed_columns: &mut Vec<Column<Fixed>>,
         instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
         (
-            N::configure_from_scratch(meta, instance_columns),
-            H::configure_from_scratch(meta, instance_columns),
+            N::configure_from_scratch(meta, advice_columns, fixed_columns, instance_columns),
+            H::configure_from_scratch(meta, advice_columns, fixed_columns, instance_columns),
         )
     }
 
@@ -318,6 +320,8 @@ mod test {
             let instance_column = meta.instance_column();
             MapGadget::<F, N, H>::configure_from_scratch(
                 meta,
+                &mut vec![],
+                &mut vec![],
                 &[committed_instance_column, instance_column],
             )
         }

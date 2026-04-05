@@ -11,6 +11,9 @@ verification keys break backwards compatibility.
 * PATCH: Incremented when you make backward-compatible bug fixes
 
 ## [Unreleased]
+### Changed
+* `FromScratch::configure_from_scratch` now takes shared `advice_columns` and `fixed_columns` pools [#306](https://github.com/midnightntwrk/midnight-zk/pull/306)
+
 ### Added
 * Add `resolve_fixed_bases` to `Msm`, `AssignedMsm`, `Accumulator` and `AssignedAccumulator` [#302](https://github.com/midnightntwrk/midnight-zk/pull/302)
 * Expose `fixed_base_names`, `fixed_commitment_name` and `perm_commitment_name` helper functions [#302](https://github.com/midnightntwrk/midnight-zk/pull/302)

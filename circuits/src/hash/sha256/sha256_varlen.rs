@@ -314,7 +314,7 @@ impl<F: CircuitField> VarLenSha256Gadget<F> {
 }
 
 #[cfg(any(test, feature = "testing"))]
-use midnight_proofs::plonk::{Column, ConstraintSystem, Instance};
+use midnight_proofs::plonk::{Advice, Column, ConstraintSystem, Fixed, Instance};
 
 #[cfg(any(test, feature = "testing"))]
 use crate::testing_utils::FromScratch;
@@ -331,9 +331,11 @@ impl<F: CircuitField> FromScratch<F> for VarLenSha256Gadget<F> {
 
     fn configure_from_scratch(
         meta: &mut ConstraintSystem<F>,
+        advice_columns: &mut Vec<Column<Advice>>,
+        fixed_columns: &mut Vec<Column<Fixed>>,
         instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
-        Sha256Chip::configure_from_scratch(meta, instance_columns)
+        Sha256Chip::configure_from_scratch(meta, advice_columns, fixed_columns, instance_columns)
     }
 
     fn load_from_scratch(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
