@@ -106,7 +106,7 @@
       "max_deg": "5",
       "permutations": "9",
       "point_sets": "4",
-      "rows": "50",
+      "rows": "27",
       "table_rows": "291"
     },
     "multi-regex parsing perf (input length = 50)": {
@@ -2853,7 +2853,7 @@
       "max_deg": "5",
       "permutations": "29",
       "point_sets": "5",
-      "rows": "28565",
+      "rows": "28561",
       "table_rows": "417"
     },
     "neg": {
@@ -3165,7 +3165,7 @@
       "max_deg": "5",
       "permutations": "31",
       "point_sets": "5",
-      "rows": "294",
+      "rows": "290",
       "table_rows": "449"
     },
     "assert_eq": {
@@ -3176,7 +3176,7 @@
       "max_deg": "5",
       "permutations": "31",
       "point_sets": "5",
-      "rows": "56",
+      "rows": "0",
       "table_rows": "449"
     },
     "assert_eq_fixed": {
@@ -3187,7 +3187,7 @@
       "max_deg": "5",
       "permutations": "31",
       "point_sets": "5",
-      "rows": "56",
+      "rows": "0",
       "table_rows": "449"
     },
     "assert_neq": {
@@ -3198,7 +3198,7 @@
       "max_deg": "5",
       "permutations": "31",
       "point_sets": "5",
-      "rows": "119",
+      "rows": "115",
       "table_rows": "449"
     },
     "assert_neq_fixed": {
@@ -3209,7 +3209,7 @@
       "max_deg": "5",
       "permutations": "31",
       "point_sets": "5",
-      "rows": "115",
+      "rows": "111",
       "table_rows": "449"
     },
     "assert_non_zero": {
@@ -3242,7 +3242,7 @@
       "max_deg": "5",
       "permutations": "31",
       "point_sets": "5",
-      "rows": "112",
+      "rows": "108",
       "table_rows": "449"
     },
     "assign_without_subgroup_check": {
@@ -3253,7 +3253,7 @@
       "max_deg": "5",
       "permutations": "31",
       "point_sets": "5",
-      "rows": "112",
+      "rows": "108",
       "table_rows": "449"
     },
     "cond_assert_equal": {
@@ -3286,7 +3286,7 @@
       "max_deg": "5",
       "permutations": "31",
       "point_sets": "5",
-      "rows": "94",
+      "rows": "90",
       "table_rows": "449"
     },
     "double": {
@@ -3297,7 +3297,7 @@
       "max_deg": "5",
       "permutations": "31",
       "point_sets": "5",
-      "rows": "128",
+      "rows": "124",
       "table_rows": "449"
     },
     "is_equal": {
@@ -3385,7 +3385,7 @@
       "max_deg": "5",
       "permutations": "31",
       "point_sets": "5",
-      "rows": "25239",
+      "rows": "25235",
       "table_rows": "449"
     },
     "neg": {
@@ -3396,7 +3396,7 @@
       "max_deg": "5",
       "permutations": "31",
       "point_sets": "5",
-      "rows": "74",
+      "rows": "70",
       "table_rows": "449"
     },
     "public_inputs": {
@@ -3407,7 +3407,7 @@
       "max_deg": "5",
       "permutations": "31",
       "point_sets": "5",
-      "rows": "62",
+      "rows": "59",
       "table_rows": "449"
     },
     "select": {
