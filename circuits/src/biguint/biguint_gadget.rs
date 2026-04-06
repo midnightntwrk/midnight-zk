@@ -19,8 +19,6 @@ use std::{
     ops::Rem,
 };
 
-#[cfg(any(test, feature = "testing"))]
-use midnight_proofs::plonk::{Advice, Fixed};
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
@@ -31,7 +29,7 @@ use num_traits::One;
 #[cfg(any(test, feature = "testing"))]
 use {
     crate::testing_utils::FromScratch,
-    midnight_proofs::plonk::{Column, ConstraintSystem, Instance},
+    midnight_proofs::plonk::{Advice, Column, ConstraintSystem, Fixed, Instance},
 };
 
 use super::{bound_of_addition, AssignedBigUint};
