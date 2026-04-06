@@ -28,6 +28,8 @@ impl Relation for EccExample {
 
     type Witness = JubjubScalar;
 
+    type Error = Error;
+
     fn format_instance(instance: &Self::Instance) -> Result<Vec<F>, Error> {
         Ok(AssignedNativePoint::<Jubjub>::as_public_input(instance))
     }

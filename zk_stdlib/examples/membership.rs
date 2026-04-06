@@ -42,6 +42,8 @@ impl Relation for MembershipExample {
     // and the map.
     type Witness = (F, Set, Map);
 
+    type Error = Error;
+
     fn format_instance(instance: &Self::Instance) -> Result<Vec<F>, Error> {
         Ok(vec![instance.0, instance.1])
     }
