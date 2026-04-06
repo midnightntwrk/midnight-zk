@@ -14,3 +14,4 @@ extern crate core;
 pub mod light_aggregator;
 
 pub mod ivc;
+pub mod multi_circuit_aggregator;

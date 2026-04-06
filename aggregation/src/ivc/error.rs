@@ -11,6 +11,8 @@ pub enum IvcError {
     ProofGeneration(plonk::Error),
     /// The provided instance is malformed.
     InvalidInstance,
+    /// The provided witness is invalid.
+    InvalidWitness(String),
     /// The instance's VK representation does not match the verifier's key.
     VkMismatch,
     /// The proof is invalid (accumulator pairing check failed).
@@ -32,6 +34,7 @@ impl fmt::Display for IvcError {
         match self {
             IvcError::ProofGeneration(e) => write!(f, "proof generation failed: {e}"),
             IvcError::InvalidInstance => write!(f, "invalid instance"),
+            IvcError::InvalidWitness(msg) => write!(f, "invalid witness: {msg}"),
             IvcError::VkMismatch => write!(f, "verifying-key mismatch"),
             IvcError::InvalidProof => write!(f, "invalid proof"),
             IvcError::TranscriptNotEmpty => write!(f, "proof transcript not empty"),
