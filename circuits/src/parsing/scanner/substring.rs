@@ -39,9 +39,9 @@
 //! | 10 | d |
 //! ```
 //!
-//! In practice, the lookup argument is however a bit more complex, as detailed
-//! step by step below. The implemented lookup layout is the one described in
-//! the last section below.
+//! In practice, the lookup argument is a bit more complex, as detailed step by
+//! step below. The implemented lookup layout is the one described in the last
+//! section.
 //!
 //! # Tagging (soundness requirement)
 //!
@@ -134,6 +134,38 @@
 //! `ScannerChip::index_and_pack_sequence` using `linear_combination`. The
 //! packing of table entries is performed inside the lookup expression itself
 //! (see `ScannerChip::configure`).
+//!
+//! # Parallelisation (Optimisation 3)
+//!
+//! If the value of `SUBSTRING_PARALLELISM` is greater than 1, several of these
+//! lookup arguments can be done in parallel. For example, checking
+//! `wor@6 + hel@0 <= hello world` and `hol@0 + mund@5 <= hola mundo`
+//! simultaneously (with `SUBSTRING_PARALLELISM = 2`) uses the same rows for
+//! both. Tags are all 1 (same chunk) and omitted for brevity.
+//!
+//! ```text
+//! table 1:              queries 1:          table 2:              queries 2:
+//! | 257 * 0  + 'h'  |   | 257 * 6 + 'w' |   | 257 * 0  + 'h'  |   | 257 * 0 + 'h' |
+//! | 257 * 1  + 'e'  |   | 257 * 7 + 'o' |   | 257 * 1  + 'o'  |   | 257 * 1 + 'o' |
+//! | 257 * 2  + 'l'  |   | 257 * 8 + 'r' |   | 257 * 2  + 'l'  |   | 257 * 2 + 'l' |
+//! | 257 * 3  + 'l'  |   | 257 * 0 + 'h' |   | 257 * 3  + 'a'  |   | 257 * 5 + 'm' |
+//! | 257 * 4  + 'o'  |   | 257 * 1 + 'e' |   | 257 * 4  + ' '  |   | 257 * 6 + 'u' |
+//! | 257 * 5  + ' '  |   | 257 * 2 + 'l' |   | 257 * 5  + 'm'  |   | 257 * 7 + 'n' |
+//! | 257 * 6  + 'w'  |                       | 257 * 6  + 'u'  |   | 257 * 8 + 'd' |
+//! | 257 * 7  + 'o'  |                       | 257 * 7  + 'n'  |
+//! | 257 * 8  + 'r'  |                       | 257 * 8  + 'd'  |
+//! | 257 * 9  + 'l'  |                       | 257 * 9  + 'o'  |
+//! | 257 * 10 + 'd'  |                       | 257 * 10 + 256  |
+//! ```
+//!
+//! The fixed columns (tag and index) are shared across parallel lookups.
+//!
+//! **Padding.** Since the table and query columns must have the same number of
+//! rows, shorter sides are padded. Sequence (table) columns are padded with 256
+//! (`ALPHABET_MAX_SIZE`), which no real query can match. Query columns are
+//! padded by repeating the first packed query entry. Unused parallel slots are
+//! filled with zeros on both sides. Padding rows are omitted from the diagrams
+//! above for clarity.
 
 use midnight_proofs::{
     circuit::{Layouter, Region, Value},
@@ -141,7 +173,7 @@ use midnight_proofs::{
 };
 use num_bigint::BigUint;
 
-use super::{ScannerChip, NB_SUBSTRING_COLS, PARSING_MAX_LEN_BITS};
+use super::{ScannerChip, NB_SUBSTRING_COLS, PARSING_MAX_LEN_BITS, SUBSTRING_PARALLELISM};
 use crate::{
     field::AssignedNative,
     instructions::{ArithInstructions, AssignmentInstructions, RangeCheckInstructions},
@@ -151,9 +183,9 @@ use crate::{
 };
 
 /// Structure of assigned cells for verifying substring checks.
-type SubstringCheckLayout<F> = Vec<[Sequence<F>; NB_SUBSTRING_COLS]>;
+type SubstringCheckLayout<F> = Vec<[Sequence<F>; NB_SUBSTRING_COLS * SUBSTRING_PARALLELISM]>;
 
-impl<LibIndex, F> ScannerChip<LibIndex, F>
+impl<F> ScannerChip<F>
 where
     F: CircuitField + Ord,
 {
@@ -223,7 +255,7 @@ where
     }
 }
 
-impl<LibIndex, F> ScannerChip<LibIndex, F>
+impl<F> ScannerChip<F>
 where
     F: CircuitField,
 {
@@ -260,31 +292,43 @@ where
     ) -> Result<SubstringCheckLayout<F>, Error> {
         let mut calls: Vec<_> = self.sequence_cache.borrow_mut().drain().collect();
         calls.sort_by(|a, b| b.0.len().cmp(&a.0.len()).then(b.1 .1.cmp(&a.1 .1)));
-        if calls.is_empty() {
-            // Ensures we can access the last element of `calls` without panicking.
-            return Ok(vec![]);
-        }
 
-        // Padding tables with a value that cannot be a valid byte.
+        // Padding for tables: a value that cannot be a valid byte.
         let sequence_padding: AssignedNative<F> =
             self.native_gadget.assign_fixed(layouter, F::from(ALPHABET_MAX_SIZE as u64))?;
+        // Padding for unused parallel columns: zero cell.
+        let zero: AssignedNative<F> = self.native_gadget.assign_fixed(layouter, F::ZERO)?;
+        // The calls divided in regions of `SUBSTRING_PARALLELISM` parallel executions.
+        let mut layout: SubstringCheckLayout<F> =
+            Vec::with_capacity(calls.len().div_ceil(SUBSTRING_PARALLELISM));
 
-        let mut layout: SubstringCheckLayout<F> = Vec::with_capacity(calls.len());
-        for (sequence, (indexes_and_subs, len)) in calls {
-            let region_size = sequence.len().max(len);
-            let mut padded_sequence: Sequence<F> = sequence.to_vec();
-            padded_sequence.resize(region_size, sequence_padding.clone());
-            let subs_packed: Sequence<F> = (indexes_and_subs.iter())
-                .map(|(idx, sub)| self.index_and_pack_sequence(layouter, sub, idx))
-                .collect::<Result<Vec<Sequence<F>>, _>>()?
-                .into_iter()
-                .flatten()
-                .collect();
-            // Padding by repeating the first element, which never panics
-            // since `check_subsequence` rejects empty `sub` arguments.
-            let mut padded_subs_packed = subs_packed.clone();
-            padded_subs_packed.resize(region_size, subs_packed[0].clone());
-            layout.push([padded_sequence, padded_subs_packed]);
+        for chunk in calls.chunks(SUBSTRING_PARALLELISM) {
+            let mut local_layout = Vec::with_capacity(NB_SUBSTRING_COLS * SUBSTRING_PARALLELISM);
+            let region_size = chunk.iter().map(|(s, (_, len))| s.len().max(*len)).max().unwrap();
+
+            // Process real entries.
+            for (sequence, (indexes_and_subs, _)) in chunk {
+                let mut padded_sequence: Sequence<F> = sequence.to_vec();
+                padded_sequence.resize(region_size, sequence_padding.clone());
+                let subs_packed: Sequence<F> = (indexes_and_subs.iter())
+                    .map(|(idx, sub)| self.index_and_pack_sequence(layouter, sub, idx))
+                    .collect::<Result<Vec<Sequence<F>>, _>>()?
+                    .into_iter()
+                    .flatten()
+                    .collect();
+                // Padding by repeating the first element, which never panics
+                // since `check_subsequence` rejects empty `sub` arguments.
+                let mut padded_subs_packed = subs_packed.clone();
+                padded_subs_packed.resize(region_size, subs_packed[0].clone());
+                local_layout.extend_from_slice(&[padded_sequence, padded_subs_packed]);
+            }
+
+            // Fill unused parallel slots with zeros. These match the (tag, 0)
+            // table entry that each chunk already provides at index 0.
+            let zero_col = vec![zero.clone(); region_size];
+            local_layout.resize(NB_SUBSTRING_COLS * SUBSTRING_PARALLELISM, zero_col);
+
+            layout.push(local_layout.try_into().unwrap());
         }
         Ok(layout)
     }
@@ -293,7 +337,7 @@ where
     fn assign_substring_row(
         &self,
         region: &mut Region<'_, F>,
-        lookups: &[AssignedNative<F>; NB_SUBSTRING_COLS],
+        lookups: &[AssignedNative<F>; NB_SUBSTRING_COLS * SUBSTRING_PARALLELISM],
         offset: usize,
         index: usize,
         tag: usize,
@@ -311,18 +355,23 @@ where
             offset,
             || Value::known(F::from(tag as u64)),
         )?;
-        lookups[0].copy_advice(
-            || format!("substring check (table {offset})"),
-            region,
-            self.config.state_col,
-            offset,
-        )?;
-        lookups[1].copy_advice(
-            || format!("substring check (query {offset})"),
-            region,
-            self.config.letter_col,
-            offset,
-        )?;
+        for (i, cell) in lookups.iter().enumerate() {
+            cell.copy_advice(
+                || {
+                    format!(
+                        "substring check ({} #{offset})",
+                        if i.is_multiple_of(2) {
+                            "table"
+                        } else {
+                            "query"
+                        }
+                    )
+                },
+                region,
+                self.config.advice_cols[i],
+                offset,
+            )?;
+        }
         Ok(())
     }
 
@@ -406,7 +455,7 @@ mod test {
     where
         F: CircuitField + FromUniformBytes<64> + Ord,
     {
-        type Config = <ScannerChip<usize, F> as FromScratch<F>>::Config;
+        type Config = <ScannerChip<F> as FromScratch<F>>::Config;
         type FloorPlanner = SimpleFloorPlanner;
         type Params = ();
 
@@ -416,7 +465,7 @@ mod test {
 
         fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
             let instance_columns = [meta.instance_column(), meta.instance_column()];
-            ScannerChip::<usize, F>::configure_from_scratch(meta, &instance_columns)
+            ScannerChip::<F>::configure_from_scratch(meta, &instance_columns)
         }
 
         fn synthesize(
@@ -424,7 +473,7 @@ mod test {
             config: Self::Config,
             mut layouter: impl Layouter<F>,
         ) -> Result<(), Error> {
-            let scanner = ScannerChip::<usize, F>::new_from_scratch(&config);
+            let scanner = ScannerChip::<F>::new_from_scratch(&config);
             let native_gadget = &scanner.native_gadget;
 
             let full1: Vec<AssignedByte<F>> =

@@ -4,21 +4,18 @@
 //! preimage `w` such that `SHA-256(w) = x`.
 
 use midnight_circuits::{
-    hash::poseidon::PoseidonState,
     instructions::{AssignmentInstructions, PublicInputInstructions},
     types::{AssignedByte, Instantiable},
 };
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
-    poly::kzg::params::ParamsKZG,
 };
-use midnight_zk_stdlib::{MidnightPK, MidnightVK, Relation, ZkStdLib, ZkStdLibArch};
+use midnight_zk_stdlib::{Relation, ZkStdLib, ZkStdLibArch};
 use rand::{rngs::OsRng, Rng};
 use sha2::Digest;
 
 type F = midnight_curves::Fq;
-type E = midnight_curves::Bls12;
 
 /// Circuit size parameter (log2 of rows) for the SHA preimage circuit.
 pub const K: u32 = 13;
@@ -32,6 +29,7 @@ pub struct ShaPreimageCircuit;
 impl Relation for ShaPreimageCircuit {
     type Instance = [u8; 32];
     type Witness = [u8; 24]; // 192 = 24 * 8
+    type Error = Error;
 
     fn format_instance(instance: &Self::Instance) -> Result<Vec<F>, Error> {
         Ok(instance.iter().flat_map(AssignedByte::<F>::as_public_input).collect())
@@ -66,37 +64,9 @@ impl Relation for ShaPreimageCircuit {
     }
 }
 
-/// Generates the verifying key for the SHA preimage circuit.
-pub fn setup_vk(srs: &ParamsKZG<E>) -> MidnightVK {
-    midnight_zk_stdlib::setup_vk(srs, &ShaPreimageCircuit)
-}
-
-/// Generates the proving key for the SHA preimage circuit.
-pub fn setup_pk(vk: &MidnightVK) -> MidnightPK<ShaPreimageCircuit> {
-    midnight_zk_stdlib::setup_pk(&ShaPreimageCircuit, vk)
-}
-
 /// Samples a random instance–witness pair for the SHA preimage circuit.
 pub fn random_instance() -> ([u8; 32], [u8; 24]) {
     let preimage: [u8; 24] = OsRng.gen();
     let digest: [u8; 32] = sha2::Sha256::digest(preimage).into();
     (digest, preimage)
-}
-
-/// Proves a SHA-256 preimage statement, returning the proof bytes.
-pub fn prove(
-    srs: &ParamsKZG<E>,
-    pk: &MidnightPK<ShaPreimageCircuit>,
-    instance: &[u8; 32],
-    witness: [u8; 24],
-) -> Vec<u8> {
-    midnight_zk_stdlib::prove::<ShaPreimageCircuit, PoseidonState<F>>(
-        srs,
-        pk,
-        &ShaPreimageCircuit,
-        instance,
-        witness,
-        OsRng,
-    )
-    .expect("proof generation should not fail")
 }

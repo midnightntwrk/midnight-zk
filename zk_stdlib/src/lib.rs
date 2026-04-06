@@ -68,8 +68,8 @@ use midnight_circuits::{
     map::map_gadget::MapGadget,
     parsing::{
         self,
-        scanner::{ScannerChip, ScannerConfig, NB_SCANNER_ADVICE_COLS},
-        Base64Chip, Base64Config, ParserGadget, StdLibParser, NB_BASE64_ADVICE_COLS,
+        scanner::{ScannerChip, ScannerConfig, NB_SCANNER_ADVICE_COLS, NB_SCANNER_FIXED_COLS},
+        Base64Chip, Base64Config, ParserGadget, NB_BASE64_ADVICE_COLS,
     },
     types::{
         AssignedBit, AssignedByte, AssignedNative, AssignedNativePoint, ComposableChip, InnerValue,
@@ -86,7 +86,7 @@ use midnight_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
     dev::cost_model::{circuit_model, CircuitModel},
     plonk::{
-        keygen_vk_with_k, prepare, Circuit, ConstraintSystem, Error, ProvingKey, VerifyingKey,
+        self, keygen_vk_with_k, prepare, Circuit, ConstraintSystem, Error, ProvingKey, VerifyingKey,
     },
     poly::{
         commitment::{Guard, Params},
@@ -246,7 +246,7 @@ pub struct ZkStdLibConfig {
     secp256k1_config: Option<ForeignWeierstrassEccConfig<K256>>,
     bls12_381_config: Option<ForeignWeierstrassEccConfig<midnight_curves::G1Projective>>,
     base64_config: Option<Base64Config>,
-    scanner_config: Option<ScannerConfig<StdLibParser, midnight_curves::Fq>>,
+    scanner_config: Option<ScannerConfig>,
 
     // Configuration of external libraries.
     keccak_sha3_config: Option<PackedConfig>,
@@ -272,7 +272,7 @@ pub struct ZkStdLib {
     bls12_381_curve_chip: Option<Bls12381Chip>,
     base64_chip: Option<Base64Chip<F>>,
     parser_gadget: ParserGadget<F, NG>,
-    scanner_chip: Option<ScannerChip<StdLibParser, F>>,
+    scanner_chip: Option<ScannerChip<F>>,
     vector_gadget: VectorGadget<F>,
     verifier_gadget: Option<VerifierGadget<BlstrsEmulation>>,
 
@@ -289,7 +289,7 @@ pub struct ZkStdLib {
     used_secp256k1_curve: Rc<RefCell<bool>>,
     used_bls12_381_curve: Rc<RefCell<bool>>,
     used_base64: Rc<RefCell<bool>>,
-    used_scanner_static: Rc<RefCell<bool>>,
+    used_scanner: Rc<RefCell<bool>>,
     used_keccak_or_sha3: Rc<RefCell<bool>>,
     used_blake2b: Rc<RefCell<bool>>,
 }
@@ -376,7 +376,7 @@ impl ZkStdLib {
             used_secp256k1_curve: Rc::new(RefCell::new(false)),
             used_bls12_381_curve: Rc::new(RefCell::new(false)),
             used_base64: Rc::new(RefCell::new(false)),
-            used_scanner_static: Rc::new(RefCell::new(false)),
+            used_scanner: Rc::new(RefCell::new(false)),
             used_keccak_or_sha3: Rc::new(RefCell::new(false)),
             used_blake2b: Rc::new(RefCell::new(false)),
         }
@@ -424,6 +424,7 @@ impl ZkStdLib {
             arch.sha2_256 as usize * NB_SHA256_FIXED_COLS,
             arch.sha2_512 as usize * NB_SHA512_FIXED_COLS,
             (arch.keccak_256 || arch.sha3_256) as usize * PACKED_FIXED_COLS,
+            arch.automaton as usize * NB_SCANNER_FIXED_COLS,
         ]
         .into_iter()
         .max()
@@ -658,15 +659,11 @@ impl ZkStdLib {
     /// automaton-based parsing ([`ScannerChip::parse`]) and substring checks
     /// ([`ScannerChip::check_subsequence`], [`ScannerChip::check_bytes`]).
     ///
-    /// The `load_static_lib` argument must be set (at least once in the
-    /// circuit) to `true` if [`ScannerChip::parse`] will be called. This flag
-    /// enables loading the transition tables of the static parsing library
-    /// (see [`StdLibParser`]). Set it to `false` when only `check_subsequence`
-    /// or `check_bytes` will be called, which avoids loading the full table.
-    pub fn scanner(&self, load_static_lib: bool) -> &ScannerChip<StdLibParser, F> {
-        if load_static_lib {
-            *self.used_scanner_static.borrow_mut() = true;
-        }
+    /// Returns the scanner chip for automaton-based parsing and substring
+    /// checks. The static automaton table is loaded automatically when
+    /// `parse` is called with a `Static(..)` variant.
+    pub fn scanner(&self) -> &ScannerChip<F> {
+        *self.used_scanner.borrow_mut() = true;
         (self.scanner_chip.as_ref()).unwrap_or_else(|| panic!("ZkStdLibArch must enable automaton"))
     }
 
@@ -1295,6 +1292,7 @@ pub struct MidnightCircuit<'a, R: Relation> {
     instance: Value<R::Instance>,
     witness: Value<R::Witness>,
     nb_public_inputs: Rc<RefCell<Option<usize>>>,
+    circuit_error: Rc<RefCell<Option<R::Error>>>,
 }
 
 impl<'a, R: Relation> MidnightCircuit<'a, R> {
@@ -1321,12 +1319,18 @@ impl<'a, R: Relation> MidnightCircuit<'a, R> {
             instance,
             witness,
             nb_public_inputs: Rc::new(RefCell::new(None)),
+            circuit_error: Rc::new(RefCell::new(None)),
         }
     }
 
     /// Returns the log2 of the circuit size.
     pub fn k(&self) -> u32 {
         self.k
+    }
+
+    /// Takes the circuit error stashed during synthesis, if any.
+    pub fn take_error(&self) -> Option<R::Error> {
+        self.circuit_error.take()
     }
 }
 
@@ -1514,6 +1518,7 @@ impl<Rel: Relation> MidnightPK<Rel> {
 ///     // of the underlying NP-relation.
 ///     type Instance = [u8; 32];
 ///     type Witness = [u8; 24]; // 192 = 24 * 8
+///     type Error = Error;
 ///
 ///     // We must specify how the instance is converted into raw field elements to
 ///     // be process by the prover/verifier. The order here must be consistent with
@@ -1586,9 +1591,12 @@ pub trait Relation: Clone {
     /// The witness of the NP-relation described by this circuit.
     type Witness: Clone;
 
+    /// The error type returned by [Self::circuit] and [Self::format_instance].
+    type Error: From<plonk::Error>;
+
     /// Produces a vector of field elements in PLONK format representing the
     /// given [Self::Instance].
-    fn format_instance(instance: &Self::Instance) -> Result<Vec<F>, Error>;
+    fn format_instance(instance: &Self::Instance) -> Result<Vec<F>, Self::Error>;
 
     /// Produces a vector of field elements in PLONK format representing the
     /// data inside the committed instance.
@@ -1603,7 +1611,7 @@ pub trait Relation: Clone {
         layouter: &mut impl Layouter<F>,
         instance: Value<Self::Instance>,
         witness: Value<Self::Witness>,
-    ) -> Result<(), Error>;
+    ) -> Result<(), Self::Error>;
 
     /// Specifies what chips are enabled in the standard library. A chip needs
     /// to be enabled if it is used in [Self::circuit], but it can also be
@@ -1657,12 +1665,17 @@ impl<R: Relation> Circuit<F> for MidnightCircuit<'_, R> {
         let max_bit_len = (self.k - 1) as usize;
         let zk_std_lib = ZkStdLib::new(&config, max_bit_len);
 
-        self.relation.circuit(
-            &zk_std_lib,
-            &mut layouter.namespace(|| "Running logic circuit"),
-            self.instance.clone(),
-            self.witness.clone(),
-        )?;
+        self.relation
+            .circuit(
+                &zk_std_lib,
+                &mut layouter.namespace(|| "Running logic circuit"),
+                self.instance.clone(),
+                self.witness.clone(),
+            )
+            .map_err(|e| {
+                *self.circuit_error.borrow_mut() = Some(e);
+                Error::Synthesis("Relation::circuit error".into())
+            })?;
 
         // After the circuit function has been called, we can update the expected
         // number of raw public inputs in [Self] (via a RefCell). This number will
@@ -1693,8 +1706,8 @@ impl<R: Relation> Circuit<F> for MidnightCircuit<'_, R> {
             }
         }
 
-        if let Some(ref scanner_chip) = zk_std_lib.scanner_chip {
-            if *zk_std_lib.used_scanner_static.borrow() {
+        if let Some(scanner_chip) = zk_std_lib.scanner_chip {
+            if *zk_std_lib.used_scanner.borrow() {
                 scanner_chip.load(&mut layouter)?;
             }
         }
@@ -1766,7 +1779,7 @@ pub fn prove<R: Relation, H: TranscriptHash>(
     instance: &R::Instance,
     witness: R::Witness,
     rng: impl RngCore + CryptoRng,
-) -> Result<Vec<u8>, Error>
+) -> Result<Vec<u8>, R::Error>
 where
     G1Projective: Hashable<H>,
     F: Hashable<H> + Sampleable<H>,
@@ -1787,6 +1800,7 @@ where
         &[com_inst.as_slice(), &pi],
         rng,
     )
+    .map_err(|e| circuit.take_error().unwrap_or_else(|| e.into()))
 }
 
 /// Verifies the given proof of relation `R` with respect to the given instance.
@@ -1797,7 +1811,7 @@ pub fn verify<R: Relation, H: TranscriptHash>(
     instance: &R::Instance,
     committed_instance: Option<G1Affine>,
     proof: &[u8],
-) -> Result<(), Error>
+) -> Result<(), R::Error>
 where
     G1Projective: Hashable<H>,
     F: Hashable<H> + Sampleable<H>,
@@ -1805,15 +1819,15 @@ where
     let pi = R::format_instance(instance)?;
     let committed_pi = committed_instance.unwrap_or(G1Affine::identity());
     if pi.len() != vk.nb_public_inputs {
-        return Err(Error::InvalidInstances);
+        return Err(Error::InvalidInstances.into());
     }
-    BlstPLONK::<MidnightCircuit<R>>::verify::<H>(
+    Ok(BlstPLONK::<MidnightCircuit<R>>::verify::<H>(
         params_verifier,
         &vk.vk,
         &[committed_pi],
         &[&pi],
         proof,
-    )
+    )?)
 }
 
 /// Verifies a batch of proofs with respect to their corresponding vk.

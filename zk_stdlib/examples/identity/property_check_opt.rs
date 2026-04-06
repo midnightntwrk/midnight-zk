@@ -87,6 +87,7 @@ const COORD_LEN: usize = 43;
 impl Relation for CredentialPropertyOpt {
     type Instance = ();
     type Witness = (Payload, SK);
+    type Error = Error;
 
     fn format_instance(_instance: &Self::Instance) -> Result<Vec<F>, Error> {
         Ok(vec![])
@@ -266,7 +267,7 @@ impl CredentialPropertyOpt {
         assert_eq!(snippet_bytes.len(), snippet_len);
 
         let idx: AssignedNative<F> = std_lib.assign(layouter, idx_val)?;
-        std_lib.scanner(true).check_bytes(layouter, cred, &idx, &snippet_bytes)?;
+        std_lib.scanner().check_bytes(layouter, cred, &idx, &snippet_bytes)?;
 
         Ok(value_bytes)
     }

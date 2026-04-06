@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 ## [Unreleased]
 ### Added
 * Add `assign_without_subgroup_check` to `SelfEmulation` trait [#284](https://github.com/midnightntwrk/midnight-zk/pull/284)
+### Changed
+* `IvcVerifier` is now generic over `T: Ivc` and stores the context internally; `verify` no longer takes a `ctx` parameter [#302](https://github.com/midnightntwrk/midnight-zk/pull/302)
 * Introduce `IvcIO` trait and `Ivc` convenience trait [#264](https://github.com/midnightntwrk/midnight-zk/pull/264)
 * Proof aggregation example [#258](https://github.com/midnightntwrk/midnight-zk/pull/258)
 * Introduce `IvcContext` [#258](https://github.com/midnightntwrk/midnight-zk/pull/258)
@@ -24,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 * Decouple `IvcTransition` from `IvcIO` [#264](https://github.com/midnightntwrk/midnight-zk/pull/264)
 * Rename `assert_transition` to `circuit_transition` in `IvcTransition` [#258](https://github.com/midnightntwrk/midnight-zk/pull/258)
 * Pass `max_bit_len` to IVC circuit configuration [#251](https://github.com/midnightntwrk/midnight-zk/pull/251)
+* Adapt `Relation` impls to new associated type `Error` [#252](https://github.com/midnightntwrk/midnight-zk/pull/252)
 * Rename crate from `aggregator` to `aggregation` [#227](https://github.com/midnightntwrk/midnight-zk/pull/227)
 * Adapt light aggregator to support non-fixed input commitments and improved fixed_bases handling [#212](https://github.com/midnightntwrk/midnight-zk/pull/212)
 * Updated Rust toolchain to 1.90.0 [#210](https://github.com/midnightntwrk/midnight-zk/pull/210)
