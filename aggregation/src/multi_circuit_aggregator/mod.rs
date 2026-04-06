@@ -57,9 +57,10 @@ pub use claims::{Claim, Statement, TypedStatement};
 /// Extension of [`Relation`] for circuits whose proofs can be aggregated
 /// w.r.t. a given IVC setup.
 ///
-/// A relation is aggregable if it uses the [`ZkStdLibArch`] chosen at IVC
-/// setup time, is padded to the common circuit size `K`, and formats its
-/// instance into a single public input.
+/// A relation is aggregable if it uses the
+/// [`ZkStdLibArch`](midnight_zk_stdlib::ZkStdLibArch) chosen at IVC setup time,
+/// is padded to the common circuit size `K`, and formats its instance into a
+/// single public input.
 pub trait AggregableRelation: Relation {
     /// Encodes the statement (the relation's instance) as a single
     /// public-input field element.
