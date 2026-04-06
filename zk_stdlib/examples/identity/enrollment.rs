@@ -53,6 +53,7 @@ pub struct CredentialEnrollment;
 impl Relation for CredentialEnrollment {
     type Instance = PK;
     type Witness = (Payload, ECDSASig);
+    type Error = Error;
 
     fn format_instance(instance: &Self::Instance) -> Result<Vec<F>, Error> {
         Ok(AssignedForeignPoint::<F, K256, MultiEmulationParams>::as_public_input(instance))

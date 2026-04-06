@@ -87,6 +87,7 @@ const COORD_LEN: usize = 43;
 impl Relation for CredentialPropertyOpt {
     type Instance = ();
     type Witness = (Payload, SK);
+    type Error = Error;
 
     fn format_instance(_instance: &Self::Instance) -> Result<Vec<F>, Error> {
         Ok(vec![])

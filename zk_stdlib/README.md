@@ -60,6 +60,7 @@ impl Relation for ShaPreImageCircuit {
     // of the underlying NP-relation.
     type Instance = [u8; 32]; // x ∈ {0, 1}^256
     type Witness = [u8; 24];  // w ∈ {0, 1}^192  (192 = 24 * 8)
+    type Error = Error;
 
     // We must specify how the instance, which can be any Rust type, is converted
     // into raw field elements to be processed by the prover/verifier. The order 

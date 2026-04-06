@@ -35,6 +35,8 @@ impl Relation for RSASignatureCircuit {
 
     type Witness = Signature;
 
+    type Error = Error;
+
     fn format_instance((pk, msg): &Self::Instance) -> Result<Vec<F>, Error> {
         Ok([
             AssignedBigUint::<F>::as_public_input(pk, NB_BITS),

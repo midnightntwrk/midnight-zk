@@ -113,6 +113,8 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
 
     type Witness = IvcWitness<T>;
 
+    type Error = Error;
+
     fn used_chips(&self) -> ZkStdLibArch {
         Self::arch()
     }

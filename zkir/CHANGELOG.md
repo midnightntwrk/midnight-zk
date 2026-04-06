@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 ### Added
 
 ### Changed
+* Adapt `Relation` impl to new associated type `Error` [#252](https://github.com/midnightntwrk/midnight-zk/pull/252)
 * Updated Rust toolchain to 1.90.0 [#210](https://github.com/midnightntwrk/midnight-zk/pull/210)
 
 ### Removed

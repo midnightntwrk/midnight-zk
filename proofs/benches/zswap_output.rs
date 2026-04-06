@@ -76,6 +76,8 @@ impl Relation for ZSwapOutputCircuit {
 
     type Witness = (PK, CoinInfo, JubjubScalar);
 
+    type Error = Error;
+
     fn format_instance(instance: &Self::Instance) -> Result<Vec<F>, Error> {
         let mut pi: Vec<F> =
             instance.0.iter().flat_map(AssignedByte::<F>::as_public_input).collect();
