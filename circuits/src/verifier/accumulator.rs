@@ -175,6 +175,22 @@ impl<S: SelfEmulation> Accumulator<S> {
         self.rhs.clone()
     }
 
+    /// Given the actual fixed bases, resolves the fixed-base part of the
+    /// internal MSMs by pairing each named scalar with its base and moving
+    /// them to regular variable-base entries.
+    ///
+    /// After this call, `fixed_base_scalars` of each internal MSM becomes
+    /// empty.
+    ///
+    /// # Panics
+    ///
+    /// If some of the keys in `fixed_base_scalars` from the internal MSMs do
+    /// not appear in the provided `fixed_bases` map.
+    pub fn resolve_fixed_bases(&mut self, fixed_bases: &BTreeMap<String, S::C>) {
+        self.lhs.resolve_fixed_bases(fixed_bases);
+        self.rhs.resolve_fixed_bases(fixed_bases);
+    }
+
     /// Evaluates the variable part of the Accumulator collapsing each
     /// side to a single point (and a scalar of 1), leaving the fixed-base part
     /// of both sides intact.
@@ -329,6 +345,22 @@ impl<S: SelfEmulation> AssignedAccumulator<S> {
     ) -> Result<(), Error> {
         self.lhs.collapse(layouter, curve_chip, scalar_chip)?;
         self.rhs.collapse(layouter, curve_chip, scalar_chip)
+    }
+
+    /// Given the actual fixed bases, resolves the fixed-base part of the
+    /// internal MSMs by pairing each named scalar with its base and moving
+    /// them to regular variable-base entries.
+    ///
+    /// After this call, `fixed_base_scalars` of each internal MSM becomes
+    /// empty.
+    ///
+    /// # Panics
+    ///
+    /// If some of the keys in `fixed_base_scalars` from the internal MSMs do
+    /// not appear in the provided `fixed_bases` map.
+    pub fn resolve_fixed_bases(&mut self, fixed_bases: &BTreeMap<String, S::AssignedPoint>) {
+        self.lhs.resolve_fixed_bases(fixed_bases);
+        self.rhs.resolve_fixed_bases(fixed_bases);
     }
 
     /// Accumulates several accumulators together. The resulting acc will

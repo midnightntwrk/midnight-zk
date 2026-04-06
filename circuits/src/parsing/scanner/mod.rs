@@ -11,11 +11,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! A chip combining lookup-based parsing techniques such as automaton-based
-//! parsing. The chip supports:
+//! A chip combining lookup-based parsing techniques. The chip supports:
 //!
-//! - **Static automaton parsing** (`parse_static`): uses a fixed lookup table
-//!   pre-loaded with transitions from a library of automata ([`StdLibParser`]).
+//! - **Static automaton parsing** (`ScannerChip::parse`): verifies that a byte
+//!   sequence matches a regular expression, using a fixed lookup table
+//!   pre-loaded with transitions from a library of automata ([`StdLibParser`]),
+//!   and/or dynamically-provided regular expressions. See the `automaton_chip`
+//!   module for details.
+//!
+//! - **Substring checks** (`ScannerChip::check_bytes`): verifies that a
+//!   sub-sequence appears at a given position inside a larger sequence, using a
+//!   dynamic lookup argument. Calls are deferred and batched at the end of
+//!   circuit synthesis for efficiency. See the `substring` module for details.
 
 pub(crate) mod automaton;
 mod automaton_chip;
@@ -24,19 +31,21 @@ mod automaton_chip;
 pub mod regex;
 mod serialization;
 pub(crate) mod static_specs;
+mod substring;
 
 use std::{
+    cell::RefCell,
     collections::{BTreeMap, BTreeSet},
-    fmt::Debug,
-    hash::Hash,
+    rc::Rc,
 };
 
 use automaton::Automaton;
 use midnight_proofs::{
-    circuit::{Chip, Layouter, Value},
-    plonk::{Advice, Column, ConstraintSystem, Error, Selector, TableColumn},
+    circuit::{Chip, Layouter},
+    plonk::{Advice, Column, ConstraintSystem, Error, Expression, Fixed, Selector, TableColumn},
     poly::Rotation,
 };
+use regex::Regex;
 use rustc_hash::FxHashMap;
 pub use static_specs::{spec_library, StdLibParser};
 #[cfg(test)]
@@ -47,38 +56,64 @@ use {
 };
 
 use crate::{
-    field::{decomposition::chip::P2RDecompositionChip, NativeChip, NativeGadget},
+    field::{decomposition::chip::P2RDecompositionChip, AssignedNative, NativeChip, NativeGadget},
     utils::ComposableChip,
     CircuitField,
 };
 
-/// Maximal size of the alphabet of an automaton/regex, since input characters
-/// are represented by `AssignedByte`. The parser (`scanner::parse_automaton`)
-/// is using this information to store automaton final states in the transition
-/// table, by encoding them as impossible transitions starting from the said
-/// state, and labelled with letter `ALPHABET_MAX_SIZE`. This bound is also
-/// needed to represent letters as u8.
+/// Maximal size of the alphabet of an automaton/regex (input bytes are in
+/// `[0, 255]`). Also used to encode final states in the transition table as
+/// dummy transitions labelled with `ALPHABET_MAX_SIZE` (see the
+/// `automaton_chip` module), and as the packing shift for substring checks
+/// (see the `substring` module).
 const ALPHABET_MAX_SIZE: usize = 256;
 
-/// Number of advice columns for the scanner chip.
-pub const NB_SCANNER_ADVICE_COLS: usize = 3;
+/// Number of advice columns used per automaton lookup (source, letter, output).
+const NB_AUTOMATON_COLS: usize = 3;
+/// Number of advice columns used per substring lookup argument (packed
+/// sequence+index, packed sub+index).
+const NB_SUBSTRING_COLS: usize = 2;
 
-// Native gadget type abbreviation.
+/// Number of parallel lookups performed by automata based parsers.
+const AUTOMATON_PARALLELISM: usize = 2;
+/// Number of parallel query lookups for substring checks. The total advice
+/// columns is `(1 + SUBSTRING_PARALLELISM) * NB_SUBSTRING_COLS`.
+const SUBSTRING_PARALLELISM: usize = 3;
+
+/// Maximum bit-length for the longer sequence length in substring checks. This
+/// value must be chosen lower or equal than `F::CAPACITY - 9`.
+const PARSING_MAX_LEN_BITS: u32 = 64;
+
+/// Number of advice columns for the scanner chip.
+pub const NB_SCANNER_ADVICE_COLS: usize = {
+    let automaton = NB_AUTOMATON_COLS * AUTOMATON_PARALLELISM;
+    let substring = SUBSTRING_PARALLELISM * NB_SUBSTRING_COLS;
+    if automaton > substring {
+        automaton
+    } else {
+        substring
+    }
+};
+/// Number of shared fixed columns necessary for the scanner chip.
+pub const NB_SCANNER_FIXED_COLS: usize = 1;
+
 type NG<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
 
 /// A simple map from the automaton structure to handle field elements, and thus
 /// precompute all transition operations on the prover code.
 #[derive(Clone, Debug)]
 pub struct NativeAutomaton<F> {
+    /// The number of states of the automaton.
+    pub nb_states: usize,
     /// The initial state of the automaton.
     pub initial_state: F,
     /// The final states of the automaton.
     pub final_states: BTreeSet<F>,
-    /// When `transitions[(source_state,letter)] = (target_state,marker)`, it
+    /// When `transitions[source_state][letter] = (target_state, output)`, it
     /// means that in state `source_state`, upon reading the byte `letter`, the
-    /// automaton run moves to state `target_state` and marks `letter` with
-    /// `marker`. If the entry is undefined, the automaton run gets stuck.
-    pub transitions: BTreeMap<(F, F), (F, F)>,
+    /// automaton run moves to state `target_state` and tags `letter` with
+    /// `output`. If the entry is undefined, the automaton run gets stuck.
+    pub transitions: BTreeMap<F, BTreeMap<F, (F, F)>>,
 }
 
 impl<F> From<&Automaton> for NativeAutomaton<F>
@@ -86,19 +121,26 @@ where
     F: CircuitField + Ord,
 {
     fn from(value: &Automaton) -> Self {
+        let mut transitions = BTreeMap::new();
+        for (&source, inner) in &value.transitions {
+            let native_inner: BTreeMap<F, (F, F)> = inner
+                .iter()
+                .map(|(&letter, &(target, output))| {
+                    (
+                        F::from(letter as u64),
+                        (F::from(target as u64), F::from(output as u64)),
+                    )
+                })
+                .collect();
+            transitions.insert(F::from(source as u64), native_inner);
+        }
         NativeAutomaton {
+            nb_states: value.nb_states,
             initial_state: F::from(value.initial_state as u64),
             final_states: (value.final_states.iter())
                 .map(|s| F::from(*s as u64))
                 .collect::<BTreeSet<_>>(),
-            transitions: (value.transitions.iter())
-                .map(|(&(s1, a), &(s2, marker))| {
-                    (
-                        (F::from(s1 as u64), F::from(a as u64)),
-                        (F::from(s2 as u64), F::from(marker as u64)),
-                    )
-                })
-                .collect::<BTreeMap<_, _>>(),
+            transitions,
         }
     }
 }
@@ -116,58 +158,111 @@ impl<F> NativeAutomaton<F>
 where
     F: CircuitField + Ord,
 {
-    fn from_collection<LibIndex>(
-        automata: &FxHashMap<LibIndex, Automaton>,
-    ) -> FxHashMap<LibIndex, NativeAutomaton<F>>
-    where
-        LibIndex: Hash + Eq + Copy,
-    {
-        // The offset needs to start from 1 and not 0, to ensure that no automata will
-        // use the state 0 (required by the automaton chip for soundness, since
-        // 0 is used as a dummy state to encode some checks as fake
-        // transitions).
-        let mut offset = 1;
-        (automata.iter())
-            .map(|(name, automaton)| {
-                let na: NativeAutomaton<F> = automaton.offset_states(offset).into();
-                offset += automaton.nb_states;
-                (*name, na)
-            })
-            .collect::<FxHashMap<_, _>>()
+    /// Looks up the transition from `state` reading `letter`.
+    fn get_transition(&self, state: &F, letter: &F) -> Option<(F, F)> {
+        self.transitions.get(state).and_then(|inner| inner.get(letter)).copied()
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+/// A reference for parsing methods for the function `parse`. Either an entry of
+/// the static automaton library (more efficient, but limited library), or a
+/// dynamic regular expression (more costly, but supports arbitrary regexes).
+pub enum AutomatonParser {
+    /// Static automaton library, as defined in `parsing::static_specs` (see the
+    /// documentation of each object of type `StdLibParser` to get the exact
+    /// regular expression they check). The off-circuit conversion
+    /// Regex->Automaton has been pre-computed and is serialised.
+    Static(StdLibParser),
+    /// Parses an arbitrary regular expression. Induces the same circuit logic
+    /// and performances as `Static`, but the conversion Regex->Automaton will
+    /// be performed by the prover (off-circuit).
+    Dynamic(Regex),
+}
+
+impl From<&StdLibParser> for AutomatonParser {
+    fn from(value: &StdLibParser) -> Self {
+        AutomatonParser::Static(*value)
+    }
+}
+
+impl From<StdLibParser> for AutomatonParser {
+    fn from(value: StdLibParser) -> Self {
+        AutomatonParser::from(&value)
+    }
+}
+
+impl From<Regex> for AutomatonParser {
+    fn from(value: Regex) -> Self {
+        AutomatonParser::Dynamic(value)
+    }
+}
+
+/// A static library of serialised automata for parsing common regexes. The
+/// automaton states start from 0 and may overlap one with each other.
+type ParsingLibrary = FxHashMap<StdLibParser, Automaton>;
+/// Set of automata (with offset states) called by `parse`.
+type AutomatonCache<F> = FxHashMap<AutomatonParser, NativeAutomaton<F>>;
+/// A sequence of assigned elements.
+type Sequence<F> = Vec<AssignedNative<F>>;
+/// Cache of assigned sequences passed as arguments to `check_subsequence`. Each
+/// sequence is mapped to the list of `(idx, sub)` pairs it was called with.
+/// Also stores the cumulative length of all `sub` associated to this key.
+type SequenceCache<F> = FxHashMap<Sequence<F>, (Vec<(AssignedNative<F>, Sequence<F>)>, usize)>;
+
 /// Scanner gate configuration.
 #[derive(Clone, Debug)]
-pub struct ScannerConfig<LibIndex, F> {
-    // Static automaton columns.
-    automata: FxHashMap<LibIndex, NativeAutomaton<F>>,
+pub struct ScannerConfig {
+    // Shared advice columns used by scanner operations.
+    advice_cols: [Column<Advice>; NB_SCANNER_ADVICE_COLS],
+
+    /// Pre-computed library of automata. If some are not used in the circuit,
+    /// their table will not be loaded wastingly.
+    static_library: ParsingLibrary,
+
+    // Automaton circuit resources.
     q_automaton: Selector,
-    state_col: Column<Advice>,
-    letter_col: Column<Advice>,
-    output_col: Column<Advice>,
     t_source: TableColumn,
     t_letter: TableColumn,
     t_target: TableColumn,
     t_output: TableColumn,
+
+    // Substring resources. The tag column is used for domain separation and cannot be shared.
+    q_substring: Selector,
+    index_col: Column<Fixed>,
+    tag_col: Column<Fixed>,
 }
 
-/// Chip for scanning: automaton parsing.
+/// Chip for scanning: automaton parsing and substring verification.
 #[derive(Clone, Debug)]
-pub struct ScannerChip<LibIndex, F>
+pub struct ScannerChip<F>
 where
     F: CircuitField,
 {
-    config: ScannerConfig<LibIndex, F>,
+    config: ScannerConfig,
     native_gadget: NG<F>,
+
+    /// Unified cache of all resolved automata (both static library and dynamic
+    /// regexes), with their states already offset. Populated on demand by
+    /// `resolve_automaton` when `parse` is called for the first time with a
+    /// given `AutomatonParser`.
+    automaton_cache: Rc<RefCell<AutomatonCache<F>>>,
+    /// Tracks the next available state offset. Starts at 1 (state 0 is
+    /// reserved as the dummy state for soundness).
+    max_state: Rc<RefCell<usize>>,
+
+    /// Cache mapping a sequence of cells to the list of `(idx, sub)` pairs
+    /// it was called with, so that repeated `check_bytes` calls with the same
+    /// `sequence` argument share the table cost. Tags are assigned later
+    /// during finalisation.
+    sequence_cache: Rc<RefCell<SequenceCache<F>>>,
 }
 
-impl<LibIndex, F> Chip<F> for ScannerChip<LibIndex, F>
+impl<F> Chip<F> for ScannerChip<F>
 where
-    LibIndex: Clone + Debug,
     F: CircuitField,
 {
-    type Config = ScannerConfig<LibIndex, F>;
+    type Config = ScannerConfig;
     type Loaded = ();
     fn config(&self) -> &Self::Config {
         &self.config
@@ -177,144 +272,175 @@ where
     }
 }
 
-impl<LibIndex, F> ComposableChip<F> for ScannerChip<LibIndex, F>
+impl<F> ComposableChip<F> for ScannerChip<F>
 where
-    LibIndex: Copy + Clone + Debug + Hash + Eq,
     F: CircuitField + Ord,
 {
     type InstructionDeps = NG<F>;
 
     type SharedResources = (
         [Column<Advice>; NB_SCANNER_ADVICE_COLS],
-        FxHashMap<LibIndex, Automaton>,
+        Column<Fixed>,
+        FxHashMap<StdLibParser, Automaton>,
     );
 
-    fn new(config: &ScannerConfig<LibIndex, F>, deps: &Self::InstructionDeps) -> Self {
+    fn new(config: &ScannerConfig, deps: &Self::InstructionDeps) -> Self {
         Self {
             config: config.clone(),
             native_gadget: deps.clone(),
+            automaton_cache: Rc::new(RefCell::new(FxHashMap::default())),
+            max_state: Rc::new(RefCell::new(1)),
+            sequence_cache: Rc::new(RefCell::new(FxHashMap::default())),
         }
     }
 
     fn configure(
         meta: &mut ConstraintSystem<F>,
         shared_res: &Self::SharedResources,
-    ) -> ScannerConfig<LibIndex, F> {
-        let (advice_cols, automata) = shared_res;
+    ) -> ScannerConfig {
+        #[allow(clippy::assertions_on_constants)]
+        {
+            assert!(
+                AUTOMATON_PARALLELISM > 0 && SUBSTRING_PARALLELISM > 0,
+                "at least 1 lookup required for automata and substring checks"
+            );
+            assert!(
+                PARSING_MAX_LEN_BITS <= F::CAPACITY - (u8::BITS + 1),
+                "check_subsequence batching exceeds field capacity ({} / {})",
+                PARSING_MAX_LEN_BITS + u8::BITS + 1,
+                F::CAPACITY
+            )
+        }
 
-        // Static automaton resources.
+        let (advice_cols, index_col, automata) = shared_res;
+
+        // Enable equality on all advice columns.
+        for &col in advice_cols {
+            meta.enable_equality(col);
+        }
+
+        // Automaton resources (shared fixed lookup table).
         let q_automaton = meta.complex_selector();
-
-        let state_col = advice_cols[0];
-        let letter_col = advice_cols[1];
-        let output_col = advice_cols[2];
         let t_source = meta.lookup_table_column();
         let t_letter = meta.lookup_table_column();
         let t_target = meta.lookup_table_column();
         let t_output = meta.lookup_table_column();
 
-        // The fixed automaton of the configuration. Its set of states is offset by 1 to
-        // ensure that 0 is not a reachable state (required due to how the table lookup
-        // is filled).
-        let automata = NativeAutomaton::<F>::from_collection(automata);
+        // Automaton lookup by batch: AUTOMATON_PARALLELISM transitions per row.
+        for batch in 0..AUTOMATON_PARALLELISM {
+            meta.lookup(
+                format!("automaton transition check (batch {batch})"),
+                |meta| {
+                    let q = meta.query_selector(q_automaton);
+                    let base = NB_AUTOMATON_COLS * batch;
+                    let [source, letter, output] = core::array::from_fn(|i| {
+                        meta.query_advice(advice_cols[base + i], Rotation::cur())
+                    });
+                    let target = if batch + 1 < AUTOMATON_PARALLELISM {
+                        meta.query_advice(advice_cols[base + NB_AUTOMATON_COLS], Rotation::cur())
+                    } else {
+                        meta.query_advice(advice_cols[0], Rotation::next())
+                    };
+                    vec![
+                        (q.clone() * source, t_source),
+                        (q.clone() * letter, t_letter),
+                        (q.clone() * target, t_target),
+                        (q * output, t_output),
+                    ]
+                },
+            );
+        }
 
-        meta.lookup("automaton transition check", |meta| {
-            let q = meta.query_selector(q_automaton);
-            let source = meta.query_advice(state_col, Rotation::cur());
-            let letter = meta.query_advice(letter_col, Rotation::cur());
-            let target = meta.query_advice(state_col, Rotation::next());
-            let output = meta.query_advice(output_col, Rotation::cur());
-            vec![
-                (q.clone() * source, t_source),
-                (q.clone() * letter, t_letter),
-                (q.clone() * target, t_target),
-                (q * output, t_output),
-            ]
-        });
+        // Substring resources.
+        let tag_col = meta.fixed_column();
+        let q_substring = meta.complex_selector();
+
+        // Substring lookup arguments (see the `substring` module for full details).
+        //
+        // There are `SUBSTRING_PARALLELISM` independent lookup arguments, each
+        // operating on 2 advice columns: `advice_cols[2*batch]` (table byte)
+        // and `advice_cols[2*batch + 1]` (packed query), plus 2 shared fixed
+        // columns: index and tag.
+        //
+        // Example: checking `wor` appears in `hello world` at index 6 (batch 0):
+        //
+        //    fixed          advice
+        //    tag | index    cols[2*i] | cols[2*i+1]
+        //    -----------    -----------------------
+        //     1  |  0          'h'    | 257*6 + 'w'    <- query for sub[0]
+        //     1  |  1          'e'    | 257*7 + 'o'    <- query for sub[1]
+        //     1  |  2          'l'    | 257*8 + 'r'    <- query for sub[2]
+        //     1  |  3          'l'    | (padding)
+        //     1  |  4          'o'    | (padding)
+        //     1  |  5          ' '    | (padding)
+        //     1  |  6          'w'    | (padding)
+        //     1  |  7          'o'    | (padding)
+        //     1  |  8          'r'    | (padding)
+        //     1  |  9          'l'    | (padding)
+        //     1  | 10          'd'    | (padding)
+        //
+        // The packed query `257 * (idx + i) + sub[i]` is pre-computed in
+        // circuit (see `index_and_pack_sequence` in `substring`). The table
+        // packing is done in the expression below:
+        //
+        //     table_packed = 257 * index + table_byte
+        //
+        // The lookup checks: (tag, packed_query) ∈ {(tag, table_packed)}.
+        //
+        // When sel=OFF, both sides reduce to (tag, query), i.e., a tautology, so rows
+        // not used by substring checks are unconstrained.
+        //
+        // Invariant: the tag column is 0 on every row that is not part of a substring
+        // check region, and non-zero (a unique positive integer) inside each region.
+        // This isolates independent substring checks from each other and from
+        // unrelated rows: a query tagged T can only match table entries with the
+        // same tag T, and rows with tag 0 never participate in any lookup.
+        for batch in 0..SUBSTRING_PARALLELISM {
+            meta.lookup_any(format!("substring lookup (batch {batch})"), |meta| {
+                let sel = meta.query_selector(q_substring);
+                let not_sel = Expression::Constant(F::ONE) - sel.clone();
+                let index = meta.query_fixed(*index_col, Rotation::cur());
+                let tag = meta.query_fixed(tag_col, Rotation::cur());
+                let shift = Expression::Constant(F::from(ALPHABET_MAX_SIZE as u64 + 1));
+
+                let base = NB_SUBSTRING_COLS * batch;
+                let table = meta.query_advice(advice_cols[base], Rotation::cur());
+                let query = meta.query_advice(advice_cols[base + 1], Rotation::cur());
+
+                vec![
+                    (tag.clone(), sel.clone() * tag.clone()),
+                    (
+                        query.clone(),
+                        sel * (index * shift + table) + not_sel * query,
+                    ),
+                ]
+            });
+        }
 
         ScannerConfig {
-            automata,
+            advice_cols: *advice_cols,
+            static_library: automata.clone(),
             q_automaton,
-            state_col,
-            letter_col,
-            output_col,
             t_source,
             t_letter,
             t_target,
             t_output,
+            q_substring,
+            index_col: *index_col,
+            tag_col,
         }
     }
 
-    // Load the automaton data (stored in config) inside a lookup table. Notably:
-    //  - The dummy transition `(0,0,0)` is added since the empty lookup rows will
-    //    be filled by it. This assumes that the transition table of the automaton
-    //    has been offset by at least 1 to ensure that 0 can never be a reachable
-    //    state of the automaton.
-    //  - Dummy transitions (s,256,0) are added for all final states s to emulate
-    //    final-state checking at the end of the automaton's run. The number 256 is
-    //    chosen in particular since it is not a valid byte number.
+    /// Loads the automaton transition table and finalises all deferred
+    /// substring checks. Must be called at the end of circuit synthesis.
     fn load(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
-        layouter.assign_table(
-            || "automaton table",
-            |mut table| {
-                let mut offset = 0;
-                let mut add_entry =
-                    |source: F, letter: F, target: F, marker:F| -> Result<(), Error> {
-                        table.assign_cell(
-                            || "t_source",
-                            self.config.t_source,
-                            offset,
-                            || Value::known(source),
-                        )?;
-                        table.assign_cell(
-                            || "t_letter",
-                            self.config.t_letter,
-                            offset,
-                            || Value::known(letter),
-                        )?;
-                        table.assign_cell(
-                            || "t_target",
-                            self.config.t_target,
-                            offset,
-                            || Value::known(target),
-                        )?;
-                        table.assign_cell(
-                            || "t_output",
-                            self.config.t_output,
-                            offset,
-                            || Value::known(marker),
-                        )?;
-                        offset += 1;
-                        Ok(())
-                    };
-
-                // Dummy transition for empty rows.
-                add_entry(F::ZERO, F::ZERO, F::ZERO, F::ZERO)?;
-
-                // Main transitions.
-                for automaton in self.config.automata.iter() {
-                    for ((source, letter), (target,output_extr)) in automaton.1.transitions.iter() {
-                            assert!(
-                                *source != F::ZERO && *target != F::ZERO ,
-                                "sanity check failed: the circuit requires that state 0 is not used, but the automaton generation failed to ensure it."
-                            );
-                            add_entry(*source, *letter, *target, *output_extr)?
-                    }
-                    // Dummy transitions to represent final states. Recall that letter are
-                    // represented in-circuit by elements of `AssignedByte`, which are therefore
-                    // range-checked to be lower than `REGEX_ALPHABET_MAX_SIZE`.
-                    for state in automaton.1.final_states.iter() {
-                        add_entry(*state, F::from(ALPHABET_MAX_SIZE as u64), F::ZERO, F::ZERO)?
-                    }
-                }
-                Ok(())
-            },
-        )
+        self.load_automata_table(layouter)?;
+        self.finalise_substring_checks(layouter)
     }
 }
 
 #[cfg(test)]
-impl regex::Regex {
+impl Regex {
     // "hello hello [...] hello \( world , world , [...] , world \) !!!!!" with
     // 1. arbitrary spaces whenever there is one
     // 2. at least one "hello" and one "world"
@@ -323,7 +449,6 @@ impl regex::Regex {
     // The definition of the regex purposely performs some non succinct operations
     // to test several constructions of the library.
     fn hard_coded_example0() -> Self {
-        use regex::Regex;
         let hellos = Regex::word("hello").separated_non_empty_list(Regex::blanks_strict());
         let worlds = Regex::word("world").separated_non_empty_list(Regex::cat([
             Regex::blanks(),
@@ -346,11 +471,10 @@ impl regex::Regex {
     }
 
     fn hard_coded_example1() -> Self {
-        use regex::Regex;
-        // `marker_regex` accepts any character, marking 'l' as 2, and
+        // `output_regex` accepts any character, marking 'l' as 2, and
         // any other non-blank character different from 'h' as 1.
-        let marker_regex = Regex::any_byte()
-            .mark(&|b| {
+        let output_regex = Regex::any_byte()
+            .output(&|b| {
                 if b == b'l' {
                     Some(2)
                 } else if !b"h\n\t ".contains(&b) {
@@ -364,23 +488,23 @@ impl regex::Regex {
         let hell = Regex::word("hell");
         let marks = Regex::word("!").non_empty_list();
         let sentence = Regex::separated_cat([holy, hell, marks], Regex::blanks_strict());
-        sentence.and(marker_regex)
+        sentence.and(output_regex)
     }
 }
 
 #[cfg(test)]
-impl<F> FromScratch<F> for ScannerChip<usize, F>
+impl<F> FromScratch<F> for ScannerChip<F>
 where
     F: CircuitField + Ord,
 {
-    type Config = (P2RDecompositionConfig, ScannerConfig<usize, F>);
+    type Config = (P2RDecompositionConfig, ScannerConfig);
 
     fn new_from_scratch(config: &Self::Config) -> Self {
         let max_bit_len = 8;
         let native_chip = NativeChip::new(&config.0.native_config, &());
         let core_decomposition_chip = P2RDecompositionChip::new(&config.0, &max_bit_len);
         let native_gadget = NG::<F>::new(core_decomposition_chip, native_chip);
-        <ScannerChip<usize, F> as ComposableChip<F>>::new(&config.1, &native_gadget)
+        <ScannerChip<F> as ComposableChip<F>>::new(&config.1, &native_gadget)
     }
 
     fn configure_from_scratch(
@@ -390,14 +514,6 @@ where
         let nb_advice_cols = std::cmp::max(NB_SCANNER_ADVICE_COLS, NB_ARITH_COLS);
         let advice_cols = (0..nb_advice_cols).map(|_| meta.advice_column()).collect::<Vec<_>>();
         let fixed_cols = (0..NB_ARITH_COLS + 4).map(|_| meta.fixed_column()).collect::<Vec<_>>();
-        let automata = FxHashMap::from_iter(
-            [
-                regex::Regex::hard_coded_example0().to_automaton(),
-                regex::Regex::hard_coded_example1().to_automaton(),
-            ]
-            .into_iter()
-            .enumerate(),
-        );
 
         let native_config = NativeChip::configure(
             meta,
@@ -412,7 +528,8 @@ where
             meta,
             &(
                 advice_cols[..NB_SCANNER_ADVICE_COLS].try_into().unwrap(),
-                automata,
+                fixed_cols[0],
+                FxHashMap::default(),
             ),
         );
 

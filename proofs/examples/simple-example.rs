@@ -310,10 +310,6 @@ fn main() {
     use midnight_proofs::dev::MockProver;
 
     // ANCHOR: test-circuit
-    // The number of rows in our circuit cannot exceed 2^k. Since our example
-    // circuit is very small, we can pick a very small value here.
-    let k = 4;
-
     // Prepare the private and public inputs to the circuit!
     let constant = Scalar::from(7);
     let a = Scalar::from(2);
@@ -332,12 +328,12 @@ fn main() {
     let mut public_inputs = vec![c];
 
     // Given the correct public input, our circuit will verify.
-    let prover = MockProver::run(k, &circuit, vec![public_inputs.clone()]).unwrap();
+    let prover = MockProver::run(&circuit, vec![public_inputs.clone()]).unwrap();
     assert_eq!(prover.verify(), Ok(()));
 
     // If we try some other public input, the proof will fail!
     public_inputs[0] += Scalar::ONE;
-    let prover = MockProver::run(k, &circuit, vec![public_inputs]).unwrap();
+    let prover = MockProver::run(&circuit, vec![public_inputs]).unwrap();
     assert!(prover.verify().is_err());
     // ANCHOR_END: test-circuit
 }

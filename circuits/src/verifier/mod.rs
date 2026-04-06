@@ -88,12 +88,12 @@ impl<S: SelfEmulation> Instantiable<S::F> for AssignedVk<S> {
 }
 
 /// Canonical name for the i-th verifying-key fixed commitment.
-fn fixed_commitment_name(prefix: &str, i: usize) -> String {
+pub fn fixed_commitment_name(prefix: &str, i: usize) -> String {
     format!("{prefix}_fixed_com_{i}")
 }
 
 /// Canonical name for the i-th verifying-key permutation commitment.
-fn perm_commitment_name(prefix: &str, i: usize) -> String {
+pub fn perm_commitment_name(prefix: &str, i: usize) -> String {
     format!("{prefix}_perm_com_{i}")
 }
 

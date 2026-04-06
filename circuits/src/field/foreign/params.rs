@@ -20,7 +20,7 @@ use std::{fmt::Debug, ops::Rem};
 
 #[cfg(feature = "dev-curves")]
 use midnight_curves::bn256;
-use midnight_curves::k256;
+use midnight_curves::{k256, p256};
 use num_bigint::{BigInt, BigInt as BI, ToBigInt};
 use num_traits::{One, Signed};
 
@@ -223,6 +223,50 @@ impl FieldEmulationParams<midnight_curves::Fq, k256::Fq> for MultiEmulationParam
 
 /*
 ====================================================
+Emulated: Secp256r1's Base field
+
+Native fields supported:
+ - BLS12-381's Scalar field
+====================================================
+*/
+
+/// Secp256r1's Base field over BLS12-381's Scalar field.
+impl FieldEmulationParams<midnight_curves::Fq, p256::Fp> for MultiEmulationParams {
+    const LOG2_BASE: u32 = 64;
+    const NB_LIMBS: u32 = 4;
+    fn moduli() -> Vec<BigInt> {
+        vec![
+            BigInt::from(2).pow(122),
+            BigInt::from(2).pow(122) - BigInt::from(507376),
+        ]
+    }
+    const RC_LIMB_SIZE: u32 = 17;
+}
+
+/*
+====================================================
+Emulated: Secp256r1's Scalar field
+
+Native fields supported:
+ - BLS12-381's Scalar field
+====================================================
+*/
+
+/// Secp256r1's Scalar field over BLS12-381's Scalar field.
+impl FieldEmulationParams<midnight_curves::Fq, p256::Fq> for MultiEmulationParams {
+    const LOG2_BASE: u32 = 64;
+    const NB_LIMBS: u32 = 4;
+    fn moduli() -> Vec<BigInt> {
+        vec![
+            BigInt::from(2).pow(118),
+            BigInt::from(2).pow(118) - BigInt::one(),
+        ]
+    }
+    const RC_LIMB_SIZE: u32 = 17;
+}
+
+/*
+====================================================
 Emulated: BLS12-381's Base field
 
 Native fields supported:
@@ -267,6 +311,44 @@ impl FieldEmulationParams<midnight_curves::Fq, bn256::Fq> for MultiEmulationPara
 /// BN254's Base field over BN254's Scalar field.
 #[cfg(feature = "dev-curves")]
 impl FieldEmulationParams<bn256::Fr, bn256::Fq> for MultiEmulationParams {
+    const LOG2_BASE: u32 = 52;
+    const NB_LIMBS: u32 = 5;
+    fn moduli() -> Vec<BigInt> {
+        vec![BigInt::from(2).pow(141)]
+    }
+    const RC_LIMB_SIZE: u32 = 14;
+}
+
+/*
+====================================================
+Emulated: BLS12-381's Scalar field
+
+Native fields supported:
+ - BLS12-381's Scalar field (for tests only)
+====================================================
+*/
+
+/// BLS12-381's Scalar field over BLS12-381's Scalar field.
+impl FieldEmulationParams<midnight_curves::Fq, midnight_curves::Fq> for MultiEmulationParams {
+    const LOG2_BASE: u32 = 52;
+    const NB_LIMBS: u32 = 5;
+    fn moduli() -> Vec<BigInt> {
+        vec![BigInt::from(2).pow(142)]
+    }
+    const RC_LIMB_SIZE: u32 = 14;
+}
+
+/*
+====================================================
+Emulated: Jubjub's Scalar field
+
+Native fields supported:
+ - BLS12-381's Scalar field (for tests only)
+====================================================
+*/
+
+/// Jubjub's Scalar field over BLS12-381's Scalar field.
+impl FieldEmulationParams<midnight_curves::Fq, midnight_curves::Fr> for MultiEmulationParams {
     const LOG2_BASE: u32 = 52;
     const NB_LIMBS: u32 = 5;
     fn moduli() -> Vec<BigInt> {

@@ -24,7 +24,7 @@ use midnight_curves::{
     CurveAffine, CurveExt,
 };
 use midnight_proofs::{
-    circuit::Layouter,
+    circuit::{Layouter, Value},
     plonk::Error,
     transcript::{Hashable, TranscriptHash},
 };
@@ -36,7 +36,7 @@ use crate::instructions::NativeInstructions;
 use crate::{
     ecc::{
         curves::{CircuitCurve, WeierstrassCurve},
-        foreign::ForeignEccChip,
+        foreign::ForeignWeierstrassEccChip,
     },
     field::{decomposition::chip::P2RDecompositionChip, AssignedNative, NativeChip, NativeGadget},
     hash::poseidon::{PoseidonChip, PoseidonState},
@@ -118,6 +118,17 @@ pub trait SelfEmulation: Clone + Debug {
         scalar_chip: &Self::ScalarChip,
         assigned_scalar: &AssignedNative<Self::F>,
     ) -> Result<(), Error>;
+
+    /// Assigns a point without checking that it is part of the prime order
+    /// subgroup.
+    /// Allowing points outside the subgroup does not give any advantage to an
+    /// adversary in PLONK.
+    // TODO: Provide a formal analysis of subgroup soundness in this context.
+    fn assign_without_subgroup_check(
+        layouter: &mut impl Layouter<Self::F>,
+        curve_chip: &Self::CurveChip,
+        base: Value<Self::C>,
+    ) -> Result<Self::AssignedPoint, Error>;
 }
 
 // Implementations
@@ -133,7 +144,8 @@ impl SelfEmulation for BlstrsEmulation {
     type Hash = PoseidonState<Self::F>;
 
     type ScalarChip = NativeGadget<Self::F, P2RDecompositionChip<Self::F>, NativeChip<Self::F>>;
-    type CurveChip = ForeignEccChip<Self::F, Self::C, Self::C, Self::ScalarChip, Self::ScalarChip>;
+    type CurveChip =
+        ForeignWeierstrassEccChip<Self::F, Self::C, Self::C, Self::ScalarChip, Self::ScalarChip>;
     type SpongeChip = PoseidonChip<Self::F>;
 
     type G1Affine = midnight_curves::G1Affine;
@@ -156,6 +168,14 @@ impl SelfEmulation for BlstrsEmulation {
     ) -> Result<(), Error> {
         scalar_chip.constrain_as_committed_public_input(layouter, assigned_scalar)
     }
+
+    fn assign_without_subgroup_check(
+        layouter: &mut impl Layouter<Self::F>,
+        curve_chip: &Self::CurveChip,
+        base: Value<Self::C>,
+    ) -> Result<Self::AssignedPoint, Error> {
+        curve_chip.assign_without_subgroup_check(layouter, base)
+    }
 }
 
 /// Implementation of the SelfEmulation trait for bn256.
@@ -171,7 +191,8 @@ impl SelfEmulation for BnEmulation {
     type Hash = PoseidonState<Self::F>;
 
     type ScalarChip = NativeGadget<Self::F, P2RDecompositionChip<Self::F>, NativeChip<Self::F>>;
-    type CurveChip = ForeignEccChip<Self::F, Self::C, Self::C, Self::ScalarChip, Self::ScalarChip>;
+    type CurveChip =
+        ForeignWeierstrassEccChip<Self::F, Self::C, Self::C, Self::ScalarChip, Self::ScalarChip>;
     type SpongeChip = PoseidonChip<Self::F>;
 
     type G1Affine = midnight_curves::bn256::G1Affine;
@@ -193,5 +214,13 @@ impl SelfEmulation for BnEmulation {
         assigned_scalar: &AssignedNative<Self::F>,
     ) -> Result<(), Error> {
         scalar_chip.constrain_as_committed_public_input(layouter, assigned_scalar)
+    }
+
+    fn assign_without_subgroup_check(
+        layouter: &mut impl Layouter<Self::F>,
+        curve_chip: &Self::CurveChip,
+        base: Value<Self::C>,
+    ) -> Result<Self::AssignedPoint, Error> {
+        curve_chip.assign(layouter, base)
     }
 }

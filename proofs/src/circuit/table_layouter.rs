@@ -167,8 +167,6 @@ mod tests {
 
     #[test]
     fn table_no_default() {
-        const K: u32 = 4;
-
         #[derive(Clone)]
         struct FaultyCircuitConfig {
             table: TableColumn,
@@ -217,7 +215,7 @@ mod tests {
             }
         }
 
-        let prover = MockProver::run(K, &FaultyCircuit, vec![]);
+        let prover = MockProver::run(&FaultyCircuit, vec![]);
         assert_eq!(
             format!("{}", prover.unwrap_err()),
             "TableColumn { inner: Column { index: 0, column_type: Fixed } } not fully assigned. Help: assign a value at offset 0."
@@ -226,8 +224,6 @@ mod tests {
 
     #[test]
     fn table_overwrite_default() {
-        const K: u32 = 4;
-
         #[derive(Clone)]
         struct FaultyCircuitConfig {
             table: TableColumn,
@@ -282,7 +278,7 @@ mod tests {
             }
         }
 
-        let prover = MockProver::run(K, &FaultyCircuit, vec![]);
+        let prover = MockProver::run(&FaultyCircuit, vec![]);
         assert_eq!(
             format!("{}", prover.unwrap_err()),
             "Attempted to overwrite default value Value { inner: Some(Trivial(Fq(0x0000000000000000000000000000000000000000000000000000000000000000))) } with Value { inner: Some(Trivial(Fq(0x0000000000000000000000000000000000000000000000000000000000000000))) } in TableColumn { inner: Column { index: 0, column_type: Fixed } }"
@@ -291,8 +287,6 @@ mod tests {
 
     #[test]
     fn table_reuse_column() {
-        const K: u32 = 4;
-
         #[derive(Clone)]
         struct FaultyCircuitConfig {
             table: TableColumn,
@@ -353,7 +347,7 @@ mod tests {
             }
         }
 
-        let prover = MockProver::run(K, &FaultyCircuit, vec![]);
+        let prover = MockProver::run(&FaultyCircuit, vec![]);
         assert_eq!(
             format!("{}", prover.unwrap_err()),
             "TableColumn { inner: Column { index: 0, column_type: Fixed } } has already been used"
@@ -362,8 +356,6 @@ mod tests {
 
     #[test]
     fn table_uneven_columns() {
-        const K: u32 = 4;
-
         #[derive(Clone)]
         struct FaultyCircuitConfig {
             table: (TableColumn, TableColumn),
@@ -420,7 +412,7 @@ mod tests {
             }
         }
 
-        let prover = MockProver::run(K, &FaultyCircuit, vec![]);
+        let prover = MockProver::run(&FaultyCircuit, vec![]);
         assert_eq!(
             format!("{}", prover.unwrap_err()),
             "TableColumn { inner: Column { index: 0, column_type: Fixed } } has length 2 while TableColumn { inner: Column { index: 1, column_type: Fixed } } has length 1"

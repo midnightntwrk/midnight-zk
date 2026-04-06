@@ -1,30 +1,15 @@
 use ff::PrimeField;
 
-pub(crate) use crate::hash::util::{
-    assert_in_valid_spreaded_form, expr_pow2_ip, expr_pow4_ip, gen_spread_table as gen_table,
-    get_even_and_odd_bits, negate_spreaded, spread, u32_to_be_limbs, MASK_EVN_64,
+pub(crate) use crate::hash::utils::{
+    assert_in_valid_spreaded_form, expr_pow2_ip, expr_pow4_ip, get_even_and_odd_bits,
+    negate_spreaded, spread, spread_table_from_lengths, u32_in_be_limbs, MASK_EVN_64,
 };
 
 const LOOKUP_LENGTHS: [u32; 10] = [2, 3, 4, 5, 6, 7, 9, 10, 11, 12]; // supported lookup bit lengths
 
-/// Breaks the 32-bit value into big-endian limbs following the required limb
-/// lengths.
-///
-/// # Panics
-///
-/// If sum(limb_lengths) != 32.
-/// If any given limb length equals 0.
-pub(crate) fn u32_in_be_limbs<const N: usize>(value: u32, limb_lengths: [usize; N]) -> [u32; N] {
-    for &len in &limb_lengths {
-        assert!(len != 0);
-    }
-    u32_to_be_limbs(value, limb_lengths)
-}
-
 /// Generates the plain-spreaded lookup table.
 pub(super) fn gen_spread_table<F: PrimeField>() -> impl Iterator<Item = (F, F, F)> {
-    std::iter::once((F::ZERO, F::ZERO, F::ZERO)) // base case (disabled lookup)
-        .chain(gen_table(LOOKUP_LENGTHS))
+    spread_table_from_lengths(std::iter::once(0).chain(LOOKUP_LENGTHS))
 }
 
 /// Computes off-circuit spreaded Maj(A, B, C) with A, B, C in spreaded forms.
@@ -135,8 +120,11 @@ fn pow4_ip<const N: usize>(exponents: [u8; N], terms: [u64; N]) -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+
     use rand::{seq::SliceRandom, Rng};
+
+    use super::*;
+
     type F = midnight_curves::Fq;
 
     #[test]
@@ -153,11 +141,145 @@ mod tests {
 
         assert!(table.contains(&to_fe((0, 0, 0))));
         for _ in 0..10 {
+            // Positive test: check that the table contains a valid triple of (tag, plain,
+            // spreaded) for a random tag in [`LOOKUP_LENGTHS`].
             let tag = *LOOKUP_LENGTHS.choose(&mut rng).unwrap();
             let plain = rng.gen_range(0..(1 << tag));
             let spreaded = spread(plain);
             let triple = to_fe((tag, plain, spreaded));
             assert!(table.contains(&triple));
+
+            // Negative test: check that the table does not contain a random triple of
+            // (tag, plain, spreaded).
+            let random_triple = to_fe((rng.gen(), rng.gen(), rng.gen()));
+            assert!(!table.contains(&random_triple));
+        }
+
+        // Negative test: check that the table does not contain a triple with a tag not
+        // in [`LOOKUP_LENGTHS`].
+        let tag = 16; // Not in LOOKUP_LENGTHS
+        let plain = rng.gen_range(0..(1 << tag));
+        let spreaded = spread(plain);
+        let triple = to_fe((tag, plain, spreaded));
+        assert!(!table.contains(&triple));
+    }
+
+    #[test]
+    fn test_spreaded_maj() {
+        // Assert Maj(A, B, C) equals the odd bits of the output of [`spreaded_maj`].
+        fn assert_odd_of_spreaded_maj(vals: [u32; 3]) {
+            // Compute Maj(A, B, C) with the built-in methods.
+            let [a, b, c] = vals;
+            let ret = (a & b) ^ (a & c) ^ (b & c);
+
+            // Compute Maj(A, B, C) by the odd bits of the value returned by
+            // [`spreaded_maj`].
+            let spreaded_forms: [u64; 3] = vals.map(spread);
+            let (_even, odd) = get_even_and_odd_bits(spreaded_maj(spreaded_forms));
+
+            assert_eq!(ret, odd);
+        }
+
+        let mut rng = rand::thread_rng();
+        for _ in 0..10 {
+            let vals: [u32; 3] = [rng.gen(), rng.gen(), rng.gen()];
+            assert_odd_of_spreaded_maj(vals);
+        }
+    }
+
+    #[test]
+    fn test_spreaded_Sigma_0() {
+        // Assert Σ₀(A) equals the even bits of the output of [`spreaded_Sigma_0`].
+        fn assert_even_of_spreaded_Sigma_0(val: u32) {
+            // Compute Σ₀(A) with the built-in methods.
+            let rot_by_2 = val.rotate_right(2);
+            let rot_by_13 = val.rotate_right(13);
+            let rot_by_22 = val.rotate_right(22);
+            let ret = rot_by_2 ^ rot_by_13 ^ rot_by_22;
+
+            // Compute Σ₀(A) by the even bits of the value returned by [`spreaded_Sigma_0`].
+            let plain_limbs: [u32; 4] = u32_in_be_limbs(val, [10, 9, 11, 2]);
+            let spreaded_limbs: [u64; 4] = plain_limbs.map(spread);
+            let (even, _) = get_even_and_odd_bits(spreaded_Sigma_0(spreaded_limbs));
+
+            assert_eq!(ret, even);
+        }
+
+        let mut rng = rand::thread_rng();
+        for _ in 0..10 {
+            assert_even_of_spreaded_Sigma_0(rng.gen());
+        }
+    }
+
+    #[test]
+    fn test_spreaded_Sigma_1() {
+        // Assert Σ₁(E) equals the even bits of the output of [`spreaded_Sigma_1`].
+        fn assert_even_of_spreaded_Sigma_1(val: u32) {
+            // Compute Σ₁(E) with the built-in methods.
+            let rot_by_6 = val.rotate_right(6);
+            let rot_by_11 = val.rotate_right(11);
+            let rot_by_25 = val.rotate_right(25);
+            let ret = rot_by_6 ^ rot_by_11 ^ rot_by_25;
+
+            // Compute Σ₁(E) by the even bits of the value returned by [`spreaded_Sigma_1`].
+            let plain_limbs: [u32; 5] = u32_in_be_limbs(val, [7, 12, 2, 5, 6]);
+            let spreaded_limbs: [u64; 5] = plain_limbs.map(spread);
+            let (even, _) = get_even_and_odd_bits(spreaded_Sigma_1(spreaded_limbs));
+
+            assert_eq!(ret, even);
+        }
+
+        let mut rng = rand::thread_rng();
+        for _ in 0..10 {
+            assert_even_of_spreaded_Sigma_1(rng.gen());
+        }
+    }
+
+    #[test]
+    fn test_spreaded_sigma_0() {
+        // Assert σ₀(W) equals the even bits of the output of [`spreaded_sigma_0`].
+        fn assert_even_of_spreaded_sigma_0(val: u32) {
+            // Compute σ₀(W) with the built-in methods.
+            let shifted_by_3 = val >> 3;
+            let rot_by_7 = val.rotate_right(7);
+            let rot_by_18 = val.rotate_right(18);
+            let ret = shifted_by_3 ^ rot_by_7 ^ rot_by_18;
+
+            // Compute σ₀(W) by the even bits of the value returned by [`spreaded_sigma_0`].
+            let plain_limbs: [u32; 8] = u32_in_be_limbs(val, [12, 1, 1, 1, 7, 3, 4, 3]);
+            let spreaded_limbs: [u64; 8] = plain_limbs.map(spread);
+            let (even, _) = get_even_and_odd_bits(spreaded_sigma_0(spreaded_limbs));
+
+            assert_eq!(ret, even);
+        }
+
+        let mut rng = rand::thread_rng();
+        for _ in 0..10 {
+            assert_even_of_spreaded_sigma_0(rng.gen());
+        }
+    }
+
+    #[test]
+    fn test_spreaded_sigma_1() {
+        // Assert σ₁(W) equals the even bits of the output of [`spreaded_sigma_1`].
+        fn assert_even_of_spreaded_sigma_1(val: u32) {
+            // Compute σ₁(W) with the built-in methods.
+            let shifted_by_10 = val >> 10;
+            let rot_by_17 = val.rotate_right(17);
+            let rot_by_19 = val.rotate_right(19);
+            let ret = shifted_by_10 ^ rot_by_17 ^ rot_by_19;
+
+            // Compute σ₁(W) by the even bits of the value returned by [`spreaded_sigma_1`].
+            let plain_limbs: [u32; 8] = u32_in_be_limbs(val, [12, 1, 1, 1, 7, 3, 4, 3]);
+            let spreaded_limbs: [u64; 8] = plain_limbs.map(spread);
+            let (even, _) = get_even_and_odd_bits(spreaded_sigma_1(spreaded_limbs));
+
+            assert_eq!(ret, even);
+        }
+
+        let mut rng = rand::thread_rng();
+        for _ in 0..10 {
+            assert_even_of_spreaded_sigma_1(rng.gen());
         }
     }
 }

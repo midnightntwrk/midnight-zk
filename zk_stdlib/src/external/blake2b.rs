@@ -256,67 +256,67 @@ mod test {
 
     #[test]
     fn test_blake2b_512_preimage() {
-        fn test_wrapper(input_size: usize, k: u32, cost_model: bool) {
+        fn test_wrapper(input_size: usize, cost_model: bool) {
             test_hash::<
                 Fq,
                 AssignedByte<Fq>,
                 [AssignedByte<Fq>; 64],
                 Blake2b512<Fq>,
                 NativeGadget<Fq, _, _>,
-            >(cost_model, "Blake2b_512", input_size, k);
+            >(cost_model, "Blake2b_512", input_size);
         }
 
         const BLAKE2B_BLOCK_SIZE: usize = 128;
 
-        test_wrapper(BLAKE2B_BLOCK_SIZE - 2, 17, false);
-        test_wrapper(BLAKE2B_BLOCK_SIZE - 1, 17, false);
-        test_wrapper(BLAKE2B_BLOCK_SIZE, 17, false);
-        test_wrapper(BLAKE2B_BLOCK_SIZE + 1, 17, false);
-        test_wrapper(BLAKE2B_BLOCK_SIZE + 2, 17, false);
+        test_wrapper(BLAKE2B_BLOCK_SIZE - 2, false);
+        test_wrapper(BLAKE2B_BLOCK_SIZE - 1, false);
+        test_wrapper(BLAKE2B_BLOCK_SIZE, false);
+        test_wrapper(BLAKE2B_BLOCK_SIZE + 1, false);
+        test_wrapper(BLAKE2B_BLOCK_SIZE + 2, false);
 
-        test_wrapper(2 * BLAKE2B_BLOCK_SIZE - 2, 17, false);
-        test_wrapper(2 * BLAKE2B_BLOCK_SIZE - 1, 17, false);
+        test_wrapper(2 * BLAKE2B_BLOCK_SIZE - 2, false);
+        test_wrapper(2 * BLAKE2B_BLOCK_SIZE - 1, false);
 
         // Cost model update with input size = 256
-        test_wrapper(2 * BLAKE2B_BLOCK_SIZE, 17, true);
-        test_wrapper(2 * BLAKE2B_BLOCK_SIZE + 1, 17, false);
-        test_wrapper(2 * BLAKE2B_BLOCK_SIZE + 2, 17, false);
+        test_wrapper(2 * BLAKE2B_BLOCK_SIZE, true);
+        test_wrapper(2 * BLAKE2B_BLOCK_SIZE + 1, false);
+        test_wrapper(2 * BLAKE2B_BLOCK_SIZE + 2, false);
 
-        test_wrapper(0, 17, false);
-        test_wrapper(1, 17, false);
-        test_wrapper(2, 17, false);
+        test_wrapper(0, false);
+        test_wrapper(1, false);
+        test_wrapper(2, false);
     }
 
     #[test]
     fn test_blake2b_256_preimage() {
-        fn test_wrapper(input_size: usize, k: u32, cost_model: bool) {
+        fn test_wrapper(input_size: usize, cost_model: bool) {
             test_hash::<
                 Fq,
                 AssignedByte<Fq>,
                 [AssignedByte<Fq>; 32],
                 Blake2b256<Fq>,
                 NativeGadget<Fq, _, _>,
-            >(cost_model, "Blake2b_256", input_size, k);
+            >(cost_model, "Blake2b_256", input_size);
         }
 
         const BLAKE2B_BLOCK_SIZE: usize = 128;
 
-        test_wrapper(BLAKE2B_BLOCK_SIZE - 2, 17, false);
-        test_wrapper(BLAKE2B_BLOCK_SIZE - 1, 17, false);
-        test_wrapper(BLAKE2B_BLOCK_SIZE, 17, false);
-        test_wrapper(BLAKE2B_BLOCK_SIZE + 1, 17, false);
-        test_wrapper(BLAKE2B_BLOCK_SIZE + 2, 17, false);
+        test_wrapper(BLAKE2B_BLOCK_SIZE - 2, false);
+        test_wrapper(BLAKE2B_BLOCK_SIZE - 1, false);
+        test_wrapper(BLAKE2B_BLOCK_SIZE, false);
+        test_wrapper(BLAKE2B_BLOCK_SIZE + 1, false);
+        test_wrapper(BLAKE2B_BLOCK_SIZE + 2, false);
 
-        test_wrapper(2 * BLAKE2B_BLOCK_SIZE - 2, 17, false);
-        test_wrapper(2 * BLAKE2B_BLOCK_SIZE - 1, 17, false);
+        test_wrapper(2 * BLAKE2B_BLOCK_SIZE - 2, false);
+        test_wrapper(2 * BLAKE2B_BLOCK_SIZE - 1, false);
 
         // Cost model update with input size = 256
-        test_wrapper(2 * BLAKE2B_BLOCK_SIZE, 17, true);
-        test_wrapper(2 * BLAKE2B_BLOCK_SIZE + 1, 17, false);
-        test_wrapper(2 * BLAKE2B_BLOCK_SIZE + 2, 17, false);
+        test_wrapper(2 * BLAKE2B_BLOCK_SIZE, true);
+        test_wrapper(2 * BLAKE2B_BLOCK_SIZE + 1, false);
+        test_wrapper(2 * BLAKE2B_BLOCK_SIZE + 2, false);
 
-        test_wrapper(0, 17, false);
-        test_wrapper(1, 17, false);
-        test_wrapper(2, 17, false);
+        test_wrapper(0, false);
+        test_wrapper(1, false);
+        test_wrapper(2, false);
     }
 }

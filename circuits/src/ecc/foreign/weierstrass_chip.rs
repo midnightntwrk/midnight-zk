@@ -11,7 +11,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Elliptic curve operations over foreign fields.
+//! Elliptic curve (in Weierstrass form) operations over foreign fields.
 //! This module supports curves of the form y^2 = x^3 + b (i.e. with a = 0).
 //!
 //! We require that the emulated elliptic curve do not have low-order points.
@@ -68,9 +68,9 @@ use crate::{
     CircuitField,
 };
 
-/// Foreign ECC configuration.
+/// Foreign Weierstrass ECC configuration.
 #[derive(Clone, Debug)]
-pub struct ForeignEccConfig<C>
+pub struct ForeignWeierstrassEccConfig<C>
 where
     C: WeierstrassCurve,
 {
@@ -133,9 +133,9 @@ where
 /// populated on first MSM call for each window size.
 type MsmRandomnessMap<F, C, B> = HashMap<usize, MsmRandomness<F, C, B>>;
 
-/// ['ECChip'] to perform foreign EC operations.
+/// ['ECChip'] to perform foreign Weierstrass EC operations.
 #[derive(Clone, Debug)]
-pub struct ForeignEccChip<F, C, B, S, N>
+pub struct ForeignWeierstrassEccChip<F, C, B, S, N>
 where
     F: CircuitField,
     C: WeierstrassCurve,
@@ -144,7 +144,7 @@ where
     S::Scalar: InnerValue<Element = C::ScalarField>,
     N: NativeInstructions<F>,
 {
-    config: ForeignEccConfig<C>,
+    config: ForeignWeierstrassEccConfig<C>,
     native_gadget: N,
     base_field_chip: FieldChip<F, C::Base, B, N>,
     scalar_field_chip: S,
@@ -282,7 +282,7 @@ where
     }
 }
 
-impl<F, C, B, S, N> Chip<F> for ForeignEccChip<F, C, B, S, N>
+impl<F, C, B, S, N> Chip<F> for ForeignWeierstrassEccChip<F, C, B, S, N>
 where
     F: CircuitField,
     C: WeierstrassCurve,
@@ -291,7 +291,7 @@ where
     S::Scalar: InnerValue<Element = C::ScalarField>,
     N: NativeInstructions<F>,
 {
-    type Config = ForeignEccConfig<C>;
+    type Config = ForeignWeierstrassEccConfig<C>;
     type Loaded = ();
     fn config(&self) -> &Self::Config {
         &self.config
@@ -302,7 +302,7 @@ where
 }
 
 impl<F, C, B, S, N> AssignmentInstructions<F, AssignedForeignPoint<F, C, B>>
-    for ForeignEccChip<F, C, B, S, N>
+    for ForeignWeierstrassEccChip<F, C, B, S, N>
 where
     F: CircuitField,
     C: WeierstrassCurve,
@@ -311,22 +311,28 @@ where
     S::Scalar: InnerValue<Element = C::ScalarField>,
     N: NativeInstructions<F>,
 {
+    /// Assigns a private curve point and enforces in-circuit that it is on the
+    /// curve and lies in the prime-order subgroup.
+    ///
+    /// If you deliberately need to skip the subgroup check, use
+    /// [`EccInstructions::assign_without_subgroup_check`] instead.
     fn assign(
         &self,
         layouter: &mut impl Layouter<F>,
         value: Value<C::CryptographicGroup>,
     ) -> Result<AssignedForeignPoint<F, C, B>, Error> {
-        let p = self.assign_point_unchecked(layouter, value)?;
-        let is_not_id = self.native_gadget.not(layouter, &p.is_id)?;
-        on_curve::assert_is_on_curve::<F, C, B, N>(
-            layouter,
-            &is_not_id,
-            &p.x,
-            &p.y,
-            self.base_field_chip(),
-            &self.config.on_curve_config,
-        )?;
-        Ok(p)
+        if C::COFACTOR > 1 {
+            let cofactor = C::ScalarField::from_u128(C::COFACTOR);
+            // Exhibit a cofactor-root Q and assert h * Q = p in-circuit.
+            // This guarantees that p ∈ C::CryptographicGroup = h · E(Fp).
+            let cofactor_root = self.assign_without_subgroup_check(
+                layouter,
+                value.map(|point| point * cofactor.invert().unwrap()),
+            )?;
+            self.mul_by_constant(layouter, cofactor, &cofactor_root)
+        } else {
+            self.assign_without_subgroup_check(layouter, value)
+        }
     }
 
     fn assign_fixed(
@@ -357,7 +363,7 @@ where
 }
 
 impl<F, C, B, S, N> PublicInputInstructions<F, AssignedForeignPoint<F, C, B>>
-    for ForeignEccChip<F, C, B, S, N>
+    for ForeignWeierstrassEccChip<F, C, B, S, N>
 where
     F: CircuitField,
     C: WeierstrassCurve,
@@ -408,7 +414,7 @@ where
         // Given our optimized way of constraining a point as public input, we
         // cannot optimize the direct assignment as PI. We just compose `assign`
         // with `constrain_as_public_input`.
-        let point = self.assign(layouter, value)?;
+        let point = self.assign_without_subgroup_check(layouter, value)?;
         self.constrain_as_public_input(layouter, &point)?;
         Ok(point)
     }
@@ -419,7 +425,8 @@ where
 /// field.
 /// Mind the binding `S: ScalarFieldInstructions<F, Scalar = AssignedNative<F>>`
 /// of this implementation.
-impl<F, C, B, S, N> AssignmentInstructions<F, AssignedNative<F>> for ForeignEccChip<F, C, B, S, N>
+impl<F, C, B, S, N> AssignmentInstructions<F, AssignedNative<F>>
+    for ForeignWeierstrassEccChip<F, C, B, S, N>
 where
     F: CircuitField,
     C: WeierstrassCurve,
@@ -446,11 +453,11 @@ where
 }
 
 /// Inherit assignment instructions for [AssignedField], from the
-/// `scalar_field_chip` when the emulated field field is the scalar field.
+/// `scalar_field_chip` when the emulated field is the scalar field.
 /// Mind the binding `S: ScalarFieldInstructions<F, Scalar = AssignedField<F,
 /// C::ScalarField>>` of this implementation.
 impl<F, C, B, S, SP, N> AssignmentInstructions<F, AssignedField<F, C::ScalarField, SP>>
-    for ForeignEccChip<F, C, B, S, N>
+    for ForeignWeierstrassEccChip<F, C, B, S, N>
 where
     F: CircuitField,
     C: WeierstrassCurve,
@@ -478,7 +485,7 @@ where
 }
 
 impl<F, C, B, S, N> AssertionInstructions<F, AssignedForeignPoint<F, C, B>>
-    for ForeignEccChip<F, C, B, S, N>
+    for ForeignWeierstrassEccChip<F, C, B, S, N>
 where
     F: CircuitField,
     C: WeierstrassCurve,
@@ -544,7 +551,7 @@ where
 }
 
 impl<F, C, B, S, N> EqualityInstructions<F, AssignedForeignPoint<F, C, B>>
-    for ForeignEccChip<F, C, B, S, N>
+    for ForeignWeierstrassEccChip<F, C, B, S, N>
 where
     F: CircuitField,
     C: WeierstrassCurve,
@@ -612,7 +619,7 @@ where
 }
 
 impl<F, C, B, S, N> ZeroInstructions<F, AssignedForeignPoint<F, C, B>>
-    for ForeignEccChip<F, C, B, S, N>
+    for ForeignWeierstrassEccChip<F, C, B, S, N>
 where
     F: CircuitField,
     C: WeierstrassCurve,
@@ -631,7 +638,7 @@ where
 }
 
 impl<F, C, B, S, N> ControlFlowInstructions<F, AssignedForeignPoint<F, C, B>>
-    for ForeignEccChip<F, C, B, S, N>
+    for ForeignWeierstrassEccChip<F, C, B, S, N>
 where
     F: CircuitField,
     C: WeierstrassCurve,
@@ -652,21 +659,21 @@ where
         let x = self.base_field_chip().select(layouter, cond, &p.x, &q.x)?;
         let y = self.base_field_chip().select(layouter, cond, &p.y, &q.y)?;
 
-        // This is kind of hacky:
-        // When the value of the condition is unknown (during the setup phase)
-        // we select the first point, instead of passing an unknown value.
-        // In reality, this is equivalent, since in the setup phase the
-        // value of the points will be unknown as well.
-
-        // point = p if cond is unknown or 1, q if cond is known and 0
-        let a = cond.value().error_if_known_and(|&v| !v);
-        let point = if a.is_ok() { p.point } else { q.point };
+        // point = p if cond is 1, q if cond is 0, Value::unknown() if cond is unknown.
+        // When cond is unknown we return Value::unknown().
+        let point = if cond.value().error_if_known_and(|&v| !v).is_err() {
+            q.point
+        } else if cond.value().error_if_known_and(|&v| v).is_err() {
+            p.point
+        } else {
+            Value::unknown()
+        };
 
         Ok(AssignedForeignPoint::<F, C, B> { point, is_id, x, y })
     }
 }
 
-impl<F, C, B, S, N> EccInstructions<F, C> for ForeignEccChip<F, C, B, S, N>
+impl<F, C, B, S, N> EccInstructions<F, C> for ForeignWeierstrassEccChip<F, C, B, S, N>
 where
     F: CircuitField,
     C: WeierstrassCurve,
@@ -881,7 +888,7 @@ where
             // We heuristically say a bound is "bad" if it far from NUM_BITS / 2 in the
             // following sense. Note that, ATM, in windowed_msm all sequences
             // are padded with zeros to meet the longest one.
-            if s.1 > nb_bits_per_glv_scalar + WS {
+            if C::has_cubic_endomorphism() && s.1 > nb_bits_per_glv_scalar + WS {
                 let ((s1, s2), (b1, b2)) = self.glv_split(layouter, &s.0, b)?;
                 glv_scalars.push((s1, nb_bits_per_glv_scalar));
                 glv_scalars.push((s2, nb_bits_per_glv_scalar));
@@ -934,7 +941,8 @@ where
             let n = scalar_as_big
                 .to_u64_digits()
                 .iter()
-                .fold(0u128, |acc, limb| acc + *limb as u128);
+                .rev()
+                .fold(0u128, |acc, limb| (acc << 64) | (*limb as u128));
 
             // `mul_by_u128` is incomplete (it cannot take the identity).
             // Change the base in case it is the identity and then change
@@ -984,6 +992,24 @@ where
         })
     }
 
+    fn assign_without_subgroup_check(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        value: Value<C::CryptographicGroup>,
+    ) -> Result<Self::Point, Error> {
+        let p = self.assign_point_unchecked(layouter, value)?;
+        let is_not_id = self.native_gadget.not(layouter, &p.is_id)?;
+        on_curve::assert_is_on_curve::<F, C, B, N>(
+            layouter,
+            &is_not_id,
+            &p.x,
+            &p.y,
+            self.base_field_chip(),
+            &self.config.on_curve_config,
+        )?;
+        Ok(p)
+    }
+
     fn x_coordinate(&self, point: &Self::Point) -> Self::Coordinate {
         point.x.clone()
     }
@@ -997,7 +1023,7 @@ where
     }
 }
 
-impl<F, C, B, S, N> ForeignEccChip<F, C, B, S, N>
+impl<F, C, B, S, N> ForeignWeierstrassEccChip<F, C, B, S, N>
 where
     F: CircuitField,
     C: WeierstrassCurve,
@@ -1007,7 +1033,11 @@ where
     N: NativeInstructions<F>,
 {
     /// Given config creates new chip that implements foreign ECC
-    pub fn new(config: &ForeignEccConfig<C>, native_gadget: &N, scalar_field_chip: &S) -> Self {
+    pub fn new(
+        config: &ForeignWeierstrassEccConfig<C>,
+        native_gadget: &N,
+        scalar_field_chip: &S,
+    ) -> Self {
         let base_field_chip = FieldChip::new(&config.base_field_config, native_gadget);
         Self {
             config: config.clone(),
@@ -1017,6 +1047,12 @@ where
             tag_cnt: Rc::new(RefCell::new(1)),
             msm_randomness: Rc::new(RefCell::new(HashMap::new())),
         }
+    }
+
+    /// Returns [`Error::CompletenessFailure`] if `value` is known and `f`
+    /// returns `true`.
+    fn completeness_error_if<V>(value: &Value<V>, f: impl FnOnce(&V) -> bool) -> Result<(), Error> {
+        value.error_if_known_and(f).map_err(|_| Error::CompletenessFailure)
     }
 
     /// The emulated base field chip of this foreign ECC chip
@@ -1036,7 +1072,7 @@ where
         advice_columns: &[Column<Advice>],
         nb_parallel_range_checks: usize,
         max_bit_len: u32,
-    ) -> ForeignEccConfig<C> {
+    ) -> ForeignWeierstrassEccConfig<C> {
         // Assert that there is room for the cond_col in the existing columns of the
         // field_chip configurations.
         let cond_col_idx = base_field_config.x_cols.len() + base_field_config.v_cols.len() + 1;
@@ -1137,7 +1173,7 @@ where
             identities
         });
 
-        ForeignEccConfig {
+        ForeignWeierstrassEccConfig {
             base_field_config: base_field_config.clone(),
             on_curve_config,
             slope_config,
@@ -1249,7 +1285,8 @@ where
                     C::Base::ONE
                 } else {
                     let p = p.into().coordinates().unwrap();
-                    (C::Base::from(3) * p.0 * p.0) * (C::Base::from(2) * p.1).invert().unwrap()
+                    (C::Base::from(3) * p.0 * p.0 + C::A)
+                        * (C::Base::from(2) * p.1).invert().unwrap()
                 }
             });
             self.base_field_chip().assign(layouter, lambda_value)?
@@ -1837,8 +1874,12 @@ where
             return Ok(cached.clone());
         }
 
-        let r: AssignedForeignPoint<F, C, B> =
-            self.assign(layouter, Value::known(C::CryptographicGroup::random(OsRng)))?;
+        let r: AssignedForeignPoint<F, C, B> = self.assign_without_subgroup_check(
+            layouter,
+            Value::known(C::CryptographicGroup::random(OsRng)),
+        )?;
+
+        Self::completeness_error_if(&r.point, |p| C::CryptographicGroup::is_identity(p).into())?;
 
         // Assert the chosen r is not the identity point.
         self.base_field_chip
@@ -1966,6 +2007,10 @@ where
                 //     k = 1,...,(2^WS-2). Note that (k-1)p-α cannot be the identity as it is
                 //     the result of a previous call to [incomplete_add], thus kp-α != p, so
                 //     the third precondition of [incomplete_add] is met.
+                Self::completeness_error_if(&acc.value().zip(p.value()), |(av, pv)| {
+                    av == pv || *av == -(*pv)
+                })?;
+
                 acc = self.incomplete_add(layouter, &acc, p)?;
 
                 assert!(acc.x.is_well_formed() && acc.y.is_well_formed());
@@ -2000,6 +2045,10 @@ where
                 //     identity, as asserted above (in the construction of the tables).
                 // (3) is asserted here, this assertion will not hinder completeness except
                 //     with negligible probability (over the choice of α).
+                Self::completeness_error_if(&acc.value().zip(addend.value()), |(av, addv)| {
+                    av == addv || *av == -(*addv)
+                })?;
+
                 self.incomplete_assert_different_x(layouter, &acc, &addend)?;
                 acc = self.incomplete_add(layouter, &acc, &addend)?;
             }
@@ -2121,40 +2170,6 @@ where
     }
 }
 
-/// Implement subgroup membership checks for ForeignEccChip emulating BLS12-381
-/// over BLS12-381.
-use midnight_curves::G1Projective;
-
-use crate::field::{
-    decomposition::chip::P2RDecompositionChip, foreign::params::MultiEmulationParams as MEP,
-    NativeChip, NativeGadget,
-};
-
-type F = midnight_curves::Fq;
-type NG = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
-type Bls12381Chip = ForeignEccChip<F, midnight_curves::G1Projective, MEP, NG, NG>;
-
-impl Bls12381Chip {
-    /// Asserts that the given point belongs to the BLS subgroup.
-    pub fn assert_in_bls12_381_subgroup(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        p: &<Bls12381Chip as EccInstructions<F, G1Projective>>::Point,
-    ) -> Result<(), Error> {
-        // We exhibit a COFACTOR "root" (an element that, multiplied by the cofactor
-        // results in p). This is more efficient that powering `p` to the subgroup order
-        // and checking it results in the identity.
-        let cofactor = F::from_raw([0x8c00aaab0000aaab, 0x396c8c005555e156, 0, 0]);
-        let cofactor_root: <Bls12381Chip as EccInstructions<F, G1Projective>>::Point =
-            self.assign(layouter, p.value().map(|p| p * cofactor.invert().unwrap()))?;
-
-        let cofactor_root_times_cofactor =
-            self.mul_by_constant(layouter, cofactor, &cofactor_root)?;
-
-        self.assert_equal(layouter, p, &cofactor_root_times_cofactor)
-    }
-}
-
 #[derive(Clone, Debug)]
 #[cfg(any(test, feature = "testing"))]
 /// Configuration used to implement `FromScratch` for the ForeignEcc chip. This
@@ -2169,11 +2184,11 @@ where
 {
     native_gadget_config: <N as FromScratch<F>>::Config,
     scalar_field_config: <S as FromScratch<F>>::Config,
-    ff_ecc_config: ForeignEccConfig<C>,
+    ff_ecc_config: ForeignWeierstrassEccConfig<C>,
 }
 
 #[cfg(any(test, feature = "testing"))]
-impl<F, C, B, S, N> FromScratch<F> for ForeignEccChip<F, C, B, S, N>
+impl<F, C, B, S, N> FromScratch<F> for ForeignWeierstrassEccChip<F, C, B, S, N>
 where
     F: CircuitField,
     C: WeierstrassCurve,
@@ -2188,7 +2203,7 @@ where
         let native_gadget = <N as FromScratch<F>>::new_from_scratch(&config.native_gadget_config);
         let scalar_field_chip =
             <S as FromScratch<F>>::new_from_scratch(&config.scalar_field_config);
-        ForeignEccChip::new(&config.ff_ecc_config, &native_gadget, &scalar_field_chip)
+        ForeignWeierstrassEccChip::new(&config.ff_ecc_config, &native_gadget, &scalar_field_chip)
     }
 
     fn load_from_scratch(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
@@ -2215,7 +2230,7 @@ where
             nb_parallel_range_checks,
             max_bit_len,
         );
-        let ff_ecc_config = ForeignEccChip::<F, C, B, S, N>::configure(
+        let ff_ecc_config = ForeignWeierstrassEccChip::<F, C, B, S, N>::configure(
             meta,
             &base_field_config,
             &advice_columns,
@@ -2233,7 +2248,7 @@ where
 #[cfg(test)]
 mod tests {
     use group::Group;
-    use midnight_curves::{k256::K256, Fq as BlsScalar, G1Projective as BlsG1};
+    use midnight_curves::{k256::K256, p256::P256, Fq as BlsScalar, G1Projective as BlsG1};
 
     use super::*;
     use crate::{
@@ -2253,7 +2268,7 @@ mod tests {
             $mod::tests::$op::<
                 $native,
                 AssignedForeignPoint<$native, $curve, MultiEmulationParams>,
-                ForeignEccChip<
+                ForeignWeierstrassEccChip<
                     $native,
                     $curve,
                     MultiEmulationParams,
@@ -2268,7 +2283,8 @@ mod tests {
         ($mod:ident, $op:ident) => {
             #[test]
             fn $op() {
-                test_generic!($mod, $op, BlsScalar, K256, EmulatedField<BlsScalar, K256>, "foreign_ecc_secp");
+                test_generic!($mod, $op, BlsScalar, K256, EmulatedField<BlsScalar, K256>, "foreign_ecc_k256");
+                test_generic!($mod, $op, BlsScalar, P256, EmulatedField<BlsScalar, P256>, "foreign_ecc_p256");
 
                 // a test of BLS over itself, where the scalar field is native
                 test_generic!($mod, $op, BlsScalar, BlsG1, Native<BlsScalar>, "foreign_ecc_bls_over_bls");
@@ -2294,7 +2310,7 @@ mod tests {
             ecc::tests::$op::<
                 $native,
                 $curve,
-                ForeignEccChip<
+                ForeignWeierstrassEccChip<
                     $native,
                     $curve,
                     MultiEmulationParams,
@@ -2309,7 +2325,8 @@ mod tests {
         ($op:ident) => {
             #[test]
             fn $op() {
-                ecc_test!($op, BlsScalar, K256, EmulatedField<BlsScalar, K256>, "foreign_ecc_secp");
+                ecc_test!($op, BlsScalar, K256, EmulatedField<BlsScalar, K256>, "foreign_ecc_k256");
+                ecc_test!($op, BlsScalar, P256, EmulatedField<BlsScalar, P256>, "foreign_ecc_p256");
 
                 // a test of BLS over itself, where the scalar field is native
                 ecc_test!($op, BlsScalar, BlsG1, Native<BlsScalar>, "foreign_ecc_bls_over_bls");
@@ -2317,6 +2334,8 @@ mod tests {
         };
     }
 
+    ecc_tests!(test_assign);
+    ecc_tests!(test_assign_without_subgroup_check);
     ecc_tests!(test_add);
     ecc_tests!(test_double);
     ecc_tests!(test_negate);

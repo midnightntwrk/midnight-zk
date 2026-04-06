@@ -17,6 +17,8 @@ verification keys break backwards compatibility.
 * Expose `verifier_gadget` and `bls12_381_scalar` (native gadget) from `ZkStdLib` [#227](https://github.com/midnightntwrk/midnight-zk/pull/227)
 * Add `square`, `mod_square` operations in `BigUintGadget` [#259](https://github.com/midnightntwrk/midnight-zk/pull/259)
 * Add `PartialEq` impl for `AssignedBigUint` [#259](https://github.com/midnightntwrk/midnight-zk/pull/259)
+* Update READMEs and add badges [#261](https://github.com/midnightntwrk/midnight-zk/pull/261)
+* Adds identity related examples to evaluate the impact of substring checks [#229](https://github.com/midnightntwrk/midnight-zk/pull/229)
 
 ### Changed
 * bug patch in the credential property verification example, which was omitting some index computation in circuit [#240](https://github.com/midnightntwrk/midnight-zk/pull/240)
@@ -28,6 +30,9 @@ verification keys break backwards compatibility.
 * `CircuitField` refactor  [#201](https://github.com/midnightntwrk/midnight-zk/pull/201)
 * Replace `secp256k1` with `k256`  [#192](https://github.com/midnightntwrk/midnight-zk/pull/192)
 * Parallelise batch_verifier [#236](https://github.com/midnightntwrk/midnight-zk/pull/236)
+* Minor type renames [#241](https://github.com/midnightntwrk/midnight-zk/pull/241)
+* Adapting examples to the lazy automaton loading [#232](https://github.com/midnightntwrk/midnight-zk/pull/232)
+* Adapting examples to the lazy automaton loading [#232](https://github.com/midnightntwrk/midnight-zk/pull/232) and [#234](https://github.com/midnightntwrk/midnight-zk/pull/234/changes)
 
 ### Removed
 * Move Blake2b and SHA3-256/Keccak256 implementations to zk-stdlib [#178](https://github.com/midnightntwrk/midnight-zk/pull/178)

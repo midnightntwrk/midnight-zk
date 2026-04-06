@@ -1145,14 +1145,21 @@ where
             .into_iter()
             .for_each(|new_bits| bits.extend(new_bits));
 
+        let nb_bits = min(
+            K::NUM_BITS as usize,
+            nb_bits.unwrap_or(K::NUM_BITS as usize),
+        );
+
         // Drop the most significant bits up to the desired length, but make sure
         // they encode 0.
-        let nb_bits = nb_bits.unwrap_or(K::NUM_BITS as usize);
         bits[nb_bits..]
             .iter()
             .try_for_each(|byte| self.native_gadget.assert_equal_to_fixed(layouter, byte, false))?;
-        let bits = bits[0..nb_bits].to_vec();
-        if enforce_canonical && nb_bits >= K::NUM_BITS as usize {
+        bits = bits[0..nb_bits].to_vec();
+
+        // The case nb_bits > K::NUM_BITS cannot happen since by above definition
+        // nb_bits = min(K::NUM_BITS,...), and thus nb_bits <= K::NUM_BITS.
+        if enforce_canonical && nb_bits == K::NUM_BITS as usize {
             let canonical = self.is_canonical(layouter, &bits)?;
             self.assert_equal_to_fixed(layouter, &canonical, true)?;
         }
@@ -1725,6 +1732,7 @@ where
 mod tests {
     use midnight_curves::{
         k256::{Fp as K256Base, Fq as K256Scalar},
+        p256::{Fp as P256Base, Fq as P256Scalar},
         Fq as BlsScalar,
     };
 
@@ -1758,8 +1766,10 @@ mod tests {
         ($mod:ident, $op:ident) => {
             #[test]
             fn $op() {
-                test_generic!($mod, $op, BlsScalar, K256Base, "field_chip_secp_base");
-                test_generic!($mod, $op, BlsScalar, K256Scalar, "field_chip_secp_scalar");
+                test_generic!($mod, $op, BlsScalar, K256Base, "field_chip_k256_base");
+                test_generic!($mod, $op, BlsScalar, K256Scalar, "field_chip_k256_scalar");
+                test_generic!($mod, $op, BlsScalar, P256Base, "field_chip_p256_base");
+                test_generic!($mod, $op, BlsScalar, P256Scalar, "field_chip_p256_scalar");
             }
         };
     }
@@ -1807,8 +1817,10 @@ mod tests {
         ($mod:ident, $op:ident) => {
             #[test]
             fn $op() {
-                test_generic!($mod, $op, BlsScalar, K256Base, "field_chip_secp_base");
-                test_generic!($mod, $op, BlsScalar, K256Scalar, "field_chip_secp_scalar");
+                test_generic!($mod, $op, BlsScalar, K256Base, "field_chip_k256_base");
+                test_generic!($mod, $op, BlsScalar, K256Scalar, "field_chip_k256_scalar");
+                test_generic!($mod, $op, BlsScalar, P256Base, "field_chip_p256_base");
+                test_generic!($mod, $op, BlsScalar, P256Scalar, "field_chip_p256_scalar");
             }
         };
     }
