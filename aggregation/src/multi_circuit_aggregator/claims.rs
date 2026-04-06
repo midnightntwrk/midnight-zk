@@ -6,7 +6,8 @@
 //!
 //! Because different inner circuits have different statement types, statements
 //! are stored as `Box<dyn Statement>` for type-erased access. The
-//! [`AggregableRelation`] trait marks a [`Relation`] as aggregation-compatible
+//! [`AggregableRelation`] trait marks a
+//! [`Relation`](midnight_zk_stdlib::Relation) as aggregation-compatible
 //! and [`TypedStatement`] bridges it to the [`Statement`] trait object.
 
 use std::fmt::Debug;

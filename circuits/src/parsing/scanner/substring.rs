@@ -16,9 +16,8 @@
 //! # Overview
 //!
 //! [`ScannerChip::check_bytes`] asserts that `sub` (a sequence of
-//! [`AssignedByte`](crate::types::AssignedByte)) is a contiguous subsequence
-//! of `sequence` starting at index `idx`
-//! ([`AssignedNative`](crate::field::AssignedNative), 0-based).
+//! [`AssignedByte`]) is a contiguous subsequence of `sequence` starting at
+//! index `idx` ([`AssignedNative`], 0-based).
 //!
 //! The general idea is to index the positions of both `sequence` and `sub`,
 //! and use a dynamic lookup to verify containment. For example, checking that
