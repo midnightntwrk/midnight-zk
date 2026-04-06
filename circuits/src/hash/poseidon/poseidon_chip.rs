@@ -654,11 +654,6 @@ mod tests {
                 poseidon_chip.native_chip.assert_equal_to_fixed(&mut layouter, out, *expected)?;
             }
 
-            // Comment or uncomment the below to get +N rows in the circuit, where N is the
-            // number of rows of a single permutation.
-
-            // let _ = poseidon_chip.permutation(&mut layouter, &inputs)?;
-
             poseidon_chip.load_from_scratch(&mut layouter)
         }
     }

@@ -36,6 +36,9 @@ use serde_json::{json, Map, Value};
 /// present, the cost-model will report `rows` as the span covered by the
 /// marked section rather than the full circuit row count.
 ///
+/// If just the beginning is set, the circuit will count from that point till
+/// the end. If only the end is set, the full circuit will be counted.
+///
 /// ```ignore
 /// fn synthesize(&self, config: ..., mut layouter: ...) {
 ///     let x = chip.assign(&mut layouter, ...)?;
