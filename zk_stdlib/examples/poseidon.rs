@@ -23,6 +23,8 @@ impl Relation for PoseidonExample {
 
     type Witness = [F; 3];
 
+    type Error = Error;
+
     fn format_instance(instance: &Self::Instance) -> Result<Vec<F>, Error> {
         Ok(vec![*instance])
     }
