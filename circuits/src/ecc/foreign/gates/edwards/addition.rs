@@ -232,13 +232,15 @@ impl<C: CircuitCurve> AdditionConfig<C> {
 /// twice per addition: once for the x-coordinate and once for the
 /// y-coordinate of the result, with different assignments to `x, y, z, w`.
 ///
-/// Concretely, the complete addition formula on twisted Edwards curves is:
-/// `(Rx,Ry) = (Px,Py) + (Qx,Qy)`
-/// where
-/// `Rx * (1 + d * Px * Py * Qx * Qy) = Px * Qy + Py * Qx`
-/// `Ry * (1 - d * Px * Py * Qx * Qy) = Py * Qy - a * Px * Qx`
+/// This identity models both coordinates of the complete addition formula on
+/// twisted Edwards curves:  
+/// `(Rx,Ry) = (Px,Py) + (Qx,Qy)`  
+/// `<=>`  
+/// `Rx * (1 + d * Px * Py * Qx * Qy) = Px * Qy + Py * Qx`  
+/// and  
+/// `Ry * (1 - d * Px * Py * Qx * Qy) = Py * Qy - a * Px * Qx`.
 ///
-/// Both equations have the shape `x * (1 + w) = y + z`.
+/// Note that both equations have the shape `x * (1 + w) = y + z`.
 #[allow(clippy::type_complexity)]
 pub fn assert_addition_coordinate<F, C, P, N>(
     layouter: &mut impl Layouter<F>,

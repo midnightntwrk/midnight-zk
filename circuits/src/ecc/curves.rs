@@ -50,6 +50,9 @@ pub trait CircuitCurve: Curve + Default {
 
     /// Constructs a point in the curve from its coordinates.
     /// Returns `None` if the coordinates do not satisfy the curve equation.
+    ///
+    /// NB: Edwards identity coordinates, (0, 1), satisfy the equation, whereas
+    /// Weierstrass identity coordinates, typically (0, 0), do not.
     fn from_xy(x: Self::Base, y: Self::Base) -> Option<Self>;
 
     /// Checks that the point is part of the subgroup.
@@ -282,9 +285,9 @@ impl CircuitCurve for G1Projective {
     }
 
     fn from_xy(x: Self::Base, y: Self::Base) -> Option<Self> {
-        // Check the curve equation: y² = x³ + Ax + B
-        // The underlying `CurveAffine::from_xy` incorrectly accepts the identity
-        // coordinates via a short-circuit check.
+        // Check the (short) Weierstrass curve equation: y² = x³ + Ax + B
+        // The underlying `CurveAffine::from_xy` handles the identity coordinates
+        // without errors via a short-circuit check.
         let a = <Self as WeierstrassCurve>::A;
         let b = <Self as WeierstrassCurve>::B;
         if y.square() != x.square() * x + a * x + b {
@@ -329,9 +332,9 @@ impl CircuitCurve for bn256::G1 {
     }
 
     fn from_xy(x: Self::Base, y: Self::Base) -> Option<Self> {
-        // Check the curve equation: y² = x³ + Ax + B
-        // The underlying `CurveAffine::from_xy` incorrectly accepts the identity
-        // coordinates via a short-circuit check.
+        // Check the (short) Weierstrass curve equation: y² = x³ + Ax + B
+        // The underlying `CurveAffine::from_xy` handles the identity coordinates
+        // without errors via a short-circuit check.
         let a = <Self as WeierstrassCurve>::A;
         let b = <Self as WeierstrassCurve>::B;
         if y.square() != x.square() * x + a * x + b {
@@ -371,11 +374,11 @@ mod tests {
             assert_eq!(C::identity().coordinates().is_some(), has_coordinates);
         }
 
-        // Edwards curves.
+        // Edwards curves
         check::<JubjubExtended>(true);
         check::<Curve25519>(true);
 
-        // Weierstrass curves.
+        // Weierstrass curves
         check::<K256>(false);
         check::<G1Projective>(false);
         #[cfg(feature = "dev-curves")]
@@ -397,11 +400,11 @@ mod tests {
             }
         }
 
-        // Edwards curves.
+        // Edwards curves
         check::<JubjubExtended>(true);
         check::<Curve25519>(true);
 
-        // Weierstrass curves.
+        // Weierstrass curves
         check::<K256>(false);
         check::<G1Projective>(false);
         #[cfg(feature = "dev-curves")]

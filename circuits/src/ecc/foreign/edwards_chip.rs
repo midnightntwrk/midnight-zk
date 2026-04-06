@@ -347,7 +347,7 @@ where
     ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
         // Let h be the cofactor of the subgroup.
         //
-        // Instead of witnessing P, we witness its h-root Q, and return h * Q.
+        // Instead of witnessing P, we witness an h-root Q, and return h * Q.
         // This guarantess that the returned point is in the desired subgroup.
         let cofactor = C::ScalarField::from_u128(C::COFACTOR);
         let q =
