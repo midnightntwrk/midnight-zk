@@ -318,7 +318,10 @@ pub(crate) mod tests {
         instructions::{AssertionInstructions, AssignmentInstructions},
         testing_utils::FromScratch,
         types::InnerValue,
-        utils::{circuit_modeling::circuit_to_json, util::big_to_fe},
+        utils::{
+            circuit_modeling::{circuit_to_json, cost_measure_end, cost_measure_start},
+            util::big_to_fe,
+        },
     };
 
     #[derive(Clone, Debug)]
@@ -391,6 +394,7 @@ pub(crate) mod tests {
             let aux_chip = AuxChip::new_from_scratch(&config.1);
 
             use Endianess::*;
+            cost_measure_start(&mut layouter);
             match self.operation {
                 Operation::ToBits => {
                     let x: Assigned = chip.assign_fixed(&mut layouter, self.x)?;
@@ -455,6 +459,7 @@ pub(crate) mod tests {
                     aux_chip.assert_equal_to_fixed(&mut layouter, &sign, lsb == 1u8)
                 }
             }?;
+            cost_measure_end(&mut layouter);
 
             chip.load_from_scratch(&mut layouter)?;
             aux_chip.load_from_scratch(&mut layouter)

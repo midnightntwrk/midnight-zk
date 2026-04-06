@@ -78,8 +78,10 @@ pub(crate) mod tests {
 
     use super::*;
     use crate::{
-        instructions::AssignmentInstructions, testing_utils::FromScratch, types::InnerConstants,
-        utils::circuit_modeling::circuit_to_json,
+        instructions::AssignmentInstructions,
+        testing_utils::FromScratch,
+        types::InnerConstants,
+        utils::circuit_modeling::{circuit_to_json, cost_measure_end, cost_measure_start},
     };
 
     #[derive(Clone, Debug, Default)]
@@ -123,7 +125,9 @@ pub(crate) mod tests {
             let chip = Chip::new_from_scratch(&config);
 
             let x = chip.assign(&mut layouter, Value::known(self.x))?;
+            cost_measure_start(&mut layouter);
             chip.assert_lower_than_fixed(&mut layouter, &x, &self.bound)?;
+            cost_measure_end(&mut layouter);
 
             chip.load_from_scratch(&mut layouter)
         }

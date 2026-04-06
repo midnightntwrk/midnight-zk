@@ -271,7 +271,7 @@ mod test {
         field::{decomposition::chip::P2RDecompositionChip, NativeChip, NativeGadget},
         hash::poseidon::{constants::PoseidonField, PoseidonChip},
         map::cpu::MapMt,
-        utils::circuit_modeling::circuit_to_json,
+        utils::circuit_modeling::{circuit_to_json, cost_measure_end, cost_measure_start},
     };
 
     #[derive(Clone, Debug)]
@@ -339,6 +339,7 @@ mod test {
 
             native_gadget.constrain_as_public_input(&mut layouter, &map_gadget.succinct_repr())?;
 
+            cost_measure_start(&mut layouter);
             match self.mode {
                 MapTests::Get => {
                     let value = map_gadget.get(&mut layouter, &assigned_key)?;
@@ -355,6 +356,7 @@ mod test {
                         .constrain_as_public_input(&mut layouter, &map_gadget.succinct_repr())?;
                 }
             }
+            cost_measure_end(&mut layouter);
 
             map_gadget.load_from_scratch(&mut layouter)
         }

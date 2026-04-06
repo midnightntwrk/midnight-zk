@@ -90,7 +90,7 @@ pub(crate) mod tests {
         instructions::AssignmentInstructions,
         testing_utils::{FromScratch, Sampleable},
         types::{AssignedNative, InnerValue},
-        utils::circuit_modeling::circuit_to_json,
+        utils::circuit_modeling::{circuit_to_json, cost_measure_end, cost_measure_start},
     };
 
     #[derive(Clone, Debug)]
@@ -142,6 +142,7 @@ pub(crate) mod tests {
             let chip = ZeroChip::new_from_scratch(&config);
 
             let x = chip.assign_fixed(&mut layouter, self.x.clone())?;
+            cost_measure_start(&mut layouter);
             match self.operation {
                 Operation::Assert => chip.assert_zero(&mut layouter, &x),
                 Operation::AssertNon => chip.assert_non_zero(&mut layouter, &x),
@@ -163,6 +164,7 @@ pub(crate) mod tests {
                     )
                 }
             }?;
+            cost_measure_end(&mut layouter);
 
             chip.load_from_scratch(&mut layouter)
         }

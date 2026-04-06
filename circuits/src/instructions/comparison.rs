@@ -175,7 +175,7 @@ pub(crate) mod tests {
         instructions::{AssertionInstructions, AssignmentInstructions, DecompositionInstructions},
         testing_utils::FromScratch,
         types::{InnerConstants, Instantiable},
-        utils::circuit_modeling::circuit_to_json,
+        utils::circuit_modeling::{circuit_to_json, cost_measure_end, cost_measure_start},
     };
 
     #[derive(Clone, Debug)]
@@ -239,6 +239,7 @@ pub(crate) mod tests {
 
             let x = chip.assign(&mut layouter, Value::known(self.x))?;
 
+            cost_measure_start(&mut layouter);
             match self.operation {
                 Op::BoundedOfElement => {
                     chip.bounded_of_element(&mut layouter, self.n, &x)?;
@@ -271,6 +272,7 @@ pub(crate) mod tests {
                     chip.assert_equal(&mut layouter, &b, &expected)
                 }
             }?;
+            cost_measure_end(&mut layouter);
 
             chip.load_from_scratch(&mut layouter)
         }

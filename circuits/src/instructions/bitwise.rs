@@ -198,7 +198,10 @@ pub(crate) mod tests {
     use rand_chacha::ChaCha8Rng;
 
     use super::*;
-    use crate::{testing_utils::FromScratch, utils::circuit_modeling::circuit_to_json};
+    use crate::{
+        testing_utils::FromScratch,
+        utils::circuit_modeling::{circuit_to_json, cost_measure_end, cost_measure_start},
+    };
 
     #[derive(Clone, Copy, Debug)]
     enum Operation {
@@ -253,12 +256,14 @@ pub(crate) mod tests {
             let x = chip.assign(&mut layouter, Value::known(self.inputs[0]))?;
             let y = chip.assign(&mut layouter, Value::known(self.inputs[y_idx]))?;
 
+            cost_measure_start(&mut layouter);
             let res = match self.operation {
                 Operation::Band => chip.band(&mut layouter, &x, &y, self.n),
                 Operation::Bor => chip.bor(&mut layouter, &x, &y, self.n),
                 Operation::Bxor => chip.bxor(&mut layouter, &x, &y, self.n),
                 Operation::Bnot => chip.bnot(&mut layouter, &x, self.n),
             }?;
+            cost_measure_end(&mut layouter);
 
             chip.assert_equal_to_fixed(&mut layouter, &res, self.expected)?;
 

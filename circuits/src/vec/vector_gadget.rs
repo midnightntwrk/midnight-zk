@@ -448,7 +448,7 @@ mod tests {
             AssignedNative, NativeChip, NativeGadget,
         },
         testing_utils::FromScratch,
-        utils::circuit_modeling::circuit_to_json,
+        utils::circuit_modeling::{circuit_to_json, cost_measure_end, cost_measure_start},
     };
 
     struct TestCircuit<F: CircuitField, const M: usize, const A: usize> {
@@ -495,6 +495,7 @@ mod tests {
             let ng = NG::<F>::new_from_scratch(&config);
             let vg = VectorGadget::new(&ng);
 
+            cost_measure_start(&mut layouter);
             match self.opts {
                 TestOpts::Eq {
                     mutate_padding,
@@ -578,6 +579,7 @@ mod tests {
                     vg.assert_equal_to_fixed(&mut layouter, &result, self.input_2.clone())?;
                 }
             }
+            cost_measure_end(&mut layouter);
 
             ng.load_from_scratch(&mut layouter)
         }

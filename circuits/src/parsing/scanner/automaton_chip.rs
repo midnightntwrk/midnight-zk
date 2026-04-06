@@ -437,7 +437,7 @@ mod test {
         instructions::{AssertionInstructions, AssignmentInstructions},
         testing_utils::FromScratch,
         types::AssignedByte,
-        utils::circuit_modeling::circuit_to_json,
+        utils::circuit_modeling::{circuit_to_json, cost_measure_end, cost_measure_start},
         CircuitField,
     };
 
@@ -493,11 +493,13 @@ mod test {
             let output: Vec<AssignedNative<F>> =
                 scanner_chip.native_gadget.assign_many(&mut layouter, &self.output)?;
 
+            cost_measure_start(&mut layouter);
             let parsed_output = scanner_chip.parse(
                 &mut layouter,
                 AutomatonParser::Dynamic(self.regex.clone()),
                 &input,
             )?;
+            cost_measure_end(&mut layouter);
             assert!(
                 parsed_output.len() == output.len(),
                 "test failed: the lengths of the
