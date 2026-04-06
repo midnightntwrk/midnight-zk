@@ -1285,6 +1285,7 @@ where
 
 /// Circuit structure which is used to create any circuit that can be compiled
 /// into keys using the ZK standard library.
+#[derive(Clone, Debug)]
 pub struct MidnightCircuit<'a, R: Relation> {
     relation: &'a R,
     k: u32,
