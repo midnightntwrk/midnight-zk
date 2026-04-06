@@ -123,7 +123,7 @@ pub(crate) mod tests {
     use crate::{
         instructions::{AssertionInstructions, AssignmentInstructions},
         testing_utils::FromScratch,
-        utils::circuit_modeling::circuit_to_json,
+        utils::circuit_modeling::{circuit_to_json, cost_measure_end, cost_measure_start},
     };
 
     #[derive(Clone, Copy, Debug)]
@@ -176,12 +176,14 @@ pub(crate) mod tests {
             let b1 = chip.assign(&mut layouter, Value::known(self.inputs[0]))?;
             let b2 = chip.assign(&mut layouter, Value::known(self.inputs[b2_idx]))?;
 
+            cost_measure_start(&mut layouter);
             let res = match self.operation {
                 Operation::And => chip.and(&mut layouter, &[b1, b2]),
                 Operation::Or => chip.or(&mut layouter, &[b1, b2]),
                 Operation::Xor => chip.xor(&mut layouter, &[b1, b2]),
                 Operation::Not => chip.not(&mut layouter, &b1),
             }?;
+            cost_measure_end(&mut layouter);
 
             chip.assert_equal_to_fixed(&mut layouter, &res, self.expected)?;
 

@@ -112,7 +112,7 @@ pub(crate) mod tests {
         instructions::AssignmentInstructions,
         testing_utils::{FromScratch, Sampleable},
         types::{InnerConstants, InnerValue},
-        utils::circuit_modeling::circuit_to_json,
+        utils::circuit_modeling::{circuit_to_json, cost_measure_end, cost_measure_start},
     };
 
     #[derive(Clone, Debug)]
@@ -167,6 +167,7 @@ pub(crate) mod tests {
                 Assigned::sample_inner(OsRng)
             };
 
+            cost_measure_start(&mut layouter);
             let x = match self.operation {
                 Operation::Constrain => {
                     let x = chip.assign(&mut layouter, Value::known(x_val.clone()))?;
@@ -178,6 +179,7 @@ pub(crate) mod tests {
                     chip.assign_as_public_input(&mut layouter, Value::known(x_val.clone()))?
                 }
             };
+            cost_measure_end(&mut layouter);
 
             if self.must_pass {
                 chip.as_public_input(&mut layouter, &x)?

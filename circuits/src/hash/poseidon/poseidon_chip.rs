@@ -599,7 +599,7 @@ mod tests {
         field::NativeGadget,
         hash::poseidon::{permutation_cpu, round_skips::PreComputedRoundCPU},
         instructions::{sponge::tests::test_sponge, AssertionInstructions},
-        utils::circuit_modeling::circuit_to_json,
+        utils::circuit_modeling::{circuit_to_json, cost_measure_end, cost_measure_start},
     };
 
     #[derive(Clone, Debug, Default)]
@@ -646,16 +646,13 @@ mod tests {
                 .assign_many(&mut layouter, &self.inputs)?
                 .try_into()
                 .unwrap();
+            cost_measure_start(&mut layouter);
             let outputs = poseidon_chip.permutation(&mut layouter, &inputs)?;
+            cost_measure_end(&mut layouter);
 
             for (out, expected) in outputs.iter().zip(self.expected.iter()) {
                 poseidon_chip.native_chip.assert_equal_to_fixed(&mut layouter, out, *expected)?;
             }
-
-            // Comment or uncomment the below to get +N rows in the circuit, where N is the
-            // number of rows of a single permutation.
-
-            // let _ = poseidon_chip.permutation(&mut layouter, &inputs)?;
 
             poseidon_chip.load_from_scratch(&mut layouter)
         }

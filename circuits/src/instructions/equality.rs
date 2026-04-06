@@ -108,7 +108,7 @@ pub(crate) mod tests {
         instructions::AssignmentInstructions,
         testing_utils::{FromScratch, Sampleable},
         types::{AssignedNative, InnerConstants},
-        utils::circuit_modeling::circuit_to_json,
+        utils::circuit_modeling::{circuit_to_json, cost_measure_end, cost_measure_start},
     };
 
     #[derive(Clone, Debug)]
@@ -167,6 +167,7 @@ pub(crate) mod tests {
 
             let x = chip.assign_fixed(&mut layouter, self.x.clone())?;
             let y = chip.assign_fixed(&mut layouter, self.y.clone())?;
+            cost_measure_start(&mut layouter);
             let res = match self.operation {
                 Operation::Equal => chip.is_equal(&mut layouter, &x, &y)?,
                 Operation::NotEqual => chip.is_not_equal(&mut layouter, &x, &y)?,
@@ -177,6 +178,7 @@ pub(crate) mod tests {
                     chip.is_not_equal_to_fixed(&mut layouter, &x, self.y.clone())?
                 }
             };
+            cost_measure_end(&mut layouter);
             let res_as_value: AssignedNative<F> = res.into();
             layouter.assign_region(
                 || "assert contains fixed",
