@@ -29,7 +29,7 @@ use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use crate::{
     plonk::{
         evaluation::evaluate,
-        logup::{self, FlattenedArgument},
+        logup::{self, ChunkedArgument},
         Error, Expression, ProvingKey,
     },
     poly::{
@@ -62,14 +62,15 @@ pub(crate) struct ComputedMultiplicities<F: PrimeField> {
     pub(crate) compressed_table_expression: Polynomial<F, LagrangeCoeff>,
 }
 
-/// Committed polynomials after evaluation at challenge point.
+/// Committed polynomials after evaluation at the challenge point.
 pub(crate) struct Evaluated<F: PrimeField> {
     pub(crate) constructed: Committed<F>,
     pub(crate) evaluated: logup::Evaluated<F>,
 }
 
-impl<F: WithSmallOrderMulGroup<3> + Hash> FlattenedArgument<F> {
-    /// Compresses input and table expressions and computes multiplicities.
+impl<F: WithSmallOrderMulGroup<3> + Hash> ChunkedArgument<F> {
+    /// Compresses input and table expressions and computes the multiplicities,
+    /// committing to them.
     ///
     /// This method evaluates and compresses the input/table expressions using
     /// θ-batching, then counts how many times each table entry appears in the

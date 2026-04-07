@@ -31,39 +31,40 @@
 //! characterizes table membership as follows:
 //!
 //! Completeness:
-//! If fⱼ ∈ T for every j, then there exists `{mᵢ}ᵢ` such that Σⱼ 1/(fⱼ + β) =
-//! Σᵢ mᵢ/(tᵢ + β), for all β.
+//! If fⱼ ∈ T for every j, then there exists `{mᵢ}ᵢ` such that
+//! Σⱼ 1/(fⱼ + β) = Σᵢ mᵢ/(tᵢ + β), for all β.
 //! Here, `mᵢ` is the multiplicity of `tᵢ` (how many times it appears among the
 //! `fⱼ`s).
 //!
 //! Soundness:
-//! If fⱼ∉T for some j, then for every `{mᵢ}ᵢ` it holds Σⱼ 1/(fⱼ + β) ≠ Σᵢ
-//! mᵢ/(tᵢ + β) w.o.p over the choice of β.
+//! If fⱼ∉T for some j, then for every `{mᵢ}ᵢ` it holds
+//! Σⱼ 1/(fⱼ + β) ≠ Σᵢ mᵢ/(tᵢ + β) w.o.p over a uniformly random choice of β.
 //!
 //! This result follows from partial fraction decomposition.
 //!
 //! Note: When duplicate values exist in the table, multiplicities are
 //! normalized: if value `v` is looked up `k` times and appears `t` times in the
-//! table, multiplicities are normalized with `k/t`.
+//! table, multiplicities are normalized as `k/t`.
+//! (The table may contain duplicates because it is padded to the domain size.)
 //!
 //! ## Selector Extension
 //!
 //! Each lookup argument carries an optional **selector** `s(X)` that restricts
-//! which rows participate. When `s(X) = 0` at a row, that row's input values
-//! are ignored; when `s(X) = 1`, the row is active and its inputs must be in
-//! the table.
+//! which rows participate in the lookup check. When `s(X) = 0` at a row, that
+//! row's input values are ignored; when `s(X) = 1`, the row is active and its
+//! inputs must be in the table.
 //!
 //! The selector modifies the balance equation to:
 //! ```text
 //! Σᵢ s(Xᵢ)·h(Xᵢ) = Σᵢ m(Xᵢ)/(t(Xᵢ) + β)
 //! ```
 //!
-//! Critically, **the selector gates only the input side** (`h`). The
-//! multiplicities `m` are always summed over all table rows, because they count
-//! how many *selected* input rows reference each table entry — so
-//! `Σᵢ mᵢ/(tᵢ + β)` telescopes to `Σᵢ s(Xᵢ)·h(Xᵢ)` unconditionally.
-//! Gating `m` by the selector would silently drop table-row contributions and
-//! break the balance.
+//! Critically, **the selector is only applied to the input side** (`h`).
+//! Multiplicities `m` are always summed over all table rows, because they count
+//! how many *selected* input rows reference each table entry, so
+//! `Σᵢ mᵢ/(tᵢ + β)` evaluates to `Σᵢ sᵢ·hᵢ` unconditionally.
+//! Applying the selector to `m` too would silently drop table-row contributions
+//! and break the balance.
 //!
 //! ## Running Sum Formulation
 //!
@@ -75,7 +76,7 @@
 //! - **Multiplicities** `m(X)`: Counts how many times each table entry is used
 //!   by selected input rows
 //! - **Accumulator** `Z(X)`: Running sum that accumulates the log-derivative
-//!   differences
+//!   differences, for every i: Zᵢ = Σ_{j<i} sⱼ·hⱼ - mⱼ/(tⱼ + β)
 //!
 //! The accumulator satisfies:
 //! ```text
@@ -83,12 +84,13 @@
 //! ```
 //!
 //! With boundary condition `Z(1) = 0`. If the lookup is valid, the accumulator
-//! returns to zero after a full cycle, which we verify by checking `Z(ωⁿ) = 0`.
+//! returns to zero after a full cycle, which we verify by checking `Z(ωⁿ) = 0`,
+//! where `n` is the index of the last relevant row.
 //!
 //! The running sum is enforced in the constraint system via the following
 //! identity:
 //! ```text
-//! Z(ω·X)·(t(X) + β) = Z(X)·(t(X) + β) + s(X)·h(X)·(t(X) + β) - m(X)
+//! (Z(ω·X) - Z(X) - s(X)·h(X))·(t(X) + β) + m(X) = 0
 //! ```
 //!
 //! ## Lookup Width vs Parallel Lookups
@@ -98,12 +100,12 @@
 //! - **Lookup width**: The width of the lookup table we are looking up. For
 //!   example, checking `(a, b, c) ∈ (t_1, t_2, t_3)` has width 3. These columns
 //!   are compressed via θ-batching: `compressed = a + θ·b + θ²·c`, reducing a
-//!   width-w lookup to a single field element.
+//!   width-w lookup to a width-1 lookup.
 //!
 //! - **Parallel lookups**: The number of independent lookups per row. For
 //!   instance, if each row performs 8 range checks against the same table,
 //!   that's 8 parallel lookups. Each contributes a term `1/(fⱼ(X) + β)` to the
-//!   helper polynomial.
+//!   helper polynomial (per row).
 //!
 //! The helper polynomial aggregates all parallel lookups at each row:
 //! ```text
@@ -115,7 +117,7 @@
 //! h(X) · ∏ⱼ(fⱼ(X) + β) = Σⱼ ∏_{k≠j}(fₖ(X) + β)
 //! ```
 //!
-//! This has degree `1 + lookup_degree × num_parallel_lookups`, which limits how
+//! This has degree `1 + input_degree × num_parallel_lookups`, which limits how
 //! many parallel lookups can be batched into a single argument before exceeding
 //! the constraint system's degree bound.
 //!
@@ -125,7 +127,7 @@
 //! expressions are partitioned into chunks, each with its own helper polynomial
 //! `hᵢ(X)`. However, the selector `s(X)`, table `t(X)`, multiplicity `m(X)`,
 //! and accumulator `Z(X)` are **shared across all chunks**: they are committed
-//! only once per [`BatchedArgument`]. The accumulator constraint becomes:
+//! to only once per [`BatchedArgument`]. The accumulator constraint becomes:
 //! ```text
 //! (Z(ωX) - Z(X) - s(X)·Σᵢhᵢ(X))·(t(X) + β) + m(X) = 0.
 //! ```
@@ -143,29 +145,28 @@ pub(crate) mod verifier;
 /// A `BatchedArgument` collects all lookups that query the same table. For
 /// multi-column lookups (e.g., checking `(a, b) ∈ (t_1, t_2)`), columns are
 /// compressed using a random challenge `θ` into a single value. An optional
-/// selector controls which rows participate in the lookup; rows where the
-/// selector evaluates to zero are excluded from the accumulator.
+/// selector controls which rows participate in the lookup; contributions
+/// from rows where the selector is disabled are not added to the accumulator.
 ///
 /// # Layout
 ///
 /// After construction, `input_expressions` is organized as
 /// `[parallel_lookups][lookup_width]`:
 /// - The outer dimension indexes each parallel lookup
-/// - The inner dimension indexes columns within a single lookup (for
-///   θ-compression)
+/// - The inner dimension encodes the lookup width (subject to θ-compression)
 ///
 /// # Degree bound and chunking
 ///
-/// The helper polynomial constraint has degree `1 + lookup_degree ×
-/// num_parallel_lookups`. When this exceeds the constraint system's degree
-/// bound, the parallel lookups must be split across multiple helper
-/// polynomials. Call [`Self::chunk_by_degree`] to produce a
-/// [`FlattenedArgument`] with pre-computed degree-bounded chunks; each chunk
-/// gets its own committed helper polynomial `hᵢ(X)`.
+/// The helper polynomial constraint has degree
+/// `1 + input_degree × num_parallel_lookups`. When this exceeds the constraint
+/// system's degree bound, the parallel lookups are split across multiple helper
+/// polynomials. Call [`Self::chunk_by_degree`] to produce a [`ChunkedArgument`]
+/// with pre-computed degree-bounded chunks; each chunk gets its own committed
+/// helper polynomial `hᵢ(X)`.
 ///
 /// The selector `s(X)`, table `t(X)`, multiplicity `m(X)`, and accumulator
-/// `Z(X)` are **shared across all chunks** — only the helper polynomial is
-/// duplicated.
+/// `Z(X)` are **shared across all chunks**; only the helper polynomial is
+/// chunk-specific.
 #[derive(Clone)]
 pub struct BatchedArgument<F: Field> {
     pub(crate) name: String,
@@ -186,13 +187,14 @@ impl<F: Field> Debug for BatchedArgument<F> {
 }
 
 /// A [`BatchedArgument`] whose input expressions have been split into
-/// degree-bounded chunks, each requiring its own committed helper polynomial.
+/// chunks (for respecting the CS degree bound), each requiring its own
+/// committed helper polynomial.
 ///
 /// Produced by [`BatchedArgument::chunk_by_degree`]. The selector `s(X)`, table
 /// `t(X)`, multiplicity `m(X)`, and accumulator `Z(X)` are shared across all
 /// chunks.
 #[derive(Clone)]
-pub struct FlattenedArgument<F: Field> {
+pub struct ChunkedArgument<F: Field> {
     pub(crate) name: String,
     pub(crate) selector: Expression<F>,
     /// Pre-split chunks: `[chunk][parallel_lookup][lookup_width]`
@@ -200,9 +202,9 @@ pub struct FlattenedArgument<F: Field> {
     pub(crate) table_expressions: Vec<Expression<F>>,
 }
 
-impl<F: Field> Debug for FlattenedArgument<F> {
+impl<F: Field> Debug for ChunkedArgument<F> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("FlattenedArgument")
+        f.debug_struct("ChunkedArgument")
             .field("name", &self.name)
             .field("selector", &self.selector)
             .field("input_expression_chunks", &self.input_expression_chunks)
@@ -218,7 +220,7 @@ impl<F: Field> BatchedArgument<F> {
     /// The helper constraint `h(X) · ∏ⱼ(fⱼ(X) + β) = Σⱼ ∏_{k≠j}(fₖ(X) + β)` has
     /// degree `1 + lookup_degree × num_parallel_lookups`. This method returns
     /// the maximum number of parallel lookups before exceeding `cs_degree`.
-    pub(crate) fn nb_parallel_lookups(&self, cs_degree: usize) -> usize {
+    pub(crate) fn nb_parallel_lookups_per_chunk(&self, cs_degree: usize) -> usize {
         let max_degree = (cs_degree - 1).next_power_of_two() + 1;
 
         // Find the maximum degree across all input expressions
@@ -245,7 +247,8 @@ impl<F: Field> BatchedArgument<F> {
             .max()
             .unwrap_or(1);
 
-        let helper_constraint_degree = self.nb_parallel_lookups(cs_degree) * lookup_degree + 1;
+        let helper_constraint_degree =
+            self.nb_parallel_lookups_per_chunk(cs_degree) * lookup_degree + 1;
 
         // The accumulator constraint includes the term:
         //   l_active_row (degree 1) * selector * helper (degree 1) * table_value
@@ -311,21 +314,21 @@ impl<F: Field> BatchedArgument<F> {
     ///
     /// Each chunk gets its own committed helper polynomial.
     pub fn num_chunks(&self, cs_degree: usize) -> usize {
-        let nb = self.nb_parallel_lookups(cs_degree);
+        let nb = self.nb_parallel_lookups_per_chunk(cs_degree);
         self.input_expressions.chunks(nb).count()
     }
 
     /// Splits `input_expressions` into degree-bounded chunks and returns a
-    /// [`FlattenedArgument`] with those chunks pre-computed.
+    /// [`ChunkedArgument`] with those chunks pre-computed.
     ///
-    /// Each chunk contains at most [`Self::nb_parallel_lookups`] entries and
-    /// corresponds to one committed helper polynomial `hᵢ(X)`.
-    pub fn chunk_by_degree(&self, cs_degree: usize) -> FlattenedArgument<F> {
-        let nb = self.nb_parallel_lookups(cs_degree);
+    /// Each chunk contains at most [`Self::nb_parallel_lookups_per_chunk`]
+    /// entries and corresponds to one committed helper polynomial `hᵢ(X)`.
+    pub fn chunk_by_degree(&self, cs_degree: usize) -> ChunkedArgument<F> {
+        let nb = self.nb_parallel_lookups_per_chunk(cs_degree);
         let input_expression_chunks =
             self.input_expressions.chunks(nb).map(|chunk| chunk.to_vec()).collect();
 
-        FlattenedArgument {
+        ChunkedArgument {
             name: self.name.clone(),
             selector: self.selector.clone(),
             input_expression_chunks,
@@ -344,7 +347,7 @@ impl<F: Field> BatchedArgument<F> {
     }
 }
 
-impl<F: Field> FlattenedArgument<F> {
+impl<F: Field> ChunkedArgument<F> {
     /// Returns the number of chunks (one helper polynomial per chunk).
     pub fn num_chunks(&self) -> usize {
         self.input_expression_chunks.len()
@@ -388,18 +391,18 @@ impl<F: PrimeField> Evaluated<F> {
     /// substituted into the LogUp identities.
     ///
     /// Checks two identities (where `fⱼ` and `t` denote the compressed values):
-    /// - **Helper constraint**: `h(x) · ∏ⱼ(fⱼ(x) + β) = Σⱼ ∏_{k≠j}(fₖ(x) + β)`
-    /// - **Accumulator constraint**: `(Z(ωx) - Z(x))·(t(x) + β) =
-    ///   selector·h(x)·(t(x) + β) - m(x)` where the selector gates only the
-    ///   input side (`h`); multiplicities are always subtracted so the
-    ///   table-side balance is maintained.
+    /// **Helper constraint**: `h(x) · ∏ⱼ(fⱼ(x) + β) = Σⱼ ∏_{k≠j}(fₖ(x) + β)`
+    /// **Accumulator constraint**:
+    ///   `(Z(ωx) - Z(x) - selector·h(x))·(t(x) + β) + m(x) = 0` where the
+    ///   selector gates only the input side (`h`); multiplicities are
+    ///   always subtracted so the table-side balance is maintained.
     #[allow(clippy::too_many_arguments)]
     pub(in crate::plonk) fn expressions<'a>(
         &'a self,
         l_0: F,
         l_last: F,
         l_blind: F,
-        argument: &'a FlattenedArgument<F>,
+        argument: &'a ChunkedArgument<F>,
         theta: F,
         beta: F,
         advice_evals: &[F],
