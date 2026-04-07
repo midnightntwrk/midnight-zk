@@ -61,6 +61,18 @@ use crate::{
     CircuitField,
 };
 
+/// Number of columns required by the custom gates of this chip.
+pub fn nb_foreign_edwards_chip_columns<F, C, B>() -> usize
+where
+    F: CircuitField,
+    C: EdwardsCurve,
+    B: FieldEmulationParams<F, C::Base>,
+{
+    // Here we only account for the columns that this chip requires for its own
+    // custom gates
+    B::NB_LIMBS as usize + std::cmp::max(B::NB_LIMBS as usize, 1 + B::moduli().len())
+}
+
 /// Foreign Edwards ECC configuration.
 #[derive(Clone, Debug)]
 pub struct ForeignEdwardsEccConfig<C>
