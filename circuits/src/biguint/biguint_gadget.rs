@@ -29,7 +29,7 @@ use num_traits::One;
 #[cfg(any(test, feature = "testing"))]
 use {
     crate::testing_utils::FromScratch,
-    midnight_proofs::plonk::{Column, ConstraintSystem, Instance},
+    midnight_proofs::plonk::{Advice, Column, ConstraintSystem, Fixed, Instance},
 };
 
 use super::{bound_of_addition, AssignedBigUint};
@@ -938,9 +938,16 @@ where
 
     fn configure_from_scratch(
         meta: &mut ConstraintSystem<F>,
+        advice_columns: &mut Vec<Column<Advice>>,
+        fixed_columns: &mut Vec<Column<Fixed>>,
         instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
-        <N as FromScratch<F>>::configure_from_scratch(meta, instance_columns)
+        <N as FromScratch<F>>::configure_from_scratch(
+            meta,
+            advice_columns,
+            fixed_columns,
+            instance_columns,
+        )
     }
 
     fn load_from_scratch(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
@@ -1039,6 +1046,8 @@ mod tests {
             let instance_column = meta.instance_column();
             <N as FromScratch<F>>::configure_from_scratch(
                 meta,
+                &mut vec![],
+                &mut vec![],
                 &[committed_instance_column, instance_column],
             )
         }

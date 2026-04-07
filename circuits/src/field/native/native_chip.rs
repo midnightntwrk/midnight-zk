@@ -1627,11 +1627,20 @@ impl<F: CircuitField> FromScratch<F> for NativeChip<F> {
 
     fn configure_from_scratch(
         meta: &mut ConstraintSystem<F>,
+        advice_columns: &mut Vec<Column<Advice>>,
+        fixed_columns: &mut Vec<Column<Fixed>>,
         instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
-        let advice_columns: [_; NB_ARITH_COLS] = core::array::from_fn(|_| meta.advice_column());
-        let fixed_columns: [_; NB_ARITH_FIXED_COLS] = core::array::from_fn(|_| meta.fixed_column());
-        NativeChip::configure(meta, &(advice_columns, fixed_columns, *instance_columns))
+        while advice_columns.len() < NB_ARITH_COLS {
+            advice_columns.push(meta.advice_column());
+        }
+        while fixed_columns.len() < NB_ARITH_FIXED_COLS {
+            fixed_columns.push(meta.fixed_column());
+        }
+        let advice_cols: [_; NB_ARITH_COLS] = advice_columns[..NB_ARITH_COLS].try_into().unwrap();
+        let fixed_cols: [_; NB_ARITH_FIXED_COLS] =
+            fixed_columns[..NB_ARITH_FIXED_COLS].try_into().unwrap();
+        NativeChip::configure(meta, &(advice_cols, fixed_cols, *instance_columns))
     }
 
     fn load_from_scratch(

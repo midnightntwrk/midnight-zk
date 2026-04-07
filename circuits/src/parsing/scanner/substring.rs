@@ -465,7 +465,12 @@ mod test {
 
         fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
             let instance_columns = [meta.instance_column(), meta.instance_column()];
-            ScannerChip::<F>::configure_from_scratch(meta, &instance_columns)
+            ScannerChip::<F>::configure_from_scratch(
+                meta,
+                &mut vec![],
+                &mut vec![],
+                &instance_columns,
+            )
         }
 
         fn synthesize(

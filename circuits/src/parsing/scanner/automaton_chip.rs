@@ -478,7 +478,12 @@ mod test {
         fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
             let committed_instance_column = meta.instance_column();
             let instance_column = meta.instance_column();
-            ScannerChip::configure_from_scratch(meta, &[committed_instance_column, instance_column])
+            ScannerChip::configure_from_scratch(
+                meta,
+                &mut vec![],
+                &mut vec![],
+                &[committed_instance_column, instance_column],
+            )
         }
 
         fn synthesize(
@@ -775,7 +780,12 @@ mod test {
         fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
             let committed_instance_column = meta.instance_column();
             let instance_column = meta.instance_column();
-            ScannerChip::configure_from_scratch(meta, &[committed_instance_column, instance_column])
+            ScannerChip::configure_from_scratch(
+                meta,
+                &mut vec![],
+                &mut vec![],
+                &[committed_instance_column, instance_column],
+            )
         }
 
         fn synthesize(

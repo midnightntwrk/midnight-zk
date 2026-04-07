@@ -404,7 +404,7 @@ where
 }
 
 #[cfg(any(test, feature = "testing"))]
-use midnight_proofs::plonk::{Column, ConstraintSystem, Instance};
+use midnight_proofs::plonk::{Advice, Column, ConstraintSystem, Fixed, Instance};
 
 #[cfg(any(test, feature = "testing"))]
 use crate::testing_utils::FromScratch;
@@ -421,9 +421,11 @@ impl<F: CircuitField> FromScratch<F> for VectorGadget<F> {
 
     fn configure_from_scratch(
         meta: &mut ConstraintSystem<F>,
+        advice_columns: &mut Vec<Column<Advice>>,
+        fixed_columns: &mut Vec<Column<Fixed>>,
         instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
-        <NG<F>>::configure_from_scratch(meta, instance_columns)
+        <NG<F>>::configure_from_scratch(meta, advice_columns, fixed_columns, instance_columns)
     }
 
     fn load_from_scratch(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
@@ -484,7 +486,12 @@ mod tests {
         fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
             let comm_ic = meta.instance_column();
             let instance_column = meta.instance_column();
-            NativeGadget::configure_from_scratch(meta, &[comm_ic, instance_column])
+            NativeGadget::configure_from_scratch(
+                meta,
+                &mut vec![],
+                &mut vec![],
+                &[comm_ic, instance_column],
+            )
         }
 
         fn synthesize(
