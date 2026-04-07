@@ -134,7 +134,7 @@ pub(crate) mod tests {
             ZeroChip::configure_from_scratch(
                 meta,
                 &mut vec![],
-                &mut vec![constants_column],
+                &mut vec![],
                 &[committed_instance_column, instance_column],
             )
         }
