@@ -85,6 +85,7 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ChunkedArgument<F> {
         fixed_values: &'a [Polynomial<F, LagrangeCoeff>],
         instance_values: &'a [Polynomial<F, LagrangeCoeff>],
         challenges: &'a [F],
+        mut rng: impl RngCore + CryptoRng,
         transcript: &mut T,
     ) -> Result<ComputedMultiplicities<F>, Error>
     where
@@ -140,6 +141,7 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ChunkedArgument<F> {
             &all_compressed_inputs,
             &compressed_table_expression,
             usable_rows,
+            &mut rng,
         );
 
         let multiplicities = pk.vk.domain.lagrange_from_vec(multiplicities);
@@ -385,6 +387,7 @@ pub(crate) fn compute_multiplicities<F>(
     values: &[&Polynomial<F, LagrangeCoeff>],
     table: &Polynomial<F, LagrangeCoeff>,
     usable_rows: usize,
+    mut rng: impl RngCore + CryptoRng,
 ) -> Vec<F>
 where
     F: PrimeField + std::hash::Hash + Eq,
@@ -422,16 +425,14 @@ where
             if i < usable_rows {
                 F::from(*table_counts.get(value).unwrap_or(&1) as u64)
             } else {
-                F::ONE // Blinding rows - will be multiplied by zero input count
-                       // anyway
+                F::ONE // Random blinding factors will be applied later
             }
         })
         .collect();
     table_count_inverses.iter_mut().batch_invert();
 
     // Compute normalized multiplicities: input_count / table_count
-    // For blinding rows, multiplicity is 0 (input count is 0 for random blinding
-    // values)
+    // Blinding rows get random values to ensure ZK.
     table
         .iter()
         .enumerate()
@@ -441,7 +442,7 @@ where
                 let input_count = *input_counts.get(value).unwrap_or(&0);
                 F::from(input_count as u64) * table_count_inv
             } else {
-                F::ZERO
+                F::random(&mut rng)
             }
         })
         .collect()
@@ -453,6 +454,7 @@ mod tests {
 
     use ff::Field;
     use midnight_curves::Fq;
+    use rand_core::OsRng;
 
     use super::*;
 
@@ -500,6 +502,7 @@ mod tests {
             &[&input1, &input2],
             &table,
             4,
+            OsRng,
         );
 
         assert_eq!(result.len(), 4);
@@ -529,7 +532,13 @@ mod tests {
         ]);
 
         // Should panic because input value 5 is not found in the table
-        compute_multiplicities(&poly_from_vec(vec![Fq::ONE; 4]), &[&input], &table, 4);
+        compute_multiplicities(
+            &poly_from_vec(vec![Fq::ONE; 4]),
+            &[&input],
+            &table,
+            4,
+            OsRng,
+        );
     }
 
     #[test]
@@ -550,7 +559,13 @@ mod tests {
             Fq::from(3u64),
         ]);
 
-        let result = compute_multiplicities(&poly_from_vec(vec![Fq::ONE; 4]), &[&input], &table, 4);
+        let result = compute_multiplicities(
+            &poly_from_vec(vec![Fq::ONE; 4]),
+            &[&input],
+            &table,
+            4,
+            OsRng,
+        );
 
         assert_eq!(result.len(), 4);
         assert_eq!(result[0], Fq::from(1u64)); // table[0]=1 -> 1/1 = 1
@@ -579,12 +594,16 @@ mod tests {
             Fq::from(888u64), // "random" blinding value
         ]);
 
-        let result = compute_multiplicities(&poly_from_vec(vec![Fq::ONE; 4]), &[&input], &table, 2);
+        let result = compute_multiplicities(
+            &poly_from_vec(vec![Fq::ONE; 4]),
+            &[&input],
+            &table,
+            2,
+            OsRng,
+        );
 
         assert_eq!(result.len(), 4);
         assert_eq!(result[0], Fq::from(1u64)); // table[0]=1 -> 1/1 = 1
         assert_eq!(result[1], Fq::from(1u64)); // table[1]=2 -> 1/1 = 1
-        assert_eq!(result[2], Fq::ZERO); // blinding row -> 0
-        assert_eq!(result[3], Fq::ZERO); // blinding row -> 0
     }
 }

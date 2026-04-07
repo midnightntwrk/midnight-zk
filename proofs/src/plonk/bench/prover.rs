@@ -149,6 +149,7 @@ where
                                         &pk.fixed_values,
                                         &instance.instance_values,
                                         &challenges,
+                                        &mut rng,
                                         &mut t,
                                     )
                                 })
@@ -176,6 +177,7 @@ where
                             &pk.fixed_values,
                             &instance.instance_values,
                             &challenges,
+                            &mut rng,
                             transcript,
                         )
                     })
