@@ -11,6 +11,9 @@ verification keys break backwards compatibility.
 * PATCH: Incremented when you make backward-compatible bug fixes
 
 ## [Unreleased]
+### Changed
+* Adapt `FromScratch` impls to new `configure_from_scratch` signature with shared column pools [#306](https://github.com/midnightntwrk/midnight-zk/pull/306)
+
 ### Added
 * Added an example verifying an ethereum signature [#177](https://github.com/midnightntwrk/midnight-zk/pull/177)
 * `setup_vk_with_k` for generating a verifying key with an explicit circuit size parameter [#227](https://github.com/midnightntwrk/midnight-zk/pull/227)

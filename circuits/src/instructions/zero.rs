@@ -131,7 +131,12 @@ pub(crate) mod tests {
             let instance_column = meta.instance_column();
             let constants_column = meta.fixed_column();
             meta.enable_constant(constants_column);
-            ZeroChip::configure_from_scratch(meta, &[committed_instance_column, instance_column])
+            ZeroChip::configure_from_scratch(
+                meta,
+                &mut vec![],
+                &mut vec![],
+                &[committed_instance_column, instance_column],
+            )
         }
 
         fn synthesize(

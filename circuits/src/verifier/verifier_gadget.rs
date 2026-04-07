@@ -822,6 +822,8 @@ pub(crate) mod tests {
             let instance_column = meta.instance_column();
             PoseidonChip::configure_from_scratch(
                 meta,
+                &mut vec![],
+                &mut vec![],
                 &[committed_instance_column, instance_column],
             )
         }

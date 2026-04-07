@@ -154,6 +154,8 @@ pub(crate) mod tests {
             meta.enable_constant(constants_column);
             EqualityChip::configure_from_scratch(
                 meta,
+                &mut vec![],
+                &mut vec![],
                 &[committed_instance_column, instance_column],
             )
         }

@@ -509,11 +509,20 @@ where
 
     fn configure_from_scratch(
         meta: &mut ConstraintSystem<F>,
+        advice_columns: &mut Vec<Column<Advice>>,
+        fixed_columns: &mut Vec<Column<Fixed>>,
         instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
-        let nb_advice_cols = std::cmp::max(NB_SCANNER_ADVICE_COLS, NB_ARITH_COLS);
-        let advice_cols = (0..nb_advice_cols).map(|_| meta.advice_column()).collect::<Vec<_>>();
-        let fixed_cols = (0..NB_ARITH_COLS + 4).map(|_| meta.fixed_column()).collect::<Vec<_>>();
+        let nb_advice_needed = std::cmp::max(NB_SCANNER_ADVICE_COLS, NB_ARITH_COLS);
+        let nb_fixed_needed = NB_ARITH_COLS + 4;
+        while advice_columns.len() < nb_advice_needed {
+            advice_columns.push(meta.advice_column());
+        }
+        while fixed_columns.len() < nb_fixed_needed {
+            fixed_columns.push(meta.fixed_column());
+        }
+        let advice_cols = &advice_columns[..nb_advice_needed];
+        let fixed_cols = &fixed_columns[..nb_fixed_needed];
 
         let native_config = NativeChip::configure(
             meta,

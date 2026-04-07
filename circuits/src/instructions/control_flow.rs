@@ -146,6 +146,8 @@ pub(crate) mod tests {
             (
                 ControlFlowChip::configure_from_scratch(
                     meta,
+                    &mut vec![],
+                    &mut vec![fixed_column],
                     &[committed_instance_column, instance_column],
                 ),
                 fixed_column,

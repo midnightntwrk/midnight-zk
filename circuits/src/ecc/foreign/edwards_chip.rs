@@ -29,7 +29,7 @@ use ff::{Field, PrimeField};
 use group::Group;
 use midnight_curves::ff_ext::Legendre;
 #[cfg(any(test, feature = "testing"))]
-use midnight_proofs::plonk::{Column, Instance};
+use midnight_proofs::plonk::{Advice, Column, Fixed, Instance};
 use midnight_proofs::{
     circuit::{Chip, Layouter, Value},
     plonk::{ConstraintSystem, Error},
@@ -901,21 +901,33 @@ where
 
     fn configure_from_scratch(
         meta: &mut ConstraintSystem<F>,
+        advice_columns: &mut Vec<Column<Advice>>,
+        fixed_columns: &mut Vec<Column<Fixed>>,
         instance_columns: &[Column<Instance>; 2],
     ) -> ForeignEdwardsEccTestConfig<F, C, S, N> {
         use crate::field::foreign::nb_field_chip_columns;
 
-        let native_gadget_config =
-            <N as FromScratch<F>>::configure_from_scratch(meta, instance_columns);
-        let scalar_field_config =
-            <S as FromScratch<F>>::configure_from_scratch(meta, instance_columns);
+        let native_gadget_config = <N as FromScratch<F>>::configure_from_scratch(
+            meta,
+            advice_columns,
+            fixed_columns,
+            instance_columns,
+        );
+        let scalar_field_config = <S as FromScratch<F>>::configure_from_scratch(
+            meta,
+            advice_columns,
+            fixed_columns,
+            instance_columns,
+        );
         let nb_advice_cols = nb_field_chip_columns::<F, C::Base, B>();
-        let advice_columns = (0..nb_advice_cols).map(|_| meta.advice_column()).collect::<Vec<_>>();
+        while advice_columns.len() < nb_advice_cols {
+            advice_columns.push(meta.advice_column());
+        }
         let nb_parallel_range_checks = 4;
         let max_bit_len = 8;
         let base_field_config = FieldChip::<F, C::Base, B, N>::configure(
             meta,
-            &advice_columns,
+            &advice_columns[..nb_advice_cols],
             nb_parallel_range_checks,
             max_bit_len,
         );
@@ -1166,7 +1178,12 @@ mod tests {
         fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
             let committed = meta.instance_column();
             let instance = meta.instance_column();
-            EdwardsChip::<C>::configure_from_scratch(meta, &[committed, instance])
+            EdwardsChip::<C>::configure_from_scratch(
+                meta,
+                &mut vec![],
+                &mut vec![],
+                &[committed, instance],
+            )
         }
 
         fn synthesize(
@@ -1222,7 +1239,12 @@ mod tests {
         fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
             let committed = meta.instance_column();
             let instance = meta.instance_column();
-            EdwardsChip::<C>::configure_from_scratch(meta, &[committed, instance])
+            EdwardsChip::<C>::configure_from_scratch(
+                meta,
+                &mut vec![],
+                &mut vec![],
+                &[committed, instance],
+            )
         }
 
         fn synthesize(

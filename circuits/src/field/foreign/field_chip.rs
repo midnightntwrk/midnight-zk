@@ -32,7 +32,7 @@ use num_traits::{One, Signed, Zero};
 #[cfg(any(test, feature = "testing"))]
 use {
     crate::testing_utils::{FromScratch, Sampleable},
-    midnight_proofs::plonk::Instance,
+    midnight_proofs::plonk::{Fixed, Instance},
     rand::RngCore,
 };
 
@@ -1703,20 +1703,27 @@ where
 
     fn configure_from_scratch(
         meta: &mut ConstraintSystem<F>,
+        advice_columns: &mut Vec<Column<Advice>>,
+        fixed_columns: &mut Vec<Column<Fixed>>,
         instance_columns: &[Column<Instance>; 2],
     ) -> FieldChipConfigForTests<F, N> {
-        let native_gadget_config =
-            <N as FromScratch<F>>::configure_from_scratch(meta, instance_columns);
+        let native_gadget_config = <N as FromScratch<F>>::configure_from_scratch(
+            meta,
+            advice_columns,
+            fixed_columns,
+            instance_columns,
+        );
         // Use hard-coded pow2range values matching NativeGadget::configure_from_scratch
         let nb_parallel_range_checks = 4;
         let max_bit_len = 8;
         let field_chip_config = {
-            let advice_cols = (0..nb_field_chip_columns::<F, K, P>())
-                .map(|_| meta.advice_column())
-                .collect::<Vec<_>>();
+            let nb_fc_cols = nb_field_chip_columns::<F, K, P>();
+            while advice_columns.len() < nb_fc_cols {
+                advice_columns.push(meta.advice_column());
+            }
             FieldChip::<F, K, P, N>::configure(
                 meta,
-                &advice_cols,
+                &advice_columns[..nb_fc_cols],
                 nb_parallel_range_checks,
                 max_bit_len,
             )

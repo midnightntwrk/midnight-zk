@@ -557,28 +557,33 @@ impl<F: PoseidonField> FromScratch<F> for PoseidonChip<F> {
 
     fn configure_from_scratch(
         meta: &mut ConstraintSystem<F>,
+        advice_columns: &mut Vec<Column<Advice>>,
+        fixed_columns: &mut Vec<Column<Fixed>>,
         instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
-        let nb_advice_cols = std::cmp::max(NB_POSEIDON_ADVICE_COLS, NB_ARITH_COLS);
-        let nb_fixed_cols = std::cmp::max(NB_POSEIDON_FIXED_COLS, NB_ARITH_FIXED_COLS);
+        let nb_advice_needed = std::cmp::max(NB_POSEIDON_ADVICE_COLS, NB_ARITH_COLS);
+        let nb_fixed_needed = std::cmp::max(NB_POSEIDON_FIXED_COLS, NB_ARITH_FIXED_COLS);
 
-        let advice_cols = (0..nb_advice_cols).map(|_| meta.advice_column()).collect::<Vec<_>>();
-
-        let fixed_cols = (0..nb_fixed_cols).map(|_| meta.fixed_column()).collect::<Vec<_>>();
+        while advice_columns.len() < nb_advice_needed {
+            advice_columns.push(meta.advice_column());
+        }
+        while fixed_columns.len() < nb_fixed_needed {
+            fixed_columns.push(meta.fixed_column());
+        }
 
         let native_config = NativeChip::configure(
             meta,
             &(
-                advice_cols[..NB_ARITH_COLS].try_into().unwrap(),
-                fixed_cols[..NB_ARITH_FIXED_COLS].try_into().unwrap(),
+                advice_columns[..NB_ARITH_COLS].try_into().unwrap(),
+                fixed_columns[..NB_ARITH_FIXED_COLS].try_into().unwrap(),
                 *instance_columns,
             ),
         );
         let poseidon_config = PoseidonChip::configure(
             meta,
             &(
-                advice_cols[..NB_POSEIDON_ADVICE_COLS].try_into().unwrap(),
-                fixed_cols[..NB_POSEIDON_FIXED_COLS].try_into().unwrap(),
+                advice_columns[..NB_POSEIDON_ADVICE_COLS].try_into().unwrap(),
+                fixed_columns[..NB_POSEIDON_FIXED_COLS].try_into().unwrap(),
             ),
         );
 
@@ -630,6 +635,8 @@ mod tests {
             let instance_column = meta.instance_column();
             PoseidonChip::configure_from_scratch(
                 meta,
+                &mut vec![],
+                &mut vec![],
                 &[committed_instance_column, instance_column],
             )
         }
