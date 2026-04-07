@@ -24,6 +24,7 @@ verification keys break backwards compatibility.
 
 ### Changed
 * Add `nb_arith_cols` field to `ZkStdLibArch` for configurable arithmetic columns (requires `ZKSTD_VERSION` bump before release) [#287](https://github.com/midnightntwrk/midnight-zk/pull/287)
+* Update goldenfiles and static VKs after logup blinding factor fix [#312](https://github.com/midnightntwrk/midnight-zk/pull/312)
 * bug patch in the credential property verification example, which was omitting some index computation in circuit [#240](https://github.com/midnightntwrk/midnight-zk/pull/240)
 * Pass `max_bit_len` to foreign-field chip configuration [#251](https://github.com/midnightntwrk/midnight-zk/pull/251)
 * Update IVC example to use improved verifier gadget [#212](https://github.com/midnightntwrk/midnight-zk/pull/212)
