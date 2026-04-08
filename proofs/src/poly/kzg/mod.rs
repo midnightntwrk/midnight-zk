@@ -273,15 +273,7 @@ where
 
         for com_data in commitment_map.into_iter() {
             let mut msm = MSMKZG::init();
-            let eval_point_opt = if com_data.commitment.is_chopped() {
-                // When the commitment is in chopped form, we require that it be evaluated
-                // in a single point.
-                debug_assert!(com_data.point_indices.len() == 1);
-                Some(point_sets[com_data.set_index][com_data.point_indices[0]])
-            } else {
-                None
-            };
-            let terms = com_data.commitment.as_terms(eval_point_opt);
+            let terms = com_data.commitment.as_terms();
             let term_labels: Vec<CommitmentLabel> = match &com_data.commitment {
                 CommitmentReference::Linear(_, _, labels) => labels.clone(),
                 _ => vec![com_data.commitment_label.clone(); terms.len()],
