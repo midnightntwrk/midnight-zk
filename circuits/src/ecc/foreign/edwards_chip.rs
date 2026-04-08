@@ -43,7 +43,7 @@ use {
 use crate::{
     ecc::{
         curves::EdwardsCurve,
-        foreign::gates::coord::{self, CoordConfig},
+        foreign::gates::edwards::addition::{self, AdditionConfig},
     },
     field::{
         foreign::{
@@ -68,7 +68,7 @@ where
     C: EdwardsCurve,
 {
     base_field_config: FieldChipConfig,
-    coord_config: CoordConfig<C>,
+    addition_config: AdditionConfig<C>,
     _marker: PhantomData<C>,
 }
 
@@ -101,15 +101,15 @@ where
 {
     /// Configures the foreign Edwards ECC chip.
     pub fn configure(
-        _meta: &mut ConstraintSystem<F>,
+        meta: &mut ConstraintSystem<F>,
         base_field_config: &FieldChipConfig,
         nb_parallel_range_checks: usize,
         max_bit_len: u32,
     ) -> ForeignEdwardsEccConfig<C> {
         assert!(C::A.legendre() == 1);
         assert!(C::D.legendre() == -1);
-        let coord_config = CoordConfig::<C>::configure::<F, B>(
-            _meta,
+        let addition_config = AdditionConfig::<C>::configure::<F, B>(
+            meta,
             base_field_config,
             nb_parallel_range_checks,
             max_bit_len,
@@ -117,7 +117,7 @@ where
 
         ForeignEdwardsEccConfig {
             base_field_config: base_field_config.clone(),
-            coord_config,
+            addition_config,
             _marker: PhantomData,
         }
     }
@@ -155,41 +155,6 @@ where
     /// A chip with instructions for the scalar field of this ECC chip.
     pub fn scalar_field_chip(&self) -> &S {
         &self.scalar_field_chip
-    }
-
-    /// Asserts that the given point lies in the subgroup (and thus also on the
-    /// curve).
-    fn assert_in_subgroup(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        p: &AssignedForeignEdwardsPoint<F, C, B>,
-    ) -> Result<(), Error> {
-        // Let h be the cofactor of the subgroup.
-        //
-        // To prove that a point P lies in the subgroup,
-        // we exhibit a curve point Q such that h * Q = P.
-        //
-        // In other words, we prove that P lies in the image
-        // of the multiplication-by-h map.
-        //
-        // Above check needs to be asserted (in-circuit) with the
-        // following constraints:
-        //  1. Q satisfies the curve equation.
-        //  2. h * Q is equal to P.
-        let cofactor = C::ScalarField::from_u128(C::COFACTOR);
-        let q = self.assign_point_unchecked(
-            layouter,
-            p.value().map(|p| {
-                p * cofactor
-                    .invert()
-                    .expect("cofactor must be nonzero and coprime to subgroup order")
-            }),
-        )?;
-
-        self.assert_on_curve(layouter, &q.x, &q.y)?;
-
-        let cofactor_times_q = self.mul_by_constant(layouter, cofactor, &q)?;
-        self.assert_equal(layouter, p, &cofactor_times_q)
     }
 }
 
@@ -245,7 +210,7 @@ where
     B: FieldEmulationParams<F, C::Base>,
 {
     fn as_public_input(p: &C::CryptographicGroup) -> Vec<F> {
-        let (x, y) = (*p).into().coordinates().unwrap_or((C::Base::ZERO, C::Base::ZERO));
+        let (x, y) = (*p).into().coordinates().expect("Edwards coordinates cannot fail");
         [
             AssignedField::<F, C::Base, B>::as_public_input(&x).as_slice(),
             AssignedField::<F, C::Base, B>::as_public_input(&y).as_slice(),
@@ -330,7 +295,7 @@ where
         value: Value<C::CryptographicGroup>,
     ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
         let (val_x, val_y) = value
-            .map(|v| v.into().coordinates().expect("assign_unchecked: valid point"))
+            .map(|v| v.into().coordinates().expect("Edwards coordinates cannot fail"))
             .unzip();
         let x = self.base_field_chip().assign(layouter, val_x)?;
         let y = self.base_field_chip().assign(layouter, val_y)?;
@@ -351,19 +316,17 @@ where
         let base_chip = self.base_field_chip();
 
         // Compute x^2, y^2 and a*x^2 + y^2 - 1 - d*x^2*y^2 in-circuit
-        let x_x = base_chip.mul(layouter, x, x, None)?;
-        let y_y = base_chip.mul(layouter, y, y, None)?;
-        let id = base_chip.add_and_mul(
+        let x_sq = base_chip.mul(layouter, x, x, None)?;
+        let y_sq = base_chip.mul(layouter, y, y, None)?;
+        let d_xy_sq = base_chip.mul(layouter, &x_sq, &y_sq, Some(C::D))?;
+        let lhs = base_chip.linear_combination(
             layouter,
-            (C::A, &x_x),
-            (C::Base::ONE, &y_y),
-            (C::Base::ZERO, &x_x), // using x_x as dummy value here
+            &[(C::A, x_sq), (C::Base::ONE, y_sq)],
             -C::Base::ONE,
-            -C::D,
         )?;
 
-        // Assert a*x^2 + y^2 - 1 - d*x^2*y^2 = 0
-        base_chip.assert_zero(layouter, &id)
+        // Assert a*x^2 + y^2 - 1 = d*x^2*y^2
+        base_chip.assert_equal(layouter, &lhs, &d_xy_sq)
     }
 }
 
@@ -380,13 +343,18 @@ where
     fn assign(
         &self,
         layouter: &mut impl Layouter<F>,
-        value: Value<C::CryptographicGroup>,
+        p_value: Value<C::CryptographicGroup>,
     ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
-        let p = self.assign_point_unchecked(layouter, value)?;
+        // Let h be the cofactor of the subgroup.
+        //
+        // Instead of witnessing P, we witness an h-root Q, and return h * Q.
+        // This guarantess that the returned point is in the desired subgroup.
+        let cofactor = C::ScalarField::from_u128(C::COFACTOR);
+        let q =
+            self.assign_point_unchecked(layouter, p_value.map(|p| p * cofactor.invert().unwrap()))?;
 
-        self.assert_in_subgroup(layouter, &p)?;
-
-        Ok(p)
+        self.assert_on_curve(layouter, &q.x, &q.y)?;
+        self.mul_by_constant(layouter, cofactor, &q)
     }
 
     fn assign_fixed(
@@ -394,7 +362,7 @@ where
         layouter: &mut impl Layouter<F>,
         constant: C::CryptographicGroup,
     ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
-        let (x, y) = constant.into().coordinates().expect("assign_fixed: valid point");
+        let (x, y) = constant.into().coordinates().expect("Edwards coordinates cannot fail");
         let x = self.base_field_chip().assign_fixed(layouter, x)?;
         let y = self.base_field_chip().assign_fixed(layouter, y)?;
 
@@ -514,7 +482,7 @@ where
         p: &AssignedForeignEdwardsPoint<F, C, B>,
         constant: C::CryptographicGroup,
     ) -> Result<(), Error> {
-        let coordinates = constant.into().coordinates().expect("valid point");
+        let coordinates = constant.into().coordinates().expect("Edwards coordinates cannot fail");
         self.base_field_chip().assert_equal_to_fixed(layouter, &p.x, coordinates.0)?;
         self.base_field_chip().assert_equal_to_fixed(layouter, &p.y, coordinates.1)
     }
@@ -557,7 +525,7 @@ where
         p: &AssignedForeignEdwardsPoint<F, C, B>,
         constant: <AssignedForeignEdwardsPoint<F, C, B> as InnerValue>::Element,
     ) -> Result<AssignedBit<F>, Error> {
-        let coordinates = constant.into().coordinates().expect("Valid point");
+        let coordinates = constant.into().coordinates().expect("Edwards coordinates cannot fail");
         let eq_x = self.base_field_chip().is_equal_to_fixed(layouter, &p.x, coordinates.0)?;
         let eq_y = self.base_field_chip().is_equal_to_fixed(layouter, &p.y, coordinates.1)?;
         self.native_gadget.and(layouter, &[eq_x, eq_y])
@@ -622,13 +590,9 @@ where
         p: &AssignedForeignEdwardsPoint<F, C, B>,
         q: &AssignedForeignEdwardsPoint<F, C, B>,
     ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
+        let point = p.point.zip(q.point).zip(cond.value()).map(|((p, q), b)| if b { p } else { q });
         let x = self.base_field_chip().select(layouter, cond, &p.x, &q.x)?;
         let y = self.base_field_chip().select(layouter, cond, &p.y, &q.y)?;
-
-        // point = p if cond is unknown or 1, q if cond is known and 0
-        let a = cond.value().error_if_known_and(|&v| !v);
-        let point = if a.is_ok() { p.point } else { q.point };
-
         Ok(AssignedForeignEdwardsPoint::<F, C, B> { point, x, y })
     }
 }
@@ -680,26 +644,26 @@ where
 
         // Constraint for Rx coordinate
         // Rx * (1 + d * Px * Py * Qx * Qy) = (Px * Qy + Py * Qx)
-        coord::assert_coord(
+        addition::assert_addition_coordinate(
             layouter,
             &r.x,
             &px_qy,
             &py_qx,
             &d_px_py_qx_qy,
             base_chip,
-            &self.config.coord_config,
+            &self.config.addition_config,
         )?;
 
         // Constraint for Ry coordinate
         // Ry * (1 - d * Px * Py * Qx * Qy) = (Py * Qy - a * Px * Qx)
-        coord::assert_coord(
+        addition::assert_addition_coordinate(
             layouter,
             &r.y,
             &py_qy,
             &neg_a_px_qx,
             &neg_d_px_py_qx_qy,
             base_chip,
-            &self.config.coord_config,
+            &self.config.addition_config,
         )?;
 
         Ok(AssignedForeignEdwardsPoint {
@@ -820,18 +784,16 @@ where
         x: &AssignedField<F, C::Base, B>,
         y: &AssignedField<F, C::Base, B>,
     ) -> Result<Self::Point, Error> {
-        let point = x
-            .value()
-            .zip(y.value())
-            .map(|(x, y)| C::from_xy(x, y).expect("valid coordinates").into_subgroup());
+        let p_value = x.value().zip(y.value()).map_with_result(|(x, y)| {
+            C::from_xy(x, y)
+                .map(|p| p.into_subgroup())
+                .ok_or(Error::Synthesis("invalid coordinates".into()))
+        })?;
 
-        let p = AssignedForeignEdwardsPoint::<F, C, B> {
-            point,
-            x: x.clone(),
-            y: y.clone(),
-        };
+        let p = self.assign(layouter, p_value)?;
 
-        self.assert_in_subgroup(layouter, &p)?;
+        self.base_field_chip.assert_equal(layouter, x, &self.x_coordinate(&p))?;
+        self.base_field_chip.assert_equal(layouter, y, &self.y_coordinate(&p))?;
 
         Ok(p)
     }
@@ -853,7 +815,9 @@ where
         layouter: &mut impl Layouter<F>,
         value: Value<C::CryptographicGroup>,
     ) -> Result<Self::Point, Error> {
-        self.assign_point_unchecked(layouter, value)
+        let p = self.assign_point_unchecked(layouter, value)?;
+        self.assert_on_curve(layouter, &p.x, &p.y)?;
+        Ok(p)
     }
 }
 
@@ -948,7 +912,7 @@ where
 #[cfg(test)]
 mod tests {
     use group::Group;
-    use midnight_curves::{curve25519::Curve25519, BlsScalar, JubjubExtended};
+    use midnight_curves::{curve25519::Curve25519, BlsScalar};
     use midnight_proofs::{circuit::SimpleFloorPlanner, dev::MockProver, plonk::Circuit};
     use rand::SeedableRng;
     use rand_chacha::ChaCha8Rng;
@@ -988,7 +952,6 @@ mod tests {
         ($mod:ident, $op:ident) => {
             #[test]
             fn $op() {
-                test_generic!($mod, $op, F, JubjubExtended, EmulatedField<F, JubjubExtended>, "emulated_jubjub");
                 test_generic!($mod, $op, F, Curve25519, EmulatedField<F, Curve25519>, "emulated_curve25519");
             }
         };
@@ -1027,7 +990,6 @@ mod tests {
         ($op:ident) => {
             #[test]
             fn $op() {
-                ecc_test!($op, BlsScalar, JubjubExtended, EmulatedField<BlsScalar, JubjubExtended>, "emulated_jubjub");
                 ecc_test!($op, BlsScalar, Curve25519, EmulatedField<BlsScalar, Curve25519>, "emulated_curve25519");
             }
         };
@@ -1041,36 +1003,15 @@ mod tests {
     ecc_tests!(test_msm);
     ecc_tests!(test_msm_by_bounded_scalars);
     ecc_tests!(test_mul_by_constant);
-    ecc_tests!(test_coordinates_edwards);
-
-    #[test]
-    fn test_assert_in_subgroup() {
-        run_test_assert_in_subgroup::<Curve25519>();
-        run_test_assert_in_subgroup::<JubjubExtended>();
-    }
+    ecc_tests!(test_coordinates);
 
     #[test]
     fn test_assert_on_curve() {
         run_test_assert_on_curve::<Curve25519>();
-        run_test_assert_on_curve::<JubjubExtended>();
     }
 
-    fn run_test_assert_in_subgroup<C>()
-    where
-        C: EdwardsCurve,
-        C::Base: Legendre,
-        MultiEmulationParams: FieldEmulationParams<BlsScalar, C::Base>
-            + FieldEmulationParams<BlsScalar, C::ScalarField>,
-    {
-        let mut rng = ChaCha8Rng::seed_from_u64(0x0);
-        let point = C::CryptographicGroup::random(&mut rng);
-
-        let circuit = InSubgroupCheckCircuit::<C> { point };
-        let prover = MockProver::run(&circuit, vec![vec![], vec![]])
-            .expect("proof generation should not fail");
-        prover.verify().expect("random subgroup point should verify");
-    }
-
+    /// Negative tests for `assert_on_curve`. Positive cases (identity,
+    /// generator, random points) are covered by the generic `test_assign`.
     fn run_test_assert_on_curve<C>()
     where
         C: EdwardsCurve,
@@ -1078,66 +1019,27 @@ mod tests {
         MultiEmulationParams: FieldEmulationParams<BlsScalar, C::Base>
             + FieldEmulationParams<BlsScalar, C::ScalarField>,
     {
+        fn assert_not_on_curve<C: EdwardsCurve>(x: C::Base, y: C::Base)
+        where
+            C::Base: Legendre,
+            MultiEmulationParams: FieldEmulationParams<BlsScalar, C::Base>
+                + FieldEmulationParams<BlsScalar, C::ScalarField>,
+        {
+            let circuit = OnCurveCheckCircuit::<C> { x, y };
+            let prover = MockProver::run(&circuit, vec![vec![], vec![]])
+                .expect("proof generation should not fail");
+            assert!(prover.verify().is_err());
+        }
+
         let mut rng = ChaCha8Rng::seed_from_u64(0x0);
 
-        // Sample random subgroup point
+        // Random point with y offset by 1
         let point = C::CryptographicGroup::random(&mut rng);
         let (x, y) = point.into().coordinates().expect("valid curve point");
 
-        // Valid point: identity (0, 1)
-        let circuit = OnCurveCheckCircuit::<C> {
-            x: C::Base::ZERO,
-            y: C::Base::ONE,
-        };
-        let prover = MockProver::run(&circuit, vec![vec![], vec![]])
-            .expect("proof generation should not fail");
-        prover.verify().expect("identity (0,1) should pass verification");
-
-        // Valid point: generator
-        let gen = C::CryptographicGroup::generator();
-        let (gx, gy) = gen.into().coordinates().expect("valid generator");
-        let circuit = OnCurveCheckCircuit::<C> { x: gx, y: gy };
-        let prover = MockProver::run(&circuit, vec![vec![], vec![]])
-            .expect("proof generation should not fail");
-        prover.verify().expect("generator should pass verification");
-
-        // Invalid point: offset the y coordinate of a random curve point by 1, so the
-        // curve equation is not satisfied with overwhelming probability (there
-        // is a negligible probability this test fails)
-        let circuit = OnCurveCheckCircuit::<C> {
-            x,
-            y: y + C::Base::ONE,
-        };
-        let prover = MockProver::run(&circuit, vec![vec![], vec![]])
-            .expect("proof generation should not fail");
-        assert!(
-            prover.verify().is_err(),
-            "invalid point should fail verification"
-        );
-
-        // Invalid point: (1,1)
-        let circuit = OnCurveCheckCircuit::<C> {
-            x: C::Base::ONE,
-            y: C::Base::ONE,
-        };
-        let prover = MockProver::run(&circuit, vec![vec![], vec![]])
-            .expect("proof generation should not fail");
-        assert!(
-            prover.verify().is_err(),
-            "invalid point (1,1) should fail verification"
-        );
-
-        // Invalid point: (0, 0)
-        let circuit = OnCurveCheckCircuit::<C> {
-            x: C::Base::ZERO,
-            y: C::Base::ZERO,
-        };
-        let prover = MockProver::run(&circuit, vec![vec![], vec![]])
-            .expect("proof generation should not fail");
-        assert!(
-            prover.verify().is_err(),
-            "invalid point (0,0) should fail verification"
-        );
+        assert_not_on_curve::<C>(x, y + C::Base::ONE);
+        assert_not_on_curve::<C>(C::Base::ONE, C::Base::ONE);
+        assert_not_on_curve::<C>(C::Base::ZERO, C::Base::ZERO);
     }
 
     type EdwardsChip<C> = ForeignEdwardsEccChip<
@@ -1147,68 +1049,6 @@ mod tests {
         FieldChip<F, <C as CircuitCurve>::ScalarField, MultiEmulationParams, Native<F>>,
         Native<F>,
     >;
-
-    /// Test circuit that calls `assert_in_subgroup` and `assert_on_curve` for a
-    /// given point of a twisted Edwards curve.
-    ///
-    /// Since `assert_in_subgroup` already takes as input a point in form of
-    /// [AssignedForeignEdwardsPoint], which, in turn, wraps a valid subgroup
-    /// point, this circuit checks correctness of `assert_in_subgroup` and
-    /// `assert_on_curve` for valid subgroup points.
-    #[derive(Clone, Debug)]
-    struct InSubgroupCheckCircuit<C: EdwardsCurve> {
-        point: C::CryptographicGroup,
-    }
-
-    impl<C> Circuit<F> for InSubgroupCheckCircuit<C>
-    where
-        C: EdwardsCurve,
-        C::Base: Legendre,
-        MultiEmulationParams:
-            FieldEmulationParams<F, C::Base> + FieldEmulationParams<F, C::ScalarField>,
-    {
-        type Config = <EdwardsChip<C> as FromScratch<F>>::Config;
-        type FloorPlanner = SimpleFloorPlanner;
-        type Params = ();
-
-        fn without_witnesses(&self) -> Self {
-            unreachable!()
-        }
-
-        fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
-            let committed = meta.instance_column();
-            let instance = meta.instance_column();
-            EdwardsChip::<C>::configure_from_scratch(
-                meta,
-                &mut vec![],
-                &mut vec![],
-                &[committed, instance],
-            )
-        }
-
-        fn synthesize(
-            &self,
-            config: Self::Config,
-            mut layouter: impl Layouter<F>,
-        ) -> Result<(), Error> {
-            let chip = EdwardsChip::<C>::new_from_scratch(&config);
-
-            let curve_point: C = self.point.into();
-            let (x, y) = curve_point.coordinates().expect("valid curve point");
-
-            let x = chip.base_field_chip().assign(&mut layouter, Value::known(x))?;
-            let y = chip.base_field_chip().assign(&mut layouter, Value::known(y))?;
-            let p = AssignedForeignEdwardsPoint {
-                point: Value::known(self.point),
-                x,
-                y,
-            };
-
-            chip.assert_in_subgroup(&mut layouter, &p)?;
-            chip.assert_on_curve(&mut layouter, &p.x, &p.y)?; // redundant
-            chip.load_from_scratch(&mut layouter)
-        }
-    }
 
     /// Test circuit that calls `assert_on_curve` for arbitrary (x, y)
     /// coordinates (not necessarily representing a valid curve point).

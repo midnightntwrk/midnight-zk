@@ -43,7 +43,7 @@ use {
     midnight_proofs::plonk::Instance, rand::RngCore,
 };
 
-use super::gates::{
+use super::gates::weierstrass::{
     lambda_squared,
     lambda_squared::LambdaSquaredConfig,
     on_curve,
@@ -655,20 +655,10 @@ where
         p: &AssignedForeignPoint<F, C, B>,
         q: &AssignedForeignPoint<F, C, B>,
     ) -> Result<AssignedForeignPoint<F, C, B>, Error> {
+        let point = p.point.zip(q.point).zip(cond.value()).map(|((p, q), b)| if b { p } else { q });
         let is_id = self.native_gadget.select(layouter, cond, &p.is_id, &q.is_id)?;
         let x = self.base_field_chip().select(layouter, cond, &p.x, &q.x)?;
         let y = self.base_field_chip().select(layouter, cond, &p.y, &q.y)?;
-
-        // point = p if cond is 1, q if cond is 0, Value::unknown() if cond is unknown.
-        // When cond is unknown we return Value::unknown().
-        let point = if cond.value().error_if_known_and(|&v| !v).is_err() {
-            q.point
-        } else if cond.value().error_if_known_and(|&v| v).is_err() {
-            p.point
-        } else {
-            Value::unknown()
-        };
-
         Ok(AssignedForeignPoint::<F, C, B> { point, is_id, x, y })
     }
 }

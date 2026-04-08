@@ -11,5 +11,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub(crate) mod edwards;
-pub(crate) mod weierstrass;
+pub(crate) mod lambda_squared;
+pub(crate) mod on_curve;
+pub(crate) mod slope;
+pub(crate) mod tangent;

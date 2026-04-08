@@ -42,7 +42,7 @@ use keccak_sha3::packed_chip::{PackedChip, PackedConfig, PACKED_ADVICE_COLS, PAC
 use midnight_circuits::{
     biguint::biguint_gadget::BigUintGadget,
     ecc::{
-        foreign::{
+        foreign::weierstrass_chip::{
             nb_foreign_ecc_chip_columns, ForeignWeierstrassEccChip, ForeignWeierstrassEccConfig,
         },
         hash_to_curve::HashToCurveGadget,

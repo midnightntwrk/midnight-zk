@@ -340,25 +340,6 @@ impl FieldEmulationParams<midnight_curves::Fq, midnight_curves::Fq> for MultiEmu
 
 /*
 ====================================================
-Emulated: Jubjub's Scalar field
-
-Native fields supported:
- - BLS12-381's Scalar field (for tests only)
-====================================================
-*/
-
-/// Jubjub's Scalar field over BLS12-381's Scalar field.
-impl FieldEmulationParams<midnight_curves::Fq, midnight_curves::Fr> for MultiEmulationParams {
-    const LOG2_BASE: u32 = 52;
-    const NB_LIMBS: u32 = 5;
-    fn moduli() -> Vec<BigInt> {
-        vec![BigInt::from(2).pow(141)]
-    }
-    const RC_LIMB_SIZE: u32 = 14;
-}
-
-/*
-====================================================
 Emulated: Curve25519's Base field
 
 Native fields supported:
