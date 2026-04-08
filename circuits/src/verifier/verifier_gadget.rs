@@ -407,12 +407,12 @@ impl<S: SelfEmulation> VerifierGadget<S> {
     ///      - (i)  the commitment to a fixed column corresponding to a simple,
     ///        multiplicative selector, or,
     ///      - (ii) 1 (in case the corresponding identity `id_j` has been fully
-    ///        evaluated and, thus, the resulting scalar `id_j(x)` contributes to
-    ///        the affine term `C` of the linearization polynomial),
+    ///        evaluated and, thus, the resulting scalar `id_j(x)` contributes
+    ///        to the affine term `C` of the linearization polynomial),
     /// * `h_k` are commitments to the limbs of the quotient polynomial.
     ///
-    /// The linearization polynomial is split into its homogeneous and affine parts:
-    /// `L(X) = L'(X) + C`. Both parts are returned separately.
+    /// The linearization polynomial is split into its homogeneous and affine
+    /// parts: `L(X) = L'(X) + C`. Both parts are returned separately.
     ///
     /// # Arguments
     ///
@@ -425,19 +425,20 @@ impl<S: SelfEmulation> VerifierGadget<S> {
     /// # Returns
     ///
     /// A tuple `(L'(X), C)`, where `L'(X)` is an [AssignedMsm] and `C` is a
-    /// scalar. The verifier uses `-C` as the expected evaluation of `L'(X)` at `x`.
+    /// scalar. The verifier uses `-C` as the expected evaluation of `L'(X)` at
+    /// `x`.
     #[allow(clippy::too_many_arguments)]
     #[allow(clippy::type_complexity)]
     fn compute_linearization_commitment<'com>(
         layouter: &mut impl Layouter<S::F>,
         scalar_chip: &S::ScalarChip,
         vk: &'com AssignedVk<S>,
-        expressions: Vec<(Option<usize>, AssignedCell<S::F, S::F>)>,
-        y: AssignedCell<S::F, S::F>,
-        xn: AssignedCell<S::F, S::F>,
-        splitting_factor: AssignedCell<S::F, S::F>,
+        expressions: Vec<(Option<usize>, AssignedNative<S::F>)>,
+        y: AssignedNative<S::F>,
+        xn: AssignedNative<S::F>,
+        splitting_factor: AssignedNative<S::F>,
         quotient_limb_commitments: &'com [S::AssignedPoint],
-    ) -> Result<(AssignedMsm<S>, AssignedCell<S::F, S::F>), Error> {
+    ) -> Result<(AssignedMsm<S>, AssignedNative<S::F>), Error> {
         let mut acc_msm: AssignedMsm<S> = AssignedMsm::empty();
 
         let mut splitting_powers = Vec::with_capacity(quotient_limb_commitments.len());
@@ -456,9 +457,9 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             );
         }
 
-        let mut grouped_points: BTreeMap<Option<usize>, AssignedCell<S::F, S::F>> = BTreeMap::new();
+        let mut grouped_points: BTreeMap<Option<usize>, AssignedNative<S::F>> = BTreeMap::new();
         let mut y_pow = scalar_chip.assign_fixed(layouter, S::F::ONE)?;
-        let zero: AssignedCell<S::F, S::F> = scalar_chip.assign_fixed(layouter, S::F::ZERO)?;
+        let zero: AssignedNative<S::F> = scalar_chip.assign_fixed(layouter, S::F::ZERO)?;
         for (col_idx, eval) in expressions.iter().rev() {
             let new_eval = scalar_chip.mul(layouter, &y_pow, eval, None)?;
             *grouped_points.entry(*col_idx).or_insert(zero.clone()) = scalar_chip.add(
@@ -486,7 +487,8 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                     )?;
                 }
                 None => {
-                    lin_poly_affine_term = scalar_chip.add(layouter, &lin_poly_affine_term, &eval)?;
+                    lin_poly_affine_term =
+                        scalar_chip.add(layouter, &lin_poly_affine_term, &eval)?;
                 }
             }
         }
