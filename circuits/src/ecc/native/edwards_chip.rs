@@ -305,10 +305,10 @@ impl EccConfig {
             let one = Expression::from(1);
             let edwards_d = Expression::Constant(C::D);
 
-            let x2 = x.square();
-            let y2 = y.square();
+            let x_sq = x.square();
+            let y_sq = y.square();
 
-            let id = y2.clone() - x2.clone() - (one + edwards_d * x2 * y2);
+            let id = y_sq.clone() - x_sq.clone() - (one + edwards_d * x_sq * y_sq);
 
             Constraints::with_selector(*q_point, vec![("curve equation", id)])
         })

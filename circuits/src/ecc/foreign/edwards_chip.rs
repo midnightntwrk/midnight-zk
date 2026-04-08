@@ -316,17 +316,17 @@ where
         let base_chip = self.base_field_chip();
 
         // Compute x^2, y^2 and a*x^2 + y^2 - 1 - d*x^2*y^2 in-circuit
-        let x2 = base_chip.mul(layouter, x, x, None)?;
-        let y2 = base_chip.mul(layouter, y, y, None)?;
-        let d_x2y2 = base_chip.mul(layouter, &x2, &y2, Some(C::D))?;
+        let x_sq = base_chip.mul(layouter, x, x, None)?;
+        let y_sq = base_chip.mul(layouter, y, y, None)?;
+        let d_xy_sq = base_chip.mul(layouter, &x_sq, &y_sq, Some(C::D))?;
         let lhs = base_chip.linear_combination(
             layouter,
-            &[(C::A, x2), (C::Base::ONE, y2)],
+            &[(C::A, x_sq), (C::Base::ONE, y_sq)],
             -C::Base::ONE,
         )?;
 
         // Assert a*x^2 + y^2 - 1 = d*x^2*y^2
-        base_chip.assert_equal(layouter, &lhs, &d_x2y2)
+        base_chip.assert_equal(layouter, &lhs, &d_xy_sq)
     }
 }
 
