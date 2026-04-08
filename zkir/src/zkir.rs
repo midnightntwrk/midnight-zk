@@ -130,6 +130,7 @@ impl Relation for ZkirRelation {
             keccak_256: false,
             blake2b: false,
             secp256k1: false,
+            p256: false,
             bls12_381: false,
             automaton: false,
             base64: false,
