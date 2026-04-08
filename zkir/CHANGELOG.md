@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 ## [Unreleased]
 
 ### Added
+* Add copyright notice to all source files [#313](https://github.com/midnightntwrk/midnight-zk/pull/313)
 
 ### Changed
 * Adapt `Relation` impl to new associated type `Error` [#252](https://github.com/midnightntwrk/midnight-zk/pull/252)

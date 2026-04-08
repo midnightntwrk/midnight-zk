@@ -12,6 +12,7 @@ verification keys break backwards compatibility.
 
 ## [Unreleased]
 ### Added
+* Add copyright notice to all source files [#313](https://github.com/midnightntwrk/midnight-zk/pull/313)
 * Add `resolve_fixed_bases` to `Msm`, `AssignedMsm`, `Accumulator` and `AssignedAccumulator` [#302](https://github.com/midnightntwrk/midnight-zk/pull/302)
 * Expose `fixed_base_names`, `fixed_commitment_name` and `perm_commitment_name` helper functions [#302](https://github.com/midnightntwrk/midnight-zk/pull/302)
 * Fix redundant explicit intra-doc links in `parsing::scanner::substring` [#311](https://github.com/midnightntwrk/midnight-zk/pull/311)

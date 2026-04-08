@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 
 ## [Unreleased]
 ### Added
+* Add copyright notice to all source files [#313](https://github.com/midnightntwrk/midnight-zk/pull/313)
 * Multi-circuit proof aggregation module and example [#311](https://github.com/midnightntwrk/midnight-zk/pull/311)
 * Add `IvcError::InvalidWitness` variant [#311](https://github.com/midnightntwrk/midnight-zk/pull/311)
 * Add `assign_without_subgroup_check` to `SelfEmulation` trait [#284](https://github.com/midnightntwrk/midnight-zk/pull/284)
