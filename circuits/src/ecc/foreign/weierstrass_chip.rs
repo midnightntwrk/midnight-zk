@@ -784,6 +784,8 @@ where
         scalars: &[(S::Scalar, usize)],
         bases: &[AssignedForeignPoint<F, C, B>],
     ) -> Result<AssignedForeignPoint<F, C, B>, Error> {
+        assert_eq!(scalars.len(), bases.len(), "`|scalars| != |bases|`");
+
         const WS: usize = 4;
         let scalar_chip = self.scalar_field_chip();
 
@@ -1839,9 +1841,7 @@ where
         scalars: &[Vec<AssignedNative<F>>],
         bases: &[AssignedForeignPoint<F, C, B>],
     ) -> Result<AssignedForeignPoint<F, C, B>, Error> {
-        if scalars.len() != bases.len() {
-            panic!("msm: `scalars` and `bases` should have the same length")
-        };
+        assert_eq!(scalars.len(), bases.len(), "`|scalars| != |bases|`");
 
         if scalars.is_empty() {
             return self.assign_fixed(layouter, C::CryptographicGroup::identity());
