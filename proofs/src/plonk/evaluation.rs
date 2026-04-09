@@ -477,13 +477,11 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                                 * l_last[idx];
                         // Except for the first set, enforce.
                         // l_0(X) * (z_i(X) - z_{i-1}(\omega^(last) X)) = 0
-                        for set_idx in 0..sets.len() {
-                            if set_idx != 0 {
-                                *value = *value * y
-                                    + (permutation_product_cosets[set_idx][idx]
-                                        - permutation_product_cosets[set_idx - 1][r_last])
-                                        * l0[idx];
-                            }
+                        for set_idx in 1..sets.len() {
+                            *value = *value * y
+                                + (permutation_product_cosets[set_idx][idx]
+                                    - permutation_product_cosets[set_idx - 1][r_last])
+                                    * l0[idx];
                         }
                         // And for all the sets we enforce:
                         // (1 - (l_last(X) + l_blind(X))) * (
@@ -551,6 +549,10 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                 // Lookup constraints
                 parallelize(&mut values, |values, start| {
                     let lookup_eval = &self.lookups[n];
+                    // Pre-allocate evaluation data outside the per-element loop
+                    // to avoid heap allocation on every domain element.
+                    let mut eval_datas: Vec<_> =
+                        lookup_eval.iter().map(|le| le.graph.instance()).collect();
                     for (i, value) in values.iter_mut().enumerate() {
                         let idx = start + i;
                         let r_next = get_rotation_idx(idx, 1, log_scale, log_n);
@@ -562,9 +564,8 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                         let mut table_value = F::ZERO;
                         let mut selector = F::ZERO;
                         for (fi, lookup_eval) in lookup_eval.iter().enumerate() {
-                            let mut eval_data = lookup_eval.graph.instance();
                             lookup_eval.graph.evaluate(
-                                &mut eval_data,
+                                &mut eval_datas[fi],
                                 fixed,
                                 advice,
                                 instance,
@@ -580,13 +581,13 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                             );
 
                             let sum_partial_products =
-                                eval_data.resolve(lookup_eval.sum_partial_products);
-                            let product = eval_data.resolve(lookup_eval.product);
+                                eval_datas[fi].resolve(lookup_eval.sum_partial_products);
+                            let product = eval_datas[fi].resolve(lookup_eval.product);
 
                             // We only resolve the table and selector in the first batch
                             if fi == 0 {
-                                table_value = eval_data.resolve(lookup_eval.table);
-                                selector = eval_data.resolve(lookup_eval.selector);
+                                table_value = eval_datas[fi].resolve(lookup_eval.table);
+                                selector = eval_datas[fi].resolve(lookup_eval.selector);
                             }
 
                             // Helper constraint: h(X) · ∏ⱼ(fⱼ(X) + β) = Σⱼ ∏_{k≠j}(fₖ(X) + β)

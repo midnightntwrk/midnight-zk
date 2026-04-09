@@ -359,7 +359,7 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
         // domain.
         parallelize(&mut a.values, |h, mut index| {
             for h in h {
-                *h *= &self.t_evaluations[index % self.t_evaluations.len()];
+                *h *= &self.t_evaluations[index & (self.t_evaluations.len() - 1)];
                 index += 1;
             }
         });
