@@ -763,12 +763,15 @@ where
 
         let scalar_bits = scalar.to_bits_le(None);
         let mut p = base.clone();
-        let mut res = self.assign_fixed(layouter, C::CryptographicGroup::identity())?;
+        let mut res = None;
 
         // Simple double-and-add
         for (i, b) in scalar_bits.iter().enumerate() {
             if *b {
-                res = self.add(layouter, &res, &p)?;
+                res = match res {
+                    None => Some(p.clone()),
+                    Some(acc) => Some(self.add(layouter, &acc, &p)?),
+                }
             }
             // The doubling in the last iteration is not needed
             if i + 1 < scalar_bits.len() {
@@ -776,7 +779,7 @@ where
             }
         }
 
-        Ok(res)
+        Ok(res.unwrap_or(self.assign_fixed(layouter, C::CryptographicGroup::identity())?))
     }
 
     fn point_from_coordinates(

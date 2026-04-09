@@ -452,7 +452,7 @@
       "max_deg": "5",
       "permutations": "14",
       "point_sets": "5",
-      "rows": "577",
+      "rows": "541",
       "table_rows": "385"
     },
     "assign_without_subgroup_check": {
@@ -496,7 +496,7 @@
       "max_deg": "5",
       "permutations": "14",
       "point_sets": "5",
-      "rows": "577",
+      "rows": "541",
       "table_rows": "385"
     },
     "double": {
@@ -595,7 +595,7 @@
       "max_deg": "5",
       "permutations": "14",
       "point_sets": "5",
-      "rows": "54014",
+      "rows": "53978",
       "table_rows": "385"
     },
     "neg": {
@@ -617,7 +617,7 @@
       "max_deg": "5",
       "permutations": "14",
       "point_sets": "5",
-      "rows": "579",
+      "rows": "543",
       "table_rows": "385"
     },
     "select": {
