@@ -114,7 +114,7 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ChunkedArgument<F> {
                         pk.vk.domain.lagrange_from_vec(evaluate(
                             expression,
                             n,
-                            1,
+                            0,
                             fixed_values,
                             advice_values,
                             instance_values,

@@ -9,9 +9,10 @@ use crate::{
     utils::arithmetic::parallelize,
 };
 
-/// Return the index in the polynomial of size `isize` after rotation `rot`.
-pub(crate) fn get_rotation_idx(idx: usize, rot: i32, rot_scale: i32, isize: i32) -> usize {
-    (((idx as i32) + (rot * rot_scale)).rem_euclid(isize)) as usize
+#[inline]
+pub(crate) fn get_rotation_idx(idx: usize, rot: i32, log_scale: u32, log_n: u32) -> usize {
+    let mask = (1usize << log_n) - 1;
+    idx.wrapping_add(((rot as isize) << log_scale) as usize) & mask
 }
 
 /// Value used in a calculation
@@ -978,9 +979,9 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
         permutation_pk_cosets: &[Polynomial<F, B>],
     ) -> Polynomial<F, B> {
         let size = B::len(domain);
-        let rot_scale: i32 = 1 << (B::k(domain) - domain.k());
+        let log_scale = B::k(domain) - domain.k();
         let omega = B::omega(domain);
-        let isize = size as i32;
+        let log_n = B::k(domain);
         let one = F::ONE;
 
         let p = &cs.permutation;
@@ -1005,15 +1006,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
             let template = flat.new_values_buffer(&beta, &theta, &trash_challenge, &y);
             parallelize(&mut values, |values, start| {
                 flat.evaluate_chunk::<4, B>(
-                    &template,
-                    values,
-                    start,
-                    fixed,
-                    advice,
-                    instance,
-                    challenges,
-                    rot_scale.trailing_zeros(),
-                    (isize as u32).trailing_zeros(),
+                    &template, values, start, fixed, advice, instance, challenges, log_scale, log_n,
                 );
             });
 
@@ -1039,8 +1032,8 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                     let mut beta_term = omega.pow_vartime([start as u64, 0, 0, 0]);
                     for (i, value) in values.iter_mut().enumerate() {
                         let idx = start + i;
-                        let r_next = get_rotation_idx(idx, 1, rot_scale, isize);
-                        let r_last = get_rotation_idx(idx, last_rotation.0, rot_scale, isize);
+                        let r_next = get_rotation_idx(idx, 1, log_scale, log_n);
+                        let r_last = get_rotation_idx(idx, last_rotation.0, log_scale, log_n);
 
                         // Enforce only for the first set.
                         // l_0(X) * (1 - z_0(X)) = 0
@@ -1196,7 +1189,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
 
                 for (i, value) in values.iter_mut().enumerate() {
                     let idx = start + i;
-                    let r_next = get_rotation_idx(idx, 1, rot_scale, isize);
+                    let r_next = get_rotation_idx(idx, 1, log_scale, log_n);
 
                     // --- Lookup constraints ---
                     for (n, (helper_cosets, aggregator_coset, multiplicities_coset)) in
@@ -1213,7 +1206,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
 
                         for (fi, flat) in flat_batch.iter().enumerate() {
                             for (ri, rot) in flat.rotations.iter().enumerate() {
-                                rot_indices[ri] = get_rotation_idx(idx, *rot, rot_scale, isize);
+                                rot_indices[ri] = get_rotation_idx(idx, *rot, log_scale, log_n);
                             }
                             flat.evaluate::<B>(
                                 &mut bufs[fi],
@@ -1257,7 +1250,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                     for (n, trash_poly) in trash_cosets.iter().enumerate() {
                         let flat = &self.trashcans_flat[n];
                         for (ri, rot) in flat.rotations.iter().enumerate() {
-                            rot_indices[ri] = get_rotation_idx(idx, *rot, rot_scale, isize);
+                            rot_indices[ri] = get_rotation_idx(idx, *rot, log_scale, log_n);
                         }
                         let compressed_expression = flat.evaluate::<B>(
                             &mut trash_bufs[n],
@@ -1461,12 +1454,12 @@ impl<F: PrimeField> GraphEvaluator<F> {
         y: &F,
         previous_value: &F,
         idx: usize,
-        rot_scale: i32,
-        isize: i32,
+        log_scale: u32,
+        log_n: u32,
     ) -> F {
         // All rotation index values
         for (rot_idx, rot) in self.rotations.iter().enumerate() {
-            data.rotations[rot_idx] = get_rotation_idx(idx, *rot, rot_scale, isize);
+            data.rotations[rot_idx] = get_rotation_idx(idx, *rot, log_scale, log_n);
         }
 
         // All calculations, with cached intermediate results
@@ -1500,14 +1493,14 @@ impl<F: PrimeField> GraphEvaluator<F> {
 pub fn evaluate<F: Field, B: PolynomialRepresentation>(
     expression: &Expression<F>,
     size: usize,
-    rot_scale: i32,
+    log_scale: u32,
     fixed: &[Polynomial<F, B>],
     advice: &[Polynomial<F, B>],
     instance: &[Polynomial<F, B>],
     challenges: &[F],
 ) -> Vec<F> {
     let mut values = vec![F::ZERO; size];
-    let isize = size as i32;
+    let log_n = size.ilog2();
     parallelize(&mut values, |values, start| {
         for (i, value) in values.iter_mut().enumerate() {
             let idx = start + i;
@@ -1516,15 +1509,15 @@ pub fn evaluate<F: Field, B: PolynomialRepresentation>(
                 &|_| panic!("virtual selectors are removed during optimization"),
                 &|query| {
                     fixed[query.column_index]
-                        [get_rotation_idx(idx, query.rotation.0, rot_scale, isize)]
+                        [get_rotation_idx(idx, query.rotation.0, log_scale, log_n)]
                 },
                 &|query| {
                     advice[query.column_index]
-                        [get_rotation_idx(idx, query.rotation.0, rot_scale, isize)]
+                        [get_rotation_idx(idx, query.rotation.0, log_scale, log_n)]
                 },
                 &|query| {
                     instance[query.column_index]
-                        [get_rotation_idx(idx, query.rotation.0, rot_scale, isize)]
+                        [get_rotation_idx(idx, query.rotation.0, log_scale, log_n)]
                 },
                 &|challenge| challenges[challenge.index()],
                 &|a| -a,
