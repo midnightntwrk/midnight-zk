@@ -858,8 +858,10 @@ where
     S::Scalar: InnerValue<Element = C::ScalarField>,
     N: NativeInstructions<F>,
 {
-    /// Builds table `[0*base, 1*base, ..., (2^WS-1)*base]`. Cost: 2^WS - 2
-    /// adds.
+    /// Builds table `[0*base, 1*base, ..., (2^WS-1)*base]`.
+    /// Uses doubling for even indices (`table[2k] = double(table[k])`) and
+    /// addition for odd indices (`table[2k+1] = add(table[2k], base)`),
+    /// which is cheaper than a linear chain of additions.
     fn precompute<const WS: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -867,10 +869,13 @@ where
     ) -> Result<PrecomputedTable<F, C, B, WS>, Error> {
         let identity = self.assign_fixed(layouter, C::CryptographicGroup::identity())?;
         let mut table = vec![identity, base.clone()];
-        let mut acc = base.clone();
-        for _ in 2..1 << WS {
-            acc = self.add(layouter, &acc, base)?;
-            table.push(acc.clone());
+        for i in 2..1 << WS {
+            let entry = if i % 2 == 0 {
+                self.double(layouter, &table[i / 2])?
+            } else {
+                self.add(layouter, &table[i - 1], base)?
+            };
+            table.push(entry);
         }
         Ok(PrecomputedTable { table })
     }
