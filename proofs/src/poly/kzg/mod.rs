@@ -10,6 +10,7 @@
 use std::marker::PhantomData;
 
 use midnight_curves::pairing::Engine;
+use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 
 #[cfg(feature = "fewer-point-sets")]
 use super::query::Query;
@@ -182,19 +183,19 @@ where
         };
 
         let f_poly = {
-            let f_polys = point_sets
-                .iter()
-                .zip(q_polys.clone())
+            let f_polys: Vec<_> = point_sets
+                .into_par_iter()
+                .zip(q_polys.clone().into_par_iter())
                 .map(|(points, q_poly)| {
-                    let poly = points.iter().fold(q_poly.clone().values, |poly, point| {
-                        kate_division(&poly, *point)
-                    });
+                    let poly = points
+                        .iter()
+                        .fold(q_poly.values, |poly, point| kate_division(&poly, *point));
                     Polynomial {
                         values: poly,
                         _marker: PhantomData,
                     }
                 })
-                .collect::<Vec<_>>();
+                .collect();
             poly_inner_product(&f_polys, powers(x2))
         };
 

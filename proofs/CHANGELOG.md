@@ -33,6 +33,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Implemented linearization prover [#190](https://github.com/midnightntwrk/midnight-zk/pull/190)
 * Changed logup to use the selector variant [#220](https://github.com/midnightntwrk/midnight-zk/pull/220)
 * Share the `z` and `m` polynomials across all logup instances [#279](https://github.com/midnightntwrk/midnight-zk/pull/279)
+* Load SRS in affine form, cache FFT twiddle factors, and add `Send + Sync` to `Params` trait [#295](https://github.com/midnightntwrk/midnight-zk/pull/295)
+* Parallelize prover phases: advice FFTs, MSM commits, permutation product, SHPLONK, and LogUp [#295](https://github.com/midnightntwrk/midnight-zk/pull/295)
+* Optimize constraint evaluation: bitmask-based `get_rotation_idx`, hoisted allocations, loop cleanup [#295](https://github.com/midnightntwrk/midnight-zk/pull/295)
 
 ### Removed
 
@@ -41,7 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * changed `sha256` name in benches to account for the change of naming convention in `circuits` [#135](https://github.com/midnightntwrk/midnight-zk/pull/135)
 
 ### Changed
-* Interface of `ParamsKZG::from_parts` 
+* Interface of `ParamsKZG::from_parts`
 
 ### Removed
 

@@ -1,8 +1,11 @@
 use std::{fmt::Debug, io};
 
 use ff::{Field, PrimeField};
-use group::{prime::PrimeCurveAffine, Curve, Group};
-use midnight_curves::pairing::{Engine, MultiMillerLoop};
+use group::{prime::PrimeCurveAffine, Curve, Group, GroupEncoding};
+use midnight_curves::{
+    pairing::{Engine, MultiMillerLoop},
+    serde::SerdeObject,
+};
 use rand_core::RngCore;
 
 use crate::{
@@ -17,8 +20,8 @@ use crate::{
 /// These are the public parameters for the polynomial commitment scheme.
 #[derive(Debug, Clone)]
 pub struct ParamsKZG<E: Engine> {
-    pub(crate) g: Vec<E::G1>,
-    pub(crate) g_lagrange: Vec<E::G1>,
+    pub(crate) g: Vec<E::G1Affine>,
+    pub(crate) g_lagrange: Vec<E::G1Affine>,
     pub(crate) g2: E::G2,
     pub(crate) s_g2: E::G2,
 }
@@ -49,7 +52,12 @@ impl<E: Engine + Debug> ParamsKZG<E> {
         let n = 1 << new_k;
         assert!(n < self.g_lagrange.len());
         self.g.truncate(n);
-        self.g_lagrange = g_to_lagrange(&self.g, new_k);
+        // g_to_lagrange requires projective input.
+        let g_proj: Vec<E::G1> = self.g.iter().map(|p| (*p).into()).collect();
+        let g_lagrange_proj = g_to_lagrange(&g_proj, new_k);
+        let mut g_lagrange_affine = vec![E::G1Affine::identity(); n];
+        E::G1::batch_normalize(&g_lagrange_proj, &mut g_lagrange_affine);
+        self.g_lagrange = g_lagrange_affine;
     }
 
     /// Recompute the Lagrange basis for a smaller circuit domain `new_k` while
@@ -134,9 +142,14 @@ impl<E: Engine + Debug> ParamsKZG<E> {
         let g2 = E::G2::generator();
         let s_g2 = g2 * s;
 
+        let mut g_affine = vec![E::G1Affine::identity(); n as usize];
+        E::G1::batch_normalize(&g, &mut g_affine);
+        let mut g_lagrange_affine = vec![E::G1Affine::identity(); n as usize];
+        E::G1::batch_normalize(&g_lagrange, &mut g_lagrange_affine);
+
         Self {
-            g,
-            g_lagrange,
+            g: g_affine,
+            g_lagrange: g_lagrange_affine,
             g2,
             s_g2,
         }
@@ -151,19 +164,25 @@ impl<E: Engine + Debug> ParamsKZG<E> {
         g2: E::G2,
         s_g2: E::G2,
     ) -> Self {
+        let g_lagrange_proj = match g_lagrange {
+            Some(g_l) => g_l,
+            None => g_to_lagrange(&g, k),
+        };
+        let n = g.len();
+        let mut g_affine = vec![E::G1Affine::identity(); n];
+        E::G1::batch_normalize(&g, &mut g_affine);
+        let mut g_lagrange_affine = vec![E::G1Affine::identity(); g_lagrange_proj.len()];
+        E::G1::batch_normalize(&g_lagrange_proj, &mut g_lagrange_affine);
         Self {
-            g_lagrange: match g_lagrange {
-                Some(g_l) => g_l,
-                None => g_to_lagrange(&g, k),
-            },
-            g,
+            g: g_affine,
+            g_lagrange: g_lagrange_affine,
             g2,
             s_g2,
         }
     }
 
     /// Returns the committed lagrange polynomials of these KZG params.
-    pub fn g_lagrange(&self) -> &[E::G1] {
+    pub fn g_lagrange(&self) -> &[E::G1Affine] {
         &self.g_lagrange
     }
 
@@ -180,15 +199,21 @@ impl<E: Engine + Debug> ParamsKZG<E> {
     /// Writes parameters to buffer
     pub fn write_custom<W: io::Write>(&self, writer: &mut W, format: SerdeFormat) -> io::Result<()>
     where
-        E::G1: Curve + ProcessedSerdeObject,
-        E::G2: Curve + ProcessedSerdeObject,
+        E::G1Affine: SerdeObject,
+        E::G2: ProcessedSerdeObject,
     {
         writer.write_all(&self.g.len().ilog2().to_le_bytes())?;
         for el in self.g.iter() {
-            el.write(writer, format)?;
+            match format {
+                SerdeFormat::Processed => writer.write_all(el.to_bytes().as_ref())?,
+                _ => el.write_raw(writer)?,
+            }
         }
         for el in self.g_lagrange.iter() {
-            el.write(writer, format)?;
+            match format {
+                SerdeFormat::Processed => writer.write_all(el.to_bytes().as_ref())?,
+                _ => el.write_raw(writer)?,
+            }
         }
         self.g2.write(writer, format)?;
         self.s_g2.write(writer, format)?;
@@ -198,8 +223,8 @@ impl<E: Engine + Debug> ParamsKZG<E> {
     /// Reads params from a buffer.
     pub fn read_custom<R: io::Read>(reader: &mut R, format: SerdeFormat) -> io::Result<Self>
     where
-        E::G1: Curve + ProcessedSerdeObject,
-        E::G2: Curve + ProcessedSerdeObject,
+        E::G1Affine: SerdeObject,
+        E::G2: ProcessedSerdeObject,
     {
         let mut k = [0u8; 4];
         reader.read_exact(&mut k[..])?;
@@ -208,54 +233,42 @@ impl<E: Engine + Debug> ParamsKZG<E> {
 
         let (g, g_lagrange) = match format {
             SerdeFormat::Processed => {
-                use group::GroupEncoding;
                 let load_points_from_file_parallelly =
-                    |reader: &mut R| -> io::Result<Vec<Option<E::G1>>> {
+                    |reader: &mut R| -> io::Result<Vec<E::G1Affine>> {
                         let mut points_compressed =
-                            vec![<<E as Engine>::G1 as GroupEncoding>::Repr::default(); n];
+                            vec![<E::G1Affine as GroupEncoding>::Repr::default(); n];
                         for points_compressed in points_compressed.iter_mut() {
                             reader.read_exact((*points_compressed).as_mut())?;
                         }
-
-                        let mut points = vec![Option::<E::G1>::None; n];
+                        let mut points = vec![Option::<E::G1Affine>::None; n];
                         parallelize(&mut points, |points, chunks| {
                             for (i, point) in points.iter_mut().enumerate() {
-                                *point =
-                                    Option::from(E::G1::from_bytes(&points_compressed[chunks + i]));
+                                *point = Option::from(E::G1Affine::from_bytes(
+                                    &points_compressed[chunks + i],
+                                ));
                             }
                         });
-                        Ok(points)
+                        points
+                            .into_iter()
+                            .map(|p| p.ok_or_else(|| io::Error::other("invalid point encoding")))
+                            .collect()
                     };
 
                 let g = load_points_from_file_parallelly(reader)?;
-                let g: Vec<<E as Engine>::G1> = g
-                    .iter()
-                    .map(|point| point.ok_or_else(|| io::Error::other("invalid point encoding")))
-                    .collect::<Result<_, _>>()?;
                 let g_lagrange = load_points_from_file_parallelly(reader)?;
-                let g_lagrange: Vec<<E as Engine>::G1> = g_lagrange
-                    .iter()
-                    .map(|point| point.ok_or_else(|| io::Error::other("invalid point encoding")))
-                    .collect::<Result<_, _>>()?;
                 (g, g_lagrange)
             }
             SerdeFormat::RawBytes => {
-                let g = (0..n)
-                    .map(|_| <E::G1 as ProcessedSerdeObject>::read(reader, format))
-                    .collect::<Result<Vec<_>, _>>()?;
-                let g_lagrange = (0..n)
-                    .map(|_| <E::G1 as ProcessedSerdeObject>::read(reader, format))
-                    .collect::<Result<Vec<_>, _>>()?;
+                let g =
+                    (0..n).map(|_| E::G1Affine::read_raw(reader)).collect::<Result<Vec<_>, _>>()?;
+                let g_lagrange =
+                    (0..n).map(|_| E::G1Affine::read_raw(reader)).collect::<Result<Vec<_>, _>>()?;
                 (g, g_lagrange)
             }
             SerdeFormat::RawBytesUnchecked => {
-                // avoid try branching for performance
-                let g = (0..n)
-                    .map(|_| <E::G1 as ProcessedSerdeObject>::read(reader, format).unwrap())
-                    .collect::<Vec<_>>();
-                let g_lagrange = (0..n)
-                    .map(|_| <E::G1 as ProcessedSerdeObject>::read(reader, format).unwrap())
-                    .collect::<Vec<_>>();
+                let g = (0..n).map(|_| E::G1Affine::read_raw_unchecked(reader)).collect::<Vec<_>>();
+                let g_lagrange =
+                    (0..n).map(|_| E::G1Affine::read_raw_unchecked(reader)).collect::<Vec<_>>();
                 (g, g_lagrange)
             }
         };

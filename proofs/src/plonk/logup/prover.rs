@@ -23,7 +23,6 @@
 use std::{hash::Hash, iter};
 
 use ff::{BatchInvert, FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
-use rand_core::{CryptoRng, RngCore};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::{
@@ -62,21 +61,35 @@ pub(crate) struct ComputedMultiplicities<F: PrimeField> {
     pub(crate) compressed_table_expression: Polynomial<F, LagrangeCoeff>,
 }
 
-/// Committed polynomials after evaluation at the challenge point.
+/// Intermediate result from logderivative computation, before transcript
+/// write and FFT conversion to coefficient form.
+pub(crate) struct ComputedLogderivative<F: PrimeField, C> {
+    pub(crate) multiplicities: Polynomial<F, LagrangeCoeff>,
+    pub(crate) helper_polys_lagrange: Vec<Vec<F>>,
+    pub(crate) aggregator_poly: Polynomial<F, LagrangeCoeff>,
+    pub(crate) aggregator_commitment: C,
+}
+
+/// Committed polynomials after evaluation at challenge point.
 pub(crate) struct Evaluated<F: PrimeField> {
     pub(crate) constructed: Committed<F>,
     pub(crate) evaluated: logup::Evaluated<F>,
 }
 
 impl<F: WithSmallOrderMulGroup<3> + Hash> ChunkedArgument<F> {
-    /// Compresses input and table expressions and computes the multiplicities,
-    /// committing to them.
+    /// Compresses input and table expressions, computes multiplicities, and
+    /// commits — but does NOT write to the transcript. The caller is
+    /// responsible for writing `commitment` in the correct order.
     ///
-    /// This method evaluates and compresses the input/table expressions using
-    /// θ-batching, then counts how many times each table entry appears in the
-    /// inputs.
+    /// Compresses input and table expressions, computes multiplicities, and
+    /// commits — but does NOT write to the transcript. The caller is
+    /// responsible for writing `commitment` in the correct order.
+    ///
+    /// `blinding_values` are pre-generated random field elements for the
+    /// blinding rows, so this method does not need `&mut rng` and can be
+    /// called in parallel across lookups.
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn commit_multiplicities<'a, CS: PolynomialCommitmentScheme<F>, T: Transcript>(
+    pub(crate) fn compute_multiplicities_parallel<'a, CS: PolynomialCommitmentScheme<F>>(
         &self,
         pk: &ProvingKey<F, CS>,
         params: &CS::Parameters,
@@ -85,12 +98,10 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ChunkedArgument<F> {
         fixed_values: &'a [Polynomial<F, LagrangeCoeff>],
         instance_values: &'a [Polynomial<F, LagrangeCoeff>],
         challenges: &'a [F],
-        mut rng: impl RngCore + CryptoRng,
-        transcript: &mut T,
-    ) -> Result<ComputedMultiplicities<F>, Error>
+        blinding_values: &[F],
+    ) -> Result<(ComputedMultiplicities<F>, CS::Commitment), Error>
     where
         F: WithSmallOrderMulGroup<3> + FromUniformBytes<64>,
-        CS::Commitment: Hashable<T::Hash>,
     {
         let domain = pk.vk.get_domain();
         let n = domain.n as usize;
@@ -101,8 +112,8 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ChunkedArgument<F> {
                     .map(|expression| {
                         pk.vk.domain.lagrange_from_vec(evaluate(
                             expression,
-                            n,
-                            1,
+                            domain.k(),
+                            0,
                             fixed_values,
                             advice_values,
                             instance_values,
@@ -141,41 +152,44 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ChunkedArgument<F> {
             &all_compressed_inputs,
             &compressed_table_expression,
             usable_rows,
-            &mut rng,
+            blinding_values,
         );
 
         let multiplicities = pk.vk.domain.lagrange_from_vec(multiplicities);
-        let multiplicities_commitment = CS::commit_lagrange(params, &multiplicities);
-        transcript.write(&multiplicities_commitment)?;
+        let commitment = CS::commit_lagrange(params, &multiplicities);
 
-        Ok(ComputedMultiplicities {
-            selector,
-            multiplicities,
-            chunked_compressed_inputs,
-            compressed_table_expression,
-        })
+        Ok((
+            ComputedMultiplicities {
+                selector,
+                multiplicities,
+                chunked_compressed_inputs,
+                compressed_table_expression,
+            },
+            commitment,
+        ))
     }
 }
 
 impl<F: WithSmallOrderMulGroup<3> + Hash> ComputedMultiplicities<F> {
-    /// Constructs and commits to the LogUp prover polynomials.
+    /// Constructs and commits to the LogUp prover polynomials, but does NOT
+    /// write to the transcript or convert to coefficient form. The caller
+    /// handles transcript ordering and can batch the FFTs.
     ///
-    /// Compresses input expressions via θ-batching, computes the helper
-    /// polynomial using batch inversion, builds the running sum
-    /// accumulator, and commits all three to the transcript.
-    pub(crate) fn commit_logderivative<CS: PolynomialCommitmentScheme<F>, T: Transcript>(
+    /// `blinding_values` must contain exactly `blinding_factors` random field
+    /// elements. They are provided externally so the caller can pre-generate
+    /// them from `&mut rng` and then invoke multiple lookups in parallel.
+    pub(crate) fn compute_logderivative<CS: PolynomialCommitmentScheme<F>>(
         self,
         pk: &ProvingKey<F, CS>,
         params: &CS::Parameters,
         beta: F,
-        mut rng: impl RngCore + CryptoRng,
-        transcript: &mut T,
-    ) -> Result<Committed<F>, Error>
+        blinding_values: Vec<F>,
+    ) -> Result<ComputedLogderivative<F, CS::Commitment>, Error>
     where
         F: WithSmallOrderMulGroup<3> + FromUniformBytes<64>,
-        CS::Commitment: Hashable<T::Hash>,
     {
         let blinding_factors = pk.vk.cs.blinding_factors();
+        debug_assert_eq!(blinding_values.len(), blinding_factors);
         let domain = pk.vk.get_domain();
         let n = domain.n as usize;
 
@@ -220,11 +234,7 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ComputedMultiplicities<F> {
             })
             .collect();
 
-        for helper in &helper_polys_lagrange {
-            let helper_lagrange = domain.lagrange_from_vec(helper.clone());
-            let helper_commitment = CS::commit_lagrange(params, &helper_lagrange);
-            transcript.write(&helper_commitment)?;
-        }
+        // Helper polynomial commitments are deferred to the caller.
 
         // Polynomial over which we compute the running sum:
         //   logderivative_poly[i] = selector[i]·h[i] - m[i]/(t[i]+β)
@@ -251,8 +261,7 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ComputedMultiplicities<F> {
             })
             // Take all rows including the "last" row.
             .take(n - blinding_factors)
-            // Chain random blinding factors.
-            .chain((0..blinding_factors).map(|_| F::random(&mut rng)))
+            .chain(blinding_values)
             .collect::<Vec<_>>();
 
         let aggregator_poly = pk.vk.domain.lagrange_from_vec(aggregator_poly);
@@ -269,19 +278,12 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ComputedMultiplicities<F> {
         }
 
         let aggregator_commitment = CS::commit_lagrange(params, &aggregator_poly);
-        transcript.write(&aggregator_commitment)?;
 
-        let multiplicities = pk.vk.domain.lagrange_to_coeff(self.multiplicities);
-        let helper_polys: Vec<Polynomial<F, Coeff>> = helper_polys_lagrange
-            .into_iter()
-            .map(|h| pk.vk.domain.lagrange_to_coeff(domain.lagrange_from_vec(h)))
-            .collect();
-        let aggregator_poly = pk.vk.domain.lagrange_to_coeff(aggregator_poly);
-
-        Ok(Committed {
-            multiplicities,
-            helper_polys,
+        Ok(ComputedLogderivative {
+            multiplicities: self.multiplicities,
+            helper_polys_lagrange,
             aggregator_poly,
+            aggregator_commitment,
         })
     }
 }
@@ -387,11 +389,12 @@ pub(crate) fn compute_multiplicities<F>(
     values: &[&Polynomial<F, LagrangeCoeff>],
     table: &Polynomial<F, LagrangeCoeff>,
     usable_rows: usize,
-    mut rng: impl RngCore + CryptoRng,
+    blinding_values: &[F],
 ) -> Vec<F>
 where
     F: PrimeField + std::hash::Hash + Eq,
 {
+    assert_eq!(blinding_values.len(), table.len() - usable_rows);
     use rustc_hash::FxHashMap;
 
     // Count how many times each value appears in the table (active rows only)
@@ -442,7 +445,7 @@ where
                 let input_count = *input_counts.get(value).unwrap_or(&0);
                 F::from(input_count as u64) * table_count_inv
             } else {
-                F::random(&mut rng)
+                blinding_values[i - usable_rows]
             }
         })
         .collect()
@@ -452,11 +455,9 @@ where
 mod tests {
     use std::marker::PhantomData;
 
+    use super::*;
     use ff::Field;
     use midnight_curves::Fq;
-    use rand_core::OsRng;
-
-    use super::*;
 
     fn poly_from_vec(values: Vec<Fq>) -> Polynomial<Fq, LagrangeCoeff> {
         Polynomial {
@@ -502,7 +503,7 @@ mod tests {
             &[&input1, &input2],
             &table,
             4,
-            OsRng,
+            &[],
         );
 
         assert_eq!(result.len(), 4);
@@ -532,13 +533,7 @@ mod tests {
         ]);
 
         // Should panic because input value 5 is not found in the table
-        compute_multiplicities(
-            &poly_from_vec(vec![Fq::ONE; 4]),
-            &[&input],
-            &table,
-            4,
-            OsRng,
-        );
+        compute_multiplicities(&poly_from_vec(vec![Fq::ONE; 4]), &[&input], &table, 4, &[]);
     }
 
     #[test]
@@ -559,13 +554,8 @@ mod tests {
             Fq::from(3u64),
         ]);
 
-        let result = compute_multiplicities(
-            &poly_from_vec(vec![Fq::ONE; 4]),
-            &[&input],
-            &table,
-            4,
-            OsRng,
-        );
+        let result =
+            compute_multiplicities(&poly_from_vec(vec![Fq::ONE; 4]), &[&input], &table, 4, &[]);
 
         assert_eq!(result.len(), 4);
         assert_eq!(result[0], Fq::from(1u64)); // table[0]=1 -> 1/1 = 1
@@ -594,16 +584,19 @@ mod tests {
             Fq::from(888u64), // "random" blinding value
         ]);
 
+        let blinding = [Fq::from(42u64), Fq::from(43u64)];
         let result = compute_multiplicities(
             &poly_from_vec(vec![Fq::ONE; 4]),
             &[&input],
             &table,
             2,
-            OsRng,
+            &blinding,
         );
 
         assert_eq!(result.len(), 4);
         assert_eq!(result[0], Fq::from(1u64)); // table[0]=1 -> 1/1 = 1
         assert_eq!(result[1], Fq::from(1u64)); // table[1]=2 -> 1/1 = 1
+        assert_eq!(result[2], blinding[0]); // blinding row
+        assert_eq!(result[3], blinding[1]); // blinding row
     }
 }
