@@ -142,10 +142,7 @@ where
             lookups
                 .into_iter()
                 .zip(vk.cs.lookups.iter().map(|l| l.chunk_by_degree(vk.cs_degree)))
-                .map(|(m, batch)| {
-                    let nb_flat = batch.num_chunks();
-                    m.read_commitment(nb_flat, transcript)
-                })
+                .map(|(m, batch)| m.read_commitment(batch.num_chunks(), transcript))
                 .collect::<Result<Vec<_>, _>>()
         })
         .collect::<Result<Vec<_>, _>>()?;

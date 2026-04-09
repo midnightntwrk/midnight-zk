@@ -2483,6 +2483,14 @@ impl<F: Field> ConstraintSystem<F> {
         // witness polynomials (the evaluation of the trash column).
         let factors = factors + self.trashcans.len();
 
+        // The LogUp helper polynomials are evaluated at x and they are not blinded, so
+        // they may leak information about the witness columns that they involve.
+        // To account for this, we can increase the number of blinding factors of
+        // witness columns. One blinding factor per helper is enough as each helper is
+        // evaluated only once.
+        let factors =
+            factors + self.lookups.iter().map(|l| l.num_chunks(self.degree())).sum::<usize>();
+
         // Each polynomial is evaluated at most an additional time during
         // multiopen (at x_3 to produce q_evals):
         let factors = factors + 1;

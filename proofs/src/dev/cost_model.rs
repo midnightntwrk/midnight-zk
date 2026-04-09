@@ -901,8 +901,8 @@ mod tests {
                         let circuit = StandardPlonk::<NB_PI>(Fq::from(random_byte[0] as u64));
                         let cost_model = cost_model_options(&circuit, 0);
 
-                        // nb of unusable rows for this circuit is 7.
-                        let pi_k = (NB_PI + 7).next_power_of_two().ilog2();
+                        // nb of unusable rows for this circuit is 8.
+                        let pi_k = (NB_PI + 8).next_power_of_two().ilog2();
                         assert_eq!(cost_model.min_k, max(9, pi_k));
                     }
                 )*
