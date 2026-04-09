@@ -848,7 +848,7 @@ where
     C: EdwardsCurve,
     B: FieldEmulationParams<F, C::Base>,
 {
-    /// Table of precomputed points, where table[i] = i * base.
+    /// Table of precomputed points, where `table[i] = i * base`.
     table: Vec<AssignedForeignEdwardsPoint<F, C, B>>,
 }
 
