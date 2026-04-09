@@ -269,10 +269,14 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         transcript_repr_constant: S::F,
     ) -> Result<AssignedVk<S>, Error> {
         let transcript_repr = self.scalar_chip.assign_fixed(layouter, transcript_repr_constant)?;
-        // We expect a finalized cs with no selectors, i.e. whose selectors have been
-        // converted into fixed columns.
-        let selectors = vec![vec![false]; cs.num_selectors()];
-        let (processed_cs, _) = cs.clone().directly_convert_selectors_to_fixed(selectors);
+        // Keep behavior aligned with assign_vk_as_public_input:
+        // only convert selectors when there are selectors to convert.
+        let processed_cs = if cs.num_selectors() > 0 {
+            let selectors = vec![vec![false]; cs.num_selectors()];
+            cs.clone().directly_convert_selectors_to_fixed(selectors).0
+        } else {
+            cs.clone()
+        };
 
         let assigned_vk = AssignedVk {
             vk_name: vk_name.to_string(),
