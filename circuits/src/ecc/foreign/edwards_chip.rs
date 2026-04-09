@@ -20,19 +20,20 @@
 //! order.
 
 use std::{
+    cell::RefCell,
     fmt::Debug,
     hash::{Hash, Hasher},
-    marker::PhantomData,
+    rc::Rc,
 };
 
 use ff::{Field, PrimeField};
 use group::Group;
 use midnight_curves::ff_ext::Legendre;
 #[cfg(any(test, feature = "testing"))]
-use midnight_proofs::plonk::{Advice, Column, Fixed, Instance};
+use midnight_proofs::plonk::Instance;
 use midnight_proofs::{
     circuit::{Chip, Layouter, Value},
-    plonk::{ConstraintSystem, Error},
+    plonk::{Advice, Column, ConstraintSystem, Error, Fixed, Selector},
 };
 #[cfg(any(test, feature = "testing"))]
 use {
@@ -40,7 +41,9 @@ use {
     rand::RngCore,
 };
 
-use super::common::{add_1bit_scalar_bases, msm_preprocess};
+use super::common::{
+    add_1bit_scalar_bases, configure_multi_select_lookup, fill_dynamic_lookup_row, msm_preprocess,
+};
 use crate::{
     ecc::{
         curves::EdwardsCurve,
@@ -70,7 +73,10 @@ where
 {
     base_field_config: FieldChipConfig,
     addition_config: AdditionConfig<C>,
-    _marker: PhantomData<C>,
+    // Dynamic lookup columns for windowed MSM table selection.
+    q_multi_select: Selector,
+    idx_col_multi_select: Column<Advice>,
+    tag_col_multi_select: Column<Fixed>,
 }
 
 /// ECC chip to perform foreign Edwards EC operations.
@@ -88,6 +94,8 @@ where
     native_gadget: N,
     base_field_chip: FieldChip<F, C::Base, B, N>,
     scalar_field_chip: S,
+    /// Per-chip tag counter for dynamic lookup tables (tag 0 is reserved).
+    tag_cnt: Rc<RefCell<u64>>,
 }
 
 impl<F, C, B, S, N> ForeignEdwardsEccChip<F, C, B, S, N>
@@ -104,6 +112,7 @@ where
     pub fn configure(
         meta: &mut ConstraintSystem<F>,
         base_field_config: &FieldChipConfig,
+        advice_columns: &[Column<Advice>],
         nb_parallel_range_checks: usize,
         max_bit_len: u32,
     ) -> ForeignEdwardsEccConfig<C> {
@@ -116,10 +125,15 @@ where
             max_bit_len,
         );
 
+        let (q_multi_select, idx_col_multi_select, tag_col_multi_select) =
+            configure_multi_select_lookup(meta, advice_columns, base_field_config);
+
         ForeignEdwardsEccConfig {
             base_field_config: base_field_config.clone(),
             addition_config,
-            _marker: PhantomData,
+            q_multi_select,
+            idx_col_multi_select,
+            tag_col_multi_select,
         }
     }
 }
@@ -145,6 +159,7 @@ where
             native_gadget: native_gadget.clone(),
             base_field_chip,
             scalar_field_chip: scalar_field_chip.clone(),
+            tag_cnt: Rc::new(RefCell::new(1)),
         }
     }
 
@@ -728,22 +743,19 @@ where
         let (scalars, bases, bases_with_1bit_scalar) =
             msm_preprocess(self, scalar_chip, layouter, scalars, bases)?;
 
-        // Decompose all scalars to bits.
-        let bits: Vec<Vec<AssignedBit<F>>> = scalars
+        // Decompose scalars to bits with tight bound, then chunk into windows.
+        const WS: usize = 4;
+        let scalar_windows: Vec<Vec<AssignedNative<F>>> = scalars
             .iter()
             .map(|(s, num_bits)| {
-                scalar_chip.assigned_to_le_bits(layouter, s, Some(*num_bits), true)
+                let bits = scalar_chip.assigned_to_le_bits(layouter, s, Some(*num_bits), true)?;
+                bits.chunks(WS)
+                    .map(|chunk| self.native_gadget.assigned_from_le_bits(layouter, chunk))
+                    .collect::<Result<Vec<_>, _>>()
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        let max_bits = scalars.iter().map(|(_, n)| *n).max().unwrap_or(0);
-        let res = if max_bits <= 3 {
-            self.windowed_msm::<1>(layouter, &bits, &bases)?
-        } else if max_bits <= 32 {
-            self.windowed_msm::<2>(layouter, &bits, &bases)?
-        } else {
-            self.windowed_msm::<3>(layouter, &bits, &bases)?
-        };
+        let res = self.windowed_msm::<WS>(layouter, &scalar_windows, &bases)?;
 
         // Add 1-bit scalar bases.
         add_1bit_scalar_bases(layouter, self, scalar_chip, &bases_with_1bit_scalar, res)
@@ -863,35 +875,92 @@ where
         Ok(PrecomputedTable { table })
     }
 
-    /// Selects `table[w]` where `w` is the LE value of `bits`, using a binary
-    /// mux tree. Cost: 2^WS - 1 point selects.
-    fn multi_select<const WS: usize>(
+    /// Delegates to [`fill_dynamic_lookup_row`] with this chip's columns.
+    #[allow(clippy::type_complexity)]
+    fn fill_dynamic_lookup_row(
         &self,
         layouter: &mut impl Layouter<F>,
-        bits: &[AssignedBit<F>; WS],
-        table: &PrecomputedTable<F, C, B, WS>,
-    ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
-        assert_eq!(table.table.len(), 1 << WS);
-        let mut res = table.table.clone();
-
-        let mut len = 1 << WS;
-        for b in bits.iter().rev() {
-            let half_len = len / 2;
-            for i in 0..half_len {
-                res[i] = self.select(layouter, b, &res[i + half_len], &res[i])?;
-            }
-            len = half_len;
-        }
-        Ok(res[0].clone())
+        point: &AssignedForeignEdwardsPoint<F, C, B>,
+        index: &AssignedNative<F>,
+        table_tag: F,
+        enable_lookup: bool,
+    ) -> Result<(Vec<AssignedNative<F>>, Vec<AssignedNative<F>>), Error> {
+        fill_dynamic_lookup_row(
+            layouter,
+            &point.x.limb_values(),
+            &point.y.limb_values(),
+            index,
+            &self.config.base_field_config.x_cols,
+            &self.config.base_field_config.z_cols, // z_cols used for y (y_cols == x_cols)
+            self.config.idx_col_multi_select,
+            self.config.tag_col_multi_select,
+            self.config.q_multi_select,
+            table_tag,
+            enable_lookup,
+        )
     }
 
-    /// Windowed interleaved MSM over LE bit-decomposed scalars. Shares the
+    /// Loads a precomputed point table into the dynamic lookup.  Entry `i` is
+    /// paired with index `i` and the given `table_tag`.
+    fn load_multi_select_table(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        point_table: &[AssignedForeignEdwardsPoint<F, C, B>],
+        table_tag: F,
+    ) -> Result<(), Error> {
+        let indices: Vec<AssignedNative<F>> = (0..point_table.len())
+            .map(|i| self.native_gadget.assign_fixed(layouter, F::from(i as u64)))
+            .collect::<Result<_, Error>>()?;
+
+        for (i, point) in point_table.iter().enumerate() {
+            self.fill_dynamic_lookup_row(layouter, point, &indices[i], table_tag, false)?;
+        }
+        Ok(())
+    }
+
+    /// Returns `point_table[selector]` using the dynamic lookup.
+    ///
+    /// The table must have been loaded via [`Self::load_multi_select_table`]
+    /// with the same `table_tag`.
+    fn multi_select(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        selector: &AssignedNative<F>,
+        point_table: &[AssignedForeignEdwardsPoint<F, C, B>],
+        table_tag: F,
+    ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
+        let mut selector_idx = 0usize;
+        selector.value().map(|v| {
+            let digits = v.to_biguint().to_u32_digits();
+            let digit = if digits.is_empty() { 0 } else { digits[0] };
+            debug_assert!(digits.len() <= 1);
+            debug_assert!((digit as usize) < point_table.len());
+            selector_idx = digit as usize;
+        });
+
+        let selected = point_table[selector_idx].clone();
+
+        let (xs, ys) =
+            self.fill_dynamic_lookup_row(layouter, &selected, selector, table_tag, true)?;
+        let x = AssignedField::<F, C::Base, B>::from_limbs_unsafe(xs);
+        let y = AssignedField::<F, C::Base, B>::from_limbs_unsafe(ys);
+
+        Ok(AssignedForeignEdwardsPoint::<F, C, B> {
+            point: selected.point,
+            x,
+            y,
+        })
+    }
+
+    /// Windowed interleaved MSM over pre-chunked scalars. Each scalar is a
+    /// sequence of WS-bit window values (native field elements). Shares the
     /// doubling chain across all bases. Horner evaluation. Scalars may have
-    /// different lengths; short scalars are skipped in high windows.
+    /// different numbers of windows; short scalars are skipped in high windows.
+    /// Point selection uses a dynamic-lookup table.
     fn windowed_msm<const WS: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
-        scalars: &[Vec<AssignedBit<F>>],
+        scalars: &[Vec<AssignedNative<F>>],
         bases: &[AssignedForeignEdwardsPoint<F, C, B>],
     ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
         assert_eq!(scalars.len(), bases.len());
@@ -900,46 +969,40 @@ where
             return self.assign_fixed(layouter, C::CryptographicGroup::identity());
         }
 
-        // Pad each bit vector to a multiple of WS individually, preserving
-        // different lengths so that short scalars are skipped in high windows.
-        let zero_bit: AssignedBit<F> = self.native_gadget.assign_fixed(layouter, false)?;
-        let scalars: Vec<Vec<AssignedBit<F>>> = scalars
-            .iter()
-            .map(|bits| {
-                let padded_len = bits.len().div_ceil(WS) * WS;
-                let mut padded = bits.clone();
-                padded.resize(padded_len, zero_bit.clone());
-                padded
-            })
-            .collect();
-
         // Number of windows per scalar.
-        let num_windows: Vec<usize> = scalars.iter().map(|s| s.len() / WS).collect();
+        let num_windows: Vec<usize> = scalars.iter().map(|s| s.len()).collect();
         let max_num_windows = *num_windows.iter().max().unwrap();
 
-        // Precompute tables for each base.
-        let tables: Vec<PrecomputedTable<F, C, B, WS>> = bases
-            .iter()
-            .map(|b| self.precompute::<WS>(layouter, b))
-            .collect::<Result<Vec<_>, _>>()?;
+        // Precompute tables for each base and load them into the dynamic lookup.
+        let tag_cnt = *self.tag_cnt.borrow();
+        self.tag_cnt.replace(tag_cnt + bases.len() as u64);
+
+        let mut tables = vec![];
+        for (i, base) in bases.iter().enumerate() {
+            let table = self.precompute::<WS>(layouter, base)?;
+            self.load_multi_select_table(layouter, &table.table, F::from(tag_cnt + i as u64))?;
+            tables.push(table);
+        }
 
         let mut res = self.assign_fixed(layouter, C::CryptographicGroup::identity())?;
         for w in (0..max_num_windows).rev() {
-            // Skip doubling in the last iteration.
+            // Skip doubling in the most-significant window.
             if w < max_num_windows - 1 {
                 for _ in 0..WS {
                     res = self.double(layouter, &res)?;
                 }
             }
-            for ((bits, nw), table) in scalars.iter().zip(&num_windows).zip(tables.iter()) {
-                // Skip scalars that have no bits in this window.
+            for (i, (windows, nw)) in scalars.iter().zip(&num_windows).enumerate() {
+                // Skip scalars that have no windows in this position.
                 if w >= *nw {
                     continue;
                 }
-                let window_bits: &[AssignedBit<F>; WS] = bits[w * WS..(w + 1) * WS]
-                    .try_into()
-                    .expect("window slice length must equal WS");
-                let addend = self.multi_select::<WS>(layouter, window_bits, table)?;
+                let addend = self.multi_select(
+                    layouter,
+                    &windows[w],
+                    &tables[i].table,
+                    F::from(tag_cnt + i as u64),
+                )?;
                 res = self.add(layouter, &res, &addend)?;
             }
         }
@@ -1011,7 +1074,8 @@ where
             instance_columns,
         );
         let nb_advice_cols = nb_field_chip_columns::<F, C::Base, B>();
-        while advice_columns.len() < nb_advice_cols {
+        // +1 for the multi_select index column.
+        while advice_columns.len() < nb_advice_cols + 1 {
             advice_columns.push(meta.advice_column());
         }
         let nb_parallel_range_checks = 4;
@@ -1025,6 +1089,7 @@ where
         let ff_ecc_config = ForeignEdwardsEccChip::<F, C, B, S, N>::configure(
             meta,
             &base_field_config,
+            advice_columns,
             nb_parallel_range_checks,
             max_bit_len,
         );
