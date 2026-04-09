@@ -451,13 +451,13 @@ where
     );
 
     // Compute linearization polynomial
-    let linearization_poly =
+    let (homogeneous_lin_poly, lin_poly_affine_term) =
         compute_linearization_poly(expressions, pk, y, xn, splitting_factor, quotient_limbs);
 
     debug_assert_eq!(
-        eval_polynomial(&linearization_poly, x),
-        F::ZERO,
-        "The linearization poly should evaluate to zero at the evaluation challenge x."
+        eval_polynomial(&homogeneous_lin_poly, x),
+        -lin_poly_affine_term,
+        "L'(x) should equal -C, where C is the constant part from fully evaluated identities."
     );
 
     let queries = compute_queries(
@@ -469,7 +469,7 @@ where
         &lookups,
         &trashcans,
         x,
-        &linearization_poly,
+        &homogeneous_lin_poly,
     );
 
     CS::multi_open(params, &queries, transcript).map_err(|_| Error::ConstraintSystemFailure)
@@ -893,7 +893,7 @@ pub(super) fn compute_queries<
     lookups: &'a [Vec<logup::prover::Evaluated<F>>],
     trashcans: &'a [Vec<trash::prover::Evaluated<F>>],
     x: F,
-    linearization_poly: &'a Polynomial<F, Coeff>,
+    homogeneous_lin_poly: &'a Polynomial<F, Coeff>,
 ) -> Vec<ProverQuery<'a, F>> {
     let domain = pk.vk.get_domain();
     instance_polys
@@ -943,7 +943,7 @@ pub(super) fn compute_queries<
         .chain(pk.permutation.open(x))
         .chain(iter::once(ProverQuery {
             point: domain.rotate_omega(x, Rotation::cur()),
-            poly: linearization_poly,
+            poly: homogeneous_lin_poly,
         }))
         .collect()
 }
