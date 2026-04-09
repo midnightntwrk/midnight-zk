@@ -707,26 +707,11 @@ where
         scalars: &[Self::Scalar],
         bases: &[Self::Point],
     ) -> Result<Self::Point, Error> {
-        if scalars.len() != bases.len() {
-            panic!("Number of scalars and points should be the same.")
-        }
-        let scalar_chip = self.scalar_field_chip();
-
-        // Add max bound to scalars + preprocess.
-        let scalars: Vec<_> =
-            scalars.iter().map(|s| (s.clone(), C::ScalarField::NUM_BITS as usize)).collect();
-        let (scalars, bases, bases_with_1bit_scalar) =
-            msm_preprocess(self, scalar_chip, layouter, &scalars, bases)?;
-        let scalar_bits = scalars
+        let scalars = scalars
             .iter()
-            .map(|s| scalar_chip.assigned_to_le_bits(layouter, &s.0, None, true))
-            .collect::<Result<Vec<_>, Error>>()?;
-
-        // Windowed msm with shared doubling.
-        let res = self.windowed_msm::<3>(layouter, &scalar_bits, &bases)?;
-
-        // Add 1-bit scalar bases.
-        add_1bit_scalar_bases(layouter, self, scalar_chip, &bases_with_1bit_scalar, res)
+            .map(|s| (s.clone(), C::ScalarField::NUM_BITS as usize))
+            .collect::<Vec<_>>();
+        self.msm_by_bounded_scalars(layouter, &scalars, bases)
     }
 
     fn msm_by_bounded_scalars(
