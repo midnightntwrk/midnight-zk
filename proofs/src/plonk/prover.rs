@@ -214,19 +214,32 @@ where
     // Sample theta challenge for keeping lookup columns linearly independent
     let theta: F = transcript.squeeze_challenge();
 
-    // Commit to the multiplicities columns
+    // Pre-generate multiplicities blinding values so that the parallel
+    // compute section below does not need `&mut rng`.
+    let num_lookups = pk.vk.cs.lookups.len();
+    let mult_blinding_count = pk.vk.cs.blinding_factors() + 1;
+    let mult_all_blindings: Vec<Vec<Vec<F>>> = (0..instance.len())
+        .map(|_| {
+            (0..num_lookups)
+                .map(|_| (0..mult_blinding_count).map(|_| F::random(&mut rng)).collect())
+                .collect()
+        })
+        .collect();
+
+    // Commit to the multiplicities columns.
     // Parallel compute phase, then sequential transcript writes.
     let lookups: Vec<Vec<logup::prover::ComputedMultiplicities<F>>> = instance
         .iter()
         .zip(advice.iter())
-        .map(|(instance, advice)| -> Result<Vec<_>, Error> {
+        .zip(mult_all_blindings)
+        .map(|((instance, advice), mult_blinds)| -> Result<Vec<_>, Error> {
             let logup_args: Vec<_> =
                 pk.vk.cs.lookups.iter().map(|l| l.chunk_by_degree(pk.vk.cs.degree())).collect();
-            // Compute all lookups in parallel (no transcript access).
+            // Compute all lookups in parallel (no transcript access, no rng).
             let results: Vec<_> = logup_args
-                // TODO: Remove rng and re-add par_iter()
-                .iter()
-                .map(|logup| {
+                .par_iter()
+                .zip(mult_blinds.par_iter())
+                .map(|(logup, blinds)| {
                     logup.compute_multiplicities_parallel(
                         pk,
                         params,
@@ -235,7 +248,7 @@ where
                         &pk.fixed_values,
                         &instance.instance_values,
                         &challenges,
-                        &mut rng,
+                        blinds,
                     )
                 })
                 .collect::<Result<Vec<_>, Error>>()?;
