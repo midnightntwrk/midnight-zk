@@ -729,9 +729,6 @@ where
         add_1bit_scalar_bases(layouter, self, scalar_chip, &bases_with_1bit_scalar, res)
     }
 
-    // Per-base windowed MSM with adaptive window size. Unlike `msm`, this does
-    // not share doublings across bases, avoiding padding waste when scalar
-    // bounds differ significantly.
     fn msm_by_bounded_scalars(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -742,26 +739,26 @@ where
             panic!("Number of scalars and points should be the same.")
         }
         let scalar_chip = self.scalar_field_chip();
-        let identity = self.assign_fixed(layouter, C::CryptographicGroup::identity())?;
 
         let (scalars, bases, bases_with_1bit_scalar) =
             msm_preprocess(self, scalar_chip, layouter, scalars, bases)?;
 
-        // We do not share doublings because we assume the difference in
-        // scalar upper bounds negate the benefits, since we will double
-        // until the max of the bounds.
-        let mut res = identity.clone();
-        for ((s, num_bits), b) in scalars.iter().zip(bases.iter()) {
-            let bits = scalar_chip.assigned_to_le_bits(layouter, s, Some(*num_bits), true)?;
-            let term = if *num_bits <= 3 {
-                self.windowed_scalar_mul::<1>(layouter, &bits, b)?
-            } else if *num_bits <= 32 {
-                self.windowed_scalar_mul::<2>(layouter, &bits, b)?
-            } else {
-                self.windowed_scalar_mul::<3>(layouter, &bits, b)?
-            };
-            res = self.add(layouter, &res, &term)?;
-        }
+        // Decompose all scalars to bits.
+        let bits: Vec<Vec<AssignedBit<F>>> = scalars
+            .iter()
+            .map(|(s, num_bits)| {
+                scalar_chip.assigned_to_le_bits(layouter, s, Some(*num_bits), true)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let max_bits = scalars.iter().map(|(_, n)| *n).max().unwrap_or(0);
+        let res = if max_bits <= 3 {
+            self.windowed_msm::<1>(layouter, &bits, &bases)?
+        } else if max_bits <= 32 {
+            self.windowed_msm::<2>(layouter, &bits, &bases)?
+        } else {
+            self.windowed_msm::<3>(layouter, &bits, &bases)?
+        };
 
         // Add 1-bit scalar bases.
         add_1bit_scalar_bases(layouter, self, scalar_chip, &bases_with_1bit_scalar, res)
@@ -901,7 +898,8 @@ where
     }
 
     /// Windowed interleaved MSM over LE bit-decomposed scalars. Shares the
-    /// doubling chain across all bases. Horner evaluation.
+    /// doubling chain across all bases. Horner evaluation. Scalars may have
+    /// different lengths; short scalars are skipped in high windows.
     fn windowed_msm<const WS: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -914,19 +912,22 @@ where
             return self.assign_fixed(layouter, C::CryptographicGroup::identity());
         }
 
-        // Pad all bit vectors to a common length that is a multiple of WS.
-        let max_bits = scalars.iter().map(|s| s.len()).max().unwrap_or(0);
-        let padded_len = max_bits.div_ceil(WS) * WS;
+        // Pad each bit vector to a multiple of WS individually, preserving
+        // different lengths so that short scalars are skipped in high windows.
         let zero_bit: AssignedBit<F> = self.native_gadget.assign_fixed(layouter, false)?;
         let scalars: Vec<Vec<AssignedBit<F>>> = scalars
             .iter()
             .map(|bits| {
+                let padded_len = bits.len().div_ceil(WS) * WS;
                 let mut padded = bits.clone();
                 padded.resize(padded_len, zero_bit.clone());
                 padded
             })
             .collect();
-        let num_windows = padded_len / WS;
+
+        // Number of windows per scalar.
+        let num_windows: Vec<usize> = scalars.iter().map(|s| s.len() / WS).collect();
+        let max_num_windows = *num_windows.iter().max().unwrap();
 
         // Precompute tables for each base.
         let tables: Vec<PrecomputedTable<F, C, B, WS>> = bases
@@ -935,14 +936,18 @@ where
             .collect::<Result<Vec<_>, _>>()?;
 
         let mut res = self.assign_fixed(layouter, C::CryptographicGroup::identity())?;
-        for w in (0..num_windows).rev() {
-            // Skip doubling in least-significant window.
-            if w < num_windows - 1 {
+        for w in (0..max_num_windows).rev() {
+            // Skip doubling in the last iteration.
+            if w < max_num_windows - 1 {
                 for _ in 0..WS {
                     res = self.double(layouter, &res)?;
                 }
             }
-            for (bits, table) in scalars.iter().zip(tables.iter()) {
+            for ((bits, nw), table) in scalars.iter().zip(&num_windows).zip(tables.iter()) {
+                // Skip scalars that have no bits in this window.
+                if w >= *nw {
+                    continue;
+                }
                 let window_bits: &[AssignedBit<F>; WS] = bits[w * WS..(w + 1) * WS]
                     .try_into()
                     .expect("window slice length must equal WS");
@@ -952,16 +957,6 @@ where
         }
 
         Ok(res)
-    }
-
-    /// Single-base windowed scalar multiplication.
-    fn windowed_scalar_mul<const WS: usize>(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        scalar: &[AssignedBit<F>],
-        base: &AssignedForeignEdwardsPoint<F, C, B>,
-    ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
-        self.windowed_msm::<WS>(layouter, &[scalar.to_vec()], std::slice::from_ref(base))
     }
 }
 
