@@ -22,7 +22,7 @@
 //!     - R_bytes are the bytes of the compressed R,
 //!     - A_bytes are the bytes of the compressed A.
 //!     - M_bytes are the bytes for message M
-//!   * L is the the scalar field modulus.
+//!   * L is the scalar field modulus.
 //!
 //! The relation to prove is (x, w), where:
 //!   * x is the instance (A, M),
