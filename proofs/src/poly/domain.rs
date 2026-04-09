@@ -42,7 +42,6 @@ pub struct EvaluationDomain<F: Field> {
     omega: F,
     omega_inv: F,
     extended_omega: F,
-    extended_omega_inv: F,
     pub(crate) g_coset: F,
     g_coset_inv: F,
     quotient_poly_degree: u64,
@@ -160,7 +159,6 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
             omega,
             omega_inv,
             extended_omega,
-            extended_omega_inv,
             g_coset,
             g_coset_inv,
             quotient_poly_degree,
@@ -256,7 +254,12 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
         assert_eq!(a.values.len(), 1 << self.k);
 
         // Perform inverse FFT using cached twiddle factors.
-        Self::ifft(&mut a.values, &self.twiddles.omega_inv, self.k, self.ifft_divisor);
+        Self::ifft(
+            &mut a.values,
+            &self.twiddles.omega_inv,
+            self.k,
+            self.ifft_divisor,
+        );
 
         Polynomial {
             values: a.values,
@@ -287,7 +290,11 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
 
         self.distribute_powers_zeta(&mut a.values, true);
         a.values.resize(self.extended_len(), F::ZERO);
-        best_fft_with_twiddles(&mut a.values, &self.twiddles.extended_omega, self.extended_k);
+        best_fft_with_twiddles(
+            &mut a.values,
+            &self.twiddles.extended_omega,
+            self.extended_k,
+        );
 
         Polynomial {
             values: a.values,
@@ -403,7 +410,6 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
             }
         });
     }
-
 
     /// Get the size of the domain
     pub fn k(&self) -> u32 {

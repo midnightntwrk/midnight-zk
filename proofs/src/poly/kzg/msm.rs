@@ -11,7 +11,7 @@ use itertools::izip;
 use midnight_curves::{
     msm::msm_best,
     pairing::{Engine, MillerLoopResult, MultiMillerLoop},
-    CurveAffine, Fq, G1Affine, G1Projective,
+    CurveAffine, Fq, G1Affine,
 };
 use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 

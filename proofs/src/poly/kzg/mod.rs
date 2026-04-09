@@ -187,9 +187,9 @@ where
                 .into_par_iter()
                 .zip(q_polys.clone().into_par_iter())
                 .map(|(points, q_poly)| {
-                    let poly = points.iter().fold(q_poly.values, |poly, point| {
-                        kate_division(&poly, *point)
-                    });
+                    let poly = points
+                        .iter()
+                        .fold(q_poly.values, |poly, point| kate_division(&poly, *point));
                     Polynomial {
                         values: poly,
                         _marker: PhantomData,

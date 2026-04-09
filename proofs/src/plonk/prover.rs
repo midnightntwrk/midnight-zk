@@ -232,35 +232,37 @@ where
         .iter()
         .zip(advice.iter())
         .zip(mult_all_blindings)
-        .map(|((instance, advice), mult_blinds)| -> Result<Vec<_>, Error> {
-            let logup_args: Vec<_> =
-                pk.vk.cs.lookups.iter().map(|l| l.chunk_by_degree(pk.vk.cs.degree())).collect();
-            // Compute all lookups in parallel (no transcript access, no rng).
-            let results: Vec<_> = logup_args
-                .par_iter()
-                .zip(mult_blinds.par_iter())
-                .map(|(logup, blinds)| {
-                    logup.compute_multiplicities_parallel(
-                        pk,
-                        params,
-                        theta,
-                        &advice.advice_polys,
-                        &pk.fixed_values,
-                        &instance.instance_values,
-                        &challenges,
-                        blinds,
-                    )
-                })
-                .collect::<Result<Vec<_>, Error>>()?;
-            // Sequential transcript writes to preserve Fiat-Shamir ordering.
-            results
-                .into_iter()
-                .map(|(computed, commitment)| {
-                    transcript.write(&commitment)?;
-                    Ok(computed)
-                })
-                .collect::<Result<Vec<_>, Error>>()
-        })
+        .map(
+            |((instance, advice), mult_blinds)| -> Result<Vec<_>, Error> {
+                let logup_args: Vec<_> =
+                    pk.vk.cs.lookups.iter().map(|l| l.chunk_by_degree(pk.vk.cs.degree())).collect();
+                // Compute all lookups in parallel (no transcript access, no rng).
+                let results: Vec<_> = logup_args
+                    .par_iter()
+                    .zip(mult_blinds.par_iter())
+                    .map(|(logup, blinds)| {
+                        logup.compute_multiplicities_parallel(
+                            pk,
+                            params,
+                            theta,
+                            &advice.advice_polys,
+                            &pk.fixed_values,
+                            &instance.instance_values,
+                            &challenges,
+                            blinds,
+                        )
+                    })
+                    .collect::<Result<Vec<_>, Error>>()?;
+                // Sequential transcript writes to preserve Fiat-Shamir ordering.
+                results
+                    .into_iter()
+                    .map(|(computed, commitment)| {
+                        transcript.write(&commitment)?;
+                        Ok(computed)
+                    })
+                    .collect::<Result<Vec<_>, Error>>()
+            },
+        )
         .collect::<Result<Vec<_>, Error>>()?;
 
     // Sample beta challenge
@@ -298,7 +300,7 @@ where
     let (all_perm_computed, all_logup_computed): (Vec<_>, Vec<Result<_, Error>>) = instance
         .iter()
         .zip(advice.iter())
-        .zip(lookups.into_iter())
+        .zip(lookups)
         .zip(perm_all_blindings)
         .zip(logup_all_blindings)
         .map(
