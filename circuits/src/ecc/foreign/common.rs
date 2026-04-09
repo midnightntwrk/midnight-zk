@@ -21,15 +21,27 @@ use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 use crate::{
     ecc::curves::CircuitCurve,
-    instructions::{AssignmentInstructions, EccInstructions, ScalarFieldInstructions},
+    instructions::{
+        AssignmentInstructions, ControlFlowInstructions, EccInstructions, ScalarFieldInstructions,
+    },
     types::InnerValue,
     CircuitField,
 };
 
 /// Preprocessing of MSM inputs.
 ///
-/// Phase 1: Filters out identity bases and separates 1-bit scalars.
-/// Phase 2: Deduplicates bases and scalars known to be equal.
+/// Takes a list of `(scalar, bound)` pairs and their corresponding bases,
+/// and returns a simplified, deduplicated representation in three parts:
+///
+///  - **Scalars and bases** ready for windowed scalar multiplication (with
+///    updated bounds after deduplication).
+///  - **1-bit scalar bases**: pairs `(base, scalar)` where the scalar is known
+///    to be 0 or 1, to be handled separately by [`add_1bit_scalar_bases`].
+///
+/// The simplification proceeds in two phases:
+///  1. Filters out identity bases (no-ops) and separates 1-bit scalars.
+///  2. Deduplicates equal bases (by adding their scalars) and equal scalars (by
+///     adding their bases).
 #[allow(clippy::type_complexity)]
 pub(crate) fn msm_preprocess<F, C, EI, SFI>(
     ec_chip: &EI,
@@ -126,4 +138,40 @@ where
     let scalars = unique_scalars;
 
     Ok((scalars, bases, bases_with_1bit_scalar))
+}
+
+/// Adds the 1-bit scalar bases (as returned by [`msm_preprocess`]) into an
+/// accumulator.
+///
+/// For each `(base, scalar)` pair, if the scalar is known to be 1 the base
+/// is added directly; otherwise we select between the identity and the base
+/// based on whether the scalar is zero, and add the result.
+pub(crate) fn add_1bit_scalar_bases<F, C, EI, SFI>(
+    layouter: &mut impl Layouter<F>,
+    ec_chip: &EI,
+    scalar_chip: &SFI,
+    bases_with_1bit_scalar: &[(EI::Point, EI::Scalar)],
+    acc: EI::Point,
+) -> Result<EI::Point, Error>
+where
+    F: CircuitField,
+    C: CircuitCurve,
+    EI: EccInstructions<F, C, Scalar = SFI::Scalar>
+        + AssignmentInstructions<F, EI::Point>
+        + ControlFlowInstructions<F, EI::Point>,
+    SFI: ScalarFieldInstructions<F>,
+    SFI::Scalar: InnerValue<Element = C::ScalarField>,
+{
+    let identity = ec_chip.assign_fixed(layouter, C::CryptographicGroup::identity())?;
+    let one: EI::Scalar = scalar_chip.assign_fixed(layouter, C::ScalarField::ONE)?;
+
+    bases_with_1bit_scalar.iter().try_fold(acc, |acc, (b, s)| {
+        let s_times_b = if s == &one {
+            b.clone()
+        } else {
+            let s_is_zero = scalar_chip.is_zero(layouter, s)?;
+            ec_chip.select(layouter, &s_is_zero, &identity, b)?
+        };
+        ec_chip.add(layouter, &acc, &s_times_b)
+    })
 }

@@ -40,7 +40,7 @@ use {
     rand::RngCore,
 };
 
-use super::common::msm_preprocess;
+use super::common::{add_1bit_scalar_bases, msm_preprocess};
 use crate::{
     ecc::{
         curves::EdwardsCurve,
@@ -711,8 +711,6 @@ where
             panic!("Number of scalars and points should be the same.")
         }
         let scalar_chip = self.scalar_field_chip();
-        let identity = self.assign_fixed(layouter, C::CryptographicGroup::identity())?;
-        let one = self.scalar_field_chip().assign_fixed(layouter, C::ScalarField::ONE)?;
 
         // Add max bound to scalars + preprocess.
         let scalars: Vec<_> =
@@ -728,15 +726,7 @@ where
         let res = self.windowed_msm::<3>(layouter, &scalar_bits, &bases)?;
 
         // Add 1-bit scalar bases.
-        bases_with_1bit_scalar.iter().try_fold(res, |acc, (b, s)| {
-            let s_times_b = if s == &one {
-                b.clone()
-            } else {
-                let s_is_zero = scalar_chip.is_zero(layouter, s)?;
-                self.select(layouter, &s_is_zero, &identity, b)?
-            };
-            self.add(layouter, &acc, &s_times_b)
-        })
+        add_1bit_scalar_bases(layouter, self, scalar_chip, &bases_with_1bit_scalar, res)
     }
 
     // Per-base windowed MSM with adaptive window size. Unlike `msm`, this does
@@ -753,7 +743,6 @@ where
         }
         let scalar_chip = self.scalar_field_chip();
         let identity = self.assign_fixed(layouter, C::CryptographicGroup::identity())?;
-        let one = self.scalar_field_chip().assign_fixed(layouter, C::ScalarField::ONE)?;
 
         let (scalars, bases, bases_with_1bit_scalar) =
             msm_preprocess(self, scalar_chip, layouter, scalars, bases)?;
@@ -775,15 +764,7 @@ where
         }
 
         // Add 1-bit scalar bases.
-        bases_with_1bit_scalar.iter().try_fold(res, |acc, (b, s)| {
-            let s_times_b = if s == &one {
-                b.clone()
-            } else {
-                let s_is_zero = scalar_chip.is_zero(layouter, s)?;
-                self.select(layouter, &s_is_zero, &identity, b)?
-            };
-            self.add(layouter, &acc, &s_times_b)
-        })
+        add_1bit_scalar_bases(layouter, self, scalar_chip, &bases_with_1bit_scalar, res)
     }
 
     fn mul_by_constant(
@@ -920,7 +901,7 @@ where
     }
 
     /// Windowed interleaved MSM over LE bit-decomposed scalars. Shares the
-    /// doubling chain across all bases. MSB-first Horner evaluation.
+    /// doubling chain across all bases. Horner evaluation.
     fn windowed_msm<const WS: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -955,7 +936,7 @@ where
 
         let mut res = self.assign_fixed(layouter, C::CryptographicGroup::identity())?;
         for w in (0..num_windows).rev() {
-            // Skip doubling in first window.
+            // Skip doubling in least-significant window.
             if w < num_windows - 1 {
                 for _ in 0..WS {
                     res = self.double(layouter, &res)?;

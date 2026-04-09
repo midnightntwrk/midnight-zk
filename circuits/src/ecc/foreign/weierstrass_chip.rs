@@ -53,7 +53,10 @@ use super::gates::weierstrass::{
     tangent::TangentConfig,
 };
 use crate::{
-    ecc::{curves::WeierstrassCurve, foreign::common::msm_preprocess},
+    ecc::{
+        curves::WeierstrassCurve,
+        foreign::common::{add_1bit_scalar_bases, msm_preprocess},
+    },
     field::foreign::{
         field_chip::{FieldChip, FieldChipConfig},
         params::FieldEmulationParams,
@@ -840,17 +843,7 @@ where
         }
         let res = self.windowed_msm::<WS>(layouter, &decomposed_scalars, &bases)?;
 
-        let id_point = self.assign_fixed(layouter, C::CryptographicGroup::identity())?;
-        let one = scalar_chip.assign_fixed(layouter, C::ScalarField::ONE)?;
-        bases_with_1bit_scalar.iter().try_fold(res, |acc, (b, s)| {
-            let s_times_b = if s == &one {
-                b.clone()
-            } else {
-                let s_is_zero = self.scalar_field_chip().is_zero(layouter, s)?;
-                self.select(layouter, &s_is_zero, &id_point, b)?
-            };
-            self.add(layouter, &acc, &s_times_b)
-        })
+        add_1bit_scalar_bases(layouter, self, scalar_chip, &bases_with_1bit_scalar, res)
     }
 
     fn mul_by_constant(
