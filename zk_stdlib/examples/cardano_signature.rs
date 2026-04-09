@@ -10,7 +10,7 @@
 //!
 //! This example uses the *strict* (or *cofactorless* or *unbatched*)
 //! verification equation:
-//!     s * B = R + h * A,
+//!     R = s * B - h * A,
 //! where:
 //!   * B is the designated generator of G1 (in C).
 //!   * A is the public key (in C).
@@ -19,9 +19,9 @@
 //!     - s the signature scalar (in F_L).
 //!   * h = SHA-512(R_bytes || A_bytes || M_bytes) mod L is the challenge (in
 //!     F_L), with:
-//!     - R_bytes are the bytes of the compressed R,
-//!     - A_bytes are the bytes of the compressed A.
-//!     - M_bytes are the bytes for message M
+//!     - R_bytes are the LE bytes of the compressed R,
+//!     - A_bytes are the LE bytes of the compressed A,
+//!     - M_bytes are the LE bytes for message M.
 //!   * L is the scalar field modulus.
 //!
 //! The relation to prove is (x, w), where:
@@ -30,12 +30,12 @@
 //!
 //! [libsodium](https://github.com/jedisct1/libsodium) uses the following verification criteria in
 //! `crypto_sign/ed25519/ref10/open.c`:
-//!   * cofactorless verification equation R - s * B - h * A = 0,
+//!   * cofactorless verification equation R = s * B - h * A,
 //!   * canonicity checks on s, A,
 //!   * small-order checks on R, A.
 //!
 //! This example uses the following verification criteria:
-//!   * cofactorless verification s * B = R + h * A,
+//!   * cofactorless verification R = s * B - h * A,
 //!   * canonicity checks on s, A, R,
 //!   * small-order checks on R, A.
 
@@ -81,9 +81,7 @@ impl Relation for CardanoSigExample {
             ),
             msg.iter().flat_map(AssignedByte::<F>::as_public_input).collect::<Vec<_>>(),
         ]
-        .into_iter()
-        .flatten()
-        .collect())
+        .concat())
     }
 
     fn circuit(
@@ -107,10 +105,8 @@ impl Relation for CardanoSigExample {
             .try_for_each(|byte| std_lib.constrain_as_public_input(layouter, byte))?;
 
         // Decompose witness w = (R, s) and assign (R, s) as curve point and scalar.
-        let r_val = witness.map(|(r, _)| r);
-        let s_val = witness.map(|(_, s)| s);
-        let r = curve25519_curve.assign(layouter, r_val)?;
-        let s = curve25519_scalar.assign(layouter, s_val)?;
+        let r = curve25519_curve.assign(layouter, witness.map(|(r, _)| r))?;
+        let s = curve25519_scalar.assign(layouter, witness.map(|(_, s)| s))?;
 
         // Canonicity check for s.
         let s_bits = curve25519_scalar.assigned_to_le_bits(layouter, &s, None, false)?;
@@ -118,8 +114,8 @@ impl Relation for CardanoSigExample {
         curve25519_scalar.assert_equal_to_fixed(layouter, &canonical, true)?;
 
         // Compress R and A.
-        let r_compressed_bytes = compress_edwards_point(std_lib, layouter, &r)?;
-        let a_compressed_bytes = compress_edwards_point(std_lib, layouter, &a)?;
+        let r_compressed_bytes = to_compressed_bytes(std_lib, layouter, &r)?;
+        let a_compressed_bytes = to_compressed_bytes(std_lib, layouter, &a)?;
 
         // Compute h = SHA512(R_bytes || A_bytes || M).
         let sha_input = (r_compressed_bytes.into_iter())
@@ -132,15 +128,12 @@ impl Relation for CardanoSigExample {
         // Assign (fixed) generator B.
         let b = curve25519_curve.assign_fixed(layouter, Curve25519Subgroup::generator())?;
 
-        // Compute lhs = s * B.
-        let lhs = curve25519_curve.msm(layouter, &[s], &[b])?;
+        // Compute rhs = s * B - h * A.
+        let neg_h = curve25519_scalar.neg(layouter, &h)?;
+        let rhs = curve25519_curve.msm(layouter, &[s, neg_h], &[b, a])?;
 
-        // Compute rhs = R + h * A.
-        let h_a = curve25519_curve.msm(layouter, &[h], &[a])?;
-        let rhs = curve25519_curve.add(layouter, &r, &h_a)?;
-
-        // Assert s * B = R + h * A.
-        curve25519_curve.assert_equal(layouter, &lhs, &rhs)
+        // Assert R = s * B - h * A.
+        curve25519_curve.assert_equal(layouter, &r, &rhs)
     }
 
     fn used_chips(&self) -> ZkStdLibArch {
@@ -172,11 +165,10 @@ fn decompress_point(bytes: &[u8; 32]) -> Curve25519Subgroup {
 }
 
 // In-circuit compression of `AssignedForeignEdwardsPoint` into
-// `[AssignedByte<F>; 32]`.
+// `[AssignedByte<F>; 32]`. Little-endian.
 //
-// Note: Only points with canonical coordinates satisfy the underlying
-// constraints.
-fn compress_edwards_point(
+// Note: Enforces canonicity.
+fn to_compressed_bytes(
     std_lib: &ZkStdLib,
     layouter: &mut impl Layouter<F>,
     point: &AssignedForeignEdwardsPoint<F, Curve25519, MultiEmulationParams>,
