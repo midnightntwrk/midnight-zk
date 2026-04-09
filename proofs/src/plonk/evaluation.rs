@@ -9,9 +9,20 @@ use crate::{
     utils::arithmetic::parallelize,
 };
 
-/// Return the index in the polynomial of size `isize` after rotation `rot`.
-pub(crate) fn get_rotation_idx(idx: usize, rot: i32, rot_scale: i32, isize: i32) -> usize {
-    (((idx as i32) + (rot * rot_scale)).rem_euclid(isize)) as usize
+/// Return the index in a polynomial of size `2^log_n` after applying
+/// rotation `rot` scaled by `2^log_scale`.
+///
+/// - `idx`: current position in the evaluation domain.
+/// - `rot`: rotation amount in base-domain steps (may be negative).
+/// - `log_scale`: `log2(extended_domain_size / base_domain_size)`. Converts
+///   base-domain rotations to evaluation-domain indices. Zero when
+///   evaluating over the base domain itself.
+/// - `log_n`: `log2(evaluation_domain_size)`. Must equal the actual domain
+///   size used for indexing; the result is reduced modulo `2^log_n`.
+#[inline]
+pub(crate) fn get_rotation_idx(idx: usize, rot: i32, log_scale: u32, log_n: u32) -> usize {
+    let mask = (1usize << log_n) - 1;
+    idx.wrapping_add(((rot as isize) << log_scale) as usize) & mask
 }
 
 /// Value used in a calculation
@@ -381,9 +392,9 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
         permutation_pk_cosets: &[Polynomial<F, B>],
     ) -> Polynomial<F, B> {
         let size = B::len(domain);
-        let rot_scale = 1 << (B::k(domain) - domain.k());
+        let log_scale = B::k(domain) - domain.k();
         let omega = B::omega(domain);
-        let isize = size as i32;
+        let log_n = B::k(domain);
         let one = F::ONE;
 
         let p = &cs.permutation;
@@ -420,8 +431,8 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                                 &y,
                                 value,
                                 idx,
-                                rot_scale,
-                                isize,
+                                log_scale,
+                                log_n,
                             );
                         }
                     });
@@ -450,8 +461,8 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                     let mut beta_term = omega.pow_vartime([start as u64, 0, 0, 0]);
                     for (i, value) in values.iter_mut().enumerate() {
                         let idx = start + i;
-                        let r_next = get_rotation_idx(idx, 1, rot_scale, isize);
-                        let r_last = get_rotation_idx(idx, last_rotation.0, rot_scale, isize);
+                        let r_next = get_rotation_idx(idx, 1, log_scale, log_n);
+                        let r_last = get_rotation_idx(idx, last_rotation.0, log_scale, log_n);
 
                         // Enforce only for the first set.
                         // l_0(X) * (1 - z_0(X)) = 0
@@ -526,8 +537,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                         .iter()
                         .map(|h| B::coeff_to_self(domain, h.clone()))
                         .collect();
-                    let aggregator_coset =
-                        B::coeff_to_self(domain, lookup.aggregator_poly.clone());
+                    let aggregator_coset = B::coeff_to_self(domain, lookup.aggregator_poly.clone());
                     let multiplicities_coset =
                         B::coeff_to_self(domain, lookup.multiplicities.clone());
                     (helper_cosets, aggregator_coset, multiplicities_coset)
@@ -543,7 +553,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                     let lookup_eval = &self.lookups[n];
                     for (i, value) in values.iter_mut().enumerate() {
                         let idx = start + i;
-                        let r_next = get_rotation_idx(idx, 1, rot_scale, isize);
+                        let r_next = get_rotation_idx(idx, 1, log_scale, log_n);
 
                         // (l_0(X) + l_last(X)) * Z(X) = 0
                         *value = *value * y + aggregator_coset[idx] * (l0[idx] + l_last[idx]);
@@ -565,8 +575,8 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                                 &y,
                                 &F::ZERO,
                                 idx,
-                                rot_scale,
-                                isize,
+                                log_scale,
+                                log_n,
                             );
 
                             let sum_partial_products =
@@ -627,8 +637,8 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                             &y,
                             &F::ZERO,
                             idx,
-                            rot_scale,
-                            isize,
+                            log_scale,
+                            log_n,
                         );
 
                         let q = match argument.selector() {
@@ -828,12 +838,12 @@ impl<F: PrimeField> GraphEvaluator<F> {
         y: &F,
         previous_value: &F,
         idx: usize,
-        rot_scale: i32,
-        isize: i32,
+        log_scale: u32,
+        log_n: u32,
     ) -> F {
         // All rotation index values
         for (rot_idx, rot) in self.rotations.iter().enumerate() {
-            data.rotations[rot_idx] = get_rotation_idx(idx, *rot, rot_scale, isize);
+            data.rotations[rot_idx] = get_rotation_idx(idx, *rot, log_scale, log_n);
         }
 
         // All calculations, with cached intermediate results
@@ -866,15 +876,15 @@ impl<F: PrimeField> GraphEvaluator<F> {
 /// Simple evaluation of an expression
 pub fn evaluate<F: Field, B: PolynomialRepresentation>(
     expression: &Expression<F>,
-    size: usize,
-    rot_scale: i32,
+    log_n: u32,
+    log_scale: u32,
     fixed: &[Polynomial<F, B>],
     advice: &[Polynomial<F, B>],
     instance: &[Polynomial<F, B>],
     challenges: &[F],
 ) -> Vec<F> {
+    let size = 1usize << log_n;
     let mut values = vec![F::ZERO; size];
-    let isize = size as i32;
     parallelize(&mut values, |values, start| {
         for (i, value) in values.iter_mut().enumerate() {
             let idx = start + i;
@@ -883,15 +893,15 @@ pub fn evaluate<F: Field, B: PolynomialRepresentation>(
                 &|_| panic!("virtual selectors are removed during optimization"),
                 &|query| {
                     fixed[query.column_index]
-                        [get_rotation_idx(idx, query.rotation.0, rot_scale, isize)]
+                        [get_rotation_idx(idx, query.rotation.0, log_scale, log_n)]
                 },
                 &|query| {
                     advice[query.column_index]
-                        [get_rotation_idx(idx, query.rotation.0, rot_scale, isize)]
+                        [get_rotation_idx(idx, query.rotation.0, log_scale, log_n)]
                 },
                 &|query| {
                     instance[query.column_index]
-                        [get_rotation_idx(idx, query.rotation.0, rot_scale, isize)]
+                        [get_rotation_idx(idx, query.rotation.0, log_scale, log_n)]
                 },
                 &|challenge| challenges[challenge.index()],
                 &|a| -a,
