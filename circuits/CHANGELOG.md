@@ -13,6 +13,7 @@ verification keys break backwards compatibility.
 ## [Unreleased]
 ### Changed
 * `FromScratch::configure_from_scratch` now takes shared `advice_columns` and `fixed_columns` pools [#306](https://github.com/midnightntwrk/midnight-zk/pull/306)
+* Optimize foreign Edwards MSM: windowed scalar multiplication and improved point addition [#305](https://github.com/midnightntwrk/midnight-zk/pull/305)
 
 ### Added
 * Add functions to mark the region of a circuit to be measured for cost modelling [#296](https://github.com/midnightntwrk/midnight-zk/pull/296)

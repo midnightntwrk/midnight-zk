@@ -13,6 +13,7 @@
 
 //! Module that implements foreign field EC arithmetic
 
+mod common;
 mod gates;
 
 pub mod edwards_chip;
