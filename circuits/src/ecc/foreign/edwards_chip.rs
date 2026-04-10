@@ -632,6 +632,10 @@ where
         p: &Self::Point,
         q: &Self::Point,
     ) -> Result<Self::Point, Error> {
+        if p == q {
+            return self.double(layouter, &p);
+        }
+
         // Complete addition law on twisted edwards curve:
         // (see https://eprint.iacr.org/2008/013.pdf)
         //
@@ -653,11 +657,7 @@ where
         let px_qx = base_chip.mul(layouter, &p.x, &q.x, None)?;
         let py_qy = base_chip.mul(layouter, &p.y, &q.y, None)?;
         let px_qy = base_chip.mul(layouter, &p.x, &q.y, None)?;
-        let py_qx = if p == q {
-            px_qy.clone()
-        } else {
-            base_chip.mul(layouter, &p.y, &q.x, None)?
-        };
+        let py_qx = base_chip.mul(layouter, &p.y, &q.x, None)?;
         let neg_a_px_qx = base_chip.mul_by_constant(layouter, &px_qx, -C::A)?;
         let d_px_py_qx_qy = base_chip.mul(layouter, &px_qx, &py_qy, Some(C::D))?;
         let neg_d_px_py_qx_qy = base_chip.neg(layouter, &d_px_py_qx_qy)?;
@@ -698,7 +698,61 @@ where
         layouter: &mut impl Layouter<F>,
         p: &AssignedForeignEdwardsPoint<F, C, B>,
     ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
-        self.add(layouter, p, p)
+        // Complete doubling on twisted edwards curve.
+        // (see https://eprint.iacr.org/2008/013.pdf)
+        //
+        // P + P = R
+        // <=>
+        // (Px, Py) + (Px, Py) = (Rx, Ry)
+        // <=>
+        // Rx = (Px * Py +     Py * Px) / (1 + d * Px * Py * Px * Py)
+        // Ry = (Py * Py - a * Px * Px) / (1 - d * Px * Py * Px * Py)
+        // <=> (denominators are non-zero)
+        // Rx * (1 + d * Px^2 * Py^2) = 2 * Px * Py
+        // Ry * (1 - d * Px^2 * Py^2) = Py^2 - a * Px^2
+
+        let base_chip = self.base_field_chip();
+
+        let r_value = p.value().map(|p| p + p);
+        let r = self.assign_point_unchecked(layouter, r_value)?;
+
+        let px_sq = base_chip.mul(layouter, &p.x, &p.x, None)?;
+        let py_sq = base_chip.mul(layouter, &p.y, &p.y, None)?;
+        let px_py = base_chip.mul(layouter, &p.x, &p.y, None)?;
+
+        let neg_a_px_sq = base_chip.mul_by_constant(layouter, &px_sq, -C::A)?;
+        let d_pxpy_sq = base_chip.mul(layouter, &px_sq, &py_sq, Some(C::D))?;
+        let neg_d_pxpy_sq = base_chip.neg(layouter, &d_pxpy_sq)?;
+
+        // Constraint for Rx coordinate
+        // Rx * (1 + d * Px^2 * Py^2) = 2 * Px * Py
+        addition::assert_addition_coordinate(
+            layouter,
+            &r.x,
+            &px_py,
+            &px_py,
+            &d_pxpy_sq,
+            base_chip,
+            &self.config.addition_config,
+        )?;
+
+        // Constraint for Ry coordinate
+        // Ry * (1 - d * Px^2 * Py^2) = Py^2 - a * Px^2
+        addition::assert_addition_coordinate(
+            layouter,
+            &r.y,
+            &py_sq,
+            &neg_a_px_sq,
+            &neg_d_pxpy_sq,
+            base_chip,
+            &self.config.addition_config,
+        )?;
+
+        Ok(AssignedForeignEdwardsPoint {
+            point: r_value,
+            x: r.x,
+            y: r.y,
+        })
     }
 
     fn negate(
