@@ -10,7 +10,9 @@
 use std::marker::PhantomData;
 
 use midnight_curves::pairing::Engine;
-use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
+use rayon::iter::{
+    IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
+};
 
 #[cfg(feature = "fewer-point-sets")]
 use super::query::Query;
@@ -46,8 +48,9 @@ use crate::{
     transcript::{Hashable, Sampleable, Transcript},
     utils::{
         arithmetic::{
-            eval_polynomial, evals_inner_product, inner_product, kate_division,
-            lagrange_interpolate, msm_inner_product, powers, CurveAffine, CurveExt, MSM,
+            eval_polynomial, evals_inner_product, inner_product,
+            kate_division, lagrange_interpolate, msm_inner_product, parallelize, powers,
+            CurveAffine, CurveExt, MSM,
         },
         helpers::ProcessedSerdeObject,
     },
@@ -111,18 +114,35 @@ where
         E::G1: Hashable<T::Hash>,
     {
         /// Like [`inner_product`] but for coefficient-form polynomials that may
-        /// have different lengths (zero-extending the shorter operands via
-        /// [`Polynomial::padded_add`]).
+        /// have different lengths (zero-extending the shorter operands).
+        ///
+        /// Fused parallel implementation: a single pass accumulates all
+        /// scaled contributions directly into the output buffer, avoiding
+        /// M intermediate allocations and the sequential reduce chain.
         fn poly_inner_product<F: ff::PrimeField>(
             polys: &[Polynomial<F, Coeff>],
-            scalars: impl Iterator<Item = F>,
+            scalars: impl IntoIterator<Item = F>,
         ) -> Polynomial<F, Coeff> {
-            polys
-                .iter()
-                .zip(scalars)
-                .map(|(p, s)| p.clone() * s)
-                .reduce(|acc, p| acc.padded_add(&p))
-                .unwrap()
+            let scalars: Vec<F> = scalars.into_iter().take(polys.len()).collect();
+            let max_len = polys.iter().map(|p| p.len()).max().unwrap_or(0);
+            let mut values = vec![F::ZERO; max_len];
+            parallelize(&mut values, |chunk, start| {
+                for (poly, scalar) in polys.iter().zip(scalars.iter()) {
+                    let pv: &[F] = poly;
+                    let end = (start + chunk.len()).min(pv.len());
+                    if start < pv.len() {
+                        for (out, coeff) in
+                            chunk[..end - start].iter_mut().zip(&pv[start..end])
+                        {
+                            *out += *coeff * scalar;
+                        }
+                    }
+                }
+            });
+            Polynomial {
+                values,
+                _marker: PhantomData,
+            }
         }
 
         // Add dummy queries to reduce the number of distinct multi-open point sets.
@@ -153,8 +173,8 @@ where
             q_polys[com_data.set_index].push(com_data.commitment.poly.clone());
         }
 
-        let q_polys = q_polys
-            .iter()
+        let q_polys: Vec<_> = q_polys
+            .par_iter()
             .map(|polys| {
                 #[cfg(feature = "truncated-challenges")]
                 let x1 = truncated_powers(x1);
@@ -164,7 +184,7 @@ where
 
                 poly_inner_product(polys, x1)
             })
-            .collect::<Vec<_>>();
+            .collect();
 
         // Sort point sets by ascending cardinality to ensure the first set is the one
         // that contains fixed commitments (which are evaluated at x only). This
@@ -206,9 +226,14 @@ where
         #[cfg(feature = "truncated-challenges")]
         let x3 = truncate(x3);
 
-        for q_poly in q_polys.iter() {
+        // Evaluate all q_polys at x3 in parallel, then write sequentially.
+        let q_evals: Vec<E::Fr> = q_polys
+            .par_iter()
+            .map(|q_poly| eval_polynomial(&q_poly.values, x3))
+            .collect();
+        for eval in &q_evals {
             transcript
-                .write(&eval_polynomial(&q_poly.values, x3))
+                .write(eval)
                 .map_err(|_| Error::OpeningError)?;
         }
 

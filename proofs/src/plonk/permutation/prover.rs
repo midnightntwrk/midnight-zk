@@ -1,4 +1,4 @@
-use std::iter::{self, ExactSizeIterator};
+use std::iter;
 
 use ff::{PrimeField, WithSmallOrderMulGroup};
 use group::ff::BatchInvert;
@@ -18,7 +18,7 @@ use crate::{
         ProverQuery, Rotation,
     },
     transcript::{Hashable, Transcript},
-    utils::arithmetic::{eval_polynomial, parallelize},
+    utils::arithmetic::{eval_polynomial, eval_polynomial_seq, parallelize},
 };
 
 #[cfg_attr(feature = "bench-internal", derive(Clone))]
@@ -252,11 +252,16 @@ impl<F: PrimeField> super::ProvingKey<F> {
     where
         F: Hashable<T::Hash>,
     {
-        let mut permutation_evals = Vec::new();
-        // Hash permutation evals
-        for eval in self.polys.iter().map(|poly| eval_polynomial(poly, x)) {
-            permutation_evals.push(eval);
-            transcript.write(&eval)?;
+        // Compute all permutation polynomial evaluations up front.
+        let permutation_evals: Vec<F> = self
+            .polys
+            .par_iter()
+            .map(|poly| eval_polynomial_seq(poly, x))
+            .collect();
+
+        // Write to transcript in order.
+        for eval in &permutation_evals {
+            transcript.write(eval)?;
         }
 
         Ok(CommonEvaluated { permutation_evals })
@@ -273,48 +278,43 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
     where
         F: Hashable<T::Hash>,
     {
-        let mut evaluated = vec![];
-
         let domain = &pk.vk.domain;
         let blinding_factors = pk.vk.cs.blinding_factors();
+        let x_next = domain.rotate_omega(x, Rotation::next());
+        let x_last = domain.rotate_omega(x, Rotation(-((blinding_factors + 1) as i32)));
+        let num_sets = self.sets.len();
 
-        let mut sets = self.sets.iter();
-
-        while let Some(set) = sets.next() {
-            let permutation_product_eval = eval_polynomial(&set.permutation_product_poly, x);
-
-            let permutation_product_next_eval = eval_polynomial(
-                &set.permutation_product_poly,
-                domain.rotate_omega(x, Rotation::next()),
-            );
-
-            // Hash permutation product evals
-            for eval in iter::empty()
-                .chain(Some(&permutation_product_eval))
-                .chain(Some(&permutation_product_next_eval))
-            {
-                transcript.write(eval)?;
-            }
-
-            // If we have any remaining sets to process, evaluate this set at omega^u
-            // so we can constrain the last value of its running product to equal the
-            // first value of the next set's running product, chaining them together.
-            let permutation_product_last_eval = if sets.len() > 0 {
-                let eval = eval_polynomial(
+        // Compute all evaluations in parallel: for each set, evaluate the
+        // permutation product polynomial at x, omega*x, and (for all but the
+        // last set) at the "last" rotation.
+        let evaluated: Vec<permutation::Evaluated<F>> = self
+            .sets
+            .par_iter()
+            .enumerate()
+            .map(|(i, set)| permutation::Evaluated {
+                permutation_product_eval: eval_polynomial(
                     &set.permutation_product_poly,
-                    domain.rotate_omega(x, Rotation(-((blinding_factors + 1) as i32))),
-                );
+                    x,
+                ),
+                permutation_product_next_eval: eval_polynomial(
+                    &set.permutation_product_poly,
+                    x_next,
+                ),
+                permutation_product_last_eval: if i < num_sets - 1 {
+                    Some(eval_polynomial(&set.permutation_product_poly, x_last))
+                } else {
+                    None
+                },
+            })
+            .collect();
 
-                transcript.write(&eval).map(|_| Some(eval))?
-            } else {
-                None
-            };
-
-            evaluated.push(permutation::Evaluated {
-                permutation_product_eval,
-                permutation_product_next_eval,
-                permutation_product_last_eval,
-            });
+        // Write evaluations to transcript in the canonical order.
+        for e in &evaluated {
+            transcript.write(&e.permutation_product_eval)?;
+            transcript.write(&e.permutation_product_next_eval)?;
+            if let Some(last) = &e.permutation_product_last_eval {
+                transcript.write(last)?;
+            }
         }
 
         Ok(Evaluated {
