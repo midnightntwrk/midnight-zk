@@ -70,7 +70,13 @@ impl ZkirRelation {
         // in-circuit parser pass.
         dummy_synthesize_run(&MidnightCircuit::from_relation(self, None))?;
         let pi_types = self.public_input_types.borrow().clone();
-        assert_eq!(pis.len(), pi_types.len());
+        if pis.len() != pi_types.len() {
+            return Err(Error::Other(format!(
+            "public input count mismatch: {} values vs {} types",
+            pis.len(),
+            pi_types.len()
+            )));
+    }
         Ok(pis.into_iter().zip(pi_types).collect())
     }
 }
