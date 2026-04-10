@@ -1,8 +1,9 @@
 //! This module contains utilities and traits for dealing with Fiat-Shamir
 //! transcripts.
 mod implementors;
-
 use std::io::{self, Cursor, Read, Write};
+
+pub use implementors::Blake2b256;
 
 /// Prefix to a prover's message soliciting a challenge
 const BLAKE2B_PREFIX_CHALLENGE: u8 = 0;
