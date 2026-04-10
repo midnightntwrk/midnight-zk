@@ -542,22 +542,38 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                 })
                 .collect();
 
-            // Lookups
-            for (n, (helper_cosets, aggregator_coset, multiplicities_coset)) in
-                all_lookup_cosets.iter().enumerate()
-            {
-                // Lookup constraints
-                parallelize(&mut values, |values, start| {
-                    let lookup_eval = &self.lookups[n];
-                    // Pre-allocate evaluation data outside the per-element loop
-                    // to avoid heap allocation on every domain element.
-                    let mut eval_datas: Vec<_> =
-                        lookup_eval.iter().map(|le| le.graph.instance()).collect();
-                    for (i, value) in values.iter_mut().enumerate() {
-                        let idx = start + i;
-                        let r_next = get_rotation_idx(idx, 1, log_scale, log_n);
+            // Pre-compute all trash cosets in parallel (lookup cosets
+            // are already pre-computed above).
+            let trash_cosets: Vec<_> = trashcans
+                .par_iter()
+                .map(|trash| B::coeff_to_self(domain, trash.trash_poly.clone()))
+                .collect();
 
-                        // (l_0(X) + l_last(X)) * Z(X) = 0
+            // Fused lookup + trash constraint evaluation in a single pass
+            // over `values`. This keeps values[idx] in L1/L2 across all
+            // lookups and trash arguments, avoiding re-reads between passes.
+            parallelize(&mut values, |values, start| {
+                // Per-thread eval data for all lookups.
+                let mut all_lookup_eval_datas: Vec<Vec<_>> = self
+                    .lookups
+                    .iter()
+                    .map(|le| le.iter().map(|l| l.graph.instance()).collect())
+                    .collect();
+                // Per-thread eval data for all trash arguments.
+                let mut trash_eval_datas: Vec<_> =
+                    self.trashcans.iter().map(|te| te.instance()).collect();
+
+                for (i, value) in values.iter_mut().enumerate() {
+                    let idx = start + i;
+                    let r_next = get_rotation_idx(idx, 1, log_scale, log_n);
+
+                    // --- Lookup constraints ---
+                    for (n, (helper_cosets, aggregator_coset, multiplicities_coset)) in
+                        all_lookup_cosets.iter().enumerate()
+                    {
+                        let lookup_eval = &self.lookups[n];
+                        let eval_datas = &mut all_lookup_eval_datas[n];
+
                         *value = *value * y + aggregator_coset[idx] * (l0[idx] + l_last[idx]);
 
                         let mut sum_helpers = F::ZERO;
@@ -584,21 +600,17 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                                 eval_datas[fi].resolve(lookup_eval.sum_partial_products);
                             let product = eval_datas[fi].resolve(lookup_eval.product);
 
-                            // We only resolve the table and selector in the first batch
                             if fi == 0 {
                                 table_value = eval_datas[fi].resolve(lookup_eval.table);
                                 selector = eval_datas[fi].resolve(lookup_eval.selector);
                             }
 
-                            // Helper constraint: h(X) · ∏ⱼ(fⱼ(X) + β) = Σⱼ ∏_{k≠j}(fₖ(X) + β)
                             *value = *value * y + helper_cosets[fi][idx] * product
                                 - sum_partial_products;
 
                             sum_helpers += helper_cosets[fi][idx];
                         }
 
-                        // Accumulator constraint:
-                        // (Z(ωX) - Z(X)- s·Σᵢhᵢ(X))·(t(X) + β) + m(X) = 0
                         *value = *value * y
                             + l_active_row[idx]
                                 * ((aggregator_coset[r_next]
@@ -607,27 +619,14 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                                     * table_value
                                     + multiplicities_coset[idx]);
                     }
-                });
-            }
 
-            // Pre-compute all trash cosets in parallel.
-            let trash_cosets: Vec<_> = trashcans
-                .par_iter()
-                .map(|trash| B::coeff_to_self(domain, trash.trash_poly.clone()))
-                .collect();
-
-            // Trashcans
-            for (n, trash_poly) in trash_cosets.iter().enumerate() {
-                // Trash argument constraints.
-                parallelize(&mut values, |values, start| {
-                    let trash_evaluator = &self.trashcans[n];
-                    let argument = &cs.trashcans[n];
-                    let mut eval_data = trash_evaluator.instance();
-                    for (i, value) in values.iter_mut().enumerate() {
-                        let idx = start + i;
+                    // --- Trash constraints ---
+                    for (n, trash_poly) in trash_cosets.iter().enumerate() {
+                        let trash_evaluator = &self.trashcans[n];
+                        let argument = &cs.trashcans[n];
 
                         let compressed_expression = trash_evaluator.evaluate(
-                            &mut eval_data,
+                            &mut trash_eval_datas[n],
                             fixed,
                             advice,
                             instance,
@@ -647,11 +646,10 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                             _ => unreachable!(),
                         };
 
-                        // compressed_expressions - (1 - q) * trash
                         *value = *value * y + (compressed_expression - (one - q) * trash_poly[idx]);
                     }
-                });
-            }
+                }
+            });
         }
         values
     }
