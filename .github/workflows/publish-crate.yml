@@ -12,7 +12,6 @@ on:
           - circuits
           - curves
           - proofs
-          - zkir
           - zk_stdlib
 
 jobs:
