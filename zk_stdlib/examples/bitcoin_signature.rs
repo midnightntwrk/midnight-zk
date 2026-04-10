@@ -16,6 +16,7 @@ use midnight_curves::k256::{Fp as K256Base, Fq as K256Scalar, K256};
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
+    transcript::Blake2b256,
 };
 use midnight_zk_stdlib::{utils::plonk_api::filecoin_srs, Relation, ZkStdLib, ZkStdLibArch};
 use rand::rngs::OsRng;
@@ -188,21 +189,19 @@ fn main() {
         K256Scalar::from_bytes_be(&sig_bytes[32..]).expect("Secp scalar"),
     );
 
-    let proof = midnight_zk_stdlib::prove::<BitcoinSigExample, blake2b_simd::State>(
+    let proof = midnight_zk_stdlib::prove::<BitcoinSigExample, Blake2b256>(
         &srs, &pk, &relation, &instance, witness, OsRng,
     )
     .expect("Proof generation should not fail");
 
-    assert!(
-        midnight_zk_stdlib::verify::<BitcoinSigExample, blake2b_simd::State>(
-            &srs.verifier_params(),
-            &vk,
-            &instance,
-            None,
-            &proof
-        )
-        .is_ok()
+    assert!(midnight_zk_stdlib::verify::<BitcoinSigExample, Blake2b256>(
+        &srs.verifier_params(),
+        &vk,
+        &instance,
+        None,
+        &proof
     )
+    .is_ok())
 }
 
 // Bitcoin uses points that only have even y coordinates. The input x_coord is

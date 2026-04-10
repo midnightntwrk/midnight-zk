@@ -13,6 +13,7 @@ verification keys break backwards compatibility.
 ## [Unreleased]
 ### Changed
 * Adapt `FromScratch` impls to new `configure_from_scratch` signature with shared column pools [#306](https://github.com/midnightntwrk/midnight-zk/pull/306)
+* Use `Blake2b256` transcript hash in the `bitcoin_signature` example [#322](https://github.com/midnightntwrk/midnight-zk/pull/322)
 
 ### Added
 * Added an example verifying an ethereum signature [#177](https://github.com/midnightntwrk/midnight-zk/pull/177)

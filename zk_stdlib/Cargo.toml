@@ -19,7 +19,7 @@ midnight-proofs = { version = "0.7.0", default-features = false, features = [
 ] }
 
 keccak_sha3 = { package = "sha3-circuit", version = "0.1.0" }
-blake2b = { package = "blake2b_halo2", git = "https://github.com/eryxcoop/blake2b_halo2", rev = "9f4f3eb" }
+blake2b = { package = "blake2b_halo2", git = "https://github.com/eryxcoop/blake2b_halo2", rev = "2296aa2" }
 
 serde = { workspace = true, optional = true }
 sha2 = { workspace = true }
