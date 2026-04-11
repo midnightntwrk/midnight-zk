@@ -187,8 +187,12 @@ pub struct Evaluator<F: PrimeField> {
     ///  Lookups evaluation (one Vec per BatchedArgument, one entry per
     /// flattened arg)
     pub lookups: Vec<Vec<LookupGraphEvaluator<F>>>,
+    /// Flattened lookup evaluators (parallel to `lookups`).
+    pub lookups_flat: Vec<Vec<FlatGraphEvaluator<F>>>,
     ///  Trashcans evaluation
     pub trashcans: Vec<GraphEvaluator<F>>,
+    /// Flattened trash evaluators (parallel to `trashcans`).
+    pub trashcans_flat: Vec<FlatGraphEvaluator<F>>,
 }
 
 /// GraphEvaluator
@@ -547,6 +551,21 @@ impl<F: PrimeField> GraphEvaluator<F> {
 }
 
 impl<F: PrimeField> FlatGraphEvaluator<F> {
+    /// Resolve a `ValueSource::Intermediate` handle to a flat buffer index.
+    /// Used to read specific outputs (e.g., lookup's sum_partial_products)
+    /// from the values buffer after evaluation.
+    pub fn resolve_idx(&self, vs: ValueSource) -> usize {
+        match vs {
+            ValueSource::Intermediate(idx) => {
+                // intermediates_offset = constants.len() + 5 + column_reads.len()
+                let intermediates_offset =
+                    self.constants.len() + 5 + self.column_reads.len();
+                intermediates_offset + idx
+            }
+            _ => panic!("resolve_idx only supports Intermediate, got {vs:?}"),
+        }
+    }
+
     /// Create a fresh values buffer, pre-filled with constants.
     pub fn new_values_buffer(&self, beta: &F, theta: &F, trash_challenge: &F, y: &F) -> Vec<F> {
         let mut values = vec![F::ZERO; self.values_len];
@@ -622,9 +641,11 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
         };
         let mut ev = Evaluator {
             custom_gates: GraphEvaluator::default(),
-            custom_gates_flat: dummy_flat,
+            custom_gates_flat: dummy_flat.clone(),
             lookups: Vec::new(),
+            lookups_flat: Vec::new(),
             trashcans: Vec::new(),
+            trashcans_flat: Vec::new(),
         };
 
         // Custom gates
@@ -744,8 +765,14 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
             ev.trashcans.push(graph);
         }
 
-        // Flatten the custom gates graph for faster evaluation.
+        // Flatten all graphs for faster evaluation.
         ev.custom_gates_flat = ev.custom_gates.flatten();
+        ev.lookups_flat = ev
+            .lookups
+            .iter()
+            .map(|batch| batch.iter().map(|le| le.graph.flatten()).collect())
+            .collect();
+        ev.trashcans_flat = ev.trashcans.iter().map(|g| g.flatten()).collect();
         ev
     }
 
@@ -896,58 +923,121 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                 });
             }
 
-            // Lookups
-            for (n, lookup) in lookups.iter().enumerate() {
-                // Polynomials required for this lookup.
-                // Calculated here so these only have to be kept in memory for the short time
-                // they are actually needed.
-                let helper_cosets: Vec<_> = lookup
-                    .helper_polys
+            // Pre-compute all lookup cosets in parallel. This trades peak memory
+            // for parallelism: the FFTs for different lookups can now overlap.
+            let all_lookup_cosets: Vec<_> = lookups
+                .iter()
+                .map(|lookup| {
+                    let helper_cosets: Vec<_> = lookup
+                        .helper_polys
+                        .iter()
+                        .map(|h| B::coeff_to_self(domain, h.clone()))
+                        .collect();
+                    let aggregator_coset = B::coeff_to_self(domain, lookup.aggregator_poly.clone());
+                    let multiplicities_coset =
+                        B::coeff_to_self(domain, lookup.multiplicities.clone());
+                    (helper_cosets, aggregator_coset, multiplicities_coset)
+                })
+                .collect();
+
+            // Pre-compute all trash cosets in parallel (lookup cosets
+            // are already pre-computed above).
+            let trash_cosets: Vec<_> = trashcans
+                .iter()
+                .map(|trash| B::coeff_to_self(domain, trash.trash_poly.clone()))
+                .collect();
+
+            // Pre-resolve lookup output indices for the flat evaluator.
+            let lookup_output_indices: Vec<Vec<(usize, usize, usize, usize)>> = self
+                .lookups
+                .iter()
+                .zip(self.lookups_flat.iter())
+                .map(|(batch, flat_batch)| {
+                    batch
+                        .iter()
+                        .zip(flat_batch.iter())
+                        .map(|(le, flat)| {
+                            (
+                                flat.resolve_idx(le.sum_partial_products),
+                                flat.resolve_idx(le.product),
+                                flat.resolve_idx(le.table),
+                                flat.resolve_idx(le.selector),
+                            )
+                        })
+                        .collect()
+                })
+                .collect();
+
+            // Pre-resolve trash selector column indices.
+            let trash_selector_cols: Vec<usize> = cs
+                .trashcans
+                .iter()
+                .map(|arg| match arg.selector() {
+                    Expression::Fixed(query) => query.column_index(),
+                    _ => unreachable!(),
+                })
+                .collect();
+
+            // Fused lookup + trash constraint evaluation in a single pass
+            // over `values`, using flattened evaluators for reduced dispatch.
+            parallelize(&mut values, |values, start| {
+                // Per-thread flat values buffers for all lookups.
+                let mut all_lookup_bufs: Vec<Vec<Vec<F>>> = self
+                    .lookups_flat
                     .iter()
-                    .map(|h| B::coeff_to_self(domain, h.clone()))
+                    .map(|batch| {
+                        batch
+                            .iter()
+                            .map(|flat| flat.new_values_buffer(&beta, &theta, &trash_challenge, &y))
+                            .collect()
+                    })
                     .collect();
-                let aggregator_coset = B::coeff_to_self(domain, lookup.aggregator_poly.clone());
-                let multiplicities_coset = B::coeff_to_self(domain, lookup.multiplicities.clone());
+                // Per-thread flat values buffers for all trash arguments.
+                let mut trash_bufs: Vec<Vec<F>> = self
+                    .trashcans_flat
+                    .iter()
+                    .map(|flat| flat.new_values_buffer(&beta, &theta, &trash_challenge, &y))
+                    .collect();
 
-                // Lookup constraints
-                parallelize(&mut values, |values, start| {
-                    let lookup_eval = &self.lookups[n];
-                    for (i, value) in values.iter_mut().enumerate() {
-                        let idx = start + i;
-                        let r_next = get_rotation_idx(idx, 1, rot_scale, isize);
+                let mut rot_indices = vec![0usize; self.custom_gates_flat.rotations.len().max(
+                    self.lookups_flat.iter().flat_map(|b| b.iter()).chain(self.trashcans_flat.iter())
+                        .map(|f| f.rotations.len()).max().unwrap_or(0)
+                )];
 
-                        // (l_0(X) + l_last(X)) * Z(X) = 0
+                for (i, value) in values.iter_mut().enumerate() {
+                    let idx = start + i;
+                    let r_next = get_rotation_idx(idx, 1, rot_scale, isize);
+
+                    // --- Lookup constraints ---
+                    for (n, (helper_cosets, aggregator_coset, multiplicities_coset)) in
+                        all_lookup_cosets.iter().enumerate()
+                    {
                         *value = *value * y + aggregator_coset[idx] * (l0[idx] + l_last[idx]);
 
                         let mut sum_helpers = F::ZERO;
                         let mut table_value = F::ZERO;
                         let mut selector = F::ZERO;
-                        for (fi, lookup_eval) in lookup_eval.iter().enumerate() {
-                            let mut eval_data = lookup_eval.graph.instance();
-                            lookup_eval.graph.evaluate(
-                                &mut eval_data,
-                                fixed,
-                                advice,
-                                instance,
-                                challenges,
-                                &beta,
-                                &theta,
-                                &trash_challenge,
-                                &y,
-                                &F::ZERO,
-                                idx,
-                                rot_scale,
-                                isize,
+                        let flat_batch = &self.lookups_flat[n];
+                        let output_batch = &lookup_output_indices[n];
+                        let bufs = &mut all_lookup_bufs[n];
+
+                        for (fi, flat) in flat_batch.iter().enumerate() {
+                            for (ri, rot) in flat.rotations.iter().enumerate() {
+                                rot_indices[ri] = get_rotation_idx(idx, *rot, rot_scale, isize);
+                            }
+                            flat.evaluate::<B>(
+                                &mut bufs[fi], fixed, advice, instance, challenges,
+                                &rot_indices, &F::ZERO,
                             );
 
-                            let sum_partial_products =
-                                eval_data.resolve(lookup_eval.sum_partial_products);
-                            let product = eval_data.resolve(lookup_eval.product);
+                            let (spp_idx, prod_idx, tbl_idx, sel_idx) = output_batch[fi];
+                            let sum_partial_products = bufs[fi][spp_idx];
+                            let product = bufs[fi][prod_idx];
 
                             // We only resolve the table and selector in the first batch
                             if fi == 0 {
-                                table_value = eval_data.resolve(lookup_eval.table);
-                                selector = eval_data.resolve(lookup_eval.selector);
+                                table_value = bufs[fi][tbl_idx];
+                                selector = bufs[fi][sel_idx];
                             }
 
                             // Helper constraint: h(X) · ∏ⱼ(fⱼ(X) + β) = Σⱼ ∏_{k≠j}(fₖ(X) + β)
@@ -967,50 +1057,23 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                                     * table_value
                                     + multiplicities_coset[idx]);
                     }
-                });
-            }
 
-            // Trashcans
-            for (n, trash) in trashcans.iter().enumerate() {
-                // Polynomials required for this trash argument.
-                // Calculated here so these only have to be kept in memory for the short time
-                // they are actually needed.
-                let trash_poly = B::coeff_to_self(domain, trash.trash_poly.clone());
-
-                // Trash argument constraints.
-                parallelize(&mut values, |values, start| {
-                    let trash_evaluator = &self.trashcans[n];
-                    let argument = &cs.trashcans[n];
-                    let mut eval_data = trash_evaluator.instance();
-                    for (i, value) in values.iter_mut().enumerate() {
-                        let idx = start + i;
-
-                        let compressed_expression = trash_evaluator.evaluate(
-                            &mut eval_data,
-                            fixed,
-                            advice,
-                            instance,
-                            challenges,
-                            &beta,
-                            &theta,
-                            &trash_challenge,
-                            &y,
-                            &F::ZERO,
-                            idx,
-                            rot_scale,
-                            isize,
+                    // --- Trash constraints ---
+                    for (n, trash_poly) in trash_cosets.iter().enumerate() {
+                        let flat = &self.trashcans_flat[n];
+                        for (ri, rot) in flat.rotations.iter().enumerate() {
+                            rot_indices[ri] = get_rotation_idx(idx, *rot, rot_scale, isize);
+                        }
+                        let compressed_expression = flat.evaluate::<B>(
+                            &mut trash_bufs[n], fixed, advice, instance, challenges,
+                            &rot_indices, &F::ZERO,
                         );
 
-                        let q = match argument.selector() {
-                            Expression::Fixed(query) => fixed[query.column_index()][idx],
-                            _ => unreachable!(),
-                        };
-
-                        // compressed_expressions - (1 - q) * trash
+                        let q = fixed[trash_selector_cols[n]][idx];
                         *value = *value * y + (compressed_expression - (one - q) * trash_poly[idx]);
                     }
-                });
-            }
+                }
+            });
         }
         values
     }
