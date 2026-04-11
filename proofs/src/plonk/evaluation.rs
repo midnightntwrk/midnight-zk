@@ -199,8 +199,12 @@ pub struct Evaluator<F: PrimeField> {
     ///  Lookups evaluation (one Vec per BatchedArgument, one entry per
     /// flattened arg)
     pub lookups: Vec<Vec<LookupGraphEvaluator<F>>>,
+    /// Flattened lookup evaluators (parallel to `lookups`).
+    pub lookups_flat: Vec<Vec<FlatGraphEvaluator<F>>>,
     ///  Trashcans evaluation
     pub trashcans: Vec<GraphEvaluator<F>>,
+    /// Flattened trash evaluators (parallel to `trashcans`).
+    pub trashcans_flat: Vec<FlatGraphEvaluator<F>>,
 }
 
 /// GraphEvaluator
@@ -559,6 +563,21 @@ impl<F: PrimeField> GraphEvaluator<F> {
 }
 
 impl<F: PrimeField> FlatGraphEvaluator<F> {
+    /// Resolve a `ValueSource::Intermediate` handle to a flat buffer index.
+    /// Used to read specific outputs (e.g., lookup's sum_partial_products)
+    /// from the values buffer after evaluation.
+    pub fn resolve_idx(&self, vs: ValueSource) -> usize {
+        match vs {
+            ValueSource::Intermediate(idx) => {
+                // intermediates_offset = constants.len() + 5 + column_reads.len()
+                let intermediates_offset =
+                    self.constants.len() + 5 + self.column_reads.len();
+                intermediates_offset + idx
+            }
+            _ => panic!("resolve_idx only supports Intermediate, got {vs:?}"),
+        }
+    }
+
     /// Create a fresh values buffer, pre-filled with constants.
     pub fn new_values_buffer(&self, beta: &F, theta: &F, trash_challenge: &F, y: &F) -> Vec<F> {
         let mut values = vec![F::ZERO; self.values_len];
@@ -634,9 +653,11 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
         };
         let mut ev = Evaluator {
             custom_gates: GraphEvaluator::default(),
-            custom_gates_flat: dummy_flat,
+            custom_gates_flat: dummy_flat.clone(),
             lookups: Vec::new(),
+            lookups_flat: Vec::new(),
             trashcans: Vec::new(),
+            trashcans_flat: Vec::new(),
         };
 
         // Custom gates
@@ -756,8 +777,14 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
             ev.trashcans.push(graph);
         }
 
-        // Flatten the custom gates graph for faster evaluation.
+        // Flatten all graphs for faster evaluation.
         ev.custom_gates_flat = ev.custom_gates.flatten();
+        ev.lookups_flat = ev
+            .lookups
+            .iter()
+            .map(|batch| batch.iter().map(|le| le.graph.flatten()).collect())
+            .collect();
+        ev.trashcans_flat = ev.trashcans.iter().map(|g| g.flatten()).collect();
         ev
     }
 
@@ -930,19 +957,62 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                 .map(|trash| B::coeff_to_self(domain, trash.trash_poly.clone()))
                 .collect();
 
+            // Pre-resolve lookup output indices for the flat evaluator.
+            let lookup_output_indices: Vec<Vec<(usize, usize, usize, usize)>> = self
+                .lookups
+                .iter()
+                .zip(self.lookups_flat.iter())
+                .map(|(batch, flat_batch)| {
+                    batch
+                        .iter()
+                        .zip(flat_batch.iter())
+                        .map(|(le, flat)| {
+                            (
+                                flat.resolve_idx(le.sum_partial_products),
+                                flat.resolve_idx(le.product),
+                                flat.resolve_idx(le.table),
+                                flat.resolve_idx(le.selector),
+                            )
+                        })
+                        .collect()
+                })
+                .collect();
+
+            // Pre-resolve trash selector column indices.
+            let trash_selector_cols: Vec<usize> = cs
+                .trashcans
+                .iter()
+                .map(|arg| match arg.selector() {
+                    Expression::Fixed(query) => query.column_index(),
+                    _ => unreachable!(),
+                })
+                .collect();
+
             // Fused lookup + trash constraint evaluation in a single pass
-            // over `values`. This keeps values[idx] in L1/L2 across all
-            // lookups and trash arguments, avoiding re-reads between passes.
+            // over `values`, using flattened evaluators for reduced dispatch.
             parallelize(&mut values, |values, start| {
-                // Per-thread eval data for all lookups.
-                let mut all_lookup_eval_datas: Vec<Vec<_>> = self
-                    .lookups
+                // Per-thread flat values buffers for all lookups.
+                let mut all_lookup_bufs: Vec<Vec<Vec<F>>> = self
+                    .lookups_flat
                     .iter()
-                    .map(|le| le.iter().map(|l| l.graph.instance()).collect())
+                    .map(|batch| {
+                        batch
+                            .iter()
+                            .map(|flat| flat.new_values_buffer(&beta, &theta, &trash_challenge, &y))
+                            .collect()
+                    })
                     .collect();
-                // Per-thread eval data for all trash arguments.
-                let mut trash_eval_datas: Vec<_> =
-                    self.trashcans.iter().map(|te| te.instance()).collect();
+                // Per-thread flat values buffers for all trash arguments.
+                let mut trash_bufs: Vec<Vec<F>> = self
+                    .trashcans_flat
+                    .iter()
+                    .map(|flat| flat.new_values_buffer(&beta, &theta, &trash_challenge, &y))
+                    .collect();
+
+                let mut rot_indices = vec![0usize; self.custom_gates_flat.rotations.len().max(
+                    self.lookups_flat.iter().flat_map(|b| b.iter()).chain(self.trashcans_flat.iter())
+                        .map(|f| f.rotations.len()).max().unwrap_or(0)
+                )];
 
                 for (i, value) in values.iter_mut().enumerate() {
                     let idx = start + i;
@@ -952,38 +1022,31 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                     for (n, (helper_cosets, aggregator_coset, multiplicities_coset)) in
                         all_lookup_cosets.iter().enumerate()
                     {
-                        let lookup_eval = &self.lookups[n];
-                        let eval_datas = &mut all_lookup_eval_datas[n];
-
                         *value = *value * y + aggregator_coset[idx] * (l0[idx] + l_last[idx]);
 
                         let mut sum_helpers = F::ZERO;
                         let mut table_value = F::ZERO;
                         let mut selector = F::ZERO;
-                        for (fi, lookup_eval) in lookup_eval.iter().enumerate() {
-                            lookup_eval.graph.evaluate(
-                                &mut eval_datas[fi],
-                                fixed,
-                                advice,
-                                instance,
-                                challenges,
-                                &beta,
-                                &theta,
-                                &trash_challenge,
-                                &y,
-                                &F::ZERO,
-                                idx,
-                                log_scale,
-                                log_n,
+                        let flat_batch = &self.lookups_flat[n];
+                        let output_batch = &lookup_output_indices[n];
+                        let bufs = &mut all_lookup_bufs[n];
+
+                        for (fi, flat) in flat_batch.iter().enumerate() {
+                            for (ri, rot) in flat.rotations.iter().enumerate() {
+                                rot_indices[ri] = get_rotation_idx(idx, *rot, log_scale, log_n);
+                            }
+                            flat.evaluate::<B>(
+                                &mut bufs[fi], fixed, advice, instance, challenges,
+                                &rot_indices, &F::ZERO,
                             );
 
-                            let sum_partial_products =
-                                eval_datas[fi].resolve(lookup_eval.sum_partial_products);
-                            let product = eval_datas[fi].resolve(lookup_eval.product);
+                            let (spp_idx, prod_idx, tbl_idx, sel_idx) = output_batch[fi];
+                            let sum_partial_products = bufs[fi][spp_idx];
+                            let product = bufs[fi][prod_idx];
 
                             if fi == 0 {
-                                table_value = eval_datas[fi].resolve(lookup_eval.table);
-                                selector = eval_datas[fi].resolve(lookup_eval.selector);
+                                table_value = bufs[fi][tbl_idx];
+                                selector = bufs[fi][sel_idx];
                             }
 
                             *value = *value * y + helper_cosets[fi][idx] * product
@@ -1003,30 +1066,16 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
 
                     // --- Trash constraints ---
                     for (n, trash_poly) in trash_cosets.iter().enumerate() {
-                        let trash_evaluator = &self.trashcans[n];
-                        let argument = &cs.trashcans[n];
-
-                        let compressed_expression = trash_evaluator.evaluate(
-                            &mut trash_eval_datas[n],
-                            fixed,
-                            advice,
-                            instance,
-                            challenges,
-                            &beta,
-                            &theta,
-                            &trash_challenge,
-                            &y,
-                            &F::ZERO,
-                            idx,
-                            log_scale,
-                            log_n,
+                        let flat = &self.trashcans_flat[n];
+                        for (ri, rot) in flat.rotations.iter().enumerate() {
+                            rot_indices[ri] = get_rotation_idx(idx, *rot, log_scale, log_n);
+                        }
+                        let compressed_expression = flat.evaluate::<B>(
+                            &mut trash_bufs[n], fixed, advice, instance, challenges,
+                            &rot_indices, &F::ZERO,
                         );
 
-                        let q = match argument.selector() {
-                            Expression::Fixed(query) => fixed[query.column_index()][idx],
-                            _ => unreachable!(),
-                        };
-
+                        let q = fixed[trash_selector_cols[n]][idx];
                         *value = *value * y + (compressed_expression - (one - q) * trash_poly[idx]);
                     }
                 }
