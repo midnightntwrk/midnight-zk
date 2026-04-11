@@ -334,6 +334,14 @@ impl MulAssign<&Fq> for Fq {
     }
 }
 
+impl Fq {
+    /// Fused Gentleman-Sande (DIF) butterfly: `d = x0 - x1; x0 += x1; x1 = d * tw`.
+    #[inline]
+    pub fn gs_butterfly(x0: &mut Fq, x1: &mut Fq, twiddle: &Fq) {
+        unsafe { blst_fr_gs_bfly(&mut x0.0, &mut x1.0, &twiddle.0) };
+    }
+}
+
 impl<T> Sum<T> for Fq
 where
     T: Borrow<Fq>,

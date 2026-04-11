@@ -858,13 +858,14 @@ pub(super) fn compute_nu_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommit
         y,
         ..
     } = &trace;
-    // Calculate the advice and instance cosets
+    // Calculate the advice and instance cosets using pruned DIF FFT
+    // (exploits zero-padded structure: n real coefficients in 4n array).
     let advice_cosets: Vec<Vec<Polynomial<F, ExtendedLagrangeCoeff>>> = advice_polys
         .iter()
         .map(|advice_polys| {
             advice_polys
                 .par_iter()
-                .map(|poly| pk.vk.get_domain().coeff_to_extended(poly.clone()))
+                .map(|poly| pk.vk.get_domain().coeff_to_extended_pruned(poly.clone()))
                 .collect()
         })
         .collect();
@@ -873,7 +874,7 @@ pub(super) fn compute_nu_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommit
         .map(|instance_polys| {
             instance_polys
                 .par_iter()
-                .map(|poly| pk.vk.get_domain().coeff_to_extended(poly.clone()))
+                .map(|poly| pk.vk.get_domain().coeff_to_extended_pruned(poly.clone()))
                 .collect()
         })
         .collect();
