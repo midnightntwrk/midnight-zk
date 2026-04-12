@@ -635,6 +635,123 @@ impl<F: PrimeField> FlatGraphEvaluator<F> {
     }
 }
 
+impl<F: PrimeField> FlatGraphEvaluator<F> {
+    /// Evaluate the graph over a chunk of domain elements with compile-time
+    /// batch size `BATCH`. Processes BATCH elements per graph traversal,
+    /// amortizing op dispatch. LLVM fully unrolls the inner `for b in 0..BATCH`
+    /// loops into straight-line code.
+    ///
+    /// `template_buf` is a pre-filled values buffer (constants + challenges).
+    /// `output[i]` is both input (previous_value) and output (result).
+    #[allow(clippy::too_many_arguments)]
+    pub fn evaluate_chunk<const BATCH: usize, Repr: PolynomialRepresentation>(
+        &self,
+        template_buf: &[F],
+        output: &mut [F],
+        start: usize,
+        fixed: &[Polynomial<F, Repr>],
+        advice: &[Polynomial<F, Repr>],
+        instance: &[Polynomial<F, Repr>],
+        challenges: &[F],
+        log_scale: u32,
+        log_n: u32,
+    ) {
+        let chunk_len = output.len();
+        let pv_i = self.previous_value_idx as usize;
+        let result_i = self.result_idx as usize;
+        let mask = (1usize << log_n) - 1;
+        let num_rots = self.rotations.len();
+
+        // Pre-compute rotation strides for incremental index calculation.
+        let rot_strides: Vec<usize> = self
+            .rotations
+            .iter()
+            .map(|&rot| ((rot as isize) << log_scale) as usize)
+            .collect();
+
+        // BATCH values buffers, reused across batches.
+        let mut bufs: [Vec<F>; BATCH] = std::array::from_fn(|_| template_buf.to_vec());
+        let mut all_rots: [Vec<usize>; BATCH] =
+            std::array::from_fn(|_| vec![0usize; num_rots]);
+
+        let mut pos = 0;
+
+        // Main loop: full batches of BATCH elements.
+        while pos + BATCH <= chunk_len {
+            // Load column values for BATCH elements.
+            for b in 0..BATCH {
+                let idx = start + pos + b;
+                for (ri, stride) in rot_strides.iter().enumerate() {
+                    all_rots[b][ri] = idx.wrapping_add(*stride) & mask;
+                }
+                bufs[b][pv_i] = output[pos + b];
+                for cr in &self.column_reads {
+                    let rot = all_rots[b][cr.rot_or_idx as usize];
+                    bufs[b][cr.dst as usize] = match cr.col_type {
+                        0 => fixed[cr.col_idx as usize][rot],
+                        1 => advice[cr.col_idx as usize][rot],
+                        2 => instance[cr.col_idx as usize][rot],
+                        3 => challenges[cr.col_idx as usize],
+                        _ => unreachable!(),
+                    };
+                }
+            }
+
+            // Execute ops — one dispatch, BATCH unrolled field operations.
+            for op in &self.ops {
+                let d = op.dst as usize;
+                let a = op.a as usize;
+                let bi = op.b as usize;
+                let c = op.c as usize;
+                match op.kind {
+                    FlatOpKind::Add => {
+                        for b in 0..BATCH { bufs[b][d] = bufs[b][a] + bufs[b][bi]; }
+                    }
+                    FlatOpKind::Sub => {
+                        for b in 0..BATCH { bufs[b][d] = bufs[b][a] - bufs[b][bi]; }
+                    }
+                    FlatOpKind::Mul => {
+                        for b in 0..BATCH { bufs[b][d] = bufs[b][a] * bufs[b][bi]; }
+                    }
+                    FlatOpKind::Square => {
+                        for b in 0..BATCH { bufs[b][d] = bufs[b][a].square(); }
+                    }
+                    FlatOpKind::Double => {
+                        for b in 0..BATCH { bufs[b][d] = bufs[b][a].double(); }
+                    }
+                    FlatOpKind::Negate => {
+                        for b in 0..BATCH { bufs[b][d] = -bufs[b][a]; }
+                    }
+                    FlatOpKind::MulAdd => {
+                        for b in 0..BATCH { bufs[b][d] = bufs[b][a] * bufs[b][bi] + bufs[b][c]; }
+                    }
+                }
+            }
+
+            for b in 0..BATCH {
+                output[pos + b] = bufs[b][result_i];
+            }
+            pos += BATCH;
+        }
+
+        // Tail: remaining elements (< BATCH), processed one at a time.
+        if pos < chunk_len {
+            let mut buf = bufs.into_iter().next().unwrap();
+            let mut rot_indices = all_rots.into_iter().next().unwrap();
+            while pos < chunk_len {
+                let idx = start + pos;
+                for (ri, stride) in rot_strides.iter().enumerate() {
+                    rot_indices[ri] = idx.wrapping_add(*stride) & mask;
+                }
+                output[pos] = self.evaluate::<Repr>(
+                    &mut buf, fixed, advice, instance, challenges, &rot_indices, &output[pos],
+                );
+                pos += 1;
+            }
+        }
+    }
+}
+
 impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
     /// Creates a new evaluation structure
     pub fn new(cs: &ConstraintSystem<F>) -> Self {
@@ -831,21 +948,50 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
             .zip(trashcans.iter())
             .zip(permutations.iter())
         {
-            // Custom gates — use the flattened evaluator for reduced dispatch overhead.
+            // Custom gates — flattened evaluator with const-generic batch size.
+            // FLAT_BATCH_SIZE env var selects B (default 1). Each value is a
+            // separate monomorphization with fully unrolled inner loops.
             let flat = &self.custom_gates_flat;
-            parallelize(&mut values, |values, start| {
-                let mut buf = flat.new_values_buffer(&beta, &theta, &trash_challenge, &y);
-                let mut rot_indices = vec![0usize; flat.rotations.len()];
-                for (i, value) in values.iter_mut().enumerate() {
-                    let idx = start + i;
-                    for (ri, rot) in flat.rotations.iter().enumerate() {
-                        rot_indices[ri] = get_rotation_idx(idx, *rot, log_scale, log_n);
-                    }
-                    *value = flat.evaluate::<B>(
-                        &mut buf, fixed, advice, instance, challenges, &rot_indices, value,
-                    );
+            let batch_size: usize = std::env::var("FLAT_BATCH_SIZE")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(1);
+
+            macro_rules! dispatch_batch {
+                ($b:expr) => {{
+                    let template = flat.new_values_buffer(&beta, &theta, &trash_challenge, &y);
+                    parallelize(&mut values, |values, start| {
+                        flat.evaluate_chunk::<$b, B>(
+                            &template, values, start, fixed, advice, instance,
+                            challenges, log_scale, log_n,
+                        );
+                    });
+                }};
+            }
+
+            match batch_size {
+                2 => dispatch_batch!(2),
+                4 => dispatch_batch!(4),
+                8 => dispatch_batch!(8),
+                _ => {
+                    // B=1: use the unbatched per-element path.
+                    parallelize(&mut values, |values, start| {
+                        let mut buf = flat.new_values_buffer(&beta, &theta, &trash_challenge, &y);
+                        let mut rot_indices = vec![0usize; flat.rotations.len()];
+                        for (i, value) in values.iter_mut().enumerate() {
+                            let idx = start + i;
+                            for (ri, rot) in flat.rotations.iter().enumerate() {
+                                rot_indices[ri] =
+                                    get_rotation_idx(idx, *rot, log_scale, log_n);
+                            }
+                            *value = flat.evaluate::<B>(
+                                &mut buf, fixed, advice, instance, challenges,
+                                &rot_indices, value,
+                            );
+                        }
+                    });
                 }
-            });
+            }
 
             // Permutations
             let sets = &permutation.sets;
